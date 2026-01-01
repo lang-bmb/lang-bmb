@@ -1,0 +1,5 @@
+[target.x86_64-pc-windows-gnu]
+linker = "C:/msys64/ucrt64/bin/gcc.exe"
+
+[env]
+LLVM_SYS_211_PREFIX = "C:/msys64/ucrt64"

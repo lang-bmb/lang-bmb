@@ -1,0 +1,228 @@
+-- BMB Lexer written in BMB (Phase 9: Self-compilation bootstrap)
+-- A simple hand-written lexer for the BMB language
+-- Uses functional/recursive style to work within BMB's grammar constraints
+--
+-- LIMITATIONS:
+-- - Stack depth: Due to recursive execution without tail call optimization,
+--   the lexer can only process short inputs (~10 tokens) before stack overflow.
+-- - Short-circuit: BMB's `and` operator doesn't short-circuit, so we use nested ifs.
+-- - Let scoping: In `let x = v; body`, x is only visible in body expression.
+--
+-- This implementation demonstrates BMB's self-compilation capability.
+-- For production use, the lexer should be compiled to native code with TCO.
+
+-- Token kinds (as integer codes for simplicity)
+-- Keywords: 100-199
+-- Literals: 200-299
+-- Symbols: 300-399
+-- Operators: 400-499
+-- Special: 900-999
+
+-- Helper functions
+
+-- Check if character is whitespace (space=32, tab=9, newline=10, CR=13)
+fn is_whitespace(c: i64) -> bool = c == 32 or c == 9 or c == 10 or c == 13;
+
+-- Check if character is a digit (0-9)
+fn is_digit(c: i64) -> bool = c >= 48 and c <= 57;
+
+-- Check if character is a letter (a-z, A-Z)
+fn is_alpha(c: i64) -> bool =
+    (c >= 65 and c <= 90) or (c >= 97 and c <= 122);
+
+-- Check if character is alphanumeric or underscore
+fn is_alnum_or_underscore(c: i64) -> bool =
+    is_alpha(c) or is_digit(c) or c == 95;
+
+-- Check if character can start an identifier (letter or underscore)
+fn is_ident_start(c: i64) -> bool = is_alpha(c) or c == 95;
+
+-- Convert digit character to number
+fn digit_to_int(c: i64) -> i64 = c - 48;
+
+-- Skip whitespace recursively, return new position
+fn skip_ws(s: String, pos: i64) -> i64 =
+    if pos >= s.len() then pos
+    else if is_whitespace(s.char_at(pos)) then skip_ws(s, pos + 1)
+    else pos;
+
+-- Skip to end of line (for comments), return new position
+fn skip_to_eol(s: String, pos: i64) -> i64 =
+    if pos >= s.len() then pos
+    else if s.char_at(pos) == 10 then pos
+    else skip_to_eol(s, pos + 1);
+
+-- Skip comment if present, return new position
+-- Note: Using nested if to ensure proper short-circuit evaluation
+fn skip_comment(s: String, pos: i64) -> i64 =
+    if pos + 1 < s.len() then
+        if s.char_at(pos) == 45 then  -- '-'
+            if s.char_at(pos + 1) == 45 then  -- '-'
+                skip_to_eol(s, pos + 2)
+            else pos
+        else pos
+    else pos;
+
+-- Skip all whitespace and comments, return new position
+fn skip_all(s: String, pos: i64) -> i64 =
+    let p1 = skip_ws(s, pos);
+    let p2 = skip_comment(s, p1);
+    if p2 == pos then pos else skip_all(s, p2);
+
+-- Find end of identifier, return end position
+fn find_ident_end(s: String, pos: i64) -> i64 =
+    if pos >= s.len() then pos
+    else if is_alnum_or_underscore(s.char_at(pos)) then find_ident_end(s, pos + 1)
+    else pos;
+
+-- Find end of number, return end position
+fn find_number_end(s: String, pos: i64) -> i64 =
+    if pos >= s.len() then pos
+    else if is_digit(s.char_at(pos)) then find_number_end(s, pos + 1)
+    else pos;
+
+-- Lookup keyword (returns token code: 100-199 for keywords, 201 for ident)
+fn lookup_keyword(w: String) -> i64 =
+    if w == "fn" then 100
+    else if w == "let" then 101
+    else if w == "if" then 102
+    else if w == "then" then 103
+    else if w == "else" then 104
+    else if w == "true" then 105
+    else if w == "false" then 106
+    else if w == "and" then 107
+    else if w == "or" then 108
+    else if w == "not" then 109
+    else if w == "pre" then 110
+    else if w == "post" then 111
+    else if w == "ret" then 112
+    else if w == "struct" then 113
+    else if w == "enum" then 114
+    else if w == "match" then 115
+    else if w == "new" then 116
+    else if w == "mut" then 117
+    else if w == "while" then 118
+    else if w == "for" then 119
+    else if w == "in" then 120
+    else if w == "pub" then 121
+    else if w == "use" then 122
+    -- Type keywords
+    else if w == "i32" then 150
+    else if w == "i64" then 151
+    else if w == "f64" then 152
+    else if w == "bool" then 153
+    else if w == "String" then 154
+    -- Not a keyword
+    else 201;
+
+-- Get symbol token code (single char)
+fn symbol_code(c: i64) -> i64 =
+    if c == 58 then 300      -- : Colon
+    else if c == 46 then 301 -- . Dot
+    else if c == 61 then 302 -- = Eq
+    else if c == 59 then 303 -- ; Semi
+    else if c == 44 then 304 -- , Comma
+    else if c == 40 then 305 -- ( LParen
+    else if c == 41 then 306 -- ) RParen
+    else if c == 123 then 307 -- { LBrace
+    else if c == 125 then 308 -- } RBrace
+    else if c == 91 then 309 -- [ LBracket
+    else if c == 93 then 310 -- ] RBracket
+    else if c == 38 then 311 -- & Ampersand
+    else if c == 95 then 312 -- _ Underscore
+    -- Operators
+    else if c == 43 then 400 -- + Plus
+    else if c == 45 then 401 -- - Minus
+    else if c == 42 then 402 -- * Star
+    else if c == 47 then 403 -- / Slash
+    else if c == 37 then 404 -- % Percent
+    else if c == 60 then 405 -- < Lt
+    else if c == 62 then 406 -- > Gt
+    else 999;  -- Error/Unknown
+
+-- Check for two-character tokens, return (code * 10 + 2) or 0
+fn check_two_char(s: String, pos: i64) -> i64 =
+    if pos + 1 >= s.len() then 0
+    else
+        let c1 = s.char_at(pos);
+        let c2 = s.char_at(pos + 1);
+        if c1 == 58 and c2 == 58 then 3202     -- :: ColonColon (320, len=2)
+        else if c1 == 45 and c2 == 62 then 3212 -- -> Arrow (321, len=2)
+        else if c1 == 61 and c2 == 62 then 3222 -- => FatArrow (322, len=2)
+        else if c1 == 46 and c2 == 46 then 3232 -- .. DotDot (323, len=2)
+        else if c1 == 61 and c2 == 61 then 4102 -- == EqEq (410, len=2)
+        else if c1 == 33 and c2 == 61 then 4112 -- != NotEq (411, len=2)
+        else if c1 == 60 and c2 == 61 then 4122 -- <= LtEq (412, len=2)
+        else if c1 == 62 and c2 == 61 then 4132 -- >= GtEq (413, len=2)
+        else 0;
+
+-- Helper to process identifier token
+fn process_ident(s: String, p: i64) -> i64 =
+    let end = find_ident_end(s, p + 1);
+    let word = s.slice(p, end);
+    let kind = lookup_keyword(word);
+    kind * 1000000 + p * 1000 + (end - p);
+
+-- Helper to process number token
+fn process_number(s: String, p: i64) -> i64 =
+    let end = find_number_end(s, p + 1);
+    200 * 1000000 + p * 1000 + (end - p);
+
+-- Helper to process symbol token
+fn process_symbol(s: String, p: i64) -> i64 =
+    let two = check_two_char(s, p);
+    if two > 0 then
+        let kind = two / 10;
+        let tlen = two - kind * 10;
+        kind * 1000000 + p * 1000 + tlen
+    else
+        let c = s.char_at(p);
+        let kind = symbol_code(c);
+        kind * 1000000 + p * 1000 + 1;
+
+-- Get next token: returns (kind * 1000000 + start * 1000 + length)
+fn next_token(s: String, pos: i64) -> i64 =
+    let p = skip_all(s, pos);
+    if p >= s.len() then 900 * 1000000 + p * 1000 + 0  -- EOF
+    else
+        let c = s.char_at(p);
+        if is_ident_start(c) then process_ident(s, p)
+        else if is_digit(c) then process_number(s, p)
+        else process_symbol(s, p);
+
+-- Extract kind from packed token
+fn token_kind(tok: i64) -> i64 = tok / 1000000;
+
+-- Extract start position from packed token
+fn token_start(tok: i64) -> i64 = (tok / 1000) - (tok / 1000000) * 1000;
+
+-- Extract length from packed token
+fn token_len(tok: i64) -> i64 = tok - (tok / 1000) * 1000;
+
+-- Helper: print x and return val (for sequencing side effects)
+fn seq(x: i64, val: i64) -> i64 =
+    let u = println(x);
+    val;
+
+-- Tokenize and print, returning count
+fn tok_step(s: String, pos: i64, count: i64) -> i64 =
+    let tok = next_token(s, pos);
+    let kind = token_kind(tok);
+    let start = token_start(tok);
+    let len = token_len(tok);
+    let u = println(kind);  -- Print token kind
+    if kind == 900 then count + 1  -- EOF
+    else if kind == 999 then count + 1  -- Error
+    else tok_step(s, start + len, count + 1);
+
+-- Tokenize and print all tokens
+fn tokenize(s: String) -> i64 = tok_step(s, 0, 0);
+
+-- Main function to demonstrate the lexer
+fn main() -> i64 =
+    let u1 = println(777);  -- Separator
+    let s = "fn foo()";  -- Test: 4 tokens
+    let count = tokenize(s);
+    let u2 = println(888);  -- Separator
+    let u3 = println(count);
+    0;

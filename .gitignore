@@ -14,4 +14,9 @@ CLAUDE.md
 Cargo.lock
 
 # Compiled output
-*.wasmexperiments/.env.local
+*.wasm
+*.o
+*.a
+*.exe
+
+experiments/.env.local
