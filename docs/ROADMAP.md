@@ -378,9 +378,31 @@ Phase 12 (완료):
 - 재귀 하강 파서, 10개 테스트 통과
 - 함수 정의, if/then/else, let, 이항 연산 지원
 
+Phase 13 (완료):
+- AST 출력 파서 (bootstrap/parser_ast.bmb)
+- S-expression 형식 출력
+- 결과 패킹: "pos:ast" 문자열 형식
+- 10개 테스트 통과 (파싱 5 + AST 검증 5)
+
+Phase 14 (완료):
+- 종합 파서 테스트 (bootstrap/parser_test.bmb)
+- 15개 테스트 카테고리:
+  - 다중 함수, 중첩 if, 복합 연산자, 비교 연산자
+  - let 체이닝, mut let, 다중 인자 함수 호출
+  - 불리언 표현식, 괄호 표현식, 부정 연산
+  - 혼합 타입, 빈 파라미터, 범위 연산자
+  - 깊은 중첩, 중첩 함수 호출
+- 15/15 테스트 통과
+
+Phase 15 (완료):
+- Bootstrap 문서화 (bootstrap/README.md)
+- 토큰 인코딩, 결과 패킹 패턴 문서화
+- 테스트 실행 가이드 작성
+
 추후 작업:
-- Phase 13: AST 출력 기능
-- 코드 생성기 BMB 재작성
+- Phase 16: 타입 체커 BMB 작성
+- Phase 17: 코드 생성기 BMB 재작성
+- Phase 18: 완전한 자기 컴파일
 ```
 
 ### 산출물
@@ -401,14 +423,16 @@ Phase 12 (완료):
 
 Bootstrap (완료):
 bootstrap/
-├── lexer.bmb: BMB 렉서 (순수 함수형)
-└── parser.bmb: BMB 파서 (재귀 하강)
+├── lexer.bmb       # BMB 렉서 (8KB, 순수 함수형)
+├── parser.bmb      # BMB 파서 (22KB, 재귀 하강, 구문 검증)
+├── parser_ast.bmb  # AST 출력 파서 (21KB, S-expression 형식)
+├── parser_test.bmb # 종합 테스트 (25KB, 15개 테스트)
+└── README.md       # Bootstrap 문서
 
 예정:
 bootstrap/
-├── ast.bmb
-├── types.bmb
-└── codegen.bmb
+├── types.bmb       # 타입 체커
+└── codegen.bmb     # 코드 생성기
 ```
 
 ### 마일스톤
@@ -425,7 +449,10 @@ bootstrap/
 - [x] Phase 10: Short-circuit 평가 (and/or) ✅
 - [x] Phase 11: 스택 깊이 확장 (stacker) ✅
 - [x] Phase 12: BMB 파서 작성 (bootstrap/parser.bmb) ✅
-- [ ] Phase 13: AST 출력 기능
+- [x] Phase 13: AST 출력 파서 (bootstrap/parser_ast.bmb) ✅
+- [x] Phase 14: 종합 파서 테스트 (15개 테스트) ✅
+- [x] Phase 15: Bootstrap 문서화 (bootstrap/README.md) ✅
+- [ ] Phase 16: 타입 체커 BMB 작성
 - [ ] BMB 컴파일러가 자기 렉서/파서 컴파일
 
 ---

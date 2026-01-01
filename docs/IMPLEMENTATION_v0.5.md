@@ -501,9 +501,50 @@ fn array_length(arr: [i64; 5]) -> i64 = arr.len();
 - [x] 10개 테스트 케이스 통과
 - [x] 순수 함수형 스타일 (stacker와 호환)
 
+### Phase 13 완료 조건 ✅ (완료)
+- [x] AST 출력 파서 작성 (bootstrap/parser_ast.bmb)
+- [x] S-expression 형식 출력:
+  - [x] (program (fn <name> (params ...) type body))
+  - [x] (if cond then else)
+  - [x] (let <name> value body)
+  - [x] (call <name> args...)
+  - [x] (op operator left right)
+- [x] 결과 패킹: "pos:ast" 문자열 형식
+- [x] 각도 괄호 사용 <name> (BMB 문자열 제한 우회)
+- [x] 10개 테스트 통과 (파싱 5 + AST 검증 5)
+
+### Phase 14 완료 조건 ✅ (완료)
+- [x] 종합 파서 테스트 스위트 (bootstrap/parser_test.bmb)
+- [x] 15개 테스트 카테고리:
+  - [x] 다중 함수 프로그램
+  - [x] 중첩 if 표현식
+  - [x] 복합 연산자 체인
+  - [x] 모든 비교 연산자
+  - [x] let 바인딩 체이닝
+  - [x] mut let 바인딩
+  - [x] 다중 인자 함수 호출
+  - [x] 불리언 표현식 (and/or/not)
+  - [x] 괄호 표현식
+  - [x] 부정 연산
+  - [x] 혼합 타입 (i32, i64, bool)
+  - [x] 빈 파라미터 목록
+  - [x] 범위 연산자 (..)
+  - [x] 깊은 중첩
+  - [x] 중첩 함수 호출
+- [x] 15/15 테스트 통과
+
+### Phase 15 완료 조건 ✅ (완료)
+- [x] Bootstrap 문서화 (bootstrap/README.md)
+- [x] 토큰 인코딩 스킴 문서화 (kind * 1000000 + end_pos)
+- [x] 결과 패킹 패턴 설명
+- [x] 테스트 실행 가이드
+- [x] 알려진 제한사항 목록
+- [x] 미래 작업 로드맵
+
 ### 추후 작업
-- [ ] Phase 13: AST 출력 기능 추가
-- [ ] Phase 14: 코드 생성기 BMB 작성
+- [ ] Phase 16: 타입 체커 BMB 작성
+- [ ] Phase 17: 코드 생성기 BMB 작성
+- [ ] Phase 18: 완전한 자기 컴파일
 
 ---
 
