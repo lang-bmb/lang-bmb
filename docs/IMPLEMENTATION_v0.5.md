@@ -468,14 +468,28 @@ fn array_length(arr: [i64; 5]) -> i64 = arr.len();
   - [x] 2문자 토큰 (->, =>, ::, etc.)
 - [x] 주석 스킵 (-- 스타일)
 - [x] 제한사항 문서화:
-  - [x] 스택 깊이 (TCO 없음으로 짧은 입력만)
-  - [x] and 연산자 short-circuit 없음
+  - [x] 스택 깊이 → Phase 11에서 stacker로 해결
+  - [x] and 연산자 short-circuit → Phase 10에서 해결
   - [x] let 스코핑 (body에서만 가시)
 - [x] 런타임 C 코드 (runtime/runtime.c)
 
+### Phase 10 완료 조건 ✅ (완료)
+- [x] Short-circuit 평가 구현 (and/or)
+- [x] 왼쪽 피연산자로 결과 결정시 오른쪽 평가 생략
+- [x] short-circuit 테스트 추가 (and, or)
+- [x] 모든 기존 테스트 통과 (27개)
+
+### Phase 11 완료 조건 ✅ (완료)
+- [x] stacker 크레이트 추가 (동적 스택 확장)
+- [x] eval() 및 call_function()에 maybe_grow() 래핑
+- [x] 128KB red zone, 4MB grow size 설정
+- [x] MAX_RECURSION_DEPTH 10000으로 증가
+- [x] BMB 렉서 15+ 토큰 처리 가능
+- [x] 모든 기존 테스트 통과 (27개)
+
 ### 추후 작업
-- [ ] Phase 10: 파서 BMB 작성
-- [ ] Phase 11: 코드 생성기 BMB 작성
+- [ ] Phase 12: BMB 파서 작성 (bootstrap/parser.bmb)
+- [ ] Phase 13: 코드 생성기 BMB 작성
 
 ---
 

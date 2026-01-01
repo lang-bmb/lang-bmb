@@ -362,10 +362,19 @@ Phase 9 (완료):
 - BMB 렉서 (bootstrap/lexer.bmb)
 - 순수 함수형/재귀 스타일
 - 모든 BMB 토큰 인식
-- 제한사항: 스택 깊이 (TCO 없음), and short-circuit 없음
+
+Phase 10 (완료):
+- Short-circuit 평가 구현 (and/or)
+- 왼쪽 피연산자로 결과 결정시 오른쪽 평가 생략
+
+Phase 11 (완료):
+- stacker 크레이트로 동적 스택 확장
+- 128KB red zone, 4MB grow size
+- MAX_RECURSION_DEPTH 10000
+- BMB 렉서 15+ 토큰 처리 가능
 
 추후 작업:
-- 파서 BMB 재작성
+- Phase 12: BMB 파서 작성
 - 코드 생성기 BMB 재작성
 ```
 
@@ -408,7 +417,9 @@ bootstrap/
 - [x] Phase 7: 멀티 파일 컴파일 (resolver) ✅
 - [x] Phase 8: 메서드 호출 (expr.method(args)) ✅
 - [x] Phase 9: BMB 렉서 자기 작성 (bootstrap/lexer.bmb) ✅
-- [ ] Phase 10: 파서 자기 작성
+- [x] Phase 10: Short-circuit 평가 (and/or) ✅
+- [x] Phase 11: 스택 깊이 확장 (stacker) ✅
+- [ ] Phase 12: BMB 파서 작성
 - [ ] BMB 컴파일러가 자기 렉서/파서 컴파일
 
 ---
