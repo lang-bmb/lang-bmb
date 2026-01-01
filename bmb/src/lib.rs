@@ -3,6 +3,7 @@
 //! AI-Native programming language with contract-based verification.
 
 pub mod ast;
+pub mod codegen;
 pub mod error;
 pub mod interp;
 pub mod lexer;
