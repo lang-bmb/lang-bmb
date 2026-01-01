@@ -373,8 +373,13 @@ Phase 11 (완료):
 - MAX_RECURSION_DEPTH 10000
 - BMB 렉서 15+ 토큰 처리 가능
 
+Phase 12 (완료):
+- BMB 파서를 BMB로 작성 (bootstrap/parser.bmb)
+- 재귀 하강 파서, 10개 테스트 통과
+- 함수 정의, if/then/else, let, 이항 연산 지원
+
 추후 작업:
-- Phase 12: BMB 파서 작성
+- Phase 13: AST 출력 기능
 - 코드 생성기 BMB 재작성
 ```
 
@@ -396,11 +401,11 @@ Phase 11 (완료):
 
 Bootstrap (완료):
 bootstrap/
-└── lexer.bmb: BMB 렉서 (순수 함수형)
+├── lexer.bmb: BMB 렉서 (순수 함수형)
+└── parser.bmb: BMB 파서 (재귀 하강)
 
 예정:
 bootstrap/
-├── parser.bmb
 ├── ast.bmb
 ├── types.bmb
 └── codegen.bmb
@@ -419,7 +424,8 @@ bootstrap/
 - [x] Phase 9: BMB 렉서 자기 작성 (bootstrap/lexer.bmb) ✅
 - [x] Phase 10: Short-circuit 평가 (and/or) ✅
 - [x] Phase 11: 스택 깊이 확장 (stacker) ✅
-- [ ] Phase 12: BMB 파서 작성
+- [x] Phase 12: BMB 파서 작성 (bootstrap/parser.bmb) ✅
+- [ ] Phase 13: AST 출력 기능
 - [ ] BMB 컴파일러가 자기 렉서/파서 컴파일
 
 ---

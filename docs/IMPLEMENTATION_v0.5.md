@@ -487,9 +487,23 @@ fn array_length(arr: [i64; 5]) -> i64 = arr.len();
 - [x] BMB 렉서 15+ 토큰 처리 가능
 - [x] 모든 기존 테스트 통과 (27개)
 
+### Phase 12 완료 조건 ✅ (완료)
+- [x] BMB 파서를 BMB로 작성 (bootstrap/parser.bmb)
+- [x] 재귀 하강 파서 (recursive descent)
+- [x] 토큰 상수 정의 (lexer.bmb와 동일)
+- [x] 지원 구문:
+  - [x] 함수 정의 (fn name(params) -> Type = expr;)
+  - [x] if/then/else 표현식
+  - [x] let 바인딩 (let x = expr; body)
+  - [x] 이항 연산자 (+, -, *, /, ==, and, or 등)
+  - [x] 함수 호출
+  - [x] 불리언/정수 리터럴
+- [x] 10개 테스트 케이스 통과
+- [x] 순수 함수형 스타일 (stacker와 호환)
+
 ### 추후 작업
-- [ ] Phase 12: BMB 파서 작성 (bootstrap/parser.bmb)
-- [ ] Phase 13: 코드 생성기 BMB 작성
+- [ ] Phase 13: AST 출력 기능 추가
+- [ ] Phase 14: 코드 생성기 BMB 작성
 
 ---
 
