@@ -6,6 +6,7 @@ pub mod ast;
 pub mod error;
 pub mod interp;
 pub mod lexer;
+pub mod mir;
 pub mod parser;
 pub mod repl;
 pub mod smt;
