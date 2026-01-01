@@ -11,6 +11,7 @@ pub mod lexer;
 pub mod mir;
 pub mod parser;
 pub mod repl;
+pub mod resolver;
 pub mod smt;
 pub mod types;
 pub mod verify;
