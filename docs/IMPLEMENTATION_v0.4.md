@@ -9,7 +9,7 @@
 - **Phase 4**: CLI build 명령어 통합 ✅
 - **Phase 5**: 테스트 및 문서화 ✅
 
-> **Note**: LLVM 기능은 선택적입니다. `--features llvm`으로 빌드하려면 시스템에 LLVM 18이 설치되어 있어야 합니다.
+> **Note**: LLVM 기능은 선택적입니다. `--features llvm`으로 빌드하려면 시스템에 LLVM이 설치되어 있어야 합니다.
 
 ## 개요
 
@@ -19,9 +19,39 @@ v0.4는 LLVM을 통한 네이티브 코드 생성으로 BMB 프로그램을 실�
 
 | 구성요소 | 라이브러리 | 버전 | 용도 |
 |----------|-----------|------|------|
-| LLVM 래퍼 | inkwell | 0.5+ | 안전한 LLVM API |
-| LLVM | llvm-sys | 18.x | LLVM C 바인딩 |
+| LLVM 래퍼 | inkwell | 0.7+ | 안전한 LLVM API |
+| LLVM | llvm-sys | 21.x | LLVM C 바인딩 |
 | 링커 | system linker | - | lld/ld/link.exe |
+
+## LLVM 설치 요구사항
+
+LLVM 기능을 사용하려면 `llvm-config`가 포함된 LLVM 개발 환경이 필요합니다.
+
+### Linux
+```bash
+# Ubuntu/Debian
+sudo apt install llvm-21-dev
+
+# Fedora
+sudo dnf install llvm-devel
+```
+
+### macOS
+```bash
+brew install llvm@21
+export LLVM_SYS_211_PREFIX=$(brew --prefix llvm@21)
+```
+
+### Windows
+Windows 프리빌드 LLVM은 `llvm-config`가 포함되어 있지 않습니다. 다음 방법 중 하나를 사용하세요:
+
+```bash
+# 방법 1: MSYS2 (권장)
+pacman -S mingw-w64-x86_64-llvm
+
+# 방법 2: 소스에서 직접 빌드
+# https://llvm.org/docs/GettingStarted.html
+```
 
 ## 아키텍처
 

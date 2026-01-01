@@ -44,9 +44,11 @@ bmb build examples/hello.bmb --emit-ir  # output LLVM IR
 For native code generation, build with the `llvm` feature:
 
 ```bash
-# Requires LLVM 18 installed on your system
+# Requires LLVM 21 with llvm-config
 cargo build --release --features llvm
 ```
+
+> **Note**: Windows pre-built LLVM does not include `llvm-config`. Use MSYS2 LLVM or build from source. See [v0.4 Implementation](docs/IMPLEMENTATION_v0.4.md) for details.
 
 ### Example
 
@@ -102,6 +104,7 @@ bmb/
 - [v0.1 Implementation](docs/IMPLEMENTATION_v0.1.md)
 - [v0.2 Implementation](docs/IMPLEMENTATION_v0.2.md)
 - [v0.3 Implementation](docs/IMPLEMENTATION_v0.3.md)
+- [v0.4 Implementation](docs/IMPLEMENTATION_v0.4.md)
 
 ## License
 

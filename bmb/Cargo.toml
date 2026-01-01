@@ -21,7 +21,7 @@ serde.workspace = true
 serde_json.workspace = true
 
 # Optional LLVM code generation
-inkwell = { workspace = true, optional = true, features = ["llvm18-0"] }
+inkwell = { workspace = true, optional = true, features = ["llvm21-1", "llvm21-1-prefer-dynamic"] }
 
 [build-dependencies]
 lalrpop.workspace = true
