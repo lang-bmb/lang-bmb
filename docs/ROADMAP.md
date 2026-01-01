@@ -309,13 +309,13 @@ BMB로 BMB 컴파일러 재작성 시작을 위한 언어 기능 확장
 | Range 타입 | ✅ 완료 | start..end 표현식 |
 | For 루프 | ✅ 완료 | for i in range { body } |
 | 모듈 시스템 | ✅ 완료 | pub 가시성, use 문 파싱 |
-| 멀티 파일 | ⏳ 계획 | 모듈 해석, resolver |
-| 참조 타입 | ⏳ 계획 | &T 불변 참조 |
-| 배열 타입 | ⏳ 계획 | [T; N] 고정 크기 |
+| 참조 타입 | ✅ 완료 | &T, &mut T 참조 |
+| 배열 타입 | ✅ 완료 | [T; N] 고정 크기, 인덱스 접근 |
+| 멀티 파일 | ✅ 완료 | resolver 모듈, 모듈 로딩/파싱 |
 | 렉서 (BMB) | ⏳ 계획 | BMB로 재작성 |
 | 파서 (BMB) | ⏳ 계획 | BMB로 재작성 |
 
-### 지원 기능 (Phase 1-4 완료)
+### 지원 기능 (Phase 1-7 완료)
 
 ```
 Phase 1 (완료):
@@ -337,11 +337,24 @@ Phase 4 (완료):
 - pub 가시성 수정자
 - use 문 파싱 (use path::to::item;)
 
-추후 작업:
+Phase 5 (완료):
+- &T 불변 참조
+- &mut T 가변 참조
+- *expr 역참조
+
+Phase 6 (완료):
+- [T; N] 고정 크기 배열
+- [a, b, c] 배열 리터럴
+- arr[i] 인덱스 접근
+
+Phase 7 (완료):
 - 멀티 파일 컴파일 (resolver)
-- &T 참조 기본 지원
-- 고정 크기 배열 [T; N]
+- 모듈 로딩/파싱 기능
+- use 문 해결 및 이름 임포트
+
+추후 작업:
 - 자기 컴파일 시작 (렉서 BMB 작성)
+- 파서 BMB 재작성
 ```
 
 ### 산출물
@@ -349,11 +362,14 @@ Phase 4 (완료):
 ```
 현재 완료:
 - ast/mod.rs: Struct, Enum, Match, For, Range, Visibility, UseStmt
-- ast/types.rs: Type::Struct, Type::Enum, Type::String, Type::Range
-- grammar.lalrpop: 모든 Phase 1-4 문법
-- mir/lower.rs: Struct/Enum/Match/While/For MIR 변환
-- interp/eval.rs: 모든 새 표현식 평가
+- ast/types.rs: Type::Struct, Type::Enum, Type::String, Type::Range, Type::Ref, Type::RefMut, Type::Array
+- ast/expr.rs: Expr::Ref, Expr::RefMut, Expr::Deref, Expr::ArrayLit, Expr::Index
+- grammar.lalrpop: 모든 Phase 1-7 문법
+- mir/lower.rs: Struct/Enum/Match/While/For/Ref/Array MIR 변환
+- interp/eval.rs: 모든 새 표현식 평가 (참조, 배열 포함)
+- interp/value.rs: Value::Ref (Rc<RefCell>), Value::Array
 - types/mod.rs: 모든 새 타입 검사
+- resolver/mod.rs: 멀티 파일 컴파일, 모듈 로딩
 - codegen/llvm.rs: 문자열 리터럴 지원
 
 예정:
@@ -371,8 +387,9 @@ bmb-compiler/
 - [x] Phase 2: String, Mutable, While ✅
 - [x] Phase 3: Range, For 루프 ✅
 - [x] Phase 4: pub/use 모듈 시스템 ✅
-- [ ] 멀티 파일 컴파일 (resolver)
-- [ ] &T 참조 기본 지원
+- [x] Phase 5: &T, &mut T 참조 타입 ✅
+- [x] Phase 6: [T; N] 배열 타입 ✅
+- [x] Phase 7: 멀티 파일 컴파일 (resolver) ✅
 - [ ] 렉서 자기 작성 완료
 - [ ] 파서 자기 작성 완료
 - [ ] BMB 컴파일러가 자기 렉서/파서 컴파일

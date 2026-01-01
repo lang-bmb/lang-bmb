@@ -386,10 +386,27 @@ fn increment(x: &mut i64) -> () {
 - [x] Visibility 필드 추가 (FnDef, StructDef, EnumDef)
 - [x] 모든 기존 테스트 통과
 
+### Phase 5 완료 조건 ✅ (완료)
+- [x] &T 불변 참조 지원
+- [x] &mut T 가변 참조 지원
+- [x] *expr 역참조 지원
+- [x] 타입 검사 (Deref은 참조 타입에서만)
+- [x] 인터프리터 Value::Ref (Rc<RefCell>)
+
+### Phase 6 완료 조건 ✅ (완료)
+- [x] [T; N] 고정 크기 배열 타입
+- [x] [a, b, c] 배열 리터럴
+- [x] arr[i] 인덱스 접근
+- [x] 문자열 인덱스 접근 (str[i] → ASCII)
+- [x] 인터프리터 Value::Array
+
+### Phase 7 완료 조건 ✅ (완료)
+- [x] resolver 모듈 생성
+- [x] 모듈 로딩/파싱 기능 (name.bmb, name/mod.bmb)
+- [x] use 문 해결 및 이름 임포트
+- [x] 모든 기존 테스트 통과 (25개)
+
 ### 추후 작업
-- [ ] 멀티 파일 컴파일 (resolver 구현)
-- [ ] &T 참조 기본 지원
-- [ ] 고정 크기 배열 지원
 - [ ] 자기 컴파일 시작 가능 (렉서 BMB 작성)
 
 ---
