@@ -19,6 +19,7 @@ rustyline.workspace = true
 thiserror.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+stacker.workspace = true
 
 # Optional LLVM code generation
 inkwell = { workspace = true, optional = true, features = ["llvm21-1", "llvm21-1-prefer-dynamic"] }

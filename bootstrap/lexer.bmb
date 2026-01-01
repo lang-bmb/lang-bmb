@@ -217,7 +217,7 @@ fn tokenize(s: String) -> i64 = tok_step(s, 0, 0);
 -- Main function to demonstrate the lexer
 fn main() -> i64 =
     let u1 = println(777);  -- Separator
-    let s = "fn foo()";  -- Test: 4 tokens
+    let s = "fn foo(x: i64) -> bool = x > 0;";  -- Test: 15 tokens
     let count = tokenize(s);
     let u2 = println(888);  -- Separator
     let u3 = println(count);

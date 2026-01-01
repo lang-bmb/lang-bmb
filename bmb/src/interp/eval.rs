@@ -8,7 +8,11 @@ use std::collections::HashMap;
 use std::io::{self, BufRead, Write};
 
 /// Maximum recursion depth
-const MAX_RECURSION_DEPTH: usize = 1000;
+const MAX_RECURSION_DEPTH: usize = 10000;
+
+/// Stack growth parameters for deep recursion
+const STACK_RED_ZONE: usize = 128 * 1024; // 128KB remaining triggers growth
+const STACK_GROW_SIZE: usize = 4 * 1024 * 1024; // Grow by 4MB each time
 
 /// Builtin function type
 pub type BuiltinFn = fn(&[Value]) -> InterpResult<Value>;
@@ -108,8 +112,14 @@ impl Interpreter {
         self.eval(expr, &self.global_env.clone())
     }
 
-    /// Evaluate an expression
+    /// Evaluate an expression with automatic stack growth for deep recursion
     fn eval(&mut self, expr: &Spanned<Expr>, env: &EnvRef) -> InterpResult<Value> {
+        // Grow stack if we're running low
+        stacker::maybe_grow(STACK_RED_ZONE, STACK_GROW_SIZE, || self.eval_inner(expr, env))
+    }
+
+    /// Inner eval implementation
+    fn eval_inner(&mut self, expr: &Spanned<Expr>, env: &EnvRef) -> InterpResult<Value> {
         match &expr.node {
             Expr::IntLit(n) => Ok(Value::Int(*n)),
             Expr::FloatLit(f) => Ok(Value::Float(*f)),
@@ -482,8 +492,15 @@ impl Interpreter {
         Err(RuntimeError::undefined_function(name))
     }
 
-    /// Call a user-defined function
+    /// Call a user-defined function with automatic stack growth
     fn call_function(&mut self, fn_def: &FnDef, args: &[Value]) -> InterpResult<Value> {
+        stacker::maybe_grow(STACK_RED_ZONE, STACK_GROW_SIZE, || {
+            self.call_function_inner(fn_def, args)
+        })
+    }
+
+    /// Inner function call implementation
+    fn call_function_inner(&mut self, fn_def: &FnDef, args: &[Value]) -> InterpResult<Value> {
         // Check arity
         if fn_def.params.len() != args.len() {
             return Err(RuntimeError::arity_mismatch(
