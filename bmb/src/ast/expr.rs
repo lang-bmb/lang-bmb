@@ -12,6 +12,8 @@ pub enum Expr {
     FloatLit(f64),
     /// Boolean literal
     BoolLit(bool),
+    /// String literal (v0.5 Phase 2)
+    StringLit(String),
     /// Unit value
     Unit,
 
@@ -38,12 +40,38 @@ pub enum Expr {
         else_branch: Box<Spanned<Expr>>,
     },
 
-    /// Let binding: let name = value; body
+    /// Let binding: let [mut] name = value; body
     Let {
         name: String,
+        mutable: bool,
         ty: Option<Spanned<Type>>,
         value: Box<Spanned<Expr>>,
         body: Box<Spanned<Expr>>,
+    },
+
+    /// Assignment: name = value (v0.5 Phase 2)
+    Assign {
+        name: String,
+        value: Box<Spanned<Expr>>,
+    },
+
+    /// While loop: while cond { body } (v0.5 Phase 2)
+    While {
+        cond: Box<Spanned<Expr>>,
+        body: Box<Spanned<Expr>>,
+    },
+
+    /// For loop: for var in iter { body } (v0.5 Phase 3)
+    For {
+        var: String,
+        iter: Box<Spanned<Expr>>,
+        body: Box<Spanned<Expr>>,
+    },
+
+    /// Range expression: start..end (v0.5 Phase 3)
+    Range {
+        start: Box<Spanned<Expr>>,
+        end: Box<Spanned<Expr>>,
     },
 
     /// Function call
@@ -60,7 +88,7 @@ pub enum Expr {
 
     // v0.5: Struct and Enum expressions
 
-    /// Struct initialization: StructName { field1: value1, field2: value2 }
+    /// Struct initialization: new StructName { field1: value1, field2: value2 }
     StructInit {
         name: String,
         fields: Vec<(Spanned<String>, Spanned<Expr>)>,
@@ -121,6 +149,7 @@ pub enum LiteralPattern {
     Int(i64),
     Float(f64),
     Bool(bool),
+    String(String),
 }
 
 /// Binary operator

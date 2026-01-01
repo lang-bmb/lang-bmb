@@ -120,6 +120,7 @@ pub enum Constant {
     Int(i64),
     Float(f64),
     Bool(bool),
+    String(String),
     Unit,
 }
 
@@ -174,6 +175,7 @@ pub enum MirType {
     I64,
     F64,
     Bool,
+    String,
     Unit,
 }
 
@@ -261,6 +263,7 @@ impl LoweringContext {
                 Constant::Int(_) => MirType::I64,
                 Constant::Float(_) => MirType::F64,
                 Constant::Bool(_) => MirType::Bool,
+                Constant::String(_) => MirType::String,
                 Constant::Unit => MirType::Unit,
             },
             Operand::Place(p) => {

@@ -70,6 +70,8 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
 
         Expr::BoolLit(b) => Operand::Constant(Constant::Bool(*b)),
 
+        Expr::StringLit(s) => Operand::Constant(Constant::String(s.clone())),
+
         Expr::Unit => Operand::Constant(Constant::Unit),
 
         Expr::Var(name) => Operand::Place(Place::new(name.clone())),
@@ -160,6 +162,7 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
 
         Expr::Let {
             name,
+            mutable: _,
             ty,
             value,
             body,
@@ -196,6 +199,61 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
 
             // Lower the body
             lower_expr(body, ctx)
+        }
+
+        Expr::Assign { name, value } => {
+            // Lower the value
+            let value_op = lower_expr(value, ctx);
+
+            // Assign to the variable (must already exist)
+            let var_place = Place::new(name.clone());
+            match value_op {
+                Operand::Constant(c) => {
+                    ctx.push_inst(MirInst::Const {
+                        dest: var_place,
+                        value: c,
+                    });
+                }
+                Operand::Place(src) => {
+                    ctx.push_inst(MirInst::Copy {
+                        dest: var_place,
+                        src,
+                    });
+                }
+            }
+
+            // Assignment expression returns the assigned value
+            Operand::Place(Place::new(name.clone()))
+        }
+
+        Expr::While { cond, body } => {
+            // Create labels for loop structure
+            let cond_label = ctx.fresh_label("while_cond");
+            let body_label = ctx.fresh_label("while_body");
+            let exit_label = ctx.fresh_label("while_exit");
+
+            // Jump to condition check
+            ctx.finish_block(Terminator::Goto(cond_label.clone()));
+
+            // Condition block
+            ctx.start_block(cond_label.clone());
+            let cond_op = lower_expr(cond, ctx);
+            ctx.finish_block(Terminator::Branch {
+                cond: cond_op,
+                then_label: body_label.clone(),
+                else_label: exit_label.clone(),
+            });
+
+            // Body block
+            ctx.start_block(body_label);
+            let _ = lower_expr(body, ctx);
+            ctx.finish_block(Terminator::Goto(cond_label));
+
+            // Exit block
+            ctx.start_block(exit_label);
+
+            // While loop returns unit
+            Operand::Constant(Constant::Unit)
         }
 
         Expr::Call { func, args } => {
@@ -249,6 +307,100 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
             Operand::Constant(Constant::Unit)
         }
 
+        // v0.5 Phase 3: Range expression (returns pair of start/end as start for now)
+        Expr::Range { start, .. } => {
+            // For MIR, we just return the start value
+            // Full range support would require a Range data structure
+            lower_expr(start, ctx)
+        }
+
+        // v0.5 Phase 3: For loop (lowered to while loop pattern)
+        Expr::For { var, iter, body } => {
+            // Lower the iterator (expecting Range expression)
+            // Extract start and end from range
+            let (start_op, end_op) = match &iter.node {
+                Expr::Range { start, end } => {
+                    (lower_expr(start, ctx), lower_expr(end, ctx))
+                }
+                _ => {
+                    // Non-range iterator - just evaluate and return unit
+                    let _ = lower_expr(iter, ctx);
+                    return Operand::Constant(Constant::Unit);
+                }
+            };
+
+            // Register loop variable
+            let mir_ty = ctx.operand_type(&start_op);
+            ctx.locals.insert(var.clone(), mir_ty);
+
+            // Initialize loop variable with start value
+            let var_place = Place::new(var.clone());
+            match start_op {
+                Operand::Constant(c) => {
+                    ctx.push_inst(MirInst::Const {
+                        dest: var_place.clone(),
+                        value: c,
+                    });
+                }
+                Operand::Place(src) => {
+                    ctx.push_inst(MirInst::Copy {
+                        dest: var_place.clone(),
+                        src,
+                    });
+                }
+            }
+
+            // Store end value in a temp for comparison
+            let end_place = operand_to_place(end_op, ctx);
+
+            // Create labels for loop structure
+            let cond_label = ctx.fresh_label("for_cond");
+            let body_label = ctx.fresh_label("for_body");
+            let exit_label = ctx.fresh_label("for_exit");
+
+            // Jump to condition check
+            ctx.finish_block(Terminator::Goto(cond_label.clone()));
+
+            // Condition block: i < end
+            ctx.start_block(cond_label.clone());
+            let cond_temp = ctx.fresh_temp();
+            ctx.push_inst(MirInst::BinOp {
+                dest: cond_temp.clone(),
+                op: MirBinOp::Lt,
+                lhs: Operand::Place(var_place.clone()),
+                rhs: Operand::Place(end_place),
+            });
+            ctx.finish_block(Terminator::Branch {
+                cond: Operand::Place(cond_temp),
+                then_label: body_label.clone(),
+                else_label: exit_label.clone(),
+            });
+
+            // Body block
+            ctx.start_block(body_label);
+            let _ = lower_expr(body, ctx);
+
+            // Increment loop variable: i = i + 1
+            let inc_temp = ctx.fresh_temp();
+            ctx.push_inst(MirInst::BinOp {
+                dest: inc_temp.clone(),
+                op: MirBinOp::Add,
+                lhs: Operand::Place(var_place.clone()),
+                rhs: Operand::Constant(Constant::Int(1)),
+            });
+            ctx.push_inst(MirInst::Copy {
+                dest: var_place,
+                src: inc_temp,
+            });
+            ctx.finish_block(Terminator::Goto(cond_label));
+
+            // Exit block
+            ctx.start_block(exit_label);
+
+            // For loop returns unit
+            Operand::Constant(Constant::Unit)
+        }
+
         Expr::Match { expr, arms } => {
             // Basic implementation: evaluate first matching arm
             // TODO: Full pattern matching compilation
@@ -292,7 +444,9 @@ fn ast_type_to_mir(ty: &Type) -> MirType {
         Type::I64 => MirType::I64,
         Type::F64 => MirType::F64,
         Type::Bool => MirType::Bool,
+        Type::String => MirType::String,
         Type::Unit => MirType::Unit,
+        Type::Range(elem) => ast_type_to_mir(elem), // Range represented by its element type
         Type::Named(_) => MirType::I64, // Named types default to pointer-sized int for now
         Type::Struct { .. } => MirType::I64, // Struct types treated as pointers
         Type::Enum { .. } => MirType::I64, // Enum types treated as tagged unions
@@ -446,6 +600,7 @@ mod tests {
                 post: None,
                 body: spanned(Expr::Let {
                     name: "x".to_string(),
+                    mutable: false,
                     ty: None,
                     value: Box::new(spanned(Expr::IntLit(42))),
                     body: Box::new(spanned(Expr::Var("x".to_string()))),
@@ -459,5 +614,57 @@ mod tests {
 
         // Should have the local 'x' registered
         assert!(func.locals.iter().any(|(name, _)| name == "x"));
+    }
+
+
+    #[test]
+    fn test_lower_string_literal() {
+        let program = Program {
+            items: vec![Item::FnDef(FnDef {
+                name: spanned("test".to_string()),
+                params: vec![],
+                ret_ty: spanned(Type::I64),
+                pre: None,
+                post: None,
+                body: spanned(Expr::Let {
+                    name: "s".to_string(),
+                    mutable: false,
+                    ty: None,
+                    value: Box::new(spanned(Expr::StringLit("hello".to_string()))),
+                    body: Box::new(spanned(Expr::IntLit(0))),
+                }),
+                span: Span { start: 0, end: 0 },
+            })],
+        };
+
+        let mir = lower_program(&program);
+        let func = &mir.functions[0];
+
+        // Should have the local 's' registered with String type
+        assert!(func.locals.iter().any(|(name, ty)| name == "s" && *ty == MirType::String));
+    }
+
+    #[test]
+    fn test_lower_while_loop() {
+        let program = Program {
+            items: vec![Item::FnDef(FnDef {
+                name: spanned("test".to_string()),
+                params: vec![],
+                ret_ty: spanned(Type::Unit),
+                pre: None,
+                post: None,
+                body: spanned(Expr::While {
+                    cond: Box::new(spanned(Expr::BoolLit(false))),
+                    body: Box::new(spanned(Expr::Unit)),
+                }),
+                span: Span { start: 0, end: 0 },
+            })],
+        };
+
+        let mir = lower_program(&program);
+        let func = &mir.functions[0];
+
+        // Should have multiple blocks for while loop: entry, cond, body, exit
+        assert!(func.blocks.len() >= 3);
     }
 }

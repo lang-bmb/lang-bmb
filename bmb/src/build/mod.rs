@@ -220,39 +220,39 @@ fn link_executable(obj_path: &Path, output: &Path, verbose: bool) -> BuildResult
         println!("  Linking with: {}", linker);
     }
 
+    // Find runtime library
+    let runtime_path = find_runtime()?;
+
+    if verbose {
+        println!("  Using runtime: {}", runtime_path.display());
+    }
+
     // Build linker command
     let mut cmd = Command::new(&linker);
+
+    // Add object file
+    cmd.arg(obj_path.to_str().unwrap());
+
+    // Add runtime library
+    cmd.arg(runtime_path.to_str().unwrap());
+
+    // Output file
+    cmd.args(["-o", output.to_str().unwrap()]);
 
     // Platform-specific linker flags
     #[cfg(target_os = "windows")]
     {
-        cmd.args([
-            obj_path.to_str().unwrap(),
-            "-o",
-            output.to_str().unwrap(),
-            "-lkernel32",
-            "-lmsvcrt",
-        ]);
+        cmd.args(["-lkernel32", "-lmsvcrt"]);
     }
 
     #[cfg(target_os = "linux")]
     {
-        cmd.args([
-            obj_path.to_str().unwrap(),
-            "-o",
-            output.to_str().unwrap(),
-            "-lc",
-        ]);
+        cmd.arg("-lc");
     }
 
     #[cfg(target_os = "macos")]
     {
-        cmd.args([
-            obj_path.to_str().unwrap(),
-            "-o",
-            output.to_str().unwrap(),
-            "-lSystem",
-        ]);
+        cmd.arg("-lSystem");
     }
 
     let output_result = cmd.output()?;
@@ -269,12 +269,65 @@ fn link_executable(obj_path: &Path, output: &Path, verbose: bool) -> BuildResult
     Ok(())
 }
 
+/// Find the BMB runtime library
+#[cfg(feature = "llvm")]
+fn find_runtime() -> BuildResult<PathBuf> {
+    // Check BMB_RUNTIME_PATH environment variable
+    if let Ok(path) = std::env::var("BMB_RUNTIME_PATH") {
+        let p = PathBuf::from(path);
+        if p.exists() {
+            return Ok(p);
+        }
+    }
+
+    // Check common locations relative to executable
+    let exe_path = std::env::current_exe().ok();
+    if let Some(exe) = exe_path {
+        // Check ../runtime/libbmb_runtime.a (relative to exe)
+        if let Some(parent) = exe.parent() {
+            let runtime = parent.join("runtime").join("libbmb_runtime.a");
+            if runtime.exists() {
+                return Ok(runtime);
+            }
+            // Check ../../runtime/libbmb_runtime.a (for debug builds)
+            if let Some(grandparent) = parent.parent() {
+                let runtime = grandparent.join("runtime").join("libbmb_runtime.a");
+                if runtime.exists() {
+                    return Ok(runtime);
+                }
+                // Check ../../../runtime/ (for target/x86_64-pc-windows-gnu/debug/)
+                if let Some(ggp) = grandparent.parent() {
+                    if let Some(gggp) = ggp.parent() {
+                        let runtime = gggp.join("runtime").join("libbmb_runtime.a");
+                        if runtime.exists() {
+                            return Ok(runtime);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Check current working directory
+    let cwd_runtime = PathBuf::from("runtime/libbmb_runtime.a");
+    if cwd_runtime.exists() {
+        return Ok(cwd_runtime);
+    }
+
+    Err(BuildError::Linker(
+        "Cannot find BMB runtime library. Set BMB_RUNTIME_PATH environment variable.".to_string(),
+    ))
+}
+
 /// Find the system linker
 #[cfg(feature = "llvm")]
 fn find_linker() -> BuildResult<String> {
     // Try common linkers in order of preference
+    // On Windows, prefer gcc/clang (MinGW) over MSVC link.exe because:
+    // 1. We target x86_64-pc-windows-gnu
+    // 2. gcc understands -o flag while link.exe uses /OUT:
     let candidates = if cfg!(target_os = "windows") {
-        vec!["lld-link", "link.exe", "clang", "gcc"]
+        vec!["gcc", "clang", "lld", "lld-link"]
     } else if cfg!(target_os = "macos") {
         vec!["ld", "clang", "gcc"]
     } else {

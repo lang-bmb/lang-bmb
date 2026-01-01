@@ -15,6 +15,10 @@ pub enum Type {
     Bool,
     /// Unit type ()
     Unit,
+    /// String type (v0.5 Phase 2)
+    String,
+    /// Range type (v0.5 Phase 3) - represents start..end
+    Range(Box<Type>),
     /// Named type (struct or enum)
     Named(String),
     /// Struct type with fields (resolved after type checking)
@@ -37,6 +41,8 @@ impl std::fmt::Display for Type {
             Type::F64 => write!(f, "f64"),
             Type::Bool => write!(f, "bool"),
             Type::Unit => write!(f, "()"),
+            Type::String => write!(f, "String"),
+            Type::Range(elem_ty) => write!(f, "Range<{elem_ty}>"),
             Type::Named(name) => write!(f, "{name}"),
             Type::Struct { name, .. } => write!(f, "{name}"),
             Type::Enum { name, .. } => write!(f, "{name}"),

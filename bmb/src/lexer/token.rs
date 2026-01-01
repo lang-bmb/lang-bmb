@@ -45,6 +45,16 @@ pub enum Token {
     Match,
     #[token("new")]
     New,
+    // v0.5 Phase 2: Mutability and loops
+    #[token("mut")]
+    Mut,
+    #[token("while")]
+    While,
+    // v0.5 Phase 3: For loop
+    #[token("for")]
+    For,
+    #[token("in")]
+    In,
 
     // Type keywords
     #[token("i32")]
@@ -55,6 +65,8 @@ pub enum Token {
     TyF64,
     #[token("bool")]
     TyBool,
+    #[token("String")]
+    TyString,
 
     // Literals
     #[regex(r"[0-9]+\.[0-9]+", |lex| lex.slice().parse::<f64>().ok())]
@@ -62,6 +74,13 @@ pub enum Token {
 
     #[regex(r"[0-9]+", |lex| lex.slice().parse::<i64>().ok(), priority = 2)]
     IntLit(i64),
+
+    #[regex(r#""([^"\\]|\.)*""#, |lex| {
+        let s = lex.slice();
+        // Remove surrounding quotes
+        s[1..s.len()-1].to_string()
+    })]
+    StringLit(String),
 
     #[regex(r"[a-zA-Z_][a-zA-Z0-9_]*", |lex| lex.slice().to_string(), priority = 1)]
     Ident(String),
@@ -77,6 +96,8 @@ pub enum Token {
     FatArrow,
     #[token("_")]
     Underscore,
+    #[token("..")]
+    DotDot,
     #[token(".")]
     Dot,
     #[token("=")]
@@ -93,6 +114,10 @@ pub enum Token {
     LBrace,
     #[token("}")]
     RBrace,
+    #[token("[")]
+    LBracket,
+    #[token("]")]
+    RBracket,
 
     // Operators
     #[token("+")]
@@ -140,18 +165,25 @@ impl std::fmt::Display for Token {
             Token::Enum => write!(f, "enum"),
             Token::Match => write!(f, "match"),
             Token::New => write!(f, "new"),
+            Token::Mut => write!(f, "mut"),
+            Token::While => write!(f, "while"),
+            Token::For => write!(f, "for"),
+            Token::In => write!(f, "in"),
             Token::TyI32 => write!(f, "i32"),
             Token::TyI64 => write!(f, "i64"),
             Token::TyF64 => write!(f, "f64"),
             Token::TyBool => write!(f, "bool"),
+            Token::TyString => write!(f, "String"),
             Token::IntLit(n) => write!(f, "{n}"),
             Token::FloatLit(n) => write!(f, "{n}"),
+            Token::StringLit(s) => write!(f, "\"{s}\""),
             Token::Ident(s) => write!(f, "{s}"),
             Token::Colon => write!(f, ":"),
             Token::ColonColon => write!(f, "::"),
             Token::Arrow => write!(f, "->"),
             Token::FatArrow => write!(f, "=>"),
             Token::Underscore => write!(f, "_"),
+            Token::DotDot => write!(f, ".."),
             Token::Dot => write!(f, "."),
             Token::Eq => write!(f, "="),
             Token::Semi => write!(f, ";"),
@@ -160,6 +192,8 @@ impl std::fmt::Display for Token {
             Token::RParen => write!(f, ")"),
             Token::LBrace => write!(f, "{{"),
             Token::RBrace => write!(f, "}}"),
+            Token::LBracket => write!(f, "["),
+            Token::RBracket => write!(f, "]"),
             Token::Plus => write!(f, "+"),
             Token::Minus => write!(f, "-"),
             Token::Star => write!(f, "*"),

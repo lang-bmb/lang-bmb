@@ -110,6 +110,7 @@ impl Interpreter {
             Expr::IntLit(n) => Ok(Value::Int(*n)),
             Expr::FloatLit(f) => Ok(Value::Float(*f)),
             Expr::BoolLit(b) => Ok(Value::Bool(*b)),
+            Expr::StringLit(s) => Ok(Value::Str(s.clone())),
             Expr::Unit => Ok(Value::Unit),
 
             Expr::Var(name) => {
@@ -144,6 +145,7 @@ impl Interpreter {
 
             Expr::Let {
                 name,
+                mutable: _,
                 ty: _,
                 value,
                 body,
@@ -152,6 +154,50 @@ impl Interpreter {
                 let child = child_env(env);
                 child.borrow_mut().define(name.clone(), val);
                 self.eval(body, &child)
+            }
+
+            Expr::Assign { name, value } => {
+                let val = self.eval(value, env)?;
+                if !env.borrow_mut().set(name, val.clone()) {
+                    return Err(RuntimeError::undefined_variable(name));
+                }
+                Ok(Value::Unit)
+            }
+
+            Expr::While { cond, body } => {
+                while self.eval(cond, env)?.is_truthy() {
+                    self.eval(body, env)?;
+                }
+                Ok(Value::Unit)
+            }
+
+            // v0.5 Phase 3: Range expression
+            Expr::Range { start, end } => {
+                let start_val = self.eval(start, env)?;
+                let end_val = self.eval(end, env)?;
+                match (&start_val, &end_val) {
+                    (Value::Int(s), Value::Int(e)) => Ok(Value::Range(*s, *e)),
+                    _ => Err(RuntimeError::type_error(
+                        "integer",
+                        &format!("{} .. {}", start_val.type_name(), end_val.type_name()),
+                    )),
+                }
+            }
+
+            // v0.5 Phase 3: For loop
+            Expr::For { var, iter, body } => {
+                let iter_val = self.eval(iter, env)?;
+                match iter_val {
+                    Value::Range(start, end) => {
+                        let child = child_env(env);
+                        for i in start..end {
+                            child.borrow_mut().define(var.clone(), Value::Int(i));
+                            self.eval(body, &child)?;
+                        }
+                        Ok(Value::Unit)
+                    }
+                    _ => Err(RuntimeError::type_error("Range", iter_val.type_name())),
+                }
             }
 
             Expr::Call { func, args } => {
@@ -235,6 +281,7 @@ impl Interpreter {
                     (crate::ast::LiteralPattern::Int(n), Value::Int(v)) if *n == *v => Some(vec![]),
                     (crate::ast::LiteralPattern::Float(f), Value::Float(v)) if *f == *v => Some(vec![]),
                     (crate::ast::LiteralPattern::Bool(b), Value::Bool(v)) if *b == *v => Some(vec![]),
+                    (crate::ast::LiteralPattern::String(s), Value::Str(v)) if s == v => Some(vec![]),
                     _ => None,
                 }
             }
@@ -345,8 +392,10 @@ impl Interpreter {
                 (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a + b)),
                 (Value::Int(a), Value::Float(b)) => Ok(Value::Float(*a as f64 + b)),
                 (Value::Float(a), Value::Int(b)) => Ok(Value::Float(a + *b as f64)),
+                // String concatenation
+                (Value::Str(a), Value::Str(b)) => Ok(Value::Str(format!("{}{}", a, b))),
                 _ => Err(RuntimeError::type_error(
-                    "numeric",
+                    "numeric or string",
                     &format!("{} + {}", left.type_name(), right.type_name()),
                 )),
             },
@@ -595,6 +644,7 @@ mod tests {
 
         let let_expr = Expr::Let {
             name: "x".to_string(),
+            mutable: false,
             ty: None,
             value: Box::new(spanned(Expr::IntLit(10))),
             body: Box::new(spanned(Expr::Binary {
@@ -621,5 +671,33 @@ mod tests {
         };
         let result = interp.eval(&spanned(div_expr), &env);
         assert!(result.is_err());
+    }
+
+
+    #[test]
+    fn test_eval_string() {
+        let mut interp = Interpreter::new();
+        let env = interp.global_env.clone();
+
+        assert_eq!(
+            interp.eval(&spanned(Expr::StringLit("hello".to_string())), &env).unwrap(),
+            Value::Str("hello".to_string())
+        );
+    }
+
+    #[test]
+    fn test_string_concat() {
+        let mut interp = Interpreter::new();
+        let env = interp.global_env.clone();
+
+        let concat_expr = Expr::Binary {
+            left: Box::new(spanned(Expr::StringLit("hello".to_string()))),
+            op: BinOp::Add,
+            right: Box::new(spanned(Expr::StringLit(" world".to_string()))),
+        };
+        assert_eq!(
+            interp.eval(&spanned(concat_expr), &env).unwrap(),
+            Value::Str("hello world".to_string())
+        );
     }
 }

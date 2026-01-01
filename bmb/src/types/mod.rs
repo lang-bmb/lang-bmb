@@ -129,6 +129,7 @@ impl TypeChecker {
             Expr::IntLit(_) => Ok(Type::I64),
             Expr::FloatLit(_) => Ok(Type::F64),
             Expr::BoolLit(_) => Ok(Type::Bool),
+            Expr::StringLit(_) => Ok(Type::String),
             Expr::Unit => Ok(Type::Unit),
 
             Expr::Ret => self.current_ret_ty.clone().ok_or_else(|| {
@@ -167,6 +168,7 @@ impl TypeChecker {
 
             Expr::Let {
                 name,
+                mutable: _,
                 ty,
                 value,
                 body,
@@ -179,6 +181,73 @@ impl TypeChecker {
 
                 self.env.insert(name.clone(), value_ty);
                 self.infer(&body.node, body.span)
+            }
+
+            Expr::Assign { name, value } => {
+                // Check that variable exists
+                let var_ty = self.env.get(name).cloned().ok_or_else(|| {
+                    CompileError::type_error(format!("undefined variable: {name}"), span)
+                })?;
+
+                // Check that value type matches variable type
+                let value_ty = self.infer(&value.node, value.span)?;
+                self.unify(&var_ty, &value_ty, value.span)?;
+
+                // Assignment returns unit
+                Ok(Type::Unit)
+            }
+
+            Expr::While { cond, body } => {
+                // Condition must be bool
+                let cond_ty = self.infer(&cond.node, cond.span)?;
+                self.unify(&Type::Bool, &cond_ty, cond.span)?;
+
+                // Type check body (result is discarded)
+                let _ = self.infer(&body.node, body.span)?;
+
+                // While returns unit
+                Ok(Type::Unit)
+            }
+
+            // v0.5 Phase 3: Range expression
+            Expr::Range { start, end } => {
+                let start_ty = self.infer(&start.node, start.span)?;
+                let end_ty = self.infer(&end.node, end.span)?;
+
+                // Both must be the same integer type
+                self.unify(&start_ty, &end_ty, end.span)?;
+                match &start_ty {
+                    Type::I32 | Type::I64 => Ok(Type::Range(Box::new(start_ty))),
+                    _ => Err(CompileError::type_error(
+                        format!("range requires integer types, got {start_ty}"),
+                        span,
+                    )),
+                }
+            }
+
+            // v0.5 Phase 3: For loop
+            Expr::For { var, iter, body } => {
+                let iter_ty = self.infer(&iter.node, iter.span)?;
+
+                // Iterator must be a Range type
+                let elem_ty = match &iter_ty {
+                    Type::Range(elem) => (**elem).clone(),
+                    _ => {
+                        return Err(CompileError::type_error(
+                            format!("for loop requires Range type, got {iter_ty}"),
+                            iter.span,
+                        ));
+                    }
+                };
+
+                // Bind loop variable
+                self.env.insert(var.clone(), elem_ty);
+
+                // Type check body (result is discarded)
+                let _ = self.infer(&body.node, body.span)?;
+
+                // For returns unit
+                Ok(Type::Unit)
             }
 
             Expr::Call { func, args } => {
@@ -341,6 +410,7 @@ impl TypeChecker {
                     crate::ast::LiteralPattern::Int(_) => Type::I64,
                     crate::ast::LiteralPattern::Float(_) => Type::F64,
                     crate::ast::LiteralPattern::Bool(_) => Type::Bool,
+                    crate::ast::LiteralPattern::String(_) => Type::String,
                 };
                 self.unify(expected_ty, &lit_ty, span)
             }
@@ -411,7 +481,19 @@ impl TypeChecker {
     /// Check binary operation types
     fn check_binary_op(&self, op: BinOp, left: &Type, right: &Type, span: Span) -> Result<Type> {
         match op {
-            BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Mod => {
+            BinOp::Add => {
+                self.unify(left, right, span)?;
+                match left {
+                    Type::I32 | Type::I64 | Type::F64 => Ok(left.clone()),
+                    Type::String => Ok(Type::String), // String concatenation
+                    _ => Err(CompileError::type_error(
+                        format!("+ operator requires numeric or String type, got {left}"),
+                        span,
+                    )),
+                }
+            }
+
+            BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Mod => {
                 self.unify(left, right, span)?;
                 match left {
                     Type::I32 | Type::I64 | Type::F64 => Ok(left.clone()),
@@ -422,12 +504,23 @@ impl TypeChecker {
                 }
             }
 
-            BinOp::Eq | BinOp::Ne | BinOp::Lt | BinOp::Gt | BinOp::Le | BinOp::Ge => {
+            BinOp::Eq | BinOp::Ne => {
                 self.unify(left, right, span)?;
                 match left {
-                    Type::I32 | Type::I64 | Type::F64 | Type::Bool => Ok(Type::Bool),
+                    Type::I32 | Type::I64 | Type::F64 | Type::Bool | Type::String => Ok(Type::Bool),
                     _ => Err(CompileError::type_error(
-                        format!("comparison operator requires comparable type, got {left}"),
+                        format!("equality operator requires comparable type, got {left}"),
+                        span,
+                    )),
+                }
+            }
+
+            BinOp::Lt | BinOp::Gt | BinOp::Le | BinOp::Ge => {
+                self.unify(left, right, span)?;
+                match left {
+                    Type::I32 | Type::I64 | Type::F64 => Ok(Type::Bool),
+                    _ => Err(CompileError::type_error(
+                        format!("comparison operator requires numeric type, got {left}"),
                         span,
                     )),
                 }

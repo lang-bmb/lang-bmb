@@ -11,12 +11,16 @@ pub enum Value {
     Float(f64),
     /// Boolean
     Bool(bool),
+    /// String value (v0.5 Phase 2)
+    Str(String),
     /// Unit value
     Unit,
     /// Struct value: (type_name, fields)
     Struct(String, std::collections::HashMap<String, Value>),
     /// Enum variant: (enum_name, variant_name, values)
     Enum(String, String, Vec<Value>),
+    /// Range value (v0.5 Phase 3): (start, end) exclusive end
+    Range(i64, i64),
 }
 
 impl Value {
@@ -26,9 +30,11 @@ impl Value {
             Value::Bool(b) => *b,
             Value::Int(n) => *n != 0,
             Value::Float(f) => *f != 0.0,
+            Value::Str(s) => !s.is_empty(),
             Value::Unit => false,
             Value::Struct(_, _) => true,
             Value::Enum(_, _, _) => true,
+            Value::Range(start, end) => start < end,
         }
     }
 
@@ -38,9 +44,11 @@ impl Value {
             Value::Int(_) => "int",
             Value::Float(_) => "float",
             Value::Bool(_) => "bool",
+            Value::Str(_) => "String",
             Value::Unit => "()",
             Value::Struct(name, _) => name,
             Value::Enum(name, _, _) => name,
+            Value::Range(_, _) => "Range",
         }
     }
 
@@ -68,6 +76,14 @@ impl Value {
             _ => None,
         }
     }
+
+    /// Try to convert to string
+    pub fn as_str(&self) -> Option<&str> {
+        match self {
+            Value::Str(s) => Some(s),
+            _ => None,
+        }
+    }
 }
 
 impl fmt::Display for Value {
@@ -76,6 +92,7 @@ impl fmt::Display for Value {
             Value::Int(n) => write!(f, "{n}"),
             Value::Float(x) => write!(f, "{x}"),
             Value::Bool(b) => write!(f, "{b}"),
+            Value::Str(s) => write!(f, "\"{s}\""),
             Value::Unit => write!(f, "()"),
             Value::Struct(name, fields) => {
                 write!(f, "{} {{ ", name)?;
@@ -101,6 +118,7 @@ impl fmt::Display for Value {
                 }
                 Ok(())
             }
+            Value::Range(start, end) => write!(f, "{}..{}", start, end),
         }
     }
 }
@@ -111,9 +129,11 @@ impl PartialEq for Value {
             (Value::Int(a), Value::Int(b)) => a == b,
             (Value::Float(a), Value::Float(b)) => a == b,
             (Value::Bool(a), Value::Bool(b)) => a == b,
+            (Value::Str(a), Value::Str(b)) => a == b,
             (Value::Unit, Value::Unit) => true,
             (Value::Struct(n1, f1), Value::Struct(n2, f2)) => n1 == n2 && f1 == f2,
             (Value::Enum(e1, v1, a1), Value::Enum(e2, v2, a2)) => e1 == e2 && v1 == v2 && a1 == a2,
+            (Value::Range(s1, e1), Value::Range(s2, e2)) => s1 == s2 && e1 == e2,
             _ => false,
         }
     }
@@ -129,6 +149,7 @@ mod tests {
         assert_eq!(format!("{}", Value::Float(3.14)), "3.14");
         assert_eq!(format!("{}", Value::Bool(true)), "true");
         assert_eq!(format!("{}", Value::Unit), "()");
+        assert_eq!(format!("{}", Value::Str("hello".to_string())), "\"hello\"");
     }
 
     #[test]
@@ -137,5 +158,7 @@ mod tests {
         assert!(!Value::Bool(false).is_truthy());
         assert!(Value::Int(1).is_truthy());
         assert!(!Value::Int(0).is_truthy());
+        assert!(Value::Str("hello".to_string()).is_truthy());
+        assert!(!Value::Str("".to_string()).is_truthy());
     }
 }

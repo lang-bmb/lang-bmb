@@ -118,6 +118,8 @@ impl SmtTranslator {
             Type::I32 | Type::I64 | Type::F64 => SmtSort::Int,
             Type::Bool => SmtSort::Bool,
             Type::Unit => SmtSort::Bool, // Unit maps to true
+            Type::String => SmtSort::Int, // String as Int (simplified) v0.5
+            Type::Range(_) => SmtSort::Int, // Range as Int (simplified) v0.5 Phase 3
             Type::Named(_) => SmtSort::Int, // Named types default to Int for now
             Type::Struct { .. } => SmtSort::Int, // Struct types as Int (simplified)
             Type::Enum { .. } => SmtSort::Int, // Enum types as Int (simplified)
@@ -150,6 +152,11 @@ impl SmtTranslator {
             }
 
             Expr::BoolLit(b) => Ok(b.to_string()),
+
+            Expr::StringLit(_) => {
+                // Strings not fully supported in SMT - approximate as 0
+                Ok("0".to_string())
+            }
 
             Expr::Unit => Ok("true".to_string()),
 
@@ -187,11 +194,21 @@ impl SmtTranslator {
                 Ok(format!("(ite {} {} {})", c, t, e))
             }
 
-            Expr::Let { name, ty: _, value, body } => {
+            Expr::Let { name, mutable: _, ty: _, value, body } => {
                 // For SMT-LIB, we use let binding
                 let v = self.translate(value)?;
                 let b = self.translate(body)?;
                 Ok(format!("(let (({} {})) {})", name, v, b))
+            }
+
+            Expr::Assign { name, .. } => {
+                // Assignment not fully supported in pure SMT
+                Err(TranslateError::UnsupportedFeature(format!("assignment: {}", name)))
+            }
+
+            Expr::While { .. } => {
+                // While loops not supported in SMT
+                Err(TranslateError::UnsupportedFeature("while loop".to_string()))
             }
 
             Expr::Call { func, args: _ } => {
@@ -221,6 +238,15 @@ impl SmtTranslator {
 
             Expr::Match { .. } => {
                 Err(TranslateError::UnsupportedFeature("match expression".to_string()))
+            }
+
+            // v0.5 Phase 3: Range and For expressions - not supported in SMT
+            Expr::Range { .. } => {
+                Err(TranslateError::UnsupportedFeature("range expression".to_string()))
+            }
+
+            Expr::For { .. } => {
+                Err(TranslateError::UnsupportedFeature("for loop".to_string()))
             }
         }
     }

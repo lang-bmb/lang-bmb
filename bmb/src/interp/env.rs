@@ -55,6 +55,18 @@ impl Environment {
         }
     }
 
+    /// Set/update a variable in the scope chain (v0.5 Phase 2)
+    pub fn set(&mut self, name: &str, value: Value) -> bool {
+        if self.bindings.contains_key(name) {
+            self.bindings.insert(name.to_string(), value);
+            true
+        } else if let Some(parent) = &self.parent {
+            parent.borrow_mut().set(name, value)
+        } else {
+            false
+        }
+    }
+
     /// Check if a variable exists in the scope chain
     pub fn contains(&self, name: &str) -> bool {
         if self.bindings.contains_key(name) {

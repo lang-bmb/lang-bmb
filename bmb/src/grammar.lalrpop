@@ -28,14 +28,22 @@ extern {
         "enum" => Token::Enum,
         "match" => Token::Match,
         "new" => Token::New,
+        // v0.5 Phase 2
+        "mut" => Token::Mut,
+        "while" => Token::While,
+        // v0.5 Phase 3
+        "for" => Token::For,
+        "in" => Token::In,
 
         "i32" => Token::TyI32,
         "i64" => Token::TyI64,
         "f64" => Token::TyF64,
         "bool" => Token::TyBool,
+        "String" => Token::TyString,
 
         "int" => Token::IntLit(<i64>),
         "float" => Token::FloatLit(<f64>),
+        "string" => Token::StringLit(<String>),
         "ident" => Token::Ident(<String>),
 
         ":" => Token::Colon,
@@ -43,6 +51,7 @@ extern {
         "->" => Token::Arrow,
         "=>" => Token::FatArrow,
         "_" => Token::Underscore,
+        ".." => Token::DotDot,
         "." => Token::Dot,
         "=" => Token::Eq,
         ";" => Token::Semi,
@@ -51,6 +60,8 @@ extern {
         ")" => Token::RParen,
         "{" => Token::LBrace,
         "}" => Token::RBrace,
+        "[" => Token::LBracket,
+        "]" => Token::RBracket,
 
         "+" => Token::Plus,
         "-" => Token::Minus,
@@ -182,6 +193,7 @@ Type: Type = {
     "i64" => Type::I64,
     "f64" => Type::F64,
     "bool" => Type::Bool,
+    "String" => Type::String,
     "(" ")" => Type::Unit,
     <name:RawIdent> => Type::Named(name),
 };
@@ -189,6 +201,16 @@ Type: Type = {
 // Expressions with span
 SpannedExpr: Spanned<Expr> = {
     <l:@L> <e:Expr> <r:@R> => Spanned::new(e, Span::new(l, r)),
+};
+
+// Block statements (expressions or assignments)
+BlockStmt: Spanned<Expr> = {
+    // Assignment (v0.5 Phase 2) - only valid in blocks
+    <l:@L> <n:RawIdent> "=" <v:SpannedExpr> <r:@R> => Spanned::new(Expr::Assign {
+        name: n,
+        value: Box::new(v),
+    }, Span::new(l, r)),
+    SpannedExpr,
 };
 
 // Expressions (precedence from low to high)
@@ -199,13 +221,14 @@ Expr: Expr = {
         then_branch: Box::new(t),
         else_branch: Box::new(e),
     },
-    "let" <n:RawIdent> <ty:(":" <SpannedType>)?> "=" <v:SpannedExpr> ";" <b:SpannedExpr> => Expr::Let {
+    "let" <m:"mut"?> <n:RawIdent> <ty:(":" <SpannedType>)?> "=" <v:SpannedExpr> ";" <b:SpannedExpr> => Expr::Let {
         name: n,
+        mutable: m.is_some(),
         ty,
         value: Box::new(v),
         body: Box::new(b),
     },
-    "{" <es:(<SpannedExpr> ";")*> <last:SpannedExpr?> "}" => {
+    "{" <es:(<BlockStmt> ";")*> <last:BlockStmt?> "}" => {
         let mut exprs = es;
         if let Some(e) = last {
             exprs.push(e);
@@ -216,6 +239,17 @@ Expr: Expr = {
     "match" <e:SpannedExpr> "{" <arms:MatchArms> "}" => Expr::Match {
         expr: Box::new(e),
         arms,
+    },
+    // While loop (v0.5 Phase 2)
+    "while" <c:SpannedExpr> "{" <body:SpannedExpr> "}" => Expr::While {
+        cond: Box::new(c),
+        body: Box::new(body),
+    },
+    // For loop (v0.5 Phase 3)
+    "for" <var:RawIdent> "in" <iter:SpannedRangeExpr> "{" <body:SpannedExpr> "}" => Expr::For {
+        var,
+        iter: Box::new(iter),
+        body: Box::new(body),
     },
 };
 
@@ -245,6 +279,7 @@ Pattern: Pattern = {
     // Literal patterns
     <n:"int"> => Pattern::Literal(LiteralPattern::Int(n)),
     <n:"float"> => Pattern::Literal(LiteralPattern::Float(n)),
+    <s:"string"> => Pattern::Literal(LiteralPattern::String(s)),
     "true" => Pattern::Literal(LiteralPattern::Bool(true)),
     "false" => Pattern::Literal(LiteralPattern::Bool(false)),
     // Enum variant pattern: EnumName::Variant or EnumName::Variant(bindings)
@@ -271,6 +306,19 @@ PatternBindings: Vec<Spanned<String>> = {
             v
         }
     },
+};
+
+// Range expression (v0.5 Phase 3) - lower precedence than comparison
+RangeExpr: Expr = {
+    <start:SpannedAddExpr> ".." <end:SpannedAddExpr> => Expr::Range {
+        start: Box::new(start),
+        end: Box::new(end),
+    },
+    OrExpr,
+};
+
+SpannedRangeExpr: Spanned<Expr> = {
+    <l:@L> <e:RangeExpr> <r:@R> => Spanned::new(e, Span::new(l, r)),
 };
 
 // Or expression
@@ -428,6 +476,7 @@ Args: Vec<Spanned<Expr>> = {
 Primary: Expr = {
     "int" => Expr::IntLit(<>),
     "float" => Expr::FloatLit(<>),
+    "string" => Expr::StringLit(<>),
     "true" => Expr::BoolLit(true),
     "false" => Expr::BoolLit(false),
     "ret" => Expr::Ret,

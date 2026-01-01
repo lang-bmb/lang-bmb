@@ -9,12 +9,12 @@ use inkwell::builder::Builder;
 use inkwell::context::Context;
 use inkwell::module::Module;
 use inkwell::targets::{
-    CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine, TargetTriple,
+    CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine,
 };
 use inkwell::types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum};
-use inkwell::values::{BasicMetadataValueEnum, BasicValue, BasicValueEnum, FunctionValue, PointerValue};
+use inkwell::values::{BasicMetadataValueEnum, BasicValueEnum, FunctionValue, PointerValue};
 use inkwell::OptimizationLevel;
-use inkwell::{AddressSpace, FloatPredicate, IntPredicate};
+use inkwell::{FloatPredicate, IntPredicate};
 use thiserror::Error;
 
 use crate::mir::{
@@ -92,10 +92,7 @@ impl CodeGen {
     /// Compile MIR to object file
     pub fn compile(&self, program: &MirProgram, output: &Path) -> CodeGenResult<()> {
         let context = Context::create();
-        let module = context.create_module("bmb_program");
-        let builder = context.create_builder();
-
-        let mut ctx = LlvmContext::new(&context, &module, &builder);
+        let mut ctx = LlvmContext::new(&context);
 
         // Declare built-in functions
         ctx.declare_builtins();
@@ -106,16 +103,13 @@ impl CodeGen {
         }
 
         // Write to object file
-        self.write_object_file(&module, output)
+        self.write_object_file(&ctx.module, output)
     }
 
     /// Generate LLVM IR as string
     pub fn generate_ir(&self, program: &MirProgram) -> CodeGenResult<String> {
         let context = Context::create();
-        let module = context.create_module("bmb_program");
-        let builder = context.create_builder();
-
-        let mut ctx = LlvmContext::new(&context, &module, &builder);
+        let mut ctx = LlvmContext::new(&context);
 
         // Declare built-in functions
         ctx.declare_builtins();
@@ -125,7 +119,7 @@ impl CodeGen {
             ctx.gen_function(func)?;
         }
 
-        Ok(module.print_to_string().to_string())
+        Ok(ctx.module.print_to_string().to_string())
     }
 
     /// Write module to object file
@@ -163,25 +157,24 @@ impl Default for CodeGen {
 /// LLVM context for code generation
 struct LlvmContext<'ctx> {
     context: &'ctx Context,
-    module: &'ctx Module<'ctx>,
-    builder: &'ctx Builder<'ctx>,
+    module: Module<'ctx>,
+    builder: Builder<'ctx>,
 
     /// Function lookup table
     functions: HashMap<String, FunctionValue<'ctx>>,
 
     /// Variable lookup table (local to current function)
-    variables: HashMap<String, PointerValue<'ctx>>,
+    /// Stores (pointer, type) pairs for opaque pointer support
+    variables: HashMap<String, (PointerValue<'ctx>, BasicTypeEnum<'ctx>)>,
 
     /// Block lookup table (local to current function)
     blocks: HashMap<String, inkwell::basic_block::BasicBlock<'ctx>>,
 }
 
 impl<'ctx> LlvmContext<'ctx> {
-    fn new(
-        context: &'ctx Context,
-        module: &'ctx Module<'ctx>,
-        builder: &'ctx Builder<'ctx>,
-    ) -> Self {
+    fn new(context: &'ctx Context) -> Self {
+        let module = context.create_module("bmb_program");
+        let builder = context.create_builder();
         Self {
             context,
             module,
@@ -292,7 +285,7 @@ impl<'ctx> LlvmContext<'ctx> {
             let param = function.get_nth_param(i as u32).unwrap();
             self.builder.build_store(alloca, param)
                 .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
-            self.variables.insert(name.clone(), alloca);
+            self.variables.insert(name.clone(), (alloca, llvm_ty));
         }
 
         // Allocate locals
@@ -300,7 +293,7 @@ impl<'ctx> LlvmContext<'ctx> {
             let llvm_ty = self.mir_type_to_llvm(ty);
             let alloca = self.builder.build_alloca(llvm_ty, name)
                 .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
-            self.variables.insert(name.clone(), alloca);
+            self.variables.insert(name.clone(), (alloca, llvm_ty));
         }
 
         // Generate code for each block
@@ -373,7 +366,7 @@ impl<'ctx> LlvmContext<'ctx> {
                     .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
 
                 if let Some(dest_place) = dest {
-                    if let Some(ret_val) = call_result.try_as_basic_value().left() {
+                    if let Some(ret_val) = call_result.try_as_basic_value().basic() {
                         self.store_to_place(dest_place, ret_val)?;
                     }
                 }
@@ -460,29 +453,27 @@ impl<'ctx> LlvmContext<'ctx> {
 
     /// Load a value from a place
     fn load_from_place(&self, place: &Place) -> CodeGenResult<BasicValueEnum<'ctx>> {
-        let ptr = self
+        let (ptr, pointee_type) = self
             .variables
             .get(&place.name)
             .ok_or_else(|| CodeGenError::UnknownVariable(place.name.clone()))?;
 
-        // Get the pointee type from the alloca
-        let pointee_type = ptr.get_type().get_element_type();
-
         self.builder
-            .build_load(pointee_type.try_into().unwrap(), *ptr, &place.name)
+            .build_load(*pointee_type, *ptr, &place.name)
             .map_err(|e| CodeGenError::LlvmError(e.to_string()))
     }
 
     /// Store a value to a place
     fn store_to_place(&mut self, place: &Place, value: BasicValueEnum<'ctx>) -> CodeGenResult<()> {
         // Get or create the variable
-        let ptr = if let Some(ptr) = self.variables.get(&place.name) {
+        let ptr = if let Some((ptr, _)) = self.variables.get(&place.name) {
             *ptr
         } else {
             // Create a new alloca for temporaries
-            let alloca = self.builder.build_alloca(value.get_type(), &place.name)
+            let ty = value.get_type();
+            let alloca = self.builder.build_alloca(ty, &place.name)
                 .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
-            self.variables.insert(place.name.clone(), alloca);
+            self.variables.insert(place.name.clone(), (alloca, ty));
             alloca
         };
 
