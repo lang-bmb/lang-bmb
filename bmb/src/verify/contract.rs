@@ -48,8 +48,8 @@ impl ContractVerifier {
                     let func_report = self.verify_function(func);
                     report.functions.push(func_report);
                 }
-                // Struct and Enum definitions don't need verification
-                Item::StructDef(_) | Item::EnumDef(_) => {}
+                // Struct, Enum, and Use don't need verification
+                Item::StructDef(_) | Item::EnumDef(_) | Item::Use(_) => {}
             }
         }
 

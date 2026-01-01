@@ -16,17 +16,44 @@ pub struct Program {
     pub items: Vec<Item>,
 }
 
+/// Visibility modifier (v0.5 Phase 4)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Visibility {
+    /// Private (default)
+    Private,
+    /// Public (pub keyword)
+    Public,
+}
+
+impl Default for Visibility {
+    fn default() -> Self {
+        Visibility::Private
+    }
+}
+
 /// Top-level item
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Item {
     FnDef(FnDef),
     StructDef(StructDef),
     EnumDef(EnumDef),
+    /// Use statement: use path::to::item (v0.5 Phase 4)
+    Use(UseStmt),
+}
+
+/// Use statement (v0.5 Phase 4)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UseStmt {
+    /// Path segments (e.g., ["lexer", "Token"] for use lexer::Token)
+    pub path: Vec<Spanned<String>>,
+    /// Span of the entire use statement
+    pub span: Span,
 }
 
 /// Struct definition
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StructDef {
+    pub visibility: Visibility,
     pub name: Spanned<String>,
     pub fields: Vec<StructField>,
     pub span: Span,
@@ -42,6 +69,7 @@ pub struct StructField {
 /// Enum definition
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EnumDef {
+    pub visibility: Visibility,
     pub name: Spanned<String>,
     pub variants: Vec<EnumVariant>,
     pub span: Span,
@@ -58,6 +86,7 @@ pub struct EnumVariant {
 /// Function definition
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FnDef {
+    pub visibility: Visibility,
     pub name: Spanned<String>,
     pub params: Vec<Param>,
     pub ret_ty: Spanned<Type>,

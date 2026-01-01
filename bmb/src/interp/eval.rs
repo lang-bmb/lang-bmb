@@ -71,6 +71,8 @@ impl Interpreter {
                     self.enum_defs
                         .insert(enum_def.name.node.clone(), enum_def.clone());
                 }
+                // v0.5 Phase 4: Use statements are processed at module resolution time
+                crate::ast::Item::Use(_) => {}
             }
         }
     }
@@ -93,6 +95,8 @@ impl Interpreter {
                     // Struct/Enum definitions don't produce values
                     Ok(Value::Unit)
                 }
+                // v0.5 Phase 4: Use statements don't produce values
+                crate::ast::Item::Use(_) => Ok(Value::Unit),
             }
         } else {
             Ok(Value::Unit)

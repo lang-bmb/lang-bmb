@@ -55,6 +55,13 @@ pub enum Token {
     For,
     #[token("in")]
     In,
+    // v0.5 Phase 4: Module system
+    #[token("pub")]
+    Pub,
+    #[token("use")]
+    Use,
+    #[token("mod")]
+    Mod,
 
     // Type keywords
     #[token("i32")]
@@ -169,6 +176,9 @@ impl std::fmt::Display for Token {
             Token::While => write!(f, "while"),
             Token::For => write!(f, "for"),
             Token::In => write!(f, "in"),
+            Token::Pub => write!(f, "pub"),
+            Token::Use => write!(f, "use"),
+            Token::Mod => write!(f, "mod"),
             Token::TyI32 => write!(f, "i32"),
             Token::TyI64 => write!(f, "i64"),
             Token::TyF64 => write!(f, "f64"),

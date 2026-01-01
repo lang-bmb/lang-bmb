@@ -19,7 +19,8 @@ pub fn lower_program(program: &Program) -> MirProgram {
         .iter()
         .filter_map(|item| match item {
             Item::FnDef(fn_def) => Some(lower_function(fn_def)),
-            Item::StructDef(_) | Item::EnumDef(_) => None, // Type definitions don't produce MIR functions
+            // Type definitions and use statements don't produce MIR functions
+            Item::StructDef(_) | Item::EnumDef(_) | Item::Use(_) => None,
         })
         .collect();
 
@@ -494,7 +495,7 @@ fn ast_unop_to_mir(op: UnOp, ty: &MirType) -> MirUnaryOp {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ast::{Param, Span, Spanned};
+    use crate::ast::{Param, Span, Spanned, Visibility};
 
     fn spanned<T>(node: T) -> Spanned<T> {
         Spanned {
@@ -507,6 +508,7 @@ mod tests {
     fn test_lower_simple_function() {
         let program = Program {
             items: vec![Item::FnDef(FnDef {
+                visibility: Visibility::Private,
                 name: spanned("add".to_string()),
                 params: vec![
                     Param {
@@ -549,6 +551,7 @@ mod tests {
     fn test_lower_if_expression() {
         let program = Program {
             items: vec![Item::FnDef(FnDef {
+                visibility: Visibility::Private,
                 name: spanned("max".to_string()),
                 params: vec![
                     Param {
@@ -593,6 +596,7 @@ mod tests {
     fn test_lower_let_binding() {
         let program = Program {
             items: vec![Item::FnDef(FnDef {
+                visibility: Visibility::Private,
                 name: spanned("test".to_string()),
                 params: vec![],
                 ret_ty: spanned(Type::I64),
@@ -621,6 +625,7 @@ mod tests {
     fn test_lower_string_literal() {
         let program = Program {
             items: vec![Item::FnDef(FnDef {
+                visibility: Visibility::Private,
                 name: spanned("test".to_string()),
                 params: vec![],
                 ret_ty: spanned(Type::I64),
@@ -648,6 +653,7 @@ mod tests {
     fn test_lower_while_loop() {
         let program = Program {
             items: vec![Item::FnDef(FnDef {
+                visibility: Visibility::Private,
                 name: spanned("test".to_string()),
                 params: vec![],
                 ret_ty: spanned(Type::Unit),

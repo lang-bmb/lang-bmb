@@ -34,6 +34,10 @@ extern {
         // v0.5 Phase 3
         "for" => Token::For,
         "in" => Token::In,
+        // v0.5 Phase 4: Module system
+        "pub" => Token::Pub,
+        "use" => Token::Use,
+        "mod" => Token::Mod,
 
         "i32" => Token::TyI32,
         "i64" => Token::TyI64,
@@ -87,11 +91,35 @@ Item: Item = {
     <f:FnDef> => Item::FnDef(f),
     <s:StructDef> => Item::StructDef(s),
     <e:EnumDef> => Item::EnumDef(e),
+    <u:UseStmt> => Item::Use(u),
+};
+
+// Visibility modifier (v0.5 Phase 4)
+Visibility: Visibility = {
+    "pub" => Visibility::Public,
+    => Visibility::Private,
+};
+
+// Use statement (v0.5 Phase 4)
+UseStmt: UseStmt = {
+    <l:@L> "use" <path:UsePath> ";" <r:@R> => UseStmt {
+        path,
+        span: Span::new(l, r),
+    },
+};
+
+UsePath: Vec<Spanned<String>> = {
+    <first:Ident> <rest:("::" <Ident>)*> => {
+        let mut path = vec![first];
+        path.extend(rest);
+        path
+    },
 };
 
 // Struct definition
 StructDef: StructDef = {
-    <l:@L> "struct" <name:Ident> "{" <fields:StructFields> "}" <r:@R> => StructDef {
+    <l:@L> <vis:Visibility> "struct" <name:Ident> "{" <fields:StructFields> "}" <r:@R> => StructDef {
+        visibility: vis,
         name,
         fields,
         span: Span::new(l, r),
@@ -115,7 +143,8 @@ StructField: StructField = {
 
 // Enum definition
 EnumDef: EnumDef = {
-    <l:@L> "enum" <name:Ident> "{" <variants:EnumVariants> "}" <r:@R> => EnumDef {
+    <l:@L> <vis:Visibility> "enum" <name:Ident> "{" <variants:EnumVariants> "}" <r:@R> => EnumDef {
+        visibility: vis,
         name,
         variants,
         span: Span::new(l, r),
@@ -153,10 +182,11 @@ TypeList: Vec<Spanned<Type>> = {
 
 // Function definition
 FnDef: FnDef = {
-    <l:@L> "fn" <name:Ident> "(" <params:Params> ")" "->" <ret_ty:SpannedType>
+    <l:@L> <vis:Visibility> "fn" <name:Ident> "(" <params:Params> ")" "->" <ret_ty:SpannedType>
     <pre:("pre" <SpannedExpr>)?>
     <post:("post" <SpannedExpr>)?>
     "=" <body:SpannedExpr> ";" <r:@R> => FnDef {
+        visibility: vis,
         name,
         params,
         ret_ty,

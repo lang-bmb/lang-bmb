@@ -66,6 +66,8 @@ impl TypeChecker {
                     self.enums.insert(e.name.node.clone(), variants);
                 }
                 Item::FnDef(_) => {}
+                // v0.5 Phase 4: Use statements are processed at module resolution time
+                Item::Use(_) => {}
             }
         }
 
@@ -77,7 +79,7 @@ impl TypeChecker {
                     self.functions
                         .insert(f.name.node.clone(), (param_tys, f.ret_ty.node.clone()));
                 }
-                Item::StructDef(_) | Item::EnumDef(_) => {}
+                Item::StructDef(_) | Item::EnumDef(_) | Item::Use(_) => {}
             }
         }
 
@@ -85,7 +87,7 @@ impl TypeChecker {
         for item in &program.items {
             match item {
                 Item::FnDef(f) => self.check_fn(f)?,
-                Item::StructDef(_) | Item::EnumDef(_) => {}
+                Item::StructDef(_) | Item::EnumDef(_) | Item::Use(_) => {}
             }
         }
 
