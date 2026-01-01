@@ -36,6 +36,15 @@ pub enum Token {
     Or,
     #[token("not")]
     Not,
+    // v0.5: Data types
+    #[token("struct")]
+    Struct,
+    #[token("enum")]
+    Enum,
+    #[token("match")]
+    Match,
+    #[token("new")]
+    New,
 
     // Type keywords
     #[token("i32")]
@@ -60,10 +69,16 @@ pub enum Token {
     // Symbols
     #[token(":")]
     Colon,
+    #[token("::")]
+    ColonColon,
     #[token("->")]
     Arrow,
     #[token("=>")]
     FatArrow,
+    #[token("_")]
+    Underscore,
+    #[token(".")]
+    Dot,
     #[token("=")]
     Eq,
     #[token(";")]
@@ -121,6 +136,10 @@ impl std::fmt::Display for Token {
             Token::And => write!(f, "and"),
             Token::Or => write!(f, "or"),
             Token::Not => write!(f, "not"),
+            Token::Struct => write!(f, "struct"),
+            Token::Enum => write!(f, "enum"),
+            Token::Match => write!(f, "match"),
+            Token::New => write!(f, "new"),
             Token::TyI32 => write!(f, "i32"),
             Token::TyI64 => write!(f, "i64"),
             Token::TyF64 => write!(f, "f64"),
@@ -129,8 +148,11 @@ impl std::fmt::Display for Token {
             Token::FloatLit(n) => write!(f, "{n}"),
             Token::Ident(s) => write!(f, "{s}"),
             Token::Colon => write!(f, ":"),
+            Token::ColonColon => write!(f, "::"),
             Token::Arrow => write!(f, "->"),
             Token::FatArrow => write!(f, "=>"),
+            Token::Underscore => write!(f, "_"),
+            Token::Dot => write!(f, "."),
             Token::Eq => write!(f, "="),
             Token::Semi => write!(f, ";"),
             Token::Comma => write!(f, ","),

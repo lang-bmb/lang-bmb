@@ -15,8 +15,18 @@ pub enum Type {
     Bool,
     /// Unit type ()
     Unit,
-    /// Named type (for future extension)
+    /// Named type (struct or enum)
     Named(String),
+    /// Struct type with fields (resolved after type checking)
+    Struct {
+        name: String,
+        fields: Vec<(String, Box<Type>)>,
+    },
+    /// Enum type with variants (resolved after type checking)
+    Enum {
+        name: String,
+        variants: Vec<(String, Vec<Box<Type>>)>,
+    },
 }
 
 impl std::fmt::Display for Type {
@@ -28,6 +38,8 @@ impl std::fmt::Display for Type {
             Type::Bool => write!(f, "bool"),
             Type::Unit => write!(f, "()"),
             Type::Named(name) => write!(f, "{name}"),
+            Type::Struct { name, .. } => write!(f, "{name}"),
+            Type::Enum { name, .. } => write!(f, "{name}"),
         }
     }
 }

@@ -119,6 +119,8 @@ impl SmtTranslator {
             Type::Bool => SmtSort::Bool,
             Type::Unit => SmtSort::Bool, // Unit maps to true
             Type::Named(_) => SmtSort::Int, // Named types default to Int for now
+            Type::Struct { .. } => SmtSort::Int, // Struct types as Int (simplified)
+            Type::Enum { .. } => SmtSort::Int, // Enum types as Int (simplified)
         }
     }
 
@@ -202,6 +204,23 @@ impl SmtTranslator {
                 } else {
                     Ok("true".to_string())
                 }
+            }
+
+            // v0.5: Struct and Enum expressions - not fully supported in SMT
+            Expr::StructInit { name, .. } => {
+                Err(TranslateError::UnsupportedFeature(format!("struct init: {}", name)))
+            }
+
+            Expr::FieldAccess { field, .. } => {
+                Err(TranslateError::UnsupportedFeature(format!("field access: {}", field.node)))
+            }
+
+            Expr::EnumVariant { enum_name, variant, .. } => {
+                Err(TranslateError::UnsupportedFeature(format!("enum variant: {}::{}", enum_name, variant)))
+            }
+
+            Expr::Match { .. } => {
+                Err(TranslateError::UnsupportedFeature("match expression".to_string()))
             }
         }
     }

@@ -24,6 +24,10 @@ extern {
         "and" => Token::And,
         "or" => Token::Or,
         "not" => Token::Not,
+        "struct" => Token::Struct,
+        "enum" => Token::Enum,
+        "match" => Token::Match,
+        "new" => Token::New,
 
         "i32" => Token::TyI32,
         "i64" => Token::TyI64,
@@ -35,8 +39,11 @@ extern {
         "ident" => Token::Ident(<String>),
 
         ":" => Token::Colon,
+        "::" => Token::ColonColon,
         "->" => Token::Arrow,
         "=>" => Token::FatArrow,
+        "_" => Token::Underscore,
+        "." => Token::Dot,
         "=" => Token::Eq,
         ";" => Token::Semi,
         "," => Token::Comma,
@@ -67,6 +74,70 @@ pub Program: Program = {
 // Items
 Item: Item = {
     <f:FnDef> => Item::FnDef(f),
+    <s:StructDef> => Item::StructDef(s),
+    <e:EnumDef> => Item::EnumDef(e),
+};
+
+// Struct definition
+StructDef: StructDef = {
+    <l:@L> "struct" <name:Ident> "{" <fields:StructFields> "}" <r:@R> => StructDef {
+        name,
+        fields,
+        span: Span::new(l, r),
+    },
+};
+
+StructFields: Vec<StructField> = {
+    <v:(<StructField> ",")*> <e:StructField?> => match e {
+        None => v,
+        Some(e) => {
+            let mut v = v;
+            v.push(e);
+            v
+        }
+    },
+};
+
+StructField: StructField = {
+    <name:Ident> ":" <ty:SpannedType> => StructField { name, ty },
+};
+
+// Enum definition
+EnumDef: EnumDef = {
+    <l:@L> "enum" <name:Ident> "{" <variants:EnumVariants> "}" <r:@R> => EnumDef {
+        name,
+        variants,
+        span: Span::new(l, r),
+    },
+};
+
+EnumVariants: Vec<EnumVariant> = {
+    <v:(<EnumVariant> ",")*> <e:EnumVariant?> => match e {
+        None => v,
+        Some(e) => {
+            let mut v = v;
+            v.push(e);
+            v
+        }
+    },
+};
+
+EnumVariant: EnumVariant = {
+    // Unit variant: Variant
+    <name:Ident> => EnumVariant { name, fields: vec![] },
+    // Tuple variant: Variant(Type1, Type2)
+    <name:Ident> "(" <fields:TypeList> ")" => EnumVariant { name, fields },
+};
+
+TypeList: Vec<Spanned<Type>> = {
+    <v:(<SpannedType> ",")*> <e:SpannedType?> => match e {
+        None => v,
+        Some(e) => {
+            let mut v = v;
+            v.push(e);
+            v
+        }
+    },
 };
 
 // Function definition
@@ -112,6 +183,7 @@ Type: Type = {
     "f64" => Type::F64,
     "bool" => Type::Bool,
     "(" ")" => Type::Unit,
+    <name:RawIdent> => Type::Named(name),
 };
 
 // Expressions with span
@@ -139,6 +211,65 @@ Expr: Expr = {
             exprs.push(e);
         }
         Expr::Block(exprs)
+    },
+    // Match expression
+    "match" <e:SpannedExpr> "{" <arms:MatchArms> "}" => Expr::Match {
+        expr: Box::new(e),
+        arms,
+    },
+};
+
+// Match arms
+MatchArms: Vec<MatchArm> = {
+    <v:(<MatchArm> ",")*> <e:MatchArm?> => match e {
+        None => v,
+        Some(e) => {
+            let mut v = v;
+            v.push(e);
+            v
+        }
+    },
+};
+
+MatchArm: MatchArm = {
+    <pattern:SpannedPattern> "=>" <body:SpannedExpr> => MatchArm { pattern, body },
+};
+
+SpannedPattern: Spanned<Pattern> = {
+    <l:@L> <p:Pattern> <r:@R> => Spanned::new(p, Span::new(l, r)),
+};
+
+Pattern: Pattern = {
+    // Wildcard
+    "_" => Pattern::Wildcard,
+    // Literal patterns
+    <n:"int"> => Pattern::Literal(LiteralPattern::Int(n)),
+    <n:"float"> => Pattern::Literal(LiteralPattern::Float(n)),
+    "true" => Pattern::Literal(LiteralPattern::Bool(true)),
+    "false" => Pattern::Literal(LiteralPattern::Bool(false)),
+    // Enum variant pattern: EnumName::Variant or EnumName::Variant(bindings)
+    <enum_name:RawIdent> "::" <variant:RawIdent> => Pattern::EnumVariant {
+        enum_name,
+        variant,
+        bindings: vec![],
+    },
+    <enum_name:RawIdent> "::" <variant:RawIdent> "(" <bindings:PatternBindings> ")" => Pattern::EnumVariant {
+        enum_name,
+        variant,
+        bindings,
+    },
+    // Variable binding (must be after enum variant to avoid ambiguity)
+    <n:RawIdent> => Pattern::Var(n),
+};
+
+PatternBindings: Vec<Spanned<String>> = {
+    <v:(<Ident> ",")*> <e:Ident?> => match e {
+        None => v,
+        Some(e) => {
+            let mut v = v;
+            v.push(e);
+            v
+        }
     },
 };
 
@@ -242,16 +373,43 @@ UnaryExpr: Expr = {
         op: UnOp::Not,
         expr: Box::new(e),
     },
-    CallExpr,
+    PostfixExpr,
 };
 
 SpannedUnaryExpr: Spanned<Expr> = {
     <l:@L> <e:UnaryExpr> <r:@R> => Spanned::new(e, Span::new(l, r)),
 };
 
-// Call expression
+// Postfix expression (field access, calls)
+PostfixExpr: Expr = {
+    <e:SpannedPostfixExpr> "." <field:Ident> => Expr::FieldAccess {
+        expr: Box::new(e),
+        field,
+    },
+    CallExpr,
+};
+
+SpannedPostfixExpr: Spanned<Expr> = {
+    <l:@L> <e:PostfixExpr> <r:@R> => Spanned::new(e, Span::new(l, r)),
+};
+
+// Call expression / Identifier-based expressions
 CallExpr: Expr = {
+    // Function call: func(args)
     <f:RawIdent> "(" <args:Args> ")" => Expr::Call { func: f, args },
+    // Enum variant with args: EnumName::Variant(args)
+    <enum_name:RawIdent> "::" <variant:RawIdent> "(" <args:Args> ")" => Expr::EnumVariant {
+        enum_name,
+        variant,
+        args,
+    },
+    // Enum variant without args: EnumName::Variant
+    <enum_name:RawIdent> "::" <variant:RawIdent> => Expr::EnumVariant {
+        enum_name,
+        variant,
+        args: vec![],
+    },
+    // Variable reference or other primaries
     Primary,
 };
 
@@ -266,7 +424,7 @@ Args: Vec<Spanned<Expr>> = {
     },
 };
 
-// Primary expression
+// Primary expressions
 Primary: Expr = {
     "int" => Expr::IntLit(<>),
     "float" => Expr::FloatLit(<>),
@@ -276,6 +434,26 @@ Primary: Expr = {
     "(" ")" => Expr::Unit,
     "(" <Expr> ")",
     <n:RawIdent> => Expr::Var(n),
+    // Struct initialization: new StructName { field: value, ... }
+    "new" <name:RawIdent> "{" <fields:StructInitFields> "}" => Expr::StructInit {
+        name,
+        fields,
+    },
+};
+
+StructInitFields: Vec<(Spanned<String>, Spanned<Expr>)> = {
+    <v:(<StructInitField> ",")*> <e:StructInitField?> => match e {
+        None => v,
+        Some(e) => {
+            let mut v = v;
+            v.push(e);
+            v
+        }
+    },
+};
+
+StructInitField: (Spanned<String>, Spanned<Expr>) = {
+    <name:Ident> ":" <value:SpannedExpr> => (name, value),
 };
 
 // Identifier

@@ -57,6 +57,70 @@ pub enum Expr {
 
     /// Return value reference (for post conditions)
     Ret,
+
+    // v0.5: Struct and Enum expressions
+
+    /// Struct initialization: StructName { field1: value1, field2: value2 }
+    StructInit {
+        name: String,
+        fields: Vec<(Spanned<String>, Spanned<Expr>)>,
+    },
+
+    /// Field access: expr.field
+    FieldAccess {
+        expr: Box<Spanned<Expr>>,
+        field: Spanned<String>,
+    },
+
+    /// Enum variant: EnumName::Variant or EnumName::Variant(args)
+    EnumVariant {
+        enum_name: String,
+        variant: String,
+        args: Vec<Spanned<Expr>>,
+    },
+
+    /// Match expression
+    Match {
+        expr: Box<Spanned<Expr>>,
+        arms: Vec<MatchArm>,
+    },
+}
+
+/// A single arm in a match expression
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MatchArm {
+    pub pattern: Spanned<Pattern>,
+    pub body: Spanned<Expr>,
+}
+
+/// Pattern for match expressions
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum Pattern {
+    /// Wildcard pattern: _
+    Wildcard,
+    /// Variable binding: name
+    Var(String),
+    /// Literal pattern: 42, true, etc.
+    Literal(LiteralPattern),
+    /// Enum variant pattern: EnumName::Variant or EnumName::Variant(bindings)
+    EnumVariant {
+        enum_name: String,
+        variant: String,
+        bindings: Vec<Spanned<String>>,
+    },
+    /// Struct pattern: StructName { field1: pat1, field2: pat2 }
+    Struct {
+        name: String,
+        fields: Vec<(Spanned<String>, Spanned<Pattern>)>,
+    },
+}
+
+/// Literal patterns for match
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum LiteralPattern {
+    Int(i64),
+    Float(f64),
+    Bool(bool),
 }
 
 /// Binary operator

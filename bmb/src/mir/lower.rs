@@ -19,6 +19,7 @@ pub fn lower_program(program: &Program) -> MirProgram {
         .iter()
         .filter_map(|item| match item {
             Item::FnDef(fn_def) => Some(lower_function(fn_def)),
+            Item::StructDef(_) | Item::EnumDef(_) => None, // Type definitions don't produce MIR functions
         })
         .collect();
 
@@ -231,6 +232,41 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
             // In MIR lowering, we don't handle contracts - just return unit
             Operand::Constant(Constant::Unit)
         }
+
+        // v0.5: Struct and Enum expressions - basic stubs for now
+        Expr::StructInit { .. } => {
+            // TODO: Implement struct initialization in MIR
+            Operand::Constant(Constant::Unit)
+        }
+
+        Expr::FieldAccess { .. } => {
+            // TODO: Implement field access in MIR
+            Operand::Constant(Constant::Unit)
+        }
+
+        Expr::EnumVariant { .. } => {
+            // TODO: Implement enum variant construction in MIR
+            Operand::Constant(Constant::Unit)
+        }
+
+        Expr::Match { expr, arms } => {
+            // Basic implementation: evaluate first matching arm
+            // TODO: Full pattern matching compilation
+            if arms.is_empty() {
+                return Operand::Constant(Constant::Unit);
+            }
+
+            // For now, just evaluate the expression and return first arm body
+            // This is a simplified stub - full implementation requires jump tables
+            let _match_val = lower_expr(expr, ctx);
+
+            // Return first arm's body (simplified)
+            if let Some(first_arm) = arms.first() {
+                lower_expr(&first_arm.body, ctx)
+            } else {
+                Operand::Constant(Constant::Unit)
+            }
+        }
     }
 }
 
@@ -257,7 +293,9 @@ fn ast_type_to_mir(ty: &Type) -> MirType {
         Type::F64 => MirType::F64,
         Type::Bool => MirType::Bool,
         Type::Unit => MirType::Unit,
-        Type::Named(_) => MirType::I64, // Default for now
+        Type::Named(_) => MirType::I64, // Named types default to pointer-sized int for now
+        Type::Struct { .. } => MirType::I64, // Struct types treated as pointers
+        Type::Enum { .. } => MirType::I64, // Enum types treated as tagged unions
     }
 }
 

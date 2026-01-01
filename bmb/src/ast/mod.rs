@@ -20,6 +20,39 @@ pub struct Program {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Item {
     FnDef(FnDef),
+    StructDef(StructDef),
+    EnumDef(EnumDef),
+}
+
+/// Struct definition
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StructDef {
+    pub name: Spanned<String>,
+    pub fields: Vec<StructField>,
+    pub span: Span,
+}
+
+/// Struct field
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StructField {
+    pub name: Spanned<String>,
+    pub ty: Spanned<Type>,
+}
+
+/// Enum definition
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EnumDef {
+    pub name: Spanned<String>,
+    pub variants: Vec<EnumVariant>,
+    pub span: Span,
+}
+
+/// Enum variant
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EnumVariant {
+    pub name: Spanned<String>,
+    /// Fields for tuple-like or struct-like variants (empty for unit variants)
+    pub fields: Vec<Spanned<Type>>,
 }
 
 /// Function definition

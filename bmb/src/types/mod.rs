@@ -11,6 +11,10 @@ pub struct TypeChecker {
     env: HashMap<String, Type>,
     /// Function signatures
     functions: HashMap<String, (Vec<Type>, Type)>,
+    /// Struct definitions: name -> field types
+    structs: HashMap<String, Vec<(String, Type)>>,
+    /// Enum definitions: name -> variant info (variant_name, field types)
+    enums: HashMap<String, Vec<(String, Vec<Type>)>>,
     /// Current function return type (for `ret` keyword)
     current_ret_ty: Option<Type>,
 }
@@ -38,13 +42,34 @@ impl TypeChecker {
         Self {
             env: HashMap::new(),
             functions,
+            structs: HashMap::new(),
+            enums: HashMap::new(),
             current_ret_ty: None,
         }
     }
 
     /// Check entire program
     pub fn check_program(&mut self, program: &Program) -> Result<()> {
-        // First pass: collect function signatures
+        // First pass: collect type definitions (structs and enums)
+        for item in &program.items {
+            match item {
+                Item::StructDef(s) => {
+                    let fields: Vec<_> = s.fields.iter()
+                        .map(|f| (f.name.node.clone(), f.ty.node.clone()))
+                        .collect();
+                    self.structs.insert(s.name.node.clone(), fields);
+                }
+                Item::EnumDef(e) => {
+                    let variants: Vec<_> = e.variants.iter()
+                        .map(|v| (v.name.node.clone(), v.fields.iter().map(|f| f.node.clone()).collect()))
+                        .collect();
+                    self.enums.insert(e.name.node.clone(), variants);
+                }
+                Item::FnDef(_) => {}
+            }
+        }
+
+        // Second pass: collect function signatures
         for item in &program.items {
             match item {
                 Item::FnDef(f) => {
@@ -52,13 +77,15 @@ impl TypeChecker {
                     self.functions
                         .insert(f.name.node.clone(), (param_tys, f.ret_ty.node.clone()));
                 }
+                Item::StructDef(_) | Item::EnumDef(_) => {}
             }
         }
 
-        // Second pass: type check function bodies
+        // Third pass: type check function bodies
         for item in &program.items {
             match item {
                 Item::FnDef(f) => self.check_fn(f)?,
+                Item::StructDef(_) | Item::EnumDef(_) => {}
             }
         }
 
@@ -188,6 +215,195 @@ impl TypeChecker {
                     last_ty = self.infer(&expr.node, expr.span)?;
                 }
                 Ok(last_ty)
+            }
+
+            // v0.5: Struct and Enum expressions
+            Expr::StructInit { name, fields } => {
+                let struct_fields = self.structs.get(name).cloned().ok_or_else(|| {
+                    CompileError::type_error(format!("undefined struct: {name}"), span)
+                })?;
+
+                // Check that all required fields are provided
+                for (field_name, field_ty) in &struct_fields {
+                    let provided = fields.iter().find(|(n, _)| &n.node == field_name);
+                    match provided {
+                        Some((_, expr)) => {
+                            let expr_ty = self.infer(&expr.node, expr.span)?;
+                            self.unify(field_ty, &expr_ty, expr.span)?;
+                        }
+                        None => {
+                            return Err(CompileError::type_error(
+                                format!("missing field: {field_name}"),
+                                span,
+                            ));
+                        }
+                    }
+                }
+
+                Ok(Type::Named(name.clone()))
+            }
+
+            Expr::FieldAccess { expr: obj_expr, field } => {
+                let obj_ty = self.infer(&obj_expr.node, obj_expr.span)?;
+
+                match &obj_ty {
+                    Type::Named(struct_name) => {
+                        let struct_fields = self.structs.get(struct_name).ok_or_else(|| {
+                            CompileError::type_error(format!("not a struct: {struct_name}"), span)
+                        })?;
+
+                        for (fname, fty) in struct_fields {
+                            if fname == &field.node {
+                                return Ok(fty.clone());
+                            }
+                        }
+
+                        Err(CompileError::type_error(
+                            format!("unknown field: {}", field.node),
+                            span,
+                        ))
+                    }
+                    _ => Err(CompileError::type_error(
+                        format!("field access on non-struct type: {obj_ty}"),
+                        span,
+                    )),
+                }
+            }
+
+            Expr::EnumVariant { enum_name, variant, args } => {
+                let variants = self.enums.get(enum_name).cloned().ok_or_else(|| {
+                    CompileError::type_error(format!("undefined enum: {enum_name}"), span)
+                })?;
+
+                let variant_fields = variants.iter()
+                    .find(|(name, _)| name == variant)
+                    .map(|(_, fields)| fields.clone())
+                    .ok_or_else(|| {
+                        CompileError::type_error(format!("unknown variant: {variant}"), span)
+                    })?;
+
+                if args.len() != variant_fields.len() {
+                    return Err(CompileError::type_error(
+                        format!("expected {} args, got {}", variant_fields.len(), args.len()),
+                        span,
+                    ));
+                }
+
+                for (arg, expected_ty) in args.iter().zip(variant_fields.iter()) {
+                    let arg_ty = self.infer(&arg.node, arg.span)?;
+                    self.unify(expected_ty, &arg_ty, arg.span)?;
+                }
+
+                Ok(Type::Named(enum_name.clone()))
+            }
+
+            Expr::Match { expr: match_expr, arms } => {
+                let match_ty = self.infer(&match_expr.node, match_expr.span)?;
+
+                if arms.is_empty() {
+                    return Ok(Type::Unit);
+                }
+
+                // All arms must have the same result type
+                let mut result_ty: Option<Type> = None;
+
+                for arm in arms {
+                    // Check pattern against match expression type
+                    self.check_pattern(&arm.pattern.node, &match_ty, arm.pattern.span)?;
+
+                    // Infer body type with pattern bindings
+                    let body_ty = self.infer(&arm.body.node, arm.body.span)?;
+
+                    match &result_ty {
+                        None => result_ty = Some(body_ty),
+                        Some(expected) => self.unify(expected, &body_ty, arm.body.span)?,
+                    }
+                }
+
+                Ok(result_ty.unwrap_or(Type::Unit))
+            }
+        }
+    }
+
+    /// Check pattern validity
+    fn check_pattern(&mut self, pattern: &crate::ast::Pattern, expected_ty: &Type, span: Span) -> Result<()> {
+        use crate::ast::Pattern;
+
+        match pattern {
+            Pattern::Wildcard => Ok(()),
+            Pattern::Var(name) => {
+                // Bind the variable to the expected type
+                self.env.insert(name.clone(), expected_ty.clone());
+                Ok(())
+            }
+            Pattern::Literal(lit) => {
+                let lit_ty = match lit {
+                    crate::ast::LiteralPattern::Int(_) => Type::I64,
+                    crate::ast::LiteralPattern::Float(_) => Type::F64,
+                    crate::ast::LiteralPattern::Bool(_) => Type::Bool,
+                };
+                self.unify(expected_ty, &lit_ty, span)
+            }
+            Pattern::EnumVariant { enum_name, variant, bindings } => {
+                // Check that pattern matches expected type
+                match expected_ty {
+                    Type::Named(name) if name == enum_name => {
+                        let variants = self.enums.get(enum_name).ok_or_else(|| {
+                            CompileError::type_error(format!("undefined enum: {enum_name}"), span)
+                        })?;
+
+                        let variant_fields = variants.iter()
+                            .find(|(n, _)| n == variant)
+                            .map(|(_, fields)| fields.clone())
+                            .ok_or_else(|| {
+                                CompileError::type_error(format!("unknown variant: {variant}"), span)
+                            })?;
+
+                        if bindings.len() != variant_fields.len() {
+                            return Err(CompileError::type_error(
+                                format!("expected {} bindings, got {}", variant_fields.len(), bindings.len()),
+                                span,
+                            ));
+                        }
+
+                        // Bind pattern variables
+                        for (binding, field_ty) in bindings.iter().zip(variant_fields.iter()) {
+                            self.env.insert(binding.node.clone(), field_ty.clone());
+                        }
+
+                        Ok(())
+                    }
+                    _ => Err(CompileError::type_error(
+                        format!("expected {}, got enum pattern", expected_ty),
+                        span,
+                    )),
+                }
+            }
+            Pattern::Struct { name, fields } => {
+                match expected_ty {
+                    Type::Named(expected_name) if expected_name == name => {
+                        let struct_fields = self.structs.get(name).cloned().ok_or_else(|| {
+                            CompileError::type_error(format!("undefined struct: {name}"), span)
+                        })?;
+
+                        for (field_name, field_pat) in fields {
+                            let field_ty = struct_fields.iter()
+                                .find(|(n, _)| n == &field_name.node)
+                                .map(|(_, ty)| ty.clone())
+                                .ok_or_else(|| {
+                                    CompileError::type_error(format!("unknown field: {}", field_name.node), span)
+                                })?;
+
+                            self.check_pattern(&field_pat.node, &field_ty, field_pat.span)?;
+                        }
+
+                        Ok(())
+                    }
+                    _ => Err(CompileError::type_error(
+                        format!("expected {}, got struct pattern", expected_ty),
+                        span,
+                    )),
+                }
             }
         }
     }

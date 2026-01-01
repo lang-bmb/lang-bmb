@@ -3,7 +3,7 @@
 use super::env::{child_env, EnvRef, Environment};
 use super::error::{InterpResult, RuntimeError};
 use super::value::Value;
-use crate::ast::{BinOp, Expr, FnDef, Program, Spanned, UnOp};
+use crate::ast::{BinOp, EnumDef, Expr, FnDef, Pattern, Program, Spanned, StructDef, UnOp};
 use std::collections::HashMap;
 use std::io::{self, BufRead, Write};
 
@@ -19,6 +19,10 @@ pub struct Interpreter {
     global_env: EnvRef,
     /// User-defined functions
     functions: HashMap<String, FnDef>,
+    /// Struct definitions
+    struct_defs: HashMap<String, StructDef>,
+    /// Enum definitions
+    enum_defs: HashMap<String, EnumDef>,
     /// Builtin functions
     builtins: HashMap<String, BuiltinFn>,
     /// Current recursion depth
@@ -31,6 +35,8 @@ impl Interpreter {
         let mut interp = Interpreter {
             global_env: Environment::new().into_ref(),
             functions: HashMap::new(),
+            struct_defs: HashMap::new(),
+            enum_defs: HashMap::new(),
             builtins: HashMap::new(),
             recursion_depth: 0,
         };
@@ -49,13 +55,21 @@ impl Interpreter {
         self.builtins.insert("max".to_string(), builtin_max);
     }
 
-    /// Load a program (register functions)
+    /// Load a program (register functions, structs, enums)
     pub fn load(&mut self, program: &Program) {
         for item in &program.items {
             match item {
                 crate::ast::Item::FnDef(fn_def) => {
                     self.functions
                         .insert(fn_def.name.node.clone(), fn_def.clone());
+                }
+                crate::ast::Item::StructDef(struct_def) => {
+                    self.struct_defs
+                        .insert(struct_def.name.node.clone(), struct_def.clone());
+                }
+                crate::ast::Item::EnumDef(enum_def) => {
+                    self.enum_defs
+                        .insert(enum_def.name.node.clone(), enum_def.clone());
                 }
             }
         }
@@ -74,6 +88,10 @@ impl Interpreter {
                     // If no main, just evaluate the body of the last function
                     // (for simple scripts without main)
                     self.call_function(fn_def, &[])
+                }
+                crate::ast::Item::StructDef(_) | crate::ast::Item::EnumDef(_) => {
+                    // Struct/Enum definitions don't produce values
+                    Ok(Value::Unit)
                 }
             }
         } else {
@@ -157,6 +175,105 @@ impl Interpreter {
             Expr::Ret => {
                 // Ret should only appear in post conditions, not in regular evaluation
                 Err(RuntimeError::type_error("value", "ret"))
+            }
+
+            Expr::StructInit { name, fields } => {
+                let mut field_values = HashMap::new();
+                for (field_name, field_expr) in fields {
+                    let val = self.eval(field_expr, env)?;
+                    field_values.insert(field_name.node.clone(), val);
+                }
+                Ok(Value::Struct(name.clone(), field_values))
+            }
+
+            Expr::FieldAccess { expr: obj_expr, field } => {
+                let obj = self.eval(obj_expr, env)?;
+                match obj {
+                    Value::Struct(_, fields) => {
+                        fields.get(&field.node).cloned()
+                            .ok_or_else(|| RuntimeError::type_error("field", &field.node))
+                    }
+                    _ => Err(RuntimeError::type_error("struct", obj.type_name())),
+                }
+            }
+
+            Expr::EnumVariant { enum_name, variant, args } => {
+                let arg_vals: Vec<Value> = args
+                    .iter()
+                    .map(|a| self.eval(a, env))
+                    .collect::<InterpResult<Vec<_>>>()?;
+                Ok(Value::Enum(enum_name.clone(), variant.clone(), arg_vals))
+            }
+
+            Expr::Match { expr: match_expr, arms } => {
+                let val = self.eval(match_expr, env)?;
+
+                for arm in arms {
+                    if let Some(bindings) = self.match_pattern(&arm.pattern.node, &val) {
+                        let child = child_env(env);
+                        for (name, bound_val) in bindings {
+                            child.borrow_mut().define(name, bound_val);
+                        }
+                        return self.eval(&arm.body, &child);
+                    }
+                }
+
+                Err(RuntimeError::type_error("matching arm", "no match found"))
+            }
+        }
+    }
+
+    /// Try to match a value against a pattern, returning bindings if successful
+    fn match_pattern(&self, pattern: &Pattern, value: &Value) -> Option<Vec<(String, Value)>> {
+        match pattern {
+            Pattern::Wildcard => Some(vec![]),
+
+            Pattern::Var(name) => Some(vec![(name.clone(), value.clone())]),
+
+            Pattern::Literal(lit) => {
+                match (lit, value) {
+                    (crate::ast::LiteralPattern::Int(n), Value::Int(v)) if *n == *v => Some(vec![]),
+                    (crate::ast::LiteralPattern::Float(f), Value::Float(v)) if *f == *v => Some(vec![]),
+                    (crate::ast::LiteralPattern::Bool(b), Value::Bool(v)) if *b == *v => Some(vec![]),
+                    _ => None,
+                }
+            }
+
+            Pattern::EnumVariant { enum_name, variant, bindings } => {
+                match value {
+                    Value::Enum(e_name, v_name, args) if e_name == enum_name && v_name == variant => {
+                        if bindings.len() != args.len() {
+                            return None;
+                        }
+                        let mut result = vec![];
+                        for (binding, arg) in bindings.iter().zip(args.iter()) {
+                            result.push((binding.node.clone(), arg.clone()));
+                        }
+                        Some(result)
+                    }
+                    _ => None,
+                }
+            }
+
+            Pattern::Struct { name, fields } => {
+                match value {
+                    Value::Struct(s_name, s_fields) if s_name == name => {
+                        let mut result = vec![];
+                        for (field_name, field_pat) in fields {
+                            if let Some(field_val) = s_fields.get(&field_name.node) {
+                                if let Some(inner_bindings) = self.match_pattern(&field_pat.node, field_val) {
+                                    result.extend(inner_bindings);
+                                } else {
+                                    return None;
+                                }
+                            } else {
+                                return None;
+                            }
+                        }
+                        Some(result)
+                    }
+                    _ => None,
+                }
             }
         }
     }
