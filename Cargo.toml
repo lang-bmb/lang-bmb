@@ -1,0 +1,33 @@
+[workspace]
+members = ["bmb"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/iyulab/lang-bmb"
+description = "BMB - AI-Native programming language with contract-based verification"
+
+[workspace.dependencies]
+# Lexer
+logos = "0.15"
+
+# Parser
+lalrpop-util = { version = "0.22", features = ["lexer"] }
+lalrpop = "0.22"
+
+# Error reporting
+ariadne = "0.5"
+
+# CLI
+clap = { version = "4", features = ["derive"] }
+
+# Utilities
+thiserror = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[profile.release]
+lto = true
+codegen-units = 1

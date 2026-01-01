@@ -1,0 +1,9 @@
+-- Let bindings
+fn double_add(x: i32, y: i32) -> i32 =
+  let a = x + x;
+  let b = y + y;
+  a + b;
+
+fn with_type_annotation(x: i32) -> i32 =
+  let doubled: i32 = x * 2;
+  doubled;

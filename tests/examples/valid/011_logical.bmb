@@ -1,0 +1,11 @@
+-- Logical operations
+fn both_positive(a: i32, b: i32) -> bool =
+  a > 0 and b > 0;
+
+fn either_zero(a: i32, b: i32) -> bool =
+  a == 0 or b == 0;
+
+fn is_in_range(x: i32, lo: i32, hi: i32) -> bool =
+  x >= lo and x <= hi;
+
+fn negate(b: bool) -> bool = not b;

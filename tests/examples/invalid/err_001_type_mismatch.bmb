@@ -1,0 +1,2 @@
+-- Type mismatch: returning bool where i32 expected
+fn bad_return(x: i32) -> i32 = x > 0;

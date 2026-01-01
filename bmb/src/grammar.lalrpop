@@ -1,0 +1,288 @@
+// BMB Grammar for LALRPOP
+
+use crate::ast::*;
+use crate::lexer::Token;
+
+grammar;
+
+extern {
+    type Location = usize;
+    type Error = String;
+
+    enum Token {
+        "fn" => Token::Fn,
+        "let" => Token::Let,
+        "var" => Token::Var,
+        "if" => Token::If,
+        "then" => Token::Then,
+        "else" => Token::Else,
+        "pre" => Token::Pre,
+        "post" => Token::Post,
+        "true" => Token::True,
+        "false" => Token::False,
+        "ret" => Token::Ret,
+        "and" => Token::And,
+        "or" => Token::Or,
+        "not" => Token::Not,
+
+        "i32" => Token::TyI32,
+        "i64" => Token::TyI64,
+        "f64" => Token::TyF64,
+        "bool" => Token::TyBool,
+
+        "int" => Token::IntLit(<i64>),
+        "float" => Token::FloatLit(<f64>),
+        "ident" => Token::Ident(<String>),
+
+        ":" => Token::Colon,
+        "->" => Token::Arrow,
+        "=>" => Token::FatArrow,
+        "=" => Token::Eq,
+        ";" => Token::Semi,
+        "," => Token::Comma,
+        "(" => Token::LParen,
+        ")" => Token::RParen,
+        "{" => Token::LBrace,
+        "}" => Token::RBrace,
+
+        "+" => Token::Plus,
+        "-" => Token::Minus,
+        "*" => Token::Star,
+        "/" => Token::Slash,
+        "%" => Token::Percent,
+        "==" => Token::EqEq,
+        "!=" => Token::NotEq,
+        "<=" => Token::LtEq,
+        ">=" => Token::GtEq,
+        "<" => Token::Lt,
+        ">" => Token::Gt,
+    }
+}
+
+// Program
+pub Program: Program = {
+    <items:Item*> => Program { items },
+};
+
+// Items
+Item: Item = {
+    <f:FnDef> => Item::FnDef(f),
+};
+
+// Function definition
+FnDef: FnDef = {
+    <l:@L> "fn" <name:Ident> "(" <params:Params> ")" "->" <ret_ty:SpannedType>
+    <pre:("pre" <SpannedExpr>)?>
+    <post:("post" <SpannedExpr>)?>
+    "=" <body:SpannedExpr> ";" <r:@R> => FnDef {
+        name,
+        params,
+        ret_ty,
+        pre,
+        post,
+        body,
+        span: Span::new(l, r),
+    },
+};
+
+// Parameters
+Params: Vec<Param> = {
+    <v:(<Param> ",")*> <e:Param?> => match e {
+        None => v,
+        Some(e) => {
+            let mut v = v;
+            v.push(e);
+            v
+        }
+    },
+};
+
+Param: Param = {
+    <name:Ident> ":" <ty:SpannedType> => Param { name, ty },
+};
+
+// Types
+SpannedType: Spanned<Type> = {
+    <l:@L> <t:Type> <r:@R> => Spanned::new(t, Span::new(l, r)),
+};
+
+Type: Type = {
+    "i32" => Type::I32,
+    "i64" => Type::I64,
+    "f64" => Type::F64,
+    "bool" => Type::Bool,
+    "(" ")" => Type::Unit,
+};
+
+// Expressions with span
+SpannedExpr: Spanned<Expr> = {
+    <l:@L> <e:Expr> <r:@R> => Spanned::new(e, Span::new(l, r)),
+};
+
+// Expressions (precedence from low to high)
+Expr: Expr = {
+    OrExpr,
+    "if" <c:SpannedExpr> "then" <t:SpannedExpr> "else" <e:SpannedExpr> => Expr::If {
+        cond: Box::new(c),
+        then_branch: Box::new(t),
+        else_branch: Box::new(e),
+    },
+    "let" <n:RawIdent> <ty:(":" <SpannedType>)?> "=" <v:SpannedExpr> ";" <b:SpannedExpr> => Expr::Let {
+        name: n,
+        ty,
+        value: Box::new(v),
+        body: Box::new(b),
+    },
+    "{" <es:(<SpannedExpr> ";")*> <last:SpannedExpr?> "}" => {
+        let mut exprs = es;
+        if let Some(e) = last {
+            exprs.push(e);
+        }
+        Expr::Block(exprs)
+    },
+};
+
+// Or expression
+OrExpr: Expr = {
+    <l:SpannedOrExpr> "or" <r:SpannedAndExpr> => Expr::Binary {
+        left: Box::new(l),
+        op: BinOp::Or,
+        right: Box::new(r),
+    },
+    AndExpr,
+};
+
+SpannedOrExpr: Spanned<Expr> = {
+    <l:@L> <e:OrExpr> <r:@R> => Spanned::new(e, Span::new(l, r)),
+};
+
+// And expression
+AndExpr: Expr = {
+    <l:SpannedAndExpr> "and" <r:SpannedCmpExpr> => Expr::Binary {
+        left: Box::new(l),
+        op: BinOp::And,
+        right: Box::new(r),
+    },
+    CmpExpr,
+};
+
+SpannedAndExpr: Spanned<Expr> = {
+    <l:@L> <e:AndExpr> <r:@R> => Spanned::new(e, Span::new(l, r)),
+};
+
+// Comparison expression
+CmpExpr: Expr = {
+    <l:SpannedAddExpr> <op:CmpOp> <r:SpannedAddExpr> => Expr::Binary {
+        left: Box::new(l),
+        op,
+        right: Box::new(r),
+    },
+    AddExpr,
+};
+
+SpannedCmpExpr: Spanned<Expr> = {
+    <l:@L> <e:CmpExpr> <r:@R> => Spanned::new(e, Span::new(l, r)),
+};
+
+CmpOp: BinOp = {
+    "==" => BinOp::Eq,
+    "!=" => BinOp::Ne,
+    "<" => BinOp::Lt,
+    ">" => BinOp::Gt,
+    "<=" => BinOp::Le,
+    ">=" => BinOp::Ge,
+};
+
+// Additive expression
+AddExpr: Expr = {
+    <l:SpannedAddExpr> <op:AddOp> <r:SpannedMulExpr> => Expr::Binary {
+        left: Box::new(l),
+        op,
+        right: Box::new(r),
+    },
+    MulExpr,
+};
+
+SpannedAddExpr: Spanned<Expr> = {
+    <l:@L> <e:AddExpr> <r:@R> => Spanned::new(e, Span::new(l, r)),
+};
+
+AddOp: BinOp = {
+    "+" => BinOp::Add,
+    "-" => BinOp::Sub,
+};
+
+// Multiplicative expression
+MulExpr: Expr = {
+    <l:SpannedMulExpr> <op:MulOp> <r:SpannedUnaryExpr> => Expr::Binary {
+        left: Box::new(l),
+        op,
+        right: Box::new(r),
+    },
+    UnaryExpr,
+};
+
+SpannedMulExpr: Spanned<Expr> = {
+    <l:@L> <e:MulExpr> <r:@R> => Spanned::new(e, Span::new(l, r)),
+};
+
+MulOp: BinOp = {
+    "*" => BinOp::Mul,
+    "/" => BinOp::Div,
+    "%" => BinOp::Mod,
+};
+
+// Unary expression
+UnaryExpr: Expr = {
+    "-" <e:SpannedUnaryExpr> => Expr::Unary {
+        op: UnOp::Neg,
+        expr: Box::new(e),
+    },
+    "not" <e:SpannedUnaryExpr> => Expr::Unary {
+        op: UnOp::Not,
+        expr: Box::new(e),
+    },
+    CallExpr,
+};
+
+SpannedUnaryExpr: Spanned<Expr> = {
+    <l:@L> <e:UnaryExpr> <r:@R> => Spanned::new(e, Span::new(l, r)),
+};
+
+// Call expression
+CallExpr: Expr = {
+    <f:RawIdent> "(" <args:Args> ")" => Expr::Call { func: f, args },
+    Primary,
+};
+
+Args: Vec<Spanned<Expr>> = {
+    <v:(<SpannedExpr> ",")*> <e:SpannedExpr?> => match e {
+        None => v,
+        Some(e) => {
+            let mut v = v;
+            v.push(e);
+            v
+        }
+    },
+};
+
+// Primary expression
+Primary: Expr = {
+    "int" => Expr::IntLit(<>),
+    "float" => Expr::FloatLit(<>),
+    "true" => Expr::BoolLit(true),
+    "false" => Expr::BoolLit(false),
+    "ret" => Expr::Ret,
+    "(" ")" => Expr::Unit,
+    "(" <Expr> ")",
+    <n:RawIdent> => Expr::Var(n),
+};
+
+// Identifier
+Ident: Spanned<String> = {
+    <l:@L> <s:RawIdent> <r:@R> => Spanned::new(s, Span::new(l, r)),
+};
+
+RawIdent: String = {
+    "ident" => <>,
+};
