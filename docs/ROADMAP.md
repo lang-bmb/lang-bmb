@@ -128,39 +128,40 @@ SMT 연동으로 계약 검증 시작
 
 | 구성요소 | 상태 | 설명 |
 |----------|------|------|
-| 인터프리터 | 필수 | AST 직접 실행 |
-| REPL | 필수 | 대화형 환경 |
-| 표준 입출력 | 기본 | print, read |
-| 테스트 러너 | 기본 | `bmb test` |
-| 벤치마크 러너 | 기본 | `bmb bench` |
+| 인터프리터 | ✅ 완료 | Tree-walking AST 실행 |
+| REPL | ✅ 완료 | rustyline 기반 대화형 환경 |
+| 표준 입출력 | ✅ 완료 | print, println, read_int |
+| 내장 함수 | ✅ 완료 | abs, min, max, assert |
+| CLI run/repl | ✅ 완료 | `bmb run`, `bmb repl` |
 
 ### 지원 기능
 
 ```
-- 완전한 표현식 평가
-- 재귀 함수
-- 패턴 매칭
-- 배열/슬라이스
-- enum, struct
-- 기본 표준 함수
+- 완전한 표현식 평가 ✅
+- 재귀 함수 (depth limit: 1000) ✅
+- 렉시컬 스코프 ✅
+- let 바인딩 ✅
+- if/else 분기 ✅
+- 블록 표현식 ✅
+- pre-condition 런타임 검사 ✅
 ```
 
 ### 산출물
 
 ```
-- REPL 실행 파일
-- 표준 라이브러리 시작 (20 함수)
-- 예시 프로그램 30+
-- 인터프리터 테스트 200+
+- bmb run <file> 명령어 ✅
+- bmb repl 명령어 ✅
+- 내장 함수 7개 (print, println, read_int, assert, abs, min, max)
+- 인터프리터 단위 테스트 16개
 ```
 
 ### 마일스톤
 
-- [ ] 인터프리터 완료
-- [ ] REPL 작동
-- [ ] `bmb run` 작동
-- [ ] `bmb test` 작동
-- [ ] 테스트 통과 200+
+- [x] 인터프리터 완료 ✅
+- [x] REPL 작동 ✅
+- [x] `bmb run` 작동 ✅
+- [ ] `bmb test` 작동 (v0.4+)
+- [ ] 테스트 통과 200+ (현재 16개)
 
 ---
 

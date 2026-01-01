@@ -1,5 +1,13 @@
 # BMB v0.3 Root 구현 계획
 
+## 구현 상태: ✅ 완료
+
+- **Phase 1**: 인터프리터 코어 ✅
+- **Phase 2**: 내장 함수 및 입출력 ✅
+- **Phase 3**: REPL 환경 ✅
+- **Phase 4**: CLI 통합 ✅
+- **Phase 5**: 테스트 및 문서화 ✅
+
 ## 개요
 
 v0.3은 인터프리터와 REPL을 추가하여 BMB 코드를 실행할 수 있게 합니다.
@@ -74,25 +82,28 @@ impl Interpreter {
 
 | 함수 | 시그니처 | 설명 |
 |------|----------|------|
-| `print` | `(x: any) -> ()` | 값 출력 (줄바꿈 없음) |
-| `println` | `(x: any) -> ()` | 값 출력 (줄바꿈) |
-| `read_line` | `() -> i64` | 정수 입력 |
+| `print` | `(x: i64) -> ()` | 값 출력 (줄바꿈 없음) |
+| `println` | `(x: i64) -> ()` | 값 출력 (줄바꿈) |
+| `read_int` | `() -> i64` | 정수 입력 |
 | `assert` | `(cond: bool) -> ()` | 조건 검사 |
+| `abs` | `(n: i64) -> i64` | 절대값 |
+| `min` | `(a: i64, b: i64) -> i64` | 최소값 |
+| `max` | `(a: i64, b: i64) -> i64` | 최대값 |
 
 ## 프로젝트 구조
 
 ```
 bmb/src/
 ├── interp/
-│   ├── mod.rs          # 모듈 진입점
-│   ├── value.rs        # Value 타입 정의
-│   ├── env.rs          # Environment 구현
-│   ├── eval.rs         # Evaluator 구현
-│   ├── builtins.rs     # 내장 함수
-│   └── error.rs        # RuntimeError
+│   ├── mod.rs          # 모듈 진입점 및 내보내기
+│   ├── value.rs        # Value 타입 정의 (Int, Float, Bool, Unit)
+│   ├── env.rs          # Environment 스코프 체인
+│   ├── eval.rs         # Interpreter 및 내장 함수 구현
+│   └── error.rs        # RuntimeError 정의
 ├── repl/
-│   ├── mod.rs          # REPL 진입점
-│   └── completer.rs    # 자동완성 (선택)
+│   └── mod.rs          # REPL 구현 (rustyline 통합)
+examples/
+└── hello.bmb           # 예제 프로그램
 ```
 
 ## 구현 페이즈

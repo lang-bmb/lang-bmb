@@ -2,13 +2,15 @@
 
 A verified systems programming language with contract verification.
 
-## Current Status: v0.2 Sprout
+## Current Status: v0.3 Root
 
 ### Features
 
 - **Lexer/Parser**: logos + lalrpop based tokenization and AST generation
 - **Type System**: Basic types (i32, i64, f64, bool, unit), functions, let bindings
 - **Contract Verification**: pre/post condition verification via SMT solver (Z3)
+- **Interpreter**: Tree-walking interpreter for direct execution
+- **REPL**: Interactive environment with rustyline
 - **Error Reporting**: ariadne-based rich error messages
 
 ### Quick Start
@@ -16,6 +18,12 @@ A verified systems programming language with contract verification.
 ```bash
 # Build the compiler
 cargo build --release
+
+# Run a BMB program
+bmb run examples/hello.bmb
+
+# Start interactive REPL
+bmb repl
 
 # Check a file for type errors
 bmb check examples/simple.bmb
@@ -53,17 +61,16 @@ All 1 function(s) verified successfully.
 ```
 bmb/
 ├── src/
-│   ├── lexer.rs       # Token definitions
-│   ├── grammar.lalrpop # Parser grammar
+│   ├── lexer/         # Token definitions (logos)
+│   ├── parser/        # Parser (lalrpop)
 │   ├── ast.rs         # AST definitions
-│   ├── types.rs       # Type checker
+│   ├── types/         # Type checker
 │   ├── error.rs       # Error reporting
 │   ├── smt/           # SMT-LIB2 generation
-│   │   ├── translator.rs
-│   │   └── solver.rs
-│   └── verify/        # Contract verification
-│       └── contract.rs
-└── tests/examples/    # Test files
+│   ├── verify/        # Contract verification
+│   ├── interp/        # Tree-walking interpreter
+│   └── repl/          # Interactive REPL
+└── examples/          # Example programs
 ```
 
 ## Requirements
@@ -78,6 +85,7 @@ bmb/
 - [Roadmap](docs/ROADMAP.md)
 - [v0.1 Implementation](docs/IMPLEMENTATION_v0.1.md)
 - [v0.2 Implementation](docs/IMPLEMENTATION_v0.2.md)
+- [v0.3 Implementation](docs/IMPLEMENTATION_v0.3.md)
 
 ## License
 
