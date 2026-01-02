@@ -667,25 +667,40 @@ playground/
 
 **Note**: WASM 기반 실행은 BMB WASM 타겟 완성 후 연동 예정
 
-### v0.9.5 - lang-bmb-site
+### v0.9.5 - lang-bmb-site ✅ 완료
 
 ```
 lang-bmb-site/
-├── src/pages/
-│   ├── index.astro   # Landing page
-│   ├── docs/         # Documentation
-│   ├── download.astro
-│   ├── changes.astro
-│   └── blog/
-└── content/          # Markdown 콘텐츠
+├── package.json            # Astro 4.x 프로젝트
+├── astro.config.mjs        # Astro 설정
+├── tsconfig.json           # TypeScript 설정
+├── public/
+│   └── favicon.svg         # 파비콘
+├── src/
+│   ├── components/
+│   │   ├── Header.astro    # 네비게이션
+│   │   ├── Footer.astro    # 푸터
+│   │   └── CodeBlock.astro # BMB 코드 하이라이팅
+│   ├── layouts/
+│   │   ├── Base.astro      # 기본 레이아웃
+│   │   └── Docs.astro      # 문서 레이아웃
+│   ├── pages/
+│   │   ├── index.astro     # 랜딩 페이지
+│   │   ├── download.astro  # 다운로드 페이지
+│   │   ├── changes.astro   # 변경로그
+│   │   ├── docs/index.astro
+│   │   └── blog/index.astro
+│   └── styles/
+│       └── global.css      # 전역 스타일
+└── content/                # 마크다운 콘텐츠 (추후)
 ```
 
 **페이지**:
-- `/` - Landing page
-- `/docs` - Documentation
-- `/download` - 설치 가이드
-- `/changes` - Changelog
-- `/blog` - 개발 블로그
+- `/` - Landing page (Hero, Features, Quick Start)
+- `/docs` - Documentation (Introduction)
+- `/download` - 설치 가이드 (Quick install, Binaries)
+- `/changes` - Changelog (Version timeline)
+- `/blog` - 개발 블로그 (Posts list)
 
 ### v0.9.6 - benchmark-bmb
 
@@ -884,7 +899,7 @@ v0.9.0 → v0.9.1: tree-sitter-bmb (📈 적당) ✅
 v0.9.1 → v0.9.2: vscode-bmb (📈 적당) ✅
 v0.9.2 → v0.9.3: 원격 레지스트리 (📈 적당) ✅
 v0.9.3 → v0.9.4: playground (📈 적당) ✅
-v0.9.4 → v0.9.5: lang-bmb-site (📈 적당)
+v0.9.4 → v0.9.5: lang-bmb-site (📈 적당) ✅
 v0.9.5 → v0.9.6: benchmark-bmb (📈 적당)
 v0.10.x: Bootstrap 점진적 진행 (📈 적당)
 v0.11.x: BMB 재작성 완성 (📈 적당)
