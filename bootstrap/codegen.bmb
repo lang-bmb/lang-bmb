@@ -1,0 +1,521 @@
+-- BMB Code Generator written in BMB (v0.10.4: Bootstrap Phase 9)
+-- Generates C code from MIR text representation
+-- Uses functional/recursive style following bootstrap patterns
+--
+-- DESIGN:
+-- - Input: MIR text format (from lowering.bmb)
+-- - Output: C code text
+-- - Line separator: | (pipe character)
+--
+-- SCOPE (v0.10.4):
+-- - MIR instruction → C statement conversion
+-- - Type mapping (i64 → int64_t, bool → int)
+-- - Control flow (return, goto, branch)
+-- - Function generation
+--
+-- LIMITATIONS:
+-- - No struct/array support yet
+-- - Simple expressions only
+-- - Single-file output
+
+-- ============================================================================
+-- SECTION 1: String Utilities (no imports in bootstrap)
+-- ============================================================================
+
+fn digit_char(d: i64) -> String =
+    if d == 0 then "0" else if d == 1 then "1" else if d == 2 then "2"
+    else if d == 3 then "3" else if d == 4 then "4" else if d == 5 then "5"
+    else if d == 6 then "6" else if d == 7 then "7" else if d == 8 then "8"
+    else "9";
+
+fn int_to_string(n: i64) -> String =
+    if n < 0 then "-" + int_to_string(0 - n)
+    else if n < 10 then digit_char(n)
+    else int_to_string(n / 10) + digit_char(n - (n / 10) * 10);
+
+fn is_digit(c: i64) -> bool = c >= 48 and c <= 57;
+fn is_alpha(c: i64) -> bool = (c >= 65 and c <= 90) or (c >= 97 and c <= 122);
+fn is_alnum(c: i64) -> bool = is_alpha(c) or is_digit(c) or c == 95;
+
+-- ============================================================================
+-- SECTION 2: String Parsing Helpers
+-- ============================================================================
+
+fn skip_ws(s: String, pos: i64) -> i64 =
+    if pos >= s.len() then pos
+    else if s.char_at(pos) == 32 then skip_ws(s, pos + 1)
+    else pos;
+
+fn find_char(s: String, c: i64, pos: i64) -> i64 =
+    if pos >= s.len() then pos
+    else if s.char_at(pos) == c then pos
+    else find_char(s, c, pos + 1);
+
+fn find_pipe(s: String, pos: i64) -> i64 = find_char(s, 124, pos);
+
+fn starts_with(s: String, prefix: String, pos: i64) -> bool =
+    starts_with_at(s, prefix, pos, 0);
+
+fn starts_with_at(s: String, prefix: String, pos: i64, i: i64) -> bool =
+    if i >= prefix.len() then true
+    else if pos + i >= s.len() then false
+    else if s.char_at(pos + i) != prefix.char_at(i) then false
+    else starts_with_at(s, prefix, pos, i + 1);
+
+fn read_until_ws(s: String, pos: i64) -> String =
+    read_until_ws_acc(s, pos, "");
+
+fn read_until_ws_acc(s: String, pos: i64, acc: String) -> String =
+    if pos >= s.len() then acc
+    else let c = s.char_at(pos);
+        -- Stop at space, comma, parens, pipe
+        if c == 32 or c == 44 or c == 40 or c == 41 or c == 124 then acc
+        else read_until_ws_acc(s, pos + 1, acc + char_to_string(c));
+
+-- Remove trailing colon from label names (e.g., "entry:" -> "entry")
+fn strip_trailing_colon(s: String) -> String =
+    if s.len() == 0 then ""
+    else if s.char_at(s.len() - 1) == 58 then s.slice(0, s.len() - 1)
+    else s;
+
+fn char_to_string(c: i64) -> String =
+    if c == 32 then " " else if c == 33 then "!" else if c == 37 then "%"
+    else if c == 38 then "&" else if c == 40 then "(" else if c == 41 then ")"
+    else if c == 42 then "*" else if c == 43 then "+" else if c == 44 then ","
+    else if c == 45 then "-" else if c == 46 then "." else if c == 47 then "/"
+    else if c == 58 then ":" else if c == 59 then ";" else if c == 60 then "<"
+    else if c == 61 then "=" else if c == 62 then ">" else if c == 91 then "["
+    else if c == 93 then "]" else if c == 95 then "_" else if c == 123 then "{"
+    else if c == 124 then "|" else if c == 125 then "}"
+    else if c >= 48 and c <= 57 then digit_char(c - 48)
+    else if c >= 65 and c <= 90 then char_upper(c)
+    else if c >= 97 and c <= 122 then char_lower(c)
+    else "?";
+
+fn char_upper(c: i64) -> String =
+    if c == 65 then "A" else if c == 66 then "B" else if c == 67 then "C"
+    else if c == 68 then "D" else if c == 69 then "E" else if c == 70 then "F"
+    else if c == 71 then "G" else if c == 72 then "H" else if c == 73 then "I"
+    else if c == 74 then "J" else if c == 75 then "K" else if c == 76 then "L"
+    else if c == 77 then "M" else if c == 78 then "N" else if c == 79 then "O"
+    else if c == 80 then "P" else if c == 81 then "Q" else if c == 82 then "R"
+    else if c == 83 then "S" else if c == 84 then "T" else if c == 85 then "U"
+    else if c == 86 then "V" else if c == 87 then "W" else if c == 88 then "X"
+    else if c == 89 then "Y" else "Z";
+
+fn char_lower(c: i64) -> String =
+    if c == 97 then "a" else if c == 98 then "b" else if c == 99 then "c"
+    else if c == 100 then "d" else if c == 101 then "e" else if c == 102 then "f"
+    else if c == 103 then "g" else if c == 104 then "h" else if c == 105 then "i"
+    else if c == 106 then "j" else if c == 107 then "k" else if c == 108 then "l"
+    else if c == 109 then "m" else if c == 110 then "n" else if c == 111 then "o"
+    else if c == 112 then "p" else if c == 113 then "q" else if c == 114 then "r"
+    else if c == 115 then "s" else if c == 116 then "t" else if c == 117 then "u"
+    else if c == 118 then "v" else if c == 119 then "w" else if c == 120 then "x"
+    else if c == 121 then "y" else "z";
+
+-- ============================================================================
+-- SECTION 3: Type Mapping (BMB → C)
+-- ============================================================================
+
+fn c_type(ty: String) -> String =
+    if ty == "i64" then "int64_t"
+    else if ty == "i32" then "int32_t"
+    else if ty == "bool" then "int"
+    else if ty == "unit" then "void"
+    else if ty == "String" then "const char*"
+    else "int64_t";
+
+-- ============================================================================
+-- SECTION 4: Place Conversion (% prefix removal)
+-- ============================================================================
+
+-- Convert MIR place (%name) to C variable (name)
+fn c_place(place: String) -> String =
+    if place.len() == 0 then ""
+    else if place.char_at(0) == 37 then place.slice(1, place.len())
+    else place;
+
+-- ============================================================================
+-- SECTION 5: Constant Conversion
+-- ============================================================================
+
+-- MIR const format: "I:42" or "B:1" or "S:hello"
+fn c_const(value: String) -> String =
+    if value.len() < 2 then value
+    else let kind = value.char_at(0);
+        let rest = value.slice(2, value.len());
+        if kind == 73 then rest  -- I: integer
+        else if kind == 66 then  -- B: boolean
+            if rest == "1" then "1" else "0"
+        else if kind == 83 then  -- S: string (wrap with QUOTE markers)
+            "QUOTE_" + rest + "_QUOTE"
+        else rest;
+
+-- ============================================================================
+-- SECTION 6: Operator Conversion
+-- ============================================================================
+
+fn c_binop(op: String) -> String =
+    if op == "+" then "+"
+    else if op == "-" then "-"
+    else if op == "*" then "*"
+    else if op == "/" then "/"
+    else if op == "%" then "%"
+    else if op == "==" then "=="
+    else if op == "!=" then "!="
+    else if op == "<" then "<"
+    else if op == ">" then ">"
+    else if op == "<=" then "<="
+    else if op == ">=" then ">="
+    else if op == "and" then "&&"
+    else if op == "or" then "||"
+    else op;
+
+fn c_unop(op: String) -> String =
+    if op == "neg" then "-"
+    else if op == "not" then "!"
+    else op;
+
+-- ============================================================================
+-- SECTION 7: Instruction Parsing & Generation
+-- ============================================================================
+
+-- Parse: "%dest = const I:42"
+-- Generate: "int64_t dest = 42;"
+fn gen_const_inst(line: String) -> String =
+    let pos1 = skip_ws(line, 0);
+    let dest = read_until_ws(line, pos1);
+    let pos2 = find_char(line, 61, pos1);  -- '='
+    let pos3 = skip_ws(line, pos2 + 1);
+    -- Skip "const "
+    let pos4 = pos3 + 6;
+    let value = read_until_ws(line, pos4);
+    "    int64_t " + c_place(dest) + " = " + c_const(value) + ";";
+
+-- Parse: "%dest = copy %src"
+-- Generate: "int64_t dest = src;"
+fn gen_copy_inst(line: String) -> String =
+    let pos1 = skip_ws(line, 0);
+    let dest = read_until_ws(line, pos1);
+    let pos2 = find_char(line, 61, pos1);
+    let pos3 = skip_ws(line, pos2 + 1);
+    -- Skip "copy "
+    let pos4 = pos3 + 5;
+    let src = read_until_ws(line, pos4);
+    "    int64_t " + c_place(dest) + " = " + c_place(src) + ";";
+
+-- Parse: "%dest = + %lhs, %rhs"
+-- Generate: "int64_t dest = lhs + rhs;"
+fn gen_binop_inst(line: String) -> String =
+    let pos1 = skip_ws(line, 0);
+    let dest = read_until_ws(line, pos1);
+    let pos2 = find_char(line, 61, pos1);
+    let pos3 = skip_ws(line, pos2 + 1);
+    let op = read_until_ws(line, pos3);
+    let pos4 = skip_ws(line, pos3 + op.len());
+    let lhs = read_until_ws(line, pos4);
+    let pos5 = find_char(line, 44, pos4);  -- ','
+    let pos6 = skip_ws(line, pos5 + 1);
+    let rhs = read_until_ws(line, pos6);
+    "    int64_t " + c_place(dest) + " = " + c_place(lhs) + " " + c_binop(op) + " " + c_place(rhs) + ";";
+
+-- Parse: "%dest = neg %src" or "%dest = not %src"
+-- Generate: "int64_t dest = -src;" or "int dest = !src;"
+fn gen_unop_inst(line: String) -> String =
+    let pos1 = skip_ws(line, 0);
+    let dest = read_until_ws(line, pos1);
+    let pos2 = find_char(line, 61, pos1);
+    let pos3 = skip_ws(line, pos2 + 1);
+    let op = read_until_ws(line, pos3);
+    let pos4 = skip_ws(line, pos3 + op.len());
+    let src = read_until_ws(line, pos4);
+    let ty = if op == "not" then "int" else "int64_t";
+    "    " + ty + " " + c_place(dest) + " = " + c_unop(op) + c_place(src) + ";";
+
+-- Parse: "%dest = call func(%args)"
+-- Generate: "int64_t dest = func(args);"
+fn gen_call_inst(line: String) -> String =
+    let pos1 = skip_ws(line, 0);
+    let dest = read_until_ws(line, pos1);
+    let pos2 = find_char(line, 61, pos1);
+    let pos3 = skip_ws(line, pos2 + 1);
+    -- Skip "call "
+    let pos4 = pos3 + 5;
+    let func = read_until_ws(line, pos4);
+    let pos5 = find_char(line, 40, pos4);  -- '('
+    let pos6 = find_char(line, 41, pos5);  -- ')'
+    let args_raw = line.slice(pos5 + 1, pos6);
+    let args = convert_args(args_raw);
+    "    int64_t " + c_place(dest) + " = " + func + "(" + args + ");";
+
+-- Convert args: "%a, %b" -> "a, b"
+fn convert_args(args: String) -> String =
+    convert_args_acc(args, 0, "");
+
+fn convert_args_acc(args: String, pos: i64, acc: String) -> String =
+    if pos >= args.len() then acc
+    else let c = args.char_at(pos);
+        if c == 37 then  -- '%' skip
+            convert_args_acc(args, pos + 1, acc)
+        else if c == 32 then  -- space skip
+            convert_args_acc(args, pos + 1, acc)
+        else
+            convert_args_acc(args, pos + 1, acc + char_to_string(c));
+
+-- ============================================================================
+-- SECTION 8: Terminator Parsing & Generation
+-- ============================================================================
+
+-- Parse: "return %value" or "return"
+-- Generate: "return value;" or "return;"
+fn gen_return(line: String) -> String =
+    let pos1 = skip_ws(line, 0);
+    -- Skip "return"
+    let pos2 = pos1 + 6;
+    let pos3 = skip_ws(line, pos2);
+    if pos3 >= line.len() then "    return;"
+    else
+        let value = read_until_ws(line, pos3);
+        "    return " + c_place(value) + ";";
+
+-- Parse: "goto label"
+-- Generate: "goto label;"
+fn gen_goto(line: String) -> String =
+    let pos1 = skip_ws(line, 0);
+    -- Skip "goto "
+    let pos2 = pos1 + 5;
+    let label = read_until_ws(line, pos2);
+    "    goto " + label + ";";
+
+-- Parse: "branch %cond, then_label, else_label"
+-- Generate: "if (cond) goto then_label; else goto else_label;"
+fn gen_branch(line: String) -> String =
+    let pos1 = skip_ws(line, 0);
+    -- Skip "branch "
+    let pos2 = pos1 + 7;
+    let cond = read_until_ws(line, pos2);
+    let pos3 = find_char(line, 44, pos2);
+    let pos4 = skip_ws(line, pos3 + 1);
+    let then_lbl = read_until_ws(line, pos4);
+    let pos5 = find_char(line, 44, pos4);
+    let pos6 = skip_ws(line, pos5 + 1);
+    let else_lbl = read_until_ws(line, pos6);
+    "    if (" + c_place(cond) + ") goto " + then_lbl + "; else goto " + else_lbl + ";";
+
+-- ============================================================================
+-- SECTION 9: Line Classification & Generation
+-- ============================================================================
+
+fn is_const_line(line: String) -> bool =
+    let pos = skip_ws(line, 0);
+    let pos2 = find_char(line, 61, pos);
+    if pos2 >= line.len() then false
+    else
+        let pos3 = skip_ws(line, pos2 + 1);
+        starts_with(line, "const", pos3);
+
+fn is_copy_line(line: String) -> bool =
+    let pos = skip_ws(line, 0);
+    let pos2 = find_char(line, 61, pos);
+    if pos2 >= line.len() then false
+    else
+        let pos3 = skip_ws(line, pos2 + 1);
+        starts_with(line, "copy", pos3);
+
+fn is_call_line(line: String) -> bool =
+    let pos = skip_ws(line, 0);
+    let pos2 = find_char(line, 61, pos);
+    if pos2 >= line.len() then false
+    else
+        let pos3 = skip_ws(line, pos2 + 1);
+        starts_with(line, "call", pos3);
+
+fn is_unop_line(line: String) -> bool =
+    let pos = skip_ws(line, 0);
+    let pos2 = find_char(line, 61, pos);
+    if pos2 >= line.len() then false
+    else
+        let pos3 = skip_ws(line, pos2 + 1);
+        starts_with(line, "neg", pos3) or starts_with(line, "not", pos3);
+
+fn is_return_line(line: String) -> bool =
+    let pos = skip_ws(line, 0);
+    starts_with(line, "return", pos);
+
+fn is_goto_line(line: String) -> bool =
+    let pos = skip_ws(line, 0);
+    starts_with(line, "goto", pos);
+
+fn is_branch_line(line: String) -> bool =
+    let pos = skip_ws(line, 0);
+    starts_with(line, "branch", pos);
+
+fn is_label_line(line: String) -> bool =
+    let pos = skip_ws(line, 0);
+    if pos >= line.len() then false
+    else
+        -- Label has ':' but no '=' before it
+        let colon = find_char(line, 58, pos);
+        let eq = find_char(line, 61, pos);
+        colon < line.len() and colon > pos and (eq >= line.len() or colon < eq);
+
+-- Generate C code for a single MIR line
+fn gen_line(line: String) -> String =
+    if line.len() == 0 then ""
+    else if is_label_line(line) then
+        let pos = skip_ws(line, 0);
+        let label = strip_trailing_colon(read_until_ws(line, pos));
+        label + ":;"
+    else if is_const_line(line) then gen_const_inst(line)
+    else if is_copy_line(line) then gen_copy_inst(line)
+    else if is_call_line(line) then gen_call_inst(line)
+    else if is_unop_line(line) then gen_unop_inst(line)
+    else if is_return_line(line) then gen_return(line)
+    else if is_goto_line(line) then gen_goto(line)
+    else if is_branch_line(line) then gen_branch(line)
+    else gen_binop_inst(line);
+
+-- ============================================================================
+-- SECTION 10: Multi-Line Processing
+-- ============================================================================
+
+-- Join with newlines for C output
+fn join_c(t1: String, t2: String) -> String =
+    if t1.len() == 0 then t2
+    else if t2.len() == 0 then t1
+    else t1 + "|" + t2;
+
+-- Process multiple MIR lines separated by |
+fn gen_lines(mir: String) -> String =
+    gen_lines_acc(mir, 0, "");
+
+fn gen_lines_acc(mir: String, pos: i64, acc: String) -> String =
+    if pos >= mir.len() then acc
+    else
+        let end = find_pipe(mir, pos);
+        let line = mir.slice(pos, end);
+        let c_line = gen_line(line);
+        let new_acc = join_c(acc, c_line);
+        if end >= mir.len() then new_acc
+        else gen_lines_acc(mir, end + 1, new_acc);
+
+-- ============================================================================
+-- SECTION 11: Function Generation
+-- ============================================================================
+
+-- Generate complete C function from function body MIR
+-- Input: function name, params, return type, body MIR
+fn gen_function(name: String, params: String, ret_ty: String, body: String) -> String =
+    let sig = c_type(ret_ty) + " " + name + "(" + convert_params(params) + ") {";
+    let body_c = gen_lines(body);
+    join_c(join_c(sig, body_c), "}");
+
+-- Convert params: "a: i64, b: i64" -> "int64_t a, int64_t b"
+fn convert_params(params: String) -> String =
+    if params.len() == 0 then ""
+    else convert_params_acc(params, 0, "");
+
+fn convert_params_acc(params: String, pos: i64, acc: String) -> String =
+    if pos >= params.len() then acc
+    else
+        let pos1 = skip_ws(params, pos);  -- Skip leading whitespace
+        let raw_name = read_until_ws(params, pos1);
+        let name = strip_trailing_colon(raw_name);  -- Remove trailing colon if present
+        let pos2 = find_char(params, 58, pos1);  -- ':'
+        let pos3 = skip_ws(params, pos2 + 1);
+        let ty = read_until_ws(params, pos3);
+        let param = c_type(ty) + " " + name;
+        let pos4 = find_char(params, 44, pos3);  -- ','
+        if pos4 >= params.len() then
+            if acc.len() == 0 then param else acc + ", " + param
+        else
+            let new_acc = if acc.len() == 0 then param else acc + ", " + param;
+            convert_params_acc(params, pos4 + 1, new_acc);
+
+-- ============================================================================
+-- SECTION 12: Test Utilities
+-- ============================================================================
+
+fn str_contains(s: String, sub: String) -> bool =
+    str_contains_at(s, sub, 0);
+
+fn str_contains_at(s: String, sub: String, pos: i64) -> bool =
+    if pos + sub.len() > s.len() then false
+    else if s.slice(pos, pos + sub.len()) == sub then true
+    else str_contains_at(s, sub, pos + 1);
+
+fn test_gen(mir: String, expected: String) -> i64 =
+    let result = gen_lines(mir);
+    if str_contains(result, expected) then 1 else 0;
+
+fn test_fn_gen(name: String, params: String, ret_ty: String, body: String, expected: String) -> i64 =
+    let result = gen_function(name, params, ret_ty, body);
+    if str_contains(result, expected) then 1 else 0;
+
+-- ============================================================================
+-- SECTION 13: Main Tests
+-- ============================================================================
+
+fn main() -> i64 =
+    let u0 = println(777);
+
+    -- Test 1: Constant generation (3 tests)
+    let c1 = test_gen("%_t0 = const I:42", "int64_t _t0 = 42");
+    let c2 = test_gen("%_t0 = const B:1", "int64_t _t0 = 1");
+    let c3 = test_gen("%x = const I:100", "int64_t x = 100");
+    let t1 = c1 + c2 + c3;
+    let u1 = println(t1);
+
+    -- Test 2: Binary operation generation (4 tests)
+    let b1 = test_gen("%_t0 = + %a, %b", "int64_t _t0 = a + b");
+    let b2 = test_gen("%_t0 = * %x, %y", "int64_t _t0 = x * y");
+    let b3 = test_gen("%_t0 = == %a, %b", "int64_t _t0 = a == b");
+    let b4 = test_gen("%_t0 = < %x, %y", "int64_t _t0 = x < y");
+    let t2 = b1 + b2 + b3 + b4;
+    let u2 = println(t2);
+
+    -- Test 3: Unary operation generation (2 tests)
+    let n1 = test_gen("%_t0 = neg %x", "int64_t _t0 = -x");
+    let n2 = test_gen("%_t0 = not %b", "int _t0 = !b");
+    let t3 = n1 + n2;
+    let u3 = println(t3);
+
+    -- Test 4: Control flow generation (3 tests)
+    let r1 = test_gen("return %_t0", "return _t0");
+    let r2 = test_gen("return", "return;");
+    let r3 = test_gen("goto entry", "goto entry");
+    let t4 = r1 + r2 + r3;
+    let u4 = println(t4);
+
+    -- Test 5: Branch generation (1 test)
+    let br1 = test_gen("branch %c, then_0, else_0", "if (c) goto then_0");
+    let t5 = br1;
+    let u5 = println(t5);
+
+    -- Test 6: Label generation (1 test)
+    let l1 = test_gen("entry:", "entry:;");
+    let t6 = l1;
+    let u6 = println(t6);
+
+    -- Test 7: Multi-line processing (2 tests)
+    let m1 = test_gen("%_t0 = const I:1|%_t1 = const I:2", "int64_t _t0 = 1");
+    let m2 = test_gen("%_t0 = const I:1|%_t1 = const I:2", "int64_t _t1 = 2");
+    let t7 = m1 + m2;
+    let u7 = println(t7);
+
+    -- Test 8: Function generation (2 tests)
+    let f1 = test_fn_gen("add", "a: i64, b: i64", "i64",
+        "entry:|%_t0 = + %a, %b|return %_t0",
+        "int64_t add(int64_t a, int64_t b)");
+    let f2 = test_fn_gen("add", "a: i64, b: i64", "i64",
+        "entry:|%_t0 = + %a, %b|return %_t0",
+        "return _t0");
+    let t8 = f1 + f2;
+    let u8 = println(t8);
+
+    let u9 = println(888);
+    let total = t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8;
+    let u10 = println(total);
+    let u11 = println(999);
+    total;

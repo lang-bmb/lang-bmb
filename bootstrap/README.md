@@ -240,6 +240,61 @@ compile_expr("not b")   →  "%_t0 = not %b"
 999 (end marker)
 ```
 
+### codegen.bmb (18KB) - v0.10.4
+MIR to C code generation module.
+
+**Features:**
+- Type mapping: i64 → int64_t, bool → int, unit → void
+- MIR instruction parsing and C statement generation
+- Binary operators: +, -, *, /, %, ==, !=, <, >, <=, >=, and, or
+- Unary operators: neg (negation), not (logical not)
+- Control flow: return, goto, branch (conditional)
+- Label generation for basic blocks
+- Function generation with signature and body
+- Parameter conversion: "a: i64, b: i64" → "int64_t a, int64_t b"
+
+**C Code Generation:**
+```c
+// MIR → C examples
+%_t0 = const I:42      →  int64_t _t0 = 42;
+%_t0 = + %a, %b        →  int64_t _t0 = a + b;
+%_t0 = == %x, %y       →  int64_t _t0 = x == y;
+%_t0 = neg %x          →  int64_t _t0 = -x;
+%_t0 = not %b          →  int _t0 = !b;
+return %_t0            →  return _t0;
+goto entry             →  goto entry;
+branch %c, t, e        →  if (c) goto t; else goto e;
+entry:                 →  entry:;
+```
+
+**Function Generation:**
+```c
+// Input: name="add", params="a: i64, b: i64", ret="i64"
+// Body: "entry:|%_t0 = + %a, %b|return %_t0"
+// Output:
+int64_t add(int64_t a, int64_t b) {
+entry:;
+    int64_t _t0 = a + b;
+    return _t0;
+}
+```
+
+**Test output:**
+```
+777 (start marker)
+3  (constant generation tests)
+4  (binary operation tests)
+2  (unary operation tests)
+3  (control flow tests)
+1  (branch tests)
+1  (label tests)
+2  (multi-line tests)
+2  (function generation tests)
+888 (separator)
+18 (total passed)
+999 (end marker)
+```
+
 ## Token Encoding
 
 Tokens are encoded as a single i64 value:
@@ -281,6 +336,7 @@ cargo run --release --bin bmb -- check bootstrap/types.bmb
 cargo run --release --bin bmb -- check bootstrap/mir.bmb
 cargo run --release --bin bmb -- check bootstrap/lowering.bmb
 cargo run --release --bin bmb -- check bootstrap/pipeline.bmb
+cargo run --release --bin bmb -- check bootstrap/codegen.bmb
 
 # Run tests
 cargo run --release --bin bmb -- run bootstrap/lexer.bmb
@@ -291,6 +347,7 @@ cargo run --release --bin bmb -- run bootstrap/types.bmb
 cargo run --release --bin bmb -- run bootstrap/mir.bmb
 cargo run --release --bin bmb -- run bootstrap/lowering.bmb
 cargo run --release --bin bmb -- run bootstrap/pipeline.bmb
+cargo run --release --bin bmb -- run bootstrap/codegen.bmb
 ```
 
 ## Limitations
@@ -309,5 +366,6 @@ cargo run --release --bin bmb -- run bootstrap/pipeline.bmb
 - [x] MIR foundation (v0.10.1) ✅
 - [x] AST → MIR lowering (v0.10.2) ✅
 - [x] End-to-end pipeline: source → AST → MIR → text output (v0.10.3) ✅
+- [x] MIR → C code generation (v0.10.4) ✅
 - [ ] Struct/Enum lowering support (v0.11+)
 - [ ] Optimization passes in BMB (v0.11+)
