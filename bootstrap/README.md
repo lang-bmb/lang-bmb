@@ -466,6 +466,107 @@ cd runtime
 # Creates test_add.exe and runs it
 ```
 
+## End-to-End Validation (v0.10.11)
+
+The `examples/bootstrap_test/` directory provides comprehensive end-to-end validation comparing interpreter results with natively compiled executables.
+
+### Test Programs
+
+| Program | Algorithm | Expected Output |
+|---------|-----------|-----------------|
+| `fibonacci.bmb` | Recursive Fibonacci(10) | 55 |
+| `factorial.bmb` | Iterative factorial(5) | 120 |
+
+### Hand-Written LLVM IR
+
+Each test program has a corresponding `.ll` file demonstrating the expected LLVM IR output:
+
+**fibonacci.ll** - Recursive with PHI nodes:
+```llvm
+define i64 @fib(i64 %n) {
+entry:
+  %cmp = icmp sle i64 %n, 1
+  br i1 %cmp, label %then_0, label %else_0
+then_0:
+  br label %merge_0
+else_0:
+  %n_minus_1 = sub i64 %n, 1
+  %fib_n1 = call i64 @fib(i64 %n_minus_1)
+  %n_minus_2 = sub i64 %n, 2
+  %fib_n2 = call i64 @fib(i64 %n_minus_2)
+  %sum = add i64 %fib_n1, %fib_n2
+  br label %merge_0
+merge_0:
+  %result = phi i64 [ %n, %then_0 ], [ %sum, %else_0 ]
+  ret i64 %result
+}
+```
+
+**factorial.ll** - Tail-recursive with accumulator:
+```llvm
+define i64 @factorial_iter(i64 %n, i64 %acc) {
+entry:
+  %cmp = icmp sle i64 %n, 1
+  br i1 %cmp, label %then_0, label %else_0
+then_0:
+  br label %merge_0
+else_0:
+  %n_minus_1 = sub i64 %n, 1
+  %new_acc = mul i64 %acc, %n
+  %rec_result = call i64 @factorial_iter(i64 %n_minus_1, i64 %new_acc)
+  br label %merge_0
+merge_0:
+  %result = phi i64 [ %acc, %then_0 ], [ %rec_result, %else_0 ]
+  ret i64 %result
+}
+```
+
+### Validation Scripts
+
+| Script | Platform | Purpose |
+|--------|----------|---------|
+| `validate_all.sh` | Unix/Git Bash | Compile all .ll files and verify symbols |
+| `run_test.sh` | Unix/Git Bash | Full e2e test: interpreter vs native |
+| `run_test.ps1` | Windows PowerShell | Full e2e test with Visual Studio |
+
+### Running Validation
+
+```bash
+# Quick validation (LLVM IR → object file)
+cd examples/bootstrap_test
+bash validate_all.sh
+
+# Output:
+# === BMB Bootstrap LLVM IR Validation ===
+# --- Testing: fibonacci ---
+#   ✓ Compiled successfully
+#   ✓ 'main' symbol found
+#   ✓ 'println' external reference found
+#   ✓ fibonacci PASSED
+
+# Full end-to-end test (requires Developer PowerShell on Windows)
+.\run_test.ps1
+
+# Output:
+# [1/5] Running with BMB interpreter...
+#   Interpreter result: 55
+# [2/5] Compiling LLVM IR...
+# [3/5] Compiling runtime...
+# [4/5] Linking...
+# [5/5] Running native executable...
+#   Native result: 55
+# SUCCESS: Results match!
+```
+
+### Symbol Verification
+
+The LLVM object files are verified with llvm-nm:
+```
+00000000 T fib           # T = defined function
+00000060 T main          # T = defined function
+         U println       # U = external reference (runtime)
+```
+
 ### Test LLVM IR Examples
 
 **test_add.ll** - Basic function call:
@@ -571,5 +672,6 @@ cargo run --release --bin bmb -- run bootstrap/compiler.bmb
 - [x] Full compiler pipeline integration (v0.10.8) ✅
 - [x] Unified compiler entry point (v0.10.9) ✅
 - [x] Integration testing with LLVM toolchain (v0.10.10) ✅
+- [x] End-to-end program compilation validation (v0.10.11) ✅
 - [ ] Struct/Enum lowering support (v0.11+)
 - [ ] Optimization passes in BMB (v0.11+)

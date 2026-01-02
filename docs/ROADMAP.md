@@ -1099,6 +1099,65 @@ merge_0:
 }
 ```
 
+### v0.10.11 - End-to-End Program Compilation Validation ✅ 완료
+
+**구현 내용:**
+- 종합 테스트 프로그램: `fibonacci.bmb`, `factorial.bmb`
+- 수작성 LLVM IR: bootstrap 패턴 검증용 `.ll` 파일
+- 인터프리터 vs 네이티브 결과 비교 프레임워크
+- 자동화 스크립트: `validate_all.sh`, `run_test.sh`, `run_test.ps1`
+- 심볼 검증: `llvm-nm`으로 함수 심볼 확인
+
+**파일 구조:**
+```
+examples/bootstrap_test/
+├── fibonacci.bmb       # 재귀 피보나치 (fib(10) = 55)
+├── fibonacci.ll        # 수작성 LLVM IR (PHI 노드 포함)
+├── factorial.bmb       # 반복 팩토리얼 (factorial(5) = 120)
+├── factorial.ll        # 수작성 LLVM IR (꼬리 재귀 패턴)
+├── validate_all.sh     # LLVM IR 컴파일 검증
+├── run_test.sh         # Unix e2e 테스트
+└── run_test.ps1        # Windows e2e 테스트
+```
+
+**검증 결과:**
+```bash
+# LLVM IR 컴파일
+$ clang -c fibonacci.ll -o fibonacci.obj
+$ llvm-nm fibonacci.obj
+00000000 T fib
+00000060 T main
+         U println
+
+# 인터프리터 결과
+$ bmb run examples/bootstrap_test/fibonacci.bmb
+55
+
+$ bmb run examples/bootstrap_test/factorial.bmb
+120
+```
+
+**fibonacci.ll 핵심 (재귀 + PHI):**
+```llvm
+define i64 @fib(i64 %n) {
+entry:
+  %cmp = icmp sle i64 %n, 1
+  br i1 %cmp, label %then_0, label %else_0
+then_0:
+  br label %merge_0
+else_0:
+  %n_minus_1 = sub i64 %n, 1
+  %fib_n1 = call i64 @fib(i64 %n_minus_1)
+  %n_minus_2 = sub i64 %n, 2
+  %fib_n2 = call i64 @fib(i64 %n_minus_2)
+  %sum = add i64 %fib_n1, %fib_n2
+  br label %merge_0
+merge_0:
+  %result = phi i64 [ %n, %then_0 ], [ %sum, %else_0 ]
+  ret i64 %result
+}
+```
+
 ---
 
 ## v0.11 Dawn (Bootstrap 완성)
@@ -1242,7 +1301,8 @@ v0.10.6 → v0.10.7: LLVM IR 함수 생성 (📈 적당) ✅
 v0.10.7 → v0.10.8: Full Pipeline 통합 (📈 적당) ✅
 v0.10.8 → v0.10.9: Unified Compiler Entry Point (📈 적당) ✅
 v0.10.9 → v0.10.10: Integration Testing (📈 적당) ✅
-v0.10.10 → v0.11.x: BMB 재작성 완성 (📈 적당)
+v0.10.10 → v0.10.11: End-to-End Validation (📈 적당) ✅
+v0.10.11 → v0.11.x: BMB 재작성 완성 (📈 적당)
 ```
 
 ---
@@ -1255,7 +1315,7 @@ v0.6: 표준 라이브러리 기초 (100+개 함수) ✅
 v0.7: 도구 기초 (fmt, lsp, test, action-bmb) ✅
 v0.8: 패키지 기초 (곳간) ✅
 v0.9: 생태계 (에디터, 원격 패키지, playground, site, benchmark) ✅
-v0.10: Bootstrap 진행 (타입체커 ✅, MIR ✅, Lowering ✅, Pipeline ✅, LLVM IR ✅, Compiler ✅, Integration ✅) 🔄
+v0.10: Bootstrap 진행 (타입체커 ✅, MIR ✅, Lowering ✅, Pipeline ✅, LLVM IR ✅, Compiler ✅, Integration ✅, E2E Validation ✅) 🔄
 v0.11: Bootstrap 완성 (Stage 2, 도구 BMB 재작성)
 v1.0: 안정성 약속 + 검증 완료
 
