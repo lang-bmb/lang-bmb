@@ -551,13 +551,23 @@ regex = "1.10"
 
 > 목표: 에디터 + 원격 패키지 + 웹 인프라
 
-### v0.9.0 - LSP 확장
+### v0.9.0 - LSP 확장 ✅ 완료
 
+**추가 기능**:
+- [x] `textDocument/formatting` - 문서 포맷팅 (AST 기반)
+- [x] `textDocument/definition` - 정의로 이동 (심볼 테이블 기반)
+- [x] `textDocument/references` - 참조 찾기 (AST 순회)
+
+**구현 세부**:
+- 심볼 테이블 구축 (SymbolDef, SymbolRef)
+- 함수, 구조체, 열거형 정의 추적
+- 표현식 내 참조 수집
+- AST 프리티 프린터 (format_program, format_expr 등)
+
+**산출물**:
 ```
-추가 기능:
-- textDocument/definition     # 정의로 이동
-- textDocument/references     # 참조 찾기
-- textDocument/formatting     # 포맷팅 연동
+bmb/src/lsp/
+└── mod.rs           # LSP Backend (1000+ lines)
 ```
 
 ### v0.9.1 - tree-sitter-bmb
@@ -823,7 +833,8 @@ v0.8.1 → v0.8.2: 로컬 의존성 (📈 적당) ✅
 v0.8.2 → v0.8.3: 유틸리티 명령어 (📈 적당) ✅
 v0.8.3 → v0.8.4: Lock 파일 (📈 적당) ✅
 v0.8.4 → v0.8.5: 의존성 추가 (📈 적당) ✅
-v0.8.5 → v0.9.0: LSP 확장 (📈 적당)
+v0.8.5 → v0.9.0: LSP 확장 (📈 적당) ✅
+v0.9.0 → v0.9.1: tree-sitter-bmb (📈 적당)
 v0.9.x: 생태계 모듈 순차 추가 (📈 적당)
 v0.10.x: Bootstrap 점진적 진행 (📈 적당)
 v0.11.x: BMB 재작성 완성 (📈 적당)
