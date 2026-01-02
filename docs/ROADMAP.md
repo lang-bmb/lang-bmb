@@ -596,19 +596,28 @@ ecosystem/tree-sitter-bmb/
 └── README.md           # 사용 가이드
 ```
 
-### v0.9.2 - vscode-bmb
+### v0.9.2 - vscode-bmb ✅ 완료
 
 ```
 vscode-bmb/
-├── package.json
-├── syntaxes/bmb.tmLanguage.json
-└── src/extension.ts  # LSP 클라이언트
+├── package.json            # 확장 매니페스트
+├── language-configuration.json  # 언어 설정
+├── tsconfig.json           # TypeScript 설정
+├── .eslintrc.json          # 린트 설정
+├── syntaxes/
+│   └── bmb.tmLanguage.json # TextMate 문법
+├── src/
+│   └── extension.ts        # LSP 클라이언트
+└── README.md               # 사용 가이드
 ```
 
 **기능**:
 - 구문 하이라이팅 (TextMate)
 - 에러 표시 (LSP)
 - 자동완성
+- Go to Definition
+- Find References
+- 코드 포매팅
 
 ### v0.9.3 - 원격 패키지 레지스트리
 
@@ -849,7 +858,7 @@ v0.8.3 → v0.8.4: Lock 파일 (📈 적당) ✅
 v0.8.4 → v0.8.5: 의존성 추가 (📈 적당) ✅
 v0.8.5 → v0.9.0: LSP 확장 (📈 적당) ✅
 v0.9.0 → v0.9.1: tree-sitter-bmb (📈 적당) ✅
-v0.9.1 → v0.9.2: vscode-bmb (📈 적당)
+v0.9.1 → v0.9.2: vscode-bmb (📈 적당) ✅
 v0.9.x: 생태계 모듈 순차 추가 (📈 적당)
 v0.10.x: Bootstrap 점진적 진행 (📈 적당)
 v0.11.x: BMB 재작성 완성 (📈 적당)
