@@ -88,6 +88,35 @@ Comprehensive test suite with 15 test categories.
 14. Deep nesting
 15. Nested function calls
 
+### types.bmb (15KB) - NEW in v0.10.0
+Type checker foundation for BMB.
+
+**Features:**
+- Type encoding: `kind * 1000` (i64=2000, bool=4000, etc.)
+- Environment: String-based name:type pairs with linear lookup
+- Built-in function signatures (println, abs, min, max, etc.)
+- Binary operator type checking (+, -, *, /, %, ==, <, etc.)
+- Unary operator type checking (-, not)
+- If-then-else type checking (condition bool, branches match)
+- Let binding type checking
+- Function call type checking (arity and arg types)
+
+**Test output:**
+```
+777 (start marker)
+5  (type encoding tests)
+5  (binary operator tests)
+4  (unary operator tests)
+3  (environment tests)
+5  (builtin lookup tests)
+4  (if-then-else tests)
+3  (let binding tests)
+8  (function call tests)
+888 (separator)
+37 (total passed)
+999 (end marker)
+```
+
 ## Token Encoding
 
 Tokens are encoded as a single i64 value:
@@ -146,3 +175,6 @@ cargo run --release -- run bootstrap/parser_test.bmb
 - [ ] Import system for code sharing
 - [ ] Full compiler pipeline in BMB
 - [ ] Self-compilation of the bootstrap
+- [ ] Struct/Enum type checking (v0.10.1)
+- [ ] MIR generation (v0.10.1)
+- [ ] LLVM IR generation (v0.10.1)

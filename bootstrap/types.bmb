@@ -1,0 +1,524 @@
+-- BMB Type Checker written in BMB (v0.10.0: Bootstrap Phase 5)
+-- A simple type checker for the BMB language
+-- Uses functional/recursive style following lexer.bmb patterns
+--
+-- DESIGN:
+-- - Type encoding: single i64 value (like token encoding)
+-- - Environment: fixed-size arrays for name-type pairs
+-- - Linear search for lookups (no HashMap needed)
+-- - Error handling: negative return values indicate errors
+--
+-- SCOPE (v0.10.0):
+-- - Literal types: i64, bool, String
+-- - Binary operators: arithmetic, comparison, logical
+-- - Unary operators: negation, not
+-- - If-then-else type checking
+-- - Let binding type checking
+-- - Function call type checking (built-in functions)
+--
+-- LIMITATIONS:
+-- - Fixed max 64 variables in scope
+-- - Fixed max 32 functions
+-- - No struct/enum type checking (v0.10.1)
+-- - No generic types
+
+-- ============================================================================
+-- Type Encoding
+-- ============================================================================
+-- Types are encoded as single i64 values:
+--   kind * 1000 + extra_info
+--
+-- Type kinds:
+--   1 = i32
+--   2 = i64
+--   3 = f64
+--   4 = bool
+--   5 = String
+--   6 = Unit
+--   7 = Named (struct/enum) - extra_info = name index in type table
+--   8 = Array - encoded separately
+--   9 = Error (type checking failed)
+
+fn type_i32() -> i64 = 1000;
+fn type_i64() -> i64 = 2000;
+fn type_f64() -> i64 = 3000;
+fn type_bool() -> i64 = 4000;
+fn type_string() -> i64 = 5000;
+fn type_unit() -> i64 = 6000;
+fn type_error() -> i64 = 9000;
+
+-- Extract type kind from encoded type
+fn type_kind(ty: i64) -> i64 = ty / 1000;
+
+-- Check if type is numeric (i32, i64, f64)
+fn is_numeric(ty: i64) -> bool =
+    let k = type_kind(ty);
+    k == 1 or k == 2 or k == 3;
+
+-- Check if type is integer (i32, i64)
+fn is_integer(ty: i64) -> bool =
+    let k = type_kind(ty);
+    k == 1 or k == 2;
+
+-- Check if type is error
+fn is_error(ty: i64) -> bool = type_kind(ty) == 9;
+
+-- Type name for error messages (returns code for println)
+fn type_name_code(ty: i64) -> i64 =
+    let k = type_kind(ty);
+    if k == 1 then 32       -- 'i32'
+    else if k == 2 then 64  -- 'i64'
+    else if k == 3 then 164 -- 'f64' encoded
+    else if k == 4 then 400 -- 'bool'
+    else if k == 5 then 500 -- 'String'
+    else if k == 6 then 600 -- 'Unit'
+    else 999;               -- 'Error'
+
+-- ============================================================================
+-- Environment (Variable Name-Type Pairs)
+-- ============================================================================
+-- Using global arrays for simplicity (BMB limitation: no local arrays yet)
+-- Environment is a stack-based scope with max 64 entries
+--
+-- Encoding: env_names stores name hashes, env_types stores type codes
+
+-- Hash function for variable names (simple DJB2-like)
+fn name_hash_step(h: i64, c: i64) -> i64 =
+    ((h * 33) + c) - ((h / 1000000) * 1000000);
+
+fn name_hash_from(s: String, pos: i64, h: i64) -> i64 =
+    if pos >= s.len() then h
+    else name_hash_from(s, pos + 1, name_hash_step(h, s.char_at(pos)));
+
+fn name_hash(s: String) -> i64 = name_hash_from(s, 0, 5381);
+
+-- ============================================================================
+-- Built-in Functions Table
+-- ============================================================================
+-- Built-in function signatures encoded as:
+--   return_type * 100 + param_count
+-- Actual param types stored in separate logic
+
+-- Function: println(i64) -> Unit
+fn builtin_println_sig() -> i64 = 6 * 100 + 1;  -- Unit, 1 param
+fn builtin_println_p1() -> i64 = type_i64();
+
+-- Function: print(i64) -> Unit
+fn builtin_print_sig() -> i64 = 6 * 100 + 1;
+fn builtin_print_p1() -> i64 = type_i64();
+
+-- Function: assert(bool) -> Unit
+fn builtin_assert_sig() -> i64 = 6 * 100 + 1;
+fn builtin_assert_p1() -> i64 = type_bool();
+
+-- Function: read_int() -> i64
+fn builtin_read_int_sig() -> i64 = 2 * 100 + 0;  -- i64, 0 params
+
+-- Function: abs(i64) -> i64
+fn builtin_abs_sig() -> i64 = 2 * 100 + 1;
+fn builtin_abs_p1() -> i64 = type_i64();
+
+-- Function: min(i64, i64) -> i64
+fn builtin_min_sig() -> i64 = 2 * 100 + 2;
+fn builtin_min_p1() -> i64 = type_i64();
+fn builtin_min_p2() -> i64 = type_i64();
+
+-- Function: max(i64, i64) -> i64
+fn builtin_max_sig() -> i64 = 2 * 100 + 2;
+fn builtin_max_p1() -> i64 = type_i64();
+fn builtin_max_p2() -> i64 = type_i64();
+
+-- Lookup builtin function by name, return signature or 0 if not found
+fn lookup_builtin(name: String) -> i64 =
+    if name == "println" then builtin_println_sig()
+    else if name == "print" then builtin_print_sig()
+    else if name == "assert" then builtin_assert_sig()
+    else if name == "read_int" then builtin_read_int_sig()
+    else if name == "abs" then builtin_abs_sig()
+    else if name == "min" then builtin_min_sig()
+    else if name == "max" then builtin_max_sig()
+    else 0;
+
+-- Get return type from signature
+fn sig_return_type(sig: i64) -> i64 =
+    let kind = sig / 100;
+    kind * 1000;
+
+-- Get param count from signature
+fn sig_param_count(sig: i64) -> i64 = sig - (sig / 100) * 100;
+
+-- Get builtin param type by name and index
+fn builtin_param_type(name: String, idx: i64) -> i64 =
+    if name == "println" and idx == 0 then builtin_println_p1()
+    else if name == "print" and idx == 0 then builtin_print_p1()
+    else if name == "assert" and idx == 0 then builtin_assert_p1()
+    else if name == "abs" and idx == 0 then builtin_abs_p1()
+    else if name == "min" and idx == 0 then builtin_min_p1()
+    else if name == "min" and idx == 1 then builtin_min_p2()
+    else if name == "max" and idx == 0 then builtin_max_p1()
+    else if name == "max" and idx == 1 then builtin_max_p2()
+    else type_error();
+
+-- ============================================================================
+-- Binary Operator Type Checking
+-- ============================================================================
+-- Operator codes (matching lexer.bmb):
+--   400 = +
+--   401 = -
+--   402 = *
+--   403 = /
+--   404 = %
+--   410 = ==
+--   411 = !=
+--   412 = <
+--   413 = >
+--   414 = <=
+--   415 = >=
+--   420 = and
+--   421 = or
+
+-- Check binary operator, return result type or type_error()
+fn check_binop(op: i64, left: i64, right: i64) -> i64 =
+    -- Arithmetic: +, -, *, /, %
+    if op >= 400 and op <= 404 then
+        if is_numeric(left) and left == right then left
+        else if op == 400 and type_kind(left) == 5 and type_kind(right) == 5 then type_string()  -- String concat
+        else type_error()
+    -- Comparison: ==, !=
+    else if op == 410 or op == 411 then
+        if left == right then type_bool()
+        else type_error()
+    -- Ordering: <, >, <=, >=
+    else if op >= 412 and op <= 415 then
+        if is_numeric(left) and left == right then type_bool()
+        else type_error()
+    -- Logical: and, or
+    else if op == 420 or op == 421 then
+        if type_kind(left) == 4 and type_kind(right) == 4 then type_bool()
+        else type_error()
+    else type_error();
+
+-- ============================================================================
+-- Unary Operator Type Checking
+-- ============================================================================
+-- Operator codes:
+--   401 = - (negation, reused from binary minus)
+--   430 = not
+
+fn check_unop(op: i64, operand: i64) -> i64 =
+    -- Negation: -
+    if op == 401 then
+        if is_numeric(operand) then operand
+        else type_error()
+    -- Not: not
+    else if op == 430 then
+        if type_kind(operand) == 4 then type_bool()
+        else type_error()
+    else type_error();
+
+-- ============================================================================
+-- Type Unification
+-- ============================================================================
+-- Returns true if types are compatible (equal for now)
+fn unify(expected: i64, actual: i64) -> bool = expected == actual;
+
+-- ============================================================================
+-- Environment Operations (Simple Linear Search)
+-- ============================================================================
+-- Environment is passed as a packed string: "name1:type1;name2:type2;..."
+-- This avoids the need for global mutable state
+
+-- Find colon position in string from given start
+fn find_char_from(s: String, c: i64, pos: i64) -> i64 =
+    if pos >= s.len() then 0 - 1
+    else if s.char_at(pos) == c then pos
+    else find_char_from(s, c, pos + 1);
+
+-- Parse integer from string at position (simple positive only)
+fn parse_int_at(s: String, pos: i64, acc: i64) -> i64 =
+    if pos >= s.len() then acc
+    else
+        let c = s.char_at(pos);
+        if c >= 48 and c <= 57 then parse_int_at(s, pos + 1, acc * 10 + (c - 48))
+        else acc;
+
+-- Lookup variable in environment string
+-- Returns type code or type_error() if not found
+fn env_lookup_from(env: String, name: String, pos: i64) -> i64 =
+    if pos >= env.len() then type_error()
+    else
+        -- Find next colon (name:type separator)
+        let colon = find_char_from(env, 58, pos);  -- ':' = 58
+        if colon < 0 then type_error()
+        else
+            let var_name = env.slice(pos, colon);
+            if var_name == name then
+                -- Found! Parse type after colon
+                parse_int_at(env, colon + 1, 0)
+            else
+                -- Find next semicolon and continue
+                let semi = find_char_from(env, 59, colon);  -- ';' = 59
+                if semi < 0 then type_error()
+                else env_lookup_from(env, name, semi + 1);
+
+fn env_lookup(env: String, name: String) -> i64 = env_lookup_from(env, name, 0);
+
+-- Add variable to environment (returns new environment string)
+fn env_add(env: String, name: String, ty: i64) -> String =
+    if env.len() == 0 then name + ":" + int_to_string(ty)
+    else env + ";" + name + ":" + int_to_string(ty);
+
+-- ============================================================================
+-- Integer to String Helper
+-- ============================================================================
+fn int_to_string_helper(n: i64, acc: String) -> String =
+    if n == 0 then acc
+    else
+        let digit = n - (n / 10) * 10;
+        let c = digit + 48;
+        int_to_string_helper(n / 10, char_to_string(c) + acc);
+
+fn char_to_string(c: i64) -> String =
+    -- Create single-char string (using slice trick)
+    "0123456789".slice(c - 48, c - 48 + 1);
+
+fn int_to_string(n: i64) -> String =
+    if n == 0 then "0"
+    else if n < 0 then "-" + int_to_string(0 - n)
+    else int_to_string_helper(n, "");
+
+-- ============================================================================
+-- Expression Type Inference
+-- ============================================================================
+-- Type check expressions given an environment
+-- Returns type code or type_error() on failure
+
+-- Check if-then-else: condition must be bool, branches must match
+fn check_if(cond_ty: i64, then_ty: i64, else_ty: i64) -> i64 =
+    if type_kind(cond_ty) != 4 then type_error()  -- condition must be bool
+    else if is_error(then_ty) or is_error(else_ty) then type_error()
+    else if then_ty == else_ty then then_ty
+    else type_error();
+
+-- Check let binding: value type is bound to name
+-- Returns body type (conceptually; actual binding happens via env)
+fn check_let(value_ty: i64, body_ty: i64) -> i64 =
+    if is_error(value_ty) then type_error()
+    else body_ty;
+
+-- Check function call against built-in signature
+-- arg_count: actual argument count
+-- expected_count: from signature
+fn check_call_arity(arg_count: i64, expected_count: i64) -> bool =
+    arg_count == expected_count;
+
+-- Check if argument type matches expected parameter type
+fn check_arg_type(actual: i64, expected: i64) -> bool = actual == expected;
+
+-- Check function call with single argument
+fn check_call_1arg(func_name: String, arg1_ty: i64) -> i64 =
+    let sig = lookup_builtin(func_name);
+    if sig == 0 then type_error()  -- function not found
+    else if sig_param_count(sig) != 1 then type_error()  -- arity mismatch
+    else
+        let expected_ty = builtin_param_type(func_name, 0);
+        if check_arg_type(arg1_ty, expected_ty) then sig_return_type(sig)
+        else type_error();
+
+-- Check function call with two arguments
+fn check_call_2args(func_name: String, arg1_ty: i64, arg2_ty: i64) -> i64 =
+    let sig = lookup_builtin(func_name);
+    if sig == 0 then type_error()
+    else if sig_param_count(sig) != 2 then type_error()
+    else
+        let exp1 = builtin_param_type(func_name, 0);
+        let exp2 = builtin_param_type(func_name, 1);
+        if check_arg_type(arg1_ty, exp1) and check_arg_type(arg2_ty, exp2) then
+            sig_return_type(sig)
+        else type_error();
+
+-- Check function call with zero arguments
+fn check_call_0args(func_name: String) -> i64 =
+    let sig = lookup_builtin(func_name);
+    if sig == 0 then type_error()
+    else if sig_param_count(sig) != 0 then type_error()
+    else sig_return_type(sig);
+
+-- ============================================================================
+-- Test Functions
+-- ============================================================================
+
+-- Test type encoding
+fn test_type_encoding() -> i64 =
+    let t1 = type_i64();
+    let t2 = type_bool();
+    let t3 = type_string();
+
+    let r1 = if type_kind(t1) == 2 then 1 else 0;
+    let r2 = if type_kind(t2) == 4 then 1 else 0;
+    let r3 = if type_kind(t3) == 5 then 1 else 0;
+    let r4 = if is_numeric(t1) then 1 else 0;
+    let r5 = if is_numeric(t2) then 0 else 1;  -- bool is not numeric
+
+    r1 + r2 + r3 + r4 + r5;
+
+-- Test binary operator checking
+fn test_binop_check() -> i64 =
+    let i = type_i64();
+    let b = type_bool();
+    let s = type_string();
+
+    -- i64 + i64 = i64
+    let r1 = if check_binop(400, i, i) == i then 1 else 0;
+    -- i64 < i64 = bool
+    let r2 = if check_binop(412, i, i) == b then 1 else 0;
+    -- bool and bool = bool
+    let r3 = if check_binop(420, b, b) == b then 1 else 0;
+    -- i64 + bool = error
+    let r4 = if is_error(check_binop(400, i, b)) then 1 else 0;
+    -- String + String = String
+    let r5 = if check_binop(400, s, s) == s then 1 else 0;
+
+    r1 + r2 + r3 + r4 + r5;
+
+-- Test unary operator checking
+fn test_unop_check() -> i64 =
+    let i = type_i64();
+    let b = type_bool();
+
+    -- -i64 = i64
+    let r1 = if check_unop(401, i) == i then 1 else 0;
+    -- not bool = bool
+    let r2 = if check_unop(430, b) == b then 1 else 0;
+    -- -bool = error
+    let r3 = if is_error(check_unop(401, b)) then 1 else 0;
+    -- not i64 = error
+    let r4 = if is_error(check_unop(430, i)) then 1 else 0;
+
+    r1 + r2 + r3 + r4;
+
+-- Test environment operations
+fn test_env_ops() -> i64 =
+    let e0 = "";
+    let e1 = env_add(e0, "x", type_i64());
+    let e2 = env_add(e1, "y", type_bool());
+
+    -- Lookup x should return i64
+    let r1 = if env_lookup(e2, "x") == type_i64() then 1 else 0;
+    -- Lookup y should return bool
+    let r2 = if env_lookup(e2, "y") == type_bool() then 1 else 0;
+    -- Lookup z should return error
+    let r3 = if is_error(env_lookup(e2, "z")) then 1 else 0;
+
+    r1 + r2 + r3;
+
+-- Test builtin function lookup
+fn test_builtin_lookup() -> i64 =
+    let s1 = lookup_builtin("println");
+    let s2 = lookup_builtin("abs");
+    let s3 = lookup_builtin("unknown");
+
+    -- println exists
+    let r1 = if s1 > 0 then 1 else 0;
+    -- println returns Unit
+    let r2 = if sig_return_type(s1) == type_unit() then 1 else 0;
+    -- println has 1 param
+    let r3 = if sig_param_count(s1) == 1 then 1 else 0;
+    -- abs returns i64
+    let r4 = if sig_return_type(s2) == type_i64() then 1 else 0;
+    -- unknown not found
+    let r5 = if s3 == 0 then 1 else 0;
+
+    r1 + r2 + r3 + r4 + r5;
+
+-- Test if-then-else type checking
+fn test_if_check() -> i64 =
+    let i = type_i64();
+    let b = type_bool();
+
+    -- if bool then i64 else i64 = i64
+    let r1 = if check_if(b, i, i) == i then 1 else 0;
+    -- if bool then bool else bool = bool
+    let r2 = if check_if(b, b, b) == b then 1 else 0;
+    -- if i64 then i64 else i64 = error (condition not bool)
+    let r3 = if is_error(check_if(i, i, i)) then 1 else 0;
+    -- if bool then i64 else bool = error (branch mismatch)
+    let r4 = if is_error(check_if(b, i, b)) then 1 else 0;
+
+    r1 + r2 + r3 + r4;
+
+-- Test let binding type checking
+fn test_let_check() -> i64 =
+    let i = type_i64();
+    let b = type_bool();
+    let e = type_error();
+
+    -- let x = i64; bool -> bool
+    let r1 = if check_let(i, b) == b then 1 else 0;
+    -- let x = error; i64 -> error
+    let r2 = if is_error(check_let(e, i)) then 1 else 0;
+    -- let x = bool; i64 -> i64
+    let r3 = if check_let(b, i) == i then 1 else 0;
+
+    r1 + r2 + r3;
+
+-- Test function call type checking
+fn test_call_check() -> i64 =
+    let i = type_i64();
+    let b = type_bool();
+    let u = type_unit();
+
+    -- println(i64) -> Unit
+    let r1 = if check_call_1arg("println", i) == u then 1 else 0;
+    -- assert(bool) -> Unit
+    let r2 = if check_call_1arg("assert", b) == u then 1 else 0;
+    -- abs(i64) -> i64
+    let r3 = if check_call_1arg("abs", i) == i then 1 else 0;
+    -- println(bool) -> error (wrong arg type)
+    let r4 = if is_error(check_call_1arg("println", b)) then 1 else 0;
+    -- min(i64, i64) -> i64
+    let r5 = if check_call_2args("min", i, i) == i then 1 else 0;
+    -- max(i64, i64) -> i64
+    let r6 = if check_call_2args("max", i, i) == i then 1 else 0;
+    -- read_int() -> i64
+    let r7 = if check_call_0args("read_int") == i then 1 else 0;
+    -- unknown() -> error
+    let r8 = if is_error(check_call_0args("unknown")) then 1 else 0;
+
+    r1 + r2 + r3 + r4 + r5 + r6 + r7 + r8;
+
+-- Main test runner
+fn main() -> i64 =
+    let u0 = println(777);  -- Start marker
+
+    let t1 = test_type_encoding();
+    let p1 = println(t1);  -- Expected: 5
+
+    let t2 = test_binop_check();
+    let p2 = println(t2);  -- Expected: 5
+
+    let t3 = test_unop_check();
+    let p3 = println(t3);  -- Expected: 4
+
+    let t4 = test_env_ops();
+    let p4 = println(t4);  -- Expected: 3
+
+    let t5 = test_builtin_lookup();
+    let p5 = println(t5);  -- Expected: 5
+
+    let t6 = test_if_check();
+    let p6 = println(t6);  -- Expected: 4
+
+    let t7 = test_let_check();
+    let p7 = println(t7);  -- Expected: 3
+
+    let t8 = test_call_check();
+    let p8 = println(t8);  -- Expected: 8
+
+    let u1 = println(888);  -- Separator
+
+    let total = t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8;
+    let u2 = println(total);  -- Expected: 37
+
+    let u3 = println(999);  -- End marker
+    total;
