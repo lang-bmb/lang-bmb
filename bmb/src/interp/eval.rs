@@ -112,6 +112,24 @@ impl Interpreter {
         self.eval(expr, &self.global_env.clone())
     }
 
+    /// Get list of test function names (functions starting with "test_")
+    pub fn get_test_functions(&self) -> Vec<String> {
+        self.functions
+            .keys()
+            .filter(|name| name.starts_with("test_"))
+            .cloned()
+            .collect()
+    }
+
+    /// Run a single function by name (for testing)
+    pub fn run_function(&mut self, name: &str) -> InterpResult<Value> {
+        if let Some(fn_def) = self.functions.get(name).cloned() {
+            self.call_function(&fn_def, &[])
+        } else {
+            Err(RuntimeError::undefined_variable(name))
+        }
+    }
+
     /// Evaluate an expression with automatic stack growth for deep recursion
     fn eval(&mut self, expr: &Spanned<Expr>, env: &EnvRef) -> InterpResult<Value> {
         // Grow stack if we're running low

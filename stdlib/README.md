@@ -1,6 +1,6 @@
 # BMB Standard Library
 
-> v0.6 Leaf: Foundation for BMB standard library
+> v0.7 Bloom: Foundation for BMB standard library + Testing
 
 ## Design Principles (AI-Native)
 
@@ -24,8 +24,10 @@ stdlib/
 │   └── result.bmb     # Result type (17 functions)
 ├── string/
 │   └── mod.bmb        # String utilities (30+ functions)
-└── array/
-    └── mod.bmb        # Array utilities (25+ functions)
+├── array/
+│   └── mod.bmb        # Array utilities (25+ functions)
+└── test/
+    └── mod.bmb        # Test assertions (40+ functions)
 ```
 
 ## Module Status
@@ -38,8 +40,9 @@ stdlib/
 | core::result | 17 | v0.6.0 | Result enum + is_ok, safe_divide, etc. |
 | string | 30+ | v0.6.1 | char classification, search, trim, parse |
 | array | 25+ | v0.6.2 | search, aggregation, predicates, bounds |
+| test | 40+ | v0.7.2 | test assertions for bmb test runner |
 
-**Total: 100+ functions with contracts**
+**Total: 140+ functions with contracts**
 
 ## string Module (v0.6.1)
 
@@ -196,6 +199,86 @@ fn index_of_char(s: String, c: i64) -> i64
 fn sum_range(arr: [i64; 8], start: i64, end: i64) -> i64
   pre start >= 0 and end <= 8 and start <= end
 = ...;
+```
+
+## test Module (v0.7.2)
+
+> Test assertion library for use with `bmb test` runner
+
+### Basic Assertions
+```bmb
+assert_true(cond)       -- Assert condition is true
+assert_false(cond)      -- Assert condition is false
+```
+
+### Integer Assertions
+```bmb
+assert_eq_i64(actual, expected)     -- Equal
+assert_ne_i64(actual, expected)     -- Not equal
+assert_lt_i64(actual, expected)     -- Less than
+assert_le_i64(actual, expected)     -- Less than or equal
+assert_gt_i64(actual, expected)     -- Greater than
+assert_ge_i64(actual, expected)     -- Greater than or equal
+assert_in_range(val, min, max)      -- Value in [min, max]
+assert_positive(val)                -- val > 0
+assert_non_negative(val)            -- val >= 0
+assert_negative(val)                -- val < 0
+assert_zero(val)                    -- val == 0
+assert_non_zero(val)                -- val != 0
+```
+
+### String Assertions
+```bmb
+assert_string_eq(actual, expected)  -- String equality
+assert_string_ne(actual, expected)  -- String inequality
+assert_starts_with(s, prefix)       -- Prefix check
+assert_ends_with(s, suffix)         -- Suffix check
+assert_contains_char(s, c)          -- Character exists
+assert_empty(s)                     -- Length is 0
+assert_not_empty(s)                 -- Length > 0
+assert_blank(s)                     -- Empty or whitespace
+assert_not_blank(s)                 -- Has non-whitespace
+assert_string_len(s, expected_len)  -- Expected length
+```
+
+### Array Assertions
+```bmb
+assert_array_contains(arr, len, val)     -- Value exists
+assert_array_not_contains(arr, len, val) -- Value absent
+assert_sorted_asc(arr, len)              -- Ascending order
+assert_sorted_desc(arr, len)             -- Descending order
+assert_all_equal(arr, len)               -- All same value
+assert_all_positive(arr, len)            -- All > 0
+assert_array_sum(arr, len, expected)     -- Sum equals expected
+assert_array_len(len, expected)          -- Length check
+```
+
+### Compound Assertions
+```bmb
+assert_all2(a, b)       -- a and b
+assert_all3(a, b, c)    -- a and b and c
+assert_any2(a, b)       -- a or b
+assert_any3(a, b, c)    -- a or b or c
+assert_xor(a, b)        -- Exactly one true
+assert_implies(a, b)    -- if a then b
+```
+
+### Test Result Utilities
+```bmb
+count_passed(results, len)   -- Count true values
+count_failed(results, len)   -- Count false values
+all_passed(results, len)     -- All tests passed?
+any_failed(results, len)     -- Any test failed?
+```
+
+### Usage Example
+```bmb
+use test::assert_eq_i64;
+use test::assert_true;
+
+fn test_addition() -> bool = assert_eq_i64(1 + 2, 3);
+
+fn test_comparison() -> bool = assert_true(10 > 5);
 ```
 
 ## Limitations

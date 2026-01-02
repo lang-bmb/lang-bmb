@@ -1,0 +1,20 @@
+fn test_addition() -> bool
+= 1 + 2 == 3;
+
+fn test_subtraction() -> bool
+= 5 - 3 == 2;
+
+fn test_multiplication() -> bool
+= 4 * 3 == 12;
+
+fn test_comparison() -> bool
+= 10 > 5;
+
+fn test_boolean_and() -> bool
+= true and true;
+
+fn test_boolean_or() -> bool
+= false or true;
+
+fn not_a_test() -> i64
+= 42;

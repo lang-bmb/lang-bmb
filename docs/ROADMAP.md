@@ -34,7 +34,7 @@ v0.MAJOR.MINOR
 | v0.4 | Stem | 코드젠 (LLVM) | ✅ 완료 |
 | v0.5 | Branch | 언어 확장 + Bootstrap 시작 | ✅ 완료 |
 | v0.6 | Leaf | 표준 라이브러리 기초 (100+개 함수) | ✅ 완료 |
-| v0.7 | Bloom | 도구 기초 (fmt, lsp, test) | 계획 |
+| v0.7 | Bloom | 도구 기초 (fmt, lsp, test) | 🔄 진행중 |
 | v0.8 | Fruit | 패키지 매니저 (곳간) | 계획 |
 | v0.9 | Harvest | 생태계 (에디터, 원격 패키지) | 계획 |
 | v0.10 | Sunrise | Bootstrap 진행 | 계획 |
@@ -283,11 +283,11 @@ tests/stdlib/
 
 ---
 
-## v0.7 Bloom (도구 기초)
+## v0.7 Bloom (도구 기초) 🔄 진행중
 
 > 목표: 기본 개발 도구 내장 (Gleam 방식)
 
-### v0.7.0 - Formatter 내장
+### v0.7.0 - Formatter 내장 ✅ 완료
 
 ```bash
 bmb fmt              # 현재 파일 포맷
@@ -296,11 +296,15 @@ bmb fmt .            # 디렉토리 전체
 ```
 
 **마일스톤**:
-- [ ] AST → 소스코드 프린터
-- [ ] 포맷 규칙 정의 (bmb.toml)
-- [ ] `bmb fmt` CLI 통합
+- [x] AST → 소스코드 프린터
+- [x] `bmb fmt` CLI 통합
+- [ ] 포맷 규칙 정의 (bmb.toml) - 추후
 
-### v0.7.1 - LSP 기초
+**제한사항**:
+- 코멘트 보존 안됨 (파싱 시 제거)
+- 기본 포맷팅 규칙만 적용
+
+### v0.7.1 - LSP 기초 (계획)
 
 ```
 지원 기능:
@@ -309,13 +313,33 @@ bmb fmt .            # 디렉토리 전체
 - textDocument/completion    # 기본 자동완성 (키워드)
 ```
 
-### v0.7.2 - 테스트 러너
+### v0.7.2 - 테스트 러너 ✅ 완료
 
 ```bash
 bmb test              # 모든 테스트 실행
 bmb test module.bmb   # 특정 파일
 bmb test --filter "pattern"
+bmb test -v           # 상세 출력
 ```
+
+**마일스톤**:
+- [x] test_ 접두사 함수 자동 탐지
+- [x] 테스트 실행 및 결과 리포트
+- [x] 필터링 지원 (--filter)
+- [x] 상세 출력 모드 (-v, --verbose)
+- [x] stdlib/test 어설션 라이브러리 (40+ 함수)
+
+### stdlib/test 모듈 (v0.7.2) ✅ 완료
+
+| 카테고리 | 함수 | 설명 |
+|----------|------|------|
+| 기본 | `assert_true`, `assert_false` | 불리언 검증 |
+| 정수 | `assert_eq_i64`, `assert_ne_i64`, `assert_lt_i64`, `assert_le_i64`, `assert_gt_i64`, `assert_ge_i64`, `assert_in_range`, `assert_positive`, `assert_non_negative`, `assert_negative`, `assert_zero`, `assert_non_zero` | 정수 비교 |
+| 불리언 | `assert_eq_bool`, `assert_truthy`, `assert_falsy` | 불리언 비교 |
+| 문자열 | `assert_string_eq`, `assert_string_ne`, `assert_starts_with`, `assert_ends_with`, `assert_contains_char`, `assert_empty`, `assert_not_empty`, `assert_blank`, `assert_not_blank`, `assert_string_len` | 문자열 검증 |
+| 배열 | `assert_array_contains`, `assert_array_not_contains`, `assert_sorted_asc`, `assert_sorted_desc`, `assert_all_equal`, `assert_all_positive`, `assert_array_sum`, `assert_array_len` | 배열 검증 |
+| 복합 | `assert_all2`, `assert_all3`, `assert_any2`, `assert_any3`, `assert_xor`, `assert_implies` | 논리 조합 |
+| 결과 | `count_passed`, `count_failed`, `all_passed`, `any_failed` | 테스트 결과 집계 |
 
 ### v0.7.3 - action-bmb 시작
 

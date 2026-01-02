@@ -62,6 +62,25 @@ enum Command {
         /// Source file to tokenize
         file: PathBuf,
     },
+    /// Run tests in a BMB file
+    Test {
+        /// Source file or directory to test
+        file: PathBuf,
+        /// Filter tests by pattern
+        #[arg(long, short)]
+        filter: Option<String>,
+        /// Verbose output (show all test results)
+        #[arg(short, long)]
+        verbose: bool,
+    },
+    /// Format a BMB source file
+    Fmt {
+        /// Source file or directory to format
+        file: PathBuf,
+        /// Check formatting without modifying files
+        #[arg(long)]
+        check: bool,
+    },
 }
 
 fn main() {
@@ -81,6 +100,8 @@ fn main() {
         Command::Verify { file, z3_path, timeout } => verify_file(&file, &z3_path, timeout),
         Command::Parse { file } => parse_file(&file),
         Command::Tokens { file } => tokenize_file(&file),
+        Command::Test { file, filter, verbose } => test_file(&file, filter.as_deref(), verbose),
+        Command::Fmt { file, check } => fmt_file(&file, check),
     };
 
     if let Err(e) = result {
@@ -230,4 +251,479 @@ fn tokenize_file(path: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
     }
 
     Ok(())
+}
+
+fn test_file(path: &PathBuf, filter: Option<&str>, verbose: bool) -> Result<(), Box<dyn std::error::Error>> {
+    use std::time::Instant;
+
+    // Collect test files
+    let test_files = if path.is_dir() {
+        collect_test_files(path)?
+    } else {
+        vec![path.clone()]
+    };
+
+    if test_files.is_empty() {
+        println!("No test files found");
+        return Ok(());
+    }
+
+    let mut total_passed = 0;
+    let mut total_failed = 0;
+    let mut total_tests = 0;
+    let start_time = Instant::now();
+
+    for test_file in &test_files {
+        let source = std::fs::read_to_string(test_file)?;
+        let filename = test_file.display().to_string();
+
+        // Tokenize
+        let tokens = bmb::lexer::tokenize(&source)?;
+
+        // Parse
+        let ast = bmb::parser::parse(&filename, &source, tokens)?;
+
+        // Type check
+        let mut checker = bmb::types::TypeChecker::new();
+        checker.check_program(&ast)?;
+
+        // Run tests with interpreter
+        let mut interpreter = bmb::interp::Interpreter::new();
+        interpreter.load(&ast);
+
+        let test_names = interpreter.get_test_functions();
+        let filtered_tests: Vec<_> = test_names
+            .iter()
+            .filter(|name| {
+                filter.map_or(true, |f| name.contains(f))
+            })
+            .collect();
+
+        if filtered_tests.is_empty() {
+            continue;
+        }
+
+        if verbose || test_files.len() > 1 {
+            println!("\n📂 {}", filename);
+        }
+
+        for test_name in filtered_tests {
+            total_tests += 1;
+            let test_start = Instant::now();
+
+            match interpreter.run_function(test_name) {
+                Ok(value) => {
+                    let passed = match value {
+                        bmb::interp::Value::Bool(b) => b,
+                        bmb::interp::Value::Int(n) => n != 0,
+                        _ => true,
+                    };
+
+                    let elapsed = test_start.elapsed();
+
+                    if passed {
+                        total_passed += 1;
+                        if verbose {
+                            println!("  ✅ {} ({:.2?})", test_name, elapsed);
+                        }
+                    } else {
+                        total_failed += 1;
+                        println!("  ❌ {} - returned false ({:.2?})", test_name, elapsed);
+                    }
+                }
+                Err(e) => {
+                    total_failed += 1;
+                    println!("  ❌ {} - {}", test_name, e.message);
+                }
+            }
+        }
+    }
+
+    let elapsed = start_time.elapsed();
+
+    // Print summary
+    println!();
+    if total_tests == 0 {
+        println!("No tests found");
+    } else if total_failed == 0 {
+        println!("✅ {} tests passed ({:.2?})", total_passed, elapsed);
+    } else {
+        println!(
+            "❌ {} passed, {} failed of {} tests ({:.2?})",
+            total_passed, total_failed, total_tests, elapsed
+        );
+        std::process::exit(1);
+    }
+
+    Ok(())
+}
+
+fn collect_test_files(dir: &PathBuf) -> Result<Vec<PathBuf>, Box<dyn std::error::Error>> {
+    let mut files = Vec::new();
+
+    for entry in std::fs::read_dir(dir)? {
+        let entry = entry?;
+        let path = entry.path();
+
+        if path.is_dir() {
+            files.extend(collect_test_files(&path)?);
+        } else if let Some(name) = path.file_name() {
+            let name_str = name.to_string_lossy();
+            if name_str.starts_with("test_") && name_str.ends_with(".bmb") {
+                files.push(path);
+            }
+        }
+    }
+
+    Ok(files)
+}
+
+fn fmt_file(path: &PathBuf, check: bool) -> Result<(), Box<dyn std::error::Error>> {
+    let files = if path.is_dir() {
+        collect_bmb_files(path)?
+    } else {
+        vec![path.clone()]
+    };
+
+    if files.is_empty() {
+        println!("No BMB files found");
+        return Ok(());
+    }
+
+    let mut needs_formatting = false;
+
+    for file in &files {
+        let source = std::fs::read_to_string(file)?;
+        let filename = file.display().to_string();
+
+        // Tokenize
+        let tokens = bmb::lexer::tokenize(&source)?;
+
+        // Parse
+        let ast = bmb::parser::parse(&filename, &source, tokens)?;
+
+        // Format AST back to source
+        let formatted = format_program(&ast);
+
+        if check {
+            if source != formatted {
+                println!("❌ {} needs formatting", filename);
+                needs_formatting = true;
+            } else {
+                println!("✓ {} is formatted", filename);
+            }
+        } else {
+            if source != formatted {
+                std::fs::write(file, &formatted)?;
+                println!("✓ formatted {}", filename);
+            } else {
+                println!("✓ {} (unchanged)", filename);
+            }
+        }
+    }
+
+    if check && needs_formatting {
+        std::process::exit(1);
+    }
+
+    Ok(())
+}
+
+fn collect_bmb_files(dir: &PathBuf) -> Result<Vec<PathBuf>, Box<dyn std::error::Error>> {
+    let mut files = Vec::new();
+
+    for entry in std::fs::read_dir(dir)? {
+        let entry = entry?;
+        let path = entry.path();
+
+        if path.is_dir() {
+            files.extend(collect_bmb_files(&path)?);
+        } else if path.extension().map_or(false, |e| e == "bmb") {
+            files.push(path);
+        }
+    }
+
+    Ok(files)
+}
+
+fn format_program(program: &bmb::ast::Program) -> String {
+    use bmb::ast::{Item, Visibility};
+
+    let mut output = String::new();
+
+    for (i, item) in program.items.iter().enumerate() {
+        if i > 0 {
+            output.push_str("\n\n");
+        }
+
+        match item {
+            Item::FnDef(fn_def) => {
+                output.push_str(&format_fn_def(fn_def));
+            }
+            Item::StructDef(s) => {
+                if s.visibility == Visibility::Public {
+                    output.push_str("pub ");
+                }
+                output.push_str(&format!("struct {} {{\n", s.name.node));
+                for field in &s.fields {
+                    output.push_str(&format!("    {}: {},\n", field.name.node, format_type(&field.ty.node)));
+                }
+                output.push_str("}");
+            }
+            Item::EnumDef(e) => {
+                if e.visibility == Visibility::Public {
+                    output.push_str("pub ");
+                }
+                output.push_str(&format!("enum {} {{\n", e.name.node));
+                for variant in &e.variants {
+                    output.push_str(&format!("    {},\n", variant.name.node));
+                }
+                output.push_str("}");
+            }
+            Item::Use(u) => {
+                let path_str: Vec<_> = u.path.iter().map(|s| s.node.as_str()).collect();
+                output.push_str(&format!("use {};", path_str.join("::")));
+            }
+        }
+    }
+
+    output.push('\n');
+    output
+}
+
+fn format_fn_def(fn_def: &bmb::ast::FnDef) -> String {
+    use bmb::ast::Visibility;
+
+    let mut s = String::new();
+
+    // Visibility
+    if fn_def.visibility == Visibility::Public {
+        s.push_str("pub ");
+    }
+
+    // Function signature
+    s.push_str(&format!("fn {}(", fn_def.name.node));
+
+    for (i, param) in fn_def.params.iter().enumerate() {
+        if i > 0 {
+            s.push_str(", ");
+        }
+        s.push_str(&format!("{}: {}", param.name.node, format_type(&param.ty.node)));
+    }
+
+    s.push_str(&format!(") -> {}", format_type(&fn_def.ret_ty.node)));
+
+    // Contracts
+    if let Some(pre) = &fn_def.pre {
+        s.push_str(&format!("\n  pre {}", format_expr(&pre.node)));
+    }
+
+    if let Some(post) = &fn_def.post {
+        s.push_str(&format!("\n  post {}", format_expr(&post.node)));
+    }
+
+    // Body
+    s.push_str(&format!("\n= {};", format_expr(&fn_def.body.node)));
+
+    s
+}
+
+fn format_type(ty: &bmb::ast::Type) -> String {
+    use bmb::ast::Type;
+
+    match ty {
+        Type::I32 => "i32".to_string(),
+        Type::I64 => "i64".to_string(),
+        Type::F64 => "f64".to_string(),
+        Type::Bool => "bool".to_string(),
+        Type::String => "String".to_string(),
+        Type::Unit => "()".to_string(),
+        Type::Range(elem) => format!("Range<{}>", format_type(elem)),
+        Type::Named(name) => name.clone(),
+        Type::Struct { name, .. } => name.clone(),
+        Type::Enum { name, .. } => name.clone(),
+        Type::Array(elem, size) => format!("[{}; {}]", format_type(elem), size),
+        Type::Ref(inner) => format!("&{}", format_type(inner)),
+        Type::RefMut(inner) => format!("&mut {}", format_type(inner)),
+    }
+}
+
+fn format_expr(expr: &bmb::ast::Expr) -> String {
+    use bmb::ast::{Expr, BinOp, UnOp};
+
+    match expr {
+        Expr::IntLit(n) => n.to_string(),
+        Expr::FloatLit(f) => f.to_string(),
+        Expr::BoolLit(b) => b.to_string(),
+        Expr::StringLit(s) => format!("\"{}\"", s),
+        Expr::Unit => "()".to_string(),
+        Expr::Var(name) => name.clone(),
+        Expr::Ret => "ret".to_string(),
+
+        Expr::Binary { left, op, right } => {
+            let op_str = match op {
+                BinOp::Add => "+",
+                BinOp::Sub => "-",
+                BinOp::Mul => "*",
+                BinOp::Div => "/",
+                BinOp::Mod => "%",
+                BinOp::Eq => "==",
+                BinOp::Ne => "!=",
+                BinOp::Lt => "<",
+                BinOp::Le => "<=",
+                BinOp::Gt => ">",
+                BinOp::Ge => ">=",
+                BinOp::And => "and",
+                BinOp::Or => "or",
+            };
+            format!("{} {} {}", format_expr(&left.node), op_str, format_expr(&right.node))
+        }
+
+        Expr::Unary { op, expr } => {
+            let op_str = match op {
+                UnOp::Neg => "-",
+                UnOp::Not => "not ",
+            };
+            format!("{}{}", op_str, format_expr(&expr.node))
+        }
+
+        Expr::If { cond, then_branch, else_branch } => {
+            format!(
+                "if {} then {} else {}",
+                format_expr(&cond.node),
+                format_expr(&then_branch.node),
+                format_expr(&else_branch.node)
+            )
+        }
+
+        Expr::Let { name, mutable, ty, value, body } => {
+            let mut_str = if *mutable { "mut " } else { "" };
+            let ty_str = ty.as_ref().map(|t| format!(": {}", format_type(&t.node))).unwrap_or_default();
+            format!(
+                "let {}{}{} = {};\n    {}",
+                mut_str,
+                name,
+                ty_str,
+                format_expr(&value.node),
+                format_expr(&body.node)
+            )
+        }
+
+        Expr::Call { func, args } => {
+            let args_str: Vec<_> = args.iter().map(|a| format_expr(&a.node)).collect();
+            format!("{}({})", func, args_str.join(", "))
+        }
+
+        Expr::MethodCall { receiver, method, args } => {
+            let args_str: Vec<_> = args.iter().map(|a| format_expr(&a.node)).collect();
+            format!("{}.{}({})", format_expr(&receiver.node), method, args_str.join(", "))
+        }
+
+        Expr::Index { expr: arr, index } => {
+            format!("{}[{}]", format_expr(&arr.node), format_expr(&index.node))
+        }
+
+        Expr::ArrayLit(elems) => {
+            let elems_str: Vec<_> = elems.iter().map(|e| format_expr(&e.node)).collect();
+            format!("[{}]", elems_str.join(", "))
+        }
+
+        Expr::StructInit { name, fields } => {
+            let fields_str: Vec<_> = fields.iter()
+                .map(|(n, v)| format!("{}: {}", n.node, format_expr(&v.node)))
+                .collect();
+            format!("{} {{ {} }}", name, fields_str.join(", "))
+        }
+
+        Expr::FieldAccess { expr, field } => {
+            format!("{}.{}", format_expr(&expr.node), field.node)
+        }
+
+        Expr::Match { expr, arms } => {
+            let arms_str: Vec<_> = arms.iter()
+                .map(|arm| format!("{} => {}", format_pattern(&arm.pattern.node), format_expr(&arm.body.node)))
+                .collect();
+            format!("match {} {{ {} }}", format_expr(&expr.node), arms_str.join(", "))
+        }
+
+        Expr::Block(stmts) => {
+            if stmts.is_empty() {
+                "{}".to_string()
+            } else {
+                let stmts_str: Vec<_> = stmts.iter().map(|s| format_expr(&s.node)).collect();
+                format!("{{ {} }}", stmts_str.join("; "))
+            }
+        }
+
+        Expr::Assign { name, value } => {
+            format!("{} = {}", name, format_expr(&value.node))
+        }
+
+        Expr::While { cond, body } => {
+            format!("while {} {{ {} }}", format_expr(&cond.node), format_expr(&body.node))
+        }
+
+        Expr::For { var, iter, body } => {
+            format!(
+                "for {} in {} {{ {} }}",
+                var,
+                format_expr(&iter.node),
+                format_expr(&body.node)
+            )
+        }
+
+        Expr::Range { start, end } => {
+            format!("{}..{}", format_expr(&start.node), format_expr(&end.node))
+        }
+
+        Expr::EnumVariant { enum_name, variant, args } => {
+            if args.is_empty() {
+                format!("{}::{}", enum_name, variant)
+            } else {
+                let args_str: Vec<_> = args.iter().map(|a| format_expr(&a.node)).collect();
+                format!("{}::{}({})", enum_name, variant, args_str.join(", "))
+            }
+        }
+
+        Expr::Ref(inner) => {
+            format!("&{}", format_expr(&inner.node))
+        }
+
+        Expr::RefMut(inner) => {
+            format!("&mut {}", format_expr(&inner.node))
+        }
+
+        Expr::Deref(inner) => {
+            format!("*{}", format_expr(&inner.node))
+        }
+    }
+}
+
+fn format_pattern(pattern: &bmb::ast::Pattern) -> String {
+    use bmb::ast::{Pattern, LiteralPattern};
+
+    match pattern {
+        Pattern::Wildcard => "_".to_string(),
+        Pattern::Var(name) => name.clone(),
+        Pattern::Literal(lit) => match lit {
+            LiteralPattern::Int(n) => n.to_string(),
+            LiteralPattern::Float(f) => f.to_string(),
+            LiteralPattern::Bool(b) => b.to_string(),
+            LiteralPattern::String(s) => format!("\"{}\"", s),
+        },
+        Pattern::EnumVariant { enum_name, variant, bindings } => {
+            if bindings.is_empty() {
+                format!("{}::{}", enum_name, variant)
+            } else {
+                let bindings_str: Vec<_> = bindings.iter().map(|b| b.node.as_str()).collect();
+                format!("{}::{}({})", enum_name, variant, bindings_str.join(", "))
+            }
+        }
+        Pattern::Struct { name, fields } => {
+            let fields_str: Vec<_> = fields.iter()
+                .map(|(n, p)| format!("{}: {}", n.node, format_pattern(&p.node)))
+                .collect();
+            format!("{} {{ {} }}", name, fields_str.join(", "))
+        }
+    }
 }
