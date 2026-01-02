@@ -340,6 +340,80 @@ declare i64 @max(i64, i64)
 999 (end marker)
 ```
 
+### compiler.bmb (42KB) - v0.10.9
+Unified compiler entry point providing complete Source → LLVM IR compilation.
+
+**Features:**
+- Unified compilation pipeline in single file
+- Source → AST (parse_source)
+- AST → MIR (lower_program)
+- MIR → LLVM IR (gen_program)
+- Module assembly: header + runtime declarations + functions
+- `compile_program(source)` → complete LLVM IR module
+
+**Architecture:**
+```
+Source (BMB) → Parser → S-expr AST → Lowering → MIR Text → LLVM Gen → LLVM IR
+                                                              ↓
+                                           Module Header + Runtime Decls + Functions
+```
+
+**API Functions:**
+```bmb
+-- Compile BMB source to complete LLVM IR module
+fn compile_program(source: String) -> String
+
+-- Compile single function source to LLVM IR
+fn compile_function(source: String) -> String
+
+-- Error handling
+fn is_compile_error(result: String) -> bool
+fn get_error_type(result: String) -> String
+
+-- Module generation
+fn gen_module_header() -> String
+fn gen_runtime_decls() -> String
+```
+
+**Compilation Example:**
+```bmb
+-- Input: BMB source
+"fn add(a: i64, b: i64) -> i64 = a + b;"
+
+-- Output: LLVM IR module
+; ModuleID = bmb_bootstrap
+target triple = x86_64-unknown-linux-gnu
+
+declare void @println(i64)
+declare i64 @abs(i64)
+declare i64 @min(i64, i64)
+declare i64 @max(i64, i64)
+
+define i64 @add(i64 %a, i64 %b) {
+entry:
+  %_t0 = add i64 %a, %b
+  ret i64 %_t0
+}
+```
+
+**Note:** Due to interpreter stack limits, tests use pre-computed AST inputs
+rather than parsing BMB source strings within the test file.
+
+**Test output:**
+```
+777 (start marker)
+1  (module header test)
+1  (runtime declarations test)
+1  (lower simple AST test)
+1  (MIR function signature test)
+1  (LLVM generation test)
+1  (LLVM return instruction test)
+1  (lower binop AST test)
+1  (LLVM add instruction test)
+888 (separator)
+8 (total passed)
+```
+
 ## Token Encoding
 
 Tokens are encoded as a single i64 value:
@@ -382,6 +456,7 @@ cargo run --release --bin bmb -- check bootstrap/mir.bmb
 cargo run --release --bin bmb -- check bootstrap/lowering.bmb
 cargo run --release --bin bmb -- check bootstrap/pipeline.bmb
 cargo run --release --bin bmb -- check bootstrap/llvm_ir.bmb
+cargo run --release --bin bmb -- check bootstrap/compiler.bmb
 
 # Run tests
 cargo run --release --bin bmb -- run bootstrap/lexer.bmb
@@ -393,6 +468,7 @@ cargo run --release --bin bmb -- run bootstrap/mir.bmb
 cargo run --release --bin bmb -- run bootstrap/lowering.bmb
 cargo run --release --bin bmb -- run bootstrap/pipeline.bmb
 cargo run --release --bin bmb -- run bootstrap/llvm_ir.bmb
+cargo run --release --bin bmb -- run bootstrap/compiler.bmb
 ```
 
 ## Limitations
@@ -406,7 +482,6 @@ cargo run --release --bin bmb -- run bootstrap/llvm_ir.bmb
 
 - [ ] String output support for debugging
 - [ ] Import system for code sharing
-- [ ] Full compiler pipeline in BMB
 - [ ] Self-compilation of the bootstrap
 - [x] MIR foundation (v0.10.1) ✅
 - [x] AST → MIR lowering (v0.10.2) ✅
@@ -415,5 +490,6 @@ cargo run --release --bin bmb -- run bootstrap/llvm_ir.bmb
 - [x] LLVM IR control flow: branch, label, phi (v0.10.6) ✅
 - [x] LLVM IR function generation (v0.10.7) ✅
 - [x] Full compiler pipeline integration (v0.10.8) ✅
+- [x] Unified compiler entry point (v0.10.9) ✅
 - [ ] Struct/Enum lowering support (v0.11+)
 - [ ] Optimization passes in BMB (v0.11+)

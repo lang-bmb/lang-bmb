@@ -1020,6 +1020,34 @@ gcc test.s -o test
 ./test
 ```
 
+### v0.10.9 - Unified Compiler Entry Point ✅ 완료
+
+**구현 내용:**
+- 통합 컴파일러 진입점: `compiler.bmb` (42KB)
+- Source → AST → MIR → LLVM IR 완전 파이프라인
+- 모듈 조립: header + runtime declarations + functions
+- `compile_program(source) -> LLVM IR module`
+- `compile_function(source) -> LLVM IR function`
+- 에러 처리: `is_compile_error()`, `get_error_type()`
+- 8개 테스트 통과 (pre-computed AST 기반)
+
+**API:**
+```bmb
+-- 전체 컴파일
+fn compile_program(source: String) -> String
+
+-- 단일 함수 컴파일
+fn compile_function(source: String) -> String
+
+-- 모듈 생성
+fn gen_module_header() -> String
+fn gen_runtime_decls() -> String
+```
+
+**제한사항:**
+- 인터프리터 스택 제한으로 인해 테스트는 pre-computed AST 사용
+- parse_source() 호출은 별도 파일에서만 사용 가능
+
 ---
 
 ## v0.11 Dawn (Bootstrap 완성)
@@ -1161,7 +1189,8 @@ v0.10.4 → v0.10.5: LLVM IR 기초 (📈 적당) ✅
 v0.10.5 → v0.10.6: LLVM IR 제어 흐름 (📈 적당) ✅
 v0.10.6 → v0.10.7: LLVM IR 함수 생성 (📈 적당) ✅
 v0.10.7 → v0.10.8: Full Pipeline 통합 (📈 적당) ✅
-v0.10.8 → v0.11.x: BMB 재작성 완성 (📈 적당)
+v0.10.8 → v0.10.9: Unified Compiler Entry Point (📈 적당) ✅
+v0.10.9 → v0.11.x: BMB 재작성 완성 (📈 적당)
 ```
 
 ---
@@ -1174,7 +1203,7 @@ v0.6: 표준 라이브러리 기초 (100+개 함수) ✅
 v0.7: 도구 기초 (fmt, lsp, test, action-bmb) ✅
 v0.8: 패키지 기초 (곳간) ✅
 v0.9: 생태계 (에디터, 원격 패키지, playground, site, benchmark) ✅
-v0.10: Bootstrap 진행 (타입체커 ✅, MIR ✅, Lowering ✅, Pipeline ✅, LLVM IR ✅) 🔄
+v0.10: Bootstrap 진행 (타입체커 ✅, MIR ✅, Lowering ✅, Pipeline ✅, LLVM IR ✅, Compiler ✅) 🔄
 v0.11: Bootstrap 완성 (Stage 2, 도구 BMB 재작성)
 v1.0: 안정성 약속 + 검증 완료
 

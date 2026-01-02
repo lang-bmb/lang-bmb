@@ -1,0 +1,1202 @@
+-- BMB Unified Compiler (v0.10.9: Bootstrap Phase 9)
+-- Complete compilation pipeline: Source -> AST -> MIR -> LLVM IR
+--
+-- ARCHITECTURE:
+-- 1. Source (BMB) -> parse_source() -> S-expression AST
+-- 2. AST -> lower_program() -> MIR text
+-- 3. MIR -> gen_program() -> LLVM IR text
+-- 4. Assembly: header + declarations + functions
+--
+-- This file integrates pipeline.bmb and llvm_ir.bmb to provide
+-- a unified entry point for BMB compilation.
+--
+-- Note: Uses | as separator instead of newlines (BMB string limitation)
+
+-- ============================================================================
+-- SECTION 1: String Utilities (required - no imports in bootstrap)
+-- ============================================================================
+
+fn digit_char(d: i64) -> String =
+    if d == 0 then "0" else if d == 1 then "1" else if d == 2 then "2"
+    else if d == 3 then "3" else if d == 4 then "4" else if d == 5 then "5"
+    else if d == 6 then "6" else if d == 7 then "7" else if d == 8 then "8"
+    else "9";
+
+fn int_to_string(n: i64) -> String =
+    if n < 0 then "-" + int_to_string(0 - n)
+    else if n < 10 then digit_char(n)
+    else int_to_string(n / 10) + digit_char(n - (n / 10) * 10);
+
+fn is_whitespace(c: i64) -> bool = c == 32 or c == 9 or c == 10 or c == 13;
+fn is_digit(c: i64) -> bool = c >= 48 and c <= 57;
+fn is_alpha(c: i64) -> bool = (c >= 65 and c <= 90) or (c >= 97 and c <= 122);
+fn is_alnum_or_underscore(c: i64) -> bool = is_alpha(c) or is_digit(c) or c == 95;
+fn is_ident_start(c: i64) -> bool = is_alpha(c) or c == 95;
+
+fn skip_ws(s: String, pos: i64) -> i64 =
+    if pos >= s.len() then pos
+    else if is_whitespace(s.char_at(pos)) then skip_ws(s, pos + 1)
+    else pos;
+
+-- Error handling utilities
+fn is_error(s: String) -> bool = s.len() >= 3 and s.slice(0, 3) == "ERR";
+fn make_error(msg: String) -> String = "ERR:" + msg;
+
+-- Check if string starts with pattern
+fn starts_with(s: String, pat: String, pos: i64) -> bool =
+    if pos + pat.len() > s.len() then false
+    else s.slice(pos, pos + pat.len()) == pat;
+
+fn has_pattern(s: String, pat: String, pos: i64) -> bool =
+    if pos + pat.len() > s.len() then false
+    else if starts_with(s, pat, pos) then true
+    else has_pattern(s, pat, pos + 1);
+
+-- ============================================================================
+-- SECTION 2: Token Constants (from pipeline.bmb)
+-- ============================================================================
+
+fn TK_FN() -> i64 = 100;
+fn TK_LET() -> i64 = 101;
+fn TK_IF() -> i64 = 102;
+fn TK_THEN() -> i64 = 103;
+fn TK_ELSE() -> i64 = 104;
+fn TK_TRUE() -> i64 = 105;
+fn TK_FALSE() -> i64 = 106;
+fn TK_AND() -> i64 = 107;
+fn TK_OR() -> i64 = 108;
+fn TK_NOT() -> i64 = 109;
+fn TK_PRE() -> i64 = 110;
+fn TK_POST() -> i64 = 111;
+fn TK_MUT() -> i64 = 117;
+
+fn TK_I32() -> i64 = 150;
+fn TK_I64() -> i64 = 151;
+fn TK_F64() -> i64 = 152;
+fn TK_BOOL() -> i64 = 153;
+fn TK_STRING_TYPE() -> i64 = 154;
+
+fn TK_INT() -> i64 = 200;
+fn TK_IDENT() -> i64 = 201;
+
+fn TK_COLON() -> i64 = 300;
+fn TK_EQ() -> i64 = 302;
+fn TK_SEMI() -> i64 = 303;
+fn TK_COMMA() -> i64 = 304;
+fn TK_LPAREN() -> i64 = 305;
+fn TK_RPAREN() -> i64 = 306;
+
+fn TK_ARROW() -> i64 = 321;
+fn TK_DOTDOT() -> i64 = 323;
+
+fn TK_PLUS() -> i64 = 400;
+fn TK_MINUS() -> i64 = 401;
+fn TK_STAR() -> i64 = 402;
+fn TK_SLASH() -> i64 = 403;
+fn TK_PERCENT() -> i64 = 404;
+fn TK_LT() -> i64 = 405;
+fn TK_GT() -> i64 = 406;
+
+fn TK_EQEQ() -> i64 = 410;
+fn TK_NEQ() -> i64 = 411;
+fn TK_LTEQ() -> i64 = 412;
+fn TK_GTEQ() -> i64 = 413;
+
+fn TK_EOF() -> i64 = 900;
+
+-- ============================================================================
+-- SECTION 3: Lexer (from pipeline.bmb)
+-- ============================================================================
+
+fn skip_to_eol(s: String, pos: i64) -> i64 =
+    if pos >= s.len() then pos
+    else if s.char_at(pos) == 10 then pos + 1
+    else skip_to_eol(s, pos + 1);
+
+fn skip_comment(s: String, pos: i64) -> i64 =
+    if pos + 1 < s.len() and s.char_at(pos) == 45 and s.char_at(pos + 1) == 45
+    then skip_comment(s, skip_to_eol(s, pos + 2))
+    else pos;
+
+fn skip_ws_comments(s: String, pos: i64) -> i64 =
+    let p1 = skip_ws(s, pos);
+    let p2 = skip_comment(s, p1);
+    if p2 == p1 then p1
+    else skip_ws_comments(s, p2);
+
+fn scan_int(s: String, pos: i64, acc: i64) -> i64 =
+    if pos >= s.len() then acc * 1000000 + pos
+    else let c = s.char_at(pos);
+        if is_digit(c) then scan_int(s, pos + 1, acc * 10 + (c - 48))
+        else acc * 1000000 + pos;
+
+fn scan_ident_end(s: String, pos: i64) -> i64 =
+    if pos >= s.len() then pos
+    else if is_alnum_or_underscore(s.char_at(pos)) then scan_ident_end(s, pos + 1)
+    else pos;
+
+fn tok_val(r: i64) -> i64 = r / 1000000;
+fn tok_end(r: i64) -> i64 = r - (r / 1000000) * 1000000;
+fn tok_kind(r: i64) -> i64 = tok_val(r);
+fn make_tok(kind: i64, endpos: i64) -> i64 = kind * 1000000 + endpos;
+
+fn keyword_or_ident(s: String, start: i64, endpos: i64) -> i64 =
+    let word = s.slice(start, endpos);
+    if word == "fn" then make_tok(TK_FN(), endpos)
+    else if word == "let" then make_tok(TK_LET(), endpos)
+    else if word == "if" then make_tok(TK_IF(), endpos)
+    else if word == "then" then make_tok(TK_THEN(), endpos)
+    else if word == "else" then make_tok(TK_ELSE(), endpos)
+    else if word == "true" then make_tok(TK_TRUE(), endpos)
+    else if word == "false" then make_tok(TK_FALSE(), endpos)
+    else if word == "and" then make_tok(TK_AND(), endpos)
+    else if word == "or" then make_tok(TK_OR(), endpos)
+    else if word == "not" then make_tok(TK_NOT(), endpos)
+    else if word == "pre" then make_tok(TK_PRE(), endpos)
+    else if word == "post" then make_tok(TK_POST(), endpos)
+    else if word == "mut" then make_tok(TK_MUT(), endpos)
+    else if word == "i32" then make_tok(TK_I32(), endpos)
+    else if word == "i64" then make_tok(TK_I64(), endpos)
+    else if word == "f64" then make_tok(TK_F64(), endpos)
+    else if word == "bool" then make_tok(TK_BOOL(), endpos)
+    else if word == "String" then make_tok(TK_STRING_TYPE(), endpos)
+    else make_tok(TK_IDENT(), endpos);
+
+fn next_token_raw(s: String, pos: i64) -> i64 =
+    let p = skip_ws_comments(s, pos);
+    if p >= s.len() then make_tok(TK_EOF(), p)
+    else let c = s.char_at(p);
+        if is_digit(c) then scan_int(s, p, 0)
+        else if is_ident_start(c) then
+            let endpos = scan_ident_end(s, p + 1);
+            keyword_or_ident(s, p, endpos)
+        else if c == 58 then make_tok(TK_COLON(), p + 1)
+        else if c == 61 then
+            if p + 1 < s.len() and s.char_at(p + 1) == 61
+            then make_tok(TK_EQEQ(), p + 2)
+            else make_tok(TK_EQ(), p + 1)
+        else if c == 59 then make_tok(TK_SEMI(), p + 1)
+        else if c == 44 then make_tok(TK_COMMA(), p + 1)
+        else if c == 40 then make_tok(TK_LPAREN(), p + 1)
+        else if c == 41 then make_tok(TK_RPAREN(), p + 1)
+        else if c == 43 then make_tok(TK_PLUS(), p + 1)
+        else if c == 45 then
+            if p + 1 < s.len() and s.char_at(p + 1) == 62
+            then make_tok(TK_ARROW(), p + 2)
+            else make_tok(TK_MINUS(), p + 1)
+        else if c == 42 then make_tok(TK_STAR(), p + 1)
+        else if c == 47 then make_tok(TK_SLASH(), p + 1)
+        else if c == 37 then make_tok(TK_PERCENT(), p + 1)
+        else if c == 60 then
+            if p + 1 < s.len() and s.char_at(p + 1) == 61
+            then make_tok(TK_LTEQ(), p + 2)
+            else make_tok(TK_LT(), p + 1)
+        else if c == 62 then
+            if p + 1 < s.len() and s.char_at(p + 1) == 61
+            then make_tok(TK_GTEQ(), p + 2)
+            else make_tok(TK_GT(), p + 1)
+        else if c == 33 then
+            if p + 1 < s.len() and s.char_at(p + 1) == 61
+            then make_tok(TK_NEQ(), p + 2)
+            else make_tok(TK_EOF(), p)
+        else if c == 46 then
+            if p + 1 < s.len() and s.char_at(p + 1) == 46
+            then make_tok(TK_DOTDOT(), p + 2)
+            else make_tok(TK_EOF(), p)
+        else make_tok(TK_EOF(), p);
+
+fn get_ident_text(s: String, pos: i64, tok: i64) -> String =
+    let start = tok_end(tok) - (tok_val(tok) / 1000000);
+    let p = skip_ws_comments(s, pos);
+    let endp = scan_ident_end(s, p + 1);
+    s.slice(p, endp);
+
+-- ============================================================================
+-- SECTION 4: Parser Result Packing
+-- ============================================================================
+
+fn pack_result(pos: i64, ast: String) -> String = int_to_string(pos) + ":" + ast;
+
+fn unpack_pos(r: String) -> i64 = unpack_pos_acc(r, 0, 0);
+
+fn unpack_pos_acc(r: String, pos: i64, acc: i64) -> i64 =
+    if pos >= r.len() then acc
+    else let c = r.char_at(pos);
+        if c == 58 then acc
+        else if is_digit(c) then unpack_pos_acc(r, pos + 1, acc * 10 + (c - 48))
+        else acc;
+
+fn unpack_ast(r: String) -> String =
+    let cpos = find_colon(r, 0);
+    if cpos >= r.len() then r
+    else r.slice(cpos + 1, r.len());
+
+fn find_colon(s: String, pos: i64) -> i64 =
+    if pos >= s.len() then pos
+    else if s.char_at(pos) == 58 then pos
+    else find_colon(s, pos + 1);
+
+-- ============================================================================
+-- SECTION 5: Expression Parser (recursive descent)
+-- ============================================================================
+
+fn parse_atom(src: String, pos: i64) -> String =
+    let tok = next_token_raw(src, pos);
+    let kind = tok_kind(tok);
+    if kind == TK_INT() then
+        pack_result(tok_end(tok), "(int " + int_to_string(tok_val(tok)) + ")")
+    else if kind == TK_TRUE() then
+        pack_result(tok_end(tok), "(bool true)")
+    else if kind == TK_FALSE() then
+        pack_result(tok_end(tok), "(bool false)")
+    else if kind == TK_IDENT() then
+        let name = get_ident_text(src, pos, tok);
+        let next = next_token_raw(src, tok_end(tok));
+        if tok_kind(next) == TK_LPAREN() then
+            let rargs = parse_args(src, tok_end(next), "");
+            pack_result(unpack_pos(rargs), "(call <" + name + ">" + unpack_ast(rargs) + ")")
+        else
+            pack_result(tok_end(tok), "(var <" + name + ">)")
+    else if kind == TK_NOT() then
+        let re = parse_atom(src, tok_end(tok));
+        pack_result(unpack_pos(re), "(unary not " + unpack_ast(re) + ")")
+    else if kind == TK_MINUS() then
+        let re = parse_atom(src, tok_end(tok));
+        pack_result(unpack_pos(re), "(unary - " + unpack_ast(re) + ")")
+    else if kind == TK_LPAREN() then
+        let re = parse_expr(src, tok_end(tok));
+        let next = next_token_raw(src, unpack_pos(re));
+        if tok_kind(next) == TK_RPAREN() then
+            pack_result(tok_end(next), unpack_ast(re))
+        else make_error("paren")
+    else make_error("atom");
+
+fn parse_args(src: String, pos: i64, acc: String) -> String =
+    let tok = next_token_raw(src, pos);
+    if tok_kind(tok) == TK_RPAREN() then pack_result(tok_end(tok), acc)
+    else
+        let re = parse_expr(src, pos);
+        if is_error(unpack_ast(re)) then re
+        else
+            let new_acc = acc + " " + unpack_ast(re);
+            let next = next_token_raw(src, unpack_pos(re));
+            if tok_kind(next) == TK_COMMA() then parse_args(src, tok_end(next), new_acc)
+            else if tok_kind(next) == TK_RPAREN() then pack_result(tok_end(next), new_acc)
+            else make_error("args");
+
+fn parse_mul(src: String, pos: i64) -> String =
+    let rl = parse_atom(src, pos);
+    if is_error(unpack_ast(rl)) then rl
+    else parse_mul_rest(src, unpack_pos(rl), unpack_ast(rl));
+
+fn parse_mul_rest(src: String, pos: i64, left: String) -> String =
+    let tok = next_token_raw(src, pos);
+    let kind = tok_kind(tok);
+    if kind == TK_STAR() then
+        let rr = parse_atom(src, tok_end(tok));
+        if is_error(unpack_ast(rr)) then rr
+        else parse_mul_rest(src, unpack_pos(rr), "(binop * " + left + " " + unpack_ast(rr) + ")")
+    else if kind == TK_SLASH() then
+        let rr = parse_atom(src, tok_end(tok));
+        if is_error(unpack_ast(rr)) then rr
+        else parse_mul_rest(src, unpack_pos(rr), "(binop / " + left + " " + unpack_ast(rr) + ")")
+    else if kind == TK_PERCENT() then
+        let rr = parse_atom(src, tok_end(tok));
+        if is_error(unpack_ast(rr)) then rr
+        else parse_mul_rest(src, unpack_pos(rr), "(binop % " + left + " " + unpack_ast(rr) + ")")
+    else pack_result(pos, left);
+
+fn parse_add(src: String, pos: i64) -> String =
+    let rl = parse_mul(src, pos);
+    if is_error(unpack_ast(rl)) then rl
+    else parse_add_rest(src, unpack_pos(rl), unpack_ast(rl));
+
+fn parse_add_rest(src: String, pos: i64, left: String) -> String =
+    let tok = next_token_raw(src, pos);
+    let kind = tok_kind(tok);
+    if kind == TK_PLUS() then
+        let rr = parse_mul(src, tok_end(tok));
+        if is_error(unpack_ast(rr)) then rr
+        else parse_add_rest(src, unpack_pos(rr), "(binop + " + left + " " + unpack_ast(rr) + ")")
+    else if kind == TK_MINUS() then
+        let rr = parse_mul(src, tok_end(tok));
+        if is_error(unpack_ast(rr)) then rr
+        else parse_add_rest(src, unpack_pos(rr), "(binop - " + left + " " + unpack_ast(rr) + ")")
+    else pack_result(pos, left);
+
+fn parse_cmp(src: String, pos: i64) -> String =
+    let rl = parse_add(src, pos);
+    if is_error(unpack_ast(rl)) then rl
+    else parse_cmp_rest(src, unpack_pos(rl), unpack_ast(rl));
+
+fn parse_cmp_rest(src: String, pos: i64, left: String) -> String =
+    let tok = next_token_raw(src, pos);
+    let kind = tok_kind(tok);
+    if kind == TK_LT() then
+        let rr = parse_add(src, tok_end(tok));
+        pack_result(unpack_pos(rr), "(binop < " + left + " " + unpack_ast(rr) + ")")
+    else if kind == TK_GT() then
+        let rr = parse_add(src, tok_end(tok));
+        pack_result(unpack_pos(rr), "(binop > " + left + " " + unpack_ast(rr) + ")")
+    else if kind == TK_LTEQ() then
+        let rr = parse_add(src, tok_end(tok));
+        pack_result(unpack_pos(rr), "(binop <= " + left + " " + unpack_ast(rr) + ")")
+    else if kind == TK_GTEQ() then
+        let rr = parse_add(src, tok_end(tok));
+        pack_result(unpack_pos(rr), "(binop >= " + left + " " + unpack_ast(rr) + ")")
+    else if kind == TK_EQEQ() then
+        let rr = parse_add(src, tok_end(tok));
+        pack_result(unpack_pos(rr), "(binop == " + left + " " + unpack_ast(rr) + ")")
+    else if kind == TK_NEQ() then
+        let rr = parse_add(src, tok_end(tok));
+        pack_result(unpack_pos(rr), "(binop != " + left + " " + unpack_ast(rr) + ")")
+    else pack_result(pos, left);
+
+fn parse_and(src: String, pos: i64) -> String =
+    let rl = parse_cmp(src, pos);
+    if is_error(unpack_ast(rl)) then rl
+    else parse_and_rest(src, unpack_pos(rl), unpack_ast(rl));
+
+fn parse_and_rest(src: String, pos: i64, left: String) -> String =
+    let tok = next_token_raw(src, pos);
+    if tok_kind(tok) == TK_AND() then
+        let rr = parse_cmp(src, tok_end(tok));
+        if is_error(unpack_ast(rr)) then rr
+        else parse_and_rest(src, unpack_pos(rr), "(binop and " + left + " " + unpack_ast(rr) + ")")
+    else pack_result(pos, left);
+
+fn parse_or(src: String, pos: i64) -> String =
+    let rl = parse_and(src, pos);
+    if is_error(unpack_ast(rl)) then rl
+    else parse_or_rest(src, unpack_pos(rl), unpack_ast(rl));
+
+fn parse_or_rest(src: String, pos: i64, left: String) -> String =
+    let tok = next_token_raw(src, pos);
+    if tok_kind(tok) == TK_OR() then
+        let rr = parse_and(src, tok_end(tok));
+        if is_error(unpack_ast(rr)) then rr
+        else parse_or_rest(src, unpack_pos(rr), "(binop or " + left + " " + unpack_ast(rr) + ")")
+    else pack_result(pos, left);
+
+fn parse_expr(src: String, pos: i64) -> String =
+    let tok = next_token_raw(src, pos);
+    let kind = tok_kind(tok);
+    if kind == TK_IF() then
+        let rc = parse_expr(src, tok_end(tok));
+        if is_error(unpack_ast(rc)) then rc
+        else
+            let t1 = next_token_raw(src, unpack_pos(rc));
+            if tok_kind(t1) == TK_THEN() then
+                let rt = parse_expr(src, tok_end(t1));
+                if is_error(unpack_ast(rt)) then rt
+                else
+                    let t2 = next_token_raw(src, unpack_pos(rt));
+                    if tok_kind(t2) == TK_ELSE() then
+                        let re = parse_expr(src, tok_end(t2));
+                        pack_result(unpack_pos(re), "(if " + unpack_ast(rc) + " " + unpack_ast(rt) + " " + unpack_ast(re) + ")")
+                    else make_error("if-else")
+            else make_error("if-then")
+    else if kind == TK_LET() then
+        let t1 = next_token_raw(src, tok_end(tok));
+        if tok_kind(t1) == TK_IDENT() then
+            let name = get_ident_text(src, tok_end(tok), t1);
+            let t2 = next_token_raw(src, tok_end(t1));
+            if tok_kind(t2) == TK_EQ() then
+                let rv = parse_expr(src, tok_end(t2));
+                if is_error(unpack_ast(rv)) then rv
+                else
+                    let t3 = next_token_raw(src, unpack_pos(rv));
+                    if tok_kind(t3) == TK_SEMI() then
+                        let rb = parse_expr(src, tok_end(t3));
+                        pack_result(unpack_pos(rb), "(let <" + name + "> " + unpack_ast(rv) + " " + unpack_ast(rb) + ")")
+                    else make_error("let-semi")
+            else make_error("let-eq")
+        else make_error("let-name")
+    else parse_or(src, pos);
+
+-- ============================================================================
+-- SECTION 6: Function and Program Parser
+-- ============================================================================
+
+fn parse_param(src: String, pos: i64) -> String =
+    let t1 = next_token_raw(src, pos);
+    if tok_kind(t1) == TK_IDENT() then
+        let name = get_ident_text(src, pos, t1);
+        let t2 = next_token_raw(src, tok_end(t1));
+        if tok_kind(t2) == TK_COLON() then
+            let t3 = next_token_raw(src, tok_end(t2));
+            let kind = tok_kind(t3);
+            if kind == TK_I32() then pack_result(tok_end(t3), "(param <" + name + "> i32)")
+            else if kind == TK_I64() then pack_result(tok_end(t3), "(param <" + name + "> i64)")
+            else if kind == TK_F64() then pack_result(tok_end(t3), "(param <" + name + "> f64)")
+            else if kind == TK_BOOL() then pack_result(tok_end(t3), "(param <" + name + "> bool)")
+            else make_error("param-type")
+        else make_error("param-colon")
+    else make_error("param-name");
+
+fn parse_params(src: String, pos: i64, acc: String) -> String =
+    let tok = next_token_raw(src, pos);
+    if tok_kind(tok) == TK_RPAREN() then pack_result(tok_end(tok), acc)
+    else
+        let rp = parse_param(src, pos);
+        if is_error(unpack_ast(rp)) then rp
+        else
+            let new_acc = acc + " " + unpack_ast(rp);
+            let next = next_token_raw(src, unpack_pos(rp));
+            if tok_kind(next) == TK_COMMA() then parse_params(src, tok_end(next), new_acc)
+            else if tok_kind(next) == TK_RPAREN() then pack_result(tok_end(next), new_acc)
+            else make_error("params");
+
+fn parse_fn(src: String, pos: i64) -> String =
+    let t1 = next_token_raw(src, pos);
+    if tok_kind(t1) == TK_IDENT() then
+        let name = get_ident_text(src, pos, t1);
+        let t2 = next_token_raw(src, tok_end(t1));
+        if tok_kind(t2) == TK_LPAREN() then
+            let rp = parse_params(src, tok_end(t2), "");
+            if is_error(unpack_ast(rp)) then rp
+            else
+                let t3 = next_token_raw(src, unpack_pos(rp));
+                if tok_kind(t3) == TK_ARROW() then
+                    let t4 = next_token_raw(src, tok_end(t3));
+                    let ret_type = if tok_kind(t4) == TK_I32() then "i32"
+                        else if tok_kind(t4) == TK_I64() then "i64"
+                        else if tok_kind(t4) == TK_F64() then "f64"
+                        else if tok_kind(t4) == TK_BOOL() then "bool"
+                        else "i64";
+                    let t5 = next_token_raw(src, tok_end(t4));
+                    if tok_kind(t5) == TK_EQ() then
+                        let rb = parse_expr(src, tok_end(t5));
+                        if is_error(unpack_ast(rb)) then rb
+                        else
+                            let t6 = next_token_raw(src, unpack_pos(rb));
+                            if tok_kind(t6) == TK_SEMI() then
+                                pack_result(tok_end(t6), "(fn <" + name + ">" + unpack_ast(rp) + " " + ret_type + " " + unpack_ast(rb) + ")")
+                            else pack_result(unpack_pos(rb), "(fn <" + name + ">" + unpack_ast(rp) + " " + ret_type + " " + unpack_ast(rb) + ")")
+                    else make_error("fn-eq")
+                else make_error("fn-arrow")
+        else make_error("fn-lparen")
+    else make_error("fn-name");
+
+fn parse_program(src: String, pos: i64, fns: String) -> String =
+    let tok = next_token_raw(src, pos);
+    let kind = tok_kind(tok);
+    if kind == TK_EOF() then "(program" + fns + ")"
+    else if kind == TK_FN() then
+        let rf = parse_fn(src, tok_end(tok));
+        if is_error(unpack_ast(rf)) then unpack_ast(rf)
+        else parse_program(src, unpack_pos(rf), fns + " " + unpack_ast(rf))
+    else make_error("program");
+
+fn parse_source(src: String) -> String = parse_program(src, 0, "");
+
+-- ============================================================================
+-- SECTION 7: S-Expression Utilities (for lowering)
+-- ============================================================================
+
+fn low_is_whitespace(c: i64) -> bool = c == 32 or c == 9 or c == 10 or c == 13;
+
+fn low_skip_ws(s: String, pos: i64) -> i64 =
+    if pos >= s.len() then pos
+    else if low_is_whitespace(s.char_at(pos)) then low_skip_ws(s, pos + 1)
+    else pos;
+
+fn low_is_ident_char(c: i64) -> bool =
+    (c >= 65 and c <= 90) or (c >= 97 and c <= 122) or
+    (c >= 48 and c <= 57) or c == 95 or c == 45;
+
+fn low_is_op_char(c: i64) -> bool =
+    c == 43 or c == 45 or c == 42 or c == 47 or c == 37 or
+    c == 60 or c == 62 or c == 61 or c == 33;
+
+fn low_find_ident_end(s: String, pos: i64) -> i64 =
+    if pos >= s.len() then pos
+    else if low_is_ident_char(s.char_at(pos)) then low_find_ident_end(s, pos + 1)
+    else pos;
+
+fn low_find_op_end(s: String, pos: i64) -> i64 =
+    if pos >= s.len() then pos
+    else if low_is_op_char(s.char_at(pos)) then low_find_op_end(s, pos + 1)
+    else pos;
+
+fn low_starts_with_at(s: String, pos: i64, prefix: String) -> bool =
+    if pos + prefix.len() > s.len() then false
+    else s.slice(pos, pos + prefix.len()) == prefix;
+
+fn low_find_close_paren(s: String, pos: i64, depth: i64) -> i64 =
+    if pos >= s.len() then pos
+    else let c = s.char_at(pos);
+        if c == 40 then low_find_close_paren(s, pos + 1, depth + 1)
+        else if c == 41 then
+            if depth == 1 then pos
+            else low_find_close_paren(s, pos + 1, depth - 1)
+        else low_find_close_paren(s, pos + 1, depth);
+
+fn extract_paren_content(s: String) -> String =
+    if s.len() < 2 then ""
+    else if s.char_at(0) == 40 then
+        let end = low_find_close_paren(s, 0, 0);
+        s.slice(1, end)
+    else "";
+
+fn get_node_type(ast: String) -> String =
+    if ast.len() == 0 then ""
+    else let content = extract_paren_content(ast);
+        let pos = low_skip_ws(content, 0);
+        if pos >= content.len() then ""
+        else let c = content.char_at(pos);
+            if low_is_ident_char(c) then
+                let endp = low_find_ident_end(content, pos);
+                content.slice(pos, endp)
+            else if low_is_op_char(c) then
+                let endp = low_find_op_end(content, pos);
+                content.slice(pos, endp)
+            else "";
+
+fn get_child(ast: String, idx: i64) -> String =
+    let content = extract_paren_content(ast);
+    let pos = low_skip_ws(content, 0);
+    let end1 = low_find_ident_end(content, pos);
+    let after_type = if end1 > pos then end1 else low_find_op_end(content, pos);
+    get_child_at(content, after_type, idx);
+
+fn get_child_at(content: String, pos: i64, idx: i64) -> String =
+    if idx < 0 then ""
+    else
+        let p = low_skip_ws(content, pos);
+        if p >= content.len() then ""
+        else if idx == 0 then read_sexp_at(content, p)
+        else
+            let child = read_sexp_at(content, p);
+            let next_pos = p + child.len();
+            get_child_at(content, next_pos, idx - 1);
+
+fn read_sexp_at(s: String, pos: i64) -> String =
+    let p = low_skip_ws(s, pos);
+    if p >= s.len() then ""
+    else let c = s.char_at(p);
+        if c == 40 then
+            let end = low_find_close_paren(s, p, 0);
+            s.slice(p, end + 1)
+        else if c == 60 then
+            let end = find_angle_end(s, p);
+            s.slice(p, end)
+        else if is_digit(c) or c == 45 then
+            let end = find_number_end(s, p);
+            s.slice(p, end)
+        else if low_is_ident_char(c) then
+            let end = low_find_ident_end(s, p);
+            s.slice(p, end)
+        else if low_is_op_char(c) then
+            let end = low_find_op_end(s, p);
+            s.slice(p, end)
+        else "";
+
+fn find_angle_end(s: String, pos: i64) -> i64 =
+    if pos >= s.len() then pos
+    else if s.char_at(pos) == 62 then pos + 1
+    else find_angle_end(s, pos + 1);
+
+fn find_number_end(s: String, pos: i64) -> i64 =
+    let p = if pos < s.len() and s.char_at(pos) == 45 then pos + 1 else pos;
+    find_digits_end(s, p);
+
+fn find_digits_end(s: String, pos: i64) -> i64 =
+    if pos >= s.len() then pos
+    else if is_digit(s.char_at(pos)) then find_digits_end(s, pos + 1)
+    else pos;
+
+fn extract_name(ast: String) -> String =
+    let child = get_child(ast, 0);
+    if child.len() >= 2 and child.char_at(0) == 60 then
+        child.slice(1, child.len() - 1)
+    else child;
+
+fn extract_int_value(ast: String) -> i64 =
+    let content = extract_paren_content(ast);
+    let pos = low_skip_ws(content, 0);
+    let end1 = low_find_ident_end(content, pos);
+    let num_start = low_skip_ws(content, end1);
+    parse_int_from(content, num_start, 0);
+
+fn parse_int_from(s: String, pos: i64, acc: i64) -> i64 =
+    if pos >= s.len() then acc
+    else let c = s.char_at(pos);
+        if is_digit(c) then parse_int_from(s, pos + 1, acc * 10 + (c - 48))
+        else acc;
+
+fn is_fn_node(ast: String) -> bool = get_node_type(ast) == "fn";
+
+-- ============================================================================
+-- SECTION 8: MIR Result Packing
+-- ============================================================================
+
+fn pack_lower_result(text: String, temp_id: i64) -> String =
+    int_to_string(temp_id) + ":" + text;
+
+fn unpack_temp_id(r: String) -> i64 = unpack_pos_acc(r, 0, 0);
+
+fn unpack_text(r: String) -> String =
+    let cpos = find_colon(r, 0);
+    if cpos >= r.len() then r
+    else r.slice(cpos + 1, r.len());
+
+-- ============================================================================
+-- SECTION 9: Expression Lowering
+-- ============================================================================
+
+fn lower_expr(ast: String, temp_id: i64, block_id: i64) -> String =
+    let ntype = get_node_type(ast);
+    if ntype == "int" then lower_int(ast, temp_id)
+    else if ntype == "bool" then lower_bool(ast, temp_id)
+    else if ntype == "var" then lower_var(ast, temp_id)
+    else if ntype == "binop" then lower_binop(ast, temp_id, block_id)
+    else if ntype == "unary" then lower_unary(ast, temp_id, block_id)
+    else if ntype == "if" then lower_if(ast, temp_id, block_id)
+    else if ntype == "let" then lower_let(ast, temp_id, block_id)
+    else if ntype == "call" then lower_call(ast, temp_id, block_id)
+    else pack_lower_result("ERR:unknown-" + ntype, temp_id);
+
+fn lower_int(ast: String, temp_id: i64) -> String =
+    let val = extract_int_value(ast);
+    let tmp = "%_t" + int_to_string(temp_id);
+    pack_lower_result("  " + tmp + " = const " + int_to_string(val), temp_id + 1);
+
+fn lower_bool(ast: String, temp_id: i64) -> String =
+    let child = get_child(ast, 0);
+    let val = if child == "true" then 1 else 0;
+    let tmp = "%_t" + int_to_string(temp_id);
+    pack_lower_result("  " + tmp + " = const " + int_to_string(val), temp_id + 1);
+
+fn lower_var(ast: String, temp_id: i64) -> String =
+    let name = extract_name(ast);
+    let tmp = "%_t" + int_to_string(temp_id);
+    pack_lower_result("  " + tmp + " = copy %" + name, temp_id + 1);
+
+fn lower_binop(ast: String, temp_id: i64, block_id: i64) -> String =
+    let op = get_child(ast, 0);
+    let left_ast = get_child(ast, 1);
+    let right_ast = get_child(ast, 2);
+    let rl = lower_expr(left_ast, temp_id, block_id);
+    let left_id = unpack_temp_id(rl) - 1;
+    let rr = lower_expr(right_ast, unpack_temp_id(rl), block_id);
+    let right_id = unpack_temp_id(rr) - 1;
+    let result_tmp = "%_t" + int_to_string(unpack_temp_id(rr));
+    let mir = unpack_text(rl) + "|" + unpack_text(rr) + "|" +
+        "  " + result_tmp + " = " + op + " %_t" + int_to_string(left_id) + ", %_t" + int_to_string(right_id);
+    pack_lower_result(mir, unpack_temp_id(rr) + 1);
+
+fn lower_unary(ast: String, temp_id: i64, block_id: i64) -> String =
+    let op = get_child(ast, 0);
+    let operand = get_child(ast, 1);
+    let ro = lower_expr(operand, temp_id, block_id);
+    let operand_id = unpack_temp_id(ro) - 1;
+    let result_tmp = "%_t" + int_to_string(unpack_temp_id(ro));
+    let mir_op = if op == "not" then "not" else if op == "-" then "neg" else op;
+    let mir = unpack_text(ro) + "|" +
+        "  " + result_tmp + " = " + mir_op + " %_t" + int_to_string(operand_id);
+    pack_lower_result(mir, unpack_temp_id(ro) + 1);
+
+fn lower_if(ast: String, temp_id: i64, block_id: i64) -> String =
+    let cond = get_child(ast, 0);
+    let then_branch = get_child(ast, 1);
+    let else_branch = get_child(ast, 2);
+    let rc = lower_expr(cond, temp_id, block_id);
+    let cond_id = unpack_temp_id(rc) - 1;
+    let then_label = "then_" + int_to_string(block_id);
+    let else_label = "else_" + int_to_string(block_id);
+    let merge_label = "merge_" + int_to_string(block_id);
+    let branch = "  branch %_t" + int_to_string(cond_id) + ", " + then_label + ", " + else_label;
+    let rt = lower_expr(then_branch, unpack_temp_id(rc), block_id + 1);
+    let then_id = unpack_temp_id(rt) - 1;
+    let re = lower_expr(else_branch, unpack_temp_id(rt), block_id + 2);
+    let else_id = unpack_temp_id(re) - 1;
+    let phi_tmp = "%_t" + int_to_string(unpack_temp_id(re));
+    let phi = "  " + phi_tmp + " = phi [%_t" + int_to_string(then_id) + ", " + then_label + "], [%_t" + int_to_string(else_id) + ", " + else_label + "]";
+    let mir = unpack_text(rc) + "|" + branch + "|" +
+        then_label + ":|" + unpack_text(rt) + "|  goto " + merge_label + "|" +
+        else_label + ":|" + unpack_text(re) + "|  goto " + merge_label + "|" +
+        merge_label + ":|" + phi;
+    pack_lower_result(mir, unpack_temp_id(re) + 1);
+
+fn lower_let(ast: String, temp_id: i64, block_id: i64) -> String =
+    let name = extract_name(ast);
+    let value_ast = get_child(ast, 1);
+    let body_ast = get_child(ast, 2);
+    let rv = lower_expr(value_ast, temp_id, block_id);
+    let val_id = unpack_temp_id(rv) - 1;
+    let assign = "  %" + name + " = copy %_t" + int_to_string(val_id);
+    let rb = lower_expr(body_ast, unpack_temp_id(rv), block_id);
+    let mir = unpack_text(rv) + "|" + assign + "|" + unpack_text(rb);
+    pack_lower_result(mir, unpack_temp_id(rb));
+
+fn lower_call(ast: String, temp_id: i64, block_id: i64) -> String =
+    let name = extract_name(ast);
+    lower_call_args(ast, name, temp_id, block_id, 1, "", "");
+
+fn lower_call_args(ast: String, name: String, temp_id: i64, block_id: i64, idx: i64, mir_acc: String, args_acc: String) -> String =
+    let arg = get_child(ast, idx);
+    if arg == "" then
+        let result_tmp = "%_t" + int_to_string(temp_id);
+        let call_mir = "  " + result_tmp + " = call @" + name + "(" + args_acc + ")";
+        let full_mir = if mir_acc == "" then call_mir else mir_acc + "|" + call_mir;
+        pack_lower_result(full_mir, temp_id + 1)
+    else
+        let ra = lower_expr(arg, temp_id, block_id);
+        let arg_id = unpack_temp_id(ra) - 1;
+        let new_args = if args_acc == "" then "%_t" + int_to_string(arg_id)
+            else args_acc + ", %_t" + int_to_string(arg_id);
+        let new_mir = if mir_acc == "" then unpack_text(ra) else mir_acc + "|" + unpack_text(ra);
+        lower_call_args(ast, name, unpack_temp_id(ra), block_id, idx + 1, new_mir, new_args);
+
+-- ============================================================================
+-- SECTION 10: Function Lowering
+-- ============================================================================
+
+fn lower_function(ast: String) -> String =
+    let name = extract_name(ast);
+    let params = collect_params(ast, 1, "");
+    let ret_type = get_fn_return_type(ast);
+    let body_ast = get_fn_body(ast);
+    let rb = lower_expr(body_ast, 0, 0);
+    let body_mir = unpack_text(rb);
+    let result_id = unpack_temp_id(rb) - 1;
+    "fn " + name + "(" + params + ") -> " + ret_type + " {|entry:|" + body_mir + "|  return %_t" + int_to_string(result_id) + "|}";
+
+fn collect_params(ast: String, idx: i64, acc: String) -> String =
+    let child = get_child(ast, idx);
+    if child == "" or get_node_type(child) != "param" then acc
+    else
+        let param_name = get_child(child, 0);
+        let name = if param_name.len() >= 2 and param_name.char_at(0) == 60
+            then param_name.slice(1, param_name.len() - 1) else param_name;
+        let param_type = get_child(child, 1);
+        let entry = name + ": " + param_type;
+        let new_acc = if acc == "" then entry else acc + ", " + entry;
+        collect_params(ast, idx + 1, new_acc);
+
+fn get_fn_return_type(ast: String) -> String =
+    let content = extract_paren_content(ast);
+    get_fn_return_scan(content, 0);
+
+fn get_fn_return_scan(content: String, pos: i64) -> String =
+    let p = low_skip_ws(content, pos);
+    if p >= content.len() then "i64"
+    else let child = read_sexp_at(content, p);
+        if child == "" then "i64"
+        else if child == "i32" or child == "i64" or child == "f64" or child == "bool" then child
+        else if child.char_at(0) == 40 then
+            get_fn_return_scan(content, p + child.len())
+        else if child.char_at(0) == 60 then
+            get_fn_return_scan(content, p + child.len())
+        else get_fn_return_scan(content, p + child.len());
+
+fn get_fn_body(ast: String) -> String =
+    let content = extract_paren_content(ast);
+    get_fn_body_scan(content, 0, "");
+
+fn get_fn_body_scan(content: String, pos: i64, last_expr: String) -> String =
+    let p = low_skip_ws(content, pos);
+    if p >= content.len() then last_expr
+    else let child = read_sexp_at(content, p);
+        if child == "" then last_expr
+        else if child.len() > 0 and child.char_at(0) == 40 then
+            let ntype = get_node_type(child);
+            if ntype == "param" then
+                get_fn_body_scan(content, p + child.len(), last_expr)
+            else
+                get_fn_body_scan(content, p + child.len(), child)
+        else
+            get_fn_body_scan(content, p + child.len(), last_expr);
+
+fn lower_program(ast: String) -> String =
+    lower_program_inner(ast, 0, "");
+
+fn lower_program_inner(ast: String, idx: i64, acc: String) -> String =
+    let fn_ast = get_child(ast, idx);
+    if fn_ast.len() == 0 or fn_ast == "" then acc
+    else if not is_fn_node(fn_ast) then acc
+    else
+        let fn_mir = lower_function(fn_ast);
+        let new_acc = if acc.len() > 0 then acc + "||" + fn_mir else fn_mir;
+        lower_program_inner(ast, idx + 1, new_acc);
+
+-- ============================================================================
+-- SECTION 11: LLVM IR Generation
+-- ============================================================================
+
+fn find_pipe(s: String, pos: i64) -> i64 =
+    if pos >= s.len() then pos
+    else if s.char_at(pos) == 124 then pos
+    else find_pipe(s, pos + 1);
+
+fn llvm_gen_line(line: String) -> String =
+    let p = low_skip_ws(line, 0);
+    if p >= line.len() then ""
+    else if line.char_at(p) == 37 then llvm_gen_assign(line, p)
+    else if low_starts_with_at(line, p, "return") then llvm_gen_return(line, p)
+    else if low_starts_with_at(line, p, "branch") then llvm_gen_branch(line, p)
+    else if low_starts_with_at(line, p, "goto") then llvm_gen_goto(line, p)
+    else line;
+
+fn llvm_gen_assign(line: String, pos: i64) -> String =
+    let eq_pos = find_eq(line, pos);
+    let dest = line.slice(pos, eq_pos - 1);
+    let after_eq = low_skip_ws(line, eq_pos + 1);
+    llvm_gen_rhs(line, after_eq, dest);
+
+fn find_eq(s: String, pos: i64) -> i64 =
+    if pos >= s.len() then pos
+    else if s.char_at(pos) == 61 then pos
+    else find_eq(s, pos + 1);
+
+fn llvm_gen_rhs(line: String, pos: i64, dest: String) -> String =
+    if low_starts_with_at(line, pos, "const") then
+        let val_start = low_skip_ws(line, pos + 5);
+        let val = line.slice(val_start, line.len());
+        "  " + dest + " = add i64 0, " + trim_end(val)
+    else if low_starts_with_at(line, pos, "copy") then
+        let src_start = low_skip_ws(line, pos + 4);
+        let src = line.slice(src_start, line.len());
+        "  " + dest + " = add i64 0, " + trim_end(src)
+    else if low_starts_with_at(line, pos, "+") then llvm_gen_binop("add", line, pos + 1, dest)
+    else if low_starts_with_at(line, pos, "-") then llvm_gen_binop("sub", line, pos + 1, dest)
+    else if low_starts_with_at(line, pos, "*") then llvm_gen_binop("mul", line, pos + 1, dest)
+    else if low_starts_with_at(line, pos, "/") then llvm_gen_binop("sdiv", line, pos + 1, dest)
+    else if low_starts_with_at(line, pos, "%") then llvm_gen_binop("srem", line, pos + 1, dest)
+    else if low_starts_with_at(line, pos, "<") then llvm_gen_cmp("slt", line, pos + 1, dest)
+    else if low_starts_with_at(line, pos, ">") then llvm_gen_cmp("sgt", line, pos + 1, dest)
+    else if low_starts_with_at(line, pos, "<=") then llvm_gen_cmp("sle", line, pos + 2, dest)
+    else if low_starts_with_at(line, pos, ">=") then llvm_gen_cmp("sge", line, pos + 2, dest)
+    else if low_starts_with_at(line, pos, "==") then llvm_gen_cmp("eq", line, pos + 2, dest)
+    else if low_starts_with_at(line, pos, "!=") then llvm_gen_cmp("ne", line, pos + 2, dest)
+    else if low_starts_with_at(line, pos, "and") then llvm_gen_binop("and", line, pos + 3, dest)
+    else if low_starts_with_at(line, pos, "or") then llvm_gen_binop("or", line, pos + 2, dest)
+    else if low_starts_with_at(line, pos, "not") then llvm_gen_not(line, pos + 3, dest)
+    else if low_starts_with_at(line, pos, "neg") then llvm_gen_neg(line, pos + 3, dest)
+    else if low_starts_with_at(line, pos, "phi") then llvm_gen_phi(line, pos, dest)
+    else if low_starts_with_at(line, pos, "call") then llvm_gen_call(line, pos, dest)
+    else "  ; unknown: " + line;
+
+fn llvm_gen_binop(op: String, line: String, pos: i64, dest: String) -> String =
+    let p1 = low_skip_ws(line, pos);
+    let comma = find_comma(line, p1);
+    let left = line.slice(p1, comma);
+    let p2 = low_skip_ws(line, comma + 1);
+    let right = line.slice(p2, line.len());
+    "  " + dest + " = " + op + " i64 " + trim_end(left) + ", " + trim_end(right);
+
+fn llvm_gen_cmp(pred: String, line: String, pos: i64, dest: String) -> String =
+    let p1 = low_skip_ws(line, pos);
+    let comma = find_comma(line, p1);
+    let left = line.slice(p1, comma);
+    let p2 = low_skip_ws(line, comma + 1);
+    let right = line.slice(p2, line.len());
+    "  " + dest + " = icmp " + pred + " i64 " + trim_end(left) + ", " + trim_end(right);
+
+fn llvm_gen_not(line: String, pos: i64, dest: String) -> String =
+    let p = low_skip_ws(line, pos);
+    let operand = line.slice(p, line.len());
+    "  " + dest + " = xor i64 " + trim_end(operand) + ", 1";
+
+fn llvm_gen_neg(line: String, pos: i64, dest: String) -> String =
+    let p = low_skip_ws(line, pos);
+    let operand = line.slice(p, line.len());
+    "  " + dest + " = sub i64 0, " + trim_end(operand);
+
+fn llvm_gen_phi(line: String, pos: i64, dest: String) -> String =
+    let bracket_start = find_char(line, pos, 91);
+    let first_end = find_char(line, bracket_start, 93);
+    let first_content = line.slice(bracket_start + 1, first_end);
+    let second_start = find_char(line, first_end, 91);
+    let second_end = find_char(line, second_start, 93);
+    let second_content = line.slice(second_start + 1, second_end);
+    "  " + dest + " = phi i64 [" + first_content + "], [" + second_content + "]";
+
+fn llvm_gen_call(line: String, pos: i64, dest: String) -> String =
+    let at_pos = find_char(line, pos, 64);
+    let paren_pos = find_char(line, at_pos, 40);
+    let close_pos = find_char(line, paren_pos, 41);
+    let fn_name = line.slice(at_pos, paren_pos);
+    let args = line.slice(paren_pos + 1, close_pos);
+    let formatted_args = format_call_args(args, 0, "");
+    "  " + dest + " = call i64 " + fn_name + "(" + formatted_args + ")";
+
+fn format_call_args(args: String, pos: i64, acc: String) -> String =
+    let p = low_skip_ws(args, pos);
+    if p >= args.len() then acc
+    else
+        let comma = find_comma_or_end(args, p);
+        let arg = trim_end(args.slice(p, comma));
+        let typed_arg = "i64 " + arg;
+        let new_acc = if acc == "" then typed_arg else acc + ", " + typed_arg;
+        if comma >= args.len() then new_acc
+        else format_call_args(args, comma + 1, new_acc);
+
+fn find_comma(s: String, pos: i64) -> i64 =
+    if pos >= s.len() then pos
+    else if s.char_at(pos) == 44 then pos
+    else find_comma(s, pos + 1);
+
+fn find_comma_or_end(s: String, pos: i64) -> i64 =
+    if pos >= s.len() then pos
+    else if s.char_at(pos) == 44 then pos
+    else find_comma_or_end(s, pos + 1);
+
+fn find_char(s: String, pos: i64, ch: i64) -> i64 =
+    if pos >= s.len() then pos
+    else if s.char_at(pos) == ch then pos
+    else find_char(s, pos + 1, ch);
+
+fn trim_end(s: String) -> String =
+    trim_end_at(s, s.len() - 1);
+
+fn trim_end_at(s: String, pos: i64) -> String =
+    if pos < 0 then ""
+    else if low_is_whitespace(s.char_at(pos)) then trim_end_at(s, pos - 1)
+    else s.slice(0, pos + 1);
+
+fn llvm_gen_return(line: String, pos: i64) -> String =
+    let val_start = low_skip_ws(line, pos + 6);
+    let val = line.slice(val_start, line.len());
+    "  ret i64 " + trim_end(val);
+
+fn llvm_gen_branch(line: String, pos: i64) -> String =
+    let after = low_skip_ws(line, pos + 6);
+    let comma1 = find_comma(line, after);
+    let cond = line.slice(after, comma1);
+    let after1 = low_skip_ws(line, comma1 + 1);
+    let comma2 = find_comma(line, after1);
+    let then_label = line.slice(after1, comma2);
+    let after2 = low_skip_ws(line, comma2 + 1);
+    let else_label = trim_end(line.slice(after2, line.len()));
+    "  br i1 " + trim_end(cond) + ", label %" + trim_end(then_label) + ", label %" + else_label;
+
+fn llvm_gen_goto(line: String, pos: i64) -> String =
+    let label_start = low_skip_ws(line, pos + 4);
+    let label = line.slice(label_start, line.len());
+    "  br label %" + trim_end(label);
+
+fn gen_function(mir: String) -> String =
+    gen_function_lines(mir, 0, "");
+
+fn gen_function_lines(mir: String, pos: i64, acc: String) -> String =
+    if pos >= mir.len() then acc
+    else
+        let pipe_pos = find_pipe(mir, pos);
+        let line = mir.slice(pos, pipe_pos);
+        let llvm_line = llvm_gen_fn_line(line);
+        let new_acc = if acc == "" then llvm_line else acc + "|" + llvm_line;
+        if pipe_pos >= mir.len() then new_acc
+        else gen_function_lines(mir, pipe_pos + 1, new_acc);
+
+fn llvm_gen_fn_line(line: String) -> String =
+    let p = low_skip_ws(line, 0);
+    if p >= line.len() then ""
+    else if low_starts_with_at(line, p, "fn ") then llvm_gen_fn_header(line, p)
+    else if ends_with_colon(line) then line
+    else if line == "}" then "}"
+    else llvm_gen_line(line);
+
+fn llvm_gen_fn_header(line: String, pos: i64) -> String =
+    let name_start = pos + 3;
+    let paren_pos = find_char(line, name_start, 40);
+    let fn_name = line.slice(name_start, paren_pos);
+    let close_pos = find_char(line, paren_pos, 41);
+    let params = line.slice(paren_pos + 1, close_pos);
+    let formatted_params = format_fn_params(params, 0, "");
+    let arrow_pos = find_arrow(line, close_pos);
+    let brace_pos = find_char(line, arrow_pos, 123);
+    let ret_type = trim_end(line.slice(arrow_pos + 2, brace_pos - 1));
+    let llvm_ret = if ret_type == "bool" then "i1" else "i64";
+    "define " + llvm_ret + " @" + fn_name + "(" + formatted_params + ") {";
+
+fn format_fn_params(params: String, pos: i64, acc: String) -> String =
+    let p = low_skip_ws(params, pos);
+    if p >= params.len() then acc
+    else
+        let comma = find_comma_or_end(params, p);
+        let param = trim_end(params.slice(p, comma));
+        let colon_pos = find_char(param, 0, 58);
+        let name = param.slice(0, colon_pos);
+        let typed_param = "i64 %" + name;
+        let new_acc = if acc == "" then typed_param else acc + ", " + typed_param;
+        if comma >= params.len() then new_acc
+        else format_fn_params(params, comma + 1, new_acc);
+
+fn find_arrow(s: String, pos: i64) -> i64 =
+    if pos + 1 >= s.len() then pos
+    else if s.char_at(pos) == 45 and s.char_at(pos + 1) == 62 then pos
+    else find_arrow(s, pos + 1);
+
+fn ends_with_colon(s: String) -> bool =
+    if s.len() == 0 then false
+    else
+        let last = trim_end(s);
+        if last.len() == 0 then false
+        else last.char_at(last.len() - 1) == 58;
+
+fn find_double_pipe(s: String, pos: i64) -> i64 =
+    if pos + 1 >= s.len() then s.len()
+    else if s.char_at(pos) == 124 and s.char_at(pos + 1) == 124 then pos
+    else find_double_pipe(s, pos + 1);
+
+fn gen_program(mir: String) -> String =
+    gen_program_acc(mir, 0, "");
+
+fn gen_program_acc(mir: String, pos: i64, acc: String) -> String =
+    if pos >= mir.len() then acc
+    else
+        let fn_end = find_double_pipe(mir, pos);
+        let fn_mir = mir.slice(pos, fn_end);
+        let fn_llvm = gen_function(fn_mir);
+        let new_acc = if acc == "" then fn_llvm else acc + "||" + fn_llvm;
+        if fn_end + 2 >= mir.len() then new_acc
+        else gen_program_acc(mir, fn_end + 2, new_acc);
+
+-- ============================================================================
+-- SECTION 12: Module Generation
+-- ============================================================================
+
+fn gen_module_header() -> String =
+    "; ModuleID = bmb_bootstrap|target triple = x86_64-unknown-linux-gnu";
+
+fn gen_extern_println() -> String = "declare void @println(i64)";
+fn gen_extern_abs() -> String = "declare i64 @abs(i64)";
+fn gen_extern_min() -> String = "declare i64 @min(i64, i64)";
+fn gen_extern_max() -> String = "declare i64 @max(i64, i64)";
+
+fn gen_runtime_decls() -> String =
+    gen_extern_println() + "|" + gen_extern_abs() + "|" + gen_extern_min() + "|" + gen_extern_max();
+
+-- ============================================================================
+-- SECTION 13: Unified Compiler Entry Point (v0.10.9)
+-- ============================================================================
+
+-- Compile BMB source code to LLVM IR module
+-- Returns complete LLVM IR module text with:
+-- - Module header
+-- - Runtime declarations
+-- - Function definitions
+fn compile_program(source: String) -> String =
+    let ast = parse_source(source);
+    if is_error(ast) then "ERR:PARSE:" + ast
+    else
+        let mir = lower_program(ast);
+        if mir == "" then "ERR:LOWERING:empty"
+        else
+            let header = gen_module_header();
+            let decls = gen_runtime_decls();
+            let code = gen_program(mir);
+            header + "|" + decls + "||" + code;
+
+-- Compile single function source to LLVM IR
+fn compile_function(source: String) -> String =
+    let full_source = source;
+    let ast = parse_source(full_source);
+    if is_error(ast) then "ERR:PARSE:" + ast
+    else
+        let mir = lower_program(ast);
+        if mir == "" then "ERR:LOWERING:empty"
+        else gen_function(mir);
+
+-- Check if compilation result is an error
+fn is_compile_error(result: String) -> bool =
+    result.len() >= 4 and result.slice(0, 4) == "ERR:";
+
+-- Extract error type from compilation result
+fn get_error_type(result: String) -> String =
+    if not is_compile_error(result) then ""
+    else
+        let after_err = result.slice(4, result.len());
+        let colon_pos = find_colon(after_err, 0);
+        if colon_pos >= after_err.len() then after_err
+        else after_err.slice(0, colon_pos);
+
+-- ============================================================================
+-- SECTION 14: Test Utilities
+-- ============================================================================
+
+fn test_compile_ok(source: String) -> i64 =
+    let result = compile_program(source);
+    if is_compile_error(result) then 0 else 1;
+
+fn test_compile_has_define(source: String) -> i64 =
+    let result = compile_program(source);
+    if is_compile_error(result) then 0
+    else if has_pattern(result, "define", 0) then 1 else 0;
+
+fn test_compile_has_ret(source: String) -> i64 =
+    let result = compile_program(source);
+    if is_compile_error(result) then 0
+    else if has_pattern(result, "ret i64", 0) then 1 else 0;
+
+fn test_compile_has_call(source: String) -> i64 =
+    let result = compile_program(source);
+    if is_compile_error(result) then 0
+    else if has_pattern(result, "call i64", 0) then 1 else 0;
+
+fn test_compile_has_header(source: String) -> i64 =
+    let result = compile_program(source);
+    if is_compile_error(result) then 0
+    else if has_pattern(result, "ModuleID", 0) then 1 else 0;
+
+fn test_compile_has_runtime(source: String) -> i64 =
+    let result = compile_program(source);
+    if is_compile_error(result) then 0
+    else if has_pattern(result, "declare", 0) then 1 else 0;
+
+-- ============================================================================
+-- SECTION 15: Main Test Suite
+-- ============================================================================
+
+fn main() -> i64 =
+    let u0 = println(777);  -- Start marker
+
+    -- Test 1: Module header
+    let hdr = gen_module_header();
+    let t1 = if has_pattern(hdr, "ModuleID", 0) then 1 else 0;
+    let u1 = println(t1);
+
+    -- Test 2: Runtime declarations
+    let decls = gen_runtime_decls();
+    let t2 = if has_pattern(decls, "declare", 0) then 1 else 0;
+    let u2 = println(t2);
+
+    -- Test 3: Lower simple AST (pre-computed)
+    -- AST for "fn one() -> i64 = 1;" is "(program (fn <one> i64 (int 1)))"
+    let ast3 = "(program (fn <one> i64 (int 1)))";
+    let mir3 = lower_program(ast3);
+    let t3 = if mir3 == "" then 0 else 1;
+    let u3 = println(t3);
+
+    -- Test 4: MIR contains function signature
+    let t4 = if has_pattern(mir3, "fn one", 0) then 1 else 0;
+    let u4 = println(t4);
+
+    -- Test 5: Generate LLVM from MIR
+    let llvm5 = gen_program(mir3);
+    let t5 = if has_pattern(llvm5, "define", 0) then 1 else 0;
+    let u5 = println(t5);
+
+    -- Test 6: LLVM has return
+    let t6 = if has_pattern(llvm5, "ret i64", 0) then 1 else 0;
+    let u6 = println(t6);
+
+    -- Test 7: Lower binop AST (pre-computed)
+    -- AST for "fn add(a: i64, b: i64) -> i64 = a + b;"
+    let ast7 = "(program (fn <add> (param <a> i64) (param <b> i64) i64 (binop + (var <a>) (var <b>))))";
+    let mir7 = lower_program(ast7);
+    let t7 = if has_pattern(mir7, "fn add", 0) then 1 else 0;
+    let u7 = println(t7);
+
+    -- Test 8: LLVM generation for add
+    let llvm8 = gen_program(mir7);
+    let t8 = if has_pattern(llvm8, "add i64", 0) then 1 else 0;
+    let u8 = println(t8);
+
+    let u99 = println(888);  -- End marker
+
+    -- Count passed tests
+    let passed = t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8;
+    passed;
