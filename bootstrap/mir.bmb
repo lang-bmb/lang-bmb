@@ -1,0 +1,552 @@
+-- BMB Middle IR (MIR) written in BMB (v0.10.1: Bootstrap Phase 5)
+-- A simple MIR representation for the BMB language
+-- Uses functional/recursive style following types.bmb patterns
+--
+-- DESIGN:
+-- - Instruction encoding: kind * 1000 + operand_info
+-- - Block/function representation: string-based for simplicity
+-- - Text output format for debugging and verification
+--
+-- SCOPE (v0.10.1):
+-- - MIR instruction types (Const, Copy, BinOp, UnaryOp, Call)
+-- - Terminator types (Return, Goto, Branch)
+-- - Basic block structure
+-- - Text-based MIR output
+--
+-- LIMITATIONS:
+-- - No actual code generation (v0.10.2+)
+-- - Text representation only
+-- - Simple expressions only (no struct/array)
+
+-- ============================================================================
+-- String Utility Functions (no imports in bootstrap)
+-- ============================================================================
+
+fn digit_char(d: i64) -> String =
+    if d == 0 then "0" else if d == 1 then "1" else if d == 2 then "2"
+    else if d == 3 then "3" else if d == 4 then "4" else if d == 5 then "5"
+    else if d == 6 then "6" else if d == 7 then "7" else if d == 8 then "8"
+    else "9";
+
+fn int_to_string(n: i64) -> String =
+    if n < 0 then "-" + int_to_string(0 - n)
+    else if n < 10 then digit_char(n)
+    else int_to_string(n / 10) + digit_char(n - (n / 10) * 10);
+
+fn is_digit(c: i64) -> bool = c >= 48 and c <= 57;
+
+-- ============================================================================
+-- MIR Instruction Encoding
+-- ============================================================================
+-- Instructions are encoded as single i64 values:
+--   kind * 1000 + extra_info
+--
+-- Instruction kinds:
+--   1 = CONST (load constant)
+--   2 = COPY (copy value)
+--   3 = BINOP (binary operation)
+--   4 = UNARY (unary operation)
+--   5 = CALL (function call)
+
+fn mir_const() -> i64 = 1000;
+fn mir_copy() -> i64 = 2000;
+fn mir_binop() -> i64 = 3000;
+fn mir_unary() -> i64 = 4000;
+fn mir_call() -> i64 = 5000;
+
+-- Extract instruction kind
+fn mir_inst_kind(inst: i64) -> i64 = inst / 1000;
+
+-- Instruction kind names (for debugging)
+fn mir_inst_name(kind: i64) -> i64 =
+    if kind == 1 then 1      -- CONST
+    else if kind == 2 then 2 -- COPY
+    else if kind == 3 then 3 -- BINOP
+    else if kind == 4 then 4 -- UNARY
+    else if kind == 5 then 5 -- CALL
+    else 0;                  -- UNKNOWN
+
+-- ============================================================================
+-- Terminator Encoding
+-- ============================================================================
+-- Terminators end basic blocks:
+--   10 = RETURN
+--   11 = GOTO (unconditional jump)
+--   12 = BRANCH (conditional jump)
+
+fn mir_return() -> i64 = 10000;
+fn mir_goto() -> i64 = 11000;
+fn mir_branch() -> i64 = 12000;
+
+fn mir_term_kind(term: i64) -> i64 = term / 1000;
+
+fn is_terminator(kind: i64) -> bool =
+    kind >= 10 and kind <= 12;
+
+-- ============================================================================
+-- Binary Operator Encoding
+-- ============================================================================
+-- Binary operators (matches Rust MirBinOp):
+--   1 = Add, 2 = Sub, 3 = Mul, 4 = Div, 5 = Mod
+--   6 = Eq, 7 = Ne, 8 = Lt, 9 = Gt, 10 = Le, 11 = Ge
+--   12 = And, 13 = Or
+
+fn binop_add() -> i64 = 1;
+fn binop_sub() -> i64 = 2;
+fn binop_mul() -> i64 = 3;
+fn binop_div() -> i64 = 4;
+fn binop_mod() -> i64 = 5;
+fn binop_eq() -> i64 = 6;
+fn binop_ne() -> i64 = 7;
+fn binop_lt() -> i64 = 8;
+fn binop_gt() -> i64 = 9;
+fn binop_le() -> i64 = 10;
+fn binop_ge() -> i64 = 11;
+fn binop_and() -> i64 = 12;
+fn binop_or() -> i64 = 13;
+
+-- Binary operator symbol for text output
+fn binop_symbol(op: i64) -> String =
+    if op == 1 then "+"
+    else if op == 2 then "-"
+    else if op == 3 then "*"
+    else if op == 4 then "/"
+    else if op == 5 then "%"
+    else if op == 6 then "=="
+    else if op == 7 then "!="
+    else if op == 8 then "<"
+    else if op == 9 then ">"
+    else if op == 10 then "<="
+    else if op == 11 then ">="
+    else if op == 12 then "and"
+    else if op == 13 then "or"
+    else "?";
+
+-- ============================================================================
+-- Unary Operator Encoding
+-- ============================================================================
+--   1 = Neg (integer negation)
+--   2 = Not (logical not)
+
+fn unop_neg() -> i64 = 1;
+fn unop_not() -> i64 = 2;
+
+fn unop_symbol(op: i64) -> String =
+    if op == 1 then "-"
+    else if op == 2 then "not"
+    else "?";
+
+-- ============================================================================
+-- MIR Type Encoding (matches types.bmb)
+-- ============================================================================
+fn mir_type_i32() -> i64 = 1;
+fn mir_type_i64() -> i64 = 2;
+fn mir_type_f64() -> i64 = 3;
+fn mir_type_bool() -> i64 = 4;
+fn mir_type_string() -> i64 = 5;
+fn mir_type_unit() -> i64 = 6;
+
+fn mir_type_name(ty: i64) -> String =
+    if ty == 1 then "i32"
+    else if ty == 2 then "i64"
+    else if ty == 3 then "f64"
+    else if ty == 4 then "bool"
+    else if ty == 5 then "String"
+    else if ty == 6 then "()"
+    else "?";
+
+-- ============================================================================
+-- Constant Encoding
+-- ============================================================================
+-- Constants are encoded with type prefix:
+--   "I:" + value  for integers
+--   "B:" + value  for booleans (0/1)
+--   "S:" + value  for strings
+--   "U"           for unit
+
+fn const_int(value: i64) -> String = "I:" + int_to_string(value);
+fn const_bool(value: bool) -> String = if value then "B:1" else "B:0";
+fn const_string(value: String) -> String = "S:" + value;
+fn const_unit() -> String = "U";
+
+fn is_const_int(c: String) -> bool =
+    c.len() >= 2 and c.char_at(0) == 73 and c.char_at(1) == 58;  -- "I:"
+
+fn is_const_bool(c: String) -> bool =
+    c.len() >= 2 and c.char_at(0) == 66 and c.char_at(1) == 58;  -- "B:"
+
+fn is_const_string(c: String) -> bool =
+    c.len() >= 2 and c.char_at(0) == 83 and c.char_at(1) == 58;  -- "S:"
+
+fn is_const_unit(c: String) -> bool =
+    c.len() == 1 and c.char_at(0) == 85;  -- "U"
+
+-- ============================================================================
+-- Place (Variable/Temporary) Encoding
+-- ============================================================================
+-- Places are represented as strings:
+--   "%name" for named variables
+--   "%_t0", "%_t1", etc. for temporaries
+
+fn place_var(name: String) -> String = "%" + name;
+fn place_temp(index: i64) -> String = "%_t" + int_to_string(index);
+
+fn is_temp(place: String) -> bool =
+    place.len() >= 3 and
+    place.char_at(0) == 37 and   -- %
+    place.char_at(1) == 95 and   -- _
+    place.char_at(2) == 116;     -- t
+
+-- ============================================================================
+-- MIR Instruction Text Format
+-- ============================================================================
+-- Each instruction is a single line:
+--   "  %dest = const <value>"
+--   "  %dest = copy %src"
+--   "  %dest = <op> %lhs, %rhs"
+--   "  %dest = <op> %src"
+--   "  %dest = call <func>(%args...)"
+--   "  call <func>(%args...)"  -- for void calls
+
+fn mir_text_const(dest: String, value: String) -> String =
+    "  " + dest + " = const " + value;
+
+fn mir_text_copy(dest: String, src: String) -> String =
+    "  " + dest + " = copy " + src;
+
+fn mir_text_binop(dest: String, op: i64, lhs: String, rhs: String) -> String =
+    "  " + dest + " = " + binop_symbol(op) + " " + lhs + ", " + rhs;
+
+fn mir_text_unary(dest: String, op: i64, src: String) -> String =
+    "  " + dest + " = " + unop_symbol(op) + " " + src;
+
+fn mir_text_call(dest: String, func: String, args: String) -> String =
+    "  " + dest + " = call " + func + "(" + args + ")";
+
+fn mir_text_call_void(func: String, args: String) -> String =
+    "  call " + func + "(" + args + ")";
+
+-- ============================================================================
+-- MIR Terminator Text Format
+-- ============================================================================
+--   "  return %value"
+--   "  return"
+--   "  goto <label>"
+--   "  branch %cond, <then_label>, <else_label>"
+
+fn mir_text_ret(value: String) -> String =
+    if value.len() == 0 then "  return"
+    else "  return " + value;
+
+fn mir_text_goto(label: String) -> String =
+    "  goto " + label;
+
+fn mir_text_branch(cond: String, then_lbl: String, else_lbl: String) -> String =
+    "  branch " + cond + ", " + then_lbl + ", " + else_lbl;
+
+-- ============================================================================
+-- Basic Block Text Format
+-- ============================================================================
+--   "<label>:"
+--     <instruction>
+--     <instruction>
+--     <terminator>
+
+fn mir_text_block_start(label: String) -> String = label + ":";
+
+-- ============================================================================
+-- Function Text Format
+-- ============================================================================
+--   "fn <name>(<params>) -> <ret_type> {"
+--     <blocks>
+--   "}"
+
+fn mir_text_fn_start(name: String, params: String, ret_ty: i64) -> String =
+    "fn " + name + "(" + params + ") -> " + mir_type_name(ret_ty) + " {";
+
+fn mir_text_fn_end() -> String = "}";
+
+-- Format parameter: "name: type"
+fn mir_text_param(name: String, ty: i64) -> String =
+    name + ": " + mir_type_name(ty);
+
+-- ============================================================================
+-- Simple Expression to MIR Lowering
+-- ============================================================================
+-- Lower simple expressions to MIR text format
+-- Returns: "temp_count:mir_text" packed result
+
+fn pack_mir_result(temp_count: i64, text: String) -> String =
+    int_to_string(temp_count) + ":" + text;
+
+fn unpack_mir_count(result: String) -> i64 =
+    parse_int_prefix(result, 0, 0);
+
+fn find_first_colon(s: String, pos: i64) -> i64 =
+    if pos >= s.len() then pos
+    else if s.char_at(pos) == 58 then pos  -- ':'
+    else find_first_colon(s, pos + 1);
+
+fn unpack_mir_text(result: String) -> String =
+    let colon_pos = find_first_colon(result, 0);
+    result.slice(colon_pos + 1, result.len());
+
+-- Parse integer prefix from string
+fn parse_int_prefix(s: String, pos: i64, acc: i64) -> i64 =
+    if pos >= s.len() then acc
+    else let c = s.char_at(pos);
+        if c >= 48 and c <= 57 then  -- '0'-'9'
+            parse_int_prefix(s, pos + 1, acc * 10 + (c - 48))
+        else acc;
+
+-- ============================================================================
+-- Example: Lower Binary Expression
+-- ============================================================================
+-- Lower: a + b
+-- Output:
+--   %_t0 = + %a, %b
+-- Returns temp count and text
+
+fn lower_binop_example(lhs_var: String, op: i64, rhs_var: String, temp_idx: i64) -> String =
+    let dest = place_temp(temp_idx);
+    let lhs = place_var(lhs_var);
+    let rhs = place_var(rhs_var);
+    let text = mir_text_binop(dest, op, lhs, rhs);
+    pack_mir_result(temp_idx + 1, text);
+
+-- ============================================================================
+-- Example: Lower If Expression
+-- ============================================================================
+-- Lower: if cond then a else b
+-- Output:
+--   branch %cond, then_0, else_0
+-- then_0:
+--   %_t0 = copy %a
+--   goto merge_0
+-- else_0:
+--   %_t0 = copy %b
+--   goto merge_0
+-- merge_0:
+
+fn lower_if_example(cond_var: String, then_var: String, else_var: String, temp_idx: i64, block_idx: i64) -> String =
+    let result_place = place_temp(temp_idx);
+    let cond_place = place_var(cond_var);
+    let then_place = place_var(then_var);
+    let else_place = place_var(else_var);
+    let then_label = "then_" + int_to_string(block_idx);
+    let else_label = "else_" + int_to_string(block_idx);
+    let merge_label = "merge_" + int_to_string(block_idx);
+
+    let branch_text = mir_text_branch(cond_place, then_label, else_label);
+    let then_block = mir_text_block_start(then_label) + "|" +
+                     mir_text_copy(result_place, then_place) + "|" +
+                     mir_text_goto(merge_label);
+    let else_block = mir_text_block_start(else_label) + "|" +
+                     mir_text_copy(result_place, else_place) + "|" +
+                     mir_text_goto(merge_label);
+    let merge_block = mir_text_block_start(merge_label);
+
+    pack_mir_result(temp_idx + 1, branch_text + "|" + then_block + "|" + else_block + "|" + merge_block);
+
+-- ============================================================================
+-- Example: Complete Function MIR
+-- ============================================================================
+-- fn add(a: i64, b: i64) -> i64 {
+-- entry:
+--   %_t0 = + %a, %b
+--   return %_t0
+-- }
+
+fn example_add_function() -> String =
+    let header = mir_text_fn_start("add", "a: i64, b: i64", mir_type_i64());
+    let entry = mir_text_block_start("entry");
+    let inst = mir_text_binop(place_temp(0), binop_add(), place_var("a"), place_var("b"));
+    let retinst = mir_text_ret(place_temp(0));
+    let footer = mir_text_fn_end();
+    header + "|" + entry + "|" + inst + "|" + retinst + "|" + footer;
+
+-- ============================================================================
+-- Example: Max Function with If
+-- ============================================================================
+-- fn max(a: i64, b: i64) -> i64 {
+-- entry:
+--   %_t0 = > %a, %b
+--   branch %_t0, then_0, else_0
+-- then_0:
+--   %_t1 = copy %a
+--   goto merge_0
+-- else_0:
+--   %_t1 = copy %b
+--   goto merge_0
+-- merge_0:
+--   return %_t1
+-- }
+
+fn example_max_function() -> String =
+    let header = mir_text_fn_start("max", "a: i64, b: i64", mir_type_i64());
+    let entry = mir_text_block_start("entry");
+    let cmp = mir_text_binop(place_temp(0), binop_gt(), place_var("a"), place_var("b"));
+    let branch = mir_text_branch(place_temp(0), "then_0", "else_0");
+
+    let then_block = mir_text_block_start("then_0") + "|" +
+                     mir_text_copy(place_temp(1), place_var("a")) + "|" +
+                     mir_text_goto("merge_0");
+
+    let else_block = mir_text_block_start("else_0") + "|" +
+                     mir_text_copy(place_temp(1), place_var("b")) + "|" +
+                     mir_text_goto("merge_0");
+
+    let merge = mir_text_block_start("merge_0") + "|" +
+                mir_text_ret(place_temp(1));
+
+    let footer = mir_text_fn_end();
+
+    header + "|" + entry + "|" + cmp + "|" + branch + "|" +
+    then_block + "|" + else_block + "|" + merge + "|" + footer;
+
+-- ============================================================================
+-- Tests
+-- ============================================================================
+
+fn test_instruction_encoding() -> i64 =
+    let passed = 0;
+
+    -- Test instruction kinds
+    let p1 = if mir_inst_kind(mir_const()) == 1 then 1 else 0;
+    let p2 = if mir_inst_kind(mir_copy()) == 2 then 1 else 0;
+    let p3 = if mir_inst_kind(mir_binop()) == 3 then 1 else 0;
+    let p4 = if mir_inst_kind(mir_unary()) == 4 then 1 else 0;
+    let p5 = if mir_inst_kind(mir_call()) == 5 then 1 else 0;
+
+    p1 + p2 + p3 + p4 + p5;
+
+fn test_terminator_encoding() -> i64 =
+    let passed = 0;
+
+    let p1 = if mir_term_kind(mir_return()) == 10 then 1 else 0;
+    let p2 = if mir_term_kind(mir_goto()) == 11 then 1 else 0;
+    let p3 = if mir_term_kind(mir_branch()) == 12 then 1 else 0;
+    let p4 = if is_terminator(10) then 1 else 0;
+    let p5 = if is_terminator(5) then 0 else 1;  -- 5 is not terminator
+
+    p1 + p2 + p3 + p4 + p5;
+
+fn test_binop_symbols() -> i64 =
+    let p1 = if binop_symbol(binop_add()) == "+" then 1 else 0;
+    let p2 = if binop_symbol(binop_sub()) == "-" then 1 else 0;
+    let p3 = if binop_symbol(binop_mul()) == "*" then 1 else 0;
+    let p4 = if binop_symbol(binop_eq()) == "==" then 1 else 0;
+    let p5 = if binop_symbol(binop_and()) == "and" then 1 else 0;
+
+    p1 + p2 + p3 + p4 + p5;
+
+fn test_constant_encoding() -> i64 =
+    let p1 = if const_int(42) == "I:42" then 1 else 0;
+    let p2 = if const_bool(true) == "B:1" then 1 else 0;
+    let p3 = if const_bool(false) == "B:0" then 1 else 0;
+    let p4 = if const_unit() == "U" then 1 else 0;
+    let p5 = if is_const_int("I:123") then 1 else 0;
+    let p6 = if is_const_bool("B:1") then 1 else 0;
+    let p7 = if is_const_unit("U") then 1 else 0;
+
+    p1 + p2 + p3 + p4 + p5 + p6 + p7;
+
+fn test_place_encoding() -> i64 =
+    let p1 = if place_var("x") == "%x" then 1 else 0;
+    let p2 = if place_var("count") == "%count" then 1 else 0;
+    let p3 = if place_temp(0) == "%_t0" then 1 else 0;
+    let p4 = if place_temp(5) == "%_t5" then 1 else 0;
+    let p5 = if is_temp("%_t0") then 1 else 0;
+    let p6 = if is_temp("%x") then 0 else 1;  -- not a temp
+
+    p1 + p2 + p3 + p4 + p5 + p6;
+
+fn test_mir_text_instructions() -> i64 =
+    let p1 = if mir_text_const("%x", "I:42") == "  %x = const I:42" then 1 else 0;
+    let p2 = if mir_text_copy("%y", "%x") == "  %y = copy %x" then 1 else 0;
+    let p3 = if mir_text_binop("%z", binop_add(), "%x", "%y") == "  %z = + %x, %y" then 1 else 0;
+    let p4 = if mir_text_unary("%n", unop_neg(), "%x") == "  %n = - %x" then 1 else 0;
+    let p5 = if mir_text_call("%r", "foo", "%a, %b") == "  %r = call foo(%a, %b)" then 1 else 0;
+
+    p1 + p2 + p3 + p4 + p5;
+
+fn test_mir_text_terminators() -> i64 =
+    let p1 = if mir_text_ret("%x") == "  return %x" then 1 else 0;
+    let p2 = if mir_text_ret("") == "  return" then 1 else 0;
+    let p3 = if mir_text_goto("loop_0") == "  goto loop_0" then 1 else 0;
+    let p4 = if mir_text_branch("%c", "then", "else") == "  branch %c, then, else" then 1 else 0;
+
+    p1 + p2 + p3 + p4;
+
+fn test_type_names() -> i64 =
+    let p1 = if mir_type_name(mir_type_i64()) == "i64" then 1 else 0;
+    let p2 = if mir_type_name(mir_type_bool()) == "bool" then 1 else 0;
+    let p3 = if mir_type_name(mir_type_unit()) == "()" then 1 else 0;
+    let p4 = if mir_type_name(mir_type_string()) == "String" then 1 else 0;
+
+    p1 + p2 + p3 + p4;
+
+fn test_result_packing() -> i64 =
+    let result = pack_mir_result(5, "hello");
+    let p1 = if unpack_mir_count(result) == 5 then 1 else 0;
+    let p2 = if unpack_mir_text(result) == "hello" then 1 else 0;
+
+    let result2 = pack_mir_result(123, "some:text:with:colons");
+    let p3 = if unpack_mir_count(result2) == 123 then 1 else 0;
+
+    p1 + p2 + p3;
+
+fn test_example_functions() -> i64 =
+    -- Test that example functions produce non-empty output
+    let add_mir = example_add_function();
+    let max_mir = example_max_function();
+
+    let p1 = if add_mir.len() > 50 then 1 else 0;  -- Should have substantial content
+    let p2 = if max_mir.len() > 100 then 1 else 0; -- Max is more complex
+
+    p1 + p2;
+
+-- ============================================================================
+-- Main Test Runner
+-- ============================================================================
+
+fn main() -> i64 =
+    let u0 = println(777);
+
+    let t1 = test_instruction_encoding();
+    let u1 = println(t1);
+
+    let t2 = test_terminator_encoding();
+    let u2 = println(t2);
+
+    let t3 = test_binop_symbols();
+    let u3 = println(t3);
+
+    let t4 = test_constant_encoding();
+    let u4 = println(t4);
+
+    let t5 = test_place_encoding();
+    let u5 = println(t5);
+
+    let t6 = test_mir_text_instructions();
+    let u6 = println(t6);
+
+    let t7 = test_mir_text_terminators();
+    let u7 = println(t7);
+
+    let t8 = test_type_names();
+    let u8 = println(t8);
+
+    let t9 = test_result_packing();
+    let u9 = println(t9);
+
+    let t10 = test_example_functions();
+    let u10 = println(t10);
+
+    let total = t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t9 + t10;
+
+    let u11 = println(888);
+    let u12 = println(total);
+    let u13 = println(999);
+
+    total;

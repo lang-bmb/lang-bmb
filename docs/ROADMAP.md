@@ -785,16 +785,30 @@ bootstrap/
 - 함수 호출 타입 검사 (arity + 인자 타입)
 - 37개 테스트 통과
 
-### v0.10.1 - 코드 생성기 BMB 시작
+### v0.10.1 - MIR 기초 정의 ✅ 완료
 
 ```
 bootstrap/
-├── mir.bmb         # MIR 정의
-├── codegen.bmb     # MIR → LLVM IR
-└── ...
+├── lexer.bmb       # ✅ 완료 (8KB)
+├── parser.bmb      # ✅ 완료 (22KB)
+├── parser_ast.bmb  # ✅ 완료 (21KB)
+├── parser_test.bmb # ✅ 완료 (25KB)
+├── types.bmb       # ✅ 완료 (15KB)
+├── mir.bmb         # ✅ 완료 (18KB) - 신규
+└── README.md
 ```
 
-### v0.10.2 - 표준 라이브러리 확장 (100개)
+**mir.bmb 구현 내용**:
+- 명령어 인코딩: `kind * 1000` (CONST=1000, COPY=2000, BINOP=3000, UNARY=4000, CALL=5000)
+- 종료자 인코딩: RETURN=10000, GOTO=11000, BRANCH=12000
+- 이항/단항 연산자 인코딩 및 심볼 출력
+- 상수 인코딩: `I:42`, `B:1`, `S:hello`, `U`
+- 플레이스 인코딩: `%name`, `%_t0` (임시 변수)
+- 텍스트 기반 MIR 출력 포맷
+- 예제 lowering 함수 (add, max with if)
+- 46개 테스트 통과
+
+### v0.10.2 - AST → MIR 변환 + 표준 라이브러리 확장
 
 | 모듈 | 함수 수 |
 |------|---------|
@@ -947,8 +961,8 @@ v0.9.3 → v0.9.4: playground (📈 적당) ✅
 v0.9.4 → v0.9.5: lang-bmb-site (📈 적당) ✅
 v0.9.5 → v0.9.6: benchmark-bmb (📈 적당) ✅
 v0.9.6 → v0.10.0: 타입 체커 BMB (📈 적당) ✅
-v0.10.0 → v0.10.1: 코드 생성기 BMB (📈 적당)
-v0.10.1 → v0.10.2: 표준 라이브러리 확장 (📈 적당)
+v0.10.0 → v0.10.1: MIR 기초 정의 (📈 적당) ✅
+v0.10.1 → v0.10.2: AST→MIR 변환 + stdlib 확장 (📈 적당)
 v0.10.2 → v0.10.3: 마이그레이션 도구 (📈 적당)
 v0.11.x: BMB 재작성 완성 (📈 적당)
 ```
@@ -963,7 +977,7 @@ v0.6: 표준 라이브러리 기초 (100+개 함수) ✅
 v0.7: 도구 기초 (fmt, lsp, test, action-bmb) ✅
 v0.8: 패키지 기초 (곳간) ✅
 v0.9: 생태계 (에디터, 원격 패키지, playground, site, benchmark) ✅
-v0.10: Bootstrap 진행 (타입체커 ✅, 코드생성기) 🔄
+v0.10: Bootstrap 진행 (타입체커 ✅, MIR기초 ✅, AST→MIR 변환) 🔄
 v0.11: Bootstrap 완성 (Stage 2, 도구 BMB 재작성)
 v1.0: 안정성 약속 + 검증 완료
 

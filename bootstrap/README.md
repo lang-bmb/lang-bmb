@@ -88,7 +88,7 @@ Comprehensive test suite with 15 test categories.
 14. Deep nesting
 15. Nested function calls
 
-### types.bmb (15KB) - NEW in v0.10.0
+### types.bmb (15KB) - v0.10.0
 Type checker foundation for BMB.
 
 **Features:**
@@ -114,6 +114,45 @@ Type checker foundation for BMB.
 8  (function call tests)
 888 (separator)
 37 (total passed)
+999 (end marker)
+```
+
+### mir.bmb (18KB) - v0.10.1
+Middle IR (MIR) foundation for code generation.
+
+**Features:**
+- Instruction encoding: `kind * 1000` (CONST=1000, COPY=2000, BINOP=3000, etc.)
+- Terminator encoding: (RETURN=10000, GOTO=11000, BRANCH=12000)
+- Binary/unary operator encoding with symbol output
+- Constant encoding: `I:42`, `B:1`, `S:hello`, `U`
+- Place (variable) encoding: `%name`, `%_t0` (temporaries)
+- Text-based MIR output format
+- Example lowering functions (add, max with if)
+
+**MIR Text Format:**
+```
+fn add(a: i64, b: i64) -> i64 {
+entry:
+  %_t0 = + %a, %b
+  return %_t0
+}
+```
+
+**Test output:**
+```
+777 (start marker)
+5  (instruction encoding tests)
+5  (terminator encoding tests)
+5  (binop symbol tests)
+7  (constant encoding tests)
+6  (place encoding tests)
+5  (mir text instruction tests)
+4  (mir text terminator tests)
+4  (type name tests)
+3  (result packing tests)
+2  (example function tests)
+888 (separator)
+46 (total passed)
 999 (end marker)
 ```
 
@@ -150,16 +189,20 @@ fn unpack_ast(result: String) -> String =
 
 ```bash
 # Check syntax
-cargo run --release -- check bootstrap/lexer.bmb
-cargo run --release -- check bootstrap/parser.bmb
-cargo run --release -- check bootstrap/parser_ast.bmb
-cargo run --release -- check bootstrap/parser_test.bmb
+cargo run --release --bin bmb -- check bootstrap/lexer.bmb
+cargo run --release --bin bmb -- check bootstrap/parser.bmb
+cargo run --release --bin bmb -- check bootstrap/parser_ast.bmb
+cargo run --release --bin bmb -- check bootstrap/parser_test.bmb
+cargo run --release --bin bmb -- check bootstrap/types.bmb
+cargo run --release --bin bmb -- check bootstrap/mir.bmb
 
 # Run tests
-cargo run --release -- run bootstrap/lexer.bmb
-cargo run --release -- run bootstrap/parser.bmb
-cargo run --release -- run bootstrap/parser_ast.bmb
-cargo run --release -- run bootstrap/parser_test.bmb
+cargo run --release --bin bmb -- run bootstrap/lexer.bmb
+cargo run --release --bin bmb -- run bootstrap/parser.bmb
+cargo run --release --bin bmb -- run bootstrap/parser_ast.bmb
+cargo run --release --bin bmb -- run bootstrap/parser_test.bmb
+cargo run --release --bin bmb -- run bootstrap/types.bmb
+cargo run --release --bin bmb -- run bootstrap/mir.bmb
 ```
 
 ## Limitations
@@ -175,6 +218,7 @@ cargo run --release -- run bootstrap/parser_test.bmb
 - [ ] Import system for code sharing
 - [ ] Full compiler pipeline in BMB
 - [ ] Self-compilation of the bootstrap
-- [ ] Struct/Enum type checking (v0.10.1)
-- [ ] MIR generation (v0.10.1)
-- [ ] LLVM IR generation (v0.10.1)
+- [ ] Struct/Enum type checking (v0.10.2)
+- [x] MIR foundation (v0.10.1) ✅
+- [ ] AST → MIR lowering (v0.10.2)
+- [ ] MIR → text IR output (v0.10.2+)
