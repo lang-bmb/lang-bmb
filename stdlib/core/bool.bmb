@@ -1,0 +1,55 @@
+-- BMB Standard Library: core::bool
+-- Boolean operations with complete contracts
+--
+-- AI-Native Design:
+-- - Explicit boolean logic (no implicit conversions)
+-- - Contracts define exact behavior
+
+-- Logical NOT (explicit function form)
+pub fn bool_not(x: bool) -> bool
+  post (x and not ret) or (not x and ret)
+= not x;
+
+-- Logical implication: a implies b
+-- True unless a is true and b is false
+pub fn implies(a: bool, b: bool) -> bool
+  post ret == (not a or b)
+= not a or b;
+
+-- Logical equivalence: a iff b
+-- True when both have same value
+pub fn iff(a: bool, b: bool) -> bool
+  post ret == ((a and b) or (not a and not b))
+= (a and b) or (not a and not b);
+
+-- Exclusive OR: exactly one is true
+pub fn xor(a: bool, b: bool) -> bool
+  post ret == ((a and not b) or (not a and b))
+= (a and not b) or (not a and b);
+
+-- Convert boolean to integer (0 or 1)
+pub fn to_int(b: bool) -> i64
+  post ret >= 0 and ret <= 1
+  post (b and ret == 1) or (not b and ret == 0)
+= if b then 1 else 0;
+
+-- Convert integer to boolean (0 = false, else true)
+pub fn from_int(x: i64) -> bool
+  post (x == 0 and not ret) or (x != 0 and ret)
+= x != 0;
+
+-- Three-way conditional selection
+-- Returns a if cond is true, b otherwise
+pub fn select(cond: bool, a: i64, b: i64) -> i64
+  post (cond and ret == a) or (not cond and ret == b)
+= if cond then a else b;
+
+-- All conditions true (two-argument version)
+pub fn all2(a: bool, b: bool) -> bool
+  post ret == (a and b)
+= a and b;
+
+-- Any condition true (two-argument version)
+pub fn any2(a: bool, b: bool) -> bool
+  post ret == (a or b)
+= a or b;

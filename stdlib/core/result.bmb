@@ -1,0 +1,147 @@
+-- BMB Standard Library: core::result
+-- Result type for error handling (specialized for i64 Ok, i64 error code)
+--
+-- AI-Native Design:
+-- - Explicit error handling (no exceptions)
+-- - Error codes instead of strings for machine processing
+-- - Contracts ensure proper usage
+--
+-- Note: This is a monomorphic version.
+-- Generic Result<T, E> requires language-level generics support (v0.6.1+).
+--
+-- Error code convention:
+-- - 0: No error (should use Ok instead)
+-- - 1-99: Input validation errors
+-- - 100-199: Computation errors
+-- - 200-299: Resource errors
+
+-- Result type for computations that may fail
+-- Ok(value) for success, Err(code) for failure
+pub enum Result {
+    Ok(i64),
+    Err(i64)
+}
+
+-- Check if Result is successful
+pub fn is_ok(res: Result) -> bool
+  post (ret and match res { Result::Ok(_) => true, Result::Err(_) => false })
+     or (not ret and match res { Result::Ok(_) => false, Result::Err(_) => true })
+= match res {
+    Result::Ok(_) => true,
+    Result::Err(_) => false
+};
+
+-- Check if Result is an error
+pub fn is_err(res: Result) -> bool
+  post ret == not is_ok(res)
+= match res {
+    Result::Ok(_) => false,
+    Result::Err(_) => true
+};
+
+-- Unwrap Ok value with default
+pub fn unwrap_or_result(res: Result, default: i64) -> i64
+  post match res { Result::Ok(v) => ret == v, Result::Err(_) => ret == default }
+= match res {
+    Result::Ok(v) => v,
+    Result::Err(_) => default
+};
+
+-- Unwrap Ok value (requires success)
+pub fn unwrap_ok(res: Result) -> i64
+  pre is_ok(res)
+  post match res { Result::Ok(v) => ret == v, Result::Err(_) => false }
+= match res {
+    Result::Ok(v) => v,
+    Result::Err(_) => 0  -- unreachable due to precondition
+};
+
+-- Unwrap Err value (requires failure)
+pub fn unwrap_err(res: Result) -> i64
+  pre is_err(res)
+  post match res { Result::Ok(_) => false, Result::Err(e) => ret == e }
+= match res {
+    Result::Ok(_) => 0,  -- unreachable due to precondition
+    Result::Err(e) => e
+};
+
+-- Get error code or 0 if Ok
+pub fn err_code(res: Result) -> i64
+  post (is_ok(res) and ret == 0) or (is_err(res) and ret == unwrap_err(res))
+= match res {
+    Result::Ok(_) => 0,
+    Result::Err(e) => e
+};
+
+-- Map over Ok value (add n)
+pub fn map_ok_add(res: Result, n: i64) -> Result
+  post (is_err(res) and is_err(ret) and err_code(ret) == err_code(res)) or
+       (is_ok(res) and is_ok(ret) and unwrap_ok(ret) == unwrap_ok(res) + n)
+= match res {
+    Result::Ok(v) => Result::Ok(v + n),
+    Result::Err(e) => Result::Err(e)
+};
+
+-- Map over Err value (add offset to error code)
+pub fn map_err_add(res: Result, offset: i64) -> Result
+  post (is_ok(res) and is_ok(ret) and unwrap_ok(ret) == unwrap_ok(res)) or
+       (is_err(res) and is_err(ret) and err_code(ret) == err_code(res) + offset)
+= match res {
+    Result::Ok(v) => Result::Ok(v),
+    Result::Err(e) => Result::Err(e + offset)
+};
+
+-- Chain computations that may fail
+pub fn and_then_double(res: Result) -> Result
+  post (is_err(res) and is_err(ret) and err_code(ret) == err_code(res)) or
+       (is_ok(res) and is_ok(ret) and unwrap_ok(ret) == unwrap_ok(res) * 2)
+= match res {
+    Result::Ok(v) => Result::Ok(v * 2),
+    Result::Err(e) => Result::Err(e)
+};
+
+-- Or: return first Ok, or second if first is Err
+pub fn result_or(a: Result, b: Result) -> Result
+  post (is_ok(a) and ret == a) or (is_err(a) and ret == b)
+= match a {
+    Result::Ok(_) => a,
+    Result::Err(_) => b
+};
+
+-- Convert Result to Option (discards error)
+pub fn ok_to_option(res: Result) -> i64
+  post (is_ok(res) and ret == unwrap_ok(res)) or (is_err(res) and ret == 0)
+= match res {
+    Result::Ok(v) => v,
+    Result::Err(_) => 0
+};
+
+-- Create Ok result
+pub fn ok(v: i64) -> Result
+  post is_ok(ret) and unwrap_ok(ret) == v
+= Result::Ok(v);
+
+-- Create Err result
+pub fn err(code: i64) -> Result
+  pre code != 0
+  post is_err(ret) and err_code(ret) == code
+= Result::Err(code);
+
+-- Standard error codes
+fn ERR_INVALID_INPUT() -> i64 = 1;
+fn ERR_OUT_OF_RANGE() -> i64 = 2;
+fn ERR_DIVIDE_BY_ZERO() -> i64 = 100;
+fn ERR_OVERFLOW() -> i64 = 101;
+fn ERR_NOT_FOUND() -> i64 = 200;
+
+-- Safe division that returns Result
+pub fn safe_divide(a: i64, b: i64) -> Result
+  post (b == 0 and is_err(ret) and err_code(ret) == 100) or
+       (b != 0 and is_ok(ret) and unwrap_ok(ret) == a / b)
+= if b == 0 then Result::Err(100) else Result::Ok(a / b);
+
+-- Safe sqrt (non-negative input required)
+pub fn safe_sqrt_check(x: i64) -> Result
+  post (x < 0 and is_err(ret) and err_code(ret) == 1) or
+       (x >= 0 and is_ok(ret) and unwrap_ok(ret) == x)
+= if x < 0 then Result::Err(1) else Result::Ok(x);

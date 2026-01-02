@@ -1,0 +1,115 @@
+-- BMB Standard Library: core::option
+-- Optional value container (specialized for i64)
+--
+-- AI-Native Design:
+-- - Explicit null handling (no null pointers)
+-- - Match-based pattern matching for value extraction
+-- - Contracts ensure safe usage
+--
+-- Note: This is a monomorphic version for i64.
+-- Generic Option<T> requires language-level generics support (v0.6.1+).
+
+-- Option type for i64 values
+-- Some(value) contains a value, None represents absence
+pub enum Option {
+    Some(i64),
+    None
+}
+
+-- Check if Option contains a value
+pub fn is_some(opt: Option) -> bool
+  post (ret and match opt { Option::Some(_) => true, Option::None => false })
+     or (not ret and match opt { Option::Some(_) => false, Option::None => true })
+= match opt {
+    Option::Some(_) => true,
+    Option::None => false
+};
+
+-- Check if Option is empty
+pub fn is_none(opt: Option) -> bool
+  post ret == not is_some(opt)
+= match opt {
+    Option::Some(_) => false,
+    Option::None => true
+};
+
+-- Unwrap value with default (safe alternative to unwrap)
+-- Returns the contained value or the provided default
+pub fn unwrap_or(opt: Option, default: i64) -> i64
+  post match opt { Option::Some(v) => ret == v, Option::None => ret == default }
+= match opt {
+    Option::Some(v) => v,
+    Option::None => default
+};
+
+-- Unwrap value (panics if None - use unwrap_or for safe code)
+-- Precondition ensures value exists
+pub fn unwrap(opt: Option) -> i64
+  pre is_some(opt)
+  post match opt { Option::Some(v) => ret == v, Option::None => false }
+= match opt {
+    Option::Some(v) => v,
+    Option::None => 0  -- unreachable due to precondition
+};
+
+-- Map a function over the contained value
+-- Returns None if Option is None, otherwise Some(f(value))
+pub fn map_add(opt: Option, n: i64) -> Option
+  post (is_none(opt) and is_none(ret)) or
+       (is_some(opt) and is_some(ret) and unwrap(ret) == unwrap(opt) + n)
+= match opt {
+    Option::Some(v) => Option::Some(v + n),
+    Option::None => Option::None
+};
+
+-- Apply a transformation that may fail
+-- Returns None if Option is None or if transformation returns None
+pub fn and_then_positive(opt: Option) -> Option
+  post (is_none(opt) and is_none(ret)) or
+       (is_some(opt) and unwrap(opt) > 0 and is_some(ret)) or
+       (is_some(opt) and unwrap(opt) <= 0 and is_none(ret))
+= match opt {
+    Option::Some(v) => if v > 0 then Option::Some(v) else Option::None,
+    Option::None => Option::None
+};
+
+-- Filter: keep value only if predicate holds
+pub fn filter_positive(opt: Option) -> Option
+  post (is_none(opt) and is_none(ret)) or
+       (is_some(opt) and unwrap(opt) > 0 and ret == opt) or
+       (is_some(opt) and unwrap(opt) <= 0 and is_none(ret))
+= match opt {
+    Option::Some(v) => if v > 0 then Option::Some(v) else Option::None,
+    Option::None => Option::None
+};
+
+-- Or: return first Some, or second if first is None
+pub fn option_or(a: Option, b: Option) -> Option
+  post (is_some(a) and ret == a) or (is_none(a) and ret == b)
+= match a {
+    Option::Some(_) => a,
+    Option::None => b
+};
+
+-- Zip two Options: returns Some((a,b)) only if both are Some
+-- Since we don't have tuples, return sum for demonstration
+pub fn zip_sum(a: Option, b: Option) -> Option
+  post (is_some(a) and is_some(b) and is_some(ret) and unwrap(ret) == unwrap(a) + unwrap(b)) or
+       ((is_none(a) or is_none(b)) and is_none(ret))
+= match a {
+    Option::Some(va) => match b {
+        Option::Some(vb) => Option::Some(va + vb),
+        Option::None => Option::None
+    },
+    Option::None => Option::None
+};
+
+-- Create Some from value
+pub fn some(v: i64) -> Option
+  post is_some(ret) and unwrap(ret) == v
+= Option::Some(v);
+
+-- Create None
+pub fn none() -> Option
+  post is_none(ret)
+= Option::None;
