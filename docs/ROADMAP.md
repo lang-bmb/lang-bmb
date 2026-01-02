@@ -456,12 +456,28 @@ ecosystem/gotgan/src/
 └── error.rs          # 통합 에러 타입
 ```
 
-### v0.8.2 - 로컬 의존성 + Rust Fallback
+### v0.8.2 - 로컬 의존성 ✅ 완료
 
 ```toml
 [dependencies]
 mylib = { path = "../mylib" }
+```
 
+**구현 세부**:
+- DependencyResolver: 로컬 경로 의존성 해석
+- 순환 의존성 탐지
+- 전이적 의존성 자동 해석
+- 빌드 순서 결정 (의존성 → 프로젝트)
+
+**산출물**:
+```
+ecosystem/gotgan/src/
+└── resolver.rs       # 의존성 해석기 (200+ lines)
+```
+
+### v0.8.3 - Rust Fallback (계획)
+
+```toml
 [dependencies.rust]
 regex = "1.10"
 ```
