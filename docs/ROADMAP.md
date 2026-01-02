@@ -570,16 +570,30 @@ bmb/src/lsp/
 └── mod.rs           # LSP Backend (1000+ lines)
 ```
 
-### v0.9.1 - tree-sitter-bmb
+### v0.9.1 - tree-sitter-bmb ✅ 완료
 
+**구현 세부**:
+- grammar.js: BMB 전체 문법 정의 (500+ lines)
+- highlights.scm: 구문 하이라이팅 쿼리
+- folds.scm: 코드 폴딩 쿼리
+- indents.scm: 자동 들여쓰기 쿼리
+- Node.js 바인딩 (binding.cc, index.js)
+- Rust 바인딩 (lib.rs, Cargo.toml)
+
+**산출물**:
 ```
-tree-sitter-bmb/
-├── grammar.js        # 문법 정의
+ecosystem/tree-sitter-bmb/
+├── grammar.js          # 문법 정의
+├── package.json        # npm 패키지
+├── binding.gyp         # Node.js 네이티브
+├── bindings/
+│   ├── node/           # Node.js 바인딩
+│   └── rust/           # Rust 바인딩
 ├── queries/
-│   ├── highlights.scm
-│   ├── folds.scm
-│   └── indents.scm
-└── bindings/         # Node.js, Rust 바인딩
+│   ├── highlights.scm  # 구문 하이라이팅
+│   ├── folds.scm       # 코드 폴딩
+│   └── indents.scm     # 자동 들여쓰기
+└── README.md           # 사용 가이드
 ```
 
 ### v0.9.2 - vscode-bmb
@@ -834,7 +848,8 @@ v0.8.2 → v0.8.3: 유틸리티 명령어 (📈 적당) ✅
 v0.8.3 → v0.8.4: Lock 파일 (📈 적당) ✅
 v0.8.4 → v0.8.5: 의존성 추가 (📈 적당) ✅
 v0.8.5 → v0.9.0: LSP 확장 (📈 적당) ✅
-v0.9.0 → v0.9.1: tree-sitter-bmb (📈 적당)
+v0.9.0 → v0.9.1: tree-sitter-bmb (📈 적당) ✅
+v0.9.1 → v0.9.2: vscode-bmb (📈 적당)
 v0.9.x: 생태계 모듈 순차 추가 (📈 적당)
 v0.10.x: Bootstrap 점진적 진행 (📈 적당)
 v0.11.x: BMB 재작성 완성 (📈 적당)
