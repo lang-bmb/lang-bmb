@@ -1,6 +1,12 @@
 ---
 
-# BMB Language Specification v0.1
+# BMB Language Specification
+
+**Version**: v0.10 (2026-01-03)
+**Status**: Implementation in Progress
+
+> This specification describes the BMB language as of v0.10 Sunrise.
+> For detailed implementation roadmap, see [ROADMAP.md](ROADMAP.md).
 
 ---
 

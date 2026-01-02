@@ -1,5 +1,10 @@
 # BMB v0.2 Implementation Plan
 
+> **ARCHIVED**: This plan was completed on 2026-01-02.
+> Current version is v0.10. See [ROADMAP.md](ROADMAP.md) for current status.
+
+---
+
 > Spec Proposal 통합 + SMT(Z3) 기반 계약 검증
 
 ## Executive Summary
