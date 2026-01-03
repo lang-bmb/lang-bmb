@@ -1,0 +1,13 @@
+[package]
+name = "bmb-core"
+version = "0.14.0"
+description = "BMB core types, primitives, and fundamental operations"
+license = "MIT OR Apache-2.0"
+authors = ["BMB Team"]
+repository = "https://github.com/iyulab/lang-bmb"
+keywords = ["core", "primitives", "foundation"]
+
+[dependencies]
+
+[contracts]
+verify = true

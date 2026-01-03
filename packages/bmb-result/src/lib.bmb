@@ -1,0 +1,176 @@
+-- BMB Result Library v0.14.0
+-- 제네릭 Result<T, E> 타입 - 에러 처리
+--
+-- AI-Native Design:
+-- - 명시적 에러 처리 (예외 없음)
+-- - 계약으로 에러 조건 명시
+-- - ? 연산자와 try 블록 지원 (v0.13.2+)
+-- - 제네릭으로 모든 타입 지원
+
+-- ============================================
+-- Result<T, E> 제네릭 열거형
+-- ============================================
+
+@derive(Debug, Clone, PartialEq)
+pub enum Result<T, E> {
+    Ok(T),
+    Err(E),
+}
+
+-- ============================================
+-- 생성자 함수
+-- ============================================
+
+pub fn ok<T, E>(value: T) -> Result<T, E> =
+    Result::Ok(value);
+
+pub fn err<T, E>(error: E) -> Result<T, E> =
+    Result::Err(error);
+
+-- ============================================
+-- 상태 검사
+-- ============================================
+
+pub fn is_ok<T, E>(res: Result<T, E>) -> bool =
+    match res {
+        Result::Ok(v) => true,
+        Result::Err(e) => false,
+    };
+
+pub fn is_err<T, E>(res: Result<T, E>) -> bool =
+    match res {
+        Result::Ok(v) => false,
+        Result::Err(e) => true,
+    };
+
+-- ============================================
+-- 값 추출
+-- ============================================
+
+-- 안전한 추출: 기본값 사용
+pub fn unwrap_or<T, E>(res: Result<T, E>, default: T) -> T =
+    match res {
+        Result::Ok(v) => v,
+        Result::Err(e) => default,
+    };
+
+-- Ok 값 추출 (precondition 필요)
+pub fn unwrap<T, E>(res: Result<T, E>) -> T
+  pre is_ok(res)
+= match res {
+    Result::Ok(v) => v,
+    Result::Err(e) => default,
+};
+
+-- Err 값 추출 (precondition 필요)
+pub fn unwrap_err<T, E>(res: Result<T, E>) -> E
+  pre is_err(res)
+= match res {
+    Result::Ok(v) => default,
+    Result::Err(e) => e,
+};
+
+-- ============================================
+-- Option 변환
+-- ============================================
+
+-- Ok를 Some으로, Err를 None으로
+pub fn ok_option<T, E>(res: Result<T, E>) -> Option<T> =
+    match res {
+        Result::Ok(v) => Option::Some(v),
+        Result::Err(e) => Option::None,
+    };
+
+-- Err를 Some으로, Ok를 None으로
+pub fn err_option<T, E>(res: Result<T, E>) -> Option<E> =
+    match res {
+        Result::Ok(v) => Option::None,
+        Result::Err(e) => Option::Some(e),
+    };
+
+-- ============================================
+-- 결합 연산
+-- ============================================
+
+-- or: 첫 번째 Ok 또는 두 번째 반환
+pub fn result_or<T, E>(a: Result<T, E>, b: Result<T, E>) -> Result<T, E> =
+    match a {
+        Result::Ok(v) => a,
+        Result::Err(e) => b,
+    };
+
+-- and: 첫 번째가 Ok이면 두 번째, 아니면 첫 번째 Err
+pub fn result_and<T, E>(a: Result<T, E>, b: Result<T, E>) -> Result<T, E> =
+    match a {
+        Result::Ok(v) => b,
+        Result::Err(e) => a,
+    };
+
+-- ============================================
+-- 에러 코드 타입 (표준)
+-- ============================================
+
+@derive(Debug, Clone, PartialEq, Eq)
+pub enum ErrorCode {
+    InvalidInput,
+    OutOfRange,
+    DivideByZero,
+    Overflow,
+    NotFound,
+    PermissionDenied,
+    IoError,
+    ParseError,
+    Custom(i64),
+}
+
+-- ============================================
+-- i64 에러 특화 (역호환성)
+-- ============================================
+
+pub fn ok_i64(v: i64) -> Result<i64, i64> = Result::Ok(v);
+
+pub fn err_i64(code: i64) -> Result<i64, i64>
+  pre code != 0
+= Result::Err(code);
+
+pub fn unwrap_or_i64(res: Result<i64, i64>, default: i64) -> i64 =
+    unwrap_or(res, default);
+
+pub fn map_ok_add(res: Result<i64, i64>, n: i64) -> Result<i64, i64> =
+    match res {
+        Result::Ok(v) => Result::Ok(v + n),
+        Result::Err(e) => Result::Err(e),
+    };
+
+pub fn map_err_add(res: Result<i64, i64>, offset: i64) -> Result<i64, i64> =
+    match res {
+        Result::Ok(v) => Result::Ok(v),
+        Result::Err(e) => Result::Err(e + offset),
+    };
+
+-- ============================================
+-- 안전한 연산
+-- ============================================
+
+pub fn safe_divide(a: i64, b: i64) -> Result<i64, i64>
+  post (b == 0 and is_err(ret)) or (b != 0 and is_ok(ret))
+= if b == 0 then Result::Err(100) else Result::Ok(a / b);
+
+pub fn safe_mod(a: i64, b: i64) -> Result<i64, i64>
+  post (b == 0 and is_err(ret)) or (b != 0 and is_ok(ret))
+= if b == 0 then Result::Err(100) else Result::Ok(a - (a / b) * b);
+
+pub fn safe_sqrt_check(x: i64) -> Result<i64, i64>
+  post (x < 0 and is_err(ret)) or (x >= 0 and is_ok(ret))
+= if x < 0 then Result::Err(1) else Result::Ok(x);
+
+-- ============================================
+-- 에러 코드 상수
+-- ============================================
+
+pub fn ERR_INVALID_INPUT() -> i64 = 1;
+pub fn ERR_OUT_OF_RANGE() -> i64 = 2;
+pub fn ERR_DIVIDE_BY_ZERO() -> i64 = 100;
+pub fn ERR_OVERFLOW() -> i64 = 101;
+pub fn ERR_NOT_FOUND() -> i64 = 200;
+pub fn ERR_PERMISSION_DENIED() -> i64 = 201;

@@ -43,7 +43,7 @@ v0.MAJOR.MINOR
 | v0.11 | Dawn | AI-Native gotgan + Bootstrap | 🔄 진행중 (v0.11.4-7 ✅) |
 | v0.12 | Horizon | WASM 듀얼 타깃 | ✅ 완료 (v0.12.0-4) |
 | v0.13 | **Forge** | 언어 완성 + extern fn + 제네릭 + 에러처리 | ✅ 완료 (v0.13.0-3) |
-| v0.14 | **Foundation** | Core 패키지 25개 + gotgan 등록 | 계획 |
+| v0.14 | **Foundation** | 제네릭 stdlib + 패키지 표준화 | ✅ 완료 (v0.14.0-5) |
 | v0.15 | **Stream** | Collections/IO 패키지 25개 + 벤치마크 v1 | 계획 |
 | v0.16 | **Connect** | Network/Serialization 25개 + 최적화 1차 | 계획 |
 | v0.17 | **Parallel** | Async/Crypto 20개 + 벤치마크 v2 | 계획 |
@@ -543,55 +543,215 @@ enum Status {
 
 ---
 
-## v0.14 Foundation (Core 패키지 25개)
+## v0.14 Foundation (제네릭 stdlib + 패키지 표준화) ✅
 
-> 목표: 핵심 패키지 25개 + gotgan 등록 + 샘플 앱
+> 목표: 기존 모노모픽 stdlib을 제네릭으로 업그레이드 + 패키지 구조 표준화
 
-### 패키지 목록
+### 설계 원칙 적용
 
-| # | 패키지 | 설명 | Rust 대응 |
-|---|--------|------|-----------|
-| 1 | bmb-core | 핵심 타입, 트레이트 | std::core |
-| 2 | bmb-alloc | 메모리 할당자 | alloc |
-| 3 | bmb-sync | 동기화 프리미티브 | std::sync |
-| 4 | bmb-atomic | 원자적 연산 | std::sync::atomic |
-| 5 | bmb-cell | 내부 가변성 | std::cell |
-| 6 | bmb-ptr | 포인터 유틸리티 | std::ptr |
-| 7 | bmb-mem | 메모리 유틸리티 | std::mem |
-| 8 | bmb-num | 수치 트레이트 | num-traits |
-| 9 | bmb-ops | 연산자 트레이트 | std::ops |
-| 10 | bmb-iter | 이터레이터 | std::iter |
-| 11 | bmb-slice | 슬라이스 유틸리티 | std::slice |
-| 12 | bmb-array | 배열 유틸리티 | std::array |
-| 13 | bmb-option | Option 타입 | std::option |
-| 14 | bmb-result | Result 타입 | std::result |
-| 15 | bmb-convert | 타입 변환 | std::convert |
-| 16 | bmb-default | Default 트레이트 | std::default |
-| 17 | bmb-clone | Clone 트레이트 | std::clone |
-| 18 | bmb-cmp | 비교 트레이트 | std::cmp |
-| 19 | bmb-hash | 해싱 | std::hash |
-| 20 | bmb-fmt | 포맷팅 | std::fmt |
-| 21 | bmb-vec | 동적 배열 | Vec |
-| 22 | bmb-string | 문자열 | String |
-| 23 | bmb-hashmap | 해시맵 | HashMap |
-| 24 | bmb-hashset | 해시셋 | HashSet |
-| 25 | bmb-deque | 양방향 큐 | VecDeque |
+v0.14 계획 검토 시 다음 원칙을 적용하여 범위를 재조정:
 
-### 샘플 앱 (25개)
+| 원칙 | 적용 |
+|------|------|
+| **점진적 진행** | 25개 → 5개 핵심 패키지로 축소 |
+| **작은 배포** | 런타임 의존 패키지(alloc, sync 등) 제외 |
+| **현실적 범위** | 이미 구현된 기능의 제네릭화에 집중 |
 
-각 패키지당 1개 이상:
-- `bmb-core-demo`: 기본 타입 사용 예제
-- `bmb-vec-demo`: 동적 배열 활용
-- `bmb-hashmap-demo`: 워드 카운터
-- ...
+### v0.14.0 - 패키지 구조 표준화 ✅
 
-### gotgan 등록
+```
+packages/
+├── README.md               # 패키지 표준 문서
+├── bmb-core/
+│   ├── Gotgan.toml         # 패키지 매니페스트
+│   └── src/lib.bmb         # 소스 코드
+├── bmb-option/
+├── bmb-result/
+├── bmb-traits/
+└── bmb-iter/
+```
+
+**Gotgan.toml 표준:**
+```toml
+[package]
+name = "bmb-core"
+version = "0.14.0"
+description = "Core types and primitives for BMB"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+# 의존성 선언
+
+[contracts]
+verify = true
+```
+
+### v0.14.1 - Option<T> 제네릭화 ✅
+
+```bmb
+@derive(Debug, Clone, PartialEq)
+pub enum Option<T> {
+    Some(T),
+    None,
+}
+
+pub fn is_some<T>(opt: Option<T>) -> bool =
+    match opt {
+        Option::Some(v) => true,
+        Option::None => false,
+    };
+
+pub fn unwrap_or<T>(opt: Option<T>, default: T) -> T =
+    match opt {
+        Option::Some(v) => v,
+        Option::None => default,
+    };
+```
+
+**포함 기능:**
+- 제네릭 `Option<T>` 열거형
+- `some<T>`, `none<T>` 생성자
+- `is_some`, `is_none` 상태 검사
+- `unwrap_or`, `unwrap_or_default` 추출
+- `option_or`, `option_and`, `option_xor` 결합
+- `filter_by_bool` 필터링
+- i64 특화 역호환성 함수
+
+### v0.14.2 - Result<T, E> 제네릭화 ✅
+
+```bmb
+@derive(Debug, Clone, PartialEq)
+pub enum Result<T, E> {
+    Ok(T),
+    Err(E),
+}
+
+pub fn safe_divide(a: i64, b: i64) -> Result<i64, i64>
+  post (b == 0 and is_err(ret)) or (b != 0 and is_ok(ret))
+= if b == 0 then Result::Err(100) else Result::Ok(a / b);
+```
+
+**포함 기능:**
+- 제네릭 `Result<T, E>` 열거형
+- `ok<T, E>`, `err<T, E>` 생성자
+- `is_ok`, `is_err` 상태 검사
+- `unwrap_or`, `unwrap`, `unwrap_err` 추출
+- `ok_option`, `err_option` Option 변환
+- `result_or`, `result_and` 결합
+- `ErrorCode` 표준 에러 열거형
+- `safe_divide`, `safe_mod` 안전 연산
+- i64 특화 역호환성 함수
+
+### v0.14.3 - 트레잇 정의 ✅
+
+```bmb
+-- 트레잇 명세 (BMB는 아직 trait 키워드 미지원)
+-- @derive에서 사용되는 트레잇 계약 정의
+
+@derive(Debug, Clone, PartialEq, Eq)
+pub enum Ordering {
+    Less,
+    Equal,
+    Greater,
+}
+```
+
+**정의된 트레잇:**
+| 트레잇 | 설명 | @derive 지원 |
+|--------|------|--------------|
+| Debug | 디버그 출력 | ✅ |
+| Clone | 복제 | ✅ |
+| PartialEq | 부분 동등성 | ✅ |
+| Eq | 완전 동등성 | ✅ |
+| PartialOrd | 부분 순서 | ⬜ 계획 |
+| Ord | 완전 순서 | ⬜ 계획 |
+| Default | 기본값 | ✅ |
+| Hash | 해시 | ✅ |
+
+### v0.14.4 - Iterator 트레잇 및 기본 구현 ✅
+
+```bmb
+@derive(Debug, Clone, PartialEq)
+pub struct Range {
+    current: i64,
+    end: i64,
+    step: i64,
+}
+
+pub fn range(start: i64, end: i64) -> Range
+  pre start <= end
+= new Range { current: start, end: end, step: 1 };
+
+pub fn fibonacci(n: i64) -> i64
+  pre n >= 0
+= if n == 0 then 0
+  else if n == 1 then 1
+  else fibonacci(n - 1) + fibonacci(n - 2);
+```
+
+**포함 기능:**
+- `Range` 이터레이터 (i64 범위)
+- `Repeat<T>` 무한 반복
+- `Take` n개 제한
+- 콤비네이터: `range_sum`, `range_product`, `range_count`
+- `range_min`, `range_max`, `range_any_positive`, `range_all_positive`
+- `enumerate_at`, `zip_ranges_at` 연쇄 패턴
+- `nth`, `last` 수집 함수
+- `naturals_nth`, `fibonacci` 무한 시퀀스
+
+### v0.14.5 - bmb-core 통합 ✅
+
+```bmb
+@derive(Debug, Clone, PartialEq)
+pub struct Pair<A, B> {
+    fst: A,
+    snd: B,
+}
+
+pub fn identity<T>(x: T) -> T = x;
+
+pub fn abs(x: i64) -> i64
+  post ret >= 0 and ((x >= 0 and ret == x) or (x < 0 and ret == 0 - x))
+= if x >= 0 then x else 0 - x;
+```
+
+**포함 기능:**
+- `Unit`, `Never` 특수 타입
+- `bool_and`, `bool_or`, `bool_not`, `bool_xor` 불리언 연산
+- `abs`, `min`, `max`, `clamp`, `sign` 수치 연산
+- `in_range`, `diff` 범위/차이
+- `Pair<A, B>` 제네릭 페어
+- `identity<T>`, `swap<T>` 유틸리티
+
+### 검증 결과
 
 ```bash
-$ gotgan publish bmb-core
-$ gotgan publish bmb-vec
+$ cargo test
+running 15 tests
+test tests::test_extern_fn ... ok
+test tests::test_generics ... ok
+test tests::test_derive ... ok
 ...
+test result: ok. 15 passed; 0 failed
 ```
+
+**파서 검증:**
+```bash
+$ bmb parse packages/bmb-core/src/lib.bmb     # ✅
+$ bmb parse packages/bmb-option/src/lib.bmb   # ✅
+$ bmb parse packages/bmb-result/src/lib.bmb   # ✅
+$ bmb parse packages/bmb-traits/src/lib.bmb   # ✅
+$ bmb parse packages/bmb-iter/src/lib.bmb     # ✅
+```
+
+### 다음 단계 (v0.15+)
+
+| 패키지 | 버전 | 의존성 |
+|--------|------|--------|
+| bmb-vec | v0.15 | 런타임 alloc 필요 |
+| bmb-hashmap | v0.15 | 런타임 alloc 필요 |
+| bmb-io | v0.15 | extern fn 확장 필요 |
+| bmb-async | v0.17 | 런타임 지원 필요 |
 
 ---
 

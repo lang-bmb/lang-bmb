@@ -1,0 +1,15 @@
+[package]
+name = "bmb-iter"
+version = "0.14.0"
+description = "Iterator trait and combinators for BMB"
+license = "MIT OR Apache-2.0"
+authors = ["BMB Team"]
+repository = "https://github.com/iyulab/lang-bmb"
+keywords = ["iterator", "iter", "lazy", "functional"]
+
+[dependencies]
+bmb-core = "0.14.0"
+bmb-option = "0.14.0"
+
+[contracts]
+verify = true

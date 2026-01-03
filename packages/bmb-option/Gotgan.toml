@@ -1,0 +1,14 @@
+[package]
+name = "bmb-option"
+version = "0.14.0"
+description = "Generic Option<T> type for optional values"
+license = "MIT OR Apache-2.0"
+authors = ["BMB Team"]
+repository = "https://github.com/iyulab/lang-bmb"
+keywords = ["option", "optional", "maybe", "null-safety"]
+
+[dependencies]
+bmb-core = "0.14.0"
+
+[contracts]
+verify = true
