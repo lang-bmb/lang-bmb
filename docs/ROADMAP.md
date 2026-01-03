@@ -1529,17 +1529,30 @@ Generated: add.wat
 #[test] fn test_standalone_no_runtime() { ... }       // 3개 assertion
 ```
 
-### v0.12.3 - 조건부 컴파일
+### v0.12.3 - 조건부 컴파일 (계획)
+
+**요구사항:**
+- BMB `@cfg(target = "wasm32")` 속성 처리 로직
+- 타입체커에서 조건부 선언 필터링
+- 코드젠에서 타깃별 코드 선택
 
 ```bmb
-#[cfg(target = "wasm32")]
+@cfg(target = "wasm32")
 fn print(s: String) = js_console_log(s);
 
-#[cfg(target = "native")]
+@cfg(target = "native")
 fn print(s: String) = libc_puts(s);
 ```
 
-### v0.12.4 - 듀얼 타깃 빌드
+**상태:** BMB 파서에 `@attr(args)` 문법 이미 지원됨 (grammar.lalrpop:121)
+**필요 작업:** 타입체커 cfg 속성 처리 로직 추가
+
+### v0.12.4 - 듀얼 타깃 빌드 (계획)
+
+**요구사항:**
+- gotgan 빌드 시스템 멀티 타깃 지원
+- gotgan.toml 타깃 설정 파싱
+- 병렬 빌드 오케스트레이션
 
 ```toml
 # gotgan.toml
@@ -1553,6 +1566,9 @@ $ gotgan build --all-targets
 → target/x86_64-linux/release/app
 → target/wasm32/release/app.wasm
 ```
+
+**상태:** 빌드 시스템 핵심 변경 필요
+**필요 작업:** gotgan 빌드 파이프라인 멀티 타깃 확장
 
 ---
 
