@@ -54,12 +54,14 @@ pub fn unwrap_or<T>(opt: Option<T>, default: T) -> T =
         Option::None => default,
     };
 
--- 위험한 추출: precondition 필요
+-- 위험한 추출: precondition으로 None 케이스 도달 불가
+-- Note: None 케이스는 precondition에 의해 절대 실행되지 않음
+-- BMB에 panic/unreachable이 없으므로 재귀 호출로 타입 맞춤 (도달 불가)
 pub fn unwrap<T>(opt: Option<T>) -> T
   pre is_some(opt)
 = match opt {
     Option::Some(v) => v,
-    Option::None => default,
+    Option::None => unwrap(opt),
 };
 
 -- 기본값 지연 계산 (closure 대신 함수 결과)

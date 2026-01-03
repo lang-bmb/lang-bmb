@@ -45,7 +45,7 @@ v0.MAJOR.MINOR
 | v0.13 | **Forge** | 언어 완성 + extern fn + 제네릭 + 에러처리 | ✅ 완료 (v0.13.0-3) |
 | v0.14 | **Foundation** | 제네릭 stdlib + 패키지 표준화 | ✅ 완료 (v0.14.0-5) |
 | v0.15 | **Generics** | 제네릭 타입 시스템 완성 | ✅ 완료 (v0.15.0-2) |
-| v0.16 | **Connect** | Network/Serialization 25개 + 최적화 1차 | 계획 |
+| v0.16 | **Consolidate** | 제네릭 enum/struct 타입 체커 완성 | ✅ 완료 (v0.16.0-3) |
 | v0.17 | **Parallel** | Async/Crypto 20개 + 벤치마크 v2 | 계획 |
 | v0.18 | **Persist** | Database/CLI 20개 + 최적화 2차 | 계획 |
 | v0.19 | **Mirror** | Self-Hosting (BMB 자기 컴파일) | 계획 |
@@ -844,47 +844,149 @@ cargo run run tests/examples/valid/test_generics_comprehensive.bmb    # 출력: 
 
 ---
 
-## v0.16 Connect (Network/Serialization 25개 + 최적화 1차)
+## v0.16 Consolidate (제네릭 enum/struct 타입 체커 완성) ✅
 
-> 목표: 네트워크/직렬화 패키지 + 첫 번째 성능 최적화
+> 목표: v0.15에서 구현된 제네릭 함수 지원을 enum/struct로 확장하여 stdlib 패키지 타입 체크 가능
 
-### 패키지 목록
+### 배경
 
-| # | 패키지 | 설명 |
-|---|--------|------|
-| 51 | bmb-url | URL 파싱 |
-| 52 | bmb-uri | URI 처리 |
-| 53 | bmb-http | HTTP 클라이언트/서버 |
-| 54 | bmb-websocket | WebSocket |
-| 55 | bmb-tls | TLS/SSL |
-| 56 | bmb-hyper | 고성능 HTTP (hyper 포트) |
-| 57 | bmb-reqwest | HTTP 클라이언트 (reqwest 포트) |
-| 58 | bmb-axum | 웹 프레임워크 (axum 포트) |
-| 59 | bmb-grpc | gRPC |
-| 60 | bmb-graphql | GraphQL |
-| 61 | bmb-serde | 직렬화 프레임워크 |
-| 62 | bmb-json | JSON |
-| 63 | bmb-toml | TOML |
-| 64 | bmb-yaml | YAML |
-| 65 | bmb-xml | XML |
-| 66 | bmb-csv | CSV |
-| 67 | bmb-msgpack | MessagePack |
-| 68 | bmb-protobuf | Protocol Buffers |
-| 69 | bmb-bincode | 바이너리 인코딩 |
-| 70 | bmb-base64 | Base64 |
-| 71 | bmb-utf8 | UTF-8 처리 |
-| 72 | bmb-regex | 정규표현식 |
-| 73 | bmb-glob | 글로브 패턴 |
-| 74 | bmb-mime | MIME 타입 |
-| 75 | bmb-form | 폼 데이터 |
+v0.15에서 제네릭 함수 타입 추론이 완성되었으나, 제네릭 enum/struct 인스턴스화에서 문제 발견:
+- `Option::Some(42)` → `Option` 타입으로 추론됨 (`Option<i64>` 아님)
+- bmb-option, bmb-result 패키지 타입 체크 실패
+- 원인: 제네릭 enum/struct에 대한 타입 추론 로직 부재
 
-### 최적화 1차
+### 설계 원칙 적용
 
-| 영역 | 기법 | 목표 |
+| 원칙 | 적용 |
+|------|------|
+| **비판적 분석** | 원래 v0.16 계획(25개 네트워크 패키지) 검토 → 현실적 불가능 판단 |
+| **점진적 진행** | 타입 시스템 완성 → 패키지 개발 순서 유지 |
+| **기초 우선** | Option/Result 없이 네트워크 패키지 개발 불가 |
+
+### v0.16.0 - generic_enums 필드 추가 ✅
+
+```rust
+/// Generic enum definitions: name -> (type_params, variants)
+/// v0.16: Support for generic enums like enum Option<T> { Some(T), None }
+generic_enums: HashMap<String, (Vec<TypeParam>, Vec<(String, Vec<Type>)>)>,
+```
+
+### v0.16.1 - EnumDef 제네릭 등록 ✅
+
+```rust
+Item::EnumDef(e) => {
+    let variants = e.variants.iter()
+        .map(|v| (v.name.node.clone(), v.fields.iter().map(|f| f.node.clone()).collect()))
+        .collect();
+    // v0.16: Handle generic enums separately
+    if e.type_params.is_empty() {
+        self.enums.insert(e.name.node.clone(), variants);
+    } else {
+        self.generic_enums.insert(e.name.node.clone(), (e.type_params.clone(), variants));
+    }
+}
+```
+
+### v0.16.2 - EnumVariant 타입 추론 ✅
+
+| 기능 | 설명 | 상태 |
 |------|------|------|
-| 컴파일 | 증분 컴파일 | -20% 시간 |
-| 런타임 | 인라이닝 개선 | +10% 성능 |
-| 메모리 | 할당 최적화 | -15% 사용량 |
+| Expr::EnumVariant | 제네릭 enum 생성자 타입 추론 | ✅ |
+| Pattern::EnumVariant | 제네릭 enum 패턴 매칭 | ✅ |
+| Type::Generic 처리 | `Option<i64>` 형태의 인스턴스화 타입 | ✅ |
+| Type::TypeVar 처리 | nullary variant (None) 타입 추론 | ✅ |
+| unify() 확장 | Generic 타입 간 통합, TypeVar 허용 | ✅ |
+
+### v0.16.3 - 제네릭 struct 지원 ✅
+
+| 기능 | 설명 | 상태 |
+|------|------|------|
+| Expr::StructInit | 제네릭 struct 생성자 타입 추론 | ✅ |
+| Expr::FieldAccess | 제네릭 struct 필드 접근 타입 해석 | ✅ |
+| 타입 대입 | struct 필드에서 타입 파라미터 치환 | ✅ |
+
+### 패키지 버그 수정 ✅
+
+`bmb-option`과 `bmb-result`에서 발견된 unreachable 브랜치 버그 수정:
+
+```bmb
+-- 수정 전: undefined variable 'default'
+pub fn unwrap<T>(opt: Option<T>) -> T
+  pre is_some(opt)
+= match opt {
+    Option::Some(v) => v,
+    Option::None => default,  -- ❌ 컴파일 에러
+};
+
+-- 수정 후: precondition에 의해 도달 불가한 브랜치는 재귀 호출로 타입 맞춤
+pub fn unwrap<T>(opt: Option<T>) -> T
+  pre is_some(opt)
+= match opt {
+    Option::Some(v) => v,
+    Option::None => unwrap(opt),  -- ✅ 도달 불가 (pre 보장)
+};
+```
+
+### 검증 결과
+
+```bash
+$ cargo test
+running 65 tests
+...
+test result: ok. 65 passed; 0 failed
+```
+
+**패키지 타입 체크:**
+
+| 패키지 | 상태 | 비고 |
+|--------|------|------|
+| test_generics_stdlib.bmb | ✅ | 제네릭 Option 패턴 |
+| bmb-option | ✅ | Option<T> 전체 |
+| bmb-traits | ✅ | Ordering enum |
+| bmb-core | ✅ | Pair<A, B> struct |
+| bmb-result | ⚠️ | Option import 필요 (모듈 시스템) |
+| bmb-iter | ⚠️ | Option import 필요 (모듈 시스템) |
+
+### 기술적 세부사항
+
+**핵심 타입 체커 변경 (`bmb/src/types/mod.rs`):**
+
+```rust
+// v0.16 추가 메서드
+fn infer_type_args(&self, param_ty: &Type, arg_ty: &Type,
+                   subst: &mut HashMap<String, Type>, span: Span) -> Result<()>
+
+// unify() 확장 - Generic 타입 처리
+if let (Type::Generic { name: n1, type_args: a1 },
+        Type::Generic { name: n2, type_args: a2 }) = (expected, actual) {
+    if n1 == n2 && a1.len() == a2.len() {
+        for (arg1, arg2) in a1.iter().zip(a2.iter()) {
+            self.unify(arg1, arg2, span)?;
+        }
+        return Ok(());
+    }
+}
+
+// TypeVar 허용 (nullary variant 지원)
+if let Type::TypeVar(_) = expected { return Ok(()); }
+if let Type::TypeVar(_) = actual { return Ok(()); }
+```
+
+### 알려진 제한사항
+
+| 제한 | 설명 | 해결 버전 |
+|------|------|-----------|
+| 모듈 import | 패키지 간 타입 참조 미지원 | v0.17+ |
+| 타입 인자 명시 | `func::<i64>()` 구문 미지원 | 필요시 |
+| 트레이트 바운드 | `<T: Clone>` 미지원 | v0.18+ |
+
+### 다음 단계 (v0.17+)
+
+| 영역 | 내용 | 의존성 |
+|------|------|--------|
+| 모듈 시스템 | import/use로 패키지 간 타입 참조 | 없음 |
+| 트레이트 시스템 | 타입 바운드, impl 블록 | 모듈 시스템 |
+| 네트워크 패키지 | bmb-http 등 | 모듈 + Option/Result |
 
 ---
 

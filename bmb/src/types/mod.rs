@@ -19,6 +19,9 @@ pub struct TypeChecker {
     generic_structs: HashMap<String, (Vec<TypeParam>, Vec<(String, Type)>)>,
     /// Struct definitions: name -> field types
     structs: HashMap<String, Vec<(String, Type)>>,
+    /// Generic enum definitions: name -> (type_params, variants)
+    /// v0.16: Support for generic enums like enum Option<T> { Some(T), None }
+    generic_enums: HashMap<String, (Vec<TypeParam>, Vec<(String, Vec<Type>)>)>,
     /// Enum definitions: name -> variant info (variant_name, field types)
     enums: HashMap<String, Vec<(String, Vec<Type>)>>,
     /// Current function return type (for `ret` keyword)
@@ -54,6 +57,7 @@ impl TypeChecker {
             generic_functions: HashMap::new(),
             generic_structs: HashMap::new(),
             structs: HashMap::new(),
+            generic_enums: HashMap::new(),
             enums: HashMap::new(),
             current_ret_ty: None,
             type_param_env: HashMap::new(),
@@ -83,7 +87,15 @@ impl TypeChecker {
                     let variants: Vec<_> = e.variants.iter()
                         .map(|v| (v.name.node.clone(), v.fields.iter().map(|f| f.node.clone()).collect()))
                         .collect();
-                    self.enums.insert(e.name.node.clone(), variants);
+                    // v0.16: Handle generic enums separately
+                    if e.type_params.is_empty() {
+                        self.enums.insert(e.name.node.clone(), variants);
+                    } else {
+                        self.generic_enums.insert(
+                            e.name.node.clone(),
+                            (e.type_params.clone(), variants)
+                        );
+                    }
                 }
                 Item::FnDef(_) | Item::ExternFn(_) => {}
                 // v0.5 Phase 4: Use statements are processed at module resolution time
@@ -389,28 +401,62 @@ impl TypeChecker {
 
             // v0.5: Struct and Enum expressions
             Expr::StructInit { name, fields } => {
-                let struct_fields = self.structs.get(name).cloned().ok_or_else(|| {
-                    CompileError::type_error(format!("undefined struct: {name}"), span)
-                })?;
-
-                // Check that all required fields are provided
-                for (field_name, field_ty) in &struct_fields {
-                    let provided = fields.iter().find(|(n, _)| &n.node == field_name);
-                    match provided {
-                        Some((_, expr)) => {
-                            let expr_ty = self.infer(&expr.node, expr.span)?;
-                            self.unify(field_ty, &expr_ty, expr.span)?;
-                        }
-                        None => {
-                            return Err(CompileError::type_error(
-                                format!("missing field: {field_name}"),
-                                span,
-                            ));
+                // v0.16: First try non-generic structs
+                if let Some(struct_fields) = self.structs.get(name).cloned() {
+                    // Check that all required fields are provided
+                    for (field_name, field_ty) in &struct_fields {
+                        let provided = fields.iter().find(|(n, _)| &n.node == field_name);
+                        match provided {
+                            Some((_, expr)) => {
+                                let expr_ty = self.infer(&expr.node, expr.span)?;
+                                self.unify(&field_ty, &expr_ty, expr.span)?;
+                            }
+                            None => {
+                                return Err(CompileError::type_error(
+                                    format!("missing field: {field_name}"),
+                                    span,
+                                ));
+                            }
                         }
                     }
+                    return Ok(Type::Named(name.clone()));
                 }
 
-                Ok(Type::Named(name.clone()))
+                // v0.16: Try generic structs with type inference
+                if let Some((type_params, struct_fields)) = self.generic_structs.get(name).cloned() {
+                    let type_param_names: Vec<_> = type_params.iter().map(|tp| tp.name.as_str()).collect();
+
+                    // Infer type arguments from field values
+                    let mut type_subst: HashMap<String, Type> = HashMap::new();
+                    for (field_name, field_ty) in &struct_fields {
+                        let provided = fields.iter().find(|(n, _)| &n.node == field_name);
+                        match provided {
+                            Some((_, expr)) => {
+                                let expr_ty = self.infer(&expr.node, expr.span)?;
+                                let resolved_field_ty = self.resolve_type_vars(&field_ty, &type_param_names);
+                                self.infer_type_args(&resolved_field_ty, &expr_ty, &mut type_subst, expr.span)?;
+                            }
+                            None => {
+                                return Err(CompileError::type_error(
+                                    format!("missing field: {field_name}"),
+                                    span,
+                                ));
+                            }
+                        }
+                    }
+
+                    // Build instantiated type: e.g., Pair<i64, bool>
+                    let type_args: Vec<Box<Type>> = type_params.iter()
+                        .map(|tp| Box::new(type_subst.get(&tp.name).cloned().unwrap_or(Type::TypeVar(tp.name.clone()))))
+                        .collect();
+
+                    return Ok(Type::Generic {
+                        name: name.clone(),
+                        type_args,
+                    });
+                }
+
+                Err(CompileError::type_error(format!("undefined struct: {name}"), span))
             }
 
             Expr::FieldAccess { expr: obj_expr, field } => {
@@ -433,6 +479,36 @@ impl TypeChecker {
                             span,
                         ))
                     }
+                    // v0.16: Handle generic struct field access (e.g., Pair<i64, bool>.fst)
+                    Type::Generic { name: struct_name, type_args } => {
+                        if let Some((type_params, struct_fields)) = self.generic_structs.get(struct_name).cloned() {
+                            // Build type substitution
+                            let mut type_subst: HashMap<String, Type> = HashMap::new();
+                            for (tp, arg) in type_params.iter().zip(type_args.iter()) {
+                                type_subst.insert(tp.name.clone(), (**arg).clone());
+                            }
+
+                            let type_param_names: Vec<_> = type_params.iter().map(|tp| tp.name.as_str()).collect();
+
+                            for (fname, fty) in &struct_fields {
+                                if fname == &field.node {
+                                    // Substitute type parameters in field type
+                                    let resolved_fty = self.resolve_type_vars(&fty, &type_param_names);
+                                    let substituted_fty = self.substitute_type(&resolved_fty, &type_subst);
+                                    return Ok(substituted_fty);
+                                }
+                            }
+
+                            return Err(CompileError::type_error(
+                                format!("unknown field: {}", field.node),
+                                span,
+                            ));
+                        }
+                        Err(CompileError::type_error(
+                            format!("not a struct: {struct_name}"),
+                            span,
+                        ))
+                    }
                     _ => Err(CompileError::type_error(
                         format!("field access on non-struct type: {obj_ty}"),
                         span,
@@ -441,30 +517,73 @@ impl TypeChecker {
             }
 
             Expr::EnumVariant { enum_name, variant, args } => {
-                let variants = self.enums.get(enum_name).cloned().ok_or_else(|| {
-                    CompileError::type_error(format!("undefined enum: {enum_name}"), span)
-                })?;
+                // v0.16: First try non-generic enums
+                if let Some(variants) = self.enums.get(enum_name).cloned() {
+                    let variant_fields = variants.iter()
+                        .find(|(name, _)| name == variant)
+                        .map(|(_, fields)| fields.clone())
+                        .ok_or_else(|| {
+                            CompileError::type_error(format!("unknown variant: {variant}"), span)
+                        })?;
 
-                let variant_fields = variants.iter()
-                    .find(|(name, _)| name == variant)
-                    .map(|(_, fields)| fields.clone())
-                    .ok_or_else(|| {
-                        CompileError::type_error(format!("unknown variant: {variant}"), span)
-                    })?;
+                    if args.len() != variant_fields.len() {
+                        return Err(CompileError::type_error(
+                            format!("expected {} args, got {}", variant_fields.len(), args.len()),
+                            span,
+                        ));
+                    }
 
-                if args.len() != variant_fields.len() {
-                    return Err(CompileError::type_error(
-                        format!("expected {} args, got {}", variant_fields.len(), args.len()),
-                        span,
-                    ));
+                    for (arg, expected_ty) in args.iter().zip(variant_fields.iter()) {
+                        let arg_ty = self.infer(&arg.node, arg.span)?;
+                        self.unify(expected_ty, &arg_ty, arg.span)?;
+                    }
+
+                    return Ok(Type::Named(enum_name.clone()));
                 }
 
-                for (arg, expected_ty) in args.iter().zip(variant_fields.iter()) {
-                    let arg_ty = self.infer(&arg.node, arg.span)?;
-                    self.unify(expected_ty, &arg_ty, arg.span)?;
+                // v0.16: Try generic enums with type inference
+                if let Some((type_params, variants)) = self.generic_enums.get(enum_name).cloned() {
+                    let type_param_names: Vec<_> = type_params.iter().map(|tp| tp.name.as_str()).collect();
+
+                    let variant_fields = variants.iter()
+                        .find(|(name, _)| name == variant)
+                        .map(|(_, fields)| fields.clone())
+                        .ok_or_else(|| {
+                            CompileError::type_error(format!("unknown variant: {variant}"), span)
+                        })?;
+
+                    if args.len() != variant_fields.len() {
+                        return Err(CompileError::type_error(
+                            format!("expected {} args, got {}", variant_fields.len(), args.len()),
+                            span,
+                        ));
+                    }
+
+                    // Infer type arguments from actual arguments
+                    let mut type_subst: HashMap<String, Type> = HashMap::new();
+                    for (arg, field_ty) in args.iter().zip(variant_fields.iter()) {
+                        let arg_ty = self.infer(&arg.node, arg.span)?;
+                        // Convert Named types to TypeVar for inference
+                        let resolved_field_ty = self.resolve_type_vars(field_ty, &type_param_names);
+                        self.infer_type_args(&resolved_field_ty, &arg_ty, &mut type_subst, arg.span)?;
+                    }
+
+                    // v0.16: Type params not appearing in variant fields remain as TypeVar
+                    // They will be resolved from context (return type annotation, unification)
+                    // e.g., Result::Ok(value) infers T from value, E remains TypeVar
+
+                    // Build instantiated type: e.g., Option<i64>
+                    let type_args: Vec<Box<Type>> = type_params.iter()
+                        .map(|tp| Box::new(type_subst.get(&tp.name).cloned().unwrap_or(Type::TypeVar(tp.name.clone()))))
+                        .collect();
+
+                    return Ok(Type::Generic {
+                        name: enum_name.clone(),
+                        type_args,
+                    });
                 }
 
-                Ok(Type::Named(enum_name.clone()))
+                Err(CompileError::type_error(format!("undefined enum: {enum_name}"), span))
             }
 
             Expr::Match { expr: match_expr, arms } => {
@@ -682,6 +801,7 @@ impl TypeChecker {
                 // Check that pattern matches expected type
                 match expected_ty {
                     Type::Named(name) if name == enum_name => {
+                        // Non-generic enum pattern matching
                         let variants = self.enums.get(enum_name).ok_or_else(|| {
                             CompileError::type_error(format!("undefined enum: {enum_name}"), span)
                         })?;
@@ -706,6 +826,74 @@ impl TypeChecker {
                         }
 
                         Ok(())
+                    }
+                    // v0.16: Generic enum pattern matching (e.g., MyOption<i64>)
+                    Type::Generic { name, type_args } if name == enum_name => {
+                        let (type_params, variants) = self.generic_enums.get(enum_name).cloned().ok_or_else(|| {
+                            CompileError::type_error(format!("undefined generic enum: {enum_name}"), span)
+                        })?;
+
+                        let variant_fields = variants.iter()
+                            .find(|(n, _)| n == variant)
+                            .map(|(_, fields)| fields.clone())
+                            .ok_or_else(|| {
+                                CompileError::type_error(format!("unknown variant: {variant}"), span)
+                            })?;
+
+                        if bindings.len() != variant_fields.len() {
+                            return Err(CompileError::type_error(
+                                format!("expected {} bindings, got {}", variant_fields.len(), bindings.len()),
+                                span,
+                            ));
+                        }
+
+                        // Build type substitution from type_params to type_args
+                        let mut type_subst: HashMap<String, Type> = HashMap::new();
+                        for (tp, arg) in type_params.iter().zip(type_args.iter()) {
+                            type_subst.insert(tp.name.clone(), (**arg).clone());
+                        }
+
+                        // Bind pattern variables with substituted types
+                        for (binding, field_ty) in bindings.iter().zip(variant_fields.iter()) {
+                            // Convert Named types to TypeVar, then substitute
+                            let type_param_names: Vec<_> = type_params.iter().map(|tp| tp.name.as_str()).collect();
+                            let resolved_ty = self.resolve_type_vars(&field_ty, &type_param_names);
+                            let substituted_ty = self.substitute_type(&resolved_ty, &type_subst);
+                            self.env.insert(binding.node.clone(), substituted_ty);
+                        }
+
+                        Ok(())
+                    }
+                    // v0.16: TypeVar pattern matching (for generic function bodies)
+                    Type::TypeVar(_) => {
+                        // When matching in a generic context, allow any enum pattern
+                        // and bind variables as TypeVar
+                        if let Some((type_params, variants)) = self.generic_enums.get(enum_name).cloned() {
+                            let variant_fields = variants.iter()
+                                .find(|(n, _)| n == variant)
+                                .map(|(_, fields)| fields.clone())
+                                .ok_or_else(|| {
+                                    CompileError::type_error(format!("unknown variant: {variant}"), span)
+                                })?;
+
+                            if bindings.len() != variant_fields.len() {
+                                return Err(CompileError::type_error(
+                                    format!("expected {} bindings, got {}", variant_fields.len(), bindings.len()),
+                                    span,
+                                ));
+                            }
+
+                            // Bind pattern variables with the original field types (may contain type params)
+                            let type_param_names: Vec<_> = type_params.iter().map(|tp| tp.name.as_str()).collect();
+                            for (binding, field_ty) in bindings.iter().zip(variant_fields.iter()) {
+                                let resolved_ty = self.resolve_type_vars(&field_ty, &type_param_names);
+                                self.env.insert(binding.node.clone(), resolved_ty);
+                            }
+
+                            Ok(())
+                        } else {
+                            Err(CompileError::type_error(format!("undefined enum: {enum_name}"), span))
+                        }
                     }
                     _ => Err(CompileError::type_error(
                         format!("expected {}, got enum pattern", expected_ty),
@@ -847,6 +1035,29 @@ impl TypeChecker {
             if a == b {
                 return Ok(());
             }
+        }
+
+        // v0.16: Handle Generic types with TypeVar in type_args
+        // e.g., unify Option<i64> with Option<T> where T is a type parameter
+        if let (Type::Generic { name: n1, type_args: a1 }, Type::Generic { name: n2, type_args: a2 }) = (expected, actual) {
+            if n1 == n2 && a1.len() == a2.len() {
+                // Same generic name and same number of args - unify each arg
+                for (arg1, arg2) in a1.iter().zip(a2.iter()) {
+                    self.unify(arg1, arg2, span)?;
+                }
+                return Ok(());
+            }
+        }
+
+        // v0.16: Handle unbound TypeVar (from nullary variants like Option::None)
+        // In non-generic context, TypeVar acts as a wildcard that matches concrete types
+        if let Type::TypeVar(_) = expected {
+            // Allow any type to match an unbound TypeVar
+            return Ok(());
+        }
+        if let Type::TypeVar(_) = actual {
+            // Allow unbound TypeVar to match any expected type
+            return Ok(());
         }
 
         if expected == actual {

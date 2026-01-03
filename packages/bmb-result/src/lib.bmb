@@ -55,18 +55,20 @@ pub fn unwrap_or<T, E>(res: Result<T, E>, default: T) -> T =
     };
 
 -- Ok 값 추출 (precondition 필요)
+-- Note: Err 케이스는 precondition에 의해 도달 불가
 pub fn unwrap<T, E>(res: Result<T, E>) -> T
   pre is_ok(res)
 = match res {
     Result::Ok(v) => v,
-    Result::Err(e) => default,
+    Result::Err(e) => unwrap(res),
 };
 
 -- Err 값 추출 (precondition 필요)
+-- Note: Ok 케이스는 precondition에 의해 도달 불가
 pub fn unwrap_err<T, E>(res: Result<T, E>) -> E
   pre is_err(res)
 = match res {
-    Result::Ok(v) => default,
+    Result::Ok(v) => unwrap_err(res),
     Result::Err(e) => e,
 };
 
