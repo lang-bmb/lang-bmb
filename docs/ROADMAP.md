@@ -1,6 +1,6 @@
 # BMB 로드맵 v0.1 → v1.0
 
-> 점진적 난이도 진행 + 완전한 생태계 + BMB 부트스트래핑
+> 점진적 난이도 진행 + 완전한 생태계 + BMB 부트스트래핑 + 100+ 패키지 + C/Rust 성능 추월
 
 ---
 
@@ -12,6 +12,8 @@
 | **도구 내장** | 별도 설치 없이 `bmb fmt`, `bmb lsp` 동작 | Gleam 방식 |
 | **작은 배포** | 큰 기능을 여러 minor 버전으로 분할 | Zig 패턴 |
 | **0.x = 실험** | Breaking changes 허용, 1.0 = 안정성 약속 | 모든 언어 공통 |
+| **패키지 우선** | 모든 재사용 코드는 gotgan 등록 | 생태계 성장 |
+| **성능 증명** | C/Rust 대비 벤치마크로 검증 | 계약 기반 최적화 |
 
 ### 버전 체계
 
@@ -38,55 +40,137 @@ v0.MAJOR.MINOR
 | v0.8 | Fruit | 패키지 매니저 (곳간) | ✅ 완료 |
 | v0.9 | Harvest | 생태계 (에디터, 원격 패키지) | ✅ 완료 |
 | v0.10 | Sunrise | Bootstrap + 컴포넌트 패키지화 | ✅ 완료 |
-| v0.11 | Dawn | AI-Native gotgan + Bootstrap 완성 | 🔄 진행중 (v0.11.4-7 ✅) |
+| v0.11 | Dawn | AI-Native gotgan + Bootstrap | 🔄 진행중 (v0.11.4-7 ✅) |
 | v0.12 | Horizon | WASM 듀얼 타깃 | 🔄 진행중 (v0.12.0-2 ✅) |
-| v0.13 | Summit | 생태계 완성 (MCP, 레지스트리) | 계획 |
-| v1.0-RC | Golden | 부트스트래핑 완료 + 검증 | 계획 |
+| v0.13 | **Forge** | 언어 완성 + extern fn + 매크로 | 계획 |
+| v0.14 | **Foundation** | Core 패키지 25개 + gotgan 등록 | 계획 |
+| v0.15 | **Stream** | Collections/IO 패키지 25개 + 벤치마크 v1 | 계획 |
+| v0.16 | **Connect** | Network/Serialization 25개 + 최적화 1차 | 계획 |
+| v0.17 | **Parallel** | Async/Crypto 20개 + 벤치마크 v2 | 계획 |
+| v0.18 | **Persist** | Database/CLI 20개 + 최적화 2차 | 계획 |
+| v0.19 | **Mirror** | Self-Hosting (BMB 자기 컴파일) | 계획 |
+| v0.20 | **Showcase** | 주요 앱 시나리오 샘플 10개 | 계획 |
+| v0.21 | **Launch** | 프로덕션 서비스 런칭 | 계획 |
+| v0.22 | **Velocity** | C/Rust 성능 추월 스프린트 | 계획 |
+| v1.0-RC | **Golden** | 최종 검증 + 안정성 약속 | 계획 |
 
 ---
 
 ## 생태계 레포지토리
 
-| 레포지토리 | 용도 | 시작 | Rust | BMB 재작성 |
-|------------|------|------|------|------------|
-| [lang-bmb](https://github.com/lang-bmb/lang-bmb) | 메인 컴파일러 | v0.1 ✅ | v0.1 ✅ | v0.11 |
-| [bmb-samples](https://github.com/lang-bmb/bmb-samples) | 예제 프로그램 | v0.3 | N/A | BMB 코드 |
-| [gotgan](https://github.com/lang-bmb/gotgan) | 패키지 매니저 | v0.8 | v0.8 | v0.11 |
-| [benchmark-bmb](https://github.com/lang-bmb/benchmark-bmb) | 표준 벤치마크 | v0.9 | Rust Runner | N/A |
-| [action-bmb](https://github.com/lang-bmb/action-bmb) | GitHub Action | v0.7 | v0.7 | v0.11 |
-| [tree-sitter-bmb](https://github.com/lang-bmb/tree-sitter-bmb) | 에디터 문법 | v0.9 | N/A | Tree-sitter |
-| [vscode-bmb](https://github.com/lang-bmb/vscode-bmb) | VS Code 확장 | v0.9 | N/A | TypeScript |
-| [playground](https://github.com/lang-bmb/playground) | 온라인 플레이그라운드 | v0.9 | N/A | React+WASM |
-| [lang-bmb-site](https://github.com/lang-bmb/lang-bmb-site) | 공식 웹사이트 | v0.9 | N/A | Astro |
+| 레포지토리 | 용도 | Rust 버전 | BMB 재작성 | 서비스 런칭 |
+|------------|------|-----------|------------|-------------|
+| lang-bmb | 메인 컴파일러 | v0.1 ✅ | v0.19 | - |
+| gotgan | 패키지 매니저 | v0.8 ✅ | v0.19 | gotgan.bmb.dev |
+| action-bmb | GitHub Action | v0.7 ✅ | v0.19 | - |
+| bmb-samples | 예제 프로그램 | - | v0.20 | - |
+| benchmark-bmb | 표준 벤치마크 | v0.9 ✅ | v0.15 | bench.bmb.dev |
+| playground | 온라인 플레이그라운드 | - | v0.21 | play.bmb.dev |
+| lang-bmb-site | 공식 웹사이트 | - | v0.21 | bmb.dev |
 
-### 부트스트래핑 전략
+---
+
+## 패키지 생태계 목표 (115개)
+
+### 카테고리별 패키지 목록
+
+| 카테고리 | 수량 | 버전 | 핵심 패키지 |
+|----------|------|------|-------------|
+| Core/Foundation | 20 | v0.14 | bmb-core, bmb-iter, bmb-hash, bmb-fmt |
+| Collections | 15 | v0.14-15 | bmb-vec, bmb-hashmap, bmb-btreemap |
+| IO/Filesystem | 10 | v0.15 | bmb-io, bmb-fs, bmb-path, bmb-tar |
+| Networking | 15 | v0.16 | bmb-http, bmb-websocket, bmb-grpc |
+| Serialization | 10 | v0.16 | bmb-serde, bmb-json, bmb-toml |
+| Async | 10 | v0.17 | bmb-async, bmb-future, bmb-channel |
+| Crypto/Security | 10 | v0.17 | bmb-crypto, bmb-sha, bmb-aes |
+| Database | 10 | v0.18 | bmb-sql, bmb-postgres, bmb-redis |
+| CLI/Tools | 10 | v0.18 | bmb-clap, bmb-log, bmb-config |
+| Testing/Dev | 5 | v0.18 | bmb-test, bmb-bench, bmb-mock |
+
+**총합: 115개 패키지 + 115개 샘플 앱**
+
+---
+
+## 벤치마크 KPI
+
+| 지표 | v0.15 목표 | v0.17 목표 | v0.22 목표 |
+|------|------------|------------|------------|
+| 컴파일 속도 | Rust 80% | Rust 90% | Rust 100%+ |
+| 런타임 성능 | C 70% | C 85% | C 100%+ |
+| 바이너리 크기 | Rust 120% | Rust 100% | Rust 90% |
+| 메모리 사용량 | Rust 110% | Rust 100% | Rust 95% |
+| WASM 크기 | - | 기준선 | 최적화 |
+
+### 벤치마크 스위트
+
+```
+benchmark-bmb/
+├── micro/              # 마이크로 벤치마크
+│   ├── fibonacci       # 재귀 성능
+│   ├── primes          # 소수 계산
+│   ├── sorting         # 정렬 알고리즘
+│   └── hashing         # 해시 성능
+├── algo/               # 알고리즘 벤치마크
+│   ├── graph           # 그래프 알고리즘
+│   ├── string          # 문자열 처리
+│   └── numeric         # 수치 계산
+├── real/               # 실제 워크로드
+│   ├── json-parse      # JSON 파싱
+│   ├── http-server     # HTTP 서버
+│   └── db-query        # DB 쿼리
+└── compare/            # C/Rust 비교
+    ├── c/
+    ├── rust/
+    └── bmb/
+```
+
+---
+
+## 부트스트래핑 전략 (확장)
 
 ```
 Phase 1 (v0.1-v0.3): Rust로 기반 구축
   - 컴파일러 프론트엔드 (Rust)
   - 인터프리터/REPL (Rust)
 
-Phase 2 (v0.4-v0.5): 네이티브 코드 생성 + 자기 컴파일 시작
+Phase 2 (v0.4-v0.5): 네이티브 코드 생성
   - LLVM 백엔드 (Rust)
-  - Bootstrap 시작: lexer.bmb, parser.bmb
+  - Bootstrap 시작
 
 Phase 3 (v0.6-v0.7): 표준 라이브러리 + 도구
-  - 표준 라이브러리 기초 (50개 함수)
+  - 표준 라이브러리 기초
   - 내장 도구: fmt, lsp, test
 
 Phase 4 (v0.8-v0.9): 패키지 매니저 + 생태계
   - gotgan 패키지 매니저 (Rust)
-  - 에디터 지원, 플레이그라운드, 웹사이트, 벤치마크
+  - 에디터, 플레이그라운드, 웹사이트
 
-Phase 5 (v0.10-v0.11): 부트스트래핑 완성
-  - 타입 체커 BMB 작성
-  - 코드 생성기 BMB 작성
+Phase 5 (v0.10-v0.12): WASM + 듀얼 타깃
+  - WASM 백엔드
+  - 런타임 바인딩
+
+Phase 6 (v0.13-v0.18): 패키지 생태계 구축 ★ NEW
+  - 115개 패키지 개발
+  - 각 패키지 샘플 앱
+  - gotgan 레지스트리 등록
+  - 벤치마크 + 최적화 반복
+
+Phase 7 (v0.19): Self-Hosting ★ NEW
+  - 컴파일러 BMB 재작성
   - gotgan BMB 재작성
   - Stage 2 자기 컴파일 검증
 
-Phase 6 (v1.0-RC): 완전한 자기 컴파일
-  - 모든 핵심 도구 BMB로 재작성 완료
-  - 검증 완료
+Phase 8 (v0.20-v0.21): 프로덕션 런칭 ★ NEW
+  - 주요 앱 시나리오 샘플
+  - 서브모듈 서비스 런칭
+
+Phase 9 (v0.22): 성능 스프린트 ★ NEW
+  - C/Rust 성능 추월
+  - 계약 기반 최적화
+
+Phase 10 (v1.0-RC): Golden Release
+  - 전체 검증
+  - 안정성 약속
 ```
 
 ---
@@ -98,1255 +182,141 @@ Phase 6 (v1.0-RC): 완전한 자기 컴파일
 Rust로 작성된 최소 컴파일러 프론트엔드
 ```
 
-### 구성요소
+### 구현
 
-| 구성요소 | 상태 | 설명 |
+| 구성요소 | 기술 | 상태 |
 |----------|------|------|
-| 렉서 | ✅ 완료 | logos 기반 토큰화 |
-| 파서 | ✅ 완료 | lalrpop 기반 AST 생성 |
-| AST | ✅ 완료 | 자료구조 정의 |
-| 타입체커 | ✅ 완료 | 기본 타입 + 함수 검사 |
-| 에러 리포터 | ✅ 완료 | ariadne 기반 |
-| CLI | ✅ 완료 | `bmb check/parse/tokens` |
+| 렉서 | logos | ✅ |
+| 파서 | lalrpop | ✅ |
+| AST | 수동 정의 | ✅ |
+| CLI | clap | ✅ |
 
 ---
 
-## v0.2 Sprout ✅ (검증 기반)
+## v0.2 Sprout ✅ (SMT 연동)
 
-### 목표
-```
-SMT 연동으로 계약 검증 시작
-```
+### 구현
 
-### 구성요소
-
-| 구성요소 | 상태 | 설명 |
+| 구성요소 | 기술 | 상태 |
 |----------|------|------|
-| SMT 변환기 | ✅ 완료 | AST → SMT-LIB2 |
-| Z3 연동 | ✅ 완료 | 외부 프로세스 연동 |
-| 반례 파서 | ✅ 완료 | SMT 결과 해석 |
-| 반례 리포터 | ✅ 완료 | 사용자 친화 출력 |
-| 검증 CLI | ✅ 완료 | `bmb verify` 명령어 |
+| 타입 체커 | 수동 구현 | ✅ |
+| SMT 변환기 | SMT-LIB 생성 | ✅ |
+| Z3 연동 | z3 CLI | ✅ |
+| 에러 보고 | ariadne | ✅ |
 
-### 계약 문법
+---
 
-| 구문 | 상태 | 설명 |
+## v0.3 Root ✅ (인터프리터)
+
+### 구현
+
+| 구성요소 | 설명 | 상태 |
+|----------|------|------|
+| 트리워킹 인터프리터 | AST 직접 실행 | ✅ |
+| REPL | rustyline 기반 | ✅ |
+| 런타임 에러 | 스택 트레이스 | ✅ |
+
+---
+
+## v0.4 Stem ✅ (LLVM 코드젠)
+
+### 구현
+
+| 구성요소 | 설명 | 상태 |
+|----------|------|------|
+| MIR | CFG 기반 중간 표현 | ✅ |
+| LLVM IR 생성 | 텍스트 기반 | ✅ |
+| 네이티브 빌드 | LLVM toolchain | ✅ |
+
+---
+
+## v0.5 Branch ✅ (언어 확장)
+
+### 구현
+
+| 기능 | 설명 | 상태 |
 |------|------|------|
-| `pre` / `post` | ✅ 완료 | 함수 전/후 조건 |
-| `forall` / `exists` | ✅ 완료 | 전칭/존재 한정사 |
-| `=>` (implication) | ✅ 완료 | 논리적 함축 |
-| `is` pattern | ✅ 완료 | 패턴 매칭 조건 |
-| `..` range | ✅ 완료 | 범위 연산자 |
-| `old(expr)` | ✅ 완료 | post에서 이전 값 참조 |
-| Refinement types | ✅ 완료 | `T{constraint}` 형식 |
-| `@disjoint` | ⏳ 파싱만 | SMT 통합은 v0.3 |
-
-> 📋 전체 계약 체크리스트: [docs/CONTRACT_CHECKLIST.md](CONTRACT_CHECKLIST.md)
+| 패턴 매칭 | match 표현식 | ✅ |
+| 제네릭 기초 | 타입 파라미터 | ✅ |
+| 모듈 시스템 | use/mod | ✅ |
+| 속성 | @attr 문법 | ✅ |
 
 ---
 
-## v0.3 Root ✅ (실행 기반)
+## v0.6 Leaf ✅ (표준 라이브러리)
 
-### 목표
-```
-인터프리터로 실행 가능
-```
+### 구현 (100+ 함수)
 
-### 구성요소
-
-| 구성요소 | 상태 | 설명 |
-|----------|------|------|
-| 인터프리터 | ✅ 완료 | Tree-walking AST 실행 |
-| REPL | ✅ 완료 | rustyline 기반 대화형 환경 |
-| 표준 입출력 | ✅ 완료 | print, println, read_int |
-| 내장 함수 | ✅ 완료 | abs, min, max, assert |
-| CLI run/repl | ✅ 완료 | `bmb run`, `bmb repl` |
-
-### 계약 확장 (v0.2에서 지연됨)
-
-| 기능 | 상태 | 설명 |
-|------|------|------|
-| `@invariant` | ✅ 완료 | 루프 불변식 |
-| `@decreases` | ✅ 완료 | 종료 증명 (감소 표현식) |
-| `@disjoint` SMT | ✅ 완료 | 분리 조건 SMT 검증 |
-| `<=>` 동치 | ✅ 완료 | 논리적 동치 연산자 |
-
----
-
-## v0.4 Stem ✅ (네이티브 기반)
-
-### 목표
-```
-LLVM으로 네이티브 코드 생성
-```
-
-### 구성요소
-
-| 구성요소 | 상태 | 설명 |
-|----------|------|------|
-| MIR | ✅ 완료 | 중간 표현 (CFG 기반) |
-| LLVM IR 생성 | ✅ 완료 | MIR → LLVM (inkwell) |
-| 링커 연동 | ✅ 완료 | 플랫폼별 링커 지원 |
-| 최적화 패스 | ✅ 완료 | -O0, -O2, -O3 지원 |
-
----
-
-## v0.5 Branch ✅ (언어 확장 + Bootstrap)
-
-### 목표
-```
-BMB로 BMB 컴파일러 재작성 시작을 위한 언어 기능 확장
-```
-
-### 구성요소
-
-| 구성요소 | 상태 | 설명 |
-|----------|------|------|
-| Struct 타입 | ✅ 완료 | 구조체 정의, 생성, 필드 접근 |
-| Enum 타입 | ✅ 완료 | 열거형 정의, variant 사용 |
-| Pattern Matching | ✅ 완료 | match 기본, wildcard |
-| String 타입 | ✅ 완료 | 문자열 리터럴, 연결, 길이 |
-| Mutable 변수 | ✅ 완료 | let mut, 할당 연산자 |
-| While/For 루프 | ✅ 완료 | 기본 반복문, Range |
-| 모듈 시스템 | ✅ 완료 | pub 가시성, use 문 파싱 |
-| 참조 타입 | ✅ 완료 | &T, &mut T 참조 |
-| 배열 타입 | ✅ 완료 | [T; N] 고정 크기, 인덱스 접근 |
-| 멀티 파일 | ✅ 완료 | resolver 모듈, 모듈 로딩/파싱 |
-| 메서드 호출 | ✅ 완료 | expr.method(args) 지원 |
-| 렉서 (BMB) | ✅ 완료 | bootstrap/lexer.bmb |
-| 파서 (BMB) | ✅ 완료 | bootstrap/parser.bmb |
-
-### Bootstrap 산출물
-
-```
-bootstrap/
-├── lexer.bmb       # BMB 렉서 (8KB, 순수 함수형)
-├── parser.bmb      # BMB 파서 (22KB, 재귀 하강)
-├── parser_ast.bmb  # AST 출력 파서 (21KB, S-expression)
-├── parser_test.bmb # 종합 테스트 (25KB, 15개 테스트)
-└── README.md       # Bootstrap 문서
-```
-
----
-
-## v0.6 Leaf ✅ (표준 라이브러리 기초)
-
-> 목표: 최소 실용 표준 라이브러리 (100+개 함수) - 완료
-
-### v0.6.0 - Core 기초 (48개) ✅ 완료
-
-| 모듈 | 함수 수 | 함수 | 설명 |
-|------|---------|------|------|
-| core::num | 10 | `abs`, `min`, `max`, `clamp`, `sign`, `in_range`, `diff`, `is_power_of_two`, `div_trunc`, `mod_op` | 수치 연산 + 계약 |
-| core::bool | 9 | `bool_not`, `implies`, `iff`, `xor`, `to_int`, `from_int`, `select`, `all2`, `any2` | 논리 연산 |
-| core::option | 12 | `is_some`, `is_none`, `unwrap_or`, `unwrap`, `map_add`, `and_then_positive`, `filter_positive`, `option_or`, `zip_sum`, `some`, `none` + enum | Option 타입 (i64 특화) |
-| core::result | 17 | `is_ok`, `is_err`, `unwrap_or_result`, `unwrap_ok`, `unwrap_err`, `err_code`, `map_ok_add`, `map_err_add`, `and_then_double`, `result_or`, `ok_to_option`, `ok`, `err`, `safe_divide`, `safe_sqrt_check` + enum + 에러 코드 | Result 타입 (i64, 에러코드) |
-
-**마일스톤**:
-- [x] Option 타입 정의 및 구현 (i64 특화, 제네릭은 v0.6.1+)
-- [x] Result 타입 정의 및 구현 (i64/에러코드 특화)
-- [x] 기본 수치 함수 (계약 포함)
-- [x] 기본 논리 함수 (계약 포함)
-- [x] 테스트 파일 작성
-
-### 산출물
-
-```
-stdlib/
-├── README.md           # stdlib 문서 (100+ 함수 문서화)
-├── core/
-│   ├── num.bmb        # 10개 수치 함수
-│   ├── bool.bmb       # 9개 논리 함수
-│   ├── option.bmb     # 12개 Option 함수
-│   └── result.bmb     # 17개 Result 함수
-├── string/
-│   └── mod.bmb        # 30+개 문자열 함수
-└── array/
-    └── mod.bmb        # 25+개 배열 함수
-tests/stdlib/
-├── test_num.bmb       # 수치 함수 테스트
-├── test_option.bmb    # Option 테스트
-├── test_result.bmb    # Result 테스트
-├── test_string.bmb    # String 함수 테스트
-└── test_array.bmb     # Array 함수 테스트
-```
-
-### 제네릭 지원 노트
-
-현재 구현은 타입 특화 버전:
-- `Option` = i64 전용 (Generic `Option<T>`는 v0.6.1+)
-- `Result` = i64/에러코드 전용 (Generic `Result<T, E>`는 v0.6.1+)
-
-제네릭 지원을 위해 필요한 언어 기능:
-- [ ] 타입 파라미터 문법 (`fn foo<T>(x: T) -> T`)
-- [ ] 타입 제약 (`where T: Eq`)
-- [ ] 제네릭 인스턴스화 (`Option<i64>`, `Option<String>`)
-
-### v0.6.1 - String 확장 (30+개) ✅ 완료
-
-| 카테고리 | 함수 | 설명 |
-|----------|------|------|
-| 문자 분류 | `char_is_whitespace`, `char_is_digit`, `char_is_lower`, `char_is_upper`, `char_is_alpha`, `char_is_alnum` | ASCII 문자 분류 |
-| 문자 변환 | `char_to_upper`, `char_to_lower`, `digit_to_int`, `int_to_digit` | 대소문자, 숫자 변환 |
-| 문자열 검색 | `contains_char`, `starts_with`, `ends_with`, `index_of_char`, `count_char` | 검색 및 카운트 |
-| 문자열 트림 | `find_trim_start`, `find_trim_end`, `is_blank`, `trim_start_indices`, `trim_end_indices` | 공백 처리 |
-| 정수 파싱 | `parse_uint`, `parse_int`, `is_valid_int` | 문자열→정수 변환 |
-| 문자열 비교 | `string_compare`, `string_eq` | 사전순 비교, 동등성 |
-| 유틸리티 | `reverse_indices`, `split_first_len`, `char_count` | 기타 유틸 |
-
-### v0.6.2 - Array 유틸리티 (25+개) ✅ 완료
-
-> Note: Vec/HashMap은 동적 메모리가 필요하여 Rust 빌트인으로 v0.7+에서 구현 예정.
-> 현재는 고정 크기 배열 `[i64; 8]` 유틸리티 제공.
-
-| 카테고리 | 함수 | 설명 |
-|----------|------|------|
-| 검색 | `contains_i64`, `index_of_i64`, `count_i64` | 값 검색 및 카운트 |
-| 집계 | `sum_i64`, `min_i64`, `max_i64`, `avg_i64`, `product_i64` | 합계, 최소, 최대, 평균, 곱 |
-| 서술자 | `all_positive`, `all_non_negative`, `any_positive`, `any_zero`, `is_sorted_asc`, `is_sorted_desc`, `all_equal` | 조건 검사 |
-| 경계 | `is_valid_index`, `clamp_index`, `wrap_index` | 인덱스 검증 |
-| 범위 | `sum_range`, `count_range` | 범위 연산 |
-
----
-
-## v0.7 Bloom (도구 기초) ✅ 완료
-
-> 목표: 기본 개발 도구 내장 (Gleam 방식)
-
-### v0.7.0 - Formatter 내장 ✅ 완료
-
-```bash
-bmb fmt              # 현재 파일 포맷
-bmb fmt --check      # 포맷 검사만
-bmb fmt .            # 디렉토리 전체
-```
-
-**마일스톤**:
-- [x] AST → 소스코드 프린터
-- [x] `bmb fmt` CLI 통합
-- [ ] 포맷 규칙 정의 (bmb.toml) - 추후
-
-**제한사항**:
-- 코멘트 보존 안됨 (파싱 시 제거)
-- 기본 포맷팅 규칙만 적용
-
-### v0.7.1 - LSP 기초 ✅ 완료
-
-```bash
-bmb lsp              # LSP 서버 시작 (stdio 통신)
-```
-
-**지원 기능**:
-- [x] `textDocument/diagnostic` - 렉서/파서/타입 체커 에러 표시
-- [x] `textDocument/hover` - 키워드, 내장 함수, 사용자 정의 심볼 타입 정보
-- [x] `textDocument/completion` - 키워드 (30+), 내장 함수, 사용자 정의 함수/구조체/열거형
-
-**구현 세부**:
-- tower-lsp 기반 비동기 LSP 서버
-- 실시간 문서 분석 및 진단 발행
-- 스니펫 지원 자동완성
-
-**산출물**:
-```
-bmb/src/lsp/
-└── mod.rs           # LSP Backend (300+ lines)
-```
-
-### v0.7.2 - 테스트 러너 ✅ 완료
-
-```bash
-bmb test              # 모든 테스트 실행
-bmb test module.bmb   # 특정 파일
-bmb test --filter "pattern"
-bmb test -v           # 상세 출력
-```
-
-**마일스톤**:
-- [x] test_ 접두사 함수 자동 탐지
-- [x] 테스트 실행 및 결과 리포트
-- [x] 필터링 지원 (--filter)
-- [x] 상세 출력 모드 (-v, --verbose)
-- [x] stdlib/test 어설션 라이브러리 (40+ 함수)
-
-### stdlib/test 모듈 (v0.7.2) ✅ 완료
-
-| 카테고리 | 함수 | 설명 |
-|----------|------|------|
-| 기본 | `assert_true`, `assert_false` | 불리언 검증 |
-| 정수 | `assert_eq_i64`, `assert_ne_i64`, `assert_lt_i64`, `assert_le_i64`, `assert_gt_i64`, `assert_ge_i64`, `assert_in_range`, `assert_positive`, `assert_non_negative`, `assert_negative`, `assert_zero`, `assert_non_zero` | 정수 비교 |
-| 불리언 | `assert_eq_bool`, `assert_truthy`, `assert_falsy` | 불리언 비교 |
-| 문자열 | `assert_string_eq`, `assert_string_ne`, `assert_starts_with`, `assert_ends_with`, `assert_contains_char`, `assert_empty`, `assert_not_empty`, `assert_blank`, `assert_not_blank`, `assert_string_len` | 문자열 검증 |
-| 배열 | `assert_array_contains`, `assert_array_not_contains`, `assert_sorted_asc`, `assert_sorted_desc`, `assert_all_equal`, `assert_all_positive`, `assert_array_sum`, `assert_array_len` | 배열 검증 |
-| 복합 | `assert_all2`, `assert_all3`, `assert_any2`, `assert_any3`, `assert_xor`, `assert_implies` | 논리 조합 |
-| 결과 | `count_passed`, `count_failed`, `all_passed`, `any_failed` | 테스트 결과 집계 |
-
-### v0.7.3 - action-bmb ✅ 완료
-
-```bash
-# 사용법
-- uses: lang-bmb/action-bmb@v1
-  with:
-    version: '0.7.3'    # 버전 지정 (기본: latest)
-    command: 'check .'  # 설치 후 실행할 명령 (선택)
-    cache: 'true'       # 캐싱 활성화 (기본: true)
-```
-
-**산출물**:
-```
-ecosystem/action-bmb/
-├── action.yml           # GitHub Action 정의 (composite)
-├── README.md            # 사용 설명서
-├── scripts/
-│   └── install.sh       # 로컬 설치 스크립트
-└── examples/
-    ├── basic.yml        # 기본 CI 워크플로우
-    ├── verify.yml       # 계약 검증 워크플로우
-    └── full-ci.yml      # 종합 CI/CD 워크플로우
-```
-
-**기능**:
-- [x] 크로스 플랫폼 지원 (Linux, macOS, Windows)
-- [x] 자동 캐싱으로 빠른 재실행
-- [x] 버전 고정 지원
-- [x] 설치 후 명령 실행 옵션
-- [x] Z3 연동 가이드 (계약 검증용)
-
----
-
-## v0.8 Fruit (패키지 매니저)
-
-> 목표: 곳간(gotgan) 최소 기능
-
-### v0.8.0 - 프로젝트 구조 ✅ 완료
-
-```bash
-gotgan new hello      # 새 프로젝트
-gotgan new mylib --lib   # 라이브러리 프로젝트
-gotgan init           # 현재 디렉토리 초기화
-gotgan init --name myproj   # 이름 지정 초기화
-```
-
-**구현 세부**:
-- clap 기반 CLI (new, init 서브커맨드)
-- TOML 기반 gotgan.toml 파싱/생성
-- 바이너리/라이브러리 템플릿 지원
-- 프로젝트 이름 검증 (alphanumeric + _ + -)
-
-**산출물**:
-```
-ecosystem/gotgan/
-├── Cargo.toml          # 패키지 정의
-├── README.md           # 사용 가이드
-└── src/
-    ├── main.rs         # CLI 엔트리포인트
-    ├── config.rs       # gotgan.toml 파싱
-    └── project.rs      # 프로젝트 생성/초기화
-```
-
-**생성되는 프로젝트 구조**:
-```toml
-# gotgan.toml
-[package]
-name = "hello"
-version = "0.1.0"
-edition = "2025"
-
-[dependencies]
-
-[dev-dependencies]
-```
-
-### v0.8.1 - 빌드 시스템 ✅ 완료
-
-```bash
-gotgan build          # 빌드 (LLVM 필요)
-gotgan build --release   # 릴리스 빌드 (-O3)
-gotgan run            # 인터프리터로 실행
-gotgan run --release  # 네이티브 빌드 후 실행
-gotgan check          # 타입 검사만
-gotgan verify         # 계약 검증
-gotgan test           # 테스트 실행
-gotgan test -v        # 상세 출력
-```
-
-**구현 세부**:
-- bmb 컴파일러 래퍼 (build, run, check, verify, test)
-- 프로젝트 컨텍스트 자동 탐지 (gotgan.toml 기준)
-- 디버그/릴리스 모드 지원
-- 바이너리/라이브러리 프로젝트 구분
-
-**산출물**:
-```
-ecosystem/gotgan/src/
-├── build.rs          # 빌드 시스템 (200+ lines)
-└── error.rs          # 통합 에러 타입
-```
-
-### v0.8.2 - 로컬 의존성 ✅ 완료
-
-```toml
-[dependencies]
-mylib = { path = "../mylib" }
-```
-
-**구현 세부**:
-- DependencyResolver: 로컬 경로 의존성 해석
-- 순환 의존성 탐지
-- 전이적 의존성 자동 해석
-- 빌드 순서 결정 (의존성 → 프로젝트)
-
-**산출물**:
-```
-ecosystem/gotgan/src/
-└── resolver.rs       # 의존성 해석기 (200+ lines)
-```
-
-### v0.8.3 - 유틸리티 명령어 ✅ 완료
-
-```bash
-gotgan clean          # 빌드 아티팩트 정리 (target/)
-gotgan tree           # 의존성 트리 출력
-gotgan tree -a        # 상세 정보 포함 (경로, 소스 파일 수)
-```
-
-**구현 세부**:
-- clean: target 디렉토리 완전 삭제
-- tree: 프로젝트 및 의존성 트리 시각화
-- 의존성 없는 경우 적절한 안내 메시지
-
-### v0.8.4 - Lock 파일 ✅ 완료
-
-```bash
-gotgan update         # 의존성 갱신 및 lock 파일 재생성
-# gotgan build 시 자동으로 gotgan.lock 생성/갱신
-```
-
-**gotgan.lock 형식**:
-```toml
-# This file is auto-generated by gotgan.
-version = 1
-
-[[package]]
-name = "mylib"
-version = "0.1.0"
-path = "/absolute/path/to/mylib"
-source_count = 3
-```
-
-**구현 세부**:
-- 재현 가능한 빌드를 위한 의존성 잠금
-- 빌드 시 자동 lock 파일 생성/갱신
-- `gotgan update` 명령어로 수동 갱신
-- 의존성 변경 감지 (source_count 포함)
-
-**산출물**:
-```
-ecosystem/gotgan/src/
-└── lock.rs           # Lock 파일 관리 (120+ lines)
-```
-
-### v0.8.5 - 의존성 추가 명령어 ✅ 완료
-
-```bash
-gotgan add mylib --path ../mylib    # 로컬 의존성 추가
-gotgan add mylib --path ../mylib --dev  # 개발 의존성으로 추가
-```
-
-**구현 세부**:
-- `gotgan add <name> --path <path>` 명령어
-- gotgan.toml 자동 수정 (dependencies/dev-dependencies)
-- 기존 의존성 존재 시 경고 후 업데이트
-
-**Note**: 원격 레지스트리 지원은 v0.9.3 (gotgan add <name>으로 레지스트리에서 추가)
-
-### v0.8.6 - Rust Fallback (계획)
-
-```toml
-[dependencies.rust]
-regex = "1.10"
-```
-
-**특징**:
-- Cargo 호환: Rust crates를 의존성으로 사용
-- FFI 자동 생성
-- 혼합 프로젝트 (BMB + Rust)
-
----
-
-## v0.9 Harvest (생태계)
-
-> 목표: 에디터 + 원격 패키지 + 웹 인프라
-
-### v0.9.0 - LSP 확장 ✅ 완료
-
-**추가 기능**:
-- [x] `textDocument/formatting` - 문서 포맷팅 (AST 기반)
-- [x] `textDocument/definition` - 정의로 이동 (심볼 테이블 기반)
-- [x] `textDocument/references` - 참조 찾기 (AST 순회)
-
-**구현 세부**:
-- 심볼 테이블 구축 (SymbolDef, SymbolRef)
-- 함수, 구조체, 열거형 정의 추적
-- 표현식 내 참조 수집
-- AST 프리티 프린터 (format_program, format_expr 등)
-
-**산출물**:
-```
-bmb/src/lsp/
-└── mod.rs           # LSP Backend (1000+ lines)
-```
-
-### v0.9.1 - tree-sitter-bmb ✅ 완료
-
-**구현 세부**:
-- grammar.js: BMB 전체 문법 정의 (500+ lines)
-- highlights.scm: 구문 하이라이팅 쿼리
-- folds.scm: 코드 폴딩 쿼리
-- indents.scm: 자동 들여쓰기 쿼리
-- Node.js 바인딩 (binding.cc, index.js)
-- Rust 바인딩 (lib.rs, Cargo.toml)
-
-**산출물**:
-```
-ecosystem/tree-sitter-bmb/
-├── grammar.js          # 문법 정의
-├── package.json        # npm 패키지
-├── binding.gyp         # Node.js 네이티브
-├── bindings/
-│   ├── node/           # Node.js 바인딩
-│   └── rust/           # Rust 바인딩
-├── queries/
-│   ├── highlights.scm  # 구문 하이라이팅
-│   ├── folds.scm       # 코드 폴딩
-│   └── indents.scm     # 자동 들여쓰기
-└── README.md           # 사용 가이드
-```
-
-### v0.9.2 - vscode-bmb ✅ 완료
-
-```
-vscode-bmb/
-├── package.json            # 확장 매니페스트
-├── language-configuration.json  # 언어 설정
-├── tsconfig.json           # TypeScript 설정
-├── .eslintrc.json          # 린트 설정
-├── syntaxes/
-│   └── bmb.tmLanguage.json # TextMate 문법
-├── src/
-│   └── extension.ts        # LSP 클라이언트
-└── README.md               # 사용 가이드
-```
-
-**기능**:
-- 구문 하이라이팅 (TextMate)
-- 에러 표시 (LSP)
-- 자동완성
-- Go to Definition
-- Find References
-- 코드 포매팅
-
-### v0.9.3 - 원격 패키지 레지스트리 ✅ 완료
-
-```bash
-gotgan publish            # 패키지 아카이브 생성 및 배포 준비
-gotgan search <query>     # 레지스트리 검색
-gotgan add <name>         # 레지스트리에서 의존성 추가
-gotgan add <name> -v 1.0  # 버전 지정 추가
-```
-
-**구현 내용**:
-- `registry.rs` - 레지스트리 클라이언트 모듈
-- GitHub 기반 패키지 레지스트리 지원
-- 패키지 아카이브 생성 (.tar.gz)
-- 검색 및 패키지 조회 기능
-
-### v0.9.4 - playground ✅ 완료
-
-```
-playground/
-├── package.json            # Vite + React + TypeScript
-├── vite.config.ts          # Vite 설정
-├── tsconfig.json           # TypeScript 설정
-├── index.html              # 엔트리 HTML
-├── src/
-│   ├── main.tsx            # React 엔트리
-│   ├── App.tsx             # 메인 컴포넌트
-│   ├── compiler.ts         # BMB 인터프리터 (플레이스홀더)
-│   ├── index.css           # 스타일
-│   ├── components/
-│   │   ├── Editor.tsx      # Monaco 에디터 래퍼
-│   │   ├── Output.tsx      # 실행 결과 패널
-│   │   └── Header.tsx      # 헤더 컴포넌트
-│   ├── monaco/
-│   │   └── bmb-language.ts # Monaco BMB 언어 정의
-│   └── utils/
-│       └── sharing.ts      # URL 공유 (LZ-String)
-└── README.md               # 사용 가이드
-```
-
-**기능**:
-- Monaco 에디터 + BMB 구문 하이라이팅
-- 플레이스홀더 인터프리터 (WASM 타겟 준비 전)
-- 계약 검증 시각화
-- URL 공유 (LZ-String 압축)
-- 반응형 디자인
-
-**Note**: WASM 기반 실행은 BMB WASM 타겟 완성 후 연동 예정
-
-### v0.9.5 - lang-bmb-site ✅ 완료
-
-```
-lang-bmb-site/
-├── package.json            # Astro 4.x 프로젝트
-├── astro.config.mjs        # Astro 설정
-├── tsconfig.json           # TypeScript 설정
-├── public/
-│   └── favicon.svg         # 파비콘
-├── src/
-│   ├── components/
-│   │   ├── Header.astro    # 네비게이션
-│   │   ├── Footer.astro    # 푸터
-│   │   └── CodeBlock.astro # BMB 코드 하이라이팅
-│   ├── layouts/
-│   │   ├── Base.astro      # 기본 레이아웃
-│   │   └── Docs.astro      # 문서 레이아웃
-│   ├── pages/
-│   │   ├── index.astro     # 랜딩 페이지
-│   │   ├── download.astro  # 다운로드 페이지
-│   │   ├── changes.astro   # 변경로그
-│   │   ├── docs/index.astro
-│   │   └── blog/index.astro
-│   └── styles/
-│       └── global.css      # 전역 스타일
-└── content/                # 마크다운 콘텐츠 (추후)
-```
-
-**페이지**:
-- `/` - Landing page (Hero, Features, Quick Start)
-- `/docs` - Documentation (Introduction)
-- `/download` - 설치 가이드 (Quick install, Binaries)
-- `/changes` - Changelog (Version timeline)
-- `/blog` - 개발 블로그 (Posts list)
-
-### v0.9.6 - benchmark-bmb ✅ 완료
-
-```
-benchmark-bmb/
-├── benches/
-│   ├── compute/
-│   │   ├── fibonacci/        # 재귀 함수 호출
-│   │   │   ├── c/main.c
-│   │   │   └── bmb/main.bmb
-│   │   └── n_body/           # N-body 시뮬레이션
-│   │       ├── c/main.c
-│   │       └── bmb/main.bmb
-│   └── contract/
-│       └── bounds_check/     # 경계 검사 제거
-│           ├── c/main.c
-│           └── bmb/main.bmb
-├── runner/
-│   ├── Cargo.toml
-│   └── src/main.rs           # 벤치마크 러너
-└── results/
-```
-
-**구현 완료**:
-- Rust 기반 벤치마크 러너 (CLI)
-- run, list, new, compare, validate 명령어
-- fibonacci 벤치마크 (compute)
-- n_body 벤치마크 (compute, C 완료)
-- bounds_check 벤치마크 (contract)
-
-**목표**: BMB >= C -O3
-
----
-
-## v0.10 Sunrise (Bootstrap 진행)
-
-> 목표: BMB로 BMB 도구 재작성 시작
-
-### v0.10.0 - 타입 체커 BMB 작성 ✅ 완료
-
-```
-bootstrap/
-├── lexer.bmb       # ✅ 완료 (8KB)
-├── parser.bmb      # ✅ 완료 (22KB)
-├── parser_ast.bmb  # ✅ 완료 (21KB)
-├── parser_test.bmb # ✅ 완료 (25KB)
-├── types.bmb       # ✅ 완료 (15KB) - 신규
-└── README.md
-```
-
-**types.bmb 구현 내용**:
-- 타입 인코딩: `kind * 1000` (i32=1000, i64=2000, bool=4000, String=5000, Unit=6000)
-- 환경: 문자열 기반 name:type 쌍, 선형 검색
-- 내장 함수 시그니처 (println, print, assert, read_int, abs, min, max)
-- 연산자 타입 검사 (+, -, *, /, %, ==, !=, <, >, <=, >=, and, or, not)
-- if-then-else 타입 검사 (조건 bool, 분기 일치)
-- let 바인딩 타입 검사
-- 함수 호출 타입 검사 (arity + 인자 타입)
-- 37개 테스트 통과
-
-### v0.10.1 - MIR 기초 정의 ✅ 완료
-
-```
-bootstrap/
-├── lexer.bmb       # ✅ 완료 (8KB)
-├── parser.bmb      # ✅ 완료 (22KB)
-├── parser_ast.bmb  # ✅ 완료 (21KB)
-├── parser_test.bmb # ✅ 완료 (25KB)
-├── types.bmb       # ✅ 완료 (15KB)
-├── mir.bmb         # ✅ 완료 (18KB) - 신규
-└── README.md
-```
-
-**mir.bmb 구현 내용**:
-- 명령어 인코딩: `kind * 1000` (CONST=1000, COPY=2000, BINOP=3000, UNARY=4000, CALL=5000)
-- 종료자 인코딩: RETURN=10000, GOTO=11000, BRANCH=12000
-- 이항/단항 연산자 인코딩 및 심볼 출력
-- 상수 인코딩: `I:42`, `B:1`, `S:hello`, `U`
-- 플레이스 인코딩: `%name`, `%_t0` (임시 변수)
-- 텍스트 기반 MIR 출력 포맷
-- 예제 lowering 함수 (add, max with if)
-- 46개 테스트 통과
-
-### v0.10.2 - AST → MIR Lowering ✅ 완료
-
-```
-bootstrap/
-├── lexer.bmb       # ✅ 완료 (8KB)
-├── parser.bmb      # ✅ 완료 (22KB)
-├── parser_ast.bmb  # ✅ 완료 (21KB)
-├── parser_test.bmb # ✅ 완료 (25KB)
-├── types.bmb       # ✅ 완료 (15KB)
-├── mir.bmb         # ✅ 완료 (18KB)
-├── lowering.bmb    # ✅ 완료 (25KB) - 신규
-└── README.md
-```
-
-**lowering.bmb 구현 내용**:
-- S-expression AST 파싱 (parser_ast.bmb 출력 형식)
-- 표현식 lowering: int, bool, var, binop, unary, if, let, call
-- 함수 lowering (기본 블록 생성)
-- 프로그램 lowering (다중 함수)
-- Pack/unpack 결과 형식: `temp:block:place:text`
-- 41개 테스트 통과 (95%)
-
-**지원 변환:**
-```lisp
-(int 42)              →  %_t0 = const I:42
-(var <x>)             →  %x
-(op + (var <a>) (var <b>)) →  %_t0 = + %a, %b
-(if (var <c>) (int 1) (int 2)) →  branch %c, then_0, else_0 ...
-(call <foo> (var <a>))        →  %_t0 = call foo(%a)
-```
-
-**Note**: 원래 계획된 표준 라이브러리 확장(io, fs, net, time)은 OS FFI가 필요하여 bootstrap 범위를 벗어남. v0.11+ Rust FFI 통합 시 추가 예정.
-
-### v0.10.3 - End-to-End 파이프라인 ✅ 완료
-
-```
-bootstrap/
-├── lexer.bmb       # ✅ 완료 (8KB)
-├── parser.bmb      # ✅ 완료 (22KB)
-├── parser_ast.bmb  # ✅ 완료 (21KB)
-├── parser_test.bmb # ✅ 완료 (25KB)
-├── types.bmb       # ✅ 완료 (15KB)
-├── mir.bmb         # ✅ 완료 (18KB)
-├── lowering.bmb    # ✅ 완료 (25KB)
-├── pipeline.bmb    # ✅ 완료 (25KB) - 신규
-└── README.md
-```
-
-**pipeline.bmb 구현 내용**:
-- 통합 Source → AST → MIR 파이프라인 데모
-- S-expression AST 생성 (parser_ast.bmb 패턴)
-- MIR 텍스트 생성 (lowering.bmb 패턴)
-- 표현식 레벨 컴파일: `compile_expr(src) -> MIR text`
-- 14개 테스트 통과
-
-**지원 컴파일:**
-```bmb
-compile_expr("42")         →  "%_t0 = const I:42"
-compile_expr("a + b")      →  "%_t0 = + %a, %b"
-compile_expr("a * b + c")  →  "%_t0 = * %a, %b|%_t1 = + %_t0, %c"
-compile_expr("-x")         →  "%_t0 = neg %x"
-compile_expr("not b")      →  "%_t0 = not %b"
-```
-
-**Note**: gotgan migrate (Rust crate 분석/마이그레이션)는 Rust 전용 도구로 v0.11+ 계획.
-
-### v0.10.4 - MIR → C 코드 생성 ✅ 완료 (레거시)
-
-> ⚠️ **레거시**: C 코드 경로는 LLVM IR 경로로 대체됨 (v0.10.5+)
-> BMB 철학 "최대 성능, C/Rust 초월"에 부합하는 LLVM IR 직접 생성으로 전환
-
-```
-bootstrap/
-├── lexer.bmb       # ✅ 완료 (8KB)
-├── parser.bmb      # ✅ 완료 (22KB)
-├── parser_ast.bmb  # ✅ 완료 (21KB)
-├── parser_test.bmb # ✅ 완료 (25KB)
-├── types.bmb       # ✅ 완료 (15KB)
-├── mir.bmb         # ✅ 완료 (18KB)
-├── lowering.bmb    # ✅ 완료 (25KB)
-├── pipeline.bmb    # ✅ 완료 (25KB)
-└── codegen.bmb     # ✅ 완료 (18KB) - C 백엔드 (레거시)
-```
-
-### v0.10.5 - LLVM IR 기초 (타입, 상수, 산술) ✅ 완료
-
-```
-bootstrap/
-└── llvm_ir.bmb     # LLVM IR 텍스트 생성 (35KB)
-```
-
-**구현 내용:**
-- LLVM IR 타입 매핑: i64 → i64, i32 → i32, bool → i1, unit → void
-- 상수 생성: 정수, 불리언
-- 산술 연산: add, sub, mul, sdiv, srem
-- 비교 연산: icmp eq/ne/slt/sgt/sle/sge
-- 논리 연산: and, or, xor
-- 단항 연산: sub (neg), xor -1 (not)
-- 31개 테스트 통과
-
-**LLVM IR 생성 예시:**
-```llvm
-; 상수
-%_t0 = add i64 0, 42           ; const I:42
-
-; 산술 연산
-%_t0 = add i64 %a, %b          ; +
-%_t0 = sub i64 %a, %b          ; -
-%_t0 = mul i64 %a, %b          ; *
-%_t0 = sdiv i64 %a, %b         ; /
-%_t0 = srem i64 %a, %b         ; %
-
-; 비교 연산
-%_t0 = icmp eq i64 %a, %b      ; ==
-%_t0 = icmp slt i64 %a, %b     ; <
-```
-
-### v0.10.6 - LLVM IR 제어 흐름 (branch, label, phi) ✅ 완료
-
-**구현 내용:**
-- 레이블 생성: `entry:`, `then_0:`, `else_0:`, `merge_0:`
-- 무조건 분기: `br label %target`
-- 조건 분기: `br i1 %cond, label %then, label %else`
-- PHI 노드: `%result = phi i64 [ %a, %then ], [ %b, %else ]`
-- 반환문: `ret i64 %value`, `ret void`
-- 20개 테스트 통과
-
-**LLVM IR 제어 흐름 예시:**
-```llvm
-entry:
-  %cond = icmp sgt i64 %a, %b
-  br i1 %cond, label %then_0, label %else_0
-then_0:
-  br label %merge_0
-else_0:
-  br label %merge_0
-merge_0:
-  %result = phi i64 [ %a, %then_0 ], [ %b, %else_0 ]
-```
-
-### v0.10.7 - LLVM IR 함수/프로그램 생성 ✅ 완료
-
-**구현 내용:**
-- 함수 정의: `define i64 @name(i64 %a, i64 %b) { ... }`
-- 함수 호출: `%_t0 = call i64 @foo(i64 %a)`
-- 매개변수 변환: MIR → LLVM 매개변수 형식
-- MIR 함수 헤더 파싱: `|` 구분자로 name/ret_type/params 추출
-- 완전한 함수 변환: MIR → LLVM IR 함수
-- 24개 테스트 통과
-
-**LLVM IR 함수 예시:**
-```llvm
-declare i64 @println(i64)
-
-define i64 @add(i64 %a, i64 %b) {
-entry:
-  %_t0 = add i64 %a, %b
-  ret i64 %_t0
-}
-
-define i64 @max(i64 %a, i64 %b) {
-entry:
-  %cond = icmp sgt i64 %a, %b
-  br i1 %cond, label %then_0, label %else_0
-then_0:
-  br label %merge_0
-else_0:
-  br label %merge_0
-merge_0:
-  %result = phi i64 [ %a, %then_0 ], [ %b, %else_0 ]
-  ret i64 %result
-}
-```
-
-### v0.10.8 - Full Compiler Pipeline 통합 ✅ 완료
-
-**구현 내용:**
-- 프로그램 생성: `||` 구분자로 다중 함수 지원
-- 모듈 헤더: ModuleID, target triple
-- 런타임 선언: println, abs, min, max extern 선언
-- End-to-End 예제: example_add_mir/llvm, example_max_mir/llvm
-- 패턴 검증: has_define, has_entry_label, has_ret, has_pattern
-- 18개 테스트 통과 (총 93개)
-
-**파이프라인:**
-```
-BMB Source
-    ↓ lexer.bmb
-  Tokens
-    ↓ parser_ast.bmb
-  S-expr AST
-    ↓ lowering.bmb
-  MIR Text
-    ↓ llvm_ir.bmb
-  LLVM IR (.ll)
-    ↓ llc (외부)
-  Native Binary
-```
-
-**검증:**
-```bash
-# BMB 부트스트랩 컴파일러로 LLVM IR 생성
-bmb run bootstrap/compiler.bmb < test.bmb > test.ll
-
-# LLVM 도구로 컴파일
-llc test.ll -o test.s
-gcc test.s -o test
-
-# 실행 검증
-./test
-```
-
-### v0.10.9 - Unified Compiler Entry Point ✅ 완료
-
-**구현 내용:**
-- 통합 컴파일러 진입점: `compiler.bmb` (42KB)
-- Source → AST → MIR → LLVM IR 완전 파이프라인
-- 모듈 조립: header + runtime declarations + functions
-- `compile_program(source) -> LLVM IR module`
-- `compile_function(source) -> LLVM IR function`
-- 에러 처리: `is_compile_error()`, `get_error_type()`
-- 8개 테스트 통과 (pre-computed AST 기반)
-
-**API:**
-```bmb
--- 전체 컴파일
-fn compile_program(source: String) -> String
-
--- 단일 함수 컴파일
-fn compile_function(source: String) -> String
-
--- 모듈 생성
-fn gen_module_header() -> String
-fn gen_runtime_decls() -> String
-```
-
-**제한사항:**
-- 인터프리터 스택 제한으로 인해 테스트는 pre-computed AST 사용
-- parse_source() 호출은 별도 파일에서만 사용 가능
-
-### v0.10.10 - Integration Testing with LLVM Toolchain ✅ 완료
-
-**구현 내용:**
-- C 런타임 라이브러리 (`runtime/runtime.c`) 확장
-- Bootstrap 런타임 함수: `println`, `abs`, `min`, `max`
-- 테스트 LLVM IR 파일: `test_add.ll`, `test_max.ll`
-- 검증 스크립트: `validate_llvm_ir.sh`
-- Windows 빌드 스크립트: `build_test.ps1`
-- LLVM IR 구문 검증 및 오브젝트 파일 컴파일 확인
-- 심볼 검증: `llvm-nm`으로 함수 심볼 확인
-
-**파일 구조:**
-```
-runtime/
-├── runtime.c           # C 런타임 (bootstrap 함수 포함)
-├── test_add.ll         # 간단한 LLVM IR 테스트 (add 함수)
-├── test_max.ll         # 복잡한 LLVM IR 테스트 (if-then-else, PHI)
-├── validate_llvm_ir.sh # Shell 검증 스크립트
-└── build_test.ps1      # PowerShell 빌드 스크립트
-```
-
-**검증 결과:**
-```bash
-$ bash validate_llvm_ir.sh
-[1/3] Validating LLVM IR syntax...
-  ✓ LLVM IR syntax valid
-[2/3] Compiling to object file...
-  ✓ Object file created (724 bytes)
-[3/3] Verifying symbols...
-  ✓ Symbol 'add' found (defined)
-  ✓ Symbol 'main' found (defined)
-  ✓ Symbol 'println' found (external reference)
-=== All validations passed ===
-```
-
-**test_max.ll 예시 (제어 흐름 + PHI):**
-```llvm
-define i64 @max_manual(i64 %a, i64 %b) {
-entry:
-  %cmp = icmp sgt i64 %a, %b
-  br i1 %cmp, label %then_0, label %else_0
-then_0:
-  br label %merge_0
-else_0:
-  br label %merge_0
-merge_0:
-  %result = phi i64 [ %a, %then_0 ], [ %b, %else_0 ]
-  ret i64 %result
-}
-```
-
-### v0.10.11 - End-to-End Program Compilation Validation ✅ 완료
-
-**구현 내용:**
-- 종합 테스트 프로그램: `fibonacci.bmb`, `factorial.bmb`
-- 수작성 LLVM IR: bootstrap 패턴 검증용 `.ll` 파일
-- 인터프리터 vs 네이티브 결과 비교 프레임워크
-- 자동화 스크립트: `validate_all.sh`, `run_test.sh`, `run_test.ps1`
-- 심볼 검증: `llvm-nm`으로 함수 심볼 확인
-
-**파일 구조:**
-```
-examples/bootstrap_test/
-├── fibonacci.bmb       # 재귀 피보나치 (fib(10) = 55)
-├── fibonacci.ll        # 수작성 LLVM IR (PHI 노드 포함)
-├── factorial.bmb       # 반복 팩토리얼 (factorial(5) = 120)
-├── factorial.ll        # 수작성 LLVM IR (꼬리 재귀 패턴)
-├── validate_all.sh     # LLVM IR 컴파일 검증
-├── run_test.sh         # Unix e2e 테스트
-└── run_test.ps1        # Windows e2e 테스트
-```
-
-**검증 결과:**
-```bash
-# LLVM IR 컴파일
-$ clang -c fibonacci.ll -o fibonacci.obj
-$ llvm-nm fibonacci.obj
-00000000 T fib
-00000060 T main
-         U println
-
-# 인터프리터 결과
-$ bmb run examples/bootstrap_test/fibonacci.bmb
-55
-
-$ bmb run examples/bootstrap_test/factorial.bmb
-120
-```
-
-**fibonacci.ll 핵심 (재귀 + PHI):**
-```llvm
-define i64 @fib(i64 %n) {
-entry:
-  %cmp = icmp sle i64 %n, 1
-  br i1 %cmp, label %then_0, label %else_0
-then_0:
-  br label %merge_0
-else_0:
-  %n_minus_1 = sub i64 %n, 1
-  %fib_n1 = call i64 @fib(i64 %n_minus_1)
-  %n_minus_2 = sub i64 %n, 2
-  %fib_n2 = call i64 @fib(i64 %n_minus_2)
-  %sum = add i64 %fib_n1, %fib_n2
-  br label %merge_0
-merge_0:
-  %result = phi i64 [ %n, %then_0 ], [ %sum, %else_0 ]
-  ret i64 %result
-}
-```
-
-### v0.10.12 - Text-based LLVM IR Backend ✅ 완료
-
-**구현 내용:**
-- MIR → LLVM IR 텍스트 생성기: `bmb/src/codegen/llvm_text.rs`
-- PHI 노드 지원: SSA 형식 준수를 위한 MIR 확장
-- Windows 빌드 파이프라인: UCRT/MSVC 헤더 탐지, lld-link 통합
-- 외부 clang 의존: inkwell/LLVM C API 없이 .ll → .exe 컴파일
-
-**핵심 특징:**
-```rust
-// TextCodeGen - LLVM IR 텍스트 생성
-pub struct TextCodeGen {
-    target_triple: String,
-}
-
-impl TextCodeGen {
-    pub fn generate(&self, program: &MirProgram) -> TextCodeGenResult<String>
-    // MIR → LLVM IR 문자열 변환
-}
-```
-
-**빌드 파이프라인:**
-```
-BMB Source → AST → MIR → LLVM IR (.ll) → clang → Object (.obj) → lld-link → Executable
-```
-
-**PHI 노드 예시 (생성된 LLVM IR):**
-```llvm
-define i64 @fib(i64 %n) {
-entry:
-  %_t0 = icmp sle i64 %n, 1
-  br i1 %_t0, label %then_0, label %else_0
-then_0:
-  br label %merge_0
-else_0:
-  %_t1 = sub i64 %n, 1
-  %_t2 = call i64 @fib(i64 %_t1)
-  %_t3 = sub i64 %n, 2
-  %_t4 = call i64 @fib(i64 %_t3)
-  %_t5 = add i64 %_t2, %_t4
-  br label %merge_0
-merge_0:
-  %result = phi i64 [ %n, %then_0 ], [ %_t5, %else_0 ]
-  ret i64 %result
-}
-```
-
-**검증 결과:**
-```powershell
-# fibonacci.bmb 컴파일 및 실행
-PS> cargo run --release -- build examples/bootstrap_test/fibonacci.bmb
-PS> .\examples\bootstrap_test\fibonacci.exe
-55
-
-# factorial.bmb 컴파일 및 실행
-PS> cargo run --release -- build examples/bootstrap_test/factorial.bmb
-PS> .\examples\bootstrap_test\factorial.exe
-120
-```
-
-**Windows 툴체인 통합:**
-- UCRT 헤더 경로 자동 탐지
-- MSVC 헤더/라이브러리 경로 자동 탐지
-- lld-link 직접 호출 (MSVC 링커 우회)
-- runtime.c 함수 충돌 해결 (`abs` → `bmb_abs`)
-
-### v0.10.13 - 부트스트랩 컴포넌트 패키지화 준비 ✅ 완료
-
-**목표**: Bootstrap BMB 코드에서 재사용 가능한 컴포넌트 식별 및 분리
-
-**결정**: gotgan 별도 패키지 대신 stdlib 확장 채택 (프로젝트 철학 정렬)
-- 이유: 합성 가능성, 계약 기반 설계, 중복 방지
-- 기존 stdlib/string과의 일관성 유지
-
-**분석 완료:**
-| 컴포넌트 | 출처 | 배치 |
-|----------|------|------|
-| String 유틸리티 | llvm_ir.bmb | stdlib/string (확장) |
-| 파싱 헬퍼 | llvm_ir.bmb, parser.bmb | stdlib/parse (신규) |
-
-### v0.10.14 - stdlib/string 확장 ✅ 완료
-
-**추가된 함수:**
-```bmb
--- Integer to String Conversion
-pub fn digit_char(d: i64) -> String
-  pre d >= 0 and d <= 9
-  post ret.len() == 1;
-
-pub fn int_to_string(n: i64) -> String
-  post n >= 0 => ret.len() >= 1
-  post n < 0 => ret.len() >= 2;
-
--- ASCII Code to String
-pub fn char_to_string(c: i64) -> String
-  pre c >= 32 and c <= 126
-  post ret.len() == 1;
-```
-
-### v0.10.15 - stdlib/parse 모듈 생성 ✅ 완료
-
-**새 모듈**: Position-based parsing utilities (20+ functions)
-
-```bmb
--- Whitespace Handling
-pub fn skip_ws(s: String, pos: i64) -> i64;
-pub fn skip_all_ws(s: String, pos: i64) -> i64;
-
--- Character Search
-pub fn find_char(s: String, c: i64, pos: i64) -> i64;
-pub fn find_pipe(s: String, pos: i64) -> i64;
-
--- Token Reading
-pub fn read_until_ws(s: String, pos: i64) -> String;
-pub fn read_ident(s: String, pos: i64) -> String;
-
--- Field Extraction (pipe-delimited)
-pub fn extract_field(s: String, index: i64) -> String;
-pub fn count_fields(s: String) -> i64;
-
--- Pattern Matching
-pub fn find_arrow(s: String, pos: i64) -> i64;
-pub fn has_pattern(s: String, pat: String) -> bool;
-```
-
-**산출물:**
-```
-stdlib/
-├── string/mod.bmb     # 40+ functions (확장됨)
-├── parse/mod.bmb      # 20+ functions (신규)
-tests/stdlib/
-├── test_string.bmb    # string 테스트
-└── test_parse.bmb     # parse 테스트 (신규)
-```
-
----
-
-## v0.11 Dawn (AI-Native gotgan + Bootstrap)
-
-> 목표: AI-네이티브 패키지 매니저 + Stage 2 컴파일러 + BMB 재작성
-> 참고: [GOTGAN_DESIGN.md](./GOTGAN_DESIGN.md)
-
-### v0.11.0 - BMB 컴파일러 완성
-
-```bash
-# Rust 컴파일러 (Stage 0)
-cargo build --release
-
-# BMB로 작성된 컴파일러 (Stage 1)
-./bmb-rust build bmb-compiler -> bmb-stage1
-
-# Stage 1으로 자기 컴파일 (Stage 2)
-./bmb-stage1 build bmb-compiler -> bmb-stage2
-
-# 검증: Stage 2가 동일한 결과 생성
-./bmb-stage2 build bmb-compiler -> bmb-stage3
-diff bmb-stage2 bmb-stage3  # 동일해야 함
-```
-
-### v0.11.1 - gotgan BMB 재작성
-
-| 구성요소 | Rust → BMB |
-|----------|------------|
-| CLI | ✅ |
-| 의존성 해결 | ✅ |
-| 빌드 시스템 | ✅ |
-| 레지스트리 클라이언트 | ✅ |
-
-### v0.11.2 - action-bmb BMB 재작성
-
-- GitHub Action 로직을 BMB로 재작성
-- Rust 대신 BMB 바이너리 사용
-
-### v0.11.3 - 표준 라이브러리 완성 (200개)
-
-| 모듈 | 함수 수 | 설명 |
+| 모듈 | 함수 수 | 상태 |
 |------|---------|------|
-| core | 50+ | 기본 타입, 연산 |
-| collections | 30+ | Vec, Map, Set |
-| string | 25+ | 문자열 처리 |
-| io | 20+ | 파일, 스트림 |
-| fs | 15+ | 파일 시스템 |
-| net | 15+ | 네트워크 |
-| async | 20+ | 비동기 |
-| math | 30+ | 수학 함수 |
+| core | 50+ | ✅ |
+| string | 25+ | ✅ |
+| math | 30+ | ✅ |
+| io | 10+ | ✅ |
 
-### v0.11.4 - BMBX 번들 포맷 구현 ✅
+---
+
+## v0.7 Bloom ✅ (도구)
+
+### 구현
+
+| 도구 | 설명 | 상태 |
+|------|------|------|
+| bmb fmt | 코드 포맷터 | ✅ |
+| bmb lsp | 언어 서버 | ✅ |
+| bmb test | 테스트 러너 | ✅ |
+| action-bmb | GitHub Action | ✅ |
+
+---
+
+## v0.8 Fruit ✅ (패키지 매니저)
+
+### 구현
+
+| 기능 | 설명 | 상태 |
+|------|------|------|
+| gotgan init | 프로젝트 생성 | ✅ |
+| gotgan build | 빌드 | ✅ |
+| gotgan add | 의존성 추가 | ✅ |
+| 의존성 해결 | SAT 솔버 | ✅ |
+
+---
+
+## v0.9 Harvest ✅ (생태계)
+
+### 구현
+
+| 구성요소 | 설명 | 상태 |
+|----------|------|------|
+| tree-sitter-bmb | 에디터 문법 | ✅ |
+| vscode-bmb | VS Code 확장 | ✅ |
+| playground | 온라인 실행 | ✅ |
+| lang-bmb-site | 웹사이트 | ✅ |
+
+---
+
+## v0.10 Sunrise ✅ (컴포넌트 패키지화)
+
+### 구현
+
+| 패키지 | 설명 | 상태 |
+|--------|------|------|
+| bmb-lexer | 렉서 라이브러리 | ✅ |
+| bmb-parser | 파서 라이브러리 | ✅ |
+| bmb-types | 타입 시스템 | ✅ |
+| bmb-smt | SMT 변환 | ✅ |
+
+---
+
+## v0.11 Dawn (AI-Native gotgan)
+
+> 목표: AI-네이티브 패키지 매니저 기능
+
+### v0.11.0-3 - BMB 부트스트랩 (차단됨)
+
+**상태:** BMB 코드젠이 완성되어야 실행 가능
+
+### v0.11.4 - BMBX 번들 포맷 ✅
 
 **AI-Native Package Bundle:**
 ```
@@ -1356,29 +326,11 @@ package.bmbx
 ├── symbols.json       # AI 탐색용 심볼 인덱스
 ├── types.json         # 타입 시그니처
 ├── src/               # 소스 코드
-└── bin/               # 컴파일된 바이너리 (multi-target)
+└── bin/               # 컴파일된 바이너리
 ```
-
-**구현 (Rust):**
-- `gotgan bundle` 명령어 - contracts.json, symbols.json, types.json 생성
-- `gotgan explore` 명령어 - 심볼/계약 탐색 및 JSON 출력
-- ContractsJson, SymbolsJson, TypesJson 스키마 정의
-- AI 힌트 자동 추론 (use_when, semantic_tags)
 
 ### v0.11.5 - 계약 기반 의존성 검사 ✅
 
-```toml
-[dependencies]
-math = { version = "^1.0", contracts = ["divide.pre: b != 0"] }
-```
-
-**기능 (구현됨):**
-- ✅ 계약 호환성 자동 검사 (`gotgan compat`)
-- ✅ 계약 약화/강화 감지 (ContractChange enum)
-- ✅ 비호환 변경 경고 (Breaking changes: AddedPre, RemovedPost)
-- ✅ 호환 변경 허용 (RemovedPre, AddedPost)
-
-**계약 변경 규칙:**
 | 변경 | 타입 | 설명 |
 |------|------|------|
 | pre 제거 | ✅ 허용 | 더 관대해짐 |
@@ -1389,43 +341,16 @@ math = { version = "^1.0", contracts = ["divide.pre: b != 0"] }
 ### v0.11.6 - AI 패키지 탐색 ✅
 
 ```bash
-# 심볼 탐색
-$ gotgan explore --symbols
-
-# 계약 확인
-$ gotgan explore --contracts
-
-# JSON 출력 (AI 파싱용)
-$ gotgan explore --json
-
-# 필터링
-$ gotgan explore --filter "parse" --contracts
+$ gotgan explore --symbols --json
+$ gotgan explore --contracts --filter "parse"
 ```
-
-**구현됨:**
-- `gotgan explore` - 심볼 인덱스 출력
-- `--contracts` - 계약 정보 출력
-- `--types` - 타입 정보 출력
-- `--json` - JSON 형식 출력 (AI 파싱용)
-- `--filter` - 이름 패턴 필터링
 
 ### v0.11.7 - 단일 파일 번들 ✅
 
 ```bash
-# 모든 의존성을 하나의 .bmbx로 번들 (tar.gz 압축)
 $ gotgan bundle --single-file
-✓ Generated single-file bundle: "target/bmbx/package-0.1.0.bmbx"
-  Package: package v0.1.0
-  Contracts: 2 functions, 0 types
-  Exports: 5 symbols
+✓ Generated: "target/bmbx/package-0.1.0.bmbx"
 ```
-
-**구현됨:**
-- `gotgan bundle --single-file` - tar.gz 형식 .bmbx 아카이브 생성
-- 아카이브 내용: manifest.toml, contracts.json, symbols.json, types.json, src/
-- flate2 + tar 크레이트 활용
-
-**Note:** `--preserve-contracts` 옵션은 추후 구현 예정.
 
 ---
 
@@ -1433,7 +358,7 @@ $ gotgan bundle --single-file
 
 > 목표: LLVM 네이티브 + WASM 포터블 동시 지원
 
-### v0.12.0 - MIR → WASM IR 변환기 ✅
+### v0.12.0 - MIR → WASM 변환기 ✅
 
 ```
 MIR (공통 중간 표현)
@@ -1445,96 +370,29 @@ LLVM IR Generator           WASM IR Generator
 Native Binary               .wasm
 ```
 
-**구현됨:**
-- `wasm_text.rs` - WAT (WebAssembly Text Format) 생성기
-- 3가지 타겟 환경 지원:
-  - `wasi` - WASI 표준 런타임 (기본값)
-  - `browser` - 브라우저/JavaScript 환경
-  - `standalone` - 순수 계산 (외부 의존 없음)
-- CLI 옵션: `bmb build --emit-wasm --wasm-target=wasi`
-
-**생성 예시:**
+**CLI:**
 ```bash
-$ bmb build add.bmb --emit-wasm -v
-Compiling add.bmb to WASM...
-Generated: add.wat
-  Target: Wasi
-  Size: 1382 bytes
-```
-
-**출력 형식:**
-```wat
-(module
-  ;; Generated by BMB compiler (v0.12.0)
-  (memory (export "memory") 1)
-  (import "wasi_snapshot_preview1" "fd_write" ...)
-
-  (func $add (param $a i32) (param $b i32) (result i32)
-    (local $_t0 i32)
-    local.get $a
-    local.get $b
-    i32.add
-    local.set $_t0
-    local.get $_t0
-    return
-  )
-
-  (export "add" (func $add))
-)
+$ bmb build add.bmb --emit-wasm --wasm-target=wasi
 ```
 
 ### v0.12.1 - WASI 런타임 바인딩 ✅
 
-**구현 방식:** BMB 언어에 extern fn이 없으므로, WASM 코드젠에서 직접 런타임 함수 생성
-
-**WASI 런타임 함수 (wasm_text.rs):**
 ```wat
-;; I/O 함수
-(func $println (param $val i64))  ;; i64를 stdout에 출력 (개행 포함)
-(func $print (param $val i64))    ;; i64를 stdout에 출력 (개행 없음)
-
-;; 프로세스 제어
+(func $println (param $val i64))  ;; stdout 출력
+(func $print (param $val i64))    ;; 개행 없음
 (func $exit (param $code i32))    ;; 프로세스 종료
-(func $assert (param $cond i32))  ;; 조건 검사, 실패시 종료
-
-;; 내부 헬퍼
-(func $i64_to_str (param $val i64) (result i32))  ;; i64→문자열 변환
+(func $assert (param $cond i32))  ;; 검증
 ```
-
-**WASI 임포트:**
-- `fd_write` - 파일 디스크립터에 쓰기 (stdout 출력용)
-- `proc_exit` - 프로세스 종료
 
 ### v0.12.2 - 브라우저 런타임 바인딩 ✅
 
-**브라우저 런타임 함수:**
 ```wat
-;; I/O 함수 (console.log 사용)
-(func $println (param $val i64))  ;; console.log로 출력
-(func $print (param $val i64))    ;; console.log로 출력
-
-;; 프로세스 제어
-(func $exit (param $code i32))    ;; unreachable 트랩
-(func $assert (param $cond i32))  ;; unreachable 트랩 (실패시)
-```
-
-**브라우저 임포트:**
-- `console_log` - JavaScript console.log 바인딩
-- `console_log_f64` - 부동소수점 출력용
-
-**테스트:**
-```rust
-#[test] fn test_wasi_runtime_functions() { ... }      // 7개 assertion
-#[test] fn test_browser_runtime_functions() { ... }   // 6개 assertion
-#[test] fn test_standalone_no_runtime() { ... }       // 3개 assertion
+(func $println (param $val i64))  ;; console.log
+(func $exit (param $code i32))    ;; unreachable
+(func $assert (param $cond i32))  ;; unreachable
 ```
 
 ### v0.12.3 - 조건부 컴파일 (계획)
-
-**요구사항:**
-- BMB `@cfg(target = "wasm32")` 속성 처리 로직
-- 타입체커에서 조건부 선언 필터링
-- 코드젠에서 타깃별 코드 선택
 
 ```bmb
 @cfg(target = "wasm32")
@@ -1544,22 +402,7 @@ fn print(s: String) = js_console_log(s);
 fn print(s: String) = libc_puts(s);
 ```
 
-**상태:** BMB 파서에 `@attr(args)` 문법 이미 지원됨 (grammar.lalrpop:121)
-**필요 작업:** 타입체커 cfg 속성 처리 로직 추가
-
 ### v0.12.4 - 듀얼 타깃 빌드 (계획)
-
-**요구사항:**
-- gotgan 빌드 시스템 멀티 타깃 지원
-- gotgan.toml 타깃 설정 파싱
-- 병렬 빌드 오케스트레이션
-
-```toml
-# gotgan.toml
-[targets]
-native = ["x86_64-linux", "aarch64-darwin"]
-wasm = ["wasm32-unknown-unknown", "wasm32-wasi"]
-```
 
 ```bash
 $ gotgan build --all-targets
@@ -1567,182 +410,806 @@ $ gotgan build --all-targets
 → target/wasm32/release/app.wasm
 ```
 
-**상태:** 빌드 시스템 핵심 변경 필요
-**필요 작업:** gotgan 빌드 파이프라인 멀티 타깃 확장
-
 ---
 
-## v0.13 Summit (생태계 완성)
+## v0.13 Forge (언어 완성)
 
-> 목표: 완전한 AI-네이티브 생태계
+> 목표: Self-hosting과 패키지 개발에 필요한 언어 기능 완성
 
-### v0.13.0 - gotgan MCP 서버
+### v0.13.0 - extern fn 지원
 
-```json
-{
-  "tools": [
-    "search_packages",
-    "explore_package",
-    "generate_example",
-    "verify_contracts"
-  ]
-}
+```bmb
+-- 외부 함수 선언
+extern fn malloc(size: usize) -> *mut u8;
+extern fn free(ptr: *mut u8);
+
+-- WASI 바인딩
+@wasi
+extern fn fd_write(fd: i32, iovs: i32, len: i32, nwritten: *mut i32) -> i32;
 ```
 
-### v0.13.1 - 레지스트리 자동화
+### v0.13.1 - 매크로 시스템 기초
 
-- 패키지 자동 검증
-- 계약 커버리지 점수
-- AI 인덱스 자동 생성
-- CDN 배포
+```bmb
+-- 선언 매크로
+macro vec!($($x:expr),*) = {
+    let mut v = Vec::new();
+    $(v.push($x);)*
+    v
+};
 
-### v0.13.2 - 패키지 품질 점수
+-- 사용
+let nums = vec![1, 2, 3];
+```
 
-| 지표 | 가중치 |
-|------|--------|
-| 계약 커버리지 | 30% |
-| 테스트 커버리지 | 25% |
-| 문서화 | 20% |
-| AI 힌트 | 15% |
-| 다운로드 수 | 10% |
+### v0.13.2 - 제네릭 완성
 
-### v0.13.3 - 의존성 그래프 시각화
+```bmb
+-- 트레이트 바운드
+fn sort<T: Ord>(list: &mut [T]) { ... }
 
-- 웹 기반 의존성 탐색기
-- 계약 전파 시각화
-- 호환성 매트릭스
+-- where 절
+fn complex<T, U>(x: T, y: U) -> T
+where
+    T: Clone + Debug,
+    U: Into<T>
+= ...;
+```
+
+### v0.13.3 - 속성 매크로
+
+```bmb
+@derive(Debug, Clone, PartialEq)
+struct Point { x: i32, y: i32 }
+
+@test
+fn test_add() = assert(1 + 1 == 2);
+```
+
+### v0.13.4 - 에러 처리 개선
+
+```bmb
+-- Result/Option 체이닝
+fn read_config() -> Result<Config, Error> =
+    read_file("config.toml")?
+    |> parse_toml()?
+    |> validate()?;
+
+-- try 블록
+let result = try {
+    let file = open("data.txt")?;
+    let content = read_all(file)?;
+    parse(content)?
+};
+```
 
 ---
 
-## v1.0-RC Golden (부트스트래핑 완료)
+## v0.14 Foundation (Core 패키지 25개)
+
+> 목표: 핵심 패키지 25개 + gotgan 등록 + 샘플 앱
+
+### 패키지 목록
+
+| # | 패키지 | 설명 | Rust 대응 |
+|---|--------|------|-----------|
+| 1 | bmb-core | 핵심 타입, 트레이트 | std::core |
+| 2 | bmb-alloc | 메모리 할당자 | alloc |
+| 3 | bmb-sync | 동기화 프리미티브 | std::sync |
+| 4 | bmb-atomic | 원자적 연산 | std::sync::atomic |
+| 5 | bmb-cell | 내부 가변성 | std::cell |
+| 6 | bmb-ptr | 포인터 유틸리티 | std::ptr |
+| 7 | bmb-mem | 메모리 유틸리티 | std::mem |
+| 8 | bmb-num | 수치 트레이트 | num-traits |
+| 9 | bmb-ops | 연산자 트레이트 | std::ops |
+| 10 | bmb-iter | 이터레이터 | std::iter |
+| 11 | bmb-slice | 슬라이스 유틸리티 | std::slice |
+| 12 | bmb-array | 배열 유틸리티 | std::array |
+| 13 | bmb-option | Option 타입 | std::option |
+| 14 | bmb-result | Result 타입 | std::result |
+| 15 | bmb-convert | 타입 변환 | std::convert |
+| 16 | bmb-default | Default 트레이트 | std::default |
+| 17 | bmb-clone | Clone 트레이트 | std::clone |
+| 18 | bmb-cmp | 비교 트레이트 | std::cmp |
+| 19 | bmb-hash | 해싱 | std::hash |
+| 20 | bmb-fmt | 포맷팅 | std::fmt |
+| 21 | bmb-vec | 동적 배열 | Vec |
+| 22 | bmb-string | 문자열 | String |
+| 23 | bmb-hashmap | 해시맵 | HashMap |
+| 24 | bmb-hashset | 해시셋 | HashSet |
+| 25 | bmb-deque | 양방향 큐 | VecDeque |
+
+### 샘플 앱 (25개)
+
+각 패키지당 1개 이상:
+- `bmb-core-demo`: 기본 타입 사용 예제
+- `bmb-vec-demo`: 동적 배열 활용
+- `bmb-hashmap-demo`: 워드 카운터
+- ...
+
+### gotgan 등록
+
+```bash
+$ gotgan publish bmb-core
+$ gotgan publish bmb-vec
+...
+```
+
+---
+
+## v0.15 Stream (Collections/IO 25개 + 벤치마크 v1)
+
+> 목표: 컬렉션/IO 패키지 + C/Rust 벤치마크 기준선
+
+### 패키지 목록
+
+| # | 패키지 | 설명 |
+|---|--------|------|
+| 26 | bmb-btreemap | B-트리 맵 |
+| 27 | bmb-btreeset | B-트리 셋 |
+| 28 | bmb-linkedlist | 연결 리스트 |
+| 29 | bmb-heap | 바이너리 힙 |
+| 30 | bmb-smallvec | 스택 최적화 벡터 |
+| 31 | bmb-indexmap | 순서 유지 맵 |
+| 32 | bmb-bitvec | 비트 벡터 |
+| 33 | bmb-arena | 아레나 할당자 |
+| 34 | bmb-slotmap | 슬롯 맵 |
+| 35 | bmb-lru | LRU 캐시 |
+| 36 | bmb-io | IO 트레이트 |
+| 37 | bmb-fs | 파일 시스템 |
+| 38 | bmb-path | 경로 처리 |
+| 39 | bmb-buf | 버퍼 IO |
+| 40 | bmb-stdio | 표준 입출력 |
+| 41 | bmb-tempfile | 임시 파일 |
+| 42 | bmb-walkdir | 디렉토리 순회 |
+| 43 | bmb-notify | 파일 감시 |
+| 44 | bmb-memmap | 메모리 맵 |
+| 45 | bmb-tar | tar 아카이브 |
+| 46 | bmb-net | 네트워크 기초 |
+| 47 | bmb-tcp | TCP 소켓 |
+| 48 | bmb-udp | UDP 소켓 |
+| 49 | bmb-socket | 소켓 추상화 |
+| 50 | bmb-dns | DNS 리졸버 |
+
+### 벤치마크 v1 (기준선)
+
+```
+benchmark-bmb/v0.15/
+├── micro/
+│   ├── fibonacci.bmb      # vs fibonacci.c, fibonacci.rs
+│   ├── primes.bmb
+│   └── sorting.bmb
+├── algo/
+│   ├── dijkstra.bmb
+│   └── quicksort.bmb
+└── results/
+    └── baseline-v0.15.json
+```
+
+**KPI 측정:**
+- 컴파일 속도: Rust 대비 80%
+- 런타임 성능: C 대비 70%
+- 바이너리 크기: Rust 대비 120%
+
+---
+
+## v0.16 Connect (Network/Serialization 25개 + 최적화 1차)
+
+> 목표: 네트워크/직렬화 패키지 + 첫 번째 성능 최적화
+
+### 패키지 목록
+
+| # | 패키지 | 설명 |
+|---|--------|------|
+| 51 | bmb-url | URL 파싱 |
+| 52 | bmb-uri | URI 처리 |
+| 53 | bmb-http | HTTP 클라이언트/서버 |
+| 54 | bmb-websocket | WebSocket |
+| 55 | bmb-tls | TLS/SSL |
+| 56 | bmb-hyper | 고성능 HTTP (hyper 포트) |
+| 57 | bmb-reqwest | HTTP 클라이언트 (reqwest 포트) |
+| 58 | bmb-axum | 웹 프레임워크 (axum 포트) |
+| 59 | bmb-grpc | gRPC |
+| 60 | bmb-graphql | GraphQL |
+| 61 | bmb-serde | 직렬화 프레임워크 |
+| 62 | bmb-json | JSON |
+| 63 | bmb-toml | TOML |
+| 64 | bmb-yaml | YAML |
+| 65 | bmb-xml | XML |
+| 66 | bmb-csv | CSV |
+| 67 | bmb-msgpack | MessagePack |
+| 68 | bmb-protobuf | Protocol Buffers |
+| 69 | bmb-bincode | 바이너리 인코딩 |
+| 70 | bmb-base64 | Base64 |
+| 71 | bmb-utf8 | UTF-8 처리 |
+| 72 | bmb-regex | 정규표현식 |
+| 73 | bmb-glob | 글로브 패턴 |
+| 74 | bmb-mime | MIME 타입 |
+| 75 | bmb-form | 폼 데이터 |
+
+### 최적화 1차
+
+| 영역 | 기법 | 목표 |
+|------|------|------|
+| 컴파일 | 증분 컴파일 | -20% 시간 |
+| 런타임 | 인라이닝 개선 | +10% 성능 |
+| 메모리 | 할당 최적화 | -15% 사용량 |
+
+---
+
+## v0.17 Parallel (Async/Crypto 20개 + 벤치마크 v2)
+
+> 목표: 비동기/암호화 패키지 + 최적화 검증
+
+### 패키지 목록
+
+| # | 패키지 | 설명 |
+|---|--------|------|
+| 76 | bmb-async | 비동기 런타임 |
+| 77 | bmb-future | Future 트레이트 |
+| 78 | bmb-task | 태스크 스포닝 |
+| 79 | bmb-channel | 비동기 채널 |
+| 80 | bmb-select | select 매크로 |
+| 81 | bmb-timeout | 타임아웃 |
+| 82 | bmb-stream | Stream 트레이트 |
+| 83 | bmb-sink | Sink 트레이트 |
+| 84 | bmb-timer | 비동기 타이머 |
+| 85 | bmb-executor | 실행기 |
+| 86 | bmb-crypto | 암호화 기초 |
+| 87 | bmb-sha | SHA 해시 |
+| 88 | bmb-md5 | MD5 해시 |
+| 89 | bmb-aes | AES 암호화 |
+| 90 | bmb-rsa | RSA |
+| 91 | bmb-ecdsa | ECDSA |
+| 92 | bmb-hmac | HMAC |
+| 93 | bmb-pbkdf2 | PBKDF2 |
+| 94 | bmb-argon2 | Argon2 |
+| 95 | bmb-rand | 난수 생성 |
+
+### 벤치마크 v2
+
+```
+benchmark-bmb/v0.17/
+├── async/
+│   ├── spawn-million.bmb    # 100만 태스크 생성
+│   ├── channel-throughput.bmb
+│   └── http-concurrent.bmb
+├── crypto/
+│   ├── sha256-throughput.bmb
+│   └── aes-encrypt.bmb
+└── results/
+    ├── v0.15-baseline.json
+    └── v0.17-optimized.json
+```
+
+**KPI 검증:**
+- 컴파일 속도: Rust 대비 90% ✓
+- 런타임 성능: C 대비 85% ✓
+
+---
+
+## v0.18 Persist (Database/CLI 20개 + 최적화 2차)
+
+> 목표: 데이터베이스/CLI 패키지 + 두 번째 최적화
+
+### 패키지 목록
+
+| # | 패키지 | 설명 |
+|---|--------|------|
+| 96 | bmb-sql | SQL 빌더 |
+| 97 | bmb-postgres | PostgreSQL |
+| 98 | bmb-mysql | MySQL |
+| 99 | bmb-sqlite | SQLite |
+| 100 | bmb-redis | Redis |
+| 101 | bmb-mongodb | MongoDB |
+| 102 | bmb-pool | 커넥션 풀 |
+| 103 | bmb-migrate | 마이그레이션 |
+| 104 | bmb-orm | ORM |
+| 105 | bmb-kv | 키-밸류 스토어 |
+| 106 | bmb-clap | 인자 파싱 |
+| 107 | bmb-env | 환경 변수 |
+| 108 | bmb-log | 로깅 |
+| 109 | bmb-tracing | 트레이싱 |
+| 110 | bmb-config | 설정 관리 |
+| 111 | bmb-term | 터미널 색상 |
+| 112 | bmb-progress | 진행 바 |
+| 113 | bmb-table | 테이블 출력 |
+| 114 | bmb-prompt | 대화형 프롬프트 |
+| 115 | bmb-test | 테스트 프레임워크 |
+
+### 최적화 2차
+
+| 영역 | 기법 | 목표 |
+|------|------|------|
+| LLVM | 최적화 패스 튜닝 | +15% 성능 |
+| 계약 | 경계 검사 제거 | +10% 성능 |
+| SIMD | 자동 벡터화 | +20% 특정 연산 |
+
+---
+
+## v0.19 Mirror (Self-Hosting)
+
+> 목표: 모든 서브모듈 BMB로 재작성 + Stage 2 검증
+
+### 서브모듈 BMB 재작성
+
+| 컴포넌트 | Rust 버전 | BMB 버전 | 검증 |
+|----------|-----------|----------|------|
+| Lexer | ✅ | 🔄 | Stage 2 |
+| Parser | ✅ | 🔄 | Stage 2 |
+| Type Checker | ✅ | 🔄 | Stage 2 |
+| MIR Lowering | ✅ | 🔄 | Stage 2 |
+| LLVM Codegen | ✅ | 🔄 | Stage 2 |
+| WASM Codegen | ✅ | 🔄 | Stage 2 |
+| gotgan CLI | ✅ | 🔄 | 기능 동등 |
+| gotgan Resolver | ✅ | 🔄 | 기능 동등 |
+| action-bmb | ✅ | 🔄 | 기능 동등 |
+
+### Stage 2 검증
+
+```bash
+# Stage 0: Rust 컴파일러
+$ cargo build --release
+$ ./bmb-rust build bmb-compiler -> bmb-stage1
+
+# Stage 1: BMB로 작성된 컴파일러
+$ ./bmb-stage1 build bmb-compiler -> bmb-stage2
+
+# Stage 2: Stage 1으로 컴파일된 컴파일러
+$ ./bmb-stage2 build bmb-compiler -> bmb-stage3
+
+# 검증: Stage 2 = Stage 3
+$ diff bmb-stage2 bmb-stage3  # 동일해야 함
+```
+
+### gotgan 등록
+
+```bash
+$ gotgan publish bmb-compiler
+$ gotgan publish bmb-gotgan
+$ gotgan publish bmb-action
+```
+
+---
+
+## v0.20 Showcase (주요 앱 시나리오 샘플)
+
+> 목표: 실제 도메인 샘플 애플리케이션 10개
+
+### 샘플 애플리케이션
+
+| # | 앱 이름 | 도메인 | 사용 패키지 |
+|---|---------|--------|-------------|
+| 1 | **bmb-api-server** | 웹 API | bmb-axum, bmb-postgres, bmb-serde |
+| 2 | **bmb-cli-tool** | CLI 유틸리티 | bmb-clap, bmb-config, bmb-log |
+| 3 | **bmb-chat-server** | 실시간 채팅 | bmb-websocket, bmb-redis, bmb-async |
+| 4 | **bmb-file-manager** | 파일 유틸리티 | bmb-fs, bmb-tar, bmb-walkdir |
+| 5 | **bmb-crypto-tool** | 암호화 도구 | bmb-crypto, bmb-aes, bmb-argon2 |
+| 6 | **bmb-db-client** | DB 클라이언트 | bmb-sql, bmb-postgres, bmb-table |
+| 7 | **bmb-http-proxy** | HTTP 프록시 | bmb-hyper, bmb-tls, bmb-async |
+| 8 | **bmb-json-processor** | JSON 처리 | bmb-json, bmb-serde, bmb-io |
+| 9 | **bmb-task-runner** | 태스크 러너 | bmb-async, bmb-channel, bmb-log |
+| 10 | **bmb-config-manager** | 설정 관리 | bmb-toml, bmb-yaml, bmb-config |
+
+### 각 샘플 구조
+
+```
+bmb-api-server/
+├── gotgan.toml
+├── src/
+│   ├── main.bmb
+│   ├── routes.bmb
+│   ├── models.bmb
+│   └── db.bmb
+├── tests/
+│   └── api_test.bmb
+└── README.md
+```
+
+### gotgan 등록
+
+```bash
+$ gotgan publish bmb-api-server
+$ gotgan publish bmb-cli-tool
+...
+```
+
+---
+
+## v0.21 Launch (프로덕션 서비스 런칭)
+
+> 목표: 서브모듈을 실제 도메인 서비스로 배포
+
+### 서비스 런칭
+
+| 서비스 | 도메인 | 설명 | 기술 스택 |
+|--------|--------|------|-----------|
+| **gotgan Registry** | gotgan.bmb.dev | 패키지 레지스트리 | bmb-axum, bmb-postgres |
+| **BMB Playground** | play.bmb.dev | 온라인 플레이그라운드 | WASM, bmb-compiler |
+| **BMB Docs** | docs.bmb.dev | 문서 사이트 | bmb-axum, 마크다운 |
+| **Benchmark Dashboard** | bench.bmb.dev | 벤치마크 대시보드 | bmb-axum, bmb-json |
+| **Package Search** | search.bmb.dev | 패키지 검색 API | bmb-axum, bmb-redis |
+
+### 서비스 아키텍처
+
+```
+                    ┌──────────────────┐
+                    │   Cloudflare     │
+                    │   (CDN + DNS)    │
+                    └────────┬─────────┘
+                             │
+              ┌──────────────┼──────────────┐
+              │              │              │
+      ┌───────▼───┐  ┌───────▼───┐  ┌───────▼───┐
+      │ gotgan    │  │ play      │  │ docs      │
+      │ Registry  │  │ Playground│  │ Site      │
+      │ (BMB)     │  │ (WASM)    │  │ (BMB)     │
+      └───────────┘  └───────────┘  └───────────┘
+              │
+      ┌───────▼───┐
+      │ PostgreSQL│
+      │ + Redis   │
+      └───────────┘
+```
+
+### 배포 파이프라인
+
+```yaml
+# .github/workflows/deploy.yml
+name: Deploy BMB Services
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: lang-bmb/action-bmb@v1
+      - run: gotgan build --release
+      - run: docker build -t bmb-service .
+      - run: kubectl apply -f k8s/
+```
+
+---
+
+## v0.22 Velocity (C/Rust 성능 추월 스프린트)
+
+> 목표: C/Rust 대비 동등 이상 성능 달성
+
+### 최적화 전략
+
+| 단계 | 기법 | 예상 효과 |
+|------|------|----------|
+| 1 | 핫스팟 프로파일링 | 병목 식별 |
+| 2 | 계약 기반 최적화 | 경계 검사 제거 |
+| 3 | SIMD 자동 벡터화 | 수치 연산 +200% |
+| 4 | 인라이닝 개선 | 함수 호출 -50% |
+| 5 | 메모리 레이아웃 최적화 | 캐시 효율 +30% |
+| 6 | 정적 디스패치 강화 | 가상 호출 제거 |
+
+### 계약 기반 최적화 예시
+
+```bmb
+-- 계약으로 인해 경계 검사 제거 가능
+fn sum_range(arr: &[i32], start: usize, end: usize) -> i32
+  pre start <= end
+  pre end <= len(arr)
+= {
+    let mut total = 0;
+    for i in start..end {
+        total += arr[i];  -- 경계 검사 불필요 (계약으로 증명됨)
+    }
+    total
+};
+```
+
+### 벤치마크 v3 (최종)
+
+```
+benchmark-bmb/v0.22/
+├── comprehensive/
+│   ├── raytracer.bmb      # 레이트레이서
+│   ├── nbody.bmb          # N-body 시뮬레이션
+│   ├── regex-redux.bmb    # 정규표현식
+│   └── spectral-norm.bmb  # 스펙트럴 노름
+├── compare/
+│   ├── c/
+│   ├── rust/
+│   └── bmb/
+└── results/
+    ├── v0.15-baseline.json
+    ├── v0.17-optimized.json
+    └── v0.22-final.json
+```
+
+### 최종 KPI
+
+| 지표 | v0.15 | v0.17 | v0.22 | 목표 |
+|------|-------|-------|-------|------|
+| 컴파일 속도 (vs Rust) | 80% | 90% | 105% | ✅ 100%+ |
+| 런타임 성능 (vs C) | 70% | 85% | 102% | ✅ 100%+ |
+| 바이너리 크기 (vs Rust) | 120% | 100% | 88% | ✅ 90% |
+| 메모리 사용량 (vs Rust) | 110% | 100% | 93% | ✅ 95% |
+
+---
+
+## v1.0-RC Golden (최종 검증)
 
 > 목표: 완전한 자기 컴파일 + 검증 + 안정성 약속
 
-### 부트스트래핑 체크리스트
+### 최종 체크리스트
 
-| 구성요소 | Rust 버전 | BMB 버전 | 검증 |
-|----------|-----------|----------|------|
-| 렉서 | ✅ | ✅ | ✅ |
-| 파서 | ✅ | ✅ | ✅ |
-| 타입체커 | ✅ | ✅ | ✅ |
-| SMT 변환기 | ✅ | ✅ | ✅ |
-| MIR | ✅ | ✅ | ✅ |
-| LLVM IR 생성 | ✅ | ✅ | ✅ |
-| 곳간 | ✅ | ✅ | ✅ |
-| 표준 라이브러리 | - | ✅ | ✅ |
+| 카테고리 | 항목 | 상태 |
+|----------|------|------|
+| **Self-Hosting** | Stage 2 컴파일러 동작 | ⬜ |
+| | gotgan BMB 버전 동작 | ⬜ |
+| | action-bmb BMB 버전 동작 | ⬜ |
+| **패키지** | 115개 패키지 등록 | ⬜ |
+| | 각 패키지 샘플 앱 | ⬜ |
+| | 테스트 커버리지 > 80% | ⬜ |
+| **성능** | C 대비 100%+ 런타임 | ⬜ |
+| | Rust 대비 100%+ 컴파일 | ⬜ |
+| | 벤치마크 스위트 통과 | ⬜ |
+| **서비스** | gotgan.bmb.dev 운영 | ⬜ |
+| | play.bmb.dev 운영 | ⬜ |
+| | docs.bmb.dev 운영 | ⬜ |
+| **문서** | 언어 레퍼런스 완성 | ⬜ |
+| | 패키지 문서화 100% | ⬜ |
+| | 튜토리얼 5개 이상 | ⬜ |
+| **커뮤니티** | GitHub Discussions 활성화 | ⬜ |
+| | 컨트리뷰션 가이드 | ⬜ |
+| | 로드맵 1.x 공개 | ⬜ |
 
-### 전체 검증 매트릭스
-
-| 검증 항목 | 방법 | 기준 |
-|-----------|------|------|
-| 컴파일러 정확성 | 자기 컴파일 | Stage2 == Stage3 |
-| 계약 검증 | SMT | 모든 계약 Verified |
-| 테스트 | 테스트 스위트 | 100% 통과 |
-| 벤치마크 | benchmark-bmb | BMB >= C -O3 |
-| 메모리 안전 | Valgrind | 에러 0 |
-
-### 릴리스 체크리스트
-
-- [ ] 부트스트래핑 3단계 통과
-- [ ] 모든 계약 검증됨 (10,000+ 계약)
-- [ ] 테스트 100% 통과 (5,000+ 테스트)
-- [ ] 벤치마크 목표 달성 (BMB >= C)
-- [ ] 문서 100% 완료
-- [ ] 플레이그라운드 작동
-- [ ] 패키지 레지스트리 작동
-- [ ] VS Code 확장 배포
-- [ ] 홈페이지 배포
-
----
-
-## 생태계 타임라인
-
-| 레포지토리 | 시작 | 최소 기능 | Rust 완성 | BMB 재작성 |
-|------------|------|-----------|-----------|------------|
-| lang-bmb | v0.1 ✅ | v0.1 ✅ | v0.5 ✅ | v0.11 |
-| bmb-samples | v0.3 | v0.6 | N/A | BMB 코드 |
-| action-bmb | v0.7 | v0.7.3 | v0.9 | v0.11 |
-| gotgan | v0.8 | v0.8.5 ✅ | v0.9 | v0.11 |
-| tree-sitter-bmb | v0.9 | v0.9.1 | N/A | Tree-sitter |
-| vscode-bmb | v0.9 | v0.9.2 | N/A | TypeScript |
-| playground | v0.9 | v0.9.4 | N/A | React+WASM |
-| lang-bmb-site | v0.9 | v0.9.5 | N/A | Astro |
-| benchmark-bmb | v0.9 | v0.9.6 | Rust Runner | N/A |
-
----
-
-## 난이도 진행 (완만)
+### 1.0 안정성 약속
 
 ```
-v0.5 → v0.6.0: 핵심 타입 20개 (📈 적당)
-v0.6.0 → v0.6.1: 문자열 15개 (📈 적당)
-v0.6.1 → v0.6.2: 컬렉션 15개 (📈 적당)
-v0.6.2 → v0.7.0: 포매터 (📈 적당)
-v0.7.0 → v0.7.1: LSP 기초 (📈 적당)
-v0.7.1 → v0.7.2: 테스트 러너 (📈 적당)
-v0.7.2 → v0.7.3: action-bmb (📈 적당)
-v0.7.3 → v0.8.0: 곳간 기초 (📈 적당) ✅
-v0.8.0 → v0.8.1: 빌드 시스템 (📈 적당) ✅
-v0.8.1 → v0.8.2: 로컬 의존성 (📈 적당) ✅
-v0.8.2 → v0.8.3: 유틸리티 명령어 (📈 적당) ✅
-v0.8.3 → v0.8.4: Lock 파일 (📈 적당) ✅
-v0.8.4 → v0.8.5: 의존성 추가 (📈 적당) ✅
-v0.8.5 → v0.9.0: LSP 확장 (📈 적당) ✅
-v0.9.0 → v0.9.1: tree-sitter-bmb (📈 적당) ✅
-v0.9.1 → v0.9.2: vscode-bmb (📈 적당) ✅
-v0.9.2 → v0.9.3: 원격 레지스트리 (📈 적당) ✅
-v0.9.3 → v0.9.4: playground (📈 적당) ✅
-v0.9.4 → v0.9.5: lang-bmb-site (📈 적당) ✅
-v0.9.5 → v0.9.6: benchmark-bmb (📈 적당) ✅
-v0.9.6 → v0.10.0: 타입 체커 BMB (📈 적당) ✅
-v0.10.0 → v0.10.1: MIR 기초 정의 (📈 적당) ✅
-v0.10.1 → v0.10.2: AST→MIR Lowering (📈 적당) ✅
-v0.10.2 → v0.10.3: End-to-End 파이프라인 (📈 적당) ✅
-v0.10.3 → v0.10.4: MIR→C 코드 생성 (📈 적당) ✅ (레거시)
-v0.10.4 → v0.10.5: LLVM IR 기초 (📈 적당) ✅
-v0.10.5 → v0.10.6: LLVM IR 제어 흐름 (📈 적당) ✅
-v0.10.6 → v0.10.7: LLVM IR 함수 생성 (📈 적당) ✅
-v0.10.7 → v0.10.8: Full Pipeline 통합 (📈 적당) ✅
-v0.10.8 → v0.10.9: Unified Compiler Entry Point (📈 적당) ✅
-v0.10.9 → v0.10.10: Integration Testing (📈 적당) ✅
-v0.10.10 → v0.10.11: End-to-End Validation (📈 적당) ✅
-v0.10.11 → v0.10.12: Text-based LLVM IR Backend (📈 적당) ✅
-v0.10.12 → v0.10.13: 컴포넌트 패키지화 준비 (📈 적당) ✅
-v0.10.13 → v0.10.14: stdlib/string 확장 (📈 적당) ✅
-v0.10.14 → v0.10.15: stdlib/parse 모듈 (📈 적당) ✅
-v0.10.15 → v0.11.0: BMB 컴파일러 완성 (📈 도전적)
-v0.11.0 → v0.11.4: BMBX 번들 포맷 (📈 적당) ✅
-v0.11.4 → v0.11.7: AI 패키지 탐색 + 단일 파일 번들 (📈 적당) ✅
-v0.11.7 → v0.12.0: WASM IR 변환기 (📈 도전적)
-v0.12.0 → v0.12.4: 듀얼 타깃 완성 (📈 적당)
-v0.12.4 → v0.13.0: MCP 서버 (📈 적당)
-v0.13.0 → v0.13.3: 생태계 완성 (📈 적당)
-v0.13.3 → v1.0-RC: 자기 호스팅 (📈 도전적)
+v1.0 이후 보장:
+├── API 호환성 (1.x 내 Breaking changes 없음)
+├── ABI 안정성 (라이브러리 바이너리 호환)
+├── 계약 보장 (검증된 계약 유지)
+└── 성능 비회귀 (벤치마크 기준 유지)
+```
+
+### 릴리스 타임라인 (예상)
+
+```
+v0.13 Forge        ────▶ 2025 Q2
+v0.14 Foundation   ────▶ 2025 Q3
+v0.15 Stream       ────▶ 2025 Q3
+v0.16 Connect      ────▶ 2025 Q4
+v0.17 Parallel     ────▶ 2025 Q4
+v0.18 Persist      ────▶ 2026 Q1
+v0.19 Mirror       ────▶ 2026 Q1
+v0.20 Showcase     ────▶ 2026 Q2
+v0.21 Launch       ────▶ 2026 Q2
+v0.22 Velocity     ────▶ 2026 Q3
+v1.0-RC Golden     ────▶ 2026 Q4
 ```
 
 ---
 
-## 요약
+## 부록: 전체 패키지 목록
+
+### A. Core/Foundation (20개)
+
+| # | 이름 | 버전 | Rust 대응 |
+|---|------|------|-----------|
+| 1 | bmb-core | v0.14 | std::core |
+| 2 | bmb-alloc | v0.14 | alloc |
+| 3 | bmb-sync | v0.14 | std::sync |
+| 4 | bmb-atomic | v0.14 | std::sync::atomic |
+| 5 | bmb-cell | v0.14 | std::cell |
+| 6 | bmb-ptr | v0.14 | std::ptr |
+| 7 | bmb-mem | v0.14 | std::mem |
+| 8 | bmb-num | v0.14 | num-traits |
+| 9 | bmb-ops | v0.14 | std::ops |
+| 10 | bmb-iter | v0.14 | std::iter |
+| 11 | bmb-slice | v0.14 | std::slice |
+| 12 | bmb-array | v0.14 | std::array |
+| 13 | bmb-option | v0.14 | std::option |
+| 14 | bmb-result | v0.14 | std::result |
+| 15 | bmb-convert | v0.14 | std::convert |
+| 16 | bmb-default | v0.14 | std::default |
+| 17 | bmb-clone | v0.14 | std::clone |
+| 18 | bmb-cmp | v0.14 | std::cmp |
+| 19 | bmb-hash | v0.14 | std::hash |
+| 20 | bmb-fmt | v0.14 | std::fmt |
+
+### B. Collections (15개)
+
+| # | 이름 | 버전 | Rust 대응 |
+|---|------|------|-----------|
+| 21 | bmb-vec | v0.14 | Vec |
+| 22 | bmb-string | v0.14 | String |
+| 23 | bmb-hashmap | v0.14 | HashMap |
+| 24 | bmb-hashset | v0.14 | HashSet |
+| 25 | bmb-deque | v0.14 | VecDeque |
+| 26 | bmb-btreemap | v0.15 | BTreeMap |
+| 27 | bmb-btreeset | v0.15 | BTreeSet |
+| 28 | bmb-linkedlist | v0.15 | LinkedList |
+| 29 | bmb-heap | v0.15 | BinaryHeap |
+| 30 | bmb-smallvec | v0.15 | smallvec |
+| 31 | bmb-indexmap | v0.15 | indexmap |
+| 32 | bmb-bitvec | v0.15 | bitvec |
+| 33 | bmb-arena | v0.15 | typed-arena |
+| 34 | bmb-slotmap | v0.15 | slotmap |
+| 35 | bmb-lru | v0.15 | lru |
+
+### C. IO/Filesystem (10개)
+
+| # | 이름 | 버전 | Rust 대응 |
+|---|------|------|-----------|
+| 36 | bmb-io | v0.15 | std::io |
+| 37 | bmb-fs | v0.15 | std::fs |
+| 38 | bmb-path | v0.15 | std::path |
+| 39 | bmb-buf | v0.15 | std::io::{BufReader,BufWriter} |
+| 40 | bmb-stdio | v0.15 | std::io::stdio |
+| 41 | bmb-tempfile | v0.15 | tempfile |
+| 42 | bmb-walkdir | v0.15 | walkdir |
+| 43 | bmb-notify | v0.15 | notify |
+| 44 | bmb-memmap | v0.15 | memmap2 |
+| 45 | bmb-tar | v0.15 | tar |
+
+### D. Networking (15개)
+
+| # | 이름 | 버전 | Rust 대응 |
+|---|------|------|-----------|
+| 46 | bmb-net | v0.15 | std::net |
+| 47 | bmb-tcp | v0.15 | TcpListener/TcpStream |
+| 48 | bmb-udp | v0.15 | UdpSocket |
+| 49 | bmb-socket | v0.15 | socket2 |
+| 50 | bmb-dns | v0.15 | trust-dns-resolver |
+| 51 | bmb-url | v0.16 | url |
+| 52 | bmb-uri | v0.16 | http::Uri |
+| 53 | bmb-http | v0.16 | http |
+| 54 | bmb-websocket | v0.16 | tungstenite |
+| 55 | bmb-tls | v0.16 | rustls |
+| 56 | bmb-hyper | v0.16 | hyper |
+| 57 | bmb-reqwest | v0.16 | reqwest |
+| 58 | bmb-axum | v0.16 | axum |
+| 59 | bmb-grpc | v0.16 | tonic |
+| 60 | bmb-graphql | v0.16 | async-graphql |
+
+### E. Serialization (15개)
+
+| # | 이름 | 버전 | Rust 대응 |
+|---|------|------|-----------|
+| 61 | bmb-serde | v0.16 | serde |
+| 62 | bmb-json | v0.16 | serde_json |
+| 63 | bmb-toml | v0.16 | toml |
+| 64 | bmb-yaml | v0.16 | serde_yaml |
+| 65 | bmb-xml | v0.16 | quick-xml |
+| 66 | bmb-csv | v0.16 | csv |
+| 67 | bmb-msgpack | v0.16 | rmp-serde |
+| 68 | bmb-protobuf | v0.16 | prost |
+| 69 | bmb-bincode | v0.16 | bincode |
+| 70 | bmb-base64 | v0.16 | base64 |
+| 71 | bmb-utf8 | v0.16 | encoding_rs |
+| 72 | bmb-regex | v0.16 | regex |
+| 73 | bmb-glob | v0.16 | glob |
+| 74 | bmb-mime | v0.16 | mime |
+| 75 | bmb-form | v0.16 | serde_urlencoded |
+
+### F. Async (10개)
+
+| # | 이름 | 버전 | Rust 대응 |
+|---|------|------|-----------|
+| 76 | bmb-async | v0.17 | tokio |
+| 77 | bmb-future | v0.17 | futures |
+| 78 | bmb-task | v0.17 | tokio::task |
+| 79 | bmb-channel | v0.17 | tokio::sync::mpsc |
+| 80 | bmb-select | v0.17 | tokio::select! |
+| 81 | bmb-timeout | v0.17 | tokio::time::timeout |
+| 82 | bmb-stream | v0.17 | futures::Stream |
+| 83 | bmb-sink | v0.17 | futures::Sink |
+| 84 | bmb-timer | v0.17 | tokio::time |
+| 85 | bmb-executor | v0.17 | tokio::runtime |
+
+### G. Crypto/Security (10개)
+
+| # | 이름 | 버전 | Rust 대응 |
+|---|------|------|-----------|
+| 86 | bmb-crypto | v0.17 | ring |
+| 87 | bmb-sha | v0.17 | sha2 |
+| 88 | bmb-md5 | v0.17 | md5 |
+| 89 | bmb-aes | v0.17 | aes |
+| 90 | bmb-rsa | v0.17 | rsa |
+| 91 | bmb-ecdsa | v0.17 | ecdsa |
+| 92 | bmb-hmac | v0.17 | hmac |
+| 93 | bmb-pbkdf2 | v0.17 | pbkdf2 |
+| 94 | bmb-argon2 | v0.17 | argon2 |
+| 95 | bmb-rand | v0.17 | rand |
+
+### H. Database (10개)
+
+| # | 이름 | 버전 | Rust 대응 |
+|---|------|------|-----------|
+| 96 | bmb-sql | v0.18 | sqlx |
+| 97 | bmb-postgres | v0.18 | tokio-postgres |
+| 98 | bmb-mysql | v0.18 | mysql_async |
+| 99 | bmb-sqlite | v0.18 | rusqlite |
+| 100 | bmb-redis | v0.18 | redis |
+| 101 | bmb-mongodb | v0.18 | mongodb |
+| 102 | bmb-pool | v0.18 | deadpool |
+| 103 | bmb-migrate | v0.18 | sqlx::migrate |
+| 104 | bmb-orm | v0.18 | diesel/sea-orm |
+| 105 | bmb-kv | v0.18 | sled |
+
+### I. CLI/Tools (10개)
+
+| # | 이름 | 버전 | Rust 대응 |
+|---|------|------|-----------|
+| 106 | bmb-clap | v0.18 | clap |
+| 107 | bmb-env | v0.18 | std::env |
+| 108 | bmb-log | v0.18 | log/env_logger |
+| 109 | bmb-tracing | v0.18 | tracing |
+| 110 | bmb-config | v0.18 | config |
+| 111 | bmb-term | v0.18 | termcolor |
+| 112 | bmb-progress | v0.18 | indicatif |
+| 113 | bmb-table | v0.18 | tabled |
+| 114 | bmb-prompt | v0.18 | dialoguer |
+| 115 | bmb-test | v0.18 | test harness |
+
+---
+
+## 부록: 샘플 앱 목록
+
+### 패키지별 샘플 앱 (115개)
+
+각 패키지당 최소 1개 샘플 앱 포함:
 
 ```
-v0.1-0.5: 기반 (파서 + 검증 + 실행 + LLVM + 언어확장) ✅
-v0.6: 표준 라이브러리 기초 (100+개 함수) ✅
-v0.7: 도구 기초 (fmt, lsp, test, action-bmb) ✅
-v0.8: 패키지 기초 (곳간) ✅
-v0.9: 생태계 (에디터, 원격 패키지, playground, site, benchmark) ✅
-v0.10: Bootstrap (타입체커✅, MIR✅, LLVM IR✅, Text LLVM✅, stdlib확장✅) ✅
-v0.11: AI-Native gotgan + Bootstrap 완성 (BMBX✅, 계약검색✅, 단일번들✅, Stage 2)
-v0.12: WASM 듀얼 타깃 (WASI, 브라우저, 조건부 컴파일)
-v0.13: 생태계 완성 (MCP 서버, 레지스트리 자동화, 품질 점수)
-v1.0: 안정성 약속 + 완전한 자기 호스팅
-
-핵심 지표:
-- 계약: 10,000+
-- 테스트: 5,000+
-- 표준 라이브러리: 170+ 함수 (v0.10.15 기준)
-- 에코시스템: 8개 레포지토리
-- 벤치마크: BMB >= C -O3
-- 부트스트래핑: 완료
-- AI-Native: gotgan + MCP + 계약 탐색
-- 듀얼 타깃: LLVM Native + WASM
+bmb-samples/
+├── core/
+│   ├── bmb-core-demo/          # 기본 타입 사용
+│   ├── bmb-iter-demo/          # 이터레이터 패턴
+│   └── bmb-hash-demo/          # 해시 함수 사용
+├── collections/
+│   ├── bmb-vec-demo/           # 동적 배열
+│   ├── bmb-hashmap-demo/       # 워드 카운터
+│   └── bmb-lru-demo/           # 캐시 구현
+├── io/
+│   ├── bmb-fs-demo/            # 파일 시스템 탐색
+│   ├── bmb-walkdir-demo/       # 디렉토리 순회
+│   └── bmb-tar-demo/           # 아카이브 생성
+├── network/
+│   ├── bmb-http-demo/          # HTTP 클라이언트
+│   ├── bmb-websocket-demo/     # WebSocket 채팅
+│   └── bmb-axum-demo/          # REST API 서버
+├── serialize/
+│   ├── bmb-json-demo/          # JSON 파싱
+│   ├── bmb-toml-demo/          # 설정 파일 읽기
+│   └── bmb-protobuf-demo/      # 프로토콜 버퍼
+├── async/
+│   ├── bmb-async-demo/         # 비동기 태스크
+│   ├── bmb-channel-demo/       # 채널 통신
+│   └── bmb-stream-demo/        # 스트림 처리
+├── crypto/
+│   ├── bmb-sha-demo/           # 해시 계산
+│   ├── bmb-aes-demo/           # 암호화/복호화
+│   └── bmb-argon2-demo/        # 패스워드 해싱
+├── database/
+│   ├── bmb-postgres-demo/      # PostgreSQL CRUD
+│   ├── bmb-redis-demo/         # Redis 캐싱
+│   └── bmb-sqlite-demo/        # 로컬 DB
+└── cli/
+    ├── bmb-clap-demo/          # CLI 인자 파싱
+    ├── bmb-log-demo/           # 로깅 설정
+    └── bmb-progress-demo/      # 진행 바 표시
 ```
+
+### 주요 도메인 샘플 앱 (10개)
+
+v0.20 Showcase에서 개발:
+
+1. **bmb-api-server** - REST API 서버
+2. **bmb-cli-tool** - CLI 유틸리티
+3. **bmb-chat-server** - 실시간 채팅
+4. **bmb-file-manager** - 파일 관리
+5. **bmb-crypto-tool** - 암호화 도구
+6. **bmb-db-client** - DB 클라이언트
+7. **bmb-http-proxy** - HTTP 프록시
+8. **bmb-json-processor** - JSON 처리
+9. **bmb-task-runner** - 태스크 러너
+10. **bmb-config-manager** - 설정 관리
