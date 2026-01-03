@@ -1,0 +1,246 @@
+-- Tests for stdlib/parse module
+-- Verifies position-based parsing utilities
+
+use parse::skip_ws;
+use parse::skip_all_ws;
+use parse::find_char;
+use parse::find_pipe;
+use parse::find_comma;
+use parse::find_colon;
+use parse::starts_with_at;
+use parse::read_until_ws;
+use parse::read_until_char;
+use parse::read_ident;
+use parse::parse_int_at;
+use parse::strip_trailing_colon;
+use parse::has_trailing_colon;
+use parse::has_equals;
+use parse::extract_field;
+use parse::count_fields;
+use parse::find_arrow;
+use parse::find_double_pipe;
+use parse::has_pattern;
+
+use string::string_eq;
+
+-- ============================================
+-- Whitespace Handling Tests
+-- ============================================
+
+fn test_skip_ws_at_start() -> i64
+  post ret == 3
+= skip_ws("   hello", 0);
+
+fn test_skip_ws_no_ws() -> i64
+  post ret == 0
+= skip_ws("hello", 0);
+
+fn test_skip_ws_from_pos() -> i64
+  post ret == 5
+= skip_ws("ab  cd", 2);
+
+fn test_skip_ws_at_end() -> i64
+  post ret == 5
+= skip_ws("hello", 5);
+
+fn test_skip_all_ws_tabs() -> i64
+  post ret == 3
+= skip_all_ws("\t\t\thello", 0);
+
+fn test_skip_all_ws_mixed() -> i64
+  post ret == 4
+= skip_all_ws(" \t\n a", 0);
+
+-- ============================================
+-- Character Search Tests
+-- ============================================
+
+fn test_find_char_found() -> i64
+  post ret == 5
+= find_char("hello,world", 44, 0);
+
+fn test_find_char_not_found() -> i64
+  post ret == 11
+= find_char("hello world", 44, 0);
+
+fn test_find_pipe() -> i64
+  post ret == 3
+= find_pipe("a|b|c", 0);
+
+fn test_find_comma() -> i64
+  post ret == 5
+= find_comma("hello,world", 0);
+
+fn test_find_colon() -> i64
+  post ret == 4
+= find_colon("name:value", 0);
+
+-- ============================================
+-- Prefix Matching Tests
+-- ============================================
+
+fn test_starts_with_at_true() -> bool
+  post ret == true
+= starts_with_at("hello world", "hello", 0);
+
+fn test_starts_with_at_middle() -> bool
+  post ret == true
+= starts_with_at("hello world", "world", 6);
+
+fn test_starts_with_at_false() -> bool
+  post ret == false
+= starts_with_at("hello world", "world", 0);
+
+fn test_starts_with_at_empty() -> bool
+  post ret == true
+= starts_with_at("hello", "", 0);
+
+-- ============================================
+-- Token Reading Tests
+-- ============================================
+
+fn test_read_until_ws_basic() -> bool
+  post ret == true
+= string_eq(read_until_ws("hello world", 0), "hello");
+
+fn test_read_until_ws_with_comma() -> bool
+  post ret == true
+= string_eq(read_until_ws("foo,bar", 0), "foo");
+
+fn test_read_until_char_basic() -> bool
+  post ret == true
+= string_eq(read_until_char("name:value", 0, 58), "name");
+
+fn test_read_ident_basic() -> bool
+  post ret == true
+= string_eq(read_ident("foo_bar123", 0), "foo_bar123");
+
+fn test_read_ident_stops_at_special() -> bool
+  post ret == true
+= string_eq(read_ident("foo.bar", 0), "foo");
+
+-- ============================================
+-- Integer Parsing Tests
+-- ============================================
+
+fn test_parse_int_at_simple() -> i64
+  post ret == 42
+= parse_int_at("42", 0);
+
+fn test_parse_int_at_offset() -> i64
+  post ret == 123
+= parse_int_at("x=123", 2);
+
+fn test_parse_int_at_stops() -> i64
+  post ret == 99
+= parse_int_at("99abc", 0);
+
+-- ============================================
+-- String Manipulation Tests
+-- ============================================
+
+fn test_strip_trailing_colon() -> bool
+  post ret == true
+= string_eq(strip_trailing_colon("name:"), "name");
+
+fn test_strip_trailing_colon_no_colon() -> bool
+  post ret == true
+= string_eq(strip_trailing_colon("name"), "name");
+
+fn test_has_trailing_colon_true() -> bool
+  post ret == true
+= has_trailing_colon("name:");
+
+fn test_has_trailing_colon_false() -> bool
+  post ret == false
+= has_trailing_colon("name");
+
+fn test_has_equals_true() -> bool
+  post ret == true
+= has_equals("a=b");
+
+fn test_has_equals_false() -> bool
+  post ret == false
+= has_equals("abc");
+
+-- ============================================
+-- Field Extraction Tests
+-- ============================================
+
+fn test_extract_field_first() -> bool
+  post ret == true
+= string_eq(extract_field("a|b|c", 0), "a");
+
+fn test_extract_field_middle() -> bool
+  post ret == true
+= string_eq(extract_field("a|b|c", 1), "b");
+
+fn test_extract_field_last() -> bool
+  post ret == true
+= string_eq(extract_field("a|b|c", 2), "c");
+
+fn test_count_fields_three() -> i64
+  post ret == 3
+= count_fields("a|b|c");
+
+fn test_count_fields_one() -> i64
+  post ret == 1
+= count_fields("single");
+
+fn test_count_fields_empty() -> i64
+  post ret == 1
+= count_fields("");
+
+-- ============================================
+-- Arrow/Double Pipe Finding Tests
+-- ============================================
+
+fn test_find_arrow_found() -> i64
+  post ret == 4
+= find_arrow("i64 -> i64", 0);
+
+fn test_find_arrow_not_found() -> i64
+  post ret == 5
+= find_arrow("hello", 0);
+
+fn test_find_double_pipe_found() -> i64
+  post ret == 3
+= find_double_pipe("fn1||fn2", 0);
+
+fn test_find_double_pipe_not_found() -> i64
+  post ret == 5
+= find_double_pipe("a|b|c", 0);
+
+-- ============================================
+-- Pattern Matching Tests
+-- ============================================
+
+fn test_has_pattern_found() -> bool
+  post ret == true
+= has_pattern("hello world", "wor");
+
+fn test_has_pattern_not_found() -> bool
+  post ret == false
+= has_pattern("hello world", "xyz");
+
+fn test_has_pattern_at_start() -> bool
+  post ret == true
+= has_pattern("hello", "hel");
+
+fn test_has_pattern_at_end() -> bool
+  post ret == true
+= has_pattern("hello", "llo");
+
+-- ============================================
+-- Main Test Runner
+-- ============================================
+
+fn main() -> i64 =
+    let t1 = test_skip_ws_at_start();
+    let t2 = test_find_char_found();
+    let t3 = test_starts_with_at_true();
+    let t4 = test_read_until_ws_basic();
+    let t5 = test_parse_int_at_simple();
+    let t6 = test_extract_field_middle();
+    let t7 = test_has_pattern_found();
+    0;

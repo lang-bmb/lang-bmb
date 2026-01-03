@@ -1,6 +1,6 @@
 # BMB Standard Library
 
-> v0.7 Bloom: Foundation for BMB standard library + Testing
+> v0.10.15: Foundation for BMB standard library + Testing + Parse utilities
 
 ## Design Principles (AI-Native)
 
@@ -23,7 +23,9 @@ stdlib/
 │   ├── option.bmb     # Option type (12 functions)
 │   └── result.bmb     # Result type (17 functions)
 ├── string/
-│   └── mod.bmb        # String utilities (30+ functions)
+│   └── mod.bmb        # String utilities (40+ functions)
+├── parse/
+│   └── mod.bmb        # Position-based parsing (20+ functions) [NEW v0.10.15]
 ├── array/
 │   └── mod.bmb        # Array utilities (25+ functions)
 └── test/
@@ -38,13 +40,14 @@ stdlib/
 | core::bool | 9 | v0.6.0 | implies, iff, xor, select, etc. |
 | core::option | 12 | v0.6.0 | Option enum + is_some, unwrap, map, etc. |
 | core::result | 17 | v0.6.0 | Result enum + is_ok, safe_divide, etc. |
-| string | 30+ | v0.6.1 | char classification, search, trim, parse |
+| string | 40+ | v0.10.14 | char classification, search, trim, parse, int_to_string |
+| parse | 20+ | v0.10.15 | position-based parsing, field extraction, pattern matching |
 | array | 25+ | v0.6.2 | search, aggregation, predicates, bounds |
 | test | 40+ | v0.7.2 | test assertions for bmb test runner |
 
-**Total: 140+ functions with contracts**
+**Total: 170+ functions with contracts**
 
-## string Module (v0.6.1)
+## string Module (v0.10.14)
 
 ### Character Classification
 ```bmb
@@ -62,6 +65,7 @@ char_to_upper(c)        -- a->A (unchanged if not lower)
 char_to_lower(c)        -- A->a (unchanged if not upper)
 digit_to_int(c)         -- '0'->0, '9'->9
 int_to_digit(n)         -- 0->'0', 9->'9'
+char_to_string(c)       -- ASCII code -> single char string [NEW v0.10.14]
 ```
 
 ### String Search
@@ -87,10 +91,73 @@ parse_int(s)            -- parse signed integer
 is_valid_int(s)         -- check if valid integer string
 ```
 
+### Integer to String Conversion [NEW v0.10.14]
+```bmb
+digit_char(d)           -- 0-9 -> "0"-"9"
+int_to_string(n)        -- i64 -> String representation
+```
+
 ### String Comparison
 ```bmb
 string_compare(a, b)    -- lexicographic: -1, 0, 1
 string_eq(a, b)         -- equality check
+```
+
+## parse Module (v0.10.15) [NEW]
+
+> Position-based parsing utilities with contracts. Extracted from bootstrap compiler patterns.
+
+### Whitespace Handling
+```bmb
+skip_ws(s, pos)         -- skip spaces, return next position
+skip_all_ws(s, pos)     -- skip all whitespace (space, tab, newline, CR)
+```
+
+### Character Search
+```bmb
+find_char(s, c, pos)    -- find char from position, returns len if not found
+find_pipe(s, pos)       -- find '|'
+find_comma(s, pos)      -- find ','
+find_colon(s, pos)      -- find ':'
+find_lparen(s, pos)     -- find '('
+find_rparen(s, pos)     -- find ')'
+```
+
+### Prefix Matching
+```bmb
+starts_with_at(s, prefix, pos)  -- check prefix at position
+```
+
+### Token Reading
+```bmb
+read_until_ws(s, pos)           -- read until whitespace/delimiter
+read_until_char(s, pos, c)      -- read until specific char
+read_ident(s, pos)              -- read identifier (alphanumeric + _)
+```
+
+### Integer Parsing
+```bmb
+parse_int_at(s, pos)            -- parse integer from position
+```
+
+### String Manipulation
+```bmb
+strip_trailing_colon(s)         -- remove trailing ':'
+has_trailing_colon(s)           -- check for trailing ':'
+has_equals(s)                   -- check for '=' anywhere
+```
+
+### Field Extraction (pipe-delimited)
+```bmb
+extract_field(s, index)         -- get field by index ("a|b|c", 1 -> "b")
+count_fields(s)                 -- count pipe-separated fields
+```
+
+### Pattern Finding
+```bmb
+find_arrow(s, pos)              -- find "->" from position
+find_double_pipe(s, pos)        -- find "||" from position
+has_pattern(s, pat)             -- check if pattern exists anywhere
 ```
 
 ## array Module (v0.6.2)

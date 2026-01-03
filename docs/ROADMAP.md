@@ -37,7 +37,7 @@ v0.MAJOR.MINOR
 | v0.7 | Bloom | 도구 기초 (fmt, lsp, test, action-bmb) | ✅ 완료 |
 | v0.8 | Fruit | 패키지 매니저 (곳간) | ✅ 완료 |
 | v0.9 | Harvest | 생태계 (에디터, 원격 패키지) | ✅ 완료 |
-| v0.10 | Sunrise | Bootstrap + 컴포넌트 패키지화 | 🔄 진행중 |
+| v0.10 | Sunrise | Bootstrap + 컴포넌트 패키지화 | ✅ 완료 |
 | v0.11 | Dawn | AI-Native gotgan + Bootstrap 완성 | 계획 |
 | v0.12 | Horizon | WASM 듀얼 타깃 | 계획 |
 | v0.13 | Summit | 생태계 완성 (MCP, 레지스트리) | 계획 |
@@ -1226,44 +1226,73 @@ PS> .\examples\bootstrap_test\factorial.exe
 - lld-link 직접 호출 (MSVC 링커 우회)
 - runtime.c 함수 충돌 해결 (`abs` → `bmb_abs`)
 
-### v0.10.13 - 부트스트랩 컴포넌트 패키지화 준비
+### v0.10.13 - 부트스트랩 컴포넌트 패키지화 준비 ✅ 완료
 
 **목표**: Bootstrap BMB 코드에서 재사용 가능한 컴포넌트 식별 및 분리
 
-**패키지화 대상:**
-| 컴포넌트 | 출처 | 패키지명 |
-|----------|------|----------|
-| String 유틸리티 | llvm_ir.bmb | `bmb-std/string` |
-| 파싱 헬퍼 | llvm_ir.bmb, parser.bmb | `bmb-std/parse` |
-| MIR 타입 | mir.bmb | `bmb-compiler/mir` |
+**결정**: gotgan 별도 패키지 대신 stdlib 확장 채택 (프로젝트 철학 정렬)
+- 이유: 합성 가능성, 계약 기반 설계, 중복 방지
+- 기존 stdlib/string과의 일관성 유지
 
-### v0.10.14 - std/string 패키지 추출
+**분석 완료:**
+| 컴포넌트 | 출처 | 배치 |
+|----------|------|------|
+| String 유틸리티 | llvm_ir.bmb | stdlib/string (확장) |
+| 파싱 헬퍼 | llvm_ir.bmb, parser.bmb | stdlib/parse (신규) |
 
+### v0.10.14 - stdlib/string 확장 ✅ 완료
+
+**추가된 함수:**
 ```bmb
--- gotgan.toml
-[package]
-name = "bmb-std-string"
-version = "0.1.0"
+-- Integer to String Conversion
+pub fn digit_char(d: i64) -> String
+  pre d >= 0 and d <= 9
+  post ret.len() == 1;
 
--- src/lib.bmb
-fn int_to_string(n: i64) -> String
-  post parse_int(ret) == n;
+pub fn int_to_string(n: i64) -> String
+  post n >= 0 => ret.len() >= 1
+  post n < 0 => ret.len() >= 2;
 
-fn char_to_string(c: i64) -> String
-  pre c >= 0 and c <= 127;
-
-fn digit_char(d: i64) -> String
-  pre d >= 0 and d <= 9;
+-- ASCII Code to String
+pub fn char_to_string(c: i64) -> String
+  pre c >= 32 and c <= 126
+  post ret.len() == 1;
 ```
 
-### v0.10.15 - std/parse 패키지 추출
+### v0.10.15 - stdlib/parse 모듈 생성 ✅ 완료
+
+**새 모듈**: Position-based parsing utilities (20+ functions)
 
 ```bmb
--- 파싱 유틸리티 패키지
-fn skip_ws(s: String, pos: i64) -> i64;
-fn find_char(s: String, c: i64, pos: i64) -> i64;
-fn starts_with(s: String, prefix: String, pos: i64) -> bool;
-fn read_until_ws(s: String, pos: i64) -> String;
+-- Whitespace Handling
+pub fn skip_ws(s: String, pos: i64) -> i64;
+pub fn skip_all_ws(s: String, pos: i64) -> i64;
+
+-- Character Search
+pub fn find_char(s: String, c: i64, pos: i64) -> i64;
+pub fn find_pipe(s: String, pos: i64) -> i64;
+
+-- Token Reading
+pub fn read_until_ws(s: String, pos: i64) -> String;
+pub fn read_ident(s: String, pos: i64) -> String;
+
+-- Field Extraction (pipe-delimited)
+pub fn extract_field(s: String, index: i64) -> String;
+pub fn count_fields(s: String) -> i64;
+
+-- Pattern Matching
+pub fn find_arrow(s: String, pos: i64) -> i64;
+pub fn has_pattern(s: String, pat: String) -> bool;
+```
+
+**산출물:**
+```
+stdlib/
+├── string/mod.bmb     # 40+ functions (확장됨)
+├── parse/mod.bmb      # 20+ functions (신규)
+tests/stdlib/
+├── test_string.bmb    # string 테스트
+└── test_parse.bmb     # parse 테스트 (신규)
 ```
 
 ---
@@ -1563,9 +1592,9 @@ v0.10.8 → v0.10.9: Unified Compiler Entry Point (📈 적당) ✅
 v0.10.9 → v0.10.10: Integration Testing (📈 적당) ✅
 v0.10.10 → v0.10.11: End-to-End Validation (📈 적당) ✅
 v0.10.11 → v0.10.12: Text-based LLVM IR Backend (📈 적당) ✅
-v0.10.12 → v0.10.13: 컴포넌트 패키지화 준비 (📈 적당)
-v0.10.13 → v0.10.14: std/string 패키지 (📈 적당)
-v0.10.14 → v0.10.15: std/parse 패키지 (📈 적당)
+v0.10.12 → v0.10.13: 컴포넌트 패키지화 준비 (📈 적당) ✅
+v0.10.13 → v0.10.14: stdlib/string 확장 (📈 적당) ✅
+v0.10.14 → v0.10.15: stdlib/parse 모듈 (📈 적당) ✅
 v0.10.15 → v0.11.0: BMB 컴파일러 완성 (📈 도전적)
 v0.11.0 → v0.11.4: BMBX 번들 포맷 (📈 적당)
 v0.11.4 → v0.11.7: AI 패키지 탐색 (📈 적당)
@@ -1586,7 +1615,7 @@ v0.6: 표준 라이브러리 기초 (100+개 함수) ✅
 v0.7: 도구 기초 (fmt, lsp, test, action-bmb) ✅
 v0.8: 패키지 기초 (곳간) ✅
 v0.9: 생태계 (에디터, 원격 패키지, playground, site, benchmark) ✅
-v0.10: Bootstrap (타입체커✅, MIR✅, LLVM IR✅, Text LLVM✅, 패키지화) 🔄
+v0.10: Bootstrap (타입체커✅, MIR✅, LLVM IR✅, Text LLVM✅, stdlib확장✅) ✅
 v0.11: AI-Native gotgan + Bootstrap 완성 (BMBX, 계약검색, Stage 2)
 v0.12: WASM 듀얼 타깃 (WASI, 브라우저, 조건부 컴파일)
 v0.13: 생태계 완성 (MCP 서버, 레지스트리 자동화, 품질 점수)
@@ -1595,7 +1624,7 @@ v1.0: 안정성 약속 + 완전한 자기 호스팅
 핵심 지표:
 - 계약: 10,000+
 - 테스트: 5,000+
-- 표준 라이브러리: 200+ 함수
+- 표준 라이브러리: 170+ 함수 (v0.10.15 기준)
 - 에코시스템: 8개 레포지토리
 - 벤치마크: BMB >= C -O3
 - 부트스트래핑: 완료
