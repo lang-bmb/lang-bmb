@@ -17,8 +17,8 @@ use std::fmt::Write;
 use thiserror::Error;
 
 use crate::mir::{
-    BasicBlock, Constant, MirBinOp, MirFunction, MirInst, MirProgram, MirType, MirUnaryOp,
-    Operand, Terminator,
+    BasicBlock, Constant, MirBinOp, MirExternFn, MirFunction, MirInst, MirProgram, MirType,
+    MirUnaryOp, Operand, Terminator,
 };
 
 /// WASM text code generation error
@@ -106,8 +106,8 @@ impl WasmCodeGen {
         // Global variables for runtime
         self.emit_globals(&mut output)?;
 
-        // Runtime imports based on target
-        self.emit_imports(&mut output)?;
+        // Runtime imports based on target (v0.13.0: includes extern fns)
+        self.emit_imports(&mut output, program)?;
 
         // Generate function type signatures
         self.emit_types(&mut output, program)?;
@@ -150,7 +150,7 @@ impl WasmCodeGen {
     }
 
     /// Emit runtime imports based on target
-    fn emit_imports(&self, out: &mut String) -> WasmCodeGenResult<()> {
+    fn emit_imports(&self, out: &mut String, program: &MirProgram) -> WasmCodeGenResult<()> {
         writeln!(out, "  ;; Runtime imports")?;
 
         match self.target {
@@ -174,7 +174,45 @@ impl WasmCodeGen {
             }
         }
 
+        // User-defined extern function imports (v0.13.0)
+        if !program.extern_fns.is_empty() {
+            writeln!(out)?;
+            writeln!(out, "  ;; User-defined extern imports")?;
+            for ext_fn in &program.extern_fns {
+                self.emit_extern_import(out, ext_fn)?;
+            }
+        }
+
         writeln!(out)?;
+        Ok(())
+    }
+
+    /// Emit a single extern function import (v0.13.0)
+    fn emit_extern_import(&self, out: &mut String, ext_fn: &MirExternFn) -> WasmCodeGenResult<()> {
+        let params: Vec<&str> = ext_fn
+            .params
+            .iter()
+            .map(|ty| self.mir_type_to_wasm(ty))
+            .collect();
+
+        let ret = self.mir_type_to_wasm_result(&ext_fn.ret_ty);
+
+        write!(out, "  (import \"{}\" \"{}\"", ext_fn.module, ext_fn.name)?;
+        write!(out, "\n    (func ${}", ext_fn.name)?;
+
+        if !params.is_empty() {
+            write!(out, " (param")?;
+            for p in &params {
+                write!(out, " {}", p)?;
+            }
+            write!(out, ")")?;
+        }
+
+        if !ret.is_empty() {
+            write!(out, " (result {})", ret)?;
+        }
+
+        writeln!(out, "))")?;
         Ok(())
     }
 
@@ -896,6 +934,7 @@ mod tests {
                     terminator: Terminator::Return(Some(Operand::Place(Place::new("_t0")))),
                 }],
             }],
+            extern_fns: vec![],
         };
 
         let codegen = WasmCodeGen::new();
@@ -924,6 +963,7 @@ mod tests {
                     terminator: Terminator::Return(None),
                 }],
             }],
+            extern_fns: vec![],
         };
 
         let codegen = WasmCodeGen::with_target(WasmTarget::Wasi);
@@ -937,6 +977,7 @@ mod tests {
     fn test_browser_target() {
         let program = MirProgram {
             functions: vec![],
+            extern_fns: vec![],
         };
 
         let codegen = WasmCodeGen::with_target(WasmTarget::Browser);
@@ -950,6 +991,7 @@ mod tests {
     fn test_wasi_runtime_functions() {
         let program = MirProgram {
             functions: vec![],
+            extern_fns: vec![],
         };
 
         let codegen = WasmCodeGen::with_target(WasmTarget::Wasi);
@@ -971,6 +1013,7 @@ mod tests {
     fn test_browser_runtime_functions() {
         let program = MirProgram {
             functions: vec![],
+            extern_fns: vec![],
         };
 
         let codegen = WasmCodeGen::with_target(WasmTarget::Browser);
@@ -994,6 +1037,7 @@ mod tests {
     fn test_standalone_no_runtime() {
         let program = MirProgram {
             functions: vec![],
+            extern_fns: vec![],
         };
 
         let codegen = WasmCodeGen::with_target(WasmTarget::Standalone);
@@ -1035,6 +1079,7 @@ mod tests {
                     terminator: Terminator::Return(Some(Operand::Place(Place::new("_t1")))),
                 }],
             }],
+            extern_fns: vec![],
         };
 
         let codegen = WasmCodeGen::new();
@@ -1042,5 +1087,29 @@ mod tests {
 
         assert!(wat.contains("i64.mul"));
         assert!(wat.contains("i64.add"));
+    }
+
+    #[test]
+    fn test_extern_fn_import() {
+        use crate::mir::MirExternFn;
+
+        let program = MirProgram {
+            functions: vec![],
+            extern_fns: vec![MirExternFn {
+                module: "wasi_snapshot_preview1".to_string(),
+                name: "fd_read".to_string(),
+                params: vec![MirType::I32, MirType::I32, MirType::I32, MirType::I32],
+                ret_ty: MirType::I32,
+            }],
+        };
+
+        let codegen = WasmCodeGen::with_target(WasmTarget::Wasi);
+        let wat = codegen.generate(&program).unwrap();
+
+        assert!(wat.contains("User-defined extern imports"));
+        assert!(wat.contains("(import \"wasi_snapshot_preview1\" \"fd_read\""));
+        assert!(wat.contains("(func $fd_read"));
+        assert!(wat.contains("(param i32 i32 i32 i32)"));
+        assert!(wat.contains("(result i32)"));
     }
 }

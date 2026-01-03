@@ -68,6 +68,12 @@ pub enum Token {
     // v0.2: Refinement type self-reference
     #[token("it")]
     It,
+    // v0.13.0: External function declaration
+    #[token("extern")]
+    Extern,
+    // v0.13.2: Error propagation
+    #[token("try")]
+    Try,
 
     // Type keywords
     #[token("i32")]
@@ -142,6 +148,9 @@ pub enum Token {
     // v0.2: Attributes
     #[token("@")]
     At,
+    // v0.13.2: Error propagation operator
+    #[token("?")]
+    Question,
 
     // Operators
     #[token("+")]
@@ -198,6 +207,8 @@ impl std::fmt::Display for Token {
             Token::Mod => write!(f, "mod"),
             Token::Where => write!(f, "where"),
             Token::It => write!(f, "it"),
+            Token::Extern => write!(f, "extern"),
+            Token::Try => write!(f, "try"),
             Token::TyI32 => write!(f, "i32"),
             Token::TyI64 => write!(f, "i64"),
             Token::TyF64 => write!(f, "f64"),
@@ -227,6 +238,7 @@ impl std::fmt::Display for Token {
             Token::RBracket => write!(f, "]"),
             Token::Ampersand => write!(f, "&"),
             Token::At => write!(f, "@"),
+            Token::Question => write!(f, "?"),
             Token::Plus => write!(f, "+"),
             Token::Minus => write!(f, "-"),
             Token::Star => write!(f, "*"),

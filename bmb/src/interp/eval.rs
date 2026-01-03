@@ -77,6 +77,8 @@ impl Interpreter {
                 }
                 // v0.5 Phase 4: Use statements are processed at module resolution time
                 crate::ast::Item::Use(_) => {}
+                // v0.13.0: Extern functions are handled at compile time (FFI)
+                crate::ast::Item::ExternFn(_) => {}
             }
         }
     }
@@ -101,6 +103,8 @@ impl Interpreter {
                 }
                 // v0.5 Phase 4: Use statements don't produce values
                 crate::ast::Item::Use(_) => Ok(Value::Unit),
+                // v0.13.0: Extern functions don't produce values (FFI declarations)
+                crate::ast::Item::ExternFn(_) => Ok(Value::Unit),
             }
         } else {
             Ok(Value::Unit)
@@ -407,6 +411,20 @@ impl Interpreter {
                     "refinement constraint",
                     "runtime expression ('it' only valid in type refinements)"
                 ))
+            }
+
+            // v0.13.2: Try block - evaluate body and wrap result
+            Expr::Try { body } => {
+                // For now, try blocks just evaluate the body
+                // Full Result type support will be added with generic type checking
+                self.eval(body, env)
+            }
+
+            // v0.13.2: Question mark operator - propagate errors
+            Expr::Question { expr: inner } => {
+                // For now, just evaluate the inner expression
+                // Full error propagation will be added with Result type support
+                self.eval(inner, env)
             }
         }
     }

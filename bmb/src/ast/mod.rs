@@ -39,6 +39,8 @@ pub enum Item {
     EnumDef(EnumDef),
     /// Use statement: use path::to::item (v0.5 Phase 4)
     Use(UseStmt),
+    /// External function declaration (v0.13.0): extern fn name(...) -> Type;
+    ExternFn(ExternFn),
 }
 
 /// Use statement (v0.5 Phase 4)
@@ -50,6 +52,28 @@ pub struct UseStmt {
     pub span: Span,
 }
 
+/// External function declaration (v0.13.0)
+/// Syntax: extern fn name(params) -> Type;
+/// Used for FFI with WASI, libc, or other external libraries
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExternFn {
+    /// Attributes (e.g., @wasi for WASI imports)
+    pub attributes: Vec<Attribute>,
+    /// Visibility
+    pub visibility: Visibility,
+    /// External module name (e.g., "wasi_snapshot_preview1")
+    /// Specified via @link("module_name") attribute
+    pub link_name: Option<String>,
+    /// Function name
+    pub name: Spanned<String>,
+    /// Parameters
+    pub params: Vec<Param>,
+    /// Return type
+    pub ret_ty: Spanned<Type>,
+    /// Span
+    pub span: Span,
+}
+
 /// Struct definition
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StructDef {
@@ -57,6 +81,8 @@ pub struct StructDef {
     pub attributes: Vec<Attribute>,
     pub visibility: Visibility,
     pub name: Spanned<String>,
+    /// Type parameters (v0.13.1): e.g., <T>, <T, U>, <T: Ord>
+    pub type_params: Vec<TypeParam>,
     pub fields: Vec<StructField>,
     pub span: Span,
 }
@@ -75,6 +101,8 @@ pub struct EnumDef {
     pub attributes: Vec<Attribute>,
     pub visibility: Visibility,
     pub name: Spanned<String>,
+    /// Type parameters (v0.13.1): e.g., <T>, <T, E>
+    pub type_params: Vec<TypeParam>,
     pub variants: Vec<EnumVariant>,
     pub span: Span,
 }
@@ -108,6 +136,8 @@ pub struct FnDef {
     pub attributes: Vec<Attribute>,
     pub visibility: Visibility,
     pub name: Spanned<String>,
+    /// Type parameters (v0.13.1): e.g., <T>, <T: Ord, U>
+    pub type_params: Vec<TypeParam>,
     pub params: Vec<Param>,
     /// Optional explicit return value binding name (v0.2)
     /// e.g., `-> r: i64` binds return value to `r`

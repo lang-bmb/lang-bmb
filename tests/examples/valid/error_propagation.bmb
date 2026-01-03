@@ -1,0 +1,45 @@
+-- v0.13.2: Error propagation with try and ? operator
+
+-- Result type (generic enum)
+enum Result<T, E> {
+    Ok(T),
+    Err(E),
+}
+
+-- Option type (generic enum)
+enum Option<T> {
+    Some(T),
+    None,
+}
+
+-- Function that might fail
+fn divide(a: i64, b: i64) -> i64 = {
+    if b == 0 then 0 else a / b
+};
+
+-- Using try block to catch errors
+fn safe_compute(x: i64) -> i64 = {
+    let result: i64 = try {
+        divide(x, 2)
+    };
+    result
+};
+
+-- Using ? operator for early return on error
+fn compute_with_question(x: i64) -> i64 = {
+    let a: i64 = divide(x, 2)?;
+    a * 2
+};
+
+-- Chaining ? operators
+fn chained_operations(x: i64) -> i64 = {
+    let a: i64 = divide(x, 2)?;
+    let b: i64 = divide(a, 2)?;
+    b
+};
+
+-- Main function
+fn main() -> i64 = {
+    let x: i64 = safe_compute(100);
+    x
+};

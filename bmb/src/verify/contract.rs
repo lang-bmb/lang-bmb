@@ -48,8 +48,8 @@ impl ContractVerifier {
                     let func_report = self.verify_function(func);
                     report.functions.push(func_report);
                 }
-                // Struct, Enum, and Use don't need verification
-                Item::StructDef(_) | Item::EnumDef(_) | Item::Use(_) => {}
+                // Struct, Enum, Use, and ExternFn don't need verification
+                Item::StructDef(_) | Item::EnumDef(_) | Item::Use(_) | Item::ExternFn(_) => {}
             }
         }
 
@@ -616,6 +616,7 @@ mod tests {
             attributes: vec![],
             visibility: Visibility::Private,
             name: spanned("test".to_string()),
+            type_params: vec![],
             params: vec![],
             ret_name: None,
             ret_ty: spanned(Type::I64),

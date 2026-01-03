@@ -65,13 +65,13 @@ impl TypeChecker {
                         .collect();
                     self.enums.insert(e.name.node.clone(), variants);
                 }
-                Item::FnDef(_) => {}
+                Item::FnDef(_) | Item::ExternFn(_) => {}
                 // v0.5 Phase 4: Use statements are processed at module resolution time
                 Item::Use(_) => {}
             }
         }
 
-        // Second pass: collect function signatures
+        // Second pass: collect function signatures (including extern fn)
         for item in &program.items {
             match item {
                 Item::FnDef(f) => {
@@ -79,15 +79,21 @@ impl TypeChecker {
                     self.functions
                         .insert(f.name.node.clone(), (param_tys, f.ret_ty.node.clone()));
                 }
+                // v0.13.0: Register extern function signatures
+                Item::ExternFn(e) => {
+                    let param_tys: Vec<_> = e.params.iter().map(|p| p.ty.node.clone()).collect();
+                    self.functions
+                        .insert(e.name.node.clone(), (param_tys, e.ret_ty.node.clone()));
+                }
                 Item::StructDef(_) | Item::EnumDef(_) | Item::Use(_) => {}
             }
         }
 
-        // Third pass: type check function bodies
+        // Third pass: type check function bodies (extern fn has no body)
         for item in &program.items {
             match item {
                 Item::FnDef(f) => self.check_fn(f)?,
-                Item::StructDef(_) | Item::EnumDef(_) | Item::Use(_) => {}
+                Item::StructDef(_) | Item::EnumDef(_) | Item::Use(_) | Item::ExternFn(_) => {}
             }
         }
 
@@ -463,6 +469,20 @@ impl TypeChecker {
             Expr::It => {
                 // For now, return a placeholder type; actual type comes from context
                 Ok(Type::I64)
+            }
+
+            // v0.13.2: Try block - type is the body's type wrapped in Result
+            Expr::Try { body } => {
+                // For now, just return the body's type
+                // Full Result<T, E> type inference will be added later
+                self.infer(&body.node, body.span)
+            }
+
+            // v0.13.2: Question mark operator - unwraps Result/Option
+            Expr::Question { expr: inner } => {
+                // For now, just return the inner expression's type
+                // Full Result/Option unwrapping will be added later
+                self.infer(&inner.node, inner.span)
             }
         }
     }

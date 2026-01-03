@@ -42,7 +42,7 @@ v0.MAJOR.MINOR
 | v0.10 | Sunrise | Bootstrap + 컴포넌트 패키지화 | ✅ 완료 |
 | v0.11 | Dawn | AI-Native gotgan + Bootstrap | 🔄 진행중 (v0.11.4-7 ✅) |
 | v0.12 | Horizon | WASM 듀얼 타깃 | ✅ 완료 (v0.12.0-4) |
-| v0.13 | **Forge** | 언어 완성 + extern fn + 매크로 | 계획 |
+| v0.13 | **Forge** | 언어 완성 + extern fn + 제네릭 + 에러처리 | ✅ 완료 (v0.13.0-3) |
 | v0.14 | **Foundation** | Core 패키지 25개 + gotgan 등록 | 계획 |
 | v0.15 | **Stream** | Collections/IO 패키지 25개 + 벤치마크 v1 | 계획 |
 | v0.16 | **Connect** | Network/Serialization 25개 + 최적화 1차 | 계획 |
@@ -428,11 +428,11 @@ $ bmb build app.bmb --all-targets --verbose
 
 ---
 
-## v0.13 Forge (언어 완성)
+## v0.13 Forge (언어 완성) ✅
 
 > 목표: Self-hosting과 패키지 개발에 필요한 언어 기능 완성
 
-### v0.13.0 - extern fn 지원
+### v0.13.0 - extern fn 지원 ✅
 
 ```bmb
 -- 외부 함수 선언
@@ -444,60 +444,102 @@ extern fn free(ptr: *mut u8);
 extern fn fd_write(fd: i32, iovs: i32, len: i32, nwritten: *mut i32) -> i32;
 ```
 
-### v0.13.1 - 매크로 시스템 기초
+**구현:**
+- `extern fn` 문법 파싱 및 AST 표현
+- WASI 바인딩을 위한 `@wasi` 속성 지원
+
+### v0.13.1 - 제네릭 기초 ✅
 
 ```bmb
--- 선언 매크로
-macro vec!($($x:expr),*) = {
-    let mut v = Vec::new();
-    $(v.push($x);)*
-    v
+-- 제네릭 함수
+fn identity<T>(x: T) -> T = x;
+
+-- 제네릭 구조체
+struct Container<T> {
+    value: T,
+}
+
+-- 제네릭 열거형
+enum Option<T> {
+    Some(T),
+    None,
+}
+```
+
+**구현:**
+- 타입 파라미터 파싱 (`<T>`, `<T, U>`)
+- 제네릭 함수, 구조체, 열거형 지원
+- 타입 파라미터 인스턴스화
+
+### v0.13.2 - 에러 처리 (? 연산자 + try 블록) ✅
+
+```bmb
+-- ? 연산자로 에러 전파
+fn compute_with_question(x: i64) -> i64 = {
+    let a: i64 = divide(x, 2)?;
+    a * 2
 };
 
--- 사용
-let nums = vec![1, 2, 3];
+-- try 블록으로 에러 캡처
+fn safe_compute(x: i64) -> i64 = {
+    let result: i64 = try {
+        divide(x, 2)
+    };
+    result
+};
+
+-- 체이닝
+fn chained_operations(x: i64) -> i64 = {
+    let a: i64 = divide(x, 2)?;
+    let b: i64 = divide(a, 2)?;
+    b
+};
 ```
 
-### v0.13.2 - 제네릭 완성
+**구현:**
+- `?` 연산자 (Question) 파싱 및 후위 표현식 지원
+- `try { ... }` 블록 파싱
+- 인터프리터, 타입 체커, SMT 변환기 연동
+
+### v0.13.3 - @derive 속성 매크로 ✅
 
 ```bmb
--- 트레이트 바운드
-fn sort<T: Ord>(list: &mut [T]) { ... }
+-- 단일 derive
+@derive(Debug, Clone)
+struct Point {
+    x: i64,
+    y: i64,
+}
 
--- where 절
-fn complex<T, U>(x: T, y: U) -> T
-where
-    T: Clone + Debug,
-    U: Into<T>
-= ...;
-```
+-- 다중 트레이트
+@derive(Debug, Clone, PartialEq, Eq)
+struct Color {
+    r: i64,
+    g: i64,
+    b: i64,
+}
 
-### v0.13.3 - 속성 매크로
+-- 제네릭과 결합
+@derive(Debug, Clone)
+struct Container<T> {
+    value: T,
+}
 
-```bmb
+-- 열거형 지원
 @derive(Debug, Clone, PartialEq)
-struct Point { x: i32, y: i32 }
-
-@test
-fn test_add() = assert(1 + 1 == 2);
+enum Status {
+    Active,
+    Inactive,
+    Pending,
+}
 ```
 
-### v0.13.4 - 에러 처리 개선
-
-```bmb
--- Result/Option 체이닝
-fn read_config() -> Result<Config, Error> =
-    read_file("config.toml")?
-    |> parse_toml()?
-    |> validate()?;
-
--- try 블록
-let result = try {
-    let file = open("data.txt")?;
-    let content = read_all(file)?;
-    parse(content)?
-};
-```
+**구현:**
+- `bmb/src/derive/mod.rs` 모듈 추가
+- `DeriveTrait` 열거형: Debug, Clone, PartialEq, Eq, Default, Hash
+- `extract_derive_traits()`: 속성에서 트레이트 추출
+- `DeriveContext`: 코드 생성용 컨텍스트
+- 구조체/열거형 derive 속성 지원
 
 ---
 

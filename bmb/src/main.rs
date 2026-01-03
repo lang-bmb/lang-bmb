@@ -616,6 +616,18 @@ fn format_program(program: &bmb::ast::Program) -> String {
                 let path_str: Vec<_> = u.path.iter().map(|s| s.node.as_str()).collect();
                 output.push_str(&format!("use {};", path_str.join("::")));
             }
+            // v0.13.0: Format extern function declarations
+            Item::ExternFn(e) => {
+                if e.visibility == Visibility::Public {
+                    output.push_str("pub ");
+                }
+                output.push_str(&format!("extern fn {}(", e.name.node));
+                let params: Vec<_> = e.params.iter()
+                    .map(|p| format!("{}: {}", p.name.node, format_type(&p.ty.node)))
+                    .collect();
+                output.push_str(&params.join(", "));
+                output.push_str(&format!(") -> {};", format_type(&e.ret_ty.node)));
+            }
         }
     }
 
@@ -672,6 +684,16 @@ fn format_type(ty: &bmb::ast::Type) -> String {
         Type::Unit => "()".to_string(),
         Type::Range(elem) => format!("Range<{}>", format_type(elem)),
         Type::Named(name) => name.clone(),
+        // v0.13.1: Type variable
+        Type::TypeVar(name) => name.clone(),
+        // v0.13.1: Generic type
+        Type::Generic { name, type_args } => {
+            let args_str = type_args.iter()
+                .map(|t| format_type(t))
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("{}<{}>", name, args_str)
+        }
         Type::Struct { name, .. } => name.clone(),
         Type::Enum { name, .. } => name.clone(),
         Type::Array(elem, size) => format!("[{}; {}]", format_type(elem), size),
@@ -844,6 +866,16 @@ fn format_expr(expr: &bmb::ast::Expr) -> String {
 
         Expr::StateRef { expr, state } => {
             format!("{}{}", format_expr(&expr.node), state)
+        }
+
+        // v0.13.2: Try block
+        Expr::Try { body } => {
+            format!("try {{ {} }}", format_expr(&body.node))
+        }
+
+        // v0.13.2: Question mark operator
+        Expr::Question { expr: inner } => {
+            format!("{}?", format_expr(&inner.node))
         }
     }
 }

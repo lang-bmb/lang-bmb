@@ -127,6 +127,10 @@ impl SmtTranslator {
             Type::String => SmtSort::Int, // String as Int (simplified) v0.5
             Type::Range(_) => SmtSort::Int, // Range as Int (simplified) v0.5 Phase 3
             Type::Named(_) => SmtSort::Int, // Named types default to Int for now
+            // v0.13.1: Type variables treated as Int (unresolved)
+            Type::TypeVar(_) => SmtSort::Int,
+            // v0.13.1: Generic types treated as Int (simplified)
+            Type::Generic { .. } => SmtSort::Int,
             Type::Struct { .. } => SmtSort::Int, // Struct types as Int (simplified)
             Type::Enum { .. } => SmtSort::Int, // Enum types as Int (simplified)
             // v0.5 Phase 5: References as Int (simplified)
@@ -298,6 +302,13 @@ impl SmtTranslator {
 
             // v0.2: Refinement self-reference
             Expr::It => Ok("__it__".to_string()),
+
+            // v0.13.2: Try block - translate body
+            Expr::Try { body } => self.translate_expr(&body.node),
+
+            // v0.13.2: Question mark operator - translate inner expression
+            // Full error propagation semantics not needed for SMT verification
+            Expr::Question { expr: inner } => self.translate_expr(&inner.node),
         }
     }
 

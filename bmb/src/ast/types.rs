@@ -3,6 +3,34 @@
 use super::{Spanned, Expr};
 use serde::{Deserialize, Serialize};
 
+/// Type parameter (v0.13.1)
+/// e.g., `T`, `T: Ord`, `T: Clone + Debug`
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TypeParam {
+    /// Name of the type parameter (e.g., "T")
+    pub name: String,
+    /// Trait bounds (e.g., ["Ord", "Clone"])
+    pub bounds: Vec<String>,
+}
+
+impl TypeParam {
+    /// Create a simple type parameter without bounds
+    pub fn new(name: impl Into<String>) -> Self {
+        TypeParam {
+            name: name.into(),
+            bounds: vec![],
+        }
+    }
+
+    /// Create a type parameter with bounds
+    pub fn with_bounds(name: impl Into<String>, bounds: Vec<String>) -> Self {
+        TypeParam {
+            name: name.into(),
+            bounds,
+        }
+    }
+}
+
 /// Type representation
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Type {
@@ -22,6 +50,15 @@ pub enum Type {
     Range(Box<Type>),
     /// Named type (struct or enum)
     Named(String),
+    /// Type variable (v0.13.1): T, U, etc.
+    /// Used in generic context, e.g., fn identity<T>(x: T) -> T
+    TypeVar(String),
+    /// Generic type (v0.13.1): Container<T>, Result<T, E>, etc.
+    /// Used for applying type arguments to generic types
+    Generic {
+        name: String,
+        type_args: Vec<Box<Type>>,
+    },
     /// Struct type with fields (resolved after type checking)
     Struct {
         name: String,
@@ -60,6 +97,13 @@ impl PartialEq for Type {
             (Type::String, Type::String) => true,
             (Type::Range(a), Type::Range(b)) => a == b,
             (Type::Named(a), Type::Named(b)) => a == b,
+            // v0.13.1: TypeVar equality
+            (Type::TypeVar(a), Type::TypeVar(b)) => a == b,
+            // v0.13.1: Generic type equality
+            (
+                Type::Generic { name: n1, type_args: a1 },
+                Type::Generic { name: n2, type_args: a2 },
+            ) => n1 == n2 && a1 == a2,
             (Type::Struct { name: n1, fields: f1 }, Type::Struct { name: n2, fields: f2 }) => {
                 n1 == n2 && f1 == f2
             }
@@ -118,6 +162,19 @@ impl std::fmt::Display for Type {
             Type::String => write!(f, "String"),
             Type::Range(elem_ty) => write!(f, "Range<{elem_ty}>"),
             Type::Named(name) => write!(f, "{name}"),
+            // v0.13.1: Type variable display
+            Type::TypeVar(name) => write!(f, "{name}"),
+            // v0.13.1: Generic type display
+            Type::Generic { name, type_args } => {
+                write!(f, "{name}<")?;
+                for (i, arg) in type_args.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{arg}")?;
+                }
+                write!(f, ">")
+            }
             Type::Struct { name, .. } => write!(f, "{name}"),
             Type::Enum { name, .. } => write!(f, "{name}"),
             Type::Ref(inner) => write!(f, "&{inner}"),

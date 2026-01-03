@@ -157,6 +157,20 @@ pub enum Expr {
         expr: Box<Spanned<Expr>>,
         state: StateKind,
     },
+
+    // v0.13.2: Error propagation
+
+    /// Try block: try { expr }
+    /// Captures errors from the block and converts them to a Result
+    Try {
+        body: Box<Spanned<Expr>>,
+    },
+
+    /// Question mark operator: expr?
+    /// Propagates error if expr is Err, unwraps Ok value otherwise
+    Question {
+        expr: Box<Spanned<Expr>>,
+    },
 }
 
 /// A single arm in a match expression

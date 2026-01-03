@@ -41,6 +41,11 @@ extern {
         // v0.2: Contract system
         "where" => Token::Where,
         "it" => Token::It,
+        // v0.13.0: External functions
+        "extern" => Token::Extern,
+        // v0.13.2: Error propagation
+        "try" => Token::Try,
+        "?" => Token::Question,
 
         "i32" => Token::TyI32,
         "i64" => Token::TyI64,
@@ -102,6 +107,48 @@ Item: Item = {
     <s:StructDef> => Item::StructDef(s),
     <e:EnumDef> => Item::EnumDef(e),
     <u:UseStmt> => Item::Use(u),
+    <e:ExternFnDef> => Item::ExternFn(e),
+};
+
+// External function declaration (v0.13.0)
+// Syntax: extern fn name(params) -> Type;
+// With attributes: @link("module") extern fn name(params) -> Type;
+ExternFnDef: ExternFn = {
+    // With attributes
+    <l:@L> <attrs:Attr+> <vis:Visibility> "extern" "fn" <name:Ident> "(" <params:Params> ")" "->" <ret_ty:SpannedType> ";" <r:@R> => {
+        // Extract link_name from @link("name") attribute
+        let link_name = attrs.iter().find_map(|attr| {
+            if attr.name() == "link" {
+                if let Attribute::WithArgs { args, .. } = attr {
+                    if let Some(arg) = args.first() {
+                        if let Expr::StringLit(s) = &arg.node {
+                            return Some(s.clone());
+                        }
+                    }
+                }
+            }
+            None
+        });
+        ExternFn {
+            attributes: attrs,
+            visibility: vis,
+            link_name,
+            name,
+            params,
+            ret_ty,
+            span: Span::new(l, r),
+        }
+    },
+    // Without attributes
+    <l:@L> <vis:Visibility> "extern" "fn" <name:Ident> "(" <params:Params> ")" "->" <ret_ty:SpannedType> ";" <r:@R> => ExternFn {
+        attributes: vec![],
+        visibility: vis,
+        link_name: None,
+        name,
+        params,
+        ret_ty,
+        span: Span::new(l, r),
+    },
 };
 
 // Visibility modifier (v0.5 Phase 4)
@@ -142,21 +189,41 @@ UsePath: Vec<Spanned<String>> = {
     },
 };
 
-// Struct definition (v0.12.3: with optional attributes)
+// Struct definition (v0.12.3: with optional attributes, v0.13.1: with optional type params)
 StructDef: StructDef = {
-    // With attributes: @cfg(...) struct Name { ... }
+    // With attributes and type params: @cfg(...) struct Name<T> { ... }
+    <l:@L> <attrs:Attr+> <vis:Visibility> "struct" <name:Ident> <type_params:TypeParams> "{" <fields:StructFields> "}" <r:@R> => StructDef {
+        attributes: attrs,
+        visibility: vis,
+        name,
+        type_params,
+        fields,
+        span: Span::new(l, r),
+    },
+    // With attributes, no type params: @cfg(...) struct Name { ... }
     <l:@L> <attrs:Attr+> <vis:Visibility> "struct" <name:Ident> "{" <fields:StructFields> "}" <r:@R> => StructDef {
         attributes: attrs,
         visibility: vis,
         name,
+        type_params: vec![],
         fields,
         span: Span::new(l, r),
     },
-    // Without attributes
+    // Without attributes, with type params: struct Name<T> { ... }
+    <l:@L> <vis:Visibility> "struct" <name:Ident> <type_params:TypeParams> "{" <fields:StructFields> "}" <r:@R> => StructDef {
+        attributes: vec![],
+        visibility: vis,
+        name,
+        type_params,
+        fields,
+        span: Span::new(l, r),
+    },
+    // Without attributes, no type params
     <l:@L> <vis:Visibility> "struct" <name:Ident> "{" <fields:StructFields> "}" <r:@R> => StructDef {
         attributes: vec![],
         visibility: vis,
         name,
+        type_params: vec![],
         fields,
         span: Span::new(l, r),
     },
@@ -177,21 +244,41 @@ StructField: StructField = {
     <name:Ident> ":" <ty:SpannedType> => StructField { name, ty },
 };
 
-// Enum definition (v0.12.3: with optional attributes)
+// Enum definition (v0.12.3: with optional attributes, v0.13.1: with optional type params)
 EnumDef: EnumDef = {
-    // With attributes: @cfg(...) enum Name { ... }
+    // With attributes and type params: @cfg(...) enum Name<T> { ... }
+    <l:@L> <attrs:Attr+> <vis:Visibility> "enum" <name:Ident> <type_params:TypeParams> "{" <variants:EnumVariants> "}" <r:@R> => EnumDef {
+        attributes: attrs,
+        visibility: vis,
+        name,
+        type_params,
+        variants,
+        span: Span::new(l, r),
+    },
+    // With attributes, no type params: @cfg(...) enum Name { ... }
     <l:@L> <attrs:Attr+> <vis:Visibility> "enum" <name:Ident> "{" <variants:EnumVariants> "}" <r:@R> => EnumDef {
         attributes: attrs,
         visibility: vis,
         name,
+        type_params: vec![],
         variants,
         span: Span::new(l, r),
     },
-    // Without attributes
+    // Without attributes, with type params: enum Name<T> { ... }
+    <l:@L> <vis:Visibility> "enum" <name:Ident> <type_params:TypeParams> "{" <variants:EnumVariants> "}" <r:@R> => EnumDef {
+        attributes: vec![],
+        visibility: vis,
+        name,
+        type_params,
+        variants,
+        span: Span::new(l, r),
+    },
+    // Without attributes, no type params
     <l:@L> <vis:Visibility> "enum" <name:Ident> "{" <variants:EnumVariants> "}" <r:@R> => EnumDef {
         attributes: vec![],
         visibility: vis,
         name,
+        type_params: vec![],
         variants,
         span: Span::new(l, r),
     },
@@ -261,15 +348,16 @@ ContractClause: (Option<Spanned<Expr>>, Option<Spanned<Expr>>, Vec<NamedContract
     <pre:("pre" <SpannedExpr>)?> <post:("post" <SpannedExpr>)?> => (pre, post, vec![]),
 };
 
-// Function definition (v0.2: supports where {}, pre/post, ret binding)
+// Function definition (v0.2: supports where {}, pre/post, ret binding; v0.13.1: type params)
 FnDef: FnDef = {
-    // v0.2: With attributes and explicit ret binding: @attr fn name() -> r: Type
-    <l:@L> <attrs:Attr+> <vis:Visibility> "fn" <name:Ident> "(" <params:Params> ")" "->" <ret_name:Ident> ":" <ret_ty:SpannedType>
+    // With attributes and explicit ret binding: @attr fn name<T>() -> r: Type
+    <l:@L> <attrs:Attr+> <vis:Visibility> "fn" <name:Ident> <type_params:OptTypeParams> "(" <params:Params> ")" "->" <ret_name:Ident> ":" <ret_ty:SpannedType>
     <clause:ContractClause>
     "=" <body:SpannedExpr> ";" <r:@R> => FnDef {
         attributes: attrs,
         visibility: vis,
         name,
+        type_params,
         params,
         ret_name: Some(ret_name),
         ret_ty,
@@ -279,13 +367,14 @@ FnDef: FnDef = {
         body,
         span: Span::new(l, r),
     },
-    // v0.2: With attributes, legacy ret: @attr fn name() -> Type
-    <l:@L> <attrs:Attr+> <vis:Visibility> "fn" <name:Ident> "(" <params:Params> ")" "->" <ret_ty:SpannedType>
+    // With attributes, legacy ret: @attr fn name<T>() -> Type
+    <l:@L> <attrs:Attr+> <vis:Visibility> "fn" <name:Ident> <type_params:OptTypeParams> "(" <params:Params> ")" "->" <ret_ty:SpannedType>
     <clause:ContractClause>
     "=" <body:SpannedExpr> ";" <r:@R> => FnDef {
         attributes: attrs,
         visibility: vis,
         name,
+        type_params,
         params,
         ret_name: None,
         ret_ty,
@@ -295,13 +384,14 @@ FnDef: FnDef = {
         body,
         span: Span::new(l, r),
     },
-    // Without attributes, explicit ret binding: fn name() -> r: Type
-    <l:@L> <vis:Visibility> "fn" <name:Ident> "(" <params:Params> ")" "->" <ret_name:Ident> ":" <ret_ty:SpannedType>
+    // Without attributes, explicit ret binding: fn name<T>() -> r: Type
+    <l:@L> <vis:Visibility> "fn" <name:Ident> <type_params:OptTypeParams> "(" <params:Params> ")" "->" <ret_name:Ident> ":" <ret_ty:SpannedType>
     <clause:ContractClause>
     "=" <body:SpannedExpr> ";" <r:@R> => FnDef {
         attributes: vec![],
         visibility: vis,
         name,
+        type_params,
         params,
         ret_name: Some(ret_name),
         ret_ty,
@@ -311,13 +401,14 @@ FnDef: FnDef = {
         body,
         span: Span::new(l, r),
     },
-    // Without attributes, legacy ret: fn name() -> Type
-    <l:@L> <vis:Visibility> "fn" <name:Ident> "(" <params:Params> ")" "->" <ret_ty:SpannedType>
+    // Without attributes, legacy ret: fn name<T>() -> Type
+    <l:@L> <vis:Visibility> "fn" <name:Ident> <type_params:OptTypeParams> "(" <params:Params> ")" "->" <ret_ty:SpannedType>
     <clause:ContractClause>
     "=" <body:SpannedExpr> ";" <r:@R> => FnDef {
         attributes: vec![],
         visibility: vis,
         name,
+        type_params,
         params,
         ret_name: None,
         ret_ty,
@@ -348,6 +439,65 @@ Param: Param = {
 // Types
 SpannedType: Spanned<Type> = {
     <l:@L> <t:Type> <r:@R> => Spanned::new(t, Span::new(l, r)),
+};
+
+// v0.13.1: Type parameters for generic definitions
+// e.g., <T>, <T, U>, <T: Ord>
+TypeParams: Vec<TypeParam> = {
+    "<" <params:TypeParamList> ">" => params,
+};
+
+// Optional type parameters
+OptTypeParams: Vec<TypeParam> = {
+    <tp:TypeParams> => tp,
+    => vec![],
+};
+
+TypeParamList: Vec<TypeParam> = {
+    <v:(<TypeParamItem> ",")*> <e:TypeParamItem?> => match e {
+        None => v,
+        Some(e) => {
+            let mut v = v;
+            v.push(e);
+            v
+        }
+    },
+};
+
+TypeParamItem: TypeParam = {
+    // Type parameter with bounds: T: Ord + Clone
+    <name:RawIdent> ":" <bounds:TypeBounds> => TypeParam::with_bounds(name, bounds),
+    // Simple type parameter: T
+    <name:RawIdent> => TypeParam::new(name),
+};
+
+TypeBounds: Vec<String> = {
+    <first:RawIdent> <rest:("+" <RawIdent>)*> => {
+        let mut bounds = vec![first];
+        bounds.extend(rest);
+        bounds
+    },
+};
+
+// v0.13.1: Type arguments for generic types
+// e.g., <i64>, <i64, String>
+TypeArgs: Vec<Box<Type>> = {
+    "<" <args:TypeArgList> ">" => args,
+};
+
+TypeArgList: Vec<Box<Type>> = {
+    <v:(<BoxedType> ",")*> <e:BoxedType?> => match e {
+        None => v,
+        Some(e) => {
+            let mut v = v;
+            v.push(e);
+            v
+        }
+    },
+};
+
+BoxedType: Box<Type> = {
+    <t:Type> => Box::new(t),
 };
 
 // Refinement constraint list for T{constraints}
@@ -392,6 +542,9 @@ Type: Type = {
     "&" "mut" <t:Type> => Type::RefMut(Box::new(t)),
     // v0.5 Phase 6: Array types
     "[" <t:Type> ";" <n:"int"> "]" => Type::Array(Box::new(t), n as usize),
+    // v0.13.1: Generic type: Container<T>, Result<T, E>
+    <name:RawIdent> "<" <args:TypeArgList> ">" => Type::Generic { name, type_args: args },
+    // Named type or type variable (resolved later by type checker)
     <name:RawIdent> => Type::Named(name),
 };
 
@@ -446,6 +599,10 @@ Expr: Expr = {
     "for" <var:RawIdent> "in" <iter:SpannedRangeExpr> "{" <body:SpannedExpr> "}" => Expr::For {
         var,
         iter: Box::new(iter),
+        body: Box::new(body),
+    },
+    // v0.13.2: Try block for error handling
+    "try" "{" <body:SpannedExpr> "}" => Expr::Try {
         body: Box::new(body),
     },
 };
@@ -643,8 +800,12 @@ SpannedUnaryExpr: Spanned<Expr> = {
     <l:@L> <e:UnaryExpr> <r:@R> => Spanned::new(e, Span::new(l, r)),
 };
 
-// Postfix expression (method calls, field access, index, state refs)
+// Postfix expression (method calls, field access, index, state refs, ?)
 PostfixExpr: Expr = {
+    // v0.13.2: Question mark operator for error propagation: expr?
+    <e:SpannedPostfixExpr> "?" => Expr::Question {
+        expr: Box::new(e),
+    },
     // v0.2: State reference: expr.pre (pre-state in contracts)
     <e:SpannedPostfixExpr> "." "pre" => Expr::StateRef {
         expr: Box::new(e),

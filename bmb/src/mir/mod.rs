@@ -14,6 +14,22 @@ use std::collections::HashMap;
 #[derive(Debug, Clone)]
 pub struct MirProgram {
     pub functions: Vec<MirFunction>,
+    /// External function declarations (v0.13.0)
+    pub extern_fns: Vec<MirExternFn>,
+}
+
+/// External function declaration (v0.13.0)
+/// These are imported from external modules (WASI, libc, etc.)
+#[derive(Debug, Clone)]
+pub struct MirExternFn {
+    /// External module name (e.g., "wasi_snapshot_preview1")
+    pub module: String,
+    /// Function name
+    pub name: String,
+    /// Parameter types
+    pub params: Vec<MirType>,
+    /// Return type
+    pub ret_ty: MirType,
 }
 
 /// A MIR function with explicit control flow

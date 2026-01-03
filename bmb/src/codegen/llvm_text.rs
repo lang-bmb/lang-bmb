@@ -486,6 +486,7 @@ mod tests {
                     terminator: Terminator::Return(Some(Operand::Place(Place::new("_t0")))),
                 }],
             }],
+            extern_fns: vec![],
         };
 
         let codegen = TextCodeGen::new();

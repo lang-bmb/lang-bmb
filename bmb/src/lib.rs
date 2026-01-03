@@ -6,6 +6,7 @@ pub mod ast;
 pub mod build;
 pub mod cfg;
 pub mod codegen;
+pub mod derive;
 pub mod error;
 pub mod interp;
 pub mod lexer;

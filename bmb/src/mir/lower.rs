@@ -5,11 +5,11 @@
 //! - Making control flow explicit through basic blocks
 //! - Converting operators based on operand types
 
-use crate::ast::{BinOp, Expr, FnDef, Item, Program, Spanned, Type, UnOp};
+use crate::ast::{Attribute, BinOp, Expr, FnDef, Item, Program, Spanned, Type, UnOp};
 
 use super::{
-    Constant, LoweringContext, MirBinOp, MirFunction, MirInst, MirProgram, MirType, MirUnaryOp,
-    Operand, Place, Terminator,
+    Constant, LoweringContext, MirBinOp, MirExternFn, MirFunction, MirInst, MirProgram, MirType,
+    MirUnaryOp, Operand, Place, Terminator,
 };
 
 /// Lower an entire program to MIR
@@ -19,12 +19,63 @@ pub fn lower_program(program: &Program) -> MirProgram {
         .iter()
         .filter_map(|item| match item {
             Item::FnDef(fn_def) => Some(lower_function(fn_def)),
-            // Type definitions and use statements don't produce MIR functions
-            Item::StructDef(_) | Item::EnumDef(_) | Item::Use(_) => None,
+            // Type definitions, use statements, and extern fns don't produce MIR functions
+            Item::StructDef(_) | Item::EnumDef(_) | Item::Use(_) | Item::ExternFn(_) => None,
         })
         .collect();
 
-    MirProgram { functions }
+    // Collect extern function declarations (v0.13.0)
+    let extern_fns = program
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            Item::ExternFn(e) => Some(lower_extern_fn(e)),
+            _ => None,
+        })
+        .collect();
+
+    MirProgram {
+        functions,
+        extern_fns,
+    }
+}
+
+/// Lower an extern function declaration to MIR (v0.13.0)
+fn lower_extern_fn(extern_fn: &crate::ast::ExternFn) -> MirExternFn {
+    // Extract module name from @link attribute or use default
+    let module = extern_fn
+        .link_name
+        .clone()
+        .unwrap_or_else(|| extract_module_from_attrs(&extern_fn.attributes));
+
+    let params = extern_fn
+        .params
+        .iter()
+        .map(|p| ast_type_to_mir(&p.ty.node))
+        .collect();
+
+    let ret_ty = ast_type_to_mir(&extern_fn.ret_ty.node);
+
+    MirExternFn {
+        module,
+        name: extern_fn.name.node.clone(),
+        params,
+        ret_ty,
+    }
+}
+
+/// Extract module name from attributes (v0.13.0)
+/// Checks for @wasi, @libc, etc. to determine module name
+fn extract_module_from_attrs(attrs: &[Attribute]) -> String {
+    for attr in attrs {
+        match attr.name() {
+            "wasi" => return "wasi_snapshot_preview1".to_string(),
+            "libc" => return "env".to_string(),
+            _ => {}
+        }
+    }
+    // Default module name
+    "env".to_string()
 }
 
 /// Lower a function definition to MIR
@@ -473,6 +524,13 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
 
         // v0.2: Refinement self-reference (translated to __it__ variable)
         Expr::It => Operand::Place(Place::new("__it__")),
+
+        // v0.13.2: Try block - lower the body expression
+        Expr::Try { body } => lower_expr(body, ctx),
+
+        // v0.13.2: Question mark operator - lower the inner expression
+        // Full error propagation semantics will be added with Result type support
+        Expr::Question { expr: inner } => lower_expr(inner, ctx),
     }
 }
 
@@ -502,6 +560,10 @@ fn ast_type_to_mir(ty: &Type) -> MirType {
         Type::Unit => MirType::Unit,
         Type::Range(elem) => ast_type_to_mir(elem), // Range represented by its element type
         Type::Named(_) => MirType::I64, // Named types default to pointer-sized int for now
+        // v0.13.1: Type variables are unresolved, treat as opaque (pointer-sized)
+        Type::TypeVar(_) => MirType::I64,
+        // v0.13.1: Generic types are treated as their container (pointer-sized for now)
+        Type::Generic { .. } => MirType::I64,
         Type::Struct { .. } => MirType::I64, // Struct types treated as pointers
         Type::Enum { .. } => MirType::I64, // Enum types treated as tagged unions
         // v0.5 Phase 5: References are pointers
@@ -570,6 +632,7 @@ mod tests {
                 attributes: vec![],
                 visibility: Visibility::Private,
                 name: spanned("add".to_string()),
+                type_params: vec![],
                 params: vec![
                     Param {
                         name: spanned("a".to_string()),
@@ -616,6 +679,7 @@ mod tests {
                 attributes: vec![],
                 visibility: Visibility::Private,
                 name: spanned("max".to_string()),
+                type_params: vec![],
                 params: vec![
                     Param {
                         name: spanned("a".to_string()),
@@ -664,6 +728,7 @@ mod tests {
                 attributes: vec![],
                 visibility: Visibility::Private,
                 name: spanned("test".to_string()),
+                type_params: vec![],
                 params: vec![],
                 ret_name: None,
                 ret_ty: spanned(Type::I64),
@@ -696,6 +761,7 @@ mod tests {
                 attributes: vec![],
                 visibility: Visibility::Private,
                 name: spanned("test".to_string()),
+                type_params: vec![],
                 params: vec![],
                 ret_name: None,
                 ret_ty: spanned(Type::I64),
@@ -727,6 +793,7 @@ mod tests {
                 attributes: vec![],
                 visibility: Visibility::Private,
                 name: spanned("test".to_string()),
+                type_params: vec![],
                 params: vec![],
                 ret_name: None,
                 ret_ty: spanned(Type::Unit),

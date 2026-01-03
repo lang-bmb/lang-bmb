@@ -75,6 +75,7 @@ impl CfgEvaluator {
             Item::StructDef(s) => self.evaluate_attrs(&s.attributes),
             Item::EnumDef(e) => self.evaluate_attrs(&e.attributes),
             Item::Use(_) => true, // Use statements are always included
+            Item::ExternFn(e) => self.evaluate_attrs(&e.attributes), // v0.13.0
         }
     }
 
@@ -160,6 +161,7 @@ mod tests {
             attributes: attrs,
             visibility: Visibility::Private,
             name: Spanned::new(name.to_string(), Span::new(0, name.len())),
+            type_params: vec![],
             params: vec![],
             ret_name: None,
             ret_ty: Spanned::new(Type::Unit, Span::new(0, 4)),
