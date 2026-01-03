@@ -37,8 +37,10 @@ v0.MAJOR.MINOR
 | v0.7 | Bloom | 도구 기초 (fmt, lsp, test, action-bmb) | ✅ 완료 |
 | v0.8 | Fruit | 패키지 매니저 (곳간) | ✅ 완료 |
 | v0.9 | Harvest | 생태계 (에디터, 원격 패키지) | ✅ 완료 |
-| v0.10 | Sunrise | Bootstrap 진행 | 🔄 진행중 |
-| v0.11 | Dawn | Bootstrap 완성 | 계획 |
+| v0.10 | Sunrise | Bootstrap + 컴포넌트 패키지화 | 🔄 진행중 |
+| v0.11 | Dawn | AI-Native gotgan + Bootstrap 완성 | 계획 |
+| v0.12 | Horizon | WASM 듀얼 타깃 | 계획 |
+| v0.13 | Summit | 생태계 완성 (MCP, 레지스트리) | 계획 |
 | v1.0-RC | Golden | 부트스트래핑 완료 + 검증 | 계획 |
 
 ---
@@ -1224,11 +1226,52 @@ PS> .\examples\bootstrap_test\factorial.exe
 - lld-link 직접 호출 (MSVC 링커 우회)
 - runtime.c 함수 충돌 해결 (`abs` → `bmb_abs`)
 
+### v0.10.13 - 부트스트랩 컴포넌트 패키지화 준비
+
+**목표**: Bootstrap BMB 코드에서 재사용 가능한 컴포넌트 식별 및 분리
+
+**패키지화 대상:**
+| 컴포넌트 | 출처 | 패키지명 |
+|----------|------|----------|
+| String 유틸리티 | llvm_ir.bmb | `bmb-std/string` |
+| 파싱 헬퍼 | llvm_ir.bmb, parser.bmb | `bmb-std/parse` |
+| MIR 타입 | mir.bmb | `bmb-compiler/mir` |
+
+### v0.10.14 - std/string 패키지 추출
+
+```bmb
+-- gotgan.toml
+[package]
+name = "bmb-std-string"
+version = "0.1.0"
+
+-- src/lib.bmb
+fn int_to_string(n: i64) -> String
+  post parse_int(ret) == n;
+
+fn char_to_string(c: i64) -> String
+  pre c >= 0 and c <= 127;
+
+fn digit_char(d: i64) -> String
+  pre d >= 0 and d <= 9;
+```
+
+### v0.10.15 - std/parse 패키지 추출
+
+```bmb
+-- 파싱 유틸리티 패키지
+fn skip_ws(s: String, pos: i64) -> i64;
+fn find_char(s: String, c: i64, pos: i64) -> i64;
+fn starts_with(s: String, prefix: String, pos: i64) -> bool;
+fn read_until_ws(s: String, pos: i64) -> String;
+```
+
 ---
 
-## v0.11 Dawn (Bootstrap 완성)
+## v0.11 Dawn (AI-Native gotgan + Bootstrap)
 
-> 목표: Stage 2 컴파일러 + 도구 BMB 재작성
+> 목표: AI-네이티브 패키지 매니저 + Stage 2 컴파일러 + BMB 재작성
+> 참고: [GOTGAN_DESIGN.md](./GOTGAN_DESIGN.md)
 
 ### v0.11.0 - BMB 컴파일러 완성
 
@@ -1273,6 +1316,157 @@ diff bmb-stage2 bmb-stage3  # 동일해야 함
 | net | 15+ | 네트워크 |
 | async | 20+ | 비동기 |
 | math | 30+ | 수학 함수 |
+
+### v0.11.4 - BMBX 번들 포맷 구현
+
+**AI-Native Package Bundle:**
+```
+package.bmbx
+├── manifest.toml      # 패키지 메타데이터
+├── contracts.json     # 모든 계약의 JSON 표현
+├── symbols.json       # AI 탐색용 심볼 인덱스
+├── types.json         # 타입 시그니처
+├── src/               # 소스 코드
+└── bin/               # 컴파일된 바이너리 (multi-target)
+```
+
+### v0.11.5 - 계약 기반 의존성 검사
+
+```toml
+[dependencies]
+math = { version = "^1.0", contracts = ["divide.pre: b != 0"] }
+```
+
+**기능:**
+- 계약 호환성 자동 검사
+- 계약 약화/강화 감지
+- 비호환 변경 경고
+
+### v0.11.6 - AI 패키지 탐색
+
+```bash
+# 자연어 검색
+$ gotgan search --ai "정수를 문자열로 변환"
+
+# 계약 기반 검색
+$ gotgan search --contract "pre: x > 0"
+
+# 심볼 탐색
+$ gotgan explore math --symbols
+```
+
+### v0.11.7 - 단일 파일 번들
+
+```bash
+# 모든 의존성을 하나의 .bmb로 번들
+$ gotgan bundle --single-file
+
+# 계약 보존 번들
+$ gotgan bundle --preserve-contracts
+```
+
+---
+
+## v0.12 Horizon (WASM 듀얼 타깃)
+
+> 목표: LLVM 네이티브 + WASM 포터블 동시 지원
+
+### v0.12.0 - MIR → WASM IR 변환기
+
+```
+MIR (공통 중간 표현)
+    ↓
+    ├─────────────────────────────┐
+    ↓                             ↓
+LLVM IR Generator           WASM IR Generator
+    ↓                             ↓
+Native Binary               .wasm
+```
+
+### v0.12.1 - WASI 런타임 바인딩
+
+```bmb
+-- WASI 표준 인터페이스
+extern fn fd_write(fd: i32, iovs: i32, iovs_len: i32, nwritten: i32) -> i32;
+extern fn fd_read(fd: i32, iovs: i32, iovs_len: i32, nread: i32) -> i32;
+extern fn proc_exit(code: i32) -> !;
+```
+
+### v0.12.2 - 브라우저 런타임 바인딩
+
+```bmb
+-- JavaScript 인터페이스
+extern fn js_console_log(msg: String) -> unit;
+extern fn js_alert(msg: String) -> unit;
+extern fn js_fetch(url: String) -> Promise<String>;
+```
+
+### v0.12.3 - 조건부 컴파일
+
+```bmb
+#[cfg(target = "wasm32")]
+fn print(s: String) = js_console_log(s);
+
+#[cfg(target = "native")]
+fn print(s: String) = libc_puts(s);
+```
+
+### v0.12.4 - 듀얼 타깃 빌드
+
+```toml
+# gotgan.toml
+[targets]
+native = ["x86_64-linux", "aarch64-darwin"]
+wasm = ["wasm32-unknown-unknown", "wasm32-wasi"]
+```
+
+```bash
+$ gotgan build --all-targets
+→ target/x86_64-linux/release/app
+→ target/wasm32/release/app.wasm
+```
+
+---
+
+## v0.13 Summit (생태계 완성)
+
+> 목표: 완전한 AI-네이티브 생태계
+
+### v0.13.0 - gotgan MCP 서버
+
+```json
+{
+  "tools": [
+    "search_packages",
+    "explore_package",
+    "generate_example",
+    "verify_contracts"
+  ]
+}
+```
+
+### v0.13.1 - 레지스트리 자동화
+
+- 패키지 자동 검증
+- 계약 커버리지 점수
+- AI 인덱스 자동 생성
+- CDN 배포
+
+### v0.13.2 - 패키지 품질 점수
+
+| 지표 | 가중치 |
+|------|--------|
+| 계약 커버리지 | 30% |
+| 테스트 커버리지 | 25% |
+| 문서화 | 20% |
+| AI 힌트 | 15% |
+| 다운로드 수 | 10% |
+
+### v0.13.3 - 의존성 그래프 시각화
+
+- 웹 기반 의존성 탐색기
+- 계약 전파 시각화
+- 호환성 매트릭스
 
 ---
 
@@ -1369,7 +1563,17 @@ v0.10.8 → v0.10.9: Unified Compiler Entry Point (📈 적당) ✅
 v0.10.9 → v0.10.10: Integration Testing (📈 적당) ✅
 v0.10.10 → v0.10.11: End-to-End Validation (📈 적당) ✅
 v0.10.11 → v0.10.12: Text-based LLVM IR Backend (📈 적당) ✅
-v0.10.12 → v0.11.x: BMB 재작성 완성 (📈 적당)
+v0.10.12 → v0.10.13: 컴포넌트 패키지화 준비 (📈 적당)
+v0.10.13 → v0.10.14: std/string 패키지 (📈 적당)
+v0.10.14 → v0.10.15: std/parse 패키지 (📈 적당)
+v0.10.15 → v0.11.0: BMB 컴파일러 완성 (📈 도전적)
+v0.11.0 → v0.11.4: BMBX 번들 포맷 (📈 적당)
+v0.11.4 → v0.11.7: AI 패키지 탐색 (📈 적당)
+v0.11.7 → v0.12.0: WASM IR 변환기 (📈 도전적)
+v0.12.0 → v0.12.4: 듀얼 타깃 완성 (📈 적당)
+v0.12.4 → v0.13.0: MCP 서버 (📈 적당)
+v0.13.0 → v0.13.3: 생태계 완성 (📈 적당)
+v0.13.3 → v1.0-RC: 자기 호스팅 (📈 도전적)
 ```
 
 ---
@@ -1382,9 +1586,11 @@ v0.6: 표준 라이브러리 기초 (100+개 함수) ✅
 v0.7: 도구 기초 (fmt, lsp, test, action-bmb) ✅
 v0.8: 패키지 기초 (곳간) ✅
 v0.9: 생태계 (에디터, 원격 패키지, playground, site, benchmark) ✅
-v0.10: Bootstrap 진행 (타입체커 ✅, MIR ✅, Lowering ✅, Pipeline ✅, LLVM IR ✅, Compiler ✅, Integration ✅, E2E Validation ✅, Text LLVM IR ✅) 🔄
-v0.11: Bootstrap 완성 (Stage 2, 도구 BMB 재작성)
-v1.0: 안정성 약속 + 검증 완료
+v0.10: Bootstrap (타입체커✅, MIR✅, LLVM IR✅, Text LLVM✅, 패키지화) 🔄
+v0.11: AI-Native gotgan + Bootstrap 완성 (BMBX, 계약검색, Stage 2)
+v0.12: WASM 듀얼 타깃 (WASI, 브라우저, 조건부 컴파일)
+v0.13: 생태계 완성 (MCP 서버, 레지스트리 자동화, 품질 점수)
+v1.0: 안정성 약속 + 완전한 자기 호스팅
 
 핵심 지표:
 - 계약: 10,000+
@@ -1393,4 +1599,6 @@ v1.0: 안정성 약속 + 검증 완료
 - 에코시스템: 8개 레포지토리
 - 벤치마크: BMB >= C -O3
 - 부트스트래핑: 완료
+- AI-Native: gotgan + MCP + 계약 탐색
+- 듀얼 타깃: LLVM Native + WASM
 ```
