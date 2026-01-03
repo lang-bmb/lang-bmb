@@ -39,7 +39,7 @@ v0.MAJOR.MINOR
 | v0.9 | Harvest | 생태계 (에디터, 원격 패키지) | ✅ 완료 |
 | v0.10 | Sunrise | Bootstrap + 컴포넌트 패키지화 | ✅ 완료 |
 | v0.11 | Dawn | AI-Native gotgan + Bootstrap 완성 | 🔄 진행중 (v0.11.4-7 ✅) |
-| v0.12 | Horizon | WASM 듀얼 타깃 | 🔄 진행중 (v0.12.0 ✅) |
+| v0.12 | Horizon | WASM 듀얼 타깃 | 🔄 진행중 (v0.12.0-2 ✅) |
 | v0.13 | Summit | 생태계 완성 (MCP, 레지스트리) | 계획 |
 | v1.0-RC | Golden | 부트스트래핑 완료 + 검증 | 계획 |
 
@@ -1483,22 +1483,50 @@ Generated: add.wat
 )
 ```
 
-### v0.12.1 - WASI 런타임 바인딩
+### v0.12.1 - WASI 런타임 바인딩 ✅
 
-```bmb
--- WASI 표준 인터페이스
-extern fn fd_write(fd: i32, iovs: i32, iovs_len: i32, nwritten: i32) -> i32;
-extern fn fd_read(fd: i32, iovs: i32, iovs_len: i32, nread: i32) -> i32;
-extern fn proc_exit(code: i32) -> !;
+**구현 방식:** BMB 언어에 extern fn이 없으므로, WASM 코드젠에서 직접 런타임 함수 생성
+
+**WASI 런타임 함수 (wasm_text.rs):**
+```wat
+;; I/O 함수
+(func $println (param $val i64))  ;; i64를 stdout에 출력 (개행 포함)
+(func $print (param $val i64))    ;; i64를 stdout에 출력 (개행 없음)
+
+;; 프로세스 제어
+(func $exit (param $code i32))    ;; 프로세스 종료
+(func $assert (param $cond i32))  ;; 조건 검사, 실패시 종료
+
+;; 내부 헬퍼
+(func $i64_to_str (param $val i64) (result i32))  ;; i64→문자열 변환
 ```
 
-### v0.12.2 - 브라우저 런타임 바인딩
+**WASI 임포트:**
+- `fd_write` - 파일 디스크립터에 쓰기 (stdout 출력용)
+- `proc_exit` - 프로세스 종료
 
-```bmb
--- JavaScript 인터페이스
-extern fn js_console_log(msg: String) -> unit;
-extern fn js_alert(msg: String) -> unit;
-extern fn js_fetch(url: String) -> Promise<String>;
+### v0.12.2 - 브라우저 런타임 바인딩 ✅
+
+**브라우저 런타임 함수:**
+```wat
+;; I/O 함수 (console.log 사용)
+(func $println (param $val i64))  ;; console.log로 출력
+(func $print (param $val i64))    ;; console.log로 출력
+
+;; 프로세스 제어
+(func $exit (param $code i32))    ;; unreachable 트랩
+(func $assert (param $cond i32))  ;; unreachable 트랩 (실패시)
+```
+
+**브라우저 임포트:**
+- `console_log` - JavaScript console.log 바인딩
+- `console_log_f64` - 부동소수점 출력용
+
+**테스트:**
+```rust
+#[test] fn test_wasi_runtime_functions() { ... }      // 7개 assertion
+#[test] fn test_browser_runtime_functions() { ... }   // 6개 assertion
+#[test] fn test_standalone_no_runtime() { ... }       // 3개 assertion
 ```
 
 ### v0.12.3 - 조건부 컴파일
