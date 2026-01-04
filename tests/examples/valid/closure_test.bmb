@@ -1,12 +1,12 @@
 -- v0.20.0: Closure test file
 
--- Simple closure with single parameter
+-- Simple closure with single parameter (returns fn(i64) -> i64)
 fn make_adder(x: i64) -> i64 = fn |y: i64| { x + y };
 
--- Closure with multiple parameters
+-- Closure with multiple parameters (returns fn(i64, i64) -> i64)
 fn apply_binary(a: i64, b: i64) -> i64 = fn |x: i64, y: i64| { x * y };
 
--- Empty closure (no parameters)
+-- Empty closure (no parameters) (returns fn() -> i64)
 fn constant_fn() -> i64 = fn || { 42 };
 
 -- Closure with block body
@@ -14,3 +14,6 @@ fn complex_closure() -> i64 = fn |x: i64| {
     let doubled = x * 2;
     doubled + 1
 };
+
+-- Note: The return types above are simplified for parser testing.
+-- Type checker will infer fn(params) -> ret_type for closures.

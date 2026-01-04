@@ -56,7 +56,7 @@ v0.MAJOR.MINOR
 | v0.17 | **Module** | 모듈 시스템 + 패키지 간 타입 참조 | ✅ 완료 (v0.17.0-3) |
 | v0.18 | **Methods** | Option/Result 메서드 호출 구문 | ✅ 완료 (v0.18.0) |
 | v0.19 | **Complete** | MIR Completion (Struct/Enum/Pattern) | ✅ 완료 (v0.19.0-5) |
-| v0.20 | **Extend** | Language Extensions (Closures/Traits) | 계획 |
+| v0.20 | **Extend** | Language Extensions (Closures/Traits) | 🔄 진행중 (v0.20.0 ✅) |
 | v0.21 | **Bootstrap** | Bootstrap Enhancement (Struct/Enum MIR) | 계획 |
 | v0.22 | **Mirror** | Self-Hosting (Stage 1/2/3 Verification) | 계획 |
 | v0.23 | **Showcase** | 주요 앱 시나리오 샘플 10개 | 계획 |

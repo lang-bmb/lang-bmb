@@ -388,7 +388,30 @@ impl TypeChecker {
             }
 
             Expr::Call { func, args } => {
-                // v0.15: First try non-generic functions
+                // v0.20.0: First try closure/function variable
+                if let Some(var_ty) = self.env.get(func).cloned() {
+                    if let Type::Fn { params: param_tys, ret: ret_ty } = var_ty {
+                        if args.len() != param_tys.len() {
+                            return Err(CompileError::type_error(
+                                format!(
+                                    "closure expects {} arguments, got {}",
+                                    param_tys.len(),
+                                    args.len()
+                                ),
+                                span,
+                            ));
+                        }
+
+                        for (arg, param_ty) in args.iter().zip(param_tys.iter()) {
+                            let arg_ty = self.infer(&arg.node, arg.span)?;
+                            self.unify(param_ty.as_ref(), &arg_ty, arg.span)?;
+                        }
+
+                        return Ok(*ret_ty);
+                    }
+                }
+
+                // v0.15: Try non-generic functions
                 if let Some((param_tys, ret_ty)) = self.functions.get(func).cloned() {
                     if args.len() != param_tys.len() {
                         return Err(CompileError::type_error(
@@ -759,19 +782,42 @@ impl TypeChecker {
             }
 
             // v0.20.0: Closure expressions
-            // TODO: Implement proper closure type with capture analysis
-            Expr::Closure { params, ret_ty: _, body } => {
-                // For now, just type check the body with params in scope
-                // Full closure type system will be implemented in Phase 2
+            Expr::Closure { params, ret_ty, body } => {
+                // Save current environment for capture analysis
+                let outer_env = self.env.clone();
+
+                // Collect parameter types and add to environment
+                let mut param_types: Vec<Box<Type>> = Vec::new();
                 for param in params {
-                    if let Some(ty) = &param.ty {
-                        self.env.insert(param.name.node.clone(), ty.node.clone());
-                    }
+                    let param_ty = if let Some(ty) = &param.ty {
+                        ty.node.clone()
+                    } else {
+                        // Type inference for unannotated parameters is future work
+                        return Err(CompileError::type_error(
+                            format!("closure parameter '{}' requires type annotation", param.name.node),
+                            param.name.span,
+                        ));
+                    };
+                    param_types.push(Box::new(param_ty.clone()));
+                    self.env.insert(param.name.node.clone(), param_ty);
                 }
+
+                // Infer body type
                 let body_ty = self.infer(&body.node, body.span)?;
-                // Placeholder: return the body type
-                // Real implementation will return a Fn trait type
-                Ok(body_ty)
+
+                // Check against explicit return type if provided
+                if let Some(explicit_ret) = ret_ty {
+                    self.unify(&explicit_ret.node, &body_ty, body.span)?;
+                }
+
+                // Restore outer environment (closure doesn't pollute outer scope)
+                self.env = outer_env;
+
+                // Return function type: fn(params) -> body_ty
+                Ok(Type::Fn {
+                    params: param_types,
+                    ret: Box::new(body_ty),
+                })
             }
         }
     }
@@ -1335,6 +1381,26 @@ impl TypeChecker {
                     ))
                 }
             }
+            // v0.20.0: Fn type
+            Type::Fn { params, ret } => {
+                if let Type::Fn { params: arg_params, ret: arg_ret } = arg_ty {
+                    if params.len() != arg_params.len() {
+                        return Err(CompileError::type_error(
+                            format!("function parameter count mismatch: expected {}, got {}", params.len(), arg_params.len()),
+                            span,
+                        ));
+                    }
+                    for (p, ap) in params.iter().zip(arg_params.iter()) {
+                        self.infer_type_args(p, ap, type_subst, span)?;
+                    }
+                    self.infer_type_args(ret, arg_ret, type_subst, span)
+                } else {
+                    Err(CompileError::type_error(
+                        format!("expected function type, got {}", arg_ty),
+                        span,
+                    ))
+                }
+            }
             // For concrete types, just check equality
             _ => {
                 if param_ty == arg_ty {
@@ -1388,6 +1454,15 @@ impl TypeChecker {
                     constraints: constraints.clone(),
                 }
             }
+            // v0.20.0: Fn type
+            Type::Fn { params, ret } => {
+                Type::Fn {
+                    params: params.iter()
+                        .map(|p| Box::new(self.resolve_type_vars(p, type_param_names)))
+                        .collect(),
+                    ret: Box::new(self.resolve_type_vars(ret, type_param_names)),
+                }
+            }
             // Other types remain unchanged
             _ => ty.clone(),
         }
@@ -1425,6 +1500,15 @@ impl TypeChecker {
                 Type::Refined {
                     base: Box::new(self.substitute_type(base, type_subst)),
                     constraints: constraints.clone(),
+                }
+            }
+            // v0.20.0: Fn type
+            Type::Fn { params, ret } => {
+                Type::Fn {
+                    params: params.iter()
+                        .map(|p| Box::new(self.substitute_type(p, type_subst)))
+                        .collect(),
+                    ret: Box::new(self.substitute_type(ret, type_subst)),
                 }
             }
             // Concrete types remain unchanged

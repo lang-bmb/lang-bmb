@@ -82,6 +82,12 @@ pub enum Type {
         base: Box<Type>,
         constraints: Vec<Spanned<Expr>>,
     },
+    /// Function/Closure type (v0.20.0): fn(T1, T2) -> R
+    /// Represents both closures and function references
+    Fn {
+        params: Vec<Box<Type>>,
+        ret: Box<Type>,
+    },
 }
 
 /// Manual PartialEq implementation for Type
@@ -118,6 +124,10 @@ impl PartialEq for Type {
             (Type::Refined { base: b1, .. }, Type::Refined { base: b2, .. }) => b1 == b2,
             (Type::Refined { base, .. }, other) | (other, Type::Refined { base, .. }) => {
                 base.as_ref() == other
+            }
+            // v0.20.0: Fn type equality
+            (Type::Fn { params: p1, ret: r1 }, Type::Fn { params: p2, ret: r2 }) => {
+                p1 == p2 && r1 == r2
             }
             _ => false,
         }
@@ -189,6 +199,17 @@ impl std::fmt::Display for Type {
                     write!(f, "<constraint>")?;
                 }
                 write!(f, "}}")
+            }
+            // v0.20.0: Fn type display
+            Type::Fn { params, ret } => {
+                write!(f, "fn(")?;
+                for (i, param) in params.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{param}")?;
+                }
+                write!(f, ") -> {ret}")
             }
         }
     }

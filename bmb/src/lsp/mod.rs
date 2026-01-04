@@ -901,6 +901,14 @@ fn format_type(ty: &crate::ast::Type) -> String {
                 .join(", ");
             format!("{}{{{}}}", format_type(base), constraint_str)
         }
+        // v0.20.0: Fn type
+        Type::Fn { params, ret } => {
+            let params_str = params.iter()
+                .map(|p| format_type(p))
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("fn({}) -> {}", params_str, format_type(ret))
+        }
     }
 }
 

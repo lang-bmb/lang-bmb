@@ -747,6 +747,8 @@ fn ast_type_to_mir(ty: &Type) -> MirType {
         Type::Array(_, _) => MirType::I64,
         // v0.2: Refined types use base type
         Type::Refined { base, .. } => ast_type_to_mir(base),
+        // v0.20.0: Fn types are function pointers (pointer-sized)
+        Type::Fn { .. } => MirType::I64,
     }
 }
 

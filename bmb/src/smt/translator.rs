@@ -139,6 +139,8 @@ impl SmtTranslator {
             Type::Array(_, _) => SmtSort::Int,
             // v0.2: Refined types use base type sort
             Type::Refined { base, .. } => Self::type_to_sort(base),
+            // v0.20.0: Fn types as Int (function pointers)
+            Type::Fn { .. } => SmtSort::Int,
         }
     }
 
