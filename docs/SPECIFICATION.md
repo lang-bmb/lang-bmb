@@ -13,14 +13,21 @@ BMB is an AI-native programming language designed for:
 
 ### 1.1 Design Philosophy
 
+#### Non-Negotiable Priorities (타협불가)
+
 | Priority | Principle | Description |
 |----------|-----------|-------------|
-| 1 | Correctness | Contract verification prevents bugs at source |
-| 2 | Performance | Exceed C/Rust limits via contract-based optimization |
-| 3 | AI Generation | Optimize for first-time correct code generation |
-| 4 | Minimal Debugging | SMT counterexamples enable immediate fixes |
-| 5 | Token Efficiency | Reasonable minimization |
-| 6 | Code Reuse | Contract synthesis, duplication elimination |
+| **P0** | **Performance** | Syntax must enable maximum performance. No syntax limitations constraining performance. Must exceed C/Rust. |
+| **P0** | **Correctness** | If compile-time checking is possible, it MUST be in the language spec. All verifiable invariants checked statically. |
+
+#### Secondary Priorities
+
+| Priority | Principle | Description |
+|----------|-----------|-------------|
+| 1 | AI Generation | Optimize for first-time correct code generation |
+| 2 | Minimal Debugging | SMT counterexamples enable immediate fixes |
+| 3 | Token Efficiency | Reasonable minimization |
+| 4 | Code Reuse | Contract synthesis, duplication elimination |
 
 ### 1.2 Design Principles
 
