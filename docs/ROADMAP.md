@@ -303,6 +303,12 @@ v0.MAJOR.MINOR
 - `enum_reg_count`, `enum_reg_is_generic`: Registry utilities
 - 5 new test functions, 19 assertions (335 total in types.bmb)
 
+**v0.30.16 Completed (2026-01-04)**:
+- Unified type environment for all registries
+- Type parameter, struct, enum, function registry integration
+- `tenv_*` family of functions (27 tests)
+- Total: 389 tests passing
+
 **v0.30.15 Completed (2026-01-04)**:
 - `fn_reg_new`, `fn_reg_add`: Create and populate function registry
 - `fn_reg_lookup`, `fn_reg_has`: Query registry for function signatures

@@ -121,7 +121,7 @@ Comprehensive test suite with 15 test categories.
 14. Deep nesting
 15. Nested function calls
 
-### types.bmb (100KB) - v0.30.15
+### types.bmb (100KB) - v0.30.16
 Type checker foundation for BMB.
 
 **Features:**
@@ -238,6 +238,15 @@ Type checker foundation for BMB.
 - `fn_reg_param_type_at`: Get parameter type at index with type arguments applied
 - `fn_reg_count`, `fn_reg_is_generic`, `fn_reg_param_count`: Registry utilities
 
+**Features (v0.30.16):**
+- Type environment: Unified container for all type information
+- Format: `"P:tparams#S:struct_reg#E:enum_reg#F:fn_reg"` (hash-separated sections)
+- `tenv_new`, `tenv_get_tparams`, `tenv_get_struct_reg`, `tenv_get_enum_reg`, `tenv_get_fn_reg`: Accessors
+- `tenv_with_tparams`, `tenv_with_struct_reg`, `tenv_with_enum_reg`, `tenv_with_fn_reg`: Setters
+- `tenv_add_struct`, `tenv_add_enum`, `tenv_add_fn`, `tenv_add_tparam`: Registry integration
+- `tenv_struct_field_type`, `tenv_enum_variant_type`, `tenv_fn_return_type`: Type resolution
+- `tenv_has_tparam`, `tenv_resolve_tparam`: Type parameter operations
+
 **Test output:**
 ```
 777 (start marker)
@@ -315,8 +324,15 @@ Type checker foundation for BMB.
 4  (fn reg param type at tests)
 3  (fn reg is generic tests)
 4  (fn reg param count tests)
+4  (tenv new tests)
+4  (tenv with tests)
+5  (tenv add tests)
+3  (tenv struct field tests)
+3  (tenv enum variant tests)
+3  (tenv fn return tests)
+5  (tenv tparam ops tests)
 888 (separator)
-362 (total passed)
+389 (total passed)
 999 (end marker)
 ```
 

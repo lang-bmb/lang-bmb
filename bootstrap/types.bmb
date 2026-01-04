@@ -1603,6 +1603,142 @@ fn fn_reg_param_count(reg: String, name: String) -> i64 =
     else gen_fn_param_count(sig);
 
 -- ============================================================================
+-- v0.30.16: Type Environment (Unified)
+-- ============================================================================
+-- Format: "P:tparams#S:struct_reg#E:enum_reg#F:fn_reg"
+-- Uses '#' as section separator (35) to avoid conflict with '|' in internal formats
+-- Combines type parameters and all registries into a single environment
+
+-- Create empty type environment
+fn tenv_new() -> String = "P:#S:#E:#F:";
+
+-- Section separator finder (finds '#' at a given level)
+fn tenv_find_hash(s: String, pos: i64) -> i64 =
+    if pos >= s.len() then -1
+    else if s.char_at(pos) == 35 then pos  -- '#' = 35
+    else tenv_find_hash(s, pos + 1);
+
+-- Get type parameters section
+fn tenv_get_tparams(tenv: String) -> String =
+    if tenv.len() < 2 then ""
+    else
+        -- Find first '#' after 'P:'
+        let hash = tenv_find_hash(tenv, 2);
+        if hash < 0 then tenv.slice(2, tenv.len())
+        else tenv.slice(2, hash);
+
+-- Find section start by prefix (P:, S:, E:, F:)
+fn tenv_find_section(tenv: String, prefix: String, pos: i64) -> i64 =
+    if pos >= tenv.len() then -1
+    else if pos + 2 <= tenv.len() and tenv.slice(pos, pos + 2) == prefix then pos + 2
+    else tenv_find_section(tenv, prefix, pos + 1);
+
+-- Get struct registry section
+fn tenv_get_struct_reg(tenv: String) -> String =
+    let start = tenv_find_section(tenv, "S:", 0);
+    if start < 0 then ""
+    else
+        let hash = tenv_find_hash(tenv, start);
+        if hash < 0 then tenv.slice(start, tenv.len())
+        else tenv.slice(start, hash);
+
+-- Get enum registry section
+fn tenv_get_enum_reg(tenv: String) -> String =
+    let start = tenv_find_section(tenv, "E:", 0);
+    if start < 0 then ""
+    else
+        let hash = tenv_find_hash(tenv, start);
+        if hash < 0 then tenv.slice(start, tenv.len())
+        else tenv.slice(start, hash);
+
+-- Get function registry section
+fn tenv_get_fn_reg(tenv: String) -> String =
+    let start = tenv_find_section(tenv, "F:", 0);
+    if start < 0 then ""
+    else
+        let hash = tenv_find_hash(tenv, start);
+        if hash < 0 then tenv.slice(start, tenv.len())
+        else tenv.slice(start, hash);
+
+-- Set type parameters in environment
+fn tenv_with_tparams(tenv: String, tparams: String) -> String =
+    let struct_reg = tenv_get_struct_reg(tenv);
+    let enum_reg = tenv_get_enum_reg(tenv);
+    let fn_reg = tenv_get_fn_reg(tenv);
+    "P:" + tparams + "#S:" + struct_reg + "#E:" + enum_reg + "#F:" + fn_reg;
+
+-- Set struct registry in environment
+fn tenv_with_struct_reg(tenv: String, struct_reg: String) -> String =
+    let tparams = tenv_get_tparams(tenv);
+    let enum_reg = tenv_get_enum_reg(tenv);
+    let fn_reg = tenv_get_fn_reg(tenv);
+    "P:" + tparams + "#S:" + struct_reg + "#E:" + enum_reg + "#F:" + fn_reg;
+
+-- Set enum registry in environment
+fn tenv_with_enum_reg(tenv: String, enum_reg: String) -> String =
+    let tparams = tenv_get_tparams(tenv);
+    let struct_reg = tenv_get_struct_reg(tenv);
+    let fn_reg = tenv_get_fn_reg(tenv);
+    "P:" + tparams + "#S:" + struct_reg + "#E:" + enum_reg + "#F:" + fn_reg;
+
+-- Set function registry in environment
+fn tenv_with_fn_reg(tenv: String, fn_reg: String) -> String =
+    let tparams = tenv_get_tparams(tenv);
+    let struct_reg = tenv_get_struct_reg(tenv);
+    let enum_reg = tenv_get_enum_reg(tenv);
+    "P:" + tparams + "#S:" + struct_reg + "#E:" + enum_reg + "#F:" + fn_reg;
+
+-- Add a struct definition to the environment
+fn tenv_add_struct(tenv: String, def: String) -> String =
+    let struct_reg = tenv_get_struct_reg(tenv);
+    let new_reg = struct_reg_add(struct_reg, def);
+    tenv_with_struct_reg(tenv, new_reg);
+
+-- Add an enum definition to the environment
+fn tenv_add_enum(tenv: String, def: String) -> String =
+    let enum_reg = tenv_get_enum_reg(tenv);
+    let new_reg = enum_reg_add(enum_reg, def);
+    tenv_with_enum_reg(tenv, new_reg);
+
+-- Add a function signature to the environment
+fn tenv_add_fn(tenv: String, sig: String) -> String =
+    let fn_reg = tenv_get_fn_reg(tenv);
+    let new_reg = fn_reg_add(fn_reg, sig);
+    tenv_with_fn_reg(tenv, new_reg);
+
+-- Add a type parameter to the environment
+fn tenv_add_tparam(tenv: String, name: String) -> String =
+    let tparams = tenv_get_tparams(tenv);
+    let result = tparam_add(tparams, name);
+    let new_tparams = tparam_unpack_env(result);
+    tenv_with_tparams(tenv, new_tparams);
+
+-- Lookup struct field type through environment
+fn tenv_struct_field_type(tenv: String, struct_name: String, targs: String, field_name: String) -> String =
+    let struct_reg = tenv_get_struct_reg(tenv);
+    struct_reg_field_type(struct_reg, struct_name, targs, field_name);
+
+-- Lookup enum variant type through environment
+fn tenv_enum_variant_type(tenv: String, enum_name: String, targs: String, variant_name: String) -> String =
+    let enum_reg = tenv_get_enum_reg(tenv);
+    enum_reg_variant_type(enum_reg, enum_name, targs, variant_name);
+
+-- Lookup function return type through environment
+fn tenv_fn_return_type(tenv: String, fn_name: String, targs: String) -> String =
+    let fn_reg = tenv_get_fn_reg(tenv);
+    fn_reg_return_type(fn_reg, fn_name, targs);
+
+-- Check if type parameter is in scope
+fn tenv_has_tparam(tenv: String, name: String) -> bool =
+    let tparams = tenv_get_tparams(tenv);
+    tparam_in_scope(tparams, name);
+
+-- Resolve type parameter to encoded type
+fn tenv_resolve_tparam(tenv: String, name: String) -> i64 =
+    let tparams = tenv_get_tparams(tenv);
+    tparam_resolve(tparams, name);
+
+-- ============================================================================
 -- Test Functions
 -- ============================================================================
 
@@ -2862,6 +2998,144 @@ fn test_fn_reg_param_count() -> i64 =
 
     r1 + r2 + r3 + r4;
 
+-- ============================================================================
+-- v0.30.16: Type Environment Tests
+-- ============================================================================
+
+-- Test tenv_new and section getters
+fn test_tenv_new() -> i64 =
+    let tenv = tenv_new();
+
+    let r1 = if tenv_get_tparams(tenv) == "" then 1 else 0;
+    let r2 = if tenv_get_struct_reg(tenv) == "" then 1 else 0;
+    let r3 = if tenv_get_enum_reg(tenv) == "" then 1 else 0;
+    let r4 = if tenv_get_fn_reg(tenv) == "" then 1 else 0;
+
+    r1 + r2 + r3 + r4;
+
+-- Test tenv_with_* setters
+fn test_tenv_with() -> i64 =
+    let struct_def = gen_struct_pack("Box", "T", "value:T");
+    let enum_def = gen_enum_pack("Option", "T", "Some:T,None");
+    let fn_sig = gen_fn_pack("identity", "T", "T", "T");
+
+    let tenv1 = tenv_with_tparams(tenv_new(), "T,U");
+    let tenv2 = tenv_with_struct_reg(tenv1, "Box=" + struct_def);
+    let tenv3 = tenv_with_enum_reg(tenv2, "Option=" + enum_def);
+    let tenv4 = tenv_with_fn_reg(tenv3, "identity=" + fn_sig);
+
+    let r1 = if tenv_get_tparams(tenv4) == "T,U" then 1 else 0;
+    let r2 = if tenv_get_struct_reg(tenv4) == "Box=" + struct_def then 1 else 0;
+    let r3 = if tenv_get_enum_reg(tenv4) == "Option=" + enum_def then 1 else 0;
+    let r4 = if tenv_get_fn_reg(tenv4) == "identity=" + fn_sig then 1 else 0;
+
+    r1 + r2 + r3 + r4;
+
+-- Test tenv_add_* functions
+fn test_tenv_add() -> i64 =
+    let box = gen_struct_pack("Box", "T", "value:T");
+    let pair = gen_struct_pack("Pair", "T,U", "first:T,second:U");
+    let opt = gen_enum_pack("Option", "T", "Some:T,None");
+    let identity = gen_fn_pack("identity", "T", "T", "T");
+
+    let tenv1 = tenv_add_struct(tenv_new(), box);
+    let tenv2 = tenv_add_struct(tenv1, pair);
+    let tenv3 = tenv_add_enum(tenv2, opt);
+    let tenv4 = tenv_add_fn(tenv3, identity);
+    let tenv5 = tenv_add_tparam(tenv4, "K");
+
+    -- Verify struct registry has both
+    let struct_reg = tenv_get_struct_reg(tenv5);
+    let r1 = if struct_reg_has(struct_reg, "Box") then 1 else 0;
+    let r2 = if struct_reg_has(struct_reg, "Pair") then 1 else 0;
+
+    -- Verify enum registry
+    let enum_reg = tenv_get_enum_reg(tenv5);
+    let r3 = if enum_reg_has(enum_reg, "Option") then 1 else 0;
+
+    -- Verify function registry
+    let fn_reg = tenv_get_fn_reg(tenv5);
+    let r4 = if fn_reg_has(fn_reg, "identity") then 1 else 0;
+
+    -- Verify type params
+    let r5 = if tenv_has_tparam(tenv5, "K") then 1 else 0;
+
+    r1 + r2 + r3 + r4 + r5;
+
+-- Test tenv_struct_field_type
+fn test_tenv_struct_field() -> i64 =
+    let box = gen_struct_pack("Box", "T", "value:T");
+    let tenv = tenv_add_struct(tenv_new(), box);
+
+    -- Box<i64>.value -> i64
+    let ft1 = tenv_struct_field_type(tenv, "Box", "i64", "value");
+    -- Box<String>.value -> String
+    let ft2 = tenv_struct_field_type(tenv, "Box", "String", "value");
+    -- Missing struct
+    let ft3 = tenv_struct_field_type(tenv, "Missing", "i64", "value");
+
+    let r1 = if ft1 == "i64" then 1 else 0;
+    let r2 = if ft2 == "String" then 1 else 0;
+    let r3 = if ft3 == "" then 1 else 0;
+
+    r1 + r2 + r3;
+
+-- Test tenv_enum_variant_type
+fn test_tenv_enum_variant() -> i64 =
+    let opt = gen_enum_pack("Option", "T", "Some:T,None");
+    let tenv = tenv_add_enum(tenv_new(), opt);
+
+    -- Option<i64>.Some -> i64
+    let vt1 = tenv_enum_variant_type(tenv, "Option", "i64", "Some");
+    -- Option<String>.Some -> String
+    let vt2 = tenv_enum_variant_type(tenv, "Option", "String", "Some");
+    -- Option<i64>.None -> "" (unit variant)
+    let vt3 = tenv_enum_variant_type(tenv, "Option", "i64", "None");
+
+    let r1 = if vt1 == "i64" then 1 else 0;
+    let r2 = if vt2 == "String" then 1 else 0;
+    let r3 = if vt3 == "" then 1 else 0;
+
+    r1 + r2 + r3;
+
+-- Test tenv_fn_return_type
+fn test_tenv_fn_return() -> i64 =
+    let identity = gen_fn_pack("identity", "T", "T", "T");
+    let add = gen_fn_pack("add", "", "i64,i64", "i64");
+    let tenv = tenv_add_fn(tenv_add_fn(tenv_new(), identity), add);
+
+    -- identity<i64> -> i64
+    let rt1 = tenv_fn_return_type(tenv, "identity", "i64");
+    -- identity<String> -> String
+    let rt2 = tenv_fn_return_type(tenv, "identity", "String");
+    -- add -> i64
+    let rt3 = tenv_fn_return_type(tenv, "add", "");
+
+    let r1 = if rt1 == "i64" then 1 else 0;
+    let r2 = if rt2 == "String" then 1 else 0;
+    let r3 = if rt3 == "i64" then 1 else 0;
+
+    r1 + r2 + r3;
+
+-- Test tenv_has_tparam and tenv_resolve_tparam
+fn test_tenv_tparam_ops() -> i64 =
+    let tenv1 = tenv_add_tparam(tenv_new(), "T");
+    let tenv2 = tenv_add_tparam(tenv1, "U");
+
+    let r1 = if tenv_has_tparam(tenv2, "T") then 1 else 0;
+    let r2 = if tenv_has_tparam(tenv2, "U") then 1 else 0;
+    let r3 = if not tenv_has_tparam(tenv2, "V") then 1 else 0;
+
+    -- T should resolve to type_param(0)
+    let t_type = tenv_resolve_tparam(tenv2, "T");
+    let r4 = if type_kind(t_type) == 10 then 1 else 0;
+
+    -- U should resolve to type_param(1)
+    let u_type = tenv_resolve_tparam(tenv2, "U");
+    let r5 = if type_kind(u_type) == 10 then 1 else 0;
+
+    r1 + r2 + r3 + r4 + r5;
+
 -- Main test runner
 fn main() -> i64 =
     let u0 = println(777);  -- Start marker
@@ -3102,10 +3376,32 @@ fn main() -> i64 =
     let t74 = test_fn_reg_param_count();
     let p74 = println(t74);  -- Expected: 4
 
+    -- v0.30.16: Type environment tests
+    let t75 = test_tenv_new();
+    let p75 = println(t75);  -- Expected: 4
+
+    let t76 = test_tenv_with();
+    let p76 = println(t76);  -- Expected: 4
+
+    let t77 = test_tenv_add();
+    let p77 = println(t77);  -- Expected: 5
+
+    let t78 = test_tenv_struct_field();
+    let p78 = println(t78);  -- Expected: 3
+
+    let t79 = test_tenv_enum_variant();
+    let p79 = println(t79);  -- Expected: 3
+
+    let t80 = test_tenv_fn_return();
+    let p80 = println(t80);  -- Expected: 3
+
+    let t81 = test_tenv_tparam_ops();
+    let p81 = println(t81);  -- Expected: 5
+
     let u1 = println(888);  -- Separator
 
-    let total = t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t9 + t10 + t11 + t12 + t13 + t14 + t15 + t16 + t17 + t18 + t19 + t20 + t21 + t22 + t23 + t24 + t25 + t26 + t27 + t28 + t29 + t30 + t31 + t32 + t33 + t34 + t35 + t36 + t37 + t38 + t39 + t40 + t41 + t42 + t43 + t44 + t45 + t46 + t47 + t48 + t49 + t50 + t51 + t52 + t53 + t54 + t55 + t56 + t57 + t58 + t59 + t60 + t61 + t62 + t63 + t64 + t65 + t66 + t67 + t68 + t69 + t70 + t71 + t72 + t73 + t74;
-    let u2 = println(total);  -- Expected: 362
+    let total = t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t9 + t10 + t11 + t12 + t13 + t14 + t15 + t16 + t17 + t18 + t19 + t20 + t21 + t22 + t23 + t24 + t25 + t26 + t27 + t28 + t29 + t30 + t31 + t32 + t33 + t34 + t35 + t36 + t37 + t38 + t39 + t40 + t41 + t42 + t43 + t44 + t45 + t46 + t47 + t48 + t49 + t50 + t51 + t52 + t53 + t54 + t55 + t56 + t57 + t58 + t59 + t60 + t61 + t62 + t63 + t64 + t65 + t66 + t67 + t68 + t69 + t70 + t71 + t72 + t73 + t74 + t75 + t76 + t77 + t78 + t79 + t80 + t81;
+    let u2 = println(total);  -- Expected: 389
 
     let u3 = println(999);  -- End marker
     total;
