@@ -190,12 +190,19 @@ v0.MAJOR.MINOR
 
 #### Phase 30.1: Bootstrap Compiler Enhancement
 
-| Task | Description | Priority | Effort |
+| Task | Description | Priority | Status |
 |------|-------------|----------|--------|
-| 30.1.1 | Add generics to bootstrap type checker | P0 | 2 weeks |
-| 30.1.2 | Add trait support to bootstrap | P0 | 3 weeks |
-| 30.1.3 | Add closure codegen to bootstrap | P1 | 2 weeks |
-| 30.1.4 | Implement bootstrap interpreter | P1 | 4 weeks |
+| 30.1.0 | Generic type parsing (Vec<T>, Map<K,V>) | P0 | ✅ Complete |
+| 30.1.1 | Add generics to bootstrap type checker | P0 | Pending |
+| 30.1.2 | Add trait support to bootstrap | P0 | Pending |
+| 30.1.3 | Add closure codegen to bootstrap | P1 | Pending |
+| 30.1.4 | Implement bootstrap interpreter | P1 | Pending |
+
+**v0.30.1 Completed (2026-01-04)**:
+- `parse_type_args`: Comma-separated type arguments inside `<...>`
+- `parse_type`: Extended to support generic types in function params/returns
+- `parse_type_or_ident`: Extended to support generic types in struct fields
+- 6 new tests for generic type parsing
 
 **Deliverables**:
 - Bootstrap compiler can type-check generic code

@@ -158,10 +158,11 @@ Gap to Close:
 - ✅ Handle control flow (if/match/loops)
 - ✅ Support function calls
 - ✅ Basic struct and enum operations
+- ✅ Parse generic type applications (v0.30.1: Vec<T>, Map<K,V>)
 
 ### What Bootstrap CANNOT Do Yet
 
-- ❌ Full generics instantiation
+- ⚠️ Generic type semantics (parsing only, no instantiation)
 - ❌ Trait implementation dispatch
 - ❌ Closure capture and codegen
 - ❌ FFI linking

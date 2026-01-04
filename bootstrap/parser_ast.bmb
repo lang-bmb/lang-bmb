@@ -12,6 +12,7 @@
 -- - v0.22.0: Add struct definition/init/field-access parsing
 -- - v0.22.1: Add enum definition/variant/match parsing
 -- - v0.22.3: Add integration tests (struct+enum combined)
+-- - v0.30.1: Add generic type application parsing (Vec<T>, Map<K,V>)
 --
 -- LIMITATIONS:
 -- - String building is memory-intensive
@@ -323,7 +324,29 @@ fn parse_struct_fields_more(src: String, pos: i64, fields: String) -> String =
                 else parse_struct_fields_more(src, unpack_pos(rt), fields + " (field <" + fname + "> " + unpack_ast(rt) + ")")
     else pack_result(pos, make_error("field-comma"));
 
--- Parse type or identifier (for struct types like Point)
+-- ============================================================
+-- v0.30.1: Generic Type Application Parsing
+-- Supports: Vec<i64>, Option<String>, Map<K, V>
+-- AST format: (type_app TypeName (Arg1 Arg2 ...))
+-- ============================================================
+
+-- Parse comma-separated type arguments inside < ... >
+-- Returns: "Arg1 Arg2 ..." or error
+fn parse_type_args(src: String, pos: i64, args: String) -> String =
+    let tr = parse_type_or_ident(src, pos);
+    if is_error(unpack_ast(tr)) then tr
+    else
+        let new_args = if args == "" then unpack_ast(tr) else args + " " + unpack_ast(tr);
+        let t2 = next_token_raw(src, unpack_pos(tr));
+        if tok_kind(t2) == TK_COMMA() then
+            parse_type_args(src, tok_end(t2), new_args)
+        else if tok_kind(t2) == TK_GT() then
+            pack_result(tok_end(t2), new_args)
+        else
+            pack_result(unpack_pos(tr), make_error("type-arg-end"));
+
+-- Parse type or identifier with optional type arguments
+-- Examples: i64, String, Point, Vec<i64>, Map<String, i64>
 fn parse_type_or_ident(src: String, pos: i64) -> String =
     let tok = next_token_raw(src, pos);
     let kind = tok_kind(tok);
@@ -331,7 +354,15 @@ fn parse_type_or_ident(src: String, pos: i64) -> String =
     else if kind == TK_IDENT() then
         let ns = skip_all(src, pos);
         let ne = tok_end(tok);
-        pack_result(ne, src.slice(ns, ne))
+        let name = src.slice(ns, ne);
+        -- Check for type arguments: <T, U, ...>
+        let t2 = next_token_raw(src, ne);
+        if tok_kind(t2) == TK_LT() then
+            let targs = parse_type_args(src, tok_end(t2), "");
+            if is_error(unpack_ast(targs)) then targs
+            else pack_result(unpack_pos(targs), "(type_app " + name + " (" + unpack_ast(targs) + "))")
+        else
+            pack_result(ne, name)
     else pack_result(pos, make_error("type"));
 
 -- ============================================================
@@ -695,10 +726,24 @@ fn parse_binop(src: String, pos: i64, left: String) -> String =
 -- Type and Function Parser
 -- ============================================================
 
+-- v0.30.1: Extended to support generic type syntax
+-- Supports: i64, String, Vec<i64>, Map<K, V>, Container<Vec<i64>>
 fn parse_type(src: String, pos: i64) -> String =
     let tok = next_token_raw(src, pos);
     let kind = tok_kind(tok);
     if kind >= 150 and kind <= 154 then pack_result(tok_end(tok), type_str(kind))
+    else if kind == TK_IDENT() then
+        let ns = skip_all(src, pos);
+        let ne = tok_end(tok);
+        let name = src.slice(ns, ne);
+        -- Check for type arguments: <T, U, ...>
+        let t2 = next_token_raw(src, ne);
+        if tok_kind(t2) == TK_LT() then
+            let targs = parse_type_args(src, tok_end(t2), "");
+            if is_error(unpack_ast(targs)) then targs
+            else pack_result(unpack_pos(targs), "(type_app " + name + " (" + unpack_ast(targs) + "))")
+        else
+            pack_result(ne, name)
     else pack_result(pos, make_error("type"));
 
 fn parse_params(src: String, pos: i64, ps: String) -> String =
@@ -951,6 +996,61 @@ fn test_integration_field() -> i64 =
     let ast = unpack_ast(result);
     if is_error(ast) then 0 else 1;
 
+-- ============================================================
+-- v0.30.1: Generic Type Parsing Tests
+-- ============================================================
+
+-- Test simple generic type: Vec<i64>
+fn test_generic_simple() -> i64 =
+    let result = parse_type_or_ident("Vec<i64>", 0);
+    let ast = unpack_ast(result);
+    if is_error(ast) then 0
+    else if ast_contains(ast, "type_app") and ast_contains(ast, "Vec") and ast_contains(ast, "i64") then 1
+    else 0;
+
+-- Test multi-param generic: Map<String, i64>
+fn test_generic_multi() -> i64 =
+    let result = parse_type_or_ident("Map<String, i64>", 0);
+    let ast = unpack_ast(result);
+    if is_error(ast) then 0
+    else if ast_contains(ast, "type_app") and ast_contains(ast, "Map") then 1
+    else 0;
+
+-- Test nested generic: Container<Vec<i64>>
+fn test_generic_nested() -> i64 =
+    let result = parse_type_or_ident("Container<Vec<i64>>", 0);
+    let ast = unpack_ast(result);
+    if is_error(ast) then 0
+    else if ast_contains(ast, "type_app") and ast_contains(ast, "Container") then 1
+    else 0;
+
+-- Test generic type in function parameter
+fn test_generic_param() -> i64 =
+    let src = "fn process(data: Vec<i64>) -> i64 = 0;";
+    let result = parse_program(src, 0, "");
+    let ast = unpack_ast(result);
+    if is_error(ast) then 0
+    else if ast_contains(ast, "type_app") and ast_contains(ast, "Vec") then 1
+    else 0;
+
+-- Test generic type in return type
+fn test_generic_return() -> i64 =
+    let src = "fn create() -> Option<i64> = 0;";
+    let result = parse_program(src, 0, "");
+    let ast = unpack_ast(result);
+    if is_error(ast) then 0
+    else if ast_contains(ast, "type_app") and ast_contains(ast, "Option") then 1
+    else 0;
+
+-- Test generic type in struct field
+fn test_generic_struct_field() -> i64 =
+    let src = "struct Container { items: Vec<i64> }";
+    let result = parse_struct_def(src, 7);  -- Start after "struct "
+    let ast = unpack_ast(result);
+    if is_error(ast) then 0
+    else if ast_contains(ast, "type_app") and ast_contains(ast, "Vec") then 1
+    else 0;
+
 -- Helper to check if ast contains substring
 fn ast_contains(ast: String, pattern: String) -> bool =
     ast_contains_at(ast, pattern, 0);
@@ -1000,6 +1100,14 @@ fn main() -> i64 =
     let i2 = test_integration_init_match();
     let i3 = test_integration_field();
 
+    -- v0.30.1: Generic type parsing tests
+    let g1 = test_generic_simple();
+    let g2 = test_generic_multi();
+    let g3 = test_generic_nested();
+    let g4 = test_generic_param();
+    let g5 = test_generic_return();
+    let g6 = test_generic_struct_field();
+
     let u1 = println(888);  -- Middle marker
 
     let parse_passed = t1 + t2 + t3 + t4 + t5;
@@ -1017,6 +1125,9 @@ fn main() -> i64 =
     let integration_passed = i1 + i2 + i3;
     let u7 = println(integration_passed);  -- Should be 3
 
+    let generic_passed = g1 + g2 + g3 + g4 + g5 + g6;
+    let u8 = println(generic_passed);  -- Should be 6
+
     let u4 = println(999);  -- End marker
 
-    parse_passed + ast_passed + struct_passed + enum_passed + integration_passed;  -- Should be 27
+    parse_passed + ast_passed + struct_passed + enum_passed + integration_passed + generic_passed;  -- Should be 33

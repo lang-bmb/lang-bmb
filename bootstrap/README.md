@@ -48,7 +48,7 @@ Recursive descent parser that validates BMB syntax.
 999 (end marker)
 ```
 
-### parser_ast.bmb (38KB) - v0.22.3
+### parser_ast.bmb (45KB) - v0.30.1
 Parser that produces S-expression AST representation.
 
 **Features (v0.22):**
@@ -58,12 +58,20 @@ Parser that produces S-expression AST representation.
 - Enum definition parsing: `enum Option { Some(i64), None }`
 - Match expression: `match x { Some(v) -> v, None -> 0 }`
 
+**Features (v0.30.1):**
+- Generic type application: `Vec<i64>`, `Map<String, i64>`
+- Nested generics: `Container<Vec<i64>>`
+- Generic types in parameters: `fn foo(data: Vec<i64>)`
+- Generic types in return: `fn bar() -> Option<i64>`
+- Generic types in struct fields: `struct Foo { items: Vec<i64> }`
+
 **AST Format:**
 ```lisp
 (program
   (fn <name> (params (p <param> type)...) return-type body)
   (struct <name> (fields (field <fname> type)...))
-  (enum <name> (variants (variant <vname>) (variant <vname> type)...)))
+  (enum <name> (variants (variant <vname>) (variant <vname> type)...))
+  (type_app <TypeName> (Arg1 Arg2 ...)))  ; v0.30.1: Generic type application
 
 ; Examples:
 (fn <add> (params (p <x> i64) (p <y> i64)) i64 (op + (var <x>) (var <y>)))
