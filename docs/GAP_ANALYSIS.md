@@ -59,7 +59,7 @@ This document provides a comprehensive analysis of the requirements for BMB v0.3
 | config.rs | 4,245 | Complete | Configuration |
 | error.rs | 694 | Complete | Error handling |
 
-### Bootstrap Components (~9,865 LOC in BMB)
+### Bootstrap Components (~9,924 LOC in BMB)
 
 | File | Size | LOC | Status | Test Coverage |
 |------|------|-----|--------|---------------|
@@ -73,7 +73,7 @@ This document provides a comprehensive analysis of the requirements for BMB v0.3
 | parser.bmb | 22KB | 605 | Complete | Syntax validation |
 | mir.bmb | 20KB | 552 | Complete | 46 tests |
 | selfhost_test.bmb | 23KB | 536 | Complete | 8 tests |
-| utils.bmb | 19KB | 462 | Complete | 28 tests |
+| utils.bmb | 21KB | 521 | Complete | 33 tests |
 | optimize.bmb | 19KB | 460 | Complete | 9 tests |
 | selfhost_equiv.bmb | 9KB | 251 | Complete | 19 tests |
 | lexer.bmb | 8KB | 224 | Complete | Tokenization |
@@ -272,11 +272,11 @@ $ diff stage2/bmb stage3/bmb
 
 v0.30 "Pure" represents the culmination of the BMB self-hosting journey. With Stage 1/2 verification complete and the bootstrap covering the full compilation pipeline, the remaining work is substantial but achievable within the 2026 Q4 timeline.
 
-**Key Metrics** (as of v0.29.5):
+**Key Metrics** (as of v0.29.6):
 - Rust code to remove: ~21,783 LOC
-- BMB bootstrap code: ~9,865 LOC (45% coverage)
-- Gap to close: ~12,975 LOC additional BMB
-- Bootstrap tests passing: 348 tests
+- BMB bootstrap code: ~9,924 LOC (46% coverage)
+- Gap to close: ~12,916 LOC additional BMB
+- Bootstrap tests passing: 353 tests
 - Estimated effort: 6-9 months
 
 ---

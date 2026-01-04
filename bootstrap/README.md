@@ -762,7 +762,7 @@ merge_0:
 }
 ```
 
-### utils.bmb (16KB) - v0.29.5
+### utils.bmb (21KB) - v0.29.6
 Shared utility functions for all bootstrap modules.
 
 **Purpose:**
@@ -779,6 +779,7 @@ Since BMB doesn't yet support imports, this file serves as the canonical referen
 7. **Comment Handling**: `skip_comment`, `skip_to_eol`, `skip_all`
 8. **Error Handling**: `is_error`, `make_error`, `get_error_msg`, `is_error_loose`
 9. **Result Packing**: `pack_result`, `unpack_pos`, `unpack_ast`, `pack_values`, `unpack_first`, `unpack_rest`
+10. **Token Encoding**: `tok_encode`, `tok_kind`, `tok_end`, `tok_is_kind`, `tok_is_eof`
 
 **Duplication Reduction:**
 | Function | Previously Duplicated In |
@@ -789,12 +790,13 @@ Since BMB doesn't yet support imports, this file serves as the canonical referen
 | `pack_result` | 8 files |
 | `unpack_pos/ast` | 7 files |
 | `is_error` | 6 files |
+| `tok_kind/tok_end` | 6 files |
 | `find_ident_end` | 6 files |
 | `starts_with` | 6 files |
 
 **Test output:**
 ```
-✅ 28 tests passed
+✅ 33 tests passed
 ```
 
 ---

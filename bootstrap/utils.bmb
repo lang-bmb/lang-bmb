@@ -1,4 +1,4 @@
--- BMB Bootstrap Utilities (v0.29.5)
+-- BMB Bootstrap Utilities (v0.29.6)
 -- Shared utility functions for all bootstrap modules
 -- Consolidates common string operations to reduce code duplication
 --
@@ -12,6 +12,7 @@
 -- 7. Comment handling (skip_comment, skip_all)
 -- 8. Error handling (is_error, make_error, get_error_msg)
 -- 9. Result packing (pack_result, unpack_pos, unpack_ast)
+-- 10. Token encoding (tok_encode, tok_kind, tok_end)
 --
 -- USAGE:
 -- These functions are designed to be copied or imported by other bootstrap modules.
@@ -290,7 +291,33 @@ fn unpack_rest(s: String) -> String =
     else s.slice(pipe_pos + 1, s.len());
 
 -- ============================================================================
--- SECTION 10: Tests
+-- SECTION 10: Token Encoding
+-- ============================================================================
+
+-- Token encoding: kind * 1000000 + end_position
+-- This allows passing both token type and position in a single i64 return value
+
+-- Encode token kind and end position into single value
+fn tok_encode(kind: i64, end_pos: i64) -> i64 = kind * 1000000 + end_pos;
+
+-- Extract token kind from encoded token
+fn tok_kind(tok: i64) -> i64 = tok / 1000000;
+
+-- Extract end position from encoded token
+fn tok_end(tok: i64) -> i64 = tok - (tok / 1000000) * 1000000;
+
+-- Token kind constants (from lexer)
+-- These match the token kinds used in lexer.bmb
+-- 1=Keyword, 2=Ident, 3=Number, 4=String, 5=Operator, 6=Delim, 0=EOF
+
+-- Check if token is a specific kind
+fn tok_is_kind(tok: i64, expected: i64) -> bool = tok_kind(tok) == expected;
+
+-- Check if token is EOF (kind 0)
+fn tok_is_eof(tok: i64) -> bool = tok_kind(tok) == 0;
+
+-- ============================================================================
+-- SECTION 11: Tests
 -- ============================================================================
 
 -- Character classification tests
@@ -419,6 +446,32 @@ fn test_unpack_rest() -> bool =
     unpack_rest("a|b|c") == "b|c"
     and unpack_rest("single") == "";
 
+-- Token encoding tests
+fn test_tok_encode() -> bool =
+    tok_encode(1, 500) == 1000500
+    and tok_encode(2, 0) == 2000000
+    and tok_encode(0, 100) == 100;
+
+fn test_tok_kind() -> bool =
+    tok_kind(1000500) == 1
+    and tok_kind(2000000) == 2
+    and tok_kind(100) == 0;
+
+fn test_tok_end() -> bool =
+    tok_end(1000500) == 500
+    and tok_end(2000000) == 0
+    and tok_end(100) == 100;
+
+fn test_tok_is_kind() -> bool =
+    tok_is_kind(1000500, 1)
+    and tok_is_kind(2000000, 2)
+    and not tok_is_kind(1000500, 2);
+
+fn test_tok_is_eof() -> bool =
+    tok_is_eof(0)
+    and tok_is_eof(100)
+    and not tok_is_eof(1000000);
+
 -- Run all tests
 fn run_utils_tests() -> i64 =
     let t1 = if test_is_digit() then 1 else 0;
@@ -451,12 +504,18 @@ fn run_utils_tests() -> i64 =
     let t26 = if test_pack_values() then 1 else 0;
     let t27 = if test_unpack_first() then 1 else 0;
     let t28 = if test_unpack_rest() then 1 else 0;
+    -- Token encoding tests
+    let t29 = if test_tok_encode() then 1 else 0;
+    let t30 = if test_tok_kind() then 1 else 0;
+    let t31 = if test_tok_end() then 1 else 0;
+    let t32 = if test_tok_is_kind() then 1 else 0;
+    let t33 = if test_tok_is_eof() then 1 else 0;
     t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t9 + t10 + t11 + t12 + t13 + t14 + t15 + t16 + t17 + t18
-    + t19 + t20 + t21 + t22 + t23 + t24 + t25 + t26 + t27 + t28;
+    + t19 + t20 + t21 + t22 + t23 + t24 + t25 + t26 + t27 + t28 + t29 + t30 + t31 + t32 + t33;
 
 -- Main test entry
 fn main() -> i64 =
     let passed = run_utils_tests();
-    let total = 28;
-    -- Returns number of passed tests (28 = all pass)
+    let total = 33;
+    -- Returns number of passed tests (33 = all pass)
     passed;
