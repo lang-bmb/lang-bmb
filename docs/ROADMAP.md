@@ -303,6 +303,14 @@ v0.MAJOR.MINOR
 - `enum_reg_count`, `enum_reg_is_generic`: Registry utilities
 - 5 new test functions, 19 assertions (335 total in types.bmb)
 
+**v0.30.15 Completed (2026-01-04)**:
+- `fn_reg_new`, `fn_reg_add`: Create and populate function registry
+- `fn_reg_lookup`, `fn_reg_has`: Query registry for function signatures
+- `fn_reg_return_type`: Get return type with type arguments applied
+- `fn_reg_param_type_at`: Get parameter type at index with type arguments applied
+- `fn_reg_count`, `fn_reg_is_generic`, `fn_reg_param_count`: Registry utilities
+- 7 new test functions, 27 assertions (362 total in types.bmb)
+
 **Deliverables**:
 - Bootstrap compiler can type-check generic code
 - Trait dispatch works in bootstrap

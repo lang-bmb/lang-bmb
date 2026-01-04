@@ -121,7 +121,7 @@ Comprehensive test suite with 15 test categories.
 14. Deep nesting
 15. Nested function calls
 
-### types.bmb (98KB) - v0.30.14
+### types.bmb (100KB) - v0.30.15
 Type checker foundation for BMB.
 
 **Features:**
@@ -229,6 +229,15 @@ Type checker foundation for BMB.
 - `enum_reg_variant_type`: Resolve variant type with type arguments through registry lookup
 - `enum_reg_count`, `enum_reg_is_generic`: Registry utilities
 
+**Features (v0.30.15):**
+- Function registry: Global registry for managing function signatures
+- Format: `"Name1=sig1;Name2=sig2;..."` (semicolon-separated name=signature pairs)
+- `fn_reg_new`, `fn_reg_add`: Create and populate registry
+- `fn_reg_lookup`, `fn_reg_has`: Query registry for function signatures
+- `fn_reg_return_type`: Get return type with type arguments applied
+- `fn_reg_param_type_at`: Get parameter type at index with type arguments applied
+- `fn_reg_count`, `fn_reg_is_generic`, `fn_reg_param_count`: Registry utilities
+
 **Test output:**
 ```
 777 (start marker)
@@ -299,8 +308,15 @@ Type checker foundation for BMB.
 2  (enum reg has tests)
 6  (enum reg variant type tests)
 3  (enum reg is generic tests)
+4  (fn reg add tests)
+5  (fn reg lookup tests)
+2  (fn reg has tests)
+5  (fn reg return type tests)
+4  (fn reg param type at tests)
+3  (fn reg is generic tests)
+4  (fn reg param count tests)
 888 (separator)
-335 (total passed)
+362 (total passed)
 999 (end marker)
 ```
 

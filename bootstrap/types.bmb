@@ -1503,6 +1503,106 @@ fn enum_reg_is_generic(reg: String, name: String) -> bool =
     else gen_enum_is_generic(def);
 
 -- ============================================================================
+-- v0.30.15: Function Registry
+-- ============================================================================
+-- Format: "Name1=sig1;Name2=sig2;..." (semicolon-separated name=signature pairs)
+-- Signature format: "Name|TParams|Params|ReturnType" (from gen_fn_pack)
+
+-- Create empty function registry
+fn fn_reg_new() -> String = "";
+
+-- Add function signature to registry
+fn fn_reg_add(reg: String, sig: String) -> String =
+    let name = gen_fn_name(sig);
+    if reg.len() == 0 then name + "=" + sig
+    else reg + ";" + name + "=" + sig;
+
+-- Find semicolon in function registry
+fn fn_reg_find_semi(s: String, pos: i64) -> i64 =
+    if pos >= s.len() then -1
+    else if s.char_at(pos) == 59 then pos  -- ';' = 59
+    else fn_reg_find_semi(s, pos + 1);
+
+-- Find equals in function registry
+fn fn_reg_find_eq(s: String, pos: i64) -> i64 =
+    if pos >= s.len() then -1
+    else if s.char_at(pos) == 61 then pos  -- '=' = 61
+    else fn_reg_find_eq(s, pos + 1);
+
+-- Lookup function signature by name
+fn fn_reg_lookup(reg: String, name: String) -> String =
+    if reg.len() == 0 then ""
+    else fn_reg_lookup_from(reg, name, 0);
+
+fn fn_reg_lookup_from(reg: String, name: String, pos: i64) -> String =
+    if pos >= reg.len() then ""
+    else
+        let eq = fn_reg_find_eq(reg, pos);
+        if eq < 0 then ""
+        else
+            let entry_name = reg.slice(pos, eq);
+            let semi = fn_reg_find_semi(reg, eq + 1);
+            let sig = if semi < 0 then reg.slice(eq + 1, reg.len())
+                      else reg.slice(eq + 1, semi);
+            if entry_name == name then sig
+            else if semi < 0 then ""
+            else fn_reg_lookup_from(reg, name, semi + 1);
+
+-- Check if function exists in registry
+fn fn_reg_has(reg: String, name: String) -> bool =
+    let sig = fn_reg_lookup(reg, name);
+    sig.len() > 0;
+
+-- Get return type of function with type arguments applied
+fn fn_reg_return_type(reg: String, fn_name: String, targs: String) -> String =
+    let sig = fn_reg_lookup(reg, fn_name);
+    if sig.len() == 0 then ""
+    else
+        let tparams = gen_fn_tparams(sig);
+        let ret_ty = gen_fn_return(sig);
+        if tparams.len() == 0 then ret_ty
+        else
+            let subst = subst_from_params_args(tparams, targs);
+            resolve_field_type(ret_ty, subst);
+
+-- Get parameter type at index with type arguments applied
+fn fn_reg_param_type_at(reg: String, fn_name: String, targs: String, idx: i64) -> String =
+    let sig = fn_reg_lookup(reg, fn_name);
+    if sig.len() == 0 then ""
+    else
+        let tparams = gen_fn_tparams(sig);
+        let param = gen_fn_param_at(sig, idx);
+        if tparams.len() == 0 then param
+        else
+            let subst = subst_from_params_args(tparams, targs);
+            resolve_field_type(param, subst);
+
+-- Count registered functions
+fn fn_reg_count(reg: String) -> i64 =
+    if reg.len() == 0 then 0
+    else fn_reg_count_from(reg, 0, 1);
+
+fn fn_reg_count_from(reg: String, pos: i64, count: i64) -> i64 =
+    if pos >= reg.len() then count
+    else if reg.char_at(pos) == 59 then  -- ';' = 59
+        fn_reg_count_from(reg, pos + 1, count + 1)
+    else fn_reg_count_from(reg, pos + 1, count);
+
+-- Check if function is generic (from registry)
+fn fn_reg_is_generic(reg: String, name: String) -> bool =
+    let sig = fn_reg_lookup(reg, name);
+    if sig.len() == 0 then false
+    else
+        let tparams = gen_fn_tparams(sig);
+        tparams.len() > 0;
+
+-- Get parameter count of function
+fn fn_reg_param_count(reg: String, name: String) -> i64 =
+    let sig = fn_reg_lookup(reg, name);
+    if sig.len() == 0 then -1
+    else gen_fn_param_count(sig);
+
+-- ============================================================================
 -- Test Functions
 -- ============================================================================
 
@@ -2631,6 +2731,137 @@ fn test_enum_reg_is_generic() -> i64 =
 
     r1 + r2 + r3;
 
+-- ============================================================================
+-- v0.30.15: Function Registry Tests
+-- ============================================================================
+
+-- Test fn_reg_add
+fn test_fn_reg_add() -> i64 =
+    -- identity<T>(x: T) -> T
+    let identity = gen_fn_pack("identity", "T", "T", "T");
+    -- add(a: i64, b: i64) -> i64
+    let add = gen_fn_pack("add", "", "i64,i64", "i64");
+    -- map<T,U>(f: Fn, list: Vec:T) -> Vec:U
+    let map_fn = gen_fn_pack("map", "T,U", "Fn,Vec:T", "Vec:U");
+
+    let reg1 = fn_reg_add(fn_reg_new(), identity);
+    let reg2 = fn_reg_add(reg1, add);
+    let reg3 = fn_reg_add(reg2, map_fn);
+
+    let r1 = if fn_reg_count(reg1) == 1 then 1 else 0;
+    let r2 = if fn_reg_count(reg2) == 2 then 1 else 0;
+    let r3 = if fn_reg_count(reg3) == 3 then 1 else 0;
+    let r4 = if fn_reg_count(fn_reg_new()) == 0 then 1 else 0;
+
+    r1 + r2 + r3 + r4;
+
+-- Test fn_reg_lookup
+fn test_fn_reg_lookup() -> i64 =
+    let identity = gen_fn_pack("identity", "T", "T", "T");
+    let add = gen_fn_pack("add", "", "i64,i64", "i64");
+    let reg = fn_reg_add(fn_reg_add(fn_reg_new(), identity), add);
+
+    let found1 = fn_reg_lookup(reg, "identity");
+    let found2 = fn_reg_lookup(reg, "add");
+    let found3 = fn_reg_lookup(reg, "missing");
+
+    let r1 = if gen_fn_name(found1) == "identity" then 1 else 0;
+    let r2 = if gen_fn_tparams(found1) == "T" then 1 else 0;
+    let r3 = if gen_fn_name(found2) == "add" then 1 else 0;
+    let r4 = if gen_fn_return(found2) == "i64" then 1 else 0;
+    let r5 = if found3.len() == 0 then 1 else 0;
+
+    r1 + r2 + r3 + r4 + r5;
+
+-- Test fn_reg_has
+fn test_fn_reg_has() -> i64 =
+    let identity = gen_fn_pack("identity", "T", "T", "T");
+    let reg = fn_reg_add(fn_reg_new(), identity);
+
+    let r1 = if fn_reg_has(reg, "identity") then 1 else 0;
+    let r2 = if not fn_reg_has(reg, "missing") then 1 else 0;
+
+    r1 + r2;
+
+-- Test fn_reg_return_type
+fn test_fn_reg_return_type() -> i64 =
+    -- identity<T>(x: T) -> T
+    let identity = gen_fn_pack("identity", "T", "T", "T");
+    -- get_first<T>(list: Vec:T) -> T
+    let get_first = gen_fn_pack("get_first", "T", "Vec:T", "T");
+    -- add(a: i64, b: i64) -> i64
+    let add = gen_fn_pack("add", "", "i64,i64", "i64");
+    let reg = fn_reg_add(fn_reg_add(fn_reg_add(fn_reg_new(), identity), get_first), add);
+
+    -- identity<i64> -> i64
+    let ret1 = fn_reg_return_type(reg, "identity", "i64");
+    -- identity<String> -> String
+    let ret2 = fn_reg_return_type(reg, "identity", "String");
+    -- get_first<i64> -> i64
+    let ret3 = fn_reg_return_type(reg, "get_first", "i64");
+    -- add (non-generic) -> i64
+    let ret4 = fn_reg_return_type(reg, "add", "");
+    -- missing -> ""
+    let ret5 = fn_reg_return_type(reg, "missing", "");
+
+    let r1 = if ret1 == "i64" then 1 else 0;
+    let r2 = if ret2 == "String" then 1 else 0;
+    let r3 = if ret3 == "i64" then 1 else 0;
+    let r4 = if ret4 == "i64" then 1 else 0;
+    let r5 = if ret5.len() == 0 then 1 else 0;
+
+    r1 + r2 + r3 + r4 + r5;
+
+-- Test fn_reg_param_type_at
+fn test_fn_reg_param_type_at() -> i64 =
+    -- swap<T,U>(a: T, b: U) -> Pair:T:U
+    let swap = gen_fn_pack("swap", "T,U", "T,U", "Pair:T:U");
+    -- add(a: i64, b: i64) -> i64
+    let add = gen_fn_pack("add", "", "i64,i64", "i64");
+    let reg = fn_reg_add(fn_reg_add(fn_reg_new(), swap), add);
+
+    -- swap<i64,String> param 0 -> i64
+    let p1 = fn_reg_param_type_at(reg, "swap", "i64,String", 0);
+    -- swap<i64,String> param 1 -> String
+    let p2 = fn_reg_param_type_at(reg, "swap", "i64,String", 1);
+    -- add param 0 -> i64
+    let p3 = fn_reg_param_type_at(reg, "add", "", 0);
+    -- add param 1 -> i64
+    let p4 = fn_reg_param_type_at(reg, "add", "", 1);
+
+    let r1 = if p1 == "i64" then 1 else 0;
+    let r2 = if p2 == "String" then 1 else 0;
+    let r3 = if p3 == "i64" then 1 else 0;
+    let r4 = if p4 == "i64" then 1 else 0;
+
+    r1 + r2 + r3 + r4;
+
+-- Test fn_reg_is_generic
+fn test_fn_reg_is_generic() -> i64 =
+    let identity = gen_fn_pack("identity", "T", "T", "T");
+    let add = gen_fn_pack("add", "", "i64,i64", "i64");
+    let reg = fn_reg_add(fn_reg_add(fn_reg_new(), identity), add);
+
+    let r1 = if fn_reg_is_generic(reg, "identity") then 1 else 0;
+    let r2 = if not fn_reg_is_generic(reg, "add") then 1 else 0;
+    let r3 = if not fn_reg_is_generic(reg, "missing") then 1 else 0;
+
+    r1 + r2 + r3;
+
+-- Test fn_reg_param_count
+fn test_fn_reg_param_count() -> i64 =
+    let identity = gen_fn_pack("identity", "T", "T", "T");
+    let add = gen_fn_pack("add", "", "i64,i64", "i64");
+    let triple = gen_fn_pack("triple", "T,U,V", "T,U,V", "Tuple:T:U:V");
+    let reg = fn_reg_add(fn_reg_add(fn_reg_add(fn_reg_new(), identity), add), triple);
+
+    let r1 = if fn_reg_param_count(reg, "identity") == 1 then 1 else 0;
+    let r2 = if fn_reg_param_count(reg, "add") == 2 then 1 else 0;
+    let r3 = if fn_reg_param_count(reg, "triple") == 3 then 1 else 0;
+    let r4 = if fn_reg_param_count(reg, "missing") == -1 then 1 else 0;
+
+    r1 + r2 + r3 + r4;
+
 -- Main test runner
 fn main() -> i64 =
     let u0 = println(777);  -- Start marker
@@ -2849,10 +3080,32 @@ fn main() -> i64 =
     let t67 = test_enum_reg_is_generic();
     let p67 = println(t67);  -- Expected: 3
 
+    -- v0.30.15: Function registry tests
+    let t68 = test_fn_reg_add();
+    let p68 = println(t68);  -- Expected: 4
+
+    let t69 = test_fn_reg_lookup();
+    let p69 = println(t69);  -- Expected: 5
+
+    let t70 = test_fn_reg_has();
+    let p70 = println(t70);  -- Expected: 2
+
+    let t71 = test_fn_reg_return_type();
+    let p71 = println(t71);  -- Expected: 5
+
+    let t72 = test_fn_reg_param_type_at();
+    let p72 = println(t72);  -- Expected: 4
+
+    let t73 = test_fn_reg_is_generic();
+    let p73 = println(t73);  -- Expected: 3
+
+    let t74 = test_fn_reg_param_count();
+    let p74 = println(t74);  -- Expected: 4
+
     let u1 = println(888);  -- Separator
 
-    let total = t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t9 + t10 + t11 + t12 + t13 + t14 + t15 + t16 + t17 + t18 + t19 + t20 + t21 + t22 + t23 + t24 + t25 + t26 + t27 + t28 + t29 + t30 + t31 + t32 + t33 + t34 + t35 + t36 + t37 + t38 + t39 + t40 + t41 + t42 + t43 + t44 + t45 + t46 + t47 + t48 + t49 + t50 + t51 + t52 + t53 + t54 + t55 + t56 + t57 + t58 + t59 + t60 + t61 + t62 + t63 + t64 + t65 + t66 + t67;
-    let u2 = println(total);  -- Expected: 335
+    let total = t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t9 + t10 + t11 + t12 + t13 + t14 + t15 + t16 + t17 + t18 + t19 + t20 + t21 + t22 + t23 + t24 + t25 + t26 + t27 + t28 + t29 + t30 + t31 + t32 + t33 + t34 + t35 + t36 + t37 + t38 + t39 + t40 + t41 + t42 + t43 + t44 + t45 + t46 + t47 + t48 + t49 + t50 + t51 + t52 + t53 + t54 + t55 + t56 + t57 + t58 + t59 + t60 + t61 + t62 + t63 + t64 + t65 + t66 + t67 + t68 + t69 + t70 + t71 + t72 + t73 + t74;
+    let u2 = println(total);  -- Expected: 362
 
     let u3 = println(999);  -- End marker
     total;

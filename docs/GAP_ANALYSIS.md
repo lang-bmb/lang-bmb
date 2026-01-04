@@ -172,6 +172,7 @@ Gap to Close:
 - ✅ Struct registry (v0.30.12: struct_reg_add, struct_reg_lookup, struct_reg_field_type)
 - ✅ Generic enum definitions (v0.30.13: gen_enum_pack, gen_enum_resolve_variant)
 - ✅ Enum registry (v0.30.14: enum_reg_add, enum_reg_lookup, enum_reg_variant_type)
+- ✅ Function registry (v0.30.15: fn_reg_add, fn_reg_lookup, fn_reg_return_type)
 
 ### What Bootstrap CANNOT Do Yet
 
@@ -286,11 +287,11 @@ $ diff stage2/bmb stage3/bmb
 
 v0.30 "Pure" represents the culmination of the BMB self-hosting journey. With Stage 1/2 verification complete and the bootstrap covering the full compilation pipeline, the remaining work is substantial but achievable within the 2026 Q4 timeline.
 
-**Key Metrics** (as of v0.30.14):
+**Key Metrics** (as of v0.30.15):
 - Rust code to remove: ~21,783 LOC
 - BMB bootstrap code: ~9,924 LOC (46% coverage)
 - Gap to close: ~12,916 LOC additional BMB
-- Bootstrap tests passing: 335 tests (types.bmb)
+- Bootstrap tests passing: 362 tests (types.bmb)
 - Estimated effort: 6-9 months
 
 ---
