@@ -108,6 +108,127 @@ v0.MAJOR.MINOR
 
 ---
 
+## gotgan Registry 진화 계획
+
+> 로컬 레지스트리 → 웹 레지스트리 단계적 확장
+
+### Phase 1: Local Registry (v0.27)
+
+| 기능 | 설명 | 상태 |
+|------|------|------|
+| `gotgan publish --local` | 로컬 레지스트리에 패키지 게시 | 계획 |
+| `~/.gotgan/registry/` | 로컬 패키지 저장소 | 계획 |
+| `gotgan add pkg --local` | 로컬 패키지 의존성 추가 | 계획 |
+| 버전 관리 | semver 기반 로컬 버전 관리 | 계획 |
+| 의존성 해결 | 로컬 패키지 간 의존성 해결 | 계획 |
+
+```bash
+# 로컬 레지스트리 사용 예시
+$ gotgan publish --local
+✓ Published bmb-json@0.1.0 to ~/.gotgan/registry/
+
+$ gotgan add bmb-json --local
+✓ Added bmb-json@0.1.0 from local registry
+
+# Gotgan.toml
+[dependencies]
+bmb-json = { version = "0.1", registry = "local" }
+```
+
+### Phase 2: Private Registry (v0.28)
+
+| 기능 | 설명 | 상태 |
+|------|------|------|
+| `gotgan serve` | 로컬 HTTP 레지스트리 서버 | 계획 |
+| 팀/조직 내부 배포 | 프라이빗 레지스트리 | 계획 |
+| 인증 | API 키 기반 인증 | 계획 |
+| 미러링 | 공개 레지스트리 미러 | 계획 |
+
+```bash
+# 프라이빗 레지스트리 서버 시작
+$ gotgan serve --port 8080
+✓ Registry server running at http://localhost:8080
+
+# 다른 터미널에서
+$ gotgan publish --registry http://localhost:8080
+$ gotgan add pkg --registry http://localhost:8080
+```
+
+### Phase 3: Public Web Registry (v0.29+)
+
+| 기능 | 설명 | 상태 |
+|------|------|------|
+| gotgan.bmb.dev | 공개 패키지 레지스트리 | 계획 |
+| 웹 UI | 패키지 검색/문서 브라우징 | 계획 |
+| `gotgan login` | 계정 인증 | 계획 |
+| `gotgan publish` | 공개 레지스트리 게시 | 계획 |
+| 다운로드 통계 | 인기도/트렌드 | 계획 |
+| 문서 자동생성 | AI Query 연동 문서화 | 계획 |
+
+```bash
+# 공개 레지스트리 게시
+$ gotgan login
+$ gotgan publish
+✓ Published bmb-json@0.1.0 to gotgan.bmb.dev
+
+# 기본 레지스트리로 사용
+$ gotgan add bmb-json  # gotgan.bmb.dev에서 다운로드
+```
+
+---
+
+## 패키지 생태계 셋업 단계
+
+> 로컬 개발 → 내부 배포 → 공개 배포 점진적 확장
+
+### Stage 1: 개발 환경 구축 (현재)
+
+| 항목 | 설명 | 상태 |
+|------|------|------|
+| gotgan-packages 레포 | 패키지 소스 저장소 | ✅ 완료 |
+| 패키지 구조 템플릿 | Gotgan.toml, src/, tests/ | 계획 |
+| 로컬 빌드/테스트 | `gotgan build`, `gotgan test` | ✅ 기존 |
+| 패키지 간 의존성 | 로컬 path 의존성 | ✅ 기존 |
+
+```
+gotgan-packages/
+├── bmb-json/           # JSON 직렬화
+│   ├── Gotgan.toml
+│   ├── src/lib.bmb
+│   └── tests/
+├── bmb-regex/          # 정규표현식
+├── bmb-http/           # HTTP 클라이언트
+└── ...
+```
+
+### Stage 2: 로컬 레지스트리 운영 (v0.27)
+
+| 항목 | 설명 | 상태 |
+|------|------|------|
+| 로컬 게시 | `gotgan publish --local` | 계획 |
+| 로컬 설치 | `gotgan add --local` | 계획 |
+| 버전 충돌 해결 | SAT 솔버 활용 | 계획 |
+| CI 통합 | 로컬 레지스트리 테스트 | 계획 |
+
+### Stage 3: 프라이빗 배포 (v0.28)
+
+| 항목 | 설명 | 상태 |
+|------|------|------|
+| 레지스트리 서버 | `gotgan serve` | 계획 |
+| 팀 내부 공유 | 인트라넷 배포 | 계획 |
+| 문서 서버 | 패키지 문서 호스팅 | 계획 |
+
+### Stage 4: 공개 런칭 (v0.29+)
+
+| 항목 | 설명 | 상태 |
+|------|------|------|
+| gotgan.bmb.dev | 공개 레지스트리 | 계획 |
+| 패키지 심사 | 품질 기준 검증 | 계획 |
+| 커뮤니티 기여 | 외부 기여자 패키지 | 계획 |
+| Rust 마이그레이션 100+ | 인기 라이브러리 BMB 포팅 | 계획 |
+
+---
+
 ## 패키지 생태계 목표 (115개)
 
 ### 카테고리별 패키지 목록
