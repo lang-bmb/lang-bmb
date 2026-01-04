@@ -13,7 +13,9 @@ use std::process::Command;
 use thiserror::Error;
 
 use crate::cfg::{CfgEvaluator, Target};
-use crate::codegen::{CodeGen, CodeGenError};
+use crate::codegen::CodeGenError;
+#[cfg(feature = "llvm")]
+use crate::codegen::CodeGen;
 use crate::mir::lower_program;
 use crate::parser::parse;
 use crate::lexer::tokenize;
@@ -227,7 +229,7 @@ pub fn build(config: &BuildConfig) -> BuildResult<()> {
 
         // Use text-based LLVM IR generation + clang
         let codegen = TextCodeGen::new();
-        let ir = codegen.generate(&mir).map_err(|e| BuildError::CodeGen(
+        let ir = codegen.generate(&mir).map_err(|_| BuildError::CodeGen(
             CodeGenError::LlvmNotAvailable, // Use existing error type
         ))?;
 

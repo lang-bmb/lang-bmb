@@ -524,7 +524,7 @@ impl WasmCodeGen {
         writeln!(out, "    ;; Control flow (CFG to structured)")?;
 
         // Create outer block structure
-        for (i, block) in func.blocks.iter().enumerate().rev() {
+        for block in func.blocks.iter().rev() {
             writeln!(out, "    (block ${}", block.label)?;
         }
 

@@ -45,6 +45,7 @@ const BMB_BUILTINS: &[(&str, &str)] = &[
 #[derive(Debug, Clone)]
 struct SymbolDef {
     name: String,
+    #[allow(dead_code)]
     kind: SymbolKind,
     span: Span,
 }
@@ -58,6 +59,7 @@ struct SymbolRef {
 
 /// Symbol kind for definition
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[allow(dead_code)]
 enum SymbolKind {
     Function,
     Struct,
@@ -191,12 +193,12 @@ impl Backend {
     /// Collect symbol references from expression
     fn collect_expr_refs(&self, expr: &Expr, refs: &mut Vec<SymbolRef>) {
         match expr {
-            Expr::Var(name) => {
+            Expr::Var(_name) => {
                 // This is a reference to a variable/function
                 // Note: We can't easily get the span here from Expr::Var
                 // For a more complete implementation, Expr::Var would need to be Spanned
             }
-            Expr::Call { func, args, .. } => {
+            Expr::Call { func: _, args, .. } => {
                 // Function call is a reference (name-only, no span in current AST)
                 for arg in args {
                     self.collect_expr_refs(&arg.node, refs);

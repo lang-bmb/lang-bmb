@@ -4,6 +4,9 @@ use crate::ast::{Program, Span};
 use crate::error::{CompileError, Result};
 use crate::lexer::Token;
 
+#[cfg(test)]
+mod tests;
+
 lalrpop_util::lalrpop_mod!(
     #[allow(clippy::all)]
     grammar

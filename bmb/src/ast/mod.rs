@@ -1,6 +1,7 @@
 //! Abstract Syntax Tree definitions
 
 mod expr;
+pub mod output;
 mod span;
 mod types;
 

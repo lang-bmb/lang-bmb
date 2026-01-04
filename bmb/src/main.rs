@@ -68,6 +68,9 @@ enum Command {
     Parse {
         /// Source file to parse
         file: PathBuf,
+        /// Output format: json or sexpr (S-expression)
+        #[arg(long, short, default_value = "json")]
+        format: String,
     },
     /// Tokenize and dump tokens (debug)
     Tokens {
@@ -115,7 +118,7 @@ fn main() {
         Command::Repl => start_repl(),
         Command::Check { file, include_paths } => check_file_with_includes(&file, &include_paths),
         Command::Verify { file, z3_path, timeout } => verify_file(&file, &z3_path, timeout),
-        Command::Parse { file } => parse_file(&file),
+        Command::Parse { file, format } => parse_file(&file, &format),
         Command::Tokens { file } => tokenize_file(&file),
         Command::Test { file, filter, verbose } => test_file(&file, filter.as_deref(), verbose),
         Command::Fmt { file, check } => fmt_file(&file, check),
@@ -411,14 +414,17 @@ fn verify_file(path: &PathBuf, z3_path: &str, timeout: u32) -> Result<(), Box<dy
     Ok(())
 }
 
-fn parse_file(path: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
+fn parse_file(path: &PathBuf, format: &str) -> Result<(), Box<dyn std::error::Error>> {
     let source = std::fs::read_to_string(path)?;
     let filename = path.display().to_string();
 
     let tokens = bmb::lexer::tokenize(&source)?;
     let ast = bmb::parser::parse(&filename, &source, tokens)?;
 
-    println!("{}", serde_json::to_string_pretty(&ast)?);
+    match format {
+        "sexpr" | "s-expression" => println!("{}", bmb::ast::output::to_sexpr(&ast)),
+        _ => println!("{}", serde_json::to_string_pretty(&ast)?),
+    }
     Ok(())
 }
 

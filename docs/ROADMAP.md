@@ -1166,6 +1166,90 @@ Database/CLI 패키지 (20개)는 다음 의존성이 해결된 후 진행:
 
 ---
 
+## v0.18.1 Bootstrap Preparation (인프라 강화) ✅
+
+> 목표: v0.19 Self-Hosting을 위한 개발 인프라 강화
+
+### 배경
+
+v0.19 Mirror(Self-Hosting) 진행 전 Gap 분석 결과:
+- 클로저, 트레이트, FFI 런타임 등 핵심 기능 부재 확인
+- 테스트 커버리지 및 디버깅 도구 부족
+
+### Phase 13 - 파서 테스트 강화 ✅
+
+| 테스트 카테고리 | 테스트 수 | 설명 |
+|----------------|----------|------|
+| 기본 표현식 | 3 | IntLit, BoolLit, StringLit |
+| 이항 연산 | 3 | 산술, 비교, 논리 |
+| 제어 흐름 | 5 | if/else, let, while, for, match |
+| 구조체/열거형 | 4 | 정의, 초기화, 변형 |
+| 제네릭 | 3 | 함수, 구조체, 열거형 |
+| 계약 | 3 | pre, post, 결합 |
+| 가시성/속성 | 2 | pub, @derive |
+| 에러 처리 | 2 | ?, try 블록 |
+| 메서드 호출 | 2 | 기본, 인자 포함 |
+| extern/use | 2 | extern fn, use 문 |
+| 오류 케이스 | 1 | 잘못된 구문 |
+| **총합** | **30** | - |
+
+**핵심 발견:**
+- BMB 문법에서 Assignment(`x = value`)는 `BlockStmt`로만 유효 (표현식 아님)
+- 루프/조건문 내 변경은 중첩 블록 필요: `{ { x = 1; x } }`
+
+### Phase 14 - S-expression AST 출력 ✅
+
+```bash
+$ bmb parse example.bmb --format sexpr
+(program
+  (fn add :priv ((a i64) (b i64)) -> i64
+    (+ a b))
+)
+```
+
+**구현:**
+- `bmb/src/ast/output.rs` 모듈 추가
+- `to_sexpr()` 함수: AST → S-expression 변환
+- `--format` CLI 플래그: `json` (기본) 또는 `sexpr`
+- 5개 단위 테스트 포함
+
+**지원 항목:**
+| 항목 | 출력 형식 |
+|------|----------|
+| 함수 정의 | `(fn name :vis <params> params -> ret body)` |
+| 구조체 | `(struct name <params> (fields...))` |
+| 열거형 | `(enum name <params> (variants...))` |
+| extern fn | `(extern-fn name (params) -> ret)` |
+| use 문 | `(use path::to::item)` |
+| 표현식 | Lisp 스타일 S-expression |
+
+### Phase 15 - 컴파일러 경고 수정 ✅
+
+**수정된 경고:**
+
+| 파일 | 경고 | 수정 |
+|------|------|------|
+| `build/mod.rs` | unused import `CodeGen` | `#[cfg(feature = "llvm")]` 조건 추가 |
+| `build/mod.rs` | unused variable `e` | `_` prefix 추가 |
+| `codegen/llvm_text.rs` | unused variable `val` | 불필요한 변수 제거 |
+| `codegen/llvm_text.rs` | unused variable `current_func` | `_` prefix 추가 |
+| `codegen/wasm_text.rs` | unused variable `i` | 루프 변수 제거 |
+| `lsp/mod.rs` | unused variables | `_` prefix 추가 |
+| `lsp/mod.rs` | dead code | `#[allow(dead_code)]` 추가 |
+
+**결과:** bmb 크레이트 경고 0개
+
+### 테스트 결과
+
+```bash
+$ cargo test
+running 85 tests
+...
+test result: ok. 85 passed; 0 failed
+```
+
+---
+
 ## v0.19 Mirror (Self-Hosting)
 
 > 목표: 모든 서브모듈 BMB로 재작성 + Stage 2 검증

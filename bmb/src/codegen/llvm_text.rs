@@ -164,7 +164,6 @@ impl TextCodeGen {
         match inst {
             MirInst::Const { dest, value } => {
                 let ty = self.constant_type(value);
-                let val = self.format_constant(value);
                 // Use add with 0 for integer constants (LLVM IR idiom)
                 match value {
                     Constant::Int(n) => {
@@ -400,7 +399,7 @@ impl TextCodeGen {
     }
 
     /// Infer return type of a function call
-    fn infer_call_return_type(&self, fn_name: &str, current_func: &MirFunction) -> &'static str {
+    fn infer_call_return_type(&self, fn_name: &str, _current_func: &MirFunction) -> &'static str {
         // Built-in functions
         match fn_name {
             "println" | "print" | "assert" => "void",
