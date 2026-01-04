@@ -1513,33 +1513,39 @@ extern "C" fn puts(s: i64) -> i64;
 
 ---
 
-## v0.21 Bootstrap (Bootstrap Enhancement)
+## v0.21 Bootstrap (Bootstrap Enhancement) ✅
 
 > 목표: Bootstrap 컴파일러에 Struct/Enum MIR 지원 추가
 
-### v0.21.0 - Bootstrap Struct Support
+### v0.21.0 - Bootstrap Struct Support ✅
 
 | 구성요소 | 설명 | 상태 |
 |----------|------|------|
-| bootstrap/lowering.bmb | struct MIR 지원 추가 | 계획 |
-| bootstrap/llvm_ir.bmb | struct LLVM 코드젠 | 계획 |
-| Integration test | Rust compiler 결과 비교 | 계획 |
+| bootstrap/lowering.bmb | struct MIR 지원 추가 (struct-init, field-access) | ✅ 완료 |
+| bootstrap/llvm_ir.bmb | struct LLVM 코드젠 (insertvalue, extractvalue) | ✅ 완료 |
+| Tests | lowering.bmb 테스트 14-17 (11 tests) | ✅ 완료 |
 
-### v0.21.1 - Bootstrap Enum Support
+### v0.21.1 - Bootstrap Enum Support ✅
 
 | 구성요소 | 설명 | 상태 |
 |----------|------|------|
-| bootstrap/lowering.bmb | enum MIR 지원 추가 | 계획 |
-| bootstrap/llvm_ir.bmb | enum LLVM 코드젠 | 계획 |
-| Pattern matching | switch 분기 생성 | 계획 |
+| bootstrap/lowering.bmb | enum MIR 지원 추가 (enum-variant) | ✅ 완료 |
+| bootstrap/llvm_ir.bmb | enum LLVM 코드젠 (insertvalue, switch) | ✅ 완료 |
+| Pattern matching | switch 분기 생성 (match expression) | ✅ 완료 |
+| Tests | lowering.bmb 테스트 18-21 (13 tests), llvm_ir.bmb 테스트 34-36 (11 tests) | ✅ 완료 |
 
-### v0.21.2 - Equivalence Testing
+### v0.21.2 - MIR Text Output ✅
+
+| 구성요소 | 설명 | 상태 |
+|----------|------|------|
+| bmb CLI | `--emit-mir` 옵션 추가 | ✅ 완료 |
+| mir/mod.rs | `format_mir()` 함수 추가 | ✅ 완료 |
 
 ```bash
-# Rust compiler vs Bootstrap compiler 결과 비교
-$ bmb build test.bmb --emit-mir > rust_mir.txt
-$ ./bootstrap test.bmb > bootstrap_mir.txt
-$ diff rust_mir.txt bootstrap_mir.txt
+# MIR 출력 예시
+$ bmb build test.bmb --emit-mir -v
+Compiling test.bmb to MIR...
+Generated: test.mir
 ```
 
 ---

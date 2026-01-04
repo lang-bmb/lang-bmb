@@ -6,13 +6,15 @@
 -- - Generates MIR text output using mir.bmb patterns
 -- - Uses functional/recursive style following bootstrap patterns
 --
--- SCOPE (v0.10.2):
+-- SCOPE (v0.21.1):
 -- - Expression lowering: int, bool, var, binop, unary, if, let, call
+-- - v0.21.0: Struct support (struct-init, field-access)
+-- - v0.21.1: Enum support (enum-variant, match/switch)
 -- - Function lowering with basic blocks
 -- - Complete program lowering
 --
 -- LIMITATIONS:
--- - No struct/array support
+-- - No array support
 -- - Simple type inference (i64 default)
 -- - Text-based output only
 
@@ -132,6 +134,20 @@ fn is_call_node(s: String) -> bool = get_node_type(s) == "call";
 fn is_fn_node(s: String) -> bool = get_node_type(s) == "fn";
 fn is_program_node(s: String) -> bool = get_node_type(s) == "program";
 fn is_params_node(s: String) -> bool = get_node_type(s) == "params";
+-- v0.21.0: Struct support
+fn is_new_node(s: String) -> bool = get_node_type(s) == "new";
+fn is_dot_node(s: String) -> bool = get_node_type(s) == ".";
+-- v0.21.1: Enum support
+fn is_match_node(s: String) -> bool = get_node_type(s) == "match";
+fn is_enum_variant_node(s: String) -> bool =
+    -- Check if the node type contains "::" (e.g., "Status::Active")
+    let node_type = get_node_type(s);
+    has_double_colon(node_type, 0);
+
+fn has_double_colon(s: String, pos: i64) -> bool =
+    if pos + 1 >= s.len() then false
+    else if s.char_at(pos) == 58 and s.char_at(pos + 1) == 58 then true  -- '::'
+    else has_double_colon(s, pos + 1);
 
 -- ============================================================================
 -- AST Content Extraction
@@ -242,6 +258,81 @@ fn get_call_name(s: String) -> String =
     let child = get_child(s, 0);
     extract_name(child);
 
+-- v0.21.0: Struct support extraction functions
+-- Get struct name from "(new Point (x val) ...)" -> "Point"
+fn get_new_struct_name(s: String) -> String = get_child(s, 0);
+
+-- Get base expression from "(. base field)"
+fn get_dot_base(s: String) -> String = get_child(s, 0);
+
+-- Get field name from "(. base field)"
+fn get_dot_field(s: String) -> String = get_child(s, 1);
+
+-- Get field name from "(field_name value)" -> "field_name"
+fn get_field_assign_name(s: String) -> String =
+    let content = extract_paren_content(s);
+    let pos = skip_ws(content, 0);
+    let end_pos = find_ident_end(content, pos);
+    content.slice(pos, end_pos);
+
+-- Get field value from "(field_name value)" -> "value"
+fn get_field_assign_value(s: String) -> String =
+    let content = extract_paren_content(s);
+    let pos = skip_ws(content, 0);
+    let pos2 = find_ident_end(content, pos);  -- skip field name
+    let pos3 = skip_ws(content, pos2);
+    let end_pos = find_child_end(content, pos3);
+    content.slice(pos3, end_pos);
+
+-- v0.21.1: Enum variant extraction
+-- Get enum variant from "(Status::Active 42)" -> "Status::Active"
+fn get_enum_variant_name(s: String) -> String = get_node_type(s);
+
+-- Split enum variant into enum name and variant name
+-- "Status::Active" -> "Status"
+fn get_enum_name_from_variant(variant: String) -> String =
+    get_enum_name_from_variant_acc(variant, 0);
+
+fn get_enum_name_from_variant_acc(s: String, pos: i64) -> String =
+    if pos + 1 >= s.len() then s
+    else if s.char_at(pos) == 58 and s.char_at(pos + 1) == 58 then s.slice(0, pos)
+    else get_enum_name_from_variant_acc(s, pos + 1);
+
+-- "Status::Active" -> "Active"
+fn get_variant_name_only(variant: String) -> String =
+    get_variant_name_only_acc(variant, 0);
+
+fn get_variant_name_only_acc(s: String, pos: i64) -> String =
+    if pos + 1 >= s.len() then s
+    else if s.char_at(pos) == 58 and s.char_at(pos + 1) == 58 then s.slice(pos + 2, s.len())
+    else get_variant_name_only_acc(s, pos + 1);
+
+-- Get enum variant argument from "(Status::Active 42)" -> "(int 42)" or just "42"
+fn get_enum_variant_arg(s: String) -> String = get_child(s, 0);
+
+-- v0.21.1: Match expression extraction
+-- Get match scrutinee from "(match s (arm1) (arm2) ...)" -> "s" (or "(var <s>)")
+fn get_match_scrutinee(s: String) -> String = get_child(s, 0);
+
+-- Get nth match arm from match expression
+fn get_match_arm(s: String, n: i64) -> String = get_child(s, n + 1);
+
+-- Parse match arm "(pattern body)" -> pattern part
+fn get_arm_pattern(arm: String) -> String = get_child(arm, 0);
+
+-- Parse match arm "(pattern body)" -> body part
+fn get_arm_body(arm: String) -> String = get_child(arm, 1);
+
+-- Get variant discriminant index (for switch generation)
+-- Simple mapping: first variant is 0, second is 1, etc.
+fn variant_to_discriminant(variant_name: String) -> i64 =
+    if variant_name == "None" then 0
+    else if variant_name == "Some" then 1
+    else if variant_name == "Active" then 1
+    else if variant_name == "Ok" then 0
+    else if variant_name == "Err" then 1
+    else 0;  -- default to 0
+
 -- ============================================================================
 -- MIR Type Encoding (from mir.bmb)
 -- ============================================================================
@@ -339,6 +430,29 @@ fn mir_text_goto(label: String) -> String = "  goto " + label;
 fn mir_text_branch(cond: String, then_l: String, else_l: String) -> String =
     "  branch " + cond + ", " + then_l + ", " + else_l;
 
+-- v0.21.0: Struct MIR text generation
+fn mir_text_struct_init(dest: String, struct_name: String, fields: String) -> String =
+    "  " + dest + " = struct-init " + struct_name + " { " + fields + " }";
+
+fn mir_text_field_access(dest: String, base: String, field: String) -> String =
+    "  " + dest + " = field-access " + base + "." + field;
+
+fn mir_text_field_store(base: String, field: String, value: String) -> String =
+    "  field-store " + base + "." + field + ", " + value;
+
+-- v0.21.1: Enum MIR text generation
+fn mir_text_enum_variant(dest: String, enum_name: String, variant: String, discriminant: i64, arg: String) -> String =
+    if arg == "" then
+        "  " + dest + " = enum-variant " + enum_name + "::" + variant + " " + int_to_string(discriminant)
+    else
+        "  " + dest + " = enum-variant " + enum_name + "::" + variant + " " + int_to_string(discriminant) + " " + arg;
+
+fn mir_text_switch(scrutinee: String, cases: String, default_label: String) -> String =
+    "  switch " + scrutinee + ", [" + cases + "], " + default_label;
+
+fn mir_text_switch_case(discriminant: i64, label: String) -> String =
+    int_to_string(discriminant) + " -> " + label;
+
 fn mir_text_block_start(label: String) -> String = label + ":";
 
 fn mir_text_fn_start(name: String, params: String, ret_ty: i64) -> String =
@@ -392,6 +506,12 @@ fn lower_expr(ast: String, temp: i64, block: i64) -> String =
     else if is_if_node(ast) then lower_if(ast, temp, block)
     else if is_let_node(ast) or is_let_mut_node(ast) then lower_let(ast, temp, block)
     else if is_call_node(ast) then lower_call(ast, temp, block)
+    -- v0.21.0: Struct support
+    else if is_new_node(ast) then lower_struct_init(ast, temp, block)
+    else if is_dot_node(ast) then lower_field_access(ast, temp, block)
+    -- v0.21.1: Enum support
+    else if is_enum_variant_node(ast) then lower_enum_variant(ast, temp, block)
+    else if is_match_node(ast) then lower_match(ast, temp, block)
     else pack_lower_result(temp, block, "%error", "  ; unknown: " + get_node_type(ast));
 
 -- Lower integer literal: (int 42)
@@ -597,6 +717,176 @@ fn lower_call_args(ast: String, idx: i64, temp: i64, block: i64, places: String)
                        else if text.len() > 0 then text
                        else text2;
         pack_lower_result(t2, b2, p2, combined);
+
+-- ============================================================================
+-- v0.21.0: Struct Lowering
+-- ============================================================================
+
+-- Lower struct initialization: (new Point (x val1) (y val2))
+fn lower_struct_init(ast: String, temp: i64, block: i64) -> String =
+    let struct_name = get_new_struct_name(ast);
+    -- Lower all field values and collect results
+    let fields_result = lower_struct_fields(ast, 1, temp, block, "");
+    let t = unpack_temp(fields_result);
+    let b = unpack_block(fields_result);
+    let fields_str = unpack_result_place(fields_result);
+    let fields_text = unpack_text(fields_result);
+
+    let dest = place_temp(t);
+    let init_text = mir_text_struct_init(dest, struct_name, fields_str);
+    let combined = if fields_text.len() > 0 then fields_text + "|" + init_text else init_text;
+    pack_lower_result(t + 1, b, dest, combined);
+
+-- Lower struct fields recursively: "(new Point (x val1) (y val2))" -> "x: %t0, y: %t1"
+fn lower_struct_fields(ast: String, idx: i64, temp: i64, block: i64, fields: String) -> String =
+    let field_ast = get_child(ast, idx);
+    if field_ast.len() == 0 or field_ast == "" then
+        pack_lower_result(temp, block, fields, "")
+    else if field_ast.char_at(0) != 40 then  -- Not '('
+        pack_lower_result(temp, block, fields, "")
+    else
+        let field_name = get_field_assign_name(field_ast);
+        let value_ast = get_field_assign_value(field_ast);
+
+        let r = lower_expr(value_ast, temp, block);
+        let t = unpack_temp(r);
+        let b = unpack_block(r);
+        let p = unpack_result_place(r);
+        let text = unpack_text(r);
+
+        let field_entry = field_name + ": " + p;
+        let new_fields = if fields.len() > 0 then fields + ", " + field_entry else field_entry;
+
+        let next_result = lower_struct_fields(ast, idx + 1, t, b, new_fields);
+        let t2 = unpack_temp(next_result);
+        let b2 = unpack_block(next_result);
+        let p2 = unpack_result_place(next_result);
+        let text2 = unpack_text(next_result);
+
+        let combined = if text.len() > 0 and text2.len() > 0 then text + "|" + text2
+                       else if text.len() > 0 then text
+                       else text2;
+        pack_lower_result(t2, b2, p2, combined);
+
+-- Lower field access: (. base field)
+fn lower_field_access(ast: String, temp: i64, block: i64) -> String =
+    let base_ast = get_dot_base(ast);
+    let field_name = get_dot_field(ast);
+
+    -- Lower base expression
+    let rb = lower_expr(base_ast, temp, block);
+    let tb = unpack_temp(rb);
+    let bb = unpack_block(rb);
+    let pb = unpack_result_place(rb);
+    let textb = unpack_text(rb);
+
+    let dest = place_temp(tb);
+    let access_text = mir_text_field_access(dest, pb, field_name);
+    let combined = if textb.len() > 0 then textb + "|" + access_text else access_text;
+    pack_lower_result(tb + 1, bb, dest, combined);
+
+-- ============================================================================
+-- v0.21.1: Enum Lowering
+-- ============================================================================
+
+-- Lower enum variant: (Status::Active 42)
+fn lower_enum_variant(ast: String, temp: i64, block: i64) -> String =
+    let variant_full = get_enum_variant_name(ast);
+    let enum_name = get_enum_name_from_variant(variant_full);
+    let variant_name = get_variant_name_only(variant_full);
+    let discriminant = variant_to_discriminant(variant_name);
+    let arg_ast = get_enum_variant_arg(ast);
+
+    if arg_ast == "" or arg_ast.len() == 0 then
+        -- Unit variant (no argument)
+        let dest = place_temp(temp);
+        let text = mir_text_enum_variant(dest, enum_name, variant_name, discriminant, "");
+        pack_lower_result(temp + 1, block, dest, text)
+    else
+        -- Tuple variant with argument
+        let ra = lower_expr(arg_ast, temp, block);
+        let ta = unpack_temp(ra);
+        let ba = unpack_block(ra);
+        let pa = unpack_result_place(ra);
+        let texta = unpack_text(ra);
+
+        let dest = place_temp(ta);
+        let variant_text = mir_text_enum_variant(dest, enum_name, variant_name, discriminant, pa);
+        let combined = if texta.len() > 0 then texta + "|" + variant_text else variant_text;
+        pack_lower_result(ta + 1, ba, dest, combined);
+
+-- Lower match expression: (match scrutinee (arm1) (arm2) ...)
+fn lower_match(ast: String, temp: i64, block: i64) -> String =
+    let scrutinee_ast = get_match_scrutinee(ast);
+
+    -- Lower scrutinee
+    let rs = lower_expr(scrutinee_ast, temp, block);
+    let ts = unpack_temp(rs);
+    let bs = unpack_block(rs);
+    let ps = unpack_result_place(rs);
+    let texts = unpack_text(rs);
+
+    -- Generate result place and block labels
+    let result_place = place_temp(ts);
+    let ts2 = ts + 1;
+    let merge_lbl = "match_merge_" + int_to_string(bs);
+
+    -- Lower all arms
+    let arms_result = lower_match_arms(ast, 0, ts2, bs + 1, ps, result_place, merge_lbl, "", "");
+    let ta = unpack_temp(arms_result);
+    let ba = unpack_block(arms_result);
+    let cases_str = unpack_result_place(arms_result);
+    let arms_text = unpack_text(arms_result);
+
+    -- Generate switch instruction
+    let switch_text = mir_text_switch(ps, cases_str, merge_lbl);
+
+    -- Combine: scrutinee + switch + arms + merge label
+    let entry_text = if texts.len() > 0 then texts + "|" + switch_text else switch_text;
+    let full_text = entry_text + "|" + arms_text + "|" + mir_text_block_start(merge_lbl);
+
+    pack_lower_result(ta, ba, result_place, full_text);
+
+-- Lower match arms recursively
+fn lower_match_arms(ast: String, idx: i64, temp: i64, block: i64, scrutinee: String, result: String, merge_lbl: String, cases: String, acc: String) -> String =
+    let arm = get_match_arm(ast, idx);
+    if arm == "" or arm.len() == 0 or arm.char_at(0) != 40 then
+        -- No more arms
+        pack_lower_result(temp, block, cases, acc)
+    else
+        let pattern = get_arm_pattern(arm);
+        let body_ast = get_arm_body(arm);
+
+        -- Get variant info from pattern
+        let variant_full = get_node_type(pattern);
+        let variant_name = get_variant_name_only(variant_full);
+        let discriminant = variant_to_discriminant(variant_name);
+
+        -- Generate arm label
+        let arm_lbl = "match_arm_" + int_to_string(idx) + "_" + int_to_string(block);
+
+        -- Lower body
+        let rb = lower_expr(body_ast, temp, block);
+        let tb = unpack_temp(rb);
+        let bb = unpack_block(rb);
+        let pb = unpack_result_place(rb);
+        let textb = unpack_text(rb);
+
+        -- Build arm block
+        let arm_block = mir_text_block_start(arm_lbl) + "|" +
+                        (if textb.len() > 0 then textb + "|" else "") +
+                        mir_text_copy(result, pb) + "|" +
+                        mir_text_goto(merge_lbl);
+
+        -- Add to cases
+        let case_str = mir_text_switch_case(discriminant, arm_lbl);
+        let new_cases = if cases == "" then case_str else cases + ", " + case_str;
+
+        -- Add to accumulated text
+        let new_acc = if acc == "" then arm_block else acc + "|" + arm_block;
+
+        -- Process next arm
+        lower_match_arms(ast, idx + 1, tb, bb, scrutinee, result, merge_lbl, new_cases, new_acc);
 
 -- ============================================================================
 -- Function Lowering
@@ -808,13 +1098,71 @@ fn main() -> i64 =
     let prog_tests = prog1_ok + prog2_ok;
     let u13 = println(prog_tests);  -- Should be 2
 
-    let u14 = println(888);  -- Separator
+    -- Test 14: v0.21.0 Struct node detection (2 tests)
+    let sn1 = test_node_type("(new Point (x (int 1)) (y (int 2)))", "new");
+    let sn2 = test_node_type("(. (var <p>) x)", ".");
+    let struct_node_tests = sn1 + sn2;
+    let u14 = println(struct_node_tests);  -- Should be 2
+
+    -- Test 15: v0.21.0 Struct extraction (4 tests)
+    let se1 = if get_new_struct_name("(new Point (x (int 1)))") == "Point" then 1 else 0;
+    let se2 = if get_dot_field("(. (var <p>) x)") == "x" then 1 else 0;
+    let se3 = if get_field_assign_name("(x (int 5))") == "x" then 1 else 0;
+    let se4 = if get_node_type(get_dot_base("(. (var <p>) x)")) == "var" then 1 else 0;
+    let struct_extract_tests = se1 + se2 + se3 + se4;
+    let u15 = println(struct_extract_tests);  -- Should be 4
+
+    -- Test 16: v0.21.0 Struct init lowering (3 tests)
+    let si1 = test_lower_contains("(new Point (x (int 10)) (y (int 20)))", "struct-init Point");
+    let si2 = test_lower_contains("(new Point (x (int 10)) (y (int 20)))", "x: %_t0");
+    let si3 = test_lower_contains("(new Point (x (int 10)) (y (int 20)))", "y: %_t1");
+    let struct_init_tests = si1 + si2 + si3;
+    let u16 = println(struct_init_tests);  -- Should be 3
+
+    -- Test 17: v0.21.0 Field access lowering (2 tests)
+    let fa1 = test_lower_contains("(. (var <p>) x)", "field-access %p.x");
+    let fa2 = test_lower_contains("(. (var <point>) y)", "field-access %point.y");
+    let field_access_tests = fa1 + fa2;
+    let u17 = println(field_access_tests);  -- Should be 2
+
+    -- Test 18: v0.21.1 Enum node detection (3 tests)
+    let en1 = if is_enum_variant_node("(Status::Active (int 42))") then 1 else 0;
+    let en2 = if is_enum_variant_node("(Status::None)") then 1 else 0;
+    let en3 = if is_match_node("(match (var <s>) ((Status::None) (int 0)))") then 1 else 0;
+    let enum_node_tests = en1 + en2 + en3;
+    let u18 = println(enum_node_tests);  -- Should be 3
+
+    -- Test 19: v0.21.1 Enum extraction (4 tests)
+    let ex1 = if get_enum_variant_name("(Status::Active (int 42))") == "Status::Active" then 1 else 0;
+    let ex2 = if get_enum_name_from_variant("Status::Active") == "Status" then 1 else 0;
+    let ex3 = if get_variant_name_only("Status::Active") == "Active" then 1 else 0;
+    let ex4 = if get_node_type(get_enum_variant_arg("(Status::Active (int 42))")) == "int" then 1 else 0;
+    let enum_extract_tests = ex1 + ex2 + ex3 + ex4;
+    let u19 = println(enum_extract_tests);  -- Should be 4
+
+    -- Test 20: v0.21.1 Enum variant lowering (3 tests)
+    let ev1 = test_lower_contains("(Status::None)", "enum-variant Status::None");
+    let ev2 = test_lower_contains("(Status::Active (int 42))", "enum-variant Status::Active");
+    let ev3 = test_lower_contains("(Status::Active (int 42))", "const I:42");
+    let enum_variant_tests = ev1 + ev2 + ev3;
+    let u20 = println(enum_variant_tests);  -- Should be 3
+
+    -- Test 21: v0.21.1 Match lowering (3 tests)
+    let m1 = test_lower_contains("(match (var <s>) ((Status::None) (int 0)) ((Status::Active (var <x>)) (var <x>)))", "switch %s");
+    let m2 = test_lower_contains("(match (var <s>) ((Status::None) (int 0)) ((Status::Active (var <x>)) (var <x>)))", "match_arm_");
+    let m3 = test_lower_contains("(match (var <s>) ((Status::None) (int 0)) ((Status::Active (var <x>)) (var <x>)))", "match_merge_");
+    let match_tests = m1 + m2 + m3;
+    let u21 = println(match_tests);  -- Should be 3
+
+    let u22 = println(888);  -- Separator
 
     let total = node_tests + extract_tests + child_tests + int_tests + bool_tests +
                 var_tests + binop_tests + unary_tests + if_tests + let_tests +
-                call_tests + fn_tests + prog_tests;
-    let u15 = println(total);  -- Should be 43
+                call_tests + fn_tests + prog_tests + struct_node_tests +
+                struct_extract_tests + struct_init_tests + field_access_tests +
+                enum_node_tests + enum_extract_tests + enum_variant_tests + match_tests;
+    let u23 = println(total);  -- Should be 67
 
-    let u16 = println(999);  -- End marker
+    let u24 = println(999);  -- End marker
 
     total;

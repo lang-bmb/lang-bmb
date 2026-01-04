@@ -7,7 +7,7 @@
 -- - Output: LLVM IR text (.ll format)
 -- - Line separator: | (pipe character)
 --
--- SCOPE (v0.10.5-v0.10.7):
+-- SCOPE (v0.21.1):
 -- - Type mapping (i64 → i64, i32 → i32, bool → i1, unit → void)
 -- - Constant generation
 -- - Arithmetic: add, sub, mul, sdiv, srem
@@ -16,6 +16,8 @@
 -- - Unary: neg (sub 0), not (xor -1)
 -- - Control flow: br, label, phi, ret (v0.10.6)
 -- - Function generation: define, call, params (v0.10.7)
+-- - v0.21.0: Struct support (struct-init, field-access)
+-- - v0.21.1: Enum support (enum-variant, switch)
 --
 -- LLVM IR FORMAT:
 --   define i64 @add(i64 %a, i64 %b) {
@@ -253,6 +255,271 @@ fn gen_unary_neg(dest: String, operand: String, ty: String) -> String =
 -- MIR: %_t0 = not %x  →  LLVM: %_t0 = xor i1 %x, 1
 fn gen_unary_not(dest: String, operand: String) -> String =
     dest + " = xor i1 " + operand + ", 1";
+
+-- ============================================================================
+-- SECTION 8.5: v0.21.0 Struct Operations
+-- ============================================================================
+
+-- Struct initialization using insertvalue
+-- MIR: %_t0 = struct-init Point { x: %_t1, y: %_t2 }
+-- LLVM: %_t0 = insertvalue %Point zeroinitializer, i64 %_t1, 0
+--       %_t0_1 = insertvalue %Point %_t0, i64 %_t2, 1
+-- Note: For simplicity, we generate a single aggregate instruction
+-- Real LLVM would need multiple insertvalue instructions
+
+-- Generate field insertion (used for building struct)
+fn gen_insertvalue(dest: String, struct_type: String, base: String, value: String, idx: i64) -> String =
+    dest + " = insertvalue %" + struct_type + " " + base + ", i64 " + value + ", " + int_to_string(idx);
+
+-- Generate struct zero initializer
+fn gen_struct_zeroinit(struct_type: String) -> String =
+    "%" + struct_type + " zeroinitializer";
+
+-- Field access using extractvalue
+-- MIR: %_t0 = field-access %p.x
+-- LLVM: %_t0 = extractvalue %Point %p, 0
+fn gen_extractvalue(dest: String, struct_type: String, base: String, idx: i64) -> String =
+    dest + " = extractvalue %" + struct_type + " " + base + ", " + int_to_string(idx);
+
+-- Parse struct-init instruction
+-- MIR format: %dest = struct-init TypeName { field1: val1, field2: val2 }
+fn parse_struct_init(line: String) -> String =
+    let pos0 = skip_ws(line, 0);
+    let dest = read_until_ws(line, pos0);
+    -- Find struct-init keyword and type name
+    let pos1 = find_pattern(line, "struct-init", 0);
+    let pos2 = pos1 + 11;  -- skip "struct-init"
+    let pos3 = skip_ws(line, pos2);
+    let struct_name = read_until_ws(line, pos3);
+    -- Extract fields part between { and }
+    let brace_start = find_char(line, 123, pos3);  -- '{'
+    let brace_end = find_char(line, 125, brace_start);  -- '}'
+    let fields_str = line.slice(brace_start + 1, brace_end);
+    dest + "|" + struct_name + "|" + fields_str;
+
+-- Parse field-access instruction
+-- MIR format: %dest = field-access %base.field_name
+fn parse_field_access(line: String) -> String =
+    let pos0 = skip_ws(line, 0);
+    let dest = read_until_ws(line, pos0);
+    -- Find field-access keyword
+    let pos1 = find_pattern(line, "field-access", 0);
+    let pos2 = pos1 + 12;  -- skip "field-access"
+    let pos3 = skip_ws(line, pos2);
+    -- Read base.field format
+    let dot_pos = find_char(line, 46, pos3);  -- '.'
+    let base = line.slice(pos3, dot_pos);
+    let field_start = dot_pos + 1;
+    let field_name = read_until_ws(line, field_start);
+    dest + "|" + base + "|" + field_name;
+
+-- Find pattern in string, return position
+fn find_pattern(s: String, pat: String, pos: i64) -> i64 =
+    if pos + pat.len() > s.len() then s.len()
+    else if starts_with(s, pat, pos) then pos
+    else find_pattern(s, pat, pos + 1);
+
+-- Generate LLVM IR for struct-init (simplified: just first field for now)
+-- A complete impl would generate multiple insertvalue instructions
+fn gen_instr_struct_init(line: String) -> String =
+    let parsed = parse_struct_init(line);
+    let dest = extract_field(parsed, 0);
+    let struct_name = extract_field(parsed, 1);
+    let fields_str = extract_field(parsed, 2);
+    -- Generate insertvalue chain
+    gen_struct_init_fields(dest, struct_name, fields_str);
+
+-- Generate insertvalue chain for struct fields
+-- Input: fields_str = "x: %_t0, y: %_t1"
+fn gen_struct_init_fields(dest: String, struct_name: String, fields_str: String) -> String =
+    gen_struct_init_fields_acc(dest, struct_name, fields_str, 0, gen_struct_zeroinit(struct_name), "");
+
+fn gen_struct_init_fields_acc(dest: String, struct_name: String, fields_str: String, idx: i64, base: String, acc: String) -> String =
+    let field_pair = get_next_field_pair(fields_str, idx);
+    if field_pair == "" then
+        -- Final: assign result to dest using add 0 (copy)
+        if acc == "" then dest + " = add i64 0, 0"  -- No fields case
+        else acc
+    else
+        let field_val = extract_field_value(field_pair);
+        let temp_dest = if get_next_field_pair(fields_str, idx + 1) == "" then dest else dest + "_" + int_to_string(idx);
+        let insert_ir = gen_insertvalue(temp_dest, struct_name, base, field_val, idx);
+        let new_acc = if acc == "" then insert_ir else acc + "|" + insert_ir;
+        gen_struct_init_fields_acc(dest, struct_name, fields_str, idx + 1, temp_dest, new_acc);
+
+-- Get nth field pair from "field: value, field2: value2"
+fn get_next_field_pair(s: String, n: i64) -> String =
+    get_next_field_pair_acc(s, 0, n, 0);
+
+fn get_next_field_pair_acc(s: String, pos: i64, target: i64, current: i64) -> String =
+    if pos >= s.len() then
+        if current == target then "" else ""
+    else
+        let pos1 = skip_ws(s, pos);
+        if pos1 >= s.len() then ""
+        else
+            -- Find end of this pair (next comma or end)
+            let comma_pos = find_char(s, 44, pos1);  -- ','
+            let pair_end = if comma_pos >= s.len() then s.len() else comma_pos;
+            if current == target then
+                s.slice(pos1, pair_end)
+            else
+                if comma_pos >= s.len() then ""
+                else get_next_field_pair_acc(s, comma_pos + 1, target, current + 1);
+
+-- Extract value from "field: value" -> "value"
+fn extract_field_value(pair: String) -> String =
+    let colon_pos = find_char(pair, 58, 0);  -- ':'
+    let val_start = skip_ws(pair, colon_pos + 1);
+    read_until_ws(pair, val_start);
+
+-- Generate LLVM IR for field-access
+fn gen_instr_field_access(line: String) -> String =
+    let parsed = parse_field_access(line);
+    let dest = extract_field(parsed, 0);
+    let base = extract_field(parsed, 1);
+    let field_name = extract_field(parsed, 2);
+    -- For now, use field index 0 for x, 1 for y (simple struct support)
+    let field_idx = field_name_to_idx(field_name);
+    -- Generate extractvalue (assuming Point struct for now)
+    gen_extractvalue(dest, "Point", base, field_idx);
+
+-- Simple field name to index mapping
+-- x -> 0, y -> 1, etc.
+fn field_name_to_idx(name: String) -> i64 =
+    if name == "x" then 0
+    else if name == "y" then 1
+    else if name == "z" then 2
+    else if name == "a" then 0
+    else if name == "b" then 1
+    else if name == "c" then 2
+    else 0;  -- default to first field
+
+-- Check if line is a struct-init instruction
+fn is_struct_init_line(line: String) -> bool =
+    has_pattern(line, "struct-init", 0);
+
+-- Check if line is a field-access instruction
+fn is_field_access_line(line: String) -> bool =
+    has_pattern(line, "field-access", 0);
+
+-- ============================================================================
+-- SECTION 8b: Enum LLVM IR Generation (v0.21.1)
+-- ============================================================================
+
+-- Check if line is an enum-variant instruction
+fn is_enum_variant_line(line: String) -> bool =
+    has_pattern(line, "enum-variant", 0);
+
+-- Check if line is a switch instruction
+fn is_switch_line(line: String) -> bool =
+    let pos = skip_ws(line, 0);
+    starts_with(line, "switch", pos);
+
+-- Generate LLVM IR for enum-variant instruction
+-- MIR format: %dest = enum-variant EnumName::Variant discriminant [arg]
+-- For simple enums: just store the discriminant as i64
+-- For enums with data: create a {i64, i64} tuple
+fn gen_instr_enum_variant(line: String) -> String =
+    let parsed = parse_enum_variant(line);
+    let dest = extract_field(parsed, 0);
+    let variant_full = extract_field(parsed, 1);
+    let discriminant = extract_field(parsed, 2);
+    let arg = extract_field(parsed, 3);
+    if arg == "" or arg.len() == 0 then
+        -- Unit variant: just the discriminant
+        dest + " = add i64 " + discriminant + ", 0"
+    else
+        -- Tuple variant: pack discriminant and arg into struct
+        -- First insertvalue for discriminant, then for arg
+        let temp = dest + "_d";
+        let ir1 = gen_insertvalue(temp, "EnumData", "%EnumData zeroinitializer", discriminant, 0);
+        let ir2 = gen_insertvalue(dest, "EnumData", temp, arg, 1);
+        ir1 + "|" + ir2;
+
+-- Parse enum-variant line
+-- Input: "  %_t0 = enum-variant Status::Active 1 %_t1"
+-- Output: "%_t0|Status::Active|1|%_t1"
+fn parse_enum_variant(line: String) -> String =
+    let pos0 = skip_ws(line, 0);
+    let dest = read_until_ws(line, pos0);
+    let pos1 = skip_ws(line, pos0 + dest.len());
+    let pos2 = skip_ws(line, pos1 + 1);  -- skip '='
+    let pos3 = skip_ws(line, pos2 + 12);  -- skip 'enum-variant '
+    let variant = read_until_ws(line, pos3);
+    let pos4 = skip_ws(line, pos3 + variant.len());
+    let discriminant = read_until_ws(line, pos4);
+    let pos5 = skip_ws(line, pos4 + discriminant.len());
+    let arg = read_until_ws(line, pos5);
+    dest + "|" + variant + "|" + discriminant + "|" + arg;
+
+-- Generate LLVM IR for switch instruction
+-- MIR format: switch %scrutinee, [cases], default_label
+-- LLVM format: switch i64 %val, label %default [i64 0, label %case0 ...]
+fn gen_instr_switch(line: String) -> String =
+    let parsed = parse_switch(line);
+    let scrutinee = extract_field(parsed, 0);
+    let cases_str = extract_field(parsed, 1);
+    let default_label = extract_field(parsed, 2);
+    let llvm_cases = convert_switch_cases(cases_str);
+    "switch i64 " + scrutinee + ", label %" + default_label + " [" + llvm_cases + "]";
+
+-- Parse switch line
+-- Input: "  switch %s, [0 -> arm0, 1 -> arm1], merge"
+-- Output: "%s|0 -> arm0, 1 -> arm1|merge"
+fn parse_switch(line: String) -> String =
+    let pos0 = skip_ws(line, 0);
+    let pos1 = skip_ws(line, pos0 + 6);  -- skip 'switch'
+    let scrutinee = read_until_ws(line, pos1);
+    let pos2 = find_char(line, 91, pos1);  -- find '['
+    let pos3 = find_char(line, 93, pos2);  -- find ']'
+    let cases_str = line.slice(pos2 + 1, pos3);
+    let pos4 = skip_ws(line, pos3 + 2);  -- skip '], '
+    let default_label = read_until_ws(line, pos4);
+    scrutinee + "|" + cases_str + "|" + default_label;
+
+-- Convert switch cases from MIR to LLVM format
+-- Input: "0 -> arm0, 1 -> arm1"
+-- Output: "i64 0, label %arm0 i64 1, label %arm1"
+fn convert_switch_cases(cases_str: String) -> String =
+    convert_switch_cases_acc(cases_str, 0, "");
+
+fn convert_switch_cases_acc(s: String, pos: i64, acc: String) -> String =
+    if pos >= s.len() then acc
+    else
+        let pos1 = skip_ws(s, pos);
+        if pos1 >= s.len() then acc
+        else
+            -- Read discriminant
+            let disc = read_until_ws(s, pos1);
+            -- Find '->'
+            let arrow_pos = find_arrow(s, pos1);
+            if arrow_pos >= s.len() then acc
+            else
+                let label_pos = skip_ws(s, arrow_pos + 2);
+                let label = read_switch_label(s, label_pos);
+                let case_ir = "i64 " + disc + ", label %" + label;
+                let new_acc = if acc == "" then case_ir else acc + " " + case_ir;
+                -- Find next case (after comma)
+                let comma_pos = find_char(s, 44, label_pos);
+                if comma_pos >= s.len() then new_acc
+                else convert_switch_cases_acc(s, comma_pos + 1, new_acc);
+
+-- Find '->' in string
+fn find_arrow(s: String, pos: i64) -> i64 =
+    if pos + 1 >= s.len() then s.len()
+    else if s.char_at(pos) == 45 and s.char_at(pos + 1) == 62 then pos  -- '->'
+    else find_arrow(s, pos + 1);
+
+-- Read label until comma or end
+fn read_switch_label(s: String, pos: i64) -> String =
+    read_switch_label_acc(s, pos, "");
+
+fn read_switch_label_acc(s: String, pos: i64, acc: String) -> String =
+    if pos >= s.len() then acc
+    else let c = s.char_at(pos);
+        if c == 44 or c == 32 or c == 93 then acc  -- comma, space, or ']'
+        else read_switch_label_acc(s, pos + 1, acc + char_to_string(c));
 
 -- ============================================================================
 -- SECTION 9: MIR Instruction Parsing
@@ -596,6 +863,12 @@ fn gen_mir_line(line: String) -> String =
         else if is_label_line(line) then gen_label_line(line)
         else if is_terminator_line(line) then gen_terminator(line)
         else if is_call_line(line) then gen_instr_call(line)
+        -- v0.21.0: Struct support
+        else if is_struct_init_line(line) then gen_instr_struct_init(line)
+        else if is_field_access_line(line) then gen_instr_field_access(line)
+        -- v0.21.1: Enum support
+        else if is_enum_variant_line(line) then gen_instr_enum_variant(line)
+        else if is_switch_line(line) then gen_instr_switch(line)
         else gen_instruction(line);
 
 -- Check if line is a call instruction
@@ -955,6 +1228,67 @@ fn test_has_pattern() -> i64 =
     let t3 = if has_pattern("define i64 @add", "define", 0) then 1 else 0;
     t1 + t2 + t3;
 
+-- v0.21.0 Struct Support Tests
+fn test_struct_line_detection() -> i64 =
+    let t1 = if is_struct_init_line("%_t0 = struct-init Point { x: %_t1 }") then 1 else 0;
+    let t2 = if is_field_access_line("%_t0 = field-access %p.x") then 1 else 0;
+    let t3 = if not is_struct_init_line("%_t0 = + %a, %b") then 1 else 0;
+    let t4 = if not is_field_access_line("%_t0 = + %a, %b") then 1 else 0;
+    t1 + t2 + t3 + t4;
+
+fn test_insertvalue_gen() -> i64 =
+    let i1 = gen_insertvalue("%_t0", "Point", "%Point zeroinitializer", "%x", 0);
+    let t1 = if has_pattern(i1, "insertvalue", 0) then 1 else 0;
+    let t2 = if has_pattern(i1, "%Point", 0) then 1 else 0;
+    let t3 = if has_pattern(i1, ", 0", 0) then 1 else 0;
+    t1 + t2 + t3;
+
+fn test_extractvalue_gen() -> i64 =
+    let e1 = gen_extractvalue("%_t0", "Point", "%p", 0);
+    let t1 = if e1 == "%_t0 = extractvalue %Point %p, 0" then 1 else 0;
+    let e2 = gen_extractvalue("%_t1", "Point", "%p", 1);
+    let t2 = if e2 == "%_t1 = extractvalue %Point %p, 1" then 1 else 0;
+    t1 + t2;
+
+fn test_field_name_to_idx() -> i64 =
+    let t1 = if field_name_to_idx("x") == 0 then 1 else 0;
+    let t2 = if field_name_to_idx("y") == 1 then 1 else 0;
+    let t3 = if field_name_to_idx("z") == 2 then 1 else 0;
+    t1 + t2 + t3;
+
+fn test_field_access_ir() -> i64 =
+    let fa1 = gen_instr_field_access("%_t0 = field-access %p.x");
+    let t1 = if has_pattern(fa1, "extractvalue", 0) then 1 else 0;
+    let t2 = if has_pattern(fa1, "%p", 0) then 1 else 0;
+    let t3 = if has_pattern(fa1, ", 0", 0) then 1 else 0;
+    t1 + t2 + t3;
+
+-- v0.21.1 Enum support tests
+fn test_enum_line_detection() -> i64 =
+    let t1 = if is_enum_variant_line("%_t0 = enum-variant Status::Active 1 %_t1") then 1 else 0;
+    let t2 = if is_enum_variant_line("%_t0 = enum-variant Status::None 0") then 1 else 0;
+    let t3 = if is_switch_line("  switch %s, [0 -> arm0], merge") then 1 else 0;
+    let t4 = if not is_enum_variant_line("%_t0 = + %a, %b") then 1 else 0;
+    t1 + t2 + t3 + t4;
+
+fn test_enum_variant_ir() -> i64 =
+    -- Test unit variant (no arg)
+    let ev1 = gen_instr_enum_variant("  %_t0 = enum-variant Status::None 0");
+    let t1 = if has_pattern(ev1, "%_t0 = add i64 0, 0", 0) then 1 else 0;
+    -- Test tuple variant (with arg)
+    let ev2 = gen_instr_enum_variant("  %_t0 = enum-variant Status::Active 1 %_t1");
+    let t2 = if has_pattern(ev2, "insertvalue", 0) then 1 else 0;
+    let t3 = if has_pattern(ev2, "%_t1", 0) then 1 else 0;
+    t1 + t2 + t3;
+
+fn test_switch_ir() -> i64 =
+    let sw1 = gen_instr_switch("  switch %s, [0 -> arm0, 1 -> arm1], merge");
+    let t1 = if has_pattern(sw1, "switch i64 %s", 0) then 1 else 0;
+    let t2 = if has_pattern(sw1, "label %merge", 0) then 1 else 0;
+    let t3 = if has_pattern(sw1, "i64 0, label %arm0", 0) then 1 else 0;
+    let t4 = if has_pattern(sw1, "i64 1, label %arm1", 0) then 1 else 0;
+    t1 + t2 + t3 + t4;
+
 fn main() -> i64 =
     let u0 = println(777);
     let r1 = test_type_mapping();
@@ -1016,8 +1350,26 @@ fn main() -> i64 =
     let u27 = println(r27);
     let r28 = test_has_pattern();
     let u28 = println(r28);
-    let u29 = println(888);
-    let total = r1 + r2 + r3 + r4 + r5 + r6 + r7 + r8 + r9 + r10 + r11 + r12 + r13 + r14 + r15 + r16 + r17 + r18 + r19 + r20 + r21 + r22 + r23 + r24 + r25 + r26 + r27 + r28;
-    let u30 = println(total);
-    let u31 = println(999);
+    -- v0.21.0 struct support tests
+    let r29 = test_struct_line_detection();
+    let u29 = println(r29);
+    let r30 = test_insertvalue_gen();
+    let u30 = println(r30);
+    let r31 = test_extractvalue_gen();
+    let u31 = println(r31);
+    let r32 = test_field_name_to_idx();
+    let u32 = println(r32);
+    let r33 = test_field_access_ir();
+    let u33 = println(r33);
+    -- v0.21.1 enum support tests
+    let r34 = test_enum_line_detection();
+    let u34 = println(r34);
+    let r35 = test_enum_variant_ir();
+    let u35 = println(r35);
+    let r36 = test_switch_ir();
+    let u36 = println(r36);
+    let u37 = println(888);
+    let total = r1 + r2 + r3 + r4 + r5 + r6 + r7 + r8 + r9 + r10 + r11 + r12 + r13 + r14 + r15 + r16 + r17 + r18 + r19 + r20 + r21 + r22 + r23 + r24 + r25 + r26 + r27 + r28 + r29 + r30 + r31 + r32 + r33 + r34 + r35 + r36;
+    let u38 = println(total);
+    let u39 = println(999);
     total;

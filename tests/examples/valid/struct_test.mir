@@ -1,0 +1,21 @@
+fn make_point(x: i64, y: i64) -> i64 {
+entry:
+  %_t0 = struct-init Point { x: %x, y: %y }
+  return %_t0
+}
+
+
+fn get_x(p: i64) -> i64 {
+entry:
+  %_t0 = field-access %p.x
+  return %_t0
+}
+
+
+fn main() -> i64 {
+entry:
+  %_t0 = call make_point(I:10, I:20)
+  %p = copy %_t0
+  %_t1 = call get_x(%p)
+  return %_t1
+}

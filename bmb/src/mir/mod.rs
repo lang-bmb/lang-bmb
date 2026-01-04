@@ -378,3 +378,216 @@ impl Default for LoweringContext {
         Self::new()
     }
 }
+
+// ============================================================================
+// MIR Text Formatting (v0.21.2)
+// Formats MIR to text format matching Bootstrap compiler output
+// ============================================================================
+
+/// Format a MIR program to text format
+pub fn format_mir(program: &MirProgram) -> String {
+    let mut output = String::new();
+
+    for (i, func) in program.functions.iter().enumerate() {
+        if i > 0 {
+            output.push_str("\n\n");
+        }
+        output.push_str(&format_mir_function(func));
+    }
+
+    output
+}
+
+/// Format a single MIR function
+fn format_mir_function(func: &MirFunction) -> String {
+    let mut out = String::new();
+
+    // Function header
+    let params_str: Vec<_> = func.params.iter()
+        .map(|(name, ty)| format!("{}: {}", name, format_mir_type(ty)))
+        .collect();
+    out.push_str(&format!("fn {}({}) -> {} {{\n",
+        func.name,
+        params_str.join(", "),
+        format_mir_type(&func.ret_ty)));
+
+    // Blocks
+    for block in &func.blocks {
+        out.push_str(&format!("{}:\n", block.label));
+
+        // Instructions
+        for inst in &block.instructions {
+            out.push_str(&format!("  {}\n", format_mir_inst(inst)));
+        }
+
+        // Terminator
+        out.push_str(&format!("  {}\n", format_terminator(&block.terminator)));
+    }
+
+    out.push_str("}\n");
+    out
+}
+
+/// Format a MIR instruction
+fn format_mir_inst(inst: &MirInst) -> String {
+    match inst {
+        MirInst::Const { dest, value } => {
+            format!("%{} = const {}", dest.name, format_constant(value))
+        }
+        MirInst::Copy { dest, src } => {
+            format!("%{} = copy %{}", dest.name, src.name)
+        }
+        MirInst::BinOp { dest, op, lhs, rhs } => {
+            format!("%{} = {} {}, {}",
+                dest.name,
+                format_binop(*op),
+                format_operand(lhs),
+                format_operand(rhs))
+        }
+        MirInst::UnaryOp { dest, op, src } => {
+            format!("%{} = {} {}", dest.name, format_unaryop(*op), format_operand(src))
+        }
+        MirInst::Call { dest, func, args } => {
+            let args_str: Vec<_> = args.iter().map(format_operand).collect();
+            if let Some(d) = dest {
+                format!("%{} = call {}({})", d.name, func, args_str.join(", "))
+            } else {
+                format!("call {}({})", func, args_str.join(", "))
+            }
+        }
+        MirInst::Phi { dest, values } => {
+            let vals: Vec<_> = values.iter()
+                .map(|(v, lbl)| format!("[{}, {}]", format_operand(v), lbl))
+                .collect();
+            format!("%{} = phi {}", dest.name, vals.join(", "))
+        }
+        MirInst::StructInit { dest, struct_name, fields } => {
+            let fields_str: Vec<_> = fields.iter()
+                .map(|(name, val)| format!("{}: {}", name, format_operand(val)))
+                .collect();
+            format!("%{} = struct-init {} {{ {} }}", dest.name, struct_name, fields_str.join(", "))
+        }
+        MirInst::FieldAccess { dest, base, field } => {
+            format!("%{} = field-access %{}.{}", dest.name, base.name, field)
+        }
+        MirInst::FieldStore { base, field, value } => {
+            format!("%{}.{} = {}", base.name, field, format_operand(value))
+        }
+        MirInst::EnumVariant { dest, enum_name, variant, args } => {
+            if args.is_empty() {
+                format!("%{} = enum-variant {}::{} 0", dest.name, enum_name, variant)
+            } else {
+                let args_str: Vec<_> = args.iter().map(format_operand).collect();
+                format!("%{} = enum-variant {}::{} 1 {}", dest.name, enum_name, variant, args_str.join(", "))
+            }
+        }
+        MirInst::ArrayInit { dest, element_type: _, elements } => {
+            let elems: Vec<_> = elements.iter().map(format_operand).collect();
+            format!("%{} = array-init [{}]", dest.name, elems.join(", "))
+        }
+        MirInst::IndexLoad { dest, array, index } => {
+            format!("%{} = index-load %{}[{}]", dest.name, array.name, format_operand(index))
+        }
+        MirInst::IndexStore { array, index, value } => {
+            format!("%{}[{}] = {}", array.name, format_operand(index), format_operand(value))
+        }
+    }
+}
+
+/// Format a terminator
+fn format_terminator(term: &Terminator) -> String {
+    match term {
+        Terminator::Return(None) => "return".to_string(),
+        Terminator::Return(Some(op)) => format!("return {}", format_operand(op)),
+        Terminator::Goto(label) => format!("goto {}", label),
+        Terminator::Branch { cond, then_label, else_label } => {
+            format!("branch {}, {}, {}", format_operand(cond), then_label, else_label)
+        }
+        Terminator::Unreachable => "unreachable".to_string(),
+        Terminator::Switch { discriminant, cases, default } => {
+            let cases_str: Vec<_> = cases.iter()
+                .map(|(val, lbl)| format!("{} -> {}", val, lbl))
+                .collect();
+            format!("switch {}, [{}], {}", format_operand(discriminant), cases_str.join(", "), default)
+        }
+    }
+}
+
+/// Format an operand
+fn format_operand(op: &Operand) -> String {
+    match op {
+        Operand::Place(p) => format!("%{}", p.name),
+        Operand::Constant(c) => format_constant(c),
+    }
+}
+
+/// Format a constant value
+fn format_constant(c: &Constant) -> String {
+    match c {
+        Constant::Int(n) => format!("I:{}", n),
+        Constant::Float(f) => format!("F:{}", f),
+        Constant::Bool(b) => format!("B:{}", if *b { 1 } else { 0 }),
+        Constant::String(s) => format!("S:\"{}\"", s),
+        Constant::Unit => "U".to_string(),
+    }
+}
+
+/// Format a binary operator
+fn format_binop(op: MirBinOp) -> String {
+    match op {
+        MirBinOp::Add => "+",
+        MirBinOp::Sub => "-",
+        MirBinOp::Mul => "*",
+        MirBinOp::Div => "/",
+        MirBinOp::Mod => "%",
+        MirBinOp::FAdd => "+.",
+        MirBinOp::FSub => "-.",
+        MirBinOp::FMul => "*.",
+        MirBinOp::FDiv => "/.",
+        MirBinOp::Eq => "==",
+        MirBinOp::Ne => "!=",
+        MirBinOp::Lt => "<",
+        MirBinOp::Gt => ">",
+        MirBinOp::Le => "<=",
+        MirBinOp::Ge => ">=",
+        MirBinOp::FEq => "==.",
+        MirBinOp::FNe => "!=.",
+        MirBinOp::FLt => "<.",
+        MirBinOp::FGt => ">.",
+        MirBinOp::FLe => "<=.",
+        MirBinOp::FGe => ">=.",
+        MirBinOp::And => "and",
+        MirBinOp::Or => "or",
+    }.to_string()
+}
+
+/// Format a unary operator
+fn format_unaryop(op: MirUnaryOp) -> String {
+    match op {
+        MirUnaryOp::Neg => "neg",
+        MirUnaryOp::FNeg => "fneg",
+        MirUnaryOp::Not => "not",
+    }.to_string()
+}
+
+/// Format a MIR type
+fn format_mir_type(ty: &MirType) -> String {
+    match ty {
+        MirType::I32 => "i32".to_string(),
+        MirType::I64 => "i64".to_string(),
+        MirType::F64 => "f64".to_string(),
+        MirType::Bool => "bool".to_string(),
+        MirType::String => "String".to_string(),
+        MirType::Unit => "()".to_string(),
+        MirType::Struct { name, .. } => name.clone(),
+        MirType::StructPtr(name) => format!("&{}", name),
+        MirType::Enum { name, .. } => name.clone(),
+        MirType::Array { element_type, size } => {
+            if let Some(s) = size {
+                format!("[{}; {}]", format_mir_type(element_type), s)
+            } else {
+                format!("[{}]", format_mir_type(element_type))
+            }
+        }
+    }
+}

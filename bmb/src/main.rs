@@ -25,6 +25,9 @@ enum Command {
         /// Emit LLVM IR instead of executable
         #[arg(long)]
         emit_ir: bool,
+        /// Emit MIR (Mid-level IR) - v0.21.2
+        #[arg(long)]
+        emit_mir: bool,
         /// Emit WASM text format (.wat)
         #[arg(long)]
         emit_wasm: bool,
@@ -109,11 +112,12 @@ fn main() {
             output,
             release,
             emit_ir,
+            emit_mir,
             emit_wasm,
             wasm_target,
             all_targets,
             verbose,
-        } => build_file(&file, output, release, emit_ir, emit_wasm, &wasm_target, all_targets, verbose),
+        } => build_file(&file, output, release, emit_ir, emit_mir, emit_wasm, &wasm_target, all_targets, verbose),
         Command::Run { file } => run_file(&file),
         Command::Repl => start_repl(),
         Command::Check { file, include_paths } => check_file_with_includes(&file, &include_paths),
@@ -136,11 +140,17 @@ fn build_file(
     output: Option<PathBuf>,
     release: bool,
     emit_ir: bool,
+    emit_mir: bool,
     emit_wasm: bool,
     wasm_target: &str,
     all_targets: bool,
     verbose: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    // v0.21.2: If emitting MIR, just output MIR and return
+    if emit_mir {
+        return emit_mir_file(path, output, verbose);
+    }
+
     // v0.12.4: Build for all targets (native + WASM)
     if all_targets {
         if verbose {
@@ -273,6 +283,57 @@ fn build_wasm(
     if verbose {
         println!("  Target: {:?}", target);
         println!("  Size: {} bytes", wat.len());
+    }
+
+    Ok(())
+}
+
+/// v0.21.2: Emit MIR output for bootstrap comparison
+fn emit_mir_file(
+    path: &PathBuf,
+    output: Option<PathBuf>,
+    verbose: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let source = std::fs::read_to_string(path)?;
+    let filename = path.display().to_string();
+
+    if verbose {
+        println!("Compiling {} to MIR...", filename);
+    }
+
+    // Tokenize
+    let tokens = bmb::lexer::tokenize(&source)?;
+
+    // Parse
+    let ast = bmb::parser::parse(&filename, &source, tokens)?;
+
+    if verbose {
+        println!("  Parsed {} items", ast.items.len());
+    }
+
+    // Type check
+    let mut checker = bmb::types::TypeChecker::new();
+    checker.check_program(&ast)?;
+
+    // Lower to MIR
+    let mir = bmb::mir::lower_program(&ast);
+
+    // Format MIR as text
+    let mir_text = bmb::mir::format_mir(&mir);
+
+    // Determine output path
+    let output_path = output.unwrap_or_else(|| {
+        path.with_extension("mir")
+    });
+
+    // Write output
+    std::fs::write(&output_path, &mir_text)?;
+
+    println!("Generated: {}", output_path.display());
+
+    if verbose {
+        println!("  Functions: {}", mir.functions.len());
+        println!("  Size: {} bytes", mir_text.len());
     }
 
     Ok(())

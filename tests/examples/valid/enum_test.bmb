@@ -1,0 +1,22 @@
+-- Test file for enum support
+
+enum Status {
+    None,
+    Active(i64),
+}
+
+fn get_status() -> Status = {
+    Status::Active(42)
+};
+
+fn check_status(s: Status) -> i64 = {
+    match s {
+        Status::None => 0,
+        Status::Active(x) => x,
+    }
+};
+
+fn main() -> i64 = {
+    let s = get_status();
+    check_status(s)
+};
