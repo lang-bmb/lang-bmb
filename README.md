@@ -1,49 +1,49 @@
 # BMB - Bare-Metal-Banter
 
-A verified systems programming language with contract verification.
+A verified systems programming language with contract-based verification, designed for AI-native code generation.
 
-## Current Status: v0.10 Sunrise (Bootstrap)
+## Current Status: v0.18.1
 
-### Features
+| Component | Status | Description |
+|-----------|--------|-------------|
+| Lexer/Parser | Complete | logos + lalrpop based tokenization, 85+ tests |
+| Type System | Complete | Generics, refinement types, Option/Result, ownership |
+| Contracts | Complete | pre/post conditions, quantifiers, SMT verification (Z3) |
+| Interpreter | Complete | Tree-walking interpreter with REPL |
+| MIR | Complete | Middle Intermediate Representation |
+| LLVM Backend | Complete | Native code generation via inkwell (optional) |
+| Bootstrap | Complete | Self-hosted compiler components in BMB |
+| Module System | Complete | Cross-package type references, use statements |
 
-- **Lexer/Parser**: logos + lalrpop based tokenization and AST generation
-- **Type System**: Basic types (i32, i64, f64, bool, String, unit), functions, let bindings
-- **Contract Verification**: pre/post condition verification via SMT solver (Z3)
-- **Interpreter**: Tree-walking interpreter for direct execution
-- **REPL**: Interactive environment with rustyline
-- **MIR**: Middle Intermediate Representation for code generation
-- **LLVM Backend**: Native code generation via inkwell (optional)
-- **Error Reporting**: ariadne-based rich error messages
-- **Standard Library** (v0.5+): Core types (Option, Result), collections, I/O, math
-- **Ecosystem Tools** (v0.6+): Formatter (bmb-fmt), Language Server (bmb-lsp), Package Manager (gotgan)
-- **Runtime** (v0.7+): Memory management, stack/heap allocation, panic handling
-- **Bootstrap** (v0.10): Self-hosted compiler components written in BMB
-
-### Quick Start
+## Quick Start
 
 ```bash
 # Build the compiler
 cargo build --release
 
-# Run a BMB program (interpreter)
+# Run a BMB program
 bmb run examples/hello.bmb
 
-# Start interactive REPL
-bmb repl
-
-# Check a file for type errors
+# Type check a file
 bmb check examples/simple.bmb
+
+# Parse and output AST
+bmb parse examples/simple.bmb                 # JSON format
+bmb parse examples/simple.bmb --format=sexpr  # S-expression format
 
 # Verify contracts (requires Z3)
 bmb verify examples/verify.bmb --z3-path /path/to/z3
 
-# Build native executable (requires LLVM, see below)
+# Start interactive REPL
+bmb repl
+
+# Build native executable (requires LLVM)
 bmb build examples/hello.bmb -o hello
-bmb build examples/hello.bmb --release  # optimized
-bmb build examples/hello.bmb --emit-ir  # output LLVM IR
+bmb build examples/hello.bmb --release     # optimized
+bmb build examples/hello.bmb --emit-ir     # output LLVM IR
 ```
 
-### Building with LLVM
+## Building with LLVM
 
 For native code generation, build with the `llvm` feature:
 
@@ -52,12 +52,12 @@ For native code generation, build with the `llvm` feature:
 cargo build --release --features llvm
 ```
 
-> **Note**: Windows pre-built LLVM does not include `llvm-config`. Use MSYS2 LLVM or build from source. See [v0.4 Implementation](docs/IMPLEMENTATION_v0.4.md) for details.
+> **Note**: Windows pre-built LLVM does not include `llvm-config`. Use MSYS2 LLVM or build from source.
 
-### Example
+## Language Example
 
 ```bmb
--- Function with contract
+-- Function with contract verification
 fn max(a: i32, b: i32) -> i32
   post ret >= a and ret >= b
 = if a > b then a else b;
@@ -66,58 +66,84 @@ fn max(a: i32, b: i32) -> i32
 fn safe_div(a: i32, b: i32) -> i32
   pre b != 0
 = a / b;
-```
 
-### Verification Output
+-- Generic type with refinement
+type NonZero = i32 where self != 0;
 
-```
-$ bmb verify max.bmb
-✓ max: pre verified
-✓ max: post verified
+enum Option<T> {
+  Some(T),
+  None
+}
 
-All 1 function(s) verified successfully.
+-- Method call syntax
+fn example(x: Option<i32>) -> i32 =
+  x.unwrap_or(0);
 ```
 
 ## Project Structure
 
 ```
-bmb/
-├── bmb/               # Rust compiler implementation
-│   ├── src/
-│   │   ├── lexer/     # Token definitions (logos)
-│   │   ├── parser/    # Parser (lalrpop)
-│   │   ├── ast.rs     # AST definitions
-│   │   ├── types/     # Type checker
-│   │   ├── error.rs   # Error reporting
-│   │   ├── smt/       # SMT-LIB2 generation
-│   │   ├── verify/    # Contract verification
-│   │   ├── interp/    # Tree-walking interpreter
-│   │   └── repl/      # Interactive REPL
-├── stdlib/            # Standard library (core, collections, io)
-├── ecosystem/         # Dev tools (formatter, LSP, package manager)
-├── runtime/           # Runtime support (memory, panic handling)
-├── bootstrap/         # Self-hosted compiler in BMB
-├── tools/             # Additional tooling
-├── examples/          # Example programs
-├── tests/             # Test suites
-└── docs/              # Documentation
+lang-bmb/
+├── bmb/                    # Rust compiler implementation
+│   └── src/
+│       ├── lexer/          # Token definitions (logos)
+│       ├── parser/         # Parser (lalrpop) + tests
+│       ├── ast/            # AST definitions + S-expr output
+│       ├── types/          # Type checker with generics
+│       ├── smt/            # SMT-LIB2 generation
+│       ├── verify/         # Contract verification
+│       ├── interp/         # Tree-walking interpreter
+│       ├── mir/            # Middle IR
+│       ├── codegen/        # LLVM/WASM backends
+│       ├── lsp/            # Language Server Protocol
+│       └── repl/           # Interactive REPL
+├── bootstrap/              # Self-hosted compiler in BMB
+├── stdlib/                 # Standard library
+├── runtime/                # Runtime support
+├── ecosystem/              # Development tools (submodules)
+├── tests/                  # Integration tests
+├── examples/               # Example programs
+└── docs/                   # Documentation
 ```
 
-## Bootstrap Status (v0.10)
+## Ecosystem (Submodules)
+
+| Repository | Description | Status |
+|------------|-------------|--------|
+| [gotgan](ecosystem/gotgan) | Package manager with Rust fallback | Active |
+| [tree-sitter-bmb](ecosystem/tree-sitter-bmb) | Tree-sitter grammar for editors | Active |
+| [vscode-bmb](ecosystem/vscode-bmb) | VS Code extension | Active |
+| [playground](ecosystem/playground) | Online playground (WASM) | Active |
+| [lang-bmb-site](ecosystem/lang-bmb-site) | Official website | Active |
+| [bmb-samples](ecosystem/bmb-samples) | Example programs and tutorials | Active |
+| [benchmark-bmb](ecosystem/benchmark-bmb) | Performance benchmarks | Active |
+| [action-bmb](ecosystem/action-bmb) | GitHub Actions support | Active |
+
+### Submodule Setup
+
+```bash
+# Clone with submodules
+git clone --recursive https://github.com/lang-bmb/lang-bmb.git
+
+# Or initialize after clone
+git submodule update --init --recursive
+```
+
+## Bootstrap Status
 
 Self-hosted compiler components written in BMB:
 
-| Component | Tests | Status |
-|-----------|-------|--------|
-| lexer.bmb | Tokens | ✅ Complete |
-| parser.bmb | Syntax validation | ✅ Complete |
-| parser_ast.bmb | S-expression AST | ✅ Complete |
-| parser_test.bmb | 15 test categories | ✅ Complete |
-| types.bmb | Type checking | ✅ Complete |
-| mir.bmb | MIR foundation | ✅ Complete |
-| lowering.bmb | AST→MIR transform | ✅ Complete |
-| pipeline.bmb | End-to-end compile | ✅ Complete |
-| llvm_ir.bmb | LLVM IR generation | ✅ Complete (93 tests) |
+| Component | Description | Status |
+|-----------|-------------|--------|
+| lexer.bmb | Token generation | Complete |
+| parser.bmb | Syntax validation | Complete |
+| parser_ast.bmb | S-expression AST | Complete |
+| parser_test.bmb | 15 test categories | Complete |
+| types.bmb | Type checking | Complete |
+| mir.bmb | MIR foundation | Complete |
+| lowering.bmb | AST to MIR transform | Complete |
+| pipeline.bmb | End-to-end compile | Complete |
+| llvm_ir.bmb | LLVM IR generation (93 tests) | Complete |
 
 See [bootstrap/README.md](bootstrap/README.md) for details.
 
@@ -125,20 +151,29 @@ See [bootstrap/README.md](bootstrap/README.md) for details.
 
 - Rust 1.70+
 - Z3 Solver (for contract verification)
+- LLVM 21 (optional, for native codegen)
 
 ## Documentation
 
-- [Language Specification](docs/SPECIFICATION.md)
-- [Design Laws](docs/LAWS.md)
-- [Roadmap](docs/ROADMAP.md)
+| Document | Description |
+|----------|-------------|
+| [SPECIFICATION.md](docs/SPECIFICATION.md) | Complete language specification |
+| [ARCHITECTURE.md](docs/ARCHITECTURE.md) | Compiler architecture and internals |
+| [ROADMAP.md](docs/ROADMAP.md) | Development roadmap and milestones |
+| [GOTGAN.md](docs/GOTGAN.md) | Package manager specification |
+| [ECOSYSTEM.md](docs/ECOSYSTEM.md) | Ecosystem tools and submodules |
 
-### Implementation Notes
+## Design Philosophy
 
-- [v0.1 Implementation](docs/IMPLEMENTATION_v0.1.md) - Lexer, Parser, AST
-- [v0.2 Implementation](docs/IMPLEMENTATION_v0.2.md) - Type System, Contracts
-- [v0.3 Implementation](docs/IMPLEMENTATION_v0.3.md) - Interpreter, REPL
-- [v0.4 Implementation](docs/IMPLEMENTATION_v0.4.md) - MIR, LLVM Backend
-- [v0.5 Implementation](docs/IMPLEMENTATION_v0.5.md) - Standard Library
+BMB is designed as an **AI-native** programming language:
+
+| Principle | Description |
+|-----------|-------------|
+| Correctness First | Contract verification prevents bugs at source |
+| Performance | Contracts enable optimizations beyond C/Rust |
+| AI-Native | Optimized for LLM code generation |
+| Minimal Rules | Same syntax = same meaning, zero exceptions |
+| Composability | Small contracts compose into complex ones |
 
 ## License
 
