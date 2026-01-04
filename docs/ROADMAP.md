@@ -56,7 +56,7 @@ v0.MAJOR.MINOR
 | v0.17 | **Module** | 모듈 시스템 + 패키지 간 타입 참조 | ✅ 완료 (v0.17.0-3) |
 | v0.18 | **Methods** | Option/Result 메서드 호출 구문 | ✅ 완료 (v0.18.0) |
 | v0.19 | **Complete** | MIR Completion (Struct/Enum/Pattern) | ✅ 완료 (v0.19.0-5) |
-| v0.20 | **Extend** | Language Extensions (Closures/Traits) | 🔄 진행중 (v0.20.0-1 ✅) |
+| v0.20 | **Extend** | Language Extensions (Closures/Traits) | ✅ 완료 (v0.20.0-2) |
 | v0.21 | **Bootstrap** | Bootstrap Enhancement (Struct/Enum MIR) | 계획 |
 | v0.22 | **Mirror** | Self-Hosting (Stage 1/2/3 Verification) | 계획 |
 | v0.23 | **Showcase** | 주요 앱 시나리오 샘플 10개 | 계획 |
@@ -171,10 +171,10 @@ Phase 7 (v0.19): MIR Completion ★ COMPLETED
   - Pattern matching 완전 구현 ✅
   - Array/Method dispatch 구현 ✅
 
-Phase 8 (v0.20): Language Extensions ★ REVISED
-  - Closures (람다 문법, 캡처 의미론)
-  - Traits (trait 키워드, impl 블록)
-  - FFI Enhancement (extern "C" 링킹)
+Phase 8 (v0.20): Language Extensions ★ COMPLETED
+  - Closures (람다 문법, 캡처 의미론) ✅
+  - Traits (trait 키워드, impl 블록, 타입 시스템) ✅
+  - FFI Enhancement (extern "C" ABI 파싱) ✅
 
 Phase 9 (v0.21): Bootstrap Enhancement ★ REVISED
   - Bootstrap에 struct/enum 지원 추가
@@ -1438,7 +1438,7 @@ let list = [1, 2, 3];
 let doubled = list.map(fn |x: i64| { x * 2 });  -- [2, 4, 6]
 ```
 
-### v0.20.1 - Trait Foundation (Parser ✅)
+### v0.20.1 - Trait Foundation ✅
 
 | 구성요소 | 설명 | 상태 |
 |----------|------|------|
@@ -1448,7 +1448,10 @@ let doubled = list.map(fn |x: i64| { x * 2 });  -- [2, 4, 6]
 | ImplBlock AST | 구현 블록 AST 타입 | ✅ 완료 |
 | Grammar rules | 트레이트/impl 파싱 규칙 | ✅ 완료 |
 | ImplTargetType | 타입 모호성 해결 (refinement type과 구분) | ✅ 완료 |
-| Method resolution | 트레이트 메서드 해석 | 계획 |
+| TraitRegistry | 트레이트 정의 저장소 | ✅ 완료 |
+| ImplRegistry | 구현 블록 저장소 | ✅ 완료 |
+| Method resolution | 트레이트 메서드 해석 | ✅ 완료 |
+| Self type handling | Self 타입 대체 처리 | ✅ 완료 |
 | Basic traits | Clone, Debug, PartialEq | 계획 |
 
 **구문 (2026-01-04 확정):**
@@ -1485,19 +1488,27 @@ impl Show for i64 {
 }
 ```
 
-### v0.20.2 - FFI Enhancement
+### v0.20.2 - FFI Enhancement ✅
 
 | 구성요소 | 설명 | 상태 |
 |----------|------|------|
-| extern "C" | C ABI 링킹 | 계획 |
-| ABI handling | 호출 규약 처리 | 계획 |
-| C library interop | libc 상호운용 | 계획 |
-| Pointer safety | 안전한 포인터 처리 | 계획 |
+| Abi enum | ABI 열거형 (Bmb, C, System) | ✅ 완료 |
+| extern "C" | C ABI 구문 파싱 | ✅ 완료 |
+| extern "system" | System ABI 구문 파싱 | ✅ 완료 |
+| ABI handling | 호출 규약 파싱 처리 | ✅ 완료 |
+| AST output | ABI 정보 출력 (JSON/S-expr) | ✅ 완료 |
+| C library interop | libc 상호운용 | 계획 (코드젠) |
+| Pointer safety | 안전한 포인터 처리 | 계획 (타입시스템) |
 
-**테스트 목표:**
+**구문 (2026-01-04 확정):**
 ```bmb
-extern "C" fn malloc(size: usize) -> *mut u8;
-extern "C" fn free(ptr: *mut u8);
+extern "C" fn malloc(size: i64) -> i64;
+extern "C" fn free(ptr: i64) -> unit;
+extern "system" fn GetLastError() -> i64;
+extern fn internal_api(x: i64) -> i64;
+
+@link("libc")
+extern "C" fn puts(s: i64) -> i64;
 ```
 
 ---
@@ -1812,7 +1823,7 @@ v0.16 Consolidate  ────▶ 2025 Q4 ✅
 v0.17 Module       ────▶ 2025 Q4 ✅
 v0.18 Methods      ────▶ 2026 Q1 ✅
 v0.19 Complete     ────▶ 2026 Q1 ✅ (MIR Completion)
-v0.20 Extend       ────▶ 2026 Q2 (Language Extensions)
+v0.20 Extend       ────▶ 2026 Q1 ✅ (Language Extensions)
 v0.21 Bootstrap    ────▶ 2026 Q2 (Bootstrap Enhancement)
 v0.22 Mirror       ────▶ 2026 Q3 (Self-Hosting)
 v0.23 Showcase     ────▶ 2026 Q3

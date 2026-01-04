@@ -171,12 +171,15 @@ fn format_extern_fn(e: &ExternFn, level: usize) -> String {
         .map(|p| format!("({} {})", p.name.node, format_type(&p.ty.node)))
         .collect::<Vec<_>>()
         .join(" ");
+    // v0.20.2: Include ABI in output
+    let abi_str = format!(" :abi \"{}\"", e.abi);
     format!(
-        "{}(extern-fn {} ({}) -> {})\n",
+        "{}(extern-fn {} ({}) -> {}{})\n",
         ind,
         e.name.node,
         params,
-        format_type(&e.ret_ty.node)
+        format_type(&e.ret_ty.node),
+        abi_str
     )
 }
 

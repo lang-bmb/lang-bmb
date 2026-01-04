@@ -1,0 +1,16 @@
+extern "C" fn malloc(size: i64) -> i64;
+extern "C" fn free(ptr: i64) -> unit;
+extern "C" fn memcpy(dest: i64, src: i64, n: i64) -> i64;
+
+extern "system" fn GetLastError() -> i64;
+
+extern fn internal_api(x: i64) -> i64;
+
+pub extern "C" fn printf(format: i64) -> i64;
+
+@link("libc")
+extern "C" fn puts(s: i64) -> i64;
+
+fn main() -> i64 = {
+    0
+};

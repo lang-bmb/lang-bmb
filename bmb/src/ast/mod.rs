@@ -57,8 +57,32 @@ pub struct UseStmt {
     pub span: Span,
 }
 
-/// External function declaration (v0.13.0)
-/// Syntax: extern fn name(params) -> Type;
+/// ABI (Application Binary Interface) specification (v0.20.2)
+/// Used to specify calling conventions for FFI
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum Abi {
+    /// Default BMB calling convention
+    #[default]
+    Bmb,
+    /// C calling convention (cdecl)
+    C,
+    /// System calling convention (varies by platform)
+    System,
+}
+
+impl std::fmt::Display for Abi {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Abi::Bmb => write!(f, "bmb"),
+            Abi::C => write!(f, "C"),
+            Abi::System => write!(f, "system"),
+        }
+    }
+}
+
+/// External function declaration (v0.13.0, updated v0.20.2)
+/// Syntax: extern fn name(params) -> Type;           // Default ABI
+/// Syntax: extern "C" fn name(params) -> Type;       // C ABI (v0.20.2)
 /// Used for FFI with WASI, libc, or other external libraries
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExternFn {
@@ -66,6 +90,8 @@ pub struct ExternFn {
     pub attributes: Vec<Attribute>,
     /// Visibility
     pub visibility: Visibility,
+    /// ABI specification (v0.20.2): "C", "system", or default
+    pub abi: Abi,
     /// External module name (e.g., "wasi_snapshot_preview1")
     /// Specified via @link("module_name") attribute
     pub link_name: Option<String>,

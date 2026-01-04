@@ -117,11 +117,53 @@ Item: Item = {
     <i:ImplBlock> => Item::ImplBlock(i),
 };
 
-// External function declaration (v0.13.0)
-// Syntax: extern fn name(params) -> Type;
-// With attributes: @link("module") extern fn name(params) -> Type;
+// External function declaration (v0.13.0, v0.20.2 ABI support)
+// Syntax: extern fn name(params) -> Type;           // Default ABI
+// Syntax: extern "C" fn name(params) -> Type;       // C ABI (v0.20.2)
+// Syntax: extern "system" fn name(params) -> Type;  // System ABI (v0.20.2)
+// With attributes: @link("module") extern "C" fn name(params) -> Type;
+
+// ABI specification (v0.20.2)
+Abi: Abi = {
+    "string" =>? {
+        match <>.as_str() {
+            "C" => Ok(Abi::C),
+            "system" => Ok(Abi::System),
+            other => Err(lalrpop_util::ParseError::User {
+                error: format!("unknown ABI: \"{}\", expected \"C\" or \"system\"", other)
+            })
+        }
+    },
+};
+
 ExternFnDef: ExternFn = {
-    // With attributes
+    // With attributes and ABI
+    <l:@L> <attrs:Attr+> <vis:Visibility> "extern" <abi:Abi> "fn" <name:Ident> "(" <params:Params> ")" "->" <ret_ty:SpannedType> ";" <r:@R> => {
+        // Extract link_name from @link("name") attribute
+        let link_name = attrs.iter().find_map(|attr| {
+            if attr.name() == "link" {
+                if let Attribute::WithArgs { args, .. } = attr {
+                    if let Some(arg) = args.first() {
+                        if let Expr::StringLit(s) = &arg.node {
+                            return Some(s.clone());
+                        }
+                    }
+                }
+            }
+            None
+        });
+        ExternFn {
+            attributes: attrs,
+            visibility: vis,
+            abi,
+            link_name,
+            name,
+            params,
+            ret_ty,
+            span: Span::new(l, r),
+        }
+    },
+    // With attributes, no ABI (default)
     <l:@L> <attrs:Attr+> <vis:Visibility> "extern" "fn" <name:Ident> "(" <params:Params> ")" "->" <ret_ty:SpannedType> ";" <r:@R> => {
         // Extract link_name from @link("name") attribute
         let link_name = attrs.iter().find_map(|attr| {
@@ -139,6 +181,7 @@ ExternFnDef: ExternFn = {
         ExternFn {
             attributes: attrs,
             visibility: vis,
+            abi: Abi::default(),
             link_name,
             name,
             params,
@@ -146,10 +189,22 @@ ExternFnDef: ExternFn = {
             span: Span::new(l, r),
         }
     },
-    // Without attributes
+    // Without attributes, with ABI
+    <l:@L> <vis:Visibility> "extern" <abi:Abi> "fn" <name:Ident> "(" <params:Params> ")" "->" <ret_ty:SpannedType> ";" <r:@R> => ExternFn {
+        attributes: vec![],
+        visibility: vis,
+        abi,
+        link_name: None,
+        name,
+        params,
+        ret_ty,
+        span: Span::new(l, r),
+    },
+    // Without attributes, no ABI (default)
     <l:@L> <vis:Visibility> "extern" "fn" <name:Ident> "(" <params:Params> ")" "->" <ret_ty:SpannedType> ";" <r:@R> => ExternFn {
         attributes: vec![],
         visibility: vis,
+        abi: Abi::default(),
         link_name: None,
         name,
         params,

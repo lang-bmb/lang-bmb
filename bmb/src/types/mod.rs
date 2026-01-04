@@ -6,6 +6,40 @@ use crate::ast::*;
 use crate::error::{CompileError, Result};
 use crate::resolver::Module;
 
+/// Trait method signature info (v0.20.1)
+#[derive(Debug, Clone)]
+pub struct TraitMethodInfo {
+    /// Method name
+    pub name: String,
+    /// Parameter types (excluding self)
+    pub param_types: Vec<Type>,
+    /// Return type
+    pub ret_type: Type,
+}
+
+/// Trait definition info (v0.20.1)
+#[derive(Debug, Clone)]
+pub struct TraitInfo {
+    /// Trait name
+    pub name: String,
+    /// Type parameters
+    pub type_params: Vec<TypeParam>,
+    /// Method signatures
+    pub methods: Vec<TraitMethodInfo>,
+}
+
+/// Impl block info (v0.20.1)
+/// Stores the mapping from (type, trait) to implemented methods
+#[derive(Debug, Clone)]
+pub struct ImplInfo {
+    /// Trait being implemented
+    pub trait_name: String,
+    /// Type implementing the trait
+    pub target_type: Type,
+    /// Implemented methods: name -> (param_types, ret_type)
+    pub methods: HashMap<String, (Vec<Type>, Type)>,
+}
+
 /// Type checker
 pub struct TypeChecker {
     /// Variable environment
@@ -30,6 +64,12 @@ pub struct TypeChecker {
     /// Current type parameter environment (for checking generic function bodies)
     /// v0.15: Maps type parameter names to their bounds
     type_param_env: HashMap<String, Vec<String>>,
+    /// Trait definitions (v0.20.1)
+    /// trait_name -> TraitInfo
+    traits: HashMap<String, TraitInfo>,
+    /// Impl blocks (v0.20.1)
+    /// (type_name, trait_name) -> ImplInfo
+    impls: HashMap<(String, String), ImplInfo>,
 }
 
 impl TypeChecker {
@@ -62,6 +102,8 @@ impl TypeChecker {
             enums: HashMap::new(),
             current_ret_ty: None,
             type_param_env: HashMap::new(),
+            traits: HashMap::new(),
+            impls: HashMap::new(),
         }
     }
 
@@ -161,8 +203,29 @@ impl TypeChecker {
                 Item::FnDef(_) | Item::ExternFn(_) => {}
                 // v0.5 Phase 4: Use statements are processed at module resolution time
                 Item::Use(_) => {}
-                // v0.20.1: Trait system not yet implemented in type checker
-                Item::TraitDef(_) | Item::ImplBlock(_) => {}
+                // v0.20.1: Register trait definitions
+                Item::TraitDef(t) => {
+                    let methods: Vec<TraitMethodInfo> = t.methods.iter().map(|m| {
+                        // Skip the first param if it's "self: Self"
+                        let param_types: Vec<Type> = m.params.iter()
+                            .filter(|p| p.name.node != "self")
+                            .map(|p| p.ty.node.clone())
+                            .collect();
+                        TraitMethodInfo {
+                            name: m.name.node.clone(),
+                            param_types,
+                            ret_type: m.ret_ty.node.clone(),
+                        }
+                    }).collect();
+
+                    self.traits.insert(t.name.node.clone(), TraitInfo {
+                        name: t.name.node.clone(),
+                        type_params: t.type_params.clone(),
+                        methods,
+                    });
+                }
+                // v0.20.1: ImplBlocks are processed in a later pass
+                Item::ImplBlock(_) => {}
             }
         }
 
@@ -195,8 +258,31 @@ impl TypeChecker {
                         .insert(e.name.node.clone(), (param_tys, e.ret_ty.node.clone()));
                 }
                 Item::StructDef(_) | Item::EnumDef(_) | Item::Use(_) => {}
-                // v0.20.1: Trait system (not yet implemented)
-                Item::TraitDef(_) | Item::ImplBlock(_) => {}
+                // v0.20.1: TraitDef already registered in first pass
+                Item::TraitDef(_) => {}
+                // v0.20.1: Register impl blocks
+                Item::ImplBlock(i) => {
+                    let type_name = self.type_to_string(&i.target_type.node);
+                    let trait_name = i.trait_name.node.clone();
+
+                    // Register methods from impl block
+                    let mut methods = HashMap::new();
+                    for method in &i.methods {
+                        // Substitute Self with target type in method signature
+                        let param_types: Vec<Type> = method.params.iter()
+                            .filter(|p| p.name.node != "self")
+                            .map(|p| self.substitute_self(&p.ty.node, &i.target_type.node))
+                            .collect();
+                        let ret_type = self.substitute_self(&method.ret_ty.node, &i.target_type.node);
+                        methods.insert(method.name.node.clone(), (param_types, ret_type));
+                    }
+
+                    self.impls.insert((type_name, trait_name.clone()), ImplInfo {
+                        trait_name,
+                        target_type: i.target_type.node.clone(),
+                        methods,
+                    });
+                }
             }
         }
 
@@ -205,7 +291,7 @@ impl TypeChecker {
             match item {
                 Item::FnDef(f) => self.check_fn(f)?,
                 Item::StructDef(_) | Item::EnumDef(_) | Item::Use(_) | Item::ExternFn(_) => {}
-                // v0.20.1: Trait system (not yet implemented)
+                // v0.20.1: Traits and impls already registered
                 Item::TraitDef(_) | Item::ImplBlock(_) => {}
             }
         }
@@ -916,10 +1002,29 @@ impl TypeChecker {
                 let err_ty = type_args.get(1).map(|t| t.as_ref().clone());
                 self.check_result_method(method, args, ok_ty, err_ty, span)
             }
-            _ => Err(CompileError::type_error(
-                format!("type {} has no methods", receiver_ty),
-                span,
-            )),
+            // v0.20.1: For other types, look up trait methods
+            _ => {
+                if let Some((param_types, ret_type)) = self.lookup_trait_method(receiver_ty, method) {
+                    // Check argument count (excluding self)
+                    if args.len() != param_types.len() {
+                        return Err(CompileError::type_error(
+                            format!("method '{}' expects {} arguments, got {}", method, param_types.len(), args.len()),
+                            span,
+                        ));
+                    }
+                    // Check argument types
+                    for (i, (arg, expected_ty)) in args.iter().zip(param_types.iter()).enumerate() {
+                        let arg_ty = self.infer(&arg.node, arg.span)?;
+                        self.unify(expected_ty, &arg_ty, args[i].span)?;
+                    }
+                    Ok(ret_type)
+                } else {
+                    Err(CompileError::type_error(
+                        format!("type {} has no method '{}'", receiver_ty, method),
+                        span,
+                    ))
+                }
+            }
         }
     }
 
@@ -1520,6 +1625,100 @@ impl TypeChecker {
             // Concrete types remain unchanged
             _ => ty.clone(),
         }
+    }
+
+    /// v0.20.1: Convert Type to string key for impls HashMap lookup
+    fn type_to_string(&self, ty: &Type) -> String {
+        match ty {
+            Type::I32 => "i32".to_string(),
+            Type::I64 => "i64".to_string(),
+            Type::F64 => "f64".to_string(),
+            Type::Bool => "bool".to_string(),
+            Type::String => "String".to_string(),
+            Type::Unit => "unit".to_string(),
+            Type::Named(name) => name.clone(),
+            Type::TypeVar(name) => name.clone(),
+            Type::Generic { name, type_args } => {
+                let args: Vec<String> = type_args.iter()
+                    .map(|arg| self.type_to_string(arg))
+                    .collect();
+                format!("{}<{}>", name, args.join(", "))
+            }
+            Type::Struct { name, .. } => name.clone(),
+            Type::Enum { name, .. } => name.clone(),
+            Type::Ref(inner) => format!("&{}", self.type_to_string(inner)),
+            Type::RefMut(inner) => format!("&mut {}", self.type_to_string(inner)),
+            Type::Array(elem, size) => format!("[{}; {}]", self.type_to_string(elem), size),
+            Type::Range(elem) => format!("Range<{}>", self.type_to_string(elem)),
+            Type::Refined { base, .. } => self.type_to_string(base),
+            Type::Fn { params, ret } => {
+                let param_strs: Vec<String> = params.iter()
+                    .map(|p| self.type_to_string(p))
+                    .collect();
+                format!("Fn({}) -> {}", param_strs.join(", "), self.type_to_string(ret))
+            }
+        }
+    }
+
+    /// v0.20.1: Substitute Self type with target type in trait method signatures
+    fn substitute_self(&self, ty: &Type, target_type: &Type) -> Type {
+        match ty {
+            // Named("Self") is replaced with target type
+            Type::Named(name) if name == "Self" => target_type.clone(),
+            // Recursively substitute in compound types
+            Type::Ref(inner) => {
+                Type::Ref(Box::new(self.substitute_self(inner, target_type)))
+            }
+            Type::RefMut(inner) => {
+                Type::RefMut(Box::new(self.substitute_self(inner, target_type)))
+            }
+            Type::Array(elem, size) => {
+                Type::Array(Box::new(self.substitute_self(elem, target_type)), *size)
+            }
+            Type::Range(elem) => {
+                Type::Range(Box::new(self.substitute_self(elem, target_type)))
+            }
+            Type::Generic { name, type_args } => {
+                let substituted_args: Vec<_> = type_args.iter()
+                    .map(|arg| Box::new(self.substitute_self(arg, target_type)))
+                    .collect();
+                Type::Generic {
+                    name: name.clone(),
+                    type_args: substituted_args,
+                }
+            }
+            Type::Refined { base, constraints } => {
+                Type::Refined {
+                    base: Box::new(self.substitute_self(base, target_type)),
+                    constraints: constraints.clone(),
+                }
+            }
+            Type::Fn { params, ret } => {
+                Type::Fn {
+                    params: params.iter()
+                        .map(|p| Box::new(self.substitute_self(p, target_type)))
+                        .collect(),
+                    ret: Box::new(self.substitute_self(ret, target_type)),
+                }
+            }
+            // Other types remain unchanged
+            _ => ty.clone(),
+        }
+    }
+
+    /// v0.20.1: Look up trait method for a given receiver type
+    fn lookup_trait_method(&self, receiver_ty: &Type, method: &str) -> Option<(Vec<Type>, Type)> {
+        let type_name = self.type_to_string(receiver_ty);
+
+        // Search all impls for this type to find the method
+        for ((impl_type, _trait_name), impl_info) in &self.impls {
+            if impl_type == &type_name {
+                if let Some((param_types, ret_type)) = impl_info.methods.get(method) {
+                    return Some((param_types.clone(), ret_type.clone()));
+                }
+            }
+        }
+        None
     }
 }
 
