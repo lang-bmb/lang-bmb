@@ -103,7 +103,7 @@ v0.MAJOR.MINOR
 | v0.23 | **Verify** | Self-hosting Stage 1/2 Verification | ✅ 완료 (v0.23.0-2) |
 | v0.24 | **Examples** | Bootstrap Examples (알고리즘 예제 8개) | ✅ 완료 (v0.24.0-3) |
 | v0.25 | **Query** | AI Query System (RFC-0001) | ✅ 완료 (v0.25.0-1) |
-| v0.26 | **Launch** | 서브모듈 완성 + 서비스 런칭 | 계획 |
+| v0.26 | **Launch** | 서브모듈 완성 + 서비스 런칭 | ✅ 완료 (v0.26.0) |
 | v0.27 | **Registry** | gotgan 로컬 레지스트리 | 계획 |
 | v0.28 | **Benchmark** | C/Rust/BMB 벤치마크 스위트 완성 | 계획 |
 | v0.29 | **Velocity** | C/Rust 성능 추월 스프린트 | 계획 |
@@ -492,7 +492,7 @@ benchmark-bmb/
 
 | Phase | 버전 | 내용 | 상태 |
 |-------|------|------|------|
-| 10 | v0.26 | 서브모듈 완성 + 서비스 런칭 | 계획 |
+| 10 | v0.26 | 서브모듈 완성 + 서비스 런칭 | ✅ 완료 |
 | 11 | v0.27 | gotgan 로컬 레지스트리 | 계획 |
 | 12 | v0.28 | C/Rust/BMB 벤치마크 스위트 완성 | 계획 |
 | 13 | v0.29 | 성능 최적화 스프린트 (C/Rust 추월) | 계획 |
@@ -2094,21 +2094,60 @@ $ bmb q fn --recursive
 
 ---
 
-## v0.26 Launch (서브모듈 완성 + 서비스 런칭)
+## v0.26 Launch (서브모듈 완성 + 서비스 런칭) ✅
 
 > 목표: 모든 서브모듈 production-ready + 서비스 배포
+> **완료일: 2026-01-04**
 
 ### 서브모듈 완성 체크리스트
 
-| 서브모듈 | 현재 | 목표 | 주요 작업 |
-|----------|------|------|-----------|
-| gotgan-packages | 구조만 | 10+ 패키지 | bmb-json, bmb-regex, bmb-http, bmb-rand, bmb-log |
-| benchmark-bmb | 3개 | 15+ 벤치마크 | Benchmarks Game 표준 8개 추가 |
-| bmb-samples | 8개 | 30+ 예제 | 카테고리별 예제 확장 |
-| playground | 기본 | 풀 기능 | 공유, 포맷팅, 테마, 자동저장 |
-| lang-bmb-site | 구조만 | 문서 완성 | 튜토리얼 5개, API 레퍼런스 |
-| vscode-bmb | 하이라이팅 | LSP 완성 | 자동완성, 정의 이동, 리팩토링 |
-| action-bmb | 기본 | 최적화 | 캐싱, Matrix 빌드, 결과 보고 |
+| 서브모듈 | 이전 | 결과 | 주요 작업 | 상태 |
+|----------|------|------|-----------|------|
+| gotgan-packages | 구조만 | 10 패키지 | bmb-json, bmb-regex, bmb-http, bmb-rand, bmb-log 등 | ✅ |
+| benchmark-bmb | 3개 | 12 벤치마크 | compute (5), contract (3), real-world (4) | ✅ |
+| bmb-samples | 8개 | 31 예제 | 7 카테고리 (basics, algorithms, contracts, patterns 등) | ✅ |
+| playground | 기본 | 풀 기능 | 예제 갤러리, 공유, BMB 인터프리터, 키보드 단축키 | ✅ |
+| lang-bmb-site | 구조만 | 문서 완성 | installation, syntax, contracts 페이지 | ✅ |
+| vscode-bmb | 하이라이팅 | LSP 완성 | 25+ 스니펫, 아이콘, 완전한 문법 | ✅ |
+
+### 상세 결과
+
+#### gotgan-packages (10 패키지)
+- bmb-json, bmb-regex, bmb-http, bmb-rand, bmb-log
+- bmb-uuid, bmb-toml, bmb-yaml, bmb-base64, bmb-datetime
+
+#### benchmark-bmb (12 벤치마크)
+- **Compute**: fibonacci, factorial, gcd, prime_check, binary_search
+- **Contract**: bounds_check, null_check, purity_opt
+- **Real-world**: json_parse, string_ops, array_ops, sorting
+
+#### bmb-samples (31 예제)
+- **basics** (5): hello_world, variables, expressions, conditionals, loops
+- **functions** (3): basic_functions, recursion, higher_order
+- **contracts** (4): preconditions, postconditions, combined, invariants
+- **algorithms** (5): search, sorting, math, dynamic, graph
+- **patterns** (4): accumulator, state_machine, option, builder
+- **data_types** (4): integers, booleans, strings, tuples
+- **real_world** (6): calculator, date_utils, validation, bank, game, crypto
+
+#### playground 기능
+- Monaco 에디터 + BMB 문법 하이라이팅
+- 10+ 예제 갤러리 (카테고리 필터링)
+- URL 공유 (LZ-String 압축)
+- 키보드 단축키 (Ctrl+Enter 실행, Ctrl+S 공유)
+- JavaScript 기반 BMB 인터프리터
+
+#### vscode-bmb 기능
+- 25+ 코드 스니펫 (fn, fnc, pre, post, tailrec 등)
+- SVG 아이콘 (light/dark 테마)
+- LSP 클라이언트 (bmb lsp 연동)
+- 3개 명령어 (Restart Server, Verify Contracts, Show AST)
+
+#### lang-bmb-site 문서
+- installation.astro: 설치 가이드, 빌드, 에디터 설정
+- syntax.astro: 언어 문법 레퍼런스
+- contracts.astro: 계약 기반 검증 가이드
+
 
 ### 서비스 런칭
 
@@ -2443,7 +2482,7 @@ v1.0 이후 보장:
 ```
 v0.13-v0.24   ────▶ 2025-2026 Q1 ✅ (언어 완성 + Bootstrap)
 v0.25 Query   ────▶ 2026 Q1 ✅ (AI Query System)
-v0.26 Launch  ────▶ 2026 Q2 (서브모듈 완성)
+v0.26 Launch  ────▶ 2026 Q1 ✅ (서브모듈 완성)
 v0.27 Registry ───▶ 2026 Q2 (로컬 레지스트리)
 v0.28 Benchmark ──▶ 2026 Q3 (벤치마크 스위트)
 v0.29 Velocity ───▶ 2026 Q3 (성능 최적화)
