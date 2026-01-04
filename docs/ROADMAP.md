@@ -56,7 +56,7 @@ v0.MAJOR.MINOR
 | v0.17 | **Module** | 모듈 시스템 + 패키지 간 타입 참조 | ✅ 완료 (v0.17.0-3) |
 | v0.18 | **Methods** | Option/Result 메서드 호출 구문 | ✅ 완료 (v0.18.0) |
 | v0.19 | **Complete** | MIR Completion (Struct/Enum/Pattern) | ✅ 완료 (v0.19.0-5) |
-| v0.20 | **Extend** | Language Extensions (Closures/Traits) | 🔄 진행중 (v0.20.0 ✅) |
+| v0.20 | **Extend** | Language Extensions (Closures/Traits) | 🔄 진행중 (v0.20.0-1 ✅) |
 | v0.21 | **Bootstrap** | Bootstrap Enhancement (Struct/Enum MIR) | 계획 |
 | v0.22 | **Mirror** | Self-Hosting (Stage 1/2/3 Verification) | 계획 |
 | v0.23 | **Showcase** | 주요 앱 시나리오 샘플 10개 | 계획 |
@@ -1438,23 +1438,50 @@ let list = [1, 2, 3];
 let doubled = list.map(fn |x: i64| { x * 2 });  -- [2, 4, 6]
 ```
 
-### v0.20.1 - Trait Foundation
+### v0.20.1 - Trait Foundation (Parser ✅)
 
 | 구성요소 | 설명 | 상태 |
 |----------|------|------|
-| trait keyword | 트레이트 정의 문법 | 계획 |
-| impl blocks | 구현 블록 문법 | 계획 |
+| trait keyword | `trait` 토큰 추가 (lexer) | ✅ 완료 |
+| impl keyword | `impl` 토큰 추가 (lexer) | ✅ 완료 |
+| TraitDef AST | 트레이트 정의 AST 타입 | ✅ 완료 |
+| ImplBlock AST | 구현 블록 AST 타입 | ✅ 완료 |
+| Grammar rules | 트레이트/impl 파싱 규칙 | ✅ 완료 |
+| ImplTargetType | 타입 모호성 해결 (refinement type과 구분) | ✅ 완료 |
 | Method resolution | 트레이트 메서드 해석 | 계획 |
 | Basic traits | Clone, Debug, PartialEq | 계획 |
 
-**테스트 목표:**
+**구문 (2026-01-04 확정):**
+```bmb
+trait Printable {
+    fn print(self: Self) -> unit;
+}
+
+trait Comparable {
+    fn compare(self: Self, other: Self) -> i32;
+    fn equals(self: Self, other: Self) -> bool;
+}
+
+impl Printable for Point {
+    fn print(self: Self) -> unit = {
+        ()
+    };
+}
+
+impl Comparable for Point {
+    fn compare(self: Self, other: Self) -> i32 = { 0 };
+    fn equals(self: Self, other: Self) -> bool = { true };
+}
+```
+
+**테스트 목표 (향후):**
 ```bmb
 trait Show {
-    fn show(self) -> String;
+    fn show(self: Self) -> String;
 }
 
 impl Show for i64 {
-    fn show(self) -> String = int_to_string(self);
+    fn show(self: Self) -> String = int_to_string(self);
 }
 ```
 
