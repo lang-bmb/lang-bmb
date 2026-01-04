@@ -1,0 +1,40 @@
+-- Min, Max, Abs functions
+-- Bootstrap compiler example: conditional expressions
+
+-- Absolute value
+fn abs(x: i64) -> i64 =
+    if x < 0 then 0 - x else x;
+
+-- Minimum of two numbers
+fn minimum(a: i64, b: i64) -> i64 =
+    if a < b then a else b;
+
+-- Maximum of two numbers
+fn maximum(a: i64, b: i64) -> i64 =
+    if a > b then a else b;
+
+-- Clamp value between min and max
+fn clamp(x: i64, lo: i64, hi: i64) -> i64 =
+    if x < lo then lo
+    else if x > hi then hi
+    else x;
+
+-- Sign function: -1, 0, or 1
+fn sign(x: i64) -> i64 =
+    if x < 0 then 0 - 1
+    else if x > 0 then 1
+    else 0;
+
+-- Main function
+fn main() -> i64 =
+    let a1 = abs(0 - 42);
+    let u0 = println(a1);
+    let m1 = minimum(10, 20);
+    let u1 = println(m1);
+    let m2 = maximum(10, 20);
+    let u2 = println(m2);
+    let c1 = clamp(50, 0, 100);
+    let u3 = println(c1);
+    let s1 = sign(0 - 5);
+    let u4 = println(s1);
+    0;

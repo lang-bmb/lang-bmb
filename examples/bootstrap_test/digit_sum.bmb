@@ -1,0 +1,41 @@
+-- Digit operations
+-- Bootstrap compiler example: modulo arithmetic
+
+-- Sum of digits
+fn digit_sum_iter(n: i64, acc: i64) -> i64 =
+    if n <= 0 then acc
+    else digit_sum_iter(n / 10, acc + n - (n / 10) * 10);
+
+fn digit_sum(n: i64) -> i64 = digit_sum_iter(n, 0);
+
+-- Count digits
+fn digit_count_iter(n: i64, count: i64) -> i64 =
+    if n <= 0 then count
+    else digit_count_iter(n / 10, count + 1);
+
+fn digit_count(n: i64) -> i64 =
+    if n == 0 then 1
+    else digit_count_iter(n, 0);
+
+-- Reverse digits
+fn reverse_iter(n: i64, acc: i64) -> i64 =
+    if n <= 0 then acc
+    else reverse_iter(n / 10, acc * 10 + n - (n / 10) * 10);
+
+fn reverse_digits(n: i64) -> i64 = reverse_iter(n, 0);
+
+-- Check if palindrome
+fn is_palindrome(n: i64) -> i64 =
+    if n == reverse_digits(n) then 1 else 0;
+
+-- Main function
+fn main() -> i64 =
+    let sum1 = digit_sum(12345);
+    let u0 = println(sum1);
+    let cnt1 = digit_count(12345);
+    let u1 = println(cnt1);
+    let rev1 = reverse_digits(12345);
+    let u2 = println(rev1);
+    let pal1 = is_palindrome(12321);
+    let u3 = println(pal1);
+    0;

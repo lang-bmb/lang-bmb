@@ -60,7 +60,7 @@ v0.MAJOR.MINOR
 | v0.21 | **Bootstrap** | Bootstrap Enhancement (Struct/Enum MIR) | ✅ 완료 (v0.21.0-2) |
 | v0.22 | **Mirror** | Parser Struct/Enum + Type Checker Enhancement | ✅ 완료 (v0.22.0-3) |
 | v0.23 | **Verify** | Self-hosting Stage 1/2 Verification | ✅ 완료 (v0.23.0-2) |
-| v0.24 | **Showcase** | 주요 앱 시나리오 샘플 10개 | 계획 |
+| v0.24 | **Examples** | Bootstrap Examples (알고리즘 예제 8개) | ✅ 완료 (v0.24.0-3) |
 | v0.25 | **Launch** | 프로덕션 서비스 런칭 | 계획 |
 | v0.26 | **Velocity** | C/Rust 성능 추월 스프린트 | 계획 |
 | v0.27 | **Query** | AI Query System (RFC-0001) | 계획 |
@@ -186,9 +186,9 @@ Phase 10 (v0.22): Self-Hosting ★ REVISED
   - gotgan BMB 재작성
   - Stage 1/2/3 자기 컴파일 검증
 
-Phase 11 (v0.23-v0.24): 프로덕션 런칭
-  - 주요 앱 시나리오 샘플
-  - 서브모듈 서비스 런칭
+Phase 11 (v0.23-v0.24): 검증 및 예제
+  - Self-hosting Stage 1/2 검증
+  - Bootstrap 알고리즘 예제 8개
 
 Phase 12 (v0.25): 성능 스프린트
   - C/Rust 성능 추월
@@ -1579,7 +1579,7 @@ Generated: test.mir
 - Struct init type checking
 - Match expression type checking
 
-### 다음 단계 (v0.24+)
+### 다음 단계 (v0.25+)
 
 Full self-hosting Stage 3 및 생태계 구축:
 - Stage 3 full bootstrap compilation
@@ -1638,24 +1638,60 @@ Full self-hosting Stage 3 및 생태계 구축:
 
 ---
 
-## v0.24 Showcase (주요 앱 시나리오 샘플)
+## v0.24 Bootstrap Examples (순수 BMB 알고리즘 예제)
 
-> 목표: 실제 도메인 샘플 애플리케이션 10개
+> 목표: 순수 BMB로 작성된 실행 가능한 알고리즘 예제 8개
 
-### 샘플 애플리케이션
+### 구현 완료 (v0.24.0-3)
 
-| # | 앱 이름 | 도메인 | 사용 패키지 |
-|---|---------|--------|-------------|
-| 1 | **bmb-api-server** | 웹 API | bmb-axum, bmb-postgres, bmb-serde |
-| 2 | **bmb-cli-tool** | CLI 유틸리티 | bmb-clap, bmb-config, bmb-log |
-| 3 | **bmb-chat-server** | 실시간 채팅 | bmb-websocket, bmb-redis, bmb-async |
-| 4 | **bmb-file-manager** | 파일 유틸리티 | bmb-fs, bmb-tar, bmb-walkdir |
-| 5 | **bmb-crypto-tool** | 암호화 도구 | bmb-crypto, bmb-aes, bmb-argon2 |
-| 6 | **bmb-db-client** | DB 클라이언트 | bmb-sql, bmb-postgres, bmb-table |
-| 7 | **bmb-http-proxy** | HTTP 프록시 | bmb-hyper, bmb-tls, bmb-async |
-| 8 | **bmb-json-processor** | JSON 처리 | bmb-json, bmb-serde, bmb-io |
-| 9 | **bmb-task-runner** | 태스크 러너 | bmb-async, bmb-channel, bmb-log |
-| 10 | **bmb-config-manager** | 설정 관리 | bmb-toml, bmb-yaml, bmb-config |
+| # | 예제 | 설명 | 패턴 |
+|---|------|------|------|
+| 1 | **gcd.bmb** | 유클리드 알고리즘 GCD | 재귀, 모듈로 연산 |
+| 2 | **prime.bmb** | 소수 판별기 | 재귀, 비교 연산 |
+| 3 | **sum.bmb** | 합계 (1~n, 제곱합) | 꼬리 재귀, 누적기 |
+| 4 | **power.bmb** | 거듭제곱 (이진 지수화) | 분할 정복 |
+| 5 | **minmax.bmb** | 최소/최대/절대값/부호 | 조건식 |
+| 6 | **collatz.bmb** | 콜라츠 추측 | 분기 재귀 |
+| 7 | **digit_sum.bmb** | 자릿수 연산 | 모듈로 연산, 역순 |
+| 8 | **binary.bmb** | 비트 연산 (popcount 등) | 산술 비트 조작 |
+
+### 검증 결과
+
+```
+예제          | 인터프리터 | 네이티브 | 상태
+--------------|-----------|----------|------
+gcd(48, 18)   | 6         | 6        | ✅
+is_prime(17)  | 1         | 1        | ✅
+sum(10)       | 55        | 55       | ✅
+power(2, 10)  | 1024      | 1024     | ✅
+abs(-42)      | 42        | 42       | ✅
+collatz(27)   | 111       | 111      | ✅
+digit_sum(12345)| 15      | 15       | ✅
+popcount(255) | 8         | 8        | ✅
+```
+
+### 기술 하이라이트
+
+- **순수 BMB**: 외부 패키지 없이 언어 핵심 기능만 사용
+- **LLVM 백엔드**: 모든 예제 네이티브 컴파일 성공
+- **인터프리터/네이티브 동등성**: 100% 결과 일치
+- **꼬리 재귀**: 누적기 패턴으로 스택 최적화
+
+### 위치
+
+```
+examples/bootstrap_test/
+├── gcd.bmb          # GCD 알고리즘
+├── prime.bmb        # 소수 판별
+├── sum.bmb          # 합계 함수
+├── power.bmb        # 거듭제곱
+├── minmax.bmb       # 최소/최대/절대값
+├── collatz.bmb      # 콜라츠 추측
+├── digit_sum.bmb    # 자릿수 연산
+├── binary.bmb       # 비트 연산
+├── fibonacci.bmb    # 피보나치 (기존)
+└── factorial.bmb    # 팩토리얼 (기존)
+```
 
 ---
 
@@ -1876,7 +1912,7 @@ v0.20 Extend       ────▶ 2026 Q1 ✅ (Language Extensions)
 v0.21 Bootstrap    ────▶ 2026 Q1 ✅ (Bootstrap Enhancement)
 v0.22 Mirror       ────▶ 2026 Q1 ✅ (Parser Enhancement)
 v0.23 Verify       ────▶ 2026 Q1 ✅ (Self-hosting Verification)
-v0.24 Showcase     ────▶ 2026 Q3
+v0.24 Examples     ────▶ 2026 Q1 ✅ (Bootstrap Examples)
 v0.25 Launch       ────▶ 2026 Q4
 v0.26 Velocity     ────▶ 2026 Q4
 v0.27 Query        ────▶ 2027 Q1 (AI Query System - RFC-0001)
