@@ -95,7 +95,35 @@ fn char_to_string(c: i64) -> String =
     else "?";
 
 -- ============================================================================
--- SECTION 3: String Searching
+-- SECTION 3: Integer Parsing
+-- ============================================================================
+
+-- Parse integer from string starting at position
+-- Returns the parsed integer value, stops at first non-digit
+fn parse_int(s: String, pos: i64) -> i64 =
+    parse_int_acc(s, pos, 0);
+
+fn parse_int_acc(s: String, pos: i64, acc: i64) -> i64 =
+    if pos >= s.len() then acc
+    else if is_digit(s.char_at(pos)) then
+        parse_int_acc(s, pos + 1, acc * 10 + (s.char_at(pos) - 48))
+    else acc;
+
+-- Parse integer with possible negative sign
+fn parse_int_signed(s: String, pos: i64) -> i64 =
+    if pos >= s.len() then 0
+    else if s.char_at(pos) == 45 then  -- '-' sign
+        0 - parse_int(s, pos + 1)
+    else parse_int(s, pos);
+
+-- Find where the number ends (for extracting the number substring)
+fn parse_int_end(s: String, pos: i64) -> i64 =
+    if pos >= s.len() then pos
+    else if is_digit(s.char_at(pos)) then parse_int_end(s, pos + 1)
+    else pos;
+
+-- ============================================================================
+-- SECTION 4: String Searching
 -- ============================================================================
 
 -- Find character in string starting from position, returns position or len if not found
@@ -143,7 +171,7 @@ fn find_number_end(s: String, pos: i64) -> i64 =
     else pos;
 
 -- ============================================================================
--- SECTION 4: String Matching
+-- SECTION 5: String Matching
 -- ============================================================================
 
 -- Check if string starts with prefix at position
@@ -164,7 +192,7 @@ fn find_pattern(s: String, pat: String, pos: i64) -> i64 =
     else find_pattern(s, pat, pos + 1);
 
 -- ============================================================================
--- SECTION 5: String Extraction
+-- SECTION 6: String Extraction
 -- ============================================================================
 
 -- Read until whitespace or delimiter, return extracted string
@@ -184,7 +212,7 @@ fn strip_trailing_colon(s: String) -> String =
     else s;
 
 -- ============================================================================
--- SECTION 6: Comment Handling (for lexer/parser)
+-- SECTION 7: Comment Handling (for lexer/parser)
 -- ============================================================================
 
 -- Skip BMB comment (-- to end of line)
@@ -200,7 +228,7 @@ fn skip_all(s: String, pos: i64) -> i64 =
     if p2 == pos then pos else skip_all(s, p2);
 
 -- ============================================================================
--- SECTION 7: Tests
+-- SECTION 8: Tests
 -- ============================================================================
 
 -- Character classification tests
@@ -227,6 +255,23 @@ fn test_int_to_string() -> bool =
 
 fn test_digit_char() -> bool =
     digit_char(0) == "0" and digit_char(5) == "5" and digit_char(9) == "9";
+
+-- Integer parsing tests
+fn test_parse_int() -> bool =
+    parse_int("123", 0) == 123
+    and parse_int("42abc", 0) == 42
+    and parse_int("abc", 0) == 0
+    and parse_int("007", 0) == 7;
+
+fn test_parse_int_signed() -> bool =
+    parse_int_signed("-42", 0) == -42
+    and parse_int_signed("123", 0) == 123
+    and parse_int_signed("-0", 0) == 0;
+
+fn test_parse_int_end() -> bool =
+    parse_int_end("123abc", 0) == 3
+    and parse_int_end("42", 0) == 2
+    and parse_int_end("abc", 0) == 0;
 
 -- String searching tests
 fn test_find_char() -> bool =
@@ -271,19 +316,22 @@ fn run_utils_tests() -> i64 =
     let t5 = if test_digit_to_int() then 1 else 0;
     let t6 = if test_int_to_string() then 1 else 0;
     let t7 = if test_digit_char() then 1 else 0;
-    let t8 = if test_find_char() then 1 else 0;
-    let t9 = if test_skip_ws() then 1 else 0;
-    let t10 = if test_find_ident_end() then 1 else 0;
-    let t11 = if test_find_number_end() then 1 else 0;
-    let t12 = if test_starts_with() then 1 else 0;
-    let t13 = if test_find_pattern() then 1 else 0;
-    let t14 = if test_skip_comment() then 1 else 0;
-    let t15 = if test_skip_to_eol() then 1 else 0;
-    t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t9 + t10 + t11 + t12 + t13 + t14 + t15;
+    let t8 = if test_parse_int() then 1 else 0;
+    let t9 = if test_parse_int_signed() then 1 else 0;
+    let t10 = if test_parse_int_end() then 1 else 0;
+    let t11 = if test_find_char() then 1 else 0;
+    let t12 = if test_skip_ws() then 1 else 0;
+    let t13 = if test_find_ident_end() then 1 else 0;
+    let t14 = if test_find_number_end() then 1 else 0;
+    let t15 = if test_starts_with() then 1 else 0;
+    let t16 = if test_find_pattern() then 1 else 0;
+    let t17 = if test_skip_comment() then 1 else 0;
+    let t18 = if test_skip_to_eol() then 1 else 0;
+    t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t9 + t10 + t11 + t12 + t13 + t14 + t15 + t16 + t17 + t18;
 
 -- Main test entry
 fn main() -> i64 =
     let passed = run_utils_tests();
-    let total = 15;
-    -- Returns number of passed tests (15 = all pass)
+    let total = 18;
+    -- Returns number of passed tests (18 = all pass)
     passed;

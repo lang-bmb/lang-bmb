@@ -762,6 +762,39 @@ merge_0:
 }
 ```
 
+### utils.bmb (12KB) - v0.29.3/v0.29.4
+Shared utility functions for all bootstrap modules.
+
+**Purpose:**
+Consolidates common string operations to reduce code duplication across bootstrap files.
+Since BMB doesn't yet support imports, this file serves as the canonical reference implementation.
+
+**Sections:**
+1. **Character Classification**: `is_digit`, `is_alpha`, `is_alnum`, `is_ident_start`, `is_whitespace`
+2. **Character Conversion**: `digit_to_int`, `digit_char`, `int_to_string`, `char_to_string`
+3. **Integer Parsing**: `parse_int`, `parse_int_signed`, `parse_int_end`
+4. **String Searching**: `find_char`, `find_pipe`, `skip_ws`, `find_ident_end`, `find_number_end`
+5. **String Matching**: `starts_with`, `starts_with_at`, `find_pattern`
+6. **String Extraction**: `read_until_ws`, `strip_trailing_colon`
+7. **Comment Handling**: `skip_comment`, `skip_to_eol`, `skip_all`
+
+**Duplication Reduction:**
+| Function | Previously Duplicated In |
+|----------|-------------------------|
+| `is_digit` | 11 files |
+| `is_alpha` | 10 files |
+| `parse_int` | 10 files |
+| `find_ident_end` | 6 files |
+| `starts_with` | 6 files |
+| `find_char` | 4 files |
+
+**Test output:**
+```
+✅ 18 tests passed
+```
+
+---
+
 ## Token Encoding
 
 Tokens are encoded as a single i64 value:
@@ -851,4 +884,5 @@ cargo run --release --bin bmb -- run bootstrap/compiler.bmb
 - [x] Self-hosting Stage 1 verification (v0.23.0) ✅
 - [x] Self-hosting Stage 2 equivalence tests (v0.23.1-2) ✅
 - [x] MIR optimization passes in BMB (v0.29.1) ✅
+- [x] Shared utilities module: utils.bmb (v0.29.3/v0.29.4) ✅
 - [ ] Self-hosting Stage 3 full bootstrap compilation (v0.30+)
