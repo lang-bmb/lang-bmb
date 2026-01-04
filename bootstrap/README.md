@@ -762,7 +762,7 @@ merge_0:
 }
 ```
 
-### utils.bmb (12KB) - v0.29.3/v0.29.4
+### utils.bmb (16KB) - v0.29.5
 Shared utility functions for all bootstrap modules.
 
 **Purpose:**
@@ -777,6 +777,8 @@ Since BMB doesn't yet support imports, this file serves as the canonical referen
 5. **String Matching**: `starts_with`, `starts_with_at`, `find_pattern`
 6. **String Extraction**: `read_until_ws`, `strip_trailing_colon`
 7. **Comment Handling**: `skip_comment`, `skip_to_eol`, `skip_all`
+8. **Error Handling**: `is_error`, `make_error`, `get_error_msg`, `is_error_loose`
+9. **Result Packing**: `pack_result`, `unpack_pos`, `unpack_ast`, `pack_values`, `unpack_first`, `unpack_rest`
 
 **Duplication Reduction:**
 | Function | Previously Duplicated In |
@@ -784,13 +786,15 @@ Since BMB doesn't yet support imports, this file serves as the canonical referen
 | `is_digit` | 11 files |
 | `is_alpha` | 10 files |
 | `parse_int` | 10 files |
+| `pack_result` | 8 files |
+| `unpack_pos/ast` | 7 files |
+| `is_error` | 6 files |
 | `find_ident_end` | 6 files |
 | `starts_with` | 6 files |
-| `find_char` | 4 files |
 
 **Test output:**
 ```
-✅ 18 tests passed
+✅ 28 tests passed
 ```
 
 ---
@@ -884,5 +888,8 @@ cargo run --release --bin bmb -- run bootstrap/compiler.bmb
 - [x] Self-hosting Stage 1 verification (v0.23.0) ✅
 - [x] Self-hosting Stage 2 equivalence tests (v0.23.1-2) ✅
 - [x] MIR optimization passes in BMB (v0.29.1) ✅
-- [x] Shared utilities module: utils.bmb (v0.29.3/v0.29.4) ✅
+- [x] Shared utilities module: utils.bmb (v0.29.3-v0.29.5) ✅
+  - Character/String utilities (v0.29.3)
+  - Integer parsing (v0.29.4)
+  - Error handling & Result packing (v0.29.5)
 - [ ] Self-hosting Stage 3 full bootstrap compilation (v0.30+)

@@ -1,12 +1,17 @@
--- BMB Bootstrap Utilities (v0.29.3)
+-- BMB Bootstrap Utilities (v0.29.5)
 -- Shared utility functions for all bootstrap modules
 -- Consolidates common string operations to reduce code duplication
 --
 -- This module provides:
 -- 1. Character classification (is_digit, is_alpha, etc.)
--- 2. String searching (find_char, find_pattern, etc.)
--- 3. String matching (starts_with, etc.)
--- 4. Conversions (int_to_string, char_to_string, etc.)
+-- 2. Character conversion (int_to_string, char_to_string, etc.)
+-- 3. Integer parsing (parse_int, parse_int_signed, etc.)
+-- 4. String searching (find_char, find_pattern, etc.)
+-- 5. String matching (starts_with, etc.)
+-- 6. String extraction (read_until_ws, etc.)
+-- 7. Comment handling (skip_comment, skip_all)
+-- 8. Error handling (is_error, make_error, get_error_msg)
+-- 9. Result packing (pack_result, unpack_pos, unpack_ast)
 --
 -- USAGE:
 -- These functions are designed to be copied or imported by other bootstrap modules.
@@ -228,7 +233,64 @@ fn skip_all(s: String, pos: i64) -> i64 =
     if p2 == pos then pos else skip_all(s, p2);
 
 -- ============================================================================
--- SECTION 8: Tests
+-- SECTION 8: Error Handling
+-- ============================================================================
+
+-- Check if string is an error result (starts with "ERR:")
+-- Standard error format: "ERR:error_message"
+fn is_error(s: String) -> bool =
+    s.len() >= 4 and s.slice(0, 4) == "ERR:";
+
+-- Create an error string with the given message
+fn make_error(msg: String) -> String = "ERR:" + msg;
+
+-- Extract error message from error string (after "ERR:")
+fn get_error_msg(s: String) -> String =
+    if s.len() <= 4 then ""
+    else s.slice(4, s.len());
+
+-- Check if string is an error (alternative: checks for "ERR" without colon)
+-- Some modules use this looser check - prefer is_error() for new code
+fn is_error_loose(s: String) -> bool =
+    s.len() >= 3 and s.slice(0, 3) == "ERR";
+
+-- ============================================================================
+-- SECTION 9: Result Packing
+-- ============================================================================
+
+-- Pack position and AST/value into a single string "pos:value"
+-- Standard format for parse results: "position:ast_or_value"
+fn pack_result(pos: i64, value: String) -> String =
+    int_to_string(pos) + ":" + value;
+
+-- Extract position from packed result "pos:value"
+fn unpack_pos(result: String) -> i64 =
+    parse_int(result, 0);
+
+-- Extract value/AST from packed result "pos:value"
+fn unpack_ast(result: String) -> String =
+    let colon_pos = find_colon(result, 0);
+    if colon_pos >= result.len() then result
+    else result.slice(colon_pos + 1, result.len());
+
+-- Pack multiple values with pipe separator "a|b|c"
+fn pack_values(a: String, b: String) -> String = a + "|" + b;
+fn pack_values3(a: String, b: String, c: String) -> String = a + "|" + b + "|" + c;
+
+-- Unpack first value from pipe-separated string
+fn unpack_first(s: String) -> String =
+    let pipe_pos = find_pipe(s, 0);
+    if pipe_pos >= s.len() then s
+    else s.slice(0, pipe_pos);
+
+-- Unpack rest after first pipe
+fn unpack_rest(s: String) -> String =
+    let pipe_pos = find_pipe(s, 0);
+    if pipe_pos >= s.len() then ""
+    else s.slice(pipe_pos + 1, s.len());
+
+-- ============================================================================
+-- SECTION 10: Tests
 -- ============================================================================
 
 -- Character classification tests
@@ -307,6 +369,56 @@ fn test_skip_to_eol() -> bool =
     -- Test with string that doesn't contain newline (reaches end)
     skip_to_eol("hello", 0) == 5;
 
+-- Error handling tests
+fn test_is_error() -> bool =
+    is_error("ERR:something went wrong")
+    and is_error("ERR:")
+    and not is_error("ERR")
+    and not is_error("error")
+    and not is_error("");
+
+fn test_make_error() -> bool =
+    make_error("test") == "ERR:test"
+    and make_error("") == "ERR:";
+
+fn test_get_error_msg() -> bool =
+    get_error_msg("ERR:test message") == "test message"
+    and get_error_msg("ERR:") == ""
+    and get_error_msg("ERR") == "";
+
+fn test_is_error_loose() -> bool =
+    is_error_loose("ERR:message")
+    and is_error_loose("ERR")
+    and is_error_loose("ERROR")
+    and not is_error_loose("ER");
+
+-- Result packing tests
+fn test_pack_result() -> bool =
+    pack_result(42, "ast") == "42:ast"
+    and pack_result(0, "value") == "0:value";
+
+fn test_unpack_pos() -> bool =
+    unpack_pos("42:ast") == 42
+    and unpack_pos("0:value") == 0
+    and unpack_pos("123:foo") == 123;
+
+fn test_unpack_ast() -> bool =
+    unpack_ast("42:ast") == "ast"
+    and unpack_ast("0:hello world") == "hello world"
+    and unpack_ast("123:") == "";
+
+fn test_pack_values() -> bool =
+    pack_values("a", "b") == "a|b"
+    and pack_values3("x", "y", "z") == "x|y|z";
+
+fn test_unpack_first() -> bool =
+    unpack_first("a|b|c") == "a"
+    and unpack_first("single") == "single";
+
+fn test_unpack_rest() -> bool =
+    unpack_rest("a|b|c") == "b|c"
+    and unpack_rest("single") == "";
+
 -- Run all tests
 fn run_utils_tests() -> i64 =
     let t1 = if test_is_digit() then 1 else 0;
@@ -327,11 +439,24 @@ fn run_utils_tests() -> i64 =
     let t16 = if test_find_pattern() then 1 else 0;
     let t17 = if test_skip_comment() then 1 else 0;
     let t18 = if test_skip_to_eol() then 1 else 0;
-    t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t9 + t10 + t11 + t12 + t13 + t14 + t15 + t16 + t17 + t18;
+    -- Error handling tests
+    let t19 = if test_is_error() then 1 else 0;
+    let t20 = if test_make_error() then 1 else 0;
+    let t21 = if test_get_error_msg() then 1 else 0;
+    let t22 = if test_is_error_loose() then 1 else 0;
+    -- Result packing tests
+    let t23 = if test_pack_result() then 1 else 0;
+    let t24 = if test_unpack_pos() then 1 else 0;
+    let t25 = if test_unpack_ast() then 1 else 0;
+    let t26 = if test_pack_values() then 1 else 0;
+    let t27 = if test_unpack_first() then 1 else 0;
+    let t28 = if test_unpack_rest() then 1 else 0;
+    t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t9 + t10 + t11 + t12 + t13 + t14 + t15 + t16 + t17 + t18
+    + t19 + t20 + t21 + t22 + t23 + t24 + t25 + t26 + t27 + t28;
 
 -- Main test entry
 fn main() -> i64 =
     let passed = run_utils_tests();
-    let total = 18;
-    -- Returns number of passed tests (18 = all pass)
+    let total = 28;
+    -- Returns number of passed tests (28 = all pass)
     passed;
