@@ -242,6 +242,14 @@ v0.MAJOR.MINOR
 - `gen_vec_info`, `gen_option_info`, `gen_result_info`, `gen_map_info`: Convenience constructors
 - 4 new test functions, 26 assertions (135 total in types.bmb)
 
+**v0.30.7 Completed (2026-01-04)**:
+- `subst_new`, `subst_add`: Create and extend type substitutions
+- `subst_lookup`, `subst_has`: Query substitution mappings
+- `subst_apply`: Apply substitution to simple type names
+- `subst_apply_gen`: Apply substitution to generic type info (Vec:T → Vec:i64)
+- `subst_from_params_args`: Build substitution from type params and args
+- 5 new test functions, 28 assertions (163 total in types.bmb)
+
 **Deliverables**:
 - Bootstrap compiler can type-check generic code
 - Trait dispatch works in bootstrap

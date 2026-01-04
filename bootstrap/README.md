@@ -121,7 +121,7 @@ Comprehensive test suite with 15 test categories.
 14. Deep nesting
 15. Nested function calls
 
-### types.bmb (34KB) - v0.30.6
+### types.bmb (36KB) - v0.30.7
 Type checker foundation for BMB.
 
 **Features:**
@@ -161,6 +161,15 @@ Type checker foundation for BMB.
 - `gen_type_arg_count`, `gen_type_arg_at`: Argument access functions
 - `gen_vec_info`, `gen_option_info`, `gen_result_info`, `gen_map_info`: Convenience constructors
 
+**Features (v0.30.7):**
+- Type substitution: Maps type parameters to concrete types
+- Format: `"T=i64,U=String"` (comma-separated param=type pairs)
+- `subst_new`, `subst_add`: Create and extend substitutions
+- `subst_lookup`, `subst_has`: Query substitution mappings
+- `subst_apply`: Apply substitution to simple type names
+- `subst_apply_gen`: Apply substitution to generic type info (e.g., `Vec:T` → `Vec:i64`)
+- `subst_from_params_args`: Build substitution from type params and args
+
 **Test output:**
 ```
 777 (start marker)
@@ -188,8 +197,13 @@ Type checker foundation for BMB.
 4  (gen type arg count tests)
 7  (gen type arg at tests)
 9  (gen convenience tests)
+6  (subst basic tests)
+5  (subst lookup tests)
+5  (subst apply tests)
+6  (subst apply gen tests)
+6  (subst from params tests)
 888 (separator)
-135 (total passed)
+163 (total passed)
 999 (end marker)
 ```
 

@@ -23,6 +23,7 @@
 -- - v0.30.4: Add type name resolution (primitives, type params, named types)
 -- - v0.30.5: Add generic type application encoding (Vec<T>, Option<T>, etc.)
 -- - v0.30.6: Add type argument tracking (string-based full type info)
+-- - v0.30.7: Add type substitution for generic instantiation
 --
 -- LIMITATIONS:
 -- - Fixed max 64 variables in scope
@@ -202,6 +203,124 @@ fn gen_result_info(ok_type: String, err_type: String) -> String =
     gen_type_pack("Result", gen_args_2(ok_type, err_type));
 fn gen_map_info(key_type: String, val_type: String) -> String =
     gen_type_pack("Map", gen_args_2(key_type, val_type));
+
+-- ============================================================================
+-- v0.30.7: Type Substitution
+-- ============================================================================
+-- Substitution maps type parameters to concrete types
+-- Format: "T=i64,U=String" (comma-separated param=type pairs)
+-- Used for generic instantiation: Box<T> with T=i64 becomes Box<i64>
+
+-- Create a new substitution with one mapping
+fn subst_new(param: String, ty: String) -> String =
+    param + "=" + ty;
+
+-- Add a mapping to existing substitution
+fn subst_add(subst: String, param: String, ty: String) -> String =
+    if subst.len() == 0 then subst_new(param, ty)
+    else subst + "," + param + "=" + ty;
+
+-- Lookup a type parameter in substitution, returns type or empty string
+fn subst_lookup(subst: String, param: String) -> String =
+    if subst.len() == 0 then ""
+    else subst_lookup_from(subst, param, 0);
+
+fn subst_lookup_from(subst: String, param: String, pos: i64) -> String =
+    if pos >= subst.len() then ""
+    else
+        -- Find the '=' sign
+        let eq_pos = subst_find_eq(subst, pos);
+        if eq_pos < 0 then ""
+        else
+            let current_param = subst.slice(pos, eq_pos);
+            if current_param == param then
+                -- Found! Extract the type value
+                let val_start = eq_pos + 1;
+                let val_end = subst_find_val_end(subst, val_start);
+                subst.slice(val_start, val_end)
+            else
+                -- Skip to next mapping
+                let comma_pos = subst_find_comma_from(subst, eq_pos);
+                if comma_pos < 0 then ""
+                else subst_lookup_from(subst, param, comma_pos + 1);
+
+fn subst_find_eq(s: String, pos: i64) -> i64 =
+    if pos >= s.len() then 0 - 1
+    else if s.char_at(pos) == 61 then pos  -- '=' = 61
+    else subst_find_eq(s, pos + 1);
+
+fn subst_find_val_end(s: String, pos: i64) -> i64 =
+    if pos >= s.len() then s.len()
+    else if s.char_at(pos) == 44 then pos  -- ',' = 44
+    else subst_find_val_end(s, pos + 1);
+
+fn subst_find_comma_from(s: String, pos: i64) -> i64 =
+    if pos >= s.len() then 0 - 1
+    else if s.char_at(pos) == 44 then pos  -- ',' = 44
+    else subst_find_comma_from(s, pos + 1);
+
+-- Check if substitution contains a parameter
+fn subst_has(subst: String, param: String) -> bool =
+    subst_lookup(subst, param).len() > 0;
+
+-- Apply substitution to a simple type name
+-- Returns substituted type if param is in subst, otherwise returns original
+fn subst_apply(subst: String, type_name: String) -> String =
+    let result = subst_lookup(subst, type_name);
+    if result.len() > 0 then result
+    else type_name;
+
+-- Apply substitution to a generic type info (e.g., "Vec:T" -> "Vec:i64")
+fn subst_apply_gen(subst: String, gen_info: String) -> String =
+    let base = gen_type_base(gen_info);
+    let args = gen_type_args(gen_info);
+    if args.len() == 0 then gen_info
+    else
+        let new_args = subst_apply_args(subst, args);
+        gen_type_pack(base, new_args);
+
+-- Apply substitution to comma-separated type arguments
+fn subst_apply_args(subst: String, args: String) -> String =
+    subst_apply_args_from(subst, args, 0, "");
+
+fn subst_apply_args_from(subst: String, args: String, pos: i64, result: String) -> String =
+    if pos >= args.len() then result
+    else
+        -- Find end of current argument
+        let end_pos = subst_find_arg_end(args, pos);
+        let arg = args.slice(pos, end_pos);
+        let substituted = subst_apply(subst, arg);
+        let new_result = if result.len() == 0 then substituted else result + "," + substituted;
+        if end_pos >= args.len() then new_result
+        else subst_apply_args_from(subst, args, end_pos + 1, new_result);
+
+fn subst_find_arg_end(s: String, pos: i64) -> i64 =
+    if pos >= s.len() then s.len()
+    else if s.char_at(pos) == 44 then pos  -- ',' = 44
+    else subst_find_arg_end(s, pos + 1);
+
+-- Build substitution from type params and type args
+-- tparams: "T,U" (comma-separated param names)
+-- targs: "i64,String" (comma-separated type names)
+-- Returns: "T=i64,U=String"
+fn subst_from_params_args(tparams: String, targs: String) -> String =
+    subst_build_from(tparams, targs, 0, 0, "");
+
+fn subst_build_from(tparams: String, targs: String, ppos: i64, apos: i64, result: String) -> String =
+    if ppos >= tparams.len() or apos >= targs.len() then result
+    else
+        -- Extract current param
+        let pend = subst_find_arg_end(tparams, ppos);
+        let param = tparams.slice(ppos, pend);
+        -- Extract current arg
+        let aend = subst_find_arg_end(targs, apos);
+        let arg = targs.slice(apos, aend);
+        -- Add to result
+        let new_result = if result.len() == 0 then subst_new(param, arg) else subst_add(result, param, arg);
+        -- Move to next
+        let next_ppos = if pend >= tparams.len() then tparams.len() else pend + 1;
+        let next_apos = if aend >= targs.len() then targs.len() else aend + 1;
+        subst_build_from(tparams, targs, next_ppos, next_apos, new_result);
 
 -- Extract type kind from encoded type
 fn type_kind(ty: i64) -> i64 = ty / 1000;
@@ -1138,6 +1257,97 @@ fn test_gen_convenience() -> i64 =
 
     r1 + r2 + r3 + r4 + r5 + r6 + r7 + r8 + r9;
 
+-- v0.30.7: Substitution tests
+fn test_subst_basic() -> i64 =
+    -- subst_new creates "T=i64"
+    let s1 = subst_new("T", "i64");
+    let r1 = if s1 == "T=i64" then 1 else 0;
+
+    -- subst_add creates "T=i64,U=String"
+    let s2 = subst_add(s1, "U", "String");
+    let r2 = if s2 == "T=i64,U=String" then 1 else 0;
+
+    -- subst_add with empty starts fresh
+    let s3 = subst_add("", "V", "bool");
+    let r3 = if s3 == "V=bool" then 1 else 0;
+
+    -- subst_has checks presence
+    let r4 = if subst_has(s2, "T") then 1 else 0;
+    let r5 = if subst_has(s2, "U") then 1 else 0;
+    let r6 = if subst_has(s2, "V") then 0 else 1;  -- V not in s2
+
+    r1 + r2 + r3 + r4 + r5 + r6;
+
+fn test_subst_lookup() -> i64 =
+    let subst = "T=i64,U=String,V=bool";
+
+    -- Lookup existing params
+    let r1 = if subst_lookup(subst, "T") == "i64" then 1 else 0;
+    let r2 = if subst_lookup(subst, "U") == "String" then 1 else 0;
+    let r3 = if subst_lookup(subst, "V") == "bool" then 1 else 0;
+
+    -- Lookup non-existent returns empty
+    let r4 = if subst_lookup(subst, "W").len() == 0 then 1 else 0;
+
+    -- Lookup in empty subst
+    let r5 = if subst_lookup("", "T").len() == 0 then 1 else 0;
+
+    r1 + r2 + r3 + r4 + r5;
+
+fn test_subst_apply() -> i64 =
+    let subst = "T=i64,U=String";
+
+    -- Apply to substitutable type param
+    let r1 = if subst_apply(subst, "T") == "i64" then 1 else 0;
+    let r2 = if subst_apply(subst, "U") == "String" then 1 else 0;
+
+    -- Apply to non-param returns original
+    let r3 = if subst_apply(subst, "bool") == "bool" then 1 else 0;
+    let r4 = if subst_apply(subst, "i32") == "i32" then 1 else 0;
+
+    -- Apply to unsubstituted param returns original
+    let r5 = if subst_apply(subst, "V") == "V" then 1 else 0;
+
+    r1 + r2 + r3 + r4 + r5;
+
+fn test_subst_apply_gen() -> i64 =
+    let subst = "T=i64,U=String";
+
+    -- Apply to Vec<T> -> Vec<i64>
+    let vec_t = gen_type_pack("Vec", "T");
+    let vec_i64 = subst_apply_gen(subst, vec_t);
+    let r1 = if gen_type_base(vec_i64) == "Vec" then 1 else 0;
+    let r2 = if gen_type_arg_at(vec_i64, 0) == "i64" then 1 else 0;
+
+    -- Apply to Map<T,U> -> Map<i64,String>
+    let map_tu = gen_type_pack("Map", gen_args_2("T", "U"));
+    let map_res = subst_apply_gen(subst, map_tu);
+    let r3 = if gen_type_base(map_res) == "Map" then 1 else 0;
+    let r4 = if gen_type_arg_at(map_res, 0) == "i64" then 1 else 0;
+    let r5 = if gen_type_arg_at(map_res, 1) == "String" then 1 else 0;
+
+    -- Apply to non-generic returns original
+    let simple = "i32";
+    let r6 = if subst_apply_gen(subst, simple) == "i32" then 1 else 0;
+
+    r1 + r2 + r3 + r4 + r5 + r6;
+
+fn test_subst_from_params() -> i64 =
+    -- Build substitution from params and args
+    let subst1 = subst_from_params_args("T", "i64");
+    let r1 = if subst_lookup(subst1, "T") == "i64" then 1 else 0;
+
+    let subst2 = subst_from_params_args("T,U", "i64,String");
+    let r2 = if subst_lookup(subst2, "T") == "i64" then 1 else 0;
+    let r3 = if subst_lookup(subst2, "U") == "String" then 1 else 0;
+
+    let subst3 = subst_from_params_args("K,V,E", "String,i64,Error");
+    let r4 = if subst_lookup(subst3, "K") == "String" then 1 else 0;
+    let r5 = if subst_lookup(subst3, "V") == "i64" then 1 else 0;
+    let r6 = if subst_lookup(subst3, "E") == "Error" then 1 else 0;
+
+    r1 + r2 + r3 + r4 + r5 + r6;
+
 -- Main test runner
 fn main() -> i64 =
     let u0 = println(777);  -- Start marker
@@ -1219,10 +1429,26 @@ fn main() -> i64 =
     let t24 = test_gen_convenience();
     let p24 = println(t24);  -- Expected: 9
 
+    -- v0.30.7: Substitution tests
+    let t25 = test_subst_basic();
+    let p25 = println(t25);  -- Expected: 6
+
+    let t26 = test_subst_lookup();
+    let p26 = println(t26);  -- Expected: 5
+
+    let t27 = test_subst_apply();
+    let p27 = println(t27);  -- Expected: 5
+
+    let t28 = test_subst_apply_gen();
+    let p28 = println(t28);  -- Expected: 6
+
+    let t29 = test_subst_from_params();
+    let p29 = println(t29);  -- Expected: 6
+
     let u1 = println(888);  -- Separator
 
-    let total = t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t9 + t10 + t11 + t12 + t13 + t14 + t15 + t16 + t17 + t18 + t19 + t20 + t21 + t22 + t23 + t24;
-    let u2 = println(total);  -- Expected: 135
+    let total = t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t9 + t10 + t11 + t12 + t13 + t14 + t15 + t16 + t17 + t18 + t19 + t20 + t21 + t22 + t23 + t24 + t25 + t26 + t27 + t28 + t29;
+    let u2 = println(total);  -- Expected: 163
 
     let u3 = println(999);  -- End marker
     total;
