@@ -1,0 +1,289 @@
+-- BMB Bootstrap Utilities (v0.29.3)
+-- Shared utility functions for all bootstrap modules
+-- Consolidates common string operations to reduce code duplication
+--
+-- This module provides:
+-- 1. Character classification (is_digit, is_alpha, etc.)
+-- 2. String searching (find_char, find_pattern, etc.)
+-- 3. String matching (starts_with, etc.)
+-- 4. Conversions (int_to_string, char_to_string, etc.)
+--
+-- USAGE:
+-- These functions are designed to be copied or imported by other bootstrap modules.
+-- The bootstrap system doesn't yet support true module imports, so this file
+-- serves as the canonical reference implementation.
+
+-- ============================================================================
+-- SECTION 1: Character Classification
+-- ============================================================================
+
+-- Check if character is whitespace (space=32, tab=9, newline=10, CR=13)
+fn is_whitespace(c: i64) -> bool = c == 32 or c == 9 or c == 10 or c == 13;
+
+-- Check if character is a digit (0-9, ASCII 48-57)
+fn is_digit(c: i64) -> bool = c >= 48 and c <= 57;
+
+-- Check if character is a letter (a-z=97-122, A-Z=65-90)
+fn is_alpha(c: i64) -> bool = (c >= 65 and c <= 90) or (c >= 97 and c <= 122);
+
+-- Check if character is alphanumeric (letter or digit)
+fn is_alnum(c: i64) -> bool = is_alpha(c) or is_digit(c);
+
+-- Check if character is alphanumeric or underscore (95)
+fn is_alnum_or_underscore(c: i64) -> bool = is_alpha(c) or is_digit(c) or c == 95;
+
+-- Check if character can start an identifier (letter or underscore)
+fn is_ident_start(c: i64) -> bool = is_alpha(c) or c == 95;
+
+-- ============================================================================
+-- SECTION 2: Character Conversion
+-- ============================================================================
+
+-- Convert digit character to integer value
+fn digit_to_int(c: i64) -> i64 = c - 48;
+
+-- Convert single digit (0-9) to character string
+fn digit_char(d: i64) -> String =
+    if d == 0 then "0" else if d == 1 then "1" else if d == 2 then "2"
+    else if d == 3 then "3" else if d == 4 then "4" else if d == 5 then "5"
+    else if d == 6 then "6" else if d == 7 then "7" else if d == 8 then "8"
+    else "9";
+
+-- Convert integer to string (handles negative numbers)
+fn int_to_string(n: i64) -> String =
+    if n < 0 then "-" + int_to_string(0 - n)
+    else if n < 10 then digit_char(n)
+    else int_to_string(n / 10) + digit_char(n - (n / 10) * 10);
+
+-- Convert uppercase letter (A-Z) to string
+fn char_upper(c: i64) -> String =
+    if c == 65 then "A" else if c == 66 then "B" else if c == 67 then "C"
+    else if c == 68 then "D" else if c == 69 then "E" else if c == 70 then "F"
+    else if c == 71 then "G" else if c == 72 then "H" else if c == 73 then "I"
+    else if c == 74 then "J" else if c == 75 then "K" else if c == 76 then "L"
+    else if c == 77 then "M" else if c == 78 then "N" else if c == 79 then "O"
+    else if c == 80 then "P" else if c == 81 then "Q" else if c == 82 then "R"
+    else if c == 83 then "S" else if c == 84 then "T" else if c == 85 then "U"
+    else if c == 86 then "V" else if c == 87 then "W" else if c == 88 then "X"
+    else if c == 89 then "Y" else "Z";
+
+-- Convert lowercase letter (a-z) to string
+fn char_lower(c: i64) -> String =
+    if c == 97 then "a" else if c == 98 then "b" else if c == 99 then "c"
+    else if c == 100 then "d" else if c == 101 then "e" else if c == 102 then "f"
+    else if c == 103 then "g" else if c == 104 then "h" else if c == 105 then "i"
+    else if c == 106 then "j" else if c == 107 then "k" else if c == 108 then "l"
+    else if c == 109 then "m" else if c == 110 then "n" else if c == 111 then "o"
+    else if c == 112 then "p" else if c == 113 then "q" else if c == 114 then "r"
+    else if c == 115 then "s" else if c == 116 then "t" else if c == 117 then "u"
+    else if c == 118 then "v" else if c == 119 then "w" else if c == 120 then "x"
+    else if c == 121 then "y" else "z";
+
+-- Convert ASCII code to string (common characters)
+fn char_to_string(c: i64) -> String =
+    if c == 32 then " " else if c == 33 then "!" else if c == 37 then "%"
+    else if c == 38 then "&" else if c == 40 then "(" else if c == 41 then ")"
+    else if c == 42 then "*" else if c == 43 then "+" else if c == 44 then ","
+    else if c == 45 then "-" else if c == 46 then "." else if c == 47 then "/"
+    else if c == 58 then ":" else if c == 59 then ";" else if c == 60 then "<"
+    else if c == 61 then "=" else if c == 62 then ">" else if c == 91 then "["
+    else if c == 93 then "]" else if c == 95 then "_" else if c == 123 then "{"
+    else if c == 124 then "|" else if c == 125 then "}"
+    else if c >= 48 and c <= 57 then digit_char(c - 48)
+    else if c >= 65 and c <= 90 then char_upper(c)
+    else if c >= 97 and c <= 122 then char_lower(c)
+    else "?";
+
+-- ============================================================================
+-- SECTION 3: String Searching
+-- ============================================================================
+
+-- Find character in string starting from position, returns position or len if not found
+fn find_char(s: String, c: i64, pos: i64) -> i64 =
+    if pos >= s.len() then pos
+    else if s.char_at(pos) == c then pos
+    else find_char(s, c, pos + 1);
+
+-- Specialized find for common separators
+fn find_pipe(s: String, pos: i64) -> i64 = find_char(s, 124, pos);      -- |
+fn find_colon(s: String, pos: i64) -> i64 = find_char(s, 58, pos);      -- :
+fn find_semicolon(s: String, pos: i64) -> i64 = find_char(s, 59, pos);  -- ;
+fn find_comma(s: String, pos: i64) -> i64 = find_char(s, 44, pos);      -- ,
+fn find_space(s: String, pos: i64) -> i64 = find_char(s, 32, pos);      -- space
+fn find_newline(s: String, pos: i64) -> i64 = find_char(s, 10, pos);    -- \n
+
+-- Skip whitespace, return new position
+fn skip_ws(s: String, pos: i64) -> i64 =
+    if pos >= s.len() then pos
+    else if is_whitespace(s.char_at(pos)) then skip_ws(s, pos + 1)
+    else pos;
+
+-- Skip spaces only (not tabs/newlines), return new position
+fn skip_spaces(s: String, pos: i64) -> i64 =
+    if pos >= s.len() then pos
+    else if s.char_at(pos) == 32 then skip_spaces(s, pos + 1)
+    else pos;
+
+-- Skip to end of line, return position at newline or end
+fn skip_to_eol(s: String, pos: i64) -> i64 =
+    if pos >= s.len() then pos
+    else if s.char_at(pos) == 10 then pos
+    else skip_to_eol(s, pos + 1);
+
+-- Find end of identifier (sequence of alnum or underscore)
+fn find_ident_end(s: String, pos: i64) -> i64 =
+    if pos >= s.len() then pos
+    else if is_alnum_or_underscore(s.char_at(pos)) then find_ident_end(s, pos + 1)
+    else pos;
+
+-- Find end of number (sequence of digits)
+fn find_number_end(s: String, pos: i64) -> i64 =
+    if pos >= s.len() then pos
+    else if is_digit(s.char_at(pos)) then find_number_end(s, pos + 1)
+    else pos;
+
+-- ============================================================================
+-- SECTION 4: String Matching
+-- ============================================================================
+
+-- Check if string starts with prefix at position
+fn starts_with(s: String, prefix: String, pos: i64) -> bool =
+    starts_with_at(s, prefix, pos, 0);
+
+-- Helper: check prefix character by character
+fn starts_with_at(s: String, prefix: String, pos: i64, i: i64) -> bool =
+    if i >= prefix.len() then true
+    else if pos + i >= s.len() then false
+    else if s.char_at(pos + i) != prefix.char_at(i) then false
+    else starts_with_at(s, prefix, pos, i + 1);
+
+-- Find pattern in string starting from position
+fn find_pattern(s: String, pat: String, pos: i64) -> i64 =
+    if pos + pat.len() > s.len() then s.len()
+    else if starts_with(s, pat, pos) then pos
+    else find_pattern(s, pat, pos + 1);
+
+-- ============================================================================
+-- SECTION 5: String Extraction
+-- ============================================================================
+
+-- Read until whitespace or delimiter, return extracted string
+fn read_until_ws(s: String, pos: i64) -> String =
+    read_until_ws_acc(s, pos, "");
+
+fn read_until_ws_acc(s: String, pos: i64, acc: String) -> String =
+    if pos >= s.len() then acc
+    else let c = s.char_at(pos);
+        if c == 32 or c == 44 or c == 40 or c == 41 or c == 124 then acc
+        else read_until_ws_acc(s, pos + 1, acc + char_to_string(c));
+
+-- Strip trailing colon from string
+fn strip_trailing_colon(s: String) -> String =
+    if s.len() == 0 then ""
+    else if s.char_at(s.len() - 1) == 58 then s.slice(0, s.len() - 1)
+    else s;
+
+-- ============================================================================
+-- SECTION 6: Comment Handling (for lexer/parser)
+-- ============================================================================
+
+-- Skip BMB comment (-- to end of line)
+fn skip_comment(s: String, pos: i64) -> i64 =
+    if pos + 1 < s.len() and s.char_at(pos) == 45 and s.char_at(pos + 1) == 45 then
+        skip_to_eol(s, pos + 2)
+    else pos;
+
+-- Skip all whitespace and comments
+fn skip_all(s: String, pos: i64) -> i64 =
+    let p1 = skip_ws(s, pos);
+    let p2 = skip_comment(s, p1);
+    if p2 == pos then pos else skip_all(s, p2);
+
+-- ============================================================================
+-- SECTION 7: Tests
+-- ============================================================================
+
+-- Character classification tests
+fn test_is_digit() -> bool =
+    is_digit(48) and is_digit(57) and not is_digit(47) and not is_digit(58);
+
+fn test_is_alpha() -> bool =
+    is_alpha(65) and is_alpha(90) and is_alpha(97) and is_alpha(122)
+    and not is_alpha(64) and not is_alpha(91);
+
+fn test_is_alnum() -> bool =
+    is_alnum(65) and is_alnum(48) and not is_alnum(32);
+
+fn test_is_ident_start() -> bool =
+    is_ident_start(97) and is_ident_start(95) and not is_ident_start(48);
+
+-- Conversion tests
+fn test_digit_to_int() -> bool =
+    digit_to_int(48) == 0 and digit_to_int(57) == 9;
+
+fn test_int_to_string() -> bool =
+    int_to_string(0) == "0" and int_to_string(42) == "42"
+    and int_to_string(123) == "123" and int_to_string(-5) == "-5";
+
+fn test_digit_char() -> bool =
+    digit_char(0) == "0" and digit_char(5) == "5" and digit_char(9) == "9";
+
+-- String searching tests
+fn test_find_char() -> bool =
+    find_char("hello", 101, 0) == 1      -- 'e' at position 1
+    and find_char("hello", 108, 0) == 2  -- first 'l' at position 2
+    and find_char("hello", 120, 0) == 5; -- 'x' not found, returns len
+
+fn test_skip_ws() -> bool =
+    skip_ws("  hello", 0) == 2 and skip_ws("hello", 0) == 0;
+
+fn test_find_ident_end() -> bool =
+    find_ident_end("foo_bar ", 0) == 7 and find_ident_end("123", 0) == 3;
+
+fn test_find_number_end() -> bool =
+    find_number_end("12345 ", 0) == 5 and find_number_end("abc", 0) == 0;
+
+-- String matching tests
+fn test_starts_with() -> bool =
+    starts_with("hello world", "hello", 0)
+    and starts_with("hello world", "world", 6)
+    and not starts_with("hello", "world", 0);
+
+fn test_find_pattern() -> bool =
+    find_pattern("hello world", "world", 0) == 6
+    and find_pattern("hello", "xyz", 0) == 5;
+
+-- Comment handling tests
+fn test_skip_comment() -> bool =
+    skip_comment("-- comment", 0) == 10
+    and skip_comment("not a comment", 0) == 0;
+
+fn test_skip_to_eol() -> bool =
+    -- Test with string that doesn't contain newline (reaches end)
+    skip_to_eol("hello", 0) == 5;
+
+-- Run all tests
+fn run_utils_tests() -> i64 =
+    let t1 = if test_is_digit() then 1 else 0;
+    let t2 = if test_is_alpha() then 1 else 0;
+    let t3 = if test_is_alnum() then 1 else 0;
+    let t4 = if test_is_ident_start() then 1 else 0;
+    let t5 = if test_digit_to_int() then 1 else 0;
+    let t6 = if test_int_to_string() then 1 else 0;
+    let t7 = if test_digit_char() then 1 else 0;
+    let t8 = if test_find_char() then 1 else 0;
+    let t9 = if test_skip_ws() then 1 else 0;
+    let t10 = if test_find_ident_end() then 1 else 0;
+    let t11 = if test_find_number_end() then 1 else 0;
+    let t12 = if test_starts_with() then 1 else 0;
+    let t13 = if test_find_pattern() then 1 else 0;
+    let t14 = if test_skip_comment() then 1 else 0;
+    let t15 = if test_skip_to_eol() then 1 else 0;
+    t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t9 + t10 + t11 + t12 + t13 + t14 + t15;
+
+-- Main test entry
+fn main() -> i64 =
+    let passed = run_utils_tests();
+    let total = 15;
+    -- Returns number of passed tests (15 = all pass)
+    passed;

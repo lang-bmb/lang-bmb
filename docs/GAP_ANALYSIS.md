@@ -59,23 +59,24 @@ This document provides a comprehensive analysis of the requirements for BMB v0.3
 | config.rs | 4,245 | Complete | Configuration |
 | error.rs | 694 | Complete | Error handling |
 
-### Bootstrap Components (~9,400 LOC in BMB)
+### Bootstrap Components (~9,700 LOC in BMB)
 
 | File | Size | LOC | Status | Test Coverage |
 |------|------|-----|--------|---------------|
-| llvm_ir.bmb | 58KB | 1,800+ | Complete | 119 tests |
-| compiler.bmb | 53KB | 1,600+ | Complete | 8 tests |
-| lowering.bmb | 50KB | 1,500+ | Complete | 52 tests |
-| parser_ast.bmb | 45KB | 1,400+ | Complete | Struct/Enum |
-| pipeline.bmb | 31KB | 900+ | Complete | 14 tests |
-| parser_test.bmb | 25KB | 800+ | Complete | 15 categories |
-| selfhost_equiv.bmb | 9KB | 300+ | Complete | 19 tests |
-| selfhost_test.bmb | 23KB | 700+ | Complete | 8 tests |
-| types.bmb | 23KB | 700+ | Complete | 45 tests |
-| parser.bmb | 22KB | 700+ | Complete | Syntax validation |
-| mir.bmb | 20KB | 600+ | Complete | 46 tests |
-| optimize.bmb | 19KB | 460+ | Complete | 9 tests |
-| lexer.bmb | 8KB | 250+ | Complete | Tokenization |
+| llvm_ir.bmb | 58KB | 1,375 | Complete | 119 tests |
+| lowering.bmb | 50KB | 1,168 | Complete | 52 tests |
+| compiler.bmb | 53KB | 1,202 | Complete | 8 tests |
+| parser_ast.bmb | 45KB | 1,022 | Complete | Struct/Enum |
+| pipeline.bmb | 31KB | 750 | Complete | 14 tests |
+| parser_test.bmb | 25KB | 641 | Complete | 15 categories |
+| types.bmb | 23KB | 617 | Complete | 45 tests |
+| parser.bmb | 22KB | 605 | Complete | Syntax validation |
+| mir.bmb | 20KB | 552 | Complete | 46 tests |
+| selfhost_test.bmb | 23KB | 536 | Complete | 8 tests |
+| optimize.bmb | 19KB | 460 | Complete | 9 tests |
+| utils.bmb | 12KB | 289 | Complete | 15 tests |
+| selfhost_equiv.bmb | 9KB | 251 | Complete | 19 tests |
+| lexer.bmb | 8KB | 224 | Complete | Tokenization |
 
 ## v0.30 Pure Requirements
 
@@ -117,13 +118,13 @@ Current Rust Codebase:
 └── Total             21,783 LOC
 
 Current BMB Bootstrap:
-├── bootstrap/         9,400 LOC
-└── Coverage:            43%
+├── bootstrap/         9,700 LOC
+└── Coverage:            44%
 
 Gap to Close:
-├── Compiler gap:     ~9,500 LOC
+├── Compiler gap:     ~9,200 LOC
 ├── gotgan gap:       ~4,000 LOC
-└── Total gap:        ~13,500 LOC
+└── Total gap:        ~13,200 LOC
 ```
 
 ### Critical Path to v0.30
@@ -271,11 +272,11 @@ $ diff stage2/bmb stage3/bmb
 
 v0.30 "Pure" represents the culmination of the BMB self-hosting journey. With Stage 1/2 verification complete and the bootstrap covering the full compilation pipeline, the remaining work is substantial but achievable within the 2026 Q4 timeline.
 
-**Key Metrics** (as of v0.29.2):
+**Key Metrics** (as of v0.29.3):
 - Rust code to remove: ~21,783 LOC
-- BMB bootstrap code: ~9,400 LOC (43% coverage)
-- Gap to close: ~13,500 LOC additional BMB
-- Bootstrap tests passing: 320 tests
+- BMB bootstrap code: ~9,700 LOC (44% coverage)
+- Gap to close: ~13,200 LOC additional BMB
+- Bootstrap tests passing: 335 tests
 - Estimated effort: 6-9 months
 
 ---
