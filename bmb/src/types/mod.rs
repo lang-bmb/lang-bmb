@@ -831,8 +831,107 @@ impl TypeChecker {
                     )),
                 }
             }
+            // v0.18: Option<T> methods
+            Type::Named(name) if name == "Option" => {
+                self.check_option_method(method, args, None, span)
+            }
+            Type::Generic { name, type_args } if name == "Option" => {
+                let inner_ty = type_args.first().map(|t| t.as_ref().clone());
+                self.check_option_method(method, args, inner_ty, span)
+            }
+            // v0.18: Result<T, E> methods
+            Type::Named(name) if name == "Result" => {
+                self.check_result_method(method, args, None, None, span)
+            }
+            Type::Generic { name, type_args } if name == "Result" => {
+                let ok_ty = type_args.first().map(|t| t.as_ref().clone());
+                let err_ty = type_args.get(1).map(|t| t.as_ref().clone());
+                self.check_result_method(method, args, ok_ty, err_ty, span)
+            }
             _ => Err(CompileError::type_error(
                 format!("type {} has no methods", receiver_ty),
+                span,
+            )),
+        }
+    }
+
+    /// v0.18: Check Option<T> method calls
+    fn check_option_method(&mut self, method: &str, args: &[Spanned<Expr>], inner_ty: Option<Type>, span: Span) -> Result<Type> {
+        match method {
+            // is_some() -> bool
+            "is_some" => {
+                if !args.is_empty() {
+                    return Err(CompileError::type_error("is_some() takes no arguments", span));
+                }
+                Ok(Type::Bool)
+            }
+            // is_none() -> bool
+            "is_none" => {
+                if !args.is_empty() {
+                    return Err(CompileError::type_error("is_none() takes no arguments", span));
+                }
+                Ok(Type::Bool)
+            }
+            // unwrap_or(default: T) -> T
+            "unwrap_or" => {
+                if args.len() != 1 {
+                    return Err(CompileError::type_error("unwrap_or() takes 1 argument", span));
+                }
+                let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                // If we know the inner type, check it matches
+                if let Some(ref expected) = inner_ty {
+                    self.unify(expected, &arg_ty, args[0].span)?;
+                }
+                // Return the concrete type: prefer arg_ty if inner_ty is a TypeVar
+                match &inner_ty {
+                    Some(Type::TypeVar(_)) => Ok(arg_ty),
+                    Some(ty) => Ok(ty.clone()),
+                    None => Ok(arg_ty),
+                }
+            }
+            _ => Err(CompileError::type_error(
+                format!("unknown method '{}' for Option", method),
+                span,
+            )),
+        }
+    }
+
+    /// v0.18: Check Result<T, E> method calls
+    fn check_result_method(&mut self, method: &str, args: &[Spanned<Expr>], ok_ty: Option<Type>, _err_ty: Option<Type>, span: Span) -> Result<Type> {
+        match method {
+            // is_ok() -> bool
+            "is_ok" => {
+                if !args.is_empty() {
+                    return Err(CompileError::type_error("is_ok() takes no arguments", span));
+                }
+                Ok(Type::Bool)
+            }
+            // is_err() -> bool
+            "is_err" => {
+                if !args.is_empty() {
+                    return Err(CompileError::type_error("is_err() takes no arguments", span));
+                }
+                Ok(Type::Bool)
+            }
+            // unwrap_or(default: T) -> T
+            "unwrap_or" => {
+                if args.len() != 1 {
+                    return Err(CompileError::type_error("unwrap_or() takes 1 argument", span));
+                }
+                let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                // If we know the ok type, check it matches
+                if let Some(ref expected) = ok_ty {
+                    self.unify(expected, &arg_ty, args[0].span)?;
+                }
+                // Return the concrete type: prefer arg_ty if ok_ty is a TypeVar
+                match &ok_ty {
+                    Some(Type::TypeVar(_)) => Ok(arg_ty),
+                    Some(ty) => Ok(ty.clone()),
+                    None => Ok(arg_ty),
+                }
+            }
+            _ => Err(CompileError::type_error(
+                format!("unknown method '{}' for Result", method),
                 span,
             )),
         }

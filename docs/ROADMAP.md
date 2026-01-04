@@ -47,7 +47,7 @@ v0.MAJOR.MINOR
 | v0.15 | **Generics** | 제네릭 타입 시스템 완성 | ✅ 완료 (v0.15.0-2) |
 | v0.16 | **Consolidate** | 제네릭 enum/struct 타입 체커 완성 | ✅ 완료 (v0.16.0-3) |
 | v0.17 | **Module** | 모듈 시스템 + 패키지 간 타입 참조 | ✅ 완료 (v0.17.0-3) |
-| v0.18 | **Persist** | Database/CLI 20개 + 최적화 2차 | 계획 |
+| v0.18 | **Methods** | Option/Result 메서드 호출 구문 | ✅ 완료 (v0.18.0) |
 | v0.19 | **Mirror** | Self-Hosting (BMB 자기 컴파일) | 계획 |
 | v0.20 | **Showcase** | 주요 앱 시나리오 샘플 10개 | 계획 |
 | v0.21 | **Launch** | 프로덕션 서비스 런칭 | 계획 |
@@ -1098,52 +1098,71 @@ use bmb_option::Option;
 | 단일 레벨 import | 중첩 모듈 경로 미지원 | 필요시 |
 | 순환 의존성 | 순환 import 감지 미구현 | v0.18+ |
 
-### 다음 단계 (v0.18+)
+### 다음 단계 (v0.18 Methods ✅ → v0.19+)
 
-| 영역 | 내용 | 의존성 |
-|------|------|--------|
-| gotgan 통합 | Gotgan.toml에서 의존성 자동 로드 | 없음 |
-| 트레이트 시스템 | 타입 바운드, impl 블록 | 모듈 시스템 ✅ |
-| Async/Crypto 패키지 | 원래 v0.17 계획 패키지들 | 트레이트 시스템 |
+| 영역 | 내용 | 상태 |
+|------|------|------|
+| Option/Result 메서드 | is_some(), is_ok(), unwrap_or() | ✅ v0.18 완료 |
+| gotgan 통합 | Gotgan.toml에서 의존성 자동 로드 | v0.19+ |
+| 트레이트 시스템 | 타입 바운드, impl 블록 | v0.19+ |
+| Async/Crypto 패키지 | 원래 v0.17 계획 패키지들 | 트레이트 시스템 이후 |
 
 ---
 
-## v0.18 Persist (Database/CLI 20개 + 최적화 2차)
+## v0.18 Methods (Option/Result 메서드 호출 구문) ✅
 
-> 목표: 데이터베이스/CLI 패키지 + 두 번째 최적화
+> 목표: 제네릭 타입(Option, Result)에 대한 메서드 호출 구문 지원
 
-### 패키지 목록
+### 배경
 
-| # | 패키지 | 설명 |
-|---|--------|------|
-| 96 | bmb-sql | SQL 빌더 |
-| 97 | bmb-postgres | PostgreSQL |
-| 98 | bmb-mysql | MySQL |
-| 99 | bmb-sqlite | SQLite |
-| 100 | bmb-redis | Redis |
-| 101 | bmb-mongodb | MongoDB |
-| 102 | bmb-pool | 커넥션 풀 |
-| 103 | bmb-migrate | 마이그레이션 |
-| 104 | bmb-orm | ORM |
-| 105 | bmb-kv | 키-밸류 스토어 |
-| 106 | bmb-clap | 인자 파싱 |
-| 107 | bmb-env | 환경 변수 |
-| 108 | bmb-log | 로깅 |
-| 109 | bmb-tracing | 트레이싱 |
-| 110 | bmb-config | 설정 관리 |
-| 111 | bmb-term | 터미널 색상 |
-| 112 | bmb-progress | 진행 바 |
-| 113 | bmb-table | 테이블 출력 |
-| 114 | bmb-prompt | 대화형 프롬프트 |
-| 115 | bmb-test | 테스트 프레임워크 |
+원래 v0.18 "Persist" 계획은 20개의 Database/CLI 패키지를 목표로 했으나,
+이는 현재 언어 상태에서 비현실적임:
+- FFI (extern C 바인딩) 미구현
+- Async/Await 미구현
+- Vec/String 런타임 미구현
 
-### 최적화 2차
+대신, 메서드 호출 구문을 통해 Option/Result 사용성을 개선하는 것이
+언어 완성도에 더 중요하다고 판단.
 
-| 영역 | 기법 | 목표 |
-|------|------|------|
-| LLVM | 최적화 패스 튜닝 | +15% 성능 |
-| 계약 | 경계 검사 제거 | +10% 성능 |
-| SIMD | 자동 벡터화 | +20% 특정 연산 |
+### 구현 내용
+
+| 구성요소 | 설명 | 상태 |
+|----------|------|------|
+| Option<T> 메서드 | is_some(), is_none(), unwrap_or() | ✅ |
+| Result<T,E> 메서드 | is_ok(), is_err(), unwrap_or() | ✅ |
+| 타입체커 확장 | check_option_method, check_result_method | ✅ |
+| 인터프리터 확장 | eval_method_call에 Option/Result 처리 | ✅ |
+| TypeVar 해결 | unwrap_or 반환 타입 추론 수정 | ✅ |
+
+### 사용 예시
+
+```bmb
+-- Before (함수 호출)
+let x = unwrap_or(opt, 0);
+let ok = is_some(opt);
+
+-- After (메서드 호출)
+let x = opt.unwrap_or(0);
+let ok = opt.is_some();
+
+-- Result도 동일하게 지원
+let val = result.unwrap_or(default);
+if result.is_ok() { ... }
+```
+
+### 제한사항
+
+| 제한 | 설명 | 해결 계획 |
+|------|------|-----------|
+| 하드코딩 메서드 | Option/Result만 지원 | 트레이트 시스템 이후 확장 |
+| map/and_then | 클로저 필요 | 클로저 구현 이후 |
+
+### 원래 v0.18 패키지 계획
+
+Database/CLI 패키지 (20개)는 다음 의존성이 해결된 후 진행:
+- FFI: extern C 바인딩 (v0.19+)
+- Async: async/await 구문 (v0.19+)
+- Runtime: Vec/String/Box 동적 할당 (v0.19+)
 
 ---
 

@@ -476,6 +476,42 @@ impl Interpreter {
                     _ => Err(RuntimeError::undefined_function(&format!("Array.{}", method))),
                 }
             }
+            // v0.18: Option<T> methods
+            Value::Enum(enum_name, variant, values) if enum_name == "Option" => {
+                match method {
+                    "is_some" => Ok(Value::Bool(variant == "Some")),
+                    "is_none" => Ok(Value::Bool(variant == "None")),
+                    "unwrap_or" => {
+                        if args.len() != 1 {
+                            return Err(RuntimeError::arity_mismatch("unwrap_or", 1, args.len()));
+                        }
+                        match variant.as_str() {
+                            "Some" => Ok(values.first().cloned().unwrap_or(Value::Unit)),
+                            "None" => Ok(args.into_iter().next().unwrap()),
+                            _ => Err(RuntimeError::type_error("Option variant", &variant)),
+                        }
+                    }
+                    _ => Err(RuntimeError::undefined_function(&format!("Option.{}", method))),
+                }
+            }
+            // v0.18: Result<T, E> methods
+            Value::Enum(enum_name, variant, values) if enum_name == "Result" => {
+                match method {
+                    "is_ok" => Ok(Value::Bool(variant == "Ok")),
+                    "is_err" => Ok(Value::Bool(variant == "Err")),
+                    "unwrap_or" => {
+                        if args.len() != 1 {
+                            return Err(RuntimeError::arity_mismatch("unwrap_or", 1, args.len()));
+                        }
+                        match variant.as_str() {
+                            "Ok" => Ok(values.first().cloned().unwrap_or(Value::Unit)),
+                            "Err" => Ok(args.into_iter().next().unwrap()),
+                            _ => Err(RuntimeError::type_error("Result variant", &variant)),
+                        }
+                    }
+                    _ => Err(RuntimeError::undefined_function(&format!("Result.{}", method))),
+                }
+            }
             _ => Err(RuntimeError::type_error("object with methods", receiver.type_name())),
         }
     }
