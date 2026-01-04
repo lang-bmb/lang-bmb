@@ -162,6 +162,7 @@ Gap to Close:
 - ✅ Parse type parameter declarations (v0.30.2: struct Foo<T>, fn bar<T>)
 - ✅ Type parameter scope tracking (v0.30.3: tparam_add, tparam_lookup)
 - ✅ Type name resolution (v0.30.4: resolve_type_name with tenv)
+- ✅ Generic type application encoding (v0.30.5: kind=11, type_vec, type_option)
 
 ### What Bootstrap CANNOT Do Yet
 

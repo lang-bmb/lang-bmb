@@ -228,6 +228,13 @@ v0.MAJOR.MINOR
 - `name_hash`: Simple hash for named types (struct/enum)
 - 3 new test functions, 23 assertions (89 total in types.bmb)
 
+**v0.30.5 Completed (2026-01-04)**:
+- `type_generic_app(base_hash)`: GenericApp type encoding (kind=11)
+- `is_generic_app`, `generic_base_hash`: Detection and extraction functions
+- `type_vec`, `type_option`, `type_result`, `type_map`: Common generic constructors
+- `name_hash_mod`, `name_hash_base`: Mod-safe hash for base type names
+- 3 new test functions, 20 assertions (109 total in types.bmb)
+
 **Deliverables**:
 - Bootstrap compiler can type-check generic code
 - Trait dispatch works in bootstrap

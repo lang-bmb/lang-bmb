@@ -121,7 +121,7 @@ Comprehensive test suite with 15 test categories.
 14. Deep nesting
 15. Nested function calls
 
-### types.bmb (27KB) - v0.30.4
+### types.bmb (30KB) - v0.30.5
 Type checker foundation for BMB.
 
 **Features:**
@@ -147,6 +147,13 @@ Type checker foundation for BMB.
 - Type parameter name detection: `is_type_param_name` (A-Z)
 - Named type hashing: `name_hash` for struct/enum
 
+**Features (v0.30.5):**
+- Generic type application encoding: `kind=11` (GenericApp)
+- `type_generic_app(base_hash)` → 11000 + base_hash
+- `is_generic_app`, `generic_base_hash` functions
+- Common generic type constructors: `type_vec`, `type_option`, `type_result`, `type_map`
+- Mod-safe hash function: `name_hash_mod` for base type names
+
 **Test output:**
 ```
 777 (start marker)
@@ -167,8 +174,11 @@ Type checker foundation for BMB.
 7  (primitive type tests)
 8  (type param name tests)
 8  (resolve type name tests)
+6  (generic app encoding tests)
+7  (common generic types tests)
+7  (name hash mod tests)
 888 (separator)
-89 (total passed)
+109 (total passed)
 999 (end marker)
 ```
 

@@ -21,6 +21,7 @@
 -- - v0.22.2: Add struct/enum named types, field access, match checking
 -- - v0.30.3: Add type parameter scope tracking (generic foundations)
 -- - v0.30.4: Add type name resolution (primitives, type params, named types)
+-- - v0.30.5: Add generic type application encoding (Vec<T>, Option<T>, etc.)
 --
 -- LIMITATIONS:
 -- - Fixed max 64 variables in scope
@@ -45,6 +46,7 @@
 --   8 = Array - encoded separately
 --   9 = Error (type checking failed)
 --  10 = TypeParam (v0.30.3) - extra_info = param index in scope
+--  11 = GenericApp (v0.30.5) - extra_info = base type hash (Vec, Map, etc.)
 
 fn type_i32() -> i64 = 1000;
 fn type_i64() -> i64 = 2000;
@@ -78,6 +80,43 @@ fn is_type_param(ty: i64) -> bool = type_kind(ty) == 10;
 
 -- Get param_idx from type parameter
 fn type_param_idx(ty: i64) -> i64 = ty - 10000;
+
+-- ============================================================================
+-- v0.30.5: Generic Type Application
+-- ============================================================================
+-- GenericApp represents applied generic types like Vec<i64>, Map<K, V>
+-- Encoding: 11000 + base_hash (0-999)
+-- Note: Type arguments tracked separately (not in this i64 encoding)
+
+fn type_generic_app(base_hash: i64) -> i64 = 11000 + base_hash;
+
+-- Check if type is a generic type application
+fn is_generic_app(ty: i64) -> bool = type_kind(ty) == 11;
+
+-- Get base type hash from generic application
+fn generic_base_hash(ty: i64) -> i64 = ty - 11000;
+
+-- Common generic type constructors (convenience functions)
+fn type_vec(elem_hash: i64) -> i64 = type_generic_app(name_hash_mod("Vec", 1000));
+fn type_option(inner_hash: i64) -> i64 = type_generic_app(name_hash_mod("Option", 1000));
+fn type_result(ok_hash: i64, err_hash: i64) -> i64 = type_generic_app(name_hash_mod("Result", 1000));
+fn type_map(key_hash: i64, val_hash: i64) -> i64 = type_generic_app(name_hash_mod("Map", 1000));
+
+-- Mod-safe hash for base type names (fits in 0-999 range)
+fn name_hash_mod(name: String, modulo: i64) -> i64 =
+    let h = name_hash_base(name);
+    h - (h / modulo) * modulo;
+
+fn name_hash_base(name: String) -> i64 =
+    if name.len() == 0 then 0
+    else name_hash_base_acc(name, 0, 5381);
+
+fn name_hash_base_acc(name: String, pos: i64, acc: i64) -> i64 =
+    if pos >= name.len() then acc
+    else
+        let c = name.char_at(pos);
+        let new_acc = (acc * 33 + c) - ((acc * 33 + c) / 1000000) * 1000000;
+        name_hash_base_acc(name, pos + 1, new_acc);
 
 -- Extract type kind from encoded type
 fn type_kind(ty: i64) -> i64 = ty / 1000;
@@ -857,6 +896,78 @@ fn test_resolve_type_name() -> i64 =
 
     r1 + r2 + r3 + r4 + r5 + r6 + r7 + r8;
 
+-- ============================================================================
+-- v0.30.5: Generic Type Application Tests
+-- ============================================================================
+
+fn test_generic_app_encoding() -> i64 =
+    -- type_generic_app(0) should be 11000
+    let r1 = if type_generic_app(0) == 11000 then 1 else 0;
+    -- type_generic_app(123) should be 11123
+    let r2 = if type_generic_app(123) == 11123 then 1 else 0;
+    -- is_generic_app should detect generic apps
+    let r3 = if is_generic_app(type_generic_app(50)) then 1 else 0;
+    -- is_generic_app should not detect i64
+    let r4 = if not is_generic_app(type_i64()) then 1 else 0;
+    -- is_generic_app should not detect type_param
+    let r5 = if not is_generic_app(type_param(0)) then 1 else 0;
+    -- generic_base_hash should extract hash
+    let r6 = if generic_base_hash(type_generic_app(456)) == 456 then 1 else 0;
+
+    r1 + r2 + r3 + r4 + r5 + r6;
+
+fn test_common_generic_types() -> i64 =
+    -- type_vec returns generic app
+    let vec_ty = type_vec(0);
+    let r1 = if is_generic_app(vec_ty) then 1 else 0;
+
+    -- type_option returns generic app
+    let opt_ty = type_option(0);
+    let r2 = if is_generic_app(opt_ty) then 1 else 0;
+
+    -- type_result returns generic app
+    let res_ty = type_result(0, 0);
+    let r3 = if is_generic_app(res_ty) then 1 else 0;
+
+    -- type_map returns generic app
+    let map_ty = type_map(0, 0);
+    let r4 = if is_generic_app(map_ty) then 1 else 0;
+
+    -- Different generic base types should have different hashes
+    let vec_hash = generic_base_hash(vec_ty);
+    let opt_hash = generic_base_hash(opt_ty);
+    let r5 = if vec_hash != opt_hash then 1 else 0;
+
+    -- type_kind should be 11 for all generic apps
+    let r6 = if type_kind(vec_ty) == 11 then 1 else 0;
+    let r7 = if type_kind(opt_ty) == 11 then 1 else 0;
+
+    r1 + r2 + r3 + r4 + r5 + r6 + r7;
+
+fn test_name_hash_mod() -> i64 =
+    -- name_hash_mod should produce values in 0-999 range
+    let h1 = name_hash_mod("Vec", 1000);
+    let r1 = if h1 >= 0 and h1 < 1000 then 1 else 0;
+
+    let h2 = name_hash_mod("Option", 1000);
+    let r2 = if h2 >= 0 and h2 < 1000 then 1 else 0;
+
+    let h3 = name_hash_mod("Result", 1000);
+    let r3 = if h3 >= 0 and h3 < 1000 then 1 else 0;
+
+    let h4 = name_hash_mod("Map", 1000);
+    let r4 = if h4 >= 0 and h4 < 1000 then 1 else 0;
+
+    -- Different names should produce different hashes (usually)
+    let r5 = if h1 != h2 then 1 else 0;
+    let r6 = if h3 != h4 then 1 else 0;
+
+    -- Same name should produce same hash
+    let h1_again = name_hash_mod("Vec", 1000);
+    let r7 = if h1 == h1_again then 1 else 0;
+
+    r1 + r2 + r3 + r4 + r5 + r6 + r7;
+
 -- Main test runner
 fn main() -> i64 =
     let u0 = println(777);  -- Start marker
@@ -915,10 +1026,20 @@ fn main() -> i64 =
     let t17 = test_resolve_type_name();
     let p17 = println(t17);  -- Expected: 8
 
+    -- v0.30.5: Generic type application tests
+    let t18 = test_generic_app_encoding();
+    let p18 = println(t18);  -- Expected: 6
+
+    let t19 = test_common_generic_types();
+    let p19 = println(t19);  -- Expected: 7
+
+    let t20 = test_name_hash_mod();
+    let p20 = println(t20);  -- Expected: 7
+
     let u1 = println(888);  -- Separator
 
-    let total = t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t9 + t10 + t11 + t12 + t13 + t14 + t15 + t16 + t17;
-    let u2 = println(total);  -- Expected: 89
+    let total = t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t9 + t10 + t11 + t12 + t13 + t14 + t15 + t16 + t17 + t18 + t19 + t20;
+    let u2 = println(total);  -- Expected: 109
 
     let u3 = println(999);  -- End marker
     total;
