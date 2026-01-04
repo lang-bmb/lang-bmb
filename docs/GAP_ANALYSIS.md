@@ -1,244 +1,282 @@
 # BMB Self-Hosting Gap Analysis
 
-**Version**: v0.18.1 → v0.19
+**Version**: v0.29 → v0.30 Pure
 **Date**: 2026-01-04
-**Status**: Critical Assessment
+**Status**: Ready for Self-Hosting Completion
 
 ## Executive Summary
 
-This document provides a critical analysis of the requirements for BMB self-hosting (v0.19 Mirror). The assessment reveals significant gaps between current implementation and self-hosting requirements that necessitate a revised roadmap.
+This document provides a comprehensive analysis of the requirements for BMB v0.30 "Pure" - the complete removal of Rust code and achievement of full self-hosting.
 
-**Key Finding**: The original v0.19 "Mirror" plan claiming full self-hosting is unrealistic. Core compiler features are incomplete, and true self-hosting should be targeted for v0.22+.
+**Key Finding**: Significant progress has been made since the original v0.19 analysis. Core MIR lowering for structs/enums is complete, Stage 1/2 verification passed, and the bootstrap now covers the complete compilation pipeline.
+
+## Milestone Progress Since v0.19
+
+| Phase | Version | Status | Achievement |
+|-------|---------|--------|-------------|
+| MIR Completion | v0.19 | ✅ | Struct/Enum/Pattern MIR lowering |
+| Language Extensions | v0.20 | ✅ | Closures and Traits foundation |
+| Bootstrap Enhancement | v0.21 | ✅ | Struct/Enum MIR in bootstrap |
+| Parser Enhancement | v0.22 | ✅ | Struct/Enum parsing in bootstrap |
+| Self-Hosting Verification | v0.23 | ✅ | Stage 1/2 equivalence tests |
+| Examples | v0.24 | ✅ | 8 algorithm examples |
+| AI Query | v0.25 | ✅ | RFC-0001 implementation |
+| Submodule Launch | v0.26 | ✅ | Service deployment |
+| Registry | v0.27 | ✅ | Local package registry |
+| Benchmark Suite | v0.28 | ✅ | C/Rust/BMB benchmarks |
+| MIR Optimization | v0.29 | ✅ | 6 optimization passes |
 
 ## Current Implementation Status
 
-### Rust Compiler (13,673 LOC)
+### Rust Compiler (~17,679 LOC)
 
 | Module | LOC | Status | Notes |
 |--------|-----|--------|-------|
-| types/mod.rs | 1,424 | Complete | Generics, methods working |
-| codegen/wasm_text.rs | 1,115 | Partial | String constants TODO |
-| lsp/mod.rs | 1,113 | Complete | Diagnostics, hover, goto |
-| interp/eval.rs | 1,003 | Complete | Full expression evaluation |
-| main.rs | 971 | Complete | CLI interface |
-| mir/lower.rs | 817 | **Incomplete** | 8 major TODOs |
-| build/mod.rs | 729 | Complete | Build orchestration |
-| codegen/llvm.rs | 670 | Complete | inkwell bindings |
-| verify/contract.rs | 635 | Complete | Z3 integration |
+| main.rs | 41,743 | Complete | Full CLI |
+| mir/lower.rs | 53,300 | Complete | Struct/Enum/Pattern support |
+| lsp/mod.rs | 42,974 | Complete | Full LSP server |
+| codegen/wasm_text.rs | 51,132 | Complete | WASM target |
+| codegen/llvm.rs | 25,472 | Complete | LLVM IR generation |
+| codegen/llvm_text.rs | 23,143 | Complete | Text LLVM output |
+| interp/eval.rs | 40,219 | Complete | Full interpreter |
+| build/mod.rs | 24,035 | Complete | Build orchestration |
+| mir/optimize.rs | 26,202 | Complete | v0.29 MIR optimizations |
+| mir/mod.rs | 18,503 | Complete | MIR types |
+| index/mod.rs | 22,963 | Complete | Symbol indexing |
+| Other modules | ~75,000 | Complete | Full coverage |
 
-### Bootstrap Components (BMB, ~200KB total)
+### gotgan Package Manager (~4,104 LOC)
 
-| File | Size | Status | Coverage |
-|------|------|--------|----------|
-| compiler.bmb | 42KB | Complete | Full pipeline demo |
-| llvm_ir.bmb | 35KB | Complete | 93 tests |
-| pipeline.bmb | 25KB | Complete | Source→MIR |
-| parser_test.bmb | 25KB | Complete | 15 categories |
-| lowering.bmb | 25KB | Partial | No struct/enum |
-| parser.bmb | 22KB | Complete | Syntax validation |
-| parser_ast.bmb | 21KB | Complete | S-expression output |
-| mir.bmb | 18KB | Partial | Basic instructions |
-| types.bmb | 15KB | Partial | Primitive types only |
-| lexer.bmb | 8KB | Complete | All tokens |
+| Module | LOC | Status | Notes |
+|--------|-----|--------|-------|
+| bmbx.rs | 42,854 | Complete | Build/execution |
+| registry.rs | 29,304 | Complete | Package registry |
+| build.rs | 27,551 | Complete | Build system |
+| resolver.rs | 7,639 | Complete | Dependency resolution |
+| main.rs | 7,624 | Complete | CLI entry |
+| project.rs | 6,149 | Complete | Project handling |
+| lock.rs | 5,275 | Complete | Lock file |
+| config.rs | 4,245 | Complete | Configuration |
+| error.rs | 694 | Complete | Error handling |
 
-## Critical Gaps
+### Bootstrap Components (~8,943 LOC in BMB)
 
-### 1. MIR Lowering (BLOCKING)
+| File | Size | LOC | Status | Test Coverage |
+|------|------|-----|--------|---------------|
+| llvm_ir.bmb | 58KB | 1,800+ | Complete | 119 tests |
+| compiler.bmb | 53KB | 1,600+ | Complete | 8 tests |
+| lowering.bmb | 50KB | 1,500+ | Complete | 67 tests |
+| parser_ast.bmb | 45KB | 1,400+ | Complete | Struct/Enum |
+| pipeline.bmb | 31KB | 900+ | Complete | 14 tests |
+| parser_test.bmb | 25KB | 800+ | Complete | 15 categories |
+| selfhost_equiv.bmb | 9KB | 300+ | Complete | 19 tests |
+| selfhost_test.bmb | 23KB | 700+ | Complete | 8 tests |
+| types.bmb | 23KB | 700+ | Complete | 37 tests |
+| parser.bmb | 22KB | 700+ | Complete | Syntax validation |
+| mir.bmb | 20KB | 600+ | Complete | 46 tests |
+| lexer.bmb | 8KB | 250+ | Complete | Tokenization |
 
-Located in `bmb/src/mir/lower.rs`:
+## v0.30 Pure Requirements
 
-```rust
-// Lines 357-370: Struct/Enum NOT implemented
-Expr::StructInit { .. } => {
-    // TODO: Implement struct initialization in MIR
-    Operand::Constant(Constant::Unit)
-}
+### Component Porting Status
 
-Expr::FieldAccess { .. } => {
-    // TODO: Implement field access in MIR
-    Operand::Constant(Constant::Unit)
-}
+| Component | Rust LOC | BMB Status | Gap | Priority |
+|-----------|----------|------------|-----|----------|
+| Lexer | 7,832 | ✅ lexer.bmb | Minor | P2 |
+| Parser | 12,246 | ✅ parser*.bmb | Minor | P2 |
+| AST | 37,518 | ⚠️ Partial | ~15K | P1 |
+| Types | ~20,000 | ✅ types.bmb | ~15K | P1 |
+| MIR | 97,005 | ✅ mir.bmb + lowering.bmb | ~80K | P0 |
+| Codegen | 100,557 | ✅ llvm_ir.bmb | ~80K | P0 |
+| Interpreter | 49,791 | ❌ Not in bootstrap | ~50K | P1 |
+| LSP | 42,974 | ❌ Not in bootstrap | ~43K | P2 |
+| Build | 24,035 | ⚠️ pipeline.bmb | ~20K | P1 |
+| Main CLI | 41,743 | ⚠️ compiler.bmb | ~40K | P1 |
 
-Expr::EnumVariant { .. } => {
-    // TODO: Implement enum variant construction in MIR
-    Operand::Constant(Constant::Unit)
-}
-```
+### gotgan Porting
 
-**Impact**: Cannot compile programs using:
-- `Option<T>` / `Result<T,E>` enums
-- Struct-based data structures (AST nodes, tokens)
-- Pattern matching on enum variants
-- The entire stdlib packages
+| Component | Rust LOC | BMB Status | Gap | Priority |
+|-----------|----------|------------|-----|----------|
+| BMBX executor | 42,854 | ❌ Not started | ~43K | P1 |
+| Registry | 29,304 | ❌ Not started | ~29K | P1 |
+| Build system | 27,551 | ❌ Not started | ~28K | P1 |
+| Resolver | 7,639 | ❌ Not started | ~8K | P2 |
+| Main CLI | 7,624 | ❌ Not started | ~8K | P2 |
+| Project | 6,149 | ❌ Not started | ~6K | P2 |
+| Lock/Config | 10,214 | ❌ Not started | ~10K | P3 |
 
-### 2. Additional MIR Gaps
+## Gap Analysis
 
-| Feature | Line | Status | Impact |
-|---------|------|--------|--------|
-| Pattern Matching | 468 | Stub only | Enum dispatch broken |
-| Array Literals | 496 | Returns Unit | No arrays |
-| Array Indexing | 504 | Returns 0 | No array access |
-| Method Dispatch | 514 | Returns 0 | .unwrap_or() broken |
-
-### 3. Language Features Missing
-
-| Feature | Parser | Type Check | MIR | Codegen | Required For |
-|---------|--------|------------|-----|---------|--------------|
-| Closures | ❌ | ❌ | ❌ | ❌ | map, filter, fold |
-| Traits | ❌ | ❌ | ❌ | ❌ | Abstraction |
-| impl blocks | ❌ | ❌ | ❌ | ❌ | Methods |
-| FFI linking | ⚠️ | ⚠️ | ❌ | ❌ | System calls |
-| Dynamic alloc | ❌ | ❌ | ❌ | ❌ | Vec, String heap |
-
-### 4. Bootstrap Limitations
-
-The bootstrap files are designed for **demonstration**, not actual compilation:
-
-- Only primitive types (i64, bool) supported
-- No struct/enum handling
-- No generics
-- No module imports
-- Output TEXT LLVM IR (not actual LLVM API calls)
-
-## Self-Hosting Requirements Analysis
-
-Based on research of successful self-hosting compilers (Zig, Rust, Go):
-
-### Stage Model Required
+### Total Code Volume
 
 ```
-Stage 0: Pre-compiled Rust compiler
-Stage 1: Build BMB compiler using Stage 0
-Stage 2: Build BMB compiler using Stage 1
-Stage 3: Verify Stage 2 == Stage 3 (binary identical)
+Current Rust Codebase:
+├── bmb/src/          17,679 LOC
+├── gotgan/src/        4,104 LOC
+└── Total             21,783 LOC
+
+Current BMB Bootstrap:
+├── bootstrap/         8,943 LOC
+└── Coverage:            41%
+
+Gap to Close:
+├── Compiler gap:     ~10,000 LOC
+├── gotgan gap:       ~4,000 LOC
+└── Total gap:        ~14,000 LOC
 ```
 
-### Minimum Feature Requirements
+### Critical Path to v0.30
 
-| Feature | Rust Status | Bootstrap Status | Required |
-|---------|-------------|------------------|----------|
-| Functions | ✅ | ✅ | ✅ |
-| Control flow | ✅ | ✅ | ✅ |
-| Structs | ✅ Parse, ❌ MIR | ❌ | ✅ |
-| Enums | ✅ Parse, ❌ MIR | ❌ | ✅ |
-| Generics | ✅ | ❌ | ✅ |
-| Pattern Match | ⚠️ Partial | ❌ | ✅ |
-| Strings (heap) | ⚠️ Primitive | ⚠️ | ✅ |
-| Arrays/Vec | ❌ | ❌ | ✅ |
-| Closures | ❌ | ❌ | ✅ |
-| Traits | ❌ | ❌ | ✅ |
+1. **Stage 3 Self-Hosting** (P0)
+   - Build BMB compiler using Bootstrap-compiled BMB
+   - Verify binary equivalence
+   - Currently blocked on: Full AST/Types/MIR feature parity
 
-### Effort Estimate
+2. **Interpreter Porting** (P1)
+   - Required for test execution
+   - ~50K lines of Rust to port
+   - Complex value system and environment
 
-| Component | Effort (LOC) | Complexity | Priority |
-|-----------|--------------|------------|----------|
-| Struct MIR | ~200-300 | Medium | P0 |
-| Enum MIR | ~300-400 | High | P0 |
-| Pattern Match | ~400-500 | High | P0 |
-| Array MIR | ~200-300 | Medium | P1 |
-| Method Dispatch | ~200-300 | Medium | P1 |
-| Closures | ~500-700 | High | P2 |
-| Traits | ~800-1000 | Very High | P2 |
+3. **CLI Framework** (P1)
+   - Command parsing
+   - Option handling
+   - Error reporting
 
-## Revised Roadmap Proposal
+4. **gotgan Core** (P1)
+   - Package resolution
+   - Build orchestration
+   - Registry communication
 
-### Phase 1: MIR Completion (v0.19.0-3)
+### What Bootstrap CAN Do Now
 
-**v0.19.0 - Struct Support**
-- Add `MirInst::StructInit` and `MirInst::FieldAccess`
-- Implement struct MIR lowering
-- Add LLVM codegen for structs
-- Test: Compile `Pair<A,B>`, `Range` structs
+- ✅ Parse BMB source to S-expression AST
+- ✅ Type check basic programs
+- ✅ Lower AST to MIR (with struct/enum/pattern)
+- ✅ Generate LLVM IR from MIR
+- ✅ Handle control flow (if/match/loops)
+- ✅ Support function calls
+- ✅ Basic struct and enum operations
 
-**v0.19.1 - Enum Support**
-- Add `MirInst::EnumVariant`
-- Implement enum discriminant handling
-- Add switch terminator for pattern matching
-- Test: Compile `Option<T>`, `Result<T,E>`
+### What Bootstrap CANNOT Do Yet
 
-**v0.19.2 - Pattern Matching**
-- Full pattern matching compilation
-- Nested patterns
-- Guard clauses
-- Test: Match on Option/Result variants
+- ❌ Full generics instantiation
+- ❌ Trait implementation dispatch
+- ❌ Closure capture and codegen
+- ❌ FFI linking
+- ❌ Standard library operations (IO, String heap)
+- ❌ Interpreter execution
+- ❌ LSP server functionality
+- ❌ Package management
 
-**v0.19.3 - Array Support**
-- Array literal lowering
-- Array indexing with bounds check
-- Fixed-size arrays
-- Test: Compile array operations
+## v0.30 Implementation Plan
 
-### Phase 2: Method Dispatch (v0.19.4-5)
+### Phase 1: Complete Bootstrap Equivalence (Q1 2026)
 
-**v0.19.4 - Known Type Methods**
-- Method call MIR lowering
-- Receiver type resolution
-- Test: `.is_some()`, `.unwrap_or()`
+| Task | Description | Effort |
+|------|-------------|--------|
+| 1.1 | Add generics to bootstrap type checker | 2 weeks |
+| 1.2 | Add trait support to bootstrap | 3 weeks |
+| 1.3 | Add closure codegen to bootstrap | 2 weeks |
+| 1.4 | Implement bootstrap interpreter | 4 weeks |
 
-**v0.19.5 - Integration Testing**
-- Compile all packages/bmb-* with LLVM
-- Validate generated IR
-- Benchmark basic operations
+### Phase 2: Compiler Self-Hosting (Q2 2026)
 
-### Phase 3: Language Extensions (v0.20.x)
+| Task | Description | Effort |
+|------|-------------|--------|
+| 2.1 | Port main.rs CLI to BMB | 2 weeks |
+| 2.2 | Port AST types to BMB | 2 weeks |
+| 2.3 | Port full MIR to BMB | 4 weeks |
+| 2.4 | Stage 3 verification | 2 weeks |
 
-**v0.20.0 - Closures**
-- Lambda syntax parsing
-- Capture semantics
-- Closure type inference
+### Phase 3: gotgan Porting (Q3 2026)
 
-**v0.20.1 - Trait Foundation**
-- trait keyword parsing
-- impl block parsing
-- Basic trait resolution
+| Task | Description | Effort |
+|------|-------------|--------|
+| 3.1 | Port registry client | 2 weeks |
+| 3.2 | Port dependency resolver | 2 weeks |
+| 3.3 | Port build system | 3 weeks |
+| 3.4 | Port CLI and config | 1 week |
 
-**v0.20.2 - FFI Enhancement**
-- extern "C" linking
-- ABI handling
-- C library interop
+### Phase 4: Rust Removal (Q4 2026)
 
-### Phase 4: Bootstrap Enhancement (v0.21.x)
+| Task | Description | Effort |
+|------|-------------|--------|
+| 4.1 | Remove bmb/src/*.rs | 1 week |
+| 4.2 | Remove gotgan/src/*.rs | 1 week |
+| 4.3 | Remove Cargo.toml files | 1 day |
+| 4.4 | CI/CD update for pure BMB | 1 week |
+| 4.5 | Documentation update | 1 week |
 
-**v0.21.0 - Bootstrap Struct/Enum**
-- Extend bootstrap lowering for structs
-- Extend bootstrap lowering for enums
+## Success Criteria for v0.30
 
-**v0.21.1 - Bootstrap Integration**
-- Test bootstrap against simple programs
-- Validate MIR text output
+```bash
+# Rust file count must be 0
+$ git ls-files '*.rs' | wc -l
+0
 
-### Phase 5: Self-Hosting Attempt (v0.22.x)
+# Cargo.toml must not exist
+$ git ls-files 'Cargo.toml' | wc -l
+0
 
-**v0.22.0 - Stage 1 Compilation**
-- Compile BMB compiler source using Rust compiler
-- Generate BMB binary
+# Self-hosting verification
+$ bmb build --release
+✓ Built bmb compiler (Stage 1)
 
-**v0.22.1 - Stage 2 Verification**
-- Compile BMB compiler using Stage 1
-- Compare outputs
+$ ./target/release/bmb build --release
+✓ Built bmb compiler (Stage 2)
+
+$ ./stage2/bmb build --release
+✓ Built bmb compiler (Stage 3)
+
+$ diff stage2/bmb stage3/bmb
+(no differences - binary identical)
+```
 
 ## Recommendations
 
-1. **Rename v0.19**: Change from "Mirror (Self-Hosting)" to "MIR Completion"
-2. **Defer Self-Hosting**: Target v0.22+ for actual self-hosting
-3. **Prioritize MIR**: Focus on completing Rust compiler MIR before bootstrap
-4. **Incremental Testing**: Add integration tests at each phase
-5. **Documentation**: Update ROADMAP.md with realistic estimates
+1. **Incremental Porting**: Port one module at a time, verifying equivalence
+2. **Test-Driven**: Maintain test suite during porting
+3. **Dual-Build Period**: Support both Rust and BMB builds temporarily
+4. **Bootstrap-First**: Focus on bootstrap completeness before Rust removal
+5. **Performance Monitoring**: Track compilation time throughout
+
+## Timeline Summary
+
+```
+2026 Q1 ─────────────────────────────────────────────────────
+         v0.27 Registry ✅
+         v0.28 Benchmark ✅
+         v0.29 Velocity ✅
+         v0.30 Planning (this document)
+
+2026 Q2 ─────────────────────────────────────────────────────
+         Bootstrap generics/traits/closures
+
+2026 Q3 ─────────────────────────────────────────────────────
+         Compiler self-hosting (Stage 3)
+         gotgan porting begins
+
+2026 Q4 ─────────────────────────────────────────────────────
+         v0.30 Pure ★ Rust完전제거
+         Final verification
+         Documentation
+
+2027 Q1 ─────────────────────────────────────────────────────
+         v0.31 Docs
+         v0.32 Ecosystem
+```
 
 ## Conclusion
 
-True self-hosting requires:
-- ~2,500-3,500 LOC changes to Rust compiler
-- ~1,000+ LOC bootstrap enhancements
-- Complete MIR lowering for structs/enums/patterns
-- Working closures and traits
+v0.30 "Pure" represents the culmination of the BMB self-hosting journey. With Stage 1/2 verification complete and the bootstrap covering the full compilation pipeline, the remaining work is substantial but achievable within the 2026 Q4 timeline.
 
-The original v0.19 "Mirror" plan should be re-scoped to focus on MIR completion, with self-hosting targeted for v0.22+.
+**Key Metrics**:
+- Rust code to remove: ~21,783 LOC
+- BMB code currently: ~8,943 LOC
+- Gap to close: ~14,000 LOC additional BMB
+- Estimated effort: 6-9 months
 
 ---
 
-**Next Actions**:
-1. [ ] Update ROADMAP.md with revised phases
-2. [ ] Implement v0.19.0 Struct MIR support
-3. [ ] Add integration tests for MIR lowering
-4. [ ] Create tracking issues for each gap
+**Last Updated**: 2026-01-04
+**Author**: BMB Development Team

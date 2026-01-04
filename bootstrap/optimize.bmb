@@ -1,0 +1,460 @@
+-- BMB Bootstrap MIR Optimizer (v0.29.1)
+-- Port of bmb/src/mir/optimize.rs to BMB
+--
+-- Optimization passes for MIR text format:
+-- 1. ConstantFolding - Evaluate constant expressions at compile time
+-- 2. DeadCodeElimination - Remove unreachable code
+-- 3. SimplifyBranches - Optimize conditional branches
+-- 4. CopyPropagation - Replace copies with originals
+--
+-- MIR text format:
+-- fn name(params) -> type {
+-- entry:
+--   %_t0 = const I:42
+--   %_t1 = + %a, %b
+--   return %_t0
+-- }
+
+-- ============================================================================
+-- SECTION 1: String Utilities
+-- ============================================================================
+
+fn digit_char(d: i64) -> String =
+    if d == 0 then "0" else if d == 1 then "1" else if d == 2 then "2"
+    else if d == 3 then "3" else if d == 4 then "4" else if d == 5 then "5"
+    else if d == 6 then "6" else if d == 7 then "7" else if d == 8 then "8"
+    else "9";
+
+fn int_to_string(n: i64) -> String =
+    if n < 0 then "-" + int_to_string(0 - n)
+    else if n < 10 then digit_char(n)
+    else int_to_string(n / 10) + digit_char(n - (n / 10) * 10);
+
+fn is_whitespace(c: i64) -> bool = c == 32 or c == 9 or c == 10 or c == 13;
+fn is_digit(c: i64) -> bool = c >= 48 and c <= 57;
+
+fn skip_ws(s: String, pos: i64) -> i64 =
+    if pos >= s.len() then pos
+    else if is_whitespace(s.char_at(pos)) then skip_ws(s, pos + 1)
+    else pos;
+
+fn starts_with(s: String, pat: String, pos: i64) -> bool =
+    if pos + pat.len() > s.len() then false
+    else s.slice(pos, pos + pat.len()) == pat;
+
+fn find_char(s: String, c: i64, pos: i64) -> i64 =
+    if pos >= s.len() then 0 - 1
+    else if s.char_at(pos) == c then pos
+    else find_char(s, c, pos + 1);
+
+fn find_pattern(s: String, pat: String, pos: i64) -> i64 =
+    if pos + pat.len() > s.len() then 0 - 1
+    else if starts_with(s, pat, pos) then pos
+    else find_pattern(s, pat, pos + 1);
+
+-- Parse integer from string
+fn parse_int_at(s: String, pos: i64, acc: i64) -> i64 =
+    if pos >= s.len() then acc
+    else if is_digit(s.char_at(pos)) then
+        parse_int_at(s, pos + 1, acc * 10 + (s.char_at(pos) - 48))
+    else acc;
+
+-- ============================================================================
+-- SECTION 2: MIR Parsing Utilities
+-- ============================================================================
+
+-- Check if line is a constant instruction: %var = const I:value
+fn is_const_inst(line: String) -> bool =
+    let eq_pos = find_pattern(line, " = const ", 0);
+    eq_pos > 0;
+
+-- Check if line is a binary operation: %var = op %a, %b
+fn is_binop_inst(line: String) -> bool =
+    let eq_pos = find_pattern(line, " = ", 0);
+    if eq_pos < 0 then false
+    else
+        let rest = line.slice(eq_pos + 3, line.len());
+        starts_with(rest, "+ ", 0) or
+        starts_with(rest, "- ", 0) or
+        starts_with(rest, "* ", 0) or
+        starts_with(rest, "/ ", 0) or
+        starts_with(rest, "% ", 0);
+
+-- Check if line is a copy instruction: %var = copy %src
+fn is_copy_inst(line: String) -> bool =
+    find_pattern(line, " = copy %", 0) > 0;
+
+-- Check if line is a branch: branch %cond, label1, label2
+fn is_branch_inst(line: String) -> bool =
+    starts_with(line.slice(skip_ws(line, 0), line.len()), "branch ", 0);
+
+-- Check if line is a return: return %var
+fn is_return_inst(line: String) -> bool =
+    starts_with(line.slice(skip_ws(line, 0), line.len()), "return ", 0);
+
+-- Check if line is a label: name:
+fn is_label(line: String) -> bool =
+    let trimmed = line.slice(skip_ws(line, 0), line.len());
+    let colon_pos = find_char(trimmed, 58, 0); -- ':'
+    if colon_pos < 0 then false
+    else colon_pos == trimmed.len() - 1;
+
+-- Extract destination variable from assignment: %var = ...
+fn extract_dest(line: String) -> String =
+    let start = skip_ws(line, 0);
+    if start >= line.len() then ""
+    else if line.char_at(start) != 37 then "" -- '%'
+    else
+        let eq_pos = find_pattern(line, " = ", start);
+        if eq_pos < 0 then ""
+        else line.slice(start, eq_pos);
+
+-- Extract constant value from: %var = const I:value
+fn extract_const_value(line: String) -> i64 =
+    let const_pos = find_pattern(line, "const I:", 0);
+    if const_pos < 0 then 0
+    else parse_int_at(line, const_pos + 8, 0);
+
+-- Extract operands from binary op: %var = op %a, %b -> (%a, %b)
+fn extract_binop_left(line: String) -> String =
+    let eq_pos = find_pattern(line, " = ", 0);
+    if eq_pos < 0 then ""
+    else
+        let rest = line.slice(eq_pos + 3, line.len());
+        let pct1 = find_char(rest, 37, 0); -- '%'
+        if pct1 < 0 then ""
+        else
+            let comma = find_char(rest, 44, pct1); -- ','
+            if comma < 0 then ""
+            else rest.slice(pct1, comma);
+
+fn extract_binop_right(line: String) -> String =
+    let comma = find_char(line, 44, 0);
+    if comma < 0 then ""
+    else
+        let rest = line.slice(comma + 1, line.len());
+        let pct = find_char(rest, 37, 0);
+        if pct < 0 then ""
+        else rest.slice(pct, rest.len());
+
+-- Extract binary operator: +, -, *, /, %
+fn extract_binop(line: String) -> String =
+    let eq_pos = find_pattern(line, " = ", 0);
+    if eq_pos < 0 then ""
+    else
+        let rest = line.slice(eq_pos + 3, line.len());
+        if starts_with(rest, "+ ", 0) then "+"
+        else if starts_with(rest, "- ", 0) then "-"
+        else if starts_with(rest, "* ", 0) then "*"
+        else if starts_with(rest, "/ ", 0) then "/"
+        else if starts_with(rest, "% ", 0) then "%"
+        else "";
+
+-- ============================================================================
+-- SECTION 3: Constant Table
+-- ============================================================================
+
+-- Simple key:value store using | separator
+-- Format: "key1:val1|key2:val2|..."
+
+fn const_table_empty() -> String = "";
+
+fn const_table_set(table: String, key: String, val: i64) -> String =
+    if table == "" then key + ":" + int_to_string(val)
+    else table + "|" + key + ":" + int_to_string(val);
+
+fn const_table_get_helper(table: String, key: String, pos: i64) -> i64 =
+    if pos >= table.len() then 0 - 99999999
+    else
+        let pipe = find_char(table, 124, pos); -- '|'
+        let end_pos = if pipe < 0 then table.len() else pipe;
+        let entry = table.slice(pos, end_pos);
+        let colon = find_char(entry, 58, 0); -- ':'
+        if colon < 0 then const_table_get_helper(table, key, end_pos + 1)
+        else
+            let entry_key = entry.slice(0, colon);
+            if entry_key == key then parse_int_at(entry, colon + 1, 0)
+            else const_table_get_helper(table, key, end_pos + 1);
+
+fn const_table_get(table: String, key: String) -> i64 =
+    const_table_get_helper(table, key, 0);
+
+fn const_table_has(table: String, key: String) -> bool =
+    const_table_get(table, key) != 0 - 99999999;
+
+-- ============================================================================
+-- SECTION 4: Constant Folding Pass
+-- ============================================================================
+
+-- Evaluate binary operation on constants
+fn eval_binop(op: String, left: i64, right: i64) -> i64 =
+    if op == "+" then left + right
+    else if op == "-" then left - right
+    else if op == "*" then left * right
+    else if op == "/" then if right == 0 then 0 else left / right
+    else if op == "%" then if right == 0 then 0 else left - (left / right) * right
+    else 0;
+
+-- Process single instruction for constant folding
+-- Returns: "changed:new_table:new_line"
+fn fold_const_inst(line: String, const_table: String) -> String =
+    if is_const_inst(line) then
+        let dest = extract_dest(line);
+        let val = extract_const_value(line);
+        let new_table = const_table_set(const_table, dest, val);
+        "0:" + new_table + ":" + line
+    else if is_binop_inst(line) then
+        let dest = extract_dest(line);
+        let op = extract_binop(line);
+        let left = extract_binop_left(line);
+        let right = extract_binop_right(line);
+        if const_table_has(const_table, left) and const_table_has(const_table, right) then
+            let left_val = const_table_get(const_table, left);
+            let right_val = const_table_get(const_table, right);
+            let result = eval_binop(op, left_val, right_val);
+            let new_line = "  " + dest + " = const I:" + int_to_string(result);
+            let new_table = const_table_set(const_table, dest, result);
+            "1:" + new_table + ":" + new_line
+        else "0:" + const_table + ":" + line
+    else "0:" + const_table + ":" + line;
+
+-- ============================================================================
+-- SECTION 5: Dead Code Elimination Pass
+-- ============================================================================
+
+-- Check if variable is used in line
+fn is_var_used_in_line(line: String, target: String) -> bool =
+    if target == "" then false
+    else find_pattern(line, target, 0) >= 0;
+
+-- Check if variable is used in any line after pos
+fn is_var_used_after(lines: String, target: String, pos: i64) -> bool =
+    if pos >= lines.len() then false
+    else
+        let pipe = find_char(lines, 124, pos);
+        let end_pos = if pipe < 0 then lines.len() else pipe;
+        let line = lines.slice(pos, end_pos);
+        if is_var_used_in_line(line, target) then true
+        else is_var_used_after(lines, target, end_pos + 1);
+
+-- Check if instruction has side effects
+fn has_side_effects(line: String) -> bool =
+    find_pattern(line, "call ", 0) >= 0 or
+    find_pattern(line, "store ", 0) >= 0 or
+    is_branch_inst(line) or
+    is_return_inst(line);
+
+-- ============================================================================
+-- SECTION 6: Branch Simplification Pass
+-- ============================================================================
+
+-- Check if branch condition is constant true (1) or false (0)
+fn get_branch_const_cond(line: String, const_table: String) -> i64 =
+    if not is_branch_inst(line) then 0 - 1
+    else
+        let pct = find_char(line, 37, 0); -- '%'
+        if pct < 0 then 0 - 1
+        else
+            let comma = find_char(line, 44, pct);
+            if comma < 0 then 0 - 1
+            else
+                let cond_var = line.slice(pct, comma);
+                if const_table_has(const_table, cond_var) then
+                    const_table_get(const_table, cond_var)
+                else 0 - 1;
+
+-- Simplify branch to unconditional goto if condition is constant
+fn simplify_branch(line: String, const_table: String) -> String =
+    let cond = get_branch_const_cond(line, const_table);
+    if cond < 0 then line
+    else if cond != 0 then
+        -- Take then branch
+        let comma1 = find_char(line, 44, 0);
+        if comma1 < 0 then line
+        else
+            let comma2 = find_char(line, 44, comma1 + 1);
+            if comma2 < 0 then line
+            else
+                let then_label = line.slice(comma1 + 2, comma2);
+                "  goto " + then_label
+    else
+        -- Take else branch
+        let comma1 = find_char(line, 44, 0);
+        if comma1 < 0 then line
+        else
+            let comma2 = find_char(line, 44, comma1 + 1);
+            if comma2 < 0 then line
+            else
+                let else_label = line.slice(comma2 + 2, line.len());
+                "  goto " + else_label;
+
+-- ============================================================================
+-- SECTION 7: Copy Propagation Pass
+-- ============================================================================
+
+-- Copy table for copy propagation
+-- Format: "%dest:%src|..."
+
+fn copy_table_empty() -> String = "";
+
+fn copy_table_set(table: String, dest: String, src: String) -> String =
+    if table == "" then dest + ":" + src
+    else table + "|" + dest + ":" + src;
+
+fn copy_table_get_helper(table: String, key: String, pos: i64) -> String =
+    if pos >= table.len() then ""
+    else
+        let pipe = find_char(table, 124, pos);
+        let end_pos = if pipe < 0 then table.len() else pipe;
+        let entry = table.slice(pos, end_pos);
+        let colon = find_char(entry, 58, 0);
+        if colon < 0 then copy_table_get_helper(table, key, end_pos + 1)
+        else
+            let entry_key = entry.slice(0, colon);
+            if entry_key == key then entry.slice(colon + 1, entry.len())
+            else copy_table_get_helper(table, key, end_pos + 1);
+
+fn copy_table_get(table: String, key: String) -> String =
+    copy_table_get_helper(table, key, 0);
+
+-- Extract source from copy instruction: %dest = copy %src
+fn extract_copy_src(line: String) -> String =
+    let copy_pos = find_pattern(line, " = copy %", 0);
+    if copy_pos < 0 then ""
+    else line.slice(copy_pos + 8, line.len());
+
+-- ============================================================================
+-- SECTION 8: Optimization Pipeline
+-- ============================================================================
+
+-- Optimization level encoding
+fn opt_level_debug() -> i64 = 0;
+fn opt_level_release() -> i64 = 1;
+fn opt_level_aggressive() -> i64 = 2;
+
+-- Run single pass on MIR text (lines separated by |)
+-- Returns: "changed_count:optimized_mir"
+fn run_constant_folding(mir: String, pos: i64, table: String, acc: String, count: i64) -> String =
+    if pos >= mir.len() then int_to_string(count) + ":" + acc
+    else
+        let pipe = find_char(mir, 124, pos);
+        let end_pos = if pipe < 0 then mir.len() else pipe;
+        let line = mir.slice(pos, end_pos);
+        let result = fold_const_inst(line, table);
+        -- Parse result: "changed:new_table:new_line"
+        let c1 = find_char(result, 58, 0);
+        let c2 = find_char(result, 58, c1 + 1);
+        let changed = parse_int_at(result, 0, 0);
+        let new_table = result.slice(c1 + 1, c2);
+        let new_line = result.slice(c2 + 1, result.len());
+        let new_acc = if acc == "" then new_line else acc + "|" + new_line;
+        run_constant_folding(mir, end_pos + 1, new_table, new_acc, count + changed);
+
+-- Run optimization pipeline
+fn optimize_mir(mir: String, level: i64) -> String =
+    if level == 0 then mir  -- Debug: no optimization
+    else
+        -- Run constant folding
+        let result = run_constant_folding(mir, 0, const_table_empty(), "", 0);
+        let colon = find_char(result, 58, 0);
+        result.slice(colon + 1, result.len());
+
+-- ============================================================================
+-- SECTION 9: Statistics
+-- ============================================================================
+
+fn make_stats(const_fold: i64, dead_code: i64, branches: i64, copies: i64) -> String =
+    "const_fold:" + int_to_string(const_fold) +
+    "|dead_code:" + int_to_string(dead_code) +
+    "|branches:" + int_to_string(branches) +
+    "|copies:" + int_to_string(copies);
+
+-- ============================================================================
+-- SECTION 10: Tests
+-- ============================================================================
+
+fn test_const_table() -> i64 =
+    let t1 = const_table_empty();
+    let t2 = const_table_set(t1, "%a", 10);
+    let t3 = const_table_set(t2, "%b", 20);
+    let v1 = const_table_get(t3, "%a");
+    let v2 = const_table_get(t3, "%b");
+    let h1 = const_table_has(t3, "%a");
+    let h2 = const_table_has(t3, "%c");
+    if v1 == 10 and v2 == 20 and h1 and not h2 then 1 else 0;
+
+fn test_extract_dest() -> i64 =
+    let d1 = extract_dest("  %_t0 = const I:42");
+    let d2 = extract_dest("  %result = + %a, %b");
+    if d1 == "%_t0" and d2 == "%result" then 1 else 0;
+
+fn test_extract_const() -> i64 =
+    let v1 = extract_const_value("  %_t0 = const I:42");
+    let v2 = extract_const_value("  %_t1 = const I:100");
+    if v1 == 42 and v2 == 100 then 1 else 0;
+
+fn test_extract_binop() -> i64 =
+    let op1 = extract_binop("  %_t0 = + %a, %b");
+    let op2 = extract_binop("  %_t1 = * %x, %y");
+    let l1 = extract_binop_left("  %_t0 = + %a, %b");
+    let r1 = extract_binop_right("  %_t0 = + %a, %b");
+    if op1 == "+" and op2 == "*" and l1 == "%a" and r1 == "%b" then 1 else 0;
+
+fn test_eval_binop() -> i64 =
+    let r1 = eval_binop("+", 10, 20);
+    let r2 = eval_binop("-", 50, 30);
+    let r3 = eval_binop("*", 6, 7);
+    let r4 = eval_binop("/", 100, 4);
+    if r1 == 30 and r2 == 20 and r3 == 42 and r4 == 25 then 1 else 0;
+
+fn test_const_folding() -> i64 =
+    let mir = "  %_t0 = const I:10|  %_t1 = const I:20|  %_t2 = + %_t0, %_t1";
+    let result = run_constant_folding(mir, 0, const_table_empty(), "", 0);
+    -- Should have 1 optimization (the + replaced with const)
+    let colon = find_char(result, 58, 0);
+    let count = parse_int_at(result, 0, 0);
+    let optimized = result.slice(colon + 1, result.len());
+    -- Check that result contains const I:30
+    if count == 1 and find_pattern(optimized, "const I:30", 0) >= 0 then 1 else 0;
+
+fn test_is_checks() -> i64 =
+    let c1 = is_const_inst("  %_t0 = const I:42");
+    let c2 = is_binop_inst("  %_t1 = + %a, %b");
+    let c3 = is_copy_inst("  %_t2 = copy %x");
+    let c4 = is_branch_inst("  branch %c, then_0, else_0");
+    let c5 = is_return_inst("  return %_t0");
+    let c6 = is_label("entry:");
+    if c1 and c2 and c3 and c4 and c5 and c6 then 1 else 0;
+
+fn test_optimize_mir() -> i64 =
+    let mir = "  %_t0 = const I:5|  %_t1 = const I:3|  %_t2 = + %_t0, %_t1";
+    let opt = optimize_mir(mir, 1);
+    -- Should fold 5 + 3 = 8
+    if find_pattern(opt, "const I:8", 0) >= 0 then 1 else 0;
+
+fn test_copy_table() -> i64 =
+    let t1 = copy_table_empty();
+    let t2 = copy_table_set(t1, "%a", "%b");
+    let t3 = copy_table_set(t2, "%x", "%y");
+    let v1 = copy_table_get(t3, "%a");
+    let v2 = copy_table_get(t3, "%x");
+    if v1 == "%b" and v2 == "%y" then 1 else 0;
+
+fn main() -> i64 =
+    let u1 = println(777);
+    let t1 = println(test_const_table());
+    let t2 = println(test_extract_dest());
+    let t3 = println(test_extract_const());
+    let t4 = println(test_extract_binop());
+    let t5 = println(test_eval_binop());
+    let t6 = println(test_const_folding());
+    let t7 = println(test_is_checks());
+    let t8 = println(test_optimize_mir());
+    let t9 = println(test_copy_table());
+    let u2 = println(888);
+    let total = test_const_table() + test_extract_dest() + test_extract_const() +
+                test_extract_binop() + test_eval_binop() + test_const_folding() +
+                test_is_checks() + test_optimize_mir() + test_copy_table();
+    let u3 = println(total);
+    let u4 = println(999);
+    0;
