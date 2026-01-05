@@ -164,7 +164,7 @@ v0.MAJOR.MINOR
 | v0.28 | Benchmark | C/Rust/BMB benchmark suite | Compute-intensive benchmarks, Contract-optimized benchmarks, Real-world workloads |
 | v0.29 | Velocity | C/Rust performance sprint | MIR optimization framework (6 passes), Contract-based optimization, Bootstrap optimization module |
 
-### Bootstrap Statistics (as of v0.30.33)
+### Bootstrap Statistics (as of v0.30.34)
 
 | Metric | Value |
 |--------|-------|
@@ -172,7 +172,7 @@ v0.MAJOR.MINOR
 | BMB Bootstrap | ~11,700 LOC |
 | Coverage | 54% |
 | Stage 1/2 Tests | 19 tests passing |
-| Bootstrap Tests | 916 tests (600 types + 119 llvm_ir + 55 lowering + 46 mir + 42 parser_ast + 33 utils + 19 selfhost_equiv + 14 pipeline + 9 optimize + 8 selfhost_test + 8 compiler) |
+| Bootstrap Tests | 925 tests (600 types + 119 llvm_ir + 64 lowering + 46 mir + 42 parser_ast + 33 utils + 19 selfhost_equiv + 14 pipeline + 9 optimize + 8 selfhost_test + 8 compiler) |
 
 ---
 
@@ -302,6 +302,14 @@ v0.MAJOR.MINOR
 - `enum_reg_variant_type`: Resolve variant type with type args through registry lookup
 - `enum_reg_count`, `enum_reg_is_generic`: Registry utilities
 - 5 new test functions, 19 assertions (335 total in types.bmb)
+
+**v0.30.34 Completed (2026-01-05)**:
+- Lambda/closure MIR lowering: Closure support in lowering.bmb
+- is_lambda_node: Detect lambda expressions "(fn |...| body)"
+- lambda_find_pipe, lambda_body_start, lambda_extract_body: Body extraction helpers
+- lower_lambda: Generate MIR CLOSURE: prefix for closure references
+- lower_expr extended: Handle lambda nodes via is_lambda_node check
+- Total: 64 tests passing in lowering.bmb (55 + 9 new)
 
 **v0.30.33 Completed (2026-01-05)**:
 - MIR string lowering: String literal support in lowering.bmb

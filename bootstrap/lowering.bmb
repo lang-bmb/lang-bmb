@@ -149,6 +149,17 @@ fn is_string_node(s: String) -> bool =
     if s.len() < 2 then false
     else s.char_at(0) == 34;  -- starts with quote
 
+-- v0.30.34: Lambda/closure support
+-- Lambda format: (fn |params| body) or (fn |params| -> type body)
+fn is_lambda_node(s: String) -> bool =
+    if s.len() < 6 then false  -- minimum: "(fn ||"
+    else let c0 = s.char_at(0);  -- '('
+        let c1 = s.char_at(1);  -- 'f'
+        let c2 = s.char_at(2);  -- 'n'
+        let c3 = s.char_at(3);  -- ' '
+        let c4 = s.char_at(4);  -- '|'
+        c0 == 40 and c1 == 102 and c2 == 110 and c3 == 32 and c4 == 124;
+
 fn has_double_colon(s: String, pos: i64) -> bool =
     if pos + 1 >= s.len() then false
     else if s.char_at(pos) == 58 and s.char_at(pos + 1) == 58 then true  -- '::'
@@ -519,6 +530,8 @@ fn lower_expr(ast: String, temp: i64, block: i64) -> String =
     -- v0.21.1: Enum support
     else if is_enum_variant_node(ast) then lower_enum_variant(ast, temp, block)
     else if is_match_node(ast) then lower_match(ast, temp, block)
+    -- v0.30.34: Lambda/closure support
+    else if is_lambda_node(ast) then lower_lambda(ast, temp, block)
     else pack_lower_result(temp, block, "%error", "  ; unknown: " + get_node_type(ast));
 
 -- Lower integer literal: (int 42)
@@ -543,6 +556,66 @@ fn lower_string(ast: String, temp: i64, block: i64) -> String =
     let dest = place_temp(temp);
     let text = mir_text_const(dest, "S:" + content);
     pack_lower_result(temp + 1, block, dest, text);
+
+-- v0.30.34: Lambda/closure lowering
+-- Lambda format: (fn |params| body) or (fn |params| -> type body)
+-- Example: (fn |(x: i64)| (var <x>))
+
+-- Find closing pipe | position (starting after opening pipe at pos 4)
+fn lambda_find_pipe(ast: String, pos: i64) -> i64 =
+    if pos >= ast.len() then pos
+    else if ast.char_at(pos) == 124 then pos  -- '|'
+    else lambda_find_pipe(ast, pos + 1);
+
+-- Check if there's "-> type" after the pipe (skip whitespace)
+fn lambda_has_arrow(ast: String, pos: i64) -> bool =
+    let p = skip_ws(ast, pos);
+    if p + 1 >= ast.len() then false
+    else ast.char_at(p) == 45 and ast.char_at(p + 1) == 62;  -- '->'
+
+-- Skip return type after "-> " to find body start
+fn lambda_skip_return_type(ast: String, pos: i64) -> i64 =
+    let p = skip_ws(ast, pos + 2);  -- skip "-> "
+    lambda_skip_type_chars(ast, p);
+
+fn lambda_skip_type_chars(ast: String, pos: i64) -> i64 =
+    if pos >= ast.len() then pos
+    else let c = ast.char_at(pos);
+        if c == 40 then pos  -- '(' starts body
+        else lambda_skip_type_chars(ast, pos + 1);
+
+-- Find where lambda body starts
+fn lambda_body_start(ast: String) -> i64 =
+    let pipe_pos = lambda_find_pipe(ast, 5);  -- after "(fn |"
+    let after_pipe = pipe_pos + 1;
+    if lambda_has_arrow(ast, after_pipe) then
+        lambda_skip_return_type(ast, after_pipe)
+    else skip_ws(ast, after_pipe);
+
+-- Extract lambda body expression (from body start to closing paren)
+fn lambda_extract_body(ast: String) -> String =
+    let start = lambda_body_start(ast);
+    if start >= ast.len() then ""
+    else
+        let end = find_close_paren(ast, start, 0);
+        ast.slice(start, end + 1);  -- +1 to include closing paren
+
+-- Lower lambda/closure expression
+-- For now, just lower the body (following Rust compiler approach)
+fn lower_lambda(ast: String, temp: i64, block: i64) -> String =
+    let body = lambda_extract_body(ast);
+    if body == "" then pack_lower_result(temp, block, "%error", "  ; lambda: empty body")
+    else
+        -- Create a closure reference with unique ID
+        let closure_id = temp;
+        let dest = place_temp(temp);
+        -- For simple closures without captures, represent as function pointer
+        let closure_text = "  " + dest + " = CLOSURE:" + int_to_string(closure_id);
+        -- Lower body for the closure's inner function
+        let body_result = lower_expr(body, temp + 1, block);
+        let body_text = unpack_text(body_result);
+        let combined = if body_text.len() > 0 then closure_text + "|" + body_text else closure_text;
+        pack_lower_result(unpack_temp(body_result), unpack_block(body_result), dest, combined);
 
 -- Lower variable reference: (var <name>)
 fn lower_var(ast: String, temp: i64, block: i64) -> String =
@@ -1176,6 +1249,27 @@ fn main() -> i64 =
     let string_tests = str1 + str2 + str3;
     let u25 = println(string_tests);  -- Should be 3
 
+    -- Test 23: v0.30.34 Lambda node detection (3 tests)
+    let ln1 = if is_lambda_node("(fn |(x: i64)| (var <x>))") then 1 else 0;
+    let ln2 = if is_lambda_node("(fn || (int 42))") then 1 else 0;
+    let ln3 = if is_lambda_node("(call <foo>)") then 0 else 1;  -- call is not lambda
+    let lambda_node_tests = ln1 + ln2 + ln3;
+    let u26 = println(lambda_node_tests);  -- Should be 3
+
+    -- Test 24: v0.30.34 Lambda body extraction (3 tests)
+    let lb1 = if lambda_extract_body("(fn |(x: i64)| (var <x>))") == "(var <x>)" then 1 else 0;
+    let lb2 = if lambda_extract_body("(fn || (int 42))") == "(int 42)" then 1 else 0;
+    let lb3 = if lambda_extract_body("(fn |(a: i64) (b: i64)| (op + (var <a>) (var <b>)))") == "(op + (var <a>) (var <b>))" then 1 else 0;
+    let lambda_body_tests = lb1 + lb2 + lb3;
+    let u27 = println(lambda_body_tests);  -- Should be 3
+
+    -- Test 25: v0.30.34 Lambda lowering (3 tests)
+    let ll1 = test_lower_contains("(fn |(x: i64)| (var <x>))", "CLOSURE:");
+    let ll2 = test_lower_contains("(fn || (int 42))", "CLOSURE:");
+    let ll3 = test_lower_contains("(fn || (int 42))", "I:42");  -- body gets lowered
+    let lambda_lower_tests = ll1 + ll2 + ll3;
+    let u28 = println(lambda_lower_tests);  -- Should be 3
+
     let u22 = println(888);  -- Separator
 
     let total = node_tests + extract_tests + child_tests + int_tests + bool_tests +
@@ -1183,8 +1277,8 @@ fn main() -> i64 =
                 call_tests + fn_tests + prog_tests + struct_node_tests +
                 struct_extract_tests + struct_init_tests + field_access_tests +
                 enum_node_tests + enum_extract_tests + enum_variant_tests + match_tests +
-                string_tests;
-    let u23 = println(total);  -- Should be 55 (52 + 3 string tests)
+                string_tests + lambda_node_tests + lambda_body_tests + lambda_lower_tests;
+    let u23 = println(total);  -- Should be 64 (55 + 9 lambda tests)
 
     let u24 = println(999);  -- End marker
 
