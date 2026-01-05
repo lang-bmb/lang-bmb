@@ -303,6 +303,15 @@ v0.MAJOR.MINOR
 - `enum_reg_count`, `enum_reg_is_generic`: Registry utilities
 - 5 new test functions, 19 assertions (335 total in types.bmb)
 
+**v0.30.27 Completed (2026-01-05)**:
+- Struct instantiation type checking: Enhanced type_of_new with field validation
+- expr_new_field_count: Count field initializers in new expression
+- expr_new_field_at: Get field at index (returns "(fieldname expr)")
+- new_field_name: Extract field name from field initializer
+- new_field_expr: Extract field expression from field initializer
+- check_new_fields: Recursive field type validation against struct definition
+- Total: 576 tests passing (9 new tests)
+
 **v0.30.26 Completed (2026-01-05)**:
 - let-mut type checking: Fixed offset calculation for "(let-mut" expressions
 - is_let_mut_expr helper: Detects let-mut via char_at(4) == '-'
@@ -803,13 +812,13 @@ $ bmb doc --check
 
 For detailed analysis of the remaining work, see [GAP_ANALYSIS.md](./GAP_ANALYSIS.md).
 
-**Key Metrics (as of v0.30.26)**:
+**Key Metrics (as of v0.30.27)**:
 - Rust code to remove: ~21,783 LOC
-- BMB bootstrap code: ~11,500 LOC (53% coverage)
-- Gap to close: ~11,500 LOC additional BMB
-- Bootstrap tests passing: 567 tests
+- BMB bootstrap code: ~11,600 LOC (53% coverage)
+- Gap to close: ~11,400 LOC additional BMB
+- Bootstrap tests passing: 576 tests
 
 ---
 
 **Last Updated**: 2026-01-05
-**Version**: v0.30.26 → v1.0.0-rc Planning Document
+**Version**: v0.30.27 → v1.0.0-rc Planning Document

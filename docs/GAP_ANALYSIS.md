@@ -184,6 +184,7 @@ Gap to Close:
 - ✅ Closure type checking (v0.30.24: type_of_lambda, lambda_params_section, Fn type)
 - ✅ Unary operator type checking (v0.30.25: type_of_not, type_of_neg, EXPR_NOT, EXPR_NEG)
 - ✅ let-mut type checking (v0.30.26: is_let_mut_expr, let_prefix_len, fixed offset)
+- ✅ Struct instantiation type checking (v0.30.27: type_of_new with field validation)
 
 ### What Bootstrap CANNOT Do Yet
 
@@ -297,11 +298,11 @@ $ diff stage2/bmb stage3/bmb
 
 v0.30 "Pure" represents the culmination of the BMB self-hosting journey. With Stage 1/2 verification complete and the bootstrap covering the full compilation pipeline, the remaining work is substantial but achievable within the 2026 Q4 timeline.
 
-**Key Metrics** (as of v0.30.26):
+**Key Metrics** (as of v0.30.27):
 - Rust code to remove: ~21,783 LOC
-- BMB bootstrap code: ~11,500 LOC (53% coverage)
-- Gap to close: ~11,500 LOC additional BMB
-- Bootstrap tests passing: 567 tests (types.bmb)
+- BMB bootstrap code: ~11,600 LOC (53% coverage)
+- Gap to close: ~11,400 LOC additional BMB
+- Bootstrap tests passing: 576 tests (types.bmb)
 - Estimated effort: 6-9 months
 
 ---
