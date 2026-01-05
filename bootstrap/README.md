@@ -121,7 +121,7 @@ Comprehensive test suite with 15 test categories.
 14. Deep nesting
 15. Nested function calls
 
-### types.bmb (150KB) - v0.30.18
+### types.bmb (160KB) - v0.30.19
 Type checker foundation for BMB.
 
 **Features:**
@@ -266,6 +266,17 @@ Type checker foundation for BMB.
 - AST to registry converters: `ast_struct_to_def`, `ast_enum_to_def`, `ast_fn_to_sig`
 - tenv registration from AST: `register_struct_from_ast`, `register_enum_from_ast`, `register_fn_from_ast`
 
+**Features (v0.30.19):**
+- Program AST traversal: Navigate `(program ...)` S-expressions from parser_ast.bmb
+- Item kind detection: `ITEM_FN`, `ITEM_STRUCT`, `ITEM_ENUM` constants
+- `ast_item_kind`: Detect item type from AST prefix `(fn `, `(struct `, `(enum `
+- `ast_program_start`: Find position after `(program ` prefix (returns 9)
+- `ast_extract_item_at`: Extract complete item S-expression at position
+- `ast_next_item_pos`: Get position of next item after current one
+- `ast_program_item_count`, `ast_program_item_at`: Count and access items by index
+- `register_item`: Route item registration based on kind
+- `tenv_from_program_ast`: Main entry point - build complete tenv from program AST
+
 **Test output:**
 ```
 777 (start marker)
@@ -365,8 +376,14 @@ Type checker foundation for BMB.
 4  (pack/unpack tests)                ; v0.30.18
 3  (register struct tests)            ; v0.30.18
 2  (register enum tests)              ; v0.30.18
+4  (item kind tests)                  ; v0.30.19
+3  (program start tests)              ; v0.30.19
+4  (program item count tests)         ; v0.30.19
+3  (program item at tests)            ; v0.30.19
+3  (tenv from program tests)          ; v0.30.19
+2  (simple program tests)             ; v0.30.19
 888 (separator)
-451 (total passed)
+470 (total passed)
 999 (end marker)
 ```
 

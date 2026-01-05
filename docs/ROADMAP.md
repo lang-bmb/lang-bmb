@@ -303,6 +303,18 @@ v0.MAJOR.MINOR
 - `enum_reg_count`, `enum_reg_is_generic`: Registry utilities
 - 5 new test functions, 19 assertions (335 total in types.bmb)
 
+**v0.30.19 Completed (2026-01-05)**:
+- Program AST Traversal: Navigate `(program ...)` S-expressions from parser_ast.bmb
+- Item kind detection: ITEM_FN, ITEM_STRUCT, ITEM_ENUM constants
+- `ast_item_kind`: Detect item type from AST prefix (fn, struct, enum)
+- `ast_program_start`: Find position after "(program " prefix
+- `ast_extract_item_at`: Extract complete item S-expression at position
+- `ast_next_item_pos`: Get position of next item
+- `ast_program_item_count`, `ast_program_item_at`: Count and access items by index
+- `register_item`: Route item registration based on kind
+- `tenv_from_program_ast`: Main entry point - build complete tenv from program AST
+- Total: 470 tests passing (19 new tests)
+
 **v0.30.18 Completed (2026-01-05)**:
 - AST-Type Integration: Connect parser_ast.bmb output to types.bmb tenv system
 - AST navigation utilities: ast_find_close_paren, ast_skip_ws, ast_find_pattern

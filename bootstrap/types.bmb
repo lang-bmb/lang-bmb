@@ -3306,7 +3306,7 @@ fn test_tenv_extract_field() -> i64 =
 -- Find matching close paren for open paren at position
 -- Returns position after the closing paren, or -1 if not found
 fn ast_find_close_paren(ast: String, start: i64) -> i64 =
-    ast_find_close_paren_depth(ast, start, 1);
+    ast_find_close_paren_depth(ast, start, 1);  -- start should be position AFTER '(', returns position AFTER ')'
 
 fn ast_find_close_paren_depth(ast: String, pos: i64, depth: i64) -> i64 =
     if pos >= ast.len() then 0 - 1
@@ -3668,6 +3668,165 @@ fn register_fn_from_ast(tenv: String, ast: String) -> String =
     else tenv_add_fn(tenv, sig);
 
 -- ============================================================================
+-- v0.30.19: Program AST Traversal
+-- ============================================================================
+-- Parse (program item1 item2 ...) and build complete tenv
+
+-- Item kind constants
+fn ITEM_UNKNOWN() -> i64 = 0;
+fn ITEM_FN() -> i64 = 1;
+fn ITEM_STRUCT() -> i64 = 2;
+fn ITEM_ENUM() -> i64 = 3;
+
+-- Detect item kind from AST prefix
+-- Returns: 1=fn, 2=struct, 3=enum, 0=unknown
+fn ast_item_kind(ast: String) -> i64 =
+    let len = ast.len();
+    if len < 2 then 0
+    else if ast.char_at(0) != 40 then 0  -- must start with '('
+    else
+        -- Check for "(fn ", "(struct ", "(enum "
+        if len >= 4 then
+            let c1 = ast.char_at(1);
+            let c2 = ast.char_at(2);
+            let c3 = ast.char_at(3);
+            if c1 == 102 and c2 == 110 and c3 == 32 then 1      -- "fn "
+            else if len >= 8 then
+                -- Check "(struct "
+                let s1 = ast.char_at(1);
+                let s2 = ast.char_at(2);
+                let s3 = ast.char_at(3);
+                let s4 = ast.char_at(4);
+                let s5 = ast.char_at(5);
+                let s6 = ast.char_at(6);
+                let s7 = ast.char_at(7);
+                if s1 == 115 and s2 == 116 and s3 == 114 and s4 == 117 and s5 == 99 and s6 == 116 and s7 == 32 then 2
+                else if len >= 6 then
+                    -- Check "(enum "
+                    let e1 = ast.char_at(1);
+                    let e2 = ast.char_at(2);
+                    let e3 = ast.char_at(3);
+                    let e4 = ast.char_at(4);
+                    let e5 = ast.char_at(5);
+                    if e1 == 101 and e2 == 110 and e3 == 117 and e4 == 109 and e5 == 32 then 3
+                    else 0
+                else 0
+            else 0
+        else 0;
+
+-- Skip "(program " prefix and return position after it
+-- Input: "(program (fn ...) (struct ...))"
+-- Returns: position of first item (after "(program ")
+fn ast_program_start(ast: String) -> i64 =
+    let len = ast.len();
+    if len < 10 then 0 - 1  -- too short for "(program )"
+    else
+        -- Check "(program " prefix
+        let c0 = ast.char_at(0);
+        let c1 = ast.char_at(1);
+        let c2 = ast.char_at(2);
+        let c3 = ast.char_at(3);
+        let c4 = ast.char_at(4);
+        let c5 = ast.char_at(5);
+        let c6 = ast.char_at(6);
+        let c7 = ast.char_at(7);
+        let c8 = ast.char_at(8);
+        if c0 == 40 and c1 == 112 and c2 == 114 and c3 == 111 and c4 == 103 and c5 == 114 and c6 == 97 and c7 == 109 and c8 == 32 then
+            9  -- position after "(program "
+        else 0 - 1;  -- not a program AST
+
+-- Extract one item from program AST at given position
+-- Returns: the complete item string, or "" if none
+fn ast_extract_item_at(ast: String, pos: i64) -> String =
+    let len = ast.len();
+    if pos < 0 or pos >= len then ""
+    else
+        -- Skip whitespace
+        let start = ast_skip_ws(ast, pos);
+        if start >= len then ""
+        else if ast.char_at(start) != 40 then ""  -- must be '('
+        else
+            -- Find matching close paren (pass start+1 since function expects position after '(')
+            let end_pos = ast_find_close_paren(ast, start + 1);
+            if end_pos < 0 then ""
+            else ast.slice(start, end_pos);  -- end_pos is already position after ')'
+
+-- Get position after the item at given position
+-- Returns: position of next item or -1 if done
+fn ast_next_item_pos(ast: String, pos: i64) -> i64 =
+    let len = ast.len();
+    if pos < 0 or pos >= len then 0 - 1
+    else
+        -- Skip to start of current item
+        let start = ast_skip_ws(ast, pos);
+        if start >= len then 0 - 1
+        else if ast.char_at(start) != 40 then 0 - 1
+        else
+            -- Find end of current item (pass start+1 since function expects position after '(')
+            let end_pos = ast_find_close_paren(ast, start + 1);
+            if end_pos < 0 then 0 - 1
+            else
+                -- Skip to next item (end_pos is already position after ')')
+                let next = ast_skip_ws(ast, end_pos);
+                if next >= len then 0 - 1
+                else if ast.char_at(next) == 41 then 0 - 1  -- ')' = end of program
+                else next;
+
+-- Count items in program AST
+fn ast_program_item_count(ast: String) -> i64 =
+    let start = ast_program_start(ast);
+    if start < 0 then 0
+    else ast_count_items_from(ast, start, 0);
+
+fn ast_count_items_from(ast: String, pos: i64, count: i64) -> i64 =
+    let item = ast_extract_item_at(ast, pos);
+    if item == "" then count
+    else
+        let next = ast_next_item_pos(ast, pos);
+        if next < 0 then count + 1
+        else ast_count_items_from(ast, next, count + 1);
+
+-- Get item at index from program AST (0-based)
+fn ast_program_item_at(ast: String, idx: i64) -> String =
+    let start = ast_program_start(ast);
+    if start < 0 then ""
+    else ast_item_at_from(ast, start, idx);
+
+fn ast_item_at_from(ast: String, pos: i64, idx: i64) -> String =
+    let item = ast_extract_item_at(ast, pos);
+    if item == "" then ""
+    else if idx == 0 then item
+    else
+        let next = ast_next_item_pos(ast, pos);
+        if next < 0 then ""
+        else ast_item_at_from(ast, next, idx - 1);
+
+-- Register one item into tenv based on its kind
+fn register_item(tenv: String, item: String) -> String =
+    let kind = ast_item_kind(item);
+    if kind == ITEM_STRUCT() then register_struct_from_ast(tenv, item)
+    else if kind == ITEM_ENUM() then register_enum_from_ast(tenv, item)
+    else if kind == ITEM_FN() then register_fn_from_ast(tenv, item)
+    else tenv;
+
+-- Register all items from position onwards
+fn register_items_from(tenv: String, ast: String, pos: i64) -> String =
+    let item = ast_extract_item_at(ast, pos);
+    if item == "" then tenv
+    else
+        let new_tenv = register_item(tenv, item);
+        let next = ast_next_item_pos(ast, pos);
+        if next < 0 then new_tenv
+        else register_items_from(new_tenv, ast, next);
+
+-- Build complete tenv from program AST
+-- This is the main entry point for AST → tenv conversion
+fn tenv_from_program_ast(ast: String) -> String =
+    let start = ast_program_start(ast);
+    if start < 0 then tenv_new()
+    else register_items_from(tenv_new(), ast, start);
+
+-- ============================================================================
 -- v0.30.18 Tests
 -- ============================================================================
 
@@ -3883,6 +4042,123 @@ fn test_ast_tenv_integration() -> i64 =
     let r4 = if t4 == "i64" then 1 else 0;
 
     r1 + r2 + r3 + r4;
+
+-- ============================================================================
+-- v0.30.19 Tests: Program AST Traversal
+-- ============================================================================
+
+-- Test item kind detection
+fn test_item_kind() -> i64 =
+    -- Test fn detection
+    let k1 = ast_item_kind("(fn <add> i64 (int 1))");
+    let r1 = if k1 == ITEM_FN() then 1 else 0;
+
+    -- Test struct detection
+    let k2 = ast_item_kind("(struct <Point> (fields (field <x> i64)))");
+    let r2 = if k2 == ITEM_STRUCT() then 1 else 0;
+
+    -- Test enum detection
+    let k3 = ast_item_kind("(enum <Option> (variants (variant <None>)))");
+    let r3 = if k3 == ITEM_ENUM() then 1 else 0;
+
+    -- Test unknown
+    let k4 = ast_item_kind("unknown");
+    let r4 = if k4 == ITEM_UNKNOWN() then 1 else 0;
+
+    r1 + r2 + r3 + r4;
+
+-- Test program start detection
+fn test_program_start() -> i64 =
+    -- Valid program
+    let p1 = ast_program_start("(program (fn <a> i64))");
+    let r1 = if p1 == 9 then 1 else 0;
+
+    -- Too short
+    let p2 = ast_program_start("(prog)");
+    let r2 = if p2 < 0 then 1 else 0;
+
+    -- Not a program
+    let p3 = ast_program_start("(fn <a> i64)");
+    let r3 = if p3 < 0 then 1 else 0;
+
+    r1 + r2 + r3;
+
+-- Test item count
+fn test_program_item_count() -> i64 =
+    -- Single item
+    let c1 = ast_program_item_count("(program (fn <a> i64 (int 1)))");
+    let r1 = if c1 == 1 then 1 else 0;
+
+    -- Two items
+    let c2 = ast_program_item_count("(program (fn <a> i64 (int 1)) (fn <b> i64 (int 2)))");
+    let r2 = if c2 == 2 then 1 else 0;
+
+    -- Three items
+    let c3 = ast_program_item_count("(program (struct <P> (fields)) (enum <O> (variants)) (fn <a> i64 (int 1)))");
+    let r3 = if c3 == 3 then 1 else 0;
+
+    -- Empty program
+    let c4 = ast_program_item_count("(program )");
+    let r4 = if c4 == 0 then 1 else 0;
+
+    r1 + r2 + r3 + r4;
+
+-- Test item extraction by index
+fn test_program_item_at() -> i64 =
+    let prog = "(program (fn <a> i64 (int 1)) (struct <P> (fields (field <x> i64))))";
+
+    -- Get first item (fn)
+    let item0 = ast_program_item_at(prog, 0);
+    let k0 = ast_item_kind(item0);
+    let r1 = if k0 == ITEM_FN() then 1 else 0;
+
+    -- Get second item (struct)
+    let item1 = ast_program_item_at(prog, 1);
+    let k1 = ast_item_kind(item1);
+    let r2 = if k1 == ITEM_STRUCT() then 1 else 0;
+
+    -- Out of bounds
+    let item2 = ast_program_item_at(prog, 2);
+    let r3 = if item2 == "" then 1 else 0;
+
+    r1 + r2 + r3;
+
+-- Test tenv_from_program_ast
+fn test_tenv_from_program() -> i64 =
+    -- Program with struct, enum, and function
+    let prog = "(program (struct <Box> (type_params <T>) (fields (field <value> T))) (enum <Option> (type_params <T>) (variants (variant <Some> T) (variant <None>))) (fn <identity> (type_params <T>) (params (p <x> T)) T (var <x>)))";
+
+    let tenv = tenv_from_program_ast(prog);
+
+    -- Test struct field resolution
+    let t1 = tenv_struct_field_type(tenv, "Box", "i64", "value");
+    let r1 = if t1 == "i64" then 1 else 0;
+
+    -- Test enum variant resolution
+    let t2 = tenv_enum_variant_type(tenv, "Option", "String", "Some");
+    let r2 = if t2 == "String" then 1 else 0;
+
+    -- Test function return type
+    let t3 = tenv_fn_return_type(tenv, "identity", "bool");
+    let r3 = if t3 == "bool" then 1 else 0;
+
+    r1 + r2 + r3;
+
+-- Test with simple non-generic program
+fn test_tenv_simple_program() -> i64 =
+    let prog = "(program (struct <Point> (fields (field <x> i64) (field <y> i64))) (fn <add> (params (p <a> i64) (p <b> i64)) i64 (int 0)))";
+
+    let tenv = tenv_from_program_ast(prog);
+
+    -- Test non-generic struct field
+    let t1 = tenv_struct_field_type(tenv, "Point", "", "x");
+    let r1 = if t1 == "i64" then 1 else 0;
+
+    -- Test function return type (non-generic)
+    let t2 = tenv_fn_return_type(tenv, "add", "");
+    let r2 = if t2 == "i64" then 1 else 0;
+
+    r1 + r2;
 
 -- Main test runner
 fn main() -> i64 =
@@ -4195,10 +4471,29 @@ fn main() -> i64 =
     let t97 = test_ast_tenv_integration();
     let p97 = println(t97);  -- Expected: 4
 
+    -- v0.30.19: Program AST Traversal tests
+    let t98 = test_item_kind();
+    let p98 = println(t98);  -- Expected: 4
+
+    let t99 = test_program_start();
+    let p99 = println(t99);  -- Expected: 3
+
+    let t100 = test_program_item_count();
+    let p100 = println(t100);  -- Expected: 4
+
+    let t101 = test_program_item_at();
+    let p101 = println(t101);  -- Expected: 3
+
+    let t102 = test_tenv_from_program();
+    let p102 = println(t102);  -- Expected: 3
+
+    let t103 = test_tenv_simple_program();
+    let p103 = println(t103);  -- Expected: 2
+
     let u1 = println(888);  -- Separator
 
-    let total = t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t9 + t10 + t11 + t12 + t13 + t14 + t15 + t16 + t17 + t18 + t19 + t20 + t21 + t22 + t23 + t24 + t25 + t26 + t27 + t28 + t29 + t30 + t31 + t32 + t33 + t34 + t35 + t36 + t37 + t38 + t39 + t40 + t41 + t42 + t43 + t44 + t45 + t46 + t47 + t48 + t49 + t50 + t51 + t52 + t53 + t54 + t55 + t56 + t57 + t58 + t59 + t60 + t61 + t62 + t63 + t64 + t65 + t66 + t67 + t68 + t69 + t70 + t71 + t72 + t73 + t74 + t75 + t76 + t77 + t78 + t79 + t80 + t81 + t82 + t83 + t84 + t85 + t86 + t87 + t88 + t89 + t90 + t91 + t92 + t93 + t94 + t95 + t96 + t97;
-    let u2 = println(total);  -- Expected: 451
+    let total = t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t9 + t10 + t11 + t12 + t13 + t14 + t15 + t16 + t17 + t18 + t19 + t20 + t21 + t22 + t23 + t24 + t25 + t26 + t27 + t28 + t29 + t30 + t31 + t32 + t33 + t34 + t35 + t36 + t37 + t38 + t39 + t40 + t41 + t42 + t43 + t44 + t45 + t46 + t47 + t48 + t49 + t50 + t51 + t52 + t53 + t54 + t55 + t56 + t57 + t58 + t59 + t60 + t61 + t62 + t63 + t64 + t65 + t66 + t67 + t68 + t69 + t70 + t71 + t72 + t73 + t74 + t75 + t76 + t77 + t78 + t79 + t80 + t81 + t82 + t83 + t84 + t85 + t86 + t87 + t88 + t89 + t90 + t91 + t92 + t93 + t94 + t95 + t96 + t97 + t98 + t99 + t100 + t101 + t102 + t103;
+    let u2 = println(total);  -- Expected: 470
 
     let u3 = println(999);  -- End marker
     total;

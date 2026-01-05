@@ -175,10 +175,12 @@ Gap to Close:
 - ✅ Function registry (v0.30.15: fn_reg_add, fn_reg_lookup, fn_reg_return_type)
 - ✅ Type environment (v0.30.16: tenv_new, tenv_add_*, tenv_*_field_type)
 - ✅ Call site type checking (v0.30.17: tenv_check_fn_call, tenv_infer_fn_call)
+- ✅ AST-Type integration (v0.30.18: ast_struct_to_def, ast_fn_to_sig, register_*_from_ast)
+- ✅ Program AST traversal (v0.30.19: tenv_from_program_ast, ast_program_item_at)
 
 ### What Bootstrap CANNOT Do Yet
 
-- ⚠️ Generic type checking (struct/function ready, full AST integration pending)
+- ⚠️ Generic type checking (struct/function ready, expression type checking pending)
 - ❌ Trait implementation dispatch
 - ❌ Closure capture and codegen
 - ❌ FFI linking
@@ -289,14 +291,14 @@ $ diff stage2/bmb stage3/bmb
 
 v0.30 "Pure" represents the culmination of the BMB self-hosting journey. With Stage 1/2 verification complete and the bootstrap covering the full compilation pipeline, the remaining work is substantial but achievable within the 2026 Q4 timeline.
 
-**Key Metrics** (as of v0.30.17):
+**Key Metrics** (as of v0.30.19):
 - Rust code to remove: ~21,783 LOC
-- BMB bootstrap code: ~9,924 LOC (46% coverage)
+- BMB bootstrap code: ~10,100 LOC (47% coverage)
 - Gap to close: ~12,916 LOC additional BMB
-- Bootstrap tests passing: 406 tests (types.bmb)
+- Bootstrap tests passing: 470 tests (types.bmb)
 - Estimated effort: 6-9 months
 
 ---
 
-**Last Updated**: 2026-01-04
+**Last Updated**: 2026-01-05
 **Author**: BMB Development Team
