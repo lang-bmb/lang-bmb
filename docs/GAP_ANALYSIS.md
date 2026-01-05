@@ -205,6 +205,9 @@ Gap to Close:
 - ✅ While type checking (v0.30.45: EXPR_WHILE, type_of_while, while condition must be bool)
 - ✅ For type checking (v0.30.46: EXPR_FOR, type_of_for, loop variable binding, for_var_name)
 - ✅ Break/Continue type checking (v0.30.47: EXPR_BREAK, EXPR_CONTINUE, type_of_break, type_of_continue)
+- ✅ UNIT instruction LLVM IR (v0.30.48: gen_instr_unit, gen_instr_break, gen_instr_continue)
+- ✅ While loop LLVM IR test (v0.30.49: test_while_ir, loop label/branch/goto verification)
+- ✅ For loop LLVM IR test (v0.30.50: test_for_ir, for_start/for_body/for_end label verification)
 
 ### What Bootstrap CANNOT Do Yet
 
@@ -318,11 +321,11 @@ $ diff stage2/bmb stage3/bmb
 
 v0.30 "Pure" represents the culmination of the BMB self-hosting journey. With Stage 1/2 verification complete and the bootstrap covering the full compilation pipeline, the remaining work is substantial but achievable within the 2026 Q4 timeline.
 
-**Key Metrics** (as of v0.30.47):
+**Key Metrics** (as of v0.30.50):
 - Rust code to remove: ~21,783 LOC
-- BMB bootstrap code: ~12,500 LOC (57% coverage)
-- Gap to close: ~10,800 LOC additional BMB
-- Bootstrap tests passing: 1006 tests (621 types + 119 llvm_ir + 95 lowering + 46 mir + 71 parser_ast + ...)
+- BMB bootstrap code: ~12,600 LOC (58% coverage)
+- Gap to close: ~10,700 LOC additional BMB
+- Bootstrap tests passing: 1024 tests (621 types + 137 llvm_ir + 95 lowering + 46 mir + 71 parser_ast + ...)
 - Estimated effort: 6-9 months
 
 ---

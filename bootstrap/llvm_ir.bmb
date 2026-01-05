@@ -554,6 +554,9 @@ fn gen_instr_dispatch(dest: String, op: String, line: String, pos: i64) -> Strin
     else if op == "neg" then gen_instr_neg(dest, line, pos)
     else if op == "not" then gen_instr_not(dest, line, pos)
     else if op == "copy" then gen_instr_copy(dest, line, pos)
+    else if op == "UNIT" then gen_instr_unit(dest)  -- v0.30.48
+    else if op == "BREAK" then gen_instr_break(dest)  -- v0.30.48
+    else if op == "CONTINUE" then gen_instr_continue(dest)  -- v0.30.48
     else gen_instr_binop(dest, op, line, pos);
 
 -- const I:42 or const B:1
@@ -580,6 +583,18 @@ fn gen_instr_copy(dest: String, line: String, pos: i64) -> String =
     let src = read_until_ws(line, pos);
     -- In LLVM IR, copy is just an add with 0
     dest + " = add i64 " + src + ", 0";
+
+-- v0.30.48: UNIT - unit value represented as i64 0
+fn gen_instr_unit(dest: String) -> String =
+    dest + " = add i64 0, 0";
+
+-- v0.30.48: BREAK placeholder - generates comment (actual handling in loop context)
+fn gen_instr_break(dest: String) -> String =
+    "; BREAK: " + dest + " - placeholder|  " + dest + " = add i64 0, 0";
+
+-- v0.30.48: CONTINUE placeholder - generates comment (actual handling in loop context)
+fn gen_instr_continue(dest: String) -> String =
+    "; CONTINUE: " + dest + " - placeholder|  " + dest + " = add i64 0, 0";
 
 -- Binary operations: + %a, %b or == %a, %b or and %a, %b
 fn gen_instr_binop(dest: String, op: String, line: String, pos: i64) -> String =
@@ -1289,6 +1304,110 @@ fn test_switch_ir() -> i64 =
     let t4 = if has_pattern(sw1, "i64 1, label %arm1", 0) then 1 else 0;
     t1 + t2 + t3 + t4;
 
+-- v0.30.49: Test while loop MIR -> LLVM IR conversion
+fn test_while_ir() -> i64 =
+    -- Sample while MIR (simplified):
+    -- goto loop_start_0
+    -- loop_start_0:
+    --   %_t0 = const B:1
+    --   branch %_t0, body_0, loop_end_0
+    -- body_0:
+    --   %_t1 = const I:42
+    --   goto loop_start_0
+    -- loop_end_0:
+    --   %_t2 = UNIT
+
+    -- Test 1: Label generation
+    let lbl = gen_label_line("loop_start_0:");
+    let t1 = if lbl == "loop_start_0:" then 1 else 0;
+
+    -- Test 2: Branch instruction
+    let br = gen_terminator("branch %_t0, body_0, loop_end_0");
+    let t2 = if has_pattern(br, "br i1 %_t0", 0) then 1 else 0;
+
+    -- Test 3: Goto instruction
+    let gt = gen_terminator("goto loop_start_0");
+    let t3 = if gt == "br label %loop_start_0" then 1 else 0;
+
+    -- Test 4: UNIT at loop end
+    let un = gen_instruction("  %_t2 = UNIT");
+    let t4 = if un == "%_t2 = add i64 0, 0" then 1 else 0;
+
+    -- Test 5: Label detection
+    let t5 = if is_label_line("loop_end_0:") then 1 else 0;
+
+    -- Test 6: Terminator detection for branch
+    let t6 = if is_terminator_line("branch %x, a, b") then 1 else 0;
+
+    t1 + t2 + t3 + t4 + t5 + t6;
+
+-- v0.30.50: Test for loop MIR -> LLVM IR conversion
+fn test_for_ir() -> i64 =
+    -- Sample for loop MIR (simplified):
+    -- goto for_start_0
+    -- for_start_0:
+    --   %_t0 = const B:1  (i < end condition)
+    --   branch %_t0, for_body_0, for_end_0
+    -- for_body_0:
+    --   %_t1 = const I:42
+    --   goto for_start_0
+    -- for_end_0:
+    --   %_t2 = UNIT
+
+    -- Test 1: for_start label generation
+    let lbl1 = gen_label_line("for_start_0:");
+    let t1 = if lbl1 == "for_start_0:" then 1 else 0;
+
+    -- Test 2: for_body label generation
+    let lbl2 = gen_label_line("for_body_0:");
+    let t2 = if lbl2 == "for_body_0:" then 1 else 0;
+
+    -- Test 3: for_end label generation
+    let lbl3 = gen_label_line("for_end_0:");
+    let t3 = if lbl3 == "for_end_0:" then 1 else 0;
+
+    -- Test 4: Branch to for_body or for_end
+    let br = gen_terminator("branch %_t0, for_body_0, for_end_0");
+    let t4 = if has_pattern(br, "br i1 %_t0, label %for_body_0, label %for_end_0", 0) then 1 else 0;
+
+    -- Test 5: Goto back to for_start
+    let gt = gen_terminator("goto for_start_0");
+    let t5 = if gt == "br label %for_start_0" then 1 else 0;
+
+    -- Test 6: UNIT at for end
+    let un = gen_instruction("  %_t2 = UNIT");
+    let t6 = if un == "%_t2 = add i64 0, 0" then 1 else 0;
+
+    t1 + t2 + t3 + t4 + t5 + t6;
+
+-- v0.30.48: Test UNIT, BREAK, CONTINUE instruction generation
+fn test_unit_break_continue() -> i64 =
+    -- Test 1: UNIT instruction
+    let u1 = gen_instr_unit("%_t0");
+    let t1 = if u1 == "%_t0 = add i64 0, 0" then 1 else 0;
+
+    -- Test 2: BREAK instruction (placeholder)
+    let b1 = gen_instr_break("%_t1");
+    let t2 = if has_pattern(b1, "; BREAK:", 0) then 1 else 0;
+
+    -- Test 3: CONTINUE instruction (placeholder)
+    let c1 = gen_instr_continue("%_t2");
+    let t3 = if has_pattern(c1, "; CONTINUE:", 0) then 1 else 0;
+
+    -- Test 4: gen_instruction dispatches UNIT
+    let i1 = gen_instruction("  %_t3 = UNIT");
+    let t4 = if i1 == "%_t3 = add i64 0, 0" then 1 else 0;
+
+    -- Test 5: gen_instruction dispatches BREAK
+    let i2 = gen_instruction("  %_t4 = BREAK");
+    let t5 = if has_pattern(i2, "; BREAK:", 0) then 1 else 0;
+
+    -- Test 6: gen_instruction dispatches CONTINUE
+    let i3 = gen_instruction("  %_t5 = CONTINUE");
+    let t6 = if has_pattern(i3, "; CONTINUE:", 0) then 1 else 0;
+
+    t1 + t2 + t3 + t4 + t5 + t6;
+
 fn main() -> i64 =
     let u0 = println(777);
     let r1 = test_type_mapping();
@@ -1368,8 +1487,17 @@ fn main() -> i64 =
     let u35 = println(r35);
     let r36 = test_switch_ir();
     let u36 = println(r36);
-    let u37 = println(888);
-    let total = r1 + r2 + r3 + r4 + r5 + r6 + r7 + r8 + r9 + r10 + r11 + r12 + r13 + r14 + r15 + r16 + r17 + r18 + r19 + r20 + r21 + r22 + r23 + r24 + r25 + r26 + r27 + r28 + r29 + r30 + r31 + r32 + r33 + r34 + r35 + r36;
-    let u38 = println(total);
-    let u39 = println(999);
+    -- v0.30.48 unit/break/continue tests
+    let r37 = test_unit_break_continue();
+    let u37 = println(r37);
+    -- v0.30.49 while loop IR tests
+    let r38 = test_while_ir();
+    let u38 = println(r38);
+    -- v0.30.50 for loop IR tests
+    let r39 = test_for_ir();
+    let u39 = println(r39);
+    let u_end = println(888);
+    let total = r1 + r2 + r3 + r4 + r5 + r6 + r7 + r8 + r9 + r10 + r11 + r12 + r13 + r14 + r15 + r16 + r17 + r18 + r19 + r20 + r21 + r22 + r23 + r24 + r25 + r26 + r27 + r28 + r29 + r30 + r31 + r32 + r33 + r34 + r35 + r36 + r37 + r38 + r39;
+    let u_tot = println(total);
+    let u_fin = println(999);
     total;

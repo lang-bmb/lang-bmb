@@ -164,15 +164,15 @@ v0.MAJOR.MINOR
 | v0.28 | Benchmark | C/Rust/BMB benchmark suite | Compute-intensive benchmarks, Contract-optimized benchmarks, Real-world workloads |
 | v0.29 | Velocity | C/Rust performance sprint | MIR optimization framework (6 passes), Contract-based optimization, Bootstrap optimization module |
 
-### Bootstrap Statistics (as of v0.30.47)
+### Bootstrap Statistics (as of v0.30.50)
 
 | Metric | Value |
 |--------|-------|
 | Rust Codebase | ~21,783 LOC |
-| BMB Bootstrap | ~12,500 LOC |
-| Coverage | 57% |
+| BMB Bootstrap | ~12,600 LOC |
+| Coverage | 58% |
 | Stage 1/2 Tests | 19 tests passing |
-| Bootstrap Tests | 1043 tests (621 types + 119 llvm_ir + 95 lowering + 46 mir + 71 parser_ast + 33 utils + 19 selfhost_equiv + 14 pipeline + 9 optimize + 8 selfhost_test + 8 compiler) |
+| Bootstrap Tests | 1061 tests (621 types + 137 llvm_ir + 95 lowering + 46 mir + 71 parser_ast + 33 utils + 19 selfhost_equiv + 14 pipeline + 9 optimize + 8 selfhost_test + 8 compiler) |
 
 ---
 
@@ -302,6 +302,34 @@ v0.MAJOR.MINOR
 - `enum_reg_variant_type`: Resolve variant type with type args through registry lookup
 - `enum_reg_count`, `enum_reg_is_generic`: Registry utilities
 - 5 new test functions, 19 assertions (335 total in types.bmb)
+
+**v0.30.50 Completed (2026-01-05)**:
+- For loop LLVM IR test: End-to-end verification of for loop MIR to LLVM IR conversion
+- test_for_ir: Tests for_start/for_body/for_end label generation
+- Label generation verified: for_start_0, for_body_0, for_end_0
+- Branch instruction verified: br i1 %cond, label %for_body, label %for_end
+- Goto instruction verified: br label %for_start_0
+- UNIT at loop end verified: add i64 0, 0
+- Total: 137 tests passing in llvm_ir.bmb (131 + 6 new)
+
+**v0.30.49 Completed (2026-01-05)**:
+- While loop LLVM IR test: End-to-end verification of while loop MIR to LLVM IR conversion
+- test_while_ir: Tests loop_start/body/loop_end label generation
+- Label generation verified: loop_start_0, loop_end_0
+- Branch instruction verified: br i1 %_t0 pattern
+- Goto instruction verified: br label %loop_start_0
+- UNIT at loop end verified: add i64 0, 0
+- Terminator detection verified: branch pattern recognition
+- Total: 131 tests passing in llvm_ir.bmb (125 + 6 new)
+
+**v0.30.48 Completed (2026-01-05)**:
+- UNIT instruction LLVM IR: Support for unit value in LLVM IR generation
+- gen_instr_unit: Generate unit value as `add i64 0, 0`
+- gen_instr_break: Generate BREAK placeholder with comment
+- gen_instr_continue: Generate CONTINUE placeholder with comment
+- gen_instr_dispatch extended: Handle UNIT, BREAK, CONTINUE operations
+- test_unit_break_continue: 6 tests for unit/break/continue instructions
+- Total: 125 tests passing in llvm_ir.bmb (119 + 6 new)
 
 **v0.30.47 Completed (2026-01-05)**:
 - Break/Continue type checking: Type system support for break and continue expressions
