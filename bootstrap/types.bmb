@@ -3895,6 +3895,9 @@ fn EXPR_WHILE() -> i64 = 17;   -- v0.30.45: While expression (while ...)
 fn EXPR_FOR() -> i64 = 18;     -- v0.30.46: For expression (for ...)
 fn EXPR_BREAK() -> i64 = 19;   -- v0.30.47: Break expression (break)
 fn EXPR_CONTINUE() -> i64 = 20; -- v0.30.47: Continue expression (continue)
+fn EXPR_ARRAY() -> i64 = 21;    -- v0.30.66: Array literal (array ...)
+fn EXPR_INDEX() -> i64 = 22;    -- v0.30.67: Index expression (index ...)
+fn EXPR_METHOD_CALL() -> i64 = 23; -- v0.30.68: Method call (method_call ...)
 fn EXPR_UNKNOWN() -> i64 = 0;
 
 -- Detect expression kind from AST
@@ -3947,6 +3950,12 @@ fn expr_kind(ast: String) -> i64 =
         else if c1 == 98 and c2 == 114 and c3 == 101 then EXPR_BREAK()
         -- v0.30.47: (continue) - 99='c', 111='o', 110='n'
         else if c1 == 99 and c2 == 111 and c3 == 110 then EXPR_CONTINUE()
+        -- v0.30.66: (array ...) - 97='a', 114='r', 114='r'
+        else if c1 == 97 and c2 == 114 and c3 == 114 then EXPR_ARRAY()
+        -- v0.30.67: (index ...) - 105='i', 110='n', 100='d'
+        else if c1 == 105 and c2 == 110 and c3 == 100 then EXPR_INDEX()
+        -- v0.30.68: (method_call ...) - 109='m', 101='e', 116='t'
+        else if c1 == 109 and c2 == 101 and c3 == 116 then EXPR_METHOD_CALL()
         else EXPR_UNKNOWN();
 
 -- v0.30.24: Check if fn expression is a lambda (has | after fn)
@@ -4078,6 +4087,9 @@ fn type_of_expr(tenv: String, locals: String, ast: String) -> String =
     else if kind == EXPR_FOR() then type_of_for(tenv, locals, ast)  -- v0.30.46
     else if kind == EXPR_BREAK() then type_of_break(tenv, locals, ast)  -- v0.30.47
     else if kind == EXPR_CONTINUE() then type_of_continue(tenv, locals, ast)  -- v0.30.47
+    else if kind == EXPR_ARRAY() then type_of_array(tenv, locals, ast)  -- v0.30.66
+    else if kind == EXPR_INDEX() then type_of_index(tenv, locals, ast)  -- v0.30.67
+    else if kind == EXPR_METHOD_CALL() then type_of_method_call(tenv, locals, ast)  -- v0.30.68
     else "ERR:unknown expression";
 
 -- v0.30.25: Type of logical not (not expr)
@@ -5215,6 +5227,185 @@ fn type_of_lambda_with_body(tenv: String, locals: String, params: String, param_
         "Fn(" + param_types + ")->" + ret_type;
 
 -- ============================================================================
+-- v0.30.66: Array Expression Type Checking
+-- ============================================================================
+
+-- Type of array literal: (array elem1 elem2 ...)
+-- All elements must have the same type, returns [T]
+fn type_of_array(tenv: String, locals: String, ast: String) -> String =
+    -- "(array" has 6 chars, so start extracting elements after position 6
+    let first_elem = array_element_at(ast, 0);
+    if first_elem == "" then "[()]"  -- Empty array: [()]
+    else
+        let elem_type = type_of_expr(tenv, locals, first_elem);
+        if elem_type.len() > 3 and elem_type.char_at(0) == 69 then elem_type  -- ERR
+        else
+            let check = type_of_array_elements(tenv, locals, ast, 1, elem_type);
+            if check.len() > 3 and check.char_at(0) == 69 then check  -- ERR
+            else "[" + elem_type + "]";
+
+-- Check all array elements have the same type
+fn type_of_array_elements(tenv: String, locals: String, ast: String, idx: i64, expected_type: String) -> String =
+    let elem = array_element_at(ast, idx);
+    if elem == "" then expected_type  -- No more elements
+    else
+        let elem_type = type_of_expr(tenv, locals, elem);
+        if elem_type.len() > 3 and elem_type.char_at(0) == 69 then elem_type  -- ERR
+        else if elem_type != expected_type then
+            "ERR:array element type mismatch: expected " + expected_type + " got " + elem_type
+        else type_of_array_elements(tenv, locals, ast, idx + 1, expected_type);
+
+-- Extract element at index from array AST: (array elem0 elem1 ...)
+fn array_element_at(ast: String, idx: i64) -> String =
+    array_element_at_impl(ast, 6, idx);  -- Skip "(array"
+
+fn array_element_at_impl(ast: String, pos: i64, idx: i64) -> String =
+    let start = ast_skip_ws(ast, pos);
+    if start >= ast.len() - 1 then ""  -- Past end or at closing paren
+    else if ast.char_at(start) == 41 then ""  -- ')' = 41
+    else
+        let elem_end = if ast.char_at(start) == 40 then
+            ast_find_close_paren(ast, start + 1)
+        else
+            array_find_elem_end(ast, start);
+        if idx == 0 then ast.slice(start, elem_end)
+        else array_element_at_impl(ast, elem_end, idx - 1);
+
+fn array_find_elem_end(ast: String, pos: i64) -> i64 =
+    if pos >= ast.len() then pos
+    else
+        let c = ast.char_at(pos);
+        if c == 32 or c == 41 then pos  -- space or )
+        else array_find_elem_end(ast, pos + 1);
+
+-- ============================================================================
+-- v0.30.67: Index Expression Type Checking
+-- ============================================================================
+
+-- Type of index expression: (index base idx)
+-- base must be [T], index must be i64, returns T
+fn type_of_index(tenv: String, locals: String, ast: String) -> String =
+    let base_ast = index_base_expr(ast);
+    let idx_ast = index_index_expr(ast);
+
+    let base_type = type_of_expr(tenv, locals, base_ast);
+    if base_type.len() > 3 and base_type.char_at(0) == 69 then base_type  -- ERR
+    else if base_type.len() < 3 then "ERR:index requires array type, got " + base_type
+    else if base_type.char_at(0) != 91 then "ERR:index requires array type, got " + base_type  -- '[' = 91
+    else
+        let idx_type = type_of_expr(tenv, locals, idx_ast);
+        if idx_type.len() > 3 and idx_type.char_at(0) == 69 then idx_type  -- ERR
+        else if idx_type != "i64" then "ERR:index must be i64, got " + idx_type
+        else
+            -- Extract element type from [T]
+            base_type.slice(1, base_type.len() - 1);
+
+-- Extract base from (index base idx)
+fn index_base_expr(ast: String) -> String =
+    -- "(index " has 7 chars
+    let start = ast_skip_ws(ast, 7);
+    if start >= ast.len() then ""
+    else if ast.char_at(start) == 40 then
+        let end_pos = ast_find_close_paren(ast, start + 1);
+        ast.slice(start, end_pos)
+    else index_extract_until_space(ast, start);
+
+fn index_extract_until_space(ast: String, pos: i64) -> String =
+    let end_pos = index_find_space(ast, pos);
+    ast.slice(pos, end_pos);
+
+fn index_find_space(ast: String, pos: i64) -> i64 =
+    if pos >= ast.len() then pos
+    else if ast.char_at(pos) == 32 or ast.char_at(pos) == 41 then pos
+    else index_find_space(ast, pos + 1);
+
+-- Extract index expr from (index base idx)
+fn index_index_expr(ast: String) -> String =
+    let base_start = ast_skip_ws(ast, 7);
+    let base_end = if ast.char_at(base_start) == 40 then
+        ast_find_close_paren(ast, base_start + 1)
+    else index_find_space(ast, base_start);
+    let idx_start = ast_skip_ws(ast, base_end);
+    if idx_start >= ast.len() then ""
+    else if ast.char_at(idx_start) == 40 then
+        let end_pos = ast_find_close_paren(ast, idx_start + 1);
+        ast.slice(idx_start, end_pos)
+    else index_extract_until_space(ast, idx_start);
+
+-- ============================================================================
+-- v0.30.68: Method Call Type Checking
+-- ============================================================================
+
+-- Type of method call: (method_call receiver <method> args...)
+-- Look up method in impl blocks, resolve return type
+fn type_of_method_call(tenv: String, locals: String, ast: String) -> String =
+    let recv_ast = method_call_receiver(ast);
+    let method_name = method_call_name(ast);
+
+    let recv_type = type_of_expr(tenv, locals, recv_ast);
+    if recv_type.len() > 3 and recv_type.char_at(0) == 69 then recv_type  -- ERR
+    else
+        -- For now, return a placeholder - full impl dispatch requires trait registry
+        -- This allows parsing/lowering to work, actual method resolution comes later
+        let result = tenv_method_lookup(tenv, recv_type, method_name);
+        if result == "" then "ERR:method " + method_name + " not found on type " + recv_type
+        else result;
+
+-- Extract receiver from (method_call receiver <method> args...)
+fn method_call_receiver(ast: String) -> String =
+    -- "(method_call " has 13 chars
+    let start = ast_skip_ws(ast, 13);
+    if start >= ast.len() then ""
+    else if ast.char_at(start) == 40 then
+        let end_pos = ast_find_close_paren(ast, start + 1);
+        ast.slice(start, end_pos)
+    else method_call_extract_token(ast, start);
+
+fn method_call_extract_token(ast: String, pos: i64) -> String =
+    let end_pos = method_call_find_end(ast, pos);
+    ast.slice(pos, end_pos);
+
+fn method_call_find_end(ast: String, pos: i64) -> i64 =
+    if pos >= ast.len() then pos
+    else
+        let c = ast.char_at(pos);
+        if c == 32 or c == 41 then pos
+        else method_call_find_end(ast, pos + 1);
+
+-- Extract method name from (method_call receiver <method> args...)
+fn method_call_name(ast: String) -> String =
+    let recv_start = ast_skip_ws(ast, 13);
+    let recv_end = if ast.char_at(recv_start) == 40 then
+        ast_find_close_paren(ast, recv_start + 1)
+    else method_call_find_end(ast, recv_start);
+    let name_start = ast_skip_ws(ast, recv_end);
+    if name_start >= ast.len() then ""
+    else if ast.char_at(name_start) != 60 then ""  -- '<' = 60
+    else
+        let name_end = method_call_find_gt(ast, name_start + 1);
+        ast.slice(name_start + 1, name_end);
+
+fn method_call_find_gt(ast: String, pos: i64) -> i64 =
+    if pos >= ast.len() then pos
+    else if ast.char_at(pos) == 62 then pos  -- '>' = 62
+    else method_call_find_gt(ast, pos + 1);
+
+-- Simple method lookup - returns return type or "" if not found
+-- For now, support built-in String methods
+fn tenv_method_lookup(tenv: String, recv_type: String, method: String) -> String =
+    -- Built-in String methods
+    if recv_type == "String" then
+        if method == "len" then "i64"
+        else if method == "char_at" then "i64"
+        else if method == "slice" then "String"
+        else ""
+    -- Built-in array methods (placeholder)
+    else if recv_type.char_at(0) == 91 then  -- '[' = array type
+        if method == "len" then "i64"
+        else ""
+    else "";
+
+-- ============================================================================
 -- v0.30.23 Tests: Match Expression Type Checking
 -- ============================================================================
 
@@ -6241,6 +6432,120 @@ fn test_break_continue_type() -> i64 =
 
     r1 + r2 + r3 + r4 + r5 + r6 + r7 + r8;
 
+-- ============================================================================
+-- v0.30.66-68: Array, Index, Method Call Type Checking Tests
+-- ============================================================================
+
+-- Test v0.30.66: Array expression type checking
+fn test_array_type() -> i64 =
+    let tenv = tenv_new();
+    let locals = locals_new();
+
+    -- Test 1: EXPR_ARRAY constant is 21
+    let r1 = if EXPR_ARRAY() == 21 then 1 else 0;
+
+    -- Test 2: expr_kind detects array expression
+    let k2 = expr_kind("(array (int 1) (int 2))");
+    let r2 = if k2 == EXPR_ARRAY() then 1 else 0;
+
+    -- Test 3: type_of_array returns [i64] for int array
+    let t3 = type_of_array(tenv, locals, "(array (int 1) (int 2) (int 3))");
+    let r3 = if t3 == "[i64]" then 1 else 0;
+
+    -- Test 4: type_of_array returns [bool] for bool array
+    let t4 = type_of_array(tenv, locals, "(array (bool true) (bool false))");
+    let r4 = if t4 == "[bool]" then 1 else 0;
+
+    -- Test 5: type_of_array returns empty array type
+    let t5 = type_of_array(tenv, locals, "(array)");
+    let r5 = if t5 == "[()]" then 1 else 0;
+
+    -- Test 6: array_element_at extracts first element
+    let e6 = array_element_at("(array (int 1) (int 2))", 0);
+    let r6 = if e6 == "(int 1)" then 1 else 0;
+
+    -- Test 7: array_element_at extracts second element
+    let e7 = array_element_at("(array (int 1) (int 2))", 1);
+    let r7 = if e7 == "(int 2)" then 1 else 0;
+
+    -- Test 8: type_of_expr dispatches to type_of_array
+    let t8 = type_of_expr(tenv, locals, "(array (int 42))");
+    let r8 = if t8 == "[i64]" then 1 else 0;
+
+    r1 + r2 + r3 + r4 + r5 + r6 + r7 + r8;
+
+-- Test v0.30.67: Index expression type checking
+fn test_index_type() -> i64 =
+    let tenv = tenv_new();
+    let locals = "arr:[i64],idx:i64";  -- arr is [i64], idx is i64
+
+    -- Test 1: EXPR_INDEX constant is 22
+    let r1 = if EXPR_INDEX() == 22 then 1 else 0;
+
+    -- Test 2: expr_kind detects index expression
+    let k2 = expr_kind("(index (var <arr>) (int 0))");
+    let r2 = if k2 == EXPR_INDEX() then 1 else 0;
+
+    -- Test 3: index_base_expr extracts base
+    let b3 = index_base_expr("(index (var <arr>) (int 0))");
+    let r3 = if b3 == "(var <arr>)" then 1 else 0;
+
+    -- Test 4: index_index_expr extracts index
+    let i4 = index_index_expr("(index (var <arr>) (int 0))");
+    let r4 = if i4 == "(int 0)" then 1 else 0;
+
+    -- Test 5: type_of_index returns element type
+    let t5 = type_of_index(tenv, locals, "(index (var <arr>) (int 0))");
+    let r5 = if t5 == "i64" then 1 else 0;
+
+    -- Test 6: type_of_index with variable index
+    let t6 = type_of_index(tenv, locals, "(index (var <arr>) (var <idx>))");
+    let r6 = if t6 == "i64" then 1 else 0;
+
+    -- Test 7: type_of_expr dispatches to type_of_index
+    let t7 = type_of_expr(tenv, locals, "(index (var <arr>) (int 0))");
+    let r7 = if t7 == "i64" then 1 else 0;
+
+    r1 + r2 + r3 + r4 + r5 + r6 + r7;
+
+-- Test v0.30.68: Method call type checking
+fn test_method_call_type() -> i64 =
+    let tenv = tenv_new();
+    let locals = "s:String";  -- s is String
+
+    -- Test 1: EXPR_METHOD_CALL constant is 23
+    let r1 = if EXPR_METHOD_CALL() == 23 then 1 else 0;
+
+    -- Test 2: expr_kind detects method_call expression
+    let k2 = expr_kind("(method_call (var <s>) <len>)");
+    let r2 = if k2 == EXPR_METHOD_CALL() then 1 else 0;
+
+    -- Test 3: method_call_receiver extracts receiver
+    let recv3 = method_call_receiver("(method_call (var <s>) <len>)");
+    let r3 = if recv3 == "(var <s>)" then 1 else 0;
+
+    -- Test 4: method_call_name extracts method name
+    let name4 = method_call_name("(method_call (var <s>) <len>)");
+    let r4 = if name4 == "len" then 1 else 0;
+
+    -- Test 5: tenv_method_lookup finds String.len
+    let t5 = tenv_method_lookup(tenv, "String", "len");
+    let r5 = if t5 == "i64" then 1 else 0;
+
+    -- Test 6: tenv_method_lookup finds String.slice
+    let t6 = tenv_method_lookup(tenv, "String", "slice");
+    let r6 = if t6 == "String" then 1 else 0;
+
+    -- Test 7: type_of_method_call returns correct type
+    let t7 = type_of_method_call(tenv, locals, "(method_call (var <s>) <len>)");
+    let r7 = if t7 == "i64" then 1 else 0;
+
+    -- Test 8: type_of_expr dispatches to type_of_method_call
+    let t8 = type_of_expr(tenv, locals, "(method_call (var <s>) <len>)");
+    let r8 = if t8 == "i64" then 1 else 0;
+
+    r1 + r2 + r3 + r4 + r5 + r6 + r7 + r8;
+
 -- Main test runner
 fn main() -> i64 =
     let u0 = println(777);  -- Start marker
@@ -6697,10 +7002,20 @@ fn main() -> i64 =
     let t140 = test_break_continue_type();
     let p140 = println(t140);  -- Expected: 8
 
+    -- v0.30.66-68: Array/Index/Method call type checking tests
+    let t141 = test_array_type();
+    let p141 = println(t141);  -- Expected: 8
+
+    let t142 = test_index_type();
+    let p142 = println(t142);  -- Expected: 7
+
+    let t143 = test_method_call_type();
+    let p143 = println(t143);  -- Expected: 8
+
     let u1 = println(888);  -- Separator
 
-    let total = t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t9 + t10 + t11 + t12 + t13 + t14 + t15 + t16 + t17 + t18 + t19 + t20 + t21 + t22 + t23 + t24 + t25 + t26 + t27 + t28 + t29 + t30 + t31 + t32 + t33 + t34 + t35 + t36 + t37 + t38 + t39 + t40 + t41 + t42 + t43 + t44 + t45 + t46 + t47 + t48 + t49 + t50 + t51 + t52 + t53 + t54 + t55 + t56 + t57 + t58 + t59 + t60 + t61 + t62 + t63 + t64 + t65 + t66 + t67 + t68 + t69 + t70 + t71 + t72 + t73 + t74 + t75 + t76 + t77 + t78 + t79 + t80 + t81 + t82 + t83 + t84 + t85 + t86 + t87 + t88 + t89 + t90 + t91 + t92 + t93 + t94 + t95 + t96 + t97 + t98 + t99 + t100 + t101 + t102 + t103 + t104 + t105 + t106 + t107 + t108 + t109 + t110 + t111 + t112 + t113 + t114 + t115 + t116 + t117 + t118 + t119 + t120 + t121 + t122 + t123 + t124 + t125 + t126 + t127 + t128 + t129 + t130 + t131 + t132 + t133 + t134 + t135 + t136 + t137 + t138 + t139 + t140;
-    let u2 = println(total);  -- Expected: 621
+    let total = t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t9 + t10 + t11 + t12 + t13 + t14 + t15 + t16 + t17 + t18 + t19 + t20 + t21 + t22 + t23 + t24 + t25 + t26 + t27 + t28 + t29 + t30 + t31 + t32 + t33 + t34 + t35 + t36 + t37 + t38 + t39 + t40 + t41 + t42 + t43 + t44 + t45 + t46 + t47 + t48 + t49 + t50 + t51 + t52 + t53 + t54 + t55 + t56 + t57 + t58 + t59 + t60 + t61 + t62 + t63 + t64 + t65 + t66 + t67 + t68 + t69 + t70 + t71 + t72 + t73 + t74 + t75 + t76 + t77 + t78 + t79 + t80 + t81 + t82 + t83 + t84 + t85 + t86 + t87 + t88 + t89 + t90 + t91 + t92 + t93 + t94 + t95 + t96 + t97 + t98 + t99 + t100 + t101 + t102 + t103 + t104 + t105 + t106 + t107 + t108 + t109 + t110 + t111 + t112 + t113 + t114 + t115 + t116 + t117 + t118 + t119 + t120 + t121 + t122 + t123 + t124 + t125 + t126 + t127 + t128 + t129 + t130 + t131 + t132 + t133 + t134 + t135 + t136 + t137 + t138 + t139 + t140 + t141 + t142 + t143;
+    let u2 = println(total);  -- Expected: 644
 
     let u3 = println(999);  -- End marker
     total;

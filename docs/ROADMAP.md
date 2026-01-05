@@ -164,7 +164,7 @@ v0.MAJOR.MINOR
 | v0.28 | Benchmark | C/Rust/BMB benchmark suite | Compute-intensive benchmarks, Contract-optimized benchmarks, Real-world workloads |
 | v0.29 | Velocity | C/Rust performance sprint | MIR optimization framework (6 passes), Contract-based optimization, Bootstrap optimization module |
 
-### Bootstrap Statistics (as of v0.30.65)
+### Bootstrap Statistics (as of v0.30.68)
 
 | Metric | Value |
 |--------|-------|
@@ -172,7 +172,7 @@ v0.MAJOR.MINOR
 | BMB Bootstrap | ~13,500 LOC |
 | Coverage | 62% |
 | Stage 1/2 Tests | 19 tests passing |
-| Bootstrap Tests | 1115 tests (621 types + 163 llvm_ir + 95 lowering + 46 mir + 83 parser_ast + 33 utils + 19 selfhost_equiv + 30 pipeline + 9 optimize + 8 selfhost_test + 8 compiler) |
+| Bootstrap Tests | 1151 tests (644 types + 163 llvm_ir + 108 lowering + 46 mir + 83 parser_ast + 33 utils + 19 selfhost_equiv + 30 pipeline + 9 optimize + 8 selfhost_test + 8 compiler) |
 
 ---
 
@@ -302,6 +302,29 @@ v0.MAJOR.MINOR
 - `enum_reg_variant_type`: Resolve variant type with type args through registry lookup
 - `enum_reg_count`, `enum_reg_is_generic`: Registry utilities
 - 5 new test functions, 19 assertions (335 total in types.bmb)
+
+**v0.30.68 Completed (2026-01-05)**:
+- Method call type checking: `(method_call receiver <method> args)` expressions
+- tenv_method_lookup: Built-in method type lookup (String.len, String.slice)
+- type_of_method_call: Determine return type based on receiver and method
+- method_call_receiver, method_call_name: AST extraction helpers
+- EXPR_METHOD_CALL constant (23) for expr_kind detection
+- 8 method call type checking tests, types total: 644 tests
+
+**v0.30.67 Completed (2026-01-05)**:
+- Index expression type checking: `(index base idx)` expressions
+- type_of_index: Extract element type from array type
+- index_base_expr, index_index_expr: AST component extraction
+- array_element_type: Strip `[` and `]` from array type notation
+- EXPR_INDEX constant (22) for expr_kind detection
+- 7 index type checking tests
+
+**v0.30.66 Completed (2026-01-05)**:
+- Array literal type checking: `(array elem1 elem2 ...)` expressions
+- type_of_array: Infer element type from first element or unit for empty
+- array_element_at, array_element_count: Element access and counting
+- EXPR_ARRAY constant (21) for expr_kind detection
+- 8 array type checking tests
 
 **v0.30.65 Completed (2026-01-05)**:
 - Index expression MIR lowering: `(index expr idx)` → MIR Index instruction

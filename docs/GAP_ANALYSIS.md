@@ -69,7 +69,7 @@ This document provides a comprehensive analysis of the requirements for BMB v0.3
 | parser_ast.bmb | 98KB | 2,390 | Complete | 104 tests (Struct/Enum/Trait/Impl/Array/Index/MethodCall) |
 | pipeline.bmb | 34KB | 788 | Complete | 30 tests |
 | parser_test.bmb | 25KB | 641 | Complete | 15 categories |
-| types.bmb | 23KB | 617 | Complete | 45 tests |
+| types.bmb | 270KB | 7,021 | Complete | 644 tests (143 test functions) |
 | parser.bmb | 22KB | 605 | Complete | Syntax validation |
 | mir.bmb | 20KB | 552 | Complete | 46 tests |
 | selfhost_test.bmb | 23KB | 536 | Complete | 8 tests |
