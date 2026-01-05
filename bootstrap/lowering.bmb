@@ -230,6 +230,15 @@ fn is_continue_node(s: String) -> bool =
     s.char_at(8) == 101 and  -- 'e'
     s.char_at(9) == 41;      -- ')'
 
+-- v0.30.64: Array literal node detection - (array elem1 elem2 ...)
+fn is_array_node(s: String) -> bool = get_node_type(s) == "array";
+
+-- v0.30.65: Index expression node detection - (index expr idx)
+fn is_index_node(s: String) -> bool = get_node_type(s) == "index";
+
+-- v0.30.63: Method call node detection - (method_call receiver <method> args...)
+fn is_method_call_node(s: String) -> bool = get_node_type(s) == "method_call";
+
 fn has_double_colon(s: String, pos: i64) -> bool =
     if pos + 1 >= s.len() then false
     else if s.char_at(pos) == 58 and s.char_at(pos + 1) == 58 then true  -- '::'
@@ -633,6 +642,12 @@ fn lower_expr(ast: String, temp: i64, block: i64) -> String =
     -- v0.30.43: Break/Continue expression support
     else if is_break_node(ast) then lower_break(ast, temp, block)
     else if is_continue_node(ast) then lower_continue(ast, temp, block)
+    -- v0.30.64: Array literal support
+    else if is_array_node(ast) then lower_array(ast, temp, block)
+    -- v0.30.65: Index expression support
+    else if is_index_node(ast) then lower_index(ast, temp, block)
+    -- v0.30.63: Method call support
+    else if is_method_call_node(ast) then lower_method_call(ast, temp, block)
     else pack_lower_result(temp, block, "%error", "  ; unknown: " + get_node_type(ast));
 
 -- Lower integer literal: (int 42)
@@ -1130,6 +1145,141 @@ fn lower_field_access(ast: String, temp: i64, block: i64) -> String =
     pack_lower_result(tb + 1, bb, dest, combined);
 
 -- ============================================================================
+-- v0.30.64: Array Literal Lowering
+-- ============================================================================
+
+-- Lower array literal: (array elem1 elem2 ...)
+fn lower_array(ast: String, temp: i64, block: i64) -> String =
+    -- Lower all elements and collect results
+    let elems_result = lower_array_elements(ast, 0, temp, block, "");
+    let t = unpack_temp(elems_result);
+    let b = unpack_block(elems_result);
+    let elems_str = unpack_result_place(elems_result);
+    let elems_text = unpack_text(elems_result);
+
+    let dest = place_temp(t);
+    let arr_text = "  " + dest + " = Array [" + elems_str + "]";
+    let combined = if elems_text.len() > 0 then elems_text + "|" + arr_text else arr_text;
+    pack_lower_result(t + 1, b, dest, combined);
+
+-- Lower array elements recursively: "(array 1 2 3)" -> "%t0, %t1, %t2"
+fn lower_array_elements(ast: String, idx: i64, temp: i64, block: i64, elems: String) -> String =
+    let elem_ast = get_child(ast, idx);
+    if elem_ast.len() == 0 or elem_ast == "" then
+        pack_lower_result(temp, block, elems, "")
+    else
+        let r = lower_expr(elem_ast, temp, block);
+        let t = unpack_temp(r);
+        let b = unpack_block(r);
+        let p = unpack_result_place(r);
+        let text = unpack_text(r);
+
+        let new_elems = if elems.len() > 0 then elems + ", " + p else p;
+
+        let next_result = lower_array_elements(ast, idx + 1, t, b, new_elems);
+        let t2 = unpack_temp(next_result);
+        let b2 = unpack_block(next_result);
+        let p2 = unpack_result_place(next_result);
+        let text2 = unpack_text(next_result);
+
+        let combined = if text.len() > 0 and text2.len() > 0 then text + "|" + text2
+                       else if text.len() > 0 then text
+                       else text2;
+        pack_lower_result(t2, b2, p2, combined);
+
+-- ============================================================================
+-- v0.30.65: Index Expression Lowering
+-- ============================================================================
+
+-- Lower index expression: (index base idx)
+fn lower_index(ast: String, temp: i64, block: i64) -> String =
+    let base_ast = get_child(ast, 0);
+    let idx_ast = get_child(ast, 1);
+
+    -- Lower base expression
+    let rb = lower_expr(base_ast, temp, block);
+    let tb = unpack_temp(rb);
+    let bb = unpack_block(rb);
+    let pb = unpack_result_place(rb);
+    let textb = unpack_text(rb);
+
+    -- Lower index expression
+    let ri = lower_expr(idx_ast, tb, bb);
+    let ti = unpack_temp(ri);
+    let bi = unpack_block(ri);
+    let pi = unpack_result_place(ri);
+    let texti = unpack_text(ri);
+
+    let dest = place_temp(ti);
+    let index_text = "  " + dest + " = Index " + pb + "[" + pi + "]";
+    let combined_base = if textb.len() > 0 and texti.len() > 0 then textb + "|" + texti
+                        else if textb.len() > 0 then textb
+                        else texti;
+    let combined = if combined_base.len() > 0 then combined_base + "|" + index_text else index_text;
+    pack_lower_result(ti + 1, bi, dest, combined);
+
+-- ============================================================================
+-- v0.30.63: Method Call Lowering
+-- ============================================================================
+
+-- Lower method call: (method_call receiver <method> arg1 arg2 ...)
+fn lower_method_call(ast: String, temp: i64, block: i64) -> String =
+    let receiver_ast = get_child(ast, 0);
+    let method_name = get_method_name(ast);
+
+    -- Lower receiver
+    let rr = lower_expr(receiver_ast, temp, block);
+    let tr = unpack_temp(rr);
+    let br = unpack_block(rr);
+    let pr = unpack_result_place(rr);
+    let textr = unpack_text(rr);
+
+    -- Lower arguments
+    let args_result = lower_method_args(ast, 2, tr, br, "");
+    let ta = unpack_temp(args_result);
+    let ba = unpack_block(args_result);
+    let args_str = unpack_result_place(args_result);
+    let texta = unpack_text(args_result);
+
+    let dest = place_temp(ta);
+    let call_text = "  " + dest + " = MethodCall " + pr + "." + method_name + "(" + args_str + ")";
+    let combined_recv = if textr.len() > 0 and texta.len() > 0 then textr + "|" + texta
+                        else if textr.len() > 0 then textr
+                        else texta;
+    let combined = if combined_recv.len() > 0 then combined_recv + "|" + call_text else call_text;
+    pack_lower_result(ta + 1, ba, dest, combined);
+
+-- Lower method call arguments: (method_call recv <method> arg1 arg2) -> "%t0, %t1"
+fn lower_method_args(ast: String, idx: i64, temp: i64, block: i64, args: String) -> String =
+    let arg_ast = get_child(ast, idx);
+    if arg_ast.len() == 0 or arg_ast == "" then
+        pack_lower_result(temp, block, args, "")
+    else
+        let r = lower_expr(arg_ast, temp, block);
+        let t = unpack_temp(r);
+        let b = unpack_block(r);
+        let p = unpack_result_place(r);
+        let text = unpack_text(r);
+
+        let new_args = if args.len() > 0 then args + ", " + p else p;
+
+        let next_result = lower_method_args(ast, idx + 1, t, b, new_args);
+        let t2 = unpack_temp(next_result);
+        let b2 = unpack_block(next_result);
+        let p2 = unpack_result_place(next_result);
+        let text2 = unpack_text(next_result);
+
+        let combined = if text.len() > 0 and text2.len() > 0 then text + "|" + text2
+                       else if text.len() > 0 then text
+                       else text2;
+        pack_lower_result(t2, b2, p2, combined);
+
+-- Extract method name from method_call AST: (method_call recv <method> args) -> "method"
+fn get_method_name(ast: String) -> String =
+    let child1 = get_child(ast, 1);  -- <method>
+    extract_name(child1);
+
+-- ============================================================================
 -- v0.21.1: Enum Lowering
 -- ============================================================================
 
@@ -1605,6 +1755,43 @@ fn main() -> i64 =
     let range_lower_tests = rgl1 + rgl2;
     let u40 = println(range_lower_tests);  -- Should be 2
 
+    -- Test 38: v0.30.64 Array node detection (2 tests)
+    let arn1 = if is_array_node("(array (int 1) (int 2) (int 3))") then 1 else 0;
+    let arn2 = if is_array_node("(array)") then 1 else 0;  -- empty array
+    let array_node_tests = arn1 + arn2;
+    let u41 = println(array_node_tests);  -- Should be 2
+
+    -- Test 39: v0.30.64 Array lowering (3 tests)
+    let arl1 = test_lower_contains("(array (int 1) (int 2))", "Array [");
+    let arl2 = test_lower_contains("(array (int 1) (int 2))", "%_t0");
+    let arl3 = test_lower_contains("(array)", "Array []");  -- empty array
+    let array_lower_tests = arl1 + arl2 + arl3;
+    let u42 = println(array_lower_tests);  -- Should be 3
+
+    -- Test 40: v0.30.65 Index node detection (2 tests)
+    let ixn1 = if is_index_node("(index (var <arr>) (int 0))") then 1 else 0;
+    let ixn2 = if is_index_node("(index (var <arr>) (var <i>))") then 1 else 0;
+    let index_node_tests = ixn1 + ixn2;
+    let u43 = println(index_node_tests);  -- Should be 2
+
+    -- Test 41: v0.30.65 Index lowering (2 tests)
+    let ixl1 = test_lower_contains("(index (var <arr>) (int 0))", "Index %arr[");
+    let ixl2 = test_lower_contains("(index (var <arr>) (var <i>))", "Index %arr[%i]");
+    let index_lower_tests = ixl1 + ixl2;
+    let u44 = println(index_lower_tests);  -- Should be 2
+
+    -- Test 42: v0.30.63 Method call node detection (2 tests)
+    let mcn1 = if is_method_call_node("(method_call (var <x>) <foo>)") then 1 else 0;
+    let mcn2 = if is_method_call_node("(method_call (var <x>) <bar> (int 1))") then 1 else 0;
+    let method_node_tests = mcn1 + mcn2;
+    let u45 = println(method_node_tests);  -- Should be 2
+
+    -- Test 43: v0.30.63 Method call lowering (2 tests)
+    let mcl1 = test_lower_contains("(method_call (var <x>) <foo>)", "MethodCall %x.foo()");
+    let mcl2 = test_lower_contains("(method_call (var <x>) <bar> (int 1))", "MethodCall %x.bar(");
+    let method_lower_tests = mcl1 + mcl2;
+    let u46 = println(method_lower_tests);  -- Should be 2
+
     let u22 = println(888);  -- Separator
 
     let total = node_tests + extract_tests + child_tests + int_tests + bool_tests +
@@ -1616,8 +1803,10 @@ fn main() -> i64 =
                 block_unit_node_tests + block_inner_tests + block_unit_lower_tests +
                 while_node_tests + while_lower_tests + for_node_tests + for_lower_tests +
                 break_node_tests + continue_node_tests + break_continue_lower_tests +
-                range_encode_tests + range_lower_tests;
-    let u23 = println(total);  -- Should be 95 (91 + 4 range tests)
+                range_encode_tests + range_lower_tests +
+                array_node_tests + array_lower_tests + index_node_tests + index_lower_tests +
+                method_node_tests + method_lower_tests;
+    let u23 = println(total);  -- Should be 108 (95 + 13 new tests)
 
     let u24 = println(999);  -- End marker
 

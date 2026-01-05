@@ -164,7 +164,7 @@ v0.MAJOR.MINOR
 | v0.28 | Benchmark | C/Rust/BMB benchmark suite | Compute-intensive benchmarks, Contract-optimized benchmarks, Real-world workloads |
 | v0.29 | Velocity | C/Rust performance sprint | MIR optimization framework (6 passes), Contract-based optimization, Bootstrap optimization module |
 
-### Bootstrap Statistics (as of v0.30.62)
+### Bootstrap Statistics (as of v0.30.65)
 
 | Metric | Value |
 |--------|-------|
@@ -302,6 +302,30 @@ v0.MAJOR.MINOR
 - `enum_reg_variant_type`: Resolve variant type with type args through registry lookup
 - `enum_reg_count`, `enum_reg_is_generic`: Registry utilities
 - 5 new test functions, 19 assertions (335 total in types.bmb)
+
+**v0.30.65 Completed (2026-01-05)**:
+- Index expression MIR lowering: `(index expr idx)` → MIR Index instruction
+- lower_index: Lower base and index expressions, generate Index MIR
+- MIR format: `%dest = Index %base[%idx]`
+- is_index_node: Node type detection for index expressions
+- 4 index lowering tests, lowering total: 108 tests
+
+**v0.30.64 Completed (2026-01-05)**:
+- Array literal MIR lowering: `(array elem1 elem2)` → MIR Array instruction
+- lower_array, lower_array_elements: Recursive element lowering
+- MIR format: `%dest = Array [%elem1, %elem2, ...]`
+- is_array_node: Node type detection for array literals
+- 5 array lowering tests
+
+**v0.30.63 Completed (2026-01-05)**:
+- Method call parsing: `obj.method(args)` syntax support
+- parse_postfix extended: Detect `(` after field name for method calls
+- parse_method_args, parse_method_args_more: Argument list handling
+- AST format: `(method_call receiver <method> arg1 arg2 ...)`
+- Method call MIR lowering: lower_method_call, lower_method_args
+- MIR format: `%dest = MethodCall %recv.method(args)`
+- is_method_call_node, get_method_name: Node detection and extraction
+- 5 parser tests (104 total), 4 lowering tests
 
 **v0.30.62 Completed (2026-01-05)**:
 - Array type parsing: `[T]` type syntax in params and return types

@@ -1139,6 +1139,7 @@ fn parse_expr(src: String, pos: i64) -> String =
 
 -- v0.22.0: Parse postfix operators (field access: expr.field)
 -- v0.30.61: Extended for index expressions (arr[i])
+-- v0.30.63: Extended for method calls (obj.method(args))
 fn parse_postfix(src: String, pos: i64, expr: String) -> String =
     let tok = next_token_raw(src, pos);
     let kind = tok_kind(tok);
@@ -1149,7 +1150,14 @@ fn parse_postfix(src: String, pos: i64, expr: String) -> String =
             let ns = skip_all(src, tok_end(tok));
             let ne = tok_end(t2);
             let fname = src.slice(ns, ne);
-            parse_postfix(src, ne, "(field " + expr + " <" + fname + ">)")
+            -- v0.30.63: Check for method call (lparen after field name)
+            let t3 = next_token_raw(src, ne);
+            if tok_kind(t3) == TK_LPAREN() then
+                -- Method call: obj.method(args)
+                parse_method_args(src, tok_end(t3), expr, fname, "")
+            else
+                -- Field access: obj.field
+                parse_postfix(src, ne, "(field " + expr + " <" + fname + ">)")
     else if kind == TK_LBRACKET() then
         -- v0.30.61: Index expression arr[index]
         let idx_result = parse_expr(src, tok_end(tok));
@@ -1159,6 +1167,32 @@ fn parse_postfix(src: String, pos: i64, expr: String) -> String =
             if tok_kind(close) != TK_RBRACKET() then pack_result(unpack_pos(idx_result), make_error("index-bracket"))
             else parse_postfix(src, tok_end(close), "(index " + expr + " " + unpack_ast(idx_result) + ")")
     else pack_result(pos, expr);
+
+-- v0.30.63: Parse method call arguments
+-- obj.method(arg1, arg2) → (method_call obj <method> arg1 arg2)
+fn parse_method_args(src: String, pos: i64, receiver: String, method: String, args: String) -> String =
+    let tok = next_token_raw(src, pos);
+    let kind = tok_kind(tok);
+    if kind == TK_RPAREN() then
+        -- End of arguments, build method call AST
+        parse_postfix(src, tok_end(tok), "(method_call " + receiver + " <" + method + ">" + args + ")")
+    else
+        -- Parse next argument expression
+        let arg_result = parse_expr(src, pos);
+        if is_error(unpack_ast(arg_result)) then arg_result
+        else parse_method_args_more(src, unpack_pos(arg_result), receiver, method, args + " " + unpack_ast(arg_result));
+
+-- v0.30.63: Parse additional method arguments after comma
+fn parse_method_args_more(src: String, pos: i64, receiver: String, method: String, args: String) -> String =
+    let tok = next_token_raw(src, pos);
+    let kind = tok_kind(tok);
+    if kind == TK_RPAREN() then
+        parse_postfix(src, tok_end(tok), "(method_call " + receiver + " <" + method + ">" + args + ")")
+    else if kind == TK_COMMA() then
+        let arg_result = parse_expr(src, tok_end(tok));
+        if is_error(unpack_ast(arg_result)) then arg_result
+        else parse_method_args_more(src, unpack_pos(arg_result), receiver, method, args + " " + unpack_ast(arg_result))
+    else pack_result(pos, make_error("method-arg"));
 
 fn parse_binop(src: String, pos: i64, left: String) -> String =
     let tok = next_token_raw(src, pos);
@@ -2111,6 +2145,55 @@ fn test_array_type_direct() -> i64 =
     else if ast_contains(ast, "(array_type i64)") then 1
     else 0;
 
+-- ============================================================
+-- v0.30.63: Method Call Parsing Tests
+-- ============================================================
+
+-- Test 1: simple method call with no args
+fn test_method_no_args() -> i64 =
+    let src = "fn test(x: i64) -> i64 = x.foo();";
+    let result = parse_program(src, 0, "");
+    let ast = unpack_ast(result);
+    if is_error(ast) then 0
+    else if ast_contains(ast, "(method_call (var <x>) <foo>)") then 1
+    else 0;
+
+-- Test 2: method call with one arg
+fn test_method_one_arg() -> i64 =
+    let src = "fn test(x: i64) -> i64 = x.add(1);";
+    let result = parse_program(src, 0, "");
+    let ast = unpack_ast(result);
+    if is_error(ast) then 0
+    else if ast_contains(ast, "(method_call (var <x>) <add> (int 1))") then 1
+    else 0;
+
+-- Test 3: method call with multiple args
+fn test_method_multi_args() -> i64 =
+    let src = "fn test(x: i64) -> i64 = x.calc(1, 2, 3);";
+    let result = parse_program(src, 0, "");
+    let ast = unpack_ast(result);
+    if is_error(ast) then 0
+    else if ast_contains(ast, "(method_call") and ast_contains(ast, "<calc>") and ast_contains(ast, "(int 3)") then 1
+    else 0;
+
+-- Test 4: chained method calls
+fn test_method_chain() -> i64 =
+    let src = "fn test(x: i64) -> i64 = x.foo().bar();";
+    let result = parse_program(src, 0, "");
+    let ast = unpack_ast(result);
+    if is_error(ast) then 0
+    else if ast_contains(ast, "(method_call (method_call") then 1
+    else 0;
+
+-- Test 5: method call on literal
+fn test_method_on_literal() -> i64 =
+    let src = "fn test() -> i64 = 42.to_string();";
+    let result = parse_program(src, 0, "");
+    let ast = unpack_ast(result);
+    if is_error(ast) then 0
+    else if ast_contains(ast, "(method_call (int 42) <to_string>)") then 1
+    else 0;
+
 fn main() -> i64 =
     let u0 = println(777);  -- Start marker
 
@@ -2290,6 +2373,15 @@ fn main() -> i64 =
     let array_type_passed = atd + at1 + at2 + at3 + at4 + at5;
     let u19 = println(array_type_passed);  -- Should be 6
 
+    -- v0.30.63: Method call parsing tests
+    let mc1 = test_method_no_args();
+    let mc2 = test_method_one_arg();
+    let mc3 = test_method_multi_args();
+    let mc4 = test_method_chain();
+    let mc5 = test_method_on_literal();
+    let method_passed = mc1 + mc2 + mc3 + mc4 + mc5;
+    let u20 = println(method_passed);  -- Should be 5
+
     let u4 = println(999);  -- End marker
 
-    parse_passed + ast_passed + struct_passed + enum_passed + integration_passed + generic_passed + typeparam_passed + string_passed + lambda_passed + while_passed + for_passed + range_passed + break_passed + trait_passed + array_passed + index_passed + array_type_passed;  -- Should be 99
+    parse_passed + ast_passed + struct_passed + enum_passed + integration_passed + generic_passed + typeparam_passed + string_passed + lambda_passed + while_passed + for_passed + range_passed + break_passed + trait_passed + array_passed + index_passed + array_type_passed + method_passed;  -- Should be 104
