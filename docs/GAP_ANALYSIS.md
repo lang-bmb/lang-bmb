@@ -199,6 +199,7 @@ Gap to Close:
 - ✅ For loop parsing (v0.30.39: TK_FOR, TK_IN, parse_for, for var in iter {} syntax)
 - ✅ For MIR lowering (v0.30.40: is_for_node, lower_for, for_start/for_end blocks)
 - ✅ Range expression parsing (v0.30.41: TK_DOTDOTEQ, check_three_char, 0..n and 0..=n syntax)
+- ✅ Break/Continue parsing (v0.30.42: TK_BREAK, TK_CONTINUE, parse_break, parse_continue)
 
 ### What Bootstrap CANNOT Do Yet
 
@@ -312,11 +313,11 @@ $ diff stage2/bmb stage3/bmb
 
 v0.30 "Pure" represents the culmination of the BMB self-hosting journey. With Stage 1/2 verification complete and the bootstrap covering the full compilation pipeline, the remaining work is substantial but achievable within the 2026 Q4 timeline.
 
-**Key Metrics** (as of v0.30.41):
+**Key Metrics** (as of v0.30.42):
 - Rust code to remove: ~21,783 LOC
 - BMB bootstrap code: ~12,000 LOC (55% coverage)
 - Gap to close: ~11,100 LOC additional BMB
-- Bootstrap tests passing: 970 tests (600 types + 119 llvm_ir + 85 lowering + 46 mir + 66 parser_ast + ...)
+- Bootstrap tests passing: 975 tests (600 types + 119 llvm_ir + 85 lowering + 46 mir + 71 parser_ast + ...)
 - Estimated effort: 6-9 months
 
 ---

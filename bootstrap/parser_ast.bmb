@@ -43,6 +43,8 @@ fn TK_MATCH() -> i64 = 121;   -- v0.22.1: match keyword
 fn TK_WHILE() -> i64 = 122;   -- v0.30.37: while keyword
 fn TK_FOR() -> i64 = 123;     -- v0.30.39: for keyword
 fn TK_IN() -> i64 = 124;      -- v0.30.39: in keyword
+fn TK_BREAK() -> i64 = 125;   -- v0.30.42: break keyword
+fn TK_CONTINUE() -> i64 = 126; -- v0.30.42: continue keyword
 
 fn TK_I32() -> i64 = 150;
 fn TK_I64() -> i64 = 151;
@@ -152,6 +154,8 @@ fn lookup_keyword(w: String) -> i64 =
     else if w == "while" then 122   -- v0.30.37
     else if w == "for" then 123     -- v0.30.39
     else if w == "in" then 124      -- v0.30.39
+    else if w == "break" then 125   -- v0.30.42
+    else if w == "continue" then 126 -- v0.30.42
     else if w == "i32" then 150
     else if w == "i64" then 151
     else if w == "f64" then 152
@@ -703,6 +707,8 @@ fn parse_primary(src: String, pos: i64) -> String =
     else if kind == TK_IF() then parse_if(src, end)
     else if kind == TK_WHILE() then parse_while(src, end)  -- v0.30.37
     else if kind == TK_FOR() then parse_for(src, end)      -- v0.30.39
+    else if kind == TK_BREAK() then parse_break(src, end)    -- v0.30.42
+    else if kind == TK_CONTINUE() then parse_continue(src, end) -- v0.30.42
     else if kind == TK_LET() then parse_let(src, end)
     else if kind == TK_NOT() then
         let r = parse_primary(src, end);
@@ -894,6 +900,14 @@ fn parse_for(src: String, pos: i64) -> String =
                         let t4 = next_token_raw(src, unpack_pos(rb));
                         if tok_kind(t4) != TK_RBRACE() then pack_result(unpack_pos(rb), make_error("for-rbrace"))
                         else pack_result(tok_end(t4), "(for <" + varname + "> " + unpack_ast(ri) + " " + unpack_ast(rb) + ")");
+
+-- v0.30.42: Parse break statement
+fn parse_break(src: String, pos: i64) -> String =
+    pack_result(pos, "(break)");
+
+-- v0.30.42: Parse continue statement
+fn parse_continue(src: String, pos: i64) -> String =
+    pack_result(pos, "(continue)");
 
 fn parse_let(src: String, pos: i64) -> String =
     let t1 = next_token_raw(src, pos);
@@ -1223,6 +1237,49 @@ fn test_integration_struct_enum() -> i64 =
     let result = parse_program(src, 0, "");
     let ast = unpack_ast(result);
     if is_error(ast) then 0 else 1;
+
+-- ============================================================
+-- v0.30.42: Break/Continue Tests
+-- ============================================================
+
+-- Test 1: break token recognition
+fn test_break_token() -> i64 =
+    let src = "break";
+    let t1 = next_token_raw(src, 0);
+    if tok_kind(t1) == TK_BREAK() then 1 else 0;
+
+-- Test 2: continue token recognition
+fn test_continue_token() -> i64 =
+    let src = "continue";
+    let t1 = next_token_raw(src, 0);
+    if tok_kind(t1) == TK_CONTINUE() then 1 else 0;
+
+-- Test 3: break in while loop
+fn test_break_in_while() -> i64 =
+    let src = "fn test() -> i64 = while true { break };";
+    let result = parse_program(src, 0, "");
+    let ast = unpack_ast(result);
+    if is_error(ast) then 0
+    else if ast_contains(ast, "(while") and ast_contains(ast, "(break)") then 1
+    else 0;
+
+-- Test 4: continue in for loop
+fn test_continue_in_for() -> i64 =
+    let src = "fn test() -> i64 = for i in items { continue };";
+    let result = parse_program(src, 0, "");
+    let ast = unpack_ast(result);
+    if is_error(ast) then 0
+    else if ast_contains(ast, "(for <i>") and ast_contains(ast, "(continue)") then 1
+    else 0;
+
+-- Test 5: break and continue combined
+fn test_break_continue_combined() -> i64 =
+    let src = "fn test() -> i64 = while true { if done then break else continue };";
+    let result = parse_program(src, 0, "");
+    let ast = unpack_ast(result);
+    if is_error(ast) then 0
+    else if ast_contains(ast, "(break)") and ast_contains(ast, "(continue)") then 1
+    else 0;
 
 -- Test struct init with match expression
 fn test_integration_init_match() -> i64 =
@@ -1711,6 +1768,15 @@ fn main() -> i64 =
     let range_passed = rng1 + rng2 + rng3 + rng4 + rng5;
     let u14 = println(range_passed);  -- Should be 5
 
+    -- v0.30.42: Break/Continue parsing tests
+    let brk1 = test_break_token();
+    let brk2 = test_continue_token();
+    let brk3 = test_break_in_while();
+    let brk4 = test_continue_in_for();
+    let brk5 = test_break_continue_combined();
+    let break_passed = brk1 + brk2 + brk3 + brk4 + brk5;
+    let u15 = println(break_passed);  -- Should be 5
+
     let u4 = println(999);  -- End marker
 
-    parse_passed + ast_passed + struct_passed + enum_passed + integration_passed + generic_passed + typeparam_passed + string_passed + lambda_passed + while_passed + for_passed + range_passed;  -- Should be 66
+    parse_passed + ast_passed + struct_passed + enum_passed + integration_passed + generic_passed + typeparam_passed + string_passed + lambda_passed + while_passed + for_passed + range_passed + break_passed;  -- Should be 71

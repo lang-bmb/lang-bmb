@@ -303,6 +303,15 @@ v0.MAJOR.MINOR
 - `enum_reg_count`, `enum_reg_is_generic`: Registry utilities
 - 5 new test functions, 19 assertions (335 total in types.bmb)
 
+**v0.30.42 Completed (2026-01-05)**:
+- Break/Continue parsing: Full support for break and continue statements
+- TK_BREAK (125): Token for break keyword
+- TK_CONTINUE (126): Token for continue keyword
+- parse_break: Parser function generating (break) AST node
+- parse_continue: Parser function generating (continue) AST node
+- parse_primary extended: Handle TK_BREAK and TK_CONTINUE
+- Total: 71 tests passing in parser_ast.bmb (66 + 5 new)
+
 **v0.30.41 Completed (2026-01-05)**:
 - Range expression parsing: Exclusive (..) and inclusive (..=) range support
 - TK_DOTDOTEQ (324): Token for inclusive range operator ..=
