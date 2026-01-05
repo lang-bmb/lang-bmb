@@ -63,7 +63,7 @@ This document provides a comprehensive analysis of the requirements for BMB v0.3
 
 | File | Size | LOC | Status | Test Coverage |
 |------|------|-----|--------|---------------|
-| llvm_ir.bmb | 94KB | 2,400 | Complete | 239 tests (52 test functions) |
+| llvm_ir.bmb | 97KB | 2,500 | Complete | 283 tests (57 test functions) |
 | lowering.bmb | 53KB | 1,280 | Complete | 108 tests |
 | compiler.bmb | 53KB | 1,202 | Complete | 2 tests |
 | parser_ast.bmb | 98KB | 2,390 | Complete | 104 tests (Struct/Enum/Trait/Impl/Array/Index/MethodCall) |
@@ -211,11 +211,13 @@ Gap to Close:
 - ✅ String constant LLVM IR (v0.30.51: gen_const_string, parse_const_string, S: type support)
 - ✅ Closure LLVM IR (v0.30.52: gen_instr_closure, is_closure_op, CLOSURE: dispatch)
 - ✅ Block expression LLVM IR test (v0.30.53: test_block_ir, block pass-through verification)
+- ✅ Trait dispatch IR infrastructure (v0.30.96: TraitCall parsing, static dispatch, gen_trait_dispatch)
+- ✅ Closure capture IR infrastructure (v0.30.97: Capture/LoadCapture parsing, env alloc, capture store/load)
 
 ### What Bootstrap CANNOT Do Yet
 
-- ❌ Trait implementation dispatch
-- ❌ Closure capture (type checking ✅, basic MIR ✅, captures ❌)
+- ⚠️ Trait implementation dispatch (IR infrastructure ✅, full trait impl lookup ❌)
+- ⚠️ Closure capture (type checking ✅, MIR ✅, IR infrastructure ✅, full capture analysis ❌)
 - ❌ FFI linking
 - ❌ Standard library operations (IO, String heap)
 - ❌ Interpreter execution
@@ -324,14 +326,14 @@ $ diff stage2/bmb stage3/bmb
 
 v0.30 "Pure" represents the culmination of the BMB self-hosting journey. With Stage 1/2 verification complete and the bootstrap covering the full compilation pipeline, the remaining work is substantial but achievable within the 2026 Q4 timeline.
 
-**Key Metrics** (as of v0.30.79):
+**Key Metrics** (as of v0.30.97):
 - Rust code to remove: ~21,783 LOC
-- BMB bootstrap code: ~13,200 LOC (61% coverage)
-- Gap to close: ~9,500 LOC additional BMB
-- Bootstrap tests passing: 1197 tests (650 types + 203 llvm_ir + 108 lowering + 46 mir + 104 parser_ast + ...)
+- BMB bootstrap code: ~13,300 LOC (62% coverage)
+- Gap to close: ~9,400 LOC additional BMB
+- Bootstrap tests passing: 1241 tests (733 types + 283 llvm_ir + 108 lowering + 46 mir + 104 parser_ast + ...)
 - Estimated effort: 6-9 months
 
 ---
 
-**Last Updated**: 2026-01-05
+**Last Updated**: 2026-01-06
 **Author**: BMB Development Team

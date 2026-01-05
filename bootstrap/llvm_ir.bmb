@@ -649,6 +649,115 @@ fn is_closure_op(op: String) -> bool =
          op.char_at(6) == 69;  -- "CLOSURE"
 
 -- ============================================================================
+-- SECTION 11c: Closure Capture Infrastructure (v0.30.97)
+-- MIR Capture → LLVM IR for closure environment handling
+-- ============================================================================
+
+-- Closure captures use environment struct: { i8* fn_ptr, i64* env }
+-- MIR format: Capture %closure, %var, idx
+--             LoadCapture %dest, %closure, idx
+
+-- Check if line is a capture store instruction
+fn is_capture_line(line: String) -> bool =
+    has_pattern(line, "Capture ", 0) and not has_pattern(line, "LoadCapture", 0);
+
+-- Check if line is a capture load instruction
+fn is_load_capture_line(line: String) -> bool =
+    has_pattern(line, "LoadCapture ", 0);
+
+-- Parse closure ref from Capture %closure, %var, idx
+fn parse_capture_closure(line: String) -> String =
+    let cap_pos = find_capture_pos(line, 0);
+    if cap_pos < 0 then ""
+    else extract_capture_arg(line, cap_pos + 8, 0);
+
+fn find_capture_pos(s: String, pos: i64) -> i64 =
+    if pos + 8 >= s.len() then 0 - 1
+    else if starts_with(s, "Capture ", pos) then pos
+    else find_capture_pos(s, pos + 1);
+
+-- Extract nth comma-separated argument
+fn extract_capture_arg(s: String, pos: i64, n: i64) -> String =
+    let trimmed = skip_ws(s, pos);
+    if n == 0 then extract_until_comma_or_end(s, trimmed)
+    else
+        let comma = find_char(s, 44, trimmed);
+        if comma < 0 then ""
+        else extract_capture_arg(s, comma + 1, n - 1);
+
+fn extract_until_comma_or_end(s: String, pos: i64) -> String =
+    let comma = find_char(s, 44, pos);
+    if comma < 0 then trim_ws(s.slice(pos, s.len()))
+    else trim_ws(s.slice(pos, comma));
+
+fn skip_ws(s: String, pos: i64) -> i64 =
+    if pos >= s.len() then pos
+    else if s.char_at(pos) == 32 then skip_ws(s, pos + 1)
+    else pos;
+
+-- Parse captured variable from Capture %closure, %var, idx
+fn parse_capture_var(line: String) -> String =
+    let cap_pos = find_capture_pos(line, 0);
+    if cap_pos < 0 then ""
+    else extract_capture_arg(line, cap_pos + 8, 1);
+
+-- Parse capture index from Capture %closure, %var, idx
+fn parse_capture_idx(line: String) -> String =
+    let cap_pos = find_capture_pos(line, 0);
+    if cap_pos < 0 then ""
+    else extract_capture_arg(line, cap_pos + 8, 2);
+
+-- Parse LoadCapture destination
+fn parse_load_capture_dest(line: String) -> String =
+    let eq_pos = find_char(line, 61, 0);
+    if eq_pos < 0 then ""
+    else trim_ws(line.slice(0, eq_pos));
+
+-- Parse LoadCapture closure ref
+fn parse_load_capture_closure(line: String) -> String =
+    let lc_pos = find_load_capture_pos(line, 0);
+    if lc_pos < 0 then ""
+    else extract_capture_arg(line, lc_pos + 12, 0);
+
+fn find_load_capture_pos(s: String, pos: i64) -> i64 =
+    if pos + 12 >= s.len() then 0 - 1
+    else if starts_with(s, "LoadCapture ", pos) then pos
+    else find_load_capture_pos(s, pos + 1);
+
+-- Parse LoadCapture index
+fn parse_load_capture_idx(line: String) -> String =
+    let lc_pos = find_load_capture_pos(line, 0);
+    if lc_pos < 0 then ""
+    else extract_capture_arg(line, lc_pos + 12, 1);
+
+-- Generate environment allocation for closure with N captures
+fn gen_closure_env_alloc(dest: String, num_captures: i64) -> String =
+    if num_captures <= 0 then
+        dest + " = alloca i64  ; empty closure env"
+    else
+        dest + " = alloca [" + int_to_string(num_captures) + " x i64]  ; closure env";
+
+-- Generate capture store: store captured value into environment
+fn gen_capture_store(env: String, cap_var: String, idx: i64) -> String =
+    let gep = "%_cap_ptr_" + int_to_string(idx) + " = getelementptr i64, i64* " + env + ", i64 " + int_to_string(idx);
+    let store = "store i64 " + cap_var + ", i64* %_cap_ptr_" + int_to_string(idx);
+    gep + "|" + store;
+
+-- Generate capture load: load captured value from environment
+fn gen_capture_load(dest: String, env: String, idx: i64) -> String =
+    let gep = "%_cap_ptr_" + int_to_string(idx) + " = getelementptr i64, i64* " + env + ", i64 " + int_to_string(idx);
+    let load = dest + " = load i64, i64* %_cap_ptr_" + int_to_string(idx);
+    gep + "|" + load;
+
+-- Generate full closure creation with captures
+fn gen_closure_with_captures(dest: String, fn_ptr: String, env: String) -> String =
+    -- Closure struct: { fn_ptr, env_ptr }
+    let alloc = dest + ".struct = alloca { i64, i64* }";
+    let fn_store = "store i64 " + fn_ptr + ", i64* " + dest + ".struct.fn";
+    let env_store = "store i64* " + env + ", i64** " + dest + ".struct.env";
+    alloc + "|" + fn_store + "|" + env_store;
+
+-- ============================================================================
 -- v0.30.71: Array Literal IR Generation
 -- ============================================================================
 
@@ -1274,6 +1383,96 @@ fn gen_method_array_pop(dest: String, recv: String) -> String =
 -- array_clear: Remove all elements (returns void)
 fn gen_method_array_clear(dest: String, recv: String) -> String =
     "call void @bmb_array_clear(i8* " + recv + ")|" + dest + " = add i64 0, 0";
+
+-- ============================================================================
+-- SECTION 11b: Trait Dispatch Infrastructure (v0.30.96)
+-- MIR TraitCall → LLVM IR conversion for trait method calls
+-- ============================================================================
+
+-- v0.30.96: Trait dispatch support for trait method calls
+-- MIR format: %_t0 = TraitCall Trait::method(%recv, %args)
+-- LLVM output depends on whether dispatch is static or dynamic:
+--   Static:  call @Trait_Type_method(%recv, %args)
+--   Dynamic: load vtable, call indirect
+
+-- Check if line is a trait call
+fn is_trait_call_line(line: String) -> bool =
+    has_pattern(line, "TraitCall ", 0);
+
+-- Parse trait name from TraitCall (e.g., "Display" from "TraitCall Display::show")
+fn parse_trait_call_trait(line: String) -> String =
+    let tc_pos = find_trait_call_pos(line, 0);
+    if tc_pos < 0 then ""
+    else extract_trait_name(line, tc_pos + 10);  -- skip "TraitCall "
+
+fn find_trait_call_pos(s: String, pos: i64) -> i64 =
+    if pos + 10 >= s.len() then 0 - 1
+    else if starts_with(s, "TraitCall ", pos) then pos
+    else find_trait_call_pos(s, pos + 1);
+
+fn extract_trait_name(s: String, pos: i64) -> String =
+    let end = find_colon_colon(s, pos);
+    if end <= pos then ""
+    else s.slice(pos, end);
+
+fn find_colon_colon(s: String, pos: i64) -> i64 =
+    if pos + 1 >= s.len() then 0 - 1
+    else if s.char_at(pos) == 58 and s.char_at(pos + 1) == 58 then pos  -- '::'
+    else find_colon_colon(s, pos + 1);
+
+-- Parse method name from TraitCall (e.g., "show" from "TraitCall Display::show")
+fn parse_trait_call_method(line: String) -> String =
+    let tc_pos = find_trait_call_pos(line, 0);
+    if tc_pos < 0 then ""
+    else extract_trait_method(line, tc_pos);
+
+fn extract_trait_method(s: String, tc_pos: i64) -> String =
+    let cc_pos = find_colon_colon(s, tc_pos);
+    if cc_pos < 0 then ""
+    else extract_until_paren(s, cc_pos + 2);
+
+fn extract_until_paren(s: String, pos: i64) -> String =
+    let end = find_char(s, 40, pos);  -- '('
+    if end <= pos then s.slice(pos, s.len())
+    else s.slice(pos, end);
+
+-- Generate trait dispatch LLVM IR (v0.30.96)
+-- For bootstrap, use static dispatch: @Trait_Type_method
+fn gen_trait_dispatch(dest: String, trait_name: String, method: String, recv: String, args: String, target_type: String) -> String =
+    let fn_name = "@" + trait_name + "_" + target_type + "_" + method;
+    if args == "" then
+        dest + " = call i64 " + fn_name + "(i64 " + recv + ")"
+    else
+        dest + " = call i64 " + fn_name + "(i64 " + recv + ", " + args + ")";
+
+-- Generate trait call from MIR line (simplified for bootstrap)
+-- Line format: "  %_t0 = TraitCall Trait::method(%recv, %args)"
+fn gen_instr_trait_call(line: String) -> String =
+    let eq_pos = find_char(line, 61, 0);  -- '='
+    let dest = if eq_pos < 0 then "" else trim_ws(line.slice(0, eq_pos));
+    let trait_name = parse_trait_call_trait(line);
+    let method = parse_trait_call_method(line);
+    let recv = parse_trait_call_recv(line);
+    let args = parse_trait_call_args(line);
+    -- For bootstrap, assume i64 target type (static dispatch)
+    gen_trait_dispatch(dest, trait_name, method, recv, args, "i64");
+
+fn parse_trait_call_recv(line: String) -> String =
+    let paren_pos = find_char(line, 40, 0);  -- '('
+    if paren_pos < 0 then ""
+    else extract_first_arg(line.slice(paren_pos + 1, line.len()));
+
+fn parse_trait_call_args(line: String) -> String =
+    let paren_pos = find_char(line, 40, 0);
+    if paren_pos < 0 then ""
+    else
+        let inner = line.slice(paren_pos + 1, find_closing_paren(line, paren_pos) - 1);
+        let comma_pos = find_char(inner, 44, 0);
+        if comma_pos < 0 then ""
+        else trim_ws(inner.slice(comma_pos + 1, inner.len()));
+
+fn find_closing_paren(s: String, start: i64) -> i64 =
+    find_char(s, 41, start);  -- ')'
 
 -- Generate LLVM function header from MIR header
 fn gen_mir_fn_header(line: String) -> String =
@@ -2087,6 +2286,87 @@ fn test_struct_enum_edge() -> i64 =
 
     t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8;
 
+-- v0.30.96: Test trait dispatch IR infrastructure
+fn test_trait_dispatch_ir() -> i64 =
+    -- Test 1: is_trait_call_line detects TraitCall
+    let t1 = if is_trait_call_line("  %_t0 = TraitCall Display::show(%x)") then 1 else 0;
+
+    -- Test 2: is_trait_call_line rejects non-trait call
+    let t2 = if is_trait_call_line("  %_t0 = MethodCall %x.len()") then 0 else 1;
+
+    -- Test 3: parse_trait_call_trait extracts trait name
+    let tr1 = parse_trait_call_trait("  %_t0 = TraitCall Display::show(%x)");
+    let t3 = if tr1 == "Display" then 1 else 0;
+
+    -- Test 4: parse_trait_call_method extracts method name
+    let m1 = parse_trait_call_method("  %_t0 = TraitCall Display::show(%x)");
+    let t4 = if m1 == "show" then 1 else 0;
+
+    -- Test 5: gen_trait_dispatch generates static dispatch call
+    let td1 = gen_trait_dispatch("%_t0", "Display", "show", "%x", "", "i64");
+    let t5 = if has_pattern(td1, "@Display_i64_show", 0) then 1 else 0;
+
+    -- Test 6: gen_trait_dispatch includes receiver
+    let t6 = if has_pattern(td1, "(i64 %x)", 0) then 1 else 0;
+
+    -- Test 7: gen_trait_dispatch with args
+    let td2 = gen_trait_dispatch("%_t1", "Add", "add", "%a", "i64 %b", "i64");
+    let t7 = if has_pattern(td2, "@Add_i64_add", 0) then 1 else 0;
+
+    -- Test 8: gen_trait_dispatch with args includes args
+    let t8 = if has_pattern(td2, "(i64 %a, i64 %b)", 0) then 1 else 0;
+
+    t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8;
+
+-- v0.30.97: Test closure capture IR infrastructure
+fn test_closure_capture_ir() -> i64 =
+    -- Test 1: is_capture_line detects Capture
+    let t1 = if is_capture_line("  Capture %closure, %x, 0") then 1 else 0;
+
+    -- Test 2: is_capture_line rejects LoadCapture
+    let t2 = if is_capture_line("  LoadCapture %dest, %closure, 0") then 0 else 1;
+
+    -- Test 3: is_load_capture_line detects LoadCapture
+    let t3 = if is_load_capture_line("  LoadCapture %dest, %closure, 0") then 1 else 0;
+
+    -- Test 4: parse_capture_closure extracts closure ref
+    let cc1 = parse_capture_closure("  Capture %closure, %x, 0");
+    let t4 = if cc1 == "%closure" then 1 else 0;
+
+    -- Test 5: parse_capture_var extracts captured variable
+    let cv1 = parse_capture_var("  Capture %closure, %x, 0");
+    let t5 = if cv1 == "%x" then 1 else 0;
+
+    -- Test 6: parse_capture_idx extracts index
+    let ci1 = parse_capture_idx("  Capture %closure, %x, 0");
+    let t6 = if ci1 == "0" then 1 else 0;
+
+    -- Test 7: parse_load_capture_closure extracts closure ref
+    let lc1 = parse_load_capture_closure("  %_t0 = LoadCapture %closure, 1");
+    let t7 = if lc1 == "%closure" then 1 else 0;
+
+    -- Test 8: parse_load_capture_idx extracts index
+    let li1 = parse_load_capture_idx("  %_t0 = LoadCapture %closure, 1");
+    let t8 = if li1 == "1" then 1 else 0;
+
+    -- Test 9: gen_closure_env_alloc generates allocation
+    let ea1 = gen_closure_env_alloc("%_env", 3);
+    let t9 = if has_pattern(ea1, "alloca [3 x i64]", 0) then 1 else 0;
+
+    -- Test 10: gen_capture_store generates GEP and store
+    let cs1 = gen_capture_store("%_env", "%x", 0);
+    let t10 = if has_pattern(cs1, "getelementptr", 0) and has_pattern(cs1, "store i64 %x", 0) then 1 else 0;
+
+    -- Test 11: gen_capture_load generates GEP and load
+    let cl1 = gen_capture_load("%_t0", "%_env", 0);
+    let t11 = if has_pattern(cl1, "getelementptr", 0) and has_pattern(cl1, "load i64", 0) then 1 else 0;
+
+    -- Test 12: gen_closure_with_captures generates struct
+    let cw1 = gen_closure_with_captures("%_closure", "%_fn", "%_env");
+    let t12 = if has_pattern(cw1, "alloca { i64, i64* }", 0) then 1 else 0;
+
+    t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t9 + t10 + t11 + t12;
+
 -- v0.30.48: Test UNIT, BREAK, CONTINUE instruction generation
 fn test_unit_break_continue() -> i64 =
     -- Test 1: UNIT instruction
@@ -2546,8 +2826,14 @@ fn main() -> i64 =
     -- v0.30.95 struct/enum edge case tests
     let r55 = test_struct_enum_edge();
     let u55 = println(r55);
+    -- v0.30.96 trait dispatch IR tests
+    let r56 = test_trait_dispatch_ir();
+    let u56 = println(r56);
+    -- v0.30.97 closure capture IR tests
+    let r57 = test_closure_capture_ir();
+    let u57 = println(r57);
     let u_end = println(888);
-    let total = r1 + r2 + r3 + r4 + r5 + r6 + r7 + r8 + r9 + r10 + r11 + r12 + r13 + r14 + r15 + r16 + r17 + r18 + r19 + r20 + r21 + r22 + r23 + r24 + r25 + r26 + r27 + r28 + r29 + r30 + r31 + r32 + r33 + r34 + r35 + r36 + r37 + r38 + r39 + r40 + r41 + r42 + r43 + r44 + r45 + r46 + r47 + r48 + r49 + r50 + r51 + r52 + r53 + r54 + r55;
+    let total = r1 + r2 + r3 + r4 + r5 + r6 + r7 + r8 + r9 + r10 + r11 + r12 + r13 + r14 + r15 + r16 + r17 + r18 + r19 + r20 + r21 + r22 + r23 + r24 + r25 + r26 + r27 + r28 + r29 + r30 + r31 + r32 + r33 + r34 + r35 + r36 + r37 + r38 + r39 + r40 + r41 + r42 + r43 + r44 + r45 + r46 + r47 + r48 + r49 + r50 + r51 + r52 + r53 + r54 + r55 + r56 + r57;
     let u_tot = println(total);
     let u_fin = println(999);
     total;

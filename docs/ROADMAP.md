@@ -164,15 +164,15 @@ v0.MAJOR.MINOR
 | v0.28 | Benchmark | C/Rust/BMB benchmark suite | Compute-intensive benchmarks, Contract-optimized benchmarks, Real-world workloads |
 | v0.29 | Velocity | C/Rust performance sprint | MIR optimization framework (6 passes), Contract-based optimization, Bootstrap optimization module |
 
-### Bootstrap Statistics (as of v0.30.95)
+### Bootstrap Statistics (as of v0.30.97)
 
 | Metric | Value |
 |--------|-------|
 | Rust Codebase | ~21,783 LOC |
-| BMB Bootstrap | ~14,900 LOC |
-| Coverage | 68% |
+| BMB Bootstrap | ~15,100 LOC |
+| Coverage | 69% |
 | Stage 1/2 Tests | 19 tests passing |
-| Bootstrap Tests | 1346 tests (733 types + 263 llvm_ir + 108 lowering + 46 mir + 83 parser_ast + 33 utils + 19 selfhost_equiv + 42 pipeline + 9 optimize + 8 selfhost_test + 2 compiler) |
+| Bootstrap Tests | 1366 tests (733 types + 283 llvm_ir + 108 lowering + 46 mir + 83 parser_ast + 33 utils + 19 selfhost_equiv + 42 pipeline + 9 optimize + 8 selfhost_test + 2 compiler) |
 
 ---
 
@@ -334,6 +334,22 @@ v0.MAJOR.MINOR
 - Pipeline integration verification: 3 new test groups in pipeline.bmb (12 tests)
 - Multi-operand expressions, mixed operations, combined expressions
 - pipeline.bmb total: 42 tests (10 test groups)
+
+**v0.30.97 Completed (2026-01-06)**:
+- Closure capture IR infrastructure: test_closure_capture_ir (12 tests)
+- is_capture_line, is_load_capture_line: detect capture MIR instructions
+- parse_capture_closure, parse_capture_var, parse_capture_idx: extract capture info
+- gen_closure_env_alloc, gen_capture_store, gen_capture_load: environment operations
+- gen_closure_with_captures: full closure struct generation
+- llvm_ir.bmb total: 283 tests (57 test functions)
+
+**v0.30.96 Completed (2026-01-06)**:
+- Trait dispatch IR infrastructure: test_trait_dispatch_ir (8 tests)
+- is_trait_call_line: detect TraitCall MIR instructions
+- parse_trait_call_trait, parse_trait_call_method: extract trait/method names
+- gen_trait_dispatch: static dispatch IR generation (@Trait_Type_method)
+- gen_instr_trait_call: full trait call IR conversion
+- llvm_ir.bmb total: 271 tests (56 test functions)
 
 **v0.30.95 Completed (2026-01-06)**:
 - Struct/Enum IR edge cases: test_struct_enum_edge (8 tests)
