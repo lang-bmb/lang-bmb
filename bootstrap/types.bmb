@@ -3891,6 +3891,10 @@ fn EXPR_NEG() -> i64 = 13;     -- v0.30.25: Unary negation (neg expr)
 fn EXPR_STRING() -> i64 = 14;  -- v0.30.29: String literal "..."
 fn EXPR_BLOCK() -> i64 = 15;   -- v0.30.30: Block expression (block ...)
 fn EXPR_UNIT() -> i64 = 16;    -- v0.30.31: Unit value ()
+fn EXPR_WHILE() -> i64 = 17;   -- v0.30.45: While expression (while ...)
+fn EXPR_FOR() -> i64 = 18;     -- v0.30.46: For expression (for ...)
+fn EXPR_BREAK() -> i64 = 19;   -- v0.30.47: Break expression (break)
+fn EXPR_CONTINUE() -> i64 = 20; -- v0.30.47: Continue expression (continue)
 fn EXPR_UNKNOWN() -> i64 = 0;
 
 -- Detect expression kind from AST
@@ -3935,6 +3939,14 @@ fn expr_kind(ast: String) -> i64 =
         else if c1 == 102 and c2 == 110 and c3 == 32 then expr_kind_check_lambda(ast, len)
         -- v0.30.30: (block ...) - 98='b', 108='l', 111='o'
         else if c1 == 98 and c2 == 108 and c3 == 111 then EXPR_BLOCK()
+        -- v0.30.45: (while ...) - 119='w', 104='h', 105='i'
+        else if c1 == 119 and c2 == 104 and c3 == 105 then EXPR_WHILE()
+        -- v0.30.46: (for ...) - 102='f', 111='o', 114='r'
+        else if c1 == 102 and c2 == 111 and c3 == 114 then EXPR_FOR()
+        -- v0.30.47: (break) - 98='b', 114='r', 101='e'
+        else if c1 == 98 and c2 == 114 and c3 == 101 then EXPR_BREAK()
+        -- v0.30.47: (continue) - 99='c', 111='o', 110='n'
+        else if c1 == 99 and c2 == 111 and c3 == 110 then EXPR_CONTINUE()
         else EXPR_UNKNOWN();
 
 -- v0.30.24: Check if fn expression is a lambda (has | after fn)
@@ -4062,6 +4074,10 @@ fn type_of_expr(tenv: String, locals: String, ast: String) -> String =
     else if kind == EXPR_NOT() then type_of_not(tenv, locals, ast)
     else if kind == EXPR_NEG() then type_of_neg(tenv, locals, ast)
     else if kind == EXPR_BLOCK() then type_of_block(tenv, locals, ast)  -- v0.30.30
+    else if kind == EXPR_WHILE() then type_of_while(tenv, locals, ast)  -- v0.30.45
+    else if kind == EXPR_FOR() then type_of_for(tenv, locals, ast)  -- v0.30.46
+    else if kind == EXPR_BREAK() then type_of_break(tenv, locals, ast)  -- v0.30.47
+    else if kind == EXPR_CONTINUE() then type_of_continue(tenv, locals, ast)  -- v0.30.47
     else "ERR:unknown expression";
 
 -- v0.30.25: Type of logical not (not expr)
@@ -4116,6 +4132,75 @@ fn block_inner_expr(ast: String) -> String =
     let len = ast.len();
     if len < 9 then ""  -- minimum: "(block x)"
     else ast.slice(7, len - 1);
+
+-- ============================================================================
+-- v0.30.45: Type of while expression
+-- Format: (while condition body)
+-- Returns: () (unit) since while may not execute; condition must be bool
+
+fn type_of_while(tenv: String, locals: String, ast: String) -> String =
+    let cond = expr_first_arg(ast, 6);  -- skip "(while"
+    let body = expr_second_arg(ast, 6);
+    let cond_t = type_of_expr(tenv, locals, cond);
+    if is_error_str(cond_t) then cond_t
+    else if cond_t != "bool" then "ERR:while condition must be bool, got " + cond_t
+    else
+        let body_t = type_of_expr(tenv, locals, body);
+        if is_error_str(body_t) then body_t
+        else "()";  -- while always returns unit
+
+-- ============================================================================
+-- v0.30.46: Type of for expression
+-- Format: (for <var> range body)
+-- Returns: () (unit); loop variable bound to i64 for integer ranges
+
+fn type_of_for(tenv: String, locals: String, ast: String) -> String =
+    let var_name = for_var_name(ast);
+    if var_name == "" then "ERR:for missing loop variable"
+    else
+        let range_e = for_range_expr(ast);
+        let body_e = for_body_expr(ast);
+        let range_t = type_of_expr(tenv, locals, range_e);
+        if is_error_str(range_t) then range_t
+        else
+            -- Loop variable bound to i64 for integer ranges
+            let new_locals = locals_add(locals, var_name, "i64");
+            let body_t = type_of_expr(tenv, new_locals, body_e);
+            if is_error_str(body_t) then body_t
+            else "()";  -- for always returns unit
+
+-- Extract loop variable name from (for <var> range body)
+fn for_var_name(ast: String) -> String =
+    let name_with_brackets = expr_first_arg(ast, 4);  -- skip "(for"
+    ast_extract_angle_name(name_with_brackets);
+
+-- Extract range expression from (for <var> range body)
+fn for_range_expr(ast: String) -> String =
+    let var_with_brackets = expr_first_arg(ast, 4);
+    let after_var = 5 + var_with_brackets.len();
+    expr_first_arg(ast, after_var);
+
+-- Extract body expression from (for <var> range body)
+fn for_body_expr(ast: String) -> String =
+    let var_with_brackets = expr_first_arg(ast, 4);
+    let after_var = 5 + var_with_brackets.len();
+    expr_second_arg(ast, after_var);
+
+-- ============================================================================
+-- v0.30.47: Type of break expression
+-- Format: (break)
+-- Returns: () (unit); used to exit loops early
+
+fn type_of_break(tenv: String, locals: String, ast: String) -> String =
+    "()";  -- break always returns unit
+
+-- ============================================================================
+-- v0.30.47: Type of continue expression
+-- Format: (continue)
+-- Returns: () (unit); used to skip to next loop iteration
+
+fn type_of_continue(tenv: String, locals: String, ast: String) -> String =
+    "()";  -- continue always returns unit
 
 -- Type of variable reference
 fn type_of_var(tenv: String, locals: String, ast: String) -> String =
@@ -6055,6 +6140,107 @@ fn test_block_unit() -> i64 =
 
     r1 + r2 + r3 + r4 + r5 + r6 + r7 + r8;
 
+-- v0.30.45: Test while expression type checking
+fn test_while_type() -> i64 =
+    let tenv = tenv_new();
+    let locals = locals_new();
+
+    -- Test 1: EXPR_WHILE constant is 17
+    let r1 = if EXPR_WHILE() == 17 then 1 else 0;
+
+    -- Test 2: expr_kind detects while expression
+    let k2 = expr_kind("(while (bool true) (int 1))");
+    let r2 = if k2 == EXPR_WHILE() then 1 else 0;
+
+    -- Test 3: type_of_while returns unit type
+    let t3 = type_of_while(tenv, locals, "(while (bool true) (int 1))");
+    let r3 = if t3 == "()" then 1 else 0;
+
+    -- Test 4: while with non-bool condition is error
+    let t4 = type_of_while(tenv, locals, "(while (int 1) (int 2))");
+    let r4 = if is_error_str(t4) then 1 else 0;
+
+    -- Test 5: while with bool body also returns unit
+    let t5 = type_of_while(tenv, locals, "(while (bool false) (bool true))");
+    let r5 = if t5 == "()" then 1 else 0;
+
+    -- Test 6: type_of_expr dispatches to type_of_while
+    let t6 = type_of_expr(tenv, locals, "(while (bool true) (int 42))");
+    let r6 = if t6 == "()" then 1 else 0;
+
+    r1 + r2 + r3 + r4 + r5 + r6;
+
+-- v0.30.46: Test for expression type checking
+fn test_for_type() -> i64 =
+    let tenv = tenv_new();
+    let locals = locals_new();
+
+    -- Test 1: EXPR_FOR constant is 18
+    let r1 = if EXPR_FOR() == 18 then 1 else 0;
+
+    -- Test 2: expr_kind detects for expression
+    let k2 = expr_kind("(for <i> (int 10) (int 1))");
+    let r2 = if k2 == EXPR_FOR() then 1 else 0;
+
+    -- Test 3: for_var_name extracts variable
+    let v3 = for_var_name("(for <i> (int 10) (int 1))");
+    let r3 = if v3 == "i" then 1 else 0;
+
+    -- Test 4: for_range_expr extracts range
+    let rng4 = for_range_expr("(for <i> (int 10) (int 1))");
+    let r4 = if rng4 == "(int 10)" then 1 else 0;
+
+    -- Test 5: type_of_for returns unit type
+    let t5 = type_of_for(tenv, locals, "(for <i> (int 10) (int 1))");
+    let r5 = if t5 == "()" then 1 else 0;
+
+    -- Test 6: loop variable is bound in body
+    let t6 = type_of_for(tenv, locals, "(for <x> (int 5) (var <x>))");
+    let r6 = if t6 == "()" then 1 else 0;
+
+    -- Test 7: type_of_expr dispatches to type_of_for
+    let t7 = type_of_expr(tenv, locals, "(for <n> (int 3) (int 42))");
+    let r7 = if t7 == "()" then 1 else 0;
+
+    r1 + r2 + r3 + r4 + r5 + r6 + r7;
+
+-- v0.30.47: Test break/continue expression type checking
+fn test_break_continue_type() -> i64 =
+    let tenv = tenv_new();
+    let locals = locals_new();
+
+    -- Test 1: EXPR_BREAK constant is 19
+    let r1 = if EXPR_BREAK() == 19 then 1 else 0;
+
+    -- Test 2: EXPR_CONTINUE constant is 20
+    let r2 = if EXPR_CONTINUE() == 20 then 1 else 0;
+
+    -- Test 3: expr_kind detects break expression
+    let k3 = expr_kind("(break)");
+    let r3 = if k3 == EXPR_BREAK() then 1 else 0;
+
+    -- Test 4: expr_kind detects continue expression
+    let k4 = expr_kind("(continue)");
+    let r4 = if k4 == EXPR_CONTINUE() then 1 else 0;
+
+    -- Test 5: type_of_break returns unit type
+    let t5 = type_of_break(tenv, locals, "(break)");
+    let r5 = if t5 == "()" then 1 else 0;
+
+    -- Test 6: type_of_continue returns unit type
+    let t6 = type_of_continue(tenv, locals, "(continue)");
+    let r6 = if t6 == "()" then 1 else 0;
+
+    -- Test 7: type_of_expr dispatches to type_of_break
+    let t7 = type_of_expr(tenv, locals, "(break)");
+    let r7 = if t7 == "()" then 1 else 0;
+
+    -- Test 8: type_of_expr dispatches to type_of_continue
+    let t8 = type_of_expr(tenv, locals, "(continue)");
+    let r8 = if t8 == "()" then 1 else 0;
+
+    r1 + r2 + r3 + r4 + r5 + r6 + r7 + r8;
+
 -- Main test runner
 fn main() -> i64 =
     let u0 = println(777);  -- Start marker
@@ -6499,10 +6685,22 @@ fn main() -> i64 =
     let t137 = test_block_unit();
     let p137 = println(t137);  -- Expected: 8
 
+    -- v0.30.45: While expression type checking tests
+    let t138 = test_while_type();
+    let p138 = println(t138);  -- Expected: 6
+
+    -- v0.30.46: For expression type checking tests
+    let t139 = test_for_type();
+    let p139 = println(t139);  -- Expected: 7
+
+    -- v0.30.47: Break/Continue expression type checking tests
+    let t140 = test_break_continue_type();
+    let p140 = println(t140);  -- Expected: 8
+
     let u1 = println(888);  -- Separator
 
-    let total = t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t9 + t10 + t11 + t12 + t13 + t14 + t15 + t16 + t17 + t18 + t19 + t20 + t21 + t22 + t23 + t24 + t25 + t26 + t27 + t28 + t29 + t30 + t31 + t32 + t33 + t34 + t35 + t36 + t37 + t38 + t39 + t40 + t41 + t42 + t43 + t44 + t45 + t46 + t47 + t48 + t49 + t50 + t51 + t52 + t53 + t54 + t55 + t56 + t57 + t58 + t59 + t60 + t61 + t62 + t63 + t64 + t65 + t66 + t67 + t68 + t69 + t70 + t71 + t72 + t73 + t74 + t75 + t76 + t77 + t78 + t79 + t80 + t81 + t82 + t83 + t84 + t85 + t86 + t87 + t88 + t89 + t90 + t91 + t92 + t93 + t94 + t95 + t96 + t97 + t98 + t99 + t100 + t101 + t102 + t103 + t104 + t105 + t106 + t107 + t108 + t109 + t110 + t111 + t112 + t113 + t114 + t115 + t116 + t117 + t118 + t119 + t120 + t121 + t122 + t123 + t124 + t125 + t126 + t127 + t128 + t129 + t130 + t131 + t132 + t133 + t134 + t135 + t136 + t137;
-    let u2 = println(total);  -- Expected: 600
+    let total = t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t9 + t10 + t11 + t12 + t13 + t14 + t15 + t16 + t17 + t18 + t19 + t20 + t21 + t22 + t23 + t24 + t25 + t26 + t27 + t28 + t29 + t30 + t31 + t32 + t33 + t34 + t35 + t36 + t37 + t38 + t39 + t40 + t41 + t42 + t43 + t44 + t45 + t46 + t47 + t48 + t49 + t50 + t51 + t52 + t53 + t54 + t55 + t56 + t57 + t58 + t59 + t60 + t61 + t62 + t63 + t64 + t65 + t66 + t67 + t68 + t69 + t70 + t71 + t72 + t73 + t74 + t75 + t76 + t77 + t78 + t79 + t80 + t81 + t82 + t83 + t84 + t85 + t86 + t87 + t88 + t89 + t90 + t91 + t92 + t93 + t94 + t95 + t96 + t97 + t98 + t99 + t100 + t101 + t102 + t103 + t104 + t105 + t106 + t107 + t108 + t109 + t110 + t111 + t112 + t113 + t114 + t115 + t116 + t117 + t118 + t119 + t120 + t121 + t122 + t123 + t124 + t125 + t126 + t127 + t128 + t129 + t130 + t131 + t132 + t133 + t134 + t135 + t136 + t137 + t138 + t139 + t140;
+    let u2 = println(total);  -- Expected: 621
 
     let u3 = println(999);  -- End marker
     total;

@@ -202,6 +202,9 @@ Gap to Close:
 - ✅ Break/Continue parsing (v0.30.42: TK_BREAK, TK_CONTINUE, parse_break, parse_continue)
 - ✅ Break/Continue MIR lowering (v0.30.43: is_break_node, is_continue_node, lower_break, lower_continue)
 - ✅ Range MIR lowering (v0.30.44: binop_from_symbol .., is_op_char with ., range binop support)
+- ✅ While type checking (v0.30.45: EXPR_WHILE, type_of_while, while condition must be bool)
+- ✅ For type checking (v0.30.46: EXPR_FOR, type_of_for, loop variable binding, for_var_name)
+- ✅ Break/Continue type checking (v0.30.47: EXPR_BREAK, EXPR_CONTINUE, type_of_break, type_of_continue)
 
 ### What Bootstrap CANNOT Do Yet
 
@@ -315,11 +318,11 @@ $ diff stage2/bmb stage3/bmb
 
 v0.30 "Pure" represents the culmination of the BMB self-hosting journey. With Stage 1/2 verification complete and the bootstrap covering the full compilation pipeline, the remaining work is substantial but achievable within the 2026 Q4 timeline.
 
-**Key Metrics** (as of v0.30.44):
+**Key Metrics** (as of v0.30.47):
 - Rust code to remove: ~21,783 LOC
-- BMB bootstrap code: ~12,000 LOC (55% coverage)
-- Gap to close: ~11,100 LOC additional BMB
-- Bootstrap tests passing: 985 tests (600 types + 119 llvm_ir + 95 lowering + 46 mir + 71 parser_ast + ...)
+- BMB bootstrap code: ~12,500 LOC (57% coverage)
+- Gap to close: ~10,800 LOC additional BMB
+- Bootstrap tests passing: 1006 tests (621 types + 119 llvm_ir + 95 lowering + 46 mir + 71 parser_ast + ...)
 - Estimated effort: 6-9 months
 
 ---

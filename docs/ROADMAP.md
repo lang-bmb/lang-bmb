@@ -164,15 +164,15 @@ v0.MAJOR.MINOR
 | v0.28 | Benchmark | C/Rust/BMB benchmark suite | Compute-intensive benchmarks, Contract-optimized benchmarks, Real-world workloads |
 | v0.29 | Velocity | C/Rust performance sprint | MIR optimization framework (6 passes), Contract-based optimization, Bootstrap optimization module |
 
-### Bootstrap Statistics (as of v0.30.41)
+### Bootstrap Statistics (as of v0.30.47)
 
 | Metric | Value |
 |--------|-------|
 | Rust Codebase | ~21,783 LOC |
-| BMB Bootstrap | ~12,000 LOC |
-| Coverage | 55% |
+| BMB Bootstrap | ~12,500 LOC |
+| Coverage | 57% |
 | Stage 1/2 Tests | 19 tests passing |
-| Bootstrap Tests | 970 tests (600 types + 119 llvm_ir + 85 lowering + 46 mir + 66 parser_ast + 33 utils + 19 selfhost_equiv + 14 pipeline + 9 optimize + 8 selfhost_test + 8 compiler) |
+| Bootstrap Tests | 1043 tests (621 types + 119 llvm_ir + 95 lowering + 46 mir + 71 parser_ast + 33 utils + 19 selfhost_equiv + 14 pipeline + 9 optimize + 8 selfhost_test + 8 compiler) |
 
 ---
 
@@ -302,6 +302,35 @@ v0.MAJOR.MINOR
 - `enum_reg_variant_type`: Resolve variant type with type args through registry lookup
 - `enum_reg_count`, `enum_reg_is_generic`: Registry utilities
 - 5 new test functions, 19 assertions (335 total in types.bmb)
+
+**v0.30.47 Completed (2026-01-05)**:
+- Break/Continue type checking: Type system support for break and continue expressions
+- EXPR_BREAK (19): Expression kind constant for break
+- EXPR_CONTINUE (20): Expression kind constant for continue
+- expr_kind extended: Detect (break) and (continue) expressions
+- type_of_break: Type check break expression (returns unit)
+- type_of_continue: Type check continue expression (returns unit)
+- type_of_expr extended: Dispatch to type_of_break/type_of_continue
+- Total: 621 tests passing in types.bmb (613 + 8 new)
+
+**v0.30.46 Completed (2026-01-05)**:
+- For type checking: Type system support for for loop expressions
+- EXPR_FOR (18): Expression kind constant for for loops
+- expr_kind extended: Detect (for <var> range body) expressions
+- for_var_name: Extract loop variable name from for expression
+- for_range_expr: Extract range expression from for AST
+- for_body_expr: Extract body expression from for AST
+- type_of_for: Type check for expression (binds loop var to i64, returns unit)
+- type_of_expr extended: Dispatch to type_of_for
+- Total: 613 tests passing in types.bmb (606 + 7 new)
+
+**v0.30.45 Completed (2026-01-05)**:
+- While type checking: Type system support for while loop expressions
+- EXPR_WHILE (17): Expression kind constant for while loops
+- expr_kind extended: Detect (while cond body) expressions
+- type_of_while: Type check while expression (condition must be bool, returns unit)
+- type_of_expr extended: Dispatch to type_of_while
+- Total: 606 tests passing in types.bmb (600 + 6 new)
 
 **v0.30.44 Completed (2026-01-05)**:
 - Range MIR lowering: MIR generation for range expressions
