@@ -164,7 +164,7 @@ v0.MAJOR.MINOR
 | v0.28 | Benchmark | C/Rust/BMB benchmark suite | Compute-intensive benchmarks, Contract-optimized benchmarks, Real-world workloads |
 | v0.29 | Velocity | C/Rust performance sprint | MIR optimization framework (6 passes), Contract-based optimization, Bootstrap optimization module |
 
-### Bootstrap Statistics (as of v0.30.59)
+### Bootstrap Statistics (as of v0.30.62)
 
 | Metric | Value |
 |--------|-------|
@@ -302,6 +302,27 @@ v0.MAJOR.MINOR
 - `enum_reg_variant_type`: Resolve variant type with type args through registry lookup
 - `enum_reg_count`, `enum_reg_is_generic`: Registry utilities
 - 5 new test functions, 19 assertions (335 total in types.bmb)
+
+**v0.30.62 Completed (2026-01-05)**:
+- Array type parsing: `[T]` type syntax in params and return types
+- parse_type: Delegated to parse_type_or_ident for unified array support
+- Nested arrays: `[[i64]]` for 2D array types
+- AST format: `(array_type T)` for array types
+- 6 array type tests, parser total: 99 tests
+
+**v0.30.61 Completed (2026-01-05)**:
+- Index expression parsing: `arr[i]` syntax for array element access
+- parse_postfix extended: Handle TK_LBRACKET for index operations
+- Chained indexing: `arr[i][j]` for multi-dimensional arrays
+- AST format: `(index expr index_expr)`
+- 5 index expression tests
+
+**v0.30.60 Completed (2026-01-05)**:
+- Array literal parsing: `[1, 2, 3]` syntax for array construction
+- parse_array_literal, parse_array_elements: Array element parsing
+- TK_LBRACKET (313), TK_RBRACKET (314): Bracket token support
+- AST format: `(array expr1 expr2 ...)`
+- 5 array literal tests
 
 **v0.30.59 Completed (2026-01-05)**:
 - Impl block parsing: parse_impl_block function with generic support

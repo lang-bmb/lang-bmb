@@ -68,6 +68,8 @@ fn TK_LBRACE() -> i64 = 307;  -- v0.22.0: { for struct body
 fn TK_RBRACE() -> i64 = 308;  -- v0.22.0: } for struct body
 fn TK_DOT() -> i64 = 301;     -- v0.22.0: . for field access
 fn TK_PIPE() -> i64 = 309;    -- v0.30.35: | for lambda params
+fn TK_LBRACKET() -> i64 = 313; -- v0.30.60: [ for arrays
+fn TK_RBRACKET() -> i64 = 314; -- v0.30.60: ] for arrays
 
 fn TK_ARROW() -> i64 = 321;
 fn TK_DOTDOT() -> i64 = 323;
@@ -178,6 +180,8 @@ fn symbol_code(c: i64) -> i64 =
     else if c == 123 then 307
     else if c == 125 then 308
     else if c == 124 then 309  -- v0.30.35: | for lambda params
+    else if c == 91 then 313   -- v0.30.60: [ for arrays
+    else if c == 93 then 314   -- v0.30.60: ] for arrays
     else if c == 43 then 400
     else if c == 45 then 401
     else if c == 42 then 402
@@ -404,7 +408,8 @@ fn parse_type_args(src: String, pos: i64, args: String) -> String =
             pack_result(unpack_pos(tr), make_error("type-arg-end"));
 
 -- Parse type or identifier with optional type arguments
--- Examples: i64, String, Point, Vec<i64>, Map<String, i64>
+-- Examples: i64, String, Point, Vec<i64>, Map<String, i64>, [i64]
+-- v0.30.62: Extended for array types [T]
 fn parse_type_or_ident(src: String, pos: i64) -> String =
     let tok = next_token_raw(src, pos);
     let kind = tok_kind(tok);
@@ -421,6 +426,14 @@ fn parse_type_or_ident(src: String, pos: i64) -> String =
             else pack_result(unpack_pos(targs), "(type_app " + name + " (" + unpack_ast(targs) + "))")
         else
             pack_result(ne, name)
+    else if kind == TK_LBRACKET() then
+        -- v0.30.62: Array type [T]
+        let elem_type = parse_type_or_ident(src, tok_end(tok));
+        if is_error(unpack_ast(elem_type)) then elem_type
+        else
+            let close = next_token_raw(src, unpack_pos(elem_type));
+            if tok_kind(close) != TK_RBRACKET() then pack_result(unpack_pos(elem_type), make_error("array-type-bracket"))
+            else pack_result(tok_end(close), "(array_type " + unpack_ast(elem_type) + ")")
     else pack_result(pos, make_error("type"));
 
 -- ============================================================
@@ -873,6 +886,7 @@ fn parse_primary(src: String, pos: i64) -> String =
     else if kind == TK_NEW() then parse_struct_init(src, end)  -- v0.22.0: struct init
     else if kind == TK_MATCH() then parse_match(src, end)      -- v0.22.1: match expr
     else if kind == TK_FN() then parse_lambda(src, end)        -- v0.30.35: lambda expr
+    else if kind == TK_LBRACKET() then parse_array_literal(src, end)  -- v0.30.60: array literal
     else pack_result(pos, make_error("expr"));
 
 fn parse_call_or_var(src: String, pos: i64, name: String) -> String =
@@ -1001,6 +1015,35 @@ fn parse_lambda_params_more(src: String, pos: i64, params: String) -> String =
     else pack_result(pos, make_error("lambda-param-end"));
 
 -- ============================================================
+-- v0.30.60: Array Literal Parser
+-- ============================================================
+
+-- Parse array literal: [expr, expr, ...]
+-- AST format: (array expr1 expr2 ...)
+fn parse_array_literal(src: String, pos: i64) -> String =
+    -- pos is after '[', parse elements
+    let tok = next_token_raw(src, pos);
+    if tok_kind(tok) == TK_RBRACKET() then
+        pack_result(tok_end(tok), "(array)")  -- Empty array
+    else
+        -- Parse first element
+        let r1 = parse_expr(src, pos);
+        if is_error(unpack_ast(r1)) then r1
+        else parse_array_elements(src, unpack_pos(r1), " " + unpack_ast(r1));
+
+-- Parse remaining array elements
+fn parse_array_elements(src: String, pos: i64, elements: String) -> String =
+    let tok = next_token_raw(src, pos);
+    let kind = tok_kind(tok);
+    if kind == TK_RBRACKET() then
+        pack_result(tok_end(tok), "(array" + elements + ")")
+    else if kind == TK_COMMA() then
+        let rn = parse_expr(src, tok_end(tok));
+        if is_error(unpack_ast(rn)) then rn
+        else parse_array_elements(src, unpack_pos(rn), elements + " " + unpack_ast(rn))
+    else pack_result(pos, make_error("array-elem"));
+
+-- ============================================================
 -- v0.30.37: While Expression Parser
 -- ============================================================
 
@@ -1095,6 +1138,7 @@ fn parse_expr(src: String, pos: i64) -> String =
         else parse_binop(src, unpack_pos(r2), unpack_ast(r2));
 
 -- v0.22.0: Parse postfix operators (field access: expr.field)
+-- v0.30.61: Extended for index expressions (arr[i])
 fn parse_postfix(src: String, pos: i64, expr: String) -> String =
     let tok = next_token_raw(src, pos);
     let kind = tok_kind(tok);
@@ -1106,6 +1150,14 @@ fn parse_postfix(src: String, pos: i64, expr: String) -> String =
             let ne = tok_end(t2);
             let fname = src.slice(ns, ne);
             parse_postfix(src, ne, "(field " + expr + " <" + fname + ">)")
+    else if kind == TK_LBRACKET() then
+        -- v0.30.61: Index expression arr[index]
+        let idx_result = parse_expr(src, tok_end(tok));
+        if is_error(unpack_ast(idx_result)) then idx_result
+        else
+            let close = next_token_raw(src, unpack_pos(idx_result));
+            if tok_kind(close) != TK_RBRACKET() then pack_result(unpack_pos(idx_result), make_error("index-bracket"))
+            else parse_postfix(src, tok_end(close), "(index " + expr + " " + unpack_ast(idx_result) + ")")
     else pack_result(pos, expr);
 
 fn parse_binop(src: String, pos: i64, left: String) -> String =
@@ -1125,24 +1177,9 @@ fn parse_binop(src: String, pos: i64, left: String) -> String =
 -- ============================================================
 
 -- v0.30.1: Extended to support generic type syntax
--- Supports: i64, String, Vec<i64>, Map<K, V>, Container<Vec<i64>>
-fn parse_type(src: String, pos: i64) -> String =
-    let tok = next_token_raw(src, pos);
-    let kind = tok_kind(tok);
-    if kind >= 150 and kind <= 154 then pack_result(tok_end(tok), type_str(kind))
-    else if kind == TK_IDENT() then
-        let ns = skip_all(src, pos);
-        let ne = tok_end(tok);
-        let name = src.slice(ns, ne);
-        -- Check for type arguments: <T, U, ...>
-        let t2 = next_token_raw(src, ne);
-        if tok_kind(t2) == TK_LT() then
-            let targs = parse_type_args(src, tok_end(t2), "");
-            if is_error(unpack_ast(targs)) then targs
-            else pack_result(unpack_pos(targs), "(type_app " + name + " (" + unpack_ast(targs) + "))")
-        else
-            pack_result(ne, name)
-    else pack_result(pos, make_error("type"));
+-- Supports: i64, String, Vec<i64>, Map<K, V>, Container<Vec<i64>>, [T]
+-- v0.30.62: Delegate to parse_type_or_ident to include array type support
+fn parse_type(src: String, pos: i64) -> String = parse_type_or_ident(src, pos);
 
 fn parse_params(src: String, pos: i64, ps: String) -> String =
     let tok = next_token_raw(src, pos);
@@ -1922,6 +1959,158 @@ fn test_range_in_for() -> i64 =
     else if ast_contains(ast, "(for <i>") and ast_contains(ast, "(op ..") then 1
     else 0;
 
+-- ============================================================
+-- v0.30.60: Array Literal Parsing Tests
+-- ============================================================
+
+-- Test 1: bracket token recognition
+fn test_array_tokens() -> i64 =
+    let t1 = next_token_raw("[", 0);
+    let t2 = next_token_raw("]", 0);
+    if tok_kind(t1) == TK_LBRACKET() and tok_kind(t2) == TK_RBRACKET() then 1 else 0;
+
+-- Test 2: empty array literal
+fn test_array_empty() -> i64 =
+    let src = "fn test() -> i64 = [];";
+    let result = parse_program(src, 0, "");
+    let ast = unpack_ast(result);
+    if is_error(ast) then 0
+    else if ast_contains(ast, "(array)") then 1
+    else 0;
+
+-- Test 3: single element array
+fn test_array_single() -> i64 =
+    let src = "fn test() -> i64 = [42];";
+    let result = parse_program(src, 0, "");
+    let ast = unpack_ast(result);
+    if is_error(ast) then 0
+    else if ast_contains(ast, "(array (int 42))") then 1
+    else 0;
+
+-- Test 4: multi-element array
+fn test_array_multi() -> i64 =
+    let src = "fn test() -> i64 = [1, 2, 3];";
+    let result = parse_program(src, 0, "");
+    let ast = unpack_ast(result);
+    if is_error(ast) then 0
+    else if ast_contains(ast, "(array (int 1) (int 2) (int 3))") then 1
+    else 0;
+
+-- Test 5: array with expressions
+fn test_array_expr() -> i64 =
+    let src = "fn test(x: i64) -> i64 = [x, x + 1, x * 2];";
+    let result = parse_program(src, 0, "");
+    let ast = unpack_ast(result);
+    if is_error(ast) then 0
+    else if ast_contains(ast, "(array") and ast_contains(ast, "(op +") and ast_contains(ast, "(op *") then 1
+    else 0;
+
+-- ============================================================
+-- v0.30.61: Index Expression Parsing Tests
+-- ============================================================
+
+-- Test 1: simple index expression
+fn test_index_simple() -> i64 =
+    let src = "fn test(arr: i64) -> i64 = arr[0];";
+    let result = parse_program(src, 0, "");
+    let ast = unpack_ast(result);
+    if is_error(ast) then 0
+    else if ast_contains(ast, "(index (var <arr>) (int 0))") then 1
+    else 0;
+
+-- Test 2: index with variable
+fn test_index_var() -> i64 =
+    let src = "fn test(arr: i64, i: i64) -> i64 = arr[i];";
+    let result = parse_program(src, 0, "");
+    let ast = unpack_ast(result);
+    if is_error(ast) then 0
+    else if ast_contains(ast, "(index (var <arr>) (var <i>))") then 1
+    else 0;
+
+-- Test 3: index with expression
+fn test_index_expr() -> i64 =
+    let src = "fn test(arr: i64, i: i64) -> i64 = arr[i + 1];";
+    let result = parse_program(src, 0, "");
+    let ast = unpack_ast(result);
+    if is_error(ast) then 0
+    else if ast_contains(ast, "(index") and ast_contains(ast, "(op +") then 1
+    else 0;
+
+-- Test 4: chained index (arr[i][j])
+fn test_index_chain() -> i64 =
+    let src = "fn test(arr: i64) -> i64 = arr[0][1];";
+    let result = parse_program(src, 0, "");
+    let ast = unpack_ast(result);
+    if is_error(ast) then 0
+    else if ast_contains(ast, "(index (index") then 1
+    else 0;
+
+-- Test 5: index on array literal
+fn test_index_array_literal() -> i64 =
+    let src = "fn test() -> i64 = [1, 2, 3][0];";
+    let result = parse_program(src, 0, "");
+    let ast = unpack_ast(result);
+    if is_error(ast) then 0
+    else if ast_contains(ast, "(index (array") then 1
+    else 0;
+
+-- ============================================================
+-- v0.30.62: Array Type Parsing Tests
+-- ============================================================
+
+-- Test 1: simple array type parameter
+fn test_array_type_param() -> i64 =
+    let src = "fn test(arr: [i64]) -> i64 = 0;";
+    let result = parse_program(src, 0, "");
+    let ast = unpack_ast(result);
+    if is_error(ast) then 0
+    else if ast_contains(ast, "(array_type i64)") then 1
+    else 0;
+
+-- Test 2: array type return type
+fn test_array_type_return() -> i64 =
+    let src = "fn test() -> [i64] = [];";
+    let result = parse_program(src, 0, "");
+    let ast = unpack_ast(result);
+    if is_error(ast) then 0
+    else if ast_contains(ast, "(array_type i64)") then 1
+    else 0;
+
+-- Test 3: nested array type (2D array)
+fn test_array_type_nested() -> i64 =
+    let src = "fn test(arr: [[i64]]) -> i64 = 0;";
+    let result = parse_program(src, 0, "");
+    let ast = unpack_ast(result);
+    if is_error(ast) then 0
+    else if ast_contains(ast, "(array_type (array_type i64))") then 1
+    else 0;
+
+-- Test 4: array of custom type
+fn test_array_type_custom() -> i64 =
+    let src = "fn test(arr: [Point]) -> i64 = 0;";
+    let result = parse_program(src, 0, "");
+    let ast = unpack_ast(result);
+    if is_error(ast) then 0
+    else if ast_contains(ast, "(array_type Point)") then 1
+    else 0;
+
+-- Test 5: array of generic type
+fn test_array_type_generic() -> i64 =
+    let src = "fn test(arr: [Vec<i64>]) -> i64 = 0;";
+    let result = parse_program(src, 0, "");
+    let ast = unpack_ast(result);
+    if is_error(ast) then 0
+    else if ast_contains(ast, "(array_type (type_app Vec (i64)))") then 1
+    else 0;
+
+-- Test 0: direct parse_type_or_ident call for [i64]
+fn test_array_type_direct() -> i64 =
+    let result = parse_type_or_ident("[i64]", 0);
+    let ast = unpack_ast(result);
+    if is_error(ast) then 0
+    else if ast_contains(ast, "(array_type i64)") then 1
+    else 0;
+
 fn main() -> i64 =
     let u0 = println(777);  -- Start marker
 
@@ -2073,6 +2262,34 @@ fn main() -> i64 =
     let trait_passed = trait1 + trait2 + trait3 + trait4 + trait5 + trait6 + trait7 + impl1 + impl2 + impl3 + impl4 + impl5;
     let u16 = println(trait_passed);  -- Should be 12
 
+    -- v0.30.60: Array literal parsing tests
+    let arr1 = test_array_tokens();
+    let arr2 = test_array_empty();
+    let arr3 = test_array_single();
+    let arr4 = test_array_multi();
+    let arr5 = test_array_expr();
+    let array_passed = arr1 + arr2 + arr3 + arr4 + arr5;
+    let u17 = println(array_passed);  -- Should be 5
+
+    -- v0.30.61: Index expression parsing tests
+    let idx1 = test_index_simple();
+    let idx2 = test_index_var();
+    let idx3 = test_index_expr();
+    let idx4 = test_index_chain();
+    let idx5 = test_index_array_literal();
+    let index_passed = idx1 + idx2 + idx3 + idx4 + idx5;
+    let u18 = println(index_passed);  -- Should be 5
+
+    -- v0.30.62: Array type parsing tests
+    let atd = test_array_type_direct();  -- Debug: direct parse_type_or_ident
+    let at1 = test_array_type_param();
+    let at2 = test_array_type_return();
+    let at3 = test_array_type_nested();
+    let at4 = test_array_type_custom();
+    let at5 = test_array_type_generic();
+    let array_type_passed = atd + at1 + at2 + at3 + at4 + at5;
+    let u19 = println(array_type_passed);  -- Should be 6
+
     let u4 = println(999);  -- End marker
 
-    parse_passed + ast_passed + struct_passed + enum_passed + integration_passed + generic_passed + typeparam_passed + string_passed + lambda_passed + while_passed + for_passed + range_passed + break_passed + trait_passed;  -- Should be 83
+    parse_passed + ast_passed + struct_passed + enum_passed + integration_passed + generic_passed + typeparam_passed + string_passed + lambda_passed + while_passed + for_passed + range_passed + break_passed + trait_passed + array_passed + index_passed + array_type_passed;  -- Should be 99
