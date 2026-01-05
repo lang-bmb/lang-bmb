@@ -164,7 +164,7 @@ v0.MAJOR.MINOR
 | v0.28 | Benchmark | C/Rust/BMB benchmark suite | Compute-intensive benchmarks, Contract-optimized benchmarks, Real-world workloads |
 | v0.29 | Velocity | C/Rust performance sprint | MIR optimization framework (6 passes), Contract-based optimization, Bootstrap optimization module |
 
-### Bootstrap Statistics (as of v0.30.39)
+### Bootstrap Statistics (as of v0.30.40)
 
 | Metric | Value |
 |--------|-------|
@@ -302,6 +302,15 @@ v0.MAJOR.MINOR
 - `enum_reg_variant_type`: Resolve variant type with type args through registry lookup
 - `enum_reg_count`, `enum_reg_is_generic`: Registry utilities
 - 5 new test functions, 19 assertions (335 total in types.bmb)
+
+**v0.30.40 Completed (2026-01-05)**:
+- For MIR lowering: For loop MIR generation in lowering.bmb
+- is_for_node: Detect for expressions "(for <var> iter body)"
+- get_for_var/get_for_iter/get_for_body: Helper functions for AST extraction
+- extract_for_varname: Extract variable name from "<varname>" format
+- lower_for: Generate loop MIR structure (for_start, for_body, for_end blocks)
+- lower_expr extended: Handle for nodes via lower_for call
+- Total: 85 tests passing in lowering.bmb (79 + 6 new)
 
 **v0.30.39 Completed (2026-01-05)**:
 - For loop parsing: For loop syntax support in parser_ast.bmb

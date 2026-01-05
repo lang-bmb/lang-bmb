@@ -191,6 +191,17 @@ fn is_while_node(s: String) -> bool =
         let c6 = s.char_at(6);  -- ' '
         c0 == 40 and c1 == 119 and c2 == 104 and c3 == 105 and c4 == 108 and c5 == 101 and c6 == 32;
 
+-- v0.30.40: For expression support
+-- For format: (for <var> iter body)
+fn is_for_node(s: String) -> bool =
+    if s.len() < 12 then false  -- minimum: "(for <x> y z)"
+    else let c0 = s.char_at(0);  -- '('
+        let c1 = s.char_at(1);  -- 'f'
+        let c2 = s.char_at(2);  -- 'o'
+        let c3 = s.char_at(3);  -- 'r'
+        let c4 = s.char_at(4);  -- ' '
+        c0 == 40 and c1 == 102 and c2 == 111 and c3 == 114 and c4 == 32;
+
 fn has_double_colon(s: String, pos: i64) -> bool =
     if pos + 1 >= s.len() then false
     else if s.char_at(pos) == 58 and s.char_at(pos + 1) == 58 then true  -- '::'
@@ -296,6 +307,17 @@ fn get_if_else(s: String) -> String = get_child(s, 2);
 -- v0.30.38: Get while condition/body
 fn get_while_cond(s: String) -> String = get_child(s, 0);
 fn get_while_body(s: String) -> String = get_child(s, 1);
+
+-- v0.30.40: Get for var/iter/body
+fn get_for_var(s: String) -> String = get_child(s, 0);  -- Returns "<varname>"
+fn get_for_iter(s: String) -> String = get_child(s, 1);
+fn get_for_body(s: String) -> String = get_child(s, 2);
+
+-- v0.30.40: Extract var name from "<varname>" format
+fn extract_for_varname(s: String) -> String =
+    if s.len() < 3 then ""  -- Minimum: "<x>"
+    else if s.char_at(0) != 60 then ""  -- Must start with '<'
+    else s.slice(1, s.len() - 1);  -- Strip < and >
 
 -- Get let name/value/body
 fn get_let_name(s: String) -> String =
@@ -572,6 +594,8 @@ fn lower_expr(ast: String, temp: i64, block: i64) -> String =
     else if is_unit_node(ast) then lower_unit(ast, temp, block)
     -- v0.30.38: While expression support
     else if is_while_node(ast) then lower_while(ast, temp, block)
+    -- v0.30.40: For expression support
+    else if is_for_node(ast) then lower_for(ast, temp, block)
     else pack_lower_result(temp, block, "%error", "  ; unknown: " + get_node_type(ast));
 
 -- Lower integer literal: (int 42)
@@ -731,6 +755,69 @@ fn lower_while(ast: String, temp: i64, block: i64) -> String =
 
     -- Combine: goto loop_start, then all blocks
     let entry_text = mir_text_goto(loop_start_lbl);
+    let full_text = entry_text + "|" + loop_start_block + "|" + body_block + "|" + loop_end_block;
+
+    pack_lower_result(tb + 1, bb + 1, result_place, full_text);
+
+-- v0.30.40: Lower for expression: (for <var> iter body)
+-- For MIR structure (simplified - placeholder for iterator support):
+--   <evaluate iterator>
+--   loop_start_N:
+--     ; var = current element (placeholder)
+--     <evaluate body>
+--     goto loop_start_N
+--   loop_end_N:
+--     %result = UNIT
+fn lower_for(ast: String, temp: i64, block: i64) -> String =
+    let var_raw = get_for_var(ast);
+    let varname = extract_for_varname(var_raw);
+    let iter_ast = get_for_iter(ast);
+    let body_ast = get_for_body(ast);
+
+    -- Generate block labels
+    let loop_start_lbl = "for_start_" + int_to_string(block);
+    let body_lbl = "for_body_" + int_to_string(block);
+    let loop_end_lbl = "for_end_" + int_to_string(block);
+    let next_block = block + 1;
+
+    -- Lower iterator expression
+    let ri = lower_expr(iter_ast, temp, next_block);
+    let ti = unpack_temp(ri);
+    let bi = unpack_block(ri);
+    let pi = unpack_result_place(ri);
+    let texti = unpack_text(ri);
+
+    -- Create loop variable binding (var = iterator result for now)
+    let var_place = place_var(varname);
+    let var_init = "  " + var_place + " = " + pi;
+
+    -- Lower body with variable in scope
+    let rb = lower_expr(body_ast, ti, bi);
+    let tb = unpack_temp(rb);
+    let bb = unpack_block(rb);
+    let textb = unpack_text(rb);
+
+    -- Result place (for returns unit)
+    let result_place = place_temp(tb);
+
+    -- Build loop_start block (just goto body for now - placeholder for iterator check)
+    let loop_start_block = mir_text_block_start(loop_start_lbl) + "|" +
+                           mir_text_goto(body_lbl);
+
+    -- Build body block (var init + body + goto loop_end for simple case)
+    -- Note: Real iterator would goto loop_start, but without break we use loop_end
+    let body_block = mir_text_block_start(body_lbl) + "|" +
+                     var_init + "|" +
+                     (if textb.len() > 0 then textb + "|" else "") +
+                     mir_text_goto(loop_end_lbl);
+
+    -- Build loop_end block (result = unit)
+    let loop_end_block = mir_text_block_start(loop_end_lbl) + "|" +
+                         "  " + result_place + " = UNIT";
+
+    -- Combine: iterator eval, goto loop_start, then all blocks
+    let entry_text = (if texti.len() > 0 then texti + "|" else "") +
+                     mir_text_goto(loop_start_lbl);
     let full_text = entry_text + "|" + loop_start_block + "|" + body_block + "|" + loop_end_block;
 
     pack_lower_result(tb + 1, bb + 1, result_place, full_text);
@@ -1423,6 +1510,20 @@ fn main() -> i64 =
     let while_lower_tests = wl1 + wl2 + wl3;
     let u33 = println(while_lower_tests);  -- Should be 3
 
+    -- Test 31: v0.30.40 For node detection (3 tests)
+    let fn1 = if is_for_node("(for <i> (var <items>) (int 42))") then 1 else 0;
+    let fn2 = if is_for_node("(for <x> (call <range>) (var <x>))") then 1 else 0;
+    let fn3 = if is_for_node("(while cond body)") then 0 else 1;  -- while is not for
+    let for_node_tests = fn1 + fn2 + fn3;
+    let u34 = println(for_node_tests);  -- Should be 3
+
+    -- Test 32: v0.30.40 For lowering (3 tests)
+    let fl1 = test_lower_contains("(for <i> (var <items>) (int 42))", "for_start_");
+    let fl2 = test_lower_contains("(for <i> (var <items>) (int 42))", "for_end_");
+    let fl3 = test_lower_contains("(for <x> (int 10) (var <x>))", "%x");
+    let for_lower_tests = fl1 + fl2 + fl3;
+    let u35 = println(for_lower_tests);  -- Should be 3
+
     let u22 = println(888);  -- Separator
 
     let total = node_tests + extract_tests + child_tests + int_tests + bool_tests +
@@ -1432,8 +1533,8 @@ fn main() -> i64 =
                 enum_node_tests + enum_extract_tests + enum_variant_tests + match_tests +
                 string_tests + lambda_node_tests + lambda_body_tests + lambda_lower_tests +
                 block_unit_node_tests + block_inner_tests + block_unit_lower_tests +
-                while_node_tests + while_lower_tests;
-    let u23 = println(total);  -- Should be 79 (73 + 6 while tests)
+                while_node_tests + while_lower_tests + for_node_tests + for_lower_tests;
+    let u23 = println(total);  -- Should be 85 (79 + 6 for tests)
 
     let u24 = println(999);  -- End marker
 
