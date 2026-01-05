@@ -303,6 +303,16 @@ v0.MAJOR.MINOR
 - `enum_reg_count`, `enum_reg_is_generic`: Registry utilities
 - 5 new test functions, 19 assertions (335 total in types.bmb)
 
+**v0.30.25 Completed (2026-01-05)**:
+- Unary operator type checking: type_of_not and type_of_neg functions
+- EXPR_NOT constant (kind=12): Logical not expression "(not expr)"
+- EXPR_NEG constant (kind=13): Unary negation expression "(neg expr)"
+- Expression detection: expr_kind extended for (not and (neg patterns
+- Type validation: bool for not, i64 for neg
+- Inner expression extraction: not_inner_expr, neg_inner_expr
+- Type checking integration: type_of_expr routing for new kinds
+- Total: 558 tests passing (9 new tests)
+
 **v0.30.24 Completed (2026-01-05)**:
 - Closure type checking: type_of_lambda for lambda expression type inference
 - EXPR_LAMBDA constant (kind=11): Lambda expression detection in expr_kind
@@ -785,13 +795,13 @@ $ bmb doc --check
 
 For detailed analysis of the remaining work, see [GAP_ANALYSIS.md](./GAP_ANALYSIS.md).
 
-**Key Metrics (as of v0.30.24)**:
+**Key Metrics (as of v0.30.25)**:
 - Rust code to remove: ~21,783 LOC
-- BMB bootstrap code: ~11,300 LOC (52% coverage)
-- Gap to close: ~11,700 LOC additional BMB
-- Bootstrap tests passing: 549 tests
+- BMB bootstrap code: ~11,400 LOC (52% coverage)
+- Gap to close: ~11,600 LOC additional BMB
+- Bootstrap tests passing: 558 tests
 
 ---
 
 **Last Updated**: 2026-01-05
-**Version**: v0.30.24 → v1.0.0-rc Planning Document
+**Version**: v0.30.25 → v1.0.0-rc Planning Document
