@@ -63,7 +63,7 @@ This document provides a comprehensive analysis of the requirements for BMB v0.3
 
 | File | Size | LOC | Status | Test Coverage |
 |------|------|-----|--------|---------------|
-| llvm_ir.bmb | 86KB | 2,111 | Complete | 193 tests (48 test functions) |
+| llvm_ir.bmb | 88KB | 2,188 | Complete | 203 tests (49 test functions) |
 | lowering.bmb | 53KB | 1,280 | Complete | 108 tests |
 | compiler.bmb | 53KB | 1,202 | Complete | 8 tests |
 | parser_ast.bmb | 98KB | 2,390 | Complete | 104 tests (Struct/Enum/Trait/Impl/Array/Index/MethodCall) |
@@ -324,11 +324,11 @@ $ diff stage2/bmb stage3/bmb
 
 v0.30 "Pure" represents the culmination of the BMB self-hosting journey. With Stage 1/2 verification complete and the bootstrap covering the full compilation pipeline, the remaining work is substantial but achievable within the 2026 Q4 timeline.
 
-**Key Metrics** (as of v0.30.53):
+**Key Metrics** (as of v0.30.79):
 - Rust code to remove: ~21,783 LOC
-- BMB bootstrap code: ~12,700 LOC (58% coverage)
-- Gap to close: ~10,600 LOC additional BMB
-- Bootstrap tests passing: 1043 tests (621 types + 156 llvm_ir + 95 lowering + 46 mir + 71 parser_ast + ...)
+- BMB bootstrap code: ~13,200 LOC (61% coverage)
+- Gap to close: ~9,500 LOC additional BMB
+- Bootstrap tests passing: 1197 tests (650 types + 203 llvm_ir + 108 lowering + 46 mir + 104 parser_ast + ...)
 - Estimated effort: 6-9 months
 
 ---

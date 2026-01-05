@@ -1182,10 +1182,16 @@ fn find_method_call_pos(s: String, pos: i64) -> i64 =
     else find_method_call_pos(s, pos + 1);
 
 -- Dispatch to specific method implementation
+-- v0.30.78: Added array_len, array_get, array_set for explicit array operations
 fn gen_method_dispatch(dest: String, recv: String, method: String, args: String) -> String =
+    -- String methods
     if method == "len" then gen_method_len(dest, recv)
     else if method == "char_at" then gen_method_char_at(dest, recv, args)
     else if method == "slice" then gen_method_slice(dest, recv, args)
+    -- Array methods (v0.30.78)
+    else if method == "array_len" then gen_method_array_len(dest, recv)
+    else if method == "array_get" then gen_method_array_get(dest, recv, args)
+    else if method == "array_set" then gen_method_array_set(dest, recv, args)
     else "; unsupported method: " + method;
 
 -- v0.30.74: String.len() -> call @bmb_string_len
@@ -1220,6 +1226,22 @@ fn extract_second_arg(args: String) -> String =
     let comma_pos = find_char(args, 44, 0);  -- ','
     if comma_pos <= 0 then ""
     else trim_ws(args.slice(comma_pos + 1, args.len()));
+
+-- v0.30.78: Array method IR generation
+-- array_len: Get length from array struct
+fn gen_method_array_len(dest: String, recv: String) -> String =
+    dest + " = call i64 @bmb_array_len(i8* " + recv + ")";
+
+-- array_get: Get element at index
+fn gen_method_array_get(dest: String, recv: String, args: String) -> String =
+    let idx = trim_ws(args);
+    dest + " = call i64 @bmb_array_get(i8* " + recv + ", i64 " + idx + ")";
+
+-- array_set: Set element at index (returns void, but MIR needs dest)
+fn gen_method_array_set(dest: String, recv: String, args: String) -> String =
+    let idx = extract_first_arg(args);
+    let val = extract_second_arg(args);
+    "call void @bmb_array_set(i8* " + recv + ", i64 " + idx + ", i64 " + val + ")|" + dest + " = add i64 0, 0";
 
 -- Generate LLVM function header from MIR header
 fn gen_mir_fn_header(line: String) -> String =
@@ -1280,9 +1302,20 @@ fn gen_extern_string_len() -> String =
 fn gen_extern_string_slice() -> String =
     "declare i8* @bmb_string_slice(i8*, i64, i64)";
 
+-- v0.30.77: Array method runtime declarations
+-- Arrays are represented as {i64, ptr} structs (length + data pointer)
+fn gen_extern_array_len() -> String =
+    "declare i64 @bmb_array_len(i8*)";
+
+fn gen_extern_array_get() -> String =
+    "declare i64 @bmb_array_get(i8*, i64)";
+
+fn gen_extern_array_set() -> String =
+    "declare void @bmb_array_set(i8*, i64, i64)";
+
 -- Generate all runtime declarations
 fn gen_runtime_decls() -> String =
-    gen_extern_println() + "|" + gen_extern_abs() + "|" + gen_extern_min() + "|" + gen_extern_max() + "|" + gen_extern_string_len() + "|" + gen_extern_string_slice();
+    gen_extern_println() + "|" + gen_extern_abs() + "|" + gen_extern_min() + "|" + gen_extern_max() + "|" + gen_extern_string_len() + "|" + gen_extern_string_slice() + "|" + gen_extern_array_len() + "|" + gen_extern_array_get() + "|" + gen_extern_array_set();
 
 -- Example: Complete add function from MIR to LLVM IR
 -- MIR input:
@@ -1990,6 +2023,47 @@ fn test_method_call_ir() -> i64 =
 
     t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t9 + t10 + t11 + t12;
 
+-- v0.30.79: Test Array method IR generation
+fn test_array_method_ir() -> i64 =
+    -- Test 1: gen_method_array_len generates call to @bmb_array_len
+    let al1 = gen_method_array_len("%_t1", "%arr");
+    let t1 = if has_pattern(al1, "@bmb_array_len", 0) then 1 else 0;
+
+    -- Test 2: gen_method_array_len includes i8* type
+    let t2 = if has_pattern(al1, "i8* %arr", 0) then 1 else 0;
+
+    -- Test 3: gen_method_array_get generates call with index
+    let ag1 = gen_method_array_get("%_t2", "%arr", "%_t1");
+    let t3 = if has_pattern(ag1, "@bmb_array_get", 0) then 1 else 0;
+
+    -- Test 4: gen_method_array_get includes index argument
+    let t4 = if has_pattern(ag1, "i64 %_t1", 0) then 1 else 0;
+
+    -- Test 5: gen_method_array_set generates call with index and value
+    let as1 = gen_method_array_set("%_t3", "%arr", "%_t1, %_t2");
+    let t5 = if has_pattern(as1, "@bmb_array_set", 0) then 1 else 0;
+
+    -- Test 6: gen_method_array_set includes both arguments
+    let t6 = if has_pattern(as1, "i64 %_t1", 0) then 1 else 0;
+
+    -- Test 7: gen_method_dispatch routes array_len correctly
+    let d1 = gen_method_dispatch("%_t1", "%arr", "array_len", "");
+    let t7 = if has_pattern(d1, "@bmb_array_len", 0) then 1 else 0;
+
+    -- Test 8: gen_method_dispatch routes array_get correctly
+    let d2 = gen_method_dispatch("%_t2", "%arr", "array_get", "%_t1");
+    let t8 = if has_pattern(d2, "@bmb_array_get", 0) then 1 else 0;
+
+    -- Test 9: gen_extern_array_len declaration
+    let e1 = gen_extern_array_len();
+    let t9 = if has_pattern(e1, "declare i64 @bmb_array_len", 0) then 1 else 0;
+
+    -- Test 10: gen_extern_array_get declaration
+    let e2 = gen_extern_array_get();
+    let t10 = if has_pattern(e2, "declare i64 @bmb_array_get", 0) then 1 else 0;
+
+    t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t9 + t10;
+
 fn main() -> i64 =
     let u0 = println(777);
     let r1 = test_type_mapping();
@@ -2104,8 +2178,11 @@ fn main() -> i64 =
     -- v0.30.73-76 method call IR tests
     let r48 = test_method_call_ir();
     let u48 = println(r48);
+    -- v0.30.79 array method IR tests
+    let r49 = test_array_method_ir();
+    let u49 = println(r49);
     let u_end = println(888);
-    let total = r1 + r2 + r3 + r4 + r5 + r6 + r7 + r8 + r9 + r10 + r11 + r12 + r13 + r14 + r15 + r16 + r17 + r18 + r19 + r20 + r21 + r22 + r23 + r24 + r25 + r26 + r27 + r28 + r29 + r30 + r31 + r32 + r33 + r34 + r35 + r36 + r37 + r38 + r39 + r40 + r41 + r42 + r43 + r44 + r45 + r46 + r47 + r48;
+    let total = r1 + r2 + r3 + r4 + r5 + r6 + r7 + r8 + r9 + r10 + r11 + r12 + r13 + r14 + r15 + r16 + r17 + r18 + r19 + r20 + r21 + r22 + r23 + r24 + r25 + r26 + r27 + r28 + r29 + r30 + r31 + r32 + r33 + r34 + r35 + r36 + r37 + r38 + r39 + r40 + r41 + r42 + r43 + r44 + r45 + r46 + r47 + r48 + r49;
     let u_tot = println(total);
     let u_fin = println(999);
     total;

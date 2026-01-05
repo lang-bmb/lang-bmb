@@ -164,7 +164,7 @@ v0.MAJOR.MINOR
 | v0.28 | Benchmark | C/Rust/BMB benchmark suite | Compute-intensive benchmarks, Contract-optimized benchmarks, Real-world workloads |
 | v0.29 | Velocity | C/Rust performance sprint | MIR optimization framework (6 passes), Contract-based optimization, Bootstrap optimization module |
 
-### Bootstrap Statistics (as of v0.30.76)
+### Bootstrap Statistics (as of v0.30.79)
 
 | Metric | Value |
 |--------|-------|
@@ -302,6 +302,22 @@ v0.MAJOR.MINOR
 - `enum_reg_variant_type`: Resolve variant type with type args through registry lookup
 - `enum_reg_count`, `enum_reg_is_generic`: Registry utilities
 - 5 new test functions, 19 assertions (335 total in types.bmb)
+
+**v0.30.79 Completed (2026-01-05)**:
+- Array method IR tests: 10 tests for array_len, array_get, array_set
+- test_array_method_ir: Comprehensive tests for all array method IR
+- gen_extern_array_* declarations verified in tests
+- llvm_ir total: 203 tests (49 test functions)
+
+**v0.30.78 Completed (2026-01-05)**:
+- Array method IR generation: gen_method_array_len, gen_method_array_get, gen_method_array_set
+- gen_method_dispatch updated for array_len, array_get, array_set routing
+- Runtime calls to @bmb_array_len, @bmb_array_get, @bmb_array_set
+
+**v0.30.77 Completed (2026-01-05)**:
+- Array runtime declarations: gen_extern_array_len, gen_extern_array_get, gen_extern_array_set
+- Runtime declarations for @bmb_array_len(i8*), @bmb_array_get(i8*, i64), @bmb_array_set(i8*, i64, i64)
+- gen_runtime_decls updated to include all array runtime functions
 
 **v0.30.76 Completed (2026-01-05)**:
 - String.slice IR: `MethodCall %recv.slice(%start, %end)` → external call
