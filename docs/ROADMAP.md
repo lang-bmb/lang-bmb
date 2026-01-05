@@ -303,6 +303,14 @@ v0.MAJOR.MINOR
 - `enum_reg_count`, `enum_reg_is_generic`: Registry utilities
 - 5 new test functions, 19 assertions (335 total in types.bmb)
 
+**v0.30.26 Completed (2026-01-05)**:
+- let-mut type checking: Fixed offset calculation for "(let-mut" expressions
+- is_let_mut_expr helper: Detects let-mut via char_at(4) == '-'
+- let_prefix_len helper: Returns 8 for let-mut, 4 for let
+- expr_let_name fix: Uses dynamic prefix length for name extraction
+- type_of_let fix: Uses dynamic prefix for value/body position calculation
+- Total: 567 tests passing (9 new tests)
+
 **v0.30.25 Completed (2026-01-05)**:
 - Unary operator type checking: type_of_not and type_of_neg functions
 - EXPR_NOT constant (kind=12): Logical not expression "(not expr)"
@@ -795,13 +803,13 @@ $ bmb doc --check
 
 For detailed analysis of the remaining work, see [GAP_ANALYSIS.md](./GAP_ANALYSIS.md).
 
-**Key Metrics (as of v0.30.25)**:
+**Key Metrics (as of v0.30.26)**:
 - Rust code to remove: ~21,783 LOC
-- BMB bootstrap code: ~11,400 LOC (52% coverage)
-- Gap to close: ~11,600 LOC additional BMB
-- Bootstrap tests passing: 558 tests
+- BMB bootstrap code: ~11,500 LOC (53% coverage)
+- Gap to close: ~11,500 LOC additional BMB
+- Bootstrap tests passing: 567 tests
 
 ---
 
 **Last Updated**: 2026-01-05
-**Version**: v0.30.25 → v1.0.0-rc Planning Document
+**Version**: v0.30.26 → v1.0.0-rc Planning Document
