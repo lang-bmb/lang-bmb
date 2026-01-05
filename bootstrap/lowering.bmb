@@ -202,6 +202,33 @@ fn is_for_node(s: String) -> bool =
         let c4 = s.char_at(4);  -- ' '
         c0 == 40 and c1 == 102 and c2 == 111 and c3 == 114 and c4 == 32;
 
+-- v0.30.43: Break expression support
+-- Break format: exactly "(break)"
+fn is_break_node(s: String) -> bool =
+    s.len() == 7 and
+    s.char_at(0) == 40 and   -- '('
+    s.char_at(1) == 98 and   -- 'b'
+    s.char_at(2) == 114 and  -- 'r'
+    s.char_at(3) == 101 and  -- 'e'
+    s.char_at(4) == 97 and   -- 'a'
+    s.char_at(5) == 107 and  -- 'k'
+    s.char_at(6) == 41;      -- ')'
+
+-- v0.30.43: Continue expression support
+-- Continue format: exactly "(continue)"
+fn is_continue_node(s: String) -> bool =
+    s.len() == 10 and
+    s.char_at(0) == 40 and   -- '('
+    s.char_at(1) == 99 and   -- 'c'
+    s.char_at(2) == 111 and  -- 'o'
+    s.char_at(3) == 110 and  -- 'n'
+    s.char_at(4) == 116 and  -- 't'
+    s.char_at(5) == 105 and  -- 'i'
+    s.char_at(6) == 110 and  -- 'n'
+    s.char_at(7) == 117 and  -- 'u'
+    s.char_at(8) == 101 and  -- 'e'
+    s.char_at(9) == 41;      -- ')'
+
 fn has_double_colon(s: String, pos: i64) -> bool =
     if pos + 1 >= s.len() then false
     else if s.char_at(pos) == 58 and s.char_at(pos + 1) == 58 then true  -- '::'
@@ -596,6 +623,9 @@ fn lower_expr(ast: String, temp: i64, block: i64) -> String =
     else if is_while_node(ast) then lower_while(ast, temp, block)
     -- v0.30.40: For expression support
     else if is_for_node(ast) then lower_for(ast, temp, block)
+    -- v0.30.43: Break/Continue expression support
+    else if is_break_node(ast) then lower_break(ast, temp, block)
+    else if is_continue_node(ast) then lower_continue(ast, temp, block)
     else pack_lower_result(temp, block, "%error", "  ; unknown: " + get_node_type(ast));
 
 -- Lower integer literal: (int 42)
@@ -821,6 +851,20 @@ fn lower_for(ast: String, temp: i64, block: i64) -> String =
     let full_text = entry_text + "|" + loop_start_block + "|" + body_block + "|" + loop_end_block;
 
     pack_lower_result(tb + 1, bb + 1, result_place, full_text);
+
+-- v0.30.43: Lower break expression: (break)
+-- Generates a BREAK instruction (placeholder for loop exit)
+fn lower_break(ast: String, temp: i64, block: i64) -> String =
+    let dest = place_temp(temp);
+    let text = "  " + dest + " = BREAK";
+    pack_lower_result(temp + 1, block, dest, text);
+
+-- v0.30.43: Lower continue expression: (continue)
+-- Generates a CONTINUE instruction (placeholder for loop restart)
+fn lower_continue(ast: String, temp: i64, block: i64) -> String =
+    let dest = place_temp(temp);
+    let text = "  " + dest + " = CONTINUE";
+    pack_lower_result(temp + 1, block, dest, text);
 
 -- Lower variable reference: (var <name>)
 fn lower_var(ast: String, temp: i64, block: i64) -> String =
@@ -1524,6 +1568,24 @@ fn main() -> i64 =
     let for_lower_tests = fl1 + fl2 + fl3;
     let u35 = println(for_lower_tests);  -- Should be 3
 
+    -- Test 33: v0.30.43 Break node detection (2 tests)
+    let brn1 = if is_break_node("(break)") then 1 else 0;
+    let brn2 = if is_break_node("(continue)") then 0 else 1;  -- continue is not break
+    let break_node_tests = brn1 + brn2;
+    let u36 = println(break_node_tests);  -- Should be 2
+
+    -- Test 34: v0.30.43 Continue node detection (2 tests)
+    let con1 = if is_continue_node("(continue)") then 1 else 0;
+    let con2 = if is_continue_node("(break)") then 0 else 1;  -- break is not continue
+    let continue_node_tests = con1 + con2;
+    let u37 = println(continue_node_tests);  -- Should be 2
+
+    -- Test 35: v0.30.43 Break/Continue lowering (2 tests)
+    let bcl1 = test_lower_contains("(break)", "BREAK");
+    let bcl2 = test_lower_contains("(continue)", "CONTINUE");
+    let break_continue_lower_tests = bcl1 + bcl2;
+    let u38 = println(break_continue_lower_tests);  -- Should be 2
+
     let u22 = println(888);  -- Separator
 
     let total = node_tests + extract_tests + child_tests + int_tests + bool_tests +
@@ -1533,8 +1595,9 @@ fn main() -> i64 =
                 enum_node_tests + enum_extract_tests + enum_variant_tests + match_tests +
                 string_tests + lambda_node_tests + lambda_body_tests + lambda_lower_tests +
                 block_unit_node_tests + block_inner_tests + block_unit_lower_tests +
-                while_node_tests + while_lower_tests + for_node_tests + for_lower_tests;
-    let u23 = println(total);  -- Should be 85 (79 + 6 for tests)
+                while_node_tests + while_lower_tests + for_node_tests + for_lower_tests +
+                break_node_tests + continue_node_tests + break_continue_lower_tests;
+    let u23 = println(total);  -- Should be 91 (85 + 6 break/continue tests)
 
     let u24 = println(999);  -- End marker
 

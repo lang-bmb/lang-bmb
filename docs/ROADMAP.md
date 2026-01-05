@@ -303,6 +303,15 @@ v0.MAJOR.MINOR
 - `enum_reg_count`, `enum_reg_is_generic`: Registry utilities
 - 5 new test functions, 19 assertions (335 total in types.bmb)
 
+**v0.30.43 Completed (2026-01-05)**:
+- Break/Continue MIR lowering: MIR generation for break and continue
+- is_break_node: Detect break expressions "(break)"
+- is_continue_node: Detect continue expressions "(continue)"
+- lower_break: Generate BREAK instruction (placeholder for loop exit)
+- lower_continue: Generate CONTINUE instruction (placeholder for loop restart)
+- lower_expr extended: Handle break/continue nodes
+- Total: 91 tests passing in lowering.bmb (85 + 6 new)
+
 **v0.30.42 Completed (2026-01-05)**:
 - Break/Continue parsing: Full support for break and continue statements
 - TK_BREAK (125): Token for break keyword
