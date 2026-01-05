@@ -4342,14 +4342,18 @@ fn build_locals_from_params(params: String, count: i64, idx: i64, acc: String) -
 
 -- Check function body type matches return type
 -- Returns empty string on success, error message on failure
+-- v0.30.22: Handles generic functions by setting type parameters in tenv
 fn check_fn_body(tenv: String, ast: String) -> String =
     let name = ast_extract_def_name(ast, "fn");
     let ret_type = ast_extract_return_type(ast);
     let body = ast_extract_fn_body(ast);
     let locals = ast_params_to_locals(ast);
+    -- v0.30.22: Extract and set function's type parameters
+    let tparams = ast_extract_type_params(ast);
+    let fn_tenv = if tparams == "" then tenv else tenv_with_tparams(tenv, tparams);
     if body == "" then "ERR:no body in function " + name
     else
-        let body_type = type_of_expr(tenv, locals, body);
+        let body_type = type_of_expr(fn_tenv, locals, body);
         if is_error_str(body_type) then body_type
         else if body_type == ret_type then ""  -- success
         else "ERR:function " + name + " body type " + body_type + " != " + ret_type;
@@ -4472,6 +4476,60 @@ fn test_typecheck_program() -> i64 =
     let prog3 = "(program (fn <f1> (params ) i64 (int 1)) (fn <f2> (params ) bool (bool 1)))";
     let r3 = typecheck_program(prog3);
     let t3 = if r3 == "" then 1 else 0;
+
+    t1 + t2 + t3;
+
+-- ============================================================================
+-- v0.30.22 Tests: Generic Function Body Type Checking
+-- ============================================================================
+
+-- Test generic function body checking
+fn test_check_fn_body_generic() -> i64 =
+    let tenv = tenv_new();
+
+    -- Valid generic identity function: fn identity<T>(x: T) -> T = x
+    let ast1 = "(fn <identity> (type_params <T>) (params (p <x> T)) T (var <x>))";
+    let r1 = check_fn_body(tenv, ast1);
+    let t1 = if r1 == "" then 1 else 0;
+
+    -- Valid generic with two type params: fn first<A,B>(a: A, b: B) -> A = a
+    let ast2 = "(fn <first> (type_params <A> <B>) (params (p <a> A) (p <b> B)) A (var <a>))";
+    let r2 = check_fn_body(tenv, ast2);
+    let t2 = if r2 == "" then 1 else 0;
+
+    -- Valid generic second: fn second<A,B>(a: A, b: B) -> B = b
+    let ast3 = "(fn <second> (type_params <A> <B>) (params (p <a> A) (p <b> B)) B (var <b>))";
+    let r3 = check_fn_body(tenv, ast3);
+    let t3 = if r3 == "" then 1 else 0;
+
+    -- Invalid: body returns wrong type param - declared T but body uses param of type U
+    let ast4 = "(fn <bad> (type_params <T> <U>) (params (p <x> T) (p <y> U)) T (var <y>))";
+    let r4 = check_fn_body(tenv, ast4);
+    let t4 = if is_error_str(r4) then 1 else 0;
+
+    -- Generic function with expression body
+    let ast5 = "(fn <const_one> (type_params <T>) (params (p <x> T)) i64 (int 1))";
+    let r5 = check_fn_body(tenv, ast5);
+    let t5 = if r5 == "" then 1 else 0;
+
+    t1 + t2 + t3 + t4 + t5;
+
+-- Test typecheck_program with generic functions
+fn test_typecheck_program_generic() -> i64 =
+    -- Program with valid generic function
+    let prog1 = "(program (fn <identity> (type_params <T>) (params (p <x> T)) T (var <x>)))";
+    let r1 = typecheck_program(prog1);
+    let t1 = if r1 == "" then 1 else 0;
+
+    -- Mixed generic and non-generic functions
+    let prog2 = "(program (fn <const42> (params ) i64 (int 42)) (fn <id> (type_params <T>) (params (p <x> T)) T (var <x>)))";
+    let r2 = typecheck_program(prog2);
+    let t2 = if r2 == "" then 1 else 0;
+
+    -- Invalid generic function should fail
+    let prog3 = "(program (fn <bad> (type_params <T> <U>) (params (p <x> T)) U (var <x>)))";
+    let r3 = typecheck_program(prog3);
+    let t3 = if is_error_str(r3) then 1 else 0;
 
     t1 + t2 + t3;
 
@@ -5302,10 +5360,17 @@ fn main() -> i64 =
     let t116 = test_typecheck_program();
     let p116 = println(t116);  -- Expected: 3
 
+    -- v0.30.22: Generic function body checking tests
+    let t117 = test_check_fn_body_generic();
+    let p117 = println(t117);  -- Expected: 5
+
+    let t118 = test_typecheck_program_generic();
+    let p118 = println(t118);  -- Expected: 3
+
     let u1 = println(888);  -- Separator
 
-    let total = t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t9 + t10 + t11 + t12 + t13 + t14 + t15 + t16 + t17 + t18 + t19 + t20 + t21 + t22 + t23 + t24 + t25 + t26 + t27 + t28 + t29 + t30 + t31 + t32 + t33 + t34 + t35 + t36 + t37 + t38 + t39 + t40 + t41 + t42 + t43 + t44 + t45 + t46 + t47 + t48 + t49 + t50 + t51 + t52 + t53 + t54 + t55 + t56 + t57 + t58 + t59 + t60 + t61 + t62 + t63 + t64 + t65 + t66 + t67 + t68 + t69 + t70 + t71 + t72 + t73 + t74 + t75 + t76 + t77 + t78 + t79 + t80 + t81 + t82 + t83 + t84 + t85 + t86 + t87 + t88 + t89 + t90 + t91 + t92 + t93 + t94 + t95 + t96 + t97 + t98 + t99 + t100 + t101 + t102 + t103 + t104 + t105 + t106 + t107 + t108 + t109 + t110 + t111 + t112 + t113 + t114 + t115 + t116;
-    let u2 = println(total);  -- Expected: 509
+    let total = t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t9 + t10 + t11 + t12 + t13 + t14 + t15 + t16 + t17 + t18 + t19 + t20 + t21 + t22 + t23 + t24 + t25 + t26 + t27 + t28 + t29 + t30 + t31 + t32 + t33 + t34 + t35 + t36 + t37 + t38 + t39 + t40 + t41 + t42 + t43 + t44 + t45 + t46 + t47 + t48 + t49 + t50 + t51 + t52 + t53 + t54 + t55 + t56 + t57 + t58 + t59 + t60 + t61 + t62 + t63 + t64 + t65 + t66 + t67 + t68 + t69 + t70 + t71 + t72 + t73 + t74 + t75 + t76 + t77 + t78 + t79 + t80 + t81 + t82 + t83 + t84 + t85 + t86 + t87 + t88 + t89 + t90 + t91 + t92 + t93 + t94 + t95 + t96 + t97 + t98 + t99 + t100 + t101 + t102 + t103 + t104 + t105 + t106 + t107 + t108 + t109 + t110 + t111 + t112 + t113 + t114 + t115 + t116 + t117 + t118;
+    let u2 = println(total);  -- Expected: 517
 
     let u3 = println(999);  -- End marker
     total;

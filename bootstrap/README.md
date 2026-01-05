@@ -121,7 +121,7 @@ Comprehensive test suite with 15 test categories.
 14. Deep nesting
 15. Nested function calls
 
-### types.bmb (175KB) - v0.30.21
+### types.bmb (209KB) - v0.30.22
 Type checker foundation for BMB.
 
 **Features:**
@@ -300,6 +300,15 @@ Type checker foundation for BMB.
 - `check_program_functions`: Check all functions in a program
 - `typecheck_program`: Full pipeline - build tenv, then validate all functions
 
+**Features (v0.30.22):**
+- Generic function body type checking: Type parameter scope for function bodies
+- Modified `check_fn_body` to extract and set type parameters in tenv
+- Uses `ast_extract_type_params` to get function's type parameters
+- Uses `tenv_with_tparams` to create function-scoped type environment
+- Supports `fn identity<T>(x: T) -> T = x` pattern
+- Correctly validates generic return types match body types (T == T)
+- Detects type mismatches in generic functions (T vs U)
+
 **Test output:**
 ```
 777 (start marker)
@@ -418,8 +427,10 @@ Type checker foundation for BMB.
 2  (params to locals tests)           ; v0.30.21
 3  (check fn body tests)              ; v0.30.21
 3  (typecheck program tests)          ; v0.30.21
+5  (check fn body generic tests)      ; v0.30.22
+3  (typecheck program generic tests)  ; v0.30.22
 888 (separator)
-509 (total passed)
+517 (total passed)
 999 (end marker)
 ```
 

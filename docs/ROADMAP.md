@@ -303,6 +303,16 @@ v0.MAJOR.MINOR
 - `enum_reg_count`, `enum_reg_is_generic`: Registry utilities
 - 5 new test functions, 19 assertions (335 total in types.bmb)
 
+**v0.30.22 Completed (2026-01-05)**:
+- Generic function body type checking: Type parameter scope for function bodies
+- Modified check_fn_body to extract and set type parameters in tenv
+- Uses ast_extract_type_params to get function's type parameters
+- Uses tenv_with_tparams to create function-scoped type environment
+- Supports fn identity<T>(x: T) -> T = x pattern
+- Correctly validates generic return types match body types (T == T)
+- Detects type mismatches in generic functions (T vs U)
+- Total: 517 tests passing (8 new tests)
+
 **v0.30.21 Completed (2026-01-05)**:
 - Function body type checking: Complete program-wide type validation pipeline
 - ast_extract_fn_body: Extract function body expression from AST
