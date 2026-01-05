@@ -164,15 +164,15 @@ v0.MAJOR.MINOR
 | v0.28 | Benchmark | C/Rust/BMB benchmark suite | Compute-intensive benchmarks, Contract-optimized benchmarks, Real-world workloads |
 | v0.29 | Velocity | C/Rust performance sprint | MIR optimization framework (6 passes), Contract-based optimization, Bootstrap optimization module |
 
-### Bootstrap Statistics (as of v0.30.79)
+### Bootstrap Statistics (as of v0.30.83)
 
 | Metric | Value |
 |--------|-------|
 | Rust Codebase | ~21,783 LOC |
-| BMB Bootstrap | ~14,000 LOC |
-| Coverage | 64% |
+| BMB Bootstrap | ~14,100 LOC |
+| Coverage | 65% |
 | Stage 1/2 Tests | 19 tests passing |
-| Bootstrap Tests | 1187 tests (650 types + 193 llvm_ir + 108 lowering + 46 mir + 83 parser_ast + 33 utils + 19 selfhost_equiv + 30 pipeline + 9 optimize + 8 selfhost_test + 8 compiler) |
+| Bootstrap Tests | 1223 tests (650 types + 229 llvm_ir + 108 lowering + 46 mir + 83 parser_ast + 33 utils + 19 selfhost_equiv + 30 pipeline + 9 optimize + 8 selfhost_test + 8 compiler) |
 
 ---
 
@@ -302,6 +302,30 @@ v0.MAJOR.MINOR
 - `enum_reg_variant_type`: Resolve variant type with type args through registry lookup
 - `enum_reg_count`, `enum_reg_is_generic`: Registry utilities
 - 5 new test functions, 19 assertions (335 total in types.bmb)
+
+**v0.30.83 Completed (2026-01-05)**:
+- String concat/eq method IR: gen_method_concat, gen_method_eq
+- gen_method_dispatch updated for concat and eq routing
+- Runtime calls to @bmb_string_concat, @bmb_string_eq
+- 6 new tests in test_method_call_ir (now 18 tests)
+- llvm_ir total: 229 tests (51 test functions)
+
+**v0.30.82 Completed (2026-01-05)**:
+- Pipeline integration tests: test_pipeline_integration with 8 tests
+- Tests MIR→LLVM IR pipeline for functions, control flow, closures
+- Verified gen_function, gen_control_flow, gen_closure_ir pipeline
+
+**v0.30.81 Completed (2026-01-05)**:
+- Enhanced runtime declarations: gen_extern_string_concat, gen_extern_string_eq
+- Memory runtime: gen_extern_alloc, gen_extern_free
+- gen_runtime_decls combines basic, string, array, array_mut, memory decls
+- 6 new tests in test_runtime_decls (now 22 tests)
+
+**v0.30.80 Completed (2026-01-05)**:
+- Array mutation methods: gen_method_array_push, gen_method_array_pop, gen_method_array_clear
+- Runtime declarations: gen_extern_array_push, gen_extern_array_pop, gen_extern_array_clear
+- gen_method_dispatch updated for array mutation routing
+- 6 new tests in test_array_method_ir (now 16 tests)
 
 **v0.30.79 Completed (2026-01-05)**:
 - Array method IR tests: 10 tests for array_len, array_get, array_set
