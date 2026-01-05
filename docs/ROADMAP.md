@@ -164,15 +164,15 @@ v0.MAJOR.MINOR
 | v0.28 | Benchmark | C/Rust/BMB benchmark suite | Compute-intensive benchmarks, Contract-optimized benchmarks, Real-world workloads |
 | v0.29 | Velocity | C/Rust performance sprint | MIR optimization framework (6 passes), Contract-based optimization, Bootstrap optimization module |
 
-### Bootstrap Statistics (as of v0.30.68)
+### Bootstrap Statistics (as of v0.30.72)
 
 | Metric | Value |
 |--------|-------|
 | Rust Codebase | ~21,783 LOC |
-| BMB Bootstrap | ~13,500 LOC |
-| Coverage | 62% |
+| BMB Bootstrap | ~13,800 LOC |
+| Coverage | 63% |
 | Stage 1/2 Tests | 19 tests passing |
-| Bootstrap Tests | 1151 tests (644 types + 163 llvm_ir + 108 lowering + 46 mir + 83 parser_ast + 33 utils + 19 selfhost_equiv + 30 pipeline + 9 optimize + 8 selfhost_test + 8 compiler) |
+| Bootstrap Tests | 1175 tests (650 types + 181 llvm_ir + 108 lowering + 46 mir + 83 parser_ast + 33 utils + 19 selfhost_equiv + 30 pipeline + 9 optimize + 8 selfhost_test + 8 compiler) |
 
 ---
 
@@ -302,6 +302,34 @@ v0.MAJOR.MINOR
 - `enum_reg_variant_type`: Resolve variant type with type args through registry lookup
 - `enum_reg_count`, `enum_reg_is_generic`: Registry utilities
 - 5 new test functions, 19 assertions (335 total in types.bmb)
+
+**v0.30.72 Completed (2026-01-05)**:
+- Index expression LLVM IR: `%dest = Index %base[%idx]` → GEP + load
+- gen_instr_index: Generate getelementptr and load instructions
+- read_until_bracket, extract_index_expr: Parsing helpers
+- extract_until_close_bracket: Extract index from bracket syntax
+- 6 index IR tests, llvm_ir total: 181 tests
+
+**v0.30.71 Completed (2026-01-05)**:
+- Array literal LLVM IR: `%dest = Array [%e1, %e2]` → alloca + GEP + stores
+- gen_instr_array: Generate array allocation and element stores
+- count_array_elems, count_commas: Element counting utilities
+- gen_array_stores, extract_array_elem: Store instruction generation
+- trim_ws, trim_end_ws: Whitespace handling for element extraction
+- 6 array IR tests
+
+**v0.30.70 Completed (2026-01-05)**:
+- Range operator LLVM IR: `..` and `..=` → insertvalue {i64, i64}
+- is_range_op: Detect range operators in binop dispatch
+- gen_binop_range: Generate insertvalue sequence for Range<i64> struct
+- LLVM IR output: `{i64, i64}` tuple with start and end values
+- 6 range IR tests
+
+**v0.30.69 Completed (2026-01-05)**:
+- Range operator type checking: `..` and `..=` operators in binop_result_type
+- Range type handling: Returns `Range<i64>` for valid range expressions
+- Range error detection: Reports type error for non-i64 operands
+- 6 range type checking tests, types total: 650 tests
 
 **v0.30.68 Completed (2026-01-05)**:
 - Method call type checking: `(method_call receiver <method> args)` expressions

@@ -255,6 +255,23 @@ fn is_logic_op(op: String) -> bool =
 fn is_arith_op(op: String) -> bool =
     op == "+" or op == "-" or op == "*" or op == "/" or op == "%";
 
+-- v0.30.70: Range operators
+fn is_range_op(op: String) -> bool =
+    op == ".." or op == "..=";
+
+-- Range operator generates a {i64, i64} struct (start, end)
+-- MIR: %_t0 = .. %start, %end  →  LLVM: insertvalue {i64, i64} into struct
+-- MIR: %_t0 = ..= %start, %end →  LLVM: insertvalue {i64, i64} into struct
+fn gen_binop_range(dest: String, op: String, lhs: String, rhs: String) -> String =
+    -- For now, generate a comment indicating range creation
+    -- Full implementation would create a {i64, i64} struct
+    -- Exclusive range (..) and inclusive range (..=) differ in semantics
+    -- but both produce the same struct representation for now
+    let tmp = dest + "_tmp";
+    let line1 = tmp + " = insertvalue {i64, i64} undef, i64 " + lhs + ", 0";
+    let line2 = dest + " = insertvalue {i64, i64} " + tmp + ", i64 " + rhs + ", 1";
+    line1 + "|" + line2;
+
 -- ============================================================================
 -- SECTION 8: LLVM IR Unary Operations
 -- ============================================================================
@@ -571,6 +588,8 @@ fn gen_instr_dispatch(dest: String, op: String, line: String, pos: i64) -> Strin
     else if op == "BREAK" then gen_instr_break(dest)  -- v0.30.48
     else if op == "CONTINUE" then gen_instr_continue(dest)  -- v0.30.48
     else if is_closure_op(op) then gen_instr_closure(dest, parse_closure_id(op))  -- v0.30.52
+    else if op == "Array" then gen_instr_array(dest, line, pos)  -- v0.30.71
+    else if op == "Index" then gen_instr_index(dest, line, pos)  -- v0.30.72
     else gen_instr_binop(dest, op, line, pos);
 
 -- const I:42 or const B:1 or const S:hello (v0.30.51)
@@ -629,6 +648,122 @@ fn is_closure_op(op: String) -> bool =
          op.char_at(3) == 83 and op.char_at(4) == 85 and op.char_at(5) == 82 and
          op.char_at(6) == 69;  -- "CLOSURE"
 
+-- ============================================================================
+-- v0.30.71: Array Literal IR Generation
+-- ============================================================================
+
+-- Array literal: %dest = Array [%e1, %e2, ...]
+-- For now, represent as alloca + stores
+-- MIR: %_t3 = Array [%_t0, %_t1, %_t2]
+-- LLVM: %_t3 = alloca [N x i64]
+--       store elements via getelementptr
+fn gen_instr_array(dest: String, line: String, pos: i64) -> String =
+    -- Find [ and ] to extract elements
+    let bracket_start = find_char(line, 91, pos);  -- '['
+    let bracket_end = find_char(line, 93, bracket_start);  -- ']'
+    if bracket_start < 0 or bracket_end < 0 then "; array: invalid format"
+    else
+        let elems_str = line.slice(bracket_start + 1, bracket_end);
+        let count = count_array_elems(elems_str);
+        if count == 0 then
+            -- Empty array: just alloca
+            dest + " = alloca [0 x i64]"
+        else
+            -- Alloca and stores for each element
+            let alloc = dest + " = alloca [" + int_to_string(count) + " x i64]";
+            let stores = gen_array_stores(dest, elems_str, count, 0);
+            alloc + "|" + stores;
+
+-- Count comma-separated elements
+fn count_array_elems(s: String) -> i64 =
+    if s.len() == 0 then 0
+    else count_commas(s, 0) + 1;
+
+fn count_commas(s: String, pos: i64) -> i64 =
+    if pos >= s.len() then 0
+    else if s.char_at(pos) == 44 then 1 + count_commas(s, pos + 1)  -- ','
+    else count_commas(s, pos + 1);
+
+-- Generate store instructions for array elements
+fn gen_array_stores(arr: String, elems: String, count: i64, idx: i64) -> String =
+    if idx >= count then ""
+    else
+        let elem = extract_array_elem(elems, idx);
+        let ptr = arr + "_ptr" + int_to_string(idx);
+        let gep = ptr + " = getelementptr [" + int_to_string(count) + " x i64], [" + int_to_string(count) + " x i64]* " + arr + ", i32 0, i32 " + int_to_string(idx);
+        let store = "store i64 " + elem + ", i64* " + ptr;
+        let rest = gen_array_stores(arr, elems, count, idx + 1);
+        if rest.len() > 0 then gep + "|" + store + "|" + rest
+        else gep + "|" + store;
+
+-- Extract element at index from comma-separated list
+fn extract_array_elem(s: String, idx: i64) -> String =
+    extract_array_elem_rec(s, idx, 0, 0);
+
+fn extract_array_elem_rec(s: String, target: i64, current: i64, pos: i64) -> String =
+    if pos >= s.len() then
+        if current == target then trim_ws(s.slice(find_elem_start(s, current), s.len()))
+        else ""
+    else if s.char_at(pos) == 44 then  -- ','
+        if current == target then trim_ws(s.slice(find_elem_start(s, current), pos))
+        else extract_array_elem_rec(s, target, current + 1, pos + 1)
+    else extract_array_elem_rec(s, target, current, pos + 1);
+
+fn find_elem_start(s: String, idx: i64) -> i64 =
+    find_elem_start_rec(s, idx, 0, 0);
+
+fn find_elem_start_rec(s: String, target: i64, current: i64, pos: i64) -> i64 =
+    if current == target then skip_ws(s, pos)
+    else if pos >= s.len() then pos
+    else if s.char_at(pos) == 44 then find_elem_start_rec(s, target, current + 1, pos + 1)
+    else find_elem_start_rec(s, target, current, pos + 1);
+
+fn trim_ws(s: String) -> String =
+    let start = skip_ws(s, 0);
+    let end = trim_end_ws(s, s.len());
+    if start >= end then ""
+    else s.slice(start, end);
+
+fn trim_end_ws(s: String, pos: i64) -> i64 =
+    if pos <= 0 then 0
+    else if s.char_at(pos - 1) == 32 then trim_end_ws(s, pos - 1)  -- ' '
+    else pos;
+
+-- ============================================================================
+-- v0.30.72: Index Expression IR Generation
+-- ============================================================================
+
+-- Index expression: %dest = Index %base[%idx]
+-- LLVM: getelementptr + load
+fn gen_instr_index(dest: String, line: String, pos: i64) -> String =
+    -- Parse %base[%idx] format
+    let base = read_until_bracket(line, pos);
+    let bracket_pos = pos + base.len();
+    let idx = extract_index_expr(line, bracket_pos);
+    -- Generate GEP + load
+    let ptr = dest + "_ptr";
+    let gep = ptr + " = getelementptr i64, i64* " + base + ", i64 " + idx;
+    let load = dest + " = load i64, i64* " + ptr;
+    gep + "|" + load;
+
+fn read_until_bracket(s: String, pos: i64) -> String =
+    read_until_bracket_rec(s, pos, "");
+
+fn read_until_bracket_rec(s: String, pos: i64, acc: String) -> String =
+    if pos >= s.len() then acc
+    else if s.char_at(pos) == 91 then acc  -- '['
+    else read_until_bracket_rec(s, pos + 1, acc + char_to_string(s.char_at(pos)));
+
+fn extract_index_expr(s: String, pos: i64) -> String =
+    -- Skip '[' and extract until ']'
+    let start = if pos < s.len() and s.char_at(pos) == 91 then pos + 1 else pos;
+    extract_until_close_bracket(s, start, "");
+
+fn extract_until_close_bracket(s: String, pos: i64, acc: String) -> String =
+    if pos >= s.len() then acc
+    else if s.char_at(pos) == 93 then acc  -- ']'
+    else extract_until_close_bracket(s, pos + 1, acc + char_to_string(s.char_at(pos)));
+
 -- Binary operations: + %a, %b or == %a, %b or and %a, %b
 fn gen_instr_binop(dest: String, op: String, line: String, pos: i64) -> String =
     let lhs = read_until_ws(line, pos);
@@ -638,6 +773,8 @@ fn gen_instr_binop(dest: String, op: String, line: String, pos: i64) -> String =
     if is_arith_op(op) then gen_binop_arith(dest, op, lhs, rhs, "i64")
     else if is_cmp_op(op) then gen_binop_cmp(dest, op, lhs, rhs, "i64")
     else if is_logic_op(op) then gen_binop_logic(dest, op, lhs, rhs, "i1")
+    -- v0.30.70: Range operator support
+    else if is_range_op(op) then gen_binop_range(dest, op, lhs, rhs)
     else "; unknown op: " + op;
 
 -- ============================================================================
@@ -1083,6 +1220,21 @@ fn test_const_generation() -> i64 =
     let t3 = if c3 == "%x = add i64 0, 0" then 1 else 0;
     t1 + t2 + t3;
 
+-- v0.30.70: String helper for tests
+fn str_contains(s: String, sub: String) -> bool =
+    str_contains_rec(s, sub, 0);
+fn str_contains_rec(s: String, sub: String, pos: i64) -> bool =
+    if pos + sub.len() > s.len() then false
+    else if str_match_at(s, sub, pos) then true
+    else str_contains_rec(s, sub, pos + 1);
+fn str_match_at(s: String, sub: String, pos: i64) -> bool =
+    str_match_at_idx(s, sub, pos, 0);
+fn str_match_at_idx(s: String, sub: String, pos: i64, idx: i64) -> bool =
+    if idx >= sub.len() then true
+    else if pos + idx >= s.len() then false
+    else if s.char_at(pos + idx) != sub.char_at(idx) then false
+    else str_match_at_idx(s, sub, pos, idx + 1);
+
 fn test_arith_ops() -> i64 =
     let a1 = gen_binop_arith("%_t0", "+", "%a", "%b", "i64");
     let t1 = if a1 == "%_t0 = add i64 %a, %b" then 1 else 0;
@@ -1113,6 +1265,24 @@ fn test_logic_ops() -> i64 =
     let l2 = gen_binop_logic("%_t1", "or", "%a", "%b", "i1");
     let t2 = if l2 == "%_t1 = or i1 %a, %b" then 1 else 0;
     t1 + t2;
+
+-- v0.30.70: Range operator tests
+fn test_range_ops() -> i64 =
+    -- Test 1: is_range_op for exclusive range
+    let r1 = if is_range_op("..") then 1 else 0;
+    -- Test 2: is_range_op for inclusive range
+    let r2 = if is_range_op("..=") then 1 else 0;
+    -- Test 3: is_range_op rejects arithmetic ops
+    let r3 = if is_range_op("+") then 0 else 1;
+    -- Test 4: gen_binop_range contains insertvalue
+    let rng = gen_binop_range("%_t0", "..", "%start", "%end");
+    let r4 = if str_contains(rng, "insertvalue") then 1 else 0;
+    -- Test 5: gen_binop_range contains {i64, i64}
+    let r5 = if str_contains(rng, "{i64, i64}") then 1 else 0;
+    -- Test 6: Range shows in gen_instruction dispatch
+    let rng2 = gen_instruction("%_t0 = .. %a, %b");
+    let r6 = if str_contains(rng2, "insertvalue") then 1 else 0;
+    r1 + r2 + r3 + r4 + r5 + r6;
 
 fn test_unary_ops() -> i64 =
     let u1 = gen_unary_neg("%_t0", "%x", "i64");
@@ -1584,6 +1754,57 @@ fn test_unit_break_continue() -> i64 =
 
     t1 + t2 + t3 + t4 + t5 + t6;
 
+-- v0.30.71: Test Array IR generation
+fn test_array_ir() -> i64 =
+    -- Test 1: Empty array []
+    let a1 = gen_instr_array("%arr1", "  %arr1 = Array []", 14);
+    let t1 = if has_pattern(a1, "alloca [0 x i64]", 0) then 1 else 0;
+
+    -- Test 2: Single element array [%e0]
+    let a2 = gen_instr_array("%arr2", "  %arr2 = Array [%e0]", 14);
+    let t2 = if has_pattern(a2, "alloca [1 x i64]", 0) then 1 else 0;
+
+    -- Test 3: Single element generates GEP
+    let t3 = if has_pattern(a2, "getelementptr", 0) then 1 else 0;
+
+    -- Test 4: Single element generates store
+    let t4 = if has_pattern(a2, "store i64 %e0", 0) then 1 else 0;
+
+    -- Test 5: Multiple elements array [%a, %b, %c]
+    let a5 = gen_instr_array("%arr3", "  %arr3 = Array [%a, %b, %c]", 14);
+    let t5 = if has_pattern(a5, "alloca [3 x i64]", 0) then 1 else 0;
+
+    -- Test 6: Count array elements correctly
+    let c1 = count_array_elems("%a, %b, %c");
+    let t6 = if c1 == 3 then 1 else 0;
+
+    t1 + t2 + t3 + t4 + t5 + t6;
+
+-- v0.30.72: Test Index IR generation
+fn test_index_ir() -> i64 =
+    -- Test 1: Basic index %base[%idx]
+    let i1 = gen_instr_index("%r1", "  %r1 = Index %arr[%i]", 14);
+    let t1 = if has_pattern(i1, "getelementptr", 0) then 1 else 0;
+
+    -- Test 2: Index generates load
+    let t2 = if has_pattern(i1, "load i64", 0) then 1 else 0;
+
+    -- Test 3: Index uses base pointer
+    let t3 = if has_pattern(i1, "%arr", 0) then 1 else 0;
+
+    -- Test 4: Index uses index value
+    let t4 = if has_pattern(i1, "%i", 0) then 1 else 0;
+
+    -- Test 5: Extract index expression
+    let idx = extract_index_expr("[%x]", 0);
+    let t5 = if idx == "%x" then 1 else 0;
+
+    -- Test 6: Read until bracket
+    let base = read_until_bracket("%arr[%i]", 0);
+    let t6 = if base == "%arr" then 1 else 0;
+
+    t1 + t2 + t3 + t4 + t5 + t6;
+
 fn main() -> i64 =
     let u0 = println(777);
     let r1 = test_type_mapping();
@@ -1686,8 +1907,17 @@ fn main() -> i64 =
     let u43 = println(r43);
     let r44 = test_full_logic_function();
     let u44 = println(r44);
+    -- v0.30.70 range operator IR tests
+    let r45 = test_range_ops();
+    let u45 = println(r45);
+    -- v0.30.71 array IR tests
+    let r46 = test_array_ir();
+    let u46 = println(r46);
+    -- v0.30.72 index IR tests
+    let r47 = test_index_ir();
+    let u47 = println(r47);
     let u_end = println(888);
-    let total = r1 + r2 + r3 + r4 + r5 + r6 + r7 + r8 + r9 + r10 + r11 + r12 + r13 + r14 + r15 + r16 + r17 + r18 + r19 + r20 + r21 + r22 + r23 + r24 + r25 + r26 + r27 + r28 + r29 + r30 + r31 + r32 + r33 + r34 + r35 + r36 + r37 + r38 + r39 + r40 + r41 + r42 + r43 + r44;
+    let total = r1 + r2 + r3 + r4 + r5 + r6 + r7 + r8 + r9 + r10 + r11 + r12 + r13 + r14 + r15 + r16 + r17 + r18 + r19 + r20 + r21 + r22 + r23 + r24 + r25 + r26 + r27 + r28 + r29 + r30 + r31 + r32 + r33 + r34 + r35 + r36 + r37 + r38 + r39 + r40 + r41 + r42 + r43 + r44 + r45 + r46 + r47;
     let u_tot = println(total);
     let u_fin = println(999);
     total;
