@@ -164,15 +164,15 @@ v0.MAJOR.MINOR
 | v0.28 | Benchmark | C/Rust/BMB benchmark suite | Compute-intensive benchmarks, Contract-optimized benchmarks, Real-world workloads |
 | v0.29 | Velocity | C/Rust performance sprint | MIR optimization framework (6 passes), Contract-based optimization, Bootstrap optimization module |
 
-### Bootstrap Statistics (as of v0.30.92)
+### Bootstrap Statistics (as of v0.30.95)
 
 | Metric | Value |
 |--------|-------|
 | Rust Codebase | ~21,783 LOC |
-| BMB Bootstrap | ~14,800 LOC |
+| BMB Bootstrap | ~14,900 LOC |
 | Coverage | 68% |
 | Stage 1/2 Tests | 19 tests passing |
-| Bootstrap Tests | 1322 tests (733 types + 239 llvm_ir + 108 lowering + 46 mir + 83 parser_ast + 33 utils + 19 selfhost_equiv + 42 pipeline + 9 optimize + 8 selfhost_test + 2 compiler) |
+| Bootstrap Tests | 1346 tests (733 types + 263 llvm_ir + 108 lowering + 46 mir + 83 parser_ast + 33 utils + 19 selfhost_equiv + 42 pipeline + 9 optimize + 8 selfhost_test + 2 compiler) |
 
 ---
 
@@ -334,6 +334,24 @@ v0.MAJOR.MINOR
 - Pipeline integration verification: 3 new test groups in pipeline.bmb (12 tests)
 - Multi-operand expressions, mixed operations, combined expressions
 - pipeline.bmb total: 42 tests (10 test groups)
+
+**v0.30.95 Completed (2026-01-06)**:
+- Struct/Enum IR edge cases: test_struct_enum_edge (8 tests)
+- Multiple field struct chaining, extractvalue at index 2
+- Enum with large discriminants (99), non-sequential discriminants
+- llvm_ir.bmb total: 263 tests (55 test functions)
+
+**v0.30.94 Completed (2026-01-06)**:
+- If-then-else control flow completeness: test_if_control_flow (8 tests)
+- then/else/merge label generation, conditional branch with block indices
+- phi node with multiple sources, terminator line detection
+- llvm_ir.bmb total: 255 tests (54 test functions)
+
+**v0.30.93 Completed (2026-01-06)**:
+- Match expression IR testing: test_match_ir (8 tests)
+- match_arm/match_merge label generation, switch with multiple arms
+- goto match_merge, switch_line detection for match
+- llvm_ir.bmb total: 247 tests (53 test functions)
 
 **v0.30.87 Completed (2026-01-05)**:
 - Trait constraint checking: type_satisfies_trait, trait_methods_match, impl_has_method

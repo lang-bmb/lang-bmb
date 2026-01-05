@@ -1955,6 +1955,138 @@ fn test_for_ir() -> i64 =
 
     t1 + t2 + t3 + t4 + t5 + t6;
 
+-- v0.30.94: Test if-then-else control flow completeness
+fn test_if_control_flow() -> i64 =
+    -- If-then-else generates:
+    -- %cond = <condition>
+    -- br i1 %cond, label %then_N, label %else_N
+    -- then_N:
+    --   %then_val = <then expr>
+    --   br label %merge_N
+    -- else_N:
+    --   %else_val = <else expr>
+    --   br label %merge_N
+    -- merge_N:
+    --   %result = phi i64 [%then_val, %then_N], [%else_val, %else_N]
+
+    -- Test 1: then label generation
+    let then_lbl = gen_label_line("then_0:");
+    let t1 = if then_lbl == "then_0:" then 1 else 0;
+
+    -- Test 2: else label generation
+    let else_lbl = gen_label_line("else_0:");
+    let t2 = if else_lbl == "else_0:" then 1 else 0;
+
+    -- Test 3: merge label generation
+    let merge_lbl = gen_label_line("merge_0:");
+    let t3 = if merge_lbl == "merge_0:" then 1 else 0;
+
+    -- Test 4: conditional branch with nested block indices
+    let br1 = gen_terminator("branch %cond, then_5, else_5");
+    let t4 = if br1 == "br i1 %cond, label %then_5, label %else_5" then 1 else 0;
+
+    -- Test 5: phi for merge with different values
+    let phi1 = gen_phi("%result", "i64", "%x", "then_0", "%y", "else_0");
+    let t5 = if has_pattern(phi1, "%result = phi i64", 0) then 1 else 0;
+
+    -- Test 6: phi includes then block source
+    let t6 = if has_pattern(phi1, "[ %x, %then_0 ]", 0) then 1 else 0;
+
+    -- Test 7: phi includes else block source
+    let t7 = if has_pattern(phi1, "[ %y, %else_0 ]", 0) then 1 else 0;
+
+    -- Test 8: conditional branch detection
+    let t8 = if is_terminator_line("branch %b, t, e") then 1 else 0;
+
+    t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8;
+
+-- v0.30.93: Test match expression MIR -> LLVM IR conversion
+fn test_match_ir() -> i64 =
+    -- Match expression generates:
+    -- switch %scrutinee, [cases], merge_label
+    -- match_arm_0_N:
+    --   <body>
+    --   copy result, body_result
+    --   goto merge
+    -- match_arm_1_N:
+    --   <body>
+    --   ...
+    -- match_merge_N:
+
+    -- Test 1: match_arm label generation
+    let arm_lbl = gen_label_line("match_arm_0_1:");
+    let t1 = if arm_lbl == "match_arm_0_1:" then 1 else 0;
+
+    -- Test 2: match_merge label generation
+    let merge_lbl = gen_label_line("match_merge_1:");
+    let t2 = if merge_lbl == "match_merge_1:" then 1 else 0;
+
+    -- Test 3: Switch with 3 arms
+    let sw3 = gen_instr_switch("  switch %s, [0 -> match_arm_0_1, 1 -> match_arm_1_1, 2 -> match_arm_2_1], match_merge_1");
+    let t3 = if has_pattern(sw3, "i64 0, label %match_arm_0_1", 0) then 1 else 0;
+
+    -- Test 4: Switch with 3 arms - second case
+    let t4 = if has_pattern(sw3, "i64 1, label %match_arm_1_1", 0) then 1 else 0;
+
+    -- Test 5: Switch with 3 arms - third case
+    let t5 = if has_pattern(sw3, "i64 2, label %match_arm_2_1", 0) then 1 else 0;
+
+    -- Test 6: Switch default label
+    let t6 = if has_pattern(sw3, "label %match_merge_1", 0) then 1 else 0;
+
+    -- Test 7: goto match_merge (from arm)
+    let gt = gen_terminator("goto match_merge_1");
+    let t7 = if gt == "br label %match_merge_1" then 1 else 0;
+
+    -- Test 8: is_switch_line detection for match
+    let t8 = if is_switch_line("  switch %val, [0 -> arm0], merge") then 1 else 0;
+
+    t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8;
+
+-- v0.30.95: Test struct/enum IR edge cases
+fn test_struct_enum_edge() -> i64 =
+    -- Edge Case 1: Multiple field struct (chain of insertvalues)
+    -- %_t0 = struct-init Point3D { x: %x, y: %y, z: %z }
+    -- becomes:
+    -- %_tmp0 = insertvalue %Point3D zeroinitializer, i64 %x, 0
+    -- %_tmp1 = insertvalue %Point3D %_tmp0, i64 %y, 1
+    -- %_t0 = insertvalue %Point3D %_tmp1, i64 %z, 2
+
+    -- Test 1: First insertvalue in chain (zeroinitializer)
+    let iv1 = gen_insertvalue("%_tmp0", "Point3D", "%Point3D zeroinitializer", "%x", 0);
+    let t1 = if has_pattern(iv1, "zeroinitializer", 0) then 1 else 0;
+
+    -- Test 2: Chained insertvalue (uses previous result)
+    let iv2 = gen_insertvalue("%_tmp1", "Point3D", "%_tmp0", "%y", 1);
+    let t2 = if has_pattern(iv2, "insertvalue %Point3D %_tmp0", 0) then 1 else 0;
+
+    -- Test 3: Field index 2 (beyond x, y)
+    let iv3 = gen_insertvalue("%_t0", "Point3D", "%_tmp1", "%z", 2);
+    let t3 = if has_pattern(iv3, ", 2", 0) then 1 else 0;
+
+    -- Test 4: Extractvalue at index 2
+    let ev2 = gen_extractvalue("%_t1", "Point3D", "%p", 2);
+    let t4 = if ev2 == "%_t1 = extractvalue %Point3D %p, 2" then 1 else 0;
+
+    -- Edge Case 2: Enum with large discriminant
+    -- %_t0 = enum-variant Status::Code 99 %val
+    let ev_large = gen_instr_enum_variant("  %_t0 = enum-variant Status::Code 99 %val");
+    let t5 = if has_pattern(ev_large, "insertvalue", 0) then 1 else 0;
+
+    -- Test 6: Switch with non-sequential discriminants
+    let sw_ns = gen_instr_switch("  switch %d, [0 -> case0, 5 -> case5, 99 -> case99], default");
+    let t6 = if has_pattern(sw_ns, "i64 5, label %case5", 0) then 1 else 0;
+
+    -- Test 7: Switch with 99 discriminant
+    let t7 = if has_pattern(sw_ns, "i64 99, label %case99", 0) then 1 else 0;
+
+    -- Test 8: Nested field access pattern (for future nested struct support)
+    -- field-access on result of field-access would need two extractvalues
+    let fa_nested = gen_extractvalue("%inner", "Outer", "%outer", 0);
+    let t8 = if fa_nested == "%inner = extractvalue %Outer %outer, 0" then 1 else 0;
+
+    t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8;
+
 -- v0.30.48: Test UNIT, BREAK, CONTINUE instruction generation
 fn test_unit_break_continue() -> i64 =
     -- Test 1: UNIT instruction
@@ -2405,8 +2537,17 @@ fn main() -> i64 =
     -- v0.30.90 method dispatch edge case tests
     let r52 = test_method_dispatch_edge();
     let u52 = println(r52);
+    -- v0.30.93 match expression IR tests
+    let r53 = test_match_ir();
+    let u53 = println(r53);
+    -- v0.30.94 if control flow completeness tests
+    let r54 = test_if_control_flow();
+    let u54 = println(r54);
+    -- v0.30.95 struct/enum edge case tests
+    let r55 = test_struct_enum_edge();
+    let u55 = println(r55);
     let u_end = println(888);
-    let total = r1 + r2 + r3 + r4 + r5 + r6 + r7 + r8 + r9 + r10 + r11 + r12 + r13 + r14 + r15 + r16 + r17 + r18 + r19 + r20 + r21 + r22 + r23 + r24 + r25 + r26 + r27 + r28 + r29 + r30 + r31 + r32 + r33 + r34 + r35 + r36 + r37 + r38 + r39 + r40 + r41 + r42 + r43 + r44 + r45 + r46 + r47 + r48 + r49 + r50 + r51 + r52;
+    let total = r1 + r2 + r3 + r4 + r5 + r6 + r7 + r8 + r9 + r10 + r11 + r12 + r13 + r14 + r15 + r16 + r17 + r18 + r19 + r20 + r21 + r22 + r23 + r24 + r25 + r26 + r27 + r28 + r29 + r30 + r31 + r32 + r33 + r34 + r35 + r36 + r37 + r38 + r39 + r40 + r41 + r42 + r43 + r44 + r45 + r46 + r47 + r48 + r49 + r50 + r51 + r52 + r53 + r54 + r55;
     let u_tot = println(total);
     let u_fin = println(999);
     total;
