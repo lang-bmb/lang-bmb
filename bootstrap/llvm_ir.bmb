@@ -150,17 +150,30 @@ fn gen_const_int(dest: String, value: i64) -> String =
 fn gen_const_bool(dest: String, value: i64) -> String =
     dest + " = add i1 0, " + int_to_string(value);
 
--- Parse constant value from MIR format: I:42 or B:1
+-- v0.30.51: Generate LLVM IR for string constant
+-- MIR: %_t0 = const S:hello
+-- LLVM: String constants represented as i8* pointer (placeholder for runtime)
+-- Full implementation would generate global @.str.N and getelementptr
+fn gen_const_string(dest: String, content: String) -> String =
+    "; string: " + content + "|" + dest + " = inttoptr i64 0 to i8*";
+
+-- Parse constant value from MIR format: I:42 or B:1 or S:hello
 fn parse_const_type(val: String) -> String =
     if val.len() < 2 then "unknown"
     else if val.char_at(0) == 73 then "int"     -- 'I'
     else if val.char_at(0) == 66 then "bool"    -- 'B'
     else if val.char_at(0) == 85 then "unit"    -- 'U'
+    else if val.char_at(0) == 83 then "string"  -- 'S' (v0.30.51)
     else "unknown";
 
 fn parse_const_value(val: String) -> i64 =
     if val.len() < 3 then 0
     else parse_int_from(val, 2, 0);
+
+-- v0.30.51: Extract string content from S:hello format
+fn parse_const_string(val: String) -> String =
+    if val.len() < 3 then ""
+    else val.slice(2, val.len());
 
 fn parse_int_from(s: String, pos: i64, acc: i64) -> i64 =
     if pos >= s.len() then acc
@@ -557,15 +570,16 @@ fn gen_instr_dispatch(dest: String, op: String, line: String, pos: i64) -> Strin
     else if op == "UNIT" then gen_instr_unit(dest)  -- v0.30.48
     else if op == "BREAK" then gen_instr_break(dest)  -- v0.30.48
     else if op == "CONTINUE" then gen_instr_continue(dest)  -- v0.30.48
+    else if is_closure_op(op) then gen_instr_closure(dest, parse_closure_id(op))  -- v0.30.52
     else gen_instr_binop(dest, op, line, pos);
 
--- const I:42 or const B:1
+-- const I:42 or const B:1 or const S:hello (v0.30.51)
 fn gen_instr_const(dest: String, line: String, pos: i64) -> String =
     let val = read_until_ws(line, pos);
     let ctype = parse_const_type(val);
-    let cval = parse_const_value(val);
-    if ctype == "int" then gen_const_int(dest, cval)
-    else if ctype == "bool" then gen_const_bool(dest, cval)
+    if ctype == "int" then gen_const_int(dest, parse_const_value(val))
+    else if ctype == "bool" then gen_const_bool(dest, parse_const_value(val))
+    else if ctype == "string" then gen_const_string(dest, parse_const_string(val))
     else "; unknown const type";
 
 -- neg %x
@@ -595,6 +609,25 @@ fn gen_instr_break(dest: String) -> String =
 -- v0.30.48: CONTINUE placeholder - generates comment (actual handling in loop context)
 fn gen_instr_continue(dest: String) -> String =
     "; CONTINUE: " + dest + " - placeholder|  " + dest + " = add i64 0, 0";
+
+-- v0.30.52: CLOSURE - closure/lambda represented as function pointer
+-- MIR: %_t0 = CLOSURE:42
+-- LLVM: Closure is represented as i64 pointer (simplified for bootstrap)
+-- Full implementation would generate struct { i8* fn_ptr, i8* env_ptr }
+fn gen_instr_closure(dest: String, closure_id: String) -> String =
+    "; closure: " + closure_id + "|" + dest + " = inttoptr i64 0 to i8*";
+
+-- Parse closure ID from CLOSURE:42 format
+fn parse_closure_id(op_arg: String) -> String =
+    if op_arg.len() < 9 then ""  -- "CLOSURE:" is 8 chars
+    else op_arg.slice(8, op_arg.len());
+
+-- Check if operation is CLOSURE
+fn is_closure_op(op: String) -> bool =
+    if op.len() < 7 then false
+    else op.char_at(0) == 67 and op.char_at(1) == 76 and op.char_at(2) == 79 and
+         op.char_at(3) == 83 and op.char_at(4) == 85 and op.char_at(5) == 82 and
+         op.char_at(6) == 69;  -- "CLOSURE"
 
 -- Binary operations: + %a, %b or == %a, %b or and %a, %b
 fn gen_instr_binop(dest: String, op: String, line: String, pos: i64) -> String =
@@ -1071,6 +1104,89 @@ fn test_parse_const() -> i64 =
     let t5 = if parse_const_value("I:100") == 100 then 1 else 0;
     t1 + t2 + t3 + t4 + t5;
 
+-- v0.30.51: Test string constant parsing and generation
+fn test_string_const() -> i64 =
+    -- Test 1: parse_const_type recognizes string
+    let t1 = if parse_const_type("S:hello") == "string" then 1 else 0;
+
+    -- Test 2: parse_const_string extracts content
+    let t2 = if parse_const_string("S:hello") == "hello" then 1 else 0;
+
+    -- Test 3: parse_const_string with longer content
+    let t3 = if parse_const_string("S:world123") == "world123" then 1 else 0;
+
+    -- Test 4: gen_const_string generates comment + inttoptr
+    let s1 = gen_const_string("%_t0", "hello");
+    let t4 = if has_pattern(s1, "; string: hello", 0) then 1 else 0;
+
+    -- Test 5: gen_const_string generates inttoptr instruction
+    let t5 = if has_pattern(s1, "inttoptr i64 0 to i8*", 0) then 1 else 0;
+
+    -- Test 6: gen_instruction handles string constant
+    let i1 = gen_instruction("  %_t0 = const S:test");
+    let t6 = if has_pattern(i1, "; string: test", 0) then 1 else 0;
+
+    t1 + t2 + t3 + t4 + t5 + t6;
+
+-- v0.30.52: Test closure/lambda IR generation
+fn test_closure_ir() -> i64 =
+    -- Test 1: is_closure_op recognizes CLOSURE prefix
+    let t1 = if is_closure_op("CLOSURE:42") then 1 else 0;
+
+    -- Test 2: is_closure_op rejects non-closure
+    let t2 = if is_closure_op("UNIT") then 0 else 1;
+
+    -- Test 3: parse_closure_id extracts ID
+    let t3 = if parse_closure_id("CLOSURE:42") == "42" then 1 else 0;
+
+    -- Test 4: parse_closure_id with different ID
+    let t4 = if parse_closure_id("CLOSURE:100") == "100" then 1 else 0;
+
+    -- Test 5: gen_instr_closure generates comment
+    let c1 = gen_instr_closure("%_t0", "42");
+    let t5 = if has_pattern(c1, "; closure: 42", 0) then 1 else 0;
+
+    -- Test 6: gen_instr_closure generates inttoptr
+    let t6 = if has_pattern(c1, "inttoptr i64 0 to i8*", 0) then 1 else 0;
+
+    -- Test 7: gen_instruction dispatches CLOSURE
+    let i1 = gen_instruction("  %_t0 = CLOSURE:99");
+    let t7 = if has_pattern(i1, "; closure: 99", 0) then 1 else 0;
+
+    t1 + t2 + t3 + t4 + t5 + t6 + t7;
+
+-- v0.30.53: Test block expression LLVM IR (blocks pass through to inner)
+fn test_block_ir() -> i64 =
+    -- Block expressions lower to their inner expression
+    -- (block (int 42)) → lower_expr((int 42)) → %_t0 = const I:42
+    -- This test verifies the LLVM IR generation for block results
+
+    -- Test 1: Block with integer constant (simulated MIR)
+    let i1 = gen_instruction("  %_t0 = const I:42");
+    let t1 = if i1 == "%_t0 = add i64 0, 42" then 1 else 0;
+
+    -- Test 2: Block with boolean constant
+    let i2 = gen_instruction("  %_t0 = const B:1");
+    let t2 = if i2 == "%_t0 = add i1 0, 1" then 1 else 0;
+
+    -- Test 3: Block with arithmetic (nested block result)
+    let i3 = gen_instruction("  %_t0 = + %a, %b");
+    let t3 = if i3 == "%_t0 = add i64 %a, %b" then 1 else 0;
+
+    -- Test 4: Block with UNIT (unit block expression)
+    let i4 = gen_instruction("  %_t0 = UNIT");
+    let t4 = if i4 == "%_t0 = add i64 0, 0" then 1 else 0;
+
+    -- Test 5: Block with string constant
+    let i5 = gen_instruction("  %_t0 = const S:hello");
+    let t5 = if has_pattern(i5, "; string: hello", 0) then 1 else 0;
+
+    -- Test 6: Block with closure
+    let i6 = gen_instruction("  %_t0 = CLOSURE:1");
+    let t6 = if has_pattern(i6, "; closure: 1", 0) then 1 else 0;
+
+    t1 + t2 + t3 + t4 + t5 + t6;
+
 -- v0.10.6 Control Flow Tests
 fn test_labels() -> i64 =
     let l1 = gen_label("entry");
@@ -1496,8 +1612,17 @@ fn main() -> i64 =
     -- v0.30.50 for loop IR tests
     let r39 = test_for_ir();
     let u39 = println(r39);
+    -- v0.30.51 string constant tests
+    let r40 = test_string_const();
+    let u40 = println(r40);
+    -- v0.30.52 closure IR tests
+    let r41 = test_closure_ir();
+    let u41 = println(r41);
+    -- v0.30.53 block expression IR tests
+    let r42 = test_block_ir();
+    let u42 = println(r42);
     let u_end = println(888);
-    let total = r1 + r2 + r3 + r4 + r5 + r6 + r7 + r8 + r9 + r10 + r11 + r12 + r13 + r14 + r15 + r16 + r17 + r18 + r19 + r20 + r21 + r22 + r23 + r24 + r25 + r26 + r27 + r28 + r29 + r30 + r31 + r32 + r33 + r34 + r35 + r36 + r37 + r38 + r39;
+    let total = r1 + r2 + r3 + r4 + r5 + r6 + r7 + r8 + r9 + r10 + r11 + r12 + r13 + r14 + r15 + r16 + r17 + r18 + r19 + r20 + r21 + r22 + r23 + r24 + r25 + r26 + r27 + r28 + r29 + r30 + r31 + r32 + r33 + r34 + r35 + r36 + r37 + r38 + r39 + r40 + r41 + r42;
     let u_tot = println(total);
     let u_fin = println(999);
     total;

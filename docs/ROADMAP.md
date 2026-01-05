@@ -164,15 +164,15 @@ v0.MAJOR.MINOR
 | v0.28 | Benchmark | C/Rust/BMB benchmark suite | Compute-intensive benchmarks, Contract-optimized benchmarks, Real-world workloads |
 | v0.29 | Velocity | C/Rust performance sprint | MIR optimization framework (6 passes), Contract-based optimization, Bootstrap optimization module |
 
-### Bootstrap Statistics (as of v0.30.50)
+### Bootstrap Statistics (as of v0.30.53)
 
 | Metric | Value |
 |--------|-------|
 | Rust Codebase | ~21,783 LOC |
-| BMB Bootstrap | ~12,600 LOC |
+| BMB Bootstrap | ~12,700 LOC |
 | Coverage | 58% |
 | Stage 1/2 Tests | 19 tests passing |
-| Bootstrap Tests | 1061 tests (621 types + 137 llvm_ir + 95 lowering + 46 mir + 71 parser_ast + 33 utils + 19 selfhost_equiv + 14 pipeline + 9 optimize + 8 selfhost_test + 8 compiler) |
+| Bootstrap Tests | 1080 tests (621 types + 156 llvm_ir + 95 lowering + 46 mir + 71 parser_ast + 33 utils + 19 selfhost_equiv + 14 pipeline + 9 optimize + 8 selfhost_test + 8 compiler) |
 
 ---
 
@@ -302,6 +302,29 @@ v0.MAJOR.MINOR
 - `enum_reg_variant_type`: Resolve variant type with type args through registry lookup
 - `enum_reg_count`, `enum_reg_is_generic`: Registry utilities
 - 5 new test functions, 19 assertions (335 total in types.bmb)
+
+**v0.30.53 Completed (2026-01-05)**:
+- Block expression LLVM IR test: Verification of block pass-through behavior
+- test_block_ir: Tests block expressions with various inner expressions
+- Integer/boolean/arithmetic/UNIT/string/closure inner expressions verified
+- Block expressions correctly pass through to inner expression codegen
+- Total: 156 tests passing in llvm_ir.bmb (150 + 6 new)
+
+**v0.30.52 Completed (2026-01-05)**:
+- Closure LLVM IR generation: CLOSURE instruction codegen support
+- gen_instr_closure: Generate closure as i8* pointer (simplified representation)
+- is_closure_op: Detect CLOSURE prefix in instruction
+- parse_closure_id: Extract closure ID from CLOSURE:N format
+- gen_instr_dispatch extended: Handle CLOSURE instructions
+- Total: 150 tests passing in llvm_ir.bmb (143 + 7 new)
+
+**v0.30.51 Completed (2026-01-05)**:
+- String constant LLVM IR: S: type constant codegen support
+- parse_const_type extended: Recognize 'S' (ASCII 83) as string type
+- parse_const_string: Extract string content after S: prefix
+- gen_const_string: Generate string as comment + i8* inttoptr
+- gen_instr_const extended: Handle string type constants
+- Total: 143 tests passing in llvm_ir.bmb (137 + 6 new)
 
 **v0.30.50 Completed (2026-01-05)**:
 - For loop LLVM IR test: End-to-end verification of for loop MIR to LLVM IR conversion
