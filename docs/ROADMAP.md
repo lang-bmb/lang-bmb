@@ -303,6 +303,18 @@ v0.MAJOR.MINOR
 - `enum_reg_count`, `enum_reg_is_generic`: Registry utilities
 - 5 new test functions, 19 assertions (335 total in types.bmb)
 
+**v0.30.18 Completed (2026-01-05)**:
+- AST-Type Integration: Connect parser_ast.bmb output to types.bmb tenv system
+- AST navigation utilities: ast_find_close_paren, ast_skip_ws, ast_find_pattern
+- AST name extraction: ast_extract_angle_name, ast_extract_def_name
+- Type parameter extraction: ast_extract_type_params (e.g., `(type_params <T> <U>)` → "T,U")
+- Fields extraction: ast_extract_fields (e.g., `(fields (field <x> i64))` → "x:i64")
+- Variants extraction: ast_extract_variants (e.g., `(variants (variant <Some> T))` → "Some:T")
+- Function signature extraction: ast_extract_param_types, ast_extract_return_type
+- AST to registry converters: ast_struct_to_def, ast_enum_to_def, ast_fn_to_sig
+- tenv registration from AST: register_struct_from_ast, register_enum_from_ast, register_fn_from_ast
+- Total: 451 tests passing (45 new tests)
+
 **v0.30.17 Completed (2026-01-04)**:
 - Generic call site type checking through type environment
 - tenv_check_fn_call, tenv_infer_fn_call for function calls

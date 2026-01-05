@@ -121,7 +121,7 @@ Comprehensive test suite with 15 test categories.
 14. Deep nesting
 15. Nested function calls
 
-### types.bmb (100KB) - v0.30.17
+### types.bmb (150KB) - v0.30.18
 Type checker foundation for BMB.
 
 **Features:**
@@ -255,6 +255,17 @@ Type checker foundation for BMB.
 - `tenv_check_match_variant`: Check enum pattern in match expression
 - `tenv_extract_field_type`: Extract field type from packed field:type string
 
+**Features (v0.30.18):**
+- AST-Type integration: Connect parser_ast.bmb output to tenv system
+- AST navigation utilities: `ast_find_close_paren`, `ast_skip_ws`, `ast_find_pattern`
+- AST name extraction: `ast_extract_angle_name`, `ast_extract_def_name`
+- Type parameter extraction: `ast_extract_type_params` - e.g., `(type_params <T> <U>)` → `"T,U"`
+- Fields extraction: `ast_extract_fields` - e.g., `(fields (field <x> i64))` → `"x:i64"`
+- Variants extraction: `ast_extract_variants` - e.g., `(variants (variant <Some> T))` → `"Some:T"`
+- Function signature extraction: `ast_extract_param_types`, `ast_extract_return_type`
+- AST to registry converters: `ast_struct_to_def`, `ast_enum_to_def`, `ast_fn_to_sig`
+- tenv registration from AST: `register_struct_from_ast`, `register_enum_from_ast`, `register_fn_from_ast`
+
 **Test output:**
 ```
 777 (start marker)
@@ -343,8 +354,19 @@ Type checker foundation for BMB.
 4  (tenv field access tests)
 4  (tenv match variant tests)
 4  (tenv extract field tests)
+4  (AST extract name tests)           ; v0.30.18
+5  (AST extract type params tests)    ; v0.30.18
+4  (AST extract fields tests)         ; v0.30.18
+4  (AST extract variants tests)       ; v0.30.18
+4  (AST fn params tests)              ; v0.30.18
+5  (AST struct to def tests)          ; v0.30.18
+5  (AST enum to def tests)            ; v0.30.18
+5  (AST fn to sig tests)              ; v0.30.18
+4  (pack/unpack tests)                ; v0.30.18
+3  (register struct tests)            ; v0.30.18
+2  (register enum tests)              ; v0.30.18
 888 (separator)
-406 (total passed)
+451 (total passed)
 999 (end marker)
 ```
 

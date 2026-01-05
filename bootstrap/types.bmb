@@ -29,6 +29,7 @@
 -- - v0.30.10: Add generic type inference (infer type args from actual types)
 -- - v0.30.11: Add generic struct definition (field types, resolution)
 -- - v0.30.12: Add struct registry (store, lookup, integrated field access)
+-- - v0.30.18: Add AST-Type integration (parser_ast.bmb → tenv registration)
 --
 -- LIMITATIONS:
 -- - Fixed max 64 variables in scope
@@ -3284,6 +3285,605 @@ fn test_tenv_extract_field() -> i64 =
 
     r1 + r2 + r3 + r4;
 
+-- ============================================================================
+-- v0.30.18: AST-Type Integration
+-- ============================================================================
+-- Connect parser_ast.bmb output to the type environment system.
+-- AST format examples:
+--   (struct <Box> (type_params <T>) (fields (field <value> T)))
+--   (enum <Option> (type_params <T>) (variants (variant <Some> T) (variant <None>)))
+--   (fn <identity> (type_params <T>) (params (p <x> T)) T (var <x>))
+--
+-- This module provides:
+-- 1. AST parsing utilities (extract names, type params, fields, variants)
+-- 2. AST to registry definition converters
+-- 3. tenv registration functions from AST
+
+-- ============================================================================
+-- AST Navigation Utilities
+-- ============================================================================
+
+-- Find matching close paren for open paren at position
+-- Returns position after the closing paren, or -1 if not found
+fn ast_find_close_paren(ast: String, start: i64) -> i64 =
+    ast_find_close_paren_depth(ast, start, 1);
+
+fn ast_find_close_paren_depth(ast: String, pos: i64, depth: i64) -> i64 =
+    if pos >= ast.len() then 0 - 1
+    else if depth == 0 then pos
+    else
+        let c = ast.char_at(pos);
+        if c == 40 then ast_find_close_paren_depth(ast, pos + 1, depth + 1)  -- (
+        else if c == 41 then ast_find_close_paren_depth(ast, pos + 1, depth - 1)  -- )
+        else ast_find_close_paren_depth(ast, pos + 1, depth);
+
+-- Skip whitespace characters
+fn ast_skip_ws(ast: String, pos: i64) -> i64 =
+    if pos >= ast.len() then pos
+    else
+        let c = ast.char_at(pos);
+        if c == 32 or c == 10 or c == 13 or c == 9 then ast_skip_ws(ast, pos + 1)  -- space, newline, cr, tab
+        else pos;
+
+-- Find pattern in string starting at position
+fn ast_find_pattern(ast: String, pattern: String, start: i64) -> i64 =
+    if start + pattern.len() > ast.len() then 0 - 1
+    else if ast.slice(start, start + pattern.len()) == pattern then start
+    else ast_find_pattern(ast, pattern, start + 1);
+
+-- Check if AST contains a section (e.g., "type_params", "fields")
+fn ast_has_section(ast: String, section: String) -> bool =
+    ast_find_pattern(ast, "(" + section, 0) >= 0;
+
+-- ============================================================================
+-- AST Name Extraction
+-- ============================================================================
+
+-- Extract name from <Name> format
+-- Input: "<Box>" or "<identity>"
+-- Output: "Box" or "identity"
+fn ast_extract_angle_name(s: String) -> String =
+    if s.len() < 3 then ""
+    else if s.char_at(0) != 60 then ""  -- <
+    else if s.char_at(s.len() - 1) != 62 then ""  -- >
+    else s.slice(1, s.len() - 1);
+
+-- Find and extract the name after a keyword like "struct" or "enum"
+-- Input: "(struct <Box> ...)" with keyword "struct"
+-- Output: "Box"
+fn ast_extract_def_name(ast: String, keyword: String) -> String =
+    let kw_pos = ast_find_pattern(ast, "(" + keyword + " ", 0);
+    if kw_pos < 0 then ""
+    else
+        let after_kw = ast_skip_ws(ast, kw_pos + keyword.len() + 2);
+        let name_end = ast_find_name_end(ast, after_kw);
+        let raw_name = ast.slice(after_kw, name_end);
+        ast_extract_angle_name(raw_name);
+
+-- Find end of angle-bracketed name
+fn ast_find_name_end(ast: String, start: i64) -> i64 =
+    if start >= ast.len() then start
+    else
+        let c = ast.char_at(start);
+        if c == 62 then start + 1  -- > found, include it
+        else if c == 32 or c == 40 or c == 41 then start  -- whitespace or paren
+        else ast_find_name_end(ast, start + 1);
+
+-- ============================================================================
+-- Type Parameters Extraction
+-- ============================================================================
+
+-- Extract type parameters from (type_params <T> <U>) section
+-- Input: "(struct <Box> (type_params <T>) (fields ...))"
+-- Output: "T" or "T,U" for multiple params
+fn ast_extract_type_params(ast: String) -> String =
+    let tp_pos = ast_find_pattern(ast, "(type_params ", 0);
+    if tp_pos < 0 then ""
+    else
+        let start = tp_pos + 13;  -- length of "(type_params "
+        let end = ast_find_close_paren(ast, tp_pos + 1);
+        if end < 0 then ""
+        else ast_collect_type_params(ast, start, end - 1, "");
+
+-- Collect type parameters between positions
+fn ast_collect_type_params(ast: String, pos: i64, end: i64, acc: String) -> String =
+    let pos2 = ast_skip_ws(ast, pos);
+    if pos2 >= end then acc
+    else if ast.char_at(pos2) != 60 then acc  -- expect <
+    else
+        let name_end = ast_find_name_end(ast, pos2);
+        let param = ast_extract_angle_name(ast.slice(pos2, name_end));
+        let new_acc = if acc == "" then param else acc + "," + param;
+        ast_collect_type_params(ast, name_end, end, new_acc);
+
+-- ============================================================================
+-- Fields Extraction (for structs)
+-- ============================================================================
+
+-- Extract fields from (fields (field <x> Type) ...) section
+-- Input: "(struct <Box> (type_params <T>) (fields (field <value> T)))"
+-- Output: "value:T"
+fn ast_extract_fields(ast: String) -> String =
+    let f_pos = ast_find_pattern(ast, "(fields ", 0);
+    if f_pos < 0 then ""
+    else
+        let start = f_pos + 8;  -- length of "(fields "
+        let end = ast_find_close_paren(ast, f_pos + 1);
+        if end < 0 then ""
+        else ast_collect_fields(ast, start, end - 1, "");
+
+-- Collect fields between positions
+fn ast_collect_fields(ast: String, pos: i64, end: i64, acc: String) -> String =
+    let pos2 = ast_skip_ws(ast, pos);
+    if pos2 >= end then acc
+    else
+        let field_result = ast_parse_one_field(ast, pos2);
+        let field_str = unpack_first_s(field_result);
+        let next_pos = unpack_second_i(field_result);
+        if field_str == "" then acc
+        else
+            let new_acc = if acc == "" then field_str else acc + "," + field_str;
+            ast_collect_fields(ast, next_pos, end, new_acc);
+
+-- Parse one (field <name> Type) and return "name:Type" with next position
+-- Returns: "name:Type|next_pos" packed
+fn ast_parse_one_field(ast: String, pos: i64) -> String =
+    if ast.slice(pos, pos + 7) != "(field " then pack_s_i("", pos)
+    else
+        let after_field = pos + 7;
+        let name_end = ast_find_name_end(ast, after_field);
+        let name = ast_extract_angle_name(ast.slice(after_field, name_end));
+        let type_start = ast_skip_ws(ast, name_end);
+        let type_end = ast_find_field_type_end(ast, type_start);
+        let typ = ast.slice(type_start, type_end);
+        let close = ast_skip_ws(ast, type_end);
+        let next = if close < ast.len() and ast.char_at(close) == 41 then close + 1 else close;
+        pack_s_i(name + ":" + typ, next);
+
+-- Find end of type in field (before closing paren)
+fn ast_find_field_type_end(ast: String, start: i64) -> i64 =
+    if start >= ast.len() then start
+    else
+        let c = ast.char_at(start);
+        if c == 41 or c == 32 then start  -- ) or space
+        else ast_find_field_type_end(ast, start + 1);
+
+-- ============================================================================
+-- Variants Extraction (for enums)
+-- ============================================================================
+
+-- Extract variants from (variants (variant <Some> T) (variant <None>)) section
+-- Input: "(enum <Option> (type_params <T>) (variants (variant <Some> T) (variant <None>)))"
+-- Output: "Some:T,None"
+fn ast_extract_variants(ast: String) -> String =
+    let v_pos = ast_find_pattern(ast, "(variants ", 0);
+    if v_pos < 0 then ""
+    else
+        let start = v_pos + 10;  -- length of "(variants "
+        let end = ast_find_close_paren(ast, v_pos + 1);
+        if end < 0 then ""
+        else ast_collect_variants(ast, start, end - 1, "");
+
+-- Collect variants between positions
+fn ast_collect_variants(ast: String, pos: i64, end: i64, acc: String) -> String =
+    let pos2 = ast_skip_ws(ast, pos);
+    if pos2 >= end then acc
+    else
+        let var_result = ast_parse_one_variant(ast, pos2);
+        let var_str = unpack_first_s(var_result);
+        let next_pos = unpack_second_i(var_result);
+        if var_str == "" then acc
+        else
+            let new_acc = if acc == "" then var_str else acc + "," + var_str;
+            ast_collect_variants(ast, next_pos, end, new_acc);
+
+-- Parse one (variant <Name>) or (variant <Name> Type)
+-- Returns: "Name" or "Name:Type" with next position
+fn ast_parse_one_variant(ast: String, pos: i64) -> String =
+    if ast.slice(pos, pos + 9) != "(variant " then pack_s_i("", pos)
+    else
+        let after_variant = pos + 9;
+        let name_end = ast_find_name_end(ast, after_variant);
+        let name = ast_extract_angle_name(ast.slice(after_variant, name_end));
+        let after_name = ast_skip_ws(ast, name_end);
+        if after_name >= ast.len() then pack_s_i(name, after_name)
+        else if ast.char_at(after_name) == 41 then pack_s_i(name, after_name + 1)  -- just name, no type
+        else
+            let type_end = ast_find_field_type_end(ast, after_name);
+            let typ = ast.slice(after_name, type_end);
+            let close = ast_skip_ws(ast, type_end);
+            let next = if close < ast.len() and ast.char_at(close) == 41 then close + 1 else close;
+            pack_s_i(name + ":" + typ, next);
+
+-- ============================================================================
+-- Function Parameters Extraction
+-- ============================================================================
+
+-- Extract parameter types from (params (p <x> T) (p <y> U)) section
+-- Input: "(fn <foo> (params (p <x> i64) (p <y> String)) i64 ...)"
+-- Output: "i64,String"
+fn ast_extract_param_types(ast: String) -> String =
+    let p_pos = ast_find_pattern(ast, "(params ", 0);
+    if p_pos < 0 then ""
+    else
+        let start = p_pos + 8;  -- length of "(params "
+        let end = ast_find_close_paren(ast, p_pos + 1);
+        if end < 0 then ""
+        else ast_collect_param_types(ast, start, end - 1, "");
+
+-- Collect param types between positions
+fn ast_collect_param_types(ast: String, pos: i64, end: i64, acc: String) -> String =
+    let pos2 = ast_skip_ws(ast, pos);
+    if pos2 >= end then acc
+    else
+        let param_result = ast_parse_one_param_type(ast, pos2);
+        let typ = unpack_first_s(param_result);
+        let next_pos = unpack_second_i(param_result);
+        if typ == "" then acc
+        else
+            let new_acc = if acc == "" then typ else acc + "," + typ;
+            ast_collect_param_types(ast, next_pos, end, new_acc);
+
+-- Parse one (p <name> Type) and return just the Type
+fn ast_parse_one_param_type(ast: String, pos: i64) -> String =
+    if ast.slice(pos, pos + 3) != "(p " then pack_s_i("", pos)
+    else
+        let after_p = pos + 3;
+        let name_end = ast_find_name_end(ast, after_p);
+        let type_start = ast_skip_ws(ast, name_end);
+        let type_end = ast_find_field_type_end(ast, type_start);
+        let typ = ast.slice(type_start, type_end);
+        let close = ast_skip_ws(ast, type_end);
+        let next = if close < ast.len() and ast.char_at(close) == 41 then close + 1 else close;
+        pack_s_i(typ, next);
+
+-- Extract return type from function AST
+-- Return type appears after params section, before body
+fn ast_extract_return_type(ast: String) -> String =
+    let p_pos = ast_find_pattern(ast, "(params ", 0);
+    if p_pos < 0 then ""
+    else
+        let params_end = ast_find_close_paren(ast, p_pos + 1);
+        if params_end < 0 then ""
+        else
+            let ret_start = ast_skip_ws(ast, params_end);
+            let ret_end = ast_find_return_type_end(ast, ret_start);
+            ast.slice(ret_start, ret_end);
+
+-- Find end of return type (before body which starts with paren)
+fn ast_find_return_type_end(ast: String, start: i64) -> i64 =
+    if start >= ast.len() then start
+    else
+        let c = ast.char_at(start);
+        if c == 40 or c == 32 then start  -- ( or space before body
+        else ast_find_return_type_end(ast, start + 1);
+
+-- ============================================================================
+-- Pack/Unpack String + Int
+-- ============================================================================
+
+-- Pack string and int: "string|123"
+fn pack_s_i(s: String, i: i64) -> String =
+    s + "|" + int_to_string(i);
+
+-- Unpack string part from "string|123"
+fn unpack_first_s(packed: String) -> String =
+    let pipe = find_pipe(packed, 0);
+    if pipe < 0 then packed
+    else packed.slice(0, pipe);
+
+-- Unpack int part from "string|123"
+fn unpack_second_i(packed: String) -> i64 =
+    let pipe = find_pipe(packed, 0);
+    if pipe < 0 then 0
+    else parse_int(packed, pipe + 1, 0);
+
+-- Find pipe character
+fn find_pipe(s: String, pos: i64) -> i64 =
+    if pos >= s.len() then 0 - 1
+    else if s.char_at(pos) == 124 then pos  -- |
+    else find_pipe(s, pos + 1);
+
+-- Parse integer from string
+fn parse_int(s: String, pos: i64, acc: i64) -> i64 =
+    if pos >= s.len() then acc
+    else
+        let c = s.char_at(pos);
+        if c >= 48 and c <= 57 then parse_int(s, pos + 1, acc * 10 + (c - 48))
+        else acc;
+
+-- Integer to string (simplified, positive only)
+fn int_to_string(n: i64) -> String =
+    if n == 0 then "0"
+    else int_to_string_acc(n, "");
+
+fn int_to_string_acc(n: i64, acc: String) -> String =
+    if n == 0 then acc
+    else
+        let d = n - (n / 10) * 10;
+        let c = if d == 0 then "0" else if d == 1 then "1" else if d == 2 then "2"
+                else if d == 3 then "3" else if d == 4 then "4" else if d == 5 then "5"
+                else if d == 6 then "6" else if d == 7 then "7" else if d == 8 then "8"
+                else "9";
+        int_to_string_acc(n / 10, c + acc);
+
+-- ============================================================================
+-- AST to Registry Definition Converters
+-- ============================================================================
+
+-- Convert struct AST to gen_struct_pack format
+-- Input: "(struct <Box> (type_params <T>) (fields (field <value> T)))"
+-- Output: "Box|T|value:T"
+fn ast_struct_to_def(ast: String) -> String =
+    let name = ast_extract_def_name(ast, "struct");
+    if name == "" then ""
+    else
+        let tparams = ast_extract_type_params(ast);
+        let fields = ast_extract_fields(ast);
+        gen_struct_pack(name, tparams, fields);
+
+-- Convert enum AST to gen_enum_pack format
+-- Input: "(enum <Option> (type_params <T>) (variants (variant <Some> T) (variant <None>)))"
+-- Output: "Option|T|Some:T,None"
+fn ast_enum_to_def(ast: String) -> String =
+    let name = ast_extract_def_name(ast, "enum");
+    if name == "" then ""
+    else
+        let tparams = ast_extract_type_params(ast);
+        let variants = ast_extract_variants(ast);
+        gen_enum_pack(name, tparams, variants);
+
+-- Convert function AST to gen_fn_pack format
+-- Input: "(fn <identity> (type_params <T>) (params (p <x> T)) T (var <x>))"
+-- Output: "identity|T|T|T"
+fn ast_fn_to_sig(ast: String) -> String =
+    let name = ast_extract_def_name(ast, "fn");
+    if name == "" then ""
+    else
+        let tparams = ast_extract_type_params(ast);
+        let params = ast_extract_param_types(ast);
+        let rtype = ast_extract_return_type(ast);
+        gen_fn_pack(name, tparams, params, rtype);
+
+-- ============================================================================
+-- tenv Registration from AST
+-- ============================================================================
+
+-- Register struct definition from AST into tenv
+fn register_struct_from_ast(tenv: String, ast: String) -> String =
+    let def = ast_struct_to_def(ast);
+    if def == "" then tenv
+    else tenv_add_struct(tenv, def);
+
+-- Register enum definition from AST into tenv
+fn register_enum_from_ast(tenv: String, ast: String) -> String =
+    let def = ast_enum_to_def(ast);
+    if def == "" then tenv
+    else tenv_add_enum(tenv, def);
+
+-- Register function signature from AST into tenv
+fn register_fn_from_ast(tenv: String, ast: String) -> String =
+    let sig = ast_fn_to_sig(ast);
+    if sig == "" then tenv
+    else tenv_add_fn(tenv, sig);
+
+-- ============================================================================
+-- v0.30.18 Tests
+-- ============================================================================
+
+-- Test AST name extraction
+fn test_ast_extract_name() -> i64 =
+    -- Test angle name extraction
+    let t1 = ast_extract_angle_name("<Box>");
+    let r1 = if t1 == "Box" then 1 else 0;
+
+    let t2 = ast_extract_angle_name("<identity>");
+    let r2 = if t2 == "identity" then 1 else 0;
+
+    let t3 = ast_extract_angle_name("<T>");
+    let r3 = if t3 == "T" then 1 else 0;
+
+    let t4 = ast_extract_angle_name("Box");  -- no angle brackets
+    let r4 = if t4 == "" then 1 else 0;
+
+    r1 + r2 + r3 + r4;
+
+-- Test AST definition name extraction
+fn test_ast_def_name() -> i64 =
+    let ast1 = "(struct <Box> (fields (field <value> i64)))";
+    let t1 = ast_extract_def_name(ast1, "struct");
+    let r1 = if t1 == "Box" then 1 else 0;
+
+    let ast2 = "(enum <Option> (variants (variant <Some> i64)))";
+    let t2 = ast_extract_def_name(ast2, "enum");
+    let r2 = if t2 == "Option" then 1 else 0;
+
+    let ast3 = "(fn <add> (params (p <x> i64)) i64 (var <x>))";
+    let t3 = ast_extract_def_name(ast3, "fn");
+    let r3 = if t3 == "add" then 1 else 0;
+
+    r1 + r2 + r3;
+
+-- Test type params extraction
+fn test_ast_type_params() -> i64 =
+    let ast1 = "(struct <Box> (type_params <T>) (fields (field <value> T)))";
+    let t1 = ast_extract_type_params(ast1);
+    let r1 = if t1 == "T" then 1 else 0;
+
+    let ast2 = "(struct <Pair> (type_params <K> <V>) (fields (field <key> K)))";
+    let t2 = ast_extract_type_params(ast2);
+    let r2 = if t2 == "K,V" then 1 else 0;
+
+    let ast3 = "(struct <Point> (fields (field <x> i64)))";  -- no type params
+    let t3 = ast_extract_type_params(ast3);
+    let r3 = if t3 == "" then 1 else 0;
+
+    r1 + r2 + r3;
+
+-- Test fields extraction
+fn test_ast_fields() -> i64 =
+    let ast1 = "(struct <Box> (type_params <T>) (fields (field <value> T)))";
+    let t1 = ast_extract_fields(ast1);
+    let r1 = if t1 == "value:T" then 1 else 0;
+
+    let ast2 = "(struct <Point> (fields (field <x> i64) (field <y> i64)))";
+    let t2 = ast_extract_fields(ast2);
+    let r2 = if t2 == "x:i64,y:i64" then 1 else 0;
+
+    let ast3 = "(struct <Pair> (type_params <K> <V>) (fields (field <key> K) (field <val> V)))";
+    let t3 = ast_extract_fields(ast3);
+    let r3 = if t3 == "key:K,val:V" then 1 else 0;
+
+    r1 + r2 + r3;
+
+-- Test variants extraction
+fn test_ast_variants() -> i64 =
+    let ast1 = "(enum <Option> (type_params <T>) (variants (variant <Some> T) (variant <None>)))";
+    let t1 = ast_extract_variants(ast1);
+    let r1 = if t1 == "Some:T,None" then 1 else 0;
+
+    let ast2 = "(enum <Result> (type_params <T> <E>) (variants (variant <Ok> T) (variant <Err> E)))";
+    let t2 = ast_extract_variants(ast2);
+    let r2 = if t2 == "Ok:T,Err:E" then 1 else 0;
+
+    let ast3 = "(enum <Status> (variants (variant <Active>) (variant <Inactive>)))";
+    let t3 = ast_extract_variants(ast3);
+    let r3 = if t3 == "Active,Inactive" then 1 else 0;
+
+    r1 + r2 + r3;
+
+-- Test param types extraction
+fn test_ast_param_types() -> i64 =
+    let ast1 = "(fn <add> (params (p <x> i64) (p <y> i64)) i64 (op + (var <x>) (var <y>)))";
+    let t1 = ast_extract_param_types(ast1);
+    let r1 = if t1 == "i64,i64" then 1 else 0;
+
+    let ast2 = "(fn <identity> (type_params <T>) (params (p <x> T)) T (var <x>))";
+    let t2 = ast_extract_param_types(ast2);
+    let r2 = if t2 == "T" then 1 else 0;
+
+    let ast3 = "(fn <const> (params) i64 (int 42))";  -- no params
+    let t3 = ast_extract_param_types(ast3);
+    let r3 = if t3 == "" then 1 else 0;
+
+    r1 + r2 + r3;
+
+-- Test return type extraction
+fn test_ast_return_type() -> i64 =
+    let ast1 = "(fn <add> (params (p <x> i64)) i64 (var <x>))";
+    let t1 = ast_extract_return_type(ast1);
+    let r1 = if t1 == "i64" then 1 else 0;
+
+    let ast2 = "(fn <identity> (type_params <T>) (params (p <x> T)) T (var <x>))";
+    let t2 = ast_extract_return_type(ast2);
+    let r2 = if t2 == "T" then 1 else 0;
+
+    let ast3 = "(fn <test> (params (p <a> bool)) bool (var <a>))";
+    let t3 = ast_extract_return_type(ast3);
+    let r3 = if t3 == "bool" then 1 else 0;
+
+    r1 + r2 + r3;
+
+-- Test struct AST to definition
+fn test_ast_struct_to_def() -> i64 =
+    let ast1 = "(struct <Box> (type_params <T>) (fields (field <value> T)))";
+    let def1 = ast_struct_to_def(ast1);
+    let r1 = if gen_struct_name(def1) == "Box" then 1 else 0;
+    let r2 = if gen_struct_tparams(def1) == "T" then 1 else 0;
+    let r3 = if gen_struct_fields(def1) == "value:T" then 1 else 0;
+
+    let ast2 = "(struct <Point> (fields (field <x> i64) (field <y> i64)))";
+    let def2 = ast_struct_to_def(ast2);
+    let r4 = if gen_struct_name(def2) == "Point" then 1 else 0;
+    let r5 = if gen_struct_tparams(def2) == "" then 1 else 0;
+
+    r1 + r2 + r3 + r4 + r5;
+
+-- Test enum AST to definition
+fn test_ast_enum_to_def() -> i64 =
+    let ast1 = "(enum <Option> (type_params <T>) (variants (variant <Some> T) (variant <None>)))";
+    let def1 = ast_enum_to_def(ast1);
+    let r1 = if gen_enum_name(def1) == "Option" then 1 else 0;
+    let r2 = if gen_enum_tparams(def1) == "T" then 1 else 0;
+    let r3 = if gen_enum_variants(def1) == "Some:T,None" then 1 else 0;
+
+    let ast2 = "(enum <Status> (variants (variant <Active>) (variant <Inactive>)))";
+    let def2 = ast_enum_to_def(ast2);
+    let r4 = if gen_enum_name(def2) == "Status" then 1 else 0;
+    let r5 = if gen_enum_tparams(def2) == "" then 1 else 0;
+
+    r1 + r2 + r3 + r4 + r5;
+
+-- Test function AST to signature
+fn test_ast_fn_to_sig() -> i64 =
+    let ast1 = "(fn <identity> (type_params <T>) (params (p <x> T)) T (var <x>))";
+    let sig1 = ast_fn_to_sig(ast1);
+    let r1 = if gen_fn_name(sig1) == "identity" then 1 else 0;
+    let r2 = if gen_fn_tparams(sig1) == "T" then 1 else 0;
+    let r3 = if gen_fn_params(sig1) == "T" then 1 else 0;
+    let r4 = if gen_fn_return(sig1) == "T" then 1 else 0;
+
+    let ast2 = "(fn <add> (params (p <x> i64) (p <y> i64)) i64 (op + (var <x>) (var <y>)))";
+    let sig2 = ast_fn_to_sig(ast2);
+    let r5 = if gen_fn_name(sig2) == "add" then 1 else 0;
+    let r6 = if gen_fn_params(sig2) == "i64,i64" then 1 else 0;
+
+    r1 + r2 + r3 + r4 + r5 + r6;
+
+-- Test tenv registration from AST
+fn test_register_from_ast() -> i64 =
+    let tenv = tenv_new();
+
+    -- Register struct
+    let ast1 = "(struct <Box> (type_params <T>) (fields (field <value> T)))";
+    let tenv2 = register_struct_from_ast(tenv, ast1);
+    let r1 = if tenv_struct_field_type(tenv2, "Box", "i64", "value") == "i64" then 1 else 0;
+
+    -- Register enum
+    let ast2 = "(enum <Option> (type_params <T>) (variants (variant <Some> T) (variant <None>)))";
+    let tenv3 = register_enum_from_ast(tenv2, ast2);
+    let r2 = if tenv_enum_variant_type(tenv3, "Option", "i64", "Some") == "i64" then 1 else 0;
+
+    -- Register function
+    let ast3 = "(fn <identity> (type_params <T>) (params (p <x> T)) T (var <x>))";
+    let tenv4 = register_fn_from_ast(tenv3, ast3);
+    let r3 = if tenv_fn_return_type(tenv4, "identity", "String") == "String" then 1 else 0;
+
+    r1 + r2 + r3;
+
+-- Test integration: full AST to tenv flow
+fn test_ast_tenv_integration() -> i64 =
+    let tenv = tenv_new();
+
+    -- Create a complete type environment from AST
+    let box_ast = "(struct <Box> (type_params <T>) (fields (field <value> T)))";
+    let pair_ast = "(struct <Pair> (type_params <K> <V>) (fields (field <first> K) (field <second> V)))";
+    let opt_ast = "(enum <Option> (type_params <T>) (variants (variant <Some> T) (variant <None>)))";
+    let id_ast = "(fn <identity> (type_params <T>) (params (p <x> T)) T (var <x>))";
+
+    let tenv2 = register_struct_from_ast(tenv, box_ast);
+    let tenv3 = register_struct_from_ast(tenv2, pair_ast);
+    let tenv4 = register_enum_from_ast(tenv3, opt_ast);
+    let tenv5 = register_fn_from_ast(tenv4, id_ast);
+
+    -- Test field access: Box<i64>.value should be i64
+    let t1 = tenv_struct_field_type(tenv5, "Box", "i64", "value");
+    let r1 = if t1 == "i64" then 1 else 0;
+
+    -- Test field access: Pair<String,i64>.first should be String
+    let t2 = tenv_struct_field_type(tenv5, "Pair", "String,i64", "first");
+    let r2 = if t2 == "String" then 1 else 0;
+
+    -- Test variant type: Option<bool>.Some should be bool
+    let t3 = tenv_enum_variant_type(tenv5, "Option", "bool", "Some");
+    let r3 = if t3 == "bool" then 1 else 0;
+
+    -- Test function return: identity<i64> should return i64
+    let t4 = tenv_fn_return_type(tenv5, "identity", "i64");
+    let r4 = if t4 == "i64" then 1 else 0;
+
+    r1 + r2 + r3 + r4;
+
 -- Main test runner
 fn main() -> i64 =
     let u0 = println(777);  -- Start marker
@@ -3558,10 +4158,47 @@ fn main() -> i64 =
     let t85 = test_tenv_extract_field();
     let p85 = println(t85);  -- Expected: 4
 
+    -- v0.30.18: AST-Type integration tests
+    let t86 = test_ast_extract_name();
+    let p86 = println(t86);  -- Expected: 4
+
+    let t87 = test_ast_def_name();
+    let p87 = println(t87);  -- Expected: 3
+
+    let t88 = test_ast_type_params();
+    let p88 = println(t88);  -- Expected: 3
+
+    let t89 = test_ast_fields();
+    let p89 = println(t89);  -- Expected: 3
+
+    let t90 = test_ast_variants();
+    let p90 = println(t90);  -- Expected: 3
+
+    let t91 = test_ast_param_types();
+    let p91 = println(t91);  -- Expected: 3
+
+    let t92 = test_ast_return_type();
+    let p92 = println(t92);  -- Expected: 3
+
+    let t93 = test_ast_struct_to_def();
+    let p93 = println(t93);  -- Expected: 5
+
+    let t94 = test_ast_enum_to_def();
+    let p94 = println(t94);  -- Expected: 5
+
+    let t95 = test_ast_fn_to_sig();
+    let p95 = println(t95);  -- Expected: 6
+
+    let t96 = test_register_from_ast();
+    let p96 = println(t96);  -- Expected: 3
+
+    let t97 = test_ast_tenv_integration();
+    let p97 = println(t97);  -- Expected: 4
+
     let u1 = println(888);  -- Separator
 
-    let total = t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t9 + t10 + t11 + t12 + t13 + t14 + t15 + t16 + t17 + t18 + t19 + t20 + t21 + t22 + t23 + t24 + t25 + t26 + t27 + t28 + t29 + t30 + t31 + t32 + t33 + t34 + t35 + t36 + t37 + t38 + t39 + t40 + t41 + t42 + t43 + t44 + t45 + t46 + t47 + t48 + t49 + t50 + t51 + t52 + t53 + t54 + t55 + t56 + t57 + t58 + t59 + t60 + t61 + t62 + t63 + t64 + t65 + t66 + t67 + t68 + t69 + t70 + t71 + t72 + t73 + t74 + t75 + t76 + t77 + t78 + t79 + t80 + t81 + t82 + t83 + t84 + t85;
-    let u2 = println(total);  -- Expected: 406
+    let total = t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t9 + t10 + t11 + t12 + t13 + t14 + t15 + t16 + t17 + t18 + t19 + t20 + t21 + t22 + t23 + t24 + t25 + t26 + t27 + t28 + t29 + t30 + t31 + t32 + t33 + t34 + t35 + t36 + t37 + t38 + t39 + t40 + t41 + t42 + t43 + t44 + t45 + t46 + t47 + t48 + t49 + t50 + t51 + t52 + t53 + t54 + t55 + t56 + t57 + t58 + t59 + t60 + t61 + t62 + t63 + t64 + t65 + t66 + t67 + t68 + t69 + t70 + t71 + t72 + t73 + t74 + t75 + t76 + t77 + t78 + t79 + t80 + t81 + t82 + t83 + t84 + t85 + t86 + t87 + t88 + t89 + t90 + t91 + t92 + t93 + t94 + t95 + t96 + t97;
+    let u2 = println(total);  -- Expected: 451
 
     let u3 = println(999);  -- End marker
     total;
