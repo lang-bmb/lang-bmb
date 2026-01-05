@@ -195,6 +195,7 @@ Gap to Close:
 - ✅ Lambda expression parsing (v0.30.35: parse_lambda, TK_PIPE, lambda params)
 - ✅ Block/Unit MIR lowering (v0.30.36: is_block_node, is_unit_node, lower_block, lower_unit)
 - ✅ While expression parsing (v0.30.37: TK_WHILE, parse_while, while {} syntax)
+- ✅ While MIR lowering (v0.30.38: is_while_node, lower_while, loop_start/loop_end blocks)
 
 ### What Bootstrap CANNOT Do Yet
 
@@ -308,11 +309,11 @@ $ diff stage2/bmb stage3/bmb
 
 v0.30 "Pure" represents the culmination of the BMB self-hosting journey. With Stage 1/2 verification complete and the bootstrap covering the full compilation pipeline, the remaining work is substantial but achievable within the 2026 Q4 timeline.
 
-**Key Metrics** (as of v0.30.37):
+**Key Metrics** (as of v0.30.38):
 - Rust code to remove: ~21,783 LOC
 - BMB bootstrap code: ~12,000 LOC (55% coverage)
 - Gap to close: ~11,100 LOC additional BMB
-- Bootstrap tests passing: 948 tests (600 types + 119 llvm_ir + 73 lowering + 46 mir + 56 parser_ast + ...)
+- Bootstrap tests passing: 954 tests (600 types + 119 llvm_ir + 79 lowering + 46 mir + 56 parser_ast + ...)
 - Estimated effort: 6-9 months
 
 ---

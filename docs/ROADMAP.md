@@ -164,7 +164,7 @@ v0.MAJOR.MINOR
 | v0.28 | Benchmark | C/Rust/BMB benchmark suite | Compute-intensive benchmarks, Contract-optimized benchmarks, Real-world workloads |
 | v0.29 | Velocity | C/Rust performance sprint | MIR optimization framework (6 passes), Contract-based optimization, Bootstrap optimization module |
 
-### Bootstrap Statistics (as of v0.30.37)
+### Bootstrap Statistics (as of v0.30.38)
 
 | Metric | Value |
 |--------|-------|
@@ -302,6 +302,14 @@ v0.MAJOR.MINOR
 - `enum_reg_variant_type`: Resolve variant type with type args through registry lookup
 - `enum_reg_count`, `enum_reg_is_generic`: Registry utilities
 - 5 new test functions, 19 assertions (335 total in types.bmb)
+
+**v0.30.38 Completed (2026-01-05)**:
+- While MIR lowering: While loop MIR generation in lowering.bmb
+- is_while_node: Detect while expressions "(while cond body)"
+- get_while_cond/get_while_body: Helper functions for AST extraction
+- lower_while: Generate loop MIR structure (loop_start, body, loop_end blocks)
+- lower_expr extended: Handle while nodes via lower_while call
+- Total: 79 tests passing in lowering.bmb (73 + 6 new)
 
 **v0.30.37 Completed (2026-01-05)**:
 - While expression parsing: While loop syntax support in parser_ast.bmb

@@ -178,6 +178,19 @@ fn is_block_node(s: String) -> bool =
 fn is_unit_node(s: String) -> bool =
     s.len() == 2 and s.char_at(0) == 40 and s.char_at(1) == 41;
 
+-- v0.30.38: While expression support
+-- While format: (while cond body)
+fn is_while_node(s: String) -> bool =
+    if s.len() < 10 then false  -- minimum: "(while x y)"
+    else let c0 = s.char_at(0);  -- '('
+        let c1 = s.char_at(1);  -- 'w'
+        let c2 = s.char_at(2);  -- 'h'
+        let c3 = s.char_at(3);  -- 'i'
+        let c4 = s.char_at(4);  -- 'l'
+        let c5 = s.char_at(5);  -- 'e'
+        let c6 = s.char_at(6);  -- ' '
+        c0 == 40 and c1 == 119 and c2 == 104 and c3 == 105 and c4 == 108 and c5 == 101 and c6 == 32;
+
 fn has_double_colon(s: String, pos: i64) -> bool =
     if pos + 1 >= s.len() then false
     else if s.char_at(pos) == 58 and s.char_at(pos + 1) == 58 then true  -- '::'
@@ -279,6 +292,10 @@ fn get_unary_operand(s: String) -> String = get_child(s, 0);
 fn get_if_cond(s: String) -> String = get_child(s, 0);
 fn get_if_then(s: String) -> String = get_child(s, 1);
 fn get_if_else(s: String) -> String = get_child(s, 2);
+
+-- v0.30.38: Get while condition/body
+fn get_while_cond(s: String) -> String = get_child(s, 0);
+fn get_while_body(s: String) -> String = get_child(s, 1);
 
 -- Get let name/value/body
 fn get_let_name(s: String) -> String =
@@ -553,6 +570,8 @@ fn lower_expr(ast: String, temp: i64, block: i64) -> String =
     -- v0.30.36: Block and unit expressions
     else if is_block_node(ast) then lower_block(ast, temp, block)
     else if is_unit_node(ast) then lower_unit(ast, temp, block)
+    -- v0.30.38: While expression support
+    else if is_while_node(ast) then lower_while(ast, temp, block)
     else pack_lower_result(temp, block, "%error", "  ; unknown: " + get_node_type(ast));
 
 -- Lower integer literal: (int 42)
@@ -656,6 +675,65 @@ fn lower_unit(ast: String, temp: i64, block: i64) -> String =
     let dest = place_temp(temp);
     let text = "  " + dest + " = UNIT";
     pack_lower_result(temp + 1, block, dest, text);
+
+-- v0.30.38: Lower while expression: (while cond body)
+-- While MIR structure:
+--   loop_start_N:
+--     <evaluate condition>
+--     branch %cond, body_N, loop_end_N
+--   body_N:
+--     <evaluate body>
+--     goto loop_start_N
+--   loop_end_N:
+--     %result = UNIT
+fn lower_while(ast: String, temp: i64, block: i64) -> String =
+    let cond_ast = get_while_cond(ast);
+    let body_ast = get_while_body(ast);
+
+    -- Generate block labels
+    let loop_start_lbl = "loop_start_" + int_to_string(block);
+    let body_lbl = "body_" + int_to_string(block);
+    let loop_end_lbl = "loop_end_" + int_to_string(block);
+    let next_block = block + 1;
+
+    -- Lower condition
+    let rc = lower_expr(cond_ast, temp, next_block);
+    let tc = unpack_temp(rc);
+    let bc = unpack_block(rc);
+    let pc = unpack_result_place(rc);
+    let textc = unpack_text(rc);
+
+    -- Branch instruction: if cond goto body, else goto loop_end
+    let branch_text = mir_text_branch(pc, body_lbl, loop_end_lbl);
+
+    -- Lower body
+    let rb = lower_expr(body_ast, tc, bc);
+    let tb = unpack_temp(rb);
+    let bb = unpack_block(rb);
+    let textb = unpack_text(rb);
+
+    -- Result place (while returns unit)
+    let result_place = place_temp(tb);
+
+    -- Build loop_start block (condition evaluation + branch)
+    let loop_start_block = mir_text_block_start(loop_start_lbl) + "|" +
+                           (if textc.len() > 0 then textc + "|" else "") +
+                           branch_text;
+
+    -- Build body block (body + goto loop_start)
+    let body_block = mir_text_block_start(body_lbl) + "|" +
+                     (if textb.len() > 0 then textb + "|" else "") +
+                     mir_text_goto(loop_start_lbl);
+
+    -- Build loop_end block (result = unit)
+    let loop_end_block = mir_text_block_start(loop_end_lbl) + "|" +
+                         "  " + result_place + " = UNIT";
+
+    -- Combine: goto loop_start, then all blocks
+    let entry_text = mir_text_goto(loop_start_lbl);
+    let full_text = entry_text + "|" + loop_start_block + "|" + body_block + "|" + loop_end_block;
+
+    pack_lower_result(tb + 1, bb + 1, result_place, full_text);
 
 -- Lower variable reference: (var <name>)
 fn lower_var(ast: String, temp: i64, block: i64) -> String =
@@ -1331,6 +1409,20 @@ fn main() -> i64 =
     let block_unit_lower_tests = bl1 + bl2 + bl3;
     let u31 = println(block_unit_lower_tests);  -- Should be 3
 
+    -- Test 29: v0.30.38 While node detection (3 tests)
+    let wn1 = if is_while_node("(while (bool true) (int 42))") then 1 else 0;
+    let wn2 = if is_while_node("(while (var <x>) (call <foo>))") then 1 else 0;
+    let wn3 = if is_while_node("(if cond then else)") then 0 else 1;  -- if is not while
+    let while_node_tests = wn1 + wn2 + wn3;
+    let u32 = println(while_node_tests);  -- Should be 3
+
+    -- Test 30: v0.30.38 While lowering (3 tests)
+    let wl1 = test_lower_contains("(while (bool true) (int 42))", "loop_start_");
+    let wl2 = test_lower_contains("(while (bool true) (int 42))", "loop_end_");
+    let wl3 = test_lower_contains("(while (var <x>) (int 1))", "branch");
+    let while_lower_tests = wl1 + wl2 + wl3;
+    let u33 = println(while_lower_tests);  -- Should be 3
+
     let u22 = println(888);  -- Separator
 
     let total = node_tests + extract_tests + child_tests + int_tests + bool_tests +
@@ -1339,8 +1431,9 @@ fn main() -> i64 =
                 struct_extract_tests + struct_init_tests + field_access_tests +
                 enum_node_tests + enum_extract_tests + enum_variant_tests + match_tests +
                 string_tests + lambda_node_tests + lambda_body_tests + lambda_lower_tests +
-                block_unit_node_tests + block_inner_tests + block_unit_lower_tests;
-    let u23 = println(total);  -- Should be 73 (64 + 9 block/unit tests)
+                block_unit_node_tests + block_inner_tests + block_unit_lower_tests +
+                while_node_tests + while_lower_tests;
+    let u23 = println(total);  -- Should be 79 (73 + 6 while tests)
 
     let u24 = println(999);  -- End marker
 
