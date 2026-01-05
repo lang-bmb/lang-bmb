@@ -164,7 +164,7 @@ v0.MAJOR.MINOR
 | v0.28 | Benchmark | C/Rust/BMB benchmark suite | Compute-intensive benchmarks, Contract-optimized benchmarks, Real-world workloads |
 | v0.29 | Velocity | C/Rust performance sprint | MIR optimization framework (6 passes), Contract-based optimization, Bootstrap optimization module |
 
-### Bootstrap Statistics (as of v0.30.40)
+### Bootstrap Statistics (as of v0.30.41)
 
 | Metric | Value |
 |--------|-------|
@@ -172,7 +172,7 @@ v0.MAJOR.MINOR
 | BMB Bootstrap | ~12,000 LOC |
 | Coverage | 55% |
 | Stage 1/2 Tests | 19 tests passing |
-| Bootstrap Tests | 948 tests (600 types + 119 llvm_ir + 73 lowering + 46 mir + 56 parser_ast + 33 utils + 19 selfhost_equiv + 14 pipeline + 9 optimize + 8 selfhost_test + 8 compiler) |
+| Bootstrap Tests | 970 tests (600 types + 119 llvm_ir + 85 lowering + 46 mir + 66 parser_ast + 33 utils + 19 selfhost_equiv + 14 pipeline + 9 optimize + 8 selfhost_test + 8 compiler) |
 
 ---
 
@@ -302,6 +302,15 @@ v0.MAJOR.MINOR
 - `enum_reg_variant_type`: Resolve variant type with type args through registry lookup
 - `enum_reg_count`, `enum_reg_is_generic`: Registry utilities
 - 5 new test functions, 19 assertions (335 total in types.bmb)
+
+**v0.30.41 Completed (2026-01-05)**:
+- Range expression parsing: Exclusive (..) and inclusive (..=) range support
+- TK_DOTDOTEQ (324): Token for inclusive range operator ..=
+- check_three_char: Three-character token detection for ..=
+- is_binop extended: Include TK_DOTDOTEQ as binary operator
+- op_str extended: Map TK_DOTDOTEQ to "..=" string
+- next_token_raw extended: Check three-char before two-char tokens
+- Total: 66 tests passing in parser_ast.bmb (61 + 5 new)
 
 **v0.30.40 Completed (2026-01-05)**:
 - For MIR lowering: For loop MIR generation in lowering.bmb

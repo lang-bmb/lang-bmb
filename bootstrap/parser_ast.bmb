@@ -67,6 +67,7 @@ fn TK_PIPE() -> i64 = 309;    -- v0.30.35: | for lambda params
 
 fn TK_ARROW() -> i64 = 321;
 fn TK_DOTDOT() -> i64 = 323;
+fn TK_DOTDOTEQ() -> i64 = 324;  -- v0.30.41: ..= for inclusive range
 
 fn TK_PLUS() -> i64 = 400;
 fn TK_MINUS() -> i64 = 401;
@@ -191,6 +192,17 @@ fn check_two_char(s: String, pos: i64) -> i64 =
         else if c1 == 46 and c2 == 46 then 3232
         else 0;
 
+-- v0.30.41: Check for three-character tokens
+fn check_three_char(s: String, pos: i64) -> i64 =
+    if pos + 2 >= s.len() then 0
+    else
+        let c1 = s.char_at(pos);
+        let c2 = s.char_at(pos + 1);
+        let c3 = s.char_at(pos + 2);
+        -- ..= (inclusive range): ASCII 46, 46, 61
+        if c1 == 46 and c2 == 46 and c3 == 61 then 3243
+        else 0;
+
 fn next_token_raw(s: String, pos: i64) -> i64 =
     let p = skip_all(s, pos);
     if p >= s.len() then 900 * 1000000 + p
@@ -209,14 +221,21 @@ fn next_token_raw(s: String, pos: i64) -> i64 =
             let end = find_string_end(s, p + 1);
             202 * 1000000 + end
         else
-            let two = check_two_char(s, p);
-            if two > 0 then
-                let kind = two / 10;
-                let tlen = two - kind * 10;
+            -- v0.30.41: Check three-char tokens first (..=)
+            let three = check_three_char(s, p);
+            if three > 0 then
+                let kind = three / 10;
+                let tlen = three - kind * 10;
                 kind * 1000000 + (p + tlen)
             else
-                let kind = symbol_code(c);
-                kind * 1000000 + (p + 1);
+                let two = check_two_char(s, p);
+                if two > 0 then
+                    let kind = two / 10;
+                    let tlen = two - kind * 10;
+                    kind * 1000000 + (p + tlen)
+                else
+                    let kind = symbol_code(c);
+                    kind * 1000000 + (p + 1);
 
 fn tok_kind(tok: i64) -> i64 = tok / 1000000;
 fn tok_end(tok: i64) -> i64 = tok - (tok / 1000000) * 1000000;
@@ -276,6 +295,7 @@ fn op_str(kind: i64) -> String =
     else if kind == TK_NEQ() then "!=" else if kind == TK_LTEQ() then "<="
     else if kind == TK_GTEQ() then ">=" else if kind == TK_AND() then "and"
     else if kind == TK_OR() then "or" else if kind == TK_DOTDOT() then ".."
+    else if kind == TK_DOTDOTEQ() then "..="  -- v0.30.41
     else "?";
 
 fn type_str(kind: i64) -> String =
@@ -285,7 +305,7 @@ fn type_str(kind: i64) -> String =
 
 fn is_binop(kind: i64) -> bool =
     (kind >= 400 and kind <= 406) or (kind >= 410 and kind <= 413) or
-    kind == TK_AND() or kind == TK_OR() or kind == TK_DOTDOT();
+    kind == TK_AND() or kind == TK_OR() or kind == TK_DOTDOT() or kind == TK_DOTDOTEQ();  -- v0.30.41
 
 -- ============================================================
 -- v0.22.0: Struct Definition Parser
@@ -1520,6 +1540,53 @@ fn test_for_in_let() -> i64 =
     else if ast_contains(ast, "(for <i>") and ast_contains(ast, "(let <result>") then 1
     else 0;
 
+-- ============================================================
+-- v0.30.41: Range Expression Tests
+-- ============================================================
+
+-- Test 1: dotdot token recognition
+fn test_range_token() -> i64 =
+    let src = "0..10";
+    let t1 = next_token_raw(src, 0);
+    let t2 = next_token_raw(src, tok_end(t1));
+    let t3 = next_token_raw(src, tok_end(t2));
+    if tok_kind(t1) == TK_INT() and tok_kind(t2) == TK_DOTDOT() and tok_kind(t3) == TK_INT() then 1 else 0;
+
+-- Test 2: exclusive range expression parsing
+fn test_range_exclusive() -> i64 =
+    let src = "fn test() -> i64 = 0..10;";
+    let result = parse_program(src, 0, "");
+    let ast = unpack_ast(result);
+    if is_error(ast) then 0
+    else if ast_contains(ast, "(op .. (int 0) (int 10))") then 1
+    else 0;
+
+-- Test 3: dotdoteq token recognition
+fn test_range_inclusive_token() -> i64 =
+    let src = "0..=10";
+    let t1 = next_token_raw(src, 0);
+    let t2 = next_token_raw(src, tok_end(t1));
+    let t3 = next_token_raw(src, tok_end(t2));
+    if tok_kind(t1) == TK_INT() and tok_kind(t2) == TK_DOTDOTEQ() and tok_kind(t3) == TK_INT() then 1 else 0;
+
+-- Test 4: inclusive range expression parsing
+fn test_range_inclusive() -> i64 =
+    let src = "fn test() -> i64 = 0..=10;";
+    let result = parse_program(src, 0, "");
+    let ast = unpack_ast(result);
+    if is_error(ast) then 0
+    else if ast_contains(ast, "(op ..= (int 0) (int 10))") then 1
+    else 0;
+
+-- Test 5: range in for loop
+fn test_range_in_for() -> i64 =
+    let src = "fn test() -> i64 = for i in 0..10 { i };";
+    let result = parse_program(src, 0, "");
+    let ast = unpack_ast(result);
+    if is_error(ast) then 0
+    else if ast_contains(ast, "(for <i>") and ast_contains(ast, "(op ..") then 1
+    else 0;
+
 fn main() -> i64 =
     let u0 = println(777);  -- Start marker
 
@@ -1635,6 +1702,15 @@ fn main() -> i64 =
     let for_passed = for1 + for2 + for3 + for4 + for5;
     let u13 = println(for_passed);  -- Should be 5
 
+    -- v0.30.41: Range expression parsing tests
+    let rng1 = test_range_token();
+    let rng2 = test_range_exclusive();
+    let rng3 = test_range_inclusive_token();
+    let rng4 = test_range_inclusive();
+    let rng5 = test_range_in_for();
+    let range_passed = rng1 + rng2 + rng3 + rng4 + rng5;
+    let u14 = println(range_passed);  -- Should be 5
+
     let u4 = println(999);  -- End marker
 
-    parse_passed + ast_passed + struct_passed + enum_passed + integration_passed + generic_passed + typeparam_passed + string_passed + lambda_passed + while_passed + for_passed;  -- Should be 61
+    parse_passed + ast_passed + struct_passed + enum_passed + integration_passed + generic_passed + typeparam_passed + string_passed + lambda_passed + while_passed + for_passed + range_passed;  -- Should be 66
