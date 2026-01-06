@@ -164,15 +164,15 @@ v0.MAJOR.MINOR
 | v0.28 | Benchmark | C/Rust/BMB benchmark suite | Compute-intensive benchmarks, Contract-optimized benchmarks, Real-world workloads |
 | v0.29 | Velocity | C/Rust performance sprint | MIR optimization framework (6 passes), Contract-based optimization, Bootstrap optimization module |
 
-### Bootstrap Statistics (as of v0.30.144)
+### Bootstrap Statistics (as of v0.30.149)
 
 | Metric | Value |
 |--------|-------|
 | Rust Codebase | ~21,783 LOC |
 | BMB Bootstrap | ~15,000 LOC |
 | Coverage | 69% |
-| Stage 1/2 Tests | 19 tests passing |
-| Bootstrap Tests | 1,942 tests (746 types + 361 llvm_ir + 244 lowering + 113 parser_ast + 75 lexer + 64 pipeline + 62 mir + 61 parser + 59 compiler + 56 selfhost_test + 38 utils + 29 optimize + 19 selfhost_equiv + 15 parser_test) |
+| Stage 1/2 Tests | 48 tests passing |
+| Bootstrap Tests | 2,116 tests (746 types + 361 llvm_ir + 244 lowering + 138 pipeline + 113 parser_ast + 99 mir + 75 lexer + 63 optimize + 61 parser + 59 compiler + 56 selfhost_test + 48 selfhost_equiv + 38 utils + 15 parser_test) |
 | Build Mode | Use `--release` for bootstrap tests (debug build stack overflow on large files) |
 | Stack-Limited Files | lowering.bmb (structural depth issue) |
 

@@ -1,4 +1,4 @@
--- BMB End-to-End Pipeline (v0.10.3: Bootstrap Phase 7)
+-- BMB End-to-End Pipeline (v0.30.146: Enhanced test suite)
 -- Demonstrates complete compilation flow: Source -> AST -> MIR
 --
 -- ARCHITECTURE:
@@ -705,7 +705,128 @@ fn str_contains_at(s: String, sub: String, pos: i64) -> bool =
     else str_contains_at(s, sub, pos + 1);
 
 -- ============================================================================
--- SECTION 9: Tests
+-- SECTION 9: Unit Tests (v0.30.146)
+-- ============================================================================
+
+-- Test token encoding/decoding
+fn test_tok_encoding() -> i64 =
+    let t1 = if make_tok(100, 5) == 100000005 then 1 else 0;
+    let t2 = if tok_kind(100000005) == 100 then 1 else 0;
+    let t3 = if tok_end(100000005) == 5 then 1 else 0;
+    let t4 = if tok_kind(make_tok(200, 10)) == 200 then 1 else 0;
+    let t5 = if tok_end(make_tok(200, 10)) == 10 then 1 else 0;
+    let t6 = if make_tok(TK_EOF(), 100) == 900000100 then 1 else 0;
+    t1 + t2 + t3 + t4 + t5 + t6;
+
+-- Test character classification
+fn test_char_class() -> i64 =
+    let w1 = if is_whitespace(32) then 1 else 0;   -- space
+    let w2 = if is_whitespace(9) then 1 else 0;    -- tab
+    let w3 = if is_whitespace(10) then 1 else 0;   -- newline
+    let w4 = if not is_whitespace(65) then 1 else 0;
+    let d1 = if is_digit(48) then 1 else 0;        -- '0'
+    let d2 = if is_digit(57) then 1 else 0;        -- '9'
+    let d3 = if not is_digit(47) then 1 else 0;
+    let d4 = if not is_digit(58) then 1 else 0;
+    let a1 = if is_alpha(65) then 1 else 0;        -- 'A'
+    let a2 = if is_alpha(122) then 1 else 0;       -- 'z'
+    let a3 = if not is_alpha(64) then 1 else 0;
+    let a4 = if is_alnum_or_underscore(95) then 1 else 0;  -- '_'
+    w1 + w2 + w3 + w4 + d1 + d2 + d3 + d4 + a1 + a2 + a3 + a4;
+
+-- Test keyword lookup
+fn test_keywords() -> i64 =
+    let k1 = if lookup_keyword("fn") == 100 then 1 else 0;
+    let k2 = if lookup_keyword("let") == 101 then 1 else 0;
+    let k3 = if lookup_keyword("if") == 102 then 1 else 0;
+    let k4 = if lookup_keyword("else") == 104 then 1 else 0;
+    let k5 = if lookup_keyword("i64") == 151 then 1 else 0;
+    let k6 = if lookup_keyword("bool") == 153 then 1 else 0;
+    let k7 = if lookup_keyword("xyz") == 201 then 1 else 0;  -- ident
+    let k8 = if lookup_keyword("true") == 105 then 1 else 0;
+    k1 + k2 + k3 + k4 + k5 + k6 + k7 + k8;
+
+-- Test string utilities
+fn test_string_utils() -> i64 =
+    let s1 = if digit_char(0) == "0" then 1 else 0;
+    let s2 = if digit_char(9) == "9" then 1 else 0;
+    let s3 = if int_to_string(42) == "42" then 1 else 0;
+    let s4 = if int_to_string(0) == "0" then 1 else 0;
+    let s5 = if int_to_string(123) == "123" then 1 else 0;
+    let s6 = if int_to_string(-5) == "-5" then 1 else 0;
+    s1 + s2 + s3 + s4 + s5 + s6;
+
+-- Test result packing/unpacking
+fn test_result_pack() -> i64 =
+    let r = pack_result(10, "ast");
+    let p1 = if unpack_pos(r) == 10 then 1 else 0;
+    let p2 = if unpack_ast(r) == "ast" then 1 else 0;
+    let r2 = pack_result(123, "(int 42)");
+    let p3 = if unpack_pos(r2) == 123 then 1 else 0;
+    let p4 = if unpack_ast(r2) == "(int 42)" then 1 else 0;
+    let p5 = if is_error("ERR:test") then 1 else 0;
+    let p6 = if not is_error("ok") then 1 else 0;
+    p1 + p2 + p3 + p4 + p5 + p6;
+
+-- Test is_binop function
+fn test_is_binop() -> i64 =
+    let b1 = if is_binop(TK_PLUS()) then 1 else 0;
+    let b2 = if is_binop(TK_MINUS()) then 1 else 0;
+    let b3 = if is_binop(TK_STAR()) then 1 else 0;
+    let b4 = if is_binop(TK_LT()) then 1 else 0;
+    let b5 = if is_binop(TK_EQEQ()) then 1 else 0;
+    let b6 = if is_binop(TK_AND()) then 1 else 0;
+    let b7 = if not is_binop(TK_FN()) then 1 else 0;
+    let b8 = if not is_binop(TK_EOF()) then 1 else 0;
+    b1 + b2 + b3 + b4 + b5 + b6 + b7 + b8;
+
+-- Test op_str function
+fn test_op_str() -> i64 =
+    let o1 = if op_str(TK_PLUS()) == "+" then 1 else 0;
+    let o2 = if op_str(TK_MINUS()) == "-" then 1 else 0;
+    let o3 = if op_str(TK_STAR()) == "*" then 1 else 0;
+    let o4 = if op_str(TK_EQEQ()) == "==" then 1 else 0;
+    let o5 = if op_str(TK_NEQ()) == "!=" then 1 else 0;
+    let o6 = if op_str(TK_AND()) == "and" then 1 else 0;
+    o1 + o2 + o3 + o4 + o5 + o6;
+
+-- Test S-expression utilities
+fn test_sexp_utils() -> i64 =
+    let s1 = if get_node_type("(int 42)") == "int" then 1 else 0;
+    let s2 = if get_node_type("(var x)") == "var" then 1 else 0;
+    let s3 = if get_node_type("(op + a b)") == "op" then 1 else 0;
+    let s4 = if is_int_node("(int 42)") then 1 else 0;
+    let s5 = if is_var_node("(var <x>)") then 1 else 0;
+    let s6 = if is_op_node("(op + a b)") then 1 else 0;
+    let s7 = if not is_int_node("(var x)") then 1 else 0;
+    let s8 = if extract_paren_content("(hello)") == "hello" then 1 else 0;
+    s1 + s2 + s3 + s4 + s5 + s6 + s7 + s8;
+
+-- Test MIR utilities
+fn test_mir_utils() -> i64 =
+    let m1 = if make_temp(0) == "%_t0" then 1 else 0;
+    let m2 = if make_temp(5) == "%_t5" then 1 else 0;
+    let m3 = if join_text("a", "b") == "a|b" then 1 else 0;
+    let m4 = if join_text("", "b") == "b" then 1 else 0;
+    let m5 = if join_text("a", "") == "a" then 1 else 0;
+    let r = pack_lower_result(1, 0, "%t1", "text");
+    let m6 = if unpack_result_temp(r) == 1 then 1 else 0;
+    m1 + m2 + m3 + m4 + m5 + m6;
+
+-- Test token constants
+fn test_token_constants() -> i64 =
+    let t1 = if TK_FN() == 100 then 1 else 0;
+    let t2 = if TK_LET() == 101 then 1 else 0;
+    let t3 = if TK_IF() == 102 then 1 else 0;
+    let t4 = if TK_I64() == 151 then 1 else 0;
+    let t5 = if TK_INT() == 200 then 1 else 0;
+    let t6 = if TK_IDENT() == 201 then 1 else 0;
+    let t7 = if TK_EOF() == 900 then 1 else 0;
+    let t8 = if TK_PLUS() == 400 then 1 else 0;
+    t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8;
+
+-- ============================================================================
+-- SECTION 10: Integration Tests
 -- ============================================================================
 
 fn test_parse(src: String, expected: String) -> i64 =
@@ -719,6 +840,32 @@ fn test_pipeline(src: String, expected: String) -> i64 =
 
 fn main() -> i64 =
     let u0 = println(777);
+
+    -- Unit tests (v0.30.146)
+    let ut1 = test_tok_encoding();
+    let v1 = println(ut1);    -- Should be 6
+    let ut2 = test_char_class();
+    let v2 = println(ut2);    -- Should be 12
+    let ut3 = test_keywords();
+    let v3 = println(ut3);    -- Should be 8
+    let ut4 = test_string_utils();
+    let v4 = println(ut4);    -- Should be 6
+    let ut5 = test_result_pack();
+    let v5 = println(ut5);    -- Should be 6
+    let ut6 = test_is_binop();
+    let v6 = println(ut6);    -- Should be 8
+    let ut7 = test_op_str();
+    let v7 = println(ut7);    -- Should be 6
+    let ut8 = test_sexp_utils();
+    let v8 = println(ut8);    -- Should be 8
+    let ut9 = test_mir_utils();
+    let v9 = println(ut9);    -- Should be 6
+    let ut10 = test_token_constants();
+    let v10 = println(ut10);  -- Should be 8
+    let unit_total = ut1 + ut2 + ut3 + ut4 + ut5 + ut6 + ut7 + ut8 + ut9 + ut10;
+    let v11 = println(unit_total);  -- Should be 74
+
+    let u1 = println(555);  -- Integration tests marker
 
     -- Test 1: Parsing (5 tests)
     let p1 = test_parse("fn one() -> i64 = 42;", "(fn <one>");
@@ -856,8 +1003,10 @@ fn main() -> i64 =
     let u16 = println(t16);
 
     let u8 = println(888);
-    let total = t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t9 + t10 + t11 + t12 + t13 + t14 + t15 + t16;
-    let u9 = println(total);
-    let u10 = println(999);
+    let integration = t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t9 + t10 + t11 + t12 + t13 + t14 + t15 + t16;
+    let u9 = println(integration);  -- Should be 64
+    let total = unit_total + integration;
+    let u10 = println(total);  -- Should be 138
+    let u11 = println(999);
 
     total;

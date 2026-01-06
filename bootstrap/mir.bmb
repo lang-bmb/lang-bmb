@@ -1,4 +1,4 @@
--- BMB Middle IR (MIR) written in BMB (v0.10.1: Bootstrap Phase 5)
+-- BMB Middle IR (MIR) written in BMB (v0.30.147: Enhanced test suite)
 -- A simple MIR representation for the BMB language
 -- Uses functional/recursive style following types.bmb patterns
 --
@@ -405,7 +405,74 @@ fn example_max_function() -> String =
     then_block + "|" + else_block + "|" + merge + "|" + footer;
 
 -- ============================================================================
--- Tests
+-- Unit Tests (v0.30.147)
+-- ============================================================================
+
+-- Test string utilities
+fn test_string_utils() -> i64 =
+    let s1 = if digit_char(0) == "0" then 1 else 0;
+    let s2 = if digit_char(5) == "5" then 1 else 0;
+    let s3 = if digit_char(9) == "9" then 1 else 0;
+    let s4 = if int_to_string(0) == "0" then 1 else 0;
+    let s5 = if int_to_string(42) == "42" then 1 else 0;
+    let s6 = if int_to_string(999) == "999" then 1 else 0;
+    let s7 = if int_to_string(-1) == "-1" then 1 else 0;
+    let s8 = if is_digit(48) then 1 else 0;  -- '0'
+    s1 + s2 + s3 + s4 + s5 + s6 + s7 + s8;
+
+-- Test all binop constants
+fn test_binop_constants() -> i64 =
+    let b1 = if binop_add() == 1 then 1 else 0;
+    let b2 = if binop_sub() == 2 then 1 else 0;
+    let b3 = if binop_mul() == 3 then 1 else 0;
+    let b4 = if binop_div() == 4 then 1 else 0;
+    let b5 = if binop_mod() == 5 then 1 else 0;
+    let b6 = if binop_eq() == 6 then 1 else 0;
+    let b7 = if binop_ne() == 7 then 1 else 0;
+    let b8 = if binop_lt() == 8 then 1 else 0;
+    b1 + b2 + b3 + b4 + b5 + b6 + b7 + b8;
+
+-- Test unop constants
+fn test_unop_constants() -> i64 =
+    let u1 = if unop_neg() == 1 then 1 else 0;
+    let u2 = if unop_not() == 2 then 1 else 0;
+    let u3 = if unop_symbol(unop_neg()) == "-" then 1 else 0;
+    let u4 = if unop_symbol(unop_not()) == "not" then 1 else 0;
+    u1 + u2 + u3 + u4;
+
+-- Test type constants
+fn test_type_constants() -> i64 =
+    let t1 = if mir_type_i32() == 1 then 1 else 0;
+    let t2 = if mir_type_i64() == 2 then 1 else 0;
+    let t3 = if mir_type_f64() == 3 then 1 else 0;
+    let t4 = if mir_type_bool() == 4 then 1 else 0;
+    let t5 = if mir_type_string() == 5 then 1 else 0;
+    let t6 = if mir_type_unit() == 6 then 1 else 0;
+    t1 + t2 + t3 + t4 + t5 + t6;
+
+-- Test const string detection
+fn test_const_detection() -> i64 =
+    let c1 = if is_const_int("I:42") then 1 else 0;
+    let c2 = if not is_const_int("B:1") then 1 else 0;
+    let c3 = if is_const_bool("B:0") then 1 else 0;
+    let c4 = if not is_const_bool("I:1") then 1 else 0;
+    let c5 = if is_const_string("S:hello") then 1 else 0;
+    let c6 = if is_const_unit("U") then 1 else 0;
+    c1 + c2 + c3 + c4 + c5 + c6;
+
+-- Test lowering examples
+fn test_lower_examples() -> i64 =
+    let r1 = lower_binop_example("a", binop_add(), "b", 0);
+    let t1 = if unpack_mir_count(r1) == 1 then 1 else 0;
+    let r2 = lower_binop_example("x", binop_mul(), "y", 5);
+    let t2 = if unpack_mir_count(r2) == 6 then 1 else 0;
+    let if_r = lower_if_example("c", "t", "e", 0, 0);
+    let t3 = if unpack_mir_count(if_r) == 1 then 1 else 0;
+    let t4 = if unpack_mir_text(r1).len() > 10 then 1 else 0;
+    t1 + t2 + t3 + t4;
+
+-- ============================================================================
+-- Integration Tests
 -- ============================================================================
 
 fn test_instruction_encoding() -> i64 =
@@ -537,9 +604,9 @@ fn test_unop_and_blocks() -> i64 =
     let neg_sym = unop_symbol(1);
     let t1 = if neg_sym == "-" then 1 else 0;
 
-    -- Test 2: unop_not symbol
+    -- Test 2: unop_not symbol (returns "not" not "!")
     let not_sym = unop_symbol(2);
-    let t2 = if not_sym == "!" then 1 else 0;
+    let t2 = if not_sym == "not" then 1 else 0;
 
     -- Test 3: block start text
     let block = mir_text_block_start("entry");
@@ -586,8 +653,26 @@ fn test_function_headers() -> i64 =
 fn main() -> i64 =
     let u0 = println(777);
 
+    -- Unit tests (v0.30.147)
+    let ut1 = test_string_utils();
+    let v1 = println(ut1);    -- Should be 8
+    let ut2 = test_binop_constants();
+    let v2 = println(ut2);    -- Should be 8
+    let ut3 = test_unop_constants();
+    let v3 = println(ut3);    -- Should be 4
+    let ut4 = test_type_constants();
+    let v4 = println(ut4);    -- Should be 6
+    let ut5 = test_const_detection();
+    let v5 = println(ut5);    -- Should be 6
+    let ut6 = test_lower_examples();
+    let v6 = println(ut6);    -- Should be 4
+    let unit_total = ut1 + ut2 + ut3 + ut4 + ut5 + ut6;
+    let v7 = println(unit_total);  -- Should be 36
+
+    let u1 = println(555);  -- Integration tests marker
+
     let t1 = test_instruction_encoding();
-    let u1 = println(t1);
+    let w1 = println(t1);
 
     let t2 = test_terminator_encoding();
     let u2 = println(t2);
@@ -626,10 +711,13 @@ fn main() -> i64 =
     let t13 = test_function_headers();
     let u13 = println(t13);
 
-    let total = t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t9 + t10 + t11 + t12 + t13;
+    let integration = t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t9 + t10 + t11 + t12 + t13;
+    let u14 = println(integration);  -- Should be 63
 
-    let u14 = println(888);
-    let u15 = println(total);
-    let u16 = println(999);
+    let total = unit_total + integration;
+
+    let u15 = println(888);
+    let u16 = println(total);  -- Should be 99
+    let u17 = println(999);
 
     total;

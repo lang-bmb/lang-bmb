@@ -1,4 +1,4 @@
--- BMB Bootstrap MIR Optimizer (v0.29.1)
+-- BMB Bootstrap MIR Optimizer (v0.30.148: Enhanced test suite)
 -- Port of bmb/src/mir/optimize.rs to BMB
 --
 -- Optimization passes for MIR text format:
@@ -370,7 +370,75 @@ fn make_stats(const_fold: i64, dead_code: i64, branches: i64, copies: i64) -> St
     "|copies:" + int_to_string(copies);
 
 -- ============================================================================
--- SECTION 10: Tests
+-- SECTION 10: Unit Tests (v0.30.148)
+-- ============================================================================
+
+-- Test string utilities
+fn test_string_utils() -> i64 =
+    let s1 = if digit_char(0) == "0" then 1 else 0;
+    let s2 = if digit_char(5) == "5" then 1 else 0;
+    let s3 = if digit_char(9) == "9" then 1 else 0;
+    let s4 = if int_to_string(42) == "42" then 1 else 0;
+    let s5 = if int_to_string(0) == "0" then 1 else 0;
+    let s6 = if int_to_string(-7) == "-7" then 1 else 0;
+    s1 + s2 + s3 + s4 + s5 + s6;
+
+-- Test character classification
+fn test_char_class() -> i64 =
+    let w1 = if is_whitespace(32) then 1 else 0;   -- space
+    let w2 = if is_whitespace(9) then 1 else 0;    -- tab
+    let w3 = if is_whitespace(10) then 1 else 0;   -- newline
+    let w4 = if not is_whitespace(65) then 1 else 0;
+    let d1 = if is_digit(48) then 1 else 0;        -- '0'
+    let d2 = if is_digit(57) then 1 else 0;        -- '9'
+    let d3 = if not is_digit(47) then 1 else 0;
+    let d4 = if not is_digit(58) then 1 else 0;
+    w1 + w2 + w3 + w4 + d1 + d2 + d3 + d4;
+
+-- Test pattern matching
+fn test_patterns() -> i64 =
+    let p1 = if starts_with("hello", "hel", 0) then 1 else 0;
+    let p2 = if not starts_with("hello", "xyz", 0) then 1 else 0;
+    let p3 = if find_char("a:b:c", 58, 0) == 1 then 1 else 0;  -- ':'
+    let p4 = if find_pattern("hello world", "world", 0) == 6 then 1 else 0;
+    let p5 = if parse_int_at("123abc", 0, 0) == 123 then 1 else 0;
+    let p6 = if skip_ws("  hello", 0) == 2 then 1 else 0;
+    p1 + p2 + p3 + p4 + p5 + p6;
+
+-- Test instruction type checks
+fn test_inst_types() -> i64 =
+    let t1 = if is_const_inst("  %x = const I:42") then 1 else 0;
+    let t2 = if not is_const_inst("  %x = + %a, %b") then 1 else 0;
+    let t3 = if is_binop_inst("  %x = + %a, %b") then 1 else 0;
+    let t4 = if is_binop_inst("  %x = * %a, %b") then 1 else 0;
+    let t5 = if is_copy_inst("  %x = copy %y") then 1 else 0;
+    let t6 = if is_label("entry:") then 1 else 0;
+    let t7 = if not is_label("not a label") then 1 else 0;
+    let t8 = if is_branch_inst("  branch %c, t, e") then 1 else 0;
+    t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8;
+
+-- Test copy source extraction
+fn test_copy_src() -> i64 =
+    let s1 = extract_copy_src("  %x = copy %y");
+    let t1 = if s1 == "%y" then 1 else 0;
+    let s2 = extract_copy_src("  %a = copy %b");
+    let t2 = if s2 == "%b" then 1 else 0;
+    let s3 = extract_copy_src("not a copy");
+    let t3 = if s3 == "" then 1 else 0;
+    t1 + t2 + t3;
+
+-- Test division by zero handling
+fn test_div_zero() -> i64 =
+    let r1 = eval_binop("/", 10, 0);
+    let t1 = if r1 == 0 then 1 else 0;  -- Returns 0 on div by zero
+    let r2 = eval_binop("%", 10, 0);
+    let t2 = if r2 == 0 then 1 else 0;  -- Returns 0 on mod by zero
+    let r3 = eval_binop("/", 0, 5);
+    let t3 = if r3 == 0 then 1 else 0;  -- 0 / 5 = 0
+    t1 + t2 + t3;
+
+-- ============================================================================
+-- SECTION 11: Integration Tests
 -- ============================================================================
 
 fn test_const_table() -> i64 =
@@ -528,6 +596,25 @@ fn test_opt_levels() -> i64 =
 
 fn main() -> i64 =
     let u1 = println(777);
+
+    -- Unit tests (v0.30.148)
+    let ut1 = test_string_utils();
+    let v1 = println(ut1);    -- Should be 6
+    let ut2 = test_char_class();
+    let v2 = println(ut2);    -- Should be 8
+    let ut3 = test_patterns();
+    let v3 = println(ut3);    -- Should be 6
+    let ut4 = test_inst_types();
+    let v4 = println(ut4);    -- Should be 8
+    let ut5 = test_copy_src();
+    let v5 = println(ut5);    -- Should be 3
+    let ut6 = test_div_zero();
+    let v6 = println(ut6);    -- Should be 3
+    let unit_total = ut1 + ut2 + ut3 + ut4 + ut5 + ut6;
+    let v7 = println(unit_total);  -- Should be 34
+
+    let u2 = println(555);  -- Integration tests marker
+
     let t1 = println(test_const_table());
     let t2 = println(test_extract_dest());
     let t3 = println(test_extract_const());
@@ -542,12 +629,15 @@ fn main() -> i64 =
     let t11 = println(test_var_usage());
     let t12 = println(test_side_effects());
     let t13 = println(test_opt_levels());
-    let u2 = println(888);
-    let total = test_const_table() + test_extract_dest() + test_extract_const() +
+    let integration = test_const_table() + test_extract_dest() + test_extract_const() +
                 test_extract_binop() + test_eval_binop() + test_const_folding() +
                 test_is_checks() + test_optimize_mir() + test_copy_table() +
                 test_opt_edge_cases() + test_var_usage() + test_side_effects() +
                 test_opt_levels();
-    let u3 = println(total);
-    let u4 = println(999);
+    let u3 = println(integration);  -- Should be 29
+
+    let total = unit_total + integration;
+    let u4 = println(888);
+    let u5 = println(total);  -- Should be 63
+    let u6 = println(999);
     0;

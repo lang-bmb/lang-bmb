@@ -1,6 +1,6 @@
 -- ============================================================================
 -- BMB Bootstrap Self-Hosting Stage 2: Equivalence Test
--- Version: v0.23.2
+-- Version: v0.30.149: Enhanced test suite
 --
 -- This file tests the equivalence between Rust compiler output and
 -- Bootstrap compiler output for the same BMB source patterns.
@@ -168,84 +168,133 @@ fn test_llvm_phi_pattern() -> i64 =
     if has_pattern("test: %result = phi i64 [ %a, %then ], [ %b, %else ]", pattern, 0) then 1 else 0;
 
 -- ============================================================================
--- SECTION 6: Main Test Runner
+-- SECTION 6: Unit Tests (v0.30.149)
+-- ============================================================================
+
+-- Test has_pattern with pattern at start
+fn test_pattern_at_start() -> i64 =
+    let s1 = if has_pattern("hello world", "hello", 0) then 1 else 0;
+    let s2 = if has_pattern("entry: code", "entry:", 0) then 1 else 0;
+    let s3 = if has_pattern("define i64", "define", 0) then 1 else 0;
+    let s4 = if has_pattern("%_t0 = add", "%_t0", 0) then 1 else 0;
+    s1 + s2 + s3 + s4;
+
+-- Test has_pattern with pattern in middle
+fn test_pattern_in_middle() -> i64 =
+    let s1 = if has_pattern("entry: %_t0 = + %a, %b", "%_t0", 0) then 1 else 0;
+    let s2 = if has_pattern("define i64 @add(i64 %a)", "@add", 0) then 1 else 0;
+    let s3 = if has_pattern("test: br i1 %cond", "br i1", 0) then 1 else 0;
+    let s4 = if has_pattern("result = phi i64", "phi", 0) then 1 else 0;
+    s1 + s2 + s3 + s4;
+
+-- Test has_pattern with pattern at end
+fn test_pattern_at_end() -> i64 =
+    let s1 = if has_pattern("entry: return %_t0", "return %_t0", 0) then 1 else 0;
+    let s2 = if has_pattern("result = phi i64", "i64", 0) then 1 else 0;
+    let s3 = if has_pattern("test end", "end", 0) then 1 else 0;
+    s1 + s2 + s3;
+
+-- Test has_pattern with pattern not found
+fn test_pattern_not_found() -> i64 =
+    let s1 = if has_pattern("hello world", "xyz", 0) then 0 else 1;
+    let s2 = if has_pattern("entry: code", "exit", 0) then 0 else 1;
+    let s3 = if has_pattern("define i64", "declare", 0) then 0 else 1;
+    let s4 = if has_pattern("abc", "abcd", 0) then 0 else 1;  -- pattern longer
+    s1 + s2 + s3 + s4;
+
+-- Test has_pattern edge cases
+fn test_pattern_edge_cases() -> i64 =
+    let s1 = if has_pattern("a", "a", 0) then 1 else 0;  -- single char match
+    let s2 = if has_pattern("aa", "a", 0) then 1 else 0;  -- multiple matches
+    let s3 = if has_pattern("test", "test", 0) then 1 else 0;  -- exact match
+    s1 + s2 + s3;
+
+-- Test MIR keyword patterns
+fn test_mir_keywords() -> i64 =
+    let s1 = if has_pattern("entry: block", "entry:", 0) then 1 else 0;
+    let s2 = if has_pattern("branch %cond", "branch", 0) then 1 else 0;
+    let s3 = if has_pattern("return %r", "return", 0) then 1 else 0;
+    let s4 = if has_pattern("const I:42", "const", 0) then 1 else 0;
+    let s5 = if has_pattern("call foo()", "call", 0) then 1 else 0;
+    s1 + s2 + s3 + s4 + s5;
+
+-- Test LLVM IR keyword patterns
+fn test_llvm_keywords() -> i64 =
+    let s1 = if has_pattern("define i64 @fn", "define", 0) then 1 else 0;
+    let s2 = if has_pattern("icmp sgt i64", "icmp", 0) then 1 else 0;
+    let s3 = if has_pattern("br i1 %cond", "br i1", 0) then 1 else 0;
+    let s4 = if has_pattern("phi i64 [", "phi", 0) then 1 else 0;
+    let s5 = if has_pattern("ret i64 %r", "ret", 0) then 1 else 0;
+    let s6 = if has_pattern("add i64 %a, %b", "add i64", 0) then 1 else 0;
+    s1 + s2 + s3 + s4 + s5 + s6;
+
+-- ============================================================================
+-- SECTION 7: Main Test Runner
 -- ============================================================================
 
 fn main() -> i64 =
     let u0 = println(777);  -- Start marker
 
+    -- Unit tests (v0.30.149)
+    let ut1 = test_pattern_at_start();
+    let v1 = println(ut1);   -- Should be 4
+
+    let ut2 = test_pattern_in_middle();
+    let v2 = println(ut2);   -- Should be 4
+
+    let ut3 = test_pattern_at_end();
+    let v3 = println(ut3);   -- Should be 3
+
+    let ut4 = test_pattern_not_found();
+    let v4 = println(ut4);   -- Should be 4
+
+    let ut5 = test_pattern_edge_cases();
+    let v5 = println(ut5);   -- Should be 3
+
+    let ut6 = test_mir_keywords();
+    let v6 = println(ut6);   -- Should be 5
+
+    let ut7 = test_llvm_keywords();
+    let v7 = println(ut7);   -- Should be 6
+
+    let unit_total = ut1 + ut2 + ut3 + ut4 + ut5 + ut6 + ut7;
+    let v8 = println(unit_total);  -- Should be 29
+
+    let u1 = println(555);  -- Integration tests marker
+
     -- Stage 2: MIR Equivalence Tests
-    let u1 = println(2);  -- Section: MIR patterns
-
     let t1 = mir_add_has_entry();
-    let u2 = println(t1);
-
     let t2 = mir_add_has_binop();
-    let u3 = println(t2);
-
     let t3 = mir_add_has_return();
-    let u4 = println(t3);
-
     let t4 = mir_max_has_cmp();
-    let u5 = println(t4);
-
     let t5 = mir_max_has_branch();
-    let u6 = println(t5);
 
     -- Stage 2: LLVM IR Equivalence Tests
-    let u7 = println(3);  -- Section: LLVM patterns
-
     let t6 = llvm_add_has_define();
-    let u8 = println(t6);
-
     let t7 = llvm_add_has_add();
-    let u9 = println(t7);
-
     let t8 = llvm_add_has_ret();
-    let u10 = println(t8);
-
     let t9 = llvm_max_has_icmp();
-    let u11 = println(t9);
-
     let t10 = llvm_max_has_br();
-    let u12 = println(t10);
-
     let t11 = llvm_max_has_phi();
-    let u13 = println(t11);
 
     -- Stage 2: Bootstrap Lowering Pattern Tests
-    let u14 = println(4);  -- Section: Bootstrap MIR
-
     let t12 = test_lowering_const_pattern();
-    let u15 = println(t12);
-
     let t13 = test_lowering_binop_pattern();
-    let u16 = println(t13);
-
     let t14 = test_lowering_call_pattern();
-    let u17 = println(t14);
 
     -- Stage 2: Bootstrap LLVM Pattern Tests
-    let u18 = println(5);  -- Section: Bootstrap LLVM
-
     let t15 = test_llvm_const_pattern();
-    let u19 = println(t15);
-
     let t16 = test_llvm_binop_pattern();
-    let u20 = println(t16);
-
     let t17 = test_llvm_cmp_pattern();
-    let u21 = println(t17);
-
     let t18 = test_llvm_branch_pattern();
-    let u22 = println(t18);
-
     let t19 = test_llvm_phi_pattern();
-    let u23 = println(t19);
 
-    let total = t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t9 + t10 + t11 + t12 + t13 + t14 + t15 + t16 + t17 + t18 + t19;
+    let integration = t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t9 + t10 + t11 + t12 + t13 + t14 + t15 + t16 + t17 + t18 + t19;
+    let v9 = println(integration);  -- Should be 19
+
+    let total = unit_total + integration;
     let u24 = println(888);  -- Separator
-    let u25 = println(total);
+    let u25 = println(total);  -- Should be 48
     let u26 = println(999);  -- End marker
 
     total;
