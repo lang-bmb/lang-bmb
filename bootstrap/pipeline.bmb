@@ -1,4 +1,4 @@
--- BMB End-to-End Pipeline (v0.30.162: Comprehensive unit test suite)
+-- BMB End-to-End Pipeline (v0.30.187: Extended test coverage)
 -- Demonstrates complete compilation flow: Source -> AST -> MIR
 --
 -- ARCHITECTURE:
@@ -1100,6 +1100,72 @@ fn test_digit_char_all() -> i64 =
     d0 + d1 + d2 + d3 + d4 + d5 + d6 + d7 + d8 + d9;
 
 -- ============================================================================
+-- v0.30.187: Additional Unit Tests
+-- ============================================================================
+
+-- Test make_tok encoding combinations
+fn test_make_tok_values() -> i64 =
+    let t1 = if make_tok(100, 5) == 100000005 then 1 else 0;
+    let t2 = if make_tok(201, 10) == 201000010 then 1 else 0;
+    let t3 = if make_tok(400, 0) == 400000000 then 1 else 0;
+    let t4 = if tok_kind(make_tok(321, 99)) == 321 then 1 else 0;
+    let t5 = if tok_end(make_tok(321, 99)) == 99 then 1 else 0;
+    let t6 = if make_tok(TK_EOF(), 100) == 900000100 then 1 else 0;
+    t1 + t2 + t3 + t4 + t5 + t6;
+
+-- Test lookup_keyword for types
+fn test_lookup_keyword_types() -> i64 =
+    let t1 = if lookup_keyword("i32") == 150 then 1 else 0;
+    let t2 = if lookup_keyword("i64") == 151 then 1 else 0;
+    let t3 = if lookup_keyword("f64") == 152 then 1 else 0;
+    let t4 = if lookup_keyword("bool") == 153 then 1 else 0;
+    let t5 = if lookup_keyword("String") == 154 then 1 else 0;
+    let t6 = if lookup_keyword("u64") == 201 then 1 else 0;  -- unknown -> ident
+    t1 + t2 + t3 + t4 + t5 + t6;
+
+-- Test is_*_node functions
+fn test_is_node_funcs() -> i64 =
+    let t1 = if is_int_node("(int 42)") then 1 else 0;
+    let t2 = if is_bool_node("(bool true)") then 1 else 0;
+    let t3 = if is_var_node("(var x)") then 1 else 0;
+    let t4 = if is_op_node("(op + a b)") then 1 else 0;
+    let t5 = if is_if_node("(if cond then else)") then 1 else 0;
+    let t6 = if not is_int_node("(var x)") then 1 else 0;
+    t1 + t2 + t3 + t4 + t5 + t6;
+
+-- Test low_is_* character functions
+fn test_low_char_funcs() -> i64 =
+    let t1 = if low_is_whitespace(32) then 1 else 0;  -- space
+    let t2 = if low_is_whitespace(10) then 1 else 0;  -- newline
+    let t3 = if not low_is_whitespace(65) then 1 else 0;  -- 'A'
+    let t4 = if low_is_ident_char(65) then 1 else 0;  -- 'A'
+    let t5 = if low_is_ident_char(95) then 1 else 0;  -- '_'
+    let t6 = if low_is_op_char(43) then 1 else 0;  -- '+'
+    t1 + t2 + t3 + t4 + t5 + t6;
+
+-- Test pack_result and unpack functions
+fn test_pack_unpack_ext() -> i64 =
+    let r1 = pack_result(42, "(test)");
+    let t1 = if unpack_pos(r1) == 42 then 1 else 0;
+    let t2 = if str_contains(unpack_ast(r1), "test") then 1 else 0;
+    let r2 = pack_result(0, "(int 0)");
+    let t3 = if unpack_pos(r2) == 0 then 1 else 0;
+    let t4 = if str_contains(unpack_ast(r2), "int") then 1 else 0;
+    let t5 = if is_error(make_error("test")) then 1 else 0;
+    let t6 = if not is_error("(normal)") then 1 else 0;
+    t1 + t2 + t3 + t4 + t5 + t6;
+
+-- Test find_*_end functions
+fn test_find_end_ext() -> i64 =
+    let t1 = if find_ident_end("abc123 x", 0) == 6 then 1 else 0;
+    let t2 = if find_ident_end("x", 0) == 1 then 1 else 0;
+    let t3 = if find_number_end("12345x", 0) == 5 then 1 else 0;
+    let t4 = if find_number_end("0", 0) == 1 then 1 else 0;
+    let t5 = if find_colon("a:b", 0) == 1 then 1 else 0;
+    let t6 = if find_colon("abc", 0) == 3 then 1 else 0;  -- no colon -> len
+    t1 + t2 + t3 + t4 + t5 + t6;
+
+-- ============================================================================
 -- SECTION 10: Integration Tests
 -- ============================================================================
 
@@ -1185,8 +1251,26 @@ fn main() -> i64 =
     let v33 = println(ut33);  -- Should be 7
     let ut34 = test_digit_char_all();
     let v34 = println(ut34);  -- Should be 10
-    let unit_total = ut1 + ut2 + ut3 + ut4 + ut5 + ut6 + ut7 + ut8 + ut9 + ut10 + ut11 + ut12 + ut13 + ut14 + ut15 + ut16 + ut17 + ut18 + ut19 + ut20 + ut21 + ut22 + ut23 + ut24 + ut25 + ut26 + ut27 + ut28 + ut29 + ut30 + ut31 + ut32 + ut33 + ut34;
-    let v35 = println(unit_total);  -- Should be 243
+
+    -- v0.30.187: Additional unit tests (36 new assertions)
+    let ut35 = test_make_tok_values();
+    let v35a = println(ut35);  -- Should be 6
+    let ut36 = test_lookup_keyword_types();
+    let v36 = println(ut36);  -- Should be 6
+    let ut37 = test_is_node_funcs();
+    let v37 = println(ut37);  -- Should be 6
+    let ut38 = test_low_char_funcs();
+    let v38 = println(ut38);  -- Should be 6
+    let ut39 = test_pack_unpack_ext();
+    let v39 = println(ut39);  -- Should be 6
+    let ut40 = test_find_end_ext();
+    let v40 = println(ut40);  -- Should be 6
+
+    let unit_base = ut1 + ut2 + ut3 + ut4 + ut5 + ut6 + ut7 + ut8 + ut9 + ut10;
+    let unit_ext = ut11 + ut12 + ut13 + ut14 + ut15 + ut16 + ut17 + ut18 + ut19 + ut20 + ut21 + ut22 + ut23 + ut24 + ut25 + ut26 + ut27 + ut28 + ut29 + ut30 + ut31 + ut32 + ut33 + ut34;
+    let unit_new = ut35 + ut36 + ut37 + ut38 + ut39 + ut40;
+    let unit_total = unit_base + unit_ext + unit_new;
+    let v35 = println(unit_total);  -- Should be 279 (74 base + 169 ext + 36 new)
 
     let u1 = println(555);  -- Integration tests marker
 
@@ -1329,7 +1413,7 @@ fn main() -> i64 =
     let integration = t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t9 + t10 + t11 + t12 + t13 + t14 + t15 + t16;
     let u9 = println(integration);  -- Should be 64
     let total = unit_total + integration;
-    let u10 = println(total);  -- Should be 307 (243 unit + 64 integration)
+    let u10 = println(total);  -- Should be 343 (279 unit + 64 integration)
     let u11 = println(999);
 
     total;

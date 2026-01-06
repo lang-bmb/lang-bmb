@@ -68,17 +68,17 @@ This document provides a comprehensive analysis of the requirements for BMB v0.3
 | parser_ast.bmb | 107KB | ~2,779 | Complete | 288 tests (v0.30.166) |
 | lowering.bmb | 74KB | ~2,727 | Complete | 244 tests (stack limit) |
 | compiler.bmb | 65KB | ~1,804 | Complete | 357 tests (v0.30.175) |
-| pipeline.bmb | 52KB | ~1,424 | Complete | 307 tests (v0.30.162) |
-| mir.bmb | 35KB | ~1,180 | Complete | 334 tests (v0.30.176) |
-| parser.bmb | 38KB | ~1,123 | Complete | 267 tests (v0.30.164) |
+| pipeline.bmb | 52KB | ~1,424 | Complete | 343 tests (v0.30.187) |
+| mir.bmb | 35KB | ~1,180 | Complete | 370 tests (v0.30.188) |
+| parser.bmb | 38KB | ~1,123 | Complete | 303 tests (v0.30.186) |
 | selfhost_test.bmb | 33KB | ~1,035 | Complete | 244 tests (v0.30.178) |
 | parser_test.bmb | 31KB | ~1,068 | Complete | 221 tests (v0.30.183) |
-| optimize.bmb | 28KB | ~1,032 | Complete | 227 tests (v0.30.171) |
+| optimize.bmb | 28KB | ~1,032 | Complete | 263 tests (v0.30.185) |
 | utils.bmb | 27KB | ~940 | Complete | 181 tests (v0.30.182) |
 | lexer.bmb | 19KB | ~665 | Complete | 227 tests (v0.30.181) |
 | selfhost_equiv.bmb | 13KB | ~420 | Complete | 116 tests (v0.30.180) |
 
-**Bootstrap Test Total**: 4,120 tests across 14 files (v0.30.183)
+**Bootstrap Test Total**: 4,264 tests across 14 files (v0.30.188)
 
 ## v0.30 Pure Requirements
 

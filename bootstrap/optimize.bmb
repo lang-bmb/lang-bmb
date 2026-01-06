@@ -1,4 +1,4 @@
--- BMB Bootstrap MIR Optimizer (v0.30.171: Extended test coverage)
+-- BMB Bootstrap MIR Optimizer (v0.30.185: Extended test coverage)
 -- Port of bmb/src/mir/optimize.rs to BMB
 --
 -- Optimization passes for MIR text format:
@@ -756,6 +756,71 @@ fn test_const_table_multi() -> i64 =
     r1 + r2 + r3 + r4 + r5 + r6;
 
 -- ============================================================================
+-- v0.30.185: Additional Unit Tests
+-- ============================================================================
+
+-- Test optimization level value distinctions
+fn test_opt_level_values() -> i64 =
+    (if opt_level_debug() == 0 then 1 else 0) +
+    (if opt_level_release() == 1 then 1 else 0) +
+    (if opt_level_aggressive() == 2 then 1 else 0) +
+    (if opt_level_debug() != opt_level_release() then 1 else 0) +
+    (if opt_level_release() != opt_level_aggressive() then 1 else 0) +
+    (if opt_level_debug() < opt_level_aggressive() then 1 else 0);
+
+-- Test const_table overwrite behavior
+fn test_const_table_overwrite() -> i64 =
+    let t0 = const_table_empty();
+    let t1 = const_table_set(t0, "%x", 10);
+    let t2 = const_table_set(t1, "%x", 20);
+    (if const_table_has(t2, "%x") then 1 else 0) +
+    (if const_table_get(t1, "%x") == 10 then 1 else 0) +
+    (if const_table_set(t0, "%a", 0) != "" then 1 else 0) +
+    (if const_table_has(const_table_set(t0, "%b", 5), "%b") then 1 else 0) +
+    (if const_table_get(const_table_empty(), "%x") == 0 - 99999999 then 1 else 0) +
+    (if not const_table_has(const_table_empty(), "%y") then 1 else 0);
+
+-- Test copy_table chaining
+fn test_copy_table_chain() -> i64 =
+    let t0 = copy_table_empty();
+    let t1 = copy_table_set(t0, "%a", "%b");
+    let t2 = copy_table_set(t1, "%c", "%d");
+    let t3 = copy_table_set(t2, "%e", "%f");
+    (if copy_table_get(t3, "%a") == "%b" then 1 else 0) +
+    (if copy_table_get(t3, "%c") == "%d" then 1 else 0) +
+    (if copy_table_get(t3, "%e") == "%f" then 1 else 0) +
+    (if copy_table_get(t3, "%z") == "" then 1 else 0) +
+    (if copy_table_get(t1, "%c") == "" then 1 else 0) +
+    (if copy_table_get(copy_table_empty(), "%x") == "" then 1 else 0);
+
+-- Test extract_copy_src variations
+fn test_extract_copy_src_ext() -> i64 =
+    (if extract_copy_src("  %a = copy %b") == "%b" then 1 else 0) +
+    (if extract_copy_src("  %_t0 = copy %_t1") == "%_t1" then 1 else 0) +
+    (if extract_copy_src("  %x = copy %result") == "%result" then 1 else 0) +
+    (if extract_copy_src("  %x = const I:42") == "" then 1 else 0) +
+    (if extract_copy_src("entry:") == "" then 1 else 0) +
+    (if extract_copy_src("  return %x") == "" then 1 else 0);
+
+-- Test starts_with at various positions
+fn test_starts_with_positions() -> i64 =
+    (if starts_with("abcdef", "abc", 0) then 1 else 0) +
+    (if starts_with("abcdef", "def", 3) then 1 else 0) +
+    (if not starts_with("abcdef", "abc", 1) then 1 else 0) +
+    (if starts_with("abcdef", "f", 5) then 1 else 0) +
+    (if not starts_with("abc", "abc", 1) then 1 else 0) +
+    (if starts_with("hello world", "world", 6) then 1 else 0);
+
+-- Test parse_int_at at various positions
+fn test_parse_int_positions() -> i64 =
+    (if parse_int_at("abc123def", 3, 0) == 123 then 1 else 0) +
+    (if parse_int_at("x42y", 1, 0) == 42 then 1 else 0) +
+    (if parse_int_at("999", 0, 0) == 999 then 1 else 0) +
+    (if parse_int_at("abc", 0, 0) == 0 then 1 else 0) +
+    (if parse_int_at("12abc34", 5, 0) == 34 then 1 else 0) +
+    (if parse_int_at("", 0, 0) == 0 then 1 else 0);
+
+-- ============================================================================
 -- SECTION 11: Integration Tests
 -- ============================================================================
 
@@ -995,12 +1060,27 @@ fn main() -> i64 =
     let ut37 = test_const_table_multi();
     let v37 = println(ut37);  -- Should be 6
 
+    -- v0.30.185: Additional unit tests (36 new assertions)
+    let ut38 = test_opt_level_values();
+    let v38 = println(ut38);  -- Should be 6
+    let ut39 = test_const_table_overwrite();
+    let v39 = println(ut39);  -- Should be 6
+    let ut40 = test_copy_table_chain();
+    let v40 = println(ut40);  -- Should be 6
+    let ut41 = test_extract_copy_src_ext();
+    let v41 = println(ut41);  -- Should be 6
+    let ut42 = test_starts_with_positions();
+    let v42 = println(ut42);  -- Should be 6
+    let ut43 = test_parse_int_positions();
+    let v43 = println(ut43);  -- Should be 6
+
     let unit_base = ut1 + ut2 + ut3 + ut4 + ut5 + ut6 + ut7 + ut8 + ut9 + ut10 +
                     ut11 + ut12 + ut13 + ut14 + ut15 + ut16 + ut17 + ut18 + ut19 + ut20 +
                     ut21 + ut22 + ut23 + ut24 + ut25;
     let unit_ext = ut26 + ut27 + ut28 + ut29 + ut30 + ut31 + ut32 + ut33 + ut34 + ut35 + ut36 + ut37;
-    let unit_total = unit_base + unit_ext;
-    let v26 = println(unit_total);  -- Should be 198 (126 base + 72 extended)
+    let unit_new = ut38 + ut39 + ut40 + ut41 + ut42 + ut43;
+    let unit_total = unit_base + unit_ext + unit_new;
+    let v26 = println(unit_total);  -- Should be 234 (126 base + 72 extended + 36 new)
 
     let u2 = println(555);  -- Integration tests marker
 
@@ -1027,6 +1107,6 @@ fn main() -> i64 =
 
     let total = unit_total + integration;
     let u4 = println(888);
-    let u5 = println(total);  -- Should be 227 (198 unit + 29 integration)
+    let u5 = println(total);  -- Should be 263 (234 unit + 29 integration)
     let u6 = println(999);
     0;

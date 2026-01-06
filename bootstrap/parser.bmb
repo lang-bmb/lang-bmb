@@ -1,4 +1,4 @@
--- BMB Parser written in BMB (v0.30.164: Comprehensive test enhancement)
+-- BMB Parser written in BMB (v0.30.186: Enhanced test coverage)
 -- A simple recursive descent parser for the BMB language
 -- Uses functional/recursive style to work within BMB's grammar constraints
 --
@@ -1005,6 +1005,73 @@ fn test_skip_ws_edge() -> i64 =
     t1 + t2 + t3 + t4 + t5 + t6;
 
 -- ============================================================
+-- v0.30.186: Additional Unit Tests
+-- ============================================================
+
+-- Test token memory layout encoding
+fn test_token_memory() -> i64 =
+    let t1 = if tok_kind(200000003) == 200 then 1 else 0;  -- lit at pos 3
+    let t2 = if tok_end(200000003) == 3 then 1 else 0;
+    let t3 = if tok_kind(101000005) == 101 then 1 else 0;  -- let at pos 5
+    let t4 = if tok_end(101000005) == 5 then 1 else 0;
+    let t5 = if tok_kind(321000010) == 321 then 1 else 0;  -- arrow at pos 10
+    let t6 = if tok_end(321000010) == 10 then 1 else 0;
+    t1 + t2 + t3 + t4 + t5 + t6;
+
+-- Test parse result error code categories
+fn test_result_categories() -> i64 =
+    let r1 = pack_result(PR_ERR_UNEXPECTED(), 10);
+    let t1 = if result_code(r1) == 1 then 1 else 0;
+    let t2 = if result_pos(r1) == 10 then 1 else 0;
+    let r2 = pack_result(PR_ERR_EXPECTED_TYPE(), 20);
+    let t3 = if result_code(r2) == 3 then 1 else 0;
+    let r3 = pack_result(PR_OK(), 0);
+    let t4 = if result_code(r3) == 0 then 1 else 0;
+    let t5 = if is_ok(r3) then 1 else 0;
+    let t6 = if not is_ok(r1) then 1 else 0;
+    t1 + t2 + t3 + t4 + t5 + t6;
+
+-- Test binary operator coverage
+fn test_binop_coverage() -> i64 =
+    let t1 = if is_binop(400) then 1 else 0;  -- plus
+    let t2 = if is_binop(401) then 1 else 0;  -- minus
+    let t3 = if is_binop(402) then 1 else 0;  -- star
+    let t4 = if is_binop(403) then 1 else 0;  -- slash
+    let t5 = if is_binop(410) then 1 else 0;  -- eqeq
+    let t6 = if not is_binop(321) then 1 else 0;  -- arrow is not binop
+    t1 + t2 + t3 + t4 + t5 + t6;
+
+-- Test symbol code edge cases
+fn test_symbol_edge() -> i64 =
+    let t1 = if symbol_code(40) == 305 then 1 else 0;  -- (
+    let t2 = if symbol_code(41) == 306 then 1 else 0;  -- )
+    let t3 = if symbol_code(123) == 307 then 1 else 0;  -- {
+    let t4 = if symbol_code(125) == 308 then 1 else 0;  -- }
+    let t5 = if symbol_code(91) == 309 then 1 else 0;  -- [
+    let t6 = if symbol_code(93) == 310 then 1 else 0;  -- ]
+    t1 + t2 + t3 + t4 + t5 + t6;
+
+-- Test keyword identifier boundary
+fn test_keyword_boundary() -> i64 =
+    let t1 = if lookup_keyword("match") == 201 then 1 else 0;  -- not a keyword (identifier)
+    let t2 = if lookup_keyword("rec") == 201 then 1 else 0;  -- not a keyword (identifier)
+    let t3 = if lookup_keyword("mut") == 201 then 1 else 0;  -- not a keyword (identifier)
+    let t4 = if lookup_keyword("String") == 154 then 1 else 0;  -- type String
+    let t5 = if lookup_keyword("i32") == 150 then 1 else 0;  -- type i32
+    let t6 = if lookup_keyword("f64") == 152 then 1 else 0;  -- type f64
+    t1 + t2 + t3 + t4 + t5 + t6;
+
+-- Test character classification ranges
+fn test_char_ranges() -> i64 =
+    let t1 = if is_digit(48) then 1 else 0;  -- '0'
+    let t2 = if is_digit(57) then 1 else 0;  -- '9'
+    let t3 = if not is_digit(47) then 1 else 0;  -- '/' before '0'
+    let t4 = if not is_digit(58) then 1 else 0;  -- ':' after '9'
+    let t5 = if is_alpha(65) then 1 else 0;  -- 'A'
+    let t6 = if is_alpha(122) then 1 else 0;  -- 'z'
+    t1 + t2 + t3 + t4 + t5 + t6;
+
+-- ============================================================
 -- Main: Parse a test program
 -- ============================================================
 
@@ -1095,8 +1162,25 @@ fn main() -> i64 =
     let ut36 = test_skip_ws_edge();
     let v36 = println(ut36);  -- Should be 6
 
-    let unit_total = ut1 + ut2 + ut3 + ut4 + ut5 + ut6 + ut7 + ut8 + ut9 + ut10 + ut11 + ut12 + ut13 + ut14 + ut15 + ut16 + ut17 + ut18 + ut19 + ut20 + ut21 + ut22 + ut23 + ut24 + ut25 + ut26 + ut27 + ut28 + ut29 + ut30 + ut31 + ut32 + ut33 + ut34 + ut35 + ut36;
-    let v37 = println(unit_total);  -- Should be 257
+    -- v0.30.186: Additional unit tests (36 new assertions)
+    let ut37 = test_token_memory();
+    let v37 = println(ut37);  -- Should be 6
+    let ut38 = test_result_categories();
+    let v38 = println(ut38);  -- Should be 6
+    let ut39 = test_binop_coverage();
+    let v39 = println(ut39);  -- Should be 6
+    let ut40 = test_symbol_edge();
+    let v40 = println(ut40);  -- Should be 6
+    let ut41 = test_keyword_boundary();
+    let v41 = println(ut41);  -- Should be 6
+    let ut42 = test_char_ranges();
+    let v42 = println(ut42);  -- Should be 6
+
+    let unit_base = ut1 + ut2 + ut3 + ut4 + ut5 + ut6 + ut7 + ut8 + ut9 + ut10 + ut11 + ut12 + ut13;
+    let unit_ext = ut14 + ut15 + ut16 + ut17 + ut18 + ut19 + ut20 + ut21 + ut22 + ut23 + ut24 + ut25 + ut26 + ut27 + ut28 + ut29 + ut30 + ut31 + ut32 + ut33 + ut34 + ut35 + ut36;
+    let unit_new = ut37 + ut38 + ut39 + ut40 + ut41 + ut42;
+    let unit_total = unit_base + unit_ext + unit_new;
+    let v43 = println(unit_total);  -- Should be 293 (107 base + 150 ext + 36 new)
 
     let u1 = println(555);  -- Integration tests marker
 
@@ -1117,6 +1201,6 @@ fn main() -> i64 =
 
     let total = unit_total + integration;
     let u2 = println(888);  -- End marker
-    let u3 = println(total);  -- Should be 267 (257 unit + 10 integration)
+    let u3 = println(total);  -- Should be 303 (293 unit + 10 integration)
     let u4 = println(999);  -- Final marker
     total;

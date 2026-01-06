@@ -337,6 +337,14 @@ v0.MAJOR.MINOR
 - Multi-operand expressions, mixed operations, combined expressions
 - pipeline.bmb total: 42 tests (10 test groups)
 
+**v0.30.188 Completed (2026-01-06)**:
+- Phase 30.1.185-188: Bootstrap test coverage enhancement
+- optimize.bmb: 227 → 263 tests (+36) - optimization level, const/copy table tests
+- parser.bmb: 267 → 303 tests (+36) - token memory, result categories, binop coverage
+- pipeline.bmb: 307 → 343 tests (+36) - make_tok, lookup_keyword, node funcs tests
+- mir.bmb: 334 → 370 tests (+36) - binop range, instruction/terminator encoding tests
+- Bootstrap test total: 4,264 tests across 14 files
+
 **v0.30.160 Completed (2026-01-06)**:
 - Documentation update: GAP_ANALYSIS.md, ROADMAP.md
 - Bootstrap test total: 2,565 tests across 14 files
