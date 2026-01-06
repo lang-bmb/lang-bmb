@@ -782,6 +782,75 @@ fn gen_instr_load_capture(line: String) -> String =
     gen_capture_load(dest, closure, idx);
 
 -- ============================================================================
+-- v0.30.108: Closure Invocation IR Generation
+-- ============================================================================
+-- MIR format: %dest = CallClosure %closure, arg1, arg2, ...
+-- LLVM: Extract fn_ptr and env from closure struct, then indirect call
+
+-- Check if line is a closure call instruction
+fn is_call_closure_line(line: String) -> bool =
+    has_pattern(line, "CallClosure ", 0);
+
+-- Parse CallClosure destination
+fn parse_call_closure_dest(line: String) -> String =
+    let eq = find_char(line, 61, 0);  -- '='
+    if eq < 0 then ""
+    else trim_ws(line.slice(0, eq));
+
+-- Parse CallClosure closure operand
+fn parse_call_closure_closure(line: String) -> String =
+    let cc_pos = find_call_closure_pos(line, 0);
+    if cc_pos < 0 then ""
+    else extract_capture_arg(line, cc_pos + 12, 0);  -- "CallClosure " = 12 chars
+
+fn find_call_closure_pos(s: String, pos: i64) -> i64 =
+    if pos + 12 >= s.len() then 0 - 1
+    else if starts_with(s, "CallClosure ", pos) then pos
+    else find_call_closure_pos(s, pos + 1);
+
+-- Parse CallClosure arguments (comma-separated after closure)
+fn parse_call_closure_args(line: String) -> String =
+    let cc_pos = find_call_closure_pos(line, 0);
+    if cc_pos < 0 then ""
+    else
+        -- Find first comma after CallClosure
+        let comma = find_char(line, 44, cc_pos + 12);
+        if comma < 0 then ""
+        else trim_ws(line.slice(comma + 1, line.len()));
+
+-- Generate LLVM IR for closure invocation
+-- Closure struct: { i64 fn_ptr, i64* env }
+fn gen_instr_call_closure(line: String) -> String =
+    let dest = parse_call_closure_dest(line);
+    let closure = parse_call_closure_closure(line);
+    let args = parse_call_closure_args(line);
+
+    -- Extract function pointer from closure
+    let fn_gep = "%_cl_fn_ptr = getelementptr { i64, i64* }, { i64, i64* }* " + closure + ", i64 0, i32 0";
+    let fn_load = "%_cl_fn = load i64, i64* %_cl_fn_ptr";
+    let fn_cast = "%_cl_fn_p = inttoptr i64 %_cl_fn to i64 (i64*, ...)*";
+
+    -- Extract environment pointer from closure
+    let env_gep = "%_cl_env_ptr = getelementptr { i64, i64* }, { i64, i64* }* " + closure + ", i64 0, i32 1";
+    let env_load = "%_cl_env = load i64*, i64** %_cl_env_ptr";
+
+    -- Build call with env as first argument
+    let call_args = if args.len() > 0 then "%_cl_env, " + args else "%_cl_env";
+    let call_instr = dest + " = call i64 %_cl_fn_p(" + call_args + ")";
+
+    fn_gep + "|" + fn_load + "|" + fn_cast + "|" + env_gep + "|" + env_load + "|" + call_instr;
+
+-- Generate simpler closure call (for pure closures without env)
+fn gen_instr_call_closure_pure(dest: String, closure: String, args: String) -> String =
+    let fn_load = "%_cl_fn = load i64, i64* " + closure;
+    let fn_cast = "%_cl_fn_p = inttoptr i64 %_cl_fn to i64 (...)*";
+    let call_instr = if args.len() > 0 then
+        dest + " = call i64 %_cl_fn_p(" + args + ")"
+    else
+        dest + " = call i64 %_cl_fn_p()";
+    fn_load + "|" + fn_cast + "|" + call_instr;
+
+-- ============================================================================
 -- v0.30.71: Array Literal IR Generation
 -- ============================================================================
 
@@ -1219,6 +1288,8 @@ fn gen_mir_line_typed(line: String, ret_type: String) -> String =
         -- v0.30.105: Capture/LoadCapture support
         else if is_capture_line(line) then gen_instr_capture(line)
         else if is_load_capture_line(line) then gen_instr_load_capture(line)
+        -- v0.30.108: Closure invocation support
+        else if is_call_closure_line(line) then gen_instr_call_closure(line)
         else gen_instruction(line);
 
 -- Check if line is a call instruction
@@ -2417,7 +2488,30 @@ fn test_closure_capture_ir() -> i64 =
     let lci3 = gen_instr_load_capture("  %_result = LoadCapture %_env, 2");
     let t18 = if has_pattern(lci3, "i64 2", 0) and has_pattern(lci3, "%_result = load i64", 0) then 1 else 0;
 
-    t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t9 + t10 + t11 + t12 + t13 + t14 + t15 + t16 + t17 + t18;
+    -- v0.30.108: Closure invocation tests
+    -- Test 19: is_call_closure_line detects CallClosure
+    let t19 = if is_call_closure_line("  %_t0 = CallClosure %closure, %arg1") then 1 else 0;
+
+    -- Test 20: is_call_closure_line rejects non-CallClosure
+    let t20 = if is_call_closure_line("  %_t0 = call @foo()") then 0 else 1;
+
+    -- Test 21: parse_call_closure_dest extracts destination
+    let ccd1 = parse_call_closure_dest("  %_result = CallClosure %cl, %x");
+    let t21 = if ccd1 == "%_result" then 1 else 0;
+
+    -- Test 22: parse_call_closure_closure extracts closure operand
+    let ccc1 = parse_call_closure_closure("  %_t0 = CallClosure %closure, %arg1");
+    let t22 = if ccc1 == "%closure" then 1 else 0;
+
+    -- Test 23: parse_call_closure_args extracts arguments
+    let cca1 = parse_call_closure_args("  %_t0 = CallClosure %cl, %x, %y");
+    let t23 = if cca1 == "%x, %y" then 1 else 0;
+
+    -- Test 24: gen_instr_call_closure generates complete IR
+    let gcc1 = gen_instr_call_closure("  %_t0 = CallClosure %closure, %arg1");
+    let t24 = if has_pattern(gcc1, "getelementptr", 0) and has_pattern(gcc1, "call i64", 0) then 1 else 0;
+
+    t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t9 + t10 + t11 + t12 + t13 + t14 + t15 + t16 + t17 + t18 + t19 + t20 + t21 + t22 + t23 + t24;
 
 -- v0.30.48: Test UNIT, BREAK, CONTINUE instruction generation
 fn test_unit_break_continue() -> i64 =

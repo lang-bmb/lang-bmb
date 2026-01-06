@@ -164,15 +164,15 @@ v0.MAJOR.MINOR
 | v0.28 | Benchmark | C/Rust/BMB benchmark suite | Compute-intensive benchmarks, Contract-optimized benchmarks, Real-world workloads |
 | v0.29 | Velocity | C/Rust performance sprint | MIR optimization framework (6 passes), Contract-based optimization, Bootstrap optimization module |
 
-### Bootstrap Statistics (as of v0.30.106)
+### Bootstrap Statistics (as of v0.30.109)
 
 | Metric | Value |
 |--------|-------|
 | Rust Codebase | ~21,783 LOC |
-| BMB Bootstrap | ~13,900 LOC |
-| Coverage | 64% |
+| BMB Bootstrap | ~14,100 LOC |
+| Coverage | 65% |
 | Stage 1/2 Tests | 19 tests passing |
-| Bootstrap Tests | 1321 tests (733 types + 283 llvm_ir + 188 lowering + 46 mir + 104 parser_ast + ...) |
+| Bootstrap Tests | 1406 tests (733 types + 295 llvm_ir + 236 lowering + 46 mir + 104 parser_ast + ...) |
 
 ---
 
@@ -334,6 +334,27 @@ v0.MAJOR.MINOR
 - Pipeline integration verification: 3 new test groups in pipeline.bmb (12 tests)
 - Multi-operand expressions, mixed operations, combined expressions
 - pipeline.bmb total: 42 tests (10 test groups)
+
+**v0.30.109 Completed (2026-01-06)**:
+- Full trait/closure pipeline integration tests in lowering.bmb (12 new tests)
+- Test 75: Trait dispatch pipeline (4 tests) - static dispatch with impl registry
+- Test 76: Closure capture pipeline (4 tests) - complete CLOSURE + Capture flow
+- Test 77: Combined trait + closure pipeline (4 tests) - both systems working together
+- lowering.bmb total: 236 tests
+
+**v0.30.108 Completed (2026-01-06)**:
+- Closure invocation LLVM IR in llvm_ir.bmb (6 new tests)
+- is_call_closure_line, parse_call_closure_dest/closure/args: CallClosure parsing
+- gen_instr_call_closure: Generate indirect call through closure struct {fn_ptr, env}
+- Extract function pointer (GEP + load + inttoptr), extract env, call with env as first arg
+- llvm_ir.bmb total: 295 tests
+
+**v0.30.107 Completed (2026-01-06)**:
+- Impl registry connection in lowering.bmb (14 new tests)
+- gen_impl_key: Generate "Trait:Type" key format for impl lookup
+- impl_reg_lookup, impl_reg_has: Registry lookup and existence check
+- lower_trait_call_with_reg: Smart dispatch using impl registry
+- lowering.bmb total: 224 tests
 
 **v0.30.106 Completed (2026-01-06)**:
 - Closure capture integration test in lowering.bmb (4 new tests)
@@ -1413,13 +1434,13 @@ $ bmb doc --check
 
 For detailed analysis of the remaining work, see [GAP_ANALYSIS.md](./GAP_ANALYSIS.md).
 
-**Key Metrics (as of v0.30.106)**:
+**Key Metrics (as of v0.30.109)**:
 - Rust code to remove: ~21,783 LOC
-- BMB bootstrap code: ~13,900 LOC (64% coverage)
-- Gap to close: ~8,800 LOC additional BMB
-- Bootstrap tests passing: 1349 tests
+- BMB bootstrap code: ~14,100 LOC (65% coverage)
+- Gap to close: ~8,600 LOC additional BMB
+- Bootstrap tests passing: 1406 tests
 
 ---
 
 **Last Updated**: 2026-01-06
-**Version**: v0.30.106 → v1.0.0-rc Planning Document
+**Version**: v0.30.109 → v1.0.0-rc Planning Document

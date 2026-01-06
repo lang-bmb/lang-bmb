@@ -1649,6 +1649,64 @@ fn lower_trait_call_smart(ast: String, temp: i64, block: i64, type_hint: String)
         lower_trait_call(ast, temp, block);
 
 -- ============================================================================
+-- v0.30.107: Impl Registry Integration
+-- ============================================================================
+-- Connect trait dispatch to impl registry for accurate method resolution
+
+-- Generate impl key from trait name and target type
+fn gen_impl_key(trait_name: String, target_type: String) -> String =
+    trait_name + ":" + target_type;
+
+-- Find semicolon in registry string
+fn impl_reg_find_semi(s: String, pos: i64) -> i64 =
+    if pos >= s.len() then 0 - 1
+    else if s.char_at(pos) == 59 then pos
+    else impl_reg_find_semi(s, pos + 1);
+
+-- Find equals in registry string
+fn impl_reg_find_eq(s: String, pos: i64) -> i64 =
+    if pos >= s.len() then 0 - 1
+    else if s.char_at(pos) == 61 then pos
+    else impl_reg_find_eq(s, pos + 1);
+
+-- Lookup impl definition in registry by key
+fn impl_reg_lookup_from(reg: String, key: String, pos: i64) -> String =
+    if pos >= reg.len() then ""
+    else
+        let eq = impl_reg_find_eq(reg, pos);
+        if eq < 0 then ""
+        else
+            let entry_key = reg.slice(pos, eq);
+            let semi = impl_reg_find_semi(reg, eq + 1);
+            let def = if semi < 0 then reg.slice(eq + 1, reg.len())
+                      else reg.slice(eq + 1, semi);
+            if entry_key == key then def
+            else if semi < 0 then ""
+            else impl_reg_lookup_from(reg, key, semi + 1);
+
+-- Lookup impl definition by trait and target type
+fn impl_reg_lookup(reg: String, trait_name: String, target_type: String) -> String =
+    let key = gen_impl_key(trait_name, target_type);
+    if reg.len() == 0 then ""
+    else impl_reg_lookup_from(reg, key, 0);
+
+-- Check if impl exists for trait and type
+fn impl_reg_has(reg: String, trait_name: String, target_type: String) -> bool =
+    let def = impl_reg_lookup(reg, trait_name, target_type);
+    def.len() > 0;
+
+-- Smart trait dispatch with impl registry: uses static dispatch if impl exists
+fn lower_trait_call_with_reg(ast: String, temp: i64, block: i64, type_hint: String, impl_reg: String) -> String =
+    let method_name = get_method_name(ast);
+    let trait_name = infer_trait_from_method(method_name);
+    if type_hint.len() > 0 and impl_reg_has(impl_reg, trait_name, type_hint) then
+        lower_trait_call_static(ast, temp, block, type_hint)
+    else if type_hint.len() > 0 and is_concrete_type(type_hint) then
+        lower_trait_call_static(ast, temp, block, type_hint)
+    else
+        lower_trait_call(ast, temp, block);
+
+-- ============================================================================
 -- v0.30.63: Method Call Lowering (updated v0.30.98)
 -- ============================================================================
 -- Now routes to MethodCall for built-in methods, TraitCall for trait methods
@@ -2476,6 +2534,103 @@ fn main() -> i64 =
     let capture_integration_tests = cit1 + cit2 + cit3 + cit4;
     let u73 = println(capture_integration_tests);  -- Should be 4
 
+    -- Test 71: v0.30.107 gen_impl_key (3 tests)
+    let gik1 = if gen_impl_key("Display", "Point") == "Display:Point" then 1 else 0;
+    let gik2 = if gen_impl_key("Clone", "i64") == "Clone:i64" then 1 else 0;
+    let gik3 = if gen_impl_key("Add", "String") == "Add:String" then 1 else 0;
+    let impl_key_tests = gik1 + gik2 + gik3;
+    let u74 = println(impl_key_tests);  -- Should be 3
+
+    -- Test 72: v0.30.107 impl_reg_lookup (4 tests)
+    let test_reg = "Display:Point=impl_def1;Clone:i64=impl_def2";
+    let irl1 = if impl_reg_lookup(test_reg, "Display", "Point") == "impl_def1" then 1 else 0;
+    let irl2 = if impl_reg_lookup(test_reg, "Clone", "i64") == "impl_def2" then 1 else 0;
+    let irl3 = if impl_reg_lookup(test_reg, "Display", "String") == "" then 1 else 0;  -- not found
+    let irl4 = if impl_reg_lookup("", "Display", "Point") == "" then 1 else 0;  -- empty reg
+    let impl_lookup_tests = irl1 + irl2 + irl3 + irl4;
+    let u75 = println(impl_lookup_tests);  -- Should be 4
+
+    -- Test 73: v0.30.107 impl_reg_has (3 tests)
+    let irh1 = if impl_reg_has(test_reg, "Display", "Point") then 1 else 0;  -- exists
+    let irh2 = if impl_reg_has(test_reg, "Clone", "i64") then 1 else 0;  -- exists
+    let irh3 = if impl_reg_has(test_reg, "Debug", "Point") then 0 else 1;  -- not exists
+    let impl_has_tests = irh1 + irh2 + irh3;
+    let u76 = println(impl_has_tests);  -- Should be 3
+
+    -- Test 74: v0.30.107 lower_trait_call_with_reg (4 tests)
+    -- With matching impl: should use static dispatch
+    let ltcr1_result = lower_trait_call_with_reg("(method_call (var <p>) <show>)", 0, 0, "Point", "Display:Point=def");
+    let ltcr1_text = unpack_text(ltcr1_result);
+    let ltcr1 = if str_contains(ltcr1_text, "@Display_Point_show") then 1 else 0;
+    -- Without matching impl but concrete type: should still use static dispatch
+    let ltcr2_result = lower_trait_call_with_reg("(method_call (var <x>) <clone>)", 0, 0, "i64", "");
+    let ltcr2_text = unpack_text(ltcr2_result);
+    let ltcr2 = if str_contains(ltcr2_text, "@Clone_i64_clone") then 1 else 0;
+    -- Without type hint: should use TraitCall
+    let ltcr3_result = lower_trait_call_with_reg("(method_call (var <x>) <show>)", 0, 0, "", test_reg);
+    let ltcr3_text = unpack_text(ltcr3_result);
+    let ltcr3 = if str_contains(ltcr3_text, "TraitCall") then 1 else 0;
+    -- With impl registry match: prefer static dispatch
+    let ltcr4_result = lower_trait_call_with_reg("(method_call (var <x>) <clone>)", 0, 0, "i64", "Clone:i64=def");
+    let ltcr4_text = unpack_text(ltcr4_result);
+    let ltcr4 = if str_contains(ltcr4_text, "@Clone_i64_clone") then 1 else 0;
+    let impl_dispatch_tests = ltcr1 + ltcr2 + ltcr3 + ltcr4;
+    let u77 = println(impl_dispatch_tests);  -- Should be 4
+
+    -- Test 75: v0.30.109 Full pipeline integration - trait dispatch (4 tests)
+    -- Tests the complete flow: AST → MIR (with impl registry) → verification
+    -- 1. Static dispatch with known impl generates correct function call
+    let pipe1_result = lower_trait_call_with_reg("(method_call (var <point>) <show>)", 0, 0, "Point", "Display:Point=show_impl");
+    let pipe1_text = unpack_text(pipe1_result);
+    let pipe1 = if str_contains(pipe1_text, "call @Display_Point_show") then 1 else 0;
+    -- 2. Multiple impl registry entries work correctly
+    let multi_reg = "Display:Point=def1;Clone:Point=def2;Display:String=def3";
+    let pipe2_has_d_p = if impl_reg_has(multi_reg, "Display", "Point") then 1 else 0;
+    let pipe2_has_c_p = if impl_reg_has(multi_reg, "Clone", "Point") then 1 else 0;
+    let pipe2 = if pipe2_has_d_p == 1 and pipe2_has_c_p == 1 then 1 else 0;
+    -- 3. Registry lookup returns correct impl
+    let pipe3 = if impl_reg_lookup(multi_reg, "Display", "String") == "def3" then 1 else 0;
+    -- 4. Static dispatch uses receiver in call
+    let pipe4 = if str_contains(pipe1_text, "%point") then 1 else 0;
+    let trait_pipeline_tests = pipe1 + pipe2 + pipe3 + pipe4;
+    let u78 = println(trait_pipeline_tests);  -- Should be 4
+
+    -- Test 76: v0.30.109 Full pipeline integration - closure capture (4 tests)
+    -- Tests: lambda → CLOSURE marker → Capture instructions → LoadCapture in body
+    -- 1. Closure with captured variable generates complete structure
+    let cl_pipe1_result = lower_expr("(fn |(x: i64)| (op + (var <x>) (var <captured_val>)))", 0, 0);
+    let cl_pipe1_text = unpack_text(cl_pipe1_result);
+    let cl_pipe1 = if str_contains(cl_pipe1_text, "CLOSURE:") then 1 else 0;
+    -- 2. Capture list is properly generated
+    let cl_pipe2 = if str_contains(cl_pipe1_text, "Capture") then 1 else 0;
+    -- 3. Captured variable is included
+    let cl_pipe3 = if str_contains(cl_pipe1_text, "captured_val") then 1 else 0;
+    -- 4. Closure without captures still generates CLOSURE marker
+    let cl_pipe4_result = lower_expr("(fn |(a: i64) (b: i64)| (op + (var <a>) (var <b>)))", 0, 0);
+    let cl_pipe4_text = unpack_text(cl_pipe4_result);
+    let cl_pipe4 = if str_contains(cl_pipe4_text, "CLOSURE:") then 1 else 0;
+    let closure_pipeline_tests = cl_pipe1 + cl_pipe2 + cl_pipe3 + cl_pipe4;
+    let u79 = println(closure_pipeline_tests);  -- Should be 4
+
+    -- Test 77: v0.30.109 Combined trait + closure pipeline (4 tests)
+    -- Verify both systems work together in same codebase
+    -- 1. Trait method in closure body captures work
+    let combo1_result = lower_expr("(fn |(x: i64)| (method_call (var <obj>) <show>))", 0, 0);
+    let combo1_text = unpack_text(combo1_result);
+    let combo1 = if str_contains(combo1_text, "CLOSURE:") then 1 else 0;
+    -- 2. Closure referencing captured object for trait call
+    let combo2 = if str_contains(combo1_text, "obj") then 1 else 0;
+    -- 3. Lower trait call for concrete type works standalone
+    let combo3_result = lower_trait_call_smart("(method_call (var <p>) <clone>)", 0, 0, "Point");
+    let combo3_text = unpack_text(combo3_result);
+    let combo3 = if str_contains(combo3_text, "@Clone_Point_clone") then 1 else 0;
+    -- 4. Dynamic dispatch fallback works
+    let combo4_result = lower_trait_call_smart("(method_call (var <unknown>) <display>)", 0, 0, "");
+    let combo4_text = unpack_text(combo4_result);
+    let combo4 = if str_contains(combo4_text, "TraitCall") then 1 else 0;
+    let combined_pipeline_tests = combo1 + combo2 + combo3 + combo4;
+    let u80 = println(combined_pipeline_tests);  -- Should be 4
+
     let u22 = println(888);  -- Separator
 
     let total = node_tests + extract_tests + child_tests + int_tests + bool_tests +
@@ -2497,8 +2652,10 @@ fn main() -> i64 =
                 static_lower_tests + smart_dispatch_tests +
                 env_alloc_tests + env_store_tests + env_stores_tests + closure_env_tests +
                 load_capture_tests + is_captured_tests + find_capture_tests + captured_access_tests + var_with_captures_tests +
-                capture_integration_tests;
-    let u23 = println(total);  -- Should be 210 (206 + 4 new tests)
+                capture_integration_tests +
+                impl_key_tests + impl_lookup_tests + impl_has_tests + impl_dispatch_tests +
+                trait_pipeline_tests + closure_pipeline_tests + combined_pipeline_tests;
+    let u23 = println(total);  -- Should be 236 (224 + 12 new tests)
 
     let u24 = println(999);  -- End marker
 

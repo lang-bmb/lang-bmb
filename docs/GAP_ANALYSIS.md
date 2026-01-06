@@ -1,6 +1,6 @@
 # BMB Self-Hosting Gap Analysis
 
-**Version**: v0.30.106
+**Version**: v0.30.109
 **Date**: 2026-01-06
 **Status**: Ready for Self-Hosting Completion
 
@@ -63,8 +63,8 @@ This document provides a comprehensive analysis of the requirements for BMB v0.3
 
 | File | Size | LOC | Status | Test Coverage |
 |------|------|-----|--------|---------------|
-| llvm_ir.bmb | 97KB | 2,500 | Complete | 289 tests (57 test functions) |
-| lowering.bmb | 68KB | 1,850 | Complete | 210 tests |
+| llvm_ir.bmb | 99KB | 2,600 | Complete | 295 tests (58 test functions) |
+| lowering.bmb | 72KB | 1,950 | Complete | 236 tests |
 | compiler.bmb | 53KB | 1,202 | Complete | 2 tests |
 | parser_ast.bmb | 98KB | 2,390 | Complete | 104 tests (Struct/Enum/Trait/Impl/Array/Index/MethodCall) |
 | pipeline.bmb | 35KB | 810 | Complete | 42 tests |
@@ -222,11 +222,14 @@ Gap to Close:
 - ✅ LoadCapture MIR generation (v0.30.104: gen_load_capture, is_captured_var, find_capture_index, lower_var_with_captures)
 - ✅ Capture/LoadCapture LLVM IR dispatch (v0.30.105: gen_instr_capture, gen_instr_load_capture integration)
 - ✅ Closure capture integration test (v0.30.106: full CLOSURE + Capture pipeline verification)
+- ✅ Impl registry connection (v0.30.107: gen_impl_key, impl_reg_lookup, impl_reg_has, lower_trait_call_with_reg)
+- ✅ Closure invocation LLVM IR (v0.30.108: is_call_closure_line, gen_instr_call_closure, CallClosure dispatch)
+- ✅ Full pipeline integration tests (v0.30.109: trait dispatch + closure capture pipeline verification)
 
 ### What Bootstrap CANNOT Do Yet
 
-- ⚠️ Trait implementation dispatch (IR infrastructure ✅, MIR generation ✅, static dispatch ✅, full impl registry connection ❌)
-- ⚠️ Closure capture (type checking ✅, MIR ✅, IR infrastructure ✅, free variable analysis ✅, env allocation ✅, LoadCapture ✅, IR dispatch ✅, runtime env execution ❌)
+- ⚠️ Trait implementation dispatch (IR ✅, MIR ✅, static dispatch ✅, impl registry ✅, runtime vtable ❌)
+- ⚠️ Closure capture (type checking ✅, MIR ✅, IR ✅, free variable analysis ✅, env allocation ✅, LoadCapture ✅, IR dispatch ✅, CallClosure IR ✅, runtime env execution ❌)
 - ❌ FFI linking
 - ❌ Standard library operations (IO, String heap)
 - ❌ Interpreter execution
