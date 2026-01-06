@@ -164,16 +164,17 @@ v0.MAJOR.MINOR
 | v0.28 | Benchmark | C/Rust/BMB benchmark suite | Compute-intensive benchmarks, Contract-optimized benchmarks, Real-world workloads |
 | v0.29 | Velocity | C/Rust performance sprint | MIR optimization framework (6 passes), Contract-based optimization, Bootstrap optimization module |
 
-### Bootstrap Statistics (as of v0.30.130)
+### Bootstrap Statistics (as of v0.30.132)
 
 | Metric | Value |
 |--------|-------|
 | Rust Codebase | ~21,783 LOC |
-| BMB Bootstrap | ~14,800 LOC |
+| BMB Bootstrap | ~14,900 LOC |
 | Coverage | 68% |
 | Stage 1/2 Tests | 19 tests passing |
-| Bootstrap Tests | 1,401 tests (733 types + 355 llvm_ir + 244 lowering + 56 pipeline + 53 mir + 15 optimize + 104 parser_ast + ...) |
-| Stack-Limited Files | lowering.bmb, pipeline.bmb, llvm_ir.bmb, types.bmb |
+| Bootstrap Tests | 1,415 tests (733 types + 361 llvm_ir + 244 lowering + 64 pipeline + 53 mir + 15 optimize + 104 parser_ast + ...) |
+| Build Mode | Use `--release` for bootstrap tests (debug build stack overflow on large files) |
+| Stack-Limited Files | lowering.bmb (structural depth issue) |
 
 ---
 
@@ -336,12 +337,23 @@ v0.MAJOR.MINOR
 - Multi-operand expressions, mixed operations, combined expressions
 - pipeline.bmb total: 42 tests (10 test groups)
 
+**v0.30.132 Completed (2026-01-06)**:
+- Advanced IR pattern tests in llvm_ir.bmb (6 tests)
+- test_advanced_ir_patterns: integer/bool constants, sub/sdiv/icmp slt instructions
+- llvm_ir.bmb: 361 tests (68 test functions)
+- Stack overflow fix: use `--release` build for bootstrap tests
+- Total bootstrap tests: 1,415
+
+**v0.30.131 Completed (2026-01-06)**:
+- Pipeline conditional expression tests in pipeline.bmb (8 tests)
+- Test 15: Conditional expressions (==, !=, >=, <=)
+- Test 16: Chained logic operators (and, or, not)
+- pipeline.bmb: 64 tests (16 test groups)
+
 **v0.30.130 Completed (2026-01-06)**:
 - MIR optimization edge case tests in optimize.bmb (6 tests)
 - test_opt_edge_cases: subtraction/multiplication/division/modulo folding, statistics format, no-opt level 0
 - optimize.bmb: 15 tests (10 test groups)
-- Note: pipeline.bmb and llvm_ir.bmb at stack limit - cannot add more tests
-- Total bootstrap tests: 1,401
 
 **v0.30.129 Completed (2026-01-06)**:
 - MIR encoding edge case tests in mir.bmb (7 tests)
@@ -1558,14 +1570,15 @@ $ bmb doc --check
 
 For detailed analysis of the remaining work, see [GAP_ANALYSIS.md](./GAP_ANALYSIS.md).
 
-**Key Metrics (as of v0.30.130)**:
+**Key Metrics (as of v0.30.132)**:
 - Rust code to remove: ~21,783 LOC
-- BMB bootstrap code: ~14,800 LOC (68% coverage)
+- BMB bootstrap code: ~14,900 LOC (68% coverage)
 - Gap to close: ~8,000 LOC additional BMB
-- Bootstrap tests: 1,401 tests passing
+- Bootstrap tests: 1,415 tests passing
+- Build mode: Use `--release` for bootstrap tests
 - Note: lowering.bmb at stack limit (244 tests max)
 
 ---
 
 **Last Updated**: 2026-01-06
-**Version**: v0.30.130 → v1.0.0-rc Planning Document
+**Version**: v0.30.132 → v1.0.0-rc Planning Document

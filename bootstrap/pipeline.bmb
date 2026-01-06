@@ -839,8 +839,24 @@ fn main() -> i64 =
     let t14 = mir1 + mir2 + mir3 + mir4;
     let u14 = println(t14);
 
+    -- v0.30.131: Test 15: Conditional expressions (4 tests)
+    let cnd1 = test_pipeline("a == b", "== %a, %b");
+    let cnd2 = test_pipeline("x != y", "!= %x, %y");
+    let cnd3 = test_pipeline("n >= m", ">= %n, %m");
+    let cnd4 = test_pipeline("p <= q", "<= %p, %q");
+    let t15 = cnd1 + cnd2 + cnd3 + cnd4;
+    let u15 = println(t15);
+
+    -- v0.30.131: Test 16: Chained logic operators (4 tests)
+    let ch1 = test_pipeline("a > b and c < d", "and");
+    let ch2 = test_pipeline("x == 0 or y == 0", "or");
+    let ch3 = test_pipeline("not (a != b)", "not");
+    let ch4 = test_pipeline("a >= b or c <= d", "or");
+    let t16 = ch1 + ch2 + ch3 + ch4;
+    let u16 = println(t16);
+
     let u8 = println(888);
-    let total = t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t9 + t10 + t11 + t12 + t13 + t14;
+    let total = t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t9 + t10 + t11 + t12 + t13 + t14 + t15 + t16;
     let u9 = println(total);
     let u10 = println(999);
 

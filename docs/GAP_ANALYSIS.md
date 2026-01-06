@@ -1,8 +1,8 @@
 # BMB Self-Hosting Gap Analysis
 
-**Version**: v0.30.130
+**Version**: v0.30.132
 **Date**: 2026-01-06
-**Status**: Ready for Self-Hosting Completion (MIR/Optimize tests enhanced)
+**Status**: Ready for Self-Hosting Completion (Pipeline/LLVM IR tests enhanced, --release required)
 
 ## Executive Summary
 
@@ -63,11 +63,11 @@ This document provides a comprehensive analysis of the requirements for BMB v0.3
 
 | File | Size | LOC | Status | Test Coverage |
 |------|------|-----|--------|---------------|
-| llvm_ir.bmb | 105KB | 2,900 | Complete | 355 tests (67 test functions) |
+| llvm_ir.bmb | 106KB | 2,930 | Complete | 361 tests (68 test functions, v0.30.132) |
 | lowering.bmb | 74KB | 2,000 | Complete | 244 tests (stack limit reached) |
 | compiler.bmb | 53KB | 1,202 | Complete | 2 tests |
 | parser_ast.bmb | 98KB | 2,390 | Complete | 104 tests (Struct/Enum/Trait/Impl/Array/Index/MethodCall) |
-| pipeline.bmb | 36KB | 850 | Complete | 56 tests (14 test groups) |
+| pipeline.bmb | 37KB | 865 | Complete | 64 tests (16 test groups, v0.30.131) |
 | parser_test.bmb | 25KB | 641 | Complete | 15 categories |
 | types.bmb | 310KB | 8,210 | Complete | 733 tests (159 test functions) |
 | parser.bmb | 22KB | 605 | Complete | Syntax validation |
@@ -342,11 +342,12 @@ $ diff stage2/bmb stage3/bmb
 
 v0.30 "Pure" represents the culmination of the BMB self-hosting journey. With Stage 1/2 verification complete and the bootstrap covering the full compilation pipeline, the remaining work is substantial but achievable within the 2026 Q4 timeline.
 
-**Key Metrics** (as of v0.30.130):
+**Key Metrics** (as of v0.30.132):
 - Rust code to remove: ~21,783 LOC
-- BMB bootstrap code: ~14,800 LOC (68% coverage)
+- BMB bootstrap code: ~14,900 LOC (68% coverage)
 - Gap to close: ~8,000 LOC additional BMB
-- Bootstrap tests: 1,401 tests (733 types + 355 llvm_ir + 244 lowering + 56 pipeline + 53 mir + 15 optimize + ...)
+- Bootstrap tests: 1,415 tests (733 types + 361 llvm_ir + 244 lowering + 64 pipeline + 53 mir + 15 optimize + ...)
+- Note: Use `--release` build for bootstrap tests (debug build has stack overflow on large files)
 - Estimated effort: 6-9 months
 
 ---

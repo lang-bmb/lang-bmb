@@ -3133,6 +3133,34 @@ fn test_function_boundary_ir() -> i64 =
 
     t1 + t2 + t3 + t4 + t5 + t6;
 
+-- v0.30.132: Advanced IR pattern tests
+fn test_advanced_ir_patterns() -> i64 =
+    -- Test 1: Integer constant with zero value
+    let zero_int = gen_const_int("%_t0", 0);
+    let t1 = if has_pattern(zero_int, "add i64 0", 0) then 1 else 0;
+
+    -- Test 2: Boolean true constant (1) - format: add i1 0, 1
+    let bool_true = gen_const_bool("%_t1", 1);
+    let t2 = if has_pattern(bool_true, "add i1", 0) then 1 else 0;
+
+    -- Test 3: Boolean false constant (0) - format: add i1 0, 0
+    let bool_false = gen_const_bool("%_t2", 0);
+    let t3 = if has_pattern(bool_false, "0, 0", 0) then 1 else 0;
+
+    -- Test 4: Subtraction generates sub instruction
+    let sub_ir = gen_binop_arith("%_t3", "-", "%a", "%b", "i64");
+    let t4 = if has_pattern(sub_ir, "sub i64", 0) then 1 else 0;
+
+    -- Test 5: Division generates sdiv instruction
+    let div_ir = gen_binop_arith("%_t4", "/", "%x", "%y", "i64");
+    let t5 = if has_pattern(div_ir, "sdiv i64", 0) then 1 else 0;
+
+    -- Test 6: Less-than generates icmp slt
+    let lt_ir = gen_binop_cmp("%_t5", "<", "%m", "%n", "i64");
+    let t6 = if has_pattern(lt_ir, "icmp slt", 0) then 1 else 0;
+
+    t1 + t2 + t3 + t4 + t5 + t6;
+
 fn main() -> i64 =
     let u0 = println(777);
     let r1 = test_type_mapping();
@@ -3304,8 +3332,11 @@ fn main() -> i64 =
     -- v0.30.128 function boundary IR tests
     let r67 = test_function_boundary_ir();
     let u67 = println(r67);
+    -- v0.30.132 advanced IR pattern tests
+    let r68 = test_advanced_ir_patterns();
+    let u68 = println(r68);
     let u_end = println(888);
-    let total = r1 + r2 + r3 + r4 + r5 + r6 + r7 + r8 + r9 + r10 + r11 + r12 + r13 + r14 + r15 + r16 + r17 + r18 + r19 + r20 + r21 + r22 + r23 + r24 + r25 + r26 + r27 + r28 + r29 + r30 + r31 + r32 + r33 + r34 + r35 + r36 + r37 + r38 + r39 + r40 + r41 + r42 + r43 + r44 + r45 + r46 + r47 + r48 + r49 + r50 + r51 + r52 + r53 + r54 + r55 + r56 + r57 + r58 + r59 + r60 + r61 + r62 + r63 + r64 + r65 + r66 + r67;
+    let total = r1 + r2 + r3 + r4 + r5 + r6 + r7 + r8 + r9 + r10 + r11 + r12 + r13 + r14 + r15 + r16 + r17 + r18 + r19 + r20 + r21 + r22 + r23 + r24 + r25 + r26 + r27 + r28 + r29 + r30 + r31 + r32 + r33 + r34 + r35 + r36 + r37 + r38 + r39 + r40 + r41 + r42 + r43 + r44 + r45 + r46 + r47 + r48 + r49 + r50 + r51 + r52 + r53 + r54 + r55 + r56 + r57 + r58 + r59 + r60 + r61 + r62 + r63 + r64 + r65 + r66 + r67 + r68;
     let u_tot = println(total);
     let u_fin = println(999);
     total;
