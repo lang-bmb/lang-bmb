@@ -335,6 +335,17 @@ v0.MAJOR.MINOR
 - Multi-operand expressions, mixed operations, combined expressions
 - pipeline.bmb total: 42 tests (10 test groups)
 
+**v0.30.124 Completed (2026-01-06)**:
+- Complex pattern matching MIR tests in lowering.bmb (4 tests)
+- test_pattern_match_tests: Match arm blocks, merge blocks, switch dispatch, copy
+- lowering.bmb: 244 tests (80 test groups) - stack limit reached
+- Total bootstrap tests: 1,368
+
+**v0.30.123 Completed (2026-01-06)**:
+- Control flow edge case lowering tests in lowering.bmb (4 tests)
+- Break/continue in while loops, if-then-else branches, nested control flow
+- Tests: BREAK instruction, CONTINUE instruction, branch pattern, loop_start
+
 **v0.30.122 Completed (2026-01-06)**:
 - Cross-module and extern call IR tests in llvm_ir.bmb (6 tests)
 - test_cross_module_ir: Module header, extern declarations, runtime patterns
@@ -1513,11 +1524,12 @@ $ bmb doc --check
 
 For detailed analysis of the remaining work, see [GAP_ANALYSIS.md](./GAP_ANALYSIS.md).
 
-**Key Metrics (as of v0.30.122)**:
+**Key Metrics (as of v0.30.124)**:
 - Rust code to remove: ~21,783 LOC
 - BMB bootstrap code: ~14,600 LOC (68% coverage)
 - Gap to close: ~8,100 LOC additional BMB
-- Bootstrap tests: 1,360 tests passing
+- Bootstrap tests: 1,368 tests passing
+- Note: lowering.bmb at stack limit (244 tests max)
 
 ---
 

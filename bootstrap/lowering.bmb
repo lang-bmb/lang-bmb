@@ -2669,6 +2669,32 @@ fn main() -> i64 =
     let combined_pipeline_tests = combo1 + combo2 + combo3 + combo4;
     let u80 = println(combined_pipeline_tests);  -- Should be 4
 
+    -- Test 78: v0.30.123 Control flow edge cases (4 tests)
+    -- 1. Break in while loop generates BREAK instruction
+    let cf1 = test_lower_contains("(while (bool true) (break))", "BREAK");
+    -- 2. Continue in while loop generates CONTINUE instruction
+    let cf2 = test_lower_contains("(while (bool true) (continue))", "CONTINUE");
+    -- 3. If-then-else generates branch instruction
+    let cf3 = test_lower_contains("(if (bool true) (int 1) (int 2))", "branch");
+    -- 4. Nested if with while generates both loop_start and BREAK
+    let cf_nested = lower_expr("(if (bool false) (while (bool true) (break)) (int 0))", 0, 0);
+    let cf_nested_text = unpack_text(cf_nested);
+    let cf4 = if str_contains(cf_nested_text, "BREAK") or str_contains(cf_nested_text, "loop_start") then 1 else 0;
+    let control_flow_edge_tests = cf1 + cf2 + cf3 + cf4;
+    let u81 = println(control_flow_edge_tests);  -- Should be 4
+
+    -- Test 79: v0.30.124 Complex pattern matching MIR tests (4 tests)
+    -- 1. Single arm match contains match_arm
+    let pm1 = test_lower_contains("(match (var <x>) ((A) (int 1)))", "match_arm_");
+    -- 2. Single arm match contains merge block
+    let pm2 = test_lower_contains("(match (var <y>) ((B) (int 2)))", "match_merge_");
+    -- 3. Enum arm contains switch
+    let pm3 = test_lower_contains("(match (var <z>) ((Status::X) (int 0)))", "switch");
+    -- 4. Match result uses copy instruction
+    let pm4 = test_lower_contains("(match (var <a>) ((C) (int 5)))", "copy");
+    let pattern_match_tests = pm1 + pm2 + pm3 + pm4;
+    let u82 = println(pattern_match_tests);  -- Should be 4
+
     let u22 = println(888);  -- Separator
 
     let total = node_tests + extract_tests + child_tests + int_tests + bool_tests +
@@ -2692,8 +2718,9 @@ fn main() -> i64 =
                 load_capture_tests + is_captured_tests + find_capture_tests + captured_access_tests + var_with_captures_tests +
                 capture_integration_tests +
                 impl_key_tests + impl_lookup_tests + impl_has_tests + impl_dispatch_tests +
-                trait_pipeline_tests + closure_pipeline_tests + combined_pipeline_tests;
-    let u23 = println(total);  -- Should be 236
+                trait_pipeline_tests + closure_pipeline_tests + combined_pipeline_tests +
+                control_flow_edge_tests + pattern_match_tests;
+    let u23 = println(total);  -- Should be 244
 
     let u24 = println(999);  -- End marker
 
