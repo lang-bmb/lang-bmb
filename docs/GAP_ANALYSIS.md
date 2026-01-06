@@ -1,8 +1,8 @@
 # BMB Self-Hosting Gap Analysis
 
-**Version**: v0.30.178
+**Version**: v0.30.183
 **Date**: 2026-01-06
-**Status**: Bootstrap Testing Enhanced (3,982 tests across 14 files; --release required)
+**Status**: Bootstrap Testing Enhanced (4,120 tests across 14 files; --release required)
 
 ## Executive Summary
 
@@ -72,13 +72,13 @@ This document provides a comprehensive analysis of the requirements for BMB v0.3
 | mir.bmb | 35KB | ~1,180 | Complete | 334 tests (v0.30.176) |
 | parser.bmb | 38KB | ~1,123 | Complete | 267 tests (v0.30.164) |
 | selfhost_test.bmb | 33KB | ~1,035 | Complete | 244 tests (v0.30.178) |
-| parser_test.bmb | 29KB | ~992 | Complete | 185 tests (v0.30.167) |
+| parser_test.bmb | 31KB | ~1,068 | Complete | 221 tests (v0.30.183) |
 | optimize.bmb | 28KB | ~1,032 | Complete | 227 tests (v0.30.171) |
-| utils.bmb | 26KB | ~904 | Complete | 145 tests (v0.30.172) |
-| lexer.bmb | 18KB | ~631 | Complete | 191 tests (v0.30.168) |
-| selfhost_equiv.bmb | 12KB | ~384 | Complete | 86 tests (v0.30.173) |
+| utils.bmb | 27KB | ~940 | Complete | 181 tests (v0.30.182) |
+| lexer.bmb | 19KB | ~665 | Complete | 227 tests (v0.30.181) |
+| selfhost_equiv.bmb | 13KB | ~420 | Complete | 116 tests (v0.30.180) |
 
-**Bootstrap Test Total**: 3,982 tests across 14 files (v0.30.178)
+**Bootstrap Test Total**: 4,120 tests across 14 files (v0.30.183)
 
 ## v0.30 Pure Requirements
 

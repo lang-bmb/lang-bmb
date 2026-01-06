@@ -1,6 +1,6 @@
 -- ============================================================================
 -- BMB Bootstrap Self-Hosting Stage 2: Equivalence Test
--- Version: v0.30.173: Extended test coverage
+-- Version: v0.30.180: Enhanced test suite
 --
 -- This file tests the equivalence between Rust compiler output and
 -- Bootstrap compiler output for the same BMB source patterns.
@@ -294,6 +294,51 @@ fn test_pattern_positions() -> i64 =
     let s6 = if has_pattern("a", "a", 0) then 1 else 0;                -- single char
     s1 + s2 + s3 + s4 + s5 + s6;
 
+-- v0.30.180: Test MIR memory operations
+fn test_mir_memory_ops() -> i64 =
+    (if has_pattern("alloca i64", "alloca", 0) then 1 else 0) +
+    (if has_pattern("store i64 %v, ptr %p", "store", 0) then 1 else 0) +
+    (if has_pattern("load i64, ptr %p", "load", 0) then 1 else 0) +
+    (if has_pattern("getelementptr i64, ptr %p", "getelementptr", 0) then 1 else 0) +
+    (if has_pattern("bitcast ptr %p to i64", "bitcast", 0) then 1 else 0) +
+    (if has_pattern("zext i32 %v to i64", "zext", 0) then 1 else 0);
+
+-- v0.30.180: Test LLVM function attributes
+fn test_llvm_fn_attrs() -> i64 =
+    (if has_pattern("define i64 @add", "define", 0) then 1 else 0) +
+    (if has_pattern("declare i64 @ext", "declare", 0) then 1 else 0) +
+    (if has_pattern("attributes #0", "attributes", 0) then 1 else 0) +
+    (if has_pattern("nounwind willreturn", "nounwind", 0) then 1 else 0) +
+    (if has_pattern("readonly nocapture", "readonly", 0) then 1 else 0) +
+    (if has_pattern("noalias %ptr", "noalias", 0) then 1 else 0);
+
+-- v0.30.180: Test LLVM logical operations
+fn test_llvm_logical_ops() -> i64 =
+    (if has_pattern("or i64 %a, %b", "or i64", 0) then 1 else 0) +
+    (if has_pattern("xor i64 %a, %b", "xor i64", 0) then 1 else 0) +
+    (if has_pattern("shl i64 %a, 2", "shl i64", 0) then 1 else 0) +
+    (if has_pattern("ashr i64 %a, 2", "ashr", 0) then 1 else 0) +
+    (if has_pattern("lshr i64 %a, 2", "lshr", 0) then 1 else 0) +
+    (if has_pattern("select i1 %c, i64 %a, i64 %b", "select", 0) then 1 else 0);
+
+-- v0.30.180: Test MIR block labels
+fn test_mir_blocks() -> i64 =
+    (if has_pattern("entry:", "entry:", 0) then 1 else 0) +
+    (if has_pattern("then_0:", "then_", 0) then 1 else 0) +
+    (if has_pattern("else_0:", "else_", 0) then 1 else 0) +
+    (if has_pattern("merge_0:", "merge_", 0) then 1 else 0) +
+    (if has_pattern("loop_0:", "loop_", 0) then 1 else 0) +
+    (if has_pattern("exit_0:", "exit_", 0) then 1 else 0);
+
+-- v0.30.180: Test special characters in patterns
+fn test_special_chars() -> i64 =
+    (if has_pattern("ptr %p", "ptr", 0) then 1 else 0) +
+    (if has_pattern("i64* %arr", "i64*", 0) then 1 else 0) +
+    (if has_pattern("[10 x i64]", "[10 x", 0) then 1 else 0) +
+    (if has_pattern("{i64, i64}", "{i64", 0) then 1 else 0) +
+    (if has_pattern("@global_var", "@global", 0) then 1 else 0) +
+    (if has_pattern("%local.1", "%local.", 0) then 1 else 0);
+
 -- ============================================================================
 -- SECTION 7: Main Test Runner
 -- ============================================================================
@@ -339,10 +384,23 @@ fn main() -> i64 =
     let ut14 = test_pattern_positions();
     let v14 = println(ut14); -- Should be 6
 
+    -- v0.30.180: Additional unit tests (30 new assertions)
+    let ut15 = test_mir_memory_ops();
+    let v15 = println(ut15); -- Should be 6
+    let ut16 = test_llvm_fn_attrs();
+    let v16 = println(ut16); -- Should be 6
+    let ut17 = test_llvm_logical_ops();
+    let v17 = println(ut17); -- Should be 6
+    let ut18 = test_mir_blocks();
+    let v18 = println(ut18); -- Should be 6
+    let ut19 = test_special_chars();
+    let v19 = println(ut19); -- Should be 6
+
     let unit_base = ut1 + ut2 + ut3 + ut4 + ut5 + ut6 + ut7;
     let unit_ext = ut8 + ut9 + ut10 + ut11 + ut12 + ut13 + ut14;
-    let unit_total = unit_base + unit_ext;
-    let v8 = println(unit_total);  -- Should be 67 (29 base + 38 extended)
+    let unit_new = ut15 + ut16 + ut17 + ut18 + ut19;
+    let unit_total = unit_base + unit_ext + unit_new;
+    let v8 = println(unit_total);  -- Should be 97 (29 base + 38 ext + 30 new)
 
     let u1 = println(555);  -- Integration tests marker
 
@@ -378,7 +436,7 @@ fn main() -> i64 =
 
     let total = unit_total + integration;
     let u24 = println(888);  -- Separator
-    let u25 = println(total);  -- Should be 86 (67 unit + 19 integration)
+    let u25 = println(total);  -- Should be 116 (97 unit + 19 integration)
     let u26 = println(999);  -- End marker
 
     total;

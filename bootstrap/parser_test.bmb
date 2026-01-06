@@ -1,4 +1,4 @@
--- BMB Parser Comprehensive Test (v0.30.167: Extended test suite)
+-- BMB Parser Comprehensive Test (v0.30.183: Enhanced test suite)
 -- Tests parser_ast.bmb with complex real-world patterns
 --
 -- Test Categories:
@@ -755,6 +755,67 @@ fn test_find_substring_ext() -> i64 =
     t1 + t2 + t3 + t4 + t5 + t6;
 
 -- ============================================================
+-- v0.30.183: Additional Unit Tests
+-- ============================================================
+
+-- Test token end position accuracy
+fn test_token_end_accuracy() -> i64 =
+    (if tok_end(next_token_raw("abc", 0)) == 3 then 1 else 0) +
+    (if tok_end(next_token_raw("12345", 0)) == 5 then 1 else 0) +
+    (if tok_end(next_token_raw("fn", 0)) == 2 then 1 else 0) +
+    (if tok_end(next_token_raw("==", 0)) == 2 then 1 else 0) +
+    (if tok_end(next_token_raw("->", 0)) == 2 then 1 else 0) +
+    (if tok_end(next_token_raw("x", 0)) == 1 then 1 else 0);
+
+-- Test keyword boundary cases
+fn test_keyword_boundary() -> i64 =
+    (if tok_kind(next_token_raw("pre", 0)) == TK_PRE() then 1 else 0) +
+    (if tok_kind(next_token_raw("post", 0)) == TK_POST() then 1 else 0) +
+    (if tok_kind(next_token_raw("then", 0)) == TK_THEN() then 1 else 0) +
+    (if tok_kind(next_token_raw("else", 0)) == TK_ELSE() then 1 else 0) +
+    (if tok_kind(next_token_raw("prefix", 0)) == TK_IDENT() then 1 else 0) +
+    (if tok_kind(next_token_raw("postfix", 0)) == TK_IDENT() then 1 else 0);
+
+-- Test is_alnum_or_underscore comprehensively
+fn test_is_alnum_underscore() -> i64 =
+    (if is_alnum_or_underscore(65) then 1 else 0) +
+    (if is_alnum_or_underscore(90) then 1 else 0) +
+    (if is_alnum_or_underscore(97) then 1 else 0) +
+    (if is_alnum_or_underscore(122) then 1 else 0) +
+    (if is_alnum_or_underscore(95) then 1 else 0) +
+    (if not is_alnum_or_underscore(64) then 1 else 0);
+
+-- Test skip_all comprehensive cases
+fn test_skip_all_comprehensive() -> i64 =
+    (if skip_all("abc", 0) == 0 then 1 else 0) +
+    (if skip_all("  abc", 0) == 2 then 1 else 0) +
+    (if skip_all("-- comment", 0) == 10 then 1 else 0) +
+    (if skip_all("", 0) == 0 then 1 else 0) +
+    (if skip_all("   ", 0) == 3 then 1 else 0) +
+    (if skip_all("  -- x", 0) == 6 then 1 else 0);
+
+-- Test ast_has_prefix comprehensive cases
+fn test_ast_has_prefix_ext() -> i64 =
+    (if ast_has_prefix("(program)", "(program)") then 1 else 0) +
+    (if ast_has_prefix("(fn <x>)", "(fn") then 1 else 0) +
+    (if ast_has_prefix("(let <a>)", "(let") then 1 else 0) +
+    (if not ast_has_prefix("()", "(fn") then 1 else 0) +
+    (if ast_has_prefix("", "") then 1 else 0) +
+    (if not ast_has_prefix("abc", "abcd") then 1 else 0);
+
+-- Test pack/unpack edge cases
+fn test_pack_unpack_edge() -> i64 =
+    let r1 = pack_result(0, "(ast)");
+    let r2 = pack_result(999999, "(big)");
+    let r3 = pack_result(1, "");
+    (if unpack_pos(r1) == 0 then 1 else 0) +
+    (if unpack_pos(r2) == 999999 then 1 else 0) +
+    (if unpack_ast(r1) == "(ast)" then 1 else 0) +
+    (if unpack_ast(r2) == "(big)" then 1 else 0) +
+    (if unpack_pos(r3) == 1 then 1 else 0) +
+    (if unpack_ast(r3) == "" then 1 else 0);
+
+-- ============================================================
 -- Integration Test Cases
 -- ============================================================
 
@@ -956,10 +1017,25 @@ fn main() -> i64 =
     let ut26 = test_find_substring_ext();
     let v26 = println(ut26); -- Should be 6
 
+    -- v0.30.183: Additional unit tests (36 new assertions)
+    let ut27 = test_token_end_accuracy();
+    let v27 = println(ut27); -- Should be 6
+    let ut28 = test_keyword_boundary();
+    let v28 = println(ut28); -- Should be 6
+    let ut29 = test_is_alnum_underscore();
+    let v29 = println(ut29); -- Should be 6
+    let ut30 = test_skip_all_comprehensive();
+    let v30 = println(ut30); -- Should be 6
+    let ut31 = test_ast_has_prefix_ext();
+    let v31 = println(ut31); -- Should be 6
+    let ut32 = test_pack_unpack_edge();
+    let v32 = println(ut32); -- Should be 6
+
     let unit_base = ut1 + ut2 + ut3 + ut4 + ut5 + ut6 + ut7 + ut8 + ut9 + ut10 + ut11 + ut12;
     let unit_ext = ut13 + ut14 + ut15 + ut16 + ut17 + ut18 + ut19 + ut20 + ut21 + ut22 + ut23 + ut24 + ut25 + ut26;
-    let unit_total = unit_base + unit_ext;
-    let v13 = println(unit_total);  -- Should be 170 (84 base + 86 extended)
+    let unit_new = ut27 + ut28 + ut29 + ut30 + ut31 + ut32;
+    let unit_total = unit_base + unit_ext + unit_new;
+    let v13 = println(unit_total);  -- Should be 206 (84 base + 86 extended + 36 new)
 
     let u1 = println(555);  -- Integration tests marker
 
@@ -985,7 +1061,7 @@ fn main() -> i64 =
     let u2 = println(888);  -- End marker
 
     let total = unit_total + integration;
-    let v15 = println(total);  -- Should be 185 (170 unit + 15 integration)
+    let v15 = println(total);  -- Should be 221 (206 unit + 15 integration)
 
     let u3 = println(999);  -- Final marker
 

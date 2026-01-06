@@ -1,4 +1,4 @@
--- BMB Lexer written in BMB (v0.30.168: Extended test suite)
+-- BMB Lexer written in BMB (v0.30.181: Enhanced test suite)
 -- A simple hand-written lexer for the BMB language
 -- Uses functional/recursive style to work within BMB's grammar constraints
 --
@@ -542,6 +542,67 @@ fn test_control_flow_ext() -> i64 =
     let t6 = if lookup_keyword("for") == 119 then 1 else 0;
     t1 + t2 + t3 + t4 + t5 + t6;
 
+-- v0.30.181: Test token position accuracy
+fn test_token_position() -> i64 =
+    (if token_start(100000000) == 0 then 1 else 0) +
+    (if token_start(100001000) == 1 then 1 else 0) +
+    (if token_start(100010000) == 10 then 1 else 0) +
+    (if token_len(100000001) == 1 then 1 else 0) +
+    (if token_len(100000010) == 10 then 1 else 0) +
+    (if token_len(100000100) == 100 then 1 else 0);
+
+-- v0.30.181: Test boundary alpha cases
+fn test_alpha_boundary() -> i64 =
+    (if is_alpha(64) then 0 else 1) +     -- '@' before 'A'
+    (if is_alpha(65) then 1 else 0) +     -- 'A'
+    (if is_alpha(91) then 0 else 1) +     -- '[' after 'Z'
+    (if is_alpha(96) then 0 else 1) +     -- '`' before 'a'
+    (if is_alpha(97) then 1 else 0) +     -- 'a'
+    (if is_alpha(123) then 0 else 1);     -- '{' after 'z'
+
+-- v0.30.181: Test boundary digit cases
+fn test_digit_boundary() -> i64 =
+    (if is_digit(47) then 0 else 1) +     -- '/' before '0'
+    (if is_digit(48) then 1 else 0) +     -- '0'
+    (if is_digit(49) then 1 else 0) +     -- '1'
+    (if is_digit(56) then 1 else 0) +     -- '8'
+    (if is_digit(57) then 1 else 0) +     -- '9'
+    (if is_digit(58) then 0 else 1);      -- ':' after '9'
+
+-- v0.30.181: Test unknown symbols
+fn test_unknown_symbols() -> i64 =
+    (if symbol_code(33) == 999 then 1 else 0) +   -- '!'
+    (if symbol_code(64) == 999 then 1 else 0) +   -- '@'
+    (if symbol_code(35) == 999 then 1 else 0) +   -- '#'
+    (if symbol_code(36) == 999 then 1 else 0) +   -- '$'
+    (if symbol_code(94) == 999 then 1 else 0) +   -- '^'
+    (if symbol_code(96) == 999 then 1 else 0);    -- '`'
+
+-- v0.30.181: Test process_symbol function
+fn test_process_symbol() -> i64 =
+    let t1 = process_symbol("+", 0);
+    let t2 = process_symbol("-", 0);
+    let t3 = process_symbol("*", 0);
+    let t4 = process_symbol("/", 0);
+    (if token_kind(t1) == 400 then 1 else 0) +
+    (if token_kind(t2) == 401 then 1 else 0) +
+    (if token_kind(t3) == 402 then 1 else 0) +
+    (if token_kind(t4) == 403 then 1 else 0) +
+    (if token_len(t1) == 1 then 1 else 0) +
+    (if token_len(t2) == 1 then 1 else 0);
+
+-- v0.30.181: Test process_number function
+fn test_process_number() -> i64 =
+    let t1 = process_number("42", 0);
+    let t2 = process_number("123", 0);
+    let t3 = process_number("0", 0);
+    (if token_kind(t1) == 200 then 1 else 0) +
+    (if token_kind(t2) == 200 then 1 else 0) +
+    (if token_kind(t3) == 200 then 1 else 0) +
+    (if token_len(t1) == 2 then 1 else 0) +
+    (if token_len(t2) == 3 then 1 else 0) +
+    (if token_len(t3) == 1 then 1 else 0);
+
 -- Tokenize and print, returning count
 fn tok_step(s: String, pos: i64, count: i64) -> i64 =
     let tok = next_token(s, pos);
@@ -621,10 +682,25 @@ fn main() -> i64 =
     let t28 = test_control_flow_ext();
     let u29 = println(t28);  -- Should be 6
 
-    let u30 = println(888);  -- End marker
+    -- v0.30.181: Additional unit tests (36 new assertions)
+    let t29 = test_token_position();
+    let u30 = println(t29);  -- Should be 6
+    let t30 = test_alpha_boundary();
+    let u31 = println(t30);  -- Should be 6
+    let t31 = test_digit_boundary();
+    let u32 = println(t31);  -- Should be 6
+    let t32 = test_unknown_symbols();
+    let u33 = println(t32);  -- Should be 6
+    let t33 = test_process_symbol();
+    let u34 = println(t33);  -- Should be 6
+    let t34 = test_process_number();
+    let u35 = println(t34);  -- Should be 6
+
+    let u36 = println(888);  -- End marker
     let base_total = t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t9 + t10 + t11 + t12 + t13 + t14 + t15 + t16 + t17 + t18;
     let ext_total = t19 + t20 + t21 + t22 + t23 + t24 + t25 + t26 + t27 + t28;
-    let total = base_total + ext_total;
-    let u31 = println(total);  -- Should be 191 (127 base + 64 extended)
-    let u32 = println(999);  -- Final marker
+    let new_total = t29 + t30 + t31 + t32 + t33 + t34;
+    let total = base_total + ext_total + new_total;
+    let u37 = println(total);  -- Should be 227 (127 base + 64 ext + 36 new)
+    let u38 = println(999);  -- Final marker
     0;

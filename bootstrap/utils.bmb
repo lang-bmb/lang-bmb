@@ -1,4 +1,4 @@
--- BMB Bootstrap Utilities (v0.30.172: Extended test coverage)
+-- BMB Bootstrap Utilities (v0.30.182: Enhanced test suite)
 -- Shared utility functions for all bootstrap modules
 -- Consolidates common string operations to reduce code duplication
 --
@@ -778,6 +778,60 @@ fn test_skip_ws_ext() -> i64 =
     let t6 = if skip_ws("a", 1) == 1 then 1 else 0;  -- pos at end
     t1 + t2 + t3 + t4 + t5 + t6;
 
+-- v0.30.182: Test is_ident_start comprehensive
+fn test_is_ident_start_ext() -> i64 =
+    (if is_ident_start(65) then 1 else 0) +   -- 'A'
+    (if is_ident_start(90) then 1 else 0) +   -- 'Z'
+    (if is_ident_start(97) then 1 else 0) +   -- 'a'
+    (if is_ident_start(122) then 1 else 0) +  -- 'z'
+    (if is_ident_start(95) then 1 else 0) +   -- '_'
+    (if not is_ident_start(48) then 1 else 0);  -- '0' not ident start
+
+-- v0.30.182: Test parse_int_signed comprehensive
+fn test_parse_int_signed_ext() -> i64 =
+    (if parse_int_signed("-1", 0) == -1 then 1 else 0) +
+    (if parse_int_signed("-42", 0) == -42 then 1 else 0) +
+    (if parse_int_signed("0", 0) == 0 then 1 else 0) +
+    (if parse_int_signed("123", 0) == 123 then 1 else 0) +
+    (if parse_int_signed("-0", 0) == 0 then 1 else 0) +
+    (if parse_int_signed("", 0) == 0 then 1 else 0);
+
+-- v0.30.182: Test parse_int_end comprehensive
+fn test_parse_int_end_ext() -> i64 =
+    (if parse_int_end("123", 0) == 3 then 1 else 0) +
+    (if parse_int_end("42abc", 0) == 2 then 1 else 0) +
+    (if parse_int_end("abc", 0) == 0 then 1 else 0) +
+    (if parse_int_end("", 0) == 0 then 1 else 0) +
+    (if parse_int_end("0", 0) == 1 then 1 else 0) +
+    (if parse_int_end("99 ", 0) == 2 then 1 else 0);
+
+-- v0.30.182: Test find_ident_end comprehensive
+fn test_find_ident_end_ext() -> i64 =
+    (if find_ident_end("abc", 0) == 3 then 1 else 0) +
+    (if find_ident_end("a_b", 0) == 3 then 1 else 0) +
+    (if find_ident_end("x12", 0) == 3 then 1 else 0) +
+    (if find_ident_end("", 0) == 0 then 1 else 0) +
+    (if find_ident_end("xy+z", 0) == 2 then 1 else 0) +
+    (if find_ident_end("foo_bar123", 0) == 10 then 1 else 0);
+
+-- v0.30.182: Test find_number_end comprehensive
+fn test_find_number_end_ext() -> i64 =
+    (if find_number_end("123", 0) == 3 then 1 else 0) +
+    (if find_number_end("0", 0) == 1 then 1 else 0) +
+    (if find_number_end("abc", 0) == 0 then 1 else 0) +
+    (if find_number_end("42x", 0) == 2 then 1 else 0) +
+    (if find_number_end("99 ", 0) == 2 then 1 else 0) +
+    (if find_number_end("", 0) == 0 then 1 else 0);
+
+-- v0.30.182: Test tok_is_kind and tok_is_eof
+fn test_tok_helpers() -> i64 =
+    (if tok_is_kind(1000000, 1) then 1 else 0) +
+    (if tok_is_kind(2000500, 2) then 1 else 0) +
+    (if not tok_is_kind(1000000, 2) then 1 else 0) +
+    (if tok_is_eof(0) then 1 else 0) +
+    (if tok_is_eof(100) then 1 else 0) +
+    (if not tok_is_eof(1000000) then 1 else 0);
+
 -- Run all tests
 fn run_utils_tests() -> i64 =
     let t1 = if test_is_digit() then 1 else 0;
@@ -893,12 +947,28 @@ fn main() -> i64 =
     let ext15 = test_skip_ws_ext();
     let v15 = println(ext15);  -- Should be 6
 
-    let extended = ext1 + ext2 + ext3 + ext4 + ext5 + ext6 + ext7 + ext8 + ext9 + ext10 + ext11 + ext12 + ext13 + ext14 + ext15;
-    let v16 = println(extended);  -- Should be 98
+    -- v0.30.182: Additional unit tests (36 new assertions)
+    let ext16 = test_is_ident_start_ext();
+    let v16 = println(ext16);  -- Should be 6
+    let ext17 = test_parse_int_signed_ext();
+    let v17 = println(ext17);  -- Should be 6
+    let ext18 = test_parse_int_end_ext();
+    let v18 = println(ext18);  -- Should be 6
+    let ext19 = test_find_ident_end_ext();
+    let v19 = println(ext19);  -- Should be 6
+    let ext20 = test_find_number_end_ext();
+    let v20 = println(ext20);  -- Should be 6
+    let ext21 = test_tok_helpers();
+    let v21 = println(ext21);  -- Should be 6
 
-    let total = passed + extended;
+    let extended = ext1 + ext2 + ext3 + ext4 + ext5 + ext6 + ext7 + ext8 + ext9 + ext10 + ext11 + ext12 + ext13 + ext14 + ext15;
+    let new_tests = ext16 + ext17 + ext18 + ext19 + ext20 + ext21;
+    let v22 = println(extended);  -- Should be 98
+    let v23 = println(new_tests);  -- Should be 36
+
+    let total = passed + extended + new_tests;
     let u3 = println(888);  -- Separator marker
-    let u4 = println(total);  -- Should be 145 (47 base + 98 extended)
+    let u4 = println(total);  -- Should be 181 (47 base + 98 ext + 36 new)
     let u5 = println(999);  -- End marker
     -- Returns number of passed tests
     total;
