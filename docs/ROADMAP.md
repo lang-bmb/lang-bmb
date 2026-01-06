@@ -337,6 +337,14 @@ v0.MAJOR.MINOR
 - Multi-operand expressions, mixed operations, combined expressions
 - pipeline.bmb total: 42 tests (10 test groups)
 
+**v0.30.203 Completed (2026-01-06)**:
+- Phase 30.1.200-203: Bootstrap integration test enhancement
+- types.bmb: 746 → 782 tests (+36) - trait method dispatch, impl pack, binop result type integration tests
+- mir.bmb: 370 → 406 tests (+36) - binop symbols, MIR text, call variations, const encoding, fn header tests
+- pipeline.bmb: 343 → 379 tests (+36) - multi-function parsing, arithmetic, nested let, logical, compound expression tests
+- llvm_ir.bmb: 397 → 433 tests (+36) - binop i32, const edge cases, cmp full, unary full, logic full tests
+- Bootstrap test total: 4,658 tests across 14 files (+144)
+
 **v0.30.198 Completed (2026-01-06)**:
 - Phase 30.1.195-198: Bootstrap test coverage enhancement
 - lexer.bmb: 227 → 263 tests (+36) - token decode, whitespace boundary, ident start, two-char ops tests

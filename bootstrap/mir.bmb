@@ -1079,7 +1079,83 @@ fn test_mir_text_ext2() -> i64 =
     t1 + t2 + t3 + t4 + t5 + t6;
 
 -- ============================================================================
--- Main Test Runner (v0.30.188)
+-- v0.30.201: Integration Tests (36 new tests)
+-- ============================================================================
+
+-- Test comprehensive binop symbol coverage
+fn test_binop_symbols_full() -> i64 =
+    let t1 = if binop_symbol(binop_mod()) == "%" then 1 else 0;
+    let t2 = if binop_symbol(binop_eq()) == "==" then 1 else 0;
+    let t3 = if binop_symbol(binop_ne()) == "!=" then 1 else 0;
+    let t4 = if binop_symbol(binop_le()) == "<=" then 1 else 0;
+    let t5 = if binop_symbol(binop_ge()) == ">=" then 1 else 0;
+    let t6 = if binop_symbol(99) == "?" then 1 else 0;
+    t1 + t2 + t3 + t4 + t5 + t6;
+
+-- Test comprehensive terminator text generation
+fn test_mir_term_text() -> i64 =
+    let t1 = if mir_text_ret("%result") == "  return %result" then 1 else 0;
+    let t2 = if mir_text_ret("%_t0") == "  return %_t0" then 1 else 0;
+    let t3 = if mir_text_goto("bb1") == "  goto bb1" then 1 else 0;
+    let t4 = if mir_text_goto("exit") == "  goto exit" then 1 else 0;
+    let t5 = if mir_text_branch("%c", "then", "else") == "  branch %c, then, else" then 1 else 0;
+    let t6 = if mir_text_branch("%flag", "bb1", "bb2") == "  branch %flag, bb1, bb2" then 1 else 0;
+    t1 + t2 + t3 + t4 + t5 + t6;
+
+-- Test call instruction variations
+fn test_mir_call_variations() -> i64 =
+    let t1 = if mir_text_call("%r", "foo", "") == "  %r = call foo()" then 1 else 0;
+    let t2 = if mir_text_call("%r", "add", "%a, %b") == "  %r = call add(%a, %b)" then 1 else 0;
+    let t3 = if mir_text_call_void("print", "%x") == "  call print(%x)" then 1 else 0;
+    let t4 = if mir_text_call_void("log", "%a, %b, %c") == "  call log(%a, %b, %c)" then 1 else 0;
+    let t5 = if mir_text_call("%_t0", "inc", "%x") == "  %_t0 = call inc(%x)" then 1 else 0;
+    let t6 = if mir_text_call_void("noop", "") == "  call noop()" then 1 else 0;
+    t1 + t2 + t3 + t4 + t5 + t6;
+
+-- Test constant encoding integration
+fn test_const_encoding_full() -> i64 =
+    let c1 = const_int(0);
+    let c2 = const_int(100);
+    let c3 = const_bool(true);
+    let c4 = const_bool(false);
+    let c5 = const_string("test");
+    let c6 = const_unit();
+    let t1 = if is_const_int(c1) and is_const_int(c2) then 1 else 0;
+    let t2 = if is_const_bool(c3) and is_const_bool(c4) then 1 else 0;
+    let t3 = if is_const_string(c5) then 1 else 0;
+    let t4 = if is_const_unit(c6) then 1 else 0;
+    let t5 = if not is_const_int(c3) and not is_const_bool(c1) then 1 else 0;
+    let t6 = if not is_const_string(c1) and not is_const_unit(c2) then 1 else 0;
+    t1 + t2 + t3 + t4 + t5 + t6;
+
+-- Test function header generation variations
+fn test_fn_header_variations() -> i64 =
+    let t1 = if mir_text_fn_start("main", "", 2) == "fn main() -> i64 {" then 1 else 0;
+    let t2 = if mir_text_fn_start("inc", "%x", 2) == "fn inc(%x) -> i64 {" then 1 else 0;
+    let t3 = if mir_text_fn_start("is_ok", "", 4) == "fn is_ok() -> bool {" then 1 else 0;
+    let t4 = if mir_text_param("a", 2) == "a: i64" then 1 else 0;
+    let t5 = if mir_text_param("s", 5) == "s: String" then 1 else 0;
+    let t6 = if mir_text_fn_end() == "}" then 1 else 0;
+    t1 + t2 + t3 + t4 + t5 + t6;
+
+-- Test comprehensive MIR instruction generation
+fn test_mir_inst_generation() -> i64 =
+    let inst1 = mir_text_const("%x", "I:42");
+    let inst2 = mir_text_copy("%y", "%x");
+    let inst3 = mir_text_binop("%z", binop_add(), "%a", "%b");
+    let inst4 = mir_text_unary("%n", unop_neg(), "%m");
+    let inst5 = mir_text_unary("%p", unop_not(), "%q");
+    let inst6 = mir_text_call("%r", "foo", "%a");
+    let t1 = if inst1 == "  %x = const I:42" then 1 else 0;
+    let t2 = if inst2 == "  %y = copy %x" then 1 else 0;
+    let t3 = if inst3 == "  %z = + %a, %b" then 1 else 0;
+    let t4 = if inst4 == "  %n = - %m" then 1 else 0;
+    let t5 = if inst5 == "  %p = not %q" then 1 else 0;
+    let t6 = if inst6 == "  %r = call foo(%a)" then 1 else 0;
+    t1 + t2 + t3 + t4 + t5 + t6;
+
+-- ============================================================================
+-- Main Test Runner (v0.30.201)
 -- ============================================================================
 
 fn main() -> i64 =
@@ -1220,13 +1296,33 @@ fn main() -> i64 =
     let t13 = test_function_headers();
     let u13 = println(t13);
 
-    let integration = t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t9 + t10 + t11 + t12 + t13;
-    let u14 = println(integration);  -- Should be 63
+    -- v0.30.201: Additional integration tests (36 new tests)
+    let t14 = test_binop_symbols_full();
+    let u14 = println(t14);
+
+    let t15 = test_mir_term_text();
+    let u15 = println(t15);
+
+    let t16 = test_mir_call_variations();
+    let u16 = println(t16);
+
+    let t17 = test_const_encoding_full();
+    let u17 = println(t17);
+
+    let t18 = test_fn_header_variations();
+    let u18 = println(t18);
+
+    let t19 = test_mir_inst_generation();
+    let u19 = println(t19);
+
+    let integration = t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t9 + t10 + t11 + t12 + t13 +
+                      t14 + t15 + t16 + t17 + t18 + t19;
+    let u20 = println(integration);  -- Should be 99 (63 + 36 new)
 
     let total = unit_total + integration;
 
-    let u15 = println(888);
-    let u16 = println(total);  -- Should be 370 (307 unit + 63 integration)
-    let u17 = println(999);
+    let u21 = println(888);
+    let u22 = println(total);  -- Should be 406 (307 unit + 99 integration)
+    let u23 = println(999);
 
     total;

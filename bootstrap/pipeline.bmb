@@ -1,4 +1,4 @@
--- BMB End-to-End Pipeline (v0.30.187: Extended test coverage)
+-- BMB End-to-End Pipeline (v0.30.202: Extended integration tests)
 -- Demonstrates complete compilation flow: Source -> AST -> MIR
 --
 -- ARCHITECTURE:
@@ -1177,6 +1177,69 @@ fn test_pipeline(src: String, expected: String) -> i64 =
     let mir = compile_expr(src);
     if str_contains(mir, expected) then 1 else 0;
 
+-- ============================================================================
+-- SECTION 10.1: Extended Integration Tests (v0.30.202)
+-- ============================================================================
+
+-- Test multi-function parsing
+fn test_parse_multifunction() -> i64 =
+    let t1 = test_parse("fn one() -> i64 = 1;", "(program");
+    let t2 = test_parse("fn neg(x: i64) -> i64 = 0 - x;", "(fn <neg>");
+    let t3 = test_parse("fn id(x: i64) -> i64 = x;", "(p <x> i64)");
+    let t4 = test_parse("fn five() -> i64 = 5;", "(int 5)");
+    let t5 = test_parse("fn pair(a: i64, b: i64) -> i64 = a;", "(var <a>)");
+    let t6 = test_parse("fn sum(a: i64, b: i64) -> i64 = a + b;", "(params");
+    t1 + t2 + t3 + t4 + t5 + t6;
+
+-- Test full arithmetic operations in pipeline
+fn test_pipeline_arithmetic_full() -> i64 =
+    let t1 = test_pipeline("10 + 20", "const I:10");
+    let t2 = test_pipeline("10 + 20", "const I:20");
+    let t3 = test_pipeline("a % b", "% %a, %b");
+    let t4 = test_pipeline("100 / 10", "const I:100");
+    let t5 = test_pipeline("5 * 5", "const I:5");
+    let t6 = test_pipeline("a - b + c - d", "- %_t1, %d");
+    t1 + t2 + t3 + t4 + t5 + t6;
+
+-- Test nested let expressions parsing
+fn test_parse_nested_let() -> i64 =
+    let t1 = test_parse("fn f() -> i64 = let x = 1; let y = 2; x;", "(let <x>");
+    let t2 = test_parse("fn f() -> i64 = let x = 1; let y = 2; x;", "(let <y>");
+    let t3 = test_parse("fn f() -> i64 = let a = 10; a + 1;", "(int 10)");
+    let t4 = test_parse("fn f() -> i64 = let x = 1; x;", "(var <x>)");
+    let t5 = test_parse("fn f() -> i64 = let r = 5; r;", "(int 5)");
+    let t6 = test_parse("fn f() -> i64 = let z = 0; z + 1;", "(op +");
+    t1 + t2 + t3 + t4 + t5 + t6;
+
+-- Test full logical operations in pipeline
+fn test_pipeline_logical_full() -> i64 =
+    let t1 = test_pipeline("a == b and c == d", "==");
+    let t2 = test_pipeline("x or y or z", "or %_t0, %z");
+    let t3 = test_pipeline("not (x and y)", "and %x, %y");
+    let t4 = test_pipeline("a != b or c != d", "or");
+    let t5 = test_pipeline("not x and not y", "and");
+    let t6 = test_pipeline("a < b and c < d", "and");
+    t1 + t2 + t3 + t4 + t5 + t6;
+
+-- Test various function signature patterns
+fn test_parse_function_variants() -> i64 =
+    let t1 = test_parse("fn noarg() -> i64 = 0;", "(params)");
+    let t2 = test_parse("fn onearg(x: i64) -> i64 = x;", "(p <x>");
+    let t3 = test_parse("fn twoarg(a: i64, b: i64) -> i64 = a;", "(p <b>");
+    let t4 = test_parse("fn retbool() -> bool = true;", "bool (bool true)");
+    let t5 = test_parse("fn boolarg(b: bool) -> i64 = 1;", "(p <b> bool)");
+    let t6 = test_parse("fn strarg(s: String) -> i64 = 0;", "(p <s> String)");
+    t1 + t2 + t3 + t4 + t5 + t6;
+
+-- Test complex compound expressions in pipeline
+fn test_pipeline_compound_expressions() -> i64 =
+    let t1 = test_pipeline("(a + b) * c", "* %_t0, %c");
+    let t2 = test_pipeline("a * (b + c)", "* %a");
+    let t3 = test_pipeline("(x - y) / z", "/ %_t0, %z");
+    let t4 = test_pipeline("(a + b) - (c + d)", "- %_t0, %_t1");
+    let t5 = test_pipeline("not (a or b) and c", "and %_t1, %c");
+    let t6 = test_pipeline("(a < b) or (c > d)", "or");
+    t1 + t2 + t3 + t4 + t5 + t6;
 
 fn main() -> i64 =
     let u0 = println(777);
@@ -1409,11 +1472,26 @@ fn main() -> i64 =
     let t16 = ch1 + ch2 + ch3 + ch4;
     let u16 = println(t16);
 
+    -- v0.30.202: Test 17-22: Extended integration tests (36 tests)
+    let t17 = test_parse_multifunction();
+    let u17 = println(t17);  -- Should be 6
+    let t18 = test_pipeline_arithmetic_full();
+    let u18 = println(t18);  -- Should be 6
+    let t19 = test_parse_nested_let();
+    let u19 = println(t19);  -- Should be 6
+    let t20 = test_pipeline_logical_full();
+    let u20 = println(t20);  -- Should be 6
+    let t21 = test_parse_function_variants();
+    let u21 = println(t21);  -- Should be 6
+    let t22 = test_pipeline_compound_expressions();
+    let u22 = println(t22);  -- Should be 6
+
     let u8 = println(888);
-    let integration = t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t9 + t10 + t11 + t12 + t13 + t14 + t15 + t16;
-    let u9 = println(integration);  -- Should be 64
+    let integration = t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t9 + t10 + t11 + t12 + t13 + t14 + t15 + t16 +
+                      t17 + t18 + t19 + t20 + t21 + t22;
+    let u9 = println(integration);  -- Should be 100 (64 base + 36 new)
     let total = unit_total + integration;
-    let u10 = println(total);  -- Should be 343 (279 unit + 64 integration)
+    let u10 = println(total);  -- Should be 379 (279 unit + 100 integration)
     let u11 = println(999);
 
     total;

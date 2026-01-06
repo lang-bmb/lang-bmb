@@ -1,4 +1,4 @@
--- BMB LLVM IR Generator written in BMB (v0.30.193: Extended test suite)
+-- BMB LLVM IR Generator written in BMB (v0.30.203: Extended integration tests)
 -- Generates LLVM IR text from MIR representation
 -- Uses functional/recursive style following bootstrap patterns
 --
@@ -3221,6 +3221,100 @@ fn test_llvm_type_ext() -> i64 =
     let t6 = if llvm_type("unknown") == "i64" then 1 else 0;
     t1 + t2 + t3 + t4 + t5 + t6;
 
+-- ============================================================================
+-- SECTION: v0.30.203 Extended Integration Tests (+36 tests)
+-- ============================================================================
+
+-- Test binop integration with i32 type
+fn test_llvm_binop_integration() -> i64 =
+    let a1 = gen_binop_arith("%r1", "+", "%x", "%y", "i32");
+    let t1 = if a1 == "%r1 = add i32 %x, %y" then 1 else 0;
+    let a2 = gen_binop_arith("%r2", "-", "%p", "%q", "i32");
+    let t2 = if a2 == "%r2 = sub i32 %p, %q" then 1 else 0;
+    let a3 = gen_binop_arith("%r3", "*", "%m", "%n", "i32");
+    let t3 = if a3 == "%r3 = mul i32 %m, %n" then 1 else 0;
+    let a4 = gen_binop_arith("%r4", "/", "%c", "%d", "i32");
+    let t4 = if a4 == "%r4 = sdiv i32 %c, %d" then 1 else 0;
+    let a5 = gen_binop_arith("%r5", "%", "%e", "%f", "i32");
+    let t5 = if a5 == "%r5 = srem i32 %e, %f" then 1 else 0;
+    let a6 = gen_binop_arith("%_t99", "+", "%long_var", "%other", "i64");
+    let t6 = if str_contains(a6, "add i64") then 1 else 0;
+    t1 + t2 + t3 + t4 + t5 + t6;
+
+-- Test constant generation with edge cases
+fn test_llvm_const_edge_cases() -> i64 =
+    let c1 = gen_const_int("%a", 0);
+    let t1 = if c1 == "%a = add i64 0, 0" then 1 else 0;
+    let c2 = gen_const_int("%b", 1);
+    let t2 = if c2 == "%b = add i64 0, 1" then 1 else 0;
+    let c3 = gen_const_int("%c", 100);
+    let t3 = if c3 == "%c = add i64 0, 100" then 1 else 0;
+    let c4 = gen_const_bool("%d", 0);
+    let t4 = if c4 == "%d = add i1 0, 0" then 1 else 0;
+    let c5 = gen_const_int("%_t0", 999);
+    let t5 = if str_contains(c5, "999") then 1 else 0;
+    let c6 = gen_const_int("%result", 12345);
+    let t6 = if str_contains(c6, "12345") then 1 else 0;
+    t1 + t2 + t3 + t4 + t5 + t6;
+
+-- Test comparison operations with all variants
+fn test_llvm_cmp_full() -> i64 =
+    let c1 = gen_binop_cmp("%t1", "<=", "%a", "%b", "i64");
+    let t1 = if c1 == "%t1 = icmp sle i64 %a, %b" then 1 else 0;
+    let c2 = gen_binop_cmp("%t2", ">=", "%x", "%y", "i64");
+    let t2 = if c2 == "%t2 = icmp sge i64 %x, %y" then 1 else 0;
+    let c3 = gen_binop_cmp("%t3", "<", "%p", "%q", "i32");
+    let t3 = if c3 == "%t3 = icmp slt i32 %p, %q" then 1 else 0;
+    let c4 = gen_binop_cmp("%t4", ">", "%m", "%n", "i32");
+    let t4 = if c4 == "%t4 = icmp sgt i32 %m, %n" then 1 else 0;
+    let c5 = gen_binop_cmp("%t5", "==", "%c", "%d", "i32");
+    let t5 = if c5 == "%t5 = icmp eq i32 %c, %d" then 1 else 0;
+    let c6 = gen_binop_cmp("%t6", "!=", "%e", "%f", "i32");
+    let t6 = if c6 == "%t6 = icmp ne i32 %e, %f" then 1 else 0;
+    t1 + t2 + t3 + t4 + t5 + t6;
+
+-- Test unary operations with different patterns
+fn test_llvm_unary_full() -> i64 =
+    let u1 = gen_unary_neg("%r1", "%x", "i64");
+    let t1 = if u1 == "%r1 = sub i64 0, %x" then 1 else 0;
+    let u2 = gen_unary_neg("%r2", "%y", "i32");
+    let t2 = if u2 == "%r2 = sub i32 0, %y" then 1 else 0;
+    let u3 = gen_unary_not("%r3", "%b");
+    let t3 = if u3 == "%r3 = xor i1 %b, 1" then 1 else 0;
+    let u4 = gen_unary_neg("%_t0", "%val", "i64");
+    let t4 = if str_contains(u4, "sub i64 0") then 1 else 0;
+    let u5 = gen_unary_not("%flag", "%cond");
+    let t5 = if str_contains(u5, "xor i1") then 1 else 0;
+    let u6 = gen_unary_neg("%result", "%operand", "i64");
+    let t6 = if str_contains(u6, "%result =") then 1 else 0;
+    t1 + t2 + t3 + t4 + t5 + t6;
+
+-- Test logic operations with variants
+fn test_llvm_logic_full() -> i64 =
+    let l1 = gen_binop_logic("%r1", "and", "%a", "%b", "i1");
+    let t1 = if str_contains(l1, "and i1 %a") then 1 else 0;
+    let l2 = gen_binop_logic("%r2", "or", "%c", "%d", "i1");
+    let t2 = if str_contains(l2, "or i1 %c") then 1 else 0;
+    let l3 = gen_binop_logic("%r3", "and", "%e", "%f", "i1");
+    let t3 = if str_contains(l3, "and i1 %e") then 1 else 0;
+    let l4 = gen_binop_logic("%_t0", "and", "%x", "%y", "i1");
+    let t4 = if str_contains(l4, "and i1") then 1 else 0;
+    let l5 = gen_binop_logic("%_t1", "or", "%p", "%q", "i1");
+    let t5 = if str_contains(l5, "or i1") then 1 else 0;
+    let l6 = gen_binop_logic("%flag", "or", "%m", "%n", "i1");
+    let t6 = if str_contains(l6, "%flag =") then 1 else 0;
+    t1 + t2 + t3 + t4 + t5 + t6;
+
+-- Test string helper functions integration
+fn test_llvm_string_helpers() -> i64 =
+    let t1 = if skip_ws(" a", 0) == 1 then 1 else 0;
+    let t2 = if skip_ws("abc", 0) == 0 then 1 else 0;
+    let t3 = if find_char("abc", 98, 0) == 1 then 1 else 0;  -- find 'b'
+    let t4 = if find_pipe("a|b", 0) == 1 then 1 else 0;
+    let t5 = if starts_with("hello", "he", 0) then 1 else 0;
+    let t6 = if is_digit(49) and not is_digit(65) then 1 else 0;  -- '1' is digit, 'A' is not
+    t1 + t2 + t3 + t4 + t5 + t6;
+
 fn main() -> i64 =
     let u0 = println(777);
     let r1 = test_type_mapping();
@@ -3408,8 +3502,22 @@ fn main() -> i64 =
     let u73 = println(r73);
     let r74 = test_llvm_type_ext();
     let u74 = println(r74);
+    -- v0.30.203: Extended integration tests (+36 tests)
+    let r75 = test_llvm_binop_integration();
+    let u75 = println(r75);  -- Should be 6
+    let r76 = test_llvm_const_edge_cases();
+    let u76 = println(r76);  -- Should be 6
+    let r77 = test_llvm_cmp_full();
+    let u77 = println(r77);  -- Should be 6
+    let r78 = test_llvm_unary_full();
+    let u78 = println(r78);  -- Should be 6
+    let r79 = test_llvm_logic_full();
+    let u79 = println(r79);  -- Should be 6
+    let r80 = test_llvm_string_helpers();
+    let u80 = println(r80);  -- Should be 6
     let u_end = println(888);
-    let total = r1 + r2 + r3 + r4 + r5 + r6 + r7 + r8 + r9 + r10 + r11 + r12 + r13 + r14 + r15 + r16 + r17 + r18 + r19 + r20 + r21 + r22 + r23 + r24 + r25 + r26 + r27 + r28 + r29 + r30 + r31 + r32 + r33 + r34 + r35 + r36 + r37 + r38 + r39 + r40 + r41 + r42 + r43 + r44 + r45 + r46 + r47 + r48 + r49 + r50 + r51 + r52 + r53 + r54 + r55 + r56 + r57 + r58 + r59 + r60 + r61 + r62 + r63 + r64 + r65 + r66 + r67 + r68 + r69 + r70 + r71 + r72 + r73 + r74;
-    let u_tot = println(total);
+    let total = r1 + r2 + r3 + r4 + r5 + r6 + r7 + r8 + r9 + r10 + r11 + r12 + r13 + r14 + r15 + r16 + r17 + r18 + r19 + r20 + r21 + r22 + r23 + r24 + r25 + r26 + r27 + r28 + r29 + r30 + r31 + r32 + r33 + r34 + r35 + r36 + r37 + r38 + r39 + r40 + r41 + r42 + r43 + r44 + r45 + r46 + r47 + r48 + r49 + r50 + r51 + r52 + r53 + r54 + r55 + r56 + r57 + r58 + r59 + r60 + r61 + r62 + r63 + r64 + r65 + r66 + r67 + r68 + r69 + r70 + r71 + r72 + r73 + r74 +
+                r75 + r76 + r77 + r78 + r79 + r80;
+    let u_tot = println(total);  -- Should be 568 (532 base + 36 new)
     let u_fin = println(999);
     total;
