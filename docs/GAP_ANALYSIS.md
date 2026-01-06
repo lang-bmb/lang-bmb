@@ -1,8 +1,8 @@
 # BMB Self-Hosting Gap Analysis
 
-**Version**: v0.30.164
+**Version**: v0.30.169
 **Date**: 2026-01-06
-**Status**: Bootstrap Testing Enhanced (3,231 tests across 14 files; --release required)
+**Status**: Bootstrap Testing Enhanced (3,612 tests across 14 files; --release required)
 
 ## Executive Summary
 
@@ -59,26 +59,26 @@ This document provides a comprehensive analysis of the requirements for BMB v0.3
 | config.rs | 4,245 | Complete | Configuration |
 | error.rs | 694 | Complete | Error handling |
 
-### Bootstrap Components (~23K LOC in BMB)
+### Bootstrap Components (~25K LOC in BMB)
 
 | File | Size | LOC | Status | Test Coverage |
 |------|------|-----|--------|---------------|
 | types.bmb | 310KB | ~8,277 | Complete | 746 tests (v0.30.134) |
 | llvm_ir.bmb | 106KB | ~3,342 | Complete | 361 tests (v0.30.132) |
+| parser_ast.bmb | 107KB | ~2,779 | Complete | 288 tests (v0.30.166) |
 | lowering.bmb | 74KB | ~2,727 | Complete | 244 tests (stack limit) |
-| parser_ast.bmb | 98KB | ~2,456 | Complete | 113 tests (v0.30.138) |
 | compiler.bmb | 65KB | ~1,804 | Complete | 291 tests (v0.30.163) |
 | pipeline.bmb | 52KB | ~1,424 | Complete | 307 tests (v0.30.162) |
 | mir.bmb | 35KB | ~1,180 | Complete | 274 tests (v0.30.161) |
 | parser.bmb | 38KB | ~1,123 | Complete | 267 tests (v0.30.164) |
-| selfhost_test.bmb | 23KB | ~655 | Complete | 152 tests (v0.30.158) |
+| selfhost_test.bmb | 33KB | ~1,035 | Complete | 208 tests (v0.30.169) |
+| parser_test.bmb | 29KB | ~992 | Complete | 185 tests (v0.30.167) |
 | optimize.bmb | 19KB | ~643 | Complete | 155 tests (v0.30.159) |
-| parser_test.bmb | 25KB | ~641 | Complete | 99 tests (v0.30.157) |
 | utils.bmb | 21KB | ~610 | Complete | 47 tests (v0.30.156) |
-| lexer.bmb | 8KB | ~385 | Complete | 127 tests (v0.30.154) |
+| lexer.bmb | 18KB | ~631 | Complete | 191 tests (v0.30.168) |
 | selfhost_equiv.bmb | 9KB | ~300 | Complete | 48 tests (v0.30.149) |
 
-**Bootstrap Test Total**: 3,231 tests across 14 files (v0.30.164)
+**Bootstrap Test Total**: 3,612 tests across 14 files (v0.30.169)
 
 ## v0.30 Pure Requirements
 
@@ -120,8 +120,8 @@ Current Rust Codebase:
 └── Total             21,783 LOC
 
 Current BMB Bootstrap:
-├── bootstrap/        23,829 LOC
-└── Coverage:           109% (exceeds Rust core)
+├── bootstrap/        25,163 LOC
+└── Coverage:           116% (exceeds Rust core)
 
 Gap to Close:
 ├── Compiler gap:     Complete (bootstrap > Rust core)

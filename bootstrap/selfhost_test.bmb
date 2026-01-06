@@ -1,6 +1,6 @@
 -- ============================================================================
 -- BMB Bootstrap Self-Hosting Stage 1 Test
--- Version: v0.30.158 (Enhanced test suite)
+-- Version: v0.30.169 (Extended test suite)
 --
 -- This file tests the Bootstrap compiler's ability to compile BMB source
 -- code and generate valid LLVM IR. This is the first stage of self-hosting
@@ -754,6 +754,113 @@ fn test_parse_negation() -> i64 =
     t1;
 
 -- ============================================================================
+-- v0.30.169: Extended Unit Tests
+-- ============================================================================
+
+-- Test is_whitespace edge cases
+fn test_is_whitespace_ext() -> i64 =
+    let t1 = if is_whitespace(32) then 1 else 0;   -- space
+    let t2 = if is_whitespace(9) then 1 else 0;    -- tab
+    let t3 = if is_whitespace(10) then 1 else 0;   -- newline
+    let t4 = if is_whitespace(13) then 1 else 0;   -- CR
+    let t5 = if not is_whitespace(65) then 1 else 0;  -- 'A'
+    let t6 = if not is_whitespace(0) then 1 else 0;   -- NUL
+    t1 + t2 + t3 + t4 + t5 + t6;
+
+-- Test is_digit edge cases
+fn test_is_digit_ext() -> i64 =
+    let t1 = if is_digit(48) then 1 else 0;   -- '0'
+    let t2 = if is_digit(53) then 1 else 0;   -- '5'
+    let t3 = if is_digit(57) then 1 else 0;   -- '9'
+    let t4 = if not is_digit(47) then 1 else 0;  -- '/'
+    let t5 = if not is_digit(58) then 1 else 0;  -- ':'
+    let t6 = if not is_digit(65) then 1 else 0;  -- 'A'
+    t1 + t2 + t3 + t4 + t5 + t6;
+
+-- Test is_alpha edge cases
+fn test_is_alpha_ext() -> i64 =
+    let t1 = if is_alpha(65) then 1 else 0;   -- 'A'
+    let t2 = if is_alpha(90) then 1 else 0;   -- 'Z'
+    let t3 = if is_alpha(97) then 1 else 0;   -- 'a'
+    let t4 = if is_alpha(122) then 1 else 0;  -- 'z'
+    let t5 = if is_alpha(95) then 1 else 0;   -- '_'
+    let t6 = if not is_alpha(48) then 1 else 0;  -- '0' not alpha
+    t1 + t2 + t3 + t4 + t5 + t6;
+
+-- Test is_alnum edge cases
+fn test_is_alnum_ext() -> i64 =
+    let t1 = if is_alnum(65) then 1 else 0;   -- 'A'
+    let t2 = if is_alnum(122) then 1 else 0;  -- 'z'
+    let t3 = if is_alnum(48) then 1 else 0;   -- '0'
+    let t4 = if is_alnum(57) then 1 else 0;   -- '9'
+    let t5 = if not is_alnum(32) then 1 else 0;  -- space
+    let t6 = if not is_alnum(43) then 1 else 0;  -- '+'
+    t1 + t2 + t3 + t4 + t5 + t6;
+
+-- Test tok_encoding boundaries
+fn test_tok_encoding_ext() -> i64 =
+    let tok1 = 0 * 1000000 + 0;  -- EOF at position 0
+    let t1 = if tok_kind(tok1) == 0 then 1 else 0;
+    let t2 = if tok_end(tok1) == 0 then 1 else 0;
+    let tok2 = 300 * 1000000 + 999999;  -- max position
+    let t3 = if tok_kind(tok2) == 300 then 1 else 0;
+    let t4 = if tok_end(tok2) == 999999 then 1 else 0;
+    let tok3 = 1 * 1000000 + 1;  -- IDENT at position 1
+    let t5 = if tok_kind(tok3) == 1 then 1 else 0;
+    let t6 = if tok_end(tok3) == 1 then 1 else 0;
+    t1 + t2 + t3 + t4 + t5 + t6;
+
+-- Test type keywords
+fn test_type_keywords_ext() -> i64 =
+    let t1 = if keyword_kind("i64") == TK_I64() then 1 else 0;
+    let t2 = if keyword_kind("i32") == TK_I32() then 1 else 0;
+    let t3 = if keyword_kind("bool") == TK_BOOL() then 1 else 0;
+    let t4 = if TK_I64() == 300 then 1 else 0;
+    let t5 = if TK_I32() == 301 then 1 else 0;
+    let t6 = if TK_BOOL() == 302 then 1 else 0;
+    t1 + t2 + t3 + t4 + t5 + t6;
+
+-- Test keyword_kind negative cases
+fn test_keyword_negative() -> i64 =
+    let t1 = if keyword_kind("xyz") == TK_IDENT() then 1 else 0;
+    let t2 = if keyword_kind("abc") == TK_IDENT() then 1 else 0;
+    let t3 = if keyword_kind("Fn") == TK_IDENT() then 1 else 0;  -- case sensitive
+    let t4 = if keyword_kind("IF") == TK_IDENT() then 1 else 0;  -- case sensitive
+    let t5 = if keyword_kind("x") == TK_IDENT() then 1 else 0;
+    let t6 = if keyword_kind("hello") == TK_IDENT() then 1 else 0;
+    t1 + t2 + t3 + t4 + t5 + t6;
+
+-- Test error handling extended
+fn test_error_handling_ext() -> i64 =
+    let err = make_error("test");
+    let t1 = if is_error(err) then 1 else 0;
+    let err2 = make_error("another");
+    let t2 = if is_error(err2) then 1 else 0;
+    let t3 = if not is_error("valid") then 1 else 0;
+    let t4 = if not is_error("(program)") then 1 else 0;
+    t1 + t2 + t3 + t4;
+
+-- Test result packing extended
+fn test_result_packing_ext() -> i64 =
+    let r1 = pack_result(100, "(int 42)");
+    let t1 = if unpack_pos(r1) == 100 then 1 else 0;
+    let t2 = if unpack_ast(r1) == "(int 42)" then 1 else 0;
+    let r2 = pack_result(0, "(bool true)");
+    let t3 = if unpack_pos(r2) == 0 then 1 else 0;
+    let t4 = if unpack_ast(r2) == "(bool true)" then 1 else 0;
+    t1 + t2 + t3 + t4;
+
+-- Test int_to_string extended
+fn test_int_to_string_ext() -> i64 =
+    let t1 = if int_to_string(0) == "0" then 1 else 0;
+    let t2 = if int_to_string(42) == "42" then 1 else 0;
+    let t3 = if int_to_string(100) == "100" then 1 else 0;
+    let t4 = if int_to_string(999) == "999" then 1 else 0;
+    let t5 = if int_to_string(1) == "1" then 1 else 0;
+    let t6 = if int_to_string(12345) == "12345" then 1 else 0;
+    t1 + t2 + t3 + t4 + t5 + t6;
+
+-- ============================================================================
 -- SECTION 6: Integration Tests - Stage 1 Self-Hosting Verification
 -- ============================================================================
 
@@ -882,11 +989,35 @@ fn main() -> i64 =
     let ut32 = test_parse_negation();
     let v32 = println(ut32);  -- Should be 1
 
-    let unit_total = ut1 + ut2 + ut3 + ut4 + ut5 + ut6 + ut7 + ut8 + ut9 +
-                     ut10 + ut11 + ut12 + ut13 + ut14 + ut15 + ut16 + ut17 + ut18 + ut19 +
-                     ut20 + ut21 + ut22 + ut23 + ut24 + ut25 + ut26 + ut27 + ut28 + ut29 +
-                     ut30 + ut31 + ut32;
-    let v33 = println(unit_total);  -- Should be 144
+    -- v0.30.169: Extended unit tests (56 new assertions)
+    let ut33 = test_is_whitespace_ext();
+    let v33x = println(ut33);  -- Should be 6
+    let ut34 = test_is_digit_ext();
+    let v34 = println(ut34);  -- Should be 6
+    let ut35 = test_is_alpha_ext();
+    let v35 = println(ut35);  -- Should be 6
+    let ut36 = test_is_alnum_ext();
+    let v36 = println(ut36);  -- Should be 6
+    let ut37 = test_tok_encoding_ext();
+    let v37 = println(ut37);  -- Should be 6
+    let ut38 = test_type_keywords_ext();
+    let v38 = println(ut38);  -- Should be 6
+    let ut39 = test_keyword_negative();
+    let v39 = println(ut39);  -- Should be 6
+    let ut40 = test_error_handling_ext();
+    let v40 = println(ut40);  -- Should be 4
+    let ut41 = test_result_packing_ext();
+    let v41 = println(ut41);  -- Should be 4
+    let ut42 = test_int_to_string_ext();
+    let v42 = println(ut42);  -- Should be 6
+
+    let unit_base = ut1 + ut2 + ut3 + ut4 + ut5 + ut6 + ut7 + ut8 + ut9 +
+                    ut10 + ut11 + ut12 + ut13 + ut14 + ut15 + ut16 + ut17 + ut18 + ut19 +
+                    ut20 + ut21 + ut22 + ut23 + ut24 + ut25 + ut26 + ut27 + ut28 + ut29 +
+                    ut30 + ut31 + ut32;
+    let unit_ext = ut33 + ut34 + ut35 + ut36 + ut37 + ut38 + ut39 + ut40 + ut41 + ut42;
+    let unit_total = unit_base + unit_ext;
+    let v33 = println(unit_total);  -- Should be 200 (144 base + 56 extended)
 
     let u1 = println(555);  -- Integration tests marker
 
@@ -921,7 +1052,7 @@ fn main() -> i64 =
     let w9 = println(integration);  -- Should be 8
 
     let total = unit_total + integration;
-    let w10 = println(total);  -- Should be 152
+    let w10 = println(total);  -- Should be 208 (200 unit + 8 integration)
 
     let u3 = println(999);  -- Final marker
     total;

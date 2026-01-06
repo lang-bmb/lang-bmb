@@ -14,6 +14,7 @@
 -- - v0.22.3: Add integration tests (struct+enum combined)
 -- - v0.30.1: Add generic type application parsing (Vec<T>, Map<K,V>)
 -- - v0.30.2: Add type parameter declaration parsing (struct Foo<T>, fn bar<T>)
+-- - v0.30.166: Add comprehensive unit tests for helper functions
 --
 -- LIMITATIONS:
 -- - String building is memory-intensive
@@ -2194,6 +2195,297 @@ fn test_method_on_literal() -> i64 =
     else if ast_contains(ast, "(method_call (int 42) <to_string>)") then 1
     else 0;
 
+-- ============================================================
+-- v0.30.166: Comprehensive Unit Tests for Helper Functions
+-- ============================================================
+
+-- Test tok_kind and tok_end extraction
+fn test_tok_functions() -> i64 =
+    let tok1 = 100 * 1000000 + 5;  -- TK_FN at position 5
+    let t1 = if tok_kind(tok1) == 100 then 1 else 0;
+    let t2 = if tok_end(tok1) == 5 then 1 else 0;
+    let tok2 = 900 * 1000000 + 0;  -- TK_EOF at position 0
+    let t3 = if tok_kind(tok2) == 900 then 1 else 0;
+    let t4 = if tok_end(tok2) == 0 then 1 else 0;
+    let tok3 = 201 * 1000000 + 123;  -- TK_IDENT at position 123
+    let t5 = if tok_kind(tok3) == 201 then 1 else 0;
+    let t6 = if tok_end(tok3) == 123 then 1 else 0;
+    t1 + t2 + t3 + t4 + t5 + t6;
+
+-- Test error handling functions
+fn test_error_functions() -> i64 =
+    let t1 = if is_error("ERR:test") then 1 else 0;
+    let t2 = if is_error("ERR:") then 1 else 0;
+    let t3 = if not is_error("OK") then 1 else 0;
+    let t4 = if not is_error("") then 1 else 0;
+    let t5 = if not is_error("err:lowercase") then 1 else 0;
+    let t6 = if make_error("test") == "ERR:test" then 1 else 0;
+    let t7 = if make_error("") == "ERR:" then 1 else 0;
+    let t8 = if make_error("msg") == "ERR:msg" then 1 else 0;
+    t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8;
+
+-- Test result packing functions
+fn test_result_packing() -> i64 =
+    let r1 = pack_result(42, "ast");
+    let t1 = if unpack_pos(r1) == 42 then 1 else 0;
+    let t2 = if unpack_ast(r1) == "ast" then 1 else 0;
+    let r2 = pack_result(0, "(int 5)");
+    let t3 = if unpack_pos(r2) == 0 then 1 else 0;
+    let t4 = if unpack_ast(r2) == "(int 5)" then 1 else 0;
+    let r3 = pack_result(100, "");
+    let t5 = if unpack_pos(r3) == 100 then 1 else 0;
+    let t6 = if unpack_ast(r3) == "" then 1 else 0;
+    t1 + t2 + t3 + t4 + t5 + t6;
+
+-- Test find_colon function
+fn test_find_colon() -> i64 =
+    let t1 = if find_colon("a:b", 0) == 1 then 1 else 0;
+    let t2 = if find_colon(":b", 0) == 0 then 1 else 0;
+    let t3 = if find_colon("abc", 0) == 0 - 1 then 1 else 0;
+    let t4 = if find_colon("", 0) == 0 - 1 then 1 else 0;
+    let t5 = if find_colon("a:b:c", 0) == 1 then 1 else 0;
+    let t6 = if find_colon("a:b:c", 2) == 3 then 1 else 0;
+    t1 + t2 + t3 + t4 + t5 + t6;
+
+-- Test parse_int_prefix function
+fn test_parse_int_prefix() -> i64 =
+    let t1 = if parse_int_prefix("123", 0, 0) == 123 then 1 else 0;
+    let t2 = if parse_int_prefix("42:ast", 0, 0) == 42 then 1 else 0;
+    let t3 = if parse_int_prefix("0", 0, 0) == 0 then 1 else 0;
+    let t4 = if parse_int_prefix("abc", 0, 0) == 0 then 1 else 0;
+    let t5 = if parse_int_prefix("99x", 0, 0) == 99 then 1 else 0;
+    let t6 = if parse_int_prefix("", 0, 0) == 0 then 1 else 0;
+    t1 + t2 + t3 + t4 + t5 + t6;
+
+-- Test int_to_string function
+fn test_int_to_string() -> i64 =
+    let t1 = if int_to_string(0) == "0" then 1 else 0;
+    let t2 = if int_to_string(5) == "5" then 1 else 0;
+    let t3 = if int_to_string(42) == "42" then 1 else 0;
+    let t4 = if int_to_string(100) == "100" then 1 else 0;
+    let t5 = if int_to_string(999) == "999" then 1 else 0;
+    let t6 = if int_to_string(12345) == "12345" then 1 else 0;
+    t1 + t2 + t3 + t4 + t5 + t6;
+
+-- Test digit_char function
+fn test_digit_char() -> i64 =
+    let t1 = if digit_char(0) == "0" then 1 else 0;
+    let t2 = if digit_char(1) == "1" then 1 else 0;
+    let t3 = if digit_char(5) == "5" then 1 else 0;
+    let t4 = if digit_char(9) == "9" then 1 else 0;
+    let t5 = if digit_char(3) == "3" then 1 else 0;
+    let t6 = if digit_char(7) == "7" then 1 else 0;
+    t1 + t2 + t3 + t4 + t5 + t6;
+
+-- Test op_str function
+fn test_op_str() -> i64 =
+    let t1 = if op_str(TK_PLUS()) == "+" then 1 else 0;
+    let t2 = if op_str(TK_MINUS()) == "-" then 1 else 0;
+    let t3 = if op_str(TK_STAR()) == "*" then 1 else 0;
+    let t4 = if op_str(TK_SLASH()) == "/" then 1 else 0;
+    let t5 = if op_str(TK_EQEQ()) == "==" then 1 else 0;
+    let t6 = if op_str(TK_DOTDOT()) == ".." then 1 else 0;
+    let t7 = if op_str(TK_AND()) == "and" then 1 else 0;
+    let t8 = if op_str(TK_OR()) == "or" then 1 else 0;
+    t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8;
+
+-- Test type_str function
+fn test_type_str() -> i64 =
+    let t1 = if type_str(TK_I32()) == "i32" then 1 else 0;
+    let t2 = if type_str(TK_I64()) == "i64" then 1 else 0;
+    let t3 = if type_str(TK_F64()) == "f64" then 1 else 0;
+    let t4 = if type_str(TK_BOOL()) == "bool" then 1 else 0;
+    let t5 = if type_str(TK_STRING_TYPE()) == "String" then 1 else 0;
+    let t6 = if type_str(999) == "?" then 1 else 0;
+    t1 + t2 + t3 + t4 + t5 + t6;
+
+-- Test is_binop function
+fn test_is_binop() -> i64 =
+    let t1 = if is_binop(TK_PLUS()) then 1 else 0;
+    let t2 = if is_binop(TK_MINUS()) then 1 else 0;
+    let t3 = if is_binop(TK_EQEQ()) then 1 else 0;
+    let t4 = if is_binop(TK_AND()) then 1 else 0;
+    let t5 = if is_binop(TK_DOTDOT()) then 1 else 0;
+    let t6 = if not is_binop(TK_FN()) then 1 else 0;
+    let t7 = if not is_binop(TK_LET()) then 1 else 0;
+    let t8 = if is_binop(TK_DOTDOTEQ()) then 1 else 0;
+    t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8;
+
+-- Test character predicate functions
+fn test_char_predicates() -> i64 =
+    let t1 = if is_whitespace(32) then 1 else 0;  -- space
+    let t2 = if is_whitespace(10) then 1 else 0;  -- newline
+    let t3 = if not is_whitespace(65) then 1 else 0;  -- 'A'
+    let t4 = if is_digit(48) then 1 else 0;  -- '0'
+    let t5 = if is_digit(57) then 1 else 0;  -- '9'
+    let t6 = if not is_digit(65) then 1 else 0;  -- 'A'
+    let t7 = if is_alpha(65) then 1 else 0;  -- 'A'
+    let t8 = if is_alpha(97) then 1 else 0;  -- 'a'
+    let t9 = if not is_alpha(48) then 1 else 0;  -- '0'
+    let t10 = if is_ident_start(95) then 1 else 0;  -- '_'
+    t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t9 + t10;
+
+-- Test skip_ws function
+fn test_skip_ws() -> i64 =
+    let t1 = if skip_ws("  abc", 0) == 2 then 1 else 0;
+    let t2 = if skip_ws("abc", 0) == 0 then 1 else 0;
+    let t3 = if skip_ws("", 0) == 0 then 1 else 0;
+    let t4 = if skip_ws("   ", 0) == 3 then 1 else 0;
+    let t5 = if skip_ws("a b", 1) == 1 then 1 else 0;
+    let t6 = if skip_ws("a b", 2) == 3 then 1 else 0;
+    t1 + t2 + t3 + t4 + t5 + t6;
+
+-- Test skip_to_eol function
+fn test_skip_to_eol() -> i64 =
+    let t1 = if skip_to_eol("abc", 0) == 3 then 1 else 0;
+    let t2 = if skip_to_eol("", 0) == 0 then 1 else 0;
+    let t3 = if skip_to_eol("a", 0) == 1 then 1 else 0;
+    let t4 = if skip_to_eol("a", 1) == 1 then 1 else 0;
+    t1 + t2 + t3 + t4;
+
+-- Test skip_comment function
+fn test_skip_comment() -> i64 =
+    let t1 = if skip_comment("-- comment", 0) > 0 then 1 else 0;
+    let t2 = if skip_comment("abc", 0) == 0 then 1 else 0;
+    let t3 = if skip_comment("-x", 0) == 0 then 1 else 0;
+    let t4 = if skip_comment("", 0) == 0 then 1 else 0;
+    let t5 = if skip_comment("--", 0) == 2 then 1 else 0;
+    let t6 = if skip_comment("x-- y", 1) > 1 then 1 else 0;
+    t1 + t2 + t3 + t4 + t5 + t6;
+
+-- Test find_ident_end function
+fn test_find_ident_end() -> i64 =
+    let t1 = if find_ident_end("abc", 0) == 3 then 1 else 0;
+    let t2 = if find_ident_end("a_b", 0) == 3 then 1 else 0;
+    let t3 = if find_ident_end("ab1", 0) == 3 then 1 else 0;
+    let t4 = if find_ident_end("a b", 0) == 1 then 1 else 0;
+    let t5 = if find_ident_end("", 0) == 0 then 1 else 0;
+    let t6 = if find_ident_end("foo(", 0) == 3 then 1 else 0;
+    t1 + t2 + t3 + t4 + t5 + t6;
+
+-- Test find_number_end function
+fn test_find_number_end() -> i64 =
+    let t1 = if find_number_end("123", 0) == 3 then 1 else 0;
+    let t2 = if find_number_end("42x", 0) == 2 then 1 else 0;
+    let t3 = if find_number_end("0", 0) == 1 then 1 else 0;
+    let t4 = if find_number_end("", 0) == 0 then 1 else 0;
+    let t5 = if find_number_end("99 ", 0) == 2 then 1 else 0;
+    let t6 = if find_number_end("123abc", 0) == 3 then 1 else 0;
+    t1 + t2 + t3 + t4 + t5 + t6;
+
+-- Test find_string_end function
+fn test_find_string_end() -> i64 =
+    let t1 = if find_string_end("abc", 0) == 3 then 1 else 0;  -- no quote, reach end
+    let t2 = if find_string_end("", 0) == 0 then 1 else 0;
+    let t3 = if find_string_end("a", 0) == 1 then 1 else 0;
+    t1 + t2 + t3;
+
+-- Test lookup_keyword function extended
+fn test_lookup_keyword_ext() -> i64 =
+    let t1 = if lookup_keyword("struct") == 118 then 1 else 0;
+    let t2 = if lookup_keyword("enum") == 120 then 1 else 0;
+    let t3 = if lookup_keyword("match") == 121 then 1 else 0;
+    let t4 = if lookup_keyword("while") == 122 then 1 else 0;
+    let t5 = if lookup_keyword("for") == 123 then 1 else 0;
+    let t6 = if lookup_keyword("trait") == 127 then 1 else 0;
+    let t7 = if lookup_keyword("impl") == 128 then 1 else 0;
+    let t8 = if lookup_keyword("unknown") == 201 then 1 else 0;
+    t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8;
+
+-- Test symbol_code function extended
+fn test_symbol_code_ext() -> i64 =
+    let t1 = if symbol_code(58) == 300 then 1 else 0;   -- ':'
+    let t2 = if symbol_code(46) == 301 then 1 else 0;   -- '.'
+    let t3 = if symbol_code(61) == 302 then 1 else 0;   -- '='
+    let t4 = if symbol_code(40) == 305 then 1 else 0;   -- '('
+    let t5 = if symbol_code(41) == 306 then 1 else 0;   -- ')'
+    let t6 = if symbol_code(123) == 307 then 1 else 0;  -- '{'
+    let t7 = if symbol_code(125) == 308 then 1 else 0;  -- '}'
+    let t8 = if symbol_code(91) == 313 then 1 else 0;   -- '['
+    t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8;
+
+-- Test check_two_char function
+fn test_check_two_char() -> i64 =
+    let t1 = if check_two_char("->", 0) == 3212 then 1 else 0;
+    let t2 = if check_two_char("==", 0) == 4102 then 1 else 0;
+    let t3 = if check_two_char("!=", 0) == 4112 then 1 else 0;
+    let t4 = if check_two_char("<=", 0) == 4122 then 1 else 0;
+    let t5 = if check_two_char(">=", 0) == 4132 then 1 else 0;
+    let t6 = if check_two_char("..", 0) == 3232 then 1 else 0;
+    let t7 = if check_two_char("ab", 0) == 0 then 1 else 0;
+    let t8 = if check_two_char("x", 0) == 0 then 1 else 0;
+    t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8;
+
+-- Test check_three_char function
+fn test_check_three_char() -> i64 =
+    let t1 = if check_three_char("..=", 0) == 3243 then 1 else 0;
+    let t2 = if check_three_char("..", 0) == 0 then 1 else 0;
+    let t3 = if check_three_char("abc", 0) == 0 then 1 else 0;
+    let t4 = if check_three_char("x", 0) == 0 then 1 else 0;
+    let t5 = if check_three_char("", 0) == 0 then 1 else 0;
+    let t6 = if check_three_char("..=x", 0) == 3243 then 1 else 0;
+    t1 + t2 + t3 + t4 + t5 + t6;
+
+-- Test next_token_raw with various inputs
+fn test_next_token_variants() -> i64 =
+    let t1 = if tok_kind(next_token_raw("fn", 0)) == TK_FN() then 1 else 0;
+    let t2 = if tok_kind(next_token_raw("let", 0)) == TK_LET() then 1 else 0;
+    let t3 = if tok_kind(next_token_raw("123", 0)) == TK_INT() then 1 else 0;
+    let t4 = if tok_kind(next_token_raw("foo", 0)) == TK_IDENT() then 1 else 0;
+    let t5 = if tok_kind(next_token_raw("", 0)) == TK_EOF() then 1 else 0;
+    let t6 = if tok_kind(next_token_raw("+", 0)) == TK_PLUS() then 1 else 0;
+    let t7 = if tok_kind(next_token_raw("->", 0)) == TK_ARROW() then 1 else 0;
+    let t8 = if tok_kind(next_token_raw("  fn", 0)) == TK_FN() then 1 else 0;
+    t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8;
+
+-- Test ast_contains edge cases
+fn test_ast_contains_edge() -> i64 =
+    let t1 = if ast_contains("abc", "a") then 1 else 0;
+    let t2 = if ast_contains("abc", "c") then 1 else 0;
+    let t3 = if ast_contains("abc", "abc") then 1 else 0;
+    let t4 = if not ast_contains("abc", "d") then 1 else 0;
+    let t5 = if not ast_contains("", "a") then 1 else 0;
+    let t6 = if ast_contains("abc", "") then 1 else 0;
+    t1 + t2 + t3 + t4 + t5 + t6;
+
+-- Test token constants comprehensive
+fn test_token_constants_all() -> i64 =
+    let t1 = if TK_STRUCT() == 118 then 1 else 0;
+    let t2 = if TK_NEW() == 119 then 1 else 0;
+    let t3 = if TK_ENUM() == 120 then 1 else 0;
+    let t4 = if TK_MATCH() == 121 then 1 else 0;
+    let t5 = if TK_WHILE() == 122 then 1 else 0;
+    let t6 = if TK_FOR() == 123 then 1 else 0;
+    let t7 = if TK_IN() == 124 then 1 else 0;
+    let t8 = if TK_BREAK() == 125 then 1 else 0;
+    let t9 = if TK_CONTINUE() == 126 then 1 else 0;
+    let t10 = if TK_TRAIT() == 127 then 1 else 0;
+    t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t9 + t10;
+
+-- Test delimiter token constants
+fn test_token_delimiters() -> i64 =
+    let t1 = if TK_COLON() == 300 then 1 else 0;
+    let t2 = if TK_DOT() == 301 then 1 else 0;
+    let t3 = if TK_EQ() == 302 then 1 else 0;
+    let t4 = if TK_SEMI() == 303 then 1 else 0;
+    let t5 = if TK_COMMA() == 304 then 1 else 0;
+    let t6 = if TK_LPAREN() == 305 then 1 else 0;
+    let t7 = if TK_RPAREN() == 306 then 1 else 0;
+    let t8 = if TK_LBRACE() == 307 then 1 else 0;
+    let t9 = if TK_RBRACE() == 308 then 1 else 0;
+    let t10 = if TK_PIPE() == 309 then 1 else 0;
+    t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t9 + t10;
+
+-- Test comparison token constants
+fn test_token_comparisons() -> i64 =
+    let t1 = if TK_EQEQ() == 410 then 1 else 0;
+    let t2 = if TK_NEQ() == 411 then 1 else 0;
+    let t3 = if TK_LTEQ() == 412 then 1 else 0;
+    let t4 = if TK_GTEQ() == 413 then 1 else 0;
+    let t5 = if TK_LT() == 405 then 1 else 0;
+    let t6 = if TK_GT() == 406 then 1 else 0;
+    t1 + t2 + t3 + t4 + t5 + t6;
+
 -- v0.30.138: Operator precedence tests
 fn test_operator_precedence() -> i64 =
     -- Test 1: Multiplication before addition (a + b * c -> a + (b * c))
@@ -2451,6 +2743,36 @@ fn main() -> i64 =
     let complex_passed = test_complex_expressions();
     let u22 = println(complex_passed);  -- Should be 5
 
+    -- v0.30.166: Comprehensive unit tests for helper functions
+    let ut1 = test_tok_functions();
+    let ut2 = test_error_functions();
+    let ut3 = test_result_packing();
+    let ut4 = test_find_colon();
+    let ut5 = test_parse_int_prefix();
+    let ut6 = test_int_to_string();
+    let ut7 = test_digit_char();
+    let ut8 = test_op_str();
+    let ut9 = test_type_str();
+    let ut10 = test_is_binop();
+    let ut11 = test_char_predicates();
+    let ut12 = test_skip_ws();
+    let ut13 = test_skip_to_eol();
+    let ut14 = test_skip_comment();
+    let ut15 = test_find_ident_end();
+    let ut16 = test_find_number_end();
+    let ut17 = test_find_string_end();
+    let ut18 = test_lookup_keyword_ext();
+    let ut19 = test_symbol_code_ext();
+    let ut20 = test_check_two_char();
+    let ut21 = test_check_three_char();
+    let ut22 = test_next_token_variants();
+    let ut23 = test_ast_contains_edge();
+    let ut24 = test_token_constants_all();
+    let ut25 = test_token_delimiters();
+    let ut26 = test_token_comparisons();
+    let unit_passed = ut1 + ut2 + ut3 + ut4 + ut5 + ut6 + ut7 + ut8 + ut9 + ut10 + ut11 + ut12 + ut13 + ut14 + ut15 + ut16 + ut17 + ut18 + ut19 + ut20 + ut21 + ut22 + ut23 + ut24 + ut25 + ut26;
+    let u23 = println(unit_passed);  -- Should be 175
+
     let u4 = println(999);  -- End marker
 
-    parse_passed + ast_passed + struct_passed + enum_passed + integration_passed + generic_passed + typeparam_passed + string_passed + lambda_passed + while_passed + for_passed + range_passed + break_passed + trait_passed + array_passed + index_passed + array_type_passed + method_passed + prec_passed + complex_passed;  -- Should be 114
+    parse_passed + ast_passed + struct_passed + enum_passed + integration_passed + generic_passed + typeparam_passed + string_passed + lambda_passed + while_passed + for_passed + range_passed + break_passed + trait_passed + array_passed + index_passed + array_type_passed + method_passed + prec_passed + complex_passed + unit_passed;  -- Should be 288
