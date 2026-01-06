@@ -337,6 +337,16 @@ v0.MAJOR.MINOR
 - Multi-operand expressions, mixed operations, combined expressions
 - pipeline.bmb total: 42 tests (10 test groups)
 
+**v0.30.216 Completed (2026-01-06)**:
+- Phase 30.1.213-216: Recursive nested generic substitution implementation
+- **FIXED P0 GAP**: Nested generic substitution now works recursively
+- Modified subst_apply() to detect generic type packs (contains ':') and recursively process
+- Verified substitutions: Option<List<T>>→Option<List<i64>>, Map<K,List<V>>→Map<String,List<i64>>
+- Deep nesting verified: Option<Result<List<T>,E>>→Option<Result<List<i64>,String>>
+- Updated test_nested_generic_subst to verify correct recursive behavior
+- BOOTSTRAP_FEATURE_GAP.md: nested substitution status changed ⚠️→✅
+- Remaining generics gaps: tuple return types, monomorphization tracking
+
 **v0.30.212 Completed (2026-01-06)**:
 - Phase 30.1.209-212: Generics implementation analysis and advanced generic tests
 - types.bmb: 782 → 806 tests (+24) - nested generic types, nested substitution, bounded type params, generic fn bounds

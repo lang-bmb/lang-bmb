@@ -271,12 +271,20 @@ fn subst_has(subst: String, param: String) -> bool =
 
 -- Apply substitution to a simple type name
 -- Returns substituted type if param is in subst, otherwise returns original
+-- v0.30.213: Enhanced to recursively handle nested generic types
+-- If type_name is a generic type pack (contains ':'), recursively substitute
 fn subst_apply(subst: String, type_name: String) -> String =
+    -- First check direct lookup
     let result = subst_lookup(subst, type_name);
     if result.len() > 0 then result
-    else type_name;
+    else
+        -- Check if it's a generic type pack (contains ':')
+        let colon_pos = gen_find_colon(type_name, 0);
+        if colon_pos < 0 then type_name  -- Not a generic, return as-is
+        else subst_apply_gen(subst, type_name);  -- Recursively process generic
 
 -- Apply substitution to a generic type info (e.g., "Vec:T" -> "Vec:i64")
+-- v0.30.213: Now works recursively with nested generics like "Option:List:T"
 fn subst_apply_gen(subst: String, gen_info: String) -> String =
     let base = gen_type_base(gen_info);
     let args = gen_type_args(gen_info);
@@ -7952,10 +7960,8 @@ fn test_nested_generic_types() -> i64 =
 
     t1 + t2 + t3 + t4 + t5 + t6;
 
--- v0.30.210: Nested generic substitution tests
--- NOTE: Nested generic substitution (e.g., Option<List<T>> → Option<List<i64>>)
--- is a known limitation (BOOTSTRAP_FEATURE_GAP.md P0.2). Current impl only substitutes
--- top-level args, not recursively into nested generic type packs.
+-- v0.30.213: Nested generic substitution tests
+-- Recursive substitution now works (fixed in v0.30.213)
 fn test_nested_generic_subst() -> i64 =
     -- Test 1: Substitute T in Option<List<T>> - base preserved
     let nested = gen_type_pack("Option", gen_type_pack("List", "T"));
@@ -7963,10 +7969,10 @@ fn test_nested_generic_subst() -> i64 =
     let result = subst_apply_gen(subst, nested);
     let t1 = if gen_type_base(result) == "Option" then 1 else 0;
 
-    -- Test 2: Nested args NOT recursively substituted (current limitation)
-    -- Expected: "List:T" (not "List:i64" - would need recursive subst_apply_gen)
+    -- Test 2: Nested args NOW recursively substituted (fixed in v0.30.213)
+    -- List:T → List:i64 via recursive subst_apply
     let result_args = gen_type_args(result);
-    let t2 = if result_args == "List:T" then 1 else 0;
+    let t2 = if result_args == "List:i64" then 1 else 0;
 
     -- Test 3: Multi-param substitution Map<K, V>
     let map_type = gen_type_pack("Map", "K,V");
@@ -7975,18 +7981,23 @@ fn test_nested_generic_subst() -> i64 =
     let map_args = gen_type_args(map_result);
     let t3 = if map_args == "String,i64" then 1 else 0;
 
-    -- Test 4: Nested with mixed params - base preserved
+    -- Test 4: Nested with mixed params - verify full recursive substitution
+    -- Map<K, List<V>> with K=String, V=i64 → Map<String, List<i64>>
     let mixed = gen_type_pack("Map", "K," + gen_type_pack("List", "V"));
     let mixed_result = subst_apply_gen(subst2, mixed);
-    let t4 = if gen_type_base(mixed_result) == "Map" then 1 else 0;
+    let mixed_args = gen_type_args(mixed_result);
+    let t4 = if mixed_args == "String,List:i64" then 1 else 0;
 
     -- Test 5: No substitution when param not in subst
     let partial_result = subst_apply_gen(subst_new("T", "i64"), gen_type_pack("Option", "U"));
     let t5 = if gen_type_args(partial_result) == "U" then 1 else 0;
 
-    -- Test 6: Identity substitution (param not in subst)
-    let identity = subst_apply_gen(subst_new("X", "Y"), gen_type_pack("Option", "Z"));
-    let t6 = if gen_type_args(identity) == "Z" then 1 else 0;
+    -- Test 6: Deep nesting - Option<Result<List<T>, E>> with T=i64, E=String
+    let deep = gen_type_pack("Option", gen_type_pack("Result", gen_type_pack("List", "T") + ",E"));
+    let subst3 = subst_add(subst_new("T", "i64"), "E", "String");
+    let deep_result = subst_apply_gen(subst3, deep);
+    let deep_args = gen_type_args(deep_result);
+    let t6 = if deep_args == "Result:List:i64,String" then 1 else 0;
 
     t1 + t2 + t3 + t4 + t5 + t6;
 

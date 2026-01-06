@@ -1,6 +1,6 @@
 # Bootstrap Feature Gap Analysis
 
-> Version: v0.30.212
+> Version: v0.30.216
 > Date: 2025-01-06
 > Purpose: Document gaps between Rust compiler and BMB bootstrap implementation
 
@@ -94,12 +94,11 @@ fn substitute_type(...) -> Type
 - Generic struct/enum/fn instantiation ✅
 - Trait bounds checking ✅ (type_satisfies_bounds)
 - Nested generic types ✅ (packing/unpacking)
-- Nested generic substitution ⚠️ (top-level only)
+- Nested generic substitution ✅ (recursive, v0.30.213)
 
-**Remaining Gaps** (v0.30.211):
-1. Nested substitution: `Option<List<T>> → Option<List<i64>>` requires recursive `subst_apply_gen`
-2. Complex return types: Tuples `(A,B)` not substituted in function instantiation
-3. Monomorphization tracking for code generation
+**Remaining Gaps** (v0.30.216):
+1. Complex return types: Tuples `(A,B)` not substituted in function instantiation
+2. Monomorphization tracking for code generation
 
 ### P1 (Important for Complete Toolchain)
 
