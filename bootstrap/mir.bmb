@@ -1,4 +1,4 @@
--- BMB Middle IR (MIR) written in BMB (v0.30.161: Comprehensive unit test suite)
+-- BMB Middle IR (MIR) written in BMB (v0.30.176: Extended test suite)
 -- A simple MIR representation for the BMB language
 -- Uses functional/recursive style following types.bmb patterns
 --
@@ -922,8 +922,100 @@ fn test_function_headers() -> i64 =
 
     t1 + t2 + t3 + t4 + t5;
 
+-- v0.30.176: Test is_terminator function
+fn test_is_terminator() -> i64 =
+    let t1 = if is_terminator(mir_term_kind(mir_return())) then 1 else 0;
+    let t2 = if is_terminator(mir_term_kind(mir_goto())) then 1 else 0;
+    let t3 = if is_terminator(mir_term_kind(mir_branch())) then 1 else 0;
+    let t4 = if not is_terminator(mir_inst_kind(mir_const())) then 1 else 0;
+    let t5 = if not is_terminator(mir_inst_kind(mir_copy())) then 1 else 0;
+    let t6 = if not is_terminator(mir_inst_kind(mir_binop())) then 1 else 0;
+    t1 + t2 + t3 + t4 + t5 + t6;
+
+-- v0.30.176: Test constant constructors
+fn test_const_constructors() -> i64 =
+    let t1 = if const_int(42) == "I:42" then 1 else 0;
+    let t2 = if const_int(0) == "I:0" then 1 else 0;
+    let t3 = if const_int(100) == "I:100" then 1 else 0;
+    let t4 = if const_bool(true) == "B:1" then 1 else 0;
+    let t5 = if const_bool(false) == "B:0" then 1 else 0;
+    let t6 = if const_string("hello") == "S:hello" then 1 else 0;
+    let t7 = if const_unit() == "U" then 1 else 0;
+    let t8 = if const_int(999) == "I:999" then 1 else 0;
+    t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8;
+
+-- v0.30.176: Test constant type checks
+fn test_const_type_checks() -> i64 =
+    let t1 = if is_const_int("I:42") then 1 else 0;
+    let t2 = if is_const_int("I:0") then 1 else 0;
+    let t3 = if not is_const_int("B:1") then 1 else 0;
+    let t4 = if is_const_bool("B:1") then 1 else 0;
+    let t5 = if is_const_bool("B:0") then 1 else 0;
+    let t6 = if not is_const_bool("I:1") then 1 else 0;
+    let t7 = if is_const_string("S:test") then 1 else 0;
+    let t8 = if not is_const_string("I:42") then 1 else 0;
+    let t9 = if is_const_unit("U") then 1 else 0;
+    let t10 = if not is_const_unit("I:0") then 1 else 0;
+    t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t9 + t10;
+
+-- v0.30.176: Test place constructors
+fn test_place_constructors() -> i64 =
+    let t1 = if place_var("x") == "%x" then 1 else 0;
+    let t2 = if place_var("result") == "%result" then 1 else 0;
+    let t3 = if place_temp(0) == "%_t0" then 1 else 0;
+    let t4 = if place_temp(1) == "%_t1" then 1 else 0;
+    let t5 = if place_temp(10) == "%_t10" then 1 else 0;
+    let t6 = if is_temp("%_t0") then 1 else 0;
+    let t7 = if is_temp("%_t99") then 1 else 0;
+    let t8 = if not is_temp("%x") then 1 else 0;
+    t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8;
+
+-- v0.30.176: Test MIR instruction kinds
+fn test_mir_inst_kinds() -> i64 =
+    let t1 = if mir_inst_kind(mir_const()) == 1 then 1 else 0;
+    let t2 = if mir_inst_kind(mir_copy()) == 2 then 1 else 0;
+    let t3 = if mir_inst_kind(mir_binop()) == 3 then 1 else 0;
+    let t4 = if mir_inst_kind(mir_unary()) == 4 then 1 else 0;
+    let t5 = if mir_inst_kind(mir_call()) == 5 then 1 else 0;
+    let t6 = if mir_term_kind(mir_return()) == 10 then 1 else 0;
+    let t7 = if mir_term_kind(mir_goto()) == 11 then 1 else 0;
+    let t8 = if mir_term_kind(mir_branch()) == 12 then 1 else 0;
+    t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8;
+
+-- v0.30.176: Test MIR text generation
+fn test_mir_text_gen() -> i64 =
+    let t1 = if mir_text_const("%x", "I:42") == "  %x = const I:42" then 1 else 0;
+    let t2 = if mir_text_copy("%y", "%x") == "  %y = copy %x" then 1 else 0;
+    let t3 = if mir_text_binop("%z", binop_add(), "%a", "%b") == "  %z = + %a, %b" then 1 else 0;
+    let t4 = if mir_text_binop("%r", binop_sub(), "%x", "%y") == "  %r = - %x, %y" then 1 else 0;
+    let t5 = if mir_text_binop("%m", binop_mul(), "%a", "%b") == "  %m = * %a, %b" then 1 else 0;
+    let t6 = if mir_text_binop("%d", binop_div(), "%n", "%d") == "  %d = / %n, %d" then 1 else 0;
+    t1 + t2 + t3 + t4 + t5 + t6;
+
+-- v0.30.176: Test unary operations
+fn test_unop_operations() -> i64 =
+    let t1 = if unop_symbol(unop_neg()) == "-" then 1 else 0;
+    let t2 = if unop_symbol(unop_not()) == "not" then 1 else 0;
+    let t3 = if unop_neg() == 1 then 1 else 0;
+    let t4 = if unop_not() == 2 then 1 else 0;
+    let t5 = if unop_symbol(1) == "-" then 1 else 0;
+    let t6 = if unop_symbol(2) == "not" then 1 else 0;
+    t1 + t2 + t3 + t4 + t5 + t6;
+
+-- v0.30.176: Test MIR type system
+fn test_mir_types() -> i64 =
+    let t1 = if mir_type_bool() == 4 then 1 else 0;
+    let t2 = if mir_type_string() == 5 then 1 else 0;
+    let t3 = if mir_type_unit() == 6 then 1 else 0;
+    let t4 = if mir_type_name(2) == "i64" then 1 else 0;
+    let t5 = if mir_type_name(4) == "bool" then 1 else 0;
+    let t6 = if mir_type_name(5) == "String" then 1 else 0;
+    let t7 = if mir_type_name(6) == "()" then 1 else 0;
+    let t8 = if mir_type_name(999) == "?" then 1 else 0;
+    t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8;
+
 -- ============================================================================
--- Main Test Runner
+-- Main Test Runner (v0.30.176)
 -- ============================================================================
 
 fn main() -> i64 =
@@ -983,8 +1075,29 @@ fn main() -> i64 =
     let v25 = println(ut25);  -- Should be 4
     let ut26 = test_example_function_structure();
     let v26 = println(ut26);  -- Should be 3
-    let unit_total = ut1 + ut2 + ut3 + ut4 + ut5 + ut6 + ut7 + ut8 + ut9 + ut10 + ut11 + ut12 + ut13 + ut14 + ut15 + ut16 + ut17 + ut18 + ut19 + ut20 + ut21 + ut22 + ut23 + ut24 + ut25 + ut26;
-    let v27 = println(unit_total);  -- Should be 211
+
+    -- v0.30.176: Extended unit tests (60 new assertions)
+    let ut27 = test_is_terminator();
+    let v27x = println(ut27); -- Should be 6
+    let ut28 = test_const_constructors();
+    let v28 = println(ut28);  -- Should be 8
+    let ut29 = test_const_type_checks();
+    let v29 = println(ut29);  -- Should be 10
+    let ut30 = test_place_constructors();
+    let v30 = println(ut30);  -- Should be 8
+    let ut31 = test_mir_inst_kinds();
+    let v31 = println(ut31);  -- Should be 8
+    let ut32 = test_mir_text_gen();
+    let v32 = println(ut32);  -- Should be 6
+    let ut33 = test_unop_operations();
+    let v33 = println(ut33);  -- Should be 6
+    let ut34 = test_mir_types();
+    let v34 = println(ut34);  -- Should be 8
+
+    let unit_base = ut1 + ut2 + ut3 + ut4 + ut5 + ut6 + ut7 + ut8 + ut9 + ut10 + ut11 + ut12 + ut13 + ut14 + ut15 + ut16 + ut17 + ut18 + ut19 + ut20 + ut21 + ut22 + ut23 + ut24 + ut25 + ut26;
+    let unit_ext = ut27 + ut28 + ut29 + ut30 + ut31 + ut32 + ut33 + ut34;
+    let unit_total = unit_base + unit_ext;
+    let v27 = println(unit_total);  -- Should be 271 (211 base + 60 extended)
 
     let u1 = println(555);  -- Integration tests marker
 
@@ -1034,7 +1147,7 @@ fn main() -> i64 =
     let total = unit_total + integration;
 
     let u15 = println(888);
-    let u16 = println(total);  -- Should be 274 (211 unit + 63 integration)
+    let u16 = println(total);  -- Should be 334 (271 unit + 63 integration)
     let u17 = println(999);
 
     total;

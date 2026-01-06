@@ -1,6 +1,6 @@
 -- ============================================================================
 -- BMB Bootstrap Self-Hosting Stage 1 Test
--- Version: v0.30.169 (Extended test suite)
+-- Version: v0.30.178 (Extended test suite)
 --
 -- This file tests the Bootstrap compiler's ability to compile BMB source
 -- code and generate valid LLVM IR. This is the first stage of self-hosting
@@ -860,6 +860,65 @@ fn test_int_to_string_ext() -> i64 =
     let t6 = if int_to_string(12345) == "12345" then 1 else 0;
     t1 + t2 + t3 + t4 + t5 + t6;
 
+-- v0.30.178: Additional unit tests for edge cases (36 new tests)
+
+-- Test make_error and is_error (6 tests)
+fn test_error_funcs() -> i64 =
+    (if make_error("test") == "ERR:test" then 1 else 0) +
+    (if make_error("") == "ERR:" then 1 else 0) +
+    (if is_error("ERR:something") then 1 else 0) +
+    (if is_error("ERR:") then 1 else 0) +
+    (if not is_error("OK") then 1 else 0) +
+    (if not is_error("ER") then 1 else 0);
+
+-- Test tok_end function (6 tests)
+fn test_tok_end_ext() -> i64 =
+    (if tok_end(1000005) == 5 then 1 else 0) +
+    (if tok_end(2000010) == 10 then 1 else 0) +
+    (if tok_end(100000000) == 0 then 1 else 0) +
+    (if tok_end(200000050) == 50 then 1 else 0) +
+    (if tok_end(0) == 0 then 1 else 0) +
+    (if tok_end(1000000) == 0 then 1 else 0);
+
+-- Test pack_result and unpack functions (6 tests)
+fn test_pack_unpack() -> i64 =
+    let r1 = pack_result(10, "test");
+    let r2 = pack_result(0, "ast");
+    let r3 = pack_result(100, "(int 42)");
+    (if unpack_pos(r1) == 10 then 1 else 0) +
+    (if unpack_ast(r1) == "test" then 1 else 0) +
+    (if unpack_pos(r2) == 0 then 1 else 0) +
+    (if unpack_ast(r2) == "ast" then 1 else 0) +
+    (if unpack_pos(r3) == 100 then 1 else 0) +
+    (if unpack_ast(r3) == "(int 42)" then 1 else 0);
+
+-- Test scan_ident edge cases (6 tests)
+fn test_scan_ident_ext() -> i64 =
+    (if scan_ident("abc", 0) == 3 then 1 else 0) +
+    (if scan_ident("x", 0) == 1 then 1 else 0) +
+    (if scan_ident("ab12", 0) == 4 then 1 else 0) +
+    (if scan_ident("x y", 0) == 1 then 1 else 0) +
+    (if scan_ident("_var", 0) == 4 then 1 else 0) +
+    (if scan_ident("", 0) == 0 then 1 else 0);
+
+-- Test scan_int edge cases (6 tests)
+fn test_scan_int_ext() -> i64 =
+    (if scan_int("123", 0) == 3 then 1 else 0) +
+    (if scan_int("5", 0) == 1 then 1 else 0) +
+    (if scan_int("42abc", 0) == 2 then 1 else 0) +
+    (if scan_int("0", 0) == 1 then 1 else 0) +
+    (if scan_int("99999", 0) == 5 then 1 else 0) +
+    (if scan_int("", 0) == 0 then 1 else 0);
+
+-- Test next_token_raw basic operators (6 tests)
+fn test_next_token_ops() -> i64 =
+    (if tok_kind(next_token_raw("+", 0)) == TK_PLUS() then 1 else 0) +
+    (if tok_kind(next_token_raw("-", 0)) == TK_MINUS() then 1 else 0) +
+    (if tok_kind(next_token_raw("*", 0)) == TK_STAR() then 1 else 0) +
+    (if tok_kind(next_token_raw("/", 0)) == TK_SLASH() then 1 else 0) +
+    (if tok_kind(next_token_raw("%", 0)) == TK_PERCENT() then 1 else 0) +
+    (if tok_kind(next_token_raw("->", 0)) == TK_ARROW() then 1 else 0);
+
 -- ============================================================================
 -- SECTION 6: Integration Tests - Stage 1 Self-Hosting Verification
 -- ============================================================================
@@ -1011,13 +1070,28 @@ fn main() -> i64 =
     let ut42 = test_int_to_string_ext();
     let v42 = println(ut42);  -- Should be 6
 
+    -- v0.30.178: Additional unit tests (36 new assertions)
+    let ut43 = test_error_funcs();
+    let v43 = println(ut43);  -- Should be 6
+    let ut44 = test_tok_end_ext();
+    let v44 = println(ut44);  -- Should be 6
+    let ut45 = test_pack_unpack();
+    let v45 = println(ut45);  -- Should be 6
+    let ut46 = test_scan_ident_ext();
+    let v46 = println(ut46);  -- Should be 6
+    let ut47 = test_scan_int_ext();
+    let v47 = println(ut47);  -- Should be 6
+    let ut48 = test_next_token_ops();
+    let v48 = println(ut48);  -- Should be 6
+
     let unit_base = ut1 + ut2 + ut3 + ut4 + ut5 + ut6 + ut7 + ut8 + ut9 +
                     ut10 + ut11 + ut12 + ut13 + ut14 + ut15 + ut16 + ut17 + ut18 + ut19 +
                     ut20 + ut21 + ut22 + ut23 + ut24 + ut25 + ut26 + ut27 + ut28 + ut29 +
                     ut30 + ut31 + ut32;
     let unit_ext = ut33 + ut34 + ut35 + ut36 + ut37 + ut38 + ut39 + ut40 + ut41 + ut42;
-    let unit_total = unit_base + unit_ext;
-    let v33 = println(unit_total);  -- Should be 200 (144 base + 56 extended)
+    let unit_new = ut43 + ut44 + ut45 + ut46 + ut47 + ut48;
+    let unit_total = unit_base + unit_ext + unit_new;
+    let v33 = println(unit_total);  -- Should be 236 (144 base + 56 ext + 36 new)
 
     let u1 = println(555);  -- Integration tests marker
 
@@ -1052,7 +1126,7 @@ fn main() -> i64 =
     let w9 = println(integration);  -- Should be 8
 
     let total = unit_total + integration;
-    let w10 = println(total);  -- Should be 208 (200 unit + 8 integration)
+    let w10 = println(total);  -- Should be 244 (236 unit + 8 integration)
 
     let u3 = println(999);  -- Final marker
     total;
