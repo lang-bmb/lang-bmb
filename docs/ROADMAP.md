@@ -337,6 +337,17 @@ v0.MAJOR.MINOR
 - Multi-operand expressions, mixed operations, combined expressions
 - pipeline.bmb total: 42 tests (10 test groups)
 
+**v0.30.236 Completed (2026-01-07)**:
+- Phase 30.1.236-240: Stage 3 readiness analysis and blocker identification
+- **STAGE 3 BLOCKERS IDENTIFIED**:
+  - Stack overflow: Bootstrap .bmb files overflow interpreter stack
+  - No File I/O: Bootstrap can't read source files or write output
+  - No Process Exec: Can't invoke LLVM toolchain (llvm-as, llc, linker)
+  - No Verification Harness: Need tool to compare stage outputs
+- E2E test results: Rust compiler build works (173KB exe), bootstrap execution fails
+- Updated BOOTSTRAP_FEATURE_GAP.md: Stage 3 Blockers section, updated recommendations
+- **Recommended path**: Create Rust harness to wrap bootstrap execution
+
 **v0.30.232 Completed (2026-01-07)**:
 - Phase 30.1.232-235: lowering.bmb test coverage analysis
 - **CORRECTED**: lowering.bmb has 4 helper functions + 79 test groups (244 assertions), NOT "4 tests"
