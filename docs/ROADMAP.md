@@ -198,9 +198,9 @@ v0.MAJOR.MINOR
 | 30.1.5 | Type parameter declaration parsing | P0 | ✅ Complete |
 | 30.1.6 | Type parameter scope tracking | P0 | ✅ Complete |
 | 30.1.7 | Type name resolution | P0 | ✅ Complete |
-| 30.1.1 | Add generics to bootstrap type checker | P0 | Pending |
-| 30.1.2 | Add trait support to bootstrap | P0 | Pending |
-| 30.1.3 | Add closure codegen to bootstrap | P1 | Pending |
+| 30.1.1 | Add generics to bootstrap type checker | P0 | ✅ Complete (v0.30.217) |
+| 30.1.2 | Add trait support to bootstrap | P0 | ✅ Complete (v0.30.211) |
+| 30.1.3 | Add closure codegen to bootstrap | P0 | ✅ Complete (v0.30.108) |
 | 30.1.4 | Implement bootstrap interpreter | P1 | Pending |
 
 **v0.30.1 Completed (2026-01-04)**:
@@ -336,6 +336,23 @@ v0.MAJOR.MINOR
 - Pipeline integration verification: 3 new test groups in pipeline.bmb (12 tests)
 - Multi-operand expressions, mixed operations, combined expressions
 - pipeline.bmb total: 42 tests (10 test groups)
+
+**v0.30.221 Completed (2026-01-07)**:
+- Phase 30.1.221-223: Bootstrap documentation actualization
+- **P0 ALL COMPLETE**: Trait support (v0.30.211), Generics (v0.30.217), Closures (v0.30.108)
+- Updated BOOTSTRAP_FEATURE_GAP.md to reflect actual implementation status
+- Test count: 914 tests across 14 files (verified counts)
+- Updated recommendations: P1 interpreter as next priority
+- Stage 2 self-hosting: Pipeline complete, verification in progress
+
+**v0.30.217 Completed (2026-01-07)**:
+- Phase 30.1.217-220: Tuple type substitution in bootstrap type checker
+- **FIXED P0 GAP**: Tuple types `(A,B)` now correctly substitute to `(i64,String)`
+- Added is_tuple_type(), subst_find_tuple_elem_end(), subst_apply_tuple(), subst_apply_tuple_elems()
+- Modified subst_apply() priority: direct lookup → tuple types → generic types
+- tests: test_subst_tuple (10 assertions), test_subst_tuple_fn (5 assertions)
+- types.bmb: 173 tests, 821 assertions (tuple substitution complete)
+- Generics system now handles: primitives, type params, generic types, tuple types
 
 **v0.30.216 Completed (2026-01-06)**:
 - Phase 30.1.213-216: Recursive nested generic substitution implementation
