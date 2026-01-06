@@ -164,15 +164,15 @@ v0.MAJOR.MINOR
 | v0.28 | Benchmark | C/Rust/BMB benchmark suite | Compute-intensive benchmarks, Contract-optimized benchmarks, Real-world workloads |
 | v0.29 | Velocity | C/Rust performance sprint | MIR optimization framework (6 passes), Contract-based optimization, Bootstrap optimization module |
 
-### Bootstrap Statistics (as of v0.30.132)
+### Bootstrap Statistics (as of v0.30.135)
 
 | Metric | Value |
 |--------|-------|
 | Rust Codebase | ~21,783 LOC |
-| BMB Bootstrap | ~14,900 LOC |
-| Coverage | 68% |
+| BMB Bootstrap | ~15,000 LOC |
+| Coverage | 69% |
 | Stage 1/2 Tests | 19 tests passing |
-| Bootstrap Tests | 1,415 tests (733 types + 361 llvm_ir + 244 lowering + 64 pipeline + 53 mir + 15 optimize + 104 parser_ast + ...) |
+| Bootstrap Tests | 1,437 tests (746 types + 361 llvm_ir + 244 lowering + 64 pipeline + 62 mir + 15 optimize + 104 parser_ast + ...) |
 | Build Mode | Use `--release` for bootstrap tests (debug build stack overflow on large files) |
 | Stack-Limited Files | lowering.bmb (structural depth issue) |
 
@@ -336,6 +336,24 @@ v0.MAJOR.MINOR
 - Pipeline integration verification: 3 new test groups in pipeline.bmb (12 tests)
 - Multi-operand expressions, mixed operations, combined expressions
 - pipeline.bmb total: 42 tests (10 test groups)
+
+**v0.30.135 Completed (2026-01-06)**:
+- MIR generation tests in mir.bmb (+9 tests)
+- test_unop_and_blocks: unary operators, block labels, void calls
+- test_function_headers: function start/end, parameter types
+- mir.bmb: 62 tests (13 test functions)
+- Total bootstrap tests: 1,437
+
+**v0.30.134 Completed (2026-01-06)**:
+- Type checking tests in types.bmb (+13 tests)
+- test_generic_inference_edge: generic type inference (infer_single, infer_merge, infer_all_bound)
+- test_call_arity_edge: function call arity validation
+- types.bmb: 746 tests (161 test functions)
+
+**v0.30.133 Completed (2026-01-06)**:
+- Investigated lowering.bmb stack overflow issue
+- Root cause: 79 test groups with recursive lower_expr in single main()
+- Decision: Skip refactoring (high cost), proceed with other bootstrap files
 
 **v0.30.132 Completed (2026-01-06)**:
 - Advanced IR pattern tests in llvm_ir.bmb (6 tests)
@@ -1570,15 +1588,15 @@ $ bmb doc --check
 
 For detailed analysis of the remaining work, see [GAP_ANALYSIS.md](./GAP_ANALYSIS.md).
 
-**Key Metrics (as of v0.30.132)**:
+**Key Metrics (as of v0.30.135)**:
 - Rust code to remove: ~21,783 LOC
-- BMB bootstrap code: ~14,900 LOC (68% coverage)
-- Gap to close: ~8,000 LOC additional BMB
-- Bootstrap tests: 1,415 tests passing
+- BMB bootstrap code: ~15,000 LOC (69% coverage)
+- Gap to close: ~7,900 LOC additional BMB
+- Bootstrap tests: 1,437 tests passing
 - Build mode: Use `--release` for bootstrap tests
 - Note: lowering.bmb at stack limit (244 tests max)
 
 ---
 
 **Last Updated**: 2026-01-06
-**Version**: v0.30.132 → v1.0.0-rc Planning Document
+**Version**: v0.30.135 → v1.0.0-rc Planning Document

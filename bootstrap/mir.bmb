@@ -531,6 +531,54 @@ fn test_encoding_edge_cases() -> i64 =
 
     p1 + cmp_eq + cmp_lt + p3 + p4 + p5 + p6;
 
+-- v0.30.135: Additional MIR generation tests
+fn test_unop_and_blocks() -> i64 =
+    -- Test 1: unop_neg symbol
+    let neg_sym = unop_symbol(1);
+    let t1 = if neg_sym == "-" then 1 else 0;
+
+    -- Test 2: unop_not symbol
+    let not_sym = unop_symbol(2);
+    let t2 = if not_sym == "!" then 1 else 0;
+
+    -- Test 3: block start text
+    let block = mir_text_block_start("entry");
+    let t3 = if block == "entry:" then 1 else 0;
+
+    -- Test 4: mir_text_unary generates indented instruction
+    let unary_inst = mir_text_unary("%_t0", 1, "%x");
+    let t4 = if unary_inst == "  %_t0 = - %x" then 1 else 0;
+
+    -- Test 5: mir_text_call_void generates indented call
+    let call_void = mir_text_call_void("print", "%arg1");
+    let t5 = if call_void == "  call print(%arg1)" then 1 else 0;
+
+    t1 + t2 + t3 + t4 + t5;
+
+-- v0.30.135: Function header generation tests
+fn test_function_headers() -> i64 =
+    -- Test 1: function start with i64 return
+    let fn_start = mir_text_fn_start("add", "%a, %b", 2);
+    let t1 = if fn_start == "fn add(%a, %b) -> i64 {" then 1 else 0;
+
+    -- Test 2: function end
+    let fn_end = mir_text_fn_end();
+    let t2 = if fn_end == "}" then 1 else 0;
+
+    -- Test 3: parameter with i64 type
+    let param_i64 = mir_text_param("x", 2);
+    let t3 = if param_i64 == "x: i64" then 1 else 0;
+
+    -- Test 4: parameter with bool type
+    let param_bool = mir_text_param("flag", 4);
+    let t4 = if param_bool == "flag: bool" then 1 else 0;
+
+    -- Test 5: parameter with String type
+    let param_str = mir_text_param("msg", 5);
+    let t5 = if param_str == "msg: String" then 1 else 0;
+
+    t1 + t2 + t3 + t4 + t5;
+
 -- ============================================================================
 -- Main Test Runner
 -- ============================================================================
@@ -571,10 +619,17 @@ fn main() -> i64 =
     let t11 = test_encoding_edge_cases();
     let u11 = println(t11);
 
-    let total = t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t9 + t10 + t11;
+    -- v0.30.135: Additional tests
+    let t12 = test_unop_and_blocks();
+    let u12 = println(t12);
 
-    let u12 = println(888);
-    let u13 = println(total);
-    let u14 = println(999);
+    let t13 = test_function_headers();
+    let u13 = println(t13);
+
+    let total = t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t9 + t10 + t11 + t12 + t13;
+
+    let u14 = println(888);
+    let u15 = println(total);
+    let u16 = println(999);
 
     total;

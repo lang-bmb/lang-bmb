@@ -1,8 +1,8 @@
 # BMB Self-Hosting Gap Analysis
 
-**Version**: v0.30.132
+**Version**: v0.30.135
 **Date**: 2026-01-06
-**Status**: Ready for Self-Hosting Completion (Pipeline/LLVM IR tests enhanced, --release required)
+**Status**: Ready for Self-Hosting Completion (Bootstrap tests: types, mir enhanced; --release required)
 
 ## Executive Summary
 
@@ -69,9 +69,9 @@ This document provides a comprehensive analysis of the requirements for BMB v0.3
 | parser_ast.bmb | 98KB | 2,390 | Complete | 104 tests (Struct/Enum/Trait/Impl/Array/Index/MethodCall) |
 | pipeline.bmb | 37KB | 865 | Complete | 64 tests (16 test groups, v0.30.131) |
 | parser_test.bmb | 25KB | 641 | Complete | 15 categories |
-| types.bmb | 310KB | 8,210 | Complete | 733 tests (159 test functions) |
+| types.bmb | 310KB | 8,280 | Complete | 746 tests (161 test functions, v0.30.134) |
 | parser.bmb | 22KB | 605 | Complete | Syntax validation |
-| mir.bmb | 20KB | 552 | Complete | 53 tests (v0.30.129: encoding edge cases) |
+| mir.bmb | 22KB | 635 | Complete | 62 tests (13 test functions, v0.30.135) |
 | selfhost_test.bmb | 23KB | 536 | Complete | 8 tests |
 | utils.bmb | 21KB | 521 | Complete | 33 tests |
 | optimize.bmb | 19KB | 492 | Complete | 15 tests (v0.30.130: optimization edge cases) |
