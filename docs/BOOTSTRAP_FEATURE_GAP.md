@@ -1,6 +1,6 @@
 # Bootstrap Feature Gap Analysis
 
-> Version: v0.30.236
+> Version: v0.30.241
 > Date: 2025-01-07
 > Purpose: Document gaps between Rust compiler and BMB bootstrap implementation
 
@@ -24,28 +24,30 @@ The BMB bootstrap implements the **complete core compilation pipeline** (lexer �
 
 **Bootstrap Design**: Uses minimal BMB subset (no closures/structs/enums in implementation code) to enable self-compilation with the core features the bootstrap supports.
 
-### Stage 3 Blockers (v0.30.236)
+### Stage 3 Blockers (v0.30.241)
 
-| Blocker | Description | Impact | Resolution Path |
-|---------|-------------|--------|-----------------|
-| **Stack Overflow** | Bootstrap .bmb files overflow stack when run | Can't execute bootstrap | Increase stack / optimize recursion |
-| **No File I/O** | Bootstrap can't read/write files | Can't process source files | Add FFI or Rust harness |
-| **No Process Exec** | Can't invoke LLVM toolchain | Can't produce executables | Add FFI or Rust harness |
-| **No Module Import** | Files are standalone, can't import | Limited code organization | Implement module system |
-| **No Verification Harness** | No tool to compare outputs | Can't verify equivalence | Create comparison tool |
+| Blocker | Description | Impact | Status |
+|---------|-------------|--------|--------|
+| ~~**Stack Overflow**~~ | ~~Bootstrap .bmb files overflow stack when run~~ | ~~Can't execute bootstrap~~ | ✅ **FIXED** (v0.30.241) |
+| **No File I/O** | Bootstrap can't read/write files | Can't process source files | 🔲 Needs Rust harness |
+| **No Process Exec** | Can't invoke LLVM toolchain | Can't produce executables | 🔲 Needs Rust harness |
+| **No Module Import** | Files are standalone, can't import | Limited code organization | 🔲 Needs module system |
+| **No Verification Harness** | No tool to compare outputs | Can't verify equivalence | 🔲 Next priority |
+
+**v0.30.241 Fix**: Interpreter now runs in 64MB stack thread (`thread::Builder::stack_size`). All bootstrap files execute successfully.
 
 **Stage 3 Verification Flow** (required):
 ```
-1. Rust compiler builds bootstrap → Stage 1 executable
-2. Stage 1 compiles bootstrap sources → Stage 2 LLVM IR
+1. Rust compiler builds bootstrap → Stage 1 executable  ✅
+2. Stage 1 compiles bootstrap sources → Stage 2 LLVM IR ✅ (via `bmb run`)
 3. Stage 2 LLVM IR → Stage 2 executable (needs LLVM toolchain)
 4. Stage 2 compiles bootstrap sources → Stage 3 LLVM IR
 5. Compare: Stage 2 LLVM IR == Stage 3 LLVM IR
 ```
 
-**Current Status**: Steps 1-2 work. Steps 3-5 blocked by lack of external tool integration.
+**Current Status**: Steps 1-2 work. Steps 3-5 need verification harness.
 
-**Recommended Path**: Create Rust harness that wraps bootstrap execution and handles file I/O + LLVM invocation.
+**Recommended Path**: Create Rust tool to orchestrate Stage 3 verification (file I/O + LLVM invocation + output comparison).
 
 ## Module Comparison Matrix
 
@@ -201,18 +203,18 @@ The BMB bootstrap implements the **complete core compilation pipeline** (lexer �
 
 ## Recommendations
 
-### Immediate Priority (v0.30.236+)
+### Immediate Priority (v0.30.241+)
 
 1. **Stage 3 Verification Harness** (P0)
    - Create Rust tool to execute bootstrap and compare outputs
    - Handle file I/O and LLVM toolchain invocation
    - Verify LLVM IR equivalence between stages
-   - **Blocked by**: Stack overflow on bootstrap execution
+   - ~~**Blocked by**: Stack overflow on bootstrap execution~~ ✅ Fixed
 
-2. **Stack Optimization** (P0)
-   - Investigate tail call optimization or trampolining
-   - Consider splitting large test files
-   - Or: Increase interpreter stack size
+2. ~~**Stack Optimization** (P0)~~ ✅ **COMPLETE** (v0.30.241)
+   - ~~Investigate tail call optimization or trampolining~~
+   - ~~Consider splitting large test files~~
+   - ✅ Increased interpreter stack to 64MB via `thread::Builder::stack_size`
 
 ### Next Priority (P1)
 
@@ -263,16 +265,17 @@ The bootstrap implementation covers **100% of the core compilation pipeline** (P
 2. **Complete generics** - Type inference, substitution, tuple types (v0.30.217)
 3. **Closure codegen** - MIR lowering + LLVM IR emission (v0.30.108)
 4. **Stage 2 equivalence** - 152 assertions verifying Rust↔Bootstrap output match (v0.30.228)
+5. **Stack overflow fix** - 64MB interpreter thread enables bootstrap execution (v0.30.241)
 
-⚠️ **Stage 3 Blockers** (v0.30.236):
-1. **Stack overflow** - Bootstrap files can't be executed directly
+⚠️ **Remaining Stage 3 Blockers** (v0.30.241):
+1. ~~**Stack overflow**~~ ✅ FIXED - Bootstrap files now execute successfully
 2. **No external integration** - Missing file I/O, LLVM toolchain invocation
 3. **Verification harness** - Need tool to compare stage outputs
 
 🔲 **Remaining (P1+)**:
-1. **Stage 3 harness** (P0) - Rust wrapper for bootstrap execution
+1. **Stage 3 harness** (P0) - Rust tool for bootstrap orchestration
 2. **Bootstrap interpreter** (P1) - Enable self-testing without Rust
 3. **Verification system** (P2) - SMT integration for contracts
 4. **Tooling** (P3) - LSP, REPL, multi-file resolver
 
-Stage 3 verification requires resolving stack overflow and creating a verification harness.
+Stage 3 verification now possible with verification harness implementation.

@@ -337,14 +337,24 @@ v0.MAJOR.MINOR
 - Multi-operand expressions, mixed operations, combined expressions
 - pipeline.bmb total: 42 tests (10 test groups)
 
+**v0.30.241 Completed (2026-01-07)**:
+- Phase 30.1.241-244: Stack overflow fix for bootstrap execution
+- **CRITICAL FIX**: Interpreter now runs in 64MB stack thread
+  - Problem: Windows default 1MB stack overflowed with deep bootstrap recursion
+  - Solution: `thread::Builder::stack_size(64MB)` in `run_file()`
+  - All bootstrap files now execute successfully
+- Test results: utils(217), compiler(393), selfhost_equiv(152), types(821), llvm_ir(433)
+- Updated BOOTSTRAP_FEATURE_GAP.md: Stack overflow marked as FIXED
+- **Stage 3 unblocked**: Bootstrap execution now works, only verification harness needed
+
 **v0.30.236 Completed (2026-01-07)**:
 - Phase 30.1.236-240: Stage 3 readiness analysis and blocker identification
 - **STAGE 3 BLOCKERS IDENTIFIED**:
-  - Stack overflow: Bootstrap .bmb files overflow interpreter stack
+  - ~~Stack overflow: Bootstrap .bmb files overflow interpreter stack~~ → Fixed in v0.30.241
   - No File I/O: Bootstrap can't read source files or write output
   - No Process Exec: Can't invoke LLVM toolchain (llvm-as, llc, linker)
   - No Verification Harness: Need tool to compare stage outputs
-- E2E test results: Rust compiler build works (173KB exe), bootstrap execution fails
+- E2E test results: Rust compiler build works (173KB exe), bootstrap execution fails → Fixed
 - Updated BOOTSTRAP_FEATURE_GAP.md: Stage 3 Blockers section, updated recommendations
 - **Recommended path**: Create Rust harness to wrap bootstrap execution
 

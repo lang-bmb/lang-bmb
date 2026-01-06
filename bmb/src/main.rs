@@ -400,28 +400,52 @@ fn emit_mir_file(
     Ok(())
 }
 
+/// v0.30.241: Stack size for interpreter thread (64MB for deep recursion in bootstrap)
+const INTERPRETER_STACK_SIZE: usize = 64 * 1024 * 1024;
+
 fn run_file(path: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
-    let source = std::fs::read_to_string(path)?;
-    let filename = path.display().to_string();
+    // v0.30.241: Run entire pipeline in a thread with larger stack to prevent overflow
+    // Bootstrap files have deep recursion that exceeds default 1MB Windows stack
+    // We run everything in the thread because Value uses Rc<RefCell<>> (not Send)
+    let path = path.clone();
+    let handle = std::thread::Builder::new()
+        .name("bmb-interpreter".to_string())
+        .stack_size(INTERPRETER_STACK_SIZE)
+        .spawn(move || -> Result<(), String> {
+            let source = std::fs::read_to_string(&path)
+                .map_err(|e| format!("Failed to read file: {}", e))?;
+            let filename = path.display().to_string();
 
-    // Tokenize
-    let tokens = bmb::lexer::tokenize(&source)?;
+            // Tokenize
+            let tokens = bmb::lexer::tokenize(&source)
+                .map_err(|e| format!("Lexer error: {}", e))?;
 
-    // Parse
-    let ast = bmb::parser::parse(&filename, &source, tokens)?;
+            // Parse
+            let ast = bmb::parser::parse(&filename, &source, tokens)
+                .map_err(|e| format!("Parser error: {}", e))?;
 
-    // Type check first
-    let mut checker = bmb::types::TypeChecker::new();
-    checker.check_program(&ast)?;
+            // Type check first
+            let mut checker = bmb::types::TypeChecker::new();
+            checker.check_program(&ast)
+                .map_err(|e| format!("Type error: {}", e))?;
 
-    // Run with interpreter
-    let mut interpreter = bmb::interp::Interpreter::new();
-    interpreter.load(&ast);
+            // Run with interpreter
+            let mut interpreter = bmb::interp::Interpreter::new();
+            interpreter.load(&ast);
+            interpreter.run(&ast)
+                .map_err(|e| format!("Runtime error: {}", e.message))?;
 
-    match interpreter.run(&ast) {
-        Ok(_) => Ok(()),
-        Err(e) => {
-            eprintln!("Runtime error: {}", e.message);
+            Ok(())
+        })?;
+
+    match handle.join() {
+        Ok(Ok(_)) => Ok(()),
+        Ok(Err(e)) => {
+            eprintln!("{}", e);
+            std::process::exit(1);
+        }
+        Err(_) => {
+            eprintln!("Runtime error: interpreter thread panicked");
             std::process::exit(1);
         }
     }
