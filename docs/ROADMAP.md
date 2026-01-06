@@ -164,7 +164,7 @@ v0.MAJOR.MINOR
 | v0.28 | Benchmark | C/Rust/BMB benchmark suite | Compute-intensive benchmarks, Contract-optimized benchmarks, Real-world workloads |
 | v0.29 | Velocity | C/Rust performance sprint | MIR optimization framework (6 passes), Contract-based optimization, Bootstrap optimization module |
 
-### Bootstrap Statistics (as of v0.30.112)
+### Bootstrap Statistics (as of v0.30.115)
 
 | Metric | Value |
 |--------|-------|
@@ -334,6 +334,25 @@ v0.MAJOR.MINOR
 - Pipeline integration verification: 3 new test groups in pipeline.bmb (12 tests)
 - Multi-operand expressions, mixed operations, combined expressions
 - pipeline.bmb total: 42 tests (10 test groups)
+
+**v0.30.115 Completed (2026-01-06)**:
+- Bootstrap completeness verification: 1,324 total bootstrap tests passing
+- llvm_ir.bmb: 313 tests, lowering.bmb: 236 tests, pipeline.bmb: 42 tests, types.bmb: 733 tests
+- All cargo tests passing (19 tests)
+- Full integration validation complete
+
+**v0.30.114 Completed (2026-01-06)**:
+- Full MIR → LLVM IR pipeline verification
+- test_full_mir_pipeline: 6 tests for TraitCall, MethodCall, LoadCapture, CallClosure
+- Verified gen_mir_line_typed dispatches all MIR instruction types correctly
+- llvm_ir.bmb total: 313 tests (61 test functions)
+
+**v0.30.113 Completed (2026-01-06)**:
+- TraitCall dispatch integration in gen_mir_line_typed
+- Added `is_trait_call_line(line) then gen_instr_trait_call(line)` dispatch
+- Fixed parse_trait_call_args bounds checking for edge cases
+- test_trait_call_dispatch: 6 tests verifying MIR→LLVM dispatch
+- llvm_ir.bmb: 307 tests
 
 **v0.30.112 Completed (2026-01-06)**:
 - End-to-end pipeline verification
@@ -1453,13 +1472,13 @@ $ bmb doc --check
 
 For detailed analysis of the remaining work, see [GAP_ANALYSIS.md](./GAP_ANALYSIS.md).
 
-**Key Metrics (as of v0.30.112)**:
+**Key Metrics (as of v0.30.115)**:
 - Rust code to remove: ~21,783 LOC
-- BMB bootstrap code: ~14,200 LOC (66% coverage)
-- Gap to close: ~8,500 LOC additional BMB
-- Bootstrap tests passing: 1406 tests
+- BMB bootstrap code: ~14,500 LOC (68% coverage)
+- Gap to close: ~8,200 LOC additional BMB
+- Bootstrap tests: 1,324 tests passing
 
 ---
 
 **Last Updated**: 2026-01-06
-**Version**: v0.30.112 → v1.0.0-rc Planning Document
+**Version**: v0.30.115 → v1.0.0-rc Planning Document

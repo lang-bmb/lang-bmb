@@ -1290,6 +1290,8 @@ fn gen_mir_line_typed(line: String, ret_type: String) -> String =
         else if is_load_capture_line(line) then gen_instr_load_capture(line)
         -- v0.30.108: Closure invocation support
         else if is_call_closure_line(line) then gen_instr_call_closure(line)
+        -- v0.30.113: TraitCall support
+        else if is_trait_call_line(line) then gen_instr_trait_call(line)
         else gen_instruction(line);
 
 -- Check if line is a call instruction
@@ -1564,10 +1566,14 @@ fn parse_trait_call_args(line: String) -> String =
     let paren_pos = find_char(line, 40, 0);
     if paren_pos < 0 then ""
     else
-        let inner = line.slice(paren_pos + 1, find_closing_paren(line, paren_pos) - 1);
-        let comma_pos = find_char(inner, 44, 0);
-        if comma_pos < 0 then ""
-        else trim_ws(inner.slice(comma_pos + 1, inner.len()));
+        let close_pos = find_closing_paren(line, paren_pos);
+        if close_pos <= paren_pos + 1 then ""
+        else
+            let inner = line.slice(paren_pos + 1, close_pos);
+            let comma_pos = find_char(inner, 44, 0);
+            if comma_pos < 0 then ""
+            else if comma_pos + 1 >= inner.len() then ""
+            else trim_ws(inner.slice(comma_pos + 1, inner.len()));
 
 fn find_closing_paren(s: String, start: i64) -> i64 =
     find_char(s, 41, start);  -- ')'
@@ -2861,6 +2867,60 @@ fn test_trait_type_propagation_ir() -> i64 =
 
     t1 + t2 + t3 + t4 + t5 + t6;
 
+-- v0.30.113: Test TraitCall dispatch integration in gen_mir_line_typed
+fn test_trait_call_dispatch() -> i64 =
+    -- Test 1: is_trait_call_line detects TraitCall in dispatch context
+    let tc_line = "  %_t0 = TraitCall Display::show(%x)";
+    let t1 = if is_trait_call_line(tc_line) then 1 else 0;
+
+    -- Test 2: is_trait_call_line rejects non-TraitCall
+    let t2 = if is_trait_call_line("  %_t0 = call @foo()") then 0 else 1;
+
+    -- Test 3: gen_mir_line dispatches TraitCall and generates call
+    let tc1 = gen_mir_line("  %_t0 = TraitCall Display::show(%x)");
+    let t3 = if has_pattern(tc1, "@Display_i64_show", 0) then 1 else 0;
+
+    -- Test 4: gen_mir_line TraitCall generates call instruction
+    let t4 = if has_pattern(tc1, "call i64", 0) then 1 else 0;
+
+    -- Test 5: gen_mir_line dispatches MethodCall correctly
+    let mc1 = gen_mir_line("  %_t2 = MethodCall %s.len()");
+    let t5 = if has_pattern(mc1, "@bmb_string_len", 0) then 1 else 0;
+
+    -- Test 6: gen_mir_line dispatches LoadCapture correctly
+    let lc1 = gen_mir_line("  %_t0 = LoadCapture %_env, 0");
+    let t6 = if has_pattern(lc1, "load i64", 0) then 1 else 0;
+
+    t1 + t2 + t3 + t4 + t5 + t6;
+
+-- v0.30.114: Full MIR → LLVM IR pipeline integration test
+fn test_full_mir_pipeline() -> i64 =
+    -- Test 1: gen_function processes basic MIR
+    let fn_mir = "fn @test_basic() -> i64 {|entry:|  %_t0 = const I:42|  ret %_t0|}";
+    let fn_llvm = gen_function(fn_mir);
+    let t1 = if has_pattern(fn_llvm, "42", 0) then 1 else 0;
+
+    -- Test 2: gen_function returns non-empty LLVM
+    let t2 = if fn_llvm.len() > 10 then 1 else 0;
+
+    -- Test 3: gen_mir_line_typed with TraitCall generates dispatch
+    let tc_line = gen_mir_line_typed("  %_t0 = TraitCall Display::show(%x)", "i64");
+    let t3 = if has_pattern(tc_line, "@Display_i64_show", 0) then 1 else 0;
+
+    -- Test 4: gen_mir_line_typed with MethodCall works
+    let mc_line = gen_mir_line_typed("  %_t0 = MethodCall %s.len()", "i64");
+    let t4 = if has_pattern(mc_line, "@bmb_string_len", 0) then 1 else 0;
+
+    -- Test 5: gen_mir_line_typed with LoadCapture works
+    let lc_line = gen_mir_line_typed("  %_t0 = LoadCapture %_env, 0", "i64");
+    let t5 = if has_pattern(lc_line, "load i64", 0) then 1 else 0;
+
+    -- Test 6: gen_mir_line_typed with CallClosure works
+    let cc_line = gen_mir_line_typed("  %_t0 = CallClosure %cl, %arg", "i64");
+    let t6 = if has_pattern(cc_line, "call i64", 0) then 1 else 0;
+
+    t1 + t2 + t3 + t4 + t5 + t6;
+
 fn main() -> i64 =
     let u0 = println(777);
     let r1 = test_type_mapping();
@@ -3005,8 +3065,14 @@ fn main() -> i64 =
     -- v0.30.111 trait type propagation IR tests
     let r58 = test_trait_type_propagation_ir();
     let u58 = println(r58);
+    -- v0.30.113 TraitCall dispatch integration tests
+    let r59 = test_trait_call_dispatch();
+    let u59 = println(r59);
+    -- v0.30.114 full MIR pipeline integration tests
+    let r60 = test_full_mir_pipeline();
+    let u60 = println(r60);
     let u_end = println(888);
-    let total = r1 + r2 + r3 + r4 + r5 + r6 + r7 + r8 + r9 + r10 + r11 + r12 + r13 + r14 + r15 + r16 + r17 + r18 + r19 + r20 + r21 + r22 + r23 + r24 + r25 + r26 + r27 + r28 + r29 + r30 + r31 + r32 + r33 + r34 + r35 + r36 + r37 + r38 + r39 + r40 + r41 + r42 + r43 + r44 + r45 + r46 + r47 + r48 + r49 + r50 + r51 + r52 + r53 + r54 + r55 + r56 + r57 + r58;
+    let total = r1 + r2 + r3 + r4 + r5 + r6 + r7 + r8 + r9 + r10 + r11 + r12 + r13 + r14 + r15 + r16 + r17 + r18 + r19 + r20 + r21 + r22 + r23 + r24 + r25 + r26 + r27 + r28 + r29 + r30 + r31 + r32 + r33 + r34 + r35 + r36 + r37 + r38 + r39 + r40 + r41 + r42 + r43 + r44 + r45 + r46 + r47 + r48 + r49 + r50 + r51 + r52 + r53 + r54 + r55 + r56 + r57 + r58 + r59 + r60;
     let u_tot = println(total);
     let u_fin = println(999);
     total;
