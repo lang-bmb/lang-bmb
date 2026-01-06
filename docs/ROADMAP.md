@@ -164,7 +164,7 @@ v0.MAJOR.MINOR
 | v0.28 | Benchmark | C/Rust/BMB benchmark suite | Compute-intensive benchmarks, Contract-optimized benchmarks, Real-world workloads |
 | v0.29 | Velocity | C/Rust performance sprint | MIR optimization framework (6 passes), Contract-based optimization, Bootstrap optimization module |
 
-### Bootstrap Statistics (as of v0.30.118)
+### Bootstrap Statistics (as of v0.30.122)
 
 | Metric | Value |
 |--------|-------|
@@ -334,6 +334,28 @@ v0.MAJOR.MINOR
 - Pipeline integration verification: 3 new test groups in pipeline.bmb (12 tests)
 - Multi-operand expressions, mixed operations, combined expressions
 - pipeline.bmb total: 42 tests (10 test groups)
+
+**v0.30.122 Completed (2026-01-06)**:
+- Cross-module and extern call IR tests in llvm_ir.bmb (6 tests)
+- test_cross_module_ir: Module header, extern declarations, runtime patterns
+- Tests: target triple, declare patterns, i8* return types
+- llvm_ir.bmb total: 343 tests (66 test functions)
+- Total bootstrap tests: 1,360
+
+**v0.30.121 Completed (2026-01-06)**:
+- Edge case and boundary condition tests in llvm_ir.bmb (6 tests)
+- test_edge_cases_ir: Empty strings, zero constants, boolean values
+- Tests: inttoptr patterns, add i64 patterns, i1 patterns
+
+**v0.30.120 Completed (2026-01-06)**:
+- Deeply nested expression IR tests in llvm_ir.bmb (6 tests)
+- test_nested_expression_ir: Nested calls, deep arithmetic, complex logic
+- Tests: f(g(h(x))) patterns, register chaining, comparison nesting
+
+**v0.30.119 Completed (2026-01-06)**:
+- Operator precedence IR tests in llvm_ir.bmb (6 tests)
+- test_operator_precedence_ir: mul before add, left associativity, logical precedence
+- Tests: binop ordering, div/mod patterns, and-before-or
 
 **v0.30.118 Completed (2026-01-06)**:
 - Bootstrap self-parse integration tests in pipeline.bmb (8 new tests, 2 test groups)
@@ -1491,13 +1513,13 @@ $ bmb doc --check
 
 For detailed analysis of the remaining work, see [GAP_ANALYSIS.md](./GAP_ANALYSIS.md).
 
-**Key Metrics (as of v0.30.118)**:
+**Key Metrics (as of v0.30.122)**:
 - Rust code to remove: ~21,783 LOC
-- BMB bootstrap code: ~14,500 LOC (68% coverage)
-- Gap to close: ~8,200 LOC additional BMB
-- Bootstrap tests: 1,336 tests passing
+- BMB bootstrap code: ~14,600 LOC (68% coverage)
+- Gap to close: ~8,100 LOC additional BMB
+- Bootstrap tests: 1,360 tests passing
 
 ---
 
 **Last Updated**: 2026-01-06
-**Version**: v0.30.118 → v1.0.0-rc Planning Document
+**Version**: v0.30.122 → v1.0.0-rc Planning Document

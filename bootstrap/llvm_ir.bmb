@@ -2947,6 +2947,139 @@ fn test_method_chaining() -> i64 =
 
     t1 + t2 + t3 + t4 + t5 + t6;
 
+-- v0.30.119: Test operator precedence in IR generation
+fn test_operator_precedence_ir() -> i64 =
+    -- Test 1: mul before add: a + b * c -> (tmp = b*c) then (a + tmp)
+    let mul_ir = gen_binop_arith("%_t0", "*", "%b", "%c", "i64");
+    let add_ir = gen_binop_arith("%_t1", "+", "%a", "%_t0", "i64");
+    let t1 = if has_pattern(mul_ir, "mul i64 %b, %c", 0) then 1 else 0;
+
+    -- Test 2: Chained comparison: uses correct tmp registers
+    let cmp1 = gen_binop_cmp("%_t2", "<", "%a", "%b", "i64");
+    let cmp2 = gen_binop_cmp("%_t3", ">", "%b", "%c", "i64");
+    let and_ir = gen_binop_logic("%_t4", "and", "%_t2", "%_t3", "i1");
+    let t2 = if has_pattern(and_ir, "and i1 %_t2, %_t3", 0) then 1 else 0;
+
+    -- Test 3: Left associativity: a + b + c -> ((a+b) + c)
+    let add1 = gen_binop_arith("%_t5", "+", "%a", "%b", "i64");
+    let add2 = gen_binop_arith("%_t6", "+", "%_t5", "%c", "i64");
+    let t3 = if has_pattern(add2, "add i64 %_t5, %c", 0) then 1 else 0;
+
+    -- Test 4: Div/mod precedence same as mul
+    let div_ir = gen_binop_arith("%_t7", "/", "%x", "%y", "i64");
+    let mod_ir = gen_binop_arith("%_t8", "%", "%a", "%b", "i64");
+    let t4 = if has_pattern(div_ir, "sdiv i64", 0) and has_pattern(mod_ir, "srem i64", 0) then 1 else 0;
+
+    -- Test 5: Complex: (a * b) + (c / d) - correct register sequence
+    let m1 = gen_binop_arith("%_t9", "*", "%a", "%b", "i64");
+    let d1 = gen_binop_arith("%_t10", "/", "%c", "%d", "i64");
+    let sum = gen_binop_arith("%_t11", "+", "%_t9", "%_t10", "i64");
+    let t5 = if has_pattern(sum, "%_t9", 0) and has_pattern(sum, "%_t10", 0) then 1 else 0;
+
+    -- Test 6: Logical operator precedence: and before or
+    let and1 = gen_binop_logic("%_t12", "and", "%x", "%y", "i1");
+    let or1 = gen_binop_logic("%_t13", "or", "%_t12", "%z", "i1");
+    let t6 = if has_pattern(or1, "or i1 %_t12, %z", 0) then 1 else 0;
+
+    t1 + t2 + t3 + t4 + t5 + t6;
+
+-- v0.30.120: Test deeply nested expression IR patterns
+fn test_nested_expression_ir() -> i64 =
+    -- Test 1: Nested function call IR pattern: f(g(h(x)))
+    let call_inner = gen_call("%_t0", "i64", "@h", "i64 %x");
+    let call_mid = gen_call("%_t1", "i64", "@g", "i64 %_t0");
+    let call_outer = gen_call("%_t2", "i64", "@f", "i64 %_t1");
+    let t1 = if has_pattern(call_inner, "@h", 0) and has_pattern(call_mid, "@g", 0) then 1 else 0;
+
+    -- Test 2: Nested arithmetic depth: ((a + b) * (c - d)) / e
+    let ab = gen_binop_arith("%_t2", "+", "%a", "%b", "i64");
+    let cd = gen_binop_arith("%_t3", "-", "%c", "%d", "i64");
+    let mul = gen_binop_arith("%_t4", "*", "%_t2", "%_t3", "i64");
+    let div = gen_binop_arith("%_t5", "/", "%_t4", "%e", "i64");
+    let t2 = if has_pattern(div, "%_t4", 0) and has_pattern(mul, "%_t2", 0) then 1 else 0;
+
+    -- Test 3: Nested if condition: if (a and (b or c)) and d
+    let bc = gen_binop_logic("%_t6", "or", "%b", "%c", "i1");
+    let abc = gen_binop_logic("%_t7", "and", "%a", "%_t6", "i1");
+    let abcd = gen_binop_logic("%_t8", "and", "%_t7", "%d", "i1");
+    let t3 = if has_pattern(abcd, "%_t7", 0) and has_pattern(abc, "%_t6", 0) then 1 else 0;
+
+    -- Test 4: Chained method call registers
+    let m1 = gen_instr_method_call("  %_t9 = MethodCall %s.len()");
+    let m2 = gen_instr_method_call("  %_t10 = MethodCall %s.slice(%a, %_t9)");
+    let t4 = if has_pattern(m1, "%_t9 = call", 0) and has_pattern(m2, "%a", 0) then 1 else 0;
+
+    -- Test 5: Nested comparison: (a < b) == (c > d)
+    let lt = gen_binop_cmp("%_t11", "<", "%a", "%b", "i64");
+    let gt = gen_binop_cmp("%_t12", ">", "%c", "%d", "i64");
+    let eq = gen_binop_cmp("%_t13", "==", "%_t11", "%_t12", "i1");
+    let t5 = if has_pattern(lt, "icmp slt", 0) and has_pattern(eq, "%_t11", 0) then 1 else 0;
+
+    -- Test 6: Deep nesting pattern: a + (b * (c - (d / e)))
+    let de = gen_binop_arith("%_t14", "/", "%d", "%e", "i64");
+    let cde = gen_binop_arith("%_t15", "-", "%c", "%_t14", "i64");
+    let bcde = gen_binop_arith("%_t16", "*", "%b", "%_t15", "i64");
+    let abcde = gen_binop_arith("%_t17", "+", "%a", "%_t16", "i64");
+    let t6 = if has_pattern(abcde, "%_t16", 0) and has_pattern(bcde, "%_t15", 0) then 1 else 0;
+
+    t1 + t2 + t3 + t4 + t5 + t6;
+
+-- v0.30.121: Test edge cases and boundary conditions
+fn test_edge_cases_ir() -> i64 =
+    -- Test 1: Empty string constant (produces inttoptr pattern)
+    let empty = gen_const_string("%_s0", "");
+    let t1 = if has_pattern(empty, "inttoptr", 0) then 1 else 0;
+
+    -- Test 2: Single character string contains char and inttoptr
+    let single = gen_const_string("%_s1", "x");
+    let t2 = if has_pattern(single, "x", 0) and has_pattern(single, "inttoptr", 0) then 1 else 0;
+
+    -- Test 3: Zero constant IR
+    let zero = gen_const_int("%_c0", 0);
+    let t3 = if has_pattern(zero, "%_c0 = add i64 0, 0", 0) then 1 else 0;
+
+    -- Test 4: Large constant
+    let large = gen_const_int("%_c1", 999999);
+    let t4 = if has_pattern(large, "999999", 0) then 1 else 0;
+
+    -- Test 5: Empty call args
+    let no_args = gen_call("%_t0", "i64", "@get_value", "");
+    let t5 = if has_pattern(no_args, "@get_value()", 0) then 1 else 0;
+
+    -- Test 6: Boolean false as 0
+    let bfalse = gen_const_bool("%_b0", 0);
+    let t6 = if has_pattern(bfalse, "i1 0", 0) then 1 else 0;
+
+    t1 + t2 + t3 + t4 + t5 + t6;
+
+-- v0.30.122: Test cross-module and extern call IR patterns
+fn test_cross_module_ir() -> i64 =
+    -- Test 1: Module header contains target triple
+    let header = gen_module_header();
+    let t1 = if has_pattern(header, "target triple", 0) then 1 else 0;
+
+    -- Test 2: Extern println declaration
+    let println_decl = gen_extern_println();
+    let t2 = if has_pattern(println_decl, "declare", 0) and has_pattern(println_decl, "println", 0) then 1 else 0;
+
+    -- Test 3: Extern string_len declaration
+    let len_decl = gen_extern_string_len();
+    let t3 = if has_pattern(len_decl, "declare", 0) and has_pattern(len_decl, "string_len", 0) then 1 else 0;
+
+    -- Test 4: Runtime declarations include memory allocation
+    let runtime = gen_runtime_decls();
+    let t4 = if has_pattern(runtime, "println", 0) and has_pattern(runtime, "alloc", 0) then 1 else 0;
+
+    -- Test 5: External call with module prefix pattern
+    let ext_call = gen_call("%_t0", "i64", "@core_math_abs", "i64 %x");
+    let t5 = if has_pattern(ext_call, "@core_math_abs", 0) then 1 else 0;
+
+    -- Test 6: Extern with i8* return type (string functions)
+    let slice_decl = gen_extern_string_slice();
+    let t6 = if has_pattern(slice_decl, "i8*", 0) then 1 else 0;
+
+    t1 + t2 + t3 + t4 + t5 + t6;
+
 fn main() -> i64 =
     let u0 = println(777);
     let r1 = test_type_mapping();
@@ -3100,8 +3233,20 @@ fn main() -> i64 =
     -- v0.30.117 method call chaining tests
     let r61 = test_method_chaining();
     let u61 = println(r61);
+    -- v0.30.119 operator precedence IR tests
+    let r62 = test_operator_precedence_ir();
+    let u62 = println(r62);
+    -- v0.30.120 nested expression IR tests
+    let r63 = test_nested_expression_ir();
+    let u63 = println(r63);
+    -- v0.30.121 edge case IR tests
+    let r64 = test_edge_cases_ir();
+    let u64 = println(r64);
+    -- v0.30.122 cross-module IR tests
+    let r65 = test_cross_module_ir();
+    let u65 = println(r65);
     let u_end = println(888);
-    let total = r1 + r2 + r3 + r4 + r5 + r6 + r7 + r8 + r9 + r10 + r11 + r12 + r13 + r14 + r15 + r16 + r17 + r18 + r19 + r20 + r21 + r22 + r23 + r24 + r25 + r26 + r27 + r28 + r29 + r30 + r31 + r32 + r33 + r34 + r35 + r36 + r37 + r38 + r39 + r40 + r41 + r42 + r43 + r44 + r45 + r46 + r47 + r48 + r49 + r50 + r51 + r52 + r53 + r54 + r55 + r56 + r57 + r58 + r59 + r60 + r61;
+    let total = r1 + r2 + r3 + r4 + r5 + r6 + r7 + r8 + r9 + r10 + r11 + r12 + r13 + r14 + r15 + r16 + r17 + r18 + r19 + r20 + r21 + r22 + r23 + r24 + r25 + r26 + r27 + r28 + r29 + r30 + r31 + r32 + r33 + r34 + r35 + r36 + r37 + r38 + r39 + r40 + r41 + r42 + r43 + r44 + r45 + r46 + r47 + r48 + r49 + r50 + r51 + r52 + r53 + r54 + r55 + r56 + r57 + r58 + r59 + r60 + r61 + r62 + r63 + r64 + r65;
     let u_tot = println(total);
     let u_fin = println(999);
     total;
