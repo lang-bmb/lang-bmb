@@ -2837,6 +2837,30 @@ fn test_method_dispatch_edge() -> i64 =
 
     t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t9 + t10;
 
+-- v0.30.111: Test TraitCall type propagation
+fn test_trait_type_propagation_ir() -> i64 =
+    -- Test 1: gen_trait_dispatch return type is i64 (bootstrap)
+    let td1 = gen_trait_dispatch("%r", "Clone", "clone", "%obj", "", "i64");
+    let t1 = if has_pattern(td1, "call i64", 0) then 1 else 0;
+
+    -- Test 2: gen_trait_dispatch generates correct function name
+    let t2 = if has_pattern(td1, "@Clone_i64_clone", 0) then 1 else 0;
+
+    -- Test 3: gen_trait_dispatch includes receiver
+    let t3 = if has_pattern(td1, "(i64 %obj)", 0) then 1 else 0;
+
+    -- Test 4: gen_trait_dispatch with args
+    let td2 = gen_trait_dispatch("%r", "Ord", "cmp", "%a", "i64 %b", "i64");
+    let t4 = if has_pattern(td2, "@Ord_i64_cmp", 0) then 1 else 0;
+
+    -- Test 5: gen_trait_dispatch with args includes args
+    let t5 = if has_pattern(td2, "i64 %b", 0) then 1 else 0;
+
+    -- Test 6: Result type propagation
+    let t6 = if has_pattern(td2, "%r = call i64", 0) then 1 else 0;
+
+    t1 + t2 + t3 + t4 + t5 + t6;
+
 fn main() -> i64 =
     let u0 = println(777);
     let r1 = test_type_mapping();
@@ -2978,8 +3002,11 @@ fn main() -> i64 =
     -- v0.30.97 closure capture IR tests
     let r57 = test_closure_capture_ir();
     let u57 = println(r57);
+    -- v0.30.111 trait type propagation IR tests
+    let r58 = test_trait_type_propagation_ir();
+    let u58 = println(r58);
     let u_end = println(888);
-    let total = r1 + r2 + r3 + r4 + r5 + r6 + r7 + r8 + r9 + r10 + r11 + r12 + r13 + r14 + r15 + r16 + r17 + r18 + r19 + r20 + r21 + r22 + r23 + r24 + r25 + r26 + r27 + r28 + r29 + r30 + r31 + r32 + r33 + r34 + r35 + r36 + r37 + r38 + r39 + r40 + r41 + r42 + r43 + r44 + r45 + r46 + r47 + r48 + r49 + r50 + r51 + r52 + r53 + r54 + r55 + r56 + r57;
+    let total = r1 + r2 + r3 + r4 + r5 + r6 + r7 + r8 + r9 + r10 + r11 + r12 + r13 + r14 + r15 + r16 + r17 + r18 + r19 + r20 + r21 + r22 + r23 + r24 + r25 + r26 + r27 + r28 + r29 + r30 + r31 + r32 + r33 + r34 + r35 + r36 + r37 + r38 + r39 + r40 + r41 + r42 + r43 + r44 + r45 + r46 + r47 + r48 + r49 + r50 + r51 + r52 + r53 + r54 + r55 + r56 + r57 + r58;
     let u_tot = println(total);
     let u_fin = println(999);
     total;

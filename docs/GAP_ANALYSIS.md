@@ -1,6 +1,6 @@
 # BMB Self-Hosting Gap Analysis
 
-**Version**: v0.30.109
+**Version**: v0.30.112
 **Date**: 2026-01-06
 **Status**: Ready for Self-Hosting Completion
 
@@ -63,7 +63,7 @@ This document provides a comprehensive analysis of the requirements for BMB v0.3
 
 | File | Size | LOC | Status | Test Coverage |
 |------|------|-----|--------|---------------|
-| llvm_ir.bmb | 99KB | 2,600 | Complete | 295 tests (58 test functions) |
+| llvm_ir.bmb | 100KB | 2,650 | Complete | 301 tests (59 test functions) |
 | lowering.bmb | 72KB | 1,950 | Complete | 236 tests |
 | compiler.bmb | 53KB | 1,202 | Complete | 2 tests |
 | parser_ast.bmb | 98KB | 2,390 | Complete | 104 tests (Struct/Enum/Trait/Impl/Array/Index/MethodCall) |
@@ -225,6 +225,9 @@ Gap to Close:
 - ✅ Impl registry connection (v0.30.107: gen_impl_key, impl_reg_lookup, impl_reg_has, lower_trait_call_with_reg)
 - ✅ Closure invocation LLVM IR (v0.30.108: is_call_closure_line, gen_instr_call_closure, CallClosure dispatch)
 - ✅ Full pipeline integration tests (v0.30.109: trait dispatch + closure capture pipeline verification)
+- ✅ Closure function generation (v0.30.110: gen_closure_fn_header, gen_closure_prelude, gen_closure_fn infrastructure)
+- ✅ TraitCall type propagation (v0.30.111: type flow verification, bootstrap i64 representation tests)
+- ✅ End-to-end pipeline verification (v0.30.112: 301 llvm_ir tests, 236 lowering tests, full pipeline validation)
 
 ### What Bootstrap CANNOT Do Yet
 

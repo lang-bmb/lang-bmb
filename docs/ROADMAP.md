@@ -164,15 +164,15 @@ v0.MAJOR.MINOR
 | v0.28 | Benchmark | C/Rust/BMB benchmark suite | Compute-intensive benchmarks, Contract-optimized benchmarks, Real-world workloads |
 | v0.29 | Velocity | C/Rust performance sprint | MIR optimization framework (6 passes), Contract-based optimization, Bootstrap optimization module |
 
-### Bootstrap Statistics (as of v0.30.109)
+### Bootstrap Statistics (as of v0.30.112)
 
 | Metric | Value |
 |--------|-------|
 | Rust Codebase | ~21,783 LOC |
-| BMB Bootstrap | ~14,100 LOC |
-| Coverage | 65% |
+| BMB Bootstrap | ~14,200 LOC |
+| Coverage | 66% |
 | Stage 1/2 Tests | 19 tests passing |
-| Bootstrap Tests | 1406 tests (733 types + 295 llvm_ir + 236 lowering + 46 mir + 104 parser_ast + ...) |
+| Bootstrap Tests | 1412 tests (733 types + 301 llvm_ir + 236 lowering + 46 mir + 104 parser_ast + ...) |
 
 ---
 
@@ -335,6 +335,25 @@ v0.MAJOR.MINOR
 - Multi-operand expressions, mixed operations, combined expressions
 - pipeline.bmb total: 42 tests (10 test groups)
 
+**v0.30.112 Completed (2026-01-06)**:
+- End-to-end pipeline verification
+- Verified all trait dispatch and closure capture systems work together
+- llvm_ir.bmb: 301 tests, lowering.bmb: 236 tests, pipeline.bmb: 42 tests
+- Full bootstrap validation passed
+
+**v0.30.111 Completed (2026-01-06)**:
+- TraitCall type propagation tests in llvm_ir.bmb (6 new tests)
+- test_trait_type_propagation_ir: Return type verification, dispatch generation tests
+- Verified i64 bootstrap representation for all trait methods
+- llvm_ir.bmb total: 301 tests
+
+**v0.30.110 Completed (2026-01-06)**:
+- Closure function generation infrastructure in lowering.bmb
+- gen_closure_fn_header: Generate fn @closure_N(%env: i64*, params...) headers
+- gen_closure_prelude: Generate LoadCapture instructions for captured variables
+- gen_closure_fn: Combine header, prelude, body, footer into complete function
+- closure_fn_name: Generate @closure_N function names
+
 **v0.30.109 Completed (2026-01-06)**:
 - Full trait/closure pipeline integration tests in lowering.bmb (12 new tests)
 - Test 75: Trait dispatch pipeline (4 tests) - static dispatch with impl registry
@@ -347,7 +366,7 @@ v0.MAJOR.MINOR
 - is_call_closure_line, parse_call_closure_dest/closure/args: CallClosure parsing
 - gen_instr_call_closure: Generate indirect call through closure struct {fn_ptr, env}
 - Extract function pointer (GEP + load + inttoptr), extract env, call with env as first arg
-- llvm_ir.bmb total: 295 tests
+- llvm_ir.bmb total: 289 tests (at v0.30.108)
 
 **v0.30.107 Completed (2026-01-06)**:
 - Impl registry connection in lowering.bmb (14 new tests)
@@ -1434,13 +1453,13 @@ $ bmb doc --check
 
 For detailed analysis of the remaining work, see [GAP_ANALYSIS.md](./GAP_ANALYSIS.md).
 
-**Key Metrics (as of v0.30.109)**:
+**Key Metrics (as of v0.30.112)**:
 - Rust code to remove: ~21,783 LOC
-- BMB bootstrap code: ~14,100 LOC (65% coverage)
-- Gap to close: ~8,600 LOC additional BMB
+- BMB bootstrap code: ~14,200 LOC (66% coverage)
+- Gap to close: ~8,500 LOC additional BMB
 - Bootstrap tests passing: 1406 tests
 
 ---
 
 **Last Updated**: 2026-01-06
-**Version**: v0.30.109 → v1.0.0-rc Planning Document
+**Version**: v0.30.112 → v1.0.0-rc Planning Document

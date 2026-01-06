@@ -915,6 +915,44 @@ fn gen_closure_with_env(closure_place: String, env_place: String, fn_id: i64) ->
     "  " + closure_place + " = ClosureEnv " + env_place + ", @closure_" + int_to_string(fn_id);
 
 -- ============================================================================
+-- v0.30.110: Closure Function Generation
+-- ============================================================================
+
+-- Generate closure function header
+-- fn @closure_N(%env: i64*, params...) -> i64
+fn gen_closure_fn_header(fn_id: i64, params: String) -> String =
+    let fn_name = "@closure_" + int_to_string(fn_id);
+    let param_section = if params == "" then "%env: i64*"
+                        else "%env: i64*, " + params;
+    "fn " + fn_name + "(" + param_section + ") -> i64 {";
+
+-- Generate LoadCapture instructions for closure prelude
+-- Generates: %var = LoadCapture %env, idx for each captured variable
+fn gen_closure_prelude(free_vars: String, count: i64, idx: i64) -> String =
+    if idx >= count then ""
+    else
+        let var_name = name_at_index(free_vars, idx);
+        let load_text = "  %" + var_name + " = LoadCapture %env, " + int_to_string(idx);
+        let rest = gen_closure_prelude(free_vars, count, idx + 1);
+        if rest.len() > 0 then load_text + "|" + rest else load_text;
+
+-- Generate complete closure function MIR
+-- Includes: header, LoadCapture prelude, body, footer
+fn gen_closure_fn(fn_id: i64, params: String, free_vars: String, body_mir: String) -> String =
+    let header = gen_closure_fn_header(fn_id, params);
+    let capture_count = count_names(free_vars);
+    let prelude = if capture_count == 0 then "" else gen_closure_prelude(free_vars, capture_count, 0);
+    let footer = "}";
+    -- Combine: header|prelude|body|footer
+    let with_prelude = if prelude == "" then header + "|" + body_mir
+                       else header + "|" + prelude + "|" + body_mir;
+    with_prelude + "|" + footer;
+
+-- Generate closure function name from id
+fn closure_fn_name(fn_id: i64) -> String =
+    "@closure_" + int_to_string(fn_id);
+
+-- ============================================================================
 -- v0.30.104: LoadCapture MIR Generation
 -- ============================================================================
 -- Runtime access to captured variables within closure body
@@ -2655,7 +2693,7 @@ fn main() -> i64 =
                 capture_integration_tests +
                 impl_key_tests + impl_lookup_tests + impl_has_tests + impl_dispatch_tests +
                 trait_pipeline_tests + closure_pipeline_tests + combined_pipeline_tests;
-    let u23 = println(total);  -- Should be 236 (224 + 12 new tests)
+    let u23 = println(total);  -- Should be 236
 
     let u24 = println(999);  -- End marker
 
