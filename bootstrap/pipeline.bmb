@@ -1,4 +1,4 @@
--- BMB End-to-End Pipeline (v0.30.202: Extended integration tests)
+-- BMB End-to-End Pipeline (v0.30.207: E2E compilation verification tests)
 -- Demonstrates complete compilation flow: Source -> AST -> MIR
 --
 -- ARCHITECTURE:
@@ -1241,6 +1241,71 @@ fn test_pipeline_compound_expressions() -> i64 =
     let t6 = test_pipeline("(a < b) or (c > d)", "or");
     t1 + t2 + t3 + t4 + t5 + t6;
 
+-- ============================================================================
+-- SECTION 10.2: E2E Compilation Verification Tests (v0.30.207)
+-- ============================================================================
+-- These tests verify complete programs from source to MIR output
+
+-- Test E2E: Simple function definitions
+fn test_e2e_simple_functions() -> i64 =
+    let t1 = test_parse("fn id(x: i64) -> i64 = x;", "fn <id>");
+    let t2 = test_parse("fn const5() -> i64 = 5;", "int 5");
+    let t3 = test_pipeline("a + b", "+ %a, %b");
+    let t4 = test_pipeline("5", "const I:5");
+    let t5 = test_parse("fn neg(x: i64) -> i64 = 0 - x;", "op -");
+    let t6 = test_pipeline("a - b", "- %a, %b");
+    t1 + t2 + t3 + t4 + t5 + t6;
+
+-- Test E2E: Binary arithmetic operations end-to-end
+fn test_e2e_arithmetic_ops() -> i64 =
+    let t1 = test_pipeline("10 + 20", "+ %_t0, %_t1");
+    let t2 = test_pipeline("100 - 50", "- %_t0, %_t1");
+    let t3 = test_pipeline("7 * 8", "* %_t0, %_t1");
+    let t4 = test_pipeline("64 / 8", "/ %_t0, %_t1");
+    let t5 = test_pipeline("17 % 5", "% %_t0, %_t1");
+    let t6 = test_pipeline("a + 1", "const I:1");
+    t1 + t2 + t3 + t4 + t5 + t6;
+
+-- Test E2E: Comparison operations end-to-end
+fn test_e2e_comparison_ops() -> i64 =
+    let t1 = test_pipeline("a == 0", "== %a");
+    let t2 = test_pipeline("x != y", "!= %x, %y");
+    let t3 = test_pipeline("n < 10", "< %n");
+    let t4 = test_pipeline("m > 5", "> %m");
+    let t5 = test_pipeline("a <= b", "<= %a, %b");
+    let t6 = test_pipeline("c >= d", ">= %c, %d");
+    t1 + t2 + t3 + t4 + t5 + t6;
+
+-- Test E2E: Logical operations end-to-end
+fn test_e2e_logical_ops() -> i64 =
+    let t1 = test_pipeline("a and b", "and %a, %b");
+    let t2 = test_pipeline("x or y", "or %x, %y");
+    let t3 = test_pipeline("not flag", "not %flag");
+    let t4 = test_pipeline("a and b or c", "or %_t0, %c");
+    let t5 = test_pipeline("not a and not b", "and %_t0, %_t1");
+    let t6 = test_pipeline("(a or b) and (c or d)", "and");
+    t1 + t2 + t3 + t4 + t5 + t6;
+
+-- Test E2E: Complex expressions with nesting
+fn test_e2e_nested_expressions() -> i64 =
+    let t1 = test_pipeline("(a + b) * (c - d)", "* %_t0, %_t1");
+    let t2 = test_pipeline("(x + y)", "+ %x, %y");
+    let t3 = test_pipeline("-(a + b)", "neg %_t0");
+    let t4 = test_pipeline("not (x and y)", "not %_t0");
+    let t5 = test_pipeline("a + b + c + d + e", "+ %_t2, %e");
+    let t6 = test_pipeline("a * b * c * d", "* %_t1, %d");
+    t1 + t2 + t3 + t4 + t5 + t6;
+
+-- Test E2E: Function parsing with various signatures
+fn test_e2e_function_signatures() -> i64 =
+    let t1 = test_parse("fn f() -> i64 = 0;", "(params)");
+    let t2 = test_parse("fn f(a: i64) -> i64 = a;", "(p <a> i64)");
+    let t3 = test_parse("fn f(a: i64, b: i64) -> i64 = a;", "(p <b> i64)");
+    let t4 = test_parse("fn f(x: bool) -> bool = x;", "(p <x> bool)");
+    let t5 = test_parse("fn f(s: String) -> i64 = 0;", "(p <s> String)");
+    let t6 = test_parse("fn f(a: i64, b: i64, c: i64) -> i64 = a;", "(p <c>");
+    t1 + t2 + t3 + t4 + t5 + t6;
+
 fn main() -> i64 =
     let u0 = println(777);
 
@@ -1486,12 +1551,26 @@ fn main() -> i64 =
     let t22 = test_pipeline_compound_expressions();
     let u22 = println(t22);  -- Should be 6
 
+    -- v0.30.207: Test 23-28: E2E compilation verification tests (36 tests)
+    let t23 = test_e2e_simple_functions();
+    let u23 = println(t23);  -- Should be 6
+    let t24 = test_e2e_arithmetic_ops();
+    let u24 = println(t24);  -- Should be 6
+    let t25 = test_e2e_comparison_ops();
+    let u25 = println(t25);  -- Should be 6
+    let t26 = test_e2e_logical_ops();
+    let u26 = println(t26);  -- Should be 6
+    let t27 = test_e2e_nested_expressions();
+    let u27 = println(t27);  -- Should be 6
+    let t28 = test_e2e_function_signatures();
+    let u28 = println(t28);  -- Should be 6
+
     let u8 = println(888);
     let integration = t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t9 + t10 + t11 + t12 + t13 + t14 + t15 + t16 +
-                      t17 + t18 + t19 + t20 + t21 + t22;
-    let u9 = println(integration);  -- Should be 100 (64 base + 36 new)
+                      t17 + t18 + t19 + t20 + t21 + t22 + t23 + t24 + t25 + t26 + t27 + t28;
+    let u9 = println(integration);  -- Should be 136 (64 base + 36 v0.30.202 + 36 v0.30.207)
     let total = unit_total + integration;
-    let u10 = println(total);  -- Should be 379 (279 unit + 100 integration)
+    let u10 = println(total);  -- Should be 415 (279 unit + 136 integration)
     let u11 = println(999);
 
     total;
