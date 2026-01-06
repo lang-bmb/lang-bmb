@@ -1,12 +1,12 @@
 # Bootstrap Feature Gap Analysis
 
-> Version: v0.30.216
+> Version: v0.30.217
 > Date: 2025-01-06
 > Purpose: Document gaps between Rust compiler and BMB bootstrap implementation
 
 ## Executive Summary
 
-The BMB bootstrap currently implements **core compilation pipeline** (lexer → parser → type checker → MIR → LLVM IR) with **906 test functions** across 14 files. Key gaps exist in **nested generic substitution** and **advanced verification** components.
+The BMB bootstrap currently implements **core compilation pipeline** (lexer → parser → type checker → MIR → LLVM IR) with **908 test functions** across 14 files. Key gaps exist in **monomorphization tracking** and **advanced verification** components.
 
 ## Module Comparison Matrix
 
@@ -15,7 +15,7 @@ The BMB bootstrap currently implements **core compilation pipeline** (lexer → 
 | Lexer | `lexer/mod.rs`, `lexer/token.rs` | `lexer.bmb` | ✅ Complete | 40 |
 | Parser | `parser/mod.rs` | `parser.bmb`, `parser_ast.bmb`, `parser_test.bmb` | ✅ Complete | 216 |
 | AST Types | `ast/*.rs` | `parser_ast.bmb` | ✅ Partial | (included above) |
-| Type Checker | `types/mod.rs` | `types.bmb` | ✅ Generics (v0.30.211) | 171 |
+| Type Checker | `types/mod.rs` | `types.bmb` | ✅ Generics+Tuples (v0.30.217) | 173 |
 | MIR | `mir/mod.rs` | `mir.bmb` | ✅ Complete | 59 |
 | Lowering | `mir/lower.rs` | `lowering.bmb` | ✅ Complete | 4 (stack limited) |
 | Optimizer | `mir/optimize.rs` | `optimize.bmb` | ✅ Complete | 56 |
@@ -34,7 +34,7 @@ The BMB bootstrap currently implements **core compilation pipeline** (lexer → 
 | Utils | - | `utils.bmb` | ✅ Complete | 74 |
 | Self-host Tests | - | `selfhost_test.bmb`, `selfhost_equiv.bmb` | ✅ Complete | 95 |
 
-**Total Bootstrap Tests: 906**
+**Total Bootstrap Tests: 908**
 
 ## Priority Feature Gaps
 
@@ -86,7 +86,7 @@ fn infer_type_args(...) -> Result<Vec<Type>, TypeError>
 fn substitute_type(...) -> Type
 ```
 
-**Bootstrap Implementation** (`types.bmb` - 171 tests, 806 assertions):
+**Bootstrap Implementation** (`types.bmb` - 173 tests, 821 assertions):
 - Type parameter tracking ✅ (v0.30.3-v0.30.12)
 - Generic type application encoding ✅ (Vec<T>, Option<T>, Map<K,V>)
 - Type substitution ✅ (single/multi params)
@@ -95,10 +95,10 @@ fn substitute_type(...) -> Type
 - Trait bounds checking ✅ (type_satisfies_bounds)
 - Nested generic types ✅ (packing/unpacking)
 - Nested generic substitution ✅ (recursive, v0.30.213)
+- Tuple type substitution ✅ (`(A,B)` → `(i64,String)`, v0.30.217)
 
-**Remaining Gaps** (v0.30.216):
-1. Complex return types: Tuples `(A,B)` not substituted in function instantiation
-2. Monomorphization tracking for code generation
+**Remaining Gaps** (v0.30.217):
+1. Monomorphization tracking for code generation
 
 ### P1 (Important for Complete Toolchain)
 

@@ -272,11 +272,15 @@ fn subst_has(subst: String, param: String) -> bool =
 -- Apply substitution to a simple type name
 -- Returns substituted type if param is in subst, otherwise returns original
 -- v0.30.213: Enhanced to recursively handle nested generic types
+-- v0.30.217: Enhanced to handle tuple types like "(A,B)"
 -- If type_name is a generic type pack (contains ':'), recursively substitute
+-- If type_name is a tuple type (starts with '('), recursively substitute elements
 fn subst_apply(subst: String, type_name: String) -> String =
     -- First check direct lookup
     let result = subst_lookup(subst, type_name);
     if result.len() > 0 then result
+    -- v0.30.217: Check if it's a tuple type
+    else if is_tuple_type(type_name) then subst_apply_tuple(subst, type_name)
     else
         -- Check if it's a generic type pack (contains ':')
         let colon_pos = gen_find_colon(type_name, 0);
@@ -312,6 +316,49 @@ fn subst_find_arg_end(s: String, pos: i64) -> i64 =
     if pos >= s.len() then s.len()
     else if s.char_at(pos) == 44 then pos  -- ',' = 44
     else subst_find_arg_end(s, pos + 1);
+
+-- ============================================================================
+-- v0.30.217: Tuple Type Substitution
+-- ============================================================================
+-- Handle tuple types like "(A,B)" during type substitution
+-- This addresses the gap where tuple return types were not substituted
+
+-- Check if type is a tuple (starts with '(')
+fn is_tuple_type(t: String) -> bool =
+    t.len() > 0 and t.char_at(0) == 40;  -- '(' = 40
+
+-- Find end of tuple element, respecting nested parens and colons for generics
+-- Returns position of comma or closing paren at depth 0
+fn subst_find_tuple_elem_end(s: String, pos: i64, depth: i64) -> i64 =
+    if pos >= s.len() then s.len()
+    else
+        let c = s.char_at(pos);
+        if c == 40 then subst_find_tuple_elem_end(s, pos + 1, depth + 1)  -- '('
+        else if c == 41 then  -- ')'
+            if depth == 0 then pos  -- found end at top level
+            else subst_find_tuple_elem_end(s, pos + 1, depth - 1)
+        else if c == 44 and depth == 0 then pos  -- ',' at top level
+        else subst_find_tuple_elem_end(s, pos + 1, depth);
+
+-- Apply substitution to a tuple type "(A,B)" -> "(i64,String)"
+fn subst_apply_tuple(subst: String, tuple_type: String) -> String =
+    -- Extract inner content: "(A,B)" -> "A,B"
+    let inner = tuple_type.slice(1, tuple_type.len() - 1);
+    if inner.len() == 0 then "()"  -- empty tuple / unit
+    else
+        let substituted = subst_apply_tuple_elems(subst, inner, 0, "");
+        "(" + substituted + ")";
+
+-- Apply substitution to comma-separated tuple elements
+fn subst_apply_tuple_elems(subst: String, elems: String, pos: i64, result: String) -> String =
+    if pos >= elems.len() then result
+    else
+        let end_pos = subst_find_tuple_elem_end(elems, pos, 0);
+        let elem = elems.slice(pos, end_pos);
+        let substituted = subst_apply(subst, elem);
+        let new_result = if result.len() == 0 then substituted else result + "," + substituted;
+        if end_pos >= elems.len() then new_result
+        else subst_apply_tuple_elems(subst, elems, end_pos + 1, new_result);
 
 -- Build substitution from type params and type args
 -- tparams: "T,U" (comma-separated param names)
@@ -2958,6 +3005,70 @@ fn test_subst_from_params() -> i64 =
     let r6 = if subst_lookup(subst3, "E") == "Error" then 1 else 0;
 
     r1 + r2 + r3 + r4 + r5 + r6;
+
+-- v0.30.217: Tuple type substitution tests
+fn test_subst_tuple() -> i64 =
+    let subst = "A=i64,B=String";
+
+    -- Test 1: is_tuple_type detection
+    let t1 = if is_tuple_type("(A,B)") then 1 else 0;
+    let t2 = if is_tuple_type("A") then 0 else 1;
+    let t3 = if is_tuple_type("Vec:A") then 0 else 1;
+    let t4 = if is_tuple_type("()") then 1 else 0;
+
+    -- Test 2: Simple tuple substitution (A,B) -> (i64,String)
+    let r1 = subst_apply(subst, "(A,B)");
+    let t5 = if r1 == "(i64,String)" then 1 else 0;
+
+    -- Test 3: Tuple with single element (A) -> (i64)
+    let r2 = subst_apply(subst, "(A)");
+    let t6 = if r2 == "(i64)" then 1 else 0;
+
+    -- Test 4: Triple tuple (A,B,A) -> (i64,String,i64)
+    let r3 = subst_apply(subst, "(A,B,A)");
+    let t7 = if r3 == "(i64,String,i64)" then 1 else 0;
+
+    -- Test 5: Empty tuple () -> ()
+    let r4 = subst_apply(subst, "()");
+    let t8 = if r4 == "()" then 1 else 0;
+
+    -- Test 6: Tuple with concrete types (i32,B) -> (i32,String)
+    let r5 = subst_apply(subst, "(i32,B)");
+    let t9 = if r5 == "(i32,String)" then 1 else 0;
+
+    -- Test 7: Nested tuple ((A,B),A) -> ((i64,String),i64)
+    let r6 = subst_apply(subst, "((A,B),A)");
+    let t10 = if r6 == "((i64,String),i64)" then 1 else 0;
+
+    t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t9 + t10;
+
+-- Test tuple substitution in generic function instantiation
+fn test_subst_tuple_fn() -> i64 =
+    -- Test swap function: fn swap<A,B>(a: A, b: B) -> (B,A)
+    let gfn = gen_fn_pack("swap", "A,B", "A,B", "(B,A)");
+    let t1 = if gen_fn_return(gfn) == "(B,A)" then 1 else 0;
+
+    -- Instantiate with i64, String
+    let inst = gen_fn_instantiate(gfn, "i64,String");
+    let ret_ty = gen_fn_return(inst);
+    let t2 = if ret_ty == "(String,i64)" then 1 else 0;
+
+    -- Test pair function: fn pair<T>(x: T, y: T) -> (T,T)
+    let gfn2 = gen_fn_pack("pair", "T", "T,T", "(T,T)");
+    let inst2 = gen_fn_instantiate(gfn2, "bool");
+    let t3 = if gen_fn_return(inst2) == "(bool,bool)" then 1 else 0;
+
+    -- Test triple: fn triple<X,Y,Z>(x: X, y: Y, z: Z) -> (X,Y,Z)
+    let gfn3 = gen_fn_pack("triple", "X,Y,Z", "X,Y,Z", "(X,Y,Z)");
+    let inst3 = gen_fn_instantiate(gfn3, "i64,String,bool");
+    let t4 = if gen_fn_return(inst3) == "(i64,String,bool)" then 1 else 0;
+
+    -- Test nested: fn nested<A,B>(x: A, y: B) -> ((A,B),A)
+    let gfn4 = gen_fn_pack("nested", "A,B", "A,B", "((A,B),A)");
+    let inst4 = gen_fn_instantiate(gfn4, "i64,String");
+    let t5 = if gen_fn_return(inst4) == "((i64,String),i64)" then 1 else 0;
+
+    t1 + t2 + t3 + t4 + t5;
 
 -- v0.30.8: Instantiation integration tests
 fn test_instantiate_generic() -> i64 =
@@ -8038,7 +8149,7 @@ fn test_bounded_type_params() -> i64 =
     t1 + t2 + t3 + t4 + t5 + t6;
 
 -- v0.30.211: Generic function with bounds verification tests
--- NOTE: Complex return types like tuples "(B,A)" are not substituted (limitation)
+-- v0.30.217: Tuple return types "(B,A)" now substituted correctly
 fn test_generic_fn_bounds() -> i64 =
     let tenv0 = tenv_new();
 
@@ -8637,10 +8748,17 @@ fn main() -> i64 =
     let t171 = test_generic_fn_bounds();
     let p171 = println(t171);  -- Expected: 6
 
+    -- v0.30.217: Tuple type substitution tests
+    let t172 = test_subst_tuple();
+    let p172 = println(t172);  -- Expected: 10
+
+    let t173 = test_subst_tuple_fn();
+    let p173 = println(t173);  -- Expected: 5
+
     let u1 = println(888);  -- Separator
 
-    let total = t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t9 + t10 + t11 + t12 + t13 + t14 + t15 + t16 + t17 + t18 + t19 + t20 + t21 + t22 + t23 + t24 + t25 + t26 + t27 + t28 + t29 + t30 + t31 + t32 + t33 + t34 + t35 + t36 + t37 + t38 + t39 + t40 + t41 + t42 + t43 + t44 + t45 + t46 + t47 + t48 + t49 + t50 + t51 + t52 + t53 + t54 + t55 + t56 + t57 + t58 + t59 + t60 + t61 + t62 + t63 + t64 + t65 + t66 + t67 + t68 + t69 + t70 + t71 + t72 + t73 + t74 + t75 + t76 + t77 + t78 + t79 + t80 + t81 + t82 + t83 + t84 + t85 + t86 + t87 + t88 + t89 + t90 + t91 + t92 + t93 + t94 + t95 + t96 + t97 + t98 + t99 + t100 + t101 + t102 + t103 + t104 + t105 + t106 + t107 + t108 + t109 + t110 + t111 + t112 + t113 + t114 + t115 + t116 + t117 + t118 + t119 + t120 + t121 + t122 + t123 + t124 + t125 + t126 + t127 + t128 + t129 + t130 + t131 + t132 + t133 + t134 + t135 + t136 + t137 + t138 + t139 + t140 + t141 + t142 + t143 + t144 + t145 + t146 + t147 + t148 + t149 + t150 + t151 + t152 + t153 + t154 + t155 + t156 + t157 + t158 + t159 + t160 + t161 + t162 + t163 + t164 + t165 + t166 + t167 + t168 + t169 + t170 + t171;
-    let u2 = println(total);  -- Expected: 806
+    let total = t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t9 + t10 + t11 + t12 + t13 + t14 + t15 + t16 + t17 + t18 + t19 + t20 + t21 + t22 + t23 + t24 + t25 + t26 + t27 + t28 + t29 + t30 + t31 + t32 + t33 + t34 + t35 + t36 + t37 + t38 + t39 + t40 + t41 + t42 + t43 + t44 + t45 + t46 + t47 + t48 + t49 + t50 + t51 + t52 + t53 + t54 + t55 + t56 + t57 + t58 + t59 + t60 + t61 + t62 + t63 + t64 + t65 + t66 + t67 + t68 + t69 + t70 + t71 + t72 + t73 + t74 + t75 + t76 + t77 + t78 + t79 + t80 + t81 + t82 + t83 + t84 + t85 + t86 + t87 + t88 + t89 + t90 + t91 + t92 + t93 + t94 + t95 + t96 + t97 + t98 + t99 + t100 + t101 + t102 + t103 + t104 + t105 + t106 + t107 + t108 + t109 + t110 + t111 + t112 + t113 + t114 + t115 + t116 + t117 + t118 + t119 + t120 + t121 + t122 + t123 + t124 + t125 + t126 + t127 + t128 + t129 + t130 + t131 + t132 + t133 + t134 + t135 + t136 + t137 + t138 + t139 + t140 + t141 + t142 + t143 + t144 + t145 + t146 + t147 + t148 + t149 + t150 + t151 + t152 + t153 + t154 + t155 + t156 + t157 + t158 + t159 + t160 + t161 + t162 + t163 + t164 + t165 + t166 + t167 + t168 + t169 + t170 + t171 + t172 + t173;
+    let u2 = println(total);  -- Expected: 821
 
     let u3 = println(999);  -- End marker
     total;
