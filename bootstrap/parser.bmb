@@ -1,4 +1,4 @@
--- BMB Parser written in BMB (Phase 12: Self-compilation bootstrap)
+-- BMB Parser written in BMB (v0.30.142: Enhanced test suite)
 -- A simple recursive descent parser for the BMB language
 -- Uses functional/recursive style to work within BMB's grammar constraints
 --
@@ -551,6 +551,97 @@ fn parse_program(s: String, pos: i64) -> i64 =
     else pack_result(PR_ERR_UNEXPECTED(), pos);
 
 -- ============================================================
+-- Tests (v0.30.142)
+-- ============================================================
+
+-- Test token constants
+fn test_token_constants() -> i64 =
+    let t1 = if TK_FN() == 100 then 1 else 0;
+    let t2 = if TK_LET() == 101 then 1 else 0;
+    let t3 = if TK_IF() == 102 then 1 else 0;
+    let t4 = if TK_ELSE() == 104 then 1 else 0;
+    let t5 = if TK_TRUE() == 105 then 1 else 0;
+    let t6 = if TK_FALSE() == 106 then 1 else 0;
+    let t7 = if TK_EOF() == 900 then 1 else 0;
+    let t8 = if TK_ERROR() == 999 then 1 else 0;
+    t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8;
+
+-- Test type token constants
+fn test_type_tokens() -> i64 =
+    let t1 = if TK_I32() == 150 then 1 else 0;
+    let t2 = if TK_I64() == 151 then 1 else 0;
+    let t3 = if TK_F64() == 152 then 1 else 0;
+    let t4 = if TK_BOOL() == 153 then 1 else 0;
+    let t5 = if TK_STRING() == 154 then 1 else 0;
+    t1 + t2 + t3 + t4 + t5;
+
+-- Test symbol token constants
+fn test_symbol_tokens() -> i64 =
+    let t1 = if TK_COLON() == 300 then 1 else 0;
+    let t2 = if TK_EQ() == 302 then 1 else 0;
+    let t3 = if TK_SEMI() == 303 then 1 else 0;
+    let t4 = if TK_LPAREN() == 305 then 1 else 0;
+    let t5 = if TK_RPAREN() == 306 then 1 else 0;
+    let t6 = if TK_ARROW() == 321 then 1 else 0;
+    t1 + t2 + t3 + t4 + t5 + t6;
+
+-- Test operator token constants
+fn test_operator_tokens() -> i64 =
+    let t1 = if TK_PLUS() == 400 then 1 else 0;
+    let t2 = if TK_MINUS() == 401 then 1 else 0;
+    let t3 = if TK_STAR() == 402 then 1 else 0;
+    let t4 = if TK_SLASH() == 403 then 1 else 0;
+    let t5 = if TK_LT() == 405 then 1 else 0;
+    let t6 = if TK_GT() == 406 then 1 else 0;
+    let t7 = if TK_EQEQ() == 410 then 1 else 0;
+    let t8 = if TK_NEQ() == 411 then 1 else 0;
+    t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8;
+
+-- Test parse result helpers
+fn test_result_helpers() -> i64 =
+    let r1 = pack_result(0, 100);
+    let t1 = if result_code(r1) == 0 then 1 else 0;
+    let t2 = if result_pos(r1) == 100 then 1 else 0;
+    let t3 = if is_ok(r1) then 1 else 0;
+    let r2 = pack_result(1, 50);
+    let t4 = if result_code(r2) == 1 then 1 else 0;
+    let t5 = if result_pos(r2) == 50 then 1 else 0;
+    let t6 = if not is_ok(r2) then 1 else 0;
+    t1 + t2 + t3 + t4 + t5 + t6;
+
+-- Test is_binop function
+fn test_is_binop() -> i64 =
+    let t1 = if is_binop(400) then 1 else 0;  -- +
+    let t2 = if is_binop(401) then 1 else 0;  -- -
+    let t3 = if is_binop(402) then 1 else 0;  -- *
+    let t4 = if is_binop(405) then 1 else 0;  -- <
+    let t5 = if is_binop(410) then 1 else 0;  -- ==
+    let t6 = if is_binop(107) then 1 else 0;  -- and
+    let t7 = if is_binop(108) then 1 else 0;  -- or
+    let t8 = if not is_binop(100) then 1 else 0;  -- fn (not binop)
+    t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8;
+
+-- Test token extraction
+fn test_tok_helpers() -> i64 =
+    let tok = 100 * 1000000 + 50;  -- kind=100, end=50
+    let t1 = if tok_kind(tok) == 100 then 1 else 0;
+    let t2 = if tok_end(tok) == 50 then 1 else 0;
+    let tok2 = 201 * 1000000 + 0;  -- kind=201, end=0
+    let t3 = if tok_kind(tok2) == 201 then 1 else 0;
+    let t4 = if tok_end(tok2) == 0 then 1 else 0;
+    t1 + t2 + t3 + t4;
+
+-- Test error code constants
+fn test_error_codes() -> i64 =
+    let t1 = if PR_OK() == 0 then 1 else 0;
+    let t2 = if PR_ERR_UNEXPECTED() == 1 then 1 else 0;
+    let t3 = if PR_ERR_EXPECTED_IDENT() == 2 then 1 else 0;
+    let t4 = if PR_ERR_EXPECTED_TYPE() == 3 then 1 else 0;
+    let t5 = if PR_ERR_EXPECTED_EXPR() == 4 then 1 else 0;
+    let t6 = if PR_ERR_EXPECTED_SEMI() == 5 then 1 else 0;
+    t1 + t2 + t3 + t4 + t5 + t6;
+
+-- ============================================================
 -- Main: Parse a test program
 -- ============================================================
 
@@ -565,6 +656,29 @@ fn test_parse(src: String, expected: i64) -> i64 =
 fn main() -> i64 =
     let u0 = println(777);  -- Start marker
 
+    -- Unit tests (v0.30.142)
+    let ut1 = test_token_constants();
+    let v1 = println(ut1);  -- Should be 8
+    let ut2 = test_type_tokens();
+    let v2 = println(ut2);  -- Should be 5
+    let ut3 = test_symbol_tokens();
+    let v3 = println(ut3);  -- Should be 6
+    let ut4 = test_operator_tokens();
+    let v4 = println(ut4);  -- Should be 8
+    let ut5 = test_result_helpers();
+    let v5 = println(ut5);  -- Should be 6
+    let ut6 = test_is_binop();
+    let v6 = println(ut6);  -- Should be 8
+    let ut7 = test_tok_helpers();
+    let v7 = println(ut7);  -- Should be 4
+    let ut8 = test_error_codes();
+    let v8 = println(ut8);  -- Should be 6
+    let unit_total = ut1 + ut2 + ut3 + ut4 + ut5 + ut6 + ut7 + ut8;
+    let v9 = println(unit_total);  -- Should be 51
+
+    let u1 = println(555);  -- Integration tests marker
+
+    -- Integration tests
     -- Test 1: Simple function
     let t1 = test_parse("fn add(x: i64, y: i64) -> i64 = x + y;", 0);
 
@@ -595,11 +709,14 @@ fn main() -> i64 =
     -- Test 10: Multiple functions
     let t10 = test_parse("fn a() -> i64 = 1; fn b() -> i64 = 2;", 0);
 
-    let u1 = println(888);  -- End marker
+    let u2 = println(888);  -- End marker
 
     -- Count passed tests
-    let passed = t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t9 + t10;
-    let u2 = println(passed);  -- Should be 10
+    let integration = t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t9 + t10;
+    let u3 = println(integration);  -- Should be 10
 
-    let u3 = println(999);  -- Final marker
-    passed;
+    let total = unit_total + integration;
+    let u4 = println(total);  -- Should be 61
+
+    let u5 = println(999);  -- Final marker
+    total;

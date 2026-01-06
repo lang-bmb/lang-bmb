@@ -1,4 +1,4 @@
--- BMB Lexer written in BMB (Phase 9: Self-compilation bootstrap)
+-- BMB Lexer written in BMB (v0.30.141)
 -- A simple hand-written lexer for the BMB language
 -- Uses functional/recursive style to work within BMB's grammar constraints
 --
@@ -204,6 +204,144 @@ fn seq(x: i64, val: i64) -> i64 =
     let u = println(x);
     val;
 
+-- ============================================================================
+-- SECTION: Tests (v0.30.141)
+-- ============================================================================
+
+-- Test character classification
+fn test_char_class() -> i64 =
+    -- Test is_digit boundaries
+    let d1 = if is_digit(48) then 1 else 0;   -- '0'
+    let d2 = if is_digit(57) then 1 else 0;   -- '9'
+    let d3 = if not is_digit(47) then 1 else 0; -- before '0'
+    let d4 = if not is_digit(58) then 1 else 0; -- after '9'
+    -- Test is_alpha boundaries
+    let a1 = if is_alpha(65) then 1 else 0;   -- 'A'
+    let a2 = if is_alpha(90) then 1 else 0;   -- 'Z'
+    let a3 = if is_alpha(97) then 1 else 0;   -- 'a'
+    let a4 = if is_alpha(122) then 1 else 0;  -- 'z'
+    -- Test is_whitespace
+    let w1 = if is_whitespace(32) then 1 else 0;  -- space
+    let w2 = if is_whitespace(9) then 1 else 0;   -- tab
+    let w3 = if is_whitespace(10) then 1 else 0;  -- newline
+    let w4 = if not is_whitespace(65) then 1 else 0; -- 'A' not whitespace
+    d1 + d2 + d3 + d4 + a1 + a2 + a3 + a4 + w1 + w2 + w3 + w4;
+
+-- Test keyword lookup
+fn test_keywords() -> i64 =
+    let k1 = if lookup_keyword("fn") == 100 then 1 else 0;
+    let k2 = if lookup_keyword("let") == 101 then 1 else 0;
+    let k3 = if lookup_keyword("if") == 102 then 1 else 0;
+    let k4 = if lookup_keyword("else") == 104 then 1 else 0;
+    let k5 = if lookup_keyword("true") == 105 then 1 else 0;
+    let k6 = if lookup_keyword("false") == 106 then 1 else 0;
+    let k7 = if lookup_keyword("struct") == 113 then 1 else 0;
+    let k8 = if lookup_keyword("trait") == 127 then 1 else 0;
+    let k9 = if lookup_keyword("impl") == 128 then 1 else 0;
+    let k10 = if lookup_keyword("foo") == 201 then 1 else 0;  -- ident, not keyword
+    k1 + k2 + k3 + k4 + k5 + k6 + k7 + k8 + k9 + k10;
+
+-- Test symbol codes
+fn test_symbols() -> i64 =
+    let s1 = if symbol_code(58) == 300 then 1 else 0;   -- :
+    let s2 = if symbol_code(46) == 301 then 1 else 0;   -- .
+    let s3 = if symbol_code(61) == 302 then 1 else 0;   -- =
+    let s4 = if symbol_code(59) == 303 then 1 else 0;   -- ;
+    let s5 = if symbol_code(40) == 305 then 1 else 0;   -- (
+    let s6 = if symbol_code(41) == 306 then 1 else 0;   -- )
+    let s7 = if symbol_code(43) == 400 then 1 else 0;   -- +
+    let s8 = if symbol_code(45) == 401 then 1 else 0;   -- -
+    let s9 = if symbol_code(42) == 402 then 1 else 0;   -- *
+    let s10 = if symbol_code(47) == 403 then 1 else 0;  -- /
+    s1 + s2 + s3 + s4 + s5 + s6 + s7 + s8 + s9 + s10;
+
+-- Test two-character tokens
+fn test_two_char() -> i64 =
+    let t1 = if check_two_char("::", 0) == 3202 then 1 else 0;   -- ::
+    let t2 = if check_two_char("->", 0) == 3212 then 1 else 0;   -- ->
+    let t3 = if check_two_char("=>", 0) == 3222 then 1 else 0;   -- =>
+    let t4 = if check_two_char("..", 0) == 3232 then 1 else 0;   -- ..
+    let t5 = if check_two_char("==", 0) == 4102 then 1 else 0;   -- ==
+    let t6 = if check_two_char("!=", 0) == 4112 then 1 else 0;   -- !=
+    let t7 = if check_two_char("<=", 0) == 4122 then 1 else 0;   -- <=
+    let t8 = if check_two_char(">=", 0) == 4132 then 1 else 0;   -- >=
+    let t9 = if check_two_char("ab", 0) == 0 then 1 else 0;      -- not two-char
+    let t10 = if check_two_char("+", 0) == 0 then 1 else 0;      -- too short
+    t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t9 + t10;
+
+-- Test token extraction helpers
+fn test_token_extract() -> i64 =
+    -- Token format: kind * 1000000 + start * 1000 + length
+    let tok1 = 100 * 1000000 + 5 * 1000 + 2;   -- kind=100, start=5, len=2
+    let e1 = if token_kind(tok1) == 100 then 1 else 0;
+    let e2 = if token_start(tok1) == 5 then 1 else 0;
+    let e3 = if token_len(tok1) == 2 then 1 else 0;
+    -- Another token
+    let tok2 = 201 * 1000000 + 0 * 1000 + 3;   -- kind=201, start=0, len=3
+    let e4 = if token_kind(tok2) == 201 then 1 else 0;
+    let e5 = if token_start(tok2) == 0 then 1 else 0;
+    let e6 = if token_len(tok2) == 3 then 1 else 0;
+    -- EOF token
+    let tok3 = 900 * 1000000 + 10 * 1000 + 0;
+    let e7 = if token_kind(tok3) == 900 then 1 else 0;
+    let e8 = if token_start(tok3) == 10 then 1 else 0;
+    e1 + e2 + e3 + e4 + e5 + e6 + e7 + e8;
+
+-- Test skip functions
+fn test_skip() -> i64 =
+    -- skip_ws
+    let s1 = if skip_ws("  hello", 0) == 2 then 1 else 0;
+    let s2 = if skip_ws("hello", 0) == 0 then 1 else 0;
+    let s3 = if skip_ws("", 0) == 0 then 1 else 0;
+    -- skip_comment
+    let c1 = if skip_comment("-- comment", 0) == 10 then 1 else 0;
+    let c2 = if skip_comment("not comment", 0) == 0 then 1 else 0;
+    -- find_ident_end
+    let i1 = if find_ident_end("foo_bar ", 0) == 7 then 1 else 0;
+    let i2 = if find_ident_end("x123", 0) == 4 then 1 else 0;
+    -- find_number_end
+    let n1 = if find_number_end("12345 ", 0) == 5 then 1 else 0;
+    let n2 = if find_number_end("0", 0) == 1 then 1 else 0;
+    s1 + s2 + s3 + c1 + c2 + i1 + i2 + n1 + n2;
+
+-- Test type keywords
+fn test_type_keywords() -> i64 =
+    let t1 = if lookup_keyword("i32") == 150 then 1 else 0;
+    let t2 = if lookup_keyword("i64") == 151 then 1 else 0;
+    let t3 = if lookup_keyword("f64") == 152 then 1 else 0;
+    let t4 = if lookup_keyword("bool") == 153 then 1 else 0;
+    let t5 = if lookup_keyword("String") == 154 then 1 else 0;
+    t1 + t2 + t3 + t4 + t5;
+
+-- Test control flow keywords
+fn test_control_keywords() -> i64 =
+    let c1 = if lookup_keyword("while") == 118 then 1 else 0;
+    let c2 = if lookup_keyword("for") == 119 then 1 else 0;
+    let c3 = if lookup_keyword("in") == 120 then 1 else 0;
+    let c4 = if lookup_keyword("break") == 125 then 1 else 0;
+    let c5 = if lookup_keyword("continue") == 126 then 1 else 0;
+    let c6 = if lookup_keyword("match") == 115 then 1 else 0;
+    c1 + c2 + c3 + c4 + c5 + c6;
+
+-- Test next_token basic functionality
+fn test_next_token() -> i64 =
+    -- Test keyword token
+    let t1 = next_token("fn", 0);
+    let r1 = if token_kind(t1) == 100 then 1 else 0;  -- fn = 100
+    -- Test identifier
+    let t2 = next_token("foo", 0);
+    let r2 = if token_kind(t2) == 201 then 1 else 0;  -- ident = 201
+    -- Test number
+    let t3 = next_token("42", 0);
+    let r3 = if token_kind(t3) == 200 then 1 else 0;  -- number = 200
+    -- Test symbol
+    let t4 = next_token("+", 0);
+    let r4 = if token_kind(t4) == 400 then 1 else 0;  -- + = 400
+    -- Test skip whitespace
+    let t5 = next_token("  let", 0);
+    let r5 = if token_kind(t5) == 101 then 1 else 0;  -- let = 101
+    r1 + r2 + r3 + r4 + r5;
+
 -- Tokenize and print, returning count
 fn tok_step(s: String, pos: i64, count: i64) -> i64 =
     let tok = next_token(s, pos);
@@ -218,11 +356,30 @@ fn tok_step(s: String, pos: i64, count: i64) -> i64 =
 -- Tokenize and print all tokens
 fn tokenize(s: String) -> i64 = tok_step(s, 0, 0);
 
--- Main function to demonstrate the lexer
+-- Main function - run all tests
 fn main() -> i64 =
-    let u1 = println(777);  -- Separator
-    let s = "fn foo(x: i64) -> bool = x > 0;";  -- Test: 15 tokens
-    let count = tokenize(s);
-    let u2 = println(888);  -- Separator
-    let u3 = println(count);
+    let u1 = println(777);  -- Start marker
+    -- Run unit tests
+    let t1 = test_char_class();
+    let u2 = println(t1);  -- Should be 12
+    let t2 = test_keywords();
+    let u3 = println(t2);  -- Should be 10
+    let t3 = test_symbols();
+    let u4 = println(t3);  -- Should be 10
+    let t4 = test_two_char();
+    let u5 = println(t4);  -- Should be 10
+    let t5 = test_token_extract();
+    let u6 = println(t5);  -- Should be 8
+    let t6 = test_skip();
+    let u7 = println(t6);  -- Should be 9
+    let t7 = test_type_keywords();
+    let u8 = println(t7);  -- Should be 5
+    let t8 = test_control_keywords();
+    let u9 = println(t8);  -- Should be 6
+    let t9 = test_next_token();
+    let u10 = println(t9); -- Should be 5
+    let u11 = println(888);  -- End marker
+    let total = t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t9;
+    let u12 = println(total);  -- Should be 75
+    let u13 = println(999);  -- Final marker
     0;

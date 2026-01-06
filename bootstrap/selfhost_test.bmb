@@ -1,6 +1,6 @@
 -- ============================================================================
 -- BMB Bootstrap Self-Hosting Stage 1 Test
--- Version: v0.23.0
+-- Version: v0.30.144 (Enhanced test suite)
 --
 -- This file tests the Bootstrap compiler's ability to compile BMB source
 -- code and generate valid LLVM IR. This is the first stage of self-hosting
@@ -442,7 +442,99 @@ fn parse_program(src: String, pos: i64, fns: String) -> String =
 fn parse_source(src: String) -> String = parse_program(src, 0, "");
 
 -- ============================================================================
--- SECTION 5: Test Suite - Stage 1 Self-Hosting Verification
+-- SECTION 5: Unit Tests (v0.30.144)
+-- ============================================================================
+
+-- Test token encoding/decoding
+fn test_tok_encoding() -> i64 =
+    let tok1 = TK_FN() * 1000000 + 50;
+    let t1 = if tok_kind(tok1) == TK_FN() then 1 else 0;
+    let t2 = if tok_end(tok1) == 50 then 1 else 0;
+    let tok2 = TK_INT() * 1000000 + 0;
+    let t3 = if tok_kind(tok2) == TK_INT() then 1 else 0;
+    let t4 = if tok_end(tok2) == 0 then 1 else 0;
+    t1 + t2 + t3 + t4;
+
+-- Test token constants
+fn test_token_constants() -> i64 =
+    let t1 = if TK_EOF() == 0 then 1 else 0;
+    let t2 = if TK_IDENT() == 1 then 1 else 0;
+    let t3 = if TK_INT() == 2 then 1 else 0;
+    let t4 = if TK_FN() == 200 then 1 else 0;
+    let t5 = if TK_LET() == 201 then 1 else 0;
+    let t6 = if TK_I64() == 300 then 1 else 0;
+    t1 + t2 + t3 + t4 + t5 + t6;
+
+-- Test character classification
+fn test_char_class() -> i64 =
+    let t1 = if is_whitespace(32) then 1 else 0;  -- space
+    let t2 = if is_whitespace(10) then 1 else 0;  -- newline
+    let t3 = if is_digit(48) then 1 else 0;       -- '0'
+    let t4 = if is_digit(57) then 1 else 0;       -- '9'
+    let t5 = if is_alpha(65) then 1 else 0;       -- 'A'
+    let t6 = if is_alpha(122) then 1 else 0;      -- 'z'
+    let t7 = if is_alpha(95) then 1 else 0;       -- '_'
+    let t8 = if is_alnum(65) then 1 else 0;       -- 'A' is alnum
+    t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8;
+
+-- Test int_to_string
+fn test_int_to_string() -> i64 =
+    let t1 = if int_to_string(0) == "0" then 1 else 0;
+    let t2 = if int_to_string(5) == "5" then 1 else 0;
+    let t3 = if int_to_string(42) == "42" then 1 else 0;
+    let t4 = if int_to_string(123) == "123" then 1 else 0;
+    t1 + t2 + t3 + t4;
+
+-- Test result packing
+fn test_result_packing() -> i64 =
+    let r1 = pack_result(100, "(ast)");
+    let t1 = if unpack_pos(r1) == 100 then 1 else 0;
+    let t2 = if unpack_ast(r1) == "(ast)" then 1 else 0;
+    let r2 = pack_result(0, "value");
+    let t3 = if unpack_pos(r2) == 0 then 1 else 0;
+    let t4 = if unpack_ast(r2) == "value" then 1 else 0;
+    t1 + t2 + t3 + t4;
+
+-- Test error handling
+fn test_error_handling() -> i64 =
+    let t1 = if is_error("ERR:test") then 1 else 0;
+    let t2 = if not is_error("OK") then 1 else 0;
+    let t3 = if make_error("msg") == "ERR:msg" then 1 else 0;
+    let t4 = if not is_error("(ast)") then 1 else 0;
+    t1 + t2 + t3 + t4;
+
+-- Test keyword recognition
+fn test_keyword_kind() -> i64 =
+    let t1 = if keyword_kind("fn") == TK_FN() then 1 else 0;
+    let t2 = if keyword_kind("let") == TK_LET() then 1 else 0;
+    let t3 = if keyword_kind("if") == TK_IF() then 1 else 0;
+    let t4 = if keyword_kind("i64") == TK_I64() then 1 else 0;
+    let t5 = if keyword_kind("xyz") == TK_IDENT() then 1 else 0;
+    let t6 = if keyword_kind("true") == TK_TRUE() then 1 else 0;
+    t1 + t2 + t3 + t4 + t5 + t6;
+
+-- Test op_symbol function
+fn test_op_symbol() -> i64 =
+    let t1 = if op_symbol(TK_PLUS()) == "+" then 1 else 0;
+    let t2 = if op_symbol(TK_MINUS()) == "-" then 1 else 0;
+    let t3 = if op_symbol(TK_STAR()) == "*" then 1 else 0;
+    let t4 = if op_symbol(TK_EQEQ()) == "==" then 1 else 0;
+    let t5 = if op_symbol(TK_AND()) == "and" then 1 else 0;
+    let t6 = if op_symbol(TK_OR()) == "or" then 1 else 0;
+    t1 + t2 + t3 + t4 + t5 + t6;
+
+-- Test is_binop function
+fn test_is_binop() -> i64 =
+    let t1 = if is_binop(TK_PLUS()) then 1 else 0;
+    let t2 = if is_binop(TK_STAR()) then 1 else 0;
+    let t3 = if is_binop(TK_EQEQ()) then 1 else 0;
+    let t4 = if is_binop(TK_AND()) then 1 else 0;
+    let t5 = if not is_binop(TK_FN()) then 1 else 0;
+    let t6 = if not is_binop(TK_LET()) then 1 else 0;
+    t1 + t2 + t3 + t4 + t5 + t6;
+
+-- ============================================================================
+-- SECTION 6: Integration Tests - Stage 1 Self-Hosting Verification
 -- ============================================================================
 
 -- Test: Parse simple constant function
@@ -496,41 +588,68 @@ fn test_parse_bool() -> i64 =
     if is_error(ast) then 0 else 1;
 
 -- ============================================================================
--- SECTION 6: Main Test Runner
+-- SECTION 7: Main Test Runner
 -- ============================================================================
 
 fn main() -> i64 =
     let u0 = println(777);  -- Start marker
 
-    -- Stage 1: Parser Tests
-    let u1 = println(1);  -- Section: Parser
+    -- Unit tests (v0.30.144)
+    let ut1 = test_tok_encoding();
+    let v1 = println(ut1);  -- Should be 4
+    let ut2 = test_token_constants();
+    let v2 = println(ut2);  -- Should be 6
+    let ut3 = test_char_class();
+    let v3 = println(ut3);  -- Should be 8
+    let ut4 = test_int_to_string();
+    let v4 = println(ut4);  -- Should be 4
+    let ut5 = test_result_packing();
+    let v5 = println(ut5);  -- Should be 4
+    let ut6 = test_error_handling();
+    let v6 = println(ut6);  -- Should be 4
+    let ut7 = test_keyword_kind();
+    let v7 = println(ut7);  -- Should be 6
+    let ut8 = test_op_symbol();
+    let v8 = println(ut8);  -- Should be 6
+    let ut9 = test_is_binop();
+    let v9 = println(ut9);  -- Should be 6
+    let unit_total = ut1 + ut2 + ut3 + ut4 + ut5 + ut6 + ut7 + ut8 + ut9;
+    let v10 = println(unit_total);  -- Should be 48
+
+    let u1 = println(555);  -- Integration tests marker
+
+    -- Integration tests
     let t1 = test_parse_const();
-    let u2 = println(t1);
+    let w1 = println(t1);
 
     let t2 = test_parse_param();
-    let u3 = println(t2);
+    let w2 = println(t2);
 
     let t3 = test_parse_binop();
-    let u4 = println(t3);
+    let w3 = println(t3);
 
     let t4 = test_parse_if();
-    let u5 = println(t4);
+    let w4 = println(t4);
 
     let t5 = test_parse_let();
-    let u6 = println(t5);
+    let w5 = println(t5);
 
     let t6 = test_parse_call();
-    let u7 = println(t6);
+    let w6 = println(t6);
 
     let t7 = test_parse_cmp();
-    let u8 = println(t7);
+    let w7 = println(t7);
 
     let t8 = test_parse_bool();
-    let u9 = println(t8);
+    let w8 = println(t8);
 
-    let total = t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8;
-    let u10 = println(888);  -- Separator
-    let u11 = println(total);
-    let u12 = println(999);  -- End marker
+    let u2 = println(888);  -- End marker
 
+    let integration = t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8;
+    let w9 = println(integration);  -- Should be 8
+
+    let total = unit_total + integration;
+    let w10 = println(total);  -- Should be 56
+
+    let u3 = println(999);  -- Final marker
     total;

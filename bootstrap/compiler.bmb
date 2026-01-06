@@ -1,4 +1,4 @@
--- BMB Unified Compiler (v0.10.9: Bootstrap Phase 9)
+-- BMB Unified Compiler (v0.30.143: Enhanced test suite)
 -- Complete compilation pipeline: Source -> AST -> MIR -> LLVM IR
 --
 -- ARCHITECTURE:
@@ -1147,56 +1147,190 @@ fn test_compile_has_runtime(source: String) -> i64 =
     else if has_pattern(result, "declare", 0) then 1 else 0;
 
 -- ============================================================================
--- SECTION 15: Main Test Suite
+-- SECTION 15: Unit Tests (v0.30.143)
+-- ============================================================================
+
+-- Test digit_char function
+fn test_digit_char() -> i64 =
+    let t1 = if digit_char(0) == "0" then 1 else 0;
+    let t2 = if digit_char(5) == "5" then 1 else 0;
+    let t3 = if digit_char(9) == "9" then 1 else 0;
+    let t4 = if digit_char(1) == "1" then 1 else 0;
+    t1 + t2 + t3 + t4;
+
+-- Test int_to_string function
+fn test_int_to_string() -> i64 =
+    let t1 = if int_to_string(0) == "0" then 1 else 0;
+    let t2 = if int_to_string(42) == "42" then 1 else 0;
+    let t3 = if int_to_string(100) == "100" then 1 else 0;
+    let t4 = if int_to_string(7) == "7" then 1 else 0;
+    t1 + t2 + t3 + t4;
+
+-- Test character classification
+fn test_char_class() -> i64 =
+    let t1 = if is_whitespace(32) then 1 else 0;  -- space
+    let t2 = if is_whitespace(10) then 1 else 0;  -- newline
+    let t3 = if is_digit(48) then 1 else 0;       -- '0'
+    let t4 = if is_digit(57) then 1 else 0;       -- '9'
+    let t5 = if is_alpha(65) then 1 else 0;       -- 'A'
+    let t6 = if is_alpha(122) then 1 else 0;      -- 'z'
+    let t7 = if is_alnum_or_underscore(95) then 1 else 0;  -- '_'
+    let t8 = if is_ident_start(95) then 1 else 0; -- '_'
+    t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8;
+
+-- Test error handling utilities
+fn test_error_utils() -> i64 =
+    let t1 = if is_error("ERR:test") then 1 else 0;
+    let t2 = if not is_error("OK") then 1 else 0;
+    let t3 = if make_error("msg") == "ERR:msg" then 1 else 0;
+    let t4 = if starts_with("hello", "hel", 0) then 1 else 0;
+    let t5 = if not starts_with("hello", "xyz", 0) then 1 else 0;
+    let t6 = if has_pattern("abcdef", "cde", 0) then 1 else 0;
+    t1 + t2 + t3 + t4 + t5 + t6;
+
+-- Test token constants
+fn test_token_constants() -> i64 =
+    let t1 = if TK_FN() == 100 then 1 else 0;
+    let t2 = if TK_LET() == 101 then 1 else 0;
+    let t3 = if TK_IF() == 102 then 1 else 0;
+    let t4 = if TK_I64() == 151 then 1 else 0;
+    let t5 = if TK_BOOL() == 153 then 1 else 0;
+    let t6 = if TK_EOF() == 900 then 1 else 0;
+    t1 + t2 + t3 + t4 + t5 + t6;
+
+-- Test token encoding/decoding
+fn test_tok_helpers() -> i64 =
+    let tok1 = make_tok(100, 50);  -- kind=100, endpos=50
+    let t1 = if tok_kind(tok1) == 100 then 1 else 0;
+    let t2 = if tok_end(tok1) == 50 then 1 else 0;
+    let t3 = if tok_val(tok1) == 100 then 1 else 0;
+    let tok2 = make_tok(200, 0);
+    let t4 = if tok_kind(tok2) == 200 then 1 else 0;
+    let t5 = if tok_end(tok2) == 0 then 1 else 0;
+    t1 + t2 + t3 + t4 + t5;
+
+-- Test parser result packing
+fn test_pack_result() -> i64 =
+    let r1 = pack_result(100, "(ast)");
+    let t1 = if unpack_pos(r1) == 100 then 1 else 0;
+    let t2 = if unpack_ast(r1) == "(ast)" then 1 else 0;
+    let r2 = pack_result(0, "(prog)");
+    let t3 = if unpack_pos(r2) == 0 then 1 else 0;
+    let t4 = if unpack_ast(r2) == "(prog)" then 1 else 0;
+    t1 + t2 + t3 + t4;
+
+-- Test MIR result packing
+fn test_mir_packing() -> i64 =
+    let r1 = pack_lower_result("mir_text", 5);
+    let t1 = if unpack_temp_id(r1) == 5 then 1 else 0;
+    let t2 = if unpack_text(r1) == "mir_text" then 1 else 0;
+    let r2 = pack_lower_result("code", 0);
+    let t3 = if unpack_temp_id(r2) == 0 then 1 else 0;
+    let t4 = if unpack_text(r2) == "code" then 1 else 0;
+    t1 + t2 + t3 + t4;
+
+-- Test S-expression utilities
+fn test_sexp_utils() -> i64 =
+    let t1 = if get_node_type("(fn test)") == "fn" then 1 else 0;
+    let t2 = if get_node_type("(int 42)") == "int" then 1 else 0;
+    let t3 = if get_node_type("(var x)") == "var" then 1 else 0;
+    let t4 = if is_fn_node("(fn test i64 (int 1))") then 1 else 0;
+    let t5 = if not is_fn_node("(int 42)") then 1 else 0;
+    let t6 = if extract_paren_content("(hello)") == "hello" then 1 else 0;
+    t1 + t2 + t3 + t4 + t5 + t6;
+
+-- Test module header generation
+fn test_module_gen() -> i64 =
+    let hdr = gen_module_header();
+    let t1 = if has_pattern(hdr, "ModuleID", 0) then 1 else 0;
+    let t2 = if has_pattern(hdr, "triple", 0) then 1 else 0;
+    let decls = gen_runtime_decls();
+    let t3 = if has_pattern(decls, "println", 0) then 1 else 0;
+    let t4 = if has_pattern(decls, "abs", 0) then 1 else 0;
+    t1 + t2 + t3 + t4;
+
+-- ============================================================================
+-- SECTION 16: Main Test Suite
 -- ============================================================================
 
 fn main() -> i64 =
     let u0 = println(777);  -- Start marker
 
+    -- Unit tests (v0.30.143)
+    let ut1 = test_digit_char();
+    let v1 = println(ut1);  -- Should be 4
+    let ut2 = test_int_to_string();
+    let v2 = println(ut2);  -- Should be 4
+    let ut3 = test_char_class();
+    let v3 = println(ut3);  -- Should be 8
+    let ut4 = test_error_utils();
+    let v4 = println(ut4);  -- Should be 6
+    let ut5 = test_token_constants();
+    let v5 = println(ut5);  -- Should be 6
+    let ut6 = test_tok_helpers();
+    let v6 = println(ut6);  -- Should be 5
+    let ut7 = test_pack_result();
+    let v7 = println(ut7);  -- Should be 4
+    let ut8 = test_mir_packing();
+    let v8 = println(ut8);  -- Should be 4
+    let ut9 = test_sexp_utils();
+    let v9 = println(ut9);  -- Should be 6
+    let ut10 = test_module_gen();
+    let v10 = println(ut10);  -- Should be 4
+    let unit_total = ut1 + ut2 + ut3 + ut4 + ut5 + ut6 + ut7 + ut8 + ut9 + ut10;
+    let v11 = println(unit_total);  -- Should be 51
+
+    let u1 = println(555);  -- Integration tests marker
+
+    -- Integration tests
     -- Test 1: Module header
     let hdr = gen_module_header();
     let t1 = if has_pattern(hdr, "ModuleID", 0) then 1 else 0;
-    let u1 = println(t1);
+    let w1 = println(t1);
 
     -- Test 2: Runtime declarations
     let decls = gen_runtime_decls();
     let t2 = if has_pattern(decls, "declare", 0) then 1 else 0;
-    let u2 = println(t2);
+    let w2 = println(t2);
 
     -- Test 3: Lower simple AST (pre-computed)
-    -- AST for "fn one() -> i64 = 1;" is "(program (fn <one> i64 (int 1)))"
     let ast3 = "(program (fn <one> i64 (int 1)))";
     let mir3 = lower_program(ast3);
     let t3 = if mir3 == "" then 0 else 1;
-    let u3 = println(t3);
+    let w3 = println(t3);
 
     -- Test 4: MIR contains function signature
     let t4 = if has_pattern(mir3, "fn one", 0) then 1 else 0;
-    let u4 = println(t4);
+    let w4 = println(t4);
 
     -- Test 5: Generate LLVM from MIR
     let llvm5 = gen_program(mir3);
     let t5 = if has_pattern(llvm5, "define", 0) then 1 else 0;
-    let u5 = println(t5);
+    let w5 = println(t5);
 
     -- Test 6: LLVM has return
     let t6 = if has_pattern(llvm5, "ret i64", 0) then 1 else 0;
-    let u6 = println(t6);
+    let w6 = println(t6);
 
     -- Test 7: Lower binop AST (pre-computed)
-    -- AST for "fn add(a: i64, b: i64) -> i64 = a + b;"
     let ast7 = "(program (fn <add> (param <a> i64) (param <b> i64) i64 (binop + (var <a>) (var <b>))))";
     let mir7 = lower_program(ast7);
     let t7 = if has_pattern(mir7, "fn add", 0) then 1 else 0;
-    let u7 = println(t7);
+    let w7 = println(t7);
 
     -- Test 8: LLVM generation for add
     let llvm8 = gen_program(mir7);
     let t8 = if has_pattern(llvm8, "add i64", 0) then 1 else 0;
-    let u8 = println(t8);
+    let w8 = println(t8);
 
-    let u99 = println(888);  -- End marker
+    let u2 = println(888);  -- End marker
 
     -- Count passed tests
-    let passed = t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8;
-    passed;
+    let integration = t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8;
+    let w9 = println(integration);  -- Should be 8
+
+    let total = unit_total + integration;
+    let w10 = println(total);  -- Should be 59
+
+    let u3 = println(999);  -- Final marker
+    total;
