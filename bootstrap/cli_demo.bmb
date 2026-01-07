@@ -1,0 +1,82 @@
+-- BMB CLI Demo (Phase 32.0.3)
+-- Purpose: Demonstrate io + process builtin integration
+-- Usage: Set BMB_INPUT and BMB_OUTPUT env vars, then run via `bmb run cli_demo.bmb`
+
+-- ============================================================================
+-- Helper Functions
+-- ============================================================================
+
+fn is_empty(s: String) -> i64 =
+    if s == "" then 1 else 0;
+
+fn count_chars(s: String) -> i64 = s.len();
+
+fn digit_char(d: i64) -> String =
+    if d == 0 then "0"
+    else if d == 1 then "1"
+    else if d == 2 then "2"
+    else if d == 3 then "3"
+    else if d == 4 then "4"
+    else if d == 5 then "5"
+    else if d == 6 then "6"
+    else if d == 7 then "7"
+    else if d == 8 then "8"
+    else "9";
+
+fn int_to_string_helper(n: i64, acc: String) -> String =
+    if n < 10 then digit_char(n) + acc
+    else int_to_string_helper(n / 10, digit_char(n % 10) + acc);
+
+fn int_to_string(n: i64) -> String =
+    if n == 0 then "0"
+    else if n < 0 then "-" + int_to_string_helper(0 - n, "")
+    else int_to_string_helper(n, "");
+
+-- ============================================================================
+-- Demo Mode Functions
+-- ============================================================================
+
+fn run_demo() -> i64 =
+    let test_content = "Hello from BMB CLI Demo!";
+    let w1 = write_file("cli_demo_test.txt", test_content);
+    if w1 != 0 then 1
+    else
+        let read_content = read_file("cli_demo_test.txt");
+        if read_content != test_content then 2
+        else
+            let exists = file_exists("cli_demo_test.txt");
+            if exists != 1 then 3
+            else
+                let size = file_size("cli_demo_test.txt");
+                if size < 1 then 4
+                else
+                    let echo_result = system("echo BMB CLI Demo executed successfully");
+                    let cleanup = system("del cli_demo_test.txt 2>nul");
+                    0;
+
+-- ============================================================================
+-- File Processing Functions
+-- ============================================================================
+
+fn make_summary(path: String, size: i64) -> String =
+    "File: " + path + " Size: " + int_to_string(size);
+
+fn process_file(input_path: String, output_path: String) -> i64 =
+    let exists = file_exists(input_path);
+    if exists != 1 then -1
+    else
+        let content = read_file(input_path);
+        let size = count_chars(content);
+        let info = make_summary(input_path, size);
+        if is_empty(output_path) == 1 then 0
+        else write_file(output_path, info);
+
+-- ============================================================================
+-- Main Entry Point
+-- ============================================================================
+
+fn main() -> i64 =
+    let input_path = getenv("BMB_INPUT");
+    let output_path = getenv("BMB_OUTPUT");
+    if is_empty(input_path) == 1 then run_demo()
+    else process_file(input_path, output_path);

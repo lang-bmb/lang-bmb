@@ -1901,7 +1901,7 @@ string overhead. Fixing requires architectural redesign.
 |------|-------------|----------|--------|--------|
 | 32.0.1 | Add stdlib `io` module (read_file, write_file) | P0 | ~~2 weeks~~ 1 day | ✅ v0.31.10 |
 | 32.0.2 | Add stdlib `process` module (exec, system) | P0 | ~~2 weeks~~ 1 day | ✅ v0.31.11 |
-| 32.0.3 | Create minimal BMB CLI wrapper | P0 | 1 week | 🔲 Pending |
+| 32.0.3 | Create minimal BMB CLI wrapper | P0 | ~~1 week~~ 1 day | ✅ v0.31.12 |
 | 32.0.4 | Fix O(n²) string concatenation (StringBuilder) | P0 | 2 weeks | 🔲 Pending |
 | 32.0.5 | Stage 3 verification (7/7 tests) | P0 | 1 week | 🔲 Pending |
 
@@ -1922,6 +1922,13 @@ string overhead. Fixing requires architectural redesign.
 - Functions: `exec`, `exec_output`, `system`, `getenv`
 - Cross-platform: Windows (cmd) and Unix (sh) shell support
 - Enables Bootstrap to invoke LLVM toolchain via `bmb run`
+
+**v0.31.12 Implementation Details**:
+- CLI demo in `bootstrap/cli_demo.bmb`
+- Demonstrates io + process builtin integration
+- File processing with environment variable configuration
+- Integer-to-string conversion via recursive helper functions
+- Reserved keyword discovery: `summary` is BMB keyword for module docs
 
 **Exit Criteria**: Bootstrap compiles and runs simple programs standalone
 
