@@ -1863,7 +1863,17 @@ string overhead. Fixing requires architectural redesign.
 - Contract range: 6.46ms (purity_opt) ~ 8.62ms (null_check)
 - Full details: `ecosystem/benchmark-bmb/results/baseline_v0.31.8.md`
 
-**Exit Criteria**: ✅ Baseline documented | CI deferred to post-v0.32
+**Interim BMB vs Rust Comparison** (v0.31.16):
+
+| Benchmark | Rust | BMB | Ratio | Status |
+|-----------|------|-----|-------|--------|
+| fibonacci(35) | 69ms | 92ms | 1.33x | ⚠️ BMB 33% slower |
+
+- BMB achieves ~75% of Rust performance on compute-intensive workloads
+- Contract-based optimizations not yet measured (fibonacci has no contracts)
+- Full results: `ecosystem/benchmark-bmb/results/2026-01-08_rust_vs_bmb.md`
+
+**Exit Criteria**: ✅ Baseline documented | ✅ Interim BMB comparison | CI deferred to post-v0.32
 
 ---
 
