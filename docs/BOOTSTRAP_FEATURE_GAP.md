@@ -1,6 +1,6 @@
 # Bootstrap Feature Gap Analysis
 
-> Version: v0.30.277
+> Version: v0.30.280
 > Date: 2026-01-07
 > Purpose: Document gaps between Rust compiler and BMB bootstrap implementation
 
@@ -68,11 +68,13 @@ The BMB bootstrap implements the **complete core compilation pipeline** (lexer �
 - ✅ Multiple functions (independent)
 - ✅ Function composition (`f(g(x))`)
 - ✅ Complex arithmetic expressions
-- ❌ Let bindings (memory limitation)
+- ❌ Let bindings (memory limitation - string concatenation overhead)
 - ❌ Boolean return types (memory limitation)
 - ❌ Recursive functions (fiber allocation limitation)
 
-**Known Limitation**: Memory allocation failures for complex patterns. Root cause: Rc<RefCell<Environment>> chain keeps all scopes alive until stack unwinds.
+**v0.30.280 Optimization**: ScopeStack introduced to replace Rc<RefCell<Environment>> chains. Uses Vec<HashMap<String, Value>> for immediate scope deallocation on exit. Environment chain memory issue resolved.
+
+**Known Limitation**: Memory allocation failures for let bindings. Root cause: Bootstrap compiler's LLVM IR text generation uses 253+ string concatenations per compilation, causing ~1.4MB allocation failures during complex patterns.
 
 ## Module Comparison Matrix
 

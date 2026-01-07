@@ -2,6 +2,7 @@
 
 use super::env::{child_env, EnvRef, Environment};
 use super::error::{InterpResult, RuntimeError};
+use super::scope::ScopeStack;
 use super::value::Value;
 use crate::ast::{BinOp, EnumDef, Expr, FnDef, Pattern, Program, Spanned, StructDef, UnOp};
 use std::collections::HashMap;
@@ -33,6 +34,10 @@ pub struct Interpreter {
     builtins: HashMap<String, BuiltinFn>,
     /// Current recursion depth
     recursion_depth: usize,
+    /// v0.30.280: Stack-based scope for efficient let binding evaluation
+    scope_stack: ScopeStack,
+    /// v0.30.280: Flag to enable ScopeStack-based evaluation
+    use_scope_stack: bool,
 }
 
 impl Interpreter {
@@ -45,6 +50,8 @@ impl Interpreter {
             enum_defs: HashMap::new(),
             builtins: HashMap::new(),
             recursion_depth: 0,
+            scope_stack: ScopeStack::new(),
+            use_scope_stack: false,
         };
         interp.register_builtins();
         interp
@@ -59,6 +66,17 @@ impl Interpreter {
         self.builtins.insert("abs".to_string(), builtin_abs);
         self.builtins.insert("min".to_string(), builtin_min);
         self.builtins.insert("max".to_string(), builtin_max);
+    }
+
+    /// v0.30.280: Enable ScopeStack-based evaluation for better memory efficiency
+    pub fn enable_scope_stack(&mut self) {
+        self.use_scope_stack = true;
+        self.scope_stack.reset();
+    }
+
+    /// v0.30.280: Disable ScopeStack-based evaluation
+    pub fn disable_scope_stack(&mut self) {
+        self.use_scope_stack = false;
     }
 
     /// Load a program (register functions, structs, enums)
@@ -150,6 +168,10 @@ impl Interpreter {
 
         // Then user-defined functions
         if let Some(fn_def) = self.functions.get(name).cloned() {
+            // v0.30.280: Use ScopeStack fast path when enabled
+            if self.use_scope_stack {
+                return self.call_function_fast(&fn_def, &args);
+            }
             return self.call_function(&fn_def, &args);
         }
 
@@ -776,6 +798,251 @@ impl Interpreter {
     /// Define a function (for REPL)
     pub fn define_function(&mut self, fn_def: FnDef) {
         self.functions.insert(fn_def.name.node.clone(), fn_def);
+    }
+
+    // ============ v0.30.280: ScopeStack-based Fast Evaluation ============
+
+    /// Evaluate an expression using ScopeStack for efficient memory
+    fn eval_fast(&mut self, expr: &Spanned<Expr>) -> InterpResult<Value> {
+        stacker::maybe_grow(STACK_RED_ZONE, STACK_GROW_SIZE, || self.eval_fast_inner(expr))
+    }
+
+    /// Inner fast eval implementation using ScopeStack
+    fn eval_fast_inner(&mut self, expr: &Spanned<Expr>) -> InterpResult<Value> {
+        match &expr.node {
+            Expr::IntLit(n) => Ok(Value::Int(*n)),
+            Expr::FloatLit(f) => Ok(Value::Float(*f)),
+            Expr::BoolLit(b) => Ok(Value::Bool(*b)),
+            Expr::StringLit(s) => Ok(Value::Str(Rc::new(s.clone()))),
+            Expr::Unit => Ok(Value::Unit),
+
+            Expr::Var(name) => {
+                self.scope_stack
+                    .get(name)
+                    .ok_or_else(|| RuntimeError::undefined_variable(name))
+            }
+
+            Expr::Binary { left, op, right } => {
+                match op {
+                    BinOp::And => {
+                        let lval = self.eval_fast(left)?;
+                        if !lval.is_truthy() {
+                            return Ok(Value::Bool(false));
+                        }
+                        let rval = self.eval_fast(right)?;
+                        Ok(Value::Bool(rval.is_truthy()))
+                    }
+                    BinOp::Or => {
+                        let lval = self.eval_fast(left)?;
+                        if lval.is_truthy() {
+                            return Ok(Value::Bool(true));
+                        }
+                        let rval = self.eval_fast(right)?;
+                        Ok(Value::Bool(rval.is_truthy()))
+                    }
+                    _ => {
+                        let lval = self.eval_fast(left)?;
+                        let rval = self.eval_fast(right)?;
+                        self.eval_binary(*op, lval, rval)
+                    }
+                }
+            }
+
+            Expr::Unary { op, expr: inner } => {
+                let val = self.eval_fast(inner)?;
+                self.eval_unary(*op, val)
+            }
+
+            Expr::If { cond, then_branch, else_branch } => {
+                let cond_val = self.eval_fast(cond)?;
+                if cond_val.is_truthy() {
+                    self.eval_fast(then_branch)
+                } else {
+                    self.eval_fast(else_branch)
+                }
+            }
+
+            // v0.30.280: Key optimization - immediate scope deallocation
+            Expr::Let { name, value, body, .. } => {
+                let val = self.eval_fast(value)?;
+                self.scope_stack.push_scope();
+                self.scope_stack.define(name.clone(), val);
+                let result = self.eval_fast(body);
+                self.scope_stack.pop_scope(); // Immediate deallocation!
+                result
+            }
+
+            Expr::Call { func, args } => {
+                let arg_vals: Vec<Value> = args
+                    .iter()
+                    .map(|a| self.eval_fast(a))
+                    .collect::<InterpResult<Vec<_>>>()?;
+                self.call_fast(func, arg_vals)
+            }
+
+            Expr::MethodCall { receiver, method, args } => {
+                let recv_val = self.eval_fast(receiver)?;
+                let arg_vals: Vec<Value> = args
+                    .iter()
+                    .map(|a| self.eval_fast(a))
+                    .collect::<InterpResult<Vec<_>>>()?;
+                self.eval_method_call(recv_val, method, arg_vals)
+            }
+
+            // v0.30.280: Block expression - immediate scope deallocation
+            Expr::Block(exprs) => {
+                self.scope_stack.push_scope();
+                let mut result = Value::Unit;
+                for e in exprs {
+                    result = self.eval_fast(e)?;
+                }
+                self.scope_stack.pop_scope();
+                Ok(result)
+            }
+
+            // v0.30.280: Assignment using ScopeStack
+            Expr::Assign { name, value } => {
+                let val = self.eval_fast(value)?;
+                if !self.scope_stack.set(name, val.clone()) {
+                    return Err(RuntimeError::undefined_variable(name));
+                }
+                Ok(Value::Unit)
+            }
+
+            // v0.30.280: While loop using ScopeStack
+            Expr::While { cond, body } => {
+                while self.eval_fast(cond)?.is_truthy() {
+                    self.eval_fast(body)?;
+                }
+                Ok(Value::Unit)
+            }
+
+            // v0.30.280: Match expression using ScopeStack
+            Expr::Match { expr: match_expr, arms } => {
+                let val = self.eval_fast(match_expr)?;
+                for arm in arms {
+                    if let Some(bindings) = self.match_pattern(&arm.pattern.node, &val) {
+                        self.scope_stack.push_scope();
+                        for (name, bound_val) in bindings {
+                            self.scope_stack.define(name, bound_val);
+                        }
+                        let result = self.eval_fast(&arm.body);
+                        self.scope_stack.pop_scope();
+                        return result;
+                    }
+                }
+                Err(RuntimeError::type_error("matching arm", "no match found"))
+            }
+
+            // v0.30.280: Struct support
+            Expr::StructInit { name, fields } => {
+                let mut field_values = std::collections::HashMap::new();
+                for (field_name, field_expr) in fields {
+                    let val = self.eval_fast(field_expr)?;
+                    field_values.insert(field_name.node.clone(), val);
+                }
+                Ok(Value::Struct(name.clone(), field_values))
+            }
+
+            Expr::FieldAccess { expr: obj_expr, field } => {
+                let obj = self.eval_fast(obj_expr)?;
+                match obj {
+                    Value::Struct(_, fields) => {
+                        fields.get(&field.node).cloned()
+                            .ok_or_else(|| RuntimeError::type_error("field", &field.node))
+                    }
+                    _ => Err(RuntimeError::type_error("struct", obj.type_name())),
+                }
+            }
+
+            // v0.30.280: Enum support
+            Expr::EnumVariant { enum_name, variant, args } => {
+                let arg_vals: Vec<Value> = args
+                    .iter()
+                    .map(|a| self.eval_fast(a))
+                    .collect::<InterpResult<Vec<_>>>()?;
+                Ok(Value::Enum(enum_name.clone(), variant.clone(), arg_vals))
+            }
+
+            // v0.30.280: Array support
+            Expr::ArrayLit(elems) => {
+                let mut values = Vec::new();
+                for elem in elems {
+                    values.push(self.eval_fast(elem)?);
+                }
+                Ok(Value::Array(values))
+            }
+
+            Expr::Index { expr, index } => {
+                let arr_val = self.eval_fast(expr)?;
+                let idx_val = self.eval_fast(index)?;
+                let idx = match idx_val {
+                    Value::Int(n) => n as usize,
+                    _ => return Err(RuntimeError::type_error("integer", idx_val.type_name())),
+                };
+                match arr_val {
+                    Value::Array(arr) => {
+                        if idx < arr.len() {
+                            Ok(arr[idx].clone())
+                        } else {
+                            Err(RuntimeError::index_out_of_bounds(idx as i64, arr.len()))
+                        }
+                    }
+                    Value::Str(s) => {
+                        if idx < s.len() {
+                            Ok(Value::Int(s.as_bytes()[idx] as i64))
+                        } else {
+                            Err(RuntimeError::index_out_of_bounds(idx as i64, s.len()))
+                        }
+                    }
+                    _ => Err(RuntimeError::type_error("array or string", arr_val.type_name())),
+                }
+            }
+
+            // For unsupported expressions, return error (force explicit handling)
+            _ => Err(RuntimeError::type_error(
+                "supported expression in fast path",
+                "unsupported expression (Range, For, Ref, Closure, etc.)"
+            ))
+        }
+    }
+
+    /// Call a function by name using ScopeStack
+    fn call_fast(&mut self, name: &str, args: Vec<Value>) -> InterpResult<Value> {
+        if let Some(builtin) = self.builtins.get(name) {
+            return builtin(&args);
+        }
+        if let Some(fn_def) = self.functions.get(name).cloned() {
+            return self.call_function_fast(&fn_def, &args);
+        }
+        Err(RuntimeError::undefined_function(name))
+    }
+
+    /// Call a user-defined function using ScopeStack
+    fn call_function_fast(&mut self, fn_def: &FnDef, args: &[Value]) -> InterpResult<Value> {
+        if fn_def.params.len() != args.len() {
+            return Err(RuntimeError::arity_mismatch(
+                &fn_def.name.node,
+                fn_def.params.len(),
+                args.len(),
+            ));
+        }
+
+        self.recursion_depth += 1;
+        if self.recursion_depth > MAX_RECURSION_DEPTH {
+            self.recursion_depth -= 1;
+            return Err(RuntimeError::stack_overflow());
+        }
+
+        self.scope_stack.push_scope();
+        for (param, arg) in fn_def.params.iter().zip(args.iter()) {
+            self.scope_stack.define(param.name.node.clone(), arg.clone());
+        }
+
+        let result = self.eval_fast(&fn_def.body);
+        self.scope_stack.pop_scope();
+        self.recursion_depth -= 1;
+        result
     }
 }
 

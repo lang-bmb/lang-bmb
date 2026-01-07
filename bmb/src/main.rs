@@ -1514,6 +1514,10 @@ fn generate_bootstrap_ir(source: &str) -> Result<String, Box<dyn std::error::Err
             let mut interpreter = bmb::interp::Interpreter::new();
             interpreter.load(&compiler_ast);
 
+            // v0.30.280: Enable ScopeStack for efficient memory management
+            // This allows let bindings to deallocate immediately on scope exit
+            interpreter.enable_scope_stack();
+
             // Call compile_program with the target source (v0.30.268: Rc<String>)
             let result = interpreter.call_function_with_args(
                 "compile_program",

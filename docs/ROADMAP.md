@@ -337,6 +337,16 @@ v0.MAJOR.MINOR
 - Multi-operand expressions, mixed operations, combined expressions
 - pipeline.bmb total: 42 tests (10 test groups)
 
+**v0.30.280 Completed (2026-01-07)**:
+- Phase 30.1.278-280: ScopeStack Memory Optimization
+- **Investigation (30.1.278)**: Trampolining feasibility analysis - determined infeasible for bootstrap
+- **Design (30.1.279)**: ScopeStack prototype - `Vec<HashMap<String, Value>>` replacing Rc chains
+- **Implementation (30.1.280)**: Full interpreter integration with eval_fast path
+- **Architecture**: Immediate scope deallocation on exit instead of waiting for Rc drop
+- **Result**: Environment chain memory issue RESOLVED
+- **Stage 3 status**: 6/7 tests pass (let binding failure now due to string concatenation, not env chains)
+- **Interpreter tests**: 20/20 pass with ScopeStack
+
 **v0.30.277 Completed (2026-01-07)**:
 - Phase 30.1.273-277: Bootstrap Bottleneck Analysis
 - **String operation census**: lowering.bmb contains 221 pack/unpack calls, 253 string concatenations
