@@ -32,6 +32,8 @@ pub enum ErrorKind {
     IoError,
     /// Index out of bounds
     IndexOutOfBounds,
+    /// v0.31: Todo placeholder reached at runtime
+    TodoNotImplemented,
 }
 
 impl RuntimeError {
@@ -106,6 +108,14 @@ impl RuntimeError {
         RuntimeError {
             kind: ErrorKind::IndexOutOfBounds,
             message: format!("index {} out of bounds for length {}", index, len),
+        }
+    }
+
+    /// v0.31: Todo placeholder reached at runtime
+    pub fn todo(msg: &str) -> Self {
+        RuntimeError {
+            kind: ErrorKind::TodoNotImplemented,
+            message: format!("todo: {msg}"),
         }
     }
 }

@@ -478,6 +478,12 @@ impl Interpreter {
                 // Full closure semantics (capture, delayed execution) will be implemented later
                 self.eval(body, env)
             }
+
+            // v0.31: Todo expression - panics at runtime
+            Expr::Todo { message } => {
+                let msg = message.as_deref().unwrap_or("not yet implemented");
+                Err(RuntimeError::todo(msg))
+            }
         }
     }
 

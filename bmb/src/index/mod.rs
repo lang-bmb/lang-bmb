@@ -402,6 +402,8 @@ impl IndexGenerator {
                 let param_strs: Vec<String> = params.iter().map(|p| self.format_type(p)).collect();
                 format!("fn({}) -> {}", param_strs.join(", "), self.format_type(ret))
             }
+            // v0.31: Never type
+            Type::Never => "!".to_string(),
         }
     }
 

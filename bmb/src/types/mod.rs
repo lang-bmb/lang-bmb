@@ -911,6 +911,13 @@ impl TypeChecker {
                     ret: Box::new(body_ty),
                 })
             }
+
+            // v0.31: Todo expression - type checks as the "never" type
+            // Never type is compatible with any type (bottom type)
+            // This allows `todo` to be used as a placeholder in any context
+            Expr::Todo { .. } => {
+                Ok(Type::Never)
+            }
         }
     }
 
@@ -1658,6 +1665,8 @@ impl TypeChecker {
                     .collect();
                 format!("Fn({}) -> {}", param_strs.join(", "), self.type_to_string(ret))
             }
+            // v0.31: Never type
+            Type::Never => "!".to_string(),
         }
     }
 

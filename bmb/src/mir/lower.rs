@@ -692,6 +692,13 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
         // TODO: Implement closure desugaring to struct with captured variables
         // For now, just lower the body expression
         Expr::Closure { body, .. } => lower_expr(body, ctx),
+
+        // v0.31: Todo expression - panic at runtime
+        Expr::Todo { .. } => {
+            // In MIR, todo becomes a call to panic intrinsic
+            // For now, return unit as this should never be reached
+            Operand::Constant(crate::mir::Constant::Unit)
+        }
     }
 }
 
@@ -751,6 +758,8 @@ fn ast_type_to_mir(ty: &Type) -> MirType {
         Type::Refined { base, .. } => ast_type_to_mir(base),
         // v0.20.0: Fn types are function pointers (pointer-sized)
         Type::Fn { .. } => MirType::I64,
+        // v0.31: Never type - unreachable code, use Unit
+        Type::Never => MirType::Unit,
     }
 }
 

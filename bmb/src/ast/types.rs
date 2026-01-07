@@ -88,6 +88,9 @@ pub enum Type {
         params: Vec<Box<Type>>,
         ret: Box<Type>,
     },
+    /// Never type (v0.31): represents unreachable code
+    /// Used for `todo` expressions - compatible with any type
+    Never,
 }
 
 /// Manual PartialEq implementation for Type
@@ -129,6 +132,8 @@ impl PartialEq for Type {
             (Type::Fn { params: p1, ret: r1 }, Type::Fn { params: p2, ret: r2 }) => {
                 p1 == p2 && r1 == r2
             }
+            // v0.31: Never type is compatible with any type (bottom type)
+            (Type::Never, _) | (_, Type::Never) => true,
             _ => false,
         }
     }
@@ -211,6 +216,8 @@ impl std::fmt::Display for Type {
                 }
                 write!(f, ") -> {ret}")
             }
+            // v0.31: Never type display
+            Type::Never => write!(f, "!"),
         }
     }
 }

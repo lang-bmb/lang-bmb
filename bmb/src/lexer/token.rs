@@ -79,6 +79,9 @@ pub enum Token {
     Trait,
     #[token("impl")]
     Impl,
+    // v0.31: Incremental development
+    #[token("todo")]
+    Todo,
 
     // Type keywords
     #[token("i32")]
@@ -261,6 +264,7 @@ impl std::fmt::Display for Token {
             Token::GtEq => write!(f, ">="),
             Token::Lt => write!(f, "<"),
             Token::Gt => write!(f, ">"),
+            Token::Todo => write!(f, "todo"),
         }
     }
 }

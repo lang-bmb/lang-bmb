@@ -141,6 +141,8 @@ impl SmtTranslator {
             Type::Refined { base, .. } => Self::type_to_sort(base),
             // v0.20.0: Fn types as Int (function pointers)
             Type::Fn { .. } => SmtSort::Int,
+            // v0.31: Never type - represents unreachable code
+            Type::Never => SmtSort::Bool,
         }
     }
 
@@ -318,6 +320,11 @@ impl SmtTranslator {
             Expr::Closure { .. } => Err(TranslateError::UnsupportedFeature(
                 "closures are not supported in contract verification".to_string(),
             )),
+
+            // v0.31: Todo expression
+            // In SMT context, todo represents unreachable code (absurd/false)
+            // Any constraints involving todo are vacuously satisfied
+            Expr::Todo { .. } => Ok("false".to_string()),
         }
     }
 

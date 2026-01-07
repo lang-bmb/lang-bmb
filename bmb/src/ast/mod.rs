@@ -238,8 +238,8 @@ pub struct Param {
     pub ty: Spanned<Type>,
 }
 
-/// Attribute (v0.2)
-/// e.g., `@inline`, `@inline(always)`, `@decreases(n)`
+/// Attribute (v0.2, v0.31: @trust "reason")
+/// e.g., `@inline`, `@inline(always)`, `@decreases(n)`, `@trust "reason"`
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Attribute {
     /// Simple attribute: @name
@@ -253,6 +253,12 @@ pub enum Attribute {
         args: Vec<Spanned<Expr>>,
         span: Span,
     },
+    /// v0.31: Attribute with mandatory reason string: @trust "reason"
+    WithReason {
+        name: Spanned<String>,
+        reason: Spanned<String>,
+        span: Span,
+    },
 }
 
 impl Attribute {
@@ -261,6 +267,7 @@ impl Attribute {
         match self {
             Attribute::Simple { name, .. } => &name.node,
             Attribute::WithArgs { name, .. } => &name.node,
+            Attribute::WithReason { name, .. } => &name.node,
         }
     }
 
@@ -269,6 +276,20 @@ impl Attribute {
         match self {
             Attribute::Simple { span, .. } => *span,
             Attribute::WithArgs { span, .. } => *span,
+            Attribute::WithReason { span, .. } => *span,
         }
+    }
+
+    /// v0.31: Get the reason string for @trust attribute
+    pub fn reason(&self) -> Option<&str> {
+        match self {
+            Attribute::WithReason { reason, .. } => Some(&reason.node),
+            _ => None,
+        }
+    }
+
+    /// v0.31: Check if this is a @trust attribute
+    pub fn is_trust(&self) -> bool {
+        self.name() == "trust"
     }
 }

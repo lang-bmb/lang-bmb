@@ -184,6 +184,16 @@ pub enum Expr {
         /// Closure body expression
         body: Box<Spanned<Expr>>,
     },
+
+    // v0.31: Incremental development
+
+    /// Todo expression: todo "message"
+    /// Placeholder for unimplemented code. Type-checks as any type.
+    /// At runtime, panics with the given message.
+    Todo {
+        /// Optional message describing what needs to be implemented
+        message: Option<String>,
+    },
 }
 
 /// A single arm in a match expression

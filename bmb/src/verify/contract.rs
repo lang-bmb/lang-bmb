@@ -63,6 +63,16 @@ impl ContractVerifier {
         let name = func.name.node.clone();
         let mut report = FunctionReport::new(name.clone());
 
+        // v0.31: Check for @trust attribute - skip verification if present
+        if let Some(trust_attr) = func.attributes.iter().find(|a| a.is_trust()) {
+            report.pre_result = Some(VerifyResult::Verified);
+            report.post_result = Some(VerifyResult::Verified);
+            let reason = trust_attr.reason().unwrap_or("no reason provided");
+            report.message = Some(format!("Trusted: {}", reason));
+            report.trusted = true;
+            return report;
+        }
+
         // Check if function has any contracts (pre/post, named contracts, or refinement types)
         let has_return_refinement = matches!(&func.ret_ty.node, Type::Refined { .. });
         let has_contracts = func.pre.is_some()
@@ -400,6 +410,8 @@ pub struct FunctionReport {
     /// v0.2: Refinement type constraint results (param_name or "return", constraint description)
     pub refinement_results: Vec<(String, VerifyResult)>,
     pub message: Option<String>,
+    /// v0.31: Whether this function was trusted via @trust attribute
+    pub trusted: bool,
 }
 
 impl FunctionReport {
@@ -411,6 +423,7 @@ impl FunctionReport {
             contract_results: Vec::new(),
             refinement_results: Vec::new(),
             message: None,
+            trusted: false,
         }
     }
 

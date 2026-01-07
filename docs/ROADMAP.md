@@ -95,7 +95,7 @@ v0.MAJOR.MINOR
 | v0.19-v0.23 | Bootstrap | MIR completion, Stage 1/2 verification | ✅ Complete |
 | v0.24-v0.29 | Polish | Examples, AI Query, benchmarks, optimization | ✅ Complete |
 | **v0.30** | **Pure** | **Code Quality & Stability (Self-Hosting)** | ✅ Complete |
-| **v0.31** | **Docs** | **Language refinements (RFCs) + Documentation + website** | 📋 Planned |
+| **v0.31** | **Docs** | **Language refinements (RFCs) + Documentation + website** | 🔄 In Progress |
 | **v0.32** | **Ecosystem** | **100+ packages + community** | 📋 Planned |
 | **v1.0.0-rc** | **Golden** | **Final verification + stability promise** | 📋 Planned |
 
@@ -393,6 +393,39 @@ v0.MAJOR.MINOR
 - **Transition documentation (30.1.318)**: v0.30 → v0.31 milestone complete
   - v0.30 Self-Hosting: Code quality achieved
   - v0.31 Documentation: Ready to begin
+
+---
+
+### Phase 31: Documentation (v0.31)
+
+**Goal**: Language refinements based on RFCs + comprehensive documentation
+
+#### Phase 31.0: Language Refinements (RFC Implementation)
+
+**v0.31.3 Completed (2026-01-07)**:
+- Phase 31.0.1-3: RFC-0003 and RFC-0004 Implementation
+- **@check annotation removal (31.0.1)**: Verified not implemented (N/A per RFC-0003)
+  - RFC-0003: No runtime checks, P0 Performance maintained
+  - @check was never added - design correctly prevents runtime overhead
+- **@trust mandatory reason (31.0.2)**: Implemented `@trust "reason"` syntax
+  - Grammar updated for `@trust "reason string"` parsing
+  - Attribute::WithReason variant added to AST
+  - Verification skips trusted functions with documented reason
+  - Test: `trust_attr.bmb` validates functionality
+- **todo keyword (31.0.3)**: Implemented `todo` expression with Never type
+  - Lexer: Added `Todo` token
+  - Parser: Added `todo "message"` and `todo` syntax
+  - Type system: Added `Type::Never` (bottom type, compatible with any type)
+  - Interpreter: `todo` panics at runtime with message
+  - SMT: `todo` translates to `false` (unreachable code)
+  - Test: `todo_expr.bmb` validates type checking
+
+**Key Changes**:
+- `Type::Never`: New bottom type for `todo` expressions
+- `ErrorKind::TodoNotImplemented`: Runtime error for `todo` execution
+- `Attribute::WithReason`: Attribute variant with mandatory reason string
+
+---
 
 **v0.30.310 Completed (2026-01-07)**:
 - Phase 30.1.307-310: Comprehensive Test Validation
@@ -2046,5 +2079,5 @@ For detailed analysis of the remaining work, see [GAP_ANALYSIS.md](./GAP_ANALYSI
 
 ---
 
-**Last Updated**: 2026-01-06
-**Version**: v0.30.140 → v1.0.0-rc Planning Document
+**Last Updated**: 2026-01-07
+**Version**: v0.31.3 → v1.0.0-rc Planning Document

@@ -953,6 +953,8 @@ fn format_type(ty: &bmb::ast::Type) -> String {
                 .join(", ");
             format!("fn({}) -> {}", params_str, format_type(ret))
         }
+        // v0.31: Never type
+        Type::Never => "!".to_string(),
     }
 }
 
@@ -1142,6 +1144,14 @@ fn format_expr(expr: &bmb::ast::Expr) -> String {
                 .map(|t| format!(" -> {}", format_type(&t.node)))
                 .unwrap_or_default();
             format!("fn |{}|{} {{ {} }}", params_str, ret_str, format_expr(&body.node))
+        }
+
+        // v0.31: Todo expression
+        Expr::Todo { message } => {
+            match message {
+                Some(msg) => format!("todo \"{}\"", msg),
+                None => "todo".to_string(),
+            }
         }
     }
 }

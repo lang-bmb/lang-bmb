@@ -51,6 +51,8 @@ extern {
         // v0.20.1: Trait system
         "trait" => Token::Trait,
         "impl" => Token::Impl,
+        // v0.31: Incremental development
+        "todo" => Token::Todo,
 
         "i32" => Token::TyI32,
         "i64" => Token::TyI64,
@@ -350,9 +352,15 @@ Visibility: Visibility = {
     => Visibility::Private,
 };
 
-// Attributes (v0.2)
+// Attributes (v0.2, v0.31: @trust "reason")
 // Note: Attr+ requires at least one attribute, used to avoid LALRPOP shift/reduce conflicts
 Attr: Attribute = {
+    // v0.31: Attribute with mandatory reason string: @trust "reason"
+    <l:@L> "@" <name:Ident> <reason:SpannedString> <r:@R> => Attribute::WithReason {
+        name,
+        reason,
+        span: Span::new(l, r),
+    },
     // Simple attribute: @name
     <l:@L> "@" <name:Ident> <r:@R> => Attribute::Simple {
         name,
@@ -1082,6 +1090,8 @@ Primary: Expr = {
     "false" => Expr::BoolLit(false),
     "ret" => Expr::Ret,
     "it" => Expr::It,
+    // v0.31: Todo expression
+    "todo" <msg:"string"?> => Expr::Todo { message: msg },
     "(" ")" => Expr::Unit,
     "(" <Expr> ")",
     <n:RawIdent> => Expr::Var(n),
@@ -1185,4 +1195,9 @@ Ident: Spanned<String> = {
 
 RawIdent: String = {
     "ident" => <>,
+};
+
+// v0.31: Spanned string literal for @trust "reason"
+SpannedString: Spanned<String> = {
+    <l:@L> <s:"string"> <r:@R> => Spanned::new(s, Span::new(l, r)),
 };

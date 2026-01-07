@@ -219,7 +219,7 @@ See full grammar in source code grammar.lalrpop.
 | forall/exists | Complete |
 | old(expr) | Complete |
 | @trust "reason" | Complete |
-| todo keyword | Planned (v0.31) |
+| todo keyword | Complete (v0.31) |
 | module header | Planned (v0.31) |
 | Z3 integration | Complete |
 | SMT-LIB2 generation | Complete |
