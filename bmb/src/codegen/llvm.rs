@@ -131,11 +131,15 @@ impl CodeGen {
         let target = Target::from_triple(&target_triple)
             .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
 
+        // Use native CPU for best performance (like Rust's -C target-cpu=native)
+        let cpu = TargetMachine::get_host_cpu_name();
+        let features = TargetMachine::get_host_cpu_features();
+
         let target_machine = target
             .create_target_machine(
                 &target_triple,
-                "generic",
-                "",
+                cpu.to_str().unwrap_or("x86-64"),
+                features.to_str().unwrap_or(""),
                 self.opt_level.into(),
                 RelocMode::Default,
                 CodeModel::Default,
@@ -490,22 +494,23 @@ impl<'ctx> LlvmContext<'ctx> {
         rhs: BasicValueEnum<'ctx>,
     ) -> CodeGenResult<BasicValueEnum<'ctx>> {
         match op {
-            // Integer arithmetic
+            // Integer arithmetic with nsw (no signed wrap) for better optimization
+            // nsw enables more aggressive LLVM transformations
             MirBinOp::Add => {
                 let result = self.builder
-                    .build_int_add(lhs.into_int_value(), rhs.into_int_value(), "add")
+                    .build_int_nsw_add(lhs.into_int_value(), rhs.into_int_value(), "add")
                     .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
                 Ok(result.into())
             }
             MirBinOp::Sub => {
                 let result = self.builder
-                    .build_int_sub(lhs.into_int_value(), rhs.into_int_value(), "sub")
+                    .build_int_nsw_sub(lhs.into_int_value(), rhs.into_int_value(), "sub")
                     .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
                 Ok(result.into())
             }
             MirBinOp::Mul => {
                 let result = self.builder
-                    .build_int_mul(lhs.into_int_value(), rhs.into_int_value(), "mul")
+                    .build_int_nsw_mul(lhs.into_int_value(), rhs.into_int_value(), "mul")
                     .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
                 Ok(result.into())
             }

@@ -115,12 +115,19 @@ impl TextCodeGen {
             .map(|(name, ty)| format!("{} %{}", self.mir_type_to_llvm(ty), name))
             .collect();
 
+        // Function attributes for optimization:
+        // - nounwind: BMB doesn't have exceptions, enables better codegen
+        // - For main: no special attributes (ABI compatibility)
+        // - Attributes go AFTER the parameter list in LLVM IR syntax
+        let attrs = if func.name == "main" { "" } else { " nounwind" };
+
         writeln!(
             out,
-            "define {} @{}({}) {{",
+            "define {} @{}({}){} {{",
             ret_type,
             func.name,
-            params.join(", ")
+            params.join(", "),
+            attrs
         )?;
 
         // Emit basic blocks
@@ -521,12 +528,16 @@ impl TextCodeGen {
     /// If preserves_operand_type is false, result type is i1
     fn binop_to_llvm(&self, op: MirBinOp) -> (&'static str, bool) {
         match op {
-            // Integer arithmetic - result type same as operand
-            MirBinOp::Add => ("add", true),
-            MirBinOp::Sub => ("sub", true),
-            MirBinOp::Mul => ("mul", true),
-            MirBinOp::Div => ("sdiv", true),
-            MirBinOp::Mod => ("srem", true),
+            // Integer arithmetic with nsw (no signed wrap) for better optimization
+            // nsw enables more aggressive LLVM transformations including:
+            // - Loop strength reduction
+            // - Induction variable simplification
+            // - Tail call accumulator transformation
+            MirBinOp::Add => ("add nsw", true),
+            MirBinOp::Sub => ("sub nsw", true),
+            MirBinOp::Mul => ("mul nsw", true),
+            MirBinOp::Div => ("sdiv", true),  // sdiv doesn't benefit from nsw
+            MirBinOp::Mod => ("srem", true),  // srem doesn't benefit from nsw
 
             // Floating-point arithmetic - result type same as operand
             MirBinOp::FAdd => ("fadd", true),
@@ -596,7 +607,7 @@ mod tests {
         let ir = codegen.generate(&program).unwrap();
 
         assert!(ir.contains("define i64 @add(i64 %a, i64 %b)"));
-        assert!(ir.contains("%_t0 = add i64 %a, %b"));
+        assert!(ir.contains("%_t0 = add nsw i64 %a, %b"));  // nsw for optimization
         assert!(ir.contains("ret i64 %_t0"));
     }
 }

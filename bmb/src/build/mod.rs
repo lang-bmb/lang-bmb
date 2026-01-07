@@ -274,10 +274,19 @@ pub fn build(config: &BuildConfig) -> BuildResult<()> {
             println!("  Using runtime: {}", runtime_path.display());
         }
 
-        // Compile IR to object file
+        // Compile IR to object file with optimization
         let obj_path = config.output.with_extension(if cfg!(windows) { "obj" } else { "o" });
         let mut cmd = Command::new(&clang);
-        cmd.args(["-c", ir_path.to_str().unwrap(), "-o", obj_path.to_str().unwrap()]);
+
+        // Apply optimization based on config
+        let opt_flag = match config.opt_level {
+            OptLevel::Debug => "-O0",
+            OptLevel::Release => "-O2",
+            OptLevel::Size => "-Os",
+            OptLevel::Aggressive => "-O3",
+        };
+
+        cmd.args([opt_flag, "-c", ir_path.to_str().unwrap(), "-o", obj_path.to_str().unwrap()]);
 
         let output_result = cmd.output()?;
         if !output_result.status.success() {
