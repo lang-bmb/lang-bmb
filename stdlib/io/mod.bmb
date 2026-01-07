@@ -1,0 +1,148 @@
+-- BMB Standard Library: io Module
+-- Version: v0.32.0 (Phase 32.0.1 - Bootstrap Infrastructure)
+-- Purpose: File I/O operations for self-hosting compiler
+--
+-- IMPLEMENTATION STATUS: SPECIFICATION ONLY
+-- Actual implementation requires LLVM intrinsics or libc bindings
+--
+-- Design Principles:
+-- - Contract-first: All functions have explicit pre/post conditions
+-- - Error as return: Uses Result pattern (i64 error code)
+-- - Path validation: Explicit path constraints
+-- - No exceptions: Errors returned, never thrown
+
+-- ============================================================================
+-- File Reading
+-- ============================================================================
+
+-- Read entire file contents as a string
+-- Returns: File contents on success, empty string on error
+-- Error codes stored in global (requires error_code() function)
+--
+-- @extern "libc:read" or LLVM intrinsic
+fn read_file(path: String) -> String
+  pre path.len() > 0
+  -- Implementation: Uses libc fopen/fread or LLVM file intrinsics
+= @extern "bmb_read_file";
+
+-- Read file with explicit result type
+-- Returns: 0 on success, negative error code on failure
+-- Contents written to mutable parameter (when supported)
+--
+-- @extern "libc:read"
+fn read_file_result(path: String) -> i64
+  pre path.len() > 0
+  post ret <= 0  -- 0 = success, negative = error
+= @extern "bmb_read_file_result";
+
+-- ============================================================================
+-- File Writing
+-- ============================================================================
+
+-- Write string contents to file
+-- Returns: 0 on success, negative error code on failure
+-- Creates file if not exists, overwrites if exists
+--
+-- @extern "libc:write"
+fn write_file(path: String, content: String) -> i64
+  pre path.len() > 0
+  post ret <= 0
+= @extern "bmb_write_file";
+
+-- Append string to existing file
+-- Returns: 0 on success, negative error code on failure
+--
+-- @extern "libc:append"
+fn append_file(path: String, content: String) -> i64
+  pre path.len() > 0
+  post ret <= 0
+= @extern "bmb_append_file";
+
+-- ============================================================================
+-- File System Queries
+-- ============================================================================
+
+-- Check if file exists
+-- Returns: 1 if exists, 0 if not
+--
+-- @extern "libc:access"
+fn file_exists(path: String) -> i64
+  pre path.len() > 0
+  post ret == 0 or ret == 1
+= @extern "bmb_file_exists";
+
+-- Get file size in bytes
+-- Returns: Size on success, -1 on error
+--
+-- @extern "libc:stat"
+fn file_size(path: String) -> i64
+  pre path.len() > 0
+  post ret >= -1
+= @extern "bmb_file_size";
+
+-- ============================================================================
+-- Error Codes
+-- ============================================================================
+
+-- Error code constants
+-- Note: These match POSIX errno values for compatibility
+
+fn IO_SUCCESS() -> i64 = 0;
+fn IO_ERROR_NOT_FOUND() -> i64 = -2;      -- ENOENT
+fn IO_ERROR_PERMISSION() -> i64 = -13;    -- EACCES
+fn IO_ERROR_EXISTS() -> i64 = -17;        -- EEXIST
+fn IO_ERROR_INVALID() -> i64 = -22;       -- EINVAL
+fn IO_ERROR_NO_SPACE() -> i64 = -28;      -- ENOSPC
+fn IO_ERROR_READ_ONLY() -> i64 = -30;     -- EROFS
+fn IO_ERROR_UNKNOWN() -> i64 = -1;        -- Generic error
+
+-- ============================================================================
+-- Path Utilities
+-- ============================================================================
+
+-- Check if path looks valid (basic validation)
+fn is_valid_path(path: String) -> i64
+  post ret == 0 or ret == 1
+= if path.len() == 0 then 0
+  else if path.len() > 4096 then 0  -- PATH_MAX
+  else 1;
+
+-- Get file extension (position of last '.')
+-- Returns: Position of '.', or -1 if no extension
+fn find_extension(path: String) -> i64
+  post ret >= -1 and ret < path.len()
+= find_last_char(path, 46);  -- 46 = '.'
+
+-- Helper: Find last occurrence of character
+fn find_last_char(s: String, c: i64) -> i64 =
+  find_last_char_from(s, c, s.len() - 1);
+
+fn find_last_char_from(s: String, c: i64, pos: i64) -> i64 =
+  if pos < 0 then -1
+  else if s.char_at(pos) == c then pos
+  else find_last_char_from(s, c, pos - 1);
+
+-- ============================================================================
+-- IMPLEMENTATION NOTES
+-- ============================================================================
+--
+-- Phase 32.0.1 Implementation Strategy:
+--
+-- Option A: LLVM Intrinsics (Preferred)
+--   - Use LLVM's file operation intrinsics
+--   - Requires extending codegen to emit file I/O IR
+--   - More portable across platforms
+--
+-- Option B: libc FFI
+--   - Declare extern "C" functions: fopen, fread, fwrite, fclose
+--   - Requires implementing FFI in BMB codegen
+--   - Platform-specific but well-understood
+--
+-- Option C: Rust Harness Bridge (Transitional)
+--   - @extern calls invoke Rust functions via runtime bridge
+--   - Used during bootstrap phase
+--   - Removed when full native I/O is implemented
+--
+-- Current Status: Specification only. Requires codegen extension.
+--
+-- ============================================================================

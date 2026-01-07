@@ -1878,15 +1878,55 @@ string overhead. Fixing requires architectural redesign.
 **Prerequisites**: v0.31 Complete (Stage 3 86% documented, Benchmark Gate #1)
 **Exit Criteria**: 0 lines Rust, Stage 3 100%, Benchmark Gate #2 Pass
 
-#### Phase 32.1: Compiler Porting (was 30.2)
+#### Critical Analysis (v0.31.9)
+
+**Bootstrap Status**: 30,000 lines BMB vs 19,000 lines Rust
+- ✅ Lexer, Parser, Type Checker - Complete in BMB
+- ✅ MIR Generation, LLVM IR Generation - Complete in BMB
+- ❌ **Runtime Infrastructure Missing** - Cannot run standalone
+
+**Actual Blockers** (not compiler features):
+
+| Blocker | Impact | Solution |
+|---------|--------|----------|
+| No File I/O | Can't read source files | Stdlib extension |
+| No Process Exec | Can't invoke clang/ld | Stdlib extension |
+| O(n²) Concatenation | Stage 3 limited to 86% | StringBuilder pattern |
+
+#### Phase 32.0: Bootstrap Infrastructure (NEW - Critical Path)
+
+**Goal**: Runtime infrastructure for standalone BMB compiler
 
 | Task | Description | Priority | Effort |
 |------|-------------|----------|--------|
-| 32.1.1 | Port main.rs CLI to BMB | P0 | 2 weeks |
-| 32.1.2 | Port AST types to BMB | P0 | 2 weeks |
-| 32.1.3 | Port full MIR module to BMB | P0 | 4 weeks |
-| 32.1.4 | Port codegen module to BMB | P0 | 3 weeks |
-| 32.1.5 | Stage 3 verification (BMB compiler) | P0 | 2 weeks |
+| 32.0.1 | Add stdlib `io` module (read_file, write_file) | P0 | 2 weeks |
+| 32.0.2 | Add stdlib `process` module (exec, system) | P0 | 2 weeks |
+| 32.0.3 | Create minimal BMB CLI wrapper | P0 | 1 week |
+| 32.0.4 | Fix O(n²) string concatenation (StringBuilder) | P0 | 2 weeks |
+| 32.0.5 | Stage 3 verification (7/7 tests) | P0 | 1 week |
+
+**Implementation Strategy**:
+1. LLVM intrinsics for File I/O (`llvm.read`, `llvm.write`)
+2. LLVM Process execution via libc calls
+3. BMB CLI: parse args → read file → call bootstrap → write output
+4. StringBuilder: mutable string accumulator in BMB subset
+
+**Exit Criteria**: Bootstrap compiles and runs simple programs standalone
+
+#### Phase 32.1: Compiler Integration (Updated from Analysis)
+
+**Note**: Bootstrap already has core modules (types.bmb 356KB, mir.bmb 57KB, llvm_ir.bmb 155KB).
+Original "porting" tasks were based on incomplete understanding of Bootstrap status.
+
+| Task | Description | Priority | Effort | Status |
+|------|-------------|----------|--------|--------|
+| ~~32.1.1~~ | ~~Port main.rs CLI to BMB~~ | - | - | ✅ Replaced by 32.0.3 |
+| ~~32.1.2~~ | ~~Port AST types to BMB~~ | - | - | ✅ Already in types.bmb |
+| ~~32.1.3~~ | ~~Port full MIR module to BMB~~ | - | - | ✅ Already in mir.bmb |
+| ~~32.1.4~~ | ~~Port codegen module to BMB~~ | - | - | ✅ Already in llvm_ir.bmb |
+| 32.1.1 | Integrate BMB CLI with stdlib io/process | P0 | 1 week | Pending |
+| 32.1.2 | Add module import support to Bootstrap | P0 | 3 weeks | Pending |
+| 32.1.3 | End-to-end self-compile test | P0 | 1 week | Pending |
 
 #### Phase 32.2: Package Manager Porting (was 30.3)
 

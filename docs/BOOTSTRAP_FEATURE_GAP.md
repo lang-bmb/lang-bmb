@@ -24,13 +24,13 @@ The BMB bootstrap implements the **complete core compilation pipeline** (lexer �
 
 **Bootstrap Design**: Uses minimal BMB subset (no closures/structs/enums in implementation code) to enable self-compilation with the core features the bootstrap supports.
 
-### Stage 3 Blockers (v0.30.248)
+### Stage 3 Blockers (v0.31.9)
 
 | Blocker | Description | Impact | Status |
 |---------|-------------|--------|--------|
 | ~~**Stack Overflow**~~ | ~~Bootstrap .bmb files overflow stack when run~~ | ~~Can't execute bootstrap~~ | ✅ **FIXED** (v0.30.241) |
-| **No File I/O** | Bootstrap can't read/write files | Can't process source files | 🔲 Needs Rust harness |
-| **No Process Exec** | Can't invoke LLVM toolchain | Can't produce executables | 🔲 Needs Rust harness |
+| **No File I/O** | Bootstrap can't read/write files | Can't process source files | 🔄 **SPEC** (v0.31.9) → `stdlib/io/mod.bmb` |
+| **No Process Exec** | Can't invoke LLVM toolchain | Can't produce executables | 🔲 Needs stdlib extension |
 | **No Module Import** | Files are standalone, can't import | Limited code organization | 🔲 Needs module system |
 | ~~**No Verification Harness**~~ | ~~No tool to compare outputs~~ | ~~Can't verify equivalence~~ | ✅ **IMPLEMENTED** (v0.30.248) |
 
