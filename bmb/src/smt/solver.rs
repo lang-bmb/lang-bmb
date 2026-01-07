@@ -110,10 +110,10 @@ impl SmtSolver {
         // Find define-fun declarations
         for line in lines {
             let line = line.trim();
-            if line.starts_with("(define-fun ") {
-                if let Some(parsed) = self.parse_define_fun(line) {
-                    model.insert(parsed.0, parsed.1);
-                }
+            if line.starts_with("(define-fun ")
+                && let Some(parsed) = self.parse_define_fun(line)
+            {
+                model.insert(parsed.0, parsed.1);
             }
         }
 
@@ -241,6 +241,7 @@ pub enum SolverResult {
 
 /// Errors from solver
 #[derive(Debug, Clone)]
+#[allow(clippy::enum_variant_names)]
 pub enum SolverError {
     ProcessError(String),
     Z3Error(String),

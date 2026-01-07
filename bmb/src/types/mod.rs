@@ -481,26 +481,26 @@ impl TypeChecker {
 
             Expr::Call { func, args } => {
                 // v0.20.0: First try closure/function variable
-                if let Some(var_ty) = self.env.get(func).cloned() {
-                    if let Type::Fn { params: param_tys, ret: ret_ty } = var_ty {
-                        if args.len() != param_tys.len() {
-                            return Err(CompileError::type_error(
-                                format!(
-                                    "closure expects {} arguments, got {}",
-                                    param_tys.len(),
-                                    args.len()
-                                ),
-                                span,
-                            ));
-                        }
-
-                        for (arg, param_ty) in args.iter().zip(param_tys.iter()) {
-                            let arg_ty = self.infer(&arg.node, arg.span)?;
-                            self.unify(param_ty.as_ref(), &arg_ty, arg.span)?;
-                        }
-
-                        return Ok(*ret_ty);
+                if let Some(var_ty) = self.env.get(func).cloned()
+                    && let Type::Fn { params: param_tys, ret: ret_ty } = var_ty
+                {
+                    if args.len() != param_tys.len() {
+                        return Err(CompileError::type_error(
+                            format!(
+                                "closure expects {} arguments, got {}",
+                                param_tys.len(),
+                                args.len()
+                            ),
+                            span,
+                        ));
                     }
+
+                    for (arg, param_ty) in args.iter().zip(param_tys.iter()) {
+                        let arg_ty = self.infer(&arg.node, arg.span)?;
+                        self.unify(param_ty.as_ref(), &arg_ty, arg.span)?;
+                    }
+
+                    return Ok(*ret_ty);
                 }
 
                 // v0.15: Try non-generic functions
@@ -518,7 +518,7 @@ impl TypeChecker {
 
                     for (arg, param_ty) in args.iter().zip(param_tys.iter()) {
                         let arg_ty = self.infer(&arg.node, arg.span)?;
-                        self.unify(&param_ty, &arg_ty, arg.span)?;
+                        self.unify(param_ty, &arg_ty, arg.span)?;
                     }
 
                     return Ok(ret_ty);
@@ -542,7 +542,7 @@ impl TypeChecker {
 
                     for (arg, param_ty) in args.iter().zip(param_tys.iter()) {
                         let arg_ty = self.infer(&arg.node, arg.span)?;
-                        self.infer_type_args(&param_ty, &arg_ty, &mut type_subst, arg.span)?;
+                        self.infer_type_args(param_ty, &arg_ty, &mut type_subst, arg.span)?;
                     }
 
                     // Check that all type parameters are inferred
@@ -585,7 +585,7 @@ impl TypeChecker {
                         match provided {
                             Some((_, expr)) => {
                                 let expr_ty = self.infer(&expr.node, expr.span)?;
-                                self.unify(&field_ty, &expr_ty, expr.span)?;
+                                self.unify(field_ty, &expr_ty, expr.span)?;
                             }
                             None => {
                                 return Err(CompileError::type_error(
@@ -609,7 +609,7 @@ impl TypeChecker {
                         match provided {
                             Some((_, expr)) => {
                                 let expr_ty = self.infer(&expr.node, expr.span)?;
-                                let resolved_field_ty = self.resolve_type_vars(&field_ty, &type_param_names);
+                                let resolved_field_ty = self.resolve_type_vars(field_ty, &type_param_names);
                                 self.infer_type_args(&resolved_field_ty, &expr_ty, &mut type_subst, expr.span)?;
                             }
                             None => {
@@ -669,7 +669,7 @@ impl TypeChecker {
                             for (fname, fty) in &struct_fields {
                                 if fname == &field.node {
                                     // Substitute type parameters in field type
-                                    let resolved_fty = self.resolve_type_vars(&fty, &type_param_names);
+                                    let resolved_fty = self.resolve_type_vars(fty, &type_param_names);
                                     let substituted_fty = self.substitute_type(&resolved_fty, &type_subst);
                                     return Ok(substituted_fty);
                                 }
@@ -1190,7 +1190,7 @@ impl TypeChecker {
                         for (binding, field_ty) in bindings.iter().zip(variant_fields.iter()) {
                             // Convert Named types to TypeVar, then substitute
                             let type_param_names: Vec<_> = type_params.iter().map(|tp| tp.name.as_str()).collect();
-                            let resolved_ty = self.resolve_type_vars(&field_ty, &type_param_names);
+                            let resolved_ty = self.resolve_type_vars(field_ty, &type_param_names);
                             let substituted_ty = self.substitute_type(&resolved_ty, &type_subst);
                             self.env.insert(binding.node.clone(), substituted_ty);
                         }
@@ -1219,7 +1219,7 @@ impl TypeChecker {
                             // Bind pattern variables with the original field types (may contain type params)
                             let type_param_names: Vec<_> = type_params.iter().map(|tp| tp.name.as_str()).collect();
                             for (binding, field_ty) in bindings.iter().zip(variant_fields.iter()) {
-                                let resolved_ty = self.resolve_type_vars(&field_ty, &type_param_names);
+                                let resolved_ty = self.resolve_type_vars(field_ty, &type_param_names);
                                 self.env.insert(binding.node.clone(), resolved_ty);
                             }
 
@@ -1350,36 +1350,37 @@ impl TypeChecker {
     fn unify(&self, expected: &Type, actual: &Type, span: Span) -> Result<()> {
         // v0.15: TypeVar in function body context matches any type
         // When type checking a generic function body, TypeVar acts as a placeholder
-        if let Type::TypeVar(name) = expected {
-            if self.type_param_env.contains_key(name) {
-                // TypeVar is bound in current generic context - accept any type
-                return Ok(());
-            }
+        if let Type::TypeVar(name) = expected
+            && self.type_param_env.contains_key(name)
+        {
+            // TypeVar is bound in current generic context - accept any type
+            return Ok(());
         }
-        if let Type::TypeVar(name) = actual {
-            if self.type_param_env.contains_key(name) {
-                // TypeVar is bound in current generic context - accept any type
-                return Ok(());
-            }
+        if let Type::TypeVar(name) = actual
+            && self.type_param_env.contains_key(name)
+        {
+            // TypeVar is bound in current generic context - accept any type
+            return Ok(());
         }
 
         // Both are TypeVar with same name
-        if let (Type::TypeVar(a), Type::TypeVar(b)) = (expected, actual) {
-            if a == b {
-                return Ok(());
-            }
+        if let (Type::TypeVar(a), Type::TypeVar(b)) = (expected, actual)
+            && a == b
+        {
+            return Ok(());
         }
 
         // v0.16: Handle Generic types with TypeVar in type_args
         // e.g., unify Option<i64> with Option<T> where T is a type parameter
-        if let (Type::Generic { name: n1, type_args: a1 }, Type::Generic { name: n2, type_args: a2 }) = (expected, actual) {
-            if n1 == n2 && a1.len() == a2.len() {
-                // Same generic name and same number of args - unify each arg
-                for (arg1, arg2) in a1.iter().zip(a2.iter()) {
-                    self.unify(arg1, arg2, span)?;
-                }
-                return Ok(());
+        if let (Type::Generic { name: n1, type_args: a1 }, Type::Generic { name: n2, type_args: a2 }) = (expected, actual)
+            && n1 == n2
+            && a1.len() == a2.len()
+        {
+            // Same generic name and same number of args - unify each arg
+            for (arg1, arg2) in a1.iter().zip(a2.iter()) {
+                self.unify(arg1, arg2, span)?;
             }
+            return Ok(());
         }
 
         // v0.16: Handle unbound TypeVar (from nullary variants like Option::None)
@@ -1712,10 +1713,10 @@ impl TypeChecker {
 
         // Search all impls for this type to find the method
         for ((impl_type, _trait_name), impl_info) in &self.impls {
-            if impl_type == &type_name {
-                if let Some((param_types, ret_type)) = impl_info.methods.get(method) {
-                    return Some((param_types.clone(), ret_type.clone()));
-                }
+            if impl_type == &type_name
+                && let Some((param_types, ret_type)) = impl_info.methods.get(method)
+            {
+                return Some((param_types.clone(), ret_type.clone()));
             }
         }
         None

@@ -1,7 +1,7 @@
 //! BMB Compiler CLI
 
 use clap::{Parser, Subcommand};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(Parser)]
 #[command(name = "bmb", version, about = "BMB Compiler - AI-Native Language")]
@@ -210,6 +210,7 @@ fn main() {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn build_file(
     path: &PathBuf,
     output: Option<PathBuf>,
@@ -260,7 +261,7 @@ fn build_file(
 }
 
 fn build_native(
-    path: &PathBuf,
+    path: &Path,
     output: Option<PathBuf>,
     release: bool,
     emit_ir: bool,
@@ -268,7 +269,7 @@ fn build_native(
 ) -> Result<(), Box<dyn std::error::Error>> {
     use bmb::build::{BuildConfig, OptLevel};
 
-    let mut config = BuildConfig::new(path.clone())
+    let mut config = BuildConfig::new(path.to_path_buf())
         .emit_ir(emit_ir)
         .verbose(verbose);
 
@@ -417,11 +418,11 @@ fn emit_mir_file(
 /// v0.30.241: Stack size for interpreter thread (64MB for deep recursion in bootstrap)
 const INTERPRETER_STACK_SIZE: usize = 64 * 1024 * 1024;
 
-fn run_file(path: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
+fn run_file(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
     // v0.30.241: Run entire pipeline in a thread with larger stack to prevent overflow
     // Bootstrap files have deep recursion that exceeds default 1MB Windows stack
     // We run everything in the thread because Value uses Rc<RefCell<>> (not Send)
-    let path = path.clone();
+    let path = path.to_path_buf();
     let handle = std::thread::Builder::new()
         .name("bmb-interpreter".to_string())
         .stack_size(INTERPRETER_STACK_SIZE)
@@ -493,26 +494,26 @@ fn check_file_with_includes(path: &PathBuf, include_paths: &[PathBuf]) -> Result
     for include_path in include_paths {
         // Try loading modules from include paths
         for item in &ast.items {
-            if let bmb::ast::Item::Use(use_stmt) = item {
-                if !use_stmt.path.is_empty() {
-                    let module_name = &use_stmt.path[0].node;
-                    // Convert underscore to hyphen for package names (bmb_option -> bmb-option)
-                    let pkg_dir_name = module_name.replace('_', "-");
-                    let module_path = include_path.join(&pkg_dir_name).join("src").join("lib.bmb");
-                    if module_path.exists() {
-                        // Load using the original filename convention
-                        let lib_source = std::fs::read_to_string(&module_path)?;
-                        let lib_tokens = bmb::lexer::tokenize(&lib_source)?;
-                        let lib_ast = bmb::parser::parse(&module_path.display().to_string(), &lib_source, lib_tokens)?;
-                        // Create a temporary module to register
-                        let module = bmb::resolver::Module {
-                            name: module_name.clone(),
-                            path: module_path.clone(),
-                            program: lib_ast,
-                            exports: std::collections::HashMap::new(), // Not needed for type registration
-                        };
-                        checker.register_module(&module);
-                    }
+            if let bmb::ast::Item::Use(use_stmt) = item
+                && !use_stmt.path.is_empty()
+            {
+                let module_name = &use_stmt.path[0].node;
+                // Convert underscore to hyphen for package names (bmb_option -> bmb-option)
+                let pkg_dir_name = module_name.replace('_', "-");
+                let module_path = include_path.join(&pkg_dir_name).join("src").join("lib.bmb");
+                if module_path.exists() {
+                    // Load using the original filename convention
+                    let lib_source = std::fs::read_to_string(&module_path)?;
+                    let lib_tokens = bmb::lexer::tokenize(&lib_source)?;
+                    let lib_ast = bmb::parser::parse(&module_path.display().to_string(), &lib_source, lib_tokens)?;
+                    // Create a temporary module to register
+                    let module = bmb::resolver::Module {
+                        name: module_name.clone(),
+                        path: module_path.clone(),
+                        program: lib_ast,
+                        exports: std::collections::HashMap::new(), // Not needed for type registration
+                    };
+                    checker.register_module(&module);
                 }
             }
         }
@@ -758,13 +759,11 @@ fn fmt_file(path: &PathBuf, check: bool) -> Result<(), Box<dyn std::error::Error
             } else {
                 println!("✓ {} is formatted", filename);
             }
+        } else if source != formatted {
+            std::fs::write(file, &formatted)?;
+            println!("✓ formatted {}", filename);
         } else {
-            if source != formatted {
-                std::fs::write(file, &formatted)?;
-                println!("✓ formatted {}", filename);
-            } else {
-                println!("✓ {} (unchanged)", filename);
-            }
+            println!("✓ {} (unchanged)", filename);
         }
     }
 

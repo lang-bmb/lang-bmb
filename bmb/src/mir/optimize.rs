@@ -461,16 +461,15 @@ impl OptimizationPass for SimplifyBranches {
                 then_label,
                 else_label,
             } = &block.terminator
+                && let Operand::Constant(Constant::Bool(b)) = cond
             {
-                if let Operand::Constant(Constant::Bool(b)) = cond {
-                    let target = if *b {
-                        then_label.clone()
-                    } else {
-                        else_label.clone()
-                    };
-                    block.terminator = Terminator::Goto(target);
-                    changed = true;
-                }
+                let target = if *b {
+                    then_label.clone()
+                } else {
+                    else_label.clone()
+                };
+                block.terminator = Terminator::Goto(target);
+                changed = true;
             }
         }
 
@@ -558,11 +557,11 @@ fn propagate_copies_in_term(term: &mut Terminator, copies: &HashMap<String, Plac
 }
 
 fn propagate_operand(op: &mut Operand, copies: &HashMap<String, Place>) -> bool {
-    if let Operand::Place(p) = op {
-        if let Some(src) = copies.get(&p.name) {
-            *p = src.clone();
-            return true;
-        }
+    if let Operand::Place(p) = op
+        && let Some(src) = copies.get(&p.name)
+    {
+        *p = src.clone();
+        return true;
     }
     false
 }
