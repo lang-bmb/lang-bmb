@@ -1482,6 +1482,7 @@ fn generate_rust_ir(source: &str, filename: &str) -> Result<String, Box<dyn std:
 /// Runs in a separate thread with 64MB stack for deep recursion
 fn generate_bootstrap_ir(source: &str) -> Result<String, Box<dyn std::error::Error>> {
     use bmb::interp::Value;
+    use std::rc::Rc;
 
     // Path to compiler.bmb
     let bootstrap_path = std::path::Path::new("bootstrap/compiler.bmb");
@@ -1513,15 +1514,15 @@ fn generate_bootstrap_ir(source: &str) -> Result<String, Box<dyn std::error::Err
             let mut interpreter = bmb::interp::Interpreter::new();
             interpreter.load(&compiler_ast);
 
-            // Call compile_program with the target source
+            // Call compile_program with the target source (v0.30.268: Rc<String>)
             let result = interpreter.call_function_with_args(
                 "compile_program",
-                vec![Value::Str(escaped_source)],
+                vec![Value::Str(Rc::new(escaped_source))],
             ).map_err(|e| format!("Runtime error: {}", e.message))?;
 
-            // Extract string result
+            // Extract string result (v0.30.268: unwrap Rc<String>)
             match result {
-                Value::Str(ir) => Ok(ir),
+                Value::Str(ir) => Ok(Rc::try_unwrap(ir).unwrap_or_else(|rc| (*rc).clone())),
                 other => Err(format!("Expected string from compile_program, got: {:?}", other.type_name())),
             }
         })?;

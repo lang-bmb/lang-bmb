@@ -6,6 +6,7 @@ use super::value::Value;
 use crate::ast::{BinOp, EnumDef, Expr, FnDef, Pattern, Program, Spanned, StructDef, UnOp};
 use std::collections::HashMap;
 use std::io::{self, BufRead, Write};
+use std::rc::Rc;
 
 /// Maximum recursion depth (v0.30.248: increased for bootstrap compiler Stage 3 verification)
 const MAX_RECURSION_DEPTH: usize = 100000;
@@ -166,7 +167,7 @@ impl Interpreter {
             Expr::IntLit(n) => Ok(Value::Int(*n)),
             Expr::FloatLit(f) => Ok(Value::Float(*f)),
             Expr::BoolLit(b) => Ok(Value::Bool(*b)),
-            Expr::StringLit(s) => Ok(Value::Str(s.clone())),
+            Expr::StringLit(s) => Ok(Value::Str(Rc::new(s.clone()))),
             Expr::Unit => Ok(Value::Unit),
 
             Expr::Var(name) => {
@@ -492,7 +493,7 @@ impl Interpreter {
                         if start > s.len() || end > s.len() || start > end {
                             return Err(RuntimeError::index_out_of_bounds(end as i64, s.len()));
                         }
-                        Ok(Value::Str(s[start..end].to_string()))
+                        Ok(Value::Str(Rc::new(s[start..end].to_string())))
                     }
                     "is_empty" => Ok(Value::Bool(s.is_empty())),
                     _ => Err(RuntimeError::undefined_function(&format!("String.{}", method))),
@@ -556,7 +557,7 @@ impl Interpreter {
                     (crate::ast::LiteralPattern::Int(n), Value::Int(v)) if *n == *v => Some(vec![]),
                     (crate::ast::LiteralPattern::Float(f), Value::Float(v)) if *f == *v => Some(vec![]),
                     (crate::ast::LiteralPattern::Bool(b), Value::Bool(v)) if *b == *v => Some(vec![]),
-                    (crate::ast::LiteralPattern::String(s), Value::Str(v)) if s == v => Some(vec![]),
+                    (crate::ast::LiteralPattern::String(s), Value::Str(v)) if s == v.as_ref() => Some(vec![]),
                     _ => None,
                 }
             }
@@ -674,12 +675,12 @@ impl Interpreter {
                 (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a + b)),
                 (Value::Int(a), Value::Float(b)) => Ok(Value::Float(*a as f64 + b)),
                 (Value::Float(a), Value::Int(b)) => Ok(Value::Float(a + *b as f64)),
-                // String concatenation (v0.30.256: pre-allocated capacity to reduce reallocations)
+                // String concatenation (v0.30.256: pre-allocated capacity, v0.30.268: Rc<String>)
                 (Value::Str(a), Value::Str(b)) => {
                     let mut result = String::with_capacity(a.len() + b.len());
                     result.push_str(a);
                     result.push_str(b);
-                    Ok(Value::Str(result))
+                    Ok(Value::Str(Rc::new(result)))
                 }
                 _ => Err(RuntimeError::type_error(
                     "numeric or string",
@@ -968,7 +969,7 @@ mod tests {
 
         assert_eq!(
             interp.eval(&spanned(Expr::StringLit("hello".to_string())), &env).unwrap(),
-            Value::Str("hello".to_string())
+            Value::Str(Rc::new("hello".to_string()))
         );
     }
 
@@ -984,7 +985,7 @@ mod tests {
         };
         assert_eq!(
             interp.eval(&spanned(concat_expr), &env).unwrap(),
-            Value::Str("hello world".to_string())
+            Value::Str(Rc::new("hello world".to_string()))
         );
     }
 

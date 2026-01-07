@@ -13,8 +13,8 @@ pub enum Value {
     Float(f64),
     /// Boolean
     Bool(bool),
-    /// String value (v0.5 Phase 2)
-    Str(String),
+    /// String value (v0.5 Phase 2, v0.30.268: Rc for efficient cloning)
+    Str(Rc<String>),
     /// Unit value
     Unit,
     /// Struct value: (type_name, fields)
@@ -90,7 +90,7 @@ impl Value {
     /// Try to convert to string
     pub fn as_str(&self) -> Option<&str> {
         match self {
-            Value::Str(s) => Some(s),
+            Value::Str(s) => Some(s.as_str()),
             _ => None,
         }
     }
@@ -172,7 +172,7 @@ mod tests {
         assert_eq!(format!("{}", Value::Float(3.14)), "3.14");
         assert_eq!(format!("{}", Value::Bool(true)), "true");
         assert_eq!(format!("{}", Value::Unit), "()");
-        assert_eq!(format!("{}", Value::Str("hello".to_string())), "\"hello\"");
+        assert_eq!(format!("{}", Value::Str(Rc::new("hello".to_string()))), "\"hello\"");
     }
 
     #[test]
@@ -181,7 +181,7 @@ mod tests {
         assert!(!Value::Bool(false).is_truthy());
         assert!(Value::Int(1).is_truthy());
         assert!(!Value::Int(0).is_truthy());
-        assert!(Value::Str("hello".to_string()).is_truthy());
-        assert!(!Value::Str("".to_string()).is_truthy());
+        assert!(Value::Str(Rc::new("hello".to_string())).is_truthy());
+        assert!(!Value::Str(Rc::new("".to_string())).is_truthy());
     }
 }

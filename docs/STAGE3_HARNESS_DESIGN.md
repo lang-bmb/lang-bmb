@@ -1,6 +1,6 @@
 # Stage 3 Verification Harness Design
 
-> Version: v0.30.263
+> Version: v0.30.268
 > Date: 2026-01-07
 > Purpose: Design specification for Stage 3 self-hosting verification
 > Status: ✅ Implemented (6/7 test cases pass)
@@ -312,11 +312,32 @@ Result: ~1.9-2MB of simultaneous string allocations that cannot be freed until c
 - Value::Str cloning on every lookup
 - All strings held until call stack unwinds
 
+### v0.30.268 Value::Str Rc<String> Optimization
+
+**Change**: Changed `Value::Str(String)` to `Value::Str(Rc<String>)` to reduce clone overhead.
+
+**Benefits**:
+- Cloning `Rc<String>` is O(1) pointer increment vs O(n) string copy
+- Reduced memory pressure when passing strings between scopes
+- Pattern matching and string operations dereference transparently
+
+**Files Modified**:
+- `interp/value.rs`: Value enum definition, as_str(), Display, tests
+- `interp/eval.rs`: String literal evaluation, substring, concatenation
+- `main.rs`: Bootstrap IR extraction
+
+**Results**:
+- 14/14 interpreter tests pass
+- 6/7 Stage 3 tests pass (unchanged from v0.30.263)
+- Let bindings still fail due to fiber allocation (Windows stack limit)
+
+**Conclusion**: Rc<String> reduces per-clone overhead but doesn't address the fundamental stack depth issue. The fiber allocation error indicates Windows-level resource exhaustion, not heap memory.
+
 ### Future Improvements
 
 - **P1**: Arena allocator for interpreter (bulk deallocation)
 - **P2**: Tail-call optimization (reduce call depth)
-- **P3**: Cow<str> for Value::Str (avoid unnecessary cloning)
+- ~~**P3**: Cow<str> for Value::Str (avoid unnecessary cloning)~~ ✅ **Done**: Rc<String> (v0.30.268)
 - **P4**: String interning for common patterns (":", "|", "ERR:")
 - **P5**: Support more complex expressions (closures, arrays)
 - **P6**: Add `--exact` flag for character-identical comparison
