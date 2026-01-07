@@ -674,8 +674,13 @@ impl Interpreter {
                 (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a + b)),
                 (Value::Int(a), Value::Float(b)) => Ok(Value::Float(*a as f64 + b)),
                 (Value::Float(a), Value::Int(b)) => Ok(Value::Float(a + *b as f64)),
-                // String concatenation
-                (Value::Str(a), Value::Str(b)) => Ok(Value::Str(format!("{}{}", a, b))),
+                // String concatenation (v0.30.256: pre-allocated capacity to reduce reallocations)
+                (Value::Str(a), Value::Str(b)) => {
+                    let mut result = String::with_capacity(a.len() + b.len());
+                    result.push_str(a);
+                    result.push_str(b);
+                    Ok(Value::Str(result))
+                }
                 _ => Err(RuntimeError::type_error(
                     "numeric or string",
                     &format!("{} + {}", left.type_name(), right.type_name()),

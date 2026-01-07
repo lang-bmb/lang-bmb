@@ -50,13 +50,15 @@ The BMB bootstrap implements the **complete core compilation pipeline** (lexer �
 - Normalizes and compares function signatures
 - Reports exact match, semantic match, or differences
 
-**Test Results (v0.30.248)**:
+**Test Results (v0.30.258)**:
 - `stage3_simple.bmb`: ✅ PASS (single function)
 - `stage3_max.bmb`: ✅ PASS (conditional expression)
 - `stage3_multi.bmb`: ✅ PASS (multiple functions)
 - `stage3_let.bmb`: ❌ FAIL (memory allocation failure in bootstrap)
 
-**Known Limitation**: Let bindings cause ~2MB memory allocation in bootstrap's `lowering.bmb` string operations.
+**v0.30.258 Optimization**: String concatenation with pre-allocated capacity reduced memory from ~2MB to ~1.1MB (~44% reduction), but let bindings still fail due to memory lifetime issue.
+
+**Known Limitation**: Let bindings cause ~1.1MB memory allocation. Root cause: Rc<RefCell<Environment>> chain keeps all scopes alive until stack unwinds.
 
 ## Module Comparison Matrix
 

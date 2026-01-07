@@ -293,10 +293,25 @@ Each function call creates:
 
 Result: ~1.9-2MB of simultaneous string allocations that cannot be freed until call stack unwinds.
 
+### v0.30.258 String Concatenation Optimization
+
+**Change**: Optimized interpreter's string concatenation from `format!("{}{}", a, b)` to pre-allocated `String::with_capacity` + `push_str`.
+
+**Results**:
+- Memory usage reduced from ~2MB to ~1.1MB (~44% reduction)
+- Let binding test still fails due to fundamental memory lifetime issue
+- Other Stage 3 tests (simple, max, multi) continue to pass
+
+**Conclusion**: The optimization reduces intermediate allocations but doesn't solve the root cause:
+- Rc<RefCell<Environment>> chain keeps all parent scopes alive
+- Value::Str cloning on every lookup
+- All strings held until call stack unwinds
+
 ### Future Improvements
 
-- **P1**: Optimize bootstrap compiler's string operations (avoid intermediate allocations)
-- **P2**: Add memory tracking to interpreter (identify hotspots)
-- **P3**: Implement string interning for common patterns
-- **P4**: Support more complex expressions (closures, arrays)
-- **P5**: Add `--exact` flag for character-identical comparison
+- **P1**: Arena allocator for interpreter (bulk deallocation)
+- **P2**: Tail-call optimization (reduce call depth)
+- **P3**: Cow<str> for Value::Str (avoid unnecessary cloning)
+- **P4**: String interning for common patterns (":", "|", "ERR:")
+- **P5**: Support more complex expressions (closures, arrays)
+- **P6**: Add `--exact` flag for character-identical comparison
