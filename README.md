@@ -2,18 +2,19 @@
 
 A verified systems programming language with contract-based verification, designed for AI-native code generation.
 
-## Current Status: v0.18.1
+## Current Status: v0.30.310
 
 | Component | Status | Description |
 |-----------|--------|-------------|
-| Lexer/Parser | Complete | logos + lalrpop based tokenization, 85+ tests |
-| Type System | Complete | Generics, refinement types, Option/Result, ownership |
+| Lexer/Parser | Complete | logos + lalrpop based tokenization, 113+ tests |
+| Type System | Complete | Generics, refinement types, Option/Result, ownership, closures |
 | Contracts | Complete | pre/post conditions, quantifiers, SMT verification (Z3) |
 | Interpreter | Complete | Tree-walking interpreter with REPL |
-| MIR | Complete | Middle Intermediate Representation |
+| MIR | Complete | Middle Intermediate Representation with optimization |
 | LLVM Backend | Complete | Native code generation via inkwell (optional) |
-| Bootstrap | Complete | Self-hosted compiler components in BMB |
+| Bootstrap | Complete | Self-hosted compiler in BMB (29,818 lines, 93+ tests) |
 | Module System | Complete | Cross-package type references, use statements |
+| Code Quality | Complete | 0 Clippy warnings, 0 doc warnings, 132 tests |
 
 ## Quick Start
 
@@ -58,17 +59,17 @@ cargo build --release --features llvm
 
 ```bmb
 -- Function with contract verification
-fn max(a: i32, b: i32) -> i32
+fn max(a: i64, b: i64) -> i64
   post ret >= a and ret >= b
 = if a > b then a else b;
 
 -- Precondition ensures non-zero division
-fn safe_div(a: i32, b: i32) -> i32
+fn safe_div(a: i64, b: i64) -> i64
   pre b != 0
 = a / b;
 
 -- Generic type with refinement
-type NonZero = i32 where self != 0;
+type NonZero = i64 where self != 0;
 
 enum Option<T> {
   Some(T),
@@ -76,8 +77,12 @@ enum Option<T> {
 }
 
 -- Method call syntax
-fn example(x: Option<i32>) -> i32 =
+fn example(x: Option<i64>) -> i64 =
   x.unwrap_or(0);
+
+-- Closure expression (v0.20+)
+fn apply_twice(f: fn(i64) -> i64, x: i64) -> i64 =
+  f(f(x));
 ```
 
 ## Project Structure
@@ -131,19 +136,21 @@ git submodule update --init --recursive
 
 ## Bootstrap Status
 
-Self-hosted compiler components written in BMB:
+Self-hosted compiler components written in BMB (29,818 lines):
 
-| Component | Description | Status |
-|-----------|-------------|--------|
-| lexer.bmb | Token generation | Complete |
-| parser.bmb | Syntax validation | Complete |
-| parser_ast.bmb | S-expression AST | Complete |
-| parser_test.bmb | 15 test categories | Complete |
-| types.bmb | Type checking | Complete |
-| mir.bmb | MIR foundation | Complete |
-| lowering.bmb | AST to MIR transform | Complete |
-| pipeline.bmb | End-to-end compile | Complete |
-| llvm_ir.bmb | LLVM IR generation (93 tests) | Complete |
+| Component | Lines | Description | Status |
+|-----------|-------|-------------|--------|
+| lexer.bmb | 1,046 | Token generation | Complete |
+| parser.bmb | 1,523 | Syntax validation | Complete |
+| parser_ast.bmb | 3,666 | S-expression AST | Complete |
+| types.bmb | 8,764 | Type checking (316 tests) | Complete |
+| mir.bmb | 1,705 | MIR foundation | Complete |
+| lowering.bmb | 3,867 | AST to MIR transform | Complete |
+| llvm_ir.bmb | 4,621 | LLVM IR generation | Complete |
+| pipeline.bmb | 2,107 | End-to-end compilation (42 tests) | Complete |
+| compiler.bmb | 2,783 | Full compiler driver | Complete |
+
+**Stage 3 Bootstrap**: 6/7 tests passing (86%)
 
 See [bootstrap/README.md](bootstrap/README.md) for details.
 
