@@ -32,6 +32,8 @@ stdlib/
 │   └── mod.bmb        # File I/O operations (5 functions) [v0.31.10 - INTERPRETER BUILTINS]
 ├── process/
 │   └── mod.bmb        # Process execution (4 functions) [v0.31.11 - INTERPRETER BUILTINS]
+├── stringbuilder/
+│   └── (builtins)     # StringBuilder O(1) append (5 functions) [v0.31.13 - INTERPRETER BUILTINS]
 └── test/
     └── mod.bmb        # Test assertions (40+ functions)
 ```
@@ -49,9 +51,10 @@ stdlib/
 | array | 25+ | v0.6.2 | search, aggregation, predicates, bounds |
 | io | 5 | v0.31.10 | file I/O (read_file, write_file) **[INTERPRETER BUILTINS]** |
 | process | 4 | v0.31.11 | process exec (exec, system) **[INTERPRETER BUILTINS]** |
+| stringbuilder | 5 | v0.31.13 | O(1) string append (sb_new, sb_push, sb_build) **[INTERPRETER BUILTINS]** |
 | test | 40+ | v0.7.2 | test assertions for bmb test runner |
 
-**Total: 179+ functions with contracts** (179 implemented)
+**Total: 184+ functions with contracts** (184 implemented)
 
 ## string Module (v0.10.14)
 

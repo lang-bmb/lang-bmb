@@ -82,6 +82,13 @@ impl Interpreter {
         self.builtins.insert("exec_output".to_string(), builtin_exec_output);
         self.builtins.insert("system".to_string(), builtin_system);
         self.builtins.insert("getenv".to_string(), builtin_getenv);
+
+        // v0.31.13: StringBuilder builtins for Phase 32.0.4 O(n²) fix
+        self.builtins.insert("sb_new".to_string(), builtin_sb_new);
+        self.builtins.insert("sb_push".to_string(), builtin_sb_push);
+        self.builtins.insert("sb_build".to_string(), builtin_sb_build);
+        self.builtins.insert("sb_len".to_string(), builtin_sb_len);
+        self.builtins.insert("sb_clear".to_string(), builtin_sb_clear);
     }
 
     /// v0.30.280: Enable ScopeStack-based evaluation for better memory efficiency
@@ -1397,6 +1404,131 @@ fn builtin_getenv(args: &[Value]) -> InterpResult<Value> {
             Ok(Value::Str(Rc::new(value)))
         }
         None => Err(RuntimeError::type_error("string", args[0].type_name())),
+    }
+}
+
+// ============ v0.31.13: StringBuilder Builtins for Phase 32.0.4 ============
+// Provides O(1) amortized string append operations to fix O(n²) concatenation
+// in Bootstrap compiler's MIR generation.
+
+use std::cell::RefCell as SbRefCell;
+
+thread_local! {
+    /// Thread-local string builder storage. Each builder is identified by an i64 ID.
+    static STRING_BUILDERS: SbRefCell<HashMap<i64, Vec<String>>> = SbRefCell::new(HashMap::new());
+    /// Counter for generating unique builder IDs
+    static SB_COUNTER: SbRefCell<i64> = SbRefCell::new(0);
+}
+
+/// sb_new() -> i64
+/// Creates a new string builder, returns its ID.
+fn builtin_sb_new(args: &[Value]) -> InterpResult<Value> {
+    if !args.is_empty() {
+        return Err(RuntimeError::arity_mismatch("sb_new", 0, args.len()));
+    }
+    let id = SB_COUNTER.with(|counter| {
+        let mut c = counter.borrow_mut();
+        let id = *c;
+        *c += 1;
+        id
+    });
+
+    STRING_BUILDERS.with(|builders| {
+        builders.borrow_mut().insert(id, Vec::new());
+    });
+
+    Ok(Value::Int(id))
+}
+
+/// sb_push(id: i64, str: String) -> i64
+/// Appends a string to the builder. Returns the same ID for chaining.
+fn builtin_sb_push(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 2 {
+        return Err(RuntimeError::arity_mismatch("sb_push", 2, args.len()));
+    }
+    match (&args[0], extract_string(&args[1])) {
+        (Value::Int(id), Some(s)) => {
+            STRING_BUILDERS.with(|builders| {
+                let mut map = builders.borrow_mut();
+                if let Some(builder) = map.get_mut(id) {
+                    builder.push(s);
+                    Ok(Value::Int(*id))
+                } else {
+                    Err(RuntimeError::io_error(&format!("Invalid string builder ID: {}", id)))
+                }
+            })
+        }
+        _ => Err(RuntimeError::type_error("(i64, string)", "other")),
+    }
+}
+
+/// sb_build(id: i64) -> String
+/// Materializes the builder into a single string and removes the builder.
+fn builtin_sb_build(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 1 {
+        return Err(RuntimeError::arity_mismatch("sb_build", 1, args.len()));
+    }
+    match &args[0] {
+        Value::Int(id) => {
+            STRING_BUILDERS.with(|builders| {
+                let mut map = builders.borrow_mut();
+                if let Some(fragments) = map.remove(id) {
+                    let total_len: usize = fragments.iter().map(|s| s.len()).sum();
+                    let mut result = String::with_capacity(total_len);
+                    for frag in fragments {
+                        result.push_str(&frag);
+                    }
+                    Ok(Value::Str(Rc::new(result)))
+                } else {
+                    Err(RuntimeError::io_error(&format!("Invalid string builder ID: {}", id)))
+                }
+            })
+        }
+        _ => Err(RuntimeError::type_error("i64", args[0].type_name())),
+    }
+}
+
+/// sb_len(id: i64) -> i64
+/// Returns the total length of all strings in the builder.
+fn builtin_sb_len(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 1 {
+        return Err(RuntimeError::arity_mismatch("sb_len", 1, args.len()));
+    }
+    match &args[0] {
+        Value::Int(id) => {
+            STRING_BUILDERS.with(|builders| {
+                let map = builders.borrow();
+                if let Some(fragments) = map.get(id) {
+                    let total_len: i64 = fragments.iter().map(|s| s.len() as i64).sum();
+                    Ok(Value::Int(total_len))
+                } else {
+                    Err(RuntimeError::io_error(&format!("Invalid string builder ID: {}", id)))
+                }
+            })
+        }
+        _ => Err(RuntimeError::type_error("i64", args[0].type_name())),
+    }
+}
+
+/// sb_clear(id: i64) -> i64
+/// Clears the builder contents without removing it. Returns same ID.
+fn builtin_sb_clear(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 1 {
+        return Err(RuntimeError::arity_mismatch("sb_clear", 1, args.len()));
+    }
+    match &args[0] {
+        Value::Int(id) => {
+            STRING_BUILDERS.with(|builders| {
+                let mut map = builders.borrow_mut();
+                if let Some(builder) = map.get_mut(id) {
+                    builder.clear();
+                    Ok(Value::Int(*id))
+                } else {
+                    Err(RuntimeError::io_error(&format!("Invalid string builder ID: {}", id)))
+                }
+            })
+        }
+        _ => Err(RuntimeError::type_error("i64", args[0].type_name())),
     }
 }
 

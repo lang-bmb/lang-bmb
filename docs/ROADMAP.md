@@ -1902,7 +1902,7 @@ string overhead. Fixing requires architectural redesign.
 | 32.0.1 | Add stdlib `io` module (read_file, write_file) | P0 | ~~2 weeks~~ 1 day | ✅ v0.31.10 |
 | 32.0.2 | Add stdlib `process` module (exec, system) | P0 | ~~2 weeks~~ 1 day | ✅ v0.31.11 |
 | 32.0.3 | Create minimal BMB CLI wrapper | P0 | ~~1 week~~ 1 day | ✅ v0.31.12 |
-| 32.0.4 | Fix O(n²) string concatenation (StringBuilder) | P0 | 2 weeks | 🔲 Pending |
+| 32.0.4 | Fix O(n²) string concatenation (StringBuilder) | P0 | ~~2 weeks~~ 1 day | ✅ v0.31.13 |
 | 32.0.5 | Stage 3 verification (7/7 tests) | P0 | 1 week | 🔲 Pending |
 
 **Implementation Strategy**:
@@ -1929,6 +1929,13 @@ string overhead. Fixing requires architectural redesign.
 - File processing with environment variable configuration
 - Integer-to-string conversion via recursive helper functions
 - Reserved keyword discovery: `summary` is BMB keyword for module docs
+
+**v0.31.13 Implementation Details**:
+- StringBuilder builtins: `sb_new`, `sb_push`, `sb_build`, `sb_len`, `sb_clear`
+- O(1) amortized append via thread-local Vec<String> storage
+- Enables Bootstrap MIR generation to use efficient string accumulation
+- Alternative to O(n²) `textv + "|" + textb` pattern
+- Test: `tests/examples/valid/string_builder_test.bmb`
 
 **Exit Criteria**: Bootstrap compiles and runs simple programs standalone
 

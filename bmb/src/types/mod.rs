@@ -114,6 +114,18 @@ impl TypeChecker {
         // getenv(name: String) -> String (env var value)
         functions.insert("getenv".to_string(), (vec![Type::String], Type::String));
 
+        // v0.31.13: StringBuilder builtins for Phase 32.0.4 O(n²) fix
+        // sb_new() -> i64 (builder ID)
+        functions.insert("sb_new".to_string(), (vec![], Type::I64));
+        // sb_push(id: i64, str: String) -> i64 (same ID for chaining)
+        functions.insert("sb_push".to_string(), (vec![Type::I64, Type::String], Type::I64));
+        // sb_build(id: i64) -> String (final string)
+        functions.insert("sb_build".to_string(), (vec![Type::I64], Type::String));
+        // sb_len(id: i64) -> i64 (total length)
+        functions.insert("sb_len".to_string(), (vec![Type::I64], Type::I64));
+        // sb_clear(id: i64) -> i64 (same ID)
+        functions.insert("sb_clear".to_string(), (vec![Type::I64], Type::I64));
+
         Self {
             env: HashMap::new(),
             functions,

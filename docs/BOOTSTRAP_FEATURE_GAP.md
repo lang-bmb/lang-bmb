@@ -108,6 +108,12 @@ Architectural comparison between Rust and Bootstrap implementations:
 2. **Trampolining** (3-4 weeks): Major refactor of `lower_let` and related functions
 3. **Accept limitation** (selected): Document 86% as practical success, defer full fix
 
+**v0.31.13 StringBuilder Builtins** (Phase 32.0.4):
+- Added `sb_new()`, `sb_push()`, `sb_build()`, `sb_len()`, `sb_clear()` interpreter builtins
+- Provides O(1) amortized string append via thread-local Vec<String> storage
+- Bootstrap code can optionally migrate from `textv + "|" + textb` to StringBuilder pattern
+- Not yet integrated into Bootstrap lowering.bmb (requires code refactoring)
+
 **Decision**: Accept 86% Stage 3 as sufficient for v0.31. Full architectural fix deferred to v0.32+ where Bootstrap redesign can be done alongside Rust removal.
 
 **Rationale**:
