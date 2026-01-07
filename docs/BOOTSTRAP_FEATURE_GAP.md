@@ -1,6 +1,6 @@
 # Bootstrap Feature Gap Analysis
 
-> Version: v0.30.268
+> Version: v0.30.277
 > Date: 2026-01-07
 > Purpose: Document gaps between Rust compiler and BMB bootstrap implementation
 

@@ -1,6 +1,6 @@
 # Stage 3 Verification Harness Design
 
-> Version: v0.30.269
+> Version: v0.30.277
 > Date: 2026-01-07
 > Purpose: Design specification for Stage 3 self-hosting verification
 > Status: ✅ Implemented (6/7 test cases pass)
@@ -339,10 +339,45 @@ Result: ~1.9-2MB of simultaneous string allocations that cannot be freed until c
 
 **Conclusion**: Rc<String> reduces per-clone overhead but doesn't address the fundamental stack depth issue. The fiber allocation error indicates Windows-level resource exhaustion, not heap memory.
 
+### v0.30.273-277 Bootstrap Bottleneck Analysis
+
+**String Operation Census** (lowering.bmb: 2,727 lines):
+| Operation | Count |
+|-----------|-------|
+| String concat (`+ "`) | 119 |
+| String concat (`" +`) | 134 |
+| `.slice()` | 34 |
+| `.len()` | 145 |
+| `.char_at()` | 80 |
+| pack/unpack calls | 221 |
+
+**pack_lower_result Pattern** (called 221× in lowering.bmb):
+```bmb
+fn pack_lower_result(temp: i64, block: i64, result: String, text: String) -> String =
+    int_to_string(temp) + ":" + int_to_string(block) + ":" + result + ":" + text;
+```
+Creates 5-7 string allocations per call.
+
+**Optimization Evaluation**:
+| Option | Feasibility | Impact | Decision |
+|--------|-------------|--------|----------|
+| Bootstrap code rewrite | Low | Uncertain | ❌ Risk too high |
+| Additional interpreter opt | Medium | Marginal | ⚠️ Rc<String> already applied |
+| Tuple-based representation | Low | High | ❌ Major refactoring |
+| **Document as limitation** | **High** | **-** | **✅ Selected** |
+
+**Final Conclusion**: The let binding failure is not a string operation issue but an **Environment chain lifetime** problem. Each recursive call creates a new Rc<RefCell<Environment>> that holds references to all parent scopes. This cannot be solved without trampolining or CPS transformation.
+
+**Practical Assessment**: 6/7 Stage 3 tests pass, covering:
+- ✅ Binary operations, conditionals, nested conditionals
+- ✅ Multiple functions, function composition
+- ✅ Complex arithmetic expressions
+- ❌ Let bindings (architectural limitation)
+
 ### Future Improvements
 
 - **P1**: Arena allocator for interpreter (bulk deallocation)
-- **P2**: Tail-call optimization (reduce call depth)
+- **P2**: Tail-call optimization / trampolining (reduce call depth)
 - ~~**P3**: Cow<str> for Value::Str (avoid unnecessary cloning)~~ ✅ **Done**: Rc<String> (v0.30.268)
 - **P4**: String interning for common patterns (":", "|", "ERR:")
 - **P5**: Support more complex expressions (closures, arrays)
