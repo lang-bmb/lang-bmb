@@ -94,7 +94,7 @@ v0.MAJOR.MINOR
 | v0.10-v0.18 | Language | Generics, modules, methods | ✅ Complete |
 | v0.19-v0.23 | Bootstrap | MIR completion, Stage 1/2 verification | ✅ Complete |
 | v0.24-v0.29 | Polish | Examples, AI Query, benchmarks, optimization | ✅ Complete |
-| **v0.30** | **Pure** | **Rust code complete removal (Self-Hosting)** | 📋 Planned |
+| **v0.30** | **Pure** | **Code Quality & Stability (Self-Hosting)** | ✅ Complete |
 | **v0.31** | **Docs** | **Language refinements (RFCs) + Documentation + website** | 📋 Planned |
 | **v0.32** | **Ecosystem** | **100+ packages + community** | 📋 Planned |
 | **v1.0.0-rc** | **Golden** | **Final verification + stability promise** | 📋 Planned |
@@ -188,7 +188,7 @@ v0.MAJOR.MINOR
 
 **Difficulty**: ⭐⭐⭐⭐⭐ (Highest - Core milestone)
 
-**Status**: ✅ **Code Quality Complete (v0.30.310)**
+**Status**: ✅ **Complete (v0.30.318) - Released as v0.30.0**
 
 #### v0.30 Achievement Summary
 
@@ -376,6 +376,23 @@ v0.MAJOR.MINOR
 - **v0.31 preparation (30.1.314)**: Roadmap ready for next phase
   - v0.30 code quality: Complete
   - Next: v0.31 Documentation & Language Refinements
+
+**v0.30.318 Completed (2026-01-07)**:
+- Phase 30.1.315-318: v0.30 Release & Transition
+- **Final verification (30.1.315)**: All quality gates passed
+  - Cargo check: bmb clean, gotgan 21 warnings (separate focus)
+  - Cargo clippy: bmb 0 warnings
+  - Cargo test: 132 tests (113 bmb + 19 gotgan)
+- **Release tag (30.1.316)**: Created v0.30.0 release tag
+  - Tag: v0.30.0 - Code Quality & Stability Release
+  - Zero Clippy warnings, 132 tests, 49 validated examples
+- **v0.31 planning (30.1.317)**: Confirmed roadmap alignment
+  - Phase 31.0: Language Refinements (RFCs)
+  - Phase 31.1: Language Reference Documentation
+  - Phase 31.2: Standard Library Documentation
+- **Transition documentation (30.1.318)**: v0.30 → v0.31 milestone complete
+  - v0.30 Self-Hosting: Code quality achieved
+  - v0.31 Documentation: Ready to begin
 
 **v0.30.310 Completed (2026-01-07)**:
 - Phase 30.1.307-310: Comprehensive Test Validation
