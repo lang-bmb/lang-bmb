@@ -1477,7 +1477,7 @@ impl TypeChecker {
                     }
                     if type_args.len() != arg_type_args.len() {
                         return Err(CompileError::type_error(
-                            format!("generic type argument count mismatch"),
+                            "generic type argument count mismatch".to_string(),
                             span,
                         ));
                     }

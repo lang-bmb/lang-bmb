@@ -61,15 +61,15 @@ pub fn extract_derive_traits(attrs: &[Attribute]) -> Vec<DeriveTrait> {
     let mut traits = Vec::new();
 
     for attr in attrs {
-        if attr.name() == "derive" {
-            if let Attribute::WithArgs { args, .. } = attr {
-                for arg in args {
-                    // Each arg should be a Var expression representing trait name
-                    if let Expr::Var(name) = &arg.node {
-                        if let Some(derive_trait) = DeriveTrait::from_str(name) {
-                            traits.push(derive_trait);
-                        }
-                    }
+        if attr.name() == "derive"
+            && let Attribute::WithArgs { args, .. } = attr
+        {
+            for arg in args {
+                // Each arg should be a Var expression representing trait name
+                if let Expr::Var(name) = &arg.node
+                    && let Some(derive_trait) = DeriveTrait::from_str(name)
+                {
+                    traits.push(derive_trait);
                 }
             }
         }

@@ -195,30 +195,29 @@ impl OptimizationPass for ConstantFolding {
                     MirInst::BinOp { dest, op, lhs, rhs } => {
                         if let (Some(lhs_const), Some(rhs_const)) =
                             (get_constant(lhs, &constants), get_constant(rhs, &constants))
+                            && let Some(result) = fold_binop(*op, &lhs_const, &rhs_const)
                         {
-                            if let Some(result) = fold_binop(*op, &lhs_const, &rhs_const) {
-                                constants.insert(dest.name.clone(), result.clone());
-                                new_instructions.push(MirInst::Const {
-                                    dest: dest.clone(),
-                                    value: result,
-                                });
-                                changed = true;
-                                continue;
-                            }
+                            constants.insert(dest.name.clone(), result.clone());
+                            new_instructions.push(MirInst::Const {
+                                dest: dest.clone(),
+                                value: result,
+                            });
+                            changed = true;
+                            continue;
                         }
                         new_instructions.push(inst.clone());
                     }
                     MirInst::UnaryOp { dest, op, src } => {
-                        if let Some(src_const) = get_constant(src, &constants) {
-                            if let Some(result) = fold_unaryop(*op, &src_const) {
-                                constants.insert(dest.name.clone(), result.clone());
-                                new_instructions.push(MirInst::Const {
-                                    dest: dest.clone(),
-                                    value: result,
-                                });
-                                changed = true;
-                                continue;
-                            }
+                        if let Some(src_const) = get_constant(src, &constants)
+                            && let Some(result) = fold_unaryop(*op, &src_const)
+                        {
+                            constants.insert(dest.name.clone(), result.clone());
+                            new_instructions.push(MirInst::Const {
+                                dest: dest.clone(),
+                                value: result,
+                            });
+                            changed = true;
+                            continue;
                         }
                         new_instructions.push(inst.clone());
                     }

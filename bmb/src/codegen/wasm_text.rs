@@ -44,20 +44,15 @@ pub enum WasmCodeGenError {
 pub type WasmCodeGenResult<T> = Result<T, WasmCodeGenError>;
 
 /// WASM target environment
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub enum WasmTarget {
     /// WASI runtime (command-line, file system access)
+    #[default]
     Wasi,
     /// Browser/JS environment
     Browser,
     /// Standalone (no imports, pure computation)
     Standalone,
-}
-
-impl Default for WasmTarget {
-    fn default() -> Self {
-        Self::Wasi
-    }
 }
 
 /// Text-based WASM Code Generator

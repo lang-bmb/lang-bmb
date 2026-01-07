@@ -85,15 +85,15 @@ impl CfgEvaluator {
     /// Returns true if item should be included
     fn evaluate_attrs(&self, attrs: &[Attribute]) -> bool {
         for attr in attrs {
-            if attr.name() == "cfg" {
-                if let Attribute::WithArgs { args, .. } = attr {
-                    // Evaluate cfg condition
-                    if !self.evaluate_cfg_args(args) {
-                        return false;
-                    }
+            if attr.name() == "cfg"
+                && let Attribute::WithArgs { args, .. } = attr
+            {
+                // Evaluate cfg condition
+                if !self.evaluate_cfg_args(args) {
+                    return false;
                 }
-                // @cfg without args is invalid, skip
             }
+            // @cfg without args is invalid, skip
         }
         true // No @cfg or all @cfg passed
     }
@@ -114,14 +114,11 @@ impl CfgEvaluator {
         match expr {
             // @cfg(target = "wasm32")
             Expr::Binary { left, op, right } if *op == crate::ast::BinOp::Eq => {
-                if let (Expr::Var(name), Expr::StringLit(value)) =
-                    (&left.node, &right.node)
+                if let (Expr::Var(name), Expr::StringLit(value)) = (&left.node, &right.node)
+                    && name == "target"
+                    && let Some(target) = Target::from_str(value)
                 {
-                    if name == "target" {
-                        if let Some(target) = Target::from_str(value) {
-                            return self.target == target;
-                        }
-                    }
+                    return self.target == target;
                 }
                 // Unknown cfg key, default to true (permissive)
                 true

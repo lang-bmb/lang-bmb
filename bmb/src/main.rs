@@ -1368,7 +1368,7 @@ fn verify_stage3(
 
     // Generate report
     let mut report = String::new();
-    report.push_str(&format!("# Stage 3 Verification Report\n"));
+    report.push_str("# Stage 3 Verification Report\n");
     report.push_str(&format!("File: {}\n", path.display()));
     report.push_str(&format!("Date: {}\n\n", chrono::Local::now().format("%Y-%m-%d %H:%M:%S")));
 

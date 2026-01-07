@@ -264,10 +264,10 @@ pub fn build(config: &BuildConfig) -> BuildResult<()> {
         }
 
         // Find clang
-        let clang = find_clang().map_err(|e| BuildError::Linker(e))?;
+        let clang = find_clang().map_err(BuildError::Linker)?;
 
         // Find runtime
-        let runtime_path = find_runtime_c().map_err(|e| BuildError::Linker(e))?;
+        let runtime_path = find_runtime_c().map_err(BuildError::Linker)?;
 
         if config.verbose {
             println!("  Using clang: {}", clang);
@@ -415,17 +415,15 @@ fn find_runtime_c() -> Result<std::path::PathBuf, String> {
     }
 
     // Check relative to executable
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(parent) = exe.parent() {
-            // target/release/ -> runtime/
-            if let Some(grandparent) = parent.parent() {
-                if let Some(project_root) = grandparent.parent() {
-                    let runtime = project_root.join("runtime").join("runtime.c");
-                    if runtime.exists() {
-                        return Ok(runtime);
-                    }
-                }
-            }
+    if let Ok(exe) = std::env::current_exe()
+        && let Some(parent) = exe.parent()
+        && let Some(grandparent) = parent.parent()
+        && let Some(project_root) = grandparent.parent()
+    {
+        // target/release/ -> runtime/
+        let runtime = project_root.join("runtime").join("runtime.c");
+        if runtime.exists() {
+            return Ok(runtime);
         }
     }
 
@@ -623,38 +621,38 @@ fn find_windows_sdk_includes() -> Option<Vec<String>> {
 
     // Find MSVC include path (for vcruntime.h)
     let msvc_base = Path::new(r"C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC");
-    if msvc_base.exists() {
-        if let Ok(entries) = std::fs::read_dir(msvc_base) {
-            let msvc_versions: Vec<_> = entries
-                .filter_map(|e| e.ok())
-                .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
-                .filter_map(|e| e.file_name().into_string().ok())
-                .collect();
+    if msvc_base.exists()
+        && let Ok(entries) = std::fs::read_dir(msvc_base)
+    {
+        let msvc_versions: Vec<_> = entries
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
+            .filter_map(|e| e.file_name().into_string().ok())
+            .collect();
 
-            if let Some(latest_version) = msvc_versions.iter().max() {
-                let msvc_include = msvc_base.join(latest_version).join("include");
-                if msvc_include.exists() {
-                    paths.push(msvc_include.to_string_lossy().to_string());
-                }
+        if let Some(latest_version) = msvc_versions.iter().max() {
+            let msvc_include = msvc_base.join(latest_version).join("include");
+            if msvc_include.exists() {
+                paths.push(msvc_include.to_string_lossy().to_string());
             }
         }
     }
 
     // Also try VS 2022 BuildTools location
     let msvc_bt_base = Path::new(r"C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Tools\MSVC");
-    if msvc_bt_base.exists() {
-        if let Ok(entries) = std::fs::read_dir(msvc_bt_base) {
-            let msvc_versions: Vec<_> = entries
-                .filter_map(|e| e.ok())
-                .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
-                .filter_map(|e| e.file_name().into_string().ok())
-                .collect();
+    if msvc_bt_base.exists()
+        && let Ok(entries) = std::fs::read_dir(msvc_bt_base)
+    {
+        let msvc_versions: Vec<_> = entries
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
+            .filter_map(|e| e.file_name().into_string().ok())
+            .collect();
 
-            if let Some(latest_version) = msvc_versions.iter().max() {
-                let msvc_include = msvc_bt_base.join(latest_version).join("include");
-                if msvc_include.exists() {
-                    paths.push(msvc_include.to_string_lossy().to_string());
-                }
+        if let Some(latest_version) = msvc_versions.iter().max() {
+            let msvc_include = msvc_bt_base.join(latest_version).join("include");
+            if msvc_include.exists() {
+                paths.push(msvc_include.to_string_lossy().to_string());
             }
         }
     }
@@ -675,67 +673,67 @@ fn find_windows_lib_paths() -> Option<Vec<String>> {
 
     // Find Windows SDK lib path
     let sdk_base = Path::new(r"C:\Program Files (x86)\Windows Kits\10\Lib");
-    if sdk_base.exists() {
-        if let Ok(entries) = std::fs::read_dir(sdk_base) {
-            let sdk_versions: Vec<_> = entries
-                .filter_map(|e| e.ok())
-                .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
-                .filter_map(|e| e.file_name().into_string().ok())
-                .filter(|name| name.starts_with("10.0."))
-                .collect();
+    if sdk_base.exists()
+        && let Ok(entries) = std::fs::read_dir(sdk_base)
+    {
+        let sdk_versions: Vec<_> = entries
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
+            .filter_map(|e| e.file_name().into_string().ok())
+            .filter(|name| name.starts_with("10.0."))
+            .collect();
 
-            if let Some(latest_version) = sdk_versions.iter().max() {
-                let sdk_lib = sdk_base.join(latest_version);
+        if let Some(latest_version) = sdk_versions.iter().max() {
+            let sdk_lib = sdk_base.join(latest_version);
 
-                // UCRT libraries
-                let ucrt_lib = sdk_lib.join("ucrt").join("x64");
-                if ucrt_lib.exists() {
-                    paths.push(ucrt_lib.to_string_lossy().to_string());
-                }
+            // UCRT libraries
+            let ucrt_lib = sdk_lib.join("ucrt").join("x64");
+            if ucrt_lib.exists() {
+                paths.push(ucrt_lib.to_string_lossy().to_string());
+            }
 
-                // um libraries (kernel32, etc.)
-                let um_lib = sdk_lib.join("um").join("x64");
-                if um_lib.exists() {
-                    paths.push(um_lib.to_string_lossy().to_string());
-                }
+            // um libraries (kernel32, etc.)
+            let um_lib = sdk_lib.join("um").join("x64");
+            if um_lib.exists() {
+                paths.push(um_lib.to_string_lossy().to_string());
             }
         }
     }
 
     // Find MSVC lib path
     let msvc_base = Path::new(r"C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC");
-    if msvc_base.exists() {
-        if let Ok(entries) = std::fs::read_dir(msvc_base) {
-            let msvc_versions: Vec<_> = entries
-                .filter_map(|e| e.ok())
-                .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
-                .filter_map(|e| e.file_name().into_string().ok())
-                .collect();
+    if msvc_base.exists()
+        && let Ok(entries) = std::fs::read_dir(msvc_base)
+    {
+        let msvc_versions: Vec<_> = entries
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
+            .filter_map(|e| e.file_name().into_string().ok())
+            .collect();
 
-            if let Some(latest_version) = msvc_versions.iter().max() {
-                let msvc_lib = msvc_base.join(latest_version).join("lib").join("x64");
-                if msvc_lib.exists() {
-                    paths.push(msvc_lib.to_string_lossy().to_string());
-                }
+        if let Some(latest_version) = msvc_versions.iter().max() {
+            let msvc_lib = msvc_base.join(latest_version).join("lib").join("x64");
+            if msvc_lib.exists() {
+                paths.push(msvc_lib.to_string_lossy().to_string());
             }
         }
     }
 
     // Also try VS 2022 BuildTools location
     let msvc_bt_base = Path::new(r"C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Tools\MSVC");
-    if msvc_bt_base.exists() {
-        if let Ok(entries) = std::fs::read_dir(msvc_bt_base) {
-            let msvc_versions: Vec<_> = entries
-                .filter_map(|e| e.ok())
-                .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
-                .filter_map(|e| e.file_name().into_string().ok())
-                .collect();
+    if msvc_bt_base.exists()
+        && let Ok(entries) = std::fs::read_dir(msvc_bt_base)
+    {
+        let msvc_versions: Vec<_> = entries
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
+            .filter_map(|e| e.file_name().into_string().ok())
+            .collect();
 
-            if let Some(latest_version) = msvc_versions.iter().max() {
-                let msvc_lib = msvc_bt_base.join(latest_version).join("lib").join("x64");
-                if msvc_lib.exists() {
-                    paths.push(msvc_lib.to_string_lossy().to_string());
-                }
+        if let Some(latest_version) = msvc_versions.iter().max() {
+            let msvc_lib = msvc_bt_base.join(latest_version).join("lib").join("x64");
+            if msvc_lib.exists() {
+                paths.push(msvc_lib.to_string_lossy().to_string());
             }
         }
     }

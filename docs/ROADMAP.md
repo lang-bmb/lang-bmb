@@ -337,6 +337,15 @@ v0.MAJOR.MINOR
 - Multi-operand expressions, mixed operations, combined expressions
 - pipeline.bmb total: 42 tests (10 test groups)
 
+**v0.30.297 Completed (2026-01-07)**:
+- Phase 30.1.296-297: Trait Dispatch and Closure Capture IR Infrastructure
+- **Collapsible if (30.1.296)**: Collapsed nested if statements with `if let ... &&` syntax (17 instances)
+- **Derivable impls (30.1.297)**: Converted manual Default impls to `#[derive(Default)]` (2 instances)
+- **Redundant closures**: Fixed `.map_err(|e| Err(e))` → `.map_err(Err)` (2 instances)
+- **Useless format!**: Removed unnecessary `format!` calls (2 instances)
+- **Result**: Clippy warnings reduced 113 → 45 (60% total reduction from 147)
+- **Files modified**: `build/mod.rs`, `cfg/mod.rs`, `derive/mod.rs`, `lsp/mod.rs`, `mir/optimize.rs`, `ast/mod.rs`, `codegen/wasm_text.rs`, `types/mod.rs`, `main.rs`
+
 **v0.30.293 Completed (2026-01-07)**:
 - Phase 30.1.293-295: Modern Rust Idioms Cleanup
 - **map_or cleanup (30.1.293)**: Converted `map_or` → `is_some_and`/`is_none_or` (14 instances)

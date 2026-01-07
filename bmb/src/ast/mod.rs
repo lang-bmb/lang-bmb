@@ -18,18 +18,13 @@ pub struct Program {
 }
 
 /// Visibility modifier (v0.5 Phase 4)
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum Visibility {
     /// Private (default)
+    #[default]
     Private,
     /// Public (pub keyword)
     Public,
-}
-
-impl Default for Visibility {
-    fn default() -> Self {
-        Visibility::Private
-    }
 }
 
 /// Top-level item

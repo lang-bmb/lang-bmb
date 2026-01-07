@@ -633,42 +633,42 @@ impl LanguageServer for Backend {
 
         // Add user-defined symbols from AST
         let docs = self.documents.read().unwrap();
-        if let Some(doc) = docs.get(uri) {
-            if let Some(ast) = &doc.ast {
-                for item in &ast.items {
-                    match item {
-                        crate::ast::Item::FnDef(f) => {
-                            let params: Vec<String> = f.params.iter()
-                                .enumerate()
-                                .map(|(i, p)| format!("${{{}:{}}}", i + 1, p.name.node))
-                                .collect();
-                            items.push(CompletionItem {
-                                label: f.name.node.clone(),
-                                kind: Some(CompletionItemKind::FUNCTION),
-                                detail: Some(format!("fn -> {:?}", f.ret_ty.node)),
-                                insert_text: Some(format!("{}({})", f.name.node, params.join(", "))),
-                                insert_text_format: Some(InsertTextFormat::SNIPPET),
-                                ..Default::default()
-                            });
-                        }
-                        crate::ast::Item::StructDef(s) => {
-                            items.push(CompletionItem {
-                                label: s.name.node.clone(),
-                                kind: Some(CompletionItemKind::STRUCT),
-                                detail: Some("struct".to_string()),
-                                ..Default::default()
-                            });
-                        }
-                        crate::ast::Item::EnumDef(e) => {
-                            items.push(CompletionItem {
-                                label: e.name.node.clone(),
-                                kind: Some(CompletionItemKind::ENUM),
-                                detail: Some("enum".to_string()),
-                                ..Default::default()
-                            });
-                        }
-                        _ => {}
+        if let Some(doc) = docs.get(uri)
+            && let Some(ast) = &doc.ast
+        {
+            for item in &ast.items {
+                match item {
+                    crate::ast::Item::FnDef(f) => {
+                        let params: Vec<String> = f.params.iter()
+                            .enumerate()
+                            .map(|(i, p)| format!("${{{}:{}}}", i + 1, p.name.node))
+                            .collect();
+                        items.push(CompletionItem {
+                            label: f.name.node.clone(),
+                            kind: Some(CompletionItemKind::FUNCTION),
+                            detail: Some(format!("fn -> {:?}", f.ret_ty.node)),
+                            insert_text: Some(format!("{}({})", f.name.node, params.join(", "))),
+                            insert_text_format: Some(InsertTextFormat::SNIPPET),
+                            ..Default::default()
+                        });
                     }
+                    crate::ast::Item::StructDef(s) => {
+                        items.push(CompletionItem {
+                            label: s.name.node.clone(),
+                            kind: Some(CompletionItemKind::STRUCT),
+                            detail: Some("struct".to_string()),
+                            ..Default::default()
+                        });
+                    }
+                    crate::ast::Item::EnumDef(e) => {
+                        items.push(CompletionItem {
+                            label: e.name.node.clone(),
+                            kind: Some(CompletionItemKind::ENUM),
+                            detail: Some("enum".to_string()),
+                            ..Default::default()
+                        });
+                    }
+                    _ => {}
                 }
             }
         }
