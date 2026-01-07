@@ -1962,9 +1962,21 @@ Original "porting" tasks were based on incomplete understanding of Bootstrap sta
 | ~~32.1.2~~ | ~~Port AST types to BMB~~ | - | - | ✅ Already in types.bmb |
 | ~~32.1.3~~ | ~~Port full MIR module to BMB~~ | - | - | ✅ Already in mir.bmb |
 | ~~32.1.4~~ | ~~Port codegen module to BMB~~ | - | - | ✅ Already in llvm_ir.bmb |
-| 32.1.1 | Integrate BMB CLI with stdlib io/process | P0 | 1 week | Pending |
-| 32.1.2 | Add module import support to Bootstrap | P0 | 3 weeks | Pending |
-| 32.1.3 | End-to-end self-compile test | P0 | 1 week | Pending |
+| 32.1.1 | Integrate BMB CLI with stdlib io/process | P0 | 1 week | ✅ v0.31.15 |
+| 32.1.2 | Add module import support to Bootstrap | P2 | 3 weeks | ⚠️ Deferred |
+| 32.1.3 | End-to-end self-compile test | P1 | 1 week | ⏳ Pending |
+
+**v0.31.15: CLI Compiler Integration**
+- Created `bmb_compile.bmb`: Self-hosted CLI compiler demo
+- Integrates: `read_file()`, `write_file()`, `sb_*` StringBuilder builtins
+- Includes: Complete lexer, parser, LLVM IR generator (simplified)
+- Tests: Compilation pipeline, StringBuilder, File I/O (all pass)
+
+**32.1.2 Deferral Rationale**:
+- Bootstrap architecture: ~30K LOC standalone, NO module imports
+- All files self-contained with duplicated utility functions
+- Import support requires: Parser changes, resolver, namespace management
+- Recommended: Address in v0.32 with full architectural redesign
 
 #### Phase 32.2: Package Manager Porting (was 30.3)
 

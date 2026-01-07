@@ -1,7 +1,7 @@
 # Bootstrap Feature Gap Analysis
 
-> Version: v0.31.11
-> Date: 2026-01-07
+> Version: v0.31.15
+> Date: 2026-01-08
 > Purpose: Document gaps between Rust compiler and BMB bootstrap implementation
 
 ## Executive Summary
@@ -113,6 +113,13 @@ Architectural comparison between Rust and Bootstrap implementations:
 - Provides O(1) amortized string append via thread-local Vec<String> storage
 - Bootstrap code can optionally migrate from `textv + "|" + textb` to StringBuilder pattern
 - Not yet integrated into Bootstrap lowering.bmb (requires code refactoring)
+
+**v0.31.15 CLI Compiler** (Phase 32.1.1):
+- Created `bmb_compile.bmb`: Self-hosted CLI compiler demonstrating stdlib integration
+- Integrates: `read_file()`, `write_file()`, `sb_*` StringBuilder builtins
+- Includes: Complete lexer, parser, LLVM IR generator (simplified subset)
+- Tests: Compilation pipeline, StringBuilder, File I/O (all pass)
+- Architecture: Standalone (~500 LOC), no module imports (Bootstrap constraint)
 
 **Decision**: Accept 86% Stage 3 as sufficient for v0.31. Full architectural fix deferred to v0.32+ where Bootstrap redesign can be done alongside Rust removal.
 
