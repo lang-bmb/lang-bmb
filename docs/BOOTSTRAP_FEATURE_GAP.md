@@ -80,6 +80,29 @@ The BMB bootstrap implements the **complete core compilation pipeline** (lexer �
 
 **Known Limitation**: Memory allocation failures for let bindings (~1MB). Root cause: Bootstrap compiler's `lower_let` function recursively generates MIR with string concatenation at each level. Even with StringRope optimization, the heap allocation requirements exceed available memory. This is a fundamental architectural constraint, not a tunable parameter issue.
 
+**v0.31.7 Analysis (Phase 31.2)**:
+Architectural comparison between Rust and Bootstrap implementations:
+
+| Implementation | Memory Pattern | Complexity |
+|----------------|----------------|------------|
+| **Rust** | `ctx.push_inst()` - mutable context accumulator | O(n) |
+| **Bootstrap** | `textv + "\|" + textb` - string concatenation return | O(n²) |
+
+**Root Cause**: Bootstrap's functional-style MIR generation returns packed strings, creating O(n²) concatenation overhead. The Rust implementation uses mutable context with push semantics, avoiding this entirely.
+
+**Resolution Options Evaluated**:
+1. **StringBuilder pattern** (2-3 weeks): Requires adding mutable parameters to Bootstrap BMB subset
+2. **Trampolining** (3-4 weeks): Major refactor of `lower_let` and related functions
+3. **Accept limitation** (selected): Document 86% as practical success, defer full fix
+
+**Decision**: Accept 86% Stage 3 as sufficient for v0.31. Full architectural fix deferred to v0.32+ where Bootstrap redesign can be done alongside Rust removal.
+
+**Rationale**:
+- Stage 3 is verification tooling, not core functionality
+- 6/7 tests cover all common constructs (arithmetic, conditionals, function calls)
+- Failing test (`stage3_let.bmb`) is self-referential edge case
+- 2-4 week investment better spent on v0.32 Rust removal
+
 ## Module Comparison Matrix
 
 | Component | Rust Module | Bootstrap File | Status | Test Count |
