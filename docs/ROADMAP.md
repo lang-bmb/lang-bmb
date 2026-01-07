@@ -337,6 +337,13 @@ v0.MAJOR.MINOR
 - Multi-operand expressions, mixed operations, combined expressions
 - pipeline.bmb total: 42 tests (10 test groups)
 
+**v0.30.293 Completed (2026-01-07)**:
+- Phase 30.1.293-295: Modern Rust Idioms Cleanup
+- **map_or cleanup (30.1.293)**: Converted `map_or` → `is_some_and`/`is_none_or` (14 instances)
+- **println cleanup (30.1.294)**: Fixed `println!("")` → `println!()` (12 instances)
+- **Result**: Clippy warnings reduced 139 → 113 (19% reduction)
+- **Files modified**: `query/mod.rs`, `main.rs`, `gotgan/build.rs`
+
 **v0.30.290 Completed (2026-01-07)**:
 - Phase 30.1.290-292: Code Quality Analysis & Cleanup
 - **Analysis (30.1.290)**: Scanned TODO/FIXME (7), Clippy warnings (147)

@@ -47,7 +47,7 @@ impl QueryEngine {
             .iter()
             .filter(|s| {
                 let name_match = s.name.to_lowercase().contains(&pattern_lower);
-                let kind_match = kind.map_or(true, |k| s.kind == k);
+                let kind_match = kind.is_none_or(|k| s.kind == k);
                 let pub_match = !pub_only || s.is_pub;
                 name_match && kind_match && pub_match
             })
@@ -112,14 +112,14 @@ impl QueryEngine {
             .functions
             .iter()
             .filter(|f| {
-                let pre_match = has_pre.map_or(true, |hp| {
-                    hp == f.contracts.as_ref().map_or(false, |c| c.pre.is_some())
+                let pre_match = has_pre.is_none_or(|hp| {
+                    hp == f.contracts.as_ref().is_some_and(|c| c.pre.is_some())
                 });
-                let post_match = has_post.map_or(true, |hp| {
-                    hp == f.contracts.as_ref().map_or(false, |c| c.post.is_some())
+                let post_match = has_post.is_none_or(|hp| {
+                    hp == f.contracts.as_ref().is_some_and(|c| c.post.is_some())
                 });
-                let recursive_match = recursive.map_or(true, |r| {
-                    r == f.body_info.as_ref().map_or(false, |b| b.recursive)
+                let recursive_match = recursive.is_none_or(|r| {
+                    r == f.body_info.as_ref().is_some_and(|b| b.recursive)
                 });
                 let pub_match = !pub_only || f.is_pub;
                 pre_match && post_match && recursive_match && pub_match
@@ -166,7 +166,7 @@ impl QueryEngine {
             .types
             .iter()
             .filter(|t| {
-                let kind_match = kind.map_or(true, |k| t.kind == k);
+                let kind_match = kind.is_none_or(|k| t.kind == k);
                 let pub_match = !pub_only || t.is_pub;
                 kind_match && pub_match
             })
@@ -187,14 +187,14 @@ impl QueryEngine {
             .index
             .functions
             .iter()
-            .filter(|f| f.contracts.as_ref().map_or(false, |c| c.pre.is_some()))
+            .filter(|f| f.contracts.as_ref().is_some_and(|c| c.pre.is_some()))
             .count();
 
         let functions_with_post = self
             .index
             .functions
             .iter()
-            .filter(|f| f.contracts.as_ref().map_or(false, |c| c.post.is_some()))
+            .filter(|f| f.contracts.as_ref().is_some_and(|c| c.post.is_some()))
             .count();
 
         let functions_with_both = self
@@ -204,7 +204,7 @@ impl QueryEngine {
             .filter(|f| {
                 f.contracts
                     .as_ref()
-                    .map_or(false, |c| c.pre.is_some() && c.post.is_some())
+                    .is_some_and(|c| c.pre.is_some() && c.post.is_some())
             })
             .count();
 
@@ -212,7 +212,7 @@ impl QueryEngine {
             .index
             .functions
             .iter()
-            .filter(|f| f.body_info.as_ref().map_or(false, |b| b.recursive))
+            .filter(|f| f.body_info.as_ref().is_some_and(|b| b.recursive))
             .count();
 
         ProjectMetrics {

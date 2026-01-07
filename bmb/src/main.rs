@@ -641,7 +641,7 @@ fn test_file(path: &PathBuf, filter: Option<&str>, verbose: bool) -> Result<(), 
         let filtered_tests: Vec<_> = test_names
             .iter()
             .filter(|name| {
-                filter.map_or(true, |f| name.contains(f))
+                filter.is_none_or(|f| name.contains(f))
             })
             .collect();
 
@@ -784,7 +784,7 @@ fn collect_bmb_files(dir: &PathBuf) -> Result<Vec<PathBuf>, Box<dyn std::error::
 
         if path.is_dir() {
             files.extend(collect_bmb_files(&path)?);
-        } else if path.extension().map_or(false, |e| e == "bmb") {
+        } else if path.extension().is_some_and(|e| e == "bmb") {
             files.push(path);
         }
     }
