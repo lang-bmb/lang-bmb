@@ -337,6 +337,15 @@ v0.MAJOR.MINOR
 - Multi-operand expressions, mixed operations, combined expressions
 - pipeline.bmb total: 42 tests (10 test groups)
 
+**v0.30.287 Completed (2026-01-07)**:
+- Phase 30.1.287-289: Final Stage 3 Analysis & Documentation
+- **Investigation (30.1.287)**: Confirmed ~1MB failure is heap allocation, not stacker fiber limit
+- **Evaluation (30.1.288)**: Additional optimization deemed infeasible (architectural constraint)
+- **Documentation (30.1.289)**: Updated BOOTSTRAP_FEATURE_GAP.md with final analysis
+- **Root cause**: Bootstrap's `lower_let` recursive MIR generation exceeds heap memory limits
+- **Conclusion**: 6/7 (86%) Stage 3 tests pass - represents practical limit of incremental optimization
+- **Next steps**: Full resolution requires Bootstrap compiler architecture redesign
+
 **v0.30.286 Completed (2026-01-07)**:
 - Phase 30.1.283-286: StringRope Optimization
 - **Design (30.1.283)**: StringRope variant for lazy string concatenation
