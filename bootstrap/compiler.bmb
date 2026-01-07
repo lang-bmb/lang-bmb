@@ -850,15 +850,16 @@ fn find_eq(s: String, pos: i64) -> i64 =
     else if s.char_at(pos) == 61 then pos
     else find_eq(s, pos + 1);
 
+-- v0.31.19: Added nsw for const/copy to match Rust compiler
 fn llvm_gen_rhs(line: String, pos: i64, dest: String) -> String =
     if low_starts_with_at(line, pos, "const") then
         let val_start = low_skip_ws(line, pos + 5);
         let val = line.slice(val_start, line.len());
-        "  " + dest + " = add i64 0, " + trim_end(val)
+        "  " + dest + " = add nsw i64 0, " + trim_end(val)
     else if low_starts_with_at(line, pos, "copy") then
         let src_start = low_skip_ws(line, pos + 4);
         let src = line.slice(src_start, line.len());
-        "  " + dest + " = add i64 0, " + trim_end(src)
+        "  " + dest + " = add nsw i64 0, " + trim_end(src)
     else if low_starts_with_at(line, pos, "+") then llvm_gen_binop("add", line, pos + 1, dest)
     else if low_starts_with_at(line, pos, "-") then llvm_gen_binop("sub", line, pos + 1, dest)
     else if low_starts_with_at(line, pos, "*") then llvm_gen_binop("mul", line, pos + 1, dest)
@@ -878,13 +879,18 @@ fn llvm_gen_rhs(line: String, pos: i64, dest: String) -> String =
     else if low_starts_with_at(line, pos, "call") then llvm_gen_call(line, pos, dest)
     else "  ; unknown: " + line;
 
+-- v0.31.19: Added nsw (no signed wrap) for add/sub/mul to match Rust compiler
 fn llvm_gen_binop(op: String, line: String, pos: i64, dest: String) -> String =
     let p1 = low_skip_ws(line, pos);
     let comma = find_comma(line, p1);
     let left = line.slice(p1, comma);
     let p2 = low_skip_ws(line, comma + 1);
     let right = line.slice(p2, line.len());
-    "  " + dest + " = " + op + " i64 " + trim_end(left) + ", " + trim_end(right);
+    let op_with_nsw = if op == "add" then "add nsw"
+        else if op == "sub" then "sub nsw"
+        else if op == "mul" then "mul nsw"
+        else op;
+    "  " + dest + " = " + op_with_nsw + " i64 " + trim_end(left) + ", " + trim_end(right);
 
 fn llvm_gen_cmp(pred: String, line: String, pos: i64, dest: String) -> String =
     let p1 = low_skip_ws(line, pos);
@@ -899,10 +905,11 @@ fn llvm_gen_not(line: String, pos: i64, dest: String) -> String =
     let operand = line.slice(p, line.len());
     "  " + dest + " = xor i64 " + trim_end(operand) + ", 1";
 
+-- v0.31.19: Added nsw for negation to match Rust compiler
 fn llvm_gen_neg(line: String, pos: i64, dest: String) -> String =
     let p = low_skip_ws(line, pos);
     let operand = line.slice(p, line.len());
-    "  " + dest + " = sub i64 0, " + trim_end(operand);
+    "  " + dest + " = sub nsw i64 0, " + trim_end(operand);
 
 fn llvm_gen_phi(line: String, pos: i64, dest: String) -> String =
     let bracket_start = find_char(line, pos, 91);
@@ -998,6 +1005,7 @@ fn llvm_gen_fn_line(line: String) -> String =
     else if line == "}" then "}"
     else llvm_gen_line(line);
 
+-- v0.31.19: Added nounwind attribute for non-main functions
 fn llvm_gen_fn_header(line: String, pos: i64) -> String =
     let name_start = pos + 3;
     let paren_pos = find_char(line, name_start, 40);
@@ -1009,7 +1017,8 @@ fn llvm_gen_fn_header(line: String, pos: i64) -> String =
     let brace_pos = find_char(line, arrow_pos, 123);
     let ret_type = trim_end(line.slice(arrow_pos + 2, brace_pos - 1));
     let llvm_ret = if ret_type == "bool" then "i1" else "i64";
-    "define " + llvm_ret + " @" + fn_name + "(" + formatted_params + ") {";
+    let attrs = if fn_name == "main" then "" else " nounwind";
+    "define " + llvm_ret + " @" + fn_name + "(" + formatted_params + ")" + attrs + " {";
 
 fn format_fn_params(params: String, pos: i64, acc: String) -> String =
     let p = low_skip_ws(params, pos);
@@ -2017,9 +2026,9 @@ fn main() -> i64 =
     let t7 = if has_pattern(mir7, "fn add", 0) then 1 else 0;
     let w7 = println(t7);
 
-    -- Test 8: LLVM generation for add
+    -- Test 8: LLVM generation for add (v0.31.19: with nsw flag)
     let llvm8 = gen_program(mir7);
-    let t8 = if has_pattern(llvm8, "add i64", 0) then 1 else 0;
+    let t8 = if has_pattern(llvm8, "add nsw i64", 0) then 1 else 0;
     let w8 = println(t8);
 
     let u2 = println(888);  -- End marker

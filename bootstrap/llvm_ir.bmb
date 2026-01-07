@@ -19,10 +19,10 @@
 -- - v0.21.0: Struct support (struct-init, field-access)
 -- - v0.21.1: Enum support (enum-variant, switch)
 --
--- LLVM IR FORMAT:
---   define i64 @add(i64 %a, i64 %b) {
+-- LLVM IR FORMAT (v0.31.19: nounwind for non-main, nsw for arithmetic):
+--   define i64 @add(i64 %a, i64 %b) nounwind {
 --   entry:
---     %_t0 = add i64 %a, %b
+--     %_t0 = add nsw i64 %a, %b
 --     ret i64 %_t0
 --   }
 
@@ -186,9 +186,9 @@ fn parse_int_from(s: String, pos: i64, acc: i64) -> i64 =
 -- ============================================================================
 
 -- Binary arithmetic operations
--- MIR: %_t0 = + %a, %b  →  LLVM: %_t0 = add i64 %a, %b
--- MIR: %_t0 = - %a, %b  →  LLVM: %_t0 = sub i64 %a, %b
--- MIR: %_t0 = * %a, %b  →  LLVM: %_t0 = mul i64 %a, %b
+-- MIR: %_t0 = + %a, %b  →  LLVM: %_t0 = add nsw i64 %a, %b  (v0.31.19: nsw)
+-- MIR: %_t0 = - %a, %b  →  LLVM: %_t0 = sub nsw i64 %a, %b  (v0.31.19: nsw)
+-- MIR: %_t0 = * %a, %b  →  LLVM: %_t0 = mul nsw i64 %a, %b  (v0.31.19: nsw)
 -- MIR: %_t0 = / %a, %b  →  LLVM: %_t0 = sdiv i64 %a, %b
 -- MIR: %_t0 = % %a, %b  →  LLVM: %_t0 = srem i64 %a, %b
 
@@ -196,13 +196,15 @@ fn gen_binop_arith(dest: String, op: String, lhs: String, rhs: String, ty: Strin
     let llvm_op = mir_to_llvm_arith(op);
     dest + " = " + llvm_op + " " + ty + " " + lhs + ", " + rhs;
 
+-- v0.31.19: Added nsw (no signed wrap) flags for better LLVM optimization
+-- nsw enables tail-call accumulator transformation, loop strength reduction, etc.
 fn mir_to_llvm_arith(op: String) -> String =
-    if op == "+" then "add"
-    else if op == "-" then "sub"
-    else if op == "*" then "mul"
+    if op == "+" then "add nsw"
+    else if op == "-" then "sub nsw"
+    else if op == "*" then "mul nsw"
     else if op == "/" then "sdiv"
     else if op == "%" then "srem"
-    else "add";  -- default
+    else "add nsw";  -- default
 
 -- ============================================================================
 -- SECTION 6: LLVM IR Comparison Operations
@@ -277,9 +279,10 @@ fn gen_binop_range(dest: String, op: String, lhs: String, rhs: String) -> String
 -- ============================================================================
 
 -- Unary negation
--- MIR: %_t0 = neg %x  →  LLVM: %_t0 = sub i64 0, %x
+-- MIR: %_t0 = neg %x  →  LLVM: %_t0 = sub nsw i64 0, %x
+-- v0.31.19: Added nsw for optimization
 fn gen_unary_neg(dest: String, operand: String, ty: String) -> String =
-    dest + " = sub " + ty + " 0, " + operand;
+    dest + " = sub nsw " + ty + " 0, " + operand;
 
 -- Unary logical not (for booleans)
 -- MIR: %_t0 = not %x  →  LLVM: %_t0 = xor i1 %x, 1
@@ -1086,9 +1089,12 @@ fn gen_label_line(line: String) -> String =
 -- ============================================================================
 
 -- Generate function header
--- define i64 @add(i64 %a, i64 %b) {
+-- define i64 @add(i64 %a, i64 %b) nounwind {
+-- v0.31.19: Added nounwind attribute for non-main functions
+-- BMB has no exceptions, so nounwind is always safe and enables better codegen
 fn gen_fn_header(name: String, ret_type: String, params: String) -> String =
-    "define " + llvm_type(ret_type) + " @" + name + "(" + params + ") {";
+    let attrs = if name == "main" then "" else " nounwind";
+    "define " + llvm_type(ret_type) + " @" + name + "(" + params + ")" + attrs + " {";
 
 -- Generate function footer
 fn gen_fn_footer() -> String =
@@ -1767,13 +1773,14 @@ fn str_match_at_idx(s: String, sub: String, pos: i64, idx: i64) -> bool =
     else if s.char_at(pos + idx) != sub.char_at(idx) then false
     else str_match_at_idx(s, sub, pos, idx + 1);
 
+-- v0.31.19: Updated to expect nsw flags for add/sub/mul
 fn test_arith_ops() -> i64 =
     let a1 = gen_binop_arith("%_t0", "+", "%a", "%b", "i64");
-    let t1 = if a1 == "%_t0 = add i64 %a, %b" then 1 else 0;
+    let t1 = if a1 == "%_t0 = add nsw i64 %a, %b" then 1 else 0;
     let a2 = gen_binop_arith("%_t1", "-", "%x", "%y", "i64");
-    let t2 = if a2 == "%_t1 = sub i64 %x, %y" then 1 else 0;
+    let t2 = if a2 == "%_t1 = sub nsw i64 %x, %y" then 1 else 0;
     let a3 = gen_binop_arith("%_t2", "*", "%a", "%b", "i64");
-    let t3 = if a3 == "%_t2 = mul i64 %a, %b" then 1 else 0;
+    let t3 = if a3 == "%_t2 = mul nsw i64 %a, %b" then 1 else 0;
     let a4 = gen_binop_arith("%_t3", "/", "%a", "%b", "i64");
     let t4 = if a4 == "%_t3 = sdiv i64 %a, %b" then 1 else 0;
     let a5 = gen_binop_arith("%_t4", "%", "%a", "%b", "i64");
@@ -1816,26 +1823,28 @@ fn test_range_ops() -> i64 =
     let r6 = if str_contains(rng2, "insertvalue") then 1 else 0;
     r1 + r2 + r3 + r4 + r5 + r6;
 
+-- v0.31.19: Updated to expect nsw for negation
 fn test_unary_ops() -> i64 =
     let u1 = gen_unary_neg("%_t0", "%x", "i64");
-    let t1 = if u1 == "%_t0 = sub i64 0, %x" then 1 else 0;
+    let t1 = if u1 == "%_t0 = sub nsw i64 0, %x" then 1 else 0;
     let u2 = gen_unary_not("%_t1", "%b");
     let t2 = if u2 == "%_t1 = xor i1 %b, 1" then 1 else 0;
     t1 + t2;
 
+-- v0.31.19: Updated for nsw flags
 fn test_instruction_parsing() -> i64 =
-    -- Test const instruction
+    -- Test const instruction (no nsw - loading constant)
     let i1 = gen_instruction("%_t0 = const I:42");
     let t1 = if i1 == "%_t0 = add i64 0, 42" then 1 else 0;
-    -- Test arithmetic instruction
+    -- Test arithmetic instruction (nsw for optimization)
     let i2 = gen_instruction("%_t0 = + %a, %b");
-    let t2 = if i2 == "%_t0 = add i64 %a, %b" then 1 else 0;
+    let t2 = if i2 == "%_t0 = add nsw i64 %a, %b" then 1 else 0;
     -- Test comparison instruction
     let i3 = gen_instruction("%_t0 = == %x, %y");
     let t3 = if i3 == "%_t0 = icmp eq i64 %x, %y" then 1 else 0;
-    -- Test neg instruction
+    -- Test neg instruction (nsw for negation optimization)
     let i4 = gen_instruction("%_t0 = neg %x");
-    let t4 = if i4 == "%_t0 = sub i64 0, %x" then 1 else 0;
+    let t4 = if i4 == "%_t0 = sub nsw i64 0, %x" then 1 else 0;
     -- Test not instruction
     let i5 = gen_instruction("%_t0 = not %b");
     let t5 = if i5 == "%_t0 = xor i1 %b, 1" then 1 else 0;
@@ -1914,9 +1923,9 @@ fn test_block_ir() -> i64 =
     let i2 = gen_instruction("  %_t0 = const B:1");
     let t2 = if i2 == "%_t0 = add i1 0, 1" then 1 else 0;
 
-    -- Test 3: Block with arithmetic (nested block result)
+    -- Test 3: Block with arithmetic (nested block result) - nsw for optimization
     let i3 = gen_instruction("  %_t0 = + %a, %b");
-    let t3 = if i3 == "%_t0 = add i64 %a, %b" then 1 else 0;
+    let t3 = if i3 == "%_t0 = add nsw i64 %a, %b" then 1 else 0;
 
     -- Test 4: Block with UNIT (unit block expression)
     let i4 = gen_instruction("  %_t0 = UNIT");
@@ -1984,14 +1993,14 @@ fn test_line_detection() -> i64 =
     let t7 = if not is_terminator_line("%_t0 = add i64 %a, %b") then 1 else 0;
     t1 + t2 + t3 + t4 + t5 + t6 + t7;
 
--- v0.10.7 Function Generation Tests
+-- v0.10.7 Function Generation Tests (v0.31.19: nounwind for non-main)
 fn test_fn_header() -> i64 =
     let h1 = gen_fn_header("add", "i64", "i64 %a, i64 %b");
-    let t1 = if h1 == "define i64 @add(i64 %a, i64 %b) {" then 1 else 0;
+    let t1 = if h1 == "define i64 @add(i64 %a, i64 %b) nounwind {" then 1 else 0;
     let h2 = gen_fn_header("main", "i64", "");
-    let t2 = if h2 == "define i64 @main() {" then 1 else 0;
+    let t2 = if h2 == "define i64 @main() {" then 1 else 0;  -- main has no nounwind
     let h3 = gen_fn_header("foo", "bool", "i1 %x");
-    let t3 = if h3 == "define i1 @foo(i1 %x) {" then 1 else 0;
+    let t3 = if h3 == "define i1 @foo(i1 %x) nounwind {" then 1 else 0;
     t1 + t2 + t3;
 
 fn test_param_gen() -> i64 =
@@ -2037,19 +2046,20 @@ fn test_call_args_convert() -> i64 =
     let t3 = if a3 == "" then 1 else 0;
     t1 + t2 + t3;
 
+-- v0.31.19: Updated to expect nounwind and nsw
 fn test_fn_generation() -> i64 =
     -- Simple add function: fn add(a: i64, b: i64) -> i64 {|entry:|  %_t0 = + %a, %b|  return %_t0|}
     let mir1 = "fn add(a: i64, b: i64) -> i64 {";
     let llvm1 = gen_mir_line(mir1);
-    let t1 = if llvm1 == "define i64 @add(i64 %a, i64 %b) {" then 1 else 0;
+    let t1 = if llvm1 == "define i64 @add(i64 %a, i64 %b) nounwind {" then 1 else 0;
     -- Test }
     let mir2 = "}";
     let llvm2 = gen_mir_line(mir2);
     let t2 = if llvm2 == "}" then 1 else 0;
-    -- Test instruction
+    -- Test instruction (nsw for optimization)
     let mir3 = "  %_t0 = + %a, %b";
     let llvm3 = gen_mir_line(mir3);
-    let t3 = if llvm3 == "%_t0 = add i64 %a, %b" then 1 else 0;
+    let t3 = if llvm3 == "%_t0 = add nsw i64 %a, %b" then 1 else 0;
     t1 + t2 + t3;
 
 fn test_call_line_detection() -> i64 =

@@ -1957,6 +1957,23 @@ string overhead. Fixing requires architectural redesign.
 - `stage3_let.bmb`: ❌ TIMEOUT (memory allocation - requires sb_* migration)
 
 **Result**: 6/7 tests (86%) - consistent with documented limitation
+
+**v0.31.19 Bootstrap LLVM IR Parity (2026-01-08)**:
+- **Issue**: v0.31.18 added nsw/nounwind to Rust compiler, breaking Stage 3 verification
+- **Root Cause**: Bootstrap LLVM IR generation missing nsw and nounwind attributes
+- **Files Modified**:
+  - `bootstrap/llvm_ir.bmb`: Updated `mir_to_llvm_arith`, `gen_fn_header`, `gen_unary_neg`
+  - `bootstrap/compiler.bmb`: Updated `llvm_gen_binop`, `llvm_gen_rhs`, `llvm_gen_neg`, `llvm_gen_fn_header`
+- **Changes**:
+  - Added `nsw` (no signed wrap) for add/sub/mul operations
+  - Added `nounwind` attribute for non-main functions
+  - Updated test expectations from "add i64" to "add nsw i64"
+- **Test Results**:
+  - llvm_ir.bmb: 421 tests ✅
+  - compiler.bmb: 393 tests ✅
+  - Core test suite: 19 tests ✅
+- **Stage 3 Impact**: Bootstrap now generates IR identical to Rust compiler
+
 **Path to 7/7**: Refactor Bootstrap lowering.bmb to use StringBuilder builtins
 
 **Exit Criteria**: Bootstrap compiles and runs simple programs standalone ✅
