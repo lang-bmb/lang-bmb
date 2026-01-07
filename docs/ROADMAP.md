@@ -337,6 +337,20 @@ v0.MAJOR.MINOR
 - Multi-operand expressions, mixed operations, combined expressions
 - pipeline.bmb total: 42 tests (10 test groups)
 
+**v0.30.248 Completed (2026-01-07)**:
+- Phase 30.1.245-249: Stage 3 Verification Harness
+- **NEW COMMAND**: `bmb verify-stage3 <file.bmb>` compares Rust vs Bootstrap IR output
+- Implementation:
+  - `verify-stage3` CLI command with verbose and output options
+  - `call_function_with_args` method in interpreter for direct function invocation
+  - Bootstrap compiler runs in 64MB stack thread (same as `bmb run`)
+  - IR normalization filters comments, declarations, module info
+  - Semantic matching compares function signatures
+- Increased `MAX_RECURSION_DEPTH` from 10,000 to 100,000 for bootstrap complexity
+- **Test Results**: 3/4 tests pass (simple functions, conditionals, multiple functions)
+- Known limitation: Let bindings cause ~2MB memory allocation failure in bootstrap
+- Future: Optimize `lowering.bmb` memory efficiency for let binding support
+
 **v0.30.241 Completed (2026-01-07)**:
 - Phase 30.1.241-244: Stack overflow fix for bootstrap execution
 - **CRITICAL FIX**: Interpreter now runs in 64MB stack thread

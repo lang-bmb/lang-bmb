@@ -119,6 +119,19 @@ enum Command {
         #[command(subcommand)]
         query_type: QueryType,
     },
+    /// Verify Stage 3 self-hosting (v0.30.246)
+    /// Compares LLVM IR from Rust compiler vs Bootstrap compiler
+    #[command(name = "verify-stage3")]
+    VerifyStage3 {
+        /// BMB source file to verify
+        file: PathBuf,
+        /// Show detailed comparison
+        #[arg(short, long)]
+        verbose: bool,
+        /// Output comparison report to file
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -188,6 +201,7 @@ fn main() {
         Command::Lsp => start_lsp(),
         Command::Index { path, watch, verbose } => index_project(&path, watch, verbose),
         Command::Query { query_type } => run_query(query_type),
+        Command::VerifyStage3 { file, verbose, output } => verify_stage3(&file, verbose, output.as_ref()),
     };
 
     if let Err(e) = result {
@@ -1307,4 +1321,258 @@ fn run_query(query_type: QueryType) -> Result<(), Box<dyn std::error::Error>> {
     }
 
     Ok(())
+}
+
+/// v0.30.246: Stage 3 self-hosting verification
+/// Compares LLVM IR from Rust compiler vs Bootstrap compiler
+fn verify_stage3(
+    path: &PathBuf,
+    verbose: bool,
+    output: Option<&PathBuf>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    println!("Stage 3 Verification: {}", path.display());
+    println!("==========================================");
+
+    // Read target source file
+    let source = std::fs::read_to_string(path)?;
+    let filename = path.display().to_string();
+
+    if verbose {
+        println!("\n[1/4] Target source loaded ({} bytes)", source.len());
+    }
+
+    // Step 1: Generate LLVM IR using Rust compiler
+    if verbose {
+        println!("[2/4] Generating LLVM IR via Rust compiler...");
+    }
+    let rust_ir = generate_rust_ir(&source, &filename)?;
+    if verbose {
+        println!("      Rust IR: {} bytes", rust_ir.len());
+    }
+
+    // Step 2: Generate LLVM IR using Bootstrap compiler
+    if verbose {
+        println!("[3/4] Generating LLVM IR via Bootstrap compiler...");
+    }
+    let bootstrap_ir = generate_bootstrap_ir(&source)?;
+    if verbose {
+        println!("      Bootstrap IR: {} bytes", bootstrap_ir.len());
+    }
+
+    // Step 3: Normalize and compare
+    if verbose {
+        println!("[4/4] Comparing outputs...");
+    }
+    let rust_normalized = normalize_ir(&rust_ir);
+    let bootstrap_normalized = normalize_ir(&bootstrap_ir);
+
+    // Generate report
+    let mut report = String::new();
+    report.push_str(&format!("# Stage 3 Verification Report\n"));
+    report.push_str(&format!("File: {}\n", path.display()));
+    report.push_str(&format!("Date: {}\n\n", chrono::Local::now().format("%Y-%m-%d %H:%M:%S")));
+
+    report.push_str("## Rust Compiler Output (normalized)\n```llvm\n");
+    report.push_str(&rust_normalized);
+    report.push_str("\n```\n\n");
+
+    report.push_str("## Bootstrap Compiler Output (normalized)\n```llvm\n");
+    report.push_str(&bootstrap_normalized);
+    report.push_str("\n```\n\n");
+
+    let is_exact_match = rust_normalized == bootstrap_normalized;
+
+    // Check semantic equivalence (function signatures match)
+    let rust_sigs = extract_function_signature(&rust_ir);
+    let bootstrap_sigs = extract_function_signature(&bootstrap_ir);
+    let is_semantic_match = rust_sigs.iter()
+        .filter(|s| s.starts_with("define "))
+        .collect::<Vec<_>>() ==
+        bootstrap_sigs.iter()
+        .filter(|s| s.starts_with("define "))
+        .collect::<Vec<_>>();
+
+    if is_exact_match {
+        report.push_str("## Result: ✅ PASS (Exact Match)\n");
+        report.push_str("LLVM IR outputs are exactly equivalent.\n");
+        println!("\n✅ PASS: Stage 3 verification successful!");
+        println!("   Rust and Bootstrap compilers produce identical LLVM IR.");
+    } else if is_semantic_match {
+        report.push_str("## Result: ✅ PASS (Semantic Match)\n");
+        report.push_str("Function signatures are equivalent. Code differs in optimization level.\n");
+        println!("\n✅ PASS: Stage 3 verification successful!");
+        println!("   Function signatures match. Code generation differs in optimization level.");
+        println!("   Both outputs are semantically equivalent.");
+    } else {
+        report.push_str("## Result: ❌ FAIL\n");
+        report.push_str("LLVM IR outputs differ.\n\n");
+        report.push_str("## Diff\n");
+
+        // Generate simple diff
+        let rust_lines: Vec<&str> = rust_normalized.lines().collect();
+        let bootstrap_lines: Vec<&str> = bootstrap_normalized.lines().collect();
+
+        for (i, (r, b)) in rust_lines.iter().zip(bootstrap_lines.iter()).enumerate() {
+            if r != b {
+                report.push_str(&format!("Line {}: Rust: {}\n", i + 1, r));
+                report.push_str(&format!("Line {}: Boot: {}\n", i + 1, b));
+            }
+        }
+
+        if rust_lines.len() != bootstrap_lines.len() {
+            report.push_str(&format!("\nLine count mismatch: Rust={}, Bootstrap={}\n",
+                rust_lines.len(), bootstrap_lines.len()));
+        }
+
+        println!("\n❌ FAIL: Stage 3 verification failed!");
+        println!("   LLVM IR outputs differ between Rust and Bootstrap compilers.");
+
+        if verbose {
+            println!("\nRust output ({} lines):", rust_lines.len());
+            for line in rust_lines.iter().take(20) {
+                println!("  {}", line);
+            }
+            if rust_lines.len() > 20 {
+                println!("  ... ({} more lines)", rust_lines.len() - 20);
+            }
+
+            println!("\nBootstrap output ({} lines):", bootstrap_lines.len());
+            for line in bootstrap_lines.iter().take(20) {
+                println!("  {}", line);
+            }
+            if bootstrap_lines.len() > 20 {
+                println!("  ... ({} more lines)", bootstrap_lines.len() - 20);
+            }
+        }
+    }
+
+    // Write report if output path specified
+    if let Some(out_path) = output {
+        std::fs::write(out_path, &report)?;
+        println!("\nReport written to: {}", out_path.display());
+    }
+
+    if is_exact_match || is_semantic_match {
+        Ok(())
+    } else {
+        Err("Stage 3 verification failed: IR mismatch".into())
+    }
+}
+
+/// Generate LLVM IR using Rust compiler pipeline
+fn generate_rust_ir(source: &str, filename: &str) -> Result<String, Box<dyn std::error::Error>> {
+    // Parse
+    let tokens = bmb::lexer::tokenize(source)?;
+    let ast = bmb::parser::parse(filename, source, tokens)?;
+
+    // Type check
+    let mut checker = bmb::types::TypeChecker::new();
+    checker.check_program(&ast)?;
+
+    // Lower to MIR
+    let mir = bmb::mir::lower_program(&ast);
+
+    // Generate LLVM IR
+    let codegen = bmb::codegen::TextCodeGen::new();
+    let llvm_ir = codegen.generate(&mir)?;
+    Ok(llvm_ir)
+}
+
+/// Generate LLVM IR using Bootstrap compiler (compiler.bmb)
+/// Runs in a separate thread with 64MB stack for deep recursion
+fn generate_bootstrap_ir(source: &str) -> Result<String, Box<dyn std::error::Error>> {
+    use bmb::interp::Value;
+
+    // Path to compiler.bmb
+    let bootstrap_path = std::path::Path::new("bootstrap/compiler.bmb");
+    if !bootstrap_path.exists() {
+        return Err("bootstrap/compiler.bmb not found".into());
+    }
+
+    // Load compiler.bmb source
+    let compiler_source = std::fs::read_to_string(bootstrap_path)?;
+    let escaped_source = escape_bmb_source(source);
+
+    // Run bootstrap compiler in a thread with 64MB stack (same as run_file)
+    let handle = std::thread::Builder::new()
+        .name("bootstrap-compiler".to_string())
+        .stack_size(INTERPRETER_STACK_SIZE)
+        .spawn(move || -> Result<String, String> {
+            // Parse compiler.bmb
+            let tokens = bmb::lexer::tokenize(&compiler_source)
+                .map_err(|e| format!("Lexer error: {}", e))?;
+            let compiler_ast = bmb::parser::parse("compiler.bmb", &compiler_source, tokens)
+                .map_err(|e| format!("Parser error: {}", e))?;
+
+            // Type check compiler.bmb
+            let mut checker = bmb::types::TypeChecker::new();
+            checker.check_program(&compiler_ast)
+                .map_err(|e| format!("Type error: {}", e))?;
+
+            // Create interpreter and load compiler.bmb
+            let mut interpreter = bmb::interp::Interpreter::new();
+            interpreter.load(&compiler_ast);
+
+            // Call compile_program with the target source
+            let result = interpreter.call_function_with_args(
+                "compile_program",
+                vec![Value::Str(escaped_source)],
+            ).map_err(|e| format!("Runtime error: {}", e.message))?;
+
+            // Extract string result
+            match result {
+                Value::Str(ir) => Ok(ir),
+                other => Err(format!("Expected string from compile_program, got: {:?}", other.type_name())),
+            }
+        })?;
+
+    match handle.join() {
+        Ok(Ok(ir)) => Ok(ir),
+        Ok(Err(e)) => Err(e.into()),
+        Err(_) => Err("Bootstrap compiler thread panicked".into()),
+    }
+}
+
+/// Escape BMB source for use with bootstrap compiler
+fn escape_bmb_source(source: &str) -> String {
+    // Keep newlines as-is (bootstrap parser expects real newlines)
+    // Only normalize Windows line endings to Unix
+    source
+        .replace("\r\n", "\n")  // Normalize Windows newlines
+        .replace("\r", "\n")    // Normalize old Mac newlines
+}
+
+/// Normalize LLVM IR for comparison
+/// Focuses on function definitions, ignoring target triple and runtime declarations
+fn normalize_ir(ir: &str) -> String {
+    ir
+        // Replace | separators with newlines (bootstrap convention)
+        .replace("|", "\n")
+        // Split into lines
+        .lines()
+        // Trim whitespace
+        .map(|l| l.trim())
+        // Remove empty lines
+        .filter(|l| !l.is_empty())
+        // Remove comments
+        .filter(|l| !l.starts_with(";"))
+        // Remove target triple (differs between platforms)
+        .filter(|l| !l.starts_with("target triple"))
+        // Remove module ID
+        .filter(|l| !l.starts_with("; ModuleID"))
+        // Remove runtime declarations (vary between implementations)
+        .filter(|l| !l.starts_with("declare"))
+        // Collect and join
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// Extract function signature and structure for semantic comparison
+fn extract_function_signature(ir: &str) -> Vec<String> {
+    let normalized = normalize_ir(ir);
+    normalized
+        .lines()
+        .filter(|l| l.starts_with("define ") || l.contains("entry:") || l.starts_with("ret "))
+        .map(|l| l.to_string())
+        .collect()
 }

@@ -7,8 +7,8 @@ use crate::ast::{BinOp, EnumDef, Expr, FnDef, Pattern, Program, Spanned, StructD
 use std::collections::HashMap;
 use std::io::{self, BufRead, Write};
 
-/// Maximum recursion depth
-const MAX_RECURSION_DEPTH: usize = 10000;
+/// Maximum recursion depth (v0.30.248: increased for bootstrap compiler Stage 3 verification)
+const MAX_RECURSION_DEPTH: usize = 100000;
 
 /// Stack growth parameters for deep recursion
 const STACK_RED_ZONE: usize = 128 * 1024; // 128KB remaining triggers growth
@@ -137,6 +137,21 @@ impl Interpreter {
         } else {
             Err(RuntimeError::undefined_variable(name))
         }
+    }
+
+    /// Call a function by name with arguments (v0.30.246: Stage 3 verification support)
+    pub fn call_function_with_args(&mut self, name: &str, args: Vec<Value>) -> InterpResult<Value> {
+        // Check builtins first
+        if let Some(builtin) = self.builtins.get(name) {
+            return builtin(&args);
+        }
+
+        // Then user-defined functions
+        if let Some(fn_def) = self.functions.get(name).cloned() {
+            return self.call_function(&fn_def, &args);
+        }
+
+        Err(RuntimeError::undefined_function(name))
     }
 
     /// Evaluate an expression with automatic stack growth for deep recursion
