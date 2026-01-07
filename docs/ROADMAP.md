@@ -1767,18 +1767,18 @@ $ diff stage2/bmb stage3/bmb
 - AI-Native: Module headers enable fast navigation
 - Incremental Development: `todo` supports contract-first workflow
 
-#### Phase 31.1: Language Reference
+#### Phase 31.1: Language Reference ✅ Complete (v0.31.5)
 
-| Task | Description | Priority | Effort |
-|------|-------------|----------|--------|
-| 31.1.1 | Complete language syntax reference | P0 | 1 week |
-| 31.1.2 | Document type system and generics | P0 | 1 week |
-| 31.1.3 | Document contract system (pre/post/invariant) | P0 | 1 week |
-| 31.1.4 | Document memory model (ownership/borrowing) | P0 | 1 week |
+| Task | Description | Priority | Effort | Status |
+|------|-------------|----------|--------|--------|
+| 31.1.1 | Complete language syntax reference | P0 | 1 week | ✅ |
+| 31.1.2 | Document type system and generics | P0 | 1 week | ✅ |
+| 31.1.3 | Document contract system (pre/post/invariant) | P0 | 1 week | ✅ |
+| 31.1.4 | Document memory model (ownership/borrowing) | P0 | 1 week | ✅ |
 
 **Deliverables**:
-- Complete language reference document
-- Interactive examples for each feature
+- Complete language reference document (LANGUAGE_REFERENCE.md)
+- Comprehensive coverage: lexical structure, types, expressions, functions, contracts, memory model
 
 #### Phase 31.2: Standard Library Documentation
 
