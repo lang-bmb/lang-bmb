@@ -817,7 +817,7 @@ fn format_program(program: &Program) -> String {
                 for field in &s.fields {
                     output.push_str(&format!("    {}: {},\n", field.name.node, format_type(&field.ty.node)));
                 }
-                output.push_str("}");
+                output.push('}');
             }
             Item::EnumDef(e) => {
                 if e.visibility == Visibility::Public {
@@ -827,7 +827,7 @@ fn format_program(program: &Program) -> String {
                 for variant in &e.variants {
                     output.push_str(&format!("    {},\n", variant.name.node));
                 }
-                output.push_str("}");
+                output.push('}');
             }
             Item::Use(u) => {
                 let path_str: Vec<_> = u.path.iter().map(|s| s.node.as_str()).collect();
@@ -858,7 +858,7 @@ fn format_program(program: &Program) -> String {
                     output.push_str(&format!("    fn {}({}) -> {};\n",
                         method.name.node, params.join(", "), format_type(&method.ret_ty.node)));
                 }
-                output.push_str("}");
+                output.push('}');
             }
             // v0.20.1: Format impl blocks
             Item::ImplBlock(i) => {
@@ -866,7 +866,7 @@ fn format_program(program: &Program) -> String {
                 for method in &i.methods {
                     output.push_str(&format!("    {}\n", format_fn_def(method).trim()));
                 }
-                output.push_str("}");
+                output.push('}');
             }
         }
     }
