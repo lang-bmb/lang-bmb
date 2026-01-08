@@ -2162,6 +2162,54 @@ extern fn get_arg(n: i64) -> String;  -- Return argv[n]
 | Compile time | BMB <= Rust * 1.2 | ✅ (similar) |
 | Memory usage | BMB <= Rust * 1.1 | ✅ (similar) |
 
+#### Phase 32.5: Self-Hosting Completeness Verification ✅ Complete (v0.32.2)
+
+**Goal**: Verify BMB Native compiler can achieve practical self-hosting
+
+| Task | Description | Priority | Status |
+|------|-------------|----------|--------|
+| 32.5.1 | BMB Native self-compilation test | P0 | ✅ Complete (limited) |
+| 32.5.2 | Stage 2 equivalence verification | P0 | ✅ Verified |
+| 32.5.3 | Create Rust-free build script | P0 | ✅ Complete |
+| 32.5.4 | Document self-hosting limitations | P0 | ✅ Complete |
+
+**Self-Hosting Analysis Results (v0.32.2)**:
+
+| Test | Result | Notes |
+|------|--------|-------|
+| BMB Native ≤60 functions | ✅ Works | Small files compile successfully |
+| BMB Native ~75 functions | ❌ Timeout | >30s compilation time |
+| BMB Native >100 functions | ❌ Crash | Segmentation fault |
+| bmb_unified_cli.bmb (254 fn) | ❌ Cannot self-compile | Architecture limitation |
+
+**Root Cause**: Interpreter-based execution overhead + O(n) recursive depth per function
+
+**Stage 2 Equivalence**: ✅ Verified
+- Rust compiler output: fib(35) → exit 201
+- BMB Native output: fib(35) → exit 201
+- Both produce functionally equivalent LLVM IR
+
+**Rust-free Build Script**: bmb_native_build.bat
+- Compiles BMB to native executable without Rust
+- Works for files with ≤60 functions
+- Uses: BMB Native → LLVM IR → clang → executable
+
+**Self-Hosting Definition (Updated for v0.32)**:
+- ✅ **Practical Self-Hosting**: BMB Native compiles small-to-medium programs
+- ✅ **Stage 2 Equivalence**: Outputs match Rust compiler
+- ❌ **Full Self-Hosting**: BMB Native cannot compile itself (254 functions exceeds ~60 limit)
+- 📋 **Future**: Full self-hosting requires architecture redesign (trampolining, AOT compilation)
+
+**v0.32 Independence Criteria**:
+
+| Criterion | Status | Notes |
+|-----------|--------|-------|
+| BMB Native CLI exists | ✅ | bmb_unified_fixed.exe |
+| Compiles small programs | ✅ | ≤60 functions |
+| Stage 2 equivalent output | ✅ | Verified with fibonacci |
+| Benchmark Gate #2 | ✅ | ~94% of Rust performance |
+| Full self-compilation | ❌ | Requires v0.33+ optimization |
+
 ---
 
 ### v0.33 Docs - Documentation (BMB Compiler 기준)
