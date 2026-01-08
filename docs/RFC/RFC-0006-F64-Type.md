@@ -1,9 +1,29 @@
 # RFC-0006: f64 Floating-Point Type Support
 
-**Status**: Draft
+**Status**: Implemented
 **Created**: 2026-01-08
+**Implemented**: 2026-01-09
 **Target Version**: v0.34
 **Priority**: P0 (blocks n_body, mandelbrot_fp, spectral_norm_fp benchmarks)
+
+## Implementation Status
+
+| Component | Status | Notes |
+|-----------|--------|-------|
+| Lexer | ✅ Complete | `TyF64`, `FloatLit(f64)`, scientific notation (v0.34) |
+| Parser | ✅ Complete | Full f64 support in grammar.lalrpop |
+| AST | ✅ Complete | `Expr::FloatLit(f64)`, `Type::F64` |
+| Type Checker | ✅ Complete | Arithmetic/comparison ops |
+| MIR | ✅ Complete | `MirType::F64`, float operations |
+| LLVM Codegen | ✅ Complete | `context.f64_type()`, float instructions |
+| WASM Codegen | ✅ Complete | f64 support |
+| stdlib/math | 📋 Pending | Nice-to-have, not blocking |
+
+**Scientific Notation Support** (v0.34):
+- `6.022e23`, `3.14e10` (positive exponent)
+- `1e-5`, `1.5e-10` (negative exponent)
+- `1E10`, `6.022E23` (uppercase E)
+- `1e10` (integer mantissa with exponent)
 
 ## Summary
 
@@ -310,15 +330,20 @@ New `_fp` variants will use f64 for comparison.
 
 ## Timeline
 
-| Phase | Task | Duration |
-|-------|------|----------|
-| 34.1.1 | Lexer + Parser | 3 days |
-| 34.1.2 | Type Checker | 3 days |
-| 34.1.3 | MIR + LLVM | 5 days |
-| 34.1.4 | SMT Integration | 3 days |
-| 34.1.5 | stdlib/math/f64 | 3 days |
-| 34.1.6 | Benchmarks | 2 days |
-| **Total** | | **~3 weeks** |
+**Actual Implementation** (2026-01-09):
+- Core f64 support was already implemented in the compiler
+- v0.34: Added scientific notation to lexer (1 hour)
+- stdlib/math/f64: Deferred to future version
+
+| Phase | Task | Planned | Actual |
+|-------|------|---------|--------|
+| 34.1.1 | Lexer + Parser | 3 days | ✅ Pre-existing |
+| 34.1.2 | Type Checker | 3 days | ✅ Pre-existing |
+| 34.1.3 | MIR + LLVM | 5 days | ✅ Pre-existing |
+| 34.1.4 | SMT Integration | 3 days | ✅ Pre-existing |
+| 34.1.5 | Scientific notation | - | ✅ 1 hour |
+| 34.1.6 | stdlib/math/f64 | 3 days | 📋 Deferred |
+| 34.1.7 | Benchmarks | 2 days | 📋 Pending |
 
 ## References
 
