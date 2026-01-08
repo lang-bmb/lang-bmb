@@ -96,8 +96,8 @@ v0.MAJOR.MINOR
 | v0.19-v0.23 | Bootstrap | MIR completion, Stage 1/2 verification | ✅ Complete |
 | v0.24-v0.29 | Polish | Examples, AI Query, benchmarks, optimization | ✅ Complete |
 | **v0.30** | **Pure** | **Bootstrap code + Stage 2 verification** | ✅ Complete |
-| **v0.31** | **Refine** | **Language polish + Stage 3 resolution + Benchmark Gate #1** | 🔄 In Progress |
-| **v0.32** | **Independence** | **Self-Hosting completion (Rust removal) + Benchmark Gate #2** | 📋 Planned |
+| **v0.31** | **Refine** | **Language polish + Stage 3 resolution + Benchmark Gate #1** | ✅ Complete |
+| **v0.32** | **Independence** | **Self-Hosting completion (Rust removal) + Benchmark Gate #2** | 🔄 In Progress |
 | **v0.33** | **Docs** | **Documentation + Website (BMB compiler 기준)** | 📋 Planned |
 | **v0.34** | **Ecosystem** | **100+ packages + community** | 📋 Planned |
 | **v1.0.0-rc** | **Golden** | **Final verification + Benchmark Gate #3 + stability promise** | 📋 Planned |
@@ -2097,14 +2097,21 @@ Original "porting" tasks were based on incomplete understanding of Bootstrap sta
 | 32.3.G | BMB CLI wrapper | Native BMB CLI binary | P0 | ✅ Complete |
 | 32.3.H | Rust removal | Remove bmb/src/*.rs | P2 | 📋 Deferred |
 
-**Native CLI Compilation**:
-```bash
-# Build native BMB CLI
-bmb build bootstrap/bmb_cli.bmb -o bmb_cli
+**v0.32 Achievement: Unified Native Compiler**
 
-# Run standalone
-./bmb_cli input.bmb          # compile to stdout
-./bmb_cli input.bmb out.ll   # compile to file
+`bootstrap/bmb_unified_cli.bmb` (2,072 LOC): Self-contained native BMB compiler
+- Based on compiler.bmb - already unified with all compilation phases
+- Parses BMB source → Generates MIR → Outputs LLVM IR
+- Native binary: 301KB standalone executable
+- No Rust dependency for compilation pipeline
+
+```bash
+# Build unified native BMB compiler
+bmb build bootstrap/bmb_unified_cli.bmb -o bmb_unified
+
+# Run standalone compilation
+./bmb_unified input.bmb          # compile to stdout
+./bmb_unified input.bmb out.ll   # compile to file
 ```
 
 **CLI Independence Builtins** (v0.31.22):
@@ -2114,7 +2121,7 @@ extern fn arg_count() -> i64;         -- Return argc
 extern fn get_arg(n: i64) -> String;  -- Return argv[n]
 ```
 
-**Note**: Rust CLI still maintained for development convenience. Full Rust removal deferred to future phase.
+**Note**: Rust CLI retained for interpreter mode. Native BMB compiler (bmb_unified) handles full compilation pipeline.
 
 **Archive Reference**: `git checkout archive/rust-v0.31` for complete Rust implementation
 

@@ -8,7 +8,7 @@
 
 BMB is transitioning from a Rust-based compiler to a fully self-hosted BMB compiler. This document tracks the progress, blockers, and migration path.
 
-### Current Status (v0.31.23)
+### Current Status (v0.32.0)
 
 | Component | Rust | BMB Bootstrap | Status |
 |-----------|------|---------------|--------|
@@ -19,10 +19,17 @@ BMB is transitioning from a Rust-based compiler to a fully self-hosted BMB compi
 | LLVM Codegen | `bmb/src/codegen/` | `bootstrap/llvm_ir.bmb` | ✅ Feature parity |
 | Optimizer | `bmb/src/mir/` | `bootstrap/optimize.bmb` | ✅ Feature parity |
 | Pipeline | `bmb/src/build/` | `bootstrap/pipeline.bmb` | ✅ Feature parity |
-| CLI | `bmb/src/main.rs` | `bootstrap/bmb_cli.bmb` | ✅ Native CLI available |
+| CLI | `bmb/src/main.rs` | `bootstrap/bmb_unified_cli.bmb` | ✅ Native compiler working |
 | Interpreter | `bmb/src/interp/` | N/A | ❌ Not ported |
 | REPL | `bmb/src/repl/` | N/A | ❌ Not ported |
 | LSP | `bmb/src/lsp/` | N/A | ❌ Not ported |
+
+### v0.32 Achievement: Native BMB Compiler
+
+**bmb_unified_cli.bmb** (2,072 LOC): Self-contained native compiler
+- Parses BMB source → Generates MIR → Outputs LLVM IR
+- Native binary: 301KB standalone executable
+- No Rust dependency for compilation pipeline
 
 ---
 
