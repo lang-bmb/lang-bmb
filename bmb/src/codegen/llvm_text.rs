@@ -294,6 +294,11 @@ impl TextCodeGen {
         writeln!(out, "declare i64 @sb_clear(i64)")?;
         writeln!(out)?;
 
+        // v0.34: Math intrinsics for Phase 34.4 Benchmark Gate
+        writeln!(out, "; Runtime declarations - Math intrinsics")?;
+        writeln!(out, "declare double @llvm.sqrt.f64(double)")?;
+        writeln!(out)?;
+
         Ok(())
     }
 
@@ -844,6 +849,99 @@ impl TextCodeGen {
             }
 
             MirInst::Call { dest, func: fn_name, args } => {
+                // v0.34: Handle math intrinsics and type conversions
+                if fn_name == "sqrt" && args.len() == 1 {
+                    // sqrt(x: f64) -> f64 via LLVM intrinsic
+                    let arg_ty = match &args[0] {
+                        Operand::Constant(c) => self.constant_type(c),
+                        Operand::Place(p) => place_types.get(&p.name).copied()
+                            .unwrap_or_else(|| self.infer_place_type(p, func)),
+                    };
+                    let arg_val = match &args[0] {
+                        Operand::Place(p) if local_names.contains(&p.name) => {
+                            let load_name = format!("{}.sqrt.arg", p.name);
+                            writeln!(out, "  %{} = load {}, ptr %{}.addr", load_name, arg_ty, p.name)?;
+                            format!("%{}", load_name)
+                        }
+                        _ => self.format_operand_with_strings(&args[0], string_table),
+                    };
+                    // Convert i64 to f64 if needed
+                    let f64_val = if arg_ty == "i64" {
+                        let conv_name = format!("{}.sqrt.conv", dest.as_ref().map(|d| d.name.as_str()).unwrap_or("tmp"));
+                        writeln!(out, "  %{} = sitofp i64 {} to double", conv_name, arg_val)?;
+                        format!("%{}", conv_name)
+                    } else {
+                        arg_val
+                    };
+                    if let Some(d) = dest {
+                        if local_names.contains(&d.name) {
+                            let temp_name = format!("{}.sqrt", d.name);
+                            writeln!(out, "  %{} = call double @llvm.sqrt.f64(double {})", temp_name, f64_val)?;
+                            writeln!(out, "  store double %{}, ptr %{}.addr", temp_name, d.name)?;
+                        } else {
+                            let dest_name = self.unique_name(&d.name, name_counts);
+                            writeln!(out, "  %{} = call double @llvm.sqrt.f64(double {})", dest_name, f64_val)?;
+                        }
+                    }
+                    return Ok(());
+                }
+
+                if fn_name == "i64_to_f64" && args.len() == 1 {
+                    // i64_to_f64(x: i64) -> f64 via sitofp
+                    let arg_ty = match &args[0] {
+                        Operand::Constant(c) => self.constant_type(c),
+                        Operand::Place(p) => place_types.get(&p.name).copied()
+                            .unwrap_or_else(|| self.infer_place_type(p, func)),
+                    };
+                    let arg_val = match &args[0] {
+                        Operand::Place(p) if local_names.contains(&p.name) => {
+                            let load_name = format!("{}.i64_to_f64.arg", p.name);
+                            writeln!(out, "  %{} = load {}, ptr %{}.addr", load_name, arg_ty, p.name)?;
+                            format!("%{}", load_name)
+                        }
+                        _ => self.format_operand_with_strings(&args[0], string_table),
+                    };
+                    if let Some(d) = dest {
+                        if local_names.contains(&d.name) {
+                            let temp_name = format!("{}.conv", d.name);
+                            writeln!(out, "  %{} = sitofp i64 {} to double", temp_name, arg_val)?;
+                            writeln!(out, "  store double %{}, ptr %{}.addr", temp_name, d.name)?;
+                        } else {
+                            let dest_name = self.unique_name(&d.name, name_counts);
+                            writeln!(out, "  %{} = sitofp i64 {} to double", dest_name, arg_val)?;
+                        }
+                    }
+                    return Ok(());
+                }
+
+                if fn_name == "f64_to_i64" && args.len() == 1 {
+                    // f64_to_i64(x: f64) -> i64 via fptosi
+                    let arg_ty = match &args[0] {
+                        Operand::Constant(c) => self.constant_type(c),
+                        Operand::Place(p) => place_types.get(&p.name).copied()
+                            .unwrap_or_else(|| self.infer_place_type(p, func)),
+                    };
+                    let arg_val = match &args[0] {
+                        Operand::Place(p) if local_names.contains(&p.name) => {
+                            let load_name = format!("{}.f64_to_i64.arg", p.name);
+                            writeln!(out, "  %{} = load {}, ptr %{}.addr", load_name, arg_ty, p.name)?;
+                            format!("%{}", load_name)
+                        }
+                        _ => self.format_operand_with_strings(&args[0], string_table),
+                    };
+                    if let Some(d) = dest {
+                        if local_names.contains(&d.name) {
+                            let temp_name = format!("{}.conv", d.name);
+                            writeln!(out, "  %{} = fptosi double {} to i64", temp_name, arg_val)?;
+                            writeln!(out, "  store i64 %{}, ptr %{}.addr", temp_name, d.name)?;
+                        } else {
+                            let dest_name = self.unique_name(&d.name, name_counts);
+                            writeln!(out, "  %{} = fptosi double {} to i64", dest_name, arg_val)?;
+                        }
+                    }
+                    return Ok(());
+                }
+
                 // First check user-defined functions, then fall back to builtins
                 let ret_ty = fn_return_types
                     .get(fn_name)
@@ -1311,7 +1409,10 @@ impl TextCodeGen {
             "println" | "print" | "assert" | "bmb_print_str" | "print_str" => "void",
 
             // i64 return - Basic
-            "read_int" | "abs" | "bmb_abs" | "min" | "max" => "i64",
+            "read_int" | "abs" | "bmb_abs" | "min" | "max" | "f64_to_i64" => "i64",
+
+            // f64 return - Math intrinsics (v0.34)
+            "sqrt" | "i64_to_f64" => "f64",
 
             // i64 return - String operations (both full and wrapper names)
             "bmb_string_len" | "bmb_string_char_at" | "bmb_string_eq" | "bmb_ord"

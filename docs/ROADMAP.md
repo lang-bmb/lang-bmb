@@ -2505,9 +2505,9 @@ type Vec<T> = struct {
 | json_parse | 104 | 265 | 2.55x | ❌ Needs optimization |
 
 **Blockers Identified**:
-- `sqrt` intrinsic needed for n_body
-- i64→f64 conversion needed for mandelbrot_fp
-- String performance bottleneck in json_parse
+- ~~`sqrt` intrinsic needed for n_body~~ → ✅ Resolved (v0.34: sqrt, i64_to_f64, f64_to_i64 intrinsics added)
+- ~~i64→f64 conversion needed for mandelbrot_fp~~ → ✅ Resolved (v0.34: i64_to_f64, f64_to_i64 added)
+- String performance bottleneck in json_parse → ⚠️ Still blocking (34.4.1)
 
 **Full results**: `ecosystem/benchmark-bmb/results/2026-01-09_phase34.4_v034.md`
 

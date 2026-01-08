@@ -98,6 +98,11 @@ impl Interpreter {
         // v0.31.21: Character conversion builtins for gotgan string handling
         self.builtins.insert("chr".to_string(), builtin_chr);
         self.builtins.insert("ord".to_string(), builtin_ord);
+
+        // v0.34: Math intrinsics for Phase 34.4 Benchmark Gate (n_body, mandelbrot_fp)
+        self.builtins.insert("sqrt".to_string(), builtin_sqrt);
+        self.builtins.insert("i64_to_f64".to_string(), builtin_i64_to_f64);
+        self.builtins.insert("f64_to_i64".to_string(), builtin_f64_to_i64);
     }
 
     /// v0.30.280: Enable ScopeStack-based evaluation for better memory efficiency
@@ -1200,6 +1205,46 @@ fn builtin_max(args: &[Value]) -> InterpResult<Value> {
         (Value::Int(a), Value::Int(b)) => Ok(Value::Int(*a.max(b))),
         (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a.max(*b))),
         _ => Err(RuntimeError::type_error("numeric", "mixed types")),
+    }
+}
+
+// ============ v0.34: Math Intrinsics for Phase 34.4 Benchmark Gate ============
+
+/// sqrt(x: f64) -> f64
+/// Returns the square root of a floating-point number.
+/// Returns NaN for negative inputs.
+fn builtin_sqrt(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 1 {
+        return Err(RuntimeError::arity_mismatch("sqrt", 1, args.len()));
+    }
+    match &args[0] {
+        Value::Float(f) => Ok(Value::Float(f.sqrt())),
+        Value::Int(n) => Ok(Value::Float((*n as f64).sqrt())),
+        _ => Err(RuntimeError::type_error("f64", args[0].type_name())),
+    }
+}
+
+/// i64_to_f64(x: i64) -> f64
+/// Converts an integer to a floating-point number.
+fn builtin_i64_to_f64(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 1 {
+        return Err(RuntimeError::arity_mismatch("i64_to_f64", 1, args.len()));
+    }
+    match &args[0] {
+        Value::Int(n) => Ok(Value::Float(*n as f64)),
+        _ => Err(RuntimeError::type_error("i64", args[0].type_name())),
+    }
+}
+
+/// f64_to_i64(x: f64) -> i64
+/// Converts a floating-point number to an integer (truncates toward zero).
+fn builtin_f64_to_i64(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 1 {
+        return Err(RuntimeError::arity_mismatch("f64_to_i64", 1, args.len()));
+    }
+    match &args[0] {
+        Value::Float(f) => Ok(Value::Int(*f as i64)),
+        _ => Err(RuntimeError::type_error("f64", args[0].type_name())),
     }
 }
 

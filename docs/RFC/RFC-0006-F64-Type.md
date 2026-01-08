@@ -15,9 +15,9 @@
 | AST | ✅ Complete | `Expr::FloatLit(f64)`, `Type::F64` |
 | Type Checker | ✅ Complete | Arithmetic/comparison ops |
 | MIR | ✅ Complete | `MirType::F64`, float operations |
-| LLVM Codegen | ✅ Complete | `context.f64_type()`, float instructions |
+| LLVM Codegen | ✅ Complete | `context.f64_type()`, float instructions, sqrt intrinsic |
 | WASM Codegen | ✅ Complete | f64 support |
-| stdlib/math | 📋 Pending | Nice-to-have, not blocking |
+| stdlib/math | ⚠️ Partial | sqrt, i64_to_f64, f64_to_i64 added (v0.34) |
 
 **Scientific Notation Support** (v0.34):
 - `6.022e23`, `3.14e10` (positive exponent)
