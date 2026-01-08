@@ -1697,7 +1697,7 @@ v0.MAJOR.MINOR
 
 #### Phase 30.2: Compiler Porting (lang-bmb)
 
-| Task | Description | Priority | Effort |
+| Task | Description | Priority | Status |
 |------|-------------|----------|--------|
 | 30.2.1 | Port main.rs CLI to BMB | P0 | 2 weeks |
 | 30.2.2 | Port AST types to BMB | P0 | 2 weeks |
@@ -1711,7 +1711,7 @@ v0.MAJOR.MINOR
 
 #### Phase 30.3: Package Manager Porting (gotgan)
 
-| Task | Description | Priority | Effort |
+| Task | Description | Priority | Status |
 |------|-------------|----------|--------|
 | 30.3.1 | Port registry client to BMB | P1 | 2 weeks |
 | 30.3.2 | Port dependency resolver to BMB | P1 | 2 weeks |
@@ -1724,7 +1724,7 @@ v0.MAJOR.MINOR
 
 #### Phase 30.4: Rust Removal
 
-| Task | Description | Priority | Effort |
+| Task | Description | Priority | Status |
 |------|-------------|----------|--------|
 | 30.4.1 | Remove bmb/src/*.rs | P0 | 1 week |
 | 30.4.2 | Remove gotgan/src/*.rs | P0 | 1 week |
@@ -1770,7 +1770,7 @@ $ diff stage2/bmb stage3/bmb
 
 #### Phase 31.0: Language Refinements (RFCs) ✅ Complete (v0.31.4)
 
-| Task | Description | Priority | Effort | RFC | Status |
+| Task | Description | Priority | Status | RFC | Status |
 |------|-------------|----------|--------|-----|--------|
 | 31.0.1 | Remove @check annotation | P0 | 1 day | RFC-0003 | ✅ |
 | 31.0.2 | Add @trust "reason" mandatory reason | P0 | 1 day | RFC-0003 | ✅ |
@@ -1792,7 +1792,7 @@ $ diff stage2/bmb stage3/bmb
 
 #### Phase 31.1: Language Reference ✅ Complete (v0.31.5)
 
-| Task | Description | Priority | Effort | Status |
+| Task | Description | Priority | Status | Status |
 |------|-------------|----------|--------|--------|
 | 31.1.1 | Complete language syntax reference | P0 | 1 week | ✅ |
 | 31.1.2 | Document type system and generics | P0 | 1 week | ✅ |
@@ -1907,7 +1907,7 @@ string overhead. Fixing requires architectural redesign.
 
 **Goal**: Runtime infrastructure for standalone BMB compiler
 
-| Task | Description | Priority | Effort | Status |
+| Task | Description | Priority | Status | Status |
 |------|-------------|----------|--------|--------|
 | 32.0.1 | Add stdlib `io` module (read_file, write_file) | P0 | ~~2 weeks~~ 1 day | ✅ v0.31.10 |
 | 32.0.2 | Add stdlib `process` module (exec, system) | P0 | ~~2 weeks~~ 1 day | ✅ v0.31.11 |
@@ -1983,7 +1983,7 @@ string overhead. Fixing requires architectural redesign.
 **Note**: Bootstrap already has core modules (types.bmb 356KB, mir.bmb 57KB, llvm_ir.bmb 155KB).
 Original "porting" tasks were based on incomplete understanding of Bootstrap status.
 
-| Task | Description | Priority | Effort | Status |
+| Task | Description | Priority | Status | Status |
 |------|-------------|----------|--------|--------|
 | ~~32.1.1~~ | ~~Port main.rs CLI to BMB~~ | - | - | ✅ Replaced by 32.0.3 |
 | ~~32.1.2~~ | ~~Port AST types to BMB~~ | - | - | ✅ Already in types.bmb |
@@ -2017,7 +2017,7 @@ Original "porting" tasks were based on incomplete understanding of Bootstrap sta
 
 **Goal**: Port gotgan to BMB while extracting reusable packages to `gotgan-packages`
 
-| Task | Description | Priority | Effort | Status |
+| Task | Description | Priority | Status | Status |
 |------|-------------|----------|--------|--------|
 | 32.2.0 | Extract reusable packages (semver, toml) | P0 | 1 week | ✅ v0.31.21 |
 | 32.2.1 | Port gotgan Core (project, config, CLI) | P1 | 1 week | ✅ v0.31.22 |
@@ -2239,18 +2239,26 @@ extern fn get_arg(n: i64) -> String;  -- Return argv[n]
 - Updated function counts for all modules (accurate vs estimated)
 - Added usage examples for io and process modules
 
-#### Phase 33.2: Tutorials and Guides
+#### Phase 33.2: Tutorials and Guides ✅ Complete (v0.33.2)
 
-| Task | Description | Priority | Effort |
+| Task | Description | Priority | Status |
 |------|-------------|----------|--------|
-| 33.2.1 | Write "Getting Started" tutorial | P0 | 1 week |
-| 33.2.2 | Write "By Example" guide | P0 | 2 weeks |
-| 33.2.3 | Write "From Rust" migration guide | P1 | 1 week |
-| 33.2.4 | Write "Contract Programming" guide | P1 | 1 week |
+| 33.2.1 | Write "Getting Started" tutorial | P0 | ✅ Complete |
+| 33.2.2 | Write "By Example" guide | P0 | ✅ Complete |
+| 33.2.3 | Write "From Rust" migration guide | P1 | ✅ Complete |
+| 33.2.4 | Write "Contract Programming" guide | P1 | ✅ Complete |
+
+**v0.33.2 Achievements**:
+- Created docs/tutorials/ directory with 4 comprehensive guides
+- GETTING_STARTED.md: Installation, Hello World, contracts (261 lines)
+- BY_EXAMPLE.md: 12 practical examples with code (507 lines)
+- FROM_RUST.md: Rust developer migration guide (468 lines)
+- CONTRACT_PROGRAMMING.md: Deep verification guide (585 lines)
+- Total: 1,821 lines of tutorial documentation
 
 #### Phase 33.3: Website Launch (bmb.dev)
 
-| Task | Description | Priority | Effort |
+| Task | Description | Priority | Status |
 |------|-------------|----------|--------|
 | 33.3.1 | Deploy documentation site | P0 | 1 week |
 | 33.3.2 | Integrate playground (play.bmb.dev) | P0 | 1 week |
@@ -2271,7 +2279,7 @@ extern fn get_arg(n: i64) -> String;  -- Return argv[n]
 
 #### Phase 34.1: Core Package Development
 
-| Task | Description | Priority | Effort |
+| Task | Description | Priority | Status |
 |------|-------------|----------|--------|
 | 34.1.1 | Develop bmb-json (JSON serialization) | P0 | 1 week |
 | 34.1.2 | Develop bmb-http (HTTP client) | P0 | 2 weeks |
@@ -2294,7 +2302,7 @@ extern fn get_arg(n: i64) -> String;  -- Return argv[n]
 
 #### Phase 34.2: Rust Library Migration
 
-| Task | Description | Priority | Effort |
+| Task | Description | Priority | Status |
 |------|-------------|----------|--------|
 | 34.2.1 | Port serde patterns to BMB | P0 | 2 weeks |
 | 34.2.2 | Port regex patterns to BMB | P0 | 2 weeks |
@@ -2307,7 +2315,7 @@ extern fn get_arg(n: i64) -> String;  -- Return argv[n]
 
 #### Phase 34.3: Community Building
 
-| Task | Description | Priority | Effort |
+| Task | Description | Priority | Status |
 |------|-------------|----------|--------|
 | 34.3.1 | Set up contribution guidelines | P0 | 1 week |
 | 34.3.2 | Create package submission process | P0 | 1 week |
@@ -2334,7 +2342,7 @@ extern fn get_arg(n: i64) -> String;  -- Return argv[n]
 
 #### Phase 1.0.1: Benchmark Gate #3 (Final Verification)
 
-| Task | Description | Priority | Effort |
+| Task | Description | Priority | Status |
 |------|-------------|----------|--------|
 | 1.0.1.1 | Full benchmark suite execution | P0 | 1 week |
 | 1.0.1.2 | Compare with Gate #1, #2 baselines | P0 | 3 days |
@@ -2352,7 +2360,7 @@ extern fn get_arg(n: i64) -> String;  -- Return argv[n]
 
 #### Phase 1.0.2: Stability Verification
 
-| Task | Description | Priority | Effort |
+| Task | Description | Priority | Status |
 |------|-------------|----------|--------|
 | 1.0.2.1 | Run complete test suite | P0 | 1 week |
 | 1.0.2.2 | Security audit | P0 | 2 weeks |
@@ -2360,7 +2368,7 @@ extern fn get_arg(n: i64) -> String;  -- Return argv[n]
 
 #### Phase 1.0.3: API Freeze
 
-| Task | Description | Priority | Effort |
+| Task | Description | Priority | Status |
 |------|-------------|----------|--------|
 | 1.0.3.1 | Document public API stability guarantees | P0 | 1 week |
 | 1.0.3.2 | Mark experimental features | P0 | 1 week |
@@ -2368,7 +2376,7 @@ extern fn get_arg(n: i64) -> String;  -- Return argv[n]
 
 #### Phase 1.0.4: Release Preparation
 
-| Task | Description | Priority | Effort |
+| Task | Description | Priority | Status |
 |------|-------------|----------|--------|
 | 1.0.4.1 | Write release notes | P0 | 1 week |
 | 1.0.4.2 | Update all documentation | P0 | 1 week |
