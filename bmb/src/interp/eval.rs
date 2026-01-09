@@ -116,6 +116,17 @@ impl Interpreter {
         self.builtins.insert("box_get_i64".to_string(), builtin_load_i64); // alias
         self.builtins.insert("box_set_i64".to_string(), builtin_store_i64); // alias
         self.builtins.insert("box_free_i64".to_string(), builtin_free); // alias
+
+        // v0.34.2.3: Vec<i64> dynamic array builtins (RFC-0007)
+        self.builtins.insert("vec_new".to_string(), builtin_vec_new);
+        self.builtins.insert("vec_with_capacity".to_string(), builtin_vec_with_capacity);
+        self.builtins.insert("vec_push".to_string(), builtin_vec_push);
+        self.builtins.insert("vec_pop".to_string(), builtin_vec_pop);
+        self.builtins.insert("vec_get".to_string(), builtin_vec_get);
+        self.builtins.insert("vec_set".to_string(), builtin_vec_set);
+        self.builtins.insert("vec_len".to_string(), builtin_vec_len);
+        self.builtins.insert("vec_cap".to_string(), builtin_vec_cap);
+        self.builtins.insert("vec_free".to_string(), builtin_vec_free);
     }
 
     /// v0.30.280: Enable ScopeStack-based evaluation for better memory efficiency
@@ -294,6 +305,9 @@ impl Interpreter {
                 }
             }
 
+            // v0.34.2.3: Define in current scope (Block manages scope)
+            // Fix: Don't create child env for Let - let Block handle scoping
+            // This allows sequential let statements to share variables
             Expr::Let {
                 name,
                 mutable: _,
@@ -302,9 +316,8 @@ impl Interpreter {
                 body,
             } => {
                 let val = self.eval(value, env)?;
-                let child = child_env(env);
-                child.borrow_mut().define(name.clone(), val);
-                self.eval(body, &child)
+                env.borrow_mut().define(name.clone(), val);
+                self.eval(body, env)
             }
 
             Expr::Assign { name, value } => {
@@ -932,14 +945,13 @@ impl Interpreter {
                 }
             }
 
-            // v0.30.280: Key optimization - immediate scope deallocation
+            // v0.34.2.3: Define in current scope (Block manages scope)
+            // Fix: Don't push/pop scope for Let - let Block handle scoping
+            // This allows sequential let statements to share variables
             Expr::Let { name, value, body, .. } => {
                 let val = self.eval_fast(value)?;
-                self.scope_stack.push_scope();
                 self.scope_stack.define(name.clone(), val);
-                let result = self.eval_fast(body);
-                self.scope_stack.pop_scope(); // Immediate deallocation!
-                result
+                self.eval_fast(body)
             }
 
             Expr::Call { func, args } => {
@@ -1421,6 +1433,300 @@ fn builtin_box_new_i64(args: &[Value]) -> InterpResult<Value> {
                 *p = *value;
             }
             Ok(Value::Int(ptr as i64))
+        }
+        _ => Err(RuntimeError::type_error("i64", args[0].type_name())),
+    }
+}
+
+// ============ v0.34.2.3: Vec<i64> Dynamic Array Builtins (RFC-0007) ============
+//
+// Memory Layout:
+// Vec header (24 bytes, heap-allocated):
+//   offset 0: ptr (i64) - pointer to data array
+//   offset 8: len (i64) - current number of elements
+//   offset 16: cap (i64) - allocated capacity
+//
+// Data array (heap-allocated, cap * 8 bytes):
+//   [i64; cap] - actual element storage
+//
+
+/// vec_new() -> i64: Create empty vector, returns header pointer
+fn builtin_vec_new(args: &[Value]) -> InterpResult<Value> {
+    if !args.is_empty() {
+        return Err(RuntimeError::arity_mismatch("vec_new", 0, args.len()));
+    }
+    // Allocate 24 bytes for header (ptr, len, cap)
+    let layout = std::alloc::Layout::from_size_align(24, 8)
+        .map_err(|_| RuntimeError::io_error("vec_new: invalid allocation size"))?;
+    let header = unsafe { std::alloc::alloc_zeroed(layout) };
+    if header.is_null() {
+        return Ok(Value::Int(0)); // NULL
+    }
+    // Header is already zeroed: ptr=0, len=0, cap=0
+    Ok(Value::Int(header as i64))
+}
+
+/// vec_with_capacity(cap: i64) -> i64: Create vector with pre-allocated capacity
+fn builtin_vec_with_capacity(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 1 {
+        return Err(RuntimeError::arity_mismatch("vec_with_capacity", 1, args.len()));
+    }
+    match &args[0] {
+        Value::Int(cap) => {
+            if *cap < 0 {
+                return Err(RuntimeError::io_error("vec_with_capacity: negative capacity"));
+            }
+            // Allocate header
+            let header_layout = std::alloc::Layout::from_size_align(24, 8)
+                .map_err(|_| RuntimeError::io_error("vec_with_capacity: invalid header size"))?;
+            let header = unsafe { std::alloc::alloc(header_layout) };
+            if header.is_null() {
+                return Ok(Value::Int(0));
+            }
+
+            // Allocate data array if capacity > 0
+            let data_ptr = if *cap > 0 {
+                let data_layout = std::alloc::Layout::from_size_align((*cap as usize) * 8, 8)
+                    .map_err(|_| RuntimeError::io_error("vec_with_capacity: invalid data size"))?;
+                let data = unsafe { std::alloc::alloc(data_layout) };
+                if data.is_null() {
+                    // Free header and return NULL
+                    unsafe { std::alloc::dealloc(header, header_layout) };
+                    return Ok(Value::Int(0));
+                }
+                data as i64
+            } else {
+                0i64
+            };
+
+            // Initialize header: ptr, len=0, cap
+            unsafe {
+                let h = header as *mut i64;
+                *h = data_ptr;           // offset 0: ptr
+                *h.add(1) = 0;           // offset 8: len
+                *h.add(2) = *cap;        // offset 16: cap
+            }
+            Ok(Value::Int(header as i64))
+        }
+        _ => Err(RuntimeError::type_error("i64", args[0].type_name())),
+    }
+}
+
+/// vec_push(vec: i64, value: i64) -> Unit: Append element with auto-grow
+fn builtin_vec_push(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 2 {
+        return Err(RuntimeError::arity_mismatch("vec_push", 2, args.len()));
+    }
+    match (&args[0], &args[1]) {
+        (Value::Int(vec_ptr), Value::Int(value)) => {
+            if *vec_ptr == 0 {
+                return Err(RuntimeError::io_error("vec_push: null vector"));
+            }
+            unsafe {
+                let header = *vec_ptr as *mut i64;
+                let ptr = *header;           // data pointer
+                let len = *header.add(1);    // current length
+                let cap = *header.add(2);    // capacity
+
+                // Check if we need to grow
+                if len >= cap {
+                    // Grow strategy: 0 -> 4 -> 8 -> 16 -> 32 -> ...
+                    let new_cap = if cap == 0 { 4 } else { cap * 2 };
+                    let new_size = (new_cap as usize) * 8;
+
+                    let new_data = if ptr == 0 {
+                        // First allocation
+                        let layout = std::alloc::Layout::from_size_align(new_size, 8)
+                            .map_err(|_| RuntimeError::io_error("vec_push: allocation failed"))?;
+                        std::alloc::alloc(layout)
+                    } else {
+                        // Realloc existing
+                        let old_layout = std::alloc::Layout::from_size_align((cap as usize) * 8, 8)
+                            .map_err(|_| RuntimeError::io_error("vec_push: invalid old layout"))?;
+                        std::alloc::realloc(ptr as *mut u8, old_layout, new_size)
+                    };
+
+                    if new_data.is_null() {
+                        return Err(RuntimeError::io_error("vec_push: out of memory"));
+                    }
+
+                    // Update header
+                    *header = new_data as i64;
+                    *header.add(2) = new_cap;
+                }
+
+                // Store value at data[len]
+                let data = *header as *mut i64;
+                let len = *header.add(1);
+                *data.add(len as usize) = *value;
+
+                // Increment length
+                *header.add(1) = len + 1;
+            }
+            Ok(Value::Unit)
+        }
+        _ => Err(RuntimeError::type_error("i64, i64", "other")),
+    }
+}
+
+/// vec_pop(vec: i64) -> i64: Remove and return last element
+fn builtin_vec_pop(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 1 {
+        return Err(RuntimeError::arity_mismatch("vec_pop", 1, args.len()));
+    }
+    match &args[0] {
+        Value::Int(vec_ptr) => {
+            if *vec_ptr == 0 {
+                return Err(RuntimeError::io_error("vec_pop: null vector"));
+            }
+            unsafe {
+                let header = *vec_ptr as *mut i64;
+                let ptr = *header;
+                let len = *header.add(1);
+
+                if len <= 0 {
+                    return Err(RuntimeError::io_error("vec_pop: empty vector"));
+                }
+
+                // Get last element
+                let data = ptr as *const i64;
+                let value = *data.add((len - 1) as usize);
+
+                // Decrement length
+                *header.add(1) = len - 1;
+
+                Ok(Value::Int(value))
+            }
+        }
+        _ => Err(RuntimeError::type_error("i64", args[0].type_name())),
+    }
+}
+
+/// vec_get(vec: i64, index: i64) -> i64: Read element at index
+fn builtin_vec_get(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 2 {
+        return Err(RuntimeError::arity_mismatch("vec_get", 2, args.len()));
+    }
+    match (&args[0], &args[1]) {
+        (Value::Int(vec_ptr), Value::Int(index)) => {
+            if *vec_ptr == 0 {
+                return Err(RuntimeError::io_error("vec_get: null vector"));
+            }
+            unsafe {
+                let header = *vec_ptr as *const i64;
+                let ptr = *header;
+                let len = *header.add(1);
+
+                if *index < 0 || *index >= len {
+                    return Err(RuntimeError::io_error(&format!(
+                        "vec_get: index {} out of bounds (len={})", index, len
+                    )));
+                }
+
+                let data = ptr as *const i64;
+                Ok(Value::Int(*data.add(*index as usize)))
+            }
+        }
+        _ => Err(RuntimeError::type_error("i64, i64", "other")),
+    }
+}
+
+/// vec_set(vec: i64, index: i64, value: i64) -> Unit: Write element at index
+fn builtin_vec_set(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 3 {
+        return Err(RuntimeError::arity_mismatch("vec_set", 3, args.len()));
+    }
+    match (&args[0], &args[1], &args[2]) {
+        (Value::Int(vec_ptr), Value::Int(index), Value::Int(value)) => {
+            if *vec_ptr == 0 {
+                return Err(RuntimeError::io_error("vec_set: null vector"));
+            }
+            unsafe {
+                let header = *vec_ptr as *mut i64;
+                let ptr = *header;
+                let len = *header.add(1);
+
+                if *index < 0 || *index >= len {
+                    return Err(RuntimeError::io_error(&format!(
+                        "vec_set: index {} out of bounds (len={})", index, len
+                    )));
+                }
+
+                let data = ptr as *mut i64;
+                *data.add(*index as usize) = *value;
+            }
+            Ok(Value::Unit)
+        }
+        _ => Err(RuntimeError::type_error("i64, i64, i64", "other")),
+    }
+}
+
+/// vec_len(vec: i64) -> i64: Get current length
+fn builtin_vec_len(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 1 {
+        return Err(RuntimeError::arity_mismatch("vec_len", 1, args.len()));
+    }
+    match &args[0] {
+        Value::Int(vec_ptr) => {
+            if *vec_ptr == 0 {
+                return Ok(Value::Int(0)); // NULL vec has len 0
+            }
+            unsafe {
+                let header = *vec_ptr as *const i64;
+                Ok(Value::Int(*header.add(1)))
+            }
+        }
+        _ => Err(RuntimeError::type_error("i64", args[0].type_name())),
+    }
+}
+
+/// vec_cap(vec: i64) -> i64: Get capacity
+fn builtin_vec_cap(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 1 {
+        return Err(RuntimeError::arity_mismatch("vec_cap", 1, args.len()));
+    }
+    match &args[0] {
+        Value::Int(vec_ptr) => {
+            if *vec_ptr == 0 {
+                return Ok(Value::Int(0)); // NULL vec has cap 0
+            }
+            unsafe {
+                let header = *vec_ptr as *const i64;
+                Ok(Value::Int(*header.add(2)))
+            }
+        }
+        _ => Err(RuntimeError::type_error("i64", args[0].type_name())),
+    }
+}
+
+/// vec_free(vec: i64) -> Unit: Deallocate vector and its data
+fn builtin_vec_free(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 1 {
+        return Err(RuntimeError::arity_mismatch("vec_free", 1, args.len()));
+    }
+    match &args[0] {
+        Value::Int(vec_ptr) => {
+            if *vec_ptr == 0 {
+                return Ok(Value::Unit); // NULL is no-op
+            }
+            unsafe {
+                let header = *vec_ptr as *mut i64;
+                let ptr = *header;
+                let cap = *header.add(2);
+
+                // Free data array if allocated
+                if ptr != 0 && cap > 0 {
+                    let data_layout = std::alloc::Layout::from_size_align((cap as usize) * 8, 8)
+                        .map_err(|_| RuntimeError::io_error("vec_free: invalid data layout"))?;
+                    std::alloc::dealloc(ptr as *mut u8, data_layout);
+                }
+
+                // Free header
+                let header_layout = std::alloc::Layout::from_size_align(24, 8)
+                    .map_err(|_| RuntimeError::io_error("vec_free: invalid header layout"))?;
+                std::alloc::dealloc(*vec_ptr as *mut u8, header_layout);
+            }
+            Ok(Value::Unit)
         }
         _ => Err(RuntimeError::type_error("i64", args[0].type_name())),
     }

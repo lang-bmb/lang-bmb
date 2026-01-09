@@ -1087,6 +1087,432 @@ impl TextCodeGen {
                     return Ok(());
                 }
 
+                // v0.34.2.3: Vec<i64> dynamic array builtins (RFC-0007)
+                // vec_new() -> i64: allocate header (24 bytes) with zeroed ptr/len/cap
+                if fn_name == "vec_new" && args.is_empty() {
+                    let vec_idx = *name_counts.entry("vec_new".to_string()).or_insert(0);
+                    *name_counts.get_mut("vec_new").unwrap() += 1;
+                    // Call malloc(24) for header
+                    let header_ptr = format!("vec.header.{}", vec_idx);
+                    writeln!(out, "  %{} = call ptr @malloc(i64 24)", header_ptr)?;
+                    // Zero out header (ptr=0, len=0, cap=0)
+                    let zero_ptr = format!("vec.zero.ptr.{}", vec_idx);
+                    let len_ptr = format!("vec.zero.len.{}", vec_idx);
+                    let cap_ptr = format!("vec.zero.cap.{}", vec_idx);
+                    writeln!(out, "  %{} = getelementptr i64, ptr %{}, i64 0", zero_ptr, header_ptr)?;
+                    writeln!(out, "  store i64 0, ptr %{}", zero_ptr)?;
+                    writeln!(out, "  %{} = getelementptr i64, ptr %{}, i64 1", len_ptr, header_ptr)?;
+                    writeln!(out, "  store i64 0, ptr %{}", len_ptr)?;
+                    writeln!(out, "  %{} = getelementptr i64, ptr %{}, i64 2", cap_ptr, header_ptr)?;
+                    writeln!(out, "  store i64 0, ptr %{}", cap_ptr)?;
+                    // Convert ptr to i64 for return
+                    if let Some(d) = dest {
+                        if local_names.contains(&d.name) {
+                            let conv_name = format!("vec.conv.{}", vec_idx);
+                            writeln!(out, "  %{} = ptrtoint ptr %{} to i64", conv_name, header_ptr)?;
+                            writeln!(out, "  store i64 %{}, ptr %{}.addr", conv_name, d.name)?;
+                        } else {
+                            // Use dest name directly for SSA assignment
+                            writeln!(out, "  %{} = ptrtoint ptr %{} to i64", d.name, header_ptr)?;
+                        }
+                    }
+                    return Ok(());
+                }
+
+                // vec_with_capacity(cap) -> i64: allocate header + data array
+                if fn_name == "vec_with_capacity" && args.len() == 1 {
+                    let vec_idx = *name_counts.entry("vec_cap_alloc".to_string()).or_insert(0);
+                    *name_counts.get_mut("vec_cap_alloc").unwrap() += 1;
+                    // Get capacity argument
+                    let cap_val = match &args[0] {
+                        Operand::Place(p) if local_names.contains(&p.name) => {
+                            let load_name = format!("vec.cap.arg.{}", vec_idx);
+                            writeln!(out, "  %{} = load i64, ptr %{}.addr", load_name, p.name)?;
+                            format!("%{}", load_name)
+                        }
+                        _ => self.format_operand_with_strings(&args[0], string_table),
+                    };
+                    // Allocate header
+                    let header_ptr = format!("vec.wcap.header.{}", vec_idx);
+                    writeln!(out, "  %{} = call ptr @malloc(i64 24)", header_ptr)?;
+                    // Allocate data: cap * 8 bytes
+                    let data_size = format!("vec.wcap.size.{}", vec_idx);
+                    let data_ptr = format!("vec.wcap.data.{}", vec_idx);
+                    writeln!(out, "  %{} = mul i64 {}, 8", data_size, cap_val)?;
+                    writeln!(out, "  %{} = call ptr @malloc(i64 %{})", data_ptr, data_size)?;
+                    // Store data ptr at header[0]
+                    let data_as_i64 = format!("vec.wcap.ptr.{}", vec_idx);
+                    writeln!(out, "  %{} = ptrtoint ptr %{} to i64", data_as_i64, data_ptr)?;
+                    let h0 = format!("vec.wcap.h0.{}", vec_idx);
+                    writeln!(out, "  %{} = getelementptr i64, ptr %{}, i64 0", h0, header_ptr)?;
+                    writeln!(out, "  store i64 %{}, ptr %{}", data_as_i64, h0)?;
+                    // Store len=0 at header[1]
+                    let h1 = format!("vec.wcap.h1.{}", vec_idx);
+                    writeln!(out, "  %{} = getelementptr i64, ptr %{}, i64 1", h1, header_ptr)?;
+                    writeln!(out, "  store i64 0, ptr %{}", h1)?;
+                    // Store cap at header[2]
+                    let h2 = format!("vec.wcap.h2.{}", vec_idx);
+                    writeln!(out, "  %{} = getelementptr i64, ptr %{}, i64 2", h2, header_ptr)?;
+                    writeln!(out, "  store i64 {}, ptr %{}", cap_val, h2)?;
+                    // Return header pointer as i64
+                    if let Some(d) = dest {
+                        if local_names.contains(&d.name) {
+                            let conv_name = format!("vec.wcap.conv.{}", vec_idx);
+                            writeln!(out, "  %{} = ptrtoint ptr %{} to i64", conv_name, header_ptr)?;
+                            writeln!(out, "  store i64 %{}, ptr %{}.addr", conv_name, d.name)?;
+                        } else {
+                            // Use dest name directly for SSA assignment
+                            writeln!(out, "  %{} = ptrtoint ptr %{} to i64", d.name, header_ptr)?;
+                        }
+                    }
+                    return Ok(());
+                }
+
+                // vec_len(vec) -> i64: read header[1]
+                if fn_name == "vec_len" && args.len() == 1 {
+                    let vec_idx = *name_counts.entry("vec_len".to_string()).or_insert(0);
+                    *name_counts.get_mut("vec_len").unwrap() += 1;
+                    let vec_val = match &args[0] {
+                        Operand::Place(p) if local_names.contains(&p.name) => {
+                            let load_name = format!("vec.len.arg.{}", vec_idx);
+                            writeln!(out, "  %{} = load i64, ptr %{}.addr", load_name, p.name)?;
+                            format!("%{}", load_name)
+                        }
+                        _ => self.format_operand_with_strings(&args[0], string_table),
+                    };
+                    let header_ptr = format!("vec.len.header.{}", vec_idx);
+                    writeln!(out, "  %{} = inttoptr i64 {} to ptr", header_ptr, vec_val)?;
+                    let len_ptr_name = format!("vec.len.ptr.{}", vec_idx);
+                    writeln!(out, "  %{} = getelementptr i64, ptr %{}, i64 1", len_ptr_name, header_ptr)?;
+                    if let Some(d) = dest {
+                        if local_names.contains(&d.name) {
+                            let len_val = format!("vec.len.val.{}", vec_idx);
+                            writeln!(out, "  %{} = load i64, ptr %{}", len_val, len_ptr_name)?;
+                            writeln!(out, "  store i64 %{}, ptr %{}.addr", len_val, d.name)?;
+                        } else {
+                            // Use dest name directly for SSA assignment
+                            writeln!(out, "  %{} = load i64, ptr %{}", d.name, len_ptr_name)?;
+                        }
+                    }
+                    return Ok(());
+                }
+
+                // vec_cap(vec) -> i64: read header[2]
+                if fn_name == "vec_cap" && args.len() == 1 {
+                    let vec_idx = *name_counts.entry("vec_cap_read".to_string()).or_insert(0);
+                    *name_counts.get_mut("vec_cap_read").unwrap() += 1;
+                    let vec_val = match &args[0] {
+                        Operand::Place(p) if local_names.contains(&p.name) => {
+                            let load_name = format!("vec.cap.arg.{}", vec_idx);
+                            writeln!(out, "  %{} = load i64, ptr %{}.addr", load_name, p.name)?;
+                            format!("%{}", load_name)
+                        }
+                        _ => self.format_operand_with_strings(&args[0], string_table),
+                    };
+                    let header_ptr = format!("vec.cap.header.{}", vec_idx);
+                    writeln!(out, "  %{} = inttoptr i64 {} to ptr", header_ptr, vec_val)?;
+                    let cap_ptr_name = format!("vec.cap.ptr.{}", vec_idx);
+                    writeln!(out, "  %{} = getelementptr i64, ptr %{}, i64 2", cap_ptr_name, header_ptr)?;
+                    if let Some(d) = dest {
+                        if local_names.contains(&d.name) {
+                            let cap_val = format!("vec.cap.val.{}", vec_idx);
+                            writeln!(out, "  %{} = load i64, ptr %{}", cap_val, cap_ptr_name)?;
+                            writeln!(out, "  store i64 %{}, ptr %{}.addr", cap_val, d.name)?;
+                        } else {
+                            // Use dest name directly for SSA assignment
+                            writeln!(out, "  %{} = load i64, ptr %{}", d.name, cap_ptr_name)?;
+                        }
+                    }
+                    return Ok(());
+                }
+
+                // vec_get(vec, index) -> i64: read data[index]
+                if fn_name == "vec_get" && args.len() == 2 {
+                    let vec_idx = *name_counts.entry("vec_get".to_string()).or_insert(0);
+                    *name_counts.get_mut("vec_get").unwrap() += 1;
+                    let vec_val = match &args[0] {
+                        Operand::Place(p) if local_names.contains(&p.name) => {
+                            let load_name = format!("vec.get.vec.{}", vec_idx);
+                            writeln!(out, "  %{} = load i64, ptr %{}.addr", load_name, p.name)?;
+                            format!("%{}", load_name)
+                        }
+                        _ => self.format_operand_with_strings(&args[0], string_table),
+                    };
+                    let idx_val = match &args[1] {
+                        Operand::Place(p) if local_names.contains(&p.name) => {
+                            let load_name = format!("vec.get.idx.{}", vec_idx);
+                            writeln!(out, "  %{} = load i64, ptr %{}.addr", load_name, p.name)?;
+                            format!("%{}", load_name)
+                        }
+                        _ => self.format_operand_with_strings(&args[1], string_table),
+                    };
+                    // Get header and data pointer
+                    let header_ptr = format!("vec.get.header.{}", vec_idx);
+                    writeln!(out, "  %{} = inttoptr i64 {} to ptr", header_ptr, vec_val)?;
+                    let data_i64 = format!("vec.get.data.i64.{}", vec_idx);
+                    writeln!(out, "  %{} = load i64, ptr %{}", data_i64, header_ptr)?;
+                    let data_ptr = format!("vec.get.data.ptr.{}", vec_idx);
+                    writeln!(out, "  %{} = inttoptr i64 %{} to ptr", data_ptr, data_i64)?;
+                    // Get element at index
+                    let elem_ptr = format!("vec.get.elem.{}", vec_idx);
+                    writeln!(out, "  %{} = getelementptr i64, ptr %{}, i64 {}", elem_ptr, data_ptr, idx_val)?;
+                    if let Some(d) = dest {
+                        if local_names.contains(&d.name) {
+                            let elem_val = format!("vec.get.val.{}", vec_idx);
+                            writeln!(out, "  %{} = load i64, ptr %{}", elem_val, elem_ptr)?;
+                            writeln!(out, "  store i64 %{}, ptr %{}.addr", elem_val, d.name)?;
+                        } else {
+                            // Use dest name directly for SSA assignment
+                            writeln!(out, "  %{} = load i64, ptr %{}", d.name, elem_ptr)?;
+                        }
+                    }
+                    return Ok(());
+                }
+
+                // vec_set(vec, index, value) -> Unit: write data[index] = value
+                if fn_name == "vec_set" && args.len() == 3 {
+                    let vec_idx = *name_counts.entry("vec_set".to_string()).or_insert(0);
+                    *name_counts.get_mut("vec_set").unwrap() += 1;
+                    let vec_val = match &args[0] {
+                        Operand::Place(p) if local_names.contains(&p.name) => {
+                            let load_name = format!("vec.set.vec.{}", vec_idx);
+                            writeln!(out, "  %{} = load i64, ptr %{}.addr", load_name, p.name)?;
+                            format!("%{}", load_name)
+                        }
+                        _ => self.format_operand_with_strings(&args[0], string_table),
+                    };
+                    let idx_val = match &args[1] {
+                        Operand::Place(p) if local_names.contains(&p.name) => {
+                            let load_name = format!("vec.set.idx.{}", vec_idx);
+                            writeln!(out, "  %{} = load i64, ptr %{}.addr", load_name, p.name)?;
+                            format!("%{}", load_name)
+                        }
+                        _ => self.format_operand_with_strings(&args[1], string_table),
+                    };
+                    let val_val = match &args[2] {
+                        Operand::Place(p) if local_names.contains(&p.name) => {
+                            let load_name = format!("vec.set.val.{}", vec_idx);
+                            writeln!(out, "  %{} = load i64, ptr %{}.addr", load_name, p.name)?;
+                            format!("%{}", load_name)
+                        }
+                        _ => self.format_operand_with_strings(&args[2], string_table),
+                    };
+                    // Get header and data pointer
+                    let header_ptr = format!("vec.set.header.{}", vec_idx);
+                    writeln!(out, "  %{} = inttoptr i64 {} to ptr", header_ptr, vec_val)?;
+                    let data_i64 = format!("vec.set.data.i64.{}", vec_idx);
+                    writeln!(out, "  %{} = load i64, ptr %{}", data_i64, header_ptr)?;
+                    let data_ptr = format!("vec.set.data.ptr.{}", vec_idx);
+                    writeln!(out, "  %{} = inttoptr i64 %{} to ptr", data_ptr, data_i64)?;
+                    // Store value at index
+                    let elem_ptr = format!("vec.set.elem.{}", vec_idx);
+                    writeln!(out, "  %{} = getelementptr i64, ptr %{}, i64 {}", elem_ptr, data_ptr, idx_val)?;
+                    writeln!(out, "  store i64 {}, ptr %{}", val_val, elem_ptr)?;
+                    return Ok(());
+                }
+
+                // vec_push(vec, value) -> Unit: append with auto-grow
+                // This is complex - generates inline growth logic
+                if fn_name == "vec_push" && args.len() == 2 {
+                    let vec_idx = *name_counts.entry("vec_push".to_string()).or_insert(0);
+                    *name_counts.get_mut("vec_push").unwrap() += 1;
+                    let vec_val = match &args[0] {
+                        Operand::Place(p) if local_names.contains(&p.name) => {
+                            let load_name = format!("vp.vec.{}", vec_idx);
+                            writeln!(out, "  %{} = load i64, ptr %{}.addr", load_name, p.name)?;
+                            format!("%{}", load_name)
+                        }
+                        _ => self.format_operand_with_strings(&args[0], string_table),
+                    };
+                    let val_val = match &args[1] {
+                        Operand::Place(p) if local_names.contains(&p.name) => {
+                            let load_name = format!("vp.val.{}", vec_idx);
+                            writeln!(out, "  %{} = load i64, ptr %{}.addr", load_name, p.name)?;
+                            format!("%{}", load_name)
+                        }
+                        _ => self.format_operand_with_strings(&args[1], string_table),
+                    };
+
+                    // Get header pointer
+                    let header_ptr = format!("vp.header.{}", vec_idx);
+                    writeln!(out, "  %{} = inttoptr i64 {} to ptr", header_ptr, vec_val)?;
+
+                    // Load current ptr, len, cap
+                    let ptr_i64 = format!("vp.ptr.{}", vec_idx);
+                    let len_ptr = format!("vp.len.ptr.{}", vec_idx);
+                    let len_val = format!("vp.len.{}", vec_idx);
+                    let cap_ptr = format!("vp.cap.ptr.{}", vec_idx);
+                    let cap_val = format!("vp.cap.{}", vec_idx);
+
+                    writeln!(out, "  %{} = load i64, ptr %{}", ptr_i64, header_ptr)?;
+                    writeln!(out, "  %{} = getelementptr i64, ptr %{}, i64 1", len_ptr, header_ptr)?;
+                    writeln!(out, "  %{} = load i64, ptr %{}", len_val, len_ptr)?;
+                    writeln!(out, "  %{} = getelementptr i64, ptr %{}, i64 2", cap_ptr, header_ptr)?;
+                    writeln!(out, "  %{} = load i64, ptr %{}", cap_val, cap_ptr)?;
+
+                    // Check if need to grow: len >= cap
+                    let need_grow = format!("vp.need_grow.{}", vec_idx);
+                    writeln!(out, "  %{} = icmp sge i64 %{}, %{}", need_grow, len_val, cap_val)?;
+
+                    // Branch: if need grow, allocate new; else store directly
+                    let grow_label = format!("vp.grow.{}", vec_idx);
+                    let store_label = format!("vp.store.{}", vec_idx);
+                    let cont_label = format!("vp.cont.{}", vec_idx);
+                    writeln!(out, "  br i1 %{}, label %{}, label %{}", need_grow, grow_label, store_label)?;
+
+                    // Grow block
+                    writeln!(out, "{}:", grow_label)?;
+                    // new_cap = cap == 0 ? 4 : cap * 2
+                    let is_zero = format!("vp.is_zero.{}", vec_idx);
+                    writeln!(out, "  %{} = icmp eq i64 %{}, 0", is_zero, cap_val)?;
+                    let doubled = format!("vp.doubled.{}", vec_idx);
+                    writeln!(out, "  %{} = mul i64 %{}, 2", doubled, cap_val)?;
+                    let new_cap = format!("vp.new_cap.{}", vec_idx);
+                    writeln!(out, "  %{} = select i1 %{}, i64 4, i64 %{}", new_cap, is_zero, doubled)?;
+                    // new_size = new_cap * 8
+                    let new_size = format!("vp.new_size.{}", vec_idx);
+                    writeln!(out, "  %{} = mul i64 %{}, 8", new_size, new_cap)?;
+                    // Check if ptr == 0 for first alloc vs realloc
+                    let ptr_is_null = format!("vp.ptr_null.{}", vec_idx);
+                    writeln!(out, "  %{} = icmp eq i64 %{}, 0", ptr_is_null, ptr_i64)?;
+                    let alloc_label = format!("vp.alloc.{}", vec_idx);
+                    let realloc_label = format!("vp.realloc.{}", vec_idx);
+                    let merge_label = format!("vp.merge.{}", vec_idx);
+                    writeln!(out, "  br i1 %{}, label %{}, label %{}", ptr_is_null, alloc_label, realloc_label)?;
+
+                    // First allocation
+                    writeln!(out, "{}:", alloc_label)?;
+                    let new_data_a = format!("vp.new_data.a.{}", vec_idx);
+                    writeln!(out, "  %{} = call ptr @malloc(i64 %{})", new_data_a, new_size)?;
+                    writeln!(out, "  br label %{}", merge_label)?;
+
+                    // Realloc
+                    writeln!(out, "{}:", realloc_label)?;
+                    let old_ptr = format!("vp.old_ptr.{}", vec_idx);
+                    writeln!(out, "  %{} = inttoptr i64 %{} to ptr", old_ptr, ptr_i64)?;
+                    let new_data_r = format!("vp.new_data.r.{}", vec_idx);
+                    writeln!(out, "  %{} = call ptr @realloc(ptr %{}, i64 %{})", new_data_r, old_ptr, new_size)?;
+                    writeln!(out, "  br label %{}", merge_label)?;
+
+                    // Merge block with phi
+                    writeln!(out, "{}:", merge_label)?;
+                    let new_data = format!("vp.new_data.{}", vec_idx);
+                    writeln!(out, "  %{} = phi ptr [ %{}, %{} ], [ %{}, %{} ]", new_data, new_data_a, alloc_label, new_data_r, realloc_label)?;
+                    // Update header: ptr and cap
+                    let new_ptr_i64 = format!("vp.new_ptr.{}", vec_idx);
+                    writeln!(out, "  %{} = ptrtoint ptr %{} to i64", new_ptr_i64, new_data)?;
+                    writeln!(out, "  store i64 %{}, ptr %{}", new_ptr_i64, header_ptr)?;
+                    writeln!(out, "  store i64 %{}, ptr %{}", new_cap, cap_ptr)?;
+                    writeln!(out, "  br label %{}", store_label)?;
+
+                    // Store block
+                    writeln!(out, "{}:", store_label)?;
+                    // Re-load ptr since it may have changed
+                    let cur_ptr = format!("vp.cur_ptr.{}", vec_idx);
+                    writeln!(out, "  %{} = load i64, ptr %{}", cur_ptr, header_ptr)?;
+                    let data_ptr = format!("vp.data_ptr.{}", vec_idx);
+                    writeln!(out, "  %{} = inttoptr i64 %{} to ptr", data_ptr, cur_ptr)?;
+                    // Re-load len
+                    let cur_len = format!("vp.cur_len.{}", vec_idx);
+                    writeln!(out, "  %{} = load i64, ptr %{}", cur_len, len_ptr)?;
+                    // Store value at data[len]
+                    let slot = format!("vp.slot.{}", vec_idx);
+                    writeln!(out, "  %{} = getelementptr i64, ptr %{}, i64 %{}", slot, data_ptr, cur_len)?;
+                    writeln!(out, "  store i64 {}, ptr %{}", val_val, slot)?;
+                    // Increment len
+                    let new_len = format!("vp.new_len.{}", vec_idx);
+                    writeln!(out, "  %{} = add i64 %{}, 1", new_len, cur_len)?;
+                    writeln!(out, "  store i64 %{}, ptr %{}", new_len, len_ptr)?;
+                    writeln!(out, "  br label %{}", cont_label)?;
+
+                    // Continue
+                    writeln!(out, "{}:", cont_label)?;
+                    return Ok(());
+                }
+
+                // vec_pop(vec) -> i64: remove and return last element
+                if fn_name == "vec_pop" && args.len() == 1 {
+                    let vec_idx = *name_counts.entry("vec_pop".to_string()).or_insert(0);
+                    *name_counts.get_mut("vec_pop").unwrap() += 1;
+                    let vec_val = match &args[0] {
+                        Operand::Place(p) if local_names.contains(&p.name) => {
+                            let load_name = format!("vpop.vec.{}", vec_idx);
+                            writeln!(out, "  %{} = load i64, ptr %{}.addr", load_name, p.name)?;
+                            format!("%{}", load_name)
+                        }
+                        _ => self.format_operand_with_strings(&args[0], string_table),
+                    };
+                    // Get header
+                    let header_ptr = format!("vpop.header.{}", vec_idx);
+                    writeln!(out, "  %{} = inttoptr i64 {} to ptr", header_ptr, vec_val)?;
+                    // Load ptr and len
+                    let ptr_i64 = format!("vpop.ptr.{}", vec_idx);
+                    let len_ptr = format!("vpop.len.ptr.{}", vec_idx);
+                    let len_val = format!("vpop.len.{}", vec_idx);
+                    writeln!(out, "  %{} = load i64, ptr %{}", ptr_i64, header_ptr)?;
+                    writeln!(out, "  %{} = getelementptr i64, ptr %{}, i64 1", len_ptr, header_ptr)?;
+                    writeln!(out, "  %{} = load i64, ptr %{}", len_val, len_ptr)?;
+                    // Get last element: data[len-1]
+                    let data_ptr = format!("vpop.data.{}", vec_idx);
+                    writeln!(out, "  %{} = inttoptr i64 %{} to ptr", data_ptr, ptr_i64)?;
+                    let last_idx = format!("vpop.last_idx.{}", vec_idx);
+                    writeln!(out, "  %{} = sub i64 %{}, 1", last_idx, len_val)?;
+                    let elem_ptr = format!("vpop.elem.{}", vec_idx);
+                    writeln!(out, "  %{} = getelementptr i64, ptr %{}, i64 %{}", elem_ptr, data_ptr, last_idx)?;
+                    // Load element and decrement len, then return
+                    if let Some(d) = dest {
+                        if local_names.contains(&d.name) {
+                            let elem_val = format!("vpop.val.{}", vec_idx);
+                            writeln!(out, "  %{} = load i64, ptr %{}", elem_val, elem_ptr)?;
+                            writeln!(out, "  store i64 %{}, ptr %{}", last_idx, len_ptr)?;
+                            writeln!(out, "  store i64 %{}, ptr %{}.addr", elem_val, d.name)?;
+                        } else {
+                            // Use dest name directly for SSA assignment
+                            writeln!(out, "  %{} = load i64, ptr %{}", d.name, elem_ptr)?;
+                            writeln!(out, "  store i64 %{}, ptr %{}", last_idx, len_ptr)?;
+                        }
+                    } else {
+                        // No dest, still decrement len
+                        writeln!(out, "  store i64 %{}, ptr %{}", last_idx, len_ptr)?;
+                    }
+                    return Ok(());
+                }
+
+                // vec_free(vec) -> Unit: free data array and header
+                if fn_name == "vec_free" && args.len() == 1 {
+                    let vec_idx = *name_counts.entry("vec_free".to_string()).or_insert(0);
+                    *name_counts.get_mut("vec_free").unwrap() += 1;
+                    let vec_val = match &args[0] {
+                        Operand::Place(p) if local_names.contains(&p.name) => {
+                            let load_name = format!("vfree.vec.{}", vec_idx);
+                            writeln!(out, "  %{} = load i64, ptr %{}.addr", load_name, p.name)?;
+                            format!("%{}", load_name)
+                        }
+                        _ => self.format_operand_with_strings(&args[0], string_table),
+                    };
+                    // Get header and data ptr
+                    let header_ptr = format!("vfree.header.{}", vec_idx);
+                    writeln!(out, "  %{} = inttoptr i64 {} to ptr", header_ptr, vec_val)?;
+                    let ptr_i64 = format!("vfree.ptr.{}", vec_idx);
+                    writeln!(out, "  %{} = load i64, ptr %{}", ptr_i64, header_ptr)?;
+                    // Check if data ptr is non-null
+                    let ptr_nonnull = format!("vfree.nonnull.{}", vec_idx);
+                    writeln!(out, "  %{} = icmp ne i64 %{}, 0", ptr_nonnull, ptr_i64)?;
+                    let free_data_label = format!("vfree.data.{}", vec_idx);
+                    let free_header_label = format!("vfree.header.lbl.{}", vec_idx);
+                    writeln!(out, "  br i1 %{}, label %{}, label %{}", ptr_nonnull, free_data_label, free_header_label)?;
+                    // Free data array
+                    writeln!(out, "{}:", free_data_label)?;
+                    let data_ptr = format!("vfree.data.ptr.{}", vec_idx);
+                    writeln!(out, "  %{} = inttoptr i64 %{} to ptr", data_ptr, ptr_i64)?;
+                    writeln!(out, "  call void @free(ptr %{})", data_ptr)?;
+                    writeln!(out, "  br label %{}", free_header_label)?;
+                    // Free header
+                    writeln!(out, "{}:", free_header_label)?;
+                    writeln!(out, "  call void @free(ptr %{})", header_ptr)?;
+                    return Ok(());
+                }
+
                 // First check user-defined functions, then fall back to builtins
                 let ret_ty = fn_return_types
                     .get(fn_name)

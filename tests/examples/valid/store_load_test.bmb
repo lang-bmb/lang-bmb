@@ -1,0 +1,13 @@
+-- Store/Load simple test
+-- Tests store_i64/load_i64 individually
+
+fn test_store_load() -> i64 = {
+    let ptr = malloc(8);
+    store_i64(ptr, 99);
+    load_i64(ptr)
+};
+
+fn main() -> i64 = {
+    println(test_store_load());
+    0
+};

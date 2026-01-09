@@ -1,0 +1,13 @@
+-- Scope test returning literal
+
+fn test_scope() -> i64 = {
+    let x = 42;
+    println(x);
+    42
+};
+
+fn main() -> i64 = {
+    let result = test_scope();
+    println(result);
+    0
+};

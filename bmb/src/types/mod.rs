@@ -171,6 +171,26 @@ impl TypeChecker {
         // box_free_i64(ptr: i64) -> Unit (alias for free)
         functions.insert("box_free_i64".to_string(), (vec![Type::I64], Type::Unit));
 
+        // v0.34.2.3: Vec<i64> dynamic array builtins (RFC-0007)
+        // vec_new() -> i64 (create empty vector, returns header pointer)
+        functions.insert("vec_new".to_string(), (vec![], Type::I64));
+        // vec_with_capacity(cap: i64) -> i64 (create vector with pre-allocated capacity)
+        functions.insert("vec_with_capacity".to_string(), (vec![Type::I64], Type::I64));
+        // vec_push(vec: i64, value: i64) -> Unit (append element with auto-grow)
+        functions.insert("vec_push".to_string(), (vec![Type::I64, Type::I64], Type::Unit));
+        // vec_pop(vec: i64) -> i64 (remove and return last element)
+        functions.insert("vec_pop".to_string(), (vec![Type::I64], Type::I64));
+        // vec_get(vec: i64, index: i64) -> i64 (read element at index)
+        functions.insert("vec_get".to_string(), (vec![Type::I64, Type::I64], Type::I64));
+        // vec_set(vec: i64, index: i64, value: i64) -> Unit (write element at index)
+        functions.insert("vec_set".to_string(), (vec![Type::I64, Type::I64, Type::I64], Type::Unit));
+        // vec_len(vec: i64) -> i64 (get current length)
+        functions.insert("vec_len".to_string(), (vec![Type::I64], Type::I64));
+        // vec_cap(vec: i64) -> i64 (get capacity)
+        functions.insert("vec_cap".to_string(), (vec![Type::I64], Type::I64));
+        // vec_free(vec: i64) -> Unit (deallocate vector and its data)
+        functions.insert("vec_free".to_string(), (vec![Type::I64], Type::Unit));
+
         Self {
             env: HashMap::new(),
             functions,

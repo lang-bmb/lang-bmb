@@ -1,0 +1,8 @@
+-- Minimal Vec test
+fn main() -> i64 = {
+    let v = vec_new();
+    let vv = v;
+    vec_push(vv, 42);
+    let x = vec_len(vv);
+    x
+};

@@ -1,0 +1,11 @@
+-- Multi-malloc test
+
+fn main() -> i64 = {
+    let a = malloc(64);
+    println(a);
+    let b = malloc(128);
+    println(b);
+    let c = a + b;
+    println(c);
+    0
+};

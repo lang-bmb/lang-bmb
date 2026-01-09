@@ -1,0 +1,12 @@
+-- Allocation without free test
+
+fn test_malloc() -> i64 = {
+    let ptr = malloc(64);
+    println(ptr);
+    0
+};
+
+fn main() -> i64 = {
+    println(test_malloc());
+    0
+};

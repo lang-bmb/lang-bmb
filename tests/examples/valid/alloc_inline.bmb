@@ -1,0 +1,13 @@
+-- Malloc inline test (Phase 34.2.1)
+
+fn test_malloc() -> i64 = {
+    let ptr = malloc(64);
+    println(ptr);
+    ptr
+};
+
+fn main() -> i64 = {
+    let result = test_malloc();
+    println(result);
+    0
+};

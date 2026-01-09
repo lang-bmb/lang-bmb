@@ -1,0 +1,13 @@
+-- Scope test without malloc
+
+fn test_scope() -> i64 = {
+    let x = 42;
+    println(x);
+    x
+};
+
+fn main() -> i64 = {
+    let result = test_scope();
+    println(result);
+    0
+};
