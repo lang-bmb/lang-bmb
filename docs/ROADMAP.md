@@ -2453,10 +2453,10 @@ See [RFC-0005](RFC/RFC-0005-BENCHMARK-PACKAGE-ROADMAP.md) for Phase 33.6 overvie
 
 | Task | Description | Priority | Status |
 |------|-------------|----------|--------|
-| 34.2.1 | Allocator interface (malloc/free wrappers) | P0 | 📋 Planned |
-| 34.2.2 | Drop trait implementation | P0 | 📋 Planned |
-| 34.2.3 | Box<T>: single heap allocation | P0 | 📋 Planned |
-| 34.2.4 | Vec<T>: growable array | P0 | 📋 Planned |
+| 34.2.1 | Allocator interface (malloc/free wrappers) | P0 | ✅ v0.34.21 |
+| 34.2.2 | Box<T>: single heap allocation | P0 | 📋 Planned |
+| 34.2.3 | Vec<T>: growable array | P0 | 📋 Planned |
+| 34.2.4 | Drop trait implementation | P0 | 📋 Planned |
 | 34.2.5 | Hash trait implementation | P1 | 📋 Planned |
 | 34.2.6 | HashMap<K, V>: Swiss Table | P1 | 📋 Planned |
 | 34.2.7 | HashSet<T>: unique collection | P1 | 📋 Planned |
