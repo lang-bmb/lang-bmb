@@ -27,12 +27,20 @@ fn int_to_string(n: i64) -> String =
 fn run_demo() -> i64 =
     let test_content = "Hello from BMB CLI Demo!";
     let w1 = write_file("cli_demo_test.txt", test_content);
-    if w1 != 0 { 1 } else { let read_content = read_file("cli_demo_test.txt") };
-        if read_content != test_content { 2 } else { let exists = file_exists("cli_demo_test.txt") };
-            if exists != 1 { 3 } else { let size = file_size("cli_demo_test.txt") };
-                if size < 1 { 4 } else { let echo_result = system("echo BMB CLI Demo executed successfully") };
+    if w1 != 0 { 1 } else {
+        let read_content = read_file("cli_demo_test.txt");
+        if read_content != test_content { 2 } else {
+            let file_exists_ = file_exists("cli_demo_test.txt");
+            if file_exists_ != 1 { 3 } else {
+                let size = file_size("cli_demo_test.txt");
+                if size < 1 { 4 } else {
+                    let echo_result = system("echo BMB CLI Demo executed successfully");
                     let cleanup = system("del cli_demo_test.txt 2>nul");
-                    0;
+                    0
+                }
+            }
+        }
+    };
 
 // ============================================================================
 // File Processing Functions
@@ -42,11 +50,13 @@ fn make_summary(path: String, size: i64) -> String =
     "File: " + path + " Size: " + int_to_string(size);
 
 fn process_file(input_path: String, output_path: String) -> i64 =
-    let exists = file_exists(input_path);
-    if exists != 1 { -1 } else { let content = read_file(input_path) };
+    let file_exists_ = file_exists(input_path);
+    if file_exists_ != 1 { -1 } else {
+        let content = read_file(input_path);
         let size = count_chars(content);
         let info = make_summary(input_path, size);
-        if is_empty(output_path) == 1 { 0 } else { write_file(output_path, info) };
+        if is_empty(output_path) == 1 { 0 } else { write_file(output_path, info) }
+    };
 
 // ============================================================================
 // Main Entry Point

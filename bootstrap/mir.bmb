@@ -52,9 +52,9 @@ fn mir_call() -> i64 = 5000;
 // Extract instruction kind
 fn mir_inst_kind(inst: i64) -> i64 = inst / 1000;
 
-// Instruction kind names (for debugging)
+// Instruction kind names (for debugging): 1=CONST 2=COPY 3=BINOP 4=UNARY 5=CALL 0=UNKNOWN
 fn mir_inst_name(kind: i64) -> i64 =
-    if kind == 1 { 1      // CONST } else if kind == 2 { 2 // COPY } else if kind == 3 { 3 // BINOP } else if kind == 4 { 4 // UNARY } else if kind == 5 { 5 // CALL } else { 0 };                  // UNKNOWN
+    if kind == 1 { 1 } else if kind == 2 { 2 } else if kind == 3 { 3 } else if kind == 4 { 4 } else if kind == 5 { 5 } else { 0 };
 
 // ============================================================================
 // Terminator Encoding
@@ -250,8 +250,9 @@ fn pack_mir_result(temp_count: i64, text: String) -> String =
 fn unpack_mir_count(result: String) -> i64 =
     parse_int_prefix(result, 0, 0);
 
+// Find first colon (58 = ':')
 fn find_first_colon(s: String, pos: i64) -> i64 =
-    if pos >= s.len() { pos } else if s.char_at(pos) == 58 { pos  // ':' } else { find_first_colon(s, pos + 1) };
+    if pos >= s.len() { pos } else if s.char_at(pos) == 58 { pos } else { find_first_colon(s, pos + 1) };
 
 fn unpack_mir_text(result: String) -> String =
     let colon_pos = find_first_colon(result, 0);
@@ -259,8 +260,10 @@ fn unpack_mir_text(result: String) -> String =
 
 // Parse integer prefix from string
 fn parse_int_prefix(s: String, pos: i64, acc: i64) -> i64 =
-    if pos >= s.len() { acc } else { let c = s.char_at(pos) };
-        if c >= 48 and c <= 57 { parse_int_prefix(s, pos + 1, acc * 10 + (c - 48)) } else { acc };
+    if pos >= s.len() { acc } else {
+        let c = s.char_at(pos);
+        if c >= 48 and c <= 57 { parse_int_prefix(s, pos + 1, acc * 10 + (c - 48)) } else { acc }
+    };
 
 // ============================================================================
 // Example: Lower Binary Expression
