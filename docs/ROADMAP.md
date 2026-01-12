@@ -29,7 +29,7 @@
 | **테스트 통과** | 전체 테스트 스위트 (1,753+) | ✅ 완료 |
 | **문서 완성** | 스펙, 레퍼런스, 튜토리얼 | ✅ 완료 |
 | **생태계** | 10+ 핵심 패키지, 샘플, 시나리오 | ⚠️ 12/14 패키지 완료 |
-| **AI Query** | RFC-0001 완전 구현 | ⚠️ Phase 2 완료 (deps, contract, ctx) |
+| **AI Query** | RFC-0001 완전 구현 | ✅ Phase 3 완료 (sig, batch, impact, format) |
 
 ---
 
@@ -160,15 +160,15 @@ node tools/rust_to_bmb.mjs path/to/*.rs --apply
 | Rust에서 마이그레이션 | Rust 개발자를 위한 가이드 |
 | AI 코드 생성 | LLM과 BMB의 시너지 |
 
-### AI Query - 컨텍스트 생성 (RFC-0001 Phase 2-3) ⏳ 진행 중
+### AI Query - 컨텍스트 생성 (RFC-0001 Phase 2-3) ✅ 완료
 
 | ID | 태스크 | 설명 | 상태 |
 |----|--------|------|------|
 | 48.Q1 | `bmb q ctx` | AI 프롬프트용 컨텍스트 생성 | ✅ 완료 |
-| 48.Q2 | `--format llm` | LLM 친화적 출력 형식 | ⏳ 대기 |
-| 48.Q3 | `bmb q sig` | 시그니처 패턴 검색 (`--accepts`, `--returns`) | ⏳ 대기 |
-| 48.Q4 | `bmb q counterexample` | 검증 실패 시 반례 조회 | ⏳ 대기 |
-| 48.Q5 | `source.idx` 생성 | 소스 위치 매핑 인덱스 | ⏳ 대기 |
+| 48.Q2 | `--format llm` | LLM 친화적 출력 형식 | ✅ 완료 |
+| 48.Q3 | `bmb q sig` | 시그니처 패턴 검색 (`--accepts`, `--returns`) | ✅ 완료 |
+| 48.Q4 | `bmb q counterexample` | 검증 실패 시 반례 조회 | ⏳ v0.50 |
+| 48.Q5 | `source.idx` 생성 | 소스 위치 매핑 인덱스 | ⏳ v0.50 |
 
 ---
 
@@ -189,15 +189,15 @@ node tools/rust_to_bmb.mjs path/to/*.rs --apply
 | 크로스 플랫폼 | Linux, Windows, macOS |
 | AI Query 완료 | RFC-0001 전체 기능 구현 |
 
-### AI Query - 서버 및 고급 기능 (RFC-0001 Phase 3+)
+### AI Query - 서버 및 고급 기능 (RFC-0001 Phase 3+) ✅ 완료
 
-| ID | 태스크 | 설명 | 우선순위 |
-|----|--------|------|----------|
-| 49.Q1 | `bmb q batch` | 배치 쿼리 (`queries.json`) | P1 |
-| 49.Q2 | `bmb q impact` | 변경 영향 분석 | P1 |
-| 49.Q3 | `bmb q serve` | HTTP 쿼리 서버 모드 | P2 |
-| 49.Q4 | `bmb index --watch` | 실시간 인덱스 갱신 | P2 |
-| 49.Q5 | RFC-0001 문서 갱신 | "Draft" → "Implemented" | P1 |
+| ID | 태스크 | 설명 | 상태 |
+|----|--------|------|------|
+| 49.Q1 | `bmb q batch` | 배치 쿼리 (`queries.json`) | ✅ 완료 |
+| 49.Q2 | `bmb q impact` | 변경 영향 분석 | ✅ 완료 |
+| 49.Q3 | `bmb q serve` | HTTP 쿼리 서버 모드 | ⏳ v0.50 |
+| 49.Q4 | `bmb index --watch` | 실시간 인덱스 갱신 | ⏳ v0.50 |
+| 49.Q5 | RFC-0001 문서 갱신 | "Draft" → "Implemented" | ✅ 완료 |
 
 ---
 
@@ -275,7 +275,7 @@ v1.0.0-beta Golden ★ ───────────────────
 - ✅ API 안정성 문서
 - ✅ 릴리스 자동화
 
-### AI Query System (v0.25-v0.47 - RFC-0001 Phase 1-2)
+### AI Query System (v0.25-v0.49 - RFC-0001 Phase 1-3) ✅ 완료
 - ✅ `bmb index` - 인덱스 생성 (`.bmb/index/`)
 - ✅ `bmb q sym` - 심볼 검색
 - ✅ `bmb q fn` - 함수 조회 (`--has-pre`, `--has-post`, `--recursive`)
@@ -284,8 +284,12 @@ v1.0.0-beta Golden ★ ───────────────────
 - ✅ `bmb q deps` - 의존성 쿼리 (`--reverse`, `--transitive`) [v0.47]
 - ✅ `bmb q contract` - 계약 상세 쿼리 (`--uses-old`) [v0.47]
 - ✅ `bmb q ctx` - AI 컨텍스트 생성 (`--depth`, `--include-tests`) [v0.48]
+- ✅ `bmb q sig` - 시그니처 검색 (`--accepts`, `--returns`) [v0.48]
+- ✅ `bmb q batch` - 배치 쿼리 (queries.json) [v0.49]
+- ✅ `bmb q impact` - 변경 영향 분석 (`--change`) [v0.49]
+- ✅ `--format llm` - LLM 최적화 출력 형식 [v0.48]
 - ✅ 인덱스 파일: `manifest.json`, `symbols.json`, `functions.json`, `types.json`
-- ⏳ Phase 3: proof, serve, batch (v0.46, v0.49 계획)
+- ⏳ v0.50: proof, serve, counterexample
 
 ---
 

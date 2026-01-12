@@ -150,6 +150,18 @@ enum Command {
     },
 }
 
+/// Output format for queries (v0.48 - RFC-0001)
+#[derive(Clone, Copy, Debug, Default, clap::ValueEnum)]
+enum OutputFormat {
+    /// JSON output (default)
+    #[default]
+    Json,
+    /// Compact single-line format
+    Compact,
+    /// LLM-optimized format (token-efficient)
+    Llm,
+}
+
 #[derive(Subcommand)]
 enum QueryType {
     /// Search symbols by pattern
@@ -162,6 +174,9 @@ enum QueryType {
         /// Only show public symbols
         #[arg(long)]
         public: bool,
+        /// Output format (json, compact, llm)
+        #[arg(long, short = 'f', value_enum, default_value = "json")]
+        format: OutputFormat,
     },
     /// Query function details
     Fn {
@@ -177,6 +192,9 @@ enum QueryType {
         /// Show recursive functions
         #[arg(long)]
         recursive: bool,
+        /// Output format (json, compact, llm)
+        #[arg(long, short = 'f', value_enum, default_value = "json")]
+        format: OutputFormat,
     },
     /// Query type details
     Type {
@@ -186,9 +204,16 @@ enum QueryType {
         /// Filter by kind (struct, enum, trait)
         #[arg(long)]
         kind: Option<String>,
+        /// Output format (json, compact, llm)
+        #[arg(long, short = 'f', value_enum, default_value = "json")]
+        format: OutputFormat,
     },
     /// Show project metrics
-    Metrics,
+    Metrics {
+        /// Output format (json, compact, llm)
+        #[arg(long, short = 'f', value_enum, default_value = "json")]
+        format: OutputFormat,
+    },
     /// Query dependencies (v0.47 - RFC-0001)
     Deps {
         /// Target to query (e.g., fn:main, type:Order)
@@ -199,6 +224,9 @@ enum QueryType {
         /// Include transitive dependencies
         #[arg(long)]
         transitive: bool,
+        /// Output format (json, compact, llm)
+        #[arg(long, short = 'f', value_enum, default_value = "json")]
+        format: OutputFormat,
     },
     /// Query contract details (v0.47 - RFC-0001)
     Contract {
@@ -207,6 +235,9 @@ enum QueryType {
         /// Show contracts that use old() state
         #[arg(long)]
         uses_old: bool,
+        /// Output format (json, compact, llm)
+        #[arg(long, short = 'f', value_enum, default_value = "json")]
+        format: OutputFormat,
     },
     /// Generate AI context for a target (v0.48 - RFC-0001)
     Ctx {
@@ -218,6 +249,43 @@ enum QueryType {
         /// Include related tests
         #[arg(long)]
         include_tests: bool,
+        /// Output format (json, compact, llm)
+        #[arg(long, short = 'f', value_enum, default_value = "json")]
+        format: OutputFormat,
+    },
+    /// Search functions by signature pattern (v0.48 - RFC-0001)
+    Sig {
+        /// Signature pattern (e.g., "(&[i64]) -> i64")
+        #[arg(default_value = "")]
+        pattern: String,
+        /// Find functions that accept this type
+        #[arg(long)]
+        accepts: Option<String>,
+        /// Find functions that return this type
+        #[arg(long)]
+        returns: Option<String>,
+        /// Output format (json, compact, llm)
+        #[arg(long, short = 'f', value_enum, default_value = "json")]
+        format: OutputFormat,
+    },
+    /// Run batch queries from file (v0.49 - RFC-0001)
+    Batch {
+        /// Path to queries JSON file
+        file: PathBuf,
+        /// Output format (json, compact, llm)
+        #[arg(long, short = 'f', value_enum, default_value = "json")]
+        format: OutputFormat,
+    },
+    /// Analyze change impact (v0.49 - RFC-0001)
+    Impact {
+        /// Target to analyze (e.g., fn:calculate_fee)
+        target: String,
+        /// Description of the change
+        #[arg(long)]
+        change: String,
+        /// Output format (json, compact, llm)
+        #[arg(long, short = 'f', value_enum, default_value = "json")]
+        format: OutputFormat,
     },
 }
 
@@ -1564,7 +1632,7 @@ fn index_project(path: &PathBuf, _watch: bool, verbose: bool) -> Result<(), Box<
 /// v0.25: Run query against project index
 fn run_query(query_type: QueryType) -> Result<(), Box<dyn std::error::Error>> {
     use bmb::index::{read_index, SymbolKind};
-    use bmb::query::QueryEngine;
+    use bmb::query::{QueryEngine, format_output};
 
     // Try to read index from current directory
     let current_dir = std::env::current_dir()?;
@@ -1579,8 +1647,15 @@ fn run_query(query_type: QueryType) -> Result<(), Box<dyn std::error::Error>> {
 
     let engine = QueryEngine::new(index);
 
+    // Helper to convert OutputFormat to query format string
+    let fmt_str = |f: OutputFormat| match f {
+        OutputFormat::Json => "json",
+        OutputFormat::Compact => "compact",
+        OutputFormat::Llm => "llm",
+    };
+
     match query_type {
-        QueryType::Sym { pattern, kind, public } => {
+        QueryType::Sym { pattern, kind, public, format } => {
             let symbol_kind = kind.as_ref().and_then(|k| match k.as_str() {
                 "fn" | "function" => Some(SymbolKind::Function),
                 "struct" => Some(SymbolKind::Struct),
@@ -1591,52 +1666,67 @@ fn run_query(query_type: QueryType) -> Result<(), Box<dyn std::error::Error>> {
             });
 
             let result = engine.query_symbols(&pattern, symbol_kind, public);
-            println!("{}", serde_json::to_string_pretty(&result)?);
+            println!("{}", format_output(&result, fmt_str(format))?);
         }
 
-        QueryType::Fn { name, has_pre, has_post, recursive } => {
+        QueryType::Fn { name, has_pre, has_post, recursive, format } => {
             if !name.is_empty() && !has_pre && !has_post && !recursive {
                 // Query specific function
                 let result = engine.query_function(&name);
-                println!("{}", serde_json::to_string_pretty(&result)?);
+                println!("{}", format_output(&result, fmt_str(format))?);
             } else {
                 // Query functions with filters
                 let pre_filter = if has_pre { Some(true) } else { None };
                 let post_filter = if has_post { Some(true) } else { None };
                 let recursive_filter = if recursive { Some(true) } else { None };
                 let result = engine.query_functions(pre_filter, post_filter, recursive_filter, false);
-                println!("{}", serde_json::to_string_pretty(&result)?);
+                println!("{}", format_output(&result, fmt_str(format))?);
             }
         }
 
-        QueryType::Type { name, kind } => {
+        QueryType::Type { name, kind, format } => {
             if !name.is_empty() {
                 let result = engine.query_type(&name);
-                println!("{}", serde_json::to_string_pretty(&result)?);
+                println!("{}", format_output(&result, fmt_str(format))?);
             } else {
                 let result = engine.query_types(kind.as_deref(), false);
-                println!("{}", serde_json::to_string_pretty(&result)?);
+                println!("{}", format_output(&result, fmt_str(format))?);
             }
         }
 
-        QueryType::Metrics => {
+        QueryType::Metrics { format } => {
             let metrics = engine.query_metrics();
-            println!("{}", serde_json::to_string_pretty(&metrics)?);
+            println!("{}", format_output(&metrics, fmt_str(format))?);
         }
 
-        QueryType::Deps { target, reverse, transitive } => {
+        QueryType::Deps { target, reverse, transitive, format } => {
             let result = engine.query_deps(&target, reverse, transitive);
-            println!("{}", serde_json::to_string_pretty(&result)?);
+            println!("{}", format_output(&result, fmt_str(format))?);
         }
 
-        QueryType::Contract { name, uses_old } => {
+        QueryType::Contract { name, uses_old, format } => {
             let result = engine.query_contract(&name, uses_old);
-            println!("{}", serde_json::to_string_pretty(&result)?);
+            println!("{}", format_output(&result, fmt_str(format))?);
         }
 
-        QueryType::Ctx { target, depth, include_tests } => {
+        QueryType::Ctx { target, depth, include_tests, format } => {
             let result = engine.query_context(&target, depth, include_tests);
-            println!("{}", serde_json::to_string_pretty(&result)?);
+            println!("{}", format_output(&result, fmt_str(format))?);
+        }
+
+        QueryType::Sig { pattern, accepts, returns, format } => {
+            let result = engine.query_signature(pattern.as_str(), accepts.as_deref(), returns.as_deref());
+            println!("{}", format_output(&result, fmt_str(format))?);
+        }
+
+        QueryType::Batch { file, format } => {
+            let result = engine.query_batch(&file)?;
+            println!("{}", format_output(&result, fmt_str(format))?);
+        }
+
+        QueryType::Impact { target, change, format } => {
+            let result = engine.query_impact(&target, &change);
+            println!("{}", format_output(&result, fmt_str(format))?);
         }
     }
 

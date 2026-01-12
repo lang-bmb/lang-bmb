@@ -2,7 +2,7 @@
 
 **RFC**: 0001
 **Title**: AI-Native Code Query System
-**Status**: Partially Implemented (Phase 2)
+**Status**: Implemented (Phase 3)
 **Created**: 2026-01-04
 **Updated**: 2026-01-12
 
@@ -778,14 +778,15 @@ CALLS: (none, primitive operation)
 | `bmb q ctx` | 컨텍스트 (`--depth`, `--include-tests`) | ✅ 구현됨 |
 | `bmb q counterexample` | 반례 | ⏳ v0.48 예정 |
 
-### Phase 3 (v0.49) ⏳ 계획
+### Phase 3 (v0.48-v0.49) ✅ 완료
 
 | 명령 | 설명 | 상태 |
 |------|------|------|
-| `bmb q sig` | 시그니처 검색 | ⏳ 대기 |
-| `bmb q impact` | 영향 분석 | ⏳ 대기 |
-| `bmb q batch` | 배치 쿼리 | ⏳ 대기 |
-| `bmb q serve` | HTTP 쿼리 서버 | ⏳ 대기 |
+| `bmb q sig` | 시그니처 검색 (`--accepts`, `--returns`) | ✅ 구현됨 |
+| `bmb q impact` | 영향 분석 (`--change`) | ✅ 구현됨 |
+| `bmb q batch` | 배치 쿼리 (queries.json) | ✅ 구현됨 |
+| `--format llm` | LLM 최적화 출력 형식 | ✅ 구현됨 |
+| `bmb q serve` | HTTP 쿼리 서버 | ⏳ v0.50 계획 |
 
 ---
 

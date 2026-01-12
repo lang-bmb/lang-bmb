@@ -1,10 +1,16 @@
-//! BMB AI Query System - v0.25.0
+//! BMB AI Query System - v0.48.0
 //!
 //! Query interface for AI tools to understand BMB projects.
 //! RFC-0001: AI-Native Code Query System
+//!
+//! ## Output Formats (v0.48)
+//! - `json`: Structured JSON (default, programmatic parsing)
+//! - `compact`: Single-line format (space-efficient)
+//! - `llm`: LLM-optimized format (token-efficient, semantic sections)
 
 use crate::index::{FunctionEntry, ProjectIndex, SymbolEntry, SymbolKind, TypeEntry};
 use serde::{Deserialize, Serialize};
+use std::path::Path;
 
 /// Query result wrapper
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1001,6 +1007,356 @@ impl QueryEngine {
                 }),
             },
         }
+    }
+}
+
+// =============================================================================
+// v0.48 - RFC-0001 Phase 2-3: Signature Query
+// =============================================================================
+
+/// Signature query result
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SigResult {
+    pub query: String,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub matches: Vec<SigMatch>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<QueryError>,
+}
+
+/// Signature match
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SigMatch {
+    pub name: String,
+    pub file: String,
+    pub line: usize,
+    pub signature: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub param_match: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub return_match: Option<bool>,
+}
+
+// =============================================================================
+// v0.49 - RFC-0001 Phase 3: Batch and Impact Queries
+// =============================================================================
+
+/// Batch query request
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BatchQuery {
+    #[serde(rename = "type")]
+    pub query_type: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub transitive: Option<bool>,
+}
+
+/// Batch query file format
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BatchQueryFile {
+    pub queries: Vec<BatchQuery>,
+}
+
+/// Batch query result
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BatchResult {
+    pub results: Vec<BatchResultEntry>,
+}
+
+/// Single batch result entry
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BatchResultEntry {
+    pub query: usize,
+    pub result: serde_json::Value,
+}
+
+/// Impact analysis result
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ImpactResult {
+    pub target: String,
+    pub change: String,
+    pub impact: ImpactAnalysis,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<QueryError>,
+}
+
+/// Impact analysis details
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ImpactAnalysis {
+    pub breaking: bool,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub direct_callers: Vec<CallerInfo>,
+    pub transitive_callers: usize,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub files_affected: Vec<String>,
+}
+
+impl QueryEngine {
+    /// v0.48: Query functions by signature pattern
+    pub fn query_signature(&self, pattern: &str, accepts: Option<&str>, returns: Option<&str>) -> SigResult {
+        let mut matches = Vec::new();
+
+        for func in &self.index.functions {
+            let sig_str = format!(
+                "({}) -> {}",
+                func.signature.params.iter().map(|p| format!("{}: {}", p.name, p.ty)).collect::<Vec<_>>().join(", "),
+                func.signature.return_type
+            );
+
+            // Check pattern match
+            let pattern_match = pattern.is_empty() || sig_str.contains(pattern);
+
+            // Check accepts filter
+            let (accepts_match, param_match) = if let Some(accepts_type) = accepts {
+                let matched_param = func.signature.params.iter().find(|p| p.ty.contains(accepts_type));
+                (matched_param.is_some(), matched_param.map(|p| p.name.clone()))
+            } else {
+                (true, None)
+            };
+
+            // Check returns filter
+            let returns_match = returns.is_none_or(|ret_type| func.signature.return_type.contains(ret_type));
+
+            if pattern_match && accepts_match && returns_match {
+                matches.push(SigMatch {
+                    name: func.name.clone(),
+                    file: func.file.clone(),
+                    line: func.line,
+                    signature: format!("fn{}", sig_str),
+                    param_match,
+                    return_match: returns.map(|_| true),
+                });
+            }
+        }
+
+        let query = if !pattern.is_empty() {
+            pattern.to_string()
+        } else if let Some(a) = accepts {
+            format!("--accepts {}", a)
+        } else if let Some(r) = returns {
+            format!("--returns {}", r)
+        } else {
+            "all".to_string()
+        };
+
+        SigResult {
+            query,
+            matches,
+            error: None,
+        }
+    }
+
+    /// v0.49: Run batch queries from file
+    pub fn query_batch(&self, file: &Path) -> Result<BatchResult, Box<dyn std::error::Error>> {
+        let content = std::fs::read_to_string(file)?;
+        let batch: BatchQueryFile = serde_json::from_str(&content)?;
+
+        let mut results = Vec::new();
+
+        for (idx, query) in batch.queries.iter().enumerate() {
+            let result = match query.query_type.as_str() {
+                "fn" => {
+                    if let Some(name) = &query.name {
+                        serde_json::to_value(self.query_function(name))?
+                    } else {
+                        serde_json::to_value(self.query_functions(None, None, None, false))?
+                    }
+                }
+                "type" => {
+                    if let Some(name) = &query.name {
+                        serde_json::to_value(self.query_type(name))?
+                    } else {
+                        serde_json::to_value(self.query_types(None, false))?
+                    }
+                }
+                "deps" => {
+                    if let Some(target) = &query.target {
+                        let transitive = query.transitive.unwrap_or(false);
+                        serde_json::to_value(self.query_deps(target, false, transitive))?
+                    } else {
+                        serde_json::json!({"error": "deps requires target"})
+                    }
+                }
+                "contract" => {
+                    if let Some(name) = &query.name {
+                        serde_json::to_value(self.query_contract(name, false))?
+                    } else {
+                        serde_json::json!({"error": "contract requires name"})
+                    }
+                }
+                "metrics" => serde_json::to_value(self.query_metrics())?,
+                _ => serde_json::json!({"error": format!("unknown query type: {}", query.query_type)}),
+            };
+
+            results.push(BatchResultEntry { query: idx, result });
+        }
+
+        Ok(BatchResult { results })
+    }
+
+    /// v0.49: Analyze change impact
+    pub fn query_impact(&self, target: &str, change: &str) -> ImpactResult {
+        // Parse target
+        let (kind, name) = if let Some(idx) = target.find(':') {
+            (&target[..idx], &target[idx + 1..])
+        } else {
+            ("fn", target)
+        };
+
+        if kind != "fn" {
+            return ImpactResult {
+                target: target.to_string(),
+                change: change.to_string(),
+                impact: ImpactAnalysis {
+                    breaking: false,
+                    direct_callers: Vec::new(),
+                    transitive_callers: 0,
+                    files_affected: Vec::new(),
+                },
+                error: Some(QueryError {
+                    code: "UNSUPPORTED".to_string(),
+                    message: "Impact analysis currently only supports functions".to_string(),
+                    suggestions: vec!["fn:function_name".to_string()],
+                }),
+            };
+        }
+
+        // Find the function
+        let func = self.index.functions.iter().find(|f| f.name == name);
+
+        match func {
+            Some(_f) => {
+                // Find direct callers
+                let mut direct_callers = Vec::new();
+                let mut files_affected = std::collections::HashSet::new();
+
+                for other_fn in &self.index.functions {
+                    if let Some(body) = &other_fn.body_info {
+                        if body.calls.contains(&name.to_string()) && other_fn.name != name {
+                            direct_callers.push(CallerInfo {
+                                name: other_fn.name.clone(),
+                                file: other_fn.file.clone(),
+                                line: other_fn.line,
+                            });
+                            files_affected.insert(other_fn.file.clone());
+                        }
+                    }
+                }
+
+                // Count transitive callers (simplified: just count direct for now)
+                let transitive_callers = direct_callers.len();
+
+                // Determine if breaking based on change description
+                let breaking = change.contains("add param")
+                    || change.contains("remove")
+                    || change.contains("rename")
+                    || change.contains("change type");
+
+                ImpactResult {
+                    target: target.to_string(),
+                    change: change.to_string(),
+                    impact: ImpactAnalysis {
+                        breaking,
+                        direct_callers,
+                        transitive_callers,
+                        files_affected: files_affected.into_iter().collect(),
+                    },
+                    error: None,
+                }
+            }
+            None => ImpactResult {
+                target: target.to_string(),
+                change: change.to_string(),
+                impact: ImpactAnalysis {
+                    breaking: false,
+                    direct_callers: Vec::new(),
+                    transitive_callers: 0,
+                    files_affected: Vec::new(),
+                },
+                error: Some(QueryError {
+                    code: "NOT_FOUND".to_string(),
+                    message: format!("Function '{}' not found", name),
+                    suggestions: self.suggest_functions(name),
+                }),
+            },
+        }
+    }
+}
+
+// =============================================================================
+// v0.48 - Output Format Functions
+// =============================================================================
+
+/// Format output based on format type (v0.48 - RFC-0001)
+pub fn format_output<T: Serialize>(data: &T, format: &str) -> Result<String, serde_json::Error> {
+    match format {
+        "compact" => serde_json::to_string(data),
+        "llm" => format_llm(data),
+        _ => serde_json::to_string_pretty(data), // json (default)
+    }
+}
+
+/// LLM-optimized output format (v0.48)
+/// Designed for token efficiency based on research:
+/// - Clear section headers
+/// - No redundant whitespace
+/// - Semantic grouping
+fn format_llm<T: Serialize>(data: &T) -> Result<String, serde_json::Error> {
+    let value = serde_json::to_value(data)?;
+    Ok(format_llm_value(&value, 0))
+}
+
+fn format_llm_value(value: &serde_json::Value, indent: usize) -> String {
+    match value {
+        serde_json::Value::Object(map) => {
+            let mut lines = Vec::new();
+            for (key, val) in map {
+                let key_upper = key.to_uppercase().replace('_', " ");
+                match val {
+                    serde_json::Value::Array(arr) if !arr.is_empty() => {
+                        lines.push(format!("{}:", key_upper));
+                        for item in arr {
+                            let item_str = format_llm_value(item, indent + 1);
+                            for line in item_str.lines() {
+                                lines.push(format!("  {}", line));
+                            }
+                        }
+                    }
+                    serde_json::Value::Object(_) => {
+                        lines.push(format!("{}:", key_upper));
+                        let nested = format_llm_value(val, indent + 1);
+                        for line in nested.lines() {
+                            lines.push(format!("  {}", line));
+                        }
+                    }
+                    serde_json::Value::String(s) => {
+                        lines.push(format!("{}: {}", key_upper, s));
+                    }
+                    serde_json::Value::Number(n) => {
+                        lines.push(format!("{}: {}", key_upper, n));
+                    }
+                    serde_json::Value::Bool(b) => {
+                        lines.push(format!("{}: {}", key_upper, b));
+                    }
+                    serde_json::Value::Null => {}
+                    serde_json::Value::Array(_) => {} // empty array, skip
+                }
+            }
+            lines.join("\n")
+        }
+        serde_json::Value::Array(arr) => {
+            arr.iter()
+                .map(|v| format_llm_value(v, indent))
+                .collect::<Vec<_>>()
+                .join("\n")
+        }
+        serde_json::Value::String(s) => s.clone(),
+        serde_json::Value::Number(n) => n.to_string(),
+        serde_json::Value::Bool(b) => b.to_string(),
+        serde_json::Value::Null => String::new(),
     }
 }
 
