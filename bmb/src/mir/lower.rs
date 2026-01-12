@@ -322,6 +322,12 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
 
             // Merge block with PHI node
             ctx.start_block(merge_label);
+
+            // v0.46: Register PHI result type to ensure proper type inference
+            // Use the then_result's type since both branches should have the same type
+            let phi_result_ty = ctx.operand_type(&then_result);
+            ctx.locals.insert(result.name.clone(), phi_result_ty);
+
             ctx.push_inst(MirInst::Phi {
                 dest: result.clone(),
                 values: vec![
@@ -448,9 +454,23 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
                 let dest = ctx.fresh_temp();
 
                 // v0.35.4: Store return type for Call result
-                if let Some(ret_ty) = ctx.func_return_types.get(func) {
-                    ctx.locals.insert(dest.name.clone(), ret_ty.clone());
-                }
+                // v0.46: Also handle runtime functions with known return types
+                let ret_ty = if let Some(ty) = ctx.func_return_types.get(func) {
+                    ty.clone()
+                } else {
+                    // Runtime functions with known return types
+                    match func.as_str() {
+                        // String-returning runtime functions
+                        "int_to_string" | "read_file" | "slice" | "digit_char" => MirType::String,
+                        // i64-returning runtime functions
+                        "byte_at" | "len" | "strlen" | "cstr_byte_at" => MirType::I64,
+                        // Bool-returning runtime functions
+                        "file_exists" | "cstr_eq" => MirType::Bool,
+                        // Default to i64 for unknown functions
+                        _ => MirType::I64,
+                    }
+                };
+                ctx.locals.insert(dest.name.clone(), ret_ty);
 
                 ctx.push_inst(MirInst::Call {
                     dest: Some(dest.clone()),
@@ -726,6 +746,14 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
 
             // Generate merge block with PHI
             ctx.start_block(merge_label);
+
+            // v0.46: Register PHI result type to ensure proper type inference
+            // Use the first arm's result type since all arms should have the same type
+            if let Some((first_result, _)) = phi_values.first() {
+                let phi_result_ty = ctx.operand_type(first_result);
+                ctx.locals.insert(result_place.name.clone(), phi_result_ty);
+            }
+
             ctx.push_inst(MirInst::Phi {
                 dest: result_place.clone(),
                 values: phi_values,
@@ -834,6 +862,17 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
             // Generate the function call with the method name
             // In a full implementation, the method name would be mangled with the type
             let dest = ctx.fresh_temp();
+
+            // v0.46: Register method call return types
+            // String methods have known return types
+            let ret_type = match method.as_str() {
+                "len" | "byte_at" => MirType::I64,
+                "slice" => MirType::String,
+                // Default to checking user-defined function return types
+                _ => ctx.func_return_types.get(method).cloned().unwrap_or(MirType::I64),
+            };
+            ctx.locals.insert(dest.name.clone(), ret_type);
+
             ctx.push_inst(MirInst::Call {
                 dest: Some(dest.clone()),
                 func: method.clone(),

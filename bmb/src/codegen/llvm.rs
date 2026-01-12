@@ -598,9 +598,10 @@ impl<'ctx> LlvmContext<'ctx> {
                     }
 
                     // Determine type from the first incoming value
+                    // v0.46: Use constant_type() to avoid generating code during type determination
                     if let Some((first_value, _)) = values.first() {
                         let llvm_type = match first_value {
-                            Operand::Constant(c) => self.gen_constant(c).get_type(),
+                            Operand::Constant(c) => self.constant_type(c),
                             Operand::Place(p) => {
                                 if let Some((_, ty)) = self.variables.get(&p.name) {
                                     *ty
@@ -803,6 +804,19 @@ impl<'ctx> LlvmContext<'ctx> {
         }
 
         Ok(())
+    }
+
+    /// Get the LLVM type for a constant without generating code
+    /// Used by allocate_phi_destinations to determine types without side effects
+    fn constant_type(&self, constant: &Constant) -> BasicTypeEnum<'ctx> {
+        match constant {
+            Constant::Int(_) => self.context.i64_type().into(),
+            Constant::Float(_) => self.context.f64_type().into(),
+            Constant::Bool(_) => self.context.bool_type().into(),
+            Constant::String(_) => self.context.ptr_type(inkwell::AddressSpace::default()).into(),
+            Constant::Unit => self.context.i8_type().into(),
+            Constant::Char(_) => self.context.i32_type().into(),
+        }
     }
 
     /// Generate a constant value
