@@ -149,8 +149,10 @@ fn read_until_ws(s: String, pos: i64) -> String =
     read_until_ws_acc(s, pos, "");
 
 fn read_until_ws_acc(s: String, pos: i64, acc: String) -> String =
-    if pos >= s.len() { acc } else { let c = s.char_at(pos) };
-        if c == 32 or c == 44 or c == 40 or c == 41 or c == 124 { acc } else { read_until_ws_acc(s, pos + 1, acc + char_to_string(c)) };
+    if pos >= s.len() { acc } else {
+        let c = s.char_at(pos);
+        if c == 32 or c == 44 or c == 40 or c == 41 or c == 124 { acc } else { read_until_ws_acc(s, pos + 1, acc + char_to_string(c)) }
+    };
 
 // Strip trailing colon from string
 fn strip_trailing_colon(s: String) -> String =

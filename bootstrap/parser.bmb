@@ -136,15 +136,17 @@ fn find_number_end(s: String, pos: i64) -> i64 =
 fn lookup_keyword(w: String) -> i64 =
     if w == "fn" { 100 } else if w == "let" { 101 } else if w == "if" { 102 } else if w == "then" { 103 } else if w == "else" { 104 } else if w == "true" { 105 } else if w == "false" { 106 } else if w == "and" { 107 } else if w == "or" { 108 } else if w == "not" { 109 } else if w == "pre" { 110 } else if w == "post" { 111 } else if w == "ret" { 112 } else if w == "i32" { 150 } else if w == "i64" { 151 } else if w == "f64" { 152 } else if w == "bool" { 153 } else if w == "String" { 154 } else { 201 };
 
-// Symbol code
+// Symbol code: 58=: 46=. 61== 59=; 44=, 40=( 41=) 123={ 125=} 91=[ 93=] 38=& 95=_ 43=+ 45=- 42=* 47=/ 37=% 60=< 62=>
 fn symbol_code(c: i64) -> i64 =
-    if c == 58 { 300       // : Colon } else if c == 46 { 301  // . Dot } else if c == 61 { 302  // = Eq } else if c == 59 { 303  // ; Semi } else if c == 44 { 304  // , Comma } else if c == 40 { 305  // ( LParen } else if c == 41 { 306  // ) RParen } else if c == 123 { 307 // { LBrace } else if c == 125 { 308 // } RBrace } else if c == 91 { 309  // [ LBracket } else if c == 93 { 310  // ] RBracket } else if c == 38 { 311  // & Ampersand } else if c == 95 { 312  // _ Underscore } else if c == 43 { 400  // + Plus } else if c == 45 { 401  // - Minus } else if c == 42 { 402  // * Star } else if c == 47 { 403  // / Slash } else if c == 37 { 404  // % Percent } else if c == 60 { 405  // < Lt } else if c == 62 { 406  // > Gt } else { 999 };
+    if c == 58 { 300 } else if c == 46 { 301 } else if c == 61 { 302 } else if c == 59 { 303 } else if c == 44 { 304 } else if c == 40 { 305 } else if c == 41 { 306 } else if c == 123 { 307 } else if c == 125 { 308 } else if c == 91 { 309 } else if c == 93 { 310 } else if c == 38 { 311 } else if c == 95 { 312 } else if c == 43 { 400 } else if c == 45 { 401 } else if c == 42 { 402 } else if c == 47 { 403 } else if c == 37 { 404 } else if c == 60 { 405 } else if c == 62 { 406 } else { 999 };
 
-// Check for two-character tokens
+// Check for two-character tokens: 3202=:: 3212=-> 3222==> 3232=.. 4102=== 4112=!= 4122=<= 4132=>=
 fn check_two_char(s: String, pos: i64) -> i64 =
-    if pos + 1 >= s.len() { 0 } else { let c1 = s.char_at(pos) };
+    if pos + 1 >= s.len() { 0 } else {
+        let c1 = s.char_at(pos);
         let c2 = s.char_at(pos + 1);
-        if c1 == 58 and c2 == 58 { 3202      // :: ColonColon } else if c1 == 45 and c2 == 62 { 3212 // -> Arrow } else if c1 == 61 and c2 == 62 { 3222 // => FatArrow } else if c1 == 46 and c2 == 46 { 3232 // .. DotDot } else if c1 == 61 and c2 == 61 { 4102 // == EqEq } else if c1 == 33 and c2 == 61 { 4112 // != NotEq } else if c1 == 60 and c2 == 61 { 4122 // <= LtEq } else if c1 == 62 and c2 == 61 { 4132 // >= GtEq } else { 0 };
+        if c1 == 58 and c2 == 58 { 3202 } else if c1 == 45 and c2 == 62 { 3212 } else if c1 == 61 and c2 == 62 { 3222 } else if c1 == 46 and c2 == 46 { 3232 } else if c1 == 61 and c2 == 61 { 4102 } else if c1 == 33 and c2 == 61 { 4112 } else if c1 == 60 and c2 == 61 { 4122 } else if c1 == 62 and c2 == 61 { 4132 } else { 0 }
+    };
 
 // Process identifier token
 fn process_ident(s: String, p: i64) -> i64 =
@@ -161,19 +163,23 @@ fn process_number(s: String, p: i64) -> i64 =
 // Process symbol token
 fn process_symbol(s: String, p: i64) -> i64 =
     let two = check_two_char(s, p);
-    if two > 0 { let kind = two / 10 };
+    if two > 0 {
+        let kind = two / 10;
         let tlen = two - kind * 10;
         kind * 1000000 + (p + tlen)
-    else
+    } else {
         let c = s.char_at(p);
         let kind = symbol_code(c);
-        kind * 1000000 + (p + 1);
+        kind * 1000000 + (p + 1)
+    };
 
-// Get next token: returns (kind * 1000000 + end_position)
+// Get next token: returns (kind * 1000000 + end_position), 900=EOF
 fn next_token(s: String, pos: i64) -> i64 =
     let p = skip_all(s, pos);
-    if p >= s.len() { 900 * 1000000 + p  // EOF } else { let c = s.char_at(p) };
-        if is_ident_start(c) { process_ident(s, p) } else if is_digit(c) { process_number(s, p) } else { process_symbol(s, p) };
+    if p >= s.len() { 900 * 1000000 + p } else {
+        let c = s.char_at(p);
+        if is_ident_start(c) { process_ident(s, p) } else if is_digit(c) { process_number(s, p) } else { process_symbol(s, p) }
+    };
 
 // Extract kind from token result
 fn tok_kind(tok: i64) -> i64 = tok / 1000000;
@@ -214,20 +220,20 @@ fn parse_type(s: String, pos: i64) -> i64 =
 
 // Forward declarations via mutual recursion
 // Parse primary expressions: literals, identifiers, parenthesized, if
+// Parse primary: int, true/false, ident/call, paren, if, let, not, unary minus
 fn parse_primary(s: String, pos: i64) -> i64 =
     let tok = next_token(s, pos);
     let kind = tok_kind(tok);
     let end = tok_end(tok);
-
-    // Integer literal
-    if kind == TK_INT() { pack_result(PR_OK(), end)
-    // true/false } else if kind == TK_TRUE() or kind == TK_FALSE() { pack_result(PR_OK(), end)
-    // Identifier (variable or function call) } else if kind == TK_IDENT() { parse_call_or_ident(s, end)
-    // Parenthesized expression } else if kind == TK_LPAREN() { parse_paren_expr(s, end)
-    // If expression } else if kind == TK_IF() { parse_if_expr(s, end)
-    // Let expression } else if kind == TK_LET() { parse_let_expr(s, end)
-    // Not expression } else if kind == TK_NOT() { parse_not_expr(s, end)
-    // Unary minus } else if kind == TK_MINUS() { parse_unary_minus(s, end) } else { pack_result(PR_ERR_EXPECTED_EXPR(), pos) };
+    if kind == TK_INT() { pack_result(PR_OK(), end) }
+    else if kind == TK_TRUE() or kind == TK_FALSE() { pack_result(PR_OK(), end) }
+    else if kind == TK_IDENT() { parse_call_or_ident(s, end) }
+    else if kind == TK_LPAREN() { parse_paren_expr(s, end) }
+    else if kind == TK_IF() { parse_if_expr(s, end) }
+    else if kind == TK_LET() { parse_let_expr(s, end) }
+    else if kind == TK_NOT() { parse_not_expr(s, end) }
+    else if kind == TK_MINUS() { parse_unary_minus(s, end) }
+    else { pack_result(PR_ERR_EXPECTED_EXPR(), pos) };
 
 // Parse call or just identifier
 fn parse_call_or_ident(s: String, pos: i64) -> i64 =
@@ -241,54 +247,72 @@ fn parse_call_args(s: String, pos: i64) -> i64 =
     let tok = next_token(s, pos);
     let kind = tok_kind(tok);
     let end = tok_end(tok);
-    if kind == TK_RPAREN() { pack_result(PR_OK(), end) } else { let r1 = parse_expr(s, pos) };
-        if not is_ok(r1) { r1 } else { parse_more_args(s, result_pos(r1)) };
+    if kind == TK_RPAREN() { pack_result(PR_OK(), end) } else {
+        let r1 = parse_expr(s, pos);
+        if not is_ok(r1) { r1 } else { parse_more_args(s, result_pos(r1)) }
+    };
 
 // Parse more arguments or closing paren
 fn parse_more_args(s: String, pos: i64) -> i64 =
     let tok = next_token(s, pos);
     let kind = tok_kind(tok);
     let end = tok_end(tok);
-    if kind == TK_RPAREN() { pack_result(PR_OK(), end) } else if kind == TK_COMMA() { let r1 = parse_expr(s, end) };
-        if not is_ok(r1) { r1 } else { parse_more_args(s, result_pos(r1)) }else pack_result(PR_ERR_EXPECTED_RPAREN(), pos);
+    if kind == TK_RPAREN() { pack_result(PR_OK(), end) } else if kind == TK_COMMA() {
+        let r1 = parse_expr(s, end);
+        if not is_ok(r1) { r1 } else { parse_more_args(s, result_pos(r1)) }
+    } else { pack_result(PR_ERR_EXPECTED_RPAREN(), pos) };
 
 // Parse parenthesized expression
 fn parse_paren_expr(s: String, pos: i64) -> i64 =
     let r1 = parse_expr(s, pos);
-    if not is_ok(r1) { r1 } else { let tok = next_token(s, result_pos(r1)) };
+    if not is_ok(r1) { r1 } else {
+        let tok = next_token(s, result_pos(r1));
         let kind = tok_kind(tok);
         let end = tok_end(tok);
-        if kind == TK_RPAREN() { pack_result(PR_OK(), end) } else { pack_result(PR_ERR_EXPECTED_RPAREN(), result_pos(r1)) };
+        if kind == TK_RPAREN() { pack_result(PR_OK(), end) } else { pack_result(PR_ERR_EXPECTED_RPAREN(), result_pos(r1)) }
+    };
 
 // Parse if expression: if cond then expr else expr
 fn parse_if_expr(s: String, pos: i64) -> i64 =
     let r_cond = parse_expr(s, pos);
-    if not is_ok(r_cond) { r_cond } else { let tok1 = next_token(s, result_pos(r_cond)) };
+    if not is_ok(r_cond) { r_cond } else {
+        let tok1 = next_token(s, result_pos(r_cond));
         let kind1 = tok_kind(tok1);
         let end1 = tok_end(tok1);
-        if kind1 != TK_THEN() { pack_result(PR_ERR_EXPECTED_THEN(), result_pos(r_cond)) } else { let r_then = parse_expr(s, end1) };
-            if not is_ok(r_then) { r_then } else { let tok2 = next_token(s, result_pos(r_then)) };
+        if kind1 != TK_THEN() { pack_result(PR_ERR_EXPECTED_THEN(), result_pos(r_cond)) } else {
+            let r_then = parse_expr(s, end1);
+            if not is_ok(r_then) { r_then } else {
+                let tok2 = next_token(s, result_pos(r_then));
                 let kind2 = tok_kind(tok2);
                 let end2 = tok_end(tok2);
-                if kind2 != TK_ELSE() { pack_result(PR_ERR_EXPECTED_ELSE(), result_pos(r_then)) } else { parse_expr(s, end2) };
+                if kind2 != TK_ELSE() { pack_result(PR_ERR_EXPECTED_ELSE(), result_pos(r_then)) } else { parse_expr(s, end2) }
+            }
+        }
+    };
 
 // Parse let expression: let name = expr; body
 fn parse_let_expr(s: String, pos: i64) -> i64 =
     let tok1 = next_token(s, pos);
     let kind1 = tok_kind(tok1);
     let end1 = tok_end(tok1);
-    // Handle 'let mut' pattern
+    // Handle 'let mut' pattern (117 = mut keyword)
     let name_pos = if kind1 == 117 { tok_end(next_token(s, end1)) } else { end1 };
     let tok_name = next_token(s, if kind1 == 117 { end1 } else { pos });
     let kind_name = tok_kind(tok_name);
-    if kind_name != TK_IDENT() { pack_result(PR_ERR_EXPECTED_IDENT(), pos) } else { let tok2 = next_token(s, name_pos) };
+    if kind_name != TK_IDENT() { pack_result(PR_ERR_EXPECTED_IDENT(), pos) } else {
+        let tok2 = next_token(s, name_pos);
         let kind2 = tok_kind(tok2);
         let end2 = tok_end(tok2);
-        if kind2 != TK_EQ() { pack_result(PR_ERR_EXPECTED_EQ(), name_pos) } else { let r_val = parse_expr(s, end2) };
-            if not is_ok(r_val) { r_val } else { let tok3 = next_token(s, result_pos(r_val)) };
+        if kind2 != TK_EQ() { pack_result(PR_ERR_EXPECTED_EQ(), name_pos) } else {
+            let r_val = parse_expr(s, end2);
+            if not is_ok(r_val) { r_val } else {
+                let tok3 = next_token(s, result_pos(r_val));
                 let kind3 = tok_kind(tok3);
                 let end3 = tok_end(tok3);
-                if kind3 != TK_SEMI() { pack_result(PR_ERR_EXPECTED_SEMI(), result_pos(r_val)) } else { parse_expr(s, end3) };
+                if kind3 != TK_SEMI() { pack_result(PR_ERR_EXPECTED_SEMI(), result_pos(r_val)) } else { parse_expr(s, end3) }
+            }
+        }
+    };
 
 // Parse not expression
 fn parse_not_expr(s: String, pos: i64) -> i64 = parse_primary(s, pos);
@@ -310,8 +334,10 @@ fn parse_binary_rest(s: String, pos: i64) -> i64 =
     let tok = next_token(s, pos);
     let kind = tok_kind(tok);
     let end = tok_end(tok);
-    if is_binop(kind) { let r2 = parse_primary(s, end) };
-        if not is_ok(r2) { r2 } else { parse_binary_rest(s, result_pos(r2)) }else pack_result(PR_OK(), pos);
+    if is_binop(kind) {
+        let r2 = parse_primary(s, end);
+        if not is_ok(r2) { r2 } else { parse_binary_rest(s, result_pos(r2)) }
+    } else { pack_result(PR_OK(), pos) };
 
 // Check if token is a binary operator
 fn is_binop(kind: i64) -> bool =
@@ -335,33 +361,47 @@ fn parse_fn(s: String, pos: i64) -> i64 =
     let tok1 = next_token(s, pos);
     let kind1 = tok_kind(tok1);
     let end1 = tok_end(tok1);
-    if kind1 != TK_IDENT() { pack_result(PR_ERR_EXPECTED_IDENT(), pos) } else { let tok2 = next_token(s, end1) };
+    if kind1 != TK_IDENT() { pack_result(PR_ERR_EXPECTED_IDENT(), pos) } else {
+        let tok2 = next_token(s, end1);
         let kind2 = tok_kind(tok2);
         let end2 = tok_end(tok2);
-        if kind2 != TK_LPAREN() { pack_result(PR_ERR_UNEXPECTED(), end1) } else { let r_params = parse_params(s, end2) };
-            if not is_ok(r_params) { r_params } else { let tok3 = next_token(s, result_pos(r_params)) };
+        if kind2 != TK_LPAREN() { pack_result(PR_ERR_UNEXPECTED(), end1) } else {
+            let r_params = parse_params(s, end2);
+            if not is_ok(r_params) { r_params } else {
+                let tok3 = next_token(s, result_pos(r_params));
                 let kind3 = tok_kind(tok3);
                 let end3 = tok_end(tok3);
-                if kind3 != TK_ARROW() { pack_result(PR_ERR_UNEXPECTED(), result_pos(r_params)) } else { let r_type = parse_type(s, end3) };
-                    if not is_ok(r_type) { r_type } else { let r_contracts = skip_contracts(s, result_pos(r_type)) };
-                        // Expect =
+                if kind3 != TK_ARROW() { pack_result(PR_ERR_UNEXPECTED(), result_pos(r_params)) } else {
+                    let r_type = parse_type(s, end3);
+                    if not is_ok(r_type) { r_type } else {
+                        let r_contracts = skip_contracts(s, result_pos(r_type));
                         let tok4 = next_token(s, r_contracts);
                         let kind4 = tok_kind(tok4);
                         let end4 = tok_end(tok4);
-                        if kind4 != TK_EQ() { pack_result(PR_ERR_EXPECTED_EQ(), r_contracts) } else { let r_body = parse_expr(s, end4) };
-                            if not is_ok(r_body) { r_body } else { let tok5 = next_token(s, result_pos(r_body)) };
+                        if kind4 != TK_EQ() { pack_result(PR_ERR_EXPECTED_EQ(), r_contracts) } else {
+                            let r_body = parse_expr(s, end4);
+                            if not is_ok(r_body) { r_body } else {
+                                let tok5 = next_token(s, result_pos(r_body));
                                 let kind5 = tok_kind(tok5);
                                 let end5 = tok_end(tok5);
-                                if kind5 != TK_SEMI() { pack_result(PR_ERR_EXPECTED_SEMI(), result_pos(r_body)) } else { pack_result(PR_OK(), end5) };
+                                if kind5 != TK_SEMI() { pack_result(PR_ERR_EXPECTED_SEMI(), result_pos(r_body)) } else { pack_result(PR_OK(), end5) }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    };
 
 // Skip pre/post contracts
 fn skip_contracts(s: String, pos: i64) -> i64 =
     let tok = next_token(s, pos);
     let kind = tok_kind(tok);
     let end = tok_end(tok);
-    if kind == TK_PRE() or kind == TK_POST() { let r = skip_contract_expr(s, end) };
+    if kind == TK_PRE() or kind == TK_POST() {
+        let r = skip_contract_expr(s, end);
         skip_contracts(s, r)
-    else pos;
+    } else { pos };
 
 // Skip a contract expression (until we see = or another pre/post)
 fn skip_contract_expr(s: String, pos: i64) -> i64 =
@@ -375,25 +415,35 @@ fn parse_params(s: String, pos: i64) -> i64 =
     let tok = next_token(s, pos);
     let kind = tok_kind(tok);
     let end = tok_end(tok);
-    if kind == TK_RPAREN() { pack_result(PR_OK(), end) } else if kind == TK_IDENT() { let tok2 = next_token(s, end) };
+    if kind == TK_RPAREN() { pack_result(PR_OK(), end) } else if kind == TK_IDENT() {
+        let tok2 = next_token(s, end);
         let kind2 = tok_kind(tok2);
         let end2 = tok_end(tok2);
-        if kind2 != TK_COLON() { pack_result(PR_ERR_UNEXPECTED(), end) } else { let r_type = parse_type(s, end2) };
-            if not is_ok(r_type) { r_type } else { parse_more_params(s, result_pos(r_type)) }else pack_result(PR_ERR_EXPECTED_IDENT(), pos);
+        if kind2 != TK_COLON() { pack_result(PR_ERR_UNEXPECTED(), end) } else {
+            let r_type = parse_type(s, end2);
+            if not is_ok(r_type) { r_type } else { parse_more_params(s, result_pos(r_type)) }
+        }
+    } else { pack_result(PR_ERR_EXPECTED_IDENT(), pos) };
 
 // Parse more parameters or closing paren
 fn parse_more_params(s: String, pos: i64) -> i64 =
     let tok = next_token(s, pos);
     let kind = tok_kind(tok);
     let end = tok_end(tok);
-    if kind == TK_RPAREN() { pack_result(PR_OK(), end) } else if kind == TK_COMMA() { let tok2 = next_token(s, end) };
+    if kind == TK_RPAREN() { pack_result(PR_OK(), end) } else if kind == TK_COMMA() {
+        let tok2 = next_token(s, end);
         let kind2 = tok_kind(tok2);
         let end2 = tok_end(tok2);
-        if kind2 != TK_IDENT() { pack_result(PR_ERR_EXPECTED_IDENT(), end) } else { let tok3 = next_token(s, end2) };
+        if kind2 != TK_IDENT() { pack_result(PR_ERR_EXPECTED_IDENT(), end) } else {
+            let tok3 = next_token(s, end2);
             let kind3 = tok_kind(tok3);
             let end3 = tok_end(tok3);
-            if kind3 != TK_COLON() { pack_result(PR_ERR_UNEXPECTED(), end2) } else { let r_type = parse_type(s, end3) };
-                if not is_ok(r_type) { r_type } else { parse_more_params(s, result_pos(r_type)) }else pack_result(PR_ERR_EXPECTED_RPAREN(), pos);
+            if kind3 != TK_COLON() { pack_result(PR_ERR_UNEXPECTED(), end2) } else {
+                let r_type = parse_type(s, end3);
+                if not is_ok(r_type) { r_type } else { parse_more_params(s, result_pos(r_type)) }
+            }
+        }
+    } else { pack_result(PR_ERR_EXPECTED_RPAREN(), pos) };
 
 // ============================================================
 // Parser: Program (sequence of function definitions)
@@ -404,8 +454,10 @@ fn parse_program(s: String, pos: i64) -> i64 =
     let tok = next_token(s, pos);
     let kind = tok_kind(tok);
     let end = tok_end(tok);
-    if kind == TK_EOF() { pack_result(PR_OK(), end) } else if kind == TK_FN() { let r = parse_fn(s, end) };
-        if not is_ok(r) { r } else { parse_program(s, result_pos(r)) }else pack_result(PR_ERR_UNEXPECTED(), pos);
+    if kind == TK_EOF() { pack_result(PR_OK(), end) } else if kind == TK_FN() {
+        let r = parse_fn(s, end);
+        if not is_ok(r) { r } else { parse_program(s, result_pos(r)) }
+    } else { pack_result(PR_ERR_UNEXPECTED(), pos) };
 
 // ============================================================
 // Tests (v0.30.142)
