@@ -28,7 +28,7 @@
 | **성능 검증** | Gate #3.1 통과 (C 대비 ≤1.10x) | ⚠️ LLVM 필요 |
 | **테스트 통과** | 전체 테스트 스위트 (1,753+) | ✅ 완료 |
 | **문서 완성** | 스펙, 레퍼런스, 튜토리얼 | ✅ 완료 |
-| **생태계** | 10+ 핵심 패키지, 샘플, 시나리오 | ❌ 미완료 |
+| **생태계** | 10+ 핵심 패키지, 샘플, 시나리오 | ⚠️ 12/14 패키지 완료 |
 
 ---
 
@@ -87,20 +87,29 @@ diff bmb-stage2 bmb-stage3  # 동일해야 함
 
 **목표**: 핵심 패키지 및 Rust 크레이트 포팅
 
-### 핵심 패키지 (10개)
+### 현재 gotgan-packages 상태 (12개, v0.32 호환 완료)
+
+| 패키지 | 설명 | LOC | 상태 |
+|--------|------|-----|------|
+| `bmb-fmt` | 문자열 포매팅 | 111 | ✅ v0.32 |
+| `bmb-fs` | 파일시스템 | 100 | ✅ v0.32 |
+| `bmb-http` | HTTP 유틸리티 | 120 | ✅ v0.32 |
+| `bmb-json` | JSON 파싱 | 479 | ✅ v0.32 |
+| `bmb-log` | 로깅 | 109 | ✅ v0.32 |
+| `bmb-math` | 수학 함수 | 154 | ✅ v0.32 |
+| `bmb-rand` | 난수 생성 | 60 | ✅ v0.32 |
+| `bmb-regex` | 정규표현식 | 92 | ✅ v0.32 |
+| `bmb-semver` | 시맨틱 버저닝 | 203 | ✅ v0.32 |
+| `bmb-testing` | 테스팅 프레임워크 | 118 | ✅ v0.32 |
+| `bmb-time` | 시간 유틸리티 | 168 | ✅ v0.32 |
+| `bmb-toml` | TOML 파싱 | 279 | ✅ v0.32 |
+
+### 남은 핵심 패키지 (2개)
 
 | 패키지 | 설명 | Rust 원본 | 우선순위 |
 |--------|------|-----------|----------|
 | `collections` | HashMap, BTreeMap, VecDeque | std::collections | P0 |
-| `regex` | 정규표현식 | regex | P0 |
-| `json` | JSON 파싱/생성 | serde_json | P0 |
-| `http` | HTTP 클라이언트 | reqwest/ureq | P1 |
-| `crypto` | SHA256, MD5, AES | ring/sha2 | P1 |
-| `time` | 날짜/시간 처리 | chrono | P1 |
-| `fs` | 파일시스템 확장 | std::fs | P1 |
-| `rand` | 난수 생성 | rand | P2 |
 | `args` | CLI 인자 파싱 | clap | P2 |
-| `log` | 로깅 | log/tracing | P2 |
 
 ### Rust 포팅 워크플로우
 
