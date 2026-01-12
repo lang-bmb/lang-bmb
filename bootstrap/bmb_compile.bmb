@@ -129,12 +129,30 @@ fn keyword_or_ident(s: String, start: i64, end: i64) -> i64 =
 
 fn next_token_raw(s: String, pos: i64) -> i64 =
     let p = skip_ws_comments(s, pos);
-    if p >= s.len() { make_tok(TK_EOF(), p, p) } else { let c = s.char_at(p) };
-        if is_ident_start(c) { let end = scan_ident_end(s, p + 1) };
+    if p >= s.len() { make_tok(TK_EOF(), p, p) } else {
+        let c = s.char_at(p);
+        if is_ident_start(c) {
+            let end = scan_ident_end(s, p + 1);
             keyword_or_ident(s, p, end)
-        else if is_digit(c) { let end = scan_int(s, p) };
+        } else if is_digit(c) {
+            let end = scan_int(s, p);
             make_tok(TK_INT(), p, end)
-        else if c == 58 { make_tok(TK_COLON(), p, p + 1) } else if c == 59 { make_tok(TK_SEMI(), p, p + 1) } else if c == 44 { make_tok(TK_COMMA(), p, p + 1) } else if c == 40 { make_tok(TK_LPAREN(), p, p + 1) } else if c == 41 { make_tok(TK_RPAREN(), p, p + 1) } else if c == 43 { make_tok(TK_PLUS(), p, p + 1) } else if c == 45 { if p + 1 < s.len() and s.char_at(p + 1) == 62 { make_tok(TK_ARROW(), p, p + 2) } else { make_tok(TK_MINUS(), p, p + 1) } } else if c == 42 { make_tok(TK_STAR(), p, p + 1) } else if c == 47 { make_tok(TK_SLASH(), p, p + 1) } else if c == 37 { make_tok(TK_PERCENT(), p, p + 1) } else if c == 61 { if p + 1 < s.len() and s.char_at(p + 1) == 61 { make_tok(TK_EQEQ(), p, p + 2) } else { make_tok(TK_EQ(), p, p + 1) } } else if c == 60 { if p + 1 < s.len() and s.char_at(p + 1) == 61 { make_tok(TK_LTEQ(), p, p + 2) } else { make_tok(TK_LT(), p, p + 1) } } else if c == 62 { if p + 1 < s.len() and s.char_at(p + 1) == 61 { make_tok(TK_GTEQ(), p, p + 2) } else { make_tok(TK_GT(), p, p + 1) } } else if c == 33 { if p + 1 < s.len() and s.char_at(p + 1) == 61 { make_tok(TK_NEQ(), p, p + 2) } else { make_tok(TK_EOF(), p, p) } } else { make_tok(TK_EOF(), p, p) };
+        } else if c == 58 { make_tok(TK_COLON(), p, p + 1) }
+        else if c == 59 { make_tok(TK_SEMI(), p, p + 1) }
+        else if c == 44 { make_tok(TK_COMMA(), p, p + 1) }
+        else if c == 40 { make_tok(TK_LPAREN(), p, p + 1) }
+        else if c == 41 { make_tok(TK_RPAREN(), p, p + 1) }
+        else if c == 43 { make_tok(TK_PLUS(), p, p + 1) }
+        else if c == 45 { if p + 1 < s.len() and s.char_at(p + 1) == 62 { make_tok(TK_ARROW(), p, p + 2) } else { make_tok(TK_MINUS(), p, p + 1) } }
+        else if c == 42 { make_tok(TK_STAR(), p, p + 1) }
+        else if c == 47 { make_tok(TK_SLASH(), p, p + 1) }
+        else if c == 37 { make_tok(TK_PERCENT(), p, p + 1) }
+        else if c == 61 { if p + 1 < s.len() and s.char_at(p + 1) == 61 { make_tok(TK_EQEQ(), p, p + 2) } else { make_tok(TK_EQ(), p, p + 1) } }
+        else if c == 60 { if p + 1 < s.len() and s.char_at(p + 1) == 61 { make_tok(TK_LTEQ(), p, p + 2) } else { make_tok(TK_LT(), p, p + 1) } }
+        else if c == 62 { if p + 1 < s.len() and s.char_at(p + 1) == 61 { make_tok(TK_GTEQ(), p, p + 2) } else { make_tok(TK_GT(), p, p + 1) } }
+        else if c == 33 { if p + 1 < s.len() and s.char_at(p + 1) == 61 { make_tok(TK_NEQ(), p, p + 2) } else { make_tok(TK_EOF(), p, p) } }
+        else { make_tok(TK_EOF(), p, p) }
+    };
 
 fn get_ident_text(s: String, tok: i64) -> String =
     let start = (tok / 1000) - (tok / 1000000) * 1000;
@@ -168,19 +186,27 @@ fn parse_atom(s: String, pos: i64) -> String =
     let tok = next_token_raw(s, pos);
     let kind = tok_kind(tok);
     let end = tok_end(tok);
-    if kind == TK_INT() { pack_result(end, "(int " + get_ident_text(s, tok) + ")") } else if kind == TK_TRUE() { pack_result(end, "(bool true)") } else if kind == TK_FALSE() { pack_result(end, "(bool false)") } else if kind == TK_IDENT() { pack_result(end, "(var " + get_ident_text(s, tok) + ")") } else if kind == TK_LPAREN() { let inner = parse_expr(s, end) };
+    if kind == TK_INT() { pack_result(end, "(int " + get_ident_text(s, tok) + ")") }
+    else if kind == TK_TRUE() { pack_result(end, "(bool true)") }
+    else if kind == TK_FALSE() { pack_result(end, "(bool false)") }
+    else if kind == TK_IDENT() { pack_result(end, "(var " + get_ident_text(s, tok) + ")") }
+    else if kind == TK_LPAREN() {
+        let inner = parse_expr(s, end);
         let inner_pos = unpack_pos(inner);
         let inner_ast = unpack_ast(inner);
         let tok2 = next_token_raw(s, inner_pos);
-        if tok_kind(tok2) == TK_RPAREN() { pack_result(tok_end(tok2), inner_ast) } else { pack_result(inner_pos, make_error("Expected )")) }else if kind == TK_NOT() { let arg = parse_atom(s, end) };
+        if tok_kind(tok2) == TK_RPAREN() { pack_result(tok_end(tok2), inner_ast) } else { pack_result(inner_pos, make_error("Expected )")) }
+    } else if kind == TK_NOT() {
+        let arg = parse_atom(s, end);
         let arg_pos = unpack_pos(arg);
         let arg_ast = unpack_ast(arg);
         pack_result(arg_pos, "(not " + arg_ast + ")")
-    else if kind == TK_MINUS() { let arg = parse_atom(s, end) };
+    } else if kind == TK_MINUS() {
+        let arg = parse_atom(s, end);
         let arg_pos = unpack_pos(arg);
         let arg_ast = unpack_ast(arg);
         pack_result(arg_pos, "(neg " + arg_ast + ")")
-    else pack_result(pos, make_error("Expected expression"));
+    } else { pack_result(pos, make_error("Expected expression")) };
 
 fn parse_mul(s: String, pos: i64) -> String =
     let left = parse_atom(s, pos);
@@ -191,11 +217,13 @@ fn parse_mul(s: String, pos: i64) -> String =
 fn parse_mul_rest(s: String, pos: i64, left: String) -> String =
     let tok = next_token_raw(s, pos);
     let kind = tok_kind(tok);
-    if kind == TK_STAR() or kind == TK_SLASH() or kind == TK_PERCENT() { let op = if kind == TK_STAR() { "*" } else if kind == TK_SLASH() { "/" } else { "%" } };
+    if kind == TK_STAR() or kind == TK_SLASH() or kind == TK_PERCENT() {
+        let op = if kind == TK_STAR() { "*" } else if kind == TK_SLASH() { "/" } else { "%" };
         let right = parse_atom(s, tok_end(tok));
         let right_pos = unpack_pos(right);
         let right_ast = unpack_ast(right);
-        if is_error(right_ast) { right } else { parse_mul_rest(s, right_pos, "(" + op + " " + left + " " + right_ast + ")") }else pack_result(pos, left);
+        if is_error(right_ast) { right } else { parse_mul_rest(s, right_pos, "(" + op + " " + left + " " + right_ast + ")") }
+    } else { pack_result(pos, left) };
 
 fn parse_add(s: String, pos: i64) -> String =
     let left = parse_mul(s, pos);
@@ -206,11 +234,13 @@ fn parse_add(s: String, pos: i64) -> String =
 fn parse_add_rest(s: String, pos: i64, left: String) -> String =
     let tok = next_token_raw(s, pos);
     let kind = tok_kind(tok);
-    if kind == TK_PLUS() or kind == TK_MINUS() { let op = if kind == TK_PLUS() { "+" } else { "-" } };
+    if kind == TK_PLUS() or kind == TK_MINUS() {
+        let op = if kind == TK_PLUS() { "+" } else { "-" };
         let right = parse_mul(s, tok_end(tok));
         let right_pos = unpack_pos(right);
         let right_ast = unpack_ast(right);
-        if is_error(right_ast) { right } else { parse_add_rest(s, right_pos, "(" + op + " " + left + " " + right_ast + ")") }else pack_result(pos, left);
+        if is_error(right_ast) { right } else { parse_add_rest(s, right_pos, "(" + op + " " + left + " " + right_ast + ")") }
+    } else { pack_result(pos, left) };
 
 fn parse_cmp(s: String, pos: i64) -> String =
     let left = parse_add(s, pos);
@@ -221,19 +251,25 @@ fn parse_cmp(s: String, pos: i64) -> String =
 fn parse_cmp_rest(s: String, pos: i64, left: String) -> String =
     let tok = next_token_raw(s, pos);
     let kind = tok_kind(tok);
-    if kind == TK_EQEQ() { let right = parse_add(s, tok_end(tok)) };
+    if kind == TK_EQEQ() {
+        let right = parse_add(s, tok_end(tok));
         pack_result(unpack_pos(right), "(== " + left + " " + unpack_ast(right) + ")")
-    else if kind == TK_NEQ() { let right = parse_add(s, tok_end(tok)) };
+    } else if kind == TK_NEQ() {
+        let right = parse_add(s, tok_end(tok));
         pack_result(unpack_pos(right), "(!= " + left + " " + unpack_ast(right) + ")")
-    else if kind == TK_LT() { let right = parse_add(s, tok_end(tok)) };
+    } else if kind == TK_LT() {
+        let right = parse_add(s, tok_end(tok));
         pack_result(unpack_pos(right), "(< " + left + " " + unpack_ast(right) + ")")
-    else if kind == TK_GT() { let right = parse_add(s, tok_end(tok)) };
+    } else if kind == TK_GT() {
+        let right = parse_add(s, tok_end(tok));
         pack_result(unpack_pos(right), "(> " + left + " " + unpack_ast(right) + ")")
-    else if kind == TK_LTEQ() { let right = parse_add(s, tok_end(tok)) };
+    } else if kind == TK_LTEQ() {
+        let right = parse_add(s, tok_end(tok));
         pack_result(unpack_pos(right), "(<= " + left + " " + unpack_ast(right) + ")")
-    else if kind == TK_GTEQ() { let right = parse_add(s, tok_end(tok)) };
+    } else if kind == TK_GTEQ() {
+        let right = parse_add(s, tok_end(tok));
         pack_result(unpack_pos(right), "(>= " + left + " " + unpack_ast(right) + ")")
-    else pack_result(pos, left);
+    } else { pack_result(pos, left) };
 
 fn parse_and(s: String, pos: i64) -> String =
     let left = parse_cmp(s, pos);
@@ -243,10 +279,12 @@ fn parse_and(s: String, pos: i64) -> String =
 
 fn parse_and_rest(s: String, pos: i64, left: String) -> String =
     let tok = next_token_raw(s, pos);
-    if tok_kind(tok) == TK_AND() { let right = parse_cmp(s, tok_end(tok)) };
+    if tok_kind(tok) == TK_AND() {
+        let right = parse_cmp(s, tok_end(tok));
         let right_pos = unpack_pos(right);
         let right_ast = unpack_ast(right);
-        if is_error(right_ast) { right } else { parse_and_rest(s, right_pos, "(and " + left + " " + right_ast + ")") }else pack_result(pos, left);
+        if is_error(right_ast) { right } else { parse_and_rest(s, right_pos, "(and " + left + " " + right_ast + ")") }
+    } else { pack_result(pos, left) };
 
 fn parse_or(s: String, pos: i64) -> String =
     let left = parse_and(s, pos);
@@ -256,39 +294,53 @@ fn parse_or(s: String, pos: i64) -> String =
 
 fn parse_or_rest(s: String, pos: i64, left: String) -> String =
     let tok = next_token_raw(s, pos);
-    if tok_kind(tok) == TK_OR() { let right = parse_and(s, tok_end(tok)) };
+    if tok_kind(tok) == TK_OR() {
+        let right = parse_and(s, tok_end(tok));
         let right_pos = unpack_pos(right);
         let right_ast = unpack_ast(right);
-        if is_error(right_ast) { right } else { parse_or_rest(s, right_pos, "(or " + left + " " + right_ast + ")") }else pack_result(pos, left);
+        if is_error(right_ast) { right } else { parse_or_rest(s, right_pos, "(or " + left + " " + right_ast + ")") }
+    } else { pack_result(pos, left) };
 
 fn parse_expr(s: String, pos: i64) -> String =
     let p = skip_ws_comments(s, pos);
     let tok = next_token_raw(s, p);
     let kind = tok_kind(tok);
-    if kind == TK_IF() { let cond = parse_or(s, tok_end(tok)) };
+    if kind == TK_IF() {
+        let cond = parse_or(s, tok_end(tok));
         let cond_pos = unpack_pos(cond);
         let cond_ast = unpack_ast(cond);
         let tok2 = next_token_raw(s, cond_pos);
-        if tok_kind(tok2) != TK_THEN() { pack_result(cond_pos, make_error("Expected then")) } else { let then_e = parse_expr(s, tok_end(tok2)) };
+        if tok_kind(tok2) != TK_THEN() { pack_result(cond_pos, make_error("Expected then")) } else {
+            let then_e = parse_expr(s, tok_end(tok2));
             let then_pos = unpack_pos(then_e);
             let then_ast = unpack_ast(then_e);
             let tok3 = next_token_raw(s, then_pos);
-            if tok_kind(tok3) != TK_ELSE() { pack_result(then_pos, make_error("Expected else")) } else { let else_e = parse_expr(s, tok_end(tok3)) };
+            if tok_kind(tok3) != TK_ELSE() { pack_result(then_pos, make_error("Expected else")) } else {
+                let else_e = parse_expr(s, tok_end(tok3));
                 let else_pos = unpack_pos(else_e);
                 let else_ast = unpack_ast(else_e);
                 pack_result(else_pos, "(if " + cond_ast + " " + then_ast + " " + else_ast + ")")
-    else if kind == TK_LET() { let name_tok = next_token_raw(s, tok_end(tok)) };
-        if tok_kind(name_tok) != TK_IDENT() { pack_result(tok_end(tok), make_error("Expected identifier")) } else { let name = get_ident_text(s, name_tok) };
+            }
+        }
+    } else if kind == TK_LET() {
+        let name_tok = next_token_raw(s, tok_end(tok));
+        if tok_kind(name_tok) != TK_IDENT() { pack_result(tok_end(tok), make_error("Expected identifier")) } else {
+            let name = get_ident_text(s, name_tok);
             let eq_tok = next_token_raw(s, tok_end(name_tok));
-            if tok_kind(eq_tok) != TK_EQ() { pack_result(tok_end(name_tok), make_error("Expected =")) } else { let val = parse_expr(s, tok_end(eq_tok)) };
+            if tok_kind(eq_tok) != TK_EQ() { pack_result(tok_end(name_tok), make_error("Expected =")) } else {
+                let val = parse_expr(s, tok_end(eq_tok));
                 let val_pos = unpack_pos(val);
                 let val_ast = unpack_ast(val);
                 let semi_tok = next_token_raw(s, val_pos);
-                if tok_kind(semi_tok) != TK_SEMI() { pack_result(val_pos, make_error("Expected ;")) } else { let body = parse_expr(s, tok_end(semi_tok)) };
+                if tok_kind(semi_tok) != TK_SEMI() { pack_result(val_pos, make_error("Expected ;")) } else {
+                    let body = parse_expr(s, tok_end(semi_tok));
                     let body_pos = unpack_pos(body);
                     let body_ast = unpack_ast(body);
                     pack_result(body_pos, "(let " + name + " " + val_ast + " " + body_ast + ")")
-    else parse_or(s, p);
+                }
+            }
+        }
+    } else { parse_or(s, p) };
 
 // ============================================================================
 // SECTION 6: LLVM IR Generation (simplified)
@@ -302,15 +354,19 @@ fn gen_runtime_decls() -> String =
 
 // Simple expression to LLVM IR (returns temp ID and code)
 fn gen_expr_simple(ast: String, temp: i64) -> String =
-    if starts_with(ast, "(int ", 0) { let val = ast.slice(5, ast.len() - 1) };
+    if starts_with(ast, "(int ", 0) {
+        let val = ast.slice(5, ast.len() - 1);
         int_to_string(temp) + "||%t" + int_to_string(temp) + " = add i64 0, " + val
-    else if starts_with(ast, "(bool ", 0) { let val = ast.slice(6, ast.len() - 1) };
+    } else if starts_with(ast, "(bool ", 0) {
+        let val = ast.slice(6, ast.len() - 1);
         let v = if val == "true" { "1" } else { "0" };
         int_to_string(temp) + "||%t" + int_to_string(temp) + " = add i64 0, " + v
-    else if starts_with(ast, "(var ", 0) { let name = ast.slice(5, ast.len() - 1) };
+    } else if starts_with(ast, "(var ", 0) {
+        let name = ast.slice(5, ast.len() - 1);
         int_to_string(temp) + "||%t" + int_to_string(temp) + " = load i64, i64* %" + name
-    else
-        int_to_string(temp) + "||%t" + int_to_string(temp) + " = add i64 0, 0";
+    } else {
+        int_to_string(temp) + "||%t" + int_to_string(temp) + " = add i64 0, 0"
+    };
 
 // ============================================================================
 // SECTION 7: CLI Entry Point
@@ -319,10 +375,12 @@ fn gen_expr_simple(ast: String, temp: i64) -> String =
 fn compile_source(source: String) -> String =
     let ast = parse_expr(source, 0);
     let ast_str = unpack_ast(ast);
-    if is_error(ast_str) { ast_str } else { let header = gen_module_header() };
+    if is_error(ast_str) { ast_str } else {
+        let header = gen_module_header();
         let decls = gen_runtime_decls();
         let body = gen_expr_simple(ast_str, 0);
-        header + "||" + decls + "||" + body;
+        header + "||" + decls + "||" + body
+    };
 
 fn compile_file(input_path: String) -> String =
     let source = read_file(input_path);
@@ -332,7 +390,8 @@ fn compile_file(input_path: String) -> String =
 fn test_compile() -> i64 =
     let demo_src = "1 + 2 * 3";
     let result = compile_source(demo_src);
-    if is_error(result) { 1 } else if result.len() > 50 { 0  // Success: generated LLVM IR } else { 2 };
+    // 0 = success (generated LLVM IR), 1 = error, 2 = IR too short
+    if is_error(result) { 1 } else if result.len() > 50 { 0 } else { 2 };
 
 // Test StringBuilder integration
 fn test_stringbuilder() -> i64 =
@@ -351,6 +410,10 @@ fn test_file_io() -> i64 =
 fn main() -> i64 =
     // Test 1: Compilation pipeline
     let t1 = test_compile();
-    if t1 != 0 { t1 + 10 } else { let t2 = test_stringbuilder() };
-        if t2 != 0 { t2 + 20 } else { let t3 = test_file_io() };
-            if t3 != 0 { t3 + 30 } else { 0 };
+    if t1 != 0 { t1 + 10 } else {
+        let t2 = test_stringbuilder();
+        if t2 != 0 { t2 + 20 } else {
+            let t3 = test_file_io();
+            if t3 != 0 { t3 + 30 } else { 0 }
+        }
+    };
