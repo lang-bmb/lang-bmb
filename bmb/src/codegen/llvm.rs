@@ -289,7 +289,7 @@ impl<'ctx> LlvmContext<'ctx> {
 
         // len(ptr) -> i64
         let len_type = i64_type.fn_type(&[ptr_type.into()], false);
-        let len_fn = self.module.add_function("bmb_str_len", len_type, None);
+        let len_fn = self.module.add_function("bmb_string_len", len_type, None);
         self.functions.insert("len".to_string(), len_fn);
 
         // v0.46: byte_at(ptr, i64) -> i64
@@ -302,10 +302,10 @@ impl<'ctx> LlvmContext<'ctx> {
         let slice_fn = self.module.add_function("slice", slice_type, None);
         self.functions.insert("slice".to_string(), slice_fn);
 
-        // v0.46: cstr_eq(ptr, ptr) -> i64 (for C string literal comparison)
-        let cstr_eq_type = i64_type.fn_type(&[ptr_type.into(), ptr_type.into()], false);
-        let cstr_eq_fn = self.module.add_function("bmb_cstr_eq", cstr_eq_type, None);
-        self.functions.insert("string_eq".to_string(), cstr_eq_fn);
+        // v0.46: string_eq(ptr, ptr) -> i64 (for BmbString* comparison)
+        let string_eq_type = i64_type.fn_type(&[ptr_type.into(), ptr_type.into()], false);
+        let string_eq_fn = self.module.add_function("bmb_string_eq", string_eq_type, None);
+        self.functions.insert("string_eq".to_string(), string_eq_fn);
 
         // v0.98: Vector functions
         // vec_new() -> i64 (returns pointer as i64)
@@ -369,11 +369,43 @@ impl<'ctx> LlvmContext<'ctx> {
         let int_to_str_fn = self.module.add_function("bmb_int_to_string", int_to_str_type, None);
         self.functions.insert("int_to_string".to_string(), int_to_str_fn);
 
+        // v0.46: string_from_cstr - convert C string to BmbString
+        // string_from_cstr(cstr: ptr) -> ptr (returns BmbString*)
+        let string_from_cstr_type = ptr_type.fn_type(&[ptr_type.into()], false);
+        let string_from_cstr_fn = self.module.add_function("bmb_string_from_cstr", string_from_cstr_type, None);
+        self.functions.insert("string_from_cstr".to_string(), string_from_cstr_fn);
+
         // v0.100: String concatenation
         // string_concat(a: ptr, b: ptr) -> ptr
         let string_concat_type = ptr_type.fn_type(&[ptr_type.into(), ptr_type.into()], false);
         let string_concat_fn = self.module.add_function("bmb_string_concat", string_concat_type, None);
         self.functions.insert("string_concat".to_string(), string_concat_fn);
+
+        // v0.46: StringBuilder functions
+        // sb_new() -> i64 (returns handle)
+        let sb_new_type = i64_type.fn_type(&[], false);
+        let sb_new_fn = self.module.add_function("bmb_sb_new", sb_new_type, None);
+        self.functions.insert("sb_new".to_string(), sb_new_fn);
+
+        // sb_push(handle: i64, s: ptr) -> i64
+        let sb_push_type = i64_type.fn_type(&[i64_type.into(), ptr_type.into()], false);
+        let sb_push_fn = self.module.add_function("bmb_sb_push", sb_push_type, None);
+        self.functions.insert("sb_push".to_string(), sb_push_fn);
+
+        // sb_len(handle: i64) -> i64
+        let sb_len_type = i64_type.fn_type(&[i64_type.into()], false);
+        let sb_len_fn = self.module.add_function("bmb_sb_len", sb_len_type, None);
+        self.functions.insert("sb_len".to_string(), sb_len_fn);
+
+        // sb_build(handle: i64) -> ptr (returns BmbString*)
+        let sb_build_type = ptr_type.fn_type(&[i64_type.into()], false);
+        let sb_build_fn = self.module.add_function("bmb_sb_build", sb_build_type, None);
+        self.functions.insert("sb_build".to_string(), sb_build_fn);
+
+        // sb_clear(handle: i64) -> i64
+        let sb_clear_type = i64_type.fn_type(&[i64_type.into()], false);
+        let sb_clear_fn = self.module.add_function("bmb_sb_clear", sb_clear_type, None);
+        self.functions.insert("sb_clear".to_string(), sb_clear_fn);
 
         // Memory allocation (libc)
         // malloc(size: i64) -> ptr
@@ -784,12 +816,22 @@ impl<'ctx> LlvmContext<'ctx> {
                 .const_int(*b as u64, false)
                 .into(),
             Constant::String(s) => {
-                // Create a global string constant and return pointer to it
+                // v0.46: Create a BmbString from the C string constant
+                // First create the global C string constant
                 let global = self
                     .builder
                     .build_global_string_ptr(s, "str_const")
                     .expect("Failed to build global string");
-                global.as_pointer_value().into()
+                let cstr_ptr = global.as_pointer_value();
+
+                // Wrap with bmb_string_from_cstr to create proper BmbString*
+                let string_from_cstr_fn = self.functions.get("string_from_cstr")
+                    .expect("string_from_cstr not declared");
+                let call_result = self.builder
+                    .build_call(*string_from_cstr_fn, &[cstr_ptr.into()], "bmb_str")
+                    .expect("Failed to build string_from_cstr call");
+                call_result.try_as_basic_value().basic()
+                    .expect("string_from_cstr should return a value")
             }
             Constant::Unit => self.context.i8_type().const_int(0, false).into(),
             // v0.95: Char as i32 Unicode code point
@@ -857,6 +899,24 @@ impl<'ctx> LlvmContext<'ctx> {
                     let result = call_result.try_as_basic_value().basic()
                         .ok_or_else(|| CodeGenError::LlvmError("string_concat should return a value".to_string()))?;
                     Ok(result)
+                } else if lhs.is_pointer_value() || rhs.is_pointer_value() {
+                    // v0.46: Pointer arithmetic - convert pointer to i64 for arithmetic
+                    let lhs_int = if lhs.is_pointer_value() {
+                        self.builder.build_ptr_to_int(lhs.into_pointer_value(), self.context.i64_type(), "ptr_to_int")
+                            .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                    } else {
+                        lhs.into_int_value()
+                    };
+                    let rhs_int = if rhs.is_pointer_value() {
+                        self.builder.build_ptr_to_int(rhs.into_pointer_value(), self.context.i64_type(), "ptr_to_int")
+                            .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                    } else {
+                        rhs.into_int_value()
+                    };
+                    let result = self.builder
+                        .build_int_nsw_add(lhs_int, rhs_int, "add")
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                    Ok(result.into())
                 } else {
                     let result = self.builder
                         .build_int_nsw_add(lhs.into_int_value(), rhs.into_int_value(), "add")
@@ -865,8 +925,21 @@ impl<'ctx> LlvmContext<'ctx> {
                 }
             }
             MirBinOp::Sub => {
+                // v0.46: Handle pointer arithmetic for subtraction
+                let lhs_int = if lhs.is_pointer_value() {
+                    self.builder.build_ptr_to_int(lhs.into_pointer_value(), self.context.i64_type(), "ptr_to_int")
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                } else {
+                    lhs.into_int_value()
+                };
+                let rhs_int = if rhs.is_pointer_value() {
+                    self.builder.build_ptr_to_int(rhs.into_pointer_value(), self.context.i64_type(), "ptr_to_int")
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                } else {
+                    rhs.into_int_value()
+                };
                 let result = self.builder
-                    .build_int_nsw_sub(lhs.into_int_value(), rhs.into_int_value(), "sub")
+                    .build_int_nsw_sub(lhs_int, rhs_int, "sub")
                     .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
                 Ok(result.into())
             }
