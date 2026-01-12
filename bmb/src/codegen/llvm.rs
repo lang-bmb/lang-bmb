@@ -292,6 +292,21 @@ impl<'ctx> LlvmContext<'ctx> {
         let len_fn = self.module.add_function("bmb_str_len", len_type, None);
         self.functions.insert("len".to_string(), len_fn);
 
+        // v0.46: byte_at(ptr, i64) -> i64
+        let byte_at_type = i64_type.fn_type(&[ptr_type.into(), i64_type.into()], false);
+        let byte_at_fn = self.module.add_function("byte_at", byte_at_type, None);
+        self.functions.insert("byte_at".to_string(), byte_at_fn);
+
+        // v0.46: slice(ptr, i64, i64) -> ptr
+        let slice_type = ptr_type.fn_type(&[ptr_type.into(), i64_type.into(), i64_type.into()], false);
+        let slice_fn = self.module.add_function("slice", slice_type, None);
+        self.functions.insert("slice".to_string(), slice_fn);
+
+        // v0.46: cstr_eq(ptr, ptr) -> i64 (for C string literal comparison)
+        let cstr_eq_type = i64_type.fn_type(&[ptr_type.into(), ptr_type.into()], false);
+        let cstr_eq_fn = self.module.add_function("bmb_cstr_eq", cstr_eq_type, None);
+        self.functions.insert("string_eq".to_string(), cstr_eq_fn);
+
         // v0.98: Vector functions
         // vec_new() -> i64 (returns pointer as i64)
         let vec_new_type = i64_type.fn_type(&[], false);
@@ -900,18 +915,50 @@ impl<'ctx> LlvmContext<'ctx> {
                 Ok(result.into())
             }
 
-            // Integer comparison
+            // Integer/String comparison
             MirBinOp::Eq => {
-                let result = self.builder
-                    .build_int_compare(IntPredicate::EQ, lhs.into_int_value(), rhs.into_int_value(), "eq")
-                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
-                Ok(result.into())
+                // v0.46: Check if either operand is a pointer (strings) - use string_eq
+                if lhs.is_pointer_value() || rhs.is_pointer_value() {
+                    let string_eq_fn = self.functions.get("string_eq")
+                        .ok_or_else(|| CodeGenError::UnknownFunction("string_eq".to_string()))?;
+                    let call_result = self.builder
+                        .build_call(*string_eq_fn, &[lhs.into(), rhs.into()], "streq")
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                    let eq_i64 = call_result.try_as_basic_value().basic()
+                        .ok_or_else(|| CodeGenError::LlvmError("string_eq should return a value".to_string()))?;
+                    // Convert i64 to i1 (bool): non-zero means equal
+                    let result = self.builder
+                        .build_int_compare(IntPredicate::NE, eq_i64.into_int_value(), self.context.i64_type().const_zero(), "streq_bool")
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                    Ok(result.into())
+                } else {
+                    let result = self.builder
+                        .build_int_compare(IntPredicate::EQ, lhs.into_int_value(), rhs.into_int_value(), "eq")
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                    Ok(result.into())
+                }
             }
             MirBinOp::Ne => {
-                let result = self.builder
-                    .build_int_compare(IntPredicate::NE, lhs.into_int_value(), rhs.into_int_value(), "ne")
-                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
-                Ok(result.into())
+                // v0.46: Check if either operand is a pointer (strings) - use string_eq and negate
+                if lhs.is_pointer_value() || rhs.is_pointer_value() {
+                    let string_eq_fn = self.functions.get("string_eq")
+                        .ok_or_else(|| CodeGenError::UnknownFunction("string_eq".to_string()))?;
+                    let call_result = self.builder
+                        .build_call(*string_eq_fn, &[lhs.into(), rhs.into()], "strne")
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                    let eq_i64 = call_result.try_as_basic_value().basic()
+                        .ok_or_else(|| CodeGenError::LlvmError("string_eq should return a value".to_string()))?;
+                    // Convert i64 to i1 (bool): zero means not equal
+                    let result = self.builder
+                        .build_int_compare(IntPredicate::EQ, eq_i64.into_int_value(), self.context.i64_type().const_zero(), "strne_bool")
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                    Ok(result.into())
+                } else {
+                    let result = self.builder
+                        .build_int_compare(IntPredicate::NE, lhs.into_int_value(), rhs.into_int_value(), "ne")
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                    Ok(result.into())
+                }
             }
             MirBinOp::Lt => {
                 let result = self.builder

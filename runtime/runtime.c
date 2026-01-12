@@ -182,12 +182,20 @@ BmbString* bmb_string_concat(BmbString* a, BmbString* b) {
     return result;
 }
 
-// String equality
+// String equality (for BmbString pointers)
 int64_t bmb_string_eq(BmbString* a, BmbString* b) {
     if (!a && !b) return 1;
     if (!a || !b) return 0;
     if (a->len != b->len) return 0;
     return memcmp(a->data, b->data, a->len) == 0 ? 1 : 0;
+}
+
+// v0.46: Raw C string equality (for string literals)
+// This is used when comparing string literals directly
+int64_t bmb_cstr_eq(const char* a, const char* b) {
+    if (!a && !b) return 1;
+    if (!a || !b) return 0;
+    return strcmp(a, b) == 0 ? 1 : 0;
 }
 
 // chr(i64) -> String: ASCII code to single character string
@@ -400,6 +408,11 @@ int64_t len(BmbString* s) {
 }
 
 int64_t char_at(BmbString* s, int64_t idx) {
+    return bmb_string_char_at(s, idx);
+}
+
+// v0.46: byte_at is the preferred name (clarity: returns byte, not Unicode char)
+int64_t byte_at(BmbString* s, int64_t idx) {
     return bmb_string_char_at(s, idx);
 }
 

@@ -269,6 +269,8 @@ impl TextCodeGen {
         writeln!(out, "; Runtime declarations - Method name wrappers")?;
         writeln!(out, "declare i64 @len(ptr)")?;
         writeln!(out, "declare i64 @char_at(ptr, i64)")?;
+        // v0.46: byte_at is the preferred name (same as interpreter)
+        writeln!(out, "declare i64 @byte_at(ptr, i64)")?;
         writeln!(out, "declare ptr @slice(ptr, i64, i64)")?;
         writeln!(out, "declare ptr @chr(i64)")?;
         writeln!(out, "declare i64 @ord(ptr)")?;
@@ -2002,8 +2004,9 @@ impl TextCodeGen {
             "sqrt" | "i64_to_f64" => "double",
 
             // i64 return - String operations (both full and wrapper names)
+            // v0.46: byte_at added as preferred name (same as interpreter)
             "bmb_string_len" | "bmb_string_char_at" | "bmb_string_eq" | "bmb_ord"
-            | "len" | "char_at" | "ord" => "i64",
+            | "len" | "char_at" | "byte_at" | "ord" => "i64",
 
             // i64 return - File I/O (both full and wrapper names)
             "bmb_file_exists" | "bmb_file_size" | "bmb_write_file" | "bmb_append_file"
