@@ -189,6 +189,36 @@ enum QueryType {
     },
     /// Show project metrics
     Metrics,
+    /// Query dependencies (v0.47 - RFC-0001)
+    Deps {
+        /// Target to query (e.g., fn:main, type:Order)
+        target: String,
+        /// Show reverse dependencies (who calls/uses this)
+        #[arg(long)]
+        reverse: bool,
+        /// Include transitive dependencies
+        #[arg(long)]
+        transitive: bool,
+    },
+    /// Query contract details (v0.47 - RFC-0001)
+    Contract {
+        /// Function name to query contracts for
+        name: String,
+        /// Show contracts that use old() state
+        #[arg(long)]
+        uses_old: bool,
+    },
+    /// Generate AI context for a target (v0.48 - RFC-0001)
+    Ctx {
+        /// Target to generate context for (e.g., fn:process_order)
+        target: String,
+        /// Depth of dependency inclusion
+        #[arg(long, default_value = "1")]
+        depth: usize,
+        /// Include related tests
+        #[arg(long)]
+        include_tests: bool,
+    },
 }
 
 fn main() {
@@ -1592,6 +1622,21 @@ fn run_query(query_type: QueryType) -> Result<(), Box<dyn std::error::Error>> {
         QueryType::Metrics => {
             let metrics = engine.query_metrics();
             println!("{}", serde_json::to_string_pretty(&metrics)?);
+        }
+
+        QueryType::Deps { target, reverse, transitive } => {
+            let result = engine.query_deps(&target, reverse, transitive);
+            println!("{}", serde_json::to_string_pretty(&result)?);
+        }
+
+        QueryType::Contract { name, uses_old } => {
+            let result = engine.query_contract(&name, uses_old);
+            println!("{}", serde_json::to_string_pretty(&result)?);
+        }
+
+        QueryType::Ctx { target, depth, include_tests } => {
+            let result = engine.query_context(&target, depth, include_tests);
+            println!("{}", serde_json::to_string_pretty(&result)?);
         }
     }
 

@@ -2,8 +2,9 @@
 
 **RFC**: 0001
 **Title**: AI-Native Code Query System
-**Status**: Draft
+**Status**: Partially Implemented (Phase 2)
 **Created**: 2026-01-04
+**Updated**: 2026-01-12
 
 ---
 
@@ -757,33 +758,34 @@ CALLS: (none, primitive operation)
 
 ## 8. 구현 우선순위
 
-### Phase 1 (v0.2)
+### Phase 1 (v0.25) ✅ 완료
 
-| 명령 | 설명 | 복잡도 |
-|------|------|--------|
-| `bmb index` | 인덱스 생성 | 중 |
-| `bmb q sym` | 심볼 검색 | 저 |
-| `bmb q fn` | 함수 조회 | 중 |
-| `bmb q type` | 타입 조회 | 중 |
-| `bmb q proof` | 증명 상태 | 저 |
+| 명령 | 설명 | 상태 |
+|------|------|------|
+| `bmb index` | 인덱스 생성 | ✅ 구현됨 |
+| `bmb q sym` | 심볼 검색 | ✅ 구현됨 |
+| `bmb q fn` | 함수 조회 | ✅ 구현됨 |
+| `bmb q type` | 타입 조회 | ✅ 구현됨 |
+| `bmb q metrics` | 메트릭스 | ✅ 구현됨 |
+| `bmb q proof` | 증명 상태 | ⏳ v0.46 예정 |
 
-### Phase 2 (v0.3)
+### Phase 2 (v0.47) ✅ 완료
 
-| 명령 | 설명 | 복잡도 |
-|------|------|--------|
-| `bmb q contract` | 계약 조회 | 중 |
-| `bmb q deps` | 의존성 | 중 |
-| `bmb q ctx` | 컨텍스트 | 고 |
-| `bmb q counterexample` | 반례 | 중 |
+| 명령 | 설명 | 상태 |
+|------|------|------|
+| `bmb q contract` | 계약 조회 | ✅ 구현됨 |
+| `bmb q deps` | 의존성 (`--reverse`, `--transitive`) | ✅ 구현됨 |
+| `bmb q ctx` | 컨텍스트 (`--depth`, `--include-tests`) | ✅ 구현됨 |
+| `bmb q counterexample` | 반례 | ⏳ v0.48 예정 |
 
-### Phase 3 (v0.4)
+### Phase 3 (v0.49) ⏳ 계획
 
-| 명령 | 설명 | 복잡도 |
-|------|------|--------|
-| `bmb q sig` | 시그니처 검색 | 중 |
-| `bmb q impact` | 영향 분석 | 고 |
-| `bmb q metrics` | 메트릭스 | 저 |
-| `bmb q batch` | 배치 쿼리 | 중 |
+| 명령 | 설명 | 상태 |
+|------|------|------|
+| `bmb q sig` | 시그니처 검색 | ⏳ 대기 |
+| `bmb q impact` | 영향 분석 | ⏳ 대기 |
+| `bmb q batch` | 배치 쿼리 | ⏳ 대기 |
+| `bmb q serve` | HTTP 쿼리 서버 | ⏳ 대기 |
 
 ---
 
