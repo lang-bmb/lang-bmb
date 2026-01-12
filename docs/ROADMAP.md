@@ -2956,6 +2956,33 @@ a const interpreter and is deferred to future work.
 
 **Future Work**: Consider when LLVM-native performance gap becomes critical.
 
+#### Phase 38.1: Bootstrap Syntax Migration to v0.32 (Prerequisite for v0.39)
+
+**Status**: 🔄 In Progress
+
+**Discovery (2026-01-12)**: The Rust compiler no longer supports pre-v0.32 syntax (`if then else`).
+Bootstrap compiler files (18 total, ~29K LOC) need migration before v0.39 work can proceed.
+
+| Task | Description | Status |
+|------|-------------|--------|
+| 38.1.1 | lexer.bmb migration (781 lines) | ✅ Complete |
+| 38.1.2 | Migration tool bug: comments inside braces | ⚠️ Known Issue |
+| 38.1.3 | Remaining 17 files migration | 📋 Planned |
+
+**Migration Tool Issues**:
+- `tools/migrate_syntax.mjs` creates broken patterns for multiline `else` with `let` bindings
+- Pattern `{ VALUE // COMMENT }` puts comments inside braces, breaking syntax
+- Manual fixes required for complex patterns
+
+**Manual Fix Patterns Applied** (lexer.bmb):
+1. `{ VALUE // COMMENT }` → `{ VALUE }` (remove inline comments from braces)
+2. `else { let x = ...; ... }` → proper multiline block structure
+3. `u32` variable name → `u32_` (reserved type name conflict)
+
+**Remaining Work**:
+- 17 bootstrap files need similar manual fixes after migration tool run
+- Estimated effort: 2-4 hours per file depending on complexity
+
 ---
 
 ### v0.39 Bootstrap - Self-Compilation Performance
@@ -2966,7 +2993,7 @@ a const interpreter and is deferred to future work.
 
 **Duration Estimate**: 4-6 weeks
 
-**Prerequisites**: v0.38 Complete (Gate #3.3)
+**Prerequisites**: v0.38 Complete (Gate #3.3), Phase 38.1 Complete (Bootstrap Migration)
 
 #### Benchmark Gate #4.1 (v0.39 Exit Criteria)
 

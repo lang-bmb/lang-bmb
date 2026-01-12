@@ -1,781 +1,705 @@
--- BMB Lexer written in BMB (v0.30.195: Extended test suite)
--- A simple hand-written lexer for the BMB language
--- Uses functional/recursive style to work within BMB's grammar constraints
---
--- LIMITATIONS:
--- - Stack depth: Due to recursive execution without tail call optimization,
---   the lexer can only process short inputs (~10 tokens) before stack overflow.
--- - Short-circuit: Fixed in Phase 10 - `and`/`or` now short-circuit properly.
--- - Let scoping: In `let x = v; body`, x is only visible in body expression.
---
--- This implementation demonstrates BMB's self-compilation capability.
--- For production use, the lexer should be compiled to native code with TCO.
+// BMB Lexer written in BMB (v0.30.195: Extended test suite)
+// A simple hand-written lexer for the BMB language
+// Uses functional/recursive style to work within BMB's grammar constraints
+//
+// LIMITATIONS:
+// - Stack depth: Due to recursive execution without tail call optimization,
+//   the lexer can only process short inputs (~10 tokens) before stack overflow.
+// - Short-circuit: Fixed in Phase 10 - `and`/`or` now short-circuit properly.
+// - Let scoping: In `let x = v; body`, x is only visible in body expression.
+//
+// This implementation demonstrates BMB's self-compilation capability.
+// For production use, the lexer should be compiled to native code with TCO.
 
--- Token kinds (as integer codes for simplicity)
--- Keywords: 100-199
--- Literals: 200-299
--- Symbols: 300-399
--- Operators: 400-499
--- Special: 900-999
+// Token kinds (as integer codes for simplicity)
+// Keywords: 100-199
+// Literals: 200-299
+// Symbols: 300-399
+// Operators: 400-499
+// Special: 900-999
 
--- Helper functions
+// Helper functions
 
--- Check if character is whitespace (space=32, tab=9, newline=10, CR=13)
+// Check if character is whitespace (space=32, tab=9, newline=10, CR=13)
 fn is_whitespace(c: i64) -> bool = c == 32 or c == 9 or c == 10 or c == 13;
 
--- Check if character is a digit (0-9)
+// Check if character is a digit (0-9)
 fn is_digit(c: i64) -> bool = c >= 48 and c <= 57;
 
--- Check if character is a letter (a-z, A-Z)
+// Check if character is a letter (a-z, A-Z)
 fn is_alpha(c: i64) -> bool =
     (c >= 65 and c <= 90) or (c >= 97 and c <= 122);
 
--- Check if character is alphanumeric or underscore
+// Check if character is alphanumeric or underscore
 fn is_alnum_or_underscore(c: i64) -> bool =
     is_alpha(c) or is_digit(c) or c == 95;
 
--- Check if character can start an identifier (letter or underscore)
+// Check if character can start an identifier (letter or underscore)
 fn is_ident_start(c: i64) -> bool = is_alpha(c) or c == 95;
 
--- Convert digit character to number
+// Convert digit character to number
 fn digit_to_int(c: i64) -> i64 = c - 48;
 
--- Skip whitespace recursively, return new position
+// Skip whitespace recursively, return new position
 fn skip_ws(s: String, pos: i64) -> i64 =
-    if pos >= s.len() then pos
-    else if is_whitespace(s.char_at(pos)) then skip_ws(s, pos + 1)
-    else pos;
+    if pos >= s.len() { pos } else if is_whitespace(s.char_at(pos)) { skip_ws(s, pos + 1) } else { pos };
 
--- Skip to end of line (for comments), return new position
+// Skip to end of line (for comments), return new position
 fn skip_to_eol(s: String, pos: i64) -> i64 =
-    if pos >= s.len() then pos
-    else if s.char_at(pos) == 10 then pos
-    else skip_to_eol(s, pos + 1);
+    if pos >= s.len() { pos } else if s.char_at(pos) == 10 { pos } else { skip_to_eol(s, pos + 1) };
 
--- Skip comment if present, return new position
--- Note: Now uses short-circuit `and` (fixed in Phase 10)
+// Skip comment if present, return new position
+// Note: Now uses short-circuit `and` (fixed in Phase 10)
 fn skip_comment(s: String, pos: i64) -> i64 =
-    if pos + 1 < s.len() and s.char_at(pos) == 45 and s.char_at(pos + 1) == 45 then
-        skip_to_eol(s, pos + 2)
-    else pos;
+    if pos + 1 < s.len() and s.char_at(pos) == 45 and s.char_at(pos + 1) == 45 { skip_to_eol(s, pos + 2) } else { pos };
 
--- Skip all whitespace and comments, return new position
+// Skip all whitespace and comments, return new position
 fn skip_all(s: String, pos: i64) -> i64 =
     let p1 = skip_ws(s, pos);
     let p2 = skip_comment(s, p1);
-    if p2 == pos then pos else skip_all(s, p2);
+    if p2 == pos { pos } else { skip_all(s, p2) };
 
--- Find end of identifier, return end position
+// Find end of identifier, return end position
 fn find_ident_end(s: String, pos: i64) -> i64 =
-    if pos >= s.len() then pos
-    else if is_alnum_or_underscore(s.char_at(pos)) then find_ident_end(s, pos + 1)
-    else pos;
+    if pos >= s.len() { pos } else if is_alnum_or_underscore(s.char_at(pos)) { find_ident_end(s, pos + 1) } else { pos };
 
--- Find end of number, return end position
+// Find end of number, return end position
 fn find_number_end(s: String, pos: i64) -> i64 =
-    if pos >= s.len() then pos
-    else if is_digit(s.char_at(pos)) then find_number_end(s, pos + 1)
-    else pos;
+    if pos >= s.len() { pos } else if is_digit(s.char_at(pos)) { find_number_end(s, pos + 1) } else { pos };
 
--- Lookup keyword (returns token code: 100-199 for keywords, 201 for ident)
+// Lookup keyword (returns token code: 100-199 for keywords, 201 for ident)
 fn lookup_keyword(w: String) -> i64 =
-    if w == "fn" then 100
-    else if w == "let" then 101
-    else if w == "if" then 102
-    else if w == "then" then 103
-    else if w == "else" then 104
-    else if w == "true" then 105
-    else if w == "false" then 106
-    else if w == "and" then 107
-    else if w == "or" then 108
-    else if w == "not" then 109
-    else if w == "pre" then 110
-    else if w == "post" then 111
-    else if w == "ret" then 112
-    else if w == "struct" then 113
-    else if w == "enum" then 114
-    else if w == "match" then 115
-    else if w == "new" then 116
-    else if w == "mut" then 117
-    else if w == "while" then 118
-    else if w == "for" then 119
-    else if w == "in" then 120
-    else if w == "pub" then 121
-    else if w == "use" then 122
-    else if w == "break" then 125    -- v0.30.42
-    else if w == "continue" then 126 -- v0.30.42
-    else if w == "trait" then 127    -- v0.30.57
-    else if w == "impl" then 128     -- v0.30.57
-    -- Type keywords
-    else if w == "i32" then 150
-    else if w == "i64" then 151
-    else if w == "f64" then 152
-    else if w == "bool" then 153
-    else if w == "String" then 154
-    -- Not a keyword
-    else 201;
+    if w == "fn" { 100 } else if w == "let" { 101 } else if w == "if" { 102 } else if w == "then" { 103 } else if w == "else" { 104 } else if w == "true" { 105 } else if w == "false" { 106 } else if w == "and" { 107 } else if w == "or" { 108 } else if w == "not" { 109 } else if w == "pre" { 110 } else if w == "post" { 111 } else if w == "ret" { 112 } else if w == "struct" { 113 } else if w == "enum" { 114 } else if w == "match" { 115 } else if w == "new" { 116 } else if w == "mut" { 117 } else if w == "while" { 118 } else if w == "for" { 119 } else if w == "in" { 120 } else if w == "pub" { 121 } else if w == "use" { 122 } else if w == "break" { 125 } else if w == "continue" { 126 } else if w == "trait" { 127 } else if w == "impl" { 128 } else if w == "i32" { 150 } else if w == "i64" { 151 } else if w == "f64" { 152 } else if w == "bool" { 153 } else if w == "String" { 154 } else { 201 };
 
--- Get symbol token code (single char)
+// Get symbol token code (single char)
 fn symbol_code(c: i64) -> i64 =
-    if c == 58 then 300      -- : Colon
-    else if c == 46 then 301 -- . Dot
-    else if c == 61 then 302 -- = Eq
-    else if c == 59 then 303 -- ; Semi
-    else if c == 44 then 304 -- , Comma
-    else if c == 40 then 305 -- ( LParen
-    else if c == 41 then 306 -- ) RParen
-    else if c == 123 then 307 -- { LBrace
-    else if c == 125 then 308 -- } RBrace
-    else if c == 91 then 309 -- [ LBracket
-    else if c == 93 then 310 -- ] RBracket
-    else if c == 38 then 311 -- & Ampersand
-    else if c == 95 then 312 -- _ Underscore
-    -- Operators
-    else if c == 43 then 400 -- + Plus
-    else if c == 45 then 401 -- - Minus
-    else if c == 42 then 402 -- * Star
-    else if c == 47 then 403 -- / Slash
-    else if c == 37 then 404 -- % Percent
-    else if c == 60 then 405 -- < Lt
-    else if c == 62 then 406 -- > Gt
-    else 999;  -- Error/Unknown
+    if c == 58 { 300 } else if c == 46 { 301 } else if c == 61 { 302 } else if c == 59 { 303 } else if c == 44 { 304 } else if c == 40 { 305 } else if c == 41 { 306 } else if c == 123 { 307 } else if c == 125 { 308 } else if c == 91 { 309 } else if c == 93 { 310 } else if c == 38 { 311 } else if c == 95 { 312 } else if c == 43 { 400 } else if c == 45 { 401 } else if c == 42 { 402 } else if c == 47 { 403 } else if c == 37 { 404 } else if c == 60 { 405 } else if c == 62 { 406 } else { 999 };
 
--- Check for two-character tokens, return (code * 10 + 2) or 0
+// Check for two-character tokens, return (code * 10 + 2) or 0
 fn check_two_char(s: String, pos: i64) -> i64 =
-    if pos + 1 >= s.len() then 0
-    else
+    if pos + 1 >= s.len() { 0 } else {
         let c1 = s.char_at(pos);
         let c2 = s.char_at(pos + 1);
-        if c1 == 58 and c2 == 58 then 3202     -- :: ColonColon (320, len=2)
-        else if c1 == 45 and c2 == 62 then 3212 -- -> Arrow (321, len=2)
-        else if c1 == 61 and c2 == 62 then 3222 -- => FatArrow (322, len=2)
-        else if c1 == 46 and c2 == 46 then 3232 -- .. DotDot (323, len=2)
-        else if c1 == 61 and c2 == 61 then 4102 -- == EqEq (410, len=2)
-        else if c1 == 33 and c2 == 61 then 4112 -- != NotEq (411, len=2)
-        else if c1 == 60 and c2 == 61 then 4122 -- <= LtEq (412, len=2)
-        else if c1 == 62 and c2 == 61 then 4132 -- >= GtEq (413, len=2)
-        else 0;
+        if c1 == 58 and c2 == 58 { 3202 } else if c1 == 45 and c2 == 62 { 3212 } else if c1 == 61 and c2 == 62 { 3222 } else if c1 == 46 and c2 == 46 { 3232 } else if c1 == 61 and c2 == 61 { 4102 } else if c1 == 33 and c2 == 61 { 4112 } else if c1 == 60 and c2 == 61 { 4122 } else if c1 == 62 and c2 == 61 { 4132 } else { 0 }
+    };
 
--- Helper to process identifier token
+// Helper to process identifier token
 fn process_ident(s: String, p: i64) -> i64 =
     let end = find_ident_end(s, p + 1);
     let word = s.slice(p, end);
     let kind = lookup_keyword(word);
     kind * 1000000 + p * 1000 + (end - p);
 
--- Helper to process number token
+// Helper to process number token
 fn process_number(s: String, p: i64) -> i64 =
     let end = find_number_end(s, p + 1);
     200 * 1000000 + p * 1000 + (end - p);
 
--- Helper to process symbol token
+// Helper to process symbol token
 fn process_symbol(s: String, p: i64) -> i64 =
     let two = check_two_char(s, p);
-    if two > 0 then
+    if two > 0 {
         let kind = two / 10;
         let tlen = two - kind * 10;
         kind * 1000000 + p * 1000 + tlen
-    else
+    } else {
         let c = s.char_at(p);
         let kind = symbol_code(c);
-        kind * 1000000 + p * 1000 + 1;
+        kind * 1000000 + p * 1000 + 1
+    };
 
--- Get next token: returns (kind * 1000000 + start * 1000 + length)
+// Get next token: returns (kind * 1000000 + start * 1000 + length)
 fn next_token(s: String, pos: i64) -> i64 =
     let p = skip_all(s, pos);
-    if p >= s.len() then 900 * 1000000 + p * 1000 + 0  -- EOF
-    else
+    if p >= s.len() { 900 * 1000000 + p * 1000 + 0 } else {
         let c = s.char_at(p);
-        if is_ident_start(c) then process_ident(s, p)
-        else if is_digit(c) then process_number(s, p)
-        else process_symbol(s, p);
+        if is_ident_start(c) { process_ident(s, p) } else if is_digit(c) { process_number(s, p) } else { process_symbol(s, p) }
+    };
 
--- Extract kind from packed token
+// Extract kind from packed token
 fn token_kind(tok: i64) -> i64 = tok / 1000000;
 
--- Extract start position from packed token
+// Extract start position from packed token
 fn token_start(tok: i64) -> i64 = (tok / 1000) - (tok / 1000000) * 1000;
 
--- Extract length from packed token
+// Extract length from packed token
 fn token_len(tok: i64) -> i64 = tok - (tok / 1000) * 1000;
 
--- Helper: print x and return val (for sequencing side effects)
+// Helper: print x and return val (for sequencing side effects)
 fn seq(x: i64, val: i64) -> i64 =
     let u = println(x);
     val;
 
--- ============================================================================
--- SECTION: Tests (v0.30.141)
--- ============================================================================
+// ============================================================================
+// SECTION: Tests (v0.30.141)
+// ============================================================================
 
--- Test character classification
+// Test character classification
 fn test_char_class() -> i64 =
-    -- Test is_digit boundaries
-    let d1 = if is_digit(48) then 1 else 0;   -- '0'
-    let d2 = if is_digit(57) then 1 else 0;   -- '9'
-    let d3 = if not is_digit(47) then 1 else 0; -- before '0'
-    let d4 = if not is_digit(58) then 1 else 0; -- after '9'
-    -- Test is_alpha boundaries
-    let a1 = if is_alpha(65) then 1 else 0;   -- 'A'
-    let a2 = if is_alpha(90) then 1 else 0;   -- 'Z'
-    let a3 = if is_alpha(97) then 1 else 0;   -- 'a'
-    let a4 = if is_alpha(122) then 1 else 0;  -- 'z'
-    -- Test is_whitespace
-    let w1 = if is_whitespace(32) then 1 else 0;  -- space
-    let w2 = if is_whitespace(9) then 1 else 0;   -- tab
-    let w3 = if is_whitespace(10) then 1 else 0;  -- newline
-    let w4 = if not is_whitespace(65) then 1 else 0; -- 'A' not whitespace
+    // Test is_digit boundaries
+    let d1 = if is_digit(48) { 1 } else { 0 };   // '0'
+    let d2 = if is_digit(57) { 1 } else { 0 };   // '9'
+    let d3 = if not is_digit(47) { 1 } else { 0 }; // before '0'
+    let d4 = if not is_digit(58) { 1 } else { 0 }; // after '9'
+    // Test is_alpha boundaries
+    let a1 = if is_alpha(65) { 1 } else { 0 };   // 'A'
+    let a2 = if is_alpha(90) { 1 } else { 0 };   // 'Z'
+    let a3 = if is_alpha(97) { 1 } else { 0 };   // 'a'
+    let a4 = if is_alpha(122) { 1 } else { 0 };  // 'z'
+    // Test is_whitespace
+    let w1 = if is_whitespace(32) { 1 } else { 0 };  // space
+    let w2 = if is_whitespace(9) { 1 } else { 0 };   // tab
+    let w3 = if is_whitespace(10) { 1 } else { 0 };  // newline
+    let w4 = if not is_whitespace(65) { 1 } else { 0 }; // 'A' not whitespace
     d1 + d2 + d3 + d4 + a1 + a2 + a3 + a4 + w1 + w2 + w3 + w4;
 
--- Test keyword lookup
+// Test keyword lookup
 fn test_keywords() -> i64 =
-    let k1 = if lookup_keyword("fn") == 100 then 1 else 0;
-    let k2 = if lookup_keyword("let") == 101 then 1 else 0;
-    let k3 = if lookup_keyword("if") == 102 then 1 else 0;
-    let k4 = if lookup_keyword("else") == 104 then 1 else 0;
-    let k5 = if lookup_keyword("true") == 105 then 1 else 0;
-    let k6 = if lookup_keyword("false") == 106 then 1 else 0;
-    let k7 = if lookup_keyword("struct") == 113 then 1 else 0;
-    let k8 = if lookup_keyword("trait") == 127 then 1 else 0;
-    let k9 = if lookup_keyword("impl") == 128 then 1 else 0;
-    let k10 = if lookup_keyword("foo") == 201 then 1 else 0;  -- ident, not keyword
+    let k1 = if lookup_keyword("fn") == 100 { 1 } else { 0 };
+    let k2 = if lookup_keyword("let") == 101 { 1 } else { 0 };
+    let k3 = if lookup_keyword("if") == 102 { 1 } else { 0 };
+    let k4 = if lookup_keyword("else") == 104 { 1 } else { 0 };
+    let k5 = if lookup_keyword("true") == 105 { 1 } else { 0 };
+    let k6 = if lookup_keyword("false") == 106 { 1 } else { 0 };
+    let k7 = if lookup_keyword("struct") == 113 { 1 } else { 0 };
+    let k8 = if lookup_keyword("trait") == 127 { 1 } else { 0 };
+    let k9 = if lookup_keyword("impl") == 128 { 1 } else { 0 };
+    let k10 = if lookup_keyword("foo") == 201 { 1 } else { 0 };  // ident, not keyword
     k1 + k2 + k3 + k4 + k5 + k6 + k7 + k8 + k9 + k10;
 
--- Test symbol codes
+// Test symbol codes
 fn test_symbols() -> i64 =
-    let s1 = if symbol_code(58) == 300 then 1 else 0;   -- :
-    let s2 = if symbol_code(46) == 301 then 1 else 0;   -- .
-    let s3 = if symbol_code(61) == 302 then 1 else 0;   -- =
-    let s4 = if symbol_code(59) == 303 then 1 else 0;   -- ;
-    let s5 = if symbol_code(40) == 305 then 1 else 0;   -- (
-    let s6 = if symbol_code(41) == 306 then 1 else 0;   -- )
-    let s7 = if symbol_code(43) == 400 then 1 else 0;   -- +
-    let s8 = if symbol_code(45) == 401 then 1 else 0;   -- -
-    let s9 = if symbol_code(42) == 402 then 1 else 0;   -- *
-    let s10 = if symbol_code(47) == 403 then 1 else 0;  -- /
+    let s1 = if symbol_code(58) == 300 { 1 } else { 0 };   // :
+    let s2 = if symbol_code(46) == 301 { 1 } else { 0 };   // .
+    let s3 = if symbol_code(61) == 302 { 1 } else { 0 };   // =
+    let s4 = if symbol_code(59) == 303 { 1 } else { 0 };   // ;
+    let s5 = if symbol_code(40) == 305 { 1 } else { 0 };   // (
+    let s6 = if symbol_code(41) == 306 { 1 } else { 0 };   // )
+    let s7 = if symbol_code(43) == 400 { 1 } else { 0 };   // +
+    let s8 = if symbol_code(45) == 401 { 1 } else { 0 };   // -
+    let s9 = if symbol_code(42) == 402 { 1 } else { 0 };   // *
+    let s10 = if symbol_code(47) == 403 { 1 } else { 0 };  // /
     s1 + s2 + s3 + s4 + s5 + s6 + s7 + s8 + s9 + s10;
 
--- Test two-character tokens
+// Test two-character tokens
 fn test_two_char() -> i64 =
-    let t1 = if check_two_char("::", 0) == 3202 then 1 else 0;   -- ::
-    let t2 = if check_two_char("->", 0) == 3212 then 1 else 0;   -- ->
-    let t3 = if check_two_char("=>", 0) == 3222 then 1 else 0;   -- =>
-    let t4 = if check_two_char("..", 0) == 3232 then 1 else 0;   -- ..
-    let t5 = if check_two_char("==", 0) == 4102 then 1 else 0;   -- ==
-    let t6 = if check_two_char("!=", 0) == 4112 then 1 else 0;   -- !=
-    let t7 = if check_two_char("<=", 0) == 4122 then 1 else 0;   -- <=
-    let t8 = if check_two_char(">=", 0) == 4132 then 1 else 0;   -- >=
-    let t9 = if check_two_char("ab", 0) == 0 then 1 else 0;      -- not two-char
-    let t10 = if check_two_char("+", 0) == 0 then 1 else 0;      -- too short
+    let t1 = if check_two_char("::", 0) == 3202 { 1 } else { 0 };   // ::
+    let t2 = if check_two_char("->", 0) == 3212 { 1 } else { 0 };   // ->
+    let t3 = if check_two_char("=>", 0) == 3222 { 1 } else { 0 };   // =>
+    let t4 = if check_two_char("..", 0) == 3232 { 1 } else { 0 };   // ..
+    let t5 = if check_two_char("==", 0) == 4102 { 1 } else { 0 };   // ==
+    let t6 = if check_two_char("!=", 0) == 4112 { 1 } else { 0 };   // !=
+    let t7 = if check_two_char("<=", 0) == 4122 { 1 } else { 0 };   // <=
+    let t8 = if check_two_char(">=", 0) == 4132 { 1 } else { 0 };   // >=
+    let t9 = if check_two_char("ab", 0) == 0 { 1 } else { 0 };      // not two-char
+    let t10 = if check_two_char("+", 0) == 0 { 1 } else { 0 };      // too short
     t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t9 + t10;
 
--- Test token extraction helpers
+// Test token extraction helpers
 fn test_token_extract() -> i64 =
-    -- Token format: kind * 1000000 + start * 1000 + length
-    let tok1 = 100 * 1000000 + 5 * 1000 + 2;   -- kind=100, start=5, len=2
-    let e1 = if token_kind(tok1) == 100 then 1 else 0;
-    let e2 = if token_start(tok1) == 5 then 1 else 0;
-    let e3 = if token_len(tok1) == 2 then 1 else 0;
-    -- Another token
-    let tok2 = 201 * 1000000 + 0 * 1000 + 3;   -- kind=201, start=0, len=3
-    let e4 = if token_kind(tok2) == 201 then 1 else 0;
-    let e5 = if token_start(tok2) == 0 then 1 else 0;
-    let e6 = if token_len(tok2) == 3 then 1 else 0;
-    -- EOF token
+    // Token format: kind * 1000000 + start * 1000 + length
+    let tok1 = 100 * 1000000 + 5 * 1000 + 2;   // kind=100, start=5, len=2
+    let e1 = if token_kind(tok1) == 100 { 1 } else { 0 };
+    let e2 = if token_start(tok1) == 5 { 1 } else { 0 };
+    let e3 = if token_len(tok1) == 2 { 1 } else { 0 };
+    // Another token
+    let tok2 = 201 * 1000000 + 0 * 1000 + 3;   // kind=201, start=0, len=3
+    let e4 = if token_kind(tok2) == 201 { 1 } else { 0 };
+    let e5 = if token_start(tok2) == 0 { 1 } else { 0 };
+    let e6 = if token_len(tok2) == 3 { 1 } else { 0 };
+    // EOF token
     let tok3 = 900 * 1000000 + 10 * 1000 + 0;
-    let e7 = if token_kind(tok3) == 900 then 1 else 0;
-    let e8 = if token_start(tok3) == 10 then 1 else 0;
+    let e7 = if token_kind(tok3) == 900 { 1 } else { 0 };
+    let e8 = if token_start(tok3) == 10 { 1 } else { 0 };
     e1 + e2 + e3 + e4 + e5 + e6 + e7 + e8;
 
--- Test skip functions
+// Test skip functions
 fn test_skip() -> i64 =
-    -- skip_ws
-    let s1 = if skip_ws("  hello", 0) == 2 then 1 else 0;
-    let s2 = if skip_ws("hello", 0) == 0 then 1 else 0;
-    let s3 = if skip_ws("", 0) == 0 then 1 else 0;
-    -- skip_comment
-    let c1 = if skip_comment("-- comment", 0) == 10 then 1 else 0;
-    let c2 = if skip_comment("not comment", 0) == 0 then 1 else 0;
-    -- find_ident_end
-    let i1 = if find_ident_end("foo_bar ", 0) == 7 then 1 else 0;
-    let i2 = if find_ident_end("x123", 0) == 4 then 1 else 0;
-    -- find_number_end
-    let n1 = if find_number_end("12345 ", 0) == 5 then 1 else 0;
-    let n2 = if find_number_end("0", 0) == 1 then 1 else 0;
+    // skip_ws
+    let s1 = if skip_ws("  hello", 0) == 2 { 1 } else { 0 };
+    let s2 = if skip_ws("hello", 0) == 0 { 1 } else { 0 };
+    let s3 = if skip_ws("", 0) == 0 { 1 } else { 0 };
+    // skip_comment
+    let c1 = if skip_comment("-- comment", 0) == 10 { 1 } else { 0 };
+    let c2 = if skip_comment("not comment", 0) == 0 { 1 } else { 0 };
+    // find_ident_end
+    let i1 = if find_ident_end("foo_bar ", 0) == 7 { 1 } else { 0 };
+    let i2 = if find_ident_end("x123", 0) == 4 { 1 } else { 0 };
+    // find_number_end
+    let n1 = if find_number_end("12345 ", 0) == 5 { 1 } else { 0 };
+    let n2 = if find_number_end("0", 0) == 1 { 1 } else { 0 };
     s1 + s2 + s3 + c1 + c2 + i1 + i2 + n1 + n2;
 
--- Test type keywords
+// Test type keywords
 fn test_type_keywords() -> i64 =
-    let t1 = if lookup_keyword("i32") == 150 then 1 else 0;
-    let t2 = if lookup_keyword("i64") == 151 then 1 else 0;
-    let t3 = if lookup_keyword("f64") == 152 then 1 else 0;
-    let t4 = if lookup_keyword("bool") == 153 then 1 else 0;
-    let t5 = if lookup_keyword("String") == 154 then 1 else 0;
+    let t1 = if lookup_keyword("i32") == 150 { 1 } else { 0 };
+    let t2 = if lookup_keyword("i64") == 151 { 1 } else { 0 };
+    let t3 = if lookup_keyword("f64") == 152 { 1 } else { 0 };
+    let t4 = if lookup_keyword("bool") == 153 { 1 } else { 0 };
+    let t5 = if lookup_keyword("String") == 154 { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5;
 
--- Test control flow keywords
+// Test control flow keywords
 fn test_control_keywords() -> i64 =
-    let c1 = if lookup_keyword("while") == 118 then 1 else 0;
-    let c2 = if lookup_keyword("for") == 119 then 1 else 0;
-    let c3 = if lookup_keyword("in") == 120 then 1 else 0;
-    let c4 = if lookup_keyword("break") == 125 then 1 else 0;
-    let c5 = if lookup_keyword("continue") == 126 then 1 else 0;
-    let c6 = if lookup_keyword("match") == 115 then 1 else 0;
+    let c1 = if lookup_keyword("while") == 118 { 1 } else { 0 };
+    let c2 = if lookup_keyword("for") == 119 { 1 } else { 0 };
+    let c3 = if lookup_keyword("in") == 120 { 1 } else { 0 };
+    let c4 = if lookup_keyword("break") == 125 { 1 } else { 0 };
+    let c5 = if lookup_keyword("continue") == 126 { 1 } else { 0 };
+    let c6 = if lookup_keyword("match") == 115 { 1 } else { 0 };
     c1 + c2 + c3 + c4 + c5 + c6;
 
--- Test next_token basic functionality
+// Test next_token basic functionality
 fn test_next_token() -> i64 =
-    -- Test keyword token
+    // Test keyword token
     let t1 = next_token("fn", 0);
-    let r1 = if token_kind(t1) == 100 then 1 else 0;  -- fn = 100
-    -- Test identifier
+    let r1 = if token_kind(t1) == 100 { 1 } else { 0 };  // fn = 100
+    // Test identifier
     let t2 = next_token("foo", 0);
-    let r2 = if token_kind(t2) == 201 then 1 else 0;  -- ident = 201
-    -- Test number
+    let r2 = if token_kind(t2) == 201 { 1 } else { 0 };  // ident = 201
+    // Test number
     let t3 = next_token("42", 0);
-    let r3 = if token_kind(t3) == 200 then 1 else 0;  -- number = 200
-    -- Test symbol
+    let r3 = if token_kind(t3) == 200 { 1 } else { 0 };  // number = 200
+    // Test symbol
     let t4 = next_token("+", 0);
-    let r4 = if token_kind(t4) == 400 then 1 else 0;  -- + = 400
-    -- Test skip whitespace
+    let r4 = if token_kind(t4) == 400 { 1 } else { 0 };  // + = 400
+    // Test skip whitespace
     let t5 = next_token("  let", 0);
-    let r5 = if token_kind(t5) == 101 then 1 else 0;  -- let = 101
+    let r5 = if token_kind(t5) == 101 { 1 } else { 0 };  // let = 101
     r1 + r2 + r3 + r4 + r5;
 
--- Test is_alnum_or_underscore (v0.30.154)
+// Test is_alnum_or_underscore (v0.30.154)
 fn test_alnum_underscore() -> i64 =
-    let t1 = if is_alnum_or_underscore(65) then 1 else 0;   -- 'A'
-    let t2 = if is_alnum_or_underscore(122) then 1 else 0;  -- 'z'
-    let t3 = if is_alnum_or_underscore(48) then 1 else 0;   -- '0'
-    let t4 = if is_alnum_or_underscore(57) then 1 else 0;   -- '9'
-    let t5 = if is_alnum_or_underscore(95) then 1 else 0;   -- '_'
-    let t6 = if not is_alnum_or_underscore(32) then 1 else 0;  -- space
-    let t7 = if not is_alnum_or_underscore(64) then 1 else 0;  -- '@'
-    let t8 = if not is_alnum_or_underscore(45) then 1 else 0;  -- '-'
+    let t1 = if is_alnum_or_underscore(65) { 1 } else { 0 };   // 'A'
+    let t2 = if is_alnum_or_underscore(122) { 1 } else { 0 };  // 'z'
+    let t3 = if is_alnum_or_underscore(48) { 1 } else { 0 };   // '0'
+    let t4 = if is_alnum_or_underscore(57) { 1 } else { 0 };   // '9'
+    let t5 = if is_alnum_or_underscore(95) { 1 } else { 0 };   // '_'
+    let t6 = if not is_alnum_or_underscore(32) { 1 } else { 0 };  // space
+    let t7 = if not is_alnum_or_underscore(64) { 1 } else { 0 };  // '@'
+    let t8 = if not is_alnum_or_underscore(45) { 1 } else { 0 };  // '-'
     t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8;
 
--- Test is_ident_start (v0.30.154)
+// Test is_ident_start (v0.30.154)
 fn test_ident_start() -> i64 =
-    let t1 = if is_ident_start(65) then 1 else 0;   -- 'A'
-    let t2 = if is_ident_start(90) then 1 else 0;   -- 'Z'
-    let t3 = if is_ident_start(97) then 1 else 0;   -- 'a'
-    let t4 = if is_ident_start(122) then 1 else 0;  -- 'z'
-    let t5 = if is_ident_start(95) then 1 else 0;   -- '_'
-    let t6 = if not is_ident_start(48) then 1 else 0;  -- '0' cannot start ident
-    let t7 = if not is_ident_start(57) then 1 else 0;  -- '9' cannot start ident
-    let t8 = if not is_ident_start(45) then 1 else 0;  -- '-' cannot start ident
+    let t1 = if is_ident_start(65) { 1 } else { 0 };   // 'A'
+    let t2 = if is_ident_start(90) { 1 } else { 0 };   // 'Z'
+    let t3 = if is_ident_start(97) { 1 } else { 0 };   // 'a'
+    let t4 = if is_ident_start(122) { 1 } else { 0 };  // 'z'
+    let t5 = if is_ident_start(95) { 1 } else { 0 };   // '_'
+    let t6 = if not is_ident_start(48) { 1 } else { 0 };  // '0' cannot start ident
+    let t7 = if not is_ident_start(57) { 1 } else { 0 };  // '9' cannot start ident
+    let t8 = if not is_ident_start(45) { 1 } else { 0 };  // '-' cannot start ident
     t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8;
 
--- Test digit_to_int (v0.30.154)
+// Test digit_to_int (v0.30.154)
 fn test_digit_to_int() -> i64 =
-    let t1 = if digit_to_int(48) == 0 then 1 else 0;  -- '0'
-    let t2 = if digit_to_int(49) == 1 then 1 else 0;  -- '1'
-    let t3 = if digit_to_int(53) == 5 then 1 else 0;  -- '5'
-    let t4 = if digit_to_int(57) == 9 then 1 else 0;  -- '9'
+    let t1 = if digit_to_int(48) == 0 { 1 } else { 0 };  // '0'
+    let t2 = if digit_to_int(49) == 1 { 1 } else { 0 };  // '1'
+    let t3 = if digit_to_int(53) == 5 { 1 } else { 0 };  // '5'
+    let t4 = if digit_to_int(57) == 9 { 1 } else { 0 };  // '9'
     t1 + t2 + t3 + t4;
 
--- Test skip_to_eol (v0.30.154)
+// Test skip_to_eol (v0.30.154)
 fn test_skip_to_eol() -> i64 =
-    let t1 = if skip_to_eol("abc", 0) == 3 then 1 else 0;  -- no newline
-    let t2 = if skip_to_eol("", 0) == 0 then 1 else 0;     -- empty
-    let t3 = if skip_to_eol("abcdef", 0) == 6 then 1 else 0;  -- to end
-    let t4 = if skip_to_eol("a", 0) == 1 then 1 else 0;    -- single char
+    let t1 = if skip_to_eol("abc", 0) == 3 { 1 } else { 0 };  // no newline
+    let t2 = if skip_to_eol("", 0) == 0 { 1 } else { 0 };     // empty
+    let t3 = if skip_to_eol("abcdef", 0) == 6 { 1 } else { 0 };  // to end
+    let t4 = if skip_to_eol("a", 0) == 1 { 1 } else { 0 };    // single char
     t1 + t2 + t3 + t4;
 
--- Test skip_all (v0.30.154)
+// Test skip_all (v0.30.154)
 fn test_skip_all() -> i64 =
-    let t1 = if skip_all("  abc", 0) == 2 then 1 else 0;   -- skip spaces
-    let t2 = if skip_all("abc", 0) == 0 then 1 else 0;     -- no skip
-    let t3 = if skip_all("", 0) == 0 then 1 else 0;        -- empty
-    let t4 = if skip_all("   x", 0) == 3 then 1 else 0;    -- three spaces
+    let t1 = if skip_all("  abc", 0) == 2 { 1 } else { 0 };   // skip spaces
+    let t2 = if skip_all("abc", 0) == 0 { 1 } else { 0 };     // no skip
+    let t3 = if skip_all("", 0) == 0 { 1 } else { 0 };        // empty
+    let t4 = if skip_all("   x", 0) == 3 { 1 } else { 0 };    // three spaces
     t1 + t2 + t3 + t4;
 
--- Test operator symbols (v0.30.154)
+// Test operator symbols (v0.30.154)
 fn test_operator_symbols() -> i64 =
-    let t1 = if symbol_code(37) == 404 then 1 else 0;  -- % Percent
-    let t2 = if symbol_code(60) == 405 then 1 else 0;  -- < Lt
-    let t3 = if symbol_code(62) == 406 then 1 else 0;  -- > Gt
-    let t4 = if symbol_code(123) == 307 then 1 else 0; -- { LBrace
-    let t5 = if symbol_code(125) == 308 then 1 else 0; -- } RBrace
-    let t6 = if symbol_code(91) == 309 then 1 else 0;  -- [ LBracket
-    let t7 = if symbol_code(93) == 310 then 1 else 0;  -- ] RBracket
-    let t8 = if symbol_code(38) == 311 then 1 else 0;  -- & Ampersand
+    let t1 = if symbol_code(37) == 404 { 1 } else { 0 };  // % Percent
+    let t2 = if symbol_code(60) == 405 { 1 } else { 0 };  // < Lt
+    let t3 = if symbol_code(62) == 406 { 1 } else { 0 };  // > Gt
+    let t4 = if symbol_code(123) == 307 { 1 } else { 0 }; // { LBrace
+    let t5 = if symbol_code(125) == 308 { 1 } else { 0 }; // } RBrace
+    let t6 = if symbol_code(91) == 309 { 1 } else { 0 };  // [ LBracket
+    let t7 = if symbol_code(93) == 310 { 1 } else { 0 };  // ] RBracket
+    let t8 = if symbol_code(38) == 311 { 1 } else { 0 };  // & Ampersand
     t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8;
 
--- Test additional keywords (v0.30.154)
+// Test additional keywords (v0.30.154)
 fn test_more_keywords() -> i64 =
-    let t1 = if lookup_keyword("then") == 103 then 1 else 0;
-    let t2 = if lookup_keyword("and") == 107 then 1 else 0;
-    let t3 = if lookup_keyword("or") == 108 then 1 else 0;
-    let t4 = if lookup_keyword("not") == 109 then 1 else 0;
-    let t5 = if lookup_keyword("pre") == 110 then 1 else 0;
-    let t6 = if lookup_keyword("post") == 111 then 1 else 0;
-    let t7 = if lookup_keyword("ret") == 112 then 1 else 0;
-    let t8 = if lookup_keyword("enum") == 114 then 1 else 0;
+    let t1 = if lookup_keyword("then") == 103 { 1 } else { 0 };
+    let t2 = if lookup_keyword("and") == 107 { 1 } else { 0 };
+    let t3 = if lookup_keyword("or") == 108 { 1 } else { 0 };
+    let t4 = if lookup_keyword("not") == 109 { 1 } else { 0 };
+    let t5 = if lookup_keyword("pre") == 110 { 1 } else { 0 };
+    let t6 = if lookup_keyword("post") == 111 { 1 } else { 0 };
+    let t7 = if lookup_keyword("ret") == 112 { 1 } else { 0 };
+    let t8 = if lookup_keyword("enum") == 114 { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8;
 
--- Test visibility keywords (v0.30.154)
+// Test visibility keywords (v0.30.154)
 fn test_visibility_keywords() -> i64 =
-    let t1 = if lookup_keyword("pub") == 121 then 1 else 0;
-    let t2 = if lookup_keyword("use") == 122 then 1 else 0;
-    let t3 = if lookup_keyword("new") == 116 then 1 else 0;
-    let t4 = if lookup_keyword("mut") == 117 then 1 else 0;
+    let t1 = if lookup_keyword("pub") == 121 { 1 } else { 0 };
+    let t2 = if lookup_keyword("use") == 122 { 1 } else { 0 };
+    let t3 = if lookup_keyword("new") == 116 { 1 } else { 0 };
+    let t4 = if lookup_keyword("mut") == 117 { 1 } else { 0 };
     t1 + t2 + t3 + t4;
 
--- Test EOF handling (v0.30.154)
+// Test EOF handling (v0.30.154)
 fn test_eof_handling() -> i64 =
     let t1 = next_token("", 0);
-    let r1 = if token_kind(t1) == 900 then 1 else 0;  -- EOF
+    let r1 = if token_kind(t1) == 900 { 1 } else { 0 };  // EOF
     let t2 = next_token("   ", 0);
-    let r2 = if token_kind(t2) == 900 then 1 else 0;  -- whitespace only
+    let r2 = if token_kind(t2) == 900 { 1 } else { 0 };  // whitespace only
     let t3 = next_token("x", 1);
-    let r3 = if token_kind(t3) == 900 then 1 else 0;  -- past end
+    let r3 = if token_kind(t3) == 900 { 1 } else { 0 };  // past end
     let t4 = next_token("ab", 2);
-    let r4 = if token_kind(t4) == 900 then 1 else 0;  -- at end
+    let r4 = if token_kind(t4) == 900 { 1 } else { 0 };  // at end
     r1 + r2 + r3 + r4;
 
--- ============================================================
--- v0.30.168: Extended Unit Tests
--- ============================================================
+// ============================================================
+// v0.30.168: Extended Unit Tests
+// ============================================================
 
--- Test is_whitespace function
+// Test is_whitespace function
 fn test_is_whitespace_func() -> i64 =
-    let t1 = if is_whitespace(32) then 1 else 0;   -- space
-    let t2 = if is_whitespace(9) then 1 else 0;    -- tab
-    let t3 = if is_whitespace(10) then 1 else 0;   -- newline
-    let t4 = if is_whitespace(13) then 1 else 0;   -- CR
-    let t5 = if not is_whitespace(65) then 1 else 0;  -- 'A' not whitespace
-    let t6 = if not is_whitespace(48) then 1 else 0;  -- '0' not whitespace
+    let t1 = if is_whitespace(32) { 1 } else { 0 };   // space
+    let t2 = if is_whitespace(9) { 1 } else { 0 };    // tab
+    let t3 = if is_whitespace(10) { 1 } else { 0 };   // newline
+    let t4 = if is_whitespace(13) { 1 } else { 0 };   // CR
+    let t5 = if not is_whitespace(65) { 1 } else { 0 };  // 'A' not whitespace
+    let t6 = if not is_whitespace(48) { 1 } else { 0 };  // '0' not whitespace
     t1 + t2 + t3 + t4 + t5 + t6;
 
--- Test is_alpha function
+// Test is_alpha function
 fn test_is_alpha_func() -> i64 =
-    let t1 = if is_alpha(65) then 1 else 0;   -- 'A'
-    let t2 = if is_alpha(90) then 1 else 0;   -- 'Z'
-    let t3 = if is_alpha(97) then 1 else 0;   -- 'a'
-    let t4 = if is_alpha(122) then 1 else 0;  -- 'z'
-    let t5 = if not is_alpha(48) then 1 else 0;  -- '0' not alpha
-    let t6 = if not is_alpha(95) then 1 else 0;  -- '_' not alpha
+    let t1 = if is_alpha(65) { 1 } else { 0 };   // 'A'
+    let t2 = if is_alpha(90) { 1 } else { 0 };   // 'Z'
+    let t3 = if is_alpha(97) { 1 } else { 0 };   // 'a'
+    let t4 = if is_alpha(122) { 1 } else { 0 };  // 'z'
+    let t5 = if not is_alpha(48) { 1 } else { 0 };  // '0' not alpha
+    let t6 = if not is_alpha(95) { 1 } else { 0 };  // '_' not alpha
     t1 + t2 + t3 + t4 + t5 + t6;
 
--- Test is_digit function
+// Test is_digit function
 fn test_is_digit_func() -> i64 =
-    let t1 = if is_digit(48) then 1 else 0;   -- '0'
-    let t2 = if is_digit(49) then 1 else 0;   -- '1'
-    let t3 = if is_digit(57) then 1 else 0;   -- '9'
-    let t4 = if not is_digit(65) then 1 else 0;  -- 'A' not digit
-    let t5 = if not is_digit(97) then 1 else 0;  -- 'a' not digit
-    let t6 = if not is_digit(47) then 1 else 0;  -- '/' not digit
+    let t1 = if is_digit(48) { 1 } else { 0 };   // '0'
+    let t2 = if is_digit(49) { 1 } else { 0 };   // '1'
+    let t3 = if is_digit(57) { 1 } else { 0 };   // '9'
+    let t4 = if not is_digit(65) { 1 } else { 0 };  // 'A' not digit
+    let t5 = if not is_digit(97) { 1 } else { 0 };  // 'a' not digit
+    let t6 = if not is_digit(47) { 1 } else { 0 };  // '/' not digit
     t1 + t2 + t3 + t4 + t5 + t6;
 
--- Test find_ident_end function
+// Test find_ident_end function
 fn test_find_ident_end_func() -> i64 =
-    let t1 = if find_ident_end("abc", 0) == 3 then 1 else 0;  -- whole word
-    let t2 = if find_ident_end("a_b", 0) == 3 then 1 else 0;  -- with underscore
-    let t3 = if find_ident_end("x12", 0) == 3 then 1 else 0;  -- with numbers
-    let t4 = if find_ident_end("", 0) == 0 then 1 else 0;     -- empty
-    let t5 = if find_ident_end("a b", 0) == 1 then 1 else 0;  -- stops at space
-    let t6 = if find_ident_end("xy+z", 0) == 2 then 1 else 0; -- stops at operator
+    let t1 = if find_ident_end("abc", 0) == 3 { 1 } else { 0 };  // whole word
+    let t2 = if find_ident_end("a_b", 0) == 3 { 1 } else { 0 };  // with underscore
+    let t3 = if find_ident_end("x12", 0) == 3 { 1 } else { 0 };  // with numbers
+    let t4 = if find_ident_end("", 0) == 0 { 1 } else { 0 };     // empty
+    let t5 = if find_ident_end("a b", 0) == 1 { 1 } else { 0 };  // stops at space
+    let t6 = if find_ident_end("xy+z", 0) == 2 { 1 } else { 0 }; // stops at operator
     t1 + t2 + t3 + t4 + t5 + t6;
 
--- Test find_number_end function
+// Test find_number_end function
 fn test_find_number_end_func() -> i64 =
-    let t1 = if find_number_end("123", 0) == 3 then 1 else 0;  -- whole number
-    let t2 = if find_number_end("1", 0) == 1 then 1 else 0;    -- single digit
-    let t3 = if find_number_end("42x", 0) == 2 then 1 else 0;  -- stops at letter
-    let t4 = if find_number_end("", 0) == 0 then 1 else 0;     -- empty
-    let t5 = if find_number_end("99 ", 0) == 2 then 1 else 0;  -- stops at space
-    let t6 = if find_number_end("12+3", 0) == 2 then 1 else 0; -- stops at operator
+    let t1 = if find_number_end("123", 0) == 3 { 1 } else { 0 };  // whole number
+    let t2 = if find_number_end("1", 0) == 1 { 1 } else { 0 };    // single digit
+    let t3 = if find_number_end("42x", 0) == 2 { 1 } else { 0 };  // stops at letter
+    let t4 = if find_number_end("", 0) == 0 { 1 } else { 0 };     // empty
+    let t5 = if find_number_end("99 ", 0) == 2 { 1 } else { 0 };  // stops at space
+    let t6 = if find_number_end("12+3", 0) == 2 { 1 } else { 0 }; // stops at operator
     t1 + t2 + t3 + t4 + t5 + t6;
 
--- Test symbol_code extended
+// Test symbol_code extended
 fn test_symbol_code_ext() -> i64 =
-    let t1 = if symbol_code(58) == 300 then 1 else 0;   -- : Colon
-    let t2 = if symbol_code(46) == 301 then 1 else 0;   -- . Dot
-    let t3 = if symbol_code(61) == 302 then 1 else 0;   -- = Eq
-    let t4 = if symbol_code(59) == 303 then 1 else 0;   -- ; Semi
-    let t5 = if symbol_code(44) == 304 then 1 else 0;   -- , Comma
-    let t6 = if symbol_code(40) == 305 then 1 else 0;   -- ( LParen
-    let t7 = if symbol_code(41) == 306 then 1 else 0;   -- ) RParen
-    let t8 = if symbol_code(64) == 999 then 1 else 0;   -- @ Unknown
+    let t1 = if symbol_code(58) == 300 { 1 } else { 0 };   // : Colon
+    let t2 = if symbol_code(46) == 301 { 1 } else { 0 };   // . Dot
+    let t3 = if symbol_code(61) == 302 { 1 } else { 0 };   // = Eq
+    let t4 = if symbol_code(59) == 303 { 1 } else { 0 };   // ; Semi
+    let t5 = if symbol_code(44) == 304 { 1 } else { 0 };   // , Comma
+    let t6 = if symbol_code(40) == 305 { 1 } else { 0 };   // ( LParen
+    let t7 = if symbol_code(41) == 306 { 1 } else { 0 };   // ) RParen
+    let t8 = if symbol_code(64) == 999 { 1 } else { 0 };   // @ Unknown
     t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8;
 
--- Test check_two_char extended
+// Test check_two_char extended
 fn test_check_two_char_ext() -> i64 =
-    let t1 = if check_two_char("::", 0) == 3202 then 1 else 0;  -- :: ColonColon
-    let t2 = if check_two_char("->", 0) == 3212 then 1 else 0;  -- -> Arrow
-    let t3 = if check_two_char("=>", 0) == 3222 then 1 else 0;  -- => FatArrow
-    let t4 = if check_two_char("..", 0) == 3232 then 1 else 0;  -- .. DotDot
-    let t5 = if check_two_char("==", 0) == 4102 then 1 else 0;  -- == EqEq
-    let t6 = if check_two_char("!=", 0) == 4112 then 1 else 0;  -- != NotEq
-    let t7 = if check_two_char("ab", 0) == 0 then 1 else 0;     -- not two-char
-    let t8 = if check_two_char("x", 0) == 0 then 1 else 0;      -- too short
+    let t1 = if check_two_char("::", 0) == 3202 { 1 } else { 0 };  // :: ColonColon
+    let t2 = if check_two_char("->", 0) == 3212 { 1 } else { 0 };  // -> Arrow
+    let t3 = if check_two_char("=>", 0) == 3222 { 1 } else { 0 };  // => FatArrow
+    let t4 = if check_two_char("..", 0) == 3232 { 1 } else { 0 };  // .. DotDot
+    let t5 = if check_two_char("==", 0) == 4102 { 1 } else { 0 };  // == EqEq
+    let t6 = if check_two_char("!=", 0) == 4112 { 1 } else { 0 };  // != NotEq
+    let t7 = if check_two_char("ab", 0) == 0 { 1 } else { 0 };     // not two-char
+    let t8 = if check_two_char("x", 0) == 0 { 1 } else { 0 };      // too short
     t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8;
 
--- Test keywords negative cases (not keywords)
+// Test keywords negative cases (not keywords)
 fn test_keyword_negative() -> i64 =
-    let t1 = if lookup_keyword("xyz") == 201 then 1 else 0;    -- not keyword
-    let t2 = if lookup_keyword("abc") == 201 then 1 else 0;    -- not keyword
-    let t3 = if lookup_keyword("Fn") == 201 then 1 else 0;     -- case sensitive
-    let t4 = if lookup_keyword("IF") == 201 then 1 else 0;     -- case sensitive
-    let t5 = if lookup_keyword("hello") == 201 then 1 else 0;  -- not keyword
-    let t6 = if lookup_keyword("x") == 201 then 1 else 0;      -- single char not keyword
+    let t1 = if lookup_keyword("xyz") == 201 { 1 } else { 0 };    // not keyword
+    let t2 = if lookup_keyword("abc") == 201 { 1 } else { 0 };    // not keyword
+    let t3 = if lookup_keyword("Fn") == 201 { 1 } else { 0 };     // case sensitive
+    let t4 = if lookup_keyword("IF") == 201 { 1 } else { 0 };     // case sensitive
+    let t5 = if lookup_keyword("hello") == 201 { 1 } else { 0 };  // not keyword
+    let t6 = if lookup_keyword("x") == 201 { 1 } else { 0 };      // single char not keyword
     t1 + t2 + t3 + t4 + t5 + t6;
 
--- Test skip_ws function
+// Test skip_ws function
 fn test_skip_ws_func() -> i64 =
-    let t1 = if skip_ws("  abc", 0) == 2 then 1 else 0;   -- skip 2 spaces
-    let t2 = if skip_ws("abc", 0) == 0 then 1 else 0;     -- no skip
-    let t3 = if skip_ws("", 0) == 0 then 1 else 0;        -- empty
-    let t4 = if skip_ws("   x", 0) == 3 then 1 else 0;    -- skip 3 spaces
-    let t5 = if skip_ws("x  y", 1) == 3 then 1 else 0;    -- skip from pos 1
-    let t6 = if skip_ws("    ", 0) == 4 then 1 else 0;    -- all whitespace
+    let t1 = if skip_ws("  abc", 0) == 2 { 1 } else { 0 };   // skip 2 spaces
+    let t2 = if skip_ws("abc", 0) == 0 { 1 } else { 0 };     // no skip
+    let t3 = if skip_ws("", 0) == 0 { 1 } else { 0 };        // empty
+    let t4 = if skip_ws("   x", 0) == 3 { 1 } else { 0 };    // skip 3 spaces
+    let t5 = if skip_ws("x  y", 1) == 3 { 1 } else { 0 };    // skip from pos 1
+    let t6 = if skip_ws("    ", 0) == 4 { 1 } else { 0 };    // all whitespace
     t1 + t2 + t3 + t4 + t5 + t6;
 
--- Test control flow keywords extended
+// Test control flow keywords extended
 fn test_control_flow_ext() -> i64 =
-    let t1 = if lookup_keyword("break") == 125 then 1 else 0;
-    let t2 = if lookup_keyword("continue") == 126 then 1 else 0;
-    let t3 = if lookup_keyword("trait") == 127 then 1 else 0;
-    let t4 = if lookup_keyword("impl") == 128 then 1 else 0;
-    let t5 = if lookup_keyword("while") == 118 then 1 else 0;
-    let t6 = if lookup_keyword("for") == 119 then 1 else 0;
+    let t1 = if lookup_keyword("break") == 125 { 1 } else { 0 };
+    let t2 = if lookup_keyword("continue") == 126 { 1 } else { 0 };
+    let t3 = if lookup_keyword("trait") == 127 { 1 } else { 0 };
+    let t4 = if lookup_keyword("impl") == 128 { 1 } else { 0 };
+    let t5 = if lookup_keyword("while") == 118 { 1 } else { 0 };
+    let t6 = if lookup_keyword("for") == 119 { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5 + t6;
 
--- v0.30.181: Test token position accuracy
+// v0.30.181: Test token position accuracy
 fn test_token_position() -> i64 =
-    (if token_start(100000000) == 0 then 1 else 0) +
-    (if token_start(100001000) == 1 then 1 else 0) +
-    (if token_start(100010000) == 10 then 1 else 0) +
-    (if token_len(100000001) == 1 then 1 else 0) +
-    (if token_len(100000010) == 10 then 1 else 0) +
-    (if token_len(100000100) == 100 then 1 else 0);
+    (if token_start(100000000) == 0 { 1 } else { 0 }) +
+    (if token_start(100001000) == 1 { 1 } else { 0 }) +
+    (if token_start(100010000) == 10 { 1 } else { 0 }) +
+    (if token_len(100000001) == 1 { 1 } else { 0 }) +
+    (if token_len(100000010) == 10 { 1 } else { 0 }) +
+    (if token_len(100000100) == 100 { 1 } else { 0 });
 
--- v0.30.181: Test boundary alpha cases
+// v0.30.181: Test boundary alpha cases
 fn test_alpha_boundary() -> i64 =
-    (if is_alpha(64) then 0 else 1) +     -- '@' before 'A'
-    (if is_alpha(65) then 1 else 0) +     -- 'A'
-    (if is_alpha(91) then 0 else 1) +     -- '[' after 'Z'
-    (if is_alpha(96) then 0 else 1) +     -- '`' before 'a'
-    (if is_alpha(97) then 1 else 0) +     -- 'a'
-    (if is_alpha(123) then 0 else 1);     -- '{' after 'z'
+    (if is_alpha(64) { 0 } else { 1 }) +     // '@' before 'A'
+    (if is_alpha(65) { 1 } else { 0 }) +     // 'A'
+    (if is_alpha(91) { 0 } else { 1 }) +     // '[' after 'Z'
+    (if is_alpha(96) { 0 } else { 1 }) +     // '`' before 'a'
+    (if is_alpha(97) { 1 } else { 0 }) +     // 'a'
+    (if is_alpha(123) { 0 } else { 1 });     // '{' after 'z'
 
--- v0.30.181: Test boundary digit cases
+// v0.30.181: Test boundary digit cases
 fn test_digit_boundary() -> i64 =
-    (if is_digit(47) then 0 else 1) +     -- '/' before '0'
-    (if is_digit(48) then 1 else 0) +     -- '0'
-    (if is_digit(49) then 1 else 0) +     -- '1'
-    (if is_digit(56) then 1 else 0) +     -- '8'
-    (if is_digit(57) then 1 else 0) +     -- '9'
-    (if is_digit(58) then 0 else 1);      -- ':' after '9'
+    (if is_digit(47) { 0 } else { 1 }) +     // '/' before '0'
+    (if is_digit(48) { 1 } else { 0 }) +     // '0'
+    (if is_digit(49) { 1 } else { 0 }) +     // '1'
+    (if is_digit(56) { 1 } else { 0 }) +     // '8'
+    (if is_digit(57) { 1 } else { 0 }) +     // '9'
+    (if is_digit(58) { 0 } else { 1 });      // ':' after '9'
 
--- v0.30.181: Test unknown symbols
+// v0.30.181: Test unknown symbols
 fn test_unknown_symbols() -> i64 =
-    (if symbol_code(33) == 999 then 1 else 0) +   -- '!'
-    (if symbol_code(64) == 999 then 1 else 0) +   -- '@'
-    (if symbol_code(35) == 999 then 1 else 0) +   -- '#'
-    (if symbol_code(36) == 999 then 1 else 0) +   -- '$'
-    (if symbol_code(94) == 999 then 1 else 0) +   -- '^'
-    (if symbol_code(96) == 999 then 1 else 0);    -- '`'
+    (if symbol_code(33) == 999 { 1 } else { 0 }) +   // '!'
+    (if symbol_code(64) == 999 { 1 } else { 0 }) +   // '@'
+    (if symbol_code(35) == 999 { 1 } else { 0 }) +   // '#'
+    (if symbol_code(36) == 999 { 1 } else { 0 }) +   // '$'
+    (if symbol_code(94) == 999 { 1 } else { 0 }) +   // '^'
+    (if symbol_code(96) == 999 { 1 } else { 0 });    // '`'
 
--- v0.30.181: Test process_symbol function
+// v0.30.181: Test process_symbol function
 fn test_process_symbol() -> i64 =
     let t1 = process_symbol("+", 0);
     let t2 = process_symbol("-", 0);
     let t3 = process_symbol("*", 0);
     let t4 = process_symbol("/", 0);
-    (if token_kind(t1) == 400 then 1 else 0) +
-    (if token_kind(t2) == 401 then 1 else 0) +
-    (if token_kind(t3) == 402 then 1 else 0) +
-    (if token_kind(t4) == 403 then 1 else 0) +
-    (if token_len(t1) == 1 then 1 else 0) +
-    (if token_len(t2) == 1 then 1 else 0);
+    (if token_kind(t1) == 400 { 1 } else { 0 }) +
+    (if token_kind(t2) == 401 { 1 } else { 0 }) +
+    (if token_kind(t3) == 402 { 1 } else { 0 }) +
+    (if token_kind(t4) == 403 { 1 } else { 0 }) +
+    (if token_len(t1) == 1 { 1 } else { 0 }) +
+    (if token_len(t2) == 1 { 1 } else { 0 });
 
--- v0.30.181: Test process_number function
+// v0.30.181: Test process_number function
 fn test_process_number() -> i64 =
     let t1 = process_number("42", 0);
     let t2 = process_number("123", 0);
     let t3 = process_number("0", 0);
-    (if token_kind(t1) == 200 then 1 else 0) +
-    (if token_kind(t2) == 200 then 1 else 0) +
-    (if token_kind(t3) == 200 then 1 else 0) +
-    (if token_len(t1) == 2 then 1 else 0) +
-    (if token_len(t2) == 3 then 1 else 0) +
-    (if token_len(t3) == 1 then 1 else 0);
+    (if token_kind(t1) == 200 { 1 } else { 0 }) +
+    (if token_kind(t2) == 200 { 1 } else { 0 }) +
+    (if token_kind(t3) == 200 { 1 } else { 0 }) +
+    (if token_len(t1) == 2 { 1 } else { 0 }) +
+    (if token_len(t2) == 3 { 1 } else { 0 }) +
+    (if token_len(t3) == 1 { 1 } else { 0 });
 
--- v0.30.195: Test token encoding/decoding
+// v0.30.195: Test token encoding/decoding
 fn test_token_decode_ext() -> i64 =
-    let t1 = 100000002;  -- kind=100, start=0, len=2
-    let t2 = 200005003;  -- kind=200, start=5, len=3
-    let t3 = 300010001;  -- kind=300, start=10, len=1
-    (if token_kind(t1) == 100 then 1 else 0) +
-    (if token_start(t1) == 0 then 1 else 0) +
-    (if token_len(t1) == 2 then 1 else 0) +
-    (if token_kind(t2) == 200 then 1 else 0) +
-    (if token_start(t2) == 5 then 1 else 0) +
-    (if token_len(t2) == 3 then 1 else 0);
+    let t1 = 100000002;  // kind=100, start=0, len=2
+    let t2 = 200005003;  // kind=200, start=5, len=3
+    let t3 = 300010001;  // kind=300, start=10, len=1
+    (if token_kind(t1) == 100 { 1 } else { 0 }) +
+    (if token_start(t1) == 0 { 1 } else { 0 }) +
+    (if token_len(t1) == 2 { 1 } else { 0 }) +
+    (if token_kind(t2) == 200 { 1 } else { 0 }) +
+    (if token_start(t2) == 5 { 1 } else { 0 }) +
+    (if token_len(t2) == 3 { 1 } else { 0 });
 
--- v0.30.195: Test whitespace boundary cases
+// v0.30.195: Test whitespace boundary cases
 fn test_whitespace_boundary() -> i64 =
-    (if is_whitespace(8) then 0 else 1) +    -- before tab
-    (if is_whitespace(9) then 1 else 0) +    -- tab
-    (if is_whitespace(10) then 1 else 0) +   -- newline
-    (if is_whitespace(11) then 0 else 1) +   -- after newline
-    (if is_whitespace(13) then 1 else 0) +   -- CR
-    (if is_whitespace(32) then 1 else 0);    -- space
+    (if is_whitespace(8) { 0 } else { 1 }) +    // before tab
+    (if is_whitespace(9) { 1 } else { 0 }) +    // tab
+    (if is_whitespace(10) { 1 } else { 0 }) +   // newline
+    (if is_whitespace(11) { 0 } else { 1 }) +   // after newline
+    (if is_whitespace(13) { 1 } else { 0 }) +   // CR
+    (if is_whitespace(32) { 1 } else { 0 });    // space
 
--- v0.30.195: Test is_ident_start extended
+// v0.30.195: Test is_ident_start extended
 fn test_ident_start_ext() -> i64 =
-    (if is_ident_start(65) then 1 else 0) +    -- 'A'
-    (if is_ident_start(90) then 1 else 0) +    -- 'Z'
-    (if is_ident_start(97) then 1 else 0) +    -- 'a'
-    (if is_ident_start(122) then 1 else 0) +   -- 'z'
-    (if is_ident_start(95) then 1 else 0) +    -- '_'
-    (if not is_ident_start(48) then 1 else 0); -- '0' (not valid)
+    (if is_ident_start(65) { 1 } else { 0 }) +    // 'A'
+    (if is_ident_start(90) { 1 } else { 0 }) +    // 'Z'
+    (if is_ident_start(97) { 1 } else { 0 }) +    // 'a'
+    (if is_ident_start(122) { 1 } else { 0 }) +   // 'z'
+    (if is_ident_start(95) { 1 } else { 0 }) +    // '_'
+    (if not is_ident_start(48) { 1 } else { 0 }); // '0' (not valid)
 
--- v0.30.195: Test is_alnum_or_underscore extended
+// v0.30.195: Test is_alnum_or_underscore extended
 fn test_alnum_underscore_ext() -> i64 =
-    (if is_alnum_or_underscore(65) then 1 else 0) +   -- 'A'
-    (if is_alnum_or_underscore(48) then 1 else 0) +   -- '0'
-    (if is_alnum_or_underscore(95) then 1 else 0) +   -- '_'
-    (if is_alnum_or_underscore(57) then 1 else 0) +   -- '9'
-    (if not is_alnum_or_underscore(64) then 1 else 0) + -- '@'
-    (if not is_alnum_or_underscore(32) then 1 else 0); -- ' '
+    (if is_alnum_or_underscore(65) { 1 } else { 0 }) +   // 'A'
+    (if is_alnum_or_underscore(48) { 1 } else { 0 }) +   // '0'
+    (if is_alnum_or_underscore(95) { 1 } else { 0 }) +   // '_'
+    (if is_alnum_or_underscore(57) { 1 } else { 0 }) +   // '9'
+    (if not is_alnum_or_underscore(64) { 1 } else { 0 }) + // '@'
+    (if not is_alnum_or_underscore(32) { 1 } else { 0 }); // ' '
 
--- v0.30.195: Test two-char operators extended
+// v0.30.195: Test two-char operators extended
 fn test_two_char_ops_ext() -> i64 =
-    (if check_two_char("->", 0) == 3212 then 1 else 0) +  -- ->
-    (if check_two_char("==", 0) == 4102 then 1 else 0) +  -- ==
-    (if check_two_char("!=", 0) == 4112 then 1 else 0) +  -- !=
-    (if check_two_char("<=", 0) == 4122 then 1 else 0) +  -- <=
-    (if check_two_char(">=", 0) == 4132 then 1 else 0) +  -- >=
-    (if check_two_char("::", 0) == 3202 then 1 else 0);   -- ::
+    (if check_two_char("->", 0) == 3212 { 1 } else { 0 }) +  // ->
+    (if check_two_char("==", 0) == 4102 { 1 } else { 0 }) +  // ==
+    (if check_two_char("!=", 0) == 4112 { 1 } else { 0 }) +  // !=
+    (if check_two_char("<=", 0) == 4122 { 1 } else { 0 }) +  // <=
+    (if check_two_char(">=", 0) == 4132 { 1 } else { 0 }) +  // >=
+    (if check_two_char("::", 0) == 3202 { 1 } else { 0 });   // ::
 
--- v0.30.195: Test token encoding completeness
+// v0.30.195: Test token encoding completeness
 fn test_token_encoding_ext() -> i64 =
-    let t1 = 999000001;  -- kind=999, start=0, len=1
-    let t2 = 100099005;  -- kind=100, start=99, len=5
-    let t3 = 501000010; -- kind=501, start=0 (overflow test)
-    (if token_kind(t1) == 999 then 1 else 0) +
-    (if token_start(t1) == 0 then 1 else 0) +
-    (if token_start(t2) == 99 then 1 else 0) +
-    (if token_len(t2) == 5 then 1 else 0) +
-    (if token_len(t1) == 1 then 1 else 0) +
-    (if token_kind(t2) == 100 then 1 else 0);
+    let t1 = 999000001;  // kind=999, start=0, len=1
+    let t2 = 100099005;  // kind=100, start=99, len=5
+    let t3 = 501000010; // kind=501, start=0 (overflow test)
+    (if token_kind(t1) == 999 { 1 } else { 0 }) +
+    (if token_start(t1) == 0 { 1 } else { 0 }) +
+    (if token_start(t2) == 99 { 1 } else { 0 }) +
+    (if token_len(t2) == 5 { 1 } else { 0 }) +
+    (if token_len(t1) == 1 { 1 } else { 0 }) +
+    (if token_kind(t2) == 100 { 1 } else { 0 });
 
--- Tokenize and print, returning count
+// Tokenize and print, returning count
 fn tok_step(s: String, pos: i64, count: i64) -> i64 =
     let tok = next_token(s, pos);
     let kind = token_kind(tok);
     let start = token_start(tok);
     let len = token_len(tok);
-    let u = println(kind);  -- Print token kind
-    if kind == 900 then count + 1  -- EOF
-    else if kind == 999 then count + 1  -- Error
-    else tok_step(s, start + len, count + 1);
+    let u = println(kind);  // Print token kind
+    if kind == 900 { count + 1 } else if kind == 999 { count + 1 } else { tok_step(s, start + len, count + 1) };
 
--- Tokenize and print all tokens
+// Tokenize and print all tokens
 fn tokenize(s: String) -> i64 = tok_step(s, 0, 0);
 
--- Main function - run all tests
+// Main function - run all tests
 fn main() -> i64 =
-    let u1 = println(777);  -- Start marker
-    -- Run unit tests
+    let u1 = println(777);  // Start marker
+    // Run unit tests
     let t1 = test_char_class();
-    let u2 = println(t1);  -- Should be 12
+    let u2 = println(t1);  // Should be 12
     let t2 = test_keywords();
-    let u3 = println(t2);  -- Should be 10
+    let u3 = println(t2);  // Should be 10
     let t3 = test_symbols();
-    let u4 = println(t3);  -- Should be 10
+    let u4 = println(t3);  // Should be 10
     let t4 = test_two_char();
-    let u5 = println(t4);  -- Should be 10
+    let u5 = println(t4);  // Should be 10
     let t5 = test_token_extract();
-    let u6 = println(t5);  -- Should be 8
+    let u6 = println(t5);  // Should be 8
     let t6 = test_skip();
-    let u7 = println(t6);  -- Should be 9
+    let u7 = println(t6);  // Should be 9
     let t7 = test_type_keywords();
-    let u8 = println(t7);  -- Should be 5
+    let u8 = println(t7);  // Should be 5
     let t8 = test_control_keywords();
-    let u9 = println(t8);  -- Should be 6
+    let u9 = println(t8);  // Should be 6
     let t9 = test_next_token();
-    let u10 = println(t9); -- Should be 5
+    let u10 = println(t9); // Should be 5
 
-    -- New unit tests (v0.30.154)
+    // New unit tests (v0.30.154)
     let t10 = test_alnum_underscore();
-    let u11 = println(t10);  -- Should be 8
+    let u11 = println(t10);  // Should be 8
     let t11 = test_ident_start();
-    let u12 = println(t11);  -- Should be 8
+    let u12 = println(t11);  // Should be 8
     let t12 = test_digit_to_int();
-    let u13 = println(t12);  -- Should be 4
+    let u13 = println(t12);  // Should be 4
     let t13 = test_skip_to_eol();
-    let u14 = println(t13);  -- Should be 4
+    let u14 = println(t13);  // Should be 4
     let t14 = test_skip_all();
-    let u15 = println(t14);  -- Should be 4
+    let u15 = println(t14);  // Should be 4
     let t15 = test_operator_symbols();
-    let u16 = println(t15);  -- Should be 8
+    let u16 = println(t15);  // Should be 8
     let t16 = test_more_keywords();
-    let u17 = println(t16);  -- Should be 8
+    let u17 = println(t16);  // Should be 8
     let t17 = test_visibility_keywords();
-    let u18 = println(t17);  -- Should be 4
+    let u18 = println(t17);  // Should be 4
     let t18 = test_eof_handling();
-    let u19 = println(t18);  -- Should be 4
+    let u19 = println(t18);  // Should be 4
 
-    -- v0.30.168: Extended unit tests (64 new assertions)
+    // v0.30.168: Extended unit tests (64 new assertions)
     let t19 = test_is_whitespace_func();
-    let u20 = println(t19);  -- Should be 6
+    let u20 = println(t19);  // Should be 6
     let t20 = test_is_alpha_func();
-    let u21 = println(t20);  -- Should be 6
+    let u21 = println(t20);  // Should be 6
     let t21 = test_is_digit_func();
-    let u22 = println(t21);  -- Should be 6
+    let u22 = println(t21);  // Should be 6
     let t22 = test_find_ident_end_func();
-    let u23 = println(t22);  -- Should be 6
+    let u23 = println(t22);  // Should be 6
     let t23 = test_find_number_end_func();
-    let u24 = println(t23);  -- Should be 6
+    let u24 = println(t23);  // Should be 6
     let t24 = test_symbol_code_ext();
-    let u25 = println(t24);  -- Should be 8
+    let u25 = println(t24);  // Should be 8
     let t25 = test_check_two_char_ext();
-    let u26 = println(t25);  -- Should be 8
+    let u26 = println(t25);  // Should be 8
     let t26 = test_keyword_negative();
-    let u27 = println(t26);  -- Should be 6
+    let u27 = println(t26);  // Should be 6
     let t27 = test_skip_ws_func();
-    let u28 = println(t27);  -- Should be 6
+    let u28 = println(t27);  // Should be 6
     let t28 = test_control_flow_ext();
-    let u29 = println(t28);  -- Should be 6
+    let u29 = println(t28);  // Should be 6
 
-    -- v0.30.181: Additional unit tests (36 new assertions)
+    // v0.30.181: Additional unit tests (36 new assertions)
     let t29 = test_token_position();
-    let u30 = println(t29);  -- Should be 6
+    let u30 = println(t29);  // Should be 6
     let t30 = test_alpha_boundary();
-    let u31 = println(t30);  -- Should be 6
+    let u31 = println(t30);  // Should be 6
     let t31 = test_digit_boundary();
-    let u32 = println(t31);  -- Should be 6
+    let u32_ = println(t31);  // Should be 6
     let t32 = test_unknown_symbols();
-    let u33 = println(t32);  -- Should be 6
+    let u33 = println(t32);  // Should be 6
     let t33 = test_process_symbol();
-    let u34 = println(t33);  -- Should be 6
+    let u34 = println(t33);  // Should be 6
     let t34 = test_process_number();
-    let u35 = println(t34);  -- Should be 6
+    let u35 = println(t34);  // Should be 6
 
-    -- v0.30.195: Extended unit tests (36 new assertions)
+    // v0.30.195: Extended unit tests (36 new assertions)
     let t35 = test_token_decode_ext();
-    let u36 = println(t35);  -- Should be 6
+    let u36 = println(t35);  // Should be 6
     let t36 = test_whitespace_boundary();
-    let u37 = println(t36);  -- Should be 6
+    let u37 = println(t36);  // Should be 6
     let t37 = test_ident_start_ext();
-    let u38 = println(t37);  -- Should be 6
+    let u38 = println(t37);  // Should be 6
     let t38 = test_alnum_underscore_ext();
-    let u39 = println(t38);  -- Should be 6
+    let u39 = println(t38);  // Should be 6
     let t39 = test_two_char_ops_ext();
-    let u40 = println(t39);  -- Should be 6
+    let u40 = println(t39);  // Should be 6
     let t40 = test_token_encoding_ext();
-    let u41 = println(t40);  -- Should be 6
+    let u41 = println(t40);  // Should be 6
 
-    let u42 = println(888);  -- End marker
+    let u42 = println(888);  // End marker
     let base_total = t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t9 + t10 + t11 + t12 + t13 + t14 + t15 + t16 + t17 + t18;
     let ext_total = t19 + t20 + t21 + t22 + t23 + t24 + t25 + t26 + t27 + t28;
     let new_total = t29 + t30 + t31 + t32 + t33 + t34;
     let v195_total = t35 + t36 + t37 + t38 + t39 + t40;
     let total = base_total + ext_total + new_total + v195_total;
-    let u43 = println(total);  -- Should be 263 (127 base + 64 ext + 36 new + 36 v195)
-    let u44 = println(999);  -- Final marker
+    let u43 = println(total);  // Should be 263 (127 base + 64 ext + 36 new + 36 v195)
+    let u44 = println(999);  // Final marker
     0;
