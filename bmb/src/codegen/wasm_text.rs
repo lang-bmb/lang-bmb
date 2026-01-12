@@ -1166,6 +1166,8 @@ mod tests {
                     }],
                     terminator: Terminator::Return(Some(Operand::Place(Place::new("_t0")))),
                 }],
+                preconditions: vec![],
+                postconditions: vec![],
             }],
             extern_fns: vec![],
         };
@@ -1195,6 +1197,8 @@ mod tests {
                     instructions: vec![],
                     terminator: Terminator::Return(None),
                 }],
+                preconditions: vec![],
+                postconditions: vec![],
             }],
             extern_fns: vec![],
         };
@@ -1311,6 +1315,8 @@ mod tests {
                     ],
                     terminator: Terminator::Return(Some(Operand::Place(Place::new("_t1")))),
                 }],
+                preconditions: vec![],
+                postconditions: vec![],
             }],
             extern_fns: vec![],
         };

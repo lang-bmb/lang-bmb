@@ -8,6 +8,9 @@ CLAUDE.md
 .claude/
 nul
 
+# Claude Code temp files (known bug: github.com/anthropics/claude-code/issues/8856)
+tmpclaude-*-cwd
+
 # Rust/Cargo
 /target/
 /bmb/target/

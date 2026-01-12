@@ -8,8 +8,8 @@
 use crate::ast::{Attribute, BinOp, Expr, FnDef, Item, LiteralPattern, MatchArm, Pattern, Program, Spanned, Type, UnOp};
 
 use super::{
-    Constant, LoweringContext, MirBinOp, MirExternFn, MirFunction, MirInst, MirProgram, MirType,
-    MirUnaryOp, Operand, Place, Terminator,
+    CmpOp, Constant, ContractFact, LoweringContext, MirBinOp, MirExternFn, MirFunction, MirInst,
+    MirProgram, MirType, MirUnaryOp, Operand, Place, Terminator,
 };
 
 /// Lower an entire program to MIR
@@ -120,12 +120,94 @@ fn lower_function(fn_def: &FnDef, func_return_types: &std::collections::HashMap<
     // Collect locals
     let locals: Vec<(String, MirType)> = ctx.locals.clone().into_iter().collect();
 
+    // v0.38: Extract contract facts for optimization
+    let preconditions = extract_contract_facts(fn_def.pre.as_ref());
+    let postconditions = extract_contract_facts(fn_def.post.as_ref());
+
     MirFunction {
         name: fn_def.name.node.clone(),
         params,
         ret_ty,
         locals,
         blocks: ctx.blocks,
+        preconditions,
+        postconditions,
+    }
+}
+
+/// v0.38: Extract contract facts from a pre/post condition expression
+/// Converts AST expressions like `x >= 0 && y < len` into ContractFact list
+fn extract_contract_facts(expr: Option<&Spanned<Expr>>) -> Vec<ContractFact> {
+    let mut facts = Vec::new();
+    if let Some(e) = expr {
+        extract_facts_from_expr(&e.node, &mut facts);
+    }
+    facts
+}
+
+/// Recursively extract facts from an expression
+fn extract_facts_from_expr(expr: &Expr, facts: &mut Vec<ContractFact>) {
+    match expr {
+        // Handle && (conjunction of facts)
+        Expr::Binary { op, left, right } if *op == BinOp::And => {
+            extract_facts_from_expr(&left.node, facts);
+            extract_facts_from_expr(&right.node, facts);
+        }
+        // Handle comparison operators: x >= 0, x < len, etc.
+        Expr::Binary { op, left, right } => {
+            if let Some(cmp_op) = binop_to_cmp_op(op) {
+                // Pattern: var op constant
+                if let (Expr::Var(var), Expr::IntLit(val)) = (&left.node, &right.node) {
+                    facts.push(ContractFact::VarCmp {
+                        var: var.clone(),
+                        op: cmp_op,
+                        value: *val,
+                    });
+                }
+                // Pattern: constant op var (flip the comparison)
+                else if let (Expr::IntLit(val), Expr::Var(var)) = (&left.node, &right.node) {
+                    facts.push(ContractFact::VarCmp {
+                        var: var.clone(),
+                        op: flip_cmp_op(cmp_op),
+                        value: *val,
+                    });
+                }
+                // Pattern: var op var
+                else if let (Expr::Var(lhs_var), Expr::Var(rhs_var)) = (&left.node, &right.node) {
+                    facts.push(ContractFact::VarVarCmp {
+                        lhs: lhs_var.clone(),
+                        op: cmp_op,
+                        rhs: rhs_var.clone(),
+                    });
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Convert BinOp to CmpOp
+fn binop_to_cmp_op(op: &BinOp) -> Option<CmpOp> {
+    match op {
+        BinOp::Lt => Some(CmpOp::Lt),
+        BinOp::Le => Some(CmpOp::Le),
+        BinOp::Gt => Some(CmpOp::Gt),
+        BinOp::Ge => Some(CmpOp::Ge),
+        BinOp::Eq => Some(CmpOp::Eq),
+        BinOp::Ne => Some(CmpOp::Ne),
+        _ => None,
+    }
+}
+
+/// Flip comparison for constant op var → var flipped_op constant
+fn flip_cmp_op(op: CmpOp) -> CmpOp {
+    match op {
+        CmpOp::Lt => CmpOp::Gt,
+        CmpOp::Le => CmpOp::Ge,
+        CmpOp::Gt => CmpOp::Lt,
+        CmpOp::Ge => CmpOp::Le,
+        CmpOp::Eq => CmpOp::Eq,
+        CmpOp::Ne => CmpOp::Ne,
     }
 }
 

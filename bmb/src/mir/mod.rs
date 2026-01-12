@@ -60,6 +60,49 @@ pub struct MirFunction {
     pub locals: Vec<(String, MirType)>,
     /// Basic blocks (first block is entry)
     pub blocks: Vec<BasicBlock>,
+    /// v0.38: Contract information for optimization
+    /// Preconditions proven at function entry (e.g., "x >= 0", "len > 0")
+    pub preconditions: Vec<ContractFact>,
+    /// Postconditions guaranteed at function exit (e.g., "ret >= 0")
+    pub postconditions: Vec<ContractFact>,
+}
+
+/// v0.38: A proven fact from a contract condition
+/// Used by ContractBasedOptimization to eliminate redundant checks
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ContractFact {
+    /// Variable comparison: var op constant (e.g., x >= 0)
+    VarCmp {
+        var: String,
+        op: CmpOp,
+        value: i64,
+    },
+    /// Variable-variable comparison: var1 op var2 (e.g., start <= end)
+    VarVarCmp {
+        lhs: String,
+        op: CmpOp,
+        rhs: String,
+    },
+    /// Array bounds: index < len(array)
+    ArrayBounds {
+        index: String,
+        array: String,
+    },
+    /// Non-null guarantee
+    NonNull {
+        var: String,
+    },
+}
+
+/// Comparison operator for contract facts
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CmpOp {
+    Lt,  // <
+    Le,  // <=
+    Gt,  // >
+    Ge,  // >=
+    Eq,  // ==
+    Ne,  // !=
 }
 
 /// A basic block containing instructions and a terminator

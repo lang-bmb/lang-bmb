@@ -2144,6 +2144,8 @@ mod tests {
                     }],
                     terminator: Terminator::Return(Some(Operand::Place(Place::new("_t0")))),
                 }],
+                preconditions: vec![],
+                postconditions: vec![],
             }],
             extern_fns: vec![],
         };
