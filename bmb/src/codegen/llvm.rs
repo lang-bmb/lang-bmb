@@ -266,13 +266,13 @@ impl<'ctx> LlvmContext<'ctx> {
         let i32_type = self.context.i32_type();
         let ptr_type = self.context.ptr_type(inkwell::AddressSpace::default());
 
-        // chr(i64) -> i32 (char)
-        let chr_type = i32_type.fn_type(&[i64_type.into()], false);
+        // v0.46: chr(i64) -> ptr (returns single-char string)
+        let chr_type = ptr_type.fn_type(&[i64_type.into()], false);
         let chr_fn = self.module.add_function("bmb_chr", chr_type, None);
         self.functions.insert("chr".to_string(), chr_fn);
 
-        // ord(i32) -> i64
-        let ord_type = i64_type.fn_type(&[i32_type.into()], false);
+        // v0.46: ord(ptr) -> i64 (takes string, returns first char code)
+        let ord_type = i64_type.fn_type(&[ptr_type.into()], false);
         let ord_fn = self.module.add_function("bmb_ord", ord_type, None);
         self.functions.insert("ord".to_string(), ord_fn);
 

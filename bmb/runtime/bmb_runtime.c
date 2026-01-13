@@ -14,8 +14,18 @@ double bmb_i64_to_f64(int64_t n) { return (double)n; }
 int64_t bmb_f64_to_i64(double f) { return (int64_t)f; }
 
 // v0.97: Character functions
-int32_t bmb_chr(int64_t n) { return (int32_t)n; }
-int64_t bmb_ord(int32_t c) { return (int64_t)c; }
+// v0.46: bmb_chr returns char* (string) to match LLVM codegen expectations
+char* bmb_chr(int64_t n) {
+    char* s = (char*)malloc(2);
+    s[0] = (char)n;
+    s[1] = '\0';
+    return s;
+}
+// v0.46: bmb_ord takes ptr (char*) to match LLVM codegen expectations
+int64_t bmb_ord(const char* s) {
+    if (!s || s[0] == '\0') return 0;
+    return (int64_t)(unsigned char)s[0];
+}
 
 // v0.97: String functions
 void bmb_print_str(const char* s) { printf("%s", s); }
@@ -144,6 +154,11 @@ int64_t bmb_box_new_i64(int64_t value) {
 
 // v0.100: String concatenation
 char* bmb_string_concat(const char* a, const char* b) {
+    if (!a || !b) {
+        char* result = (char*)malloc(1);
+        result[0] = '\0';
+        return result;
+    }
     size_t len_a = 0, len_b = 0;
     while (a[len_a]) len_a++;
     while (b[len_b]) len_b++;
@@ -154,6 +169,175 @@ char* bmb_string_concat(const char* a, const char* b) {
     return result;
 }
 
+// v0.46: String functions for native compilation
+// Convert C string to BmbString (identity in our simple runtime)
+char* bmb_string_from_cstr(const char* s) {
+    return (char*)s;
+}
+
+// Create new string with given length (allocates copy)
+char* bmb_string_new(const char* s, int64_t len) {
+    char* result = (char*)malloc(len + 1);
+    for (int64_t i = 0; i < len; i++) result[i] = s[i];
+    result[len] = '\0';
+    return result;
+}
+
+// String length (alias for bmb_str_len with ptr signature)
+int64_t bmb_string_len(const char* s) {
+    if (!s) return 0;
+    int64_t len = 0;
+    while (s[len]) len++;
+    return len;
+}
+
+// Get byte at index (NOT Unicode character)
+int64_t bmb_string_char_at(const char* s, int64_t index) {
+    if (!s || index < 0) return 0;
+    return (int64_t)(unsigned char)s[index];
+}
+
+// String equality comparison
+int64_t bmb_string_eq(const char* a, const char* b) {
+    if (a == b) return 1;  // Same pointer
+    if (!a || !b) return 0;  // One is null
+    while (*a && *b) {
+        if (*a != *b) return 0;
+        a++; b++;
+    }
+    return (*a == *b) ? 1 : 0;  // Both should be '\0'
+}
+
+// String slice (substring from start to end, exclusive)
+char* bmb_string_slice(const char* s, int64_t start, int64_t end) {
+    if (!s || start < 0 || end < start) {
+        char* empty = (char*)malloc(1);
+        empty[0] = '\0';
+        return empty;
+    }
+    int64_t len = end - start;
+    char* result = (char*)malloc(len + 1);
+    for (int64_t i = 0; i < len; i++) {
+        result[i] = s[start + i];
+    }
+    result[len] = '\0';
+    return result;
+}
+
+// v0.46: Wrapper functions (LLVM codegen uses short names)
+// These call the bmb_string_* functions with matching signatures
+char* slice(const char* s, int64_t start, int64_t end) {
+    return bmb_string_slice(s, start, end);
+}
+
+int64_t byte_at(const char* s, int64_t index) {
+    return bmb_string_char_at(s, index);
+}
+
+// v0.46: StringBuilder functions for efficient string building
+typedef struct {
+    char* data;
+    int64_t len;
+    int64_t cap;
+} StringBuilder;
+
+int64_t bmb_sb_new(void) {
+    StringBuilder* sb = (StringBuilder*)malloc(sizeof(StringBuilder));
+    sb->cap = 64;
+    sb->len = 0;
+    sb->data = (char*)malloc(sb->cap);
+    sb->data[0] = '\0';
+    return (int64_t)sb;
+}
+
+int64_t bmb_sb_push(int64_t handle, const char* s) {
+    if (!s || !handle) return 0;
+    StringBuilder* sb = (StringBuilder*)handle;
+    int64_t slen = 0;
+    while (s[slen]) slen++;
+
+    // Grow if needed
+    while (sb->len + slen + 1 > sb->cap) {
+        sb->cap *= 2;
+        sb->data = (char*)realloc(sb->data, sb->cap);
+    }
+
+    // Append
+    for (int64_t i = 0; i < slen; i++) {
+        sb->data[sb->len + i] = s[i];
+    }
+    sb->len += slen;
+    sb->data[sb->len] = '\0';
+    return sb->len;
+}
+
+int64_t bmb_sb_len(int64_t handle) {
+    StringBuilder* sb = (StringBuilder*)handle;
+    return sb->len;
+}
+
+char* bmb_sb_build(int64_t handle) {
+    if (!handle) {
+        char* empty = (char*)malloc(1);
+        empty[0] = '\0';
+        return empty;
+    }
+    StringBuilder* sb = (StringBuilder*)handle;
+    // Return copy of the built string
+    char* result = (char*)malloc(sb->len + 1);
+    for (int64_t i = 0; i <= sb->len; i++) {
+        result[i] = sb->data[i];
+    }
+    return result;
+}
+
+int64_t bmb_sb_clear(int64_t handle) {
+    StringBuilder* sb = (StringBuilder*)handle;
+    sb->len = 0;
+    sb->data[0] = '\0';
+    return 0;
+}
+
+// v0.46: Additional file functions
+int64_t bmb_file_size(const char* path) {
+    FILE* f = fopen(path, "rb");
+    if (!f) return -1;
+    fseek(f, 0, SEEK_END);
+    long size = ftell(f);
+    fclose(f);
+    return (int64_t)size;
+}
+
+int64_t bmb_append_file(const char* path, const char* content) {
+    FILE* f = fopen(path, "ab");
+    if (!f) return -1;
+    size_t len = 0;
+    while (content[len]) len++;
+    size_t written = fwrite(content, 1, len, f);
+    fclose(f);
+    return (written == len) ? 0 : -1;
+}
+
+// v0.46: System functions
+int64_t bmb_system(const char* cmd) {
+    return (int64_t)system(cmd);
+}
+
+char* bmb_getenv(const char* name) {
+    const char* val = getenv(name);
+    if (!val) {
+        char* empty = (char*)malloc(1);
+        empty[0] = '\0';
+        return empty;
+    }
+    // Return copy
+    size_t len = 0;
+    while (val[len]) len++;
+    char* result = (char*)malloc(len + 1);
+    for (size_t i = 0; i <= len; i++) result[i] = val[i];
+    return result;
+}
+
 // v0.46: File I/O support for CLI Independence
 #include <string.h>
 #include <sys/stat.h>
@@ -161,7 +345,6 @@ char* bmb_string_concat(const char* a, const char* b) {
 char* bmb_read_file(const char* path) {
     FILE* f = fopen(path, "rb");
     if (!f) {
-        // Return empty string on error
         char* empty = (char*)malloc(1);
         empty[0] = '\0';
         return empty;

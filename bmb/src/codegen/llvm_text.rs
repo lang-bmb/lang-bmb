@@ -787,6 +787,10 @@ impl TextCodeGen {
                     // Call bmb_string_concat for string concatenation
                     writeln!(out, "  %{} = call ptr @bmb_string_concat(ptr {}, ptr {})",
                              dest_name, lhs_final, rhs_final)?;
+                    // v0.46: Store result to alloca if destination is a local variable
+                    if local_names.contains(&dest.name) {
+                        writeln!(out, "  store ptr %{}, ptr %{}.addr", dest_name, dest.name)?;
+                    }
                 } else if (lhs_ty == "ptr" || rhs_ty == "ptr") && *op == MirBinOp::Eq {
                     // Wrap string constant operands with bmb_string_from_cstr
                     let lhs_final = if let Operand::Constant(Constant::String(s)) = lhs {
@@ -809,6 +813,10 @@ impl TextCodeGen {
                              dest_name, lhs_final, rhs_final)?;
                     // Convert i64 to i1 for boolean result
                     writeln!(out, "  %{} = icmp ne i64 %{}.i64, 0", dest_name, dest_name)?;
+                    // v0.46: Store result to alloca if destination is a local variable
+                    if local_names.contains(&dest.name) {
+                        writeln!(out, "  store i1 %{}, ptr %{}.addr", dest_name, dest.name)?;
+                    }
                 } else if (lhs_ty == "ptr" || rhs_ty == "ptr") && *op == MirBinOp::Ne {
                     // Wrap string constant operands with bmb_string_from_cstr
                     let lhs_final = if let Operand::Constant(Constant::String(s)) = lhs {
@@ -830,12 +838,20 @@ impl TextCodeGen {
                              dest_name, lhs_final, rhs_final)?;
                     // Convert i64 to i1 and negate (0 means not equal, so i64==0 means Ne is true)
                     writeln!(out, "  %{} = icmp eq i64 %{}.i64, 0", dest_name, dest_name)?;
+                    // v0.46: Store result to alloca if destination is a local variable
+                    if local_names.contains(&dest.name) {
+                        writeln!(out, "  store i1 %{}, ptr %{}.addr", dest_name, dest.name)?;
+                    }
                 } else if *op == MirBinOp::Implies {
                     // v0.36: Implication P => Q = !P || Q
                     // Step 1: Negate left operand
                     writeln!(out, "  %{}.not = xor i1 {}, true", dest_name, lhs_str)?;
                     // Step 2: Or with right operand
                     writeln!(out, "  %{} = or i1 %{}.not, {}", dest_name, dest_name, rhs_str)?;
+                    // v0.46: Store result to alloca if destination is a local variable
+                    if local_names.contains(&dest.name) {
+                        writeln!(out, "  store i1 %{}, ptr %{}.addr", dest_name, dest.name)?;
+                    }
                 } else {
                     // v0.34: Fix float operations - MIR may use Add/Sub/etc. for f64 due to type inference issues
                     // Override to float operations when operand type is double/f64
@@ -875,6 +891,12 @@ impl TextCodeGen {
                     // Note: LLVM IR always uses the operand type in the instruction
                     // The result type (i1 for comparisons) is implicit
                     writeln!(out, "  %{} = {} {} {}, {}", dest_name, op_str, lhs_ty, lhs_str, rhs_str)?;
+                    // v0.46: Store result to alloca if destination is a local variable
+                    if local_names.contains(&dest.name) {
+                        // Get result type from place_types (handles comparisons returning i1)
+                        let result_ty = place_types.get(&dest.name).copied().unwrap_or(lhs_ty);
+                        writeln!(out, "  store {} %{}, ptr %{}.addr", result_ty, dest_name, dest.name)?;
+                    }
                 }
             }
 
@@ -906,6 +928,14 @@ impl TextCodeGen {
                     MirUnaryOp::Bnot => {
                         writeln!(out, "  %{} = xor {} {}, -1", dest_name, ty, src_str)?;
                     }
+                }
+                // v0.46: Store result to alloca if destination is a local variable
+                if local_names.contains(&dest.name) {
+                    let result_ty = match op {
+                        MirUnaryOp::Not => "i1",
+                        _ => ty, // Neg, FNeg, Bnot preserve operand type
+                    };
+                    writeln!(out, "  store {} %{}, ptr %{}.addr", result_ty, dest_name, dest.name)?;
                 }
             }
 
