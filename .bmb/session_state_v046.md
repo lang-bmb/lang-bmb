@@ -1,7 +1,7 @@
 # v0.46 Independence Phase - Session State
 
 **Last Updated**: 2026-01-13
-**Phase Status**: 진행중 (95% 완료)
+**Phase Status**: 진행중 (95% 완료) - 3-Stage Bootstrap 블로커 발견
 
 ---
 
@@ -24,10 +24,43 @@
 
 | ID | 태스크 | 블로커 | 다음 단계 |
 |----|--------|--------|----------|
-| 46.3 | 3-Stage 검증 | WSL 환경 필요 | WSL에서 `scripts/bootstrap_3stage.sh` 실행 |
+| 46.3 | 3-Stage 검증 | **bmb-stage1 파싱 버그** | 아래 상세 참조 |
 | 46.4 | Cargo.toml 제거 | 46.3 완료 필요 | 3-Stage 성공 후 진행 |
 | 46.5 | DWARF 지원 | P1 우선순위 | 선택적 |
 | 46.6 | 소스맵 | P1 우선순위 | 선택적 |
+
+### 🚧 3-Stage Bootstrap 블로커
+
+**증상**: `bmb-stage1`이 "fn" 키워드 포함 파일 파싱 시 SIGSEGV 발생
+
+**분석 결과**:
+- `compiler.bmb` (테스트 하네스) → 네이티브 작동 ✓
+- `lexer.bmb`, `types.bmb` → 네이티브 작동 ✓
+- CLI 인자/파일 처리 코드 → 네이티브 작동 ✓
+- `bmb_unified_cli.bmb` → "fn" 키워드 파싱 시 SIGSEGV ✗
+
+**재현 방법**:
+```bash
+./bmb-stage1 test.bmb out.ll  # where test.bmb contains "fn main() -> i64 = 1;"
+# => Segmentation fault
+```
+
+**작동하는 케이스**:
+- 빈 파일 → 정상 (빈 프로그램 반환)
+- 단일 문자 "a" → 정상 (에러 반환)
+- "f " (공백 있음) → 정상
+
+**크래시 케이스**:
+- "fn" (키워드) → SIGSEGV
+- "fn main" → SIGSEGV
+
+**추정 원인**:
+- `bmb_unified_cli.bmb`의 파서 코드에서 특정 문자열 연산 또는 재귀 처리 시 문제
+- 동일 코드가 인터프리터에서는 작동하므로, 네이티브 컴파일 특유의 문제로 추정
+- 스택 오버플로우 또는 타입 불일치 가능성
+
+**임시 해결책**:
+- `compiler.bmb` 테스트 하네스로 Stage 1 검증 완료 (777→999 패턴)
 
 ---
 
