@@ -461,9 +461,11 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
                     // Runtime functions with known return types
                     match func.as_str() {
                         // String-returning runtime functions
-                        "int_to_string" | "read_file" | "slice" | "digit_char" => MirType::String,
+                        // v0.46: get_arg returns string (pointer to BmbString)
+                        "int_to_string" | "read_file" | "slice" | "digit_char" | "get_arg" => MirType::String,
                         // i64-returning runtime functions
-                        "byte_at" | "len" | "strlen" | "cstr_byte_at" => MirType::I64,
+                        // v0.46: arg_count returns i64
+                        "byte_at" | "len" | "strlen" | "cstr_byte_at" | "arg_count" => MirType::I64,
                         // Bool-returning runtime functions
                         "file_exists" | "cstr_eq" => MirType::Bool,
                         // Default to i64 for unknown functions
