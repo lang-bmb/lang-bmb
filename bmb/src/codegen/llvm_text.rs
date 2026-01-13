@@ -2033,6 +2033,9 @@ impl TextCodeGen {
             // ptr return - Process
             "bmb_getenv" => "ptr",
 
+            // v0.46: ptr return - CLI argument functions
+            "get_arg" | "bmb_get_arg" => "ptr",
+
             _ => {
                 // For now, assume i64 for unknown functions
                 // In a full implementation, we'd look up the function
