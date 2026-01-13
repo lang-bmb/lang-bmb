@@ -857,6 +857,24 @@ fn lower_program_inner(ast: String, idx: i64, acc: String) -> String =
 fn find_pipe(s: String, pos: i64) -> i64 =
     if pos >= s.len() { pos } else if s.byte_at(pos) == 124 { pos } else { find_pipe(s, pos + 1) };
 
+// v0.46: Extract return type from MIR function signature
+// MIR format: fn name(params) -> RetType {|...|}
+fn extract_mir_return_type(mir: String) -> String =
+    let arrow_pos = find_arrow(mir, 0);
+    let brace_pos = find_char(mir, arrow_pos, 123);
+    if arrow_pos >= mir.len() or brace_pos <= arrow_pos + 2 { "i64" }
+    else { trim(mir.slice(arrow_pos + 2, brace_pos)) };
+
+// v0.46: llvm_gen_line with return type awareness
+fn llvm_gen_line_with_ret(line: String, ret_type: String) -> String =
+    let p = low_skip_ws(line, 0);
+    if p >= line.len() { "" }
+    else if line.byte_at(p) == 37 { llvm_gen_assign(line, p) }
+    else if low_starts_with_at(line, p, "return") { llvm_gen_return_typed(line, p, ret_type) }
+    else if low_starts_with_at(line, p, "branch") { llvm_gen_branch(line, p) }
+    else if low_starts_with_at(line, p, "goto") { llvm_gen_goto(line, p) }
+    else { line };
+
 fn llvm_gen_line(line: String) -> String =
     let p = low_skip_ws(line, 0);
     if p >= line.len() { "" } else if line.byte_at(p) == 37 { llvm_gen_assign(line, p) } else if low_starts_with_at(line, p, "return") { llvm_gen_return(line, p) } else if low_starts_with_at(line, p, "branch") { llvm_gen_branch(line, p) } else if low_starts_with_at(line, p, "goto") { llvm_gen_goto(line, p) } else { line };
@@ -958,10 +976,22 @@ fn trim_end(s: String) -> String =
 fn trim_end_at(s: String, pos: i64) -> String =
     if pos < 0 { "" } else if low_is_whitespace(s.byte_at(pos)) { trim_end_at(s, pos - 1) } else { s.slice(0, pos + 1) };
 
+// v0.46: Trim both leading and trailing whitespace
+fn trim(s: String) -> String =
+    let start = low_skip_ws(s, 0);
+    if start >= s.len() { "" } else { trim_end(s.slice(start, s.len())) };
+
 fn llvm_gen_return(line: String, pos: i64) -> String =
     let val_start = low_skip_ws(line, pos + 6);
     let val = line.slice(val_start, line.len());
     "  ret i64 " + trim_end(val);
+
+// v0.46: Return with proper type for String functions
+fn llvm_gen_return_typed(line: String, pos: i64, ret_type: String) -> String =
+    let val_start = low_skip_ws(line, pos + 6);
+    let val = line.slice(val_start, line.len());
+    let llvm_ret = if ret_type == "bool" { "i1" } else if ret_type == "String" { "ptr" } else { "i64" };
+    "  ret " + llvm_ret + " " + trim_end(val);
 
 fn llvm_gen_branch(line: String, pos: i64) -> String =
     let after = low_skip_ws(line, pos + 6);
@@ -979,8 +1009,10 @@ fn llvm_gen_goto(line: String, pos: i64) -> String =
     let label = line.slice(label_start, line.len());
     "  br label %" + trim_end(label);
 
+// v0.46: Updated to pass return type for proper LLVM IR generation
 fn gen_function(mir: String) -> String =
-    gen_function_lines(mir, 0, "");
+    let ret_type = extract_mir_return_type(mir);
+    gen_function_lines_typed(mir, 0, "", ret_type);
 
 fn gen_function_lines(mir: String, pos: i64, acc: String) -> String =
     if pos >= mir.len() { acc } else {
@@ -991,14 +1023,26 @@ fn gen_function_lines(mir: String, pos: i64, acc: String) -> String =
         if pipe_pos >= mir.len() { new_acc } else { gen_function_lines(mir, pipe_pos + 1, new_acc) }
     };
 
+// v0.46: Type-aware function line generation
+fn gen_function_lines_typed(mir: String, pos: i64, acc: String, ret_type: String) -> String =
+    if pos >= mir.len() { acc } else {
+        let pipe_pos = find_pipe(mir, pos);
+        let line = mir.slice(pos, pipe_pos);
+        let llvm_line = llvm_gen_fn_line_typed(line, ret_type);
+        let new_acc = if acc == "" { llvm_line } else { acc + "|" + llvm_line };
+        if pipe_pos >= mir.len() { new_acc } else { gen_function_lines_typed(mir, pipe_pos + 1, new_acc, ret_type) }
+    };
+
 // ============================================================================
 // SECTION 11B: StringBuilder-aware LLVM Generation (v0.31.20)
 // ============================================================================
 // O(1) amortized string concatenation for LLVM IR generation
 
+// v0.46: Updated to pass return type for proper LLVM IR generation
 fn gen_function_sb(mir: String) -> String =
     let sb = sb_new();
-    let w1 = gen_function_lines_sb(mir, 0, sb);
+    let ret_type = extract_mir_return_type(mir);
+    let w1 = gen_function_lines_sb_typed(mir, 0, sb, ret_type);
     sb_build(sb);
 
 fn gen_function_lines_sb(mir: String, pos: i64, sb: i64) -> i64 =
@@ -1010,6 +1054,18 @@ fn gen_function_lines_sb(mir: String, pos: i64, sb: i64) -> i64 =
         let w1 = if len > 0 { sb_push(sb, "|") } else { 0 };
         let w2 = sb_push(sb, llvm_line);
         if pipe_pos >= mir.len() { 0 } else { gen_function_lines_sb(mir, pipe_pos + 1, sb) }
+    };
+
+// v0.46: Type-aware StringBuilder function line generation
+fn gen_function_lines_sb_typed(mir: String, pos: i64, sb: i64, ret_type: String) -> i64 =
+    if pos >= mir.len() { 0 } else {
+        let pipe_pos = find_pipe(mir, pos);
+        let line = mir.slice(pos, pipe_pos);
+        let llvm_line = llvm_gen_fn_line_typed(line, ret_type);
+        let len = sb_len(sb);
+        let w1 = if len > 0 { sb_push(sb, "|") } else { 0 };
+        let w2 = sb_push(sb, llvm_line);
+        if pipe_pos >= mir.len() { 0 } else { gen_function_lines_sb_typed(mir, pipe_pos + 1, sb, ret_type) }
     };
 
 fn gen_program_sb(mir: String) -> String =
@@ -1032,6 +1088,15 @@ fn llvm_gen_fn_line(line: String) -> String =
     let p = low_skip_ws(line, 0);
     if p >= line.len() { "" } else if low_starts_with_at(line, p, "fn ") { llvm_gen_fn_header(line, p) } else if ends_with_colon(line) { line } else if line == "}" { "}" } else { llvm_gen_line(line) };
 
+// v0.46: Type-aware line generation for proper return types
+fn llvm_gen_fn_line_typed(line: String, ret_type: String) -> String =
+    let p = low_skip_ws(line, 0);
+    if p >= line.len() { "" }
+    else if low_starts_with_at(line, p, "fn ") { llvm_gen_fn_header(line, p) }
+    else if ends_with_colon(line) { line }
+    else if line == "}" { "}" }
+    else { llvm_gen_line_with_ret(line, ret_type) };
+
 // v0.31.19: Added nounwind attribute for non-main functions
 // v0.32.1: Rename main to bmb_user_main for runtime compatibility
 fn llvm_gen_fn_header(line: String, pos: i64) -> String =
@@ -1043,7 +1108,8 @@ fn llvm_gen_fn_header(line: String, pos: i64) -> String =
     let formatted_params = format_fn_params(params, 0, "");
     let arrow_pos = find_arrow(line, close_pos);
     let brace_pos = find_char(line, arrow_pos, 123);
-    let ret_type = trim_end(line.slice(arrow_pos + 2, brace_pos - 1));
+    // v0.46: Use trim to handle leading/trailing whitespace in return type
+    let ret_type = trim(line.slice(arrow_pos + 2, brace_pos));
     // v0.46: Added String -> ptr type mapping
     let llvm_ret = if ret_type == "bool" { "i1" } else if ret_type == "String" { "ptr" } else { "i64" };
     let emitted_name = if fn_name == "main" { "bmb_user_main" } else { fn_name };
@@ -2076,22 +2142,64 @@ fn run_tests() -> i64 =
     let t8 = if has_pattern(llvm8, "add nsw i64", 0) { 1 } else { 0 };
     let w8 = println(t8);
 
+    // Test 9: v0.46 String return type generates "ret ptr" not "ret i64"
+    // Test by generating MIR for a String-returning function and checking LLVM output
+    let mir9 = "fn get_str() -> String {|entry:|  %_t0 = const 0|  return %_t0|}";
+    let llvm9 = gen_function(mir9);
+    let t9 = if has_pattern(llvm9, "ret ptr", 0) { 1 } else { 0 };
+    let w9_test = println(t9);
+
     let u2 = println(888);  // End marker
 
     // Count passed tests
-    let integration = t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8;
-    let w9 = println(integration);  // Should be 8
+    let integration = t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t9;
+    let w9 = println(integration);  // Should be 9 (v0.46: added String ret type test)
 
     let total = unit_total + integration;
-    let w10 = println(total);  // Should be 393 (385 unit + 8 integration)
+    let w10 = println(total);  // Should be 395 (386 unit + 9 integration)
 
     let u3 = println(999);  // Final marker
     total;
 
 // v0.46: Main entry point - check for CLI arguments
+// Interpreter mode: bmb run compiler.bmb [input] [output]
+//   arg_count()=3 (bmb, run, compiler.bmb) -> run tests
+//   arg_count()=5 (bmb, run, compiler.bmb, input, output) -> compile
+// Native mode: ./compiler [input] [output]
+//   arg_count()=1 -> run tests
+//   arg_count()=3 -> compile
 fn main() -> i64 =
-    if arg_count() > 1 {
-        compile_file(get_arg(1))
+    let argc = arg_count();
+    if argc >= 5 {
+        // Interpreter with args: bmb run compiler.bmb input.bmb output.ll
+        compile_file_to(get_arg(3), get_arg(4))
+    } else if argc == 3 {
+        // Could be interpreter (run tests) or native with files
+        // Check if arg[1] looks like "run" (interpreter) or a file
+        let arg1 = get_arg(1);
+        if arg1 == "run" {
+            run_tests()
+        } else {
+            // Native: ./compiler input.bmb output.ll
+            compile_file_to(get_arg(1), get_arg(2))
+        }
     } else {
         run_tests()
+    };
+
+// v0.46: Compile with output file
+fn compile_file_to(input: String, output: String) -> i64 =
+    let source = read_file(input);
+    if source.len() == 0 {
+        let w1 = println_str("Error: Cannot read file: " + input);
+        1
+    } else {
+        let llvm = compile_program(source);
+        if is_compile_error(llvm) {
+            let w1 = println_str("Compile error: " + get_error_type(llvm));
+            1
+        } else {
+            let w2 = write_file(output, llvm);
+            0
+        }
     };
