@@ -1845,10 +1845,29 @@ fn test_pack_unpack_more() -> i64 =
     t1 + t2 + t3 + t4 + t5 + t6;
 
 // ============================================================================
-// SECTION 16: Main Test Suite (v0.30.190)
+// SECTION 16: CLI & Main Entry Point (v0.46)
 // ============================================================================
 
-fn main() -> i64 =
+// v0.46: CLI entry point - compile file if argument provided, else run tests
+fn compile_file(path: String) -> i64 =
+    let source = read_file(path);
+    if source.len() == 0 {
+        let err = print_str("Error: Cannot read file: ");
+        let err2 = println_str(path);
+        1
+    } else {
+        let llvm = compile_program(source);
+        if is_compile_error(llvm) {
+            let err = print_str("Compile error: ");
+            let err2 = println_str(get_error_type(llvm));
+            1
+        } else {
+            let out = print_str(llvm);
+            0
+        }
+    };
+
+fn run_tests() -> i64 =
     let u0 = println(777);  // Start marker
 
     // Unit tests (v0.30.163 base)
@@ -2031,3 +2050,11 @@ fn main() -> i64 =
 
     let u3 = println(999);  // Final marker
     total;
+
+// v0.46: Main entry point - check for CLI arguments
+fn main() -> i64 =
+    if arg_count() > 1 {
+        compile_file(get_arg(1))
+    } else {
+        run_tests()
+    };
