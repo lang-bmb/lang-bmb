@@ -1,71 +1,163 @@
-# v0.46 Independence Phase - Session State (2026-01-12)
+# v0.46 Independence Phase - Session State
+
+**Last Updated**: 2026-01-13
+**Phase Status**: 진행중 (60% 완료)
+
+---
 
 ## 현재 진행 상황
 
-### 완료된 작업 (46.1 ~ 46.3)
+### 완료된 태스크
 
-1. **WSL Ubuntu LLVM 백엔드 검증** ✅
-   - LLVM 21 설정: `LLVM_SYS_211_PREFIX=/usr/lib/llvm-21`
-   - 빌드 명령: `cargo build --release --features llvm`
+| ID | 태스크 | 완료일 | 상세 |
+|----|--------|--------|------|
+| 46.1 | LLVM 백엔드 검증 | 2026-01-12 | WSL Ubuntu, LLVM 21 |
+| 46.2 | Golden Binary 생성 | 2026-01-12 | `bootstrap/compiler.bmb` 네이티브 컴파일 성공 |
+| 46.7 | 빌드 문서화 | 2026-01-13 | `docs/BUILD_FROM_SOURCE.md` 작성 |
 
-2. **Golden Binary 생성** ✅
-   - Bootstrap 컴파일러 (`compiler.bmb`) 네이티브 바이너리 컴파일 성공
-   - 실행 결과: 777 → 888 → 999 (모든 테스트 통과)
+### 대기 중인 태스크
 
-3. **수정된 버그들** (커밋 `55b5953`):
+| ID | 태스크 | 블로커 | 다음 단계 |
+|----|--------|--------|----------|
+| 46.3 | 3-Stage 검증 | CLI 미구현 | `bmb_unified_cli.bmb` 완성 |
+| 46.4 | Cargo.toml 제거 | 46.3 완료 필요 | 3-Stage 성공 후 진행 |
+| 46.5 | DWARF 지원 | P1 우선순위 | 선택적 |
+| 46.6 | 소스맵 | P1 우선순위 | 선택적 |
 
-   **a) PHI 노드 타입 등록** (`bmb/src/mir/lower.rs`)
-   - If 표현식 (line 326-329): PHI 결과 타입을 `ctx.locals`에 등록
-   - Match 표현식 (line 746-750): 동일한 수정
+---
 
-   **b) 메서드 호출 반환 타입** (`bmb/src/mir/lower.rs:852-860`)
-   ```rust
-   let ret_type = match method.as_str() {
-       "len" | "byte_at" => MirType::I64,
-       "slice" => MirType::String,
-       _ => ctx.func_return_types.get(method).cloned().unwrap_or(MirType::I64),
-   };
-   ```
+## v0.46 핵심 커밋
 
-   **c) 런타임 함수 반환 타입** (`bmb/src/mir/lower.rs:462-472`)
-   ```rust
-   match func.as_str() {
-       "int_to_string" | "read_file" | "slice" | "digit_char" => MirType::String,
-       "byte_at" | "len" | "strlen" | "cstr_byte_at" => MirType::I64,
-       "file_exists" | "cstr_eq" => MirType::Bool,
-       _ => MirType::I64,
-   }
-   ```
+### 2026-01-12: PHI 타입 추론 수정 (`55b5953`)
 
-   **d) constant_type 헬퍼** (`bmb/src/codegen/llvm.rs:808-820`)
-   - PHI 할당 시 부작용 없는 타입 결정 함수 추가
+**문제**: Bootstrap 컴파일러를 네이티브로 컴파일하면 SIGSEGV 발생
 
-## 다음 단계
+**원인** (4개 버그):
+1. PHI 결과 타입이 `ctx.locals`에 등록되지 않음
+2. 메서드 호출 (`slice()` 등) 반환 타입 미추적
+3. 런타임 함수 반환 타입 테이블 불완전
+4. `constant_type()` 헬퍼의 부작용 문제
 
-### 46.4 Self-compile 검증 (3-Stage) - 대기
-- Stage 1: Rust 컴파일러로 Bootstrap 빌드
-- Stage 2: Stage 1로 Bootstrap 재빌드
-- Stage 3: Stage 2로 Bootstrap 빌드 → Stage 2와 동일 출력 확인
+**수정** (`bmb/src/mir/lower.rs`):
+```rust
+// If 표현식 PHI 타입 등록 (line 326-329)
+let phi_var = ctx.fresh_var();
+ctx.locals.insert(phi_var.clone(), result_type.clone());
 
-### 46.5 BMB-only 빌드 문서화 - 대기
-- Rust 의존성 없이 BMB만으로 빌드하는 방법
+// 메서드 호출 반환 타입 (line 852-860)
+let ret_type = match method.as_str() {
+    "len" | "byte_at" => MirType::I64,
+    "slice" => MirType::String,
+    _ => ctx.func_return_types.get(method).cloned().unwrap_or(MirType::I64),
+};
+```
+
+### 2026-01-12: 문자열 연산 개선 (`d6dae1c`)
+
+**추가된 기능**:
+- `bmb_string_from_cstr`: C 문자열 → BmbString 래핑
+- StringBuilder API: `sb_new`, `sb_push`, `sb_build`, `sb_clear`
+- 포인터 산술 연산 (`Add`, `Sub`)
+
+---
+
+## 환경 설정
+
+### WSL Ubuntu 빌드
+
+```bash
+# WSL 진입
+wsl
+
+# 환경 변수
+export LLVM_SYS_211_PREFIX=/usr/lib/llvm-21
+export PATH="/usr/lib/llvm-21/bin:$PATH"
+
+# 빌드
+cd /mnt/d/data/lang-bmb
+cargo build --release --features llvm
+
+# Bootstrap 테스트
+./target/release/bmb build bootstrap/compiler.bmb -o bootstrap_compiler
+./bootstrap_compiler
+# Expected: 777 → 385 → 888 → 8 → 393 → 999
+```
+
+### 검증 명령어
+
+```bash
+# 3-Stage Bootstrap (스크립트)
+./scripts/bootstrap_3stage.sh
+
+# 수동 검증
+./target/release/bmb build bootstrap/compiler.bmb -o bmb-stage1
+./bmb-stage1  # 테스트 실행 (777...999)
+```
+
+---
 
 ## 알려진 제한사항
 
-- `bmb_unified_cli.bmb`: `arg_count` 런타임 함수 미구현
-- `compiler.bmb`는 테스트 하네스 (실제 CLI 아님)
+1. **`compiler.bmb`는 테스트 하네스**
+   - `build` CLI 명령 없음
+   - 3-Stage 자체 컴파일에 사용 불가
 
-## 테스트 명령어
+2. **런타임 함수 미구현**
+   - `arg_count()`: CLI 인자 개수
+   - `get_arg(n)`: n번째 인자 가져오기
 
-```bash
-# WSL에서 빌드
-wsl bash -c "source ~/.cargo/env; export LLVM_SYS_211_PREFIX=/usr/lib/llvm-21; cd /mnt/d/data/lang-bmb && cargo build --release --features llvm"
+3. **Windows 네이티브 빌드 불가**
+   - LLVM 미지원
+   - WSL Ubuntu 사용 필수
 
-# Bootstrap 컴파일러 빌드 및 실행
-wsl bash -c "source ~/.cargo/env; export LLVM_SYS_211_PREFIX=/usr/lib/llvm-21; cd /mnt/d/data/lang-bmb && ./target/release/bmb build bootstrap/compiler.bmb -o bootstrap_compiler && ./bootstrap_compiler"
-```
+---
+
+## 다음 단계
+
+### 단기 (v0.46 완료)
+
+1. **`bmb_unified_cli.bmb` 완성**
+   - `arg_count`, `get_arg` 런타임 함수 구현
+   - `build` 서브커맨드 추가
+
+2. **3-Stage Bootstrap 완료**
+   - `scripts/bootstrap_3stage.sh` 실행
+   - Stage 2 == Stage 3 바이너리 동일성 검증
+
+3. **Cargo.toml 제거**
+   - BMB-only 빌드 체인 확립
+
+### 중기 (v0.47 준비)
+
+1. **성능 Gate 검증**
+   - WSL에서 벤치마크 실행
+   - Gate #3.1 통과 확인
+
+---
 
 ## Git 상태
 
-- 브랜치: main (origin/main보다 19 커밋 앞섬)
-- 최신 커밋: `55b5953` - v0.46: Fix PHI type inference for bootstrap compiler
+- **브랜치**: main
+- **최신 커밋**: `25109bb` - Update submodule references
+- **v0.46 관련 커밋**:
+  - `55b5953` - Fix PHI type inference
+  - `d6dae1c` - LLVM codegen string improvements
+  - `4e65560` - LLVM codegen string improvements (initial)
+
+---
+
+## 문서 현황
+
+| 문서 | 상태 | 위치 |
+|------|------|------|
+| BUILD_FROM_SOURCE.md | ✅ 완료 | `docs/BUILD_FROM_SOURCE.md` |
+| ROADMAP.md | ✅ 최신화 | `docs/ROADMAP.md` |
+| bootstrap_3stage.sh | ✅ 완료 | `scripts/bootstrap_3stage.sh` |
+
+---
+
+## 참고 자료
+
+- [Bootstrapping (compilers) - Wikipedia](https://en.wikipedia.org/wiki/Bootstrapping_(compilers))
+- [Ken Thompson - Reflections on Trusting Trust](https://www.cs.cmu.edu/~rdriley/487/papers/Thompson_1984_ResearchStudy.pdf)
+- [Reproducible Builds](https://reproducible-builds.org/)
