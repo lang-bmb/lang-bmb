@@ -326,8 +326,8 @@ node tools/rust_to_bmb.mjs path/to/*.rs --apply
 |----|--------|------|----------|------|
 | 49.1 | **샘플 앱 5개** | 위 목록 구현 | P0 | ✅ 5/5 완료 |
 | 49.2 | **시나리오 문서 5개** | 위 목록 작성 | P0 | ✅ 완료 |
-| 49.3 | **튜토리얼 완성** | Getting Started, By Example 확장 | P1 | 📋 계획 |
-| 49.4 | **마이그레이션 도구 완성** | pre-v0.32 → v0.32 완전 지원 | P1 | 📋 계획 |
+| 49.3 | **튜토리얼 완성** | Getting Started, By Example 확장 | P1 | ✅ 완료 |
+| 49.4 | **마이그레이션 도구 완성** | pre-v0.32 → v0.32 완전 지원 | P1 | ✅ 완료 |
 | 49.5 | **`bmb q ctx`** | AI 컨텍스트 생성 | P1 | 📋 계획 |
 | 49.6 | **`bmb q sig`** | 시그니처 검색 (`--accepts`, `--returns`) | P1 | 📋 계획 |
 | 49.7 | **`--format llm`** | LLM 최적화 출력 형식 | P1 | 📋 계획 |
@@ -377,6 +377,29 @@ node tools/rust_to_bmb.mjs path/to/*.rs --apply
    - 메서드 검증, 경로 매칭, JSON 응답
    - 계약 기반 함수 설계
    - 위치: `examples/sample-apps/bmb-httpd/`
+
+7. **v1.0.0-beta 릴리스 체크리스트** - 2026-01-14 추가
+   - Exit criteria 통합 체크리스트
+   - 검증 명령어 및 상태 표시
+   - 위치: `docs/BETA_CHECKLIST.md`
+
+8. **v0.32 마이그레이션 가이드** - 2026-01-14 추가
+   - 주석, 조건문, 옵션 타입 변환 가이드
+   - `tools/migrate_syntax.mjs` 사용법
+   - Bootstrap 마이그레이션 현황
+   - 위치: `docs/MIGRATION_v0.32.md`
+
+9. **고급 계약 프로그래밍 튜토리얼** - 2026-01-14 추가
+   - `@trust` 어노테이션 가이드
+   - 복합 pre/post 조건, 정제 타입
+   - Z3 검증기 활용법
+   - 위치: `docs/tutorials/ADVANCED_CONTRACTS.md`
+
+10. **패키지 개발 가이드** - 2026-01-14 추가
+    - gotgan 패키지 구조 및 개발 워크플로우
+    - Rust 크레이트 포팅 가이드
+    - 계약 추가 및 테스트 작성
+    - 위치: `docs/guides/PACKAGE_DEVELOPMENT.md`
 
 ---
 
