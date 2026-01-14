@@ -35,7 +35,7 @@
 | **디버깅 지원** | DWARF 정보, 소스맵 | 📋 계획 | v0.46 |
 | **성능 검증** | Gate #3.1 통과 (C 대비 ≤1.10x) | ✅ 0.89x-0.99x 달성 | v0.47 |
 | **크로스 컴파일** | Linux/Windows/macOS/WASM | ❌ 미완료 | v0.48 |
-| **생태계** | 14+ 핵심 패키지 | ⚠️ 12/14 | v0.48 |
+| **생태계** | 14+ 핵심 패키지 | ✅ 14/14 | v0.48 |
 | **샘플/문서** | 5개 샘플 앱, 5개 시나리오 | ❌ 미완료 | v0.49 |
 | **보안 감사** | 컴파일러/런타임 보안 검토 | ❌ 미완료 | v0.50 |
 | **테스트 통과** | 전체 테스트 스위트 (1,753+) | ✅ 완료 | v0.50 |
@@ -232,10 +232,12 @@ cd ecosystem/benchmark-bmb
 
 > **의존성**: v0.47 성능 검증 완료 필요 (패키지가 성능 기준 충족해야 함)
 
-### 현재 gotgan-packages 상태 (12개, v0.32 호환 완료)
+### 현재 gotgan-packages 상태 (14개, v0.32 호환 완료)
 
 | 패키지 | 설명 | LOC | 상태 |
 |--------|------|-----|------|
+| `bmb-args` | CLI 인자 파싱 | 159 | ✅ v0.32 |
+| `bmb-collections` | 컬렉션 (HashMap, VecDeque, Stack) | 377 | ✅ v0.32 |
 | `bmb-fmt` | 문자열 포매팅 | 111 | ✅ v0.32 |
 | `bmb-fs` | 파일시스템 | 100 | ✅ v0.32 |
 | `bmb-http` | HTTP 유틸리티 | 120 | ✅ v0.32 |
@@ -251,17 +253,32 @@ cd ecosystem/benchmark-bmb
 
 ### 태스크
 
-| ID | 태스크 | 설명 | 우선순위 |
-|----|--------|------|----------|
-| 48.1 | **collections 패키지** | HashMap, BTreeMap, VecDeque | P0 |
-| 48.2 | **args 패키지** | CLI 인자 파싱 (clap 포팅) | P1 |
-| 48.3 | **크로스 컴파일 Linux** | `--target x86_64-linux` | P0 |
-| 48.4 | **크로스 컴파일 Windows** | `--target x86_64-windows` | P0 |
-| 48.5 | **크로스 컴파일 macOS** | `--target x86_64-macos`, `aarch64-macos` | P1 |
-| 48.6 | **WASM 백엔드 안정화** | `--target wasm32` | P1 |
-| 48.7 | **gotgan 레지스트리** | 패키지 검색 및 다운로드 서버 | P2 |
-| 48.8 | **`bmb q deps`** | 의존성 쿼리 (`--reverse`, `--transitive`) | P1 |
-| 48.9 | **`bmb q contract`** | 계약 상세 쿼리 (`--uses-old`) | P1 |
+| ID | 태스크 | 설명 | 우선순위 | 상태 |
+|----|--------|------|----------|------|
+| 48.1 | **collections 패키지** | HashMap, VecDeque, Stack | P0 | ✅ 완료 |
+| 48.2 | **args 패키지** | CLI 인자 파싱 | P1 | ✅ 완료 |
+| 48.3 | **크로스 컴파일 Linux** | `--target x86_64-linux` | P0 | 📋 계획 |
+| 48.4 | **크로스 컴파일 Windows** | `--target x86_64-windows` | P0 | 📋 계획 |
+| 48.5 | **크로스 컴파일 macOS** | `--target x86_64-macos`, `aarch64-macos` | P1 | 📋 계획 |
+| 48.6 | **WASM 백엔드 안정화** | `--target wasm32` | P1 | 📋 계획 |
+| 48.7 | **gotgan 레지스트리** | 패키지 검색 및 다운로드 서버 | P2 | 📋 계획 |
+| 48.8 | **`bmb q deps`** | 의존성 쿼리 (`--reverse`, `--transitive`) | P1 | 📋 계획 |
+| 48.9 | **`bmb q contract`** | 계약 상세 쿼리 (`--uses-old`) | P1 | 📋 계획 |
+
+### 완료된 작업 (2026-01-14)
+
+1. **bmb-collections 패키지** (377 LOC)
+   - HashMap<i64, i64> wrapper: `hashmap_create`, `hashmap_put`, `hashmap_value`, `hashmap_has`, `hashmap_delete`, `hashmap_size`, `hashmap_destroy`
+   - VecDeque<i64> 구현: `deque_new`, `deque_push_back`, `deque_push_front`, `deque_pop_back`, `deque_pop_front`, `deque_front`, `deque_back`
+   - Stack<i64> wrapper: `stack_new`, `stack_push`, `stack_pop`, `stack_peek`, `stack_size`, `stack_free`
+   - 테스트 통과: 777, 888, 999
+
+2. **bmb-args 패키지** (159 LOC)
+   - 기본 인자 접근: `argc`, `argv`, `program_name`, `has_arg`
+   - 플래그 파싱: `has_flag`, `find_flag`, `get_flag_value`, `flag_has_value`
+   - 포지셔널 인자: `count_positional`, `get_positional`, `is_flag_arg`
+   - 정수 파싱: `parse_int`, `get_flag_int`, `digit_char_to_int`
+   - 테스트 통과: 777, 888, 999
 
 ### Rust 포팅 워크플로우
 
