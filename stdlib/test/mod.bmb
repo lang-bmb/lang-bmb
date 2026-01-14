@@ -274,14 +274,16 @@ pub fn count_passed(results: [i64; 8], len: i64) -> i64
 = count_passed_from(results, len, 0);
 
 fn count_passed_from(results: [i64; 8], len: i64, pos: i64) -> i64 =
-    if pos >= len { 0 } else { let rest = count_passed_from(results, len, pos + 1) };
-         if results[pos] != 0 { 1 + rest } else { rest };
+    if pos >= len { 0 }
+    else {
+        let rest = count_passed_from(results, len, pos + 1);
+        if results[pos] != 0 { 1 + rest } else { rest }
+    };
 
 // Count failing tests from array of results
 pub fn count_failed(results: [i64; 8], len: i64) -> i64
   pre len >= 0 and len <= 8
-  post ret >= 0 and ret <= len
-  post ret == len - count_passed(results, len)
+  post ret >= 0 and ret <= len and ret == len - count_passed(results, len)
 = len - count_passed(results, len);
 
 // Check if all tests passed

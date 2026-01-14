@@ -82,7 +82,7 @@ pub fn contains_char(s: String, c: i64) -> bool =
 
 // Helper: search from position
 fn contains_char_from(s: String, c: i64, pos: i64) -> bool =
-    if pos >= s.len() { false } else if s.char_at(pos) == c { true } else { contains_char_from(s, c, pos + 1) };
+    if pos >= s.len() { false } else if s.byte_at(pos) == c { true } else { contains_char_from(s, c, pos + 1) };
 
 // Check if string starts with given prefix
 pub fn starts_with(s: String, prefix: String) -> bool
@@ -92,7 +92,7 @@ pub fn starts_with(s: String, prefix: String) -> bool
 
 // Helper: check prefix from position
 fn starts_with_check(s: String, prefix: String, pos: i64) -> bool =
-    if pos >= prefix.len() { true } else if s.char_at(pos) != prefix.char_at(pos) { false } else { starts_with_check(s, prefix, pos + 1) };
+    if pos >= prefix.len() { true } else if s.byte_at(pos) != prefix.byte_at(pos) { false } else { starts_with_check(s, prefix, pos + 1) };
 
 // Check if string ends with given suffix
 pub fn ends_with(s: String, suffix: String) -> bool =
@@ -103,18 +103,18 @@ fn ends_with_check(s: String, suffix: String, pos: i64) -> bool =
     if pos >= suffix.len() { true }
     else {
         let s_pos = s.len() - suffix.len() + pos;
-        if s.char_at(s_pos) != suffix.char_at(pos) { false }
+        if s.byte_at(s_pos) != suffix.byte_at(pos) { false }
         else { ends_with_check(s, suffix, pos + 1) }
     };
 
 // Find first occurrence of character, returns -1 if not found
 pub fn index_of_char(s: String, c: i64) -> i64
-  post ret >= -1 and ret < s.len() and ((ret == -1 and not contains_char(s, c)) or (ret >= 0 and s.char_at(ret) == c))
+  post ret >= -1 and ret < s.len() and ((ret == -1 and not contains_char(s, c)) or (ret >= 0 and s.byte_at(ret) == c))
 = index_of_char_from(s, c, 0);
 
 // Helper: search from position
 fn index_of_char_from(s: String, c: i64, pos: i64) -> i64 =
-    if pos >= s.len() { -1 } else if s.char_at(pos) == c { pos } else { index_of_char_from(s, c, pos + 1) };
+    if pos >= s.len() { -1 } else if s.byte_at(pos) == c { pos } else { index_of_char_from(s, c, pos + 1) };
 
 // Count occurrences of character
 pub fn count_char(s: String, c: i64) -> i64
@@ -125,7 +125,7 @@ fn count_char_from(s: String, c: i64, pos: i64) -> i64 =
     if pos >= s.len() { 0 }
     else {
         let rest = count_char_from(s, c, pos + 1);
-        if s.char_at(pos) == c { 1 + rest } else { rest }
+        if s.byte_at(pos) == c { 1 + rest } else { rest }
     };
 
 // ============================================
@@ -138,7 +138,7 @@ pub fn find_trim_start(s: String) -> i64
 = find_trim_start_from(s, 0);
 
 fn find_trim_start_from(s: String, pos: i64) -> i64 =
-    if pos >= s.len() { pos } else if char_is_whitespace(s.char_at(pos)) { find_trim_start_from(s, pos + 1) } else { pos };
+    if pos >= s.len() { pos } else if char_is_whitespace(s.byte_at(pos)) { find_trim_start_from(s, pos + 1) } else { pos };
 
 // Find position after last non-whitespace
 pub fn find_trim_end(s: String) -> i64
@@ -146,7 +146,7 @@ pub fn find_trim_end(s: String) -> i64
 = find_trim_end_from(s, s.len());
 
 fn find_trim_end_from(s: String, pos: i64) -> i64 =
-    if pos <= 0 { 0 } else if char_is_whitespace(s.char_at(pos - 1)) { find_trim_end_from(s, pos - 1) } else { pos };
+    if pos <= 0 { 0 } else if char_is_whitespace(s.byte_at(pos - 1)) { find_trim_end_from(s, pos - 1) } else { pos };
 
 // Trim leading whitespace (returns slice indices)
 pub fn trim_start_indices(s: String) -> i64
@@ -169,22 +169,29 @@ pub fn parse_uint(s: String) -> i64
 = if s.len() == 0 { -1 } else { parse_uint_acc(s, 0, 0) };
 
 fn parse_uint_acc(s: String, pos: i64, acc: i64) -> i64 =
-    if pos >= s.len() { acc } else { let c = s.char_at(pos) };
-         if char_is_digit(c) { parse_uint_acc(s, pos + 1, acc * 10 + digit_to_int(c)) } else { -1 };
+    if pos >= s.len() { acc }
+    else {
+        let c = s.byte_at(pos);
+        if char_is_digit(c) { parse_uint_acc(s, pos + 1, acc * 10 + digit_to_int(c)) } else { -1 }
+    };
 
 // Parse signed integer from string
 // Returns special value on error
 pub fn parse_int(s: String) -> i64 =
-    if s.len() == 0 { -9223372036854775807 } else if s.char_at(0) == 45 { let rest = s.slice(1, s.len()) };
+    if s.len() == 0 { -9223372036854775807 }
+    else if s.byte_at(0) == 45 {
+        let rest = s.slice(1, s.len());
         let val = parse_uint(rest);
-        if val == -1 { -9223372036854775807 } else { 0 - val }else parse_uint(s);
+        if val == -1 { -9223372036854775807 } else { 0 - val }
+    }
+    else { parse_uint(s) };
 
 // Check if string represents a valid integer
 pub fn is_valid_int(s: String) -> bool =
-    if s.len() == 0 { false } else if s.char_at(0) == 45 { s.len() > 1 and all_digits(s, 1) } else { all_digits(s, 0) };
+    if s.len() == 0 { false } else if s.byte_at(0) == 45 { s.len() > 1 and all_digits(s, 1) } else { all_digits(s, 0) };
 
 fn all_digits(s: String, pos: i64) -> bool =
-    if pos >= s.len() { true } else if char_is_digit(s.char_at(pos)) { all_digits(s, pos + 1) } else { false };
+    if pos >= s.len() { true } else if char_is_digit(s.byte_at(pos)) { all_digits(s, pos + 1) } else { false };
 
 // ============================================
 // String Comparison
@@ -197,9 +204,14 @@ pub fn string_compare(a: String, b: String) -> i64
 = string_compare_from(a, b, 0);
 
 fn string_compare_from(a: String, b: String, pos: i64) -> i64 =
-    if pos >= a.len() and pos >= b.len() { 0 } else if pos >= a.len() { -1 } else if pos >= b.len() { 1 } else { let ca = a.char_at(pos) };
-         let cb = b.char_at(pos);
-         if ca < cb { -1 } else if ca > cb { 1 } else { string_compare_from(a, b, pos + 1) };
+    if pos >= a.len() and pos >= b.len() { 0 }
+    else if pos >= a.len() { -1 }
+    else if pos >= b.len() { 1 }
+    else {
+        let ca = a.byte_at(pos);
+        let cb = b.byte_at(pos);
+        if ca < cb { -1 } else if ca > cb { 1 } else { string_compare_from(a, b, pos + 1) }
+    };
 
 // Check string equality
 pub fn string_eq(a: String, b: String) -> bool
@@ -207,7 +219,7 @@ pub fn string_eq(a: String, b: String) -> bool
 = a.len() == b.len() and string_eq_from(a, b, 0);
 
 fn string_eq_from(a: String, b: String, pos: i64) -> bool =
-    if pos >= a.len() { true } else if a.char_at(pos) != b.char_at(pos) { false } else { string_eq_from(a, b, pos + 1) };
+    if pos >= a.len() { true } else if a.byte_at(pos) != b.byte_at(pos) { false } else { string_eq_from(a, b, pos + 1) };
 
 // ============================================
 // String Utilities
@@ -232,8 +244,7 @@ pub fn is_blank(s: String) -> bool
 
 // Get character count (same as len but with explicit name)
 pub fn char_count(s: String) -> i64
-  post ret >= 0
-  post ret == s.len()
+  post ret >= 0 and ret == s.len()
 = s.len();
 
 // ============================================
@@ -248,8 +259,7 @@ pub fn digit_char(d: i64) -> String
 
 // Convert integer to string representation
 pub fn int_to_string(n: i64) -> String
-  post n >= 0 => ret.len() >= 1
-  post n < 0 => ret.len() >= 2
+  post (n >= 0 and ret.len() >= 1) or (n < 0 and ret.len() >= 2)
 = if n < 0 { "-" + int_to_string(0 - n) } else if n < 10 { digit_char(n) } else { int_to_string(n / 10) + digit_char(n - (n / 10) * 10) };
 
 // ============================================

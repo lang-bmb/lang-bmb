@@ -19,21 +19,19 @@
 // Returns: File contents on success, empty string on error
 // Error codes stored in global (requires error_code() function)
 //
-// @extern "libc:read" or LLVM intrinsic
+// @builtin "interpreter"
 fn read_file(path: String) -> String
   pre path.len() > 0
-  // Implementation: Uses libc fopen/fread or LLVM file intrinsics
-= @extern "bmb_read_file";
+  post true;
 
 // Read file with explicit result type
 // Returns: 0 on success, negative error code on failure
 // Contents written to mutable parameter (when supported)
 //
-// @extern "libc:read"
+// @builtin "interpreter"
 fn read_file_result(path: String) -> i64
   pre path.len() > 0
-  post ret <= 0  // 0 = success, negative = error
-= @extern "bmb_read_file_result";
+  post ret <= 0;
 
 // ============================================================================
 // File Writing
@@ -43,20 +41,18 @@ fn read_file_result(path: String) -> i64
 // Returns: 0 on success, negative error code on failure
 // Creates file if not exists, overwrites if exists
 //
-// @extern "libc:write"
+// @builtin "interpreter"
 fn write_file(path: String, content: String) -> i64
   pre path.len() > 0
-  post ret <= 0
-= @extern "bmb_write_file";
+  post ret <= 0;
 
 // Append string to existing file
 // Returns: 0 on success, negative error code on failure
 //
-// @extern "libc:append"
+// @builtin "interpreter"
 fn append_file(path: String, content: String) -> i64
   pre path.len() > 0
-  post ret <= 0
-= @extern "bmb_append_file";
+  post ret <= 0;
 
 // ============================================================================
 // File System Queries
@@ -65,20 +61,18 @@ fn append_file(path: String, content: String) -> i64
 // Check if file exists
 // Returns: 1 if exists, 0 if not
 //
-// @extern "libc:access"
+// @builtin "interpreter"
 fn file_exists(path: String) -> i64
   pre path.len() > 0
-  post ret == 0 or ret == 1
-= @extern "bmb_file_exists";
+  post ret == 0 or ret == 1;
 
 // Get file size in bytes
 // Returns: Size on success, -1 on error
 //
-// @extern "libc:stat"
+// @builtin "interpreter"
 fn file_size(path: String) -> i64
   pre path.len() > 0
-  post ret >= -1
-= @extern "bmb_file_size";
+  post ret >= -1;
 
 // ============================================================================
 // Error Codes
@@ -116,7 +110,7 @@ fn find_last_char(s: String, c: i64) -> i64 =
   find_last_char_from(s, c, s.len() - 1);
 
 fn find_last_char_from(s: String, c: i64, pos: i64) -> i64 =
-  if pos < 0 { -1 } else if s.char_at(pos) == c { pos } else { find_last_char_from(s, c, pos - 1) };
+  if pos < 0 { -1 } else if s.byte_at(pos) == c { pos } else { find_last_char_from(s, c, pos - 1) };
 
 // ============================================================================
 // IMPLEMENTATION NOTES

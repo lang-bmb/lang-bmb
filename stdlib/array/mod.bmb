@@ -38,8 +38,11 @@ pub fn count_i64(arr: [i64; 8], len: i64, val: i64) -> i64
 = count_i64_from(arr, len, val, 0);
 
 fn count_i64_from(arr: [i64; 8], len: i64, val: i64, pos: i64) -> i64 =
-    if pos >= len { 0 } else { let rest = count_i64_from(arr, len, val, pos + 1) };
-         if arr[pos] == val { 1 + rest } else { rest };
+    if pos >= len { 0 }
+    else {
+        let rest = count_i64_from(arr, len, val, pos + 1);
+        if arr[pos] == val { 1 + rest } else { rest }
+    };
 
 // ============================================
 // Array Aggregation
@@ -59,8 +62,11 @@ pub fn min_i64(arr: [i64; 8], len: i64) -> i64
 = min_i64_from(arr, len, arr[0], 1);
 
 fn min_i64_from(arr: [i64; 8], len: i64, current_min: i64, pos: i64) -> i64 =
-    if pos >= len { current_min } else { let new_min = if arr[pos] < current_min { arr[pos] } else { current_min } };
-         min_i64_from(arr, len, new_min, pos + 1);
+    if pos >= len { current_min }
+    else {
+        let new_min = if arr[pos] < current_min { arr[pos] } else { current_min };
+        min_i64_from(arr, len, new_min, pos + 1)
+    };
 
 // Find maximum value (requires non-empty)
 pub fn max_i64(arr: [i64; 8], len: i64) -> i64
@@ -68,8 +74,11 @@ pub fn max_i64(arr: [i64; 8], len: i64) -> i64
 = max_i64_from(arr, len, arr[0], 1);
 
 fn max_i64_from(arr: [i64; 8], len: i64, current_max: i64, pos: i64) -> i64 =
-    if pos >= len { current_max } else { let new_max = if arr[pos] > current_max { arr[pos] } else { current_max } };
-         max_i64_from(arr, len, new_max, pos + 1);
+    if pos >= len { current_max }
+    else {
+        let new_max = if arr[pos] > current_max { arr[pos] } else { current_max };
+        max_i64_from(arr, len, new_max, pos + 1)
+    };
 
 // Calculate average (integer division)
 pub fn avg_i64(arr: [i64; 8], len: i64) -> i64
@@ -182,5 +191,8 @@ pub fn count_range(arr: [i64; 8], start: i64, end: i64, val: i64) -> i64
 = count_range_from(arr, start, end, val);
 
 fn count_range_from(arr: [i64; 8], pos: i64, end: i64, val: i64) -> i64 =
-    if pos >= end { 0 } else { let rest = count_range_from(arr, pos + 1, end, val) };
-         if arr[pos] == val { 1 + rest } else { rest };
+    if pos >= end { 0 }
+    else {
+        let rest = count_range_from(arr, pos + 1, end, val);
+        if arr[pos] == val { 1 + rest } else { rest }
+    };
