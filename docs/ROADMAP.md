@@ -611,8 +611,15 @@ docs/
 ├── tutorials/           # 튜토리얼
 │   ├── GETTING_STARTED.md
 │   ├── CONTRACT_PROGRAMMING.md
+│   ├── ADVANCED_CONTRACTS.md  # v0.49 추가
 │   ├── FROM_RUST.md
 │   └── BY_EXAMPLE.md
+├── guides/              # 개발 가이드
+│   └── PACKAGE_DEVELOPMENT.md # v0.49 추가
+├── BETA_CHECKLIST.md    # v1.0.0-beta 체크리스트 (v0.49 추가)
+├── MIGRATION_v0.32.md   # 문법 마이그레이션 (v0.49 추가)
+├── SECURITY_AUDIT.md    # 보안 감사 체크리스트 (v0.50 추가)
+├── CROSS_COMPILATION.md # 크로스 컴파일 설계 (v0.48 추가)
 └── archive/             # 아카이브 (과거 문서)
     ├── RELEASE_v0.29.md
     ├── GAP_ANALYSIS.md
@@ -643,3 +650,63 @@ docs/
 **문서 업데이트**:
 - `docs/WSL_VERIFICATION.md`: 검증 로그 및 트러블슈팅 추가
 - `docs/ROADMAP.md`: v0.46.3 상태 업데이트
+
+### 2026-01-14 문서화 및 비판적 검토 세션
+
+**생성된 문서**:
+- `docs/BETA_CHECKLIST.md`: v1.0.0-beta 릴리스 체크리스트
+- `docs/MIGRATION_v0.32.md`: Pre-v0.32 → v0.32 마이그레이션 가이드
+- `docs/tutorials/ADVANCED_CONTRACTS.md`: 고급 계약 프로그래밍
+- `docs/guides/PACKAGE_DEVELOPMENT.md`: gotgan 패키지 개발 가이드
+- `docs/SECURITY_AUDIT.md`: 보안 감사 체크리스트
+- `docs/CROSS_COMPILATION.md`: 크로스 컴파일 설계 문서
+
+**비판적 검토 결과**:
+- 3-Stage Bootstrap: Stage 1 완료, Stage 2/3 미검증 (WSL 필요)
+- Gate #3.1: 단일 벤치마크만 검증, 전체 스위트 미실행
+- 크로스 컴파일: 설계 문서만 완료, 구현 미시작
+- 보안 감사: 체크리스트 작성, 실제 감사 미시작
+
+---
+
+## 알려진 리스크 및 정직한 평가
+
+### 기술적 리스크
+
+| 리스크 | 심각도 | 설명 | 완화 방법 |
+|--------|--------|------|----------|
+| Bootstrap 자체 컴파일 성능 | 🔴 High | 30K LOC 컴파일에 >10분 소요 | 점진적 컴파일 또는 최적화 |
+| json_parse 성능 | 🟠 Medium | C 대비 2.5x 느림 | 문자열 연산 최적화 |
+| Gate #3.2 미검증 | 🟡 Low | 전체 벤치마크 스위트 미실행 | WSL에서 검증 필요 |
+
+### 프로세스 리스크
+
+| 리스크 | 심각도 | 설명 | 완화 방법 |
+|--------|--------|------|----------|
+| 완료 표시 정확성 | 🟠 Medium | 일부 항목이 실제로 미완료 | 엄격한 검증 기준 적용 |
+| WSL 의존성 | 🟡 Low | 핵심 검증이 WSL에서만 가능 | CI에서 자동화 |
+| 문서-코드 불일치 | 🟢 Low | 일부 문서가 오래됨 | 정기 리뷰 |
+
+### v1.0.0-beta 실제 상태
+
+```
+실제 완료율: ~75%
+
+확실히 완료:
+✅ 언어 핵심 기능 (타입, 계약, 제네릭)
+✅ 컴파일러 프론트엔드
+✅ 14개 생태계 패키지
+✅ 5개 샘플 애플리케이션
+✅ 5개 시나리오 문서
+✅ 테스트 인프라 (1,753+ 테스트)
+
+검증 필요:
+⏳ 3-Stage Bootstrap 완전 실행
+⏳ 전체 벤치마크 Gate 통과
+⏳ stdlib 100% 테스트 커버리지
+
+미시작:
+❌ 크로스 컴파일 구현
+❌ 보안 감사 실행
+❌ Formatter 주석 보존
+```
