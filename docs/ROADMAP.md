@@ -693,6 +693,28 @@ fn print_str_nl(s: String) -> i64 =
 **문서 업데이트**:
 - `docs/LANGUAGE_REFERENCE.md`: 문자열 이스케이프 미지원 명시
 
+### 2026-01-14 코드 품질 및 stdlib 검토 세션
+
+**Clippy 경고 수정**:
+- `bmb/src/interp/eval.rs`: `thread_local` const 초기화
+- `bmb/src/query/mod.rs`: collapsible_if 5개 수정
+- `bmb/src/repl/mod.rs`: collapsible_if 1개 수정
+- `bmb/src/main.rs`: 모듈 로딩 collapsible_if 수정
+
+**stdlib 이슈 발견**:
+- `stdlib/core/num.bmb`: 다중 `post` 절 수정 완료
+- `stdlib/core/bool.bmb`: `implies` 키워드 충돌 수정 완료
+- `stdlib/string/mod.bmb`: 다수 문법 오류 (추후 수정 필요)
+  - 다중 `post` 절: `post X post Y` → `post X and Y`
+  - 분할된 함수 본문: 세미콜론 위치 오류
+  - 이스케이프 시퀀스: `\"`, `\\` 미지원
+
+**stdlib 수정 필요 항목**:
+- `stdlib/string/mod.bmb`: 전체 리팩토링 필요
+- `stdlib/array/mod.bmb`: 검증 필요
+- `stdlib/io/mod.bmb`: 검증 필요
+- `stdlib/process/mod.bmb`: 검증 필요
+
 ---
 
 ## 알려진 리스크 및 정직한 평가
