@@ -781,10 +781,10 @@ fn print_str_nl(s: String) -> i64 =
    - 블로커 식별: 3-Stage Bootstrap, 벤치마크 전체 실행
 
 3. **stdlib 검증**
-   - `core/num.bmb`: 1 경고 (is_power_of_two postcondition)
-   - `string/mod.bmb`: 10 경고 (missing postcondition)
-   - `array/mod.bmb`: 30 경고 (missing postcondition)
-   - 총 41개 postcondition 경고 (P1 개선 항목)
+   - `core/num.bmb`: 1 → 0 경고 ✅ (is_power_of_two postcondition 추가)
+   - `string/mod.bmb`: 21 → 6 경고 ✅ (missing postcondition 해결)
+   - `array/mod.bmb`: 30 → 7 경고 ✅ (missing postcondition 해결)
+   - 총 52 → 13 경고 (75% 감소, 남은 13개는 semantic_duplication 스타일 제안)
 
 4. **테스트 검증**
    - Rust 테스트: 173개 통과 (154 bmb + 19 gotgan)
@@ -831,7 +831,7 @@ fn print_str_nl(s: String) -> i64 =
 검증 필요 (🔴 블로커):
 ⏳ 3-Stage Bootstrap: Stage 2/3 WSL에서 미검증
 ⏳ 전체 벤치마크 Gate: 단일 벤치마크만 테스트됨
-⏳ stdlib postcondition: string 10개, array 30개 경고
+✅ stdlib postcondition: 52→13 경고 (75% 해결, 남은 것은 스타일 제안)
 
 미시작:
 ❌ 크로스 컴파일 구현 (설계 문서만)
@@ -849,4 +849,37 @@ fn print_str_nl(s: String) -> i64 =
 | 3-Stage Bootstrap | Stage 1 통과 | Stage 1만 검증 | Stage 2/3 미검증 |
 | Gate #3.1 | 0.89x-0.99x | fibonacci만 테스트 | 전체 스위트 미실행 |
 | 자체 컴파일 <60s | 0.56s | Rust 컴파일러 기준 | BMB 컴파일러는 >10분 |
-| stdlib | 완료 | 41개 postcondition 경고 | 경고 해결 필요 |
+| stdlib | 완료 | 52→13 경고 ✅ | 75% 해결됨 |
+
+### 2026-01-15 코드 품질 개선 및 Bootstrap 분석 세션
+
+**수행된 작업**:
+
+1. **stdlib postcondition 경고 수정** (52→13, 75% 감소)
+   - `core/num.bmb`: `is_power_of_two`에 postcondition 추가 (1→0)
+   - `string/mod.bmb`: 15개 helper 함수에 postcondition 추가 (21→6)
+   - `array/mod.bmb`: 23개 helper 함수에 postcondition 추가 (30→7)
+   - 남은 13개는 `semantic_duplication` (스타일 제안, 버그 아님)
+
+2. **Bootstrap 컴파일러 비판적 검토**
+   - **P0 블로커**: 재귀 스택 오버플로우 (tail-call 미지원)
+   - **P1 성능**: O(n²) 문자열 연결 (>10분 자체컴파일 원인)
+   - **P2 성능**: O(n) 레지스트리 조회 (타입체크 병목)
+   - **P3 정확성**: 무시된 에러 전파 (silent failures)
+   - **P4 안전성**: slice() 경계 검사 누락
+
+3. **발견된 근본 원인 (>10분 자체컴파일)**
+   - 재귀 기반 문자열 처리 (skip_ws, find_ident_end 등)
+   - 문자열 연결 시 전체 복사 (O(n²) 복잡도)
+   - 타입 환경 문자열 인코딩 (해시 대신 선형 탐색)
+
+4. **권장 최적화 순서**
+   | 우선순위 | 작업 | 예상 효과 |
+   |----------|------|----------|
+   | P0 | Tail-call 또는 반복문 변환 | Stage 3 가능 |
+   | P1 | StringBuilder 패턴 도입 | 10분→1분 이하 |
+   | P2 | 해시 기반 타입 환경 | 타입체크 10x 향상 |
+
+**참고 자료**:
+- Wikipedia: Bootstrapping (compilers) - 3-Stage 검증 프로세스
+- shecc 프로젝트: Self-hosting C 컴파일러 참고 구현

@@ -49,8 +49,10 @@ pub fn diff(a: i64, b: i64) -> i64
 = abs(a - b);
 
 // Power of 2 check (positive integers only)
+// Returns true iff x is 1, 2, 4, 8, 16, ...
 pub fn is_power_of_two(x: i64) -> bool
   pre x > 0
+  post (x == 1) implies ret
 = x == 1 or (x > 1 and x / 2 * 2 == x and is_power_of_two(x / 2));
 
 // Integer division with explicit rounding toward zero
