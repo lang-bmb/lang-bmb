@@ -1,6 +1,23 @@
-# BMB Roadmap to v1.0.0-beta
+# BMB Roadmap
 
 > 목표: 완전히 준비된 프로그래밍 언어 - Rust 의존성 제거, 성능 검증, 생태계 구축
+
+---
+
+## 버전 정책 (Versioning Policy)
+
+> **중요**: 이 정책은 BMB 메인 프로젝트 및 모든 서브모듈(ecosystem/*)에 적용됩니다.
+
+| 버전 유형 | 형식 | 관리 방식 | 예시 |
+|-----------|------|----------|------|
+| **Major** | vX.0.0 | 커뮤니티 검증 완료 후 수작업 릴리스 | v1.0.0, v2.0.0 |
+| **Minor** | v0.X.0 | 로드맵 계획 및 자동화 가능 | v0.50, v0.51 |
+| **Patch** | v0.X.Y | 버그 수정, 문서 업데이트 | v0.50.1, v0.50.4 |
+
+**원칙**:
+- 로드맵의 모든 계획은 **마이너/패치 버전**만 해당
+- **메이저 버전 (v1.0, v2.0 등)은 커뮤니티 검증 완료 후 수작업으로 릴리스**
+- 서브모듈도 동일한 정책 적용: `ecosystem/gotgan`, `ecosystem/vscode-bmb`, `ecosystem/gotgan-packages/*` 등
 
 ---
 
@@ -17,11 +34,11 @@
 | **v0.48** | **Ecosystem** | 🔄 진행중 | **패키지 14/14, 크로스 컴파일 미완료** |
 | **v0.49** | **Showcase** | ✅ 완료 | **샘플 앱 5/5, 시나리오 5/5** |
 | **v0.50** | **Final Verification** | 🔄 진행중 | **보안 감사 1차 완료, 최종 검증** |
-| **v1.0.0-beta** | **Golden** | 🎯 목표 | **완전한 프로그래밍 언어** |
+| **v0.51** | **Release Candidate** | 🎯 목표 | **완전한 프로그래밍 언어 (커뮤니티 검증 대기)** |
 
 ---
 
-## v1.0.0-beta 필수 조건
+## v0.51 필수 조건
 
 ### Exit Criteria (모두 충족 필수)
 
@@ -378,7 +395,7 @@ node tools/rust_to_bmb.mjs path/to/*.rs --apply
    - 계약 기반 함수 설계
    - 위치: `examples/sample-apps/bmb-httpd/`
 
-7. **v1.0.0-beta 릴리스 체크리스트** - 2026-01-14 추가
+7. **v0.51 릴리스 체크리스트** - 2026-01-14 추가
    - Exit criteria 통합 체크리스트
    - 검증 명령어 및 상태 표시
    - 위치: `docs/BETA_CHECKLIST.md`
@@ -405,7 +422,7 @@ node tools/rust_to_bmb.mjs path/to/*.rs --apply
 
 ## Phase v0.50: 최종 검증 (Final Verification)
 
-**목표**: v1.0.0-beta 릴리스 준비 완료
+**목표**: v0.51 릴리스 준비 완료
 
 > **의존성**: 모든 이전 페이즈 완료 필수
 
@@ -487,7 +504,7 @@ v0.50 최종 검증 (Final Verification) ─────────────
          │ - 전체 체크리스트 통과
          │ - 릴리스 준비
          ▼
-v1.0.0-beta Golden ★ ────────────────────────────────────────
+v0.51 Golden ★ ────────────────────────────────────────
          완전한 프로그래밍 언어 + AI-Native Query System
 ```
 
@@ -530,7 +547,7 @@ v0.50 최종 검증 ◄──────────────── (전체 
   └── 보안 감사 + 체크리스트
                                       │
                                       ▼
-                            v1.0.0-beta Golden ★
+                            v0.51 Golden ★
 ```
 
 ---
@@ -616,7 +633,7 @@ docs/
 │   └── BY_EXAMPLE.md
 ├── guides/              # 개발 가이드
 │   └── PACKAGE_DEVELOPMENT.md # v0.49 추가
-├── BETA_CHECKLIST.md    # v1.0.0-beta 체크리스트 (v0.49 추가)
+├── BETA_CHECKLIST.md    # v0.51 체크리스트 (v0.49 추가)
 ├── MIGRATION_v0.32.md   # 문법 마이그레이션 (v0.49 추가)
 ├── SECURITY_AUDIT.md    # 보안 감사 체크리스트 (v0.50 추가)
 ├── CROSS_COMPILATION.md # 크로스 컴파일 설계 (v0.48 추가)
@@ -654,7 +671,7 @@ docs/
 ### 2026-01-14 문서화 및 비판적 검토 세션
 
 **생성된 문서**:
-- `docs/BETA_CHECKLIST.md`: v1.0.0-beta 릴리스 체크리스트
+- `docs/BETA_CHECKLIST.md`: v0.51 릴리스 체크리스트
 - `docs/MIGRATION_v0.32.md`: Pre-v0.32 → v0.32 마이그레이션 가이드
 - `docs/tutorials/ADVANCED_CONTRACTS.md`: 고급 계약 프로그래밍
 - `docs/guides/PACKAGE_DEVELOPMENT.md`: gotgan 패키지 개발 가이드
@@ -815,7 +832,7 @@ fn print_str_nl(s: String) -> i64 =
 | WSL 의존성 | 🟡 Low | 핵심 검증이 WSL에서만 가능 | CI에서 자동화 |
 | 문서-코드 불일치 | 🟢 Low | 일부 문서가 오래됨 | 정기 리뷰 |
 
-### v1.0.0-beta 실제 상태 (2026-01-14 비판적 검토)
+### v0.51 실제 상태 (2026-01-14 비판적 검토)
 
 ```
 실제 완료율: ~65-70% (기존 주장 75%에서 하향 조정)
