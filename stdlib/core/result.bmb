@@ -129,11 +129,11 @@ pub fn err(code: i64) -> Result
 = Result::Err(code);
 
 // Standard error codes
-fn ERR_INVALID_INPUT() -> i64 = 1;
-fn ERR_OUT_OF_RANGE() -> i64 = 2;
-fn ERR_DIVIDE_BY_ZERO() -> i64 = 100;
-fn ERR_OVERFLOW() -> i64 = 101;
-fn ERR_NOT_FOUND() -> i64 = 200;
+fn ERR_INVALID_INPUT() -> i64 post ret == 1 = 1;
+fn ERR_OUT_OF_RANGE() -> i64 post ret == 2 = 2;
+fn ERR_DIVIDE_BY_ZERO() -> i64 post ret == 100 = 100;
+fn ERR_OVERFLOW() -> i64 post ret == 101 = 101;
+fn ERR_NOT_FOUND() -> i64 post ret == 200 = 200;
 
 // Safe division that returns Result
 pub fn safe_divide(a: i64, b: i64) -> Result

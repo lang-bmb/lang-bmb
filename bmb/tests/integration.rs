@@ -404,3 +404,184 @@ fn test_block_with_multiple_lets() {
          };"
     ));
 }
+
+// ============================================
+// Floating Point Tests (f64)
+// ============================================
+
+#[test]
+fn test_f64_literal() {
+    assert!(type_checks("fn pi() -> f64 = 3.14;"));
+}
+
+#[test]
+fn test_f64_arithmetic() {
+    assert!(type_checks(
+        "fn circle_area(r: f64) -> f64 = 3.14159 * r * r;"
+    ));
+}
+
+#[test]
+fn test_f64_comparison() {
+    assert!(type_checks(
+        "fn is_positive_f(x: f64) -> bool = x > 0.0;"
+    ));
+}
+
+// ============================================
+// String Tests
+// ============================================
+
+#[test]
+fn test_string_literal() {
+    assert!(type_checks(r#"fn hello() -> String = "hello";"#));
+}
+
+#[test]
+fn test_string_concat() {
+    assert!(type_checks(
+        r#"fn greet(name: String) -> String = "Hello, " + name;"#
+    ));
+}
+
+// ============================================
+// Bitwise Operator Tests (keyword syntax: band, bor, bxor, bnot)
+// ============================================
+
+#[test]
+fn test_bitwise_and() {
+    // BMB uses `band` keyword instead of `&`
+    assert!(type_checks("fn bitand(a: i64, b: i64) -> i64 = a band b;"));
+}
+
+#[test]
+fn test_bitwise_or() {
+    // BMB uses `bor` keyword instead of `|`
+    assert!(type_checks("fn bitor(a: i64, b: i64) -> i64 = a bor b;"));
+}
+
+#[test]
+fn test_bitwise_xor() {
+    // BMB uses `bxor` keyword instead of `^`
+    assert!(type_checks("fn bitxor(a: i64, b: i64) -> i64 = a bxor b;"));
+}
+
+// ============================================
+// While Loop Tests
+// ============================================
+
+#[test]
+fn test_while_loop() {
+    // BMB while loops require:
+    // 1. `let mut` for mutable variables with explicit type
+    // 2. Double braces for the body: { { stmts; value } }
+    assert!(type_checks(
+        "fn count_to(n: i64) -> i64 = {
+           let mut i: i64 = 0;
+           while i < n { { i = i + 1; i } };
+           i
+         };"
+    ));
+}
+
+// ============================================
+// Refinement Type Tests (where) - NOT YET IMPLEMENTED
+// ============================================
+// Note: Refinement types (type X = Y where condition) are specified
+// in SPECIFICATION.md but not yet implemented in the parser.
+// These tests are commented out until implementation.
+
+// #[test]
+// fn test_refinement_type() {
+//     assert!(type_checks(
+//         "type NonZero = i64 where self != 0;
+//          fn safe_div(a: i64, b: NonZero) -> i64 = a / b;"
+//     ));
+// }
+
+// #[test]
+// fn test_refinement_positive() {
+//     assert!(type_checks(
+//         "type Positive = i64 where self > 0;
+//          fn double_positive(x: Positive) -> i64 = x * 2;"
+//     ));
+// }
+
+// ============================================
+// @trust Annotation Tests
+// ============================================
+
+#[test]
+fn test_trust_annotation() {
+    assert!(type_checks(
+        "@trust
+         fn unsafe_operation(x: i64) -> i64
+           pre x > 0
+           post ret > x
+         = x;"
+    ));
+}
+
+// ============================================
+// Method Call Tests
+// ============================================
+
+#[test]
+fn test_string_method_len() {
+    assert!(type_checks(
+        r#"fn string_length(s: String) -> i64 = s.len();"#
+    ));
+}
+
+// ============================================
+// Type Alias Tests - NOT YET IMPLEMENTED
+// ============================================
+// Note: Type aliases (type X = Y) are not yet implemented in the parser.
+// The `type` keyword is not recognized.
+
+// #[test]
+// fn test_type_alias() {
+//     assert!(type_checks(
+//         "type Age = i64;
+//          fn get_age(a: Age) -> Age = a;"
+//     ));
+// }
+
+// ============================================
+// Negation Tests
+// ============================================
+
+#[test]
+fn test_unary_minus() {
+    assert!(type_checks("fn negate(x: i64) -> i64 = -x;"));
+}
+
+#[test]
+fn test_unary_minus_expression() {
+    assert!(type_checks("fn abs(x: i64) -> i64 = if x < 0 { -x } else { x };"));
+}
+
+// ============================================
+// Comparison Chain Tests
+// ============================================
+
+#[test]
+fn test_chained_comparisons() {
+    assert!(type_checks(
+        "fn in_range(x: i64, lo: i64, hi: i64) -> bool = x >= lo && x <= hi;"
+    ));
+}
+
+// ============================================
+// Modulo Operator Tests
+// ============================================
+
+#[test]
+fn test_modulo() {
+    assert!(type_checks("fn remainder(a: i64, b: i64) -> i64 = a % b;"));
+}
+
+#[test]
+fn test_is_even() {
+    assert!(type_checks("fn is_even_mod(n: i64) -> bool = n % 2 == 0;"));
+}

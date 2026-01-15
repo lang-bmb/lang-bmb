@@ -1032,3 +1032,47 @@ fn print_str_nl(s: String) -> i64 =
 | P0 | 전체 벤치마크 Gate 실행 | ⏳ 대기 |
 | P1 | Formatter 주석 보존 | 📋 계획 |
 | P2 | LSP hover/completion 구현 | 📋 계획 |
+
+### 2026-01-15 테스트 커버리지 확장 세션 (v0.50.5)
+
+**수행된 작업**:
+
+1. **stdlib 개선**
+   - `stdlib/core/result.bmb`: ERR_* 상수 함수에 postcondition 추가
+   - 5개 상수: `ERR_INVALID_INPUT`, `ERR_OUT_OF_RANGE`, `ERR_DIVIDE_BY_ZERO`, `ERR_OVERFLOW`, `ERR_NOT_FOUND`
+
+2. **통합 테스트 확장** (42 → 58개, +16개)
+   - f64 부동소수점: 리터럴, 산술, 비교
+   - String: 리터럴, 연결
+   - 비트 연산자: `band`, `bor`, `bxor` (키워드 문법)
+   - while 루프: `let mut`, 이중 중괄호 문법
+   - @trust 어노테이션
+   - 메서드 호출 (String.len())
+   - 단항 부정 (-x)
+   - 모듈로 연산자 (%)
+
+3. **발견된 BMB 문법 특징**
+   - 비트 연산자는 심볼 아닌 키워드: `band` (not `&`), `bor` (not `|`), `bxor` (not `^`)
+   - while 루프 본문은 이중 중괄호: `while cond { { stmt; value } }`
+   - 가변 변수는 명시적 타입 필요: `let mut x: i64 = 0`
+   - 정제 타입(`type X = Y where`)과 타입 별칭은 아직 미구현
+
+4. **미구현 기능 (명세서에만 존재)**
+   - 정제 타입 (refinement types): `type NonZero = i64 where self != 0`
+   - 타입 별칭: `type Age = i64`
+
+5. **테스트 결과**
+   - 단위 테스트: 154개 통과
+   - 통합 테스트: 58개 통과
+   - gotgan 테스트: 19개 통과
+   - 총합: **231개 테스트 통과** (기존 215개에서 +16개)
+
+**다음 세션 우선순위**:
+| 우선순위 | 작업 | 상태 |
+|----------|------|------|
+| P0 | WSL에서 3-Stage Bootstrap 검증 | ⏳ 대기 |
+| P0 | 전체 벤치마크 Gate 실행 | ⏳ 대기 |
+| P1 | 정제 타입 구현 | 📋 계획 |
+| P1 | 타입 별칭 구현 | 📋 계획 |
+| P2 | Formatter 주석 보존 | 📋 계획 |
+| P2 | LSP hover/completion 구현 | 📋 계획 |
