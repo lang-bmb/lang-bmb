@@ -29,7 +29,7 @@
 | v0.31-v0.37 | Maturity | ✅ 완료 | Stage 3, 벤치마크, 스펙 준수 |
 | v0.38-v0.44 | Stabilization | ✅ 완료 | CI, 안정성, API 동결, 릴리스 준비 |
 | **v0.45** | **Foundation Completion** | ✅ 완료 | **stdlib 확정, 도구 안정화, bmb lint 추가** |
-| **v0.46** | **Independence** | ⏳ 검증중 | **Stage 1 완료, Stage 2 실패 (소스 리팩토링 필요)** |
+| **v0.46** | **Independence** | ⏳ 검증중 | **Stage 1 완료, Stage 2 실패 (인터프리터 재귀 한계)** |
 | **v0.47** | **Performance** | ❌ 미통과 | **Gate #3.1 실패 (2/9 통과), 2개 벤치마크 C보다 빠름** |
 | **v0.48** | **Ecosystem** | 🔄 진행중 | **패키지 14/14, 크로스 컴파일 미완료** |
 | **v0.49** | **Showcase** | ✅ 완료 | **샘플 앱 5/5, 시나리오 5/5** |
@@ -48,7 +48,7 @@
 | **에러 메시지** | 사용자 친화적 컴파일 에러 | ✅ ariadne 기반 | v0.45 |
 | **개발 도구** | LSP, Formatter, Linter 안정화 | ✅ LSP+Linter, ⏳ Formatter | v0.45 |
 | **Rust 제거** | Cargo.toml 불필요, BMB-only 빌드 | ⏳ WSL 검증 후 | v0.46 |
-| **자체 컴파일** | BMB 컴파일러가 자신을 컴파일 | ❌ Stage 2 실패 (긴 if-else 리팩토링 필요) | v0.46 |
+| **자체 컴파일** | BMB 컴파일러가 자신을 컴파일 | ⏳ Stage 2 실패 (인터프리터 재귀 한계 100K) | v0.46 |
 | **디버깅 지원** | DWARF 정보, 소스맵 | 📋 계획 | v0.46 |
 | **성능 검증** | Gate #3.1 통과 (C 대비 ≤1.10x) | ❌ 2/9 통과 (fannkuch, binary_trees만) | v0.47 |
 | **크로스 컴파일** | Linux/Windows/macOS/WASM | ❌ 미완료 | v0.48 |
@@ -163,9 +163,30 @@ bmb fmt --check stdlib/**/*.bmb
    - thread-local `PROGRAM_ARGS` 저장소
    - `arg_count`, `get_arg` 빌트인 함수 연동
 
+10. **Bootstrap if-else 리팩토링** (v0.50.8, 2026-01-16)
+   - 긴 if-else 체인을 첫 문자 기반 디스패치로 분할
+   - 최장 줄 길이 67% 감소 (1432자 → 473자)
+   - `keyword_or_ident`: 19개 분기 → 12개 + 헬퍼 함수 4개
+   - `next_token_raw`: 25개 분기 → 그룹화 헬퍼 9개
+   - `llvm_gen_rhs`: 18개 분기 → 그룹화 헬퍼 3개
+   - `lower_expr_sb/p`: 10개 분기 → 그룹화 헬퍼 2개씩
+   - Stage 1 단순 파일 컴파일 성공 확인
+
+### 블로커: Stage 2 인터프리터 재귀 한계
+
+**문제**: Rust 인터프리터 MAX_RECURSION_DEPTH = 100,000
+- Bootstrap 소스 2328줄 파싱 시 재귀 호출이 한계 초과
+- if-else 리팩토링으로 줄 길이 감소했으나 근본 해결 안됨
+
+**해결 옵션**:
+1. **인터프리터 반복 방식 변환** - 대규모 아키텍처 변경 필요
+2. **WSL LLVM 네이티브 빌드** - Stage 1을 네이티브로 빌드 후 Stage 2 실행
+3. **Bootstrap 모듈 분할** - 작은 파일들로 분할하여 개별 컴파일
+
 ### 다음 단계
 
 - **WSL 검증 필요**: `./scripts/bootstrap_3stage.sh` 실행하여 Stage 2 == Stage 3 확인
+- **네이티브 Stage 1 빌드**: WSL에서 LLVM으로 Stage 1 빌드 후 Stage 2 테스트
 - **완료 후 진행**: Cargo.toml 제거 (BMB-only 빌드 체인 확립)
 
 ### 검증 기준

@@ -138,18 +138,114 @@ fn tok_end(r: i64) -> i64 = r - (r / 1000000) * 1000000;
 fn tok_kind(r: i64) -> i64 = tok_val(r);
 fn make_tok(kind: i64, endpos: i64) -> i64 = kind * 1000000 + endpos;
 
+// v0.50.8: Keyword lookup helpers - first-char grouping for faster parsing
+// Splits long 19-branch if-else into smaller chunks to reduce parser recursion depth
+fn kw_f(w: String, ep: i64) -> i64 =
+    if w == "fn" { make_tok(TK_FN(), ep) }
+    else if w == "false" { make_tok(TK_FALSE(), ep) }
+    else if w == "f64" { make_tok(TK_F64(), ep) }
+    else { make_tok(TK_IDENT(), ep) };
+
+fn kw_i(w: String, ep: i64) -> i64 =
+    if w == "if" { make_tok(TK_IF(), ep) }
+    else if w == "i32" { make_tok(TK_I32(), ep) }
+    else if w == "i64" { make_tok(TK_I64(), ep) }
+    else { make_tok(TK_IDENT(), ep) };
+
+fn kw_t(w: String, ep: i64) -> i64 =
+    if w == "then" { make_tok(TK_THEN(), ep) }
+    else if w == "true" { make_tok(TK_TRUE(), ep) }
+    else { make_tok(TK_IDENT(), ep) };
+
+fn kw_p(w: String, ep: i64) -> i64 =
+    if w == "pre" { make_tok(TK_PRE(), ep) }
+    else if w == "post" { make_tok(TK_POST(), ep) }
+    else { make_tok(TK_IDENT(), ep) };
+
 fn keyword_or_ident(s: String, start: i64, endpos: i64) -> i64 =
     let word = s.slice(start, endpos);
-    if word == "fn" { make_tok(TK_FN(), endpos) } else if word == "let" { make_tok(TK_LET(), endpos) } else if word == "if" { make_tok(TK_IF(), endpos) } else if word == "then" { make_tok(TK_THEN(), endpos) } else if word == "else" { make_tok(TK_ELSE(), endpos) } else if word == "true" { make_tok(TK_TRUE(), endpos) } else if word == "false" { make_tok(TK_FALSE(), endpos) } else if word == "and" { make_tok(TK_AND(), endpos) } else if word == "or" { make_tok(TK_OR(), endpos) } else if word == "not" { make_tok(TK_NOT(), endpos) } else if word == "pre" { make_tok(TK_PRE(), endpos) } else if word == "post" { make_tok(TK_POST(), endpos) } else if word == "mut" { make_tok(TK_MUT(), endpos) } else if word == "i32" { make_tok(TK_I32(), endpos) } else if word == "i64" { make_tok(TK_I64(), endpos) } else if word == "f64" { make_tok(TK_F64(), endpos) } else if word == "bool" { make_tok(TK_BOOL(), endpos) } else if word == "String" { make_tok(TK_STRING_TYPE(), endpos) } else { make_tok(TK_IDENT(), endpos) };
+    let c = word.byte_at(0);
+    // Dispatch by first character: f, l, i, t, e, a, o, n, p, m, b, S
+    if c == 102 { kw_f(word, endpos) }
+    else if c == 108 { if word == "let" { make_tok(TK_LET(), endpos) } else { make_tok(TK_IDENT(), endpos) } }
+    else if c == 105 { kw_i(word, endpos) }
+    else if c == 116 { kw_t(word, endpos) }
+    else if c == 101 { if word == "else" { make_tok(TK_ELSE(), endpos) } else { make_tok(TK_IDENT(), endpos) } }
+    else if c == 97 { if word == "and" { make_tok(TK_AND(), endpos) } else { make_tok(TK_IDENT(), endpos) } }
+    else if c == 111 { if word == "or" { make_tok(TK_OR(), endpos) } else { make_tok(TK_IDENT(), endpos) } }
+    else if c == 110 { if word == "not" { make_tok(TK_NOT(), endpos) } else { make_tok(TK_IDENT(), endpos) } }
+    else if c == 112 { kw_p(word, endpos) }
+    else if c == 109 { if word == "mut" { make_tok(TK_MUT(), endpos) } else { make_tok(TK_IDENT(), endpos) } }
+    else if c == 98 { if word == "bool" { make_tok(TK_BOOL(), endpos) } else { make_tok(TK_IDENT(), endpos) } }
+    else if c == 83 { if word == "String" { make_tok(TK_STRING_TYPE(), endpos) } else { make_tok(TK_IDENT(), endpos) } }
+    else { make_tok(TK_IDENT(), endpos) };
+
+// v0.50.8: Token scan helpers - split long if-else chain for faster parsing
+// Two-char operators with lookahead
+fn tok_eq(s: String, p: i64) -> i64 =
+    if p + 1 < s.len() and s.byte_at(p + 1) == 61 { make_tok(TK_EQEQ(), p + 2) }
+    else { make_tok(TK_EQ(), p + 1) };
+
+fn tok_minus(s: String, p: i64) -> i64 =
+    if p + 1 < s.len() and s.byte_at(p + 1) == 62 { make_tok(TK_ARROW(), p + 2) }
+    else { make_tok(TK_MINUS(), p + 1) };
+
+fn tok_lt(s: String, p: i64) -> i64 =
+    if p + 1 < s.len() and s.byte_at(p + 1) == 61 { make_tok(TK_LTEQ(), p + 2) }
+    else { make_tok(TK_LT(), p + 1) };
+
+fn tok_gt(s: String, p: i64) -> i64 =
+    if p + 1 < s.len() and s.byte_at(p + 1) == 61 { make_tok(TK_GTEQ(), p + 2) }
+    else { make_tok(TK_GT(), p + 1) };
+
+fn tok_bang(s: String, p: i64) -> i64 =
+    if p + 1 < s.len() and s.byte_at(p + 1) == 61 { make_tok(TK_NEQ(), p + 2) }
+    else { make_tok(TK_EOF(), p) };
+
+fn tok_dot(s: String, p: i64) -> i64 =
+    if p + 1 < s.len() and s.byte_at(p + 1) == 46 { make_tok(TK_DOTDOT(), p + 2) }
+    else { make_tok(TK_DOT(), p + 1) };
+
+// Single-char punctuation group
+fn tok_punct(c: i64, p: i64) -> i64 =
+    if c == 58 { make_tok(TK_COLON(), p + 1) }
+    else if c == 59 { make_tok(TK_SEMI(), p + 1) }
+    else if c == 44 { make_tok(TK_COMMA(), p + 1) }
+    else if c == 40 { make_tok(TK_LPAREN(), p + 1) }
+    else if c == 41 { make_tok(TK_RPAREN(), p + 1) }
+    else if c == 123 { make_tok(TK_LBRACE(), p + 1) }
+    else if c == 125 { make_tok(TK_RBRACE(), p + 1) }
+    else { make_tok(TK_EOF(), p) };
+
+// Single-char arithmetic group
+fn tok_arith(c: i64, p: i64) -> i64 =
+    if c == 43 { make_tok(TK_PLUS(), p + 1) }
+    else if c == 42 { make_tok(TK_STAR(), p + 1) }
+    else if c == 47 { make_tok(TK_SLASH(), p + 1) }
+    else if c == 37 { make_tok(TK_PERCENT(), p + 1) }
+    else { make_tok(TK_EOF(), p) };
 
 fn next_token_raw(s: String, pos: i64) -> i64 =
     let p = skip_ws_comments(s, pos);
     if p >= s.len() { make_tok(TK_EOF(), p) } else {
         let c = s.byte_at(p);
-        if is_digit(c) { scan_int(s, p, 0) } else if is_ident_start(c) {
-            let endpos = scan_ident_end(s, p + 1);
-            keyword_or_ident(s, p, endpos)
-        } else if c == 58 { make_tok(TK_COLON(), p + 1) } else if c == 61 { if p + 1 < s.len() and s.byte_at(p + 1) == 61 { make_tok(TK_EQEQ(), p + 2) } else { make_tok(TK_EQ(), p + 1) } } else if c == 59 { make_tok(TK_SEMI(), p + 1) } else if c == 44 { make_tok(TK_COMMA(), p + 1) } else if c == 40 { make_tok(TK_LPAREN(), p + 1) } else if c == 41 { make_tok(TK_RPAREN(), p + 1) } else if c == 43 { make_tok(TK_PLUS(), p + 1) } else if c == 45 { if p + 1 < s.len() and s.byte_at(p + 1) == 62 { make_tok(TK_ARROW(), p + 2) } else { make_tok(TK_MINUS(), p + 1) } } else if c == 42 { make_tok(TK_STAR(), p + 1) } else if c == 47 { make_tok(TK_SLASH(), p + 1) } else if c == 37 { make_tok(TK_PERCENT(), p + 1) } else if c == 60 { if p + 1 < s.len() and s.byte_at(p + 1) == 61 { make_tok(TK_LTEQ(), p + 2) } else { make_tok(TK_LT(), p + 1) } } else if c == 62 { if p + 1 < s.len() and s.byte_at(p + 1) == 61 { make_tok(TK_GTEQ(), p + 2) } else { make_tok(TK_GT(), p + 1) } } else if c == 33 { if p + 1 < s.len() and s.byte_at(p + 1) == 61 { make_tok(TK_NEQ(), p + 2) } else { make_tok(TK_EOF(), p) } } else if c == 46 { if p + 1 < s.len() and s.byte_at(p + 1) == 46 { make_tok(TK_DOTDOT(), p + 2) } else { make_tok(TK_DOT(), p + 1) } } else if c == 123 { make_tok(TK_LBRACE(), p + 1) } else if c == 125 { make_tok(TK_RBRACE(), p + 1) } else if c == 34 { make_tok(TK_STRING(), scan_string_end(s, p + 1)) } else { make_tok(TK_EOF(), p) }
+        // Dispatch: digit, ident, two-char ops, single-char punct, single-char arith, string
+        if is_digit(c) { scan_int(s, p, 0) }
+        else if is_ident_start(c) { keyword_or_ident(s, p, scan_ident_end(s, p + 1)) }
+        // Two-char operators (need lookahead)
+        else if c == 61 { tok_eq(s, p) }
+        else if c == 45 { tok_minus(s, p) }
+        else if c == 60 { tok_lt(s, p) }
+        else if c == 62 { tok_gt(s, p) }
+        else if c == 33 { tok_bang(s, p) }
+        else if c == 46 { tok_dot(s, p) }
+        // Single-char punctuation
+        else if c == 58 or c == 59 or c == 44 or c == 40 or c == 41 or c == 123 or c == 125 { tok_punct(c, p) }
+        // Single-char arithmetic
+        else if c == 43 or c == 42 or c == 47 or c == 37 { tok_arith(c, p) }
+        // String literal
+        else if c == 34 { make_tok(TK_STRING(), scan_string_end(s, p + 1)) }
+        else { make_tok(TK_EOF(), p) }
     };
 
 fn get_ident_text(s: String, pos: i64, tok: i64) -> String =
@@ -636,10 +732,31 @@ fn sb_push_mir(sb: i64, text: String) -> i64 =
         sb_push(sb, text)
     } else { 0 };
 
+// v0.50.8: lower_expr dispatch helpers - split for faster parsing
+fn lower_expr_i(ast: String, ntype: String, temp_id: i64, block_id: i64, sb: i64) -> i64 =
+    if ntype == "int" { lower_int_sb(ast, temp_id, sb) }
+    else if ntype == "if" { lower_if_sb(ast, temp_id, block_id, sb) }
+    else { temp_id };
+
+fn lower_expr_b(ast: String, ntype: String, temp_id: i64, block_id: i64, sb: i64) -> i64 =
+    if ntype == "bool" { lower_bool_sb(ast, temp_id, sb) }
+    else if ntype == "binop" { lower_binop_sb(ast, temp_id, block_id, sb) }
+    else { temp_id };
+
 fn lower_expr_sb(ast: String, temp_id: i64, block_id: i64, sb: i64) -> i64 =
     let ntype = get_node_type(ast);
+    let c = ntype.byte_at(0);
     // v0.50.2: Pass block_id to lower_var_sb for unique variable names
-    if ntype == "int" { lower_int_sb(ast, temp_id, sb) } else if ntype == "bool" { lower_bool_sb(ast, temp_id, sb) } else if ntype == "var" { lower_var_sb(ast, temp_id, block_id, sb) } else if ntype == "binop" { lower_binop_sb(ast, temp_id, block_id, sb) } else if ntype == "unary" { lower_unary_sb(ast, temp_id, block_id, sb) } else if ntype == "if" { lower_if_sb(ast, temp_id, block_id, sb) } else if ntype == "let" { lower_let_sb(ast, temp_id, block_id, sb) } else if ntype == "call" { lower_call_sb(ast, temp_id, block_id, sb) } else if ntype == "str" { lower_str_sb(ast, temp_id, sb) } else if ntype == "mcall" { lower_mcall_sb(ast, temp_id, block_id, sb) } else { temp_id };
+    // Dispatch by first char: i(int,if), b(bool,binop), v, u, l, c, s, m
+    if c == 105 { lower_expr_i(ast, ntype, temp_id, block_id, sb) }
+    else if c == 98 { lower_expr_b(ast, ntype, temp_id, block_id, sb) }
+    else if ntype == "var" { lower_var_sb(ast, temp_id, block_id, sb) }
+    else if ntype == "unary" { lower_unary_sb(ast, temp_id, block_id, sb) }
+    else if ntype == "let" { lower_let_sb(ast, temp_id, block_id, sb) }
+    else if ntype == "call" { lower_call_sb(ast, temp_id, block_id, sb) }
+    else if ntype == "str" { lower_str_sb(ast, temp_id, sb) }
+    else if ntype == "mcall" { lower_mcall_sb(ast, temp_id, block_id, sb) }
+    else { temp_id };
 
 fn lower_int_sb(ast: String, temp_id: i64, sb: i64) -> i64 =
     let val = extract_int_value(ast);
@@ -849,9 +966,29 @@ fn lower_expr(ast: String, temp_id: i64, block_id: i64) -> String =
     lower_expr_p(ast, temp_id, block_id, "");
 
 // v0.50.3: Expression lowering with param tracking
+// v0.50.8: lower_expr_p dispatch helpers - split for faster parsing
+fn lower_expr_p_i(ast: String, ntype: String, temp_id: i64, block_id: i64, params: String) -> String =
+    if ntype == "int" { lower_int(ast, temp_id) }
+    else if ntype == "if" { lower_if_p(ast, temp_id, block_id, params) }
+    else { pack_lower_result("ERR:unknown-" + ntype, temp_id) };
+
+fn lower_expr_p_b(ast: String, ntype: String, temp_id: i64, block_id: i64, params: String) -> String =
+    if ntype == "bool" { lower_bool(ast, temp_id) }
+    else if ntype == "binop" { lower_binop_p(ast, temp_id, block_id, params) }
+    else { pack_lower_result("ERR:unknown-" + ntype, temp_id) };
+
 fn lower_expr_p(ast: String, temp_id: i64, block_id: i64, params: String) -> String =
     let ntype = get_node_type(ast);
-    if ntype == "int" { lower_int(ast, temp_id) } else if ntype == "bool" { lower_bool(ast, temp_id) } else if ntype == "var" { lower_var_p(ast, temp_id, block_id, params) } else if ntype == "binop" { lower_binop_p(ast, temp_id, block_id, params) } else if ntype == "unary" { lower_unary_p(ast, temp_id, block_id, params) } else if ntype == "if" { lower_if_p(ast, temp_id, block_id, params) } else if ntype == "let" { lower_let_p(ast, temp_id, block_id, params) } else if ntype == "call" { lower_call_p(ast, temp_id, block_id, params) } else if ntype == "str" { lower_str(ast, temp_id) } else { pack_lower_result("ERR:unknown-" + ntype, temp_id) };
+    let c = ntype.byte_at(0);
+    // Dispatch by first char: i(int,if), b(bool,binop), v, u, l, c, s
+    if c == 105 { lower_expr_p_i(ast, ntype, temp_id, block_id, params) }
+    else if c == 98 { lower_expr_p_b(ast, ntype, temp_id, block_id, params) }
+    else if ntype == "var" { lower_var_p(ast, temp_id, block_id, params) }
+    else if ntype == "unary" { lower_unary_p(ast, temp_id, block_id, params) }
+    else if ntype == "let" { lower_let_p(ast, temp_id, block_id, params) }
+    else if ntype == "call" { lower_call_p(ast, temp_id, block_id, params) }
+    else if ntype == "str" { lower_str(ast, temp_id) }
+    else { pack_lower_result("ERR:unknown-" + ntype, temp_id) };
 
 fn lower_int(ast: String, temp_id: i64) -> String =
     let val = extract_int_value(ast);
@@ -1025,7 +1162,8 @@ fn get_fn_return_scan(content: String, pos: i64) -> String =
     let p = low_skip_ws(content, pos);
     if p >= content.len() { "i64" } else {
         let child = read_sexp_at(content, p);
-        if child == "" { "i64" } else if child == "i32" or child == "i64" or child == "f64" or child == "bool" { child } else if child.byte_at(0) == 40 { get_fn_return_scan(content, p + child.len()) } else if child.byte_at(0) == 60 { get_fn_return_scan(content, p + child.len()) } else { get_fn_return_scan(content, p + child.len()) }
+        // v0.50.7: Simplified redundant branches (all did same recursive call)
+        if child == "" { "i64" } else if child == "i32" or child == "i64" or child == "f64" or child == "bool" { child } else { get_fn_return_scan(content, p + child.len()) }
     };
 
 fn get_fn_body(ast: String) -> String =
@@ -1075,6 +1213,38 @@ fn llvm_gen_assign(line: String, pos: i64) -> String =
 fn find_eq(s: String, pos: i64) -> i64 =
     if pos >= s.len() { pos } else if s.byte_at(pos) == 61 { pos } else { find_eq(s, pos + 1) };
 
+// v0.50.8: LLVM gen helpers - split long if-else chain for faster parsing
+// Arithmetic operators (+, -, *, /, %)
+fn llvm_gen_arith(line: String, pos: i64, dest: String) -> String =
+    let c = line.byte_at(pos);
+    if c == 43 { llvm_gen_binop("add", line, pos + 1, dest) }
+    else if c == 45 { llvm_gen_binop("sub", line, pos + 1, dest) }
+    else if c == 42 { llvm_gen_binop("mul", line, pos + 1, dest) }
+    else if c == 47 { llvm_gen_binop("sdiv", line, pos + 1, dest) }
+    else if c == 37 { llvm_gen_binop("srem", line, pos + 1, dest) }
+    else { "  ; unknown-arith: " + line };
+
+// v0.32.1: Comparison operators - check longer operators first
+fn llvm_gen_cmp_op(line: String, pos: i64, dest: String) -> String =
+    if low_starts_with_at(line, pos, "<=") { llvm_gen_cmp("sle", line, pos + 2, dest) }
+    else if low_starts_with_at(line, pos, ">=") { llvm_gen_cmp("sge", line, pos + 2, dest) }
+    else if low_starts_with_at(line, pos, "<") { llvm_gen_cmp("slt", line, pos + 1, dest) }
+    else if low_starts_with_at(line, pos, ">") { llvm_gen_cmp("sgt", line, pos + 1, dest) }
+    else if low_starts_with_at(line, pos, "==") { llvm_gen_cmp("eq", line, pos + 2, dest) }
+    else if low_starts_with_at(line, pos, "!=") { llvm_gen_cmp("ne", line, pos + 2, dest) }
+    else { "  ; unknown-cmp: " + line };
+
+// Logical and other operations
+fn llvm_gen_other(line: String, pos: i64, dest: String) -> String =
+    if low_starts_with_at(line, pos, "and") { llvm_gen_binop("and", line, pos + 3, dest) }
+    else if low_starts_with_at(line, pos, "or") { llvm_gen_binop("or", line, pos + 2, dest) }
+    else if low_starts_with_at(line, pos, "not") { llvm_gen_not(line, pos + 3, dest) }
+    else if low_starts_with_at(line, pos, "neg") { llvm_gen_neg(line, pos + 3, dest) }
+    else if low_starts_with_at(line, pos, "phi") { llvm_gen_phi(line, pos, dest) }
+    else if low_starts_with_at(line, pos, "call") { llvm_gen_call(line, pos, dest) }
+    else if low_starts_with_at(line, pos, "str") { llvm_gen_str(line, pos, dest) }
+    else { "  ; unknown: " + line };
+
 // v0.31.19: Added nsw for const/copy to match Rust compiler
 fn llvm_gen_rhs(line: String, pos: i64, dest: String) -> String =
     if low_starts_with_at(line, pos, "const") {
@@ -1085,9 +1255,13 @@ fn llvm_gen_rhs(line: String, pos: i64, dest: String) -> String =
         let src_start = low_skip_ws(line, pos + 4);
         let src = line.slice(src_start, line.len());
         "  " + dest + " = add nsw i64 0, " + trim_end(src)
-    } else if low_starts_with_at(line, pos, "+") { llvm_gen_binop("add", line, pos + 1, dest) } else if low_starts_with_at(line, pos, "-") { llvm_gen_binop("sub", line, pos + 1, dest) } else if low_starts_with_at(line, pos, "*") { llvm_gen_binop("mul", line, pos + 1, dest) } else if low_starts_with_at(line, pos, "/") { llvm_gen_binop("sdiv", line, pos + 1, dest) } else if low_starts_with_at(line, pos, "%") { llvm_gen_binop("srem", line, pos + 1, dest)
-    // v0.32.1: Fix comparison operator order - check longer operators first
-    } else if low_starts_with_at(line, pos, "<=") { llvm_gen_cmp("sle", line, pos + 2, dest) } else if low_starts_with_at(line, pos, ">=") { llvm_gen_cmp("sge", line, pos + 2, dest) } else if low_starts_with_at(line, pos, "<") { llvm_gen_cmp("slt", line, pos + 1, dest) } else if low_starts_with_at(line, pos, ">") { llvm_gen_cmp("sgt", line, pos + 1, dest) } else if low_starts_with_at(line, pos, "==") { llvm_gen_cmp("eq", line, pos + 2, dest) } else if low_starts_with_at(line, pos, "!=") { llvm_gen_cmp("ne", line, pos + 2, dest) } else if low_starts_with_at(line, pos, "and") { llvm_gen_binop("and", line, pos + 3, dest) } else if low_starts_with_at(line, pos, "or") { llvm_gen_binop("or", line, pos + 2, dest) } else if low_starts_with_at(line, pos, "not") { llvm_gen_not(line, pos + 3, dest) } else if low_starts_with_at(line, pos, "neg") { llvm_gen_neg(line, pos + 3, dest) } else if low_starts_with_at(line, pos, "phi") { llvm_gen_phi(line, pos, dest) } else if low_starts_with_at(line, pos, "call") { llvm_gen_call(line, pos, dest) } else if low_starts_with_at(line, pos, "str") { llvm_gen_str(line, pos, dest) } else { "  ; unknown: " + line };
+    } else {
+        let c = line.byte_at(pos);
+        // Dispatch: arithmetic (+,-,*,/,%), comparison (<,>,=,!), other
+        if c == 43 or c == 45 or c == 42 or c == 47 or c == 37 { llvm_gen_arith(line, pos, dest) }
+        else if c == 60 or c == 62 or c == 61 or c == 33 { llvm_gen_cmp_op(line, pos, dest) }
+        else { llvm_gen_other(line, pos, dest) }
+    };
 
 // v0.31.19: Added nsw (no signed wrap) for add/sub/mul to match Rust compiler
 fn llvm_gen_binop(op: String, line: String, pos: i64, dest: String) -> String =
