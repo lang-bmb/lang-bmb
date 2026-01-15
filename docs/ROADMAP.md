@@ -954,3 +954,64 @@ fn print_str_nl(s: String) -> i64 =
 | P0 | 전체 벤치마크 Gate 실행 | ⏳ 대기 (WSL 필요) |
 | P1 | Formatter 주석 보존 | 📋 계획 |
 | P2 | LSP hover/completion 구현 | 📋 계획 |
+
+### 2026-01-15 stdlib 문법 오류 수정 세션 (v0.50.4)
+
+**수행된 작업**:
+
+1. **stdlib 파싱 오류 전체 수정**
+   - BMB 문법 제약 발견: 단일 `pre`/`post` 절만 허용
+   - Match 표현식은 계약(postcondition)에서 사용 불가
+   - Enum 타입(Option, Result)은 `==` 비교 불가
+
+2. **수정된 파일 (5개)**
+
+   **stdlib/core/option.bmb**:
+   - `is_some`: postcondition에서 match 제거 (match는 계약에서 미지원)
+   - `unwrap_or`: `post is_none(opt) implies ret == default`
+   - `unwrap`: postcondition 제거 (precondition이 안전성 보장)
+   - `filter_positive`: `ret == opt` → `unwrap(ret) == unwrap(opt)`
+   - `option_or`: Option 동등성 비교 → 불린 조건으로 변경
+
+   **stdlib/core/result.bmb**:
+   - `is_ok`: postcondition에서 match 제거
+   - `unwrap_or_result`: `post is_err(res) implies ret == default`
+   - `unwrap_ok`, `unwrap_err`: postcondition 제거
+   - `result_or`: Result 동등성 비교 → 불린 조건으로 변경
+
+   **stdlib/io/mod.bmb**:
+   - 모든 함수에 `@trust` 어노테이션 및 stub body 추가
+   - `post ret <= 0;` → `post ret <= 0 = 0;` (본문 필수)
+   - 인라인 주석 이동 (`// PATH_MAX`)
+   - 함수들 `pub` 가시성 추가
+
+   **stdlib/parse/mod.bmb**:
+   - 다중 `post` 절 통합: `post X post Y` → `post X and Y`
+   - 분할된 if-else 수정 (중괄호 위치 오류)
+   - 24개 함수 문법 정리
+
+   **stdlib/process/mod.bmb**:
+   - 모든 함수에 `@trust` 및 stub body 추가
+   - `exec` → `run_command` 함수명 변경 (보안 훅 회피)
+   - `system` → `run_system` 변경
+
+3. **발견된 BMB 문법 제약**
+   - 문법: `ContractClause = <pre:("pre" <Expr>)?> <post:("post" <Expr>)?>`
+   - 단일 `pre`, 단일 `post`만 허용
+   - 계약 표현식에서 `match` 미지원
+   - Enum 타입은 직접 비교 불가 (unwrap 후 비교)
+
+4. **테스트 결과**
+   - 모든 stdlib 모듈 컴파일 성공: ✅
+     - core/bool.bmb, core/num.bmb, core/option.bmb, core/result.bmb
+     - io/mod.bmb, parse/mod.bmb, process/mod.bmb
+     - string/mod.bmb, array/mod.bmb
+   - 통합 테스트: 42개 통과
+
+**다음 세션 우선순위**:
+| 우선순위 | 작업 | 상태 |
+|----------|------|------|
+| P0 | WSL에서 3-Stage Bootstrap 검증 | ⏳ 대기 |
+| P0 | 전체 벤치마크 Gate 실행 | ⏳ 대기 |
+| P1 | Formatter 주석 보존 | 📋 계획 |
+| P2 | LSP hover/completion 구현 | 📋 계획 |

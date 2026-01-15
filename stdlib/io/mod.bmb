@@ -2,8 +2,8 @@
 // Version: v0.32.0 (Phase 32.0.1 - Bootstrap Infrastructure)
 // Purpose: File I/O operations for self-hosting compiler
 //
-// IMPLEMENTATION STATUS: SPECIFICATION ONLY
-// Actual implementation requires LLVM intrinsics or libc bindings
+// Note: These functions are implemented as interpreter builtins.
+// The stub bodies are for type checking; actual I/O uses builtin implementations.
 //
 // Design Principles:
 // - Contract-first: All functions have explicit pre/post conditions
@@ -17,21 +17,20 @@
 
 // Read entire file contents as a string
 // Returns: File contents on success, empty string on error
-// Error codes stored in global (requires error_code() function)
-//
-// @builtin "interpreter"
-fn read_file(path: String) -> String
+// Note: Implemented as interpreter builtin
+@trust
+pub fn read_file(path: String) -> String
   pre path.len() > 0
-  post true;
+= "";
 
 // Read file with explicit result type
 // Returns: 0 on success, negative error code on failure
-// Contents written to mutable parameter (when supported)
-//
-// @builtin "interpreter"
-fn read_file_result(path: String) -> i64
+// Note: Implemented as interpreter builtin
+@trust
+pub fn read_file_result(path: String) -> i64
   pre path.len() > 0
-  post ret <= 0;
+  post ret <= 0
+= 0;
 
 // ============================================================================
 // File Writing
@@ -40,19 +39,21 @@ fn read_file_result(path: String) -> i64
 // Write string contents to file
 // Returns: 0 on success, negative error code on failure
 // Creates file if not exists, overwrites if exists
-//
-// @builtin "interpreter"
-fn write_file(path: String, content: String) -> i64
+// Note: Implemented as interpreter builtin
+@trust
+pub fn write_file(path: String, content: String) -> i64
   pre path.len() > 0
-  post ret <= 0;
+  post ret <= 0
+= 0;
 
 // Append string to existing file
 // Returns: 0 on success, negative error code on failure
-//
-// @builtin "interpreter"
-fn append_file(path: String, content: String) -> i64
+// Note: Implemented as interpreter builtin
+@trust
+pub fn append_file(path: String, content: String) -> i64
   pre path.len() > 0
-  post ret <= 0;
+  post ret <= 0
+= 0;
 
 // ============================================================================
 // File System Queries
@@ -60,19 +61,21 @@ fn append_file(path: String, content: String) -> i64
 
 // Check if file exists
 // Returns: 1 if exists, 0 if not
-//
-// @builtin "interpreter"
-fn file_exists(path: String) -> i64
+// Note: Implemented as interpreter builtin
+@trust
+pub fn file_exists(path: String) -> i64
   pre path.len() > 0
-  post ret == 0 or ret == 1;
+  post ret == 0 or ret == 1
+= 0;
 
 // Get file size in bytes
 // Returns: Size on success, -1 on error
-//
-// @builtin "interpreter"
-fn file_size(path: String) -> i64
+// Note: Implemented as interpreter builtin
+@trust
+pub fn file_size(path: String) -> i64
   pre path.len() > 0
-  post ret >= -1;
+  post ret >= -1
+= 0;
 
 // ============================================================================
 // Error Codes
@@ -95,15 +98,17 @@ fn IO_ERROR_UNKNOWN() -> i64 = -1;        // Generic error
 // ============================================================================
 
 // Check if path looks valid (basic validation)
+// Note: 4096 = PATH_MAX
 fn is_valid_path(path: String) -> i64
   post ret == 0 or ret == 1
-= if path.len() == 0 { 0 } else if path.len() > 4096 { 0  // PATH_MAX } else { 1 };
+= if path.len() == 0 { 0 } else if path.len() > 4096 { 0 } else { 1 };
 
 // Get file extension (position of last '.')
 // Returns: Position of '.', or -1 if no extension
+// Note: 46 is ASCII for '.'
 fn find_extension(path: String) -> i64
   post ret >= -1 and ret < path.len()
-= find_last_char(path, 46);  // 46 = '.'
+= find_last_char(path, 46);
 
 // Helper: Find last occurrence of character
 fn find_last_char(s: String, c: i64) -> i64 =
