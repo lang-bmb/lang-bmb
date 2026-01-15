@@ -1073,6 +1073,53 @@ fn print_str_nl(s: String) -> i64 =
 | P0 | WSL에서 3-Stage Bootstrap 검증 | ⏳ 대기 |
 | P0 | 전체 벤치마크 Gate 실행 | ⏳ 대기 |
 | P1 | 정제 타입 구현 | 📋 계획 |
-| P1 | 타입 별칭 구현 | 📋 계획 |
+| P1 | 타입 별칭 구현 | ✅ 완료 |
+| P2 | Formatter 주석 보존 | 📋 계획 |
+| P2 | LSP hover/completion 구현 | 📋 계획 |
+
+### 2026-01-15 타입 별칭 구현 세션 (v0.50.6)
+
+**수행된 작업**:
+
+1. **타입 별칭 문법 구현**
+   - 렉서: `type` 키워드 토큰 추가 (`Token::Type`)
+   - AST: `TypeAliasDef` 구조체 추가 (속성, 가시성, 타입 파라미터, 대상 타입, 정제 조건)
+   - 파서: 8가지 문법 변형 지원 (속성/타입 파라미터/정제 조합)
+   - 타입 체커: 타입 별칭 등록 및 해석 (`resolve_type_alias`, `substitute_type_param`)
+
+2. **지원되는 문법**
+   ```bmb
+   // 간단한 타입 별칭
+   type Integer = i64;
+
+   // 가시성 지정
+   pub type Counter = i64;
+
+   // 제네릭 타입 별칭
+   type Container<T> = [T; 10];
+
+   // 정제 타입 (검증 연동 예정)
+   type NonZero = i64 where { self != 0 };
+   ```
+
+3. **구현 상세**
+   - 14개 파일 수정: lexer, parser, ast, types, mir, interp, lsp, cfg, verify, main
+   - 패턴 매치 완전성: 모든 `Item` enum 매치에 `TypeAlias` 케이스 추가
+   - `unify()`, `check_binary_op()`에서 타입 별칭 자동 해석
+
+4. **테스트**
+   - 기존 테스트 모두 통과: 154 + 19 + 58 = 231개
+   - 신규 예제: `examples/type_alias.bmb`
+
+5. **제한사항/향후 작업**
+   - 정제 조건 검증: SMT 연동 필요 (향후 구현)
+   - 제네릭 타입 별칭: 인스턴스화 시 타입 인자 대입 필요 (기본 구현 완료)
+
+**다음 세션 우선순위**:
+| 우선순위 | 작업 | 상태 |
+|----------|------|------|
+| P0 | WSL에서 3-Stage Bootstrap 검증 | ⏳ 대기 |
+| P0 | 전체 벤치마크 Gate 실행 | ⏳ 대기 |
+| P1 | 정제 타입 검증 연동 (SMT) | 📋 계획 |
 | P2 | Formatter 주석 보존 | 📋 계획 |
 | P2 | LSP hover/completion 구현 | 📋 계획 |

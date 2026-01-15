@@ -65,6 +65,8 @@ impl ContractVerifier {
                 Item::StructDef(_) | Item::EnumDef(_) | Item::Use(_) | Item::ExternFn(_) => {}
                 // v0.20.1: Trait system not yet included in verification
                 Item::TraitDef(_) | Item::ImplBlock(_) => {}
+                // v0.50.6: Type aliases don't need verification
+                Item::TypeAlias(_) => {}
             }
         }
 

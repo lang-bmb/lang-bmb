@@ -293,6 +293,9 @@ pub struct TypeChecker {
     /// Key: (signature_hash, postcondition_hash) -> (first_function_name, span)
     /// Used to detect functions with equivalent contracts
     contract_signatures: HashMap<(String, String), (String, Span)>,
+    /// v0.50.6: Type alias definitions
+    /// name -> (type_params, target_type, refinement_expr)
+    type_aliases: HashMap<String, (Vec<TypeParam>, Type, Option<Expr>)>,
 }
 
 impl TypeChecker {
@@ -485,6 +488,7 @@ impl TypeChecker {
             private_traits: HashMap::new(), // v0.80: Private trait tracking
             implemented_traits: std::collections::HashSet::new(), // v0.80: Implemented trait tracking
             contract_signatures: HashMap::new(), // v0.84: Contract signature tracking
+            type_aliases: HashMap::new(), // v0.50.6: Type alias definitions
         }
     }
 
@@ -649,6 +653,15 @@ impl TypeChecker {
                 }
                 // v0.20.1: ImplBlocks are processed in a later pass
                 Item::ImplBlock(_) => {}
+                // v0.50.6: Type aliases
+                Item::TypeAlias(t) => {
+                    // Register type alias: name -> (type_params, target_type, refinement)
+                    let refinement = t.refinement.as_ref().map(|r| r.node.clone());
+                    self.type_aliases.insert(
+                        t.name.node.clone(),
+                        (t.type_params.clone(), t.target.node.clone(), refinement)
+                    );
+                }
             }
         }
 
@@ -689,7 +702,7 @@ impl TypeChecker {
                     self.functions
                         .insert(e.name.node.clone(), (param_tys, e.ret_ty.node.clone()));
                 }
-                Item::StructDef(_) | Item::EnumDef(_) | Item::Use(_) => {}
+                Item::StructDef(_) | Item::EnumDef(_) | Item::Use(_) | Item::TypeAlias(_) => {}
                 // v0.20.1: TraitDef already registered in first pass
                 Item::TraitDef(_) => {}
                 // v0.20.1: Register impl blocks
@@ -728,6 +741,8 @@ impl TypeChecker {
                 Item::StructDef(_) | Item::EnumDef(_) | Item::Use(_) | Item::ExternFn(_) => {}
                 // v0.20.1: Traits and impls already registered
                 Item::TraitDef(_) | Item::ImplBlock(_) => {}
+                // v0.50.6: Type aliases already processed
+                Item::TypeAlias(_) => {}
             }
         }
 
@@ -855,6 +870,104 @@ impl TypeChecker {
             Type::I64 | Type::I32 | Type::U32 | Type::U64 | Type::F64
             | Type::Bool | Type::String | Type::Char | Type::Unit
             | Type::Never | Type::TypeVar(_) => {}
+        }
+    }
+
+    /// v0.50.6: Resolve type alias
+    /// If the type is a named type that's a type alias, expand it to the target type.
+    /// Non-generic type aliases are expanded recursively.
+    fn resolve_type_alias(&self, ty: &Type) -> Type {
+        match ty {
+            Type::Named(name) => {
+                // Check if this is a type alias
+                if let Some((type_params, target, _refinement)) = self.type_aliases.get(name) {
+                    if type_params.is_empty() {
+                        // Non-generic type alias: recursively resolve
+                        self.resolve_type_alias(target)
+                    } else {
+                        // Generic type alias needs type arguments - keep as is
+                        ty.clone()
+                    }
+                } else {
+                    // Not a type alias, keep as is
+                    ty.clone()
+                }
+            }
+            Type::Generic { name, type_args } => {
+                // Check if this is a generic type alias
+                if let Some((type_params, target, _refinement)) = self.type_aliases.get(name) {
+                    if type_params.len() == type_args.len() {
+                        // Substitute type arguments
+                        let mut substituted = target.clone();
+                        for (param, arg) in type_params.iter().zip(type_args.iter()) {
+                            substituted = self.substitute_type_param(&substituted, &param.name, arg);
+                        }
+                        self.resolve_type_alias(&substituted)
+                    } else {
+                        // Wrong number of type arguments, keep as is
+                        ty.clone()
+                    }
+                } else {
+                    // Not a type alias, but resolve type args
+                    Type::Generic {
+                        name: name.clone(),
+                        type_args: type_args.iter().map(|a| Box::new(self.resolve_type_alias(a))).collect(),
+                    }
+                }
+            }
+            // Recursively resolve nested types
+            Type::Array(inner, size) => Type::Array(Box::new(self.resolve_type_alias(inner)), *size),
+            Type::Ref(inner) => Type::Ref(Box::new(self.resolve_type_alias(inner))),
+            Type::RefMut(inner) => Type::RefMut(Box::new(self.resolve_type_alias(inner))),
+            Type::Nullable(inner) => Type::Nullable(Box::new(self.resolve_type_alias(inner))),
+            Type::Range(inner) => Type::Range(Box::new(self.resolve_type_alias(inner))),
+            Type::Fn { params, ret } => Type::Fn {
+                params: params.iter().map(|p| Box::new(self.resolve_type_alias(p))).collect(),
+                ret: Box::new(self.resolve_type_alias(ret)),
+            },
+            Type::Tuple(elements) => Type::Tuple(elements.iter().map(|e| Box::new(self.resolve_type_alias(e))).collect()),
+            // Primitive and other types don't need resolution
+            _ => ty.clone(),
+        }
+    }
+
+    /// v0.50.6: Substitute a type parameter with a concrete type
+    fn substitute_type_param(&self, ty: &Type, param_name: &str, replacement: &Type) -> Type {
+        match ty {
+            Type::Named(name) if name == param_name => replacement.clone(),
+            Type::TypeVar(name) if name == param_name => replacement.clone(),
+            Type::Generic { name, type_args } => {
+                if name == param_name {
+                    replacement.clone()
+                } else {
+                    Type::Generic {
+                        name: name.clone(),
+                        type_args: type_args.iter()
+                            .map(|a| Box::new(self.substitute_type_param(a, param_name, replacement)))
+                            .collect(),
+                    }
+                }
+            }
+            Type::Array(inner, size) => Type::Array(
+                Box::new(self.substitute_type_param(inner, param_name, replacement)),
+                *size
+            ),
+            Type::Ref(inner) => Type::Ref(Box::new(self.substitute_type_param(inner, param_name, replacement))),
+            Type::RefMut(inner) => Type::RefMut(Box::new(self.substitute_type_param(inner, param_name, replacement))),
+            Type::Nullable(inner) => Type::Nullable(Box::new(self.substitute_type_param(inner, param_name, replacement))),
+            Type::Range(inner) => Type::Range(Box::new(self.substitute_type_param(inner, param_name, replacement))),
+            Type::Fn { params, ret } => Type::Fn {
+                params: params.iter()
+                    .map(|p| Box::new(self.substitute_type_param(p, param_name, replacement)))
+                    .collect(),
+                ret: Box::new(self.substitute_type_param(ret, param_name, replacement)),
+            },
+            Type::Tuple(elements) => Type::Tuple(
+                elements.iter()
+                    .map(|e| Box::new(self.substitute_type_param(e, param_name, replacement)))
+                    .collect()
+            ),
+            _ => ty.clone(),
         }
     }
 
@@ -996,6 +1109,10 @@ impl TypeChecker {
                     defined_symbols.insert(&e.name.node);
                 }
                 Item::Use(_) | Item::ImplBlock(_) => {}
+                // v0.50.6: Type aliases can be exported
+                Item::TypeAlias(t) => {
+                    defined_symbols.insert(&t.name.node);
+                }
             }
         }
 
@@ -2560,9 +2677,12 @@ impl TypeChecker {
     /// Check binary operation types
     /// v0.2: Uses base_type() to handle refined types correctly
     fn check_binary_op(&self, op: BinOp, left: &Type, right: &Type, span: Span) -> Result<Type> {
+        // v0.50.6: Resolve type aliases before checking
+        let left_resolved = self.resolve_type_alias(left);
+        let right_resolved = self.resolve_type_alias(right);
         // v0.2: Extract base types for refined types
-        let left_base = left.base_type();
-        let right_base = right.base_type();
+        let left_base = left_resolved.base_type();
+        let right_base = right_resolved.base_type();
 
         match op {
             BinOp::Add => {
@@ -2735,15 +2855,19 @@ impl TypeChecker {
     /// Unify two types
     /// v0.15: Updated to handle TypeVar in generic function body checking
     fn unify(&self, expected: &Type, actual: &Type, span: Span) -> Result<()> {
+        // v0.50.6: Resolve type aliases before unification
+        let expected = self.resolve_type_alias(expected);
+        let actual = self.resolve_type_alias(actual);
+
         // v0.15: TypeVar in function body context matches any type
         // When type checking a generic function body, TypeVar acts as a placeholder
-        if let Type::TypeVar(name) = expected
+        if let Type::TypeVar(name) = &expected
             && self.type_param_env.contains_key(name)
         {
             // TypeVar is bound in current generic context - accept any type
             return Ok(());
         }
-        if let Type::TypeVar(name) = actual
+        if let Type::TypeVar(name) = &actual
             && self.type_param_env.contains_key(name)
         {
             // TypeVar is bound in current generic context - accept any type
@@ -2751,7 +2875,7 @@ impl TypeChecker {
         }
 
         // Both are TypeVar with same name
-        if let (Type::TypeVar(a), Type::TypeVar(b)) = (expected, actual)
+        if let (Type::TypeVar(a), Type::TypeVar(b)) = (&expected, &actual)
             && a == b
         {
             return Ok(());
@@ -2759,7 +2883,7 @@ impl TypeChecker {
 
         // v0.16: Handle Generic types with TypeVar in type_args
         // e.g., unify Option<i64> with Option<T> where T is a type parameter
-        if let (Type::Generic { name: n1, type_args: a1 }, Type::Generic { name: n2, type_args: a2 }) = (expected, actual)
+        if let (Type::Generic { name: n1, type_args: a1 }, Type::Generic { name: n2, type_args: a2 }) = (&expected, &actual)
             && n1 == n2
             && a1.len() == a2.len()
         {
@@ -2772,11 +2896,11 @@ impl TypeChecker {
 
         // v0.16: Handle unbound TypeVar (from nullary variants like Option::None)
         // In non-generic context, TypeVar acts as a wildcard that matches concrete types
-        if let Type::TypeVar(_) = expected {
+        if let Type::TypeVar(_) = &expected {
             // Allow any type to match an unbound TypeVar
             return Ok(());
         }
-        if let Type::TypeVar(_) = actual {
+        if let Type::TypeVar(_) = &actual {
             // Allow unbound TypeVar to match any expected type
             return Ok(());
         }
@@ -2788,7 +2912,7 @@ impl TypeChecker {
             // i64 literals (default) can be used where u32/u64 is expected
             // This enables: let x: u32 = 10; (where 10 infers as i64)
             let is_integer_coercion = matches!(
-                (expected, actual),
+                (&expected, &actual),
                 (Type::U32, Type::I64) | (Type::U64, Type::I64)
                 | (Type::I32, Type::I64) | (Type::U32, Type::I32)
             );

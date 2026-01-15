@@ -1374,6 +1374,13 @@ fn format_program(program: &bmb::ast::Program) -> String {
                 }
                 output.push('}');
             }
+            // v0.50.6: Format type aliases
+            Item::TypeAlias(t) => {
+                if t.visibility == Visibility::Public {
+                    output.push_str("pub ");
+                }
+                output.push_str(&format!("type {} = {};", t.name.node, format_type(&t.target.node)));
+            }
         }
     }
 

@@ -78,6 +78,8 @@ pub enum Item {
     FnDef(FnDef),
     StructDef(StructDef),
     EnumDef(EnumDef),
+    /// Type alias (v0.50.6): type Name = Type; or type Name = Type where cond;
+    TypeAlias(TypeAliasDef),
     /// Use statement: use path::to::item (v0.5 Phase 4)
     Use(UseStmt),
     /// External function declaration (v0.13.0): extern fn name(...) -> Type;
@@ -234,6 +236,29 @@ pub struct EnumVariant {
     pub name: Spanned<String>,
     /// Fields for tuple-like or struct-like variants (empty for unit variants)
     pub fields: Vec<Spanned<Type>>,
+}
+
+/// Type alias definition (v0.50.6)
+/// Syntax: type Name = Type;
+/// Syntax: type Name<T> = Type<T>;
+/// Syntax: type Name = Type where { condition };  (refinement type)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TypeAliasDef {
+    /// Attributes (e.g., @deprecated)
+    pub attributes: Vec<Attribute>,
+    /// Visibility (pub or private)
+    pub visibility: Visibility,
+    /// Name of the type alias
+    pub name: Spanned<String>,
+    /// Type parameters for generic type aliases (e.g., <T>, <T, U>)
+    pub type_params: Vec<TypeParam>,
+    /// The target type being aliased
+    pub target: Spanned<Type>,
+    /// Optional refinement condition (for refined types)
+    /// e.g., where { self != 0 } or where { self > 0 && self < 100 }
+    pub refinement: Option<Spanned<Expr>>,
+    /// Span of the entire definition
+    pub span: Span,
 }
 
 /// Named contract (v0.2)

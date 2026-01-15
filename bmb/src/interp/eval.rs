@@ -247,6 +247,8 @@ impl Interpreter {
                 // v0.20.1: Trait system not yet supported in interpreter
                 crate::ast::Item::TraitDef(_) => {}
                 crate::ast::Item::ImplBlock(_) => {}
+                // v0.50.6: Type aliases are resolved at compile time
+                crate::ast::Item::TypeAlias(_) => {}
             }
         }
     }
@@ -275,6 +277,8 @@ impl Interpreter {
                 crate::ast::Item::ExternFn(_) => Ok(Value::Unit),
                 // v0.20.1: Trait system doesn't produce values
                 crate::ast::Item::TraitDef(_) | crate::ast::Item::ImplBlock(_) => Ok(Value::Unit),
+                // v0.50.6: Type aliases don't produce values
+                crate::ast::Item::TypeAlias(_) => Ok(Value::Unit),
             }
         } else {
             Ok(Value::Unit)

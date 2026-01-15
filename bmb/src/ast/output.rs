@@ -5,7 +5,7 @@
 use super::expr::{BinOp, Expr, LiteralPattern, Pattern, RangeKind, StateKind, UnOp};
 use super::types::Type;
 use super::{
-    EnumDef, ExternFn, FnDef, ImplBlock, Item, Program, StructDef, TraitDef, UseStmt, Visibility,
+    EnumDef, ExternFn, FnDef, ImplBlock, Item, Program, StructDef, TraitDef, TypeAliasDef, UseStmt, Visibility,
 };
 
 /// Format AST as S-expression (Lisp-like notation)
@@ -32,6 +32,8 @@ fn format_item(item: &Item, level: usize) -> String {
         Item::Use(u) => format_use_stmt(u, level),
         Item::TraitDef(t) => format_trait_def(t, level),
         Item::ImplBlock(i) => format_impl_block(i, level),
+        // v0.50.6: Type alias
+        Item::TypeAlias(t) => format_type_alias(t, level),
     }
 }
 
@@ -234,6 +236,36 @@ fn format_impl_block(i: &ImplBlock, level: usize) -> String {
         methods,
         ind
     )
+}
+
+// v0.50.6: Type alias formatting
+fn format_type_alias(t: &TypeAliasDef, level: usize) -> String {
+    let ind = indent(level);
+    let mut out = format!("{}(type {} ", ind, t.name.node);
+
+    // Type params
+    if !t.type_params.is_empty() {
+        out.push('<');
+        out.push_str(
+            &t.type_params
+                .iter()
+                .map(|p| p.name.clone())
+                .collect::<Vec<_>>()
+                .join(" "),
+        );
+        out.push_str("> ");
+    }
+
+    // Target type
+    out.push_str(&format_type(&t.target.node));
+
+    // Refinement condition
+    if let Some(ref refinement) = t.refinement {
+        out.push_str(&format!(" :where {}", format_expr(&refinement.node)));
+    }
+
+    out.push_str(")\n");
+    out
 }
 
 /// v0.84: Format type as string (span-agnostic)

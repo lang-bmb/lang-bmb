@@ -105,6 +105,10 @@ pub enum Token {
     #[token("todo")]
     Todo,
 
+    // v0.50.6: Type aliases and refinement types
+    #[token("type")]
+    Type,
+
     // v0.36: Contract keywords
     #[token("invariant")]
     Invariant,
@@ -411,6 +415,8 @@ impl std::fmt::Display for Token {
             Token::PipePipe => write!(f, "||"),
             Token::Bang => write!(f, "!"),
             Token::Todo => write!(f, "todo"),
+            // v0.50.6: Type aliases
+            Token::Type => write!(f, "type"),
             // v0.31: Module header tokens
             Token::Module => write!(f, "module"),
             Token::Version => write!(f, "version"),

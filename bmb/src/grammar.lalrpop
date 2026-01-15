@@ -69,6 +69,8 @@ extern {
         // v0.20.1: Trait system
         "trait" => Token::Trait,
         "impl" => Token::Impl,
+        // v0.50.6: Type alias
+        "type" => Token::Type,
         // v0.31: Incremental development
         "todo" => Token::Todo,
 
@@ -287,6 +289,95 @@ Item: Item = {
     <e:ExternFnDef> => Item::ExternFn(e),
     <t:TraitDef> => Item::TraitDef(t),
     <i:ImplBlock> => Item::ImplBlock(i),
+    // v0.50.6: Type alias
+    <ta:TypeAliasDef> => Item::TypeAlias(ta),
+};
+
+// v0.50.6: Type alias definition
+// Syntax: type Name = Type;
+// Syntax: type Name<T> = Type;
+// Syntax: type Name = Type where { condition };  (refinement type)
+TypeAliasDef: TypeAliasDef = {
+    // With attributes and type params and refinement
+    <l:@L> <attrs:Attr+> <vis:Visibility> "type" <name:Ident> <type_params:TypeParams> "=" <target:SpannedType> "where" "{" <refinement:SpannedExpr> "}" ";" <r:@R> => TypeAliasDef {
+        attributes: attrs,
+        visibility: vis,
+        name,
+        type_params,
+        target,
+        refinement: Some(refinement),
+        span: Span::new(l, r),
+    },
+    // With attributes and type params, no refinement
+    <l:@L> <attrs:Attr+> <vis:Visibility> "type" <name:Ident> <type_params:TypeParams> "=" <target:SpannedType> ";" <r:@R> => TypeAliasDef {
+        attributes: attrs,
+        visibility: vis,
+        name,
+        type_params,
+        target,
+        refinement: None,
+        span: Span::new(l, r),
+    },
+    // With attributes, no type params, with refinement
+    <l:@L> <attrs:Attr+> <vis:Visibility> "type" <name:Ident> "=" <target:SpannedType> "where" "{" <refinement:SpannedExpr> "}" ";" <r:@R> => TypeAliasDef {
+        attributes: attrs,
+        visibility: vis,
+        name,
+        type_params: vec![],
+        target,
+        refinement: Some(refinement),
+        span: Span::new(l, r),
+    },
+    // With attributes, no type params, no refinement
+    <l:@L> <attrs:Attr+> <vis:Visibility> "type" <name:Ident> "=" <target:SpannedType> ";" <r:@R> => TypeAliasDef {
+        attributes: attrs,
+        visibility: vis,
+        name,
+        type_params: vec![],
+        target,
+        refinement: None,
+        span: Span::new(l, r),
+    },
+    // Without attributes, with type params and refinement
+    <l:@L> <vis:Visibility> "type" <name:Ident> <type_params:TypeParams> "=" <target:SpannedType> "where" "{" <refinement:SpannedExpr> "}" ";" <r:@R> => TypeAliasDef {
+        attributes: vec![],
+        visibility: vis,
+        name,
+        type_params,
+        target,
+        refinement: Some(refinement),
+        span: Span::new(l, r),
+    },
+    // Without attributes, with type params, no refinement
+    <l:@L> <vis:Visibility> "type" <name:Ident> <type_params:TypeParams> "=" <target:SpannedType> ";" <r:@R> => TypeAliasDef {
+        attributes: vec![],
+        visibility: vis,
+        name,
+        type_params,
+        target,
+        refinement: None,
+        span: Span::new(l, r),
+    },
+    // Without attributes, no type params, with refinement
+    <l:@L> <vis:Visibility> "type" <name:Ident> "=" <target:SpannedType> "where" "{" <refinement:SpannedExpr> "}" ";" <r:@R> => TypeAliasDef {
+        attributes: vec![],
+        visibility: vis,
+        name,
+        type_params: vec![],
+        target,
+        refinement: Some(refinement),
+        span: Span::new(l, r),
+    },
+    // Without attributes, no type params, no refinement
+    <l:@L> <vis:Visibility> "type" <name:Ident> "=" <target:SpannedType> ";" <r:@R> => TypeAliasDef {
+        attributes: vec![],
+        visibility: vis,
+        name,
+        type_params: vec![],
+        target,
+        refinement: None,
+        span: Span::new(l, r),
+    },
 };
 
 // External function declaration (v0.13.0, v0.20.2 ABI support)

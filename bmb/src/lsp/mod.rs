@@ -205,6 +205,8 @@ impl Backend {
                         self.collect_expr_refs(&method.body.node, &mut references);
                     }
                 }
+                // v0.50.6: Type aliases - register as type definitions
+                Item::TypeAlias(_) => {}
             }
         }
 
@@ -881,6 +883,13 @@ fn format_program(program: &Program) -> String {
                     output.push_str(&format!("    {}\n", format_fn_def(method).trim()));
                 }
                 output.push('}');
+            }
+            // v0.50.6: Format type aliases
+            Item::TypeAlias(t) => {
+                if t.visibility == Visibility::Public {
+                    output.push_str("pub ");
+                }
+                output.push_str(&format!("type {} = {};", t.name.node, format_type(&t.target.node)));
             }
         }
     }
