@@ -101,6 +101,14 @@ pub enum CompileWarning {
         span: Span,
     },
 
+    /// v0.50.11: Duplicate function definition
+    /// Function with the same name already defined (later definition wins)
+    DuplicateFunction {
+        name: String,
+        span: Span,
+        original_span: Span,
+    },
+
     /// v0.81: Missing postcondition
     /// Function lacks explicit postcondition contract
     MissingPostcondition {
@@ -240,6 +248,15 @@ impl CompileWarning {
         }
     }
 
+    /// v0.50.11: Create a duplicate function warning
+    pub fn duplicate_function(name: impl Into<String>, span: Span, original_span: Span) -> Self {
+        Self::DuplicateFunction {
+            name: name.into(),
+            span,
+            original_span,
+        }
+    }
+
     /// v0.81: Create a missing postcondition warning
     pub fn missing_postcondition(name: impl Into<String>, span: Span) -> Self {
         Self::MissingPostcondition {
@@ -290,6 +307,7 @@ impl CompileWarning {
             Self::UnusedEnum { span, .. } => Some(*span),
             Self::ShadowBinding { span, .. } => Some(*span),
             Self::UnusedTrait { span, .. } => Some(*span),
+            Self::DuplicateFunction { span, .. } => Some(*span),
             Self::MissingPostcondition { span, .. } => Some(*span),
             Self::SemanticDuplication { span, .. } => Some(*span),
             Self::TrivialContract { span, .. } => Some(*span),
@@ -339,6 +357,9 @@ impl CompileWarning {
             Self::UnusedTrait { name, .. } => {
                 format!("trait `{}` is never implemented", name)
             }
+            Self::DuplicateFunction { name, .. } => {
+                format!("function `{}` is defined multiple times; later definition overrides earlier one", name)
+            }
             Self::MissingPostcondition { name, .. } => {
                 format!("function `{}` has no postcondition", name)
             }
@@ -374,6 +395,7 @@ impl CompileWarning {
             Self::UnusedEnum { .. } => "unused_enum",
             Self::ShadowBinding { .. } => "shadow_binding",
             Self::UnusedTrait { .. } => "unused_trait",
+            Self::DuplicateFunction { .. } => "duplicate_function",
             Self::MissingPostcondition { .. } => "missing_postcondition",
             Self::SemanticDuplication { .. } => "semantic_duplication",
             Self::TrivialContract { .. } => "trivial_contract",

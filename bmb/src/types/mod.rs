@@ -294,8 +294,11 @@ pub struct TypeChecker {
     /// Used to detect functions with equivalent contracts
     contract_signatures: HashMap<(String, String), (String, Span)>,
     /// v0.50.6: Type alias definitions
-    /// name -> (type_params, target_type, refinement_expr)
-    type_aliases: HashMap<String, (Vec<TypeParam>, Type, Option<Expr>)>,
+    /// name -> (type_params, target_type, refinement_expr, span)
+    type_aliases: HashMap<String, (Vec<TypeParam>, Type, Option<Expr>, Span)>,
+    /// v0.50.11: Function definition spans for duplicate detection
+    /// name -> span of first definition
+    function_spans: HashMap<String, Span>,
 }
 
 impl TypeChecker {
@@ -489,6 +492,7 @@ impl TypeChecker {
             implemented_traits: std::collections::HashSet::new(), // v0.80: Implemented trait tracking
             contract_signatures: HashMap::new(), // v0.84: Contract signature tracking
             type_aliases: HashMap::new(), // v0.50.6: Type alias definitions
+            function_spans: HashMap::new(), // v0.50.11: Function span tracking for duplicate detection
         }
     }
 
@@ -655,15 +659,18 @@ impl TypeChecker {
                 Item::ImplBlock(_) => {}
                 // v0.50.6: Type aliases
                 Item::TypeAlias(t) => {
-                    // Register type alias: name -> (type_params, target_type, refinement)
+                    // Register type alias: name -> (type_params, target_type, refinement, span)
                     let refinement = t.refinement.as_ref().map(|r| r.node.clone());
                     self.type_aliases.insert(
                         t.name.node.clone(),
-                        (t.type_params.clone(), t.target.node.clone(), refinement)
+                        (t.type_params.clone(), t.target.node.clone(), refinement, t.name.span)
                     );
                 }
             }
         }
+
+        // v0.50.11: Validate type aliases for cycles
+        self.validate_type_alias_cycles()?;
 
         // Second pass: collect function signatures (including extern fn)
         for item in &program.items {
@@ -676,6 +683,17 @@ impl TypeChecker {
                         && !f.name.node.starts_with('_')
                     {
                         self.private_functions.insert(f.name.node.clone(), f.name.span);
+                    }
+
+                    // v0.50.11: Check for duplicate function definitions
+                    if let Some(original_span) = self.function_spans.get(&f.name.node) {
+                        self.add_warning(CompileWarning::duplicate_function(
+                            &f.name.node,
+                            f.name.span,
+                            *original_span,
+                        ));
+                    } else {
+                        self.function_spans.insert(f.name.node.clone(), f.name.span);
                     }
 
                     // v0.15: Handle generic functions separately
@@ -698,6 +716,17 @@ impl TypeChecker {
                 }
                 // v0.13.0: Register extern function signatures
                 Item::ExternFn(e) => {
+                    // v0.50.11: Check for duplicate function definitions (extern fn)
+                    if let Some(original_span) = self.function_spans.get(&e.name.node) {
+                        self.add_warning(CompileWarning::duplicate_function(
+                            &e.name.node,
+                            e.name.span,
+                            *original_span,
+                        ));
+                    } else {
+                        self.function_spans.insert(e.name.node.clone(), e.name.span);
+                    }
+
                     let param_tys: Vec<_> = e.params.iter().map(|p| p.ty.node.clone()).collect();
                     self.functions
                         .insert(e.name.node.clone(), (param_tys, e.ret_ty.node.clone()));
@@ -873,6 +902,105 @@ impl TypeChecker {
         }
     }
 
+    /// v0.50.11: Validate type aliases for cycles
+    /// Detects circular type alias definitions like `type A = B; type B = A;`
+    fn validate_type_alias_cycles(&self) -> Result<()> {
+        use std::collections::HashSet;
+
+        /// Helper: Extract type names referenced by a type
+        fn collect_type_refs(ty: &Type, refs: &mut HashSet<String>) {
+            match ty {
+                Type::Named(name) => { refs.insert(name.clone()); }
+                Type::Generic { name, type_args } => {
+                    refs.insert(name.clone());
+                    for arg in type_args {
+                        collect_type_refs(arg, refs);
+                    }
+                }
+                Type::Array(inner, _) | Type::Ref(inner) | Type::RefMut(inner)
+                | Type::Nullable(inner) | Type::Range(inner) => {
+                    collect_type_refs(inner, refs);
+                }
+                Type::Fn { params, ret } => {
+                    for p in params {
+                        collect_type_refs(p, refs);
+                    }
+                    collect_type_refs(ret, refs);
+                }
+                Type::Tuple(elements) => {
+                    for e in elements {
+                        collect_type_refs(e, refs);
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        /// DFS cycle detection
+        fn detect_cycle(
+            name: &str,
+            aliases: &HashMap<String, (Vec<TypeParam>, Type, Option<Expr>, Span)>,
+            visiting: &mut HashSet<String>,
+            visited: &mut HashSet<String>,
+            path: &mut Vec<String>,
+        ) -> Option<(Vec<String>, Span)> {
+            if visited.contains(name) {
+                return None; // Already validated, no cycle
+            }
+            if visiting.contains(name) {
+                // Found a cycle! Return the path from first occurrence
+                if let Some(pos) = path.iter().position(|n| n == name) {
+                    let cycle_path: Vec<String> = path[pos..].to_vec();
+                    // Get span of the first alias in the cycle
+                    if let Some((_, _, _, span)) = aliases.get(name) {
+                        return Some((cycle_path, *span));
+                    }
+                }
+                return None;
+            }
+
+            // Only check if this is actually a type alias
+            if let Some((_, target, _, _)) = aliases.get(name) {
+                visiting.insert(name.to_string());
+                path.push(name.to_string());
+
+                // Find all type references in the target
+                let mut refs = HashSet::new();
+                collect_type_refs(target, &mut refs);
+
+                // Check each referenced type for cycles
+                for ref_name in refs {
+                    if let Some(result) = detect_cycle(&ref_name, aliases, visiting, visited, path) {
+                        return Some(result);
+                    }
+                }
+
+                path.pop();
+                visiting.remove(name);
+                visited.insert(name.to_string());
+            }
+
+            None
+        }
+
+        let mut visiting = HashSet::new();
+        let mut visited = HashSet::new();
+        let mut path = Vec::new();
+
+        // Check each type alias for cycles
+        for name in self.type_aliases.keys() {
+            if let Some((cycle, span)) = detect_cycle(name, &self.type_aliases, &mut visiting, &mut visited, &mut path) {
+                let cycle_str = cycle.join(" -> ") + " -> " + &cycle[0];
+                return Err(CompileError::type_error(
+                    format!("cyclic type alias detected: {cycle_str}"),
+                    span
+                ));
+            }
+        }
+
+        Ok(())
+    }
+
     /// v0.50.6: Resolve type alias
     /// If the type is a named type that's a type alias, expand it to the target type.
     /// Non-generic type aliases are expanded recursively.
@@ -880,7 +1008,7 @@ impl TypeChecker {
         match ty {
             Type::Named(name) => {
                 // Check if this is a type alias
-                if let Some((type_params, target, _refinement)) = self.type_aliases.get(name) {
+                if let Some((type_params, target, _refinement, _span)) = self.type_aliases.get(name) {
                     if type_params.is_empty() {
                         // Non-generic type alias: recursively resolve
                         self.resolve_type_alias(target)
@@ -895,7 +1023,7 @@ impl TypeChecker {
             }
             Type::Generic { name, type_args } => {
                 // Check if this is a generic type alias
-                if let Some((type_params, target, _refinement)) = self.type_aliases.get(name) {
+                if let Some((type_params, target, _refinement, _span)) = self.type_aliases.get(name) {
                     if type_params.len() == type_args.len() {
                         // Substitute type arguments
                         let mut substituted = target.clone();

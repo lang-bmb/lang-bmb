@@ -29,6 +29,23 @@ fn type_error(source: &str) -> bool {
     check_program(source).is_err()
 }
 
+/// Helper to check if a program produces a specific warning kind
+fn has_warning_kind(source: &str, warning_kind: &str) -> bool {
+    let tokens = match tokenize(source) {
+        Ok(t) => t,
+        Err(_) => return false,
+    };
+    let ast = match parse("test.bmb", source, tokens) {
+        Ok(a) => a,
+        Err(_) => return false,
+    };
+    let mut tc = TypeChecker::new();
+    if tc.check_program(&ast).is_err() {
+        return false;
+    }
+    tc.warnings().iter().any(|w| w.kind() == warning_kind)
+}
+
 // ============================================
 // Basic Type Checking Tests
 // ============================================
@@ -534,18 +551,78 @@ fn test_string_method_len() {
 }
 
 // ============================================
-// Type Alias Tests - NOT YET IMPLEMENTED
+// Type Alias Tests (v0.50.6)
 // ============================================
-// Note: Type aliases (type X = Y) are not yet implemented in the parser.
-// The `type` keyword is not recognized.
 
-// #[test]
-// fn test_type_alias() {
-//     assert!(type_checks(
-//         "type Age = i64;
-//          fn get_age(a: Age) -> Age = a;"
-//     ));
-// }
+#[test]
+fn test_type_alias_basic() {
+    assert!(type_checks(
+        "type Age = i64;
+         fn get_age(a: Age) -> Age = a;"
+    ));
+}
+
+#[test]
+fn test_type_alias_in_function() {
+    assert!(type_checks(
+        "type Counter = i64;
+         fn increment(c: Counter) -> Counter = c + 1;"
+    ));
+}
+
+#[test]
+fn test_type_alias_chain() {
+    assert!(type_checks(
+        "type A = i64;
+         type B = A;
+         fn use_b(x: B) -> B = x;"
+    ));
+}
+
+#[test]
+fn test_type_alias_cyclic_error() {
+    // Cyclic type aliases should be rejected (v0.50.11)
+    assert!(type_error(
+        "type A = B;
+         type B = A;
+         fn main() -> i64 = 0;"
+    ));
+}
+
+#[test]
+fn test_type_alias_self_referential_error() {
+    // Self-referential type aliases should be rejected
+    assert!(type_error(
+        "type A = A;
+         fn main() -> i64 = 0;"
+    ));
+}
+
+// ============================================
+// Duplicate Function Detection Tests (v0.50.11)
+// ============================================
+
+#[test]
+fn test_duplicate_function_warning() {
+    // Duplicate function definitions should trigger a warning
+    assert!(has_warning_kind(
+        "fn foo() -> i64 = 1;
+         fn foo() -> i64 = 2;
+         fn main() -> i64 = foo();",
+        "duplicate_function"
+    ));
+}
+
+#[test]
+fn test_no_duplicate_warning_unique_functions() {
+    // Unique function names should not trigger duplicate warning
+    assert!(!has_warning_kind(
+        "fn foo() -> i64 = 1;
+         fn bar() -> i64 = 2;
+         fn main() -> i64 = foo() + bar();",
+        "duplicate_function"
+    ));
+}
 
 // ============================================
 // Negation Tests
