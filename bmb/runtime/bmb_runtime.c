@@ -234,6 +234,35 @@ int64_t byte_at(const char* s, int64_t index) {
     return bmb_string_char_at(s, index);
 }
 
+// v0.50.18: Additional wrapper functions for bootstrap compiler
+int64_t len(const char* s) {
+    return bmb_string_len(s);
+}
+
+char* chr(int64_t n) {
+    return bmb_chr(n);
+}
+
+char* char_to_string(int32_t c) {
+    return bmb_char_to_string(c);
+}
+
+int64_t ord(const char* s) {
+    return bmb_ord(s);
+}
+
+void print_str(const char* s) {
+    bmb_print_str(s);
+}
+
+void println(int64_t n) {
+    bmb_println_i64(n);
+}
+
+void println_str(const char* s) {
+    bmb_println_str(s);
+}
+
 // v0.46: StringBuilder functions for efficient string building
 typedef struct {
     char* data;
@@ -397,6 +426,59 @@ char* bmb_get_arg(int64_t index) {
     char* result = (char*)malloc(len + 1);
     for (size_t i = 0; i <= len; i++) result[i] = arg[i];
     return result;
+}
+
+// v0.50.20: String operation wrappers for bootstrap compiler
+char* str_concat(const char* a, const char* b) {
+    return bmb_string_concat(a, b);
+}
+
+int64_t str_eq(const char* a, const char* b) {
+    return bmb_string_eq(a, b);
+}
+
+// v0.50.20: StringBuilder wrappers
+int64_t sb_new(void) {
+    return bmb_sb_new();
+}
+
+int64_t sb_push(int64_t handle, const char* s) {
+    return bmb_sb_push(handle, s);
+}
+
+char* sb_build(int64_t handle) {
+    return bmb_sb_build(handle);
+}
+
+int64_t sb_len(int64_t handle) {
+    return bmb_sb_len(handle);
+}
+
+// v0.50.20: File I/O wrappers
+char* read_file(const char* path) {
+    return bmb_read_file(path);
+}
+
+int64_t write_file(const char* path, const char* content) {
+    return bmb_write_file(path, content);
+}
+
+// v0.50.20: Argument wrappers
+int64_t arg_count(void) {
+    return bmb_arg_count();
+}
+
+char* get_arg(int64_t index) {
+    return bmb_get_arg(index);
+}
+
+// v0.50.20: Math wrappers (note: abs conflicts with stdlib, named differently)
+int64_t min(int64_t a, int64_t b) {
+    return bmb_min(a, b);
+}
+
+int64_t max(int64_t a, int64_t b) {
+    return bmb_max(a, b);
 }
 
 // Entry point

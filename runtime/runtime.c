@@ -5,6 +5,19 @@
 #include <stdlib.h>
 #include <stdint.h>
 
+// Windows binary mode support
+#ifdef _WIN32
+#include <io.h>
+#include <fcntl.h>
+#endif
+
+// Initialize stdout to binary mode on Windows (prevents LF -> CRLF conversion)
+static void init_binary_stdout(void) {
+#ifdef _WIN32
+    _setmode(_fileno(stdout), _O_BINARY);
+#endif
+}
+
 // Print i64 without newline
 void bmb_print_i64(int64_t x) {
     printf("%lld", (long long)x);
@@ -211,8 +224,16 @@ int64_t bmb_ord(BmbString* s) {
     return (int64_t)(unsigned char)s->data[0];
 }
 
+// Flag to track if binary mode has been initialized
+static int binary_mode_initialized = 0;
+
 // Print string without newline
 void bmb_print_str(BmbString* s) {
+    // Initialize binary mode on first call (prevents LF -> CRLF on Windows)
+    if (!binary_mode_initialized) {
+        init_binary_stdout();
+        binary_mode_initialized = 1;
+    }
     if (s && s->data) {
         fwrite(s->data, 1, s->len, stdout);
     }

@@ -3066,6 +3066,7 @@ fn builtin_sb_clear(args: &[Value]) -> InterpResult<Value> {
 /// Converts a Unicode codepoint to a character.
 /// v0.31.21: Added for gotgan string handling
 /// v0.65: Updated to return char type with full Unicode support
+/// v0.50.18: Changed to return String to match C runtime behavior (bmb_chr returns char*)
 fn builtin_chr(args: &[Value]) -> InterpResult<Value> {
     if args.len() != 1 {
         return Err(RuntimeError::arity_mismatch("chr", 1, args.len()));
@@ -3075,7 +3076,8 @@ fn builtin_chr(args: &[Value]) -> InterpResult<Value> {
             if *code < 0 {
                 Err(RuntimeError::io_error(&format!("chr: negative code {}", code)))
             } else if let Some(c) = char::from_u32(*code as u32) {
-                Ok(Value::Char(c))
+                // Return single-char String to match C runtime behavior
+                Ok(Value::Str(std::rc::Rc::new(c.to_string())))
             } else {
                 Err(RuntimeError::io_error(&format!("chr: invalid Unicode codepoint {}", code)))
             }

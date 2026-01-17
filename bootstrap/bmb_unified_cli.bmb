@@ -1,4 +1,4 @@
-// BMB Unified Compiler (v0.30.190: Extended test suite)
+// BMB Unified Compiler (v0.50.20: String ABI with ptrtoint/inttoptr)
 // Complete compilation pipeline: Source -> AST -> MIR -> LLVM IR
 //
 // ARCHITECTURE:
@@ -162,23 +162,52 @@ fn kw_p(w: String, ep: i64) -> i64 =
     else if w == "post" { make_tok(TK_POST(), ep) }
     else { make_tok(TK_IDENT(), ep) };
 
+// v0.50.22: Additional single-keyword helpers to reduce else-if depth (max 7 branches)
+fn kw_l(w: String, ep: i64) -> i64 =
+    if w == "let" { make_tok(TK_LET(), ep) } else { make_tok(TK_IDENT(), ep) };
+
+fn kw_e(w: String, ep: i64) -> i64 =
+    if w == "else" { make_tok(TK_ELSE(), ep) } else { make_tok(TK_IDENT(), ep) };
+
+fn kw_a(w: String, ep: i64) -> i64 =
+    if w == "and" { make_tok(TK_AND(), ep) } else { make_tok(TK_IDENT(), ep) };
+
+fn kw_o(w: String, ep: i64) -> i64 =
+    if w == "or" { make_tok(TK_OR(), ep) } else { make_tok(TK_IDENT(), ep) };
+
+fn kw_n(w: String, ep: i64) -> i64 =
+    if w == "not" { make_tok(TK_NOT(), ep) } else { make_tok(TK_IDENT(), ep) };
+
+fn kw_m(w: String, ep: i64) -> i64 =
+    if w == "mut" { make_tok(TK_MUT(), ep) } else { make_tok(TK_IDENT(), ep) };
+
+fn kw_b(w: String, ep: i64) -> i64 =
+    if w == "bool" { make_tok(TK_BOOL(), ep) } else { make_tok(TK_IDENT(), ep) };
+
+fn kw_S(w: String, ep: i64) -> i64 =
+    if w == "String" { make_tok(TK_STRING_TYPE(), ep) } else { make_tok(TK_IDENT(), ep) };
+
+// v0.50.22: Split keyword dispatch into two functions (max 7 branches each)
+fn kw_other(w: String, c: i64, ep: i64) -> i64 =
+    if c == 111 { kw_o(w, ep) }
+    else if c == 110 { kw_n(w, ep) }
+    else if c == 112 { kw_p(w, ep) }
+    else if c == 109 { kw_m(w, ep) }
+    else if c == 98 { kw_b(w, ep) }
+    else if c == 83 { kw_S(w, ep) }
+    else { make_tok(TK_IDENT(), ep) };
+
 fn keyword_or_ident(s: String, start: i64, endpos: i64) -> i64 =
     let word = s.slice(start, endpos);
     let c = word.byte_at(0);
-    // Dispatch by first character: f, l, i, t, e, a, o, n, p, m, b, S
+    // Dispatch by first character (split into two functions for max 7 branches)
     if c == 102 { kw_f(word, endpos) }
-    else if c == 108 { if word == "let" { make_tok(TK_LET(), endpos) } else { make_tok(TK_IDENT(), endpos) } }
+    else if c == 108 { kw_l(word, endpos) }
     else if c == 105 { kw_i(word, endpos) }
     else if c == 116 { kw_t(word, endpos) }
-    else if c == 101 { if word == "else" { make_tok(TK_ELSE(), endpos) } else { make_tok(TK_IDENT(), endpos) } }
-    else if c == 97 { if word == "and" { make_tok(TK_AND(), endpos) } else { make_tok(TK_IDENT(), endpos) } }
-    else if c == 111 { if word == "or" { make_tok(TK_OR(), endpos) } else { make_tok(TK_IDENT(), endpos) } }
-    else if c == 110 { if word == "not" { make_tok(TK_NOT(), endpos) } else { make_tok(TK_IDENT(), endpos) } }
-    else if c == 112 { kw_p(word, endpos) }
-    else if c == 109 { if word == "mut" { make_tok(TK_MUT(), endpos) } else { make_tok(TK_IDENT(), endpos) } }
-    else if c == 98 { if word == "bool" { make_tok(TK_BOOL(), endpos) } else { make_tok(TK_IDENT(), endpos) } }
-    else if c == 83 { if word == "String" { make_tok(TK_STRING_TYPE(), endpos) } else { make_tok(TK_IDENT(), endpos) } }
-    else { make_tok(TK_IDENT(), endpos) };
+    else if c == 101 { kw_e(word, endpos) }
+    else if c == 97 { kw_a(word, endpos) }
+    else { kw_other(word, c, endpos) };
 
 // v0.50.8: Token scan helpers - split long if-else chain for faster parsing
 // Two-char operators with lookahead
@@ -758,30 +787,34 @@ fn sb_push_mir(sb: i64, text: String) -> i64 =
     } else { 0 };
 
 // v0.50.8: lower_expr dispatch helpers - split for faster parsing
-fn lower_expr_i(ast: String, ntype: String, temp_id: i64, block_id: i64, params: String, sb: i64) -> i64 =
+// v0.50.21: Added scope parameter for correct variable-to-block-id tracking
+fn lower_expr_i(ast: String, ntype: String, temp_id: i64, block_id: i64, params: String, scope: String, sb: i64) -> i64 =
     if ntype == "int" { lower_int_sb(ast, temp_id, sb) }
-    else if ntype == "if" { lower_if_sb(ast, temp_id, block_id, params, sb) }
+    else if ntype == "if" { lower_if_sb(ast, temp_id, block_id, params, scope, sb) }
     else { temp_id };
 
 // v0.50.13: All lower_*_sb functions now take params to distinguish function parameters from let-bound vars
-fn lower_expr_b(ast: String, ntype: String, temp_id: i64, block_id: i64, params: String, sb: i64) -> i64 =
+// v0.50.21: Added scope parameter for correct variable-to-block-id tracking
+fn lower_expr_b(ast: String, ntype: String, temp_id: i64, block_id: i64, params: String, scope: String, sb: i64) -> i64 =
     if ntype == "bool" { lower_bool_sb(ast, temp_id, sb) }
-    else if ntype == "binop" { lower_binop_sb(ast, temp_id, block_id, params, sb) }
+    else if ntype == "binop" { lower_binop_sb(ast, temp_id, block_id, params, scope, sb) }
     else { temp_id };
 
-fn lower_expr_sb(ast: String, temp_id: i64, block_id: i64, params: String, sb: i64) -> i64 =
+// v0.50.21: Added scope parameter for correct variable-to-block-id tracking
+fn lower_expr_sb(ast: String, temp_id: i64, block_id: i64, params: String, scope: String, sb: i64) -> i64 =
     let ntype = get_node_type(ast);
     let c = ntype.byte_at(0);
     // v0.50.13: Pass params to all lower_*_sb for correct variable scoping
+    // v0.50.21: Pass scope for correct block_id tracking
     // Dispatch by first char: i(int,if), b(bool,binop), v, u, l, c, s, m
-    if c == 105 { lower_expr_i(ast, ntype, temp_id, block_id, params, sb) }
-    else if c == 98 { lower_expr_b(ast, ntype, temp_id, block_id, params, sb) }
-    else if ntype == "var" { lower_var_sb(ast, temp_id, block_id, params, sb) }
-    else if ntype == "unary" { lower_unary_sb(ast, temp_id, block_id, params, sb) }
-    else if ntype == "let" { lower_let_sb(ast, temp_id, block_id, params, sb) }
-    else if ntype == "call" { lower_call_sb(ast, temp_id, block_id, params, sb) }
+    if c == 105 { lower_expr_i(ast, ntype, temp_id, block_id, params, scope, sb) }
+    else if c == 98 { lower_expr_b(ast, ntype, temp_id, block_id, params, scope, sb) }
+    else if ntype == "var" { lower_var_sb(ast, temp_id, block_id, params, scope, sb) }
+    else if ntype == "unary" { lower_unary_sb(ast, temp_id, block_id, params, scope, sb) }
+    else if ntype == "let" { lower_let_sb(ast, temp_id, block_id, params, scope, sb) }
+    else if ntype == "call" { lower_call_sb(ast, temp_id, block_id, params, scope, sb) }
     else if ntype == "str" { lower_str_sb(ast, temp_id, sb) }
-    else if ntype == "mcall" { lower_mcall_sb(ast, temp_id, block_id, params, sb) }
+    else if ntype == "mcall" { lower_mcall_sb(ast, temp_id, block_id, params, scope, sb) }
     else { temp_id };
 
 fn lower_int_sb(ast: String, temp_id: i64, sb: i64) -> i64 =
@@ -805,53 +838,86 @@ fn lower_str_sb(ast: String, temp_id: i64, sb: i64) -> i64 =
     temp_id + 1;
 
 // v0.50.13: Variable references need params to correctly identify function parameters
-// Function parameters always use original name; let-bound vars use block_id suffix
-fn lower_var_sb(ast: String, temp_id: i64, block_id: i64, params: String, sb: i64) -> i64 =
+// v0.50.21: Use scope_lookup to find the block_id where variable was defined
+// Function parameters always use original name; let-bound vars use their definition block_id suffix
+fn lower_var_sb(ast: String, temp_id: i64, block_id: i64, params: String, scope: String, sb: i64) -> i64 =
     let name = extract_name(ast);
     let tmp = "%_t" + int_to_string(temp_id);
-    // Parameters always use original name; let-bound vars use block_id suffix when block_id > 0
-    let var_name = if is_param(name, params) { name } else if block_id > 0 { name + "_b" + int_to_string(block_id) } else { name };
+    // Parameters always use original name
+    // Let-bound vars use the block_id from scope where they were defined
+    let def_block = scope_lookup(scope, name);
+    let var_name = if is_param(name, params) { name } else if def_block > 0 { name + "_b" + int_to_string(def_block) } else if def_block == 0 { name } else { name + "_b" + int_to_string(block_id) };
     let w1 = sb_push_mir(sb, "  " + tmp + " = copy %" + var_name);
     temp_id + 1;
 
-fn lower_binop_sb(ast: String, temp_id: i64, block_id: i64, params: String, sb: i64) -> i64 =
+// v0.50.20: Detect string operations and emit strconcat/streq calls
+// v0.50.21: Added scope parameter
+fn lower_binop_sb(ast: String, temp_id: i64, block_id: i64, params: String, scope: String, sb: i64) -> i64 =
     let op = get_child(ast, 0);
     let left_ast = get_child(ast, 1);
     let right_ast = get_child(ast, 2);
-    let left_new = lower_expr_sb(left_ast, temp_id, block_id, params, sb);
+    // Check if this is a string operation (either operand is a string type)
+    let is_str_op = is_string_expr(left_ast) or is_string_expr(right_ast);
+    let left_new = lower_expr_sb(left_ast, temp_id, block_id, params, scope, sb);
     let left_id = left_new - 1;
-    let right_new = lower_expr_sb(right_ast, left_new, block_id, params, sb);
+    let right_new = lower_expr_sb(right_ast, left_new, block_id, params, scope, sb);
     let right_id = right_new - 1;
     let result_tmp = "%_t" + int_to_string(right_new);
-    let w1 = sb_push_mir(sb, "  " + result_tmp + " = " + op + " %_t" + int_to_string(left_id) + ", %_t" + int_to_string(right_id));
-    right_new + 1;
+    // For string operations, emit call to runtime function
+    if is_str_op and op == "+" {
+        let w1 = sb_push_mir(sb, "  " + result_tmp + " = call @str_concat(%_t" + int_to_string(left_id) + ", %_t" + int_to_string(right_id) + ")");
+        right_new + 1
+    } else if is_str_op and op == "==" {
+        let w1 = sb_push_mir(sb, "  " + result_tmp + " = call @str_eq(%_t" + int_to_string(left_id) + ", %_t" + int_to_string(right_id) + ")");
+        right_new + 1
+    } else if is_str_op and op == "!=" {
+        // str_neq: invert str_eq result
+        let eq_tmp = "%_t" + int_to_string(right_new) + "_eq";
+        let w1 = sb_push_mir(sb, "  " + eq_tmp + " = call @str_eq(%_t" + int_to_string(left_id) + ", %_t" + int_to_string(right_id) + ")");
+        let w2 = sb_push_mir(sb, "  " + result_tmp + " = not " + eq_tmp);
+        right_new + 1
+    } else {
+        let w1 = sb_push_mir(sb, "  " + result_tmp + " = " + op + " %_t" + int_to_string(left_id) + ", %_t" + int_to_string(right_id));
+        right_new + 1
+    };
 
-fn lower_unary_sb(ast: String, temp_id: i64, block_id: i64, params: String, sb: i64) -> i64 =
+// Check if an AST expression is of string type
+fn is_string_expr(ast: String) -> bool =
+    let typ = get_node_type(ast);
+    typ == "str" or typ == "mcall" or typ == "call";
+
+// v0.50.21: Added scope parameter
+fn lower_unary_sb(ast: String, temp_id: i64, block_id: i64, params: String, scope: String, sb: i64) -> i64 =
     let op = get_child(ast, 0);
     let operand = get_child(ast, 1);
-    let operand_new = lower_expr_sb(operand, temp_id, block_id, params, sb);
+    let operand_new = lower_expr_sb(operand, temp_id, block_id, params, scope, sb);
     let operand_id = operand_new - 1;
     let result_tmp = "%_t" + int_to_string(operand_new);
     let mir_op = if op == "not" { "not" } else if op == "-" { "neg" } else { op };
     let w1 = sb_push_mir(sb, "  " + result_tmp + " = " + mir_op + " %_t" + int_to_string(operand_id));
     operand_new + 1;
 
-fn lower_if_sb(ast: String, temp_id: i64, block_id: i64, params: String, sb: i64) -> i64 =
+// v0.50.21: Added scope parameter
+// v0.50.23: Fix block_id overlap by using larger offsets
+// Each if-else uses block_id * 3 for labels and reserves space for nested blocks
+fn lower_if_sb(ast: String, temp_id: i64, block_id: i64, params: String, scope: String, sb: i64) -> i64 =
     let cond = get_child(ast, 0);
     let then_branch = get_child(ast, 1);
     let else_branch = get_child(ast, 2);
-    let cond_new = lower_expr_sb(cond, temp_id, block_id, params, sb);
+    let cond_new = lower_expr_sb(cond, temp_id, block_id, params, scope, sb);
     let cond_id = cond_new - 1;
     let then_label = "then_" + int_to_string(block_id);
     let else_label = "else_" + int_to_string(block_id);
     let merge_label = "merge_" + int_to_string(block_id);
     let w1 = sb_push_mir(sb, "  branch %_t" + int_to_string(cond_id) + ", " + then_label + ", " + else_label);
     let w2 = sb_push_mir(sb, then_label + ":");
-    let then_new = lower_expr_sb(then_branch, cond_new, block_id + 1, params, sb);
+    // Then-branch gets block_id * 3 + 1 to avoid overlap
+    let then_new = lower_expr_sb(then_branch, cond_new, block_id * 3 + 1, params, scope, sb);
     let then_id = then_new - 1;
     let w3 = sb_push_mir(sb, "  goto " + merge_label);
     let w4 = sb_push_mir(sb, else_label + ":");
-    let else_new = lower_expr_sb(else_branch, then_new, block_id + 2, params, sb);
+    // Else-branch gets block_id * 3 + 2 to avoid overlap
+    let else_new = lower_expr_sb(else_branch, then_new, block_id * 3 + 2, params, scope, sb);
     let else_id = else_new - 1;
     let w5 = sb_push_mir(sb, "  goto " + merge_label);
     let w6 = sb_push_mir(sb, merge_label + ":");
@@ -862,57 +928,64 @@ fn lower_if_sb(ast: String, temp_id: i64, block_id: i64, params: String, sb: i64
 // v0.50.2: Add block_id to variable names to make them unique per block
 // This fixes duplicate variable name errors in LLVM IR
 // v0.50.3: Increment block_id for unique naming (params at block_id=0)
-fn lower_let_sb(ast: String, temp_id: i64, block_id: i64, params: String, sb: i64) -> i64 =
+// v0.50.21: Added scope parameter; add variable to scope for correct lookup in nested scopes
+fn lower_let_sb(ast: String, temp_id: i64, block_id: i64, params: String, scope: String, sb: i64) -> i64 =
     let name = extract_name(ast);
     let new_block_id = block_id + 1;
     let value_ast = get_child(ast, 1);
     let body_ast = get_child(ast, 2);
-    let val_new = lower_expr_sb(value_ast, temp_id, block_id, params, sb);
+    let val_new = lower_expr_sb(value_ast, temp_id, block_id, params, scope, sb);
     let val_id = val_new - 1;
     // Use unique name: name_b{new_block_id} (e.g., start_pos_b1)
     let unique_name = name + "_b" + int_to_string(new_block_id);
     let w1 = sb_push_mir(sb, "  %" + unique_name + " = copy %_t" + int_to_string(val_id));
-    lower_expr_sb(body_ast, val_new, new_block_id, params, sb);
+    // Add variable to scope with its definition block_id
+    let new_scope = scope_add(scope, name, new_block_id);
+    lower_expr_sb(body_ast, val_new, new_block_id, params, new_scope, sb);
 
-fn lower_call_sb(ast: String, temp_id: i64, block_id: i64, params: String, sb: i64) -> i64 =
+// v0.50.21: Added scope parameter
+fn lower_call_sb(ast: String, temp_id: i64, block_id: i64, params: String, scope: String, sb: i64) -> i64 =
     let name = extract_name(ast);
-    lower_call_args_sb(ast, name, temp_id, block_id, params, 1, "", sb);
+    lower_call_args_sb(ast, name, temp_id, block_id, params, scope, 1, "", sb);
 
-fn lower_call_args_sb(ast: String, name: String, temp_id: i64, block_id: i64, params: String, idx: i64, args_acc: String, sb: i64) -> i64 =
+// v0.50.21: Added scope parameter
+fn lower_call_args_sb(ast: String, name: String, temp_id: i64, block_id: i64, params: String, scope: String, idx: i64, args_acc: String, sb: i64) -> i64 =
     let arg = get_child(ast, idx);
     if arg == "" {
         let result_tmp = "%_t" + int_to_string(temp_id);
         let w1 = sb_push_mir(sb, "  " + result_tmp + " = call @" + name + "(" + args_acc + ")");
         temp_id + 1
     } else {
-        let arg_new = lower_expr_sb(arg, temp_id, block_id, params, sb);
+        let arg_new = lower_expr_sb(arg, temp_id, block_id, params, scope, sb);
         let arg_id = arg_new - 1;
         let new_args = if args_acc == "" { "%_t" + int_to_string(arg_id) } else { args_acc + ", %_t" + int_to_string(arg_id) };
-        lower_call_args_sb(ast, name, arg_new, block_id, params, idx + 1, new_args, sb)
+        lower_call_args_sb(ast, name, arg_new, block_id, params, scope, idx + 1, new_args, sb)
     };
 
 // v0.50: Lower method call - (mcall obj <method> args...) -> call @method(obj, args...)
-fn lower_mcall_sb(ast: String, temp_id: i64, block_id: i64, params: String, sb: i64) -> i64 =
+// v0.50.21: Added scope parameter
+fn lower_mcall_sb(ast: String, temp_id: i64, block_id: i64, params: String, scope: String, sb: i64) -> i64 =
     let obj = get_child(ast, 0);          // The object expression
     let method = extract_name_at(ast, 1); // The method name
     // First lower the object
-    let obj_new = lower_expr_sb(obj, temp_id, block_id, params, sb);
+    let obj_new = lower_expr_sb(obj, temp_id, block_id, params, scope, sb);
     let obj_id = obj_new - 1;
     let obj_arg = "%_t" + int_to_string(obj_id);
     // Then lower remaining args and make the call
-    lower_mcall_args_sb(ast, method, obj_new, block_id, params, 2, obj_arg, sb);
+    lower_mcall_args_sb(ast, method, obj_new, block_id, params, scope, 2, obj_arg, sb);
 
-fn lower_mcall_args_sb(ast: String, method: String, temp_id: i64, block_id: i64, params: String, idx: i64, args_acc: String, sb: i64) -> i64 =
+// v0.50.21: Added scope parameter
+fn lower_mcall_args_sb(ast: String, method: String, temp_id: i64, block_id: i64, params: String, scope: String, idx: i64, args_acc: String, sb: i64) -> i64 =
     let arg = get_child(ast, idx);
     if arg == "" {
         let result_tmp = "%_t" + int_to_string(temp_id);
         let w1 = sb_push_mir(sb, "  " + result_tmp + " = call @" + method + "(" + args_acc + ")");
         temp_id + 1
     } else {
-        let arg_new = lower_expr_sb(arg, temp_id, block_id, params, sb);
+        let arg_new = lower_expr_sb(arg, temp_id, block_id, params, scope, sb);
         let arg_id = arg_new - 1;
         let new_args = args_acc + ", %_t" + int_to_string(arg_id);
-        lower_mcall_args_sb(ast, method, arg_new, block_id, params, idx + 1, new_args, sb)
+        lower_mcall_args_sb(ast, method, arg_new, block_id, params, scope, idx + 1, new_args, sb)
     };
 
 // Extract name from child at specific index (for mcall method name)
@@ -927,6 +1000,7 @@ fn extract_name_at(ast: String, idx: i64) -> String =
     };
 
 // v0.50.13: Pass params to lower_expr_sb for correct variable scoping
+// v0.50.21: Pass empty scope to lower_expr_sb
 fn lower_function_sb(ast: String) -> String =
     let name = extract_name(ast);
     let params = collect_params(ast, 1, "");
@@ -934,7 +1008,7 @@ fn lower_function_sb(ast: String) -> String =
     let ret_type = get_fn_return_type(ast);
     let body_ast = get_fn_body(ast);
     let sb = sb_new();
-    let final_temp = lower_expr_sb(body_ast, 0, 0, param_names, sb);
+    let final_temp = lower_expr_sb(body_ast, 0, 0, param_names, "", sb);
     let result_id = final_temp - 1;
     let w1 = sb_push_mir(sb, "  return %_t" + int_to_string(result_id));
     let body_mir = sb_build(sb);
@@ -1029,6 +1103,56 @@ fn str_eq_chars(a: String, b: String, a_pos: i64, b_pos: i64, remaining: i64) ->
     if remaining == 0 { true }
     else if a.byte_at(a_pos) != b.byte_at(b_pos) { false }
     else { str_eq_chars(a, b, a_pos + 1, b_pos + 1, remaining - 1) };
+
+// v0.50.21: Scope tracking for variable-to-block-id mapping
+// Scope format: "name1:1,name2:2,name3:3" where each entry is name:block_id
+// This fixes the bug where variables were referenced with wrong block IDs in nested scopes
+
+// Add a variable to scope: returns "existing,name:block_id" or "name:block_id" if scope empty
+fn scope_add(scope: String, name: String, block_id: i64) -> String =
+    if scope.len() == 0 { name + ":" + int_to_string(block_id) }
+    else { scope + "," + name + ":" + int_to_string(block_id) };
+
+// Look up a variable's definition block_id from scope, returns -1 if not found
+fn scope_lookup(scope: String, name: String) -> i64 =
+    if scope.len() == 0 { -1 }
+    else { scope_lookup_scan(scope, name, 0) };
+
+fn scope_lookup_scan(scope: String, name: String, pos: i64) -> i64 =
+    if pos >= scope.len() { -1 }
+    else {
+        // Find end of name (at ':')
+        let colon_pos = find_char_from(scope, 58, pos);  // 58 = ':'
+        if colon_pos < 0 { -1 }
+        else if str_eq_range(name, scope, pos, colon_pos) {
+            // Found the name, extract block_id after ':'
+            let comma_pos = find_char_from(scope, 44, colon_pos + 1);  // 44 = ','
+            let end_pos = if comma_pos < 0 { scope.len() } else { comma_pos };
+            parse_int_range(scope, colon_pos + 1, end_pos)
+        } else {
+            // Skip to next entry after ','
+            let comma_pos = find_char_from(scope, 44, colon_pos + 1);
+            if comma_pos < 0 { -1 }
+            else { scope_lookup_scan(scope, name, comma_pos + 1) }
+        }
+    };
+
+// Find character c starting from pos, returns -1 if not found
+fn find_char_from(s: String, c: i64, pos: i64) -> i64 =
+    if pos >= s.len() { -1 }
+    else if s.byte_at(pos) == c { pos }
+    else { find_char_from(s, c, pos + 1) };
+
+// Parse integer from string range [start, end)
+fn parse_int_range(s: String, start: i64, end: i64) -> i64 =
+    parse_int_range_acc(s, start, end, 0);
+
+fn parse_int_range_acc(s: String, pos: i64, end: i64, acc: i64) -> i64 =
+    if pos >= end { acc }
+    else {
+        let digit = s.byte_at(pos) - 48;  // 48 = '0'
+        parse_int_range_acc(s, pos + 1, end, acc * 10 + digit)
+    };
 
 // Legacy lower_expr without params (for backward compatibility)
 fn lower_expr(ast: String, temp_id: i64, block_id: i64) -> String =
@@ -1389,7 +1513,9 @@ fn trim_start(s: String) -> String =
     let pos = low_skip_ws(s, 0);
     s.slice(pos, s.len());
 
-// v0.32.1: Rename @main calls to @bmb_user_main for runtime compatibility
+// v0.50.20: Call generation with proper String ABI handling
+// String args need inttoptr conversion (i64->ptr)
+// String returns need ptrtoint conversion (ptr->i64)
 fn llvm_gen_call(line: String, pos: i64, dest: String) -> String =
     let at_pos = find_char(line, pos, 64);
     let paren_pos = find_char(line, at_pos, 40);
@@ -1397,8 +1523,90 @@ fn llvm_gen_call(line: String, pos: i64, dest: String) -> String =
     let fn_name = line.slice(at_pos, paren_pos);
     let emitted_fn = if fn_name == "@main" { "@bmb_user_main" } else { fn_name };
     let args = line.slice(paren_pos + 1, close_pos);
-    let formatted_args = format_call_args(args, 0, "");
-    "  " + dest + " = call i64 " + emitted_fn + "(" + formatted_args + ")";
+    // Check if this is a string-related function
+    if is_str_return_fn(fn_name) {
+        llvm_gen_str_return_call(emitted_fn, args, dest)
+    } else if is_str_arg_fn(fn_name) {
+        llvm_gen_str_arg_call(emitted_fn, fn_name, args, dest)
+    } else {
+        let formatted_args = format_call_args(args, 0, "");
+        "  " + dest + " = call i64 " + emitted_fn + "(" + formatted_args + ")"
+    };
+
+// Check if function returns a string (ptr)
+fn is_str_return_fn(fname: String) -> bool =
+    fname == "@str_concat" or fname == "@chr" or fname == "@slice" or fname == "@read_file" or fname == "@get_arg" or fname == "@sb_build";
+
+// Check if function takes string arguments
+fn is_str_arg_fn(fname: String) -> bool =
+    fname == "@str_concat" or fname == "@str_eq" or fname == "@len" or fname == "@byte_at" or fname == "@slice" or
+    fname == "@print_str" or fname == "@println_str" or fname == "@read_file" or fname == "@write_file" or fname == "@sb_push";
+
+// Generate call that returns string (ptr), needs ptrtoint
+fn llvm_gen_str_return_call(fname: String, args: String, dest: String) -> String =
+    let ptr_tmp = dest + "_ptr";
+    let conv_instrs = gen_inttoptr_convs(fname, args, 0, "", 0);
+    let conv_args = format_str_call_args(fname, args, 0, "", 0);
+    let call_instr = "  " + ptr_tmp + " = call ptr " + fname + "(" + conv_args + ")|  " + dest + " = ptrtoint ptr " + ptr_tmp + " to i64";
+    if conv_instrs == "" { call_instr } else { conv_instrs + "|" + call_instr };
+
+// Generate call with string args, returns i64 or void
+fn llvm_gen_str_arg_call(fname: String, orig_fn: String, args: String, dest: String) -> String =
+    let conv_instrs = gen_inttoptr_convs(fname, args, 0, "", 0);
+    let conv_args = format_str_call_args(fname, args, 0, "", 0);
+    // Check for void functions
+    let call_instr = if fname == "@print_str" or fname == "@println_str" {
+        "  call void " + fname + "(" + conv_args + ")|  " + dest + " = add nsw i64 0, 0"
+    } else {
+        "  " + dest + " = call i64 " + fname + "(" + conv_args + ")"
+    };
+    if conv_instrs == "" { call_instr } else { conv_instrs + "|" + call_instr };
+
+// Generate inttoptr conversion instructions for string arguments
+fn gen_inttoptr_convs(fname: String, args: String, pos: i64, acc: String, idx: i64) -> String =
+    let p = low_skip_ws(args, pos);
+    if p >= args.len() { acc } else {
+        let comma = find_comma_or_end(args, p);
+        let arg = trim_end(args.slice(p, comma));
+        let needs_conv = is_str_arg_at(fname, idx);
+        let new_acc = if needs_conv {
+            let conv_instr = "  " + arg + "_sptr = inttoptr i64 " + arg + " to ptr";
+            if acc == "" { conv_instr } else { acc + "|" + conv_instr }
+        } else { acc };
+        if comma >= args.len() { new_acc } else { gen_inttoptr_convs(fname, args, comma + 1, new_acc, idx + 1) }
+    };
+
+// Format args with inttoptr conversions for string arguments
+fn format_str_call_args(fname: String, args: String, pos: i64, acc: String, idx: i64) -> String =
+    let p = low_skip_ws(args, pos);
+    if p >= args.len() { acc } else {
+        let comma = find_comma_or_end(args, p);
+        let arg = trim_end(args.slice(p, comma));
+        // Determine if this arg needs inttoptr based on function signature
+        let needs_conv = is_str_arg_at(fname, idx);
+        let typed_arg = if needs_conv { "ptr " + arg + "_sptr" } else { "i64 " + arg };
+        let new_acc = if acc == "" { typed_arg } else { acc + ", " + typed_arg };
+        if comma >= args.len() { new_acc } else { format_str_call_args(fname, args, comma + 1, new_acc, idx + 1) }
+    };
+
+// Check if argument at index needs inttoptr (is a string arg)
+fn is_str_arg_at(fname: String, idx: i64) -> bool =
+    // str_concat(ptr, ptr), str_eq(ptr, ptr), len(ptr), byte_at(ptr, i64), slice(ptr, i64, i64)
+    // print_str(ptr), println_str(ptr), read_file(ptr), write_file(ptr, ptr), sb_push(i64, ptr)
+    if fname == "@str_concat" { idx == 0 or idx == 1 }
+    else if fname == "@str_eq" { idx == 0 or idx == 1 }
+    else if fname == "@len" { idx == 0 }
+    else if fname == "@byte_at" { idx == 0 }
+    else if fname == "@slice" { idx == 0 }
+    else if fname == "@print_str" { idx == 0 }
+    else if fname == "@println_str" { idx == 0 }
+    else if fname == "@read_file" { idx == 0 }
+    else if fname == "@write_file" { idx == 0 or idx == 1 }
+    else if fname == "@sb_push" { idx == 1 }
+    else if fname == "@chr" { false }
+    else if fname == "@get_arg" { false }
+    else if fname == "@sb_build" { false }
+    else { false };
 
 fn format_call_args(args: String, pos: i64, acc: String) -> String =
     let p = low_skip_ws(args, pos);
@@ -1448,14 +1656,19 @@ fn llvm_gen_goto(line: String, pos: i64) -> String =
     let label = line.slice(label_start, line.len());
     "  br label %" + trim_end(label);
 
-// v0.50: String literal LLVM IR generation
-// For now, generates a hash of the string as a unique identifier
-// This allows compilation but strings won't have correct values at runtime
+// v0.50.20: String literal LLVM IR generation with proper ABI
+// Generates a GEP to string constant + ptrtoint to convert ptr to i64
 fn llvm_gen_str(line: String, pos: i64, dest: String) -> String =
     let str_start = low_skip_ws(line, pos + 3);
     let str_text = trim_end(line.slice(str_start, line.len()));
+    // Use content hash for unique string ID (same as extract_strlit_acc)
     let hash = str_hash(str_text, 0);
-    "  " + dest + " = add nsw i64 0, " + int_to_string(hash);
+    let hash_id = if hash < 0 { 0 - hash } else { hash };
+    let str_id = "@.str." + int_to_string(hash_id);
+    let str_len = str_text.len() - 1;  // Exclude quotes but -1 for null term later
+    let ptr_tmp = dest + "_ptr";
+    // GEP to get pointer to string constant, then ptrtoint to convert to i64
+    "  " + ptr_tmp + " = getelementptr [" + int_to_string(str_len) + " x i8], ptr " + str_id + ", i64 0, i64 0|  " + dest + " = ptrtoint ptr " + ptr_tmp + " to i64";
 
 // Simple string hash function for generating unique identifiers
 fn str_hash(s: String, acc: i64) -> i64 =
@@ -1589,8 +1802,107 @@ fn gen_extern_abs() -> String = "declare i64 @abs(i64)";
 fn gen_extern_min() -> String = "declare i64 @min(i64, i64)";
 fn gen_extern_max() -> String = "declare i64 @max(i64, i64)";
 
+// v0.50.20: String runtime declarations
+fn gen_extern_str_concat() -> String = "declare ptr @str_concat(ptr, ptr)";
+fn gen_extern_str_eq() -> String = "declare i64 @str_eq(ptr, ptr)";
+fn gen_extern_len() -> String = "declare i64 @len(ptr)";
+fn gen_extern_chr() -> String = "declare ptr @chr(i64)";
+fn gen_extern_byte_at() -> String = "declare i64 @byte_at(ptr, i64)";
+fn gen_extern_slice() -> String = "declare ptr @slice(ptr, i64, i64)";
+fn gen_extern_print_str() -> String = "declare void @print_str(ptr)";
+fn gen_extern_println_str() -> String = "declare void @println_str(ptr)";
+fn gen_extern_read_file() -> String = "declare ptr @read_file(ptr)";
+fn gen_extern_write_file() -> String = "declare i64 @write_file(ptr, ptr)";
+fn gen_extern_arg_count() -> String = "declare i64 @arg_count()";
+fn gen_extern_get_arg() -> String = "declare ptr @get_arg(i64)";
+fn gen_extern_sb_new() -> String = "declare i64 @sb_new()";
+fn gen_extern_sb_push() -> String = "declare i64 @sb_push(i64, ptr)";
+fn gen_extern_sb_build() -> String = "declare ptr @sb_build(i64)";
+fn gen_extern_sb_len() -> String = "declare i64 @sb_len(i64)";
+
 fn gen_runtime_decls() -> String =
-    gen_extern_println() + "|" + gen_extern_abs() + "|" + gen_extern_min() + "|" + gen_extern_max();
+    gen_extern_println() + "|" + gen_extern_abs() + "|" + gen_extern_min() + "|" + gen_extern_max() + "|" +
+    gen_extern_str_concat() + "|" + gen_extern_str_eq() + "|" + gen_extern_len() + "|" + gen_extern_chr() + "|" +
+    gen_extern_byte_at() + "|" + gen_extern_slice() + "|" + gen_extern_print_str() + "|" + gen_extern_println_str() + "|" +
+    gen_extern_read_file() + "|" + gen_extern_write_file() + "|" + gen_extern_arg_count() + "|" + gen_extern_get_arg() + "|" +
+    gen_extern_sb_new() + "|" + gen_extern_sb_push() + "|" + gen_extern_sb_build() + "|" + gen_extern_sb_len();
+
+// v0.50.20: Extract string literals from MIR for global declarations
+// Uses content hash to ensure unique IDs for each distinct string
+fn extract_string_constants(mir: String) -> String =
+    extract_strlit_acc(mir, 0, "");
+
+fn extract_strlit_acc(mir: String, pos: i64, acc: String) -> String =
+    if pos >= mir.len() { acc } else {
+        let found = find_str_pattern(mir, pos);
+        if found < 0 { acc } else {
+            let str_start = found + 7;  // Skip " = str " (7 chars)
+            let str_end = find_quote_end(mir, str_start + 1);
+            let str_text = mir.slice(str_start, str_end);
+            // Use content hash for unique string ID
+            let hash = str_hash(str_text, 0);
+            let hash_id = if hash < 0 { 0 - hash } else { hash };
+            let str_id = "@.str." + int_to_string(hash_id);
+            // String length is content + null terminator = len - 2 (quotes) + 1 (null) = len - 1
+            let str_len = str_text.len() - 1;
+            // Check if already in acc (avoid duplicates)
+            let decl = str_id + " = private unnamed_addr constant [" + int_to_string(str_len) + " x i8] c" + escape_string_for_llvm(str_text);
+            let new_acc = if has_pattern(acc, str_id, 0) { acc } else if acc == "" { decl } else { acc + "|" + decl };
+            extract_strlit_acc(mir, str_end + 1, new_acc)
+        }
+    };
+
+// Find " = str " pattern in MIR, return position or -1
+fn find_str_pattern(mir: String, pos: i64) -> i64 =
+    if pos + 7 > mir.len() { 0 - 1 } else if starts_with(mir, " = str ", pos) { pos } else { find_str_pattern(mir, pos + 1) };
+
+// Find end of quoted string (handles escape sequences)
+fn find_quote_end(s: String, pos: i64) -> i64 =
+    if pos >= s.len() { pos } else if s.byte_at(pos) == 34 { pos + 1 } else if s.byte_at(pos) == 92 and pos + 1 < s.len() { find_quote_end(s, pos + 2) } else { find_quote_end(s, pos + 1) };
+
+// Escape string content for LLVM IR
+// Input: "Hello, " (with quotes)
+// Output: "Hello, \00" (content with null terminator)
+fn escape_string_for_llvm(s: String) -> String =
+    // Remove outer quotes and add null terminator
+    if s.len() < 2 { s } else {
+        let content = s.slice(1, s.len() - 1);  // Remove opening and closing quotes
+        // Build LLVM string constant format: "content\00"
+        let quote = chr(34);
+        let bslash = chr(92);
+        quote + escape_content(content, 0, "") + bslash + "00" + quote
+    };
+
+// Escape special characters in string content
+fn escape_content(s: String, pos: i64, acc: String) -> String =
+    if pos >= s.len() { acc } else {
+        let c = s.byte_at(pos);
+        let bslash = chr(92);
+        if c == 92 and pos + 1 < s.len() {
+            // Escape sequence in source
+            let next = s.byte_at(pos + 1);
+            if next == 110 { escape_content(s, pos + 2, acc + bslash + "0A") }  // \n -> \0A
+            else if next == 116 { escape_content(s, pos + 2, acc + bslash + "09") }  // \t -> \09
+            else if next == 114 { escape_content(s, pos + 2, acc + bslash + "0D") }  // \r -> \0D
+            else if next == 34 { escape_content(s, pos + 2, acc + bslash + "22") }  // \" -> \22
+            else if next == 92 { escape_content(s, pos + 2, acc + bslash + "5C") }  // \\ -> \5C
+            else { escape_content(s, pos + 1, acc + chr(c)) }
+        } else if c == 10 {
+            // Raw LF -> \0A
+            escape_content(s, pos + 1, acc + bslash + "0A")
+        } else if c == 13 {
+            // Raw CR -> \0D
+            escape_content(s, pos + 1, acc + bslash + "0D")
+        } else if c == 9 {
+            // Raw TAB -> \09
+            escape_content(s, pos + 1, acc + bslash + "09")
+        } else if c == 124 {
+            // Pipe | -> \7C (avoid conflict with line separator)
+            escape_content(s, pos + 1, acc + bslash + "7C")
+        } else {
+            escape_content(s, pos + 1, acc + chr(c))
+        }
+    };
 
 // ============================================================================
 // SECTION 13: Unified Compiler Entry Point (v0.10.9)
@@ -1599,6 +1911,7 @@ fn gen_runtime_decls() -> String =
 // Compile BMB source code to LLVM IR module
 // Returns complete LLVM IR module text with:
 // - Module header
+// - String constants (v0.50.20)
 // - Runtime declarations
 // - Function definitions
 fn compile_program(source: String) -> String =
@@ -1607,10 +1920,14 @@ fn compile_program(source: String) -> String =
         let mir = lower_program_sb(ast);
         if mir == "" { "ERR:LOWERING:empty" } else {
             let header = gen_module_header();
+            // v0.50.20: Extract string constants from MIR
+            let str_consts = extract_string_constants(mir);
             let decls = gen_runtime_decls();
             // v0.31.20: Use StringBuilder-aware LLVM generation for O(1) IR generation
             let code = gen_program_sb(mir);
-            header + "|" + decls + "||" + code
+            // Include string constants after header if any exist
+            if str_consts == "" { header + "|" + decls + "||" + code }
+            else { header + "|" + str_consts + "|" + decls + "||" + code }
         }
     };
 

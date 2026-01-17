@@ -274,6 +274,8 @@ impl TextCodeGen {
         writeln!(out, "declare ptr @slice(ptr, i64, i64)")?;
         writeln!(out, "declare ptr @chr(i64)")?;
         writeln!(out, "declare i64 @ord(ptr)")?;
+        // v0.50.18: char_to_string for bootstrap compiler (takes i32 char code)
+        writeln!(out, "declare ptr @char_to_string(i32)")?;
         writeln!(out, "declare void @print_str(ptr)")?;
         writeln!(out, "declare void @println_str(ptr)")?;
         writeln!(out)?;
@@ -439,9 +441,23 @@ impl TextCodeGen {
             attrs
         )?;
 
+        // Collect phi destination names first - these are SSA values, not memory locations
+        // They should NOT have allocas or be loaded from memory
+        let phi_dests: std::collections::HashSet<String> = func.blocks.iter()
+            .flat_map(|b| b.instructions.iter())
+            .filter_map(|inst| {
+                if let MirInst::Phi { dest, .. } = inst {
+                    Some(dest.name.clone())
+                } else {
+                    None
+                }
+            })
+            .collect();
+
         // Build map of (phi_dest_block, local_name, pred_block) -> load_temp_name
         // This is needed because phi nodes must reference SSA values, not memory locations
         // So we emit loads before terminators in predecessor blocks
+        // IMPORTANT: Exclude phi destinations - they're already SSA values
         let mut phi_load_map: std::collections::HashMap<(String, String, String), String> =
             std::collections::HashMap::new();
 
@@ -450,8 +466,10 @@ impl TextCodeGen {
                 if let MirInst::Phi { dest: _, values } = inst {
                     for (val, pred_label) in values {
                         if let Operand::Place(p) = val {
-                            // Check if this place is a local variable
-                            if func.locals.iter().any(|(n, _)| n == &p.name) {
+                            // Check if this place is a local variable (not a phi destination)
+                            // Phi destinations are SSA values, not memory locations
+                            if func.locals.iter().any(|(n, _)| n == &p.name)
+                               && !phi_dests.contains(&p.name) {
                                 let key = (block.label.clone(), p.name.clone(), pred_label.clone());
                                 let load_temp = format!("{}.phi.{}", p.name, pred_label);
                                 phi_load_map.insert(key, load_temp);
@@ -488,9 +506,10 @@ impl TextCodeGen {
 
         // Collect local variable names for alloca-based handling
         // Using alloca avoids SSA dominance issues when locals are assigned in branches
-        // Exclude: void-typed locals (can't allocate)
+        // Exclude: void-typed locals (can't allocate), phi destinations (they're SSA values)
         let local_names: std::collections::HashSet<String> = func.locals.iter()
             .filter(|(_, ty)| self.mir_type_to_llvm(ty) != "void")
+            .filter(|(name, _)| !phi_dests.contains(name))
             .map(|(name, _)| name.clone())
             .collect();
 

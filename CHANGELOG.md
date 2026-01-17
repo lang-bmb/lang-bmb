@@ -7,6 +7,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.50.18] - 2026-01-16
+
+### Fixed
+
+- **Bootstrap String ABI**: Resolved mismatch between bootstrap compiler and C runtime string handling:
+  - String literals now generate global LLVM constants (`@.str.N = private constant [N x i8] c"...\\00"`)
+  - `bmb_string_from_cstr()` called to convert C strings to `BmbString*` at runtime
+  - String methods (`len`, `byte_at`, `slice`) now use `ptr` type instead of `i64`
+  - String concatenation (`+`) and equality (`==`, `!=`) now call `bmb_string_concat()` and `bmb_string_eq()`
+
+### Added
+
+- **Type-aware MIR instructions** for string operations:
+  - `strlit <id> <hex>` - String literal with hex-encoded content
+  - `strconcat`, `streq`, `strneq` - String binary operations
+  - `strcall`, `strvoidcall`, `strintcall` - Type-aware function calls
+  - `strmethod`, `strintmethod` - Type-aware method calls
+- **String type inference** in lowering: `is_string_expr()` detects string-typed expressions
+- **Hex encoding/decoding** for safe string content transmission in MIR
+
+### Changed
+
+- Runtime declarations updated with proper `ptr` types for string-handling functions
+- Bootstrap compiler version updated to v0.50.18
+- **C runtime wrapper functions**: Added short-name wrappers (`len`, `chr`, `char_to_string`, `ord`, `print_str`) to match LLVM codegen declarations
+- **LLVM text codegen**: Added `char_to_string(i32)` declaration for bootstrap compiler support
+- **Bootstrap `make_backslash`/`make_quote`**: Use `char_to_string(chr(N))` pattern to bypass Rust type checker's `chr() -> char` return type
+
+## [0.50.17] - 2026-01-16
+
+### Fixed
+
+- **Bootstrap S-expression parser quotes handling**: `low_find_close_paren` now skips quoted strings, fixing parsing of strings containing `(` or `)` characters like `"( x"` or `"(call f)"`. Previously, parentheses inside strings were incorrectly counted, causing argument parsing to fail.
+- **Bootstrap LLVM IR PHI node predecessors**: Nested if-else expressions now generate correct PHI predecessors by emitting explicit "end" labels before each `goto merge`. This ensures the PHI node references the actual control flow predecessor, not the branch entry point.
+
+### Added
+
+- **Bootstrap runtime function declarations**: Added LLVM IR declarations for runtime functions:
+  - CLI: `arg_count`, `get_arg`
+  - String methods: `len`, `byte_at`, `slice`
+  - File I/O: `read_file`, `write_file`
+  - StringBuilder: `sb_new`, `sb_push`, `sb_len`, `sb_build`
+  - Print: `print_str`
+
+### Changed
+
+- Stage 1 native compiler (v30) now successfully compiles the full bootstrap source (30K+ lines) to valid LLVM IR
+- Stage 2 binary links successfully with the C runtime
+
+### Known Issues
+
+- ~~**Stage 2 runtime crash**: String ABI mismatch between bootstrap compiler (integer hashes) and C runtime (BmbString pointers).~~ **Fixed in v0.50.18**
+- Requires `ulimit -s unlimited` for large files due to recursive descent parser depth
+
 ## [0.50.15] - 2026-01-16
 
 ### Added

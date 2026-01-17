@@ -366,9 +366,9 @@ impl TypeChecker {
         functions.insert("sb_clear".to_string(), (vec![Type::I64], Type::I64));
 
         // v0.31.21: Character conversion builtins
-        // v0.65: Updated to use char type (Unicode codepoint support)
-        // chr(code: i64) -> char (Unicode codepoint to character)
-        functions.insert("chr".to_string(), (vec![Type::I64], Type::Char));
+        // v0.50.18: chr returns String to match runtime behavior (C runtime returns char*)
+        // chr(code: i64) -> String (creates single-char string from code point)
+        functions.insert("chr".to_string(), (vec![Type::I64], Type::String));
         // ord(c: char) -> i64 (character to Unicode codepoint)
         functions.insert("ord".to_string(), (vec![Type::Char], Type::I64));
 

@@ -239,18 +239,18 @@ pub struct EnumVariant {
 }
 
 /// Type alias definition (v0.50.6)
-/// Syntax: type Name = Type;
-/// Syntax: type Name<T> = Type<T>;
-/// Syntax: type Name = Type where { condition };  (refinement type)
+/// Syntax: `type Name = Type;`
+/// Syntax: `type Name<T> = Type<T>;`
+/// Syntax: `type Name = Type where { condition };` (refinement type)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TypeAliasDef {
-    /// Attributes (e.g., @deprecated)
+    /// Attributes (e.g., `@deprecated`)
     pub attributes: Vec<Attribute>,
     /// Visibility (pub or private)
     pub visibility: Visibility,
     /// Name of the type alias
     pub name: Spanned<String>,
-    /// Type parameters for generic type aliases (e.g., <T>, <T, U>)
+    /// Type parameters for generic type aliases (e.g., `<T>`, `<T, U>`)
     pub type_params: Vec<TypeParam>,
     /// The target type being aliased
     pub target: Spanned<Type>,
