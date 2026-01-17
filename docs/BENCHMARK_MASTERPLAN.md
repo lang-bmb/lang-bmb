@@ -26,7 +26,7 @@
 
 ## Current Status (2026-01-17)
 
-### Existing Benchmarks (43 total)
+### Existing Benchmarks (48 total)
 
 | Category | Count | Status | Notes |
 |----------|-------|--------|-------|
@@ -37,7 +37,8 @@
 | **Zero-Overhead** | **5** | ✅ | Phase 1 complete |
 | **Memory** | **5** | ✅ | Phase 2 complete (MEM-2 skipped) |
 | **Syscall** | **3** | ✅ | Phase 3 complete (SYS-3,5 skipped) |
-| **Contract-Opt** | **4** | ✅ **NEW** | Phase 5 complete |
+| **Contract-Opt** | **4** | ✅ | Phase 5 complete |
+| **Surpass** | **5** | ✅ **NEW** | Phase 6 complete |
 
 ### Gate Status
 
@@ -145,17 +146,20 @@ bmb build bench_no_contract.bmb --emit-llvm -o without.ll
 diff with_contract.ll without.ll
 ```
 
-### Phase 6: C/Rust Surpass Benchmarks (P2 - 3 weeks)
+### Phase 6: C/Rust Surpass Benchmarks (P2 - 3 weeks) ✅ COMPLETE
 
 **Goal**: Achieve 3+ cases where BMB > C (Gate #3.3)
 
-| ID | Benchmark | Surpass Strategy |
-|----|-----------|------------------|
-| WIN-1 | **matrix_multiply** | Contract-based aliasing analysis → SIMD maximization |
-| WIN-2 | **sort_presorted** | Precondition removes branches |
-| WIN-3 | **tree_balance** | Invariant-based rebalancing skip |
-| WIN-4 | **string_search** | Compile-time pattern optimization |
-| WIN-5 | **graph_traversal** | Reachability proof removes visit checks |
+| ID | Benchmark | Surpass Strategy | Status |
+|----|-----------|------------------|--------|
+| WIN-1 | **matrix_multiply** | Contract-based aliasing analysis → SIMD maximization | ✅ Implemented |
+| WIN-2 | **sort_presorted** | Precondition removes branches | ✅ Implemented |
+| WIN-3 | **tree_balance** | Invariant-based rebalancing skip | ✅ Implemented |
+| WIN-4 | **string_search** | Compile-time pattern optimization | ✅ Implemented |
+| WIN-5 | **graph_traversal** | Reachability proof removes visit checks | ✅ Implemented |
+
+**Note**: All 5 surpass benchmarks implemented with BMB and C versions.
+Actual performance comparison requires native compilation in WSL Ubuntu with LLVM.
 
 ---
 
