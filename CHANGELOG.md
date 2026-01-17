@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.50.25] - 2026-01-17
+
+### Added
+
+- **LSP local variable support**: Language server now provides hover and completion for local variables
+  - `LocalVar` struct tracks local variable name, type, definition span, and scope span
+  - `collect_locals()` recursively collects let bindings, for loop variables, and closure parameters from AST
+  - `get_locals_at_offset()` finds visible locals at cursor position using scope-based filtering
+  - Hover shows local variable types with "(local)" annotation
+  - Completion includes local variables with higher sort priority than keywords
+
+### Changed
+
+- `DocumentState.locals` field added to cache collected local variables
+- `collect_symbols()` now returns locals as third tuple element
+- Completion items use sort text prefixes (`!0`, `!1`, `!2`) for priority ordering
+
 ## [0.50.24] - 2026-01-17
 
 ### Added

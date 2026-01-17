@@ -937,7 +937,7 @@ fn print_str_nl(s: String) -> i64 =
 
 2. **코드 품질 분석 결과**
    - **HIGH**: 통합 테스트 스위트 부재 (bmb/tests/ 비어있음)
-   - **HIGH**: LSP 기능 불완전 (hover, completion 미구현)
+   - **DONE**: LSP hover/completion 구현 (v0.50.25)
    - **MEDIUM**: 모듈 문서화 부족 (types/mod.rs, interp/eval.rs)
    - **MEDIUM**: 5개 모듈이 1,500줄 초과 (리팩토링 필요)
    - **LOW**: 8개 TODO 주석 잔존
@@ -956,7 +956,7 @@ fn print_str_nl(s: String) -> i64 =
 | P0 | WSL에서 3-Stage Bootstrap 검증 | ⏳ 대기 |
 | P0 | 전체 벤치마크 Gate 실행 | ⏳ 대기 |
 | P1 | 통합 테스트 스위트 추가 | ✅ 완료 |
-| P2 | LSP hover/completion 구현 | 📋 계획 |
+| P2 | LSP hover/completion 구현 | ✅ v0.50.25 완료 |
 
 ### 2026-01-15 Integration Test Suite 추가 세션 (v0.50.3)
 
@@ -994,7 +994,7 @@ fn print_str_nl(s: String) -> i64 =
 | P0 | WSL에서 3-Stage Bootstrap 검증 | ⏳ 대기 (Windows 환경 제약) |
 | P0 | 전체 벤치마크 Gate 실행 | ⏳ 대기 (WSL 필요) |
 | P1 | Formatter 주석 보존 | ✅ v0.50.20 완료 |
-| P2 | LSP hover/completion 구현 | 📋 계획 |
+| P2 | LSP hover/completion 구현 | ✅ v0.50.25 완료 |
 
 ### 2026-01-15 stdlib 문법 오류 수정 세션 (v0.50.4)
 
@@ -1055,7 +1055,7 @@ fn print_str_nl(s: String) -> i64 =
 | P0 | WSL에서 3-Stage Bootstrap 검증 | ⏳ 대기 |
 | P0 | 전체 벤치마크 Gate 실행 | ⏳ 대기 |
 | P1 | Formatter 주석 보존 | ✅ v0.50.20 완료 |
-| P2 | LSP hover/completion 구현 | 📋 계획 |
+| P2 | LSP hover/completion 구현 | ✅ v0.50.25 완료 |
 
 ### 2026-01-15 테스트 커버리지 확장 세션 (v0.50.5)
 
@@ -1099,7 +1099,7 @@ fn print_str_nl(s: String) -> i64 =
 | P1 | 정제 타입 구현 | 📋 계획 |
 | P1 | 타입 별칭 구현 | ✅ 완료 |
 | P2 | Formatter 주석 보존 | ✅ v0.50.20 완료 |
-| P2 | LSP hover/completion 구현 | 📋 계획 |
+| P2 | LSP hover/completion 구현 | ✅ v0.50.25 완료 |
 
 ### 2026-01-15 타입 별칭 구현 세션 (v0.50.6)
 
@@ -1146,7 +1146,7 @@ fn print_str_nl(s: String) -> i64 =
 | P0 | 전체 벤치마크 Gate 실행 | ⏳ 대기 |
 | P1 | 정제 타입 검증 연동 (SMT) | 📋 계획 |
 | P2 | Formatter 주석 보존 | ✅ v0.50.20 완료 |
-| P2 | LSP hover/completion 구현 | 📋 계획 |
+| P2 | LSP hover/completion 구현 | ✅ v0.50.25 완료 |
 
 ### 2026-01-15 WSL Bootstrap 및 벤치마크 검증 세션
 
@@ -1545,4 +1545,4 @@ define i64 @fib(i64 %0) {
 | P1 | bmb q batch 구현 | ✅ 구현됨 |
 | P1 | bmb q impact 구현 | ✅ 구현됨 |
 | P1 | Formatter 주석 보존 | ✅ v0.50.20 완료 |
-| P2 | LSP hover/completion 구현 | 📋 계획 |
+| P2 | LSP hover/completion 구현 | ✅ v0.50.25 완료 |

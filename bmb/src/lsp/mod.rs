@@ -48,6 +48,19 @@ struct SymbolDef {
     #[allow(dead_code)]
     kind: SymbolKind,
     span: Span,
+    /// Type string for hover display (v0.50.25)
+    type_str: Option<String>,
+}
+
+/// Local variable in a specific scope (v0.50.25)
+#[derive(Debug, Clone)]
+struct LocalVar {
+    name: String,
+    type_str: String,
+    /// Span where the variable is defined
+    def_span: Span,
+    /// Span of the scope where this variable is visible
+    scope_span: Span,
 }
 
 /// Symbol reference (usage)
@@ -78,6 +91,8 @@ struct DocumentState {
     definitions: Vec<SymbolDef>,
     /// Symbol references in this document
     references: Vec<SymbolRef>,
+    /// Local variables with their scopes (v0.50.25)
+    locals: Vec<LocalVar>,
     #[allow(dead_code)]
     version: i32,
 }
@@ -104,10 +119,10 @@ impl Backend {
         let ast = self.try_parse(content);
 
         // Collect symbols from AST
-        let (definitions, references) = if let Some(ref ast) = ast {
+        let (definitions, references, locals) = if let Some(ref ast) = ast {
             self.collect_symbols(ast)
         } else {
-            (Vec::new(), Vec::new())
+            (Vec::new(), Vec::new(), Vec::new())
         };
 
         // Store document state
@@ -118,6 +133,7 @@ impl Backend {
                 ast,
                 definitions,
                 references,
+                locals,
                 version,
             });
         }
@@ -128,29 +144,51 @@ impl Backend {
             .await;
     }
 
-    /// Collect symbol definitions and references from AST
-    fn collect_symbols(&self, ast: &Program) -> (Vec<SymbolDef>, Vec<SymbolRef>) {
+    /// Collect symbol definitions, references, and local variables from AST
+    fn collect_symbols(&self, ast: &Program) -> (Vec<SymbolDef>, Vec<SymbolRef>, Vec<LocalVar>) {
         let mut definitions = Vec::new();
         let mut references = Vec::new();
+        let mut locals = Vec::new();
 
         for item in &ast.items {
             match item {
                 Item::FnDef(f) => {
-                    // Function definition
+                    // Function definition with signature
+                    let params_str: Vec<String> = f.params.iter()
+                        .map(|p| format!("{}: {}", p.name.node, format_type(&p.ty.node)))
+                        .collect();
+                    let sig = format!("fn({}) -> {}", params_str.join(", "), format_type(&f.ret_ty.node));
+
                     definitions.push(SymbolDef {
                         name: f.name.node.clone(),
                         kind: SymbolKind::Function,
                         span: f.name.span,
+                        type_str: Some(sig),
                     });
 
-                    // Parameters as definitions
+                    // Parameters as definitions with types (v0.50.25)
+                    // Body span approximation: from first param to end of body
+                    let fn_scope_span = f.body.span;
+
                     for param in &f.params {
                         definitions.push(SymbolDef {
                             name: param.name.node.clone(),
                             kind: SymbolKind::Parameter,
                             span: param.name.span,
+                            type_str: Some(format_type(&param.ty.node)),
+                        });
+
+                        // Also add as local var for scope-based completion
+                        locals.push(LocalVar {
+                            name: param.name.node.clone(),
+                            type_str: format_type(&param.ty.node),
+                            def_span: param.name.span,
+                            scope_span: fn_scope_span,
                         });
                     }
+
+                    // Collect local variables from body (v0.50.25)
+                    self.collect_locals(&f.body.node, fn_scope_span, &mut locals);
 
                     // Collect references from body
                     self.collect_expr_refs(&f.body.node, &mut references);
@@ -164,26 +202,41 @@ impl Backend {
                     }
                 }
                 Item::StructDef(s) => {
+                    let fields_info = s.fields.iter()
+                        .map(|f| format!("{}: {}", f.name.node, format_type(&f.ty.node)))
+                        .collect::<Vec<_>>()
+                        .join(", ");
                     definitions.push(SymbolDef {
                         name: s.name.node.clone(),
                         kind: SymbolKind::Struct,
                         span: s.name.span,
+                        type_str: Some(format!("struct {{ {} }}", fields_info)),
                     });
                 }
                 Item::EnumDef(e) => {
+                    let variants = e.variants.iter()
+                        .map(|v| v.name.node.as_str())
+                        .collect::<Vec<_>>()
+                        .join(" | ");
                     definitions.push(SymbolDef {
                         name: e.name.node.clone(),
                         kind: SymbolKind::Enum,
                         span: e.name.span,
+                        type_str: Some(format!("enum {{ {} }}", variants)),
                     });
                 }
                 Item::Use(_) => {}
                 // v0.13.0: Extern functions as function definitions
                 Item::ExternFn(e) => {
+                    let params_str: Vec<String> = e.params.iter()
+                        .map(|p| format!("{}: {}", p.name.node, format_type(&p.ty.node)))
+                        .collect();
+                    let sig = format!("extern fn({}) -> {}", params_str.join(", "), format_type(&e.ret_ty.node));
                     definitions.push(SymbolDef {
                         name: e.name.node.clone(),
                         kind: SymbolKind::Function,
                         span: e.name.span,
+                        type_str: Some(sig),
                     });
                 }
                 // v0.20.1: Trait definitions
@@ -192,15 +245,21 @@ impl Backend {
                         name: t.name.node.clone(),
                         kind: SymbolKind::Trait,
                         span: t.name.span,
+                        type_str: Some("trait".to_string()),
                     });
                 }
                 // v0.20.1: Impl blocks - register methods
                 Item::ImplBlock(i) => {
                     for method in &i.methods {
+                        let params_str: Vec<String> = method.params.iter()
+                            .map(|p| format!("{}: {}", p.name.node, format_type(&p.ty.node)))
+                            .collect();
+                        let sig = format!("fn({}) -> {}", params_str.join(", "), format_type(&method.ret_ty.node));
                         definitions.push(SymbolDef {
                             name: method.name.node.clone(),
                             kind: SymbolKind::Method,
                             span: method.name.span,
+                            type_str: Some(sig),
                         });
                         self.collect_expr_refs(&method.body.node, &mut references);
                     }
@@ -210,7 +269,7 @@ impl Backend {
             }
         }
 
-        (definitions, references)
+        (definitions, references, locals)
     }
 
     /// Collect symbol references from expression
@@ -320,6 +379,158 @@ impl Backend {
             // Literals and simple expressions
             _ => {}
         }
+    }
+
+    /// Collect local variables from expressions (v0.50.25)
+    fn collect_locals(&self, expr: &Expr, scope_span: Span, locals: &mut Vec<LocalVar>) {
+        match expr {
+            Expr::Let { name, ty, value, body, .. } => {
+                // Get type string - either explicit or inferred placeholder
+                let type_str = ty.as_ref()
+                    .map(|t| format_type(&t.node))
+                    .unwrap_or_else(|| "inferred".to_string());
+
+                // The let variable is visible from its definition to end of body
+                let body_span = body.span;
+                locals.push(LocalVar {
+                    name: name.clone(),
+                    type_str,
+                    def_span: value.span, // Use value span as approximate def location
+                    scope_span: body_span,
+                });
+
+                // Recurse into value and body
+                self.collect_locals(&value.node, scope_span, locals);
+                self.collect_locals(&body.node, body_span, locals);
+            }
+            Expr::Block(stmts) => {
+                for stmt in stmts {
+                    self.collect_locals(&stmt.node, scope_span, locals);
+                }
+            }
+            Expr::If { cond, then_branch, else_branch } => {
+                self.collect_locals(&cond.node, scope_span, locals);
+                self.collect_locals(&then_branch.node, then_branch.span, locals);
+                self.collect_locals(&else_branch.node, else_branch.span, locals);
+            }
+            Expr::Match { expr, arms } => {
+                self.collect_locals(&expr.node, scope_span, locals);
+                for arm in arms {
+                    // Pattern bindings could be added here if needed
+                    self.collect_locals(&arm.body.node, arm.body.span, locals);
+                }
+            }
+            Expr::For { var, iter, body } => {
+                // Loop variable is visible in body
+                locals.push(LocalVar {
+                    name: var.clone(),
+                    type_str: "inferred".to_string(), // For loop var type is inferred
+                    def_span: iter.span,
+                    scope_span: body.span,
+                });
+                self.collect_locals(&iter.node, scope_span, locals);
+                self.collect_locals(&body.node, body.span, locals);
+            }
+            Expr::While { cond, body, invariant } => {
+                self.collect_locals(&cond.node, scope_span, locals);
+                self.collect_locals(&body.node, body.span, locals);
+                if let Some(inv) = invariant {
+                    self.collect_locals(&inv.node, scope_span, locals);
+                }
+            }
+            Expr::Closure { params, body, .. } => {
+                let closure_scope = body.span;
+                for param in params {
+                    let type_str = param.ty.as_ref()
+                        .map(|t| format_type(&t.node))
+                        .unwrap_or_else(|| "inferred".to_string());
+                    locals.push(LocalVar {
+                        name: param.name.node.clone(),
+                        type_str,
+                        def_span: param.name.span,
+                        scope_span: closure_scope,
+                    });
+                }
+                self.collect_locals(&body.node, closure_scope, locals);
+            }
+            // Recurse into expressions that may contain let bindings
+            Expr::Call { args, .. } => {
+                for arg in args {
+                    self.collect_locals(&arg.node, scope_span, locals);
+                }
+            }
+            Expr::MethodCall { receiver, args, .. } => {
+                self.collect_locals(&receiver.node, scope_span, locals);
+                for arg in args {
+                    self.collect_locals(&arg.node, scope_span, locals);
+                }
+            }
+            Expr::Binary { left, right, .. } => {
+                self.collect_locals(&left.node, scope_span, locals);
+                self.collect_locals(&right.node, scope_span, locals);
+            }
+            Expr::Unary { expr, .. } => {
+                self.collect_locals(&expr.node, scope_span, locals);
+            }
+            Expr::Index { expr, index } => {
+                self.collect_locals(&expr.node, scope_span, locals);
+                self.collect_locals(&index.node, scope_span, locals);
+            }
+            Expr::FieldAccess { expr, .. } | Expr::TupleField { expr, .. } => {
+                self.collect_locals(&expr.node, scope_span, locals);
+            }
+            Expr::ArrayLit(elems) | Expr::Tuple(elems) => {
+                for elem in elems {
+                    self.collect_locals(&elem.node, scope_span, locals);
+                }
+            }
+            Expr::StructInit { fields, .. } => {
+                for (_, value) in fields {
+                    self.collect_locals(&value.node, scope_span, locals);
+                }
+            }
+            Expr::Range { start, end, .. } => {
+                self.collect_locals(&start.node, scope_span, locals);
+                self.collect_locals(&end.node, scope_span, locals);
+            }
+            Expr::EnumVariant { args, .. } => {
+                for arg in args {
+                    self.collect_locals(&arg.node, scope_span, locals);
+                }
+            }
+            Expr::Ref(inner) | Expr::RefMut(inner) | Expr::Deref(inner) => {
+                self.collect_locals(&inner.node, scope_span, locals);
+            }
+            Expr::Loop { body } => {
+                self.collect_locals(&body.node, body.span, locals);
+            }
+            Expr::Return { value } | Expr::Break { value } => {
+                if let Some(v) = value {
+                    self.collect_locals(&v.node, scope_span, locals);
+                }
+            }
+            Expr::Assign { value, .. } => {
+                self.collect_locals(&value.node, scope_span, locals);
+            }
+            Expr::Cast { expr, .. } => {
+                self.collect_locals(&expr.node, scope_span, locals);
+            }
+            Expr::Forall { body, .. } | Expr::Exists { body, .. } => {
+                self.collect_locals(&body.node, scope_span, locals);
+            }
+            // Terminals - no recursion needed
+            _ => {}
+        }
+    }
+
+    /// Get local variables visible at a given byte offset (v0.50.25)
+    fn get_locals_at_offset<'a>(&self, locals: &'a [LocalVar], offset: usize) -> Vec<&'a LocalVar> {
+        locals.iter()
+            .filter(|local| {
+                // Variable is visible if offset is within its scope and after its definition
+                offset >= local.def_span.start && offset <= local.scope_span.end
+            })
+            .collect()
     }
 
     /// Get diagnostics from lexer, parser, and type checker
@@ -565,18 +776,57 @@ impl LanguageServer for Backend {
             }
         }
 
-        // Check AST for user-defined symbols
+        // v0.50.25: Check local variables at cursor position
+        let offset = self.position_to_offset(position, &doc.content);
+        let visible_locals = self.get_locals_at_offset(&doc.locals, offset);
+        for local in visible_locals {
+            if local.name == word {
+                return Ok(Some(Hover {
+                    contents: HoverContents::Markup(MarkupContent {
+                        kind: MarkupKind::Markdown,
+                        value: format!("**Local variable**: `{}: {}`", local.name, local.type_str),
+                    }),
+                    range: None,
+                }));
+            }
+        }
+
+        // Check definitions (functions, structs, enums, etc.) with type info
+        for def in &doc.definitions {
+            if def.name == word {
+                if let Some(type_str) = &def.type_str {
+                    let kind_str = match def.kind {
+                        SymbolKind::Function => "Function",
+                        SymbolKind::Struct => "Struct",
+                        SymbolKind::Enum => "Enum",
+                        SymbolKind::Variable => "Variable",
+                        SymbolKind::Parameter => "Parameter",
+                        SymbolKind::Trait => "Trait",
+                        SymbolKind::Method => "Method",
+                    };
+                    return Ok(Some(Hover {
+                        contents: HoverContents::Markup(MarkupContent {
+                            kind: MarkupKind::Markdown,
+                            value: format!("**{}**: `{}`\n\n```bmb\n{}\n```", kind_str, def.name, type_str),
+                        }),
+                        range: None,
+                    }));
+                }
+            }
+        }
+
+        // Fallback: Check AST for user-defined symbols (legacy, for items without type_str)
         if let Some(ast) = &doc.ast {
             for item in &ast.items {
                 match item {
                     crate::ast::Item::FnDef(f) if f.name.node == word => {
                         let params: Vec<String> = f.params.iter()
-                            .map(|p| format!("{}: {:?}", p.name.node, p.ty.node))
+                            .map(|p| format!("{}: {}", p.name.node, format_type(&p.ty.node)))
                             .collect();
-                        let sig = format!("fn {}({}) -> {:?}",
+                        let sig = format!("fn {}({}) -> {}",
                             f.name.node,
                             params.join(", "),
-                            f.ret_ty.node
+                            format_type(&f.ret_ty.node)
                         );
                         return Ok(Some(Hover {
                             contents: HoverContents::Markup(MarkupContent {
@@ -588,7 +838,7 @@ impl LanguageServer for Backend {
                     }
                     crate::ast::Item::StructDef(s) if s.name.node == word => {
                         let fields: Vec<String> = s.fields.iter()
-                            .map(|f| format!("  {}: {:?}", f.name.node, f.ty.node))
+                            .map(|f| format!("  {}: {}", f.name.node, format_type(&f.ty.node)))
                             .collect();
                         let def = format!("struct {} {{\n{}\n}}", s.name.node, fields.join(",\n"));
                         return Ok(Some(Hover {
@@ -622,6 +872,7 @@ impl LanguageServer for Backend {
 
     async fn completion(&self, params: CompletionParams) -> Result<Option<CompletionResponse>> {
         let uri = &params.text_document_position.text_document.uri;
+        let position = params.text_document_position.position;
 
         let mut items = Vec::new();
 
@@ -647,44 +898,77 @@ impl LanguageServer for Backend {
             });
         }
 
-        // Add user-defined symbols from AST
+        // Add user-defined symbols and local variables
         let docs = self.documents.read().unwrap();
-        if let Some(doc) = docs.get(uri)
-            && let Some(ast) = &doc.ast
-        {
-            for item in &ast.items {
-                match item {
-                    crate::ast::Item::FnDef(f) => {
-                        let params: Vec<String> = f.params.iter()
-                            .enumerate()
-                            .map(|(i, p)| format!("${{{}:{}}}", i + 1, p.name.node))
-                            .collect();
-                        items.push(CompletionItem {
-                            label: f.name.node.clone(),
-                            kind: Some(CompletionItemKind::FUNCTION),
-                            detail: Some(format!("fn -> {:?}", f.ret_ty.node)),
-                            insert_text: Some(format!("{}({})", f.name.node, params.join(", "))),
-                            insert_text_format: Some(InsertTextFormat::SNIPPET),
-                            ..Default::default()
-                        });
+        if let Some(doc) = docs.get(uri) {
+            // v0.50.25: Add local variables visible at cursor position
+            let offset = self.position_to_offset(position, &doc.content);
+            let visible_locals = self.get_locals_at_offset(&doc.locals, offset);
+
+            // Track added names to avoid duplicates
+            let mut added_names: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+            for local in visible_locals {
+                if added_names.insert(local.name.clone()) {
+                    items.push(CompletionItem {
+                        label: local.name.clone(),
+                        kind: Some(CompletionItemKind::VARIABLE),
+                        detail: Some(local.type_str.clone()),
+                        // Sort local variables higher (prefix with '!')
+                        sort_text: Some(format!("!0{}", local.name)),
+                        ..Default::default()
+                    });
+                }
+            }
+
+            // Add AST items
+            if let Some(ast) = &doc.ast {
+                for item in &ast.items {
+                    match item {
+                        crate::ast::Item::FnDef(f) => {
+                            if added_names.insert(f.name.node.clone()) {
+                                let params_snippet: Vec<String> = f.params.iter()
+                                    .enumerate()
+                                    .map(|(i, p)| format!("${{{}:{}}}", i + 1, p.name.node))
+                                    .collect();
+                                let params_display: Vec<String> = f.params.iter()
+                                    .map(|p| format!("{}: {}", p.name.node, format_type(&p.ty.node)))
+                                    .collect();
+                                items.push(CompletionItem {
+                                    label: f.name.node.clone(),
+                                    kind: Some(CompletionItemKind::FUNCTION),
+                                    detail: Some(format!("fn({}) -> {}", params_display.join(", "), format_type(&f.ret_ty.node))),
+                                    insert_text: Some(format!("{}({})", f.name.node, params_snippet.join(", "))),
+                                    insert_text_format: Some(InsertTextFormat::SNIPPET),
+                                    sort_text: Some(format!("!1{}", f.name.node)),
+                                    ..Default::default()
+                                });
+                            }
+                        }
+                        crate::ast::Item::StructDef(s) => {
+                            if added_names.insert(s.name.node.clone()) {
+                                items.push(CompletionItem {
+                                    label: s.name.node.clone(),
+                                    kind: Some(CompletionItemKind::STRUCT),
+                                    detail: Some("struct".to_string()),
+                                    sort_text: Some(format!("!2{}", s.name.node)),
+                                    ..Default::default()
+                                });
+                            }
+                        }
+                        crate::ast::Item::EnumDef(e) => {
+                            if added_names.insert(e.name.node.clone()) {
+                                items.push(CompletionItem {
+                                    label: e.name.node.clone(),
+                                    kind: Some(CompletionItemKind::ENUM),
+                                    detail: Some("enum".to_string()),
+                                    sort_text: Some(format!("!2{}", e.name.node)),
+                                    ..Default::default()
+                                });
+                            }
+                        }
+                        _ => {}
                     }
-                    crate::ast::Item::StructDef(s) => {
-                        items.push(CompletionItem {
-                            label: s.name.node.clone(),
-                            kind: Some(CompletionItemKind::STRUCT),
-                            detail: Some("struct".to_string()),
-                            ..Default::default()
-                        });
-                    }
-                    crate::ast::Item::EnumDef(e) => {
-                        items.push(CompletionItem {
-                            label: e.name.node.clone(),
-                            kind: Some(CompletionItemKind::ENUM),
-                            detail: Some("enum".to_string()),
-                            ..Default::default()
-                        });
-                    }
-                    _ => {}
                 }
             }
         }
