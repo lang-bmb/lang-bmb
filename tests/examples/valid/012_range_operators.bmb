@@ -1,22 +1,22 @@
--- v0.2 Feature Test: Range Operators
--- Tests for exclusive (..<), inclusive (..=), and legacy (..) range operators
+// v0.2 Feature Test: Range Operators
+// Tests for exclusive (..<), inclusive (..=), and legacy (..) range operators
 
--- Test exclusive range operator in function
+// Test exclusive range operator in function
 fn test_exclusive_range(n: i64) -> i64
   pre n >= 0
-= if n == 5 then 10 else 0;
+= if n == 5 { 10 } else { 0 };
 
--- Test inclusive range operator in function
+// Test inclusive range operator in function
 fn test_inclusive_range(n: i64) -> i64
   pre n >= 0
-= if n == 5 then 15 else 0;
+= if n == 5 { 15 } else { 0 };
 
--- Test legacy range operator (backward compat)
+// Test legacy range operator (backward compat)
 fn test_legacy_range(n: i64) -> i64
   pre n >= 0
-= if n == 5 then 10 else 0;
+= if n == 5 { 10 } else { 0 };
 
--- Simple range-based sum using for with single expression body
+// Simple range-based sum using for with single expression body
 fn count_range(n: i64) -> i64
   pre n > 0
 = {

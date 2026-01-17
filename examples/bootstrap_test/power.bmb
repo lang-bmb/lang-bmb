@@ -1,22 +1,17 @@
--- Power calculation using fast exponentiation
--- Bootstrap compiler example: divide and conquer
+// Power calculation using fast exponentiation
+// Bootstrap compiler example: divide and conquer
 
--- Fast power: base^exp using binary exponentiation
+// Fast power: base^exp using binary exponentiation
 fn power_iter(base: i64, exp: i64, acc: i64) -> i64 =
-    if exp == 0 then acc
-    else if exp - (exp / 2) * 2 == 0 then
-        power_iter(base * base, exp / 2, acc)
-    else
-        power_iter(base * base, exp / 2, acc * base);
+    if exp == 0 { acc } else if exp - (exp / 2) * 2 == 0 { power_iter(base * base, exp / 2, acc) } else { power_iter(base * base, exp / 2, acc * base) };
 
 fn power(base: i64, exp: i64) -> i64 = power_iter(base, exp, 1);
 
--- Simple power for verification
+// Simple power for verification
 fn simple_power(base: i64, exp: i64) -> i64 =
-    if exp == 0 then 1
-    else base * simple_power(base, exp - 1);
+    if exp == 0 { 1 } else { base * simple_power(base, exp - 1) };
 
--- Main function: power(2, 10) = 1024, power(3, 5) = 243
+// Main function: power(2, 10) = 1024, power(3, 5) = 243
 fn main() -> i64 =
     let p2_10 = power(2, 10);
     let u0 = println(p2_10);

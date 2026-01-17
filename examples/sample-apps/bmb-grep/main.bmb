@@ -1,0 +1,329 @@
+// bmb-grep: A pattern matching tool demonstrating BMB language features
+// Usage: bmb run main.bmb -- "<pattern>" "<text>" [options]
+// Options: -n (line numbers), -c (count only), -v (invert match), -i (case insensitive)
+//
+// Examples:
+//   bmb run main.bmb -- "hello" "hello world"
+//   bmb run main.bmb -- "error" "multiline text with error" -n
+//   bmb run main.bmb -- "test" "test input" -c
+
+// ============================================================================
+// Character and String Utilities
+// ============================================================================
+
+fn char_newline() -> i64 = 10;   // \n
+fn char_backslash_n() -> i64 = 92; // \ for escape sequences
+
+fn is_digit(c: i64) -> bool = c >= 48 and c <= 57;
+fn is_alpha(c: i64) -> bool = (c >= 65 and c <= 90) or (c >= 97 and c <= 122);
+fn is_word_char(c: i64) -> bool = is_alpha(c) or is_digit(c) or c == 95;
+fn is_space(c: i64) -> bool = c == 32 or c == 9 or c == 10 or c == 13;
+
+// Convert to lowercase
+fn to_lower(c: i64) -> i64
+  post (ret >= 97 and ret <= 122) or ret == c
+= if c >= 65 and c <= 90 { c + 32 } else { c };
+
+// ============================================================================
+// Pattern Matching (from bmb-regex concepts)
+// ============================================================================
+
+// Match single character (case-sensitive)
+fn char_match(a: i64, b: i64) -> bool = a == b;
+
+// Match single character (case-insensitive)
+fn char_match_i(a: i64, b: i64) -> bool = to_lower(a) == to_lower(b);
+
+// Literal pattern match at position (case-sensitive)
+fn match_literal_at(text: String, pos: i64, pattern: String, pat_pos: i64) -> bool =
+    if pat_pos >= pattern.len() { true }
+    else if pos >= text.len() { false }
+    else if char_match(text.byte_at(pos), pattern.byte_at(pat_pos)) {
+        match_literal_at(text, pos + 1, pattern, pat_pos + 1)
+    }
+    else { false };
+
+// Literal pattern match at position (case-insensitive)
+fn match_literal_at_i(text: String, pos: i64, pattern: String, pat_pos: i64) -> bool =
+    if pat_pos >= pattern.len() { true }
+    else if pos >= text.len() { false }
+    else if char_match_i(text.byte_at(pos), pattern.byte_at(pat_pos)) {
+        match_literal_at_i(text, pos + 1, pattern, pat_pos + 1)
+    }
+    else { false };
+
+// Find pattern in text (case-sensitive)
+fn find_pattern(text: String, pos: i64, pattern: String) -> i64
+  post ret == 0 - 1 or (ret >= pos and ret + pattern.len() <= text.len())
+= if pos + pattern.len() > text.len() { 0 - 1 }
+  else if match_literal_at(text, pos, pattern, 0) { pos }
+  else { find_pattern(text, pos + 1, pattern) };
+
+// Find pattern in text (case-insensitive)
+fn find_pattern_i(text: String, pos: i64, pattern: String) -> i64
+  post ret == 0 - 1 or (ret >= pos and ret + pattern.len() <= text.len())
+= if pos + pattern.len() > text.len() { 0 - 1 }
+  else if match_literal_at_i(text, pos, pattern, 0) { pos }
+  else { find_pattern_i(text, pos + 1, pattern) };
+
+// Check if text contains pattern
+fn contains(text: String, pattern: String, case_insensitive: bool) -> bool =
+    if case_insensitive { find_pattern_i(text, 0, pattern) >= 0 }
+    else { find_pattern(text, 0, pattern) >= 0 };
+
+// Count occurrences of pattern in text
+fn count_matches_iter(text: String, pos: i64, pattern: String, case_i: bool, count: i64) -> i64 =
+    let found = if case_i { find_pattern_i(text, pos, pattern) }
+                else { find_pattern(text, pos, pattern) };
+    if found < 0 { count }
+    else { count_matches_iter(text, found + pattern.len(), pattern, case_i, count + 1) };
+
+fn count_matches(text: String, pattern: String, case_insensitive: bool) -> i64
+  pre pattern.len() > 0
+  post ret >= 0
+= count_matches_iter(text, 0, pattern, case_insensitive, 0);
+
+// ============================================================================
+// Line Processing
+// ============================================================================
+
+// Find newline position from pos, returns text.len() if not found
+fn find_newline(text: String, pos: i64) -> i64 =
+    if pos >= text.len() { text.len() }
+    else if text.byte_at(pos) == char_newline() { pos }
+    else { find_newline(text, pos + 1) };
+
+// Check for escape sequence \n
+fn is_escaped_newline(text: String, pos: i64) -> bool =
+    pos + 1 < text.len() and text.byte_at(pos) == char_backslash_n() and text.byte_at(pos + 1) == 110;
+
+// Find next line boundary (handles both \n and escaped \n)
+fn find_line_end(text: String, pos: i64) -> i64 =
+    if pos >= text.len() { text.len() }
+    else if text.byte_at(pos) == char_newline() { pos }
+    else if is_escaped_newline(text, pos) { pos }
+    else { find_line_end(text, pos + 1) };
+
+// Get line skip size (1 for \n, 2 for escaped \n)
+fn line_skip_size(text: String, pos: i64) -> i64 =
+    if pos >= text.len() { 0 }
+    else if is_escaped_newline(text, pos) { 2 }
+    else { 1 };
+
+// Count total lines in text
+fn count_lines_iter(text: String, pos: i64, count: i64) -> i64 =
+    if pos >= text.len() { count }
+    else {
+        let end = find_line_end(text, pos);
+        let skip = line_skip_size(text, end);
+        count_lines_iter(text, end + skip, count + 1)
+    };
+
+fn count_lines(text: String) -> i64
+  post ret >= 0
+= if text.len() == 0 { 0 } else { count_lines_iter(text, 0, 0) };
+
+// ============================================================================
+// Output Formatting
+// ============================================================================
+
+fn digit_char(d: i64) -> String =
+    if d == 0 { "0" } else if d == 1 { "1" } else if d == 2 { "2" }
+    else if d == 3 { "3" } else if d == 4 { "4" } else if d == 5 { "5" }
+    else if d == 6 { "6" } else if d == 7 { "7" } else if d == 8 { "8" }
+    else { "9" };
+
+fn int_to_string(n: i64) -> String =
+    if n < 0 { "-" + int_to_string(0 - n) }
+    else if n < 10 { digit_char(n) }
+    else { int_to_string(n / 10) + digit_char(n - (n / 10) * 10) };
+
+// Print line with optional line number
+fn print_line(line: String, line_num: i64, show_num: bool) -> i64 = {
+    if show_num {
+        let num = print_str(int_to_string(line_num));
+        let colon = print_str(": ");
+        0
+    } else { 0 };
+    let out = print_str_nl(line);
+    1
+};
+
+// ============================================================================
+// Grep Core Logic
+// ============================================================================
+
+// Process single line
+fn process_line(line: String, pattern: String, invert: bool, case_i: bool) -> bool =
+    let matches = contains(line, pattern, case_i);
+    if invert { not matches } else { matches };
+
+// Grep with line processing (tail-recursive)
+fn grep_lines_iter(text: String, pos: i64, pattern: String,
+                   line_num: i64, show_nums: bool, invert: bool,
+                   case_i: bool, match_count: i64) -> i64 =
+    if pos >= text.len() { match_count }
+    else {
+        let line_end = find_line_end(text, pos);
+        let line = text.slice(pos, line_end);
+        let matches = process_line(line, pattern, invert, case_i);
+        let new_count = if matches {
+            let p = print_line(line, line_num, show_nums);
+            match_count + 1
+        } else { match_count };
+        let skip = line_skip_size(text, line_end);
+        grep_lines_iter(text, line_end + skip, pattern, line_num + 1,
+                        show_nums, invert, case_i, new_count)
+    };
+
+fn grep_lines(text: String, pattern: String, show_nums: bool,
+              invert: bool, case_i: bool) -> i64
+  pre pattern.len() > 0
+  post ret >= 0
+= grep_lines_iter(text, 0, pattern, 1, show_nums, invert, case_i, 0);
+
+// Count-only grep mode
+fn grep_count(text: String, pattern: String, invert: bool, case_i: bool) -> i64
+  pre pattern.len() > 0
+  post ret >= 0
+= {
+    let total_lines = count_lines(text);
+    let matching = grep_lines_iter(text, 0, pattern, 1, false, invert, case_i, 0);
+    // Return count (we printed matches already, just return the count)
+    matching
+};
+
+// ============================================================================
+// CLI Argument Parsing
+// ============================================================================
+
+fn is_flag_arg(s: String) -> bool =
+    s.len() > 0 and s.byte_at(0) == 45;
+
+fn has_flag_at(flag: String, idx: i64) -> bool =
+    if idx >= arg_count() { false }
+    else if get_arg(idx) == flag { true }
+    else { has_flag_at(flag, idx + 1) };
+
+fn has_flag(flag: String) -> bool = has_flag_at(flag, 1);
+
+fn get_positional_rec(n: i64, idx: i64, current: i64) -> String =
+    if idx >= arg_count() { "" }
+    else {
+        let arg = get_arg(idx);
+        if is_flag_arg(arg) { get_positional_rec(n, idx + 1, current) }
+        else if current == n { arg }
+        else { get_positional_rec(n, idx + 1, current + 1) }
+    };
+
+fn get_positional(n: i64) -> String
+  pre n >= 0
+= get_positional_rec(n, 1, 0);
+
+fn count_positional_rec(idx: i64, count: i64) -> i64 =
+    if idx >= arg_count() { count }
+    else {
+        let arg = get_arg(idx);
+        if is_flag_arg(arg) { count_positional_rec(idx + 1, count) }
+        else { count_positional_rec(idx + 1, count + 1) }
+    };
+
+fn count_positional() -> i64
+  post ret >= 0
+= count_positional_rec(1, 0);
+
+// ============================================================================
+// Help and Usage
+// ============================================================================
+
+fn print_str_nl(s: String) -> i64 =
+    let x = print_str(s);
+    let y = print_str("
+");
+    0;
+
+fn show_usage() -> i64 = {
+    let h1 = print_str_nl("bmb-grep: Pattern matching tool");
+    let h2 = print_str_nl("Usage: bmb run main.bmb -- <pattern> <text> [options]");
+    let h3 = print_str_nl("");
+    let h4 = print_str_nl("Options:");
+    let h5 = print_str_nl("  -n    Show line numbers");
+    let h6 = print_str_nl("  -c    Count matches only");
+    let h7 = print_str_nl("  -v    Invert match (show non-matching lines)");
+    let h8 = print_str_nl("  -i    Case insensitive matching");
+    let h9 = print_str_nl("");
+    let h10 = print_str_nl("Examples:");
+    let h11 = print_str_nl("  bmb run main.bmb -- error text_with_error");
+    let h12 = print_str_nl("  bmb run main.bmb -- test TESTCASE -i");
+    0
+};
+
+// ============================================================================
+// Main Entry Point
+// ============================================================================
+
+fn main() -> i64 = {
+    let argc = arg_count();
+    let pos_count = count_positional();
+
+    if pos_count < 2 or has_flag("-h") or has_flag("--help") {
+        show_usage()
+    }
+    else {
+        let pattern = get_positional(0);
+        let text = get_positional(1);
+        let show_nums = has_flag("-n");
+        let count_only = has_flag("-c");
+        let invert = has_flag("-v");
+        let case_i = has_flag("-i");
+
+        if pattern.len() == 0 {
+            let err = print_str_nl("Error: Pattern cannot be empty");
+            0 - 1
+        }
+        else if count_only {
+            let count = grep_count(text, pattern, invert, case_i);
+            let out = print_str_nl("Matches: " + int_to_string(count));
+            count
+        }
+        else {
+            grep_lines(text, pattern, show_nums, invert, case_i)
+        }
+    }
+};
+
+// ============================================================================
+// Tests
+// ============================================================================
+
+fn test_pattern_match() -> i64 = {
+    let t1 = if contains("hello world", "world", false) { 1 } else { 0 };
+    let t2 = if contains("HELLO", "hello", true) { 1 } else { 0 };
+    let t3 = if not contains("foo", "bar", false) { 1 } else { 0 };
+    let t4 = if count_matches("aaa", "a", false) == 3 { 1 } else { 0 };
+
+    if t1 + t2 + t3 + t4 == 4 { let ok = println(777); 1 } else { 0 }
+};
+
+fn test_line_processing() -> i64 = {
+    // Test pattern matching
+    let t1 = if process_line("hello world", "world", false, false) { 1 } else { 0 };
+    let t2 = if not process_line("hello world", "world", true, false) { 1 } else { 0 };
+    let t3 = if find_newline("abc", 0) == 3 { 1 } else { 0 };
+
+    if t1 + t2 + t3 == 3 { let ok = println(888); 1 } else { 0 }
+};
+
+fn test_cli() -> i64 = {
+    let t1 = if is_flag_arg("-n") { 1 } else { 0 };
+    let t2 = if not is_flag_arg("text") { 1 } else { 0 };
+
+    if t1 + t2 == 2 { let ok = println(999); 1 } else { 0 }
+};
+
+fn run_tests() -> i64 = {
+    let t1 = test_pattern_match();
+    let t2 = test_line_processing();
+    let t3 = test_cli();
+    t1 + t2 + t3
+};

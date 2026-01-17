@@ -1,264 +1,248 @@
--- BMB Standard Library: parse
--- Position-based parsing utilities with contracts
---
--- AI-Native Design:
--- - All functions operate on position within string
--- - Contracts define exact behavior and bounds
--- - Pure functional style with no side effects
---
--- Character codes (ASCII):
--- - Space: 32, Tab: 9, Newline: 10, CR: 13
--- - Comma: 44, Colon: 58, Pipe: 124
--- - Paren: 40/41, Bracket: 91/93, Brace: 123/125
+// BMB Standard Library: parse
+// Position-based parsing utilities with contracts
+//
+// AI-Native Design:
+// - All functions operate on position within string
+// - Contracts define exact behavior and bounds
+// - Pure functional style with no side effects
+//
+// Character codes (ASCII):
+// - Space: 32, Tab: 9, Newline: 10, CR: 13
+// - Comma: 44, Colon: 58, Pipe: 124
+// - Paren: 40/41, Bracket: 91/93, Brace: 123/125
 
 use string::char_is_whitespace;
 use string::char_is_digit;
 use string::char_to_string;
 
--- ============================================
--- Whitespace Handling
--- ============================================
+// ============================================
+// Whitespace Handling
+// ============================================
 
--- Skip whitespace characters starting from position
--- Returns first non-whitespace position or string length
+// Skip whitespace characters starting from position
+// Returns first non-whitespace position or string length
 pub fn skip_ws(s: String, pos: i64) -> i64
   pre pos >= 0
-  post ret >= pos
-  post ret <= s.len()
-= if pos >= s.len() then pos
-  else if s.char_at(pos) == 32 then skip_ws(s, pos + 1)
-  else pos;
+  post ret >= pos and ret <= s.len()
+= if pos >= s.len() { pos } else if s.char_at(pos) == 32 { skip_ws(s, pos + 1) } else { pos };
 
--- Skip all whitespace characters (space, tab, newline, CR)
+// Skip all whitespace characters (space, tab, newline, CR)
 pub fn skip_all_ws(s: String, pos: i64) -> i64
   pre pos >= 0
-  post ret >= pos
-  post ret <= s.len()
-= if pos >= s.len() then pos
-  else if char_is_whitespace(s.char_at(pos)) then skip_all_ws(s, pos + 1)
-  else pos;
+  post ret >= pos and ret <= s.len()
+= if pos >= s.len() { pos } else if char_is_whitespace(s.char_at(pos)) { skip_all_ws(s, pos + 1) } else { pos };
 
--- ============================================
--- Character Search
--- ============================================
+// ============================================
+// Character Search
+// ============================================
 
--- Find first occurrence of character starting from position
--- Returns position of character or string length if not found
+// Find first occurrence of character starting from position
+// Returns position of character or string length if not found
 pub fn find_char(s: String, c: i64, pos: i64) -> i64
   pre pos >= 0
-  post ret >= pos
-  post ret <= s.len()
-  post ret < s.len() => s.char_at(ret) == c
-= if pos >= s.len() then pos
-  else if s.char_at(pos) == c then pos
-  else find_char(s, c, pos + 1);
+  post ret >= pos and ret <= s.len()
+= if pos >= s.len() { pos } else if s.char_at(pos) == c { pos } else { find_char(s, c, pos + 1) };
 
--- Find pipe character (|) from position
+// Find pipe character (|) from position
 pub fn find_pipe(s: String, pos: i64) -> i64
   pre pos >= 0
-  post ret >= pos
-  post ret <= s.len()
+  post ret >= pos and ret <= s.len()
 = find_char(s, 124, pos);
 
--- Find comma (,) from position
+// Find comma (,) from position
 pub fn find_comma(s: String, pos: i64) -> i64
   pre pos >= 0
-  post ret >= pos
-  post ret <= s.len()
+  post ret >= pos and ret <= s.len()
 = find_char(s, 44, pos);
 
--- Find colon (:) from position
+// Find colon (:) from position
 pub fn find_colon(s: String, pos: i64) -> i64
   pre pos >= 0
-  post ret >= pos
-  post ret <= s.len()
+  post ret >= pos and ret <= s.len()
 = find_char(s, 58, pos);
 
--- Find open paren (() from position
+// Find open paren (() from position
 pub fn find_lparen(s: String, pos: i64) -> i64
   pre pos >= 0
-  post ret >= pos
-  post ret <= s.len()
+  post ret >= pos and ret <= s.len()
 = find_char(s, 40, pos);
 
--- Find close paren ()) from position
+// Find close paren ()) from position
 pub fn find_rparen(s: String, pos: i64) -> i64
   pre pos >= 0
-  post ret >= pos
-  post ret <= s.len()
+  post ret >= pos and ret <= s.len()
 = find_char(s, 41, pos);
 
--- ============================================
--- Prefix Matching
--- ============================================
+// ============================================
+// Prefix Matching
+// ============================================
 
--- Check if string has prefix starting at position
+// Check if string has prefix starting at position
 pub fn starts_with_at(s: String, prefix: String, pos: i64) -> bool
   pre pos >= 0
 = starts_with_at_impl(s, prefix, pos, 0);
 
 fn starts_with_at_impl(s: String, prefix: String, pos: i64, i: i64) -> bool =
-    if i >= prefix.len() then true
-    else if pos + i >= s.len() then false
-    else if s.char_at(pos + i) != prefix.char_at(i) then false
-    else starts_with_at_impl(s, prefix, pos, i + 1);
+    if i >= prefix.len() { true }
+    else if pos + i >= s.len() { false }
+    else if s.char_at(pos + i) != prefix.char_at(i) { false }
+    else { starts_with_at_impl(s, prefix, pos, i + 1) };
 
--- ============================================
--- Token Reading
--- ============================================
+// ============================================
+// Token Reading
+// ============================================
 
--- Read characters until whitespace or delimiter
--- Delimiters: space, comma, paren, pipe
+// Read characters until whitespace or delimiter
+// Delimiters: space, comma, paren, pipe
 pub fn read_until_ws(s: String, pos: i64) -> String
   pre pos >= 0
 = read_until_ws_acc(s, pos, "");
 
 fn read_until_ws_acc(s: String, pos: i64, acc: String) -> String =
-    if pos >= s.len() then acc
-    else let c = s.char_at(pos);
-        if c == 32 or c == 44 or c == 40 or c == 41 or c == 124 then acc
-        else read_until_ws_acc(s, pos + 1, acc + char_to_string(c));
+    if pos >= s.len() { acc }
+    else {
+        let c = s.char_at(pos);
+        if c == 32 or c == 44 or c == 40 or c == 41 or c == 124 { acc }
+        else { read_until_ws_acc(s, pos + 1, acc + char_to_string(c)) }
+    };
 
--- Read characters until specific character
+// Read characters until specific character
 pub fn read_until_char(s: String, pos: i64, c: i64) -> String
   pre pos >= 0
 = read_until_char_acc(s, pos, c, "");
 
 fn read_until_char_acc(s: String, pos: i64, c: i64, acc: String) -> String =
-    if pos >= s.len() then acc
-    else if s.char_at(pos) == c then acc
-    else read_until_char_acc(s, pos + 1, c, acc + char_to_string(s.char_at(pos)));
+    if pos >= s.len() { acc }
+    else if s.char_at(pos) == c { acc }
+    else { read_until_char_acc(s, pos + 1, c, acc + char_to_string(s.char_at(pos))) };
 
--- Read identifier (alphanumeric + underscore)
+// Read identifier (alphanumeric + underscore)
 pub fn read_ident(s: String, pos: i64) -> String
   pre pos >= 0
 = read_ident_acc(s, pos, "");
 
 fn read_ident_acc(s: String, pos: i64, acc: String) -> String =
-    if pos >= s.len() then acc
-    else let c = s.char_at(pos);
-        if is_ident_char(c) then read_ident_acc(s, pos + 1, acc + char_to_string(c))
-        else acc;
+    if pos >= s.len() { acc }
+    else {
+        let c = s.char_at(pos);
+        if is_ident_char(c) { read_ident_acc(s, pos + 1, acc + char_to_string(c)) }
+        else { acc }
+    };
 
 fn is_ident_char(c: i64) -> bool =
-    (c >= 65 and c <= 90) or   -- A-Z
-    (c >= 97 and c <= 122) or  -- a-z
-    (c >= 48 and c <= 57) or   -- 0-9
-    c == 95;                    -- _
+    (c >= 65 and c <= 90) or   // A-Z
+    (c >= 97 and c <= 122) or  // a-z
+    (c >= 48 and c <= 57) or   // 0-9
+    c == 95;                    // _
 
--- ============================================
--- Integer Parsing
--- ============================================
+// ============================================
+// Integer Parsing
+// ============================================
 
--- Parse integer starting from position
--- Returns parsed value (0 on empty/invalid)
+// Parse integer starting from position
+// Returns parsed value (0 on empty/invalid)
 pub fn parse_int_at(s: String, pos: i64) -> i64
   pre pos >= 0
   post ret >= 0
 = parse_int_at_acc(s, pos, 0);
 
 fn parse_int_at_acc(s: String, pos: i64, acc: i64) -> i64 =
-    if pos >= s.len() then acc
-    else let c = s.char_at(pos);
-        if char_is_digit(c) then parse_int_at_acc(s, pos + 1, acc * 10 + (c - 48))
-        else acc;
+    if pos >= s.len() { acc }
+    else {
+        let c = s.char_at(pos);
+        if char_is_digit(c) { parse_int_at_acc(s, pos + 1, acc * 10 + (c - 48)) }
+        else { acc }
+    };
 
--- ============================================
--- String Manipulation
--- ============================================
+// ============================================
+// String Manipulation
+// ============================================
 
--- Remove trailing colon from string
+// Remove trailing colon from string
 pub fn strip_trailing_colon(s: String) -> String
-  post s.len() == 0 => ret == ""
-  post s.len() > 0 and s.char_at(s.len() - 1) == 58 => ret.len() == s.len() - 1
-  post s.len() > 0 and s.char_at(s.len() - 1) != 58 => ret == s
-= if s.len() == 0 then ""
-  else if s.char_at(s.len() - 1) == 58 then s.slice(0, s.len() - 1)
-  else s;
+= if s.len() == 0 { "" }
+  else if s.char_at(s.len() - 1) == 58 { s.slice(0, s.len() - 1) }
+  else { s };
 
--- Check if string has trailing colon
+// Check if string has trailing colon
 pub fn has_trailing_colon(s: String) -> bool
-  post s.len() == 0 => ret == false
-= if s.len() == 0 then false
-  else s.char_at(s.len() - 1) == 58;
+= if s.len() == 0 { false } else { s.char_at(s.len() - 1) == 58 };
 
--- Check if string contains equals sign
+// Check if string contains equals sign
 pub fn has_equals(s: String) -> bool =
     has_equals_from(s, 0);
 
 fn has_equals_from(s: String, pos: i64) -> bool =
-    if pos >= s.len() then false
-    else if s.char_at(pos) == 61 then true
-    else has_equals_from(s, pos + 1);
+    if pos >= s.len() { false }
+    else if s.char_at(pos) == 61 { true }
+    else { has_equals_from(s, pos + 1) };
 
--- ============================================
--- Field Extraction (pipe-delimited)
--- ============================================
+// ============================================
+// Field Extraction (pipe-delimited)
+// ============================================
 
--- Extract field from pipe-separated string by index
--- "a|b|c" with index 1 returns "b"
+// Extract field from pipe-separated string by index
+// "a|b|c" with index 1 returns "b"
 pub fn extract_field(s: String, index: i64) -> String
   pre index >= 0
 = extract_field_acc(s, 0, index, 0, "");
 
 fn extract_field_acc(s: String, pos: i64, target: i64, current: i64, acc: String) -> String =
-    if pos >= s.len() then
-        if current == target then acc else ""
-    else if s.char_at(pos) == 124 then
-        if current == target then acc
-        else extract_field_acc(s, pos + 1, target, current + 1, "")
-    else
-        if current == target then
-            extract_field_acc(s, pos + 1, target, current, acc + char_to_string(s.char_at(pos)))
-        else
-            extract_field_acc(s, pos + 1, target, current, acc);
+    if pos >= s.len() {
+        if current == target { acc } else { "" }
+    }
+    else if s.char_at(pos) == 124 {
+        if current == target { acc }
+        else { extract_field_acc(s, pos + 1, target, current + 1, "") }
+    }
+    else if current == target {
+        extract_field_acc(s, pos + 1, target, current, acc + char_to_string(s.char_at(pos)))
+    }
+    else { extract_field_acc(s, pos + 1, target, current, acc) };
 
--- Count fields in pipe-separated string
+// Count fields in pipe-separated string
 pub fn count_fields(s: String) -> i64
   post ret >= 1
-= if s.len() == 0 then 1
-  else count_fields_acc(s, 0, 1);
+= if s.len() == 0 { 1 } else { count_fields_acc(s, 0, 1) };
 
 fn count_fields_acc(s: String, pos: i64, count: i64) -> i64 =
-    if pos >= s.len() then count
-    else if s.char_at(pos) == 124 then count_fields_acc(s, pos + 1, count + 1)
-    else count_fields_acc(s, pos + 1, count);
+    if pos >= s.len() { count }
+    else if s.char_at(pos) == 124 { count_fields_acc(s, pos + 1, count + 1) }
+    else { count_fields_acc(s, pos + 1, count) };
 
--- ============================================
--- Arrow Finding (for function signatures)
--- ============================================
+// ============================================
+// Arrow Finding (for function signatures)
+// ============================================
 
--- Find arrow (->) in string from position
+// Find arrow (->) in string from position
 pub fn find_arrow(s: String, pos: i64) -> i64
   pre pos >= 0
-  post ret >= pos
-  post ret <= s.len()
-= if pos + 1 >= s.len() then s.len()
-  else if s.char_at(pos) == 45 and s.char_at(pos + 1) == 62 then pos
-  else find_arrow(s, pos + 1);
+  post ret >= pos and ret <= s.len()
+= if pos + 1 >= s.len() { s.len() }
+  else if s.char_at(pos) == 45 and s.char_at(pos + 1) == 62 { pos }
+  else { find_arrow(s, pos + 1) };
 
--- ============================================
--- Double Pipe Finding (for function separation)
--- ============================================
+// ============================================
+// Double Pipe Finding (for function separation)
+// ============================================
 
--- Find double pipe (||) in string from position
+// Find double pipe (||) in string from position
 pub fn find_double_pipe(s: String, pos: i64) -> i64
   pre pos >= 0
-  post ret >= pos
-  post ret <= s.len()
-= if pos + 1 >= s.len() then s.len()
-  else if s.char_at(pos) == 124 and s.char_at(pos + 1) == 124 then pos
-  else find_double_pipe(s, pos + 1);
+  post ret >= pos and ret <= s.len()
+= if pos + 1 >= s.len() { s.len() }
+  else if s.char_at(pos) == 124 and s.char_at(pos + 1) == 124 { pos }
+  else { find_double_pipe(s, pos + 1) };
 
--- ============================================
--- Pattern Matching
--- ============================================
+// ============================================
+// Pattern Matching
+// ============================================
 
--- Check if string contains pattern anywhere
+// Check if string contains pattern anywhere
 pub fn has_pattern(s: String, pat: String) -> bool =
     has_pattern_from(s, pat, 0);
 
 fn has_pattern_from(s: String, pat: String, pos: i64) -> bool =
-    if pos + pat.len() > s.len() then false
-    else if starts_with_at(s, pat, pos) then true
-    else has_pattern_from(s, pat, pos + 1);
+    if pos + pat.len() > s.len() { false }
+    else if starts_with_at(s, pat, pos) { true }
+    else { has_pattern_from(s, pat, pos + 1) };

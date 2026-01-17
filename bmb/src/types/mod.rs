@@ -1,10 +1,74 @@
 //! Type checking
 
+pub mod exhaustiveness;
+
 use std::collections::HashMap;
 
 use crate::ast::*;
-use crate::error::{CompileError, Result};
-use crate::resolver::Module;
+use crate::error::{CompileError, CompileWarning, Result};
+use crate::resolver::{Module, ResolvedImports};
+
+// ============================================================================
+// v0.60: Levenshtein Distance for Typo Suggestions
+// ============================================================================
+
+/// Calculate Levenshtein edit distance between two strings
+/// Used for suggesting similar names when a typo is detected
+fn levenshtein_distance(a: &str, b: &str) -> usize {
+    let a_chars: Vec<char> = a.chars().collect();
+    let b_chars: Vec<char> = b.chars().collect();
+    let m = a_chars.len();
+    let n = b_chars.len();
+
+    if m == 0 {
+        return n;
+    }
+    if n == 0 {
+        return m;
+    }
+
+    // Use two rows instead of full matrix for O(min(m,n)) space
+    let mut prev: Vec<usize> = (0..=n).collect();
+    let mut curr: Vec<usize> = vec![0; n + 1];
+
+    for i in 1..=m {
+        curr[0] = i;
+        for j in 1..=n {
+            let cost = if a_chars[i - 1] == b_chars[j - 1] { 0 } else { 1 };
+            curr[j] = (prev[j] + 1) // deletion
+                .min(curr[j - 1] + 1) // insertion
+                .min(prev[j - 1] + cost); // substitution
+        }
+        std::mem::swap(&mut prev, &mut curr);
+    }
+
+    prev[n]
+}
+
+/// Find the most similar name from a list of candidates
+/// Returns Some(suggestion) if a close match is found (distance <= threshold)
+fn find_similar_name<'a>(name: &str, candidates: &[&'a str], threshold: usize) -> Option<&'a str> {
+    let mut best_match: Option<&str> = None;
+    let mut best_distance = usize::MAX;
+
+    for &candidate in candidates {
+        let distance = levenshtein_distance(name, candidate);
+        if distance < best_distance && distance <= threshold {
+            best_distance = distance;
+            best_match = Some(candidate);
+        }
+    }
+
+    best_match
+}
+
+/// Format a suggestion hint for an unknown name
+fn format_suggestion_hint(suggestion: Option<&str>) -> String {
+    match suggestion {
+        Some(name) => format!("\n  hint: did you mean `{}`?", name),
+        None => String::new(),
+    }
+}
 
 /// Trait method signature info (v0.20.1)
 #[derive(Debug, Clone)]
@@ -40,6 +104,131 @@ pub struct ImplInfo {
     pub methods: HashMap<String, (Vec<Type>, Type)>,
 }
 
+// ============================================================================
+// v0.48: Binding Usage Tracking
+// ============================================================================
+
+/// Tracks a single variable binding for unused detection
+#[derive(Debug, Clone)]
+struct BindingInfo {
+    /// Location where the variable was bound
+    span: Span,
+    /// Whether this binding has been used
+    used: bool,
+    /// v0.52: Whether this is a mutable binding (var)
+    is_mutable: bool,
+    /// v0.52: Whether this binding has been mutated (assigned to)
+    was_mutated: bool,
+}
+
+/// Tracks variable bindings and usage for unused warning detection (v0.48)
+/// P0 Correctness: Detects unused variables at compile-time
+#[derive(Debug, Default)]
+struct BindingTracker {
+    /// Stack of scopes, each containing bound variables
+    /// Outer scope = index 0, inner scopes pushed on top
+    scopes: Vec<HashMap<String, BindingInfo>>,
+}
+
+impl BindingTracker {
+    fn new() -> Self {
+        Self {
+            scopes: vec![HashMap::new()], // Start with global scope
+        }
+    }
+
+    /// Enter a new scope (for blocks, match arms, closures)
+    fn push_scope(&mut self) {
+        self.scopes.push(HashMap::new());
+    }
+
+    /// Exit current scope and return unused bindings and mutable-but-never-mutated bindings
+    /// Returns: (unused_bindings, unused_mutable_bindings)
+    fn pop_scope(&mut self) -> (Vec<(String, Span)>, Vec<(String, Span)>) {
+        let scope = self.scopes.pop().unwrap_or_default();
+        let mut unused = Vec::new();
+        let mut unused_mut = Vec::new();
+
+        for (name, info) in scope {
+            // Skip underscore-prefixed names
+            if name.starts_with('_') {
+                continue;
+            }
+
+            // Check for unused binding
+            if !info.used {
+                unused.push((name.clone(), info.span));
+            }
+
+            // v0.52: Check for mutable but never mutated
+            if info.is_mutable && !info.was_mutated {
+                unused_mut.push((name, info.span));
+            }
+        }
+
+        (unused, unused_mut)
+    }
+
+    /// Bind a variable in the current scope
+    fn bind(&mut self, name: String, span: Span) {
+        self.bind_with_mutability(name, span, false);
+    }
+
+    /// v0.52: Bind a variable with explicit mutability flag
+    fn bind_with_mutability(&mut self, name: String, span: Span, is_mutable: bool) {
+        if let Some(scope) = self.scopes.last_mut() {
+            scope.insert(name, BindingInfo {
+                span,
+                used: false,
+                is_mutable,
+                was_mutated: false,
+            });
+        }
+    }
+
+    /// v0.79: Check if a name shadows a binding in an outer scope
+    /// Returns the span of the original binding if it exists in an outer scope
+    fn find_shadow(&self, name: &str) -> Option<Span> {
+        // Skip if underscore-prefixed (intentionally ignored)
+        if name.starts_with('_') {
+            return None;
+        }
+        // Search all scopes except the current one (from second-to-last to first)
+        for scope in self.scopes.iter().rev().skip(1) {
+            if let Some(info) = scope.get(name) {
+                return Some(info.span);
+            }
+        }
+        None
+    }
+
+    /// Mark a variable as used (searches all scopes from innermost)
+    fn mark_used(&mut self, name: &str) {
+        for scope in self.scopes.iter_mut().rev() {
+            if let Some(info) = scope.get_mut(name) {
+                info.used = true;
+                return;
+            }
+        }
+    }
+
+    /// v0.52: Mark a variable as mutated (assigned to after declaration)
+    fn mark_mutated(&mut self, name: &str) {
+        for scope in self.scopes.iter_mut().rev() {
+            if let Some(info) = scope.get_mut(name) {
+                info.was_mutated = true;
+                return;
+            }
+        }
+    }
+
+    /// Check if a variable exists in any scope
+    #[allow(dead_code)]
+    fn is_bound(&self, name: &str) -> bool {
+        self.scopes.iter().rev().any(|s| s.contains_key(name))
+    }
+}
+
 /// Type checker
 pub struct TypeChecker {
     /// Variable environment
@@ -70,6 +259,46 @@ pub struct TypeChecker {
     /// Impl blocks (v0.20.1)
     /// (type_name, trait_name) -> ImplInfo
     impls: HashMap<(String, String), ImplInfo>,
+    /// Collected warnings during type checking (v0.47)
+    /// P0 Correctness: Non-fatal diagnostics for potential issues
+    warnings: Vec<CompileWarning>,
+    /// Variable binding tracker for unused detection (v0.48)
+    /// P0 Correctness: Detects unused variables at compile-time
+    binding_tracker: BindingTracker,
+    /// v0.74: Set of imported names for tracking usage
+    /// Contains names from `use` statements that may or may not be used
+    imported_names: std::collections::HashSet<String>,
+    /// v0.74: Set of names actually used during type checking
+    /// Used to determine which imports are unused
+    used_names: std::collections::HashSet<String>,
+    /// v0.76: Private functions defined in the program (name -> span)
+    /// Used for unused function detection
+    private_functions: HashMap<String, Span>,
+    /// v0.76: Functions that were called during type checking
+    /// Used for unused function detection
+    called_functions: std::collections::HashSet<String>,
+    /// v0.77: Private structs defined in the program (name -> span)
+    /// Used for unused type detection
+    private_structs: HashMap<String, Span>,
+    /// v0.78: Private enums defined in the program (name -> span)
+    /// Used for unused enum detection
+    private_enums: HashMap<String, Span>,
+    /// v0.80: Private traits defined in the program (name -> span)
+    /// Used for unused trait detection
+    private_traits: HashMap<String, Span>,
+    /// v0.80: Traits that have been implemented
+    /// Used for unused trait detection
+    implemented_traits: std::collections::HashSet<String>,
+    /// v0.84: Functions with contracts for semantic duplication detection
+    /// Key: (signature_hash, postcondition_hash) -> (first_function_name, span)
+    /// Used to detect functions with equivalent contracts
+    contract_signatures: HashMap<(String, String), (String, Span)>,
+    /// v0.50.6: Type alias definitions
+    /// name -> (type_params, target_type, refinement_expr, span)
+    type_aliases: HashMap<String, (Vec<TypeParam>, Type, Option<Expr>, Span)>,
+    /// v0.50.11: Function definition spans for duplicate detection
+    /// name -> span of first definition
+    function_spans: HashMap<String, Span>,
 }
 
 impl TypeChecker {
@@ -83,6 +312,8 @@ impl TypeChecker {
         functions.insert("println".to_string(), (vec![Type::I64], Type::Unit));
         // v0.31.21: print_str(s: String) -> i64 (for gotgan string output)
         functions.insert("print_str".to_string(), (vec![Type::String], Type::I64));
+        // v0.100: println_str(s: String) -> Unit
+        functions.insert("println_str".to_string(), (vec![Type::String], Type::Unit));
         // assert(cond) -> Unit
         functions.insert("assert".to_string(), (vec![Type::Bool], Type::Unit));
         // read_int() -> i64
@@ -134,11 +365,21 @@ impl TypeChecker {
         // sb_clear(id: i64) -> i64 (same ID)
         functions.insert("sb_clear".to_string(), (vec![Type::I64], Type::I64));
 
-        // v0.31.21: Character conversion builtins for gotgan string handling
-        // chr(code: i64) -> String (ASCII code to single-char string)
+        // v0.31.21: Character conversion builtins
+        // v0.50.18: chr returns String to match runtime behavior (C runtime returns char*)
+        // chr(code: i64) -> String (creates single-char string from code point)
         functions.insert("chr".to_string(), (vec![Type::I64], Type::String));
-        // ord(s: String) -> i64 (first char to ASCII code)
-        functions.insert("ord".to_string(), (vec![Type::String], Type::I64));
+        // ord(c: char) -> i64 (character to Unicode codepoint)
+        functions.insert("ord".to_string(), (vec![Type::Char], Type::I64));
+
+        // v0.66: String-char interop utilities
+        // char_at(s: String, idx: i64) -> char (get character at index, Unicode-aware)
+        functions.insert("char_at".to_string(), (vec![Type::String, Type::I64], Type::Char));
+        // char_to_string(c: char) -> String (convert character to single-char string)
+        functions.insert("char_to_string".to_string(), (vec![Type::Char], Type::String));
+        // str_len(s: String) -> i64 (Unicode character count, O(n))
+        // Note: s.len() returns byte length (O(1)), str_len returns char count
+        functions.insert("str_len".to_string(), (vec![Type::String], Type::I64));
 
         // v0.34: Math intrinsics for Phase 34.4 Benchmark Gate (n_body, mandelbrot_fp)
         // sqrt(x: f64) -> f64 (square root)
@@ -190,6 +431,42 @@ impl TypeChecker {
         functions.insert("vec_cap".to_string(), (vec![Type::I64], Type::I64));
         // vec_free(vec: i64) -> Unit (deallocate vector and its data)
         functions.insert("vec_free".to_string(), (vec![Type::I64], Type::Unit));
+        // vec_clear(vec: i64) -> Unit (set length to 0 without deallocating)
+        functions.insert("vec_clear".to_string(), (vec![Type::I64], Type::Unit));
+
+        // v0.34.24: Hash builtins
+        // hash_i64(x: i64) -> i64 (hash function for integers)
+        functions.insert("hash_i64".to_string(), (vec![Type::I64], Type::I64));
+
+        // v0.34.24: HashMap<i64, i64> builtins (RFC-0007)
+        // hashmap_new() -> i64 (create empty hashmap)
+        functions.insert("hashmap_new".to_string(), (vec![], Type::I64));
+        // hashmap_insert(map: i64, key: i64, value: i64) -> i64 (returns old value or 0)
+        functions.insert("hashmap_insert".to_string(), (vec![Type::I64, Type::I64, Type::I64], Type::I64));
+        // hashmap_get(map: i64, key: i64) -> i64 (returns value or i64::MIN if not found)
+        functions.insert("hashmap_get".to_string(), (vec![Type::I64, Type::I64], Type::I64));
+        // hashmap_contains(map: i64, key: i64) -> i64 (returns 1 if exists, 0 otherwise)
+        functions.insert("hashmap_contains".to_string(), (vec![Type::I64, Type::I64], Type::I64));
+        // hashmap_remove(map: i64, key: i64) -> i64 (returns removed value or i64::MIN)
+        functions.insert("hashmap_remove".to_string(), (vec![Type::I64, Type::I64], Type::I64));
+        // hashmap_len(map: i64) -> i64 (returns entry count)
+        functions.insert("hashmap_len".to_string(), (vec![Type::I64], Type::I64));
+        // hashmap_free(map: i64) -> Unit (deallocate hashmap)
+        functions.insert("hashmap_free".to_string(), (vec![Type::I64], Type::Unit));
+
+        // v0.34.24: HashSet<i64> builtins (thin wrapper around HashMap)
+        // hashset_new() -> i64 (create empty hashset)
+        functions.insert("hashset_new".to_string(), (vec![], Type::I64));
+        // hashset_insert(set: i64, value: i64) -> i64 (returns 1 if new, 0 if existed)
+        functions.insert("hashset_insert".to_string(), (vec![Type::I64, Type::I64], Type::I64));
+        // hashset_contains(set: i64, value: i64) -> i64 (returns 1 if exists, 0 otherwise)
+        functions.insert("hashset_contains".to_string(), (vec![Type::I64, Type::I64], Type::I64));
+        // hashset_remove(set: i64, value: i64) -> i64 (returns 1 if removed, 0 if not found)
+        functions.insert("hashset_remove".to_string(), (vec![Type::I64, Type::I64], Type::I64));
+        // hashset_len(set: i64) -> i64 (returns entry count)
+        functions.insert("hashset_len".to_string(), (vec![Type::I64], Type::I64));
+        // hashset_free(set: i64) -> Unit (deallocate hashset)
+        functions.insert("hashset_free".to_string(), (vec![Type::I64], Type::Unit));
 
         Self {
             env: HashMap::new(),
@@ -203,6 +480,19 @@ impl TypeChecker {
             type_param_env: HashMap::new(),
             traits: HashMap::new(),
             impls: HashMap::new(),
+            warnings: Vec::new(), // v0.47: Warning collection
+            binding_tracker: BindingTracker::new(), // v0.48: Unused binding detection
+            imported_names: std::collections::HashSet::new(), // v0.74: Import tracking
+            used_names: std::collections::HashSet::new(), // v0.74: Used name tracking
+            private_functions: HashMap::new(), // v0.76: Private function tracking
+            called_functions: std::collections::HashSet::new(), // v0.76: Called function tracking
+            private_structs: HashMap::new(), // v0.77: Private struct tracking
+            private_enums: HashMap::new(), // v0.78: Private enum tracking
+            private_traits: HashMap::new(), // v0.80: Private trait tracking
+            implemented_traits: std::collections::HashSet::new(), // v0.80: Implemented trait tracking
+            contract_signatures: HashMap::new(), // v0.84: Contract signature tracking
+            type_aliases: HashMap::new(), // v0.50.6: Type alias definitions
+            function_spans: HashMap::new(), // v0.50.11: Function span tracking for duplicate detection
         }
     }
 
@@ -266,6 +556,35 @@ impl TypeChecker {
         }
     }
 
+    // ========================================================================
+    // v0.47: Warning Collection Methods
+    // ========================================================================
+
+    /// Add a warning to the collection (v0.47)
+    pub fn add_warning(&mut self, warning: CompileWarning) {
+        self.warnings.push(warning);
+    }
+
+    /// Get collected warnings as a slice (v0.47)
+    pub fn warnings(&self) -> &[CompileWarning] {
+        &self.warnings
+    }
+
+    /// Take all warnings (clears the internal collection) (v0.47)
+    pub fn take_warnings(&mut self) -> Vec<CompileWarning> {
+        std::mem::take(&mut self.warnings)
+    }
+
+    /// Check if there are any warnings (v0.47)
+    pub fn has_warnings(&self) -> bool {
+        !self.warnings.is_empty()
+    }
+
+    /// Clear all warnings (v0.47)
+    pub fn clear_warnings(&mut self) {
+        self.warnings.clear();
+    }
+
     /// Check entire program
     pub fn check_program(&mut self, program: &Program) -> Result<()> {
         // First pass: collect type definitions (structs and enums)
@@ -284,6 +603,10 @@ impl TypeChecker {
                             (s.type_params.clone(), fields)
                         );
                     }
+                    // v0.77: Track private structs for unused type detection
+                    if s.visibility != Visibility::Public && !s.name.node.starts_with('_') {
+                        self.private_structs.insert(s.name.node.clone(), s.name.span);
+                    }
                 }
                 Item::EnumDef(e) => {
                     let variants: Vec<_> = e.variants.iter()
@@ -297,6 +620,10 @@ impl TypeChecker {
                             e.name.node.clone(),
                             (e.type_params.clone(), variants)
                         );
+                    }
+                    // v0.78: Track private enums for unused enum detection
+                    if e.visibility != Visibility::Public && !e.name.node.starts_with('_') {
+                        self.private_enums.insert(e.name.node.clone(), e.name.span);
                     }
                 }
                 Item::FnDef(_) | Item::ExternFn(_) => {}
@@ -322,16 +649,53 @@ impl TypeChecker {
                         type_params: t.type_params.clone(),
                         methods,
                     });
+
+                    // v0.80: Track private traits for unused trait detection
+                    if t.visibility != Visibility::Public && !t.name.node.starts_with('_') {
+                        self.private_traits.insert(t.name.node.clone(), t.name.span);
+                    }
                 }
                 // v0.20.1: ImplBlocks are processed in a later pass
                 Item::ImplBlock(_) => {}
+                // v0.50.6: Type aliases
+                Item::TypeAlias(t) => {
+                    // Register type alias: name -> (type_params, target_type, refinement, span)
+                    let refinement = t.refinement.as_ref().map(|r| r.node.clone());
+                    self.type_aliases.insert(
+                        t.name.node.clone(),
+                        (t.type_params.clone(), t.target.node.clone(), refinement, t.name.span)
+                    );
+                }
             }
         }
+
+        // v0.50.11: Validate type aliases for cycles
+        self.validate_type_alias_cycles()?;
 
         // Second pass: collect function signatures (including extern fn)
         for item in &program.items {
             match item {
                 Item::FnDef(f) => {
+                    // v0.76: Track private functions for unused function detection
+                    // Skip: main, pub functions, underscore-prefixed functions
+                    if f.visibility != Visibility::Public
+                        && f.name.node != "main"
+                        && !f.name.node.starts_with('_')
+                    {
+                        self.private_functions.insert(f.name.node.clone(), f.name.span);
+                    }
+
+                    // v0.50.11: Check for duplicate function definitions
+                    if let Some(original_span) = self.function_spans.get(&f.name.node) {
+                        self.add_warning(CompileWarning::duplicate_function(
+                            &f.name.node,
+                            f.name.span,
+                            *original_span,
+                        ));
+                    } else {
+                        self.function_spans.insert(f.name.node.clone(), f.name.span);
+                    }
+
                     // v0.15: Handle generic functions separately
                     if f.type_params.is_empty() {
                         let param_tys: Vec<_> = f.params.iter().map(|p| p.ty.node.clone()).collect();
@@ -352,11 +716,22 @@ impl TypeChecker {
                 }
                 // v0.13.0: Register extern function signatures
                 Item::ExternFn(e) => {
+                    // v0.50.11: Check for duplicate function definitions (extern fn)
+                    if let Some(original_span) = self.function_spans.get(&e.name.node) {
+                        self.add_warning(CompileWarning::duplicate_function(
+                            &e.name.node,
+                            e.name.span,
+                            *original_span,
+                        ));
+                    } else {
+                        self.function_spans.insert(e.name.node.clone(), e.name.span);
+                    }
+
                     let param_tys: Vec<_> = e.params.iter().map(|p| p.ty.node.clone()).collect();
                     self.functions
                         .insert(e.name.node.clone(), (param_tys, e.ret_ty.node.clone()));
                 }
-                Item::StructDef(_) | Item::EnumDef(_) | Item::Use(_) => {}
+                Item::StructDef(_) | Item::EnumDef(_) | Item::Use(_) | Item::TypeAlias(_) => {}
                 // v0.20.1: TraitDef already registered in first pass
                 Item::TraitDef(_) => {}
                 // v0.20.1: Register impl blocks
@@ -376,6 +751,9 @@ impl TypeChecker {
                         methods.insert(method.name.node.clone(), (param_types, ret_type));
                     }
 
+                    // v0.80: Track that this trait is implemented
+                    self.implemented_traits.insert(trait_name.clone());
+
                     self.impls.insert((type_name, trait_name.clone()), ImplInfo {
                         trait_name,
                         target_type: i.target_type.node.clone(),
@@ -392,6 +770,8 @@ impl TypeChecker {
                 Item::StructDef(_) | Item::EnumDef(_) | Item::Use(_) | Item::ExternFn(_) => {}
                 // v0.20.1: Traits and impls already registered
                 Item::TraitDef(_) | Item::ImplBlock(_) => {}
+                // v0.50.6: Type aliases already processed
+                Item::TypeAlias(_) => {}
             }
         }
 
@@ -400,7 +780,323 @@ impl TypeChecker {
             self.validate_module_exports(header, program)?;
         }
 
+        // v0.76: Generate unused function warnings
+        // P0 Correctness: Detect private functions that are never called
+        for (name, span) in &self.private_functions {
+            if !self.called_functions.contains(name) {
+                self.warnings.push(CompileWarning::unused_function(name, *span));
+            }
+        }
+
+        // v0.77: Generate unused type warnings
+        // P0 Correctness: Detect private structs that are never used
+        for (name, span) in &self.private_structs {
+            if !self.used_names.contains(name) {
+                self.warnings.push(CompileWarning::unused_type(name, *span));
+            }
+        }
+
+        // v0.78: Generate unused enum warnings
+        // P0 Correctness: Detect private enums that are never used
+        for (name, span) in &self.private_enums {
+            if !self.used_names.contains(name) {
+                self.warnings.push(CompileWarning::unused_enum(name, *span));
+            }
+        }
+
+        // v0.80: Generate unused trait warnings
+        // P0 Correctness: Detect private traits that are never implemented
+        for (name, span) in &self.private_traits {
+            if !self.implemented_traits.contains(name) {
+                self.warnings.push(CompileWarning::unused_trait(name, *span));
+            }
+        }
+
         Ok(())
+    }
+
+    /// v0.74: Type check with import usage tracking
+    /// P0 Correctness: Detects unused imports at compile-time
+    pub fn check_program_with_imports(&mut self, program: &Program, imports: &mut ResolvedImports) -> Result<()> {
+        // Record which names are imported
+        for (name, _info) in imports.all_imports() {
+            self.imported_names.insert(name.clone());
+        }
+
+        // Run normal type checking (this populates used_names)
+        self.check_program(program)?;
+
+        // Mark imports as used if they appear in used_names
+        // Collect names first to avoid borrow conflict
+        let names_to_mark: Vec<String> = imports
+            .all_imports()
+            .filter(|(name, _)| self.used_names.contains(*name))
+            .map(|(name, _)| name.clone())
+            .collect();
+
+        for name in names_to_mark {
+            imports.mark_used(&name);
+        }
+
+        Ok(())
+    }
+
+    /// v0.74: Mark a name as used (for import and local type tracking)
+    /// v0.77: Also tracks local struct/enum usage for unused type detection
+    fn mark_name_used(&mut self, name: &str) {
+        self.used_names.insert(name.to_string());
+    }
+
+    /// v0.75: Mark all type names in a type as used (for import tracking)
+    /// Recursively walks the type to find Named and Generic types
+    fn mark_type_names_used(&mut self, ty: &Type) {
+        match ty {
+            Type::Named(name) => {
+                self.mark_name_used(name);
+            }
+            Type::Generic { name, type_args } => {
+                self.mark_name_used(name);
+                for arg in type_args {
+                    self.mark_type_names_used(arg);
+                }
+            }
+            Type::Array(inner, _) => {
+                self.mark_type_names_used(inner);
+            }
+            Type::Ref(inner) | Type::RefMut(inner) => {
+                self.mark_type_names_used(inner);
+            }
+            Type::Fn { params, ret } => {
+                for param in params {
+                    self.mark_type_names_used(param);
+                }
+                self.mark_type_names_used(ret);
+            }
+            Type::Tuple(elements) => {
+                for elem in elements {
+                    self.mark_type_names_used(elem);
+                }
+            }
+            Type::Range(inner) | Type::Nullable(inner) => {
+                self.mark_type_names_used(inner);
+            }
+            Type::Refined { base, .. } => {
+                self.mark_type_names_used(base);
+            }
+            Type::Struct { fields, .. } => {
+                for (_, field_ty) in fields {
+                    self.mark_type_names_used(field_ty);
+                }
+            }
+            Type::Enum { variants, .. } => {
+                for (_, field_tys) in variants {
+                    for field_ty in field_tys {
+                        self.mark_type_names_used(field_ty);
+                    }
+                }
+            }
+            // Primitive types don't have names to track
+            Type::I64 | Type::I32 | Type::U32 | Type::U64 | Type::F64
+            | Type::Bool | Type::String | Type::Char | Type::Unit
+            | Type::Never | Type::TypeVar(_) => {}
+        }
+    }
+
+    /// v0.50.11: Validate type aliases for cycles
+    /// Detects circular type alias definitions like `type A = B; type B = A;`
+    fn validate_type_alias_cycles(&self) -> Result<()> {
+        use std::collections::HashSet;
+
+        /// Helper: Extract type names referenced by a type
+        fn collect_type_refs(ty: &Type, refs: &mut HashSet<String>) {
+            match ty {
+                Type::Named(name) => { refs.insert(name.clone()); }
+                Type::Generic { name, type_args } => {
+                    refs.insert(name.clone());
+                    for arg in type_args {
+                        collect_type_refs(arg, refs);
+                    }
+                }
+                Type::Array(inner, _) | Type::Ref(inner) | Type::RefMut(inner)
+                | Type::Nullable(inner) | Type::Range(inner) => {
+                    collect_type_refs(inner, refs);
+                }
+                Type::Fn { params, ret } => {
+                    for p in params {
+                        collect_type_refs(p, refs);
+                    }
+                    collect_type_refs(ret, refs);
+                }
+                Type::Tuple(elements) => {
+                    for e in elements {
+                        collect_type_refs(e, refs);
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        /// DFS cycle detection
+        fn detect_cycle(
+            name: &str,
+            aliases: &HashMap<String, (Vec<TypeParam>, Type, Option<Expr>, Span)>,
+            visiting: &mut HashSet<String>,
+            visited: &mut HashSet<String>,
+            path: &mut Vec<String>,
+        ) -> Option<(Vec<String>, Span)> {
+            if visited.contains(name) {
+                return None; // Already validated, no cycle
+            }
+            if visiting.contains(name) {
+                // Found a cycle! Return the path from first occurrence
+                if let Some(pos) = path.iter().position(|n| n == name) {
+                    let cycle_path: Vec<String> = path[pos..].to_vec();
+                    // Get span of the first alias in the cycle
+                    if let Some((_, _, _, span)) = aliases.get(name) {
+                        return Some((cycle_path, *span));
+                    }
+                }
+                return None;
+            }
+
+            // Only check if this is actually a type alias
+            if let Some((_, target, _, _)) = aliases.get(name) {
+                visiting.insert(name.to_string());
+                path.push(name.to_string());
+
+                // Find all type references in the target
+                let mut refs = HashSet::new();
+                collect_type_refs(target, &mut refs);
+
+                // Check each referenced type for cycles
+                for ref_name in refs {
+                    if let Some(result) = detect_cycle(&ref_name, aliases, visiting, visited, path) {
+                        return Some(result);
+                    }
+                }
+
+                path.pop();
+                visiting.remove(name);
+                visited.insert(name.to_string());
+            }
+
+            None
+        }
+
+        let mut visiting = HashSet::new();
+        let mut visited = HashSet::new();
+        let mut path = Vec::new();
+
+        // Check each type alias for cycles
+        for name in self.type_aliases.keys() {
+            if let Some((cycle, span)) = detect_cycle(name, &self.type_aliases, &mut visiting, &mut visited, &mut path) {
+                let cycle_str = cycle.join(" -> ") + " -> " + &cycle[0];
+                return Err(CompileError::type_error(
+                    format!("cyclic type alias detected: {cycle_str}"),
+                    span
+                ));
+            }
+        }
+
+        Ok(())
+    }
+
+    /// v0.50.6: Resolve type alias
+    /// If the type is a named type that's a type alias, expand it to the target type.
+    /// Non-generic type aliases are expanded recursively.
+    fn resolve_type_alias(&self, ty: &Type) -> Type {
+        match ty {
+            Type::Named(name) => {
+                // Check if this is a type alias
+                if let Some((type_params, target, _refinement, _span)) = self.type_aliases.get(name) {
+                    if type_params.is_empty() {
+                        // Non-generic type alias: recursively resolve
+                        self.resolve_type_alias(target)
+                    } else {
+                        // Generic type alias needs type arguments - keep as is
+                        ty.clone()
+                    }
+                } else {
+                    // Not a type alias, keep as is
+                    ty.clone()
+                }
+            }
+            Type::Generic { name, type_args } => {
+                // Check if this is a generic type alias
+                if let Some((type_params, target, _refinement, _span)) = self.type_aliases.get(name) {
+                    if type_params.len() == type_args.len() {
+                        // Substitute type arguments
+                        let mut substituted = target.clone();
+                        for (param, arg) in type_params.iter().zip(type_args.iter()) {
+                            substituted = self.substitute_type_param(&substituted, &param.name, arg);
+                        }
+                        self.resolve_type_alias(&substituted)
+                    } else {
+                        // Wrong number of type arguments, keep as is
+                        ty.clone()
+                    }
+                } else {
+                    // Not a type alias, but resolve type args
+                    Type::Generic {
+                        name: name.clone(),
+                        type_args: type_args.iter().map(|a| Box::new(self.resolve_type_alias(a))).collect(),
+                    }
+                }
+            }
+            // Recursively resolve nested types
+            Type::Array(inner, size) => Type::Array(Box::new(self.resolve_type_alias(inner)), *size),
+            Type::Ref(inner) => Type::Ref(Box::new(self.resolve_type_alias(inner))),
+            Type::RefMut(inner) => Type::RefMut(Box::new(self.resolve_type_alias(inner))),
+            Type::Nullable(inner) => Type::Nullable(Box::new(self.resolve_type_alias(inner))),
+            Type::Range(inner) => Type::Range(Box::new(self.resolve_type_alias(inner))),
+            Type::Fn { params, ret } => Type::Fn {
+                params: params.iter().map(|p| Box::new(self.resolve_type_alias(p))).collect(),
+                ret: Box::new(self.resolve_type_alias(ret)),
+            },
+            Type::Tuple(elements) => Type::Tuple(elements.iter().map(|e| Box::new(self.resolve_type_alias(e))).collect()),
+            // Primitive and other types don't need resolution
+            _ => ty.clone(),
+        }
+    }
+
+    /// v0.50.6: Substitute a type parameter with a concrete type
+    fn substitute_type_param(&self, ty: &Type, param_name: &str, replacement: &Type) -> Type {
+        match ty {
+            Type::Named(name) if name == param_name => replacement.clone(),
+            Type::TypeVar(name) if name == param_name => replacement.clone(),
+            Type::Generic { name, type_args } => {
+                if name == param_name {
+                    replacement.clone()
+                } else {
+                    Type::Generic {
+                        name: name.clone(),
+                        type_args: type_args.iter()
+                            .map(|a| Box::new(self.substitute_type_param(a, param_name, replacement)))
+                            .collect(),
+                    }
+                }
+            }
+            Type::Array(inner, size) => Type::Array(
+                Box::new(self.substitute_type_param(inner, param_name, replacement)),
+                *size
+            ),
+            Type::Ref(inner) => Type::Ref(Box::new(self.substitute_type_param(inner, param_name, replacement))),
+            Type::RefMut(inner) => Type::RefMut(Box::new(self.substitute_type_param(inner, param_name, replacement))),
+            Type::Nullable(inner) => Type::Nullable(Box::new(self.substitute_type_param(inner, param_name, replacement))),
+            Type::Range(inner) => Type::Range(Box::new(self.substitute_type_param(inner, param_name, replacement))),
+            Type::Fn { params, ret } => Type::Fn {
+                params: params.iter()
+                    .map(|p| Box::new(self.substitute_type_param(p, param_name, replacement)))
+                    .collect(),
+                ret: Box::new(self.substitute_type_param(ret, param_name, replacement)),
+            },
+            Type::Tuple(elements) => Type::Tuple(
+                elements.iter()
+                    .map(|e| Box::new(self.substitute_type_param(e, param_name, replacement)))
+                    .collect()
+            ),
+            _ => ty.clone(),
+        }
     }
 
     /// Check function definition
@@ -409,11 +1105,21 @@ impl TypeChecker {
         self.env.clear();
         self.type_param_env.clear();
 
+        // v0.49: Reset binding tracker and push function scope
+        self.binding_tracker = BindingTracker::new();
+        self.binding_tracker.push_scope();
+
         // v0.15: Register type parameters for generic functions
         let type_param_names: Vec<_> = f.type_params.iter().map(|tp| tp.name.as_str()).collect();
         for tp in &f.type_params {
             self.type_param_env.insert(tp.name.clone(), tp.bounds.clone());
         }
+
+        // v0.75: Mark type names in parameter and return types as used
+        for param in &f.params {
+            self.mark_type_names_used(&param.ty.node);
+        }
+        self.mark_type_names_used(&f.ret_ty.node);
 
         // v0.15: Convert Named types that match type params to TypeVar for env
         for param in &f.params {
@@ -423,6 +1129,8 @@ impl TypeChecker {
                 self.resolve_type_vars(&param.ty.node, &type_param_names)
             };
             self.env.insert(param.name.node.clone(), resolved_ty);
+            // v0.49: Track parameter binding for unused detection
+            self.binding_tracker.bind(param.name.node.clone(), param.name.span);
         }
 
         // Set current return type for `ret` keyword
@@ -450,6 +1158,55 @@ impl TypeChecker {
         let body_ty = self.infer(&f.body.node, f.body.span)?;
         // v0.15: Use resolved return type for generic functions
         self.unify(&resolved_ret_ty, &body_ty, f.body.span)?;
+
+        // v0.81: Check for missing postcondition
+        // Skip: main, underscore-prefixed, @trust functions, unit return type
+        let has_postcondition = f.post.is_some();
+        let is_main = f.name.node == "main";
+        let is_underscore = f.name.node.starts_with('_');
+        let is_trusted = f.attributes.iter().any(|a| a.is_trust());
+        let is_unit_return = matches!(f.ret_ty.node, Type::Unit);
+
+        if !has_postcondition && !is_main && !is_underscore && !is_trusted && !is_unit_return {
+            self.add_warning(CompileWarning::missing_postcondition(
+                &f.name.node,
+                f.name.span,
+            ));
+        }
+
+        // v0.84: Check for semantic duplication (equivalent contracts)
+        // Only for functions that have postconditions
+        if let Some(post) = &f.post {
+            // Create signature key: (param_types, return_type) - span-agnostic
+            let sig_key = format!(
+                "({}) -> {}",
+                f.params.iter().map(|p| output::format_type(&p.ty.node)).collect::<Vec<_>>().join(", "),
+                output::format_type(&f.ret_ty.node)
+            );
+            // Create postcondition key: span-agnostic S-expression
+            let post_key = output::format_expr(&post.node);
+
+            let key = (sig_key, post_key);
+
+            if let Some((existing_name, _)) = self.contract_signatures.get(&key) {
+                // Found a function with equivalent contract
+                self.add_warning(CompileWarning::semantic_duplication(
+                    &f.name.node,
+                    existing_name,
+                    f.name.span,
+                ));
+            } else {
+                // First function with this signature+postcondition
+                self.contract_signatures.insert(key, (f.name.node.clone(), f.name.span));
+            }
+        }
+
+        // v0.49: Check for unused parameters and emit warnings
+        // Note: Function parameters are immutable, so no unused_mut check needed
+        let (unused, _unused_mut) = self.binding_tracker.pop_scope();
+        for (unused_name, unused_span) in unused {
+            self.add_warning(CompileWarning::unused_binding(unused_name, unused_span));
+        }
 
         self.current_ret_ty = None;
         self.type_param_env.clear();
@@ -480,6 +1237,10 @@ impl TypeChecker {
                     defined_symbols.insert(&e.name.node);
                 }
                 Item::Use(_) | Item::ImplBlock(_) => {}
+                // v0.50.6: Type aliases can be exported
+                Item::TypeAlias(t) => {
+                    defined_symbols.insert(&t.name.node);
+                }
             }
         }
 
@@ -506,15 +1267,27 @@ impl TypeChecker {
             Expr::FloatLit(_) => Ok(Type::F64),
             Expr::BoolLit(_) => Ok(Type::Bool),
             Expr::StringLit(_) => Ok(Type::String),
+            // v0.64: Character literal type inference
+            Expr::CharLit(_) => Ok(Type::Char),
             Expr::Unit => Ok(Type::Unit),
 
             Expr::Ret => self.current_ret_ty.clone().ok_or_else(|| {
                 CompileError::type_error("'ret' used outside function", span)
             }),
 
-            Expr::Var(name) => self.env.get(name).cloned().ok_or_else(|| {
-                CompileError::type_error(format!("undefined variable: {name}"), span)
-            }),
+            Expr::Var(name) => {
+                // v0.48: Mark variable as used for unused binding detection
+                self.binding_tracker.mark_used(name);
+                self.env.get(name).cloned().ok_or_else(|| {
+                    // v0.62: Suggest similar variable names
+                    let var_names: Vec<&str> = self.env.keys().map(|s| s.as_str()).collect();
+                    let suggestion = find_similar_name(name, &var_names, 2);
+                    CompileError::type_error(
+                        format!("undefined variable: `{}`{}", name, format_suggestion_hint(suggestion)),
+                        span,
+                    )
+                })
+            }
 
             Expr::Binary { left, op, right } => {
                 let left_ty = self.infer(&left.node, left.span)?;
@@ -544,7 +1317,7 @@ impl TypeChecker {
 
             Expr::Let {
                 name,
-                mutable: _,
+                mutable,
                 ty,
                 value,
                 body,
@@ -552,31 +1325,72 @@ impl TypeChecker {
                 let value_ty = self.infer(&value.node, value.span)?;
 
                 if let Some(ann_ty) = ty {
+                    // v0.75: Mark type names in annotation as used
+                    self.mark_type_names_used(&ann_ty.node);
                     self.unify(&ann_ty.node, &value_ty, value.span)?;
                 }
 
+                // v0.48: Track binding for unused detection
+                // v0.52: Track mutability for unused-mut detection
+                self.binding_tracker.push_scope();
+
+                // v0.79: Check for shadow binding before adding
+                if let Some(original_span) = self.binding_tracker.find_shadow(name) {
+                    self.add_warning(CompileWarning::shadow_binding(name, span, original_span));
+                }
+
+                self.binding_tracker.bind_with_mutability(name.clone(), span, *mutable);
+
                 self.env.insert(name.clone(), value_ty);
-                self.infer(&body.node, body.span)
+                let result = self.infer(&body.node, body.span)?;
+
+                // v0.48: Check for unused bindings and emit warnings
+                // v0.52: Also check for mutable-but-never-mutated
+                let (unused, unused_mut) = self.binding_tracker.pop_scope();
+                for (unused_name, unused_span) in unused {
+                    self.add_warning(CompileWarning::unused_binding(unused_name, unused_span));
+                }
+                for (name, span) in unused_mut {
+                    self.add_warning(CompileWarning::unused_mut(name, span));
+                }
+
+                Ok(result)
             }
 
             Expr::Assign { name, value } => {
                 // Check that variable exists
                 let var_ty = self.env.get(name).cloned().ok_or_else(|| {
-                    CompileError::type_error(format!("undefined variable: {name}"), span)
+                    // v0.62: Suggest similar variable names
+                    let var_names: Vec<&str> = self.env.keys().map(|s| s.as_str()).collect();
+                    let suggestion = find_similar_name(name, &var_names, 2);
+                    CompileError::type_error(
+                        format!("undefined variable: `{}`{}", name, format_suggestion_hint(suggestion)),
+                        span,
+                    )
                 })?;
 
                 // Check that value type matches variable type
                 let value_ty = self.infer(&value.node, value.span)?;
                 self.unify(&var_ty, &value_ty, value.span)?;
 
+                // v0.52: Mark variable as mutated for unused-mut detection
+                self.binding_tracker.mark_mutated(name);
+
                 // Assignment returns unit
                 Ok(Type::Unit)
             }
 
-            Expr::While { cond, body } => {
+            // v0.37: Include invariant type checking
+            Expr::While { cond, invariant, body } => {
                 // Condition must be bool
                 let cond_ty = self.infer(&cond.node, cond.span)?;
                 self.unify(&Type::Bool, &cond_ty, cond.span)?;
+
+                // v0.37: Invariant must be bool if present
+                if let Some(inv) = invariant {
+                    let inv_ty = self.infer(&inv.node, inv.span)?;
+                    self.unify(&Type::Bool, &inv_ty, inv.span)?;
+                }
 
                 // Type check body (result is discarded)
                 let _ = self.infer(&body.node, body.span)?;
@@ -593,7 +1407,8 @@ impl TypeChecker {
                 // Both must be the same integer type
                 self.unify(&start_ty, &end_ty, end.span)?;
                 match &start_ty {
-                    Type::I32 | Type::I64 => Ok(Type::Range(Box::new(start_ty))),
+                    // v0.38: Include unsigned types
+                    Type::I32 | Type::I64 | Type::U32 | Type::U64 => Ok(Type::Range(Box::new(start_ty))),
                     _ => Err(CompileError::type_error(
                         format!("range requires integer types, got {start_ty}"),
                         span,
@@ -627,6 +1442,13 @@ impl TypeChecker {
             }
 
             Expr::Call { func, args } => {
+                // v0.50: Mark function variable as used for binding detection
+                self.binding_tracker.mark_used(func);
+                // v0.74: Mark imported function as used
+                self.mark_name_used(func);
+                // v0.76: Track function calls for unused function detection
+                self.called_functions.insert(func.clone());
+
                 // v0.20.0: First try closure/function variable
                 if let Some(var_ty) = self.env.get(func).cloned()
                     && let Type::Fn { params: param_tys, ret: ret_ty } = var_ty
@@ -693,13 +1515,32 @@ impl TypeChecker {
                     }
 
                     // Check that all type parameters are inferred
-                    for tp in &type_params {
-                        if !type_subst.contains_key(&tp.name) {
-                            return Err(CompileError::type_error(
-                                format!("could not infer type for type parameter {}", tp.name),
-                                span,
-                            ));
+                    // v0.59: Enhanced error message with inferred types and hints
+                    let uninferred: Vec<_> = type_params
+                        .iter()
+                        .filter(|tp| !type_subst.contains_key(&tp.name))
+                        .map(|tp| tp.name.clone())
+                        .collect();
+                    if !uninferred.is_empty() {
+                        let mut msg = format!(
+                            "could not infer type for type parameter{}",
+                            if uninferred.len() > 1 { "s" } else { "" }
+                        );
+                        msg.push_str(&format!(": {}", uninferred.join(", ")));
+                        // Show what was successfully inferred
+                        if !type_subst.is_empty() {
+                            let inferred: Vec<_> = type_subst
+                                .iter()
+                                .map(|(k, v)| format!("{} = {}", k, v))
+                                .collect();
+                            msg.push_str(&format!("\n  note: inferred {}", inferred.join(", ")));
                         }
+                        msg.push_str(&format!(
+                            "\n  hint: add explicit type arguments: `{}<{}>`",
+                            func,
+                            type_params.iter().map(|tp| tp.name.as_str()).collect::<Vec<_>>().join(", ")
+                        ));
+                        return Err(CompileError::type_error(msg, span));
                     }
 
                     // Substitute type parameters in return type
@@ -707,7 +1548,20 @@ impl TypeChecker {
                     return Ok(instantiated_ret_ty);
                 }
 
-                Err(CompileError::type_error(format!("undefined function: {func}"), span))
+                // v0.61: Suggest similar function names
+                let mut all_functions: Vec<&str> = self.functions.keys().map(|s| s.as_str()).collect();
+                all_functions.extend(self.generic_functions.keys().map(|s| s.as_str()));
+                // Also include closure/function variables from environment
+                for (name, ty) in &self.env {
+                    if matches!(ty, Type::Fn { .. }) {
+                        all_functions.push(name.as_str());
+                    }
+                }
+                let suggestion = find_similar_name(func, &all_functions, 2);
+                Err(CompileError::type_error(
+                    format!("undefined function: `{}`{}", func, format_suggestion_hint(suggestion)),
+                    span,
+                ))
             }
 
             Expr::Block(exprs) => {
@@ -716,14 +1570,39 @@ impl TypeChecker {
                 }
 
                 let mut last_ty = Type::Unit;
+                let mut diverged = false;
+                let mut diverge_span: Option<Span> = None;
+
                 for expr in exprs {
+                    // v0.53: Check for unreachable code after divergent expression
+                    if diverged {
+                        self.add_warning(CompileWarning::unreachable_code(expr.span));
+                        // Still type-check for error reporting, but don't update last_ty
+                        let _ = self.infer(&expr.node, expr.span);
+                        continue;
+                    }
+
                     last_ty = self.infer(&expr.node, expr.span)?;
+
+                    // v0.53: Track divergence (return, break, continue, Never type)
+                    if matches!(last_ty, Type::Never) || self.is_divergent_expr(&expr.node) {
+                        diverged = true;
+                        diverge_span = Some(expr.span);
+                    }
                 }
-                Ok(last_ty)
+
+                // If block diverged, the type is Never (unless we want last_ty for partial analysis)
+                if diverged && diverge_span.is_some() {
+                    Ok(Type::Never)
+                } else {
+                    Ok(last_ty)
+                }
             }
 
             // v0.5: Struct and Enum expressions
             Expr::StructInit { name, fields } => {
+                // v0.74: Mark imported struct as used
+                self.mark_name_used(name);
                 // v0.16: First try non-generic structs
                 if let Some(struct_fields) = self.structs.get(name).cloned() {
                     // Check that all required fields are provided
@@ -779,7 +1658,16 @@ impl TypeChecker {
                     });
                 }
 
-                Err(CompileError::type_error(format!("undefined struct: {name}"), span))
+                // v0.63: Suggest similar type names (structs and enums)
+                let mut all_types: Vec<&str> = self.structs.keys().map(|s| s.as_str()).collect();
+                all_types.extend(self.generic_structs.keys().map(|s| s.as_str()));
+                all_types.extend(self.enums.keys().map(|s| s.as_str()));
+                all_types.extend(self.generic_enums.keys().map(|s| s.as_str()));
+                let suggestion = find_similar_name(name, &all_types, 2);
+                Err(CompileError::type_error(
+                    format!("undefined struct: `{}`{}", name, format_suggestion_hint(suggestion)),
+                    span,
+                ))
             }
 
             Expr::FieldAccess { expr: obj_expr, field } => {
@@ -797,8 +1685,11 @@ impl TypeChecker {
                             }
                         }
 
+                        // v0.60: Suggest similar field names
+                        let field_names: Vec<&str> = struct_fields.iter().map(|(n, _)| n.as_str()).collect();
+                        let suggestion = find_similar_name(&field.node, &field_names, 2);
                         Err(CompileError::type_error(
-                            format!("unknown field: {}", field.node),
+                            format!("unknown field `{}` on struct `{}`{}", field.node, struct_name, format_suggestion_hint(suggestion)),
                             span,
                         ))
                     }
@@ -822,8 +1713,11 @@ impl TypeChecker {
                                 }
                             }
 
+                            // v0.60: Suggest similar field names
+                            let field_names: Vec<&str> = struct_fields.iter().map(|(n, _)| n.as_str()).collect();
+                            let suggestion = find_similar_name(&field.node, &field_names, 2);
                             return Err(CompileError::type_error(
-                                format!("unknown field: {}", field.node),
+                                format!("unknown field `{}` on struct `{}`{}", field.node, struct_name, format_suggestion_hint(suggestion)),
                                 span,
                             ));
                         }
@@ -839,14 +1733,47 @@ impl TypeChecker {
                 }
             }
 
+            // v0.43: Tuple field access: expr.0, expr.1, etc.
+            Expr::TupleField { expr: tuple_expr, index } => {
+                let tuple_ty = self.infer(&tuple_expr.node, tuple_expr.span)?;
+
+                match &tuple_ty {
+                    Type::Tuple(elem_types) => {
+                        if *index >= elem_types.len() {
+                            return Err(CompileError::type_error(
+                                format!(
+                                    "tuple index {} out of bounds for tuple with {} elements",
+                                    index,
+                                    elem_types.len()
+                                ),
+                                span,
+                            ));
+                        }
+                        Ok((*elem_types[*index]).clone())
+                    }
+                    _ => Err(CompileError::type_error(
+                        format!("tuple field access on non-tuple type: {tuple_ty}"),
+                        span,
+                    )),
+                }
+            }
+
             Expr::EnumVariant { enum_name, variant, args } => {
+                // v0.74: Mark imported enum as used
+                self.mark_name_used(enum_name);
                 // v0.16: First try non-generic enums
                 if let Some(variants) = self.enums.get(enum_name).cloned() {
                     let variant_fields = variants.iter()
                         .find(|(name, _)| name == variant)
                         .map(|(_, fields)| fields.clone())
                         .ok_or_else(|| {
-                            CompileError::type_error(format!("unknown variant: {variant}"), span)
+                            // v0.60: Suggest similar variant names
+                            let names: Vec<&str> = variants.iter().map(|(n, _)| n.as_str()).collect();
+                            let suggestion = find_similar_name(variant, &names, 2);
+                            CompileError::type_error(
+                                format!("unknown variant `{}` on enum `{}`{}", variant, enum_name, format_suggestion_hint(suggestion)),
+                                span,
+                            )
                         })?;
 
                     if args.len() != variant_fields.len() {
@@ -872,7 +1799,13 @@ impl TypeChecker {
                         .find(|(name, _)| name == variant)
                         .map(|(_, fields)| fields.clone())
                         .ok_or_else(|| {
-                            CompileError::type_error(format!("unknown variant: {variant}"), span)
+                            // v0.60: Suggest similar variant names
+                            let names: Vec<&str> = variants.iter().map(|(n, _)| n.as_str()).collect();
+                            let suggestion = find_similar_name(variant, &names, 2);
+                            CompileError::type_error(
+                                format!("unknown variant `{}` on enum `{}`{}", variant, enum_name, format_suggestion_hint(suggestion)),
+                                span,
+                            )
                         })?;
 
                     if args.len() != variant_fields.len() {
@@ -906,7 +1839,16 @@ impl TypeChecker {
                     });
                 }
 
-                Err(CompileError::type_error(format!("undefined enum: {enum_name}"), span))
+                // v0.63: Suggest similar type names (enums and structs)
+                let mut all_types: Vec<&str> = self.enums.keys().map(|s| s.as_str()).collect();
+                all_types.extend(self.generic_enums.keys().map(|s| s.as_str()));
+                all_types.extend(self.structs.keys().map(|s| s.as_str()));
+                all_types.extend(self.generic_structs.keys().map(|s| s.as_str()));
+                let suggestion = find_similar_name(enum_name, &all_types, 2);
+                Err(CompileError::type_error(
+                    format!("undefined enum: `{}`{}", enum_name, format_suggestion_hint(suggestion)),
+                    span,
+                ))
             }
 
             Expr::Match { expr: match_expr, arms } => {
@@ -920,16 +1862,79 @@ impl TypeChecker {
                 let mut result_ty: Option<Type> = None;
 
                 for arm in arms {
+                    // v0.48: Push scope for match arm bindings
+                    self.binding_tracker.push_scope();
+
                     // Check pattern against match expression type
                     self.check_pattern(&arm.pattern.node, &match_ty, arm.pattern.span)?;
 
+                    // v0.40: Check guard expression if present
+                    if let Some(guard) = &arm.guard {
+                        let guard_ty = self.infer(&guard.node, guard.span)?;
+                        self.unify(&Type::Bool, &guard_ty, guard.span)?;
+                    }
+
                     // Infer body type with pattern bindings
                     let body_ty = self.infer(&arm.body.node, arm.body.span)?;
+
+                    // v0.48: Check for unused bindings and emit warnings
+                    // Note: Match bindings are immutable, so no unused_mut check needed
+                    let (unused, _unused_mut) = self.binding_tracker.pop_scope();
+                    for (unused_name, unused_span) in unused {
+                        self.add_warning(CompileWarning::unused_binding(unused_name, unused_span));
+                    }
 
                     match &result_ty {
                         None => result_ty = Some(body_ty),
                         Some(expected) => self.unify(expected, &body_ty, arm.body.span)?,
                     }
+                }
+
+                // v0.46: Exhaustiveness checking
+                let exhaustiveness_result = self.check_match_exhaustiveness(&match_ty, arms, span)?;
+
+                // v0.47: Emit warnings for unreachable arms
+                for &arm_idx in &exhaustiveness_result.unreachable_arms {
+                    if arm_idx < arms.len() {
+                        let arm = &arms[arm_idx];
+                        self.add_warning(CompileWarning::unreachable_pattern(
+                            "this pattern will never match because previous patterns cover all cases",
+                            arm.pattern.span,
+                            arm_idx,
+                        ));
+                    }
+                }
+
+                // v0.51: Warn if guards are present without unconditional fallback
+                // This catches potential runtime "no match found" errors
+                if exhaustiveness_result.has_guards_without_fallback {
+                    self.add_warning(CompileWarning::guarded_non_exhaustive(span));
+                }
+
+                // Error if not exhaustive (unless there's a guard, which makes analysis harder)
+                let has_guards = arms.iter().any(|a| a.guard.is_some());
+                if !exhaustiveness_result.is_exhaustive && !has_guards {
+                    // v0.59: Enhanced error formatting for missing patterns
+                    let missing = &exhaustiveness_result.missing_patterns;
+                    let error_msg = if missing.len() == 1 {
+                        format!("non-exhaustive patterns: `{}` not covered", missing[0])
+                    } else if missing.len() <= 3 {
+                        format!(
+                            "non-exhaustive patterns: {} not covered",
+                            missing.iter().map(|p| format!("`{}`", p)).collect::<Vec<_>>().join(", ")
+                        )
+                    } else {
+                        // Truncate long lists with "and N more"
+                        let shown: Vec<_> = missing.iter().take(3).map(|p| format!("`{}`", p)).collect();
+                        format!(
+                            "non-exhaustive patterns: {} and {} more not covered",
+                            shown.join(", "),
+                            missing.len() - 3
+                        )
+                    };
+                    // Add hint for how to fix
+                    let hint = "\n  hint: add a wildcard pattern `_ => ...` to handle remaining cases";
+                    return Err(CompileError::type_error(format!("{}{}", error_msg, hint), span));
                 }
 
                 Ok(result_ty.unwrap_or(Type::Unit))
@@ -969,13 +1974,23 @@ impl TypeChecker {
                 }
             }
 
+            // v0.42: Tuple expressions
+            Expr::Tuple(elems) => {
+                // Tuples are heterogeneous - each element has its own type
+                let mut elem_types = Vec::with_capacity(elems.len());
+                for elem in elems {
+                    elem_types.push(Box::new(self.infer(&elem.node, elem.span)?));
+                }
+                Ok(Type::Tuple(elem_types))
+            }
+
             Expr::Index { expr, index } => {
                 let expr_ty = self.infer(&expr.node, expr.span)?;
                 let index_ty = self.infer(&index.node, index.span)?;
 
-                // Index must be an integer (v0.2: handle refined types)
+                // Index must be an integer (v0.2: handle refined types, v0.38: include unsigned)
                 match index_ty.base_type() {
-                    Type::I32 | Type::I64 => {}
+                    Type::I32 | Type::I64 | Type::U32 | Type::U64 => {}
                     _ => return Err(CompileError::type_error(format!("Array index must be integer, got: {}", index_ty), index.span)),
                 }
 
@@ -1006,24 +2021,13 @@ impl TypeChecker {
                 Ok(Type::I64)
             }
 
-            // v0.13.2: Try block - type is the body's type wrapped in Result
-            Expr::Try { body } => {
-                // For now, just return the body's type
-                // Full Result<T, E> type inference will be added later
-                self.infer(&body.node, body.span)
-            }
-
-            // v0.13.2: Question mark operator - unwraps Result/Option
-            Expr::Question { expr: inner } => {
-                // For now, just return the inner expression's type
-                // Full Result/Option unwrapping will be added later
-                self.infer(&inner.node, inner.span)
-            }
-
             // v0.20.0: Closure expressions
             Expr::Closure { params, ret_ty, body } => {
                 // Save current environment for capture analysis
                 let outer_env = self.env.clone();
+
+                // v0.50: Push scope for closure parameter tracking
+                self.binding_tracker.push_scope();
 
                 // Collect parameter types and add to environment
                 let mut param_types: Vec<Box<Type>> = Vec::new();
@@ -1039,6 +2043,8 @@ impl TypeChecker {
                     };
                     param_types.push(Box::new(param_ty.clone()));
                     self.env.insert(param.name.node.clone(), param_ty);
+                    // v0.50: Track closure parameter binding for unused detection
+                    self.binding_tracker.bind(param.name.node.clone(), param.name.span);
                 }
 
                 // Infer body type
@@ -1047,6 +2053,13 @@ impl TypeChecker {
                 // Check against explicit return type if provided
                 if let Some(explicit_ret) = ret_ty {
                     self.unify(&explicit_ret.node, &body_ty, body.span)?;
+                }
+
+                // v0.50: Check for unused closure parameters and emit warnings
+                // Note: Closure parameters are immutable, so no unused_mut check needed
+                let (unused, _unused_mut) = self.binding_tracker.pop_scope();
+                for (unused_name, unused_span) in unused {
+                    self.add_warning(CompileWarning::unused_binding(unused_name, unused_span));
                 }
 
                 // Restore outer environment (closure doesn't pollute outer scope)
@@ -1065,6 +2078,80 @@ impl TypeChecker {
             Expr::Todo { .. } => {
                 Ok(Type::Never)
             }
+
+            // v0.36: Additional control flow
+            // Loop returns Never (infinite loop or break)
+            Expr::Loop { body } => {
+                // Type check the body but return Never
+                self.infer(&body.node, body.span)?;
+                Ok(Type::Never)
+            }
+
+            // Break returns Never (control flow transfer)
+            Expr::Break { value } => {
+                if let Some(v) = value {
+                    self.infer(&v.node, v.span)?;
+                }
+                Ok(Type::Never)
+            }
+
+            // Continue returns Never (control flow transfer)
+            Expr::Continue => {
+                Ok(Type::Never)
+            }
+
+            // Return returns Never (control flow transfer)
+            Expr::Return { value } => {
+                if let Some(v) = value {
+                    self.infer(&v.node, v.span)?;
+                }
+                Ok(Type::Never)
+            }
+
+            // v0.37: Quantifiers - return Bool
+            // forall x: T, body
+            Expr::Forall { var, ty, body } => {
+                // Add bound variable to environment for body type checking
+                self.env.insert(var.node.clone(), ty.node.clone());
+                let body_ty = self.infer(&body.node, body.span)?;
+                // Remove bound variable from environment
+                self.env.remove(&var.node);
+                // Body must be a boolean expression
+                self.unify(&Type::Bool, &body_ty, body.span)?;
+                Ok(Type::Bool)
+            }
+
+            // exists x: T, body
+            Expr::Exists { var, ty, body } => {
+                // Add bound variable to environment for body type checking
+                self.env.insert(var.node.clone(), ty.node.clone());
+                let body_ty = self.infer(&body.node, body.span)?;
+                // Remove bound variable from environment
+                self.env.remove(&var.node);
+                // Body must be a boolean expression
+                self.unify(&Type::Bool, &body_ty, body.span)?;
+                Ok(Type::Bool)
+            }
+
+            // v0.39: Type cast: expr as Type
+            Expr::Cast { expr, ty } => {
+                // Infer source expression type
+                let src_ty = self.infer(&expr.node, expr.span)?;
+                let target_ty = ty.node.clone();
+
+                // Validate cast is allowed (numeric types only)
+                let src_numeric = matches!(&src_ty, Type::I32 | Type::I64 | Type::U32 | Type::U64 | Type::F64 | Type::Bool);
+                let tgt_numeric = matches!(&target_ty, Type::I32 | Type::I64 | Type::U32 | Type::U64 | Type::F64 | Type::Bool);
+
+                if !src_numeric || !tgt_numeric {
+                    return Err(CompileError::type_error(
+                        format!("cannot cast {:?} to {:?}: only numeric types are supported", src_ty, target_ty),
+                        span,
+                    ));
+                }
+
+                Ok(target_ty)
+            }
         }
     }
 
@@ -1080,16 +2167,19 @@ impl TypeChecker {
                         }
                         Ok(Type::I64)
                     }
-                    // char_at(index: i64) -> i64
-                    "char_at" => {
+                    // byte_at(index: i64) -> i64
+                    // v0.67: Renamed from char_at for clarity (returns byte, not Unicode char)
+                    // Use char_at(s, idx) function for Unicode character access
+                    "byte_at" => {
                         if args.len() != 1 {
-                            return Err(CompileError::type_error("char_at() takes 1 argument", span));
+                            return Err(CompileError::type_error("byte_at() takes 1 argument", span));
                         }
                         let arg_ty = self.infer(&args[0].node, args[0].span)?;
                         match arg_ty {
-                            Type::I32 | Type::I64 => Ok(Type::I64),
+                            // v0.38: Include unsigned types
+                            Type::I32 | Type::I64 | Type::U32 | Type::U64 => Ok(Type::I64),
                             _ => Err(CompileError::type_error(
-                                format!("char_at() requires integer argument, got {}", arg_ty),
+                                format!("byte_at() requires integer argument, got {}", arg_ty),
                                 args[0].span,
                             )),
                         }
@@ -1102,7 +2192,8 @@ impl TypeChecker {
                         for arg in args {
                             let arg_ty = self.infer(&arg.node, arg.span)?;
                             match arg_ty {
-                                Type::I32 | Type::I64 => {}
+                                // v0.38: Include unsigned types
+                                Type::I32 | Type::I64 | Type::U32 | Type::U64 => {}
                                 _ => return Err(CompileError::type_error(
                                     format!("slice() requires integer arguments, got {}", arg_ty),
                                     arg.span,
@@ -1264,6 +2355,57 @@ impl TypeChecker {
         }
     }
 
+    /// v0.46: Check match exhaustiveness
+    /// Returns exhaustiveness result with missing patterns and unreachable arms
+    fn check_match_exhaustiveness(
+        &self,
+        match_ty: &Type,
+        arms: &[MatchArm],
+        _span: Span,
+    ) -> Result<exhaustiveness::ExhaustivenessResult> {
+        use exhaustiveness::{check_exhaustiveness, ExhaustivenessContext};
+
+        // Build context with enum definitions
+        let mut ctx = ExhaustivenessContext::new();
+
+        // Add all known enums
+        for (name, variants) in &self.enums {
+            ctx.add_enum(name, variants.clone());
+        }
+
+        // Add generic enums with type parameters for substitution
+        for (name, (type_params, variants)) in &self.generic_enums {
+            ctx.add_enum(name, variants.clone());
+            // v0.58: Also store type param names for substitution during exhaustiveness
+            let param_names: Vec<String> = type_params.iter().map(|tp| tp.name.clone()).collect();
+            ctx.add_generic_enum_params(name, param_names);
+        }
+
+        // v0.54: Add all known structs
+        for (name, fields) in &self.structs {
+            ctx.add_struct(name, fields.clone());
+        }
+
+        // v0.54: Add generic structs (instantiated with concrete types would need special handling)
+        for (name, (_, fields)) in &self.generic_structs {
+            ctx.add_struct(name, fields.clone());
+        }
+
+        // Convert arms to the format expected by exhaustiveness checker
+        let arms_for_check: Vec<_> = arms
+            .iter()
+            .map(|arm| (arm.pattern.clone(), arm.guard.clone()))
+            .collect();
+
+        Ok(check_exhaustiveness(match_ty, &arms_for_check, &ctx))
+    }
+
+    /// v0.53: Check if an expression is divergent (never returns normally)
+    /// This is used to detect unreachable code after return, break, continue
+    fn is_divergent_expr(&self, expr: &Expr) -> bool {
+        matches!(expr, Expr::Return { .. } | Expr::Break { .. } | Expr::Continue)
+    }
+
     /// Check pattern validity
     fn check_pattern(&mut self, pattern: &crate::ast::Pattern, expected_ty: &Type, span: Span) -> Result<()> {
         use crate::ast::Pattern;
@@ -1271,8 +2413,15 @@ impl TypeChecker {
         match pattern {
             Pattern::Wildcard => Ok(()),
             Pattern::Var(name) => {
+                // v0.79: Check for shadow binding before adding
+                if let Some(original_span) = self.binding_tracker.find_shadow(name) {
+                    self.add_warning(CompileWarning::shadow_binding(name, span, original_span));
+                }
+
                 // Bind the variable to the expected type
                 self.env.insert(name.clone(), expected_ty.clone());
+                // v0.48: Track binding for unused detection
+                self.binding_tracker.bind(name.clone(), span);
                 Ok(())
             }
             Pattern::Literal(lit) => {
@@ -1285,31 +2434,63 @@ impl TypeChecker {
                 self.unify(expected_ty, &lit_ty, span)
             }
             Pattern::EnumVariant { enum_name, variant, bindings } => {
+                // v0.75: Mark imported enum as used in pattern
+                self.mark_name_used(enum_name);
                 // Check that pattern matches expected type
                 match expected_ty {
                     Type::Named(name) if name == enum_name => {
                         // Non-generic enum pattern matching
                         let variants = self.enums.get(enum_name).ok_or_else(|| {
-                            CompileError::type_error(format!("undefined enum: {enum_name}"), span)
+                            // v0.63: Suggest similar type names
+                            let mut all_types: Vec<&str> = self.enums.keys().map(|s| s.as_str()).collect();
+                            all_types.extend(self.generic_enums.keys().map(|s| s.as_str()));
+                            all_types.extend(self.structs.keys().map(|s| s.as_str()));
+                            all_types.extend(self.generic_structs.keys().map(|s| s.as_str()));
+                            let suggestion = find_similar_name(enum_name, &all_types, 2);
+                            CompileError::type_error(
+                                format!("undefined enum: `{}`{}", enum_name, format_suggestion_hint(suggestion)),
+                                span,
+                            )
                         })?;
 
                         let variant_fields = variants.iter()
                             .find(|(n, _)| n == variant)
                             .map(|(_, fields)| fields.clone())
                             .ok_or_else(|| {
-                                CompileError::type_error(format!("unknown variant: {variant}"), span)
+                                // v0.60: Suggest similar variant names
+                                let names: Vec<&str> = variants.iter().map(|(n, _)| n.as_str()).collect();
+                                let suggestion = find_similar_name(variant, &names, 2);
+                                CompileError::type_error(
+                                    format!("unknown variant `{}` on enum `{}`{}", variant, enum_name, format_suggestion_hint(suggestion)),
+                                    span,
+                                )
                             })?;
 
                         if bindings.len() != variant_fields.len() {
+                            // v0.59: Enhanced pattern binding error with hints
+                            let suggestion = if bindings.len() > variant_fields.len() {
+                                "\n  hint: remove extra bindings from pattern"
+                            } else if variant_fields.len() == 1 {
+                                "\n  hint: try using `_` as a wildcard binding"
+                            } else {
+                                "\n  hint: use `_` for unused bindings"
+                            };
                             return Err(CompileError::type_error(
-                                format!("expected {} bindings, got {}", variant_fields.len(), bindings.len()),
+                                format!(
+                                    "pattern `{}::{}` expects {} binding{}, got {}{}",
+                                    enum_name, variant,
+                                    variant_fields.len(),
+                                    if variant_fields.len() == 1 { "" } else { "s" },
+                                    bindings.len(),
+                                    suggestion
+                                ),
                                 span,
                             ));
                         }
 
-                        // Bind pattern variables
+                        // v0.41: Recursively check nested patterns
                         for (binding, field_ty) in bindings.iter().zip(variant_fields.iter()) {
-                            self.env.insert(binding.node.clone(), field_ty.clone());
+                            self.check_pattern(&binding.node, field_ty, binding.span)?;
                         }
 
                         Ok(())
@@ -1324,12 +2505,33 @@ impl TypeChecker {
                             .find(|(n, _)| n == variant)
                             .map(|(_, fields)| fields.clone())
                             .ok_or_else(|| {
-                                CompileError::type_error(format!("unknown variant: {variant}"), span)
+                                // v0.60: Suggest similar variant names
+                                let names: Vec<&str> = variants.iter().map(|(n, _)| n.as_str()).collect();
+                                let suggestion = find_similar_name(variant, &names, 2);
+                                CompileError::type_error(
+                                    format!("unknown variant `{}` on enum `{}`{}", variant, enum_name, format_suggestion_hint(suggestion)),
+                                    span,
+                                )
                             })?;
 
                         if bindings.len() != variant_fields.len() {
+                            // v0.59: Enhanced pattern binding error with hints
+                            let suggestion = if bindings.len() > variant_fields.len() {
+                                "\n  hint: remove extra bindings from pattern"
+                            } else if variant_fields.len() == 1 {
+                                "\n  hint: try using `_` as a wildcard binding"
+                            } else {
+                                "\n  hint: use `_` for unused bindings"
+                            };
                             return Err(CompileError::type_error(
-                                format!("expected {} bindings, got {}", variant_fields.len(), bindings.len()),
+                                format!(
+                                    "pattern `{}::{}` expects {} binding{}, got {}{}",
+                                    enum_name, variant,
+                                    variant_fields.len(),
+                                    if variant_fields.len() == 1 { "" } else { "s" },
+                                    bindings.len(),
+                                    suggestion
+                                ),
                                 span,
                             ));
                         }
@@ -1340,13 +2542,12 @@ impl TypeChecker {
                             type_subst.insert(tp.name.clone(), (**arg).clone());
                         }
 
-                        // Bind pattern variables with substituted types
+                        // v0.41: Recursively check nested patterns with substituted types
+                        let type_param_names: Vec<_> = type_params.iter().map(|tp| tp.name.as_str()).collect();
                         for (binding, field_ty) in bindings.iter().zip(variant_fields.iter()) {
-                            // Convert Named types to TypeVar, then substitute
-                            let type_param_names: Vec<_> = type_params.iter().map(|tp| tp.name.as_str()).collect();
                             let resolved_ty = self.resolve_type_vars(field_ty, &type_param_names);
                             let substituted_ty = self.substitute_type(&resolved_ty, &type_subst);
-                            self.env.insert(binding.node.clone(), substituted_ty);
+                            self.check_pattern(&binding.node, &substituted_ty, binding.span)?;
                         }
 
                         Ok(())
@@ -1360,26 +2561,56 @@ impl TypeChecker {
                                 .find(|(n, _)| n == variant)
                                 .map(|(_, fields)| fields.clone())
                                 .ok_or_else(|| {
-                                    CompileError::type_error(format!("unknown variant: {variant}"), span)
+                                    // v0.60: Suggest similar variant names
+                                    let names: Vec<&str> = variants.iter().map(|(n, _)| n.as_str()).collect();
+                                    let suggestion = find_similar_name(variant, &names, 2);
+                                    CompileError::type_error(
+                                        format!("unknown variant `{}` on enum `{}`{}", variant, enum_name, format_suggestion_hint(suggestion)),
+                                        span,
+                                    )
                                 })?;
 
                             if bindings.len() != variant_fields.len() {
+                                // v0.59: Enhanced pattern binding error with hints
+                                let suggestion = if bindings.len() > variant_fields.len() {
+                                    "\n  hint: remove extra bindings from pattern"
+                                } else if variant_fields.len() == 1 {
+                                    "\n  hint: try using `_` as a wildcard binding"
+                                } else {
+                                    "\n  hint: use `_` for unused bindings"
+                                };
                                 return Err(CompileError::type_error(
-                                    format!("expected {} bindings, got {}", variant_fields.len(), bindings.len()),
+                                    format!(
+                                        "pattern `{}::{}` expects {} binding{}, got {}{}",
+                                        enum_name, variant,
+                                        variant_fields.len(),
+                                        if variant_fields.len() == 1 { "" } else { "s" },
+                                        bindings.len(),
+                                        suggestion
+                                    ),
                                     span,
                                 ));
                             }
 
-                            // Bind pattern variables with the original field types (may contain type params)
+                            // v0.41: Recursively check nested patterns
                             let type_param_names: Vec<_> = type_params.iter().map(|tp| tp.name.as_str()).collect();
                             for (binding, field_ty) in bindings.iter().zip(variant_fields.iter()) {
                                 let resolved_ty = self.resolve_type_vars(field_ty, &type_param_names);
-                                self.env.insert(binding.node.clone(), resolved_ty);
+                                self.check_pattern(&binding.node, &resolved_ty, binding.span)?;
                             }
 
                             Ok(())
                         } else {
-                            Err(CompileError::type_error(format!("undefined enum: {enum_name}"), span))
+                            // v0.63: Suggest similar type names
+                            let mut all_types: Vec<&str> = self.enums.keys().map(|s| s.as_str()).collect();
+                            all_types.extend(self.generic_enums.keys().map(|s| s.as_str()));
+                            all_types.extend(self.structs.keys().map(|s| s.as_str()));
+                            all_types.extend(self.generic_structs.keys().map(|s| s.as_str()));
+                            let suggestion = find_similar_name(enum_name, &all_types, 2);
+                            Err(CompileError::type_error(
+                                format!("undefined enum: `{}`{}", enum_name, format_suggestion_hint(suggestion)),
+                                span,
+                            ))
                         }
                     }
                     _ => Err(CompileError::type_error(
@@ -1389,10 +2620,21 @@ impl TypeChecker {
                 }
             }
             Pattern::Struct { name, fields } => {
+                // v0.75: Mark imported struct as used in pattern
+                self.mark_name_used(name);
                 match expected_ty {
                     Type::Named(expected_name) if expected_name == name => {
                         let struct_fields = self.structs.get(name).cloned().ok_or_else(|| {
-                            CompileError::type_error(format!("undefined struct: {name}"), span)
+                            // v0.63: Suggest similar type names
+                            let mut all_types: Vec<&str> = self.structs.keys().map(|s| s.as_str()).collect();
+                            all_types.extend(self.generic_structs.keys().map(|s| s.as_str()));
+                            all_types.extend(self.enums.keys().map(|s| s.as_str()));
+                            all_types.extend(self.generic_enums.keys().map(|s| s.as_str()));
+                            let suggestion = find_similar_name(name, &all_types, 2);
+                            CompileError::type_error(
+                                format!("undefined struct: `{}`{}", name, format_suggestion_hint(suggestion)),
+                                span,
+                            )
                         })?;
 
                         for (field_name, field_pat) in fields {
@@ -1400,7 +2642,13 @@ impl TypeChecker {
                                 .find(|(n, _)| n == &field_name.node)
                                 .map(|(_, ty)| ty.clone())
                                 .ok_or_else(|| {
-                                    CompileError::type_error(format!("unknown field: {}", field_name.node), span)
+                                    // v0.60: Suggest similar field names
+                                    let names: Vec<&str> = struct_fields.iter().map(|(n, _)| n.as_str()).collect();
+                                    let suggestion = find_similar_name(&field_name.node, &names, 2);
+                                    CompileError::type_error(
+                                        format!("unknown field `{}` on struct `{}`{}", field_name.node, name, format_suggestion_hint(suggestion)),
+                                        span,
+                                    )
                                 })?;
 
                             self.check_pattern(&field_pat.node, &field_ty, field_pat.span)?;
@@ -1414,21 +2662,162 @@ impl TypeChecker {
                     )),
                 }
             }
+            // v0.39: Range pattern
+            Pattern::Range { start, end, inclusive: _ } => {
+                // Check that expected type is numeric
+                if !matches!(expected_ty.base_type(), Type::I32 | Type::I64 | Type::U32 | Type::U64) {
+                    return Err(CompileError::type_error(
+                        format!("range patterns only work with integer types, got {}", expected_ty),
+                        span,
+                    ));
+                }
+                // Check that start and end are the same type
+                let start_ty = match start {
+                    LiteralPattern::Int(_) => Type::I64,
+                    _ => return Err(CompileError::type_error(
+                        "range pattern bounds must be integers".to_string(),
+                        span,
+                    )),
+                };
+                let end_ty = match end {
+                    LiteralPattern::Int(_) => Type::I64,
+                    _ => return Err(CompileError::type_error(
+                        "range pattern bounds must be integers".to_string(),
+                        span,
+                    )),
+                };
+                if start_ty != end_ty {
+                    return Err(CompileError::type_error(
+                        "range pattern bounds must have the same type".to_string(),
+                        span,
+                    ));
+                }
+                Ok(())
+            }
+            // v0.40: Or-pattern
+            Pattern::Or(alts) => {
+                // All alternatives must be compatible with the expected type
+                for alt in alts {
+                    self.check_pattern(&alt.node, expected_ty, alt.span)?;
+                }
+                Ok(())
+            }
+            // v0.41: Binding pattern: name @ pattern
+            Pattern::Binding { name, pattern } => {
+                // v0.79: Check for shadow binding before adding
+                if let Some(original_span) = self.binding_tracker.find_shadow(name) {
+                    self.add_warning(CompileWarning::shadow_binding(name, span, original_span));
+                }
+
+                // Bind the name to the expected type
+                self.env.insert(name.clone(), expected_ty.clone());
+                // v0.48: Track binding for unused detection
+                self.binding_tracker.bind(name.clone(), span);
+                // Check the inner pattern
+                self.check_pattern(&pattern.node, expected_ty, pattern.span)
+            }
+            // v0.42: Tuple pattern
+            Pattern::Tuple(patterns) => {
+                // Expected type must be a tuple with matching arity
+                if let Type::Tuple(elem_types) = expected_ty {
+                    if patterns.len() != elem_types.len() {
+                        return Err(CompileError::type_error(
+                            format!(
+                                "tuple pattern has {} elements but expected {}",
+                                patterns.len(),
+                                elem_types.len()
+                            ),
+                            span,
+                        ));
+                    }
+                    // Check each element pattern against its corresponding type
+                    for (pat, elem_ty) in patterns.iter().zip(elem_types.iter()) {
+                        self.check_pattern(&pat.node, elem_ty, pat.span)?;
+                    }
+                    Ok(())
+                } else {
+                    Err(CompileError::type_error(
+                        format!("expected tuple type, got {}", expected_ty),
+                        span,
+                    ))
+                }
+            }
+            // v0.44: Array pattern
+            Pattern::Array(patterns) => {
+                // Expected type must be an array with matching size
+                if let Type::Array(elem_ty, size) = expected_ty {
+                    if patterns.len() != *size {
+                        return Err(CompileError::type_error(
+                            format!(
+                                "array pattern has {} elements but expected {} (array size)",
+                                patterns.len(),
+                                size
+                            ),
+                            span,
+                        ));
+                    }
+                    // Check each element pattern against the element type
+                    for pat in patterns.iter() {
+                        self.check_pattern(&pat.node, elem_ty, pat.span)?;
+                    }
+                    Ok(())
+                } else {
+                    Err(CompileError::type_error(
+                        format!("expected array type, got {}", expected_ty),
+                        span,
+                    ))
+                }
+            }
+            // v0.45: Array rest pattern - matches arrays with prefix..suffix
+            Pattern::ArrayRest { prefix, suffix } => {
+                if let Type::Array(elem_ty, size) = expected_ty {
+                    let required_len = prefix.len() + suffix.len();
+                    // Array must have at least enough elements for prefix + suffix
+                    if *size < required_len {
+                        return Err(CompileError::type_error(
+                            format!(
+                                "array rest pattern requires at least {} elements but array has only {}",
+                                required_len,
+                                size
+                            ),
+                            span,
+                        ));
+                    }
+                    // Check prefix patterns against the element type
+                    for pat in prefix.iter() {
+                        self.check_pattern(&pat.node, elem_ty, pat.span)?;
+                    }
+                    // Check suffix patterns against the element type
+                    for pat in suffix.iter() {
+                        self.check_pattern(&pat.node, elem_ty, pat.span)?;
+                    }
+                    Ok(())
+                } else {
+                    Err(CompileError::type_error(
+                        format!("expected array type for array rest pattern, got {}", expected_ty),
+                        span,
+                    ))
+                }
+            }
         }
     }
 
     /// Check binary operation types
     /// v0.2: Uses base_type() to handle refined types correctly
     fn check_binary_op(&self, op: BinOp, left: &Type, right: &Type, span: Span) -> Result<Type> {
+        // v0.50.6: Resolve type aliases before checking
+        let left_resolved = self.resolve_type_alias(left);
+        let right_resolved = self.resolve_type_alias(right);
         // v0.2: Extract base types for refined types
-        let left_base = left.base_type();
-        let right_base = right.base_type();
+        let left_base = left_resolved.base_type();
+        let right_base = right_resolved.base_type();
 
         match op {
             BinOp::Add => {
                 self.unify(left_base, right_base, span)?;
                 match left_base {
-                    Type::I32 | Type::I64 | Type::F64 => Ok(left_base.clone()),
+                    // v0.38: Include unsigned types
+                    Type::I32 | Type::I64 | Type::U32 | Type::U64 | Type::F64 => Ok(left_base.clone()),
                     Type::String => Ok(Type::String), // String concatenation
                     _ => Err(CompileError::type_error(
                         format!("+ operator requires numeric or String type, got {left}"),
@@ -1440,9 +2829,53 @@ impl TypeChecker {
             BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Mod => {
                 self.unify(left_base, right_base, span)?;
                 match left_base {
-                    Type::I32 | Type::I64 | Type::F64 => Ok(left_base.clone()),
+                    // v0.38: Include unsigned types
+                    Type::I32 | Type::I64 | Type::U32 | Type::U64 | Type::F64 => Ok(left_base.clone()),
                     _ => Err(CompileError::type_error(
                         format!("arithmetic operator requires numeric type, got {left}"),
+                        span,
+                    )),
+                }
+            }
+
+            // v0.37: Wrapping arithmetic operators (integer only, no floats)
+            BinOp::AddWrap | BinOp::SubWrap | BinOp::MulWrap => {
+                self.unify(left_base, right_base, span)?;
+                match left_base {
+                    // v0.38: Include unsigned types
+                    Type::I32 | Type::I64 | Type::U32 | Type::U64 => Ok(left_base.clone()),
+                    _ => Err(CompileError::type_error(
+                        format!("wrapping arithmetic operator requires integer type, got {left}"),
+                        span,
+                    )),
+                }
+            }
+
+            // v0.38: Checked arithmetic operators (return Option<T>)
+            BinOp::AddChecked | BinOp::SubChecked | BinOp::MulChecked => {
+                self.unify(left_base, right_base, span)?;
+                match left_base {
+                    Type::I32 | Type::I64 | Type::U32 | Type::U64 => {
+                        // Return Option<T> where T is the integer type
+                        Ok(Type::Generic {
+                            name: "Option".to_string(),
+                            type_args: vec![Box::new(left_base.clone())],
+                        })
+                    }
+                    _ => Err(CompileError::type_error(
+                        format!("checked arithmetic operator requires integer type, got {left}"),
+                        span,
+                    )),
+                }
+            }
+
+            // v0.38: Saturating arithmetic operators (clamp to min/max)
+            BinOp::AddSat | BinOp::SubSat | BinOp::MulSat => {
+                self.unify(left_base, right_base, span)?;
+                match left_base {
+                    Type::I32 | Type::I64 | Type::U32 | Type::U64 => Ok(left_base.clone()),
+                    _ => Err(CompileError::type_error(
+                        format!("saturating arithmetic operator requires integer type, got {left}"),
                         span,
                     )),
                 }
@@ -1451,7 +2884,8 @@ impl TypeChecker {
             BinOp::Eq | BinOp::Ne => {
                 self.unify(left_base, right_base, span)?;
                 match left_base {
-                    Type::I32 | Type::I64 | Type::F64 | Type::Bool | Type::String => Ok(Type::Bool),
+                    // v0.38: Include unsigned types, v0.64: Include Char type
+                    Type::I32 | Type::I64 | Type::U32 | Type::U64 | Type::F64 | Type::Bool | Type::String | Type::Char => Ok(Type::Bool),
                     _ => Err(CompileError::type_error(
                         format!("equality operator requires comparable type, got {left}"),
                         span,
@@ -1462,7 +2896,8 @@ impl TypeChecker {
             BinOp::Lt | BinOp::Gt | BinOp::Le | BinOp::Ge => {
                 self.unify(left_base, right_base, span)?;
                 match left_base {
-                    Type::I32 | Type::I64 | Type::F64 => Ok(Type::Bool),
+                    // v0.38: Include unsigned types, v0.64: Include Char type (ordinal comparison)
+                    Type::I32 | Type::I64 | Type::U32 | Type::U64 | Type::F64 | Type::Char => Ok(Type::Bool),
                     _ => Err(CompileError::type_error(
                         format!("comparison operator requires numeric type, got {left}"),
                         span,
@@ -1471,6 +2906,43 @@ impl TypeChecker {
             }
 
             BinOp::And | BinOp::Or => {
+                self.unify(&Type::Bool, left_base, span)?;
+                self.unify(&Type::Bool, right_base, span)?;
+                Ok(Type::Bool)
+            }
+
+            // v0.32: Shift operators require integer types
+            // v0.38: Include unsigned types (preserve signedness)
+            BinOp::Shl | BinOp::Shr => {
+                match (left_base, right_base) {
+                    (Type::I32, Type::I32) => Ok(Type::I32),
+                    (Type::I64, Type::I64) | (Type::I64, Type::I32) | (Type::I32, Type::I64) => Ok(Type::I64),
+                    (Type::U32, Type::U32) | (Type::U32, Type::I32) => Ok(Type::U32),
+                    (Type::U64, Type::U64) | (Type::U64, Type::I32) | (Type::U64, Type::U32) => Ok(Type::U64),
+                    _ => Err(CompileError::type_error(
+                        format!("shift operators require integer types, got {left_base} and {right_base}"),
+                        span,
+                    )),
+                }
+            }
+
+            // v0.36: Bitwise operators require integer types
+            // v0.38: Include unsigned types (preserve signedness)
+            BinOp::Band | BinOp::Bor | BinOp::Bxor => {
+                match (left_base, right_base) {
+                    (Type::I32, Type::I32) => Ok(Type::I32),
+                    (Type::I64, Type::I64) | (Type::I64, Type::I32) | (Type::I32, Type::I64) => Ok(Type::I64),
+                    (Type::U32, Type::U32) => Ok(Type::U32),
+                    (Type::U64, Type::U64) | (Type::U64, Type::U32) | (Type::U32, Type::U64) => Ok(Type::U64),
+                    _ => Err(CompileError::type_error(
+                        format!("bitwise operators require integer types, got {left_base} and {right_base}"),
+                        span,
+                    )),
+                }
+            }
+
+            // v0.36: Logical implication requires boolean types
+            BinOp::Implies => {
                 self.unify(&Type::Bool, left_base, span)?;
                 self.unify(&Type::Bool, right_base, span)?;
                 Ok(Type::Bool)
@@ -1496,21 +2968,34 @@ impl TypeChecker {
                 self.unify(&Type::Bool, ty_base, span)?;
                 Ok(Type::Bool)
             }
+            // v0.36: Bitwise not requires integer type
+            // v0.38: Include unsigned types
+            UnOp::Bnot => match ty_base {
+                Type::I32 | Type::I64 | Type::U32 | Type::U64 => Ok(ty_base.clone()),
+                _ => Err(CompileError::type_error(
+                    format!("bitwise not requires integer type, got {ty}"),
+                    span,
+                )),
+            },
         }
     }
 
     /// Unify two types
     /// v0.15: Updated to handle TypeVar in generic function body checking
     fn unify(&self, expected: &Type, actual: &Type, span: Span) -> Result<()> {
+        // v0.50.6: Resolve type aliases before unification
+        let expected = self.resolve_type_alias(expected);
+        let actual = self.resolve_type_alias(actual);
+
         // v0.15: TypeVar in function body context matches any type
         // When type checking a generic function body, TypeVar acts as a placeholder
-        if let Type::TypeVar(name) = expected
+        if let Type::TypeVar(name) = &expected
             && self.type_param_env.contains_key(name)
         {
             // TypeVar is bound in current generic context - accept any type
             return Ok(());
         }
-        if let Type::TypeVar(name) = actual
+        if let Type::TypeVar(name) = &actual
             && self.type_param_env.contains_key(name)
         {
             // TypeVar is bound in current generic context - accept any type
@@ -1518,7 +3003,7 @@ impl TypeChecker {
         }
 
         // Both are TypeVar with same name
-        if let (Type::TypeVar(a), Type::TypeVar(b)) = (expected, actual)
+        if let (Type::TypeVar(a), Type::TypeVar(b)) = (&expected, &actual)
             && a == b
         {
             return Ok(());
@@ -1526,7 +3011,7 @@ impl TypeChecker {
 
         // v0.16: Handle Generic types with TypeVar in type_args
         // e.g., unify Option<i64> with Option<T> where T is a type parameter
-        if let (Type::Generic { name: n1, type_args: a1 }, Type::Generic { name: n2, type_args: a2 }) = (expected, actual)
+        if let (Type::Generic { name: n1, type_args: a1 }, Type::Generic { name: n2, type_args: a2 }) = (&expected, &actual)
             && n1 == n2
             && a1.len() == a2.len()
         {
@@ -1539,11 +3024,11 @@ impl TypeChecker {
 
         // v0.16: Handle unbound TypeVar (from nullary variants like Option::None)
         // In non-generic context, TypeVar acts as a wildcard that matches concrete types
-        if let Type::TypeVar(_) = expected {
+        if let Type::TypeVar(_) = &expected {
             // Allow any type to match an unbound TypeVar
             return Ok(());
         }
-        if let Type::TypeVar(_) = actual {
+        if let Type::TypeVar(_) = &actual {
             // Allow unbound TypeVar to match any expected type
             return Ok(());
         }
@@ -1551,10 +3036,22 @@ impl TypeChecker {
         if expected == actual {
             Ok(())
         } else {
-            Err(CompileError::type_error(
-                format!("expected {expected}, got {actual}"),
-                span,
-            ))
+            // v0.38: Allow integer type coercion for literals
+            // i64 literals (default) can be used where u32/u64 is expected
+            // This enables: let x: u32 = 10; (where 10 infers as i64)
+            let is_integer_coercion = matches!(
+                (&expected, &actual),
+                (Type::U32, Type::I64) | (Type::U64, Type::I64)
+                | (Type::I32, Type::I64) | (Type::U32, Type::I32)
+            );
+            if is_integer_coercion {
+                Ok(())
+            } else {
+                Err(CompileError::type_error(
+                    format!("expected {expected}, got {actual}"),
+                    span,
+                ))
+            }
         }
     }
 
@@ -1787,9 +3284,14 @@ impl TypeChecker {
         match ty {
             Type::I32 => "i32".to_string(),
             Type::I64 => "i64".to_string(),
+            // v0.38: Unsigned types
+            Type::U32 => "u32".to_string(),
+            Type::U64 => "u64".to_string(),
             Type::F64 => "f64".to_string(),
             Type::Bool => "bool".to_string(),
             Type::String => "String".to_string(),
+            // v0.64: Char type
+            Type::Char => "char".to_string(),
             Type::Unit => "unit".to_string(),
             Type::Named(name) => name.clone(),
             Type::TypeVar(name) => name.clone(),
@@ -1814,6 +3316,13 @@ impl TypeChecker {
             }
             // v0.31: Never type
             Type::Never => "!".to_string(),
+            // v0.37: Nullable type
+            Type::Nullable(inner) => format!("{}?", self.type_to_string(inner)),
+            // v0.42: Tuple type
+            Type::Tuple(elems) => {
+                let elems_str: Vec<_> = elems.iter().map(|t| self.type_to_string(t)).collect();
+                format!("({})", elems_str.join(", "))
+            }
         }
     }
 

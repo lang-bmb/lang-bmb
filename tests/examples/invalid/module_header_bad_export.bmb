@@ -1,5 +1,5 @@
--- Invalid Module Header Test (v0.31: RFC-0002)
--- Tests that exports must match actual definitions
+// Invalid Module Header Test (v0.31: RFC-0002)
+// Tests that exports must match actual definitions
 
 module math.bad
   exports add, subtract, nonexistent
@@ -7,4 +7,4 @@ module math.bad
 
 fn add(a: i64, b: i64) -> i64 = a + b;
 fn subtract(a: i64, b: i64) -> i64 = a - b;
--- Note: "nonexistent" is exported but not defined - should error
+// Note: "nonexistent" is exported but not defined - should error

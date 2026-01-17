@@ -1,5 +1,5 @@
--- Tests for core::option module
--- Verifies Option type operations
+// Tests for core::option module
+// Verifies Option type operations
 
 use core::option::Option;
 use core::option::is_some;
@@ -9,7 +9,7 @@ use core::option::unwrap_or;
 use core::option::some;
 use core::option::none;
 
--- Test Some creation and checks
+// Test Some creation and checks
 fn test_some_is_some() -> bool
   post ret == true
 = is_some(Option::Some(42));
@@ -18,7 +18,7 @@ fn test_some_is_not_none() -> bool
   post ret == false
 = is_none(Option::Some(42));
 
--- Test None creation and checks
+// Test None creation and checks
 fn test_none_is_none() -> bool
   post ret == true
 = is_none(Option::None);
@@ -27,12 +27,12 @@ fn test_none_is_not_some() -> bool
   post ret == false
 = is_some(Option::None);
 
--- Test unwrap
+// Test unwrap
 fn test_unwrap_some() -> i64
   post ret == 42
 = unwrap(Option::Some(42));
 
--- Test unwrap_or
+// Test unwrap_or
 fn test_unwrap_or_some() -> i64
   post ret == 42
 = unwrap_or(Option::Some(42), 0);
@@ -41,7 +41,7 @@ fn test_unwrap_or_none() -> i64
   post ret == 99
 = unwrap_or(Option::None, 99);
 
--- Test helper functions
+// Test helper functions
 fn test_some_helper() -> i64
   post ret == 100
 = unwrap(some(100));
@@ -50,7 +50,7 @@ fn test_none_helper() -> bool
   post ret == true
 = is_none(none());
 
--- Test match patterns
+// Test match patterns
 fn test_match_some() -> i64
   post ret == 10
 = match Option::Some(10) {
@@ -65,19 +65,19 @@ fn test_match_none() -> i64
     Option::None => 0
 };
 
--- Composite test
+// Composite test
 fn test_chain_options() -> i64
   post ret == 42 or ret == 0
 = let opt = Option::Some(42);
   let val = unwrap_or(opt, 0);
   val;
 
--- Main test runner
+// Main test runner
 fn main() -> i64 =
     let t1 = test_some_is_some();
     let t2 = test_none_is_none();
     let t3 = test_unwrap_some();
     let t4 = test_unwrap_or_none();
     let t5 = test_match_some();
-    -- Return 0 for success
+    // Return 0 for success
     0;

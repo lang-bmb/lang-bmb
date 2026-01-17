@@ -1,8 +1,8 @@
--- Simple contracts (parsing only in v0.1)
+// Simple contracts (parsing only in v0.1)
 fn abs_contract(x: i64) -> i64
   pre true
   post ret >= 0
-= if x >= 0 then x else 0 - x;
+= if x >= 0 { x } else { 0 - x };
 
 fn positive_add(a: i64, b: i64) -> i64
   pre a > 0 and b > 0

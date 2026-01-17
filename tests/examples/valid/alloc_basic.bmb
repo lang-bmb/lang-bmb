@@ -1,5 +1,5 @@
--- Basic allocation test (Phase 34.2.1)
--- Tests malloc, free, calloc individually due to interpreter scope limitations
+// Basic allocation test (Phase 34.2.1)
+// Tests malloc, free, calloc individually due to interpreter scope limitations
 
 fn test_malloc() -> i64 = {
     let ptr = malloc(64);

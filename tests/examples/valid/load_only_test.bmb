@@ -1,4 +1,4 @@
--- Load-only test (skip store to isolate the issue)
+// Load-only test (skip store to isolate the issue)
 
 fn test_load() -> i64 = {
     let ptr = malloc(8);

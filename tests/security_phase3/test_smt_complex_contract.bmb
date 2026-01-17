@@ -1,0 +1,10 @@
+// Phase 3 Security Test: Complex contract (potential SMT timeout)
+fn complex(n: i64) -> i64
+    pre n >= 0
+    pre n <= 100
+    pre n * n * n + n * n + n < 1000000
+    pre (n + 1) * (n + 2) * (n + 3) > n
+    post ret == n * n
+= n * n;
+
+fn main() -> i64 = complex(10);

@@ -1,4 +1,4 @@
--- Let bindings
+// Let bindings
 fn double_add(x: i64, y: i64) -> i64 =
   let a = x + x;
   let b = y + y;

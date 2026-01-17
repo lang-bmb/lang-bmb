@@ -21,7 +21,7 @@
 use std::collections::{HashMap, HashSet};
 
 use super::{
-    Constant, MirBinOp, MirFunction, MirInst, MirProgram, MirUnaryOp,
+    CmpOp, Constant, ContractFact, MirBinOp, MirFunction, MirInst, MirProgram, MirUnaryOp,
     Operand, Place, Terminator,
 };
 
@@ -73,6 +73,7 @@ impl OptimizationPipeline {
                 pipeline.add_pass(Box::new(CopyPropagation));
                 pipeline.add_pass(Box::new(CommonSubexpressionElimination));
                 pipeline.add_pass(Box::new(ContractBasedOptimization));
+                pipeline.add_pass(Box::new(ContractUnreachableElimination));
             }
         }
 
@@ -93,16 +94,27 @@ impl OptimizationPipeline {
     pub fn optimize(&self, program: &mut MirProgram) -> OptimizationStats {
         let mut stats = OptimizationStats::new();
 
+        // v0.38.3: Create PureFunctionCSE pass with program-level information
+        let pure_cse = PureFunctionCSE::from_program(program);
+
+        // v0.38.4: Create ConstFunctionEval pass with program-level information
+        let const_eval = ConstFunctionEval::from_program(program);
+
         for func in &mut program.functions {
-            let func_stats = self.optimize_function(func);
+            let func_stats = self.optimize_function_with_program_passes(func, &pure_cse, &const_eval);
             stats.merge(&func_stats);
         }
 
         stats
     }
 
-    /// Run all passes on a single function until fixed point
-    fn optimize_function(&self, func: &mut MirFunction) -> OptimizationStats {
+    /// Run all passes on a single function until fixed point (with program-level passes)
+    fn optimize_function_with_program_passes(
+        &self,
+        func: &mut MirFunction,
+        pure_cse: &PureFunctionCSE,
+        const_eval: &ConstFunctionEval,
+    ) -> OptimizationStats {
         let mut stats = OptimizationStats::new();
         let mut iteration = 0;
 
@@ -110,11 +122,24 @@ impl OptimizationPipeline {
             let mut changed = false;
             iteration += 1;
 
+            // Run standard passes
             for pass in &self.passes {
                 if pass.run_on_function(func) {
                     changed = true;
                     stats.record_pass(pass.name());
                 }
+            }
+
+            // v0.38.3: Run pure function CSE
+            if pure_cse.run_on_function(func) {
+                changed = true;
+                stats.record_pass(pure_cse.name());
+            }
+
+            // v0.38.4: Run const function evaluation
+            if const_eval.run_on_function(func) {
+                changed = true;
+                stats.record_pass(const_eval.name());
             }
 
             if !changed || iteration >= self.max_iterations {
@@ -613,15 +638,202 @@ impl OptimizationPass for CommonSubexpressionElimination {
 }
 
 // ============================================================================
+// Pure Function CSE Pass (v0.38.3)
+// ============================================================================
+
+/// Common subexpression elimination for @pure function calls
+///
+/// Pure functions have no side effects and always return the same result
+/// for the same inputs. This allows us to eliminate duplicate calls.
+///
+/// Example:
+/// ```text
+/// @pure fn square(x: i64) -> i64 = x * x;
+///
+/// fn example(n: i64) -> i64 = square(n) + square(n); // second call eliminated
+/// ```
+pub struct PureFunctionCSE {
+    /// Set of function names marked @pure
+    pure_functions: HashSet<String>,
+}
+
+impl PureFunctionCSE {
+    /// Create a new PureFunctionCSE pass with the given pure function set
+    pub fn new(pure_functions: HashSet<String>) -> Self {
+        Self { pure_functions }
+    }
+
+    /// Create from a MirProgram by collecting all @pure functions
+    pub fn from_program(program: &MirProgram) -> Self {
+        let pure_functions: HashSet<String> = program
+            .functions
+            .iter()
+            .filter(|f| f.is_pure || f.is_const) // @const implies @pure
+            .map(|f| f.name.clone())
+            .collect();
+        Self { pure_functions }
+    }
+}
+
+impl OptimizationPass for PureFunctionCSE {
+    fn name(&self) -> &'static str {
+        "pure_function_cse"
+    }
+
+    fn run_on_function(&self, func: &mut MirFunction) -> bool {
+        let mut changed = false;
+        // Map from (func_name, args...) -> result place
+        let mut call_results: HashMap<String, Place> = HashMap::new();
+
+        for block in &mut func.blocks {
+            let mut new_instructions = Vec::new();
+
+            for inst in &block.instructions {
+                if let MirInst::Call { dest: Some(dest), func: called_func, args } = inst {
+                    // Only optimize if the called function is pure
+                    if self.pure_functions.contains(called_func) {
+                        // Create a key from function name and arguments
+                        let key = format!("call:{}:{:?}", called_func, args);
+
+                        if let Some(existing) = call_results.get(&key) {
+                            // Replace with copy from previous result
+                            new_instructions.push(MirInst::Copy {
+                                dest: dest.clone(),
+                                src: existing.clone(),
+                            });
+                            changed = true;
+                            continue;
+                        } else {
+                            // First call - record the result
+                            call_results.insert(key, dest.clone());
+                        }
+                    }
+                }
+                new_instructions.push(inst.clone());
+            }
+
+            block.instructions = new_instructions;
+        }
+
+        changed
+    }
+}
+
+// ============================================================================
+// Const Function Evaluation Pass (v0.38.4)
+// ============================================================================
+
+/// Compile-time evaluation of @const function calls
+///
+/// @const functions are a superset of @pure functions. When a @const function
+/// returns a constant value and is called with constant arguments, the call
+/// can be replaced with the constant result at compile time.
+///
+/// This is a simplified implementation that handles:
+/// 1. @const functions that just return a constant
+/// 2. @const functions with no parameters
+///
+/// Full compile-time evaluation (interpreting function bodies) is deferred
+/// to future enhancements.
+pub struct ConstFunctionEval {
+    /// Map of const function name -> constant return value (if simple)
+    const_values: HashMap<String, Constant>,
+}
+
+impl ConstFunctionEval {
+    /// Create from a MirProgram by analyzing @const functions
+    pub fn from_program(program: &MirProgram) -> Self {
+        let mut const_values = HashMap::new();
+
+        for func in &program.functions {
+            if func.is_const && func.params.is_empty() {
+                // Check if function body is a simple constant return
+                if let Some(value) = Self::extract_constant_return(func) {
+                    const_values.insert(func.name.clone(), value);
+                }
+            }
+        }
+
+        Self { const_values }
+    }
+
+    /// Try to extract a constant return value from a simple @const function
+    fn extract_constant_return(func: &MirFunction) -> Option<Constant> {
+        // Must have exactly one block
+        if func.blocks.len() != 1 {
+            return None;
+        }
+
+        let block = &func.blocks[0];
+
+        // Check if it's a direct return of a constant
+        if let Terminator::Return(Some(Operand::Constant(c))) = &block.terminator {
+            return Some(c.clone());
+        }
+
+        // Check if it's a return of a variable that was set to a constant
+        if let Terminator::Return(Some(Operand::Place(place))) = &block.terminator {
+            // Look for const assignment to this place
+            for inst in &block.instructions {
+                if let MirInst::Const { dest, value } = inst
+                    && dest.name == place.name
+                {
+                    return Some(value.clone());
+                }
+            }
+        }
+
+        None
+    }
+}
+
+impl OptimizationPass for ConstFunctionEval {
+    fn name(&self) -> &'static str {
+        "const_function_eval"
+    }
+
+    fn run_on_function(&self, func: &mut MirFunction) -> bool {
+        let mut changed = false;
+
+        for block in &mut func.blocks {
+            let mut new_instructions = Vec::new();
+
+            for inst in &block.instructions {
+                if let MirInst::Call { dest: Some(dest), func: called_func, args } = inst {
+                    // Only evaluate if function is known const and has no args
+                    if args.is_empty()
+                        && let Some(value) = self.const_values.get(called_func)
+                    {
+                        // Replace call with constant
+                        new_instructions.push(MirInst::Const {
+                            dest: dest.clone(),
+                            value: value.clone(),
+                        });
+                        changed = true;
+                        continue;
+                    }
+                }
+                new_instructions.push(inst.clone());
+            }
+
+            block.instructions = new_instructions;
+        }
+
+        changed
+    }
+}
+
+// ============================================================================
 // Contract-Based Optimization Pass (BMB-specific)
 // ============================================================================
 
-/// Contract-based optimizations unique to BMB
+/// Contract-based optimizations unique to BMB (v0.38)
 ///
 /// These optimizations leverage BMB's contract system:
 /// - Bounds check elimination based on `pre` conditions
 /// - Null check elimination with `Option<T>` contracts
 /// - Purity-based CSE using `post` conditions
+/// - Unreachable branch elimination using `post` conditions
 pub struct ContractBasedOptimization;
 
 impl OptimizationPass for ContractBasedOptimization {
@@ -629,25 +841,382 @@ impl OptimizationPass for ContractBasedOptimization {
         "contract_based_optimization"
     }
 
-    fn run_on_function(&self, _func: &mut MirFunction) -> bool {
-        // TODO: Implement contract-based optimizations
-        //
-        // Future implementation will:
-        // 1. Parse preconditions from function metadata
-        // 2. Track proven facts through the function
-        // 3. Eliminate redundant checks based on proven facts
-        //
-        // Example: fn sum_range(arr: &[i32], start: usize, end: usize)
-        //   pre start <= end
-        //   pre end <= len(arr)
-        //
-        // With these preconditions, we can prove:
-        // - All array accesses in start..end are in bounds
-        // - Loop invariants about start <= i < end
-        //
-        // This enables eliminating bounds checks in the loop body.
+    fn run_on_function(&self, func: &mut MirFunction) -> bool {
+        let mut changed = false;
 
-        false // Placeholder - no changes yet
+        // Build set of proven facts from preconditions
+        let proven_facts = ProvenFacts::from_preconditions(&func.preconditions);
+
+        // Phase 1: Eliminate redundant comparisons based on proven facts
+        for block in &mut func.blocks {
+            for inst in &mut block.instructions {
+                if self.try_eliminate_redundant_check(inst, &proven_facts) {
+                    changed = true;
+                }
+            }
+
+            // Phase 2: Simplify branches based on proven facts
+            if self.try_simplify_branch(&mut block.terminator, &proven_facts) {
+                changed = true;
+            }
+        }
+
+        changed
+    }
+}
+
+impl ContractBasedOptimization {
+    /// Try to eliminate redundant checks based on proven facts
+    /// Returns true if the instruction was modified
+    fn try_eliminate_redundant_check(&self, inst: &mut MirInst, facts: &ProvenFacts) -> bool {
+        // First, extract info without borrowing inst mutably
+        let replacement = match inst {
+            MirInst::BinOp { dest, op, lhs, rhs } => {
+                let cmp_op = match op {
+                    MirBinOp::Lt => CmpOp::Lt,
+                    MirBinOp::Le => CmpOp::Le,
+                    MirBinOp::Gt => CmpOp::Gt,
+                    MirBinOp::Ge => CmpOp::Ge,
+                    _ => return false,
+                };
+
+                // Check if this comparison is implied by preconditions
+                facts.evaluate_comparison(lhs, cmp_op, rhs).map(|result| MirInst::Const {
+                        dest: dest.clone(),
+                        value: Constant::Bool(result),
+                    })
+            }
+            _ => None,
+        };
+
+        // Apply replacement if found
+        if let Some(new_inst) = replacement {
+            *inst = new_inst;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Try to simplify branches based on proven facts
+    fn try_simplify_branch(&self, term: &mut Terminator, facts: &ProvenFacts) -> bool {
+        if let Terminator::Branch { cond, then_label, else_label } = term {
+            // If condition is a known-true/false variable, simplify to unconditional
+            if let Operand::Place(place) = cond
+                && let Some(value) = facts.get_bool_value(&place.name) {
+                    let target = if value {
+                        then_label.clone()
+                    } else {
+                        else_label.clone()
+                    };
+                    *term = Terminator::Goto(target);
+                    return true;
+                }
+        }
+        false
+    }
+}
+
+/// Proven facts from preconditions, used for optimization
+struct ProvenFacts {
+    /// Variable bounds: var -> (lower_bound, upper_bound) where bounds are Option<i64>
+    var_bounds: HashMap<String, (Option<i64>, Option<i64>)>,
+    /// Variable-variable relationships
+    var_relations: Vec<ContractFact>,
+    /// Known boolean values
+    bool_values: HashMap<String, bool>,
+}
+
+impl ProvenFacts {
+    /// Build proven facts from a list of preconditions
+    fn from_preconditions(preconditions: &[ContractFact]) -> Self {
+        let mut facts = ProvenFacts {
+            var_bounds: HashMap::new(),
+            var_relations: Vec::new(),
+            bool_values: HashMap::new(),
+        };
+
+        for fact in preconditions {
+            match fact {
+                ContractFact::VarCmp { var, op, value } => {
+                    let entry = facts.var_bounds.entry(var.clone()).or_insert((None, None));
+                    match op {
+                        CmpOp::Ge => {
+                            // x >= value means lower bound is value
+                            entry.0 = Some(entry.0.map_or(*value, |v| v.max(*value)));
+                        }
+                        CmpOp::Gt => {
+                            // x > value means lower bound is value + 1
+                            entry.0 = Some(entry.0.map_or(value + 1, |v| v.max(value + 1)));
+                        }
+                        CmpOp::Le => {
+                            // x <= value means upper bound is value
+                            entry.1 = Some(entry.1.map_or(*value, |v| v.min(*value)));
+                        }
+                        CmpOp::Lt => {
+                            // x < value means upper bound is value - 1
+                            entry.1 = Some(entry.1.map_or(value - 1, |v| v.min(value - 1)));
+                        }
+                        CmpOp::Eq => {
+                            // x == value means both bounds are value
+                            entry.0 = Some(*value);
+                            entry.1 = Some(*value);
+                        }
+                        _ => {}
+                    }
+                }
+                ContractFact::VarVarCmp { .. } | ContractFact::ArrayBounds { .. } => {
+                    facts.var_relations.push(fact.clone());
+                }
+                ContractFact::NonNull { var } => {
+                    // NonNull doesn't directly affect numeric bounds
+                    // but could be used for null check elimination
+                    facts.bool_values.insert(format!("{}_is_null", var), false);
+                }
+            }
+        }
+
+        facts
+    }
+
+    /// Evaluate a comparison given proven facts
+    /// Returns Some(true/false) if the result is known, None otherwise
+    fn evaluate_comparison(&self, lhs: &Operand, op: CmpOp, rhs: &Operand) -> Option<bool> {
+        // Pattern: var op constant
+        if let (Operand::Place(lhs_place), Operand::Constant(Constant::Int(rhs_val))) = (lhs, rhs)
+            && let Some((lower, upper)) = self.var_bounds.get(&lhs_place.name) {
+                return self.check_bounds(*lower, *upper, op, *rhs_val);
+            }
+
+        // Pattern: constant op var
+        if let (Operand::Constant(Constant::Int(lhs_val)), Operand::Place(rhs_place)) = (lhs, rhs)
+            && let Some((lower, upper)) = self.var_bounds.get(&rhs_place.name) {
+                // Flip the comparison: c op x becomes x flipped_op c
+                let flipped_op = match op {
+                    CmpOp::Lt => CmpOp::Gt,
+                    CmpOp::Le => CmpOp::Ge,
+                    CmpOp::Gt => CmpOp::Lt,
+                    CmpOp::Ge => CmpOp::Le,
+                    other => other,
+                };
+                return self.check_bounds(*lower, *upper, flipped_op, *lhs_val);
+            }
+
+        None
+    }
+
+    /// Check if a comparison is always true/false given bounds
+    fn check_bounds(&self, lower: Option<i64>, upper: Option<i64>, op: CmpOp, value: i64) -> Option<bool> {
+        match op {
+            CmpOp::Ge => {
+                // x >= value: true if lower >= value
+                if let Some(l) = lower
+                    && l >= value {
+                        return Some(true);
+                    }
+                // false if upper < value
+                if let Some(u) = upper
+                    && u < value {
+                        return Some(false);
+                    }
+            }
+            CmpOp::Gt => {
+                // x > value: true if lower > value
+                if let Some(l) = lower
+                    && l > value {
+                        return Some(true);
+                    }
+                // false if upper <= value
+                if let Some(u) = upper
+                    && u <= value {
+                        return Some(false);
+                    }
+            }
+            CmpOp::Le => {
+                // x <= value: true if upper <= value
+                if let Some(u) = upper
+                    && u <= value {
+                        return Some(true);
+                    }
+                // false if lower > value
+                if let Some(l) = lower
+                    && l > value {
+                        return Some(false);
+                    }
+            }
+            CmpOp::Lt => {
+                // x < value: true if upper < value
+                if let Some(u) = upper
+                    && u < value {
+                        return Some(true);
+                    }
+                // false if lower >= value
+                if let Some(l) = lower
+                    && l >= value {
+                        return Some(false);
+                    }
+            }
+            _ => {}
+        }
+        None
+    }
+
+    /// Get a known boolean value for a variable
+    fn get_bool_value(&self, var: &str) -> Option<bool> {
+        self.bool_values.get(var).copied()
+    }
+}
+
+// ============================================================================
+// Contract-Driven Unreachable Code Elimination (v0.38.0.2)
+// ============================================================================
+
+/// Contract-driven unreachable code elimination
+///
+/// This optimization removes blocks that are provably unreachable based on
+/// contract facts (preconditions and postconditions). It works by:
+///
+/// 1. Building proven facts from preconditions
+/// 2. Propagating facts through the CFG
+/// 3. Identifying branches where one arm is provably never taken
+/// 4. Removing unreachable blocks
+pub struct ContractUnreachableElimination;
+
+impl OptimizationPass for ContractUnreachableElimination {
+    fn name(&self) -> &'static str {
+        "contract_unreachable_elimination"
+    }
+
+    fn run_on_function(&self, func: &mut MirFunction) -> bool {
+        let mut changed = false;
+
+        // Build proven facts from preconditions
+        let proven_facts = ProvenFacts::from_preconditions(&func.preconditions);
+
+        // First pass: mark unreachable branches as unconditional jumps
+        let mut unreachable_labels: HashSet<String> = HashSet::new();
+
+        for block in &mut func.blocks {
+            if let Terminator::Branch { cond, then_label, else_label } = &block.terminator {
+                // Try to evaluate the branch condition based on proven facts
+                if let Some(always_true) = self.evaluate_branch_condition(cond, &proven_facts, &block.instructions) {
+                    let (target, dead) = if always_true {
+                        (then_label.clone(), else_label.clone())
+                    } else {
+                        (else_label.clone(), then_label.clone())
+                    };
+                    block.terminator = Terminator::Goto(target);
+                    unreachable_labels.insert(dead);
+                    changed = true;
+                }
+            }
+        }
+
+        // Second pass: find all reachable blocks (starting from entry)
+        let reachable = self.find_reachable_blocks(func);
+
+        // Third pass: remove unreachable blocks
+        let original_len = func.blocks.len();
+        func.blocks.retain(|block| reachable.contains(&block.label));
+        if func.blocks.len() != original_len {
+            changed = true;
+        }
+
+        changed
+    }
+}
+
+impl ContractUnreachableElimination {
+    /// Evaluate a branch condition based on proven facts and local definitions
+    fn evaluate_branch_condition(
+        &self,
+        cond: &Operand,
+        facts: &ProvenFacts,
+        instructions: &[MirInst],
+    ) -> Option<bool> {
+        // Case 1: condition is a constant
+        if let Operand::Constant(Constant::Bool(b)) = cond {
+            return Some(*b);
+        }
+
+        // Case 2: condition is a variable with a known value
+        if let Operand::Place(place) = cond {
+            // Check if we have a known bool value
+            if let Some(value) = facts.get_bool_value(&place.name) {
+                return Some(value);
+            }
+
+            // Check if the variable was defined as a constant in this block
+            for inst in instructions.iter().rev() {
+                match inst {
+                    MirInst::Const { dest, value: Constant::Bool(b) }
+                        if dest.name == place.name =>
+                    {
+                        return Some(*b);
+                    }
+                    // Check for comparison result that we can evaluate
+                    MirInst::BinOp { dest, op, lhs, rhs }
+                        if dest.name == place.name =>
+                    {
+                        let cmp_op = match op {
+                            MirBinOp::Lt => CmpOp::Lt,
+                            MirBinOp::Le => CmpOp::Le,
+                            MirBinOp::Gt => CmpOp::Gt,
+                            MirBinOp::Ge => CmpOp::Ge,
+                            MirBinOp::Eq => CmpOp::Eq,
+                            MirBinOp::Ne => CmpOp::Ne,
+                            _ => return None,
+                        };
+                        return facts.evaluate_comparison(lhs, cmp_op, rhs);
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        None
+    }
+
+    /// Find all reachable blocks starting from entry
+    fn find_reachable_blocks(&self, func: &MirFunction) -> HashSet<String> {
+        let mut reachable = HashSet::new();
+        let mut worklist = Vec::new();
+
+        // Start from entry block (first block)
+        if let Some(entry) = func.blocks.first() {
+            worklist.push(entry.label.clone());
+        }
+
+        while let Some(label) = worklist.pop() {
+            if reachable.contains(&label) {
+                continue;
+            }
+            reachable.insert(label.clone());
+
+            // Find the block and get its successors
+            if let Some(block) = func.blocks.iter().find(|b| b.label == label) {
+                match &block.terminator {
+                    Terminator::Goto(target) => {
+                        worklist.push(target.clone());
+                    }
+                    Terminator::Branch { then_label, else_label, .. } => {
+                        worklist.push(then_label.clone());
+                        worklist.push(else_label.clone());
+                    }
+                    Terminator::Switch { cases, default, .. } => {
+                        for (_, target) in cases {
+                            worklist.push(target.clone());
+                        }
+                        worklist.push(default.clone());
+                    }
+                    Terminator::Return(_) | Terminator::Unreachable => {
+                        // No successors
+                    }
+                }
+            }
+        }
+
+        reachable
     }
 }
 
@@ -686,6 +1255,10 @@ mod tests {
                 ],
                 terminator: Terminator::Return(Some(Operand::Place(Place::new("c")))),
             }],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
         }
     }
 
@@ -723,6 +1296,10 @@ mod tests {
                 ],
                 terminator: Terminator::Return(Some(Operand::Place(Place::new("result")))),
             }],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
         };
 
         let pass = DeadCodeElimination;
@@ -744,5 +1321,530 @@ mod tests {
         let stats = pipeline.optimize(&mut program);
 
         assert!(stats.pass_counts.contains_key("constant_folding"));
+    }
+
+    #[test]
+    fn test_contract_based_optimization() {
+        // Test: precondition "x >= 0" should eliminate "x >= 0" check
+        let mut func = MirFunction {
+            name: "test_bounds".to_string(),
+            params: vec![("x".to_string(), MirType::I64)],
+            ret_ty: MirType::Bool,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![
+                    // %cmp = x >= 0  (should be eliminated to true)
+                    MirInst::BinOp {
+                        dest: Place::new("cmp"),
+                        op: MirBinOp::Ge,
+                        lhs: Operand::Place(Place::new("x")),
+                        rhs: Operand::Constant(Constant::Int(0)),
+                    },
+                ],
+                terminator: Terminator::Return(Some(Operand::Place(Place::new("cmp")))),
+            }],
+            preconditions: vec![
+                ContractFact::VarCmp {
+                    var: "x".to_string(),
+                    op: CmpOp::Ge,
+                    value: 0,
+                },
+            ],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+        };
+
+        let pass = ContractBasedOptimization;
+        let changed = pass.run_on_function(&mut func);
+        assert!(changed, "Contract-based optimization should have made changes");
+
+        // The comparison should be replaced with constant true
+        let inst = &func.blocks[0].instructions[0];
+        assert!(
+            matches!(inst, MirInst::Const { value: Constant::Bool(true), .. }),
+            "x >= 0 should be optimized to true when precondition is x >= 0"
+        );
+    }
+
+    #[test]
+    fn test_contract_bounds_elimination() {
+        // Test: precondition "x >= 5" should prove "x >= 3" is always true
+        let mut func = MirFunction {
+            name: "test_bounds2".to_string(),
+            params: vec![("x".to_string(), MirType::I64)],
+            ret_ty: MirType::Bool,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![
+                    MirInst::BinOp {
+                        dest: Place::new("cmp"),
+                        op: MirBinOp::Ge,
+                        lhs: Operand::Place(Place::new("x")),
+                        rhs: Operand::Constant(Constant::Int(3)),
+                    },
+                ],
+                terminator: Terminator::Return(Some(Operand::Place(Place::new("cmp")))),
+            }],
+            preconditions: vec![
+                ContractFact::VarCmp {
+                    var: "x".to_string(),
+                    op: CmpOp::Ge,
+                    value: 5,  // x >= 5 implies x >= 3
+                },
+            ],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+        };
+
+        let pass = ContractBasedOptimization;
+        let changed = pass.run_on_function(&mut func);
+        assert!(changed);
+
+        let inst = &func.blocks[0].instructions[0];
+        assert!(matches!(inst, MirInst::Const { value: Constant::Bool(true), .. }));
+    }
+
+    #[test]
+    fn test_contract_unreachable_elimination() {
+        // Test: precondition "x >= 0" should eliminate branch to negative case
+        // if x >= 0 then goto positive else goto negative
+        // The negative block should be removed since x >= 0 is always true
+        let mut func = MirFunction {
+            name: "test_unreachable".to_string(),
+            params: vec![("x".to_string(), MirType::I64)],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![
+                BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![
+                        MirInst::BinOp {
+                            dest: Place::new("cmp"),
+                            op: MirBinOp::Ge,
+                            lhs: Operand::Place(Place::new("x")),
+                            rhs: Operand::Constant(Constant::Int(0)),
+                        },
+                    ],
+                    terminator: Terminator::Branch {
+                        cond: Operand::Place(Place::new("cmp")),
+                        then_label: "positive".to_string(),
+                        else_label: "negative".to_string(),
+                    },
+                },
+                BasicBlock {
+                    label: "positive".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Return(Some(Operand::Place(Place::new("x")))),
+                },
+                BasicBlock {
+                    label: "negative".to_string(),
+                    instructions: vec![
+                        MirInst::UnaryOp {
+                            dest: Place::new("neg_x"),
+                            op: MirUnaryOp::Neg,
+                            src: Operand::Place(Place::new("x")),
+                        },
+                    ],
+                    terminator: Terminator::Return(Some(Operand::Place(Place::new("neg_x")))),
+                },
+            ],
+            preconditions: vec![
+                ContractFact::VarCmp {
+                    var: "x".to_string(),
+                    op: CmpOp::Ge,
+                    value: 0,
+                },
+            ],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+        };
+
+        let pass = ContractUnreachableElimination;
+        let changed = pass.run_on_function(&mut func);
+        assert!(changed, "Unreachable elimination should have made changes");
+
+        // The negative block should be removed
+        assert_eq!(func.blocks.len(), 2, "Should have 2 blocks (entry + positive)");
+        assert!(
+            !func.blocks.iter().any(|b| b.label == "negative"),
+            "Negative block should be removed"
+        );
+
+        // The entry block should now have Goto instead of Branch
+        assert!(
+            matches!(func.blocks[0].terminator, Terminator::Goto(_)),
+            "Entry terminator should be Goto"
+        );
+    }
+
+    #[test]
+    fn test_contract_unreachable_keeps_both_branches() {
+        // Test: when no precondition, both branches should be kept
+        let mut func = MirFunction {
+            name: "test_both_reachable".to_string(),
+            params: vec![("x".to_string(), MirType::I64)],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![
+                BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![
+                        MirInst::BinOp {
+                            dest: Place::new("cmp"),
+                            op: MirBinOp::Ge,
+                            lhs: Operand::Place(Place::new("x")),
+                            rhs: Operand::Constant(Constant::Int(0)),
+                        },
+                    ],
+                    terminator: Terminator::Branch {
+                        cond: Operand::Place(Place::new("cmp")),
+                        then_label: "positive".to_string(),
+                        else_label: "negative".to_string(),
+                    },
+                },
+                BasicBlock {
+                    label: "positive".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Return(Some(Operand::Place(Place::new("x")))),
+                },
+                BasicBlock {
+                    label: "negative".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(0)))),
+                },
+            ],
+            preconditions: vec![], // No preconditions
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+        };
+
+        let pass = ContractUnreachableElimination;
+        let changed = pass.run_on_function(&mut func);
+
+        // No changes should be made - both branches are reachable
+        assert!(!changed, "Should not make changes without preconditions");
+        assert_eq!(func.blocks.len(), 3, "All blocks should be kept");
+    }
+
+    #[test]
+    fn test_contract_unreachable_constant_condition() {
+        // Test: constant true condition should eliminate else branch
+        let mut func = MirFunction {
+            name: "test_const_cond".to_string(),
+            params: vec![],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![
+                BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![
+                        MirInst::Const {
+                            dest: Place::new("always_true"),
+                            value: Constant::Bool(true),
+                        },
+                    ],
+                    terminator: Terminator::Branch {
+                        cond: Operand::Place(Place::new("always_true")),
+                        then_label: "taken".to_string(),
+                        else_label: "dead".to_string(),
+                    },
+                },
+                BasicBlock {
+                    label: "taken".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(1)))),
+                },
+                BasicBlock {
+                    label: "dead".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(0)))),
+                },
+            ],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+        };
+
+        let pass = ContractUnreachableElimination;
+        let changed = pass.run_on_function(&mut func);
+        assert!(changed, "Should eliminate dead branch");
+
+        assert_eq!(func.blocks.len(), 2, "Dead block should be removed");
+        assert!(
+            !func.blocks.iter().any(|b| b.label == "dead"),
+            "Dead block should not exist"
+        );
+    }
+
+    #[test]
+    fn test_pure_function_cse() {
+        // Test: duplicate calls to @pure function should be eliminated
+        // %r1 = call square(x)
+        // %r2 = call square(x)  <- should become %r2 = copy %r1
+        let mut func = MirFunction {
+            name: "test_pure_cse".to_string(),
+            params: vec![("x".to_string(), MirType::I64)],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![
+                    MirInst::Call {
+                        dest: Some(Place::new("r1")),
+                        func: "square".to_string(),
+                        args: vec![Operand::Place(Place::new("x"))],
+                    },
+                    MirInst::Call {
+                        dest: Some(Place::new("r2")),
+                        func: "square".to_string(),
+                        args: vec![Operand::Place(Place::new("x"))],
+                    },
+                    MirInst::BinOp {
+                        dest: Place::new("result"),
+                        op: MirBinOp::Add,
+                        lhs: Operand::Place(Place::new("r1")),
+                        rhs: Operand::Place(Place::new("r2")),
+                    },
+                ],
+                terminator: Terminator::Return(Some(Operand::Place(Place::new("result")))),
+            }],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+        };
+
+        // Create a pure function set containing "square"
+        let mut pure_functions = HashSet::new();
+        pure_functions.insert("square".to_string());
+        let pass = PureFunctionCSE::new(pure_functions);
+
+        let changed = pass.run_on_function(&mut func);
+        assert!(changed, "Pure function CSE should have made changes");
+
+        // Second call should be replaced with Copy
+        let second_inst = &func.blocks[0].instructions[1];
+        assert!(
+            matches!(second_inst, MirInst::Copy { dest, src }
+                if dest.name == "r2" && src.name == "r1"),
+            "Second call should be replaced with copy from first result"
+        );
+    }
+
+    #[test]
+    fn test_pure_function_cse_different_args() {
+        // Test: calls with different args should NOT be eliminated
+        let mut func = MirFunction {
+            name: "test_pure_cse_diff".to_string(),
+            params: vec![
+                ("x".to_string(), MirType::I64),
+                ("y".to_string(), MirType::I64),
+            ],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![
+                    MirInst::Call {
+                        dest: Some(Place::new("r1")),
+                        func: "square".to_string(),
+                        args: vec![Operand::Place(Place::new("x"))],
+                    },
+                    MirInst::Call {
+                        dest: Some(Place::new("r2")),
+                        func: "square".to_string(),
+                        args: vec![Operand::Place(Place::new("y"))], // Different arg!
+                    },
+                ],
+                terminator: Terminator::Return(Some(Operand::Place(Place::new("r1")))),
+            }],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+        };
+
+        let mut pure_functions = HashSet::new();
+        pure_functions.insert("square".to_string());
+        let pass = PureFunctionCSE::new(pure_functions);
+
+        let changed = pass.run_on_function(&mut func);
+        assert!(!changed, "Different args should not be eliminated");
+    }
+
+    #[test]
+    fn test_non_pure_function_not_eliminated() {
+        // Test: calls to non-pure functions should NOT be eliminated
+        let mut func = MirFunction {
+            name: "test_non_pure".to_string(),
+            params: vec![("x".to_string(), MirType::I64)],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![
+                    MirInst::Call {
+                        dest: Some(Place::new("r1")),
+                        func: "get_random".to_string(), // Not pure
+                        args: vec![Operand::Place(Place::new("x"))],
+                    },
+                    MirInst::Call {
+                        dest: Some(Place::new("r2")),
+                        func: "get_random".to_string(),
+                        args: vec![Operand::Place(Place::new("x"))],
+                    },
+                ],
+                terminator: Terminator::Return(Some(Operand::Place(Place::new("r1")))),
+            }],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+        };
+
+        // Empty pure function set - no functions are pure
+        let pure_functions = HashSet::new();
+        let pass = PureFunctionCSE::new(pure_functions);
+
+        let changed = pass.run_on_function(&mut func);
+        assert!(!changed, "Non-pure functions should not be eliminated");
+    }
+
+    #[test]
+    fn test_const_function_eval() {
+        // Test: calls to @const functions with constant return values should be inlined
+        // @const fn get_magic() -> i64 = 42;
+        // fn test() -> i64 = get_magic() + 1;  // should become 42 + 1
+        let const_fn = MirFunction {
+            name: "get_magic".to_string(),
+            params: vec![],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![],
+                terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(42)))),
+            }],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: true,
+            is_const: true,
+        };
+
+        let mut caller_fn = MirFunction {
+            name: "test_caller".to_string(),
+            params: vec![],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![
+                    MirInst::Call {
+                        dest: Some(Place::new("magic")),
+                        func: "get_magic".to_string(),
+                        args: vec![],
+                    },
+                    MirInst::BinOp {
+                        dest: Place::new("result"),
+                        op: MirBinOp::Add,
+                        lhs: Operand::Place(Place::new("magic")),
+                        rhs: Operand::Constant(Constant::Int(1)),
+                    },
+                ],
+                terminator: Terminator::Return(Some(Operand::Place(Place::new("result")))),
+            }],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+        };
+
+        // Create program with both functions
+        let program = MirProgram {
+            functions: vec![const_fn, caller_fn.clone()],
+            extern_fns: vec![],
+        };
+
+        // Create pass from program
+        let pass = ConstFunctionEval::from_program(&program);
+
+        let changed = pass.run_on_function(&mut caller_fn);
+        assert!(changed, "Const function eval should have made changes");
+
+        // First instruction should now be Const, not Call
+        let first_inst = &caller_fn.blocks[0].instructions[0];
+        assert!(
+            matches!(first_inst, MirInst::Const { dest, value: Constant::Int(42) }
+                if dest.name == "magic"),
+            "Call to const function should be replaced with constant: got {:?}",
+            first_inst
+        );
+    }
+
+    #[test]
+    fn test_const_function_with_args_not_inlined() {
+        // Test: @const functions with arguments should NOT be inlined
+        // @const fn square(x: i64) -> i64 = x * x;
+        // These require compile-time evaluation which is deferred
+        let const_fn = MirFunction {
+            name: "square".to_string(),
+            params: vec![("x".to_string(), MirType::I64)],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![MirInst::BinOp {
+                    dest: Place::new("result"),
+                    op: MirBinOp::Mul,
+                    lhs: Operand::Place(Place::new("x")),
+                    rhs: Operand::Place(Place::new("x")),
+                }],
+                terminator: Terminator::Return(Some(Operand::Place(Place::new("result")))),
+            }],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: true,
+            is_const: true,
+        };
+
+        let mut caller_fn = MirFunction {
+            name: "test_caller".to_string(),
+            params: vec![],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![MirInst::Call {
+                    dest: Some(Place::new("result")),
+                    func: "square".to_string(),
+                    args: vec![Operand::Constant(Constant::Int(5))],
+                }],
+                terminator: Terminator::Return(Some(Operand::Place(Place::new("result")))),
+            }],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+        };
+
+        let program = MirProgram {
+            functions: vec![const_fn, caller_fn.clone()],
+            extern_fns: vec![],
+        };
+
+        let pass = ConstFunctionEval::from_program(&program);
+
+        let changed = pass.run_on_function(&mut caller_fn);
+        assert!(
+            !changed,
+            "Const function with args should not be inlined (deferred)"
+        );
     }
 }

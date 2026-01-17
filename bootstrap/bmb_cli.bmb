@@ -1,37 +1,31 @@
--- BMB CLI Wrapper (v0.31.23: Phase 32.3.G Complete)
--- Standalone native BMB compiler using argv builtins
---
--- USAGE (Native compiled binary):
---   bmb_cli <input.bmb>              -- compile to stdout
---   bmb_cli <input.bmb> <output.ll>  -- compile to file
---
--- This demonstrates BMB self-hosting CLI capability using:
--- - arg_count(): Return number of CLI arguments (v0.31.22)
--- - get_arg(n): Get nth CLI argument (v0.31.22)
--- - read_file(): File I/O builtin (v0.31.10)
--- - write_file(): File I/O builtin (v0.31.10)
---
--- Native compilation (v0.31.23):
---   bmb build bootstrap/bmb_cli.bmb -o bmb_cli
+// BMB CLI Wrapper (v0.31.23: Phase 32.3.G Complete)
+// Standalone native BMB compiler using argv builtins
+//
+// USAGE (Native compiled binary):
+//   bmb_cli <input.bmb>              // compile to stdout
+//   bmb_cli <input.bmb> <output.ll>  // compile to file
+//
+// This demonstrates BMB self-hosting CLI capability using:
+// - arg_count(): Return number of CLI arguments (v0.31.22)
+// - get_arg(n): Get nth CLI argument (v0.31.22)
+// - read_file(): File I/O builtin (v0.31.10)
+// - write_file(): File I/O builtin (v0.31.10)
+//
+// Native compilation (v0.31.23):
+//   bmb build bootstrap/bmb_cli.bmb -o bmb_cli
 
--- ============================================================================
--- String Utilities
--- ============================================================================
+// ============================================================================
+// String Utilities
+// ============================================================================
 
 fn digit_char(d: i64) -> String =
-    if d == 0 then "0" else if d == 1 then "1" else if d == 2 then "2"
-    else if d == 3 then "3" else if d == 4 then "4" else if d == 5 then "5"
-    else if d == 6 then "6" else if d == 7 then "7" else if d == 8 then "8"
-    else "9";
+    if d == 0 { "0" } else if d == 1 { "1" } else if d == 2 { "2" } else if d == 3 { "3" } else if d == 4 { "4" } else if d == 5 { "5" } else if d == 6 { "6" } else if d == 7 { "7" } else if d == 8 { "8" } else { "9" };
 
 fn int_to_str(n: i64) -> String =
-    if n < 0 then "-" + int_to_str(0 - n)
-    else if n < 10 then digit_char(n)
-    else int_to_str(n / 10) + digit_char(n - (n / 10) * 10);
+    if n < 0 { "-" + int_to_str(0 - n) } else if n < 10 { digit_char(n) } else { int_to_str(n / 10) + digit_char(n - (n / 10) * 10) };
 
 fn ends_with(s: String, suffix: String) -> bool =
-    if s.len() < suffix.len() then false
-    else s.slice(s.len() - suffix.len(), s.len()) == suffix;
+    if s.len() < suffix.len() { false } else { s.slice(s.len() - suffix.len(), s.len()) == suffix };
 
 fn print_str_nl(s: String) -> i64 =
     let x = print_str(s);
@@ -39,9 +33,9 @@ fn print_str_nl(s: String) -> i64 =
 ");
     0;
 
--- ============================================================================
--- Usage and Help
--- ============================================================================
+// ============================================================================
+// Usage and Help
+// ============================================================================
 
 fn show_usage() -> i64 =
     let x1 = print_str_nl("BMB CLI Compiler (v0.31.23)");
@@ -52,14 +46,14 @@ fn show_usage() -> i64 =
     let x6 = print_str_nl("This is the standalone native BMB CLI compiler.");
     0;
 
--- ============================================================================
--- Compilation (simplified - just demonstrates I/O)
--- For full compilation, use compiler.bmb functions
--- ============================================================================
+// ============================================================================
+// Compilation (simplified - just demonstrates I/O)
+// For full compilation, use compiler.bmb functions
+// ============================================================================
 
 fn compile_demo(source: String) -> String =
-    -- This is a demo showing I/O capability
-    -- Full compilation would call pipeline.bmb functions
+    // This is a demo showing I/O capability
+    // Full compilation would call pipeline.bmb functions
     let header = "; BMB Compiled Output (demo mode)
 ";
     let comment = "; Source length: " + int_to_str(source.len()) + " chars
@@ -69,43 +63,48 @@ fn compile_demo(source: String) -> String =
 ";
     header + comment + footer;
 
--- ============================================================================
--- Main Entry Point
--- ============================================================================
+// ============================================================================
+// Main Entry Point
+// ============================================================================
 
 fn main() -> i64 =
     let argc = arg_count();
-    -- Native mode: argv[0]=program, argv[1]=input, argv[2]=output
-    -- argc=1 means no user args, argc=2 means one user arg (input file)
-    if argc < 2 then
+    // Native mode: argv[0]=program, argv[1]=input, argv[2]=output
+    // argc=1 means no user args, argc=2 means one user arg (input file)
+    if argc < 2 {
         let x = show_usage();
         let y = print_str("Error: argc=");
         let z = println(argc);
         1
-    else
+    } else {
         let input_file = get_arg(1);
-        if ends_with(input_file, ".bmb") == false then
+        if ends_with(input_file, ".bmb") == false {
             let x = print_str_nl("Error: Input file must have .bmb extension");
             2
-        else
+        } else {
             let source = read_file(input_file);
-            if source == "" then
+            if source == "" {
                 let x = print_str("Error: Cannot read file: ");
                 let y = print_str_nl(input_file);
                 3
-            else
+            } else {
                 let output = compile_demo(source);
-                if argc >= 3 then
+                if argc >= 3 {
                     let output_file = get_arg(2);
                     let w = write_file(output_file, output);
-                    if w == 0 then
+                    if w == 0 {
                         let x = print_str("Compiled to: ");
                         let y = print_str_nl(output_file);
                         0
-                    else
+                    } else {
                         let x = print_str("Error: Cannot write to: ");
                         let y = print_str_nl(output_file);
                         4
-                else
+                    }
+                } else {
                     let x = print_str(output);
-                    0;
+                    0
+                }
+            }
+        }
+    };

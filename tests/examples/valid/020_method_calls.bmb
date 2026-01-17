@@ -1,22 +1,21 @@
--- Phase 8 테스트: 문자열 메서드
+// Phase 8 테스트: 문자열 메서드
 
--- 문자열 길이 테스트
+// 문자열 길이 테스트
 fn test_len() -> i64 = "hello".len();
 
--- 문자 접근 테스트
+// 문자 접근 테스트
 fn test_char_at() -> i64 = "ABC".char_at(0);
 
--- 부분 문자열 테스트
+// 부분 문자열 테스트
 fn test_slice() -> i64 = "hello world".slice(0, 5).len();
 
--- 빈 문자열 체크
+// 빈 문자열 체크
 fn test_is_empty() -> bool = "".is_empty();
 
--- 조합 테스트
+// 조합 테스트
 fn combined_test(s: String) -> i64 = {
     let len = s.len();
-    if s.is_empty() then 0 else len
-};
+    if s.is_empty() { 0 } else { len }};
 
 fn main() -> i64 = {
     let a = test_len();
@@ -25,10 +24,10 @@ fn main() -> i64 = {
     println(b);
     let c = test_slice();
     println(c);
-    let d = if test_is_empty() then 1 else 0;
+    let d = if test_is_empty() { 1 } else { 0 };
     println(d);
     let e = combined_test("test");
     println(e);
-    -- a=5, d=1, expected: 6
+    // a=5, d=1, expected: 6
     6
 };

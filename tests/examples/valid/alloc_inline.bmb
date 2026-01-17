@@ -1,4 +1,4 @@
--- Malloc inline test (Phase 34.2.1)
+// Malloc inline test (Phase 34.2.1)
 
 fn test_malloc() -> i64 = {
     let ptr = malloc(64);

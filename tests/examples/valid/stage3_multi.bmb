@@ -1,4 +1,4 @@
--- Stage 3 verification test: multiple functions
+// Stage 3 verification test: multiple functions
 fn add(a: i64, b: i64) -> i64 = a + b;
 fn double(x: i64) -> i64 = x + x;
 fn square(n: i64) -> i64 = n * n;

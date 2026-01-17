@@ -15,6 +15,8 @@ pub enum Value {
     Bool(bool),
     /// String value (v0.5 Phase 2, v0.30.268: Rc for efficient cloning)
     Str(Rc<String>),
+    /// Character value (v0.64)
+    Char(char),
     /// String rope for lazy concatenation (v0.30.283)
     /// Stores fragments that are concatenated only when materialized
     StringRope(Rc<RefCell<Vec<Rc<String>>>>),
@@ -30,6 +32,8 @@ pub enum Value {
     Ref(Rc<RefCell<Value>>),
     /// Array value (v0.5 Phase 6): array of values
     Array(Vec<Value>),
+    /// Tuple value (v0.42): heterogeneous fixed-size collection
+    Tuple(Vec<Value>),
 }
 
 impl Value {
@@ -40,6 +44,8 @@ impl Value {
             Value::Int(n) => *n != 0,
             Value::Float(f) => *f != 0.0,
             Value::Str(s) => !s.is_empty(),
+            // v0.64: Char is truthy if not null char
+            Value::Char(c) => *c != '\0',
             Value::StringRope(fragments) => !fragments.borrow().is_empty(),
             Value::Unit => false,
             Value::Struct(_, _) => true,
@@ -47,6 +53,7 @@ impl Value {
             Value::Range(start, end) => start < end,
             Value::Ref(r) => r.borrow().is_truthy(),
             Value::Array(arr) => !arr.is_empty(),
+            Value::Tuple(_) => true, // Tuples are always truthy
         }
     }
 
@@ -57,6 +64,8 @@ impl Value {
             Value::Float(_) => "float",
             Value::Bool(_) => "bool",
             Value::Str(_) => "String",
+            // v0.64: Char type
+            Value::Char(_) => "char",
             Value::StringRope(_) => "String",  // Same type name for user
             Value::Unit => "()",
             Value::Struct(name, _) => name,
@@ -64,6 +73,7 @@ impl Value {
             Value::Range(_, _) => "Range",
             Value::Ref(_) => "&ref",
             Value::Array(_) => "array",
+            Value::Tuple(_) => "tuple",
         }
     }
 
@@ -150,6 +160,8 @@ impl fmt::Display for Value {
             Value::Float(x) => write!(f, "{x}"),
             Value::Bool(b) => write!(f, "{b}"),
             Value::Str(s) => write!(f, "\"{s}\""),
+            // v0.64: Char display
+            Value::Char(c) => write!(f, "'{c}'"),
             Value::StringRope(fragments) => {
                 // Materialize for display (v0.30.283)
                 let frags = fragments.borrow();
@@ -197,6 +209,21 @@ impl fmt::Display for Value {
                 }
                 write!(f, "]")
             }
+            // v0.42: Tuple display
+            Value::Tuple(elems) => {
+                write!(f, "(")?;
+                for (i, v) in elems.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", v)?;
+                }
+                // Add trailing comma for 1-tuple to distinguish from grouped expression
+                if elems.len() == 1 {
+                    write!(f, ",")?;
+                }
+                write!(f, ")")
+            }
         }
     }
 }
@@ -207,6 +234,8 @@ impl PartialEq for Value {
             (Value::Int(a), Value::Int(b)) => a == b,
             (Value::Float(a), Value::Float(b)) => a == b,
             (Value::Bool(a), Value::Bool(b)) => a == b,
+            // v0.64: Character equality (by Unicode codepoint)
+            (Value::Char(a), Value::Char(b)) => a == b,
             (Value::Str(a), Value::Str(b)) => a == b,
             // StringRope comparisons (v0.30.283): materialize and compare
             (Value::StringRope(a), Value::StringRope(b)) => {
@@ -235,6 +264,8 @@ impl PartialEq for Value {
             (Value::Range(s1, e1), Value::Range(s2, e2)) => s1 == s2 && e1 == e2,
             (Value::Ref(r1), Value::Ref(r2)) => *r1.borrow() == *r2.borrow(),
             (Value::Array(a1), Value::Array(a2)) => a1 == a2,
+            // v0.42: Tuple equality
+            (Value::Tuple(t1), Value::Tuple(t2)) => t1 == t2,
             _ => false,
         }
     }
@@ -247,7 +278,7 @@ mod tests {
     #[test]
     fn test_value_display() {
         assert_eq!(format!("{}", Value::Int(42)), "42");
-        assert_eq!(format!("{}", Value::Float(3.14)), "3.14");
+        assert_eq!(format!("{}", Value::Float(3.5)), "3.5");
         assert_eq!(format!("{}", Value::Bool(true)), "true");
         assert_eq!(format!("{}", Value::Unit), "()");
         assert_eq!(format!("{}", Value::Str(Rc::new("hello".to_string()))), "\"hello\"");

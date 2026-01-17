@@ -121,7 +121,8 @@ impl SmtTranslator {
     /// Convert BMB Type to SMT Sort
     pub fn type_to_sort(ty: &Type) -> SmtSort {
         match ty {
-            Type::I32 | Type::I64 | Type::F64 => SmtSort::Int,
+            // v0.38: Include unsigned types, v0.64: Include char
+            Type::I32 | Type::I64 | Type::U32 | Type::U64 | Type::F64 | Type::Char => SmtSort::Int,
             Type::Bool => SmtSort::Bool,
             Type::Unit => SmtSort::Bool, // Unit maps to true
             Type::String => SmtSort::Int, // String as Int (simplified) v0.5
@@ -143,6 +144,10 @@ impl SmtTranslator {
             Type::Fn { .. } => SmtSort::Int,
             // v0.31: Never type - represents unreachable code
             Type::Never => SmtSort::Bool,
+            // v0.37: Nullable type - use same sort as inner (simplified for SMT)
+            Type::Nullable(inner) => Self::type_to_sort(inner),
+            // v0.42: Tuple type - use Int for now (simplified)
+            Type::Tuple(_) => SmtSort::Int,
         }
     }
 
@@ -176,6 +181,12 @@ impl SmtTranslator {
             Expr::StringLit(_) => {
                 // Strings not fully supported in SMT - approximate as 0
                 Ok("0".to_string())
+            }
+
+            // v0.64: Character literal - represented as integer (char code)
+            Expr::CharLit(c) => {
+                let n = *c as i64;
+                Ok(n.to_string())
             }
 
             Expr::Unit => Ok("true".to_string()),
@@ -252,6 +263,11 @@ impl SmtTranslator {
                 Err(TranslateError::UnsupportedFeature(format!("field access: {}", field.node)))
             }
 
+            // v0.43: Tuple field access
+            Expr::TupleField { index, .. } => {
+                Err(TranslateError::UnsupportedFeature(format!("tuple field access: .{}", index)))
+            }
+
             Expr::EnumVariant { enum_name, variant, .. } => {
                 Err(TranslateError::UnsupportedFeature(format!("enum variant: {}::{}", enum_name, variant)))
             }
@@ -283,6 +299,11 @@ impl SmtTranslator {
                 Err(TranslateError::UnsupportedFeature("array literal".to_string()))
             }
 
+            // v0.42: Tuple expressions - not supported in SMT
+            Expr::Tuple(_) => {
+                Err(TranslateError::UnsupportedFeature("tuple expression".to_string()))
+            }
+
             Expr::Index { .. } => {
                 Err(TranslateError::UnsupportedFeature("array index".to_string()))
             }
@@ -307,13 +328,6 @@ impl SmtTranslator {
             // v0.2: Refinement self-reference
             Expr::It => Ok("__it__".to_string()),
 
-            // v0.13.2: Try block - translate body
-            Expr::Try { body } => self.translate_expr(&body.node),
-
-            // v0.13.2: Question mark operator - translate inner expression
-            // Full error propagation semantics not needed for SMT verification
-            Expr::Question { expr: inner } => self.translate_expr(&inner.node),
-
             // v0.20.0: Closure expressions
             // Closures are currently not supported in SMT verification
             // They would require higher-order logic which is not in SMT-LIB2 core
@@ -325,6 +339,34 @@ impl SmtTranslator {
             // In SMT context, todo represents unreachable code (absurd/false)
             // Any constraints involving todo are vacuously satisfied
             Expr::Todo { .. } => Ok("false".to_string()),
+
+            // v0.36: Additional control flow
+            // These are not verifiable in SMT context, return false (unreachable)
+            Expr::Loop { .. } => Err(TranslateError::UnsupportedFeature(
+                "loops are not supported in contract verification".to_string(),
+            )),
+            Expr::Break { .. } => Ok("false".to_string()),
+            Expr::Continue => Ok("false".to_string()),
+            Expr::Return { .. } => Ok("false".to_string()),
+
+            // v0.37: Quantifiers - translate directly to SMT-LIB2 forall/exists
+            Expr::Forall { var, ty, body } => {
+                let smt_type = self.type_to_smt(&ty.node)?;
+                let body_smt = self.translate(body)?;
+                Ok(format!("(forall (({} {})) {})", var.node, smt_type, body_smt))
+            }
+
+            Expr::Exists { var, ty, body } => {
+                let smt_type = self.type_to_smt(&ty.node)?;
+                let body_smt = self.translate(body)?;
+                Ok(format!("(exists (({} {})) {})", var.node, smt_type, body_smt))
+            }
+
+            // v0.39: Type cast - in SMT we just use the inner expression
+            // Type safety is already verified by the type checker
+            Expr::Cast { expr, ty: _ } => {
+                self.translate(expr)
+            }
         }
     }
 
@@ -335,6 +377,21 @@ impl SmtTranslator {
             BinOp::Mul => "*",
             BinOp::Div => "div",
             BinOp::Mod => "mod",
+            // v0.37: Wrapping arithmetic - for SMT, treat as regular arithmetic
+            // (overflow semantics not captured in SMT-LIB integer theory)
+            BinOp::AddWrap => "+",
+            BinOp::SubWrap => "-",
+            BinOp::MulWrap => "*",
+            // v0.38: Checked arithmetic - for SMT, treat as regular arithmetic
+            // (Option wrapping not captured in SMT-LIB)
+            BinOp::AddChecked => "+",
+            BinOp::SubChecked => "-",
+            BinOp::MulChecked => "*",
+            // v0.38: Saturating arithmetic - for SMT, treat as regular arithmetic
+            // (saturation semantics not captured in SMT-LIB)
+            BinOp::AddSat => "+",
+            BinOp::SubSat => "-",
+            BinOp::MulSat => "*",
             BinOp::Eq => "=",
             BinOp::Ne => return Ok(format!("(not (= {} {}))", left, right)),
             BinOp::Lt => "<",
@@ -343,6 +400,17 @@ impl SmtTranslator {
             BinOp::Ge => ">=",
             BinOp::And => "and",
             BinOp::Or => "or",
+            // v0.32: Shift operators - not directly supported in SMT-LIB integer arithmetic
+            // Return error for now; shift operations are rarely used in contracts
+            BinOp::Shl => return Err(TranslateError::UnsupportedFeature("shift left operator (<<) in contracts".to_string())),
+            BinOp::Shr => return Err(TranslateError::UnsupportedFeature("shift right operator (>>) in contracts".to_string())),
+            // v0.36: Bitwise operators - not directly supported in SMT-LIB integer arithmetic
+            // Return error for now; bitwise operations are rarely used in contracts
+            BinOp::Band => return Err(TranslateError::UnsupportedFeature("bitwise AND operator (band) in contracts".to_string())),
+            BinOp::Bor => return Err(TranslateError::UnsupportedFeature("bitwise OR operator (bor) in contracts".to_string())),
+            BinOp::Bxor => return Err(TranslateError::UnsupportedFeature("bitwise XOR operator (bxor) in contracts".to_string())),
+            // v0.36: Logical implication - SMT-LIB uses => for implication
+            BinOp::Implies => "=>",
         };
         Ok(format!("({} {} {})", smt_op, left, right))
     }
@@ -351,6 +419,31 @@ impl SmtTranslator {
         match op {
             UnOp::Neg => Ok(format!("(- {})", expr)),
             UnOp::Not => Ok(format!("(not {})", expr)),
+            // v0.36: Bitwise not - not directly supported in SMT-LIB integer arithmetic
+            UnOp::Bnot => Err(TranslateError::UnsupportedFeature("bitwise NOT operator (bnot) in contracts".to_string())),
+        }
+    }
+
+    /// v0.37: Convert BMB type to SMT-LIB sort
+    fn type_to_smt(&self, ty: &crate::ast::Type) -> Result<String, TranslateError> {
+        use crate::ast::Type;
+        match ty {
+            // v0.38: Include unsigned types
+            Type::I32 | Type::I64 | Type::U32 | Type::U64 => Ok("Int".to_string()),
+            Type::F64 => Ok("Real".to_string()),
+            Type::Bool => Ok("Bool".to_string()),
+            Type::String => Err(TranslateError::UnsupportedFeature(
+                "String type in quantifier".to_string()
+            )),
+            Type::Unit => Err(TranslateError::UnsupportedFeature(
+                "Unit type in quantifier".to_string()
+            )),
+            Type::Named(name) => Err(TranslateError::UnsupportedFeature(
+                format!("Named type '{}' in quantifier", name)
+            )),
+            _ => Err(TranslateError::UnsupportedFeature(
+                format!("type {:?} in quantifier", ty)
+            )),
         }
     }
 

@@ -1,342 +1,312 @@
--- BMB Standard Library: string
--- String utility functions with complete contracts
---
--- AI-Native Design:
--- - All functions use explicit character-level operations
--- - Contracts define exact behavior
--- - Uses existing String primitives: len(), char_at(i), slice(start, end)
---
--- Character codes (ASCII):
--- - Space: 32, Tab: 9, Newline: 10, CR: 13
--- - '0'-'9': 48-57
--- - 'A'-'Z': 65-90
--- - 'a'-'z': 97-122
+// BMB Standard Library: string
+// String utility functions with complete contracts
+//
+// AI-Native Design:
+// - All functions use explicit character-level operations
+// - Contracts define exact behavior
+// - Uses existing String primitives: len(), char_at(i), slice(start, end)
+//
+// Character codes (ASCII):
+// - Space: 32, Tab: 9, Newline: 10, CR: 13
+// - '0'-'9': 48-57
+// - 'A'-'Z': 65-90
+// - 'a'-'z': 97-122
 
--- ============================================
--- Character Classification
--- ============================================
+// ============================================
+// Character Classification
+// ============================================
 
--- Check if character code is whitespace
+// Check if character code is whitespace
 pub fn char_is_whitespace(c: i64) -> bool
   post ret == (c == 32 or c == 9 or c == 10 or c == 13)
 = c == 32 or c == 9 or c == 10 or c == 13;
 
--- Check if character code is a digit (0-9)
+// Check if character code is a digit (0-9)
 pub fn char_is_digit(c: i64) -> bool
   post ret == (c >= 48 and c <= 57)
 = c >= 48 and c <= 57;
 
--- Check if character code is lowercase letter (a-z)
+// Check if character code is lowercase letter (a-z)
 pub fn char_is_lower(c: i64) -> bool
   post ret == (c >= 97 and c <= 122)
 = c >= 97 and c <= 122;
 
--- Check if character code is uppercase letter (A-Z)
+// Check if character code is uppercase letter (A-Z)
 pub fn char_is_upper(c: i64) -> bool
   post ret == (c >= 65 and c <= 90)
 = c >= 65 and c <= 90;
 
--- Check if character code is a letter (a-z or A-Z)
+// Check if character code is a letter (a-z or A-Z)
 pub fn char_is_alpha(c: i64) -> bool
   post ret == (char_is_lower(c) or char_is_upper(c))
 = char_is_lower(c) or char_is_upper(c);
 
--- Check if character code is alphanumeric
+// Check if character code is alphanumeric
 pub fn char_is_alnum(c: i64) -> bool
   post ret == (char_is_alpha(c) or char_is_digit(c))
 = char_is_alpha(c) or char_is_digit(c);
 
--- ============================================
--- Character Conversion
--- ============================================
+// ============================================
+// Character Conversion
+// ============================================
 
--- Convert lowercase to uppercase (returns unchanged if not lowercase)
+// Convert lowercase to uppercase (returns unchanged if not lowercase)
 pub fn char_to_upper(c: i64) -> i64
   post (char_is_lower(c) and ret == c - 32) or (not char_is_lower(c) and ret == c)
-= if char_is_lower(c) then c - 32 else c;
+= if char_is_lower(c) { c - 32 } else { c };
 
--- Convert uppercase to lowercase (returns unchanged if not uppercase)
+// Convert uppercase to lowercase (returns unchanged if not uppercase)
 pub fn char_to_lower(c: i64) -> i64
   post (char_is_upper(c) and ret == c + 32) or (not char_is_upper(c) and ret == c)
-= if char_is_upper(c) then c + 32 else c;
+= if char_is_upper(c) { c + 32 } else { c };
 
--- Convert digit character to integer (0-9)
+// Convert digit character to integer (0-9)
 pub fn digit_to_int(c: i64) -> i64
   pre char_is_digit(c)
-  post ret >= 0 and ret <= 9
-  post ret == c - 48
+  post ret >= 0 and ret <= 9 and ret == c - 48
 = c - 48;
 
--- Convert integer (0-9) to digit character
+// Convert integer (0-9) to digit character
 pub fn int_to_digit(n: i64) -> i64
   pre n >= 0 and n <= 9
-  post char_is_digit(ret)
-  post ret == n + 48
+  post char_is_digit(ret) and ret == n + 48
 = n + 48;
 
--- ============================================
--- String Search
--- ============================================
+// ============================================
+// String Search
+// ============================================
 
--- Check if string contains character at any position
-pub fn contains_char(s: String, c: i64) -> bool =
-    contains_char_from(s, c, 0);
+// Check if string contains character at any position
+pub fn contains_char(s: String, c: i64) -> bool
+  post ret == contains_char_from(s, c, 0)
+= contains_char_from(s, c, 0);
 
--- Helper: search from position
-fn contains_char_from(s: String, c: i64, pos: i64) -> bool =
-    if pos >= s.len() then false
-    else if s.char_at(pos) == c then true
-    else contains_char_from(s, c, pos + 1);
+// Helper: search from position
+fn contains_char_from(s: String, c: i64, pos: i64) -> bool
+  pre pos >= 0
+  post (pos >= s.len()) implies not ret
+= if pos >= s.len() { false } else if s.byte_at(pos) == c { true } else { contains_char_from(s, c, pos + 1) };
 
--- Check if string starts with given prefix
+// Check if string starts with given prefix
 pub fn starts_with(s: String, prefix: String) -> bool
   post (prefix.len() > s.len() and not ret) or
        (prefix.len() <= s.len() and (ret == starts_with_check(s, prefix, 0)))
-= if prefix.len() > s.len() then false
-  else starts_with_check(s, prefix, 0);
+= if prefix.len() > s.len() { false } else { starts_with_check(s, prefix, 0) };
 
--- Helper: check prefix from position
-fn starts_with_check(s: String, prefix: String, pos: i64) -> bool =
-    if pos >= prefix.len() then true
-    else if s.char_at(pos) != prefix.char_at(pos) then false
-    else starts_with_check(s, prefix, pos + 1);
+// Helper: check prefix from position
+fn starts_with_check(s: String, prefix: String, pos: i64) -> bool
+  pre pos >= 0
+  post (pos >= prefix.len()) implies ret
+= if pos >= prefix.len() { true } else if s.byte_at(pos) != prefix.byte_at(pos) { false } else { starts_with_check(s, prefix, pos + 1) };
 
--- Check if string ends with given suffix
-pub fn ends_with(s: String, suffix: String) -> bool =
-    if suffix.len() > s.len() then false
-    else ends_with_check(s, suffix, 0);
+// Check if string ends with given suffix
+pub fn ends_with(s: String, suffix: String) -> bool
+  post (suffix.len() > s.len()) implies not ret
+= if suffix.len() > s.len() { false } else { ends_with_check(s, suffix, 0) };
 
--- Helper: check suffix from position
-fn ends_with_check(s: String, suffix: String, pos: i64) -> bool =
-    if pos >= suffix.len() then true
-    else let s_pos = s.len() - suffix.len() + pos;
-         if s.char_at(s_pos) != suffix.char_at(pos) then false
-         else ends_with_check(s, suffix, pos + 1);
+// Helper: check suffix from position
+fn ends_with_check(s: String, suffix: String, pos: i64) -> bool
+  pre pos >= 0
+  post (pos >= suffix.len()) implies ret
+= if pos >= suffix.len() { true }
+    else {
+        let s_pos = s.len() - suffix.len() + pos;
+        if s.byte_at(s_pos) != suffix.byte_at(pos) { false }
+        else { ends_with_check(s, suffix, pos + 1) }
+    };
 
--- Find first occurrence of character, returns -1 if not found
+// Find first occurrence of character, returns -1 if not found
 pub fn index_of_char(s: String, c: i64) -> i64
-  post ret >= -1 and ret < s.len()
-  post (ret == -1 and not contains_char(s, c)) or (ret >= 0 and s.char_at(ret) == c)
+  post ret >= -1 and ret < s.len() and ((ret == -1 and not contains_char(s, c)) or (ret >= 0 and s.byte_at(ret) == c))
 = index_of_char_from(s, c, 0);
 
--- Helper: search from position
-fn index_of_char_from(s: String, c: i64, pos: i64) -> i64 =
-    if pos >= s.len() then -1
-    else if s.char_at(pos) == c then pos
-    else index_of_char_from(s, c, pos + 1);
+// Helper: search from position
+fn index_of_char_from(s: String, c: i64, pos: i64) -> i64
+  pre pos >= 0
+  post ret >= -1 and ret < s.len() and ((ret == -1) or (ret >= pos and s.byte_at(ret) == c))
+= if pos >= s.len() { -1 } else if s.byte_at(pos) == c { pos } else { index_of_char_from(s, c, pos + 1) };
 
--- Count occurrences of character
+// Count occurrences of character
 pub fn count_char(s: String, c: i64) -> i64
   post ret >= 0
 = count_char_from(s, c, 0);
 
-fn count_char_from(s: String, c: i64, pos: i64) -> i64 =
-    if pos >= s.len() then 0
-    else let rest = count_char_from(s, c, pos + 1);
-         if s.char_at(pos) == c then 1 + rest else rest;
+fn count_char_from(s: String, c: i64, pos: i64) -> i64
+  pre pos >= 0
+  post ret >= 0
+= if pos >= s.len() { 0 }
+    else {
+        let rest = count_char_from(s, c, pos + 1);
+        if s.byte_at(pos) == c { 1 + rest } else { rest }
+    };
 
--- ============================================
--- String Trimming
--- ============================================
+// ============================================
+// String Trimming
+// ============================================
 
--- Find first non-whitespace position
+// Find first non-whitespace position
 pub fn find_trim_start(s: String) -> i64
   post ret >= 0 and ret <= s.len()
 = find_trim_start_from(s, 0);
 
-fn find_trim_start_from(s: String, pos: i64) -> i64 =
-    if pos >= s.len() then pos
-    else if char_is_whitespace(s.char_at(pos)) then find_trim_start_from(s, pos + 1)
-    else pos;
+fn find_trim_start_from(s: String, pos: i64) -> i64
+  pre pos >= 0
+  post ret >= pos and ret <= s.len()
+= if pos >= s.len() { pos } else if char_is_whitespace(s.byte_at(pos)) { find_trim_start_from(s, pos + 1) } else { pos };
 
--- Find position after last non-whitespace
+// Find position after last non-whitespace
 pub fn find_trim_end(s: String) -> i64
   post ret >= 0 and ret <= s.len()
 = find_trim_end_from(s, s.len());
 
-fn find_trim_end_from(s: String, pos: i64) -> i64 =
-    if pos <= 0 then 0
-    else if char_is_whitespace(s.char_at(pos - 1)) then find_trim_end_from(s, pos - 1)
-    else pos;
+fn find_trim_end_from(s: String, pos: i64) -> i64
+  pre pos >= 0
+  post ret >= 0 and ret <= pos
+= if pos <= 0 { 0 } else if char_is_whitespace(s.byte_at(pos - 1)) { find_trim_end_from(s, pos - 1) } else { pos };
 
--- Trim leading whitespace (returns slice indices)
+// Trim leading whitespace (returns slice indices)
 pub fn trim_start_indices(s: String) -> i64
   post ret >= 0 and ret <= s.len()
 = find_trim_start(s);
 
--- Trim trailing whitespace (returns end index)
+// Trim trailing whitespace (returns end index)
 pub fn trim_end_indices(s: String) -> i64
   post ret >= 0 and ret <= s.len()
 = find_trim_end(s);
 
--- ============================================
--- Integer Parsing
--- ============================================
+// ============================================
+// Integer Parsing
+// ============================================
 
--- Parse non-negative integer from string
--- Returns -1 on error (empty string, non-digit character)
+// Parse non-negative integer from string
+// Returns -1 on error (empty string, non-digit character)
 pub fn parse_uint(s: String) -> i64
   post ret >= -1
-= if s.len() == 0 then -1
-  else parse_uint_acc(s, 0, 0);
+= if s.len() == 0 { -1 } else { parse_uint_acc(s, 0, 0) };
 
-fn parse_uint_acc(s: String, pos: i64, acc: i64) -> i64 =
-    if pos >= s.len() then acc
-    else let c = s.char_at(pos);
-         if char_is_digit(c) then
-             parse_uint_acc(s, pos + 1, acc * 10 + digit_to_int(c))
-         else -1;
+fn parse_uint_acc(s: String, pos: i64, acc: i64) -> i64
+  pre pos >= 0 and acc >= 0
+  post ret >= -1
+= if pos >= s.len() { acc }
+    else {
+        let c = s.byte_at(pos);
+        if char_is_digit(c) { parse_uint_acc(s, pos + 1, acc * 10 + digit_to_int(c)) } else { -1 }
+    };
 
--- Parse signed integer from string
--- Returns special value on error
-pub fn parse_int(s: String) -> i64 =
-    if s.len() == 0 then -9223372036854775807
-    else if s.char_at(0) == 45 then  -- '-' character
+// Parse signed integer from string
+// Returns special value on error
+pub fn parse_int(s: String) -> i64
+  post (s.len() == 0) implies (ret == -9223372036854775807)
+= if s.len() == 0 { -9223372036854775807 }
+    else if s.byte_at(0) == 45 {
         let rest = s.slice(1, s.len());
         let val = parse_uint(rest);
-        if val == -1 then -9223372036854775807 else 0 - val
-    else parse_uint(s);
+        if val == -1 { -9223372036854775807 } else { 0 - val }
+    }
+    else { parse_uint(s) };
 
--- Check if string represents a valid integer
-pub fn is_valid_int(s: String) -> bool =
-    if s.len() == 0 then false
-    else if s.char_at(0) == 45 then  -- '-' character
-        s.len() > 1 and all_digits(s, 1)
-    else all_digits(s, 0);
+// Check if string represents a valid integer
+pub fn is_valid_int(s: String) -> bool
+  post (s.len() == 0) implies not ret
+= if s.len() == 0 { false } else if s.byte_at(0) == 45 { s.len() > 1 and all_digits(s, 1) } else { all_digits(s, 0) };
 
-fn all_digits(s: String, pos: i64) -> bool =
-    if pos >= s.len() then true
-    else if char_is_digit(s.char_at(pos)) then all_digits(s, pos + 1)
-    else false;
+fn all_digits(s: String, pos: i64) -> bool
+  pre pos >= 0
+  post (pos >= s.len()) implies ret
+= if pos >= s.len() { true } else if char_is_digit(s.byte_at(pos)) { all_digits(s, pos + 1) } else { false };
 
--- ============================================
--- String Comparison
--- ============================================
+// ============================================
+// String Comparison
+// ============================================
 
--- Compare two strings lexicographically
--- Returns: -1 if a < b, 0 if a == b, 1 if a > b
+// Compare two strings lexicographically
+// Returns: -1 if a < b, 0 if a == b, 1 if a > b
 pub fn string_compare(a: String, b: String) -> i64
   post ret >= -1 and ret <= 1
 = string_compare_from(a, b, 0);
 
-fn string_compare_from(a: String, b: String, pos: i64) -> i64 =
-    if pos >= a.len() and pos >= b.len() then 0
-    else if pos >= a.len() then -1
-    else if pos >= b.len() then 1
-    else let ca = a.char_at(pos);
-         let cb = b.char_at(pos);
-         if ca < cb then -1
-         else if ca > cb then 1
-         else string_compare_from(a, b, pos + 1);
+fn string_compare_from(a: String, b: String, pos: i64) -> i64
+  pre pos >= 0
+  post ret >= -1 and ret <= 1
+= if pos >= a.len() and pos >= b.len() { 0 }
+    else if pos >= a.len() { -1 }
+    else if pos >= b.len() { 1 }
+    else {
+        let ca = a.byte_at(pos);
+        let cb = b.byte_at(pos);
+        if ca < cb { -1 } else if ca > cb { 1 } else { string_compare_from(a, b, pos + 1) }
+    };
 
--- Check string equality
+// Check string equality
 pub fn string_eq(a: String, b: String) -> bool
   post ret == (string_compare(a, b) == 0)
 = a.len() == b.len() and string_eq_from(a, b, 0);
 
-fn string_eq_from(a: String, b: String, pos: i64) -> bool =
-    if pos >= a.len() then true
-    else if a.char_at(pos) != b.char_at(pos) then false
-    else string_eq_from(a, b, pos + 1);
+fn string_eq_from(a: String, b: String, pos: i64) -> bool
+  pre pos >= 0
+  post (pos >= a.len()) implies ret
+= if pos >= a.len() { true } else if a.byte_at(pos) != b.byte_at(pos) { false } else { string_eq_from(a, b, pos + 1) };
 
--- ============================================
--- String Utilities
--- ============================================
+// ============================================
+// String Utilities
+// ============================================
 
--- Reverse string (returns indices for slice - actual reverse needs string building)
+// Reverse string (returns indices for slice - actual reverse needs string building)
 pub fn reverse_indices(s: String, pos: i64) -> i64
   pre pos >= 0 and pos < s.len()
   post ret >= 0 and ret < s.len()
 = s.len() - 1 - pos;
 
--- Get substring length for split by character
+// Get substring length for split by character
 pub fn split_first_len(s: String, delim: i64) -> i64
   post ret >= 0 and ret <= s.len()
 = let idx = index_of_char(s, delim);
-  if idx == -1 then s.len() else idx;
+  if idx == -1 { s.len() } else { idx };
 
--- Check if string is empty or only whitespace
+// Check if string is empty or only whitespace
 pub fn is_blank(s: String) -> bool
   post ret == (find_trim_start(s) >= s.len())
 = find_trim_start(s) >= s.len();
 
--- Get character count (same as len but with explicit name)
+// Get character count (same as len but with explicit name)
 pub fn char_count(s: String) -> i64
-  post ret >= 0
-  post ret == s.len()
+  post ret >= 0 and ret == s.len()
 = s.len();
 
--- ============================================
--- Integer to String Conversion
--- ============================================
+// ============================================
+// Integer to String Conversion
+// ============================================
 
--- Convert single digit (0-9) to string
+// Convert single digit (0-9) to string
 pub fn digit_char(d: i64) -> String
   pre d >= 0 and d <= 9
   post ret.len() == 1
-= if d == 0 then "0" else if d == 1 then "1" else if d == 2 then "2"
-  else if d == 3 then "3" else if d == 4 then "4" else if d == 5 then "5"
-  else if d == 6 then "6" else if d == 7 then "7" else if d == 8 then "8"
-  else "9";
+= if d == 0 { "0" } else if d == 1 { "1" } else if d == 2 { "2" } else if d == 3 { "3" } else if d == 4 { "4" } else if d == 5 { "5" } else if d == 6 { "6" } else if d == 7 { "7" } else if d == 8 { "8" } else { "9" };
 
--- Convert integer to string representation
+// Convert integer to string representation
 pub fn int_to_string(n: i64) -> String
-  post n >= 0 => ret.len() >= 1
-  post n < 0 => ret.len() >= 2
-= if n < 0 then "-" + int_to_string(0 - n)
-  else if n < 10 then digit_char(n)
-  else int_to_string(n / 10) + digit_char(n - (n / 10) * 10);
+  post (n >= 0 and ret.len() >= 1) or (n < 0 and ret.len() >= 2)
+= if n < 0 { "-" + int_to_string(0 - n) } else if n < 10 { digit_char(n) } else { int_to_string(n / 10) + digit_char(n - (n / 10) * 10) };
 
--- ============================================
--- ASCII Code to String Conversion
--- ============================================
+// ============================================
+// ASCII Code to String Conversion
+// ============================================
 
--- Convert uppercase letter code (65-90) to string
+// Convert uppercase letter code (65-90) to string
 fn char_upper_str(c: i64) -> String
   pre c >= 65 and c <= 90
   post ret.len() == 1
-= if c == 65 then "A" else if c == 66 then "B" else if c == 67 then "C"
-  else if c == 68 then "D" else if c == 69 then "E" else if c == 70 then "F"
-  else if c == 71 then "G" else if c == 72 then "H" else if c == 73 then "I"
-  else if c == 74 then "J" else if c == 75 then "K" else if c == 76 then "L"
-  else if c == 77 then "M" else if c == 78 then "N" else if c == 79 then "O"
-  else if c == 80 then "P" else if c == 81 then "Q" else if c == 82 then "R"
-  else if c == 83 then "S" else if c == 84 then "T" else if c == 85 then "U"
-  else if c == 86 then "V" else if c == 87 then "W" else if c == 88 then "X"
-  else if c == 89 then "Y" else "Z";
+= if c == 65 { "A" } else if c == 66 { "B" } else if c == 67 { "C" } else if c == 68 { "D" } else if c == 69 { "E" } else if c == 70 { "F" } else if c == 71 { "G" } else if c == 72 { "H" } else if c == 73 { "I" } else if c == 74 { "J" } else if c == 75 { "K" } else if c == 76 { "L" } else if c == 77 { "M" } else if c == 78 { "N" } else if c == 79 { "O" } else if c == 80 { "P" } else if c == 81 { "Q" } else if c == 82 { "R" } else if c == 83 { "S" } else if c == 84 { "T" } else if c == 85 { "U" } else if c == 86 { "V" } else if c == 87 { "W" } else if c == 88 { "X" } else if c == 89 { "Y" } else { "Z" };
 
--- Convert lowercase letter code (97-122) to string
+// Convert lowercase letter code (97-122) to string
 fn char_lower_str(c: i64) -> String
   pre c >= 97 and c <= 122
   post ret.len() == 1
-= if c == 97 then "a" else if c == 98 then "b" else if c == 99 then "c"
-  else if c == 100 then "d" else if c == 101 then "e" else if c == 102 then "f"
-  else if c == 103 then "g" else if c == 104 then "h" else if c == 105 then "i"
-  else if c == 106 then "j" else if c == 107 then "k" else if c == 108 then "l"
-  else if c == 109 then "m" else if c == 110 then "n" else if c == 111 then "o"
-  else if c == 112 then "p" else if c == 113 then "q" else if c == 114 then "r"
-  else if c == 115 then "s" else if c == 116 then "t" else if c == 117 then "u"
-  else if c == 118 then "v" else if c == 119 then "w" else if c == 120 then "x"
-  else if c == 121 then "y" else "z";
+= if c == 97 { "a" } else if c == 98 { "b" } else if c == 99 { "c" } else if c == 100 { "d" } else if c == 101 { "e" } else if c == 102 { "f" } else if c == 103 { "g" } else if c == 104 { "h" } else if c == 105 { "i" } else if c == 106 { "j" } else if c == 107 { "k" } else if c == 108 { "l" } else if c == 109 { "m" } else if c == 110 { "n" } else if c == 111 { "o" } else if c == 112 { "p" } else if c == 113 { "q" } else if c == 114 { "r" } else if c == 115 { "s" } else if c == 116 { "t" } else if c == 117 { "u" } else if c == 118 { "v" } else if c == 119 { "w" } else if c == 120 { "x" } else if c == 121 { "y" } else { "z" };
 
--- Convert ASCII code to single-character string
--- Supports: space, punctuation, digits, uppercase, lowercase
+// Convert ASCII code to single-character string
+// Supports: space, punctuation, digits, uppercase, lowercase
 pub fn char_to_string(c: i64) -> String
   pre c >= 32 and c <= 126
   post ret.len() == 1
-= if c == 32 then " " else if c == 33 then "!" else if c == 34 then "\""
-  else if c == 35 then "#" else if c == 36 then "$" else if c == 37 then "%"
-  else if c == 38 then "&" else if c == 39 then "'" else if c == 40 then "("
-  else if c == 41 then ")" else if c == 42 then "*" else if c == 43 then "+"
-  else if c == 44 then "," else if c == 45 then "-" else if c == 46 then "."
-  else if c == 47 then "/"
-  else if c >= 48 and c <= 57 then digit_char(c - 48)
-  else if c == 58 then ":" else if c == 59 then ";" else if c == 60 then "<"
-  else if c == 61 then "=" else if c == 62 then ">" else if c == 63 then "?"
-  else if c == 64 then "@"
-  else if c >= 65 and c <= 90 then char_upper_str(c)
-  else if c == 91 then "[" else if c == 92 then "\\" else if c == 93 then "]"
-  else if c == 94 then "^" else if c == 95 then "_" else if c == 96 then "`"
-  else if c >= 97 and c <= 122 then char_lower_str(c)
-  else if c == 123 then "{" else if c == 124 then "|" else if c == 125 then "}"
-  else "~";
+= if c == 32 { " " } else if c == 33 { "!" } else if c == 34 { "?" } else if c == 35 { "#" } else if c == 36 { "$" } else if c == 37 { "%" } else if c == 38 { "&" } else if c == 39 { "'" } else if c == 40 { "(" } else if c == 41 { ")" } else if c == 42 { "*" } else if c == 43 { "+" } else if c == 44 { "," } else if c == 45 { "-" } else if c == 46 { "." } else if c == 47 { "/" } else if c >= 48 and c <= 57 { digit_char(c - 48) } else if c == 58 { ":" } else if c == 59 { ";" } else if c == 60 { "<" } else if c == 61 { "=" } else if c == 62 { ">" } else if c == 63 { "?" } else if c == 64 { "@" } else if c >= 65 and c <= 90 { char_upper_str(c) } else if c == 91 { "[" } else if c == 92 { "/" } else if c == 93 { "]" } else if c == 94 { "^" } else if c == 95 { "_" } else if c == 96 { "`" } else if c >= 97 and c <= 122 { char_lower_str(c) } else if c == 123 { "{" } else if c == 124 { "|" } else if c == 125 { "}" } else { "~" };

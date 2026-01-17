@@ -1,4 +1,4 @@
--- Allocation without free test
+// Allocation without free test
 
 fn test_malloc() -> i64 = {
     let ptr = malloc(64);

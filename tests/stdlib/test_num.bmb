@@ -1,5 +1,5 @@
--- Tests for core::num module
--- Each test function verifies contracts are satisfied
+// Tests for core::num module
+// Each test function verifies contracts are satisfied
 
 use core::num::abs;
 use core::num::min;
@@ -7,7 +7,7 @@ use core::num::max;
 use core::num::clamp;
 use core::num::sign;
 
--- Test abs function
+// Test abs function
 fn test_abs_positive() -> i64
   post ret == 42
 = abs(42);
@@ -20,7 +20,7 @@ fn test_abs_zero() -> i64
   post ret == 0
 = abs(0);
 
--- Test min function
+// Test min function
 fn test_min_first_smaller() -> i64
   post ret == 5
 = min(5, 10);
@@ -37,7 +37,7 @@ fn test_min_negative() -> i64
   post ret == -10
 = min(-5, -10);
 
--- Test max function
+// Test max function
 fn test_max_first_larger() -> i64
   post ret == 10
 = max(10, 5);
@@ -50,7 +50,7 @@ fn test_max_equal() -> i64
   post ret == 7
 = max(7, 7);
 
--- Test clamp function
+// Test clamp function
 fn test_clamp_in_range() -> i64
   post ret == 5
 = clamp(5, 0, 10);
@@ -71,7 +71,7 @@ fn test_clamp_at_max() -> i64
   post ret == 10
 = clamp(10, 0, 10);
 
--- Test sign function
+// Test sign function
 fn test_sign_positive() -> i64
   post ret == 1
 = sign(42);
@@ -84,7 +84,7 @@ fn test_sign_zero() -> i64
   post ret == 0
 = sign(0);
 
--- Composite tests
+// Composite tests
 fn test_abs_min() -> i64
   post ret == 3
 = min(abs(-5), abs(3));
@@ -93,7 +93,7 @@ fn test_clamp_abs() -> i64
   post ret == 10
 = clamp(abs(-15), 0, 10);
 
--- Main test runner
+// Main test runner
 fn main() -> i64 =
     let t1 = test_abs_positive();
     let t2 = test_abs_negative();
@@ -101,5 +101,5 @@ fn main() -> i64 =
     let t4 = test_max_first_larger();
     let t5 = test_clamp_in_range();
     let t6 = test_sign_positive();
-    -- Return 0 for success
+    // Return 0 for success
     0;

@@ -1,72 +1,72 @@
--- v0.30.100: Trait dispatch and closure capture integration test
+// v0.30.100: Trait dispatch and closure capture integration test
 
--- Struct definition
+// Struct definition
 struct Point {
     x: i64,
     y: i64,
 }
 
--- Trait definition for Display
+// Trait definition for Display
 trait Display {
     fn show(self: Self) -> String;
 }
 
--- Trait definition for Cloneable
+// Trait definition for Cloneable
 trait Cloneable {
     fn clone_it(self: Self) -> Self;
 }
 
--- Implement Display for Point
+// Implement Display for Point
 impl Display for Point {
     fn show(self: Self) -> String = {
         "Point"
     };
 }
 
--- Implement Cloneable for Point
+// Implement Cloneable for Point
 impl Cloneable for Point {
     fn clone_it(self: Self) -> Point = {
         new Point { x: self.x, y: self.y }
     };
 }
 
--- Function that uses trait method (should generate TraitCall)
+// Function that uses trait method (should generate TraitCall)
 fn display_point(p: Point) -> String = p.show();
 
--- Function that clones a point (should generate TraitCall)
+// Function that clones a point (should generate TraitCall)
 fn clone_point(p: Point) -> Point = p.clone_it();
 
--- Test closure capture with let binding
+// Test closure capture with let binding
 fn test_closure_capture(base: i64) -> i64 = {
     let add_base = fn |x: i64| { x + base };
     add_base(10)
 };
 
--- Test closure capture with multiple variables
+// Test closure capture with multiple variables
 fn test_multi_capture(a: i64, b: i64) -> i64 = {
     let combiner = fn |x: i64| { x + a + b };
     combiner(5)
 };
 
--- Test closure without captures
+// Test closure without captures
 fn test_pure_closure() -> i64 = {
     let multiply = fn |x: i64, y: i64| { x * y };
     multiply(3, 4)
 };
 
--- Main entry point - combines trait methods and closures
+// Main entry point - combines trait methods and closures
 fn main() -> i64 = {
     let p: Point = new Point { x: 10, y: 20 };
 
-    -- Test trait dispatch
+    // Test trait dispatch
     let s: String = p.show();
     let cloned: Point = p.clone_it();
 
-    -- Test closure capture
+    // Test closure capture
     let captured = test_closure_capture(5);
     let multi = test_multi_capture(1, 2);
     let pure = test_pure_closure();
 
-    -- Return combined result
+    // Return combined result
     p.x + p.y + captured + multi + pure
 };

@@ -1,39 +1,32 @@
--- Binary number operations
--- Bootstrap compiler example: bit manipulation via arithmetic
+// Binary number operations
+// Bootstrap compiler example: bit manipulation via arithmetic
 
--- Count set bits (popcount)
+// Count set bits (popcount)
 fn popcount_iter(n: i64, count: i64) -> i64 =
-    if n <= 0 then count
-    else popcount_iter(n / 2, count + n - (n / 2) * 2);
+    if n <= 0 { count } else { popcount_iter(n / 2, count + n - (n / 2) * 2) };
 
 fn popcount(n: i64) -> i64 = popcount_iter(n, 0);
 
--- Check if power of 2 (exactly one bit set)
+// Check if power of 2 (exactly one bit set)
 fn is_power_of_2(n: i64) -> i64 =
-    if n <= 0 then 0
-    else if popcount(n) == 1 then 1
-    else 0;
+    if n <= 0 { 0 } else if popcount(n) == 1 { 1 } else { 0 };
 
--- Get highest set bit position (0-indexed)
+// Get highest set bit position (0-indexed)
 fn highest_bit_iter(n: i64, pos: i64) -> i64 =
-    if n <= 1 then pos
-    else highest_bit_iter(n / 2, pos + 1);
+    if n <= 1 { pos } else { highest_bit_iter(n / 2, pos + 1) };
 
 fn highest_bit(n: i64) -> i64 =
-    if n <= 0 then 0 - 1
-    else highest_bit_iter(n, 0);
+    if n <= 0 { 0 - 1 } else { highest_bit_iter(n, 0) };
 
--- Binary to decimal from "binary string as number"
--- e.g., 1010 -> 10 (read as binary)
+// Binary to decimal from "binary string as number"
+// e.g., 1010 -> 10 (read as binary)
 fn bin_to_dec_iter(n: i64, acc: i64, mult: i64) -> i64 =
-    if n <= 0 then acc
-    else
-        let digit = n - (n / 10) * 10;
+    if n <= 0 { acc } else { let digit = n - (n / 10) * 10 };
         bin_to_dec_iter(n / 10, acc + digit * mult, mult * 2);
 
 fn bin_to_dec(n: i64) -> i64 = bin_to_dec_iter(n, 0, 1);
 
--- Main function
+// Main function
 fn main() -> i64 =
     let pop1 = popcount(255);
     let u0 = println(pop1);

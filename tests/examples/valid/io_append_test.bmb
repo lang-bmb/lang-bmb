@@ -1,7 +1,7 @@
--- Test append_file functionality
+// Test append_file functionality
 
 fn main() -> i64 =
     let w1 = write_file("append_test.txt", "Line1");
     let a1 = append_file("append_test.txt", "-Line2");
     let content = read_file("append_test.txt");
-    if content == "Line1-Line2" then 0 else 1;
+    if content == "Line1-Line2" { 0 } else { 1 };

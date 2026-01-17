@@ -1,13 +1,13 @@
--- Test generic stdlib patterns (v0.15)
--- Basic Option-like pattern without nested generics
+// Test generic stdlib patterns (v0.15)
+// Basic Option-like pattern without nested generics
 
--- Generic Option enum
+// Generic Option enum
 enum MyOption<T> {
     Some(T),
     None,
 }
 
--- Simple generic functions
+// Simple generic functions
 fn some<T>(value: T) -> MyOption<T> = MyOption::Some(value);
 
 fn is_some<T>(opt: MyOption<T>) -> bool =
@@ -16,10 +16,9 @@ fn is_some<T>(opt: MyOption<T>) -> bool =
         MyOption::None => false,
     };
 
--- Non-generic test
+// Non-generic test
 fn test_option() -> i64 = {
     let x: MyOption<i64> = some(42);
-    if is_some(x) then 1 else 0
-};
+    if is_some(x) { 1 } else { 0 }};
 
 fn main() -> i64 = test_option();

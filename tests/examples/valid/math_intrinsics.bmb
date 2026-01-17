@@ -1,27 +1,27 @@
--- v0.34: Test math intrinsics for Phase 34.4 Benchmark Gate
+// v0.34: Test math intrinsics for Phase 34.4 Benchmark Gate
 
--- Test sqrt
+// Test sqrt
 fn test_sqrt() -> f64 = {
     let x = 16.0;
     let result = sqrt(x);
     result
 };
 
--- Test i64_to_f64 conversion
+// Test i64_to_f64 conversion
 fn test_i64_to_f64() -> f64 = {
     let n = 42;
     let f = i64_to_f64(n);
     f
 };
 
--- Test f64_to_i64 conversion
+// Test f64_to_i64 conversion
 fn test_f64_to_i64() -> i64 = {
     let x = 3.14159;
     let n = f64_to_i64(x);
     n
 };
 
--- Combined: use sqrt with conversion
+// Combined: use sqrt with conversion
 fn distance(dx: i64, dy: i64) -> f64 = {
     let dx_f = i64_to_f64(dx);
     let dy_f = i64_to_f64(dy);
@@ -34,9 +34,9 @@ fn main() -> i64 = {
     let n = test_f64_to_i64();
     let d = distance(3, 4);
 
-    -- Simple test: sqrt(16) should be 4.0
-    -- i64_to_f64(42) should be 42.0
-    -- f64_to_i64(3.14159) should be 3 (truncated)
-    -- distance(3, 4) should be 5.0
+    // Simple test: sqrt(16) should be 4.0
+    // i64_to_f64(42) should be 42.0
+    // f64_to_i64(3.14159) should be 3 (truncated)
+    // distance(3, 4) should be 5.0
     0
 };

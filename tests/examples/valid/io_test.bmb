@@ -1,32 +1,26 @@
--- Test file for Phase 32.0.1: File I/O builtins
--- Simple test that doesn't rely on println with String
+// Test file for Phase 32.0.1: File I/O builtins
+// Simple test that doesn't rely on println with String
 
--- Test write_file
+// Test write_file
 fn test_write() -> i64 =
     write_file("test_output.txt", "Hello from BMB!");
 
--- Test read_file
+// Test read_file
 fn test_read() -> String =
     read_file("test_output.txt");
 
--- Test file_exists
+// Test file_exists
 fn test_exists() -> i64 =
     file_exists("test_output.txt");
 
--- Test file_size
+// Test file_size
 fn test_size() -> i64 =
     file_size("test_output.txt");
 
--- Main test sequence - returns 0 if all tests pass
+// Main test sequence - returns 0 if all tests pass
 fn main() -> i64 =
     let write_result = test_write();
-    if write_result != 0 then 1
-    else
-        let exists = test_exists();
-        if exists != 1 then 2
-        else
-            let size = test_size();
-            if size < 0 then 3
-            else
-                let content = test_read();
-                if content == "Hello from BMB!" then 0 else 4;
+    if write_result != 0 { 1 } else { let exists = test_exists() };
+        if exists != 1 { 2 } else { let size = test_size() };
+            if size < 0 { 3 } else { let content = test_read() };
+                if content == "Hello from BMB!" { 0 } else { 4 };

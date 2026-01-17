@@ -1,4 +1,4 @@
--- Logical operations
+// Logical operations
 fn both_positive(a: i64, b: i64) -> bool =
   a > 0 and b > 0;
 

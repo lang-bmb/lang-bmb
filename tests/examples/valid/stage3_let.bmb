@@ -1,4 +1,4 @@
--- Stage 3 verification test: let bindings
+// Stage 3 verification test: let bindings
 fn compute(x: i64) -> i64 =
     let y = x + 1;
     let z = y * 2;

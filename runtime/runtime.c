@@ -5,6 +5,19 @@
 #include <stdlib.h>
 #include <stdint.h>
 
+// Windows binary mode support
+#ifdef _WIN32
+#include <io.h>
+#include <fcntl.h>
+#endif
+
+// Initialize stdout to binary mode on Windows (prevents LF -> CRLF conversion)
+static void init_binary_stdout(void) {
+#ifdef _WIN32
+    _setmode(_fileno(stdout), _O_BINARY);
+#endif
+}
+
 // Print i64 without newline
 void bmb_print_i64(int64_t x) {
     printf("%lld", (long long)x);
@@ -167,6 +180,7 @@ BmbString* bmb_string_concat(BmbString* a, BmbString* b) {
     if (!a && !b) return bmb_string_new("", 0);
     if (!a) return bmb_string_new(b->data, b->len);
     if (!b) return bmb_string_new(a->data, a->len);
+
     int64_t newlen = a->len + b->len;
     char* data = (char*)malloc(newlen + 1);
     memcpy(data, a->data, a->len);
@@ -182,12 +196,20 @@ BmbString* bmb_string_concat(BmbString* a, BmbString* b) {
     return result;
 }
 
-// String equality
+// String equality (for BmbString pointers)
 int64_t bmb_string_eq(BmbString* a, BmbString* b) {
     if (!a && !b) return 1;
     if (!a || !b) return 0;
     if (a->len != b->len) return 0;
     return memcmp(a->data, b->data, a->len) == 0 ? 1 : 0;
+}
+
+// v0.46: Raw C string equality (for string literals)
+// This is used when comparing string literals directly
+int64_t bmb_cstr_eq(const char* a, const char* b) {
+    if (!a && !b) return 1;
+    if (!a || !b) return 0;
+    return strcmp(a, b) == 0 ? 1 : 0;
 }
 
 // chr(i64) -> String: ASCII code to single character string
@@ -202,11 +224,27 @@ int64_t bmb_ord(BmbString* s) {
     return (int64_t)(unsigned char)s->data[0];
 }
 
+// Flag to track if binary mode has been initialized
+static int binary_mode_initialized = 0;
+
 // Print string without newline
 void bmb_print_str(BmbString* s) {
+    // Initialize binary mode on first call (prevents LF -> CRLF on Windows)
+    if (!binary_mode_initialized) {
+        init_binary_stdout();
+        binary_mode_initialized = 1;
+    }
     if (s && s->data) {
         fwrite(s->data, 1, s->len, stdout);
     }
+}
+
+// Print string with newline
+void bmb_println_str(BmbString* s) {
+    if (s && s->data) {
+        fwrite(s->data, 1, s->len, stdout);
+    }
+    putchar('\n');
 }
 
 // ===================================================
@@ -403,6 +441,11 @@ int64_t char_at(BmbString* s, int64_t idx) {
     return bmb_string_char_at(s, idx);
 }
 
+// v0.46: byte_at is the preferred name (clarity: returns byte, not Unicode char)
+int64_t byte_at(BmbString* s, int64_t idx) {
+    return bmb_string_char_at(s, idx);
+}
+
 BmbString* slice(BmbString* s, int64_t start, int64_t end) {
     return bmb_string_slice(s, start, end);
 }
@@ -484,8 +527,21 @@ int64_t arg_count(void) {
     return (int64_t)bmb_argc;
 }
 
+// bmb_ prefixed version for LLVM codegen
+int64_t bmb_arg_count(void) {
+    return (int64_t)bmb_argc;
+}
+
 // Get argument at index (returns empty string if out of bounds)
 BmbString* get_arg(int64_t idx) {
+    if (idx < 0 || idx >= bmb_argc || !bmb_argv) {
+        return bmb_string_new("", 0);
+    }
+    return bmb_string_from_cstr(bmb_argv[idx]);
+}
+
+// bmb_ prefixed version for LLVM codegen
+BmbString* bmb_get_arg(int64_t idx) {
     if (idx < 0 || idx >= bmb_argc || !bmb_argv) {
         return bmb_string_new("", 0);
     }

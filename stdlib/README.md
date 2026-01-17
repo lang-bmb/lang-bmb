@@ -1,8 +1,10 @@
 # BMB Standard Library
 
-> v0.33.0: Foundation for BMB standard library + Testing + Parse utilities + I/O + Process
+> v0.45: Foundation for BMB standard library + Testing + Parse utilities + I/O + Process
 >
 > **Total: 231 symbols** (212 functions, 2 enums, 17 constants)
+>
+> **API Stability**: Pre-release - APIs may change before v1.0.0-beta
 
 ## Design Principles (AI-Native)
 
@@ -439,12 +441,34 @@ fn test_comparison() -> bool = assert_true(10 > 5);
 
 ## Limitations
 
-1. **No Dynamic Arrays**: Vec requires Rust builtins for memory allocation
-2. **Fixed Array Size**: Current array functions use `[i64; 8]` fixed size
-3. **No HashMap**: Requires hash functions and dynamic buckets
-4. **String Building**: Limited to `+` concatenation (no StringBuilder)
-5. **No Generics**: All functions are type-specialized
+| Gap | Severity | Status | Target |
+|-----|----------|--------|--------|
+| **No Generics** | Critical | All functions are type-specialized (monomorphic) | v0.46+ |
+| **No Dynamic Arrays** | Critical | Vec requires runtime for heap allocation | v0.46+ |
+| **No HashMap/Collections** | High | No HashMap, BTreeMap, Set | v0.48 |
+| **Fixed Array Size** | High | Array functions use `[i64; 8]` fixed size | v0.46+ |
+| **No Concurrency** | High | No threads, channels, async | Post-v1.0 |
+| **No Networking** | High | No sockets, HTTP, DNS | Post-v1.0 |
+| **No Date/Time** | High | No clock, timers, date parsing | Post-v1.0 |
+| **ASCII Only** | Medium | String functions limited to ASCII (32-126) | Post-v1.0 |
+| **Limited Math** | Medium | Only abs, min, max (no trig, sqrt, rand) | v0.48 |
+| **No Cryptography** | Medium | No hashing, encryption | Post-v1.0 |
 
-These limitations will be addressed in future versions:
-- v0.7: Rust builtins for Vec, HashMap
-- v0.7+: Generic type support
+## Roadmap
+
+| Version | Planned Features |
+|---------|-----------------|
+| v0.46 | Generic type parameters (`Option<T>`, `Result<T, E>`) |
+| v0.47 | Performance-verified stdlib functions |
+| v0.48 | Collections (HashMap, BTreeMap), Math library |
+| v0.49 | Complete documentation, tutorials |
+| v1.0.0-beta | API freeze, stability guarantees |
+
+## API Stability
+
+| Category | Status | Description |
+|----------|--------|-------------|
+| **Function Signatures** | Unstable | May change before v1.0.0-beta |
+| **Error Codes** | Stable | POSIX-compatible, will not change |
+| **Type Names** | Unstable | Option/Result may become generic |
+| **Module Structure** | Stable | core/, string/, array/, io/, etc. |

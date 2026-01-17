@@ -1,20 +1,20 @@
--- ============================================================================
--- BMB Bootstrap Self-Hosting Stage 1 Test
--- Version: v0.30.191 (Extended test suite)
---
--- This file tests the Bootstrap compiler's ability to compile BMB source
--- code and generate valid LLVM IR. This is the first stage of self-hosting
--- verification.
--- ============================================================================
+// ============================================================================
+// BMB Bootstrap Self-Hosting Stage 1 Test
+// Version: v0.30.191 (Extended test suite)
+//
+// This file tests the Bootstrap compiler's ability to compile BMB source
+// code and generate valid LLVM IR. This is the first stage of self-hosting
+// verification.
+// ============================================================================
 
--- ============================================================================
--- SECTION 1: Token Encoding (copied from compiler.bmb)
--- ============================================================================
+// ============================================================================
+// SECTION 1: Token Encoding (copied from compiler.bmb)
+// ============================================================================
 
 fn tok_kind(tok: i64) -> i64 = tok / 1000000;
 fn tok_end(tok: i64) -> i64 = tok - (tok / 1000000) * 1000000;
 
--- Token constants
+// Token constants
 fn TK_EOF() -> i64 = 0;
 fn TK_IDENT() -> i64 = 1;
 fn TK_INT() -> i64 = 2;
@@ -51,9 +51,9 @@ fn TK_I32() -> i64 = 301;
 fn TK_BOOL() -> i64 = 302;
 fn TK_PERCENT() -> i64 = 117;
 
--- ============================================================================
--- SECTION 2: Lexer Functions
--- ============================================================================
+// ============================================================================
+// SECTION 2: Lexer Functions
+// ============================================================================
 
 fn is_whitespace(c: i64) -> bool = c == 32 or c == 9 or c == 10 or c == 13;
 fn is_digit(c: i64) -> bool = c >= 48 and c <= 57;
@@ -61,118 +61,54 @@ fn is_alpha(c: i64) -> bool = (c >= 65 and c <= 90) or (c >= 97 and c <= 122) or
 fn is_alnum(c: i64) -> bool = is_alpha(c) or is_digit(c);
 
 fn skip_ws(src: String, pos: i64) -> i64 =
-    if pos >= src.len() then pos
-    else if is_whitespace(src.char_at(pos)) then skip_ws(src, pos + 1)
-    else pos;
+    if pos >= src.len() { pos } else if is_whitespace(src.byte_at(pos)) { skip_ws(src, pos + 1) } else { pos };
 
 fn skip_comment(src: String, pos: i64) -> i64 =
-    if pos + 1 < src.len() and src.char_at(pos) == 45 and src.char_at(pos + 1) == 45 then
-        skip_to_eol(src, pos + 2)
-    else pos;
+    if pos + 1 < src.len() and src.byte_at(pos) == 45 and src.byte_at(pos + 1) == 45 { skip_to_eol(src, pos + 2) } else { pos };
 
 fn skip_to_eol(src: String, pos: i64) -> i64 =
-    if pos >= src.len() then pos
-    else if src.char_at(pos) == 10 then pos + 1
-    else skip_to_eol(src, pos + 1);
+    if pos >= src.len() { pos } else if src.byte_at(pos) == 10 { pos + 1 } else { skip_to_eol(src, pos + 1) };
 
 fn skip_all(src: String, pos: i64) -> i64 =
     let p1 = skip_ws(src, pos);
     let p2 = skip_comment(src, p1);
-    if p2 == p1 then p1 else skip_all(src, p2);
+    if p2 == p1 { p1 } else { skip_all(src, p2) };
 
 fn scan_ident(src: String, pos: i64) -> i64 =
-    if pos >= src.len() then pos
-    else if is_alnum(src.char_at(pos)) then scan_ident(src, pos + 1)
-    else pos;
+    if pos >= src.len() { pos } else if is_alnum(src.byte_at(pos)) { scan_ident(src, pos + 1) } else { pos };
 
 fn scan_int(src: String, pos: i64) -> i64 =
-    if pos >= src.len() then pos
-    else if is_digit(src.char_at(pos)) then scan_int(src, pos + 1)
-    else pos;
+    if pos >= src.len() { pos } else if is_digit(src.byte_at(pos)) { scan_int(src, pos + 1) } else { pos };
 
 fn keyword_kind(s: String) -> i64 =
-    if s == "fn" then TK_FN()
-    else if s == "let" then TK_LET()
-    else if s == "if" then TK_IF()
-    else if s == "then" then TK_THEN()
-    else if s == "else" then TK_ELSE()
-    else if s == "true" then TK_TRUE()
-    else if s == "false" then TK_FALSE()
-    else if s == "and" then TK_AND()
-    else if s == "or" then TK_OR()
-    else if s == "not" then TK_NOT()
-    else if s == "mut" then TK_MUT()
-    else if s == "i64" then TK_I64()
-    else if s == "i32" then TK_I32()
-    else if s == "bool" then TK_BOOL()
-    else TK_IDENT();
+    if s == "fn" { TK_FN() } else if s == "let" { TK_LET() } else if s == "if" { TK_IF() } else if s == "then" { TK_THEN() } else if s == "else" { TK_ELSE() } else if s == "true" { TK_TRUE() } else if s == "false" { TK_FALSE() } else if s == "and" { TK_AND() } else if s == "or" { TK_OR() } else if s == "not" { TK_NOT() } else if s == "mut" { TK_MUT() } else if s == "i64" { TK_I64() } else if s == "i32" { TK_I32() } else if s == "bool" { TK_BOOL() } else { TK_IDENT() };
 
 fn next_token_raw(src: String, pos: i64) -> i64 =
     let p = skip_all(src, pos);
-    if p >= src.len() then TK_EOF() * 1000000 + p
-    else
-        let c = src.char_at(p);
-        if is_alpha(c) then
+    if p >= src.len() { TK_EOF() * 1000000 + p } else {
+        let c = src.byte_at(p);
+        if is_alpha(c) {
             let end = scan_ident(src, p);
             let word = src.slice(p, end);
             keyword_kind(word) * 1000000 + end
-        else if is_digit(c) then TK_INT() * 1000000 + scan_int(src, p)
-        else if c == 43 then TK_PLUS() * 1000000 + p + 1
-        else if c == 45 then
-            if p + 1 < src.len() and src.char_at(p + 1) == 62 then TK_ARROW() * 1000000 + p + 2
-            else TK_MINUS() * 1000000 + p + 1
-        else if c == 42 then TK_STAR() * 1000000 + p + 1
-        else if c == 47 then TK_SLASH() * 1000000 + p + 1
-        else if c == 37 then TK_PERCENT() * 1000000 + p + 1
-        else if c == 61 then
-            if p + 1 < src.len() and src.char_at(p + 1) == 61 then TK_EQEQ() * 1000000 + p + 2
-            else TK_EQ() * 1000000 + p + 1
-        else if c == 60 then
-            if p + 1 < src.len() and src.char_at(p + 1) == 61 then TK_LE() * 1000000 + p + 2
-            else TK_LT() * 1000000 + p + 1
-        else if c == 62 then
-            if p + 1 < src.len() and src.char_at(p + 1) == 61 then TK_GE() * 1000000 + p + 2
-            else TK_GT() * 1000000 + p + 1
-        else if c == 33 then
-            if p + 1 < src.len() and src.char_at(p + 1) == 61 then TK_NE() * 1000000 + p + 2
-            else TK_EOF() * 1000000 + p
-        else if c == 58 then TK_COLON() * 1000000 + p + 1
-        else if c == 44 then TK_COMMA() * 1000000 + p + 1
-        else if c == 59 then TK_SEMI() * 1000000 + p + 1
-        else if c == 40 then TK_LPAREN() * 1000000 + p + 1
-        else if c == 41 then TK_RPAREN() * 1000000 + p + 1
-        else TK_EOF() * 1000000 + p;
+        } else if is_digit(c) { TK_INT() * 1000000 + scan_int(src, p) } else if c == 43 { TK_PLUS() * 1000000 + p + 1 } else if c == 45 { if p + 1 < src.len() and src.byte_at(p + 1) == 62 { TK_ARROW() * 1000000 + p + 2 } else { TK_MINUS() * 1000000 + p + 1 } } else if c == 42 { TK_STAR() * 1000000 + p + 1 } else if c == 47 { TK_SLASH() * 1000000 + p + 1 } else if c == 37 { TK_PERCENT() * 1000000 + p + 1 } else if c == 61 { if p + 1 < src.len() and src.byte_at(p + 1) == 61 { TK_EQEQ() * 1000000 + p + 2 } else { TK_EQ() * 1000000 + p + 1 } } else if c == 60 { if p + 1 < src.len() and src.byte_at(p + 1) == 61 { TK_LE() * 1000000 + p + 2 } else { TK_LT() * 1000000 + p + 1 } } else if c == 62 { if p + 1 < src.len() and src.byte_at(p + 1) == 61 { TK_GE() * 1000000 + p + 2 } else { TK_GT() * 1000000 + p + 1 } } else if c == 33 { if p + 1 < src.len() and src.byte_at(p + 1) == 61 { TK_NE() * 1000000 + p + 2 } else { TK_EOF() * 1000000 + p } } else if c == 58 { TK_COLON() * 1000000 + p + 1 } else if c == 44 { TK_COMMA() * 1000000 + p + 1 } else if c == 59 { TK_SEMI() * 1000000 + p + 1 } else if c == 40 { TK_LPAREN() * 1000000 + p + 1 } else if c == 41 { TK_RPAREN() * 1000000 + p + 1 } else { TK_EOF() * 1000000 + p }
+    };
 
--- ============================================================================
--- SECTION 3: Result Packing
--- ============================================================================
+// ============================================================================
+// SECTION 3: Result Packing
+// ============================================================================
 
 fn int_to_string(n: i64) -> String =
-    if n < 0 then "-" + int_to_string(0 - n)
-    else if n < 10 then
-        if n == 0 then "0"
-        else if n == 1 then "1"
-        else if n == 2 then "2"
-        else if n == 3 then "3"
-        else if n == 4 then "4"
-        else if n == 5 then "5"
-        else if n == 6 then "6"
-        else if n == 7 then "7"
-        else if n == 8 then "8"
-        else "9"
-    else int_to_string(n / 10) + int_to_string(n - (n / 10) * 10);
+    if n < 0 { "-" + int_to_string(0 - n) } else if n < 10 { if n == 0 { "0" } else if n == 1 { "1" } else if n == 2 { "2" } else if n == 3 { "3" } else if n == 4 { "4" } else if n == 5 { "5" } else if n == 6 { "6" } else if n == 7 { "7" } else if n == 8 { "8" } else { "9" } } else { int_to_string(n / 10) + int_to_string(n - (n / 10) * 10) };
 
 fn find_colon(s: String, pos: i64) -> i64 =
-    if pos >= s.len() then s.len()
-    else if s.char_at(pos) == 58 then pos
-    else find_colon(s, pos + 1);
+    if pos >= s.len() { s.len() } else if s.byte_at(pos) == 58 { pos } else { find_colon(s, pos + 1) };
 
 fn parse_int_prefix(s: String, pos: i64, acc: i64) -> i64 =
-    if pos >= s.len() then acc
-    else
-        let c = s.char_at(pos);
-        if c >= 48 and c <= 57 then parse_int_prefix(s, pos + 1, acc * 10 + c - 48)
-        else acc;
+    if pos >= s.len() { acc } else {
+        let c = s.byte_at(pos);
+        if c >= 48 and c <= 57 { parse_int_prefix(s, pos + 1, acc * 10 + c - 48) } else { acc }
+    };
 
 fn pack_result(pos: i64, ast: String) -> String = int_to_string(pos) + ":" + ast;
 fn unpack_pos(result: String) -> i64 = parse_int_prefix(result, 0, 0);
@@ -180,83 +116,63 @@ fn unpack_ast(result: String) -> String = result.slice(find_colon(result, 0) + 1
 fn make_error(msg: String) -> String = "ERR:" + msg;
 fn is_error(s: String) -> bool = s.len() >= 4 and s.slice(0, 4) == "ERR:";
 
--- ============================================================================
--- SECTION 4: Parser (Simplified - functions only)
--- ============================================================================
+// ============================================================================
+// SECTION 4: Parser (Simplified - functions only)
+// ============================================================================
 
 fn parse_type(src: String, pos: i64) -> String =
     let tok = next_token_raw(src, pos);
     let kind = tok_kind(tok);
-    if kind == TK_I64() then pack_result(tok_end(tok), "i64")
-    else if kind == TK_I32() then pack_result(tok_end(tok), "i32")
-    else if kind == TK_BOOL() then pack_result(tok_end(tok), "bool")
-    else pack_result(pos, make_error("type"));
+    if kind == TK_I64() { pack_result(tok_end(tok), "i64") } else if kind == TK_I32() { pack_result(tok_end(tok), "i32") } else if kind == TK_BOOL() { pack_result(tok_end(tok), "bool") } else { pack_result(pos, make_error("type")) };
 
 fn parse_primary(src: String, pos: i64) -> String =
     let tok = next_token_raw(src, pos);
     let kind = tok_kind(tok);
-    if kind == TK_INT() then
+    if kind == TK_INT() {
         let ns = skip_all(src, pos);
         let num = src.slice(ns, tok_end(tok));
         pack_result(tok_end(tok), "(int " + num + ")")
-    else if kind == TK_TRUE() then pack_result(tok_end(tok), "(bool true)")
-    else if kind == TK_FALSE() then pack_result(tok_end(tok), "(bool false)")
-    else if kind == TK_IDENT() then
+    } else if kind == TK_TRUE() { pack_result(tok_end(tok), "(bool true)") }
+    else if kind == TK_FALSE() { pack_result(tok_end(tok), "(bool false)") }
+    else if kind == TK_IDENT() {
         let ns = skip_all(src, pos);
         let name = src.slice(ns, tok_end(tok));
         let t2 = next_token_raw(src, tok_end(tok));
-        if tok_kind(t2) == TK_LPAREN() then
+        if tok_kind(t2) == TK_LPAREN() {
             let ra = parse_args(src, tok_end(t2), "");
-            if is_error(unpack_ast(ra)) then ra
-            else pack_result(unpack_pos(ra), "(call <" + name + ">" + unpack_ast(ra) + ")")
-        else pack_result(tok_end(tok), "(var <" + name + ">)")
-    else if kind == TK_LPAREN() then
+            if is_error(unpack_ast(ra)) { ra } else { pack_result(unpack_pos(ra), "(call <" + name + ">" + unpack_ast(ra) + ")") }
+        } else { pack_result(tok_end(tok), "(var <" + name + ">)") }
+    } else if kind == TK_LPAREN() {
         let re = parse_expr(src, tok_end(tok));
-        if is_error(unpack_ast(re)) then re
-        else
+        if is_error(unpack_ast(re)) { re } else {
             let t2 = next_token_raw(src, unpack_pos(re));
-            if tok_kind(t2) == TK_RPAREN() then pack_result(tok_end(t2), unpack_ast(re))
-            else pack_result(unpack_pos(re), make_error("paren"))
-    else if kind == TK_NOT() then
+            if tok_kind(t2) == TK_RPAREN() { pack_result(tok_end(t2), unpack_ast(re)) } else { pack_result(unpack_pos(re), make_error("paren")) }
+        }
+    } else if kind == TK_NOT() {
         let re = parse_unary(src, tok_end(tok));
-        if is_error(unpack_ast(re)) then re
-        else pack_result(unpack_pos(re), "(not " + unpack_ast(re) + ")")
-    else if kind == TK_MINUS() then
+        if is_error(unpack_ast(re)) { re } else { pack_result(unpack_pos(re), "(not " + unpack_ast(re) + ")") }
+    } else if kind == TK_MINUS() {
         let re = parse_unary(src, tok_end(tok));
-        if is_error(unpack_ast(re)) then re
-        else pack_result(unpack_pos(re), "(neg " + unpack_ast(re) + ")")
-    else pack_result(pos, make_error("primary"));
+        if is_error(unpack_ast(re)) { re } else { pack_result(unpack_pos(re), "(neg " + unpack_ast(re) + ")") }
+    } else { pack_result(pos, make_error("primary")) };
 
 fn parse_unary(src: String, pos: i64) -> String = parse_primary(src, pos);
 
 fn parse_args(src: String, pos: i64, acc: String) -> String =
     let tok = next_token_raw(src, pos);
-    if tok_kind(tok) == TK_RPAREN() then pack_result(tok_end(tok), acc)
-    else
+    if tok_kind(tok) == TK_RPAREN() { pack_result(tok_end(tok), acc) } else {
         let re = parse_expr(src, pos);
-        if is_error(unpack_ast(re)) then re
-        else
+        if is_error(unpack_ast(re)) { re } else {
             let t2 = next_token_raw(src, unpack_pos(re));
             let new_acc = acc + " " + unpack_ast(re);
-            if tok_kind(t2) == TK_RPAREN() then pack_result(tok_end(t2), new_acc)
-            else if tok_kind(t2) == TK_COMMA() then parse_args(src, tok_end(t2), new_acc)
-            else pack_result(unpack_pos(re), make_error("args"));
+            if tok_kind(t2) == TK_RPAREN() { pack_result(tok_end(t2), new_acc) }
+            else if tok_kind(t2) == TK_COMMA() { parse_args(src, tok_end(t2), new_acc) }
+            else { pack_result(unpack_pos(re), make_error("args")) }
+        }
+    };
 
 fn op_symbol(kind: i64) -> String =
-    if kind == TK_PLUS() then "+"
-    else if kind == TK_MINUS() then "-"
-    else if kind == TK_STAR() then "*"
-    else if kind == TK_SLASH() then "/"
-    else if kind == TK_PERCENT() then "%"
-    else if kind == TK_EQEQ() then "=="
-    else if kind == TK_NE() then "!="
-    else if kind == TK_LT() then "<"
-    else if kind == TK_GT() then ">"
-    else if kind == TK_LE() then "<="
-    else if kind == TK_GE() then ">="
-    else if kind == TK_AND() then "and"
-    else if kind == TK_OR() then "or"
-    else "";
+    if kind == TK_PLUS() { "+" } else if kind == TK_MINUS() { "-" } else if kind == TK_STAR() { "*" } else if kind == TK_SLASH() { "/" } else if kind == TK_PERCENT() { "%" } else if kind == TK_EQEQ() { "==" } else if kind == TK_NE() { "!=" } else if kind == TK_LT() { "<" } else if kind == TK_GT() { ">" } else if kind == TK_LE() { "<=" } else if kind == TK_GE() { ">=" } else if kind == TK_AND() { "and" } else if kind == TK_OR() { "or" } else { "" };
 
 fn is_binop(kind: i64) -> bool =
     kind == TK_PLUS() or kind == TK_MINUS() or kind == TK_STAR() or kind == TK_SLASH() or
@@ -265,910 +181,898 @@ fn is_binop(kind: i64) -> bool =
 
 fn parse_mul(src: String, pos: i64) -> String =
     let rl = parse_unary(src, pos);
-    if is_error(unpack_ast(rl)) then rl
-    else parse_mul_more(src, unpack_pos(rl), unpack_ast(rl));
+    if is_error(unpack_ast(rl)) { rl } else { parse_mul_more(src, unpack_pos(rl), unpack_ast(rl)) };
 
 fn parse_mul_more(src: String, pos: i64, left: String) -> String =
     let tok = next_token_raw(src, pos);
     let kind = tok_kind(tok);
-    if kind == TK_STAR() or kind == TK_SLASH() or kind == TK_PERCENT() then
+    if kind == TK_STAR() or kind == TK_SLASH() or kind == TK_PERCENT() {
         let rr = parse_unary(src, tok_end(tok));
-        if is_error(unpack_ast(rr)) then rr
-        else
+        if is_error(unpack_ast(rr)) { rr } else {
             let new_left = "(op " + op_symbol(kind) + " " + left + " " + unpack_ast(rr) + ")";
             parse_mul_more(src, unpack_pos(rr), new_left)
-    else pack_result(pos, left);
+        }
+    } else { pack_result(pos, left) };
 
 fn parse_add(src: String, pos: i64) -> String =
     let rl = parse_mul(src, pos);
-    if is_error(unpack_ast(rl)) then rl
-    else parse_add_more(src, unpack_pos(rl), unpack_ast(rl));
+    if is_error(unpack_ast(rl)) { rl } else { parse_add_more(src, unpack_pos(rl), unpack_ast(rl)) };
 
 fn parse_add_more(src: String, pos: i64, left: String) -> String =
     let tok = next_token_raw(src, pos);
     let kind = tok_kind(tok);
-    if kind == TK_PLUS() or kind == TK_MINUS() then
+    if kind == TK_PLUS() or kind == TK_MINUS() {
         let rr = parse_mul(src, tok_end(tok));
-        if is_error(unpack_ast(rr)) then rr
-        else
+        if is_error(unpack_ast(rr)) { rr } else {
             let new_left = "(op " + op_symbol(kind) + " " + left + " " + unpack_ast(rr) + ")";
             parse_add_more(src, unpack_pos(rr), new_left)
-    else pack_result(pos, left);
+        }
+    } else { pack_result(pos, left) };
 
 fn parse_cmp(src: String, pos: i64) -> String =
     let rl = parse_add(src, pos);
-    if is_error(unpack_ast(rl)) then rl
-    else parse_cmp_more(src, unpack_pos(rl), unpack_ast(rl));
+    if is_error(unpack_ast(rl)) { rl } else { parse_cmp_more(src, unpack_pos(rl), unpack_ast(rl)) };
 
 fn parse_cmp_more(src: String, pos: i64, left: String) -> String =
     let tok = next_token_raw(src, pos);
     let kind = tok_kind(tok);
     if kind == TK_EQEQ() or kind == TK_NE() or kind == TK_LT() or kind == TK_GT() or
-       kind == TK_LE() or kind == TK_GE() then
+       kind == TK_LE() or kind == TK_GE() {
         let rr = parse_add(src, tok_end(tok));
-        if is_error(unpack_ast(rr)) then rr
-        else pack_result(unpack_pos(rr), "(op " + op_symbol(kind) + " " + left + " " + unpack_ast(rr) + ")")
-    else pack_result(pos, left);
+        if is_error(unpack_ast(rr)) { rr } else { pack_result(unpack_pos(rr), "(op " + op_symbol(kind) + " " + left + " " + unpack_ast(rr) + ")") }
+    } else { pack_result(pos, left) };
 
 fn parse_and(src: String, pos: i64) -> String =
     let rl = parse_cmp(src, pos);
-    if is_error(unpack_ast(rl)) then rl
-    else parse_and_more(src, unpack_pos(rl), unpack_ast(rl));
+    if is_error(unpack_ast(rl)) { rl } else { parse_and_more(src, unpack_pos(rl), unpack_ast(rl)) };
 
 fn parse_and_more(src: String, pos: i64, left: String) -> String =
     let tok = next_token_raw(src, pos);
-    if tok_kind(tok) == TK_AND() then
+    if tok_kind(tok) == TK_AND() {
         let rr = parse_cmp(src, tok_end(tok));
-        if is_error(unpack_ast(rr)) then rr
-        else
+        if is_error(unpack_ast(rr)) { rr } else {
             let new_left = "(op and " + left + " " + unpack_ast(rr) + ")";
             parse_and_more(src, unpack_pos(rr), new_left)
-    else pack_result(pos, left);
+        }
+    } else { pack_result(pos, left) };
 
 fn parse_or(src: String, pos: i64) -> String =
     let rl = parse_and(src, pos);
-    if is_error(unpack_ast(rl)) then rl
-    else parse_or_more(src, unpack_pos(rl), unpack_ast(rl));
+    if is_error(unpack_ast(rl)) { rl } else { parse_or_more(src, unpack_pos(rl), unpack_ast(rl)) };
 
 fn parse_or_more(src: String, pos: i64, left: String) -> String =
     let tok = next_token_raw(src, pos);
-    if tok_kind(tok) == TK_OR() then
+    if tok_kind(tok) == TK_OR() {
         let rr = parse_and(src, tok_end(tok));
-        if is_error(unpack_ast(rr)) then rr
-        else
+        if is_error(unpack_ast(rr)) { rr } else {
             let new_left = "(op or " + left + " " + unpack_ast(rr) + ")";
             parse_or_more(src, unpack_pos(rr), new_left)
-    else pack_result(pos, left);
+        }
+    } else { pack_result(pos, left) };
 
 fn parse_expr(src: String, pos: i64) -> String =
     let tok = next_token_raw(src, pos);
     let kind = tok_kind(tok);
-    if kind == TK_LET() then
+    if kind == TK_LET() {
         let t1 = next_token_raw(src, tok_end(tok));
-        if tok_kind(t1) != TK_IDENT() then pack_result(tok_end(tok), make_error("let-name"))
-        else
+        if tok_kind(t1) != TK_IDENT() { pack_result(tok_end(tok), make_error("let-name")) } else {
             let ns = skip_all(src, tok_end(tok));
             let name = src.slice(ns, tok_end(t1));
             let t2 = next_token_raw(src, tok_end(t1));
-            if tok_kind(t2) != TK_EQ() then pack_result(tok_end(t1), make_error("let-eq"))
-            else
+            if tok_kind(t2) != TK_EQ() { pack_result(tok_end(t1), make_error("let-eq")) } else {
                 let rv = parse_expr(src, tok_end(t2));
-                if is_error(unpack_ast(rv)) then rv
-                else
+                if is_error(unpack_ast(rv)) { rv } else {
                     let t3 = next_token_raw(src, unpack_pos(rv));
-                    if tok_kind(t3) != TK_SEMI() then pack_result(unpack_pos(rv), make_error("let-semi"))
-                    else
+                    if tok_kind(t3) != TK_SEMI() { pack_result(unpack_pos(rv), make_error("let-semi")) } else {
                         let rb = parse_expr(src, tok_end(t3));
-                        if is_error(unpack_ast(rb)) then rb
-                        else pack_result(unpack_pos(rb), "(let <" + name + "> " + unpack_ast(rv) + " " + unpack_ast(rb) + ")")
-    else if kind == TK_IF() then
+                        if is_error(unpack_ast(rb)) { rb } else { pack_result(unpack_pos(rb), "(let <" + name + "> " + unpack_ast(rv) + " " + unpack_ast(rb) + ")") }
+                    }
+                }
+            }
+        }
+    } else if kind == TK_IF() {
         let rc = parse_expr(src, tok_end(tok));
-        if is_error(unpack_ast(rc)) then rc
-        else
+        if is_error(unpack_ast(rc)) { rc } else {
             let t1 = next_token_raw(src, unpack_pos(rc));
-            if tok_kind(t1) != TK_THEN() then pack_result(unpack_pos(rc), make_error("if-then"))
-            else
+            if tok_kind(t1) != TK_THEN() { pack_result(unpack_pos(rc), make_error("if-then")) } else {
                 let rt = parse_expr(src, tok_end(t1));
-                if is_error(unpack_ast(rt)) then rt
-                else
+                if is_error(unpack_ast(rt)) { rt } else {
                     let t2 = next_token_raw(src, unpack_pos(rt));
-                    if tok_kind(t2) != TK_ELSE() then pack_result(unpack_pos(rt), make_error("if-else"))
-                    else
+                    if tok_kind(t2) != TK_ELSE() { pack_result(unpack_pos(rt), make_error("if-else")) } else {
                         let re = parse_expr(src, tok_end(t2));
-                        if is_error(unpack_ast(re)) then re
-                        else pack_result(unpack_pos(re), "(if " + unpack_ast(rc) + " " + unpack_ast(rt) + " " + unpack_ast(re) + ")")
-    else parse_or(src, pos);
+                        if is_error(unpack_ast(re)) { re } else { pack_result(unpack_pos(re), "(if " + unpack_ast(rc) + " " + unpack_ast(rt) + " " + unpack_ast(re) + ")") }
+                    }
+                }
+            }
+        }
+    } else { parse_or(src, pos) };
 
 fn parse_params(src: String, pos: i64, acc: String) -> String =
     let tok = next_token_raw(src, pos);
-    if tok_kind(tok) == TK_RPAREN() then pack_result(tok_end(tok), acc)
-    else if tok_kind(tok) == TK_IDENT() then
+    if tok_kind(tok) == TK_RPAREN() { pack_result(tok_end(tok), acc) }
+    else if tok_kind(tok) == TK_IDENT() {
         let ns = skip_all(src, pos);
         let name = src.slice(ns, tok_end(tok));
         let t1 = next_token_raw(src, tok_end(tok));
-        if tok_kind(t1) != TK_COLON() then pack_result(tok_end(tok), make_error("param-colon"))
-        else
+        if tok_kind(t1) != TK_COLON() { pack_result(tok_end(tok), make_error("param-colon")) } else {
             let rt = parse_type(src, tok_end(t1));
-            if is_error(unpack_ast(rt)) then rt
-            else
+            if is_error(unpack_ast(rt)) { rt } else {
                 let new_acc = acc + " (p <" + name + "> " + unpack_ast(rt) + ")";
                 let t2 = next_token_raw(src, unpack_pos(rt));
-                if tok_kind(t2) == TK_RPAREN() then pack_result(tok_end(t2), new_acc)
-                else if tok_kind(t2) == TK_COMMA() then parse_params(src, tok_end(t2), new_acc)
-                else pack_result(unpack_pos(rt), make_error("params"))
-    else pack_result(pos, make_error("param-name"));
+                if tok_kind(t2) == TK_RPAREN() { pack_result(tok_end(t2), new_acc) }
+                else if tok_kind(t2) == TK_COMMA() { parse_params(src, tok_end(t2), new_acc) }
+                else { pack_result(unpack_pos(rt), make_error("params")) }
+            }
+        }
+    } else { pack_result(pos, make_error("param-name")) };
 
 fn parse_fn(src: String, pos: i64) -> String =
     let t1 = next_token_raw(src, pos);
-    if tok_kind(t1) != TK_IDENT() then pack_result(pos, make_error("fn-name"))
-    else
+    if tok_kind(t1) != TK_IDENT() { pack_result(pos, make_error("fn-name")) } else {
         let ns = skip_all(src, pos);
         let name = src.slice(ns, tok_end(t1));
         let t2 = next_token_raw(src, tok_end(t1));
-        if tok_kind(t2) != TK_LPAREN() then pack_result(tok_end(t1), make_error("fn-lparen"))
-        else
+        if tok_kind(t2) != TK_LPAREN() { pack_result(tok_end(t1), make_error("fn-lparen")) } else {
             let rp = parse_params(src, tok_end(t2), "");
-            if is_error(unpack_ast(rp)) then rp
-            else
+            if is_error(unpack_ast(rp)) { rp } else {
                 let t3 = next_token_raw(src, unpack_pos(rp));
-                if tok_kind(t3) != TK_ARROW() then pack_result(unpack_pos(rp), make_error("fn-arrow"))
-                else
+                if tok_kind(t3) != TK_ARROW() { pack_result(unpack_pos(rp), make_error("fn-arrow")) } else {
                     let rt = parse_type(src, tok_end(t3));
-                    if is_error(unpack_ast(rt)) then rt
-                    else
+                    if is_error(unpack_ast(rt)) { rt } else {
                         let t4 = next_token_raw(src, unpack_pos(rt));
-                        if tok_kind(t4) != TK_EQ() then pack_result(unpack_pos(rt), make_error("fn-eq"))
-                        else
+                        if tok_kind(t4) != TK_EQ() { pack_result(unpack_pos(rt), make_error("fn-eq")) } else {
                             let rb = parse_expr(src, tok_end(t4));
-                            if is_error(unpack_ast(rb)) then rb
-                            else
+                            if is_error(unpack_ast(rb)) { rb } else {
                                 let t5 = next_token_raw(src, unpack_pos(rb));
-                                if tok_kind(t5) != TK_SEMI() then pack_result(unpack_pos(rb), make_error("fn-semi"))
-                                else
-                                    let params = if unpack_ast(rp) == "" then ""
-                                                 else " (params" + unpack_ast(rp) + ")";
-                                    pack_result(tok_end(t5), "(fn <" + name + ">" + params + " " + unpack_ast(rt) + " " + unpack_ast(rb) + ")");
+                                if tok_kind(t5) != TK_SEMI() { pack_result(unpack_pos(rb), make_error("fn-semi")) } else {
+                                    let params = if unpack_ast(rp) == "" { "" } else { " (params" + unpack_ast(rp) + ")" };
+                                    pack_result(tok_end(t5), "(fn <" + name + ">" + params + " " + unpack_ast(rt) + " " + unpack_ast(rb) + ")")
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    };
 
 fn parse_program(src: String, pos: i64, fns: String) -> String =
     let tok = next_token_raw(src, pos);
     let kind = tok_kind(tok);
-    if kind == TK_EOF() then "(program" + fns + ")"
-    else if kind == TK_FN() then
+    if kind == TK_EOF() { "(program" + fns + ")" }
+    else if kind == TK_FN() {
         let rf = parse_fn(src, tok_end(tok));
-        if is_error(unpack_ast(rf)) then unpack_ast(rf)
-        else parse_program(src, unpack_pos(rf), fns + " " + unpack_ast(rf))
-    else make_error("program");
+        if is_error(unpack_ast(rf)) { unpack_ast(rf) } else { parse_program(src, unpack_pos(rf), fns + " " + unpack_ast(rf)) }
+    } else { make_error("program") };
 
 fn parse_source(src: String) -> String = parse_program(src, 0, "");
 
--- ============================================================================
--- SECTION 5: Unit Tests (v0.30.144)
--- ============================================================================
+// ============================================================================
+// SECTION 5: Unit Tests (v0.30.144)
+// ============================================================================
 
--- Test token encoding/decoding
+// Test token encoding/decoding
 fn test_tok_encoding() -> i64 =
     let tok1 = TK_FN() * 1000000 + 50;
-    let t1 = if tok_kind(tok1) == TK_FN() then 1 else 0;
-    let t2 = if tok_end(tok1) == 50 then 1 else 0;
+    let t1 = if tok_kind(tok1) == TK_FN() { 1 } else { 0 };
+    let t2 = if tok_end(tok1) == 50 { 1 } else { 0 };
     let tok2 = TK_INT() * 1000000 + 0;
-    let t3 = if tok_kind(tok2) == TK_INT() then 1 else 0;
-    let t4 = if tok_end(tok2) == 0 then 1 else 0;
+    let t3 = if tok_kind(tok2) == TK_INT() { 1 } else { 0 };
+    let t4 = if tok_end(tok2) == 0 { 1 } else { 0 };
     t1 + t2 + t3 + t4;
 
--- Test token constants
+// Test token constants
 fn test_token_constants() -> i64 =
-    let t1 = if TK_EOF() == 0 then 1 else 0;
-    let t2 = if TK_IDENT() == 1 then 1 else 0;
-    let t3 = if TK_INT() == 2 then 1 else 0;
-    let t4 = if TK_FN() == 200 then 1 else 0;
-    let t5 = if TK_LET() == 201 then 1 else 0;
-    let t6 = if TK_I64() == 300 then 1 else 0;
+    let t1 = if TK_EOF() == 0 { 1 } else { 0 };
+    let t2 = if TK_IDENT() == 1 { 1 } else { 0 };
+    let t3 = if TK_INT() == 2 { 1 } else { 0 };
+    let t4 = if TK_FN() == 200 { 1 } else { 0 };
+    let t5 = if TK_LET() == 201 { 1 } else { 0 };
+    let t6 = if TK_I64() == 300 { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5 + t6;
 
--- Test character classification
+// Test character classification
 fn test_char_class() -> i64 =
-    let t1 = if is_whitespace(32) then 1 else 0;  -- space
-    let t2 = if is_whitespace(10) then 1 else 0;  -- newline
-    let t3 = if is_digit(48) then 1 else 0;       -- '0'
-    let t4 = if is_digit(57) then 1 else 0;       -- '9'
-    let t5 = if is_alpha(65) then 1 else 0;       -- 'A'
-    let t6 = if is_alpha(122) then 1 else 0;      -- 'z'
-    let t7 = if is_alpha(95) then 1 else 0;       -- '_'
-    let t8 = if is_alnum(65) then 1 else 0;       -- 'A' is alnum
+    let t1 = if is_whitespace(32) { 1 } else { 0 };  // space
+    let t2 = if is_whitespace(10) { 1 } else { 0 };  // newline
+    let t3 = if is_digit(48) { 1 } else { 0 };       // '0'
+    let t4 = if is_digit(57) { 1 } else { 0 };       // '9'
+    let t5 = if is_alpha(65) { 1 } else { 0 };       // 'A'
+    let t6 = if is_alpha(122) { 1 } else { 0 };      // 'z'
+    let t7 = if is_alpha(95) { 1 } else { 0 };       // '_'
+    let t8 = if is_alnum(65) { 1 } else { 0 };       // 'A' is alnum
     t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8;
 
--- Test int_to_string
+// Test int_to_string
 fn test_int_to_string() -> i64 =
-    let t1 = if int_to_string(0) == "0" then 1 else 0;
-    let t2 = if int_to_string(5) == "5" then 1 else 0;
-    let t3 = if int_to_string(42) == "42" then 1 else 0;
-    let t4 = if int_to_string(123) == "123" then 1 else 0;
+    let t1 = if int_to_string(0) == "0" { 1 } else { 0 };
+    let t2 = if int_to_string(5) == "5" { 1 } else { 0 };
+    let t3 = if int_to_string(42) == "42" { 1 } else { 0 };
+    let t4 = if int_to_string(123) == "123" { 1 } else { 0 };
     t1 + t2 + t3 + t4;
 
--- Test result packing
+// Test result packing
 fn test_result_packing() -> i64 =
     let r1 = pack_result(100, "(ast)");
-    let t1 = if unpack_pos(r1) == 100 then 1 else 0;
-    let t2 = if unpack_ast(r1) == "(ast)" then 1 else 0;
+    let t1 = if unpack_pos(r1) == 100 { 1 } else { 0 };
+    let t2 = if unpack_ast(r1) == "(ast)" { 1 } else { 0 };
     let r2 = pack_result(0, "value");
-    let t3 = if unpack_pos(r2) == 0 then 1 else 0;
-    let t4 = if unpack_ast(r2) == "value" then 1 else 0;
+    let t3 = if unpack_pos(r2) == 0 { 1 } else { 0 };
+    let t4 = if unpack_ast(r2) == "value" { 1 } else { 0 };
     t1 + t2 + t3 + t4;
 
--- Test error handling
+// Test error handling
 fn test_error_handling() -> i64 =
-    let t1 = if is_error("ERR:test") then 1 else 0;
-    let t2 = if not is_error("OK") then 1 else 0;
-    let t3 = if make_error("msg") == "ERR:msg" then 1 else 0;
-    let t4 = if not is_error("(ast)") then 1 else 0;
+    let t1 = if is_error("ERR:test") { 1 } else { 0 };
+    let t2 = if not is_error("OK") { 1 } else { 0 };
+    let t3 = if make_error("msg") == "ERR:msg" { 1 } else { 0 };
+    let t4 = if not is_error("(ast)") { 1 } else { 0 };
     t1 + t2 + t3 + t4;
 
--- Test keyword recognition
+// Test keyword recognition
 fn test_keyword_kind() -> i64 =
-    let t1 = if keyword_kind("fn") == TK_FN() then 1 else 0;
-    let t2 = if keyword_kind("let") == TK_LET() then 1 else 0;
-    let t3 = if keyword_kind("if") == TK_IF() then 1 else 0;
-    let t4 = if keyword_kind("i64") == TK_I64() then 1 else 0;
-    let t5 = if keyword_kind("xyz") == TK_IDENT() then 1 else 0;
-    let t6 = if keyword_kind("true") == TK_TRUE() then 1 else 0;
+    let t1 = if keyword_kind("fn") == TK_FN() { 1 } else { 0 };
+    let t2 = if keyword_kind("let") == TK_LET() { 1 } else { 0 };
+    let t3 = if keyword_kind("if") == TK_IF() { 1 } else { 0 };
+    let t4 = if keyword_kind("i64") == TK_I64() { 1 } else { 0 };
+    let t5 = if keyword_kind("xyz") == TK_IDENT() { 1 } else { 0 };
+    let t6 = if keyword_kind("true") == TK_TRUE() { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5 + t6;
 
--- Test op_symbol function
+// Test op_symbol function
 fn test_op_symbol() -> i64 =
-    let t1 = if op_symbol(TK_PLUS()) == "+" then 1 else 0;
-    let t2 = if op_symbol(TK_MINUS()) == "-" then 1 else 0;
-    let t3 = if op_symbol(TK_STAR()) == "*" then 1 else 0;
-    let t4 = if op_symbol(TK_EQEQ()) == "==" then 1 else 0;
-    let t5 = if op_symbol(TK_AND()) == "and" then 1 else 0;
-    let t6 = if op_symbol(TK_OR()) == "or" then 1 else 0;
+    let t1 = if op_symbol(TK_PLUS()) == "+" { 1 } else { 0 };
+    let t2 = if op_symbol(TK_MINUS()) == "-" { 1 } else { 0 };
+    let t3 = if op_symbol(TK_STAR()) == "*" { 1 } else { 0 };
+    let t4 = if op_symbol(TK_EQEQ()) == "==" { 1 } else { 0 };
+    let t5 = if op_symbol(TK_AND()) == "and" { 1 } else { 0 };
+    let t6 = if op_symbol(TK_OR()) == "or" { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5 + t6;
 
--- Test is_binop function
+// Test is_binop function
 fn test_is_binop() -> i64 =
-    let t1 = if is_binop(TK_PLUS()) then 1 else 0;
-    let t2 = if is_binop(TK_STAR()) then 1 else 0;
-    let t3 = if is_binop(TK_EQEQ()) then 1 else 0;
-    let t4 = if is_binop(TK_AND()) then 1 else 0;
-    let t5 = if not is_binop(TK_FN()) then 1 else 0;
-    let t6 = if not is_binop(TK_LET()) then 1 else 0;
+    let t1 = if is_binop(TK_PLUS()) { 1 } else { 0 };
+    let t2 = if is_binop(TK_STAR()) { 1 } else { 0 };
+    let t3 = if is_binop(TK_EQEQ()) { 1 } else { 0 };
+    let t4 = if is_binop(TK_AND()) { 1 } else { 0 };
+    let t5 = if not is_binop(TK_FN()) { 1 } else { 0 };
+    let t6 = if not is_binop(TK_LET()) { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5 + t6;
 
--- v0.30.158: Test skip_ws function
+// v0.30.158: Test skip_ws function
 fn test_skip_ws() -> i64 =
-    let t1 = if skip_ws("  abc", 0) == 2 then 1 else 0;
-    let t2 = if skip_ws("abc", 0) == 0 then 1 else 0;
-    let t3 = if skip_ws("   ", 0) == 3 then 1 else 0;
-    let t4 = if skip_ws("    x", 0) == 4 then 1 else 0;  -- 4 spaces
+    let t1 = if skip_ws("  abc", 0) == 2 { 1 } else { 0 };
+    let t2 = if skip_ws("abc", 0) == 0 { 1 } else { 0 };
+    let t3 = if skip_ws("   ", 0) == 3 { 1 } else { 0 };
+    let t4 = if skip_ws("    x", 0) == 4 { 1 } else { 0 };  // 4 spaces
     t1 + t2 + t3 + t4;
 
--- v0.30.158: Test skip_to_eol function
+// v0.30.158: Test skip_to_eol function
 fn test_skip_to_eol() -> i64 =
-    let t1 = if skip_to_eol("abc", 0) == 3 then 1 else 0;  -- no newline
-    let t2 = if skip_to_eol("xy", 0) == 2 then 1 else 0;
-    let t3 = if skip_to_eol("a", 0) == 1 then 1 else 0;
-    let t4 = if skip_to_eol("test", 0) == 4 then 1 else 0;
+    let t1 = if skip_to_eol("abc", 0) == 3 { 1 } else { 0 };  // no newline
+    let t2 = if skip_to_eol("xy", 0) == 2 { 1 } else { 0 };
+    let t3 = if skip_to_eol("a", 0) == 1 { 1 } else { 0 };
+    let t4 = if skip_to_eol("test", 0) == 4 { 1 } else { 0 };
     t1 + t2 + t3 + t4;
 
--- v0.30.158: Test skip_comment function
+// v0.30.158: Test skip_comment function
 fn test_skip_comment() -> i64 =
-    let t1 = if skip_comment("-- end", 0) == 6 then 1 else 0;  -- no newline
-    let t2 = if skip_comment("abc", 0) == 0 then 1 else 0;  -- no comment
-    let t3 = if skip_comment("-x", 0) == 0 then 1 else 0;   -- single dash
-    let t4 = if skip_comment("-- test", 0) == 7 then 1 else 0;
+    let t1 = if skip_comment("-- end", 0) == 6 { 1 } else { 0 };  // no newline
+    let t2 = if skip_comment("abc", 0) == 0 { 1 } else { 0 };  // no comment
+    let t3 = if skip_comment("-x", 0) == 0 { 1 } else { 0 };   // single dash
+    let t4 = if skip_comment("-- test", 0) == 7 { 1 } else { 0 };
     t1 + t2 + t3 + t4;
 
--- v0.30.158: Test skip_all function
+// v0.30.158: Test skip_all function
 fn test_skip_all() -> i64 =
-    let t1 = if skip_all("abc", 0) == 0 then 1 else 0;
-    let t2 = if skip_all("   fn", 0) == 3 then 1 else 0;
-    let t3 = if skip_all("  x", 0) == 2 then 1 else 0;
-    let t4 = if skip_all("x", 0) == 0 then 1 else 0;
+    let t1 = if skip_all("abc", 0) == 0 { 1 } else { 0 };
+    let t2 = if skip_all("   fn", 0) == 3 { 1 } else { 0 };
+    let t3 = if skip_all("  x", 0) == 2 { 1 } else { 0 };
+    let t4 = if skip_all("x", 0) == 0 { 1 } else { 0 };
     t1 + t2 + t3 + t4;
 
--- v0.30.158: Test scan_ident function
+// v0.30.158: Test scan_ident function
 fn test_scan_ident() -> i64 =
-    let t1 = if scan_ident("abc123 x", 0) == 6 then 1 else 0;
-    let t2 = if scan_ident("x", 0) == 1 then 1 else 0;
-    let t3 = if scan_ident("_foo", 0) == 4 then 1 else 0;
-    let t4 = if scan_ident("a_b_c", 0) == 5 then 1 else 0;
-    let t5 = if scan_ident("fn()", 0) == 2 then 1 else 0;
-    let t6 = if scan_ident("i64:", 0) == 3 then 1 else 0;
+    let t1 = if scan_ident("abc123 x", 0) == 6 { 1 } else { 0 };
+    let t2 = if scan_ident("x", 0) == 1 { 1 } else { 0 };
+    let t3 = if scan_ident("_foo", 0) == 4 { 1 } else { 0 };
+    let t4 = if scan_ident("a_b_c", 0) == 5 { 1 } else { 0 };
+    let t5 = if scan_ident("fn()", 0) == 2 { 1 } else { 0 };
+    let t6 = if scan_ident("i64:", 0) == 3 { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5 + t6;
 
--- v0.30.158: Test scan_int function
+// v0.30.158: Test scan_int function
 fn test_scan_int() -> i64 =
-    let t1 = if scan_int("123abc", 0) == 3 then 1 else 0;
-    let t2 = if scan_int("0", 0) == 1 then 1 else 0;
-    let t3 = if scan_int("12345", 0) == 5 then 1 else 0;
-    let t4 = if scan_int("42 + 3", 0) == 2 then 1 else 0;
+    let t1 = if scan_int("123abc", 0) == 3 { 1 } else { 0 };
+    let t2 = if scan_int("0", 0) == 1 { 1 } else { 0 };
+    let t3 = if scan_int("12345", 0) == 5 { 1 } else { 0 };
+    let t4 = if scan_int("42 + 3", 0) == 2 { 1 } else { 0 };
     t1 + t2 + t3 + t4;
 
--- v0.30.158: Test next_token_raw function
+// v0.30.158: Test next_token_raw function
 fn test_next_token() -> i64 =
     let tok1 = next_token_raw("fn", 0);
-    let t1 = if tok_kind(tok1) == TK_FN() then 1 else 0;
+    let t1 = if tok_kind(tok1) == TK_FN() { 1 } else { 0 };
     let tok2 = next_token_raw("123", 0);
-    let t2 = if tok_kind(tok2) == TK_INT() then 1 else 0;
+    let t2 = if tok_kind(tok2) == TK_INT() { 1 } else { 0 };
     let tok3 = next_token_raw("+", 0);
-    let t3 = if tok_kind(tok3) == TK_PLUS() then 1 else 0;
+    let t3 = if tok_kind(tok3) == TK_PLUS() { 1 } else { 0 };
     let tok4 = next_token_raw("->", 0);
-    let t4 = if tok_kind(tok4) == TK_ARROW() then 1 else 0;
+    let t4 = if tok_kind(tok4) == TK_ARROW() { 1 } else { 0 };
     let tok5 = next_token_raw("==", 0);
-    let t5 = if tok_kind(tok5) == TK_EQEQ() then 1 else 0;
+    let t5 = if tok_kind(tok5) == TK_EQEQ() { 1 } else { 0 };
     let tok6 = next_token_raw("<=", 0);
-    let t6 = if tok_kind(tok6) == TK_LE() then 1 else 0;
+    let t6 = if tok_kind(tok6) == TK_LE() { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5 + t6;
 
--- v0.30.158: Test find_colon function
+// v0.30.158: Test find_colon function
 fn test_find_colon() -> i64 =
-    let t1 = if find_colon("a:b", 0) == 1 then 1 else 0;
-    let t2 = if find_colon("abc", 0) == 3 then 1 else 0;  -- not found
-    let t3 = if find_colon(":x", 0) == 0 then 1 else 0;
-    let t4 = if find_colon("x:y:z", 0) == 1 then 1 else 0;  -- first colon
+    let t1 = if find_colon("a:b", 0) == 1 { 1 } else { 0 };
+    let t2 = if find_colon("abc", 0) == 3 { 1 } else { 0 };  // not found
+    let t3 = if find_colon(":x", 0) == 0 { 1 } else { 0 };
+    let t4 = if find_colon("x:y:z", 0) == 1 { 1 } else { 0 };  // first colon
     t1 + t2 + t3 + t4;
 
--- v0.30.158: Test parse_int_prefix function
+// v0.30.158: Test parse_int_prefix function
 fn test_parse_int_prefix() -> i64 =
-    let t1 = if parse_int_prefix("123", 0, 0) == 123 then 1 else 0;
-    let t2 = if parse_int_prefix("42abc", 0, 0) == 42 then 1 else 0;
-    let t3 = if parse_int_prefix("0", 0, 0) == 0 then 1 else 0;
-    let t4 = if parse_int_prefix("abc", 0, 0) == 0 then 1 else 0;  -- no digits
+    let t1 = if parse_int_prefix("123", 0, 0) == 123 { 1 } else { 0 };
+    let t2 = if parse_int_prefix("42abc", 0, 0) == 42 { 1 } else { 0 };
+    let t3 = if parse_int_prefix("0", 0, 0) == 0 { 1 } else { 0 };
+    let t4 = if parse_int_prefix("abc", 0, 0) == 0 { 1 } else { 0 };  // no digits
     t1 + t2 + t3 + t4;
 
--- v0.30.158: Test parse_type function
+// v0.30.158: Test parse_type function
 fn test_parse_type() -> i64 =
     let r1 = parse_type("i64", 0);
-    let t1 = if unpack_ast(r1) == "i64" then 1 else 0;
+    let t1 = if unpack_ast(r1) == "i64" { 1 } else { 0 };
     let r2 = parse_type("i32", 0);
-    let t2 = if unpack_ast(r2) == "i32" then 1 else 0;
+    let t2 = if unpack_ast(r2) == "i32" { 1 } else { 0 };
     let r3 = parse_type("bool", 0);
-    let t3 = if unpack_ast(r3) == "bool" then 1 else 0;
+    let t3 = if unpack_ast(r3) == "bool" { 1 } else { 0 };
     let r4 = parse_type("xyz", 0);
-    let t4 = if is_error(unpack_ast(r4)) then 1 else 0;
+    let t4 = if is_error(unpack_ast(r4)) { 1 } else { 0 };
     t1 + t2 + t3 + t4;
 
--- v0.30.158: Test parse_primary with integers
+// v0.30.158: Test parse_primary with integers
 fn test_parse_primary_int() -> i64 =
     let r1 = parse_primary("42", 0);
-    let t1 = if unpack_ast(r1) == "(int 42)" then 1 else 0;
+    let t1 = if unpack_ast(r1) == "(int 42)" { 1 } else { 0 };
     let r2 = parse_primary("0", 0);
-    let t2 = if unpack_ast(r2) == "(int 0)" then 1 else 0;
+    let t2 = if unpack_ast(r2) == "(int 0)" { 1 } else { 0 };
     let r3 = parse_primary("123", 0);
-    let t3 = if unpack_ast(r3) == "(int 123)" then 1 else 0;
+    let t3 = if unpack_ast(r3) == "(int 123)" { 1 } else { 0 };
     t1 + t2 + t3;
 
--- v0.30.158: Test parse_primary with booleans
+// v0.30.158: Test parse_primary with booleans
 fn test_parse_primary_bool() -> i64 =
     let r1 = parse_primary("true", 0);
-    let t1 = if unpack_ast(r1) == "(bool true)" then 1 else 0;
+    let t1 = if unpack_ast(r1) == "(bool true)" { 1 } else { 0 };
     let r2 = parse_primary("false", 0);
-    let t2 = if unpack_ast(r2) == "(bool false)" then 1 else 0;
+    let t2 = if unpack_ast(r2) == "(bool false)" { 1 } else { 0 };
     t1 + t2;
 
--- v0.30.158: Test parse_primary with variables
+// v0.30.158: Test parse_primary with variables
 fn test_parse_primary_var() -> i64 =
     let r1 = parse_primary("x", 0);
-    let t1 = if unpack_ast(r1) == "(var <x>)" then 1 else 0;
+    let t1 = if unpack_ast(r1) == "(var <x>)" { 1 } else { 0 };
     let r2 = parse_primary("abc", 0);
-    let t2 = if unpack_ast(r2) == "(var <abc>)" then 1 else 0;
+    let t2 = if unpack_ast(r2) == "(var <abc>)" { 1 } else { 0 };
     let r3 = parse_primary("_test", 0);
-    let t3 = if unpack_ast(r3) == "(var <_test>)" then 1 else 0;
+    let t3 = if unpack_ast(r3) == "(var <_test>)" { 1 } else { 0 };
     t1 + t2 + t3;
 
--- v0.30.158: Test parse_mul function
+// v0.30.158: Test parse_mul function
 fn test_parse_mul() -> i64 =
     let r1 = parse_mul("2 * 3", 0);
-    let t1 = if unpack_ast(r1) == "(op * (int 2) (int 3))" then 1 else 0;
+    let t1 = if unpack_ast(r1) == "(op * (int 2) (int 3))" { 1 } else { 0 };
     let r2 = parse_mul("6 / 2", 0);
-    let t2 = if unpack_ast(r2) == "(op / (int 6) (int 2))" then 1 else 0;
+    let t2 = if unpack_ast(r2) == "(op / (int 6) (int 2))" { 1 } else { 0 };
     let r3 = parse_mul("10 % 3", 0);
-    let t3 = if unpack_ast(r3) == "(op % (int 10) (int 3))" then 1 else 0;
+    let t3 = if unpack_ast(r3) == "(op % (int 10) (int 3))" { 1 } else { 0 };
     t1 + t2 + t3;
 
--- v0.30.158: Test parse_add function
+// v0.30.158: Test parse_add function
 fn test_parse_add() -> i64 =
     let r1 = parse_add("2 + 3", 0);
-    let t1 = if unpack_ast(r1) == "(op + (int 2) (int 3))" then 1 else 0;
+    let t1 = if unpack_ast(r1) == "(op + (int 2) (int 3))" { 1 } else { 0 };
     let r2 = parse_add("5 - 2", 0);
-    let t2 = if unpack_ast(r2) == "(op - (int 5) (int 2))" then 1 else 0;
+    let t2 = if unpack_ast(r2) == "(op - (int 5) (int 2))" { 1 } else { 0 };
     t1 + t2;
 
--- v0.30.158: Test parse_cmp function
+// v0.30.158: Test parse_cmp function
 fn test_parse_cmp_ops() -> i64 =
     let r1 = parse_cmp("a == b", 0);
-    let t1 = if not is_error(unpack_ast(r1)) then 1 else 0;
+    let t1 = if not is_error(unpack_ast(r1)) { 1 } else { 0 };
     let r2 = parse_cmp("a < b", 0);
-    let t2 = if not is_error(unpack_ast(r2)) then 1 else 0;
+    let t2 = if not is_error(unpack_ast(r2)) { 1 } else { 0 };
     let r3 = parse_cmp("a >= b", 0);
-    let t3 = if not is_error(unpack_ast(r3)) then 1 else 0;
+    let t3 = if not is_error(unpack_ast(r3)) { 1 } else { 0 };
     let r4 = parse_cmp("a != b", 0);
-    let t4 = if not is_error(unpack_ast(r4)) then 1 else 0;
+    let t4 = if not is_error(unpack_ast(r4)) { 1 } else { 0 };
     t1 + t2 + t3 + t4;
 
--- v0.30.158: Test parse_and function
+// v0.30.158: Test parse_and function
 fn test_parse_and() -> i64 =
     let r1 = parse_and("a and b", 0);
-    let t1 = if not is_error(unpack_ast(r1)) then 1 else 0;
+    let t1 = if not is_error(unpack_ast(r1)) { 1 } else { 0 };
     let r2 = parse_and("x and y and z", 0);
-    let t2 = if not is_error(unpack_ast(r2)) then 1 else 0;
+    let t2 = if not is_error(unpack_ast(r2)) { 1 } else { 0 };
     t1 + t2;
 
--- v0.30.158: Test parse_or function
+// v0.30.158: Test parse_or function
 fn test_parse_or() -> i64 =
     let r1 = parse_or("a or b", 0);
-    let t1 = if not is_error(unpack_ast(r1)) then 1 else 0;
+    let t1 = if not is_error(unpack_ast(r1)) { 1 } else { 0 };
     let r2 = parse_or("x or y or z", 0);
-    let t2 = if not is_error(unpack_ast(r2)) then 1 else 0;
+    let t2 = if not is_error(unpack_ast(r2)) { 1 } else { 0 };
     t1 + t2;
 
--- v0.30.158: Test more token constants
+// v0.30.158: Test more token constants
 fn test_more_token_constants() -> i64 =
-    let t1 = if TK_PLUS() == 100 then 1 else 0;
-    let t2 = if TK_MINUS() == 101 then 1 else 0;
-    let t3 = if TK_STAR() == 102 then 1 else 0;
-    let t4 = if TK_SLASH() == 103 then 1 else 0;
-    let t5 = if TK_ARROW() == 111 then 1 else 0;
-    let t6 = if TK_COLON() == 112 then 1 else 0;
-    let t7 = if TK_LPAREN() == 115 then 1 else 0;
-    let t8 = if TK_RPAREN() == 116 then 1 else 0;
+    let t1 = if TK_PLUS() == 100 { 1 } else { 0 };
+    let t2 = if TK_MINUS() == 101 { 1 } else { 0 };
+    let t3 = if TK_STAR() == 102 { 1 } else { 0 };
+    let t4 = if TK_SLASH() == 103 { 1 } else { 0 };
+    let t5 = if TK_ARROW() == 111 { 1 } else { 0 };
+    let t6 = if TK_COLON() == 112 { 1 } else { 0 };
+    let t7 = if TK_LPAREN() == 115 { 1 } else { 0 };
+    let t8 = if TK_RPAREN() == 116 { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8;
 
--- v0.30.158: Test more keywords
+// v0.30.158: Test more keywords
 fn test_more_keywords() -> i64 =
-    let t1 = if keyword_kind("then") == TK_THEN() then 1 else 0;
-    let t2 = if keyword_kind("else") == TK_ELSE() then 1 else 0;
-    let t3 = if keyword_kind("and") == TK_AND() then 1 else 0;
-    let t4 = if keyword_kind("or") == TK_OR() then 1 else 0;
-    let t5 = if keyword_kind("not") == TK_NOT() then 1 else 0;
-    let t6 = if keyword_kind("mut") == TK_MUT() then 1 else 0;
+    let t1 = if keyword_kind("then") == TK_THEN() { 1 } else { 0 };
+    let t2 = if keyword_kind("else") == TK_ELSE() { 1 } else { 0 };
+    let t3 = if keyword_kind("and") == TK_AND() { 1 } else { 0 };
+    let t4 = if keyword_kind("or") == TK_OR() { 1 } else { 0 };
+    let t5 = if keyword_kind("not") == TK_NOT() { 1 } else { 0 };
+    let t6 = if keyword_kind("mut") == TK_MUT() { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5 + t6;
 
--- v0.30.158: Test more op_symbol
+// v0.30.158: Test more op_symbol
 fn test_more_op_symbol() -> i64 =
-    let t1 = if op_symbol(TK_SLASH()) == "/" then 1 else 0;
-    let t2 = if op_symbol(TK_PERCENT()) == "%" then 1 else 0;
-    let t3 = if op_symbol(TK_NE()) == "!=" then 1 else 0;
-    let t4 = if op_symbol(TK_LT()) == "<" then 1 else 0;
-    let t5 = if op_symbol(TK_GT()) == ">" then 1 else 0;
-    let t6 = if op_symbol(TK_LE()) == "<=" then 1 else 0;
-    let t7 = if op_symbol(TK_GE()) == ">=" then 1 else 0;
-    let t8 = if op_symbol(TK_FN()) == "" then 1 else 0;  -- non-op returns ""
+    let t1 = if op_symbol(TK_SLASH()) == "/" { 1 } else { 0 };
+    let t2 = if op_symbol(TK_PERCENT()) == "%" { 1 } else { 0 };
+    let t3 = if op_symbol(TK_NE()) == "!=" { 1 } else { 0 };
+    let t4 = if op_symbol(TK_LT()) == "<" { 1 } else { 0 };
+    let t5 = if op_symbol(TK_GT()) == ">" { 1 } else { 0 };
+    let t6 = if op_symbol(TK_LE()) == "<=" { 1 } else { 0 };
+    let t7 = if op_symbol(TK_GE()) == ">=" { 1 } else { 0 };
+    let t8 = if op_symbol(TK_FN()) == "" { 1 } else { 0 };  // non-op returns ""
     t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8;
 
--- v0.30.158: Test more is_binop
+// v0.30.158: Test more is_binop
 fn test_more_is_binop() -> i64 =
-    let t1 = if is_binop(TK_MINUS()) then 1 else 0;
-    let t2 = if is_binop(TK_SLASH()) then 1 else 0;
-    let t3 = if is_binop(TK_PERCENT()) then 1 else 0;
-    let t4 = if is_binop(TK_NE()) then 1 else 0;
-    let t5 = if is_binop(TK_LT()) then 1 else 0;
-    let t6 = if is_binop(TK_OR()) then 1 else 0;
-    let t7 = if not is_binop(TK_LPAREN()) then 1 else 0;
-    let t8 = if not is_binop(TK_EOF()) then 1 else 0;
+    let t1 = if is_binop(TK_MINUS()) { 1 } else { 0 };
+    let t2 = if is_binop(TK_SLASH()) { 1 } else { 0 };
+    let t3 = if is_binop(TK_PERCENT()) { 1 } else { 0 };
+    let t4 = if is_binop(TK_NE()) { 1 } else { 0 };
+    let t5 = if is_binop(TK_LT()) { 1 } else { 0 };
+    let t6 = if is_binop(TK_OR()) { 1 } else { 0 };
+    let t7 = if not is_binop(TK_LPAREN()) { 1 } else { 0 };
+    let t8 = if not is_binop(TK_EOF()) { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8;
 
--- v0.30.158: Test negation handling
+// v0.30.158: Test negation handling
 fn test_parse_negation() -> i64 =
     let r1 = parse_primary("not x", 0);
-    let t1 = if not is_error(unpack_ast(r1)) then 1 else 0;
+    let t1 = if not is_error(unpack_ast(r1)) { 1 } else { 0 };
     t1;
 
--- ============================================================================
--- v0.30.169: Extended Unit Tests
--- ============================================================================
+// ============================================================================
+// v0.30.169: Extended Unit Tests
+// ============================================================================
 
--- Test is_whitespace edge cases
+// Test is_whitespace edge cases
 fn test_is_whitespace_ext() -> i64 =
-    let t1 = if is_whitespace(32) then 1 else 0;   -- space
-    let t2 = if is_whitespace(9) then 1 else 0;    -- tab
-    let t3 = if is_whitespace(10) then 1 else 0;   -- newline
-    let t4 = if is_whitespace(13) then 1 else 0;   -- CR
-    let t5 = if not is_whitespace(65) then 1 else 0;  -- 'A'
-    let t6 = if not is_whitespace(0) then 1 else 0;   -- NUL
+    let t1 = if is_whitespace(32) { 1 } else { 0 };   // space
+    let t2 = if is_whitespace(9) { 1 } else { 0 };    // tab
+    let t3 = if is_whitespace(10) { 1 } else { 0 };   // newline
+    let t4 = if is_whitespace(13) { 1 } else { 0 };   // CR
+    let t5 = if not is_whitespace(65) { 1 } else { 0 };  // 'A'
+    let t6 = if not is_whitespace(0) { 1 } else { 0 };   // NUL
     t1 + t2 + t3 + t4 + t5 + t6;
 
--- Test is_digit edge cases
+// Test is_digit edge cases
 fn test_is_digit_ext() -> i64 =
-    let t1 = if is_digit(48) then 1 else 0;   -- '0'
-    let t2 = if is_digit(53) then 1 else 0;   -- '5'
-    let t3 = if is_digit(57) then 1 else 0;   -- '9'
-    let t4 = if not is_digit(47) then 1 else 0;  -- '/'
-    let t5 = if not is_digit(58) then 1 else 0;  -- ':'
-    let t6 = if not is_digit(65) then 1 else 0;  -- 'A'
+    let t1 = if is_digit(48) { 1 } else { 0 };   // '0'
+    let t2 = if is_digit(53) { 1 } else { 0 };   // '5'
+    let t3 = if is_digit(57) { 1 } else { 0 };   // '9'
+    let t4 = if not is_digit(47) { 1 } else { 0 };  // '/'
+    let t5 = if not is_digit(58) { 1 } else { 0 };  // ':'
+    let t6 = if not is_digit(65) { 1 } else { 0 };  // 'A'
     t1 + t2 + t3 + t4 + t5 + t6;
 
--- Test is_alpha edge cases
+// Test is_alpha edge cases
 fn test_is_alpha_ext() -> i64 =
-    let t1 = if is_alpha(65) then 1 else 0;   -- 'A'
-    let t2 = if is_alpha(90) then 1 else 0;   -- 'Z'
-    let t3 = if is_alpha(97) then 1 else 0;   -- 'a'
-    let t4 = if is_alpha(122) then 1 else 0;  -- 'z'
-    let t5 = if is_alpha(95) then 1 else 0;   -- '_'
-    let t6 = if not is_alpha(48) then 1 else 0;  -- '0' not alpha
+    let t1 = if is_alpha(65) { 1 } else { 0 };   // 'A'
+    let t2 = if is_alpha(90) { 1 } else { 0 };   // 'Z'
+    let t3 = if is_alpha(97) { 1 } else { 0 };   // 'a'
+    let t4 = if is_alpha(122) { 1 } else { 0 };  // 'z'
+    let t5 = if is_alpha(95) { 1 } else { 0 };   // '_'
+    let t6 = if not is_alpha(48) { 1 } else { 0 };  // '0' not alpha
     t1 + t2 + t3 + t4 + t5 + t6;
 
--- Test is_alnum edge cases
+// Test is_alnum edge cases
 fn test_is_alnum_ext() -> i64 =
-    let t1 = if is_alnum(65) then 1 else 0;   -- 'A'
-    let t2 = if is_alnum(122) then 1 else 0;  -- 'z'
-    let t3 = if is_alnum(48) then 1 else 0;   -- '0'
-    let t4 = if is_alnum(57) then 1 else 0;   -- '9'
-    let t5 = if not is_alnum(32) then 1 else 0;  -- space
-    let t6 = if not is_alnum(43) then 1 else 0;  -- '+'
+    let t1 = if is_alnum(65) { 1 } else { 0 };   // 'A'
+    let t2 = if is_alnum(122) { 1 } else { 0 };  // 'z'
+    let t3 = if is_alnum(48) { 1 } else { 0 };   // '0'
+    let t4 = if is_alnum(57) { 1 } else { 0 };   // '9'
+    let t5 = if not is_alnum(32) { 1 } else { 0 };  // space
+    let t6 = if not is_alnum(43) { 1 } else { 0 };  // '+'
     t1 + t2 + t3 + t4 + t5 + t6;
 
--- Test tok_encoding boundaries
+// Test tok_encoding boundaries
 fn test_tok_encoding_ext() -> i64 =
-    let tok1 = 0 * 1000000 + 0;  -- EOF at position 0
-    let t1 = if tok_kind(tok1) == 0 then 1 else 0;
-    let t2 = if tok_end(tok1) == 0 then 1 else 0;
-    let tok2 = 300 * 1000000 + 999999;  -- max position
-    let t3 = if tok_kind(tok2) == 300 then 1 else 0;
-    let t4 = if tok_end(tok2) == 999999 then 1 else 0;
-    let tok3 = 1 * 1000000 + 1;  -- IDENT at position 1
-    let t5 = if tok_kind(tok3) == 1 then 1 else 0;
-    let t6 = if tok_end(tok3) == 1 then 1 else 0;
+    let tok1 = 0 * 1000000 + 0;  // EOF at position 0
+    let t1 = if tok_kind(tok1) == 0 { 1 } else { 0 };
+    let t2 = if tok_end(tok1) == 0 { 1 } else { 0 };
+    let tok2 = 300 * 1000000 + 999999;  // max position
+    let t3 = if tok_kind(tok2) == 300 { 1 } else { 0 };
+    let t4 = if tok_end(tok2) == 999999 { 1 } else { 0 };
+    let tok3 = 1 * 1000000 + 1;  // IDENT at position 1
+    let t5 = if tok_kind(tok3) == 1 { 1 } else { 0 };
+    let t6 = if tok_end(tok3) == 1 { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5 + t6;
 
--- Test type keywords
+// Test type keywords
 fn test_type_keywords_ext() -> i64 =
-    let t1 = if keyword_kind("i64") == TK_I64() then 1 else 0;
-    let t2 = if keyword_kind("i32") == TK_I32() then 1 else 0;
-    let t3 = if keyword_kind("bool") == TK_BOOL() then 1 else 0;
-    let t4 = if TK_I64() == 300 then 1 else 0;
-    let t5 = if TK_I32() == 301 then 1 else 0;
-    let t6 = if TK_BOOL() == 302 then 1 else 0;
+    let t1 = if keyword_kind("i64") == TK_I64() { 1 } else { 0 };
+    let t2 = if keyword_kind("i32") == TK_I32() { 1 } else { 0 };
+    let t3 = if keyword_kind("bool") == TK_BOOL() { 1 } else { 0 };
+    let t4 = if TK_I64() == 300 { 1 } else { 0 };
+    let t5 = if TK_I32() == 301 { 1 } else { 0 };
+    let t6 = if TK_BOOL() == 302 { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5 + t6;
 
--- Test keyword_kind negative cases
+// Test keyword_kind negative cases
 fn test_keyword_negative() -> i64 =
-    let t1 = if keyword_kind("xyz") == TK_IDENT() then 1 else 0;
-    let t2 = if keyword_kind("abc") == TK_IDENT() then 1 else 0;
-    let t3 = if keyword_kind("Fn") == TK_IDENT() then 1 else 0;  -- case sensitive
-    let t4 = if keyword_kind("IF") == TK_IDENT() then 1 else 0;  -- case sensitive
-    let t5 = if keyword_kind("x") == TK_IDENT() then 1 else 0;
-    let t6 = if keyword_kind("hello") == TK_IDENT() then 1 else 0;
+    let t1 = if keyword_kind("xyz") == TK_IDENT() { 1 } else { 0 };
+    let t2 = if keyword_kind("abc") == TK_IDENT() { 1 } else { 0 };
+    let t3 = if keyword_kind("Fn") == TK_IDENT() { 1 } else { 0 };  // case sensitive
+    let t4 = if keyword_kind("IF") == TK_IDENT() { 1 } else { 0 };  // case sensitive
+    let t5 = if keyword_kind("x") == TK_IDENT() { 1 } else { 0 };
+    let t6 = if keyword_kind("hello") == TK_IDENT() { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5 + t6;
 
--- Test error handling extended
+// Test error handling extended
 fn test_error_handling_ext() -> i64 =
     let err = make_error("test");
-    let t1 = if is_error(err) then 1 else 0;
+    let t1 = if is_error(err) { 1 } else { 0 };
     let err2 = make_error("another");
-    let t2 = if is_error(err2) then 1 else 0;
-    let t3 = if not is_error("valid") then 1 else 0;
-    let t4 = if not is_error("(program)") then 1 else 0;
+    let t2 = if is_error(err2) { 1 } else { 0 };
+    let t3 = if not is_error("valid") { 1 } else { 0 };
+    let t4 = if not is_error("(program)") { 1 } else { 0 };
     t1 + t2 + t3 + t4;
 
--- Test result packing extended
+// Test result packing extended
 fn test_result_packing_ext() -> i64 =
     let r1 = pack_result(100, "(int 42)");
-    let t1 = if unpack_pos(r1) == 100 then 1 else 0;
-    let t2 = if unpack_ast(r1) == "(int 42)" then 1 else 0;
+    let t1 = if unpack_pos(r1) == 100 { 1 } else { 0 };
+    let t2 = if unpack_ast(r1) == "(int 42)" { 1 } else { 0 };
     let r2 = pack_result(0, "(bool true)");
-    let t3 = if unpack_pos(r2) == 0 then 1 else 0;
-    let t4 = if unpack_ast(r2) == "(bool true)" then 1 else 0;
+    let t3 = if unpack_pos(r2) == 0 { 1 } else { 0 };
+    let t4 = if unpack_ast(r2) == "(bool true)" { 1 } else { 0 };
     t1 + t2 + t3 + t4;
 
--- Test int_to_string extended
+// Test int_to_string extended
 fn test_int_to_string_ext() -> i64 =
-    let t1 = if int_to_string(0) == "0" then 1 else 0;
-    let t2 = if int_to_string(42) == "42" then 1 else 0;
-    let t3 = if int_to_string(100) == "100" then 1 else 0;
-    let t4 = if int_to_string(999) == "999" then 1 else 0;
-    let t5 = if int_to_string(1) == "1" then 1 else 0;
-    let t6 = if int_to_string(12345) == "12345" then 1 else 0;
+    let t1 = if int_to_string(0) == "0" { 1 } else { 0 };
+    let t2 = if int_to_string(42) == "42" { 1 } else { 0 };
+    let t3 = if int_to_string(100) == "100" { 1 } else { 0 };
+    let t4 = if int_to_string(999) == "999" { 1 } else { 0 };
+    let t5 = if int_to_string(1) == "1" { 1 } else { 0 };
+    let t6 = if int_to_string(12345) == "12345" { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5 + t6;
 
--- v0.30.178: Additional unit tests for edge cases (36 new tests)
+// v0.30.178: Additional unit tests for edge cases (36 new tests)
 
--- Test make_error and is_error (6 tests)
+// Test make_error and is_error (6 tests)
 fn test_error_funcs() -> i64 =
-    (if make_error("test") == "ERR:test" then 1 else 0) +
-    (if make_error("") == "ERR:" then 1 else 0) +
-    (if is_error("ERR:something") then 1 else 0) +
-    (if is_error("ERR:") then 1 else 0) +
-    (if not is_error("OK") then 1 else 0) +
-    (if not is_error("ER") then 1 else 0);
+    (if make_error("test") == "ERR:test" { 1 } else { 0 }) +
+    (if make_error("") == "ERR:" { 1 } else { 0 }) +
+    (if is_error("ERR:something") { 1 } else { 0 }) +
+    (if is_error("ERR:") { 1 } else { 0 }) +
+    (if not is_error("OK") { 1 } else { 0 }) +
+    (if not is_error("ER") { 1 } else { 0 });
 
--- Test tok_end function (6 tests)
+// Test tok_end function (6 tests)
 fn test_tok_end_ext() -> i64 =
-    (if tok_end(1000005) == 5 then 1 else 0) +
-    (if tok_end(2000010) == 10 then 1 else 0) +
-    (if tok_end(100000000) == 0 then 1 else 0) +
-    (if tok_end(200000050) == 50 then 1 else 0) +
-    (if tok_end(0) == 0 then 1 else 0) +
-    (if tok_end(1000000) == 0 then 1 else 0);
+    (if tok_end(1000005) == 5 { 1 } else { 0 }) +
+    (if tok_end(2000010) == 10 { 1 } else { 0 }) +
+    (if tok_end(100000000) == 0 { 1 } else { 0 }) +
+    (if tok_end(200000050) == 50 { 1 } else { 0 }) +
+    (if tok_end(0) == 0 { 1 } else { 0 }) +
+    (if tok_end(1000000) == 0 { 1 } else { 0 });
 
--- Test pack_result and unpack functions (6 tests)
+// Test pack_result and unpack functions (6 tests)
 fn test_pack_unpack() -> i64 =
     let r1 = pack_result(10, "test");
     let r2 = pack_result(0, "ast");
     let r3 = pack_result(100, "(int 42)");
-    (if unpack_pos(r1) == 10 then 1 else 0) +
-    (if unpack_ast(r1) == "test" then 1 else 0) +
-    (if unpack_pos(r2) == 0 then 1 else 0) +
-    (if unpack_ast(r2) == "ast" then 1 else 0) +
-    (if unpack_pos(r3) == 100 then 1 else 0) +
-    (if unpack_ast(r3) == "(int 42)" then 1 else 0);
+    (if unpack_pos(r1) == 10 { 1 } else { 0 }) +
+    (if unpack_ast(r1) == "test" { 1 } else { 0 }) +
+    (if unpack_pos(r2) == 0 { 1 } else { 0 }) +
+    (if unpack_ast(r2) == "ast" { 1 } else { 0 }) +
+    (if unpack_pos(r3) == 100 { 1 } else { 0 }) +
+    (if unpack_ast(r3) == "(int 42)" { 1 } else { 0 });
 
--- Test scan_ident edge cases (6 tests)
+// Test scan_ident edge cases (6 tests)
 fn test_scan_ident_ext() -> i64 =
-    (if scan_ident("abc", 0) == 3 then 1 else 0) +
-    (if scan_ident("x", 0) == 1 then 1 else 0) +
-    (if scan_ident("ab12", 0) == 4 then 1 else 0) +
-    (if scan_ident("x y", 0) == 1 then 1 else 0) +
-    (if scan_ident("_var", 0) == 4 then 1 else 0) +
-    (if scan_ident("", 0) == 0 then 1 else 0);
+    (if scan_ident("abc", 0) == 3 { 1 } else { 0 }) +
+    (if scan_ident("x", 0) == 1 { 1 } else { 0 }) +
+    (if scan_ident("ab12", 0) == 4 { 1 } else { 0 }) +
+    (if scan_ident("x y", 0) == 1 { 1 } else { 0 }) +
+    (if scan_ident("_var", 0) == 4 { 1 } else { 0 }) +
+    (if scan_ident("", 0) == 0 { 1 } else { 0 });
 
--- Test scan_int edge cases (6 tests)
+// Test scan_int edge cases (6 tests)
 fn test_scan_int_ext() -> i64 =
-    (if scan_int("123", 0) == 3 then 1 else 0) +
-    (if scan_int("5", 0) == 1 then 1 else 0) +
-    (if scan_int("42abc", 0) == 2 then 1 else 0) +
-    (if scan_int("0", 0) == 1 then 1 else 0) +
-    (if scan_int("99999", 0) == 5 then 1 else 0) +
-    (if scan_int("", 0) == 0 then 1 else 0);
+    (if scan_int("123", 0) == 3 { 1 } else { 0 }) +
+    (if scan_int("5", 0) == 1 { 1 } else { 0 }) +
+    (if scan_int("42abc", 0) == 2 { 1 } else { 0 }) +
+    (if scan_int("0", 0) == 1 { 1 } else { 0 }) +
+    (if scan_int("99999", 0) == 5 { 1 } else { 0 }) +
+    (if scan_int("", 0) == 0 { 1 } else { 0 });
 
--- Test next_token_raw basic operators (6 tests)
+// Test next_token_raw basic operators (6 tests)
 fn test_next_token_ops() -> i64 =
-    (if tok_kind(next_token_raw("+", 0)) == TK_PLUS() then 1 else 0) +
-    (if tok_kind(next_token_raw("-", 0)) == TK_MINUS() then 1 else 0) +
-    (if tok_kind(next_token_raw("*", 0)) == TK_STAR() then 1 else 0) +
-    (if tok_kind(next_token_raw("/", 0)) == TK_SLASH() then 1 else 0) +
-    (if tok_kind(next_token_raw("%", 0)) == TK_PERCENT() then 1 else 0) +
-    (if tok_kind(next_token_raw("->", 0)) == TK_ARROW() then 1 else 0);
+    (if tok_kind(next_token_raw("+", 0)) == TK_PLUS() { 1 } else { 0 }) +
+    (if tok_kind(next_token_raw("-", 0)) == TK_MINUS() { 1 } else { 0 }) +
+    (if tok_kind(next_token_raw("*", 0)) == TK_STAR() { 1 } else { 0 }) +
+    (if tok_kind(next_token_raw("/", 0)) == TK_SLASH() { 1 } else { 0 }) +
+    (if tok_kind(next_token_raw("%", 0)) == TK_PERCENT() { 1 } else { 0 }) +
+    (if tok_kind(next_token_raw("->", 0)) == TK_ARROW() { 1 } else { 0 });
 
--- ============================================================================
--- SECTION 6: Integration Tests - Stage 1 Self-Hosting Verification
--- ============================================================================
+// ============================================================================
+// SECTION 6: Integration Tests - Stage 1 Self-Hosting Verification
+// ============================================================================
 
--- Test: Parse simple constant function
+// Test: Parse simple constant function
 fn test_parse_const() -> i64 =
     let src = "fn one() -> i64 = 1;";
     let ast = parse_source(src);
-    if is_error(ast) then 0
-    else if ast == "(program (fn <one> i64 (int 1)))" then 1 else 0;
+    if is_error(ast) { 0 } else if ast == "(program (fn <one> i64 (int 1)))" { 1 } else { 0 };
 
--- Test: Parse function with parameter
+// Test: Parse function with parameter
 fn test_parse_param() -> i64 =
     let src = "fn id(x: i64) -> i64 = x;";
     let ast = parse_source(src);
-    if is_error(ast) then 0
-    else if ast == "(program (fn <id> (params (p <x> i64)) i64 (var <x>)))" then 1 else 0;
+    if is_error(ast) { 0 } else if ast == "(program (fn <id> (params (p <x> i64)) i64 (var <x>)))" { 1 } else { 0 };
 
--- Test: Parse function with binary op
+// Test: Parse function with binary op
 fn test_parse_binop() -> i64 =
     let src = "fn add(a: i64, b: i64) -> i64 = a + b;";
     let ast = parse_source(src);
-    if is_error(ast) then 0 else 1;
+    if is_error(ast) { 0 } else { 1 };
 
--- Test: Parse if expression
+// Test: Parse if expression
 fn test_parse_if() -> i64 =
     let src = "fn max(a: i64, b: i64) -> i64 = if a > b then a else b;";
     let ast = parse_source(src);
-    if is_error(ast) then 0 else 1;
+    if is_error(ast) { 0 } else { 1 };
 
--- Test: Parse let expression
+// Test: Parse let expression
 fn test_parse_let() -> i64 =
     let src = "fn double(x: i64) -> i64 = let y = x + x; y;";
     let ast = parse_source(src);
-    if is_error(ast) then 0 else 1;
+    if is_error(ast) { 0 } else { 1 };
 
--- Test: Parse function call
+// Test: Parse function call
 fn test_parse_call() -> i64 =
     let src = "fn inc(x: i64) -> i64 = x + 1; fn double_inc(x: i64) -> i64 = inc(inc(x));";
     let ast = parse_source(src);
-    if is_error(ast) then 0 else 1;
+    if is_error(ast) { 0 } else { 1 };
 
--- Test: Parse comparison operators
+// Test: Parse comparison operators
 fn test_parse_cmp() -> i64 =
     let src = "fn test(a: i64, b: i64) -> bool = a == b;";
     let ast = parse_source(src);
-    if is_error(ast) then 0 else 1;
+    if is_error(ast) { 0 } else { 1 };
 
--- Test: Parse boolean expression
+// Test: Parse boolean expression
 fn test_parse_bool() -> i64 =
     let src = "fn test(a: bool, b: bool) -> bool = a and b or not a;";
     let ast = parse_source(src);
-    if is_error(ast) then 0 else 1;
+    if is_error(ast) { 0 } else { 1 };
 
--- v0.30.191: Test keyword_kind extended
+// v0.30.191: Test keyword_kind extended
 fn test_keyword_kind_ext() -> i64 =
-    let t1 = if keyword_kind("fn") == TK_FN() then 1 else 0;
-    let t2 = if keyword_kind("let") == TK_LET() then 1 else 0;
-    let t3 = if keyword_kind("if") == TK_IF() then 1 else 0;
-    let t4 = if keyword_kind("then") == TK_THEN() then 1 else 0;
-    let t5 = if keyword_kind("else") == TK_ELSE() then 1 else 0;
-    let t6 = if keyword_kind("xyz") == TK_IDENT() then 1 else 0;
+    let t1 = if keyword_kind("fn") == TK_FN() { 1 } else { 0 };
+    let t2 = if keyword_kind("let") == TK_LET() { 1 } else { 0 };
+    let t3 = if keyword_kind("if") == TK_IF() { 1 } else { 0 };
+    let t4 = if keyword_kind("then") == TK_THEN() { 1 } else { 0 };
+    let t5 = if keyword_kind("else") == TK_ELSE() { 1 } else { 0 };
+    let t6 = if keyword_kind("xyz") == TK_IDENT() { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5 + t6;
 
--- v0.30.191: Test next_token_raw extended
+// v0.30.191: Test next_token_raw extended
 fn test_next_token_raw_ext() -> i64 =
     let r1 = next_token_raw("fn", 0);
-    let t1 = if tok_kind(r1) == TK_FN() then 1 else 0;
+    let t1 = if tok_kind(r1) == TK_FN() { 1 } else { 0 };
     let r2 = next_token_raw("123", 0);
-    let t2 = if tok_kind(r2) == TK_INT() then 1 else 0;
+    let t2 = if tok_kind(r2) == TK_INT() { 1 } else { 0 };
     let r3 = next_token_raw("abc", 0);
-    let t3 = if tok_kind(r3) == TK_IDENT() then 1 else 0;
+    let t3 = if tok_kind(r3) == TK_IDENT() { 1 } else { 0 };
     let r4 = next_token_raw("==", 0);
-    let t4 = if tok_kind(r4) == TK_EQEQ() then 1 else 0;
+    let t4 = if tok_kind(r4) == TK_EQEQ() { 1 } else { 0 };
     let r5 = next_token_raw("->", 0);
-    let t5 = if tok_kind(r5) == TK_ARROW() then 1 else 0;
+    let t5 = if tok_kind(r5) == TK_ARROW() { 1 } else { 0 };
     let r6 = next_token_raw("", 0);
-    let t6 = if tok_kind(r6) == TK_EOF() then 1 else 0;
+    let t6 = if tok_kind(r6) == TK_EOF() { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5 + t6;
 
--- v0.30.191: Test parse_type extended
+// v0.30.191: Test parse_type extended
 fn test_parse_type_ext() -> i64 =
     let r1 = parse_type("i64 x", 0);
-    let t1 = if unpack_ast(r1) == "i64" then 1 else 0;
+    let t1 = if unpack_ast(r1) == "i64" { 1 } else { 0 };
     let r2 = parse_type("i32 y", 0);
-    let t2 = if unpack_ast(r2) == "i32" then 1 else 0;
+    let t2 = if unpack_ast(r2) == "i32" { 1 } else { 0 };
     let r3 = parse_type("bool z", 0);
-    let t3 = if unpack_ast(r3) == "bool" then 1 else 0;
-    let t4 = if unpack_pos(r1) == 3 then 1 else 0;
-    let t5 = if unpack_pos(r2) == 3 then 1 else 0;
-    let t6 = if unpack_pos(r3) == 4 then 1 else 0;
+    let t3 = if unpack_ast(r3) == "bool" { 1 } else { 0 };
+    let t4 = if unpack_pos(r1) == 3 { 1 } else { 0 };
+    let t5 = if unpack_pos(r2) == 3 { 1 } else { 0 };
+    let t6 = if unpack_pos(r3) == 4 { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5 + t6;
 
--- v0.30.191: Test op_symbol extended
+// v0.30.191: Test op_symbol extended
 fn test_op_symbol_ext() -> i64 =
-    let t1 = if op_symbol(TK_PLUS()) == "+" then 1 else 0;
-    let t2 = if op_symbol(TK_MINUS()) == "-" then 1 else 0;
-    let t3 = if op_symbol(TK_STAR()) == "*" then 1 else 0;
-    let t4 = if op_symbol(TK_SLASH()) == "/" then 1 else 0;
-    let t5 = if op_symbol(TK_PERCENT()) == "%" then 1 else 0;
-    let t6 = if op_symbol(TK_LT()) == "<" then 1 else 0;
+    let t1 = if op_symbol(TK_PLUS()) == "+" { 1 } else { 0 };
+    let t2 = if op_symbol(TK_MINUS()) == "-" { 1 } else { 0 };
+    let t3 = if op_symbol(TK_STAR()) == "*" { 1 } else { 0 };
+    let t4 = if op_symbol(TK_SLASH()) == "/" { 1 } else { 0 };
+    let t5 = if op_symbol(TK_PERCENT()) == "%" { 1 } else { 0 };
+    let t6 = if op_symbol(TK_LT()) == "<" { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5 + t6;
 
--- v0.30.191: Test tok operations
+// v0.30.191: Test tok operations
 fn test_tok_operations() -> i64 =
     let tok1 = TK_FN() * 1000000 + 5;
-    let t1 = if tok_kind(tok1) == TK_FN() then 1 else 0;
-    let t2 = if tok_end(tok1) == 5 then 1 else 0;
+    let t1 = if tok_kind(tok1) == TK_FN() { 1 } else { 0 };
+    let t2 = if tok_end(tok1) == 5 { 1 } else { 0 };
     let tok2 = TK_INT() * 1000000 + 10;
-    let t3 = if tok_kind(tok2) == TK_INT() then 1 else 0;
-    let t4 = if tok_end(tok2) == 10 then 1 else 0;
+    let t3 = if tok_kind(tok2) == TK_INT() { 1 } else { 0 };
+    let t4 = if tok_end(tok2) == 10 { 1 } else { 0 };
     let tok3 = TK_EOF() * 1000000 + 0;
-    let t5 = if tok_kind(tok3) == TK_EOF() then 1 else 0;
-    let t6 = if tok_end(tok3) == 0 then 1 else 0;
+    let t5 = if tok_kind(tok3) == TK_EOF() { 1 } else { 0 };
+    let t6 = if tok_end(tok3) == 0 { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5 + t6;
 
--- v0.30.191: Test skip functions more
+// v0.30.191: Test skip functions more
 fn test_skip_functions_more() -> i64 =
-    let t1 = if skip_ws("   abc", 0) == 3 then 1 else 0;
-    let t2 = if skip_ws("abc", 0) == 0 then 1 else 0;
-    let t3 = if scan_ident("abc123", 0) == 6 then 1 else 0;
-    let t4 = if scan_ident("abc", 0) == 3 then 1 else 0;
-    let t5 = if scan_int("123", 0) == 3 then 1 else 0;
-    let t6 = if scan_int("456abc", 0) == 3 then 1 else 0;
+    let t1 = if skip_ws("   abc", 0) == 3 { 1 } else { 0 };
+    let t2 = if skip_ws("abc", 0) == 0 { 1 } else { 0 };
+    let t3 = if scan_ident("abc123", 0) == 6 { 1 } else { 0 };
+    let t4 = if scan_ident("abc", 0) == 3 { 1 } else { 0 };
+    let t5 = if scan_int("123", 0) == 3 { 1 } else { 0 };
+    let t6 = if scan_int("456abc", 0) == 3 { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5 + t6;
 
--- ============================================================================
--- SECTION 7: Main Test Runner (v0.30.191)
--- ============================================================================
+// ============================================================================
+// SECTION 7: Main Test Runner (v0.30.191)
+// ============================================================================
 
 fn main() -> i64 =
-    let u0 = println(777);  -- Start marker
+    let u0 = println(777);  // Start marker
 
-    -- Unit tests (v0.30.158)
+    // Unit tests (v0.30.158)
     let ut1 = test_tok_encoding();
-    let v1 = println(ut1);  -- Should be 4
+    let v1 = println(ut1);  // Should be 4
     let ut2 = test_token_constants();
-    let v2 = println(ut2);  -- Should be 6
+    let v2 = println(ut2);  // Should be 6
     let ut3 = test_char_class();
-    let v3 = println(ut3);  -- Should be 8
+    let v3 = println(ut3);  // Should be 8
     let ut4 = test_int_to_string();
-    let v4 = println(ut4);  -- Should be 4
+    let v4 = println(ut4);  // Should be 4
     let ut5 = test_result_packing();
-    let v5 = println(ut5);  -- Should be 4
+    let v5 = println(ut5);  // Should be 4
     let ut6 = test_error_handling();
-    let v6 = println(ut6);  -- Should be 4
+    let v6 = println(ut6);  // Should be 4
     let ut7 = test_keyword_kind();
-    let v7 = println(ut7);  -- Should be 6
+    let v7 = println(ut7);  // Should be 6
     let ut8 = test_op_symbol();
-    let v8 = println(ut8);  -- Should be 6
+    let v8 = println(ut8);  // Should be 6
     let ut9 = test_is_binop();
-    let v9 = println(ut9);  -- Should be 6
+    let v9 = println(ut9);  // Should be 6
 
-    -- v0.30.158: New unit tests
+    // v0.30.158: New unit tests
     let ut10 = test_skip_ws();
-    let v10 = println(ut10);  -- Should be 4
+    let v10 = println(ut10);  // Should be 4
     let ut11 = test_skip_to_eol();
-    let v11 = println(ut11);  -- Should be 4
+    let v11 = println(ut11);  // Should be 4
     let ut12 = test_skip_comment();
-    let v12 = println(ut12);  -- Should be 4
+    let v12 = println(ut12);  // Should be 4
     let ut13 = test_skip_all();
-    let v13 = println(ut13);  -- Should be 4
+    let v13 = println(ut13);  // Should be 4
     let ut14 = test_scan_ident();
-    let v14 = println(ut14);  -- Should be 6
+    let v14 = println(ut14);  // Should be 6
     let ut15 = test_scan_int();
-    let v15 = println(ut15);  -- Should be 4
+    let v15 = println(ut15);  // Should be 4
     let ut16 = test_next_token();
-    let v16 = println(ut16);  -- Should be 6
+    let v16 = println(ut16);  // Should be 6
     let ut17 = test_find_colon();
-    let v17 = println(ut17);  -- Should be 4
+    let v17 = println(ut17);  // Should be 4
     let ut18 = test_parse_int_prefix();
-    let v18 = println(ut18);  -- Should be 4
+    let v18 = println(ut18);  // Should be 4
     let ut19 = test_parse_type();
-    let v19 = println(ut19);  -- Should be 4
+    let v19 = println(ut19);  // Should be 4
     let ut20 = test_parse_primary_int();
-    let v20 = println(ut20);  -- Should be 3
+    let v20 = println(ut20);  // Should be 3
     let ut21 = test_parse_primary_bool();
-    let v21 = println(ut21);  -- Should be 2
+    let v21 = println(ut21);  // Should be 2
     let ut22 = test_parse_primary_var();
-    let v22 = println(ut22);  -- Should be 3
+    let v22 = println(ut22);  // Should be 3
     let ut23 = test_parse_mul();
-    let v23 = println(ut23);  -- Should be 3
+    let v23 = println(ut23);  // Should be 3
     let ut24 = test_parse_add();
-    let v24 = println(ut24);  -- Should be 2
+    let v24 = println(ut24);  // Should be 2
     let ut25 = test_parse_cmp_ops();
-    let v25 = println(ut25);  -- Should be 4
+    let v25 = println(ut25);  // Should be 4
     let ut26 = test_parse_and();
-    let v26 = println(ut26);  -- Should be 2
+    let v26 = println(ut26);  // Should be 2
     let ut27 = test_parse_or();
-    let v27 = println(ut27);  -- Should be 2
+    let v27 = println(ut27);  // Should be 2
     let ut28 = test_more_token_constants();
-    let v28 = println(ut28);  -- Should be 8
+    let v28 = println(ut28);  // Should be 8
     let ut29 = test_more_keywords();
-    let v29 = println(ut29);  -- Should be 6
+    let v29 = println(ut29);  // Should be 6
     let ut30 = test_more_op_symbol();
-    let v30 = println(ut30);  -- Should be 8
+    let v30 = println(ut30);  // Should be 8
     let ut31 = test_more_is_binop();
-    let v31 = println(ut31);  -- Should be 8
+    let v31 = println(ut31);  // Should be 8
     let ut32 = test_parse_negation();
-    let v32 = println(ut32);  -- Should be 1
+    let v32 = println(ut32);  // Should be 1
 
-    -- v0.30.169: Extended unit tests (56 new assertions)
+    // v0.30.169: Extended unit tests (56 new assertions)
     let ut33 = test_is_whitespace_ext();
-    let v33x = println(ut33);  -- Should be 6
+    let v33x = println(ut33);  // Should be 6
     let ut34 = test_is_digit_ext();
-    let v34 = println(ut34);  -- Should be 6
+    let v34 = println(ut34);  // Should be 6
     let ut35 = test_is_alpha_ext();
-    let v35 = println(ut35);  -- Should be 6
+    let v35 = println(ut35);  // Should be 6
     let ut36 = test_is_alnum_ext();
-    let v36 = println(ut36);  -- Should be 6
+    let v36 = println(ut36);  // Should be 6
     let ut37 = test_tok_encoding_ext();
-    let v37 = println(ut37);  -- Should be 6
+    let v37 = println(ut37);  // Should be 6
     let ut38 = test_type_keywords_ext();
-    let v38 = println(ut38);  -- Should be 6
+    let v38 = println(ut38);  // Should be 6
     let ut39 = test_keyword_negative();
-    let v39 = println(ut39);  -- Should be 6
+    let v39 = println(ut39);  // Should be 6
     let ut40 = test_error_handling_ext();
-    let v40 = println(ut40);  -- Should be 4
+    let v40 = println(ut40);  // Should be 4
     let ut41 = test_result_packing_ext();
-    let v41 = println(ut41);  -- Should be 4
+    let v41 = println(ut41);  // Should be 4
     let ut42 = test_int_to_string_ext();
-    let v42 = println(ut42);  -- Should be 6
+    let v42 = println(ut42);  // Should be 6
 
-    -- v0.30.178: Additional unit tests (36 new assertions)
+    // v0.30.178: Additional unit tests (36 new assertions)
     let ut43 = test_error_funcs();
-    let v43 = println(ut43);  -- Should be 6
+    let v43 = println(ut43);  // Should be 6
     let ut44 = test_tok_end_ext();
-    let v44 = println(ut44);  -- Should be 6
+    let v44 = println(ut44);  // Should be 6
     let ut45 = test_pack_unpack();
-    let v45 = println(ut45);  -- Should be 6
+    let v45 = println(ut45);  // Should be 6
     let ut46 = test_scan_ident_ext();
-    let v46 = println(ut46);  -- Should be 6
+    let v46 = println(ut46);  // Should be 6
     let ut47 = test_scan_int_ext();
-    let v47 = println(ut47);  -- Should be 6
+    let v47 = println(ut47);  // Should be 6
     let ut48 = test_next_token_ops();
-    let v48 = println(ut48);  -- Should be 6
+    let v48 = println(ut48);  // Should be 6
 
-    -- v0.30.191: Additional unit tests (36 new assertions)
+    // v0.30.191: Additional unit tests (36 new assertions)
     let ut49 = test_keyword_kind_ext();
-    let v49 = println(ut49);  -- Should be 6
+    let v49 = println(ut49);  // Should be 6
     let ut50 = test_next_token_raw_ext();
-    let v50 = println(ut50);  -- Should be 6
+    let v50 = println(ut50);  // Should be 6
     let ut51 = test_parse_type_ext();
-    let v51 = println(ut51);  -- Should be 6
+    let v51 = println(ut51);  // Should be 6
     let ut52 = test_op_symbol_ext();
-    let v52 = println(ut52);  -- Should be 6
+    let v52 = println(ut52);  // Should be 6
     let ut53 = test_tok_operations();
-    let v53 = println(ut53);  -- Should be 6
+    let v53 = println(ut53);  // Should be 6
     let ut54 = test_skip_functions_more();
-    let v54 = println(ut54);  -- Should be 6
+    let v54 = println(ut54);  // Should be 6
 
     let unit_base = ut1 + ut2 + ut3 + ut4 + ut5 + ut6 + ut7 + ut8 + ut9 +
                     ut10 + ut11 + ut12 + ut13 + ut14 + ut15 + ut16 + ut17 + ut18 + ut19 +
@@ -1177,11 +1081,11 @@ fn main() -> i64 =
     let unit_ext = ut33 + ut34 + ut35 + ut36 + ut37 + ut38 + ut39 + ut40 + ut41 + ut42;
     let unit_new = ut43 + ut44 + ut45 + ut46 + ut47 + ut48 + ut49 + ut50 + ut51 + ut52 + ut53 + ut54;
     let unit_total = unit_base + unit_ext + unit_new;
-    let v33 = println(unit_total);  -- Should be 272 (144 base + 56 ext + 72 new)
+    let v33 = println(unit_total);  // Should be 272 (144 base + 56 ext + 72 new)
 
-    let u1 = println(555);  -- Integration tests marker
+    let u1 = println(555);  // Integration tests marker
 
-    -- Integration tests
+    // Integration tests
     let t1 = test_parse_const();
     let w1 = println(t1);
 
@@ -1206,13 +1110,13 @@ fn main() -> i64 =
     let t8 = test_parse_bool();
     let w8 = println(t8);
 
-    let u2 = println(888);  -- End marker
+    let u2 = println(888);  // End marker
 
     let integration = t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8;
-    let w9 = println(integration);  -- Should be 8
+    let w9 = println(integration);  // Should be 8
 
     let total = unit_total + integration;
-    let w10 = println(total);  -- Should be 280 (272 unit + 8 integration)
+    let w10 = println(total);  // Should be 280 (272 unit + 8 integration)
 
-    let u3 = println(999);  -- Final marker
+    let u3 = println(999);  // Final marker
     total;

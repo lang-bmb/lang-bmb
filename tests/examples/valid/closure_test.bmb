@@ -1,21 +1,21 @@
--- v0.20.0: Closure test file
+// v0.20.0: Closure test file
 
--- Simple closure stored in let binding
+// Simple closure stored in let binding
 fn test_closure_let() -> i64 =
     let adder = fn |x: i64| { x + 1 };
     42;
 
--- Closure with multiple parameters stored in let
+// Closure with multiple parameters stored in let
 fn test_closure_multi() -> i64 =
     let mul = fn |x: i64, y: i64| { x * y };
     100;
 
--- Empty closure (no parameters) stored in let
+// Empty closure (no parameters) stored in let
 fn test_constant_closure() -> i64 =
     let const_fn = fn || { 42 };
     42;
 
--- Closure with block body
+// Closure with block body
 fn test_complex_closure() -> i64 =
     let doubler = fn |x: i64| {
         let doubled = x * 2;

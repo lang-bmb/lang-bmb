@@ -1,0 +1,4 @@
+// Phase 3 Security Test: Self-referential type (should be rejected)
+type Node = (i64, Node);
+
+fn main() -> i64 = 0;

@@ -1,24 +1,24 @@
--- v0.2 Feature Test: Explicit Return Binding
--- Tests for return value postconditions using ret keyword
+// v0.2 Feature Test: Explicit Return Binding
+// Tests for return value postconditions using ret keyword
 
--- Legacy syntax: implicit ret
+// Legacy syntax: implicit ret
 fn add_legacy(a: i64, b: i64) -> i64
   post ret == a + b
 = a + b;
 
--- Another function with postcondition
+// Another function with postcondition
 fn add_explicit(a: i64, b: i64) -> i64
   post ret == a + b
 = a + b;
 
--- Division with pre/post contracts
+// Division with pre/post contracts
 fn safe_divide(a: i64, b: i64) -> i64
   pre b != 0
   post ret * b <= a
 = a / b;
 
--- Recursive function with postcondition
+// Recursive function with postcondition
 fn factorial(n: i64) -> i64
   pre n >= 0
   post ret >= 1
-= if n <= 1 then 1 else n * factorial(n - 1);
+= if n <= 1 { 1 } else { n * factorial(n - 1) };

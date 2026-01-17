@@ -1,0 +1,5 @@
+// Phase 3 Security Test: Null pointer dereference
+fn main() -> i64 = {
+    let ptr = 0;  // NULL
+    load_i64(ptr)  // Should crash or error
+};

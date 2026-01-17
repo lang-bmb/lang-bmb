@@ -1,32 +1,27 @@
--- BMB CLI Compiler (v0.31.15: Phase 32.1.1)
--- Self-hosted CLI compiler using stdlib I/O builtins
---
--- USAGE:
---   bmb run bmb_compile.bmb              -- compile stdin or show usage
---   bmb run bmb_compile.bmb input.bmb    -- compile file to stdout
---   bmb run bmb_compile.bmb input.bmb output.ll -- compile to LLVM IR file
---
--- This file demonstrates CLI integration with:
--- - read_file(): File I/O builtin (v0.31.10)
--- - write_file(): File I/O builtin (v0.31.10)
--- - sb_*: StringBuilder builtins (v0.31.13)
---
--- Note: Uses | as line separator (BMB string limitation)
+// BMB CLI Compiler (v0.31.15: Phase 32.1.1)
+// Self-hosted CLI compiler using stdlib I/O builtins
+//
+// USAGE:
+//   bmb run bmb_compile.bmb              // compile stdin or show usage
+//   bmb run bmb_compile.bmb input.bmb    // compile file to stdout
+//   bmb run bmb_compile.bmb input.bmb output.ll // compile to LLVM IR file
+//
+// This file demonstrates CLI integration with:
+// - read_file(): File I/O builtin (v0.31.10)
+// - write_file(): File I/O builtin (v0.31.10)
+// - sb_*: StringBuilder builtins (v0.31.13)
+//
+// Note: Uses | as line separator (BMB string limitation)
 
--- ============================================================================
--- SECTION 1: String Utilities (required - no imports in bootstrap)
--- ============================================================================
+// ============================================================================
+// SECTION 1: String Utilities (required - no imports in bootstrap)
+// ============================================================================
 
 fn digit_char(d: i64) -> String =
-    if d == 0 then "0" else if d == 1 then "1" else if d == 2 then "2"
-    else if d == 3 then "3" else if d == 4 then "4" else if d == 5 then "5"
-    else if d == 6 then "6" else if d == 7 then "7" else if d == 8 then "8"
-    else "9";
+    if d == 0 { "0" } else if d == 1 { "1" } else if d == 2 { "2" } else if d == 3 { "3" } else if d == 4 { "4" } else if d == 5 { "5" } else if d == 6 { "6" } else if d == 7 { "7" } else if d == 8 { "8" } else { "9" };
 
 fn int_to_string(n: i64) -> String =
-    if n < 0 then "-" + int_to_string(0 - n)
-    else if n < 10 then digit_char(n)
-    else int_to_string(n / 10) + digit_char(n - (n / 10) * 10);
+    if n < 0 { "-" + int_to_string(0 - n) } else if n < 10 { digit_char(n) } else { int_to_string(n / 10) + digit_char(n - (n / 10) * 10) };
 
 fn is_whitespace(c: i64) -> bool = c == 32 or c == 9 or c == 10 or c == 13;
 fn is_digit(c: i64) -> bool = c >= 48 and c <= 57;
@@ -35,26 +30,22 @@ fn is_alnum_or_underscore(c: i64) -> bool = is_alpha(c) or is_digit(c) or c == 9
 fn is_ident_start(c: i64) -> bool = is_alpha(c) or c == 95;
 
 fn skip_ws(s: String, pos: i64) -> i64 =
-    if pos >= s.len() then pos
-    else if is_whitespace(s.char_at(pos)) then skip_ws(s, pos + 1)
-    else pos;
+    if pos >= s.len() { pos } else if is_whitespace(s.byte_at(pos)) { skip_ws(s, pos + 1) } else { pos };
 
--- Error handling utilities
+// Error handling utilities
 fn is_error(s: String) -> bool = s.len() >= 3 and s.slice(0, 3) == "ERR";
 fn make_error(msg: String) -> String = "ERR:" + msg;
 
--- Check if string starts with pattern
+// Check if string starts with pattern
 fn starts_with(s: String, pat: String, pos: i64) -> bool =
-    if pos + pat.len() > s.len() then false
-    else s.slice(pos, pos + pat.len()) == pat;
+    if pos + pat.len() > s.len() { false } else { s.slice(pos, pos + pat.len()) == pat };
 
 fn ends_with(s: String, suffix: String) -> bool =
-    if s.len() < suffix.len() then false
-    else s.slice(s.len() - suffix.len(), s.len()) == suffix;
+    if s.len() < suffix.len() { false } else { s.slice(s.len() - suffix.len(), s.len()) == suffix };
 
--- ============================================================================
--- SECTION 2: Token Constants (from pipeline.bmb)
--- ============================================================================
+// ============================================================================
+// SECTION 2: Token Constants (from pipeline.bmb)
+// ============================================================================
 
 fn TK_FN() -> i64 = 100;
 fn TK_LET() -> i64 = 101;
@@ -104,36 +95,28 @@ fn TK_GTEQ() -> i64 = 413;
 
 fn TK_EOF() -> i64 = 999;
 
--- ============================================================================
--- SECTION 3: Lexer - Skip Functions
--- ============================================================================
+// ============================================================================
+// SECTION 3: Lexer - Skip Functions
+// ============================================================================
 
 fn skip_to_eol(s: String, pos: i64) -> i64 =
-    if pos >= s.len() then pos
-    else if s.char_at(pos) == 10 then pos + 1
-    else skip_to_eol(s, pos + 1);
+    if pos >= s.len() { pos } else if s.byte_at(pos) == 10 { pos + 1 } else { skip_to_eol(s, pos + 1) };
 
 fn skip_comment(s: String, pos: i64) -> i64 =
-    if pos + 1 < s.len() and s.char_at(pos) == 45 and s.char_at(pos + 1) == 45
-    then skip_to_eol(s, pos + 2)
-    else pos;
+    if pos + 1 < s.len() and s.byte_at(pos) == 45 and s.byte_at(pos + 1) == 45 { skip_to_eol(s, pos + 2) } else { pos };
 
 fn skip_ws_comments(s: String, pos: i64) -> i64 =
     let p1 = skip_ws(s, pos);
     let p2 = skip_comment(s, p1);
-    if p2 == p1 then p1 else skip_ws_comments(s, p2);
+    if p2 == p1 { p1 } else { skip_ws_comments(s, p2) };
 
 fn scan_int(s: String, pos: i64) -> i64 =
-    if pos >= s.len() then pos
-    else if is_digit(s.char_at(pos)) then scan_int(s, pos + 1)
-    else pos;
+    if pos >= s.len() { pos } else if is_digit(s.byte_at(pos)) { scan_int(s, pos + 1) } else { pos };
 
 fn scan_ident_end(s: String, pos: i64) -> i64 =
-    if pos >= s.len() then pos
-    else if is_alnum_or_underscore(s.char_at(pos)) then scan_ident_end(s, pos + 1)
-    else pos;
+    if pos >= s.len() { pos } else if is_alnum_or_underscore(s.byte_at(pos)) { scan_ident_end(s, pos + 1) } else { pos };
 
--- Token encoding: (kind * 1000000 + start * 1000 + len)
+// Token encoding: (kind * 1000000 + start * 1000 + len)
 fn tok_val(kind: i64, start: i64, len: i64) -> i64 = kind * 1000000 + start * 1000 + len;
 fn tok_end(tok: i64) -> i64 = (tok / 1000) - (tok / 1000000) * 1000 + tok - (tok / 1000) * 1000;
 fn tok_kind(tok: i64) -> i64 = tok / 1000000;
@@ -142,76 +125,43 @@ fn make_tok(kind: i64, start: i64, end: i64) -> i64 = tok_val(kind, start, end -
 
 fn keyword_or_ident(s: String, start: i64, end: i64) -> i64 =
     let word = s.slice(start, end);
-    if word == "fn" then make_tok(TK_FN(), start, end)
-    else if word == "let" then make_tok(TK_LET(), start, end)
-    else if word == "if" then make_tok(TK_IF(), start, end)
-    else if word == "then" then make_tok(TK_THEN(), start, end)
-    else if word == "else" then make_tok(TK_ELSE(), start, end)
-    else if word == "true" then make_tok(TK_TRUE(), start, end)
-    else if word == "false" then make_tok(TK_FALSE(), start, end)
-    else if word == "and" then make_tok(TK_AND(), start, end)
-    else if word == "or" then make_tok(TK_OR(), start, end)
-    else if word == "not" then make_tok(TK_NOT(), start, end)
-    else if word == "pre" then make_tok(TK_PRE(), start, end)
-    else if word == "post" then make_tok(TK_POST(), start, end)
-    else if word == "mut" then make_tok(TK_MUT(), start, end)
-    else if word == "i32" then make_tok(TK_I32(), start, end)
-    else if word == "i64" then make_tok(TK_I64(), start, end)
-    else if word == "f64" then make_tok(TK_F64(), start, end)
-    else if word == "bool" then make_tok(TK_BOOL(), start, end)
-    else if word == "String" then make_tok(TK_STRING_TYPE(), start, end)
-    else make_tok(TK_IDENT(), start, end);
+    if word == "fn" { make_tok(TK_FN(), start, end) } else if word == "let" { make_tok(TK_LET(), start, end) } else if word == "if" { make_tok(TK_IF(), start, end) } else if word == "then" { make_tok(TK_THEN(), start, end) } else if word == "else" { make_tok(TK_ELSE(), start, end) } else if word == "true" { make_tok(TK_TRUE(), start, end) } else if word == "false" { make_tok(TK_FALSE(), start, end) } else if word == "and" { make_tok(TK_AND(), start, end) } else if word == "or" { make_tok(TK_OR(), start, end) } else if word == "not" { make_tok(TK_NOT(), start, end) } else if word == "pre" { make_tok(TK_PRE(), start, end) } else if word == "post" { make_tok(TK_POST(), start, end) } else if word == "mut" { make_tok(TK_MUT(), start, end) } else if word == "i32" { make_tok(TK_I32(), start, end) } else if word == "i64" { make_tok(TK_I64(), start, end) } else if word == "f64" { make_tok(TK_F64(), start, end) } else if word == "bool" { make_tok(TK_BOOL(), start, end) } else if word == "String" { make_tok(TK_STRING_TYPE(), start, end) } else { make_tok(TK_IDENT(), start, end) };
 
 fn next_token_raw(s: String, pos: i64) -> i64 =
     let p = skip_ws_comments(s, pos);
-    if p >= s.len() then make_tok(TK_EOF(), p, p)
-    else
-        let c = s.char_at(p);
-        if is_ident_start(c) then
+    if p >= s.len() { make_tok(TK_EOF(), p, p) } else {
+        let c = s.byte_at(p);
+        if is_ident_start(c) {
             let end = scan_ident_end(s, p + 1);
             keyword_or_ident(s, p, end)
-        else if is_digit(c) then
+        } else if is_digit(c) {
             let end = scan_int(s, p);
             make_tok(TK_INT(), p, end)
-        else if c == 58 then make_tok(TK_COLON(), p, p + 1)
-        else if c == 59 then make_tok(TK_SEMI(), p, p + 1)
-        else if c == 44 then make_tok(TK_COMMA(), p, p + 1)
-        else if c == 40 then make_tok(TK_LPAREN(), p, p + 1)
-        else if c == 41 then make_tok(TK_RPAREN(), p, p + 1)
-        else if c == 43 then make_tok(TK_PLUS(), p, p + 1)
-        else if c == 45 then
-            if p + 1 < s.len() and s.char_at(p + 1) == 62
-            then make_tok(TK_ARROW(), p, p + 2)
-            else make_tok(TK_MINUS(), p, p + 1)
-        else if c == 42 then make_tok(TK_STAR(), p, p + 1)
-        else if c == 47 then make_tok(TK_SLASH(), p, p + 1)
-        else if c == 37 then make_tok(TK_PERCENT(), p, p + 1)
-        else if c == 61 then
-            if p + 1 < s.len() and s.char_at(p + 1) == 61
-            then make_tok(TK_EQEQ(), p, p + 2)
-            else make_tok(TK_EQ(), p, p + 1)
-        else if c == 60 then
-            if p + 1 < s.len() and s.char_at(p + 1) == 61
-            then make_tok(TK_LTEQ(), p, p + 2)
-            else make_tok(TK_LT(), p, p + 1)
-        else if c == 62 then
-            if p + 1 < s.len() and s.char_at(p + 1) == 61
-            then make_tok(TK_GTEQ(), p, p + 2)
-            else make_tok(TK_GT(), p, p + 1)
-        else if c == 33 then
-            if p + 1 < s.len() and s.char_at(p + 1) == 61
-            then make_tok(TK_NEQ(), p, p + 2)
-            else make_tok(TK_EOF(), p, p)
-        else make_tok(TK_EOF(), p, p);
+        } else if c == 58 { make_tok(TK_COLON(), p, p + 1) }
+        else if c == 59 { make_tok(TK_SEMI(), p, p + 1) }
+        else if c == 44 { make_tok(TK_COMMA(), p, p + 1) }
+        else if c == 40 { make_tok(TK_LPAREN(), p, p + 1) }
+        else if c == 41 { make_tok(TK_RPAREN(), p, p + 1) }
+        else if c == 43 { make_tok(TK_PLUS(), p, p + 1) }
+        else if c == 45 { if p + 1 < s.len() and s.byte_at(p + 1) == 62 { make_tok(TK_ARROW(), p, p + 2) } else { make_tok(TK_MINUS(), p, p + 1) } }
+        else if c == 42 { make_tok(TK_STAR(), p, p + 1) }
+        else if c == 47 { make_tok(TK_SLASH(), p, p + 1) }
+        else if c == 37 { make_tok(TK_PERCENT(), p, p + 1) }
+        else if c == 61 { if p + 1 < s.len() and s.byte_at(p + 1) == 61 { make_tok(TK_EQEQ(), p, p + 2) } else { make_tok(TK_EQ(), p, p + 1) } }
+        else if c == 60 { if p + 1 < s.len() and s.byte_at(p + 1) == 61 { make_tok(TK_LTEQ(), p, p + 2) } else { make_tok(TK_LT(), p, p + 1) } }
+        else if c == 62 { if p + 1 < s.len() and s.byte_at(p + 1) == 61 { make_tok(TK_GTEQ(), p, p + 2) } else { make_tok(TK_GT(), p, p + 1) } }
+        else if c == 33 { if p + 1 < s.len() and s.byte_at(p + 1) == 61 { make_tok(TK_NEQ(), p, p + 2) } else { make_tok(TK_EOF(), p, p) } }
+        else { make_tok(TK_EOF(), p, p) }
+    };
 
 fn get_ident_text(s: String, tok: i64) -> String =
     let start = (tok / 1000) - (tok / 1000000) * 1000;
     let len = tok - (tok / 1000) * 1000;
     s.slice(start, start + len);
 
--- ============================================================================
--- SECTION 4: Parser Result Packing
--- ============================================================================
+// ============================================================================
+// SECTION 4: Parser Result Packing
+// ============================================================================
 
 fn pack_result(pos: i64, ast: String) -> String = int_to_string(pos) + ":" + ast;
 
@@ -221,198 +171,180 @@ fn unpack_pos(r: String) -> i64 =
     unpack_pos_acc(r, i, acc);
 
 fn unpack_pos_acc(r: String, i: i64, acc: i64) -> i64 =
-    if i >= r.len() then acc
-    else if r.char_at(i) == 58 then acc
-    else unpack_pos_acc(r, i + 1, acc * 10 + (r.char_at(i) - 48));
+    if i >= r.len() { acc } else if r.byte_at(i) == 58 { acc } else { unpack_pos_acc(r, i + 1, acc * 10 + (r.byte_at(i) - 48)) };
 
 fn unpack_ast(r: String) -> String =
     let i = 0;
     let len = r.len();
-    if i >= len then ""
-    else if r.char_at(i) == 58 then r.slice(i + 1, len)
-    else unpack_ast(r.slice(1, len));
+    if i >= len { "" } else if r.byte_at(i) == 58 { r.slice(i + 1, len) } else { unpack_ast(r.slice(1, len)) };
 
--- ============================================================================
--- SECTION 5: Simplified Parser (minimal for CLI demo)
--- ============================================================================
+// ============================================================================
+// SECTION 5: Simplified Parser (minimal for CLI demo)
+// ============================================================================
 
 fn parse_atom(s: String, pos: i64) -> String =
     let tok = next_token_raw(s, pos);
     let kind = tok_kind(tok);
     let end = tok_end(tok);
-    if kind == TK_INT() then
-        pack_result(end, "(int " + get_ident_text(s, tok) + ")")
-    else if kind == TK_TRUE() then
-        pack_result(end, "(bool true)")
-    else if kind == TK_FALSE() then
-        pack_result(end, "(bool false)")
-    else if kind == TK_IDENT() then
-        pack_result(end, "(var " + get_ident_text(s, tok) + ")")
-    else if kind == TK_LPAREN() then
+    if kind == TK_INT() { pack_result(end, "(int " + get_ident_text(s, tok) + ")") }
+    else if kind == TK_TRUE() { pack_result(end, "(bool true)") }
+    else if kind == TK_FALSE() { pack_result(end, "(bool false)") }
+    else if kind == TK_IDENT() { pack_result(end, "(var " + get_ident_text(s, tok) + ")") }
+    else if kind == TK_LPAREN() {
         let inner = parse_expr(s, end);
         let inner_pos = unpack_pos(inner);
         let inner_ast = unpack_ast(inner);
         let tok2 = next_token_raw(s, inner_pos);
-        if tok_kind(tok2) == TK_RPAREN() then pack_result(tok_end(tok2), inner_ast)
-        else pack_result(inner_pos, make_error("Expected )"))
-    else if kind == TK_NOT() then
+        if tok_kind(tok2) == TK_RPAREN() { pack_result(tok_end(tok2), inner_ast) } else { pack_result(inner_pos, make_error("Expected )")) }
+    } else if kind == TK_NOT() {
         let arg = parse_atom(s, end);
         let arg_pos = unpack_pos(arg);
         let arg_ast = unpack_ast(arg);
         pack_result(arg_pos, "(not " + arg_ast + ")")
-    else if kind == TK_MINUS() then
+    } else if kind == TK_MINUS() {
         let arg = parse_atom(s, end);
         let arg_pos = unpack_pos(arg);
         let arg_ast = unpack_ast(arg);
         pack_result(arg_pos, "(neg " + arg_ast + ")")
-    else pack_result(pos, make_error("Expected expression"));
+    } else { pack_result(pos, make_error("Expected expression")) };
 
 fn parse_mul(s: String, pos: i64) -> String =
     let left = parse_atom(s, pos);
     let left_pos = unpack_pos(left);
     let left_ast = unpack_ast(left);
-    if is_error(left_ast) then left
-    else parse_mul_rest(s, left_pos, left_ast);
+    if is_error(left_ast) { left } else { parse_mul_rest(s, left_pos, left_ast) };
 
 fn parse_mul_rest(s: String, pos: i64, left: String) -> String =
     let tok = next_token_raw(s, pos);
     let kind = tok_kind(tok);
-    if kind == TK_STAR() or kind == TK_SLASH() or kind == TK_PERCENT() then
-        let op = if kind == TK_STAR() then "*" else if kind == TK_SLASH() then "/" else "%";
+    if kind == TK_STAR() or kind == TK_SLASH() or kind == TK_PERCENT() {
+        let op = if kind == TK_STAR() { "*" } else if kind == TK_SLASH() { "/" } else { "%" };
         let right = parse_atom(s, tok_end(tok));
         let right_pos = unpack_pos(right);
         let right_ast = unpack_ast(right);
-        if is_error(right_ast) then right
-        else parse_mul_rest(s, right_pos, "(" + op + " " + left + " " + right_ast + ")")
-    else pack_result(pos, left);
+        if is_error(right_ast) { right } else { parse_mul_rest(s, right_pos, "(" + op + " " + left + " " + right_ast + ")") }
+    } else { pack_result(pos, left) };
 
 fn parse_add(s: String, pos: i64) -> String =
     let left = parse_mul(s, pos);
     let left_pos = unpack_pos(left);
     let left_ast = unpack_ast(left);
-    if is_error(left_ast) then left
-    else parse_add_rest(s, left_pos, left_ast);
+    if is_error(left_ast) { left } else { parse_add_rest(s, left_pos, left_ast) };
 
 fn parse_add_rest(s: String, pos: i64, left: String) -> String =
     let tok = next_token_raw(s, pos);
     let kind = tok_kind(tok);
-    if kind == TK_PLUS() or kind == TK_MINUS() then
-        let op = if kind == TK_PLUS() then "+" else "-";
+    if kind == TK_PLUS() or kind == TK_MINUS() {
+        let op = if kind == TK_PLUS() { "+" } else { "-" };
         let right = parse_mul(s, tok_end(tok));
         let right_pos = unpack_pos(right);
         let right_ast = unpack_ast(right);
-        if is_error(right_ast) then right
-        else parse_add_rest(s, right_pos, "(" + op + " " + left + " " + right_ast + ")")
-    else pack_result(pos, left);
+        if is_error(right_ast) { right } else { parse_add_rest(s, right_pos, "(" + op + " " + left + " " + right_ast + ")") }
+    } else { pack_result(pos, left) };
 
 fn parse_cmp(s: String, pos: i64) -> String =
     let left = parse_add(s, pos);
     let left_pos = unpack_pos(left);
     let left_ast = unpack_ast(left);
-    if is_error(left_ast) then left
-    else parse_cmp_rest(s, left_pos, left_ast);
+    if is_error(left_ast) { left } else { parse_cmp_rest(s, left_pos, left_ast) };
 
 fn parse_cmp_rest(s: String, pos: i64, left: String) -> String =
     let tok = next_token_raw(s, pos);
     let kind = tok_kind(tok);
-    if kind == TK_EQEQ() then
+    if kind == TK_EQEQ() {
         let right = parse_add(s, tok_end(tok));
         pack_result(unpack_pos(right), "(== " + left + " " + unpack_ast(right) + ")")
-    else if kind == TK_NEQ() then
+    } else if kind == TK_NEQ() {
         let right = parse_add(s, tok_end(tok));
         pack_result(unpack_pos(right), "(!= " + left + " " + unpack_ast(right) + ")")
-    else if kind == TK_LT() then
+    } else if kind == TK_LT() {
         let right = parse_add(s, tok_end(tok));
         pack_result(unpack_pos(right), "(< " + left + " " + unpack_ast(right) + ")")
-    else if kind == TK_GT() then
+    } else if kind == TK_GT() {
         let right = parse_add(s, tok_end(tok));
         pack_result(unpack_pos(right), "(> " + left + " " + unpack_ast(right) + ")")
-    else if kind == TK_LTEQ() then
+    } else if kind == TK_LTEQ() {
         let right = parse_add(s, tok_end(tok));
         pack_result(unpack_pos(right), "(<= " + left + " " + unpack_ast(right) + ")")
-    else if kind == TK_GTEQ() then
+    } else if kind == TK_GTEQ() {
         let right = parse_add(s, tok_end(tok));
         pack_result(unpack_pos(right), "(>= " + left + " " + unpack_ast(right) + ")")
-    else pack_result(pos, left);
+    } else { pack_result(pos, left) };
 
 fn parse_and(s: String, pos: i64) -> String =
     let left = parse_cmp(s, pos);
     let left_pos = unpack_pos(left);
     let left_ast = unpack_ast(left);
-    if is_error(left_ast) then left
-    else parse_and_rest(s, left_pos, left_ast);
+    if is_error(left_ast) { left } else { parse_and_rest(s, left_pos, left_ast) };
 
 fn parse_and_rest(s: String, pos: i64, left: String) -> String =
     let tok = next_token_raw(s, pos);
-    if tok_kind(tok) == TK_AND() then
+    if tok_kind(tok) == TK_AND() {
         let right = parse_cmp(s, tok_end(tok));
         let right_pos = unpack_pos(right);
         let right_ast = unpack_ast(right);
-        if is_error(right_ast) then right
-        else parse_and_rest(s, right_pos, "(and " + left + " " + right_ast + ")")
-    else pack_result(pos, left);
+        if is_error(right_ast) { right } else { parse_and_rest(s, right_pos, "(and " + left + " " + right_ast + ")") }
+    } else { pack_result(pos, left) };
 
 fn parse_or(s: String, pos: i64) -> String =
     let left = parse_and(s, pos);
     let left_pos = unpack_pos(left);
     let left_ast = unpack_ast(left);
-    if is_error(left_ast) then left
-    else parse_or_rest(s, left_pos, left_ast);
+    if is_error(left_ast) { left } else { parse_or_rest(s, left_pos, left_ast) };
 
 fn parse_or_rest(s: String, pos: i64, left: String) -> String =
     let tok = next_token_raw(s, pos);
-    if tok_kind(tok) == TK_OR() then
+    if tok_kind(tok) == TK_OR() {
         let right = parse_and(s, tok_end(tok));
         let right_pos = unpack_pos(right);
         let right_ast = unpack_ast(right);
-        if is_error(right_ast) then right
-        else parse_or_rest(s, right_pos, "(or " + left + " " + right_ast + ")")
-    else pack_result(pos, left);
+        if is_error(right_ast) { right } else { parse_or_rest(s, right_pos, "(or " + left + " " + right_ast + ")") }
+    } else { pack_result(pos, left) };
 
 fn parse_expr(s: String, pos: i64) -> String =
     let p = skip_ws_comments(s, pos);
     let tok = next_token_raw(s, p);
     let kind = tok_kind(tok);
-    if kind == TK_IF() then
+    if kind == TK_IF() {
         let cond = parse_or(s, tok_end(tok));
         let cond_pos = unpack_pos(cond);
         let cond_ast = unpack_ast(cond);
         let tok2 = next_token_raw(s, cond_pos);
-        if tok_kind(tok2) != TK_THEN() then pack_result(cond_pos, make_error("Expected then"))
-        else
+        if tok_kind(tok2) != TK_THEN() { pack_result(cond_pos, make_error("Expected then")) } else {
             let then_e = parse_expr(s, tok_end(tok2));
             let then_pos = unpack_pos(then_e);
             let then_ast = unpack_ast(then_e);
             let tok3 = next_token_raw(s, then_pos);
-            if tok_kind(tok3) != TK_ELSE() then pack_result(then_pos, make_error("Expected else"))
-            else
+            if tok_kind(tok3) != TK_ELSE() { pack_result(then_pos, make_error("Expected else")) } else {
                 let else_e = parse_expr(s, tok_end(tok3));
                 let else_pos = unpack_pos(else_e);
                 let else_ast = unpack_ast(else_e);
                 pack_result(else_pos, "(if " + cond_ast + " " + then_ast + " " + else_ast + ")")
-    else if kind == TK_LET() then
+            }
+        }
+    } else if kind == TK_LET() {
         let name_tok = next_token_raw(s, tok_end(tok));
-        if tok_kind(name_tok) != TK_IDENT() then pack_result(tok_end(tok), make_error("Expected identifier"))
-        else
+        if tok_kind(name_tok) != TK_IDENT() { pack_result(tok_end(tok), make_error("Expected identifier")) } else {
             let name = get_ident_text(s, name_tok);
             let eq_tok = next_token_raw(s, tok_end(name_tok));
-            if tok_kind(eq_tok) != TK_EQ() then pack_result(tok_end(name_tok), make_error("Expected ="))
-            else
+            if tok_kind(eq_tok) != TK_EQ() { pack_result(tok_end(name_tok), make_error("Expected =")) } else {
                 let val = parse_expr(s, tok_end(eq_tok));
                 let val_pos = unpack_pos(val);
                 let val_ast = unpack_ast(val);
                 let semi_tok = next_token_raw(s, val_pos);
-                if tok_kind(semi_tok) != TK_SEMI() then pack_result(val_pos, make_error("Expected ;"))
-                else
+                if tok_kind(semi_tok) != TK_SEMI() { pack_result(val_pos, make_error("Expected ;")) } else {
                     let body = parse_expr(s, tok_end(semi_tok));
                     let body_pos = unpack_pos(body);
                     let body_ast = unpack_ast(body);
                     pack_result(body_pos, "(let " + name + " " + val_ast + " " + body_ast + ")")
-    else parse_or(s, p);
+                }
+            }
+        }
+    } else { parse_or(s, p) };
 
--- ============================================================================
--- SECTION 6: LLVM IR Generation (simplified)
--- ============================================================================
+// ============================================================================
+// SECTION 6: LLVM IR Generation (simplified)
+// ============================================================================
 
 fn gen_module_header() -> String =
     "; ModuleID = bmb_compiled|target triple = x86_64-pc-linux-gnu";
@@ -420,72 +352,68 @@ fn gen_module_header() -> String =
 fn gen_runtime_decls() -> String =
     "declare i64 @abs(i64)|declare i64 @min(i64, i64)|declare i64 @max(i64, i64)|declare void @println(i64)";
 
--- Simple expression to LLVM IR (returns temp ID and code)
+// Simple expression to LLVM IR (returns temp ID and code)
 fn gen_expr_simple(ast: String, temp: i64) -> String =
-    if starts_with(ast, "(int ", 0) then
+    if starts_with(ast, "(int ", 0) {
         let val = ast.slice(5, ast.len() - 1);
         int_to_string(temp) + "||%t" + int_to_string(temp) + " = add i64 0, " + val
-    else if starts_with(ast, "(bool ", 0) then
+    } else if starts_with(ast, "(bool ", 0) {
         let val = ast.slice(6, ast.len() - 1);
-        let v = if val == "true" then "1" else "0";
+        let v = if val == "true" { "1" } else { "0" };
         int_to_string(temp) + "||%t" + int_to_string(temp) + " = add i64 0, " + v
-    else if starts_with(ast, "(var ", 0) then
+    } else if starts_with(ast, "(var ", 0) {
         let name = ast.slice(5, ast.len() - 1);
         int_to_string(temp) + "||%t" + int_to_string(temp) + " = load i64, i64* %" + name
-    else
-        int_to_string(temp) + "||%t" + int_to_string(temp) + " = add i64 0, 0";
+    } else {
+        int_to_string(temp) + "||%t" + int_to_string(temp) + " = add i64 0, 0"
+    };
 
--- ============================================================================
--- SECTION 7: CLI Entry Point
--- ============================================================================
+// ============================================================================
+// SECTION 7: CLI Entry Point
+// ============================================================================
 
 fn compile_source(source: String) -> String =
     let ast = parse_expr(source, 0);
     let ast_str = unpack_ast(ast);
-    if is_error(ast_str) then ast_str
-    else
+    if is_error(ast_str) { ast_str } else {
         let header = gen_module_header();
         let decls = gen_runtime_decls();
         let body = gen_expr_simple(ast_str, 0);
-        header + "||" + decls + "||" + body;
+        header + "||" + decls + "||" + body
+    };
 
 fn compile_file(input_path: String) -> String =
     let source = read_file(input_path);
-    if source == "" then make_error("Failed to read: " + input_path)
-    else compile_source(source);
+    if source == "" { make_error("Failed to read: " + input_path) } else { compile_source(source) };
 
--- Test compilation with a simple expression
+// Test compilation with a simple expression
 fn test_compile() -> i64 =
     let demo_src = "1 + 2 * 3";
     let result = compile_source(demo_src);
-    if is_error(result) then 1
-    else if result.len() > 50 then 0  -- Success: generated LLVM IR
-    else 2;
+    // 0 = success (generated LLVM IR), 1 = error, 2 = IR too short
+    if is_error(result) { 1 } else if result.len() > 50 { 0 } else { 2 };
 
--- Test StringBuilder integration
+// Test StringBuilder integration
 fn test_stringbuilder() -> i64 =
     let sb = sb_new();
     let sb = sb_push(sb, "define i64 @main() {");
     let sb = sb_push(sb, "|  ret i64 0");
     let sb = sb_push(sb, "|}");
     let ir = sb_build(sb);
-    if ir.len() > 30 then 0 else 1;
+    if ir.len() > 30 { 0 } else { 1 };
 
--- Test file I/O integration (reads this file)
+// Test file I/O integration (reads this file)
 fn test_file_io() -> i64 =
     let content = read_file("bootstrap/bmb_compile.bmb");
-    if content.len() > 1000 then 0 else 1;
+    if content.len() > 1000 { 0 } else { 1 };
 
 fn main() -> i64 =
-    -- Test 1: Compilation pipeline
+    // Test 1: Compilation pipeline
     let t1 = test_compile();
-    if t1 != 0 then t1 + 10
-    else
-        -- Test 2: StringBuilder
+    if t1 != 0 { t1 + 10 } else {
         let t2 = test_stringbuilder();
-        if t2 != 0 then t2 + 20
-        else
-            -- Test 3: File I/O
+        if t2 != 0 { t2 + 20 } else {
             let t3 = test_file_io();
-            if t3 != 0 then t3 + 30
-            else 0;
+            if t3 != 0 { t3 + 30 } else { 0 }
+        }
+    };

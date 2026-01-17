@@ -1,2 +1,2 @@
--- Stage 3 verification test: conditional expression
-fn max(a: i64, b: i64) -> i64 = if a > b then a else b;
+// Stage 3 verification test: conditional expression
+fn max(a: i64, b: i64) -> i64 = if a > b { a } else { b };

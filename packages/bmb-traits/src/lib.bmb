@@ -1,91 +1,91 @@
--- BMB Traits Library v0.14.0
--- 핵심 트레이트 정의
---
--- AI-Native Design:
--- - @derive 속성 매크로와 연동 (v0.13.3+)
--- - 계약 기반 트레이트 의미 정의
--- - 제네릭 트레이트 지원
---
--- Note: BMB는 아직 trait 키워드를 지원하지 않음
--- 이 파일은 트레이트 인터페이스의 명세를 정의
+// BMB Traits Library v0.14.0
+// 핵심 트레이트 정의
+//
+// AI-Native Design:
+// - @derive 속성 매크로와 연동 (v0.13.3+)
+// - 계약 기반 트레이트 의미 정의
+// - 제네릭 트레이트 지원
+//
+// Note: BMB는 아직 trait 키워드를 지원하지 않음
+// 이 파일은 트레이트 인터페이스의 명세를 정의
 
--- ============================================
--- Debug 트레이트 (디버그 문자열 표현)
--- ============================================
---
--- trait Debug {
---     fn debug(self) -> String;
--- }
---
--- @derive(Debug)로 자동 구현:
--- - 구조체: "StructName { field1: value1, field2: value2 }"
--- - 열거형: "EnumName::Variant(value)" 또는 "EnumName::Variant"
+// ============================================
+// Debug 트레이트 (디버그 문자열 표현)
+// ============================================
+//
+// trait Debug {
+//     fn debug(self) -> String;
+// }
+//
+// @derive(Debug)로 자동 구현:
+// - 구조체: "StructName { field1: value1, field2: value2 }"
+// - 열거형: "EnumName::Variant(value)" 또는 "EnumName::Variant"
 
--- Debug 시그니처 (구현은 @derive가 생성)
--- pub fn debug<T: Debug>(value: T) -> String;
+// Debug 시그니처 (구현은 @derive가 생성)
+// pub fn debug<T: Debug>(value: T) -> String;
 
--- ============================================
--- Clone 트레이트 (값 복제)
--- ============================================
---
--- trait Clone {
---     fn clone(self) -> Self;
--- }
---
--- @derive(Clone)로 자동 구현:
--- - 모든 필드를 재귀적으로 clone
+// ============================================
+// Clone 트레이트 (값 복제)
+// ============================================
+//
+// trait Clone {
+//     fn clone(self) -> Self;
+// }
+//
+// @derive(Clone)로 자동 구현:
+// - 모든 필드를 재귀적으로 clone
 
--- Clone 시그니처
--- pub fn clone<T: Clone>(value: T) -> T;
+// Clone 시그니처
+// pub fn clone<T: Clone>(value: T) -> T;
 
--- ============================================
--- PartialEq 트레이트 (부분 동등성)
--- ============================================
---
--- trait PartialEq {
---     fn eq(self, other: Self) -> bool;
---     fn ne(self, other: Self) -> bool = not eq(self, other);
--- }
---
--- @derive(PartialEq)로 자동 구현:
--- - 모든 필드를 순서대로 비교
+// ============================================
+// PartialEq 트레이트 (부분 동등성)
+// ============================================
+//
+// trait PartialEq {
+//     fn eq(self, other: Self) -> bool;
+//     fn ne(self, other: Self) -> bool = not eq(self, other);
+// }
+//
+// @derive(PartialEq)로 자동 구현:
+// - 모든 필드를 순서대로 비교
 
--- PartialEq 시그니처
--- pub fn eq<T: PartialEq>(a: T, b: T) -> bool;
--- pub fn ne<T: PartialEq>(a: T, b: T) -> bool;
+// PartialEq 시그니처
+// pub fn eq<T: PartialEq>(a: T, b: T) -> bool;
+// pub fn ne<T: PartialEq>(a: T, b: T) -> bool;
 
--- ============================================
--- Eq 트레이트 (완전 동등성, PartialEq 확장)
--- ============================================
---
--- trait Eq: PartialEq {
---     -- 추가 메서드 없음, 마커 트레이트
---     -- 반사성, 대칭성, 추이성 보장
--- }
+// ============================================
+// Eq 트레이트 (완전 동등성, PartialEq 확장)
+// ============================================
+//
+// trait Eq: PartialEq {
+//     // 추가 메서드 없음, 마커 트레이트
+//     // 반사성, 대칭성, 추이성 보장
+// }
 
--- ============================================
--- PartialOrd 트레이트 (부분 순서)
--- ============================================
---
--- trait PartialOrd: PartialEq {
---     fn partial_cmp(self, other: Self) -> Option<Ordering>;
---     fn lt(self, other: Self) -> bool;
---     fn le(self, other: Self) -> bool;
---     fn gt(self, other: Self) -> bool;
---     fn ge(self, other: Self) -> bool;
--- }
+// ============================================
+// PartialOrd 트레이트 (부분 순서)
+// ============================================
+//
+// trait PartialOrd: PartialEq {
+//     fn partial_cmp(self, other: Self) -> Ordering?;
+//     fn lt(self, other: Self) -> bool;
+//     fn le(self, other: Self) -> bool;
+//     fn gt(self, other: Self) -> bool;
+//     fn ge(self, other: Self) -> bool;
+// }
 
--- ============================================
--- Ord 트레이트 (전체 순서)
--- ============================================
---
--- trait Ord: Eq + PartialOrd {
---     fn cmp(self, other: Self) -> Ordering;
---     fn max(self, other: Self) -> Self;
---     fn min(self, other: Self) -> Self;
--- }
+// ============================================
+// Ord 트레이트 (전체 순서)
+// ============================================
+//
+// trait Ord: Eq + PartialOrd {
+//     fn cmp(self, other: Self) -> Ordering;
+//     fn max(self, other: Self) -> Self;
+//     fn min(self, other: Self) -> Self;
+// }
 
--- 순서 열거형
+// 순서 열거형
 @derive(Debug, Clone, PartialEq, Eq)
 pub enum Ordering {
     Less,
@@ -118,119 +118,119 @@ pub fn ordering_is_gt(ord: Ordering) -> bool =
         _ => false,
     };
 
--- ============================================
--- Default 트레이트 (기본값)
--- ============================================
---
--- trait Default {
---     fn default() -> Self;
--- }
---
--- @derive(Default)로 자동 구현:
--- - 모든 필드에 Default::default() 적용
--- - i64: 0, bool: false, Option: None
+// ============================================
+// Default 트레이트 (기본값)
+// ============================================
+//
+// trait Default {
+//     fn default() -> Self;
+// }
+//
+// @derive(Default)로 자동 구현:
+// - 모든 필드에 Default::default() 적용
+// - i64: 0, bool: false, Option: None
 
--- 프리미티브 기본값
+// 프리미티브 기본값
 pub fn default_i64() -> i64 = 0;
 pub fn default_bool() -> bool = false;
 
--- ============================================
--- Hash 트레이트 (해시 계산)
--- ============================================
---
--- trait Hash {
---     fn hash(self, state: &mut Hasher);
--- }
---
--- @derive(Hash)로 자동 구현:
--- - 모든 필드를 순서대로 해시
+// ============================================
+// Hash 트레이트 (해시 계산)
+// ============================================
+//
+// trait Hash {
+//     fn hash(self, state: &mut Hasher);
+// }
+//
+// @derive(Hash)로 자동 구현:
+// - 모든 필드를 순서대로 해시
 
--- 간단한 해시 함수 (i64용)
+// 간단한 해시 함수 (i64용)
 pub fn hash_i64(value: i64) -> i64 =
     value * 31 + 17;
 
 pub fn hash_combine(h1: i64, h2: i64) -> i64 =
     h1 * 31 + h2;
 
--- ============================================
--- Copy 트레이트 (비트 복사)
--- ============================================
---
--- trait Copy: Clone {
---     -- 마커 트레이트, Copy 타입은 이동 대신 복사
--- }
---
--- i64, bool 등 프리미티브 타입은 암묵적 Copy
+// ============================================
+// Copy 트레이트 (비트 복사)
+// ============================================
+//
+// trait Copy: Clone {
+//     // 마커 트레이트, Copy 타입은 이동 대신 복사
+// }
+//
+// i64, bool 등 프리미티브 타입은 암묵적 Copy
 
--- ============================================
--- Drop 트레이트 (소멸자)
--- ============================================
---
--- trait Drop {
---     fn drop(self);
--- }
---
--- 리소스 해제 시 자동 호출
+// ============================================
+// Drop 트레이트 (소멸자)
+// ============================================
+//
+// trait Drop {
+//     fn drop(self);
+// }
+//
+// 리소스 해제 시 자동 호출
 
--- ============================================
--- From/Into 트레이트 (타입 변환)
--- ============================================
---
--- trait From<T> {
---     fn from(value: T) -> Self;
--- }
---
--- trait Into<T> {
---     fn into(self) -> T;
--- }
---
--- From<T> 구현 시 Into<T>는 자동 구현
+// ============================================
+// From/Into 트레이트 (타입 변환)
+// ============================================
+//
+// trait From<T> {
+//     fn from(value: T) -> Self;
+// }
+//
+// trait Into<T> {
+//     fn into(self) -> T;
+// }
+//
+// From<T> 구현 시 Into<T>는 자동 구현
 
--- i64 변환 예시
+// i64 변환 예시
 pub fn i64_from_bool(b: bool) -> i64 =
-    if b then 1 else 0;
+    if b { 1 } else { 0 };
 
 pub fn bool_from_i64(n: i64) -> bool =
     n != 0;
 
--- ============================================
--- AsRef/AsMut 트레이트 (참조 변환)
--- ============================================
---
--- trait AsRef<T> {
---     fn as_ref(self) -> &T;
--- }
---
--- trait AsMut<T> {
---     fn as_mut(self) -> &mut T;
--- }
+// ============================================
+// AsRef/AsMut 트레이트 (참조 변환)
+// ============================================
+//
+// trait AsRef<T> {
+//     fn as_ref(self) -> &T;
+// }
+//
+// trait AsMut<T> {
+//     fn as_mut(self) -> &mut T;
+// }
 
--- ============================================
--- Deref/DerefMut 트레이트 (역참조)
--- ============================================
---
--- trait Deref {
---     type Target;
---     fn deref(self) -> &Self::Target;
--- }
---
--- trait DerefMut: Deref {
---     fn deref_mut(self) -> &mut Self::Target;
--- }
+// ============================================
+// Deref/DerefMut 트레이트 (역참조)
+// ============================================
+//
+// trait Deref {
+//     type Target;
+//     fn deref(self) -> &Self::Target;
+// }
+//
+// trait DerefMut: Deref {
+//     fn deref_mut(self) -> &mut Self::Target;
+// }
 
--- ============================================
--- 트레이트 계층 구조 요약
--- ============================================
---
--- Copy ───┬──> Clone
---         │
--- Eq ─────┼──> PartialEq
---         │
--- Ord ────┴──> PartialOrd ──> PartialEq
---
--- Into<T> <─── From<T> (자동)
---
--- DerefMut ──> Deref
---
--- @derive 지원:
--- - Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default
+// ============================================
+// 트레이트 계층 구조 요약
+// ============================================
+//
+// Copy ───┬──> Clone
+//         │
+// Eq ─────┼──> PartialEq
+//         │
+// Ord ────┴──> PartialOrd ──> PartialEq
+//
+// Into<T> <─── From<T> (자동)
+//
+// DerefMut ──> Deref
+//
+// @derive 지원:
+// - Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default

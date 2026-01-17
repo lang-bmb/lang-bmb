@@ -8,6 +8,9 @@ CLAUDE.md
 .claude/
 nul
 
+# Claude Code temp files (known bug: github.com/anthropics/claude-code/issues/8856)
+tmpclaude-*-cwd
+
 # Rust/Cargo
 /target/
 /bmb/target/
@@ -22,6 +25,27 @@ Cargo.lock
 *.a
 *.exe
 *.ll
-
-experiments/.env.local
 *.obj
+
+# Auto-generated files
+.bmb/index/
+*.mir
+*.ll.raw
+stage2*.ll.raw
+stage2.ll.temp
+
+# Bootstrap compiler artifacts
+bootstrap/stage1
+bootstrap/*.mir
+bmb-stage1*
+bmb-stage2*
+bmb_stage1*
+
+# Test artifacts
+test_*.bmb
+test_*_bin
+test_*_mir
+
+# Misc
+experiments/.env.local
+*.local

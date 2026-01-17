@@ -1,107 +1,107 @@
--- BMB Option Library v0.14.0
--- 제네릭 Option<T> 타입 - 선택적 값 컨테이너
---
--- AI-Native Design:
--- - 명시적 null 처리 (null 포인터 없음)
--- - 패턴 매칭으로 값 추출
--- - 계약으로 안전한 사용 보장
--- - 제네릭으로 모든 타입 지원
+// BMB Option Library v0.14.0
+// 제네릭 T? 타입 - 선택적 값 컨테이너
+//
+// AI-Native Design:
+// - 명시적 null 처리 (null 포인터 없음)
+// - 패턴 매칭으로 값 추출
+// - 계약으로 안전한 사용 보장
+// - 제네릭으로 모든 타입 지원
 
--- ============================================
--- Option<T> 제네릭 열거형
--- ============================================
+// ============================================
+// T? 제네릭 열거형
+// ============================================
 
 @derive(Debug, Clone, PartialEq)
-pub enum Option<T> {
+pub enum T? {
     Some(T),
     None,
 }
 
--- ============================================
--- 생성자 함수
--- ============================================
+// ============================================
+// 생성자 함수
+// ============================================
 
-pub fn some<T>(value: T) -> Option<T> =
+pub fn some<T>(value: T) -> T? =
     Option::Some(value);
 
-pub fn none<T>() -> Option<T> =
+pub fn none<T>() -> T? =
     Option::None;
 
--- ============================================
--- 상태 검사
--- ============================================
+// ============================================
+// 상태 검사
+// ============================================
 
-pub fn is_some<T>(opt: Option<T>) -> bool =
+pub fn is_some<T>(opt: T?) -> bool =
     match opt {
         Option::Some(v) => true,
         Option::None => false,
     };
 
-pub fn is_none<T>(opt: Option<T>) -> bool =
+pub fn is_none<T>(opt: T?) -> bool =
     match opt {
         Option::Some(v) => false,
         Option::None => true,
     };
 
--- ============================================
--- 값 추출
--- ============================================
+// ============================================
+// 값 추출
+// ============================================
 
--- 안전한 추출: 기본값 사용
-pub fn unwrap_or<T>(opt: Option<T>, default: T) -> T =
+// 안전한 추출: 기본값 사용
+pub fn unwrap_or<T>(opt: T?, default: T) -> T =
     match opt {
         Option::Some(v) => v,
         Option::None => default,
     };
 
--- 위험한 추출: precondition으로 None 케이스 도달 불가
--- Note: None 케이스는 precondition에 의해 절대 실행되지 않음
--- BMB에 panic/unreachable이 없으므로 재귀 호출로 타입 맞춤 (도달 불가)
-pub fn unwrap<T>(opt: Option<T>) -> T
+// 위험한 추출: precondition으로 None 케이스 도달 불가
+// Note: None 케이스는 precondition에 의해 절대 실행되지 않음
+// BMB에 panic/unreachable이 없으므로 재귀 호출로 타입 맞춤 (도달 불가)
+pub fn unwrap<T>(opt: T?) -> T
   pre is_some(opt)
 = match opt {
     Option::Some(v) => v,
     Option::None => unwrap(opt),
 };
 
--- 기본값 지연 계산 (closure 대신 함수 결과)
-pub fn unwrap_or_default<T>(opt: Option<T>, default_fn_result: T) -> T =
+// 기본값 지연 계산 (closure 대신 함수 결과)
+pub fn unwrap_or_default<T>(opt: T?, default_fn_result: T) -> T =
     match opt {
         Option::Some(v) => v,
         Option::None => default_fn_result,
     };
 
--- ============================================
--- 변환 함수
--- ============================================
+// ============================================
+// 변환 함수
+// ============================================
 
--- flatten: Option<Option<T>> -> Option<T>
-pub fn flatten<T>(opt: Option<Option<T>>) -> Option<T> =
+// flatten: T?? -> T?
+pub fn flatten<T>(opt: T??) -> T? =
     match opt {
         Option::Some(inner) => inner,
         Option::None => Option::None,
     };
 
--- ============================================
--- 결합 연산
--- ============================================
+// ============================================
+// 결합 연산
+// ============================================
 
--- or: 첫 번째 Some 또는 두 번째 반환
-pub fn option_or<T>(a: Option<T>, b: Option<T>) -> Option<T> =
+// or: 첫 번째 Some 또는 두 번째 반환
+pub fn option_or<T>(a: T?, b: T?) -> T? =
     match a {
         Option::Some(v) => a,
         Option::None => b,
     };
 
--- and: 둘 다 Some이면 두 번째, 아니면 None
-pub fn option_and<T>(a: Option<T>, b: Option<T>) -> Option<T> =
+// and: 둘 다 Some이면 두 번째, 아니면 None
+pub fn option_and<T>(a: T?, b: T?) -> T? =
     match a {
         Option::Some(v) => b,
         Option::None => Option::None,
     };
 
--- xor: 정확히 하나만 Some이면 그것을, 아니면 None
-pub fn option_xor<T>(a: Option<T>, b: Option<T>) -> Option<T> =
+// xor: 정확히 하나만 Some이면 그것을, 아니면 None
+pub fn option_xor<T>(a: T?, b: T?) -> T? =
     match a {
         Option::Some(va) => match b {
             Option::Some(vb) => Option::None,
@@ -110,49 +110,49 @@ pub fn option_xor<T>(a: Option<T>, b: Option<T>) -> Option<T> =
         Option::None => b,
     };
 
--- ============================================
--- 필터링
--- ============================================
+// ============================================
+// 필터링
+// ============================================
 
--- filter_by_bool: 조건이 참이면 유지, 아니면 None
-pub fn filter_by_bool<T>(opt: Option<T>, condition: bool) -> Option<T> =
+// filter_by_bool: 조건이 참이면 유지, 아니면 None
+pub fn filter_by_bool<T>(opt: T?, condition: bool) -> T? =
     match opt {
-        Option::Some(v) => if condition then opt else Option::None,
+        Option::Some(v) => if condition { opt } else { Option::None },
         Option::None => Option::None,
     };
 
--- ============================================
--- 유틸리티
--- ============================================
+// ============================================
+// 유틸리티
+// ============================================
 
--- take: Option을 소비하고 값 반환 (소유권 이동)
-pub fn take<T>(opt: Option<T>) -> Option<T> = opt;
+// take: Option을 소비하고 값 반환 (소유권 이동)
+pub fn take<T>(opt: T?) -> T? = opt;
 
--- replace: 새 값으로 교체하고 이전 값 반환
-pub fn replace<T>(opt: Option<T>, value: T) -> Option<T> =
+// replace: 새 값으로 교체하고 이전 값 반환
+pub fn replace<T>(opt: T?, value: T) -> T? =
     Option::Some(value);
 
--- ============================================
--- i64 특화 함수 (역호환성)
--- ============================================
+// ============================================
+// i64 특화 함수 (역호환성)
+// ============================================
 
-pub fn unwrap_or_i64(opt: Option<i64>, default: i64) -> i64 =
+pub fn unwrap_or_i64(opt: i64?, default: i64) -> i64 =
     unwrap_or(opt, default);
 
-pub fn map_add_i64(opt: Option<i64>, n: i64) -> Option<i64> =
+pub fn map_add_i64(opt: i64?, n: i64) -> i64? =
     match opt {
         Option::Some(v) => Option::Some(v + n),
         Option::None => Option::None,
     };
 
-pub fn filter_positive_i64(opt: Option<i64>) -> Option<i64> =
+pub fn filter_positive_i64(opt: i64?) -> i64? =
     match opt {
-        Option::Some(v) => if v > 0 then Option::Some(v) else Option::None,
+        Option::Some(v) => if v > 0 { Option::Some(v) } else { Option::None },
         Option::None => Option::None,
     };
 
--- zip: 두 Option이 모두 Some이면 합산 (튜플 대신)
-pub fn zip_sum_i64(a: Option<i64>, b: Option<i64>) -> Option<i64> =
+// zip: 두 Option이 모두 Some이면 합산 (튜플 대신)
+pub fn zip_sum_i64(a: i64?, b: i64?) -> i64? =
     match a {
         Option::Some(va) => match b {
             Option::Some(vb) => Option::Some(va + vb),

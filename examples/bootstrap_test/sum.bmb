@@ -1,22 +1,20 @@
--- Sum of range using tail recursion
--- Bootstrap compiler example: accumulator pattern
+// Sum of range using tail recursion
+// Bootstrap compiler example: accumulator pattern
 
--- Sum from 1 to n using tail recursion
+// Sum from 1 to n using tail recursion
 fn sum_iter(n: i64, acc: i64) -> i64 =
-    if n <= 0 then acc
-    else sum_iter(n - 1, acc + n);
+    if n <= 0 { acc } else { sum_iter(n - 1, acc + n) };
 
--- Wrapper function
+// Wrapper function
 fn sum(n: i64) -> i64 = sum_iter(n, 0);
 
--- Sum of squares: 1^2 + 2^2 + ... + n^2
+// Sum of squares: 1^2 + 2^2 + ... + n^2
 fn sum_squares_iter(n: i64, acc: i64) -> i64 =
-    if n <= 0 then acc
-    else sum_squares_iter(n - 1, acc + n * n);
+    if n <= 0 { acc } else { sum_squares_iter(n - 1, acc + n * n) };
 
 fn sum_squares(n: i64) -> i64 = sum_squares_iter(n, 0);
 
--- Main function: sum(10) = 55, sum_squares(5) = 55
+// Main function: sum(10) = 55, sum_squares(5) = 55
 fn main() -> i64 =
     let s10 = sum(10);
     let u0 = println(s10);

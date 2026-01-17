@@ -1,4 +1,4 @@
--- Debug Vec test
+// Debug Vec test
 fn main() -> i64 = {
     let v = vec_new();
     let ptr = v;

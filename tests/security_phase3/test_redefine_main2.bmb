@@ -1,0 +1,9 @@
+// Phase 3 Security Test: Multiple main functions with output
+fn main() -> i64 = {
+    println(111);
+    1
+};
+fn main() -> i64 = {
+    println(222);
+    2
+};

@@ -1,4 +1,4 @@
--- This should fail: identity doesn't guarantee positive result
+// This should fail: identity doesn't guarantee positive result
 fn bad_positive(x: i64) -> i64
   post ret > 0
 = x;

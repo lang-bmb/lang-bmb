@@ -74,6 +74,39 @@ fn test_parse_arithmetic() {
     parse_ok("fn rem(a: i64, b: i64) -> i64 = a % b;");
 }
 
+// v0.37: Wrapping arithmetic operators
+#[test]
+fn test_parse_wrapping_arithmetic() {
+    use crate::ast::BinOp;
+
+    let prog = parse_ok("fn add_wrap(a: i64, b: i64) -> i64 = a +% b;");
+    if let Item::FnDef(f) = &prog.items[0] {
+        if let Expr::Binary { op, .. } = &f.body.node {
+            assert_eq!(*op, BinOp::AddWrap);
+        } else {
+            panic!("Expected Binary expression");
+        }
+    }
+
+    let prog = parse_ok("fn sub_wrap(a: i64, b: i64) -> i64 = a -% b;");
+    if let Item::FnDef(f) = &prog.items[0] {
+        if let Expr::Binary { op, .. } = &f.body.node {
+            assert_eq!(*op, BinOp::SubWrap);
+        } else {
+            panic!("Expected Binary expression");
+        }
+    }
+
+    let prog = parse_ok("fn mul_wrap(a: i64, b: i64) -> i64 = a *% b;");
+    if let Item::FnDef(f) = &prog.items[0] {
+        if let Expr::Binary { op, .. } = &f.body.node {
+            assert_eq!(*op, BinOp::MulWrap);
+        } else {
+            panic!("Expected Binary expression");
+        }
+    }
+}
+
 #[test]
 fn test_parse_comparison() {
     parse_ok("fn eq(a: i64, b: i64) -> bool = a == b;");
@@ -95,9 +128,10 @@ fn test_parse_logical() {
 // Control Flow
 // ============================================
 
+// v0.32: if-then-else now uses braced syntax: if cond { then } else { else }
 #[test]
 fn test_parse_if_then_else() {
-    let prog = parse_ok("fn max(a: i64, b: i64) -> i64 = if a > b then a else b;");
+    let prog = parse_ok("fn max(a: i64, b: i64) -> i64 = if a > b { a } else { b };");
     if let Item::FnDef(f) = &prog.items[0] {
         assert!(matches!(f.body.node, Expr::If { .. }));
     }
@@ -114,6 +148,42 @@ fn test_parse_let_binding() {
 fn test_parse_while_loop() {
     // While body with assignment requires nested block
     parse_ok("fn test() -> i64 = { let mut x: i64 = 0; while x < 10 { { x = x + 1; x } }; x };");
+}
+
+// v0.37: Loop invariant syntax
+#[test]
+fn test_parse_while_loop_invariant() {
+    // Simple test: just check it parses without error
+    let source = r#"
+        fn test() -> () = {
+            let mut x: i64 = 0;
+            while x < 10 invariant x >= 0 { { x = x + 1; () } };
+            ()
+        };
+    "#;
+    let prog = parse_ok(source);
+
+    // Navigate to the while loop through the nested let structure
+    // let x = 0; body is: while ...
+    if let Item::FnDef(f) = &prog.items[0] {
+        if let Expr::Block(stmts) = &f.body.node {
+            // stmts[0] is the let expression
+            if let Expr::Let { body, .. } = &stmts[0].node {
+                // body is directly the while expression
+                if let Expr::While { invariant, .. } = &body.node {
+                    assert!(invariant.is_some(), "Expected invariant to be Some");
+                } else {
+                    panic!("Expected While expression, got {:?}", body.node);
+                }
+            } else {
+                panic!("Expected Let expression");
+            }
+        } else {
+            panic!("Expected Block expression");
+        }
+    } else {
+        panic!("Expected FnDef");
+    }
 }
 
 #[test]
@@ -246,9 +316,10 @@ fn test_parse_pre_condition() {
     }
 }
 
+// v0.32: if-then-else now uses braced syntax
 #[test]
 fn test_parse_post_condition() {
-    let source = "fn abs(x: i64) -> i64 post ret >= 0 = if x >= 0 then x else 0 - x;";
+    let source = "fn abs(x: i64) -> i64 post ret >= 0 = if x >= 0 { x } else { 0 - x };";
     let prog = parse_ok(source);
     if let Item::FnDef(f) = &prog.items[0] {
         assert!(f.post.is_some());
@@ -299,29 +370,100 @@ fn test_parse_derive_attribute() {
 }
 
 // ============================================
-// Error Handling (v0.13.2)
+// Control Flow (v0.36)
 // ============================================
 
 #[test]
-fn test_parse_question_operator() {
+fn test_parse_loop() {
     let source = r#"
-        enum Result<T, E> { Ok(T), Err(E) }
-        fn propagate(r: Result<i64, i64>) -> i64 = r?;
+        fn count() -> i64 = loop { break };
     "#;
     let prog = parse_ok(source);
-    if let Item::FnDef(f) = &prog.items[1] {
-        assert!(matches!(f.body.node, Expr::Question { .. }));
+    if let Item::FnDef(f) = &prog.items[0] {
+        assert!(matches!(f.body.node, Expr::Loop { .. }));
     }
 }
 
 #[test]
-fn test_parse_try_block() {
+fn test_parse_break_continue() {
     let source = r#"
-        fn test() -> i64 = try { 42 };
+        fn test() -> () = { break; continue };
+    "#;
+    let prog = parse_ok(source);
+    assert_eq!(prog.items.len(), 1);
+}
+
+#[test]
+fn test_parse_return() {
+    let source = r#"
+        fn early() -> () = return;
     "#;
     let prog = parse_ok(source);
     if let Item::FnDef(f) = &prog.items[0] {
-        assert!(matches!(f.body.node, Expr::Try { .. }));
+        assert!(matches!(f.body.node, Expr::Return { .. }));
+    }
+}
+
+// ============================================
+// Nullable Type Syntax (v0.37)
+// ============================================
+
+#[test]
+fn test_parse_nullable_type() {
+    use crate::ast::Type;
+    // v0.37: T? syntax for nullable types
+    let source = r#"
+        struct Value { x: i64 }
+        fn find(x: i64) -> Value? = None;
+    "#;
+    let prog = parse_ok(source);
+    if let Item::FnDef(f) = &prog.items[1] {
+        // T? is Type::Nullable
+        if let Type::Nullable(inner) = &f.ret_ty.node {
+            assert!(matches!(inner.as_ref(), Type::Named(n) if n == "Value"));
+        } else {
+            panic!("Expected Nullable type, got {:?}", f.ret_ty.node);
+        }
+    }
+}
+
+#[test]
+fn test_parse_nullable_primitive() {
+    use crate::ast::Type;
+    // v0.37: Primitive nullable types
+    let source = r#"
+        fn maybe_int() -> i64? = None;
+    "#;
+    let prog = parse_ok(source);
+    if let Item::FnDef(f) = &prog.items[0] {
+        if let Type::Nullable(inner) = &f.ret_ty.node {
+            assert!(matches!(inner.as_ref(), Type::I64));
+        } else {
+            panic!("Expected Nullable(I64), got {:?}", f.ret_ty.node);
+        }
+    }
+}
+
+#[test]
+fn test_parse_nullable_generic() {
+    use crate::ast::Type;
+    // v0.37: Generic nullable types like Vec<i64>?
+    let source = r#"
+        fn maybe_list() -> Vec<i64>? = None;
+    "#;
+    let prog = parse_ok(source);
+    if let Item::FnDef(f) = &prog.items[0] {
+        if let Type::Nullable(inner) = &f.ret_ty.node {
+            if let Type::Generic { name, type_args } = inner.as_ref() {
+                assert_eq!(name, "Vec");
+                assert_eq!(type_args.len(), 1);
+                assert!(matches!(type_args[0].as_ref(), Type::I64));
+            } else {
+                panic!("Expected Generic inner type, got {:?}", inner);
+            }
+        } else {
+            panic!("Expected Nullable, got {:?}", f.ret_ty.node);
+        }
     }
 }
 
@@ -397,6 +539,7 @@ fn test_parse_closure_single_param() {
     }
 }
 
+// Closures use fn |params| { body } syntax
 #[test]
 fn test_parse_closure_empty_params() {
     let source = "fn test() -> i64 = fn || { 42 };";
@@ -426,6 +569,159 @@ fn test_parse_closure_multi_params() {
         }
     } else {
         panic!("Expected FnDef");
+    }
+}
+
+// ============================================
+// Bitwise Operators (v0.36)
+// ============================================
+
+#[test]
+fn test_parse_bitwise_and() {
+    let source = r#"
+        fn test(a: i64, b: i64) -> i64 = a band b;
+    "#;
+    let prog = parse_ok(source);
+    if let Item::FnDef(f) = &prog.items[0] {
+        if let Expr::Binary { op, .. } = &f.body.node {
+            assert!(matches!(op, crate::ast::BinOp::Band));
+        } else {
+            panic!("Expected Binary expression");
+        }
+    }
+}
+
+#[test]
+fn test_parse_bitwise_or() {
+    let source = r#"
+        fn test(a: i64, b: i64) -> i64 = a bor b;
+    "#;
+    let prog = parse_ok(source);
+    if let Item::FnDef(f) = &prog.items[0] {
+        if let Expr::Binary { op, .. } = &f.body.node {
+            assert!(matches!(op, crate::ast::BinOp::Bor));
+        } else {
+            panic!("Expected Binary expression");
+        }
+    }
+}
+
+#[test]
+fn test_parse_bitwise_xor() {
+    let source = r#"
+        fn test(a: i64, b: i64) -> i64 = a bxor b;
+    "#;
+    let prog = parse_ok(source);
+    if let Item::FnDef(f) = &prog.items[0] {
+        if let Expr::Binary { op, .. } = &f.body.node {
+            assert!(matches!(op, crate::ast::BinOp::Bxor));
+        } else {
+            panic!("Expected Binary expression");
+        }
+    }
+}
+
+#[test]
+fn test_parse_bitwise_not() {
+    let source = r#"
+        fn test(a: i64) -> i64 = bnot a;
+    "#;
+    let prog = parse_ok(source);
+    if let Item::FnDef(f) = &prog.items[0] {
+        if let Expr::Unary { op, .. } = &f.body.node {
+            assert!(matches!(op, crate::ast::UnOp::Bnot));
+        } else {
+            panic!("Expected Unary expression");
+        }
+    }
+}
+
+// ============================================
+// Logical Implication (v0.36)
+// ============================================
+
+#[test]
+fn test_parse_implies() {
+    let source = r#"
+        fn test(a: bool, b: bool) -> bool = a implies b;
+    "#;
+    let prog = parse_ok(source);
+    if let Item::FnDef(f) = &prog.items[0] {
+        if let Expr::Binary { op, .. } = &f.body.node {
+            assert!(matches!(op, crate::ast::BinOp::Implies));
+        } else {
+            panic!("Expected Binary expression");
+        }
+    }
+}
+
+#[test]
+fn test_parse_implies_precedence() {
+    // implies has lower precedence than or
+    // "a or b implies c" should parse as "(a or b) implies c"
+    let source = r#"
+        fn test(a: bool, b: bool, c: bool) -> bool = a or b implies c;
+    "#;
+    let prog = parse_ok(source);
+    if let Item::FnDef(f) = &prog.items[0] {
+        if let Expr::Binary { op, left, .. } = &f.body.node {
+            assert!(matches!(op, crate::ast::BinOp::Implies));
+            // Left side should be "a or b"
+            if let Expr::Binary { op: inner_op, .. } = &left.node {
+                assert!(matches!(inner_op, crate::ast::BinOp::Or));
+            } else {
+                panic!("Expected Binary (or) expression on left");
+            }
+        } else {
+            panic!("Expected Binary expression");
+        }
+    }
+}
+
+// ============================================
+// Quantifiers (v0.37)
+// ============================================
+
+#[test]
+fn test_parse_quantifiers() {
+    // forall x: i64, x >= 0
+    let source = r#"
+        fn test() -> bool = forall x: i64, x >= 0;
+    "#;
+    let prog = parse_ok(source);
+    if let Item::FnDef(f) = &prog.items[0] {
+        if let Expr::Forall { var, ty, body } = &f.body.node {
+            assert_eq!(var.node, "x");
+            assert!(matches!(ty.node, crate::ast::Type::I64));
+            // body should be x >= 0
+            if let Expr::Binary { op, .. } = &body.node {
+                assert!(matches!(op, crate::ast::BinOp::Ge));
+            } else {
+                panic!("Expected Binary expression in forall body");
+            }
+        } else {
+            panic!("Expected Forall expression");
+        }
+    }
+
+    // exists y: bool, y
+    let source = r#"
+        fn test() -> bool = exists y: bool, y;
+    "#;
+    let prog = parse_ok(source);
+    if let Item::FnDef(f) = &prog.items[0] {
+        if let Expr::Exists { var, ty, body } = &f.body.node {
+            assert_eq!(var.node, "y");
+            assert!(matches!(ty.node, crate::ast::Type::Bool));
+            // body should be just "y"
+            if let Expr::Var(name) = &body.node {
+                assert_eq!(name, "y");
+            } else {
+                panic!("Expected Var expression in exists body");
+            }
+        } else {
+            panic!("Expected Exists expression");
+        }
     }
 }
 

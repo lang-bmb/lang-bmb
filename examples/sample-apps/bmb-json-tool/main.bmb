@@ -1,0 +1,678 @@
+// bmb-json-tool: JSON processing CLI demonstrating BMB language features
+// Usage: bmb run main.bmb -- <command> <json> [path]
+// Commands: type, get, length, keys, validate, pretty
+//
+// Examples:
+//   bmb run main.bmb -- type '{"name":"alice"}'
+//   bmb run main.bmb -- get '{"a":{"b":42}}' ".a.b"
+//   bmb run main.bmb -- length '[1,2,3]'
+
+// ============================================================================
+// JSON Value Type Constants
+// ============================================================================
+
+fn json_null() -> i64 = 0;
+fn json_bool() -> i64 = 1;
+fn json_number() -> i64 = 2;
+fn json_string() -> i64 = 3;
+fn json_array() -> i64 = 4;
+fn json_object() -> i64 = 5;
+fn json_error() -> i64 = 0 - 1;
+
+// ============================================================================
+// Character Constants
+// ============================================================================
+
+fn char_quote() -> i64 = 34;        // "
+fn char_backslash() -> i64 = 92;    // \
+fn char_colon() -> i64 = 58;        // :
+fn char_comma() -> i64 = 44;        // ,
+fn char_lbrace() -> i64 = 123;      // {
+fn char_rbrace() -> i64 = 125;      // }
+fn char_lbracket() -> i64 = 91;     // [
+fn char_rbracket() -> i64 = 93;     // ]
+fn char_dot() -> i64 = 46;          // .
+fn char_minus() -> i64 = 45;        // -
+fn char_0() -> i64 = 48;            // 0
+fn char_9() -> i64 = 57;            // 9
+fn char_t() -> i64 = 116;           // t
+fn char_f() -> i64 = 102;           // f
+fn char_n() -> i64 = 110;           // n
+
+// ============================================================================
+// Utility Functions
+// ============================================================================
+
+fn is_digit(c: i64) -> bool = c >= char_0() and c <= char_9();
+
+fn is_json_ws(c: i64) -> bool = c == 32 or c == 9 or c == 10 or c == 13;
+
+fn skip_ws(s: String, pos: i64) -> i64 =
+    if pos >= s.len() { pos }
+    else if is_json_ws(s.byte_at(pos)) { skip_ws(s, pos + 1) }
+    else { pos };
+
+fn digit_char(d: i64) -> String =
+    if d == 0 { "0" } else if d == 1 { "1" } else if d == 2 { "2" }
+    else if d == 3 { "3" } else if d == 4 { "4" } else if d == 5 { "5" }
+    else if d == 6 { "6" } else if d == 7 { "7" } else if d == 8 { "8" }
+    else { "9" };
+
+fn int_to_string(n: i64) -> String =
+    if n < 0 { "-" + int_to_string(0 - n) }
+    else if n < 10 { digit_char(n) }
+    else { int_to_string(n / 10) + digit_char(n - (n / 10) * 10) };
+
+// ============================================================================
+// Type Detection
+// ============================================================================
+
+fn detect_type(s: String, pos: i64) -> i64
+  post ret >= json_error() and ret <= json_object()
+= {
+    let p = skip_ws(s, pos);
+    if p >= s.len() { json_error() }
+    else {
+        let c = s.byte_at(p);
+        if c == char_lbrace() { json_object() }
+        else if c == char_lbracket() { json_array() }
+        else if c == char_quote() { json_string() }
+        else if c == char_t() or c == char_f() { json_bool() }
+        else if c == char_n() { json_null() }
+        else if is_digit(c) or c == char_minus() { json_number() }
+        else { json_error() }
+    }
+};
+
+fn type_name(t: i64) -> String =
+    if t == json_null() { "null" }
+    else if t == json_bool() { "boolean" }
+    else if t == json_number() { "number" }
+    else if t == json_string() { "string" }
+    else if t == json_array() { "array" }
+    else if t == json_object() { "object" }
+    else { "error" };
+
+// ============================================================================
+// Number Parsing
+// ============================================================================
+
+fn parse_int_iter(s: String, pos: i64, acc: i64) -> i64 =
+    if pos >= s.len() { acc }
+    else {
+        let c = s.byte_at(pos);
+        if is_digit(c) { parse_int_iter(s, pos + 1, acc * 10 + (c - char_0())) }
+        else { acc }
+    };
+
+fn parse_number_value(s: String, pos: i64) -> i64 = {
+    let p = skip_ws(s, pos);
+    if p >= s.len() { 0 }
+    else {
+        let c = s.byte_at(p);
+        if c == char_minus() { 0 - parse_int_iter(s, p + 1, 0) }
+        else { parse_int_iter(s, p, 0) }
+    }
+};
+
+fn find_number_end(s: String, pos: i64) -> i64 =
+    if pos >= s.len() { pos }
+    else {
+        let c = s.byte_at(pos);
+        if is_digit(c) or c == char_minus() or c == 43 or c == 46 or c == 101 or c == 69 {
+            find_number_end(s, pos + 1)
+        }
+        else { pos }
+    };
+
+fn skip_number(s: String, pos: i64) -> i64 = {
+    let p = skip_ws(s, pos);
+    find_number_end(s, p)
+};
+
+// ============================================================================
+// Boolean/Null Parsing
+// ============================================================================
+
+fn parse_bool_value(s: String, pos: i64) -> bool = {
+    let p = skip_ws(s, pos);
+    if p >= s.len() { false }
+    else { s.byte_at(p) == char_t() }
+};
+
+fn skip_bool(s: String, pos: i64) -> i64 = {
+    let p = skip_ws(s, pos);
+    if p >= s.len() { p }
+    else if s.byte_at(p) == char_t() { p + 4 }
+    else if s.byte_at(p) == char_f() { p + 5 }
+    else { p }
+};
+
+fn skip_null(s: String, pos: i64) -> i64 = {
+    let p = skip_ws(s, pos);
+    if p >= s.len() { p }
+    else if s.byte_at(p) == char_n() { p + 4 }
+    else { p }
+};
+
+// ============================================================================
+// String Parsing
+// ============================================================================
+
+fn find_string_end_iter(s: String, pos: i64) -> i64 =
+    if pos >= s.len() { pos }
+    else {
+        let c = s.byte_at(pos);
+        if c == char_quote() { pos }
+        else if c == char_backslash() {
+            if pos + 1 >= s.len() { pos + 1 }
+            else { find_string_end_iter(s, pos + 2) }
+        }
+        else { find_string_end_iter(s, pos + 1) }
+    };
+
+fn find_string_end(s: String, pos: i64) -> i64 = {
+    let p = skip_ws(s, pos);
+    if p >= s.len() { p }
+    else if s.byte_at(p) != char_quote() { p }
+    else { find_string_end_iter(s, p + 1) }
+};
+
+fn skip_string(s: String, pos: i64) -> i64 = {
+    let end = find_string_end(s, pos);
+    if end < s.len() { end + 1 } else { end }
+};
+
+fn parse_string_value(s: String, pos: i64) -> String = {
+    let p = skip_ws(s, pos);
+    if p >= s.len() { "" }
+    else if s.byte_at(p) != char_quote() { "" }
+    else {
+        let end = find_string_end(s, p);
+        s.slice(p + 1, end)
+    }
+};
+
+// ============================================================================
+// Nested Structure Skipping
+// ============================================================================
+
+fn skip_nested_iter(s: String, pos: i64, depth: i64) -> i64 =
+    if depth <= 0 { pos }
+    else if pos >= s.len() { 0 - 1 }
+    else {
+        let c = s.byte_at(pos);
+        if c == char_lbracket() or c == char_lbrace() {
+            skip_nested_iter(s, pos + 1, depth + 1)
+        }
+        else if c == char_rbracket() or c == char_rbrace() {
+            skip_nested_iter(s, pos + 1, depth - 1)
+        }
+        else if c == char_quote() {
+            let end = find_string_end_iter(s, pos + 1);
+            skip_nested_iter(s, end + 1, depth)
+        }
+        else { skip_nested_iter(s, pos + 1, depth) }
+    };
+
+fn skip_array(s: String, pos: i64) -> i64 = {
+    let p = skip_ws(s, pos);
+    if p >= s.len() { p }
+    else if s.byte_at(p) != char_lbracket() { p }
+    else { skip_nested_iter(s, p + 1, 1) }
+};
+
+fn skip_object(s: String, pos: i64) -> i64 = {
+    let p = skip_ws(s, pos);
+    if p >= s.len() { p }
+    else if s.byte_at(p) != char_lbrace() { p }
+    else { skip_nested_iter(s, p + 1, 1) }
+};
+
+fn skip_value(s: String, pos: i64) -> i64 = {
+    let t = detect_type(s, pos);
+    if t == json_null() { skip_null(s, pos) }
+    else if t == json_bool() { skip_bool(s, pos) }
+    else if t == json_number() { skip_number(s, pos) }
+    else if t == json_string() { skip_string(s, pos) }
+    else if t == json_array() { skip_array(s, pos) }
+    else if t == json_object() { skip_object(s, pos) }
+    else { pos }
+};
+
+// ============================================================================
+// Array Operations
+// ============================================================================
+
+fn count_array_iter(s: String, pos: i64, count: i64, first: bool) -> i64 = {
+    let p = skip_ws(s, pos);
+    if p >= s.len() { count }
+    else if s.byte_at(p) == char_rbracket() { count }
+    else {
+        let p2 = if first { p }
+                 else if s.byte_at(p) == char_comma() { skip_ws(s, p + 1) }
+                 else { p };
+        let p3 = skip_value(s, p2);
+        count_array_iter(s, p3, count + 1, false)
+    }
+};
+
+fn array_length(s: String, pos: i64) -> i64
+  post ret >= 0
+= {
+    let p = skip_ws(s, pos);
+    if p >= s.len() { 0 }
+    else if s.byte_at(p) != char_lbracket() { 0 }
+    else {
+        let p2 = skip_ws(s, p + 1);
+        if p2 < s.len() and s.byte_at(p2) == char_rbracket() { 0 }
+        else { count_array_iter(s, p + 1, 0, true) }
+    }
+};
+
+fn array_element_pos_iter(s: String, pos: i64, idx: i64, current: i64, first: bool) -> i64 = {
+    let p = skip_ws(s, pos);
+    if p >= s.len() { 0 - 1 }
+    else if s.byte_at(p) == char_rbracket() { 0 - 1 }
+    else {
+        let p2 = if first { p }
+                 else if s.byte_at(p) == char_comma() { skip_ws(s, p + 1) }
+                 else { p };
+        if current == idx { skip_ws(s, p2) }
+        else {
+            let p3 = skip_value(s, p2);
+            array_element_pos_iter(s, p3, idx, current + 1, false)
+        }
+    }
+};
+
+fn array_element_pos(s: String, pos: i64, idx: i64) -> i64 = {
+    let p = skip_ws(s, pos);
+    if p >= s.len() { 0 - 1 }
+    else if s.byte_at(p) != char_lbracket() { 0 - 1 }
+    else { array_element_pos_iter(s, p + 1, idx, 0, true) }
+};
+
+// ============================================================================
+// Object Operations
+// ============================================================================
+
+fn count_object_iter(s: String, pos: i64, count: i64, first: bool) -> i64 = {
+    let p = skip_ws(s, pos);
+    if p >= s.len() { count }
+    else if s.byte_at(p) == char_rbrace() { count }
+    else {
+        let p2 = if first { p }
+                 else if s.byte_at(p) == char_comma() { skip_ws(s, p + 1) }
+                 else { p };
+        let p3 = skip_string(s, p2);
+        let p4 = skip_ws(s, p3);
+        let p5 = if p4 < s.len() and s.byte_at(p4) == char_colon() { skip_ws(s, p4 + 1) }
+                 else { p4 };
+        let p6 = skip_value(s, p5);
+        count_object_iter(s, p6, count + 1, false)
+    }
+};
+
+fn object_length(s: String, pos: i64) -> i64
+  post ret >= 0
+= {
+    let p = skip_ws(s, pos);
+    if p >= s.len() { 0 }
+    else if s.byte_at(p) != char_lbrace() { 0 }
+    else {
+        let p2 = skip_ws(s, p + 1);
+        if p2 < s.len() and s.byte_at(p2) == char_rbrace() { 0 }
+        else { count_object_iter(s, p + 1, 0, true) }
+    }
+};
+
+fn object_field_pos_iter(s: String, pos: i64, key: String, first: bool) -> i64 = {
+    let p = skip_ws(s, pos);
+    if p >= s.len() { 0 - 1 }
+    else if s.byte_at(p) == char_rbrace() { 0 - 1 }
+    else {
+        let p2 = if first { p }
+                 else if s.byte_at(p) == char_comma() { skip_ws(s, p + 1) }
+                 else { p };
+        let field_key = parse_string_value(s, p2);
+        let p3 = skip_string(s, p2);
+        let p4 = skip_ws(s, p3);
+        let p5 = if p4 < s.len() and s.byte_at(p4) == char_colon() { skip_ws(s, p4 + 1) }
+                 else { p4 };
+        if field_key == key { p5 }
+        else {
+            let p6 = skip_value(s, p5);
+            object_field_pos_iter(s, p6, key, false)
+        }
+    }
+};
+
+fn object_field_pos(s: String, pos: i64, key: String) -> i64 = {
+    let p = skip_ws(s, pos);
+    if p >= s.len() { 0 - 1 }
+    else if s.byte_at(p) != char_lbrace() { 0 - 1 }
+    else { object_field_pos_iter(s, p + 1, key, true) }
+};
+
+// Print object keys
+fn print_keys_iter(s: String, pos: i64, first: bool) -> i64 = {
+    let p = skip_ws(s, pos);
+    if p >= s.len() { 0 }
+    else if s.byte_at(p) == char_rbrace() { 0 }
+    else {
+        let p2 = if first { p }
+                 else if s.byte_at(p) == char_comma() { skip_ws(s, p + 1) }
+                 else { p };
+        let key = parse_string_value(s, p2);
+        let out = print_str_nl(key);
+        let p3 = skip_string(s, p2);
+        let p4 = skip_ws(s, p3);
+        let p5 = if p4 < s.len() and s.byte_at(p4) == char_colon() { skip_ws(s, p4 + 1) }
+                 else { p4 };
+        let p6 = skip_value(s, p5);
+        print_keys_iter(s, p6, false)
+    }
+};
+
+fn print_keys(s: String, pos: i64) -> i64 = {
+    let p = skip_ws(s, pos);
+    if p >= s.len() { 0 - 1 }
+    else if s.byte_at(p) != char_lbrace() { 0 - 1 }
+    else { let u = print_keys_iter(s, p + 1, true); 0 }
+};
+
+// ============================================================================
+// Path Navigation
+// ============================================================================
+
+// Parse path segment (either .key or [index])
+fn path_is_index(path: String, pos: i64) -> bool =
+    pos < path.len() and path.byte_at(pos) == char_lbracket();
+
+fn path_get_key_end(path: String, pos: i64) -> i64 =
+    if pos >= path.len() { pos }
+    else {
+        let c = path.byte_at(pos);
+        if c == char_dot() or c == char_lbracket() { pos }
+        else { path_get_key_end(path, pos + 1) }
+    };
+
+fn path_get_index_end(path: String, pos: i64) -> i64 =
+    if pos >= path.len() { pos }
+    else if path.byte_at(pos) == char_rbracket() { pos }
+    else { path_get_index_end(path, pos + 1) };
+
+fn path_parse_index(path: String, pos: i64) -> i64 = {
+    let end = path_get_index_end(path, pos);
+    if end == pos { 0 }
+    else {
+        parse_int_iter(path, pos, 0)
+    }
+};
+
+// Navigate JSON by path
+fn navigate(json: String, json_pos: i64, path: String, path_pos: i64) -> i64 =
+    if path_pos >= path.len() { json_pos }
+    else if json_pos < 0 { 0 - 1 }
+    else {
+        let c = path.byte_at(path_pos);
+        if c == char_dot() {
+            // Object key access
+            let key_start = path_pos + 1;
+            let key_end = path_get_key_end(path, key_start);
+            let key = path.slice(key_start, key_end);
+            let new_pos = object_field_pos(json, json_pos, key);
+            navigate(json, new_pos, path, key_end)
+        }
+        else if c == char_lbracket() {
+            // Array index access
+            let idx = path_parse_index(path, path_pos + 1);
+            let idx_end = path_get_index_end(path, path_pos + 1);
+            let new_pos = array_element_pos(json, json_pos, idx);
+            if idx_end < path.len() { navigate(json, new_pos, path, idx_end + 1) }
+            else { new_pos }
+        }
+        else { 0 - 1 }
+    };
+
+// ============================================================================
+// Validation
+// ============================================================================
+
+fn is_valid_json(s: String) -> bool = {
+    let t = detect_type(s, 0);
+    if t == json_error() { false }
+    else {
+        let end = skip_value(s, 0);
+        if end < 0 { false }
+        else {
+            let final_pos = skip_ws(s, end);
+            final_pos >= s.len()
+        }
+    }
+};
+
+// ============================================================================
+// CLI Argument Parsing
+// ============================================================================
+
+fn is_flag_arg(s: String) -> bool =
+    s.len() > 0 and s.byte_at(0) == char_minus();
+
+fn get_positional_rec(n: i64, idx: i64, current: i64) -> String =
+    if idx >= arg_count() { "" }
+    else {
+        let arg = get_arg(idx);
+        if is_flag_arg(arg) { get_positional_rec(n, idx + 1, current) }
+        else if current == n { arg }
+        else { get_positional_rec(n, idx + 1, current + 1) }
+    };
+
+fn get_positional(n: i64) -> String
+  pre n >= 0
+= get_positional_rec(n, 1, 0);
+
+fn count_positional_rec(idx: i64, count: i64) -> i64 =
+    if idx >= arg_count() { count }
+    else {
+        let arg = get_arg(idx);
+        if is_flag_arg(arg) { count_positional_rec(idx + 1, count) }
+        else { count_positional_rec(idx + 1, count + 1) }
+    };
+
+fn count_positional() -> i64
+  post ret >= 0
+= count_positional_rec(1, 0);
+
+fn str_eq(a: String, b: String) -> bool = a == b;
+
+// ============================================================================
+// Commands
+// ============================================================================
+
+fn cmd_type(json: String) -> i64 = {
+    let t = detect_type(json, 0);
+    let name = type_name(t);
+    let out = print_str_nl(name);
+    if t == json_error() { 0 - 1 } else { 0 }
+};
+
+fn print_str_nl(s: String) -> i64 =
+    let x = print_str(s);
+    let y = print_str("
+");
+    0;
+
+fn cmd_length(json: String) -> i64 = {
+    let t = detect_type(json, 0);
+    let len = if t == json_array() { array_length(json, 0) }
+              else if t == json_object() { object_length(json, 0) }
+              else if t == json_string() { parse_string_value(json, 0).len() }
+              else { 0 - 1 };
+    if len < 0 {
+        let err = print_str_nl("Error: length requires array, object, or string");
+        0 - 1
+    }
+    else {
+        let out = print_str_nl(int_to_string(len));
+        len
+    }
+};
+
+fn cmd_keys(json: String) -> i64 = {
+    let t = detect_type(json, 0);
+    if t != json_object() {
+        let err = print_str_nl("Error: keys requires an object");
+        0 - 1
+    }
+    else { print_keys(json, 0) }
+};
+
+fn cmd_validate(json: String) -> i64 = {
+    if is_valid_json(json) {
+        let out = print_str_nl("valid");
+        0
+    }
+    else {
+        let out = print_str_nl("invalid");
+        1
+    }
+};
+
+fn cmd_get(json: String, path: String) -> i64 = {
+    let pos = navigate(json, 0, path, 0);
+    if pos < 0 {
+        let err = print_str_nl("Error: path not found");
+        0 - 1
+    }
+    else {
+        let t = detect_type(json, pos);
+        if t == json_number() {
+            let v = parse_number_value(json, pos);
+            let out = print_str_nl(int_to_string(v));
+            0
+        }
+        else if t == json_string() {
+            let v = parse_string_value(json, pos);
+            let out = print_str_nl(v);
+            0
+        }
+        else if t == json_bool() {
+            let v = parse_bool_value(json, pos);
+            let out = if v { print_str_nl("true") } else { print_str_nl("false") };
+            0
+        }
+        else if t == json_null() {
+            let out = print_str_nl("null");
+            0
+        }
+        else {
+            // Array or object - print raw slice
+            let end = skip_value(json, pos);
+            let raw = json.slice(pos, end);
+            let out = print_str_nl(raw);
+            0
+        }
+    }
+};
+
+// ============================================================================
+// Help and Usage
+// ============================================================================
+
+fn show_usage() -> i64 = {
+    let h1 = print_str_nl("bmb-json-tool: JSON processing CLI");
+    let h2 = print_str_nl("Usage: bmb run main.bmb -- <command> <json> [path]");
+    let h3 = print_str_nl("");
+    let h4 = print_str_nl("Commands:");
+    let h5 = print_str_nl("  type <json>         Show value type");
+    let h6 = print_str_nl("  length <json>       Show array/object/string length");
+    let h7 = print_str_nl("  keys <json>         List object keys");
+    let h8 = print_str_nl("  validate <json>     Check if JSON is valid");
+    let h9 = print_str_nl("  get <json> <path>   Extract value at path");
+    let h10 = print_str_nl("");
+    let h11 = print_str_nl("Path syntax:");
+    let h12 = print_str_nl("  .key      Object field access");
+    let h13 = print_str_nl("  [index]   Array element access");
+    let h14 = print_str_nl("");
+    let h15 = print_str_nl("Examples:");
+    let h16 = print_str_nl("  bmb run main.bmb -- type json_object");
+    let h17 = print_str_nl("  bmb run main.bmb -- get nested_object .a.b");
+    let h18 = print_str_nl("  bmb run main.bmb -- length array");
+    0
+};
+
+// ============================================================================
+// Main Entry Point
+// ============================================================================
+
+fn main() -> i64 = {
+    let pos_count = count_positional();
+
+    if pos_count < 2 {
+        show_usage()
+    }
+    else {
+        let cmd = get_positional(0);
+        let json = get_positional(1);
+
+        if str_eq(cmd, "type") { cmd_type(json) }
+        else if str_eq(cmd, "length") { cmd_length(json) }
+        else if str_eq(cmd, "keys") { cmd_keys(json) }
+        else if str_eq(cmd, "validate") { cmd_validate(json) }
+        else if str_eq(cmd, "get") {
+            if pos_count < 3 {
+                let err = print_str_nl("Error: get requires a path argument");
+                0 - 1
+            }
+            else {
+                let path = get_positional(2);
+                cmd_get(json, path)
+            }
+        }
+        else {
+            let err = print_str_nl("Unknown command: " + cmd);
+            show_usage()
+        }
+    }
+};
+
+// ============================================================================
+// Tests
+// ============================================================================
+
+fn test_type_detection() -> i64 = {
+    let t1 = if detect_type("null", 0) == json_null() { 1 } else { 0 };
+    let t2 = if detect_type("true", 0) == json_bool() { 1 } else { 0 };
+    let t3 = if detect_type("123", 0) == json_number() { 1 } else { 0 };
+    let t4 = if detect_type("[]", 0) == json_array() { 1 } else { 0 };
+    let t5 = if detect_type("{}", 0) == json_object() { 1 } else { 0 };
+
+    if t1 + t2 + t3 + t4 + t5 == 5 { let ok = println(777); 1 } else { 0 }
+};
+
+fn test_length() -> i64 = {
+    let t1 = if array_length("[1,2,3]", 0) == 3 { 1 } else { 0 };
+    let t2 = if array_length("[]", 0) == 0 { 1 } else { 0 };
+    let t3 = if object_length("{}", 0) == 0 { 1 } else { 0 };
+
+    if t1 + t2 + t3 == 3 { let ok = println(888); 1 } else { 0 }
+};
+
+fn test_navigation() -> i64 = {
+    // Simple navigation tests
+    let t1 = if object_field_pos("{}", 0, "a") < 0 { 1 } else { 0 };
+    let t2 = if array_element_pos("[1,2,3]", 0, 0) >= 0 { 1 } else { 0 };
+    let t3 = if is_valid_json("{}") { 1 } else { 0 };
+    let t4 = if is_valid_json("{") == false { 1 } else { 0 };
+
+    if t1 + t2 + t3 + t4 == 4 { let ok = println(999); 1 } else { 0 }
+};
+
+fn run_tests() -> i64 = {
+    let t1 = test_type_detection();
+    let t2 = test_length();
+    let t3 = test_navigation();
+    t1 + t2 + t3
+};

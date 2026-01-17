@@ -1,23 +1,23 @@
--- v0.13.0: External function declarations
--- These functions are imported from external modules (WASI, libc, etc.)
+// v0.13.0: External function declarations
+// These functions are imported from external modules (WASI, libc, etc.)
 
--- WASI function with explicit link name
+// WASI function with explicit link name
 @link("wasi_snapshot_preview1")
 extern fn fd_read(fd: i32, iovs: i32, iovs_len: i32, nread: i32) -> i32;
 
--- WASI function using @wasi shorthand
+// WASI function using @wasi shorthand
 @wasi
 extern fn random_get(buf: i32, buf_len: i32) -> i32;
 
--- Simple extern function (defaults to "env" module)
+// Simple extern function (defaults to "env" module)
 extern fn custom_log(val: i64) -> i64;
 
--- Public extern function
+// Public extern function
 pub extern fn imported_add(a: i64, b: i64) -> i64;
 
--- Main function that uses extern fns
+// Main function that uses extern fns
 fn main() -> i64 = {
     let x: i64 = 42;
-    -- In a real program, we would call: custom_log(x)
+    // In a real program, we would call: custom_log(x)
     x
 };

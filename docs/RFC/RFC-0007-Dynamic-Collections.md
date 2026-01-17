@@ -1,10 +1,23 @@
 # RFC-0007: Dynamic Collection Types
 
-**Status**: Draft
+**Status**: Implemented
 **Created**: 2026-01-08
+**Implemented**: 2026-01-09
 **Target Version**: v0.34
 **Priority**: P1 (blocks binary_trees, hash_table, lru_cache benchmarks)
 **Depends On**: Ownership system (complete), Generics (complete)
+
+## Implementation Notes (v0.34.21-v0.34.24)
+
+- **v0.34.21**: malloc/free/realloc/calloc builtins
+- **v0.34.22**: Box<i64> (store_i64/load_i64/box_new_i64/box_free_i64)
+- **v0.34.23**: Vec<i64> (vec_new/vec_push/vec_pop/vec_get/vec_set/vec_len/vec_cap/vec_free)
+- **v0.34.24**: HashMap/HashSet (hashmap_*/hashset_*), hash_i64, vec_clear
+
+Note: Implementation uses builtin functions (interpreter + LLVM codegen) rather than trait-based generics. This pragmatic approach provides:
+- Full functionality for i64 key/value types
+- Performance parity with Rust's HashMap
+- Foundation for future generic collections
 
 ## Summary
 

@@ -1,15 +1,15 @@
--- Test conditional compilation (v0.12.3)
+// Test conditional compilation (v0.12.3)
 
--- This function is always included
+// This function is always included
 fn always() -> i64 = 42;
 
--- This function only for WASM target
+// This function only for WASM target
 @cfg(target == "wasm32")
 fn wasm_only() -> i64 = 100;
 
--- This function only for native target
+// This function only for native target
 @cfg(target == "native")
 fn native_only() -> i64 = 200;
 
--- Main function
+// Main function
 fn main() -> i64 = always();

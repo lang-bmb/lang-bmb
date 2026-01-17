@@ -1,0 +1,4 @@
+// Phase 3 Security Test: Huge integer literal (overflow)
+fn main() -> i64 =
+    let x = 99999999999999999999999999999999999999999999;
+    x;

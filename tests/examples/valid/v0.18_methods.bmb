@@ -1,42 +1,42 @@
--- v0.18 Methods Test: Option<T> and Result<T, E> method calls
--- Tests: is_some, is_none, is_ok, is_err, unwrap_or
+// v0.18 Methods Test: T? and Result<T, E> method calls
+// Tests: is_some, is_none, is_ok, is_err, unwrap_or
 
--- ============================================
--- Option<T> method tests
--- ============================================
+// ============================================
+// T? method tests
+// ============================================
 
 @derive(Debug, Clone, PartialEq)
-pub enum Option<T> {
+pub enum T? {
     Some(T),
     None,
 }
 
--- Test: is_some() method
+// Test: is_some() method
 fn test_option_is_some() -> bool = {
-    let some_val: Option<i64> = Option::Some(42);
-    let none_val: Option<i64> = Option::None;
+    let some_val: i64? = Option::Some(42);
+    let none_val: i64? = Option::None;
     some_val.is_some() and (none_val.is_some() == false)
 };
 
--- Test: is_none() method
+// Test: is_none() method
 fn test_option_is_none() -> bool = {
-    let some_val: Option<i64> = Option::Some(42);
-    let none_val: Option<i64> = Option::None;
+    let some_val: i64? = Option::Some(42);
+    let none_val: i64? = Option::None;
     none_val.is_none() and (some_val.is_none() == false)
 };
 
--- Test: unwrap_or() method
+// Test: unwrap_or() method
 fn test_option_unwrap_or() -> bool = {
-    let some_val: Option<i64> = Option::Some(42);
-    let none_val: Option<i64> = Option::None;
+    let some_val: i64? = Option::Some(42);
+    let none_val: i64? = Option::None;
     let from_some: i64 = some_val.unwrap_or(0);
     let from_none: i64 = none_val.unwrap_or(99);
     from_some == 42 and from_none == 99
 };
 
--- ============================================
--- Result<T, E> method tests
--- ============================================
+// ============================================
+// Result<T, E> method tests
+// ============================================
 
 @derive(Debug, Clone, PartialEq)
 pub enum Result<T, E> {
@@ -44,21 +44,21 @@ pub enum Result<T, E> {
     Err(E),
 }
 
--- Test: is_ok() method
+// Test: is_ok() method
 fn test_result_is_ok() -> bool = {
     let ok_val: Result<i64, i64> = Result::Ok(100);
     let err_val: Result<i64, i64> = Result::Err(1);
     ok_val.is_ok() and (err_val.is_ok() == false)
 };
 
--- Test: is_err() method
+// Test: is_err() method
 fn test_result_is_err() -> bool = {
     let ok_val: Result<i64, i64> = Result::Ok(100);
     let err_val: Result<i64, i64> = Result::Err(1);
     err_val.is_err() and (ok_val.is_err() == false)
 };
 
--- Test: unwrap_or() method
+// Test: unwrap_or() method
 fn test_result_unwrap_or() -> bool = {
     let ok_val: Result<i64, i64> = Result::Ok(100);
     let err_val: Result<i64, i64> = Result::Err(1);
@@ -67,9 +67,9 @@ fn test_result_unwrap_or() -> bool = {
     from_ok == 100 and from_err == 50
 };
 
--- ============================================
--- Combined tests
--- ============================================
+// ============================================
+// Combined tests
+// ============================================
 
 fn test_all() -> bool =
     test_option_is_some() and
@@ -79,5 +79,5 @@ fn test_all() -> bool =
     test_result_is_err() and
     test_result_unwrap_or();
 
--- Main entry point for interpreter test
+// Main entry point for interpreter test
 fn main() -> bool = test_all();

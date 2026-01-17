@@ -1,5 +1,5 @@
--- Tests for core::result module
--- Verifies Result type operations
+// Tests for core::result module
+// Verifies Result type operations
 
 use core::result::Result;
 use core::result::is_ok;
@@ -12,7 +12,7 @@ use core::result::ok;
 use core::result::err;
 use core::result::safe_divide;
 
--- Test Ok creation and checks
+// Test Ok creation and checks
 fn test_ok_is_ok() -> bool
   post ret == true
 = is_ok(Result::Ok(42));
@@ -21,7 +21,7 @@ fn test_ok_is_not_err() -> bool
   post ret == false
 = is_err(Result::Ok(42));
 
--- Test Err creation and checks
+// Test Err creation and checks
 fn test_err_is_err() -> bool
   post ret == true
 = is_err(Result::Err(1));
@@ -30,17 +30,17 @@ fn test_err_is_not_ok() -> bool
   post ret == false
 = is_ok(Result::Err(1));
 
--- Test unwrap_ok
+// Test unwrap_ok
 fn test_unwrap_ok_value() -> i64
   post ret == 42
 = unwrap_ok(Result::Ok(42));
 
--- Test unwrap_err
+// Test unwrap_err
 fn test_unwrap_err_code() -> i64
   post ret == 100
 = unwrap_err(Result::Err(100));
 
--- Test unwrap_or_result
+// Test unwrap_or_result
 fn test_unwrap_or_ok() -> i64
   post ret == 42
 = unwrap_or_result(Result::Ok(42), 0);
@@ -49,7 +49,7 @@ fn test_unwrap_or_err() -> i64
   post ret == 99
 = unwrap_or_result(Result::Err(1), 99);
 
--- Test err_code
+// Test err_code
 fn test_err_code_ok() -> i64
   post ret == 0
 = err_code(Result::Ok(42));
@@ -58,7 +58,7 @@ fn test_err_code_err() -> i64
   post ret == 100
 = err_code(Result::Err(100));
 
--- Test helper functions
+// Test helper functions
 fn test_ok_helper() -> i64
   post ret == 100
 = unwrap_ok(ok(100));
@@ -67,7 +67,7 @@ fn test_err_helper() -> i64
   post ret == 50
 = unwrap_err(err(50));
 
--- Test safe_divide
+// Test safe_divide
 fn test_safe_divide_ok() -> i64
   post ret == 5
 = unwrap_ok(safe_divide(10, 2));
@@ -80,7 +80,7 @@ fn test_safe_divide_zero_code() -> i64
   post ret == 100
 = err_code(safe_divide(10, 0));
 
--- Test match patterns
+// Test match patterns
 fn test_match_ok() -> i64
   post ret == 42
 = match Result::Ok(42) {
@@ -95,12 +95,12 @@ fn test_match_err() -> i64
     Result::Err(_) => 0
 };
 
--- Main test runner
+// Main test runner
 fn main() -> i64 =
     let t1 = test_ok_is_ok();
     let t2 = test_err_is_err();
     let t3 = test_unwrap_ok_value();
     let t4 = test_safe_divide_ok();
     let t5 = test_safe_divide_zero();
-    -- Return 0 for success
+    // Return 0 for success
     0;

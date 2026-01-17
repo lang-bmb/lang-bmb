@@ -1,35 +1,35 @@
--- v0.2 Feature Test: Attributes
--- Tests for attribute syntax: @name and @name(args)
+// v0.2 Feature Test: Attributes
+// Tests for attribute syntax: @name and @name(args)
 
--- Simple attribute: @inline
+// Simple attribute: @inline
 @inline
 fn double(x: i64) -> i64 = x * 2;
 
--- Attribute with argument: @inline(always)
+// Attribute with argument: @inline(always)
 @inline(always)
 fn triple(x: i64) -> i64 = x * 3;
 
--- Pure function attribute
+// Pure function attribute
 @pure
 fn square(x: i64) -> i64 = x * x;
 
--- Multiple attributes
+// Multiple attributes
 @inline
 @pure
 fn cube(x: i64) -> i64 = x * x * x;
 
--- Attribute with visibility
+// Attribute with visibility
 @inline
 pub fn public_add(a: i64, b: i64) -> i64 = a + b;
 
--- Decreases attribute for termination proof
+// Decreases attribute for termination proof
 @decreases(n)
 fn recursive_sum(n: i64) -> i64
   pre n >= 0
-= if n == 0 then 0 else n + recursive_sum(n - 1);
+= if n == 0 { 0 } else { n + recursive_sum(n - 1) };
 
--- Complex attribute with expression argument
+// Complex attribute with expression argument
 @decreases(n - 1)
 fn fib(n: i64) -> i64
   pre n >= 0
-= if n <= 1 then n else fib(n - 1) + fib(n - 2);
+= if n <= 1 { n } else { fib(n - 1) + fib(n - 2) };

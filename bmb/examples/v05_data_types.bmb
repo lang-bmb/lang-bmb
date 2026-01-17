@@ -1,31 +1,31 @@
--- BMB v0.5: Data Types Example
+// BMB v0.5: Data Types Example
 
--- Struct definition
+// Struct definition
 struct Point {
     x: i64,
     y: i64
 }
 
--- Enum definition
+// Enum definition
 enum Option {
     Some(i64),
     None
 }
 
--- Function using struct
+// Function using struct
 fn create_point(x: i64, y: i64) -> Point = new Point { x: x, y: y };
 
--- Function using enum
+// Function using enum
 fn wrap_value(n: i64) -> Option = Option::Some(n);
 
--- Function using match
+// Function using match
 fn unwrap_or_default(opt: Option) -> i64 =
     match opt {
         Option::Some(val) => val,
         Option::None => 0
     };
 
--- Main function
+// Main function
 fn main() -> i64 =
     let p = create_point(10, 20);
     let sum = p.x + p.y;

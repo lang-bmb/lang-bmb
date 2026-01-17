@@ -1,486 +1,484 @@
--- ============================================================================
--- BMB Bootstrap Self-Hosting Stage 2: Equivalence Test
--- Version: v0.30.198: Extended test coverage
---
--- This file tests the equivalence between Rust compiler output and
--- Bootstrap compiler output for the same BMB source patterns.
--- ============================================================================
+// ============================================================================
+// BMB Bootstrap Self-Hosting Stage 2: Equivalence Test
+// Version: v0.30.198: Extended test coverage
+//
+// This file tests the equivalence between Rust compiler output and
+// Bootstrap compiler output for the same BMB source patterns.
+// ============================================================================
 
--- ============================================================================
--- SECTION 1: Expected MIR Patterns (from Rust compiler --emit-mir)
--- ============================================================================
+// ============================================================================
+// SECTION 1: Expected MIR Patterns (from Rust compiler //emit-mir)
+// ============================================================================
 
--- Test: add(a, b) -> i64 = a + b
--- Rust MIR output:
---   fn add(a: i64, b: i64) -> i64 {
---   entry:
---     %_t0 = + %a, %b
---     return %_t0
---   }
+// Test: add(a, b) -> i64 = a + b
+// Rust MIR output:
+//   fn add(a: i64, b: i64) -> i64 {
+//   entry:
+//     %_t0 = + %a, %b
+//     return %_t0
+//   }
 
 fn mir_add_has_entry() -> i64 =
     let mir = "fn add(a: i64, b: i64) -> i64 { entry: %_t0 = + %a, %b return %_t0 }";
-    if has_pattern(mir, "entry:", 0) then 1 else 0;
+    if has_pattern(mir, "entry:", 0) { 1 } else { 0 };
 
 fn mir_add_has_binop() -> i64 =
     let mir = "fn add(a: i64, b: i64) -> i64 { entry: %_t0 = + %a, %b return %_t0 }";
-    if has_pattern(mir, "+ %a, %b", 0) then 1 else 0;
+    if has_pattern(mir, "+ %a, %b", 0) { 1 } else { 0 };
 
 fn mir_add_has_return() -> i64 =
     let mir = "fn add(a: i64, b: i64) -> i64 { entry: %_t0 = + %a, %b return %_t0 }";
-    if has_pattern(mir, "return %_t0", 0) then 1 else 0;
+    if has_pattern(mir, "return %_t0", 0) { 1 } else { 0 };
 
--- Test: max(a, b) = if a > b then a else b
--- Rust MIR output (with branches and phi):
---   fn max(a: i64, b: i64) -> i64 {
---   entry:
---     %_t0 = > %a, %b
---     branch %_t0, then_0, else_0
---   then_0:
---     br merge_0
---   else_0:
---     br merge_0
---   merge_0:
---     return %result
---   }
+// Test: max(a, b) = if a > b then a else b
+// Rust MIR output (with branches and phi):
+//   fn max(a: i64, b: i64) -> i64 {
+//   entry:
+//     %_t0 = > %a, %b
+//     branch %_t0, then_0, else_0
+//   then_0:
+//     br merge_0
+//   else_0:
+//     br merge_0
+//   merge_0:
+//     return %result
+//   }
 
 fn mir_max_has_cmp() -> i64 =
     let mir = "fn max { entry: %_t0 = > %a, %b branch %_t0, then_0, else_0 }";
-    if has_pattern(mir, "> %a, %b", 0) then 1 else 0;
+    if has_pattern(mir, "> %a, %b", 0) { 1 } else { 0 };
 
 fn mir_max_has_branch() -> i64 =
     let mir = "fn max { entry: %_t0 = > %a, %b branch %_t0, then_0, else_0 }";
-    if has_pattern(mir, "branch", 0) then 1 else 0;
+    if has_pattern(mir, "branch", 0) { 1 } else { 0 };
 
--- ============================================================================
--- SECTION 2: Expected LLVM IR Patterns (from Rust compiler --emit-ir)
--- ============================================================================
+// ============================================================================
+// SECTION 2: Expected LLVM IR Patterns (from Rust compiler //emit-ir)
+// ============================================================================
 
--- Test: add function LLVM IR
--- Rust LLVM output:
---   define i64 @add(i64 %a, i64 %b) {
---   entry:
---     %_t0 = add i64 %a, %b
---     ret i64 %_t0
---   }
+// Test: add function LLVM IR
+// Rust LLVM output:
+//   define i64 @add(i64 %a, i64 %b) {
+//   entry:
+//     %_t0 = add i64 %a, %b
+//     ret i64 %_t0
+//   }
 
 fn llvm_add_has_define() -> i64 =
     let ir = "define i64 @add(i64 %a, i64 %b) { entry: %_t0 = add i64 %a, %b ret i64 %_t0 }";
-    if has_pattern(ir, "define i64 @add", 0) then 1 else 0;
+    if has_pattern(ir, "define i64 @add", 0) { 1 } else { 0 };
 
 fn llvm_add_has_add() -> i64 =
     let ir = "define i64 @add(i64 %a, i64 %b) { entry: %_t0 = add i64 %a, %b ret i64 %_t0 }";
-    if has_pattern(ir, "add i64 %a, %b", 0) then 1 else 0;
+    if has_pattern(ir, "add i64 %a, %b", 0) { 1 } else { 0 };
 
 fn llvm_add_has_ret() -> i64 =
     let ir = "define i64 @add(i64 %a, i64 %b) { entry: %_t0 = add i64 %a, %b ret i64 %_t0 }";
-    if has_pattern(ir, "ret i64 %_t0", 0) then 1 else 0;
+    if has_pattern(ir, "ret i64 %_t0", 0) { 1 } else { 0 };
 
--- Test: max function LLVM IR (with icmp, br, phi)
--- Rust LLVM output:
---   define i64 @max(i64 %a, i64 %b) {
---   entry:
---     %_t0 = icmp sgt i64 %a, %b
---     br i1 %_t0, label %then_0, label %else_0
---   then_0:
---     br label %merge_0
---   else_0:
---     br label %merge_0
---   merge_0:
---     %result = phi i64 [ %a, %then_0 ], [ %b, %else_0 ]
---     ret i64 %result
---   }
+// Test: max function LLVM IR (with icmp, br, phi)
+// Rust LLVM output:
+//   define i64 @max(i64 %a, i64 %b) {
+//   entry:
+//     %_t0 = icmp sgt i64 %a, %b
+//     br i1 %_t0, label %then_0, label %else_0
+//   then_0:
+//     br label %merge_0
+//   else_0:
+//     br label %merge_0
+//   merge_0:
+//     %result = phi i64 [ %a, %then_0 ], [ %b, %else_0 ]
+//     ret i64 %result
+//   }
 
 fn llvm_max_has_icmp() -> i64 =
     let ir = "define i64 @max { entry: %_t0 = icmp sgt i64 %a, %b br i1 %_t0 }";
-    if has_pattern(ir, "icmp sgt", 0) then 1 else 0;
+    if has_pattern(ir, "icmp sgt", 0) { 1 } else { 0 };
 
 fn llvm_max_has_br() -> i64 =
     let ir = "define i64 @max { entry: %_t0 = icmp sgt i64 %a, %b br i1 %_t0 }";
-    if has_pattern(ir, "br i1", 0) then 1 else 0;
+    if has_pattern(ir, "br i1", 0) { 1 } else { 0 };
 
 fn llvm_max_has_phi() -> i64 =
     let ir = "define i64 @max { merge: %result = phi i64 [ %a, %then_0 ], [ %b, %else_0 ] }";
-    if has_pattern(ir, "phi i64", 0) then 1 else 0;
+    if has_pattern(ir, "phi i64", 0) { 1 } else { 0 };
 
--- ============================================================================
--- SECTION 3: Pattern Matching Utilities
--- ============================================================================
+// ============================================================================
+// SECTION 3: Pattern Matching Utilities
+// ============================================================================
 
 fn has_pattern(s: String, pat: String, pos: i64) -> bool =
-    if pos + pat.len() > s.len() then false
-    else if s.slice(pos, pos + pat.len()) == pat then true
-    else has_pattern(s, pat, pos + 1);
+    if pos + pat.len() > s.len() { false } else if s.slice(pos, pos + pat.len()) == pat { true } else { has_pattern(s, pat, pos + 1) };
 
--- ============================================================================
--- SECTION 4: Bootstrap Lowering Pattern Tests
--- ============================================================================
+// ============================================================================
+// SECTION 4: Bootstrap Lowering Pattern Tests
+// ============================================================================
 
--- Test: Bootstrap produces same MIR patterns as Rust compiler
--- The lowering.bmb tests verify these patterns:
--- - (int N) -> %_t0 = const I:N
--- - (var <x>) -> %x (reference)
--- - (op + left right) -> %_t0 = + %left, %right
--- - (if cond then else) -> branch + phi
+// Test: Bootstrap produces same MIR patterns as Rust compiler
+// The lowering.bmb tests verify these patterns:
+// - (int N) -> %_t0 = const I:N
+// - (let mut <x>) -> %x (reference)
+// - (op + left right) -> %_t0 = + %left, %right
+// - (if cond then else) -> branch + phi
 
 fn test_lowering_const_pattern() -> i64 =
-    -- Bootstrap pattern: %_t0 = const I:42
+    // Bootstrap pattern: %_t0 = const I:42
     let pattern = "const I:";
-    if has_pattern("test: %_t0 = const I:42", pattern, 0) then 1 else 0;
+    if has_pattern("test: %_t0 = const I:42", pattern, 0) { 1 } else { 0 };
 
 fn test_lowering_binop_pattern() -> i64 =
-    -- Bootstrap pattern: %_t0 = + %a, %b
+    // Bootstrap pattern: %_t0 = + %a, %b
     let pattern = "= + %";
-    if has_pattern("test: %_t0 = + %a, %b", pattern, 0) then 1 else 0;
+    if has_pattern("test: %_t0 = + %a, %b", pattern, 0) { 1 } else { 0 };
 
 fn test_lowering_call_pattern() -> i64 =
-    -- Bootstrap pattern: %_t0 = call foo(%a)
+    // Bootstrap pattern: %_t0 = call foo(%a)
     let pattern = "call ";
-    if has_pattern("test: %_t0 = call add(%x, %y)", pattern, 0) then 1 else 0;
+    if has_pattern("test: %_t0 = call add(%x, %y)", pattern, 0) { 1 } else { 0 };
 
--- ============================================================================
--- SECTION 5: Bootstrap LLVM IR Pattern Tests
--- ============================================================================
+// ============================================================================
+// SECTION 5: Bootstrap LLVM IR Pattern Tests
+// ============================================================================
 
 fn test_llvm_const_pattern() -> i64 =
-    -- Bootstrap LLVM: %_t0 = add i64 0, 42
+    // Bootstrap LLVM: %_t0 = add i64 0, 42
     let pattern = "add i64 0,";
-    if has_pattern("test: %_t0 = add i64 0, 42", pattern, 0) then 1 else 0;
+    if has_pattern("test: %_t0 = add i64 0, 42", pattern, 0) { 1 } else { 0 };
 
 fn test_llvm_binop_pattern() -> i64 =
-    -- Bootstrap LLVM: %_t0 = add i64 %a, %b
+    // Bootstrap LLVM: %_t0 = add i64 %a, %b
     let pattern = "add i64 %";
-    if has_pattern("test: %_t0 = add i64 %a, %b", pattern, 0) then 1 else 0;
+    if has_pattern("test: %_t0 = add i64 %a, %b", pattern, 0) { 1 } else { 0 };
 
 fn test_llvm_cmp_pattern() -> i64 =
-    -- Bootstrap LLVM: %_t0 = icmp sgt i64 %a, %b
+    // Bootstrap LLVM: %_t0 = icmp sgt i64 %a, %b
     let pattern = "icmp s";
-    if has_pattern("test: %_t0 = icmp sgt i64 %a, %b", pattern, 0) then 1 else 0;
+    if has_pattern("test: %_t0 = icmp sgt i64 %a, %b", pattern, 0) { 1 } else { 0 };
 
 fn test_llvm_branch_pattern() -> i64 =
-    -- Bootstrap LLVM: br i1 %cond, label %then, label %else
+    // Bootstrap LLVM: br i1 %cond, label %then, label %else
     let pattern = "br i1 %";
-    if has_pattern("test: br i1 %cond, label %then, label %else", pattern, 0) then 1 else 0;
+    if has_pattern("test: br i1 %cond, label %then, label %else", pattern, 0) { 1 } else { 0 };
 
 fn test_llvm_phi_pattern() -> i64 =
-    -- Bootstrap LLVM: %result = phi i64 [ %a, %then ], [ %b, %else ]
+    // Bootstrap LLVM: %result = phi i64 [ %a, %then ], [ %b, %else ]
     let pattern = "phi i64 [";
-    if has_pattern("test: %result = phi i64 [ %a, %then ], [ %b, %else ]", pattern, 0) then 1 else 0;
+    if has_pattern("test: %result = phi i64 [ %a, %then ], [ %b, %else ]", pattern, 0) { 1 } else { 0 };
 
--- ============================================================================
--- SECTION 6: Unit Tests (v0.30.149)
--- ============================================================================
+// ============================================================================
+// SECTION 6: Unit Tests (v0.30.149)
+// ============================================================================
 
--- Test has_pattern with pattern at start
+// Test has_pattern with pattern at start
 fn test_pattern_at_start() -> i64 =
-    let s1 = if has_pattern("hello world", "hello", 0) then 1 else 0;
-    let s2 = if has_pattern("entry: code", "entry:", 0) then 1 else 0;
-    let s3 = if has_pattern("define i64", "define", 0) then 1 else 0;
-    let s4 = if has_pattern("%_t0 = add", "%_t0", 0) then 1 else 0;
+    let s1 = if has_pattern("hello world", "hello", 0) { 1 } else { 0 };
+    let s2 = if has_pattern("entry: code", "entry:", 0) { 1 } else { 0 };
+    let s3 = if has_pattern("define i64", "define", 0) { 1 } else { 0 };
+    let s4 = if has_pattern("%_t0 = add", "%_t0", 0) { 1 } else { 0 };
     s1 + s2 + s3 + s4;
 
--- Test has_pattern with pattern in middle
+// Test has_pattern with pattern in middle
 fn test_pattern_in_middle() -> i64 =
-    let s1 = if has_pattern("entry: %_t0 = + %a, %b", "%_t0", 0) then 1 else 0;
-    let s2 = if has_pattern("define i64 @add(i64 %a)", "@add", 0) then 1 else 0;
-    let s3 = if has_pattern("test: br i1 %cond", "br i1", 0) then 1 else 0;
-    let s4 = if has_pattern("result = phi i64", "phi", 0) then 1 else 0;
+    let s1 = if has_pattern("entry: %_t0 = + %a, %b", "%_t0", 0) { 1 } else { 0 };
+    let s2 = if has_pattern("define i64 @add(i64 %a)", "@add", 0) { 1 } else { 0 };
+    let s3 = if has_pattern("test: br i1 %cond", "br i1", 0) { 1 } else { 0 };
+    let s4 = if has_pattern("result = phi i64", "phi", 0) { 1 } else { 0 };
     s1 + s2 + s3 + s4;
 
--- Test has_pattern with pattern at end
+// Test has_pattern with pattern at end
 fn test_pattern_at_end() -> i64 =
-    let s1 = if has_pattern("entry: return %_t0", "return %_t0", 0) then 1 else 0;
-    let s2 = if has_pattern("result = phi i64", "i64", 0) then 1 else 0;
-    let s3 = if has_pattern("test end", "end", 0) then 1 else 0;
+    let s1 = if has_pattern("entry: return %_t0", "return %_t0", 0) { 1 } else { 0 };
+    let s2 = if has_pattern("result = phi i64", "i64", 0) { 1 } else { 0 };
+    let s3 = if has_pattern("test end", "end", 0) { 1 } else { 0 };
     s1 + s2 + s3;
 
--- Test has_pattern with pattern not found
+// Test has_pattern with pattern not found
 fn test_pattern_not_found() -> i64 =
-    let s1 = if has_pattern("hello world", "xyz", 0) then 0 else 1;
-    let s2 = if has_pattern("entry: code", "exit", 0) then 0 else 1;
-    let s3 = if has_pattern("define i64", "declare", 0) then 0 else 1;
-    let s4 = if has_pattern("abc", "abcd", 0) then 0 else 1;  -- pattern longer
+    let s1 = if has_pattern("hello world", "xyz", 0) { 0 } else { 1 };
+    let s2 = if has_pattern("entry: code", "exit", 0) { 0 } else { 1 };
+    let s3 = if has_pattern("define i64", "declare", 0) { 0 } else { 1 };
+    let s4 = if has_pattern("abc", "abcd", 0) { 0 } else { 1 };  // pattern longer
     s1 + s2 + s3 + s4;
 
--- Test has_pattern edge cases
+// Test has_pattern edge cases
 fn test_pattern_edge_cases() -> i64 =
-    let s1 = if has_pattern("a", "a", 0) then 1 else 0;  -- single char match
-    let s2 = if has_pattern("aa", "a", 0) then 1 else 0;  -- multiple matches
-    let s3 = if has_pattern("test", "test", 0) then 1 else 0;  -- exact match
+    let s1 = if has_pattern("a", "a", 0) { 1 } else { 0 };  // single char match
+    let s2 = if has_pattern("aa", "a", 0) { 1 } else { 0 };  // multiple matches
+    let s3 = if has_pattern("test", "test", 0) { 1 } else { 0 };  // exact match
     s1 + s2 + s3;
 
--- Test MIR keyword patterns
+// Test MIR keyword patterns
 fn test_mir_keywords() -> i64 =
-    let s1 = if has_pattern("entry: block", "entry:", 0) then 1 else 0;
-    let s2 = if has_pattern("branch %cond", "branch", 0) then 1 else 0;
-    let s3 = if has_pattern("return %r", "return", 0) then 1 else 0;
-    let s4 = if has_pattern("const I:42", "const", 0) then 1 else 0;
-    let s5 = if has_pattern("call foo()", "call", 0) then 1 else 0;
+    let s1 = if has_pattern("entry: block", "entry:", 0) { 1 } else { 0 };
+    let s2 = if has_pattern("branch %cond", "branch", 0) { 1 } else { 0 };
+    let s3 = if has_pattern("return %r", "return", 0) { 1 } else { 0 };
+    let s4 = if has_pattern("const I:42", "const", 0) { 1 } else { 0 };
+    let s5 = if has_pattern("call foo()", "call", 0) { 1 } else { 0 };
     s1 + s2 + s3 + s4 + s5;
 
--- Test LLVM IR keyword patterns
+// Test LLVM IR keyword patterns
 fn test_llvm_keywords() -> i64 =
-    let s1 = if has_pattern("define i64 @fn", "define", 0) then 1 else 0;
-    let s2 = if has_pattern("icmp sgt i64", "icmp", 0) then 1 else 0;
-    let s3 = if has_pattern("br i1 %cond", "br i1", 0) then 1 else 0;
-    let s4 = if has_pattern("phi i64 [", "phi", 0) then 1 else 0;
-    let s5 = if has_pattern("ret i64 %r", "ret", 0) then 1 else 0;
-    let s6 = if has_pattern("add i64 %a, %b", "add i64", 0) then 1 else 0;
+    let s1 = if has_pattern("define i64 @fn", "define", 0) { 1 } else { 0 };
+    let s2 = if has_pattern("icmp sgt i64", "icmp", 0) { 1 } else { 0 };
+    let s3 = if has_pattern("br i1 %cond", "br i1", 0) { 1 } else { 0 };
+    let s4 = if has_pattern("phi i64 [", "phi", 0) { 1 } else { 0 };
+    let s5 = if has_pattern("ret i64 %r", "ret", 0) { 1 } else { 0 };
+    let s6 = if has_pattern("add i64 %a, %b", "add i64", 0) { 1 } else { 0 };
     s1 + s2 + s3 + s4 + s5 + s6;
 
--- v0.30.173: Test has_pattern with empty strings
+// v0.30.173: Test has_pattern with empty strings
 fn test_pattern_empty() -> i64 =
-    let s1 = if has_pattern("", "", 0) then 1 else 0;  -- empty matches empty
-    let s2 = if not has_pattern("", "a", 0) then 1 else 0;  -- can't find in empty
-    let s3 = if has_pattern("abc", "", 0) then 1 else 0;  -- empty pattern always found
-    let s4 = if not has_pattern("a", "ab", 0) then 1 else 0;  -- pattern too long
+    let s1 = if has_pattern("", "", 0) { 1 } else { 0 };  // empty matches empty
+    let s2 = if not has_pattern("", "a", 0) { 1 } else { 0 };  // can't find in empty
+    let s3 = if has_pattern("abc", "", 0) { 1 } else { 0 };  // empty pattern always found
+    let s4 = if not has_pattern("a", "ab", 0) { 1 } else { 0 };  // pattern too long
     s1 + s2 + s3 + s4;
 
--- v0.30.173: Test has_pattern with repeated characters
+// v0.30.173: Test has_pattern with repeated characters
 fn test_pattern_repeated() -> i64 =
-    let s1 = if has_pattern("aaaa", "aa", 0) then 1 else 0;
-    let s2 = if has_pattern("abab", "ab", 0) then 1 else 0;
-    let s3 = if has_pattern("xxxxy", "y", 0) then 1 else 0;
-    let s4 = if has_pattern("abcabc", "abc", 0) then 1 else 0;
+    let s1 = if has_pattern("aaaa", "aa", 0) { 1 } else { 0 };
+    let s2 = if has_pattern("abab", "ab", 0) { 1 } else { 0 };
+    let s3 = if has_pattern("xxxxy", "y", 0) { 1 } else { 0 };
+    let s4 = if has_pattern("abcabc", "abc", 0) { 1 } else { 0 };
     s1 + s2 + s3 + s4;
 
--- v0.30.173: Test MIR variable patterns
+// v0.30.173: Test MIR variable patterns
 fn test_mir_variables() -> i64 =
-    let s1 = if has_pattern("%_t0", "%_t", 0) then 1 else 0;
-    let s2 = if has_pattern("%_t10", "%_t1", 0) then 1 else 0;
-    let s3 = if has_pattern("%result", "%r", 0) then 1 else 0;
-    let s4 = if has_pattern("%a = const", "%a =", 0) then 1 else 0;
-    let s5 = if has_pattern("call foo(%x)", "(%x)", 0) then 1 else 0;
-    let s6 = if has_pattern("return %val", "return %", 0) then 1 else 0;
+    let s1 = if has_pattern("%_t0", "%_t", 0) { 1 } else { 0 };
+    let s2 = if has_pattern("%_t10", "%_t1", 0) { 1 } else { 0 };
+    let s3 = if has_pattern("%result", "%r", 0) { 1 } else { 0 };
+    let s4 = if has_pattern("%a = const", "%a =", 0) { 1 } else { 0 };
+    let s5 = if has_pattern("call foo(%x)", "(%x)", 0) { 1 } else { 0 };
+    let s6 = if has_pattern("return %val", "return %", 0) { 1 } else { 0 };
     s1 + s2 + s3 + s4 + s5 + s6;
 
--- v0.30.173: Test LLVM type patterns
+// v0.30.173: Test LLVM type patterns
 fn test_llvm_types() -> i64 =
-    let s1 = if has_pattern("i64 %a", "i64", 0) then 1 else 0;
-    let s2 = if has_pattern("i32 %b", "i32", 0) then 1 else 0;
-    let s3 = if has_pattern("i1 %cond", "i1", 0) then 1 else 0;
-    let s4 = if has_pattern("i8* %ptr", "i8*", 0) then 1 else 0;
-    let s5 = if has_pattern("define i64", "define i64", 0) then 1 else 0;
-    let s6 = if has_pattern("ret i64 0", "ret i64", 0) then 1 else 0;
+    let s1 = if has_pattern("i64 %a", "i64", 0) { 1 } else { 0 };
+    let s2 = if has_pattern("i32 %b", "i32", 0) { 1 } else { 0 };
+    let s3 = if has_pattern("i1 %cond", "i1", 0) { 1 } else { 0 };
+    let s4 = if has_pattern("i8* %ptr", "i8*", 0) { 1 } else { 0 };
+    let s5 = if has_pattern("define i64", "define i64", 0) { 1 } else { 0 };
+    let s6 = if has_pattern("ret i64 0", "ret i64", 0) { 1 } else { 0 };
     s1 + s2 + s3 + s4 + s5 + s6;
 
--- v0.30.173: Test LLVM comparison operations
+// v0.30.173: Test LLVM comparison operations
 fn test_llvm_cmp_ops() -> i64 =
-    let s1 = if has_pattern("icmp sgt", "sgt", 0) then 1 else 0;  -- signed greater
-    let s2 = if has_pattern("icmp slt", "slt", 0) then 1 else 0;  -- signed less
-    let s3 = if has_pattern("icmp sge", "sge", 0) then 1 else 0;  -- signed >=
-    let s4 = if has_pattern("icmp sle", "sle", 0) then 1 else 0;  -- signed <=
-    let s5 = if has_pattern("icmp eq", "eq", 0) then 1 else 0;   -- equal
-    let s6 = if has_pattern("icmp ne", "ne", 0) then 1 else 0;   -- not equal
+    let s1 = if has_pattern("icmp sgt", "sgt", 0) { 1 } else { 0 };  // signed greater
+    let s2 = if has_pattern("icmp slt", "slt", 0) { 1 } else { 0 };  // signed less
+    let s3 = if has_pattern("icmp sge", "sge", 0) { 1 } else { 0 };  // signed >=
+    let s4 = if has_pattern("icmp sle", "sle", 0) { 1 } else { 0 };  // signed <=
+    let s5 = if has_pattern("icmp eq", "eq", 0) { 1 } else { 0 };   // equal
+    let s6 = if has_pattern("icmp ne", "ne", 0) { 1 } else { 0 };   // not equal
     s1 + s2 + s3 + s4 + s5 + s6;
 
--- v0.30.173: Test LLVM arithmetic operations
+// v0.30.173: Test LLVM arithmetic operations
 fn test_llvm_arith_ops() -> i64 =
-    let s1 = if has_pattern("add i64", "add", 0) then 1 else 0;
-    let s2 = if has_pattern("sub i64", "sub", 0) then 1 else 0;
-    let s3 = if has_pattern("mul i64", "mul", 0) then 1 else 0;
-    let s4 = if has_pattern("sdiv i64", "sdiv", 0) then 1 else 0;
-    let s5 = if has_pattern("srem i64", "srem", 0) then 1 else 0;
-    let s6 = if has_pattern("and i64", "and", 0) then 1 else 0;
+    let s1 = if has_pattern("add i64", "add", 0) { 1 } else { 0 };
+    let s2 = if has_pattern("sub i64", "sub", 0) { 1 } else { 0 };
+    let s3 = if has_pattern("mul i64", "mul", 0) { 1 } else { 0 };
+    let s4 = if has_pattern("sdiv i64", "sdiv", 0) { 1 } else { 0 };
+    let s5 = if has_pattern("srem i64", "srem", 0) { 1 } else { 0 };
+    let s6 = if has_pattern("and i64", "and", 0) { 1 } else { 0 };
     s1 + s2 + s3 + s4 + s5 + s6;
 
--- v0.30.173: Test pattern position variations
+// v0.30.173: Test pattern position variations
 fn test_pattern_positions() -> i64 =
-    let s1 = if has_pattern("hello world", "hello", 0) then 1 else 0;  -- at start
-    let s2 = if has_pattern("hello world", "world", 0) then 1 else 0;  -- at end
-    let s3 = if has_pattern("hello world", " ", 0) then 1 else 0;      -- in middle
-    let s4 = if has_pattern("abcdef", "cde", 0) then 1 else 0;         -- middle substring
-    let s5 = if has_pattern("abc123def", "123", 0) then 1 else 0;      -- digits in middle
-    let s6 = if has_pattern("a", "a", 0) then 1 else 0;                -- single char
+    let s1 = if has_pattern("hello world", "hello", 0) { 1 } else { 0 };  // at start
+    let s2 = if has_pattern("hello world", "world", 0) { 1 } else { 0 };  // at end
+    let s3 = if has_pattern("hello world", " ", 0) { 1 } else { 0 };      // in middle
+    let s4 = if has_pattern("abcdef", "cde", 0) { 1 } else { 0 };         // middle substring
+    let s5 = if has_pattern("abc123def", "123", 0) { 1 } else { 0 };      // digits in middle
+    let s6 = if has_pattern("a", "a", 0) { 1 } else { 0 };                // single char
     s1 + s2 + s3 + s4 + s5 + s6;
 
--- v0.30.180: Test MIR memory operations
+// v0.30.180: Test MIR memory operations
 fn test_mir_memory_ops() -> i64 =
-    (if has_pattern("alloca i64", "alloca", 0) then 1 else 0) +
-    (if has_pattern("store i64 %v, ptr %p", "store", 0) then 1 else 0) +
-    (if has_pattern("load i64, ptr %p", "load", 0) then 1 else 0) +
-    (if has_pattern("getelementptr i64, ptr %p", "getelementptr", 0) then 1 else 0) +
-    (if has_pattern("bitcast ptr %p to i64", "bitcast", 0) then 1 else 0) +
-    (if has_pattern("zext i32 %v to i64", "zext", 0) then 1 else 0);
+    (if has_pattern("alloca i64", "alloca", 0) { 1 } else { 0 }) +
+    (if has_pattern("store i64 %v, ptr %p", "store", 0) { 1 } else { 0 }) +
+    (if has_pattern("load i64, ptr %p", "load", 0) { 1 } else { 0 }) +
+    (if has_pattern("getelementptr i64, ptr %p", "getelementptr", 0) { 1 } else { 0 }) +
+    (if has_pattern("bitcast ptr %p to i64", "bitcast", 0) { 1 } else { 0 }) +
+    (if has_pattern("zext i32 %v to i64", "zext", 0) { 1 } else { 0 });
 
--- v0.30.180: Test LLVM function attributes
+// v0.30.180: Test LLVM function attributes
 fn test_llvm_fn_attrs() -> i64 =
-    (if has_pattern("define i64 @add", "define", 0) then 1 else 0) +
-    (if has_pattern("declare i64 @ext", "declare", 0) then 1 else 0) +
-    (if has_pattern("attributes #0", "attributes", 0) then 1 else 0) +
-    (if has_pattern("nounwind willreturn", "nounwind", 0) then 1 else 0) +
-    (if has_pattern("readonly nocapture", "readonly", 0) then 1 else 0) +
-    (if has_pattern("noalias %ptr", "noalias", 0) then 1 else 0);
+    (if has_pattern("define i64 @add", "define", 0) { 1 } else { 0 }) +
+    (if has_pattern("declare i64 @ext", "declare", 0) { 1 } else { 0 }) +
+    (if has_pattern("attributes #0", "attributes", 0) { 1 } else { 0 }) +
+    (if has_pattern("nounwind willreturn", "nounwind", 0) { 1 } else { 0 }) +
+    (if has_pattern("readonly nocapture", "readonly", 0) { 1 } else { 0 }) +
+    (if has_pattern("noalias %ptr", "noalias", 0) { 1 } else { 0 });
 
--- v0.30.180: Test LLVM logical operations
+// v0.30.180: Test LLVM logical operations
 fn test_llvm_logical_ops() -> i64 =
-    (if has_pattern("or i64 %a, %b", "or i64", 0) then 1 else 0) +
-    (if has_pattern("xor i64 %a, %b", "xor i64", 0) then 1 else 0) +
-    (if has_pattern("shl i64 %a, 2", "shl i64", 0) then 1 else 0) +
-    (if has_pattern("ashr i64 %a, 2", "ashr", 0) then 1 else 0) +
-    (if has_pattern("lshr i64 %a, 2", "lshr", 0) then 1 else 0) +
-    (if has_pattern("select i1 %c, i64 %a, i64 %b", "select", 0) then 1 else 0);
+    (if has_pattern("or i64 %a, %b", "or i64", 0) { 1 } else { 0 }) +
+    (if has_pattern("xor i64 %a, %b", "xor i64", 0) { 1 } else { 0 }) +
+    (if has_pattern("shl i64 %a, 2", "shl i64", 0) { 1 } else { 0 }) +
+    (if has_pattern("ashr i64 %a, 2", "ashr", 0) { 1 } else { 0 }) +
+    (if has_pattern("lshr i64 %a, 2", "lshr", 0) { 1 } else { 0 }) +
+    (if has_pattern("select i1 %c, i64 %a, i64 %b", "select", 0) { 1 } else { 0 });
 
--- v0.30.180: Test MIR block labels
+// v0.30.180: Test MIR block labels
 fn test_mir_blocks() -> i64 =
-    (if has_pattern("entry:", "entry:", 0) then 1 else 0) +
-    (if has_pattern("then_0:", "then_", 0) then 1 else 0) +
-    (if has_pattern("else_0:", "else_", 0) then 1 else 0) +
-    (if has_pattern("merge_0:", "merge_", 0) then 1 else 0) +
-    (if has_pattern("loop_0:", "loop_", 0) then 1 else 0) +
-    (if has_pattern("exit_0:", "exit_", 0) then 1 else 0);
+    (if has_pattern("entry:", "entry:", 0) { 1 } else { 0 }) +
+    (if has_pattern("then_0:", "then_", 0) { 1 } else { 0 }) +
+    (if has_pattern("else_0:", "else_", 0) { 1 } else { 0 }) +
+    (if has_pattern("merge_0:", "merge_", 0) { 1 } else { 0 }) +
+    (if has_pattern("loop_0:", "loop_", 0) { 1 } else { 0 }) +
+    (if has_pattern("exit_0:", "exit_", 0) { 1 } else { 0 });
 
--- v0.30.180: Test special characters in patterns
+// v0.30.180: Test special characters in patterns
 fn test_special_chars() -> i64 =
-    (if has_pattern("ptr %p", "ptr", 0) then 1 else 0) +
-    (if has_pattern("i64* %arr", "i64*", 0) then 1 else 0) +
-    (if has_pattern("[10 x i64]", "[10 x", 0) then 1 else 0) +
-    (if has_pattern("{i64, i64}", "{i64", 0) then 1 else 0) +
-    (if has_pattern("@global_var", "@global", 0) then 1 else 0) +
-    (if has_pattern("%local.1", "%local.", 0) then 1 else 0);
+    (if has_pattern("ptr %p", "ptr", 0) { 1 } else { 0 }) +
+    (if has_pattern("i64* %arr", "i64*", 0) { 1 } else { 0 }) +
+    (if has_pattern("[10 x i64]", "[10 x", 0) { 1 } else { 0 }) +
+    (if has_pattern("{i64, i64}", "{i64", 0) { 1 } else { 0 }) +
+    (if has_pattern("@global_var", "@global", 0) { 1 } else { 0 }) +
+    (if has_pattern("%local.1", "%local.", 0) { 1 } else { 0 });
 
--- v0.30.198: Test pattern prefix matching
+// v0.30.198: Test pattern prefix matching
 fn test_pattern_prefix() -> i64 =
-    (if has_pattern("define i64", "define", 0) then 1 else 0) +
-    (if has_pattern("declare void", "declare", 0) then 1 else 0) +
-    (if has_pattern("entry: block", "entry", 0) then 1 else 0) +
-    (if has_pattern("%_t0 = add", "%_t0", 0) then 1 else 0) +
-    (if has_pattern("@main() {", "@main", 0) then 1 else 0) +
-    (if has_pattern("ret i64 0", "ret", 0) then 1 else 0);
+    (if has_pattern("define i64", "define", 0) { 1 } else { 0 }) +
+    (if has_pattern("declare void", "declare", 0) { 1 } else { 0 }) +
+    (if has_pattern("entry: block", "entry", 0) { 1 } else { 0 }) +
+    (if has_pattern("%_t0 = add", "%_t0", 0) { 1 } else { 0 }) +
+    (if has_pattern("@main() {", "@main", 0) { 1 } else { 0 }) +
+    (if has_pattern("ret i64 0", "ret", 0) { 1 } else { 0 });
 
--- v0.30.198: Test pattern suffix matching
+// v0.30.198: Test pattern suffix matching
 fn test_pattern_suffix() -> i64 =
-    (if has_pattern("ret i64 %0", "%0", 0) then 1 else 0) +
-    (if has_pattern("br label %exit", "%exit", 0) then 1 else 0) +
-    (if has_pattern("add i64 %a, %b", "%b", 0) then 1 else 0) +
-    (if has_pattern("call void @fn()", "()", 0) then 1 else 0) +
-    (if has_pattern("icmp eq i64 %x, 0", ", 0", 0) then 1 else 0) +
-    (if has_pattern("phi i64 [ %a, %bb ]", "]", 0) then 1 else 0);
+    (if has_pattern("ret i64 %0", "%0", 0) { 1 } else { 0 }) +
+    (if has_pattern("br label %exit", "%exit", 0) { 1 } else { 0 }) +
+    (if has_pattern("add i64 %a, %b", "%b", 0) { 1 } else { 0 }) +
+    (if has_pattern("call void @fn()", "()", 0) { 1 } else { 0 }) +
+    (if has_pattern("icmp eq i64 %x, 0", ", 0", 0) { 1 } else { 0 }) +
+    (if has_pattern("phi i64 [ %a, %bb ]", "]", 0) { 1 } else { 0 });
 
--- v0.30.198: Test MIR control flow patterns
+// v0.30.198: Test MIR control flow patterns
 fn test_mir_control_flow() -> i64 =
-    (if has_pattern("branch %cond, %then, %else", "branch", 0) then 1 else 0) +
-    (if has_pattern("br merge_0", "br merge", 0) then 1 else 0) +
-    (if has_pattern("jump %target", "jump", 0) then 1 else 0) +
-    (if has_pattern("goto exit_block", "goto", 0) then 1 else 0) +
-    (if has_pattern("switch %val, default", "switch", 0) then 1 else 0) +
-    (if has_pattern("unreachable", "unreachable", 0) then 1 else 0);
+    (if has_pattern("branch %cond, %then, %else", "branch", 0) { 1 } else { 0 }) +
+    (if has_pattern("br merge_0", "br merge", 0) { 1 } else { 0 }) +
+    (if has_pattern("jump %target", "jump", 0) { 1 } else { 0 }) +
+    (if has_pattern("goto exit_block", "goto", 0) { 1 } else { 0 }) +
+    (if has_pattern("switch %val, default", "switch", 0) { 1 } else { 0 }) +
+    (if has_pattern("unreachable", "unreachable", 0) { 1 } else { 0 });
 
--- v0.30.198: Test LLVM control flow patterns
+// v0.30.198: Test LLVM control flow patterns
 fn test_llvm_control_flow() -> i64 =
-    (if has_pattern("br i1 %cond, label %t", "br i1", 0) then 1 else 0) +
-    (if has_pattern("br label %next", "br label", 0) then 1 else 0) +
-    (if has_pattern("switch i64 %val, label", "switch i64", 0) then 1 else 0) +
-    (if has_pattern("indirectbr ptr %addr", "indirectbr", 0) then 1 else 0) +
-    (if has_pattern("invoke void @fn()", "invoke", 0) then 1 else 0) +
-    (if has_pattern("resume { ptr, i32 }", "resume", 0) then 1 else 0);
+    (if has_pattern("br i1 %cond, label %t", "br i1", 0) { 1 } else { 0 }) +
+    (if has_pattern("br label %next", "br label", 0) { 1 } else { 0 }) +
+    (if has_pattern("switch i64 %val, label", "switch i64", 0) { 1 } else { 0 }) +
+    (if has_pattern("indirectbr ptr %addr", "indirectbr", 0) { 1 } else { 0 }) +
+    (if has_pattern("invoke void @fn()", "invoke", 0) { 1 } else { 0 }) +
+    (if has_pattern("resume { ptr, i32 }", "resume", 0) { 1 } else { 0 });
 
--- v0.30.198: Test LLVM global patterns
+// v0.30.198: Test LLVM global patterns
 fn test_llvm_global_patterns() -> i64 =
-    (if has_pattern("@.str = private", "@.str", 0) then 1 else 0) +
-    (if has_pattern("@global = constant i64", "constant", 0) then 1 else 0) +
-    (if has_pattern("@data = global [10 x i8]", "global [", 0) then 1 else 0) +
-    (if has_pattern("@alias = alias i64, ptr", "alias", 0) then 1 else 0) +
-    (if has_pattern("@func = external", "external", 0) then 1 else 0) +
-    (if has_pattern("@weak = weak global", "weak", 0) then 1 else 0);
+    (if has_pattern("@.str = private", "@.str", 0) { 1 } else { 0 }) +
+    (if has_pattern("@global = constant i64", "constant", 0) { 1 } else { 0 }) +
+    (if has_pattern("@data = global [10 x i8]", "global [", 0) { 1 } else { 0 }) +
+    (if has_pattern("@alias = alias i64, ptr", "alias", 0) { 1 } else { 0 }) +
+    (if has_pattern("@func = external", "external", 0) { 1 } else { 0 }) +
+    (if has_pattern("@weak = weak global", "weak", 0) { 1 } else { 0 });
 
--- v0.30.198: Test pattern overlap detection
+// v0.30.198: Test pattern overlap detection
 fn test_pattern_overlap() -> i64 =
-    (if has_pattern("add add add", "add add", 0) then 1 else 0) +
-    (if has_pattern("i64 i64 i64", "i64 i64", 0) then 1 else 0) +
-    (if has_pattern("%%%", "%%", 0) then 1 else 0) +
-    (if has_pattern("aaabbb", "aab", 0) then 1 else 0) +
-    (if has_pattern("label label", "label", 0) then 1 else 0) +
-    (if has_pattern("entry:entry:", "entry:", 0) then 1 else 0);
+    (if has_pattern("add add add", "add add", 0) { 1 } else { 0 }) +
+    (if has_pattern("i64 i64 i64", "i64 i64", 0) { 1 } else { 0 }) +
+    (if has_pattern("%%%", "%%", 0) { 1 } else { 0 }) +
+    (if has_pattern("aaabbb", "aab", 0) { 1 } else { 0 }) +
+    (if has_pattern("label label", "label", 0) { 1 } else { 0 }) +
+    (if has_pattern("entry:entry:", "entry:", 0) { 1 } else { 0 });
 
--- ============================================================================
--- SECTION 7: Main Test Runner
--- ============================================================================
+// ============================================================================
+// SECTION 7: Main Test Runner
+// ============================================================================
 
 fn main() -> i64 =
-    let u0 = println(777);  -- Start marker
+    let u0 = println(777);  // Start marker
 
-    -- Unit tests (v0.30.149)
+    // Unit tests (v0.30.149)
     let ut1 = test_pattern_at_start();
-    let v1 = println(ut1);   -- Should be 4
+    let v1 = println(ut1);   // Should be 4
 
     let ut2 = test_pattern_in_middle();
-    let v2 = println(ut2);   -- Should be 4
+    let v2 = println(ut2);   // Should be 4
 
     let ut3 = test_pattern_at_end();
-    let v3 = println(ut3);   -- Should be 3
+    let v3 = println(ut3);   // Should be 3
 
     let ut4 = test_pattern_not_found();
-    let v4 = println(ut4);   -- Should be 4
+    let v4 = println(ut4);   // Should be 4
 
     let ut5 = test_pattern_edge_cases();
-    let v5 = println(ut5);   -- Should be 3
+    let v5 = println(ut5);   // Should be 3
 
     let ut6 = test_mir_keywords();
-    let v6 = println(ut6);   -- Should be 5
+    let v6 = println(ut6);   // Should be 5
 
     let ut7 = test_llvm_keywords();
-    let v7 = println(ut7);   -- Should be 6
+    let v7 = println(ut7);   // Should be 6
 
-    -- v0.30.173: Extended unit tests (38 new assertions)
+    // v0.30.173: Extended unit tests (38 new assertions)
     let ut8 = test_pattern_empty();
-    let v8x = println(ut8);  -- Should be 4
+    let v8x = println(ut8);  // Should be 4
     let ut9 = test_pattern_repeated();
-    let v9 = println(ut9);   -- Should be 4
+    let v9 = println(ut9);   // Should be 4
     let ut10 = test_mir_variables();
-    let v10 = println(ut10); -- Should be 6
+    let v10 = println(ut10); // Should be 6
     let ut11 = test_llvm_types();
-    let v11 = println(ut11); -- Should be 6
+    let v11 = println(ut11); // Should be 6
     let ut12 = test_llvm_cmp_ops();
-    let v12 = println(ut12); -- Should be 6
+    let v12 = println(ut12); // Should be 6
     let ut13 = test_llvm_arith_ops();
-    let v13 = println(ut13); -- Should be 6
+    let v13 = println(ut13); // Should be 6
     let ut14 = test_pattern_positions();
-    let v14 = println(ut14); -- Should be 6
+    let v14 = println(ut14); // Should be 6
 
-    -- v0.30.180: Additional unit tests (30 new assertions)
+    // v0.30.180: Additional unit tests (30 new assertions)
     let ut15 = test_mir_memory_ops();
-    let v15 = println(ut15); -- Should be 6
+    let v15 = println(ut15); // Should be 6
     let ut16 = test_llvm_fn_attrs();
-    let v16 = println(ut16); -- Should be 6
+    let v16 = println(ut16); // Should be 6
     let ut17 = test_llvm_logical_ops();
-    let v17 = println(ut17); -- Should be 6
+    let v17 = println(ut17); // Should be 6
     let ut18 = test_mir_blocks();
-    let v18 = println(ut18); -- Should be 6
+    let v18 = println(ut18); // Should be 6
     let ut19 = test_special_chars();
-    let v19 = println(ut19); -- Should be 6
+    let v19 = println(ut19); // Should be 6
 
-    -- v0.30.198: Extended unit tests (36 new assertions)
+    // v0.30.198: Extended unit tests (36 new assertions)
     let ut20 = test_pattern_prefix();
-    let v20 = println(ut20); -- Should be 6
+    let v20 = println(ut20); // Should be 6
     let ut21 = test_pattern_suffix();
-    let v21 = println(ut21); -- Should be 6
+    let v21 = println(ut21); // Should be 6
     let ut22 = test_mir_control_flow();
-    let v22 = println(ut22); -- Should be 6
+    let v22 = println(ut22); // Should be 6
     let ut23 = test_llvm_control_flow();
-    let v23 = println(ut23); -- Should be 6
+    let v23 = println(ut23); // Should be 6
     let ut24 = test_llvm_global_patterns();
-    let v24 = println(ut24); -- Should be 6
+    let v24 = println(ut24); // Should be 6
     let ut25 = test_pattern_overlap();
-    let v25 = println(ut25); -- Should be 6
+    let v25 = println(ut25); // Should be 6
 
     let unit_base = ut1 + ut2 + ut3 + ut4 + ut5 + ut6 + ut7;
     let unit_ext = ut8 + ut9 + ut10 + ut11 + ut12 + ut13 + ut14;
     let unit_new = ut15 + ut16 + ut17 + ut18 + ut19;
     let unit_v198 = ut20 + ut21 + ut22 + ut23 + ut24 + ut25;
     let unit_total = unit_base + unit_ext + unit_new + unit_v198;
-    let v8 = println(unit_total);  -- Should be 133 (29 base + 38 ext + 30 new + 36 v198)
+    let v8 = println(unit_total);  // Should be 133 (29 base + 38 ext + 30 new + 36 v198)
 
-    let u1 = println(555);  -- Integration tests marker
+    let u1 = println(555);  // Integration tests marker
 
-    -- Stage 2: MIR Equivalence Tests
+    // Stage 2: MIR Equivalence Tests
     let t1 = mir_add_has_entry();
     let t2 = mir_add_has_binop();
     let t3 = mir_add_has_return();
     let t4 = mir_max_has_cmp();
     let t5 = mir_max_has_branch();
 
-    -- Stage 2: LLVM IR Equivalence Tests
+    // Stage 2: LLVM IR Equivalence Tests
     let t6 = llvm_add_has_define();
     let t7 = llvm_add_has_add();
     let t8 = llvm_add_has_ret();
@@ -488,12 +486,12 @@ fn main() -> i64 =
     let t10 = llvm_max_has_br();
     let t11 = llvm_max_has_phi();
 
-    -- Stage 2: Bootstrap Lowering Pattern Tests
+    // Stage 2: Bootstrap Lowering Pattern Tests
     let t12 = test_lowering_const_pattern();
     let t13 = test_lowering_binop_pattern();
     let t14 = test_lowering_call_pattern();
 
-    -- Stage 2: Bootstrap LLVM Pattern Tests
+    // Stage 2: Bootstrap LLVM Pattern Tests
     let t15 = test_llvm_const_pattern();
     let t16 = test_llvm_binop_pattern();
     let t17 = test_llvm_cmp_pattern();
@@ -501,11 +499,11 @@ fn main() -> i64 =
     let t19 = test_llvm_phi_pattern();
 
     let integration = t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t9 + t10 + t11 + t12 + t13 + t14 + t15 + t16 + t17 + t18 + t19;
-    let v9 = println(integration);  -- Should be 19
+    let v9 = println(integration);  // Should be 19
 
     let total = unit_total + integration;
-    let u24 = println(888);  -- Separator
-    let u25 = println(total);  -- Should be 152 (133 unit + 19 integration)
-    let u26 = println(999);  -- End marker
+    let u24 = println(888);  // Separator
+    let u25 = println(total);  // Should be 152 (133 unit + 19 integration)
+    let u26 = println(999);  // End marker
 
     total;

@@ -21,6 +21,7 @@ pub use optimize::{
     OptimizationPass, OptimizationPipeline, OptimizationStats, OptLevel,
     ConstantFolding, DeadCodeElimination, SimplifyBranches,
     CopyPropagation, CommonSubexpressionElimination, ContractBasedOptimization,
+    ContractUnreachableElimination, PureFunctionCSE, ConstFunctionEval,
 };
 
 use std::collections::HashMap;
@@ -60,6 +61,55 @@ pub struct MirFunction {
     pub locals: Vec<(String, MirType)>,
     /// Basic blocks (first block is entry)
     pub blocks: Vec<BasicBlock>,
+    /// v0.38: Contract information for optimization
+    /// Preconditions proven at function entry (e.g., "x >= 0", "len > 0")
+    pub preconditions: Vec<ContractFact>,
+    /// Postconditions guaranteed at function exit (e.g., "ret >= 0")
+    pub postconditions: Vec<ContractFact>,
+    /// v0.38.3: Function is marked @pure (no side effects, deterministic)
+    /// Pure functions can be optimized with CSE - duplicate calls eliminated
+    pub is_pure: bool,
+    /// v0.38.4: Function is marked @const (compile-time evaluatable)
+    /// Const functions are pure + can be evaluated at compile time with constant args
+    pub is_const: bool,
+}
+
+/// v0.38: A proven fact from a contract condition
+/// Used by ContractBasedOptimization to eliminate redundant checks
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ContractFact {
+    /// Variable comparison: var op constant (e.g., x >= 0)
+    VarCmp {
+        var: String,
+        op: CmpOp,
+        value: i64,
+    },
+    /// Variable-variable comparison: var1 op var2 (e.g., start <= end)
+    VarVarCmp {
+        lhs: String,
+        op: CmpOp,
+        rhs: String,
+    },
+    /// Array bounds: index < len(array)
+    ArrayBounds {
+        index: String,
+        array: String,
+    },
+    /// Non-null guarantee
+    NonNull {
+        var: String,
+    },
+}
+
+/// Comparison operator for contract facts
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CmpOp {
+    Lt,  // <
+    Le,  // <=
+    Gt,  // >
+    Ge,  // >=
+    Eq,  // ==
+    Ne,  // !=
 }
 
 /// A basic block containing instructions and a terminator
@@ -207,6 +257,8 @@ pub enum Constant {
     Float(f64),
     Bool(bool),
     String(String),
+    /// Character constant (v0.64)
+    Char(char),
     Unit,
 }
 
@@ -219,6 +271,18 @@ pub enum MirBinOp {
     Mul,
     Div,
     Mod,
+    // v0.37: Wrapping integer arithmetic (no overflow panic)
+    AddWrap,
+    SubWrap,
+    MulWrap,
+    // v0.38: Checked integer arithmetic (returns Option<T>)
+    AddChecked,
+    SubChecked,
+    MulChecked,
+    // v0.38: Saturating integer arithmetic (clamps to min/max)
+    AddSat,
+    SubSat,
+    MulSat,
     // Floating-point arithmetic
     FAdd,
     FSub,
@@ -241,6 +305,48 @@ pub enum MirBinOp {
     // Logical
     And,
     Or,
+    // v0.32: Shift operators
+    Shl,
+    Shr,
+    // v0.36: Bitwise operators
+    Band,
+    Bor,
+    Bxor,
+    // v0.36: Logical implication
+    Implies,
+}
+
+impl MirBinOp {
+    /// v0.35.4: Returns the result type of a binary operation given the operand type
+    pub fn result_type(&self, operand_ty: &MirType) -> MirType {
+        match self {
+            // Arithmetic ops return same type as operands
+            MirBinOp::Add | MirBinOp::Sub | MirBinOp::Mul | MirBinOp::Div | MirBinOp::Mod |
+            // v0.37: Wrapping arithmetic also returns same type
+            MirBinOp::AddWrap | MirBinOp::SubWrap | MirBinOp::MulWrap |
+            // v0.38: Checked arithmetic (Option wrapper handled at type level)
+            MirBinOp::AddChecked | MirBinOp::SubChecked | MirBinOp::MulChecked |
+            // v0.38: Saturating arithmetic
+            MirBinOp::AddSat | MirBinOp::SubSat | MirBinOp::MulSat => {
+                operand_ty.clone()
+            }
+            // Float arithmetic returns f64
+            MirBinOp::FAdd | MirBinOp::FSub | MirBinOp::FMul | MirBinOp::FDiv => MirType::F64,
+            // All comparisons return bool
+            MirBinOp::Eq | MirBinOp::Ne | MirBinOp::Lt | MirBinOp::Gt | MirBinOp::Le | MirBinOp::Ge |
+            MirBinOp::FEq | MirBinOp::FNe | MirBinOp::FLt | MirBinOp::FGt | MirBinOp::FLe | MirBinOp::FGe => {
+                MirType::Bool
+            }
+            // Logical ops return bool
+            MirBinOp::And | MirBinOp::Or => MirType::Bool,
+            // v0.32: Shift ops return same type as left operand
+            MirBinOp::Shl | MirBinOp::Shr => operand_ty.clone(),
+            // v0.36: Bitwise ops return same type as operands (integer)
+            MirBinOp::Band | MirBinOp::Bor | MirBinOp::Bxor => operand_ty.clone(),
+            // v0.36: Logical implication returns bool
+            MirBinOp::Implies => MirType::Bool,
+        }
+    }
 }
 
 /// MIR unary operators
@@ -252,6 +358,21 @@ pub enum MirUnaryOp {
     FNeg,
     /// Logical not
     Not,
+    /// v0.36: Bitwise not
+    Bnot,
+}
+
+impl MirUnaryOp {
+    /// v0.35.4: Returns the result type of a unary operation given the operand type
+    pub fn result_type(&self, operand_ty: &MirType) -> MirType {
+        match self {
+            MirUnaryOp::Neg => operand_ty.clone(),
+            MirUnaryOp::FNeg => MirType::F64,
+            MirUnaryOp::Not => MirType::Bool,
+            // v0.36: Bitwise not returns same type as operand (integer)
+            MirUnaryOp::Bnot => operand_ty.clone(),
+        }
+    }
 }
 
 /// MIR type system (simplified from AST types)
@@ -259,9 +380,14 @@ pub enum MirUnaryOp {
 pub enum MirType {
     I32,
     I64,
+    // v0.38: Unsigned integer types
+    U32,
+    U64,
     F64,
     Bool,
     String,
+    /// Character type (v0.64)
+    Char,
     Unit,
     /// v0.19.0: Struct type with name and field types
     Struct {
@@ -309,10 +435,29 @@ pub struct LoweringContext {
     pub locals: HashMap<String, MirType>,
     /// Function parameter types
     pub params: HashMap<String, MirType>,
+    /// v0.35.4: Function return types for Call type inference
+    pub func_return_types: HashMap<String, MirType>,
 }
 
 impl LoweringContext {
     pub fn new() -> Self {
+        // v0.35.4: Initialize with built-in function return types
+        let mut func_return_types = HashMap::new();
+        // Math intrinsics
+        func_return_types.insert("sqrt".to_string(), MirType::F64);
+        func_return_types.insert("abs".to_string(), MirType::I64);
+        func_return_types.insert("min".to_string(), MirType::I64);
+        func_return_types.insert("max".to_string(), MirType::I64);
+        // Type conversions
+        func_return_types.insert("i64_to_f64".to_string(), MirType::F64);
+        func_return_types.insert("f64_to_i64".to_string(), MirType::I64);
+        // I/O
+        func_return_types.insert("read_int".to_string(), MirType::I64);
+        // Void functions return Unit
+        func_return_types.insert("println".to_string(), MirType::Unit);
+        func_return_types.insert("print".to_string(), MirType::Unit);
+        func_return_types.insert("assert".to_string(), MirType::Unit);
+
         Self {
             temp_counter: 0,
             block_counter: 0,
@@ -321,6 +466,7 @@ impl LoweringContext {
             current_label: "entry".to_string(),
             locals: HashMap::new(),
             params: HashMap::new(),
+            func_return_types,
         }
     }
 
@@ -372,6 +518,8 @@ impl LoweringContext {
                 Constant::Float(_) => MirType::F64,
                 Constant::Bool(_) => MirType::Bool,
                 Constant::String(_) => MirType::String,
+                // v0.64: Character type
+                Constant::Char(_) => MirType::Char,
                 Constant::Unit => MirType::Unit,
             },
             Operand::Place(p) => {
@@ -543,6 +691,8 @@ fn format_constant(c: &Constant) -> String {
         Constant::Float(f) => format!("F:{}", f),
         Constant::Bool(b) => format!("B:{}", if *b { 1 } else { 0 }),
         Constant::String(s) => format!("S:\"{}\"", s),
+        // v0.64: Character constant
+        Constant::Char(c) => format!("C:'{}'", c.escape_default()),
         Constant::Unit => "U".to_string(),
     }
 }
@@ -555,6 +705,18 @@ fn format_binop(op: MirBinOp) -> String {
         MirBinOp::Mul => "*",
         MirBinOp::Div => "/",
         MirBinOp::Mod => "%",
+        // v0.37: Wrapping arithmetic
+        MirBinOp::AddWrap => "+%",
+        MirBinOp::SubWrap => "-%",
+        MirBinOp::MulWrap => "*%",
+        // v0.38: Checked arithmetic
+        MirBinOp::AddChecked => "+?",
+        MirBinOp::SubChecked => "-?",
+        MirBinOp::MulChecked => "*?",
+        // v0.38: Saturating arithmetic
+        MirBinOp::AddSat => "+|",
+        MirBinOp::SubSat => "-|",
+        MirBinOp::MulSat => "*|",
         MirBinOp::FAdd => "+.",
         MirBinOp::FSub => "-.",
         MirBinOp::FMul => "*.",
@@ -573,6 +735,15 @@ fn format_binop(op: MirBinOp) -> String {
         MirBinOp::FGe => ">=.",
         MirBinOp::And => "and",
         MirBinOp::Or => "or",
+        // v0.32: Shift operators
+        MirBinOp::Shl => "<<",
+        MirBinOp::Shr => ">>",
+        // v0.36: Bitwise operators
+        MirBinOp::Band => "band",
+        MirBinOp::Bor => "bor",
+        MirBinOp::Bxor => "bxor",
+        // v0.36: Logical implication
+        MirBinOp::Implies => "implies",
     }.to_string()
 }
 
@@ -582,6 +753,8 @@ fn format_unaryop(op: MirUnaryOp) -> String {
         MirUnaryOp::Neg => "neg",
         MirUnaryOp::FNeg => "fneg",
         MirUnaryOp::Not => "not",
+        // v0.36: Bitwise not
+        MirUnaryOp::Bnot => "bnot",
     }.to_string()
 }
 
@@ -590,9 +763,14 @@ fn format_mir_type(ty: &MirType) -> String {
     match ty {
         MirType::I32 => "i32".to_string(),
         MirType::I64 => "i64".to_string(),
+        // v0.38: Unsigned types
+        MirType::U32 => "u32".to_string(),
+        MirType::U64 => "u64".to_string(),
         MirType::F64 => "f64".to_string(),
         MirType::Bool => "bool".to_string(),
         MirType::String => "String".to_string(),
+        // v0.64: Character type
+        MirType::Char => "char".to_string(),
         MirType::Unit => "()".to_string(),
         MirType::Struct { name, .. } => name.clone(),
         MirType::StructPtr(name) => format!("&{}", name),

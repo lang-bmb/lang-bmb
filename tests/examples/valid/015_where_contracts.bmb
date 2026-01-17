@@ -1,49 +1,49 @@
--- v0.2 Feature Test: Named Contracts with where {} block
--- Tests for where { name: condition, ... } syntax
+// v0.2 Feature Test: Named Contracts with where {} block
+// Tests for where { name: condition, ... } syntax
 
--- Simple where block with single named contract
+// Simple where block with single named contract
 fn safe_divide(a: i64, b: i64) -> r: i64
   where {
     non_zero_divisor: b != 0
   }
 = a / b;
 
--- Multiple named contracts
+// Multiple named contracts
 fn clamp(x: i64, lo: i64, hi: i64) -> r: i64
   where {
     valid_range: lo <= hi,
     result_in_bounds: r >= lo and r <= hi
   }
-= if x < lo then lo else if x > hi then hi else x;
+= if x < lo { lo } else if x > hi { hi } else { x };
 
--- Anonymous contract (no name)
+// Anonymous contract (no name)
 fn abs(x: i64) -> r: i64
   where {
     r >= 0
   }
-= if x < 0 then 0 - x else x;
+= if x < 0 { 0 - x } else { x };
 
--- Mixed named and anonymous contracts
+// Mixed named and anonymous contracts
 fn factorial(n: i64) -> r: i64
   where {
     non_negative: n >= 0,
     r >= 1
   }
-= if n <= 1 then 1 else n * factorial(n - 1);
+= if n <= 1 { 1 } else { n * factorial(n - 1) };
 
--- Empty where block (no contracts)
+// Empty where block (no contracts)
 fn identity(x: i64) -> i64
   where {}
 = x;
 
--- Legacy syntax still works (pre/post)
+// Legacy syntax still works (pre/post)
 fn legacy_add(a: i64, b: i64) -> i64
   pre a >= 0
   post ret >= a
 = a + b;
 
--- v0.2: State references with .pre and .post
--- Used for mutable reference contracts
+// v0.2: State references with .pre and .post
+// Used for mutable reference contracts
 fn double_value(x: i64) -> r: i64
   where {
     positive_input: x.pre > 0,
@@ -51,7 +51,7 @@ fn double_value(x: i64) -> r: i64
   }
 = x * 2;
 
--- Combining .pre/.post with explicit ret binding
+// Combining .pre/.post with explicit ret binding
 fn increment(x: i64) -> result: i64
   where {
     incremented: result == x.pre + 1

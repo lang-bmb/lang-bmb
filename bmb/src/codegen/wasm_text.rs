@@ -565,16 +565,30 @@ impl WasmCodeGen {
             }
 
             MirInst::BinOp { dest, op, lhs, rhs } => {
-                // Push operands
-                self.emit_operand(out, lhs)?;
-                self.emit_operand(out, rhs)?;
+                // v0.36: Special handling for Implies (P implies Q = !P || Q)
+                if *op == MirBinOp::Implies {
+                    // Push left operand and negate (xor with 1)
+                    self.emit_operand(out, lhs)?;
+                    writeln!(out, "    i32.const 1")?;
+                    writeln!(out, "    i32.xor")?;
+                    // Push right operand
+                    self.emit_operand(out, rhs)?;
+                    // Or them together
+                    writeln!(out, "    i32.or")?;
+                    // Store result
+                    writeln!(out, "    local.set ${}", dest.name)?;
+                } else {
+                    // Push operands
+                    self.emit_operand(out, lhs)?;
+                    self.emit_operand(out, rhs)?;
 
-                // Apply operation
-                let wasm_op = self.binop_to_wasm(*op, lhs, func)?;
-                writeln!(out, "    {}", wasm_op)?;
+                    // Apply operation
+                    let wasm_op = self.binop_to_wasm(*op, lhs, func)?;
+                    writeln!(out, "    {}", wasm_op)?;
 
-                // Store result
-                writeln!(out, "    local.set ${}", dest.name)?;
+                    // Store result
+                    writeln!(out, "    local.set ${}", dest.name)?;
+                }
             }
 
             MirInst::UnaryOp { dest, op, src } => {
@@ -595,6 +609,12 @@ impl WasmCodeGen {
                         self.emit_operand(out, src)?;
                         writeln!(out, "    i32.const 1")?;
                         writeln!(out, "    i32.xor")?;
+                    }
+                    // v0.36: Bitwise not (XOR with -1)
+                    MirUnaryOp::Bnot => {
+                        self.emit_operand(out, src)?;
+                        writeln!(out, "    i64.const -1")?;
+                        writeln!(out, "    i64.xor")?;
                     }
                 }
                 writeln!(out, "    local.set ${}", dest.name)?;
@@ -742,6 +762,8 @@ impl WasmCodeGen {
                 writeln!(out, "    ;; TODO: string constant")?;
                 writeln!(out, "    i32.const 0")?;
             }
+            // v0.64: Character constant (Unicode codepoint as i32)
+            Constant::Char(c) => writeln!(out, "    i32.const {}", *c as u32)?,
         }
         Ok(())
     }
@@ -832,6 +854,9 @@ impl WasmCodeGen {
         match ty {
             MirType::I32 => "i32",
             MirType::I64 => "i64",
+            // v0.38: Unsigned types map to same WASM types
+            MirType::U32 => "i32",
+            MirType::U64 => "i64",
             MirType::F64 => "f64",
             MirType::Bool => "i32",  // WASM has no boolean, use i32
             MirType::String => "i32", // Pointer (memory offset)
@@ -843,6 +868,8 @@ impl WasmCodeGen {
             MirType::Enum { .. } => "i32",
             // v0.19.3: Array types are represented as pointers (i32 in WASM)
             MirType::Array { .. } => "i32",
+            // v0.64: Character type (Unicode codepoint as i32)
+            MirType::Char => "i32",
         }
     }
 
@@ -859,9 +886,14 @@ impl WasmCodeGen {
         match ty {
             MirType::I32 => "i32.const 0",
             MirType::I64 => "i64.const 0",
+            // v0.38: Unsigned types default to 0
+            MirType::U32 => "i32.const 0",
+            MirType::U64 => "i64.const 0",
             MirType::F64 => "f64.const 0.0",
             MirType::Bool => "i32.const 0",
             MirType::String => "i32.const 0",
+            // v0.64: Character default to null char
+            MirType::Char => "i32.const 0",
             MirType::Unit => "",
             // v0.19.0: Struct pointers default to null (0)
             MirType::Struct { .. } => "i32.const 0",
@@ -884,6 +916,21 @@ impl WasmCodeGen {
             MirBinOp::Mul => format!("{}.mul", ty),
             MirBinOp::Div => format!("{}.div_s", ty),  // Signed division
             MirBinOp::Mod => format!("{}.rem_s", ty),  // Signed remainder
+
+            // v0.37: Wrapping arithmetic (WASM naturally wraps, same as normal ops)
+            MirBinOp::AddWrap => format!("{}.add", ty),
+            MirBinOp::SubWrap => format!("{}.sub", ty),
+            MirBinOp::MulWrap => format!("{}.mul", ty),
+
+            // v0.38: Checked arithmetic (for now, same as normal ops; full Option handling later)
+            MirBinOp::AddChecked => format!("{}.add", ty),
+            MirBinOp::SubChecked => format!("{}.sub", ty),
+            MirBinOp::MulChecked => format!("{}.mul", ty),
+
+            // v0.38: Saturating arithmetic (for now, same as normal ops; full saturation logic later)
+            MirBinOp::AddSat => format!("{}.add", ty),
+            MirBinOp::SubSat => format!("{}.sub", ty),
+            MirBinOp::MulSat => format!("{}.mul", ty),
 
             // Floating-point arithmetic
             MirBinOp::FAdd => "f64.add".to_string(),
@@ -910,6 +957,19 @@ impl WasmCodeGen {
             // Logical
             MirBinOp::And => "i32.and".to_string(),
             MirBinOp::Or => "i32.or".to_string(),
+
+            // v0.32: Shift operators
+            MirBinOp::Shl => format!("{}.shl", ty),
+            MirBinOp::Shr => format!("{}.shr_s", ty),  // arithmetic shift right (signed)
+
+            // v0.36: Bitwise operators
+            MirBinOp::Band => format!("{}.and", ty),
+            MirBinOp::Bor => format!("{}.or", ty),
+            MirBinOp::Bxor => format!("{}.xor", ty),
+
+            // v0.36: Implies is handled specially in emit_instruction
+            // This arm exists for exhaustiveness
+            MirBinOp::Implies => "i32.or".to_string(),
         };
 
         Ok(instr)
@@ -924,6 +984,8 @@ impl WasmCodeGen {
                     Constant::Float(_) => MirType::F64,
                     Constant::Bool(_) => MirType::Bool,
                     Constant::String(_) => MirType::String,
+                    // v0.64: Character type
+                    Constant::Char(_) => MirType::Char,
                     Constant::Unit => MirType::Unit,
                 };
                 Some((dest.name.clone(), ty))
@@ -939,7 +1001,7 @@ impl WasmCodeGen {
                     MirBinOp::Eq | MirBinOp::Ne | MirBinOp::Lt | MirBinOp::Gt |
                     MirBinOp::Le | MirBinOp::Ge | MirBinOp::FEq | MirBinOp::FNe |
                     MirBinOp::FLt | MirBinOp::FGt | MirBinOp::FLe | MirBinOp::FGe |
-                    MirBinOp::And | MirBinOp::Or => MirType::Bool,
+                    MirBinOp::And | MirBinOp::Or | MirBinOp::Implies => MirType::Bool,
                     MirBinOp::FAdd | MirBinOp::FSub | MirBinOp::FMul | MirBinOp::FDiv => MirType::F64,
                     _ => self.infer_operand_mir_type(lhs, func),
                 };
@@ -950,6 +1012,8 @@ impl WasmCodeGen {
                     MirUnaryOp::Not => MirType::Bool,
                     MirUnaryOp::Neg => self.infer_operand_mir_type(src, func),
                     MirUnaryOp::FNeg => MirType::F64,
+                    // v0.36: Bitwise not returns same type as operand
+                    MirUnaryOp::Bnot => self.infer_operand_mir_type(src, func),
                 };
                 Some((dest.name.clone(), ty))
             }
@@ -1030,6 +1094,8 @@ impl WasmCodeGen {
                 Constant::Float(_) => MirType::F64,
                 Constant::Bool(_) => MirType::Bool,
                 Constant::String(_) => MirType::String,
+                // v0.64: Character type
+                Constant::Char(_) => MirType::Char,
                 Constant::Unit => MirType::Unit,
             },
             Operand::Place(p) => self.infer_place_mir_type(&p.name, func),
@@ -1044,6 +1110,8 @@ impl WasmCodeGen {
                 Constant::Float(_) => "f64",
                 Constant::Bool(_) => "i32",
                 Constant::String(_) => "i32",
+                // v0.64: Character type
+                Constant::Char(_) => "i32",
                 Constant::Unit => "i32",
             },
             Operand::Place(p) => {
@@ -1098,6 +1166,10 @@ mod tests {
                     }],
                     terminator: Terminator::Return(Some(Operand::Place(Place::new("_t0")))),
                 }],
+                preconditions: vec![],
+                postconditions: vec![],
+                is_pure: false,
+                is_const: false,
             }],
             extern_fns: vec![],
         };
@@ -1127,6 +1199,10 @@ mod tests {
                     instructions: vec![],
                     terminator: Terminator::Return(None),
                 }],
+                preconditions: vec![],
+                postconditions: vec![],
+                is_pure: false,
+                is_const: false,
             }],
             extern_fns: vec![],
         };
@@ -1243,6 +1319,10 @@ mod tests {
                     ],
                     terminator: Terminator::Return(Some(Operand::Place(Place::new("_t1")))),
                 }],
+                preconditions: vec![],
+                postconditions: vec![],
+                is_pure: false,
+                is_const: false,
             }],
             extern_fns: vec![],
         };

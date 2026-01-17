@@ -1,15 +1,14 @@
--- Factorial calculation for bootstrap compiler validation
--- Uses iteration pattern instead of recursion
+// Factorial calculation for bootstrap compiler validation
+// Uses iteration pattern instead of recursion
 
--- Iterative factorial using accumulator pattern
+// Iterative factorial using accumulator pattern
 fn factorial_iter(n: i64, acc: i64) -> i64 =
-    if n <= 1 then acc
-    else factorial_iter(n - 1, acc * n);
+    if n <= 1 { acc } else { factorial_iter(n - 1, acc * n) };
 
--- Wrapper function
+// Wrapper function
 fn factorial(n: i64) -> i64 = factorial_iter(n, 1);
 
--- Main function that calculates factorial(5) = 120
+// Main function that calculates factorial(5) = 120
 fn main() -> i64 =
     let result = factorial(5);
     let u0 = println(result);

@@ -1,5 +1,5 @@
--- Tests for stdlib/parse module
--- Verifies position-based parsing utilities
+// Tests for stdlib/parse module
+// Verifies position-based parsing utilities
 
 use parse::skip_ws;
 use parse::skip_all_ws;
@@ -23,9 +23,9 @@ use parse::has_pattern;
 
 use string::string_eq;
 
--- ============================================
--- Whitespace Handling Tests
--- ============================================
+// ============================================
+// Whitespace Handling Tests
+// ============================================
 
 fn test_skip_ws_at_start() -> i64
   post ret == 3
@@ -51,9 +51,9 @@ fn test_skip_all_ws_mixed() -> i64
   post ret == 4
 = skip_all_ws(" \t\n a", 0);
 
--- ============================================
--- Character Search Tests
--- ============================================
+// ============================================
+// Character Search Tests
+// ============================================
 
 fn test_find_char_found() -> i64
   post ret == 5
@@ -75,9 +75,9 @@ fn test_find_colon() -> i64
   post ret == 4
 = find_colon("name:value", 0);
 
--- ============================================
--- Prefix Matching Tests
--- ============================================
+// ============================================
+// Prefix Matching Tests
+// ============================================
 
 fn test_starts_with_at_true() -> bool
   post ret == true
@@ -95,9 +95,9 @@ fn test_starts_with_at_empty() -> bool
   post ret == true
 = starts_with_at("hello", "", 0);
 
--- ============================================
--- Token Reading Tests
--- ============================================
+// ============================================
+// Token Reading Tests
+// ============================================
 
 fn test_read_until_ws_basic() -> bool
   post ret == true
@@ -119,9 +119,9 @@ fn test_read_ident_stops_at_special() -> bool
   post ret == true
 = string_eq(read_ident("foo.bar", 0), "foo");
 
--- ============================================
--- Integer Parsing Tests
--- ============================================
+// ============================================
+// Integer Parsing Tests
+// ============================================
 
 fn test_parse_int_at_simple() -> i64
   post ret == 42
@@ -135,9 +135,9 @@ fn test_parse_int_at_stops() -> i64
   post ret == 99
 = parse_int_at("99abc", 0);
 
--- ============================================
--- String Manipulation Tests
--- ============================================
+// ============================================
+// String Manipulation Tests
+// ============================================
 
 fn test_strip_trailing_colon() -> bool
   post ret == true
@@ -163,9 +163,9 @@ fn test_has_equals_false() -> bool
   post ret == false
 = has_equals("abc");
 
--- ============================================
--- Field Extraction Tests
--- ============================================
+// ============================================
+// Field Extraction Tests
+// ============================================
 
 fn test_extract_field_first() -> bool
   post ret == true
@@ -191,9 +191,9 @@ fn test_count_fields_empty() -> i64
   post ret == 1
 = count_fields("");
 
--- ============================================
--- Arrow/Double Pipe Finding Tests
--- ============================================
+// ============================================
+// Arrow/Double Pipe Finding Tests
+// ============================================
 
 fn test_find_arrow_found() -> i64
   post ret == 4
@@ -211,9 +211,9 @@ fn test_find_double_pipe_not_found() -> i64
   post ret == 5
 = find_double_pipe("a|b|c", 0);
 
--- ============================================
--- Pattern Matching Tests
--- ============================================
+// ============================================
+// Pattern Matching Tests
+// ============================================
 
 fn test_has_pattern_found() -> bool
   post ret == true
@@ -231,9 +231,9 @@ fn test_has_pattern_at_end() -> bool
   post ret == true
 = has_pattern("hello", "llo");
 
--- ============================================
--- Main Test Runner
--- ============================================
+// ============================================
+// Main Test Runner
+// ============================================
 
 fn main() -> i64 =
     let t1 = test_skip_ws_at_start();

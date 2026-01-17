@@ -1,114 +1,114 @@
--- BMB v0.2 Showcase: Standard Library Function Migration Examples
--- Demonstrates: refinement types, where blocks, range operators, ret binding
+// BMB v0.2 Showcase: Standard Library Function Migration Examples
+// Demonstrates: refinement types, where blocks, range operators, ret binding
 
--- ============================================
--- Example 1: Absolute Value (Return Refinement)
--- ============================================
--- Before (v0.1):
---   fn abs(x: i64) -> i64
---     post ret >= 0
---   = if x >= 0 then x else 0 - x;
+// ============================================
+// Example 1: Absolute Value (Return Refinement)
+// ============================================
+// Before (v0.1):
+//   fn abs(x: i64) -> i64
+//     post ret >= 0
+//   = if x >= 0 then x else 0 - x;
 
--- After (v0.2): Return type refinement guarantees non-negative
+// After (v0.2): Return type refinement guarantees non-negative
 fn abs(x: i64) -> i64{it >= 0}
-= if x >= 0 then x else 0 - x;
+= if x >= 0 { x } else { 0 - x };
 
--- ============================================
--- Example 2: Safe Division (Parameter Refinement)
--- ============================================
--- Before (v0.1):
---   fn div_trunc(a: i64, b: i64) -> i64
---     pre b != 0
---   = a / b;
+// ============================================
+// Example 2: Safe Division (Parameter Refinement)
+// ============================================
+// Before (v0.1):
+//   fn div_trunc(a: i64, b: i64) -> i64
+//     pre b != 0
+//   = a / b;
 
--- After (v0.2): Refinement type enforces non-zero divisor
+// After (v0.2): Refinement type enforces non-zero divisor
 fn div_trunc(a: i64, b: i64{it != 0}) -> i64
 = a / b;
 
--- ============================================
--- Example 3: Clamp (Where Block + Multiple Refinements)
--- ============================================
--- Before (v0.1):
---   fn clamp(x: i64, lo: i64, hi: i64) -> i64
---     pre lo <= hi
---     post ret >= lo and ret <= hi
---   = if x < lo then lo else if x > hi then hi else x;
+// ============================================
+// Example 3: Clamp (Where Block + Multiple Refinements)
+// ============================================
+// Before (v0.1):
+//   fn clamp(x: i64, lo: i64, hi: i64) -> i64
+//     pre lo <= hi
+//     post ret >= lo and ret <= hi
+//   = if x < lo then lo else if x > hi then hi else x;
 
--- After (v0.2): Named contracts in where block + refined return
+// After (v0.2): Named contracts in where block + refined return
 fn clamp(x: i64, lo: i64, hi: i64{it >= lo}) -> r: i64{it >= lo, it <= hi}
   where {
     in_bounds: r >= lo and r <= hi,
     correct_clamp: (x < lo and r == lo) or (x > hi and r == hi) or (r == x)
   }
-= if x < lo then lo else if x > hi then hi else x;
+= if x < lo { lo } else if x > hi { hi } else { x };
 
--- ============================================
--- Example 4: Min/Max with Named Ret Binding
--- ============================================
+// ============================================
+// Example 4: Min/Max with Named Ret Binding
+// ============================================
 fn min(a: i64, b: i64) -> r: i64
   where {
     less_or_equal: r <= a and r <= b,
     is_input: r == a or r == b
   }
-= if a <= b then a else b;
+= if a <= b { a } else { b };
 
 fn max(a: i64, b: i64) -> r: i64
   where {
     greater_or_equal: r >= a and r >= b,
     is_input: r == a or r == b
   }
-= if a >= b then a else b;
+= if a >= b { a } else { b };
 
--- ============================================
--- Example 5: Range Check with Range Operators
--- ============================================
--- Before: x >= lo and x <= hi (ambiguous bounds)
--- After: Uses inclusive range ..=
+// ============================================
+// Example 5: Range Check with Range Operators
+// ============================================
+// Before: x >= lo and x <= hi (ambiguous bounds)
+// After: Uses inclusive range ..=
 
 fn in_range(x: i64, lo: i64, hi: i64{it >= lo}) -> bool
 = x >= lo and x <= hi;
 
--- Range iteration example (conceptual - for illustration)
+// Range iteration example (conceptual - for illustration)
 fn count_in_range(start: i64, end: i64{it >= start}) -> i64
 = end - start;
 
--- ============================================
--- Example 6: Modulo with Division Safety
--- ============================================
+// ============================================
+// Example 6: Modulo with Division Safety
+// ============================================
 fn mod_op(a: i64, b: i64{it != 0}) -> r: i64
   where {
     division_identity: a == div_trunc(a, b) * b + r
   }
 = a - div_trunc(a, b) * b;
 
--- ============================================
--- Example 7: Sign Function with Exhaustive Contracts
--- ============================================
+// ============================================
+// Example 7: Sign Function with Exhaustive Contracts
+// ============================================
 fn sign(x: i64) -> r: i64{it >= -1, it <= 1}
   where {
     negative_case: (x < 0 and r == -1) or x >= 0,
     zero_case: (x == 0 and r == 0) or x != 0,
     positive_case: (x > 0 and r == 1) or x <= 0
   }
-= if x < 0 then -1 else if x > 0 then 1 else 0;
+= if x < 0 { -1 } else if x > 0 { 1 } else { 0 };
 
--- ============================================
--- Example 8: Array Index with Bounds (Conceptual)
--- ============================================
+// ============================================
+// Example 8: Array Index with Bounds (Conceptual)
+// ============================================
 fn safe_get(arr: [i64; 8], idx: i64{it >= 0, it < 8}) -> i64
 = arr[idx];
 
--- ============================================
--- Example 9: Positive Power (Recursive with Decreases)
--- ============================================
--- Note: @decreases attribute ensures termination proof
+// ============================================
+// Example 9: Positive Power (Recursive with Decreases)
+// ============================================
+// Note: @decreases attribute ensures termination proof
 @decreases(n)
 fn power(base: i64, n: i64{it >= 0}) -> i64
-= if n == 0 then 1 else base * power(base, n - 1);
+= if n == 0 { 1 } else { base * power(base, n - 1) };
 
--- ============================================
--- Example 10: Pure Function Annotation
--- ============================================
+// ============================================
+// Example 10: Pure Function Annotation
+// ============================================
 @pure
 fn square(x: i64) -> i64{it >= 0}
 = x * x;

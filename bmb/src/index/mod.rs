@@ -156,6 +156,106 @@ pub struct ProjectIndex {
     pub types: Vec<TypeEntry>,
 }
 
+// =============================================================================
+// v0.50.24 - Proof Verification Index (Task 47.7-47.8)
+// =============================================================================
+
+/// Verification status for a function's contracts
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ProofStatus {
+    /// Contract verified (Z3 returned unsat)
+    Verified,
+    /// Contract failed with counterexample
+    Failed,
+    /// Verification timed out
+    Timeout,
+    /// Z3 returned unknown
+    Unknown,
+    /// Not yet verified
+    Pending,
+    /// Z3 not available on this system
+    Unavailable,
+}
+
+/// A proof entry for a function with contracts
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProofEntry {
+    /// Function name
+    pub name: String,
+    /// Source file
+    pub file: String,
+    /// Line number
+    pub line: usize,
+    /// Precondition verification status
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pre_status: Option<ProofStatus>,
+    /// Postcondition verification status
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub post_status: Option<ProofStatus>,
+    /// Counterexample if failed
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub counterexample: Option<Vec<(String, String)>>,
+    /// Verification time in milliseconds
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub verify_time_ms: Option<u64>,
+    /// Last verified timestamp
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub verified_at: Option<String>,
+}
+
+/// Proof index containing verification results
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProofIndex {
+    pub version: String,
+    pub z3_available: bool,
+    pub z3_version: Option<String>,
+    pub verified_at: String,
+    pub proofs: Vec<ProofEntry>,
+}
+
+impl ProofIndex {
+    pub fn new(z3_available: bool, z3_version: Option<String>) -> Self {
+        let now = chrono::Utc::now();
+        Self {
+            version: "1".to_string(),
+            z3_available,
+            z3_version,
+            verified_at: now.format("%Y-%m-%dT%H:%M:%SZ").to_string(),
+            proofs: Vec::new(),
+        }
+    }
+
+    pub fn add_proof(&mut self, entry: ProofEntry) {
+        // Update or add proof entry
+        if let Some(existing) = self.proofs.iter_mut().find(|p| p.name == entry.name && p.file == entry.file) {
+            *existing = entry;
+        } else {
+            self.proofs.push(entry);
+        }
+    }
+}
+
+/// Write proof index to .bmb/index/proofs.json
+pub fn write_proof_index(index: &ProofIndex, project_root: &Path) -> std::io::Result<()> {
+    let index_dir = project_root.join(".bmb").join("index");
+    std::fs::create_dir_all(&index_dir)?;
+
+    let proofs_path = index_dir.join("proofs.json");
+    let proofs_json = serde_json::to_string_pretty(index)?;
+    std::fs::write(&proofs_path, proofs_json)?;
+
+    Ok(())
+}
+
+/// Read proof index from .bmb/index/proofs.json
+pub fn read_proof_index(project_root: &Path) -> std::io::Result<ProofIndex> {
+    let proofs_path = project_root.join(".bmb").join("index").join("proofs.json");
+    let proofs_json = std::fs::read_to_string(&proofs_path)?;
+    let index: ProofIndex = serde_json::from_str(&proofs_json)?;
+    Ok(index)
+}
+
 /// Index generator
 pub struct IndexGenerator {
     project_name: String,
@@ -377,9 +477,14 @@ impl IndexGenerator {
         match ty {
             Type::I32 => "i32".to_string(),
             Type::I64 => "i64".to_string(),
+            // v0.38: Unsigned types
+            Type::U32 => "u32".to_string(),
+            Type::U64 => "u64".to_string(),
             Type::F64 => "f64".to_string(),
             Type::Bool => "bool".to_string(),
             Type::String => "String".to_string(),
+            // v0.64: Char type
+            Type::Char => "char".to_string(),
             Type::Unit => "()".to_string(),
             Type::Named(name) => name.clone(),
             Type::TypeVar(name) => name.clone(),
@@ -404,6 +509,13 @@ impl IndexGenerator {
             }
             // v0.31: Never type
             Type::Never => "!".to_string(),
+            // v0.37: Nullable type
+            Type::Nullable(inner) => format!("{}?", self.format_type(inner)),
+            // v0.42: Tuple type
+            Type::Tuple(elems) => {
+                let elems_str: Vec<_> = elems.iter().map(|t| self.format_type(t)).collect();
+                format!("({})", elems_str.join(", "))
+            }
         }
     }
 
@@ -424,6 +536,18 @@ impl IndexGenerator {
                     ast::BinOp::Mul => "*",
                     ast::BinOp::Div => "/",
                     ast::BinOp::Mod => "%",
+                    // v0.37: Wrapping arithmetic
+                    ast::BinOp::AddWrap => "+%",
+                    ast::BinOp::SubWrap => "-%",
+                    ast::BinOp::MulWrap => "*%",
+                    // v0.38: Checked arithmetic
+                    ast::BinOp::AddChecked => "+?",
+                    ast::BinOp::SubChecked => "-?",
+                    ast::BinOp::MulChecked => "*?",
+                    // v0.38: Saturating arithmetic
+                    ast::BinOp::AddSat => "+|",
+                    ast::BinOp::SubSat => "-|",
+                    ast::BinOp::MulSat => "*|",
                     ast::BinOp::Eq => "==",
                     ast::BinOp::Ne => "!=",
                     ast::BinOp::Lt => "<",
@@ -432,6 +556,15 @@ impl IndexGenerator {
                     ast::BinOp::Ge => ">=",
                     ast::BinOp::And => "and",
                     ast::BinOp::Or => "or",
+                    // v0.32: Shift operators
+                    ast::BinOp::Shl => "<<",
+                    ast::BinOp::Shr => ">>",
+                    // v0.36: Bitwise operators
+                    ast::BinOp::Band => "band",
+                    ast::BinOp::Bor => "bor",
+                    ast::BinOp::Bxor => "bxor",
+                    // v0.36: Logical implication
+                    ast::BinOp::Implies => "implies",
                 };
                 format!(
                     "{} {} {}",
@@ -444,6 +577,8 @@ impl IndexGenerator {
                 let op_str = match op {
                     ast::UnOp::Neg => "-",
                     ast::UnOp::Not => "not ",
+                    // v0.36: Bitwise not
+                    ast::UnOp::Bnot => "bnot ",
                 };
                 format!("{}{}", op_str, self.format_expr(&expr.node))
             }

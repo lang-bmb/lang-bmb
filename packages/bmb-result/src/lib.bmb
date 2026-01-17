@@ -1,18 +1,18 @@
--- BMB Result Library v0.17.0
--- 제네릭 Result<T, E> 타입 - 에러 처리
---
--- AI-Native Design:
--- - 명시적 에러 처리 (예외 없음)
--- - 계약으로 에러 조건 명시
--- - ? 연산자와 try 블록 지원 (v0.13.2+)
--- - 제네릭으로 모든 타입 지원
+// BMB Result Library v0.17.0
+// 제네릭 Result<T, E> 타입 - 에러 처리
+//
+// AI-Native Design:
+// - 명시적 에러 처리 (예외 없음)
+// - 계약으로 에러 조건 명시
+// - ? 연산자와 try 블록 지원 (v0.13.2+)
+// - 제네릭으로 모든 타입 지원
 
--- v0.17: Import Option for Result-Option conversions
+// v0.17: Import Option for Result-Option conversions
 use bmb_option::Option;
 
--- ============================================
--- Result<T, E> 제네릭 열거형
--- ============================================
+// ============================================
+// Result<T, E> 제네릭 열거형
+// ============================================
 
 @derive(Debug, Clone, PartialEq)
 pub enum Result<T, E> {
@@ -20,9 +20,9 @@ pub enum Result<T, E> {
     Err(E),
 }
 
--- ============================================
--- 생성자 함수
--- ============================================
+// ============================================
+// 생성자 함수
+// ============================================
 
 pub fn ok<T, E>(value: T) -> Result<T, E> =
     Result::Ok(value);
@@ -30,9 +30,9 @@ pub fn ok<T, E>(value: T) -> Result<T, E> =
 pub fn err<T, E>(error: E) -> Result<T, E> =
     Result::Err(error);
 
--- ============================================
--- 상태 검사
--- ============================================
+// ============================================
+// 상태 검사
+// ============================================
 
 pub fn is_ok<T, E>(res: Result<T, E>) -> bool =
     match res {
@@ -46,19 +46,19 @@ pub fn is_err<T, E>(res: Result<T, E>) -> bool =
         Result::Err(e) => true,
     };
 
--- ============================================
--- 값 추출
--- ============================================
+// ============================================
+// 값 추출
+// ============================================
 
--- 안전한 추출: 기본값 사용
+// 안전한 추출: 기본값 사용
 pub fn unwrap_or<T, E>(res: Result<T, E>, default: T) -> T =
     match res {
         Result::Ok(v) => v,
         Result::Err(e) => default,
     };
 
--- Ok 값 추출 (precondition 필요)
--- Note: Err 케이스는 precondition에 의해 도달 불가
+// Ok 값 추출 (precondition 필요)
+// Note: Err 케이스는 precondition에 의해 도달 불가
 pub fn unwrap<T, E>(res: Result<T, E>) -> T
   pre is_ok(res)
 = match res {
@@ -66,8 +66,8 @@ pub fn unwrap<T, E>(res: Result<T, E>) -> T
     Result::Err(e) => unwrap(res),
 };
 
--- Err 값 추출 (precondition 필요)
--- Note: Ok 케이스는 precondition에 의해 도달 불가
+// Err 값 추출 (precondition 필요)
+// Note: Ok 케이스는 precondition에 의해 도달 불가
 pub fn unwrap_err<T, E>(res: Result<T, E>) -> E
   pre is_err(res)
 = match res {
@@ -75,45 +75,45 @@ pub fn unwrap_err<T, E>(res: Result<T, E>) -> E
     Result::Err(e) => e,
 };
 
--- ============================================
--- Option 변환
--- ============================================
+// ============================================
+// Option 변환
+// ============================================
 
--- Ok를 Some으로, Err를 None으로
-pub fn ok_option<T, E>(res: Result<T, E>) -> Option<T> =
+// Ok를 Some으로, Err를 None으로
+pub fn ok_option<T, E>(res: Result<T, E>) -> T? =
     match res {
         Result::Ok(v) => Option::Some(v),
         Result::Err(e) => Option::None,
     };
 
--- Err를 Some으로, Ok를 None으로
-pub fn err_option<T, E>(res: Result<T, E>) -> Option<E> =
+// Err를 Some으로, Ok를 None으로
+pub fn err_option<T, E>(res: Result<T, E>) -> E? =
     match res {
         Result::Ok(v) => Option::None,
         Result::Err(e) => Option::Some(e),
     };
 
--- ============================================
--- 결합 연산
--- ============================================
+// ============================================
+// 결합 연산
+// ============================================
 
--- or: 첫 번째 Ok 또는 두 번째 반환
+// or: 첫 번째 Ok 또는 두 번째 반환
 pub fn result_or<T, E>(a: Result<T, E>, b: Result<T, E>) -> Result<T, E> =
     match a {
         Result::Ok(v) => a,
         Result::Err(e) => b,
     };
 
--- and: 첫 번째가 Ok이면 두 번째, 아니면 첫 번째 Err
+// and: 첫 번째가 Ok이면 두 번째, 아니면 첫 번째 Err
 pub fn result_and<T, E>(a: Result<T, E>, b: Result<T, E>) -> Result<T, E> =
     match a {
         Result::Ok(v) => b,
         Result::Err(e) => a,
     };
 
--- ============================================
--- 에러 코드 타입 (표준)
--- ============================================
+// ============================================
+// 에러 코드 타입 (표준)
+// ============================================
 
 @derive(Debug, Clone, PartialEq, Eq)
 pub enum ErrorCode {
@@ -128,9 +128,9 @@ pub enum ErrorCode {
     Custom(i64),
 }
 
--- ============================================
--- i64 에러 특화 (역호환성)
--- ============================================
+// ============================================
+// i64 에러 특화 (역호환성)
+// ============================================
 
 pub fn ok_i64(v: i64) -> Result<i64, i64> = Result::Ok(v);
 
@@ -153,25 +153,25 @@ pub fn map_err_add(res: Result<i64, i64>, offset: i64) -> Result<i64, i64> =
         Result::Err(e) => Result::Err(e + offset),
     };
 
--- ============================================
--- 안전한 연산
--- ============================================
+// ============================================
+// 안전한 연산
+// ============================================
 
 pub fn safe_divide(a: i64, b: i64) -> Result<i64, i64>
   post (b == 0 and is_err(ret)) or (b != 0 and is_ok(ret))
-= if b == 0 then Result::Err(100) else Result::Ok(a / b);
+= if b == 0 { Result::Err(100) } else { Result::Ok(a / b) };
 
 pub fn safe_mod(a: i64, b: i64) -> Result<i64, i64>
   post (b == 0 and is_err(ret)) or (b != 0 and is_ok(ret))
-= if b == 0 then Result::Err(100) else Result::Ok(a - (a / b) * b);
+= if b == 0 { Result::Err(100) } else { Result::Ok(a - (a / b) * b) };
 
 pub fn safe_sqrt_check(x: i64) -> Result<i64, i64>
   post (x < 0 and is_err(ret)) or (x >= 0 and is_ok(ret))
-= if x < 0 then Result::Err(1) else Result::Ok(x);
+= if x < 0 { Result::Err(1) } else { Result::Ok(x) };
 
--- ============================================
--- 에러 코드 상수
--- ============================================
+// ============================================
+// 에러 코드 상수
+// ============================================
 
 pub fn ERR_INVALID_INPUT() -> i64 = 1;
 pub fn ERR_OUT_OF_RANGE() -> i64 = 2;

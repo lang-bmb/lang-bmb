@@ -5,7 +5,7 @@
 use super::expr::{BinOp, Expr, LiteralPattern, Pattern, RangeKind, StateKind, UnOp};
 use super::types::Type;
 use super::{
-    EnumDef, ExternFn, FnDef, ImplBlock, Item, Program, StructDef, TraitDef, UseStmt, Visibility,
+    EnumDef, ExternFn, FnDef, ImplBlock, Item, Program, StructDef, TraitDef, TypeAliasDef, UseStmt, Visibility,
 };
 
 /// Format AST as S-expression (Lisp-like notation)
@@ -32,6 +32,8 @@ fn format_item(item: &Item, level: usize) -> String {
         Item::Use(u) => format_use_stmt(u, level),
         Item::TraitDef(t) => format_trait_def(t, level),
         Item::ImplBlock(i) => format_impl_block(i, level),
+        // v0.50.6: Type alias
+        Item::TypeAlias(t) => format_type_alias(t, level),
     }
 }
 
@@ -236,14 +238,51 @@ fn format_impl_block(i: &ImplBlock, level: usize) -> String {
     )
 }
 
-fn format_type(ty: &Type) -> String {
+// v0.50.6: Type alias formatting
+fn format_type_alias(t: &TypeAliasDef, level: usize) -> String {
+    let ind = indent(level);
+    let mut out = format!("{}(type {} ", ind, t.name.node);
+
+    // Type params
+    if !t.type_params.is_empty() {
+        out.push('<');
+        out.push_str(
+            &t.type_params
+                .iter()
+                .map(|p| p.name.clone())
+                .collect::<Vec<_>>()
+                .join(" "),
+        );
+        out.push_str("> ");
+    }
+
+    // Target type
+    out.push_str(&format_type(&t.target.node));
+
+    // Refinement condition
+    if let Some(ref refinement) = t.refinement {
+        out.push_str(&format!(" :where {}", format_expr(&refinement.node)));
+    }
+
+    out.push_str(")\n");
+    out
+}
+
+/// v0.84: Format type as string (span-agnostic)
+/// Used for semantic duplication detection
+pub fn format_type(ty: &Type) -> String {
     match ty {
         Type::I64 => "i64".to_string(),
         Type::I32 => "i32".to_string(),
+        // v0.38: Unsigned types
+        Type::U32 => "u32".to_string(),
+        Type::U64 => "u64".to_string(),
         Type::F64 => "f64".to_string(),
         Type::Bool => "bool".to_string(),
         Type::Unit => "()".to_string(),
         Type::String => "String".to_string(),
+        // v0.64: Char type
+        Type::Char => "char".to_string(),
         Type::Range(inner) => format!("(Range {})", format_type(inner)),
         Type::Named(name) => name.clone(),
         Type::TypeVar(name) => format!("'{}", name),
@@ -279,15 +318,26 @@ fn format_type(ty: &Type) -> String {
         }
         // v0.31: Never type
         Type::Never => "!".to_string(),
+        // v0.37: Nullable type
+        Type::Nullable(inner) => format!("{}?", format_type(inner)),
+        // v0.42: Tuple type
+        Type::Tuple(elems) => {
+            let elems_str: Vec<_> = elems.iter().map(|t| format_type(t)).collect();
+            format!("({})", elems_str.join(", "))
+        }
     }
 }
 
-fn format_expr(expr: &Expr) -> String {
+/// v0.84: Format expression as S-expression (span-agnostic)
+/// Used for semantic duplication detection
+pub fn format_expr(expr: &Expr) -> String {
     match expr {
         Expr::IntLit(n) => n.to_string(),
         Expr::FloatLit(f) => f.to_string(),
         Expr::BoolLit(b) => b.to_string(),
         Expr::StringLit(s) => format!("\"{}\"", s.escape_default()),
+        // v0.64: Character literal
+        Expr::CharLit(c) => format!("'{}'", c.escape_default()),
         Expr::Unit => "()".to_string(),
         Expr::Var(name) => name.clone(),
         Expr::Ret => "ret".to_string(),
@@ -345,12 +395,21 @@ fn format_expr(expr: &Expr) -> String {
             format!("(set! {} {})", name, format_expr(&value.node))
         }
 
-        Expr::While { cond, body } => {
-            format!(
-                "(while {} {})",
-                format_expr(&cond.node),
-                format_expr(&body.node)
-            )
+        // v0.37: Include invariant if present
+        Expr::While { cond, invariant, body } => {
+            match invariant {
+                Some(inv) => format!(
+                    "(while {} :invariant {} {})",
+                    format_expr(&cond.node),
+                    format_expr(&inv.node),
+                    format_expr(&body.node)
+                ),
+                None => format!(
+                    "(while {} {})",
+                    format_expr(&cond.node),
+                    format_expr(&body.node)
+                ),
+            }
         }
 
         Expr::For { var, iter, body } => {
@@ -414,6 +473,11 @@ fn format_expr(expr: &Expr) -> String {
             format!("(. {} {})", format_expr(&expr.node), field.node)
         }
 
+        // v0.43: Tuple field access
+        Expr::TupleField { expr, index } => {
+            format!("(tuple-field {} {})", format_expr(&expr.node), index)
+        }
+
         Expr::EnumVariant {
             enum_name,
             variant,
@@ -459,6 +523,16 @@ fn format_expr(expr: &Expr) -> String {
             format!("[{}]", es)
         }
 
+        // v0.42: Tuple expression
+        Expr::Tuple(elems) => {
+            let es = elems
+                .iter()
+                .map(|e| format_expr(&e.node))
+                .collect::<Vec<_>>()
+                .join(" ");
+            format!("(tuple {})", es)
+        }
+
         Expr::Index { expr, index } => {
             format!(
                 "(index {} {})",
@@ -492,9 +566,6 @@ fn format_expr(expr: &Expr) -> String {
             format!("({} {})", state_str, format_expr(&expr.node))
         }
 
-        Expr::Try { body } => format!("(try {})", format_expr(&body.node)),
-        Expr::Question { expr } => format!("(? {})", format_expr(&expr.node)),
-
         // v0.20.0: Closure expressions
         Expr::Closure { params, ret_ty, body } => {
             let params_str = params
@@ -522,6 +593,49 @@ fn format_expr(expr: &Expr) -> String {
                 None => "(todo)".to_string(),
             }
         }
+
+        // v0.36: Additional control flow
+        Expr::Loop { body } => format!("(loop {})", format_expr(&body.node)),
+        Expr::Break { value } => match value {
+            Some(v) => format!("(break {})", format_expr(&v.node)),
+            None => "(break)".to_string(),
+        },
+        Expr::Continue => "(continue)".to_string(),
+        Expr::Return { value } => match value {
+            Some(v) => format!("(return {})", format_expr(&v.node)),
+            None => "(return)".to_string(),
+        },
+
+        // v0.37: Quantifiers
+        Expr::Forall { var, ty, body } => {
+            format!(
+                "(forall {} : {} {})",
+                var.node,
+                format_type(&ty.node),
+                format_expr(&body.node)
+            )
+        }
+        Expr::Exists { var, ty, body } => {
+            format!(
+                "(exists {} : {} {})",
+                var.node,
+                format_type(&ty.node),
+                format_expr(&body.node)
+            )
+        }
+        // v0.39: Type cast
+        Expr::Cast { expr, ty } => {
+            format!("({} as {})", format_expr(&expr.node), format_type(&ty.node))
+        }
+    }
+}
+
+fn format_literal_pattern(lit: &LiteralPattern) -> String {
+    match lit {
+        LiteralPattern::Int(n) => n.to_string(),
+        LiteralPattern::Float(f) => f.to_string(),
+        LiteralPattern::Bool(b) => b.to_string(),
+        LiteralPattern::String(s) => format!("\"{}\"", s),
     }
 }
 
@@ -529,12 +643,8 @@ fn format_pattern(pat: &Pattern) -> String {
     match pat {
         Pattern::Wildcard => "_".to_string(),
         Pattern::Var(name) => name.clone(),
-        Pattern::Literal(lit) => match lit {
-            LiteralPattern::Int(n) => n.to_string(),
-            LiteralPattern::Float(f) => f.to_string(),
-            LiteralPattern::Bool(b) => b.to_string(),
-            LiteralPattern::String(s) => format!("\"{}\"", s),
-        },
+        Pattern::Literal(lit) => format_literal_pattern(lit),
+        // v0.41: Nested patterns in enum bindings
         Pattern::EnumVariant {
             enum_name,
             variant,
@@ -545,7 +655,7 @@ fn format_pattern(pat: &Pattern) -> String {
             } else {
                 let bs = bindings
                     .iter()
-                    .map(|b| b.node.as_str())
+                    .map(|b| format_pattern(&b.node))
                     .collect::<Vec<_>>()
                     .join(" ");
                 format!("({}::{} {})", enum_name, variant, bs)
@@ -559,6 +669,41 @@ fn format_pattern(pat: &Pattern) -> String {
                 .join(" ");
             format!("({} {})", name, fs)
         }
+        // v0.39: Range pattern
+        Pattern::Range { start, end, inclusive } => {
+            let op = if *inclusive { "..=" } else { ".." };
+            format!("(range {} {} {})", format_literal_pattern(start), op, format_literal_pattern(end))
+        }
+        // v0.40: Or-pattern
+        Pattern::Or(alts) => {
+            let alts_str: Vec<_> = alts.iter().map(|p| format_pattern(&p.node)).collect();
+            format!("(or {})", alts_str.join(" "))
+        }
+        // v0.41: Binding pattern
+        Pattern::Binding { name, pattern } => {
+            format!("(@ {} {})", name, format_pattern(&pattern.node))
+        }
+        // v0.42: Tuple pattern
+        Pattern::Tuple(elems) => {
+            let elems_str: Vec<_> = elems.iter().map(|p| format_pattern(&p.node)).collect();
+            format!("(tuple {})", elems_str.join(" "))
+        }
+        // v0.44: Array pattern
+        Pattern::Array(elems) => {
+            let elems_str: Vec<_> = elems.iter().map(|p| format_pattern(&p.node)).collect();
+            format!("[{}]", elems_str.join(" "))
+        }
+        // v0.45: Array rest pattern
+        Pattern::ArrayRest { prefix, suffix } => {
+            let prefix_str: Vec<_> = prefix.iter().map(|p| format_pattern(&p.node)).collect();
+            let suffix_str: Vec<_> = suffix.iter().map(|p| format_pattern(&p.node)).collect();
+            match (prefix.is_empty(), suffix.is_empty()) {
+                (true, true) => "[..]".to_string(),
+                (false, true) => format!("[{} ..]", prefix_str.join(" ")),
+                (true, false) => format!("[.. {}]", suffix_str.join(" ")),
+                (false, false) => format!("[{} .. {}]", prefix_str.join(" "), suffix_str.join(" ")),
+            }
+        }
     }
 }
 
@@ -569,6 +714,18 @@ fn format_binop(op: &BinOp) -> &'static str {
         BinOp::Mul => "*",
         BinOp::Div => "/",
         BinOp::Mod => "%",
+        // v0.37: Wrapping arithmetic
+        BinOp::AddWrap => "+%",
+        BinOp::SubWrap => "-%",
+        BinOp::MulWrap => "*%",
+        // v0.38: Checked arithmetic
+        BinOp::AddChecked => "+?",
+        BinOp::SubChecked => "-?",
+        BinOp::MulChecked => "*?",
+        // v0.38: Saturating arithmetic
+        BinOp::AddSat => "+|",
+        BinOp::SubSat => "-|",
+        BinOp::MulSat => "*|",
         BinOp::And => "and",
         BinOp::Or => "or",
         BinOp::Eq => "==",
@@ -577,6 +734,15 @@ fn format_binop(op: &BinOp) -> &'static str {
         BinOp::Le => "<=",
         BinOp::Gt => ">",
         BinOp::Ge => ">=",
+        // v0.32: Shift operators
+        BinOp::Shl => "<<",
+        BinOp::Shr => ">>",
+        // v0.36: Bitwise operators
+        BinOp::Band => "band",
+        BinOp::Bor => "bor",
+        BinOp::Bxor => "bxor",
+        // v0.36: Logical implication
+        BinOp::Implies => "implies",
     }
 }
 
@@ -584,6 +750,8 @@ fn format_unop(op: &UnOp) -> &'static str {
     match op {
         UnOp::Neg => "-",
         UnOp::Not => "not",
+        // v0.36: Bitwise not
+        UnOp::Bnot => "bnot",
     }
 }
 

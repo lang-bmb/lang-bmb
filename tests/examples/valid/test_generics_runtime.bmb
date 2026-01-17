@@ -1,13 +1,13 @@
--- Test generics at runtime
--- v0.15 integration test
+// Test generics at runtime
+// v0.15 integration test
 
--- Non-generic version
+// Non-generic version
 fn identity_i64(x: i64) -> i64 = x;
 
--- Generic version
+// Generic version
 fn identity<T>(x: T) -> T = x;
 
--- Test generic struct
+// Test generic struct
 struct Container<T> {
     value: T,
 }

@@ -1,5 +1,5 @@
--- Tests for stdlib/array module
--- Verifies array utility functions
+// Tests for stdlib/array module
+// Verifies array utility functions
 
 use array::contains_i64;
 use array::index_of_i64;
@@ -15,7 +15,7 @@ use array::all_equal;
 use array::is_valid_index;
 use array::clamp_index;
 
--- Test search functions
+// Test search functions
 fn test_contains_found() -> bool
   post ret == true
 = let arr: [i64; 8] = [1, 2, 3, 4, 5, 0, 0, 0];
@@ -46,7 +46,7 @@ fn test_count_none() -> i64
 = let arr: [i64; 8] = [1, 2, 3, 4, 5, 0, 0, 0];
   count_i64(arr, 5, 10);
 
--- Test aggregation functions
+// Test aggregation functions
 fn test_sum() -> i64
   post ret == 15
 = let arr: [i64; 8] = [1, 2, 3, 4, 5, 0, 0, 0];
@@ -67,7 +67,7 @@ fn test_avg() -> i64
 = let arr: [i64; 8] = [1, 2, 3, 4, 5, 0, 0, 0];
   avg_i64(arr, 5);
 
--- Test predicate functions
+// Test predicate functions
 fn test_all_positive_true() -> bool
   post ret == true
 = let arr: [i64; 8] = [1, 2, 3, 4, 5, 0, 0, 0];
@@ -108,7 +108,7 @@ fn test_all_equal_false() -> bool
 = let arr: [i64; 8] = [5, 5, 5, 4, 5, 0, 0, 0];
   all_equal(arr, 5);
 
--- Test bounds functions
+// Test bounds functions
 fn test_is_valid_index_true() -> bool
   post ret == true
 = is_valid_index(5, 3);
@@ -133,7 +133,7 @@ fn test_clamp_index_above() -> i64
   post ret == 4
 = clamp_index(5, 10);
 
--- Main test runner
+// Main test runner
 fn main() -> i64 =
     let t1 = test_contains_found();
     let t2 = test_sum();

@@ -1,0 +1,73 @@
+// HashMap<i64, i64> test (Phase 34.2.6)
+// Tests hashmap_new, hashmap_insert, hashmap_get, hashmap_contains, hashmap_remove, hashmap_len, hashmap_free
+
+fn main() -> i64 = {
+    // Create empty hashmap
+    let m = hashmap_new();
+    println(hashmap_len(m));  // Should be 0
+
+    // Insert some entries
+    let old1 = hashmap_insert(m, 10, 100);
+    println(old1);  // Should be 0 (new key)
+
+    let old2 = hashmap_insert(m, 20, 200);
+    println(old2);  // Should be 0 (new key)
+
+    let old3 = hashmap_insert(m, 30, 300);
+    println(old3);  // Should be 0 (new key)
+
+    println(hashmap_len(m));  // Should be 3
+
+    // Get values
+    let v1 = hashmap_get(m, 10);
+    println(v1);  // Should be 100
+
+    let v2 = hashmap_get(m, 20);
+    println(v2);  // Should be 200
+
+    let v3 = hashmap_get(m, 30);
+    println(v3);  // Should be 300
+
+    // Get non-existent key
+    let v4 = hashmap_get(m, 99);
+    // v4 should be i64::MIN, we just check it's very negative
+    println(if v4 < 0 { 1 } else { 0 });  // Should be 1
+
+    // Check contains
+    println(hashmap_contains(m, 10));  // Should be 1
+    println(hashmap_contains(m, 99));  // Should be 0
+
+    // Update existing key
+    let old4 = hashmap_insert(m, 10, 1000);
+    println(old4);  // Should be 100 (old value)
+    println(hashmap_len(m));  // Should still be 3 (not 4)
+
+    let v1_new = hashmap_get(m, 10);
+    println(v1_new);  // Should be 1000
+
+    // Remove key
+    let removed = hashmap_remove(m, 20);
+    println(removed);  // Should be 200
+
+    println(hashmap_len(m));  // Should be 2
+    println(hashmap_contains(m, 20));  // Should be 0
+
+    // Test growth by inserting many keys
+    let i = 0;
+    let count = 100;
+    let res = insert_loop(m, i, count);
+    println(hashmap_len(m));  // Should be 2 + 100 = 102
+
+    // Cleanup
+    hashmap_free(m);
+
+    // Return success
+    102
+};
+
+fn insert_loop(m: i64, i: i64, count: i64) -> i64 =
+    if i >= count { 0 } else { {
+        let key = 1000 + i;
+        hashmap_insert(m, key, key * 10);
+        insert_loop(m, i + 1, count)
+    } };

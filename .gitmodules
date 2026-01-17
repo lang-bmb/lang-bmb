@@ -1,27 +1,27 @@
 [submodule "ecosystem/bmb-samples"]
 	path = ecosystem/bmb-samples
-	url = https://github.com/lang-bmb/bmb-samples
+	url = https://github.com/zizixmas/bmb-samples
 [submodule "ecosystem/gotgan"]
 	path = ecosystem/gotgan
-	url = https://github.com/lang-bmb/gotgan
+	url = https://github.com/zizixmas/gotgan
 [submodule "ecosystem/action-bmb"]
 	path = ecosystem/action-bmb
-	url = https://github.com/lang-bmb/action-bmb
+	url = https://github.com/zizixmas/action-bmb
 [submodule "ecosystem/tree-sitter-bmb"]
 	path = ecosystem/tree-sitter-bmb
-	url = https://github.com/lang-bmb/tree-sitter-bmb
+	url = https://github.com/zizixmas/tree-sitter-bmb
 [submodule "ecosystem/playground"]
 	path = ecosystem/playground
-	url = https://github.com/lang-bmb/playground
+	url = https://github.com/zizixmas/playground
 [submodule "ecosystem/vscode-bmb"]
 	path = ecosystem/vscode-bmb
-	url = https://github.com/lang-bmb/vscode-bmb
+	url = https://github.com/zizixmas/vscode-bmb
 [submodule "ecosystem/benchmark-bmb"]
 	path = ecosystem/benchmark-bmb
-	url = https://github.com/lang-bmb/benchmark-bmb
+	url = https://github.com/zizixmas/benchmark-bmb
 [submodule "ecosystem/lang-bmb-site"]
 	path = ecosystem/lang-bmb-site
-	url = https://github.com/lang-bmb/lang-bmb-site
+	url = https://github.com/zizixmas/lang-bmb-site
 [submodule "ecosystem/gotgan-packages"]
 	path = ecosystem/gotgan-packages
-	url = https://github.com/lang-bmb/gotgan-packages
+	url = https://github.com/zizixmas/gotgan-packages

@@ -1,0 +1,7 @@
+// Phase 3 Security Test: Integer overflow in arithmetic
+fn main() -> i64 = {
+    let max = 9223372036854775807;  // i64::MAX
+    let overflow = max + 1;  // Should wrap to i64::MIN
+    println(overflow);
+    overflow
+};

@@ -1,77 +1,78 @@
--- BMB Standard Library: process Module
--- Version: v0.31.11 (Phase 32.0.2 - Bootstrap Infrastructure)
--- Purpose: Process execution for self-hosting compiler
---
--- IMPLEMENTATION STATUS: INTERPRETER BUILTINS
--- Functions implemented as Rust builtins in interpreter
---
--- Design Principles:
--- - Contract-first: All functions have explicit pre/post conditions
--- - Error as return: Uses exit codes (0 = success, negative = error)
--- - Simple API: Minimal functions covering core use cases
--- - Cross-platform: Works on Windows, Linux, macOS
+// BMB Standard Library: process Module
+// Version: v0.31.11 (Phase 32.0.2 - Bootstrap Infrastructure)
+// Purpose: Process execution for self-hosting compiler
+//
+// Note: These functions are implemented as interpreter builtins.
+// The stub bodies are for type checking; actual execution uses builtin implementations.
+//
+// Design Principles:
+// - Contract-first: All functions have explicit pre/post conditions
+// - Error as return: Uses codes (0 = success, negative = error)
+// - Simple API: Minimal functions covering core use cases
+// - Cross-platform: Works on Windows, Linux, macOS
 
--- ============================================================================
--- Process Execution
--- ============================================================================
+// ============================================================================
+// Process Execution
+// ============================================================================
 
--- Execute a command with arguments
--- Returns: Exit code (0 = success, negative = error)
--- Example: exec("clang", "-c test.ll -o test.o") -> 0
---
--- @builtin "interpreter"
-fn exec(command: String, args: String) -> i64
+// Run a command with arguments
+// Returns: Exit code (0 = success, negative = error)
+// Note: Implemented as interpreter builtin
+@trust
+pub fn run_command(command: String, args: String) -> i64
   pre command.len() > 0
-  post ret >= -1;
+  post ret >= -1
+= 0;
 
--- Execute a command and capture stdout
--- Returns: stdout content on success, empty string on error
--- Example: exec_output("echo", "hello") -> "hello\n"
---
--- @builtin "interpreter"
-fn exec_output(command: String, args: String) -> String
-  pre command.len() > 0;
-
--- Execute a shell command (via system shell)
--- Returns: Exit code from shell
--- Example: system("echo hello && echo world") -> 0
---
--- @builtin "interpreter"
-fn system(command: String) -> i64
+// Run a command and capture stdout
+// Returns: stdout content on success, empty string on error
+// Note: Implemented as interpreter builtin
+@trust
+pub fn run_command_output(command: String, args: String) -> String
   pre command.len() > 0
-  post ret >= -1;
+= "";
 
--- Get environment variable value
--- Returns: Variable value, or empty string if not set
---
--- @builtin "interpreter"
-fn getenv(name: String) -> String
-  pre name.len() > 0;
+// Run a shell command (via system shell)
+// Returns: Exit code from shell
+// Note: Implemented as interpreter builtin
+@trust
+pub fn run_system(command: String) -> i64
+  pre command.len() > 0
+  post ret >= -1
+= 0;
 
--- ============================================================================
--- Exit Codes
--- ============================================================================
+// Get environment variable value
+// Returns: Variable value, or empty string if not set
+// Note: Implemented as interpreter builtin
+@trust
+pub fn getenv(name: String) -> String
+  pre name.len() > 0
+= "";
+
+// ============================================================================
+// Exit Codes
+// ============================================================================
 
 fn PROC_SUCCESS() -> i64 = 0;
-fn PROC_ERROR_NOT_FOUND() -> i64 = -1;    -- Command not found
-fn PROC_ERROR_PERMISSION() -> i64 = -2;   -- Permission denied
-fn PROC_ERROR_FAILED() -> i64 = -3;       -- Execution failed
+fn PROC_ERROR_NOT_FOUND() -> i64 = -1;    // Command not found
+fn PROC_ERROR_PERMISSION() -> i64 = -2;   // Permission denied
+fn PROC_ERROR_FAILED() -> i64 = -3;       // Execution failed
 
--- ============================================================================
--- Bootstrap Use Cases
--- ============================================================================
---
--- 1. Compile LLVM IR to object file:
---    exec("clang", "-c output.ll -o output.o")
---
--- 2. Link object file to executable:
---    exec("clang", "output.o -o output.exe")
---
--- 3. Run LLVM optimizer:
---    exec("opt", "-O2 input.ll -o output.ll")
---
--- 4. Check tool availability:
---    let result = exec("clang", "--version");
---    if result != 0 then error("clang not found")
---
--- ============================================================================
+// ============================================================================
+// Bootstrap Use Cases
+// ============================================================================
+//
+// 1. Compile LLVM IR to object file:
+//    run_command("clang", "-c output.ll -o output.o")
+//
+// 2. Link object file to executable:
+//    run_command("clang", "output.o -o output.exe")
+//
+// 3. Run LLVM optimizer:
+//    run_command("opt", "-O2 input.ll -o output.ll")
+//
+// 4. Check tool availability:
+//    let result = run_command("clang", "--version");
+//    if result != 0 { error("clang not found") }
+//
+// ============================================================================

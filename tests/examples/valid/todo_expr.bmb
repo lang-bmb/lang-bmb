@@ -1,17 +1,17 @@
--- v0.31: Todo expression tests
+// v0.31: Todo expression tests
 
--- Todo with message
+// Todo with message
 fn incomplete_feature(x: i64) -> i64
   = todo "implement after PR review";
 
--- Todo without message
+// Todo without message
 fn placeholder() -> i64
   = todo;
 
--- Todo in conditional
+// Todo in conditional
 fn maybe_done(done: bool) -> i64
-  = if done then 42 else todo "waiting for spec";
+  = if done { 42 } else { todo "waiting for spec" };
 
--- Main function that doesn't call todo expressions
+// Main function that doesn't call todo expressions
 fn main() -> i64
   = 0;

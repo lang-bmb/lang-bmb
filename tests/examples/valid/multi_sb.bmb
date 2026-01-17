@@ -1,4 +1,4 @@
--- Multi-sb_new test
+// Multi-sb_new test
 
 fn main() -> i64 = {
     let a = sb_new();

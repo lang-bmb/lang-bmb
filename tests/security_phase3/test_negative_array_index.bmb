@@ -1,0 +1,8 @@
+// Phase 3 Security Test: Negative array index
+fn main() -> i64 = {
+    let arr = malloc(80);  // 10 i64s
+    store_i64(arr, 42);
+    let result = load_i64(arr + (0 - 100) * 8);  // Negative offset
+    free(arr);
+    result
+};

@@ -1,71 +1,58 @@
--- v0.30.110: Minimal closure function generation test
--- Separate file to avoid stack overflow in main test suite
+// v0.30.110: Minimal closure function generation test
+// Separate file to avoid stack overflow in main test suite
 
--- Helper: int to string
+// Helper: int to string
 fn int_to_string(n: i64) -> String =
-    if n == 0 then "0"
-    else if n == 1 then "1"
-    else if n == 2 then "2"
-    else if n == 3 then "3"
-    else "N";
+    if n == 0 { "0" } else if n == 1 { "1" } else if n == 2 { "2" } else if n == 3 { "3" } else { "N" };
 
--- Helper: name at index (simplified)
+// Helper: name at index (simplified)
 fn name_at_index(names: String, idx: i64) -> String =
-    if idx == 0 then "x"
-    else if idx == 1 then "y"
-    else "z";
+    if idx == 0 { "x" } else if idx == 1 { "y" } else { "z" };
 
--- Helper: count names
+// Helper: count names
 fn count_names(s: String) -> i64 =
-    if s == "" then 0
-    else if s == "x" then 1
-    else if s == "x,y" then 2
-    else if s == "x,y,z" then 3
-    else 0;
+    if s == "" { 0 } else if s == "x" { 1 } else if s == "x,y" { 2 } else if s == "x,y,z" { 3 } else { 0 };
 
--- Test 1: gen_closure_fn_header - no params
+// Test 1: gen_closure_fn_header - no params
 fn gen_closure_fn_header(fn_id: i64, params: String) -> String =
     let fn_name = "@closure_" + int_to_string(fn_id);
-    let param_section = if params == "" then "%env: i64*"
-                        else "%env: i64*, " + params;
+    let param_section = if params == "" { "%env: i64*" } else { "%env: i64*, " + params };
     "fn " + fn_name + "(" + param_section + ") -> i64 {";
 
 fn test_header_no_params() -> i64 =
     let result = gen_closure_fn_header(1, "");
-    if result == "fn @closure_1(%env: i64*) -> i64 {" then 1 else 0;
+    if result == "fn @closure_1(%env: i64*) -> i64 {" { 1 } else { 0 };
 
--- Test 2: gen_closure_fn_header - with params
+// Test 2: gen_closure_fn_header - with params
 fn test_header_with_params() -> i64 =
     let result = gen_closure_fn_header(2, "%a: i64");
-    if result == "fn @closure_2(%env: i64*, %a: i64) -> i64 {" then 1 else 0;
+    if result == "fn @closure_2(%env: i64*, %a: i64) -> i64 {" { 1 } else { 0 };
 
--- Test 3: closure_fn_name
+// Test 3: closure_fn_name
 fn closure_fn_name(fn_id: i64) -> String =
     "@closure_" + int_to_string(fn_id);
 
 fn test_closure_fn_name() -> i64 =
     let result = closure_fn_name(3);
-    if result == "@closure_3" then 1 else 0;
+    if result == "@closure_3" { 1 } else { 0 };
 
--- Test 4: gen_closure_prelude - single var
+// Test 4: gen_closure_prelude - single var
 fn gen_closure_prelude(free_vars: String, count: i64, idx: i64) -> String =
-    if idx >= count then ""
-    else
-        let var_name = name_at_index(free_vars, idx);
+    if idx >= count { "" } else { let var_name = name_at_index(free_vars, idx) };
         let load_text = "  %" + var_name + " = LoadCapture %env, " + int_to_string(idx);
         let rest = gen_closure_prelude(free_vars, count, idx + 1);
-        if rest.len() > 0 then load_text + "|" + rest else load_text;
+        if rest.len() > 0 { load_text + "|" + rest } else { load_text };
 
 fn test_prelude_single() -> i64 =
     let result = gen_closure_prelude("x", 1, 0);
-    if result == "  %x = LoadCapture %env, 0" then 1 else 0;
+    if result == "  %x = LoadCapture %env, 0" { 1 } else { 0 };
 
--- Test 5: gen_closure_prelude - two vars
+// Test 5: gen_closure_prelude - two vars
 fn test_prelude_two() -> i64 =
     let result = gen_closure_prelude("x,y", 2, 0);
-    if result == "  %x = LoadCapture %env, 0|  %y = LoadCapture %env, 1" then 1 else 0;
+    if result == "  %x = LoadCapture %env, 0|  %y = LoadCapture %env, 1" { 1 } else { 0 };
 
--- Main test runner
+// Main test runner
 fn main() -> i64 = {
     let t1 = test_header_no_params();
     let t2 = test_header_with_params();
@@ -75,6 +62,6 @@ fn main() -> i64 = {
 
     let passed = t1 + t2 + t3 + t4 + t5;
 
-    -- Return passed count (expect 5)
+    // Return passed count (expect 5)
     passed
 };

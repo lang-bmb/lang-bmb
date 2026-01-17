@@ -1,58 +1,58 @@
--- Vec<i64> dynamic array test (Phase 34.2.3)
--- Tests vec_new, vec_push, vec_get, vec_set, vec_len, vec_cap, vec_pop, vec_free
+// Vec<i64> dynamic array test (Phase 34.2.3)
+// Tests vec_new, vec_push, vec_get, vec_set, vec_len, vec_cap, vec_pop, vec_free
 
 fn main() -> i64 = {
-    -- Create empty vector
+    // Create empty vector
     let v = vec_new();
     println(v);
 
-    -- Push elements (should trigger auto-grow: 0 -> 4)
+    // Push elements (should trigger auto-grow: 0 -> 4)
     vec_push(v, 10);
     vec_push(v, 20);
     vec_push(v, 30);
 
-    -- Check length and capacity
+    // Check length and capacity
     let len1 = vec_len(v);
-    println(len1);  -- Should be 3
+    println(len1);  // Should be 3
 
     let cap1 = vec_cap(v);
-    println(cap1);  -- Should be 4
+    println(cap1);  // Should be 4
 
-    -- Read elements
+    // Read elements
     let e0 = vec_get(v, 0);
-    println(e0);  -- Should be 10
+    println(e0);  // Should be 10
 
     let e1 = vec_get(v, 1);
-    println(e1);  -- Should be 20
+    println(e1);  // Should be 20
 
     let e2 = vec_get(v, 2);
-    println(e2);  -- Should be 30
+    println(e2);  // Should be 30
 
-    -- Update element
+    // Update element
     vec_set(v, 1, 200);
     let e1_new = vec_get(v, 1);
-    println(e1_new);  -- Should be 200
+    println(e1_new);  // Should be 200
 
-    -- Push more to trigger growth (4 -> 8)
+    // Push more to trigger growth (4 -> 8)
     vec_push(v, 40);
     vec_push(v, 50);
 
     let len2 = vec_len(v);
-    println(len2);  -- Should be 5
+    println(len2);  // Should be 5
 
     let cap2 = vec_cap(v);
-    println(cap2);  -- Should be 8
+    println(cap2);  // Should be 8
 
-    -- Pop last element
+    // Pop last element
     let popped = vec_pop(v);
-    println(popped);  -- Should be 50
+    println(popped);  // Should be 50
 
     let len3 = vec_len(v);
-    println(len3);  -- Should be 4
+    println(len3);  // Should be 4
 
-    -- Free the vector
+    // Free the vector
     vec_free(v);
 
-    -- Return success indicator
-    len3  -- Should be 4
+    // Return success indicator
+    len3  // Should be 4
 };

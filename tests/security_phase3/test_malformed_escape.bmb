@@ -1,0 +1,5 @@
+// Phase 3 Security Test: Malformed escape sequence
+fn main() -> i64 = {
+    let s = "test\xinvalid";
+    0
+};

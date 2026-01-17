@@ -38,6 +38,11 @@ pub enum Type {
     I32,
     /// 64-bit signed integer
     I64,
+    // v0.38: Unsigned integer types
+    /// 32-bit unsigned integer
+    U32,
+    /// 64-bit unsigned integer
+    U64,
     /// 64-bit floating point
     F64,
     /// Boolean
@@ -46,6 +51,8 @@ pub enum Type {
     Unit,
     /// String type (v0.5 Phase 2)
     String,
+    /// Character type (v0.64)
+    Char,
     /// Range type (v0.5 Phase 3) - represents start..end
     Range(Box<Type>),
     /// Named type (struct or enum)
@@ -91,6 +98,13 @@ pub enum Type {
     /// Never type (v0.31): represents unreachable code
     /// Used for `todo` expressions - compatible with any type
     Never,
+    /// Nullable type (v0.37): T?
+    /// Sugar for `Option<T>`. Per spec, T? is the only nullable syntax.
+    /// Example: i64?, String?, MyStruct?
+    Nullable(Box<Type>),
+    /// Tuple type (v0.42): (T, U, V)
+    /// Heterogeneous fixed-size collection
+    Tuple(Vec<Box<Type>>),
 }
 
 /// Manual PartialEq implementation for Type
@@ -100,10 +114,15 @@ impl PartialEq for Type {
         match (self, other) {
             (Type::I32, Type::I32) => true,
             (Type::I64, Type::I64) => true,
+            // v0.38: Unsigned types
+            (Type::U32, Type::U32) => true,
+            (Type::U64, Type::U64) => true,
             (Type::F64, Type::F64) => true,
             (Type::Bool, Type::Bool) => true,
             (Type::Unit, Type::Unit) => true,
             (Type::String, Type::String) => true,
+            // v0.64: Char type comparison
+            (Type::Char, Type::Char) => true,
             (Type::Range(a), Type::Range(b)) => a == b,
             (Type::Named(a), Type::Named(b)) => a == b,
             // v0.13.1: TypeVar equality
@@ -134,6 +153,17 @@ impl PartialEq for Type {
             }
             // v0.31: Never type is compatible with any type (bottom type)
             (Type::Never, _) | (_, Type::Never) => true,
+            // v0.37: Nullable type equality
+            (Type::Nullable(a), Type::Nullable(b)) => a == b,
+            // Nullable<T> is equivalent to Option<T>
+            (Type::Nullable(inner), Type::Generic { name, type_args })
+            | (Type::Generic { name, type_args }, Type::Nullable(inner))
+                if name == "Option" && type_args.len() == 1 =>
+            {
+                inner.as_ref() == type_args[0].as_ref()
+            }
+            // v0.42: Tuple type equality
+            (Type::Tuple(a), Type::Tuple(b)) => a == b,
             _ => false,
         }
     }
@@ -152,16 +182,19 @@ impl Type {
         }
     }
 
-    /// Check if this type is numeric (i32, i64, f64) including refined numeric types
+    /// Check if this type is numeric (i32, i64, u32, u64, f64) including refined numeric types
     pub fn is_numeric(&self) -> bool {
-        matches!(self.base_type(), Type::I32 | Type::I64 | Type::F64)
+        // v0.38: Include unsigned types
+        matches!(self.base_type(), Type::I32 | Type::I64 | Type::U32 | Type::U64 | Type::F64)
     }
 
     /// Check if this type is comparable (numeric, bool, string) including refined types
     pub fn is_comparable(&self) -> bool {
+        // v0.38: Include unsigned types
+        // v0.64: Include Char type
         matches!(
             self.base_type(),
-            Type::I32 | Type::I64 | Type::F64 | Type::Bool | Type::String
+            Type::I32 | Type::I64 | Type::U32 | Type::U64 | Type::F64 | Type::Bool | Type::String | Type::Char
         )
     }
 }
@@ -171,10 +204,15 @@ impl std::fmt::Display for Type {
         match self {
             Type::I32 => write!(f, "i32"),
             Type::I64 => write!(f, "i64"),
+            // v0.38: Unsigned types
+            Type::U32 => write!(f, "u32"),
+            Type::U64 => write!(f, "u64"),
             Type::F64 => write!(f, "f64"),
             Type::Bool => write!(f, "bool"),
             Type::Unit => write!(f, "()"),
             Type::String => write!(f, "String"),
+            // v0.64: Char type display
+            Type::Char => write!(f, "char"),
             Type::Range(elem_ty) => write!(f, "Range<{elem_ty}>"),
             Type::Named(name) => write!(f, "{name}"),
             // v0.13.1: Type variable display
@@ -218,6 +256,19 @@ impl std::fmt::Display for Type {
             }
             // v0.31: Never type display
             Type::Never => write!(f, "!"),
+            // v0.37: Nullable type display
+            Type::Nullable(inner) => write!(f, "{}?", inner),
+            // v0.42: Tuple type display
+            Type::Tuple(elems) => {
+                write!(f, "(")?;
+                for (i, elem) in elems.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{elem}")?;
+                }
+                write!(f, ")")
+            }
         }
     }
 }

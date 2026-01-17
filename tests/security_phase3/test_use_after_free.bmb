@@ -1,0 +1,7 @@
+// Phase 3 Security Test: Use after free
+fn main() -> i64 = {
+    let ptr = malloc(8);
+    store_i64(ptr, 42);
+    free(ptr);
+    load_i64(ptr)  // Use after free
+};

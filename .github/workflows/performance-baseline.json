@@ -1,0 +1,41 @@
+{
+  "version": "0.39.0",
+  "measured_at": "2026-01-12",
+  "gate": "4.1",
+  "thresholds": {
+    "self_compile_seconds": 60,
+    "regression_percent": 2
+  },
+  "baselines": {
+    "total_mir_generation_seconds": 0.56,
+    "total_type_check_seconds": 4.4,
+    "bootstrap_loc": 30565,
+    "bootstrap_files": 18
+  },
+  "per_file": {
+    "lexer.bmb": {
+      "loc": 705,
+      "mir_gen_ms": 21,
+      "functions": 66,
+      "mir_size_kb": 85
+    },
+    "types.bmb": {
+      "loc": 8236,
+      "mir_gen_ms": 88,
+      "functions": 733,
+      "mir_size_kb": 582
+    },
+    "parser_ast.bmb": {
+      "loc": 2508,
+      "mir_gen_ms": 47,
+      "functions": 276,
+      "mir_size_kb": 252
+    },
+    "lowering.bmb": {
+      "loc": 2715,
+      "mir_gen_ms": 46,
+      "functions": 248,
+      "mir_size_kb": 228
+    }
+  }
+}

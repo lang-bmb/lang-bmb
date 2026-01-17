@@ -1,27 +1,21 @@
--- Collatz conjecture (3n+1 problem)
--- Bootstrap compiler example: branching recursion
+// Collatz conjecture (3n+1 problem)
+// Bootstrap compiler example: branching recursion
 
--- Count steps until reaching 1
+// Count steps until reaching 1
 fn collatz_steps(n: i64, steps: i64) -> i64 =
-    if n <= 1 then steps
-    else if n - (n / 2) * 2 == 0 then
-        collatz_steps(n / 2, steps + 1)
-    else
-        collatz_steps(3 * n + 1, steps + 1);
+    if n <= 1 { steps } else if n - (n / 2) * 2 == 0 { collatz_steps(n / 2, steps + 1) } else { collatz_steps(3 * n + 1, steps + 1) };
 
 fn collatz(n: i64) -> i64 = collatz_steps(n, 0);
 
--- Find max steps for numbers 1 to n
+// Find max steps for numbers 1 to n
 fn max_collatz_iter(i: i64, n: i64, max_steps: i64) -> i64 =
-    if i > n then max_steps
-    else
-        let steps = collatz(i);
-        let new_max = if steps > max_steps then steps else max_steps;
+    if i > n { max_steps } else { let steps = collatz(i) };
+        let new_max = if steps > max_steps { steps } else { max_steps };
         max_collatz_iter(i + 1, n, new_max);
 
 fn max_collatz(n: i64) -> i64 = max_collatz_iter(1, n, 0);
 
--- Main function: collatz(27) = 111 steps, max_collatz(10) = 19
+// Main function: collatz(27) = 111 steps, max_collatz(10) = 19
 fn main() -> i64 =
     let c27 = collatz(27);
     let u0 = println(c27);

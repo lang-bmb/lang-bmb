@@ -1,13 +1,13 @@
--- v0.13.3: @derive attribute macro
+// v0.13.3: @derive attribute macro
 
--- Struct with derive attributes
+// Struct with derive attributes
 @derive(Debug, Clone)
 struct Point {
     x: i64,
     y: i64,
 }
 
--- Struct with multiple derive traits
+// Struct with multiple derive traits
 @derive(Debug, Clone, PartialEq, Eq)
 struct Color {
     r: i64,
@@ -15,20 +15,20 @@ struct Color {
     b: i64,
 }
 
--- Struct with Default derive
+// Struct with Default derive
 @derive(Default)
 struct Config {
     width: i64,
     height: i64,
 }
 
--- Generic struct with derive
+// Generic struct with derive
 @derive(Debug, Clone)
 struct Container<T> {
     value: T,
 }
 
--- Enum with derive attributes
+// Enum with derive attributes
 @derive(Debug, Clone, PartialEq)
 enum Status {
     Active,
@@ -36,14 +36,14 @@ enum Status {
     Pending,
 }
 
--- Enum with data and derive
+// Enum with data and derive
 @derive(Debug, Clone)
-enum Option<T> {
+enum T? {
     Some(T),
     None,
 }
 
--- Main function
+// Main function
 fn main() -> i64 = {
     let p: Point = new Point { x: 10, y: 20 };
     p.x + p.y

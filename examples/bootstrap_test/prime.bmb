@@ -1,20 +1,15 @@
--- Prime number checker
--- Bootstrap compiler example: comparison and recursion
+// Prime number checker
+// Bootstrap compiler example: comparison and recursion
 
--- Check if n is divisible by any number from 2 to sqrt(n)
+// Check if n is divisible by any number from 2 to sqrt(n)
 fn is_divisible(n: i64, d: i64) -> i64 =
-    if d * d > n then 0
-    else if n - (n / d) * d == 0 then 1
-    else is_divisible(n, d + 1);
+    if d * d > n { 0 } else if n - (n / d) * d == 0 { 1 } else { is_divisible(n, d + 1) };
 
--- Check if n is prime (returns 1 for prime, 0 for not)
+// Check if n is prime (returns 1 for prime, 0 for not)
 fn is_prime(n: i64) -> i64 =
-    if n <= 1 then 0
-    else if n <= 3 then 1
-    else if is_divisible(n, 2) == 1 then 0
-    else 1;
+    if n <= 1 { 0 } else if n <= 3 { 1 } else if is_divisible(n, 2) == 1 { 0 } else { 1 };
 
--- Main function: is_prime(17) = 1, is_prime(18) = 0
+// Main function: is_prime(17) = 1, is_prime(18) = 0
 fn main() -> i64 =
     let p17 = is_prime(17);
     let u0 = println(p17);

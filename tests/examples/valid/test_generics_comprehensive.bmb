@@ -1,35 +1,35 @@
--- Comprehensive Generic Tests for v0.15
--- Tests various generic function patterns
+// Comprehensive Generic Tests for v0.15
+// Tests various generic function patterns
 
--- 1. Basic identity function
+// 1. Basic identity function
 fn identity<T>(x: T) -> T = x;
 
--- 2. Two type parameters
+// 2. Two type parameters
 fn first<A, B>(a: A, b: B) -> A = a;
 fn second<A, B>(a: A, b: B) -> B = b;
 
--- 3. Generic with same type used multiple times
+// 3. Generic with same type used multiple times
 fn swap_first<T>(a: T, b: T) -> T = a;
 
--- 4. Generic struct (syntax test only)
+// 4. Generic struct (syntax test only)
 struct Pair<A, B> {
     first: A,
     second: B,
 }
 
--- 5. Generic function calling another generic function
+// 5. Generic function calling another generic function
 fn double_identity<T>(x: T) -> T = identity(identity(x));
 
--- 6. Nested generic calls
+// 6. Nested generic calls
 fn add_identities(a: i64, b: i64) -> i64 = identity(a) + identity(b);
 
--- 7. Generic with specific type annotation at call site
+// 7. Generic with specific type annotation at call site
 fn use_generics() -> i64 = {
     let x: i64 = identity(42);
     x
 };
 
--- Main test function
+// Main test function
 fn main() -> i64 = {
     let a: i64 = identity(10);
     let b: i64 = first(20, true);

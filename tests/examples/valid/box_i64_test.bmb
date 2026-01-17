@@ -1,23 +1,23 @@
--- Box<i64> convenience functions test (Phase 34.2.2)
--- Tests box_new_i64, box_get_i64, box_set_i64, box_free_i64
+// Box<i64> convenience functions test (Phase 34.2.2)
+// Tests box_new_i64, box_get_i64, box_set_i64, box_free_i64
 
 fn main() -> i64 = {
-    -- Create a boxed value
+    // Create a boxed value
     let boxed = box_new_i64(42);
     println(boxed);
 
-    -- Read the value
+    // Read the value
     let value = box_get_i64(boxed);
     println(value);
 
-    -- Update the value
+    // Update the value
     box_set_i64(boxed, 100);
     let new_value = box_get_i64(boxed);
     println(new_value);
 
-    -- Free the box
+    // Free the box
     box_free_i64(boxed);
 
-    -- Return the last value (should be 100)
+    // Return the last value (should be 100)
     new_value
 };

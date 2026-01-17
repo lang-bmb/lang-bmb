@@ -1,21 +1,21 @@
--- Box<T> basic test (Phase 34.2.2)
--- Tests store_i64/load_i64 for heap memory operations
+// Box<T> basic test (Phase 34.2.2)
+// Tests store_i64/load_i64 for heap memory operations
 
 fn main() -> i64 = {
-    -- Allocate 8 bytes for one i64
+    // Allocate 8 bytes for one i64
     let ptr = malloc(8);
     println(ptr);
 
-    -- Store value 42 at the pointer
+    // Store value 42 at the pointer
     store_i64(ptr, 42);
 
-    -- Load value back
+    // Load value back
     let value = load_i64(ptr);
     println(value);
 
-    -- Free memory
+    // Free memory
     free(ptr);
 
-    -- Return the loaded value (should be 42)
+    // Return the loaded value (should be 42)
     value
 };

@@ -1,4 +1,4 @@
--- Multi-malloc test
+// Multi-malloc test
 
 fn main() -> i64 = {
     let a = malloc(64);

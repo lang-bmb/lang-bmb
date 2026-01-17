@@ -1,5 +1,5 @@
--- Store/Load simple test
--- Tests store_i64/load_i64 individually
+// Store/Load simple test
+// Tests store_i64/load_i64 individually
 
 fn test_store_load() -> i64 = {
     let ptr = malloc(8);

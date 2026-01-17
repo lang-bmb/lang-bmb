@@ -1,6 +1,6 @@
--- Test exec_output captures stdout correctly
+// Test exec_output captures stdout correctly
 
 fn main() -> i64 =
     let output = exec_output("cmd", "/c echo BMB-WORKS");
-    -- Check if output contains expected text (Windows echo adds CRLF)
-    if output == "" then 1 else 0;
+    // Check if output contains expected text (Windows echo adds CRLF)
+    if output == "" { 1 } else { 0 };

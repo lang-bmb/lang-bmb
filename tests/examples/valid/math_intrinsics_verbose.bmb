@@ -1,33 +1,33 @@
--- v0.34: Verbose test for math intrinsics
+// v0.34: Verbose test for math intrinsics
 
 fn main() -> i64 = {
-    -- Test sqrt: sqrt(16) = 4
+    // Test sqrt: sqrt(16) = 4
     let s1 = sqrt(16.0);
-    println(f64_to_i64(s1));  -- Should print 4
+    println(f64_to_i64(s1));  // Should print 4
 
-    -- Test sqrt: sqrt(2) ~= 1.41...
+    // Test sqrt: sqrt(2) ~= 1.41...
     let s2 = sqrt(2.0);
-    let s2_int = f64_to_i64(s2 * 100.0);  -- ~141
-    println(s2_int);  -- Should print 141
+    let s2_int = f64_to_i64(s2 * 100.0);  // ~141
+    println(s2_int);  // Should print 141
 
-    -- Test i64_to_f64: 100 -> 100.0
+    // Test i64_to_f64: 100 -> 100.0
     let f = i64_to_f64(100);
     let back = f64_to_i64(f);
-    println(back);  -- Should print 100
+    println(back);  // Should print 100
 
-    -- Test f64_to_i64 truncation: 3.99 -> 3
+    // Test f64_to_i64 truncation: 3.99 -> 3
     let trunc = f64_to_i64(3.99);
-    println(trunc);  -- Should print 3
+    println(trunc);  // Should print 3
 
-    -- Test Pythagorean theorem: sqrt(3^2 + 4^2) = 5
+    // Test Pythagorean theorem: sqrt(3^2 + 4^2) = 5
     let dx = i64_to_f64(3);
     let dy = i64_to_f64(4);
     let dist = sqrt(dx * dx + dy * dy);
-    println(f64_to_i64(dist));  -- Should print 5
+    println(f64_to_i64(dist));  // Should print 5
 
-    -- Test scientific notation with sqrt
-    let big = sqrt(1e6);  -- sqrt(1000000) = 1000
-    println(f64_to_i64(big));  -- Should print 1000
+    // Test scientific notation with sqrt
+    let big = sqrt(1e6);  // sqrt(1000000) = 1000
+    println(f64_to_i64(big));  // Should print 1000
 
     0
 };

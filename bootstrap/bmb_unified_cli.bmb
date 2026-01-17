@@ -1,31 +1,26 @@
--- BMB Unified Compiler (v0.30.190: Extended test suite)
--- Complete compilation pipeline: Source -> AST -> MIR -> LLVM IR
---
--- ARCHITECTURE:
--- 1. Source (BMB) -> parse_source() -> S-expression AST
--- 2. AST -> lower_program() -> MIR text
--- 3. MIR -> gen_program() -> LLVM IR text
--- 4. Assembly: header + declarations + functions
---
--- This file integrates pipeline.bmb and llvm_ir.bmb to provide
--- a unified entry point for BMB compilation.
---
--- Note: Uses | as separator instead of newlines (BMB string limitation)
+// BMB Unified Compiler (v0.50.20: String ABI with ptrtoint/inttoptr)
+// Complete compilation pipeline: Source -> AST -> MIR -> LLVM IR
+//
+// ARCHITECTURE:
+// 1. Source (BMB) -> parse_source() -> S-expression AST
+// 2. AST -> lower_program() -> MIR text
+// 3. MIR -> gen_program() -> LLVM IR text
+// 4. Assembly: header + declarations + functions
+//
+// This file integrates pipeline.bmb and llvm_ir.bmb to provide
+// a unified entry point for BMB compilation.
+//
+// Note: Uses | as separator instead of newlines (BMB string limitation)
 
--- ============================================================================
--- SECTION 1: String Utilities (required - no imports in bootstrap)
--- ============================================================================
+// ============================================================================
+// SECTION 1: String Utilities (required - no imports in bootstrap)
+// ============================================================================
 
 fn digit_char(d: i64) -> String =
-    if d == 0 then "0" else if d == 1 then "1" else if d == 2 then "2"
-    else if d == 3 then "3" else if d == 4 then "4" else if d == 5 then "5"
-    else if d == 6 then "6" else if d == 7 then "7" else if d == 8 then "8"
-    else "9";
+    if d == 0 { "0" } else if d == 1 { "1" } else if d == 2 { "2" } else if d == 3 { "3" } else if d == 4 { "4" } else if d == 5 { "5" } else if d == 6 { "6" } else if d == 7 { "7" } else if d == 8 { "8" } else { "9" };
 
 fn int_to_string(n: i64) -> String =
-    if n < 0 then "-" + int_to_string(0 - n)
-    else if n < 10 then digit_char(n)
-    else int_to_string(n / 10) + digit_char(n - (n / 10) * 10);
+    if n < 0 { "-" + int_to_string(0 - n) } else if n < 10 { digit_char(n) } else { int_to_string(n / 10) + digit_char(n - (n / 10) * 10) };
 
 fn is_whitespace(c: i64) -> bool = c == 32 or c == 9 or c == 10 or c == 13;
 fn is_digit(c: i64) -> bool = c >= 48 and c <= 57;
@@ -34,27 +29,22 @@ fn is_alnum_or_underscore(c: i64) -> bool = is_alpha(c) or is_digit(c) or c == 9
 fn is_ident_start(c: i64) -> bool = is_alpha(c) or c == 95;
 
 fn skip_ws(s: String, pos: i64) -> i64 =
-    if pos >= s.len() then pos
-    else if is_whitespace(s.char_at(pos)) then skip_ws(s, pos + 1)
-    else pos;
+    if pos >= s.len() { pos } else if is_whitespace(s.byte_at(pos)) { skip_ws(s, pos + 1) } else { pos };
 
--- Error handling utilities
+// Error handling utilities
 fn is_error(s: String) -> bool = s.len() >= 3 and s.slice(0, 3) == "ERR";
 fn make_error(msg: String) -> String = "ERR:" + msg;
 
--- Check if string starts with pattern
+// Check if string starts with pattern
 fn starts_with(s: String, pat: String, pos: i64) -> bool =
-    if pos + pat.len() > s.len() then false
-    else s.slice(pos, pos + pat.len()) == pat;
+    if pos + pat.len() > s.len() { false } else { s.slice(pos, pos + pat.len()) == pat };
 
 fn has_pattern(s: String, pat: String, pos: i64) -> bool =
-    if pos + pat.len() > s.len() then false
-    else if starts_with(s, pat, pos) then true
-    else has_pattern(s, pat, pos + 1);
+    if pos + pat.len() > s.len() { false } else if starts_with(s, pat, pos) { true } else { has_pattern(s, pat, pos + 1) };
 
--- ============================================================================
--- SECTION 2: Token Constants (from pipeline.bmb)
--- ============================================================================
+// ============================================================================
+// SECTION 2: Token Constants (from pipeline.bmb)
+// ============================================================================
 
 fn TK_FN() -> i64 = 100;
 fn TK_LET() -> i64 = 101;
@@ -78,6 +68,7 @@ fn TK_STRING_TYPE() -> i64 = 154;
 
 fn TK_INT() -> i64 = 200;
 fn TK_IDENT() -> i64 = 201;
+fn TK_STRING() -> i64 = 202;  // v0.50: String literal token
 
 fn TK_COLON() -> i64 = 300;
 fn TK_EQ() -> i64 = 302;
@@ -85,8 +76,11 @@ fn TK_SEMI() -> i64 = 303;
 fn TK_COMMA() -> i64 = 304;
 fn TK_LPAREN() -> i64 = 305;
 fn TK_RPAREN() -> i64 = 306;
+fn TK_LBRACE() -> i64 = 307;
+fn TK_RBRACE() -> i64 = 308;
 
 fn TK_ARROW() -> i64 = 321;
+fn TK_DOT() -> i64 = 322;
 fn TK_DOTDOT() -> i64 = 323;
 
 fn TK_PLUS() -> i64 = 400;
@@ -104,106 +98,184 @@ fn TK_GTEQ() -> i64 = 413;
 
 fn TK_EOF() -> i64 = 900;
 
--- ============================================================================
--- SECTION 3: Lexer (from pipeline.bmb)
--- ============================================================================
+// ============================================================================
+// SECTION 3: Lexer (from pipeline.bmb)
+// ============================================================================
 
 fn skip_to_eol(s: String, pos: i64) -> i64 =
-    if pos >= s.len() then pos
-    else if s.char_at(pos) == 10 then pos + 1
-    else skip_to_eol(s, pos + 1);
+    if pos >= s.len() { pos } else if s.byte_at(pos) == 10 { pos + 1 } else { skip_to_eol(s, pos + 1) };
+
+// v0.50: Support both -- and // comments (45='-', 47='/')
+fn is_comment_start(s: String, pos: i64) -> bool =
+    pos + 1 < s.len() and (
+        (s.byte_at(pos) == 45 and s.byte_at(pos + 1) == 45) or
+        (s.byte_at(pos) == 47 and s.byte_at(pos + 1) == 47)
+    );
 
 fn skip_comment(s: String, pos: i64) -> i64 =
-    if pos + 1 < s.len() and s.char_at(pos) == 45 and s.char_at(pos + 1) == 45
-    then skip_comment(s, skip_to_eol(s, pos + 2))
-    else pos;
+    if is_comment_start(s, pos) { skip_comment(s, skip_to_eol(s, pos + 2)) } else { pos };
 
 fn skip_ws_comments(s: String, pos: i64) -> i64 =
     let p1 = skip_ws(s, pos);
     let p2 = skip_comment(s, p1);
-    if p2 == p1 then p1
-    else skip_ws_comments(s, p2);
+    if p2 == p1 { p1 } else { skip_ws_comments(s, p2) };
 
 fn scan_int(s: String, pos: i64, acc: i64) -> i64 =
-    if pos >= s.len() then acc * 1000000 + pos
-    else let c = s.char_at(pos);
-        if is_digit(c) then scan_int(s, pos + 1, acc * 10 + (c - 48))
-        else acc * 1000000 + pos;
+    if pos >= s.len() { acc * 1000000 + pos } else {
+        let c = s.byte_at(pos);
+        if is_digit(c) { scan_int(s, pos + 1, acc * 10 + (c - 48)) } else { acc * 1000000 + pos }
+    };
 
 fn scan_ident_end(s: String, pos: i64) -> i64 =
-    if pos >= s.len() then pos
-    else if is_alnum_or_underscore(s.char_at(pos)) then scan_ident_end(s, pos + 1)
-    else pos;
+    if pos >= s.len() { pos } else if is_alnum_or_underscore(s.byte_at(pos)) { scan_ident_end(s, pos + 1) } else { pos };
+
+// v0.50: Scan string literal from opening quote to closing quote
+fn scan_string_end(s: String, pos: i64) -> i64 =
+    if pos >= s.len() { pos } else if s.byte_at(pos) == 34 { pos + 1 } else if s.byte_at(pos) == 92 and pos + 1 < s.len() { scan_string_end(s, pos + 2) } else { scan_string_end(s, pos + 1) };
 
 fn tok_val(r: i64) -> i64 = r / 1000000;
 fn tok_end(r: i64) -> i64 = r - (r / 1000000) * 1000000;
 fn tok_kind(r: i64) -> i64 = tok_val(r);
 fn make_tok(kind: i64, endpos: i64) -> i64 = kind * 1000000 + endpos;
 
+// v0.50.8: Keyword lookup helpers - first-char grouping for faster parsing
+// Splits long 19-branch if-else into smaller chunks to reduce parser recursion depth
+fn kw_f(w: String, ep: i64) -> i64 =
+    if w == "fn" { make_tok(TK_FN(), ep) }
+    else if w == "false" { make_tok(TK_FALSE(), ep) }
+    else if w == "f64" { make_tok(TK_F64(), ep) }
+    else { make_tok(TK_IDENT(), ep) };
+
+fn kw_i(w: String, ep: i64) -> i64 =
+    if w == "if" { make_tok(TK_IF(), ep) }
+    else if w == "i32" { make_tok(TK_I32(), ep) }
+    else if w == "i64" { make_tok(TK_I64(), ep) }
+    else { make_tok(TK_IDENT(), ep) };
+
+fn kw_t(w: String, ep: i64) -> i64 =
+    if w == "then" { make_tok(TK_THEN(), ep) }
+    else if w == "true" { make_tok(TK_TRUE(), ep) }
+    else { make_tok(TK_IDENT(), ep) };
+
+fn kw_p(w: String, ep: i64) -> i64 =
+    if w == "pre" { make_tok(TK_PRE(), ep) }
+    else if w == "post" { make_tok(TK_POST(), ep) }
+    else { make_tok(TK_IDENT(), ep) };
+
+// v0.50.22: Additional single-keyword helpers to reduce else-if depth (max 7 branches)
+fn kw_l(w: String, ep: i64) -> i64 =
+    if w == "let" { make_tok(TK_LET(), ep) } else { make_tok(TK_IDENT(), ep) };
+
+fn kw_e(w: String, ep: i64) -> i64 =
+    if w == "else" { make_tok(TK_ELSE(), ep) } else { make_tok(TK_IDENT(), ep) };
+
+fn kw_a(w: String, ep: i64) -> i64 =
+    if w == "and" { make_tok(TK_AND(), ep) } else { make_tok(TK_IDENT(), ep) };
+
+fn kw_o(w: String, ep: i64) -> i64 =
+    if w == "or" { make_tok(TK_OR(), ep) } else { make_tok(TK_IDENT(), ep) };
+
+fn kw_n(w: String, ep: i64) -> i64 =
+    if w == "not" { make_tok(TK_NOT(), ep) } else { make_tok(TK_IDENT(), ep) };
+
+fn kw_m(w: String, ep: i64) -> i64 =
+    if w == "mut" { make_tok(TK_MUT(), ep) } else { make_tok(TK_IDENT(), ep) };
+
+fn kw_b(w: String, ep: i64) -> i64 =
+    if w == "bool" { make_tok(TK_BOOL(), ep) } else { make_tok(TK_IDENT(), ep) };
+
+fn kw_S(w: String, ep: i64) -> i64 =
+    if w == "String" { make_tok(TK_STRING_TYPE(), ep) } else { make_tok(TK_IDENT(), ep) };
+
+// v0.50.22: Split keyword dispatch into two functions (max 7 branches each)
+fn kw_other(w: String, c: i64, ep: i64) -> i64 =
+    if c == 111 { kw_o(w, ep) }
+    else if c == 110 { kw_n(w, ep) }
+    else if c == 112 { kw_p(w, ep) }
+    else if c == 109 { kw_m(w, ep) }
+    else if c == 98 { kw_b(w, ep) }
+    else if c == 83 { kw_S(w, ep) }
+    else { make_tok(TK_IDENT(), ep) };
+
 fn keyword_or_ident(s: String, start: i64, endpos: i64) -> i64 =
     let word = s.slice(start, endpos);
-    if word == "fn" then make_tok(TK_FN(), endpos)
-    else if word == "let" then make_tok(TK_LET(), endpos)
-    else if word == "if" then make_tok(TK_IF(), endpos)
-    else if word == "then" then make_tok(TK_THEN(), endpos)
-    else if word == "else" then make_tok(TK_ELSE(), endpos)
-    else if word == "true" then make_tok(TK_TRUE(), endpos)
-    else if word == "false" then make_tok(TK_FALSE(), endpos)
-    else if word == "and" then make_tok(TK_AND(), endpos)
-    else if word == "or" then make_tok(TK_OR(), endpos)
-    else if word == "not" then make_tok(TK_NOT(), endpos)
-    else if word == "pre" then make_tok(TK_PRE(), endpos)
-    else if word == "post" then make_tok(TK_POST(), endpos)
-    else if word == "mut" then make_tok(TK_MUT(), endpos)
-    else if word == "i32" then make_tok(TK_I32(), endpos)
-    else if word == "i64" then make_tok(TK_I64(), endpos)
-    else if word == "f64" then make_tok(TK_F64(), endpos)
-    else if word == "bool" then make_tok(TK_BOOL(), endpos)
-    else if word == "String" then make_tok(TK_STRING_TYPE(), endpos)
-    else make_tok(TK_IDENT(), endpos);
+    let c = word.byte_at(0);
+    // Dispatch by first character (split into two functions for max 7 branches)
+    if c == 102 { kw_f(word, endpos) }
+    else if c == 108 { kw_l(word, endpos) }
+    else if c == 105 { kw_i(word, endpos) }
+    else if c == 116 { kw_t(word, endpos) }
+    else if c == 101 { kw_e(word, endpos) }
+    else if c == 97 { kw_a(word, endpos) }
+    else { kw_other(word, c, endpos) };
+
+// v0.50.8: Token scan helpers - split long if-else chain for faster parsing
+// Two-char operators with lookahead
+fn tok_eq(s: String, p: i64) -> i64 =
+    if p + 1 < s.len() and s.byte_at(p + 1) == 61 { make_tok(TK_EQEQ(), p + 2) }
+    else { make_tok(TK_EQ(), p + 1) };
+
+fn tok_minus(s: String, p: i64) -> i64 =
+    if p + 1 < s.len() and s.byte_at(p + 1) == 62 { make_tok(TK_ARROW(), p + 2) }
+    else { make_tok(TK_MINUS(), p + 1) };
+
+fn tok_lt(s: String, p: i64) -> i64 =
+    if p + 1 < s.len() and s.byte_at(p + 1) == 61 { make_tok(TK_LTEQ(), p + 2) }
+    else { make_tok(TK_LT(), p + 1) };
+
+fn tok_gt(s: String, p: i64) -> i64 =
+    if p + 1 < s.len() and s.byte_at(p + 1) == 61 { make_tok(TK_GTEQ(), p + 2) }
+    else { make_tok(TK_GT(), p + 1) };
+
+fn tok_bang(s: String, p: i64) -> i64 =
+    if p + 1 < s.len() and s.byte_at(p + 1) == 61 { make_tok(TK_NEQ(), p + 2) }
+    else { make_tok(TK_EOF(), p) };
+
+fn tok_dot(s: String, p: i64) -> i64 =
+    if p + 1 < s.len() and s.byte_at(p + 1) == 46 { make_tok(TK_DOTDOT(), p + 2) }
+    else { make_tok(TK_DOT(), p + 1) };
+
+// Single-char punctuation group
+fn tok_punct(c: i64, p: i64) -> i64 =
+    if c == 58 { make_tok(TK_COLON(), p + 1) }
+    else if c == 59 { make_tok(TK_SEMI(), p + 1) }
+    else if c == 44 { make_tok(TK_COMMA(), p + 1) }
+    else if c == 40 { make_tok(TK_LPAREN(), p + 1) }
+    else if c == 41 { make_tok(TK_RPAREN(), p + 1) }
+    else if c == 123 { make_tok(TK_LBRACE(), p + 1) }
+    else if c == 125 { make_tok(TK_RBRACE(), p + 1) }
+    else { make_tok(TK_EOF(), p) };
+
+// Single-char arithmetic group
+fn tok_arith(c: i64, p: i64) -> i64 =
+    if c == 43 { make_tok(TK_PLUS(), p + 1) }
+    else if c == 42 { make_tok(TK_STAR(), p + 1) }
+    else if c == 47 { make_tok(TK_SLASH(), p + 1) }
+    else if c == 37 { make_tok(TK_PERCENT(), p + 1) }
+    else { make_tok(TK_EOF(), p) };
 
 fn next_token_raw(s: String, pos: i64) -> i64 =
     let p = skip_ws_comments(s, pos);
-    if p >= s.len() then make_tok(TK_EOF(), p)
-    else let c = s.char_at(p);
-        if is_digit(c) then scan_int(s, p, 0)
-        else if is_ident_start(c) then
-            let endpos = scan_ident_end(s, p + 1);
-            keyword_or_ident(s, p, endpos)
-        else if c == 58 then make_tok(TK_COLON(), p + 1)
-        else if c == 61 then
-            if p + 1 < s.len() and s.char_at(p + 1) == 61
-            then make_tok(TK_EQEQ(), p + 2)
-            else make_tok(TK_EQ(), p + 1)
-        else if c == 59 then make_tok(TK_SEMI(), p + 1)
-        else if c == 44 then make_tok(TK_COMMA(), p + 1)
-        else if c == 40 then make_tok(TK_LPAREN(), p + 1)
-        else if c == 41 then make_tok(TK_RPAREN(), p + 1)
-        else if c == 43 then make_tok(TK_PLUS(), p + 1)
-        else if c == 45 then
-            if p + 1 < s.len() and s.char_at(p + 1) == 62
-            then make_tok(TK_ARROW(), p + 2)
-            else make_tok(TK_MINUS(), p + 1)
-        else if c == 42 then make_tok(TK_STAR(), p + 1)
-        else if c == 47 then make_tok(TK_SLASH(), p + 1)
-        else if c == 37 then make_tok(TK_PERCENT(), p + 1)
-        else if c == 60 then
-            if p + 1 < s.len() and s.char_at(p + 1) == 61
-            then make_tok(TK_LTEQ(), p + 2)
-            else make_tok(TK_LT(), p + 1)
-        else if c == 62 then
-            if p + 1 < s.len() and s.char_at(p + 1) == 61
-            then make_tok(TK_GTEQ(), p + 2)
-            else make_tok(TK_GT(), p + 1)
-        else if c == 33 then
-            if p + 1 < s.len() and s.char_at(p + 1) == 61
-            then make_tok(TK_NEQ(), p + 2)
-            else make_tok(TK_EOF(), p)
-        else if c == 46 then
-            if p + 1 < s.len() and s.char_at(p + 1) == 46
-            then make_tok(TK_DOTDOT(), p + 2)
-            else make_tok(TK_EOF(), p)
-        else make_tok(TK_EOF(), p);
+    if p >= s.len() { make_tok(TK_EOF(), p) } else {
+        let c = s.byte_at(p);
+        // Dispatch: digit, ident, two-char ops, single-char punct, single-char arith, string
+        if is_digit(c) { scan_int(s, p, 0) }
+        else if is_ident_start(c) { keyword_or_ident(s, p, scan_ident_end(s, p + 1)) }
+        // Two-char operators (need lookahead)
+        else if c == 61 { tok_eq(s, p) }
+        else if c == 45 { tok_minus(s, p) }
+        else if c == 60 { tok_lt(s, p) }
+        else if c == 62 { tok_gt(s, p) }
+        else if c == 33 { tok_bang(s, p) }
+        else if c == 46 { tok_dot(s, p) }
+        // Single-char punctuation
+        else if c == 58 or c == 59 or c == 44 or c == 40 or c == 41 or c == 123 or c == 125 { tok_punct(c, p) }
+        // Single-char arithmetic
+        else if c == 43 or c == 42 or c == 47 or c == 37 { tok_arith(c, p) }
+        // String literal
+        else if c == 34 { make_tok(TK_STRING(), scan_string_end(s, p + 1)) }
+        else { make_tok(TK_EOF(), p) }
+    };
 
 fn get_ident_text(s: String, pos: i64, tok: i64) -> String =
     let start = tok_end(tok) - (tok_val(tok) / 1000000);
@@ -211,303 +283,356 @@ fn get_ident_text(s: String, pos: i64, tok: i64) -> String =
     let endp = scan_ident_end(s, p + 1);
     s.slice(p, endp);
 
--- ============================================================================
--- SECTION 4: Parser Result Packing
--- ============================================================================
+// ============================================================================
+// SECTION 4: Parser Result Packing
+// ============================================================================
 
 fn pack_result(pos: i64, ast: String) -> String = int_to_string(pos) + ":" + ast;
 
 fn unpack_pos(r: String) -> i64 = unpack_pos_acc(r, 0, 0);
 
 fn unpack_pos_acc(r: String, pos: i64, acc: i64) -> i64 =
-    if pos >= r.len() then acc
-    else let c = r.char_at(pos);
-        if c == 58 then acc
-        else if is_digit(c) then unpack_pos_acc(r, pos + 1, acc * 10 + (c - 48))
-        else acc;
+    if pos >= r.len() { acc } else {
+        let c = r.byte_at(pos);
+        if c == 58 { acc } else if is_digit(c) { unpack_pos_acc(r, pos + 1, acc * 10 + (c - 48)) } else { acc }
+    };
 
 fn unpack_ast(r: String) -> String =
     let cpos = find_colon(r, 0);
-    if cpos >= r.len() then r
-    else r.slice(cpos + 1, r.len());
+    if cpos >= r.len() { r } else { r.slice(cpos + 1, r.len()) };
 
 fn find_colon(s: String, pos: i64) -> i64 =
-    if pos >= s.len() then pos
-    else if s.char_at(pos) == 58 then pos
-    else find_colon(s, pos + 1);
+    if pos >= s.len() { pos } else if s.byte_at(pos) == 58 { pos } else { find_colon(s, pos + 1) };
 
--- ============================================================================
--- SECTION 5: Expression Parser (recursive descent)
--- ============================================================================
+// ============================================================================
+// SECTION 5: Expression Parser (recursive descent)
+// ============================================================================
 
 fn parse_atom(src: String, pos: i64) -> String =
     let tok = next_token_raw(src, pos);
     let kind = tok_kind(tok);
-    -- v0.32.1: Fix integer literal parsing - check keywords first, then treat small kinds as integers
-    -- Integer tokens have kind = integer value (0-N), not TK_INT (200)
-    -- Must check specific keywords first to avoid collision (e.g., TK_TRUE=105)
-    if kind == TK_TRUE() then
-        pack_result(tok_end(tok), "(bool true)")
-    else if kind == TK_FALSE() then
-        pack_result(tok_end(tok), "(bool false)")
-    else if kind < TK_INT() then
-        -- Any kind < 200 that isn't a keyword is an integer literal
-        pack_result(tok_end(tok), "(int " + int_to_string(tok_val(tok)) + ")")
-    else if kind == TK_IDENT() then
-        let name = get_ident_text(src, pos, tok);
-        let next = next_token_raw(src, tok_end(tok));
-        if tok_kind(next) == TK_LPAREN() then
-            let rargs = parse_args(src, tok_end(next), "");
-            pack_result(unpack_pos(rargs), "(call <" + name + ">" + unpack_ast(rargs) + ")")
-        else
-            pack_result(tok_end(tok), "(var <" + name + ">)")
-    else if kind == TK_NOT() then
+    // v0.50.1: Fix integer literal parsing with proper collision handling
+    // Integer tokens have kind = integer value (0-N), not TK_INT (200)
+    // Must check if token starts with digit to distinguish integers from keywords
+    let start_pos = skip_ws_comments(src, pos);
+    let is_actually_integer = start_pos < src.len() and is_digit(src.byte_at(start_pos));
+    // Integer literals that collide with keywords (100-117, 200+) must be detected by source char
+    if is_actually_integer { pack_result(tok_end(tok), "(int " + int_to_string(tok_val(tok)) + ")")
+    } else if kind == TK_TRUE() { pack_result(tok_end(tok), "(bool true)")
+    } else if kind == TK_FALSE() { pack_result(tok_end(tok), "(bool false)")
+    } else if kind == TK_NOT() {
         let re = parse_atom(src, tok_end(tok));
         pack_result(unpack_pos(re), "(unary not " + unpack_ast(re) + ")")
-    else if kind == TK_MINUS() then
+    } else if kind == TK_IDENT() {
+        let name = get_ident_text(src, pos, tok);
+        let next = next_token_raw(src, tok_end(tok));
+        if tok_kind(next) == TK_LPAREN() {
+            // v0.50.15: Support method calls on function results: foo().bar()
+            let rargs = parse_args(src, tok_end(next), "");
+            if is_error(rargs) { rargs } else {
+                let call_ast = "(call <" + name + ">" + unpack_ast(rargs) + ")";
+                let after_call = next_token_raw(src, unpack_pos(rargs));
+                if tok_kind(after_call) == TK_DOT() {
+                    parse_method_chain(src, tok_end(after_call), call_ast)
+                } else {
+                    pack_result(unpack_pos(rargs), call_ast)
+                }
+            }
+        } else if tok_kind(next) == TK_DOT() {
+            // v0.50: Method call - convert obj.method(args) to (mcall <obj> <method> args)
+            parse_method_chain(src, tok_end(next), "(var <" + name + ">)")
+        } else {
+            pack_result(tok_end(tok), "(var <" + name + ">)")
+        }
+    } else if kind == TK_STRING() {
+        // v0.50: String literal - extract text from source (including quotes)
+        let start_pos = skip_ws_comments(src, pos);
+        let text = src.slice(start_pos, tok_end(tok));
+        let str_ast = "(str " + text + ")";
+        // v0.50.15: Support method calls on string literals: "abc".len()
+        let after_str = next_token_raw(src, tok_end(tok));
+        if tok_kind(after_str) == TK_DOT() {
+            parse_method_chain(src, tok_end(after_str), str_ast)
+        } else {
+            pack_result(tok_end(tok), str_ast)
+        }
+    } else if kind == TK_MINUS() {
         let re = parse_atom(src, tok_end(tok));
         pack_result(unpack_pos(re), "(unary - " + unpack_ast(re) + ")")
-    else if kind == TK_LPAREN() then
+    } else if kind == TK_LPAREN() {
         let re = parse_expr(src, tok_end(tok));
         let next = next_token_raw(src, unpack_pos(re));
-        if tok_kind(next) == TK_RPAREN() then
-            pack_result(tok_end(next), unpack_ast(re))
-        else make_error("paren")
-    -- v0.32.1: Handle large integer literals (kind > highest punctuation token)
-    -- Integer tokens with value >= 414 have kind outside token constant range
-    else if kind > TK_GTEQ() then
-        pack_result(tok_end(tok), "(int " + int_to_string(tok_val(tok)) + ")")
-    else make_error("atom");
+        if tok_kind(next) == TK_RPAREN() {
+            let paren_ast = unpack_ast(re);
+            // v0.50.15: Support method calls on parenthesized expr: (x + y).abs()
+            let after_paren = next_token_raw(src, tok_end(next));
+            if tok_kind(after_paren) == TK_DOT() {
+                parse_method_chain(src, tok_end(after_paren), paren_ast)
+            } else {
+                pack_result(tok_end(next), paren_ast)
+            }
+        } else { make_error("paren") }
+    } else if kind == TK_EOF() { make_error("atom-eof")
+    // v0.50.1: All remaining kinds (200-413, 414+) are integer literals
+    // Operators/punctuation in this range would be handled by parse_add/parse_mul/parse_compare
+    } else { pack_result(tok_end(tok), "(int " + int_to_string(tok_val(tok)) + ")") };
 
 fn parse_args(src: String, pos: i64, acc: String) -> String =
     let tok = next_token_raw(src, pos);
-    if tok_kind(tok) == TK_RPAREN() then pack_result(tok_end(tok), acc)
-    else
+    if tok_kind(tok) == TK_RPAREN() { pack_result(tok_end(tok), acc) } else {
         let re = parse_expr(src, pos);
-        if is_error(unpack_ast(re)) then re
-        else
+        if is_error(re) { re } else {
             let new_acc = acc + " " + unpack_ast(re);
             let next = next_token_raw(src, unpack_pos(re));
-            if tok_kind(next) == TK_COMMA() then parse_args(src, tok_end(next), new_acc)
-            else if tok_kind(next) == TK_RPAREN() then pack_result(tok_end(next), new_acc)
-            else make_error("args");
+            if tok_kind(next) == TK_COMMA() { parse_args(src, tok_end(next), new_acc) } else if tok_kind(next) == TK_RPAREN() { pack_result(tok_end(next), new_acc) } else { make_error("args") }
+        }
+    };
+
+// v0.50: Parse method chain like obj.method(args).method2(args2)
+// Converts to nested mcall nodes: (mcall obj method args)
+fn parse_method_chain(src: String, pos: i64, obj: String) -> String =
+    let tok = next_token_raw(src, pos);
+    if tok_kind(tok) == TK_IDENT() {
+        let method = get_ident_text(src, pos, tok);
+        let next = next_token_raw(src, tok_end(tok));
+        if tok_kind(next) == TK_LPAREN() {
+            let rargs = parse_args(src, tok_end(next), "");
+            if is_error(rargs) { rargs } else {
+                let mcall = "(mcall " + obj + " <" + method + ">" + unpack_ast(rargs) + ")";
+                let after = next_token_raw(src, unpack_pos(rargs));
+                if tok_kind(after) == TK_DOT() {
+                    parse_method_chain(src, tok_end(after), mcall)
+                } else {
+                    pack_result(unpack_pos(rargs), mcall)
+                }
+            }
+        } else {
+            make_error("method-paren")
+        }
+    } else {
+        make_error("method-name")
+    };
 
 fn parse_mul(src: String, pos: i64) -> String =
     let rl = parse_atom(src, pos);
-    if is_error(unpack_ast(rl)) then rl
-    else parse_mul_rest(src, unpack_pos(rl), unpack_ast(rl));
+    if is_error(rl) { rl } else { parse_mul_rest(src, unpack_pos(rl), unpack_ast(rl)) };
 
 fn parse_mul_rest(src: String, pos: i64, left: String) -> String =
     let tok = next_token_raw(src, pos);
     let kind = tok_kind(tok);
-    if kind == TK_STAR() then
+    if kind == TK_STAR() {
         let rr = parse_atom(src, tok_end(tok));
-        if is_error(unpack_ast(rr)) then rr
-        else parse_mul_rest(src, unpack_pos(rr), "(binop * " + left + " " + unpack_ast(rr) + ")")
-    else if kind == TK_SLASH() then
+        if is_error(rr) { rr } else { parse_mul_rest(src, unpack_pos(rr), "(binop * " + left + " " + unpack_ast(rr) + ")") }
+    } else if kind == TK_SLASH() {
         let rr = parse_atom(src, tok_end(tok));
-        if is_error(unpack_ast(rr)) then rr
-        else parse_mul_rest(src, unpack_pos(rr), "(binop / " + left + " " + unpack_ast(rr) + ")")
-    else if kind == TK_PERCENT() then
+        if is_error(rr) { rr } else { parse_mul_rest(src, unpack_pos(rr), "(binop / " + left + " " + unpack_ast(rr) + ")") }
+    } else if kind == TK_PERCENT() {
         let rr = parse_atom(src, tok_end(tok));
-        if is_error(unpack_ast(rr)) then rr
-        else parse_mul_rest(src, unpack_pos(rr), "(binop % " + left + " " + unpack_ast(rr) + ")")
-    else pack_result(pos, left);
+        if is_error(rr) { rr } else { parse_mul_rest(src, unpack_pos(rr), "(binop % " + left + " " + unpack_ast(rr) + ")") }
+    } else { pack_result(pos, left) };
 
 fn parse_add(src: String, pos: i64) -> String =
     let rl = parse_mul(src, pos);
-    if is_error(unpack_ast(rl)) then rl
-    else parse_add_rest(src, unpack_pos(rl), unpack_ast(rl));
+    if is_error(rl) { rl } else { parse_add_rest(src, unpack_pos(rl), unpack_ast(rl)) };
 
 fn parse_add_rest(src: String, pos: i64, left: String) -> String =
     let tok = next_token_raw(src, pos);
     let kind = tok_kind(tok);
-    if kind == TK_PLUS() then
+    if kind == TK_PLUS() {
         let rr = parse_mul(src, tok_end(tok));
-        if is_error(unpack_ast(rr)) then rr
-        else parse_add_rest(src, unpack_pos(rr), "(binop + " + left + " " + unpack_ast(rr) + ")")
-    else if kind == TK_MINUS() then
+        if is_error(rr) { rr } else { parse_add_rest(src, unpack_pos(rr), "(binop + " + left + " " + unpack_ast(rr) + ")") }
+    } else if kind == TK_MINUS() {
         let rr = parse_mul(src, tok_end(tok));
-        if is_error(unpack_ast(rr)) then rr
-        else parse_add_rest(src, unpack_pos(rr), "(binop - " + left + " " + unpack_ast(rr) + ")")
-    else pack_result(pos, left);
+        if is_error(rr) { rr } else { parse_add_rest(src, unpack_pos(rr), "(binop - " + left + " " + unpack_ast(rr) + ")") }
+    } else { pack_result(pos, left) };
 
 fn parse_cmp(src: String, pos: i64) -> String =
     let rl = parse_add(src, pos);
-    if is_error(unpack_ast(rl)) then rl
-    else parse_cmp_rest(src, unpack_pos(rl), unpack_ast(rl));
+    if is_error(rl) { rl } else { parse_cmp_rest(src, unpack_pos(rl), unpack_ast(rl)) };
 
 fn parse_cmp_rest(src: String, pos: i64, left: String) -> String =
     let tok = next_token_raw(src, pos);
     let kind = tok_kind(tok);
-    if kind == TK_LT() then
+    if kind == TK_LT() {
         let rr = parse_add(src, tok_end(tok));
         pack_result(unpack_pos(rr), "(binop < " + left + " " + unpack_ast(rr) + ")")
-    else if kind == TK_GT() then
+    } else if kind == TK_GT() {
         let rr = parse_add(src, tok_end(tok));
         pack_result(unpack_pos(rr), "(binop > " + left + " " + unpack_ast(rr) + ")")
-    else if kind == TK_LTEQ() then
+    } else if kind == TK_LTEQ() {
         let rr = parse_add(src, tok_end(tok));
         pack_result(unpack_pos(rr), "(binop <= " + left + " " + unpack_ast(rr) + ")")
-    else if kind == TK_GTEQ() then
+    } else if kind == TK_GTEQ() {
         let rr = parse_add(src, tok_end(tok));
         pack_result(unpack_pos(rr), "(binop >= " + left + " " + unpack_ast(rr) + ")")
-    else if kind == TK_EQEQ() then
+    } else if kind == TK_EQEQ() {
         let rr = parse_add(src, tok_end(tok));
         pack_result(unpack_pos(rr), "(binop == " + left + " " + unpack_ast(rr) + ")")
-    else if kind == TK_NEQ() then
+    } else if kind == TK_NEQ() {
         let rr = parse_add(src, tok_end(tok));
         pack_result(unpack_pos(rr), "(binop != " + left + " " + unpack_ast(rr) + ")")
-    else pack_result(pos, left);
+    } else { pack_result(pos, left) };
 
 fn parse_and(src: String, pos: i64) -> String =
     let rl = parse_cmp(src, pos);
-    if is_error(unpack_ast(rl)) then rl
-    else parse_and_rest(src, unpack_pos(rl), unpack_ast(rl));
+    if is_error(rl) { rl } else { parse_and_rest(src, unpack_pos(rl), unpack_ast(rl)) };
 
 fn parse_and_rest(src: String, pos: i64, left: String) -> String =
     let tok = next_token_raw(src, pos);
-    if tok_kind(tok) == TK_AND() then
+    if tok_kind(tok) == TK_AND() {
         let rr = parse_cmp(src, tok_end(tok));
-        if is_error(unpack_ast(rr)) then rr
-        else parse_and_rest(src, unpack_pos(rr), "(binop and " + left + " " + unpack_ast(rr) + ")")
-    else pack_result(pos, left);
+        if is_error(rr) { rr } else { parse_and_rest(src, unpack_pos(rr), "(binop and " + left + " " + unpack_ast(rr) + ")") }
+    } else { pack_result(pos, left) };
 
 fn parse_or(src: String, pos: i64) -> String =
     let rl = parse_and(src, pos);
-    if is_error(unpack_ast(rl)) then rl
-    else parse_or_rest(src, unpack_pos(rl), unpack_ast(rl));
+    if is_error(rl) { rl } else { parse_or_rest(src, unpack_pos(rl), unpack_ast(rl)) };
 
 fn parse_or_rest(src: String, pos: i64, left: String) -> String =
     let tok = next_token_raw(src, pos);
-    if tok_kind(tok) == TK_OR() then
+    if tok_kind(tok) == TK_OR() {
         let rr = parse_and(src, tok_end(tok));
-        if is_error(unpack_ast(rr)) then rr
-        else parse_or_rest(src, unpack_pos(rr), "(binop or " + left + " " + unpack_ast(rr) + ")")
-    else pack_result(pos, left);
+        if is_error(rr) { rr } else { parse_or_rest(src, unpack_pos(rr), "(binop or " + left + " " + unpack_ast(rr) + ")") }
+    } else { pack_result(pos, left) };
 
 fn parse_expr(src: String, pos: i64) -> String =
     let tok = next_token_raw(src, pos);
     let kind = tok_kind(tok);
-    if kind == TK_IF() then
+    // v0.50.1: Check if token is actually a digit-starting integer, not a keyword
+    // Integer literals 100-117 collide with keywords TK_FN through TK_MUT
+    let start_pos = skip_ws_comments(src, pos);
+    let is_actually_integer = start_pos < src.len() and is_digit(src.byte_at(start_pos));
+    if is_actually_integer { parse_or(src, pos) } else if kind == TK_IF() {
         let rc = parse_expr(src, tok_end(tok));
-        if is_error(unpack_ast(rc)) then rc
-        else
+        if is_error(rc) { rc } else {
             let t1 = next_token_raw(src, unpack_pos(rc));
-            if tok_kind(t1) == TK_THEN() then
+            // v0.50: Support both v0.32 braced if-else and pre-v0.32 then-else
+            if tok_kind(t1) == TK_LBRACE() {
+                // v0.32: if cond { then } else { else }
                 let rt = parse_expr(src, tok_end(t1));
-                if is_error(unpack_ast(rt)) then rt
-                else
+                if is_error(rt) { rt } else {
                     let t2 = next_token_raw(src, unpack_pos(rt));
-                    if tok_kind(t2) == TK_ELSE() then
+                    if tok_kind(t2) == TK_RBRACE() {
+                        let t3 = next_token_raw(src, tok_end(t2));
+                        if tok_kind(t3) == TK_ELSE() {
+                            let t4 = next_token_raw(src, tok_end(t3));
+                            if tok_kind(t4) == TK_LBRACE() {
+                                // else { expr }
+                                let re = parse_expr(src, tok_end(t4));
+                                if is_error(re) { re } else {
+                                    let t5 = next_token_raw(src, unpack_pos(re));
+                                    if tok_kind(t5) == TK_RBRACE() {
+                                        pack_result(tok_end(t5), "(if " + unpack_ast(rc) + " " + unpack_ast(rt) + " " + unpack_ast(re) + ")")
+                                    } else { make_error("if-rbrace2") }
+                                }
+                            } else if tok_kind(t4) == TK_IF() {
+                                // else if ... (chain) - parse_expr will handle the nested if
+                                let re = parse_expr(src, tok_end(t3));
+                                pack_result(unpack_pos(re), "(if " + unpack_ast(rc) + " " + unpack_ast(rt) + " " + unpack_ast(re) + ")")
+                            } else { make_error("if-lbrace2") }
+                        } else { make_error("if-else") }
+                    } else { make_error("if-rbrace1") }
+                }
+            } else if tok_kind(t1) == TK_THEN() {
+                // Pre-v0.32: if cond then then-expr else else-expr
+                let rt = parse_expr(src, tok_end(t1));
+                if is_error(rt) { rt } else {
+                    let t2 = next_token_raw(src, unpack_pos(rt));
+                    if tok_kind(t2) == TK_ELSE() {
                         let re = parse_expr(src, tok_end(t2));
                         pack_result(unpack_pos(re), "(if " + unpack_ast(rc) + " " + unpack_ast(rt) + " " + unpack_ast(re) + ")")
-                    else make_error("if-else")
-            else make_error("if-then")
-    else if kind == TK_LET() then
+                    } else { make_error("if-else") }
+                }
+            } else { make_error("if-then") }
+        }
+    } else if kind == TK_LET() {
         let t1 = next_token_raw(src, tok_end(tok));
-        if tok_kind(t1) == TK_IDENT() then
+        if tok_kind(t1) == TK_IDENT() {
             let name = get_ident_text(src, tok_end(tok), t1);
             let t2 = next_token_raw(src, tok_end(t1));
-            if tok_kind(t2) == TK_EQ() then
+            if tok_kind(t2) == TK_EQ() {
                 let rv = parse_expr(src, tok_end(t2));
-                if is_error(unpack_ast(rv)) then rv
-                else
+                if is_error(rv) { rv } else {
                     let t3 = next_token_raw(src, unpack_pos(rv));
-                    if tok_kind(t3) == TK_SEMI() then
+                    if tok_kind(t3) == TK_SEMI() {
                         let rb = parse_expr(src, tok_end(t3));
                         pack_result(unpack_pos(rb), "(let <" + name + "> " + unpack_ast(rv) + " " + unpack_ast(rb) + ")")
-                    else make_error("let-semi")
-            else make_error("let-eq")
-        else make_error("let-name")
-    else parse_or(src, pos);
+                    } else { make_error("let-semi") }
+                }
+            } else { make_error("let-eq") }
+        } else { make_error("let-name") }
+    } else { parse_or(src, pos) };
 
--- ============================================================================
--- SECTION 6: Function and Program Parser
--- ============================================================================
+// ============================================================================
+// SECTION 6: Function and Program Parser
+// ============================================================================
 
 fn parse_param(src: String, pos: i64) -> String =
     let t1 = next_token_raw(src, pos);
-    if tok_kind(t1) == TK_IDENT() then
+    if tok_kind(t1) == TK_IDENT() {
         let name = get_ident_text(src, pos, t1);
         let t2 = next_token_raw(src, tok_end(t1));
-        if tok_kind(t2) == TK_COLON() then
+        if tok_kind(t2) == TK_COLON() {
             let t3 = next_token_raw(src, tok_end(t2));
             let kind = tok_kind(t3);
-            if kind == TK_I32() then pack_result(tok_end(t3), "(param <" + name + "> i32)")
-            else if kind == TK_I64() then pack_result(tok_end(t3), "(param <" + name + "> i64)")
-            else if kind == TK_F64() then pack_result(tok_end(t3), "(param <" + name + "> f64)")
-            else if kind == TK_BOOL() then pack_result(tok_end(t3), "(param <" + name + "> bool)")
-            else make_error("param-type")
-        else make_error("param-colon")
-    else make_error("param-name");
+            if kind == TK_I32() { pack_result(tok_end(t3), "(param <" + name + "> i32)") } else if kind == TK_I64() { pack_result(tok_end(t3), "(param <" + name + "> i64)") } else if kind == TK_F64() { pack_result(tok_end(t3), "(param <" + name + "> f64)") } else if kind == TK_BOOL() { pack_result(tok_end(t3), "(param <" + name + "> bool)") } else if kind == TK_STRING_TYPE() { pack_result(tok_end(t3), "(param <" + name + "> String)") } else { make_error("param-type") }
+        } else { make_error("param-colon") }
+    } else { make_error("param-name") };
 
 fn parse_params(src: String, pos: i64, acc: String) -> String =
     let tok = next_token_raw(src, pos);
-    if tok_kind(tok) == TK_RPAREN() then pack_result(tok_end(tok), acc)
-    else
+    if tok_kind(tok) == TK_RPAREN() { pack_result(tok_end(tok), acc) } else {
         let rp = parse_param(src, pos);
-        if is_error(unpack_ast(rp)) then rp
-        else
+        if is_error(rp) { rp } else {
             let new_acc = acc + " " + unpack_ast(rp);
             let next = next_token_raw(src, unpack_pos(rp));
-            if tok_kind(next) == TK_COMMA() then parse_params(src, tok_end(next), new_acc)
-            else if tok_kind(next) == TK_RPAREN() then pack_result(tok_end(next), new_acc)
-            else make_error("params");
+            if tok_kind(next) == TK_COMMA() { parse_params(src, tok_end(next), new_acc) } else if tok_kind(next) == TK_RPAREN() { pack_result(tok_end(next), new_acc) } else { make_error("params") }
+        }
+    };
 
 fn parse_fn(src: String, pos: i64) -> String =
     let t1 = next_token_raw(src, pos);
-    if tok_kind(t1) == TK_IDENT() then
+    if tok_kind(t1) == TK_IDENT() {
         let name = get_ident_text(src, pos, t1);
         let t2 = next_token_raw(src, tok_end(t1));
-        if tok_kind(t2) == TK_LPAREN() then
+        if tok_kind(t2) == TK_LPAREN() {
             let rp = parse_params(src, tok_end(t2), "");
-            if is_error(unpack_ast(rp)) then rp
-            else
+            if is_error(rp) { rp } else {
                 let t3 = next_token_raw(src, unpack_pos(rp));
-                if tok_kind(t3) == TK_ARROW() then
+                if tok_kind(t3) == TK_ARROW() {
                     let t4 = next_token_raw(src, tok_end(t3));
-                    let ret_type = if tok_kind(t4) == TK_I32() then "i32"
-                        else if tok_kind(t4) == TK_I64() then "i64"
-                        else if tok_kind(t4) == TK_F64() then "f64"
-                        else if tok_kind(t4) == TK_BOOL() then "bool"
-                        else "i64";
+                    let ret_type = if tok_kind(t4) == TK_I32() { "i32" } else if tok_kind(t4) == TK_I64() { "i64" } else if tok_kind(t4) == TK_F64() { "f64" } else if tok_kind(t4) == TK_BOOL() { "bool" } else if tok_kind(t4) == TK_STRING_TYPE() { "String" } else { "i64" };
                     let t5 = next_token_raw(src, tok_end(t4));
-                    if tok_kind(t5) == TK_EQ() then
+                    if tok_kind(t5) == TK_EQ() {
                         let rb = parse_expr(src, tok_end(t5));
-                        if is_error(unpack_ast(rb)) then rb
-                        else
+                        if is_error(rb) { rb } else {
                             let t6 = next_token_raw(src, unpack_pos(rb));
-                            if tok_kind(t6) == TK_SEMI() then
-                                pack_result(tok_end(t6), "(fn <" + name + ">" + unpack_ast(rp) + " " + ret_type + " " + unpack_ast(rb) + ")")
-                            else pack_result(unpack_pos(rb), "(fn <" + name + ">" + unpack_ast(rp) + " " + ret_type + " " + unpack_ast(rb) + ")")
-                    else make_error("fn-eq")
-                else make_error("fn-arrow")
-        else make_error("fn-lparen")
-    else make_error("fn-name");
+                            if tok_kind(t6) == TK_SEMI() { pack_result(tok_end(t6), "(fn <" + name + ">" + unpack_ast(rp) + " " + ret_type + " " + unpack_ast(rb) + ")") } else { pack_result(unpack_pos(rb), "(fn <" + name + ">" + unpack_ast(rp) + " " + ret_type + " " + unpack_ast(rb) + ")") }
+                        }
+                    } else { make_error("fn-eq") }
+                } else { make_error("fn-arrow") }
+            }
+        } else { make_error("fn-lparen") }
+    } else { make_error("fn-name") };
 
 fn parse_program(src: String, pos: i64, fns: String) -> String =
     let tok = next_token_raw(src, pos);
     let kind = tok_kind(tok);
-    if kind == TK_EOF() then "(program" + fns + ")"
-    else if kind == TK_FN() then
+    if kind == TK_EOF() { "(program" + fns + ")" } else if kind == TK_FN() {
         let rf = parse_fn(src, tok_end(tok));
-        if is_error(unpack_ast(rf)) then unpack_ast(rf)
-        else parse_program(src, unpack_pos(rf), fns + " " + unpack_ast(rf))
-    else make_error("program");
+        if is_error(rf) { rf } else { parse_program(src, unpack_pos(rf), fns + " " + unpack_ast(rf)) }
+    } else { make_error("program") };
 
 fn parse_source(src: String) -> String = parse_program(src, 0, "");
 
--- ============================================================================
--- SECTION 7: S-Expression Utilities (for lowering)
--- ============================================================================
+// ============================================================================
+// SECTION 7: S-Expression Utilities (for lowering)
+// ============================================================================
 
 fn low_is_whitespace(c: i64) -> bool = c == 32 or c == 9 or c == 10 or c == 13;
 
 fn low_skip_ws(s: String, pos: i64) -> i64 =
-    if pos >= s.len() then pos
-    else if low_is_whitespace(s.char_at(pos)) then low_skip_ws(s, pos + 1)
-    else pos;
+    if pos >= s.len() { pos } else if low_is_whitespace(s.byte_at(pos)) { low_skip_ws(s, pos + 1) } else { pos };
 
 fn low_is_ident_char(c: i64) -> bool =
     (c >= 65 and c <= 90) or (c >= 97 and c <= 122) or
@@ -518,115 +643,105 @@ fn low_is_op_char(c: i64) -> bool =
     c == 60 or c == 62 or c == 61 or c == 33;
 
 fn low_find_ident_end(s: String, pos: i64) -> i64 =
-    if pos >= s.len() then pos
-    else if low_is_ident_char(s.char_at(pos)) then low_find_ident_end(s, pos + 1)
-    else pos;
+    if pos >= s.len() { pos } else if low_is_ident_char(s.byte_at(pos)) { low_find_ident_end(s, pos + 1) } else { pos };
 
 fn low_find_op_end(s: String, pos: i64) -> i64 =
-    if pos >= s.len() then pos
-    else if low_is_op_char(s.char_at(pos)) then low_find_op_end(s, pos + 1)
-    else pos;
+    if pos >= s.len() { pos } else if low_is_op_char(s.byte_at(pos)) { low_find_op_end(s, pos + 1) } else { pos };
 
 fn low_starts_with_at(s: String, pos: i64, prefix: String) -> bool =
-    if pos + prefix.len() > s.len() then false
-    else s.slice(pos, pos + prefix.len()) == prefix;
+    if pos + prefix.len() > s.len() { false } else { s.slice(pos, pos + prefix.len()) == prefix };
 
 fn low_find_close_paren(s: String, pos: i64, depth: i64) -> i64 =
-    if pos >= s.len() then pos
-    else let c = s.char_at(pos);
-        if c == 40 then low_find_close_paren(s, pos + 1, depth + 1)
-        else if c == 41 then
-            if depth == 1 then pos
-            else low_find_close_paren(s, pos + 1, depth - 1)
-        else low_find_close_paren(s, pos + 1, depth);
+    if pos >= s.len() { pos } else {
+        let c = s.byte_at(pos);
+        if c == 40 { low_find_close_paren(s, pos + 1, depth + 1) } else if c == 41 { if depth == 1 { pos } else { low_find_close_paren(s, pos + 1, depth - 1) } } else { low_find_close_paren(s, pos + 1, depth) }
+    };
 
 fn extract_paren_content(s: String) -> String =
-    if s.len() < 2 then ""
-    else if s.char_at(0) == 40 then
+    if s.len() < 2 { "" } else if s.byte_at(0) == 40 {
         let end = low_find_close_paren(s, 0, 0);
         s.slice(1, end)
-    else "";
+    } else { "" };
 
 fn get_node_type(ast: String) -> String =
-    if ast.len() == 0 then ""
-    else let content = extract_paren_content(ast);
+    if ast.len() == 0 { "" } else {
+        let content = extract_paren_content(ast);
         let pos = low_skip_ws(content, 0);
-        if pos >= content.len() then ""
-        else let c = content.char_at(pos);
-            if low_is_ident_char(c) then
+        if pos >= content.len() { "" } else {
+            let c = content.byte_at(pos);
+            if low_is_ident_char(c) {
                 let endp = low_find_ident_end(content, pos);
                 content.slice(pos, endp)
-            else if low_is_op_char(c) then
+            } else if low_is_op_char(c) {
                 let endp = low_find_op_end(content, pos);
                 content.slice(pos, endp)
-            else "";
+            } else { "" }
+        }
+    };
 
 fn get_child(ast: String, idx: i64) -> String =
     let content = extract_paren_content(ast);
     let pos = low_skip_ws(content, 0);
     let end1 = low_find_ident_end(content, pos);
-    let after_type = if end1 > pos then end1 else low_find_op_end(content, pos);
+    let after_type = if end1 > pos { end1 } else { low_find_op_end(content, pos) };
     get_child_at(content, after_type, idx);
 
 fn get_child_at(content: String, pos: i64, idx: i64) -> String =
-    if idx < 0 then ""
-    else
+    if idx < 0 { "" } else {
         let p = low_skip_ws(content, pos);
-        if p >= content.len() then ""
-        else if idx == 0 then read_sexp_at(content, p)
-        else
+        if p >= content.len() { "" } else if idx == 0 { read_sexp_at(content, p) } else {
             let child = read_sexp_at(content, p);
             let next_pos = p + child.len();
-            get_child_at(content, next_pos, idx - 1);
+            get_child_at(content, next_pos, idx - 1)
+        }
+    };
 
--- v0.32.1: Fixed to distinguish '<' as name start (<n>) vs operator start (<=)
+// v0.32.1: Fixed to distinguish '<' as name start (<n>) vs operator start (<=)
 fn read_sexp_at(s: String, pos: i64) -> String =
     let p = low_skip_ws(s, pos);
-    if p >= s.len() then ""
-    else let c = s.char_at(p);
-        if c == 40 then
+    if p >= s.len() { "" } else {
+        let c = s.byte_at(p);
+        if c == 40 {
             let end = low_find_close_paren(s, p, 0);
             s.slice(p, end + 1)
-        else if c == 60 then
-            -- '<' could be angle bracket name <n> or operator <=
-            -- Check if next char is identifier start (name) or not (operator)
-            if p + 1 < s.len() and low_is_ident_char(s.char_at(p + 1)) then
+        } else if c == 60 {
+            if p + 1 < s.len() and low_is_ident_char(s.byte_at(p + 1)) {
                 let end = find_angle_end(s, p);
                 s.slice(p, end)
-            else
-                -- It's an operator like <=, <>, <
+            } else {
+                // It's an operator like <=, <>, <
                 let end = low_find_op_end(s, p);
                 s.slice(p, end)
-        else if is_digit(c) or c == 45 then
+            }
+        } else if is_digit(c) or c == 45 {
             let end = find_number_end(s, p);
             s.slice(p, end)
-        else if low_is_ident_char(c) then
+        } else if low_is_ident_char(c) {
             let end = low_find_ident_end(s, p);
             s.slice(p, end)
-        else if low_is_op_char(c) then
+        } else if low_is_op_char(c) {
             let end = low_find_op_end(s, p);
             s.slice(p, end)
-        else "";
+        } else if c == 34 {
+            // v0.50: Handle quoted string - scan to closing quote
+            let end = scan_string_end(s, p + 1);
+            s.slice(p, end)
+        } else { "" }
+    };
 
 fn find_angle_end(s: String, pos: i64) -> i64 =
-    if pos >= s.len() then pos
-    else if s.char_at(pos) == 62 then pos + 1
-    else find_angle_end(s, pos + 1);
+    if pos >= s.len() { pos } else if s.byte_at(pos) == 62 { pos + 1 } else { find_angle_end(s, pos + 1) };
 
 fn find_number_end(s: String, pos: i64) -> i64 =
-    let p = if pos < s.len() and s.char_at(pos) == 45 then pos + 1 else pos;
+    let p = if pos < s.len() and s.byte_at(pos) == 45 { pos + 1 } else { pos };
     find_digits_end(s, p);
 
 fn find_digits_end(s: String, pos: i64) -> i64 =
-    if pos >= s.len() then pos
-    else if is_digit(s.char_at(pos)) then find_digits_end(s, pos + 1)
-    else pos;
+    if pos >= s.len() { pos } else if is_digit(s.byte_at(pos)) { find_digits_end(s, pos + 1) } else { pos };
 
 fn extract_name(ast: String) -> String =
     let child = get_child(ast, 0);
-    if child.len() >= 2 and child.char_at(0) == 60 then
-        child.slice(1, child.len() - 1)
-    else child;
+    if child.len() >= 2 and child.byte_at(0) == 60 { child.slice(1, child.len() - 1) } else { child };
 
 fn extract_int_value(ast: String) -> i64 =
     let content = extract_paren_content(ast);
@@ -636,16 +751,16 @@ fn extract_int_value(ast: String) -> i64 =
     parse_int_from(content, num_start, 0);
 
 fn parse_int_from(s: String, pos: i64, acc: i64) -> i64 =
-    if pos >= s.len() then acc
-    else let c = s.char_at(pos);
-        if is_digit(c) then parse_int_from(s, pos + 1, acc * 10 + (c - 48))
-        else acc;
+    if pos >= s.len() { acc } else {
+        let c = s.byte_at(pos);
+        if is_digit(c) { parse_int_from(s, pos + 1, acc * 10 + (c - 48)) } else { acc }
+    };
 
 fn is_fn_node(ast: String) -> bool = get_node_type(ast) == "fn";
 
--- ============================================================================
--- SECTION 8: MIR Result Packing
--- ============================================================================
+// ============================================================================
+// SECTION 8: MIR Result Packing
+// ============================================================================
 
 fn pack_lower_result(text: String, temp_id: i64) -> String =
     int_to_string(temp_id) + ":" + text;
@@ -654,35 +769,53 @@ fn unpack_temp_id(r: String) -> i64 = unpack_pos_acc(r, 0, 0);
 
 fn unpack_text(r: String) -> String =
     let cpos = find_colon(r, 0);
-    if cpos >= r.len() then r
-    else r.slice(cpos + 1, r.len());
+    if cpos >= r.len() { r } else { r.slice(cpos + 1, r.len()) };
 
--- ============================================================================
--- SECTION 8B: StringBuilder-aware Lowering (v0.31.20)
--- ============================================================================
--- Uses StringBuilder builtins for O(1) amortized string concatenation.
--- Returns just temp_id (MIR text is pushed to StringBuilder).
+// ============================================================================
+// SECTION 8B: StringBuilder-aware Lowering (v0.31.20)
+// ============================================================================
+// Uses StringBuilder builtins for O(1) amortized string concatenation.
+// Returns just temp_id (MIR text is pushed to StringBuilder).
 
 fn pack_lower_result_sb(temp_id: i64) -> i64 = temp_id;
 
 fn sb_push_mir(sb: i64, text: String) -> i64 =
-    if text.len() > 0 then
+    if text.len() > 0 {
         let len = sb_len(sb);
-        let w0 = if len > 0 then sb_push(sb, "|") else 0;
+        let w0 = if len > 0 { sb_push(sb, "|") } else { 0 };
         sb_push(sb, text)
-    else 0;
+    } else { 0 };
 
-fn lower_expr_sb(ast: String, temp_id: i64, block_id: i64, sb: i64) -> i64 =
+// v0.50.8: lower_expr dispatch helpers - split for faster parsing
+// v0.50.21: Added scope parameter for correct variable-to-block-id tracking
+fn lower_expr_i(ast: String, ntype: String, temp_id: i64, block_id: i64, params: String, scope: String, sb: i64) -> i64 =
+    if ntype == "int" { lower_int_sb(ast, temp_id, sb) }
+    else if ntype == "if" { lower_if_sb(ast, temp_id, block_id, params, scope, sb) }
+    else { temp_id };
+
+// v0.50.13: All lower_*_sb functions now take params to distinguish function parameters from let-bound vars
+// v0.50.21: Added scope parameter for correct variable-to-block-id tracking
+fn lower_expr_b(ast: String, ntype: String, temp_id: i64, block_id: i64, params: String, scope: String, sb: i64) -> i64 =
+    if ntype == "bool" { lower_bool_sb(ast, temp_id, sb) }
+    else if ntype == "binop" { lower_binop_sb(ast, temp_id, block_id, params, scope, sb) }
+    else { temp_id };
+
+// v0.50.21: Added scope parameter for correct variable-to-block-id tracking
+fn lower_expr_sb(ast: String, temp_id: i64, block_id: i64, params: String, scope: String, sb: i64) -> i64 =
     let ntype = get_node_type(ast);
-    if ntype == "int" then lower_int_sb(ast, temp_id, sb)
-    else if ntype == "bool" then lower_bool_sb(ast, temp_id, sb)
-    else if ntype == "var" then lower_var_sb(ast, temp_id, sb)
-    else if ntype == "binop" then lower_binop_sb(ast, temp_id, block_id, sb)
-    else if ntype == "unary" then lower_unary_sb(ast, temp_id, block_id, sb)
-    else if ntype == "if" then lower_if_sb(ast, temp_id, block_id, sb)
-    else if ntype == "let" then lower_let_sb(ast, temp_id, block_id, sb)
-    else if ntype == "call" then lower_call_sb(ast, temp_id, block_id, sb)
-    else temp_id;
+    let c = ntype.byte_at(0);
+    // v0.50.13: Pass params to all lower_*_sb for correct variable scoping
+    // v0.50.21: Pass scope for correct block_id tracking
+    // Dispatch by first char: i(int,if), b(bool,binop), v, u, l, c, s, m
+    if c == 105 { lower_expr_i(ast, ntype, temp_id, block_id, params, scope, sb) }
+    else if c == 98 { lower_expr_b(ast, ntype, temp_id, block_id, params, scope, sb) }
+    else if ntype == "var" { lower_var_sb(ast, temp_id, block_id, params, scope, sb) }
+    else if ntype == "unary" { lower_unary_sb(ast, temp_id, block_id, params, scope, sb) }
+    else if ntype == "let" { lower_let_sb(ast, temp_id, block_id, params, scope, sb) }
+    else if ntype == "call" { lower_call_sb(ast, temp_id, block_id, params, scope, sb) }
+    else if ntype == "str" { lower_str_sb(ast, temp_id, sb) }
+    else if ntype == "mcall" { lower_mcall_sb(ast, temp_id, block_id, params, scope, sb) }
+    else { temp_id };
 
 fn lower_int_sb(ast: String, temp_id: i64, sb: i64) -> i64 =
     let val = extract_int_value(ast);
@@ -692,55 +825,99 @@ fn lower_int_sb(ast: String, temp_id: i64, sb: i64) -> i64 =
 
 fn lower_bool_sb(ast: String, temp_id: i64, sb: i64) -> i64 =
     let child = get_child(ast, 0);
-    let val = if child == "true" then 1 else 0;
+    let val = if child == "true" { 1 } else { 0 };
     let tmp = "%_t" + int_to_string(temp_id);
     let w1 = sb_push_mir(sb, "  " + tmp + " = const " + int_to_string(val));
     temp_id + 1;
 
-fn lower_var_sb(ast: String, temp_id: i64, sb: i64) -> i64 =
-    let name = extract_name(ast);
+// v0.50: String literal lowering (StringBuilder-aware)
+fn lower_str_sb(ast: String, temp_id: i64, sb: i64) -> i64 =
+    let text = get_child(ast, 0);  // Gets the quoted string text
     let tmp = "%_t" + int_to_string(temp_id);
-    let w1 = sb_push_mir(sb, "  " + tmp + " = copy %" + name);
+    let w1 = sb_push_mir(sb, "  " + tmp + " = str " + text);
     temp_id + 1;
 
-fn lower_binop_sb(ast: String, temp_id: i64, block_id: i64, sb: i64) -> i64 =
+// v0.50.13: Variable references need params to correctly identify function parameters
+// v0.50.21: Use scope_lookup to find the block_id where variable was defined
+// Function parameters always use original name; let-bound vars use their definition block_id suffix
+fn lower_var_sb(ast: String, temp_id: i64, block_id: i64, params: String, scope: String, sb: i64) -> i64 =
+    let name = extract_name(ast);
+    let tmp = "%_t" + int_to_string(temp_id);
+    // Parameters always use original name
+    // Let-bound vars use the block_id from scope where they were defined
+    let def_block = scope_lookup(scope, name);
+    let var_name = if is_param(name, params) { name } else if def_block > 0 { name + "_b" + int_to_string(def_block) } else if def_block == 0 { name } else { name + "_b" + int_to_string(block_id) };
+    let w1 = sb_push_mir(sb, "  " + tmp + " = copy %" + var_name);
+    temp_id + 1;
+
+// v0.50.20: Detect string operations and emit strconcat/streq calls
+// v0.50.21: Added scope parameter
+fn lower_binop_sb(ast: String, temp_id: i64, block_id: i64, params: String, scope: String, sb: i64) -> i64 =
     let op = get_child(ast, 0);
     let left_ast = get_child(ast, 1);
     let right_ast = get_child(ast, 2);
-    let left_new = lower_expr_sb(left_ast, temp_id, block_id, sb);
+    // Check if this is a string operation (either operand is a string type)
+    let is_str_op = is_string_expr(left_ast) or is_string_expr(right_ast);
+    let left_new = lower_expr_sb(left_ast, temp_id, block_id, params, scope, sb);
     let left_id = left_new - 1;
-    let right_new = lower_expr_sb(right_ast, left_new, block_id, sb);
+    let right_new = lower_expr_sb(right_ast, left_new, block_id, params, scope, sb);
     let right_id = right_new - 1;
     let result_tmp = "%_t" + int_to_string(right_new);
-    let w1 = sb_push_mir(sb, "  " + result_tmp + " = " + op + " %_t" + int_to_string(left_id) + ", %_t" + int_to_string(right_id));
-    right_new + 1;
+    // For string operations, emit call to runtime function
+    if is_str_op and op == "+" {
+        let w1 = sb_push_mir(sb, "  " + result_tmp + " = call @str_concat(%_t" + int_to_string(left_id) + ", %_t" + int_to_string(right_id) + ")");
+        right_new + 1
+    } else if is_str_op and op == "==" {
+        let w1 = sb_push_mir(sb, "  " + result_tmp + " = call @str_eq(%_t" + int_to_string(left_id) + ", %_t" + int_to_string(right_id) + ")");
+        right_new + 1
+    } else if is_str_op and op == "!=" {
+        // str_neq: invert str_eq result
+        let eq_tmp = "%_t" + int_to_string(right_new) + "_eq";
+        let w1 = sb_push_mir(sb, "  " + eq_tmp + " = call @str_eq(%_t" + int_to_string(left_id) + ", %_t" + int_to_string(right_id) + ")");
+        let w2 = sb_push_mir(sb, "  " + result_tmp + " = not " + eq_tmp);
+        right_new + 1
+    } else {
+        let w1 = sb_push_mir(sb, "  " + result_tmp + " = " + op + " %_t" + int_to_string(left_id) + ", %_t" + int_to_string(right_id));
+        right_new + 1
+    };
 
-fn lower_unary_sb(ast: String, temp_id: i64, block_id: i64, sb: i64) -> i64 =
+// Check if an AST expression is of string type
+fn is_string_expr(ast: String) -> bool =
+    let typ = get_node_type(ast);
+    typ == "str" or typ == "mcall" or typ == "call";
+
+// v0.50.21: Added scope parameter
+fn lower_unary_sb(ast: String, temp_id: i64, block_id: i64, params: String, scope: String, sb: i64) -> i64 =
     let op = get_child(ast, 0);
     let operand = get_child(ast, 1);
-    let operand_new = lower_expr_sb(operand, temp_id, block_id, sb);
+    let operand_new = lower_expr_sb(operand, temp_id, block_id, params, scope, sb);
     let operand_id = operand_new - 1;
     let result_tmp = "%_t" + int_to_string(operand_new);
-    let mir_op = if op == "not" then "not" else if op == "-" then "neg" else op;
+    let mir_op = if op == "not" { "not" } else if op == "-" { "neg" } else { op };
     let w1 = sb_push_mir(sb, "  " + result_tmp + " = " + mir_op + " %_t" + int_to_string(operand_id));
     operand_new + 1;
 
-fn lower_if_sb(ast: String, temp_id: i64, block_id: i64, sb: i64) -> i64 =
+// v0.50.21: Added scope parameter
+// v0.50.23: Fix block_id overlap by using larger offsets
+// Each if-else uses block_id * 3 for labels and reserves space for nested blocks
+fn lower_if_sb(ast: String, temp_id: i64, block_id: i64, params: String, scope: String, sb: i64) -> i64 =
     let cond = get_child(ast, 0);
     let then_branch = get_child(ast, 1);
     let else_branch = get_child(ast, 2);
-    let cond_new = lower_expr_sb(cond, temp_id, block_id, sb);
+    let cond_new = lower_expr_sb(cond, temp_id, block_id, params, scope, sb);
     let cond_id = cond_new - 1;
     let then_label = "then_" + int_to_string(block_id);
     let else_label = "else_" + int_to_string(block_id);
     let merge_label = "merge_" + int_to_string(block_id);
     let w1 = sb_push_mir(sb, "  branch %_t" + int_to_string(cond_id) + ", " + then_label + ", " + else_label);
     let w2 = sb_push_mir(sb, then_label + ":");
-    let then_new = lower_expr_sb(then_branch, cond_new, block_id + 1, sb);
+    // Then-branch gets block_id * 3 + 1 to avoid overlap
+    let then_new = lower_expr_sb(then_branch, cond_new, block_id * 3 + 1, params, scope, sb);
     let then_id = then_new - 1;
     let w3 = sb_push_mir(sb, "  goto " + merge_label);
     let w4 = sb_push_mir(sb, else_label + ":");
-    let else_new = lower_expr_sb(else_branch, then_new, block_id + 2, sb);
+    // Else-branch gets block_id * 3 + 2 to avoid overlap
+    let else_new = lower_expr_sb(else_branch, then_new, block_id * 3 + 2, params, scope, sb);
     let else_id = else_new - 1;
     let w5 = sb_push_mir(sb, "  goto " + merge_label);
     let w6 = sb_push_mir(sb, merge_label + ":");
@@ -748,39 +925,90 @@ fn lower_if_sb(ast: String, temp_id: i64, block_id: i64, sb: i64) -> i64 =
     let w7 = sb_push_mir(sb, "  " + phi_tmp + " = phi [%_t" + int_to_string(then_id) + ", " + then_label + "], [%_t" + int_to_string(else_id) + ", " + else_label + "]");
     else_new + 1;
 
-fn lower_let_sb(ast: String, temp_id: i64, block_id: i64, sb: i64) -> i64 =
+// v0.50.2: Add block_id to variable names to make them unique per block
+// This fixes duplicate variable name errors in LLVM IR
+// v0.50.3: Increment block_id for unique naming (params at block_id=0)
+// v0.50.21: Added scope parameter; add variable to scope for correct lookup in nested scopes
+fn lower_let_sb(ast: String, temp_id: i64, block_id: i64, params: String, scope: String, sb: i64) -> i64 =
     let name = extract_name(ast);
+    let new_block_id = block_id + 1;
     let value_ast = get_child(ast, 1);
     let body_ast = get_child(ast, 2);
-    let val_new = lower_expr_sb(value_ast, temp_id, block_id, sb);
+    let val_new = lower_expr_sb(value_ast, temp_id, block_id, params, scope, sb);
     let val_id = val_new - 1;
-    let w1 = sb_push_mir(sb, "  %" + name + " = copy %_t" + int_to_string(val_id));
-    lower_expr_sb(body_ast, val_new, block_id, sb);
+    // Use unique name: name_b{new_block_id} (e.g., start_pos_b1)
+    let unique_name = name + "_b" + int_to_string(new_block_id);
+    let w1 = sb_push_mir(sb, "  %" + unique_name + " = copy %_t" + int_to_string(val_id));
+    // Add variable to scope with its definition block_id
+    let new_scope = scope_add(scope, name, new_block_id);
+    lower_expr_sb(body_ast, val_new, new_block_id, params, new_scope, sb);
 
-fn lower_call_sb(ast: String, temp_id: i64, block_id: i64, sb: i64) -> i64 =
+// v0.50.21: Added scope parameter
+fn lower_call_sb(ast: String, temp_id: i64, block_id: i64, params: String, scope: String, sb: i64) -> i64 =
     let name = extract_name(ast);
-    lower_call_args_sb(ast, name, temp_id, block_id, 1, "", sb);
+    lower_call_args_sb(ast, name, temp_id, block_id, params, scope, 1, "", sb);
 
-fn lower_call_args_sb(ast: String, name: String, temp_id: i64, block_id: i64, idx: i64, args_acc: String, sb: i64) -> i64 =
+// v0.50.21: Added scope parameter
+fn lower_call_args_sb(ast: String, name: String, temp_id: i64, block_id: i64, params: String, scope: String, idx: i64, args_acc: String, sb: i64) -> i64 =
     let arg = get_child(ast, idx);
-    if arg == "" then
+    if arg == "" {
         let result_tmp = "%_t" + int_to_string(temp_id);
         let w1 = sb_push_mir(sb, "  " + result_tmp + " = call @" + name + "(" + args_acc + ")");
         temp_id + 1
-    else
-        let arg_new = lower_expr_sb(arg, temp_id, block_id, sb);
+    } else {
+        let arg_new = lower_expr_sb(arg, temp_id, block_id, params, scope, sb);
         let arg_id = arg_new - 1;
-        let new_args = if args_acc == "" then "%_t" + int_to_string(arg_id)
-            else args_acc + ", %_t" + int_to_string(arg_id);
-        lower_call_args_sb(ast, name, arg_new, block_id, idx + 1, new_args, sb);
+        let new_args = if args_acc == "" { "%_t" + int_to_string(arg_id) } else { args_acc + ", %_t" + int_to_string(arg_id) };
+        lower_call_args_sb(ast, name, arg_new, block_id, params, scope, idx + 1, new_args, sb)
+    };
 
+// v0.50: Lower method call - (mcall obj <method> args...) -> call @method(obj, args...)
+// v0.50.21: Added scope parameter
+fn lower_mcall_sb(ast: String, temp_id: i64, block_id: i64, params: String, scope: String, sb: i64) -> i64 =
+    let obj = get_child(ast, 0);          // The object expression
+    let method = extract_name_at(ast, 1); // The method name
+    // First lower the object
+    let obj_new = lower_expr_sb(obj, temp_id, block_id, params, scope, sb);
+    let obj_id = obj_new - 1;
+    let obj_arg = "%_t" + int_to_string(obj_id);
+    // Then lower remaining args and make the call
+    lower_mcall_args_sb(ast, method, obj_new, block_id, params, scope, 2, obj_arg, sb);
+
+// v0.50.21: Added scope parameter
+fn lower_mcall_args_sb(ast: String, method: String, temp_id: i64, block_id: i64, params: String, scope: String, idx: i64, args_acc: String, sb: i64) -> i64 =
+    let arg = get_child(ast, idx);
+    if arg == "" {
+        let result_tmp = "%_t" + int_to_string(temp_id);
+        let w1 = sb_push_mir(sb, "  " + result_tmp + " = call @" + method + "(" + args_acc + ")");
+        temp_id + 1
+    } else {
+        let arg_new = lower_expr_sb(arg, temp_id, block_id, params, scope, sb);
+        let arg_id = arg_new - 1;
+        let new_args = args_acc + ", %_t" + int_to_string(arg_id);
+        lower_mcall_args_sb(ast, method, arg_new, block_id, params, scope, idx + 1, new_args, sb)
+    };
+
+// Extract name from child at specific index (for mcall method name)
+fn extract_name_at(ast: String, idx: i64) -> String =
+    let child = get_child(ast, idx);
+    if child.len() >= 2 and child.byte_at(0) == 60 {
+        // <name> format - extract name between < and >
+        let end = find_char(child, 1, 62);
+        child.slice(1, end)
+    } else {
+        child
+    };
+
+// v0.50.13: Pass params to lower_expr_sb for correct variable scoping
+// v0.50.21: Pass empty scope to lower_expr_sb
 fn lower_function_sb(ast: String) -> String =
     let name = extract_name(ast);
     let params = collect_params(ast, 1, "");
+    let param_names = extract_param_names(params);
     let ret_type = get_fn_return_type(ast);
     let body_ast = get_fn_body(ast);
     let sb = sb_new();
-    let final_temp = lower_expr_sb(body_ast, 0, 0, sb);
+    let final_temp = lower_expr_sb(body_ast, 0, 0, param_names, "", sb);
     let result_id = final_temp - 1;
     let w1 = sb_push_mir(sb, "  return %_t" + int_to_string(result_id));
     let body_mir = sb_build(sb);
@@ -793,30 +1021,167 @@ fn lower_program_sb(ast: String) -> String =
 
 fn lower_program_inner_sb(ast: String, idx: i64, sb: i64) -> i64 =
     let fn_ast = get_child(ast, idx);
-    if fn_ast.len() == 0 or fn_ast == "" then 0
-    else if not is_fn_node(fn_ast) then 0
-    else
+    if fn_ast.len() == 0 or fn_ast == "" { 0 } else if not is_fn_node(fn_ast) { 0 } else {
         let fn_mir = lower_function_sb(fn_ast);
         let len = sb_len(sb);
-        let w1 = if len > 0 then sb_push(sb, "||") else 0;
+        let w1 = if len > 0 { sb_push(sb, "||") } else { 0 };
         let w2 = sb_push(sb, fn_mir);
-        lower_program_inner_sb(ast, idx + 1, sb);
+        lower_program_inner_sb(ast, idx + 1, sb)
+    };
 
--- ============================================================================
--- SECTION 9: Expression Lowering
--- ============================================================================
+// ============================================================================
+// SECTION 9: Expression Lowering
+// ============================================================================
 
+// v0.50.13: Extract parameter names from "a: i64, b: i64" -> "a,b"
+// This is needed to pass param names to lower_expr_sb for correct variable scoping
+fn extract_param_names(params: String) -> String =
+    if params.len() == 0 { "" }
+    else { extract_param_names_scan(params, 0, "") };
+
+fn extract_param_names_scan(params: String, pos: i64, acc: String) -> String =
+    if pos >= params.len() { acc }
+    else {
+        let c = params.byte_at(pos);
+        // Skip whitespace
+        if c == 32 { extract_param_names_scan(params, pos + 1, acc) }
+        // Start of param name - find end at ':' or ','
+        else if is_param_name_char(c) {
+            let end = find_param_name_end(params, pos + 1);
+            let name = params.slice(pos, end);
+            let new_acc = if acc.len() == 0 { name } else { acc + "," + name };
+            // Skip to after ':' type
+            let after_colon = skip_to_comma_or_end(params, end);
+            extract_param_names_scan(params, after_colon, new_acc)
+        }
+        // Skip non-name chars
+        else { extract_param_names_scan(params, pos + 1, acc) }
+    };
+
+fn is_param_name_char(c: i64) -> bool =
+    (c >= 97 and c <= 122) or (c >= 65 and c <= 90) or (c >= 48 and c <= 57) or c == 95;
+
+fn find_param_name_end(params: String, pos: i64) -> i64 =
+    if pos >= params.len() { pos }
+    else {
+        let c = params.byte_at(pos);
+        if c == 58 or c == 44 or c == 32 { pos }
+        else { find_param_name_end(params, pos + 1) }
+    };
+
+fn skip_to_comma_or_end(params: String, pos: i64) -> i64 =
+    if pos >= params.len() { pos }
+    else if params.byte_at(pos) == 44 { pos + 1 }
+    else { skip_to_comma_or_end(params, pos + 1) };
+
+// v0.50.3: Check if a variable name is in the comma-separated param list
+// Uses character-by-character comparison for robustness in native code
+fn is_param(name: String, params: String) -> bool =
+    if params.len() == 0 { false }
+    else { is_param_scan(name, params, 0) };
+
+fn is_param_scan(name: String, params: String, start: i64) -> bool =
+    if start >= params.len() { false }
+    else {
+        let end = find_param_end(params, start);
+        if str_eq_range(name, params, start, end) { true }
+        else if end >= params.len() { false }
+        else { is_param_scan(name, params, end + 1) }
+    };
+
+fn find_param_end(params: String, pos: i64) -> i64 =
+    if pos >= params.len() { pos }
+    else if params.byte_at(pos) == 44 { pos }
+    else { find_param_end(params, pos + 1) };
+
+fn str_eq_range(a: String, b: String, b_start: i64, b_end: i64) -> bool =
+    let b_len = b_end - b_start;
+    if a.len() != b_len { false }
+    else { str_eq_chars(a, b, 0, b_start, b_len) };
+
+fn str_eq_chars(a: String, b: String, a_pos: i64, b_pos: i64, remaining: i64) -> bool =
+    if remaining == 0 { true }
+    else if a.byte_at(a_pos) != b.byte_at(b_pos) { false }
+    else { str_eq_chars(a, b, a_pos + 1, b_pos + 1, remaining - 1) };
+
+// v0.50.21: Scope tracking for variable-to-block-id mapping
+// Scope format: "name1:1,name2:2,name3:3" where each entry is name:block_id
+// This fixes the bug where variables were referenced with wrong block IDs in nested scopes
+
+// Add a variable to scope: returns "existing,name:block_id" or "name:block_id" if scope empty
+fn scope_add(scope: String, name: String, block_id: i64) -> String =
+    if scope.len() == 0 { name + ":" + int_to_string(block_id) }
+    else { scope + "," + name + ":" + int_to_string(block_id) };
+
+// Look up a variable's definition block_id from scope, returns -1 if not found
+fn scope_lookup(scope: String, name: String) -> i64 =
+    if scope.len() == 0 { -1 }
+    else { scope_lookup_scan(scope, name, 0) };
+
+fn scope_lookup_scan(scope: String, name: String, pos: i64) -> i64 =
+    if pos >= scope.len() { -1 }
+    else {
+        // Find end of name (at ':')
+        let colon_pos = find_char_from(scope, 58, pos);  // 58 = ':'
+        if colon_pos < 0 { -1 }
+        else if str_eq_range(name, scope, pos, colon_pos) {
+            // Found the name, extract block_id after ':'
+            let comma_pos = find_char_from(scope, 44, colon_pos + 1);  // 44 = ','
+            let end_pos = if comma_pos < 0 { scope.len() } else { comma_pos };
+            parse_int_range(scope, colon_pos + 1, end_pos)
+        } else {
+            // Skip to next entry after ','
+            let comma_pos = find_char_from(scope, 44, colon_pos + 1);
+            if comma_pos < 0 { -1 }
+            else { scope_lookup_scan(scope, name, comma_pos + 1) }
+        }
+    };
+
+// Find character c starting from pos, returns -1 if not found
+fn find_char_from(s: String, c: i64, pos: i64) -> i64 =
+    if pos >= s.len() { -1 }
+    else if s.byte_at(pos) == c { pos }
+    else { find_char_from(s, c, pos + 1) };
+
+// Parse integer from string range [start, end)
+fn parse_int_range(s: String, start: i64, end: i64) -> i64 =
+    parse_int_range_acc(s, start, end, 0);
+
+fn parse_int_range_acc(s: String, pos: i64, end: i64, acc: i64) -> i64 =
+    if pos >= end { acc }
+    else {
+        let digit = s.byte_at(pos) - 48;  // 48 = '0'
+        parse_int_range_acc(s, pos + 1, end, acc * 10 + digit)
+    };
+
+// Legacy lower_expr without params (for backward compatibility)
 fn lower_expr(ast: String, temp_id: i64, block_id: i64) -> String =
+    lower_expr_p(ast, temp_id, block_id, "");
+
+// v0.50.3: Expression lowering with param tracking
+// v0.50.8: lower_expr_p dispatch helpers - split for faster parsing
+fn lower_expr_p_i(ast: String, ntype: String, temp_id: i64, block_id: i64, params: String) -> String =
+    if ntype == "int" { lower_int(ast, temp_id) }
+    else if ntype == "if" { lower_if_p(ast, temp_id, block_id, params) }
+    else { pack_lower_result("ERR:unknown-" + ntype, temp_id) };
+
+fn lower_expr_p_b(ast: String, ntype: String, temp_id: i64, block_id: i64, params: String) -> String =
+    if ntype == "bool" { lower_bool(ast, temp_id) }
+    else if ntype == "binop" { lower_binop_p(ast, temp_id, block_id, params) }
+    else { pack_lower_result("ERR:unknown-" + ntype, temp_id) };
+
+fn lower_expr_p(ast: String, temp_id: i64, block_id: i64, params: String) -> String =
     let ntype = get_node_type(ast);
-    if ntype == "int" then lower_int(ast, temp_id)
-    else if ntype == "bool" then lower_bool(ast, temp_id)
-    else if ntype == "var" then lower_var(ast, temp_id)
-    else if ntype == "binop" then lower_binop(ast, temp_id, block_id)
-    else if ntype == "unary" then lower_unary(ast, temp_id, block_id)
-    else if ntype == "if" then lower_if(ast, temp_id, block_id)
-    else if ntype == "let" then lower_let(ast, temp_id, block_id)
-    else if ntype == "call" then lower_call(ast, temp_id, block_id)
-    else pack_lower_result("ERR:unknown-" + ntype, temp_id);
+    let c = ntype.byte_at(0);
+    // Dispatch by first char: i(int,if), b(bool,binop), v, u, l, c, s
+    if c == 105 { lower_expr_p_i(ast, ntype, temp_id, block_id, params) }
+    else if c == 98 { lower_expr_p_b(ast, ntype, temp_id, block_id, params) }
+    else if ntype == "var" { lower_var_p(ast, temp_id, block_id, params) }
+    else if ntype == "unary" { lower_unary_p(ast, temp_id, block_id, params) }
+    else if ntype == "let" { lower_let_p(ast, temp_id, block_id, params) }
+    else if ntype == "call" { lower_call_p(ast, temp_id, block_id, params) }
+    else if ntype == "str" { lower_str(ast, temp_id) }
+    else { pack_lower_result("ERR:unknown-" + ntype, temp_id) };
 
 fn lower_int(ast: String, temp_id: i64) -> String =
     let val = extract_int_value(ast);
@@ -825,22 +1190,39 @@ fn lower_int(ast: String, temp_id: i64) -> String =
 
 fn lower_bool(ast: String, temp_id: i64) -> String =
     let child = get_child(ast, 0);
-    let val = if child == "true" then 1 else 0;
+    let val = if child == "true" { 1 } else { 0 };
     let tmp = "%_t" + int_to_string(temp_id);
     pack_lower_result("  " + tmp + " = const " + int_to_string(val), temp_id + 1);
 
-fn lower_var(ast: String, temp_id: i64) -> String =
+// v0.50: String literal lowering
+fn lower_str(ast: String, temp_id: i64) -> String =
+    let text = get_child(ast, 0);  // Gets the quoted string text
+    let tmp = "%_t" + int_to_string(temp_id);
+    pack_lower_result("  " + tmp + " = str " + text, temp_id + 1);
+
+// v0.50.2: Add block_id for unique variable names
+// v0.50.3: Only add suffix for block_id > 0 (parameters are at block_id=0)
+fn lower_var(ast: String, temp_id: i64, block_id: i64) -> String =
+    lower_var_p(ast, temp_id, block_id, "");
+
+// v0.50.3: Variable lowering with param checking
+fn lower_var_p(ast: String, temp_id: i64, block_id: i64, params: String) -> String =
     let name = extract_name(ast);
     let tmp = "%_t" + int_to_string(temp_id);
-    pack_lower_result("  " + tmp + " = copy %" + name, temp_id + 1);
+    // Parameters always use original name; let-bound vars use block_id suffix
+    let var_name = if is_param(name, params) { name } else if block_id > 0 { name + "_b" + int_to_string(block_id) } else { name };
+    pack_lower_result("  " + tmp + " = copy %" + var_name, temp_id + 1);
 
 fn lower_binop(ast: String, temp_id: i64, block_id: i64) -> String =
+    lower_binop_p(ast, temp_id, block_id, "");
+
+fn lower_binop_p(ast: String, temp_id: i64, block_id: i64, params: String) -> String =
     let op = get_child(ast, 0);
     let left_ast = get_child(ast, 1);
     let right_ast = get_child(ast, 2);
-    let rl = lower_expr(left_ast, temp_id, block_id);
+    let rl = lower_expr_p(left_ast, temp_id, block_id, params);
     let left_id = unpack_temp_id(rl) - 1;
-    let rr = lower_expr(right_ast, unpack_temp_id(rl), block_id);
+    let rr = lower_expr_p(right_ast, unpack_temp_id(rl), block_id, params);
     let right_id = unpack_temp_id(rr) - 1;
     let result_tmp = "%_t" + int_to_string(unpack_temp_id(rr));
     let mir = unpack_text(rl) + "|" + unpack_text(rr) + "|" +
@@ -848,29 +1230,35 @@ fn lower_binop(ast: String, temp_id: i64, block_id: i64) -> String =
     pack_lower_result(mir, unpack_temp_id(rr) + 1);
 
 fn lower_unary(ast: String, temp_id: i64, block_id: i64) -> String =
+    lower_unary_p(ast, temp_id, block_id, "");
+
+fn lower_unary_p(ast: String, temp_id: i64, block_id: i64, params: String) -> String =
     let op = get_child(ast, 0);
     let operand = get_child(ast, 1);
-    let ro = lower_expr(operand, temp_id, block_id);
+    let ro = lower_expr_p(operand, temp_id, block_id, params);
     let operand_id = unpack_temp_id(ro) - 1;
     let result_tmp = "%_t" + int_to_string(unpack_temp_id(ro));
-    let mir_op = if op == "not" then "not" else if op == "-" then "neg" else op;
+    let mir_op = if op == "not" { "not" } else if op == "-" { "neg" } else { op };
     let mir = unpack_text(ro) + "|" +
         "  " + result_tmp + " = " + mir_op + " %_t" + int_to_string(operand_id);
     pack_lower_result(mir, unpack_temp_id(ro) + 1);
 
 fn lower_if(ast: String, temp_id: i64, block_id: i64) -> String =
+    lower_if_p(ast, temp_id, block_id, "");
+
+fn lower_if_p(ast: String, temp_id: i64, block_id: i64, params: String) -> String =
     let cond = get_child(ast, 0);
     let then_branch = get_child(ast, 1);
     let else_branch = get_child(ast, 2);
-    let rc = lower_expr(cond, temp_id, block_id);
+    let rc = lower_expr_p(cond, temp_id, block_id, params);
     let cond_id = unpack_temp_id(rc) - 1;
     let then_label = "then_" + int_to_string(block_id);
     let else_label = "else_" + int_to_string(block_id);
     let merge_label = "merge_" + int_to_string(block_id);
     let branch = "  branch %_t" + int_to_string(cond_id) + ", " + then_label + ", " + else_label;
-    let rt = lower_expr(then_branch, unpack_temp_id(rc), block_id + 1);
+    let rt = lower_expr_p(then_branch, unpack_temp_id(rc), block_id + 1, params);
     let then_id = unpack_temp_id(rt) - 1;
-    let re = lower_expr(else_branch, unpack_temp_id(rt), block_id + 2);
+    let re = lower_expr_p(else_branch, unpack_temp_id(rt), block_id + 2, params);
     let else_id = unpack_temp_id(re) - 1;
     let phi_tmp = "%_t" + int_to_string(unpack_temp_id(re));
     let phi = "  " + phi_tmp + " = phi [%_t" + int_to_string(then_id) + ", " + then_label + "], [%_t" + int_to_string(else_id) + ", " + else_label + "]";
@@ -880,61 +1268,84 @@ fn lower_if(ast: String, temp_id: i64, block_id: i64) -> String =
         merge_label + ":|" + phi;
     pack_lower_result(mir, unpack_temp_id(re) + 1);
 
+// v0.50.2: Use unique name with block_id to avoid LLVM redefinition errors
+// v0.50.3: Increment block_id so let-bound vars get unique suffix (distinct from params at block_id=0)
 fn lower_let(ast: String, temp_id: i64, block_id: i64) -> String =
+    lower_let_p(ast, temp_id, block_id, "");
+
+fn lower_let_p(ast: String, temp_id: i64, block_id: i64, params: String) -> String =
     let name = extract_name(ast);
+    let new_block_id = block_id + 1;
+    let unique_name = name + "_b" + int_to_string(new_block_id);
     let value_ast = get_child(ast, 1);
     let body_ast = get_child(ast, 2);
-    let rv = lower_expr(value_ast, temp_id, block_id);
+    let rv = lower_expr_p(value_ast, temp_id, block_id, params);
     let val_id = unpack_temp_id(rv) - 1;
-    let assign = "  %" + name + " = copy %_t" + int_to_string(val_id);
-    let rb = lower_expr(body_ast, unpack_temp_id(rv), block_id);
+    let assign = "  %" + unique_name + " = copy %_t" + int_to_string(val_id);
+    let rb = lower_expr_p(body_ast, unpack_temp_id(rv), new_block_id, params);
     let mir = unpack_text(rv) + "|" + assign + "|" + unpack_text(rb);
     pack_lower_result(mir, unpack_temp_id(rb));
 
 fn lower_call(ast: String, temp_id: i64, block_id: i64) -> String =
+    lower_call_p(ast, temp_id, block_id, "");
+
+fn lower_call_p(ast: String, temp_id: i64, block_id: i64, params: String) -> String =
     let name = extract_name(ast);
-    lower_call_args(ast, name, temp_id, block_id, 1, "", "");
+    lower_call_args_p(ast, name, temp_id, block_id, 1, "", "", params);
 
 fn lower_call_args(ast: String, name: String, temp_id: i64, block_id: i64, idx: i64, mir_acc: String, args_acc: String) -> String =
+    lower_call_args_p(ast, name, temp_id, block_id, idx, mir_acc, args_acc, "");
+
+fn lower_call_args_p(ast: String, name: String, temp_id: i64, block_id: i64, idx: i64, mir_acc: String, args_acc: String, params: String) -> String =
     let arg = get_child(ast, idx);
-    if arg == "" then
+    if arg == "" {
         let result_tmp = "%_t" + int_to_string(temp_id);
         let call_mir = "  " + result_tmp + " = call @" + name + "(" + args_acc + ")";
-        let full_mir = if mir_acc == "" then call_mir else mir_acc + "|" + call_mir;
+        let full_mir = if mir_acc == "" { call_mir } else { mir_acc + "|" + call_mir };
         pack_lower_result(full_mir, temp_id + 1)
-    else
-        let ra = lower_expr(arg, temp_id, block_id);
+    } else {
+        let ra = lower_expr_p(arg, temp_id, block_id, params);
         let arg_id = unpack_temp_id(ra) - 1;
-        let new_args = if args_acc == "" then "%_t" + int_to_string(arg_id)
-            else args_acc + ", %_t" + int_to_string(arg_id);
-        let new_mir = if mir_acc == "" then unpack_text(ra) else mir_acc + "|" + unpack_text(ra);
-        lower_call_args(ast, name, unpack_temp_id(ra), block_id, idx + 1, new_mir, new_args);
+        let new_args = if args_acc == "" { "%_t" + int_to_string(arg_id) } else { args_acc + ", %_t" + int_to_string(arg_id) };
+        let new_mir = if mir_acc == "" { unpack_text(ra) } else { mir_acc + "|" + unpack_text(ra) };
+        lower_call_args_p(ast, name, unpack_temp_id(ra), block_id, idx + 1, new_mir, new_args, params)
+    };
 
--- ============================================================================
--- SECTION 10: Function Lowering
--- ============================================================================
+// ============================================================================
+// SECTION 10: Function Lowering
+// ============================================================================
 
 fn lower_function(ast: String) -> String =
     let name = extract_name(ast);
     let params = collect_params(ast, 1, "");
+    let param_names = collect_param_names(ast, 1, "");
     let ret_type = get_fn_return_type(ast);
     let body_ast = get_fn_body(ast);
-    let rb = lower_expr(body_ast, 0, 0);
+    let rb = lower_expr_p(body_ast, 0, 0, param_names);
     let body_mir = unpack_text(rb);
     let result_id = unpack_temp_id(rb) - 1;
     "fn " + name + "(" + params + ") -> " + ret_type + " {|entry:|" + body_mir + "|  return %_t" + int_to_string(result_id) + "|}";
 
+// v0.50.3: Collect just parameter names (comma-separated) for passing to lower_var
+fn collect_param_names(ast: String, idx: i64, acc: String) -> String =
+    let child = get_child(ast, idx);
+    if child == "" or get_node_type(child) != "param" { acc } else {
+        let param_name = get_child(child, 0);
+        let name = if param_name.len() >= 2 and param_name.byte_at(0) == 60 { param_name.slice(1, param_name.len() - 1) } else { param_name };
+        let new_acc = if acc == "" { name } else { acc + "," + name };
+        collect_param_names(ast, idx + 1, new_acc)
+    };
+
 fn collect_params(ast: String, idx: i64, acc: String) -> String =
     let child = get_child(ast, idx);
-    if child == "" or get_node_type(child) != "param" then acc
-    else
+    if child == "" or get_node_type(child) != "param" { acc } else {
         let param_name = get_child(child, 0);
-        let name = if param_name.len() >= 2 and param_name.char_at(0) == 60
-            then param_name.slice(1, param_name.len() - 1) else param_name;
+        let name = if param_name.len() >= 2 and param_name.byte_at(0) == 60 { param_name.slice(1, param_name.len() - 1) } else { param_name };
         let param_type = get_child(child, 1);
         let entry = name + ": " + param_type;
-        let new_acc = if acc == "" then entry else acc + ", " + entry;
-        collect_params(ast, idx + 1, new_acc);
+        let new_acc = if acc == "" { entry } else { acc + ", " + entry };
+        collect_params(ast, idx + 1, new_acc)
+    };
 
 fn get_fn_return_type(ast: String) -> String =
     let content = extract_paren_content(ast);
@@ -942,15 +1353,11 @@ fn get_fn_return_type(ast: String) -> String =
 
 fn get_fn_return_scan(content: String, pos: i64) -> String =
     let p = low_skip_ws(content, pos);
-    if p >= content.len() then "i64"
-    else let child = read_sexp_at(content, p);
-        if child == "" then "i64"
-        else if child == "i32" or child == "i64" or child == "f64" or child == "bool" then child
-        else if child.char_at(0) == 40 then
-            get_fn_return_scan(content, p + child.len())
-        else if child.char_at(0) == 60 then
-            get_fn_return_scan(content, p + child.len())
-        else get_fn_return_scan(content, p + child.len());
+    if p >= content.len() { "i64" } else {
+        let child = read_sexp_at(content, p);
+        // v0.50.7: Simplified redundant branches (all did same recursive call)
+        if child == "" { "i64" } else if child == "i32" or child == "i64" or child == "f64" or child == "bool" { child } else { get_fn_return_scan(content, p + child.len()) }
+    };
 
 fn get_fn_body(ast: String) -> String =
     let content = extract_paren_content(ast);
@@ -958,47 +1365,37 @@ fn get_fn_body(ast: String) -> String =
 
 fn get_fn_body_scan(content: String, pos: i64, last_expr: String) -> String =
     let p = low_skip_ws(content, pos);
-    if p >= content.len() then last_expr
-    else let child = read_sexp_at(content, p);
-        if child == "" then last_expr
-        else if child.len() > 0 and child.char_at(0) == 40 then
+    if p >= content.len() { last_expr } else {
+        let child = read_sexp_at(content, p);
+        if child == "" { last_expr } else if child.len() > 0 and child.byte_at(0) == 40 {
             let ntype = get_node_type(child);
-            if ntype == "param" then
-                get_fn_body_scan(content, p + child.len(), last_expr)
-            else
-                get_fn_body_scan(content, p + child.len(), child)
-        else
-            get_fn_body_scan(content, p + child.len(), last_expr);
+            if ntype == "param" { get_fn_body_scan(content, p + child.len(), last_expr) } else { get_fn_body_scan(content, p + child.len(), child) }
+        } else {
+            get_fn_body_scan(content, p + child.len(), last_expr)
+        }
+    };
 
 fn lower_program(ast: String) -> String =
     lower_program_inner(ast, 0, "");
 
 fn lower_program_inner(ast: String, idx: i64, acc: String) -> String =
     let fn_ast = get_child(ast, idx);
-    if fn_ast.len() == 0 or fn_ast == "" then acc
-    else if not is_fn_node(fn_ast) then acc
-    else
+    if fn_ast.len() == 0 or fn_ast == "" { acc } else if not is_fn_node(fn_ast) { acc } else {
         let fn_mir = lower_function(fn_ast);
-        let new_acc = if acc.len() > 0 then acc + "||" + fn_mir else fn_mir;
-        lower_program_inner(ast, idx + 1, new_acc);
+        let new_acc = if acc.len() > 0 { acc + "||" + fn_mir } else { fn_mir };
+        lower_program_inner(ast, idx + 1, new_acc)
+    };
 
--- ============================================================================
--- SECTION 11: LLVM IR Generation
--- ============================================================================
+// ============================================================================
+// SECTION 11: LLVM IR Generation
+// ============================================================================
 
 fn find_pipe(s: String, pos: i64) -> i64 =
-    if pos >= s.len() then pos
-    else if s.char_at(pos) == 124 then pos
-    else find_pipe(s, pos + 1);
+    if pos >= s.len() { pos } else if s.byte_at(pos) == 124 { pos } else { find_pipe(s, pos + 1) };
 
 fn llvm_gen_line(line: String) -> String =
     let p = low_skip_ws(line, 0);
-    if p >= line.len() then ""
-    else if line.char_at(p) == 37 then llvm_gen_assign(line, p)
-    else if low_starts_with_at(line, p, "return") then llvm_gen_return(line, p)
-    else if low_starts_with_at(line, p, "branch") then llvm_gen_branch(line, p)
-    else if low_starts_with_at(line, p, "goto") then llvm_gen_goto(line, p)
-    else line;
+    if p >= line.len() { "" } else if line.byte_at(p) == 37 { llvm_gen_assign(line, p) } else if low_starts_with_at(line, p, "return") { llvm_gen_return(line, p) } else if low_starts_with_at(line, p, "branch") { llvm_gen_branch(line, p) } else if low_starts_with_at(line, p, "goto") { llvm_gen_goto(line, p) } else { line };
 
 fn llvm_gen_assign(line: String, pos: i64) -> String =
     let eq_pos = find_eq(line, pos);
@@ -1007,73 +1404,90 @@ fn llvm_gen_assign(line: String, pos: i64) -> String =
     llvm_gen_rhs(line, after_eq, dest);
 
 fn find_eq(s: String, pos: i64) -> i64 =
-    if pos >= s.len() then pos
-    else if s.char_at(pos) == 61 then pos
-    else find_eq(s, pos + 1);
+    if pos >= s.len() { pos } else if s.byte_at(pos) == 61 { pos } else { find_eq(s, pos + 1) };
 
--- v0.31.19: Added nsw for const/copy to match Rust compiler
+// v0.50.8: LLVM gen helpers - split long if-else chain for faster parsing
+// Arithmetic operators (+, -, *, /, %)
+fn llvm_gen_arith(line: String, pos: i64, dest: String) -> String =
+    let c = line.byte_at(pos);
+    if c == 43 { llvm_gen_binop("add", line, pos + 1, dest) }
+    else if c == 45 { llvm_gen_binop("sub", line, pos + 1, dest) }
+    else if c == 42 { llvm_gen_binop("mul", line, pos + 1, dest) }
+    else if c == 47 { llvm_gen_binop("sdiv", line, pos + 1, dest) }
+    else if c == 37 { llvm_gen_binop("srem", line, pos + 1, dest) }
+    else { "  ; unknown-arith: " + line };
+
+// v0.32.1: Comparison operators - check longer operators first
+fn llvm_gen_cmp_op(line: String, pos: i64, dest: String) -> String =
+    if low_starts_with_at(line, pos, "<=") { llvm_gen_cmp("sle", line, pos + 2, dest) }
+    else if low_starts_with_at(line, pos, ">=") { llvm_gen_cmp("sge", line, pos + 2, dest) }
+    else if low_starts_with_at(line, pos, "<") { llvm_gen_cmp("slt", line, pos + 1, dest) }
+    else if low_starts_with_at(line, pos, ">") { llvm_gen_cmp("sgt", line, pos + 1, dest) }
+    else if low_starts_with_at(line, pos, "==") { llvm_gen_cmp("eq", line, pos + 2, dest) }
+    else if low_starts_with_at(line, pos, "!=") { llvm_gen_cmp("ne", line, pos + 2, dest) }
+    else { "  ; unknown-cmp: " + line };
+
+// Logical and other operations
+fn llvm_gen_other(line: String, pos: i64, dest: String) -> String =
+    if low_starts_with_at(line, pos, "and") { llvm_gen_binop("and", line, pos + 3, dest) }
+    else if low_starts_with_at(line, pos, "or") { llvm_gen_binop("or", line, pos + 2, dest) }
+    else if low_starts_with_at(line, pos, "not") { llvm_gen_not(line, pos + 3, dest) }
+    else if low_starts_with_at(line, pos, "neg") { llvm_gen_neg(line, pos + 3, dest) }
+    else if low_starts_with_at(line, pos, "phi") { llvm_gen_phi(line, pos, dest) }
+    else if low_starts_with_at(line, pos, "call") { llvm_gen_call(line, pos, dest) }
+    else if low_starts_with_at(line, pos, "str") { llvm_gen_str(line, pos, dest) }
+    else { "  ; unknown: " + line };
+
+// v0.31.19: Added nsw for const/copy to match Rust compiler
 fn llvm_gen_rhs(line: String, pos: i64, dest: String) -> String =
-    if low_starts_with_at(line, pos, "const") then
+    if low_starts_with_at(line, pos, "const") {
         let val_start = low_skip_ws(line, pos + 5);
         let val = line.slice(val_start, line.len());
         "  " + dest + " = add nsw i64 0, " + trim_end(val)
-    else if low_starts_with_at(line, pos, "copy") then
+    } else if low_starts_with_at(line, pos, "copy") {
         let src_start = low_skip_ws(line, pos + 4);
         let src = line.slice(src_start, line.len());
         "  " + dest + " = add nsw i64 0, " + trim_end(src)
-    else if low_starts_with_at(line, pos, "+") then llvm_gen_binop("add", line, pos + 1, dest)
-    else if low_starts_with_at(line, pos, "-") then llvm_gen_binop("sub", line, pos + 1, dest)
-    else if low_starts_with_at(line, pos, "*") then llvm_gen_binop("mul", line, pos + 1, dest)
-    else if low_starts_with_at(line, pos, "/") then llvm_gen_binop("sdiv", line, pos + 1, dest)
-    else if low_starts_with_at(line, pos, "%") then llvm_gen_binop("srem", line, pos + 1, dest)
-    -- v0.32.1: Fix comparison operator order - check longer operators first
-    else if low_starts_with_at(line, pos, "<=") then llvm_gen_cmp("sle", line, pos + 2, dest)
-    else if low_starts_with_at(line, pos, ">=") then llvm_gen_cmp("sge", line, pos + 2, dest)
-    else if low_starts_with_at(line, pos, "<") then llvm_gen_cmp("slt", line, pos + 1, dest)
-    else if low_starts_with_at(line, pos, ">") then llvm_gen_cmp("sgt", line, pos + 1, dest)
-    else if low_starts_with_at(line, pos, "==") then llvm_gen_cmp("eq", line, pos + 2, dest)
-    else if low_starts_with_at(line, pos, "!=") then llvm_gen_cmp("ne", line, pos + 2, dest)
-    else if low_starts_with_at(line, pos, "and") then llvm_gen_binop("and", line, pos + 3, dest)
-    else if low_starts_with_at(line, pos, "or") then llvm_gen_binop("or", line, pos + 2, dest)
-    else if low_starts_with_at(line, pos, "not") then llvm_gen_not(line, pos + 3, dest)
-    else if low_starts_with_at(line, pos, "neg") then llvm_gen_neg(line, pos + 3, dest)
-    else if low_starts_with_at(line, pos, "phi") then llvm_gen_phi(line, pos, dest)
-    else if low_starts_with_at(line, pos, "call") then llvm_gen_call(line, pos, dest)
-    else "  ; unknown: " + line;
+    } else {
+        let c = line.byte_at(pos);
+        // Dispatch: arithmetic (+,-,*,/,%), comparison (<,>,=,!), other
+        if c == 43 or c == 45 or c == 42 or c == 47 or c == 37 { llvm_gen_arith(line, pos, dest) }
+        else if c == 60 or c == 62 or c == 61 or c == 33 { llvm_gen_cmp_op(line, pos, dest) }
+        else { llvm_gen_other(line, pos, dest) }
+    };
 
--- v0.31.19: Added nsw (no signed wrap) for add/sub/mul to match Rust compiler
+// v0.31.19: Added nsw (no signed wrap) for add/sub/mul to match Rust compiler
 fn llvm_gen_binop(op: String, line: String, pos: i64, dest: String) -> String =
     let p1 = low_skip_ws(line, pos);
     let comma = find_comma(line, p1);
     let left = line.slice(p1, comma);
     let p2 = low_skip_ws(line, comma + 1);
     let right = line.slice(p2, line.len());
-    let op_with_nsw = if op == "add" then "add nsw"
-        else if op == "sub" then "sub nsw"
-        else if op == "mul" then "mul nsw"
-        else op;
+    let op_with_nsw = if op == "add" { "add nsw" } else if op == "sub" { "sub nsw" } else if op == "mul" { "mul nsw" } else { op };
     "  " + dest + " = " + op_with_nsw + " i64 " + trim_end(left) + ", " + trim_end(right);
 
+// v0.50.2: Generate icmp + zext to properly convert i1 result to i64
 fn llvm_gen_cmp(pred: String, line: String, pos: i64, dest: String) -> String =
     let p1 = low_skip_ws(line, pos);
     let comma = find_comma(line, p1);
     let left = line.slice(p1, comma);
     let p2 = low_skip_ws(line, comma + 1);
     let right = line.slice(p2, line.len());
-    "  " + dest + " = icmp " + pred + " i64 " + trim_end(left) + ", " + trim_end(right);
+    let tmp = dest + "_cmp";
+    "  " + tmp + " = icmp " + pred + " i64 " + trim_end(left) + ", " + trim_end(right) + "|  " + dest + " = zext i1 " + tmp + " to i64";
 
 fn llvm_gen_not(line: String, pos: i64, dest: String) -> String =
     let p = low_skip_ws(line, pos);
     let operand = line.slice(p, line.len());
     "  " + dest + " = xor i64 " + trim_end(operand) + ", 1";
 
--- v0.31.19: Added nsw for negation to match Rust compiler
+// v0.31.19: Added nsw for negation to match Rust compiler
 fn llvm_gen_neg(line: String, pos: i64, dest: String) -> String =
     let p = low_skip_ws(line, pos);
     let operand = line.slice(p, line.len());
     "  " + dest + " = sub nsw i64 0, " + trim_end(operand);
 
--- v0.32.1: Fixed phi node to add % prefix to labels
+// v0.32.1: Fixed phi node to add % prefix to labels
 fn llvm_gen_phi(line: String, pos: i64, dest: String) -> String =
     let bracket_start = find_char(line, pos, 91);
     let first_end = find_char(line, bracket_start, 93);
@@ -1081,74 +1495,150 @@ fn llvm_gen_phi(line: String, pos: i64, dest: String) -> String =
     let second_start = find_char(line, first_end, 91);
     let second_end = find_char(line, second_start, 93);
     let second_content = line.slice(second_start + 1, second_end);
-    -- Format [value, label] to [value, %label] for LLVM IR
+    // Format [value, label] to [value, %label] for LLVM IR
     let first_formatted = format_phi_pair(first_content);
     let second_formatted = format_phi_pair(second_content);
     "  " + dest + " = phi i64 [" + first_formatted + "], [" + second_formatted + "]";
 
--- Format "value, label" to "value, %label"
+// Format "value, label" to "value, %label"
 fn format_phi_pair(content: String) -> String =
-    let comma_pos = find_char(content, 0, 44);  -- 44 = ','
-    if comma_pos >= content.len() then content
-    else
+    let comma_pos = find_char(content, 0, 44);  // 44 = ','
+    if comma_pos >= content.len() { content } else {
         let value_part = content.slice(0, comma_pos);
         let label_part = trim_start(content.slice(comma_pos + 1, content.len()));
-        value_part + ", %" + label_part;
+        value_part + ", %" + label_part
+    };
 
 fn trim_start(s: String) -> String =
     let pos = low_skip_ws(s, 0);
     s.slice(pos, s.len());
 
--- v0.32.1: Rename @main calls to @bmb_user_main for runtime compatibility
+// v0.50.20: Call generation with proper String ABI handling
+// String args need inttoptr conversion (i64->ptr)
+// String returns need ptrtoint conversion (ptr->i64)
 fn llvm_gen_call(line: String, pos: i64, dest: String) -> String =
     let at_pos = find_char(line, pos, 64);
     let paren_pos = find_char(line, at_pos, 40);
     let close_pos = find_char(line, paren_pos, 41);
     let fn_name = line.slice(at_pos, paren_pos);
-    let emitted_fn = if fn_name == "@main" then "@bmb_user_main" else fn_name;
+    let emitted_fn = if fn_name == "@main" { "@bmb_user_main" } else { fn_name };
     let args = line.slice(paren_pos + 1, close_pos);
-    let formatted_args = format_call_args(args, 0, "");
-    "  " + dest + " = call i64 " + emitted_fn + "(" + formatted_args + ")";
+    // Check if this is a string-related function
+    if is_str_return_fn(fn_name) {
+        llvm_gen_str_return_call(emitted_fn, args, dest)
+    } else if is_str_arg_fn(fn_name) {
+        llvm_gen_str_arg_call(emitted_fn, fn_name, args, dest)
+    } else {
+        let formatted_args = format_call_args(args, 0, "");
+        "  " + dest + " = call i64 " + emitted_fn + "(" + formatted_args + ")"
+    };
+
+// Check if function returns a string (ptr)
+fn is_str_return_fn(fname: String) -> bool =
+    fname == "@str_concat" or fname == "@chr" or fname == "@slice" or fname == "@read_file" or fname == "@get_arg" or fname == "@sb_build";
+
+// Check if function takes string arguments
+fn is_str_arg_fn(fname: String) -> bool =
+    fname == "@str_concat" or fname == "@str_eq" or fname == "@len" or fname == "@byte_at" or fname == "@slice" or
+    fname == "@print_str" or fname == "@println_str" or fname == "@read_file" or fname == "@write_file" or fname == "@sb_push";
+
+// Generate call that returns string (ptr), needs ptrtoint
+fn llvm_gen_str_return_call(fname: String, args: String, dest: String) -> String =
+    let ptr_tmp = dest + "_ptr";
+    let conv_instrs = gen_inttoptr_convs(fname, args, 0, "", 0);
+    let conv_args = format_str_call_args(fname, args, 0, "", 0);
+    let call_instr = "  " + ptr_tmp + " = call ptr " + fname + "(" + conv_args + ")|  " + dest + " = ptrtoint ptr " + ptr_tmp + " to i64";
+    if conv_instrs == "" { call_instr } else { conv_instrs + "|" + call_instr };
+
+// Generate call with string args, returns i64 or void
+fn llvm_gen_str_arg_call(fname: String, orig_fn: String, args: String, dest: String) -> String =
+    let conv_instrs = gen_inttoptr_convs(fname, args, 0, "", 0);
+    let conv_args = format_str_call_args(fname, args, 0, "", 0);
+    // Check for void functions
+    let call_instr = if fname == "@print_str" or fname == "@println_str" {
+        "  call void " + fname + "(" + conv_args + ")|  " + dest + " = add nsw i64 0, 0"
+    } else {
+        "  " + dest + " = call i64 " + fname + "(" + conv_args + ")"
+    };
+    if conv_instrs == "" { call_instr } else { conv_instrs + "|" + call_instr };
+
+// Generate inttoptr conversion instructions for string arguments
+fn gen_inttoptr_convs(fname: String, args: String, pos: i64, acc: String, idx: i64) -> String =
+    let p = low_skip_ws(args, pos);
+    if p >= args.len() { acc } else {
+        let comma = find_comma_or_end(args, p);
+        let arg = trim_end(args.slice(p, comma));
+        let needs_conv = is_str_arg_at(fname, idx);
+        let new_acc = if needs_conv {
+            let conv_instr = "  " + arg + "_sptr = inttoptr i64 " + arg + " to ptr";
+            if acc == "" { conv_instr } else { acc + "|" + conv_instr }
+        } else { acc };
+        if comma >= args.len() { new_acc } else { gen_inttoptr_convs(fname, args, comma + 1, new_acc, idx + 1) }
+    };
+
+// Format args with inttoptr conversions for string arguments
+fn format_str_call_args(fname: String, args: String, pos: i64, acc: String, idx: i64) -> String =
+    let p = low_skip_ws(args, pos);
+    if p >= args.len() { acc } else {
+        let comma = find_comma_or_end(args, p);
+        let arg = trim_end(args.slice(p, comma));
+        // Determine if this arg needs inttoptr based on function signature
+        let needs_conv = is_str_arg_at(fname, idx);
+        let typed_arg = if needs_conv { "ptr " + arg + "_sptr" } else { "i64 " + arg };
+        let new_acc = if acc == "" { typed_arg } else { acc + ", " + typed_arg };
+        if comma >= args.len() { new_acc } else { format_str_call_args(fname, args, comma + 1, new_acc, idx + 1) }
+    };
+
+// Check if argument at index needs inttoptr (is a string arg)
+fn is_str_arg_at(fname: String, idx: i64) -> bool =
+    // str_concat(ptr, ptr), str_eq(ptr, ptr), len(ptr), byte_at(ptr, i64), slice(ptr, i64, i64)
+    // print_str(ptr), println_str(ptr), read_file(ptr), write_file(ptr, ptr), sb_push(i64, ptr)
+    if fname == "@str_concat" { idx == 0 or idx == 1 }
+    else if fname == "@str_eq" { idx == 0 or idx == 1 }
+    else if fname == "@len" { idx == 0 }
+    else if fname == "@byte_at" { idx == 0 }
+    else if fname == "@slice" { idx == 0 }
+    else if fname == "@print_str" { idx == 0 }
+    else if fname == "@println_str" { idx == 0 }
+    else if fname == "@read_file" { idx == 0 }
+    else if fname == "@write_file" { idx == 0 or idx == 1 }
+    else if fname == "@sb_push" { idx == 1 }
+    else if fname == "@chr" { false }
+    else if fname == "@get_arg" { false }
+    else if fname == "@sb_build" { false }
+    else { false };
 
 fn format_call_args(args: String, pos: i64, acc: String) -> String =
     let p = low_skip_ws(args, pos);
-    if p >= args.len() then acc
-    else
+    if p >= args.len() { acc } else {
         let comma = find_comma_or_end(args, p);
         let arg = trim_end(args.slice(p, comma));
         let typed_arg = "i64 " + arg;
-        let new_acc = if acc == "" then typed_arg else acc + ", " + typed_arg;
-        if comma >= args.len() then new_acc
-        else format_call_args(args, comma + 1, new_acc);
+        let new_acc = if acc == "" { typed_arg } else { acc + ", " + typed_arg };
+        if comma >= args.len() { new_acc } else { format_call_args(args, comma + 1, new_acc) }
+    };
 
 fn find_comma(s: String, pos: i64) -> i64 =
-    if pos >= s.len() then pos
-    else if s.char_at(pos) == 44 then pos
-    else find_comma(s, pos + 1);
+    if pos >= s.len() { pos } else if s.byte_at(pos) == 44 { pos } else { find_comma(s, pos + 1) };
 
 fn find_comma_or_end(s: String, pos: i64) -> i64 =
-    if pos >= s.len() then pos
-    else if s.char_at(pos) == 44 then pos
-    else find_comma_or_end(s, pos + 1);
+    if pos >= s.len() { pos } else if s.byte_at(pos) == 44 { pos } else { find_comma_or_end(s, pos + 1) };
 
 fn find_char(s: String, pos: i64, ch: i64) -> i64 =
-    if pos >= s.len() then pos
-    else if s.char_at(pos) == ch then pos
-    else find_char(s, pos + 1, ch);
+    if pos >= s.len() { pos } else if s.byte_at(pos) == ch { pos } else { find_char(s, pos + 1, ch) };
 
 fn trim_end(s: String) -> String =
     trim_end_at(s, s.len() - 1);
 
 fn trim_end_at(s: String, pos: i64) -> String =
-    if pos < 0 then ""
-    else if low_is_whitespace(s.char_at(pos)) then trim_end_at(s, pos - 1)
-    else s.slice(0, pos + 1);
+    if pos < 0 { "" } else if low_is_whitespace(s.byte_at(pos)) { trim_end_at(s, pos - 1) } else { s.slice(0, pos + 1) };
 
 fn llvm_gen_return(line: String, pos: i64) -> String =
     let val_start = low_skip_ws(line, pos + 6);
     let val = line.slice(val_start, line.len());
     "  ret i64 " + trim_end(val);
 
+// v0.50.2: Add trunc i64 to i1 since conditions are now i64
 fn llvm_gen_branch(line: String, pos: i64) -> String =
     let after = low_skip_ws(line, pos + 6);
     let comma1 = find_comma(line, after);
@@ -1158,30 +1648,55 @@ fn llvm_gen_branch(line: String, pos: i64) -> String =
     let then_label = line.slice(after1, comma2);
     let after2 = low_skip_ws(line, comma2 + 1);
     let else_label = trim_end(line.slice(after2, line.len()));
-    "  br i1 " + trim_end(cond) + ", label %" + trim_end(then_label) + ", label %" + else_label;
+    let cond_br = trim_end(cond) + "_br";
+    "  " + cond_br + " = trunc i64 " + trim_end(cond) + " to i1|  br i1 " + cond_br + ", label %" + trim_end(then_label) + ", label %" + else_label;
 
 fn llvm_gen_goto(line: String, pos: i64) -> String =
     let label_start = low_skip_ws(line, pos + 4);
     let label = line.slice(label_start, line.len());
     "  br label %" + trim_end(label);
 
+// v0.50.20: String literal LLVM IR generation with proper ABI
+// Generates a GEP to string constant + ptrtoint to convert ptr to i64
+fn llvm_gen_str(line: String, pos: i64, dest: String) -> String =
+    let str_start = low_skip_ws(line, pos + 3);
+    let str_text = trim_end(line.slice(str_start, line.len()));
+    // Use content hash for unique string ID (same as extract_strlit_acc)
+    let hash = str_hash(str_text, 0);
+    let hash_id = if hash < 0 { 0 - hash } else { hash };
+    let str_id = "@.str." + int_to_string(hash_id);
+    let str_len = str_text.len() - 1;  // Exclude quotes but -1 for null term later
+    let ptr_tmp = dest + "_ptr";
+    // GEP to get pointer to string constant, then ptrtoint to convert to i64
+    "  " + ptr_tmp + " = getelementptr [" + int_to_string(str_len) + " x i8], ptr " + str_id + ", i64 0, i64 0|  " + dest + " = ptrtoint ptr " + ptr_tmp + " to i64";
+
+// Simple string hash function for generating unique identifiers
+fn str_hash(s: String, acc: i64) -> i64 =
+    str_hash_iter(s, 0, acc);
+
+fn str_hash_iter(s: String, pos: i64, acc: i64) -> i64 =
+    if pos >= s.len() { acc } else {
+        let c = s.byte_at(pos);
+        let new_acc = acc * 31 + c;
+        str_hash_iter(s, pos + 1, new_acc)
+    };
+
 fn gen_function(mir: String) -> String =
     gen_function_lines(mir, 0, "");
 
 fn gen_function_lines(mir: String, pos: i64, acc: String) -> String =
-    if pos >= mir.len() then acc
-    else
+    if pos >= mir.len() { acc } else {
         let pipe_pos = find_pipe(mir, pos);
         let line = mir.slice(pos, pipe_pos);
         let llvm_line = llvm_gen_fn_line(line);
-        let new_acc = if acc == "" then llvm_line else acc + "|" + llvm_line;
-        if pipe_pos >= mir.len() then new_acc
-        else gen_function_lines(mir, pipe_pos + 1, new_acc);
+        let new_acc = if acc == "" { llvm_line } else { acc + "|" + llvm_line };
+        if pipe_pos >= mir.len() { new_acc } else { gen_function_lines(mir, pipe_pos + 1, new_acc) }
+    };
 
--- ============================================================================
--- SECTION 11B: StringBuilder-aware LLVM Generation (v0.31.20)
--- ============================================================================
--- O(1) amortized string concatenation for LLVM IR generation
+// ============================================================================
+// SECTION 11B: StringBuilder-aware LLVM Generation (v0.31.20)
+// ============================================================================
+// O(1) amortized string concatenation for LLVM IR generation
 
 fn gen_function_sb(mir: String) -> String =
     let sb = sb_new();
@@ -1189,16 +1704,15 @@ fn gen_function_sb(mir: String) -> String =
     sb_build(sb);
 
 fn gen_function_lines_sb(mir: String, pos: i64, sb: i64) -> i64 =
-    if pos >= mir.len() then 0
-    else
+    if pos >= mir.len() { 0 } else {
         let pipe_pos = find_pipe(mir, pos);
         let line = mir.slice(pos, pipe_pos);
         let llvm_line = llvm_gen_fn_line(line);
         let len = sb_len(sb);
-        let w1 = if len > 0 then sb_push(sb, "|") else 0;
+        let w1 = if len > 0 { sb_push(sb, "|") } else { 0 };
         let w2 = sb_push(sb, llvm_line);
-        if pipe_pos >= mir.len() then 0
-        else gen_function_lines_sb(mir, pipe_pos + 1, sb);
+        if pipe_pos >= mir.len() { 0 } else { gen_function_lines_sb(mir, pipe_pos + 1, sb) }
+    };
 
 fn gen_program_sb(mir: String) -> String =
     let sb = sb_new();
@@ -1206,27 +1720,22 @@ fn gen_program_sb(mir: String) -> String =
     sb_build(sb);
 
 fn gen_program_acc_sb(mir: String, pos: i64, sb: i64) -> i64 =
-    if pos >= mir.len() then 0
-    else
+    if pos >= mir.len() { 0 } else {
         let fn_end = find_double_pipe(mir, pos);
         let fn_mir = mir.slice(pos, fn_end);
         let fn_llvm = gen_function_sb(fn_mir);
         let len = sb_len(sb);
-        let w1 = if len > 0 then sb_push(sb, "||") else 0;
+        let w1 = if len > 0 { sb_push(sb, "||") } else { 0 };
         let w2 = sb_push(sb, fn_llvm);
-        if fn_end + 2 >= mir.len() then 0
-        else gen_program_acc_sb(mir, fn_end + 2, sb);
+        if fn_end + 2 >= mir.len() { 0 } else { gen_program_acc_sb(mir, fn_end + 2, sb) }
+    };
 
 fn llvm_gen_fn_line(line: String) -> String =
     let p = low_skip_ws(line, 0);
-    if p >= line.len() then ""
-    else if low_starts_with_at(line, p, "fn ") then llvm_gen_fn_header(line, p)
-    else if ends_with_colon(line) then line
-    else if line == "}" then "}"
-    else llvm_gen_line(line);
+    if p >= line.len() { "" } else if low_starts_with_at(line, p, "fn ") { llvm_gen_fn_header(line, p) } else if ends_with_colon(line) { line } else if line == "}" { "}" } else { llvm_gen_line(line) };
 
--- v0.31.19: Added nounwind attribute for non-main functions
--- v0.32.1: Rename main to bmb_user_main for runtime compatibility
+// v0.31.19: Added nounwind attribute for non-main functions
+// v0.32.1: Rename main to bmb_user_main for runtime compatibility
 fn llvm_gen_fn_header(line: String, pos: i64) -> String =
     let name_start = pos + 3;
     let paren_pos = find_char(line, name_start, 40);
@@ -1237,58 +1746,54 @@ fn llvm_gen_fn_header(line: String, pos: i64) -> String =
     let arrow_pos = find_arrow(line, close_pos);
     let brace_pos = find_char(line, arrow_pos, 123);
     let ret_type = trim_end(line.slice(arrow_pos + 2, brace_pos - 1));
-    let llvm_ret = if ret_type == "bool" then "i1" else "i64";
-    let emitted_name = if fn_name == "main" then "bmb_user_main" else fn_name;
-    let attrs = if fn_name == "main" then "" else " nounwind";
+    let llvm_ret = if ret_type == "bool" { "i1" } else { "i64" };
+    let emitted_name = if fn_name == "main" { "bmb_user_main" } else { fn_name };
+    let attrs = if fn_name == "main" { "" } else { " nounwind" };
     "define " + llvm_ret + " @" + emitted_name + "(" + formatted_params + ")" + attrs + " {";
 
 fn format_fn_params(params: String, pos: i64, acc: String) -> String =
     let p = low_skip_ws(params, pos);
-    if p >= params.len() then acc
-    else
+    if p >= params.len() { acc } else {
         let comma = find_comma_or_end(params, p);
         let param = trim_end(params.slice(p, comma));
         let colon_pos = find_char(param, 0, 58);
         let name = param.slice(0, colon_pos);
         let typed_param = "i64 %" + name;
-        let new_acc = if acc == "" then typed_param else acc + ", " + typed_param;
-        if comma >= params.len() then new_acc
-        else format_fn_params(params, comma + 1, new_acc);
+        let new_acc = if acc == "" { typed_param } else { acc + ", " + typed_param };
+        if comma >= params.len() { new_acc } else { format_fn_params(params, comma + 1, new_acc) }
+    };
 
 fn find_arrow(s: String, pos: i64) -> i64 =
-    if pos + 1 >= s.len() then pos
-    else if s.char_at(pos) == 45 and s.char_at(pos + 1) == 62 then pos
-    else find_arrow(s, pos + 1);
+    if pos + 1 >= s.len() { pos } else if s.byte_at(pos) == 45 and s.byte_at(pos + 1) == 62 { pos } else { find_arrow(s, pos + 1) };
 
 fn ends_with_colon(s: String) -> bool =
-    if s.len() == 0 then false
-    else
+    if s.len() == 0 { false } else {
         let last = trim_end(s);
-        if last.len() == 0 then false
-        else last.char_at(last.len() - 1) == 58;
+        if last.len() == 0 { false } else { last.byte_at(last.len() - 1) == 58 }
+    };
 
 fn find_double_pipe(s: String, pos: i64) -> i64 =
-    if pos + 1 >= s.len() then s.len()
-    else if s.char_at(pos) == 124 and s.char_at(pos + 1) == 124 then pos
-    else find_double_pipe(s, pos + 1);
+    if pos + 1 >= s.len() { s.len() } else if s.byte_at(pos) == 124 and s.byte_at(pos + 1) == 124 { pos } else { find_double_pipe(s, pos + 1) };
 
 fn gen_program(mir: String) -> String =
     gen_program_acc(mir, 0, "");
 
 fn gen_program_acc(mir: String, pos: i64, acc: String) -> String =
-    if pos >= mir.len() then acc
-    else
+    if pos >= mir.len() { acc } else {
         let fn_end = find_double_pipe(mir, pos);
         let fn_mir = mir.slice(pos, fn_end);
         let fn_llvm = gen_function(fn_mir);
-        let new_acc = if acc == "" then fn_llvm else acc + "||" + fn_llvm;
-        if fn_end + 2 >= mir.len() then new_acc
-        else gen_program_acc(mir, fn_end + 2, new_acc);
+        let new_acc = if acc == "" { fn_llvm } else { acc + "||" + fn_llvm };
+        if fn_end + 2 >= mir.len() { new_acc } else { gen_program_acc(mir, fn_end + 2, new_acc) }
+    };
 
--- ============================================================================
--- SECTION 12: Module Generation
--- ============================================================================
+// ============================================================================
+// SECTION 12: Module Generation
+// ============================================================================
 
+// Note: target triple needs quotes - add with sed after generation:
+// sed -i 's/target triple = x86_64/target triple = "x86_64/'
+// sed -i 's/linux-gnu$/linux-gnu"/'
 fn gen_module_header() -> String =
     "; ModuleID = bmb_bootstrap|target triple = x86_64-unknown-linux-gnu";
 
@@ -1297,780 +1802,875 @@ fn gen_extern_abs() -> String = "declare i64 @abs(i64)";
 fn gen_extern_min() -> String = "declare i64 @min(i64, i64)";
 fn gen_extern_max() -> String = "declare i64 @max(i64, i64)";
 
+// v0.50.20: String runtime declarations
+fn gen_extern_str_concat() -> String = "declare ptr @str_concat(ptr, ptr)";
+fn gen_extern_str_eq() -> String = "declare i64 @str_eq(ptr, ptr)";
+fn gen_extern_len() -> String = "declare i64 @len(ptr)";
+fn gen_extern_chr() -> String = "declare ptr @chr(i64)";
+fn gen_extern_byte_at() -> String = "declare i64 @byte_at(ptr, i64)";
+fn gen_extern_slice() -> String = "declare ptr @slice(ptr, i64, i64)";
+fn gen_extern_print_str() -> String = "declare void @print_str(ptr)";
+fn gen_extern_println_str() -> String = "declare void @println_str(ptr)";
+fn gen_extern_read_file() -> String = "declare ptr @read_file(ptr)";
+fn gen_extern_write_file() -> String = "declare i64 @write_file(ptr, ptr)";
+fn gen_extern_arg_count() -> String = "declare i64 @arg_count()";
+fn gen_extern_get_arg() -> String = "declare ptr @get_arg(i64)";
+fn gen_extern_sb_new() -> String = "declare i64 @sb_new()";
+fn gen_extern_sb_push() -> String = "declare i64 @sb_push(i64, ptr)";
+fn gen_extern_sb_build() -> String = "declare ptr @sb_build(i64)";
+fn gen_extern_sb_len() -> String = "declare i64 @sb_len(i64)";
+
 fn gen_runtime_decls() -> String =
-    gen_extern_println() + "|" + gen_extern_abs() + "|" + gen_extern_min() + "|" + gen_extern_max();
+    gen_extern_println() + "|" + gen_extern_abs() + "|" + gen_extern_min() + "|" + gen_extern_max() + "|" +
+    gen_extern_str_concat() + "|" + gen_extern_str_eq() + "|" + gen_extern_len() + "|" + gen_extern_chr() + "|" +
+    gen_extern_byte_at() + "|" + gen_extern_slice() + "|" + gen_extern_print_str() + "|" + gen_extern_println_str() + "|" +
+    gen_extern_read_file() + "|" + gen_extern_write_file() + "|" + gen_extern_arg_count() + "|" + gen_extern_get_arg() + "|" +
+    gen_extern_sb_new() + "|" + gen_extern_sb_push() + "|" + gen_extern_sb_build() + "|" + gen_extern_sb_len();
 
--- ============================================================================
--- SECTION 13: Unified Compiler Entry Point (v0.10.9)
--- ============================================================================
+// v0.50.20: Extract string literals from MIR for global declarations
+// Uses content hash to ensure unique IDs for each distinct string
+fn extract_string_constants(mir: String) -> String =
+    extract_strlit_acc(mir, 0, "");
 
--- Compile BMB source code to LLVM IR module
--- Returns complete LLVM IR module text with:
--- - Module header
--- - Runtime declarations
--- - Function definitions
+fn extract_strlit_acc(mir: String, pos: i64, acc: String) -> String =
+    if pos >= mir.len() { acc } else {
+        let found = find_str_pattern(mir, pos);
+        if found < 0 { acc } else {
+            let str_start = found + 7;  // Skip " = str " (7 chars)
+            let str_end = find_quote_end(mir, str_start + 1);
+            let str_text = mir.slice(str_start, str_end);
+            // Use content hash for unique string ID
+            let hash = str_hash(str_text, 0);
+            let hash_id = if hash < 0 { 0 - hash } else { hash };
+            let str_id = "@.str." + int_to_string(hash_id);
+            // String length is content + null terminator = len - 2 (quotes) + 1 (null) = len - 1
+            let str_len = str_text.len() - 1;
+            // Check if already in acc (avoid duplicates)
+            let decl = str_id + " = private unnamed_addr constant [" + int_to_string(str_len) + " x i8] c" + escape_string_for_llvm(str_text);
+            let new_acc = if has_pattern(acc, str_id, 0) { acc } else if acc == "" { decl } else { acc + "|" + decl };
+            extract_strlit_acc(mir, str_end + 1, new_acc)
+        }
+    };
+
+// Find " = str " pattern in MIR, return position or -1
+fn find_str_pattern(mir: String, pos: i64) -> i64 =
+    if pos + 7 > mir.len() { 0 - 1 } else if starts_with(mir, " = str ", pos) { pos } else { find_str_pattern(mir, pos + 1) };
+
+// Find end of quoted string (handles escape sequences)
+fn find_quote_end(s: String, pos: i64) -> i64 =
+    if pos >= s.len() { pos } else if s.byte_at(pos) == 34 { pos + 1 } else if s.byte_at(pos) == 92 and pos + 1 < s.len() { find_quote_end(s, pos + 2) } else { find_quote_end(s, pos + 1) };
+
+// Escape string content for LLVM IR
+// Input: "Hello, " (with quotes)
+// Output: "Hello, \00" (content with null terminator)
+fn escape_string_for_llvm(s: String) -> String =
+    // Remove outer quotes and add null terminator
+    if s.len() < 2 { s } else {
+        let content = s.slice(1, s.len() - 1);  // Remove opening and closing quotes
+        // Build LLVM string constant format: "content\00"
+        let quote = chr(34);
+        let bslash = chr(92);
+        quote + escape_content(content, 0, "") + bslash + "00" + quote
+    };
+
+// Escape special characters in string content
+fn escape_content(s: String, pos: i64, acc: String) -> String =
+    if pos >= s.len() { acc } else {
+        let c = s.byte_at(pos);
+        let bslash = chr(92);
+        if c == 92 and pos + 1 < s.len() {
+            // Escape sequence in source
+            let next = s.byte_at(pos + 1);
+            if next == 110 { escape_content(s, pos + 2, acc + bslash + "0A") }  // \n -> \0A
+            else if next == 116 { escape_content(s, pos + 2, acc + bslash + "09") }  // \t -> \09
+            else if next == 114 { escape_content(s, pos + 2, acc + bslash + "0D") }  // \r -> \0D
+            else if next == 34 { escape_content(s, pos + 2, acc + bslash + "22") }  // \" -> \22
+            else if next == 92 { escape_content(s, pos + 2, acc + bslash + "5C") }  // \\ -> \5C
+            else { escape_content(s, pos + 1, acc + chr(c)) }
+        } else if c == 10 {
+            // Raw LF -> \0A
+            escape_content(s, pos + 1, acc + bslash + "0A")
+        } else if c == 13 {
+            // Raw CR -> \0D
+            escape_content(s, pos + 1, acc + bslash + "0D")
+        } else if c == 9 {
+            // Raw TAB -> \09
+            escape_content(s, pos + 1, acc + bslash + "09")
+        } else if c == 124 {
+            // Pipe | -> \7C (avoid conflict with line separator)
+            escape_content(s, pos + 1, acc + bslash + "7C")
+        } else {
+            escape_content(s, pos + 1, acc + chr(c))
+        }
+    };
+
+// ============================================================================
+// SECTION 13: Unified Compiler Entry Point (v0.10.9)
+// ============================================================================
+
+// Compile BMB source code to LLVM IR module
+// Returns complete LLVM IR module text with:
+// - Module header
+// - String constants (v0.50.20)
+// - Runtime declarations
+// - Function definitions
 fn compile_program(source: String) -> String =
     let ast = parse_source(source);
-    if is_error(ast) then "ERR:PARSE:" + ast
-    else
-        -- v0.31.20: Use StringBuilder-aware lowering for O(1) MIR generation
+    if is_error(ast) { "ERR:PARSE:" + ast } else {
         let mir = lower_program_sb(ast);
-        if mir == "" then "ERR:LOWERING:empty"
-        else
+        if mir == "" { "ERR:LOWERING:empty" } else {
             let header = gen_module_header();
+            // v0.50.20: Extract string constants from MIR
+            let str_consts = extract_string_constants(mir);
             let decls = gen_runtime_decls();
-            -- v0.31.20: Use StringBuilder-aware LLVM generation for O(1) IR generation
+            // v0.31.20: Use StringBuilder-aware LLVM generation for O(1) IR generation
             let code = gen_program_sb(mir);
-            header + "|" + decls + "||" + code;
+            // Include string constants after header if any exist
+            if str_consts == "" { header + "|" + decls + "||" + code }
+            else { header + "|" + str_consts + "|" + decls + "||" + code }
+        }
+    };
 
--- Compile single function source to LLVM IR
+// Compile single function source to LLVM IR
 fn compile_function(source: String) -> String =
     let full_source = source;
     let ast = parse_source(full_source);
-    if is_error(ast) then "ERR:PARSE:" + ast
-    else
-        -- v0.31.20: Use StringBuilder-aware lowering for O(1) MIR generation
+    if is_error(ast) { "ERR:PARSE:" + ast } else {
         let mir = lower_program_sb(ast);
-        if mir == "" then "ERR:LOWERING:empty"
-        -- v0.31.20: Use StringBuilder-aware LLVM generation for O(1) IR generation
-        else gen_function_sb(mir);
+        // v0.31.20: Use StringBuilder-aware LLVM generation for O(1) IR generation
+        if mir == "" { "ERR:LOWERING:empty" } else { gen_function_sb(mir) }
+    };
 
--- Check if compilation result is an error
+// Check if compilation result is an error
 fn is_compile_error(result: String) -> bool =
     result.len() >= 4 and result.slice(0, 4) == "ERR:";
 
--- Extract error type from compilation result
+// Extract error type from compilation result
 fn get_error_type(result: String) -> String =
-    if not is_compile_error(result) then ""
-    else
+    if not is_compile_error(result) { "" } else {
         let after_err = result.slice(4, result.len());
         let colon_pos = find_colon(after_err, 0);
-        if colon_pos >= after_err.len() then after_err
-        else after_err.slice(0, colon_pos);
+        if colon_pos >= after_err.len() { after_err } else { after_err.slice(0, colon_pos) }
+    };
 
--- ============================================================================
--- SECTION 14: Test Utilities
--- ============================================================================
+// ============================================================================
+// SECTION 14: Test Utilities
+// ============================================================================
 
 fn test_compile_ok(source: String) -> i64 =
     let result = compile_program(source);
-    if is_compile_error(result) then 0 else 1;
+    if is_compile_error(result) { 0 } else { 1 };
 
 fn test_compile_has_define(source: String) -> i64 =
     let result = compile_program(source);
-    if is_compile_error(result) then 0
-    else if has_pattern(result, "define", 0) then 1 else 0;
+    if is_compile_error(result) { 0 } else if has_pattern(result, "define", 0) { 1 } else { 0 };
 
 fn test_compile_has_ret(source: String) -> i64 =
     let result = compile_program(source);
-    if is_compile_error(result) then 0
-    else if has_pattern(result, "ret i64", 0) then 1 else 0;
+    if is_compile_error(result) { 0 } else if has_pattern(result, "ret i64", 0) { 1 } else { 0 };
 
 fn test_compile_has_call(source: String) -> i64 =
     let result = compile_program(source);
-    if is_compile_error(result) then 0
-    else if has_pattern(result, "call i64", 0) then 1 else 0;
+    if is_compile_error(result) { 0 } else if has_pattern(result, "call i64", 0) { 1 } else { 0 };
 
 fn test_compile_has_header(source: String) -> i64 =
     let result = compile_program(source);
-    if is_compile_error(result) then 0
-    else if has_pattern(result, "ModuleID", 0) then 1 else 0;
+    if is_compile_error(result) { 0 } else if has_pattern(result, "ModuleID", 0) { 1 } else { 0 };
 
 fn test_compile_has_runtime(source: String) -> i64 =
     let result = compile_program(source);
-    if is_compile_error(result) then 0
-    else if has_pattern(result, "declare", 0) then 1 else 0;
+    if is_compile_error(result) { 0 } else if has_pattern(result, "declare", 0) { 1 } else { 0 };
 
--- ============================================================================
--- SECTION 15: Unit Tests (v0.30.143)
--- ============================================================================
+// ============================================================================
+// SECTION 15: Unit Tests (v0.30.143)
+// ============================================================================
 
--- Test digit_char function
+// Test digit_char function
 fn test_digit_char() -> i64 =
-    let t1 = if digit_char(0) == "0" then 1 else 0;
-    let t2 = if digit_char(5) == "5" then 1 else 0;
-    let t3 = if digit_char(9) == "9" then 1 else 0;
-    let t4 = if digit_char(1) == "1" then 1 else 0;
+    let t1 = if digit_char(0) == "0" { 1 } else { 0 };
+    let t2 = if digit_char(5) == "5" { 1 } else { 0 };
+    let t3 = if digit_char(9) == "9" { 1 } else { 0 };
+    let t4 = if digit_char(1) == "1" { 1 } else { 0 };
     t1 + t2 + t3 + t4;
 
--- Test int_to_string function
+// Test int_to_string function
 fn test_int_to_string() -> i64 =
-    let t1 = if int_to_string(0) == "0" then 1 else 0;
-    let t2 = if int_to_string(42) == "42" then 1 else 0;
-    let t3 = if int_to_string(100) == "100" then 1 else 0;
-    let t4 = if int_to_string(7) == "7" then 1 else 0;
+    let t1 = if int_to_string(0) == "0" { 1 } else { 0 };
+    let t2 = if int_to_string(42) == "42" { 1 } else { 0 };
+    let t3 = if int_to_string(100) == "100" { 1 } else { 0 };
+    let t4 = if int_to_string(7) == "7" { 1 } else { 0 };
     t1 + t2 + t3 + t4;
 
--- Test character classification
+// Test character classification
 fn test_char_class() -> i64 =
-    let t1 = if is_whitespace(32) then 1 else 0;  -- space
-    let t2 = if is_whitespace(10) then 1 else 0;  -- newline
-    let t3 = if is_digit(48) then 1 else 0;       -- '0'
-    let t4 = if is_digit(57) then 1 else 0;       -- '9'
-    let t5 = if is_alpha(65) then 1 else 0;       -- 'A'
-    let t6 = if is_alpha(122) then 1 else 0;      -- 'z'
-    let t7 = if is_alnum_or_underscore(95) then 1 else 0;  -- '_'
-    let t8 = if is_ident_start(95) then 1 else 0; -- '_'
+    let t1 = if is_whitespace(32) { 1 } else { 0 };  // space
+    let t2 = if is_whitespace(10) { 1 } else { 0 };  // newline
+    let t3 = if is_digit(48) { 1 } else { 0 };       // '0'
+    let t4 = if is_digit(57) { 1 } else { 0 };       // '9'
+    let t5 = if is_alpha(65) { 1 } else { 0 };       // 'A'
+    let t6 = if is_alpha(122) { 1 } else { 0 };      // 'z'
+    let t7 = if is_alnum_or_underscore(95) { 1 } else { 0 };  // '_'
+    let t8 = if is_ident_start(95) { 1 } else { 0 }; // '_'
     t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8;
 
--- Test error handling utilities
+// Test error handling utilities
 fn test_error_utils() -> i64 =
-    let t1 = if is_error("ERR:test") then 1 else 0;
-    let t2 = if not is_error("OK") then 1 else 0;
-    let t3 = if make_error("msg") == "ERR:msg" then 1 else 0;
-    let t4 = if starts_with("hello", "hel", 0) then 1 else 0;
-    let t5 = if not starts_with("hello", "xyz", 0) then 1 else 0;
-    let t6 = if has_pattern("abcdef", "cde", 0) then 1 else 0;
+    let t1 = if is_error("ERR:test") { 1 } else { 0 };
+    let t2 = if not is_error("OK") { 1 } else { 0 };
+    let t3 = if make_error("msg") == "ERR:msg" { 1 } else { 0 };
+    let t4 = if starts_with("hello", "hel", 0) { 1 } else { 0 };
+    let t5 = if not starts_with("hello", "xyz", 0) { 1 } else { 0 };
+    let t6 = if has_pattern("abcdef", "cde", 0) { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5 + t6;
 
--- Test token constants
+// Test token constants
 fn test_token_constants() -> i64 =
-    let t1 = if TK_FN() == 100 then 1 else 0;
-    let t2 = if TK_LET() == 101 then 1 else 0;
-    let t3 = if TK_IF() == 102 then 1 else 0;
-    let t4 = if TK_I64() == 151 then 1 else 0;
-    let t5 = if TK_BOOL() == 153 then 1 else 0;
-    let t6 = if TK_EOF() == 900 then 1 else 0;
+    let t1 = if TK_FN() == 100 { 1 } else { 0 };
+    let t2 = if TK_LET() == 101 { 1 } else { 0 };
+    let t3 = if TK_IF() == 102 { 1 } else { 0 };
+    let t4 = if TK_I64() == 151 { 1 } else { 0 };
+    let t5 = if TK_BOOL() == 153 { 1 } else { 0 };
+    let t6 = if TK_EOF() == 900 { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5 + t6;
 
--- Test token encoding/decoding
+// Test token encoding/decoding
 fn test_tok_helpers() -> i64 =
-    let tok1 = make_tok(100, 50);  -- kind=100, endpos=50
-    let t1 = if tok_kind(tok1) == 100 then 1 else 0;
-    let t2 = if tok_end(tok1) == 50 then 1 else 0;
-    let t3 = if tok_val(tok1) == 100 then 1 else 0;
+    let tok1 = make_tok(100, 50);  // kind=100, endpos=50
+    let t1 = if tok_kind(tok1) == 100 { 1 } else { 0 };
+    let t2 = if tok_end(tok1) == 50 { 1 } else { 0 };
+    let t3 = if tok_val(tok1) == 100 { 1 } else { 0 };
     let tok2 = make_tok(200, 0);
-    let t4 = if tok_kind(tok2) == 200 then 1 else 0;
-    let t5 = if tok_end(tok2) == 0 then 1 else 0;
+    let t4 = if tok_kind(tok2) == 200 { 1 } else { 0 };
+    let t5 = if tok_end(tok2) == 0 { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5;
 
--- Test parser result packing
+// Test parser result packing
 fn test_pack_result() -> i64 =
     let r1 = pack_result(100, "(ast)");
-    let t1 = if unpack_pos(r1) == 100 then 1 else 0;
-    let t2 = if unpack_ast(r1) == "(ast)" then 1 else 0;
+    let t1 = if unpack_pos(r1) == 100 { 1 } else { 0 };
+    let t2 = if unpack_ast(r1) == "(ast)" { 1 } else { 0 };
     let r2 = pack_result(0, "(prog)");
-    let t3 = if unpack_pos(r2) == 0 then 1 else 0;
-    let t4 = if unpack_ast(r2) == "(prog)" then 1 else 0;
+    let t3 = if unpack_pos(r2) == 0 { 1 } else { 0 };
+    let t4 = if unpack_ast(r2) == "(prog)" { 1 } else { 0 };
     t1 + t2 + t3 + t4;
 
--- Test MIR result packing
+// Test MIR result packing
 fn test_mir_packing() -> i64 =
     let r1 = pack_lower_result("mir_text", 5);
-    let t1 = if unpack_temp_id(r1) == 5 then 1 else 0;
-    let t2 = if unpack_text(r1) == "mir_text" then 1 else 0;
+    let t1 = if unpack_temp_id(r1) == 5 { 1 } else { 0 };
+    let t2 = if unpack_text(r1) == "mir_text" { 1 } else { 0 };
     let r2 = pack_lower_result("code", 0);
-    let t3 = if unpack_temp_id(r2) == 0 then 1 else 0;
-    let t4 = if unpack_text(r2) == "code" then 1 else 0;
+    let t3 = if unpack_temp_id(r2) == 0 { 1 } else { 0 };
+    let t4 = if unpack_text(r2) == "code" { 1 } else { 0 };
     t1 + t2 + t3 + t4;
 
--- Test S-expression utilities
+// Test S-expression utilities
 fn test_sexp_utils() -> i64 =
-    let t1 = if get_node_type("(fn test)") == "fn" then 1 else 0;
-    let t2 = if get_node_type("(int 42)") == "int" then 1 else 0;
-    let t3 = if get_node_type("(var x)") == "var" then 1 else 0;
-    let t4 = if is_fn_node("(fn test i64 (int 1))") then 1 else 0;
-    let t5 = if not is_fn_node("(int 42)") then 1 else 0;
-    let t6 = if extract_paren_content("(hello)") == "hello" then 1 else 0;
+    let t1 = if get_node_type("(fn test)") == "fn" { 1 } else { 0 };
+    let t2 = if get_node_type("(int 42)") == "int" { 1 } else { 0 };
+    let t3 = if get_node_type("(var x)") == "var" { 1 } else { 0 };
+    let t4 = if is_fn_node("(fn test i64 (int 1))") { 1 } else { 0 };
+    let t5 = if not is_fn_node("(int 42)") { 1 } else { 0 };
+    let t6 = if extract_paren_content("(hello)") == "hello" { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5 + t6;
 
--- Test module header generation
+// Test module header generation
 fn test_module_gen() -> i64 =
     let hdr = gen_module_header();
-    let t1 = if has_pattern(hdr, "ModuleID", 0) then 1 else 0;
-    let t2 = if has_pattern(hdr, "triple", 0) then 1 else 0;
+    let t1 = if has_pattern(hdr, "ModuleID", 0) { 1 } else { 0 };
+    let t2 = if has_pattern(hdr, "triple", 0) { 1 } else { 0 };
     let decls = gen_runtime_decls();
-    let t3 = if has_pattern(decls, "println", 0) then 1 else 0;
-    let t4 = if has_pattern(decls, "abs", 0) then 1 else 0;
+    let t3 = if has_pattern(decls, "println", 0) { 1 } else { 0 };
+    let t4 = if has_pattern(decls, "abs", 0) { 1 } else { 0 };
     t1 + t2 + t3 + t4;
 
--- Test skip functions (v0.30.153)
+// Test skip functions (v0.30.153)
 fn test_skip_functions() -> i64 =
-    let t1 = if skip_ws("  abc", 0) == 2 then 1 else 0;  -- skip 2 spaces
-    let t2 = if skip_ws("abc", 0) == 0 then 1 else 0;    -- no whitespace
-    let t3 = if skip_ws("", 0) == 0 then 1 else 0;       -- empty string
-    let t4 = if skip_to_eol("abc", 0) == 3 then 1 else 0;  -- to end
-    let t5 = if skip_to_eol("", 0) == 0 then 1 else 0;  -- empty
-    let t6 = if skip_comment("--x", 0) > 0 then 1 else 0;  -- skip comment
-    let t7 = if skip_comment("abc", 0) == 0 then 1 else 0;  -- no comment
-    let t8 = if skip_ws_comments("  abc", 0) == 2 then 1 else 0;  -- skip ws
+    let t1 = if skip_ws("  abc", 0) == 2 { 1 } else { 0 };  // skip 2 spaces
+    let t2 = if skip_ws("abc", 0) == 0 { 1 } else { 0 };    // no whitespace
+    let t3 = if skip_ws("", 0) == 0 { 1 } else { 0 };       // empty string
+    let t4 = if skip_to_eol("abc", 0) == 3 { 1 } else { 0 };  // to end
+    let t5 = if skip_to_eol("", 0) == 0 { 1 } else { 0 };  // empty
+    let t6 = if skip_comment("--x", 0) > 0 { 1 } else { 0 };  // skip comment
+    let t7 = if skip_comment("abc", 0) == 0 { 1 } else { 0 };  // no comment
+    let t8 = if skip_ws_comments("  abc", 0) == 2 { 1 } else { 0 };  // skip ws
     t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8;
 
--- Test scan functions (v0.30.153)
+// Test scan functions (v0.30.153)
 fn test_scan_functions() -> i64 =
     let r1 = scan_int("123abc", 0, 0);
-    let t1 = if tok_val(r1) == 123 then 1 else 0;  -- value
-    let t2 = if tok_end(r1) == 3 then 1 else 0;    -- position
+    let t1 = if tok_val(r1) == 123 { 1 } else { 0 };  // value
+    let t2 = if tok_end(r1) == 3 { 1 } else { 0 };    // position
     let r2 = scan_int("42", 0, 0);
-    let t3 = if tok_val(r2) == 42 then 1 else 0;
-    let t4 = if scan_ident_end("abc123 ", 0) == 6 then 1 else 0;  -- alnum
-    let t5 = if scan_ident_end("foo_bar ", 0) == 7 then 1 else 0;  -- underscore
-    let t6 = if scan_ident_end("x", 0) == 1 then 1 else 0;  -- single char
+    let t3 = if tok_val(r2) == 42 { 1 } else { 0 };
+    let t4 = if scan_ident_end("abc123 ", 0) == 6 { 1 } else { 0 };  // alnum
+    let t5 = if scan_ident_end("foo_bar ", 0) == 7 { 1 } else { 0 };  // underscore
+    let t6 = if scan_ident_end("x", 0) == 1 { 1 } else { 0 };  // single char
     t1 + t2 + t3 + t4 + t5 + t6;
 
--- Test keyword_or_ident function (v0.30.153)
+// Test keyword_or_ident function (v0.30.153)
 fn test_keyword_ident() -> i64 =
     let r1 = keyword_or_ident("fn test", 0, 2);
-    let t1 = if tok_kind(r1) == TK_FN() then 1 else 0;
+    let t1 = if tok_kind(r1) == TK_FN() { 1 } else { 0 };
     let r2 = keyword_or_ident("let x", 0, 3);
-    let t2 = if tok_kind(r2) == TK_LET() then 1 else 0;
+    let t2 = if tok_kind(r2) == TK_LET() { 1 } else { 0 };
     let r3 = keyword_or_ident("if true", 0, 2);
-    let t3 = if tok_kind(r3) == TK_IF() then 1 else 0;
+    let t3 = if tok_kind(r3) == TK_IF() { 1 } else { 0 };
     let r4 = keyword_or_ident("i64 x", 0, 3);
-    let t4 = if tok_kind(r4) == TK_I64() then 1 else 0;
+    let t4 = if tok_kind(r4) == TK_I64() { 1 } else { 0 };
     let r5 = keyword_or_ident("bool x", 0, 4);
-    let t5 = if tok_kind(r5) == TK_BOOL() then 1 else 0;
+    let t5 = if tok_kind(r5) == TK_BOOL() { 1 } else { 0 };
     let r6 = keyword_or_ident("foo bar", 0, 3);
-    let t6 = if tok_kind(r6) == TK_IDENT() then 1 else 0;  -- identifier
+    let t6 = if tok_kind(r6) == TK_IDENT() { 1 } else { 0 };  // identifier
     t1 + t2 + t3 + t4 + t5 + t6;
 
--- Test low_* S-expression utilities (v0.30.153)
+// Test low_* S-expression utilities (v0.30.153)
 fn test_low_sexp_funcs() -> i64 =
-    let t1 = if low_is_whitespace(32) then 1 else 0;  -- space
-    let t2 = if low_is_whitespace(10) then 1 else 0;  -- newline
-    let t3 = if low_skip_ws("  x", 0) == 2 then 1 else 0;  -- skip spaces
-    let t4 = if low_is_ident_char(65) then 1 else 0;  -- 'A'
-    let t5 = if low_is_ident_char(95) then 1 else 0;  -- '_'
-    let t6 = if low_is_op_char(43) then 1 else 0;    -- '+'
-    let t7 = if low_is_op_char(60) then 1 else 0;    -- '<'
-    let t8 = if low_find_ident_end("abc ", 0) == 3 then 1 else 0;
-    let t9 = if low_find_op_end("+= ", 0) == 2 then 1 else 0;
-    let t10 = if low_starts_with_at("hello", 0, "hel") then 1 else 0;
+    let t1 = if low_is_whitespace(32) { 1 } else { 0 };  // space
+    let t2 = if low_is_whitespace(10) { 1 } else { 0 };  // newline
+    let t3 = if low_skip_ws("  x", 0) == 2 { 1 } else { 0 };  // skip spaces
+    let t4 = if low_is_ident_char(65) { 1 } else { 0 };  // 'A'
+    let t5 = if low_is_ident_char(95) { 1 } else { 0 };  // '_'
+    let t6 = if low_is_op_char(43) { 1 } else { 0 };    // '+'
+    let t7 = if low_is_op_char(60) { 1 } else { 0 };    // '<'
+    let t8 = if low_find_ident_end("abc ", 0) == 3 { 1 } else { 0 };
+    let t9 = if low_find_op_end("+= ", 0) == 2 { 1 } else { 0 };
+    let t10 = if low_starts_with_at("hello", 0, "hel") { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t9 + t10;
 
--- Test find functions (v0.30.153)
+// Test find functions (v0.30.153)
 fn test_find_functions() -> i64 =
-    let t1 = if find_colon("abc:def", 0) == 3 then 1 else 0;
-    let t2 = if find_colon("nocolon", 0) == 7 then 1 else 0;  -- end of string
-    let t3 = if find_pipe("ab|cd", 0) == 2 then 1 else 0;
-    let t4 = if find_eq("x = 5", 0) == 2 then 1 else 0;
-    let t5 = if find_comma("a, b", 0) == 1 then 1 else 0;
-    let t6 = if find_char("abc@def", 0, 64) == 3 then 1 else 0;  -- '@'
-    let t7 = if find_double_pipe("a||b", 0) == 1 then 1 else 0;
-    let t8 = if find_arrow("x -> y", 0) == 2 then 1 else 0;
+    let t1 = if find_colon("abc:def", 0) == 3 { 1 } else { 0 };
+    let t2 = if find_colon("nocolon", 0) == 7 { 1 } else { 0 };  // end of string
+    let t3 = if find_pipe("ab|cd", 0) == 2 { 1 } else { 0 };
+    let t4 = if find_eq("x = 5", 0) == 2 { 1 } else { 0 };
+    let t5 = if find_comma("a, b", 0) == 1 { 1 } else { 0 };
+    let t6 = if find_char("abc@def", 0, 64) == 3 { 1 } else { 0 };  // '@'
+    let t7 = if find_double_pipe("a||b", 0) == 1 { 1 } else { 0 };
+    let t8 = if find_arrow("x -> y", 0) == 2 { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8;
 
--- Test trim_end function (v0.30.153)
+// Test trim_end function (v0.30.153)
 fn test_trim_end_func() -> i64 =
-    let t1 = if trim_end("abc  ") == "abc" then 1 else 0;
-    let t2 = if trim_end("test") == "test" then 1 else 0;  -- no trailing ws
-    let t3 = if trim_end("x ") == "x" then 1 else 0;  -- single trailing space
-    let t4 = if ends_with_colon("entry:") then 1 else 0;
-    let t5 = if not ends_with_colon("entry") then 1 else 0;
-    let t6 = if ends_with_colon("label:  ") then 1 else 0;  -- ws after colon
+    let t1 = if trim_end("abc  ") == "abc" { 1 } else { 0 };
+    let t2 = if trim_end("test") == "test" { 1 } else { 0 };  // no trailing ws
+    let t3 = if trim_end("x ") == "x" { 1 } else { 0 };  // single trailing space
+    let t4 = if ends_with_colon("entry:") { 1 } else { 0 };
+    let t5 = if not ends_with_colon("entry") { 1 } else { 0 };
+    let t6 = if ends_with_colon("label:  ") { 1 } else { 0 };  // ws after colon
     t1 + t2 + t3 + t4 + t5 + t6;
 
--- Test next_token_raw function (v0.30.153)
+// Test next_token_raw function (v0.30.153)
 fn test_next_token() -> i64 =
     let r1 = next_token_raw("123", 0);
-    let t1 = if tok_val(r1) == 123 then 1 else 0;  -- number value
+    let t1 = if tok_val(r1) == 123 { 1 } else { 0 };  // number value
     let r2 = next_token_raw(": x", 0);
-    let t2 = if tok_kind(r2) == TK_COLON() then 1 else 0;
+    let t2 = if tok_kind(r2) == TK_COLON() { 1 } else { 0 };
     let r3 = next_token_raw("+ x", 0);
-    let t3 = if tok_kind(r3) == TK_PLUS() then 1 else 0;
+    let t3 = if tok_kind(r3) == TK_PLUS() { 1 } else { 0 };
     let r4 = next_token_raw("- x", 0);
-    let t4 = if tok_kind(r4) == TK_MINUS() then 1 else 0;
+    let t4 = if tok_kind(r4) == TK_MINUS() { 1 } else { 0 };
     let r5 = next_token_raw("== x", 0);
-    let t5 = if tok_kind(r5) == TK_EQEQ() then 1 else 0;
+    let t5 = if tok_kind(r5) == TK_EQEQ() { 1 } else { 0 };
     let r6 = next_token_raw("-> x", 0);
-    let t6 = if tok_kind(r6) == TK_ARROW() then 1 else 0;
+    let t6 = if tok_kind(r6) == TK_ARROW() { 1 } else { 0 };
     let r7 = next_token_raw("<= x", 0);
-    let t7 = if tok_kind(r7) == TK_LTEQ() then 1 else 0;
+    let t7 = if tok_kind(r7) == TK_LTEQ() { 1 } else { 0 };
     let r8 = next_token_raw("", 0);
-    let t8 = if tok_kind(r8) == TK_EOF() then 1 else 0;
+    let t8 = if tok_kind(r8) == TK_EOF() { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8;
 
--- Test extract functions (v0.30.153)
+// Test extract functions (v0.30.153)
 fn test_extract_functions() -> i64 =
-    let t1 = if extract_name("(var <x>)") == "x" then 1 else 0;
-    let t2 = if extract_name("(fn <add>)") == "add" then 1 else 0;
-    let t3 = if extract_int_value("(int 42)") == 42 then 1 else 0;
-    let t4 = if extract_int_value("(int 0)") == 0 then 1 else 0;
-    let t5 = if get_child("(fn a b c)", 0) == "a" then 1 else 0;
-    let t6 = if get_child("(fn a b c)", 1) == "b" then 1 else 0;
-    let t7 = if get_child("(fn a b c)", 2) == "c" then 1 else 0;
-    let t8 = if low_find_close_paren("(ab(cd)ef)", 0, 0) == 9 then 1 else 0;
+    let t1 = if extract_name("(var <x>)") == "x" { 1 } else { 0 };
+    let t2 = if extract_name("(fn <add>)") == "add" { 1 } else { 0 };
+    let t3 = if extract_int_value("(int 42)") == 42 { 1 } else { 0 };
+    let t4 = if extract_int_value("(int 0)") == 0 { 1 } else { 0 };
+    let t5 = if get_child("(fn a b c)", 0) == "a" { 1 } else { 0 };
+    let t6 = if get_child("(fn a b c)", 1) == "b" { 1 } else { 0 };
+    let t7 = if get_child("(fn a b c)", 2) == "c" { 1 } else { 0 };
+    let t8 = if low_find_close_paren("(ab(cd)ef)", 0, 0) == 9 { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8;
 
--- v0.30.163: Extended token constants (keywords and control)
+// v0.30.163: Extended token constants (keywords and control)
 fn test_token_constants_ext() -> i64 =
-    let t1 = if TK_THEN() == 103 then 1 else 0;
-    let t2 = if TK_ELSE() == 104 then 1 else 0;
-    let t3 = if TK_TRUE() == 105 then 1 else 0;
-    let t4 = if TK_FALSE() == 106 then 1 else 0;
-    let t5 = if TK_AND() == 107 then 1 else 0;
-    let t6 = if TK_OR() == 108 then 1 else 0;
-    let t7 = if TK_NOT() == 109 then 1 else 0;
-    let t8 = if TK_PRE() == 110 then 1 else 0;
-    let t9 = if TK_POST() == 111 then 1 else 0;
-    let t10 = if TK_MUT() == 117 then 1 else 0;
+    let t1 = if TK_THEN() == 103 { 1 } else { 0 };
+    let t2 = if TK_ELSE() == 104 { 1 } else { 0 };
+    let t3 = if TK_TRUE() == 105 { 1 } else { 0 };
+    let t4 = if TK_FALSE() == 106 { 1 } else { 0 };
+    let t5 = if TK_AND() == 107 { 1 } else { 0 };
+    let t6 = if TK_OR() == 108 { 1 } else { 0 };
+    let t7 = if TK_NOT() == 109 { 1 } else { 0 };
+    let t8 = if TK_PRE() == 110 { 1 } else { 0 };
+    let t9 = if TK_POST() == 111 { 1 } else { 0 };
+    let t10 = if TK_MUT() == 117 { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t9 + t10;
 
--- v0.30.163: Extended token constants (types and operators)
+// v0.30.163: Extended token constants (types and operators)
 fn test_token_types_ops() -> i64 =
-    let t1 = if TK_I32() == 150 then 1 else 0;
-    let t2 = if TK_F64() == 152 then 1 else 0;
-    let t3 = if TK_STRING_TYPE() == 154 then 1 else 0;
-    let t4 = if TK_INT() == 200 then 1 else 0;
-    let t5 = if TK_IDENT() == 201 then 1 else 0;
-    let t6 = if TK_COLON() == 300 then 1 else 0;
-    let t7 = if TK_EQ() == 302 then 1 else 0;
-    let t8 = if TK_SEMI() == 303 then 1 else 0;
-    let t9 = if TK_COMMA() == 304 then 1 else 0;
-    let t10 = if TK_LPAREN() == 305 then 1 else 0;
-    let t11 = if TK_RPAREN() == 306 then 1 else 0;
-    let t12 = if TK_ARROW() == 321 then 1 else 0;
+    let t1 = if TK_I32() == 150 { 1 } else { 0 };
+    let t2 = if TK_F64() == 152 { 1 } else { 0 };
+    let t3 = if TK_STRING_TYPE() == 154 { 1 } else { 0 };
+    let t4 = if TK_INT() == 200 { 1 } else { 0 };
+    let t5 = if TK_IDENT() == 201 { 1 } else { 0 };
+    let t6 = if TK_COLON() == 300 { 1 } else { 0 };
+    let t7 = if TK_EQ() == 302 { 1 } else { 0 };
+    let t8 = if TK_SEMI() == 303 { 1 } else { 0 };
+    let t9 = if TK_COMMA() == 304 { 1 } else { 0 };
+    let t10 = if TK_LPAREN() == 305 { 1 } else { 0 };
+    let t11 = if TK_RPAREN() == 306 { 1 } else { 0 };
+    let t12 = if TK_ARROW() == 321 { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t9 + t10 + t11 + t12;
 
--- v0.30.163: Extended token constants (arithmetic and comparison)
+// v0.30.163: Extended token constants (arithmetic and comparison)
 fn test_token_arith_cmp() -> i64 =
-    let t1 = if TK_PLUS() == 400 then 1 else 0;
-    let t2 = if TK_MINUS() == 401 then 1 else 0;
-    let t3 = if TK_STAR() == 402 then 1 else 0;
-    let t4 = if TK_SLASH() == 403 then 1 else 0;
-    let t5 = if TK_PERCENT() == 404 then 1 else 0;
-    let t6 = if TK_LT() == 405 then 1 else 0;
-    let t7 = if TK_GT() == 406 then 1 else 0;
-    let t8 = if TK_EQEQ() == 410 then 1 else 0;
-    let t9 = if TK_NEQ() == 411 then 1 else 0;
-    let t10 = if TK_LTEQ() == 412 then 1 else 0;
-    let t11 = if TK_GTEQ() == 413 then 1 else 0;
-    let t12 = if TK_DOTDOT() == 323 then 1 else 0;
+    let t1 = if TK_PLUS() == 400 { 1 } else { 0 };
+    let t2 = if TK_MINUS() == 401 { 1 } else { 0 };
+    let t3 = if TK_STAR() == 402 { 1 } else { 0 };
+    let t4 = if TK_SLASH() == 403 { 1 } else { 0 };
+    let t5 = if TK_PERCENT() == 404 { 1 } else { 0 };
+    let t6 = if TK_LT() == 405 { 1 } else { 0 };
+    let t7 = if TK_GT() == 406 { 1 } else { 0 };
+    let t8 = if TK_EQEQ() == 410 { 1 } else { 0 };
+    let t9 = if TK_NEQ() == 411 { 1 } else { 0 };
+    let t10 = if TK_LTEQ() == 412 { 1 } else { 0 };
+    let t11 = if TK_GTEQ() == 413 { 1 } else { 0 };
+    let t12 = if TK_DOTDOT() == 323 { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t9 + t10 + t11 + t12;
 
--- v0.30.163: Extended digit_char (all 10 digits)
+// v0.30.163: Extended digit_char (all 10 digits)
 fn test_digit_char_ext() -> i64 =
-    let t1 = if digit_char(0) == "0" then 1 else 0;
-    let t2 = if digit_char(1) == "1" then 1 else 0;
-    let t3 = if digit_char(2) == "2" then 1 else 0;
-    let t4 = if digit_char(3) == "3" then 1 else 0;
-    let t5 = if digit_char(4) == "4" then 1 else 0;
-    let t6 = if digit_char(5) == "5" then 1 else 0;
-    let t7 = if digit_char(6) == "6" then 1 else 0;
-    let t8 = if digit_char(7) == "7" then 1 else 0;
-    let t9 = if digit_char(8) == "8" then 1 else 0;
-    let t10 = if digit_char(9) == "9" then 1 else 0;
+    let t1 = if digit_char(0) == "0" { 1 } else { 0 };
+    let t2 = if digit_char(1) == "1" { 1 } else { 0 };
+    let t3 = if digit_char(2) == "2" { 1 } else { 0 };
+    let t4 = if digit_char(3) == "3" { 1 } else { 0 };
+    let t5 = if digit_char(4) == "4" { 1 } else { 0 };
+    let t6 = if digit_char(5) == "5" { 1 } else { 0 };
+    let t7 = if digit_char(6) == "6" { 1 } else { 0 };
+    let t8 = if digit_char(7) == "7" { 1 } else { 0 };
+    let t9 = if digit_char(8) == "8" { 1 } else { 0 };
+    let t10 = if digit_char(9) == "9" { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t9 + t10;
 
--- v0.30.163: Extended int_to_string tests
+// v0.30.163: Extended int_to_string tests
 fn test_int_to_string_ext() -> i64 =
-    let t1 = if int_to_string(1) == "1" then 1 else 0;
-    let t2 = if int_to_string(10) == "10" then 1 else 0;
-    let t3 = if int_to_string(99) == "99" then 1 else 0;
-    let t4 = if int_to_string(123) == "123" then 1 else 0;
-    let t5 = if int_to_string(1000) == "1000" then 1 else 0;
-    let t6 = if int_to_string(999999) == "999999" then 1 else 0;
+    let t1 = if int_to_string(1) == "1" { 1 } else { 0 };
+    let t2 = if int_to_string(10) == "10" { 1 } else { 0 };
+    let t3 = if int_to_string(99) == "99" { 1 } else { 0 };
+    let t4 = if int_to_string(123) == "123" { 1 } else { 0 };
+    let t5 = if int_to_string(1000) == "1000" { 1 } else { 0 };
+    let t6 = if int_to_string(999999) == "999999" { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5 + t6;
 
--- v0.30.163: Extended character classification
+// v0.30.163: Extended character classification
 fn test_char_class_ext() -> i64 =
-    let t1 = if is_whitespace(9) then 1 else 0;   -- tab
-    let t2 = if is_whitespace(13) then 1 else 0;  -- carriage return
-    let t3 = if not is_whitespace(65) then 1 else 0;  -- 'A'
-    let t4 = if is_digit(49) then 1 else 0;   -- '1'
-    let t5 = if not is_digit(65) then 1 else 0;   -- 'A'
-    let t6 = if is_alpha(90) then 1 else 0;   -- 'Z'
-    let t7 = if is_alpha(97) then 1 else 0;   -- 'a'
-    let t8 = if not is_alpha(48) then 1 else 0;   -- '0'
-    let t9 = if is_alnum_or_underscore(48) then 1 else 0;   -- '0'
-    let t10 = if not is_alnum_or_underscore(32) then 1 else 0;  -- space
+    let t1 = if is_whitespace(9) { 1 } else { 0 };   // tab
+    let t2 = if is_whitespace(13) { 1 } else { 0 };  // carriage return
+    let t3 = if not is_whitespace(65) { 1 } else { 0 };  // 'A'
+    let t4 = if is_digit(49) { 1 } else { 0 };   // '1'
+    let t5 = if not is_digit(65) { 1 } else { 0 };   // 'A'
+    let t6 = if is_alpha(90) { 1 } else { 0 };   // 'Z'
+    let t7 = if is_alpha(97) { 1 } else { 0 };   // 'a'
+    let t8 = if not is_alpha(48) { 1 } else { 0 };   // '0'
+    let t9 = if is_alnum_or_underscore(48) { 1 } else { 0 };   // '0'
+    let t10 = if not is_alnum_or_underscore(32) { 1 } else { 0 };  // space
     t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t9 + t10;
 
--- v0.30.163: Extended keyword tests
+// v0.30.163: Extended keyword tests
 fn test_keyword_ext() -> i64 =
     let r1 = keyword_or_ident("then x", 0, 4);
-    let t1 = if tok_kind(r1) == TK_THEN() then 1 else 0;
+    let t1 = if tok_kind(r1) == TK_THEN() { 1 } else { 0 };
     let r2 = keyword_or_ident("else x", 0, 4);
-    let t2 = if tok_kind(r2) == TK_ELSE() then 1 else 0;
+    let t2 = if tok_kind(r2) == TK_ELSE() { 1 } else { 0 };
     let r3 = keyword_or_ident("true x", 0, 4);
-    let t3 = if tok_kind(r3) == TK_TRUE() then 1 else 0;
+    let t3 = if tok_kind(r3) == TK_TRUE() { 1 } else { 0 };
     let r4 = keyword_or_ident("false x", 0, 5);
-    let t4 = if tok_kind(r4) == TK_FALSE() then 1 else 0;
+    let t4 = if tok_kind(r4) == TK_FALSE() { 1 } else { 0 };
     let r5 = keyword_or_ident("and x", 0, 3);
-    let t5 = if tok_kind(r5) == TK_AND() then 1 else 0;
+    let t5 = if tok_kind(r5) == TK_AND() { 1 } else { 0 };
     let r6 = keyword_or_ident("or x", 0, 2);
-    let t6 = if tok_kind(r6) == TK_OR() then 1 else 0;
+    let t6 = if tok_kind(r6) == TK_OR() { 1 } else { 0 };
     let r7 = keyword_or_ident("not x", 0, 3);
-    let t7 = if tok_kind(r7) == TK_NOT() then 1 else 0;
+    let t7 = if tok_kind(r7) == TK_NOT() { 1 } else { 0 };
     let r8 = keyword_or_ident("i32 x", 0, 3);
-    let t8 = if tok_kind(r8) == TK_I32() then 1 else 0;
+    let t8 = if tok_kind(r8) == TK_I32() { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8;
 
--- v0.30.163: More keyword tests
+// v0.30.163: More keyword tests
 fn test_keyword_more() -> i64 =
     let r1 = keyword_or_ident("f64 x", 0, 3);
-    let t1 = if tok_kind(r1) == TK_F64() then 1 else 0;
+    let t1 = if tok_kind(r1) == TK_F64() { 1 } else { 0 };
     let r2 = keyword_or_ident("String x", 0, 6);
-    let t2 = if tok_kind(r2) == TK_STRING_TYPE() then 1 else 0;
+    let t2 = if tok_kind(r2) == TK_STRING_TYPE() { 1 } else { 0 };
     let r3 = keyword_or_ident("pre x", 0, 3);
-    let t3 = if tok_kind(r3) == TK_PRE() then 1 else 0;
+    let t3 = if tok_kind(r3) == TK_PRE() { 1 } else { 0 };
     let r4 = keyword_or_ident("post x", 0, 4);
-    let t4 = if tok_kind(r4) == TK_POST() then 1 else 0;
+    let t4 = if tok_kind(r4) == TK_POST() { 1 } else { 0 };
     let r5 = keyword_or_ident("mut x", 0, 3);
-    let t5 = if tok_kind(r5) == TK_MUT() then 1 else 0;
+    let t5 = if tok_kind(r5) == TK_MUT() { 1 } else { 0 };
     let r6 = keyword_or_ident("myvar x", 0, 5);
-    let t6 = if tok_kind(r6) == TK_IDENT() then 1 else 0;
+    let t6 = if tok_kind(r6) == TK_IDENT() { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5 + t6;
 
--- v0.30.163: More next_token tests
+// v0.30.163: More next_token tests
 fn test_next_token_ext() -> i64 =
     let r1 = next_token_raw("* x", 0);
-    let t1 = if tok_kind(r1) == TK_STAR() then 1 else 0;
+    let t1 = if tok_kind(r1) == TK_STAR() { 1 } else { 0 };
     let r2 = next_token_raw("/ x", 0);
-    let t2 = if tok_kind(r2) == TK_SLASH() then 1 else 0;
+    let t2 = if tok_kind(r2) == TK_SLASH() { 1 } else { 0 };
     let r3 = next_token_raw("% x", 0);
-    let t3 = if tok_kind(r3) == TK_PERCENT() then 1 else 0;
+    let t3 = if tok_kind(r3) == TK_PERCENT() { 1 } else { 0 };
     let r4 = next_token_raw("< x", 0);
-    let t4 = if tok_kind(r4) == TK_LT() then 1 else 0;
+    let t4 = if tok_kind(r4) == TK_LT() { 1 } else { 0 };
     let r5 = next_token_raw("> x", 0);
-    let t5 = if tok_kind(r5) == TK_GT() then 1 else 0;
+    let t5 = if tok_kind(r5) == TK_GT() { 1 } else { 0 };
     let r6 = next_token_raw(">= x", 0);
-    let t6 = if tok_kind(r6) == TK_GTEQ() then 1 else 0;
+    let t6 = if tok_kind(r6) == TK_GTEQ() { 1 } else { 0 };
     let r7 = next_token_raw("!= x", 0);
-    let t7 = if tok_kind(r7) == TK_NEQ() then 1 else 0;
+    let t7 = if tok_kind(r7) == TK_NEQ() { 1 } else { 0 };
     let r8 = next_token_raw("; x", 0);
-    let t8 = if tok_kind(r8) == TK_SEMI() then 1 else 0;
+    let t8 = if tok_kind(r8) == TK_SEMI() { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8;
 
--- v0.30.163: Punctuation tokens
+// v0.30.163: Punctuation tokens
 fn test_punctuation_tokens() -> i64 =
     let r1 = next_token_raw(", x", 0);
-    let t1 = if tok_kind(r1) == TK_COMMA() then 1 else 0;
+    let t1 = if tok_kind(r1) == TK_COMMA() { 1 } else { 0 };
     let r2 = next_token_raw("( x", 0);
-    let t2 = if tok_kind(r2) == TK_LPAREN() then 1 else 0;
+    let t2 = if tok_kind(r2) == TK_LPAREN() { 1 } else { 0 };
     let r3 = next_token_raw(") x", 0);
-    let t3 = if tok_kind(r3) == TK_RPAREN() then 1 else 0;
+    let t3 = if tok_kind(r3) == TK_RPAREN() { 1 } else { 0 };
     let r4 = next_token_raw("= x", 0);
-    let t4 = if tok_kind(r4) == TK_EQ() then 1 else 0;
+    let t4 = if tok_kind(r4) == TK_EQ() { 1 } else { 0 };
     let r5 = next_token_raw(".. x", 0);
-    let t5 = if tok_kind(r5) == TK_DOTDOT() then 1 else 0;
+    let t5 = if tok_kind(r5) == TK_DOTDOT() { 1 } else { 0 };
     let r6 = next_token_raw("fn x", 0);
-    let t6 = if tok_kind(r6) == TK_FN() then 1 else 0;
+    let t6 = if tok_kind(r6) == TK_FN() { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5 + t6;
 
--- v0.30.163: Extended S-expression utilities
+// v0.30.163: Extended S-expression utilities
 fn test_sexp_utils_ext() -> i64 =
-    let t1 = if get_node_type("(binop + a b)") == "binop" then 1 else 0;
-    let t2 = if get_node_type("(if c t e)") == "if" then 1 else 0;
-    let t3 = if get_node_type("(let x v b)") == "let" then 1 else 0;
-    let t4 = if get_node_type("(call f a)") == "call" then 1 else 0;
-    let t5 = if get_node_type("(unary - x)") == "unary" then 1 else 0;
-    let t6 = if get_node_type("(param x i64)") == "param" then 1 else 0;
-    let t7 = if get_node_type("(program)") == "program" then 1 else 0;
-    let t8 = if get_node_type("(bool true)") == "bool" then 1 else 0;
+    let t1 = if get_node_type("(binop + a b)") == "binop" { 1 } else { 0 };
+    let t2 = if get_node_type("(if c t e)") == "if" { 1 } else { 0 };
+    let t3 = if get_node_type("(let x v b)") == "let" { 1 } else { 0 };
+    let t4 = if get_node_type("(call f a)") == "call" { 1 } else { 0 };
+    let t5 = if get_node_type("(unary - x)") == "unary" { 1 } else { 0 };
+    let t6 = if get_node_type("(param x i64)") == "param" { 1 } else { 0 };
+    let t7 = if get_node_type("(program)") == "program" { 1 } else { 0 };
+    let t8 = if get_node_type("(bool true)") == "bool" { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8;
 
--- v0.30.163: Low-level character tests
+// v0.30.163: Low-level character tests
 fn test_low_char_funcs() -> i64 =
-    let t1 = if low_is_ident_char(48) then 1 else 0;   -- '0'
-    let t2 = if low_is_ident_char(45) then 1 else 0;   -- '-' (hyphen in names)
-    let t3 = if not low_is_ident_char(32) then 1 else 0;  -- space
-    let t4 = if low_is_op_char(45) then 1 else 0;    -- '-'
-    let t5 = if low_is_op_char(42) then 1 else 0;    -- '*'
-    let t6 = if low_is_op_char(47) then 1 else 0;    -- '/'
-    let t7 = if not low_is_op_char(65) then 1 else 0;  -- 'A'
-    let t8 = if low_is_op_char(37) then 1 else 0;    -- '%'
+    let t1 = if low_is_ident_char(48) { 1 } else { 0 };   // '0'
+    let t2 = if low_is_ident_char(45) { 1 } else { 0 };   // '-' (hyphen in names)
+    let t3 = if not low_is_ident_char(32) { 1 } else { 0 };  // space
+    let t4 = if low_is_op_char(45) { 1 } else { 0 };    // '-'
+    let t5 = if low_is_op_char(42) { 1 } else { 0 };    // '*'
+    let t6 = if low_is_op_char(47) { 1 } else { 0 };    // '/'
+    let t7 = if not low_is_op_char(65) { 1 } else { 0 };  // 'A'
+    let t8 = if low_is_op_char(37) { 1 } else { 0 };    // '%'
     t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8;
 
--- v0.30.163: Find functions extended
+// v0.30.163: Find functions extended
 fn test_find_funcs_ext() -> i64 =
-    let t1 = if find_angle_end("<name>", 0) == 6 then 1 else 0;
-    let t2 = if find_angle_end("<x>", 0) == 3 then 1 else 0;
-    let t3 = if find_number_end("123abc", 0) == 3 then 1 else 0;
-    let t4 = if find_number_end("42", 0) == 2 then 1 else 0;
-    let t5 = if find_digits_end("999x", 0) == 3 then 1 else 0;
-    let t6 = if find_comma_or_end("abc", 0) == 3 then 1 else 0;
-    let t7 = if find_comma_or_end("a,b", 0) == 1 then 1 else 0;
-    let t8 = if low_find_ident_end("foo-bar ", 0) == 7 then 1 else 0;
+    let t1 = if find_angle_end("<name>", 0) == 6 { 1 } else { 0 };
+    let t2 = if find_angle_end("<x>", 0) == 3 { 1 } else { 0 };
+    let t3 = if find_number_end("123abc", 0) == 3 { 1 } else { 0 };
+    let t4 = if find_number_end("42", 0) == 2 { 1 } else { 0 };
+    let t5 = if find_digits_end("999x", 0) == 3 { 1 } else { 0 };
+    let t6 = if find_comma_or_end("abc", 0) == 3 { 1 } else { 0 };
+    let t7 = if find_comma_or_end("a,b", 0) == 1 { 1 } else { 0 };
+    let t8 = if low_find_ident_end("foo-bar ", 0) == 7 { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8;
 
--- v0.30.163: Read S-expression at position
+// v0.30.163: Read S-expression at position
 fn test_read_sexp_at() -> i64 =
-    let t1 = if read_sexp_at("(fn x)", 0) == "(fn x)" then 1 else 0;
-    let t2 = if read_sexp_at("<name>", 0) == "<name>" then 1 else 0;
-    let t3 = if read_sexp_at("42 x", 0) == "42" then 1 else 0;
-    let t4 = if read_sexp_at("abc x", 0) == "abc" then 1 else 0;
-    let t5 = if read_sexp_at("+ x", 0) == "+" then 1 else 0;
-    let t6 = if read_sexp_at("== x", 0) == "==" then 1 else 0;
+    let t1 = if read_sexp_at("(fn x)", 0) == "(fn x)" { 1 } else { 0 };
+    let t2 = if read_sexp_at("<name>", 0) == "<name>" { 1 } else { 0 };
+    let t3 = if read_sexp_at("42 x", 0) == "42" { 1 } else { 0 };
+    let t4 = if read_sexp_at("abc x", 0) == "abc" { 1 } else { 0 };
+    let t5 = if read_sexp_at("+ x", 0) == "+" { 1 } else { 0 };
+    let t6 = if read_sexp_at("== x", 0) == "==" { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5 + t6;
 
--- v0.30.163: Extract name variations
+// v0.30.163: Extract name variations
 fn test_extract_name_ext() -> i64 =
-    let t1 = if extract_name("(fn <add>)") == "add" then 1 else 0;
-    let t2 = if extract_name("(fn <main>)") == "main" then 1 else 0;
-    let t3 = if extract_name("(call <foo>)") == "foo" then 1 else 0;
-    let t4 = if extract_name("(var <x>)") == "x" then 1 else 0;
-    let t5 = if extract_name("(let <val>)") == "val" then 1 else 0;
-    let t6 = if extract_name("(param <n>)") == "n" then 1 else 0;
+    let t1 = if extract_name("(fn <add>)") == "add" { 1 } else { 0 };
+    let t2 = if extract_name("(fn <main>)") == "main" { 1 } else { 0 };
+    let t3 = if extract_name("(call <foo>)") == "foo" { 1 } else { 0 };
+    let t4 = if extract_name("(var <x>)") == "x" { 1 } else { 0 };
+    let t5 = if extract_name("(let <val>)") == "val" { 1 } else { 0 };
+    let t6 = if extract_name("(param <n>)") == "n" { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5 + t6;
 
--- v0.30.163: Extract int value variations
+// v0.30.163: Extract int value variations
 fn test_extract_int_ext() -> i64 =
-    let t1 = if extract_int_value("(int 0)") == 0 then 1 else 0;
-    let t2 = if extract_int_value("(int 1)") == 1 then 1 else 0;
-    let t3 = if extract_int_value("(int 100)") == 100 then 1 else 0;
-    let t4 = if extract_int_value("(int 999)") == 999 then 1 else 0;
-    let t5 = if extract_int_value("(int 12345)") == 12345 then 1 else 0;
-    let t6 = if parse_int_from("42abc", 0, 0) == 42 then 1 else 0;
+    let t1 = if extract_int_value("(int 0)") == 0 { 1 } else { 0 };
+    let t2 = if extract_int_value("(int 1)") == 1 { 1 } else { 0 };
+    let t3 = if extract_int_value("(int 100)") == 100 { 1 } else { 0 };
+    let t4 = if extract_int_value("(int 999)") == 999 { 1 } else { 0 };
+    let t5 = if extract_int_value("(int 12345)") == 12345 { 1 } else { 0 };
+    let t6 = if parse_int_from("42abc", 0, 0) == 42 { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5 + t6;
 
--- v0.30.163: Get child tests
+// v0.30.163: Get child tests
 fn test_get_child() -> i64 =
-    let t1 = if get_child("(binop + a b)", 0) == "+" then 1 else 0;
-    let t2 = if get_child("(binop + a b)", 1) == "a" then 1 else 0;
-    let t3 = if get_child("(binop + a b)", 2) == "b" then 1 else 0;
-    let t4 = if get_child("(if c t e)", 0) == "c" then 1 else 0;
-    let t5 = if get_child("(if c t e)", 1) == "t" then 1 else 0;
-    let t6 = if get_child("(if c t e)", 2) == "e" then 1 else 0;
+    let t1 = if get_child("(binop + a b)", 0) == "+" { 1 } else { 0 };
+    let t2 = if get_child("(binop + a b)", 1) == "a" { 1 } else { 0 };
+    let t3 = if get_child("(binop + a b)", 2) == "b" { 1 } else { 0 };
+    let t4 = if get_child("(if c t e)", 0) == "c" { 1 } else { 0 };
+    let t5 = if get_child("(if c t e)", 1) == "t" { 1 } else { 0 };
+    let t6 = if get_child("(if c t e)", 2) == "e" { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5 + t6;
 
--- v0.30.163: Compiler entry point tests
+// v0.30.163: Compiler entry point tests
 fn test_compile_entry() -> i64 =
-    let t1 = if is_compile_error("ERR:PARSE:test") then 1 else 0;
-    let t2 = if not is_compile_error("define i64") then 1 else 0;
-    let t3 = if get_error_type("ERR:PARSE:msg") == "PARSE" then 1 else 0;
-    let t4 = if get_error_type("ERR:LOWERING:x") == "LOWERING" then 1 else 0;
-    let t5 = if get_error_type("OK result") == "" then 1 else 0;
-    let t6 = if is_compile_error("ERR:") then 1 else 0;
+    let t1 = if is_compile_error("ERR:PARSE:test") { 1 } else { 0 };
+    let t2 = if not is_compile_error("define i64") { 1 } else { 0 };
+    let t3 = if get_error_type("ERR:PARSE:msg") == "PARSE" { 1 } else { 0 };
+    let t4 = if get_error_type("ERR:LOWERING:x") == "LOWERING" { 1 } else { 0 };
+    let t5 = if get_error_type("OK result") == "" { 1 } else { 0 };
+    let t6 = if is_compile_error("ERR:") { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5 + t6;
 
--- v0.30.163: Skip whitespace and comments tests
+// v0.30.163: Skip whitespace and comments tests
 fn test_skip_combined() -> i64 =
-    let t1 = if skip_ws_comments("  abc", 0) == 2 then 1 else 0;
-    let t2 = if skip_ws_comments("-- x", 0) > 0 then 1 else 0;
-    let t3 = if skip_ws_comments("abc", 0) == 0 then 1 else 0;
-    let t4 = if skip_ws_comments("", 0) == 0 then 1 else 0;
-    let t5 = if skip_ws_comments("  -- comment", 0) > 2 then 1 else 0;
-    let t6 = if skip_to_eol("test", 0) == 4 then 1 else 0;
+    let t1 = if skip_ws_comments("  abc", 0) == 2 { 1 } else { 0 };
+    let t2 = if skip_ws_comments("-- x", 0) > 0 { 1 } else { 0 };
+    let t3 = if skip_ws_comments("abc", 0) == 0 { 1 } else { 0 };
+    let t4 = if skip_ws_comments("", 0) == 0 { 1 } else { 0 };
+    let t5 = if skip_ws_comments("  -- comment", 0) > 2 { 1 } else { 0 };
+    let t6 = if skip_to_eol("test", 0) == 4 { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5 + t6;
 
--- v0.30.163: Pack and unpack extended tests
+// v0.30.163: Pack and unpack extended tests
 fn test_pack_unpack_ext() -> i64 =
     let r1 = pack_result(999, "(test)");
-    let t1 = if unpack_pos(r1) == 999 then 1 else 0;
-    let t2 = if unpack_ast(r1) == "(test)" then 1 else 0;
+    let t1 = if unpack_pos(r1) == 999 { 1 } else { 0 };
+    let t2 = if unpack_ast(r1) == "(test)" { 1 } else { 0 };
     let r2 = pack_lower_result("mir code", 42);
-    let t3 = if unpack_temp_id(r2) == 42 then 1 else 0;
-    let t4 = if unpack_text(r2) == "mir code" then 1 else 0;
-    let t5 = if unpack_pos_acc("123:ast", 0, 0) == 123 then 1 else 0;
-    let t6 = if find_colon("test:value", 0) == 4 then 1 else 0;
+    let t3 = if unpack_temp_id(r2) == 42 { 1 } else { 0 };
+    let t4 = if unpack_text(r2) == "mir code" { 1 } else { 0 };
+    let t5 = if unpack_pos_acc("123:ast", 0, 0) == 123 { 1 } else { 0 };
+    let t6 = if find_colon("test:value", 0) == 4 { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5 + t6;
 
--- v0.30.163: LLVM generation tests
+// v0.30.163: LLVM generation tests
 fn test_llvm_gen_basic() -> i64 =
-    let t1 = if has_pattern(gen_extern_println(), "println", 0) then 1 else 0;
-    let t2 = if has_pattern(gen_extern_abs(), "abs", 0) then 1 else 0;
-    let t3 = if has_pattern(gen_extern_min(), "min", 0) then 1 else 0;
-    let t4 = if has_pattern(gen_extern_max(), "max", 0) then 1 else 0;
+    let t1 = if has_pattern(gen_extern_println(), "println", 0) { 1 } else { 0 };
+    let t2 = if has_pattern(gen_extern_abs(), "abs", 0) { 1 } else { 0 };
+    let t3 = if has_pattern(gen_extern_min(), "min", 0) { 1 } else { 0 };
+    let t4 = if has_pattern(gen_extern_max(), "max", 0) { 1 } else { 0 };
     let decls = gen_runtime_decls();
-    let t5 = if has_pattern(decls, "declare", 0) then 1 else 0;
-    let t6 = if has_pattern(decls, "i64", 0) then 1 else 0;
+    let t5 = if has_pattern(decls, "declare", 0) { 1 } else { 0 };
+    let t6 = if has_pattern(decls, "i64", 0) { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5 + t6;
 
--- v0.30.163: Trim and end tests
+// v0.30.163: Trim and end tests
 fn test_trim_ends() -> i64 =
-    let t1 = if trim_end("abc   ") == "abc" then 1 else 0;
-    let t2 = if trim_end("x") == "x" then 1 else 0;
-    let t3 = if trim_end("  y  ") == "  y" then 1 else 0;
-    let t4 = if ends_with_colon("block:") then 1 else 0;
-    let t5 = if not ends_with_colon("block") then 1 else 0;
-    let t6 = if ends_with_colon("then_0:") then 1 else 0;
+    let t1 = if trim_end("abc   ") == "abc" { 1 } else { 0 };
+    let t2 = if trim_end("x") == "x" { 1 } else { 0 };
+    let t3 = if trim_end("  y  ") == "  y" { 1 } else { 0 };
+    let t4 = if ends_with_colon("block:") { 1 } else { 0 };
+    let t5 = if not ends_with_colon("block") { 1 } else { 0 };
+    let t6 = if ends_with_colon("then_0:") { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5 + t6;
 
--- v0.30.163: Low skip and find tests
+// v0.30.163: Low skip and find tests
 fn test_low_skip_find() -> i64 =
-    let t1 = if low_skip_ws("   abc", 0) == 3 then 1 else 0;
-    let t2 = if low_skip_ws("abc", 0) == 0 then 1 else 0;
-    let t3 = if low_find_close_paren("(a)", 0, 0) == 2 then 1 else 0;
-    let t4 = if low_find_close_paren("((a))", 0, 0) == 4 then 1 else 0;
-    let t5 = if low_find_ident_end("test123", 0) == 7 then 1 else 0;
-    let t6 = if low_find_op_end("<= x", 0) == 2 then 1 else 0;
+    let t1 = if low_skip_ws("   abc", 0) == 3 { 1 } else { 0 };
+    let t2 = if low_skip_ws("abc", 0) == 0 { 1 } else { 0 };
+    let t3 = if low_find_close_paren("(a)", 0, 0) == 2 { 1 } else { 0 };
+    let t4 = if low_find_close_paren("((a))", 0, 0) == 4 { 1 } else { 0 };
+    let t5 = if low_find_ident_end("test123", 0) == 7 { 1 } else { 0 };
+    let t6 = if low_find_op_end("<= x", 0) == 2 { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5 + t6;
 
--- v0.30.175: Test is_ident_start function
+// v0.30.175: Test is_ident_start function
 fn test_is_ident_start() -> i64 =
-    let t1 = if is_ident_start(97) then 1 else 0;   -- 'a'
-    let t2 = if is_ident_start(122) then 1 else 0;  -- 'z'
-    let t3 = if is_ident_start(65) then 1 else 0;   -- 'A'
-    let t4 = if is_ident_start(90) then 1 else 0;   -- 'Z'
-    let t5 = if is_ident_start(95) then 1 else 0;   -- '_'
-    let t6 = if not is_ident_start(48) then 1 else 0;  -- '0' not valid start
-    let t7 = if not is_ident_start(57) then 1 else 0;  -- '9' not valid start
-    let t8 = if not is_ident_start(32) then 1 else 0;  -- space not valid
+    let t1 = if is_ident_start(97) { 1 } else { 0 };   // 'a'
+    let t2 = if is_ident_start(122) { 1 } else { 0 };  // 'z'
+    let t3 = if is_ident_start(65) { 1 } else { 0 };   // 'A'
+    let t4 = if is_ident_start(90) { 1 } else { 0 };   // 'Z'
+    let t5 = if is_ident_start(95) { 1 } else { 0 };   // '_'
+    let t6 = if not is_ident_start(48) { 1 } else { 0 };  // '0' not valid start
+    let t7 = if not is_ident_start(57) { 1 } else { 0 };  // '9' not valid start
+    let t8 = if not is_ident_start(32) { 1 } else { 0 };  // space not valid
     t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8;
 
--- v0.30.175: Test tok encoding edge cases
+// v0.30.175: Test tok encoding edge cases
 fn test_tok_encoding_bounds() -> i64 =
-    -- Test make_tok and accessors
+    // Test make_tok and accessors
     let r1 = make_tok(1, 0);
-    let t1 = if tok_kind(r1) == 1 then 1 else 0;
-    let t2 = if tok_end(r1) == 0 then 1 else 0;
-    -- Test with larger values
+    let t1 = if tok_kind(r1) == 1 { 1 } else { 0 };
+    let t2 = if tok_end(r1) == 0 { 1 } else { 0 };
+    // Test with larger values
     let r2 = make_tok(100, 500);
-    let t3 = if tok_kind(r2) == 100 then 1 else 0;
-    let t4 = if tok_end(r2) == 500 then 1 else 0;
-    -- Test tok_val (same as tok_kind)
-    let t5 = if tok_val(r2) == 100 then 1 else 0;
-    -- Test with max values
+    let t3 = if tok_kind(r2) == 100 { 1 } else { 0 };
+    let t4 = if tok_end(r2) == 500 { 1 } else { 0 };
+    // Test tok_val (same as tok_kind)
+    let t5 = if tok_val(r2) == 100 { 1 } else { 0 };
+    // Test with max values
     let r3 = make_tok(999, 999999);
-    let t6 = if tok_kind(r3) == 999 then 1 else 0;
+    let t6 = if tok_kind(r3) == 999 { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5 + t6;
 
--- v0.30.175: Test scan functions edge cases
+// v0.30.175: Test scan functions edge cases
 fn test_scan_edge_cases() -> i64 =
-    -- scan_int at different positions
-    let t1 = if scan_int("123abc", 0, 0) > 0 then 1 else 0;
-    let t2 = if scan_int("abc123", 3, 0) > 0 then 1 else 0;
-    -- scan_ident_end at different positions (scans alnum and underscore)
-    let t3 = if scan_ident_end("abc", 0) == 3 then 1 else 0;
-    let t4 = if scan_ident_end("a1_", 0) == 3 then 1 else 0;
-    let t5 = if scan_ident_end("_test", 0) == 5 then 1 else 0;
-    let t6 = if scan_ident_end("abc def", 0) == 3 then 1 else 0;  -- stops at space
+    // scan_int at different positions
+    let t1 = if scan_int("123abc", 0, 0) > 0 { 1 } else { 0 };
+    let t2 = if scan_int("abc123", 3, 0) > 0 { 1 } else { 0 };
+    // scan_ident_end at different positions (scans alnum and underscore)
+    let t3 = if scan_ident_end("abc", 0) == 3 { 1 } else { 0 };
+    let t4 = if scan_ident_end("a1_", 0) == 3 { 1 } else { 0 };
+    let t5 = if scan_ident_end("_test", 0) == 5 { 1 } else { 0 };
+    let t6 = if scan_ident_end("abc def", 0) == 3 { 1 } else { 0 };  // stops at space
     t1 + t2 + t3 + t4 + t5 + t6;
 
--- v0.30.175: Test skip functions combined
+// v0.30.175: Test skip functions combined
 fn test_skip_functions_ext() -> i64 =
-    -- skip_to_eol variations (no newline in test string)
-    let t1 = if skip_to_eol("abc", 0) == 3 then 1 else 0;  -- at end
-    let t2 = if skip_to_eol("abcdef", 0) == 6 then 1 else 0;  -- longer
-    -- skip_comment variations (no comment)
-    let t3 = if skip_comment("abc", 0) == 0 then 1 else 0;  -- no comment
-    let t4 = if skip_comment("xyz", 0) == 0 then 1 else 0;  -- no comment
-    -- skip_ws_comments combined
-    let t5 = if skip_ws_comments("   abc", 0) == 3 then 1 else 0;
-    let t6 = if skip_ws_comments("      x", 0) == 6 then 1 else 0;
+    // skip_to_eol variations (no newline in test string)
+    let t1 = if skip_to_eol("abc", 0) == 3 { 1 } else { 0 };  // at end
+    let t2 = if skip_to_eol("abcdef", 0) == 6 { 1 } else { 0 };  // longer
+    // skip_comment variations (no comment)
+    let t3 = if skip_comment("abc", 0) == 0 { 1 } else { 0 };  // no comment
+    let t4 = if skip_comment("xyz", 0) == 0 { 1 } else { 0 };  // no comment
+    // skip_ws_comments combined
+    let t5 = if skip_ws_comments("   abc", 0) == 3 { 1 } else { 0 };
+    let t6 = if skip_ws_comments("      x", 0) == 6 { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5 + t6;
 
--- v0.30.175: Test all keywords via keyword_or_ident (using tok_kind)
+// v0.30.175: Test all keywords via keyword_or_ident (using tok_kind)
 fn test_keyword_all() -> i64 =
-    -- Test all keywords return correct token kinds
-    let t1 = if tok_kind(keyword_or_ident("fn x", 0, 2)) == TK_FN() then 1 else 0;
-    let t2 = if tok_kind(keyword_or_ident("let x", 0, 3)) == TK_LET() then 1 else 0;
-    let t3 = if tok_kind(keyword_or_ident("if x", 0, 2)) == TK_IF() then 1 else 0;
-    let t4 = if tok_kind(keyword_or_ident("then x", 0, 4)) == TK_THEN() then 1 else 0;
-    let t5 = if tok_kind(keyword_or_ident("else x", 0, 4)) == TK_ELSE() then 1 else 0;
-    let t6 = if tok_kind(keyword_or_ident("true x", 0, 4)) == TK_TRUE() then 1 else 0;
-    let t7 = if tok_kind(keyword_or_ident("false x", 0, 5)) == TK_FALSE() then 1 else 0;
-    let t8 = if tok_kind(keyword_or_ident("and x", 0, 3)) == TK_AND() then 1 else 0;
-    let t9 = if tok_kind(keyword_or_ident("or x", 0, 2)) == TK_OR() then 1 else 0;
-    let t10 = if tok_kind(keyword_or_ident("not x", 0, 3)) == TK_NOT() then 1 else 0;
+    // Test all keywords return correct token kinds
+    let t1 = if tok_kind(keyword_or_ident("fn x", 0, 2)) == TK_FN() { 1 } else { 0 };
+    let t2 = if tok_kind(keyword_or_ident("let x", 0, 3)) == TK_LET() { 1 } else { 0 };
+    let t3 = if tok_kind(keyword_or_ident("if x", 0, 2)) == TK_IF() { 1 } else { 0 };
+    let t4 = if tok_kind(keyword_or_ident("then x", 0, 4)) == TK_THEN() { 1 } else { 0 };
+    let t5 = if tok_kind(keyword_or_ident("else x", 0, 4)) == TK_ELSE() { 1 } else { 0 };
+    let t6 = if tok_kind(keyword_or_ident("true x", 0, 4)) == TK_TRUE() { 1 } else { 0 };
+    let t7 = if tok_kind(keyword_or_ident("false x", 0, 5)) == TK_FALSE() { 1 } else { 0 };
+    let t8 = if tok_kind(keyword_or_ident("and x", 0, 3)) == TK_AND() { 1 } else { 0 };
+    let t9 = if tok_kind(keyword_or_ident("or x", 0, 2)) == TK_OR() { 1 } else { 0 };
+    let t10 = if tok_kind(keyword_or_ident("not x", 0, 3)) == TK_NOT() { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t9 + t10;
 
--- v0.30.175: Test get_node_type variations
+// v0.30.175: Test get_node_type variations
 fn test_get_node_type_ext() -> i64 =
-    let t1 = if get_node_type("(int 42)") == "int" then 1 else 0;
-    let t2 = if get_node_type("(var <x>)") == "var" then 1 else 0;
-    let t3 = if get_node_type("(binop + a b)") == "binop" then 1 else 0;
-    let t4 = if get_node_type("(call <f> args)") == "call" then 1 else 0;
-    let t5 = if get_node_type("(if c t e)") == "if" then 1 else 0;
-    let t6 = if get_node_type("(let <x> v)") == "let" then 1 else 0;
+    let t1 = if get_node_type("(int 42)") == "int" { 1 } else { 0 };
+    let t2 = if get_node_type("(var <x>)") == "var" { 1 } else { 0 };
+    let t3 = if get_node_type("(binop + a b)") == "binop" { 1 } else { 0 };
+    let t4 = if get_node_type("(call <f> args)") == "call" { 1 } else { 0 };
+    let t5 = if get_node_type("(if c t e)") == "if" { 1 } else { 0 };
+    let t6 = if get_node_type("(let <x> v)") == "let" { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5 + t6;
 
--- v0.30.175: Test get_child edge cases
+// v0.30.175: Test get_child edge cases
 fn test_get_child_ext() -> i64 =
     let ast = "(binop + (int 1) (int 2))";
-    let t1 = if get_child(ast, 0) == "+" then 1 else 0;
-    let t2 = if get_child(ast, 1) == "(int 1)" then 1 else 0;
-    let t3 = if get_child(ast, 2) == "(int 2)" then 1 else 0;
-    -- Test nested
+    let t1 = if get_child(ast, 0) == "+" { 1 } else { 0 };
+    let t2 = if get_child(ast, 1) == "(int 1)" { 1 } else { 0 };
+    let t3 = if get_child(ast, 2) == "(int 2)" { 1 } else { 0 };
+    // Test nested
     let ast2 = "(fn <test> i64 (int 42))";
-    let t4 = if get_child(ast2, 0) == "<test>" then 1 else 0;
-    let t5 = if get_child(ast2, 1) == "i64" then 1 else 0;
-    let t6 = if get_child(ast2, 2) == "(int 42)" then 1 else 0;
+    let t4 = if get_child(ast2, 0) == "<test>" { 1 } else { 0 };
+    let t5 = if get_child(ast2, 1) == "i64" { 1 } else { 0 };
+    let t6 = if get_child(ast2, 2) == "(int 42)" { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5 + t6;
 
--- v0.30.175: Test low_starts_with_at
+// v0.30.175: Test low_starts_with_at
 fn test_low_starts_with() -> i64 =
-    let t1 = if low_starts_with_at("hello", 0, "he") then 1 else 0;
-    let t2 = if low_starts_with_at("hello", 0, "hello") then 1 else 0;
-    let t3 = if not low_starts_with_at("hello", 0, "world") then 1 else 0;
-    let t4 = if low_starts_with_at("hello", 2, "ll") then 1 else 0;
-    let t5 = if not low_starts_with_at("hi", 0, "hello") then 1 else 0;
-    let t6 = if low_starts_with_at("test", 0, "") then 1 else 0;
+    let t1 = if low_starts_with_at("hello", 0, "he") { 1 } else { 0 };
+    let t2 = if low_starts_with_at("hello", 0, "hello") { 1 } else { 0 };
+    let t3 = if not low_starts_with_at("hello", 0, "world") { 1 } else { 0 };
+    let t4 = if low_starts_with_at("hello", 2, "ll") { 1 } else { 0 };
+    let t5 = if not low_starts_with_at("hi", 0, "hello") { 1 } else { 0 };
+    let t6 = if low_starts_with_at("test", 0, "") { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5 + t6;
 
--- v0.30.175: Test extract_paren_content
+// v0.30.175: Test extract_paren_content
 fn test_extract_paren() -> i64 =
-    let t1 = if extract_paren_content("(abc)") == "abc" then 1 else 0;
-    let t2 = if extract_paren_content("(a b c)") == "a b c" then 1 else 0;
-    let t3 = if extract_paren_content("((nested))") == "(nested)" then 1 else 0;
-    let t4 = if extract_paren_content("(int 42)") == "int 42" then 1 else 0;
-    let t5 = if extract_paren_content("()") == "" then 1 else 0;
-    let t6 = if extract_paren_content("(x)") == "x" then 1 else 0;
+    let t1 = if extract_paren_content("(abc)") == "abc" { 1 } else { 0 };
+    let t2 = if extract_paren_content("(a b c)") == "a b c" { 1 } else { 0 };
+    let t3 = if extract_paren_content("((nested))") == "(nested)" { 1 } else { 0 };
+    let t4 = if extract_paren_content("(int 42)") == "int 42" { 1 } else { 0 };
+    let t5 = if extract_paren_content("()") == "" { 1 } else { 0 };
+    let t6 = if extract_paren_content("(x)") == "x" { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5 + t6;
 
--- v0.30.175: Test read_sexp_at variations
+// v0.30.175: Test read_sexp_at variations
 fn test_read_sexp_variations() -> i64 =
-    let t1 = if read_sexp_at("(int 1)", 0) == "(int 1)" then 1 else 0;
-    let t2 = if read_sexp_at("(a) (b)", 0) == "(a)" then 1 else 0;
-    let t3 = if read_sexp_at("(a) (b)", 4) == "(b)" then 1 else 0;
-    let t4 = if read_sexp_at("abc def", 0) == "abc" then 1 else 0;
-    let t5 = if read_sexp_at("abc def", 4) == "def" then 1 else 0;
-    let t6 = if read_sexp_at("((nested))", 0) == "((nested))" then 1 else 0;
+    let t1 = if read_sexp_at("(int 1)", 0) == "(int 1)" { 1 } else { 0 };
+    let t2 = if read_sexp_at("(a) (b)", 0) == "(a)" { 1 } else { 0 };
+    let t3 = if read_sexp_at("(a) (b)", 4) == "(b)" { 1 } else { 0 };
+    let t4 = if read_sexp_at("abc def", 0) == "abc" { 1 } else { 0 };
+    let t5 = if read_sexp_at("abc def", 4) == "def" { 1 } else { 0 };
+    let t6 = if read_sexp_at("((nested))", 0) == "((nested))" { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5 + t6;
 
--- v0.30.190: Test has_pattern extended
+// v0.30.190: Test has_pattern extended
 fn test_has_pattern_ext() -> i64 =
-    let t1 = if has_pattern("hello world", "world", 0) then 1 else 0;
-    let t2 = if has_pattern("abcabc", "abc", 0) then 1 else 0;
-    let t3 = if not has_pattern("hello", "xyz", 0) then 1 else 0;
-    let t4 = if has_pattern("test", "test", 0) then 1 else 0;
-    let t5 = if has_pattern("abc", "c", 0) then 1 else 0;
-    let t6 = if not has_pattern("ab", "abc", 0) then 1 else 0;
+    let t1 = if has_pattern("hello world", "world", 0) { 1 } else { 0 };
+    let t2 = if has_pattern("abcabc", "abc", 0) { 1 } else { 0 };
+    let t3 = if not has_pattern("hello", "xyz", 0) { 1 } else { 0 };
+    let t4 = if has_pattern("test", "test", 0) { 1 } else { 0 };
+    let t5 = if has_pattern("abc", "c", 0) { 1 } else { 0 };
+    let t6 = if not has_pattern("ab", "abc", 0) { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5 + t6;
 
--- v0.30.190: Test make_tok variations
+// v0.30.190: Test make_tok variations
 fn test_make_tok_variations() -> i64 =
-    let t1 = if make_tok(100, 5) == 100000005 then 1 else 0;
-    let t2 = if make_tok(200, 10) == 200000010 then 1 else 0;
-    let t3 = if make_tok(0, 0) == 0 then 1 else 0;
-    let t4 = if make_tok(999, 999) == 999000999 then 1 else 0;
-    let t5 = if tok_kind(make_tok(150, 20)) == 150 then 1 else 0;
-    let t6 = if tok_end(make_tok(151, 30)) == 30 then 1 else 0;
+    let t1 = if make_tok(100, 5) == 100000005 { 1 } else { 0 };
+    let t2 = if make_tok(200, 10) == 200000010 { 1 } else { 0 };
+    let t3 = if make_tok(0, 0) == 0 { 1 } else { 0 };
+    let t4 = if make_tok(999, 999) == 999000999 { 1 } else { 0 };
+    let t5 = if tok_kind(make_tok(150, 20)) == 150 { 1 } else { 0 };
+    let t6 = if tok_end(make_tok(151, 30)) == 30 { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5 + t6;
 
--- v0.30.190: Test skip_comment extended
+// v0.30.190: Test skip_comment extended
 fn test_skip_comment_ext() -> i64 =
-    let t1 = if skip_to_eol("no newline", 0) == 10 then 1 else 0;
-    let t2 = if skip_to_eol("abc", 0) == 3 then 1 else 0;
-    let t3 = if skip_comment("no comment", 0) == 0 then 1 else 0;
-    let t4 = if skip_comment("-- x", 0) == 4 then 1 else 0;
-    let t5 = if skip_ws_comments("abc", 0) == 0 then 1 else 0;
-    let t6 = if skip_ws_comments("   abc", 0) == 3 then 1 else 0;
+    let t1 = if skip_to_eol("no newline", 0) == 10 { 1 } else { 0 };
+    let t2 = if skip_to_eol("abc", 0) == 3 { 1 } else { 0 };
+    let t3 = if skip_comment("no comment", 0) == 0 { 1 } else { 0 };
+    let t4 = if skip_comment("-- x", 0) == 4 { 1 } else { 0 };
+    let t5 = if skip_ws_comments("abc", 0) == 0 { 1 } else { 0 };
+    let t6 = if skip_ws_comments("   abc", 0) == 3 { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5 + t6;
 
--- v0.30.190: Test keyword_or_ident extended
+// v0.30.190: Test keyword_or_ident extended
 fn test_keyword_or_ident_ext() -> i64 =
     let r1 = keyword_or_ident("fn test", 0, 2);
-    let t1 = if tok_kind(r1) == TK_FN() then 1 else 0;
+    let t1 = if tok_kind(r1) == TK_FN() { 1 } else { 0 };
     let r2 = keyword_or_ident("let x", 0, 3);
-    let t2 = if tok_kind(r2) == TK_LET() then 1 else 0;
+    let t2 = if tok_kind(r2) == TK_LET() { 1 } else { 0 };
     let r3 = keyword_or_ident("i64 y", 0, 3);
-    let t3 = if tok_kind(r3) == TK_I64() then 1 else 0;
+    let t3 = if tok_kind(r3) == TK_I64() { 1 } else { 0 };
     let r4 = keyword_or_ident("myvar", 0, 5);
-    let t4 = if tok_kind(r4) == TK_IDENT() then 1 else 0;
+    let t4 = if tok_kind(r4) == TK_IDENT() { 1 } else { 0 };
     let r5 = keyword_or_ident("true x", 0, 4);
-    let t5 = if tok_kind(r5) == TK_TRUE() then 1 else 0;
+    let t5 = if tok_kind(r5) == TK_TRUE() { 1 } else { 0 };
     let r6 = keyword_or_ident("false y", 0, 5);
-    let t6 = if tok_kind(r6) == TK_FALSE() then 1 else 0;
+    let t6 = if tok_kind(r6) == TK_FALSE() { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5 + t6;
 
--- v0.30.190: Test scan functions extended
+// v0.30.190: Test scan functions extended
 fn test_scan_funcs_ext() -> i64 =
     let r1 = scan_int("12345", 0, 0);
-    let t1 = if tok_val(r1) == 12345 then 1 else 0;
+    let t1 = if tok_val(r1) == 12345 { 1 } else { 0 };
     let r2 = scan_int("999 abc", 0, 0);
-    let t2 = if tok_val(r2) == 999 then 1 else 0;
-    let t3 = if scan_ident_end("abc123 x", 0) == 6 then 1 else 0;
-    let t4 = if scan_ident_end("_var", 0) == 4 then 1 else 0;
+    let t2 = if tok_val(r2) == 999 { 1 } else { 0 };
+    let t3 = if scan_ident_end("abc123 x", 0) == 6 { 1 } else { 0 };
+    let t4 = if scan_ident_end("_var", 0) == 4 { 1 } else { 0 };
     let r5 = scan_int("0", 0, 0);
-    let t5 = if tok_val(r5) == 0 then 1 else 0;
-    let t6 = if scan_ident_end("x", 0) == 1 then 1 else 0;
+    let t5 = if tok_val(r5) == 0 { 1 } else { 0 };
+    let t6 = if scan_ident_end("x", 0) == 1 { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5 + t6;
 
--- ============================================================================
--- CLI Entry Point (v0.32 Independence)
--- ============================================================================
+// ============================================================================
+// CLI Entry Point (v0.32 Independence)
+// ============================================================================
 
 fn print_nl(s: String) -> i64 =
     let x = print_str(s);
@@ -2080,31 +2680,35 @@ fn print_nl(s: String) -> i64 =
 
 fn cli_main() -> i64 =
     let argc = arg_count();
-    if argc < 2 then
+    if argc < 2 {
         let x = print_nl("BMB Unified Compiler (v0.32)");
         let y = print_nl("Usage: bmb_unified <input.bmb> [output.ll]");
         1
-    else
+    } else {
         let input_file = get_arg(1);
         let source = read_file(input_file);
-        if source == "" then
+        if source == "" {
             let x = print_str("Error: Cannot read file: ");
             let y = print_nl(input_file);
             2
-        else
+        } else {
             let result = compile_program(source);
-            if argc >= 3 then
+            if argc >= 3 {
                 let output_file = get_arg(2);
                 let w = write_file(output_file, result);
-                if w == 0 then
+                if w == 0 {
                     let x = print_str("Compiled: ");
                     let y = print_nl(output_file);
                     0
-                else
+                } else {
                     let x = print_nl("Error: Cannot write output");
                     3
-            else
+                }
+            } else {
                 let x = print_str(result);
-                0;
+                0
+            }
+        }
+    };
 
 fn main() -> i64 = cli_main();

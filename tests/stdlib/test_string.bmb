@@ -1,5 +1,5 @@
--- Tests for stdlib/string module
--- Verifies string utility functions
+// Tests for stdlib/string module
+// Verifies string utility functions
 
 use string::char_is_whitespace;
 use string::char_is_digit;
@@ -16,7 +16,7 @@ use string::parse_uint;
 use string::string_eq;
 use string::is_blank;
 
--- Test character classification
+// Test character classification
 fn test_char_is_whitespace_space() -> bool
   post ret == true
 = char_is_whitespace(32);
@@ -69,7 +69,7 @@ fn test_char_is_alpha_digit() -> bool
   post ret == false
 = char_is_alpha(48);
 
--- Test character conversion
+// Test character conversion
 fn test_char_to_upper_a() -> i64
   post ret == 65
 = char_to_upper(97);
@@ -94,7 +94,7 @@ fn test_digit_to_int_9() -> i64
   post ret == 9
 = digit_to_int(57);
 
--- Test string search
+// Test string search
 fn test_starts_with_true() -> bool
   post ret == true
 = starts_with("hello world", "hello");
@@ -117,13 +117,13 @@ fn test_ends_with_false() -> bool
 
 fn test_index_of_char_found() -> i64
   post ret == 4
-= index_of_char("hello", 111);  -- 'o' is 111
+= index_of_char("hello", 111);  // 'o' is 111
 
 fn test_index_of_char_not_found() -> i64
   post ret == -1
-= index_of_char("hello", 120);  -- 'x' is 120
+= index_of_char("hello", 120);  // 'x' is 120
 
--- Test parsing
+// Test parsing
 fn test_parse_uint_valid() -> i64
   post ret == 123
 = parse_uint("123");
@@ -136,7 +136,7 @@ fn test_parse_uint_empty() -> i64
   post ret == -1
 = parse_uint("");
 
--- Test string comparison
+// Test string comparison
 fn test_string_eq_true() -> bool
   post ret == true
 = string_eq("hello", "hello");
@@ -149,7 +149,7 @@ fn test_string_eq_different_length() -> bool
   post ret == false
 = string_eq("hello", "hello world");
 
--- Test utilities
+// Test utilities
 fn test_is_blank_empty() -> bool
   post ret == true
 = is_blank("");
@@ -162,7 +162,7 @@ fn test_is_blank_text() -> bool
   post ret == false
 = is_blank("hello");
 
--- Main test runner
+// Main test runner
 fn main() -> i64 =
     let t1 = test_char_is_whitespace_space();
     let t2 = test_char_is_digit_zero();

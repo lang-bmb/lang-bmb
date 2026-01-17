@@ -1,35 +1,35 @@
--- v0.13.1: Generic types and type parameters
+// v0.13.1: Generic types and type parameters
 
--- Generic struct with one type parameter
+// Generic struct with one type parameter
 struct Container<T> {
     value: T,
 }
 
--- Generic struct with multiple type parameters
+// Generic struct with multiple type parameters
 struct Pair<T, U> {
     first: T,
     second: U,
 }
 
--- Generic enum (like Option or Result)
-enum Option<T> {
+// Generic enum (like Option or Result)
+enum T? {
     Some(T),
     None,
 }
 
--- Generic enum with multiple type parameters (like Result)
+// Generic enum with multiple type parameters (like Result)
 enum Result<T, E> {
     Ok(T),
     Err(E),
 }
 
--- Generic function: identity function
+// Generic function: identity function
 fn identity<T>(x: T) -> T = x;
 
--- Generic function with multiple type parameters
+// Generic function with multiple type parameters
 fn swap<T, U>(a: T, b: U) -> U = b;
 
--- Using generic types
+// Using generic types
 fn main() -> i64 = {
     let x: i64 = 42;
     x

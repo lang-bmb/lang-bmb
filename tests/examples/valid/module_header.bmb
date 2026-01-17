@@ -1,5 +1,5 @@
--- Module Header System Test (v0.31: RFC-0002)
--- Tests the module header syntax with all optional fields
+// Module Header System Test (v0.31: RFC-0002)
+// Tests the module header syntax with all optional fields
 
 module math.arithmetic
   version "1.0.0"
@@ -9,11 +9,11 @@ module math.arithmetic
     core.types (i64)
 ===
 
--- Simple addition function
+// Simple addition function
 fn add(a: i64, b: i64) -> i64 = a + b;
 
--- Subtraction function
+// Subtraction function
 fn subtract(a: i64, b: i64) -> i64 = a - b;
 
--- Multiplication function
+// Multiplication function
 fn multiply(a: i64, b: i64) -> i64 = a * b;

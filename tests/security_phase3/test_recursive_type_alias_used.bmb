@@ -1,0 +1,5 @@
+// Phase 3 Security Test: Recursive type alias (used)
+type A = B;
+type B = A;
+fn test(x: A) -> A = x;
+fn main() -> i64 = 0;

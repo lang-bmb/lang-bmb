@@ -1,326 +1,261 @@
--- BMB Bootstrap Utilities (v0.30.196: Extended test suite)
--- Shared utility functions for all bootstrap modules
--- Consolidates common string operations to reduce code duplication
---
--- This module provides:
--- 1. Character classification (is_digit, is_alpha, etc.)
--- 2. Character conversion (int_to_string, char_to_string, etc.)
--- 3. Integer parsing (parse_int, parse_int_signed, etc.)
--- 4. String searching (find_char, find_pattern, etc.)
--- 5. String matching (starts_with, etc.)
--- 6. String extraction (read_until_ws, etc.)
--- 7. Comment handling (skip_comment, skip_all)
--- 8. Error handling (is_error, make_error, get_error_msg)
--- 9. Result packing (pack_result, unpack_pos, unpack_ast)
--- 10. Token encoding (tok_encode, tok_kind, tok_end)
---
--- USAGE:
--- These functions are designed to be copied or imported by other bootstrap modules.
--- The bootstrap system doesn't yet support true module imports, so this file
--- serves as the canonical reference implementation.
+// BMB Bootstrap Utilities (v0.30.196: Extended test suite)
+// Shared utility functions for all bootstrap modules
+// Consolidates common string operations to reduce code duplication
+//
+// This module provides:
+// 1. Character classification (is_digit, is_alpha, etc.)
+// 2. Character conversion (int_to_string, char_to_string, etc.)
+// 3. Integer parsing (parse_int, parse_int_signed, etc.)
+// 4. String searching (find_char, find_pattern, etc.)
+// 5. String matching (starts_with, etc.)
+// 6. String extraction (read_until_ws, etc.)
+// 7. Comment handling (skip_comment, skip_all)
+// 8. Error handling (is_error, make_error, get_error_msg)
+// 9. Result packing (pack_result, unpack_pos, unpack_ast)
+// 10. Token encoding (tok_encode, tok_kind, tok_end)
+//
+// USAGE:
+// These functions are designed to be copied or imported by other bootstrap modules.
+// The bootstrap system doesn't yet support true module imports, so this file
+// serves as the canonical reference implementation.
 
--- ============================================================================
--- SECTION 1: Character Classification
--- ============================================================================
+// ============================================================================
+// SECTION 1: Character Classification
+// ============================================================================
 
--- Check if character is whitespace (space=32, tab=9, newline=10, CR=13)
+// Check if character is whitespace (space=32, tab=9, newline=10, CR=13)
 fn is_whitespace(c: i64) -> bool = c == 32 or c == 9 or c == 10 or c == 13;
 
--- Check if character is a digit (0-9, ASCII 48-57)
+// Check if character is a digit (0-9, ASCII 48-57)
 fn is_digit(c: i64) -> bool = c >= 48 and c <= 57;
 
--- Check if character is a letter (a-z=97-122, A-Z=65-90)
+// Check if character is a letter (a-z=97-122, A-Z=65-90)
 fn is_alpha(c: i64) -> bool = (c >= 65 and c <= 90) or (c >= 97 and c <= 122);
 
--- Check if character is alphanumeric (letter or digit)
+// Check if character is alphanumeric (letter or digit)
 fn is_alnum(c: i64) -> bool = is_alpha(c) or is_digit(c);
 
--- Check if character is alphanumeric or underscore (95)
+// Check if character is alphanumeric or underscore (95)
 fn is_alnum_or_underscore(c: i64) -> bool = is_alpha(c) or is_digit(c) or c == 95;
 
--- Check if character can start an identifier (letter or underscore)
+// Check if character can start an identifier (letter or underscore)
 fn is_ident_start(c: i64) -> bool = is_alpha(c) or c == 95;
 
--- ============================================================================
--- SECTION 2: Character Conversion
--- ============================================================================
+// ============================================================================
+// SECTION 2: Character Conversion
+// ============================================================================
 
--- Convert digit character to integer value
+// Convert digit character to integer value
 fn digit_to_int(c: i64) -> i64 = c - 48;
 
--- Convert single digit (0-9) to character string
+// Convert single digit (0-9) to character string
 fn digit_char(d: i64) -> String =
-    if d == 0 then "0" else if d == 1 then "1" else if d == 2 then "2"
-    else if d == 3 then "3" else if d == 4 then "4" else if d == 5 then "5"
-    else if d == 6 then "6" else if d == 7 then "7" else if d == 8 then "8"
-    else "9";
+    if d == 0 { "0" } else if d == 1 { "1" } else if d == 2 { "2" } else if d == 3 { "3" } else if d == 4 { "4" } else if d == 5 { "5" } else if d == 6 { "6" } else if d == 7 { "7" } else if d == 8 { "8" } else { "9" };
 
--- Convert integer to string (handles negative numbers)
+// Convert integer to string (handles negative numbers)
 fn int_to_string(n: i64) -> String =
-    if n < 0 then "-" + int_to_string(0 - n)
-    else if n < 10 then digit_char(n)
-    else int_to_string(n / 10) + digit_char(n - (n / 10) * 10);
+    if n < 0 { "-" + int_to_string(0 - n) } else if n < 10 { digit_char(n) } else { int_to_string(n / 10) + digit_char(n - (n / 10) * 10) };
 
--- Convert uppercase letter (A-Z) to string
+// Convert uppercase letter (A-Z) to string
 fn char_upper(c: i64) -> String =
-    if c == 65 then "A" else if c == 66 then "B" else if c == 67 then "C"
-    else if c == 68 then "D" else if c == 69 then "E" else if c == 70 then "F"
-    else if c == 71 then "G" else if c == 72 then "H" else if c == 73 then "I"
-    else if c == 74 then "J" else if c == 75 then "K" else if c == 76 then "L"
-    else if c == 77 then "M" else if c == 78 then "N" else if c == 79 then "O"
-    else if c == 80 then "P" else if c == 81 then "Q" else if c == 82 then "R"
-    else if c == 83 then "S" else if c == 84 then "T" else if c == 85 then "U"
-    else if c == 86 then "V" else if c == 87 then "W" else if c == 88 then "X"
-    else if c == 89 then "Y" else "Z";
+    if c == 65 { "A" } else if c == 66 { "B" } else if c == 67 { "C" } else if c == 68 { "D" } else if c == 69 { "E" } else if c == 70 { "F" } else if c == 71 { "G" } else if c == 72 { "H" } else if c == 73 { "I" } else if c == 74 { "J" } else if c == 75 { "K" } else if c == 76 { "L" } else if c == 77 { "M" } else if c == 78 { "N" } else if c == 79 { "O" } else if c == 80 { "P" } else if c == 81 { "Q" } else if c == 82 { "R" } else if c == 83 { "S" } else if c == 84 { "T" } else if c == 85 { "U" } else if c == 86 { "V" } else if c == 87 { "W" } else if c == 88 { "X" } else if c == 89 { "Y" } else { "Z" };
 
--- Convert lowercase letter (a-z) to string
+// Convert lowercase letter (a-z) to string
 fn char_lower(c: i64) -> String =
-    if c == 97 then "a" else if c == 98 then "b" else if c == 99 then "c"
-    else if c == 100 then "d" else if c == 101 then "e" else if c == 102 then "f"
-    else if c == 103 then "g" else if c == 104 then "h" else if c == 105 then "i"
-    else if c == 106 then "j" else if c == 107 then "k" else if c == 108 then "l"
-    else if c == 109 then "m" else if c == 110 then "n" else if c == 111 then "o"
-    else if c == 112 then "p" else if c == 113 then "q" else if c == 114 then "r"
-    else if c == 115 then "s" else if c == 116 then "t" else if c == 117 then "u"
-    else if c == 118 then "v" else if c == 119 then "w" else if c == 120 then "x"
-    else if c == 121 then "y" else "z";
+    if c == 97 { "a" } else if c == 98 { "b" } else if c == 99 { "c" } else if c == 100 { "d" } else if c == 101 { "e" } else if c == 102 { "f" } else if c == 103 { "g" } else if c == 104 { "h" } else if c == 105 { "i" } else if c == 106 { "j" } else if c == 107 { "k" } else if c == 108 { "l" } else if c == 109 { "m" } else if c == 110 { "n" } else if c == 111 { "o" } else if c == 112 { "p" } else if c == 113 { "q" } else if c == 114 { "r" } else if c == 115 { "s" } else if c == 116 { "t" } else if c == 117 { "u" } else if c == 118 { "v" } else if c == 119 { "w" } else if c == 120 { "x" } else if c == 121 { "y" } else { "z" };
 
--- Convert ASCII code to string (common characters)
+// Convert ASCII code to string (common characters)
 fn char_to_string(c: i64) -> String =
-    if c == 32 then " " else if c == 33 then "!" else if c == 37 then "%"
-    else if c == 38 then "&" else if c == 40 then "(" else if c == 41 then ")"
-    else if c == 42 then "*" else if c == 43 then "+" else if c == 44 then ","
-    else if c == 45 then "-" else if c == 46 then "." else if c == 47 then "/"
-    else if c == 58 then ":" else if c == 59 then ";" else if c == 60 then "<"
-    else if c == 61 then "=" else if c == 62 then ">" else if c == 91 then "["
-    else if c == 93 then "]" else if c == 95 then "_" else if c == 123 then "{"
-    else if c == 124 then "|" else if c == 125 then "}"
-    else if c >= 48 and c <= 57 then digit_char(c - 48)
-    else if c >= 65 and c <= 90 then char_upper(c)
-    else if c >= 97 and c <= 122 then char_lower(c)
-    else "?";
+    if c == 32 { " " } else if c == 33 { "!" } else if c == 37 { "%" } else if c == 38 { "&" } else if c == 40 { "(" } else if c == 41 { ")" } else if c == 42 { "*" } else if c == 43 { "+" } else if c == 44 { "," } else if c == 45 { "-" } else if c == 46 { "." } else if c == 47 { "/" } else if c == 58 { ":" } else if c == 59 { ";" } else if c == 60 { "<" } else if c == 61 { "=" } else if c == 62 { ">" } else if c == 91 { "[" } else if c == 93 { "]" } else if c == 95 { "_" } else if c == 123 { "{" } else if c == 124 { "|" } else if c == 125 { "}" } else if c >= 48 and c <= 57 { digit_char(c - 48) } else if c >= 65 and c <= 90 { char_upper(c) } else if c >= 97 and c <= 122 { char_lower(c) } else { "?" };
 
--- ============================================================================
--- SECTION 3: Integer Parsing
--- ============================================================================
+// ============================================================================
+// SECTION 3: Integer Parsing
+// ============================================================================
 
--- Parse integer from string starting at position
--- Returns the parsed integer value, stops at first non-digit
+// Parse integer from string starting at position
+// Returns the parsed integer value, stops at first non-digit
 fn parse_int(s: String, pos: i64) -> i64 =
     parse_int_acc(s, pos, 0);
 
 fn parse_int_acc(s: String, pos: i64, acc: i64) -> i64 =
-    if pos >= s.len() then acc
-    else if is_digit(s.char_at(pos)) then
-        parse_int_acc(s, pos + 1, acc * 10 + (s.char_at(pos) - 48))
-    else acc;
+    if pos >= s.len() { acc } else if is_digit(s.byte_at(pos)) { parse_int_acc(s, pos + 1, acc * 10 + (s.byte_at(pos) - 48)) } else { acc };
 
--- Parse integer with possible negative sign
+// Parse integer with possible negative sign
 fn parse_int_signed(s: String, pos: i64) -> i64 =
-    if pos >= s.len() then 0
-    else if s.char_at(pos) == 45 then  -- '-' sign
-        0 - parse_int(s, pos + 1)
-    else parse_int(s, pos);
+    if pos >= s.len() { 0 } else if s.byte_at(pos) == 45 { 0 - parse_int(s, pos + 1) } else { parse_int(s, pos) };
 
--- Find where the number ends (for extracting the number substring)
+// Find where the number ends (for extracting the number substring)
 fn parse_int_end(s: String, pos: i64) -> i64 =
-    if pos >= s.len() then pos
-    else if is_digit(s.char_at(pos)) then parse_int_end(s, pos + 1)
-    else pos;
+    if pos >= s.len() { pos } else if is_digit(s.byte_at(pos)) { parse_int_end(s, pos + 1) } else { pos };
 
--- ============================================================================
--- SECTION 4: String Searching
--- ============================================================================
+// ============================================================================
+// SECTION 4: String Searching
+// ============================================================================
 
--- Find character in string starting from position, returns position or len if not found
+// Find character in string starting from position, returns position or len if not found
 fn find_char(s: String, c: i64, pos: i64) -> i64 =
-    if pos >= s.len() then pos
-    else if s.char_at(pos) == c then pos
-    else find_char(s, c, pos + 1);
+    if pos >= s.len() { pos } else if s.byte_at(pos) == c { pos } else { find_char(s, c, pos + 1) };
 
--- Specialized find for common separators
-fn find_pipe(s: String, pos: i64) -> i64 = find_char(s, 124, pos);      -- |
-fn find_colon(s: String, pos: i64) -> i64 = find_char(s, 58, pos);      -- :
-fn find_semicolon(s: String, pos: i64) -> i64 = find_char(s, 59, pos);  -- ;
-fn find_comma(s: String, pos: i64) -> i64 = find_char(s, 44, pos);      -- ,
-fn find_space(s: String, pos: i64) -> i64 = find_char(s, 32, pos);      -- space
-fn find_newline(s: String, pos: i64) -> i64 = find_char(s, 10, pos);    -- \n
+// Specialized find for common separators
+fn find_pipe(s: String, pos: i64) -> i64 = find_char(s, 124, pos);      // |
+fn find_colon(s: String, pos: i64) -> i64 = find_char(s, 58, pos);      // :
+fn find_semicolon(s: String, pos: i64) -> i64 = find_char(s, 59, pos);  // ;
+fn find_comma(s: String, pos: i64) -> i64 = find_char(s, 44, pos);      // ,
+fn find_space(s: String, pos: i64) -> i64 = find_char(s, 32, pos);      // space
+fn find_newline(s: String, pos: i64) -> i64 = find_char(s, 10, pos);    // \n
 
--- Skip whitespace, return new position
+// Skip whitespace, return new position
 fn skip_ws(s: String, pos: i64) -> i64 =
-    if pos >= s.len() then pos
-    else if is_whitespace(s.char_at(pos)) then skip_ws(s, pos + 1)
-    else pos;
+    if pos >= s.len() { pos } else if is_whitespace(s.byte_at(pos)) { skip_ws(s, pos + 1) } else { pos };
 
--- Skip spaces only (not tabs/newlines), return new position
+// Skip spaces only (not tabs/newlines), return new position
 fn skip_spaces(s: String, pos: i64) -> i64 =
-    if pos >= s.len() then pos
-    else if s.char_at(pos) == 32 then skip_spaces(s, pos + 1)
-    else pos;
+    if pos >= s.len() { pos } else if s.byte_at(pos) == 32 { skip_spaces(s, pos + 1) } else { pos };
 
--- Skip to end of line, return position at newline or end
+// Skip to end of line, return position at newline or end
 fn skip_to_eol(s: String, pos: i64) -> i64 =
-    if pos >= s.len() then pos
-    else if s.char_at(pos) == 10 then pos
-    else skip_to_eol(s, pos + 1);
+    if pos >= s.len() { pos } else if s.byte_at(pos) == 10 { pos } else { skip_to_eol(s, pos + 1) };
 
--- Find end of identifier (sequence of alnum or underscore)
+// Find end of identifier (sequence of alnum or underscore)
 fn find_ident_end(s: String, pos: i64) -> i64 =
-    if pos >= s.len() then pos
-    else if is_alnum_or_underscore(s.char_at(pos)) then find_ident_end(s, pos + 1)
-    else pos;
+    if pos >= s.len() { pos } else if is_alnum_or_underscore(s.byte_at(pos)) { find_ident_end(s, pos + 1) } else { pos };
 
--- Find end of number (sequence of digits)
+// Find end of number (sequence of digits)
 fn find_number_end(s: String, pos: i64) -> i64 =
-    if pos >= s.len() then pos
-    else if is_digit(s.char_at(pos)) then find_number_end(s, pos + 1)
-    else pos;
+    if pos >= s.len() { pos } else if is_digit(s.byte_at(pos)) { find_number_end(s, pos + 1) } else { pos };
 
--- ============================================================================
--- SECTION 5: String Matching
--- ============================================================================
+// ============================================================================
+// SECTION 5: String Matching
+// ============================================================================
 
--- Check if string starts with prefix at position
+// Check if string starts with prefix at position
 fn starts_with(s: String, prefix: String, pos: i64) -> bool =
     starts_with_at(s, prefix, pos, 0);
 
--- Helper: check prefix character by character
+// Helper: check prefix character by character
 fn starts_with_at(s: String, prefix: String, pos: i64, i: i64) -> bool =
-    if i >= prefix.len() then true
-    else if pos + i >= s.len() then false
-    else if s.char_at(pos + i) != prefix.char_at(i) then false
-    else starts_with_at(s, prefix, pos, i + 1);
+    if i >= prefix.len() { true } else if pos + i >= s.len() { false } else if s.byte_at(pos + i) != prefix.byte_at(i) { false } else { starts_with_at(s, prefix, pos, i + 1) };
 
--- Find pattern in string starting from position
+// Find pattern in string starting from position
 fn find_pattern(s: String, pat: String, pos: i64) -> i64 =
-    if pos + pat.len() > s.len() then s.len()
-    else if starts_with(s, pat, pos) then pos
-    else find_pattern(s, pat, pos + 1);
+    if pos + pat.len() > s.len() { s.len() } else if starts_with(s, pat, pos) { pos } else { find_pattern(s, pat, pos + 1) };
 
--- ============================================================================
--- SECTION 6: String Extraction
--- ============================================================================
+// ============================================================================
+// SECTION 6: String Extraction
+// ============================================================================
 
--- Read until whitespace or delimiter, return extracted string
+// Read until whitespace or delimiter, return extracted string
 fn read_until_ws(s: String, pos: i64) -> String =
     read_until_ws_acc(s, pos, "");
 
 fn read_until_ws_acc(s: String, pos: i64, acc: String) -> String =
-    if pos >= s.len() then acc
-    else let c = s.char_at(pos);
-        if c == 32 or c == 44 or c == 40 or c == 41 or c == 124 then acc
-        else read_until_ws_acc(s, pos + 1, acc + char_to_string(c));
+    if pos >= s.len() { acc } else {
+        let c = s.byte_at(pos);
+        if c == 32 or c == 44 or c == 40 or c == 41 or c == 124 { acc } else { read_until_ws_acc(s, pos + 1, acc + char_to_string(c)) }
+    };
 
--- Strip trailing colon from string
+// Strip trailing colon from string
 fn strip_trailing_colon(s: String) -> String =
-    if s.len() == 0 then ""
-    else if s.char_at(s.len() - 1) == 58 then s.slice(0, s.len() - 1)
-    else s;
+    if s.len() == 0 { "" } else if s.byte_at(s.len() - 1) == 58 { s.slice(0, s.len() - 1) } else { s };
 
--- ============================================================================
--- SECTION 7: Comment Handling (for lexer/parser)
--- ============================================================================
+// ============================================================================
+// SECTION 7: Comment Handling (for lexer/parser)
+// ============================================================================
 
--- Skip BMB comment (-- to end of line)
+// Skip BMB comment (// to end of line)
 fn skip_comment(s: String, pos: i64) -> i64 =
-    if pos + 1 < s.len() and s.char_at(pos) == 45 and s.char_at(pos + 1) == 45 then
-        skip_to_eol(s, pos + 2)
-    else pos;
+    if pos + 1 < s.len() and s.byte_at(pos) == 45 and s.byte_at(pos + 1) == 45 { skip_to_eol(s, pos + 2) } else { pos };
 
--- Skip all whitespace and comments
+// Skip all whitespace and comments
 fn skip_all(s: String, pos: i64) -> i64 =
     let p1 = skip_ws(s, pos);
     let p2 = skip_comment(s, p1);
-    if p2 == pos then pos else skip_all(s, p2);
+    if p2 == pos { pos } else { skip_all(s, p2) };
 
--- ============================================================================
--- SECTION 8: Error Handling
--- ============================================================================
+// ============================================================================
+// SECTION 8: Error Handling
+// ============================================================================
 
--- Check if string is an error result (starts with "ERR:")
--- Standard error format: "ERR:error_message"
+// Check if string is an error result (starts with "ERR:")
+// Standard error format: "ERR:error_message"
 fn is_error(s: String) -> bool =
     s.len() >= 4 and s.slice(0, 4) == "ERR:";
 
--- Create an error string with the given message
+// Create an error string with the given message
 fn make_error(msg: String) -> String = "ERR:" + msg;
 
--- Extract error message from error string (after "ERR:")
+// Extract error message from error string (after "ERR:")
 fn get_error_msg(s: String) -> String =
-    if s.len() <= 4 then ""
-    else s.slice(4, s.len());
+    if s.len() <= 4 { "" } else { s.slice(4, s.len()) };
 
--- Check if string is an error (alternative: checks for "ERR" without colon)
--- Some modules use this looser check - prefer is_error() for new code
+// Check if string is an error (alternative: checks for "ERR" without colon)
+// Some modules use this looser check - prefer is_error() for new code
 fn is_error_loose(s: String) -> bool =
     s.len() >= 3 and s.slice(0, 3) == "ERR";
 
--- ============================================================================
--- SECTION 9: Result Packing
--- ============================================================================
+// ============================================================================
+// SECTION 9: Result Packing
+// ============================================================================
 
--- Pack position and AST/value into a single string "pos:value"
--- Standard format for parse results: "position:ast_or_value"
+// Pack position and AST/value into a single string "pos:value"
+// Standard format for parse results: "position:ast_or_value"
 fn pack_result(pos: i64, value: String) -> String =
     int_to_string(pos) + ":" + value;
 
--- Extract position from packed result "pos:value"
+// Extract position from packed result "pos:value"
 fn unpack_pos(result: String) -> i64 =
     parse_int(result, 0);
 
--- Extract value/AST from packed result "pos:value"
+// Extract value/AST from packed result "pos:value"
 fn unpack_ast(result: String) -> String =
     let colon_pos = find_colon(result, 0);
-    if colon_pos >= result.len() then result
-    else result.slice(colon_pos + 1, result.len());
+    if colon_pos >= result.len() { result } else { result.slice(colon_pos + 1, result.len()) };
 
--- Pack multiple values with pipe separator "a|b|c"
+// Pack multiple values with pipe separator "a|b|c"
 fn pack_values(a: String, b: String) -> String = a + "|" + b;
 fn pack_values3(a: String, b: String, c: String) -> String = a + "|" + b + "|" + c;
 
--- Unpack first value from pipe-separated string
+// Unpack first value from pipe-separated string
 fn unpack_first(s: String) -> String =
     let pipe_pos = find_pipe(s, 0);
-    if pipe_pos >= s.len() then s
-    else s.slice(0, pipe_pos);
+    if pipe_pos >= s.len() { s } else { s.slice(0, pipe_pos) };
 
--- Unpack rest after first pipe
+// Unpack rest after first pipe
 fn unpack_rest(s: String) -> String =
     let pipe_pos = find_pipe(s, 0);
-    if pipe_pos >= s.len() then ""
-    else s.slice(pipe_pos + 1, s.len());
+    if pipe_pos >= s.len() { "" } else { s.slice(pipe_pos + 1, s.len()) };
 
--- ============================================================================
--- SECTION 10: Token Encoding
--- ============================================================================
+// ============================================================================
+// SECTION 10: Token Encoding
+// ============================================================================
 
--- Token encoding: kind * 1000000 + end_position
--- This allows passing both token type and position in a single i64 return value
+// Token encoding: kind * 1000000 + end_position
+// This allows passing both token type and position in a single i64 return value
 
--- Encode token kind and end position into single value
+// Encode token kind and end position into single value
 fn tok_encode(kind: i64, end_pos: i64) -> i64 = kind * 1000000 + end_pos;
 
--- Extract token kind from encoded token
+// Extract token kind from encoded token
 fn tok_kind(tok: i64) -> i64 = tok / 1000000;
 
--- Extract end position from encoded token
+// Extract end position from encoded token
 fn tok_end(tok: i64) -> i64 = tok - (tok / 1000000) * 1000000;
 
--- Token kind constants (from lexer)
--- These match the token kinds used in lexer.bmb
--- 1=Keyword, 2=Ident, 3=Number, 4=String, 5=Operator, 6=Delim, 0=EOF
+// Token kind constants (from lexer)
+// These match the token kinds used in lexer.bmb
+// 1=Keyword, 2=Ident, 3=Number, 4=String, 5=Operator, 6=Delim, 0=EOF
 
--- Check if token is a specific kind
+// Check if token is a specific kind
 fn tok_is_kind(tok: i64, expected: i64) -> bool = tok_kind(tok) == expected;
 
--- Check if token is EOF (kind 0)
+// Check if token is EOF (kind 0)
 fn tok_is_eof(tok: i64) -> bool = tok_kind(tok) == 0;
 
--- ============================================================================
--- SECTION 11: Tests
--- ============================================================================
+// ============================================================================
+// SECTION 11: Tests
+// ============================================================================
 
--- Character classification tests
+// Character classification tests
 fn test_is_digit() -> bool =
     is_digit(48) and is_digit(57) and not is_digit(47) and not is_digit(58);
 
@@ -334,7 +269,7 @@ fn test_is_alnum() -> bool =
 fn test_is_ident_start() -> bool =
     is_ident_start(97) and is_ident_start(95) and not is_ident_start(48);
 
--- Conversion tests
+// Conversion tests
 fn test_digit_to_int() -> bool =
     digit_to_int(48) == 0 and digit_to_int(57) == 9;
 
@@ -345,7 +280,7 @@ fn test_int_to_string() -> bool =
 fn test_digit_char() -> bool =
     digit_char(0) == "0" and digit_char(5) == "5" and digit_char(9) == "9";
 
--- Integer parsing tests
+// Integer parsing tests
 fn test_parse_int() -> bool =
     parse_int("123", 0) == 123
     and parse_int("42abc", 0) == 42
@@ -362,11 +297,11 @@ fn test_parse_int_end() -> bool =
     and parse_int_end("42", 0) == 2
     and parse_int_end("abc", 0) == 0;
 
--- String searching tests
+// String searching tests
 fn test_find_char() -> bool =
-    find_char("hello", 101, 0) == 1      -- 'e' at position 1
-    and find_char("hello", 108, 0) == 2  -- first 'l' at position 2
-    and find_char("hello", 120, 0) == 5; -- 'x' not found, returns len
+    find_char("hello", 101, 0) == 1      // 'e' at position 1
+    and find_char("hello", 108, 0) == 2  // first 'l' at position 2
+    and find_char("hello", 120, 0) == 5; // 'x' not found, returns len
 
 fn test_skip_ws() -> bool =
     skip_ws("  hello", 0) == 2 and skip_ws("hello", 0) == 0;
@@ -377,7 +312,7 @@ fn test_find_ident_end() -> bool =
 fn test_find_number_end() -> bool =
     find_number_end("12345 ", 0) == 5 and find_number_end("abc", 0) == 0;
 
--- String matching tests
+// String matching tests
 fn test_starts_with() -> bool =
     starts_with("hello world", "hello", 0)
     and starts_with("hello world", "world", 6)
@@ -387,16 +322,16 @@ fn test_find_pattern() -> bool =
     find_pattern("hello world", "world", 0) == 6
     and find_pattern("hello", "xyz", 0) == 5;
 
--- Comment handling tests
+// Comment handling tests
 fn test_skip_comment() -> bool =
     skip_comment("-- comment", 0) == 10
     and skip_comment("not a comment", 0) == 0;
 
 fn test_skip_to_eol() -> bool =
-    -- Test with string that doesn't contain newline (reaches end)
+    // Test with string that doesn't contain newline (reaches end)
     skip_to_eol("hello", 0) == 5;
 
--- Error handling tests
+// Error handling tests
 fn test_is_error() -> bool =
     is_error("ERR:something went wrong")
     and is_error("ERR:")
@@ -419,7 +354,7 @@ fn test_is_error_loose() -> bool =
     and is_error_loose("ERROR")
     and not is_error_loose("ER");
 
--- Result packing tests
+// Result packing tests
 fn test_pack_result() -> bool =
     pack_result(42, "ast") == "42:ast"
     and pack_result(0, "value") == "0:value";
@@ -446,7 +381,7 @@ fn test_unpack_rest() -> bool =
     unpack_rest("a|b|c") == "b|c"
     and unpack_rest("single") == "";
 
--- Token encoding tests
+// Token encoding tests
 fn test_tok_encode() -> bool =
     tok_encode(1, 500) == 1000500
     and tok_encode(2, 0) == 2000000
@@ -472,482 +407,482 @@ fn test_tok_is_eof() -> bool =
     and tok_is_eof(100)
     and not tok_is_eof(1000000);
 
--- v0.30.156: Test char_upper function
+// v0.30.156: Test char_upper function
 fn test_char_upper() -> bool =
     char_upper(65) == "A" and char_upper(90) == "Z" and
     char_upper(77) == "M";
 
--- v0.30.156: Test char_lower function
+// v0.30.156: Test char_lower function
 fn test_char_lower() -> bool =
     char_lower(97) == "a" and char_lower(122) == "z" and
     char_lower(109) == "m";
 
--- v0.30.156: Test char_to_string comprehensive
+// v0.30.156: Test char_to_string comprehensive
 fn test_char_to_string() -> bool =
-    char_to_string(32) == " " and    -- space
-    char_to_string(43) == "+" and    -- +
-    char_to_string(45) == "-" and    -- -
-    char_to_string(58) == ":" and    -- :
-    char_to_string(61) == "=" and    -- =
-    char_to_string(65) == "A" and    -- uppercase
-    char_to_string(97) == "a";       -- lowercase
+    char_to_string(32) == " " and    // space
+    char_to_string(43) == "+" and    // +
+    char_to_string(45) == "-" and    // -
+    char_to_string(58) == ":" and    // :
+    char_to_string(61) == "=" and    // =
+    char_to_string(65) == "A" and    // uppercase
+    char_to_string(97) == "a";       // lowercase
 
--- v0.30.156: Test specialized find functions
+// v0.30.156: Test specialized find functions
 fn test_find_specialized() -> bool =
     find_pipe("a|b|c", 0) == 1 and
     find_colon("a:b", 0) == 1 and
     find_semicolon("a;b", 0) == 1 and
     find_comma("a,b", 0) == 1 and
     find_space("a b", 0) == 1 and
-    find_newline("a", 0) == 1;  -- no newline = returns len
+    find_newline("a", 0) == 1;  // no newline = returns len
 
--- v0.30.156: Test strip_trailing_colon
+// v0.30.156: Test strip_trailing_colon
 fn test_strip_colon() -> bool =
     strip_trailing_colon("label:") == "label" and
     strip_trailing_colon("nocolon") == "nocolon" and
     strip_trailing_colon("") == "" and
     strip_trailing_colon(":") == "";
 
--- v0.30.156: Test read_until_ws
+// v0.30.156: Test read_until_ws
 fn test_read_until_ws() -> bool =
     read_until_ws("hello world", 0) == "hello" and
     read_until_ws("abc,def", 0) == "abc" and
     read_until_ws("test(arg)", 0) == "test" and
     read_until_ws("value|rest", 0) == "value";
 
--- v0.30.156: Test is_alnum function
+// v0.30.156: Test is_alnum function
 fn test_is_alnum() -> bool =
     is_alnum(65) and is_alnum(122) and is_alnum(48) and
     not is_alnum(32) and not is_alnum(45);
 
--- v0.30.156: Test skip_spaces (only spaces)
+// v0.30.156: Test skip_spaces (only spaces)
 fn test_skip_spaces() -> bool =
     skip_spaces("   abc", 0) == 3 and
     skip_spaces("abc", 0) == 0;
 
--- v0.30.156: Test pack_values functions
+// v0.30.156: Test pack_values functions
 fn test_pack_values_ext() -> bool =
     pack_values("x", "y") == "x|y" and
     pack_values3("a", "b", "c") == "a|b|c" and
     unpack_first("a|b|c") == "a" and
     unpack_rest("a|b|c") == "b|c";
 
--- v0.30.139: Edge case tests for character classification boundaries
+// v0.30.139: Edge case tests for character classification boundaries
 fn test_char_boundary_cases() -> bool =
-    -- Test exact boundaries for digits
-    let d1 = is_digit(47) == false;  -- '/' is just before '0'
-    let d2 = is_digit(48) == true;   -- '0'
-    let d3 = is_digit(57) == true;   -- '9'
-    let d4 = is_digit(58) == false;  -- ':' is just after '9'
-    -- Test exact boundaries for alpha
-    let a1 = is_alpha(64) == false;  -- '@' is just before 'A'
-    let a2 = is_alpha(65) == true;   -- 'A'
-    let a3 = is_alpha(90) == true;   -- 'Z'
-    let a4 = is_alpha(91) == false;  -- '[' is just after 'Z'
-    let a5 = is_alpha(96) == false;  -- '`' is just before 'a'
-    let a6 = is_alpha(97) == true;   -- 'a'
-    let a7 = is_alpha(122) == true;  -- 'z'
-    let a8 = is_alpha(123) == false; -- '{' is just after 'z'
+    // Test exact boundaries for digits
+    let d1 = is_digit(47) == false;  // '/' is just before '0'
+    let d2 = is_digit(48) == true;   // '0'
+    let d3 = is_digit(57) == true;   // '9'
+    let d4 = is_digit(58) == false;  // ':' is just after '9'
+    // Test exact boundaries for alpha
+    let a1 = is_alpha(64) == false;  // '@' is just before 'A'
+    let a2 = is_alpha(65) == true;   // 'A'
+    let a3 = is_alpha(90) == true;   // 'Z'
+    let a4 = is_alpha(91) == false;  // '[' is just after 'Z'
+    let a5 = is_alpha(96) == false;  // '`' is just before 'a'
+    let a6 = is_alpha(97) == true;   // 'a'
+    let a7 = is_alpha(122) == true;  // 'z'
+    let a8 = is_alpha(123) == false; // '{' is just after 'z'
     d1 and d2 and d3 and d4 and a1 and a2 and a3 and a4 and a5 and a6 and a7 and a8;
 
--- v0.30.139: Edge case tests for int_to_string with large numbers
+// v0.30.139: Edge case tests for int_to_string with large numbers
 fn test_int_to_string_edge() -> bool =
-    -- Single digits
+    // Single digits
     let t1 = int_to_string(0) == "0";
     let t2 = int_to_string(9) == "9";
-    -- Two digits
+    // Two digits
     let t3 = int_to_string(10) == "10";
     let t4 = int_to_string(99) == "99";
-    -- Larger numbers
+    // Larger numbers
     let t5 = int_to_string(1000) == "1000";
     let t6 = int_to_string(999999) == "999999";
-    -- Negative numbers
+    // Negative numbers
     let t7 = int_to_string(-1) == "-1";
     let t8 = int_to_string(-999) == "-999";
     t1 and t2 and t3 and t4 and t5 and t6 and t7 and t8;
 
--- v0.30.139: Edge case tests for string matching with empty/edge cases
+// v0.30.139: Edge case tests for string matching with empty/edge cases
 fn test_string_match_edge() -> bool =
-    -- Empty string/prefix matching
-    let e1 = starts_with("hello", "", 0) == true;     -- Empty prefix always matches
-    let e2 = starts_with("", "a", 0) == false;        -- Non-empty prefix can't match empty string
-    let e3 = starts_with("", "", 0) == true;          -- Empty matches empty
-    -- Position at end
-    let e4 = starts_with("hello", "o", 4) == true;    -- Match at last char
-    let e5 = starts_with("hello", "o", 5) == false;   -- Position at length
-    -- Pattern longer than remaining
-    let e6 = starts_with("hi", "hello", 0) == false;  -- Pattern longer than string
+    // Empty string/prefix matching
+    let e1 = starts_with("hello", "", 0) == true;     // Empty prefix always matches
+    let e2 = starts_with("", "a", 0) == false;        // Non-empty prefix can't match empty string
+    let e3 = starts_with("", "", 0) == true;          // Empty matches empty
+    // Position at end
+    let e4 = starts_with("hello", "o", 4) == true;    // Match at last char
+    let e5 = starts_with("hello", "o", 5) == false;   // Position at length
+    // Pattern longer than remaining
+    let e6 = starts_with("hi", "hello", 0) == false;  // Pattern longer than string
     e1 and e2 and e3 and e4 and e5 and e6;
 
--- v0.30.139: Edge case tests for result unpacking with special values
+// v0.30.139: Edge case tests for result unpacking with special values
 fn test_result_edge_cases() -> bool =
-    -- Colon in value (should work correctly)
+    // Colon in value (should work correctly)
     let c1 = unpack_ast("10:a:b:c") == "a:b:c";
-    -- Large position values
+    // Large position values
     let p1 = pack_result(999999, "x") == "999999:x";
     let p2 = unpack_pos("999999:x") == 999999;
-    -- Empty value
+    // Empty value
     let v1 = pack_result(0, "") == "0:";
     let v2 = unpack_ast("0:") == "";
-    -- Pipe edge cases
+    // Pipe edge cases
     let pi1 = unpack_first("") == "";
     let pi2 = unpack_rest("a") == "";
     let pi3 = unpack_first("|b") == "";
     let pi4 = unpack_rest("|b") == "b";
     c1 and p1 and p2 and v1 and v2 and pi1 and pi2 and pi3 and pi4;
 
--- v0.30.139: Edge case tests for skip functions
+// v0.30.139: Edge case tests for skip functions
 fn test_skip_edge_cases() -> bool =
-    -- Skip at end of string
+    // Skip at end of string
     let s1 = skip_ws("", 0) == 0;
     let s2 = skip_spaces("", 0) == 0;
-    -- Skip when no whitespace
+    // Skip when no whitespace
     let s3 = skip_ws("abc", 0) == 0;
-    -- Skip all whitespace types
-    let s4 = skip_ws("   abc", 0) == 3;    -- Spaces
-    -- Skip comment edge cases
+    // Skip all whitespace types
+    let s4 = skip_ws("   abc", 0) == 3;    // Spaces
+    // Skip comment edge cases
     let c1 = skip_comment("", 0) == 0;
-    let c2 = skip_comment("-", 0) == 0;    -- Single dash
-    let c3 = skip_comment("--", 0) == 2;   -- Comment at end (no newline)
+    let c2 = skip_comment("-", 0) == 0;    // Single dash
+    let c3 = skip_comment("--", 0) == 2;   // Comment at end (no newline)
     s1 and s2 and s3 and s4 and c1 and c2 and c3;
 
--- ============================================================================
--- SECTION 12: Extended Unit Tests (v0.30.172)
--- ============================================================================
+// ============================================================================
+// SECTION 12: Extended Unit Tests (v0.30.172)
+// ============================================================================
 
--- v0.30.172: Test is_whitespace all cases
+// v0.30.172: Test is_whitespace all cases
 fn test_is_whitespace_ext() -> i64 =
-    let t1 = if is_whitespace(32) then 1 else 0;   -- space
-    let t2 = if is_whitespace(9) then 1 else 0;    -- tab
-    let t3 = if is_whitespace(10) then 1 else 0;   -- newline
-    let t4 = if is_whitespace(13) then 1 else 0;   -- CR
-    let t5 = if not is_whitespace(0) then 1 else 0;
-    let t6 = if not is_whitespace(65) then 1 else 0;  -- 'A'
-    let t7 = if not is_whitespace(48) then 1 else 0;  -- '0'
-    let t8 = if not is_whitespace(95) then 1 else 0;  -- '_'
+    let t1 = if is_whitespace(32) { 1 } else { 0 };   // space
+    let t2 = if is_whitespace(9) { 1 } else { 0 };    // tab
+    let t3 = if is_whitespace(10) { 1 } else { 0 };   // newline
+    let t4 = if is_whitespace(13) { 1 } else { 0 };   // CR
+    let t5 = if not is_whitespace(0) { 1 } else { 0 };
+    let t6 = if not is_whitespace(65) { 1 } else { 0 };  // 'A'
+    let t7 = if not is_whitespace(48) { 1 } else { 0 };  // '0'
+    let t8 = if not is_whitespace(95) { 1 } else { 0 };  // '_'
     t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8;
 
--- v0.30.172: Test is_digit all boundaries
+// v0.30.172: Test is_digit all boundaries
 fn test_is_digit_ext() -> i64 =
-    let t1 = if is_digit(48) then 1 else 0;  -- '0'
-    let t2 = if is_digit(49) then 1 else 0;  -- '1'
-    let t3 = if is_digit(53) then 1 else 0;  -- '5'
-    let t4 = if is_digit(57) then 1 else 0;  -- '9'
-    let t5 = if not is_digit(47) then 1 else 0;  -- '/' before '0'
-    let t6 = if not is_digit(58) then 1 else 0;  -- ':' after '9'
+    let t1 = if is_digit(48) { 1 } else { 0 };  // '0'
+    let t2 = if is_digit(49) { 1 } else { 0 };  // '1'
+    let t3 = if is_digit(53) { 1 } else { 0 };  // '5'
+    let t4 = if is_digit(57) { 1 } else { 0 };  // '9'
+    let t5 = if not is_digit(47) { 1 } else { 0 };  // '/' before '0'
+    let t6 = if not is_digit(58) { 1 } else { 0 };  // ':' after '9'
     t1 + t2 + t3 + t4 + t5 + t6;
 
--- v0.30.172: Test is_alpha all boundaries
+// v0.30.172: Test is_alpha all boundaries
 fn test_is_alpha_ext() -> i64 =
-    let t1 = if is_alpha(65) then 1 else 0;   -- 'A'
-    let t2 = if is_alpha(77) then 1 else 0;   -- 'M'
-    let t3 = if is_alpha(90) then 1 else 0;   -- 'Z'
-    let t4 = if is_alpha(97) then 1 else 0;   -- 'a'
-    let t5 = if is_alpha(109) then 1 else 0;  -- 'm'
-    let t6 = if is_alpha(122) then 1 else 0;  -- 'z'
-    let t7 = if not is_alpha(64) then 1 else 0;   -- '@'
-    let t8 = if not is_alpha(91) then 1 else 0;   -- '['
+    let t1 = if is_alpha(65) { 1 } else { 0 };   // 'A'
+    let t2 = if is_alpha(77) { 1 } else { 0 };   // 'M'
+    let t3 = if is_alpha(90) { 1 } else { 0 };   // 'Z'
+    let t4 = if is_alpha(97) { 1 } else { 0 };   // 'a'
+    let t5 = if is_alpha(109) { 1 } else { 0 };  // 'm'
+    let t6 = if is_alpha(122) { 1 } else { 0 };  // 'z'
+    let t7 = if not is_alpha(64) { 1 } else { 0 };   // '@'
+    let t8 = if not is_alpha(91) { 1 } else { 0 };   // '['
     t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8;
 
--- v0.30.172: Test is_alnum_or_underscore
+// v0.30.172: Test is_alnum_or_underscore
 fn test_is_alnum_underscore() -> i64 =
-    let t1 = if is_alnum_or_underscore(65) then 1 else 0;   -- 'A'
-    let t2 = if is_alnum_or_underscore(97) then 1 else 0;   -- 'a'
-    let t3 = if is_alnum_or_underscore(48) then 1 else 0;   -- '0'
-    let t4 = if is_alnum_or_underscore(95) then 1 else 0;   -- '_'
-    let t5 = if not is_alnum_or_underscore(32) then 1 else 0;  -- space
-    let t6 = if not is_alnum_or_underscore(45) then 1 else 0;  -- '-'
+    let t1 = if is_alnum_or_underscore(65) { 1 } else { 0 };   // 'A'
+    let t2 = if is_alnum_or_underscore(97) { 1 } else { 0 };   // 'a'
+    let t3 = if is_alnum_or_underscore(48) { 1 } else { 0 };   // '0'
+    let t4 = if is_alnum_or_underscore(95) { 1 } else { 0 };   // '_'
+    let t5 = if not is_alnum_or_underscore(32) { 1 } else { 0 };  // space
+    let t6 = if not is_alnum_or_underscore(45) { 1 } else { 0 };  // '-'
     t1 + t2 + t3 + t4 + t5 + t6;
 
--- v0.30.172: Test digit_to_int all digits
+// v0.30.172: Test digit_to_int all digits
 fn test_digit_to_int_ext() -> i64 =
-    let t1 = if digit_to_int(48) == 0 then 1 else 0;
-    let t2 = if digit_to_int(49) == 1 then 1 else 0;
-    let t3 = if digit_to_int(53) == 5 then 1 else 0;
-    let t4 = if digit_to_int(57) == 9 then 1 else 0;
+    let t1 = if digit_to_int(48) == 0 { 1 } else { 0 };
+    let t2 = if digit_to_int(49) == 1 { 1 } else { 0 };
+    let t3 = if digit_to_int(53) == 5 { 1 } else { 0 };
+    let t4 = if digit_to_int(57) == 9 { 1 } else { 0 };
     t1 + t2 + t3 + t4;
 
--- v0.30.172: Test digit_char all digits
+// v0.30.172: Test digit_char all digits
 fn test_digit_char_ext() -> i64 =
-    let t1 = if digit_char(0) == "0" then 1 else 0;
-    let t2 = if digit_char(1) == "1" then 1 else 0;
-    let t3 = if digit_char(2) == "2" then 1 else 0;
-    let t4 = if digit_char(3) == "3" then 1 else 0;
-    let t5 = if digit_char(4) == "4" then 1 else 0;
-    let t6 = if digit_char(5) == "5" then 1 else 0;
-    let t7 = if digit_char(6) == "6" then 1 else 0;
-    let t8 = if digit_char(7) == "7" then 1 else 0;
-    let t9 = if digit_char(8) == "8" then 1 else 0;
-    let t10 = if digit_char(9) == "9" then 1 else 0;
+    let t1 = if digit_char(0) == "0" { 1 } else { 0 };
+    let t2 = if digit_char(1) == "1" { 1 } else { 0 };
+    let t3 = if digit_char(2) == "2" { 1 } else { 0 };
+    let t4 = if digit_char(3) == "3" { 1 } else { 0 };
+    let t5 = if digit_char(4) == "4" { 1 } else { 0 };
+    let t6 = if digit_char(5) == "5" { 1 } else { 0 };
+    let t7 = if digit_char(6) == "6" { 1 } else { 0 };
+    let t8 = if digit_char(7) == "7" { 1 } else { 0 };
+    let t9 = if digit_char(8) == "8" { 1 } else { 0 };
+    let t10 = if digit_char(9) == "9" { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t9 + t10;
 
--- v0.30.172: Test int_to_string comprehensive
+// v0.30.172: Test int_to_string comprehensive
 fn test_int_to_string_ext() -> i64 =
-    let t1 = if int_to_string(0) == "0" then 1 else 0;
-    let t2 = if int_to_string(1) == "1" then 1 else 0;
-    let t3 = if int_to_string(9) == "9" then 1 else 0;
-    let t4 = if int_to_string(10) == "10" then 1 else 0;
-    let t5 = if int_to_string(99) == "99" then 1 else 0;
-    let t6 = if int_to_string(100) == "100" then 1 else 0;
-    let t7 = if int_to_string(-1) == "-1" then 1 else 0;
-    let t8 = if int_to_string(-99) == "-99" then 1 else 0;
+    let t1 = if int_to_string(0) == "0" { 1 } else { 0 };
+    let t2 = if int_to_string(1) == "1" { 1 } else { 0 };
+    let t3 = if int_to_string(9) == "9" { 1 } else { 0 };
+    let t4 = if int_to_string(10) == "10" { 1 } else { 0 };
+    let t5 = if int_to_string(99) == "99" { 1 } else { 0 };
+    let t6 = if int_to_string(100) == "100" { 1 } else { 0 };
+    let t7 = if int_to_string(-1) == "-1" { 1 } else { 0 };
+    let t8 = if int_to_string(-99) == "-99" { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8;
 
--- v0.30.172: Test parse_int comprehensive
+// v0.30.172: Test parse_int comprehensive
 fn test_parse_int_ext() -> i64 =
-    let t1 = if parse_int("0", 0) == 0 then 1 else 0;
-    let t2 = if parse_int("123", 0) == 123 then 1 else 0;
-    let t3 = if parse_int("abc", 0) == 0 then 1 else 0;
-    let t4 = if parse_int("42abc", 0) == 42 then 1 else 0;
-    let t5 = if parse_int("007", 0) == 7 then 1 else 0;
-    let t6 = if parse_int("999999", 0) == 999999 then 1 else 0;
+    let t1 = if parse_int("0", 0) == 0 { 1 } else { 0 };
+    let t2 = if parse_int("123", 0) == 123 { 1 } else { 0 };
+    let t3 = if parse_int("abc", 0) == 0 { 1 } else { 0 };
+    let t4 = if parse_int("42abc", 0) == 42 { 1 } else { 0 };
+    let t5 = if parse_int("007", 0) == 7 { 1 } else { 0 };
+    let t6 = if parse_int("999999", 0) == 999999 { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5 + t6;
 
--- v0.30.172: Test find_char comprehensive
+// v0.30.172: Test find_char comprehensive
 fn test_find_char_ext() -> i64 =
-    let t1 = if find_char("hello", 104, 0) == 0 then 1 else 0;  -- 'h' at 0
-    let t2 = if find_char("hello", 101, 0) == 1 then 1 else 0;  -- 'e' at 1
-    let t3 = if find_char("hello", 111, 0) == 4 then 1 else 0;  -- 'o' at 4
-    let t4 = if find_char("hello", 120, 0) == 5 then 1 else 0;  -- 'x' not found
-    let t5 = if find_char("a:b", 58, 0) == 1 then 1 else 0;     -- ':' at 1
-    let t6 = if find_char("a|b|c", 124, 0) == 1 then 1 else 0;  -- '|' at 1
+    let t1 = if find_char("hello", 104, 0) == 0 { 1 } else { 0 };  // 'h' at 0
+    let t2 = if find_char("hello", 101, 0) == 1 { 1 } else { 0 };  // 'e' at 1
+    let t3 = if find_char("hello", 111, 0) == 4 { 1 } else { 0 };  // 'o' at 4
+    let t4 = if find_char("hello", 120, 0) == 5 { 1 } else { 0 };  // 'x' not found
+    let t5 = if find_char("a:b", 58, 0) == 1 { 1 } else { 0 };     // ':' at 1
+    let t6 = if find_char("a|b|c", 124, 0) == 1 { 1 } else { 0 };  // '|' at 1
     t1 + t2 + t3 + t4 + t5 + t6;
 
--- v0.30.172: Test tok_encode/tok_kind/tok_end comprehensive
+// v0.30.172: Test tok_encode/tok_kind/tok_end comprehensive
 fn test_tok_encoding_ext() -> i64 =
     let tok1 = tok_encode(1, 100);
-    let t1 = if tok_kind(tok1) == 1 then 1 else 0;
-    let t2 = if tok_end(tok1) == 100 then 1 else 0;
+    let t1 = if tok_kind(tok1) == 1 { 1 } else { 0 };
+    let t2 = if tok_end(tok1) == 100 { 1 } else { 0 };
     let tok2 = tok_encode(5, 0);
-    let t3 = if tok_kind(tok2) == 5 then 1 else 0;
-    let t4 = if tok_end(tok2) == 0 then 1 else 0;
+    let t3 = if tok_kind(tok2) == 5 { 1 } else { 0 };
+    let t4 = if tok_end(tok2) == 0 { 1 } else { 0 };
     let tok3 = tok_encode(0, 999999);
-    let t5 = if tok_kind(tok3) == 0 then 1 else 0;
-    let t6 = if tok_end(tok3) == 999999 then 1 else 0;
+    let t5 = if tok_kind(tok3) == 0 { 1 } else { 0 };
+    let t6 = if tok_end(tok3) == 999999 { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5 + t6;
 
--- v0.30.172: Test starts_with comprehensive
+// v0.30.172: Test starts_with comprehensive
 fn test_starts_with_ext() -> i64 =
-    let t1 = if starts_with("hello", "hel", 0) then 1 else 0;
-    let t2 = if starts_with("hello", "lo", 3) then 1 else 0;
-    let t3 = if not starts_with("hello", "xyz", 0) then 1 else 0;
-    let t4 = if starts_with("", "", 0) then 1 else 0;  -- empty matches empty
-    let t5 = if starts_with("abc", "", 0) then 1 else 0;  -- empty prefix matches
-    let t6 = if not starts_with("", "a", 0) then 1 else 0;  -- can't match empty string
+    let t1 = if starts_with("hello", "hel", 0) { 1 } else { 0 };
+    let t2 = if starts_with("hello", "lo", 3) { 1 } else { 0 };
+    let t3 = if not starts_with("hello", "xyz", 0) { 1 } else { 0 };
+    let t4 = if starts_with("", "", 0) { 1 } else { 0 };  // empty matches empty
+    let t5 = if starts_with("abc", "", 0) { 1 } else { 0 };  // empty prefix matches
+    let t6 = if not starts_with("", "a", 0) { 1 } else { 0 };  // can't match empty string
     t1 + t2 + t3 + t4 + t5 + t6;
 
--- v0.30.172: Test find_pattern comprehensive
+// v0.30.172: Test find_pattern comprehensive
 fn test_find_pattern_ext() -> i64 =
-    let t1 = if find_pattern("hello world", "world", 0) == 6 then 1 else 0;
-    let t2 = if find_pattern("hello", "ell", 0) == 1 then 1 else 0;
-    let t3 = if find_pattern("hello", "xyz", 0) == 5 then 1 else 0;  -- not found
-    let t4 = if find_pattern("abc", "abc", 0) == 0 then 1 else 0;  -- exact match
-    let t5 = if find_pattern("aaa", "a", 1) == 1 then 1 else 0;  -- find from pos 1
-    let t6 = if find_pattern("", "a", 0) == 0 then 1 else 0;  -- empty string
+    let t1 = if find_pattern("hello world", "world", 0) == 6 { 1 } else { 0 };
+    let t2 = if find_pattern("hello", "ell", 0) == 1 { 1 } else { 0 };
+    let t3 = if find_pattern("hello", "xyz", 0) == 5 { 1 } else { 0 };  // not found
+    let t4 = if find_pattern("abc", "abc", 0) == 0 { 1 } else { 0 };  // exact match
+    let t5 = if find_pattern("aaa", "a", 1) == 1 { 1 } else { 0 };  // find from pos 1
+    let t6 = if find_pattern("", "a", 0) == 0 { 1 } else { 0 };  // empty string
     t1 + t2 + t3 + t4 + t5 + t6;
 
--- v0.30.172: Test pack_result/unpack comprehensive
+// v0.30.172: Test pack_result/unpack comprehensive
 fn test_result_packing_ext() -> i64 =
     let r1 = pack_result(42, "test");
-    let t1 = if r1 == "42:test" then 1 else 0;
-    let t2 = if unpack_pos(r1) == 42 then 1 else 0;
-    let t3 = if unpack_ast(r1) == "test" then 1 else 0;
+    let t1 = if r1 == "42:test" { 1 } else { 0 };
+    let t2 = if unpack_pos(r1) == 42 { 1 } else { 0 };
+    let t3 = if unpack_ast(r1) == "test" { 1 } else { 0 };
     let r2 = pack_result(0, "");
-    let t4 = if r2 == "0:" then 1 else 0;
-    let t5 = if unpack_pos(r2) == 0 then 1 else 0;
-    let t6 = if unpack_ast(r2) == "" then 1 else 0;
+    let t4 = if r2 == "0:" { 1 } else { 0 };
+    let t5 = if unpack_pos(r2) == 0 { 1 } else { 0 };
+    let t6 = if unpack_ast(r2) == "" { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5 + t6;
 
--- v0.30.172: Test error handling comprehensive
+// v0.30.172: Test error handling comprehensive
 fn test_error_handling_ext() -> i64 =
-    let t1 = if is_error("ERR:message") then 1 else 0;
-    let t2 = if is_error("ERR:") then 1 else 0;
-    let t3 = if not is_error("error") then 1 else 0;
-    let t4 = if not is_error("") then 1 else 0;
-    let t5 = if make_error("test") == "ERR:test" then 1 else 0;
-    let t6 = if get_error_msg("ERR:hello") == "hello" then 1 else 0;
+    let t1 = if is_error("ERR:message") { 1 } else { 0 };
+    let t2 = if is_error("ERR:") { 1 } else { 0 };
+    let t3 = if not is_error("error") { 1 } else { 0 };
+    let t4 = if not is_error("") { 1 } else { 0 };
+    let t5 = if make_error("test") == "ERR:test" { 1 } else { 0 };
+    let t6 = if get_error_msg("ERR:hello") == "hello" { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5 + t6;
 
--- v0.30.172: Test skip_ws comprehensive
+// v0.30.172: Test skip_ws comprehensive
 fn test_skip_ws_ext() -> i64 =
-    let t1 = if skip_ws("", 0) == 0 then 1 else 0;
-    let t2 = if skip_ws("abc", 0) == 0 then 1 else 0;
-    let t3 = if skip_ws("  abc", 0) == 2 then 1 else 0;
-    let t4 = if skip_ws("   ", 0) == 3 then 1 else 0;
-    let t5 = if skip_ws("x  y", 1) == 3 then 1 else 0;
-    let t6 = if skip_ws("a", 1) == 1 then 1 else 0;  -- pos at end
+    let t1 = if skip_ws("", 0) == 0 { 1 } else { 0 };
+    let t2 = if skip_ws("abc", 0) == 0 { 1 } else { 0 };
+    let t3 = if skip_ws("  abc", 0) == 2 { 1 } else { 0 };
+    let t4 = if skip_ws("   ", 0) == 3 { 1 } else { 0 };
+    let t5 = if skip_ws("x  y", 1) == 3 { 1 } else { 0 };
+    let t6 = if skip_ws("a", 1) == 1 { 1 } else { 0 };  // pos at end
     t1 + t2 + t3 + t4 + t5 + t6;
 
--- v0.30.182: Test is_ident_start comprehensive
+// v0.30.182: Test is_ident_start comprehensive
 fn test_is_ident_start_ext() -> i64 =
-    (if is_ident_start(65) then 1 else 0) +   -- 'A'
-    (if is_ident_start(90) then 1 else 0) +   -- 'Z'
-    (if is_ident_start(97) then 1 else 0) +   -- 'a'
-    (if is_ident_start(122) then 1 else 0) +  -- 'z'
-    (if is_ident_start(95) then 1 else 0) +   -- '_'
-    (if not is_ident_start(48) then 1 else 0);  -- '0' not ident start
+    (if is_ident_start(65) { 1 } else { 0 }) +   // 'A'
+    (if is_ident_start(90) { 1 } else { 0 }) +   // 'Z'
+    (if is_ident_start(97) { 1 } else { 0 }) +   // 'a'
+    (if is_ident_start(122) { 1 } else { 0 }) +  // 'z'
+    (if is_ident_start(95) { 1 } else { 0 }) +   // '_'
+    (if not is_ident_start(48) { 1 } else { 0 });  // '0' not ident start
 
--- v0.30.182: Test parse_int_signed comprehensive
+// v0.30.182: Test parse_int_signed comprehensive
 fn test_parse_int_signed_ext() -> i64 =
-    (if parse_int_signed("-1", 0) == -1 then 1 else 0) +
-    (if parse_int_signed("-42", 0) == -42 then 1 else 0) +
-    (if parse_int_signed("0", 0) == 0 then 1 else 0) +
-    (if parse_int_signed("123", 0) == 123 then 1 else 0) +
-    (if parse_int_signed("-0", 0) == 0 then 1 else 0) +
-    (if parse_int_signed("", 0) == 0 then 1 else 0);
+    (if parse_int_signed("-1", 0) == -1 { 1 } else { 0 }) +
+    (if parse_int_signed("-42", 0) == -42 { 1 } else { 0 }) +
+    (if parse_int_signed("0", 0) == 0 { 1 } else { 0 }) +
+    (if parse_int_signed("123", 0) == 123 { 1 } else { 0 }) +
+    (if parse_int_signed("-0", 0) == 0 { 1 } else { 0 }) +
+    (if parse_int_signed("", 0) == 0 { 1 } else { 0 });
 
--- v0.30.182: Test parse_int_end comprehensive
+// v0.30.182: Test parse_int_end comprehensive
 fn test_parse_int_end_ext() -> i64 =
-    (if parse_int_end("123", 0) == 3 then 1 else 0) +
-    (if parse_int_end("42abc", 0) == 2 then 1 else 0) +
-    (if parse_int_end("abc", 0) == 0 then 1 else 0) +
-    (if parse_int_end("", 0) == 0 then 1 else 0) +
-    (if parse_int_end("0", 0) == 1 then 1 else 0) +
-    (if parse_int_end("99 ", 0) == 2 then 1 else 0);
+    (if parse_int_end("123", 0) == 3 { 1 } else { 0 }) +
+    (if parse_int_end("42abc", 0) == 2 { 1 } else { 0 }) +
+    (if parse_int_end("abc", 0) == 0 { 1 } else { 0 }) +
+    (if parse_int_end("", 0) == 0 { 1 } else { 0 }) +
+    (if parse_int_end("0", 0) == 1 { 1 } else { 0 }) +
+    (if parse_int_end("99 ", 0) == 2 { 1 } else { 0 });
 
--- v0.30.182: Test find_ident_end comprehensive
+// v0.30.182: Test find_ident_end comprehensive
 fn test_find_ident_end_ext() -> i64 =
-    (if find_ident_end("abc", 0) == 3 then 1 else 0) +
-    (if find_ident_end("a_b", 0) == 3 then 1 else 0) +
-    (if find_ident_end("x12", 0) == 3 then 1 else 0) +
-    (if find_ident_end("", 0) == 0 then 1 else 0) +
-    (if find_ident_end("xy+z", 0) == 2 then 1 else 0) +
-    (if find_ident_end("foo_bar123", 0) == 10 then 1 else 0);
+    (if find_ident_end("abc", 0) == 3 { 1 } else { 0 }) +
+    (if find_ident_end("a_b", 0) == 3 { 1 } else { 0 }) +
+    (if find_ident_end("x12", 0) == 3 { 1 } else { 0 }) +
+    (if find_ident_end("", 0) == 0 { 1 } else { 0 }) +
+    (if find_ident_end("xy+z", 0) == 2 { 1 } else { 0 }) +
+    (if find_ident_end("foo_bar123", 0) == 10 { 1 } else { 0 });
 
--- v0.30.182: Test find_number_end comprehensive
+// v0.30.182: Test find_number_end comprehensive
 fn test_find_number_end_ext() -> i64 =
-    (if find_number_end("123", 0) == 3 then 1 else 0) +
-    (if find_number_end("0", 0) == 1 then 1 else 0) +
-    (if find_number_end("abc", 0) == 0 then 1 else 0) +
-    (if find_number_end("42x", 0) == 2 then 1 else 0) +
-    (if find_number_end("99 ", 0) == 2 then 1 else 0) +
-    (if find_number_end("", 0) == 0 then 1 else 0);
+    (if find_number_end("123", 0) == 3 { 1 } else { 0 }) +
+    (if find_number_end("0", 0) == 1 { 1 } else { 0 }) +
+    (if find_number_end("abc", 0) == 0 { 1 } else { 0 }) +
+    (if find_number_end("42x", 0) == 2 { 1 } else { 0 }) +
+    (if find_number_end("99 ", 0) == 2 { 1 } else { 0 }) +
+    (if find_number_end("", 0) == 0 { 1 } else { 0 });
 
--- v0.30.182: Test tok_is_kind and tok_is_eof
+// v0.30.182: Test tok_is_kind and tok_is_eof
 fn test_tok_helpers() -> i64 =
-    (if tok_is_kind(1000000, 1) then 1 else 0) +
-    (if tok_is_kind(2000500, 2) then 1 else 0) +
-    (if not tok_is_kind(1000000, 2) then 1 else 0) +
-    (if tok_is_eof(0) then 1 else 0) +
-    (if tok_is_eof(100) then 1 else 0) +
-    (if not tok_is_eof(1000000) then 1 else 0);
+    (if tok_is_kind(1000000, 1) { 1 } else { 0 }) +
+    (if tok_is_kind(2000500, 2) { 1 } else { 0 }) +
+    (if not tok_is_kind(1000000, 2) { 1 } else { 0 }) +
+    (if tok_is_eof(0) { 1 } else { 0 }) +
+    (if tok_is_eof(100) { 1 } else { 0 }) +
+    (if not tok_is_eof(1000000) { 1 } else { 0 });
 
--- v0.30.196: Extended whitespace tests
+// v0.30.196: Extended whitespace tests
 fn test_whitespace_all() -> i64 =
-    (if is_whitespace(9) then 1 else 0) +    -- tab
-    (if is_whitespace(10) then 1 else 0) +   -- newline
-    (if is_whitespace(13) then 1 else 0) +   -- CR
-    (if is_whitespace(32) then 1 else 0) +   -- space
-    (if not is_whitespace(65) then 1 else 0) +   -- 'A'
-    (if not is_whitespace(0) then 1 else 0);     -- null
+    (if is_whitespace(9) { 1 } else { 0 }) +    // tab
+    (if is_whitespace(10) { 1 } else { 0 }) +   // newline
+    (if is_whitespace(13) { 1 } else { 0 }) +   // CR
+    (if is_whitespace(32) { 1 } else { 0 }) +   // space
+    (if not is_whitespace(65) { 1 } else { 0 }) +   // 'A'
+    (if not is_whitespace(0) { 1 } else { 0 });     // null
 
--- v0.30.196: Extended digit boundary tests
+// v0.30.196: Extended digit boundary tests
 fn test_digit_boundary() -> i64 =
-    (if not is_digit(47) then 1 else 0) +    -- '/'
-    (if is_digit(48) then 1 else 0) +        -- '0'
-    (if is_digit(53) then 1 else 0) +        -- '5'
-    (if is_digit(57) then 1 else 0) +        -- '9'
-    (if not is_digit(58) then 1 else 0) +    -- ':'
-    (if not is_digit(97) then 1 else 0);     -- 'a'
+    (if not is_digit(47) { 1 } else { 0 }) +    // '/'
+    (if is_digit(48) { 1 } else { 0 }) +        // '0'
+    (if is_digit(53) { 1 } else { 0 }) +        // '5'
+    (if is_digit(57) { 1 } else { 0 }) +        // '9'
+    (if not is_digit(58) { 1 } else { 0 }) +    // ':'
+    (if not is_digit(97) { 1 } else { 0 });     // 'a'
 
--- v0.30.196: Extended alpha boundary tests
+// v0.30.196: Extended alpha boundary tests
 fn test_alpha_boundary() -> i64 =
-    (if not is_alpha(64) then 1 else 0) +    -- '@'
-    (if is_alpha(65) then 1 else 0) +        -- 'A'
-    (if is_alpha(90) then 1 else 0) +        -- 'Z'
-    (if not is_alpha(91) then 1 else 0) +    -- '['
-    (if is_alpha(97) then 1 else 0) +        -- 'a'
-    (if is_alpha(122) then 1 else 0);        -- 'z'
+    (if not is_alpha(64) { 1 } else { 0 }) +    // '@'
+    (if is_alpha(65) { 1 } else { 0 }) +        // 'A'
+    (if is_alpha(90) { 1 } else { 0 }) +        // 'Z'
+    (if not is_alpha(91) { 1 } else { 0 }) +    // '['
+    (if is_alpha(97) { 1 } else { 0 }) +        // 'a'
+    (if is_alpha(122) { 1 } else { 0 });        // 'z'
 
--- v0.30.196: Extended alnum tests
+// v0.30.196: Extended alnum tests
 fn test_alnum_all() -> i64 =
-    (if is_alnum(65) then 1 else 0) +        -- 'A'
-    (if is_alnum(48) then 1 else 0) +        -- '0'
-    (if is_alnum(122) then 1 else 0) +       -- 'z'
-    (if is_alnum(57) then 1 else 0) +        -- '9'
-    (if not is_alnum(32) then 1 else 0) +    -- ' '
-    (if not is_alnum(95) then 1 else 0);     -- '_'
+    (if is_alnum(65) { 1 } else { 0 }) +        // 'A'
+    (if is_alnum(48) { 1 } else { 0 }) +        // '0'
+    (if is_alnum(122) { 1 } else { 0 }) +       // 'z'
+    (if is_alnum(57) { 1 } else { 0 }) +        // '9'
+    (if not is_alnum(32) { 1 } else { 0 }) +    // ' '
+    (if not is_alnum(95) { 1 } else { 0 });     // '_'
 
--- v0.30.196: Extended digit conversion tests
+// v0.30.196: Extended digit conversion tests
 fn test_digit_conv_all() -> i64 =
-    (if digit_to_int(48) == 0 then 1 else 0) +
-    (if digit_to_int(57) == 9 then 1 else 0) +
-    (if digit_char(0) == "0" then 1 else 0) +
-    (if digit_char(9) == "9" then 1 else 0) +
-    (if digit_char(5) == "5" then 1 else 0) +
-    (if digit_to_int(53) == 5 then 1 else 0);
+    (if digit_to_int(48) == 0 { 1 } else { 0 }) +
+    (if digit_to_int(57) == 9 { 1 } else { 0 }) +
+    (if digit_char(0) == "0" { 1 } else { 0 }) +
+    (if digit_char(9) == "9" { 1 } else { 0 }) +
+    (if digit_char(5) == "5" { 1 } else { 0 }) +
+    (if digit_to_int(53) == 5 { 1 } else { 0 });
 
--- v0.30.196: Extended token encoding tests
+// v0.30.196: Extended token encoding tests
 fn test_tok_encode_all() -> i64 =
     let t1 = tok_encode(1, 10);
     let t2 = tok_encode(5, 100);
     let t3 = tok_encode(0, 0);
-    (if tok_kind(t1) == 1 then 1 else 0) +
-    (if tok_end(t1) == 10 then 1 else 0) +
-    (if tok_kind(t2) == 5 then 1 else 0) +
-    (if tok_end(t2) == 100 then 1 else 0) +
-    (if tok_kind(t3) == 0 then 1 else 0) +
-    (if tok_end(t3) == 0 then 1 else 0);
+    (if tok_kind(t1) == 1 { 1 } else { 0 }) +
+    (if tok_end(t1) == 10 { 1 } else { 0 }) +
+    (if tok_kind(t2) == 5 { 1 } else { 0 }) +
+    (if tok_end(t2) == 100 { 1 } else { 0 }) +
+    (if tok_kind(t3) == 0 { 1 } else { 0 }) +
+    (if tok_end(t3) == 0 { 1 } else { 0 });
 
--- Run all tests
+// Run all tests
 fn run_utils_tests() -> i64 =
-    let t1 = if test_is_digit() then 1 else 0;
-    let t2 = if test_is_alpha() then 1 else 0;
-    let t3 = if test_is_alnum() then 1 else 0;
-    let t4 = if test_is_ident_start() then 1 else 0;
-    let t5 = if test_digit_to_int() then 1 else 0;
-    let t6 = if test_int_to_string() then 1 else 0;
-    let t7 = if test_digit_char() then 1 else 0;
-    let t8 = if test_parse_int() then 1 else 0;
-    let t9 = if test_parse_int_signed() then 1 else 0;
-    let t10 = if test_parse_int_end() then 1 else 0;
-    let t11 = if test_find_char() then 1 else 0;
-    let t12 = if test_skip_ws() then 1 else 0;
-    let t13 = if test_find_ident_end() then 1 else 0;
-    let t14 = if test_find_number_end() then 1 else 0;
-    let t15 = if test_starts_with() then 1 else 0;
-    let t16 = if test_find_pattern() then 1 else 0;
-    let t17 = if test_skip_comment() then 1 else 0;
-    let t18 = if test_skip_to_eol() then 1 else 0;
-    -- Error handling tests
-    let t19 = if test_is_error() then 1 else 0;
-    let t20 = if test_make_error() then 1 else 0;
-    let t21 = if test_get_error_msg() then 1 else 0;
-    let t22 = if test_is_error_loose() then 1 else 0;
-    -- Result packing tests
-    let t23 = if test_pack_result() then 1 else 0;
-    let t24 = if test_unpack_pos() then 1 else 0;
-    let t25 = if test_unpack_ast() then 1 else 0;
-    let t26 = if test_pack_values() then 1 else 0;
-    let t27 = if test_unpack_first() then 1 else 0;
-    let t28 = if test_unpack_rest() then 1 else 0;
-    -- Token encoding tests
-    let t29 = if test_tok_encode() then 1 else 0;
-    let t30 = if test_tok_kind() then 1 else 0;
-    let t31 = if test_tok_end() then 1 else 0;
-    let t32 = if test_tok_is_kind() then 1 else 0;
-    let t33 = if test_tok_is_eof() then 1 else 0;
-    -- v0.30.156: New function tests
-    let t34 = if test_char_upper() then 1 else 0;
-    let t35 = if test_char_lower() then 1 else 0;
-    let t36 = if test_char_to_string() then 1 else 0;
-    let t37 = if test_find_specialized() then 1 else 0;
-    let t38 = if test_strip_colon() then 1 else 0;
-    let t39 = if test_read_until_ws() then 1 else 0;
-    let t40 = if test_is_alnum() then 1 else 0;
-    let t41 = if test_skip_spaces() then 1 else 0;
-    let t42 = if test_pack_values_ext() then 1 else 0;
-    -- v0.30.139: Edge case tests
-    let t43 = if test_char_boundary_cases() then 1 else 0;
-    let t44 = if test_int_to_string_edge() then 1 else 0;
-    let t45 = if test_string_match_edge() then 1 else 0;
-    let t46 = if test_result_edge_cases() then 1 else 0;
-    let t47 = if test_skip_edge_cases() then 1 else 0;
+    let t1 = if test_is_digit() { 1 } else { 0 };
+    let t2 = if test_is_alpha() { 1 } else { 0 };
+    let t3 = if test_is_alnum() { 1 } else { 0 };
+    let t4 = if test_is_ident_start() { 1 } else { 0 };
+    let t5 = if test_digit_to_int() { 1 } else { 0 };
+    let t6 = if test_int_to_string() { 1 } else { 0 };
+    let t7 = if test_digit_char() { 1 } else { 0 };
+    let t8 = if test_parse_int() { 1 } else { 0 };
+    let t9 = if test_parse_int_signed() { 1 } else { 0 };
+    let t10 = if test_parse_int_end() { 1 } else { 0 };
+    let t11 = if test_find_char() { 1 } else { 0 };
+    let t12 = if test_skip_ws() { 1 } else { 0 };
+    let t13 = if test_find_ident_end() { 1 } else { 0 };
+    let t14 = if test_find_number_end() { 1 } else { 0 };
+    let t15 = if test_starts_with() { 1 } else { 0 };
+    let t16 = if test_find_pattern() { 1 } else { 0 };
+    let t17 = if test_skip_comment() { 1 } else { 0 };
+    let t18 = if test_skip_to_eol() { 1 } else { 0 };
+    // Error handling tests
+    let t19 = if test_is_error() { 1 } else { 0 };
+    let t20 = if test_make_error() { 1 } else { 0 };
+    let t21 = if test_get_error_msg() { 1 } else { 0 };
+    let t22 = if test_is_error_loose() { 1 } else { 0 };
+    // Result packing tests
+    let t23 = if test_pack_result() { 1 } else { 0 };
+    let t24 = if test_unpack_pos() { 1 } else { 0 };
+    let t25 = if test_unpack_ast() { 1 } else { 0 };
+    let t26 = if test_pack_values() { 1 } else { 0 };
+    let t27 = if test_unpack_first() { 1 } else { 0 };
+    let t28 = if test_unpack_rest() { 1 } else { 0 };
+    // Token encoding tests
+    let t29 = if test_tok_encode() { 1 } else { 0 };
+    let t30 = if test_tok_kind() { 1 } else { 0 };
+    let t31 = if test_tok_end() { 1 } else { 0 };
+    let t32 = if test_tok_is_kind() { 1 } else { 0 };
+    let t33 = if test_tok_is_eof() { 1 } else { 0 };
+    // v0.30.156: New function tests
+    let t34 = if test_char_upper() { 1 } else { 0 };
+    let t35 = if test_char_lower() { 1 } else { 0 };
+    let t36 = if test_char_to_string() { 1 } else { 0 };
+    let t37 = if test_find_specialized() { 1 } else { 0 };
+    let t38 = if test_strip_colon() { 1 } else { 0 };
+    let t39 = if test_read_until_ws() { 1 } else { 0 };
+    let t40 = if test_is_alnum() { 1 } else { 0 };
+    let t41 = if test_skip_spaces() { 1 } else { 0 };
+    let t42 = if test_pack_values_ext() { 1 } else { 0 };
+    // v0.30.139: Edge case tests
+    let t43 = if test_char_boundary_cases() { 1 } else { 0 };
+    let t44 = if test_int_to_string_edge() { 1 } else { 0 };
+    let t45 = if test_string_match_edge() { 1 } else { 0 };
+    let t46 = if test_result_edge_cases() { 1 } else { 0 };
+    let t47 = if test_skip_edge_cases() { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t9 + t10 + t11 + t12 + t13 + t14 + t15 + t16 + t17 + t18
     + t19 + t20 + t21 + t22 + t23 + t24 + t25 + t26 + t27 + t28 + t29 + t30 + t31 + t32 + t33
     + t34 + t35 + t36 + t37 + t38 + t39 + t40 + t41 + t42 + t43 + t44 + t45 + t46 + t47;
 
--- v0.30.172: Run extended tests (returns count of passed assertions)
+// v0.30.172: Run extended tests (returns count of passed assertions)
 fn run_extended_tests() -> i64 =
     let e1 = test_is_whitespace_ext();
     let e2 = test_is_digit_ext();
@@ -966,81 +901,81 @@ fn run_extended_tests() -> i64 =
     let e15 = test_skip_ws_ext();
     e1 + e2 + e3 + e4 + e5 + e6 + e7 + e8 + e9 + e10 + e11 + e12 + e13 + e14 + e15;
 
--- Main test entry
+// Main test entry
 fn main() -> i64 =
-    let u1 = println(777);  -- Start marker
+    let u1 = println(777);  // Start marker
     let passed = run_utils_tests();
-    let u2 = println(passed);  -- Should be 47 (base tests)
+    let u2 = println(passed);  // Should be 47 (base tests)
 
-    -- v0.30.172: Extended tests (98 new assertions)
+    // v0.30.172: Extended tests (98 new assertions)
     let ext1 = test_is_whitespace_ext();
-    let v1 = println(ext1);  -- Should be 8
+    let v1 = println(ext1);  // Should be 8
     let ext2 = test_is_digit_ext();
-    let v2 = println(ext2);  -- Should be 6
+    let v2 = println(ext2);  // Should be 6
     let ext3 = test_is_alpha_ext();
-    let v3 = println(ext3);  -- Should be 8
+    let v3 = println(ext3);  // Should be 8
     let ext4 = test_is_alnum_underscore();
-    let v4 = println(ext4);  -- Should be 6
+    let v4 = println(ext4);  // Should be 6
     let ext5 = test_digit_to_int_ext();
-    let v5 = println(ext5);  -- Should be 4
+    let v5 = println(ext5);  // Should be 4
     let ext6 = test_digit_char_ext();
-    let v6 = println(ext6);  -- Should be 10
+    let v6 = println(ext6);  // Should be 10
     let ext7 = test_int_to_string_ext();
-    let v7 = println(ext7);  -- Should be 8
+    let v7 = println(ext7);  // Should be 8
     let ext8 = test_parse_int_ext();
-    let v8 = println(ext8);  -- Should be 6
+    let v8 = println(ext8);  // Should be 6
     let ext9 = test_find_char_ext();
-    let v9 = println(ext9);  -- Should be 6
+    let v9 = println(ext9);  // Should be 6
     let ext10 = test_tok_encoding_ext();
-    let v10 = println(ext10);  -- Should be 6
+    let v10 = println(ext10);  // Should be 6
     let ext11 = test_starts_with_ext();
-    let v11 = println(ext11);  -- Should be 6
+    let v11 = println(ext11);  // Should be 6
     let ext12 = test_find_pattern_ext();
-    let v12 = println(ext12);  -- Should be 6
+    let v12 = println(ext12);  // Should be 6
     let ext13 = test_result_packing_ext();
-    let v13 = println(ext13);  -- Should be 6
+    let v13 = println(ext13);  // Should be 6
     let ext14 = test_error_handling_ext();
-    let v14 = println(ext14);  -- Should be 6
+    let v14 = println(ext14);  // Should be 6
     let ext15 = test_skip_ws_ext();
-    let v15 = println(ext15);  -- Should be 6
+    let v15 = println(ext15);  // Should be 6
 
-    -- v0.30.182: Additional unit tests (36 new assertions)
+    // v0.30.182: Additional unit tests (36 new assertions)
     let ext16 = test_is_ident_start_ext();
-    let v16 = println(ext16);  -- Should be 6
+    let v16 = println(ext16);  // Should be 6
     let ext17 = test_parse_int_signed_ext();
-    let v17 = println(ext17);  -- Should be 6
+    let v17 = println(ext17);  // Should be 6
     let ext18 = test_parse_int_end_ext();
-    let v18 = println(ext18);  -- Should be 6
+    let v18 = println(ext18);  // Should be 6
     let ext19 = test_find_ident_end_ext();
-    let v19 = println(ext19);  -- Should be 6
+    let v19 = println(ext19);  // Should be 6
     let ext20 = test_find_number_end_ext();
-    let v20 = println(ext20);  -- Should be 6
+    let v20 = println(ext20);  // Should be 6
     let ext21 = test_tok_helpers();
-    let v21 = println(ext21);  -- Should be 6
+    let v21 = println(ext21);  // Should be 6
 
-    -- v0.30.196: Extended unit tests (36 new assertions)
+    // v0.30.196: Extended unit tests (36 new assertions)
     let ext22 = test_whitespace_all();
-    let v22 = println(ext22);  -- Should be 6
+    let v22 = println(ext22);  // Should be 6
     let ext23 = test_digit_boundary();
-    let v23 = println(ext23);  -- Should be 6
+    let v23 = println(ext23);  // Should be 6
     let ext24 = test_alpha_boundary();
-    let v24 = println(ext24);  -- Should be 6
+    let v24 = println(ext24);  // Should be 6
     let ext25 = test_alnum_all();
-    let v25 = println(ext25);  -- Should be 6
+    let v25 = println(ext25);  // Should be 6
     let ext26 = test_digit_conv_all();
-    let v26 = println(ext26);  -- Should be 6
+    let v26 = println(ext26);  // Should be 6
     let ext27 = test_tok_encode_all();
-    let v27 = println(ext27);  -- Should be 6
+    let v27 = println(ext27);  // Should be 6
 
     let extended = ext1 + ext2 + ext3 + ext4 + ext5 + ext6 + ext7 + ext8 + ext9 + ext10 + ext11 + ext12 + ext13 + ext14 + ext15;
     let new_tests = ext16 + ext17 + ext18 + ext19 + ext20 + ext21;
     let v196_tests = ext22 + ext23 + ext24 + ext25 + ext26 + ext27;
-    let v28 = println(extended);  -- Should be 98
-    let v29 = println(new_tests);  -- Should be 36
+    let v28 = println(extended);  // Should be 98
+    let v29 = println(new_tests);  // Should be 36
 
     let total = passed + extended + new_tests + v196_tests;
-    let u3 = println(888);  -- Separator marker
-    let u4 = println(total);  -- Should be 217 (47 base + 98 ext + 36 new + 36 v196)
-    let u5 = println(999);  -- End marker
-    -- Returns number of passed tests
+    let u3 = println(888);  // Separator marker
+    let u4 = println(total);  // Should be 217 (47 base + 98 ext + 36 new + 36 v196)
+    let u5 = println(999);  // End marker
+    // Returns number of passed tests
     total;

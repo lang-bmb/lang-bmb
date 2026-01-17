@@ -1,28 +1,28 @@
--- Test malloc/free/realloc/calloc builtins (Phase 34.2.1)
--- Note: Works around interpreter bug with variable returns
+// Test malloc/free/realloc/calloc builtins (Phase 34.2.1)
+// Note: Works around interpreter bug with variable returns
 
 fn main() -> i64 = {
-    -- Test malloc
+    // Test malloc
     let ptr1 = malloc(64);
     println(ptr1);
 
-    -- Test calloc
+    // Test calloc
     let ptr2 = calloc(10, 8);
     println(ptr2);
 
-    -- Test realloc
+    // Test realloc
     let ptr3 = realloc(ptr1, 128);
     println(ptr3);
 
-    -- Test free (no-op in interpreter, but should not crash)
+    // Test free (no-op in interpreter, but should not crash)
     free(ptr3);
 
-    -- Test edge cases
+    // Test edge cases
     let null1 = malloc(0);
     let null2 = malloc(-1);
     println(null1);
     println(null2);
 
-    -- Return literal (workaround for interpreter scope bug)
+    // Return literal (workaround for interpreter scope bug)
     0
 };

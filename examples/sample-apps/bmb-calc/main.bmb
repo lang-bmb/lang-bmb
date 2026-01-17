@@ -1,0 +1,309 @@
+// bmb-calc: A simple calculator demonstrating BMB language features
+// Usage: bmb run main.bmb <expression>
+// Example: bmb run main.bmb "add 5 3" => 8
+//          bmb run main.bmb "sqrt 16" => 4
+//          bmb run main.bmb "fib 10" => 55
+
+// ============================================================================
+// Math Functions (from bmb-math concepts)
+// ============================================================================
+
+fn abs(x: i64) -> i64
+  post ret >= 0
+= if x < 0 { 0 - x } else { x };
+
+fn min(a: i64, b: i64) -> i64
+  post ret <= a and ret <= b
+= if a < b { a } else { b };
+
+fn max(a: i64, b: i64) -> i64
+  post ret >= a and ret >= b
+= if a > b { a } else { b };
+
+fn pow_iter(base: i64, exp: i64, acc: i64) -> i64 =
+    if exp <= 0 { acc } else { pow_iter(base, exp - 1, acc * base) };
+
+fn pow(base: i64, exp: i64) -> i64
+  pre exp >= 0
+= pow_iter(base, exp, 1);
+
+fn sqrt_iter(n: i64, guess: i64, prev: i64) -> i64 =
+    if guess == prev { guess } else { sqrt_iter(n, (guess + n / guess) / 2, guess) };
+
+fn sqrt(n: i64) -> i64
+  pre n >= 0
+  post ret * ret <= n
+= if n == 0 { 0 } else if n == 1 { 1 } else { sqrt_iter(n, n / 2, 0) };
+
+fn gcd(a: i64, b: i64) -> i64
+  pre a >= 0 and b >= 0
+  post ret >= 0
+= if b == 0 { a } else { gcd(b, a - (a / b) * b) };
+
+fn lcm(a: i64, b: i64) -> i64
+  pre a > 0 and b > 0
+= (a / gcd(a, b)) * b;
+
+fn factorial_iter(n: i64, acc: i64) -> i64 =
+    if n <= 1 { acc } else { factorial_iter(n - 1, acc * n) };
+
+fn factorial(n: i64) -> i64
+  pre n >= 0
+  post ret >= 1
+= factorial_iter(n, 1);
+
+fn fib_iter(n: i64, a: i64, b: i64) -> i64 =
+    if n <= 0 { a } else { fib_iter(n - 1, b, a + b) };
+
+fn fib(n: i64) -> i64
+  pre n >= 0
+= fib_iter(n, 0, 1);
+
+fn is_prime_check(n: i64, d: i64) -> bool =
+    if d * d > n { true }
+    else if n - (n / d) * d == 0 { false }
+    else { is_prime_check(n, d + 2) };
+
+fn is_prime(n: i64) -> bool
+  pre n >= 0
+= if n < 2 { false }
+  else if n == 2 { true }
+  else if n - (n / 2) * 2 == 0 { false }
+  else { is_prime_check(n, 3) };
+
+// ============================================================================
+// String Parsing Utilities
+// ============================================================================
+
+fn is_digit(c: i64) -> bool = c >= 48 and c <= 57;
+
+fn parse_int_rec(s: String, pos: i64, acc: i64) -> i64 =
+    if pos >= s.len() { acc }
+    else {
+        let c = s.byte_at(pos);
+        if is_digit(c) { parse_int_rec(s, pos + 1, acc * 10 + (c - 48)) }
+        else { acc }
+    };
+
+fn parse_int(s: String) -> i64 =
+    if s.len() == 0 { 0 }
+    else if s.byte_at(0) == 45 { 0 - parse_int_rec(s, 1, 0) }
+    else { parse_int_rec(s, 0, 0) };
+
+fn skip_spaces(s: String, pos: i64) -> i64 =
+    if pos >= s.len() { pos }
+    else if s.byte_at(pos) == 32 { skip_spaces(s, pos + 1) }
+    else { pos };
+
+fn find_space(s: String, pos: i64) -> i64 =
+    if pos >= s.len() { pos }
+    else if s.byte_at(pos) == 32 { pos }
+    else { find_space(s, pos + 1) };
+
+// ============================================================================
+// Command Parsing
+// ============================================================================
+
+fn str_eq_at(s: String, target: String, pos: i64, tpos: i64) -> bool =
+    if tpos >= target.len() { true }
+    else if pos >= s.len() { false }
+    else if s.byte_at(pos) != target.byte_at(tpos) { false }
+    else { str_eq_at(s, target, pos + 1, tpos + 1) };
+
+fn starts_with(s: String, prefix: String) -> bool = str_eq_at(s, prefix, 0, 0);
+
+fn get_command(input: String) -> i64 =
+    if starts_with(input, "add") { 1 }
+    else if starts_with(input, "sub") { 2 }
+    else if starts_with(input, "mul") { 3 }
+    else if starts_with(input, "div") { 4 }
+    else if starts_with(input, "mod") { 5 }
+    else if starts_with(input, "pow") { 6 }
+    else if starts_with(input, "sqrt") { 7 }
+    else if starts_with(input, "abs") { 8 }
+    else if starts_with(input, "min") { 9 }
+    else if starts_with(input, "max") { 10 }
+    else if starts_with(input, "gcd") { 11 }
+    else if starts_with(input, "lcm") { 12 }
+    else if starts_with(input, "fac") { 13 }
+    else if starts_with(input, "fib") { 14 }
+    else if starts_with(input, "prime") { 15 }
+    else if starts_with(input, "help") { 99 }
+    else { 0 };
+
+// ============================================================================
+// Command Execution
+// ============================================================================
+
+fn execute_unary(cmd: i64, arg: i64) -> i64 =
+    if cmd == 7 { sqrt(abs(arg)) }         // sqrt
+    else if cmd == 8 { abs(arg) }          // abs
+    else if cmd == 13 { factorial(arg) }   // fac
+    else if cmd == 14 { fib(arg) }         // fib
+    else if cmd == 15 { if is_prime(arg) { 1 } else { 0 } }  // prime
+    else { 0 };
+
+fn execute_binary(cmd: i64, a: i64, b: i64) -> i64 =
+    if cmd == 1 { a + b }                  // add
+    else if cmd == 2 { a - b }             // sub
+    else if cmd == 3 { a * b }             // mul
+    else if cmd == 4 { if b == 0 { 0 } else { a / b } }  // div
+    else if cmd == 5 { if b == 0 { 0 } else { a - (a / b) * b } }  // mod
+    else if cmd == 6 { pow(a, abs(b)) }    // pow
+    else if cmd == 9 { min(a, b) }         // min
+    else if cmd == 10 { max(a, b) }        // max
+    else if cmd == 11 { gcd(abs(a), abs(b)) }  // gcd
+    else if cmd == 12 { lcm(abs(a), abs(b)) }  // lcm
+    else { 0 };
+
+fn is_unary_cmd(cmd: i64) -> bool =
+    cmd == 7 or cmd == 8 or cmd == 13 or cmd == 14 or cmd == 15;
+
+// ============================================================================
+// Help Display
+// ============================================================================
+
+fn show_help() -> i64 = {
+    let h1 = println(100);  // Header marker
+    let h2 = println(101);  // "Commands:"
+    let h3 = println(102);  // "add a b  - Addition"
+    let h4 = println(103);  // "sub a b  - Subtraction"
+    let h5 = println(104);  // "mul a b  - Multiplication"
+    let h6 = println(105);  // "div a b  - Division"
+    let h7 = println(106);  // "mod a b  - Modulo"
+    let h8 = println(107);  // "pow a b  - Power"
+    let h9 = println(108);  // "sqrt n   - Square root"
+    let h10 = println(109); // "abs n    - Absolute value"
+    let h11 = println(110); // "min a b  - Minimum"
+    let h12 = println(111); // "max a b  - Maximum"
+    let h13 = println(112); // "gcd a b  - GCD"
+    let h14 = println(113); // "lcm a b  - LCM"
+    let h15 = println(114); // "fac n    - Factorial"
+    let h16 = println(115); // "fib n    - Fibonacci"
+    let h17 = println(116); // "prime n  - Is prime (1=yes, 0=no)"
+    0
+};
+
+// ============================================================================
+// Main Entry Point
+// ============================================================================
+
+fn process_input(input: String) -> i64 = {
+    let cmd = get_command(input);
+
+    if cmd == 0 {
+        let err = println(900);  // Unknown command
+        0 - 1
+    }
+    else if cmd == 99 {
+        show_help()
+    }
+    else {
+        // Skip command name
+        let pos1 = find_space(input, 0);
+        let pos2 = skip_spaces(input, pos1);
+
+        // Parse first argument
+        let end1 = find_space(input, pos2);
+        let arg1 = parse_int(input.slice(pos2, end1));
+
+        if is_unary_cmd(cmd) {
+            let result = execute_unary(cmd, arg1);
+            let p = println(result);
+            result
+        }
+        else {
+            // Parse second argument
+            let pos3 = skip_spaces(input, end1);
+            let end2 = find_space(input, pos3);
+            let arg2 = parse_int(input.slice(pos3, end2));
+
+            let result = execute_binary(cmd, arg1, arg2);
+            let p = println(result);
+            result
+        }
+    }
+};
+
+fn main() -> i64 = {
+    let argc = arg_count();
+
+    if argc < 2 {
+        let usage = println(800);  // Usage marker
+        let h = show_help();
+        0
+    }
+    else {
+        // Concatenate all arguments after program name
+        let input = get_arg(1);
+        process_input(input)
+    }
+};
+
+// ============================================================================
+// Tests
+// ============================================================================
+
+fn test_math() -> i64 = {
+    // Test abs
+    let t1 = if abs(0 - 5) != 5 { let e = println(901); 0 } else { 1 };
+
+    // Test pow
+    let t2 = if pow(2, 10) != 1024 { let e = println(902); 0 } else { 1 };
+
+    // Test sqrt
+    let t3 = if sqrt(16) != 4 { let e = println(903); 0 } else { 1 };
+
+    // Test gcd
+    let t4 = if gcd(48, 18) != 6 { let e = println(904); 0 } else { 1 };
+
+    // Test factorial
+    let t5 = if factorial(5) != 120 { let e = println(905); 0 } else { 1 };
+
+    // Test fib
+    let t6 = if fib(10) != 55 { let e = println(906); 0 } else { 1 };
+
+    // Test is_prime
+    let t7 = if is_prime(17) != true { let e = println(907); 0 } else { 1 };
+    let t8 = if is_prime(18) != false { let e = println(908); 0 } else { 1 };
+
+    if t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 == 8 {
+        let ok = println(777);
+        1
+    } else {
+        0
+    }
+};
+
+fn test_parse() -> i64 = {
+    let t1 = if parse_int("123") != 123 { let e = println(911); 0 } else { 1 };
+    let t2 = if parse_int("-456") != 0 - 456 { let e = println(912); 0 } else { 1 };
+    let t3 = if parse_int("0") != 0 { let e = println(913); 0 } else { 1 };
+
+    if t1 + t2 + t3 == 3 {
+        let ok = println(888);
+        1
+    } else {
+        0
+    }
+};
+
+fn test_commands() -> i64 = {
+    let t1 = if get_command("add 1 2") != 1 { let e = println(921); 0 } else { 1 };
+    let t2 = if get_command("sqrt 16") != 7 { let e = println(922); 0 } else { 1 };
+    let t3 = if get_command("unknown") != 0 { let e = println(923); 0 } else { 1 };
+
+    if t1 + t2 + t3 == 3 {
+        let ok = println(999);
+        1
+    } else {
+        0
+    }
+};
+
+fn run_tests() -> i64 = {
+    let t1 = test_math();
+    let t2 = test_parse();
+    let t3 = test_commands();
+    t1 + t2 + t3
+};

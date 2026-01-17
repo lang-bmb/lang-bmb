@@ -14,6 +14,8 @@ pub enum Expr {
     BoolLit(bool),
     /// String literal (v0.5 Phase 2)
     StringLit(String),
+    /// Character literal (v0.64)
+    CharLit(char),
     /// Unit value
     Unit,
 
@@ -56,8 +58,13 @@ pub enum Expr {
     },
 
     /// While loop: while cond { body } (v0.5 Phase 2)
+    /// v0.37: Optional invariant for verification
+    /// Syntax: while cond invariant inv { body }
     While {
         cond: Box<Spanned<Expr>>,
+        /// v0.37: Optional loop invariant for SMT verification
+        /// The invariant must hold before the loop and be preserved by each iteration
+        invariant: Option<Box<Spanned<Expr>>>,
         body: Box<Spanned<Expr>>,
     },
 
@@ -66,6 +73,28 @@ pub enum Expr {
         var: String,
         iter: Box<Spanned<Expr>>,
         body: Box<Spanned<Expr>>,
+    },
+
+    // v0.36: Additional control flow
+
+    /// Infinite loop: loop { body }
+    /// Exit with break, can return a value with `break value`
+    Loop {
+        body: Box<Spanned<Expr>>,
+    },
+
+    /// Break from loop: break or break value
+    /// Returns unit or the specified value from the enclosing loop
+    Break {
+        value: Option<Box<Spanned<Expr>>>,
+    },
+
+    /// Continue to next iteration: continue
+    Continue,
+
+    /// Early return: return or return value
+    Return {
+        value: Option<Box<Spanned<Expr>>>,
     },
 
     /// Range expression: start..end, start..<end, start..=end (v0.2)
@@ -105,6 +134,13 @@ pub enum Expr {
         field: Spanned<String>,
     },
 
+    /// v0.43: Tuple field access: expr.0, expr.1, etc.
+    /// Accesses tuple element by index (compile-time checked)
+    TupleField {
+        expr: Box<Spanned<Expr>>,
+        index: usize,
+    },
+
     /// Enum variant: EnumName::Variant or EnumName::Variant(args)
     EnumVariant {
         enum_name: String,
@@ -134,6 +170,9 @@ pub enum Expr {
     /// Array literal: [elem1, elem2, ...]
     ArrayLit(Vec<Spanned<Expr>>),
 
+    /// v0.42: Tuple expression: (expr1, expr2, ...)
+    Tuple(Vec<Spanned<Expr>>),
+
     /// Index access: `expr[index]`
     Index {
         expr: Box<Spanned<Expr>>,
@@ -158,20 +197,6 @@ pub enum Expr {
         state: StateKind,
     },
 
-    // v0.13.2: Error propagation
-
-    /// Try block: try { expr }
-    /// Captures errors from the block and converts them to a Result
-    Try {
-        body: Box<Spanned<Expr>>,
-    },
-
-    /// Question mark operator: expr?
-    /// Propagates error if expr is Err, unwraps Ok value otherwise
-    Question {
-        expr: Box<Spanned<Expr>>,
-    },
-
     // v0.20.0: Closures
 
     /// Closure expression: |params| body
@@ -194,12 +219,52 @@ pub enum Expr {
         /// Optional message describing what needs to be implemented
         message: Option<String>,
     },
+
+    // v0.37: Quantifiers for verification
+
+    /// Universal quantifier: forall x: T, condition
+    /// Returns bool. True if condition holds for all x of type T.
+    /// Used primarily in contract verification (SMT-based).
+    Forall {
+        /// Bound variable name
+        var: Spanned<String>,
+        /// Type of the bound variable
+        ty: Spanned<Type>,
+        /// Condition that must hold for all values
+        body: Box<Spanned<Expr>>,
+    },
+
+    /// Existential quantifier: exists x: T, condition
+    /// Returns bool. True if condition holds for some x of type T.
+    /// Used primarily in contract verification (SMT-based).
+    Exists {
+        /// Bound variable name
+        var: Spanned<String>,
+        /// Type of the bound variable
+        ty: Spanned<Type>,
+        /// Condition that must hold for some value
+        body: Box<Spanned<Expr>>,
+    },
+
+    // v0.39: Type casting
+
+    /// Type cast expression: expr as Type
+    /// Explicit conversion between numeric types.
+    /// Examples: x as i64, y as u32, z as f64
+    Cast {
+        /// Expression to cast
+        expr: Box<Spanned<Expr>>,
+        /// Target type
+        ty: Spanned<Type>,
+    },
 }
 
 /// A single arm in a match expression
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MatchArm {
     pub pattern: Spanned<Pattern>,
+    /// v0.40: Optional pattern guard (if condition)
+    pub guard: Option<Spanned<Expr>>,
     pub body: Spanned<Expr>,
 }
 
@@ -225,14 +290,48 @@ pub enum Pattern {
     EnumVariant {
         enum_name: String,
         variant: String,
-        bindings: Vec<Spanned<String>>,
+        /// v0.41: Changed from EnumBinding to Pattern to support nested patterns
+        bindings: Vec<Spanned<Pattern>>,
     },
     /// Struct pattern: StructName { field1: pat1, field2: pat2 }
     Struct {
         name: String,
         fields: Vec<(Spanned<String>, Spanned<Pattern>)>,
     },
+    /// v0.39: Range pattern: 1..10 or 1..=10
+    Range {
+        start: LiteralPattern,
+        end: LiteralPattern,
+        inclusive: bool,
+    },
+    /// v0.40: Or-pattern: A | B
+    Or(Vec<Spanned<Pattern>>),
+    /// v0.41: Binding pattern: name @ pattern
+    /// Binds the matched value to `name` while also matching `pattern`
+    Binding {
+        name: String,
+        pattern: Box<Spanned<Pattern>>,
+    },
+    /// v0.42: Tuple pattern: (pat1, pat2, ...)
+    /// Matches tuple values and destructures into component patterns
+    Tuple(Vec<Spanned<Pattern>>),
+    /// v0.44: Array pattern: [pat1, pat2, ...]
+    /// Matches fixed-size arrays and destructures into component patterns
+    /// Array size is checked at compile-time for P0 correctness
+    Array(Vec<Spanned<Pattern>>),
+    /// v0.45: Array pattern with rest: [first, ..], [.., last], [first, .., last]
+    /// Matches fixed-size arrays with variable middle elements (non-capturing)
+    /// The ".." skips zero or more elements without binding them
+    /// P0 Performance: Zero overhead - all indices computed at compile-time
+    ArrayRest {
+        /// Patterns to match at the beginning of the array
+        prefix: Vec<Spanned<Pattern>>,
+        /// Patterns to match at the end of the array
+        suffix: Vec<Spanned<Pattern>>,
+    },
 }
+
+// v0.41: EnumBinding removed - use Pattern directly for nested pattern support
 
 /// Literal patterns for match
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -241,6 +340,62 @@ pub enum LiteralPattern {
     Float(f64),
     Bool(bool),
     String(String),
+}
+
+/// v0.45: Helper for parsing array patterns with optional rest marker
+/// Used internally by grammar to avoid LR conflicts
+#[derive(Debug, Clone)]
+pub enum ArrayPatternPart {
+    /// A pattern element
+    Pattern(Spanned<Pattern>),
+    /// The rest marker (..)
+    Rest,
+}
+
+impl ArrayPatternPart {
+    /// v0.45: Convert a list of array pattern parts to a Pattern
+    /// Returns Pattern::Array if no rest marker, Pattern::ArrayRest if rest marker present
+    /// Panics if multiple rest markers are present (grammar should prevent this)
+    pub fn into_pattern(parts: Vec<ArrayPatternPart>) -> Pattern {
+        // Find the rest marker if any
+        let rest_index = parts.iter().position(|p| matches!(p, ArrayPatternPart::Rest));
+
+        if let Some(idx) = rest_index {
+            // Check for multiple rest markers (should be caught at grammar level ideally)
+            let second_rest = parts[idx + 1..].iter().any(|p| matches!(p, ArrayPatternPart::Rest));
+            if second_rest {
+                panic!("Multiple rest markers in array pattern");
+            }
+
+            // Split into prefix and suffix around the rest marker
+            let prefix: Vec<_> = parts[..idx]
+                .iter()
+                .filter_map(|p| match p {
+                    ArrayPatternPart::Pattern(sp) => Some(sp.clone()),
+                    ArrayPatternPart::Rest => None,
+                })
+                .collect();
+            let suffix: Vec<_> = parts[idx + 1..]
+                .iter()
+                .filter_map(|p| match p {
+                    ArrayPatternPart::Pattern(sp) => Some(sp.clone()),
+                    ArrayPatternPart::Rest => None,
+                })
+                .collect();
+
+            Pattern::ArrayRest { prefix, suffix }
+        } else {
+            // No rest marker - regular array pattern
+            let patterns: Vec<_> = parts
+                .into_iter()
+                .filter_map(|p| match p {
+                    ArrayPatternPart::Pattern(sp) => Some(sp),
+                    ArrayPatternPart::Rest => None,
+                })
+                .collect();
+            Pattern::Array(patterns)
+        }
+    }
 }
 
 /// Binary operator
@@ -253,6 +408,21 @@ pub enum BinOp {
     Div,
     Mod,
 
+    // v0.37: Wrapping arithmetic (no overflow panic)
+    AddWrap,
+    SubWrap,
+    MulWrap,
+
+    // v0.38: Checked arithmetic (returns Option<T>)
+    AddChecked,
+    SubChecked,
+    MulChecked,
+
+    // v0.38: Saturating arithmetic (clamps to min/max)
+    AddSat,
+    SubSat,
+    MulSat,
+
     // Comparison
     Eq,
     Ne,
@@ -264,6 +434,18 @@ pub enum BinOp {
     // Logical
     And,
     Or,
+
+    // v0.32: Shift operators
+    Shl,
+    Shr,
+
+    // v0.36: Bitwise operators
+    Band,
+    Bor,
+    Bxor,
+
+    // v0.36: Logical implication (for contracts)
+    Implies,
 }
 
 impl std::fmt::Display for BinOp {
@@ -274,6 +456,18 @@ impl std::fmt::Display for BinOp {
             BinOp::Mul => write!(f, "*"),
             BinOp::Div => write!(f, "/"),
             BinOp::Mod => write!(f, "%"),
+            // v0.37: Wrapping arithmetic
+            BinOp::AddWrap => write!(f, "+%"),
+            BinOp::SubWrap => write!(f, "-%"),
+            BinOp::MulWrap => write!(f, "*%"),
+            // v0.38: Checked arithmetic
+            BinOp::AddChecked => write!(f, "+?"),
+            BinOp::SubChecked => write!(f, "-?"),
+            BinOp::MulChecked => write!(f, "*?"),
+            // v0.38: Saturating arithmetic
+            BinOp::AddSat => write!(f, "+|"),
+            BinOp::SubSat => write!(f, "-|"),
+            BinOp::MulSat => write!(f, "*|"),
             BinOp::Eq => write!(f, "=="),
             BinOp::Ne => write!(f, "!="),
             BinOp::Lt => write!(f, "<"),
@@ -282,6 +476,14 @@ impl std::fmt::Display for BinOp {
             BinOp::Ge => write!(f, ">="),
             BinOp::And => write!(f, "and"),
             BinOp::Or => write!(f, "or"),
+            BinOp::Shl => write!(f, "<<"),
+            BinOp::Shr => write!(f, ">>"),
+            // v0.36: Bitwise operators
+            BinOp::Band => write!(f, "band"),
+            BinOp::Bor => write!(f, "bor"),
+            BinOp::Bxor => write!(f, "bxor"),
+            // v0.36: Logical implication
+            BinOp::Implies => write!(f, "implies"),
         }
     }
 }
@@ -293,6 +495,8 @@ pub enum UnOp {
     Neg,
     /// Logical not
     Not,
+    /// v0.36: Bitwise not
+    Bnot,
 }
 
 impl std::fmt::Display for UnOp {
@@ -300,6 +504,7 @@ impl std::fmt::Display for UnOp {
         match self {
             UnOp::Neg => write!(f, "-"),
             UnOp::Not => write!(f, "not"),
+            UnOp::Bnot => write!(f, "bnot"),
         }
     }
 }

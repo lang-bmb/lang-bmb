@@ -205,6 +205,8 @@ impl Backend {
                         self.collect_expr_refs(&method.body.node, &mut references);
                     }
                 }
+                // v0.50.6: Type aliases - register as type definitions
+                Item::TypeAlias(_) => {}
             }
         }
 
@@ -246,8 +248,12 @@ impl Backend {
                     self.collect_expr_refs(&stmt.node, refs);
                 }
             }
-            Expr::While { cond, body } => {
+            // v0.37: Include invariant in refs collection
+            Expr::While { cond, invariant, body } => {
                 self.collect_expr_refs(&cond.node, refs);
+                if let Some(inv) = invariant {
+                    self.collect_expr_refs(&inv.node, refs);
+                }
                 self.collect_expr_refs(&body.node, refs);
             }
             Expr::For { iter, body, .. } => {
@@ -269,11 +275,21 @@ impl Backend {
             Expr::FieldAccess { expr, .. } => {
                 self.collect_expr_refs(&expr.node, refs);
             }
+            // v0.43: Tuple field access
+            Expr::TupleField { expr, .. } => {
+                self.collect_expr_refs(&expr.node, refs);
+            }
             Expr::Index { expr, index } => {
                 self.collect_expr_refs(&expr.node, refs);
                 self.collect_expr_refs(&index.node, refs);
             }
             Expr::ArrayLit(elems) => {
+                for elem in elems {
+                    self.collect_expr_refs(&elem.node, refs);
+                }
+            }
+            // v0.42: Tuple expressions
+            Expr::Tuple(elems) => {
                 for elem in elems {
                     self.collect_expr_refs(&elem.node, refs);
                 }
@@ -868,6 +884,13 @@ fn format_program(program: &Program) -> String {
                 }
                 output.push('}');
             }
+            // v0.50.6: Format type aliases
+            Item::TypeAlias(t) => {
+                if t.visibility == Visibility::Public {
+                    output.push_str("pub ");
+                }
+                output.push_str(&format!("type {} = {};", t.name.node, format_type(&t.target.node)));
+            }
         }
     }
 
@@ -917,9 +940,14 @@ fn format_type(ty: &crate::ast::Type) -> String {
     match ty {
         Type::I32 => "i32".to_string(),
         Type::I64 => "i64".to_string(),
+        // v0.38: Unsigned types
+        Type::U32 => "u32".to_string(),
+        Type::U64 => "u64".to_string(),
         Type::F64 => "f64".to_string(),
         Type::Bool => "bool".to_string(),
         Type::String => "String".to_string(),
+        // v0.64: Char type
+        Type::Char => "char".to_string(),
         Type::Unit => "()".to_string(),
         Type::Range(elem) => format!("Range<{}>", format_type(elem)),
         Type::Named(name) => name.clone(),
@@ -955,6 +983,13 @@ fn format_type(ty: &crate::ast::Type) -> String {
         }
         // v0.31: Never type
         Type::Never => "!".to_string(),
+        // v0.37: Nullable type
+        Type::Nullable(inner) => format!("{}?", format_type(inner)),
+        // v0.42: Tuple type
+        Type::Tuple(elems) => {
+            let elems_str: Vec<_> = elems.iter().map(|t| format_type(t)).collect();
+            format!("({})", elems_str.join(", "))
+        }
     }
 }
 
@@ -966,6 +1001,8 @@ fn format_expr(expr: &Expr) -> String {
         Expr::FloatLit(f) => f.to_string(),
         Expr::BoolLit(b) => b.to_string(),
         Expr::StringLit(s) => format!("\"{}\"", s),
+        // v0.64: Character literal
+        Expr::CharLit(c) => format!("'{}'", c.escape_default()),
         Expr::Unit => "()".to_string(),
         Expr::Var(name) => name.clone(),
         Expr::Ret => "ret".to_string(),
@@ -978,6 +1015,18 @@ fn format_expr(expr: &Expr) -> String {
                 BinOp::Mul => "*",
                 BinOp::Div => "/",
                 BinOp::Mod => "%",
+                // v0.37: Wrapping arithmetic
+                BinOp::AddWrap => "+%",
+                BinOp::SubWrap => "-%",
+                BinOp::MulWrap => "*%",
+                // v0.38: Checked arithmetic
+                BinOp::AddChecked => "+?",
+                BinOp::SubChecked => "-?",
+                BinOp::MulChecked => "*?",
+                // v0.38: Saturating arithmetic
+                BinOp::AddSat => "+|",
+                BinOp::SubSat => "-|",
+                BinOp::MulSat => "*|",
                 BinOp::Eq => "==",
                 BinOp::Ne => "!=",
                 BinOp::Lt => "<",
@@ -986,6 +1035,15 @@ fn format_expr(expr: &Expr) -> String {
                 BinOp::Ge => ">=",
                 BinOp::And => "and",
                 BinOp::Or => "or",
+                // v0.32: Shift operators
+                BinOp::Shl => "<<",
+                BinOp::Shr => ">>",
+                // v0.36: Bitwise operators
+                BinOp::Band => "band",
+                BinOp::Bor => "bor",
+                BinOp::Bxor => "bxor",
+                // v0.36: Logical implication
+                BinOp::Implies => "implies",
             };
             format!("{} {} {}", format_expr(&left.node), op_str, format_expr(&right.node))
         }
@@ -994,6 +1052,8 @@ fn format_expr(expr: &Expr) -> String {
             let op_str = match op {
                 UnOp::Neg => "-",
                 UnOp::Not => "not ",
+                // v0.36: Bitwise not
+                UnOp::Bnot => "bnot ",
             };
             format!("{}{}", op_str, format_expr(&expr.node))
         }
@@ -1039,6 +1099,16 @@ fn format_expr(expr: &Expr) -> String {
             format!("[{}]", elems_str.join(", "))
         }
 
+        // v0.42: Tuple expressions
+        Expr::Tuple(elems) => {
+            let elems_str: Vec<_> = elems.iter().map(|e| format_expr(&e.node)).collect();
+            if elems.len() == 1 {
+                format!("({},)", elems_str.join(", "))
+            } else {
+                format!("({})", elems_str.join(", "))
+            }
+        }
+
         Expr::StructInit { name, fields } => {
             let fields_str: Vec<_> = fields.iter()
                 .map(|(n, v)| format!("{}: {}", n.node, format_expr(&v.node)))
@@ -1048,6 +1118,11 @@ fn format_expr(expr: &Expr) -> String {
 
         Expr::FieldAccess { expr, field } => {
             format!("{}.{}", format_expr(&expr.node), field.node)
+        }
+
+        // v0.43: Tuple field access
+        Expr::TupleField { expr, index } => {
+            format!("{}.{}", format_expr(&expr.node), index)
         }
 
         Expr::Match { expr, arms } => {
@@ -1070,8 +1145,21 @@ fn format_expr(expr: &Expr) -> String {
             format!("{} = {}", name, format_expr(&value.node))
         }
 
-        Expr::While { cond, body } => {
-            format!("while {} {{ {} }}", format_expr(&cond.node), format_expr(&body.node))
+        // v0.37: Include invariant in format if present
+        Expr::While { cond, invariant, body } => {
+            match invariant {
+                Some(inv) => format!(
+                    "while {} invariant {} {{ {} }}",
+                    format_expr(&cond.node),
+                    format_expr(&inv.node),
+                    format_expr(&body.node)
+                ),
+                None => format!(
+                    "while {} {{ {} }}",
+                    format_expr(&cond.node),
+                    format_expr(&body.node)
+                ),
+            }
         }
 
         Expr::For { var, iter, body } => {
@@ -1116,16 +1204,6 @@ fn format_expr(expr: &Expr) -> String {
             format!("{}{}", format_expr(&expr.node), state)
         }
 
-        // v0.13.2: Try block
-        Expr::Try { body } => {
-            format!("try {{ {} }}", format_expr(&body.node))
-        }
-
-        // v0.13.2: Question mark operator
-        Expr::Question { expr: inner } => {
-            format!("{}?", format_expr(&inner.node))
-        }
-
         // v0.20.0: Closure expressions
         Expr::Closure { params, ret_ty, body } => {
             let params_str = params
@@ -1153,26 +1231,58 @@ fn format_expr(expr: &Expr) -> String {
                 None => "todo".to_string(),
             }
         }
+
+        // v0.36: Additional control flow
+        Expr::Loop { body } => format!("loop {{ {} }}", format_expr(&body.node)),
+        Expr::Break { value } => match value {
+            Some(v) => format!("break {}", format_expr(&v.node)),
+            None => "break".to_string(),
+        },
+        Expr::Continue => "continue".to_string(),
+        Expr::Return { value } => match value {
+            Some(v) => format!("return {}", format_expr(&v.node)),
+            None => "return".to_string(),
+        },
+
+        // v0.37: Quantifiers
+        Expr::Forall { var, ty, body } => {
+            format!("forall {}: {}, {}", var.node, format_type(&ty.node), format_expr(&body.node))
+        }
+        Expr::Exists { var, ty, body } => {
+            format!("exists {}: {}, {}", var.node, format_type(&ty.node), format_expr(&body.node))
+        }
+        // v0.39: Type cast
+        Expr::Cast { expr, ty } => {
+            format!("{} as {}", format_expr(&expr.node), format_type(&ty.node))
+        }
+    }
+}
+
+fn format_literal_pattern(lit: &crate::ast::LiteralPattern) -> String {
+    use crate::ast::LiteralPattern;
+    match lit {
+        LiteralPattern::Int(n) => n.to_string(),
+        LiteralPattern::Float(f) => f.to_string(),
+        LiteralPattern::Bool(b) => b.to_string(),
+        LiteralPattern::String(s) => format!("\"{}\"", s),
     }
 }
 
 fn format_pattern(pattern: &crate::ast::Pattern) -> String {
-    use crate::ast::{Pattern, LiteralPattern};
+    use crate::ast::Pattern;
 
     match pattern {
         Pattern::Wildcard => "_".to_string(),
         Pattern::Var(name) => name.clone(),
-        Pattern::Literal(lit) => match lit {
-            LiteralPattern::Int(n) => n.to_string(),
-            LiteralPattern::Float(f) => f.to_string(),
-            LiteralPattern::Bool(b) => b.to_string(),
-            LiteralPattern::String(s) => format!("\"{}\"", s),
-        },
+        Pattern::Literal(lit) => format_literal_pattern(lit),
+        // v0.41: Nested patterns in enum bindings
         Pattern::EnumVariant { enum_name, variant, bindings } => {
             if bindings.is_empty() {
                 format!("{}::{}", enum_name, variant)
             } else {
-                let bindings_str: Vec<_> = bindings.iter().map(|b| b.node.as_str()).collect();
+                let bindings_str: Vec<_> = bindings.iter()
+                    .map(|b| format_pattern(&b.node))
+                    .collect();
                 format!("{}::{}({})", enum_name, variant, bindings_str.join(", "))
             }
         }
@@ -1181,6 +1291,45 @@ fn format_pattern(pattern: &crate::ast::Pattern) -> String {
                 .map(|(n, p)| format!("{}: {}", n.node, format_pattern(&p.node)))
                 .collect();
             format!("{} {{ {} }}", name, fields_str.join(", "))
+        }
+        // v0.39: Range pattern
+        Pattern::Range { start, end, inclusive } => {
+            let op = if *inclusive { "..=" } else { ".." };
+            format!("{}{}{}", format_literal_pattern(start), op, format_literal_pattern(end))
+        }
+        // v0.40: Or-pattern
+        Pattern::Or(alts) => {
+            let alts_str: Vec<_> = alts.iter().map(|p| format_pattern(&p.node)).collect();
+            alts_str.join(" | ")
+        }
+        // v0.41: Binding pattern
+        Pattern::Binding { name, pattern } => {
+            format!("{} @ {}", name, format_pattern(&pattern.node))
+        }
+        // v0.42: Tuple pattern
+        Pattern::Tuple(elems) => {
+            let elems_str: Vec<_> = elems.iter().map(|p| format_pattern(&p.node)).collect();
+            if elems.len() == 1 {
+                format!("({},)", elems_str.join(", "))
+            } else {
+                format!("({})", elems_str.join(", "))
+            }
+        }
+        // v0.44: Array pattern
+        Pattern::Array(elems) => {
+            let elems_str: Vec<_> = elems.iter().map(|p| format_pattern(&p.node)).collect();
+            format!("[{}]", elems_str.join(", "))
+        }
+        // v0.45: Array rest pattern
+        Pattern::ArrayRest { prefix, suffix } => {
+            let prefix_str: Vec<_> = prefix.iter().map(|p| format_pattern(&p.node)).collect();
+            let suffix_str: Vec<_> = suffix.iter().map(|p| format_pattern(&p.node)).collect();
+            match (prefix.is_empty(), suffix.is_empty()) {
+                (true, true) => "[..]".to_string(),
+                (false, true) => format!("[{}, ..]", prefix_str.join(", ")),
+                (true, false) => format!("[.., {}]", suffix_str.join(", ")),
+                (false, false) => format!("[{}, .., {}]", prefix_str.join(", "), suffix_str.join(", ")),
+            }
         }
     }
 }

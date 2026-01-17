@@ -1,24 +1,24 @@
--- v0.20.0: Closure type system test file
+// v0.20.0: Closure type system test file
 
--- Test 1: Closure stored in let binding and called
+// Test 1: Closure stored in let binding and called
 fn test_closure_call() -> i64 = {
     let add_ten = fn |x: i64| { x + 10 };
     add_ten(5)
 };
 
--- Test 2: Closure captures outer variable
+// Test 2: Closure captures outer variable
 fn test_capture(base: i64) -> i64 = {
     let add_base = fn |x: i64| { x + base };
     add_base(7)
 };
 
--- Test 3: Multi-param closure
+// Test 3: Multi-param closure
 fn test_multi_param() -> i64 = {
     let multiply = fn |a: i64, b: i64| { a * b };
     multiply(3, 4)
 };
 
--- Test 4: Empty closure
+// Test 4: Empty closure
 fn test_empty_closure() -> i64 = {
     let get_constant = fn || { 100 };
     get_constant()

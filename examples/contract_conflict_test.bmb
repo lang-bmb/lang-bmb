@@ -1,0 +1,36 @@
+-- Phase 83 & 86: Contract conflict and dead code test
+-- Tests contract conflict detection and unsatisfiable precondition warning
+
+-- Helper function that returns negative value
+fn gives_negative() -> i64
+  post ret < 0
+= -1;
+
+-- Helper function that returns positive value
+fn gives_positive() -> i64
+  post ret > 0
+= 1;
+
+-- Function that requires positive input
+fn needs_positive(x: i64) -> i64
+  pre x > 0
+  post ret > 0
+= x + 1;
+
+-- Phase 83: Contract conflict - gives_negative() returns < 0, but needs_positive requires > 0
+fn conflict_test() -> i64 = needs_positive(gives_negative());
+
+-- Phase 83: No conflict - gives_positive() returns > 0, needs_positive requires > 0
+fn no_conflict_test() -> i64 = needs_positive(gives_positive());
+
+-- Phase 86: Dead code - precondition is unsatisfiable (x > 0 AND x < 0)
+fn impossible(x: i64) -> i64
+  pre x > 0 and x < 0
+  post ret == x
+= x;
+
+-- Phase 86: Not dead code - precondition is satisfiable
+fn possible(x: i64) -> i64
+  pre x > 0
+  post ret == x + 1
+= x + 1;

@@ -1,0 +1,11 @@
+// Phase 3 Security Test: Deeply nested if-else
+fn main() -> i64 =
+    if 1 > 0 { if 1 > 0 { if 1 > 0 { if 1 > 0 { if 1 > 0 {
+    if 1 > 0 { if 1 > 0 { if 1 > 0 { if 1 > 0 { if 1 > 0 {
+    if 1 > 0 { if 1 > 0 { if 1 > 0 { if 1 > 0 { if 1 > 0 {
+    if 1 > 0 { if 1 > 0 { if 1 > 0 { if 1 > 0 { if 1 > 0 {
+    42
+    } else { 0 } } else { 0 } } else { 0 } } else { 0 } } else { 0 }
+    } else { 0 } } else { 0 } } else { 0 } } else { 0 } } else { 0 }
+    } else { 0 } } else { 0 } } else { 0 } } else { 0 } } else { 0 }
+    } else { 0 } } else { 0 } } else { 0 } } else { 0 } } else { 0 };

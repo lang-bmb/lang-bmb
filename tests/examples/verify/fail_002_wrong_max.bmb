@@ -1,4 +1,4 @@
--- This should fail: returns a, not max
+// This should fail: returns a, not max
 fn wrong_max(a: i64, b: i64) -> i64
   post ret >= a and ret >= b
 = a;

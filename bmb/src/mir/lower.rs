@@ -8,21 +8,29 @@
 use crate::ast::{Attribute, BinOp, Expr, FnDef, Item, LiteralPattern, MatchArm, Pattern, Program, Spanned, Type, UnOp};
 
 use super::{
-    Constant, LoweringContext, MirBinOp, MirExternFn, MirFunction, MirInst, MirProgram, MirType,
-    MirUnaryOp, Operand, Place, Terminator,
+    CmpOp, Constant, ContractFact, LoweringContext, MirBinOp, MirExternFn, MirFunction, MirInst,
+    MirProgram, MirType, MirUnaryOp, Operand, Place, Terminator,
 };
 
 /// Lower an entire program to MIR
 pub fn lower_program(program: &Program) -> MirProgram {
+    // v0.35.4: First pass - collect all function return types
+    let mut func_return_types = std::collections::HashMap::new();
+    for item in &program.items {
+        if let Item::FnDef(fn_def) = item {
+            let ret_ty = ast_type_to_mir(&fn_def.ret_ty.node);
+            func_return_types.insert(fn_def.name.node.clone(), ret_ty);
+        }
+    }
+
     let functions = program
         .items
         .iter()
         .filter_map(|item| match item {
-            Item::FnDef(fn_def) => Some(lower_function(fn_def)),
-            // Type definitions, use statements, and extern fns don't produce MIR functions
-            // Type definitions, use statements, extern fns, traits, and impl blocks don't produce MIR functions
+            Item::FnDef(fn_def) => Some(lower_function(fn_def, &func_return_types)),
+            // Type definitions, use statements, extern fns, traits, impl blocks, and type aliases don't produce MIR functions
             Item::StructDef(_) | Item::EnumDef(_) | Item::Use(_) | Item::ExternFn(_) |
-            Item::TraitDef(_) | Item::ImplBlock(_) => None,
+            Item::TraitDef(_) | Item::ImplBlock(_) | Item::TypeAlias(_) => None,
         })
         .collect();
 
@@ -81,8 +89,13 @@ fn extract_module_from_attrs(attrs: &[Attribute]) -> String {
 }
 
 /// Lower a function definition to MIR
-fn lower_function(fn_def: &FnDef) -> MirFunction {
+fn lower_function(fn_def: &FnDef, func_return_types: &std::collections::HashMap<String, MirType>) -> MirFunction {
     let mut ctx = LoweringContext::new();
+
+    // v0.35.4: Add user-defined function return types to context
+    for (name, ty) in func_return_types {
+        ctx.func_return_types.insert(name.clone(), ty.clone());
+    }
 
     // Register parameters
     let params: Vec<(String, MirType)> = fn_def
@@ -106,12 +119,105 @@ fn lower_function(fn_def: &FnDef) -> MirFunction {
     // Collect locals
     let locals: Vec<(String, MirType)> = ctx.locals.clone().into_iter().collect();
 
+    // v0.38: Extract contract facts for optimization
+    let preconditions = extract_contract_facts(fn_def.pre.as_ref());
+    let postconditions = extract_contract_facts(fn_def.post.as_ref());
+
+    // v0.38.3: Extract @pure and @const attributes
+    let is_pure = has_attribute(&fn_def.attributes, "pure");
+    let is_const = has_attribute(&fn_def.attributes, "const");
+
     MirFunction {
         name: fn_def.name.node.clone(),
         params,
         ret_ty,
         locals,
         blocks: ctx.blocks,
+        preconditions,
+        postconditions,
+        is_pure,
+        is_const,
+    }
+}
+
+/// v0.38.3: Check if a function has a specific attribute
+fn has_attribute(attrs: &[Attribute], name: &str) -> bool {
+    attrs.iter().any(|attr| attr.name() == name)
+}
+
+/// v0.38: Extract contract facts from a pre/post condition expression
+/// Converts AST expressions like `x >= 0 && y < len` into ContractFact list
+fn extract_contract_facts(expr: Option<&Spanned<Expr>>) -> Vec<ContractFact> {
+    let mut facts = Vec::new();
+    if let Some(e) = expr {
+        extract_facts_from_expr(&e.node, &mut facts);
+    }
+    facts
+}
+
+/// Recursively extract facts from an expression
+fn extract_facts_from_expr(expr: &Expr, facts: &mut Vec<ContractFact>) {
+    match expr {
+        // Handle && (conjunction of facts)
+        Expr::Binary { op, left, right } if *op == BinOp::And => {
+            extract_facts_from_expr(&left.node, facts);
+            extract_facts_from_expr(&right.node, facts);
+        }
+        // Handle comparison operators: x >= 0, x < len, etc.
+        Expr::Binary { op, left, right } => {
+            if let Some(cmp_op) = binop_to_cmp_op(op) {
+                // Pattern: var op constant
+                if let (Expr::Var(var), Expr::IntLit(val)) = (&left.node, &right.node) {
+                    facts.push(ContractFact::VarCmp {
+                        var: var.clone(),
+                        op: cmp_op,
+                        value: *val,
+                    });
+                }
+                // Pattern: constant op var (flip the comparison)
+                else if let (Expr::IntLit(val), Expr::Var(var)) = (&left.node, &right.node) {
+                    facts.push(ContractFact::VarCmp {
+                        var: var.clone(),
+                        op: flip_cmp_op(cmp_op),
+                        value: *val,
+                    });
+                }
+                // Pattern: var op var
+                else if let (Expr::Var(lhs_var), Expr::Var(rhs_var)) = (&left.node, &right.node) {
+                    facts.push(ContractFact::VarVarCmp {
+                        lhs: lhs_var.clone(),
+                        op: cmp_op,
+                        rhs: rhs_var.clone(),
+                    });
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Convert BinOp to CmpOp
+fn binop_to_cmp_op(op: &BinOp) -> Option<CmpOp> {
+    match op {
+        BinOp::Lt => Some(CmpOp::Lt),
+        BinOp::Le => Some(CmpOp::Le),
+        BinOp::Gt => Some(CmpOp::Gt),
+        BinOp::Ge => Some(CmpOp::Ge),
+        BinOp::Eq => Some(CmpOp::Eq),
+        BinOp::Ne => Some(CmpOp::Ne),
+        _ => None,
+    }
+}
+
+/// Flip comparison for constant op var → var flipped_op constant
+fn flip_cmp_op(op: CmpOp) -> CmpOp {
+    match op {
+        CmpOp::Lt => CmpOp::Gt,
+        CmpOp::Le => CmpOp::Ge,
+        CmpOp::Gt => CmpOp::Lt,
+        CmpOp::Ge => CmpOp::Le,
+        CmpOp::Eq => CmpOp::Eq,
+        CmpOp::Ne => CmpOp::Ne,
     }
 }
 
@@ -126,6 +232,9 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
 
         Expr::StringLit(s) => Operand::Constant(Constant::String(s.clone())),
 
+        // v0.64: Character literal
+        Expr::CharLit(c) => Operand::Constant(Constant::Char(*c)),
+
         Expr::Unit => Operand::Constant(Constant::Unit),
 
         Expr::Var(name) => Operand::Place(Place::new(name.clone())),
@@ -138,6 +247,10 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
             // Determine the MIR operator based on operand types
             let lhs_ty = ctx.operand_type(&lhs);
             let mir_op = ast_binop_to_mir(*op, &lhs_ty);
+
+            // v0.35.4: Store result type for temporary variable
+            let result_ty = mir_op.result_type(&lhs_ty);
+            ctx.locals.insert(dest.name.clone(), result_ty);
 
             ctx.push_inst(MirInst::BinOp {
                 dest: dest.clone(),
@@ -155,6 +268,10 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
 
             let src_ty = ctx.operand_type(&src);
             let mir_op = ast_unop_to_mir(*op, &src_ty);
+
+            // v0.35.4: Store result type for temporary variable
+            let result_ty = mir_op.result_type(&src_ty);
+            ctx.locals.insert(dest.name.clone(), result_ty);
 
             ctx.push_inst(MirInst::UnaryOp {
                 dest: dest.clone(),
@@ -204,6 +321,12 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
 
             // Merge block with PHI node
             ctx.start_block(merge_label);
+
+            // v0.46: Register PHI result type to ensure proper type inference
+            // Use the then_result's type since both branches should have the same type
+            let phi_result_ty = ctx.operand_type(&then_result);
+            ctx.locals.insert(result.name.clone(), phi_result_ty);
+
             ctx.push_inst(MirInst::Phi {
                 dest: result.clone(),
                 values: vec![
@@ -281,7 +404,8 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
             Operand::Place(Place::new(name.clone()))
         }
 
-        Expr::While { cond, body } => {
+        // v0.37: Invariant is for SMT verification, MIR lowering ignores it
+        Expr::While { cond, invariant: _, body } => {
             // Create labels for loop structure
             let cond_label = ctx.fresh_label("while_cond");
             let body_label = ctx.fresh_label("while_body");
@@ -327,6 +451,29 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
                 Operand::Constant(Constant::Unit)
             } else {
                 let dest = ctx.fresh_temp();
+
+                // v0.35.4: Store return type for Call result
+                // v0.46: Also handle runtime functions with known return types
+                let ret_ty = if let Some(ty) = ctx.func_return_types.get(func) {
+                    ty.clone()
+                } else {
+                    // Runtime functions with known return types
+                    match func.as_str() {
+                        // String-returning runtime functions
+                        // v0.46: get_arg returns string (pointer to BmbString)
+                        // v0.46: sb_build returns string (pointer to BmbString)
+                        "int_to_string" | "read_file" | "slice" | "digit_char" | "get_arg" | "sb_build" => MirType::String,
+                        // i64-returning runtime functions
+                        // v0.46: arg_count returns i64
+                        "byte_at" | "len" | "strlen" | "cstr_byte_at" | "arg_count" => MirType::I64,
+                        // Bool-returning runtime functions
+                        "file_exists" | "cstr_eq" => MirType::Bool,
+                        // Default to i64 for unknown functions
+                        _ => MirType::I64,
+                    }
+                };
+                ctx.locals.insert(dest.name.clone(), ret_ty);
+
                 ctx.push_inst(MirInst::Call {
                     dest: Some(dest.clone()),
                     func: func.clone(),
@@ -393,6 +540,27 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
                 dest: dest.clone(),
                 base: base_place,
                 field: field.node.clone(),
+            });
+
+            Operand::Place(dest)
+        }
+
+        // v0.43: Tuple field access (compile-time constant index)
+        Expr::TupleField { expr, index } => {
+            // Lower the tuple expression
+            let tuple_op = lower_expr(expr, ctx);
+
+            // Convert operand to place if needed
+            let tuple_place = operand_to_place(tuple_op, ctx);
+
+            // Create destination for the element value
+            let dest = ctx.fresh_temp();
+
+            // Use IndexLoad with constant index for tuple field access
+            ctx.push_inst(MirInst::IndexLoad {
+                dest: dest.clone(),
+                array: tuple_place,
+                index: Operand::Constant(Constant::Int(*index as i64)),
             });
 
             Operand::Place(dest)
@@ -580,6 +748,14 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
 
             // Generate merge block with PHI
             ctx.start_block(merge_label);
+
+            // v0.46: Register PHI result type to ensure proper type inference
+            // Use the first arm's result type since all arms should have the same type
+            if let Some((first_result, _)) = phi_values.first() {
+                let phi_result_ty = ctx.operand_type(first_result);
+                ctx.locals.insert(result_place.name.clone(), phi_result_ty);
+            }
+
             ctx.push_inst(MirInst::Phi {
                 dest: result_place.clone(),
                 values: phi_values,
@@ -606,6 +782,31 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
                 .collect();
 
             // Infer element type from first element (or default to i64)
+            let element_type = if !mir_elements.is_empty() {
+                ctx.operand_type(&mir_elements[0])
+            } else {
+                MirType::I64
+            };
+
+            let dest = ctx.fresh_temp();
+            ctx.push_inst(MirInst::ArrayInit {
+                dest: dest.clone(),
+                element_type,
+                elements: mir_elements,
+            });
+            Operand::Place(dest)
+        }
+
+        // v0.42: Tuple expressions
+        Expr::Tuple(elems) => {
+            // Lower each element
+            let mir_elements: Vec<Operand> = elems
+                .iter()
+                .map(|e| lower_expr(e, ctx))
+                .collect();
+
+            // For now, represent tuples using ArrayInit (simplified)
+            // A proper implementation would use a struct-like aggregate
             let element_type = if !mir_elements.is_empty() {
                 ctx.operand_type(&mir_elements[0])
             } else {
@@ -663,6 +864,17 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
             // Generate the function call with the method name
             // In a full implementation, the method name would be mangled with the type
             let dest = ctx.fresh_temp();
+
+            // v0.46: Register method call return types
+            // String methods have known return types
+            let ret_type = match method.as_str() {
+                "len" | "byte_at" => MirType::I64,
+                "slice" => MirType::String,
+                // Default to checking user-defined function return types
+                _ => ctx.func_return_types.get(method).cloned().unwrap_or(MirType::I64),
+            };
+            ctx.locals.insert(dest.name.clone(), ret_type);
+
             ctx.push_inst(MirInst::Call {
                 dest: Some(dest.clone()),
                 func: method.clone(),
@@ -681,13 +893,6 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
         // v0.2: Refinement self-reference (translated to __it__ variable)
         Expr::It => Operand::Place(Place::new("__it__")),
 
-        // v0.13.2: Try block - lower the body expression
-        Expr::Try { body } => lower_expr(body, ctx),
-
-        // v0.13.2: Question mark operator - lower the inner expression
-        // Full error propagation semantics will be added with Result type support
-        Expr::Question { expr: inner } => lower_expr(inner, ctx),
-
         // v0.20.0: Closure expressions
         // TODO: Implement closure desugaring to struct with captured variables
         // For now, just lower the body expression
@@ -698,6 +903,46 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
             // In MIR, todo becomes a call to panic intrinsic
             // For now, return unit as this should never be reached
             Operand::Constant(crate::mir::Constant::Unit)
+        }
+
+        // v0.36: Additional control flow
+        // Loop - lower body, infinite loop handled at codegen
+        Expr::Loop { body } => {
+            lower_expr(body, ctx)
+        }
+
+        // Break - placeholder, full implementation requires control flow
+        Expr::Break { value } => {
+            match value {
+                Some(v) => lower_expr(v, ctx),
+                None => Operand::Constant(crate::mir::Constant::Unit),
+            }
+        }
+
+        // Continue - placeholder
+        Expr::Continue => {
+            Operand::Constant(crate::mir::Constant::Unit)
+        }
+
+        // Return - placeholder, full implementation requires control flow
+        Expr::Return { value } => {
+            match value {
+                Some(v) => lower_expr(v, ctx),
+                None => Operand::Constant(crate::mir::Constant::Unit),
+            }
+        }
+
+        // v0.37: Quantifiers - these are for SMT verification only
+        // At MIR level, they should not appear (should be stripped earlier)
+        // For now, we return unit as placeholder
+        Expr::Forall { .. } | Expr::Exists { .. } => {
+            Operand::Constant(crate::mir::Constant::Unit)
+        }
+
+        // v0.39: Type cast - lowered as Copy with type annotation
+        // The actual cast semantics are handled by codegen
+        Expr::Cast { expr, ty: _ } => {
+            lower_expr(expr, ctx)
         }
     }
 }
@@ -722,9 +967,14 @@ fn ast_type_to_mir(ty: &Type) -> MirType {
     match ty {
         Type::I32 => MirType::I32,
         Type::I64 => MirType::I64,
+        // v0.38: Unsigned types
+        Type::U32 => MirType::U32,
+        Type::U64 => MirType::U64,
         Type::F64 => MirType::F64,
         Type::Bool => MirType::Bool,
         Type::String => MirType::String,
+        // v0.64: Character type
+        Type::Char => MirType::Char,
         Type::Unit => MirType::Unit,
         Type::Range(elem) => ast_type_to_mir(elem), // Range represented by its element type
         Type::Named(_) => MirType::I64, // Named types default to pointer-sized int for now
@@ -760,6 +1010,10 @@ fn ast_type_to_mir(ty: &Type) -> MirType {
         Type::Fn { .. } => MirType::I64,
         // v0.31: Never type - unreachable code, use Unit
         Type::Never => MirType::Unit,
+        // v0.37: Nullable type - convert inner type (for MIR, nullable is just a tagged union)
+        Type::Nullable(inner) => ast_type_to_mir(inner),
+        // v0.42: Tuple type - represent as struct-like aggregate
+        Type::Tuple(_) => MirType::I64, // Simplified for now
     }
 }
 
@@ -775,6 +1029,18 @@ fn ast_binop_to_mir(op: BinOp, ty: &MirType) -> MirBinOp {
         (BinOp::Div, false) => MirBinOp::Div,
         (BinOp::Div, true) => MirBinOp::FDiv,
         (BinOp::Mod, _) => MirBinOp::Mod,
+        // v0.37: Wrapping arithmetic (integer only)
+        (BinOp::AddWrap, _) => MirBinOp::AddWrap,
+        (BinOp::SubWrap, _) => MirBinOp::SubWrap,
+        (BinOp::MulWrap, _) => MirBinOp::MulWrap,
+        // v0.38: Checked arithmetic (integer only)
+        (BinOp::AddChecked, _) => MirBinOp::AddChecked,
+        (BinOp::SubChecked, _) => MirBinOp::SubChecked,
+        (BinOp::MulChecked, _) => MirBinOp::MulChecked,
+        // v0.38: Saturating arithmetic (integer only)
+        (BinOp::AddSat, _) => MirBinOp::AddSat,
+        (BinOp::SubSat, _) => MirBinOp::SubSat,
+        (BinOp::MulSat, _) => MirBinOp::MulSat,
         (BinOp::Eq, false) => MirBinOp::Eq,
         (BinOp::Eq, true) => MirBinOp::FEq,
         (BinOp::Ne, false) => MirBinOp::Ne,
@@ -789,6 +1055,15 @@ fn ast_binop_to_mir(op: BinOp, ty: &MirType) -> MirBinOp {
         (BinOp::Ge, true) => MirBinOp::FGe,
         (BinOp::And, _) => MirBinOp::And,
         (BinOp::Or, _) => MirBinOp::Or,
+        // v0.32: Shift operators (integer only)
+        (BinOp::Shl, _) => MirBinOp::Shl,
+        (BinOp::Shr, _) => MirBinOp::Shr,
+        // v0.36: Bitwise operators (integer only)
+        (BinOp::Band, _) => MirBinOp::Band,
+        (BinOp::Bor, _) => MirBinOp::Bor,
+        (BinOp::Bxor, _) => MirBinOp::Bxor,
+        // v0.36: Logical implication
+        (BinOp::Implies, _) => MirBinOp::Implies,
     }
 }
 
@@ -798,6 +1073,8 @@ fn ast_unop_to_mir(op: UnOp, ty: &MirType) -> MirUnaryOp {
         (UnOp::Neg, false) => MirUnaryOp::Neg,
         (UnOp::Neg, true) => MirUnaryOp::FNeg,
         (UnOp::Not, _) => MirUnaryOp::Not,
+        // v0.36: Bitwise not (integer only)
+        (UnOp::Bnot, _) => MirUnaryOp::Bnot,
     }
 }
 
@@ -841,6 +1118,40 @@ fn compile_match_patterns(
                 // Struct patterns need field matching - for now, use index
                 cases.push((i as i64, arm_labels[i].clone()));
             }
+            // v0.39: Range pattern
+            Pattern::Range { .. } => {
+                // Range patterns need runtime checks - for now, use index
+                cases.push((i as i64, arm_labels[i].clone()));
+            }
+            // v0.40: Or-pattern
+            Pattern::Or(_) => {
+                // Or-patterns need to try each alternative - for now, use index
+                cases.push((i as i64, arm_labels[i].clone()));
+            }
+            // v0.41: Binding pattern - treated like the inner pattern for switching
+            Pattern::Binding { pattern, .. } => {
+                // Delegate to inner pattern's logic - for now, use index
+                match &pattern.node {
+                    Pattern::Wildcard | Pattern::Var(_) => {
+                        has_wildcard = true;
+                    }
+                    _ => {
+                        cases.push((i as i64, arm_labels[i].clone()));
+                    }
+                }
+            }
+            // v0.42: Tuple pattern - use index for now
+            Pattern::Tuple(_) => {
+                cases.push((i as i64, arm_labels[i].clone()));
+            }
+            // v0.44: Array pattern - use index for now
+            Pattern::Array(_) => {
+                cases.push((i as i64, arm_labels[i].clone()));
+            }
+            // v0.45: Array rest pattern - use index for now
+            Pattern::ArrayRest { .. } => {
+                cases.push((i as i64, arm_labels[i].clone()));
+            }
         }
     }
 
@@ -882,17 +1193,19 @@ fn bind_pattern_variables(pattern: &Pattern, match_place: &Place, ctx: &mut Lowe
                 ctx.locals.insert(name.clone(), MirType::I64);
             }
         }
+        // v0.41: Nested patterns in enum bindings
         Pattern::EnumVariant { bindings, .. } => {
             // For enum variants with bindings, extract fields
             for (i, binding) in bindings.iter().enumerate() {
-                let binding_place = Place::new(binding.node.clone());
+                let field_place = ctx.fresh_temp();
                 // Use field access to extract (simplified - real impl needs tag/data extraction)
                 ctx.push_inst(MirInst::FieldAccess {
-                    dest: binding_place.clone(),
+                    dest: field_place.clone(),
                     base: match_place.clone(),
                     field: format!("_{}", i), // Tuple-like access
                 });
-                ctx.locals.insert(binding.node.clone(), MirType::I64);
+                // Recursively bind inner patterns
+                bind_pattern_variables(&binding.node, &field_place, ctx);
             }
         }
         Pattern::Struct { fields, .. } => {
@@ -908,8 +1221,59 @@ fn bind_pattern_variables(pattern: &Pattern, match_place: &Place, ctx: &mut Lowe
                 bind_pattern_variables(&field_pattern.node, &field_place, ctx);
             }
         }
-        Pattern::Wildcard | Pattern::Literal(_) => {
-            // No bindings for wildcards or literals
+        Pattern::Wildcard | Pattern::Literal(_) | Pattern::Range { .. } | Pattern::Or(_) => {
+            // No bindings for wildcards, literals, ranges, or or-patterns
+            // Note: Or-patterns with bindings would need special handling
+        }
+        // v0.41: Binding pattern: name @ pattern
+        Pattern::Binding { name, pattern } => {
+            // Bind the name to the entire value
+            let binding_place = Place::new(name.clone());
+            ctx.push_inst(MirInst::Copy {
+                dest: binding_place.clone(),
+                src: match_place.clone(),
+            });
+            // Register the variable type
+            if let Some(ty) = ctx.locals.get(&match_place.name).cloned() {
+                ctx.locals.insert(name.clone(), ty);
+            } else if let Some(ty) = ctx.params.get(&match_place.name).cloned() {
+                ctx.locals.insert(name.clone(), ty);
+            } else {
+                ctx.locals.insert(name.clone(), MirType::I64);
+            }
+            // Recursively bind inner pattern
+            bind_pattern_variables(&pattern.node, match_place, ctx);
+        }
+        // v0.42: Tuple pattern - bind each element
+        Pattern::Tuple(patterns) => {
+            for (i, elem_pattern) in patterns.iter().enumerate() {
+                // Create a place for tuple element access (synthesized name)
+                let elem_place = Place::new(format!("{}.{}", match_place.name, i));
+                bind_pattern_variables(&elem_pattern.node, &elem_place, ctx);
+            }
+        }
+        // v0.44: Array pattern - bind each element
+        Pattern::Array(patterns) => {
+            for (i, elem_pattern) in patterns.iter().enumerate() {
+                // Create a place for array element access (synthesized name)
+                let elem_place = Place::new(format!("{}[{}]", match_place.name, i));
+                bind_pattern_variables(&elem_pattern.node, &elem_place, ctx);
+            }
+        }
+        // v0.45: Array rest pattern - bind prefix and suffix elements
+        Pattern::ArrayRest { prefix, suffix } => {
+            // Bind prefix elements from the start
+            for (i, elem_pattern) in prefix.iter().enumerate() {
+                let elem_place = Place::new(format!("{}[{}]", match_place.name, i));
+                bind_pattern_variables(&elem_pattern.node, &elem_place, ctx);
+            }
+            // Bind suffix elements from the end (negative indexing conceptually)
+            // In MIR, we'd need to compute the actual indices at runtime based on array length
+            // For now, use symbolic suffix indices
+            for (i, elem_pattern) in suffix.iter().enumerate() {
+                let elem_place = Place::new(format!("{}[end-{}]", match_place.name, suffix.len() - i));
+                bind_pattern_variables(&elem_pattern.node, &elem_place, ctx);
+            }
         }
     }
 }
@@ -1108,6 +1472,7 @@ mod tests {
                 contracts: vec![],
                 body: spanned(Expr::While {
                     cond: Box::new(spanned(Expr::BoolLit(false))),
+                    invariant: None,  // v0.37: No invariant in test
                     body: Box::new(spanned(Expr::Unit)),
                 }),
                 span: Span { start: 0, end: 0 },
@@ -1287,14 +1652,17 @@ mod tests {
                     arms: vec![
                         MatchArm {
                             pattern: spanned(Pattern::Literal(LiteralPattern::Int(0))),
+                            guard: None,
                             body: spanned(Expr::IntLit(100)),
                         },
                         MatchArm {
                             pattern: spanned(Pattern::Literal(LiteralPattern::Int(1))),
+                            guard: None,
                             body: spanned(Expr::IntLit(200)),
                         },
                         MatchArm {
                             pattern: spanned(Pattern::Wildcard),
+                            guard: None,
                             body: spanned(Expr::IntLit(999)),
                         },
                     ],
@@ -1344,6 +1712,7 @@ mod tests {
                     arms: vec![
                         MatchArm {
                             pattern: spanned(Pattern::Var("n".to_string())),
+                            guard: None,
                             body: spanned(Expr::Binary {
                                 left: Box::new(spanned(Expr::Var("n".to_string()))),
                                 op: BinOp::Mul,

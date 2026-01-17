@@ -1,0 +1,318 @@
+// bmb-httpd: HTTP request processor and response generator
+// Demonstrates HTTP protocol handling in BMB
+//
+// Usage: bmb run main.bmb -- "<method>" "<path>" [body]
+// Example: bmb run main.bmb -- "GET" "/api/hello"
+//          bmb run main.bmb -- "POST" "/api/echo" "hello world"
+//          bmb run main.bmb -- "GET" "/api/time"
+
+// ============================================================================
+// HTTP Constants
+// ============================================================================
+
+// Methods
+fn method_get() -> i64 = 1;
+fn method_post() -> i64 = 2;
+fn method_put() -> i64 = 3;
+fn method_delete() -> i64 = 4;
+
+// Status codes
+fn status_ok() -> i64 = 200;
+fn status_created() -> i64 = 201;
+fn status_bad_request() -> i64 = 400;
+fn status_not_found() -> i64 = 404;
+fn status_method_not_allowed() -> i64 = 405;
+fn status_server_error() -> i64 = 500;
+
+fn status_text(code: i64) -> String =
+    if code == 200 { "OK" }
+    else if code == 201 { "Created" }
+    else if code == 400 { "Bad Request" }
+    else if code == 404 { "Not Found" }
+    else if code == 405 { "Method Not Allowed" }
+    else if code == 500 { "Internal Server Error" }
+    else { "Unknown" };
+
+fn method_text(m: i64) -> String =
+    if m == method_get() { "GET" }
+    else if m == method_post() { "POST" }
+    else if m == method_put() { "PUT" }
+    else if m == method_delete() { "DELETE" }
+    else { "UNKNOWN" };
+
+// ============================================================================
+// Output Utilities
+// ============================================================================
+
+fn print_str_nl(s: String) -> i64 =
+    let x = print_str(s);
+    let y = print_str("
+");
+    0;
+
+fn newline() -> String = "
+";
+
+// ============================================================================
+// Logging
+// ============================================================================
+
+fn level_info() -> i64 = 2;
+fn level_warn() -> i64 = 3;
+fn level_error() -> i64 = 4;
+
+fn log_level_name(level: i64) -> String =
+    if level == 2 { "INFO" }
+    else if level == 3 { "WARN" }
+    else if level == 4 { "ERROR" }
+    else { "DEBUG" };
+
+fn log_msg(level: i64, msg: String) -> i64 =
+    print_str_nl("[" + log_level_name(level) + "] " + msg);
+
+fn log_info(msg: String) -> i64 = log_msg(level_info(), msg);
+fn log_warn(msg: String) -> i64 = log_msg(level_warn(), msg);
+fn log_error(msg: String) -> i64 = log_msg(level_error(), msg);
+
+// ============================================================================
+// String Utilities
+// ============================================================================
+
+fn digit_char(d: i64) -> String =
+    if d == 0 { "0" } else if d == 1 { "1" } else if d == 2 { "2" }
+    else if d == 3 { "3" } else if d == 4 { "4" } else if d == 5 { "5" }
+    else if d == 6 { "6" } else if d == 7 { "7" } else if d == 8 { "8" }
+    else { "9" };
+
+fn int_to_string(n: i64) -> String =
+    if n < 0 { "-" + int_to_string(0 - n) }
+    else if n < 10 { digit_char(n) }
+    else { int_to_string(n / 10) + digit_char(n - (n / 10) * 10) };
+
+fn str_eq(a: String, b: String) -> bool = a == b;
+
+fn starts_with_at(s: String, prefix: String, pos: i64, ppos: i64) -> bool =
+    if ppos >= prefix.len() { true }
+    else if pos >= s.len() { false }
+    else if s.byte_at(pos) != prefix.byte_at(ppos) { false }
+    else { starts_with_at(s, prefix, pos + 1, ppos + 1) };
+
+fn starts_with(s: String, prefix: String) -> bool = starts_with_at(s, prefix, 0, 0);
+
+// ============================================================================
+// Request Parsing
+// ============================================================================
+
+fn parse_method(method_str: String) -> i64 =
+    if str_eq(method_str, "GET") { method_get() }
+    else if str_eq(method_str, "POST") { method_post() }
+    else if str_eq(method_str, "PUT") { method_put() }
+    else if str_eq(method_str, "DELETE") { method_delete() }
+    else { 0 };
+
+// ============================================================================
+// Response Building (Simple text format instead of JSON)
+// ============================================================================
+
+fn send_status_line(status: i64) -> i64 =
+    print_str_nl("HTTP/1.1 " + int_to_string(status) + " " + status_text(status));
+
+fn send_header(name: String, value: String) -> i64 =
+    print_str_nl(name + ": " + value);
+
+fn send_body(body: String) -> i64 = {
+    let u1 = print_str_nl("");  // Empty line before body
+    let u2 = print_str(body);
+    0
+};
+
+fn send_response(status: i64, content_type: String, body: String) -> i64 = {
+    let u1 = send_status_line(status);
+    let u2 = send_header("Content-Type", content_type);
+    let u3 = send_header("Content-Length", int_to_string(body.len()));
+    let u4 = send_body(body);
+    status
+};
+
+fn send_text_response(status: i64, body: String) -> i64 =
+    send_response(status, "text/plain", body);
+
+fn send_error(status: i64, message: String) -> i64 =
+    send_text_response(status, "error: " + message);
+
+// ============================================================================
+// Route Handlers
+// ============================================================================
+
+// GET /api/hello - Simple greeting
+fn handle_hello(method: i64) -> i64 =
+    if method != method_get() {
+        send_error(status_method_not_allowed(), "Method not allowed")
+    }
+    else {
+        send_text_response(status_ok(), "message=Hello, World!")
+    };
+
+// GET /api/time - Current "time" (simulated counter)
+fn handle_time(method: i64) -> i64 =
+    if method != method_get() {
+        send_error(status_method_not_allowed(), "Method not allowed")
+    }
+    else {
+        // Simulated timestamp (would be real time in actual server)
+        let timestamp = 1705276800;  // 2024-01-14 fake timestamp
+        send_text_response(status_ok(), "timestamp=" + int_to_string(timestamp))
+    };
+
+// POST /api/echo - Echo back the request body
+fn handle_echo(method: i64, body: String) -> i64 =
+    if method != method_post() {
+        send_error(status_method_not_allowed(), "Method not allowed")
+    }
+    else {
+        send_text_response(status_ok(), "echo=" + body)
+    };
+
+// GET /api/status - Server status
+fn handle_status(method: i64) -> i64 =
+    if method != method_get() {
+        send_error(status_method_not_allowed(), "Method not allowed")
+    }
+    else {
+        send_text_response(status_ok(), "status=running" + newline() + "version=0.1.0")
+    };
+
+// POST /api/add - Add two numbers from body "a,b"
+fn parse_add_body(body: String, pos: i64, acc: i64) -> i64 =
+    if pos >= body.len() { acc }
+    else {
+        let c = body.byte_at(pos);
+        if c >= 48 and c <= 57 { parse_add_body(body, pos + 1, acc * 10 + (c - 48)) }
+        else { acc }
+    };
+
+fn find_comma(body: String, pos: i64) -> i64 =
+    if pos >= body.len() { 0 - 1 }
+    else if body.byte_at(pos) == 44 { pos }  // ,
+    else { find_comma(body, pos + 1) };
+
+fn handle_add(method: i64, body: String) -> i64 =
+    if method != method_post() {
+        send_error(status_method_not_allowed(), "Method not allowed")
+    }
+    else {
+        let comma = find_comma(body, 0);
+        if comma < 0 {
+            send_error(status_bad_request(), "Expected format: a,b")
+        }
+        else {
+            let a = parse_add_body(body, 0, 0);
+            let b = parse_add_body(body, comma + 1, 0);
+            let sum = a + b;
+            let response = "a=" + int_to_string(a) + newline() +
+                          "b=" + int_to_string(b) + newline() +
+                          "sum=" + int_to_string(sum);
+            send_text_response(status_ok(), response)
+        }
+    };
+
+// ============================================================================
+// Router
+// ============================================================================
+
+fn route_request(method: i64, path: String, body: String) -> i64 = {
+    let l = log_info(method_text(method) + " " + path);
+
+    if str_eq(path, "/api/hello") { handle_hello(method) }
+    else if str_eq(path, "/api/time") { handle_time(method) }
+    else if str_eq(path, "/api/echo") { handle_echo(method, body) }
+    else if str_eq(path, "/api/status") { handle_status(method) }
+    else if str_eq(path, "/api/add") { handle_add(method, body) }
+    else if str_eq(path, "/") { handle_hello(method) }
+    else {
+        let w = log_warn("Route not found: " + path);
+        send_error(status_not_found(), "Not Found")
+    }
+};
+
+// ============================================================================
+// CLI Interface
+// ============================================================================
+
+fn show_usage() -> i64 = {
+    let u1 = print_str_nl("bmb-httpd: HTTP request processor");
+    let u2 = print_str_nl("Usage: bmb run main.bmb -- <method> <path> [body]");
+    let u3 = print_str_nl("");
+    let u4 = print_str_nl("Routes:");
+    let u5 = print_str_nl("  GET  /              Hello endpoint");
+    let u6 = print_str_nl("  GET  /api/hello     Returns greeting");
+    let u7 = print_str_nl("  GET  /api/time      Returns timestamp");
+    let u8 = print_str_nl("  GET  /api/status    Returns server status");
+    let u9 = print_str_nl("  POST /api/echo      Echoes request body");
+    let u10 = print_str_nl("  POST /api/add       Adds two numbers (body: a,b)");
+    let u11 = print_str_nl("");
+    let u12 = print_str_nl("Examples:");
+    let u13 = print_str_nl("  bmb run main.bmb -- GET /api/hello");
+    let u14 = print_str_nl("  bmb run main.bmb -- POST /api/echo hello");
+    let u15 = print_str_nl("  bmb run main.bmb -- POST /api/add 10,25");
+    0
+};
+
+fn main() -> i64 = {
+    let argc = arg_count();
+
+    if argc < 3 {
+        show_usage()
+    }
+    else {
+        let method_str = get_arg(1);
+        let path = get_arg(2);
+        let body = if argc > 3 { get_arg(3) } else { "" };
+
+        let method = parse_method(method_str);
+        if method == 0 {
+            let e = log_error("Unknown method: " + method_str);
+            send_error(status_bad_request(), "Unknown method")
+        }
+        else {
+            route_request(method, path, body)
+        }
+    }
+};
+
+// ============================================================================
+// Tests
+// ============================================================================
+
+fn test_method_parsing() -> i64 = {
+    let t1 = if parse_method("GET") == method_get() { 1 } else { 0 };
+    let t2 = if parse_method("POST") == method_post() { 1 } else { 0 };
+    let t3 = if parse_method("PUT") == method_put() { 1 } else { 0 };
+    let t4 = if parse_method("DELETE") == method_delete() { 1 } else { 0 };
+    let t5 = if parse_method("INVALID") == 0 { 1 } else { 0 };
+
+    if t1 + t2 + t3 + t4 + t5 == 5 { let ok = println(777); 1 } else { 0 }
+};
+
+fn test_status_codes() -> i64 = {
+    let t1 = if status_text(200) == "OK" { 1 } else { 0 };
+    let t2 = if status_text(404) == "Not Found" { 1 } else { 0 };
+    let t3 = if status_text(500) == "Internal Server Error" { 1 } else { 0 };
+
+    if t1 + t2 + t3 == 3 { let ok = println(888); 1 } else { 0 }
+};
+
+fn test_add_parsing() -> i64 = {
+    let t1 = if find_comma("10,25", 0) == 2 { 1 } else { 0 };
+    let t2 = if parse_add_body("10,25", 0, 0) == 10 { 1 } else { 0 };
+    let t3 = if parse_add_body("10,25", 3, 0) == 25 { 1 } else { 0 };
+
+    if t1 + t2 + t3 == 3 { let ok = println(999); 1 } else { 0 }
+};
+
+fn run_tests() -> i64 = {
+    let t1 = test_method_parsing();
+    let t2 = test_status_codes();
+    let t3 = test_add_parsing();
+    t1 + t2 + t3
+};

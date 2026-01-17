@@ -1,38 +1,38 @@
--- v0.2 Feature Test: Inline Refinement Types
--- Tests for T{constraints} syntax with 'it' keyword
+// v0.2 Feature Test: Inline Refinement Types
+// Tests for T{constraints} syntax with 'it' keyword
 
--- Simple refinement: non-zero integer
+// Simple refinement: non-zero integer
 fn safe_divide(a: i64, b: i64{it != 0}) -> i64
 = a / b;
 
--- Multiple constraints
+// Multiple constraints
 fn clamp_value(x: i64, lo: i64, hi: i64) -> i64{it >= lo, it <= hi}
-= if x < lo then lo else if x > hi then hi else x;
+= if x < lo { lo } else if x > hi { hi } else { x };
 
--- i32 refinement
+// i32 refinement
 fn positive_i32(x: i32{it > 0}) -> i32{it >= 0}
 = x;
 
--- Boolean refinement
+// Boolean refinement
 fn is_true(x: bool{it == true}) -> bool
 = x;
 
--- F64 refinement with positive constraint
+// F64 refinement with positive constraint
 fn positive_float(x: f64{it > 0.0}) -> f64{it > 0.0}
 = x;
 
--- Combined with where block
+// Combined with where block
 fn bounded_add(a: i64{it >= 0}, b: i64{it >= 0}) -> r: i64
   where {
     no_overflow: r >= a and r >= b
   }
 = a + b;
 
--- Nested function using refined types
+// Nested function using refined types
 fn abs_positive(x: i64) -> i64{it >= 0}
-= if x < 0 then 0 - x else x;
+= if x < 0 { 0 - x } else { x };
 
--- Single constraint without comma
+// Single constraint without comma
 fn non_negative(x: i64{it >= 0}) -> i64
 = x;
 

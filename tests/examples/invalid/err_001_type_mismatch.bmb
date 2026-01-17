@@ -1,2 +1,2 @@
--- Type mismatch: returning bool where i64 expected
+// Type mismatch: returning bool where i64 expected
 fn bad_return(x: i64) -> i64 = x > 0;

@@ -6,6 +6,410 @@ use thiserror::Error;
 /// Result type alias
 pub type Result<T> = std::result::Result<T, CompileError>;
 
+// ============================================================================
+// v0.47: Warning Infrastructure
+// ============================================================================
+
+/// Compile warning - non-fatal diagnostic messages
+/// P0 Correctness: Helps catch potential issues without blocking compilation
+#[derive(Debug, Clone)]
+pub enum CompileWarning {
+    /// Unreachable pattern arm in match expression (v0.47)
+    UnreachablePattern {
+        message: String,
+        span: Span,
+        arm_index: usize,
+    },
+
+    /// Unused variable binding (v0.47)
+    UnusedBinding {
+        name: String,
+        span: Span,
+    },
+
+    /// Redundant pattern (subset of another pattern) (v0.47)
+    RedundantPattern {
+        message: String,
+        span: Span,
+    },
+
+    /// Integer range may overflow (v0.47)
+    IntegerRangeOverflow {
+        message: String,
+        span: Span,
+    },
+
+    /// v0.51: Match with guards but no unconditional fallback
+    /// May fail at runtime if all guards evaluate to false
+    GuardedNonExhaustive {
+        span: Span,
+    },
+
+    /// v0.52: Mutable variable that is never mutated
+    /// Should be `let` instead of `var`
+    UnusedMut {
+        name: String,
+        span: Span,
+    },
+
+    /// v0.53: Unreachable code after divergent expression
+    /// Statement after return, break, or continue will never execute
+    UnreachableCode {
+        span: Span,
+    },
+
+    /// v0.74: Unused import
+    /// Import that is never used in the code
+    UnusedImport {
+        name: String,
+        span: Span,
+    },
+
+    /// v0.76: Unused function
+    /// Private function that is never called
+    UnusedFunction {
+        name: String,
+        span: Span,
+    },
+
+    /// v0.77: Unused type/struct
+    /// Private type definition that is never used
+    UnusedType {
+        name: String,
+        span: Span,
+    },
+
+    /// v0.78: Unused enum
+    /// Private enum definition that is never used
+    UnusedEnum {
+        name: String,
+        span: Span,
+    },
+
+    /// v0.79: Shadow binding
+    /// Variable shadows another binding in an outer scope
+    ShadowBinding {
+        name: String,
+        span: Span,
+        original_span: Span,
+    },
+
+    /// v0.80: Unused trait
+    /// Private trait definition that is never implemented
+    UnusedTrait {
+        name: String,
+        span: Span,
+    },
+
+    /// v0.50.11: Duplicate function definition
+    /// Function with the same name already defined (later definition wins)
+    DuplicateFunction {
+        name: String,
+        span: Span,
+        original_span: Span,
+    },
+
+    /// v0.81: Missing postcondition
+    /// Function lacks explicit postcondition contract
+    MissingPostcondition {
+        name: String,
+        span: Span,
+    },
+
+    /// v0.84: Semantic duplication
+    /// Two functions have equivalent contracts (same signature + same postcondition)
+    SemanticDuplication {
+        name: String,
+        duplicate_of: String,
+        span: Span,
+    },
+
+    /// v0.82: Trivial contract (tautology)
+    /// Contract that is always true, providing no meaningful specification
+    TrivialContract {
+        name: String,
+        contract_kind: String, // "precondition", "postcondition", or contract name
+        span: Span,
+    },
+
+    /// Generic warning with span
+    Generic {
+        message: String,
+        span: Option<Span>,
+    },
+}
+
+impl CompileWarning {
+    /// Create an unreachable pattern warning
+    pub fn unreachable_pattern(message: impl Into<String>, span: Span, arm_index: usize) -> Self {
+        Self::UnreachablePattern {
+            message: message.into(),
+            span,
+            arm_index,
+        }
+    }
+
+    /// Create an unused binding warning
+    pub fn unused_binding(name: impl Into<String>, span: Span) -> Self {
+        Self::UnusedBinding {
+            name: name.into(),
+            span,
+        }
+    }
+
+    /// Create a redundant pattern warning
+    pub fn redundant_pattern(message: impl Into<String>, span: Span) -> Self {
+        Self::RedundantPattern {
+            message: message.into(),
+            span,
+        }
+    }
+
+    /// Create an integer range overflow warning
+    pub fn integer_range_overflow(message: impl Into<String>, span: Span) -> Self {
+        Self::IntegerRangeOverflow {
+            message: message.into(),
+            span,
+        }
+    }
+
+    /// Create a generic warning
+    pub fn generic(message: impl Into<String>, span: Option<Span>) -> Self {
+        Self::Generic {
+            message: message.into(),
+            span,
+        }
+    }
+
+    /// v0.51: Create a guarded non-exhaustive warning
+    pub fn guarded_non_exhaustive(span: Span) -> Self {
+        Self::GuardedNonExhaustive { span }
+    }
+
+    /// v0.52: Create an unused mutable binding warning
+    pub fn unused_mut(name: impl Into<String>, span: Span) -> Self {
+        Self::UnusedMut {
+            name: name.into(),
+            span,
+        }
+    }
+
+    /// v0.53: Create an unreachable code warning
+    pub fn unreachable_code(span: Span) -> Self {
+        Self::UnreachableCode { span }
+    }
+
+    /// v0.74: Create an unused import warning
+    pub fn unused_import(name: impl Into<String>, span: Span) -> Self {
+        Self::UnusedImport {
+            name: name.into(),
+            span,
+        }
+    }
+
+    /// v0.76: Create an unused function warning
+    pub fn unused_function(name: impl Into<String>, span: Span) -> Self {
+        Self::UnusedFunction {
+            name: name.into(),
+            span,
+        }
+    }
+
+    /// v0.77: Create an unused type warning
+    pub fn unused_type(name: impl Into<String>, span: Span) -> Self {
+        Self::UnusedType {
+            name: name.into(),
+            span,
+        }
+    }
+
+    /// v0.78: Create an unused enum warning
+    pub fn unused_enum(name: impl Into<String>, span: Span) -> Self {
+        Self::UnusedEnum {
+            name: name.into(),
+            span,
+        }
+    }
+
+    /// v0.79: Create a shadow binding warning
+    pub fn shadow_binding(name: impl Into<String>, span: Span, original_span: Span) -> Self {
+        Self::ShadowBinding {
+            name: name.into(),
+            span,
+            original_span,
+        }
+    }
+
+    /// v0.80: Create an unused trait warning
+    pub fn unused_trait(name: impl Into<String>, span: Span) -> Self {
+        Self::UnusedTrait {
+            name: name.into(),
+            span,
+        }
+    }
+
+    /// v0.50.11: Create a duplicate function warning
+    pub fn duplicate_function(name: impl Into<String>, span: Span, original_span: Span) -> Self {
+        Self::DuplicateFunction {
+            name: name.into(),
+            span,
+            original_span,
+        }
+    }
+
+    /// v0.81: Create a missing postcondition warning
+    pub fn missing_postcondition(name: impl Into<String>, span: Span) -> Self {
+        Self::MissingPostcondition {
+            name: name.into(),
+            span,
+        }
+    }
+
+    /// v0.84: Create a semantic duplication warning
+    pub fn semantic_duplication(
+        name: impl Into<String>,
+        duplicate_of: impl Into<String>,
+        span: Span,
+    ) -> Self {
+        Self::SemanticDuplication {
+            name: name.into(),
+            duplicate_of: duplicate_of.into(),
+            span,
+        }
+    }
+
+    /// v0.82: Create a trivial contract warning
+    pub fn trivial_contract(
+        name: impl Into<String>,
+        contract_kind: impl Into<String>,
+        span: Span,
+    ) -> Self {
+        Self::TrivialContract {
+            name: name.into(),
+            contract_kind: contract_kind.into(),
+            span,
+        }
+    }
+
+    /// Get the span of this warning, if any
+    pub fn span(&self) -> Option<Span> {
+        match self {
+            Self::UnreachablePattern { span, .. } => Some(*span),
+            Self::UnusedBinding { span, .. } => Some(*span),
+            Self::RedundantPattern { span, .. } => Some(*span),
+            Self::IntegerRangeOverflow { span, .. } => Some(*span),
+            Self::GuardedNonExhaustive { span } => Some(*span),
+            Self::UnusedMut { span, .. } => Some(*span),
+            Self::UnreachableCode { span } => Some(*span),
+            Self::UnusedImport { span, .. } => Some(*span),
+            Self::UnusedFunction { span, .. } => Some(*span),
+            Self::UnusedType { span, .. } => Some(*span),
+            Self::UnusedEnum { span, .. } => Some(*span),
+            Self::ShadowBinding { span, .. } => Some(*span),
+            Self::UnusedTrait { span, .. } => Some(*span),
+            Self::DuplicateFunction { span, .. } => Some(*span),
+            Self::MissingPostcondition { span, .. } => Some(*span),
+            Self::SemanticDuplication { span, .. } => Some(*span),
+            Self::TrivialContract { span, .. } => Some(*span),
+            Self::Generic { span, .. } => *span,
+        }
+    }
+
+    /// Get the message of this warning
+    pub fn message(&self) -> String {
+        match self {
+            Self::UnreachablePattern { message, arm_index, .. } => {
+                format!("unreachable pattern (arm {}): {}", arm_index + 1, message)
+            }
+            Self::UnusedBinding { name, .. } => {
+                format!("unused variable: `{}`", name)
+            }
+            Self::RedundantPattern { message, .. } => {
+                format!("redundant pattern: {}", message)
+            }
+            Self::IntegerRangeOverflow { message, .. } => {
+                format!("integer range overflow: {}", message)
+            }
+            Self::GuardedNonExhaustive { .. } => {
+                "match with guards may not be exhaustive; add a wildcard pattern `_ => ...` to ensure all cases are covered".to_string()
+            }
+            Self::UnusedMut { name, .. } => {
+                format!("variable `{}` is declared mutable but never mutated; consider using `let` instead of `let mut`", name)
+            }
+            Self::UnreachableCode { .. } => {
+                "unreachable code; this statement will never be executed".to_string()
+            }
+            Self::UnusedImport { name, .. } => {
+                format!("unused import: `{}`", name)
+            }
+            Self::UnusedFunction { name, .. } => {
+                format!("function `{}` is never used", name)
+            }
+            Self::UnusedType { name, .. } => {
+                format!("type `{}` is never used", name)
+            }
+            Self::UnusedEnum { name, .. } => {
+                format!("enum `{}` is never used", name)
+            }
+            Self::ShadowBinding { name, .. } => {
+                format!("variable `{}` shadows a binding from an outer scope", name)
+            }
+            Self::UnusedTrait { name, .. } => {
+                format!("trait `{}` is never implemented", name)
+            }
+            Self::DuplicateFunction { name, .. } => {
+                format!("function `{}` is defined multiple times; later definition overrides earlier one", name)
+            }
+            Self::MissingPostcondition { name, .. } => {
+                format!("function `{}` has no postcondition", name)
+            }
+            Self::SemanticDuplication { name, duplicate_of, .. } => {
+                format!(
+                    "function `{}` has equivalent contract to `{}`; consider consolidating",
+                    name, duplicate_of
+                )
+            }
+            Self::TrivialContract { name, contract_kind, .. } => {
+                format!(
+                    "function `{}`: {} is a tautology (always true); consider adding meaningful constraints",
+                    name, contract_kind
+                )
+            }
+            Self::Generic { message, .. } => message.clone(),
+        }
+    }
+
+    /// Get the warning kind as a string
+    pub fn kind(&self) -> &'static str {
+        match self {
+            Self::UnreachablePattern { .. } => "unreachable_pattern",
+            Self::UnusedBinding { .. } => "unused_binding",
+            Self::RedundantPattern { .. } => "redundant_pattern",
+            Self::IntegerRangeOverflow { .. } => "integer_range_overflow",
+            Self::GuardedNonExhaustive { .. } => "guarded_non_exhaustive",
+            Self::UnusedMut { .. } => "unused_mut",
+            Self::UnreachableCode { .. } => "unreachable_code",
+            Self::UnusedImport { .. } => "unused_import",
+            Self::UnusedFunction { .. } => "unused_function",
+            Self::UnusedType { .. } => "unused_type",
+            Self::UnusedEnum { .. } => "unused_enum",
+            Self::ShadowBinding { .. } => "shadow_binding",
+            Self::UnusedTrait { .. } => "unused_trait",
+            Self::DuplicateFunction { .. } => "duplicate_function",
+            Self::MissingPostcondition { .. } => "missing_postcondition",
+            Self::SemanticDuplication { .. } => "semantic_duplication",
+            Self::TrivialContract { .. } => "trivial_contract",
+            Self::Generic { .. } => "warning",
+        }
+    }
+}
+
+impl std::fmt::Display for CompileWarning {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "warning[{}]: {}", self.kind(), self.message())
+    }
+}
+
 /// Compile error
 #[derive(Debug, Error)]
 pub enum CompileError {
@@ -27,8 +431,9 @@ pub enum CompileError {
     Parse { message: String },
 
     /// Module resolution error (v0.5 Phase 7)
-    #[error("Resolution error: {message}")]
-    Resolve { message: String },
+    /// v0.70: Added optional span for better error localization
+    #[error("Resolution error{}: {message}", span.map(|s| format!(" at {:?}", s)).unwrap_or_default())]
+    Resolve { message: String, span: Option<Span> },
 }
 
 impl CompileError {
@@ -67,10 +472,19 @@ impl CompileError {
         }
     }
 
-    /// Create a resolution error (v0.5 Phase 7)
+    /// Create a resolution error without span (v0.5 Phase 7)
     pub fn resolve_error(message: impl Into<String>) -> Self {
         Self::Resolve {
             message: message.into(),
+            span: None,
+        }
+    }
+
+    /// Create a resolution error with span (v0.70)
+    pub fn resolve_error_at(message: impl Into<String>, span: Span) -> Self {
+        Self::Resolve {
+            message: message.into(),
+            span: Some(span),
         }
     }
 
@@ -79,7 +493,8 @@ impl CompileError {
             Self::Lexer { span, .. } => Some(*span),
             Self::Parser { span, .. } => Some(*span),
             Self::Type { span, .. } => Some(*span),
-            Self::Io { .. } | Self::Parse { .. } | Self::Resolve { .. } => None,
+            Self::Resolve { span, .. } => *span,
+            Self::Io { .. } | Self::Parse { .. } => None,
         }
     }
 
@@ -126,5 +541,86 @@ pub fn report_error(filename: &str, source: &str, error: &CompileError) {
             .finish()
             .print((filename, Source::from(source)))
             .unwrap();
+    }
+}
+
+/// Report warning with ariadne (v0.47)
+/// P0 Correctness: Visual feedback for potential issues without blocking compilation
+pub fn report_warning(filename: &str, source: &str, warning: &CompileWarning) {
+    use ariadne::{Color, Label, Report, ReportKind, Source};
+
+    if let Some(span) = warning.span() {
+        Report::build(ReportKind::Warning, (filename, span.start..span.end))
+            .with_message(format!("warning[{}]", warning.kind()))
+            .with_label(
+                Label::new((filename, span.start..span.end))
+                    .with_message(warning.message())
+                    .with_color(Color::Yellow),
+            )
+            .finish()
+            .print((filename, Source::from(source)))
+            .unwrap();
+    } else {
+        // Warnings without span
+        Report::build(ReportKind::Warning, (filename, 0..0))
+            .with_message(warning.message())
+            .finish()
+            .print((filename, Source::from(source)))
+            .unwrap();
+    }
+}
+
+/// Report multiple warnings (v0.47)
+pub fn report_warnings(filename: &str, source: &str, warnings: &[CompileWarning]) {
+    for warning in warnings {
+        report_warning(filename, source, warning);
+    }
+}
+
+// ============================================================================
+// v0.71: Machine-readable output (AI-friendly)
+// ============================================================================
+
+/// Machine-readable error output (JSON format)
+pub fn report_error_machine(filename: &str, _source: &str, error: &CompileError) {
+    let kind = match error {
+        CompileError::Lexer { .. } => "lexer",
+        CompileError::Parser { .. } => "parser",
+        CompileError::Type { .. } => "type",
+        CompileError::Io { .. } => "io",
+        CompileError::Parse { .. } => "parse",
+        CompileError::Resolve { .. } => "resolve",
+    };
+
+    let (start, end) = error.span().map(|s| (s.start, s.end)).unwrap_or((0, 0));
+
+    println!(
+        r#"{{"type":"error","kind":"{}","file":"{}","start":{},"end":{},"message":"{}"}}"#,
+        kind,
+        filename.replace('\\', "\\\\").replace('"', "\\\""),
+        start,
+        end,
+        error.message().replace('\\', "\\\\").replace('"', "\\\"").replace('\n', "\\n")
+    );
+}
+
+/// Machine-readable warning output (JSON format)
+pub fn report_warning_machine(filename: &str, _source: &str, warning: &CompileWarning) {
+    let (start, end) = warning.span().map(|s| (s.start, s.end)).unwrap_or((0, 0));
+
+    println!(
+        r#"{{"type":"warning","kind":"{}","file":"{}","start":{},"end":{},"message":"{}"}}"#,
+        warning.kind(),
+        filename.replace('\\', "\\\\").replace('"', "\\\""),
+        start,
+        end,
+        warning.message().replace('\\', "\\\\").replace('"', "\\\"").replace('\n', "\\n")
+    );
+}
+
+/// Machine-readable warnings output
+pub fn report_warnings_machine(filename: &str, source: &str, warnings: &[CompileWarning]) {
+    for warning in warnings {
+        report_warning_machine(filename, source, warning);
     }
 }

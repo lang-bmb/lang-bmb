@@ -1,20 +1,20 @@
--- BMB Iterator Library v0.17.0
--- 이터레이터 트레이트 및 콤비네이터
---
--- AI-Native Design:
--- - 지연 평가 (lazy evaluation)
--- - 함수형 스타일 체이닝
--- - 계약 기반 종료 보장
---
--- Note: BMB는 아직 trait 키워드를 지원하지 않음
--- 이터레이터 패턴을 구조체 + 함수로 구현
+// BMB Iterator Library v0.17.0
+// 이터레이터 트레이트 및 콤비네이터
+//
+// AI-Native Design:
+// - 지연 평가 (lazy evaluation)
+// - 함수형 스타일 체이닝
+// - 계약 기반 종료 보장
+//
+// Note: BMB는 아직 trait 키워드를 지원하지 않음
+// 이터레이터 패턴을 구조체 + 함수로 구현
 
--- v0.17: Import Option for iterator return types
+// v0.17: Import Option for iterator return types
 use bmb_option::Option;
 
--- ============================================
--- Range 이터레이터 (i64 범위)
--- ============================================
+// ============================================
+// Range 이터레이터 (i64 범위)
+// ============================================
 
 @derive(Debug, Clone, PartialEq)
 pub struct Range {
@@ -31,10 +31,8 @@ pub fn range_step(start: i64, end: i64, step: i64) -> Range
   pre step > 0 and start <= end
 = new Range { current: start, end: end, step: step };
 
-pub fn range_next(r: Range) -> Option<i64> =
-    if r.current >= r.end
-    then Option::None
-    else Option::Some(r.current);
+pub fn range_next(r: Range) -> i64? =
+    if r.current >= r.end { Option::None } else { Option::Some(r.current) };
 
 pub fn range_advance(r: Range) -> Range =
     new Range { current: r.current + r.step, end: r.end, step: r.step };
@@ -45,11 +43,11 @@ pub fn range_is_empty(r: Range) -> bool =
 pub fn range_len(r: Range) -> i64
   pre r.step > 0
   post ret >= 0
-= if r.current >= r.end then 0 else (r.end - r.current + r.step - 1) / r.step;
+= if r.current >= r.end { 0 } else { (r.end - r.current + r.step - 1) / r.step };
 
--- ============================================
--- Repeat 이터레이터 (무한 반복)
--- ============================================
+// ============================================
+// Repeat 이터레이터 (무한 반복)
+// ============================================
 
 @derive(Debug, Clone, PartialEq)
 pub struct Repeat<T> {
@@ -59,12 +57,12 @@ pub struct Repeat<T> {
 pub fn repeat<T>(value: T) -> Repeat<T> =
     new Repeat { value: value };
 
-pub fn repeat_next<T>(r: Repeat<T>) -> Option<T> =
+pub fn repeat_next<T>(r: Repeat<T>) -> T? =
     Option::Some(r.value);
 
--- ============================================
--- Take 이터레이터 (n개 제한)
--- ============================================
+// ============================================
+// Take 이터레이터 (n개 제한)
+// ============================================
 
 @derive(Debug, Clone, PartialEq)
 pub struct Take {
@@ -78,115 +76,97 @@ pub fn take_decrement(t: Take) -> Take =
 
 pub fn take_is_empty(t: Take) -> bool = t.remaining <= 0;
 
--- ============================================
--- 이터레이터 콤비네이터 (i64 특화)
--- ============================================
+// ============================================
+// 이터레이터 콤비네이터 (i64 특화)
+// ============================================
 
--- sum: 모든 요소 합계 (수학 공식 사용)
+// sum: 모든 요소 합계 (수학 공식 사용)
 pub fn range_sum(start: i64, end: i64) -> i64
   pre start <= end
 = (end - start) * (start + end - 1) / 2;
 
--- product: 모든 요소 곱 (재귀 사용)
+// product: 모든 요소 곱 (재귀 사용)
 pub fn range_product(start: i64, end: i64) -> i64
   pre start <= end and start > 0
-= if start >= end then 1 else start * range_product(start + 1, end);
+= if start >= end { 1 } else { start * range_product(start + 1, end) };
 
--- count: 요소 개수
+// count: 요소 개수
 pub fn range_count(start: i64, end: i64) -> i64
   pre start <= end
   post ret == end - start
 = end - start;
 
--- min: 최솟값 (빈 범위는 None)
-pub fn range_min(start: i64, end: i64) -> Option<i64> =
-    if start >= end
-    then Option::None
-    else Option::Some(start);
+// min: 최솟값 (빈 범위는 None)
+pub fn range_min(start: i64, end: i64) -> i64? =
+    if start >= end { Option::None } else { Option::Some(start) };
 
--- max: 최댓값 (빈 범위는 None)
-pub fn range_max(start: i64, end: i64) -> Option<i64> =
-    if start >= end
-    then Option::None
-    else Option::Some(end - 1);
+// max: 최댓값 (빈 범위는 None)
+pub fn range_max(start: i64, end: i64) -> i64? =
+    if start >= end { Option::None } else { Option::Some(end - 1) };
 
--- any: 조건을 만족하는 요소 존재 여부 (양수)
+// any: 조건을 만족하는 요소 존재 여부 (양수)
 pub fn range_any_positive(start: i64, end: i64) -> bool =
     end > 0 and end > start;
 
--- all: 모든 요소가 조건 만족 (양수)
+// all: 모든 요소가 조건 만족 (양수)
 pub fn range_all_positive(start: i64, end: i64) -> bool =
     start > 0;
 
--- find: 조건을 만족하는 첫 요소 (첫 양수)
-pub fn range_find_positive(start: i64, end: i64) -> Option<i64> =
-    if start >= end then Option::None
-    else if start > 0 then Option::Some(start)
-    else if 1 < end then Option::Some(1)
-    else Option::None;
+// find: 조건을 만족하는 첫 요소 (첫 양수)
+pub fn range_find_positive(start: i64, end: i64) -> i64? =
+    if start >= end { Option::None } else if start > 0 { Option::Some(start) } else if 1 < end { Option::Some(1) } else { Option::None };
 
--- ============================================
--- 연쇄 이터레이터 패턴
--- ============================================
+// ============================================
+// 연쇄 이터레이터 패턴
+// ============================================
 
--- enumerate 시뮬레이션: (index, value) 쌍
-pub fn enumerate_at(start: i64, end: i64, index: i64) -> Option<i64>
+// enumerate 시뮬레이션: (index, value) 쌍
+pub fn enumerate_at(start: i64, end: i64, index: i64) -> i64?
   pre start <= end
-= if start + index >= end
-  then Option::None
-  else Option::Some(start + index);
+= if start + index >= end { Option::None } else { Option::Some(start + index) };
 
--- zip 시뮬레이션: 두 범위의 요소 쌍
+// zip 시뮬레이션: 두 범위의 요소 쌍
 pub fn zip_ranges_at(
     start1: i64, end1: i64,
     start2: i64, end2: i64,
     index: i64
-) -> Option<i64>
+) -> i64?
   pre start1 <= end1 and start2 <= end2
 = {
     let len1: i64 = end1 - start1;
     let len2: i64 = end2 - start2;
-    let min_len: i64 = if len1 < len2 then len1 else len2;
-    if index >= min_len
-    then Option::None
-    else Option::Some((start1 + index) + (start2 + index))
-};
+    let min_len: i64 = if len1 < len2 { len1 } else { len2 };
+    if index >= min_len { Option::None } else { Option::Some((start1 + index) + (start2 + index)) }};
 
--- ============================================
--- 수집 함수
--- ============================================
+// ============================================
+// 수집 함수
+// ============================================
 
--- 범위를 합계로 수집
+// 범위를 합계로 수집
 pub fn collect_sum(start: i64, end: i64) -> i64 =
     range_sum(start, end);
 
--- 범위의 n번째 요소
-pub fn nth(start: i64, end: i64, n: i64) -> Option<i64>
+// 범위의 n번째 요소
+pub fn nth(start: i64, end: i64, n: i64) -> i64?
   pre start <= end and n >= 0
-= if start + n >= end
-  then Option::None
-  else Option::Some(start + n);
+= if start + n >= end { Option::None } else { Option::Some(start + n) };
 
--- 범위의 마지막 요소
-pub fn last(start: i64, end: i64) -> Option<i64>
+// 범위의 마지막 요소
+pub fn last(start: i64, end: i64) -> i64?
   pre start <= end
-= if start >= end
-  then Option::None
-  else Option::Some(end - 1);
+= if start >= end { Option::None } else { Option::Some(end - 1) };
 
--- ============================================
--- 무한 이터레이터 패턴
--- ============================================
+// ============================================
+// 무한 이터레이터 패턴
+// ============================================
 
--- 자연수 생성기 (n번째)
+// 자연수 생성기 (n번째)
 pub fn naturals_nth(n: i64) -> i64
   pre n >= 0
   post ret == n
 = n;
 
--- 피보나치 수열 (n번째)
+// 피보나치 수열 (n번째)
 pub fn fibonacci(n: i64) -> i64
   pre n >= 0
-= if n == 0 then 0
-  else if n == 1 then 1
-  else fibonacci(n - 1) + fibonacci(n - 2);
+= if n == 0 { 0 } else if n == 1 { 1 } else { fibonacci(n - 1) + fibonacci(n - 2) };

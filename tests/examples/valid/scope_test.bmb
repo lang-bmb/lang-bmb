@@ -1,4 +1,4 @@
--- Scope test without malloc
+// Scope test without malloc
 
 fn test_scope() -> i64 = {
     let x = 42;

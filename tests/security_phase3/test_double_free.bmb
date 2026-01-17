@@ -1,0 +1,8 @@
+// Phase 3 Security Test: Double free
+fn main() -> i64 = {
+    let ptr = malloc(8);
+    store_i64(ptr, 42);
+    free(ptr);
+    free(ptr);  // Double free
+    0
+};

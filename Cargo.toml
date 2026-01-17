@@ -38,6 +38,10 @@ chrono = "0.4"
 tower-lsp = "0.20"
 tokio = { version = "1", features = ["full"] }
 
+# File watching
+notify = "8"
+notify-debouncer-mini = "0.6"
+
 # HTTP client for registry
 reqwest = { version = "0.12", features = ["json", "blocking"] }
 flate2 = "1.0"

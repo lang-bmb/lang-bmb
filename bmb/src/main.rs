@@ -2,10 +2,23 @@
 
 use clap::{Parser, Subcommand};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+
+/// v0.71: Global flag for human-readable output (default: machine/AI-friendly)
+static HUMAN_OUTPUT: AtomicBool = AtomicBool::new(false);
+
+/// Check if human output mode is enabled (default: false = machine mode)
+pub fn is_human_output() -> bool {
+    HUMAN_OUTPUT.load(Ordering::Relaxed)
+}
 
 #[derive(Parser)]
 #[command(name = "bmb", version, about = "BMB Compiler - AI-Native Language")]
 struct Cli {
+    /// v0.71: Human-readable output (colors, formatting). Default: machine/JSON
+    #[arg(long, global = true)]
+    human: bool,
+
     #[command(subcommand)]
     command: Command,
 }
@@ -19,9 +32,12 @@ enum Command {
         /// Output file path
         #[arg(short, long)]
         output: Option<PathBuf>,
-        /// Build with optimizations
+        /// Build with optimizations (-O2)
         #[arg(long)]
         release: bool,
+        /// Build with aggressive optimizations (-O3)
+        #[arg(long)]
+        aggressive: bool,
         /// Emit LLVM IR instead of executable
         #[arg(long)]
         emit_ir: bool,
@@ -37,6 +53,10 @@ enum Command {
         /// Build for all targets (native + WASM) - v0.12.4
         #[arg(long)]
         all_targets: bool,
+        /// Target triple for cross-compilation (v0.50.23)
+        /// Examples: x86_64-unknown-linux-gnu, x86_64-pc-windows-msvc, aarch64-apple-darwin
+        #[arg(long)]
+        target: Option<String>,
         /// Verbose output
         #[arg(short, long)]
         verbose: bool,
@@ -45,6 +65,12 @@ enum Command {
     Run {
         /// Source file to run
         file: PathBuf,
+        /// v0.46: Arguments to pass to the BMB program
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
+        /// v0.71: Human-readable output (colors, formatting). Default: machine/JSON
+        #[arg(long)]
+        human: bool,
     },
     /// Start interactive REPL
     Repl,
@@ -99,6 +125,17 @@ enum Command {
         #[arg(long)]
         check: bool,
     },
+    /// Lint a BMB source file (v0.45)
+    Lint {
+        /// Source file or directory to lint
+        file: PathBuf,
+        /// Treat warnings as errors (exit 1 if any warnings)
+        #[arg(long)]
+        strict: bool,
+        /// Additional include paths for module resolution
+        #[arg(short = 'I', long = "include", value_name = "PATH")]
+        include_paths: Vec<PathBuf>,
+    },
     /// Start Language Server Protocol server
     Lsp,
     /// Generate project index for AI tools (v0.25)
@@ -134,6 +171,18 @@ enum Command {
     },
 }
 
+/// Output format for queries (v0.48 - RFC-0001)
+#[derive(Clone, Copy, Debug, Default, clap::ValueEnum)]
+enum OutputFormat {
+    /// JSON output (default)
+    #[default]
+    Json,
+    /// Compact single-line format
+    Compact,
+    /// LLM-optimized format (token-efficient)
+    Llm,
+}
+
 #[derive(Subcommand)]
 enum QueryType {
     /// Search symbols by pattern
@@ -146,6 +195,9 @@ enum QueryType {
         /// Only show public symbols
         #[arg(long)]
         public: bool,
+        /// Output format (json, compact, llm)
+        #[arg(long, short = 'f', value_enum, default_value = "json")]
+        format: OutputFormat,
     },
     /// Query function details
     Fn {
@@ -161,6 +213,9 @@ enum QueryType {
         /// Show recursive functions
         #[arg(long)]
         recursive: bool,
+        /// Output format (json, compact, llm)
+        #[arg(long, short = 'f', value_enum, default_value = "json")]
+        format: OutputFormat,
     },
     /// Query type details
     Type {
@@ -170,27 +225,141 @@ enum QueryType {
         /// Filter by kind (struct, enum, trait)
         #[arg(long)]
         kind: Option<String>,
+        /// Output format (json, compact, llm)
+        #[arg(long, short = 'f', value_enum, default_value = "json")]
+        format: OutputFormat,
     },
     /// Show project metrics
-    Metrics,
+    Metrics {
+        /// Output format (json, compact, llm)
+        #[arg(long, short = 'f', value_enum, default_value = "json")]
+        format: OutputFormat,
+    },
+    /// Query dependencies (v0.47 - RFC-0001)
+    Deps {
+        /// Target to query (e.g., fn:main, type:Order)
+        target: String,
+        /// Show reverse dependencies (who calls/uses this)
+        #[arg(long)]
+        reverse: bool,
+        /// Include transitive dependencies
+        #[arg(long)]
+        transitive: bool,
+        /// Output format (json, compact, llm)
+        #[arg(long, short = 'f', value_enum, default_value = "json")]
+        format: OutputFormat,
+    },
+    /// Query contract details (v0.47 - RFC-0001)
+    Contract {
+        /// Function name to query contracts for
+        name: String,
+        /// Show contracts that use old() state
+        #[arg(long)]
+        uses_old: bool,
+        /// Output format (json, compact, llm)
+        #[arg(long, short = 'f', value_enum, default_value = "json")]
+        format: OutputFormat,
+    },
+    /// Generate AI context for a target (v0.48 - RFC-0001)
+    Ctx {
+        /// Target to generate context for (e.g., fn:process_order)
+        target: String,
+        /// Depth of dependency inclusion
+        #[arg(long, default_value = "1")]
+        depth: usize,
+        /// Include related tests
+        #[arg(long)]
+        include_tests: bool,
+        /// Output format (json, compact, llm)
+        #[arg(long, short = 'f', value_enum, default_value = "json")]
+        format: OutputFormat,
+    },
+    /// Search functions by signature pattern (v0.48 - RFC-0001)
+    Sig {
+        /// Signature pattern (e.g., "(&[i64]) -> i64")
+        #[arg(default_value = "")]
+        pattern: String,
+        /// Find functions that accept this type
+        #[arg(long)]
+        accepts: Option<String>,
+        /// Find functions that return this type
+        #[arg(long)]
+        returns: Option<String>,
+        /// Output format (json, compact, llm)
+        #[arg(long, short = 'f', value_enum, default_value = "json")]
+        format: OutputFormat,
+    },
+    /// Run batch queries from file (v0.49 - RFC-0001)
+    Batch {
+        /// Path to queries JSON file
+        file: PathBuf,
+        /// Output format (json, compact, llm)
+        #[arg(long, short = 'f', value_enum, default_value = "json")]
+        format: OutputFormat,
+    },
+    /// Analyze change impact (v0.49 - RFC-0001)
+    Impact {
+        /// Target to analyze (e.g., fn:calculate_fee)
+        target: String,
+        /// Description of the change
+        #[arg(long)]
+        change: String,
+        /// Output format (json, compact, llm)
+        #[arg(long, short = 'f', value_enum, default_value = "json")]
+        format: OutputFormat,
+    },
+    /// Start HTTP query server (v0.50 - RFC-0001)
+    Serve {
+        /// Port to listen on
+        #[arg(long, short = 'p', default_value = "3000")]
+        port: u16,
+        /// Host to bind to
+        #[arg(long, default_value = "127.0.0.1")]
+        host: String,
+    },
+    /// Query verification proof results (v0.50.24 - Task 47.7-47.8)
+    Proof {
+        /// Function name pattern (optional)
+        #[arg(default_value = "")]
+        name: String,
+        /// Show only unverified functions
+        #[arg(long)]
+        unverified: bool,
+        /// Show only failed verifications
+        #[arg(long)]
+        failed: bool,
+        /// Show only timed out verifications
+        #[arg(long)]
+        timeout: bool,
+        /// Output format (json, compact, llm)
+        #[arg(long, short = 'f', value_enum, default_value = "json")]
+        format: OutputFormat,
+    },
 }
 
 fn main() {
     let cli = Cli::parse();
+
+    // v0.71: Set human output mode (default: machine)
+    if cli.human {
+        HUMAN_OUTPUT.store(true, Ordering::Relaxed);
+    }
 
     let result = match cli.command {
         Command::Build {
             file,
             output,
             release,
+            aggressive,
             emit_ir,
             emit_mir,
             emit_wasm,
             wasm_target,
             all_targets,
+            target,
             verbose,
-        } => build_file(&file, output, release, emit_ir, emit_mir, emit_wasm, &wasm_target, all_targets, verbose),
-        Command::Run { file } => run_file(&file),
+        } => build_file(&file, output, release, aggressive, emit_ir, emit_mir, emit_wasm, &wasm_target, all_targets, target.as_deref(), verbose),
+        Command::Run { file, args, human: _ } => run_file(&file, &args),
         Command::Repl => start_repl(),
         Command::Check { file, include_paths } => check_file_with_includes(&file, &include_paths),
         Command::Verify { file, z3_path, timeout } => verify_file(&file, &z3_path, timeout),
@@ -198,6 +367,7 @@ fn main() {
         Command::Tokens { file } => tokenize_file(&file),
         Command::Test { file, filter, verbose } => test_file(&file, filter.as_deref(), verbose),
         Command::Fmt { file, check } => fmt_file(&file, check),
+        Command::Lint { file, strict, include_paths } => lint_file(&file, strict, &include_paths),
         Command::Lsp => start_lsp(),
         Command::Index { path, watch, verbose } => index_project(&path, watch, verbose),
         Command::Query { query_type } => run_query(query_type),
@@ -205,7 +375,13 @@ fn main() {
     };
 
     if let Err(e) = result {
-        eprintln!("Error: {e}");
+        // v0.71: Default machine output, --human for human-readable
+        if is_human_output() {
+            eprintln!("Error: {e}");
+        } else {
+            println!(r#"{{"type":"error","message":"{}"}}"#,
+                e.to_string().replace('\\', "\\\\").replace('"', "\\\"").replace('\n', "\\n"));
+        }
         std::process::exit(1);
     }
 }
@@ -215,11 +391,13 @@ fn build_file(
     path: &PathBuf,
     output: Option<PathBuf>,
     release: bool,
+    aggressive: bool,
     emit_ir: bool,
     emit_mir: bool,
     emit_wasm: bool,
     wasm_target: &str,
     all_targets: bool,
+    target: Option<&str>,
     verbose: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // v0.21.2: If emitting MIR, just output MIR and return
@@ -237,7 +415,7 @@ fn build_file(
         if verbose {
             println!("\n=== Native Build ===");
         }
-        build_native(path, output.clone(), release, emit_ir, verbose)?;
+        build_native(path, output.clone(), release, aggressive, emit_ir, target, verbose)?;
 
         // Then build WASM
         if verbose {
@@ -257,14 +435,16 @@ fn build_file(
     }
 
     // Default: build native
-    build_native(path, output, release, emit_ir, verbose)
+    build_native(path, output, release, aggressive, emit_ir, target, verbose)
 }
 
 fn build_native(
     path: &Path,
     output: Option<PathBuf>,
     release: bool,
+    aggressive: bool,
     emit_ir: bool,
+    target: Option<&str>,
     verbose: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     use bmb::build::{BuildConfig, OptLevel};
@@ -273,18 +453,35 @@ fn build_native(
         .emit_ir(emit_ir)
         .verbose(verbose);
 
+    // v0.50.23: Cross-compilation target
+    if let Some(triple) = target {
+        config = config.target_triple(triple.to_string());
+        if verbose {
+            println!("Cross-compiling for target: {}", triple);
+        }
+    }
+
     if let Some(out) = output {
         config = config.output(out);
     }
 
-    if release {
+    if aggressive {
+        config = config.opt_level(OptLevel::Aggressive);
+    } else if release {
         config = config.opt_level(OptLevel::Release);
     }
 
     bmb::build::build(&config)?;
 
-    if !emit_ir && verbose {
-        println!("Build complete: {}", config.output.display());
+    if !emit_ir {
+        if is_human_output() {
+            if verbose {
+                println!("Build complete: {}", config.output.display());
+            }
+        } else {
+            println!(r#"{{"type":"build_success","output":"{}"}}"#,
+                config.output.display().to_string().replace('\\', "\\\\"));
+        }
     }
 
     Ok(())
@@ -354,11 +551,15 @@ fn build_wasm(
     // Write output
     std::fs::write(&output_path, &wat)?;
 
-    println!("Generated: {}", output_path.display());
-
-    if verbose {
-        println!("  Target: {:?}", target);
-        println!("  Size: {} bytes", wat.len());
+    if is_human_output() {
+        println!("Generated: {}", output_path.display());
+        if verbose {
+            println!("  Target: {:?}", target);
+            println!("  Size: {} bytes", wat.len());
+        }
+    } else {
+        println!(r#"{{"type":"build_success","output":"{}","target":"{:?}","size":{}}}"#,
+            output_path.display().to_string().replace('\\', "\\\\"), target, wat.len());
     }
 
     Ok(())
@@ -405,11 +606,15 @@ fn emit_mir_file(
     // Write output
     std::fs::write(&output_path, &mir_text)?;
 
-    println!("Generated: {}", output_path.display());
-
-    if verbose {
-        println!("  Functions: {}", mir.functions.len());
-        println!("  Size: {} bytes", mir_text.len());
+    if is_human_output() {
+        println!("Generated: {}", output_path.display());
+        if verbose {
+            println!("  Functions: {}", mir.functions.len());
+            println!("  Size: {} bytes", mir_text.len());
+        }
+    } else {
+        println!(r#"{{"type":"build_success","output":"{}","functions":{},"size":{}}}"#,
+            output_path.display().to_string().replace('\\', "\\\\"), mir.functions.len(), mir_text.len());
     }
 
     Ok(())
@@ -418,15 +623,24 @@ fn emit_mir_file(
 /// v0.30.241: Stack size for interpreter thread (64MB for deep recursion in bootstrap)
 const INTERPRETER_STACK_SIZE: usize = 64 * 1024 * 1024;
 
-fn run_file(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+fn run_file(path: &Path, extra_args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     // v0.30.241: Run entire pipeline in a thread with larger stack to prevent overflow
     // Bootstrap files have deep recursion that exceeds default 1MB Windows stack
     // We run everything in the thread because Value uses Rc<RefCell<>> (not Send)
     let path = path.to_path_buf();
+
+    // v0.46: Prepare program arguments for the BMB program
+    // Format: [program_name, arg1, arg2, ...]
+    let mut program_args = vec![path.display().to_string()];
+    program_args.extend(extra_args.iter().cloned());
+
     let handle = std::thread::Builder::new()
         .name("bmb-interpreter".to_string())
         .stack_size(INTERPRETER_STACK_SIZE)
         .spawn(move || -> Result<(), String> {
+            // v0.46: Set program arguments in thread-local storage
+            bmb::interp::set_program_args(program_args);
+
             let source = std::fs::read_to_string(&path)
                 .map_err(|e| format!("Failed to read file: {}", e))?;
             let filename = path.display().to_string();
@@ -456,11 +670,19 @@ fn run_file(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
     match handle.join() {
         Ok(Ok(_)) => Ok(()),
         Ok(Err(e)) => {
-            eprintln!("{}", e);
+            if is_human_output() {
+                eprintln!("{}", e);
+            } else {
+                println!(r#"{{"type":"error","message":"{}"}}"#, e.to_string().replace('"', "\\\""));
+            }
             std::process::exit(1);
         }
         Err(_) => {
-            eprintln!("Runtime error: interpreter thread panicked");
+            if is_human_output() {
+                eprintln!("Runtime error: interpreter thread panicked");
+            } else {
+                println!(r#"{{"type":"error","message":"interpreter thread panicked"}}"#);
+            }
             std::process::exit(1);
         }
     }
@@ -520,22 +742,294 @@ fn check_file_with_includes(path: &PathBuf, include_paths: &[PathBuf]) -> Result
     }
 
     // Also resolve from the file's own directory
-    if let Ok(imports) = resolver.resolve_uses(&ast) {
-        for (_, (module_name, _)) in imports.all_imports() {
-            if let Some(module) = resolver.get_module(module_name) {
-                checker.register_module(module);
-            }
+    // v0.68: Propagate resolver errors (includes module name suggestions)
+    // v0.74: Make imports mutable for usage tracking
+    let mut imports = resolver.resolve_uses(&ast)?;
+    for (_, info) in imports.all_imports() {
+        if let Some(module) = resolver.get_module(&info.module) {
+            checker.register_module(module);
         }
     }
 
     // Type check
-    checker.check_program(&ast)?;
+    // v0.74: Pass imports for usage tracking
+    checker.check_program_with_imports(&ast, &mut imports)?;
 
-    println!("✓ {} type checks successfully", filename);
+    // v0.74: Collect unused import warnings
+    let mut all_warnings: Vec<bmb::error::CompileWarning> = checker.warnings().to_vec();
+    for (name, span) in imports.get_unused() {
+        all_warnings.push(bmb::error::CompileWarning::unused_import(name, span));
+    }
+
+    // v0.47: Report warnings (non-fatal diagnostics)
+    // v0.71: Default machine output, --human for human-readable
+    let warnings = &all_warnings;
+    if !warnings.is_empty() {
+        if is_human_output() {
+            for warning in warnings {
+                bmb::error::report_warning(&filename, &source, warning);
+            }
+            println!("  {} warning(s) generated", warnings.len());
+        } else {
+            bmb::error::report_warnings_machine(&filename, &source, warnings);
+        }
+    }
+
+    if is_human_output() {
+        println!("✓ {} type checks successfully", filename);
+    } else {
+        println!(r#"{{"type":"success","file":"{}","warnings":{}}}"#, filename, warnings.len());
+    }
+    Ok(())
+}
+
+/// Lint a BMB source file or directory (v0.45)
+/// Collects and reports all warnings from type checking
+fn lint_file(path: &PathBuf, strict: bool, include_paths: &[PathBuf]) -> Result<(), Box<dyn std::error::Error>> {
+    // Handle directory recursively
+    if path.is_dir() {
+        return lint_directory(path, strict, include_paths);
+    }
+
+    let source = std::fs::read_to_string(path)?;
+    let filename = path.display().to_string();
+
+    // Tokenize
+    let tokens = match bmb::lexer::tokenize(&source) {
+        Ok(t) => t,
+        Err(e) => {
+            bmb::error::report_error(&filename, &source, &e);
+            return Err(e.into());
+        }
+    };
+
+    // Parse
+    let ast = match bmb::parser::parse(&filename, &source, tokens) {
+        Ok(a) => a,
+        Err(e) => {
+            bmb::error::report_error(&filename, &source, &e);
+            return Err(e.into());
+        }
+    };
+
+    // Create type checker
+    let mut checker = bmb::types::TypeChecker::new();
+
+    // Resolve use statements and register imported modules
+    let base_dir = path.parent().unwrap_or(std::path::Path::new("."));
+    let mut resolver = bmb::resolver::Resolver::new(base_dir);
+
+    // Try include paths for module resolution
+    for include_path in include_paths {
+        for item in &ast.items {
+            if let bmb::ast::Item::Use(use_stmt) = item
+                && !use_stmt.path.is_empty()
+            {
+                let module_name = &use_stmt.path[0].node;
+                let pkg_dir_name = module_name.replace('_', "-");
+                let module_path = include_path.join(&pkg_dir_name).join("src").join("lib.bmb");
+                if module_path.exists()
+                    && let Ok(lib_source) = std::fs::read_to_string(&module_path)
+                    && let Ok(lib_tokens) = bmb::lexer::tokenize(&lib_source)
+                    && let Ok(lib_ast) = bmb::parser::parse(
+                        &module_path.display().to_string(),
+                        &lib_source,
+                        lib_tokens,
+                    )
+                {
+                    let module = bmb::resolver::Module {
+                        name: module_name.clone(),
+                        path: module_path.clone(),
+                        program: lib_ast,
+                        exports: std::collections::HashMap::new(),
+                    };
+                    checker.register_module(&module);
+                }
+            }
+        }
+    }
+
+    // Resolve from file's directory
+    let mut imports = resolver.resolve_uses(&ast)?;
+    for (_, info) in imports.all_imports() {
+        if let Some(module) = resolver.get_module(&info.module) {
+            checker.register_module(module);
+        }
+    }
+
+    // Type check (continue even with errors to collect all warnings)
+    let type_result = checker.check_program_with_imports(&ast, &mut imports);
+
+    // Collect all warnings
+    let mut all_warnings: Vec<bmb::error::CompileWarning> = checker.warnings().to_vec();
+    for (name, span) in imports.get_unused() {
+        all_warnings.push(bmb::error::CompileWarning::unused_import(name, span));
+    }
+
+    // Report type errors if any
+    if let Err(e) = type_result {
+        bmb::error::report_error(&filename, &source, &e);
+        // Still report warnings before returning error
+        if !all_warnings.is_empty() {
+            if is_human_output() {
+                println!("\n  Warnings:");
+                for warning in &all_warnings {
+                    bmb::error::report_warning(&filename, &source, warning);
+                }
+            } else {
+                bmb::error::report_warnings_machine(&filename, &source, &all_warnings);
+            }
+        }
+        return Err(e.into());
+    }
+
+    // Report warnings
+    let warning_count = all_warnings.len();
+    if warning_count > 0 {
+        if is_human_output() {
+            for warning in &all_warnings {
+                bmb::error::report_warning(&filename, &source, warning);
+            }
+            println!("\n  {} warning(s) in {}", warning_count, filename);
+        } else {
+            bmb::error::report_warnings_machine(&filename, &source, &all_warnings);
+        }
+    } else if is_human_output() {
+        println!("✓ {} - no warnings", filename);
+    } else {
+        println!(r#"{{"type":"lint","file":"{}","warnings":0}}"#, filename);
+    }
+
+    // In strict mode, any warning is an error
+    if strict && warning_count > 0 {
+        if is_human_output() {
+            eprintln!("\n  Lint failed: {} warning(s) in strict mode", warning_count);
+        }
+        std::process::exit(1);
+    }
+
+    Ok(())
+}
+
+/// Lint all .bmb files in a directory recursively (v0.45)
+fn lint_directory(dir: &PathBuf, strict: bool, _include_paths: &[PathBuf]) -> Result<(), Box<dyn std::error::Error>> {
+    let mut total_warnings = 0;
+    let mut total_files = 0;
+    let mut failed_files = 0;
+
+    // Collect all .bmb files
+    fn collect_bmb_files(dir: &PathBuf, files: &mut Vec<PathBuf>) {
+        if let Ok(entries) = std::fs::read_dir(dir) {
+            for entry in entries.filter_map(Result::ok) {
+                let path = entry.path();
+                if path.is_dir() {
+                    collect_bmb_files(&path, files);
+                } else if path.extension().is_some_and(|ext| ext == "bmb") {
+                    files.push(path);
+                }
+            }
+        }
+    }
+
+    let mut files = Vec::new();
+    collect_bmb_files(dir, &mut files);
+    files.sort();
+
+    if is_human_output() {
+        println!("Linting {} files in {}...\n", files.len(), dir.display());
+    }
+
+    for file in &files {
+        total_files += 1;
+
+        let source = match std::fs::read_to_string(file) {
+            Ok(s) => s,
+            Err(_) => {
+                failed_files += 1;
+                continue;
+            }
+        };
+        let filename = file.display().to_string();
+
+        // Tokenize and parse
+        let tokens = match bmb::lexer::tokenize(&source) {
+            Ok(t) => t,
+            Err(_) => {
+                failed_files += 1;
+                continue;
+            }
+        };
+        let ast = match bmb::parser::parse(&filename, &source, tokens) {
+            Ok(a) => a,
+            Err(_) => {
+                failed_files += 1;
+                continue;
+            }
+        };
+
+        // Type check
+        let mut checker = bmb::types::TypeChecker::new();
+        let base_dir = file.parent().unwrap_or(std::path::Path::new("."));
+        let mut resolver = bmb::resolver::Resolver::new(base_dir);
+
+        // Resolve imports
+        if let Ok(mut imports) = resolver.resolve_uses(&ast) {
+            for (_, info) in imports.all_imports() {
+                if let Some(module) = resolver.get_module(&info.module) {
+                    checker.register_module(module);
+                }
+            }
+
+            if checker.check_program_with_imports(&ast, &mut imports).is_ok() {
+                let mut warnings: Vec<bmb::error::CompileWarning> = checker.warnings().to_vec();
+                for (name, span) in imports.get_unused() {
+                    warnings.push(bmb::error::CompileWarning::unused_import(name, span));
+                }
+
+                if !warnings.is_empty() {
+                    total_warnings += warnings.len();
+                    if is_human_output() {
+                        for warning in &warnings {
+                            bmb::error::report_warning(&filename, &source, warning);
+                        }
+                    } else {
+                        bmb::error::report_warnings_machine(&filename, &source, &warnings);
+                    }
+                }
+            } else {
+                failed_files += 1;
+            }
+        }
+    }
+
+    // Summary
+    if is_human_output() {
+        println!("\nLint summary:");
+        println!("  Files checked: {}", total_files);
+        println!("  Total warnings: {}", total_warnings);
+        if failed_files > 0 {
+            println!("  Failed to lint: {}", failed_files);
+        }
+    } else {
+        println!(r#"{{"type":"lint_summary","files":{},"warnings":{},"errors":{}}}"#,
+            total_files, total_warnings, failed_files);
+    }
+
+    // In strict mode, any warning is an error
+    if strict && total_warnings > 0 {
+        if is_human_output() {
+            eprintln!("\nLint failed: {} warning(s) in strict mode", total_warnings);
+        }
+        std::process::exit(1);
+    }
+
     Ok(())
 }
 
 fn verify_file(path: &PathBuf, z3_path: &str, timeout: u32) -> Result<(), Box<dyn std::error::Error>> {
+    use bmb::index::{ProofEntry, ProofIndex, ProofStatus, write_proof_index};
+    use bmb::smt::VerifyResult;
+
     let source = std::fs::read_to_string(path)?;
     let filename = path.display().to_string();
 
@@ -555,17 +1049,91 @@ fn verify_file(path: &PathBuf, z3_path: &str, timeout: u32) -> Result<(), Box<dy
         .with_timeout(timeout);
 
     // Check if solver is available
-    if !verifier.is_solver_available() {
-        eprintln!("Warning: Z3 solver not found at '{}'. Install Z3 or specify --z3-path.", z3_path);
-        eprintln!("Skipping contract verification.");
+    let z3_available = verifier.is_solver_available();
+    if !z3_available {
+        if is_human_output() {
+            eprintln!("Warning: Z3 solver not found at '{}'. Install Z3 or specify --z3-path.", z3_path);
+            eprintln!("Skipping contract verification.");
+        } else {
+            println!(r#"{{"type":"verify_skip","reason":"z3_not_found"}}"#);
+        }
         return Ok(());
     }
 
+    // Get Z3 version if available
+    let z3_version = get_z3_version(z3_path);
+
     // Verify contracts
+    let start_time = std::time::Instant::now();
     let report = verifier.verify_program(&ast);
+    let verify_time_ms = start_time.elapsed().as_millis() as u64;
+
+    // v0.50.24: Create proof index entries from verification report
+    let mut proof_index = ProofIndex::new(z3_available, z3_version);
+    for func_report in &report.functions {
+        let pre_status = func_report.pre_result.as_ref().map(|r| match r {
+            VerifyResult::Verified => ProofStatus::Verified,
+            VerifyResult::Failed(_) => ProofStatus::Failed,
+            VerifyResult::Unknown(msg) if msg.contains("timeout") => ProofStatus::Timeout,
+            VerifyResult::Unknown(_) => ProofStatus::Unknown,
+            VerifyResult::SolverNotAvailable => ProofStatus::Unavailable,
+        });
+
+        let post_status = func_report.post_result.as_ref().map(|r| match r {
+            VerifyResult::Verified => ProofStatus::Verified,
+            VerifyResult::Failed(_) => ProofStatus::Failed,
+            VerifyResult::Unknown(msg) if msg.contains("timeout") => ProofStatus::Timeout,
+            VerifyResult::Unknown(_) => ProofStatus::Unknown,
+            VerifyResult::SolverNotAvailable => ProofStatus::Unavailable,
+        });
+
+        // Extract counterexample if failed
+        let counterexample = func_report.post_result.as_ref().and_then(|r| {
+            if let VerifyResult::Failed(ce) = r {
+                Some(ce.assignments.clone())
+            } else {
+                None
+            }
+        }).or_else(|| {
+            func_report.pre_result.as_ref().and_then(|r| {
+                if let VerifyResult::Failed(ce) = r {
+                    Some(ce.assignments.clone())
+                } else {
+                    None
+                }
+            })
+        });
+
+        proof_index.add_proof(ProofEntry {
+            name: func_report.name.clone(),
+            file: filename.clone(),
+            line: 1, // Would need span info for accurate line numbers
+            pre_status,
+            post_status,
+            counterexample,
+            verify_time_ms: Some(verify_time_ms / report.functions.len().max(1) as u64),
+            verified_at: Some(proof_index.verified_at.clone()),
+        });
+    }
+
+    // Save proof index to .bmb/index/proofs.json
+    let current_dir = std::env::current_dir()?;
+    if let Err(e) = write_proof_index(&proof_index, &current_dir) {
+        if is_human_output() {
+            eprintln!("Warning: Could not save proof index: {}", e);
+        }
+    }
 
     // Print report
-    print!("{}", report);
+    if is_human_output() {
+        print!("{}", report);
+    } else {
+        let verified = report.verified_count();
+        let failed = report.failed_count();
+        let total = verified + failed;
+        println!(r#"{{"type":"verify_result","total":{},"verified":{},"failed":{}}}"#,
+            total, verified, failed);
+    }
 
     // Exit with error if any verification failed
     if !report.all_verified() {
@@ -573,6 +1141,19 @@ fn verify_file(path: &PathBuf, z3_path: &str, timeout: u32) -> Result<(), Box<dy
     }
 
     Ok(())
+}
+
+/// Get Z3 version string
+fn get_z3_version(z3_path: &str) -> Option<String> {
+    use std::process::Command;
+    Command::new(z3_path)
+        .arg("--version")
+        .output()
+        .ok()
+        .and_then(|output| {
+            String::from_utf8(output.stdout).ok()
+        })
+        .map(|s| s.trim().to_string())
 }
 
 fn parse_file(path: &PathBuf, format: &str) -> Result<(), Box<dyn std::error::Error>> {
@@ -593,8 +1174,19 @@ fn tokenize_file(path: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
     let source = std::fs::read_to_string(path)?;
 
     let tokens = bmb::lexer::tokenize(&source)?;
-    for (tok, span) in &tokens {
-        println!("{:?} @ {}..{}", tok, span.start, span.end);
+
+    if is_human_output() {
+        for (tok, span) in &tokens {
+            println!("{:?} @ {}..{}", tok, span.start, span.end);
+        }
+    } else {
+        // JSON array of tokens
+        print!("[");
+        for (i, (tok, span)) in tokens.iter().enumerate() {
+            if i > 0 { print!(","); }
+            print!(r#"{{"token":"{:?}","start":{},"end":{}}}"#, tok, span.start, span.end);
+        }
+        println!("]");
     }
 
     Ok(())
@@ -611,7 +1203,11 @@ fn test_file(path: &PathBuf, filter: Option<&str>, verbose: bool) -> Result<(), 
     };
 
     if test_files.is_empty() {
-        println!("No test files found");
+        if is_human_output() {
+            println!("No test files found");
+        } else {
+            println!(r#"{{"type":"test_result","tests":0,"passed":0,"failed":0}}"#);
+        }
         return Ok(());
     }
 
@@ -650,7 +1246,7 @@ fn test_file(path: &PathBuf, filter: Option<&str>, verbose: bool) -> Result<(), 
             continue;
         }
 
-        if verbose || test_files.len() > 1 {
+        if is_human_output() && (verbose || test_files.len() > 1) {
             println!("\n📂 {}", filename);
         }
 
@@ -666,21 +1262,31 @@ fn test_file(path: &PathBuf, filter: Option<&str>, verbose: bool) -> Result<(), 
                         _ => true,
                     };
 
-                    let elapsed = test_start.elapsed();
+                    let elapsed_ms = test_start.elapsed().as_millis();
 
                     if passed {
                         total_passed += 1;
-                        if verbose {
-                            println!("  ✅ {} ({:.2?})", test_name, elapsed);
+                        if is_human_output() && verbose {
+                            println!("  ✅ {} ({:.2?})", test_name, test_start.elapsed());
                         }
                     } else {
                         total_failed += 1;
-                        println!("  ❌ {} - returned false ({:.2?})", test_name, elapsed);
+                        if is_human_output() {
+                            println!("  ❌ {} - returned false ({:.2?})", test_name, test_start.elapsed());
+                        } else {
+                            println!(r#"{{"type":"test_fail","name":"{}","file":"{}","reason":"returned false","ms":{}}}"#,
+                                test_name, filename, elapsed_ms);
+                        }
                     }
                 }
                 Err(e) => {
                     total_failed += 1;
-                    println!("  ❌ {} - {}", test_name, e.message);
+                    if is_human_output() {
+                        println!("  ❌ {} - {}", test_name, e.message);
+                    } else {
+                        println!(r#"{{"type":"test_fail","name":"{}","file":"{}","reason":"{}"}}"#,
+                            test_name, filename, e.message.replace('"', "\\\""));
+                    }
                 }
             }
         }
@@ -689,17 +1295,25 @@ fn test_file(path: &PathBuf, filter: Option<&str>, verbose: bool) -> Result<(), 
     let elapsed = start_time.elapsed();
 
     // Print summary
-    println!();
-    if total_tests == 0 {
-        println!("No tests found");
-    } else if total_failed == 0 {
-        println!("✅ {} tests passed ({:.2?})", total_passed, elapsed);
+    if is_human_output() {
+        println!();
+        if total_tests == 0 {
+            println!("No tests found");
+        } else if total_failed == 0 {
+            println!("✅ {} tests passed ({:.2?})", total_passed, elapsed);
+        } else {
+            println!(
+                "❌ {} passed, {} failed of {} tests ({:.2?})",
+                total_passed, total_failed, total_tests, elapsed
+            );
+            std::process::exit(1);
+        }
     } else {
-        println!(
-            "❌ {} passed, {} failed of {} tests ({:.2?})",
-            total_passed, total_failed, total_tests, elapsed
-        );
-        std::process::exit(1);
+        println!(r#"{{"type":"test_result","tests":{},"passed":{},"failed":{},"ms":{}}}"#,
+            total_tests, total_passed, total_failed, elapsed.as_millis());
+        if total_failed > 0 {
+            std::process::exit(1);
+        }
     }
 
     Ok(())
@@ -725,6 +1339,30 @@ fn collect_test_files(dir: &PathBuf) -> Result<Vec<PathBuf>, Box<dyn std::error:
     Ok(files)
 }
 
+/// Extract comments from source code with their line numbers
+/// Returns a Vec of (line_number, comment_text) where line_number is 0-indexed
+fn extract_comments(source: &str) -> Vec<(usize, String)> {
+    let mut comments = Vec::new();
+
+    for (line_num, line) in source.lines().enumerate() {
+        let trimmed = line.trim();
+        // Check for // style comments (whole line only)
+        if trimmed.starts_with("//") {
+            comments.push((line_num, line.to_string()));
+        } else if trimmed.starts_with("--") {
+            // Legacy -- comment (whole line)
+            comments.push((line_num, line.to_string()));
+        }
+    }
+
+    comments
+}
+
+/// Get the line number from a byte offset in source
+fn line_number_at_offset(source: &str, offset: usize) -> usize {
+    source[..offset.min(source.len())].matches('\n').count()
+}
+
 fn fmt_file(path: &PathBuf, check: bool) -> Result<(), Box<dyn std::error::Error>> {
     let files = if path.is_dir() {
         collect_bmb_files(path)?
@@ -733,15 +1371,23 @@ fn fmt_file(path: &PathBuf, check: bool) -> Result<(), Box<dyn std::error::Error
     };
 
     if files.is_empty() {
-        println!("No BMB files found");
+        if is_human_output() {
+            println!("No BMB files found");
+        } else {
+            println!(r#"{{"type":"fmt_result","files":0}}"#);
+        }
         return Ok(());
     }
 
     let mut needs_formatting = false;
+    let mut _formatted_count = 0;
 
     for file in &files {
         let source = std::fs::read_to_string(file)?;
         let filename = file.display().to_string();
+
+        // Extract comments before parsing (they get lost during tokenization)
+        let comments = extract_comments(&source);
 
         // Tokenize
         let tokens = bmb::lexer::tokenize(&source)?;
@@ -749,20 +1395,29 @@ fn fmt_file(path: &PathBuf, check: bool) -> Result<(), Box<dyn std::error::Error
         // Parse
         let ast = bmb::parser::parse(&filename, &source, tokens)?;
 
-        // Format AST back to source
-        let formatted = format_program(&ast);
+        // Format AST back to source, preserving comments
+        let formatted = format_program_with_comments(&ast, &source, &comments);
 
         if check {
             if source != formatted {
-                println!("❌ {} needs formatting", filename);
                 needs_formatting = true;
-            } else {
+                if is_human_output() {
+                    println!("❌ {} needs formatting", filename);
+                } else {
+                    println!(r#"{{"type":"fmt_needed","file":"{}"}}"#, filename);
+                }
+            } else if is_human_output() {
                 println!("✓ {} is formatted", filename);
             }
         } else if source != formatted {
             std::fs::write(file, &formatted)?;
-            println!("✓ formatted {}", filename);
-        } else {
+            _formatted_count += 1;
+            if is_human_output() {
+                println!("✓ formatted {}", filename);
+            } else {
+                println!(r#"{{"type":"fmt_formatted","file":"{}"}}"#, filename);
+            }
+        } else if is_human_output() {
             println!("✓ {} (unchanged)", filename);
         }
     }
@@ -791,16 +1446,77 @@ fn collect_bmb_files(dir: &PathBuf) -> Result<Vec<PathBuf>, Box<dyn std::error::
     Ok(files)
 }
 
-fn format_program(program: &bmb::ast::Program) -> String {
+/// Get the starting span of an Item (for comment attachment)
+fn get_item_span(item: &bmb::ast::Item) -> bmb::ast::Span {
+    use bmb::ast::Item;
+    match item {
+        Item::FnDef(f) => f.span,
+        Item::StructDef(s) => s.span,
+        Item::EnumDef(e) => e.span,
+        Item::TypeAlias(t) => t.span,
+        Item::Use(u) => u.span,
+        Item::ExternFn(e) => e.span,
+        Item::TraitDef(t) => t.span,
+        Item::ImplBlock(i) => i.span,
+    }
+}
+
+/// Format program with comment preservation
+/// Attaches comments to the items they precede based on line numbers
+fn format_program_with_comments(
+    program: &bmb::ast::Program,
+    source: &str,
+    comments: &[(usize, String)],
+) -> String {
     use bmb::ast::{Item, Visibility};
 
     let mut output = String::new();
+    let mut used_comments: std::collections::HashSet<usize> = std::collections::HashSet::new();
 
+    // Collect item spans (line numbers)
+    let mut item_lines: Vec<(usize, usize)> = Vec::new(); // (item_index, start_line)
+    for (idx, item) in program.items.iter().enumerate() {
+        let span = get_item_span(item);
+        let start_line = line_number_at_offset(source, span.start);
+        item_lines.push((idx, start_line));
+    }
+
+    // Find file-level comments (before first item)
+    let first_item_line = item_lines.first().map(|(_, l)| *l).unwrap_or(usize::MAX);
+    for (line_num, comment_text) in comments {
+        if *line_num < first_item_line && !used_comments.contains(line_num) {
+            output.push_str(comment_text);
+            output.push('\n');
+            used_comments.insert(*line_num);
+        }
+    }
+
+    // Process each item with its preceding comments
     for (i, item) in program.items.iter().enumerate() {
+        let item_start_line = item_lines.iter().find(|(idx, _)| *idx == i).map(|(_, l)| *l).unwrap_or(0);
+
+        // Find the end of the previous item (or file start)
+        let prev_end_line = if i > 0 {
+            item_lines.iter().find(|(idx, _)| *idx == i - 1).map(|(_, l)| *l + 1).unwrap_or(0)
+        } else {
+            0
+        };
+
+        // Add blank line between items (if not first item)
         if i > 0 {
-            output.push_str("\n\n");
+            output.push('\n');
         }
 
+        // Find comments between previous item end and this item start
+        for (line_num, comment_text) in comments {
+            if *line_num >= prev_end_line && *line_num < item_start_line && !used_comments.contains(line_num) {
+                output.push_str(comment_text);
+                output.push('\n');
+                used_comments.insert(*line_num);
+            }
+        }
+
+        // Format the item
         match item {
             Item::FnDef(fn_def) => {
                 output.push_str(&format_fn_def(fn_def));
@@ -829,7 +1545,6 @@ fn format_program(program: &bmb::ast::Program) -> String {
                 let path_str: Vec<_> = u.path.iter().map(|s| s.node.as_str()).collect();
                 output.push_str(&format!("use {};", path_str.join("::")));
             }
-            // v0.13.0: Format extern function declarations
             Item::ExternFn(e) => {
                 if e.visibility == Visibility::Public {
                     output.push_str("pub ");
@@ -841,7 +1556,6 @@ fn format_program(program: &bmb::ast::Program) -> String {
                 output.push_str(&params.join(", "));
                 output.push_str(&format!(") -> {};", format_type(&e.ret_ty.node)));
             }
-            // v0.20.1: Format trait definitions
             Item::TraitDef(t) => {
                 if t.visibility == Visibility::Public {
                     output.push_str("pub ");
@@ -856,7 +1570,6 @@ fn format_program(program: &bmb::ast::Program) -> String {
                 }
                 output.push('}');
             }
-            // v0.20.1: Format impl blocks
             Item::ImplBlock(i) => {
                 output.push_str(&format!("impl {} for {} {{\n", i.trait_name.node, format_type(&i.target_type.node)));
                 for method in &i.methods {
@@ -866,10 +1579,26 @@ fn format_program(program: &bmb::ast::Program) -> String {
                 }
                 output.push('}');
             }
+            Item::TypeAlias(t) => {
+                if t.visibility == Visibility::Public {
+                    output.push_str("pub ");
+                }
+                output.push_str(&format!("type {} = {};", t.name.node, format_type(&t.target.node)));
+            }
+        }
+        output.push('\n');
+    }
+
+    // Add any trailing comments (after last item)
+    let last_item_line = item_lines.last().map(|(_, l)| *l).unwrap_or(0);
+    for (line_num, comment_text) in comments {
+        if *line_num > last_item_line && !used_comments.contains(line_num) {
+            output.push_str(comment_text);
+            output.push('\n');
+            used_comments.insert(*line_num);
         }
     }
 
-    output.push('\n');
     output
 }
 
@@ -916,9 +1645,14 @@ fn format_type(ty: &bmb::ast::Type) -> String {
     match ty {
         Type::I32 => "i32".to_string(),
         Type::I64 => "i64".to_string(),
+        // v0.38: Unsigned types
+        Type::U32 => "u32".to_string(),
+        Type::U64 => "u64".to_string(),
         Type::F64 => "f64".to_string(),
         Type::Bool => "bool".to_string(),
         Type::String => "String".to_string(),
+        // v0.64: Character type
+        Type::Char => "char".to_string(),
         Type::Unit => "()".to_string(),
         Type::Range(elem) => format!("Range<{}>", format_type(elem)),
         Type::Named(name) => name.clone(),
@@ -955,6 +1689,13 @@ fn format_type(ty: &bmb::ast::Type) -> String {
         }
         // v0.31: Never type
         Type::Never => "!".to_string(),
+        // v0.37: Nullable type
+        Type::Nullable(inner) => format!("{}?", format_type(inner)),
+        // v0.42: Tuple type
+        Type::Tuple(elems) => {
+            let elems_str: Vec<_> = elems.iter().map(|t| format_type(t)).collect();
+            format!("({})", elems_str.join(", "))
+        }
     }
 }
 
@@ -966,6 +1707,8 @@ fn format_expr(expr: &bmb::ast::Expr) -> String {
         Expr::FloatLit(f) => f.to_string(),
         Expr::BoolLit(b) => b.to_string(),
         Expr::StringLit(s) => format!("\"{}\"", s),
+        // v0.64: Character literal
+        Expr::CharLit(c) => format!("'{}'", c.escape_default()),
         Expr::Unit => "()".to_string(),
         Expr::Var(name) => name.clone(),
         Expr::Ret => "ret".to_string(),
@@ -978,6 +1721,18 @@ fn format_expr(expr: &bmb::ast::Expr) -> String {
                 BinOp::Mul => "*",
                 BinOp::Div => "/",
                 BinOp::Mod => "%",
+                // v0.37: Wrapping arithmetic
+                BinOp::AddWrap => "+%",
+                BinOp::SubWrap => "-%",
+                BinOp::MulWrap => "*%",
+                // v0.38: Checked arithmetic
+                BinOp::AddChecked => "+?",
+                BinOp::SubChecked => "-?",
+                BinOp::MulChecked => "*?",
+                // v0.38: Saturating arithmetic
+                BinOp::AddSat => "+|",
+                BinOp::SubSat => "-|",
+                BinOp::MulSat => "*|",
                 BinOp::Eq => "==",
                 BinOp::Ne => "!=",
                 BinOp::Lt => "<",
@@ -986,6 +1741,15 @@ fn format_expr(expr: &bmb::ast::Expr) -> String {
                 BinOp::Ge => ">=",
                 BinOp::And => "and",
                 BinOp::Or => "or",
+                // v0.32: Shift operators
+                BinOp::Shl => "<<",
+                BinOp::Shr => ">>",
+                // v0.36: Bitwise operators
+                BinOp::Band => "band",
+                BinOp::Bor => "bor",
+                BinOp::Bxor => "bxor",
+                // v0.36: Logical implication
+                BinOp::Implies => "implies",
             };
             format!("{} {} {}", format_expr(&left.node), op_str, format_expr(&right.node))
         }
@@ -994,6 +1758,8 @@ fn format_expr(expr: &bmb::ast::Expr) -> String {
             let op_str = match op {
                 UnOp::Neg => "-",
                 UnOp::Not => "not ",
+                // v0.36: Bitwise not
+                UnOp::Bnot => "bnot ",
             };
             format!("{}{}", op_str, format_expr(&expr.node))
         }
@@ -1039,6 +1805,16 @@ fn format_expr(expr: &bmb::ast::Expr) -> String {
             format!("[{}]", elems_str.join(", "))
         }
 
+        // v0.42: Tuple expression
+        Expr::Tuple(elems) => {
+            let elems_str: Vec<_> = elems.iter().map(|e| format_expr(&e.node)).collect();
+            if elems.len() == 1 {
+                format!("({},)", elems_str.join(", "))
+            } else {
+                format!("({})", elems_str.join(", "))
+            }
+        }
+
         Expr::StructInit { name, fields } => {
             let fields_str: Vec<_> = fields.iter()
                 .map(|(n, v)| format!("{}: {}", n.node, format_expr(&v.node)))
@@ -1048,6 +1824,11 @@ fn format_expr(expr: &bmb::ast::Expr) -> String {
 
         Expr::FieldAccess { expr, field } => {
             format!("{}.{}", format_expr(&expr.node), field.node)
+        }
+
+        // v0.43: Tuple field access
+        Expr::TupleField { expr, index } => {
+            format!("{}.{}", format_expr(&expr.node), index)
         }
 
         Expr::Match { expr, arms } => {
@@ -1070,8 +1851,21 @@ fn format_expr(expr: &bmb::ast::Expr) -> String {
             format!("{} = {}", name, format_expr(&value.node))
         }
 
-        Expr::While { cond, body } => {
-            format!("while {} {{ {} }}", format_expr(&cond.node), format_expr(&body.node))
+        // v0.37: Include invariant in format if present
+        Expr::While { cond, invariant, body } => {
+            match invariant {
+                Some(inv) => format!(
+                    "while {} invariant {} {{ {} }}",
+                    format_expr(&cond.node),
+                    format_expr(&inv.node),
+                    format_expr(&body.node)
+                ),
+                None => format!(
+                    "while {} {{ {} }}",
+                    format_expr(&cond.node),
+                    format_expr(&body.node)
+                ),
+            }
         }
 
         Expr::For { var, iter, body } => {
@@ -1116,16 +1910,6 @@ fn format_expr(expr: &bmb::ast::Expr) -> String {
             format!("{}{}", format_expr(&expr.node), state)
         }
 
-        // v0.13.2: Try block
-        Expr::Try { body } => {
-            format!("try {{ {} }}", format_expr(&body.node))
-        }
-
-        // v0.13.2: Question mark operator
-        Expr::Question { expr: inner } => {
-            format!("{}?", format_expr(&inner.node))
-        }
-
         // v0.20.0: Closure expressions
         Expr::Closure { params, ret_ty, body } => {
             let params_str = params
@@ -1153,26 +1937,58 @@ fn format_expr(expr: &bmb::ast::Expr) -> String {
                 None => "todo".to_string(),
             }
         }
+
+        // v0.36: Additional control flow
+        Expr::Loop { body } => format!("loop {{ {} }}", format_expr(&body.node)),
+        Expr::Break { value } => match value {
+            Some(v) => format!("break {}", format_expr(&v.node)),
+            None => "break".to_string(),
+        },
+        Expr::Continue => "continue".to_string(),
+        Expr::Return { value } => match value {
+            Some(v) => format!("return {}", format_expr(&v.node)),
+            None => "return".to_string(),
+        },
+
+        // v0.37: Quantifiers
+        Expr::Forall { var, ty, body } => {
+            format!("forall {}: {}, {}", var.node, format_type(&ty.node), format_expr(&body.node))
+        }
+        Expr::Exists { var, ty, body } => {
+            format!("exists {}: {}, {}", var.node, format_type(&ty.node), format_expr(&body.node))
+        }
+        // v0.39: Type cast
+        Expr::Cast { expr, ty } => {
+            format!("{} as {}", format_expr(&expr.node), format_type(&ty.node))
+        }
+    }
+}
+
+fn format_literal_pattern(lit: &bmb::ast::LiteralPattern) -> String {
+    use bmb::ast::LiteralPattern;
+    match lit {
+        LiteralPattern::Int(n) => n.to_string(),
+        LiteralPattern::Float(f) => f.to_string(),
+        LiteralPattern::Bool(b) => b.to_string(),
+        LiteralPattern::String(s) => format!("\"{}\"", s),
     }
 }
 
 fn format_pattern(pattern: &bmb::ast::Pattern) -> String {
-    use bmb::ast::{Pattern, LiteralPattern};
+    use bmb::ast::Pattern;
 
     match pattern {
         Pattern::Wildcard => "_".to_string(),
         Pattern::Var(name) => name.clone(),
-        Pattern::Literal(lit) => match lit {
-            LiteralPattern::Int(n) => n.to_string(),
-            LiteralPattern::Float(f) => f.to_string(),
-            LiteralPattern::Bool(b) => b.to_string(),
-            LiteralPattern::String(s) => format!("\"{}\"", s),
-        },
+        Pattern::Literal(lit) => format_literal_pattern(lit),
+        // v0.41: Nested patterns in enum bindings
         Pattern::EnumVariant { enum_name, variant, bindings } => {
             if bindings.is_empty() {
                 format!("{}::{}", enum_name, variant)
             } else {
-                let bindings_str: Vec<_> = bindings.iter().map(|b| b.node.as_str()).collect();
+                let bindings_str: Vec<_> = bindings.iter()
+                    .map(|b| format_pattern(&b.node))
+                    .collect();
                 format!("{}::{}({})", enum_name, variant, bindings_str.join(", "))
             }
         }
@@ -1181,6 +1997,45 @@ fn format_pattern(pattern: &bmb::ast::Pattern) -> String {
                 .map(|(n, p)| format!("{}: {}", n.node, format_pattern(&p.node)))
                 .collect();
             format!("{} {{ {} }}", name, fields_str.join(", "))
+        }
+        // v0.39: Range pattern
+        Pattern::Range { start, end, inclusive } => {
+            let op = if *inclusive { "..=" } else { ".." };
+            format!("{}{}{}", format_literal_pattern(start), op, format_literal_pattern(end))
+        }
+        // v0.40: Or-pattern
+        Pattern::Or(alts) => {
+            let alts_str: Vec<_> = alts.iter().map(|p| format_pattern(&p.node)).collect();
+            alts_str.join(" | ")
+        }
+        // v0.41: Binding pattern
+        Pattern::Binding { name, pattern } => {
+            format!("{} @ {}", name, format_pattern(&pattern.node))
+        }
+        // v0.42: Tuple pattern
+        Pattern::Tuple(elems) => {
+            let elems_str: Vec<_> = elems.iter().map(|p| format_pattern(&p.node)).collect();
+            if elems.len() == 1 {
+                format!("({},)", elems_str.join(", "))
+            } else {
+                format!("({})", elems_str.join(", "))
+            }
+        }
+        // v0.44: Array pattern
+        Pattern::Array(elems) => {
+            let elems_str: Vec<_> = elems.iter().map(|p| format_pattern(&p.node)).collect();
+            format!("[{}]", elems_str.join(", "))
+        }
+        // v0.45: Array rest pattern
+        Pattern::ArrayRest { prefix, suffix } => {
+            let prefix_str: Vec<_> = prefix.iter().map(|p| format_pattern(&p.node)).collect();
+            let suffix_str: Vec<_> = suffix.iter().map(|p| format_pattern(&p.node)).collect();
+            match (prefix.is_empty(), suffix.is_empty()) {
+                (true, true) => "[..]".to_string(),
+                (false, true) => format!("[{}, ..]", prefix_str.join(", ")),
+                (true, false) => format!("[.., {}]", suffix_str.join(", ")),
+                (false, false) => format!("[{}, .., {}]", prefix_str.join(", "), suffix_str.join(", ")),
+            }
         }
     }
 }
@@ -1193,7 +2048,21 @@ fn start_lsp() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 /// v0.25: Generate project index for AI tools
-fn index_project(path: &PathBuf, _watch: bool, verbose: bool) -> Result<(), Box<dyn std::error::Error>> {
+/// v0.50.21: Added --watch mode for real-time index updates
+fn index_project(path: &PathBuf, watch: bool, verbose: bool) -> Result<(), Box<dyn std::error::Error>> {
+    // Initial index generation
+    do_index_project(path, verbose)?;
+
+    // If watch mode, start file watcher
+    if watch {
+        run_index_watcher(path, verbose)?;
+    }
+
+    Ok(())
+}
+
+/// Perform the actual indexing operation
+fn do_index_project(path: &PathBuf, verbose: bool) -> Result<(), Box<dyn std::error::Error>> {
     use bmb::index::{IndexGenerator, write_index};
 
     // Determine project name from directory
@@ -1265,10 +2134,66 @@ fn index_project(path: &PathBuf, _watch: bool, verbose: bool) -> Result<(), Box<
     Ok(())
 }
 
+/// v0.50.21: Watch for file changes and re-index automatically
+fn run_index_watcher(path: &PathBuf, verbose: bool) -> Result<(), Box<dyn std::error::Error>> {
+    use notify_debouncer_mini::{new_debouncer, notify::RecursiveMode};
+    use std::sync::mpsc::channel;
+    use std::time::Duration;
+
+    println!("👀 Watching for changes... (Press Ctrl+C to stop)");
+
+    // Create a channel to receive events
+    let (tx, rx) = channel();
+
+    // Create a debounced watcher with 500ms delay
+    let mut debouncer = new_debouncer(Duration::from_millis(500), tx)?;
+
+    // Watch the directory recursively
+    debouncer.watcher().watch(path.as_path(), RecursiveMode::Recursive)?;
+
+    // Process events
+    loop {
+        match rx.recv() {
+            Ok(result) => {
+                match result {
+                    Ok(events) => {
+                        // Check if any .bmb file changed
+                        let bmb_changed = events.iter().any(|e| {
+                            e.path.extension().is_some_and(|ext| ext == "bmb")
+                        });
+
+                        if bmb_changed {
+                            if verbose {
+                                println!("\n📝 Detected .bmb file change, re-indexing...");
+                            } else {
+                                println!("\n🔄 Re-indexing...");
+                            }
+
+                            // Re-index the project
+                            if let Err(e) = do_index_project(path, verbose) {
+                                eprintln!("  Error during re-index: {}", e);
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("Watch error: {}", e);
+                    }
+                }
+            }
+            Err(e) => {
+                eprintln!("Channel error: {}", e);
+                break;
+            }
+        }
+    }
+
+    Ok(())
+}
+
 /// v0.25: Run query against project index
 fn run_query(query_type: QueryType) -> Result<(), Box<dyn std::error::Error>> {
     use bmb::index::{read_index, SymbolKind};
-    use bmb::query::QueryEngine;
+    use bmb::query::{QueryEngine, format_output};
 
     // Try to read index from current directory
     let current_dir = std::env::current_dir()?;
@@ -1283,8 +2208,15 @@ fn run_query(query_type: QueryType) -> Result<(), Box<dyn std::error::Error>> {
 
     let engine = QueryEngine::new(index);
 
+    // Helper to convert OutputFormat to query format string
+    let fmt_str = |f: OutputFormat| match f {
+        OutputFormat::Json => "json",
+        OutputFormat::Compact => "compact",
+        OutputFormat::Llm => "llm",
+    };
+
     match query_type {
-        QueryType::Sym { pattern, kind, public } => {
+        QueryType::Sym { pattern, kind, public, format } => {
             let symbol_kind = kind.as_ref().and_then(|k| match k.as_str() {
                 "fn" | "function" => Some(SymbolKind::Function),
                 "struct" => Some(SymbolKind::Struct),
@@ -1295,41 +2227,315 @@ fn run_query(query_type: QueryType) -> Result<(), Box<dyn std::error::Error>> {
             });
 
             let result = engine.query_symbols(&pattern, symbol_kind, public);
-            println!("{}", serde_json::to_string_pretty(&result)?);
+            println!("{}", format_output(&result, fmt_str(format))?);
         }
 
-        QueryType::Fn { name, has_pre, has_post, recursive } => {
+        QueryType::Fn { name, has_pre, has_post, recursive, format } => {
             if !name.is_empty() && !has_pre && !has_post && !recursive {
                 // Query specific function
                 let result = engine.query_function(&name);
-                println!("{}", serde_json::to_string_pretty(&result)?);
+                println!("{}", format_output(&result, fmt_str(format))?);
             } else {
                 // Query functions with filters
                 let pre_filter = if has_pre { Some(true) } else { None };
                 let post_filter = if has_post { Some(true) } else { None };
                 let recursive_filter = if recursive { Some(true) } else { None };
                 let result = engine.query_functions(pre_filter, post_filter, recursive_filter, false);
-                println!("{}", serde_json::to_string_pretty(&result)?);
+                println!("{}", format_output(&result, fmt_str(format))?);
             }
         }
 
-        QueryType::Type { name, kind } => {
+        QueryType::Type { name, kind, format } => {
             if !name.is_empty() {
                 let result = engine.query_type(&name);
-                println!("{}", serde_json::to_string_pretty(&result)?);
+                println!("{}", format_output(&result, fmt_str(format))?);
             } else {
                 let result = engine.query_types(kind.as_deref(), false);
-                println!("{}", serde_json::to_string_pretty(&result)?);
+                println!("{}", format_output(&result, fmt_str(format))?);
             }
         }
 
-        QueryType::Metrics => {
+        QueryType::Metrics { format } => {
             let metrics = engine.query_metrics();
-            println!("{}", serde_json::to_string_pretty(&metrics)?);
+            println!("{}", format_output(&metrics, fmt_str(format))?);
+        }
+
+        QueryType::Deps { target, reverse, transitive, format } => {
+            let result = engine.query_deps(&target, reverse, transitive);
+            println!("{}", format_output(&result, fmt_str(format))?);
+        }
+
+        QueryType::Contract { name, uses_old, format } => {
+            let result = engine.query_contract(&name, uses_old);
+            println!("{}", format_output(&result, fmt_str(format))?);
+        }
+
+        QueryType::Ctx { target, depth, include_tests, format } => {
+            let result = engine.query_context(&target, depth, include_tests);
+            println!("{}", format_output(&result, fmt_str(format))?);
+        }
+
+        QueryType::Sig { pattern, accepts, returns, format } => {
+            let result = engine.query_signature(pattern.as_str(), accepts.as_deref(), returns.as_deref());
+            println!("{}", format_output(&result, fmt_str(format))?);
+        }
+
+        QueryType::Batch { file, format } => {
+            let result = engine.query_batch(&file)?;
+            println!("{}", format_output(&result, fmt_str(format))?);
+        }
+
+        QueryType::Impact { target, change, format } => {
+            let result = engine.query_impact(&target, &change);
+            println!("{}", format_output(&result, fmt_str(format))?);
+        }
+
+        QueryType::Serve { port, host } => {
+            return run_query_server(&host, port, engine);
+        }
+
+        QueryType::Proof { name, unverified, failed, timeout, format } => {
+            use bmb::index::read_proof_index;
+            use bmb::query::query_proofs;
+
+            // Try to read proof index
+            match read_proof_index(&current_dir) {
+                Ok(proof_index) => {
+                    let name_filter = if name.is_empty() { None } else { Some(name.as_str()) };
+                    let result = query_proofs(&proof_index, name_filter, unverified, failed, timeout);
+                    println!("{}", format_output(&result, fmt_str(format))?);
+                }
+                Err(_) => {
+                    // No proof index yet - suggest running bmb verify
+                    let result = bmb::query::ProofResult {
+                        query: "proof:all".to_string(),
+                        z3_available: false,
+                        z3_version: None,
+                        proofs: Vec::new(),
+                        summary: bmb::query::ProofSummary {
+                            total: 0,
+                            verified: 0,
+                            failed: 0,
+                            timeout: 0,
+                            unknown: 0,
+                            pending: 0,
+                        },
+                        error: Some(bmb::query::QueryError {
+                            code: "NO_PROOF_INDEX".to_string(),
+                            message: "No proof index found. Run 'bmb verify <file>' to generate verification results.".to_string(),
+                            suggestions: vec!["bmb verify main.bmb".to_string()],
+                        }),
+                    };
+                    println!("{}", format_output(&result, fmt_str(format))?);
+                }
+            }
         }
     }
 
     Ok(())
+}
+
+/// v0.50.22: HTTP query server for AI tools (RFC-0001 Task 50.7)
+fn run_query_server(
+    host: &str,
+    port: u16,
+    engine: bmb::query::QueryEngine,
+) -> Result<(), Box<dyn std::error::Error>> {
+    use std::io::Read;
+    use std::net::TcpListener;
+    use bmb::query::format_output;
+
+    let addr = format!("{}:{}", host, port);
+    let listener = TcpListener::bind(&addr)?;
+
+    println!("BMB Query Server v0.50.22");
+    println!("Listening on http://{}", addr);
+    println!("Endpoints:");
+    println!("  GET  /health      - Health check");
+    println!("  POST /query       - Run query (JSON body)");
+    println!("  GET  /metrics     - Project metrics");
+    println!("Press Ctrl+C to stop");
+
+    for stream in listener.incoming() {
+        match stream {
+            Ok(mut stream) => {
+                // Read request
+                let mut buffer = [0; 8192];
+                let n = stream.read(&mut buffer)?;
+                let request = String::from_utf8_lossy(&buffer[..n]);
+
+                // Parse request line
+                let first_line = request.lines().next().unwrap_or("");
+                let parts: Vec<&str> = first_line.split_whitespace().collect();
+
+                if parts.len() < 2 {
+                    send_response(&mut stream, 400, "Bad Request")?;
+                    continue;
+                }
+
+                let method = parts[0];
+                let path = parts[1];
+
+                // Route request
+                let (status, body) = match (method, path) {
+                    ("GET", "/health") => {
+                        (200, r#"{"status":"ok","version":"0.50.22"}"#.to_string())
+                    }
+                    ("GET", "/metrics") => {
+                        let metrics = engine.query_metrics();
+                        match format_output(&metrics, "json") {
+                            Ok(json) => (200, json),
+                            Err(e) => (500, format!(r#"{{"error":"{}"}}"#, e)),
+                        }
+                    }
+                    ("POST", "/query") => {
+                        // Extract JSON body
+                        let body_start = request.find("\r\n\r\n").map(|i| i + 4)
+                            .or_else(|| request.find("\n\n").map(|i| i + 2));
+
+                        match body_start {
+                            Some(start) => {
+                                let json_body = &request[start..];
+                                handle_query_request(&engine, json_body.trim())
+                            }
+                            None => (400, r#"{"error":"No request body"}"#.to_string()),
+                        }
+                    }
+                    _ => {
+                        (404, r#"{"error":"Not found"}"#.to_string())
+                    }
+                };
+
+                send_json_response(&mut stream, status, &body)?;
+            }
+            Err(e) => {
+                eprintln!("Connection error: {}", e);
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Handle POST /query request
+fn handle_query_request(engine: &bmb::query::QueryEngine, json_body: &str) -> (u16, String) {
+    use bmb::query::format_output;
+
+    // Parse query JSON
+    let query: serde_json::Value = match serde_json::from_str(json_body) {
+        Ok(v) => v,
+        Err(e) => return (400, format!(r#"{{"error":"Invalid JSON: {}"}}"#, e)),
+    };
+
+    let query_type = query.get("type").and_then(|v| v.as_str()).unwrap_or("");
+
+    match query_type {
+        "sym" => {
+            let pattern = query.get("pattern").and_then(|v| v.as_str()).unwrap_or("");
+            let public = query.get("public").and_then(|v| v.as_bool()).unwrap_or(false);
+            let result = engine.query_symbols(pattern, None, public);
+            match format_output(&result, "json") {
+                Ok(json) => (200, json),
+                Err(e) => (500, format!(r#"{{"error":"{}"}}"#, e)),
+            }
+        }
+        "fn" => {
+            let name = query.get("name").and_then(|v| v.as_str()).unwrap_or("");
+            if !name.is_empty() {
+                let result = engine.query_function(name);
+                match format_output(&result, "json") {
+                    Ok(json) => (200, json),
+                    Err(e) => (500, format!(r#"{{"error":"{}"}}"#, e)),
+                }
+            } else {
+                (400, r#"{"error":"Missing 'name' field"}"#.to_string())
+            }
+        }
+        "type" => {
+            let name = query.get("name").and_then(|v| v.as_str()).unwrap_or("");
+            if !name.is_empty() {
+                let result = engine.query_type(name);
+                match format_output(&result, "json") {
+                    Ok(json) => (200, json),
+                    Err(e) => (500, format!(r#"{{"error":"{}"}}"#, e)),
+                }
+            } else {
+                (400, r#"{"error":"Missing 'name' field"}"#.to_string())
+            }
+        }
+        "metrics" => {
+            let result = engine.query_metrics();
+            match format_output(&result, "json") {
+                Ok(json) => (200, json),
+                Err(e) => (500, format!(r#"{{"error":"{}"}}"#, e)),
+            }
+        }
+        "deps" => {
+            let target = query.get("target").and_then(|v| v.as_str()).unwrap_or("");
+            let reverse = query.get("reverse").and_then(|v| v.as_bool()).unwrap_or(false);
+            let transitive = query.get("transitive").and_then(|v| v.as_bool()).unwrap_or(false);
+            let result = engine.query_deps(target, reverse, transitive);
+            match format_output(&result, "json") {
+                Ok(json) => (200, json),
+                Err(e) => (500, format!(r#"{{"error":"{}"}}"#, e)),
+            }
+        }
+        "contract" => {
+            let name = query.get("name").and_then(|v| v.as_str()).unwrap_or("");
+            let uses_old = query.get("uses_old").and_then(|v| v.as_bool()).unwrap_or(false);
+            let result = engine.query_contract(name, uses_old);
+            match format_output(&result, "json") {
+                Ok(json) => (200, json),
+                Err(e) => (500, format!(r#"{{"error":"{}"}}"#, e)),
+            }
+        }
+        "impact" => {
+            let target = query.get("target").and_then(|v| v.as_str()).unwrap_or("");
+            let change = query.get("change").and_then(|v| v.as_str()).unwrap_or("");
+            let result = engine.query_impact(target, change);
+            match format_output(&result, "json") {
+                Ok(json) => (200, json),
+                Err(e) => (500, format!(r#"{{"error":"{}"}}"#, e)),
+            }
+        }
+        _ => {
+            (400, format!(r#"{{"error":"Unknown query type: {}"}}"#, query_type))
+        }
+    }
+}
+
+/// Send HTTP response with status code and body
+fn send_response(stream: &mut std::net::TcpStream, status: u16, body: &str) -> std::io::Result<()> {
+    use std::io::Write;
+    let status_text = match status {
+        200 => "OK",
+        400 => "Bad Request",
+        404 => "Not Found",
+        500 => "Internal Server Error",
+        _ => "Unknown",
+    };
+    let response = format!(
+        "HTTP/1.1 {} {}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        status, status_text, body.len(), body
+    );
+    stream.write_all(response.as_bytes())
+}
+
+/// Send JSON HTTP response
+fn send_json_response(stream: &mut std::net::TcpStream, status: u16, body: &str) -> std::io::Result<()> {
+    use std::io::Write;
+    let status_text = match status {
+        200 => "OK",
+        400 => "Bad Request",
+        404 => "Not Found",
+        500 => "Internal Server Error",
+        _ => "Unknown",
+    };
+    let response = format!(
+        "HTTP/1.1 {} {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        status, status_text, body.len(), body
+    );
+    stream.write_all(response.as_bytes())
 }
 
 /// v0.30.246: Stage 3 self-hosting verification

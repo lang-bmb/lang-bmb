@@ -1,2 +1,2 @@
--- Identity function
+// Identity function
 fn identity(x: i32) -> i32 = x;

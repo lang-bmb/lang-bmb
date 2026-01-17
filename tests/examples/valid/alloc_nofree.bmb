@@ -1,4 +1,4 @@
--- Malloc without free (Phase 34.2.1)
+// Malloc without free (Phase 34.2.1)
 
 fn main() -> i64 = {
     let ptr = malloc(64);

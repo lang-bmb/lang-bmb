@@ -113,10 +113,13 @@ fn add(a: i64, b: i64) -> i64 = a + b;  -- inline comment
 
 #### String Literals
 ```bmb
-"hello"           -- simple string
-"hello, world"    -- with comma
-"line1\nline2"    -- with escape sequences
+"hello"           // simple string
+"hello, world"    // with comma
+"line 1           // literal newline (BMB does not support escape sequences)
+line 2"           // multi-line strings use actual newlines
 ```
+
+**Note**: BMB currently does not support escape sequences like `\n`, `\t`, or `\"` in strings. To include newlines, use actual newline characters within the string literal. Double quotes cannot be included in string literals at this time.
 
 #### Boolean Literals
 ```bmb

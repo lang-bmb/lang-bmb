@@ -1,0 +1,50 @@
+// HashSet<i64> test (Phase 34.2.7)
+// Tests hashset_new, hashset_insert, hashset_contains, hashset_remove, hashset_len, hashset_free
+
+fn main() -> i64 = {
+    // Create empty hashset
+    let s = hashset_new();
+    println(hashset_len(s));  // Should be 0
+
+    // Insert values
+    let new1 = hashset_insert(s, 10);
+    println(new1);  // Should be 1 (newly inserted)
+
+    let new2 = hashset_insert(s, 20);
+    println(new2);  // Should be 1 (newly inserted)
+
+    let new3 = hashset_insert(s, 30);
+    println(new3);  // Should be 1 (newly inserted)
+
+    println(hashset_len(s));  // Should be 3
+
+    // Try to insert duplicate
+    let dup = hashset_insert(s, 10);
+    println(dup);  // Should be 0 (already existed)
+
+    println(hashset_len(s));  // Should still be 3
+
+    // Check contains
+    println(hashset_contains(s, 10));  // Should be 1
+    println(hashset_contains(s, 20));  // Should be 1
+    println(hashset_contains(s, 99));  // Should be 0
+
+    // Remove value
+    let rem1 = hashset_remove(s, 20);
+    println(rem1);  // Should be 1 (removed)
+
+    let rem2 = hashset_remove(s, 99);
+    println(rem2);  // Should be 0 (not found)
+
+    println(hashset_len(s));  // Should be 2
+    println(hashset_contains(s, 20));  // Should be 0
+
+    // Get final length before cleanup
+    let final_len = hashset_len(s);
+
+    // Cleanup
+    hashset_free(s);
+
+    // Return success
+    final_len  // Should be 2
+};

@@ -1,0 +1,29 @@
+-- Phase 82: Trivial contract test
+-- Tests tautology detection in verify command
+
+-- Trivial postcondition: ret == ret is always true
+fn trivial_post(x: i64) -> i64
+  post ret == ret
+= x;
+
+-- Trivial postcondition: true is always true
+fn trivial_true(x: i64) -> i64
+  post true
+= x;
+
+-- Non-trivial postcondition: meaningful constraint
+fn non_trivial(x: i64) -> i64
+  pre x > 0
+  post ret > 0
+= x + 1;
+
+-- Trivial precondition: true is always true
+fn trivial_pre(x: i64) -> i64
+  pre true
+  post ret == x
+= x;
+
+-- Trivial postcondition with or: x > 0 or x <= 0 is always true
+fn trivial_or(x: i64) -> i64
+  post ret > 0 or ret <= 0
+= x;

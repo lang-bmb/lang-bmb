@@ -4,7 +4,8 @@ use super::env::{child_env, EnvRef, Environment};
 use super::error::{InterpResult, RuntimeError};
 use super::scope::ScopeStack;
 use super::value::Value;
-use crate::ast::{BinOp, EnumDef, Expr, FnDef, Pattern, Program, Spanned, StructDef, UnOp};
+use crate::ast::{BinOp, EnumDef, Expr, FnDef, LiteralPattern, Pattern, Program, Spanned, StructDef, Type, UnOp};
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::env;
 use std::fs;
@@ -12,6 +13,33 @@ use std::io::{self, BufRead, Write};
 use std::path::Path;
 use std::process::Command;
 use std::rc::Rc;
+
+// v0.46: Thread-local storage for program arguments
+// Used by arg_count() and get_arg() builtins to access program arguments
+// passed via `bmb run file.bmb arg1 arg2 ...`
+thread_local! {
+    static PROGRAM_ARGS: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
+}
+
+/// v0.46: Set program arguments for the interpreter
+/// Called before running a BMB program to pass command-line arguments
+pub fn set_program_args(args: Vec<String>) {
+    PROGRAM_ARGS.with(|cell| {
+        *cell.borrow_mut() = args;
+    });
+}
+
+/// v0.46: Get program argument count
+fn get_program_arg_count() -> usize {
+    PROGRAM_ARGS.with(|cell| cell.borrow().len())
+}
+
+/// v0.46: Get program argument by index
+fn get_program_arg(index: usize) -> String {
+    PROGRAM_ARGS.with(|cell| {
+        cell.borrow().get(index).cloned().unwrap_or_default()
+    })
+}
 
 /// Maximum recursion depth (v0.30.248: increased for bootstrap compiler Stage 3 verification)
 const MAX_RECURSION_DEPTH: usize = 100000;
@@ -42,6 +70,8 @@ pub struct Interpreter {
     scope_stack: ScopeStack,
     /// v0.30.280: Flag to enable ScopeStack-based evaluation
     use_scope_stack: bool,
+    /// v0.35.1: String intern table for O(1) literal reuse (json_parse optimization)
+    string_intern: HashMap<String, Rc<String>>,
 }
 
 impl Interpreter {
@@ -56,9 +86,22 @@ impl Interpreter {
             recursion_depth: 0,
             scope_stack: ScopeStack::new(),
             use_scope_stack: false,
+            string_intern: HashMap::new(),
         };
         interp.register_builtins();
         interp
+    }
+
+    /// v0.35.1: Intern a string literal for O(1) reuse
+    /// Returns Rc::clone() if already interned, otherwise creates new Rc and stores it
+    fn intern_string(&mut self, s: &str) -> Rc<String> {
+        if let Some(rc) = self.string_intern.get(s) {
+            Rc::clone(rc)
+        } else {
+            let rc = Rc::new(s.to_string());
+            self.string_intern.insert(s.to_string(), Rc::clone(&rc));
+            rc
+        }
     }
 
     /// Register built-in functions
@@ -66,6 +109,7 @@ impl Interpreter {
         self.builtins.insert("print".to_string(), builtin_print);
         self.builtins.insert("println".to_string(), builtin_println);
         self.builtins.insert("print_str".to_string(), builtin_print_str);
+        self.builtins.insert("println_str".to_string(), builtin_println_str);
         self.builtins.insert("assert".to_string(), builtin_assert);
         self.builtins.insert("read_int".to_string(), builtin_read_int);
         self.builtins.insert("abs".to_string(), builtin_abs);
@@ -99,6 +143,13 @@ impl Interpreter {
         self.builtins.insert("chr".to_string(), builtin_chr);
         self.builtins.insert("ord".to_string(), builtin_ord);
 
+        // v0.66: String-char interop utilities
+        self.builtins.insert("char_at".to_string(), builtin_char_at);
+        self.builtins
+            .insert("char_to_string".to_string(), builtin_char_to_string);
+        // v0.67: String utilities
+        self.builtins.insert("str_len".to_string(), builtin_str_len);
+
         // v0.34: Math intrinsics for Phase 34.4 Benchmark Gate (n_body, mandelbrot_fp)
         self.builtins.insert("sqrt".to_string(), builtin_sqrt);
         self.builtins.insert("i64_to_f64".to_string(), builtin_i64_to_f64);
@@ -127,6 +178,39 @@ impl Interpreter {
         self.builtins.insert("vec_len".to_string(), builtin_vec_len);
         self.builtins.insert("vec_cap".to_string(), builtin_vec_cap);
         self.builtins.insert("vec_free".to_string(), builtin_vec_free);
+        self.builtins.insert("vec_clear".to_string(), builtin_vec_clear);
+
+        // v0.34.24: Hash builtins
+        self.builtins.insert("hash_i64".to_string(), builtin_hash_i64);
+
+        // v0.34.24: HashMap builtins
+        self.builtins.insert("hashmap_new".to_string(), builtin_hashmap_new);
+        self.builtins
+            .insert("hashmap_insert".to_string(), builtin_hashmap_insert);
+        self.builtins
+            .insert("hashmap_get".to_string(), builtin_hashmap_get);
+        self.builtins
+            .insert("hashmap_contains".to_string(), builtin_hashmap_contains);
+        self.builtins
+            .insert("hashmap_remove".to_string(), builtin_hashmap_remove);
+        self.builtins
+            .insert("hashmap_len".to_string(), builtin_hashmap_len);
+        self.builtins
+            .insert("hashmap_free".to_string(), builtin_hashmap_free);
+
+        // v0.34.24: HashSet builtins
+        self.builtins
+            .insert("hashset_new".to_string(), builtin_hashset_new);
+        self.builtins
+            .insert("hashset_insert".to_string(), builtin_hashset_insert);
+        self.builtins
+            .insert("hashset_contains".to_string(), builtin_hashset_contains);
+        self.builtins
+            .insert("hashset_remove".to_string(), builtin_hashset_remove);
+        self.builtins
+            .insert("hashset_len".to_string(), builtin_hashset_len);
+        self.builtins
+            .insert("hashset_free".to_string(), builtin_hashset_free);
     }
 
     /// v0.30.280: Enable ScopeStack-based evaluation for better memory efficiency
@@ -163,6 +247,8 @@ impl Interpreter {
                 // v0.20.1: Trait system not yet supported in interpreter
                 crate::ast::Item::TraitDef(_) => {}
                 crate::ast::Item::ImplBlock(_) => {}
+                // v0.50.6: Type aliases are resolved at compile time
+                crate::ast::Item::TypeAlias(_) => {}
             }
         }
     }
@@ -191,6 +277,8 @@ impl Interpreter {
                 crate::ast::Item::ExternFn(_) => Ok(Value::Unit),
                 // v0.20.1: Trait system doesn't produce values
                 crate::ast::Item::TraitDef(_) | crate::ast::Item::ImplBlock(_) => Ok(Value::Unit),
+                // v0.50.6: Type aliases don't produce values
+                crate::ast::Item::TypeAlias(_) => Ok(Value::Unit),
             }
         } else {
             Ok(Value::Unit)
@@ -251,7 +339,9 @@ impl Interpreter {
             Expr::IntLit(n) => Ok(Value::Int(*n)),
             Expr::FloatLit(f) => Ok(Value::Float(*f)),
             Expr::BoolLit(b) => Ok(Value::Bool(*b)),
-            Expr::StringLit(s) => Ok(Value::Str(Rc::new(s.clone()))),
+            Expr::StringLit(s) => Ok(Value::Str(self.intern_string(s))),
+            // v0.64: Character literal evaluation
+            Expr::CharLit(c) => Ok(Value::Char(*c)),
             Expr::Unit => Ok(Value::Unit),
 
             Expr::Var(name) => {
@@ -328,7 +418,8 @@ impl Interpreter {
                 Ok(Value::Unit)
             }
 
-            Expr::While { cond, body } => {
+            // v0.37: Invariant is for SMT verification, not runtime
+            Expr::While { cond, invariant: _, body } => {
                 while self.eval(cond, env)?.is_truthy() {
                     self.eval(body, env)?;
                 }
@@ -414,6 +505,18 @@ impl Interpreter {
                 }
             }
 
+            // v0.43: Tuple field access
+            Expr::TupleField { expr: tuple_expr, index } => {
+                let tuple_val = self.eval(tuple_expr, env)?;
+                match tuple_val {
+                    Value::Tuple(elems) => {
+                        elems.get(*index).cloned()
+                            .ok_or_else(|| RuntimeError::index_out_of_bounds(*index as i64, elems.len()))
+                    }
+                    _ => Err(RuntimeError::type_error("tuple", tuple_val.type_name())),
+                }
+            }
+
             Expr::EnumVariant { enum_name, variant, args } => {
                 let arg_vals: Vec<Value> = args
                     .iter()
@@ -430,6 +533,13 @@ impl Interpreter {
                         let child = child_env(env);
                         for (name, bound_val) in bindings {
                             child.borrow_mut().define(name, bound_val);
+                        }
+                        // v0.40: Check pattern guard if present
+                        if let Some(guard) = &arm.guard {
+                            let guard_result = self.eval(guard, &child)?;
+                            if !guard_result.is_truthy() {
+                                continue; // Guard failed, try next arm
+                            }
                         }
                         return self.eval(&arm.body, &child);
                     }
@@ -466,6 +576,15 @@ impl Interpreter {
                 Ok(Value::Array(values))
             }
 
+            // v0.42: Tuple expressions
+            Expr::Tuple(elems) => {
+                let mut values = Vec::new();
+                for elem in elems {
+                    values.push(self.eval(elem, env)?);
+                }
+                Ok(Value::Tuple(values))
+            }
+
             Expr::Index { expr, index } => {
                 let arr_val = self.eval(expr, env)?;
                 let idx_val = self.eval(index, env)?;
@@ -484,6 +603,16 @@ impl Interpreter {
                         }
                     }
                     Value::Str(s) => {
+                        if idx < s.len() {
+                            Ok(Value::Int(s.as_bytes()[idx] as i64))
+                        } else {
+                            Err(RuntimeError::index_out_of_bounds(idx as i64, s.len()))
+                        }
+                    }
+                    // v0.93: Handle StringRope (lazy concatenated strings)
+                    Value::StringRope(_) => {
+                        let s = arr_val.materialize_string()
+                            .ok_or_else(|| RuntimeError::type_error("string", "invalid StringRope"))?;
                         if idx < s.len() {
                             Ok(Value::Int(s.as_bytes()[idx] as i64))
                         } else {
@@ -520,19 +649,6 @@ impl Interpreter {
                 ))
             }
 
-            // v0.13.2: Try block - evaluate body and wrap result
-            Expr::Try { body } => {
-                // For now, try blocks just evaluate the body
-                // Full Result type support will be added with generic type checking
-                self.eval(body, env)
-            }
-
-            // v0.13.2: Question mark operator - propagate errors
-            Expr::Question { expr: inner } => {
-                // For now, just evaluate the inner expression
-                // Full error propagation will be added with Result type support
-                self.eval(inner, env)
-            }
 
             // v0.20.0: Closure expressions
             // TODO: Implement closure evaluation with proper capture
@@ -546,6 +662,55 @@ impl Interpreter {
             Expr::Todo { message } => {
                 let msg = message.as_deref().unwrap_or("not yet implemented");
                 Err(RuntimeError::todo(msg))
+            }
+
+            // v0.36: Additional control flow
+            // Loop - infinite loop, exits only via break
+            Expr::Loop { body } => {
+                loop {
+                    match self.eval(body, env) {
+                        Ok(_) => continue,
+                        Err(e) => return Err(e),
+                    }
+                }
+            }
+
+            // Break - not yet fully implemented (needs loop context)
+            Expr::Break { .. } => {
+                Err(RuntimeError::type_error("loop context", "break outside loop"))
+            }
+
+            // Continue - not yet fully implemented (needs loop context)
+            Expr::Continue => {
+                Err(RuntimeError::type_error("loop context", "continue outside loop"))
+            }
+
+            // Return - early return from function
+            Expr::Return { value } => {
+                match value {
+                    Some(v) => self.eval(v, env),
+                    None => Ok(Value::Unit),
+                }
+            }
+
+            // v0.37: Quantifiers (verification-only, cannot be executed at runtime)
+            Expr::Forall { .. } => {
+                Err(RuntimeError::type_error(
+                    "compile-time verification",
+                    "forall expressions are for SMT verification only and cannot be evaluated at runtime"
+                ))
+            }
+            Expr::Exists { .. } => {
+                Err(RuntimeError::type_error(
+                    "compile-time verification",
+                    "exists expressions are for SMT verification only and cannot be evaluated at runtime"
+                ))
+            }
+
+            // v0.39: Type cast
+            Expr::Cast { expr, ty } => {
+                let val = self.eval(expr, env)?;
+                self.eval_cast(val, &ty.node)
             }
         }
     }
@@ -563,9 +728,10 @@ impl Interpreter {
             Value::Str(s) => {
                 match method {
                     "len" => Ok(Value::Int(s.len() as i64)),
-                    "char_at" => {
+                    // v0.67: Renamed from char_at for clarity (returns byte, not Unicode char)
+                    "byte_at" => {
                         if args.len() != 1 {
-                            return Err(RuntimeError::arity_mismatch("char_at", 1, args.len()));
+                            return Err(RuntimeError::arity_mismatch("byte_at", 1, args.len()));
                         }
                         let idx = match &args[0] {
                             Value::Int(n) => *n as usize,
@@ -666,6 +832,7 @@ impl Interpreter {
                 }
             }
 
+            // v0.41: Nested patterns in enum bindings
             Pattern::EnumVariant { enum_name, variant, bindings } => {
                 match value {
                     Value::Enum(e_name, v_name, args) if e_name == enum_name && v_name == variant => {
@@ -674,7 +841,12 @@ impl Interpreter {
                         }
                         let mut result = vec![];
                         for (binding, arg) in bindings.iter().zip(args.iter()) {
-                            result.push((binding.node.clone(), arg.clone()));
+                            // Recursively match nested patterns
+                            if let Some(inner_bindings) = self.match_pattern(&binding.node, arg) {
+                                result.extend(inner_bindings);
+                            } else {
+                                return None;
+                            }
                         }
                         Some(result)
                     }
@@ -700,6 +872,120 @@ impl Interpreter {
                         Some(result)
                     }
                     _ => None,
+                }
+            }
+            // v0.39: Range pattern
+            Pattern::Range { start, end, inclusive } => {
+                let val_int = match value {
+                    Value::Int(n) => *n,
+                    _ => return None,
+                };
+                let start_int = match start {
+                    LiteralPattern::Int(n) => *n,
+                    _ => return None,
+                };
+                let end_int = match end {
+                    LiteralPattern::Int(n) => *n,
+                    _ => return None,
+                };
+                let in_range = if *inclusive {
+                    val_int >= start_int && val_int <= end_int
+                } else {
+                    val_int >= start_int && val_int < end_int
+                };
+                if in_range { Some(vec![]) } else { None }
+            }
+            // v0.40: Or-pattern: try each alternative
+            Pattern::Or(alts) => {
+                for alt in alts {
+                    if let Some(bindings) = self.match_pattern(&alt.node, value) {
+                        return Some(bindings);
+                    }
+                }
+                None
+            }
+            // v0.41: Binding pattern: name @ pattern
+            Pattern::Binding { name, pattern } => {
+                // First match the inner pattern
+                if let Some(mut inner_bindings) = self.match_pattern(&pattern.node, value) {
+                    // Add the binding for the entire value
+                    inner_bindings.push((name.clone(), value.clone()));
+                    Some(inner_bindings)
+                } else {
+                    None
+                }
+            }
+            // v0.42: Tuple pattern
+            Pattern::Tuple(patterns) => {
+                if let Value::Tuple(values) = value {
+                    if patterns.len() != values.len() {
+                        return None;
+                    }
+                    let mut bindings = Vec::new();
+                    for (pat, val) in patterns.iter().zip(values.iter()) {
+                        if let Some(sub_bindings) = self.match_pattern(&pat.node, val) {
+                            bindings.extend(sub_bindings);
+                        } else {
+                            return None;
+                        }
+                    }
+                    Some(bindings)
+                } else {
+                    None
+                }
+            }
+            // v0.44: Array pattern
+            Pattern::Array(patterns) => {
+                if let Value::Array(values) = value {
+                    if patterns.len() != values.len() {
+                        return None;
+                    }
+                    let mut bindings = Vec::new();
+                    for (pat, val) in patterns.iter().zip(values.iter()) {
+                        if let Some(sub_bindings) = self.match_pattern(&pat.node, val) {
+                            bindings.extend(sub_bindings);
+                        } else {
+                            return None;
+                        }
+                    }
+                    Some(bindings)
+                } else {
+                    None
+                }
+            }
+            // v0.45: Array rest pattern - matches arrays with prefix..suffix
+            // The ".." skips zero or more elements in the middle (non-capturing)
+            Pattern::ArrayRest { prefix, suffix } => {
+                if let Value::Array(values) = value {
+                    let required_len = prefix.len() + suffix.len();
+                    // Array must have at least enough elements for prefix + suffix
+                    if values.len() < required_len {
+                        return None;
+                    }
+
+                    let mut bindings = Vec::new();
+
+                    // Match prefix elements from the start
+                    for (pat, val) in prefix.iter().zip(values.iter()) {
+                        if let Some(sub_bindings) = self.match_pattern(&pat.node, val) {
+                            bindings.extend(sub_bindings);
+                        } else {
+                            return None;
+                        }
+                    }
+
+                    // Match suffix elements from the end
+                    for (pat, val) in suffix.iter().zip(values.iter().skip(values.len() - suffix.len())) {
+                        if let Some(sub_bindings) = self.match_pattern(&pat.node, val) {
+                            bindings.extend(sub_bindings);
+                        } else {
+                            return None;
+                        }
+                    }
+
+                    Some(bindings)
+                } else {
+                    None
                 }
             }
         }
@@ -770,6 +1056,37 @@ impl Interpreter {
         result
     }
 
+    /// v0.39: Evaluate type cast
+    fn eval_cast(&self, val: Value, target_ty: &Type) -> InterpResult<Value> {
+        match (&val, target_ty) {
+            // i64 casts
+            (Value::Int(n), Type::I64) => Ok(Value::Int(*n)),
+            (Value::Int(n), Type::I32) => Ok(Value::Int(*n as i32 as i64)),
+            (Value::Int(n), Type::U32) => Ok(Value::Int(*n as u32 as i64)),
+            (Value::Int(n), Type::U64) => Ok(Value::Int(*n as u64 as i64)),
+            (Value::Int(n), Type::F64) => Ok(Value::Float(*n as f64)),
+            (Value::Int(n), Type::Bool) => Ok(Value::Bool(*n != 0)),
+            // f64 casts
+            (Value::Float(f), Type::I64) => Ok(Value::Int(*f as i64)),
+            (Value::Float(f), Type::I32) => Ok(Value::Int(*f as i32 as i64)),
+            (Value::Float(f), Type::U32) => Ok(Value::Int(*f as u32 as i64)),
+            (Value::Float(f), Type::U64) => Ok(Value::Int(*f as u64 as i64)),
+            (Value::Float(f), Type::F64) => Ok(Value::Float(*f)),
+            (Value::Float(f), Type::Bool) => Ok(Value::Bool(*f != 0.0)),
+            // bool casts
+            (Value::Bool(b), Type::I64) => Ok(Value::Int(if *b { 1 } else { 0 })),
+            (Value::Bool(b), Type::I32) => Ok(Value::Int(if *b { 1 } else { 0 })),
+            (Value::Bool(b), Type::U32) => Ok(Value::Int(if *b { 1 } else { 0 })),
+            (Value::Bool(b), Type::U64) => Ok(Value::Int(if *b { 1 } else { 0 })),
+            (Value::Bool(b), Type::F64) => Ok(Value::Float(if *b { 1.0 } else { 0.0 })),
+            (Value::Bool(b), Type::Bool) => Ok(Value::Bool(*b)),
+            _ => Err(RuntimeError::type_error(
+                &format!("{:?}", target_ty),
+                &format!("cannot cast {} to {:?}", val.type_name(), target_ty),
+            )),
+        }
+    }
+
     /// Evaluate binary operation
     fn eval_binary(&self, op: BinOp, left: Value, right: Value) -> InterpResult<Value> {
         match op {
@@ -830,6 +1147,91 @@ impl Interpreter {
                 _ => Err(RuntimeError::type_error("int", left.type_name())),
             },
 
+            // v0.37: Wrapping arithmetic (no overflow panic)
+            BinOp::AddWrap => match (&left, &right) {
+                (Value::Int(a), Value::Int(b)) => Ok(Value::Int(a.wrapping_add(*b))),
+                _ => Err(RuntimeError::type_error(
+                    "int +% int",
+                    &format!("{} +% {}", left.type_name(), right.type_name()),
+                )),
+            },
+            BinOp::SubWrap => match (&left, &right) {
+                (Value::Int(a), Value::Int(b)) => Ok(Value::Int(a.wrapping_sub(*b))),
+                _ => Err(RuntimeError::type_error(
+                    "int -% int",
+                    &format!("{} -% {}", left.type_name(), right.type_name()),
+                )),
+            },
+            BinOp::MulWrap => match (&left, &right) {
+                (Value::Int(a), Value::Int(b)) => Ok(Value::Int(a.wrapping_mul(*b))),
+                _ => Err(RuntimeError::type_error(
+                    "int *% int",
+                    &format!("{} *% {}", left.type_name(), right.type_name()),
+                )),
+            },
+
+            // v0.38: Checked arithmetic (returns Some(value) or None on overflow)
+            // For now, wrap in Option-like Enum. Full Option support needs more work.
+            BinOp::AddChecked => match (&left, &right) {
+                (Value::Int(a), Value::Int(b)) => {
+                    match a.checked_add(*b) {
+                        Some(v) => Ok(Value::Enum("Option".to_string(), "Some".to_string(), vec![Value::Int(v)])),
+                        None => Ok(Value::Enum("Option".to_string(), "None".to_string(), vec![])),
+                    }
+                }
+                _ => Err(RuntimeError::type_error(
+                    "int +? int",
+                    &format!("{} +? {}", left.type_name(), right.type_name()),
+                )),
+            },
+            BinOp::SubChecked => match (&left, &right) {
+                (Value::Int(a), Value::Int(b)) => {
+                    match a.checked_sub(*b) {
+                        Some(v) => Ok(Value::Enum("Option".to_string(), "Some".to_string(), vec![Value::Int(v)])),
+                        None => Ok(Value::Enum("Option".to_string(), "None".to_string(), vec![])),
+                    }
+                }
+                _ => Err(RuntimeError::type_error(
+                    "int -? int",
+                    &format!("{} -? {}", left.type_name(), right.type_name()),
+                )),
+            },
+            BinOp::MulChecked => match (&left, &right) {
+                (Value::Int(a), Value::Int(b)) => {
+                    match a.checked_mul(*b) {
+                        Some(v) => Ok(Value::Enum("Option".to_string(), "Some".to_string(), vec![Value::Int(v)])),
+                        None => Ok(Value::Enum("Option".to_string(), "None".to_string(), vec![])),
+                    }
+                }
+                _ => Err(RuntimeError::type_error(
+                    "int *? int",
+                    &format!("{} *? {}", left.type_name(), right.type_name()),
+                )),
+            },
+
+            // v0.38: Saturating arithmetic (clamps to min/max on overflow)
+            BinOp::AddSat => match (&left, &right) {
+                (Value::Int(a), Value::Int(b)) => Ok(Value::Int(a.saturating_add(*b))),
+                _ => Err(RuntimeError::type_error(
+                    "int +| int",
+                    &format!("{} +| {}", left.type_name(), right.type_name()),
+                )),
+            },
+            BinOp::SubSat => match (&left, &right) {
+                (Value::Int(a), Value::Int(b)) => Ok(Value::Int(a.saturating_sub(*b))),
+                _ => Err(RuntimeError::type_error(
+                    "int -| int",
+                    &format!("{} -| {}", left.type_name(), right.type_name()),
+                )),
+            },
+            BinOp::MulSat => match (&left, &right) {
+                (Value::Int(a), Value::Int(b)) => Ok(Value::Int(a.saturating_mul(*b))),
+                _ => Err(RuntimeError::type_error(
+                    "int *| int",
+                    &format!("{} *| {}", left.type_name(), right.type_name()),
+                )),
+            },
+
             // Comparison
             BinOp::Eq => Ok(Value::Bool(left == right)),
             BinOp::Ne => Ok(Value::Bool(left != right)),
@@ -841,6 +1243,48 @@ impl Interpreter {
             // Logical
             BinOp::And => Ok(Value::Bool(left.is_truthy() && right.is_truthy())),
             BinOp::Or => Ok(Value::Bool(left.is_truthy() || right.is_truthy())),
+
+            // v0.32: Shift operators
+            BinOp::Shl => match (&left, &right) {
+                (Value::Int(a), Value::Int(b)) => Ok(Value::Int(a << b)),
+                _ => Err(RuntimeError::type_error(
+                    "int << int",
+                    &format!("{} << {}", left.type_name(), right.type_name()),
+                )),
+            },
+            BinOp::Shr => match (&left, &right) {
+                (Value::Int(a), Value::Int(b)) => Ok(Value::Int(a >> b)),
+                _ => Err(RuntimeError::type_error(
+                    "int >> int",
+                    &format!("{} >> {}", left.type_name(), right.type_name()),
+                )),
+            },
+
+            // v0.36: Bitwise operators
+            BinOp::Band => match (&left, &right) {
+                (Value::Int(a), Value::Int(b)) => Ok(Value::Int(a & b)),
+                _ => Err(RuntimeError::type_error(
+                    "int band int",
+                    &format!("{} band {}", left.type_name(), right.type_name()),
+                )),
+            },
+            BinOp::Bor => match (&left, &right) {
+                (Value::Int(a), Value::Int(b)) => Ok(Value::Int(a | b)),
+                _ => Err(RuntimeError::type_error(
+                    "int bor int",
+                    &format!("{} bor {}", left.type_name(), right.type_name()),
+                )),
+            },
+            BinOp::Bxor => match (&left, &right) {
+                (Value::Int(a), Value::Int(b)) => Ok(Value::Int(a ^ b)),
+                _ => Err(RuntimeError::type_error(
+                    "int bxor int",
+                    &format!("{} bxor {}", left.type_name(), right.type_name()),
+                )),
+            },
+
+            // v0.36: Logical implication (P implies Q = not P or Q)
+            BinOp::Implies => Ok(Value::Bool(!left.is_truthy() || right.is_truthy())),
         }
     }
 
@@ -854,6 +1298,8 @@ impl Interpreter {
             (Value::Float(a), Value::Float(b)) => Ok(Value::Bool(f(*a, *b))),
             (Value::Int(a), Value::Float(b)) => Ok(Value::Bool(f(*a as f64, *b))),
             (Value::Float(a), Value::Int(b)) => Ok(Value::Bool(f(*a, *b as f64))),
+            // v0.64: Character comparison (by Unicode codepoint)
+            (Value::Char(a), Value::Char(b)) => Ok(Value::Bool(f(*a as u32 as f64, *b as u32 as f64))),
             _ => Err(RuntimeError::type_error(
                 "numeric",
                 &format!("{} cmp {}", left.type_name(), right.type_name()),
@@ -870,6 +1316,11 @@ impl Interpreter {
                 _ => Err(RuntimeError::type_error("numeric", val.type_name())),
             },
             UnOp::Not => Ok(Value::Bool(!val.is_truthy())),
+            // v0.36: Bitwise not
+            UnOp::Bnot => match val {
+                Value::Int(n) => Ok(Value::Int(!n)),
+                _ => Err(RuntimeError::type_error("int", val.type_name())),
+            },
         }
     }
 
@@ -896,7 +1347,9 @@ impl Interpreter {
             Expr::IntLit(n) => Ok(Value::Int(*n)),
             Expr::FloatLit(f) => Ok(Value::Float(*f)),
             Expr::BoolLit(b) => Ok(Value::Bool(*b)),
-            Expr::StringLit(s) => Ok(Value::Str(Rc::new(s.clone()))),
+            Expr::StringLit(s) => Ok(Value::Str(self.intern_string(s))),
+            // v0.64: Character literal evaluation
+            Expr::CharLit(c) => Ok(Value::Char(*c)),
             Expr::Unit => Ok(Value::Unit),
 
             Expr::Var(name) => {
@@ -992,7 +1445,8 @@ impl Interpreter {
             }
 
             // v0.30.280: While loop using ScopeStack
-            Expr::While { cond, body } => {
+            // v0.37: Invariant is for SMT verification, not runtime
+            Expr::While { cond, invariant: _, body } => {
                 while self.eval_fast(cond)?.is_truthy() {
                     self.eval_fast(body)?;
                 }
@@ -1007,6 +1461,14 @@ impl Interpreter {
                         self.scope_stack.push_scope();
                         for (name, bound_val) in bindings {
                             self.scope_stack.define(name, bound_val);
+                        }
+                        // v0.40: Check pattern guard if present
+                        if let Some(guard) = &arm.guard {
+                            let guard_result = self.eval_fast(guard)?;
+                            if !guard_result.is_truthy() {
+                                self.scope_stack.pop_scope();
+                                continue; // Guard failed, try next arm
+                            }
                         }
                         let result = self.eval_fast(&arm.body);
                         self.scope_stack.pop_scope();
@@ -1037,6 +1499,18 @@ impl Interpreter {
                 }
             }
 
+            // v0.43: Tuple field access
+            Expr::TupleField { expr: tuple_expr, index } => {
+                let tuple_val = self.eval_fast(tuple_expr)?;
+                match tuple_val {
+                    Value::Tuple(elems) => {
+                        elems.get(*index).cloned()
+                            .ok_or_else(|| RuntimeError::index_out_of_bounds(*index as i64, elems.len()))
+                    }
+                    _ => Err(RuntimeError::type_error("tuple", tuple_val.type_name())),
+                }
+            }
+
             // v0.30.280: Enum support
             Expr::EnumVariant { enum_name, variant, args } => {
                 let arg_vals: Vec<Value> = args
@@ -1055,6 +1529,15 @@ impl Interpreter {
                 Ok(Value::Array(values))
             }
 
+            // v0.42: Tuple expressions
+            Expr::Tuple(elems) => {
+                let mut values = Vec::new();
+                for elem in elems {
+                    values.push(self.eval_fast(elem)?);
+                }
+                Ok(Value::Tuple(values))
+            }
+
             Expr::Index { expr, index } => {
                 let arr_val = self.eval_fast(expr)?;
                 let idx_val = self.eval_fast(index)?;
@@ -1071,6 +1554,16 @@ impl Interpreter {
                         }
                     }
                     Value::Str(s) => {
+                        if idx < s.len() {
+                            Ok(Value::Int(s.as_bytes()[idx] as i64))
+                        } else {
+                            Err(RuntimeError::index_out_of_bounds(idx as i64, s.len()))
+                        }
+                    }
+                    // v0.93: Handle StringRope (lazy concatenated strings)
+                    Value::StringRope(_) => {
+                        let s = arr_val.materialize_string()
+                            .ok_or_else(|| RuntimeError::type_error("string", "invalid StringRope"))?;
                         if idx < s.len() {
                             Ok(Value::Int(s.as_bytes()[idx] as i64))
                         } else {
@@ -1165,13 +1658,28 @@ fn builtin_print_str(args: &[Value]) -> InterpResult<Value> {
     if args.len() != 1 {
         return Err(RuntimeError::arity_mismatch("print_str", 1, args.len()));
     }
-    match &args[0] {
-        Value::Str(s) => {
-            print!("{}", s);
-            io::stdout().flush().map_err(|e| RuntimeError::io_error(&e.to_string()))?;
-            Ok(Value::Int(0))
-        }
-        _ => Err(RuntimeError::type_error("String", args[0].type_name())),
+    // v0.35.5: Handle both Value::Str and Value::StringRope using materialize_string
+    if let Some(s) = args[0].materialize_string() {
+        print!("{}", s);
+        io::stdout().flush().map_err(|e| RuntimeError::io_error(&e.to_string()))?;
+        Ok(Value::Int(0))
+    } else {
+        Err(RuntimeError::type_error("String", args[0].type_name()))
+    }
+}
+
+/// println_str(s: String) -> Unit
+/// Prints a string with newline.
+/// v0.100: Added for string output consistency
+fn builtin_println_str(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 1 {
+        return Err(RuntimeError::arity_mismatch("println_str", 1, args.len()));
+    }
+    if let Some(s) = args[0].materialize_string() {
+        println!("{}", s);
+        Ok(Value::Unit)
+    } else {
+        Err(RuntimeError::type_error("String", args[0].type_name()))
     }
 }
 
@@ -1732,6 +2240,443 @@ fn builtin_vec_free(args: &[Value]) -> InterpResult<Value> {
     }
 }
 
+/// vec_clear(vec: i64) -> Unit: Set length to 0 without deallocating
+fn builtin_vec_clear(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 1 {
+        return Err(RuntimeError::arity_mismatch("vec_clear", 1, args.len()));
+    }
+    match &args[0] {
+        Value::Int(vec_ptr) => {
+            if *vec_ptr == 0 {
+                return Err(RuntimeError::io_error("vec_clear: null vector"));
+            }
+            unsafe {
+                let header = *vec_ptr as *mut i64;
+                // Set len to 0, keep capacity
+                *header.add(1) = 0;
+            }
+            Ok(Value::Unit)
+        }
+        _ => Err(RuntimeError::type_error("i64", args[0].type_name())),
+    }
+}
+
+// ============ v0.34.24: Hash Builtins ============
+
+/// hash_i64(x: i64) -> i64: Hash function for integers
+/// Uses FNV-1a style multiplication hash
+fn builtin_hash_i64(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 1 {
+        return Err(RuntimeError::arity_mismatch("hash_i64", 1, args.len()));
+    }
+    match &args[0] {
+        Value::Int(x) => {
+            // FNV-1a inspired hash: multiply by prime, xor with shifted value
+            let h = (*x as u64).wrapping_mul(0x517cc1b727220a95);
+            let result = (h ^ (h >> 32)) as i64;
+            Ok(Value::Int(result))
+        }
+        _ => Err(RuntimeError::type_error("i64", args[0].type_name())),
+    }
+}
+
+// ============ v0.34.24: HashMap Builtins ============
+// Layout: [count: i64, capacity: i64, keys_ptr: i64, values_ptr: i64, states_ptr: i64]
+// Header: 40 bytes (5 * 8)
+// States: 0=empty, 1=occupied, 2=deleted (tombstone)
+
+const HASHMAP_HEADER_SIZE: usize = 40;
+const HASHMAP_STATE_EMPTY: i64 = 0;
+const HASHMAP_STATE_OCCUPIED: i64 = 1;
+const HASHMAP_STATE_DELETED: i64 = 2;
+const HASHMAP_DEFAULT_CAPACITY: i64 = 16;
+
+/// Helper: Hash and find slot for key
+fn hashmap_find_slot(keys_ptr: *const i64, states_ptr: *const i64, capacity: i64, key: i64) -> (i64, bool) {
+    let hash = {
+        let h = (key as u64).wrapping_mul(0x517cc1b727220a95);
+        (h ^ (h >> 32)) as i64
+    };
+    let mask = capacity - 1;
+    let mut idx = hash & mask;
+    let mut first_deleted: Option<i64> = None;
+
+    unsafe {
+        for _ in 0..capacity {
+            let state = *states_ptr.add(idx as usize);
+            if state == HASHMAP_STATE_EMPTY {
+                // Empty slot - key not found
+                let insert_idx = first_deleted.unwrap_or(idx);
+                return (insert_idx, false);
+            } else if state == HASHMAP_STATE_DELETED {
+                // Remember first deleted slot for insertion
+                if first_deleted.is_none() {
+                    first_deleted = Some(idx);
+                }
+            } else if *keys_ptr.add(idx as usize) == key {
+                // Found the key
+                return (idx, true);
+            }
+            // Linear probing
+            idx = (idx + 1) & mask;
+        }
+    }
+    // Table is full (shouldn't happen with proper load factor)
+    (first_deleted.unwrap_or(0), false)
+}
+
+/// hashmap_new() -> i64: Create empty hashmap with default capacity
+fn builtin_hashmap_new(args: &[Value]) -> InterpResult<Value> {
+    if !args.is_empty() {
+        return Err(RuntimeError::arity_mismatch("hashmap_new", 0, args.len()));
+    }
+
+    unsafe {
+        // Allocate header
+        let header_layout = std::alloc::Layout::from_size_align(HASHMAP_HEADER_SIZE, 8)
+            .map_err(|_| RuntimeError::io_error("hashmap_new: invalid header layout"))?;
+        let header = std::alloc::alloc_zeroed(header_layout) as *mut i64;
+        if header.is_null() {
+            return Err(RuntimeError::io_error("hashmap_new: out of memory"));
+        }
+
+        // Allocate keys array
+        let keys_layout = std::alloc::Layout::from_size_align((HASHMAP_DEFAULT_CAPACITY as usize) * 8, 8)
+            .map_err(|_| RuntimeError::io_error("hashmap_new: invalid keys layout"))?;
+        let keys = std::alloc::alloc_zeroed(keys_layout) as *mut i64;
+        if keys.is_null() {
+            std::alloc::dealloc(header as *mut u8, header_layout);
+            return Err(RuntimeError::io_error("hashmap_new: out of memory"));
+        }
+
+        // Allocate values array
+        let values_layout = std::alloc::Layout::from_size_align((HASHMAP_DEFAULT_CAPACITY as usize) * 8, 8)
+            .map_err(|_| RuntimeError::io_error("hashmap_new: invalid values layout"))?;
+        let values = std::alloc::alloc_zeroed(values_layout) as *mut i64;
+        if values.is_null() {
+            std::alloc::dealloc(keys as *mut u8, keys_layout);
+            std::alloc::dealloc(header as *mut u8, header_layout);
+            return Err(RuntimeError::io_error("hashmap_new: out of memory"));
+        }
+
+        // Allocate states array (all zeros = empty)
+        let states_layout = std::alloc::Layout::from_size_align((HASHMAP_DEFAULT_CAPACITY as usize) * 8, 8)
+            .map_err(|_| RuntimeError::io_error("hashmap_new: invalid states layout"))?;
+        let states = std::alloc::alloc_zeroed(states_layout) as *mut i64;
+        if states.is_null() {
+            std::alloc::dealloc(values as *mut u8, values_layout);
+            std::alloc::dealloc(keys as *mut u8, keys_layout);
+            std::alloc::dealloc(header as *mut u8, header_layout);
+            return Err(RuntimeError::io_error("hashmap_new: out of memory"));
+        }
+
+        // Initialize header: [count, capacity, keys_ptr, values_ptr, states_ptr]
+        *header = 0; // count
+        *header.add(1) = HASHMAP_DEFAULT_CAPACITY; // capacity
+        *header.add(2) = keys as i64;
+        *header.add(3) = values as i64;
+        *header.add(4) = states as i64;
+
+        Ok(Value::Int(header as i64))
+    }
+}
+
+/// hashmap_insert(map: i64, key: i64, value: i64) -> i64
+/// Returns previous value if key existed, or 0 if new
+fn builtin_hashmap_insert(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 3 {
+        return Err(RuntimeError::arity_mismatch("hashmap_insert", 3, args.len()));
+    }
+    match (&args[0], &args[1], &args[2]) {
+        (Value::Int(map_ptr), Value::Int(key), Value::Int(value)) => {
+            if *map_ptr == 0 {
+                return Err(RuntimeError::io_error("hashmap_insert: null map"));
+            }
+            unsafe {
+                let header = *map_ptr as *mut i64;
+                let count = *header;
+                let capacity = *header.add(1);
+                let keys_ptr = *header.add(2) as *mut i64;
+                let values_ptr = *header.add(3) as *mut i64;
+                let states_ptr = *header.add(4) as *mut i64;
+
+                // Check load factor (> 70% triggers resize)
+                if count * 10 > capacity * 7 {
+                    // Resize: double capacity
+                    let new_capacity = capacity * 2;
+
+                    // Allocate new arrays
+                    let new_keys_layout = std::alloc::Layout::from_size_align((new_capacity as usize) * 8, 8)
+                        .map_err(|_| RuntimeError::io_error("hashmap_insert: resize failed"))?;
+                    let new_keys = std::alloc::alloc_zeroed(new_keys_layout) as *mut i64;
+
+                    let new_values_layout = std::alloc::Layout::from_size_align((new_capacity as usize) * 8, 8)
+                        .map_err(|_| RuntimeError::io_error("hashmap_insert: resize failed"))?;
+                    let new_values = std::alloc::alloc_zeroed(new_values_layout) as *mut i64;
+
+                    let new_states_layout = std::alloc::Layout::from_size_align((new_capacity as usize) * 8, 8)
+                        .map_err(|_| RuntimeError::io_error("hashmap_insert: resize failed"))?;
+                    let new_states = std::alloc::alloc_zeroed(new_states_layout) as *mut i64;
+
+                    if new_keys.is_null() || new_values.is_null() || new_states.is_null() {
+                        return Err(RuntimeError::io_error("hashmap_insert: out of memory"));
+                    }
+
+                    // Rehash existing entries
+                    for i in 0..capacity {
+                        if *states_ptr.add(i as usize) == HASHMAP_STATE_OCCUPIED {
+                            let k = *keys_ptr.add(i as usize);
+                            let v = *values_ptr.add(i as usize);
+                            let (idx, _) = hashmap_find_slot(new_keys, new_states, new_capacity, k);
+                            *new_keys.add(idx as usize) = k;
+                            *new_values.add(idx as usize) = v;
+                            *new_states.add(idx as usize) = HASHMAP_STATE_OCCUPIED;
+                        }
+                    }
+
+                    // Free old arrays
+                    let old_keys_layout = std::alloc::Layout::from_size_align((capacity as usize) * 8, 8).unwrap();
+                    let old_values_layout = std::alloc::Layout::from_size_align((capacity as usize) * 8, 8).unwrap();
+                    let old_states_layout = std::alloc::Layout::from_size_align((capacity as usize) * 8, 8).unwrap();
+                    std::alloc::dealloc(keys_ptr as *mut u8, old_keys_layout);
+                    std::alloc::dealloc(values_ptr as *mut u8, old_values_layout);
+                    std::alloc::dealloc(states_ptr as *mut u8, old_states_layout);
+
+                    // Update header
+                    *header.add(1) = new_capacity;
+                    *header.add(2) = new_keys as i64;
+                    *header.add(3) = new_values as i64;
+                    *header.add(4) = new_states as i64;
+                }
+
+                // Re-read pointers after potential resize
+                let capacity = *header.add(1);
+                let keys_ptr = *header.add(2) as *mut i64;
+                let values_ptr = *header.add(3) as *mut i64;
+                let states_ptr = *header.add(4) as *mut i64;
+
+                let (idx, found) = hashmap_find_slot(keys_ptr, states_ptr, capacity, *key);
+                let old_value = if found {
+                    *values_ptr.add(idx as usize)
+                } else {
+                    *header += 1; // increment count
+                    0
+                };
+
+                *keys_ptr.add(idx as usize) = *key;
+                *values_ptr.add(idx as usize) = *value;
+                *states_ptr.add(idx as usize) = HASHMAP_STATE_OCCUPIED;
+
+                Ok(Value::Int(old_value))
+            }
+        }
+        _ => Err(RuntimeError::type_error("(i64, i64, i64)", "other")),
+    }
+}
+
+/// hashmap_get(map: i64, key: i64) -> i64
+/// Returns value if found, or -9223372036854775808 (i64::MIN) if not found
+fn builtin_hashmap_get(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 2 {
+        return Err(RuntimeError::arity_mismatch("hashmap_get", 2, args.len()));
+    }
+    match (&args[0], &args[1]) {
+        (Value::Int(map_ptr), Value::Int(key)) => {
+            if *map_ptr == 0 {
+                return Err(RuntimeError::io_error("hashmap_get: null map"));
+            }
+            unsafe {
+                let header = *map_ptr as *const i64;
+                let capacity = *header.add(1);
+                let keys_ptr = *header.add(2) as *const i64;
+                let values_ptr = *header.add(3) as *const i64;
+                let states_ptr = *header.add(4) as *const i64;
+
+                let (idx, found) = hashmap_find_slot(keys_ptr, states_ptr, capacity, *key);
+                if found {
+                    Ok(Value::Int(*values_ptr.add(idx as usize)))
+                } else {
+                    Ok(Value::Int(i64::MIN)) // sentinel for not found
+                }
+            }
+        }
+        _ => Err(RuntimeError::type_error("(i64, i64)", "other")),
+    }
+}
+
+/// hashmap_contains(map: i64, key: i64) -> i64
+/// Returns 1 if key exists, 0 otherwise
+fn builtin_hashmap_contains(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 2 {
+        return Err(RuntimeError::arity_mismatch("hashmap_contains", 2, args.len()));
+    }
+    match (&args[0], &args[1]) {
+        (Value::Int(map_ptr), Value::Int(key)) => {
+            if *map_ptr == 0 {
+                return Err(RuntimeError::io_error("hashmap_contains: null map"));
+            }
+            unsafe {
+                let header = *map_ptr as *const i64;
+                let capacity = *header.add(1);
+                let keys_ptr = *header.add(2) as *const i64;
+                let states_ptr = *header.add(4) as *const i64;
+
+                let (_, found) = hashmap_find_slot(keys_ptr, states_ptr, capacity, *key);
+                Ok(Value::Int(if found { 1 } else { 0 }))
+            }
+        }
+        _ => Err(RuntimeError::type_error("(i64, i64)", "other")),
+    }
+}
+
+/// hashmap_remove(map: i64, key: i64) -> i64
+/// Returns removed value if found, or i64::MIN if not found
+fn builtin_hashmap_remove(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 2 {
+        return Err(RuntimeError::arity_mismatch("hashmap_remove", 2, args.len()));
+    }
+    match (&args[0], &args[1]) {
+        (Value::Int(map_ptr), Value::Int(key)) => {
+            if *map_ptr == 0 {
+                return Err(RuntimeError::io_error("hashmap_remove: null map"));
+            }
+            unsafe {
+                let header = *map_ptr as *mut i64;
+                let capacity = *header.add(1);
+                let keys_ptr = *header.add(2) as *mut i64;
+                let values_ptr = *header.add(3) as *mut i64;
+                let states_ptr = *header.add(4) as *mut i64;
+
+                let (idx, found) = hashmap_find_slot(keys_ptr, states_ptr, capacity, *key);
+                if found {
+                    let old_value = *values_ptr.add(idx as usize);
+                    *states_ptr.add(idx as usize) = HASHMAP_STATE_DELETED;
+                    *header -= 1; // decrement count
+                    Ok(Value::Int(old_value))
+                } else {
+                    Ok(Value::Int(i64::MIN)) // not found
+                }
+            }
+        }
+        _ => Err(RuntimeError::type_error("(i64, i64)", "other")),
+    }
+}
+
+/// hashmap_len(map: i64) -> i64
+/// Returns number of entries in the map
+fn builtin_hashmap_len(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 1 {
+        return Err(RuntimeError::arity_mismatch("hashmap_len", 1, args.len()));
+    }
+    match &args[0] {
+        Value::Int(map_ptr) => {
+            if *map_ptr == 0 {
+                return Ok(Value::Int(0));
+            }
+            unsafe {
+                let header = *map_ptr as *const i64;
+                Ok(Value::Int(*header))
+            }
+        }
+        _ => Err(RuntimeError::type_error("i64", args[0].type_name())),
+    }
+}
+
+/// hashmap_free(map: i64) -> Unit
+/// Deallocate hashmap and all its arrays
+fn builtin_hashmap_free(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 1 {
+        return Err(RuntimeError::arity_mismatch("hashmap_free", 1, args.len()));
+    }
+    match &args[0] {
+        Value::Int(map_ptr) => {
+            if *map_ptr == 0 {
+                return Ok(Value::Unit);
+            }
+            unsafe {
+                let header = *map_ptr as *mut i64;
+                let capacity = *header.add(1);
+                let keys_ptr = *header.add(2) as *mut u8;
+                let values_ptr = *header.add(3) as *mut u8;
+                let states_ptr = *header.add(4) as *mut u8;
+
+                // Free arrays
+                let arr_layout = std::alloc::Layout::from_size_align((capacity as usize) * 8, 8)
+                    .map_err(|_| RuntimeError::io_error("hashmap_free: invalid layout"))?;
+                if !keys_ptr.is_null() {
+                    std::alloc::dealloc(keys_ptr, arr_layout);
+                }
+                if !values_ptr.is_null() {
+                    std::alloc::dealloc(values_ptr, arr_layout);
+                }
+                if !states_ptr.is_null() {
+                    std::alloc::dealloc(states_ptr, arr_layout);
+                }
+
+                // Free header
+                let header_layout = std::alloc::Layout::from_size_align(HASHMAP_HEADER_SIZE, 8)
+                    .map_err(|_| RuntimeError::io_error("hashmap_free: invalid header layout"))?;
+                std::alloc::dealloc(*map_ptr as *mut u8, header_layout);
+            }
+            Ok(Value::Unit)
+        }
+        _ => Err(RuntimeError::type_error("i64", args[0].type_name())),
+    }
+}
+
+// ============ v0.34.24: HashSet Builtins ============
+// HashSet is a thin wrapper around HashMap with value always = 1
+
+/// hashset_new() -> i64: Create empty hashset
+fn builtin_hashset_new(args: &[Value]) -> InterpResult<Value> {
+    builtin_hashmap_new(args)
+}
+
+/// hashset_insert(set: i64, value: i64) -> i64
+/// Returns 1 if newly inserted, 0 if already existed
+fn builtin_hashset_insert(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 2 {
+        return Err(RuntimeError::arity_mismatch("hashset_insert", 2, args.len()));
+    }
+    // Insert with value=1
+    let insert_args = vec![args[0].clone(), args[1].clone(), Value::Int(1)];
+    let result = builtin_hashmap_insert(&insert_args)?;
+    // Return 1 if new (old_value was 0), 0 if existed (old_value was 1)
+    match result {
+        Value::Int(old) => Ok(Value::Int(if old == 0 { 1 } else { 0 })),
+        _ => Ok(result),
+    }
+}
+
+/// hashset_contains(set: i64, value: i64) -> i64
+/// Returns 1 if value exists, 0 otherwise
+fn builtin_hashset_contains(args: &[Value]) -> InterpResult<Value> {
+    builtin_hashmap_contains(args)
+}
+
+/// hashset_remove(set: i64, value: i64) -> i64
+/// Returns 1 if removed, 0 if not found
+fn builtin_hashset_remove(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 2 {
+        return Err(RuntimeError::arity_mismatch("hashset_remove", 2, args.len()));
+    }
+    let result = builtin_hashmap_remove(args)?;
+    match result {
+        Value::Int(v) => Ok(Value::Int(if v == i64::MIN { 0 } else { 1 })),
+        _ => Ok(result),
+    }
+}
+
+/// hashset_len(set: i64) -> i64
+fn builtin_hashset_len(args: &[Value]) -> InterpResult<Value> {
+    builtin_hashmap_len(args)
+}
+
+/// hashset_free(set: i64) -> Unit
+fn builtin_hashset_free(args: &[Value]) -> InterpResult<Value> {
+    builtin_hashmap_free(args)
+}
+
 // ============ v0.31.10: File I/O Builtins for Phase 32.0 Bootstrap Infrastructure ============
 
 /// Helper: Extract string from Value (handles both Str and StringRope)
@@ -1964,17 +2909,20 @@ fn builtin_getenv(args: &[Value]) -> InterpResult<Value> {
 
 // ============ v0.31.22: Command-line Argument Builtins for Phase 32.3.D ============
 // Provides CLI argument access for standalone BMB compiler
+// v0.46: Updated to use thread-local storage for program arguments
 
 /// arg_count() -> i64
-/// Returns the number of command-line arguments (including program name).
+/// Returns the number of command-line arguments.
+/// v0.46: Uses thread-local PROGRAM_ARGS instead of env::args()
 fn builtin_arg_count(_args: &[Value]) -> InterpResult<Value> {
-    let count = env::args().count() as i64;
+    let count = get_program_arg_count() as i64;
     Ok(Value::Int(count))
 }
 
 /// get_arg(n: i64) -> String
 /// Returns the nth command-line argument (0 = program name).
 /// Returns empty string if index is out of bounds.
+/// v0.46: Uses thread-local PROGRAM_ARGS instead of env::args()
 fn builtin_get_arg(args: &[Value]) -> InterpResult<Value> {
     if args.len() != 1 {
         return Err(RuntimeError::arity_mismatch("get_arg", 1, args.len()));
@@ -1982,7 +2930,7 @@ fn builtin_get_arg(args: &[Value]) -> InterpResult<Value> {
     match &args[0] {
         Value::Int(n) => {
             let idx = *n as usize;
-            let arg = env::args().nth(idx).unwrap_or_default();
+            let arg = get_program_arg(idx);
             Ok(Value::Str(Rc::new(arg)))
         }
         _ => Err(RuntimeError::type_error("integer", args[0].type_name())),
@@ -2114,44 +3062,105 @@ fn builtin_sb_clear(args: &[Value]) -> InterpResult<Value> {
     }
 }
 
-/// chr(code: i64) -> String
-/// Converts an ASCII code to a single-character string.
+/// chr(code: i64) -> char
+/// Converts a Unicode codepoint to a character.
 /// v0.31.21: Added for gotgan string handling
+/// v0.65: Updated to return char type with full Unicode support
+/// v0.50.18: Changed to return String to match C runtime behavior (bmb_chr returns char*)
 fn builtin_chr(args: &[Value]) -> InterpResult<Value> {
     if args.len() != 1 {
         return Err(RuntimeError::arity_mismatch("chr", 1, args.len()));
     }
     match &args[0] {
         Value::Int(code) => {
-            if *code < 0 || *code > 127 {
-                Err(RuntimeError::io_error(&format!("chr: code {} out of ASCII range (0-127)", code)))
+            if *code < 0 {
+                Err(RuntimeError::io_error(&format!("chr: negative code {}", code)))
+            } else if let Some(c) = char::from_u32(*code as u32) {
+                // Return single-char String to match C runtime behavior
+                Ok(Value::Str(std::rc::Rc::new(c.to_string())))
             } else {
-                Ok(Value::Str(Rc::new(String::from((*code as u8) as char))))
+                Err(RuntimeError::io_error(&format!("chr: invalid Unicode codepoint {}", code)))
             }
         }
         _ => Err(RuntimeError::type_error("i64", args[0].type_name())),
     }
 }
 
-/// ord(s: String) -> i64
-/// Returns the ASCII code of the first character in a string.
+/// ord(c: char) -> i64
+/// Returns the Unicode codepoint of a character.
 /// v0.31.21: Added for gotgan string handling
+/// v0.65: Updated to accept char type with full Unicode support
 fn builtin_ord(args: &[Value]) -> InterpResult<Value> {
     if args.len() != 1 {
         return Err(RuntimeError::arity_mismatch("ord", 1, args.len()));
     }
     match &args[0] {
-        Value::Str(s) => {
-            if s.is_empty() {
-                Err(RuntimeError::io_error("ord: empty string"))
-            } else {
-                let ch = s.chars().next().unwrap();
-                if ch.is_ascii() {
-                    Ok(Value::Int(ch as i64))
-                } else {
-                    Err(RuntimeError::io_error(&format!("ord: non-ASCII character '{}'", ch)))
-                }
+        Value::Char(c) => Ok(Value::Int(*c as u32 as i64)),
+        _ => Err(RuntimeError::type_error("char", args[0].type_name())),
+    }
+}
+
+/// char_at(s: String, idx: i64) -> char
+/// Returns the character at the given index (Unicode-aware).
+/// v0.66: Added for string-char interop
+/// v0.92: Fixed to handle StringRope (lazy concatenated strings)
+fn builtin_char_at(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 2 {
+        return Err(RuntimeError::arity_mismatch("char_at", 2, args.len()));
+    }
+    // v0.92: Use materialize_string to handle both Str and StringRope
+    let s = args[0]
+        .materialize_string()
+        .ok_or_else(|| RuntimeError::type_error("String", args[0].type_name()))?;
+    match &args[1] {
+        Value::Int(idx) => {
+            let idx = *idx;
+            if idx < 0 {
+                return Err(RuntimeError::io_error(&format!(
+                    "char_at: negative index {}",
+                    idx
+                )));
             }
+            let idx = idx as usize;
+            match s.chars().nth(idx) {
+                Some(c) => Ok(Value::Char(c)),
+                None => Err(RuntimeError::io_error(&format!(
+                    "char_at: index {} out of bounds (string has {} characters)",
+                    idx,
+                    s.chars().count()
+                ))),
+            }
+        }
+        other => Err(RuntimeError::type_error("i64", other.type_name())),
+    }
+}
+
+/// char_to_string(c: char) -> String
+/// Converts a character to a single-character string.
+/// v0.66: Added for string-char interop
+fn builtin_char_to_string(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 1 {
+        return Err(RuntimeError::arity_mismatch("char_to_string", 1, args.len()));
+    }
+    match &args[0] {
+        Value::Char(c) => Ok(Value::Str(Rc::new(c.to_string()))),
+        _ => Err(RuntimeError::type_error("char", args[0].type_name())),
+    }
+}
+
+/// str_len(s: String) -> i64
+/// Returns the Unicode character count of a string.
+/// Note: This is O(n) for UTF-8. Use s.len() for O(1) byte length.
+/// v0.67: Added for string utilities
+fn builtin_str_len(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 1 {
+        return Err(RuntimeError::arity_mismatch("str_len", 1, args.len()));
+    }
+    match &args[0] {
+        Value::Str(s) => Ok(Value::Int(s.chars().count() as i64)),
+        Value::StringRope(fragments) => {
+            let count: usize = fragments.borrow().iter().map(|s| s.chars().count()).sum();
+            Ok(Value::Int(count as i64))
         }
         _ => Err(RuntimeError::type_error("String", args[0].type_name())),
     }

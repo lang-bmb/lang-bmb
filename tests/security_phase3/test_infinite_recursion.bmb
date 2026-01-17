@@ -1,0 +1,4 @@
+// Phase 3 Security Test: Infinite recursion (no base case)
+fn infinite() -> i64 = infinite() + 1;
+
+fn main() -> i64 = infinite();

@@ -34,6 +34,22 @@ extern {
         // v0.5 Phase 3
         "for" => Token::For,
         "in" => Token::In,
+        // v0.36: Additional control flow
+        "loop" => Token::Loop,
+        "break" => Token::Break,
+        "continue" => Token::Continue,
+        "return" => Token::Return,
+        // v0.36: Bitwise operators
+        "band" => Token::Band,
+        "bor" => Token::Bor,
+        "bxor" => Token::Bxor,
+        "bnot" => Token::Bnot,
+        // v0.36: Contract keywords
+        "invariant" => Token::Invariant,
+        "implies" => Token::Implies,
+        // v0.37: Quantifiers
+        "forall" => Token::Forall,
+        "exists" => Token::Exists,
         // v0.5 Phase 4: Module system
         "pub" => Token::Pub,
         "use" => Token::Use,
@@ -46,11 +62,15 @@ extern {
         // v0.13.2: Error propagation
         "try" => Token::Try,
         "?" => Token::Question,
+        // v0.39: Type casting
+        "as" => Token::As,
         // v0.20.0: Closure syntax
         "|" => Token::Pipe,
         // v0.20.1: Trait system
         "trait" => Token::Trait,
         "impl" => Token::Impl,
+        // v0.50.6: Type alias
+        "type" => Token::Type,
         // v0.31: Incremental development
         "todo" => Token::Todo,
 
@@ -64,13 +84,20 @@ extern {
 
         "i32" => Token::TyI32,
         "i64" => Token::TyI64,
+        // v0.38: Unsigned integer types
+        "u32" => Token::TyU32,
+        "u64" => Token::TyU64,
         "f64" => Token::TyF64,
         "bool" => Token::TyBool,
         "String" => Token::TyString,
+        // v0.64: Character type
+        "char" => Token::TyChar,
 
         "int" => Token::IntLit(<i64>),
         "float" => Token::FloatLit(<f64>),
         "string" => Token::StringLit(<String>),
+        // v0.64: Character literal
+        "charlit" => Token::CharLit(<char>),
         "ident" => Token::Ident(<String>),
 
         ":" => Token::Colon,
@@ -108,6 +135,25 @@ extern {
         ">=" => Token::GtEq,
         "<" => Token::Lt,
         ">" => Token::Gt,
+        // v0.32: Shift operators
+        "<<" => Token::LtLt,
+        ">>" => Token::GtGt,
+        // v0.37: Wrapping arithmetic operators
+        "+%" => Token::PlusPercent,
+        "-%" => Token::MinusPercent,
+        "*%" => Token::StarPercent,
+        // v0.38: Checked arithmetic operators
+        "+?" => Token::PlusQuestion,
+        "-?" => Token::MinusQuestion,
+        "*?" => Token::StarQuestion,
+        // v0.38: Saturating arithmetic operators
+        "+|" => Token::PlusPipe,
+        "-|" => Token::MinusPipe,
+        "*|" => Token::StarPipe,
+        // v0.32: Symbolic logical operators
+        "&&" => Token::AmpAmp,
+        "||" => Token::PipePipe,
+        "!" => Token::Bang,
     }
 }
 
@@ -190,6 +236,9 @@ ImportIdent: Spanned<String> = {
     <i:Ident> => i,
     <l:@L> "i32" <r:@R> => Spanned::new("i32".to_string(), Span::new(l, r)),
     <l:@L> "i64" <r:@R> => Spanned::new("i64".to_string(), Span::new(l, r)),
+    // v0.38: Unsigned types
+    <l:@L> "u32" <r:@R> => Spanned::new("u32".to_string(), Span::new(l, r)),
+    <l:@L> "u64" <r:@R> => Spanned::new("u64".to_string(), Span::new(l, r)),
     <l:@L> "f64" <r:@R> => Spanned::new("f64".to_string(), Span::new(l, r)),
     <l:@L> "bool" <r:@R> => Spanned::new("bool".to_string(), Span::new(l, r)),
     <l:@L> "String" <r:@R> => Spanned::new("String".to_string(), Span::new(l, r)),
@@ -240,6 +289,95 @@ Item: Item = {
     <e:ExternFnDef> => Item::ExternFn(e),
     <t:TraitDef> => Item::TraitDef(t),
     <i:ImplBlock> => Item::ImplBlock(i),
+    // v0.50.6: Type alias
+    <ta:TypeAliasDef> => Item::TypeAlias(ta),
+};
+
+// v0.50.6: Type alias definition
+// Syntax: type Name = Type;
+// Syntax: type Name<T> = Type;
+// Syntax: type Name = Type where { condition };  (refinement type)
+TypeAliasDef: TypeAliasDef = {
+    // With attributes and type params and refinement
+    <l:@L> <attrs:Attr+> <vis:Visibility> "type" <name:Ident> <type_params:TypeParams> "=" <target:SpannedType> "where" "{" <refinement:SpannedExpr> "}" ";" <r:@R> => TypeAliasDef {
+        attributes: attrs,
+        visibility: vis,
+        name,
+        type_params,
+        target,
+        refinement: Some(refinement),
+        span: Span::new(l, r),
+    },
+    // With attributes and type params, no refinement
+    <l:@L> <attrs:Attr+> <vis:Visibility> "type" <name:Ident> <type_params:TypeParams> "=" <target:SpannedType> ";" <r:@R> => TypeAliasDef {
+        attributes: attrs,
+        visibility: vis,
+        name,
+        type_params,
+        target,
+        refinement: None,
+        span: Span::new(l, r),
+    },
+    // With attributes, no type params, with refinement
+    <l:@L> <attrs:Attr+> <vis:Visibility> "type" <name:Ident> "=" <target:SpannedType> "where" "{" <refinement:SpannedExpr> "}" ";" <r:@R> => TypeAliasDef {
+        attributes: attrs,
+        visibility: vis,
+        name,
+        type_params: vec![],
+        target,
+        refinement: Some(refinement),
+        span: Span::new(l, r),
+    },
+    // With attributes, no type params, no refinement
+    <l:@L> <attrs:Attr+> <vis:Visibility> "type" <name:Ident> "=" <target:SpannedType> ";" <r:@R> => TypeAliasDef {
+        attributes: attrs,
+        visibility: vis,
+        name,
+        type_params: vec![],
+        target,
+        refinement: None,
+        span: Span::new(l, r),
+    },
+    // Without attributes, with type params and refinement
+    <l:@L> <vis:Visibility> "type" <name:Ident> <type_params:TypeParams> "=" <target:SpannedType> "where" "{" <refinement:SpannedExpr> "}" ";" <r:@R> => TypeAliasDef {
+        attributes: vec![],
+        visibility: vis,
+        name,
+        type_params,
+        target,
+        refinement: Some(refinement),
+        span: Span::new(l, r),
+    },
+    // Without attributes, with type params, no refinement
+    <l:@L> <vis:Visibility> "type" <name:Ident> <type_params:TypeParams> "=" <target:SpannedType> ";" <r:@R> => TypeAliasDef {
+        attributes: vec![],
+        visibility: vis,
+        name,
+        type_params,
+        target,
+        refinement: None,
+        span: Span::new(l, r),
+    },
+    // Without attributes, no type params, with refinement
+    <l:@L> <vis:Visibility> "type" <name:Ident> "=" <target:SpannedType> "where" "{" <refinement:SpannedExpr> "}" ";" <r:@R> => TypeAliasDef {
+        attributes: vec![],
+        visibility: vis,
+        name,
+        type_params: vec![],
+        target,
+        refinement: Some(refinement),
+        span: Span::new(l, r),
+    },
+    // Without attributes, no type params, no refinement
+    <l:@L> <vis:Visibility> "type" <name:Ident> "=" <target:SpannedType> ";" <r:@R> => TypeAliasDef {
+        attributes: vec![],
+        visibility: vis,
+        name,
+        type_params: vec![],
+        target,
+        refinement: None,
+        span: Span::new(l, r),
+    },
 };
 
 // External function declaration (v0.13.0, v0.20.2 ABI support)
@@ -824,6 +962,16 @@ BoxedType: Box<Type> = {
     <t:Type> => Box::new(t),
 };
 
+// v0.42: Non-empty type list for tuples (at least one type required)
+TypeListNonEmpty: Vec<Box<Type>> = {
+    <t:BoxedType> => vec![t],
+    <v:TypeListNonEmpty> "," <t:BoxedType> => {
+        let mut v = v;
+        v.push(t);
+        v
+    },
+};
+
 // Refinement constraint list for T{constraints}
 RefinementConstraints: Vec<Spanned<Expr>> = {
     <v:(<SpannedExpr> ",")*> <e:SpannedExpr?> => match e {
@@ -846,6 +994,15 @@ Type: Type = {
         base: Box::new(Type::I64),
         constraints,
     },
+    // v0.38: Unsigned refinement types
+    "u32" "{" <constraints:RefinementConstraints> "}" => Type::Refined {
+        base: Box::new(Type::U32),
+        constraints,
+    },
+    "u64" "{" <constraints:RefinementConstraints> "}" => Type::Refined {
+        base: Box::new(Type::U64),
+        constraints,
+    },
     "f64" "{" <constraints:RefinementConstraints> "}" => Type::Refined {
         base: Box::new(Type::F64),
         constraints,
@@ -862,10 +1019,22 @@ Type: Type = {
 PlainType: Type = {
     "i32" => Type::I32,
     "i64" => Type::I64,
+    // v0.38: Unsigned integer types
+    "u32" => Type::U32,
+    "u64" => Type::U64,
     "f64" => Type::F64,
     "bool" => Type::Bool,
     "String" => Type::String,
+    // v0.64: Character type
+    "char" => Type::Char,
     "(" ")" => Type::Unit,
+    // v0.42: Tuple types: (T, U) or (T, U, V) or (T,) for 1-tuple
+    "(" <first:Type> "," ")" => Type::Tuple(vec![Box::new(first)]),
+    "(" <first:Type> "," <rest:TypeListNonEmpty> ")" => {
+        let mut elems = vec![Box::new(first)];
+        elems.extend(rest);
+        Type::Tuple(elems)
+    },
     // v0.5 Phase 5: Reference types
     "&" <t:Type> => Type::Ref(Box::new(t)),
     "&" "mut" <t:Type> => Type::RefMut(Box::new(t)),
@@ -873,6 +1042,22 @@ PlainType: Type = {
     "[" <t:Type> ";" <n:"int"> "]" => Type::Array(Box::new(t), n as usize),
     // v0.13.1: Generic type: Container<T>, Result<T, E>
     <name:RawIdent> "<" <args:TypeArgList> ">" => Type::Generic { name, type_args: args },
+    // v0.37: Nullable type suffix: T? (per spec, this is the only nullable syntax)
+    // Primitive nullable types
+    "i32" "?" => Type::Nullable(Box::new(Type::I32)),
+    "i64" "?" => Type::Nullable(Box::new(Type::I64)),
+    // v0.38: Unsigned nullable
+    "u32" "?" => Type::Nullable(Box::new(Type::U32)),
+    "u64" "?" => Type::Nullable(Box::new(Type::U64)),
+    "f64" "?" => Type::Nullable(Box::new(Type::F64)),
+    "bool" "?" => Type::Nullable(Box::new(Type::Bool)),
+    "String" "?" => Type::Nullable(Box::new(Type::String)),
+    // v0.64: Nullable char type
+    "char" "?" => Type::Nullable(Box::new(Type::Char)),
+    // Generic nullable: Vec<i64>?
+    <name:RawIdent> "<" <args:TypeArgList> ">" "?" => Type::Nullable(Box::new(Type::Generic { name, type_args: args })),
+    // Named nullable: MyStruct?
+    <name:RawIdent> "?" => Type::Nullable(Box::new(Type::Named(name))),
     // Named type or type variable (resolved later by type checker)
     <name:RawIdent> => Type::Named(name),
 };
@@ -882,9 +1067,40 @@ SpannedPlainType: Spanned<Type> = {
     <l:@L> <t:PlainType> <r:@R> => Spanned::new(t, Span::new(l, r)),
 };
 
+// v0.39: Cast target types (only primitive numeric types to avoid grammar ambiguity)
+// For complex type casts, use explicit let bindings with type annotations
+CastType: Type = {
+    "i32" => Type::I32,
+    "i64" => Type::I64,
+    "u32" => Type::U32,
+    "u64" => Type::U64,
+    "f64" => Type::F64,
+    "bool" => Type::Bool,
+};
+
+SpannedCastType: Spanned<Type> = {
+    <l:@L> <t:CastType> <r:@R> => Spanned::new(t, Span::new(l, r)),
+};
+
 // Expressions with span
 SpannedExpr: Spanned<Expr> = {
     <l:@L> <e:Expr> <r:@R> => Spanned::new(e, Span::new(l, r)),
+};
+
+// v0.32: If expression with span (for else-if chains)
+SpannedIfExpr: Spanned<Expr> = {
+    <l:@L> "if" <c:SpannedExpr> "{" <t:SpannedExpr> "}" "else" "{" <e:SpannedExpr> "}" <r:@R> =>
+        Spanned::new(Expr::If {
+            cond: Box::new(c),
+            then_branch: Box::new(t),
+            else_branch: Box::new(e),
+        }, Span::new(l, r)),
+    <l:@L> "if" <c:SpannedExpr> "{" <t:SpannedExpr> "}" "else" <elif:SpannedIfExpr> <r:@R> =>
+        Spanned::new(Expr::If {
+            cond: Box::new(c),
+            then_branch: Box::new(t),
+            else_branch: Box::new(elif),
+        }, Span::new(l, r)),
 };
 
 // Block statements (expressions or assignments)
@@ -899,11 +1115,18 @@ BlockStmt: Spanned<Expr> = {
 
 // Expressions (precedence from low to high)
 Expr: Expr = {
-    OrExpr,
-    "if" <c:SpannedExpr> "then" <t:SpannedExpr> "else" <e:SpannedExpr> => Expr::If {
+    ImpliesExpr,
+    // v0.32: Braced if-else syntax (Rust style)
+    "if" <c:SpannedExpr> "{" <t:SpannedExpr> "}" "else" "{" <e:SpannedExpr> "}" => Expr::If {
         cond: Box::new(c),
         then_branch: Box::new(t),
         else_branch: Box::new(e),
+    },
+    // v0.32: if-else if chain
+    "if" <c:SpannedExpr> "{" <t:SpannedExpr> "}" "else" <elif:SpannedIfExpr> => Expr::If {
+        cond: Box::new(c),
+        then_branch: Box::new(t),
+        else_branch: Box::new(elif),
     },
     "let" <m:"mut"?> <n:RawIdent> <ty:(":" <SpannedType>)?> "=" <v:SpannedExpr> ";" <b:SpannedExpr> => Expr::Let {
         name: n,
@@ -924,9 +1147,17 @@ Expr: Expr = {
         expr: Box::new(e),
         arms,
     },
-    // While loop (v0.5 Phase 2)
+    // While loop (v0.5 Phase 2, v0.37: optional invariant)
+    // Syntax: while cond invariant inv { body }
+    "while" <c:SpannedExpr> "invariant" <inv:SpannedExpr> "{" <body:SpannedExpr> "}" => Expr::While {
+        cond: Box::new(c),
+        invariant: Some(Box::new(inv)),
+        body: Box::new(body),
+    },
+    // While without invariant (backward compatible)
     "while" <c:SpannedExpr> "{" <body:SpannedExpr> "}" => Expr::While {
         cond: Box::new(c),
+        invariant: None,
         body: Box::new(body),
     },
     // For loop (v0.5 Phase 3)
@@ -935,8 +1166,28 @@ Expr: Expr = {
         iter: Box::new(iter),
         body: Box::new(body),
     },
-    // v0.13.2: Try block for error handling
-    "try" "{" <body:SpannedExpr> "}" => Expr::Try {
+    // v0.36: Additional control flow
+    // Infinite loop: loop { body }
+    "loop" "{" <body:SpannedExpr> "}" => Expr::Loop {
+        body: Box::new(body),
+    },
+    // Break: exits the innermost loop
+    "break" => Expr::Break { value: None },
+    // Continue to next iteration
+    "continue" => Expr::Continue,
+    // Early return (without value - use for unit-returning functions)
+    "return" => Expr::Return { value: None },
+    // v0.37: Quantifiers for verification
+    // forall x: T, condition (body is a logical expression)
+    "forall" <l:@L> <var:RawIdent> <r:@R> ":" <ty:SpannedType> "," <body:SpannedImpliesExpr> => Expr::Forall {
+        var: Spanned::new(var, Span::new(l, r)),
+        ty,
+        body: Box::new(body),
+    },
+    // exists x: T, condition (body is a logical expression)
+    "exists" <l:@L> <var:RawIdent> <r:@R> ":" <ty:SpannedType> "," <body:SpannedImpliesExpr> => Expr::Exists {
+        var: Spanned::new(var, Span::new(l, r)),
+        ty,
         body: Box::new(body),
     },
 };
@@ -954,16 +1205,54 @@ MatchArms: Vec<MatchArm> = {
 };
 
 MatchArm: MatchArm = {
-    <pattern:SpannedPattern> "=>" <body:SpannedExpr> => MatchArm { pattern, body },
+    // v0.40: Pattern with guard: pattern if cond => body
+    <pattern:SpannedPattern> "if" <guard:SpannedExpr> "=>" <body:SpannedExpr> => MatchArm {
+        pattern,
+        guard: Some(guard),
+        body,
+    },
+    // Pattern without guard: pattern => body
+    <pattern:SpannedPattern> "=>" <body:SpannedExpr> => MatchArm {
+        pattern,
+        guard: None,
+        body,
+    },
 };
 
 SpannedPattern: Spanned<Pattern> = {
     <l:@L> <p:Pattern> <r:@R> => Spanned::new(p, Span::new(l, r)),
 };
 
+// v0.40: Pattern with or-alternatives: A | B | C
 Pattern: Pattern = {
+    // Single pattern (most common case)
+    <p:AtomicPattern> => p,
+    // Or-pattern: A | B | ...
+    <first:SpannedAtomicPattern> <rest:("|" <SpannedAtomicPattern>)+> => {
+        let mut alts = vec![first];
+        alts.extend(rest);
+        Pattern::Or(alts)
+    },
+};
+
+SpannedAtomicPattern: Spanned<Pattern> = {
+    <l:@L> <p:AtomicPattern> <r:@R> => Spanned::new(p, Span::new(l, r)),
+};
+
+AtomicPattern: Pattern = {
     // Wildcard
     "_" => Pattern::Wildcard,
+    // v0.39: Range patterns (must be before simple literals to capture the range operator)
+    <start:"int"> ".." <end:"int"> => Pattern::Range {
+        start: LiteralPattern::Int(start),
+        end: LiteralPattern::Int(end),
+        inclusive: false,
+    },
+    <start:"int"> "..=" <end:"int"> => Pattern::Range {
+        start: LiteralPattern::Int(start),
+        end: LiteralPattern::Int(end),
+        inclusive: true,
+    },
     // Literal patterns
     <n:"int"> => Pattern::Literal(LiteralPattern::Int(n)),
     <n:"float"> => Pattern::Literal(LiteralPattern::Float(n)),
@@ -976,17 +1265,99 @@ Pattern: Pattern = {
         variant,
         bindings: vec![],
     },
-    <enum_name:RawIdent> "::" <variant:RawIdent> "(" <bindings:PatternBindings> ")" => Pattern::EnumVariant {
+    // v0.41: Now supports nested patterns in bindings
+    <enum_name:RawIdent> "::" <variant:RawIdent> "(" <bindings:EnumPatternBindings> ")" => Pattern::EnumVariant {
         enum_name,
         variant,
         bindings,
     },
-    // Variable binding (must be after enum variant to avoid ambiguity)
+    // v0.40: Struct pattern: Name { field: pattern, ... }
+    <name:RawIdent> "{" <fields:StructPatternFields> "}" => Pattern::Struct {
+        name,
+        fields,
+    },
+    // v0.41: Binding pattern: name @ pattern
+    <name:RawIdent> "@" <pat:SpannedAtomicPattern> => Pattern::Binding {
+        name,
+        pattern: Box::new(pat),
+    },
+    // v0.42: Tuple patterns - 1-tuple: (pat,)
+    "(" <p:SpannedPattern> "," ")" => Pattern::Tuple(vec![p]),
+    // v0.42: Tuple patterns - n-tuple: (pat1, pat2, ...)
+    "(" <first:SpannedPattern> "," <rest:TuplePatternElems> ")" => {
+        let mut elems = vec![first];
+        elems.extend(rest);
+        Pattern::Tuple(elems)
+    },
+    // v0.44-45: Array patterns (unified to avoid LR conflicts)
+    // Handles both regular arrays [a, b, c] and rest patterns [a, .., b]
+    "[" "]" => Pattern::Array(vec![]),
+    "[" <parts:ArrayPatternParts> "]" => ArrayPatternPart::into_pattern(parts),
+    // Variable binding (must be after enum variant, struct pattern, and binding to avoid ambiguity)
     <n:RawIdent> => Pattern::Var(n),
+};
+
+// v0.40: Struct pattern fields
+StructPatternFields: Vec<(Spanned<String>, Spanned<Pattern>)> = {
+    <v:(<StructPatternField> ",")*> <e:StructPatternField?> => match e {
+        None => v,
+        Some(e) => {
+            let mut v = v;
+            v.push(e);
+            v
+        }
+    },
+};
+
+StructPatternField: (Spanned<String>, Spanned<Pattern>) = {
+    <name:Ident> ":" <pat:SpannedPattern> => (name, pat),
+};
+
+// v0.42: Tuple pattern elements (at least one pattern required)
+TuplePatternElems: Vec<Spanned<Pattern>> = {
+    <p:SpannedPattern> => vec![p],
+    <v:TuplePatternElems> "," <p:SpannedPattern> => {
+        let mut v = v;
+        v.push(p);
+        v
+    },
+};
+
+// v0.44-45: Array pattern parts (unified for both regular and rest patterns)
+// Can contain patterns and at most one ".." rest marker
+ArrayPatternParts: Vec<ArrayPatternPart> = {
+    // Single pattern
+    <p:SpannedPattern> => vec![ArrayPatternPart::Pattern(p)],
+    // Single rest marker
+    ".." => vec![ArrayPatternPart::Rest],
+    // Pattern followed by more parts
+    <v:ArrayPatternParts> "," <p:SpannedPattern> => {
+        let mut v = v;
+        v.push(ArrayPatternPart::Pattern(p));
+        v
+    },
+    // Parts followed by rest marker
+    <v:ArrayPatternParts> "," ".." => {
+        let mut v = v;
+        v.push(ArrayPatternPart::Rest);
+        v
+    },
 };
 
 PatternBindings: Vec<Spanned<String>> = {
     <v:(<Ident> ",")*> <e:Ident?> => match e {
+        None => v,
+        Some(e) => {
+            let mut v = v;
+            v.push(e);
+            v
+        }
+    },
+};
+
+// v0.41: Enum pattern bindings - now supports full nested patterns
+EnumPatternBindings: Vec<Spanned<Pattern>> = {
+    <v:(<SpannedPattern> ",")*> <e:SpannedPattern?> => match e {
         None => v,
         Some(e) => {
             let mut v = v;
@@ -1016,16 +1387,36 @@ RangeExpr: Expr = {
         end: Box::new(end),
         kind: RangeKind::Exclusive, // legacy: treat as exclusive
     },
-    OrExpr,
+    ImpliesExpr,
 };
 
 SpannedRangeExpr: Spanned<Expr> = {
     <l:@L> <e:RangeExpr> <r:@R> => Spanned::new(e, Span::new(l, r)),
 };
 
-// Or expression
+// v0.36: Implies expression (logical implication for contracts)
+// Precedence: lowest of logical operators (implies < or < and)
+ImpliesExpr: Expr = {
+    <l:SpannedImpliesExpr> "implies" <r:SpannedOrExpr> => Expr::Binary {
+        left: Box::new(l),
+        op: BinOp::Implies,
+        right: Box::new(r),
+    },
+    OrExpr,
+};
+
+SpannedImpliesExpr: Spanned<Expr> = {
+    <l:@L> <e:ImpliesExpr> <r:@R> => Spanned::new(e, Span::new(l, r)),
+};
+
+// Or expression (v0.32: both "or" and "||")
 OrExpr: Expr = {
     <l:SpannedOrExpr> "or" <r:SpannedAndExpr> => Expr::Binary {
+        left: Box::new(l),
+        op: BinOp::Or,
+        right: Box::new(r),
+    },
+    <l:SpannedOrExpr> "||" <r:SpannedAndExpr> => Expr::Binary {
         left: Box::new(l),
         op: BinOp::Or,
         right: Box::new(r),
@@ -1037,9 +1428,14 @@ SpannedOrExpr: Spanned<Expr> = {
     <l:@L> <e:OrExpr> <r:@R> => Spanned::new(e, Span::new(l, r)),
 };
 
-// And expression
+// And expression (v0.32: both "and" and "&&")
 AndExpr: Expr = {
     <l:SpannedAndExpr> "and" <r:SpannedCmpExpr> => Expr::Binary {
+        left: Box::new(l),
+        op: BinOp::And,
+        right: Box::new(r),
+    },
+    <l:SpannedAndExpr> "&&" <r:SpannedCmpExpr> => Expr::Binary {
         left: Box::new(l),
         op: BinOp::And,
         right: Box::new(r),
@@ -1053,12 +1449,54 @@ SpannedAndExpr: Spanned<Expr> = {
 
 // Comparison expression
 CmpExpr: Expr = {
-    <l:SpannedAddExpr> <op:CmpOp> <r:SpannedAddExpr> => Expr::Binary {
+    <l:SpannedBorExpr> <op:CmpOp> <r:SpannedBorExpr> => Expr::Binary {
         left: Box::new(l),
         op,
         right: Box::new(r),
     },
-    AddExpr,
+    BorExpr,
+};
+
+// v0.36: Bitwise OR expression (lowest bitwise precedence)
+BorExpr: Expr = {
+    <l:SpannedBorExpr> "bor" <r:SpannedBxorExpr> => Expr::Binary {
+        left: Box::new(l),
+        op: BinOp::Bor,
+        right: Box::new(r),
+    },
+    BxorExpr,
+};
+
+SpannedBorExpr: Spanned<Expr> = {
+    <l:@L> <e:BorExpr> <r:@R> => Spanned::new(e, Span::new(l, r)),
+};
+
+// v0.36: Bitwise XOR expression
+BxorExpr: Expr = {
+    <l:SpannedBxorExpr> "bxor" <r:SpannedBandExpr> => Expr::Binary {
+        left: Box::new(l),
+        op: BinOp::Bxor,
+        right: Box::new(r),
+    },
+    BandExpr,
+};
+
+SpannedBxorExpr: Spanned<Expr> = {
+    <l:@L> <e:BxorExpr> <r:@R> => Spanned::new(e, Span::new(l, r)),
+};
+
+// v0.36: Bitwise AND expression (highest bitwise precedence)
+BandExpr: Expr = {
+    <l:SpannedBandExpr> "band" <r:SpannedShiftExpr> => Expr::Binary {
+        left: Box::new(l),
+        op: BinOp::Band,
+        right: Box::new(r),
+    },
+    ShiftExpr,
+};
+
+SpannedBandExpr: Spanned<Expr> = {
+    <l:@L> <e:BandExpr> <r:@R> => Spanned::new(e, Span::new(l, r)),
 };
 
 SpannedCmpExpr: Spanned<Expr> = {
@@ -1072,6 +1510,25 @@ CmpOp: BinOp = {
     ">" => BinOp::Gt,
     "<=" => BinOp::Le,
     ">=" => BinOp::Ge,
+};
+
+// v0.32: Shift expression
+ShiftExpr: Expr = {
+    <l:SpannedShiftExpr> "<<" <r:SpannedAddExpr> => Expr::Binary {
+        left: Box::new(l),
+        op: BinOp::Shl,
+        right: Box::new(r),
+    },
+    <l:SpannedShiftExpr> ">>" <r:SpannedAddExpr> => Expr::Binary {
+        left: Box::new(l),
+        op: BinOp::Shr,
+        right: Box::new(r),
+    },
+    AddExpr,
+};
+
+SpannedShiftExpr: Spanned<Expr> = {
+    <l:@L> <e:ShiftExpr> <r:@R> => Spanned::new(e, Span::new(l, r)),
 };
 
 // Additive expression
@@ -1091,6 +1548,15 @@ SpannedAddExpr: Spanned<Expr> = {
 AddOp: BinOp = {
     "+" => BinOp::Add,
     "-" => BinOp::Sub,
+    // v0.37: Wrapping arithmetic
+    "+%" => BinOp::AddWrap,
+    "-%" => BinOp::SubWrap,
+    // v0.38: Checked arithmetic
+    "+?" => BinOp::AddChecked,
+    "-?" => BinOp::SubChecked,
+    // v0.38: Saturating arithmetic
+    "+|" => BinOp::AddSat,
+    "-|" => BinOp::SubSat,
 };
 
 // Multiplicative expression
@@ -1111,6 +1577,12 @@ MulOp: BinOp = {
     "*" => BinOp::Mul,
     "/" => BinOp::Div,
     "%" => BinOp::Mod,
+    // v0.37: Wrapping multiplication
+    "*%" => BinOp::MulWrap,
+    // v0.38: Checked multiplication
+    "*?" => BinOp::MulChecked,
+    // v0.38: Saturating multiplication
+    "*|" => BinOp::MulSat,
 };
 
 // Unary expression
@@ -1121,6 +1593,16 @@ UnaryExpr: Expr = {
     },
     "not" <e:SpannedUnaryExpr> => Expr::Unary {
         op: UnOp::Not,
+        expr: Box::new(e),
+    },
+    // v0.32: Symbolic logical not
+    "!" <e:SpannedUnaryExpr> => Expr::Unary {
+        op: UnOp::Not,
+        expr: Box::new(e),
+    },
+    // v0.36: Bitwise not
+    "bnot" <e:SpannedUnaryExpr> => Expr::Unary {
+        op: UnOp::Bnot,
         expr: Box::new(e),
     },
     // v0.5 Phase 5: References
@@ -1134,11 +1616,12 @@ SpannedUnaryExpr: Spanned<Expr> = {
     <l:@L> <e:UnaryExpr> <r:@R> => Spanned::new(e, Span::new(l, r)),
 };
 
-// Postfix expression (method calls, field access, index, state refs, ?)
+// Postfix expression (method calls, field access, index, state refs, as, ?)
 PostfixExpr: Expr = {
-    // v0.13.2: Question mark operator for error propagation: expr?
-    <e:SpannedPostfixExpr> "?" => Expr::Question {
+    // v0.39: Type cast: expr as Type (restricted to primitive types)
+    <e:SpannedPostfixExpr> "as" <ty:SpannedCastType> => Expr::Cast {
         expr: Box::new(e),
+        ty,
     },
     // v0.2: State reference: expr.pre (pre-state in contracts)
     <e:SpannedPostfixExpr> "." "pre" => Expr::StateRef {
@@ -1155,6 +1638,11 @@ PostfixExpr: Expr = {
         receiver: Box::new(e),
         method,
         args,
+    },
+    // v0.43: Tuple field access: expr.0, expr.1, etc.
+    <e:SpannedPostfixExpr> "." <idx:"int"> => Expr::TupleField {
+        expr: Box::new(e),
+        index: idx as usize,
     },
     // Field access: expr.field
     <e:SpannedPostfixExpr> "." <field:Ident> => Expr::FieldAccess {
@@ -1209,6 +1697,8 @@ Primary: Expr = {
     "int" => Expr::IntLit(<>),
     "float" => Expr::FloatLit(<>),
     "string" => Expr::StringLit(<>),
+    // v0.64: Character literal
+    "charlit" => Expr::CharLit(<>),
     "true" => Expr::BoolLit(true),
     "false" => Expr::BoolLit(false),
     "ret" => Expr::Ret,
@@ -1216,6 +1706,15 @@ Primary: Expr = {
     // v0.31: Todo expression
     "todo" <msg:"string"?> => Expr::Todo { message: msg },
     "(" ")" => Expr::Unit,
+    // v0.42: Tuple expressions - 1-tuple: (expr,)
+    "(" <e:SpannedExpr> "," ")" => Expr::Tuple(vec![e]),
+    // v0.42: Tuple expressions - n-tuple: (expr1, expr2, ...)
+    "(" <first:SpannedExpr> "," <rest:TupleElems> ")" => {
+        let mut elems = vec![first];
+        elems.extend(rest);
+        Expr::Tuple(elems)
+    },
+    // Grouped expression (must come after tuple rules to avoid conflicts)
     "(" <Expr> ")",
     <n:RawIdent> => Expr::Var(n),
     // Struct initialization: new StructName { field: value, ... }
@@ -1229,7 +1728,8 @@ Primary: Expr = {
     // Using "fn" prefix for unambiguous parsing: fn |params| { body }
     // Body must be a block expression to avoid grammar conflicts
     // Empty closure: fn || { expr }
-    "fn" "|" "|" <l:@L> "{" <es:(<BlockStmt> ";")*> <last:BlockStmt?> "}" <r:@R> => Expr::Closure {
+    // v0.32: "||" is now a single token, so accept both forms
+    "fn" "||" <l:@L> "{" <es:(<BlockStmt> ";")*> <last:BlockStmt?> "}" <r:@R> => Expr::Closure {
         params: vec![],
         ret_ty: None,
         body: Box::new({
@@ -1279,6 +1779,16 @@ ArrayElems: Vec<Spanned<Expr>> = {
             v.push(e);
             v
         }
+    },
+};
+
+// v0.42: Tuple elements (at least one element required)
+TupleElems: Vec<Spanned<Expr>> = {
+    <e:SpannedExpr> => vec![e],
+    <v:TupleElems> "," <e:SpannedExpr> => {
+        let mut v = v;
+        v.push(e);
+        v
     },
 };
 

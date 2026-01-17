@@ -1,180 +1,155 @@
--- BMB Bootstrap MIR Optimizer (v0.30.185: Extended test coverage)
--- Port of bmb/src/mir/optimize.rs to BMB
---
--- Optimization passes for MIR text format:
--- 1. ConstantFolding - Evaluate constant expressions at compile time
--- 2. DeadCodeElimination - Remove unreachable code
--- 3. SimplifyBranches - Optimize conditional branches
--- 4. CopyPropagation - Replace copies with originals
---
--- MIR text format:
--- fn name(params) -> type {
--- entry:
---   %_t0 = const I:42
---   %_t1 = + %a, %b
---   return %_t0
--- }
+// BMB Bootstrap MIR Optimizer (v0.30.185: Extended test coverage)
+// Port of bmb/src/mir/optimize.rs to BMB
+//
+// Optimization passes for MIR text format:
+// 1. ConstantFolding - Evaluate constant expressions at compile time
+// 2. DeadCodeElimination - Remove unreachable code
+// 3. SimplifyBranches - Optimize conditional branches
+// 4. CopyPropagation - Replace copies with originals
+//
+// MIR text format:
+// fn name(params) -> type {
+// entry:
+//   %_t0 = const I:42
+//   %_t1 = + %a, %b
+//   return %_t0
+// }
 
--- ============================================================================
--- SECTION 1: String Utilities
--- ============================================================================
+// ============================================================================
+// SECTION 1: String Utilities
+// ============================================================================
 
 fn digit_char(d: i64) -> String =
-    if d == 0 then "0" else if d == 1 then "1" else if d == 2 then "2"
-    else if d == 3 then "3" else if d == 4 then "4" else if d == 5 then "5"
-    else if d == 6 then "6" else if d == 7 then "7" else if d == 8 then "8"
-    else "9";
+    if d == 0 { "0" } else if d == 1 { "1" } else if d == 2 { "2" } else if d == 3 { "3" } else if d == 4 { "4" } else if d == 5 { "5" } else if d == 6 { "6" } else if d == 7 { "7" } else if d == 8 { "8" } else { "9" };
 
 fn int_to_string(n: i64) -> String =
-    if n < 0 then "-" + int_to_string(0 - n)
-    else if n < 10 then digit_char(n)
-    else int_to_string(n / 10) + digit_char(n - (n / 10) * 10);
+    if n < 0 { "-" + int_to_string(0 - n) } else if n < 10 { digit_char(n) } else { int_to_string(n / 10) + digit_char(n - (n / 10) * 10) };
 
 fn is_whitespace(c: i64) -> bool = c == 32 or c == 9 or c == 10 or c == 13;
 fn is_digit(c: i64) -> bool = c >= 48 and c <= 57;
 
 fn skip_ws(s: String, pos: i64) -> i64 =
-    if pos >= s.len() then pos
-    else if is_whitespace(s.char_at(pos)) then skip_ws(s, pos + 1)
-    else pos;
+    if pos >= s.len() { pos } else if is_whitespace(s.byte_at(pos)) { skip_ws(s, pos + 1) } else { pos };
 
 fn starts_with(s: String, pat: String, pos: i64) -> bool =
-    if pos + pat.len() > s.len() then false
-    else s.slice(pos, pos + pat.len()) == pat;
+    if pos + pat.len() > s.len() { false } else { s.slice(pos, pos + pat.len()) == pat };
 
 fn find_char(s: String, c: i64, pos: i64) -> i64 =
-    if pos >= s.len() then 0 - 1
-    else if s.char_at(pos) == c then pos
-    else find_char(s, c, pos + 1);
+    if pos >= s.len() { 0 - 1 } else if s.byte_at(pos) == c { pos } else { find_char(s, c, pos + 1) };
 
 fn find_pattern(s: String, pat: String, pos: i64) -> i64 =
-    if pos + pat.len() > s.len() then 0 - 1
-    else if starts_with(s, pat, pos) then pos
-    else find_pattern(s, pat, pos + 1);
+    if pos + pat.len() > s.len() { 0 - 1 } else if starts_with(s, pat, pos) { pos } else { find_pattern(s, pat, pos + 1) };
 
--- Parse integer from string
+// Parse integer from string
 fn parse_int_at(s: String, pos: i64, acc: i64) -> i64 =
-    if pos >= s.len() then acc
-    else if is_digit(s.char_at(pos)) then
-        parse_int_at(s, pos + 1, acc * 10 + (s.char_at(pos) - 48))
-    else acc;
+    if pos >= s.len() { acc } else if is_digit(s.byte_at(pos)) { parse_int_at(s, pos + 1, acc * 10 + (s.byte_at(pos) - 48)) } else { acc };
 
--- ============================================================================
--- SECTION 2: MIR Parsing Utilities
--- ============================================================================
+// ============================================================================
+// SECTION 2: MIR Parsing Utilities
+// ============================================================================
 
--- Check if line is a constant instruction: %var = const I:value
+// Check if line is a constant instruction: %let mut = const I:value
 fn is_const_inst(line: String) -> bool =
     let eq_pos = find_pattern(line, " = const ", 0);
     eq_pos > 0;
 
--- Check if line is a binary operation: %var = op %a, %b
+// Check if line is a binary operation: %let mut = op %a, %b
 fn is_binop_inst(line: String) -> bool =
     let eq_pos = find_pattern(line, " = ", 0);
-    if eq_pos < 0 then false
-    else
+    if eq_pos < 0 { false } else {
         let rest = line.slice(eq_pos + 3, line.len());
         starts_with(rest, "+ ", 0) or
         starts_with(rest, "- ", 0) or
         starts_with(rest, "* ", 0) or
         starts_with(rest, "/ ", 0) or
-        starts_with(rest, "% ", 0);
+        starts_with(rest, "% ", 0)
+    };
 
--- Check if line is a copy instruction: %var = copy %src
+// Check if line is a copy instruction: %let mut = copy %src
 fn is_copy_inst(line: String) -> bool =
     find_pattern(line, " = copy %", 0) > 0;
 
--- Check if line is a branch: branch %cond, label1, label2
+// Check if line is a branch: branch %cond, label1, label2
 fn is_branch_inst(line: String) -> bool =
     starts_with(line.slice(skip_ws(line, 0), line.len()), "branch ", 0);
 
--- Check if line is a return: return %var
+// Check if line is a return: return %var
 fn is_return_inst(line: String) -> bool =
     starts_with(line.slice(skip_ws(line, 0), line.len()), "return ", 0);
 
--- Check if line is a label: name:
+// Check if line is a label: name:
 fn is_label(line: String) -> bool =
     let trimmed = line.slice(skip_ws(line, 0), line.len());
-    let colon_pos = find_char(trimmed, 58, 0); -- ':'
-    if colon_pos < 0 then false
-    else colon_pos == trimmed.len() - 1;
+    let colon_pos = find_char(trimmed, 58, 0); // ':'
+    if colon_pos < 0 { false } else { colon_pos == trimmed.len() - 1 };
 
--- Extract destination variable from assignment: %var = ...
+// Extract destination variable from assignment: %let mut = ...
+// '%' = 37
 fn extract_dest(line: String) -> String =
     let start = skip_ws(line, 0);
-    if start >= line.len() then ""
-    else if line.char_at(start) != 37 then "" -- '%'
-    else
+    if start >= line.len() { "" } else if line.byte_at(start) != 37 { "" } else {
         let eq_pos = find_pattern(line, " = ", start);
-        if eq_pos < 0 then ""
-        else line.slice(start, eq_pos);
+        if eq_pos < 0 { "" } else { line.slice(start, eq_pos) }
+    };
 
--- Extract constant value from: %var = const I:value
+// Extract constant value from: %let mut = const I:value
 fn extract_const_value(line: String) -> i64 =
     let const_pos = find_pattern(line, "const I:", 0);
-    if const_pos < 0 then 0
-    else parse_int_at(line, const_pos + 8, 0);
+    if const_pos < 0 { 0 } else { parse_int_at(line, const_pos + 8, 0) };
 
--- Extract operands from binary op: %var = op %a, %b -> (%a, %b)
+// Extract operands from binary op: %let mut = op %a, %b -> (%a, %b)
+// '%' = 37, ',' = 44
 fn extract_binop_left(line: String) -> String =
     let eq_pos = find_pattern(line, " = ", 0);
-    if eq_pos < 0 then ""
-    else
+    if eq_pos < 0 { "" } else {
         let rest = line.slice(eq_pos + 3, line.len());
-        let pct1 = find_char(rest, 37, 0); -- '%'
-        if pct1 < 0 then ""
-        else
-            let comma = find_char(rest, 44, pct1); -- ','
-            if comma < 0 then ""
-            else rest.slice(pct1, comma);
+        let pct1 = find_char(rest, 37, 0);
+        if pct1 < 0 { "" } else {
+            let comma = find_char(rest, 44, pct1);
+            if comma < 0 { "" } else { rest.slice(pct1, comma) }
+        }
+    };
 
 fn extract_binop_right(line: String) -> String =
     let comma = find_char(line, 44, 0);
-    if comma < 0 then ""
-    else
+    if comma < 0 { "" } else {
         let rest = line.slice(comma + 1, line.len());
         let pct = find_char(rest, 37, 0);
-        if pct < 0 then ""
-        else rest.slice(pct, rest.len());
+        if pct < 0 { "" } else { rest.slice(pct, rest.len()) }
+    };
 
--- Extract binary operator: +, -, *, /, %
+// Extract binary operator: +, -, *, /, %
 fn extract_binop(line: String) -> String =
     let eq_pos = find_pattern(line, " = ", 0);
-    if eq_pos < 0 then ""
-    else
+    if eq_pos < 0 { "" } else {
         let rest = line.slice(eq_pos + 3, line.len());
-        if starts_with(rest, "+ ", 0) then "+"
-        else if starts_with(rest, "- ", 0) then "-"
-        else if starts_with(rest, "* ", 0) then "*"
-        else if starts_with(rest, "/ ", 0) then "/"
-        else if starts_with(rest, "% ", 0) then "%"
-        else "";
+        if starts_with(rest, "+ ", 0) { "+" } else if starts_with(rest, "- ", 0) { "-" } else if starts_with(rest, "* ", 0) { "*" } else if starts_with(rest, "/ ", 0) { "/" } else if starts_with(rest, "% ", 0) { "%" } else { "" }
+    };
 
--- ============================================================================
--- SECTION 3: Constant Table
--- ============================================================================
+// ============================================================================
+// SECTION 3: Constant Table
+// ============================================================================
 
--- Simple key:value store using | separator
--- Format: "key1:val1|key2:val2|..."
+// Simple key:value store using | separator
+// Format: "key1:val1|key2:val2|..."
 
 fn const_table_empty() -> String = "";
 
 fn const_table_set(table: String, key: String, val: i64) -> String =
-    if table == "" then key + ":" + int_to_string(val)
-    else table + "|" + key + ":" + int_to_string(val);
+    if table == "" { key + ":" + int_to_string(val) } else { table + "|" + key + ":" + int_to_string(val) };
 
+// '|' = 124, ':' = 58
 fn const_table_get_helper(table: String, key: String, pos: i64) -> i64 =
-    if pos >= table.len() then 0 - 99999999
-    else
-        let pipe = find_char(table, 124, pos); -- '|'
-        let end_pos = if pipe < 0 then table.len() else pipe;
+    if pos >= table.len() { 0 - 99999999 } else {
+        let pipe = find_char(table, 124, pos);
+        let end_pos = if pipe < 0 { table.len() } else { pipe };
         let entry = table.slice(pos, end_pos);
-        let colon = find_char(entry, 58, 0); -- ':'
-        if colon < 0 then const_table_get_helper(table, key, end_pos + 1)
-        else
+        let colon = find_char(entry, 58, 0);
+        if colon < 0 { const_table_get_helper(table, key, end_pos + 1) } else {
             let entry_key = entry.slice(0, colon);
-            if entry_key == key then parse_int_at(entry, colon + 1, 0)
-            else const_table_get_helper(table, key, end_pos + 1);
+            if entry_key == key { parse_int_at(entry, colon + 1, 0) } else { const_table_get_helper(table, key, end_pos + 1) }
+        }
+    };
 
 fn const_table_get(table: String, key: String) -> i64 =
     const_table_get_helper(table, key, 0);
@@ -182,186 +157,175 @@ fn const_table_get(table: String, key: String) -> i64 =
 fn const_table_has(table: String, key: String) -> bool =
     const_table_get(table, key) != 0 - 99999999;
 
--- ============================================================================
--- SECTION 4: Constant Folding Pass
--- ============================================================================
+// ============================================================================
+// SECTION 4: Constant Folding Pass
+// ============================================================================
 
--- Evaluate binary operation on constants
+// Evaluate binary operation on constants
 fn eval_binop(op: String, left: i64, right: i64) -> i64 =
-    if op == "+" then left + right
-    else if op == "-" then left - right
-    else if op == "*" then left * right
-    else if op == "/" then if right == 0 then 0 else left / right
-    else if op == "%" then if right == 0 then 0 else left - (left / right) * right
-    else 0;
+    if op == "+" { left + right } else if op == "-" { left - right } else if op == "*" { left * right } else if op == "/" { if right == 0 { 0 } else { left / right } } else if op == "%" { if right == 0 { 0 } else { left - (left / right) * right } } else { 0 };
 
--- Process single instruction for constant folding
--- Returns: "changed;new_table;new_line" (using ; to avoid conflict with table's :)
+// Process single instruction for constant folding
+// Returns: "changed;new_table;new_line" (using ; to avoid conflict with table's :)
 fn fold_const_inst(line: String, const_table: String) -> String =
-    if is_const_inst(line) then
+    if is_const_inst(line) {
         let dest = extract_dest(line);
         let val = extract_const_value(line);
         let new_table = const_table_set(const_table, dest, val);
         "0;" + new_table + ";" + line
-    else if is_binop_inst(line) then
+    } else if is_binop_inst(line) {
         let dest = extract_dest(line);
         let op = extract_binop(line);
         let left = extract_binop_left(line);
         let right = extract_binop_right(line);
-        if const_table_has(const_table, left) and const_table_has(const_table, right) then
+        if const_table_has(const_table, left) and const_table_has(const_table, right) {
             let left_val = const_table_get(const_table, left);
             let right_val = const_table_get(const_table, right);
             let result = eval_binop(op, left_val, right_val);
             let new_line = "  " + dest + " = const I:" + int_to_string(result);
             let new_table = const_table_set(const_table, dest, result);
             "1;" + new_table + ";" + new_line
-        else "0;" + const_table + ";" + line
-    else "0;" + const_table + ";" + line;
+        } else { "0;" + const_table + ";" + line }
+    } else { "0;" + const_table + ";" + line };
 
--- ============================================================================
--- SECTION 5: Dead Code Elimination Pass
--- ============================================================================
+// ============================================================================
+// SECTION 5: Dead Code Elimination Pass
+// ============================================================================
 
--- Check if variable is used in line
+// Check if variable is used in line
 fn is_var_used_in_line(line: String, target: String) -> bool =
-    if target == "" then false
-    else find_pattern(line, target, 0) >= 0;
+    if target == "" { false } else { find_pattern(line, target, 0) >= 0 };
 
--- Check if variable is used in any line after pos
+// Check if variable is used in any line after pos
 fn is_var_used_after(lines: String, target: String, pos: i64) -> bool =
-    if pos >= lines.len() then false
-    else
+    if pos >= lines.len() { false } else {
         let pipe = find_char(lines, 124, pos);
-        let end_pos = if pipe < 0 then lines.len() else pipe;
+        let end_pos = if pipe < 0 { lines.len() } else { pipe };
         let line = lines.slice(pos, end_pos);
-        if is_var_used_in_line(line, target) then true
-        else is_var_used_after(lines, target, end_pos + 1);
+        if is_var_used_in_line(line, target) { true } else { is_var_used_after(lines, target, end_pos + 1) }
+    };
 
--- Check if instruction has side effects
+// Check if instruction has side effects
 fn has_side_effects(line: String) -> bool =
     find_pattern(line, "call ", 0) >= 0 or
     find_pattern(line, "store ", 0) >= 0 or
     is_branch_inst(line) or
     is_return_inst(line);
 
--- ============================================================================
--- SECTION 6: Branch Simplification Pass
--- ============================================================================
+// ============================================================================
+// SECTION 6: Branch Simplification Pass
+// ============================================================================
 
--- Check if branch condition is constant true (1) or false (0)
+// Check if branch condition is constant true (1) or false (0)
+// '%' = 37, ',' = 44
 fn get_branch_const_cond(line: String, const_table: String) -> i64 =
-    if not is_branch_inst(line) then 0 - 1
-    else
-        let pct = find_char(line, 37, 0); -- '%'
-        if pct < 0 then 0 - 1
-        else
+    if not is_branch_inst(line) { 0 - 1 } else {
+        let pct = find_char(line, 37, 0);
+        if pct < 0 { 0 - 1 } else {
             let comma = find_char(line, 44, pct);
-            if comma < 0 then 0 - 1
-            else
+            if comma < 0 { 0 - 1 } else {
                 let cond_var = line.slice(pct, comma);
-                if const_table_has(const_table, cond_var) then
-                    const_table_get(const_table, cond_var)
-                else 0 - 1;
+                if const_table_has(const_table, cond_var) { const_table_get(const_table, cond_var) } else { 0 - 1 }
+            }
+        }
+    };
 
--- Simplify branch to unconditional goto if condition is constant
+// Simplify branch to unconditional goto if condition is constant
 fn simplify_branch(line: String, const_table: String) -> String =
     let cond = get_branch_const_cond(line, const_table);
-    if cond < 0 then line
-    else if cond != 0 then
-        -- Take then branch
+    if cond < 0 { line } else if cond != 0 {
+        // Take then branch
         let comma1 = find_char(line, 44, 0);
-        if comma1 < 0 then line
-        else
+        if comma1 < 0 { line } else {
             let comma2 = find_char(line, 44, comma1 + 1);
-            if comma2 < 0 then line
-            else
+            if comma2 < 0 { line } else {
                 let then_label = line.slice(comma1 + 2, comma2);
                 "  goto " + then_label
-    else
-        -- Take else branch
+            }
+        }
+    } else {
+        // Take else branch
         let comma1 = find_char(line, 44, 0);
-        if comma1 < 0 then line
-        else
+        if comma1 < 0 { line } else {
             let comma2 = find_char(line, 44, comma1 + 1);
-            if comma2 < 0 then line
-            else
+            if comma2 < 0 { line } else {
                 let else_label = line.slice(comma2 + 2, line.len());
-                "  goto " + else_label;
+                "  goto " + else_label
+            }
+        }
+    };
 
--- ============================================================================
--- SECTION 7: Copy Propagation Pass
--- ============================================================================
+// ============================================================================
+// SECTION 7: Copy Propagation Pass
+// ============================================================================
 
--- Copy table for copy propagation
--- Format: "%dest:%src|..."
+// Copy table for copy propagation
+// Format: "%dest:%src|..."
 
 fn copy_table_empty() -> String = "";
 
 fn copy_table_set(table: String, dest: String, src: String) -> String =
-    if table == "" then dest + ":" + src
-    else table + "|" + dest + ":" + src;
+    if table == "" { dest + ":" + src } else { table + "|" + dest + ":" + src };
 
 fn copy_table_get_helper(table: String, key: String, pos: i64) -> String =
-    if pos >= table.len() then ""
-    else
+    if pos >= table.len() { "" } else {
         let pipe = find_char(table, 124, pos);
-        let end_pos = if pipe < 0 then table.len() else pipe;
+        let end_pos = if pipe < 0 { table.len() } else { pipe };
         let entry = table.slice(pos, end_pos);
         let colon = find_char(entry, 58, 0);
-        if colon < 0 then copy_table_get_helper(table, key, end_pos + 1)
-        else
+        if colon < 0 { copy_table_get_helper(table, key, end_pos + 1) } else {
             let entry_key = entry.slice(0, colon);
-            if entry_key == key then entry.slice(colon + 1, entry.len())
-            else copy_table_get_helper(table, key, end_pos + 1);
+            if entry_key == key { entry.slice(colon + 1, entry.len()) } else { copy_table_get_helper(table, key, end_pos + 1) }
+        }
+    };
 
 fn copy_table_get(table: String, key: String) -> String =
     copy_table_get_helper(table, key, 0);
 
--- Extract source from copy instruction: %dest = copy %src
+// Extract source from copy instruction: %dest = copy %src
 fn extract_copy_src(line: String) -> String =
     let copy_pos = find_pattern(line, " = copy %", 0);
-    if copy_pos < 0 then ""
-    else line.slice(copy_pos + 8, line.len());
+    if copy_pos < 0 { "" } else { line.slice(copy_pos + 8, line.len()) };
 
--- ============================================================================
--- SECTION 8: Optimization Pipeline
--- ============================================================================
+// ============================================================================
+// SECTION 8: Optimization Pipeline
+// ============================================================================
 
--- Optimization level encoding
+// Optimization level encoding
 fn opt_level_debug() -> i64 = 0;
 fn opt_level_release() -> i64 = 1;
 fn opt_level_aggressive() -> i64 = 2;
 
--- Run single pass on MIR text (lines separated by |)
--- Returns: "changed_count:optimized_mir"
+// Run single pass on MIR text (lines separated by |)
+// Returns: "changed_count:optimized_mir"
 fn run_constant_folding(mir: String, pos: i64, table: String, acc: String, count: i64) -> String =
-    if pos >= mir.len() then int_to_string(count) + ":" + acc
-    else
+    if pos >= mir.len() { int_to_string(count) + ":" + acc } else {
         let pipe = find_char(mir, 124, pos);
-        let end_pos = if pipe < 0 then mir.len() else pipe;
+        let end_pos = if pipe < 0 { mir.len() } else { pipe };
         let line = mir.slice(pos, end_pos);
         let result = fold_const_inst(line, table);
-        -- Parse result: "changed;new_table;new_line" (semicolon=59)
+        // Parse result: "changed;new_table;new_line" (semicolon=59)
         let c1 = find_char(result, 59, 0);
         let c2 = find_char(result, 59, c1 + 1);
         let changed = parse_int_at(result, 0, 0);
         let new_table = result.slice(c1 + 1, c2);
         let new_line = result.slice(c2 + 1, result.len());
-        let new_acc = if acc == "" then new_line else acc + "|" + new_line;
-        run_constant_folding(mir, end_pos + 1, new_table, new_acc, count + changed);
+        let new_acc = if acc == "" { new_line } else { acc + "|" + new_line };
+        run_constant_folding(mir, end_pos + 1, new_table, new_acc, count + changed)
+    };
 
--- Run optimization pipeline
+// Run optimization pipeline
+// Debug (level 0): no optimization
 fn optimize_mir(mir: String, level: i64) -> String =
-    if level == 0 then mir  -- Debug: no optimization
-    else
-        -- Run constant folding
+    if level == 0 { mir } else {
         let result = run_constant_folding(mir, 0, const_table_empty(), "", 0);
         let colon = find_char(result, 58, 0);
-        result.slice(colon + 1, result.len());
+        result.slice(colon + 1, result.len())
+    };
 
--- ============================================================================
--- SECTION 9: Statistics
--- ============================================================================
+// ============================================================================
+// SECTION 9: Statistics
+// ============================================================================
 
 fn make_stats(const_fold: i64, dead_code: i64, branches: i64, copies: i64) -> String =
     "const_fold:" + int_to_string(const_fold) +
@@ -369,460 +333,460 @@ fn make_stats(const_fold: i64, dead_code: i64, branches: i64, copies: i64) -> St
     "|branches:" + int_to_string(branches) +
     "|copies:" + int_to_string(copies);
 
--- ============================================================================
--- SECTION 10: Unit Tests (v0.30.148)
--- ============================================================================
+// ============================================================================
+// SECTION 10: Unit Tests (v0.30.148)
+// ============================================================================
 
--- Test string utilities
+// Test string utilities
 fn test_string_utils() -> i64 =
-    let s1 = if digit_char(0) == "0" then 1 else 0;
-    let s2 = if digit_char(5) == "5" then 1 else 0;
-    let s3 = if digit_char(9) == "9" then 1 else 0;
-    let s4 = if int_to_string(42) == "42" then 1 else 0;
-    let s5 = if int_to_string(0) == "0" then 1 else 0;
-    let s6 = if int_to_string(-7) == "-7" then 1 else 0;
+    let s1 = if digit_char(0) == "0" { 1 } else { 0 };
+    let s2 = if digit_char(5) == "5" { 1 } else { 0 };
+    let s3 = if digit_char(9) == "9" { 1 } else { 0 };
+    let s4 = if int_to_string(42) == "42" { 1 } else { 0 };
+    let s5 = if int_to_string(0) == "0" { 1 } else { 0 };
+    let s6 = if int_to_string(-7) == "-7" { 1 } else { 0 };
     s1 + s2 + s3 + s4 + s5 + s6;
 
--- Test character classification
+// Test character classification
 fn test_char_class() -> i64 =
-    let w1 = if is_whitespace(32) then 1 else 0;   -- space
-    let w2 = if is_whitespace(9) then 1 else 0;    -- tab
-    let w3 = if is_whitespace(10) then 1 else 0;   -- newline
-    let w4 = if not is_whitespace(65) then 1 else 0;
-    let d1 = if is_digit(48) then 1 else 0;        -- '0'
-    let d2 = if is_digit(57) then 1 else 0;        -- '9'
-    let d3 = if not is_digit(47) then 1 else 0;
-    let d4 = if not is_digit(58) then 1 else 0;
+    let w1 = if is_whitespace(32) { 1 } else { 0 };   // space
+    let w2 = if is_whitespace(9) { 1 } else { 0 };    // tab
+    let w3 = if is_whitespace(10) { 1 } else { 0 };   // newline
+    let w4 = if not is_whitespace(65) { 1 } else { 0 };
+    let d1 = if is_digit(48) { 1 } else { 0 };        // '0'
+    let d2 = if is_digit(57) { 1 } else { 0 };        // '9'
+    let d3 = if not is_digit(47) { 1 } else { 0 };
+    let d4 = if not is_digit(58) { 1 } else { 0 };
     w1 + w2 + w3 + w4 + d1 + d2 + d3 + d4;
 
--- Test pattern matching
+// Test pattern matching
 fn test_patterns() -> i64 =
-    let p1 = if starts_with("hello", "hel", 0) then 1 else 0;
-    let p2 = if not starts_with("hello", "xyz", 0) then 1 else 0;
-    let p3 = if find_char("a:b:c", 58, 0) == 1 then 1 else 0;  -- ':'
-    let p4 = if find_pattern("hello world", "world", 0) == 6 then 1 else 0;
-    let p5 = if parse_int_at("123abc", 0, 0) == 123 then 1 else 0;
-    let p6 = if skip_ws("  hello", 0) == 2 then 1 else 0;
+    let p1 = if starts_with("hello", "hel", 0) { 1 } else { 0 };
+    let p2 = if not starts_with("hello", "xyz", 0) { 1 } else { 0 };
+    let p3 = if find_char("a:b:c", 58, 0) == 1 { 1 } else { 0 };  // ':'
+    let p4 = if find_pattern("hello world", "world", 0) == 6 { 1 } else { 0 };
+    let p5 = if parse_int_at("123abc", 0, 0) == 123 { 1 } else { 0 };
+    let p6 = if skip_ws("  hello", 0) == 2 { 1 } else { 0 };
     p1 + p2 + p3 + p4 + p5 + p6;
 
--- Test instruction type checks
+// Test instruction type checks
 fn test_inst_types() -> i64 =
-    let t1 = if is_const_inst("  %x = const I:42") then 1 else 0;
-    let t2 = if not is_const_inst("  %x = + %a, %b") then 1 else 0;
-    let t3 = if is_binop_inst("  %x = + %a, %b") then 1 else 0;
-    let t4 = if is_binop_inst("  %x = * %a, %b") then 1 else 0;
-    let t5 = if is_copy_inst("  %x = copy %y") then 1 else 0;
-    let t6 = if is_label("entry:") then 1 else 0;
-    let t7 = if not is_label("not a label") then 1 else 0;
-    let t8 = if is_branch_inst("  branch %c, t, e") then 1 else 0;
+    let t1 = if is_const_inst("  %x = const I:42") { 1 } else { 0 };
+    let t2 = if not is_const_inst("  %x = + %a, %b") { 1 } else { 0 };
+    let t3 = if is_binop_inst("  %x = + %a, %b") { 1 } else { 0 };
+    let t4 = if is_binop_inst("  %x = * %a, %b") { 1 } else { 0 };
+    let t5 = if is_copy_inst("  %x = copy %y") { 1 } else { 0 };
+    let t6 = if is_label("entry:") { 1 } else { 0 };
+    let t7 = if not is_label("not a label") { 1 } else { 0 };
+    let t8 = if is_branch_inst("  branch %c, t, e") { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8;
 
--- Test copy source extraction
+// Test copy source extraction
 fn test_copy_src() -> i64 =
     let s1 = extract_copy_src("  %x = copy %y");
-    let t1 = if s1 == "%y" then 1 else 0;
+    let t1 = if s1 == "%y" { 1 } else { 0 };
     let s2 = extract_copy_src("  %a = copy %b");
-    let t2 = if s2 == "%b" then 1 else 0;
+    let t2 = if s2 == "%b" { 1 } else { 0 };
     let s3 = extract_copy_src("not a copy");
-    let t3 = if s3 == "" then 1 else 0;
+    let t3 = if s3 == "" { 1 } else { 0 };
     t1 + t2 + t3;
 
--- Test division by zero handling
+// Test division by zero handling
 fn test_div_zero() -> i64 =
     let r1 = eval_binop("/", 10, 0);
-    let t1 = if r1 == 0 then 1 else 0;  -- Returns 0 on div by zero
+    let t1 = if r1 == 0 { 1 } else { 0 };  // Returns 0 on div by zero
     let r2 = eval_binop("%", 10, 0);
-    let t2 = if r2 == 0 then 1 else 0;  -- Returns 0 on mod by zero
+    let t2 = if r2 == 0 { 1 } else { 0 };  // Returns 0 on mod by zero
     let r3 = eval_binop("/", 0, 5);
-    let t3 = if r3 == 0 then 1 else 0;  -- 0 / 5 = 0
+    let t3 = if r3 == 0 { 1 } else { 0 };  // 0 / 5 = 0
     t1 + t2 + t3;
 
--- v0.30.159: More int_to_string tests
+// v0.30.159: More int_to_string tests
 fn test_int_to_string_ext() -> i64 =
-    let t1 = if int_to_string(100) == "100" then 1 else 0;
-    let t2 = if int_to_string(999) == "999" then 1 else 0;
-    let t3 = if int_to_string(1234) == "1234" then 1 else 0;
-    let t4 = if int_to_string(-100) == "-100" then 1 else 0;
+    let t1 = if int_to_string(100) == "100" { 1 } else { 0 };
+    let t2 = if int_to_string(999) == "999" { 1 } else { 0 };
+    let t3 = if int_to_string(1234) == "1234" { 1 } else { 0 };
+    let t4 = if int_to_string(-100) == "-100" { 1 } else { 0 };
     t1 + t2 + t3 + t4;
 
--- v0.30.159: More starts_with tests
+// v0.30.159: More starts_with tests
 fn test_starts_with_ext() -> i64 =
-    let t1 = if starts_with("const I:42", "const", 0) then 1 else 0;
-    let t2 = if starts_with("%_t0 = +", "%_t0", 0) then 1 else 0;
-    let t3 = if not starts_with("hello", "world", 0) then 1 else 0;
-    let t4 = if starts_with("abcdef", "def", 3) then 1 else 0;
-    let t5 = if not starts_with("abc", "abcd", 0) then 1 else 0;  -- pattern too long
-    let t6 = if starts_with("", "", 0) then 1 else 0;  -- both empty
+    let t1 = if starts_with("const I:42", "const", 0) { 1 } else { 0 };
+    let t2 = if starts_with("%_t0 = +", "%_t0", 0) { 1 } else { 0 };
+    let t3 = if not starts_with("hello", "world", 0) { 1 } else { 0 };
+    let t4 = if starts_with("abcdef", "def", 3) { 1 } else { 0 };
+    let t5 = if not starts_with("abc", "abcd", 0) { 1 } else { 0 };  // pattern too long
+    let t6 = if starts_with("", "", 0) { 1 } else { 0 };  // both empty
     t1 + t2 + t3 + t4 + t5 + t6;
 
--- v0.30.159: More find_char tests
+// v0.30.159: More find_char tests
 fn test_find_char_ext() -> i64 =
-    let t1 = if find_char("hello", 101, 0) == 1 then 1 else 0;  -- 'e' at 1
-    let t2 = if find_char("abcde", 100, 0) == 3 then 1 else 0;  -- 'd' at 3
-    let t3 = if find_char("test", 120, 0) == 0 - 1 then 1 else 0;  -- 'x' not found
-    let t4 = if find_char("a,b,c", 44, 2) == 3 then 1 else 0;  -- ',' at 3 from pos 2
+    let t1 = if find_char("hello", 101, 0) == 1 { 1 } else { 0 };  // 'e' at 1
+    let t2 = if find_char("abcde", 100, 0) == 3 { 1 } else { 0 };  // 'd' at 3
+    let t3 = if find_char("test", 120, 0) == 0 - 1 { 1 } else { 0 };  // 'x' not found
+    let t4 = if find_char("a,b,c", 44, 2) == 3 { 1 } else { 0 };  // ',' at 3 from pos 2
     t1 + t2 + t3 + t4;
 
--- v0.30.159: More find_pattern tests
+// v0.30.159: More find_pattern tests
 fn test_find_pattern_ext() -> i64 =
-    let t1 = if find_pattern("const I:42", "I:", 0) == 6 then 1 else 0;
-    let t2 = if find_pattern("branch %c, t, e", "branch", 0) == 0 then 1 else 0;
-    let t3 = if find_pattern("abc def ghi", "xyz", 0) == 0 - 1 then 1 else 0;
-    let t4 = if find_pattern("return %_t0", "return", 0) == 0 then 1 else 0;
+    let t1 = if find_pattern("const I:42", "I:", 0) == 6 { 1 } else { 0 };
+    let t2 = if find_pattern("branch %c, t, e", "branch", 0) == 0 { 1 } else { 0 };
+    let t3 = if find_pattern("abc def ghi", "xyz", 0) == 0 - 1 { 1 } else { 0 };
+    let t4 = if find_pattern("return %_t0", "return", 0) == 0 { 1 } else { 0 };
     t1 + t2 + t3 + t4;
 
--- v0.30.159: More parse_int_at tests
+// v0.30.159: More parse_int_at tests
 fn test_parse_int_at_ext() -> i64 =
-    let t1 = if parse_int_at("0", 0, 0) == 0 then 1 else 0;
-    let t2 = if parse_int_at("99", 0, 0) == 99 then 1 else 0;
-    let t3 = if parse_int_at("abc123", 3, 0) == 123 then 1 else 0;
-    let t4 = if parse_int_at("x", 0, 0) == 0 then 1 else 0;  -- no digits
+    let t1 = if parse_int_at("0", 0, 0) == 0 { 1 } else { 0 };
+    let t2 = if parse_int_at("99", 0, 0) == 99 { 1 } else { 0 };
+    let t3 = if parse_int_at("abc123", 3, 0) == 123 { 1 } else { 0 };
+    let t4 = if parse_int_at("x", 0, 0) == 0 { 1 } else { 0 };  // no digits
     t1 + t2 + t3 + t4;
 
--- v0.30.159: More extract_dest tests
+// v0.30.159: More extract_dest tests
 fn test_extract_dest_ext() -> i64 =
-    let t1 = if extract_dest("  %a = const I:1") == "%a" then 1 else 0;
-    let t2 = if extract_dest("  %xyz = + %a, %b") == "%xyz" then 1 else 0;
-    let t3 = if extract_dest("entry:") == "" then 1 else 0;  -- no dest
-    let t4 = if extract_dest("  return %x") == "" then 1 else 0;  -- no '='
+    let t1 = if extract_dest("  %a = const I:1") == "%a" { 1 } else { 0 };
+    let t2 = if extract_dest("  %xyz = + %a, %b") == "%xyz" { 1 } else { 0 };
+    let t3 = if extract_dest("entry:") == "" { 1 } else { 0 };  // no dest
+    let t4 = if extract_dest("  return %x") == "" { 1 } else { 0 };  // no '='
     t1 + t2 + t3 + t4;
 
--- v0.30.159: More extract_const_value tests
+// v0.30.159: More extract_const_value tests
 fn test_extract_const_ext() -> i64 =
-    let t1 = if extract_const_value("  %x = const I:0") == 0 then 1 else 0;
-    let t2 = if extract_const_value("  %x = const I:999") == 999 then 1 else 0;
-    let t3 = if extract_const_value("not a const") == 0 then 1 else 0;
-    let t4 = if extract_const_value("  %a = const I:1") == 1 then 1 else 0;
+    let t1 = if extract_const_value("  %x = const I:0") == 0 { 1 } else { 0 };
+    let t2 = if extract_const_value("  %x = const I:999") == 999 { 1 } else { 0 };
+    let t3 = if extract_const_value("not a const") == 0 { 1 } else { 0 };
+    let t4 = if extract_const_value("  %a = const I:1") == 1 { 1 } else { 0 };
     t1 + t2 + t3 + t4;
 
--- v0.30.159: More extract_binop tests
+// v0.30.159: More extract_binop tests
 fn test_extract_binop_ext() -> i64 =
-    let t1 = if extract_binop("  %x = - %a, %b") == "-" then 1 else 0;
-    let t2 = if extract_binop("  %x = / %a, %b") == "/" then 1 else 0;
-    let t3 = if extract_binop("  %x = % %a, %b") == "%" then 1 else 0;
-    let t4 = if extract_binop("  %x = const I:1") == "" then 1 else 0;  -- not binop
+    let t1 = if extract_binop("  %x = - %a, %b") == "-" { 1 } else { 0 };
+    let t2 = if extract_binop("  %x = / %a, %b") == "/" { 1 } else { 0 };
+    let t3 = if extract_binop("  %x = % %a, %b") == "%" { 1 } else { 0 };
+    let t4 = if extract_binop("  %x = const I:1") == "" { 1 } else { 0 };  // not binop
     t1 + t2 + t3 + t4;
 
--- v0.30.159: More extract_binop_left/right tests
+// v0.30.159: More extract_binop_left/right tests
 fn test_extract_operands() -> i64 =
-    let t1 = if extract_binop_left("  %x = + %left, %right") == "%left" then 1 else 0;
-    let t2 = if extract_binop_right("  %x = + %left, %right") == "%right" then 1 else 0;
-    let t3 = if extract_binop_left("  %r = * %a, %b") == "%a" then 1 else 0;
-    let t4 = if extract_binop_right("  %r = * %a, %b") == "%b" then 1 else 0;
+    let t1 = if extract_binop_left("  %x = + %left, %right") == "%left" { 1 } else { 0 };
+    let t2 = if extract_binop_right("  %x = + %left, %right") == "%right" { 1 } else { 0 };
+    let t3 = if extract_binop_left("  %r = * %a, %b") == "%a" { 1 } else { 0 };
+    let t4 = if extract_binop_right("  %r = * %a, %b") == "%b" { 1 } else { 0 };
     t1 + t2 + t3 + t4;
 
--- v0.30.159: More eval_binop tests
+// v0.30.159: More eval_binop tests
 fn test_eval_binop_ext() -> i64 =
-    let t1 = if eval_binop("+", 0, 0) == 0 then 1 else 0;
-    let t2 = if eval_binop("-", 0, 5) == -5 then 1 else 0;
-    let t3 = if eval_binop("*", 0, 100) == 0 then 1 else 0;
-    let t4 = if eval_binop("/", 20, 4) == 5 then 1 else 0;
-    let t5 = if eval_binop("%", 10, 3) == 1 then 1 else 0;
-    let t6 = if eval_binop("?", 1, 2) == 0 then 1 else 0;  -- unknown op
+    let t1 = if eval_binop("+", 0, 0) == 0 { 1 } else { 0 };
+    let t2 = if eval_binop("-", 0, 5) == -5 { 1 } else { 0 };
+    let t3 = if eval_binop("*", 0, 100) == 0 { 1 } else { 0 };
+    let t4 = if eval_binop("/", 20, 4) == 5 { 1 } else { 0 };
+    let t5 = if eval_binop("%", 10, 3) == 1 { 1 } else { 0 };
+    let t6 = if eval_binop("?", 1, 2) == 0 { 1 } else { 0 };  // unknown op
     t1 + t2 + t3 + t4 + t5 + t6;
 
--- v0.30.159: More is_*_inst tests
+// v0.30.159: More is_*_inst tests
 fn test_more_inst_checks() -> i64 =
-    let t1 = if is_binop_inst("  %x = - %a, %b") then 1 else 0;
-    let t2 = if is_binop_inst("  %x = / %a, %b") then 1 else 0;
-    let t3 = if is_binop_inst("  %x = % %a, %b") then 1 else 0;
-    let t4 = if not is_binop_inst("  %x = const I:1") then 1 else 0;
-    let t5 = if is_return_inst("  return %result") then 1 else 0;
-    let t6 = if not is_return_inst("  %x = const I:1") then 1 else 0;
+    let t1 = if is_binop_inst("  %x = - %a, %b") { 1 } else { 0 };
+    let t2 = if is_binop_inst("  %x = / %a, %b") { 1 } else { 0 };
+    let t3 = if is_binop_inst("  %x = % %a, %b") { 1 } else { 0 };
+    let t4 = if not is_binop_inst("  %x = const I:1") { 1 } else { 0 };
+    let t5 = if is_return_inst("  return %result") { 1 } else { 0 };
+    let t6 = if not is_return_inst("  %x = const I:1") { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5 + t6;
 
--- v0.30.159: More const_table tests
+// v0.30.159: More const_table tests
 fn test_const_table_ext() -> i64 =
     let t1 = const_table_empty();
-    let r1 = if t1 == "" then 1 else 0;
+    let r1 = if t1 == "" { 1 } else { 0 };
     let t2 = const_table_set(t1, "%a", 5);
-    let r2 = if const_table_get(t2, "%a") == 5 then 1 else 0;
+    let r2 = if const_table_get(t2, "%a") == 5 { 1 } else { 0 };
     let t3 = const_table_set(t2, "%b", 10);
-    let r3 = if const_table_get(t3, "%b") == 10 then 1 else 0;
-    let r4 = if const_table_has(t3, "%a") then 1 else 0;
-    let r5 = if not const_table_has(t3, "%c") then 1 else 0;
-    let r6 = if const_table_get(t3, "%a") == 5 then 1 else 0;  -- still has %a
+    let r3 = if const_table_get(t3, "%b") == 10 { 1 } else { 0 };
+    let r4 = if const_table_has(t3, "%a") { 1 } else { 0 };
+    let r5 = if not const_table_has(t3, "%c") { 1 } else { 0 };
+    let r6 = if const_table_get(t3, "%a") == 5 { 1 } else { 0 };  // still has %a
     r1 + r2 + r3 + r4 + r5 + r6;
 
--- v0.30.159: More copy_table tests
+// v0.30.159: More copy_table tests
 fn test_copy_table_ext() -> i64 =
     let t1 = copy_table_empty();
-    let r1 = if t1 == "" then 1 else 0;
+    let r1 = if t1 == "" { 1 } else { 0 };
     let t2 = copy_table_set(t1, "%a", "%b");
-    let r2 = if copy_table_get(t2, "%a") == "%b" then 1 else 0;
+    let r2 = if copy_table_get(t2, "%a") == "%b" { 1 } else { 0 };
     let t3 = copy_table_set(t2, "%x", "%y");
-    let r3 = if copy_table_get(t3, "%x") == "%y" then 1 else 0;
-    let r4 = if copy_table_get(t3, "%z") == "" then 1 else 0;  -- not found
+    let r3 = if copy_table_get(t3, "%x") == "%y" { 1 } else { 0 };
+    let r4 = if copy_table_get(t3, "%z") == "" { 1 } else { 0 };  // not found
     r1 + r2 + r3 + r4;
 
--- v0.30.159: More is_label tests
+// v0.30.159: More is_label tests
 fn test_is_label_ext() -> i64 =
-    let t1 = if is_label("entry:") then 1 else 0;
-    let t2 = if is_label("then_0:") then 1 else 0;
-    let t3 = if is_label("else_0:") then 1 else 0;
-    let t4 = if not is_label("  %x = const I:1") then 1 else 0;
-    let t5 = if not is_label("branch %c, t, e") then 1 else 0;
-    let t6 = if is_label("merge:") then 1 else 0;
+    let t1 = if is_label("entry:") { 1 } else { 0 };
+    let t2 = if is_label("then_0:") { 1 } else { 0 };
+    let t3 = if is_label("else_0:") { 1 } else { 0 };
+    let t4 = if not is_label("  %x = const I:1") { 1 } else { 0 };
+    let t5 = if not is_label("branch %c, t, e") { 1 } else { 0 };
+    let t6 = if is_label("merge:") { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5 + t6;
 
--- v0.30.159: Test get_branch_const_cond
+// v0.30.159: Test get_branch_const_cond
 fn test_branch_cond() -> i64 =
     let table = const_table_set(const_table_empty(), "%c", 1);
-    let r1 = if get_branch_const_cond("  branch %c, t, e", table) == 1 then 1 else 0;
+    let r1 = if get_branch_const_cond("  branch %c, t, e", table) == 1 { 1 } else { 0 };
     let table2 = const_table_set(const_table_empty(), "%c", 0);
-    let r2 = if get_branch_const_cond("  branch %c, t, e", table2) == 0 then 1 else 0;
-    let r3 = if get_branch_const_cond("  branch %x, t, e", table) == 0 - 1 then 1 else 0;  -- %x not in table
-    let r4 = if get_branch_const_cond("  %x = const I:1", table) == 0 - 1 then 1 else 0;  -- not branch
+    let r2 = if get_branch_const_cond("  branch %c, t, e", table2) == 0 { 1 } else { 0 };
+    let r3 = if get_branch_const_cond("  branch %x, t, e", table) == 0 - 1 { 1 } else { 0 };  // %x not in table
+    let r4 = if get_branch_const_cond("  %x = const I:1", table) == 0 - 1 { 1 } else { 0 };  // not branch
     r1 + r2 + r3 + r4;
 
--- v0.30.159: Test fold_const_inst
+// v0.30.159: Test fold_const_inst
 fn test_fold_const_inst() -> i64 =
     let table = const_table_empty();
     let r1 = fold_const_inst("  %x = const I:42", table);
-    let t1 = if find_pattern(r1, "%x:42", 0) >= 0 then 1 else 0;
+    let t1 = if find_pattern(r1, "%x:42", 0) >= 0 { 1 } else { 0 };
     let table2 = const_table_set(const_table_set(table, "%a", 10), "%b", 20);
     let r2 = fold_const_inst("  %x = + %a, %b", table2);
-    let t2 = if find_pattern(r2, "const I:30", 0) >= 0 then 1 else 0;
+    let t2 = if find_pattern(r2, "const I:30", 0) >= 0 { 1 } else { 0 };
     let r3 = fold_const_inst("  return %x", table);
-    let t3 = if find_pattern(r3, "return %x", 0) >= 0 then 1 else 0;  -- unchanged
+    let t3 = if find_pattern(r3, "return %x", 0) >= 0 { 1 } else { 0 };  // unchanged
     t1 + t2 + t3;
 
--- v0.30.159: Test make_stats
+// v0.30.159: Test make_stats
 fn test_make_stats() -> i64 =
     let s1 = make_stats(1, 2, 3, 4);
-    let t1 = if find_pattern(s1, "const_fold:1", 0) >= 0 then 1 else 0;
-    let t2 = if find_pattern(s1, "dead_code:2", 0) >= 0 then 1 else 0;
-    let t3 = if find_pattern(s1, "branches:3", 0) >= 0 then 1 else 0;
-    let t4 = if find_pattern(s1, "copies:4", 0) >= 0 then 1 else 0;
+    let t1 = if find_pattern(s1, "const_fold:1", 0) >= 0 { 1 } else { 0 };
+    let t2 = if find_pattern(s1, "dead_code:2", 0) >= 0 { 1 } else { 0 };
+    let t3 = if find_pattern(s1, "branches:3", 0) >= 0 { 1 } else { 0 };
+    let t4 = if find_pattern(s1, "copies:4", 0) >= 0 { 1 } else { 0 };
     let s2 = make_stats(0, 0, 0, 0);
-    let t5 = if find_pattern(s2, "const_fold:0", 0) >= 0 then 1 else 0;
+    let t5 = if find_pattern(s2, "const_fold:0", 0) >= 0 { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5;
 
--- v0.30.159: Test digit_char
+// v0.30.159: Test digit_char
 fn test_digit_char() -> i64 =
-    let t1 = if digit_char(0) == "0" then 1 else 0;
-    let t2 = if digit_char(1) == "1" then 1 else 0;
-    let t3 = if digit_char(2) == "2" then 1 else 0;
-    let t4 = if digit_char(3) == "3" then 1 else 0;
-    let t5 = if digit_char(4) == "4" then 1 else 0;
-    let t6 = if digit_char(5) == "5" then 1 else 0;
-    let t7 = if digit_char(6) == "6" then 1 else 0;
-    let t8 = if digit_char(7) == "7" then 1 else 0;
-    let t9 = if digit_char(8) == "8" then 1 else 0;
-    let t10 = if digit_char(9) == "9" then 1 else 0;
+    let t1 = if digit_char(0) == "0" { 1 } else { 0 };
+    let t2 = if digit_char(1) == "1" { 1 } else { 0 };
+    let t3 = if digit_char(2) == "2" { 1 } else { 0 };
+    let t4 = if digit_char(3) == "3" { 1 } else { 0 };
+    let t5 = if digit_char(4) == "4" { 1 } else { 0 };
+    let t6 = if digit_char(5) == "5" { 1 } else { 0 };
+    let t7 = if digit_char(6) == "6" { 1 } else { 0 };
+    let t8 = if digit_char(7) == "7" { 1 } else { 0 };
+    let t9 = if digit_char(8) == "8" { 1 } else { 0 };
+    let t10 = if digit_char(9) == "9" { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t9 + t10;
 
--- v0.30.159: Test skip_ws extended
+// v0.30.159: Test skip_ws extended
 fn test_skip_ws_ext() -> i64 =
-    let t1 = if skip_ws("", 0) == 0 then 1 else 0;
-    let t2 = if skip_ws("abc", 0) == 0 then 1 else 0;
-    let t3 = if skip_ws("  x", 0) == 2 then 1 else 0;
-    let t4 = if skip_ws("   ", 0) == 3 then 1 else 0;
+    let t1 = if skip_ws("", 0) == 0 { 1 } else { 0 };
+    let t2 = if skip_ws("abc", 0) == 0 { 1 } else { 0 };
+    let t3 = if skip_ws("  x", 0) == 2 { 1 } else { 0 };
+    let t4 = if skip_ws("   ", 0) == 3 { 1 } else { 0 };
     t1 + t2 + t3 + t4;
 
--- v0.30.171: Test simplify_branch function
+// v0.30.171: Test simplify_branch function
 fn test_simplify_branch() -> i64 =
-    -- Test 1: Non-branch line unchanged
+    // Test 1: Non-branch line unchanged
     let table = const_table_empty();
     let r1 = simplify_branch("  %x = const I:42", table);
-    let t1 = if r1 == "  %x = const I:42" then 1 else 0;
-    -- Test 2: Branch without const condition unchanged
+    let t1 = if r1 == "  %x = const I:42" { 1 } else { 0 };
+    // Test 2: Branch without const condition unchanged
     let r2 = simplify_branch("  branch %c, then_0, else_0", table);
-    let t2 = if r2 == "  branch %c, then_0, else_0" then 1 else 0;
-    -- Test 3: Branch with const true (1) goes to then
+    let t2 = if r2 == "  branch %c, then_0, else_0" { 1 } else { 0 };
+    // Test 3: Branch with const true (1) goes to then
     let table3 = const_table_set(table, "%c", 1);
     let r3 = simplify_branch("  branch %c, then_0, else_0", table3);
-    let t3 = if find_pattern(r3, "goto then_0", 0) >= 0 then 1 else 0;
-    -- Test 4: Branch with const false (0) goes to else
+    let t3 = if find_pattern(r3, "goto then_0", 0) >= 0 { 1 } else { 0 };
+    // Test 4: Branch with const false (0) goes to else
     let table4 = const_table_set(table, "%c", 0);
     let r4 = simplify_branch("  branch %c, then_0, else_0", table4);
-    let t4 = if find_pattern(r4, "goto else_0", 0) >= 0 then 1 else 0;
+    let t4 = if find_pattern(r4, "goto else_0", 0) >= 0 { 1 } else { 0 };
     t1 + t2 + t3 + t4;
 
--- v0.30.171: Test int_to_string boundaries
+// v0.30.171: Test int_to_string boundaries
 fn test_int_to_string_bounds() -> i64 =
-    let t1 = if int_to_string(1) == "1" then 1 else 0;
-    let t2 = if int_to_string(9) == "9" then 1 else 0;
-    let t3 = if int_to_string(10) == "10" then 1 else 0;
-    let t4 = if int_to_string(99) == "99" then 1 else 0;
-    let t5 = if int_to_string(-1) == "-1" then 1 else 0;
-    let t6 = if int_to_string(-99) == "-99" then 1 else 0;
+    let t1 = if int_to_string(1) == "1" { 1 } else { 0 };
+    let t2 = if int_to_string(9) == "9" { 1 } else { 0 };
+    let t3 = if int_to_string(10) == "10" { 1 } else { 0 };
+    let t4 = if int_to_string(99) == "99" { 1 } else { 0 };
+    let t5 = if int_to_string(-1) == "-1" { 1 } else { 0 };
+    let t6 = if int_to_string(-99) == "-99" { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5 + t6;
 
--- v0.30.171: Test is_whitespace edge cases
+// v0.30.171: Test is_whitespace edge cases
 fn test_is_whitespace_ext() -> i64 =
-    let t1 = if is_whitespace(32) then 1 else 0;   -- space
-    let t2 = if is_whitespace(9) then 1 else 0;    -- tab
-    let t3 = if is_whitespace(10) then 1 else 0;   -- newline
-    let t4 = if is_whitespace(13) then 1 else 0;   -- CR
-    let t5 = if not is_whitespace(0) then 1 else 0;   -- NUL
-    let t6 = if not is_whitespace(65) then 1 else 0;  -- 'A'
-    let t7 = if not is_whitespace(48) then 1 else 0;  -- '0'
-    let t8 = if not is_whitespace(33) then 1 else 0;  -- '!'
+    let t1 = if is_whitespace(32) { 1 } else { 0 };   // space
+    let t2 = if is_whitespace(9) { 1 } else { 0 };    // tab
+    let t3 = if is_whitespace(10) { 1 } else { 0 };   // newline
+    let t4 = if is_whitespace(13) { 1 } else { 0 };   // CR
+    let t5 = if not is_whitespace(0) { 1 } else { 0 };   // NUL
+    let t6 = if not is_whitespace(65) { 1 } else { 0 };  // 'A'
+    let t7 = if not is_whitespace(48) { 1 } else { 0 };  // '0'
+    let t8 = if not is_whitespace(33) { 1 } else { 0 };  // '!'
     t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8;
 
--- v0.30.171: Test is_digit boundaries
+// v0.30.171: Test is_digit boundaries
 fn test_is_digit_bounds() -> i64 =
-    let t1 = if is_digit(48) then 1 else 0;   -- '0'
-    let t2 = if is_digit(49) then 1 else 0;   -- '1'
-    let t3 = if is_digit(57) then 1 else 0;   -- '9'
-    let t4 = if not is_digit(47) then 1 else 0;  -- '/' before '0'
-    let t5 = if not is_digit(58) then 1 else 0;  -- ':' after '9'
-    let t6 = if not is_digit(0) then 1 else 0;   -- NUL
+    let t1 = if is_digit(48) { 1 } else { 0 };   // '0'
+    let t2 = if is_digit(49) { 1 } else { 0 };   // '1'
+    let t3 = if is_digit(57) { 1 } else { 0 };   // '9'
+    let t4 = if not is_digit(47) { 1 } else { 0 };  // '/' before '0'
+    let t5 = if not is_digit(58) { 1 } else { 0 };  // ':' after '9'
+    let t6 = if not is_digit(0) { 1 } else { 0 };   // NUL
     t1 + t2 + t3 + t4 + t5 + t6;
 
--- v0.30.171: Test find_char edge cases
+// v0.30.171: Test find_char edge cases
 fn test_find_char_bounds() -> i64 =
-    let t1 = if find_char("", 97, 0) == 0 - 1 then 1 else 0;  -- empty string
-    let t2 = if find_char("a", 97, 0) == 0 then 1 else 0;     -- single char found
-    let t3 = if find_char("abc", 99, 0) == 2 then 1 else 0;   -- last char
-    let t4 = if find_char("abc", 97, 1) == 0 - 1 then 1 else 0;  -- start after match
-    let t5 = if find_char("a:b", 58, 0) == 1 then 1 else 0;   -- colon
-    let t6 = if find_char("a|b", 124, 0) == 1 then 1 else 0;  -- pipe
+    let t1 = if find_char("", 97, 0) == 0 - 1 { 1 } else { 0 };  // empty string
+    let t2 = if find_char("a", 97, 0) == 0 { 1 } else { 0 };     // single char found
+    let t3 = if find_char("abc", 99, 0) == 2 { 1 } else { 0 };   // last char
+    let t4 = if find_char("abc", 97, 1) == 0 - 1 { 1 } else { 0 };  // start after match
+    let t5 = if find_char("a:b", 58, 0) == 1 { 1 } else { 0 };   // colon
+    let t6 = if find_char("a|b", 124, 0) == 1 { 1 } else { 0 };  // pipe
     t1 + t2 + t3 + t4 + t5 + t6;
 
--- v0.30.171: Test find_pattern edge cases
+// v0.30.171: Test find_pattern edge cases
 fn test_find_pattern_bounds() -> i64 =
-    let t1 = if find_pattern("", "a", 0) == 0 - 1 then 1 else 0;  -- empty string
-    let t2 = if find_pattern("abc", "", 0) == 0 then 1 else 0;    -- empty pattern
-    let t3 = if find_pattern("abc", "abcd", 0) == 0 - 1 then 1 else 0;  -- pattern too long
-    let t4 = if find_pattern("abc", "abc", 0) == 0 then 1 else 0;  -- exact match
-    let t5 = if find_pattern("abc", "c", 0) == 2 then 1 else 0;    -- at end
-    let t6 = if find_pattern("abcabc", "abc", 3) == 3 then 1 else 0;  -- second occurrence
+    let t1 = if find_pattern("", "a", 0) == 0 - 1 { 1 } else { 0 };  // empty string
+    let t2 = if find_pattern("abc", "", 0) == 0 { 1 } else { 0 };    // empty pattern
+    let t3 = if find_pattern("abc", "abcd", 0) == 0 - 1 { 1 } else { 0 };  // pattern too long
+    let t4 = if find_pattern("abc", "abc", 0) == 0 { 1 } else { 0 };  // exact match
+    let t5 = if find_pattern("abc", "c", 0) == 2 { 1 } else { 0 };    // at end
+    let t6 = if find_pattern("abcabc", "abc", 3) == 3 { 1 } else { 0 };  // second occurrence
     t1 + t2 + t3 + t4 + t5 + t6;
 
--- v0.30.171: Test is_const_inst variations
+// v0.30.171: Test is_const_inst variations
 fn test_is_const_inst_ext() -> i64 =
-    let t1 = if is_const_inst("  %_t0 = const I:0") then 1 else 0;
-    let t2 = if is_const_inst("  %x = const I:999999") then 1 else 0;
-    let t3 = if not is_const_inst("  %x = + %a, %b") then 1 else 0;
-    let t4 = if not is_const_inst("entry:") then 1 else 0;
-    let t5 = if not is_const_inst("  return %x") then 1 else 0;
-    let t6 = if not is_const_inst("  %x = copy %y") then 1 else 0;
+    let t1 = if is_const_inst("  %_t0 = const I:0") { 1 } else { 0 };
+    let t2 = if is_const_inst("  %x = const I:999999") { 1 } else { 0 };
+    let t3 = if not is_const_inst("  %x = + %a, %b") { 1 } else { 0 };
+    let t4 = if not is_const_inst("entry:") { 1 } else { 0 };
+    let t5 = if not is_const_inst("  return %x") { 1 } else { 0 };
+    let t6 = if not is_const_inst("  %x = copy %y") { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5 + t6;
 
--- v0.30.171: Test is_binop_inst all operators
+// v0.30.171: Test is_binop_inst all operators
 fn test_is_binop_all_ops() -> i64 =
-    let t1 = if is_binop_inst("  %x = + %a, %b") then 1 else 0;
-    let t2 = if is_binop_inst("  %x = - %a, %b") then 1 else 0;
-    let t3 = if is_binop_inst("  %x = * %a, %b") then 1 else 0;
-    let t4 = if is_binop_inst("  %x = / %a, %b") then 1 else 0;
-    let t5 = if is_binop_inst("  %x = % %a, %b") then 1 else 0;
-    let t6 = if not is_binop_inst("  %x = & %a, %b") then 1 else 0;  -- & not supported
+    let t1 = if is_binop_inst("  %x = + %a, %b") { 1 } else { 0 };
+    let t2 = if is_binop_inst("  %x = - %a, %b") { 1 } else { 0 };
+    let t3 = if is_binop_inst("  %x = * %a, %b") { 1 } else { 0 };
+    let t4 = if is_binop_inst("  %x = / %a, %b") { 1 } else { 0 };
+    let t5 = if is_binop_inst("  %x = % %a, %b") { 1 } else { 0 };
+    let t6 = if not is_binop_inst("  %x = & %a, %b") { 1 } else { 0 };  // & not supported
     t1 + t2 + t3 + t4 + t5 + t6;
 
--- v0.30.171: Test is_copy_inst variations
+// v0.30.171: Test is_copy_inst variations
 fn test_is_copy_inst_ext() -> i64 =
-    let t1 = if is_copy_inst("  %a = copy %b") then 1 else 0;
-    let t2 = if is_copy_inst("  %_t0 = copy %_t1") then 1 else 0;
-    let t3 = if not is_copy_inst("  %x = const I:42") then 1 else 0;
-    let t4 = if not is_copy_inst("  %x = + %a, %b") then 1 else 0;
-    let t5 = if not is_copy_inst("  return %x") then 1 else 0;
-    let t6 = if not is_copy_inst("entry:") then 1 else 0;
+    let t1 = if is_copy_inst("  %a = copy %b") { 1 } else { 0 };
+    let t2 = if is_copy_inst("  %_t0 = copy %_t1") { 1 } else { 0 };
+    let t3 = if not is_copy_inst("  %x = const I:42") { 1 } else { 0 };
+    let t4 = if not is_copy_inst("  %x = + %a, %b") { 1 } else { 0 };
+    let t5 = if not is_copy_inst("  return %x") { 1 } else { 0 };
+    let t6 = if not is_copy_inst("entry:") { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5 + t6;
 
--- v0.30.171: Test is_branch_inst variations
+// v0.30.171: Test is_branch_inst variations
 fn test_is_branch_inst_ext() -> i64 =
-    let t1 = if is_branch_inst("  branch %c, then_0, else_0") then 1 else 0;
-    let t2 = if is_branch_inst("branch %x, a, b") then 1 else 0;  -- no leading space
-    let t3 = if not is_branch_inst("  %x = const I:42") then 1 else 0;
-    let t4 = if not is_branch_inst("  return %x") then 1 else 0;
-    let t5 = if not is_branch_inst("entry:") then 1 else 0;
-    let t6 = if not is_branch_inst("  goto label") then 1 else 0;
+    let t1 = if is_branch_inst("  branch %c, then_0, else_0") { 1 } else { 0 };
+    let t2 = if is_branch_inst("branch %x, a, b") { 1 } else { 0 };  // no leading space
+    let t3 = if not is_branch_inst("  %x = const I:42") { 1 } else { 0 };
+    let t4 = if not is_branch_inst("  return %x") { 1 } else { 0 };
+    let t5 = if not is_branch_inst("entry:") { 1 } else { 0 };
+    let t6 = if not is_branch_inst("  goto label") { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5 + t6;
 
--- v0.30.171: Test is_return_inst variations
+// v0.30.171: Test is_return_inst variations
 fn test_is_return_inst_ext() -> i64 =
-    let t1 = if is_return_inst("  return %_t0") then 1 else 0;
-    let t2 = if is_return_inst("return %x") then 1 else 0;  -- no leading space
-    let t3 = if not is_return_inst("  %x = const I:42") then 1 else 0;
-    let t4 = if not is_return_inst("  branch %c, t, e") then 1 else 0;
-    let t5 = if not is_return_inst("entry:") then 1 else 0;
-    let t6 = if not is_return_inst("  %return = const I:1") then 1 else 0;  -- var named return
+    let t1 = if is_return_inst("  return %_t0") { 1 } else { 0 };
+    let t2 = if is_return_inst("return %x") { 1 } else { 0 };  // no leading space
+    let t3 = if not is_return_inst("  %x = const I:42") { 1 } else { 0 };
+    let t4 = if not is_return_inst("  branch %c, t, e") { 1 } else { 0 };
+    let t5 = if not is_return_inst("entry:") { 1 } else { 0 };
+    let t6 = if not is_return_inst("  %return = const I:1") { 1 } else { 0 };  // let mut named return
     t1 + t2 + t3 + t4 + t5 + t6;
 
--- v0.30.171: Test const_table multiple entries
+// v0.30.171: Test const_table multiple entries
 fn test_const_table_multi() -> i64 =
     let t0 = const_table_empty();
     let t1 = const_table_set(t0, "%a", 1);
     let t2 = const_table_set(t1, "%b", 2);
     let t3 = const_table_set(t2, "%c", 3);
-    let r1 = if const_table_get(t3, "%a") == 1 then 1 else 0;
-    let r2 = if const_table_get(t3, "%b") == 2 then 1 else 0;
-    let r3 = if const_table_get(t3, "%c") == 3 then 1 else 0;
-    let r4 = if const_table_has(t3, "%a") then 1 else 0;
-    let r5 = if not const_table_has(t3, "%d") then 1 else 0;
-    let r6 = if const_table_get(t3, "%d") == 0 - 99999999 then 1 else 0;  -- not found marker
+    let r1 = if const_table_get(t3, "%a") == 1 { 1 } else { 0 };
+    let r2 = if const_table_get(t3, "%b") == 2 { 1 } else { 0 };
+    let r3 = if const_table_get(t3, "%c") == 3 { 1 } else { 0 };
+    let r4 = if const_table_has(t3, "%a") { 1 } else { 0 };
+    let r5 = if not const_table_has(t3, "%d") { 1 } else { 0 };
+    let r6 = if const_table_get(t3, "%d") == 0 - 99999999 { 1 } else { 0 };  // not found marker
     r1 + r2 + r3 + r4 + r5 + r6;
 
--- ============================================================================
--- v0.30.185: Additional Unit Tests
--- ============================================================================
+// ============================================================================
+// v0.30.185: Additional Unit Tests
+// ============================================================================
 
--- Test optimization level value distinctions
+// Test optimization level value distinctions
 fn test_opt_level_values() -> i64 =
-    (if opt_level_debug() == 0 then 1 else 0) +
-    (if opt_level_release() == 1 then 1 else 0) +
-    (if opt_level_aggressive() == 2 then 1 else 0) +
-    (if opt_level_debug() != opt_level_release() then 1 else 0) +
-    (if opt_level_release() != opt_level_aggressive() then 1 else 0) +
-    (if opt_level_debug() < opt_level_aggressive() then 1 else 0);
+    (if opt_level_debug() == 0 { 1 } else { 0 }) +
+    (if opt_level_release() == 1 { 1 } else { 0 }) +
+    (if opt_level_aggressive() == 2 { 1 } else { 0 }) +
+    (if opt_level_debug() != opt_level_release() { 1 } else { 0 }) +
+    (if opt_level_release() != opt_level_aggressive() { 1 } else { 0 }) +
+    (if opt_level_debug() < opt_level_aggressive() { 1 } else { 0 });
 
--- Test const_table overwrite behavior
+// Test const_table overwrite behavior
 fn test_const_table_overwrite() -> i64 =
     let t0 = const_table_empty();
     let t1 = const_table_set(t0, "%x", 10);
     let t2 = const_table_set(t1, "%x", 20);
-    (if const_table_has(t2, "%x") then 1 else 0) +
-    (if const_table_get(t1, "%x") == 10 then 1 else 0) +
-    (if const_table_set(t0, "%a", 0) != "" then 1 else 0) +
-    (if const_table_has(const_table_set(t0, "%b", 5), "%b") then 1 else 0) +
-    (if const_table_get(const_table_empty(), "%x") == 0 - 99999999 then 1 else 0) +
-    (if not const_table_has(const_table_empty(), "%y") then 1 else 0);
+    (if const_table_has(t2, "%x") { 1 } else { 0 }) +
+    (if const_table_get(t1, "%x") == 10 { 1 } else { 0 }) +
+    (if const_table_set(t0, "%a", 0) != "" { 1 } else { 0 }) +
+    (if const_table_has(const_table_set(t0, "%b", 5), "%b") { 1 } else { 0 }) +
+    (if const_table_get(const_table_empty(), "%x") == 0 - 99999999 { 1 } else { 0 }) +
+    (if not const_table_has(const_table_empty(), "%y") { 1 } else { 0 });
 
--- Test copy_table chaining
+// Test copy_table chaining
 fn test_copy_table_chain() -> i64 =
     let t0 = copy_table_empty();
     let t1 = copy_table_set(t0, "%a", "%b");
     let t2 = copy_table_set(t1, "%c", "%d");
     let t3 = copy_table_set(t2, "%e", "%f");
-    (if copy_table_get(t3, "%a") == "%b" then 1 else 0) +
-    (if copy_table_get(t3, "%c") == "%d" then 1 else 0) +
-    (if copy_table_get(t3, "%e") == "%f" then 1 else 0) +
-    (if copy_table_get(t3, "%z") == "" then 1 else 0) +
-    (if copy_table_get(t1, "%c") == "" then 1 else 0) +
-    (if copy_table_get(copy_table_empty(), "%x") == "" then 1 else 0);
+    (if copy_table_get(t3, "%a") == "%b" { 1 } else { 0 }) +
+    (if copy_table_get(t3, "%c") == "%d" { 1 } else { 0 }) +
+    (if copy_table_get(t3, "%e") == "%f" { 1 } else { 0 }) +
+    (if copy_table_get(t3, "%z") == "" { 1 } else { 0 }) +
+    (if copy_table_get(t1, "%c") == "" { 1 } else { 0 }) +
+    (if copy_table_get(copy_table_empty(), "%x") == "" { 1 } else { 0 });
 
--- Test extract_copy_src variations
+// Test extract_copy_src variations
 fn test_extract_copy_src_ext() -> i64 =
-    (if extract_copy_src("  %a = copy %b") == "%b" then 1 else 0) +
-    (if extract_copy_src("  %_t0 = copy %_t1") == "%_t1" then 1 else 0) +
-    (if extract_copy_src("  %x = copy %result") == "%result" then 1 else 0) +
-    (if extract_copy_src("  %x = const I:42") == "" then 1 else 0) +
-    (if extract_copy_src("entry:") == "" then 1 else 0) +
-    (if extract_copy_src("  return %x") == "" then 1 else 0);
+    (if extract_copy_src("  %a = copy %b") == "%b" { 1 } else { 0 }) +
+    (if extract_copy_src("  %_t0 = copy %_t1") == "%_t1" { 1 } else { 0 }) +
+    (if extract_copy_src("  %x = copy %result") == "%result" { 1 } else { 0 }) +
+    (if extract_copy_src("  %x = const I:42") == "" { 1 } else { 0 }) +
+    (if extract_copy_src("entry:") == "" { 1 } else { 0 }) +
+    (if extract_copy_src("  return %x") == "" { 1 } else { 0 });
 
--- Test starts_with at various positions
+// Test starts_with at various positions
 fn test_starts_with_positions() -> i64 =
-    (if starts_with("abcdef", "abc", 0) then 1 else 0) +
-    (if starts_with("abcdef", "def", 3) then 1 else 0) +
-    (if not starts_with("abcdef", "abc", 1) then 1 else 0) +
-    (if starts_with("abcdef", "f", 5) then 1 else 0) +
-    (if not starts_with("abc", "abc", 1) then 1 else 0) +
-    (if starts_with("hello world", "world", 6) then 1 else 0);
+    (if starts_with("abcdef", "abc", 0) { 1 } else { 0 }) +
+    (if starts_with("abcdef", "def", 3) { 1 } else { 0 }) +
+    (if not starts_with("abcdef", "abc", 1) { 1 } else { 0 }) +
+    (if starts_with("abcdef", "f", 5) { 1 } else { 0 }) +
+    (if not starts_with("abc", "abc", 1) { 1 } else { 0 }) +
+    (if starts_with("hello world", "world", 6) { 1 } else { 0 });
 
--- Test parse_int_at at various positions
+// Test parse_int_at at various positions
 fn test_parse_int_positions() -> i64 =
-    (if parse_int_at("abc123def", 3, 0) == 123 then 1 else 0) +
-    (if parse_int_at("x42y", 1, 0) == 42 then 1 else 0) +
-    (if parse_int_at("999", 0, 0) == 999 then 1 else 0) +
-    (if parse_int_at("abc", 0, 0) == 0 then 1 else 0) +
-    (if parse_int_at("12abc34", 5, 0) == 34 then 1 else 0) +
-    (if parse_int_at("", 0, 0) == 0 then 1 else 0);
+    (if parse_int_at("abc123def", 3, 0) == 123 { 1 } else { 0 }) +
+    (if parse_int_at("x42y", 1, 0) == 42 { 1 } else { 0 }) +
+    (if parse_int_at("999", 0, 0) == 999 { 1 } else { 0 }) +
+    (if parse_int_at("abc", 0, 0) == 0 { 1 } else { 0 }) +
+    (if parse_int_at("12abc34", 5, 0) == 34 { 1 } else { 0 }) +
+    (if parse_int_at("", 0, 0) == 0 { 1 } else { 0 });
 
--- ============================================================================
--- SECTION 11: Integration Tests
--- ============================================================================
+// ============================================================================
+// SECTION 11: Integration Tests
+// ============================================================================
 
 fn test_const_table() -> i64 =
     let t1 = const_table_empty();
@@ -832,41 +796,41 @@ fn test_const_table() -> i64 =
     let v2 = const_table_get(t3, "%b");
     let h1 = const_table_has(t3, "%a");
     let h2 = const_table_has(t3, "%c");
-    if v1 == 10 and v2 == 20 and h1 and not h2 then 1 else 0;
+    if v1 == 10 and v2 == 20 and h1 and not h2 { 1 } else { 0 };
 
 fn test_extract_dest() -> i64 =
     let d1 = extract_dest("  %_t0 = const I:42");
     let d2 = extract_dest("  %result = + %a, %b");
-    if d1 == "%_t0" and d2 == "%result" then 1 else 0;
+    if d1 == "%_t0" and d2 == "%result" { 1 } else { 0 };
 
 fn test_extract_const() -> i64 =
     let v1 = extract_const_value("  %_t0 = const I:42");
     let v2 = extract_const_value("  %_t1 = const I:100");
-    if v1 == 42 and v2 == 100 then 1 else 0;
+    if v1 == 42 and v2 == 100 { 1 } else { 0 };
 
 fn test_extract_binop() -> i64 =
     let op1 = extract_binop("  %_t0 = + %a, %b");
     let op2 = extract_binop("  %_t1 = * %x, %y");
     let l1 = extract_binop_left("  %_t0 = + %a, %b");
     let r1 = extract_binop_right("  %_t0 = + %a, %b");
-    if op1 == "+" and op2 == "*" and l1 == "%a" and r1 == "%b" then 1 else 0;
+    if op1 == "+" and op2 == "*" and l1 == "%a" and r1 == "%b" { 1 } else { 0 };
 
 fn test_eval_binop() -> i64 =
     let r1 = eval_binop("+", 10, 20);
     let r2 = eval_binop("-", 50, 30);
     let r3 = eval_binop("*", 6, 7);
     let r4 = eval_binop("/", 100, 4);
-    if r1 == 30 and r2 == 20 and r3 == 42 and r4 == 25 then 1 else 0;
+    if r1 == 30 and r2 == 20 and r3 == 42 and r4 == 25 { 1 } else { 0 };
 
 fn test_const_folding() -> i64 =
     let mir = "  %_t0 = const I:10|  %_t1 = const I:20|  %_t2 = + %_t0, %_t1";
     let result = run_constant_folding(mir, 0, const_table_empty(), "", 0);
-    -- Should have 1 optimization (the + replaced with const)
+    // Should have 1 optimization (the + replaced with const)
     let colon = find_char(result, 58, 0);
     let count = parse_int_at(result, 0, 0);
     let optimized = result.slice(colon + 1, result.len());
-    -- Check that result contains const I:30
-    if count == 1 and find_pattern(optimized, "const I:30", 0) >= 0 then 1 else 0;
+    // Check that result contains const I:30
+    if count == 1 and find_pattern(optimized, "const I:30", 0) >= 0 { 1 } else { 0 };
 
 fn test_is_checks() -> i64 =
     let c1 = is_const_inst("  %_t0 = const I:42");
@@ -875,13 +839,13 @@ fn test_is_checks() -> i64 =
     let c4 = is_branch_inst("  branch %c, then_0, else_0");
     let c5 = is_return_inst("  return %_t0");
     let c6 = is_label("entry:");
-    if c1 and c2 and c3 and c4 and c5 and c6 then 1 else 0;
+    if c1 and c2 and c3 and c4 and c5 and c6 { 1 } else { 0 };
 
 fn test_optimize_mir() -> i64 =
     let mir = "  %_t0 = const I:5|  %_t1 = const I:3|  %_t2 = + %_t0, %_t1";
     let opt = optimize_mir(mir, 1);
-    -- Should fold 5 + 3 = 8
-    if find_pattern(opt, "const I:8", 0) >= 0 then 1 else 0;
+    // Should fold 5 + 3 = 8
+    if find_pattern(opt, "const I:8", 0) >= 0 { 1 } else { 0 };
 
 fn test_copy_table() -> i64 =
     let t1 = copy_table_empty();
@@ -889,190 +853,190 @@ fn test_copy_table() -> i64 =
     let t3 = copy_table_set(t2, "%x", "%y");
     let v1 = copy_table_get(t3, "%a");
     let v2 = copy_table_get(t3, "%x");
-    if v1 == "%b" and v2 == "%y" then 1 else 0;
+    if v1 == "%b" and v2 == "%y" { 1 } else { 0 };
 
--- v0.30.130: Optimization passes edge cases (6 tests)
+// v0.30.130: Optimization passes edge cases (6 tests)
 fn test_opt_edge_cases() -> i64 =
-    -- Test 1: Subtraction folding (10 - 3 = 7)
+    // Test 1: Subtraction folding (10 - 3 = 7)
     let r1 = eval_binop("-", 10, 3);
-    let p1 = if r1 == 7 then 1 else 0;
+    let p1 = if r1 == 7 { 1 } else { 0 };
 
-    -- Test 2: Multiplication folding (6 * 7 = 42)
+    // Test 2: Multiplication folding (6 * 7 = 42)
     let r2 = eval_binop("*", 6, 7);
-    let p2 = if r2 == 42 then 1 else 0;
+    let p2 = if r2 == 42 { 1 } else { 0 };
 
-    -- Test 3: Division folding (100 / 5 = 20)
+    // Test 3: Division folding (100 / 5 = 20)
     let r3 = eval_binop("/", 100, 5);
-    let p3 = if r3 == 20 then 1 else 0;
+    let p3 = if r3 == 20 { 1 } else { 0 };
 
-    -- Test 4: Modulo folding (17 % 5 = 2)
+    // Test 4: Modulo folding (17 % 5 = 2)
     let r4 = eval_binop("%", 17, 5);
-    let p4 = if r4 == 2 then 1 else 0;
+    let p4 = if r4 == 2 { 1 } else { 0 };
 
-    -- Test 5: Statistics format
+    // Test 5: Statistics format
     let stats = make_stats(3, 1, 2, 0);
-    let p5 = if find_pattern(stats, "const_fold:3", 0) >= 0 then 1 else 0;
+    let p5 = if find_pattern(stats, "const_fold:3", 0) >= 0 { 1 } else { 0 };
 
-    -- Test 6: No optimization level 0
+    // Test 6: No optimization level 0
     let mir = "  %_t0 = const I:5";
     let opt = optimize_mir(mir, 0);
-    let p6 = if opt == mir then 1 else 0;
+    let p6 = if opt == mir { 1 } else { 0 };
 
     p1 + p2 + p3 + p4 + p5 + p6;
 
--- v0.30.137: Variable usage detection tests
+// v0.30.137: Variable usage detection tests
 fn test_var_usage() -> i64 =
-    -- Test 1: Variable used in line
-    let t1 = if is_var_used_in_line("  %_t1 = + %_t0, %b", "%_t0") then 1 else 0;
+    // Test 1: Variable used in line
+    let t1 = if is_var_used_in_line("  %_t1 = + %_t0, %b", "%_t0") { 1 } else { 0 };
 
-    -- Test 2: Variable not used
-    let t2 = if not is_var_used_in_line("  %_t1 = + %a, %b", "%_t0") then 1 else 0;
+    // Test 2: Variable not used
+    let t2 = if not is_var_used_in_line("  %_t1 = + %a, %b", "%_t0") { 1 } else { 0 };
 
-    -- Test 3: Variable used as destination (shouldn't count)
-    let t3 = if not is_var_used_in_line("  %_t0 = const I:42", "%_t0") then 1 else 0;
+    // Test 3: Variable used as destination (shouldn't count)
+    let t3 = if not is_var_used_in_line("  %_t0 = const I:42", "%_t0") { 1 } else { 0 };
 
-    -- Test 4: Line without variables
-    let t4 = if not is_var_used_in_line("entry:", "%_t0") then 1 else 0;
+    // Test 4: Line without variables
+    let t4 = if not is_var_used_in_line("entry:", "%_t0") { 1 } else { 0 };
 
-    -- Test 5: Variable used in return
-    let t5 = if is_var_used_in_line("  return %_t0", "%_t0") then 1 else 0;
+    // Test 5: Variable used in return
+    let t5 = if is_var_used_in_line("  return %_t0", "%_t0") { 1 } else { 0 };
 
     t1 + t2 + t3 + t4 + t5;
 
--- v0.30.137: Side effects detection tests
+// v0.30.137: Side effects detection tests
 fn test_side_effects() -> i64 =
-    -- Test 1: Call has side effects
-    let t1 = if has_side_effects("  call print(%x)") then 1 else 0;
+    // Test 1: Call has side effects
+    let t1 = if has_side_effects("  call print(%x)") { 1 } else { 0 };
 
-    -- Test 2: Return has side effects
-    let t2 = if has_side_effects("  return %_t0") then 1 else 0;
+    // Test 2: Return has side effects
+    let t2 = if has_side_effects("  return %_t0") { 1 } else { 0 };
 
-    -- Test 3: Const has no side effects
-    let t3 = if not has_side_effects("  %_t0 = const I:42") then 1 else 0;
+    // Test 3: Const has no side effects
+    let t3 = if not has_side_effects("  %_t0 = const I:42") { 1 } else { 0 };
 
-    -- Test 4: Binop has no side effects
-    let t4 = if not has_side_effects("  %_t1 = + %a, %b") then 1 else 0;
+    // Test 4: Binop has no side effects
+    let t4 = if not has_side_effects("  %_t1 = + %a, %b") { 1 } else { 0 };
 
-    -- Test 5: Store has side effects
-    let t5 = if has_side_effects("  store %ptr, %val") then 1 else 0;
+    // Test 5: Store has side effects
+    let t5 = if has_side_effects("  store %ptr, %val") { 1 } else { 0 };
 
     t1 + t2 + t3 + t4 + t5;
 
--- v0.30.137: Optimization level tests
+// v0.30.137: Optimization level tests
 fn test_opt_levels() -> i64 =
-    -- Test 1: Debug level is 0
-    let t1 = if opt_level_debug() == 0 then 1 else 0;
+    // Test 1: Debug level is 0
+    let t1 = if opt_level_debug() == 0 { 1 } else { 0 };
 
-    -- Test 2: Release level is 1
-    let t2 = if opt_level_release() == 1 then 1 else 0;
+    // Test 2: Release level is 1
+    let t2 = if opt_level_release() == 1 { 1 } else { 0 };
 
-    -- Test 3: Aggressive level is 2
-    let t3 = if opt_level_aggressive() == 2 then 1 else 0;
+    // Test 3: Aggressive level is 2
+    let t3 = if opt_level_aggressive() == 2 { 1 } else { 0 };
 
-    -- Test 4: Level ordering
-    let t4 = if opt_level_debug() < opt_level_release() then 1 else 0;
+    // Test 4: Level ordering
+    let t4 = if opt_level_debug() < opt_level_release() { 1 } else { 0 };
 
-    -- Test 5: Aggressive > Release
-    let t5 = if opt_level_aggressive() > opt_level_release() then 1 else 0;
+    // Test 5: Aggressive > Release
+    let t5 = if opt_level_aggressive() > opt_level_release() { 1 } else { 0 };
 
     t1 + t2 + t3 + t4 + t5;
 
 fn main() -> i64 =
     let u1 = println(777);
 
-    -- Unit tests (v0.30.159)
+    // Unit tests (v0.30.159)
     let ut1 = test_string_utils();
-    let v1 = println(ut1);    -- Should be 6
+    let v1 = println(ut1);    // Should be 6
     let ut2 = test_char_class();
-    let v2 = println(ut2);    -- Should be 8
+    let v2 = println(ut2);    // Should be 8
     let ut3 = test_patterns();
-    let v3 = println(ut3);    -- Should be 6
+    let v3 = println(ut3);    // Should be 6
     let ut4 = test_inst_types();
-    let v4 = println(ut4);    -- Should be 8
+    let v4 = println(ut4);    // Should be 8
     let ut5 = test_copy_src();
-    let v5 = println(ut5);    -- Should be 3
+    let v5 = println(ut5);    // Should be 3
     let ut6 = test_div_zero();
-    let v6 = println(ut6);    -- Should be 3
+    let v6 = println(ut6);    // Should be 3
 
-    -- v0.30.159: New unit tests
+    // v0.30.159: New unit tests
     let ut7 = test_int_to_string_ext();
-    let v7 = println(ut7);    -- Should be 4
+    let v7 = println(ut7);    // Should be 4
     let ut8 = test_starts_with_ext();
-    let v8 = println(ut8);    -- Should be 6
+    let v8 = println(ut8);    // Should be 6
     let ut9 = test_find_char_ext();
-    let v9 = println(ut9);    -- Should be 4
+    let v9 = println(ut9);    // Should be 4
     let ut10 = test_find_pattern_ext();
-    let v10 = println(ut10);  -- Should be 4
+    let v10 = println(ut10);  // Should be 4
     let ut11 = test_parse_int_at_ext();
-    let v11 = println(ut11);  -- Should be 4
+    let v11 = println(ut11);  // Should be 4
     let ut12 = test_extract_dest_ext();
-    let v12 = println(ut12);  -- Should be 4
+    let v12 = println(ut12);  // Should be 4
     let ut13 = test_extract_const_ext();
-    let v13 = println(ut13);  -- Should be 4
+    let v13 = println(ut13);  // Should be 4
     let ut14 = test_extract_binop_ext();
-    let v14 = println(ut14);  -- Should be 4
+    let v14 = println(ut14);  // Should be 4
     let ut15 = test_extract_operands();
-    let v15 = println(ut15);  -- Should be 4
+    let v15 = println(ut15);  // Should be 4
     let ut16 = test_eval_binop_ext();
-    let v16 = println(ut16);  -- Should be 6
+    let v16 = println(ut16);  // Should be 6
     let ut17 = test_more_inst_checks();
-    let v17 = println(ut17);  -- Should be 6
+    let v17 = println(ut17);  // Should be 6
     let ut18 = test_const_table_ext();
-    let v18 = println(ut18);  -- Should be 6
+    let v18 = println(ut18);  // Should be 6
     let ut19 = test_copy_table_ext();
-    let v19 = println(ut19);  -- Should be 4
+    let v19 = println(ut19);  // Should be 4
     let ut20 = test_is_label_ext();
-    let v20 = println(ut20);  -- Should be 6
+    let v20 = println(ut20);  // Should be 6
     let ut21 = test_branch_cond();
-    let v21 = println(ut21);  -- Should be 4
+    let v21 = println(ut21);  // Should be 4
     let ut22 = test_fold_const_inst();
-    let v22 = println(ut22);  -- Should be 3
+    let v22 = println(ut22);  // Should be 3
     let ut23 = test_make_stats();
-    let v23 = println(ut23);  -- Should be 5
+    let v23 = println(ut23);  // Should be 5
     let ut24 = test_digit_char();
-    let v24 = println(ut24);  -- Should be 10
+    let v24 = println(ut24);  // Should be 10
     let ut25 = test_skip_ws_ext();
-    let v25 = println(ut25);  -- Should be 4
+    let v25 = println(ut25);  // Should be 4
 
-    -- v0.30.171: Extended unit tests (78 new assertions)
+    // v0.30.171: Extended unit tests (78 new assertions)
     let ut26 = test_simplify_branch();
-    let v26x = println(ut26);  -- Should be 4
+    let v26x = println(ut26);  // Should be 4
     let ut27 = test_int_to_string_bounds();
-    let v27 = println(ut27);  -- Should be 6
+    let v27 = println(ut27);  // Should be 6
     let ut28 = test_is_whitespace_ext();
-    let v28 = println(ut28);  -- Should be 8
+    let v28 = println(ut28);  // Should be 8
     let ut29 = test_is_digit_bounds();
-    let v29 = println(ut29);  -- Should be 6
+    let v29 = println(ut29);  // Should be 6
     let ut30 = test_find_char_bounds();
-    let v30 = println(ut30);  -- Should be 6
+    let v30 = println(ut30);  // Should be 6
     let ut31 = test_find_pattern_bounds();
-    let v31 = println(ut31);  -- Should be 6
+    let v31 = println(ut31);  // Should be 6
     let ut32 = test_is_const_inst_ext();
-    let v32 = println(ut32);  -- Should be 6
+    let v32 = println(ut32);  // Should be 6
     let ut33 = test_is_binop_all_ops();
-    let v33 = println(ut33);  -- Should be 6
+    let v33 = println(ut33);  // Should be 6
     let ut34 = test_is_copy_inst_ext();
-    let v34 = println(ut34);  -- Should be 6
+    let v34 = println(ut34);  // Should be 6
     let ut35 = test_is_branch_inst_ext();
-    let v35 = println(ut35);  -- Should be 6
+    let v35 = println(ut35);  // Should be 6
     let ut36 = test_is_return_inst_ext();
-    let v36 = println(ut36);  -- Should be 6
+    let v36 = println(ut36);  // Should be 6
     let ut37 = test_const_table_multi();
-    let v37 = println(ut37);  -- Should be 6
+    let v37 = println(ut37);  // Should be 6
 
-    -- v0.30.185: Additional unit tests (36 new assertions)
+    // v0.30.185: Additional unit tests (36 new assertions)
     let ut38 = test_opt_level_values();
-    let v38 = println(ut38);  -- Should be 6
+    let v38 = println(ut38);  // Should be 6
     let ut39 = test_const_table_overwrite();
-    let v39 = println(ut39);  -- Should be 6
+    let v39 = println(ut39);  // Should be 6
     let ut40 = test_copy_table_chain();
-    let v40 = println(ut40);  -- Should be 6
+    let v40 = println(ut40);  // Should be 6
     let ut41 = test_extract_copy_src_ext();
-    let v41 = println(ut41);  -- Should be 6
+    let v41 = println(ut41);  // Should be 6
     let ut42 = test_starts_with_positions();
-    let v42 = println(ut42);  -- Should be 6
+    let v42 = println(ut42);  // Should be 6
     let ut43 = test_parse_int_positions();
-    let v43 = println(ut43);  -- Should be 6
+    let v43 = println(ut43);  // Should be 6
 
     let unit_base = ut1 + ut2 + ut3 + ut4 + ut5 + ut6 + ut7 + ut8 + ut9 + ut10 +
                     ut11 + ut12 + ut13 + ut14 + ut15 + ut16 + ut17 + ut18 + ut19 + ut20 +
@@ -1080,9 +1044,9 @@ fn main() -> i64 =
     let unit_ext = ut26 + ut27 + ut28 + ut29 + ut30 + ut31 + ut32 + ut33 + ut34 + ut35 + ut36 + ut37;
     let unit_new = ut38 + ut39 + ut40 + ut41 + ut42 + ut43;
     let unit_total = unit_base + unit_ext + unit_new;
-    let v26 = println(unit_total);  -- Should be 234 (126 base + 72 extended + 36 new)
+    let v26 = println(unit_total);  // Should be 234 (126 base + 72 extended + 36 new)
 
-    let u2 = println(555);  -- Integration tests marker
+    let u2 = println(555);  // Integration tests marker
 
     let t1 = println(test_const_table());
     let t2 = println(test_extract_dest());
@@ -1094,7 +1058,7 @@ fn main() -> i64 =
     let t8 = println(test_optimize_mir());
     let t9 = println(test_copy_table());
     let t10 = println(test_opt_edge_cases());
-    -- v0.30.137: Additional tests
+    // v0.30.137: Additional tests
     let t11 = println(test_var_usage());
     let t12 = println(test_side_effects());
     let t13 = println(test_opt_levels());
@@ -1103,10 +1067,10 @@ fn main() -> i64 =
                 test_is_checks() + test_optimize_mir() + test_copy_table() +
                 test_opt_edge_cases() + test_var_usage() + test_side_effects() +
                 test_opt_levels();
-    let u3 = println(integration);  -- Should be 29
+    let u3 = println(integration);  // Should be 29
 
     let total = unit_total + integration;
     let u4 = println(888);
-    let u5 = println(total);  -- Should be 263 (234 unit + 29 integration)
+    let u5 = println(total);  // Should be 263 (234 unit + 29 integration)
     let u6 = println(999);
     0;

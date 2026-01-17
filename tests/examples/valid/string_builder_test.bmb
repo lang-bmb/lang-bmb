@@ -1,21 +1,17 @@
--- Test StringBuilder builtins (v0.31.13)
--- Verifies O(1) amortized string append for Phase 32.0.4
+// Test StringBuilder builtins (v0.31.13)
+// Verifies O(1) amortized string append for Phase 32.0.4
 
 fn main() -> i64 =
-    -- Create a new builder
+    // Create a new builder
     let sb = sb_new();
 
-    -- Push strings
+    // Push strings
     let sb = sb_push(sb, "Hello");
     let sb = sb_push(sb, " ");
     let sb = sb_push(sb, "World");
     let sb = sb_push(sb, "!");
 
-    -- Check length
+    // Check length
     let len = sb_len(sb);
-    if len != 12 then 1
-    else
-        -- Build the final string
-        let result = sb_build(sb);
-        if result != "Hello World!" then 2
-        else 0;
+    if len != 12 { 1 } else { let result = sb_build(sb) };
+        if result != "Hello World!" { 2 } else { 0 };

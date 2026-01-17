@@ -1,5 +1,5 @@
--- Test argv builtins (Phase 32.3.D)
--- Tests arg_count() and get_arg(n) for CLI argument access
+// Test argv builtins (Phase 32.3.D)
+// Tests arg_count() and get_arg(n) for CLI argument access
 
 fn print_s(s: String) -> i64 =
     let x = print_str(s);

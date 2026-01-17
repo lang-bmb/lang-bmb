@@ -1,0 +1,6 @@
+// Phase 3 Security Test: Generic instantiation explosion
+type A<T> = (T, T);
+type B<T> = A<A<A<A<A<A<A<A<A<A<T>>>>>>>>>>;
+type C<T> = B<B<B<B<B<T>>>>>;
+
+fn main() -> i64 = 0;

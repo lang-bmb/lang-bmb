@@ -1,31 +1,25 @@
--- Test file for Phase 32.0.2: Process execution builtins
+// Test file for Phase 32.0.2: Process execution builtins
 
--- Test system() - shell command execution
+// Test system() - shell command execution
 fn test_system() -> i64 =
     system("echo test > nul");
 
--- Test exec() - direct command execution
+// Test exec() - direct command execution
 fn test_exec() -> i64 =
     exec("cmd", "/c echo test");
 
--- Test exec_output() - capture stdout
+// Test exec_output() - capture stdout
 fn test_exec_output() -> String =
     exec_output("cmd", "/c echo hello");
 
--- Test getenv() - environment variable
+// Test getenv() - environment variable
 fn test_getenv() -> String =
     getenv("PATH");
 
--- Main test sequence - returns 0 if key tests pass
+// Main test sequence - returns 0 if key tests pass
 fn main() -> i64 =
     let sys_result = test_system();
-    if sys_result != 0 then 1
-    else
-        let exec_result = test_exec();
-        if exec_result != 0 then 2
-        else
-            let output = test_exec_output();
-            if output == "" then 3
-            else
-                let path = test_getenv();
-                if path == "" then 4 else 0;
+    if sys_result != 0 { 1 } else { let exec_result = test_exec() };
+        if exec_result != 0 { 2 } else { let output = test_exec_output() };
+            if output == "" { 3 } else { let path = test_getenv() };
+                if path == "" { 4 } else { 0 };

@@ -1,0 +1,20 @@
+// v0.50.6: Type alias examples
+
+// Simple type alias
+type Integer = i64;
+
+// Type alias with generic (deferred - resolution not yet integrated)
+// type Container<T> = [T; 10];
+
+// Refinement type (deferred - verification not yet integrated)
+// type NonZero = i64 where { self != 0 };
+
+// Function using type alias
+fn add(a: Integer, b: Integer) -> Integer = a + b;
+
+fn main() -> i64 = {
+    let x: Integer = 10;
+    let y: Integer = 20;
+    let result = add(x, y);
+    result
+};

@@ -1,4 +1,4 @@
--- Comparison operations
+// Comparison operations
 fn is_zero(x: i64) -> bool = x == 0;
 
 fn is_positive(x: i64) -> bool = x > 0;
@@ -6,4 +6,4 @@ fn is_positive(x: i64) -> bool = x > 0;
 fn is_negative(x: i64) -> bool = x < 0;
 
 fn max(a: i64, b: i64) -> i64 =
-  if a > b then a else b;
+  if a > b { a } else { b };

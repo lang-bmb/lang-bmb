@@ -1,0 +1,5 @@
+// Phase 3 Security Test: Deep recursion (stack exhaustion attempt)
+fn recurse(n: i64) -> i64 =
+    if n <= 0 { 0 } else { recurse(n - 1) + 1 };
+
+fn main() -> i64 = recurse(1000000);

@@ -42,7 +42,7 @@ impl Repl {
 
     /// Run the REPL
     pub fn run(&mut self) -> RlResult<()> {
-        println!("BMB REPL v0.3");
+        println!("BMB REPL v0.45");
         println!("Type :help for help, :quit to exit.\n");
 
         loop {
@@ -135,18 +135,86 @@ impl Repl {
         println!("  max(a, b)       Maximum of two values");
     }
 
-    /// Evaluate user input
+    /// Evaluate user input (v0.45: improved type inference)
     fn eval_input(&mut self, input: &str) {
-        // Wrap expression in a dummy function if it's not a function definition
-        let source = if input.starts_with("fn ") {
-            input.to_string()
-        } else {
-            // Wrap expression as a function body for evaluation
-            format!("fn __repl__() -> i64 = {input};")
-        };
+        // If it's a function definition, use directly
+        if input.starts_with("fn ") || input.starts_with("pub fn ") {
+            self.eval_source(input);
+            return;
+        }
 
+        // v0.45: Try multiple return types to support more expressions
+        // Order: i64 (most common), bool, f64, string, () for side effects
+        let return_types = ["i64", "bool", "f64", "string", "()"];
+        let mut last_error: Option<String> = None;
+
+        for ret_type in return_types {
+            let source = format!("fn __repl__() -> {ret_type} = {input};");
+
+            // Tokenize
+            let tokens = match tokenize(&source) {
+                Ok(t) => t,
+                Err(e) => {
+                    last_error = Some(format!("Lexer error: {}", e.message()));
+                    continue;
+                }
+            };
+
+            // Parse
+            let program = match parse("<repl>", &source, tokens) {
+                Ok(p) => p,
+                Err(e) => {
+                    last_error = Some(format!("Parse error: {}", e.message()));
+                    continue;
+                }
+            };
+
+            // Type check (without function registration for now)
+            let mut checker = crate::types::TypeChecker::new();
+            if checker.check_program(&program).is_err() {
+                // Type check failed, try next type
+                continue;
+            }
+
+            // Type check passed, now run it
+            self.interpreter.load(&program);
+            match self.interpreter.run(&program) {
+                Ok(value) => {
+                    // Don't print Unit values (like from println)
+                    if !matches!(value, crate::interp::Value::Unit) {
+                        println!("{value}");
+                    }
+                }
+                Err(err) => {
+                    eprintln!("Runtime error: {}", err.message);
+                }
+            }
+            return;
+        }
+
+        // If no type worked, show the last error or a generic message
+        if let Some(err) = last_error {
+            eprintln!("{err}");
+        } else {
+            // Try to get a better error message with i64
+            let source = format!("fn __repl__() -> i64 = {input};");
+            if let Ok(tokens) = tokenize(&source)
+                && let Ok(program) = parse("<repl>", &source, tokens)
+            {
+                let mut checker = crate::types::TypeChecker::new();
+                if let Err(err) = checker.check_program(&program) {
+                    eprintln!("Type error: {}", err.message());
+                    return;
+                }
+            }
+            eprintln!("Could not evaluate expression");
+        }
+    }
+
+    /// Evaluate a complete source string (for function definitions)
+    fn eval_source(&mut self, source: &str) {
         // Tokenize
-        let tokens = match tokenize(&source) {
+        let tokens = match tokenize(source) {
             Ok(tokens) => tokens,
             Err(err) => {
                 eprintln!("Lexer error: {}", err.message());
@@ -155,7 +223,7 @@ impl Repl {
         };
 
         // Parse
-        match parse("<repl>", &source, tokens) {
+        match parse("<repl>", source, tokens) {
             Ok(program) => {
                 // Load any function definitions
                 self.interpreter.load(&program);

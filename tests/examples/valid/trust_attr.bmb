@@ -1,12 +1,12 @@
--- v0.31: @trust attribute with mandatory reason
--- Skip SMT verification for this function
+// v0.31: @trust attribute with mandatory reason
+// Skip SMT verification for this function
 
 @trust "caller validates input in validate_input.bmb:42"
 fn unsafe_divide(a: i64, b: i64) -> i64
   pre b != 0
 = a / b;
 
--- Function without @trust - will be verified normally
+// Function without @trust - will be verified normally
 fn safe_max(a: i64, b: i64) -> i64
   post ret >= a and ret >= b
-= if a > b then a else b;
+= if a > b { a } else { b };

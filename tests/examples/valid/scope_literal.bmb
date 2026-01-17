@@ -1,4 +1,4 @@
--- Scope test returning literal
+// Scope test returning literal
 
 fn test_scope() -> i64 = {
     let x = 42;

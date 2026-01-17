@@ -1,4 +1,4 @@
--- Verify max function returns the larger value
+// Verify max function returns the larger value
 fn max(a: i64, b: i64) -> i64
   post ret >= a and ret >= b
-= if a > b then a else b;
+= if a > b { a } else { b };
