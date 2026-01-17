@@ -31,7 +31,7 @@
 | **v0.45** | **Foundation Completion** | ✅ 완료 | **stdlib 확정, 도구 안정화, bmb lint 추가** |
 | **v0.46** | **Independence** | ⏳ 검증중 | **Stage 1 완료, Stage 2 실패 (파서 스택 오버플로우)** |
 | **v0.47** | **Performance** | ✅ 조건부완료 | **Gate #3.1: Clang 대비 1.00-1.08x 달성 (v0.50.14)** |
-| **v0.48** | **Ecosystem** | 🔄 진행중 | **패키지 14/14, 크로스 컴파일 미완료** |
+| **v0.48** | **Ecosystem** | ✅ 조건부완료 | **패키지 14/14, 크로스 컴파일 IR 생성 (v0.50.23)** |
 | **v0.49** | **Showcase** | ✅ 완료 | **샘플 앱 5/5, 시나리오 5/5** |
 | **v0.50** | **Final Verification** | 🔄 진행중 | **보안 감사 완료, P0 취약점 수정됨 (v0.50.11)** |
 | **v0.51** | **Release Candidate** | 🎯 목표 | **완전한 프로그래밍 언어 (커뮤니티 검증 대기)** |
@@ -51,7 +51,7 @@
 | **자체 컴파일** | BMB 컴파일러가 자신을 컴파일 | ⏳ Stage 2 실패 (파서 스택 오버플로우) | v0.46 |
 | **디버깅 지원** | DWARF 정보, 소스맵 | 📋 계획 | v0.46 |
 | **성능 검증** | Gate #3.1 통과 (Clang 대비 ≤1.10x) | ✅ fibonacci 1.00-1.08x (v0.50.14) | v0.47 |
-| **크로스 컴파일** | Linux/Windows/macOS/WASM | ❌ 미완료 | v0.48 |
+| **크로스 컴파일** | Linux/Windows/macOS/WASM | ✅ IR 생성 가능 (v0.50.23) | v0.48 |
 | **생태계** | 14+ 핵심 패키지 | ✅ 14/14 | v0.48 |
 | **샘플/문서** | 5개 샘플 앱, 5개 시나리오 | ✅ 5/5 앱, 5/5 문서 | v0.49 |
 | **보안 감사** | 컴파일러/런타임 보안 검토 | ✅ Phase 1-3 완료, P0 수정됨 (v0.50.11) | v0.50 |
@@ -295,10 +295,10 @@ cd ecosystem/benchmark-bmb
 |----|--------|------|----------|------|
 | 48.1 | **collections 패키지** | HashMap, VecDeque, Stack | P0 | ✅ 완료 |
 | 48.2 | **args 패키지** | CLI 인자 파싱 | P1 | ✅ 완료 |
-| 48.3 | **크로스 컴파일 Linux** | `--target x86_64-linux` | P0 | 📋 계획 |
-| 48.4 | **크로스 컴파일 Windows** | `--target x86_64-windows` | P0 | 📋 계획 |
-| 48.5 | **크로스 컴파일 macOS** | `--target x86_64-macos`, `aarch64-macos` | P1 | 📋 계획 |
-| 48.6 | **WASM 백엔드 안정화** | `--target wasm32` | P1 | 📋 계획 |
+| 48.3 | **크로스 컴파일 Linux** | `--target x86_64-linux` | P0 | ✅ v0.50.23 IR 생성 가능 |
+| 48.4 | **크로스 컴파일 Windows** | `--target x86_64-windows` | P0 | ✅ v0.50.23 IR 생성 가능 |
+| 48.5 | **크로스 컴파일 macOS** | `--target x86_64-macos`, `aarch64-macos` | P1 | ✅ v0.50.23 IR 생성 가능 (사용자 skip) |
+| 48.6 | **WASM 백엔드 안정화** | `--target wasm32` | P1 | ✅ v0.50.23 검증됨 |
 | 48.7 | **gotgan 레지스트리** | 패키지 검색 및 다운로드 서버 | P2 | 📋 계획 |
 | 48.8 | **`bmb q deps`** | 의존성 쿼리 (`--reverse`, `--transitive`) | P1 | 📋 계획 |
 | 48.9 | **`bmb q contract`** | 계약 상세 쿼리 (`--uses-old`) | P1 | 📋 계획 |

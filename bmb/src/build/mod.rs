@@ -38,6 +38,9 @@ pub struct BuildConfig {
     pub verbose: bool,
     /// Compilation target (v0.12.3)
     pub target: Target,
+    /// Target triple for cross-compilation (v0.50.23)
+    /// e.g., "x86_64-unknown-linux-gnu", "x86_64-pc-windows-msvc", "aarch64-apple-darwin"
+    pub target_triple: Option<String>,
 }
 
 impl BuildConfig {
@@ -52,12 +55,19 @@ impl BuildConfig {
             emit_ir: false,
             verbose: false,
             target: Target::Native,
+            target_triple: None,
         }
     }
 
     /// Set compilation target (v0.12.3)
     pub fn target(mut self, target: Target) -> Self {
         self.target = target;
+        self
+    }
+
+    /// Set target triple for cross-compilation (v0.50.23)
+    pub fn target_triple(mut self, triple: String) -> Self {
+        self.target_triple = Some(triple);
         self
     }
 
@@ -247,7 +257,12 @@ pub fn build(config: &BuildConfig) -> BuildResult<()> {
         use std::process::Command;
 
         // Use text-based LLVM IR generation + clang
-        let codegen = TextCodeGen::new();
+        // v0.50.23: Support cross-compilation target triple
+        let codegen = if let Some(ref triple) = config.target_triple {
+            TextCodeGen::with_target(triple)
+        } else {
+            TextCodeGen::new()
+        };
         let ir = codegen.generate(&mir).map_err(|_| BuildError::CodeGen(
             CodeGenError::LlvmNotAvailable, // Use existing error type
         ))?;

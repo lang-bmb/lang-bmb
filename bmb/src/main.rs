@@ -53,6 +53,10 @@ enum Command {
         /// Build for all targets (native + WASM) - v0.12.4
         #[arg(long)]
         all_targets: bool,
+        /// Target triple for cross-compilation (v0.50.23)
+        /// Examples: x86_64-unknown-linux-gnu, x86_64-pc-windows-msvc, aarch64-apple-darwin
+        #[arg(long)]
+        target: Option<String>,
         /// Verbose output
         #[arg(short, long)]
         verbose: bool,
@@ -334,8 +338,9 @@ fn main() {
             emit_wasm,
             wasm_target,
             all_targets,
+            target,
             verbose,
-        } => build_file(&file, output, release, aggressive, emit_ir, emit_mir, emit_wasm, &wasm_target, all_targets, verbose),
+        } => build_file(&file, output, release, aggressive, emit_ir, emit_mir, emit_wasm, &wasm_target, all_targets, target.as_deref(), verbose),
         Command::Run { file, args, human: _ } => run_file(&file, &args),
         Command::Repl => start_repl(),
         Command::Check { file, include_paths } => check_file_with_includes(&file, &include_paths),
@@ -374,6 +379,7 @@ fn build_file(
     emit_wasm: bool,
     wasm_target: &str,
     all_targets: bool,
+    target: Option<&str>,
     verbose: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // v0.21.2: If emitting MIR, just output MIR and return
@@ -391,7 +397,7 @@ fn build_file(
         if verbose {
             println!("\n=== Native Build ===");
         }
-        build_native(path, output.clone(), release, aggressive, emit_ir, verbose)?;
+        build_native(path, output.clone(), release, aggressive, emit_ir, target, verbose)?;
 
         // Then build WASM
         if verbose {
@@ -411,7 +417,7 @@ fn build_file(
     }
 
     // Default: build native
-    build_native(path, output, release, aggressive, emit_ir, verbose)
+    build_native(path, output, release, aggressive, emit_ir, target, verbose)
 }
 
 fn build_native(
@@ -420,6 +426,7 @@ fn build_native(
     release: bool,
     aggressive: bool,
     emit_ir: bool,
+    target: Option<&str>,
     verbose: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     use bmb::build::{BuildConfig, OptLevel};
@@ -427,6 +434,14 @@ fn build_native(
     let mut config = BuildConfig::new(path.to_path_buf())
         .emit_ir(emit_ir)
         .verbose(verbose);
+
+    // v0.50.23: Cross-compilation target
+    if let Some(triple) = target {
+        config = config.target_triple(triple.to_string());
+        if verbose {
+            println!("Cross-compiling for target: {}", triple);
+        }
+    }
 
     if let Some(out) = output {
         config = config.output(out);

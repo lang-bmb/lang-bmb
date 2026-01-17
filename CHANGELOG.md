@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.50.23] - 2026-01-17
+
+### Added
+
+- **Cross-compilation target flag** (Task 48.3-48.4): `bmb build --target <triple>` generates LLVM IR for specified target
+  - Supports target triples: `x86_64-unknown-linux-gnu`, `x86_64-pc-windows-msvc`, `aarch64-apple-darwin`
+  - LLVM IR can be compiled on target platform with clang
+  - WASM backend verified working on Windows
+
+### Changed
+
+- `BuildConfig` now supports `target_triple` field for cross-compilation
+- `TextCodeGen` uses custom target triple when specified
+
 ## [0.50.22] - 2026-01-17
 
 ### Added
