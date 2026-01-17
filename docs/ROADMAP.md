@@ -1541,8 +1541,46 @@ define i64 @fib(i64 %0) {
 **다음 우선순위**:
 | 우선순위 | 작업 | 상태 |
 |----------|------|------|
-| P0 | WSL에서 Stage 2/3 Bootstrap 검증 | ⏳ 대기 (LLVM 필요) |
+| P0 | WSL에서 Stage 2/3 Bootstrap 검증 | 🔄 Stage 2 >20분 (v0.50.26) |
 | P1 | bmb q batch 구현 | ✅ 구현됨 |
 | P1 | bmb q impact 구현 | ✅ 구현됨 |
 | P1 | Formatter 주석 보존 | ✅ v0.50.20 완료 |
 | P2 | LSP hover/completion 구현 | ✅ v0.50.25 완료 |
+
+### 2026-01-17 WSL 검증 세션 (v0.50.26)
+
+**환경**: WSL Ubuntu, LLVM 18.1.3
+
+**1. Gate #3.1 벤치마크 검증**:
+| Benchmark | BMB --aggressive | Clang -O3 | Ratio |
+|-----------|------------------|-----------|-------|
+| fibonacci(40) | 0.18s | 0.16s | **1.125x** |
+
+**분석**:
+- 이전 결과 (LLVM 21): 1.08x ✅
+- 현재 결과 (LLVM 18): 1.125x ⚠️ (1.10x 기준 약간 초과)
+- LLVM 버전 차이로 인한 성능 변동 있음
+
+**2. Stage 2 Bootstrap 검증**:
+| 단계 | 결과 | 비고 |
+|------|------|------|
+| Stage 1 빌드 | ✅ 0.75s | Rust BMB → bmb-stage1-cli |
+| Stage 1 테스트 | ✅ LLVM IR 출력 | `/tmp/hello.bmb` 컴파일 성공 |
+| Stage 2 컴파일 | ⚠️ >20분 | 30K LOC 자체컴파일 타임아웃 |
+
+**Stage 2 지연 원인**:
+- Bootstrap 컴파일러의 O(n²) 문자열 연결 (StringBuilder 대신 + 연산)
+- 30K+ LOC 소스 처리 시 지수적 시간 증가
+- 해결책: StringBuilder 도입 또는 점진적 컴파일 필요
+
+**3. 구현된 기능 (v0.50.26)**:
+- Array reference indexing: `arr[idx]` where `arr: &[T; N]`
+- 타입 체커, 인터프리터 모두 지원
+- 3개 통합 테스트 추가
+
+**다음 단계**:
+| 우선순위 | 작업 | 상태 |
+|----------|------|------|
+| P0 | Stage 2 최적화 (StringBuilder) | 📋 계획 |
+| P1 | tail-call 최적화 | 📋 계획 |
+| P2 | LLVM 21 업그레이드 (Gate #3.1 재검증) | 📋 계획 |
