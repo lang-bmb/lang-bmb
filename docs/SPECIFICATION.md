@@ -10,24 +10,24 @@
 
 > **"Sacrifice human convenience to achieve maximum performance AND stability"**
 
-BMB aims to optimize the final 1-20% that C/Rust leave on the table, **theoretically surpassing C/Rust performance**.
+BMB is designed for an **AI-first development paradigm**. By prioritizing machine efficiency over human ergonomics, BMB becomes the language that AI can write most effectively.
 
 ### 0.1 The BMB Principle
 
 ```
-Performance First + Stability = Solved through Language Complexity
+Performance + Stability > Human Convenience
 ```
 
-| Principle | Description | Result |
-|-----------|-------------|--------|
-| **Performance First** | Performance is #1 priority in all design decisions | Machine-level optimization |
-| **Zero-Overhead Safety** | Safety verification at compile-time only | Runtime cost = 0 |
-| **No Defense Code** | Defense code = performance degradation | Replace with proofs |
-| **Complexity for Humans** | When performance/safety conflict → language becomes harder | Developer provides more information |
+| Principle | Description | Why AI-Friendly |
+|-----------|-------------|-----------------|
+| **Performance First** | Performance is #1 priority in all design decisions | AI doesn't need syntactic sugar |
+| **Zero-Overhead Safety** | Safety verification at compile-time only | AI can provide complete proofs |
+| **Explicit Everything** | No implicit conversions, no hidden control flow | AI handles verbosity easily |
+| **Contract-Driven** | Formal specifications required for optimization | AI excels at formal specification |
 
 ### 0.2 What BMB Eliminates
 
-Runtime checks in other languages are replaced with **compile-time proofs**:
+Runtime checks are replaced with **compile-time proofs**:
 
 | Runtime Check (Other Languages) | BMB Approach | Overhead |
 |---------------------------------|--------------|----------|
@@ -45,16 +45,24 @@ Runtime checks in other languages are replaced with **compile-time proofs**:
 | Contracts required | Runtime checks eliminated |
 | Explicit conversions | Predictable performance |
 | More compile errors | Fewer runtime errors |
+| Steeper learning curve | AI handles complexity |
 
-### 0.4 Value Verification
+### 0.4 Why This Works for AI
 
-BMB's philosophy must be **verified through benchmarks**. Claims alone are insufficient.
+Traditional languages optimize for human readability and convenience. BMB inverts this:
+
+- **Humans** struggle with: verbose types, explicit contracts, no shortcuts
+- **AI** excels at: formal specification, complete type annotations, proof generation
+
+The result: A language where AI-generated code is both **correct** and **maximally optimized**.
+
+### 0.5 Value Verification
+
+BMB's design choices must be **verified through benchmarks**.
 
 | Verification Item | Criteria | Status |
 |-------------------|----------|--------|
 | **Zero-Overhead Proof** | BMB safe ≡ C unsafe (identical assembly) | 🔄 In Progress |
-| **Performance Parity** | All benchmarks ≤1.05x vs C | 🔄 Partial |
-| **Performance Win** | 3+ benchmarks faster than C | 📋 Planned |
 | **Contract Optimization** | Contracts enable real optimization | 🔄 In Progress |
 
 ```bash

@@ -1,7 +1,7 @@
 # BMB Benchmark Master Plan
 
-> **Philosophy**: Sacrifice human convenience → Achieve maximum performance & stability
-> **Goal**: Optimize the 1-20% that C/Rust leave on the table → Theoretically surpass C/Rust
+> **Philosophy**: Performance + Stability > Human Convenience
+> **Benchmark Goal**: Verify zero-overhead safety and competitive performance vs C/Rust
 
 ---
 
@@ -15,12 +15,12 @@
 ### 2. Stability Through Language Complexity
 - Replace runtime checks with type system/contracts
 - Unverifiable → compile error (no runtime cost)
-- Developer provides more information → compiler optimizes more aggressively
+- AI provides complete specifications → compiler optimizes aggressively
 
-### 3. Provable Performance Advantage
-- All claims must be verified through benchmarks
-- Quantitative comparison vs C/Rust required
-- Reproducible measurement environment
+### 3. Verifiable Claims
+- All design claims must be verified through benchmarks
+- Zero-overhead safety must be proven with assembly comparison
+- Reproducible measurement environment required
 
 ---
 
