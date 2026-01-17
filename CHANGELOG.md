@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.50.26] - 2026-01-17
+
+### Added
+
+- **Array reference indexing**: Support indexing through references to arrays (`&[T; N]`)
+  - Type checker now accepts `arr[idx]` where `arr: &[T; N]`
+  - Interpreter automatically dereferences before indexing
+  - Also supports string reference indexing (`&String`)
+  - Resolves ISSUE-20260117-array-reference-indexing
+
+### Changed
+
+- Type checker match on `Type::Ref(inner)` for index expressions
+- Interpreter `eval` and `eval_fast` dereference `Value::Ref` before indexing
+- Added 3 integration tests: `test_array_ref_index`, `test_string_ref_index`, `test_invalid_ref_index`
+
 ## [0.50.25] - 2026-01-17
 
 ### Added

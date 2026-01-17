@@ -1994,9 +1994,18 @@ impl TypeChecker {
                     _ => return Err(CompileError::type_error(format!("Array index must be integer, got: {}", index_ty), index.span)),
                 }
 
-                // Expression must be an array
-                match expr_ty {
-                    Type::Array(elem_ty, _) => Ok(*elem_ty),
+                // Expression must be an array or reference to array (v0.50.26)
+                match &expr_ty {
+                    Type::Array(elem_ty, _) => Ok(*elem_ty.clone()),
+                    // v0.50.26: Support indexing through references to arrays
+                    Type::Ref(inner) => match inner.as_ref() {
+                        Type::Array(elem_ty, _) => Ok(*elem_ty.clone()),
+                        Type::String => Ok(Type::I64),
+                        _ => Err(CompileError::type_error(
+                            format!("Cannot index into reference type: &{}", inner),
+                            expr.span,
+                        )),
+                    },
                     Type::String => Ok(Type::I64), // String indexing returns char code
                     _ => Err(CompileError::type_error(format!("Cannot index into type: {}", expr_ty), expr.span)),
                 }

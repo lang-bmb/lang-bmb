@@ -3,6 +3,7 @@
 **Discovered**: 2026-01-17 during Zero-Overhead benchmark implementation
 **Severity**: Medium (affects performance-critical code patterns)
 **Component**: Type checker (`bmb/src/types/mod.rs`)
+**Status**: ✅ RESOLVED (v0.50.26)
 
 ## Summary
 
@@ -73,3 +74,31 @@ Per BMB's core philosophy:
 ## Workaround
 
 For now, use smaller arrays in benchmarks or accept the performance overhead. The benchmark code documents this limitation.
+
+## Resolution (v0.50.26)
+
+**Files Changed**:
+- `bmb/src/types/mod.rs`: Extended index expression type checker to handle `Type::Ref(inner)`
+- `bmb/src/interp/eval.rs`: Added dereference logic in `eval` and `eval_fast` for `Value::Ref`
+- `bmb/tests/integration.rs`: Added 3 tests (`test_array_ref_index`, `test_string_ref_index`, `test_invalid_ref_index`)
+
+**Implementation**:
+```rust
+// Type checker (types/mod.rs)
+match &expr_ty {
+    Type::Array(elem_ty, _) => Ok(*elem_ty.clone()),
+    Type::Ref(inner) => match inner.as_ref() {
+        Type::Array(elem_ty, _) => Ok(*elem_ty.clone()),
+        Type::String => Ok(Type::I64),
+        _ => Err(...),
+    },
+    Type::String => Ok(Type::I64),
+    _ => Err(...),
+}
+
+// Interpreter (interp/eval.rs)
+let derefed_val = match &arr_val {
+    Value::Ref(r) => r.borrow().clone(),
+    _ => arr_val,
+};
+```

@@ -594,7 +594,13 @@ impl Interpreter {
                     _ => return Err(RuntimeError::type_error("integer", idx_val.type_name())),
                 };
 
-                match arr_val {
+                // v0.50.26: Dereference if indexing through a reference
+                let derefed_val = match &arr_val {
+                    Value::Ref(r) => r.borrow().clone(),
+                    _ => arr_val,
+                };
+
+                match derefed_val {
                     Value::Array(arr) => {
                         if idx < arr.len() {
                             Ok(arr[idx].clone())
@@ -611,7 +617,7 @@ impl Interpreter {
                     }
                     // v0.93: Handle StringRope (lazy concatenated strings)
                     Value::StringRope(_) => {
-                        let s = arr_val.materialize_string()
+                        let s = derefed_val.materialize_string()
                             .ok_or_else(|| RuntimeError::type_error("string", "invalid StringRope"))?;
                         if idx < s.len() {
                             Ok(Value::Int(s.as_bytes()[idx] as i64))
@@ -619,7 +625,7 @@ impl Interpreter {
                             Err(RuntimeError::index_out_of_bounds(idx as i64, s.len()))
                         }
                     }
-                    _ => Err(RuntimeError::type_error("array or string", arr_val.type_name())),
+                    _ => Err(RuntimeError::type_error("array or string", derefed_val.type_name())),
                 }
             }
 
@@ -1545,7 +1551,14 @@ impl Interpreter {
                     Value::Int(n) => n as usize,
                     _ => return Err(RuntimeError::type_error("integer", idx_val.type_name())),
                 };
-                match arr_val {
+
+                // v0.50.26: Dereference if indexing through a reference
+                let derefed_val = match &arr_val {
+                    Value::Ref(r) => r.borrow().clone(),
+                    _ => arr_val,
+                };
+
+                match derefed_val {
                     Value::Array(arr) => {
                         if idx < arr.len() {
                             Ok(arr[idx].clone())
@@ -1562,7 +1575,7 @@ impl Interpreter {
                     }
                     // v0.93: Handle StringRope (lazy concatenated strings)
                     Value::StringRope(_) => {
-                        let s = arr_val.materialize_string()
+                        let s = derefed_val.materialize_string()
                             .ok_or_else(|| RuntimeError::type_error("string", "invalid StringRope"))?;
                         if idx < s.len() {
                             Ok(Value::Int(s.as_bytes()[idx] as i64))
@@ -1570,7 +1583,7 @@ impl Interpreter {
                             Err(RuntimeError::index_out_of_bounds(idx as i64, s.len()))
                         }
                     }
-                    _ => Err(RuntimeError::type_error("array or string", arr_val.type_name())),
+                    _ => Err(RuntimeError::type_error("array or string", derefed_val.type_name())),
                 }
             }
 

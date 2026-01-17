@@ -220,6 +220,30 @@ fn test_array_index() {
     ));
 }
 
+#[test]
+fn test_array_ref_index() {
+    // v0.50.26: Array reference indexing
+    assert!(type_checks(
+        "fn first_ref(arr: &[i64; 3]) -> i64 = arr[0];"
+    ));
+}
+
+#[test]
+fn test_string_ref_index() {
+    // v0.50.26: String reference indexing
+    assert!(type_checks(
+        "fn char_at_ref(s: &String, i: i64) -> i64 = s[i];"
+    ));
+}
+
+#[test]
+fn test_invalid_ref_index() {
+    // Cannot index into a reference to non-array/non-string
+    assert!(type_error(
+        "fn bad(x: &i64, i: i64) -> i64 = x[i];"
+    ));
+}
+
 // ============================================
 // Generic Function Tests
 // ============================================
