@@ -26,7 +26,7 @@
 
 ## Current Status (2026-01-17)
 
-### Existing Benchmarks (31 total)
+### Existing Benchmarks (36 total)
 
 | Category | Count | Status | Notes |
 |----------|-------|--------|-------|
@@ -34,7 +34,8 @@
 | Contract | 6 | ⚠️ | Optimization effect below expectations |
 | Real-World | 7 | ⚠️ | JSON 2.5x slower |
 | Bootstrap | 3 | ✅ | Self-compilation measurement |
-| **Zero-Overhead** | **5** | ✅ **NEW** | Phase 1 complete |
+| **Zero-Overhead** | **5** | ✅ | Phase 1 complete |
+| **Memory** | **5** | ✅ **NEW** | Phase 2 complete (MEM-2 skipped) |
 
 ### Gate Status
 
@@ -77,18 +78,21 @@ clang -O3 bench.c -S -o c.s
 diff bmb.s c.s  # Must be identical (or BMB shorter)
 ```
 
-### Phase 2: Memory Benchmarks (P0 - 1 week)
+### Phase 2: Memory Benchmarks (P0 - 1 week) ✅ COMPLETE
 
 **Goal**: Verify systems language essential memory performance
 
-| ID | Benchmark | Measurement Target | Target vs C |
-|----|-----------|-------------------|-------------|
-| MEM-1 | **cache_stride** | Cache line access patterns | ≤1.00x |
-| MEM-2 | **allocation_stress** | malloc/free cycles | ≤1.05x |
-| MEM-3 | **memory_copy** | memcpy replacement | ≤1.00x |
-| MEM-4 | **stack_allocation** | Stack variable access | ≤1.00x |
-| MEM-5 | **pointer_chase** | Linked list traversal | ≤1.00x |
-| MEM-6 | **simd_sum** | SIMD vector operations | ≤1.00x (auto-vectorization) |
+| ID | Benchmark | Measurement Target | Status |
+|----|-----------|-------------------|--------|
+| MEM-1 | **cache_stride** | Cache line access patterns | ✅ Implemented |
+| MEM-2 | **allocation_stress** | malloc/free cycles | ⏭️ SKIPPED (no heap in BMB) |
+| MEM-3 | **memory_copy** | memcpy replacement | ✅ Implemented |
+| MEM-4 | **stack_allocation** | Stack variable access | ✅ Implemented |
+| MEM-5 | **pointer_chase** | Linked list traversal | ✅ Implemented (index-based) |
+| MEM-6 | **simd_sum** | SIMD vector operations | ✅ Implemented |
+
+**Note**: MEM-2 skipped - BMB doesn't have heap allocation yet.
+MEM-5 uses array indices to simulate pointer chasing (no pointers in BMB).
 
 ### Phase 3: System Call Benchmarks (P0 - 1 week)
 
