@@ -26,7 +26,7 @@
 
 ## Current Status (2026-01-17)
 
-### Existing Benchmarks (36 total)
+### Existing Benchmarks (39 total)
 
 | Category | Count | Status | Notes |
 |----------|-------|--------|-------|
@@ -35,7 +35,8 @@
 | Real-World | 7 | ⚠️ | JSON 2.5x slower |
 | Bootstrap | 3 | ✅ | Self-compilation measurement |
 | **Zero-Overhead** | **5** | ✅ | Phase 1 complete |
-| **Memory** | **5** | ✅ **NEW** | Phase 2 complete (MEM-2 skipped) |
+| **Memory** | **5** | ✅ | Phase 2 complete (MEM-2 skipped) |
+| **Syscall** | **3** | ✅ **NEW** | Phase 3 complete (SYS-3,5 skipped) |
 
 ### Gate Status
 
@@ -94,17 +95,20 @@ diff bmb.s c.s  # Must be identical (or BMB shorter)
 **Note**: MEM-2 skipped - BMB doesn't have heap allocation yet.
 MEM-5 uses array indices to simulate pointer chasing (no pointers in BMB).
 
-### Phase 3: System Call Benchmarks (P0 - 1 week)
+### Phase 3: System Call Benchmarks (P0 - 1 week) ✅ COMPLETE
 
 **Goal**: Verify OS interface performance
 
-| ID | Benchmark | Measurement Target | Target vs C |
-|----|-----------|-------------------|-------------|
-| SYS-1 | **syscall_overhead** | Basic system call | ≤1.00x |
-| SYS-2 | **file_io_seq** | Sequential file read/write | ≤1.02x |
-| SYS-3 | **file_io_random** | Random file access | ≤1.02x |
-| SYS-4 | **process_spawn** | Process creation | ≤1.05x |
-| SYS-5 | **signal_handling** | Signal processing latency | ≤1.00x |
+| ID | Benchmark | Measurement Target | Status |
+|----|-----------|-------------------|--------|
+| SYS-1 | **syscall_overhead** | Basic system call (file_exists) | ✅ Implemented |
+| SYS-2 | **file_io_seq** | Sequential file read/write | ✅ Implemented |
+| SYS-3 | **file_io_random** | Random file access | ⏭️ SKIPPED (no seek in BMB) |
+| SYS-4 | **process_spawn** | Process creation | ✅ Implemented |
+| SYS-5 | **signal_handling** | Signal processing latency | ⏭️ SKIPPED (no signals in BMB) |
+
+**Note**: SYS-3 and SYS-5 skipped due to missing language features.
+BMB lacks random file access (seek) and signal handling primitives.
 
 ### Phase 4: Real-World Workload Improvement (P1 - 2 weeks)
 
