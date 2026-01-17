@@ -1,37 +1,99 @@
 # BMB Language Specification
 
-**Version**: v0.32
-**Date**: 2026-01-10
+**Version**: v0.32.1
+**Date**: 2026-01-17
 **Status**: Final Draft
 
 ---
+
+## 0. Core Philosophy
+
+> **"인간 편의를 희생하고, 최고 성능과 안정성을 모두 확보한다"**
+
+BMB는 C/Rust가 포기한 마지막 1~20%의 성능을 최적화하여 **이론상 C/Rust를 추월**하는 것을 목표로 한다.
+
+### 0.1 The BMB Principle
+
+```
+성능 최우선 + 안정성 = 언어 복잡도로 해결
+```
+
+| 원칙 | 설명 | 결과 |
+|------|------|------|
+| **성능 최우선** | 모든 설계 결정에서 성능이 1순위 | 기계어 수준 최적화 |
+| **Zero-Overhead Safety** | 안전성 검증은 컴파일 타임에만 | 런타임 비용 = 0 |
+| **No Defense Code** | 방어 코드는 결국 성능 저하 | 증명으로 대체 |
+| **Complexity for Humans** | 성능/안정성 충돌 시 → 언어가 복잡해짐 | 개발자가 더 많은 정보 제공 |
+
+### 0.2 What BMB Eliminates
+
+기존 언어들이 런타임에 수행하는 검사를 **컴파일 타임 증명**으로 대체:
+
+| 런타임 검사 (다른 언어) | BMB 방식 | 오버헤드 |
+|-------------------------|----------|----------|
+| Bounds checking | `pre idx < arr.len()` 증명 | **0%** |
+| Null checking | `T?` 타입 + 계약 증명 | **0%** |
+| Overflow checking | 계약 또는 명시적 연산자 | **0%** |
+| Type casting | 정적 타입 + 정제 타입 | **0%** |
+| Division by zero | `pre divisor != 0` 증명 | **0%** |
+
+### 0.3 The Trade-off
+
+| 희생 (Human Convenience) | 획득 (Machine Efficiency) |
+|--------------------------|---------------------------|
+| 더 많은 타입 명시 | 더 공격적인 최적화 |
+| 계약 작성 필수 | 런타임 체크 완전 제거 |
+| 명시적 변환 필요 | 예측 가능한 성능 |
+| 컴파일 에러 증가 | 런타임 에러 감소 |
+
+### 0.4 Value Verification (가치 검증)
+
+BMB의 철학은 **벤치마크로 검증**되어야 한다. 주장만으로는 불충분.
+
+| 검증 항목 | 기준 | 상태 |
+|-----------|------|------|
+| **Zero-Overhead Proof** | BMB safe ≡ C unsafe (어셈블리 동일) | 🔄 검증중 |
+| **Performance Parity** | 전체 벤치마크 ≤1.05x vs C | 🔄 일부 달성 |
+| **Performance Win** | 3개 이상 벤치마크에서 C 추월 | 📋 계획 |
+| **Contract Optimization** | 계약이 실제 최적화 유발 | 🔄 검증중 |
+
+```bash
+# 가치 검증 명령어
+bmb verify --zero-overhead bench.bmb   # 어셈블리 비교
+benchmark-bmb gate 3.1 3.2 3.3         # 성능 게이트 검증
+```
+
+---
+
 ## 1. Design Principles
 
 ### 1.1 Priority
 
 | Priority | Principle | Description |
 |----------|-----------|-------------|
-| **P0** | **Performance** | No syntax that prevents optimization. Contracts enable check elimination. |
-| **P0** | **Correctness** | No implicit/ambiguous behavior. Same syntax = same meaning. |
-| **P1** | **LLM Efficiency** | Maximize code generation accuracy through universal conventions. |
+| **P0** | **Performance** | 최적화를 방해하는 문법 없음. 계약으로 체크 제거. |
+| **P0** | **Zero-Overhead** | 안전성 = 컴파일 타임. 런타임 비용 = 0. |
+| **P0** | **Correctness** | 암시적/모호한 동작 없음. 동일 문법 = 동일 의미. |
+| **P1** | **LLM Efficiency** | 범용 관례로 코드 생성 정확도 극대화. |
 
 ### 1.2 P0 Rules (Non-negotiable)
 
 | Rule | Description | Violation Example |
 |------|-------------|-------------------|
-| Compile-time verification | Provable at compile time → Must be enforced | Bounds check without contract |
-| Explicit behavior | No hidden conversions or control flow | Deref coercion, `?` operator |
-| Unambiguous parsing | Same token = Same meaning | N/A (satisfied by Rust base) |
-| Single representation | One concept = One syntax | `T?` and `Option<T>` both allowed |
+| Zero runtime cost | 안전성 검사는 컴파일 타임에만 | 런타임 bounds check |
+| Compile-time verification | 증명 가능 → 반드시 적용 | 계약 없는 배열 접근 |
+| Explicit behavior | 숨겨진 변환/제어흐름 없음 | Deref coercion, `?` operator |
+| Unambiguous parsing | 동일 토큰 = 동일 의미 | Context-dependent parsing |
+| Single representation | 하나의 개념 = 하나의 문법 | `T?`와 `Option<T>` 혼용 |
 
 ### 1.3 P1 Rules (Balanced)
 
 | Rule | Description | Application |
 |------|-------------|-------------|
-| Universal over Rust-specific | Prefer widely adopted conventions | `T?` over `Option<T>` |
-| Rust when universal | Use Rust syntax when it's the standard | `<T>`, `match`, `&&` |
-| Modern over historical | Prefer current standards over legacy | `T?` (2011+) over `Option<T>` (2010) |
-| LLM data coverage | Consider training data availability | `Result<T,E>` (rich Rust data) |
+| Universal over Rust-specific | 범용 관례 선호 | `T?` over `Option<T>` |
+| Rust when universal | Rust가 표준일 때 Rust 문법 | `<T>`, `match`, `&&` |
+| Modern over historical | 현대 표준 선호 | `T?` (2011+) over `Option<T>` (2010) |
+| LLM data coverage | 학습 데이터 가용성 고려 | `Result<T,E>` (Rust 데이터 풍부) |
 
 ---
 
@@ -729,7 +791,7 @@ fn test_binary_search() {
 
 ---
 
-## Appendix: Contract Verification Status
+## Appendix A: Contract Verification Status
 
 | Feature | Status |
 |---------|--------|
@@ -740,3 +802,113 @@ fn test_binary_search() {
 | todo keyword | Complete |
 | Z3 integration | Complete |
 | SMT-LIB2 generation | Complete |
+
+---
+
+## Appendix B: Value Verification (가치 검증)
+
+BMB의 핵심 철학은 반드시 **정량적 증거**로 검증되어야 한다.
+
+### B.1 Zero-Overhead Safety Proof
+
+**목표**: BMB의 안전한 코드가 C의 unsafe 코드와 **동일한 어셈블리**를 생성함을 증명
+
+```bmb
+// BMB: 안전한 배열 접근
+fn get_safe(arr: &[i32], idx: usize) -> i32
+  pre idx < arr.len()
+= arr[idx];
+```
+
+```c
+// C: unsafe 배열 접근 (bounds check 없음)
+int get_unsafe(int* arr, size_t idx) {
+    return arr[idx];
+}
+```
+
+**검증 방법**:
+```bash
+bmb build safe.bmb --emit-asm -o bmb.s
+clang -O3 unsafe.c -S -o c.s
+diff bmb.s c.s  # 동일해야 함
+```
+
+**검증 대상**:
+
+| 검사 유형 | BMB 코드 | C 코드 | 어셈블리 |
+|-----------|----------|--------|----------|
+| Bounds check | `pre idx < len` | (없음) | 동일 |
+| Null check | `T?` + `pre x.is_some()` | raw pointer | 동일 |
+| Overflow | `pre a + b <= MAX` | (없음) | 동일 |
+| Division | `pre b != 0` | (없음) | 동일 |
+
+### B.2 Performance Gates
+
+| Gate | 기준 | 측정 방법 | 목표 |
+|------|------|-----------|------|
+| **#3.1** | Compute ≤1.10x vs Clang | fibonacci, mandelbrot | ✅ 달성 |
+| **#3.2** | 전체 ≤1.05x vs C | 26개 벤치마크 | 🔄 진행중 |
+| **#3.3** | 3개 C 추월 | 계약 최적화 케이스 | 📋 계획 |
+
+```bash
+# 성능 게이트 검증
+benchmark-bmb gate 3.1 --verbose
+benchmark-bmb gate 3.2 --verbose
+benchmark-bmb gate 3.3 --verbose
+```
+
+### B.3 Contract Optimization Proof
+
+**목표**: 계약이 실제로 컴파일러 최적화를 유발함을 증명
+
+| 최적화 | 계약 | 기대 효과 | 검증 상태 |
+|--------|------|-----------|-----------|
+| Bounds elim | `pre idx < len` | 배열 접근 시 체크 제거 | 🔄 |
+| Branch elim | `pre x > 0` | dead branch 제거 | 🔄 |
+| SIMD vectorize | `pure fn` + no aliasing | 자동 벡터화 활성화 | 🔄 |
+| Loop hoist | `invariant` | 불변량 루프 밖 이동 | 🔄 |
+| CSE | `pure fn` | 중복 호출 제거 | 🔄 |
+
+**검증 방법**:
+```bash
+# LLVM IR 비교
+bmb build with_contract.bmb --emit-llvm -o with.ll
+bmb build without_contract.bmb --emit-llvm -o without.ll
+diff with.ll without.ll  # 최적화 차이 확인
+```
+
+### B.4 Benchmark Categories
+
+| Category | 목적 | 벤치마크 |
+|----------|------|----------|
+| **Zero-Overhead** | 안전성 = 무비용 증명 | bounds, null, overflow |
+| **Compute** | CPU 성능 | fibonacci, mandelbrot, spectral_norm |
+| **Memory** | 메모리 효율성 | cache_stride, allocation |
+| **Contract** | 계약 최적화 효과 | purity_opt, aliasing |
+| **Real-World** | 실제 워크로드 | json_parse, lexer |
+
+### B.5 Verification Workflow
+
+```
+[코드 작성] → [계약 추가] → [SMT 검증] → [컴파일] → [벤치마크]
+                                ↓
+                         [증명 실패] → [코드 수정]
+                                ↓
+                         [증명 성공] → [런타임 체크 = 0]
+```
+
+### B.6 Success Criteria for v1.0
+
+| 항목 | 기준 | 필수 |
+|------|------|------|
+| Zero-Overhead 증명 | 5개 검사 유형 어셈블리 동일 | ✅ |
+| Gate #3.1 | Clang 대비 ≤1.10x | ✅ |
+| Gate #3.2 | 전체 벤치마크 ≤1.05x | ✅ |
+| Gate #3.3 | 3개 이상 C 추월 | ✅ |
+| Contract 최적화 | 3개 이상 케이스에서 >10% 개선 | ✅ |
+
+---
+
+*Last updated: 2026-01-17*
+*Specification version: v0.32.1*
