@@ -1507,3 +1507,40 @@ define i64 @fib(i64 %0) {
 1. Gate #3.1 공식 기준을 **Clang 대비 ≤1.20x**로 변경 (같은 LLVM 백엔드)
 2. 메모리 할당 성능 개선은 별도 P2 태스크로 추적
 3. v0.47 Performance 페이즈를 **조건부 완료**로 마킹
+
+### 2026-01-17 Bootstrap 검증 및 코드 정리 세션 (v0.50.19)
+
+**수행된 작업**:
+
+1. **Roadmap 분석**
+   - v0.46 Independence: Stage 2 블로커 (WSL/LLVM 필요)
+   - v0.47 Performance: Gate #3.1 PASSED (Clang baseline)
+   - v0.48 Ecosystem: 14/14 패키지 완료, 크로스 컴파일 미완료
+   - v0.50 Final Verification: 보안 감사 완료, P1/P2 태스크 남음
+
+2. **코드 품질 검증**
+   - 173 테스트 통과 (154 bmb + 19 gotgan)
+   - 0 clippy 경고
+   - 0 doc 경고 (ast/mod.rs 수정: 코드 블록 이스케이프)
+   - Bootstrap 테스트 통과: lexer(999), types(888), compiler(395→999)
+
+3. **v0.50.17-18 커밋 정리**
+   - String ABI 수정 (bootstrap ↔ C runtime)
+   - PHI node predecessors 수정
+   - S-expression parser quotes 처리 수정
+   - else-if 체인 분할로 파서 안정성 개선
+
+4. **Doc 경고 수정**
+   - `ast/mod.rs`: 제네릭 타입 구문 이스케이프 (`` `Type<T>` ``)
+
+**커밋**:
+- `61ecaa9` v0.50.17-18: Bootstrap String ABI fixes and PHI node improvements
+
+**다음 우선순위**:
+| 우선순위 | 작업 | 상태 |
+|----------|------|------|
+| P0 | WSL에서 Stage 2/3 Bootstrap 검증 | ⏳ 대기 (LLVM 필요) |
+| P1 | bmb q batch 구현 | 📋 계획 |
+| P1 | bmb q impact 구현 | 📋 계획 |
+| P1 | Formatter 주석 보존 | 📋 계획 |
+| P2 | LSP hover/completion 구현 | 📋 계획 |
