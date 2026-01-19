@@ -309,3 +309,69 @@ Clean up with:
 ```bash
 rm -f bmb-stage* *.ll *.o hello fib fib_c
 ```
+
+---
+
+## Current Status: Stage 2 Blocker (2026-01-19)
+
+### 문제 요약
+
+**Stage 2 자체 컴파일 실패**: Rust 인터프리터의 재귀 한계로 인해 30K LOC Bootstrap 소스 파싱이 실패합니다.
+
+| 단계 | 상태 | 비고 |
+|------|------|------|
+| Stage 1: Rust BMB → Native | ✅ 성공 | 0.918s, 189KB |
+| Stage 1 실행 테스트 | ✅ 성공 | 간단한 프로그램 컴파일 가능 |
+| Stage 2: Stage 1 → Stage 2 | ❌ 실패 | 스택 오버플로우/타임아웃 |
+
+### 근본 원인
+
+1. **Rust 인터프리터 재귀 한계**: `MAX_RECURSION_DEPTH = 100,000` (`bmb/src/interp/eval.rs:45`)
+2. **Bootstrap 소스 크기**: 30K+ LOC (`bmb_unified_cli.bmb` 2,742 lines 포함)
+3. **재귀 하강 파서**: 깊은 중첩 구조에서 스택 소모
+
+### 해결 방안
+
+#### 옵션 A: WSL 네이티브 Stage 1 빌드 (권장)
+```bash
+# 1. WSL에서 LLVM + Rust 설치
+wsl
+wget https://apt.llvm.org/llvm.sh && chmod +x llvm.sh && sudo ./llvm.sh 18
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+source ~/.cargo/env
+
+# 2. BMB with LLVM 빌드
+cd /mnt/d/data/lang-bmb
+export LLVM_SYS_180_PREFIX=/usr/lib/llvm-18
+cargo build --release --features llvm
+
+# 3. Stage 1 네이티브 빌드
+./target/release/bmb build bootstrap/bmb_unified_cli.bmb -o bmb-stage1
+
+# 4. Stage 2 실행 (네이티브 바이너리는 재귀 제한 없음)
+./bmb-stage1 build bootstrap/bmb_unified_cli.bmb -o bmb-stage2
+```
+
+#### 옵션 B: Bootstrap 모듈 분할
+Bootstrap 소스를 작은 모듈로 분할하여 개별 컴파일:
+- `utils.bmb` → 유틸리티 함수
+- `lexer.bmb` → 렉서
+- `parser.bmb` → 파서
+- `types.bmb` → 타입 체커
+- `codegen.bmb` → 코드 생성
+
+#### 옵션 C: 인터프리터 반복 방식 변환
+대규모 아키텍처 변경 필요 (권장하지 않음)
+
+### 개선 사항 (v0.50.26-27)
+
+- **StringBuilder 도입**: O(n²) → O(n) 문자열 연결 최적화
+- **parse_program_sb**: StringBuilder 기반 파서 (`bmb_unified_cli.bmb:628`)
+- **lower_*_sb 함수들**: StringBuilder 기반 lowering
+
+### 다음 단계
+
+1. WSL에서 수동으로 LLVM 18 + Rust 설치
+2. `cargo build --release --features llvm` 실행
+3. Stage 1 네이티브 빌드 후 Stage 2 테스트
+4. Stage 2 == Stage 3 동일성 검증
