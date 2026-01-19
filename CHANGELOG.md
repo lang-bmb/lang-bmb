@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.50.27] - 2026-01-17
+
+### Changed
+
+- **Bootstrap parser StringBuilder optimization**: `parse_program_sb` now uses StringBuilder for O(n) program AST accumulation
+  - Previously O(n²) due to string concatenation in recursive `parse_program`
+  - Stage 1 build time: ~0.9s (unchanged, Rust compiler is already optimized)
+  - Stage 2 still blocked by remaining O(n²) patterns in `parse_fn`, `parse_args`, `parse_params`
+
+### Known Issues
+
+- **Stage 2 Bootstrap**: Self-compilation still takes >5 minutes due to:
+  1. O(n²) string concatenation in individual function parsing (`parse_fn`)
+  2. O(n²) string concatenation in argument/parameter parsing
+  3. Deep recursion causing stack issues on default stack size (requires `ulimit -s unlimited`)
+  4. Segfault on default stack, timeout on unlimited stack
+
 ## [0.50.26] - 2026-01-17
 
 ### Added

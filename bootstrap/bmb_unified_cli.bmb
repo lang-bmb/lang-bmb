@@ -623,7 +623,35 @@ fn parse_program(src: String, pos: i64, fns: String) -> String =
         if is_error(rf) { rf } else { parse_program(src, unpack_pos(rf), fns + " " + unpack_ast(rf)) }
     } else { make_error("program") };
 
-fn parse_source(src: String) -> String = parse_program(src, 0, "");
+// v0.50.27: StringBuilder-optimized parse_program for O(n) complexity
+// Returns pack_result(end_pos, "") where AST is accumulated in sb
+fn parse_program_sb(src: String, pos: i64, sb: i64) -> String =
+    let tok = next_token_raw(src, pos);
+    let kind = tok_kind(tok);
+    if kind == TK_EOF() { pack_result(pos, "") } else if kind == TK_FN() {
+        let rf = parse_fn(src, tok_end(tok));
+        if is_error(rf) { rf } else {
+            let w1 = sb_push(sb, " ");
+            let w2 = sb_push(sb, unpack_ast(rf));
+            parse_program_sb(src, unpack_pos(rf), sb)
+        }
+    } else { make_error("program") };
+
+// v0.50.27: StringBuilder-based parse_source - O(n) complexity
+fn parse_source_sb() -> String =
+    // Note: This is a stub - actual implementation requires source as parameter
+    // Use parse_source() for now until full integration
+    "";
+
+fn parse_source(src: String) -> String =
+    // v0.50.27: Use StringBuilder-optimized parser
+    let sb = sb_new();
+    let w0 = sb_push(sb, "(program");
+    let result = parse_program_sb(src, 0, sb);
+    if is_error(result) { result } else {
+        let w1 = sb_push(sb, ")");
+        sb_build(sb)
+    };
 
 // ============================================================================
 // SECTION 7: S-Expression Utilities (for lowering)
