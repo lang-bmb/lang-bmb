@@ -1,4 +1,4 @@
-// BMB Unified Compiler (v0.50.20: String ABI with ptrtoint/inttoptr)
+// BMB Unified Compiler (v0.50.48: Add TK_ prefix to known i64 functions)
 // Complete compilation pipeline: Source -> AST -> MIR -> LLVM IR
 //
 // ARCHITECTURE:
@@ -679,10 +679,17 @@ fn low_find_op_end(s: String, pos: i64) -> i64 =
 fn low_starts_with_at(s: String, pos: i64, prefix: String) -> bool =
     if pos + prefix.len() > s.len() { false } else { s.slice(pos, pos + prefix.len()) == prefix };
 
+// v0.50.40: Skip string literals when finding matching close paren
 fn low_find_close_paren(s: String, pos: i64, depth: i64) -> i64 =
     if pos >= s.len() { pos } else {
         let c = s.byte_at(pos);
-        if c == 40 { low_find_close_paren(s, pos + 1, depth + 1) } else if c == 41 { if depth == 1 { pos } else { low_find_close_paren(s, pos + 1, depth - 1) } } else { low_find_close_paren(s, pos + 1, depth) }
+        // Skip string literals - parentheses inside strings don't count
+        if c == 34 {
+            let str_end = scan_string_end(s, pos + 1);
+            low_find_close_paren(s, str_end, depth)
+        } else if c == 40 { low_find_close_paren(s, pos + 1, depth + 1) }
+        else if c == 41 { if depth == 1 { pos } else { low_find_close_paren(s, pos + 1, depth - 1) } }
+        else { low_find_close_paren(s, pos + 1, depth) }
     };
 
 fn extract_paren_content(s: String) -> String =
@@ -859,22 +866,34 @@ fn lower_bool_sb(ast: String, temp_id: i64, sb: i64) -> i64 =
     temp_id + 1;
 
 // v0.50: String literal lowering (StringBuilder-aware)
+// v0.50.39: Escape | in string literals to avoid MIR line splitting
 fn lower_str_sb(ast: String, temp_id: i64, sb: i64) -> i64 =
     let text = get_child(ast, 0);  // Gets the quoted string text
+    let escaped = escape_pipe_in_string(text);  // Escape | to \x7C in MIR
     let tmp = "%_t" + int_to_string(temp_id);
-    let w1 = sb_push_mir(sb, "  " + tmp + " = str " + text);
+    let w1 = sb_push_mir(sb, "  " + tmp + " = str " + escaped);
     temp_id + 1;
 
+// Escape pipe character in string for MIR output
+fn escape_pipe_in_string(s: String) -> String =
+    escape_pipe_loop(s, 0, "");
+
+fn escape_pipe_loop(s: String, pos: i64, acc: String) -> String =
+    if pos >= s.len() { acc }
+    else if s.byte_at(pos) == 124 { escape_pipe_loop(s, pos + 1, acc + chr(92) + chr(124)) }  // | -> \|
+    else { escape_pipe_loop(s, pos + 1, acc + chr(s.byte_at(pos))) };
+
 // v0.50.13: Variable references need params to correctly identify function parameters
-// v0.50.21: Use scope_lookup to find the block_id where variable was defined
-// Function parameters always use original name; let-bound vars use their definition block_id suffix
+// v0.50.21: Use scope_lookup to find the temp_id where variable was defined
+// v0.50.39: Changed from _b (block_id) suffix to _t (temp_id) suffix for SSA uniqueness
+// Function parameters always use original name; let-bound vars use their definition temp_id suffix
 fn lower_var_sb(ast: String, temp_id: i64, block_id: i64, params: String, scope: String, sb: i64) -> i64 =
     let name = extract_name(ast);
     let tmp = "%_t" + int_to_string(temp_id);
     // Parameters always use original name
-    // Let-bound vars use the block_id from scope where they were defined
-    let def_block = scope_lookup(scope, name);
-    let var_name = if is_param(name, params) { name } else if def_block > 0 { name + "_b" + int_to_string(def_block) } else if def_block == 0 { name } else { name + "_b" + int_to_string(block_id) };
+    // Let-bound vars use the temp_id from scope where they were defined
+    let def_temp = scope_lookup(scope, name);
+    let var_name = if is_param(name, params) { name } else if def_temp > 0 { name + "_t" + int_to_string(def_temp) } else { name };
     let w1 = sb_push_mir(sb, "  " + tmp + " = copy %" + var_name);
     temp_id + 1;
 
@@ -892,16 +911,17 @@ fn lower_binop_sb(ast: String, temp_id: i64, block_id: i64, params: String, scop
     let right_id = right_new - 1;
     let result_tmp = "%_t" + int_to_string(right_new);
     // For string operations, emit call to runtime function
+    // v0.50.41: Use runtime library function names (bmb_string_concat, bmb_string_eq)
     if is_str_op and op == "+" {
-        let w1 = sb_push_mir(sb, "  " + result_tmp + " = call @str_concat(%_t" + int_to_string(left_id) + ", %_t" + int_to_string(right_id) + ")");
+        let w1 = sb_push_mir(sb, "  " + result_tmp + " = call @bmb_string_concat(%_t" + int_to_string(left_id) + ", %_t" + int_to_string(right_id) + ")");
         right_new + 1
     } else if is_str_op and op == "==" {
-        let w1 = sb_push_mir(sb, "  " + result_tmp + " = call @str_eq(%_t" + int_to_string(left_id) + ", %_t" + int_to_string(right_id) + ")");
+        let w1 = sb_push_mir(sb, "  " + result_tmp + " = call @bmb_string_eq(%_t" + int_to_string(left_id) + ", %_t" + int_to_string(right_id) + ")");
         right_new + 1
     } else if is_str_op and op == "!=" {
-        // str_neq: invert str_eq result
+        // str_neq: invert bmb_string_eq result
         let eq_tmp = "%_t" + int_to_string(right_new) + "_eq";
-        let w1 = sb_push_mir(sb, "  " + eq_tmp + " = call @str_eq(%_t" + int_to_string(left_id) + ", %_t" + int_to_string(right_id) + ")");
+        let w1 = sb_push_mir(sb, "  " + eq_tmp + " = call @bmb_string_eq(%_t" + int_to_string(left_id) + ", %_t" + int_to_string(right_id) + ")");
         let w2 = sb_push_mir(sb, "  " + result_tmp + " = not " + eq_tmp);
         right_new + 1
     } else {
@@ -910,9 +930,37 @@ fn lower_binop_sb(ast: String, temp_id: i64, block_id: i64, params: String, scop
     };
 
 // Check if an AST expression is of string type
+// v0.50.42: Not all method calls return strings - check method name
+// String-returning methods: slice. Non-string: len, byte_at
+// String-returning calls: need to check function name (e.g., chr, read_file)
 fn is_string_expr(ast: String) -> bool =
     let typ = get_node_type(ast);
-    typ == "str" or typ == "mcall" or typ == "call";
+    if typ == "str" { true }
+    else if typ == "mcall" {
+        // Method call - only slice returns String
+        // v0.50.46: Use extract_name_at to strip <> from method name
+        let method_name = extract_name_at(ast, 1);
+        method_name == "slice"
+    }
+    else if typ == "call" {
+        // Function call - check if it's a known String-returning function
+        // v0.50.47: Assume all user-defined functions return String unless known to return i64
+        // This is a heuristic - known i64-returning functions start with: is_, find_, skip_, tok_, unpack_pos, scope_lookup, len, byte_at
+        let fn_name = extract_name(ast);
+        // v0.50.48: Added TK_ prefix for token constants
+        let is_i64_fn = starts_with(fn_name, "is_", 0) or starts_with(fn_name, "find_", 0) or starts_with(fn_name, "skip_", 0) or starts_with(fn_name, "tok_", 0) or starts_with(fn_name, "TK_", 0) or fn_name == "unpack_pos" or fn_name == "scope_lookup" or fn_name == "len" or fn_name == "byte_at" or fn_name == "sb_new" or fn_name == "sb_push" or fn_name == "sb_len" or fn_name == "arg_count" or fn_name == "write_file" or starts_with(fn_name, "low_", 0) or starts_with(fn_name, "scan_", 0) or starts_with(fn_name, "kw_", 0) or starts_with(fn_name, "test_", 0) or fn_name == "abs" or fn_name == "min" or fn_name == "max" or fn_name == "str_hash" or fn_name == "main" or fn_name == "cli_main" or fn_name == "next_token_raw" or fn_name == "keyword_or_ident" or fn_name == "make_tok";
+        not is_i64_fn
+    }
+    else if typ == "binop" {
+        // v0.50.44: String concat returns String - check recursively
+        let op = get_child(ast, 0);
+        if op == "+" {
+            let left = get_child(ast, 1);
+            let right = get_child(ast, 2);
+            is_string_expr(left) or is_string_expr(right)
+        } else { false }
+    }
+    else { false };
 
 // v0.50.21: Added scope parameter
 fn lower_unary_sb(ast: String, temp_id: i64, block_id: i64, params: String, scope: String, sb: i64) -> i64 =
@@ -927,49 +975,65 @@ fn lower_unary_sb(ast: String, temp_id: i64, block_id: i64, params: String, scop
 
 // v0.50.21: Added scope parameter
 // v0.50.23: Fix block_id overlap by using larger offsets
-// Each if-else uses block_id * 3 for labels and reserves space for nested blocks
+// v0.50.40: Fixed phi predecessors for nested if-else by adding landing blocks
+// Use cond_id (temp_id after cond eval) for unique label names across sibling if-else
+// Landing blocks (land_then_N, land_else_N) ensure phi predecessors are correct
 fn lower_if_sb(ast: String, temp_id: i64, block_id: i64, params: String, scope: String, sb: i64) -> i64 =
     let cond = get_child(ast, 0);
     let then_branch = get_child(ast, 1);
     let else_branch = get_child(ast, 2);
     let cond_new = lower_expr_sb(cond, temp_id, block_id, params, scope, sb);
     let cond_id = cond_new - 1;
-    let then_label = "then_" + int_to_string(block_id);
-    let else_label = "else_" + int_to_string(block_id);
-    let merge_label = "merge_" + int_to_string(block_id);
+    // v0.50.40: Use cond_id (which is unique per if-else) for label names
+    let label_id = cond_id;
+    let then_label = "then_" + int_to_string(label_id);
+    let else_label = "else_" + int_to_string(label_id);
+    let land_then_label = "land_then_" + int_to_string(label_id);
+    let land_else_label = "land_else_" + int_to_string(label_id);
+    let merge_label = "merge_" + int_to_string(label_id);
     let w1 = sb_push_mir(sb, "  branch %_t" + int_to_string(cond_id) + ", " + then_label + ", " + else_label);
     let w2 = sb_push_mir(sb, then_label + ":");
-    // Then-branch gets block_id * 3 + 1 to avoid overlap
-    let then_new = lower_expr_sb(then_branch, cond_new, block_id * 3 + 1, params, scope, sb);
+    // Then-branch uses current block_id (nested if-else will get unique temp_ids anyway)
+    let then_new = lower_expr_sb(then_branch, cond_new, block_id, params, scope, sb);
     let then_id = then_new - 1;
-    let w3 = sb_push_mir(sb, "  goto " + merge_label);
+    // Landing block for then branch - ensures phi predecessor is correct
+    let w3 = sb_push_mir(sb, "  goto " + land_then_label);
+    let w3b = sb_push_mir(sb, land_then_label + ":");
+    let w3c = sb_push_mir(sb, "  goto " + merge_label);
     let w4 = sb_push_mir(sb, else_label + ":");
-    // Else-branch gets block_id * 3 + 2 to avoid overlap
-    let else_new = lower_expr_sb(else_branch, then_new, block_id * 3 + 2, params, scope, sb);
+    // Else-branch uses current block_id (nested if-else will get unique temp_ids anyway)
+    let else_new = lower_expr_sb(else_branch, then_new, block_id, params, scope, sb);
     let else_id = else_new - 1;
-    let w5 = sb_push_mir(sb, "  goto " + merge_label);
+    // Landing block for else branch - ensures phi predecessor is correct
+    let w5 = sb_push_mir(sb, "  goto " + land_else_label);
+    let w5b = sb_push_mir(sb, land_else_label + ":");
+    let w5c = sb_push_mir(sb, "  goto " + merge_label);
     let w6 = sb_push_mir(sb, merge_label + ":");
     let phi_tmp = "%_t" + int_to_string(else_new);
-    let w7 = sb_push_mir(sb, "  " + phi_tmp + " = phi [%_t" + int_to_string(then_id) + ", " + then_label + "], [%_t" + int_to_string(else_id) + ", " + else_label + "]");
+    // Use landing labels as phi predecessors
+    let w7 = sb_push_mir(sb, "  " + phi_tmp + " = phi [%_t" + int_to_string(then_id) + ", " + land_then_label + "], [%_t" + int_to_string(else_id) + ", " + land_else_label + "]");
     else_new + 1;
 
 // v0.50.2: Add block_id to variable names to make them unique per block
 // This fixes duplicate variable name errors in LLVM IR
 // v0.50.3: Increment block_id for unique naming (params at block_id=0)
 // v0.50.21: Added scope parameter; add variable to scope for correct lookup in nested scopes
+// v0.50.39: Use temp_id instead of block_id for unique variable names
+// This fixes SSA name collisions in if-else branches where both branches
+// could generate the same block_id based names
 fn lower_let_sb(ast: String, temp_id: i64, block_id: i64, params: String, scope: String, sb: i64) -> i64 =
     let name = extract_name(ast);
-    let new_block_id = block_id + 1;
     let value_ast = get_child(ast, 1);
     let body_ast = get_child(ast, 2);
     let val_new = lower_expr_sb(value_ast, temp_id, block_id, params, scope, sb);
     let val_id = val_new - 1;
-    // Use unique name: name_b{new_block_id} (e.g., start_pos_b1)
-    let unique_name = name + "_b" + int_to_string(new_block_id);
+    // Use temp_id for truly unique name: name_t{val_new}
+    // val_new is the next temp_id which is always unique across the function
+    let unique_name = name + "_t" + int_to_string(val_new);
     let w1 = sb_push_mir(sb, "  %" + unique_name + " = copy %_t" + int_to_string(val_id));
-    // Add variable to scope with its definition block_id
-    let new_scope = scope_add(scope, name, new_block_id);
-    lower_expr_sb(body_ast, val_new, new_block_id, params, new_scope, sb);
+    // Add variable to scope with its temp_id for correct lookup
+    let new_scope = scope_add(scope, name, val_new);
+    lower_expr_sb(body_ast, val_new, block_id, params, new_scope, sb);
 
 // v0.50.21: Added scope parameter
 fn lower_call_sb(ast: String, temp_id: i64, block_id: i64, params: String, scope: String, sb: i64) -> i64 =
@@ -1038,7 +1102,9 @@ fn lower_function_sb(ast: String) -> String =
     let sb = sb_new();
     let final_temp = lower_expr_sb(body_ast, 0, 0, param_names, "", sb);
     let result_id = final_temp - 1;
-    let w1 = sb_push_mir(sb, "  return %_t" + int_to_string(result_id));
+    // v0.50.42: Use return_str for String returns to generate proper inttoptr
+    let return_instr = if ret_type == "String" { "  return_str %_t" + int_to_string(result_id) } else { "  return %_t" + int_to_string(result_id) };
+    let w1 = sb_push_mir(sb, return_instr);
     let body_mir = sb_build(sb);
     "fn " + name + "(" + params + ") -> " + ret_type + " {|entry:|" + body_mir + "|}";
 
@@ -1418,12 +1484,20 @@ fn lower_program_inner(ast: String, idx: i64, acc: String) -> String =
 // SECTION 11: LLVM IR Generation
 // ============================================================================
 
+// v0.50.39: Skip escaped pipes (\|) which are inside string literals
 fn find_pipe(s: String, pos: i64) -> i64 =
-    if pos >= s.len() { pos } else if s.byte_at(pos) == 124 { pos } else { find_pipe(s, pos + 1) };
+    if pos >= s.len() { pos }
+    else if s.byte_at(pos) == 92 and pos + 1 < s.len() and s.byte_at(pos + 1) == 124 {
+        // Skip escaped \| - this is a pipe inside a string literal
+        find_pipe(s, pos + 2)
+    }
+    else if s.byte_at(pos) == 124 { pos }  // Unescaped | found
+    else { find_pipe(s, pos + 1) };
 
 fn llvm_gen_line(line: String) -> String =
     let p = low_skip_ws(line, 0);
-    if p >= line.len() { "" } else if line.byte_at(p) == 37 { llvm_gen_assign(line, p) } else if low_starts_with_at(line, p, "return") { llvm_gen_return(line, p) } else if low_starts_with_at(line, p, "branch") { llvm_gen_branch(line, p) } else if low_starts_with_at(line, p, "goto") { llvm_gen_goto(line, p) } else { line };
+    // v0.50.43: Check return_str before return (longer prefix match first)
+    if p >= line.len() { "" } else if line.byte_at(p) == 37 { llvm_gen_assign(line, p) } else if low_starts_with_at(line, p, "return_str") { llvm_gen_return_str(line, p) } else if low_starts_with_at(line, p, "return") { llvm_gen_return(line, p) } else if low_starts_with_at(line, p, "branch") { llvm_gen_branch(line, p) } else if low_starts_with_at(line, p, "goto") { llvm_gen_goto(line, p) } else { line };
 
 fn llvm_gen_assign(line: String, pos: i64) -> String =
     let eq_pos = find_eq(line, pos);
@@ -1562,12 +1636,14 @@ fn llvm_gen_call(line: String, pos: i64, dest: String) -> String =
     };
 
 // Check if function returns a string (ptr)
+// v0.50.42: Added bmb_string_concat (renamed from str_concat)
 fn is_str_return_fn(fname: String) -> bool =
-    fname == "@str_concat" or fname == "@chr" or fname == "@slice" or fname == "@read_file" or fname == "@get_arg" or fname == "@sb_build";
+    fname == "@bmb_string_concat" or fname == "@chr" or fname == "@slice" or fname == "@read_file" or fname == "@get_arg" or fname == "@sb_build";
 
 // Check if function takes string arguments
+// v0.50.42: Added bmb_string_concat, bmb_string_eq (renamed from str_concat, str_eq)
 fn is_str_arg_fn(fname: String) -> bool =
-    fname == "@str_concat" or fname == "@str_eq" or fname == "@len" or fname == "@byte_at" or fname == "@slice" or
+    fname == "@bmb_string_concat" or fname == "@bmb_string_eq" or fname == "@len" or fname == "@byte_at" or fname == "@slice" or
     fname == "@print_str" or fname == "@println_str" or fname == "@read_file" or fname == "@write_file" or fname == "@sb_push";
 
 // Generate call that returns string (ptr), needs ptrtoint
@@ -1618,11 +1694,12 @@ fn format_str_call_args(fname: String, args: String, pos: i64, acc: String, idx:
     };
 
 // Check if argument at index needs inttoptr (is a string arg)
+// v0.50.42: Updated to use bmb_string_concat, bmb_string_eq
 fn is_str_arg_at(fname: String, idx: i64) -> bool =
-    // str_concat(ptr, ptr), str_eq(ptr, ptr), len(ptr), byte_at(ptr, i64), slice(ptr, i64, i64)
+    // bmb_string_concat(ptr, ptr), bmb_string_eq(ptr, ptr), len(ptr), byte_at(ptr, i64), slice(ptr, i64, i64)
     // print_str(ptr), println_str(ptr), read_file(ptr), write_file(ptr, ptr), sb_push(i64, ptr)
-    if fname == "@str_concat" { idx == 0 or idx == 1 }
-    else if fname == "@str_eq" { idx == 0 or idx == 1 }
+    if fname == "@bmb_string_concat" { idx == 0 or idx == 1 }
+    else if fname == "@bmb_string_eq" { idx == 0 or idx == 1 }
     else if fname == "@len" { idx == 0 }
     else if fname == "@byte_at" { idx == 0 }
     else if fname == "@slice" { idx == 0 }
@@ -1666,6 +1743,13 @@ fn llvm_gen_return(line: String, pos: i64) -> String =
     let val = line.slice(val_start, line.len());
     "  ret i64 " + trim_end(val);
 
+// v0.50.43: Return String as ptr with inttoptr conversion
+fn llvm_gen_return_str(line: String, pos: i64) -> String =
+    let val_start = low_skip_ws(line, pos + 10);
+    let val = trim_end(line.slice(val_start, line.len()));
+    let ptr_tmp = val + "_retptr";
+    "  " + ptr_tmp + " = inttoptr i64 " + val + " to ptr|  ret ptr " + ptr_tmp;
+
 // v0.50.2: Add trunc i64 to i1 since conditions are now i64
 fn llvm_gen_branch(line: String, pos: i64) -> String =
     let after = low_skip_ws(line, pos + 6);
@@ -1685,18 +1769,37 @@ fn llvm_gen_goto(line: String, pos: i64) -> String =
     "  br label %" + trim_end(label);
 
 // v0.50.20: String literal LLVM IR generation with proper ABI
-// Generates a GEP to string constant + ptrtoint to convert ptr to i64
+// v0.50.42: Call bmb_string_from_cstr to create runtime string object
+// v0.50.39: Use find_quote_end to properly handle strings containing | (pipe)
 fn llvm_gen_str(line: String, pos: i64, dest: String) -> String =
     let str_start = low_skip_ws(line, pos + 3);
-    let str_text = trim_end(line.slice(str_start, line.len()));
+    // Use find_quote_end to properly find end of string even if it contains |
+    let str_end = find_quote_end(line, str_start + 1);
+    let str_text = line.slice(str_start, str_end);
+    // v0.50.39: Unescape \| back to | for hash calculation (MIR escapes | as \|)
+    let str_text_unescaped = unescape_pipe(str_text);
     // Use content hash for unique string ID (same as extract_strlit_acc)
-    let hash = str_hash(str_text, 0);
+    let hash = str_hash(str_text_unescaped, 0);
     let hash_id = if hash < 0 { 0 - hash } else { hash };
     let str_id = "@.str." + int_to_string(hash_id);
-    let str_len = str_text.len() - 1;  // Exclude quotes but -1 for null term later
+    // v0.50.39: Use unescaped length for array size
+    let str_len = str_text_unescaped.len() - 1;  // Exclude quotes but -1 for null term later
     let ptr_tmp = dest + "_ptr";
-    // GEP to get pointer to string constant, then ptrtoint to convert to i64
-    "  " + ptr_tmp + " = getelementptr [" + int_to_string(str_len) + " x i8], ptr " + str_id + ", i64 0, i64 0|  " + dest + " = ptrtoint ptr " + ptr_tmp + " to i64";
+    let str_ptr_tmp = dest + "_strptr";
+    // v0.50.42: GEP to get C string pointer, then call bmb_string_from_cstr, then ptrtoint
+    "  " + ptr_tmp + " = getelementptr [" + int_to_string(str_len) + " x i8], ptr " + str_id + ", i64 0, i64 0|  " + str_ptr_tmp + " = call ptr @bmb_string_from_cstr(ptr " + ptr_tmp + ")|  " + dest + " = ptrtoint ptr " + str_ptr_tmp + " to i64";
+
+// Unescape \| back to | in string
+fn unescape_pipe(s: String) -> String =
+    unescape_pipe_loop(s, 0, "");
+
+fn unescape_pipe_loop(s: String, pos: i64, acc: String) -> String =
+    if pos >= s.len() { acc }
+    else if s.byte_at(pos) == 92 and pos + 1 < s.len() and s.byte_at(pos + 1) == 124 {
+        // \| -> |
+        unescape_pipe_loop(s, pos + 2, acc + chr(124))
+    }
+    else { unescape_pipe_loop(s, pos + 1, acc + chr(s.byte_at(pos))) };
 
 // Simple string hash function for generating unique identifiers
 fn str_hash(s: String, acc: i64) -> i64 =
@@ -1764,6 +1867,7 @@ fn llvm_gen_fn_line(line: String) -> String =
 
 // v0.31.19: Added nounwind attribute for non-main functions
 // v0.32.1: Rename main to bmb_user_main for runtime compatibility
+// v0.50.42: String-returning functions use ptr return type
 fn llvm_gen_fn_header(line: String, pos: i64) -> String =
     let name_start = pos + 3;
     let paren_pos = find_char(line, name_start, 40);
@@ -1774,11 +1878,13 @@ fn llvm_gen_fn_header(line: String, pos: i64) -> String =
     let arrow_pos = find_arrow(line, close_pos);
     let brace_pos = find_char(line, arrow_pos, 123);
     let ret_type = trim_end(line.slice(arrow_pos + 2, brace_pos - 1));
-    let llvm_ret = if ret_type == "bool" { "i1" } else { "i64" };
+    // v0.50.42: String returns use ptr type for runtime compatibility
+    let llvm_ret = if ret_type == "bool" { "i1" } else if ret_type == "String" { "ptr" } else { "i64" };
     let emitted_name = if fn_name == "main" { "bmb_user_main" } else { fn_name };
     let attrs = if fn_name == "main" { "" } else { " nounwind" };
     "define " + llvm_ret + " @" + emitted_name + "(" + formatted_params + ")" + attrs + " {";
 
+// All params are i64 internally (String is passed as i64 pointer value via ptrtoint/inttoptr)
 fn format_fn_params(params: String, pos: i64, acc: String) -> String =
     let p = low_skip_ws(params, pos);
     if p >= params.len() { acc } else {
@@ -1831,8 +1937,11 @@ fn gen_extern_min() -> String = "declare i64 @min(i64, i64)";
 fn gen_extern_max() -> String = "declare i64 @max(i64, i64)";
 
 // v0.50.20: String runtime declarations
-fn gen_extern_str_concat() -> String = "declare ptr @str_concat(ptr, ptr)";
-fn gen_extern_str_eq() -> String = "declare i64 @str_eq(ptr, ptr)";
+// v0.50.41: Use runtime library function names (bmb_string_concat, bmb_string_eq)
+// v0.50.42: Add bmb_string_from_cstr for string literal initialization
+fn gen_extern_str_from_cstr() -> String = "declare ptr @bmb_string_from_cstr(ptr)";
+fn gen_extern_str_concat() -> String = "declare ptr @bmb_string_concat(ptr, ptr)";
+fn gen_extern_str_eq() -> String = "declare i64 @bmb_string_eq(ptr, ptr)";
 fn gen_extern_len() -> String = "declare i64 @len(ptr)";
 fn gen_extern_chr() -> String = "declare ptr @chr(i64)";
 fn gen_extern_byte_at() -> String = "declare i64 @byte_at(ptr, i64)";
@@ -1850,7 +1959,7 @@ fn gen_extern_sb_len() -> String = "declare i64 @sb_len(i64)";
 
 fn gen_runtime_decls() -> String =
     gen_extern_println() + "|" + gen_extern_abs() + "|" + gen_extern_min() + "|" + gen_extern_max() + "|" +
-    gen_extern_str_concat() + "|" + gen_extern_str_eq() + "|" + gen_extern_len() + "|" + gen_extern_chr() + "|" +
+    gen_extern_str_from_cstr() + "|" + gen_extern_str_concat() + "|" + gen_extern_str_eq() + "|" + gen_extern_len() + "|" + gen_extern_chr() + "|" +
     gen_extern_byte_at() + "|" + gen_extern_slice() + "|" + gen_extern_print_str() + "|" + gen_extern_println_str() + "|" +
     gen_extern_read_file() + "|" + gen_extern_write_file() + "|" + gen_extern_arg_count() + "|" + gen_extern_get_arg() + "|" +
     gen_extern_sb_new() + "|" + gen_extern_sb_push() + "|" + gen_extern_sb_build() + "|" + gen_extern_sb_len();
@@ -1860,6 +1969,7 @@ fn gen_runtime_decls() -> String =
 fn extract_string_constants(mir: String) -> String =
     extract_strlit_acc(mir, 0, "");
 
+// v0.50.39: Use unescape_pipe to handle \| escape sequences for proper hash and length
 fn extract_strlit_acc(mir: String, pos: i64, acc: String) -> String =
     if pos >= mir.len() { acc } else {
         let found = find_str_pattern(mir, pos);
@@ -1867,22 +1977,47 @@ fn extract_strlit_acc(mir: String, pos: i64, acc: String) -> String =
             let str_start = found + 7;  // Skip " = str " (7 chars)
             let str_end = find_quote_end(mir, str_start + 1);
             let str_text = mir.slice(str_start, str_end);
+            // v0.50.39: Unescape \| to | for proper hash and length calculation
+            let str_unescaped = unescape_pipe(str_text);
             // Use content hash for unique string ID
-            let hash = str_hash(str_text, 0);
+            let hash = str_hash(str_unescaped, 0);
             let hash_id = if hash < 0 { 0 - hash } else { hash };
             let str_id = "@.str." + int_to_string(hash_id);
             // String length is content + null terminator = len - 2 (quotes) + 1 (null) = len - 1
-            let str_len = str_text.len() - 1;
+            let str_len = str_unescaped.len() - 1;
             // Check if already in acc (avoid duplicates)
-            let decl = str_id + " = private unnamed_addr constant [" + int_to_string(str_len) + " x i8] c" + escape_string_for_llvm(str_text);
+            let decl = str_id + " = private unnamed_addr constant [" + int_to_string(str_len) + " x i8] c" + escape_string_for_llvm(str_unescaped);
             let new_acc = if has_pattern(acc, str_id, 0) { acc } else if acc == "" { decl } else { acc + "|" + decl };
             extract_strlit_acc(mir, str_end + 1, new_acc)
         }
     };
 
 // Find " = str " pattern in MIR, return position or -1
+// v0.50.39: Only match if it's a real temp assignment (after | or start of line)
+// This prevents matching " = str " patterns inside string literals
 fn find_str_pattern(mir: String, pos: i64) -> i64 =
-    if pos + 7 > mir.len() { 0 - 1 } else if starts_with(mir, " = str ", pos) { pos } else { find_str_pattern(mir, pos + 1) };
+    if pos + 7 > mir.len() { 0 - 1 }
+    else if starts_with(mir, " = str ", pos) and is_real_str_assign(mir, pos) { pos }
+    else { find_str_pattern(mir, pos + 1) };
+
+// Check if this is a real string assignment (not inside another string)
+// Real assignments look like: |  %_tN = str "..." or start with   %_tN = str
+fn is_real_str_assign(mir: String, pos: i64) -> bool =
+    // Find the previous | or start of string
+    let line_start = find_line_start(mir, pos);
+    // Check if line starts with spaces + %_t
+    skip_spaces_check_temp(mir, line_start);
+
+fn find_line_start(mir: String, pos: i64) -> i64 =
+    if pos <= 0 { 0 }
+    else if mir.byte_at(pos - 1) == 124 { pos }  // | character
+    else { find_line_start(mir, pos - 1) };
+
+fn skip_spaces_check_temp(mir: String, pos: i64) -> bool =
+    if pos >= mir.len() { false }
+    else if mir.byte_at(pos) == 32 { skip_spaces_check_temp(mir, pos + 1) }  // space
+    else if mir.byte_at(pos) == 37 { true }  // % - start of temp var
+    else { false };
 
 // Find end of quoted string (handles escape sequences)
 fn find_quote_end(s: String, pos: i64) -> i64 =
@@ -1914,6 +2049,7 @@ fn escape_content(s: String, pos: i64, acc: String) -> String =
             else if next == 114 { escape_content(s, pos + 2, acc + bslash + "0D") }  // \r -> \0D
             else if next == 34 { escape_content(s, pos + 2, acc + bslash + "22") }  // \" -> \22
             else if next == 92 { escape_content(s, pos + 2, acc + bslash + "5C") }  // \\ -> \5C
+            else if next == 124 { escape_content(s, pos + 2, acc + bslash + "7C") }  // \| -> \7C (v0.50.39)
             else { escape_content(s, pos + 1, acc + chr(c)) }
         } else if c == 10 {
             // Raw LF -> \0A
