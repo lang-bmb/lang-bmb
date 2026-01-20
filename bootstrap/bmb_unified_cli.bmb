@@ -590,6 +590,20 @@ fn parse_params(src: String, pos: i64, acc: String) -> String =
         }
     };
 
+// v0.52 StringBuilder optimization for parse_fn
+fn build_fn_ast(name: String, params_ast: String, ret_type: String, body_ast: String) -> String =
+    let sb = sb_new();
+    let w1 = sb_push(sb, "(fn <");
+    let w2 = sb_push(sb, name);
+    let w3 = sb_push(sb, ">");
+    let w4 = sb_push(sb, params_ast);
+    let w5 = sb_push(sb, " ");
+    let w6 = sb_push(sb, ret_type);
+    let w7 = sb_push(sb, " ");
+    let w8 = sb_push(sb, body_ast);
+    let w9 = sb_push(sb, ")");
+    sb_build(sb);
+
 fn parse_fn(src: String, pos: i64) -> String =
     let t1 = next_token_raw(src, pos);
     if tok_kind(t1) == TK_IDENT() {
@@ -607,7 +621,8 @@ fn parse_fn(src: String, pos: i64) -> String =
                         let rb = parse_expr(src, tok_end(t5));
                         if is_error(rb) { rb } else {
                             let t6 = next_token_raw(src, unpack_pos(rb));
-                            if tok_kind(t6) == TK_SEMI() { pack_result(tok_end(t6), "(fn <" + name + ">" + unpack_ast(rp) + " " + ret_type + " " + unpack_ast(rb) + ")") } else { pack_result(unpack_pos(rb), "(fn <" + name + ">" + unpack_ast(rp) + " " + ret_type + " " + unpack_ast(rb) + ")") }
+                            let fn_ast = build_fn_ast(name, unpack_ast(rp), ret_type, unpack_ast(rb));
+                            if tok_kind(t6) == TK_SEMI() { pack_result(tok_end(t6), fn_ast) } else { pack_result(unpack_pos(rb), fn_ast) }
                         }
                     } else { make_error("fn-eq") }
                 } else { make_error("fn-arrow") }

@@ -2403,10 +2403,15 @@ fn gen_struct_field_name_at_from(fields: String, target_idx: i64, pos: i64, curr
 // Create empty registry
 fn struct_reg_new() -> String = "";
 
-// Add struct definition to registry
+// Add struct definition to registry (v0.52 StringBuilder optimization)
 fn struct_reg_add(reg: String, def: String) -> String =
     let name = gen_struct_name(def);
-    if reg.len() == 0 { name + "=" + def } else { reg + ";" + name + "=" + def };
+    let sb = sb_new();
+    let w = if reg.len() > 0 { let w = sb_push(sb, reg); sb_push(sb, ";") } else { 0 };
+    let w = sb_push(sb, name);
+    let w = sb_push(sb, "=");
+    let w = sb_push(sb, def);
+    sb_build(sb);
 
 // Find semicolon in string
 // ';' = 59
@@ -2583,10 +2588,15 @@ fn gen_enum_variant_name_at_from(variants: String, target: i64, current: i64, st
 // Create empty enum registry
 fn enum_reg_new() -> String = "";
 
-// Add enum definition to registry
+// Add enum definition to registry (v0.52 StringBuilder optimization)
 fn enum_reg_add(reg: String, def: String) -> String =
     let name = gen_enum_name(def);
-    if reg.len() == 0 { name + "=" + def } else { reg + ";" + name + "=" + def };
+    let sb = sb_new();
+    let w = if reg.len() > 0 { let w = sb_push(sb, reg); sb_push(sb, ";") } else { 0 };
+    let w = sb_push(sb, name);
+    let w = sb_push(sb, "=");
+    let w = sb_push(sb, def);
+    sb_build(sb);
 
 // Find semicolon in registry
 // ';' = 59
@@ -2644,10 +2654,15 @@ fn enum_reg_is_generic(reg: String, name: String) -> bool =
 // Create empty function registry
 fn fn_reg_new() -> String = "";
 
-// Add function signature to registry
+// Add function signature to registry (v0.52 StringBuilder optimization)
 fn fn_reg_add(reg: String, sig: String) -> String =
     let name = gen_fn_name(sig);
-    if reg.len() == 0 { name + "=" + sig } else { reg + ";" + name + "=" + sig };
+    let sb = sb_new();
+    let w = if reg.len() > 0 { let w = sb_push(sb, reg); sb_push(sb, ";") } else { 0 };
+    let w = sb_push(sb, name);
+    let w = sb_push(sb, "=");
+    let w = sb_push(sb, sig);
+    sb_build(sb);
 
 // Find semicolon in function registry
 // ';' = 59
@@ -2854,9 +2869,15 @@ fn gen_trait_find_arrow(s: String, pos: i64) -> i64 =
 fn trait_reg_new() -> String = "";
 
 // Add trait definition to registry
+// (v0.52 StringBuilder optimization)
 fn trait_reg_add(reg: String, def: String) -> String =
     let name = gen_trait_name(def);
-    if reg.len() == 0 { name + "=" + def } else { reg + ";" + name + "=" + def };
+    let sb = sb_new();
+    let w = if reg.len() > 0 { let w = sb_push(sb, reg); sb_push(sb, ";") } else { 0 };
+    let w = sb_push(sb, name);
+    let w = sb_push(sb, "=");
+    let w = sb_push(sb, def);
+    sb_build(sb);
 
 // Find semicolon in trait registry
 // ';' = 59
@@ -2970,11 +2991,17 @@ fn gen_impl_key(trait_name: String, target_type: String) -> String =
 fn impl_reg_new() -> String = "";
 
 // Add impl definition to registry
+// (v0.52 StringBuilder optimization)
 fn impl_reg_add(reg: String, def: String) -> String =
     let trait_name = gen_impl_trait_name(def);
     let target = gen_impl_target_type(def);
     let key = gen_impl_key(trait_name, target);
-    if reg.len() == 0 { key + "=" + def } else { reg + ";" + key + "=" + def };
+    let sb = sb_new();
+    let w = if reg.len() > 0 { let w = sb_push(sb, reg); sb_push(sb, ";") } else { 0 };
+    let w = sb_push(sb, key);
+    let w = sb_push(sb, "=");
+    let w = sb_push(sb, def);
+    sb_build(sb);
 
 // Find semicolon in impl registry
 // ';' = 59
@@ -3095,6 +3122,23 @@ fn tenv_get_impl_reg(tenv: String) -> String =
         if hash < 0 { tenv.slice(start, tenv.len()) } else { tenv.slice(start, hash) }
 
     };
+// Build tenv string using StringBuilder for O(n) instead of O(n²) string concatenation (v0.52 optimization)
+fn tenv_build(tparams: String, struct_reg: String, enum_reg: String, fn_reg: String, trait_reg: String, impl_reg: String) -> String =
+    let sb = sb_new();
+    let w = sb_push(sb, "P:");
+    let w = sb_push(sb, tparams);
+    let w = sb_push(sb, "#S:");
+    let w = sb_push(sb, struct_reg);
+    let w = sb_push(sb, "#E:");
+    let w = sb_push(sb, enum_reg);
+    let w = sb_push(sb, "#F:");
+    let w = sb_push(sb, fn_reg);
+    let w = sb_push(sb, "#T:");
+    let w = sb_push(sb, trait_reg);
+    let w = sb_push(sb, "#I:");
+    let w = sb_push(sb, impl_reg);
+    sb_build(sb);
+
 // Set type parameters in environment
 fn tenv_with_tparams(tenv: String, tparams: String) -> String =
     let struct_reg = tenv_get_struct_reg(tenv);
@@ -3102,7 +3146,7 @@ fn tenv_with_tparams(tenv: String, tparams: String) -> String =
     let fn_reg = tenv_get_fn_reg(tenv);
     let trait_reg = tenv_get_trait_reg(tenv);
     let impl_reg = tenv_get_impl_reg(tenv);
-    "P:" + tparams + "#S:" + struct_reg + "#E:" + enum_reg + "#F:" + fn_reg + "#T:" + trait_reg + "#I:" + impl_reg;
+    tenv_build(tparams, struct_reg, enum_reg, fn_reg, trait_reg, impl_reg);
 
 // Set struct registry in environment
 fn tenv_with_struct_reg(tenv: String, struct_reg: String) -> String =
@@ -3111,7 +3155,7 @@ fn tenv_with_struct_reg(tenv: String, struct_reg: String) -> String =
     let fn_reg = tenv_get_fn_reg(tenv);
     let trait_reg = tenv_get_trait_reg(tenv);
     let impl_reg = tenv_get_impl_reg(tenv);
-    "P:" + tparams + "#S:" + struct_reg + "#E:" + enum_reg + "#F:" + fn_reg + "#T:" + trait_reg + "#I:" + impl_reg;
+    tenv_build(tparams, struct_reg, enum_reg, fn_reg, trait_reg, impl_reg);
 
 // Set enum registry in environment
 fn tenv_with_enum_reg(tenv: String, enum_reg: String) -> String =
@@ -3120,7 +3164,7 @@ fn tenv_with_enum_reg(tenv: String, enum_reg: String) -> String =
     let fn_reg = tenv_get_fn_reg(tenv);
     let trait_reg = tenv_get_trait_reg(tenv);
     let impl_reg = tenv_get_impl_reg(tenv);
-    "P:" + tparams + "#S:" + struct_reg + "#E:" + enum_reg + "#F:" + fn_reg + "#T:" + trait_reg + "#I:" + impl_reg;
+    tenv_build(tparams, struct_reg, enum_reg, fn_reg, trait_reg, impl_reg);
 
 // Set function registry in environment
 fn tenv_with_fn_reg(tenv: String, fn_reg: String) -> String =
@@ -3129,7 +3173,7 @@ fn tenv_with_fn_reg(tenv: String, fn_reg: String) -> String =
     let enum_reg = tenv_get_enum_reg(tenv);
     let trait_reg = tenv_get_trait_reg(tenv);
     let impl_reg = tenv_get_impl_reg(tenv);
-    "P:" + tparams + "#S:" + struct_reg + "#E:" + enum_reg + "#F:" + fn_reg + "#T:" + trait_reg + "#I:" + impl_reg;
+    tenv_build(tparams, struct_reg, enum_reg, fn_reg, trait_reg, impl_reg);
 
 // Set trait registry in environment (v0.30.85)
 fn tenv_with_trait_reg(tenv: String, trait_reg: String) -> String =
@@ -3138,7 +3182,7 @@ fn tenv_with_trait_reg(tenv: String, trait_reg: String) -> String =
     let enum_reg = tenv_get_enum_reg(tenv);
     let fn_reg = tenv_get_fn_reg(tenv);
     let impl_reg = tenv_get_impl_reg(tenv);
-    "P:" + tparams + "#S:" + struct_reg + "#E:" + enum_reg + "#F:" + fn_reg + "#T:" + trait_reg + "#I:" + impl_reg;
+    tenv_build(tparams, struct_reg, enum_reg, fn_reg, trait_reg, impl_reg);
 
 // Set impl registry in environment (v0.30.86)
 fn tenv_with_impl_reg(tenv: String, impl_reg: String) -> String =
@@ -3147,7 +3191,7 @@ fn tenv_with_impl_reg(tenv: String, impl_reg: String) -> String =
     let enum_reg = tenv_get_enum_reg(tenv);
     let fn_reg = tenv_get_fn_reg(tenv);
     let trait_reg = tenv_get_trait_reg(tenv);
-    "P:" + tparams + "#S:" + struct_reg + "#E:" + enum_reg + "#F:" + fn_reg + "#T:" + trait_reg + "#I:" + impl_reg;
+    tenv_build(tparams, struct_reg, enum_reg, fn_reg, trait_reg, impl_reg);
 
 // Add a struct definition to the environment
 fn tenv_add_struct(tenv: String, def: String) -> String =
@@ -5471,8 +5515,14 @@ fn tenv_from_program_ast(ast: String) -> String =
 // Local variable environment: "name1:type1,name2:type2,..."
 fn locals_new() -> String = "";
 
+// (v0.52 StringBuilder optimization)
 fn locals_add(locals: String, name: String, typ: String) -> String =
-    if locals == "" { name + ":" + typ } else { locals + "," + name + ":" + typ };
+    let sb = sb_new();
+    let w = if locals.len() > 0 { let w = sb_push(sb, locals); sb_push(sb, ",") } else { 0 };
+    let w = sb_push(sb, name);
+    let w = sb_push(sb, ":");
+    let w = sb_push(sb, typ);
+    sb_build(sb);
 
 fn locals_lookup(locals: String, name: String) -> String =
     locals_lookup_from(locals, name, 0);

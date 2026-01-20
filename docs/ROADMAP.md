@@ -556,12 +556,12 @@ fn fast_compute(x: Relaxed[f64]) -> Relaxed[f64]
 
 | ID | 태스크 | 설명 | 우선순위 | 상태 |
 |----|--------|------|----------|------|
-| 52.1 | **Fin[N] 파싱** | parser_ast.bmb에 Fin[N] 구문 추가 | P0 | 📋 계획 |
-| 52.2 | **Range[lo,hi] 파싱** | 범위 타입 구문 파싱 | P0 | 📋 계획 |
-| 52.3 | **disjoint/Unique 파싱** | disjoint 제약, Unique[T] 구문 | P0 | 📋 계획 |
-| 52.4 | **분기 힌트 파싱** | @likely/@unlikely 어노테이션 | P1 | 📋 계획 |
-| 52.5 | **Lowering 연결** | AST→MIR 변환에 새 타입 처리 | P0 | 📋 계획 |
-| 52.6 | **Codegen 연결** | MIR→LLVM IR에 noalias 등 적용 | P0 | 📋 계획 |
+| 52.1 | **Fin[N] 파싱** | parser_ast.bmb에 Fin[N] 구문 추가 | P0 | ⏸️ Stage 1 blocker |
+| 52.2 | **Range[lo,hi] 파싱** | 범위 타입 구문 파싱 | P0 | ⏸️ Stage 1 blocker |
+| 52.3 | **disjoint/Unique 파싱** | disjoint 제약, Unique[T] 구문 | P0 | ⏸️ Stage 1 blocker |
+| 52.4 | **분기 힌트 파싱** | @likely/@unlikely 어노테이션 | P1 | ⏸️ Stage 1 blocker |
+| 52.5 | **Lowering 연결** | AST→MIR 변환에 새 타입 처리 | P0 | ⏸️ Stage 1 blocker |
+| 52.6 | **Codegen 연결** | MIR→LLVM IR에 noalias 등 적용 | P0 | ⏸️ Stage 1 blocker |
 
 ### 산출물
 
@@ -582,11 +582,11 @@ fn fast_compute(x: Relaxed[f64]) -> Relaxed[f64]
 
 | ID | 태스크 | 설명 | 우선순위 | 상태 |
 |----|--------|------|----------|------|
-| 53.1 | **Stage 1 hang 분석** | 대용량 파일 hang 원인 분석 | P0 | 📋 계획 |
-| 53.2 | **성능 최적화 또는 분할** | 파서/타입 시스템 최적화 또는 파일 분할 | P0 | 📋 계획 |
-| 53.3 | **Stage 2 컴파일 성공** | Stage 1로 전체 부트스트랩 컴파일 | P0 | 📋 계획 |
-| 53.4 | **Stage 3 동일성 검증** | Stage 2 = Stage 3 IR 동일성 확인 | P0 | 📋 계획 |
-| 53.5 | **Golden Binary 갱신** | 새 Stage 1 바이너리 저장 | P0 | 📋 계획 |
+| 53.1 | **Stage 1 hang 분석** | 대용량 파일 hang 원인 분석 | P0 | ✅ 완료 (tenv O(n²)) |
+| 53.2 | **성능 최적화 또는 분할** | 파서/타입 시스템 최적화 또는 파일 분할 | P0 | ⚠️ 부분완료 (StringBuilder 적용, 1360x 느림 잔존) |
+| 53.3 | **Stage 2 컴파일 성공** | Stage 1로 전체 부트스트랩 컴파일 | P0 | ⏸️ 성능 blocker |
+| 53.4 | **Stage 3 동일성 검증** | Stage 2 = Stage 3 IR 동일성 확인 | P0 | ⏸️ 성능 blocker |
+| 53.5 | **Golden Binary 갱신** | 새 Stage 1 바이너리 저장 | P0 | ⏸️ 성능 blocker |
 
 ### 검증 기준
 
