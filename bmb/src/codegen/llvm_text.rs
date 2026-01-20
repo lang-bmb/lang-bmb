@@ -743,8 +743,10 @@ impl TextCodeGen {
                 }
 
                 // Load from alloca if source is a local
+                // v0.50.50: Use unique_name to avoid SSA violations when same src loaded multiple times
                 let src_val = if local_names.contains(&src.name) {
-                    let load_name = format!("{}.load", src.name);
+                    let load_base = format!("{}.load", src.name);
+                    let load_name = self.unique_name(&load_base, name_counts);
                     writeln!(out, "  %{} = load {}, ptr %{}.addr", load_name, ty, src.name)?;
                     format!("%{}", load_name)
                 } else {
