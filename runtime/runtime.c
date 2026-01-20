@@ -322,7 +322,7 @@ typedef struct {
     int64_t capacity;
 } StringBuilder;
 
-#define MAX_STRING_BUILDERS 1024
+#define MAX_STRING_BUILDERS 8192
 static StringBuilder* builders[MAX_STRING_BUILDERS];
 static int64_t builder_count = 0;
 
