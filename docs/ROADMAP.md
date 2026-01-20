@@ -113,7 +113,7 @@ bmb fmt --check stdlib/**/*.bmb
 | 46.1 | **LLVM 백엔드 검증** | WSL에서 `bmb build bootstrap/compiler.bmb` 성공 | P0 | ✅ 완료 |
 | 46.2 | **Golden Binary 생성** | 첫 번째 네이티브 BMB 컴파일러 바이너리 | P0 | ✅ 완료 |
 | 46.3 | **자체 컴파일 검증** | Golden Binary로 자신 재컴파일 (3-Stage) | P0 | ✅ Stage 2 = Stage 3 동일성 완전 검증 (v0.50.56) |
-| 46.4 | **Cargo.toml 제거** | Rust 의존성 완전 제거 | P0 | ⏳ 46.3 후 진행 |
+| 46.4 | **Cargo.toml 제거** | Rust 의존성 완전 제거 | P0 | 🔄 진행 중 |
 | 46.5 | **디버깅 지원** | DWARF 디버그 정보 생성 | P1 | 📋 선택적 |
 | 46.6 | **소스맵 생성** | 디버거용 소스 위치 매핑 | P1 | 📋 선택적 |
 | 46.7 | **빌드 문서화** | BMB-only 빌드 가이드 작성 | P1 | ✅ 완료 |
@@ -172,29 +172,23 @@ bmb fmt --check stdlib/**/*.bmb
    - `lower_expr_sb/p`: 10개 분기 → 그룹화 헬퍼 2개씩
    - Stage 1 단순 파일 컴파일 성공 확인
 
-### 진행 상태: Stage 1=Stage 2 동일성 검증 완료 (v0.50.48)
+### 진행 상태: 3-Stage Bootstrap 검증 완료 (v0.50.56)
 
 **검증 결과** (2026-01-20):
-- ✅ Stage 1 (Rust로 빌드) = Stage 2 (Stage 1로 빌드) 출력 동일 확인
-- ✅ 테스트 파일: test_paren.bmb, test_scope6.bmb, test_scope7.bmb
-- ⚠️ Stage 3 (Stage 2로 전체 부트스트랩 컴파일) - 스택 오버플로우
+- ✅ Stage 1 (Rust로 빌드) → Stage 2 IR (1,068,850 bytes)
+- ✅ Stage 2 (Stage 1로 빌드) → Stage 3 IR (1,068,850 bytes)
+- ✅ **Stage 2 IR = Stage 3 IR 동일성 100% 확인**
+- ✅ v0.50.56: MAX_STRING_BUILDERS 1024 → 8192 확장으로 해결
 
-**Stage 3 블로커: 문자열 처리 재귀 깊이**
-- `escape_content` - 문자별 O(n²) 문자열 연결
-- `unescape_pipe_loop` - 동일 패턴
-- `find_str_pattern` - MIR 문자별 스캔
-- Stage 1은 64MB 스택 (`ulimit -s 65536`)으로 부트스트랩 컴파일 성공
-- Stage 2는 unlimited 스택에서도 전체 부트스트랩 컴파일 실패
-
-**해결 옵션**:
-1. **StringBuilder 최적화** - escape_content를 StringBuilder로 변환 (시도됨, 추가 디버깅 필요)
-2. **반복 방식 변환** - 재귀 함수를 반복문으로 변환
-3. **64MB 스택 요구사항 문서화** - Stage 1 빌드 시 스택 요구사항 명시
+**해결된 Stage 3 블로커**:
+- `escape_pipe_in_string` 함수가 문자열 리터럴마다 StringBuilder 생성
+- 1115+ 문자열 리터럴 처리 시 1024 한계 초과
+- 런타임 `MAX_STRING_BUILDERS` 8192로 확장하여 해결
 
 ### 다음 단계
 
-- **Stage 3 최적화**: 문자열 처리 함수의 재귀를 반복으로 변환 또는 StringBuilder 최적화 완성
-- **완료 후 진행**: Cargo.toml 제거 (BMB-only 빌드 체인 확립)
+- **46.4 진행 중**: Cargo.toml 제거 (BMB-only 빌드 체인 확립)
+- Golden Binary 배포 패키지 준비
 
 ### 검증 기준
 

@@ -1,8 +1,8 @@
 # Building BMB from Source
 
 **Version**: v0.46 Independence Phase
-**Date**: 2026-01-13
-**Status**: In Progress
+**Date**: 2026-01-20
+**Status**: 3-Stage Bootstrap Verified (v0.50.56)
 
 This document describes how to build the BMB compiler from source, including the 3-stage bootstrap verification process.
 
@@ -38,17 +38,22 @@ cargo build --release --features llvm
 ./hello
 ```
 
-### Option 2: Using Golden Binary (Future - v0.46)
+### Option 2: Using Golden Binary (v0.46+)
 
 ```bash
-# Download golden binary (when available)
+# Download golden binary
 wget https://github.com/bmb-lang/bmb/releases/download/v0.46/bmb-golden-linux-x64
 chmod +x bmb-golden-linux-x64
 
+# Also download the runtime library
+wget https://github.com/bmb-lang/bmb/releases/download/v0.46/libruntime_linux.a
+
 # Build compiler from source
-./bmb-golden-linux-x64 build bootstrap/compiler.bmb -o bmb
+./bmb-golden-linux-x64 build bootstrap/bmb_unified_cli.bmb -o bmb
 ./bmb --version
 ```
+
+**Note**: The golden binary generates LLVM IR. You need LLVM 21+ toolchain (llc, clang) for linking.
 
 ---
 
@@ -193,17 +198,24 @@ Success: diff bmb-stage2 bmb-stage3 == 0
 
 ```bash
 # Stage 1: Rust compiles bootstrap
-./target/release/bmb build bootstrap/compiler.bmb -o bmb-stage1
+./target/release/bmb build bootstrap/bmb_unified_cli.bmb -o bmbc_stage1
 
-# Stage 2: Stage 1 compiles bootstrap
-./bmb-stage1 build bootstrap/compiler.bmb -o bmb-stage2
+# Stage 2: Stage 1 compiles bootstrap (generates IR)
+./bmbc_stage1 build bootstrap/bmb_unified_cli.bmb > stage2.ll
+
+# Compile Stage 2 to binary
+llc-21 -filetype=obj -O2 stage2.ll -o stage2.o
+clang-21 -o bmbc_stage2 stage2.o runtime/libruntime_linux.a -lm
 
 # Stage 3: Stage 2 compiles bootstrap
-./bmb-stage2 build bootstrap/compiler.bmb -o bmb-stage3
+./bmbc_stage2 build bootstrap/bmb_unified_cli.bmb > stage3.ll
 
-# Verify identical binaries
-diff bmb-stage2 bmb-stage3  # Must be empty
+# Verify identical IR output
+diff stage2.ll stage3.ll  # Must be empty (0 differences)
 ```
+
+**Note**: We compare IR output (`.ll` files) rather than binaries because LLVM
+compilation is deterministic but binary layout may vary with toolchain versions.
 
 ### Why 3-Stage Matters
 
@@ -234,30 +246,48 @@ Reference: Ken Thompson, "Reflections on Trusting Trust" (1984)
 
 ---
 
-## Current Status (v0.46)
+## Current Status (v0.46 - v0.50.56)
 
 | Milestone | Status | Notes |
 |-----------|--------|-------|
-| Stage 1 (Rust → BMB) | ✅ Complete | Golden binary generated |
-| Stage 2 (BMB → BMB) | ⏳ Pending | Requires CLI in bootstrap |
-| Stage 3 (Verification) | ⏳ Pending | Depends on Stage 2 |
-| Cargo.toml Removal | ⏳ Pending | After Stage 3 success |
+| Stage 1 (Rust → BMB) | ✅ Complete | 160KB golden binary generated |
+| Stage 2 (BMB → BMB) | ✅ Complete | 1,068,850 bytes IR output |
+| Stage 3 (Verification) | ✅ Complete | Stage 2 = Stage 3 identical |
+| Cargo.toml Removal | 🔄 In Progress | Documentation phase |
 
-### Blocking Issues
+### 3-Stage Bootstrap Verified
 
-1. **Bootstrap CLI**: `compiler.bmb` is a test harness, not a full CLI
-2. **Runtime Functions**: `arg_count`, `get_arg` not implemented in bootstrap
-3. **Build Command**: Bootstrap needs `build` subcommand
+The BMB compiler successfully compiles itself in a 3-stage bootstrap:
 
-### Workaround
+```
+Stage 1 (Rust BMB):     bootstrap/bmb_unified_cli.bmb → bmbc_stage1 (160KB)
+Stage 2 (Stage 1):      bootstrap/bmb_unified_cli.bmb → stage2.ll (1,068,850 bytes)
+Stage 3 (Stage 2):      bootstrap/bmb_unified_cli.bmb → stage3.ll (1,068,850 bytes)
 
-Until full 3-stage is ready, use the Rust compiler to generate native binaries:
+✅ sha256(stage2.ll) == sha256(stage3.ll)
+```
+
+### Key Files for BMB-Only Build
+
+| File | Description |
+|------|-------------|
+| `bootstrap/bmb_unified_cli.bmb` | Full bootstrap compiler (143KB, 2895 lines) |
+| `runtime/libruntime_linux.a` | Linux runtime library |
+| `runtime/runtime.c` | Runtime source (for other platforms) |
+
+### Building from Golden Binary
 
 ```bash
-# Build any BMB file to native
-./target/release/bmb build your_file.bmb -o output
+# 1. Generate LLVM IR
+./bmb-golden build your_file.bmb --emit-ir -o output.ll
 
-# Run natively
+# 2. Compile to object file
+llc-21 -filetype=obj -O2 output.ll -o output.o
+
+# 3. Link with runtime
+clang-21 -o output output.o libruntime_linux.a -lm
+
+# 4. Run
 ./output
 ```
 
