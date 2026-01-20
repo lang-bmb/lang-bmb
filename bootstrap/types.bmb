@@ -61,6 +61,9 @@
 //  15 = Result[T, OverflowError] (v0.49.0) - checked arithmetic result, inner kind in extra_info
 //  16 = Disjoint constraint (v0.50.0) - aliasing proof, constraint_id in extra_info
 //  17 = Unique[T] (v0.50.0) - exclusive ownership type, inner_kind in extra_info
+//  18 = Sealed trait (v0.51.0) - closed hierarchy for devirtualization, trait_id in extra_info
+//  19 = FP precision (v0.51.0) - IEEE754 or Relaxed floating-point mode
+//  20 = Branch hint (v0.51.0) - likely/unlikely annotation for optimization
 
 fn type_i32() -> i64 = 1000;
 fn type_i64() -> i64 = 2000;
@@ -1151,6 +1154,153 @@ fn is_disjoint_with_all(param: String, others: String, set: String, pos: i64) ->
         let other = others.slice(pos, end);
         if other != "" and not disjoint_set_check(set, param, other) { false }
         else { is_disjoint_with_all(param, others, set, end + 1) }
+    };
+
+// ============================================================================
+// v0.51.0: Sealed Trait - Closed Hierarchy for Devirtualization
+// ============================================================================
+// Sealed traits have a fixed set of implementors known at compile time
+// This enables devirtualization: replacing virtual calls with direct calls
+// Encoding: 18000 + trait_id
+//
+// Example: sealed trait Shape { fn area(self) -> f64; }
+// Only impl Shape for Circle, Rectangle allowed → no virtual dispatch needed
+
+fn type_sealed_trait(trait_id: i64) -> i64 = 18000 + trait_id;
+
+// Check if type is a sealed trait
+fn is_sealed_trait(ty: i64) -> bool = type_kind(ty) == 18;
+
+// Get trait ID from sealed trait type
+fn sealed_trait_id(ty: i64) -> i64 = ty - 18000;
+
+// Sealed trait info: "Sealed:TraitName:Impl1,Impl2,..."
+fn sealed_trait_info(name: String, impls: String) -> String =
+    "Sealed:" + name + ":" + impls;
+
+// Parse trait name from sealed info
+fn sealed_parse_name(info: String) -> String =
+    if info.slice(0, 7) == "Sealed:" {
+        let rest = info.slice(7, info.len());
+        let colon_pos = sealed_find_colon(rest, 0);
+        if colon_pos > 0 { rest.slice(0, colon_pos) } else { rest }
+    } else { "" };
+
+// Parse implementors from sealed info
+fn sealed_parse_impls(info: String) -> String =
+    if info.slice(0, 7) == "Sealed:" {
+        let rest = info.slice(7, info.len());
+        let colon_pos = sealed_find_colon(rest, 0);
+        if colon_pos >= 0 and colon_pos + 1 < rest.len() {
+            rest.slice(colon_pos + 1, rest.len())
+        } else { "" }
+    } else { "" };
+
+fn sealed_find_colon(s: String, pos: i64) -> i64 =
+    if pos >= s.len() { -1 }
+    else if s.byte_at(pos) == 58 { pos }
+    else { sealed_find_colon(s, pos + 1) };
+
+// Count implementors (comma-separated)
+fn sealed_impl_count(impls: String) -> i64 =
+    if impls == "" { 0 }
+    else { sealed_count_commas(impls, 0, 1) };
+
+fn sealed_count_commas(s: String, pos: i64, count: i64) -> i64 =
+    if pos >= s.len() { count }
+    else if s.byte_at(pos) == 44 { sealed_count_commas(s, pos + 1, count + 1) }
+    else { sealed_count_commas(s, pos + 1, count) };
+
+// Check if devirtualization is possible (only one implementor)
+fn can_devirtualize(info: String) -> bool =
+    sealed_impl_count(sealed_parse_impls(info)) == 1;
+
+// Get single implementor for devirtualization
+fn get_single_impl(info: String) -> String =
+    let impls = sealed_parse_impls(info);
+    if sealed_impl_count(impls) == 1 { impls } else { "" };
+
+// ============================================================================
+// v0.51.0: FP Precision Types
+// ============================================================================
+// Floating-point precision control for optimization
+// IEEE754[f64]: Strict IEEE 754 compliance (default)
+// Relaxed[f64]: Fast-math optimizations allowed (-ffast-math)
+// Encoding: 19000 + precision_mode (0=IEEE754, 1=Relaxed)
+
+fn type_fp_ieee754() -> i64 = 19000;
+fn type_fp_relaxed() -> i64 = 19001;
+
+// Check if type is FP precision type
+fn is_fp_precision(ty: i64) -> bool = type_kind(ty) == 19;
+
+// Check if relaxed (fast-math allowed)
+fn is_fp_relaxed(ty: i64) -> bool = ty == 19001;
+
+// Check if strict IEEE754
+fn is_fp_ieee754(ty: i64) -> bool = ty == 19000;
+
+// FP precision info
+fn fp_precision_info(mode: String) -> String =
+    "FP:" + mode;  // "FP:IEEE754" or "FP:Relaxed"
+
+// Parse FP precision mode
+fn fp_parse_mode(info: String) -> String =
+    if info.slice(0, 3) == "FP:" { info.slice(3, info.len()) }
+    else { "IEEE754" };  // Default to strict
+
+// Check if operation can use fast-math
+fn can_fast_math(ty: i64) -> bool = is_fp_relaxed(ty);
+
+// ============================================================================
+// v0.51.0: Branch Hints (likely/unlikely)
+// ============================================================================
+// Branch prediction hints for optimization
+// likely(cond): Hint that condition is usually true
+// unlikely(cond): Hint that condition is usually false
+// Used by LLVM for branch weight metadata
+
+// Branch hint constants
+fn hint_none() -> i64 = 0;
+fn hint_likely() -> i64 = 1;
+fn hint_unlikely() -> i64 = 2;
+
+// Type encoding for branch hint annotations
+// Not a type per se, but tracked as annotation on expressions
+// Encoding: 20000 + hint_type
+fn type_branch_hint(hint: i64) -> i64 = 20000 + hint;
+
+// Check if type is a branch hint
+fn is_branch_hint(ty: i64) -> bool = type_kind(ty) == 20;
+
+// Get hint from branch hint type
+fn branch_hint_value(ty: i64) -> i64 = ty - 20000;
+
+// Create likely hint
+fn hint_likely_type() -> i64 = type_branch_hint(hint_likely());
+
+// Create unlikely hint
+fn hint_unlikely_type() -> i64 = type_branch_hint(hint_unlikely());
+
+// Branch hint info
+fn branch_hint_info(hint: i64) -> String =
+    if hint == hint_likely() { "likely" }
+    else if hint == hint_unlikely() { "unlikely" }
+    else { "none" };
+
+// LLVM branch weight metadata values
+fn llvm_likely_weight() -> i64 = 2000;    // High probability
+fn llvm_unlikely_weight() -> i64 = 1;     // Low probability
+fn llvm_default_weight() -> i64 = 1000;   // Default
+
+// Get branch weight for LLVM metadata
+fn get_branch_weight(hint: i64, is_true_branch: bool) -> i64 =
+    if hint == hint_likely() {
+        if is_true_branch { llvm_likely_weight() } else { llvm_unlikely_weight() }
+    } else if hint == hint_unlikely() {
+        if is_true_branch { llvm_unlikely_weight() } else { llvm_likely_weight() }
+    } else {
+        llvm_default_weight()
     };
 
 // ============================================================================

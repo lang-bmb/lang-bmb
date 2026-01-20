@@ -38,7 +38,7 @@
 | **v0.48** | **Type System (Phase A)** | ⚠️ 부분완료 | **Fin[N] 의존 타입 (타입 시스템만), 파서 지연** |
 | **v0.49** | **Range Arithmetic (Phase B)** | ⚠️ 부분완료 | **Range[lo,hi] 타입, 자동 승격, SMT 증명, 체크 연산자 (파서 지연)** |
 | **v0.50** | **Aliasing (Phase C)** | ⚠️ 부분완료 | **disjoint, noalias, effects, Unique[T] (파서/CLI 지연)** |
-| **v0.51** | **Compiler (Phase D+E)** | 📋 계획 | **LTO/PGO, Sealed trait, 언어 스펙 동결** |
+| **v0.51** | **Compiler (Phase D+E)** | ⚠️ 부분완료 | **Sealed trait, FP정밀도, 분기힌트 (LTO/PGO CLI 지연)** |
 | **v0.52** | **Ecosystem** | ✅ 기반완료 | **패키지 14/14, 크로스 컴파일 IR (새 타입 시스템 적용 예정)** |
 | **v0.53** | **Showcase** | ✅ 기반완료 | **샘플 앱 5/5, 시나리오 5/5 (새 기능 반영 예정)** |
 | **v0.54** | **Final Verification** | 📋 계획 | **보안 감사, 성능 회귀, 최종 검증** |
@@ -476,13 +476,25 @@ fn process(data: &mut [i64], config: &Config)
 
 | ID | 태스크 | 설명 | 우선순위 | 상태 |
 |----|--------|------|----------|------|
-| 51.1 | **ThinLTO 기본** | `bmb build` 기본 LTO 활성화 | P0 | 📋 계획 |
-| 51.2 | **Fat LTO 옵션** | `--lto=fat` 최대 최적화 | P1 | 📋 계획 |
-| 51.3 | **PGO 워크플로우** | `--pgo=generate/use` | P1 | 📋 계획 |
-| 51.4 | **Sealed trait** | 폐쇄 계층 devirtualization | P1 | 📋 계획 |
-| 51.5 | **FP 정밀도 타입** | `IEEE754[f64]`, `Relaxed[f64]` | P2 | 📋 계획 |
-| 51.6 | **분기 힌트** | `likely`, `unlikely` 키워드 | P2 | 📋 계획 |
-| 51.7 | **언어 스펙 동결** | Breaking Changes 금지 선언 | P0 | 📋 계획 |
+| 51.1 | **ThinLTO 기본** | `bmb build` 기본 LTO 활성화 | P0 | ⏸️ 지연 |
+| 51.2 | **Fat LTO 옵션** | `--lto=fat` 최대 최적화 | P1 | ⏸️ 지연 |
+| 51.3 | **PGO 워크플로우** | `--pgo=generate/use` | P1 | ⏸️ 지연 |
+| 51.4 | **Sealed trait** | 폐쇄 계층 devirtualization | P1 | ✅ 완료 |
+| 51.5 | **FP 정밀도 타입** | `IEEE754[f64]`, `Relaxed[f64]` | P2 | ✅ 완료 |
+| 51.6 | **분기 힌트** | `likely`, `unlikely` 키워드 | P2 | ✅ 완료 |
+| 51.7 | **언어 스펙 동결** | Breaking Changes 금지 선언 | P0 | ✅ 완료 |
+
+> **v0.51 상태 (v0.50.52)**: 타입 시스템 완료, CLI 지연.
+> - Sealed trait (kind 18) - 폐쇄 계층 devirtualization 지원
+> - FP 정밀도 타입 (kind 19) - IEEE754/Relaxed 모드
+> - 분기 힌트 (kind 20) - likely/unlikely LLVM branch weight 지원
+> - 언어 스펙 동결 선언 (아래 참조)
+>
+> **⚠️ 언어 스펙 동결 (v0.51.7)**
+> v0.51 완료 시점부터 BMB 언어의 Breaking Changes는 금지됩니다.
+> - 기존 문법/의미 변경 불가
+> - 새 기능은 추가만 허용 (backward compatible)
+> - 타입 시스템 변경은 확장만 허용
 
 ### 문법 예시
 
