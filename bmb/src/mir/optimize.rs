@@ -60,6 +60,8 @@ impl OptimizationPipeline {
             }
             OptLevel::Release => {
                 // Standard optimizations
+                // v0.50.54: Add algebraic simplification before constant folding
+                pipeline.add_pass(Box::new(AlgebraicSimplification));
                 pipeline.add_pass(Box::new(ConstantFolding));
                 pipeline.add_pass(Box::new(DeadCodeElimination));
                 pipeline.add_pass(Box::new(SimplifyBranches));
@@ -67,6 +69,8 @@ impl OptimizationPipeline {
             }
             OptLevel::Aggressive => {
                 // All optimizations
+                // v0.50.54: Add algebraic simplification before constant folding
+                pipeline.add_pass(Box::new(AlgebraicSimplification));
                 pipeline.add_pass(Box::new(ConstantFolding));
                 pipeline.add_pass(Box::new(DeadCodeElimination));
                 pipeline.add_pass(Box::new(SimplifyBranches));
@@ -315,6 +319,232 @@ fn fold_unaryop(op: MirUnaryOp, src: &Constant) -> Option<Constant> {
         (MirUnaryOp::FNeg, Constant::Float(f)) => Some(Constant::Float(-f)),
         (MirUnaryOp::Not, Constant::Bool(b)) => Some(Constant::Bool(!b)),
         _ => None,
+    }
+}
+
+// ============================================================================
+// Algebraic Simplification Pass (v0.50.54)
+// ============================================================================
+
+/// Algebraic simplification: eliminate identity operations
+///
+/// This pass handles algebraic identities that aren't caught by constant folding:
+/// - `x + 0` → `x` (additive identity)
+/// - `0 + x` → `x` (additive identity, commutative)
+/// - `x - 0` → `x` (subtractive identity)
+/// - `x * 1` → `x` (multiplicative identity)
+/// - `1 * x` → `x` (multiplicative identity, commutative)
+/// - `x * 0` → `0` (zero product)
+/// - `0 * x` → `0` (zero product, commutative)
+/// - `x / 1` → `x` (division identity)
+/// - `x && true` → `x` (boolean and identity)
+/// - `x || false` → `x` (boolean or identity)
+/// - `x && false` → `false` (boolean and zero)
+/// - `x || true` → `true` (boolean or one)
+pub struct AlgebraicSimplification;
+
+impl OptimizationPass for AlgebraicSimplification {
+    fn name(&self) -> &'static str {
+        "algebraic_simplification"
+    }
+
+    fn run_on_function(&self, func: &mut MirFunction) -> bool {
+        let mut changed = false;
+
+        for block in &mut func.blocks {
+            let mut new_instructions = Vec::new();
+
+            for inst in &block.instructions {
+                match inst {
+                    MirInst::BinOp { dest, op, lhs, rhs } => {
+                        if let Some(simplified) = simplify_binop(dest, *op, lhs, rhs) {
+                            new_instructions.push(simplified);
+                            changed = true;
+                            continue;
+                        }
+                        new_instructions.push(inst.clone());
+                    }
+                    _ => {
+                        new_instructions.push(inst.clone());
+                    }
+                }
+            }
+
+            block.instructions = new_instructions;
+        }
+
+        changed
+    }
+}
+
+/// Try to simplify a binary operation using algebraic identities
+/// Returns Some(simplified instruction) if simplification is possible
+fn simplify_binop(dest: &Place, op: MirBinOp, lhs: &Operand, rhs: &Operand) -> Option<MirInst> {
+    match op {
+        // Addition: x + 0 = x, 0 + x = x
+        MirBinOp::Add => {
+            if matches!(rhs, Operand::Constant(Constant::Int(0))) {
+                return Some(MirInst::Copy {
+                    dest: dest.clone(),
+                    src: operand_to_place(lhs)?,
+                });
+            }
+            if matches!(lhs, Operand::Constant(Constant::Int(0))) {
+                return Some(MirInst::Copy {
+                    dest: dest.clone(),
+                    src: operand_to_place(rhs)?,
+                });
+            }
+            None
+        }
+
+        // Subtraction: x - 0 = x
+        MirBinOp::Sub => {
+            if matches!(rhs, Operand::Constant(Constant::Int(0))) {
+                return Some(MirInst::Copy {
+                    dest: dest.clone(),
+                    src: operand_to_place(lhs)?,
+                });
+            }
+            None
+        }
+
+        // Multiplication: x * 1 = x, 1 * x = x, x * 0 = 0, 0 * x = 0
+        MirBinOp::Mul => {
+            if matches!(rhs, Operand::Constant(Constant::Int(1))) {
+                return Some(MirInst::Copy {
+                    dest: dest.clone(),
+                    src: operand_to_place(lhs)?,
+                });
+            }
+            if matches!(lhs, Operand::Constant(Constant::Int(1))) {
+                return Some(MirInst::Copy {
+                    dest: dest.clone(),
+                    src: operand_to_place(rhs)?,
+                });
+            }
+            if matches!(rhs, Operand::Constant(Constant::Int(0)))
+                || matches!(lhs, Operand::Constant(Constant::Int(0)))
+            {
+                return Some(MirInst::Const {
+                    dest: dest.clone(),
+                    value: Constant::Int(0),
+                });
+            }
+            None
+        }
+
+        // Division: x / 1 = x
+        MirBinOp::Div => {
+            if matches!(rhs, Operand::Constant(Constant::Int(1))) {
+                return Some(MirInst::Copy {
+                    dest: dest.clone(),
+                    src: operand_to_place(lhs)?,
+                });
+            }
+            None
+        }
+
+        // Boolean And: x && true = x, x && false = false
+        MirBinOp::And => {
+            if matches!(rhs, Operand::Constant(Constant::Bool(true))) {
+                return Some(MirInst::Copy {
+                    dest: dest.clone(),
+                    src: operand_to_place(lhs)?,
+                });
+            }
+            if matches!(lhs, Operand::Constant(Constant::Bool(true))) {
+                return Some(MirInst::Copy {
+                    dest: dest.clone(),
+                    src: operand_to_place(rhs)?,
+                });
+            }
+            if matches!(rhs, Operand::Constant(Constant::Bool(false)))
+                || matches!(lhs, Operand::Constant(Constant::Bool(false)))
+            {
+                return Some(MirInst::Const {
+                    dest: dest.clone(),
+                    value: Constant::Bool(false),
+                });
+            }
+            None
+        }
+
+        // Boolean Or: x || false = x, x || true = true
+        MirBinOp::Or => {
+            if matches!(rhs, Operand::Constant(Constant::Bool(false))) {
+                return Some(MirInst::Copy {
+                    dest: dest.clone(),
+                    src: operand_to_place(lhs)?,
+                });
+            }
+            if matches!(lhs, Operand::Constant(Constant::Bool(false))) {
+                return Some(MirInst::Copy {
+                    dest: dest.clone(),
+                    src: operand_to_place(rhs)?,
+                });
+            }
+            if matches!(rhs, Operand::Constant(Constant::Bool(true)))
+                || matches!(lhs, Operand::Constant(Constant::Bool(true)))
+            {
+                return Some(MirInst::Const {
+                    dest: dest.clone(),
+                    value: Constant::Bool(true),
+                });
+            }
+            None
+        }
+
+        // Float operations: same patterns
+        MirBinOp::FAdd => {
+            if matches!(rhs, Operand::Constant(Constant::Float(f)) if *f == 0.0) {
+                return Some(MirInst::Copy {
+                    dest: dest.clone(),
+                    src: operand_to_place(lhs)?,
+                });
+            }
+            if matches!(lhs, Operand::Constant(Constant::Float(f)) if *f == 0.0) {
+                return Some(MirInst::Copy {
+                    dest: dest.clone(),
+                    src: operand_to_place(rhs)?,
+                });
+            }
+            None
+        }
+
+        MirBinOp::FMul => {
+            if matches!(rhs, Operand::Constant(Constant::Float(f)) if *f == 1.0) {
+                return Some(MirInst::Copy {
+                    dest: dest.clone(),
+                    src: operand_to_place(lhs)?,
+                });
+            }
+            if matches!(lhs, Operand::Constant(Constant::Float(f)) if *f == 1.0) {
+                return Some(MirInst::Copy {
+                    dest: dest.clone(),
+                    src: operand_to_place(rhs)?,
+                });
+            }
+            if matches!(rhs, Operand::Constant(Constant::Float(f)) if *f == 0.0)
+                || matches!(lhs, Operand::Constant(Constant::Float(f)) if *f == 0.0)
+            {
+                return Some(MirInst::Const {
+                    dest: dest.clone(),
+                    value: Constant::Float(0.0),
+                });
+            }
+            None
+        }
+
+        _ => None,
+    }
+}
+
+/// Convert an operand to a place if it is one, None if it's a constant
+fn operand_to_place(op: &Operand) -> Option<Place> {
+    match op {
+        Operand::Place(p) => Some(p.clone()),
+        Operand::Constant(_) => None,
     }
 }
 
@@ -1845,6 +2075,222 @@ mod tests {
         assert!(
             !changed,
             "Const function with args should not be inlined (deferred)"
+        );
+    }
+
+    // ============================================================================
+    // Algebraic Simplification Tests (v0.50.54)
+    // ============================================================================
+
+    #[test]
+    fn test_algebraic_add_zero_right() {
+        // Test: x + 0 = x
+        let mut func = MirFunction {
+            name: "test_add_zero".to_string(),
+            params: vec![("x".to_string(), MirType::I64)],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![MirInst::BinOp {
+                    dest: Place::new("result"),
+                    op: MirBinOp::Add,
+                    lhs: Operand::Place(Place::new("x")),
+                    rhs: Operand::Constant(Constant::Int(0)),
+                }],
+                terminator: Terminator::Return(Some(Operand::Place(Place::new("result")))),
+            }],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+        };
+
+        let pass = AlgebraicSimplification;
+        let changed = pass.run_on_function(&mut func);
+        assert!(changed, "x + 0 should be simplified");
+
+        let inst = &func.blocks[0].instructions[0];
+        assert!(
+            matches!(inst, MirInst::Copy { dest, src } if dest.name == "result" && src.name == "x"),
+            "x + 0 should become copy x: got {:?}",
+            inst
+        );
+    }
+
+    #[test]
+    fn test_algebraic_add_zero_left() {
+        // Test: 0 + x = x
+        let mut func = MirFunction {
+            name: "test_zero_add".to_string(),
+            params: vec![("x".to_string(), MirType::I64)],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![MirInst::BinOp {
+                    dest: Place::new("result"),
+                    op: MirBinOp::Add,
+                    lhs: Operand::Constant(Constant::Int(0)),
+                    rhs: Operand::Place(Place::new("x")),
+                }],
+                terminator: Terminator::Return(Some(Operand::Place(Place::new("result")))),
+            }],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+        };
+
+        let pass = AlgebraicSimplification;
+        let changed = pass.run_on_function(&mut func);
+        assert!(changed, "0 + x should be simplified");
+
+        let inst = &func.blocks[0].instructions[0];
+        assert!(
+            matches!(inst, MirInst::Copy { dest, src } if dest.name == "result" && src.name == "x"),
+            "0 + x should become copy x: got {:?}",
+            inst
+        );
+    }
+
+    #[test]
+    fn test_algebraic_mul_one() {
+        // Test: x * 1 = x
+        let mut func = MirFunction {
+            name: "test_mul_one".to_string(),
+            params: vec![("x".to_string(), MirType::I64)],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![MirInst::BinOp {
+                    dest: Place::new("result"),
+                    op: MirBinOp::Mul,
+                    lhs: Operand::Place(Place::new("x")),
+                    rhs: Operand::Constant(Constant::Int(1)),
+                }],
+                terminator: Terminator::Return(Some(Operand::Place(Place::new("result")))),
+            }],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+        };
+
+        let pass = AlgebraicSimplification;
+        let changed = pass.run_on_function(&mut func);
+        assert!(changed, "x * 1 should be simplified");
+
+        let inst = &func.blocks[0].instructions[0];
+        assert!(
+            matches!(inst, MirInst::Copy { dest, src } if dest.name == "result" && src.name == "x"),
+            "x * 1 should become copy x"
+        );
+    }
+
+    #[test]
+    fn test_algebraic_mul_zero() {
+        // Test: x * 0 = 0
+        let mut func = MirFunction {
+            name: "test_mul_zero".to_string(),
+            params: vec![("x".to_string(), MirType::I64)],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![MirInst::BinOp {
+                    dest: Place::new("result"),
+                    op: MirBinOp::Mul,
+                    lhs: Operand::Place(Place::new("x")),
+                    rhs: Operand::Constant(Constant::Int(0)),
+                }],
+                terminator: Terminator::Return(Some(Operand::Place(Place::new("result")))),
+            }],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+        };
+
+        let pass = AlgebraicSimplification;
+        let changed = pass.run_on_function(&mut func);
+        assert!(changed, "x * 0 should be simplified");
+
+        let inst = &func.blocks[0].instructions[0];
+        assert!(
+            matches!(inst, MirInst::Const { value: Constant::Int(0), .. }),
+            "x * 0 should become const 0"
+        );
+    }
+
+    #[test]
+    fn test_algebraic_bool_and_true() {
+        // Test: x && true = x
+        let mut func = MirFunction {
+            name: "test_and_true".to_string(),
+            params: vec![("x".to_string(), MirType::Bool)],
+            ret_ty: MirType::Bool,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![MirInst::BinOp {
+                    dest: Place::new("result"),
+                    op: MirBinOp::And,
+                    lhs: Operand::Place(Place::new("x")),
+                    rhs: Operand::Constant(Constant::Bool(true)),
+                }],
+                terminator: Terminator::Return(Some(Operand::Place(Place::new("result")))),
+            }],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+        };
+
+        let pass = AlgebraicSimplification;
+        let changed = pass.run_on_function(&mut func);
+        assert!(changed, "x && true should be simplified");
+
+        let inst = &func.blocks[0].instructions[0];
+        assert!(
+            matches!(inst, MirInst::Copy { dest, src } if dest.name == "result" && src.name == "x"),
+            "x && true should become copy x"
+        );
+    }
+
+    #[test]
+    fn test_algebraic_no_change_for_non_identity() {
+        // Test: x + 1 should NOT be simplified (not an identity)
+        let mut func = MirFunction {
+            name: "test_no_change".to_string(),
+            params: vec![("x".to_string(), MirType::I64)],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![MirInst::BinOp {
+                    dest: Place::new("result"),
+                    op: MirBinOp::Add,
+                    lhs: Operand::Place(Place::new("x")),
+                    rhs: Operand::Constant(Constant::Int(1)),
+                }],
+                terminator: Terminator::Return(Some(Operand::Place(Place::new("result")))),
+            }],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+        };
+
+        let pass = AlgebraicSimplification;
+        let changed = pass.run_on_function(&mut func);
+        assert!(!changed, "x + 1 should NOT be simplified");
+
+        let inst = &func.blocks[0].instructions[0];
+        assert!(
+            matches!(inst, MirInst::BinOp { .. }),
+            "x + 1 should remain as BinOp"
         );
     }
 }
