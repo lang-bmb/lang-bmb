@@ -1928,6 +1928,12 @@ cargo build --release --features llvm
 | P0 | LLVM 21 환경에서 Stage 1 재빌드 | 최적화 효과 검증 |
 | P1 | Stage 3 검증 완료 | 수정 후 3-stage 검증 재시도 |
 
+**⚠️ Stage 2 빌드 실패 분석 (2026-01-20)**:
+- 증상: `bmbc_stage1_ssa`로 Stage 2 빌드 시 15분 후 OOM (exit code 137 = SIGKILL)
+- 원인: Stage 1 바이너리가 chr() 수정(v0.50.54) **이전**에 빌드됨 (12:40 vs 13:22)
+- chr() 반환 타입 버그로 인해 문자열 처리 시 메모리 손상 발생
+- **해결책**: LLVM 21 환경에서 v0.50.55 코드로 Stage 1 재빌드 필요
+
 ---
 
 ## 🎯 핵심 로드맵: Zero-Cost Safety
