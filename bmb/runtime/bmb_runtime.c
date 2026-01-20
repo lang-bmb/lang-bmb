@@ -454,6 +454,10 @@ int64_t sb_len(int64_t handle) {
     return bmb_sb_len(handle);
 }
 
+int64_t sb_clear(int64_t handle) {
+    return bmb_sb_clear(handle);
+}
+
 // v0.50.20: File I/O wrappers
 char* read_file(const char* path) {
     return bmb_read_file(path);
@@ -480,6 +484,9 @@ int64_t min(int64_t a, int64_t b) {
 int64_t max(int64_t a, int64_t b) {
     return bmb_max(a, b);
 }
+
+// v0.50.36: find_close_paren moved to BMB (bootstrap/bmb_unified_cli.bmb)
+// This function is no longer needed in the runtime
 
 // Entry point
 int64_t bmb_user_main(void);

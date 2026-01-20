@@ -365,6 +365,8 @@ impl TypeChecker {
         // sb_clear(id: i64) -> i64 (same ID)
         functions.insert("sb_clear".to_string(), (vec![Type::I64], Type::I64));
 
+        // v0.50.36: find_close_paren is now defined in BMB, not as builtin
+
         // v0.31.21: Character conversion builtins
         // v0.50.18: chr returns String to match runtime behavior (C runtime returns char*)
         // chr(code: i64) -> String (creates single-char string from code point)

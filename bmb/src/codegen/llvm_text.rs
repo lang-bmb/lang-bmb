@@ -296,6 +296,8 @@ impl TextCodeGen {
         writeln!(out, "declare i64 @sb_clear(i64)")?;
         writeln!(out)?;
 
+        // v0.50.36: find_close_paren is now defined in BMB, no extern needed
+
         // v0.34: Math intrinsics for Phase 34.4 Benchmark Gate
         writeln!(out, "; Runtime declarations - Math intrinsics")?;
         writeln!(out, "declare double @llvm.sqrt.f64(double)")?;
