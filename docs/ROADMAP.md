@@ -1854,6 +1854,41 @@ cargo build --release --features llvm
 | P0 | 생성 코드 성능 최적화 | Rust BMB 생성 바이너리 런타임 성능 개선 |
 | P1 | Stage 3 검증 완료 | 수정 후 3-stage 검증 재시도 |
 
+### 2026-01-20 chr() 반환 타입 수정 (v0.50.54)
+
+**수행된 작업**:
+
+1. **문제 발견**
+   - Stage 1 (Rust BMB로 빌드된 네이티브 컴파일러)가 문자열 리터럴 파일에서 SEGFAULT
+   - GDB 추적: `bmb_sb_push` → `escape_string_for_llvm` 경로에서 크래시
+   - 근본 원인: `chr()` 함수가 String-returning 함수 목록에 없어 i64로 기본 타입 지정됨
+
+2. **수정 내용**:
+   - `bmb/src/mir/lower.rs`: `chr`를 String-returning 함수 목록에 추가
+   - runtime에서 `chr()` 서명 확인: `BmbString* chr(int64_t code)` → 포인터 반환
+
+   ```rust
+   // 수정 전: chr()가 i64로 잘못 타이핑
+   "int_to_string" | "read_file" | "slice" | "digit_char" | "get_arg" | "sb_build" => MirType::String,
+
+   // 수정 후: chr()를 String으로 올바르게 타이핑
+   "int_to_string" | "read_file" | "slice" | "digit_char" | "get_arg" | "sb_build" | "chr" => MirType::String,
+   ```
+
+3. **검증 상태**:
+   - `cargo test --release`: ✅ 19개 통과
+   - 코드 리뷰: ✅ runtime.c에서 `chr()` 반환 타입 확인
+   - Stage 1 재빌드: ⏳ LLVM 21 환경 필요 (현재 환경에서 빌드 불가)
+
+**다음 단계**:
+| 우선순위 | 작업 | 설명 |
+|----------|------|------|
+| P0 | ~~byte_at 메서드 수정~~ | ✅ v0.50.53 완료 |
+| P0 | ~~chr() 반환 타입 수정~~ | ✅ v0.50.54 완료 |
+| P0 | LLVM 21 환경에서 Stage 1 재빌드 | chr 수정 검증 |
+| P0 | 생성 코드 성능 최적화 | Rust BMB 생성 바이너리 런타임 성능 개선 |
+| P1 | Stage 3 검증 완료 | 수정 후 3-stage 검증 재시도 |
+
 ---
 
 ## 🎯 핵심 로드맵: Zero-Cost Safety
