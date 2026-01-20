@@ -1786,7 +1786,7 @@ cargo build --release --features llvm
 | 우선순위 | 작업 | 설명 |
 |----------|------|------|
 | P0 | ~~Rust BMB codegen 수정~~ | ✅ v0.50.52 완료 (SSA 최적화) |
-| P0 | 타입 추론 버그 수정 | byte_at() 반환값 올바른 타입 처리 |
+| P0 | ~~byte_at 메서드 수정~~ | ✅ v0.50.53 완료 (char_at→byte_at) |
 | P0 | 생성 코드 성능 최적화 | Rust BMB 생성 바이너리 런타임 성능 개선 |
 | P1 | Stage 3 검증 완료 | 수정 후 3-stage 검증 재시도 |
 
@@ -1827,6 +1827,32 @@ cargo build --release --features llvm
 - Rust BMB 생성 바이너리가 기존 대비 ~600x 느림 (런타임)
 - IR 크기가 40% 더 큼 (1.5MB vs 1MB)
 - MIR 최적화 또는 IR 생성 개선 필요
+
+### 2026-01-20 Bootstrap byte_at 메서드 버그 수정 (v0.50.53)
+
+**수행된 작업**:
+
+1. **byte_at 메서드 이름 불일치 수정**
+   - 문제: Bootstrap 컴파일러가 `char_at` 메서드명을 사용, BMB 언어는 `byte_at` 사용
+   - 결과: byte_at 호출이 "unsupported method"로 처리됨
+
+2. **수정된 파일**:
+   - `bootstrap/lowering.bmb`: `is_builtin_method()` - `char_at` → `byte_at`
+   - `bootstrap/llvm_ir.bmb`: `gen_method_dispatch()` - `char_at` → `byte_at`
+   - `bootstrap/llvm_ir.bmb`: `gen_method_char_at()` → `gen_method_byte_at()` 함수 이름 변경
+   - 관련 테스트 케이스 업데이트
+
+3. **테스트 결과**:
+   - `cargo test --release`: ✅ 19개 통과
+   - `bmb run bootstrap/llvm_ir.bmb`: ✅ 999 마커
+   - `bmb run bootstrap/lowering.bmb`: ✅ 999 마커
+
+**다음 단계**:
+| 우선순위 | 작업 | 설명 |
+|----------|------|------|
+| P0 | ~~byte_at 메서드 수정~~ | ✅ v0.50.53 완료 |
+| P0 | 생성 코드 성능 최적화 | Rust BMB 생성 바이너리 런타임 성능 개선 |
+| P1 | Stage 3 검증 완료 | 수정 후 3-stage 검증 재시도 |
 
 ---
 

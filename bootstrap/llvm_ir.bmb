@@ -1206,14 +1206,15 @@ fn find_method_call_pos(s: String, pos: i64) -> i64 =
 // v0.30.80: Added array_push, array_pop, array_clear for array mutation
 fn gen_method_dispatch(dest: String, recv: String, method: String, args: String) -> String =
     // String methods, then Array methods (v0.30.78), then Array mutation methods (v0.30.80)
-    if method == "len" { gen_method_len(dest, recv) } else if method == "char_at" { gen_method_char_at(dest, recv, args) } else if method == "slice" { gen_method_slice(dest, recv, args) } else if method == "concat" { gen_method_concat(dest, recv, args) } else if method == "eq" { gen_method_eq(dest, recv, args) } else if method == "array_len" { gen_method_array_len(dest, recv) } else if method == "array_get" { gen_method_array_get(dest, recv, args) } else if method == "array_set" { gen_method_array_set(dest, recv, args) } else if method == "array_push" { gen_method_array_push(dest, recv, args) } else if method == "array_pop" { gen_method_array_pop(dest, recv) } else if method == "array_clear" { gen_method_array_clear(dest, recv) } else { "; unsupported method: " + method };
+    // v0.50.53: Fixed byte_at naming (was incorrectly char_at)
+    if method == "len" { gen_method_len(dest, recv) } else if method == "byte_at" { gen_method_byte_at(dest, recv, args) } else if method == "slice" { gen_method_slice(dest, recv, args) } else if method == "concat" { gen_method_concat(dest, recv, args) } else if method == "eq" { gen_method_eq(dest, recv, args) } else if method == "array_len" { gen_method_array_len(dest, recv) } else if method == "array_get" { gen_method_array_get(dest, recv, args) } else if method == "array_set" { gen_method_array_set(dest, recv, args) } else if method == "array_push" { gen_method_array_push(dest, recv, args) } else if method == "array_pop" { gen_method_array_pop(dest, recv) } else if method == "array_clear" { gen_method_array_clear(dest, recv) } else { "; unsupported method: " + method };
 
 // v0.30.74: String.len() -> call @bmb_string_len
 fn gen_method_len(dest: String, recv: String) -> String =
     dest + " = call i64 @bmb_string_len(i8* " + recv + ")";
 
 // v0.30.75: String.byte_at(idx) -> getelementptr + load
-fn gen_method_char_at(dest: String, recv: String, args: String) -> String =
+fn gen_method_byte_at(dest: String, recv: String, args: String) -> String =
     let idx = trim_ws(args);
     let ptr = dest + "_ptr";
     let gep = ptr + " = getelementptr i8, i8* " + recv + ", i64 " + idx;
@@ -2399,11 +2400,11 @@ fn test_method_call_ir() -> i64 =
     let len1 = gen_method_len("%_t1", "%_t0");
     let t6 = if has_pattern(len1, "@bmb_string_len", 0) { 1 } else { 0 };
 
-    // Test 7: gen_method_char_at generates getelementptr
-    let ca1 = gen_method_char_at("%_t2", "%_t0", "%_t1");
+    // Test 7: gen_method_byte_at generates getelementptr
+    let ca1 = gen_method_byte_at("%_t2", "%_t0", "%_t1");
     let t7 = if has_pattern(ca1, "getelementptr i8", 0) { 1 } else { 0 };
 
-    // Test 8: gen_method_char_at generates load
+    // Test 8: gen_method_byte_at generates load
     let t8 = if has_pattern(ca1, "load i8", 0) { 1 } else { 0 };
 
     // Test 9: gen_method_slice generates call with args
@@ -2590,8 +2591,8 @@ fn test_method_dispatch_edge() -> i64 =
     let d1 = gen_method_dispatch("%_t2", "%str", "len", "");
     let t3 = if has_pattern(d1, "@bmb_string_len", 0) { 1 } else { 0 };
 
-    // Test 4: Method dispatch with single arg for char_at
-    let d2 = gen_method_dispatch("%_t3", "%str", "char_at", "%idx");
+    // Test 4: Method dispatch with single arg for byte_at
+    let d2 = gen_method_dispatch("%_t3", "%str", "byte_at", "%idx");
     let t4 = if has_pattern(d2, "getelementptr", 0) { 1 } else { 0 };
 
     // Test 5: Method dispatch with two args for slice
@@ -2715,7 +2716,7 @@ fn test_method_chaining() -> i64 =
     let m3 = gen_instr_method_call("  %_t2 = MethodCall %_t1.concat(%_t0)");
     let t4 = if has_pattern(m3, "@bmb_string_concat", 0) { 1 } else { 0 };
 
-    // Test 5: Triple chain simulation (char_at on slice result)
+    // Test 5: Triple chain simulation (byte_at on slice result)
     let m4 = gen_instr_method_call("  %_t3 = MethodCall %_t2.byte_at(%idx)");
     let t5 = if has_pattern(m4, "getelementptr", 0) { 1 } else { 0 };
 

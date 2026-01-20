@@ -1547,10 +1547,10 @@ fn lower_index(ast: String, temp: i64, block: i64) -> String =
 
 // Check if a method is a built-in method (String/Array methods)
 // Built-in methods are handled by the runtime, not trait dispatch
-// String methods: len, slice, char_at, concat, eq
+// String methods: len, slice, byte_at, concat, eq
 // Array methods: get, set, push, pop, clear
 fn is_builtin_method(name: String) -> bool =
-    if name == "len" { true } else if name == "slice" { true } else if name == "char_at" { true } else if name == "concat" { true } else if name == "eq" { true } else if name == "get" { true } else if name == "set" { true } else if name == "push" { true } else if name == "pop" { true } else if name == "clear" { true } else { false };
+    if name == "len" { true } else if name == "slice" { true } else if name == "byte_at" { true } else if name == "concat" { true } else if name == "eq" { true } else if name == "get" { true } else if name == "set" { true } else if name == "push" { true } else if name == "pop" { true } else if name == "clear" { true } else { false };
 
 // Check if method looks like a trait method (non-builtin)
 fn is_trait_method(name: String) -> bool =
