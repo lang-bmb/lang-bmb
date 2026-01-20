@@ -503,8 +503,9 @@ fn gen_instruction(line: String) -> String =
     };
 
 // Instruction dispatch: UNIT/BREAK/CONTINUE v0.30.48, CLOSURE v0.30.52, Array v0.30.71, Index v0.30.72
+// v0.48.0: Added IndexUnchecked for zero-cost bounds checking with Fin[N] types
 fn gen_instr_dispatch(dest: String, op: String, line: String, pos: i64) -> String =
-    if op == "const" { gen_instr_const(dest, line, pos) } else if op == "neg" { gen_instr_neg(dest, line, pos) } else if op == "not" { gen_instr_not(dest, line, pos) } else if op == "copy" { gen_instr_copy(dest, line, pos) } else if op == "UNIT" { gen_instr_unit(dest) } else if op == "BREAK" { gen_instr_break(dest) } else if op == "CONTINUE" { gen_instr_continue(dest) } else if is_closure_op(op) { gen_instr_closure(dest, parse_closure_id(op)) } else if op == "Array" { gen_instr_array(dest, line, pos) } else if op == "Index" { gen_instr_index(dest, line, pos) } else { gen_instr_binop(dest, op, line, pos) };
+    if op == "const" { gen_instr_const(dest, line, pos) } else if op == "neg" { gen_instr_neg(dest, line, pos) } else if op == "not" { gen_instr_not(dest, line, pos) } else if op == "copy" { gen_instr_copy(dest, line, pos) } else if op == "UNIT" { gen_instr_unit(dest) } else if op == "BREAK" { gen_instr_break(dest) } else if op == "CONTINUE" { gen_instr_continue(dest) } else if is_closure_op(op) { gen_instr_closure(dest, parse_closure_id(op)) } else if op == "Array" { gen_instr_array(dest, line, pos) } else if op == "Index" { gen_instr_index(dest, line, pos) } else if op == "IndexUnchecked" { gen_instr_index_unchecked(dest, line, pos) } else { gen_instr_binop(dest, op, line, pos) };
 
 // const I:42 or const B:1 or const S:hello (v0.30.51)
 fn gen_instr_const(dest: String, line: String, pos: i64) -> String =
@@ -800,13 +801,30 @@ fn trim_end_ws(s: String, pos: i64) -> i64 =
 // ============================================================================
 
 // Index expression: %dest = Index %base[%idx]
-// LLVM: getelementptr + load
+// v0.48.0: Generates bounds check by default for memory safety
+// LLVM: bounds check + getelementptr + load
 fn gen_instr_index(dest: String, line: String, pos: i64) -> String =
     // Parse %base[%idx] format
     let base = read_until_bracket(line, pos);
     let bracket_pos = pos + base.len();
     let idx = extract_index_expr(line, bracket_pos);
-    // Generate GEP + load
+    // v0.48.0: Generate bounds-checked access
+    gen_index_checked(dest, base, idx);
+
+// v0.48.0: Generate bounds-checked index access
+// Uses runtime function bmb_array_get which includes bounds checking
+fn gen_index_checked(dest: String, base: String, idx: String) -> String =
+    // Call runtime function that does bounds checking internally
+    dest + " = call i64 @bmb_array_get(i8* " + base + ", i64 " + idx + ")";
+
+// v0.48.0: IndexUnchecked - skips bounds check (used with Fin[N] types)
+// Format: %dest = IndexUnchecked %base[%idx]
+fn gen_instr_index_unchecked(dest: String, line: String, pos: i64) -> String =
+    // Parse %base[%idx] format
+    let base = read_until_bracket(line, pos);
+    let bracket_pos = pos + base.len();
+    let idx = extract_index_expr(line, bracket_pos);
+    // Direct GEP + load without bounds check (zero-cost)
     let ptr = dest + "_ptr";
     let gep = ptr + " = getelementptr i64, i64* " + base + ", i64 " + idx;
     let load = dest + " = load i64, i64* " + ptr;
@@ -1390,9 +1408,10 @@ fn find_double_pipe(s: String, pos: i64) -> i64 =
     if pos + 1 >= s.len() { s.len() } else if s.byte_at(pos) == 124 and s.byte_at(pos + 1) == 124 { pos } else { find_double_pipe(s, pos + 1) };
 
 // Generate LLVM module header with target specification
-// Note: target triple needs quotes - add with sed after generation
 fn gen_module_header() -> String =
-    "; ModuleID = bmb_bootstrap|target triple = x86_64-unknown-linux-gnu";
+    // Use chr(34) to produce double-quote character to avoid escape issues
+    let dq = chr(34);
+    "; ModuleID = bmb_bootstrap|target triple = " + dq + "x86_64-unknown-linux-gnu" + dq;
 
 // Generate external function declarations (for runtime support)
 fn gen_extern_println() -> String =
@@ -1448,6 +1467,10 @@ fn gen_extern_alloc() -> String =
 fn gen_extern_free() -> String =
     "declare void @bmb_free(i8*)";
 
+// v0.48.0: Bounds check panic (for array index out of bounds)
+fn gen_extern_panic_bounds() -> String =
+    "declare void @bmb_panic_bounds() noreturn";
+
 // Generate all runtime declarations
 fn gen_runtime_decls() -> String =
     let basic = gen_extern_println() + "|" + gen_extern_abs() + "|" + gen_extern_min() + "|" + gen_extern_max();
@@ -1455,7 +1478,8 @@ fn gen_runtime_decls() -> String =
     let array = gen_extern_array_len() + "|" + gen_extern_array_get() + "|" + gen_extern_array_set();
     let array_mut = gen_extern_array_push() + "|" + gen_extern_array_pop() + "|" + gen_extern_array_clear();
     let memory = gen_extern_alloc() + "|" + gen_extern_free();
-    basic + "|" + string + "|" + array + "|" + array_mut + "|" + memory;
+    let safety = gen_extern_panic_bounds();  // v0.48.0
+    basic + "|" + string + "|" + array + "|" + array_mut + "|" + memory + "|" + safety;
 
 // Example: Complete add function from MIR to LLVM IR
 // MIR input:

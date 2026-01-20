@@ -55,6 +55,8 @@
 //   9 = Error (type checking failed)
 //  10 = TypeParam (v0.30.3) - extra_info = param index in scope
 //  11 = GenericApp (v0.30.5) - extra_info = base type hash (Vec, Map, etc.)
+//  12 = Fin[N] (v0.48.0) - extra_info = upper bound N (0..999 for N up to 999)
+//  13 = Vect[N, T] (v0.48.0) - extra_info = encoded N, element type tracked separately
 
 fn type_i32() -> i64 = 1000;
 fn type_i64() -> i64 = 2000;
@@ -124,6 +126,237 @@ fn name_hash_base_acc(name: String, pos: i64, acc: i64) -> i64 =
         let new_acc = (acc * 33 + c) - ((acc * 33 + c) / 1000000) * 1000000;
         name_hash_base_acc(name, pos + 1, new_acc)
     };
+
+// ============================================================================
+// v0.48.0: Fin[N] - Finite Index Type (Dependent Type for Zero-Cost Bounds Checking)
+// ============================================================================
+// Fin[N] represents a value in range [0, N) - guaranteed at compile time
+// Encoding: 12000 + N where N is the upper bound (0 <= value < N)
+// Used for: Array indexing without runtime bounds checks
+//
+// Example: Fin[5] can hold values 0, 1, 2, 3, 4
+// When arr: [T; 5] and i: Fin[5], arr[i] needs no bounds check
+
+fn type_fin(n: i64) -> i64 = 12000 + n;
+
+// Check if type is a Fin[N] type
+fn is_fin(ty: i64) -> bool = type_kind(ty) == 12;
+
+// Get upper bound N from Fin[N] type
+fn fin_bound(ty: i64) -> i64 = ty - 12000;
+
+// Check if a Fin type can safely index an array of given length
+// Fin[N] can index arrays of length >= N
+fn fin_can_index(fin_ty: i64, array_len: i64) -> bool =
+    is_fin(fin_ty) and fin_bound(fin_ty) <= array_len;
+
+// Create Fin type info string: "Fin:N"
+fn fin_type_info(n: i64) -> String =
+    "Fin:" + fin_int_to_str(n);
+
+// Helper: convert integer to string (local impl to avoid circular deps)
+fn fin_int_to_str(n: i64) -> String =
+    if n < 0 { "-" + fin_int_to_str(0 - n) }
+    else if n < 10 { fin_digit_char(n) }
+    else { fin_int_to_str(n / 10) + fin_digit_char(n - (n / 10) * 10) };
+
+fn fin_digit_char(d: i64) -> String =
+    if d == 0 { "0" } else if d == 1 { "1" } else if d == 2 { "2" }
+    else if d == 3 { "3" } else if d == 4 { "4" } else if d == 5 { "5" }
+    else if d == 6 { "6" } else if d == 7 { "7" } else if d == 8 { "8" }
+    else { "9" };
+
+// Parse Fin bound from type info string
+fn fin_parse_bound(info: String) -> i64 =
+    if info.slice(0, 4) == "Fin:" {
+        fin_parse_int(info.slice(4, info.len()))
+    } else { 0 - 1 };
+
+// Helper: parse integer from string (local impl)
+fn fin_parse_int(s: String) -> i64 =
+    if s.len() == 0 { 0 }
+    else if s.byte_at(0) == 45 { 0 - fin_parse_int(s.slice(1, s.len())) }  // '-' = 45
+    else { fin_parse_int_acc(s, 0, 0) };
+
+fn fin_parse_int_acc(s: String, pos: i64, acc: i64) -> i64 =
+    if pos >= s.len() { acc }
+    else {
+        let c = s.byte_at(pos);
+        if c >= 48 and c <= 57 {  // '0'-'9'
+            fin_parse_int_acc(s, pos + 1, acc * 10 + (c - 48))
+        } else { acc }
+    };
+
+// ============================================================================
+// v0.48.0: Vect[N, T] - Length-Indexed Vector Type
+// ============================================================================
+// Vect[N, T] represents an array of exactly N elements of type T
+// The length N is part of the type, enabling compile-time size verification
+// Encoding: 13000 + (N mod 1000), element type tracked in type info string
+//
+// Example: Vect[5, i64] is an array of exactly 5 i64 values
+// Indexing with Fin[5] requires no bounds check
+
+fn type_vect(n: i64) -> i64 = 13000 + (n - (n / 1000) * 1000);
+
+// Check if type is a Vect[N, T] type
+fn is_vect(ty: i64) -> bool = type_kind(ty) == 13;
+
+// Get N from Vect[N, T] encoded type (note: mod 1000, full N in type info)
+fn vect_len_hint(ty: i64) -> i64 = ty - 13000;
+
+// Create Vect type info string: "Vect:N,ElemType"
+fn vect_type_info(n: i64, elem_type: String) -> String =
+    "Vect:" + fin_int_to_str(n) + "," + elem_type;
+
+// Parse Vect length from type info string
+fn vect_parse_len(info: String) -> i64 =
+    if info.slice(0, 5) == "Vect:" {
+        let rest = info.slice(5, info.len());
+        let comma_pos = vect_find_comma(rest, 0);
+        if comma_pos > 0 {
+            fin_parse_int(rest.slice(0, comma_pos))
+        } else { 0 - 1 }
+    } else { 0 - 1 };
+
+// Parse Vect element type from type info string
+fn vect_parse_elem(info: String) -> String =
+    if info.slice(0, 5) == "Vect:" {
+        let rest = info.slice(5, info.len());
+        let comma_pos = vect_find_comma(rest, 0);
+        if comma_pos > 0 and comma_pos + 1 < rest.len() {
+            rest.slice(comma_pos + 1, rest.len())
+        } else { "" }
+    } else { "" };
+
+fn vect_find_comma(s: String, pos: i64) -> i64 =
+    if pos >= s.len() { 0 - 1 }
+    else if s.byte_at(pos) == 44 { pos }
+    else { vect_find_comma(s, pos + 1) };
+
+// ============================================================================
+// v0.48.0: Bounds Check Tracking
+// ============================================================================
+// Track whether an index access requires runtime bounds checking
+// This is used by MIR and codegen to eliminate unnecessary checks
+
+// Bounds check status for index expressions
+// 0 = unknown (default, requires check)
+// 1 = proven safe (Fin index into matching array)
+// 2 = proven unsafe (out of bounds detected at compile time)
+fn bounds_unknown() -> i64 = 0;
+fn bounds_safe() -> i64 = 1;
+fn bounds_unsafe() -> i64 = 2;
+
+// Determine bounds check status for indexing arr_type with idx_type
+fn check_bounds_status(arr_type: String, idx_type: String, arr_len: i64) -> i64 =
+    if idx_type.slice(0, 4) == "Fin:" {
+        let fin_n = fin_parse_bound(idx_type);
+        if fin_n >= 0 and fin_n <= arr_len { bounds_safe() }
+        else if fin_n > arr_len { bounds_unsafe() }
+        else { bounds_unknown() }
+    } else { bounds_unknown() };
+
+// ============================================================================
+// v0.48.5: SMT Proof Caching
+// ============================================================================
+// Cache for bounds check proofs to avoid redundant verification
+// Format: "query1;query2;..." where query = "fin_bound:arr_len:result"
+// This is a simple string-based cache for the bootstrap compiler
+
+// Note: Cache is passed functionally through check_bounds_status_cached
+// No global mutable state - cache flows through function parameters
+
+// Create cache key for a bounds check query
+fn proof_cache_key(fin_bound: i64, arr_len: i64) -> String =
+    fin_int_to_str(fin_bound) + ":" + fin_int_to_str(arr_len);
+
+// Check if proof is cached, returns -1 if not found, else cached result
+fn proof_cache_lookup(cache: String, fin_bound: i64, arr_len: i64) -> i64 =
+    let key = proof_cache_key(fin_bound, arr_len);
+    proof_cache_find(cache, key, 0);
+
+// Find key in cache string, returns result or -1
+fn proof_cache_find(cache: String, key: String, pos: i64) -> i64 =
+    if pos >= cache.len() { -1 }
+    else {
+        let entry_end = proof_cache_find_semi(cache, pos);
+        let entry = cache.slice(pos, entry_end);
+        if proof_cache_key_matches(entry, key) {
+            proof_cache_extract_result(entry)
+        } else {
+            proof_cache_find(cache, key, entry_end + 1)
+        }
+    };
+
+// Find next semicolon position
+fn proof_cache_find_semi(s: String, pos: i64) -> i64 =
+    if pos >= s.len() { s.len() }
+    else if s.byte_at(pos) == 59 { pos }  // ';' = 59
+    else { proof_cache_find_semi(s, pos + 1) };
+
+// Check if entry starts with key
+fn proof_cache_key_matches(entry: String, key: String) -> bool =
+    entry.len() > key.len() + 1 &&
+    entry.slice(0, key.len()) == key &&
+    entry.byte_at(key.len()) == 58;  // ':' = 58
+
+// Extract result from entry "fin:arr:result"
+fn proof_cache_extract_result(entry: String) -> i64 =
+    let last_colon = proof_cache_find_last_colon(entry, 0, -1);
+    if last_colon < 0 { -1 }
+    else { fin_parse_int(entry.slice(last_colon + 1, entry.len())) };
+
+// Find last colon position
+fn proof_cache_find_last_colon(s: String, pos: i64, last: i64) -> i64 =
+    if pos >= s.len() { last }
+    else if s.byte_at(pos) == 58 { proof_cache_find_last_colon(s, pos + 1, pos) }
+    else { proof_cache_find_last_colon(s, pos + 1, last) };
+
+// Add proof result to cache
+fn proof_cache_add(cache: String, fin_bound: i64, arr_len: i64, result: i64) -> String =
+    let key = proof_cache_key(fin_bound, arr_len);
+    let entry = key + ":" + fin_int_to_str(result);
+    if cache == "" { entry } else { cache + ";" + entry };
+
+// Check bounds with caching
+fn check_bounds_status_cached(cache: String, arr_type: String, idx_type: String, arr_len: i64) -> String =
+    if idx_type.slice(0, 4) != "Fin:" {
+        pack_bounds_result(cache, bounds_unknown())
+    } else {
+        let fin_n = fin_parse_bound(idx_type);
+        let cached = proof_cache_lookup(cache, fin_n, arr_len);
+        if cached >= 0 {
+            pack_bounds_result(cache, cached)
+        } else {
+            let result = if fin_n >= 0 and fin_n <= arr_len { bounds_safe() }
+                        else if fin_n > arr_len { bounds_unsafe() }
+                        else { bounds_unknown() };
+            let new_cache = proof_cache_add(cache, fin_n, arr_len, result);
+            pack_bounds_result(new_cache, result)
+        }
+    };
+
+// Pack cache and result: "cache|result"
+fn pack_bounds_result(cache: String, result: i64) -> String =
+    cache + "|" + fin_int_to_str(result);
+
+// Unpack cache from bounds result
+fn unpack_bounds_cache(packed: String) -> String =
+    let bar_pos = bounds_find_bar(packed, 0);
+    if bar_pos < 0 { "" } else { packed.slice(0, bar_pos) };
+
+// Unpack result from bounds result
+fn unpack_bounds_result(packed: String) -> i64 =
+    let bar_pos = bounds_find_bar(packed, 0);
+    if bar_pos < 0 { bounds_unknown() }
+    else { fin_parse_int(packed.slice(bar_pos + 1, packed.len())) };
+
+// Find | position
+fn bounds_find_bar(s: String, pos: i64) -> i64 =
+    if pos >= s.len() { -1 }
+    else if s.byte_at(pos) == 124 { pos }  // '|' = 124
+    else { bounds_find_bar(s, pos + 1) };
 
 // ============================================================================
 // v0.30.6: Type Argument Tracking (String-based)
@@ -426,7 +659,8 @@ fn is_integer(ty: i64) -> bool =
 fn is_error(ty: i64) -> bool = type_kind(ty) == 9;
 
 // Type name for error messages (returns code for println)
-// Return codes: i32=32, i64=64, f64=164, bool=400, String=500, Unit=600, Error=999
+// Return codes: i32=32, i64=64, f64=164, bool=400, String=500, Unit=600
+//               Fin=120N (where N is bound), Vect=130N, Error=999
 fn type_name_code(ty: i64) -> i64 =
     let k = type_kind(ty);
     if k == 1 { 32
@@ -435,7 +669,28 @@ fn type_name_code(ty: i64) -> i64 =
     } else if k == 4 { 400
     } else if k == 5 { 500
     } else if k == 6 { 600
+    } else if k == 12 { 1200 + fin_bound(ty)  // Fin[N] -> 120N
+    } else if k == 13 { 1300 + vect_len_hint(ty)  // Vect[N,T] -> 130N
     } else { 999 };
+
+// v0.48.0: Convert type to human-readable string
+fn type_to_str(ty: i64) -> String =
+    let k = type_kind(ty);
+    if k == 0 { "error" }
+    else if k == 1 { "i32" }
+    else if k == 2 { "i64" }
+    else if k == 3 { "f64" }
+    else if k == 4 { "bool" }
+    else if k == 5 { "String" }
+    else if k == 6 { "unit" }
+    else if k == 7 { "named" }
+    else if k == 8 { "fn" }
+    else if k == 9 { "array" }
+    else if k == 10 { "T" + fin_int_to_str(type_param_idx(ty)) }
+    else if k == 11 { "generic" }
+    else if k == 12 { "Fin[" + fin_int_to_str(fin_bound(ty)) + "]" }
+    else if k == 13 { "Vect[" + fin_int_to_str(vect_len_hint(ty)) + ", ?]" }
+    else { "unknown" };
 
 // ============================================================================
 // Environment (Variable Name-Type Pairs)
@@ -737,9 +992,59 @@ fn is_type_param_name(name: String) -> bool =
     };
 
 // Resolve a type name to a type code
-// Priority: 1) Primitives 2) Type parameters 3) Named types (struct/enum)
+// Priority: 1) Fin[N] 2) Vect[N,T] 3) Primitives 4) Type parameters 5) Named types
 fn resolve_type_name(tenv: String, name: String) -> i64 =
-    if is_primitive_type(name) { primitive_type(name) } else if tparam_in_scope(tenv, name) { tparam_resolve(tenv, name) } else if is_type_param_name(name) { type_error() } else { type_named(name_hash(name)) };
+    if is_fin_type_name(name) { parse_fin_type(name) }
+    else if is_vect_type_name(name) { parse_vect_type(tenv, name) }
+    else if is_primitive_type(name) { primitive_type(name) }
+    else if tparam_in_scope(tenv, name) { tparam_resolve(tenv, name) }
+    else if is_type_param_name(name) { type_error() }
+    else { type_named(name_hash(name)) };
+
+// v0.48.0: Check if name is a Fin[N] type (e.g., "Fin[5]")
+fn is_fin_type_name(name: String) -> bool =
+    name.len() >= 6 &&
+    name.slice(0, 4) == "Fin[" &&
+    name.byte_at(name.len() - 1) == 93;  // ']' = 93
+
+// v0.48.0: Parse Fin[N] type name to type code
+fn parse_fin_type(name: String) -> i64 =
+    if !is_fin_type_name(name) { type_error() }
+    else {
+        let bound_str = name.slice(4, name.len() - 1);
+        let bound = fin_parse_int(bound_str);
+        if bound < 0 { type_error() }
+        else if bound > 999 { type_error() }  // Limit: N <= 999 for encoding
+        else { type_fin(bound) }
+    };
+
+// v0.48.0: Check if name is a Vect[N, T] type (e.g., "Vect[5, i64]")
+fn is_vect_type_name(name: String) -> bool =
+    name.len() >= 9 &&
+    name.slice(0, 5) == "Vect[" &&
+    name.byte_at(name.len() - 1) == 93;  // ']' = 93
+
+// v0.48.0: Parse Vect[N, T] type name to type code
+fn parse_vect_type(tenv: String, name: String) -> i64 =
+    if !is_vect_type_name(name) { type_error() }
+    else {
+        let inner = name.slice(5, name.len() - 1);
+        let comma_pos = vect_find_comma(inner, 0);
+        if comma_pos < 0 { type_error() }
+        else {
+            let len_str = inner.slice(0, comma_pos);
+            let elem_str = vect_trim_start(inner.slice(comma_pos + 1, inner.len()));
+            let len = fin_parse_int(len_str);
+            if len < 0 or len > 999 { type_error() }
+            else { type_vect(len) }
+        }
+    };
+
+// v0.48.0: Trim leading whitespace
+fn vect_trim_start(s: String) -> String =
+    if s.len() == 0 { s }
+    else if s.byte_at(0) == 32 { vect_trim_start(s.slice(1, s.len())) }  // ' ' = 32
+    else { s };
 
 // Simple hash for named types (placeholder)
 fn name_hash(name: String) -> i64 =
@@ -4023,17 +4328,7 @@ fn parse_int(s: String, pos: i64, acc: i64) -> i64 =
         if c >= 48 and c <= 57 { parse_int(s, pos + 1, acc * 10 + (c - 48)) } else { acc }
 
     };
-// Integer to string (simplified, positive only)
-fn int_to_string(n: i64) -> String =
-    if n == 0 { "0" } else { int_to_string_acc(n, "") };
 
-fn int_to_string_acc(n: i64, acc: String) -> String =
-    if n == 0 { acc } else {
-        let d = n - (n / 10) * 10;
-        let c = if d == 0 { "0" } else if d == 1 { "1" } else if d == 2 { "2" } else if d == 3 { "3" } else if d == 4 { "4" } else if d == 5 { "5" } else if d == 6 { "6" } else if d == 7 { "7" } else if d == 8 { "8" } else { "9" };
-        int_to_string_acc(n / 10, c + acc)
-
-    };
 // ============================================================================
 // AST to Registry Definition Converters
 // ============================================================================
@@ -4510,7 +4805,9 @@ fn type_of_while(tenv: String, locals: String, ast: String) -> String =
 // Format: (for <var> range body)
 // Returns: () (unit); loop variable bound to i64 for integer ranges
 
-// Loop variable bound to i64 for integer ranges
+// v0.48.0: Loop variable type inference with Fin[N] support
+// If range is 0..N, infer loop variable as Fin[N] (zero-cost bounds checking)
+// Otherwise, fall back to i64
 // for always returns unit
 fn type_of_for(tenv: String, locals: String, ast: String) -> String =
     let var_name = for_var_name(ast);
@@ -4519,11 +4816,88 @@ fn type_of_for(tenv: String, locals: String, ast: String) -> String =
         let body_e = for_body_expr(ast);
         let range_t = type_of_expr(tenv, locals, range_e);
         if is_error_str(range_t) { range_t } else {
-            let new_locals = locals_add(locals, var_name, "i64");
+            // v0.48.0: Try to infer Fin[N] type from range
+            let var_type = infer_loop_var_type(range_e);
+            let new_locals = locals_add(locals, var_name, var_type);
             let body_t = type_of_expr(tenv, new_locals, body_e);
             if is_error_str(body_t) { body_t } else { "()" }
         }
     };
+
+// v0.48.0: Infer loop variable type from range expression
+// For (op .. (int 0) (int N)): returns "Fin[N]"
+// For (op ..= (int 0) (int N)): returns "Fin[N+1]"
+// Otherwise: returns "i64"
+fn infer_loop_var_type(range_e: String) -> String =
+    if is_exclusive_range_from_zero(range_e) {
+        let upper = extract_range_upper(range_e);
+        if upper >= 0 and upper <= 999 {
+            "Fin[" + fin_int_to_str(upper) + "]"
+        } else { "i64" }
+    } else if is_inclusive_range_from_zero(range_e) {
+        let upper = extract_range_upper(range_e);
+        if upper >= 0 and upper <= 998 {  // N+1 must fit
+            "Fin[" + fin_int_to_str(upper + 1) + "]"
+        } else { "i64" }
+    } else { "i64" };
+
+// v0.48.0: Check if range is (op .. (int 0) (int N))
+fn is_exclusive_range_from_zero(e: String) -> bool =
+    e.len() > 10 &&
+    e.slice(0, 7) == "(op .. " &&
+    is_range_start_zero(e);
+
+// v0.48.0: Check if range is (op ..= (int 0) (int N))
+fn is_inclusive_range_from_zero(e: String) -> bool =
+    e.len() > 11 &&
+    e.slice(0, 8) == "(op ..= " &&
+    is_range_start_zero_inclusive(e);
+
+// v0.48.0: Check if first arg of range is (int 0)
+fn is_range_start_zero(e: String) -> bool =
+    // After "(op .. " (7 chars), look for "(int 0)"
+    let rest = e.slice(7, e.len());
+    rest.len() >= 7 and rest.slice(0, 7) == "(int 0)";
+
+// v0.48.0: Check if first arg of inclusive range is (int 0)
+fn is_range_start_zero_inclusive(e: String) -> bool =
+    // After "(op ..= " (8 chars), look for "(int 0)"
+    let rest = e.slice(8, e.len());
+    rest.len() >= 7 and rest.slice(0, 7) == "(int 0)";
+
+// v0.48.0: Extract upper bound from range expression
+// For (op .. (int 0) (int N)), returns N
+fn extract_range_upper(e: String) -> i64 =
+    // Find the second (int X) and extract X
+    let pos = find_second_int(e, 0);
+    if pos < 0 { 0 - 1 }
+    else { parse_int_from_ast(e, pos) };
+
+// v0.48.0: Find position of second "(int " in string
+fn find_second_int(s: String, start: i64) -> i64 =
+    let first = find_int_token(s, start);
+    if first < 0 { 0 - 1 }
+    else { find_int_token(s, first + 5) };  // skip past first "(int "
+
+// v0.48.0: Find "(int " token position
+fn find_int_token(s: String, start: i64) -> i64 =
+    if start + 5 > s.len() { 0 - 1 }
+    else if s.slice(start, start + 5) == "(int " { start }
+    else { find_int_token(s, start + 1) };
+
+// v0.48.0: Parse integer from "(int N)" at given position
+fn parse_int_from_ast(s: String, pos: i64) -> i64 =
+    // pos points to "(int ", skip 5 chars to get to number
+    let num_start = pos + 5;
+    let num_end = find_close_paren_from(s, num_start);
+    if num_end < 0 { 0 - 1 }
+    else { fin_parse_int(s.slice(num_start, num_end)) };
+
+// v0.48.0: Find ')' starting from position
+fn find_close_paren_from(s: String, start: i64) -> i64 =
+    if start >= s.len() { 0 - 1 }
+    else if s.byte_at(start) == 41 { start }  // ')' = 41
+    else { find_close_paren_from(s, start + 1) };
 // Extract loop variable name from (for <var> range body)
 fn for_var_name(ast: String) -> String =
     let name_with_brackets = expr_first_arg(ast, 4);  // skip "(for"
