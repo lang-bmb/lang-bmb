@@ -203,7 +203,13 @@ struct LlvmContext<'ctx> {
 
     /// Variable lookup table (local to current function)
     /// Stores (pointer, type) pairs for opaque pointer support
+    /// Used for: function parameters, explicit locals, PHI destinations
     variables: HashMap<String, (PointerValue<'ctx>, BasicTypeEnum<'ctx>)>,
+
+    /// v0.50.52: SSA value lookup table for temporaries
+    /// This avoids alloca/load/store for intermediate values, using registers instead
+    /// Dramatically improves performance by reducing memory traffic
+    ssa_values: HashMap<String, BasicValueEnum<'ctx>>,
 
     /// Block lookup table (local to current function)
     blocks: HashMap<String, inkwell::basic_block::BasicBlock<'ctx>>,
@@ -219,6 +225,7 @@ impl<'ctx> LlvmContext<'ctx> {
             builder,
             functions: HashMap::new(),
             variables: HashMap::new(),
+            ssa_values: HashMap::new(),
             blocks: HashMap::new(),
         }
     }
@@ -555,6 +562,7 @@ impl<'ctx> LlvmContext<'ctx> {
     fn gen_function_body(&mut self, func: &MirFunction) -> CodeGenResult<()> {
         // Clear per-function state
         self.variables.clear();
+        self.ssa_values.clear();  // v0.50.52: Clear SSA values for new function
         self.blocks.clear();
 
         // Get the already-declared function
@@ -589,6 +597,9 @@ impl<'ctx> LlvmContext<'ctx> {
         }
 
         // Allocate locals
+        // v0.50.52: We still allocate locals declared in MIR, as they may cross block boundaries
+        // The SSA optimization only applies to temporaries created by instructions
+        // that aren't explicitly listed in locals
         for (name, ty) in &func.locals {
             let llvm_ty = self.mir_type_to_llvm(ty);
             let alloca = self.builder.build_alloca(llvm_ty, name)
@@ -911,7 +922,14 @@ impl<'ctx> LlvmContext<'ctx> {
     }
 
     /// Load a value from a place
+    /// v0.50.52: First checks SSA values, then falls back to memory load
     fn load_from_place(&self, place: &Place) -> CodeGenResult<BasicValueEnum<'ctx>> {
+        // v0.50.52: First check if this is an SSA value (temporary)
+        if let Some(value) = self.ssa_values.get(&place.name) {
+            return Ok(*value);
+        }
+
+        // Fall back to memory load for params/locals/PHI destinations
         let (ptr, pointee_type) = self
             .variables
             .get(&place.name)
@@ -923,21 +941,26 @@ impl<'ctx> LlvmContext<'ctx> {
     }
 
     /// Store a value to a place
+    /// v0.50.52: Uses SSA values for temporaries that start with _t and aren't already allocated
     fn store_to_place(&mut self, place: &Place, value: BasicValueEnum<'ctx>) -> CodeGenResult<()> {
-        // Get or create the variable
-        let ptr = if let Some((ptr, _)) = self.variables.get(&place.name) {
-            *ptr
+        // If it's an existing memory variable (param, local, PHI dest), store to memory
+        if let Some((ptr, _)) = self.variables.get(&place.name) {
+            self.builder.build_store(*ptr, value)
+                .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+        } else if place.name.starts_with("_t") {
+            // v0.50.52: For temporaries (names starting with _t), use SSA values
+            // This avoids alloca/store/load overhead - values stay in registers
+            // Note: If the same temporary is used across blocks, it should be in locals
+            self.ssa_values.insert(place.name.clone(), value);
         } else {
-            // Create a new alloca for temporaries
+            // For other new variables, create an alloca (defensive fallback)
             let ty = value.get_type();
             let alloca = self.builder.build_alloca(ty, &place.name)
                 .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+            self.builder.build_store(alloca, value)
+                .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
             self.variables.insert(place.name.clone(), (alloca, ty));
-            alloca
-        };
-
-        self.builder.build_store(ptr, value)
-            .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+        }
         Ok(())
     }
 
