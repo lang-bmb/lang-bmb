@@ -317,12 +317,13 @@ fn parse_atom(src: String, pos: i64) -> String =
     let start_pos = skip_ws_comments(src, pos);
     let is_actually_integer = start_pos < src.len() and is_digit(src.byte_at(start_pos));
     // Integer literals that collide with keywords (100-117, 200+) must be detected by source char
-    if is_actually_integer { pack_result(tok_end(tok), "(int " + int_to_string(tok_val(tok)) + ")")
+    // v0.55: Use StringBuilder-based builders for O(n) complexity
+    if is_actually_integer { pack_result(tok_end(tok), build_int_ast(int_to_string(tok_val(tok))))
     } else if kind == TK_TRUE() { pack_result(tok_end(tok), "(bool true)")
     } else if kind == TK_FALSE() { pack_result(tok_end(tok), "(bool false)")
     } else if kind == TK_NOT() {
         let re = parse_atom(src, tok_end(tok));
-        pack_result(unpack_pos(re), "(unary not " + unpack_ast(re) + ")")
+        pack_result(unpack_pos(re), build_unary_ast("not", unpack_ast(re)))
     } else if kind == TK_IDENT() {
         let name = get_ident_text(src, pos, tok);
         let next = next_token_raw(src, tok_end(tok));
@@ -330,7 +331,7 @@ fn parse_atom(src: String, pos: i64) -> String =
             // v0.50.15: Support method calls on function results: foo().bar()
             let rargs = parse_args(src, tok_end(next), "");
             if is_error(rargs) { rargs } else {
-                let call_ast = "(call <" + name + ">" + unpack_ast(rargs) + ")";
+                let call_ast = build_call_ast(name, unpack_ast(rargs));
                 let after_call = next_token_raw(src, unpack_pos(rargs));
                 if tok_kind(after_call) == TK_DOT() {
                     parse_method_chain(src, tok_end(after_call), call_ast)
@@ -340,15 +341,15 @@ fn parse_atom(src: String, pos: i64) -> String =
             }
         } else if tok_kind(next) == TK_DOT() {
             // v0.50: Method call - convert obj.method(args) to (mcall <obj> <method> args)
-            parse_method_chain(src, tok_end(next), "(var <" + name + ">)")
+            parse_method_chain(src, tok_end(next), build_var_ast(name))
         } else {
-            pack_result(tok_end(tok), "(var <" + name + ">)")
+            pack_result(tok_end(tok), build_var_ast(name))
         }
     } else if kind == TK_STRING() {
         // v0.50: String literal - extract text from source (including quotes)
         let start_pos = skip_ws_comments(src, pos);
         let text = src.slice(start_pos, tok_end(tok));
-        let str_ast = "(str " + text + ")";
+        let str_ast = build_str_ast(text);
         // v0.50.15: Support method calls on string literals: "abc".len()
         let after_str = next_token_raw(src, tok_end(tok));
         if tok_kind(after_str) == TK_DOT() {
@@ -358,7 +359,7 @@ fn parse_atom(src: String, pos: i64) -> String =
         }
     } else if kind == TK_MINUS() {
         let re = parse_atom(src, tok_end(tok));
-        pack_result(unpack_pos(re), "(unary - " + unpack_ast(re) + ")")
+        pack_result(unpack_pos(re), build_unary_ast("-", unpack_ast(re)))
     } else if kind == TK_LPAREN() {
         let re = parse_expr(src, tok_end(tok));
         let next = next_token_raw(src, unpack_pos(re));
@@ -375,7 +376,7 @@ fn parse_atom(src: String, pos: i64) -> String =
     } else if kind == TK_EOF() { make_error("atom-eof")
     // v0.50.1: All remaining kinds (200-413, 414+) are integer literals
     // Operators/punctuation in this range would be handled by parse_add/parse_mul/parse_compare
-    } else { pack_result(tok_end(tok), "(int " + int_to_string(tok_val(tok)) + ")") };
+    } else { pack_result(tok_end(tok), build_int_ast(int_to_string(tok_val(tok)))) };
 
 fn parse_args(src: String, pos: i64, acc: String) -> String =
     let tok = next_token_raw(src, pos);
@@ -390,6 +391,7 @@ fn parse_args(src: String, pos: i64, acc: String) -> String =
 
 // v0.50: Parse method chain like obj.method(args).method2(args2)
 // Converts to nested mcall nodes: (mcall obj method args)
+// v0.55: Use build_mcall_ast for O(n) complexity
 fn parse_method_chain(src: String, pos: i64, obj: String) -> String =
     let tok = next_token_raw(src, pos);
     if tok_kind(tok) == TK_IDENT() {
@@ -398,7 +400,7 @@ fn parse_method_chain(src: String, pos: i64, obj: String) -> String =
         if tok_kind(next) == TK_LPAREN() {
             let rargs = parse_args(src, tok_end(next), "");
             if is_error(rargs) { rargs } else {
-                let mcall = "(mcall " + obj + " <" + method + ">" + unpack_ast(rargs) + ")";
+                let mcall = build_mcall_ast(obj, method, unpack_ast(rargs));
                 let after = next_token_raw(src, unpack_pos(rargs));
                 if tok_kind(after) == TK_DOT() {
                     parse_method_chain(src, tok_end(after), mcall)
@@ -417,18 +419,19 @@ fn parse_mul(src: String, pos: i64) -> String =
     let rl = parse_atom(src, pos);
     if is_error(rl) { rl } else { parse_mul_rest(src, unpack_pos(rl), unpack_ast(rl)) };
 
+// v0.55: Use build_binop_ast for O(n) complexity
 fn parse_mul_rest(src: String, pos: i64, left: String) -> String =
     let tok = next_token_raw(src, pos);
     let kind = tok_kind(tok);
     if kind == TK_STAR() {
         let rr = parse_atom(src, tok_end(tok));
-        if is_error(rr) { rr } else { parse_mul_rest(src, unpack_pos(rr), "(binop * " + left + " " + unpack_ast(rr) + ")") }
+        if is_error(rr) { rr } else { parse_mul_rest(src, unpack_pos(rr), build_binop_ast("*", left, unpack_ast(rr))) }
     } else if kind == TK_SLASH() {
         let rr = parse_atom(src, tok_end(tok));
-        if is_error(rr) { rr } else { parse_mul_rest(src, unpack_pos(rr), "(binop / " + left + " " + unpack_ast(rr) + ")") }
+        if is_error(rr) { rr } else { parse_mul_rest(src, unpack_pos(rr), build_binop_ast("/", left, unpack_ast(rr))) }
     } else if kind == TK_PERCENT() {
         let rr = parse_atom(src, tok_end(tok));
-        if is_error(rr) { rr } else { parse_mul_rest(src, unpack_pos(rr), "(binop % " + left + " " + unpack_ast(rr) + ")") }
+        if is_error(rr) { rr } else { parse_mul_rest(src, unpack_pos(rr), build_binop_ast("%", left, unpack_ast(rr))) }
     } else { pack_result(pos, left) };
 
 fn parse_add(src: String, pos: i64) -> String =
@@ -440,10 +443,10 @@ fn parse_add_rest(src: String, pos: i64, left: String) -> String =
     let kind = tok_kind(tok);
     if kind == TK_PLUS() {
         let rr = parse_mul(src, tok_end(tok));
-        if is_error(rr) { rr } else { parse_add_rest(src, unpack_pos(rr), "(binop + " + left + " " + unpack_ast(rr) + ")") }
+        if is_error(rr) { rr } else { parse_add_rest(src, unpack_pos(rr), build_binop_ast("+", left, unpack_ast(rr))) }
     } else if kind == TK_MINUS() {
         let rr = parse_mul(src, tok_end(tok));
-        if is_error(rr) { rr } else { parse_add_rest(src, unpack_pos(rr), "(binop - " + left + " " + unpack_ast(rr) + ")") }
+        if is_error(rr) { rr } else { parse_add_rest(src, unpack_pos(rr), build_binop_ast("-", left, unpack_ast(rr))) }
     } else { pack_result(pos, left) };
 
 fn parse_cmp(src: String, pos: i64) -> String =
@@ -455,22 +458,22 @@ fn parse_cmp_rest(src: String, pos: i64, left: String) -> String =
     let kind = tok_kind(tok);
     if kind == TK_LT() {
         let rr = parse_add(src, tok_end(tok));
-        pack_result(unpack_pos(rr), "(binop < " + left + " " + unpack_ast(rr) + ")")
+        pack_result(unpack_pos(rr), build_binop_ast("<", left, unpack_ast(rr)))
     } else if kind == TK_GT() {
         let rr = parse_add(src, tok_end(tok));
-        pack_result(unpack_pos(rr), "(binop > " + left + " " + unpack_ast(rr) + ")")
+        pack_result(unpack_pos(rr), build_binop_ast(">", left, unpack_ast(rr)))
     } else if kind == TK_LTEQ() {
         let rr = parse_add(src, tok_end(tok));
-        pack_result(unpack_pos(rr), "(binop <= " + left + " " + unpack_ast(rr) + ")")
+        pack_result(unpack_pos(rr), build_binop_ast("<=", left, unpack_ast(rr)))
     } else if kind == TK_GTEQ() {
         let rr = parse_add(src, tok_end(tok));
-        pack_result(unpack_pos(rr), "(binop >= " + left + " " + unpack_ast(rr) + ")")
+        pack_result(unpack_pos(rr), build_binop_ast(">=", left, unpack_ast(rr)))
     } else if kind == TK_EQEQ() {
         let rr = parse_add(src, tok_end(tok));
-        pack_result(unpack_pos(rr), "(binop == " + left + " " + unpack_ast(rr) + ")")
+        pack_result(unpack_pos(rr), build_binop_ast("==", left, unpack_ast(rr)))
     } else if kind == TK_NEQ() {
         let rr = parse_add(src, tok_end(tok));
-        pack_result(unpack_pos(rr), "(binop != " + left + " " + unpack_ast(rr) + ")")
+        pack_result(unpack_pos(rr), build_binop_ast("!=", left, unpack_ast(rr)))
     } else { pack_result(pos, left) };
 
 fn parse_and(src: String, pos: i64) -> String =
@@ -481,7 +484,7 @@ fn parse_and_rest(src: String, pos: i64, left: String) -> String =
     let tok = next_token_raw(src, pos);
     if tok_kind(tok) == TK_AND() {
         let rr = parse_cmp(src, tok_end(tok));
-        if is_error(rr) { rr } else { parse_and_rest(src, unpack_pos(rr), "(binop and " + left + " " + unpack_ast(rr) + ")") }
+        if is_error(rr) { rr } else { parse_and_rest(src, unpack_pos(rr), build_binop_ast("and", left, unpack_ast(rr))) }
     } else { pack_result(pos, left) };
 
 fn parse_or(src: String, pos: i64) -> String =
@@ -492,9 +495,10 @@ fn parse_or_rest(src: String, pos: i64, left: String) -> String =
     let tok = next_token_raw(src, pos);
     if tok_kind(tok) == TK_OR() {
         let rr = parse_and(src, tok_end(tok));
-        if is_error(rr) { rr } else { parse_or_rest(src, unpack_pos(rr), "(binop or " + left + " " + unpack_ast(rr) + ")") }
+        if is_error(rr) { rr } else { parse_or_rest(src, unpack_pos(rr), build_binop_ast("or", left, unpack_ast(rr))) }
     } else { pack_result(pos, left) };
 
+// v0.55: Use build_if_ast and build_let_ast for O(n) complexity
 fn parse_expr(src: String, pos: i64) -> String =
     let tok = next_token_raw(src, pos);
     let kind = tok_kind(tok);
@@ -522,13 +526,13 @@ fn parse_expr(src: String, pos: i64) -> String =
                                 if is_error(re) { re } else {
                                     let t5 = next_token_raw(src, unpack_pos(re));
                                     if tok_kind(t5) == TK_RBRACE() {
-                                        pack_result(tok_end(t5), "(if " + unpack_ast(rc) + " " + unpack_ast(rt) + " " + unpack_ast(re) + ")")
+                                        pack_result(tok_end(t5), build_if_ast(unpack_ast(rc), unpack_ast(rt), unpack_ast(re)))
                                     } else { make_error("if-rbrace2") }
                                 }
                             } else if tok_kind(t4) == TK_IF() {
                                 // else if ... (chain) - parse_expr will handle the nested if
                                 let re = parse_expr(src, tok_end(t3));
-                                pack_result(unpack_pos(re), "(if " + unpack_ast(rc) + " " + unpack_ast(rt) + " " + unpack_ast(re) + ")")
+                                pack_result(unpack_pos(re), build_if_ast(unpack_ast(rc), unpack_ast(rt), unpack_ast(re)))
                             } else { make_error("if-lbrace2") }
                         } else { make_error("if-else") }
                     } else { make_error("if-rbrace1") }
@@ -540,7 +544,7 @@ fn parse_expr(src: String, pos: i64) -> String =
                     let t2 = next_token_raw(src, unpack_pos(rt));
                     if tok_kind(t2) == TK_ELSE() {
                         let re = parse_expr(src, tok_end(t2));
-                        pack_result(unpack_pos(re), "(if " + unpack_ast(rc) + " " + unpack_ast(rt) + " " + unpack_ast(re) + ")")
+                        pack_result(unpack_pos(re), build_if_ast(unpack_ast(rc), unpack_ast(rt), unpack_ast(re)))
                     } else { make_error("if-else") }
                 }
             } else { make_error("if-then") }
@@ -556,7 +560,7 @@ fn parse_expr(src: String, pos: i64) -> String =
                     let t3 = next_token_raw(src, unpack_pos(rv));
                     if tok_kind(t3) == TK_SEMI() {
                         let rb = parse_expr(src, tok_end(t3));
-                        pack_result(unpack_pos(rb), "(let <" + name + "> " + unpack_ast(rv) + " " + unpack_ast(rb) + ")")
+                        pack_result(unpack_pos(rb), build_let_ast(name, unpack_ast(rv), unpack_ast(rb)))
                     } else { make_error("let-semi") }
                 }
             } else { make_error("let-eq") }
@@ -567,6 +571,7 @@ fn parse_expr(src: String, pos: i64) -> String =
 // SECTION 6: Function and Program Parser
 // ============================================================================
 
+// v0.55: Use build_param_ast for O(n) complexity
 fn parse_param(src: String, pos: i64) -> String =
     let t1 = next_token_raw(src, pos);
     if tok_kind(t1) == TK_IDENT() {
@@ -575,7 +580,7 @@ fn parse_param(src: String, pos: i64) -> String =
         if tok_kind(t2) == TK_COLON() {
             let t3 = next_token_raw(src, tok_end(t2));
             let kind = tok_kind(t3);
-            if kind == TK_I32() { pack_result(tok_end(t3), "(param <" + name + "> i32)") } else if kind == TK_I64() { pack_result(tok_end(t3), "(param <" + name + "> i64)") } else if kind == TK_F64() { pack_result(tok_end(t3), "(param <" + name + "> f64)") } else if kind == TK_BOOL() { pack_result(tok_end(t3), "(param <" + name + "> bool)") } else if kind == TK_STRING_TYPE() { pack_result(tok_end(t3), "(param <" + name + "> String)") } else { make_error("param-type") }
+            if kind == TK_I32() { pack_result(tok_end(t3), build_param_ast(name, "i32")) } else if kind == TK_I64() { pack_result(tok_end(t3), build_param_ast(name, "i64")) } else if kind == TK_F64() { pack_result(tok_end(t3), build_param_ast(name, "f64")) } else if kind == TK_BOOL() { pack_result(tok_end(t3), build_param_ast(name, "bool")) } else if kind == TK_STRING_TYPE() { pack_result(tok_end(t3), build_param_ast(name, "String")) } else { make_error("param-type") }
         } else { make_error("param-colon") }
     } else { make_error("param-name") };
 
@@ -589,6 +594,101 @@ fn parse_params(src: String, pos: i64, acc: String) -> String =
             if tok_kind(next) == TK_COMMA() { parse_params(src, tok_end(next), new_acc) } else if tok_kind(next) == TK_RPAREN() { pack_result(tok_end(next), new_acc) } else { make_error("params") }
         }
     };
+
+// v0.55 StringBuilder-based AST builders for O(n) complexity
+// These helper functions encapsulate string concatenation to use StringBuilder internally
+
+fn build_int_ast(value: String) -> String =
+    let sb = sb_new();
+    let w1 = sb_push(sb, "(int ");
+    let w2 = sb_push(sb, value);
+    let w3 = sb_push(sb, ")");
+    sb_build(sb);
+
+fn build_var_ast(name: String) -> String =
+    let sb = sb_new();
+    let w1 = sb_push(sb, "(var <");
+    let w2 = sb_push(sb, name);
+    let w3 = sb_push(sb, ">)");
+    sb_build(sb);
+
+fn build_str_ast(text: String) -> String =
+    let sb = sb_new();
+    let w1 = sb_push(sb, "(str ");
+    let w2 = sb_push(sb, text);
+    let w3 = sb_push(sb, ")");
+    sb_build(sb);
+
+fn build_call_ast(name: String, args: String) -> String =
+    let sb = sb_new();
+    let w1 = sb_push(sb, "(call <");
+    let w2 = sb_push(sb, name);
+    let w3 = sb_push(sb, ">");
+    let w4 = sb_push(sb, args);
+    let w5 = sb_push(sb, ")");
+    sb_build(sb);
+
+fn build_mcall_ast(obj: String, method: String, args: String) -> String =
+    let sb = sb_new();
+    let w1 = sb_push(sb, "(mcall ");
+    let w2 = sb_push(sb, obj);
+    let w3 = sb_push(sb, " <");
+    let w4 = sb_push(sb, method);
+    let w5 = sb_push(sb, ">");
+    let w6 = sb_push(sb, args);
+    let w7 = sb_push(sb, ")");
+    sb_build(sb);
+
+fn build_binop_ast(op: String, left: String, right: String) -> String =
+    let sb = sb_new();
+    let w1 = sb_push(sb, "(binop ");
+    let w2 = sb_push(sb, op);
+    let w3 = sb_push(sb, " ");
+    let w4 = sb_push(sb, left);
+    let w5 = sb_push(sb, " ");
+    let w6 = sb_push(sb, right);
+    let w7 = sb_push(sb, ")");
+    sb_build(sb);
+
+fn build_unary_ast(op: String, expr: String) -> String =
+    let sb = sb_new();
+    let w1 = sb_push(sb, "(unary ");
+    let w2 = sb_push(sb, op);
+    let w3 = sb_push(sb, " ");
+    let w4 = sb_push(sb, expr);
+    let w5 = sb_push(sb, ")");
+    sb_build(sb);
+
+fn build_if_ast(cond: String, then_branch: String, else_branch: String) -> String =
+    let sb = sb_new();
+    let w1 = sb_push(sb, "(if ");
+    let w2 = sb_push(sb, cond);
+    let w3 = sb_push(sb, " ");
+    let w4 = sb_push(sb, then_branch);
+    let w5 = sb_push(sb, " ");
+    let w6 = sb_push(sb, else_branch);
+    let w7 = sb_push(sb, ")");
+    sb_build(sb);
+
+fn build_let_ast(name: String, value: String, body: String) -> String =
+    let sb = sb_new();
+    let w1 = sb_push(sb, "(let <");
+    let w2 = sb_push(sb, name);
+    let w3 = sb_push(sb, "> ");
+    let w4 = sb_push(sb, value);
+    let w5 = sb_push(sb, " ");
+    let w6 = sb_push(sb, body);
+    let w7 = sb_push(sb, ")");
+    sb_build(sb);
+
+fn build_param_ast(name: String, ty: String) -> String =
+    let sb = sb_new();
+    let w1 = sb_push(sb, " (param <");
+    let w2 = sb_push(sb, name);
+    let w3 = sb_push(sb, "> ");
+    let w4 = sb_push(sb, ty);
+    let w5 = sb_push(sb, ")");
+    sb_build(sb);
 
 // v0.52 StringBuilder optimization for parse_fn
 fn build_fn_ast(name: String, params_ast: String, ret_type: String, body_ast: String) -> String =
