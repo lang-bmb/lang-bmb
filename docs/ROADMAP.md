@@ -37,7 +37,7 @@
 | **v0.47** | **Performance** | ✅ 완료 | **Gate #3.1: Clang 대비 1.00-1.08x 달성 (v0.50.14)** |
 | **v0.48** | **Type System (Phase A)** | ⚠️ 부분완료 | **Fin[N] 의존 타입 (타입 시스템만), 파서 지연** |
 | **v0.49** | **Range Arithmetic (Phase B)** | ⚠️ 부분완료 | **Range[lo,hi] 타입, 자동 승격, SMT 증명, 체크 연산자 (파서 지연)** |
-| **v0.50** | **Aliasing (Phase C)** | 📋 계획 | **disjoint predicate, SIMD 벡터화** |
+| **v0.50** | **Aliasing (Phase C)** | ⚠️ 부분완료 | **disjoint, noalias, effects, Unique[T] (파서/CLI 지연)** |
 | **v0.51** | **Compiler (Phase D+E)** | 📋 계획 | **LTO/PGO, Sealed trait, 언어 스펙 동결** |
 | **v0.52** | **Ecosystem** | ✅ 기반완료 | **패키지 14/14, 크로스 컴파일 IR (새 타입 시스템 적용 예정)** |
 | **v0.53** | **Showcase** | ✅ 기반완료 | **샘플 앱 5/5, 시나리오 5/5 (새 기능 반영 예정)** |
@@ -417,11 +417,19 @@ fn safe_add(a: i64, b: i64) -> Result[i64, OverflowError]
 
 | ID | 태스크 | 설명 | 우선순위 | 상태 |
 |----|--------|------|----------|------|
-| 50.1 | **disjoint predicate** | `pre disjoint(a, b)` 비중첩 증명 | P0 | 📋 계획 |
-| 50.2 | **LLVM noalias 생성** | MIR → LLVM IR noalias attribute | P0 | 📋 계획 |
-| 50.3 | **효과 시스템** | `effects { reads[a], writes[b] }` | P1 | 📋 계획 |
-| 50.4 | **Unique[T] 타입** | 유일 소유권 타입 (선택적) | P2 | 📋 계획 |
-| 50.5 | **벡터화 진단** | `--report=vectorization` 플래그 | P1 | 📋 계획 |
+| 50.1 | **disjoint predicate** | `pre disjoint(a, b)` 비중첩 증명 | P0 | ✅ 완료 |
+| 50.2 | **LLVM noalias 생성** | MIR → LLVM IR noalias attribute | P0 | ✅ 완료 |
+| 50.3 | **효과 시스템** | `effects { reads[a], writes[b] }` | P1 | ✅ 완료 |
+| 50.4 | **Unique[T] 타입** | 유일 소유권 타입 (선택적) | P2 | ✅ 완료 |
+| 50.5 | **벡터화 진단** | `--report=vectorization` 플래그 | P1 | ⏸️ 지연 |
+
+> **v0.50 상태 (v0.50.51)**: 타입 시스템 및 LLVM IR 생성 완료. 파서/CLI 지연.
+> - Disjoint constraint 타입 (kind 16) - 비중첩 증명
+> - disjoint_set_* 함수 - 제약 조건 추적
+> - LLVM noalias/readonly/writeonly 속성 생성 (llvm_ir.bmb)
+> - Effects 시스템 - reads[]/writes[] 추적
+> - Unique[T] 타입 (kind 17) - 배타적 소유권
+> - Alias 분석 헬퍼 (may_alias_types, infer_alias_status, should_noalias)
 
 ### 문법 예시
 

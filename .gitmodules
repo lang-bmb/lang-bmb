@@ -25,3 +25,12 @@
 [submodule "ecosystem/gotgan-packages"]
 	path = ecosystem/gotgan-packages
 	url = https://github.com/lang-bmb/gotgan-packages
+[submodule "ecosystem/bmb-labs"]
+	path = ecosystem/bmb-labs
+	url = https://github.com/lang-bmb/bmb-labs.git
+[submodule "ecosystem/bmb-test"]
+	path = ecosystem/bmb-test
+	url = https://github.com/lang-bmb/bmb-test.git
+[submodule "ecosystem/bmb-query"]
+	path = ecosystem/bmb-query
+	url = https://github.com/lang-bmb/bmb-query.git

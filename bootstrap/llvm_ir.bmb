@@ -973,6 +973,44 @@ fn gen_fn_footer() -> String =
 fn gen_param(param_type: String, param_name: String) -> String =
     llvm_type(param_type) + " %" + param_name;
 
+// ============================================================================
+// v0.50.0: Parameter Attributes for Aliasing Optimization
+// ============================================================================
+// Generate parameter with noalias attribute
+// i64 noalias %a (indicates parameter doesn't alias with other pointer args)
+fn gen_param_noalias(param_type: String, param_name: String) -> String =
+    llvm_type(param_type) + " noalias %" + param_name;
+
+// Generate parameter with readonly attribute
+// i64 readonly %a (indicates parameter is only read, not written)
+fn gen_param_readonly(param_type: String, param_name: String) -> String =
+    llvm_type(param_type) + " readonly %" + param_name;
+
+// Generate parameter with both noalias and readonly
+// i64 noalias readonly %a
+fn gen_param_noalias_readonly(param_type: String, param_name: String) -> String =
+    llvm_type(param_type) + " noalias readonly %" + param_name;
+
+// Generate parameter with attributes based on flags
+// flags: 1=noalias, 2=readonly, 4=writeonly (from types.bmb param_* constants)
+fn gen_param_with_attrs(param_type: String, param_name: String, flags: i64) -> String =
+    let base = llvm_type(param_type);
+    let attrs = gen_param_attrs_str(flags);
+    if attrs == "" { base + " %" + param_name }
+    else { base + " " + attrs + "%" + param_name };
+
+// Generate attribute string from flags
+fn gen_param_attrs_str(flags: i64) -> String =
+    let has_na = (flags - (flags / 2) * 2) == 1;
+    let has_ro = ((flags / 2) - ((flags / 2) / 2) * 2) == 1;
+    let has_wo = ((flags / 4) - ((flags / 4) / 2) * 2) == 1;
+    if has_na and has_ro { "noalias readonly " }
+    else if has_na and has_wo { "noalias writeonly " }
+    else if has_na { "noalias " }
+    else if has_ro { "readonly " }
+    else if has_wo { "writeonly " }
+    else { "" };
+
 // Generate function call
 // %result = call i64 @func(i64 %arg1, i64 %arg2)
 fn gen_call(dest: String, ret_type: String, func_name: String, args: String) -> String =

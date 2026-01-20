@@ -59,6 +59,8 @@
 //  13 = Vect[N, T] (v0.48.0) - extra_info = encoded N, element type tracked separately
 //  14 = Range[lo, hi] (v0.49.0) - extra_info = encoded hint, full bounds in type info string
 //  15 = Result[T, OverflowError] (v0.49.0) - checked arithmetic result, inner kind in extra_info
+//  16 = Disjoint constraint (v0.50.0) - aliasing proof, constraint_id in extra_info
+//  17 = Unique[T] (v0.50.0) - exclusive ownership type, inner_kind in extra_info
 
 fn type_i32() -> i64 = 1000;
 fn type_i64() -> i64 = 2000;
@@ -891,6 +893,265 @@ fn positive_type_info() -> String = range_type_info(1, 9223372036854775807);
 fn is_positive(range_info: String) -> bool =
     let lo = range_parse_lo(range_info);
     lo >= 1;
+
+// ============================================================================
+// v0.50.0: Aliasing Optimization - disjoint Predicate
+// ============================================================================
+// The disjoint predicate proves two references don't alias
+// Encoding: Disjoint constraints tracked as type annotations
+// Used to enable LLVM noalias attribute and SIMD vectorization
+//
+// Example: pre disjoint(a, b) means a and b don't overlap in memory
+// This allows the compiler to emit noalias and enable aggressive optimization
+
+// Aliasing status constants
+fn alias_unknown() -> i64 = 0;      // May alias (conservative)
+fn alias_disjoint() -> i64 = 1;     // Proven non-overlapping
+fn alias_same() -> i64 = 2;         // Same reference (definitely aliases)
+
+// Type kind 16 = Disjoint constraint tracking
+// Encoding: 16000 + constraint_id
+fn type_disjoint_constraint(id: i64) -> i64 = 16000 + id;
+
+// Check if type encodes a disjoint constraint
+fn is_disjoint_constraint(ty: i64) -> bool = type_kind(ty) == 16;
+
+// Get constraint ID from disjoint type
+fn disjoint_constraint_id(ty: i64) -> i64 = ty - 16000;
+
+// Disjoint constraint info format: "Disjoint:ref1,ref2"
+fn disjoint_info(ref1: String, ref2: String) -> String =
+    "Disjoint:" + ref1 + "," + ref2;
+
+// Parse first reference from disjoint info
+fn disjoint_parse_ref1(info: String) -> String =
+    if info.slice(0, 9) == "Disjoint:" {
+        let rest = info.slice(9, info.len());
+        let comma_pos = disjoint_find_comma(rest, 0);
+        if comma_pos > 0 { rest.slice(0, comma_pos) } else { "" }
+    } else { "" };
+
+// Parse second reference from disjoint info
+fn disjoint_parse_ref2(info: String) -> String =
+    if info.slice(0, 9) == "Disjoint:" {
+        let rest = info.slice(9, info.len());
+        let comma_pos = disjoint_find_comma(rest, 0);
+        if comma_pos >= 0 and comma_pos + 1 < rest.len() {
+            rest.slice(comma_pos + 1, rest.len())
+        } else { "" }
+    } else { "" };
+
+fn disjoint_find_comma(s: String, pos: i64) -> i64 =
+    if pos >= s.len() { -1 }
+    else if s.byte_at(pos) == 44 { pos }
+    else { disjoint_find_comma(s, pos + 1) };
+
+// ============================================================================
+// v0.50.0: Disjoint Constraint Tracking
+// ============================================================================
+// Track disjoint relationships between variables in scope
+// Format: "var1:var2;var3:var4;..." (pairs of disjoint variables)
+
+// Create empty constraint set
+fn disjoint_set_empty() -> String = "";
+
+// Add disjoint constraint to set
+fn disjoint_set_add(set: String, var1: String, var2: String) -> String =
+    let entry = var1 + ":" + var2;
+    if set == "" { entry } else { set + ";" + entry };
+
+// Check if two vars are disjoint in the constraint set
+fn disjoint_set_check(set: String, var1: String, var2: String) -> bool =
+    if set == "" { false }
+    else {
+        disjoint_set_find(set, var1, var2, 0) or
+        disjoint_set_find(set, var2, var1, 0)  // Symmetric check
+    };
+
+fn disjoint_set_find(set: String, var1: String, var2: String, pos: i64) -> bool =
+    if pos >= set.len() { false }
+    else {
+        let entry_end = disjoint_find_semi(set, pos);
+        let entry = set.slice(pos, entry_end);
+        if disjoint_entry_matches(entry, var1, var2) { true }
+        else { disjoint_set_find(set, var1, var2, entry_end + 1) }
+    };
+
+fn disjoint_find_semi(s: String, pos: i64) -> i64 =
+    if pos >= s.len() { s.len() }
+    else if s.byte_at(pos) == 59 { pos }
+    else { disjoint_find_semi(s, pos + 1) };
+
+fn disjoint_entry_matches(entry: String, var1: String, var2: String) -> bool =
+    let colon_pos = disjoint_find_colon(entry, 0);
+    if colon_pos < 0 { false }
+    else {
+        let e_var1 = entry.slice(0, colon_pos);
+        let e_var2 = entry.slice(colon_pos + 1, entry.len());
+        e_var1 == var1 and e_var2 == var2
+    };
+
+fn disjoint_find_colon(s: String, pos: i64) -> i64 =
+    if pos >= s.len() { -1 }
+    else if s.byte_at(pos) == 58 { pos }
+    else { disjoint_find_colon(s, pos + 1) };
+
+// ============================================================================
+// v0.50.0: LLVM noalias Attribute Support
+// ============================================================================
+// Track which parameters should get noalias attribute in LLVM IR
+// noalias indicates the pointer doesn't alias with other pointer args
+
+// Parameter aliasing flags (bitmask)
+fn param_noalias() -> i64 = 1;      // Parameter is noalias
+fn param_readonly() -> i64 = 2;     // Parameter is readonly
+fn param_writeonly() -> i64 = 4;    // Parameter is writeonly
+
+// Create parameter attribute from flags
+fn param_attr(flags: i64) -> i64 = flags;
+
+// Check if parameter has noalias
+fn has_noalias(attr: i64) -> bool = (attr - (attr / 2) * 2) == 1;
+
+// Check if parameter is readonly
+fn has_readonly(attr: i64) -> bool =
+    let shifted = attr / 2;
+    (shifted - (shifted / 2) * 2) == 1;
+
+// Check if parameter is writeonly
+fn has_writeonly(attr: i64) -> bool =
+    let shifted = attr / 4;
+    (shifted - (shifted / 2) * 2) == 1;
+
+// Combine attributes
+fn attr_combine(a: i64, b: i64) -> i64 = a + b - (a / (a + 1)) * (a - (a / 2) * 2) * (b - (b / 2) * 2);
+
+// Simple OR for non-overlapping flags
+fn attr_or(a: i64, b: i64) -> i64 =
+    if a == 0 { b }
+    else if b == 0 { a }
+    else { a + b };  // Simplified - assumes no overlap in practice
+
+// ============================================================================
+// v0.50.0: Effects System
+// ============================================================================
+// Track read/write effects on parameters
+// Format: "reads[var1,var2];writes[var3]"
+// Used to infer disjoint relationships automatically
+
+// Effect types
+fn effect_none() -> i64 = 0;
+fn effect_read() -> i64 = 1;
+fn effect_write() -> i64 = 2;
+fn effect_readwrite() -> i64 = 3;
+
+// Create effect info
+fn effect_info(reads: String, writes: String) -> String =
+    "reads[" + reads + "];writes[" + writes + "]";
+
+// Parse reads from effect info
+fn effect_parse_reads(info: String) -> String =
+    if info.slice(0, 6) == "reads[" {
+        let close = effect_find_close(info, 6);
+        if close > 6 { info.slice(6, close) } else { "" }
+    } else { "" };
+
+// Parse writes from effect info
+fn effect_parse_writes(info: String) -> String =
+    let writes_pos = effect_find_writes(info, 0);
+    if writes_pos < 0 { "" }
+    else {
+        let start = writes_pos + 7;  // "writes[" length
+        let close = effect_find_close(info, start);
+        if close > start { info.slice(start, close) } else { "" }
+    };
+
+fn effect_find_close(s: String, pos: i64) -> i64 =
+    if pos >= s.len() { -1 }
+    else if s.byte_at(pos) == 93 { pos }  // ']' = 93
+    else { effect_find_close(s, pos + 1) };
+
+fn effect_find_writes(s: String, pos: i64) -> i64 =
+    if pos + 7 > s.len() { -1 }
+    else if s.slice(pos, pos + 7) == "writes[" { pos }
+    else { effect_find_writes(s, pos + 1) };
+
+// Infer disjoint from effects: reads and writes to different vars are disjoint
+fn effects_to_disjoint(reads: String, writes: String) -> String =
+    // If a param is only read and another is only written, they can be disjoint
+    // This is a simplified inference - full analysis would be more complex
+    if reads != "" and writes != "" {
+        disjoint_set_add("", reads, writes)
+    } else { "" };
+
+// ============================================================================
+// v0.50.0: Unique[T] Type - Exclusive Ownership
+// ============================================================================
+// Unique[T] represents a value with exclusive ownership (no aliases possible)
+// Encoding: 17000 + inner_type_kind
+// Unique references automatically get noalias attribute
+
+fn type_unique(inner_ty: i64) -> i64 = 17000 + type_kind(inner_ty);
+
+// Check if type is Unique
+fn is_unique(ty: i64) -> bool = type_kind(ty) == 17;
+
+// Get inner type from Unique[T]
+fn unique_inner_kind(ty: i64) -> i64 = ty - 17000;
+
+// Get full inner type
+fn unique_inner_type(ty: i64) -> i64 = unique_inner_kind(ty) * 1000;
+
+// Unique type info
+fn unique_type_info(inner_ty: String) -> String =
+    "Unique:" + inner_ty;
+
+// Parse inner type from Unique info
+fn unique_parse_inner(info: String) -> String =
+    if info.slice(0, 7) == "Unique:" { info.slice(7, info.len()) }
+    else { "" };
+
+// Unique[T] to mutable ref: consumes unique, returns &mut T
+fn unique_to_mut_ref(unique_ty: i64) -> i64 =
+    // Returns the inner type (in real impl, would return &mut T)
+    unique_inner_type(unique_ty);
+
+// ============================================================================
+// v0.50.0: Alias Analysis Helpers
+// ============================================================================
+
+// Check if two pointers can alias based on types
+fn may_alias_types(ty1: i64, ty2: i64) -> bool =
+    // Unique never aliases
+    if is_unique(ty1) or is_unique(ty2) { false }
+    // Different base types don't alias (strict aliasing)
+    else if type_kind(ty1) != type_kind(ty2) { false }
+    // Same type may alias
+    else { true };
+
+// Infer aliasing status for two parameters
+fn infer_alias_status(ty1: i64, ty2: i64, disjoint_set: String, var1: String, var2: String) -> i64 =
+    if disjoint_set_check(disjoint_set, var1, var2) { alias_disjoint() }
+    else if is_unique(ty1) or is_unique(ty2) { alias_disjoint() }
+    else if var1 == var2 { alias_same() }
+    else { alias_unknown() };
+
+// Determine noalias attribute for a parameter
+fn should_noalias(ty: i64, param_name: String, other_params: String, disjoint_set: String) -> bool =
+    // Unique types always get noalias
+    if is_unique(ty) { true }
+    // Check if disjoint with all other params
+    else { is_disjoint_with_all(param_name, other_params, disjoint_set, 0) };
+
+fn is_disjoint_with_all(param: String, others: String, set: String, pos: i64) -> bool =
+    if pos >= others.len() { true }
+    else {
+        let comma = disjoint_find_comma(others, pos);
+        let end = if comma < 0 { others.len() } else { comma };
+        let other = others.slice(pos, end);
+        if other != "" and not disjoint_set_check(set, param, other) { false }
+        else { is_disjoint_with_all(param, others, set, end + 1) }
+    };
 
 // ============================================================================
 // v0.30.6: Type Argument Tracking (String-based)
