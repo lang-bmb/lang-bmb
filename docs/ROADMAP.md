@@ -1721,7 +1721,30 @@ cargo build --release --features llvm
 | 우선순위 | 작업 | 상태 |
 |----------|------|------|
 | P0 | WSL에서 Stage 3 Bootstrap 재검증 | ⏳ 대기 |
-| P1 | 나머지 O(n²) 함수 변환 (있다면) | 📋 계획 |
+| P1 | 나머지 O(n²) 함수 변환 (있다면) | ✅ v0.50.50 완료 |
+
+### 2026-01-20 추가 StringBuilder 최적화 및 정리 세션 (v0.50.50)
+
+**수행된 작업**:
+
+1. **O(n²) 문자열 함수 추가 최적화**
+   - `extract_strlit_acc` → `extract_strlit_sb`: 문자열 상수 추출 함수 StringBuilder 변환
+   - 새 헬퍼 함수 `has_id_in_list`: 중복 문자열 상수 감지
+
+2. **Dead Code 제거** (-20 라인)
+   - `gen_function`, `gen_function_lines` 제거 (gen_function_sb 사용)
+   - `gen_program`, `gen_program_acc` 제거 (gen_program_sb 사용)
+
+3. **테스트 결과**
+   - `bmb check bootstrap/bmb_unified_cli.bmb`: ✅ 컴파일 성공
+   - `cargo test --release`: ✅ 68개 테스트 통과
+   - Bootstrap 컴파일러 출력: ✅ 정상 LLVM IR 및 문자열 상수 추출
+
+4. **최적화 효과 요약**
+   | 세션 | 변환 함수 | 복잡도 변화 |
+   |------|----------|------------|
+   | v0.50.49 | escape_content, unescape_pipe_loop, escape_pipe_loop | O(n²) → O(n) |
+   | v0.50.50 | extract_strlit_acc | O(n²) → O(n) |
 
 ---
 

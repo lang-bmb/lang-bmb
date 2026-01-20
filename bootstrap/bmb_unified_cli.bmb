@@ -1828,22 +1828,11 @@ fn str_hash_iter(s: String, pos: i64, acc: i64) -> i64 =
         str_hash_iter(s, pos + 1, new_acc)
     };
 
-fn gen_function(mir: String) -> String =
-    gen_function_lines(mir, 0, "");
-
-fn gen_function_lines(mir: String, pos: i64, acc: String) -> String =
-    if pos >= mir.len() { acc } else {
-        let pipe_pos = find_pipe(mir, pos);
-        let line = mir.slice(pos, pipe_pos);
-        let llvm_line = llvm_gen_fn_line(line);
-        let new_acc = if acc == "" { llvm_line } else { acc + "|" + llvm_line };
-        if pipe_pos >= mir.len() { new_acc } else { gen_function_lines(mir, pipe_pos + 1, new_acc) }
-    };
-
 // ============================================================================
 // SECTION 11B: StringBuilder-aware LLVM Generation (v0.31.20)
 // ============================================================================
 // O(1) amortized string concatenation for LLVM IR generation
+// v0.50.50: Removed dead code gen_function/gen_function_lines (gen_function_sb used instead)
 
 fn gen_function_sb(mir: String) -> String =
     let sb = sb_new();
@@ -1925,17 +1914,7 @@ fn ends_with_colon(s: String) -> bool =
 fn find_double_pipe(s: String, pos: i64) -> i64 =
     if pos + 1 >= s.len() { s.len() } else if s.byte_at(pos) == 124 and s.byte_at(pos + 1) == 124 { pos } else { find_double_pipe(s, pos + 1) };
 
-fn gen_program(mir: String) -> String =
-    gen_program_acc(mir, 0, "");
-
-fn gen_program_acc(mir: String, pos: i64, acc: String) -> String =
-    if pos >= mir.len() { acc } else {
-        let fn_end = find_double_pipe(mir, pos);
-        let fn_mir = mir.slice(pos, fn_end);
-        let fn_llvm = gen_function(fn_mir);
-        let new_acc = if acc == "" { fn_llvm } else { acc + "||" + fn_llvm };
-        if fn_end + 2 >= mir.len() { new_acc } else { gen_program_acc(mir, fn_end + 2, new_acc) }
-    };
+// v0.50.50: Removed dead code gen_program/gen_program_acc (gen_program_sb used instead)
 
 // ============================================================================
 // SECTION 12: Module Generation
@@ -1982,14 +1961,18 @@ fn gen_runtime_decls() -> String =
 
 // v0.50.20: Extract string literals from MIR for global declarations
 // Uses content hash to ensure unique IDs for each distinct string
+// v0.50.50: Use StringBuilder for O(n) complexity
 fn extract_string_constants(mir: String) -> String =
-    extract_strlit_acc(mir, 0, "");
+    let sb = sb_new();
+    let w = extract_strlit_sb(mir, 0, sb, "");
+    sb_build(sb);
 
-// v0.50.39: Use unescape_pipe to handle \| escape sequences for proper hash and length
-fn extract_strlit_acc(mir: String, pos: i64, acc: String) -> String =
-    if pos >= mir.len() { acc } else {
+// v0.50.50: StringBuilder version for O(n) string constant extraction
+// seen_ids: comma-separated list of seen string IDs for duplicate detection
+fn extract_strlit_sb(mir: String, pos: i64, sb: i64, seen_ids: String) -> i64 =
+    if pos >= mir.len() { 0 } else {
         let found = find_str_pattern(mir, pos);
-        if found < 0 { acc } else {
+        if found < 0 { 0 } else {
             let str_start = found + 7;  // Skip " = str " (7 chars)
             let str_end = find_quote_end(mir, str_start + 1);
             let str_text = mir.slice(str_start, str_end);
@@ -2001,12 +1984,24 @@ fn extract_strlit_acc(mir: String, pos: i64, acc: String) -> String =
             let str_id = "@.str." + int_to_string(hash_id);
             // String length is content + null terminator = len - 2 (quotes) + 1 (null) = len - 1
             let str_len = str_unescaped.len() - 1;
-            // Check if already in acc (avoid duplicates)
-            let decl = str_id + " = private unnamed_addr constant [" + int_to_string(str_len) + " x i8] c" + escape_string_for_llvm(str_unescaped);
-            let new_acc = if has_pattern(acc, str_id, 0) { acc } else if acc == "" { decl } else { acc + "|" + decl };
-            extract_strlit_acc(mir, str_end + 1, new_acc)
+            // Check if already seen (avoid duplicates) - use comma-separated list
+            if has_id_in_list(seen_ids, str_id) {
+                extract_strlit_sb(mir, str_end + 1, sb, seen_ids)
+            } else {
+                let decl = str_id + " = private unnamed_addr constant [" + int_to_string(str_len) + " x i8] c" + escape_string_for_llvm(str_unescaped);
+                let len = sb_len(sb);
+                let w1 = if len > 0 { sb_push(sb, "|") } else { 0 };
+                let w2 = sb_push(sb, decl);
+                let new_seen = if seen_ids == "" { str_id } else { seen_ids + "," + str_id };
+                extract_strlit_sb(mir, str_end + 1, sb, new_seen)
+            }
         }
     };
+
+// Check if str_id is in comma-separated list
+fn has_id_in_list(list: String, id: String) -> bool =
+    if list == "" { false }
+    else { has_pattern(list, id, 0) };
 
 // Find " = str " pattern in MIR, return position or -1
 // v0.50.39: Only match if it's a real temp assignment (after | or start of line)
