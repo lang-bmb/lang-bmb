@@ -1001,10 +1001,25 @@ fn ast_type_to_mir(ty: &Type) -> MirType {
                 })
                 .collect(),
         },
-        // v0.5 Phase 5: References are pointers
-        Type::Ref(_) | Type::RefMut(_) => MirType::I64,
-        // v0.5 Phase 6: Arrays are pointers to data
-        Type::Array(_, _) => MirType::I64,
+        // v0.5 Phase 5: References to arrays become MirType::Array (pointers in LLVM)
+        // v0.50.50: Fix array parameter codegen - array refs must be ptr, not i64
+        Type::Ref(inner) | Type::RefMut(inner) => {
+            if let Type::Array(elem, size) = inner.as_ref() {
+                MirType::Array {
+                    element_type: Box::new(ast_type_to_mir(elem)),
+                    size: Some(*size),
+                }
+            } else {
+                // Non-array references stay as i64 (pointer-sized)
+                MirType::I64
+            }
+        }
+        // v0.5 Phase 6: Arrays are represented as MirType::Array
+        // v0.50.50: Fix - use MirType::Array instead of I64 for proper LLVM ptr codegen
+        Type::Array(elem, size) => MirType::Array {
+            element_type: Box::new(ast_type_to_mir(elem)),
+            size: Some(*size),
+        },
         // v0.2: Refined types use base type
         Type::Refined { base, .. } => ast_type_to_mir(base),
         // v0.20.0: Fn types are function pointers (pointer-sized)

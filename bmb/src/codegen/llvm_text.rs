@@ -389,6 +389,18 @@ impl TextCodeGen {
                         let ty = place_types.get(&src.name).copied().unwrap_or("i64");
                         place_types.insert(dest.name.clone(), ty);
                     }
+                    // v0.50.50: ArrayInit produces ptr type (pointer to allocated array)
+                    MirInst::ArrayInit { dest, .. } => {
+                        place_types.insert(dest.name.clone(), "ptr");
+                    }
+                    // v0.50.50: StructInit produces ptr type (pointer to allocated struct)
+                    MirInst::StructInit { dest, .. } => {
+                        place_types.insert(dest.name.clone(), "ptr");
+                    }
+                    // v0.50.50: IndexLoad produces element type (default i64)
+                    MirInst::IndexLoad { dest, .. } => {
+                        place_types.insert(dest.name.clone(), "i64");
+                    }
                     _ => {}
                 }
             }
@@ -1859,6 +1871,9 @@ impl TextCodeGen {
                         // Fallback - shouldn't happen
                         writeln!(out, "  ret {} {}", ty, self.format_operand_with_strings(val, string_table))?;
                     }
+                } else if ty == "void" {
+                    // v0.50.49: Void return - just emit ret void, don't try to load the value
+                    writeln!(out, "  ret void")?;
                 } else if let Operand::Place(p) = val {
                     // Check if this is a local that uses alloca
                     if local_names.contains(&p.name) {
