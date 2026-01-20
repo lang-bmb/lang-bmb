@@ -57,6 +57,8 @@
 //  11 = GenericApp (v0.30.5) - extra_info = base type hash (Vec, Map, etc.)
 //  12 = Fin[N] (v0.48.0) - extra_info = upper bound N (0..999 for N up to 999)
 //  13 = Vect[N, T] (v0.48.0) - extra_info = encoded N, element type tracked separately
+//  14 = Range[lo, hi] (v0.49.0) - extra_info = encoded hint, full bounds in type info string
+//  15 = Result[T, OverflowError] (v0.49.0) - checked arithmetic result, inner kind in extra_info
 
 fn type_i32() -> i64 = 1000;
 fn type_i64() -> i64 = 2000;
@@ -357,6 +359,538 @@ fn bounds_find_bar(s: String, pos: i64) -> i64 =
     if pos >= s.len() { -1 }
     else if s.byte_at(pos) == 124 { pos }  // '|' = 124
     else { bounds_find_bar(s, pos + 1) };
+
+// ============================================================================
+// v0.49.0: Range[lo, hi] - Bounded Integer Type for Overflow-Free Arithmetic
+// ============================================================================
+// Range[lo, hi] represents an integer guaranteed to be in [lo, hi] inclusive
+// Encoding: 14000 + encoded_range where encoded_range packs lo/hi info
+// Full range bounds stored in type info string: "Range:lo,hi"
+//
+// Key properties:
+// - Range arithmetic: Range[a,b] + Range[c,d] = Range[a+c, b+d]
+// - Overflow detection: If result range exceeds i64 bounds → type error
+// - Fin[N] compatibility: Fin[N] ≡ Range[0, N-1]
+//
+// Example: Range[0,100] + Range[0,100] = Range[0,200]
+//          Range[-50,50] * Range[2,3] = Range[-150, 150]
+
+fn type_range(lo: i64, hi: i64) -> i64 = 14000 + range_encode_hint(lo, hi);
+
+// Encode lo/hi into 0-999 hint (for quick checks, full info in string)
+// Simple encoding: (lo mod 100) * 10 + (hi mod 10)
+fn range_encode_hint(lo: i64, hi: i64) -> i64 =
+    let lo_mod = if lo < 0 { 0 - lo } else { lo };
+    let hi_mod = if hi < 0 { 0 - hi } else { hi };
+    ((lo_mod - (lo_mod / 100) * 100) * 10) + (hi_mod - (hi_mod / 10) * 10);
+
+// Check if type is a Range type
+fn is_range(ty: i64) -> bool = type_kind(ty) == 14;
+
+// Get hint from Range type (use range_parse_* for accurate bounds)
+fn range_hint(ty: i64) -> i64 = ty - 14000;
+
+// Create Range type info string: "Range:lo,hi"
+fn range_type_info(lo: i64, hi: i64) -> String =
+    "Range:" + fin_int_to_str(lo) + "," + fin_int_to_str(hi);
+
+// Parse low bound from type info
+fn range_parse_lo(info: String) -> i64 =
+    if info.slice(0, 6) == "Range:" {
+        let rest = info.slice(6, info.len());
+        let comma_pos = range_find_comma(rest, 0);
+        if comma_pos > 0 { fin_parse_int(rest.slice(0, comma_pos)) }
+        else { 0 - 9223372036854775807 }  // MIN on error
+    } else { 0 - 9223372036854775807 };
+
+// Parse high bound from type info
+fn range_parse_hi(info: String) -> i64 =
+    if info.slice(0, 6) == "Range:" {
+        let rest = info.slice(6, info.len());
+        let comma_pos = range_find_comma(rest, 0);
+        if comma_pos >= 0 and comma_pos + 1 < rest.len() {
+            fin_parse_int(rest.slice(comma_pos + 1, rest.len()))
+        } else { 9223372036854775807 }  // MAX on error
+    } else { 9223372036854775807 };
+
+fn range_find_comma(s: String, pos: i64) -> i64 =
+    if pos >= s.len() { 0 - 1 }
+    else if s.byte_at(pos) == 44 { pos }  // ',' = 44
+    else { range_find_comma(s, pos + 1) };
+
+// ============================================================================
+// v0.49.0: Range Arithmetic Operations
+// ============================================================================
+// Operations return new Range bounds. Overflow checked at type level.
+
+// Range addition: [a,b] + [c,d] = [a+c, b+d]
+fn range_add(lo1: i64, hi1: i64, lo2: i64, hi2: i64) -> String =
+    let new_lo = lo1 + lo2;
+    let new_hi = hi1 + hi2;
+    // Check for overflow (simple check - same sign inputs, different sign output)
+    if range_overflow_add(lo1, lo2, new_lo) or range_overflow_add(hi1, hi2, new_hi) {
+        "overflow"
+    } else {
+        range_type_info(new_lo, new_hi)
+    };
+
+// Range subtraction: [a,b] - [c,d] = [a-d, b-c]
+fn range_sub(lo1: i64, hi1: i64, lo2: i64, hi2: i64) -> String =
+    let new_lo = lo1 - hi2;
+    let new_hi = hi1 - lo2;
+    if range_overflow_sub(lo1, hi2, new_lo) or range_overflow_sub(hi1, lo2, new_hi) {
+        "overflow"
+    } else {
+        range_type_info(new_lo, new_hi)
+    };
+
+// Range multiplication: [a,b] * [c,d] = [min(ac,ad,bc,bd), max(ac,ad,bc,bd)]
+fn range_mul(lo1: i64, hi1: i64, lo2: i64, hi2: i64) -> String =
+    let p1 = lo1 * lo2;
+    let p2 = lo1 * hi2;
+    let p3 = hi1 * lo2;
+    let p4 = hi1 * hi2;
+    // Check for overflow on any product
+    if range_overflow_mul(lo1, lo2) or range_overflow_mul(lo1, hi2) or
+       range_overflow_mul(hi1, lo2) or range_overflow_mul(hi1, hi2) {
+        "overflow"
+    } else {
+        let new_lo = range_min4(p1, p2, p3, p4);
+        let new_hi = range_max4(p1, p2, p3, p4);
+        range_type_info(new_lo, new_hi)
+    };
+
+// Range division: [a,b] / [c,d] where 0 not in [c,d]
+// Division narrows ranges significantly
+fn range_div(lo1: i64, hi1: i64, lo2: i64, hi2: i64) -> String =
+    // Division by zero range check
+    if lo2 <= 0 and hi2 >= 0 {
+        "div_by_zero_possible"
+    } else {
+        // For positive divisor: result is [lo1/hi2, hi1/lo2] (narrower)
+        // For negative divisor: result is [hi1/hi2, lo1/lo2] (signs flip)
+        if lo2 > 0 {
+            range_type_info(lo1 / hi2, hi1 / lo2)
+        } else {
+            // Both negative
+            range_type_info(hi1 / hi2, lo1 / lo2)
+        }
+    };
+
+// Overflow detection helpers
+fn range_overflow_add(a: i64, b: i64, result: i64) -> bool =
+    // Overflow if: both positive but result negative, or both negative but result positive
+    (a > 0 and b > 0 and result < 0) or (a < 0 and b < 0 and result > 0);
+
+fn range_overflow_sub(a: i64, b: i64, result: i64) -> bool =
+    // Overflow if: a positive, b negative, result negative; or a negative, b positive, result positive
+    (a > 0 and b < 0 and result < 0) or (a < 0 and b > 0 and result > 0);
+
+fn range_overflow_mul(a: i64, b: i64) -> bool =
+    // Safe multiplication check: result / b should equal a (if b != 0)
+    if b == 0 { false }
+    else {
+        let result = a * b;
+        result / b != a
+    };
+
+// Min/max helpers for 4 values
+fn range_min4(a: i64, b: i64, c: i64, d: i64) -> i64 =
+    range_min2(range_min2(a, b), range_min2(c, d));
+
+fn range_max4(a: i64, b: i64, c: i64, d: i64) -> i64 =
+    range_max2(range_max2(a, b), range_max2(c, d));
+
+fn range_min2(a: i64, b: i64) -> i64 = if a < b { a } else { b };
+fn range_max2(a: i64, b: i64) -> i64 = if a > b { a } else { b };
+
+// ============================================================================
+// v0.49.0: Range Type Compatibility
+// ============================================================================
+
+// Check if Range can be used where Fin is expected
+// Fin[N] ≡ Range[0, N-1], so Range[0, M] is Fin-compatible if M < N
+fn range_to_fin_compat(range_info: String, fin_n: i64) -> bool =
+    let lo = range_parse_lo(range_info);
+    let hi = range_parse_hi(range_info);
+    lo >= 0 and hi < fin_n;
+
+// Convert Range[0, N-1] to Fin[N]
+fn range_to_fin(range_info: String) -> i64 =
+    let lo = range_parse_lo(range_info);
+    let hi = range_parse_hi(range_info);
+    if lo == 0 and hi >= 0 { type_fin(hi + 1) }
+    else { type_error() };
+
+// Convert Fin[N] to Range[0, N-1]
+fn fin_to_range_info(fin_n: i64) -> String =
+    range_type_info(0, fin_n - 1);
+
+// Check if a plain i64 value fits in a Range
+fn value_in_range(val: i64, range_info: String) -> bool =
+    let lo = range_parse_lo(range_info);
+    let hi = range_parse_hi(range_info);
+    val >= lo and val <= hi;
+
+// ============================================================================
+// v0.49.0: Auto Type Promotion (Widening)
+// ============================================================================
+// Automatic widening to prevent overflow in arithmetic operations
+// i32 * i32 can overflow i32, but fits in i64
+// This enables safe multiplication without runtime checks
+
+// Check if type can be widened
+fn type_can_widen(ty: i64) -> bool =
+    let kind = type_kind(ty);
+    kind == 1;  // Only i32 can be widened to i64
+
+// Get widened type (i32 → i64, others unchanged)
+fn type_widen(ty: i64) -> i64 =
+    if type_kind(ty) == 1 { type_i64() } else { ty };
+
+// Check if multiplication needs widening to prevent overflow
+// i32 * i32 → i64 (safe), i64 * i64 → potential overflow
+fn mul_needs_widen(ty1: i64, ty2: i64) -> bool =
+    type_kind(ty1) == 1 and type_kind(ty2) == 1;  // Both i32
+
+// Compute result type for multiplication with auto-widening
+fn mul_result_type(ty1: i64, ty2: i64) -> i64 =
+    if mul_needs_widen(ty1, ty2) { type_i64() }
+    else if type_kind(ty1) == 2 or type_kind(ty2) == 2 { type_i64() }  // Either i64
+    else if type_kind(ty1) == 1 and type_kind(ty2) == 1 { type_i32() } // Both i32, no widen requested
+    else { type_error() };
+
+// Safe multiplication: widen operands first, then multiply
+// Returns Range type tracking the result bounds
+fn safe_mul_type(ty1: i64, ty2: i64, range1: String, range2: String) -> String =
+    if range1 == "" or range2 == "" {
+        // No range info, can't determine bounds
+        ""
+    } else {
+        let lo1 = range_parse_lo(range1);
+        let hi1 = range_parse_hi(range1);
+        let lo2 = range_parse_lo(range2);
+        let hi2 = range_parse_hi(range2);
+        range_mul(lo1, hi1, lo2, hi2)
+    };
+
+// ============================================================================
+// v0.49.0: Numeric Type Conversion
+// ============================================================================
+
+// Check if narrowing conversion is safe (compile-time check)
+// i64 → i32 is safe if value is in i32 range
+fn narrow_safe(range_info: String) -> bool =
+    let lo = range_parse_lo(range_info);
+    let hi = range_parse_hi(range_info);
+    lo >= -2147483648 and hi <= 2147483647;  // i32 range
+
+// Narrow type with range check
+fn type_narrow(from_ty: i64, to_ty: i64, range_info: String) -> i64 =
+    if type_kind(from_ty) == 2 and type_kind(to_ty) == 1 {
+        // i64 → i32
+        if narrow_safe(range_info) { to_ty } else { type_error() }
+    } else { to_ty };
+
+// ============================================================================
+// v0.49.0: SMT Range Proofs
+// ============================================================================
+// Range verification through SMT queries with caching
+// Extends v0.48 proof caching to support Range arithmetic proofs
+
+// SMT query result constants
+fn range_proof_valid() -> i64 = 1;      // Range constraint satisfied
+fn range_proof_invalid() -> i64 = 2;    // Range constraint violated
+fn range_proof_unknown() -> i64 = 0;    // Cannot determine (need runtime check)
+
+// Range proof cache format: "query1;query2;..."
+// where query = "op:lo1,hi1:lo2,hi2:result_lo,result_hi:status"
+
+// Create cache key for range arithmetic proof
+fn range_proof_key(op: String, lo1: i64, hi1: i64, lo2: i64, hi2: i64) -> String =
+    op + ":" + fin_int_to_str(lo1) + "," + fin_int_to_str(hi1) + ":" +
+    fin_int_to_str(lo2) + "," + fin_int_to_str(hi2);
+
+// Lookup range proof in cache
+fn range_proof_lookup(cache: String, key: String) -> i64 =
+    range_proof_find(cache, key, 0);
+
+fn range_proof_find(cache: String, key: String, pos: i64) -> i64 =
+    if pos >= cache.len() { -1 }
+    else {
+        let entry_end = range_proof_find_semi(cache, pos);
+        let entry = cache.slice(pos, entry_end);
+        if range_proof_key_matches(entry, key) {
+            range_proof_extract_status(entry)
+        } else {
+            range_proof_find(cache, key, entry_end + 1)
+        }
+    };
+
+fn range_proof_find_semi(s: String, pos: i64) -> i64 =
+    if pos >= s.len() { s.len() }
+    else if s.byte_at(pos) == 59 { pos }
+    else { range_proof_find_semi(s, pos + 1) };
+
+fn range_proof_key_matches(entry: String, key: String) -> bool =
+    entry.len() > key.len() and
+    entry.slice(0, key.len()) == key;
+
+fn range_proof_extract_status(entry: String) -> i64 =
+    let last_colon = range_proof_last_colon(entry, 0, -1);
+    if last_colon < 0 { -1 }
+    else { fin_parse_int(entry.slice(last_colon + 1, entry.len())) };
+
+fn range_proof_last_colon(s: String, pos: i64, last: i64) -> i64 =
+    if pos >= s.len() { last }
+    else if s.byte_at(pos) == 58 { range_proof_last_colon(s, pos + 1, pos) }
+    else { range_proof_last_colon(s, pos + 1, last) };
+
+// Add range proof to cache
+fn range_proof_add(cache: String, key: String, result: String, status: i64) -> String =
+    let entry = key + ":" + result + ":" + fin_int_to_str(status);
+    if cache == "" { entry } else { cache + ";" + entry };
+
+// Verify range arithmetic with caching
+fn verify_range_add(cache: String, lo1: i64, hi1: i64, lo2: i64, hi2: i64) -> String =
+    let key = range_proof_key("add", lo1, hi1, lo2, hi2);
+    let cached = range_proof_lookup(cache, key);
+    if cached >= 0 {
+        pack_range_proof(cache, range_add(lo1, hi1, lo2, hi2), cached)
+    } else {
+        let result = range_add(lo1, hi1, lo2, hi2);
+        let status = if result == "overflow" { range_proof_invalid() } else { range_proof_valid() };
+        let new_cache = range_proof_add(cache, key, result, status);
+        pack_range_proof(new_cache, result, status)
+    };
+
+fn verify_range_sub(cache: String, lo1: i64, hi1: i64, lo2: i64, hi2: i64) -> String =
+    let key = range_proof_key("sub", lo1, hi1, lo2, hi2);
+    let cached = range_proof_lookup(cache, key);
+    if cached >= 0 {
+        pack_range_proof(cache, range_sub(lo1, hi1, lo2, hi2), cached)
+    } else {
+        let result = range_sub(lo1, hi1, lo2, hi2);
+        let status = if result == "overflow" { range_proof_invalid() } else { range_proof_valid() };
+        let new_cache = range_proof_add(cache, key, result, status);
+        pack_range_proof(new_cache, result, status)
+    };
+
+fn verify_range_mul(cache: String, lo1: i64, hi1: i64, lo2: i64, hi2: i64) -> String =
+    let key = range_proof_key("mul", lo1, hi1, lo2, hi2);
+    let cached = range_proof_lookup(cache, key);
+    if cached >= 0 {
+        pack_range_proof(cache, range_mul(lo1, hi1, lo2, hi2), cached)
+    } else {
+        let result = range_mul(lo1, hi1, lo2, hi2);
+        let status = if result == "overflow" { range_proof_invalid() } else { range_proof_valid() };
+        let new_cache = range_proof_add(cache, key, result, status);
+        pack_range_proof(new_cache, result, status)
+    };
+
+// Pack result: "cache||result||status"
+fn pack_range_proof(cache: String, result: String, status: i64) -> String =
+    cache + "||" + result + "||" + fin_int_to_str(status);
+
+// Unpack cache from result
+fn unpack_range_cache(packed: String) -> String =
+    let dbar_pos = range_find_dbar(packed, 0);
+    if dbar_pos < 0 { "" } else { packed.slice(0, dbar_pos) };
+
+// Unpack result type info from packed
+fn unpack_range_result(packed: String) -> String =
+    let first_dbar = range_find_dbar(packed, 0);
+    if first_dbar < 0 { "" }
+    else {
+        let second_dbar = range_find_dbar(packed, first_dbar + 2);
+        if second_dbar < 0 { packed.slice(first_dbar + 2, packed.len()) }
+        else { packed.slice(first_dbar + 2, second_dbar) }
+    };
+
+// Unpack status from packed
+fn unpack_range_status(packed: String) -> i64 =
+    let first_dbar = range_find_dbar(packed, 0);
+    if first_dbar < 0 { range_proof_unknown() }
+    else {
+        let second_dbar = range_find_dbar(packed, first_dbar + 2);
+        if second_dbar < 0 { range_proof_unknown() }
+        else { fin_parse_int(packed.slice(second_dbar + 2, packed.len())) }
+    };
+
+// Find "||" position
+fn range_find_dbar(s: String, pos: i64) -> i64 =
+    if pos + 1 >= s.len() { -1 }
+    else if s.byte_at(pos) == 124 and s.byte_at(pos + 1) == 124 { pos }
+    else { range_find_dbar(s, pos + 1) };
+
+// ============================================================================
+// v0.49.0: Overflow Status for Operations
+// ============================================================================
+// Track whether an operation can overflow at compile time
+
+fn overflow_impossible() -> i64 = 0;  // Proven no overflow
+fn overflow_possible() -> i64 = 1;    // May overflow (needs runtime check)
+fn overflow_certain() -> i64 = 2;     // Will definitely overflow (error)
+
+// Check if addition can overflow given ranges
+fn check_add_overflow(lo1: i64, hi1: i64, lo2: i64, hi2: i64) -> i64 =
+    let result = range_add(lo1, hi1, lo2, hi2);
+    if result == "overflow" { overflow_certain() }
+    else { overflow_impossible() };
+
+// Check if subtraction can overflow given ranges
+fn check_sub_overflow(lo1: i64, hi1: i64, lo2: i64, hi2: i64) -> i64 =
+    let result = range_sub(lo1, hi1, lo2, hi2);
+    if result == "overflow" { overflow_certain() }
+    else { overflow_impossible() };
+
+// Check if multiplication can overflow given ranges
+fn check_mul_overflow(lo1: i64, hi1: i64, lo2: i64, hi2: i64) -> i64 =
+    let result = range_mul(lo1, hi1, lo2, hi2);
+    if result == "overflow" { overflow_certain() }
+    else { overflow_impossible() };
+
+// ============================================================================
+// v0.49.0: Checked Arithmetic Operators (+?, -?, *?)
+// ============================================================================
+// Fallible arithmetic operators that return Result[T, OverflowError]
+// These are used when overflow is possible but should be handled explicitly
+
+// Type encoding for checked operation results
+// Result[i64, OverflowError] encoded as type kind 15
+fn type_checked_result(inner_ty: i64) -> i64 = 15000 + type_kind(inner_ty);
+
+// Check if type is a checked result
+fn is_checked_result(ty: i64) -> bool = type_kind(ty) == 15;
+
+// Get inner type from checked result
+fn checked_inner_type(ty: i64) -> i64 =
+    let inner_kind = ty - 15000;
+    inner_kind * 1000;
+
+// Type info for checked results
+fn checked_result_info(inner_ty: String) -> String =
+    "Result:" + inner_ty + ",OverflowError";
+
+// ============================================================================
+// v0.49.0: Checked Operation Type Inference
+// ============================================================================
+// Given operand types, determine the result type for checked operations
+
+// Checked addition type: operands must be numeric, result is Result[T, OverflowError]
+fn type_checked_add(ty1: i64, ty2: i64) -> i64 =
+    if not is_numeric(ty1) or not is_numeric(ty2) { type_error() }
+    else {
+        let result_ty = if type_kind(ty1) == 2 or type_kind(ty2) == 2 { type_i64() } else { type_i32() };
+        type_checked_result(result_ty)
+    };
+
+// Checked subtraction type
+fn type_checked_sub(ty1: i64, ty2: i64) -> i64 =
+    type_checked_add(ty1, ty2);  // Same logic
+
+// Checked multiplication type
+fn type_checked_mul(ty1: i64, ty2: i64) -> i64 =
+    type_checked_add(ty1, ty2);  // Same logic
+
+// Check if type is numeric (i32, i64, or Range)
+fn is_numeric(ty: i64) -> bool =
+    let kind = type_kind(ty);
+    kind == 1 or kind == 2 or kind == 14;  // i32, i64, Range
+
+// ============================================================================
+// v0.49.0: Checked Operations with Range Info
+// ============================================================================
+// When operands have range info, checked ops may still produce valid ranges
+
+// Checked add with range: if no overflow, returns unwrapped result range
+fn checked_add_range(range1: String, range2: String) -> String =
+    if range1 == "" or range2 == "" { "" }
+    else {
+        let lo1 = range_parse_lo(range1);
+        let hi1 = range_parse_hi(range1);
+        let lo2 = range_parse_lo(range2);
+        let hi2 = range_parse_hi(range2);
+        let result = range_add(lo1, hi1, lo2, hi2);
+        // For checked ops, result is wrapped in Result, but inner type has this range
+        if result == "overflow" { "overflow" } else { result }
+    };
+
+// Checked sub with range
+fn checked_sub_range(range1: String, range2: String) -> String =
+    if range1 == "" or range2 == "" { "" }
+    else {
+        let lo1 = range_parse_lo(range1);
+        let hi1 = range_parse_hi(range1);
+        let lo2 = range_parse_lo(range2);
+        let hi2 = range_parse_hi(range2);
+        let result = range_sub(lo1, hi1, lo2, hi2);
+        if result == "overflow" { "overflow" } else { result }
+    };
+
+// Checked mul with range
+fn checked_mul_range(range1: String, range2: String) -> String =
+    if range1 == "" or range2 == "" { "" }
+    else {
+        let lo1 = range_parse_lo(range1);
+        let hi1 = range_parse_hi(range1);
+        let lo2 = range_parse_lo(range2);
+        let hi2 = range_parse_hi(range2);
+        let result = range_mul(lo1, hi1, lo2, hi2);
+        if result == "overflow" { "overflow" } else { result }
+    };
+
+// ============================================================================
+// v0.49.0: Common Range Type Aliases
+// ============================================================================
+// Standard library type aliases for common constrained integer types
+
+// Percentage type: i64 in range [0, 100]
+fn type_percentage() -> i64 = type_range(0, 100);
+
+// Percentage type info
+fn percentage_type_info() -> String = range_type_info(0, 100);
+
+// Check if type is Percentage
+fn is_percentage(ty: i64) -> bool =
+    is_range(ty) and range_hint(ty) == range_encode_hint(0, 100);
+
+// Percentage arithmetic
+// Percentage + Percentage = Range[0, 200] (no longer Percentage)
+fn percentage_add(a_info: String, b_info: String) -> String =
+    range_add(0, 100, 0, 100);
+
+// Byte type: i64 in range [0, 255]
+fn type_byte() -> i64 = type_range(0, 255);
+
+// Byte type info
+fn byte_type_info() -> String = range_type_info(0, 255);
+
+// Check if type is Byte
+fn is_byte(ty: i64) -> bool =
+    is_range(ty) and range_hint(ty) == range_encode_hint(0, 255);
+
+// Natural number (non-negative): Range[0, MAX]
+fn type_nat() -> i64 = type_range(0, 9223372036854775807);
+
+// Natural type info
+fn nat_type_info() -> String = range_type_info(0, 9223372036854775807);
+
+// Check if value is natural (non-negative)
+fn is_nat(range_info: String) -> bool =
+    let lo = range_parse_lo(range_info);
+    lo >= 0;
+
+// Positive integer: Range[1, MAX]
+fn type_positive() -> i64 = type_range(1, 9223372036854775807);
+
+// Positive type info
+fn positive_type_info() -> String = range_type_info(1, 9223372036854775807);
+
+// Check if value is positive
+fn is_positive(range_info: String) -> bool =
+    let lo = range_parse_lo(range_info);
+    lo >= 1;
 
 // ============================================================================
 // v0.30.6: Type Argument Tracking (String-based)
