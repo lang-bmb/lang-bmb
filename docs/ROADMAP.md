@@ -1746,6 +1746,54 @@ cargo build --release --features llvm
    | v0.50.49 | escape_content, unescape_pipe_loop, escape_pipe_loop | O(n²) → O(n) |
    | v0.50.50 | extract_strlit_acc | O(n²) → O(n) |
 
+### 2026-01-20 Stage 3 Bootstrap 심층 분석 세션 (v0.50.51)
+
+**환경**: WSL Ubuntu 24.04, LLVM 21, Rust 1.92.0
+
+**발견된 블로커 (2개)**:
+
+1. **타입 추론 버그: Stage 2 즉시 크래시**
+   - 증상: Stage 2 바이너리 실행 시 `str_eq`에서 SIGSEGV
+   - 원인: 기존 Stage 1 바이너리가 `byte_at()` 반환값을 String으로 처리
+   ```
+   byte_at(s, pos) == 45  → (올바른) i64 비교
+   Stage 1 출력:          → str_eq(ptr 45, ptr ...)  (잘못됨)
+   결과: 정수 45를 메모리 주소로 해석 → 크래시
+   ```
+   - 해결: 현재 Rust BMB로 Stage 1 재빌드 필요 (올바른 타입 추론 포함)
+
+2. **Rust BMB LLVM Codegen 성능 회귀**
+   - 증상: 새 Stage 1 바이너리가 인터프리터보다 ~6000x 느림
+     | 모드 | 부트스트랩 컴파일 시간 |
+     |------|----------------------|
+     | 인터프리터 | 0.3초 |
+     | 기존 Stage 1 | 1.5초 |
+     | 새 Stage 1 | 35분+ (크래시) |
+   - 원인: Rust BMB LLVM codegen이 비효율적 IR 생성
+   ```llvm
+   ; 기존 (효율적)
+   %_t0 = add nsw i64 0, %pos
+
+   ; 새로운 (비효율적)
+   %pos = alloca i64, align 8
+   store i64 %1, ptr %pos, align 4
+   %pos1 = load i64, ptr %pos, align 4
+   ```
+   - 모든 임시 변수에 `alloca` 사용 → 스택 메모리 접근 폭증
+   - 레지스터 활용 없음, 모든 연산이 store/load 경유
+
+**다음 단계**:
+| 우선순위 | 작업 | 설명 |
+|----------|------|------|
+| P0 | Rust BMB codegen 수정 | 임시변수에 alloca 대신 레지스터 사용 |
+| P0 | 타입 추론 버그 수정 | byte_at() 반환값 올바른 타입 처리 |
+| P1 | Stage 3 검증 완료 | 수정 후 3-stage 검증 재시도 |
+
+**임시 해결책** (현재 사용 불가):
+- 기존 Stage 1 바이너리는 이전 ABI (`str_eq`)로 빌드됨
+- 현재 부트스트랩 소스는 새 ABI (`bmb_string_eq`) 사용
+- ABI 불일치로 인해 기존 바이너리로는 현재 소스 컴파일 불가
+
 ---
 
 ## 🎯 핵심 로드맵: Zero-Cost Safety
