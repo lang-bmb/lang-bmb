@@ -875,13 +875,22 @@ fn lower_str_sb(ast: String, temp_id: i64, sb: i64) -> i64 =
     temp_id + 1;
 
 // Escape pipe character in string for MIR output
+// v0.50.49: Use StringBuilder for O(n) complexity instead of O(n²)
 fn escape_pipe_in_string(s: String) -> String =
-    escape_pipe_loop(s, 0, "");
+    let sb = sb_new();
+    let w = escape_pipe_loop_sb(s, 0, sb);
+    sb_build(sb);
 
-fn escape_pipe_loop(s: String, pos: i64, acc: String) -> String =
-    if pos >= s.len() { acc }
-    else if s.byte_at(pos) == 124 { escape_pipe_loop(s, pos + 1, acc + chr(92) + chr(124)) }  // | -> \|
-    else { escape_pipe_loop(s, pos + 1, acc + chr(s.byte_at(pos))) };
+fn escape_pipe_loop_sb(s: String, pos: i64, sb: i64) -> i64 =
+    if pos >= s.len() { 0 }
+    else if s.byte_at(pos) == 124 {
+        let w = sb_push(sb, chr(92) + chr(124));  // | -> \|
+        escape_pipe_loop_sb(s, pos + 1, sb)
+    }
+    else {
+        let w = sb_push(sb, chr(s.byte_at(pos)));
+        escape_pipe_loop_sb(s, pos + 1, sb)
+    };
 
 // v0.50.13: Variable references need params to correctly identify function parameters
 // v0.50.21: Use scope_lookup to find the temp_id where variable was defined
@@ -1790,16 +1799,23 @@ fn llvm_gen_str(line: String, pos: i64, dest: String) -> String =
     "  " + ptr_tmp + " = getelementptr [" + int_to_string(str_len) + " x i8], ptr " + str_id + ", i64 0, i64 0|  " + str_ptr_tmp + " = call ptr @bmb_string_from_cstr(ptr " + ptr_tmp + ")|  " + dest + " = ptrtoint ptr " + str_ptr_tmp + " to i64";
 
 // Unescape \| back to | in string
+// v0.50.49: Use StringBuilder for O(n) complexity instead of O(n²)
 fn unescape_pipe(s: String) -> String =
-    unescape_pipe_loop(s, 0, "");
+    let sb = sb_new();
+    let w = unescape_pipe_loop_sb(s, 0, sb);
+    sb_build(sb);
 
-fn unescape_pipe_loop(s: String, pos: i64, acc: String) -> String =
-    if pos >= s.len() { acc }
+fn unescape_pipe_loop_sb(s: String, pos: i64, sb: i64) -> i64 =
+    if pos >= s.len() { 0 }
     else if s.byte_at(pos) == 92 and pos + 1 < s.len() and s.byte_at(pos + 1) == 124 {
         // \| -> |
-        unescape_pipe_loop(s, pos + 2, acc + chr(124))
+        let w = sb_push(sb, chr(124));
+        unescape_pipe_loop_sb(s, pos + 2, sb)
     }
-    else { unescape_pipe_loop(s, pos + 1, acc + chr(s.byte_at(pos))) };
+    else {
+        let w = sb_push(sb, chr(s.byte_at(pos)));
+        unescape_pipe_loop_sb(s, pos + 1, sb)
+    };
 
 // Simple string hash function for generating unique identifiers
 fn str_hash(s: String, acc: i64) -> i64 =
@@ -2031,40 +2047,46 @@ fn escape_string_for_llvm(s: String) -> String =
     if s.len() < 2 { s } else {
         let content = s.slice(1, s.len() - 1);  // Remove opening and closing quotes
         // Build LLVM string constant format: "content\00"
+        // v0.50.49: Use StringBuilder for O(n) complexity instead of O(n²)
+        let sb = sb_new();
         let quote = chr(34);
         let bslash = chr(92);
-        quote + escape_content(content, 0, "") + bslash + "00" + quote
+        let w1 = sb_push(sb, quote);
+        let w2 = escape_content_sb(content, 0, sb);
+        let w3 = sb_push(sb, bslash + "00" + quote);
+        sb_build(sb)
     };
 
-// Escape special characters in string content
-fn escape_content(s: String, pos: i64, acc: String) -> String =
-    if pos >= s.len() { acc } else {
+// Escape special characters in string content using StringBuilder
+// v0.50.49: O(n) complexity - iterative with StringBuilder
+fn escape_content_sb(s: String, pos: i64, sb: i64) -> i64 =
+    if pos >= s.len() { 0 } else {
         let c = s.byte_at(pos);
         let bslash = chr(92);
         if c == 92 and pos + 1 < s.len() {
             // Escape sequence in source
             let next = s.byte_at(pos + 1);
-            if next == 110 { escape_content(s, pos + 2, acc + bslash + "0A") }  // \n -> \0A
-            else if next == 116 { escape_content(s, pos + 2, acc + bslash + "09") }  // \t -> \09
-            else if next == 114 { escape_content(s, pos + 2, acc + bslash + "0D") }  // \r -> \0D
-            else if next == 34 { escape_content(s, pos + 2, acc + bslash + "22") }  // \" -> \22
-            else if next == 92 { escape_content(s, pos + 2, acc + bslash + "5C") }  // \\ -> \5C
-            else if next == 124 { escape_content(s, pos + 2, acc + bslash + "7C") }  // \| -> \7C (v0.50.39)
-            else { escape_content(s, pos + 1, acc + chr(c)) }
+            if next == 110 { let w = sb_push(sb, bslash + "0A"); escape_content_sb(s, pos + 2, sb) }  // \n -> \0A
+            else if next == 116 { let w = sb_push(sb, bslash + "09"); escape_content_sb(s, pos + 2, sb) }  // \t -> \09
+            else if next == 114 { let w = sb_push(sb, bslash + "0D"); escape_content_sb(s, pos + 2, sb) }  // \r -> \0D
+            else if next == 34 { let w = sb_push(sb, bslash + "22"); escape_content_sb(s, pos + 2, sb) }  // \" -> \22
+            else if next == 92 { let w = sb_push(sb, bslash + "5C"); escape_content_sb(s, pos + 2, sb) }  // \\ -> \5C
+            else if next == 124 { let w = sb_push(sb, bslash + "7C"); escape_content_sb(s, pos + 2, sb) }  // \| -> \7C (v0.50.39)
+            else { let w = sb_push(sb, chr(c)); escape_content_sb(s, pos + 1, sb) }
         } else if c == 10 {
             // Raw LF -> \0A
-            escape_content(s, pos + 1, acc + bslash + "0A")
+            let w = sb_push(sb, bslash + "0A"); escape_content_sb(s, pos + 1, sb)
         } else if c == 13 {
             // Raw CR -> \0D
-            escape_content(s, pos + 1, acc + bslash + "0D")
+            let w = sb_push(sb, bslash + "0D"); escape_content_sb(s, pos + 1, sb)
         } else if c == 9 {
             // Raw TAB -> \09
-            escape_content(s, pos + 1, acc + bslash + "09")
+            let w = sb_push(sb, bslash + "09"); escape_content_sb(s, pos + 1, sb)
         } else if c == 124 {
             // Pipe | -> \7C (avoid conflict with line separator)
-            escape_content(s, pos + 1, acc + bslash + "7C")
+            let w = sb_push(sb, bslash + "7C"); escape_content_sb(s, pos + 1, sb)
         } else {
-            escape_content(s, pos + 1, acc + chr(c))
+            let w = sb_push(sb, chr(c)); escape_content_sb(s, pos + 1, sb)
         }
     };
 

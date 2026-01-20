@@ -1692,6 +1692,37 @@ cargo build --release --features llvm
 2. **완전한 StringBuilder 변환**: 모든 parse_* 함수 변환 (권장)
 3. **하이브리드**: 핵심 함수만 변환 후 모듈 분할
 
+### 2026-01-20 StringBuilder 최적화 세션 (v0.50.49)
+
+**수행된 작업**:
+
+1. **O(n²) 문자열 연결 함수 StringBuilder 변환**
+   - `escape_content` → `escape_content_sb`: 문자별 재귀 String 연결을 StringBuilder 사용으로 변환
+   - `unescape_pipe_loop` → `unescape_pipe_loop_sb`: 동일 패턴 최적화
+   - `escape_pipe_loop` → `escape_pipe_loop_sb`: 파이프 이스케이프 함수 최적화
+
+2. **복잡도 개선**
+   - 이전: O(n²) - 각 문자마다 새 String 생성 및 복사
+   - 이후: O(n) - StringBuilder에 문자 추가 후 최종 빌드
+
+3. **테스트 결과**
+   - `bmb check bootstrap/bmb_unified_cli.bmb`: ✅ 컴파일 성공 (postcondition 경고만)
+   - `cargo test --release`: ✅ 68개 테스트 통과
+   - Bootstrap 컴파일러 출력: ✅ 정상 LLVM IR 생성
+
+4. **변환된 함수 상세**
+   | 함수 | 이전 시그니처 | 이후 시그니처 |
+   |------|--------------|--------------|
+   | `escape_content` | `(String, i64, String) -> String` | `escape_content_sb(String, i64, i64) -> i64` |
+   | `unescape_pipe_loop` | `(String, i64, String) -> String` | `unescape_pipe_loop_sb(String, i64, i64) -> i64` |
+   | `escape_pipe_loop` | `(String, i64, String) -> String` | `escape_pipe_loop_sb(String, i64, i64) -> i64` |
+
+**다음 단계**:
+| 우선순위 | 작업 | 상태 |
+|----------|------|------|
+| P0 | WSL에서 Stage 3 Bootstrap 재검증 | ⏳ 대기 |
+| P1 | 나머지 O(n²) 함수 변환 (있다면) | 📋 계획 |
+
 ---
 
 ## 🎯 핵심 로드맵: Zero-Cost Safety
