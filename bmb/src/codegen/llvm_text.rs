@@ -682,7 +682,9 @@ impl TextCodeGen {
                 // Check if destination is a local (uses alloca)
                 if local_names.contains(&dest.name) {
                     // For locals, emit a temp then store
-                    let temp_name = format!("{}.tmp", dest.name);
+                    // Use unique_name to avoid SSA violations when same variable is assigned multiple times
+                    let temp_base = format!("{}.tmp", dest.name);
+                    let temp_name = self.unique_name(&temp_base, name_counts);
                     match value {
                         Constant::Int(n) => {
                             writeln!(out, "  %{} = add {} 0, {}", temp_name, ty, n)?;
@@ -1136,8 +1138,38 @@ impl TextCodeGen {
                     return Ok(());
                 }
 
+                // v0.50.72: malloc(size) -> i64 - allocates memory and returns as i64 (for arithmetic)
+                if fn_name == "malloc" && args.len() == 1 {
+                    let size_val = match &args[0] {
+                        Operand::Place(p) if local_names.contains(&p.name) => {
+                            let load_name = format!("{}.malloc.size", p.name);
+                            writeln!(out, "  %{} = load i64, ptr %{}.addr", load_name, p.name)?;
+                            format!("%{}", load_name)
+                        }
+                        _ => self.format_operand_with_strings(&args[0], string_table),
+                    };
+                    let malloc_idx = *name_counts.entry("malloc_op".to_string()).or_insert(0);
+                    *name_counts.get_mut("malloc_op").unwrap() += 1;
+                    // Call malloc, get ptr
+                    let ptr_name = format!("malloc.ptr.{}", malloc_idx);
+                    writeln!(out, "  %{} = call ptr @malloc(i64 {})", ptr_name, size_val)?;
+                    // Convert ptr to i64 for BMB's pointer arithmetic
+                    if let Some(d) = dest {
+                        if local_names.contains(&d.name) {
+                            let conv_name = format!("malloc.conv.{}", malloc_idx);
+                            writeln!(out, "  %{} = ptrtoint ptr %{} to i64", conv_name, ptr_name)?;
+                            writeln!(out, "  store i64 %{}, ptr %{}.addr", conv_name, d.name)?;
+                        } else {
+                            let dest_name = self.unique_name(&d.name, name_counts);
+                            writeln!(out, "  %{} = ptrtoint ptr %{} to i64", dest_name, ptr_name)?;
+                        }
+                    }
+                    return Ok(());
+                }
+
                 // v0.34.2: box_free_i64(ptr) -> Unit - frees memory (alias for free)
-                if fn_name == "box_free_i64" && args.len() == 1 {
+                // v0.50.72: Also handle direct free(ptr) calls
+                if (fn_name == "box_free_i64" || fn_name == "free") && args.len() == 1 {
                     // Get pointer argument
                     let ptr_val = match &args[0] {
                         Operand::Place(p) if local_names.contains(&p.name) => {
@@ -2266,6 +2298,10 @@ impl TextCodeGen {
 
             // v0.46: ptr return - CLI argument functions
             "get_arg" | "bmb_get_arg" => "ptr",
+
+            // v0.50.72: Memory allocation functions return i64 (pointer as integer for arithmetic)
+            // Note: actual LLVM call uses ptr and converts via ptrtoint
+            "malloc" | "realloc" | "calloc" => "i64",
 
             _ => {
                 // For now, assume i64 for unknown functions
