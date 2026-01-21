@@ -1123,14 +1123,22 @@ pub struct ConstFunctionEval {
 }
 
 impl ConstFunctionEval {
-    /// Create from a MirProgram by analyzing @const functions
+    /// Create from a MirProgram by analyzing @const functions and pure 0-arg functions
     pub fn from_program(program: &MirProgram) -> Self {
         let mut const_values = HashMap::new();
 
         for func in &program.functions {
-            if func.is_const && func.params.is_empty() {
-                // Check if function body is a simple constant return
-                if let Some(value) = Self::extract_constant_return(func) {
+            // v0.50.75: Also evaluate pure 0-arg functions (like crlf())
+            // These are commonly used for constants but not marked @const
+            if func.params.is_empty() {
+                // First apply constant folding to the function to evaluate expressions
+                // like chr(13) + chr(10) -> "\r\n"
+                let mut func_copy = func.clone();
+                let cf = ConstantFolding;
+                cf.run_on_function(&mut func_copy);
+
+                // Then check if function body is a simple constant return
+                if let Some(value) = Self::extract_constant_return(&func_copy) {
                     const_values.insert(func.name.clone(), value);
                 }
             }
