@@ -387,6 +387,12 @@ impl ContractVerifier {
                 self.check_expr_for_conflicts(&array.node, function_index, report);
                 self.check_expr_for_conflicts(&index.node, function_index, report);
             }
+            // v0.51: Index assignment
+            Expr::IndexAssign { array, index, value } => {
+                self.check_expr_for_conflicts(&array.node, function_index, report);
+                self.check_expr_for_conflicts(&index.node, function_index, report);
+                self.check_expr_for_conflicts(&value.node, function_index, report);
+            }
             Expr::Closure { body, .. } => {
                 self.check_expr_for_conflicts(&body.node, function_index, report);
             }

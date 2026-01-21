@@ -629,6 +629,38 @@ impl Interpreter {
                 }
             }
 
+            // v0.51: Index assignment: arr[i] = value
+            Expr::IndexAssign { array, index, value } => {
+                // Get the array identifier name for env lookup
+                let arr_name = match &array.node {
+                    Expr::Var(name) => name.clone(),
+                    _ => return Err(RuntimeError::type_error("variable", "complex expression")),
+                };
+
+                let idx_val = self.eval(index, env)?;
+                let new_val = self.eval(value, env)?;
+
+                let idx = match idx_val {
+                    Value::Int(n) => n as usize,
+                    _ => return Err(RuntimeError::type_error("integer", idx_val.type_name())),
+                };
+
+                // Get the array, modify it, and put it back
+                let mut arr = match env.borrow().get(&arr_name) {
+                    Some(Value::Array(a)) => a.clone(),
+                    Some(other) => return Err(RuntimeError::type_error("array", other.type_name())),
+                    None => return Err(RuntimeError::undefined_variable(&arr_name)),
+                };
+
+                if idx < arr.len() {
+                    arr[idx] = new_val;
+                    env.borrow_mut().set(&arr_name, Value::Array(arr));
+                    Ok(Value::Unit)
+                } else {
+                    Err(RuntimeError::index_out_of_bounds(idx as i64, arr.len()))
+                }
+            }
+
             // v0.5 Phase 8: Method calls
             Expr::MethodCall { receiver, method, args } => {
                 let recv_val = self.eval(receiver, env)?;

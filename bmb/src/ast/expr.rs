@@ -179,6 +179,13 @@ pub enum Expr {
         index: Box<Spanned<Expr>>,
     },
 
+    /// Index assignment: `expr[index] = value` (v0.51)
+    IndexAssign {
+        array: Box<Spanned<Expr>>,
+        index: Box<Spanned<Expr>>,
+        value: Box<Spanned<Expr>>,
+    },
+
     // v0.5 Phase 8: Method calls
 
     /// Method call: expr.method(args) (v0.5 Phase 8)

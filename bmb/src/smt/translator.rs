@@ -308,6 +308,11 @@ impl SmtTranslator {
                 Err(TranslateError::UnsupportedFeature("array index".to_string()))
             }
 
+            // v0.51: Index assignment - not supported in SMT
+            Expr::IndexAssign { .. } => {
+                Err(TranslateError::UnsupportedFeature("array index assignment".to_string()))
+            }
+
             // v0.5 Phase 8: Method calls - not supported in SMT
             Expr::MethodCall { .. } => {
                 Err(TranslateError::UnsupportedFeature("method call".to_string()))

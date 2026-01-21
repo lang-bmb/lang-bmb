@@ -541,6 +541,15 @@ pub fn format_expr(expr: &Expr) -> String {
             )
         }
 
+        Expr::IndexAssign { array, index, value } => {
+            format!(
+                "(index-assign {} {} {})",
+                format_expr(&array.node),
+                format_expr(&index.node),
+                format_expr(&value.node)
+            )
+        }
+
         Expr::MethodCall {
             receiver,
             method,

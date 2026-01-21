@@ -2013,6 +2013,42 @@ impl TypeChecker {
                 }
             }
 
+            // v0.51: Index assignment: arr[i] = value
+            Expr::IndexAssign { array, index, value } => {
+                let array_ty = self.infer(&array.node, array.span)?;
+                let index_ty = self.infer(&index.node, index.span)?;
+                let value_ty = self.infer(&value.node, value.span)?;
+
+                // Index must be an integer
+                match index_ty.base_type() {
+                    Type::I32 | Type::I64 | Type::U32 | Type::U64 => {}
+                    _ => return Err(CompileError::type_error(
+                        format!("Array index must be integer, got: {}", index_ty),
+                        index.span,
+                    )),
+                }
+
+                // Array must be a mutable array type
+                let elem_ty = match &array_ty {
+                    Type::Array(elem_ty, _) => *elem_ty.clone(),
+                    _ => return Err(CompileError::type_error(
+                        format!("Cannot assign to index of non-array type: {}", array_ty),
+                        array.span,
+                    )),
+                };
+
+                // Value must match element type
+                if elem_ty != value_ty {
+                    return Err(CompileError::type_error(
+                        format!("Cannot assign {} to array of {}", value_ty, elem_ty),
+                        value.span,
+                    ));
+                }
+
+                // IndexAssign returns unit
+                Ok(Type::Unit)
+            }
+
             // v0.5 Phase 8: Method calls
             Expr::MethodCall { receiver, method, args } => {
                 let receiver_ty = self.infer(&receiver.node, receiver.span)?;

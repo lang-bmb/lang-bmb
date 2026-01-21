@@ -539,9 +539,11 @@ impl TextCodeGen {
         // Collect local variable names for alloca-based handling
         // Using alloca avoids SSA dominance issues when locals are assigned in branches
         // Exclude: void-typed locals (can't allocate), phi destinations (they're SSA values)
+        // v0.50.72: Exclude array types (they get their own alloca in ArrayInit)
         let local_names: std::collections::HashSet<String> = func.locals.iter()
             .filter(|(_, ty)| self.mir_type_to_llvm(ty) != "void")
             .filter(|(name, _)| !phi_dests.contains(name))
+            .filter(|(_, ty)| !matches!(ty, crate::mir::MirType::Array { .. }))
             .map(|(name, _)| name.clone())
             .collect();
 
@@ -644,7 +646,7 @@ impl TextCodeGen {
         }
 
         // Emit terminator
-        self.emit_terminator(out, &block.terminator, func, string_table, local_names)?;
+        self.emit_terminator(out, &block.terminator, func, string_table, local_names, &block.label)?;
 
         Ok(())
     }
@@ -1755,7 +1757,11 @@ impl TextCodeGen {
                     .unwrap_or_else(|| self.infer_call_return_type(fn_name, func));
 
                 // Generate unique base name for this call instruction
-                let call_base = dest.as_ref().map(|d| d.name.clone()).unwrap_or_else(|| format!("call_{}", fn_name));
+                // v0.50.72: Use unique counter to avoid SSA violations with multiple calls
+                let call_cnt = *name_counts.entry(format!("call_{}", fn_name)).or_insert(0);
+                *name_counts.entry(format!("call_{}", fn_name)).or_insert(0) += 1;
+                let call_base = dest.as_ref().map(|d| d.name.clone())
+                    .unwrap_or_else(|| format!("call_{}.{}", fn_name, call_cnt));
 
                 // Emit loads for local variables used as arguments
                 let mut arg_vals: Vec<(String, String)> = Vec::new(); // (type, value)
@@ -2005,11 +2011,15 @@ impl TextCodeGen {
             }
 
             // v0.50.60: Fix - load index and value from local alloca if needed
+            // v0.50.72: Fix SSA violation - use unique counter for each IndexStore
             MirInst::IndexStore { array, index, value } => {
+                let store_cnt = *name_counts.entry(format!("{}_idx_store", array.name)).or_insert(0);
+                *name_counts.entry(format!("{}_idx_store", array.name)).or_insert(0) += 1;
+
                 let idx_str = if let Operand::Place(p) = index {
                     if local_names.contains(&p.name) {
-                        writeln!(out, "  %{}_store_idx = load i64, ptr %{}.addr", array.name, p.name)?;
-                        format!("%{}_store_idx", array.name)
+                        writeln!(out, "  %{}_store_idx.{} = load i64, ptr %{}.addr", array.name, store_cnt, p.name)?;
+                        format!("%{}_store_idx.{}", array.name, store_cnt)
                     } else {
                         self.format_operand(index)
                     }
@@ -2019,8 +2029,8 @@ impl TextCodeGen {
                 let ty = self.infer_operand_type(value, func);
                 let val_str = if let Operand::Place(p) = value {
                     if local_names.contains(&p.name) {
-                        writeln!(out, "  %{}_store_val = load {}, ptr %{}.addr", array.name, ty, p.name)?;
-                        format!("%{}_store_val", array.name)
+                        writeln!(out, "  %{}_store_val.{} = load {}, ptr %{}.addr", array.name, store_cnt, ty, p.name)?;
+                        format!("%{}_store_val.{}", array.name, store_cnt)
                     } else {
                         self.format_operand(value)
                     }
@@ -2028,9 +2038,9 @@ impl TextCodeGen {
                     self.format_operand(value)
                 };
                 writeln!(out, "  ; index store %{}[{}] = {}", array.name, idx_str, val_str)?;
-                writeln!(out, "  %{}_idx_ptr = getelementptr {}, ptr %{}, i64 {}",
-                         array.name, ty, array.name, idx_str)?;
-                writeln!(out, "  store {} {}, ptr %{}_idx_ptr", ty, val_str, array.name)?;
+                writeln!(out, "  %{}_idx_ptr.{} = getelementptr {}, ptr %{}, i64 {}",
+                         array.name, store_cnt, ty, array.name, idx_str)?;
+                writeln!(out, "  store {} {}, ptr %{}_idx_ptr.{}", ty, val_str, array.name, store_cnt)?;
             }
         }
 
@@ -2045,6 +2055,7 @@ impl TextCodeGen {
         func: &MirFunction,
         string_table: &HashMap<String, String>,
         local_names: &std::collections::HashSet<String>,
+        block_label: &str,
     ) -> TextCodeGenResult<()> {
         match term {
             Terminator::Return(None) => {
@@ -2074,8 +2085,9 @@ impl TextCodeGen {
                     // Check if this is a local that uses alloca
                     if local_names.contains(&p.name) {
                         // Load from alloca before returning
-                        writeln!(out, "  %_ret_val = load {}, ptr %{}.addr", ty, p.name)?;
-                        writeln!(out, "  ret {} %_ret_val", ty)?;
+                        // Use block_label + var name for SSA uniqueness across multiple return blocks
+                        writeln!(out, "  %_ret_val.{}.{} = load {}, ptr %{}.addr", block_label, p.name, ty, p.name)?;
+                        writeln!(out, "  ret {} %_ret_val.{}.{}", ty, block_label, p.name)?;
                     } else {
                         writeln!(out, "  ret {} {}", ty, self.format_operand_with_strings(val, string_table))?;
                     }

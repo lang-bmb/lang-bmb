@@ -342,6 +342,12 @@ impl Backend {
                 self.collect_expr_refs(&expr.node, refs);
                 self.collect_expr_refs(&index.node, refs);
             }
+            // v0.51: Index assignment
+            Expr::IndexAssign { array, index, value } => {
+                self.collect_expr_refs(&array.node, refs);
+                self.collect_expr_refs(&index.node, refs);
+                self.collect_expr_refs(&value.node, refs);
+            }
             Expr::ArrayLit(elems) => {
                 for elem in elems {
                     self.collect_expr_refs(&elem.node, refs);
@@ -475,6 +481,11 @@ impl Backend {
             Expr::Index { expr, index } => {
                 self.collect_locals(&expr.node, scope_span, locals);
                 self.collect_locals(&index.node, scope_span, locals);
+            }
+            Expr::IndexAssign { array, index, value } => {
+                self.collect_locals(&array.node, scope_span, locals);
+                self.collect_locals(&index.node, scope_span, locals);
+                self.collect_locals(&value.node, scope_span, locals);
             }
             Expr::FieldAccess { expr, .. } | Expr::TupleField { expr, .. } => {
                 self.collect_locals(&expr.node, scope_span, locals);
@@ -1538,6 +1549,10 @@ fn format_expr(expr: &Expr) -> String {
         // v0.39: Type cast
         Expr::Cast { expr, ty } => {
             format!("{} as {}", format_expr(&expr.node), format_type(&ty.node))
+        }
+        // v0.51: Index assignment
+        Expr::IndexAssign { array, index, value } => {
+            format!("{}[{}] = {}", format_expr(&array.node), format_expr(&index.node), format_expr(&value.node))
         }
     }
 }

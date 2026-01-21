@@ -1796,13 +1796,42 @@ impl TailCallOptimization {
             }
         }
 
-        // Mark the tail calls
+        // Mark the tail calls AND convert Goto to Return for proper TCO
+        // This is critical: LLVM tailcallelim only works when ret immediately follows tail call
         let mut changed = false;
+
+        // Collect blocks that need to be removed from phi nodes
+        let mut blocks_converted_to_return: Vec<String> = Vec::new();
+
         for (block_label, call_idx) in tail_calls_to_mark {
             if let Some(block) = func.blocks.iter_mut().find(|b| b.label == block_label) {
-                if let MirInst::Call { is_tail, .. } = &mut block.instructions[call_idx] {
+                // Get the call destination for the return
+                let call_dest = if let MirInst::Call { dest: Some(dest), is_tail, .. } = &mut block.instructions[call_idx] {
                     *is_tail = true;
-                    changed = true;
+                    Some(dest.clone())
+                } else {
+                    None
+                };
+
+                // Convert terminator from Goto(merge) to Return(call_result)
+                // This allows LLVM to properly optimize the tail call to a loop
+                if let Some(dest) = call_dest {
+                    if matches!(block.terminator, Terminator::Goto(_)) {
+                        block.terminator = Terminator::Return(Some(Operand::Place(dest)));
+                        blocks_converted_to_return.push(block_label.clone());
+                        changed = true;
+                    }
+                }
+            }
+        }
+
+        // Remove converted blocks from phi nodes (they no longer branch to merge)
+        if !blocks_converted_to_return.is_empty() {
+            for block in &mut func.blocks {
+                for inst in &mut block.instructions {
+                    if let MirInst::Phi { values, .. } = inst {
+                        values.retain(|(_, label)| !blocks_converted_to_return.contains(label));
+                    }
                 }
             }
         }

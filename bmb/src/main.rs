@@ -1800,6 +1800,11 @@ fn format_expr(expr: &bmb::ast::Expr) -> String {
             format!("{}[{}]", format_expr(&arr.node), format_expr(&index.node))
         }
 
+        // v0.51: Index assignment
+        Expr::IndexAssign { array, index, value } => {
+            format!("{}[{}] = {}", format_expr(&array.node), format_expr(&index.node), format_expr(&value.node))
+        }
+
         Expr::ArrayLit(elems) => {
             let elems_str: Vec<_> = elems.iter().map(|e| format_expr(&e.node)).collect();
             format!("[{}]", elems_str.join(", "))

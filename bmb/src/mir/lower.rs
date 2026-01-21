@@ -852,6 +852,35 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
             Operand::Place(dest)
         }
 
+        // v0.51: Index assignment: arr[i] = value
+        Expr::IndexAssign { array, index, value } => {
+            let arr = lower_expr(array, ctx);
+            let arr_place = match &arr {
+                Operand::Place(p) => p.clone(),
+                Operand::Constant(_) => {
+                    // Store constant in a temp (unlikely for mutable arrays)
+                    let temp = ctx.fresh_temp();
+                    ctx.push_inst(MirInst::Copy {
+                        dest: temp.clone(),
+                        src: Place::new("_const_arr"),
+                    });
+                    temp
+                }
+            };
+
+            let idx = lower_expr(index, ctx);
+            let val = lower_expr(value, ctx);
+
+            ctx.push_inst(MirInst::IndexStore {
+                array: arr_place,
+                index: idx,
+                value: val,
+            });
+
+            // Return unit
+            Operand::Constant(Constant::Unit)
+        }
+
         // v0.19.4: Method calls - static dispatch
         // Methods are lowered as function calls with receiver as first argument
         // The method name is prefixed with the receiver type for name mangling

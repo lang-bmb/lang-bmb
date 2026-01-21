@@ -1110,6 +1110,12 @@ BlockStmt: Spanned<Expr> = {
         name: n,
         value: Box::new(v),
     }, Span::new(l, r)),
+    // Index assignment (v0.51): arr[i] = value
+    <l:@L> <arr:SpannedPostfixExpr> "[" <idx:SpannedExpr> "]" "=" <v:SpannedExpr> <r:@R> => Spanned::new(Expr::IndexAssign {
+        array: Box::new(arr),
+        index: Box::new(idx),
+        value: Box::new(v),
+    }, Span::new(l, r)),
     SpannedExpr,
 };
 
