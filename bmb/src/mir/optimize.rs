@@ -260,6 +260,19 @@ impl OptimizationPass for ConstantFolding {
                         }
                         new_instructions.push(inst.clone());
                     }
+                    // v0.50.68: Evaluate builtin functions with constant arguments
+                    MirInst::Call { dest: Some(dest), func: func_name, args, .. } => {
+                        if let Some(result) = fold_builtin_call(func_name, args, &constants) {
+                            constants.insert(dest.name.clone(), result.clone());
+                            new_instructions.push(MirInst::Const {
+                                dest: dest.clone(),
+                                value: result,
+                            });
+                            changed = true;
+                            continue;
+                        }
+                        new_instructions.push(inst.clone());
+                    }
                     _ => {
                         new_instructions.push(inst.clone());
                     }
@@ -277,6 +290,42 @@ fn get_constant(operand: &Operand, constants: &HashMap<String, Constant>) -> Opt
     match operand {
         Operand::Constant(c) => Some(c.clone()),
         Operand::Place(p) => constants.get(&p.name).cloned(),
+    }
+}
+
+/// v0.50.68: Evaluate builtin functions with constant arguments at compile time
+///
+/// Supported builtins:
+/// - `chr(i64)` -> String: Convert ASCII code to single-character string
+/// - `ord(String)` -> i64: Get ASCII code of first character (only for single-char literals)
+fn fold_builtin_call(
+    func_name: &str,
+    args: &[Operand],
+    constants: &HashMap<String, Constant>,
+) -> Option<Constant> {
+    match func_name {
+        // chr(65) -> "A"
+        "chr" | "bmb_chr" if args.len() == 1 => {
+            if let Some(Constant::Int(code)) = get_constant(&args[0], constants) {
+                // Valid ASCII range
+                if code >= 0 && code <= 127 {
+                    let ch = char::from_u32(code as u32)?;
+                    return Some(Constant::String(ch.to_string()));
+                }
+            }
+            None
+        }
+        // ord("A") -> 65 (only for single-character string constants)
+        "ord" | "bmb_ord" if args.len() == 1 => {
+            if let Some(Constant::String(s)) = get_constant(&args[0], constants) {
+                if s.len() == 1 {
+                    let code = s.chars().next()? as i64;
+                    return Some(Constant::Int(code));
+                }
+            }
+            None
+        }
+        _ => None,
     }
 }
 
@@ -311,6 +360,12 @@ fn fold_binop(op: MirBinOp, lhs: &Constant, rhs: &Constant) -> Option<Constant> 
         (MirBinOp::FMul, Constant::Float(a), Constant::Float(b)) => Some(Constant::Float(a * b)),
         (MirBinOp::FDiv, Constant::Float(a), Constant::Float(b)) if *b != 0.0 => {
             Some(Constant::Float(a / b))
+        }
+
+        // v0.50.68: String concatenation at compile time
+        // "Hello" + " " + "World" → "Hello World"
+        (MirBinOp::Add, Constant::String(a), Constant::String(b)) => {
+            Some(Constant::String(format!("{}{}", a, b)))
         }
 
         _ => None,

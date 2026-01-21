@@ -1142,7 +1142,7 @@ zero_overhead,bounds_check_proof,10.0,10.0,12.0,1.00,0.83,PASS_ZERO_COST
 | ID | 태스크 | 대상 | 예상 효과 | 상태 |
 |----|--------|------|----------|------|
 | 57.P1 | **TCO 강화** | fannkuch, fibonacci | 2.1x → **1.59x** → phi-based TCO 추가 (v0.50.67) | 🔄 진행중 |
-| 57.P2 | **문자열 빌더 구현** | http_parse, json_serialize | 2.3x → ≤1.1x | 📋 계획 |
+| 57.P2 | **문자열 상수 접기** | http_parse, json_serialize | 상수+상수, chr(const) 컴파일타임 평가 (v0.50.68) | 🔄 부분완료 |
 | 57.P3 | **재귀 TCO 확장** | syscall_overhead | phi→return 패턴 TCO 적용 (v0.50.67) | ✅ 검증완료 |
 | 57.P4 | **SIMD 벡터화 힌트** | simd_sum | ❌ BMB에 루프 없음 (재귀→벡터화 불가) | 🚫 언어한계 |
 | 57.P5 | **인라인 임계치 조정** | 전체 | ❌ LLVM 기본값 최적 (v0.50.66 테스트) | ✅ 검증완료 |
