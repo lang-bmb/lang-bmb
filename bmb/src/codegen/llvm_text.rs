@@ -1808,31 +1808,73 @@ impl TextCodeGen {
             }
 
             // v0.19.3: Array operations
+            // v0.50.60: Fix - load from local alloca before storing to array element
             MirInst::ArrayInit { dest, element_type, elements } => {
                 let elem_ty = self.mir_type_to_llvm(element_type);
                 let size = elements.len();
                 writeln!(out, "  ; array init with {} elements of type {}", size, elem_ty)?;
                 writeln!(out, "  %{} = alloca {}, i32 {}", dest.name, elem_ty, size.max(1))?;
                 for (i, elem) in elements.iter().enumerate() {
-                    let elem_str = self.format_operand(elem);
+                    // Check if element is a local that needs loading from alloca
+                    let elem_str = if let Operand::Place(p) = elem {
+                        if local_names.contains(&p.name) {
+                            // Load from alloca first
+                            writeln!(out, "  %{}_arr_elem{} = load {}, ptr %{}.addr",
+                                     dest.name, i, elem_ty, p.name)?;
+                            format!("%{}_arr_elem{}", dest.name, i)
+                        } else {
+                            self.format_operand(elem)
+                        }
+                    } else {
+                        self.format_operand(elem)
+                    };
                     writeln!(out, "  %{}_e{} = getelementptr {}, ptr %{}, i32 {}",
                              dest.name, i, elem_ty, dest.name, i)?;
                     writeln!(out, "  store {} {}, ptr %{}_e{}", elem_ty, elem_str, dest.name, i)?;
                 }
             }
 
+            // v0.50.60: Fix - load index from local alloca if needed
             MirInst::IndexLoad { dest, array, index } => {
-                let idx_str = self.format_operand(index);
+                let idx_str = if let Operand::Place(p) = index {
+                    if local_names.contains(&p.name) {
+                        writeln!(out, "  %{}_idx_load = load i64, ptr %{}.addr", dest.name, p.name)?;
+                        format!("%{}_idx_load", dest.name)
+                    } else {
+                        self.format_operand(index)
+                    }
+                } else {
+                    self.format_operand(index)
+                };
                 writeln!(out, "  ; index load %{}[{}]", array.name, idx_str)?;
                 writeln!(out, "  %{}_ptr = getelementptr i64, ptr %{}, i64 {}",
                          dest.name, array.name, idx_str)?;
                 writeln!(out, "  %{} = load i64, ptr %{}_ptr", dest.name, dest.name)?;
             }
 
+            // v0.50.60: Fix - load index and value from local alloca if needed
             MirInst::IndexStore { array, index, value } => {
-                let idx_str = self.format_operand(index);
-                let val_str = self.format_operand(value);
+                let idx_str = if let Operand::Place(p) = index {
+                    if local_names.contains(&p.name) {
+                        writeln!(out, "  %{}_store_idx = load i64, ptr %{}.addr", array.name, p.name)?;
+                        format!("%{}_store_idx", array.name)
+                    } else {
+                        self.format_operand(index)
+                    }
+                } else {
+                    self.format_operand(index)
+                };
                 let ty = self.infer_operand_type(value, func);
+                let val_str = if let Operand::Place(p) = value {
+                    if local_names.contains(&p.name) {
+                        writeln!(out, "  %{}_store_val = load {}, ptr %{}.addr", array.name, ty, p.name)?;
+                        format!("%{}_store_val", array.name)
+                    } else {
+                        self.format_operand(value)
+                    }
+                } else {
+                    self.format_operand(value)
+                };
                 writeln!(out, "  ; index store %{}[{}] = {}", array.name, idx_str, val_str)?;
                 writeln!(out, "  %{}_idx_ptr = getelementptr {}, ptr %{}, i64 {}",
                          array.name, ty, array.name, idx_str)?;
