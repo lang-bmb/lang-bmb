@@ -66,6 +66,8 @@ impl OptimizationPipeline {
                 pipeline.add_pass(Box::new(DeadCodeElimination));
                 pipeline.add_pass(Box::new(SimplifyBranches));
                 pipeline.add_pass(Box::new(CopyPropagation));
+                // v0.50.65: Add tail call optimization for recursive functions
+                pipeline.add_pass(Box::new(TailCallOptimization));
             }
             OptLevel::Aggressive => {
                 // All optimizations
@@ -78,6 +80,8 @@ impl OptimizationPipeline {
                 pipeline.add_pass(Box::new(CommonSubexpressionElimination));
                 pipeline.add_pass(Box::new(ContractBasedOptimization));
                 pipeline.add_pass(Box::new(ContractUnreachableElimination));
+                // v0.50.65: Add tail call optimization for recursive functions
+                pipeline.add_pass(Box::new(TailCallOptimization));
             }
         }
 
@@ -919,7 +923,7 @@ impl OptimizationPass for PureFunctionCSE {
             let mut new_instructions = Vec::new();
 
             for inst in &block.instructions {
-                if let MirInst::Call { dest: Some(dest), func: called_func, args } = inst {
+                if let MirInst::Call { dest: Some(dest), func: called_func, args, .. } = inst {
                     // Only optimize if the called function is pure
                     if self.pure_functions.contains(called_func) {
                         // Create a key from function name and arguments
@@ -1029,7 +1033,7 @@ impl OptimizationPass for ConstFunctionEval {
             let mut new_instructions = Vec::new();
 
             for inst in &block.instructions {
-                if let MirInst::Call { dest: Some(dest), func: called_func, args } = inst {
+                if let MirInst::Call { dest: Some(dest), func: called_func, args, .. } = inst {
                     // Only evaluate if function is known const and has no args
                     if args.is_empty()
                         && let Some(value) = self.const_values.get(called_func)
@@ -1469,6 +1473,146 @@ impl ContractUnreachableElimination {
 }
 
 // ============================================================================
+// Tail Call Optimization Pass (v0.50.65)
+// ============================================================================
+
+/// Tail Call Optimization pass
+///
+/// Identifies function calls in tail position and marks them for tail call optimization.
+/// A call is in tail position if:
+/// 1. It's the last instruction before a Return terminator
+/// 2. The Return value is exactly the call's result
+/// 3. There are no intervening instructions that use the call result
+///
+/// This enables LLVM to apply tail call optimization, converting recursive
+/// calls into loops and eliminating stack growth.
+pub struct TailCallOptimization;
+
+impl TailCallOptimization {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Default for TailCallOptimization {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl OptimizationPass for TailCallOptimization {
+    fn name(&self) -> &'static str {
+        "TailCallOptimization"
+    }
+
+    fn run_on_function(&self, func: &mut MirFunction) -> bool {
+        let mut changed = false;
+
+        for block in &mut func.blocks {
+            // Check if the terminator is a Return with a value
+            let return_value = match &block.terminator {
+                Terminator::Return(Some(Operand::Place(place))) => Some(place.name.clone()),
+                _ => None,
+            };
+
+            // If there's no return with a place value, skip this block
+            let return_var = match return_value {
+                Some(v) => v,
+                None => continue,
+            };
+
+            // Find the last Call instruction that produces the return value
+            // Work backwards from the end
+            let mut tail_call_idx = None;
+            for (idx, inst) in block.instructions.iter().enumerate().rev() {
+                match inst {
+                    MirInst::Call { dest: Some(dest), is_tail: false, .. }
+                        if dest.name == return_var => {
+                        // Found the call that produces the return value
+                        // Check if there are any instructions after it that use the result
+                        let has_intervening_use = block.instructions[idx + 1..].iter().any(|i| {
+                            uses_place(i, &return_var)
+                        });
+
+                        if !has_intervening_use {
+                            tail_call_idx = Some(idx);
+                        }
+                        break;
+                    }
+                    // If we hit any other instruction that defines return_var, stop
+                    _ if defines_place(inst, &return_var) => break,
+                    _ => continue,
+                }
+            }
+
+            // Mark the tail call
+            if let Some(idx) = tail_call_idx {
+                if let MirInst::Call { is_tail, .. } = &mut block.instructions[idx] {
+                    *is_tail = true;
+                    changed = true;
+                }
+            }
+        }
+
+        changed
+    }
+}
+
+/// Check if an instruction uses a given place
+fn uses_place(inst: &MirInst, name: &str) -> bool {
+    match inst {
+        MirInst::Copy { src, .. } => src.name == name,
+        MirInst::BinOp { lhs, rhs, .. } => {
+            matches!(lhs, Operand::Place(p) if p.name == name) ||
+            matches!(rhs, Operand::Place(p) if p.name == name)
+        }
+        MirInst::UnaryOp { src, .. } => matches!(src, Operand::Place(p) if p.name == name),
+        MirInst::Call { args, .. } => args.iter().any(|a| matches!(a, Operand::Place(p) if p.name == name)),
+        MirInst::Phi { values, .. } => values.iter().any(|(v, _)| matches!(v, Operand::Place(p) if p.name == name)),
+        MirInst::FieldAccess { base, .. } => base.name == name,
+        MirInst::FieldStore { base, value, .. } => {
+            base.name == name || matches!(value, Operand::Place(p) if p.name == name)
+        }
+        MirInst::IndexLoad { array, index, .. } => {
+            array.name == name || matches!(index, Operand::Place(p) if p.name == name)
+        }
+        MirInst::IndexStore { array, index, value, .. } => {
+            array.name == name ||
+            matches!(index, Operand::Place(p) if p.name == name) ||
+            matches!(value, Operand::Place(p) if p.name == name)
+        }
+        MirInst::StructInit { fields, .. } => {
+            fields.iter().any(|(_, v)| matches!(v, Operand::Place(p) if p.name == name))
+        }
+        MirInst::EnumVariant { args, .. } => {
+            args.iter().any(|a| matches!(a, Operand::Place(p) if p.name == name))
+        }
+        MirInst::ArrayInit { elements, .. } => {
+            elements.iter().any(|e| matches!(e, Operand::Place(p) if p.name == name))
+        }
+        _ => false,
+    }
+}
+
+/// Check if an instruction defines a given place
+fn defines_place(inst: &MirInst, name: &str) -> bool {
+    match inst {
+        MirInst::Const { dest, .. } => dest.name == name,
+        MirInst::Copy { dest, .. } => dest.name == name,
+        MirInst::BinOp { dest, .. } => dest.name == name,
+        MirInst::UnaryOp { dest, .. } => dest.name == name,
+        MirInst::Call { dest: Some(dest), .. } => dest.name == name,
+        MirInst::Phi { dest, .. } => dest.name == name,
+        MirInst::StructInit { dest, .. } => dest.name == name,
+        MirInst::FieldAccess { dest, .. } => dest.name == name,
+        MirInst::IndexLoad { dest, .. } => dest.name == name,
+        MirInst::EnumVariant { dest, .. } => dest.name == name,
+        MirInst::ArrayInit { dest, .. } => dest.name == name,
+        _ => false,
+    }
+}
+
+// ============================================================================
 // Module Tests
 // ============================================================================
 
@@ -1848,11 +1992,13 @@ mod tests {
                         dest: Some(Place::new("r1")),
                         func: "square".to_string(),
                         args: vec![Operand::Place(Place::new("x"))],
+                        is_tail: false,
                     },
                     MirInst::Call {
                         dest: Some(Place::new("r2")),
                         func: "square".to_string(),
                         args: vec![Operand::Place(Place::new("x"))],
+                        is_tail: false,
                     },
                     MirInst::BinOp {
                         dest: Place::new("result"),
@@ -1904,11 +2050,13 @@ mod tests {
                         dest: Some(Place::new("r1")),
                         func: "square".to_string(),
                         args: vec![Operand::Place(Place::new("x"))],
+                        is_tail: false,
                     },
                     MirInst::Call {
                         dest: Some(Place::new("r2")),
                         func: "square".to_string(),
                         args: vec![Operand::Place(Place::new("y"))], // Different arg!
+                        is_tail: false,
                     },
                 ],
                 terminator: Terminator::Return(Some(Operand::Place(Place::new("r1")))),
@@ -1942,11 +2090,13 @@ mod tests {
                         dest: Some(Place::new("r1")),
                         func: "get_random".to_string(), // Not pure
                         args: vec![Operand::Place(Place::new("x"))],
+                        is_tail: false,
                     },
                     MirInst::Call {
                         dest: Some(Place::new("r2")),
                         func: "get_random".to_string(),
                         args: vec![Operand::Place(Place::new("x"))],
+                        is_tail: false,
                     },
                 ],
                 terminator: Terminator::Return(Some(Operand::Place(Place::new("r1")))),
@@ -1998,6 +2148,7 @@ mod tests {
                         dest: Some(Place::new("magic")),
                         func: "get_magic".to_string(),
                         args: vec![],
+                        is_tail: false,
                     },
                     MirInst::BinOp {
                         dest: Place::new("result"),
@@ -2073,6 +2224,7 @@ mod tests {
                     dest: Some(Place::new("result")),
                     func: "square".to_string(),
                     args: vec![Operand::Constant(Constant::Int(5))],
+                    is_tail: false,
                 }],
                 terminator: Terminator::Return(Some(Operand::Place(Place::new("result")))),
             }],

@@ -447,6 +447,7 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
                     dest: None,
                     func: func.clone(),
                     args: arg_ops,
+                    is_tail: false, // v0.50.65: void functions are not tail calls
                 });
                 Operand::Constant(Constant::Unit)
             } else {
@@ -479,6 +480,7 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
                     dest: Some(dest.clone()),
                     func: func.clone(),
                     args: arg_ops,
+                    is_tail: false, // v0.50.65: will be marked true by tail_call_optimization pass
                 });
                 Operand::Place(dest)
             }
@@ -880,6 +882,7 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
                 dest: Some(dest.clone()),
                 func: method.clone(),
                 args: call_args,
+                is_tail: false, // v0.50.65: method calls handled same as function calls
             });
             Operand::Place(dest)
         }

@@ -620,8 +620,8 @@ impl WasmCodeGen {
                 writeln!(out, "    local.set ${}", dest.name)?;
             }
 
-            MirInst::Call { dest, func: fn_name, args } => {
-                // Push arguments
+            MirInst::Call { dest, func: fn_name, args, is_tail: _ } => {
+                // Push arguments (tail call not used in WASM text backend)
                 for arg in args {
                     self.emit_operand(out, arg)?;
                 }

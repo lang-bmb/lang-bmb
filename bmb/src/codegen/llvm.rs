@@ -743,8 +743,9 @@ impl<'ctx> LlvmContext<'ctx> {
                 self.store_to_place(dest, result)?;
             }
 
-            MirInst::Call { dest, func, args } => {
+            MirInst::Call { dest, func, args, is_tail: _ } => {
                 // v0.35.4: Handle type conversion intrinsics specially
+                // TODO: Use is_tail for tail call optimization with inkwell API
                 if func == "i64_to_f64" && args.len() == 1 {
                     let arg = self.gen_operand(&args[0])?;
                     let result = self.builder

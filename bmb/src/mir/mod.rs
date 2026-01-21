@@ -150,10 +150,13 @@ pub enum MirInst {
         src: Operand,
     },
     /// Function call: %dest = call func(args...)
+    /// v0.50.65: Added is_tail for tail call optimization
     Call {
         dest: Option<Place>,
         func: String,
         args: Vec<Operand>,
+        /// If true, this call is in tail position and can use musttail
+        is_tail: bool,
     },
     /// PHI node for SSA: %dest = phi [(value1, label1), (value2, label2), ...]
     Phi {
@@ -610,12 +613,13 @@ fn format_mir_inst(inst: &MirInst) -> String {
         MirInst::UnaryOp { dest, op, src } => {
             format!("%{} = {} {}", dest.name, format_unaryop(*op), format_operand(src))
         }
-        MirInst::Call { dest, func, args } => {
+        MirInst::Call { dest, func, args, is_tail } => {
             let args_str: Vec<_> = args.iter().map(format_operand).collect();
+            let tail_prefix = if *is_tail { "tail " } else { "" };
             if let Some(d) = dest {
-                format!("%{} = call {}({})", d.name, func, args_str.join(", "))
+                format!("%{} = {}call {}({})", d.name, tail_prefix, func, args_str.join(", "))
             } else {
-                format!("call {}({})", func, args_str.join(", "))
+                format!("{}call {}({})", tail_prefix, func, args_str.join(", "))
             }
         }
         MirInst::Phi { dest, values } => {

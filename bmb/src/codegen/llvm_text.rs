@@ -1001,7 +1001,7 @@ impl TextCodeGen {
                 }
             }
 
-            MirInst::Call { dest, func: fn_name, args } => {
+            MirInst::Call { dest, func: fn_name, args, is_tail } => {
                 // v0.34: Handle math intrinsics and type conversions
                 if fn_name == "sqrt" && args.len() == 1 {
                     // sqrt(x: f64) -> f64 via LLVM intrinsic
@@ -1851,10 +1851,14 @@ impl TextCodeGen {
                     _ => fn_name.as_str(),
                 };
 
+                // v0.50.65: Tail call optimization support
+                let call_prefix = if *is_tail { "tail " } else { "" };
+
                 if ret_ty == "void" {
                     writeln!(
                         out,
-                        "  call {} @{}({})",
+                        "  {}call {} @{}({})",
+                        call_prefix,
                         ret_ty,
                         runtime_fn_name,
                         args_str.join(", ")
@@ -1865,8 +1869,9 @@ impl TextCodeGen {
                         let temp_name = format!("{}.call", d.name);
                         writeln!(
                             out,
-                            "  %{} = call {} @{}({})",
+                            "  %{} = {}call {} @{}({})",
                             temp_name,
+                            call_prefix,
                             ret_ty,
                             runtime_fn_name,
                             args_str.join(", ")
@@ -1876,8 +1881,9 @@ impl TextCodeGen {
                         let dest_name = self.unique_name(&d.name, name_counts);
                         writeln!(
                             out,
-                            "  %{} = call {} @{}({})",
+                            "  %{} = {}call {} @{}({})",
                             dest_name,
+                            call_prefix,
                             ret_ty,
                             runtime_fn_name,
                             args_str.join(", ")
@@ -1886,7 +1892,8 @@ impl TextCodeGen {
                 } else {
                     writeln!(
                         out,
-                        "  call {} @{}({})",
+                        "  {}call {} @{}({})",
+                        call_prefix,
                         ret_ty,
                         runtime_fn_name,
                         args_str.join(", ")
