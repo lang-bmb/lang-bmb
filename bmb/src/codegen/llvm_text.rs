@@ -311,6 +311,11 @@ impl TextCodeGen {
         writeln!(out, "declare ptr @calloc(i64, i64)")?;
         writeln!(out)?;
 
+        // v0.50.70: Vector runtime functions (avoids inline PHI bug)
+        writeln!(out, "; Runtime declarations - Vector")?;
+        writeln!(out, "declare void @bmb_vec_push(i64, i64)")?;
+        writeln!(out)?;
+
         // v0.50.64: Hashmap runtime functions
         writeln!(out, "; Runtime declarations - Hashmap")?;
         writeln!(out, "declare i64 @hashmap_new()")?;
@@ -1437,7 +1442,7 @@ impl TextCodeGen {
                 }
 
                 // vec_push(vec, value) -> Unit: append with auto-grow
-                // This is complex - generates inline growth logic
+                // v0.50.70: Use runtime function to avoid inline block splitting (PHI bug fix)
                 if fn_name == "vec_push" && args.len() == 2 {
                     let vec_idx = *name_counts.entry("vec_push".to_string()).or_insert(0);
                     *name_counts.get_mut("vec_push").unwrap() += 1;
@@ -1458,100 +1463,8 @@ impl TextCodeGen {
                         _ => self.format_operand_with_strings(&args[1], string_table),
                     };
 
-                    // Get header pointer
-                    let header_ptr = format!("vp.header.{}", vec_idx);
-                    writeln!(out, "  %{} = inttoptr i64 {} to ptr", header_ptr, vec_val)?;
-
-                    // Load current ptr, len, cap
-                    let ptr_i64 = format!("vp.ptr.{}", vec_idx);
-                    let len_ptr = format!("vp.len.ptr.{}", vec_idx);
-                    let len_val = format!("vp.len.{}", vec_idx);
-                    let cap_ptr = format!("vp.cap.ptr.{}", vec_idx);
-                    let cap_val = format!("vp.cap.{}", vec_idx);
-
-                    writeln!(out, "  %{} = load i64, ptr %{}", ptr_i64, header_ptr)?;
-                    writeln!(out, "  %{} = getelementptr i64, ptr %{}, i64 1", len_ptr, header_ptr)?;
-                    writeln!(out, "  %{} = load i64, ptr %{}", len_val, len_ptr)?;
-                    writeln!(out, "  %{} = getelementptr i64, ptr %{}, i64 2", cap_ptr, header_ptr)?;
-                    writeln!(out, "  %{} = load i64, ptr %{}", cap_val, cap_ptr)?;
-
-                    // Check if need to grow: len >= cap
-                    let need_grow = format!("vp.need_grow.{}", vec_idx);
-                    writeln!(out, "  %{} = icmp sge i64 %{}, %{}", need_grow, len_val, cap_val)?;
-
-                    // Branch: if need grow, allocate new; else store directly
-                    let grow_label = format!("vp.grow.{}", vec_idx);
-                    let store_label = format!("vp.store.{}", vec_idx);
-                    let cont_label = format!("vp.cont.{}", vec_idx);
-                    writeln!(out, "  br i1 %{}, label %{}, label %{}", need_grow, grow_label, store_label)?;
-
-                    // Grow block
-                    writeln!(out, "{}:", grow_label)?;
-                    // new_cap = cap == 0 ? 4 : cap * 2
-                    let is_zero = format!("vp.is_zero.{}", vec_idx);
-                    writeln!(out, "  %{} = icmp eq i64 %{}, 0", is_zero, cap_val)?;
-                    let doubled = format!("vp.doubled.{}", vec_idx);
-                    writeln!(out, "  %{} = mul i64 %{}, 2", doubled, cap_val)?;
-                    let new_cap = format!("vp.new_cap.{}", vec_idx);
-                    writeln!(out, "  %{} = select i1 %{}, i64 4, i64 %{}", new_cap, is_zero, doubled)?;
-                    // new_size = new_cap * 8
-                    let new_size = format!("vp.new_size.{}", vec_idx);
-                    writeln!(out, "  %{} = mul i64 %{}, 8", new_size, new_cap)?;
-                    // Check if ptr == 0 for first alloc vs realloc
-                    let ptr_is_null = format!("vp.ptr_null.{}", vec_idx);
-                    writeln!(out, "  %{} = icmp eq i64 %{}, 0", ptr_is_null, ptr_i64)?;
-                    let alloc_label = format!("vp.alloc.{}", vec_idx);
-                    let realloc_label = format!("vp.realloc.{}", vec_idx);
-                    let merge_label = format!("vp.merge.{}", vec_idx);
-                    writeln!(out, "  br i1 %{}, label %{}, label %{}", ptr_is_null, alloc_label, realloc_label)?;
-
-                    // First allocation
-                    writeln!(out, "{}:", alloc_label)?;
-                    let new_data_a = format!("vp.new_data.a.{}", vec_idx);
-                    writeln!(out, "  %{} = call ptr @malloc(i64 %{})", new_data_a, new_size)?;
-                    writeln!(out, "  br label %{}", merge_label)?;
-
-                    // Realloc
-                    writeln!(out, "{}:", realloc_label)?;
-                    let old_ptr = format!("vp.old_ptr.{}", vec_idx);
-                    writeln!(out, "  %{} = inttoptr i64 %{} to ptr", old_ptr, ptr_i64)?;
-                    let new_data_r = format!("vp.new_data.r.{}", vec_idx);
-                    writeln!(out, "  %{} = call ptr @realloc(ptr %{}, i64 %{})", new_data_r, old_ptr, new_size)?;
-                    writeln!(out, "  br label %{}", merge_label)?;
-
-                    // Merge block with phi
-                    writeln!(out, "{}:", merge_label)?;
-                    let new_data = format!("vp.new_data.{}", vec_idx);
-                    writeln!(out, "  %{} = phi ptr [ %{}, %{} ], [ %{}, %{} ]", new_data, new_data_a, alloc_label, new_data_r, realloc_label)?;
-                    // Update header: ptr and cap
-                    let new_ptr_i64 = format!("vp.new_ptr.{}", vec_idx);
-                    writeln!(out, "  %{} = ptrtoint ptr %{} to i64", new_ptr_i64, new_data)?;
-                    writeln!(out, "  store i64 %{}, ptr %{}", new_ptr_i64, header_ptr)?;
-                    writeln!(out, "  store i64 %{}, ptr %{}", new_cap, cap_ptr)?;
-                    writeln!(out, "  br label %{}", store_label)?;
-
-                    // Store block
-                    writeln!(out, "{}:", store_label)?;
-                    // Re-load ptr since it may have changed
-                    let cur_ptr = format!("vp.cur_ptr.{}", vec_idx);
-                    writeln!(out, "  %{} = load i64, ptr %{}", cur_ptr, header_ptr)?;
-                    let data_ptr = format!("vp.data_ptr.{}", vec_idx);
-                    writeln!(out, "  %{} = inttoptr i64 %{} to ptr", data_ptr, cur_ptr)?;
-                    // Re-load len
-                    let cur_len = format!("vp.cur_len.{}", vec_idx);
-                    writeln!(out, "  %{} = load i64, ptr %{}", cur_len, len_ptr)?;
-                    // Store value at data[len]
-                    let slot = format!("vp.slot.{}", vec_idx);
-                    writeln!(out, "  %{} = getelementptr i64, ptr %{}, i64 %{}", slot, data_ptr, cur_len)?;
-                    writeln!(out, "  store i64 {}, ptr %{}", val_val, slot)?;
-                    // Increment len
-                    let new_len = format!("vp.new_len.{}", vec_idx);
-                    writeln!(out, "  %{} = add i64 %{}, 1", new_len, cur_len)?;
-                    writeln!(out, "  store i64 %{}, ptr %{}", new_len, len_ptr)?;
-                    writeln!(out, "  br label %{}", cont_label)?;
-
-                    // Continue
-                    writeln!(out, "{}:", cont_label)?;
+                    // Call runtime function instead of inline code (avoids PHI predecessor bug)
+                    writeln!(out, "  call void @bmb_vec_push(i64 {}, i64 {})", vec_val, val_val)?;
                     return Ok(());
                 }
 

@@ -713,6 +713,40 @@ void hashmap_free(int64_t handle) {
 }
 
 // ===================================================
+// Vector Runtime Functions (v0.50.70)
+// Vec is a dynamic array: [ptr to data, len, cap]
+// Header is 3 x i64 = 24 bytes
+// ===================================================
+
+// vec_push(vec_handle, value) - Push value to vector with auto-grow
+void bmb_vec_push(int64_t vec_handle, int64_t value) {
+    int64_t* header = (int64_t*)(uintptr_t)vec_handle;
+    int64_t ptr = header[0];
+    int64_t len = header[1];
+    int64_t cap = header[2];
+
+    // Check if need to grow
+    if (len >= cap) {
+        int64_t new_cap = (cap == 0) ? 4 : cap * 2;
+        int64_t new_size = new_cap * sizeof(int64_t);
+        int64_t* new_data;
+        if (ptr == 0) {
+            new_data = (int64_t*)malloc(new_size);
+        } else {
+            new_data = (int64_t*)realloc((void*)(uintptr_t)ptr, new_size);
+        }
+        header[0] = (int64_t)(uintptr_t)new_data;
+        header[2] = new_cap;
+        ptr = header[0];
+    }
+
+    // Store value and increment len
+    int64_t* data = (int64_t*)(uintptr_t)ptr;
+    data[len] = value;
+    header[1] = len + 1;
+}
+
+// ===================================================
 // Entry Point Wrapper (v0.31.23)
 // BMB's main() is renamed to bmb_user_main() in codegen
 // This wrapper provides the real main() that initializes argv
