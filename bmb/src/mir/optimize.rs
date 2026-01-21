@@ -216,6 +216,35 @@ impl OptimizationPass for ConstantFolding {
         let mut changed = false;
         let mut constants: HashMap<String, Constant> = HashMap::new();
 
+        // v0.50.72: Collect variables modified in non-entry blocks
+        // These might be loop-carried dependencies, so don't propagate their constants
+        // across block boundaries to avoid incorrect folding in loop headers
+        let mut loop_modified: HashSet<String> = HashSet::new();
+        for (block_idx, block) in func.blocks.iter().enumerate() {
+            if block_idx > 0 {  // Skip entry block
+                for inst in &block.instructions {
+                    // Extract destination place from each instruction variant
+                    let dest_name = match inst {
+                        MirInst::Const { dest, .. } => Some(dest.name.clone()),
+                        MirInst::Copy { dest, .. } => Some(dest.name.clone()),
+                        MirInst::BinOp { dest, .. } => Some(dest.name.clone()),
+                        MirInst::UnaryOp { dest, .. } => Some(dest.name.clone()),
+                        MirInst::Call { dest: Some(d), .. } => Some(d.name.clone()),
+                        MirInst::IndexLoad { dest, .. } => Some(dest.name.clone()),
+                        MirInst::Phi { dest, .. } => Some(dest.name.clone()),
+                        MirInst::StructInit { dest, .. } => Some(dest.name.clone()),
+                        MirInst::FieldAccess { dest, .. } => Some(dest.name.clone()),
+                        MirInst::EnumVariant { dest, .. } => Some(dest.name.clone()),
+                        MirInst::ArrayInit { dest, .. } => Some(dest.name.clone()),
+                        _ => None,
+                    };
+                    if let Some(name) = dest_name {
+                        loop_modified.insert(name);
+                    }
+                }
+            }
+        }
+
         for block in &mut func.blocks {
             let mut new_instructions = Vec::new();
 
@@ -226,8 +255,10 @@ impl OptimizationPass for ConstantFolding {
                         new_instructions.push(inst.clone());
                     }
                     MirInst::BinOp { dest, op, lhs, rhs } => {
+                        // v0.50.72: Use loop-aware constant lookup
                         if let (Some(lhs_const), Some(rhs_const)) =
-                            (get_constant(lhs, &constants), get_constant(rhs, &constants))
+                            (get_constant_with_filter(lhs, &constants, &loop_modified),
+                             get_constant_with_filter(rhs, &constants, &loop_modified))
                             && let Some(result) = fold_binop(*op, &lhs_const, &rhs_const)
                         {
                             constants.insert(dest.name.clone(), result.clone());
@@ -241,7 +272,8 @@ impl OptimizationPass for ConstantFolding {
                         new_instructions.push(inst.clone());
                     }
                     MirInst::UnaryOp { dest, op, src } => {
-                        if let Some(src_const) = get_constant(src, &constants)
+                        // v0.50.72: Use loop-aware constant lookup
+                        if let Some(src_const) = get_constant_with_filter(src, &constants, &loop_modified)
                             && let Some(result) = fold_unaryop(*op, &src_const)
                         {
                             constants.insert(dest.name.clone(), result.clone());
@@ -287,9 +319,25 @@ impl OptimizationPass for ConstantFolding {
 }
 
 fn get_constant(operand: &Operand, constants: &HashMap<String, Constant>) -> Option<Constant> {
+    get_constant_with_filter(operand, constants, &HashSet::new())
+}
+
+/// v0.50.72: Get constant with loop-modified variable filter
+fn get_constant_with_filter(
+    operand: &Operand,
+    constants: &HashMap<String, Constant>,
+    loop_modified: &HashSet<String>,
+) -> Option<Constant> {
     match operand {
         Operand::Constant(c) => Some(c.clone()),
-        Operand::Place(p) => constants.get(&p.name).cloned(),
+        Operand::Place(p) => {
+            // Don't propagate constants for loop-modified variables
+            if loop_modified.contains(&p.name) {
+                None
+            } else {
+                constants.get(&p.name).cloned()
+            }
+        }
     }
 }
 
@@ -805,20 +853,24 @@ impl OptimizationPass for CopyPropagation {
 
     fn run_on_function(&self, func: &mut MirFunction) -> bool {
         let mut changed = false;
-        let mut copies: HashMap<String, Place> = HashMap::new();
 
         for block in &mut func.blocks {
-            // Build copy map
-            for inst in &block.instructions {
-                if let MirInst::Copy { dest, src } = inst {
-                    copies.insert(dest.name.clone(), src.clone());
-                }
-            }
+            // v0.50.72: Clear copy map at each block boundary
+            // This prevents incorrect propagation across loop iterations
+            // where a variable might be reassigned
+            let mut copies: HashMap<String, Place> = HashMap::new();
 
-            // Propagate copies
+            // v0.50.72: Process instructions in order, building copy map incrementally
+            // This ensures we only propagate copies to instructions AFTER their definition
             for inst in &mut block.instructions {
+                // First propagate existing copies
                 if propagate_copies_in_inst(inst, &copies) {
                     changed = true;
+                }
+
+                // Then add this instruction to copy map if it's a Copy
+                if let MirInst::Copy { dest, src } = inst {
+                    copies.insert(dest.name.clone(), src.clone());
                 }
             }
 
