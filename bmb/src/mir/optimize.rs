@@ -1508,6 +1508,7 @@ impl OptimizationPass for TailCallOptimization {
     fn run_on_function(&self, func: &mut MirFunction) -> bool {
         let mut changed = false;
 
+        // Phase 1: Direct tail calls (Call -> Return in same block)
         for block in &mut func.blocks {
             // Check if the terminator is a Return with a value
             let return_value = match &block.terminator {
@@ -1548,6 +1549,110 @@ impl OptimizationPass for TailCallOptimization {
             // Mark the tail call
             if let Some(idx) = tail_call_idx {
                 if let MirInst::Call { is_tail, .. } = &mut block.instructions[idx] {
+                    *is_tail = true;
+                    changed = true;
+                }
+            }
+        }
+
+        // Phase 2: Phi-based tail calls (Call -> Goto -> Phi -> Return)
+        // Common in BMB's if-else expressions where recursion is in one branch
+        //
+        // Pattern:
+        //   else_block: %result = call func(...); goto merge
+        //   merge_block: %phi = phi [%other, then], [%result, else]; return %phi
+        //
+        // If %result flows directly into phi and phi is returned, mark call as tail
+        changed |= self.detect_phi_tail_calls(func);
+
+        changed
+    }
+}
+
+impl TailCallOptimization {
+    /// Detect tail calls that flow through phi nodes
+    ///
+    /// Pattern: Call in one block -> Goto -> Phi in merge block -> Return
+    fn detect_phi_tail_calls(&self, func: &mut MirFunction) -> bool {
+        // First, find merge blocks with pattern: phi -> return phi_result
+        // Collect: (merge_block_label, phi_dest, incoming_edges)
+        let mut phi_return_blocks: Vec<(String, String, Vec<(String, String)>)> = Vec::new();
+
+        for block in &func.blocks {
+            // Check for Return(phi_result)
+            let return_var = match &block.terminator {
+                Terminator::Return(Some(Operand::Place(place))) => &place.name,
+                _ => continue,
+            };
+
+            // Find phi that produces return_var (should be only instruction or last before return)
+            for inst in &block.instructions {
+                if let MirInst::Phi { dest, values } = inst {
+                    if dest.name == *return_var {
+                        // Collect incoming edges: (value_name, source_block)
+                        let edges: Vec<(String, String)> = values.iter()
+                            .filter_map(|(operand, label)| {
+                                if let Operand::Place(p) = operand {
+                                    Some((p.name.clone(), label.clone()))
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect();
+
+                        if !edges.is_empty() {
+                            phi_return_blocks.push((
+                                block.label.clone(),
+                                dest.name.clone(),
+                                edges,
+                            ));
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+
+        // For each phi return block, check source blocks for tail calls
+        let mut tail_calls_to_mark: Vec<(String, usize)> = Vec::new();
+
+        for (_merge_label, _phi_dest, edges) in &phi_return_blocks {
+            for (value_name, source_label) in edges {
+                // Find the source block
+                if let Some(source_block) = func.blocks.iter().find(|b| &b.label == source_label) {
+                    // Check if the block ends with Goto (to merge)
+                    if !matches!(source_block.terminator, Terminator::Goto(_)) {
+                        continue;
+                    }
+
+                    // Find the Call that produces value_name
+                    for (idx, inst) in source_block.instructions.iter().enumerate().rev() {
+                        match inst {
+                            MirInst::Call { dest: Some(dest), is_tail: false, .. }
+                                if dest.name == *value_name => {
+                                // Check no intervening uses
+                                let has_intervening_use = source_block.instructions[idx + 1..]
+                                    .iter()
+                                    .any(|i| uses_place(i, value_name));
+
+                                if !has_intervening_use {
+                                    tail_calls_to_mark.push((source_label.clone(), idx));
+                                }
+                                break;
+                            }
+                            _ if defines_place(inst, value_name) => break,
+                            _ => continue,
+                        }
+                    }
+                }
+            }
+        }
+
+        // Mark the tail calls
+        let mut changed = false;
+        for (block_label, call_idx) in tail_calls_to_mark {
+            if let Some(block) = func.blocks.iter_mut().find(|b| b.label == block_label) {
+                if let MirInst::Call { is_tail, .. } = &mut block.instructions[call_idx] {
                     *is_tail = true;
                     changed = true;
                 }
