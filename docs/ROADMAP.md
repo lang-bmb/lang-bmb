@@ -1153,13 +1153,14 @@ zero_overhead,bounds_check_proof,10.0,10.0,12.0,1.00,0.83,PASS_ZERO_COST
 |----|--------|------|----------|------|
 | 57.P1 | **TCO 강화** | fannkuch, fibonacci | phi-based TCO 추가 (v0.50.67) - fannkuch 2.05x, fibonacci 1.43x | ⚠️ 부분완료 |
 | 57.P2 | **문자열 상수 접기** | http_parse, json_serialize | 상수+상수, chr(const) 컴파일타임 평가 (v0.50.68) - http 1.68x, json 1.32x | ⚠️ 부분완료 |
-| 57.P3 | **재귀 TCO 확장** | syscall_overhead | **언어 설계 한계**: 재귀 vs 루프 오버헤드 (~2.73x) - TCO 정상 동작, 본질적 차이 | ✅ 분석완료 |
+| 57.P3 | **syscall_overhead 분석** | syscall_overhead | while 루프 재작성 + file_exists 타입 수정 (v0.50.71) - **~2.9x = 타입 안전성 비용** (BmbString null체크/역참조) | ✅ 근본분석완료 |
 | 57.P4 | **SIMD 벡터화 힌트** | simd_sum | BMB simd_sum **0.94x** - C 추월 달성! | ✅ 완료 |
 | 57.P5 | **인라인 임계치 조정** | 전체 | LLVM 기본값 최적 (v0.50.66 테스트) | ✅ 검증완료 |
 | 57.P6 | **memcpy 인트린직** | memory_copy | memory_copy **1.13x** - 목표 근접 | ✅ 검증완료 |
 | 57.P7 | **DCE 최적화 강화** | purity_opt, null_check_proof | purity_proof **0.70x** C추월, null_proof **0.99x** | ✅ 완료 |
 | 57.P8 | **전체 벤치마크 재검증** | 48개 전체 | **37/48 (77%) 목표 달성** - 벤치마크 러너 수정 (v0.50.69) | ✅ 완료 |
 | 57.P9 | **vec_push PHI 버그 수정** | brainfuck | 인라인→런타임 함수로 변경 (v0.50.70) - **2.92x → 1.03x** | ✅ 완료 |
+| 57.P10 | **file_exists 타입 버그 수정** | 전체 | Bool→I64 타입 불일치 수정 (v0.50.71) - segfault 해결 | ✅ 완료 |
 
 ---
 
