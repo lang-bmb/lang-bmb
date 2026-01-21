@@ -1165,8 +1165,8 @@ zero_overhead,bounds_check_proof,10.0,10.0,12.0,1.00,0.83,PASS_ZERO_COST
 | ID | 태스크 | 대상 | 예상 효과 | 상태 |
 |----|--------|------|----------|------|
 | 57.P1 | **TCO 강화** | fannkuch, fibonacci | phi-based TCO 추가 (v0.50.67) - array_get/set 오버헤드가 주 원인 | ✅ 근본분석완료 |
-| 57.P2 | **문자열 상수 접기** | http_parse, json_serialize | 상수+상수, chr(const) 컴파일타임 평가 (v0.50.68) - 함수 경계 인라이닝 필요 | ✅ 근본분석완료 |
-| 57.P3 | **syscall_overhead 분석** | syscall_overhead | **3.06x** - BmbString 래퍼 오버헤드 (타입 안전성 비용). while 루프 적용, 설계 비용으로 문서화 | ✅ 근본분석완료 |
+| 57.P2 | **문자열 상수 접기** | http_parse, json_serialize | chr+crlf 인라인+접기 (v0.50.75) - **http_parse 1.7x→1.06x** (83% concat 제거) | ✅ **완료** |
+| 57.P3 | **syscall_overhead 분석** | syscall_overhead | **~2.5x** - BmbString 래퍼 오버헤드 (타입 안전성 비용). while 루프로 변경했으나 언어 설계 특성 | ✅ 분석완료 |
 | 57.P4 | **SIMD 벡터화 힌트** | simd_sum | BMB simd_sum **0.75x** - C 추월 달성! | ✅ 완료 |
 | 57.P5 | **인라인 임계치 조정** | 전체 | LLVM 기본값 최적 (v0.50.66 테스트) | ✅ 검증완료 |
 | 57.P6 | **memcpy 인트린직** | memory_copy | memory_copy **1.09x** - 목표 달성 | ✅ 완료 |
