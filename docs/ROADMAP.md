@@ -44,7 +44,7 @@
 | **v0.54** | **Performance Gate** | ✅ 완료 | **Gate #3.2/3.3 통과: bounds/overflow 검사 0% (v0.54.5)** |
 | **v0.55** | **Ecosystem** | ✅ 완료 | **14/14 패키지 컴파일 성공 (v0.55.1)** |
 | **v0.56** | **Showcase** | ✅ 완료 | **샘플 앱 5/5, 시나리오 문서 5/5 (v0.56.1: Fin[N]/Range/disjoint 반영)** |
-| **v0.57** | **Final Verification** | ✅ 완료 | **벤치마크 47/48 통과 (98%), 보안 감사 완료, Gate #3.2/#3.4 PASSED** |
+| **v0.57** | **Final Verification** | 🔄 진행중 | **벤치마크 측정 완료, 성능 개선 필요 (14개 SLOW > 1.10x C)** |
 | **v0.58** | **Release Candidate** | 🎯 목표 | **v1.0 준비, 커뮤니티 검증 대기** |
 
 ---
@@ -69,7 +69,7 @@
 | **파서 통합** | 새 타입 파싱 + Lowering/Codegen 연결 | ✅ 완료 | v0.52 |
 | **부트스트랩 완성** | Stage 1 hang 해결, Stage 3 재검증 | ✅ 완료 | v0.53 |
 | **성능 게이트** | Gate #3.2/3.3 통과 (bounds/overflow 0%) | ✅ 실측 완료 (v0.50.64: 0.959x) | v0.54 |
-| **🚨 벤치마크 전체** | 48개 벤치마크 C/BMB/Rust 측정 | ✅ 47/48 (98%) 완료 | v0.57 |
+| **🚨 벤치마크 전체** | 48개 벤치마크 ALL ≤1.10x C | ⚠️ 34/48 (71%) 통과, 14개 SLOW | v0.57 |
 | **크로스 컴파일** | Linux/Windows/macOS/WASM | ✅ IR 생성 가능 (v0.50.23) | v0.55 |
 | **생태계** | 14+ 핵심 패키지 (새 타입 시스템 적용) | ✅ 14/14 패키지 완료 (v0.55.1) | v0.55 |
 | **샘플/문서** | 5개 샘플 앱, 5개 시나리오 | ✅ 완료 (v0.56.1: Zero-Cost Safety 문서화) | v0.56 |
@@ -1071,15 +1071,37 @@ zero_overhead,bounds_check_proof,10.0,10.0,12.0,1.00,0.83,PASS_ZERO_COST
 ...
 ```
 
-#### 완료 기준
+#### 완료 기준 (엄격)
 
-- [x] 48개 벤치마크 전체 실행 완료 (47/48 통과, 98%)
+- [x] 48개 벤치마크 전체 실행 완료
 - [x] C/BMB/Rust 3언어 비교 데이터 수집 (v0.50.64)
-- [x] Gate #3.2, #3.4 통과 (Gate #3.1 일부 미통과는 타이밍 오차)
+- [x] Gate #3.2, #3.4 통과 (Zero-Cost Safety 검증)
 - [x] Zero-Cost 5개 IR 검증 (bounds, overflow, null, aliasing, purity)
-- [x] Surpass 케이스 17개+ 확인 (BMB > C) - FAST 17개
-- [x] 결과 CSV 48행 존재
-- [x] BENCHMARK_REPORT.md 업데이트 (2026-01-21_105739)
+- [ ] **🚨 ALL 48 benchmarks ≤ 1.10x C (현재 34/48, 14개 SLOW)**
+- [ ] **🚨 CRITICAL 3개 해결 (syscall 2.7x, http 2.3x, fannkuch 2.1x)**
+- [ ] **🚨 SEVERE 3개 해결 (simd 1.5x, json_ser 1.5x, fib 1.4x)**
+- [ ] MODERATE 8개 해결 (1.2x-1.25x)
+
+#### 성능 개선 필요 (14개 SLOW > 1.10x C)
+
+| 심각도 | 벤치마크 | BMB/C | 근본 원인 | 해결책 |
+|--------|----------|-------|----------|--------|
+| **CRITICAL** | syscall_overhead | 2.72x | FFI boundary | FFI 인라인화 |
+| **CRITICAL** | http_parse | 2.29x | 문자열 연결 할당 | 문자열 빌더 |
+| **CRITICAL** | fannkuch | 2.12x | 재귀 호출 (C는 반복) | TCO 강화 |
+| **SEVERE** | simd_sum | 1.50x | 벡터화 실패 | SIMD 힌트 |
+| **SEVERE** | json_serialize | 1.45x | 문자열 연결 | 문자열 빌더 |
+| **SEVERE** | fibonacci | 1.44x | 재귀 오버헤드 | TCO 강화 |
+| MODERATE | purity_opt | 1.25x | 최적화 미적용 | 인라인 강화 |
+| MODERATE | memory_copy | 1.25x | memcpy 미사용 | 인트린직 |
+| MODERATE | aliasing_proof | 1.25x | noalias 미전파 | LLVM 힌트 |
+| MODERATE | parse_bootstrap | 1.25x | 호출 오버헤드 | 인라인 |
+| MODERATE | mandelbrot | 1.20x | FP 최적화 | FMA |
+| MODERATE | fasta | 1.20x | 버퍼 처리 | 재사용 |
+| MODERATE | pointer_chase | 1.20x | 캐시 미스 | 힌트 |
+| MODERATE | null_check_proof | 1.20x | DCE 미적용 | 최적화 |
+
+> 📋 상세: `docs/PERFORMANCE_IMPROVEMENT_PLAN.md` 참조
 
 ### 보안 감사 항목
 
@@ -1114,6 +1136,19 @@ zero_overhead,bounds_check_proof,10.0,10.0,12.0,1.00,0.83,PASS_ZERO_COST
 | 57.3 | **크로스 플랫폼 검증** | 3개 OS 빌드 및 실행 | P0 | 📋 계획 |
 | 57.4 | **릴리스 노트 작성** | CHANGELOG, 마이그레이션 가이드 | P0 | 📋 계획 |
 | 57.5 | **성능 회귀 검증** | 새 타입 시스템으로 인한 회귀 없음 확인 | P0 | 📋 계획 |
+
+### 🚨 성능 개선 태스크 (P0 - v0.57 완료 필수)
+
+| ID | 태스크 | 대상 | 예상 효과 | 상태 |
+|----|--------|------|----------|------|
+| 57.P1 | **TCO 강화** | fannkuch, fibonacci | 2.1x → ≤1.1x | 📋 계획 |
+| 57.P2 | **문자열 빌더 구현** | http_parse, json_serialize | 2.3x → ≤1.1x | 📋 계획 |
+| 57.P3 | **FFI 인라인화** | syscall_overhead | 2.7x → ≤1.2x | 📋 계획 |
+| 57.P4 | **SIMD 벡터화 힌트** | simd_sum | 1.5x → ≤1.1x | 📋 계획 |
+| 57.P5 | **인라인 임계치 조정** | 전체 | 5-10% 개선 | 📋 계획 |
+| 57.P6 | **memcpy 인트린직** | memory_copy | 1.25x → ≤1.1x | 📋 계획 |
+| 57.P7 | **DCE 최적화 강화** | purity_opt, null_check_proof | 1.25x → ≤1.1x | 📋 계획 |
+| 57.P8 | **전체 벤치마크 재검증** | 48개 전체 | ALL ≤1.10x | 📋 계획 |
 
 ---
 
