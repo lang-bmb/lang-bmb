@@ -450,6 +450,9 @@ impl TextCodeGen {
         // - nounwind: BMB doesn't have exceptions, enables better codegen
         // - For main: no special attributes (ABI compatibility)
         // - Attributes go AFTER the parameter list in LLVM IR syntax
+        //
+        // NOTE: inlinehint was tested (v0.50.66) but caused performance regression
+        // LLVM's default inlining heuristics are better than manual hints
         let attrs = if func.name == "main" { "" } else { " nounwind" };
 
         // v0.31.23: Rename BMB main to bmb_user_main so C runtime can provide real main()
