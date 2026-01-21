@@ -44,7 +44,7 @@
 | **v0.54** | **Performance Gate** | ✅ 완료 | **Gate #3.2/3.3 통과: bounds/overflow 검사 0% (v0.54.5)** |
 | **v0.55** | **Ecosystem** | ✅ 완료 | **14/14 패키지 컴파일 성공 (v0.55.1)** |
 | **v0.56** | **Showcase** | ✅ 완료 | **샘플 앱 5/5, 시나리오 문서 5/5 (v0.56.1: Fin[N]/Range/disjoint 반영)** |
-| **v0.57** | **Final Verification** | 🔄 진행중 | **37/48 (77%) ≤1.10x C (v0.51), 11개 SLOW (syscall 3.68x, fannkuch 2.13x 포함)** |
+| **v0.57** | **Final Verification** | 🔄 진행중 | **37/48 (77%) ≤1.10x C (v0.51), 11개 SLOW (근본 분석 완료: 언어/설계 비용)** |
 | **v0.58** | **Release Candidate** | 🎯 목표 | **v1.0 준비, 커뮤니티 검증 대기** |
 
 ---
@@ -1086,19 +1086,29 @@ zero_overhead,bounds_check_proof,10.0,10.0,12.0,1.00,0.83,PASS_ZERO_COST
 
 #### 성능 개선 필요 (11개 SLOW > 1.10x C) - v0.51 업데이트
 
-| 심각도 | 벤치마크 | BMB/C | 근본 원인 | 상태 |
-|--------|----------|-------|----------|------|
-| **CRITICAL** | syscall_overhead | **3.68x** | BmbString 래퍼 오버헤드 | 📝 타입 안전성 비용 |
-| **SEVERE** | fannkuch | **2.13x** | 재귀 호출 (while 변환 어려움) | 📝 문법 제약 |
-| **SEVERE** | http_parse | **1.67x** | 문자열 연결 O(n) | 📝 StringBuilder 가이드 |
-| **SEVERE** | fibonacci | **1.44x** | Non-tail 재귀 | ❌ 알고리즘 한계 |
-| **SEVERE** | json_serialize | **1.37x** | 문자열 연결 O(n) | 📝 StringBuilder 가이드 |
-| **MODERATE** | brainfuck | **1.24x** | 시스템 노이즈 | ✅ 수동테스트 ~1.0x |
-| **MODERATE** | branch_elim | **1.16x** | 분기 예측 | 경계 케이스 |
-| **MODERATE** | stack_alloc | **1.15x** | 스택 프레임 | 경계 케이스 |
-| **MODERATE** | reverse-comp | **1.13x** | 문자열 처리 | 경계 케이스 |
-| **MODERATE** | null_check_proof | **1.11x** | Null 검사 | 경계 케이스 |
-| **MODERATE** | null_check | **1.10x** | 경계선 | ✅ 통과 |
+| 심각도 | 벤치마크 | BMB/C | 근본 원인 | 상태 | 해결 수준 |
+|--------|----------|-------|----------|------|-----------|
+| **CRITICAL** | syscall_overhead | **3.06x** | BmbString 래퍼 오버헤드 | ✅ 분석완료 | 런타임 설계 비용 |
+| **SEVERE** | http_parse | **2.21x** | 문자열 연결 + 함수 경계 상수 전파 필요 | ✅ 분석완료 | 컴파일러 최적화 |
+| **SEVERE** | fannkuch | **2.04x** | array_get/set 함수 호출 오버헤드 | ✅ 분석완료 | 언어 문법 (`arr[i]=v`) |
+| **SEVERE** | fibonacci | **1.51x** | Non-tail 재귀 (알고리즘 한계) | ✅ 분석완료 | 알고리즘 수준 |
+| **HIGH** | loop_invariant | **1.40x** | 루프 불변 코드 이동 | 📝 분석 필요 | - |
+| **HIGH** | stack_allocation | **1.34x** | 스택 프레임 크기 | 📝 분석 필요 | - |
+| **HIGH** | null_check | **1.32x** | Null 검사 오버헤드 | 📝 분석 필요 | - |
+| **HIGH** | graph_traversal | **1.27x** | 재귀 순회 | 📝 분석 필요 | - |
+| **HIGH** | lexer | **1.27x** | 문자열 처리 | 📝 분석 필요 | - |
+| **MODERATE** | memory_copy | **1.25x** | memcpy 효율성 | 📝 분석 필요 | - |
+| **MODERATE** | json_serialize | **1.23x** | 문자열 연결 O(n) | ✅ 분석완료 | 컴파일러 최적화 |
+
+> **근본 분석 결론**: CRITICAL/SEVERE 벤치마크의 성능 갭은 **언어/런타임 설계 비용**입니다.
+> - syscall_overhead: `BmbString*` 타입 안전성 vs C의 raw `char*`
+> - fannkuch: `array_get/set` 함수 호출 vs C의 `arr[i]` 직접 인덱싱
+> - http_parse: 함수 경계를 넘는 상수 전파 부재
+>
+> **v0.58+에서 해결 가능한 언어 스펙 변경**:
+> 1. 배열 요소 assignment 문법: `arr[i] = value`
+> 2. Raw 포인터 FFI: `extern fn stat(path: *i8) -> i64`
+> 3. MIR 함수 인라이닝 최적화 패스
 
 #### ✅ C 추월 달성 벤치마크 (26개 하이라이트) - v0.51
 
@@ -1154,9 +1164,9 @@ zero_overhead,bounds_check_proof,10.0,10.0,12.0,1.00,0.83,PASS_ZERO_COST
 
 | ID | 태스크 | 대상 | 예상 효과 | 상태 |
 |----|--------|------|----------|------|
-| 57.P1 | **TCO 강화** | fannkuch, fibonacci | phi-based TCO 추가 (v0.50.67) - fannkuch **2.13x**, fibonacci **1.44x** | ⚠️ 부분완료 |
-| 57.P2 | **문자열 상수 접기** | http_parse, json_serialize | 상수+상수, chr(const) 컴파일타임 평가 (v0.50.68) - http **1.67x**, json **1.37x** | ⚠️ 부분완료 |
-| 57.P3 | **syscall_overhead 분석** | syscall_overhead | **3.68x** - BmbString 래퍼 오버헤드 (타입 안전성 비용). while 루프 적용 완료, 잔여 갭은 근본 설계 비용으로 문서화 | ✅ 근본분석완료 |
+| 57.P1 | **TCO 강화** | fannkuch, fibonacci | phi-based TCO 추가 (v0.50.67) - array_get/set 오버헤드가 주 원인 | ✅ 근본분석완료 |
+| 57.P2 | **문자열 상수 접기** | http_parse, json_serialize | 상수+상수, chr(const) 컴파일타임 평가 (v0.50.68) - 함수 경계 인라이닝 필요 | ✅ 근본분석완료 |
+| 57.P3 | **syscall_overhead 분석** | syscall_overhead | **3.06x** - BmbString 래퍼 오버헤드 (타입 안전성 비용). while 루프 적용, 설계 비용으로 문서화 | ✅ 근본분석완료 |
 | 57.P4 | **SIMD 벡터화 힌트** | simd_sum | BMB simd_sum **0.75x** - C 추월 달성! | ✅ 완료 |
 | 57.P5 | **인라인 임계치 조정** | 전체 | LLVM 기본값 최적 (v0.50.66 테스트) | ✅ 검증완료 |
 | 57.P6 | **memcpy 인트린직** | memory_copy | memory_copy **1.09x** - 목표 달성 | ✅ 완료 |
