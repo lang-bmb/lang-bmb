@@ -948,11 +948,52 @@ impl OptimizationPass for CommonSubexpressionElimination {
         let mut changed = false;
         let mut expressions: HashMap<String, Place> = HashMap::new();
 
+        // v0.50.73: Track which variables are modified in non-entry blocks
+        // These are potentially loop-carried variables whose values change between iterations
+        let mut modified_vars: HashSet<String> = HashSet::new();
+        for (block_idx, block) in func.blocks.iter().enumerate() {
+            if block_idx > 0 {  // Skip entry block
+                for inst in &block.instructions {
+                    // Collect all variables that are assigned/modified
+                    let dest_name = match inst {
+                        MirInst::Const { dest, .. } => Some(&dest.name),
+                        MirInst::Copy { dest, .. } => Some(&dest.name),
+                        MirInst::BinOp { dest, .. } => Some(&dest.name),
+                        MirInst::UnaryOp { dest, .. } => Some(&dest.name),
+                        MirInst::Call { dest: Some(d), .. } => Some(&d.name),
+                        MirInst::IndexLoad { dest, .. } => Some(&dest.name),
+                        MirInst::Phi { dest, .. } => Some(&dest.name),
+                        _ => None,
+                    };
+                    if let Some(name) = dest_name {
+                        modified_vars.insert(name.clone());
+                    }
+                }
+            }
+        }
+
         for block in &mut func.blocks {
             let mut new_instructions = Vec::new();
 
             for inst in &block.instructions {
                 if let MirInst::BinOp { dest, op, lhs, rhs } = inst {
+                    // v0.50.73: Check if any operand uses a modified variable
+                    // If so, skip CSE for this expression to avoid incorrect reuse
+                    let lhs_uses_modified = match lhs {
+                        Operand::Place(p) => modified_vars.contains(&p.name),
+                        _ => false,
+                    };
+                    let rhs_uses_modified = match rhs {
+                        Operand::Place(p) => modified_vars.contains(&p.name),
+                        _ => false,
+                    };
+
+                    if lhs_uses_modified || rhs_uses_modified {
+                        // Don't apply CSE to expressions using loop-modified variables
+                        new_instructions.push(inst.clone());
+                        continue;
+                    }
+
                     let key = format!("{:?}:{:?}:{:?}", op, lhs, rhs);
 
                     if let Some(existing) = expressions.get(&key) {
