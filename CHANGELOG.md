@@ -7,6 +7,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.51.1] - 2026-01-21
+
+### Added
+
+- **Phi-based tail call optimization** (57.P1): Detect `Call → Goto → Phi → Return` patterns in MIR
+  - TCO now works for tail calls in conditional branches (BMB's if-else expression pattern)
+  - fannkuch improved from 2.12x → 1.59x C
+
+- **Compile-time string constant folding** (57.P2): Evaluate string operations at compile time
+  - `"Hello" + " " + "World"` → single `"Hello World"` constant
+  - `chr(65)` → `"A"`, `chr(13) + chr(10)` → `"\r\n"` at compile time
+  - Reduces runtime allocations in string-heavy code
+
+- **Runtime hashmap implementation** (v0.50.64): Native hashmap with runtime functions
+  - `hashmap_new()`, `hashmap_get()`, `hashmap_set()`, `hashmap_contains()`, `hashmap_remove()`
+
+### Changed
+
+- **Runtime compiled with matching optimization level** (v0.51): `runtime.c` now uses same `-O` flag as BMB code
+  - Previous: runtime always compiled with `-O0` → 30% FFI overhead
+  - Now: `--aggressive` → `-O3` for both BMB and runtime
+  - FFI-heavy benchmarks improved significantly
+
+- **Loop grammar improvement** (57.P12): `while`/`for`/`loop` body now accepts direct assignment
+  - Previous: required nested block `while x < 10 { { x = x + 1; () } }`
+  - Now: `while x < 10 { x = x + 1 }` works directly
+
+### Fixed
+
+- **vec_push PHI node bug** (57.P9): Replace inline codegen with runtime call
+  - Inline blocks broke PHI predecessor tracking
+  - brainfuck improved from 2.92x (interpreter fallback) → 1.24x C
+
+- **file_exists type mismatch** (57.P10): Return type is `i64`, not `bool`
+  - Caused segfault when return value used in conditionals
+
+- **Loop-safe MIR optimization** (v0.50.72): Fix constant folding/copy propagation in loop contexts
+  - Prevents incorrect optimization of loop variables
+
+- **malloc/free pointer type handling** (v0.50.72): Proper LLVM IR type emission for memory operations
+
+### Performance
+
+- **37/48 (77%) benchmarks ≤1.10x C** (v0.51)
+- **26 benchmarks FASTER than C** (hash_table 0.45x, n_body 0.22x)
+- 11 SLOW benchmarks have documented root causes (language design decisions, not bugs)
+
 ## [0.50.27] - 2026-01-17
 
 ### Changed
