@@ -1345,11 +1345,29 @@ impl OptimizationPass for ContractUnreachableElimination {
         // Second pass: find all reachable blocks (starting from entry)
         let reachable = self.find_reachable_blocks(func);
 
+        // Collect unreachable labels before removing blocks
+        let unreachable_blocks: HashSet<String> = func.blocks.iter()
+            .filter(|block| !reachable.contains(&block.label))
+            .map(|block| block.label.clone())
+            .collect();
+
         // Third pass: remove unreachable blocks
         let original_len = func.blocks.len();
         func.blocks.retain(|block| reachable.contains(&block.label));
         if func.blocks.len() != original_len {
             changed = true;
+        }
+
+        // Fourth pass: update PHI nodes to remove incoming edges from removed blocks
+        // This is CRITICAL - PHI nodes must only reference existing predecessor blocks
+        if !unreachable_blocks.is_empty() {
+            for block in &mut func.blocks {
+                for inst in &mut block.instructions {
+                    if let MirInst::Phi { values, .. } = inst {
+                        values.retain(|(_, label)| !unreachable_blocks.contains(label));
+                    }
+                }
+            }
         }
 
         changed
