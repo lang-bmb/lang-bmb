@@ -1609,6 +1609,171 @@ impl TextCodeGen {
                     return Ok(());
                 }
 
+                // v0.50.61: Inline string operations for zero-cost string access
+                // BmbString layout: {ptr data, i64 len, i64 cap}
+
+                // len(s) -> i64: inline string length access
+                if (fn_name == "len" || fn_name == "bmb_string_len") && args.len() == 1 {
+                    let str_idx = *name_counts.entry("str_len".to_string()).or_insert(0);
+                    *name_counts.get_mut("str_len").unwrap() += 1;
+
+                    // Get string pointer argument
+                    let str_val = match &args[0] {
+                        Operand::Place(p) if local_names.contains(&p.name) => {
+                            let load_name = format!("strlen.str.{}", str_idx);
+                            writeln!(out, "  %{} = load ptr, ptr %{}.addr", load_name, p.name)?;
+                            format!("%{}", load_name)
+                        }
+                        _ => self.format_operand_with_strings(&args[0], string_table),
+                    };
+
+                    // Access len field at offset 1 in BmbString struct
+                    // struct BmbString { ptr data; i64 len; i64 cap; }
+                    let len_ptr = format!("strlen.len_ptr.{}", str_idx);
+                    writeln!(out, "  %{} = getelementptr {{ptr, i64, i64}}, ptr {}, i32 0, i32 1", len_ptr, str_val)?;
+
+                    if let Some(d) = dest {
+                        if local_names.contains(&d.name) {
+                            let len_val = format!("strlen.len.{}", str_idx);
+                            writeln!(out, "  %{} = load i64, ptr %{}", len_val, len_ptr)?;
+                            writeln!(out, "  store i64 %{}, ptr %{}.addr", len_val, d.name)?;
+                        } else {
+                            let dest_name = self.unique_name(&d.name, name_counts);
+                            writeln!(out, "  %{} = load i64, ptr %{}", dest_name, len_ptr)?;
+                        }
+                    }
+                    return Ok(());
+                }
+
+                // char_at(s, idx) / byte_at(s, idx) -> i64: inline character access
+                if (fn_name == "char_at" || fn_name == "byte_at" || fn_name == "bmb_string_char_at") && args.len() == 2 {
+                    let str_idx = *name_counts.entry("str_char_at".to_string()).or_insert(0);
+                    *name_counts.get_mut("str_char_at").unwrap() += 1;
+
+                    // Get string pointer argument
+                    let str_val = match &args[0] {
+                        Operand::Place(p) if local_names.contains(&p.name) => {
+                            let load_name = format!("charat.str.{}", str_idx);
+                            writeln!(out, "  %{} = load ptr, ptr %{}.addr", load_name, p.name)?;
+                            format!("%{}", load_name)
+                        }
+                        _ => self.format_operand_with_strings(&args[0], string_table),
+                    };
+
+                    // Get index argument
+                    let idx_val = match &args[1] {
+                        Operand::Place(p) if local_names.contains(&p.name) => {
+                            let load_name = format!("charat.idx.{}", str_idx);
+                            writeln!(out, "  %{} = load i64, ptr %{}.addr", load_name, p.name)?;
+                            format!("%{}", load_name)
+                        }
+                        _ => self.format_operand_with_strings(&args[1], string_table),
+                    };
+
+                    // Access data pointer at offset 0 in BmbString struct
+                    let data_ptr_ptr = format!("charat.data_ptr.{}", str_idx);
+                    writeln!(out, "  %{} = getelementptr {{ptr, i64, i64}}, ptr {}, i32 0, i32 0", data_ptr_ptr, str_val)?;
+
+                    // Load the data pointer
+                    let data_ptr = format!("charat.data.{}", str_idx);
+                    writeln!(out, "  %{} = load ptr, ptr %{}", data_ptr, data_ptr_ptr)?;
+
+                    // Index into data array
+                    let char_ptr = format!("charat.char_ptr.{}", str_idx);
+                    writeln!(out, "  %{} = getelementptr i8, ptr %{}, i64 {}", char_ptr, data_ptr, idx_val)?;
+
+                    // Load byte and zero-extend to i64
+                    let char_val = format!("charat.byte.{}", str_idx);
+                    writeln!(out, "  %{} = load i8, ptr %{}", char_val, char_ptr)?;
+
+                    if let Some(d) = dest {
+                        if local_names.contains(&d.name) {
+                            let ext_val = format!("charat.ext.{}", str_idx);
+                            writeln!(out, "  %{} = zext i8 %{} to i64", ext_val, char_val)?;
+                            writeln!(out, "  store i64 %{}, ptr %{}.addr", ext_val, d.name)?;
+                        } else {
+                            let dest_name = self.unique_name(&d.name, name_counts);
+                            writeln!(out, "  %{} = zext i8 %{} to i64", dest_name, char_val)?;
+                        }
+                    }
+                    return Ok(());
+                }
+
+                // ord(s) -> i64: inline first character access (same as char_at(s, 0))
+                // NOTE: If argument is already i64 (from char_at), it's already the char code - pass through
+                if (fn_name == "ord" || fn_name == "bmb_ord") && args.len() == 1 {
+                    // Check argument type to determine if it's a String (ptr) or char (i64)
+                    let arg_ty = match &args[0] {
+                        Operand::Constant(c) => self.constant_type(c),
+                        Operand::Place(p) => place_types.get(&p.name).copied()
+                            .unwrap_or_else(|| self.infer_place_type(p, func)),
+                    };
+
+                    // If argument is i64 (char from char_at), just pass through - it's already the char code
+                    if arg_ty == "i64" {
+                        let str_idx = *name_counts.entry("str_ord".to_string()).or_insert(0);
+                        *name_counts.get_mut("str_ord").unwrap() += 1;
+
+                        let char_val = match &args[0] {
+                            Operand::Place(p) if local_names.contains(&p.name) => {
+                                let load_name = format!("ord.passthru.{}", str_idx);
+                                writeln!(out, "  %{} = load i64, ptr %{}.addr", load_name, p.name)?;
+                                format!("%{}", load_name)
+                            }
+                            _ => self.format_operand_with_strings(&args[0], string_table),
+                        };
+
+                        if let Some(d) = dest {
+                            if local_names.contains(&d.name) {
+                                writeln!(out, "  store i64 {}, ptr %{}.addr", char_val, d.name)?;
+                            } else {
+                                // For SSA, we need a copy instruction
+                                let dest_name = self.unique_name(&d.name, name_counts);
+                                writeln!(out, "  %{} = add i64 {}, 0", dest_name, char_val)?;
+                            }
+                        }
+                        return Ok(());
+                    }
+
+                    // For String (ptr) argument, do the full inline
+                    let str_idx = *name_counts.entry("str_ord".to_string()).or_insert(0);
+                    *name_counts.get_mut("str_ord").unwrap() += 1;
+
+                    // Get string pointer argument
+                    let str_val = match &args[0] {
+                        Operand::Place(p) if local_names.contains(&p.name) => {
+                            let load_name = format!("ord.str.{}", str_idx);
+                            writeln!(out, "  %{} = load ptr, ptr %{}.addr", load_name, p.name)?;
+                            format!("%{}", load_name)
+                        }
+                        _ => self.format_operand_with_strings(&args[0], string_table),
+                    };
+
+                    // Access data pointer at offset 0 in BmbString struct
+                    let data_ptr_ptr = format!("ord.data_ptr.{}", str_idx);
+                    writeln!(out, "  %{} = getelementptr {{ptr, i64, i64}}, ptr {}, i32 0, i32 0", data_ptr_ptr, str_val)?;
+
+                    // Load the data pointer
+                    let data_ptr = format!("ord.data.{}", str_idx);
+                    writeln!(out, "  %{} = load ptr, ptr %{}", data_ptr, data_ptr_ptr)?;
+
+                    // Load first byte and zero-extend to i64
+                    let char_val = format!("ord.byte.{}", str_idx);
+                    writeln!(out, "  %{} = load i8, ptr %{}", char_val, data_ptr)?;
+
+                    if let Some(d) = dest {
+                        if local_names.contains(&d.name) {
+                            let ext_val = format!("ord.ext.{}", str_idx);
+                            writeln!(out, "  %{} = zext i8 %{} to i64", ext_val, char_val)?;
+                            writeln!(out, "  store i64 %{}, ptr %{}.addr", ext_val, d.name)?;
+                        } else {
+                            let dest_name = self.unique_name(&d.name, name_counts);
+                            writeln!(out, "  %{} = zext i8 %{} to i64", dest_name, char_val)?;
+                        }
+                    }
+                    return Ok(());
+                }
+
                 // First check user-defined functions, then fall back to builtins
                 let ret_ty = fn_return_types
                     .get(fn_name)
