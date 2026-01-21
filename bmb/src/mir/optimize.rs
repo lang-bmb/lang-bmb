@@ -66,6 +66,9 @@ impl OptimizationPipeline {
                 pipeline.add_pass(Box::new(DeadCodeElimination));
                 pipeline.add_pass(Box::new(SimplifyBranches));
                 pipeline.add_pass(Box::new(CopyPropagation));
+                // v0.50.76: Add contract-based optimization for dead branch elimination
+                pipeline.add_pass(Box::new(ContractBasedOptimization));
+                pipeline.add_pass(Box::new(ContractUnreachableElimination));
                 // v0.50.65: Add tail call optimization for recursive functions
                 pipeline.add_pass(Box::new(TailCallOptimization));
             }
