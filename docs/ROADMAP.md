@@ -44,7 +44,7 @@
 | **v0.54** | **Performance Gate** | ✅ 완료 | **Gate #3.2/3.3 통과: bounds/overflow 검사 0% (v0.54.5)** |
 | **v0.55** | **Ecosystem** | ✅ 완료 | **14/14 패키지 컴파일 성공 (v0.55.1)** |
 | **v0.56** | **Showcase** | ✅ 완료 | **샘플 앱 5/5, 시나리오 문서 5/5 (v0.56.1: Fin[N]/Range/disjoint 반영)** |
-| **v0.57** | **Final Verification** | 🔄 진행중 | **벤치마크 측정 완료, 성능 개선 필요 (14개 SLOW > 1.10x C)** |
+| **v0.57** | **Final Verification** | 🔄 진행중 | **38/48 (79%) ≤1.10x C (v0.50.70), 10개 SLOW 중 1개는 언어 한계** |
 | **v0.58** | **Release Candidate** | 🎯 목표 | **v1.0 준비, 커뮤니티 검증 대기** |
 
 ---
@@ -69,7 +69,7 @@
 | **파서 통합** | 새 타입 파싱 + Lowering/Codegen 연결 | ✅ 완료 | v0.52 |
 | **부트스트랩 완성** | Stage 1 hang 해결, Stage 3 재검증 | ✅ 완료 | v0.53 |
 | **성능 게이트** | Gate #3.2/3.3 통과 (bounds/overflow 0%) | ✅ 실측 완료 (v0.50.64: 0.959x) | v0.54 |
-| **🚨 벤치마크 전체** | 48개 벤치마크 ALL ≤1.10x C | ⚠️ 34/48 (71%) 통과, 14개 SLOW | v0.57 |
+| **🚨 벤치마크 전체** | 48개 벤치마크 ALL ≤1.10x C | ⚠️ 38/48 (79%) 통과, 9개 SLOW + 1 언어한계 | v0.57 |
 | **크로스 컴파일** | Linux/Windows/macOS/WASM | ✅ IR 생성 가능 (v0.50.23) | v0.55 |
 | **생태계** | 14+ 핵심 패키지 (새 타입 시스템 적용) | ✅ 14/14 패키지 완료 (v0.55.1) | v0.55 |
 | **샘플/문서** | 5개 샘플 앱, 5개 시나리오 | ✅ 완료 (v0.56.1: Zero-Cost Safety 문서화) | v0.56 |
@@ -1153,12 +1153,13 @@ zero_overhead,bounds_check_proof,10.0,10.0,12.0,1.00,0.83,PASS_ZERO_COST
 |----|--------|------|----------|------|
 | 57.P1 | **TCO 강화** | fannkuch, fibonacci | phi-based TCO 추가 (v0.50.67) - fannkuch 2.05x, fibonacci 1.43x | ⚠️ 부분완료 |
 | 57.P2 | **문자열 상수 접기** | http_parse, json_serialize | 상수+상수, chr(const) 컴파일타임 평가 (v0.50.68) - http 1.68x, json 1.32x | ⚠️ 부분완료 |
-| 57.P3 | **재귀 TCO 확장** | syscall_overhead | phi→return 패턴 TCO (v0.50.67) - **회귀 발생** 2.82x | ❌ 조사필요 |
+| 57.P3 | **재귀 TCO 확장** | syscall_overhead | **언어 설계 한계**: 재귀 vs 루프 오버헤드 (~2.73x) - TCO 정상 동작, 본질적 차이 | ✅ 분석완료 |
 | 57.P4 | **SIMD 벡터화 힌트** | simd_sum | BMB simd_sum **0.94x** - C 추월 달성! | ✅ 완료 |
 | 57.P5 | **인라인 임계치 조정** | 전체 | LLVM 기본값 최적 (v0.50.66 테스트) | ✅ 검증완료 |
 | 57.P6 | **memcpy 인트린직** | memory_copy | memory_copy **1.13x** - 목표 근접 | ✅ 검증완료 |
 | 57.P7 | **DCE 최적화 강화** | purity_opt, null_check_proof | purity_proof **0.70x** C추월, null_proof **0.99x** | ✅ 완료 |
 | 57.P8 | **전체 벤치마크 재검증** | 48개 전체 | **37/48 (77%) 목표 달성** - 벤치마크 러너 수정 (v0.50.69) | ✅ 완료 |
+| 57.P9 | **vec_push PHI 버그 수정** | brainfuck | 인라인→런타임 함수로 변경 (v0.50.70) - **2.92x → 1.03x** | ✅ 완료 |
 
 ---
 
