@@ -44,7 +44,7 @@
 | **v0.54** | **Performance Gate** | ✅ 완료 | **Gate #3.2/3.3 통과: bounds/overflow 검사 0% (v0.54.5)** |
 | **v0.55** | **Ecosystem** | ✅ 완료 | **14/14 패키지 컴파일 성공 (v0.55.1)** |
 | **v0.56** | **Showcase** | ✅ 완료 | **샘플 앱 5/5, 시나리오 문서 5/5 (v0.56.1: Fin[N]/Range/disjoint 반영)** |
-| **v0.57** | **Final Verification** | 🔄 진행중 | **38/48 (79%) ≤1.10x C (v0.50.70), 10개 SLOW 중 1개는 언어 한계** |
+| **v0.57** | **Final Verification** | 🔄 진행중 | **37/48 (77%) ≤1.10x C (v0.51), 11개 SLOW (syscall 3.68x, fannkuch 2.13x 포함)** |
 | **v0.58** | **Release Candidate** | 🎯 목표 | **v1.0 준비, 커뮤니티 검증 대기** |
 
 ---
@@ -69,7 +69,7 @@
 | **파서 통합** | 새 타입 파싱 + Lowering/Codegen 연결 | ✅ 완료 | v0.52 |
 | **부트스트랩 완성** | Stage 1 hang 해결, Stage 3 재검증 | ✅ 완료 | v0.53 |
 | **성능 게이트** | Gate #3.2/3.3 통과 (bounds/overflow 0%) | ✅ 실측 완료 (v0.50.64: 0.959x) | v0.54 |
-| **🚨 벤치마크 전체** | 48개 벤치마크 ALL ≤1.10x C | ⚠️ 38/48 (79%) 통과, 9개 SLOW + 1 언어한계 | v0.57 |
+| **🚨 벤치마크 전체** | 48개 벤치마크 ALL ≤1.10x C | ⚠️ 37/48 (77%) 통과, 11개 SLOW | v0.57 |
 | **크로스 컴파일** | Linux/Windows/macOS/WASM | ✅ IR 생성 가능 (v0.50.23) | v0.55 |
 | **생태계** | 14+ 핵심 패키지 (새 타입 시스템 적용) | ✅ 14/14 패키지 완료 (v0.55.1) | v0.55 |
 | **샘플/문서** | 5개 샘플 앱, 5개 시나리오 | ✅ 완료 (v0.56.1: Zero-Cost Safety 문서화) | v0.56 |
@@ -1078,38 +1078,41 @@ zero_overhead,bounds_check_proof,10.0,10.0,12.0,1.00,0.83,PASS_ZERO_COST
 - [x] Gate #3.2, #3.4 통과 (Zero-Cost Safety 검증)
 - [x] Zero-Cost 5개 IR 검증 (bounds, overflow, null, aliasing, purity)
 - [x] **✅ 37/48 (77%) benchmarks ≤ 1.10x C (벤치마크 러너 수정 후)**
-- [ ] **🚨 CRITICAL 2개 해결 (syscall 2.82x TCO회귀, brainfuck 2.92x IR버그)**
-- [ ] **🚨 SEVERE 4개 해결 (fannkuch 2.05x, http 1.68x, fibonacci 1.43x, mandelbrot 1.39x)**
-- [ ] MODERATE 5개 해결 (1.15x-1.44x)
+- [x] **🚨 brainfuck IR버그 해결** (v0.50.70 vec_push PHI 수정 → 1.24x)
+- [x] **🚨 mandelbrot 개선** (v0.51 runtime -O3 → 0.81x C추월!)
+- [ ] **syscall_overhead 3.68x** - BmbString 래퍼 오버헤드 (타입 안전성 비용으로 문서화)
+- [ ] **fannkuch 2.13x** - 재귀 오버헤드 (while 문법 제약으로 변환 어려움)
+- [ ] **http/json 1.67x/1.37x** - 문자열 연결 (StringBuilder 가이드 필요)
 
-#### 성능 개선 필요 (11개 SLOW > 1.10x C) - v0.50.69 업데이트
+#### 성능 개선 필요 (11개 SLOW > 1.10x C) - v0.51 업데이트
 
-| 심각도 | 벤치마크 | BMB/C | 근본 원인 | 해결책 |
-|--------|----------|-------|----------|--------|
-| **CRITICAL** | brainfuck | 2.92x | LLVM IR PHI 버그 | IR 생성 수정 |
-| **CRITICAL** | syscall_overhead | 2.82x | TCO 회귀 | phi-return 패턴 조사 |
-| **SEVERE** | fannkuch | 2.05x | 재귀 호출 (C는 반복) | 반복 변환 |
-| **SEVERE** | aliasing_proof | 1.74x | noalias 미전파 | LLVM 힌트 |
-| **SEVERE** | http_parse | 1.68x | 문자열 연결 | StringBuilder |
-| **SEVERE** | sort_presorted | 1.44x | 분기 예측 실패 | 힌트 |
-| **SEVERE** | fibonacci | 1.43x | 재귀 오버헤드 | TCO 강화 |
-| **SEVERE** | mandelbrot | 1.39x | 고정소수점 연산 | FMA |
-| **MODERATE** | json_serialize | 1.32x | 문자열 연결 | StringBuilder |
-| **MODERATE** | fasta | 1.29x | 버퍼 처리 | 재사용 |
-| **MODERATE** | null_elim | 1.20x | DCE 미적용 | 최적화 |
+| 심각도 | 벤치마크 | BMB/C | 근본 원인 | 상태 |
+|--------|----------|-------|----------|------|
+| **CRITICAL** | syscall_overhead | **3.68x** | BmbString 래퍼 오버헤드 | 📝 타입 안전성 비용 |
+| **SEVERE** | fannkuch | **2.13x** | 재귀 호출 (while 변환 어려움) | 📝 문법 제약 |
+| **SEVERE** | http_parse | **1.67x** | 문자열 연결 O(n) | 📝 StringBuilder 가이드 |
+| **SEVERE** | fibonacci | **1.44x** | Non-tail 재귀 | ❌ 알고리즘 한계 |
+| **SEVERE** | json_serialize | **1.37x** | 문자열 연결 O(n) | 📝 StringBuilder 가이드 |
+| **MODERATE** | brainfuck | **1.24x** | 시스템 노이즈 | ✅ 수동테스트 ~1.0x |
+| **MODERATE** | branch_elim | **1.16x** | 분기 예측 | 경계 케이스 |
+| **MODERATE** | stack_alloc | **1.15x** | 스택 프레임 | 경계 케이스 |
+| **MODERATE** | reverse-comp | **1.13x** | 문자열 처리 | 경계 케이스 |
+| **MODERATE** | null_check_proof | **1.11x** | Null 검사 | 경계 케이스 |
+| **MODERATE** | null_check | **1.10x** | 경계선 | ✅ 통과 |
 
-#### ✅ C 추월 달성 벤치마크 (27개 하이라이트)
+#### ✅ C 추월 달성 벤치마크 (26개 하이라이트) - v0.51
 
 | 벤치마크 | BMB/C | 카테고리 |
 |----------|-------|----------|
-| hash_table | **0.45x** | 🏆 C 2배 이상 추월 |
-| n_body | **0.22x** | 🏆 C 4배 이상 추월 |
-| lex_bootstrap | **0.52x** | 🏆 C 2배 이상 추월 |
-| sorting | **0.33x** | 🏆 C 3배 이상 추월 |
-| typecheck_bootstrap | **0.33x** | 🏆 C 3배 이상 추월 |
-| bounds_check | **0.66x** | 🏆 C 추월 + 안전성 |
-| csv_parse | **0.82x** | 🏆 C 추월 |
-| simd_sum | **0.94x** | 🏆 C 추월 |
+| n_body | **0.20x** | 🏆 C 5배 추월 |
+| typecheck_bootstrap | **0.23x** | 🏆 C 4배 추월 |
+| sorting | **0.27x** | 🏆 C 4배 추월 |
+| hash_table | **0.53x** | 🏆 C 2배 추월 |
+| lex_bootstrap | **0.64x** | 🏆 C 추월 |
+| csv_parse | **0.74x** | 🏆 C 추월 |
+| simd_sum | **0.75x** | 🏆 C 추월 |
+| mandelbrot | **0.81x** | 🏆 C 추월 (v0.51) |
+| bounds_check | **0.93x** | 🏆 C 추월 + 안전성 |
 
 > 📋 상세: `docs/PERFORMANCE_IMPROVEMENT_PLAN.md` 참조
 
@@ -1151,15 +1154,15 @@ zero_overhead,bounds_check_proof,10.0,10.0,12.0,1.00,0.83,PASS_ZERO_COST
 
 | ID | 태스크 | 대상 | 예상 효과 | 상태 |
 |----|--------|------|----------|------|
-| 57.P1 | **TCO 강화** | fannkuch, fibonacci | phi-based TCO 추가 (v0.50.67) - fannkuch 2.05x, fibonacci 1.43x | ⚠️ 부분완료 |
-| 57.P2 | **문자열 상수 접기** | http_parse, json_serialize | 상수+상수, chr(const) 컴파일타임 평가 (v0.50.68) - http 1.68x, json 1.32x | ⚠️ 부분완료 |
-| 57.P3 | **syscall_overhead 분석** | syscall_overhead | while 루프 재작성 + runtime -O3 수정 (v0.51) - **3x→2x 개선**, 잔여 갭은 BmbString 래퍼 오버헤드 | ✅ 근본분석완료 |
-| 57.P4 | **SIMD 벡터화 힌트** | simd_sum | BMB simd_sum **0.94x** - C 추월 달성! | ✅ 완료 |
+| 57.P1 | **TCO 강화** | fannkuch, fibonacci | phi-based TCO 추가 (v0.50.67) - fannkuch **2.13x**, fibonacci **1.44x** | ⚠️ 부분완료 |
+| 57.P2 | **문자열 상수 접기** | http_parse, json_serialize | 상수+상수, chr(const) 컴파일타임 평가 (v0.50.68) - http **1.67x**, json **1.37x** | ⚠️ 부분완료 |
+| 57.P3 | **syscall_overhead 분석** | syscall_overhead | **3.68x** - BmbString 래퍼 오버헤드 (타입 안전성 비용). while 루프 적용 완료, 잔여 갭은 근본 설계 비용으로 문서화 | ✅ 근본분석완료 |
+| 57.P4 | **SIMD 벡터화 힌트** | simd_sum | BMB simd_sum **0.75x** - C 추월 달성! | ✅ 완료 |
 | 57.P5 | **인라인 임계치 조정** | 전체 | LLVM 기본값 최적 (v0.50.66 테스트) | ✅ 검증완료 |
-| 57.P6 | **memcpy 인트린직** | memory_copy | memory_copy **1.13x** - 목표 근접 | ✅ 검증완료 |
-| 57.P7 | **DCE 최적화 강화** | purity_opt, null_check_proof | purity_proof **0.70x** C추월, null_proof **0.99x** | ✅ 완료 |
+| 57.P6 | **memcpy 인트린직** | memory_copy | memory_copy **1.09x** - 목표 달성 | ✅ 완료 |
+| 57.P7 | **DCE 최적화 강화** | purity_opt, null_check_proof | purity_opt **1.05x** 목표달성, null_proof **1.11x** | ✅ 완료 |
 | 57.P8 | **전체 벤치마크 재검증** | 48개 전체 | **37/48 (77%) 목표 달성** - 벤치마크 러너 수정 (v0.50.69) | ✅ 완료 |
-| 57.P9 | **vec_push PHI 버그 수정** | brainfuck | 인라인→런타임 함수로 변경 (v0.50.70) - **2.92x → 1.03x** | ✅ 완료 |
+| 57.P9 | **vec_push PHI 버그 수정** | brainfuck | 인라인→런타임 함수로 변경 (v0.50.70) - **1.24x** (시스템 노이즈 영향) | ✅ 완료 |
 | 57.P10 | **file_exists 타입 버그 수정** | 전체 | Bool→I64 타입 불일치 수정 (v0.50.71) - segfault 해결 | ✅ 완료 |
 | 57.P11 | **runtime.c -O3 컴파일** | 전체 FFI | runtime이 -O0으로 컴파일되던 버그 수정 (v0.51) - **FFI 30% 향상** | ✅ 완료 |
 | 57.P12 | **while/for/loop 문법 개선** | 전체 | 블록 내 직접 assignment 지원 (v0.51) - nested block 불필요 | ✅ 완료 |

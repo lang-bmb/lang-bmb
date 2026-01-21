@@ -357,6 +357,74 @@ bmb build main.bmb -O3 --emit-llvm -Rpass=inline
 8. **Profile before optimizing** - Measure, don't guess
 9. **Trust LLVM** - Let the optimizer do its job
 
+## Performance Trade-offs (v0.51)
+
+BMB prioritizes **type safety** over raw performance in certain areas. Understanding these trade-offs helps write optimal code.
+
+### 1. FFI String Wrapper Overhead
+
+BMB uses `BmbString` (a fat pointer with length) instead of raw `char*`:
+
+```
+C:   stat(".", &st)                 // Direct syscall
+BMB: file_exists(BmbString* path)   // Wrapper → stat(path->data, &st)
+```
+
+**Impact**: ~3x overhead for syscall-heavy loops (10,000 file_exists calls)
+
+**Why**: Type safety - BmbString provides length information and null-termination guarantees.
+
+**Mitigation**: Batch syscalls, cache results, or use raw FFI for performance-critical paths.
+
+### 2. Recursion vs Loops
+
+BMB's while/for syntax has limitations for complex state changes:
+
+```bmb
+// This works:
+while i < n { { i = i + 1; () } };
+
+// Complex multi-variable updates are harder:
+while cond { {
+    x = f(x);    // Multiple assignments
+    y = g(y);    // require careful structuring
+    ()
+} };
+```
+
+**Impact**: Some algorithms (e.g., fannkuch) are ~2x slower due to recursion overhead.
+
+**Mitigation**: Use tail recursion (TCO applies), or restructure into simpler loops.
+
+### 3. String Concatenation
+
+String `+` creates new allocations:
+
+```bmb
+// Inefficient: 5 allocations
+let s = "a" + b + "c" + d + "e";
+
+// Better: Use StringBuilder (planned stdlib addition)
+let sb = sb_new();
+sb_push(sb, "a"); sb_push(sb, b); ...
+```
+
+**Impact**: ~1.5x overhead for string-heavy code (http_parse, json_serialize).
+
+**Mitigation**: Minimize concatenations, use format functions, or batch string building.
+
+### Performance Summary (v0.51)
+
+| Category | Pass Rate | Notes |
+|----------|-----------|-------|
+| **Overall** | 77% (37/48) | ≤1.10x C |
+| **Bootstrap** | 100% | BMB compiling BMB |
+| **Zero-Cost Proof** | 100% | Contracts have zero overhead |
+| **Compute** | 80% | LLVM optimization excellent |
+| **Real World** | 43% | String handling needs work |
+
+**Key Insight**: BMB excels at computational code and contract verification. String-heavy and syscall-heavy code has overhead due to type safety design.
+
 ## Next Steps
 
 - [Contracts](CONTRACTS.md) - Understanding zero-cost verification

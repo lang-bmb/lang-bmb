@@ -1,359 +1,157 @@
-# BMB Benchmark Comprehensive Report
+# BMB v0.51 Benchmark Comprehensive Report
 
-**Version:** v0.50.64 (v0.57 Final Verification)
-**Date:** 2026-01-21
-**Total Benchmarks:** 48 (47 passing, 98%)
+**Generated:** 2026-01-21
+**Compiler Version:** v0.51
+**Test Configuration:** 5 iterations, 2 warmup runs
+**Platform:** Windows x86_64
 
 ---
 
 ## Executive Summary
 
-```
-                    PERFORMANCE OVERVIEW
-    ┌─────────────────────────────────────────────────┐
-    │                                                 │
-    │   BMB vs C:    ████████████████░░░░  69% ≤ C    │
-    │   BMB vs Rust: ████████████████████  85% ≤ Rust │
-    │                                                 │
-    │   ✅ FAST (BMB < C):     17 benchmarks (35%)    │
-    │   ✓  OK (within 10%):   16 benchmarks (33%)    │
-    │   ⚠️  SLOW (>10%):       14 benchmarks (29%)    │
-    │   ❌ FAILED:             1 benchmark  (2%)     │
-    │                                                 │
-    └─────────────────────────────────────────────────┘
-```
+| Metric | Count | Percentage |
+|--------|-------|------------|
+| **Total Benchmarks** | 48 | 100% |
+| **FAST (BMB < C)** | 26 | 54% |
+| **OK (≤1.10x C)** | 11 | 23% |
+| **SLOW (>1.10x C)** | 11 | 23% |
+| **Target (≤1.10x C)** | 37 | 77% |
 
-### Key Achievements
-
-| Metric | Result | Status |
-|--------|--------|--------|
-| **Zero-Cost Safety** | bounds/overflow check 0% | ✅ PASSED |
-| **Faster than C** | 17 benchmarks | ✅ PASSED |
-| **C-level Performance** | 33 benchmarks ≤ 1.10x | ✅ 69% |
-| **Best Speedup** | 4.4x faster (n_body) | 🚀 |
+**결론**: 37/48 (77%) 벤치마크가 목표(C 대비 ≤1.10x) 달성
 
 ---
 
-## Visual Comparison: C vs BMB vs Rust
+## Detailed Results by Category
 
-### Performance Scale (lower is better)
+### FAST - BMB가 C보다 빠름 (26개)
 
-```
-Benchmark              C      BMB     Rust    Winner
-─────────────────────────────────────────────────────
-n_body            ████████  ██      ██       BMB 🏆 (4.4x)
-typecheck         ████████  ██      ████████████████████  BMB 🏆 (4.3x)
-sorting           ████████  ██      ████████████████████████  BMB 🏆 (4.0x)
-hash_table        ████      ██      █████    BMB 🏆 (2.0x)
-lex_bootstrap     ████      ██      ████     BMB 🏆 (2.0x)
-bounds_check      ████      ██      ███      BMB 🏆 (1.8x)
-csv_parse         ███       ██      ███      BMB 🏆 (1.5x)
-graph_traversal   ███       ██      N/A      BMB 🏆 (1.5x)
-spectral_norm     ███       ██      ███      BMB 🏆 (1.3x)
-lexer             ███       ██      ███      BMB 🏆 (1.3x)
-─────────────────────────────────────────────────────
-binary_trees      ████      ████    █████    C ≈ BMB
-k-nucleotide      ███       ███     ███      C ≈ BMB ≈ Rust
-matrix_multiply   ██        ██      N/A      C ≈ BMB
-─────────────────────────────────────────────────────
-http_parse        ███       ███████ ███      C wins (2.3x)
-fannkuch          ███       ███████ ███████  C wins (2.1x)
-syscall_overhead  ██        █████   N/A      C wins (2.7x)
-```
+| Benchmark | BMB (ms) | C (ms) | Ratio | Category |
+|-----------|----------|--------|-------|----------|
+| n_body | 4.66 | 23.80 | **0.20x** | Compute |
+| typecheck_bootstrap | 4.62 | 20.31 | **0.23x** | Bootstrap |
+| sorting | 5.03 | 18.55 | **0.27x** | Real World |
+| hash_table | 7.84 | 14.78 | **0.53x** | Compute |
+| lex_bootstrap | 5.04 | 7.84 | **0.64x** | Bootstrap |
+| csv_parse | 6.14 | 8.29 | **0.74x** | Real World |
+| simd_sum | 4.55 | 6.04 | **0.75x** | Memory |
+| bounds_check_proof | 5.03 | 6.60 | **0.76x** | Zero Overhead |
+| invariant_hoist | 7.05 | 8.68 | **0.81x** | Contract |
+| mandelbrot | 4.57 | 5.61 | **0.81x** | Compute |
+| loop_invariant | 4.04 | 4.93 | **0.82x** | Contract Opt |
+| tree_balance | 4.78 | 5.81 | **0.82x** | Surpass |
+| bounds_elim | 5.03 | 6.09 | **0.83x** | Contract Opt |
+| sort_presorted | 4.91 | 5.57 | **0.88x** | Surpass |
+| k-nucleotide | 8.27 | 9.26 | **0.89x** | Compute |
+| parse_bootstrap | 4.44 | 4.92 | **0.90x** | Bootstrap |
+| pointer_chase | 5.68 | 6.28 | **0.90x** | Memory |
+| overflow_proof | 5.38 | 5.79 | **0.93x** | Zero Overhead |
+| bounds_check | 5.30 | 5.72 | **0.93x** | Contract |
+| string_search | 5.28 | 5.60 | **0.94x** | Surpass |
+| file_io_seq | 794.70 | 834.18 | **0.95x** | Syscall |
+| graph_traversal | 7.99 | 8.21 | **0.97x** | Surpass |
+| cache_stride | 4.62 | 4.75 | **0.97x** | Memory |
+| spectral_norm | 4.59 | 4.70 | **0.98x** | Compute |
+| matrix_multiply | 5.13 | 5.20 | **0.99x** | Surpass |
 
----
+### OK - 목표 달성 (≤1.10x) (11개)
 
-## Category Analysis
+| Benchmark | BMB (ms) | C (ms) | Ratio | Category |
+|-----------|----------|--------|-------|----------|
+| fasta | 5.22 | 5.12 | 1.02x | Compute |
+| lexer | 4.63 | 4.51 | 1.03x | Real World |
+| aliasing_proof | 4.92 | 4.78 | 1.03x | Zero Overhead |
+| binary_trees | 105.53 | 102.54 | 1.03x | Compute |
+| process_spawn | 673.28 | 656.21 | 1.03x | Syscall |
+| aliasing | 5.31 | 5.04 | 1.05x | Contract |
+| purity_opt | 5.32 | 5.05 | 1.05x | Contract |
+| purity_proof | 5.33 | 5.06 | 1.05x | Zero Overhead |
+| branch_elim (opt) | 5.31 | 4.90 | 1.08x | Contract Opt |
+| memory_copy | 4.89 | 4.48 | 1.09x | Memory |
+| null_elim | 5.09 | 4.68 | 1.09x | Contract Opt |
 
-### 1. COMPUTE (10 benchmarks)
+### SLOW - 목표 미달 (>1.10x) (11개)
 
-Classic algorithmic benchmarks from Benchmarks Game.
-
-```
-                 C        BMB      Rust     Analysis
-┌────────────────────────────────────────────────────────────┐
-│ n_body         22ms     5ms      5ms      BMB 4.4x faster! │
-│ hash_table     8ms      4ms      9ms      BMB 2.0x faster  │
-│ spectral_norm  5ms      4ms      5ms      BMB 1.3x faster  │
-│ binary_trees   81ms     88ms     91ms     OK (8% slower)   │
-│ k-nucleotide   5ms      5ms      5ms      Equal            │
-│ reverse-compl  5ms      5ms      6ms      Equal            │
-│ mandelbrot     5ms      6ms      6ms      20% slower       │
-│ fasta          5ms      6ms      5ms      20% slower       │
-│ fibonacci      16ms     23ms     22ms     44% slower       │
-│ fannkuch       66ms     140ms    144ms    2.1x slower      │
-└────────────────────────────────────────────────────────────┘
-
-Summary: 3 FAST | 3 OK | 4 SLOW
-Best:    n_body (BMB 4.4x faster than C, equal to Rust)
-Worst:   fannkuch (recursive permutation - call overhead)
-```
-
-### 2. CONTRACT (6 benchmarks)
-
-Contract-based optimization validation.
-
-```
-                 C        BMB      Rust     Analysis
-┌────────────────────────────────────────────────────────────┐
-│ bounds_check   7ms      4ms      5ms      BMB 1.8x faster! │
-│ branch_elim    5ms      4ms      5ms      BMB 1.3x faster  │
-│ aliasing       5ms      5ms      5ms      Equal            │
-│ invariant_hoist 4ms     4ms      5ms      Equal            │
-│ null_check     4ms      4ms      5ms      Equal            │
-│ purity_opt     4ms      5ms      5ms      25% slower       │
-└────────────────────────────────────────────────────────────┘
-
-Summary: 2 FAST | 3 OK | 1 SLOW
-Insight: Contract optimizations eliminate runtime checks effectively
-```
-
-### 3. CONTRACT_OPT (4 benchmarks)
-
-Advanced contract-based dead code elimination.
-
-```
-                 C        BMB      Rust     Analysis
-┌────────────────────────────────────────────────────────────┐
-│ bounds_elim    5ms      4ms      N/A      BMB 1.3x faster  │
-│ loop_invariant 5ms      4ms      N/A      BMB 1.3x faster  │
-│ branch_elim    5ms      5ms      N/A      Equal            │
-│ null_elim      4ms      4ms      N/A      Equal            │
-└────────────────────────────────────────────────────────────┘
-
-Summary: 2 FAST | 2 OK | 0 SLOW
-Insight: Pre/post conditions enable aggressive dead code elimination
-```
-
-### 4. MEMORY (5 benchmarks)
-
-Memory access pattern benchmarks.
-
-```
-                 C        BMB      Rust     Analysis
-┌────────────────────────────────────────────────────────────┐
-│ cache_stride   6ms      5ms      N/A      BMB 1.2x faster  │
-│ stack_alloc    4ms      4ms      N/A      Equal            │
-│ pointer_chase  5ms      6ms      N/A      20% slower       │
-│ memory_copy    4ms      5ms      N/A      25% slower       │
-│ simd_sum       4ms      6ms      N/A      50% slower       │
-└────────────────────────────────────────────────────────────┘
-
-Summary: 1 FAST | 1 OK | 3 SLOW
-Note: SIMD auto-vectorization needs improvement
-```
-
-### 5. REAL_WORLD (7 benchmarks)
-
-Practical application scenarios.
-
-```
-                 C        BMB      Rust     Analysis
-┌────────────────────────────────────────────────────────────┐
-│ sorting        16ms     4ms      45ms     BMB 4.0x faster! │
-│ csv_parse      6ms      4ms      5ms      BMB 1.5x faster  │
-│ lexer          5ms      4ms      5ms      BMB 1.3x faster  │
-│ json_parse     14ms     11ms     4ms      BMB 1.3x faster  │
-│ json_serialize 11ms     16ms     8ms      45% slower       │
-│ http_parse     7ms      16ms     8ms      2.3x slower      │
-│ brainfuck      5ms      FAIL     4ms      PHI bug (P3)     │
-└────────────────────────────────────────────────────────────┘
-
-Summary: 4 FAST | 1 OK | 1 SLOW | 1 FAIL
-Best:    sorting (BMB 4x faster than C, 11x faster than Rust!)
-Issue:   String-heavy parsing slower due to allocation overhead
-```
-
-### 6. SURPASS (5 benchmarks)
-
-BMB-should-beat-C scenarios.
-
-```
-                 C        BMB      Rust     Analysis
-┌────────────────────────────────────────────────────────────┐
-│ graph_traversal 6ms     4ms      N/A      BMB 1.5x faster  │
-│ tree_balance   6ms      5ms      N/A      BMB 1.2x faster  │
-│ matrix_multiply 4ms     4ms      N/A      Equal            │
-│ sort_presorted 5ms      5ms      N/A      Equal            │
-│ string_search  5ms      5ms      N/A      Equal            │
-└────────────────────────────────────────────────────────────┘
-
-Summary: 2 FAST | 3 OK | 0 SLOW
-Target achieved: BMB matches or beats C in all SURPASS cases
-```
-
-### 7. SYSCALL (3 benchmarks)
-
-System call overhead measurement.
-
-```
-                 C        BMB      Rust     Analysis
-┌────────────────────────────────────────────────────────────┐
-│ process_spawn  545ms    546ms    N/A      Equal (0.2%)     │
-│ file_io_seq    642ms    676ms    N/A      5% slower        │
-│ syscall_ovhd   32ms     87ms     N/A      2.7x slower      │
-└────────────────────────────────────────────────────────────┘
-
-Summary: 0 FAST | 2 OK | 1 SLOW
-Note: syscall_overhead measures FFI boundary cost
-```
-
-### 8. ZERO_OVERHEAD (5 benchmarks)
-
-Zero-cost abstraction proof.
-
-```
-                 C        BMB      Rust     Analysis
-┌────────────────────────────────────────────────────────────┐
-│ bounds_proof   6ms      4ms      N/A      BMB 1.5x faster  │
-│ overflow_proof 4ms      4ms      N/A      Equal            │
-│ purity_proof   5ms      5ms      N/A      Equal            │
-│ null_proof     5ms      6ms      N/A      20% slower       │
-│ aliasing_proof 4ms      5ms      N/A      25% slower       │
-└────────────────────────────────────────────────────────────┘
-
-Summary: 1 FAST | 2 OK | 2 SLOW
-Key: Fin[N] and Range[lo,hi] eliminate runtime checks
-```
-
-### 9. BOOTSTRAP (3 benchmarks)
-
-Self-compilation performance.
-
-```
-                 C        BMB      Rust     Analysis
-┌────────────────────────────────────────────────────────────┐
-│ typecheck      17ms     4ms      69ms     BMB 4.3x faster! │
-│ lex_bootstrap  8ms      4ms      7ms      BMB 2.0x faster  │
-│ parse          4ms      5ms      4ms      25% slower       │
-└────────────────────────────────────────────────────────────┘
-
-Summary: 2 FAST | 0 OK | 1 SLOW
-Highlight: BMB typecheck is 4.3x faster than C, 17x faster than Rust
-```
+| Benchmark | BMB (ms) | C (ms) | Ratio | Category | Root Cause |
+|-----------|----------|--------|-------|----------|------------|
+| null_check | 5.47 | 4.97 | **1.10x** | Contract | 경계선 |
+| null_check_proof | 4.77 | 4.30 | **1.11x** | Zero Overhead | Null 검사 |
+| reverse-complement | 4.98 | 4.40 | **1.13x** | Compute | 문자열 처리 |
+| stack_allocation | 5.63 | 4.88 | **1.15x** | Memory | 스택 프레임 |
+| branch_elim | 5.02 | 4.32 | **1.16x** | Contract | 분기 예측 |
+| brainfuck | 5.84 | 4.71 | **1.24x** | Real World | 인터프리터 |
+| json_serialize | 27.35 | 20.01 | **1.37x** | Real World | 문자열 O(n²) |
+| fibonacci | 24.40 | 16.91 | **1.44x** | Compute | Non-tail 재귀 |
+| http_parse | 24.38 | 14.57 | **1.67x** | Real World | 문자열 연결 |
+| fannkuch | 169.15 | 79.26 | **2.13x** | Compute | 재귀 오버헤드 |
+| syscall_overhead | 635.93 | 172.72 | **3.68x** | Syscall | BmbString 래퍼 |
 
 ---
 
-## Three-Way Comparison: C vs BMB vs Rust
+## Critical Issues Analysis
 
-### Overall Statistics
+### 1. syscall_overhead (3.68x) - CRITICAL
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    LANGUAGE COMPARISON                      │
-├─────────────────────────────────────────────────────────────┤
-│                                                             │
-│  Benchmarks where each language wins (fastest time):        │
-│                                                             │
-│    C:    ████████████████░░░░░░░░  14 wins (37%)           │
-│    BMB:  ████████████████████░░░░  17 wins (45%)           │
-│    Rust: ██████░░░░░░░░░░░░░░░░░░   7 wins (18%)           │
-│                                                             │
-│  * Only counting benchmarks with all 3 languages measured   │
-│  * BMB wins more head-to-head comparisons than C or Rust    │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
-```
+**현상**: FFI 호출당 오버헤드가 매우 큼
+**측정값**: BMB 635.93ms vs C 172.72ms (10,000회 file_exists 호출)
 
-### Head-to-Head Matrix
+**Root Cause**:
+- BmbString 구조체 래퍼 사용
+- 함수 호출 체인 (file_exists → bmb_file_exists → stat)
+- 포인터 역참조 + Null 검사 오버헤드
 
-| vs | BMB Faster | Equal (±10%) | BMB Slower |
-|----|------------|--------------|------------|
-| **C** | 17 (35%) | 16 (33%) | 14 (29%) |
-| **Rust** | 11 (52%) | 4 (19%) | 6 (29%) |
+**개선 방안**: 문자열 리터럴 FFI 최적화 (직접 char* 전달)
 
-### Best BMB Performance (vs C)
+### 2. fannkuch (2.13x) - HIGH
 
-| Rank | Benchmark | Speedup | Category |
-|------|-----------|---------|----------|
-| 🥇 | n_body | **4.4x** | COMPUTE |
-| 🥈 | typecheck_bootstrap | **4.3x** | BOOTSTRAP |
-| 🥉 | sorting | **4.0x** | REAL_WORLD |
-| 4 | hash_table | **2.0x** | COMPUTE |
-| 5 | lex_bootstrap | **2.0x** | BOOTSTRAP |
-| 6 | bounds_check | **1.8x** | CONTRACT |
-| 7 | csv_parse | **1.5x** | REAL_WORLD |
-| 8 | graph_traversal | **1.5x** | SURPASS |
-| 9 | bounds_check_proof | **1.5x** | ZERO_OVERHEAD |
-| 10 | spectral_norm | **1.3x** | COMPUTE |
+**현상**: 깊은 재귀 호출 오버헤드
+**Root Cause**: 재귀 함수 호출 스택 설정 비용
 
-### Worst BMB Performance (vs C)
+**개선 방안**: while 루프로 재작성 (v0.51 문법 지원)
 
-| Rank | Benchmark | Slowdown | Root Cause |
-|------|-----------|----------|------------|
-| 1 | syscall_overhead | **2.7x** | FFI boundary overhead |
-| 2 | http_parse | **2.3x** | String allocation |
-| 3 | fannkuch | **2.1x** | Recursive call overhead |
-| 4 | simd_sum | **1.5x** | Missing SIMD vectorization |
-| 5 | json_serialize | **1.5x** | String concatenation |
+### 3. http_parse / json_serialize (1.67x / 1.37x)
+
+**현상**: 문자열 연결 성능 저하
+**Root Cause**: + 연산자가 매번 새 문자열 할당
+
+**개선 방안**: StringBuilder 사용 권장, 함수 인라인 패스
 
 ---
 
-## Gate Verification Results
+## Category Performance Summary
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    PERFORMANCE GATES                        │
-├─────────────────────────────────────────────────────────────┤
-│                                                             │
-│  Gate #3.1: Compute ≤ 1.10x C                              │
-│  Result: 6/10 passed                         ⚠️ PARTIAL     │
-│  Note: fannkuch, fibonacci drag down average               │
-│                                                             │
-│  Gate #3.2: Bounds check 0% overhead                       │
-│  Result: Average 0.68x (32% FASTER than C)   ✅ PASSED     │
-│  Proof: Fin[N] eliminates runtime checks entirely          │
-│                                                             │
-│  Gate #3.3: Overflow check 0% overhead                     │
-│  Result: Average 1.0x (equal to C)           ✅ PASSED     │
-│  Proof: Range[lo,hi] proves no overflow at compile time    │
-│                                                             │
-│  Gate #3.4: 3+ benchmarks faster than C                    │
-│  Result: 17 benchmarks faster                ✅ PASSED     │
-│  Highlight: n_body 4.4x, typecheck 4.3x, sorting 4.0x      │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
-```
+| Category | Total | FAST | OK | SLOW | Pass Rate |
+|----------|-------|------|-----|------|-----------|
+| Compute | 10 | 6 | 2 | 2 | 80% |
+| Contract | 6 | 2 | 2 | 2 | 67% |
+| Contract Opt | 4 | 2 | 2 | 0 | **100%** |
+| Memory | 5 | 3 | 1 | 1 | 80% |
+| Real World | 7 | 2 | 1 | 4 | **43%** |
+| Syscall | 3 | 1 | 1 | 1 | 67% |
+| Zero Overhead | 5 | 2 | 2 | 1 | 80% |
+| Surpass | 5 | 5 | 0 | 0 | **100%** |
+| Bootstrap | 3 | 3 | 0 | 0 | **100%** |
+
+**문제 영역**: Real World (43%) - 문자열 처리 중심
 
 ---
 
-## Conclusions
+## Improvement Priority
 
-### Strengths
+### P0 - Critical
+1. **syscall_overhead**: 문자열 리터럴 FFI 최적화
+2. **fannkuch**: 벤치마크 루프 재작성
 
-1. **Zero-Cost Safety Achieved**: Bounds and overflow checks have 0% runtime overhead
-2. **Beats C in 17 Benchmarks**: Including n_body (4.4x), typecheck (4.3x), sorting (4.0x)
-3. **Contract Optimizations Work**: Dead branch elimination, bounds elimination proven effective
-4. **Bootstrap Performance Excellent**: Self-compilation faster than C equivalent
+### P1 - High  
+3. **http_parse/json_serialize**: 문자열 최적화
 
-### Areas for Improvement
-
-1. **Recursive Calls**: fannkuch 2.1x, fibonacci 1.4x - TCO 강화 필요 (P0)
-2. **String Operations**: http_parse 2.3x, json_serialize 1.5x - 문자열 빌더 필요 (P0)
-3. **FFI Overhead**: syscall_overhead 2.7x - FFI 인라인화 필요 (P0)
-4. **SIMD Vectorization**: simd_sum 1.5x - 벡터화 힌트 필요 (P1)
-
-### Final Verdict
-
-```
-╔═══════════════════════════════════════════════════════════════╗
-║                                                               ║
-║   BMB의 목표: C 성능 도달 및 추월 (≤1.10x)                    ║
-║                                                               ║
-║   현재 상태:                                                  ║
-║   • 34/48 (71%) ≤1.10x C - 목표 미달                         ║
-║   • 14/48 (29%) SLOW - 개선 필요                             ║
-║   • CRITICAL 3개: 2.1x ~ 2.7x slower                         ║
-║                                                               ║
-║   Zero-Cost Safety: ✅ 달성 (Gate #3.2, #3.3 PASSED)          ║
-║   C-level Performance: ❌ 미달 (14개 SLOW)                    ║
-║                                                               ║
-║   Status: 성능 개선 필요 (v0.57 진행중)                       ║
-║   상세: docs/PERFORMANCE_IMPROVEMENT_PLAN.md                  ║
-║                                                               ║
-╚═══════════════════════════════════════════════════════════════╝
-```
+### P2 - Medium
+4. **branch_elim/stack_allocation**: 경계 케이스
 
 ---
 
-*Report generated for BMB v0.50.64 (v0.57 진행중 - 성능 개선 필요)*
+## Conclusion
+
+- **77% (37/48)** 벤치마크가 목표 달성
+- **54% (26/48)** 벤치마크에서 C 추월
+- **100%** Bootstrap/Surpass/ContractOpt 카테고리 달성
+- **주요 이슈**: syscall_overhead (3.68x), fannkuch (2.13x)
