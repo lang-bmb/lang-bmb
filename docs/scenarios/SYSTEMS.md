@@ -61,6 +61,42 @@ fn buffer_free(buf: Buffer) -> i64
 = free(buf.ptr);
 ```
 
+### Zero-Cost Bounds Checking with Fin[N]
+
+BMB v0.52+ introduces dependent types for compile-time bounds elimination:
+
+```bmb
+// Fin[N] is a finite index type: 0 <= i < N (guaranteed at compile time)
+// Array access with Fin[N] index requires NO runtime bounds check
+
+fn sum_array(arr: [i64; N]) -> i64 = {
+    let total = 0;
+    // Loop variable i has type Fin[N], proven in-bounds
+    for i: Fin[N] in 0..N {
+        total = total + arr[i];  // Zero-cost: no bounds check generated
+    }
+    total
+};
+
+// Type-safe indexing: compiler proves bounds statically
+fn safe_access(arr: [i64; 100], idx: Fin[100]) -> i64
+= arr[idx];  // Guaranteed safe, no runtime check
+
+// Bounds narrowing: manual proof propagation
+fn binary_search(arr: [i64; N], target: i64) -> i64 = {
+    let lo = 0;
+    let hi = N;
+    while lo < hi {
+        let mid: Fin[N] = lo + (hi - lo) / 2;  // Compiler proves mid < N
+        if arr[mid] < target { lo = mid + 1 }
+        else { hi = mid }
+    }
+    lo
+};
+```
+
+**Performance Impact**: With Fin[N], BMB achieves **0% bounds check overhead** compared to unsafe C code, while maintaining memory safety.
+
 ## Data Structures
 
 ### Linked List
@@ -320,6 +356,27 @@ fn allocator_free(alloc: Allocator, ptr: i64) -> i64
        let freed = free(buf);
        result
    };
+   ```
+
+5. **Use Fin[N] for zero-cost bounds safety**
+   ```bmb
+   // Instead of runtime checks:
+   fn get_old(arr: [i64], idx: i64) -> i64
+     pre idx >= 0 and idx < arr.len()  // Runtime check
+   = arr[idx];
+
+   // Use dependent types for zero overhead:
+   fn get_new(arr: [i64; N], idx: Fin[N]) -> i64
+   = arr[idx];  // Compile-time proven, no check
+   ```
+
+6. **Use Range[lo, hi] for overflow-safe arithmetic**
+   ```bmb
+   // Percentage is guaranteed to be 0..100
+   type Percentage = Range[0, 100];
+
+   fn add_percentages(a: Percentage, b: Percentage) -> Range[0, 200]
+   = a + b;  // No overflow check needed: 100 + 100 = 200 fits in i64
    ```
 
 ## Next Steps

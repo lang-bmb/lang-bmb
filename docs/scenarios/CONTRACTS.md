@@ -130,6 +130,72 @@ fn normalize(values: Vec<i64>) -> Vec<i64>
 };
 ```
 
+## Aliasing Safety with `disjoint`
+
+BMB v0.52+ introduces the `disjoint` predicate for proving non-aliasing, enabling LLVM optimizations:
+
+```bmb
+// Prove two arrays don't overlap - enables SIMD vectorization
+fn copy_array(src: [i64; N], dst: [i64; N]) -> i64
+  pre disjoint(src, dst)  // Compiler proves no overlap
+= {
+    for i: Fin[N] in 0..N {
+        dst[i] = src[i];  // LLVM can use memcpy/SIMD
+    }
+    0
+};
+
+// Matrix operations with aliasing guarantees
+fn matrix_multiply(a: [i64; M*K], b: [i64; K*N], c: [i64; M*N]) -> i64
+  pre disjoint(a, c) and disjoint(b, c)  // Output doesn't alias inputs
+= {
+    // Compiler generates LLVM noalias attributes
+    // Enables aggressive vectorization
+    for i in 0..M {
+        for j in 0..N {
+            c[i*N + j] = dot_product(a, b, i, j, K);
+        }
+    }
+    0
+};
+```
+
+### Unique[T] for Exclusive Ownership
+
+```bmb
+// Unique[T] guarantees exclusive ownership - no other references exist
+fn process_buffer(buf: Unique[[i64; 1024]]) -> i64 = {
+    // Compiler knows buf is the only reference
+    // Can inline, eliminate redundant loads, etc.
+    buf[0] = buf[0] + 1;
+    buf[0]
+};
+
+// Transfer ownership with Unique
+fn transfer_ownership(src: Unique[Resource]) -> Unique[Resource]
+= src;  // Ownership moves, no aliasing possible
+```
+
+### Effect Annotations
+
+```bmb
+// Declare what memory a function reads/writes
+fn sum(arr: [i64; N]) -> i64
+  effects { reads[arr] }  // Only reads from arr
+= {
+    let total = 0;
+    for i: Fin[N] in 0..N { total = total + arr[i]; }
+    total
+};
+
+fn zero_array(arr: [i64; N]) -> i64
+  effects { writes[arr] }  // Only writes to arr
+= {
+    for i: Fin[N] in 0..N { arr[i] = 0; }
+    0
+};
+```
+
 ## Trust Annotations
 
 For interfacing with external code or performance-critical sections:

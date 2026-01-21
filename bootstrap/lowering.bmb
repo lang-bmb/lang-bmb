@@ -227,6 +227,16 @@ fn is_index_node(s: String) -> bool = get_node_type(s) == "index";
 // v0.30.63: Method call node detection - (method_call receiver <method> args...)
 fn is_method_call_node(s: String) -> bool = get_node_type(s) == "method_call";
 
+// v0.52: Attribute node detection - (attr <name> expr)
+// Used for @likely/@unlikely branch hints
+fn is_attr_node(s: String) -> bool = get_node_type(s) == "attr";
+
+// v0.52: Type nodes - these are passed through for type checking
+fn is_fin_type_node(s: String) -> bool = get_node_type(s) == "fin_type";
+fn is_range_type_node(s: String) -> bool = get_node_type(s) == "range_type";
+fn is_unique_type_node(s: String) -> bool = get_node_type(s) == "unique_type";
+fn is_disjoint_node(s: String) -> bool = get_node_type(s) == "disjoint";
+
 // '::'
 fn has_double_colon(s: String, pos: i64) -> bool =
     if pos + 1 >= s.len() { false } else if s.byte_at(pos) == 58 and s.byte_at(pos + 1) == 58 { true } else { has_double_colon(s, pos + 1) };
@@ -729,8 +739,9 @@ fn lower_expr_sb(ast: String, temp: i64, block: i64, sb: i64) -> String =
 // v0.30.64: Array literal support
 // v0.30.65: Index expression support
 // v0.30.63: Method call support
+// v0.52: Attribute expression support (@likely/@unlikely)
 fn lower_expr(ast: String, temp: i64, block: i64) -> String =
-    if is_int_node(ast) { lower_int(ast, temp, block) } else if is_bool_node(ast) { lower_bool(ast, temp, block) } else if is_string_node(ast) { lower_string(ast, temp, block) } else if is_var_node(ast) { lower_var(ast, temp, block) } else if is_op_node(ast) { lower_binop(ast, temp, block) } else if is_neg_node(ast) { lower_neg(ast, temp, block) } else if is_not_node(ast) { lower_not(ast, temp, block) } else if is_if_node(ast) { lower_if(ast, temp, block) } else if is_let_node(ast) or is_let_mut_node(ast) { lower_let(ast, temp, block) } else if is_call_node(ast) { lower_call(ast, temp, block) } else if is_new_node(ast) { lower_struct_init(ast, temp, block) } else if is_dot_node(ast) { lower_field_access(ast, temp, block) } else if is_enum_variant_node(ast) { lower_enum_variant(ast, temp, block) } else if is_match_node(ast) { lower_match(ast, temp, block) } else if is_lambda_node(ast) { lower_lambda(ast, temp, block) } else if is_block_node(ast) { lower_block(ast, temp, block) } else if is_unit_node(ast) { lower_unit(ast, temp, block) } else if is_while_node(ast) { lower_while(ast, temp, block) } else if is_for_node(ast) { lower_for(ast, temp, block) } else if is_break_node(ast) { lower_break(ast, temp, block) } else if is_continue_node(ast) { lower_continue(ast, temp, block) } else if is_array_node(ast) { lower_array(ast, temp, block) } else if is_index_node(ast) { lower_index(ast, temp, block) } else if is_method_call_node(ast) { lower_method_call(ast, temp, block) } else { pack_lower_result(temp, block, "%error", "  ; unknown: " + get_node_type(ast)) };
+    if is_int_node(ast) { lower_int(ast, temp, block) } else if is_bool_node(ast) { lower_bool(ast, temp, block) } else if is_string_node(ast) { lower_string(ast, temp, block) } else if is_var_node(ast) { lower_var(ast, temp, block) } else if is_op_node(ast) { lower_binop(ast, temp, block) } else if is_neg_node(ast) { lower_neg(ast, temp, block) } else if is_not_node(ast) { lower_not(ast, temp, block) } else if is_if_node(ast) { lower_if(ast, temp, block) } else if is_let_node(ast) or is_let_mut_node(ast) { lower_let(ast, temp, block) } else if is_call_node(ast) { lower_call(ast, temp, block) } else if is_new_node(ast) { lower_struct_init(ast, temp, block) } else if is_dot_node(ast) { lower_field_access(ast, temp, block) } else if is_enum_variant_node(ast) { lower_enum_variant(ast, temp, block) } else if is_match_node(ast) { lower_match(ast, temp, block) } else if is_lambda_node(ast) { lower_lambda(ast, temp, block) } else if is_block_node(ast) { lower_block(ast, temp, block) } else if is_unit_node(ast) { lower_unit(ast, temp, block) } else if is_while_node(ast) { lower_while(ast, temp, block) } else if is_for_node(ast) { lower_for(ast, temp, block) } else if is_break_node(ast) { lower_break(ast, temp, block) } else if is_continue_node(ast) { lower_continue(ast, temp, block) } else if is_array_node(ast) { lower_array(ast, temp, block) } else if is_index_node(ast) { lower_index(ast, temp, block) } else if is_method_call_node(ast) { lower_method_call(ast, temp, block) } else if is_attr_node(ast) { lower_attr(ast, temp, block) } else { pack_lower_result(temp, block, "%error", "  ; unknown: " + get_node_type(ast)) };
 
 // Lower integer literal: (int 42)
 fn lower_int(ast: String, temp: i64, block: i64) -> String =
@@ -1537,6 +1548,63 @@ fn lower_index(ast: String, temp: i64, block: i64) -> String =
     let combined_base = if textb.len() > 0 and texti.len() > 0 { textb + "|" + texti } else if textb.len() > 0 { textb } else { texti };
     let combined = if combined_base.len() > 0 { combined_base + "|" + index_text } else { index_text };
     pack_lower_result(ti + 1, bi, dest, combined);
+
+// ============================================================================
+// v0.52: Attribute Expression Lowering
+// ============================================================================
+// Handles @likely/@unlikely branch hint attributes
+// Format: (attr <name> expr) where name is "likely" or "unlikely"
+// The inner expression is lowered normally, with metadata attached
+
+// Extract attribute name from (attr <name> expr)
+fn extract_attr_name(ast: String) -> String =
+    let content = extract_paren_content(ast);  // "attr <name> expr"
+    let p0 = skip_ws(content, 0);
+    let p1 = find_ident_end(content, p0);      // skip "attr"
+    let p2 = skip_ws(content, p1);             // skip to <name>
+    if p2 >= content.len() or content.byte_at(p2) != 60 { "" }  // '<' = 60
+    else {
+        let name_start = p2 + 1;
+        let name_end = find_name_end(content, name_start);
+        content.slice(name_start, name_end)
+    };
+
+// Extract inner expression from (attr <name> expr)
+fn extract_attr_expr(ast: String) -> String =
+    let content = extract_paren_content(ast);  // "attr <name> expr"
+    let p0 = skip_ws(content, 0);
+    let p1 = find_ident_end(content, p0);      // skip "attr"
+    let p2 = skip_ws(content, p1);             // skip to <name>
+    if p2 >= content.len() or content.byte_at(p2) != 60 { "" }  // '<' = 60
+    else {
+        let name_end = find_name_end(content, p2 + 1) + 1;  // skip '>'
+        let p3 = skip_ws(content, name_end);
+        if p3 >= content.len() { "" } else { content.slice(p3, content.len()) }
+    };
+
+// Lower attribute expression: (attr <likely> expr) or (attr <unlikely> expr)
+// For now, we pass through the inner expression and annotate the MIR
+// The branch hint will be used by codegen to add LLVM expect intrinsic
+fn lower_attr(ast: String, temp: i64, block: i64) -> String =
+    let attr_name = extract_attr_name(ast);
+    let inner_ast = extract_attr_expr(ast);
+
+    if inner_ast == "" { pack_lower_result(temp, block, "%error", "  ; attr: empty expr") }
+    else {
+        // Lower the inner expression
+        let r = lower_expr(inner_ast, temp, block);
+        let t = unpack_temp(r);
+        let b = unpack_block(r);
+        let p = unpack_result_place(r);
+        let text = unpack_text(r);
+
+        // Add attribute metadata as a comment for now
+        // Codegen will use this to emit llvm.expect intrinsic
+        let dest = place_temp(t);
+        let attr_text = "  " + dest + " = BranchHint " + attr_name + " " + p;
+        let combined = if text.len() > 0 { text + "|" + attr_text } else { attr_text };
+        pack_lower_result(t + 1, b, dest, combined)
+    };
 
 // ============================================================================
 // v0.30.98: TraitCall MIR Generation

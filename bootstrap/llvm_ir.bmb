@@ -504,8 +504,9 @@ fn gen_instruction(line: String) -> String =
 
 // Instruction dispatch: UNIT/BREAK/CONTINUE v0.30.48, CLOSURE v0.30.52, Array v0.30.71, Index v0.30.72
 // v0.48.0: Added IndexUnchecked for zero-cost bounds checking with Fin[N] types
+// v0.52: Added BranchHint for @likely/@unlikely branch prediction hints
 fn gen_instr_dispatch(dest: String, op: String, line: String, pos: i64) -> String =
-    if op == "const" { gen_instr_const(dest, line, pos) } else if op == "neg" { gen_instr_neg(dest, line, pos) } else if op == "not" { gen_instr_not(dest, line, pos) } else if op == "copy" { gen_instr_copy(dest, line, pos) } else if op == "UNIT" { gen_instr_unit(dest) } else if op == "BREAK" { gen_instr_break(dest) } else if op == "CONTINUE" { gen_instr_continue(dest) } else if is_closure_op(op) { gen_instr_closure(dest, parse_closure_id(op)) } else if op == "Array" { gen_instr_array(dest, line, pos) } else if op == "Index" { gen_instr_index(dest, line, pos) } else if op == "IndexUnchecked" { gen_instr_index_unchecked(dest, line, pos) } else { gen_instr_binop(dest, op, line, pos) };
+    if op == "const" { gen_instr_const(dest, line, pos) } else if op == "neg" { gen_instr_neg(dest, line, pos) } else if op == "not" { gen_instr_not(dest, line, pos) } else if op == "copy" { gen_instr_copy(dest, line, pos) } else if op == "UNIT" { gen_instr_unit(dest) } else if op == "BREAK" { gen_instr_break(dest) } else if op == "CONTINUE" { gen_instr_continue(dest) } else if is_closure_op(op) { gen_instr_closure(dest, parse_closure_id(op)) } else if op == "Array" { gen_instr_array(dest, line, pos) } else if op == "Index" { gen_instr_index(dest, line, pos) } else if op == "IndexUnchecked" { gen_instr_index_unchecked(dest, line, pos) } else if op == "BranchHint" { gen_instr_branch_hint(dest, line, pos) } else { gen_instr_binop(dest, op, line, pos) };
 
 // const I:42 or const B:1 or const S:hello (v0.30.51)
 fn gen_instr_const(dest: String, line: String, pos: i64) -> String =
@@ -843,6 +844,21 @@ fn extract_index_expr(s: String, pos: i64) -> String =
 
 fn extract_until_close_bracket(s: String, pos: i64, acc: String) -> String =
     if pos >= s.len() { acc } else if s.byte_at(pos) == 93 { acc } else { extract_until_close_bracket(s, pos + 1, acc + byte_to_string(s.byte_at(pos))) };  // 93=']'
+
+// v0.52: BranchHint - generates llvm.expect.i64 for branch prediction
+// Format: %dest = BranchHint likely %src  or  %dest = BranchHint unlikely %src
+// LLVM: %dest = call i64 @llvm.expect.i64(i64 %src, i64 1)  ; for likely
+// LLVM: %dest = call i64 @llvm.expect.i64(i64 %src, i64 0)  ; for unlikely
+fn gen_instr_branch_hint(dest: String, line: String, pos: i64) -> String =
+    // Parse hint type (likely/unlikely) and source operand
+    let hint = read_until_ws(line, pos);
+    let pos2 = skip_ws(line, pos + hint.len());
+    let src = read_until_ws(line, pos2);
+    // Generate LLVM intrinsic call
+    // For likely: expect value to be 1 (true)
+    // For unlikely: expect value to be 0 (false)
+    let expected = if hint == "likely" { "1" } else { "0" };
+    dest + " = call i64 @llvm.expect.i64(i64 " + src + ", i64 " + expected + ")";
 
 // Binary operations: + %a, %b or == %a, %b or and %a, %b
 // v0.30.70: Range operator support
@@ -1509,6 +1525,10 @@ fn gen_extern_free() -> String =
 fn gen_extern_panic_bounds() -> String =
     "declare void @bmb_panic_bounds() noreturn";
 
+// v0.52: LLVM expect intrinsic for branch prediction hints
+fn gen_intrinsic_expect() -> String =
+    "declare i64 @llvm.expect.i64(i64, i64) nounwind readnone";
+
 // Generate all runtime declarations
 fn gen_runtime_decls() -> String =
     let basic = gen_extern_println() + "|" + gen_extern_abs() + "|" + gen_extern_min() + "|" + gen_extern_max();
@@ -1517,7 +1537,8 @@ fn gen_runtime_decls() -> String =
     let array_mut = gen_extern_array_push() + "|" + gen_extern_array_pop() + "|" + gen_extern_array_clear();
     let memory = gen_extern_alloc() + "|" + gen_extern_free();
     let safety = gen_extern_panic_bounds();  // v0.48.0
-    basic + "|" + string + "|" + array + "|" + array_mut + "|" + memory + "|" + safety;
+    let intrinsics = gen_intrinsic_expect();  // v0.52
+    basic + "|" + string + "|" + array + "|" + array_mut + "|" + memory + "|" + safety + "|" + intrinsics;
 
 // Example: Complete add function from MIR to LLVM IR
 // MIR input:

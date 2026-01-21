@@ -16,6 +16,8 @@
 // - v0.30.2: Add type parameter declaration parsing (struct Foo<T>, fn bar<T>)
 // - v0.30.166: Add comprehensive unit tests for helper functions
 // - v0.30.192: Extended unit test coverage
+// - v0.52: Add Fin[N], Range[lo,hi], Unique[T] type parsing
+// - v0.52: Add @likely/@unlikely attribute parsing for branch hints
 //
 // LIMITATIONS:
 // - String building is memory-intensive
@@ -72,6 +74,7 @@ fn TK_DOT() -> i64 = 301;     // v0.22.0: . for field access
 fn TK_PIPE() -> i64 = 309;    // v0.30.35: | for lambda params
 fn TK_LBRACKET() -> i64 = 313; // v0.30.60: [ for arrays
 fn TK_RBRACKET() -> i64 = 314; // v0.30.60: ] for arrays
+fn TK_AT() -> i64 = 315;       // v0.52: @ for attributes (@likely, @unlikely)
 
 fn TK_ARROW() -> i64 = 321;
 fn TK_DOTDOT() -> i64 = 323;
@@ -132,9 +135,9 @@ fn find_string_end(s: String, pos: i64) -> i64 =
 fn lookup_keyword(w: String) -> i64 =
     if w == "fn" { 100 } else if w == "let" { 101 } else if w == "if" { 102 } else if w == "then" { 103 } else if w == "else" { 104 } else if w == "true" { 105 } else if w == "false" { 106 } else if w == "and" { 107 } else if w == "or" { 108 } else if w == "not" { 109 } else if w == "pre" { 110 } else if w == "post" { 111 } else if w == "mut" { 117 } else if w == "struct" { 118 } else if w == "new" { 119 } else if w == "enum" { 120 } else if w == "match" { 121 } else if w == "while" { 122 } else if w == "for" { 123 } else if w == "in" { 124 } else if w == "break" { 125 } else if w == "continue" { 126 } else if w == "trait" { 127 } else if w == "impl" { 128 } else if w == "i32" { 150 } else if w == "i64" { 151 } else if w == "f64" { 152 } else if w == "bool" { 153 } else if w == "String" { 154 } else { 201 };
 
-// Symbol codes: | (124)=309 for lambda params (v0.30.35), [ (91)=313 and ] (93)=314 for arrays (v0.30.60)
+// Symbol codes: | (124)=309 for lambda params (v0.30.35), [ (91)=313 and ] (93)=314 for arrays (v0.30.60), @ (64)=315 for attributes (v0.52)
 fn symbol_code(c: i64) -> i64 =
-    if c == 58 { 300 } else if c == 46 { 301 } else if c == 61 { 302 } else if c == 59 { 303 } else if c == 44 { 304 } else if c == 40 { 305 } else if c == 41 { 306 } else if c == 123 { 307 } else if c == 125 { 308 } else if c == 124 { 309 } else if c == 91 { 313 } else if c == 93 { 314 } else if c == 43 { 400 } else if c == 45 { 401 } else if c == 42 { 402 } else if c == 47 { 403 } else if c == 37 { 404 } else if c == 60 { 405 } else if c == 62 { 406 } else { 999 };
+    if c == 58 { 300 } else if c == 46 { 301 } else if c == 61 { 302 } else if c == 59 { 303 } else if c == 44 { 304 } else if c == 40 { 305 } else if c == 41 { 306 } else if c == 123 { 307 } else if c == 125 { 308 } else if c == 124 { 309 } else if c == 91 { 313 } else if c == 93 { 314 } else if c == 64 { 315 } else if c == 43 { 400 } else if c == 45 { 401 } else if c == 42 { 402 } else if c == 47 { 403 } else if c == 37 { 404 } else if c == 60 { 405 } else if c == 62 { 406 } else { 999 };
 
 fn check_two_char(s: String, pos: i64) -> i64 =
     if pos + 1 >= s.len() { 0 } else {
@@ -316,9 +319,132 @@ fn parse_type_args(src: String, pos: i64, args: String) -> String =
         if tok_kind(t2) == TK_COMMA() { parse_type_args(src, tok_end(t2), new_args) } else if tok_kind(t2) == TK_GT() { pack_result(tok_end(t2), new_args) } else { pack_result(unpack_pos(tr), make_error("type-arg-end")) }
     };
 
+// ============================================================
+// v0.52: New Type Parsing - Fin[N], Range[lo,hi], Unique[T]
+// ============================================================
+
+// StringBuilder-based AST builders for new types
+fn build_fin_type_ast(bound: String) -> String =
+    let sb = sb_new();
+    let w1 = sb_push(sb, "(fin_type ");
+    let w2 = sb_push(sb, bound);
+    let w3 = sb_push(sb, ")");
+    sb_build(sb);
+
+fn build_range_type_ast(lo: String, hi: String) -> String =
+    let sb = sb_new();
+    let w1 = sb_push(sb, "(range_type ");
+    let w2 = sb_push(sb, lo);
+    let w3 = sb_push(sb, " ");
+    let w4 = sb_push(sb, hi);
+    let w5 = sb_push(sb, ")");
+    sb_build(sb);
+
+fn build_unique_type_ast(inner: String) -> String =
+    let sb = sb_new();
+    let w1 = sb_push(sb, "(unique_type ");
+    let w2 = sb_push(sb, inner);
+    let w3 = sb_push(sb, ")");
+    sb_build(sb);
+
+fn build_disjoint_ast(a: String, b: String) -> String =
+    let sb = sb_new();
+    let w1 = sb_push(sb, "(disjoint ");
+    let w2 = sb_push(sb, a);
+    let w3 = sb_push(sb, " ");
+    let w4 = sb_push(sb, b);
+    let w5 = sb_push(sb, ")");
+    sb_build(sb);
+
+// v0.52: Build attribute AST for branch hints
+// @likely(expr) -> (attr <likely> expr)
+// @unlikely(expr) -> (attr <unlikely> expr)
+fn build_attr_ast(name: String, expr: String) -> String =
+    let sb = sb_new();
+    let w1 = sb_push(sb, "(attr <");
+    let w2 = sb_push(sb, name);
+    let w3 = sb_push(sb, "> ");
+    let w4 = sb_push(sb, expr);
+    let w5 = sb_push(sb, ")");
+    sb_build(sb);
+
+// Parse Fin[N] - finite index type
+// Returns: (fin_type N) where N is an integer or expression
+fn parse_fin_type(src: String, pos: i64) -> String =
+    let t1 = next_token_raw(src, pos);
+    if tok_kind(t1) != TK_LBRACKET() { pack_result(pos, make_error("fin-lbracket")) } else {
+        let bound = parse_expr(src, tok_end(t1));
+        if is_error(unpack_ast(bound)) { bound } else {
+            let t2 = next_token_raw(src, unpack_pos(bound));
+            if tok_kind(t2) != TK_RBRACKET() { pack_result(unpack_pos(bound), make_error("fin-rbracket")) }
+            else { pack_result(tok_end(t2), build_fin_type_ast(unpack_ast(bound))) }
+        }
+    };
+
+// Parse Range[lo, hi] - bounded integer range type
+// Returns: (range_type lo hi)
+fn parse_range_type(src: String, pos: i64) -> String =
+    let t1 = next_token_raw(src, pos);
+    if tok_kind(t1) != TK_LBRACKET() { pack_result(pos, make_error("range-lbracket")) } else {
+        let lo = parse_expr(src, tok_end(t1));
+        if is_error(unpack_ast(lo)) { lo } else {
+            let t2 = next_token_raw(src, unpack_pos(lo));
+            if tok_kind(t2) != TK_COMMA() { pack_result(unpack_pos(lo), make_error("range-comma")) } else {
+                let hi = parse_expr(src, tok_end(t2));
+                if is_error(unpack_ast(hi)) { hi } else {
+                    let t3 = next_token_raw(src, unpack_pos(hi));
+                    if tok_kind(t3) != TK_RBRACKET() { pack_result(unpack_pos(hi), make_error("range-rbracket")) }
+                    else { pack_result(tok_end(t3), build_range_type_ast(unpack_ast(lo), unpack_ast(hi))) }
+                }
+            }
+        }
+    };
+
+// Parse Unique[T] - exclusive ownership type
+// Returns: (unique_type T)
+fn parse_unique_type(src: String, pos: i64) -> String =
+    let t1 = next_token_raw(src, pos);
+    if tok_kind(t1) != TK_LBRACKET() { pack_result(pos, make_error("unique-lbracket")) } else {
+        let inner = parse_type_or_ident(src, tok_end(t1));
+        if is_error(unpack_ast(inner)) { inner } else {
+            let t2 = next_token_raw(src, unpack_pos(inner));
+            if tok_kind(t2) != TK_RBRACKET() { pack_result(unpack_pos(inner), make_error("unique-rbracket")) }
+            else { pack_result(tok_end(t2), build_unique_type_ast(unpack_ast(inner))) }
+        }
+    };
+
+// v0.52: Parse attribute - @likely(expr) or @unlikely(expr)
+// Called after seeing @ token, pos is after @
+// Syntax: @attr_name(expr) or @attr_name expr
+// Returns: (attr <attr_name> expr)
+fn parse_attribute(src: String, pos: i64) -> String =
+    let tok = next_token_raw(src, pos);
+    if tok_kind(tok) != TK_IDENT() { pack_result(pos, make_error("attr-name")) } else {
+        let ns = skip_all(src, pos);
+        let ne = tok_end(tok);
+        let attr_name = src.slice(ns, ne);
+        // Check for parenthesized expression: @attr(expr)
+        let t2 = next_token_raw(src, ne);
+        if tok_kind(t2) == TK_LPAREN() {
+            // @attr(expr) form
+            let inner = parse_expr(src, tok_end(t2));
+            if is_error(unpack_ast(inner)) { inner } else {
+                let t3 = next_token_raw(src, unpack_pos(inner));
+                if tok_kind(t3) != TK_RPAREN() { pack_result(unpack_pos(inner), make_error("attr-rparen")) }
+                else { pack_result(tok_end(t3), build_attr_ast(attr_name, unpack_ast(inner))) }
+            }
+        } else {
+            // @attr expr form (without parentheses)
+            let inner = parse_primary(src, ne);
+            if is_error(unpack_ast(inner)) { inner }
+            else { pack_result(unpack_pos(inner), build_attr_ast(attr_name, unpack_ast(inner))) }
+        }
+    };
+
 // Parse type or identifier with optional type arguments
 // Examples: i64, String, Point, Vec<i64>, Map<String, i64>, [i64]
 // v0.30.62: Extended for array types [T]
+// v0.52: Extended for Fin[N], Range[lo,hi], Unique[T]
 // Check for type arguments: <T, U, ...>
 fn parse_type_or_ident(src: String, pos: i64) -> String =
     let tok = next_token_raw(src, pos);
@@ -327,12 +453,18 @@ fn parse_type_or_ident(src: String, pos: i64) -> String =
         let ns = skip_all(src, pos);
         let ne = tok_end(tok);
         let name = src.slice(ns, ne);
-        let t2 = next_token_raw(src, ne);
-        if tok_kind(t2) == TK_LT() {
-            let targs = parse_type_args(src, tok_end(t2), "");
-            if is_error(unpack_ast(targs)) { targs } else { pack_result(unpack_pos(targs), "(type_app " + name + " (" + unpack_ast(targs) + "))") }
+        // v0.52: Check for special type names with [...] syntax
+        if name == "Fin" { parse_fin_type(src, ne)
+        } else if name == "Range" { parse_range_type(src, ne)
+        } else if name == "Unique" { parse_unique_type(src, ne)
         } else {
-            pack_result(ne, name)
+            let t2 = next_token_raw(src, ne);
+            if tok_kind(t2) == TK_LT() {
+                let targs = parse_type_args(src, tok_end(t2), "");
+                if is_error(unpack_ast(targs)) { targs } else { pack_result(unpack_pos(targs), "(type_app " + name + " (" + unpack_ast(targs) + "))") }
+            } else {
+                pack_result(ne, name)
+            }
         }
     } else if kind == TK_LBRACKET() {
         let elem_type = parse_type_or_ident(src, tok_end(tok));
@@ -725,7 +857,7 @@ fn parse_primary(src: String, pos: i64) -> String =
     } else if kind == TK_MINUS() {
         let r = parse_primary(src, end);
         if is_error(unpack_ast(r)) { r } else { pack_result(unpack_pos(r), "(neg " + unpack_ast(r) + ")") }
-    } else if kind == TK_NEW() { parse_struct_init(src, end) } else if kind == TK_MATCH() { parse_match(src, end) } else if kind == TK_FN() { parse_lambda(src, end) } else if kind == TK_LBRACKET() { parse_array_literal(src, end) } else { pack_result(pos, make_error("expr")) };
+    } else if kind == TK_NEW() { parse_struct_init(src, end) } else if kind == TK_MATCH() { parse_match(src, end) } else if kind == TK_FN() { parse_lambda(src, end) } else if kind == TK_LBRACKET() { parse_array_literal(src, end) } else if kind == TK_AT() { parse_attribute(src, end) } else { pack_result(pos, make_error("expr")) };
 
 fn parse_call_or_var(src: String, pos: i64, name: String) -> String =
     let tok = next_token_raw(src, pos);

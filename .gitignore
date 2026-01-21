@@ -38,15 +38,38 @@ stage2.ll.temp
 # Bootstrap compiler artifacts
 bootstrap/stage1
 bootstrap/*.mir
+bootstrap/bmb_*
+bootstrap/bmbc_*
+bootstrap/*.backup
+bootstrap/*.sh
+bootstrap/*.txt
 bmb-stage1*
 bmb-stage2*
 bmb_stage1*
+bmb_unified*
+stage2_bin
+
+# Assembly output
+*.s
+
+# Build directories
+build/
+
+# Temporary scripts
+convert_mir.py
+find_func.py
+fix_ir.py
 
 # Test artifacts
 test_*.bmb
 test_*_bin
 test_*_mir
+test_hash
+test_simple
+*_test.exe
+*_debug.ll
 
 # Misc
 experiments/.env.local
 *.local
+*.tmp
