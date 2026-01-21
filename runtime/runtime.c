@@ -507,6 +507,11 @@ void print_str(BmbString* s) {
     bmb_print_str(s);
 }
 
+// Print string with newline wrapper (v0.50.49)
+void println_str(BmbString* s) {
+    bmb_println_str(s);
+}
+
 // ===================================================
 // Command-line Argument Runtime Functions (v0.31.23)
 // Phase 32.3.G: CLI Independence
@@ -546,6 +551,165 @@ BmbString* bmb_get_arg(int64_t idx) {
         return bmb_string_new("", 0);
     }
     return bmb_string_from_cstr(bmb_argv[idx]);
+}
+
+// ===================================================
+// Hashmap Implementation (v0.50.64)
+// Simple open-addressing hash table with linear probing
+// Keys and values are i64
+// ===================================================
+
+#define HASHMAP_INITIAL_CAPACITY 16
+#define HASHMAP_LOAD_FACTOR 0.75
+#define HASHMAP_NOT_FOUND (INT64_MIN)
+#define HASHMAP_EMPTY_KEY (INT64_MIN)
+#define HASHMAP_DELETED_KEY (INT64_MIN + 1)
+
+typedef struct {
+    int64_t* keys;
+    int64_t* values;
+    int64_t capacity;
+    int64_t size;
+} BmbHashmap;
+
+static inline uint64_t hashmap_hash(int64_t key) {
+    // FNV-1a inspired hash
+    uint64_t h = (uint64_t)key;
+    h ^= h >> 33;
+    h *= 0xff51afd7ed558ccdULL;
+    h ^= h >> 33;
+    h *= 0xc4ceb9fe1a85ec53ULL;
+    h ^= h >> 33;
+    return h;
+}
+
+static void hashmap_resize(BmbHashmap* map, int64_t new_cap) {
+    int64_t* old_keys = map->keys;
+    int64_t* old_values = map->values;
+    int64_t old_cap = map->capacity;
+
+    map->keys = (int64_t*)malloc(new_cap * sizeof(int64_t));
+    map->values = (int64_t*)malloc(new_cap * sizeof(int64_t));
+    map->capacity = new_cap;
+    map->size = 0;
+
+    // Initialize all slots as empty
+    for (int64_t i = 0; i < new_cap; i++) {
+        map->keys[i] = HASHMAP_EMPTY_KEY;
+    }
+
+    // Reinsert all existing entries
+    for (int64_t i = 0; i < old_cap; i++) {
+        if (old_keys[i] != HASHMAP_EMPTY_KEY && old_keys[i] != HASHMAP_DELETED_KEY) {
+            uint64_t h = hashmap_hash(old_keys[i]);
+            int64_t idx = h % new_cap;
+            while (map->keys[idx] != HASHMAP_EMPTY_KEY) {
+                idx = (idx + 1) % new_cap;
+            }
+            map->keys[idx] = old_keys[i];
+            map->values[idx] = old_values[i];
+            map->size++;
+        }
+    }
+
+    free(old_keys);
+    free(old_values);
+}
+
+int64_t hashmap_new(void) {
+    BmbHashmap* map = (BmbHashmap*)malloc(sizeof(BmbHashmap));
+    map->capacity = HASHMAP_INITIAL_CAPACITY;
+    map->size = 0;
+    map->keys = (int64_t*)malloc(HASHMAP_INITIAL_CAPACITY * sizeof(int64_t));
+    map->values = (int64_t*)malloc(HASHMAP_INITIAL_CAPACITY * sizeof(int64_t));
+
+    for (int64_t i = 0; i < HASHMAP_INITIAL_CAPACITY; i++) {
+        map->keys[i] = HASHMAP_EMPTY_KEY;
+    }
+
+    return (int64_t)(uintptr_t)map;
+}
+
+int64_t hashmap_insert(int64_t handle, int64_t key, int64_t value) {
+    BmbHashmap* map = (BmbHashmap*)(uintptr_t)handle;
+
+    // Resize if load factor exceeded
+    if ((double)map->size / map->capacity >= HASHMAP_LOAD_FACTOR) {
+        hashmap_resize(map, map->capacity * 2);
+    }
+
+    uint64_t h = hashmap_hash(key);
+    int64_t idx = h % map->capacity;
+    int64_t first_deleted = -1;
+
+    while (map->keys[idx] != HASHMAP_EMPTY_KEY) {
+        if (map->keys[idx] == key) {
+            // Key exists, update value
+            map->values[idx] = value;
+            return 0;
+        }
+        if (map->keys[idx] == HASHMAP_DELETED_KEY && first_deleted < 0) {
+            first_deleted = idx;
+        }
+        idx = (idx + 1) % map->capacity;
+    }
+
+    // Insert at deleted slot if found, otherwise at empty slot
+    if (first_deleted >= 0) {
+        idx = first_deleted;
+    }
+
+    map->keys[idx] = key;
+    map->values[idx] = value;
+    map->size++;
+    return 0;
+}
+
+int64_t hashmap_get(int64_t handle, int64_t key) {
+    BmbHashmap* map = (BmbHashmap*)(uintptr_t)handle;
+
+    uint64_t h = hashmap_hash(key);
+    int64_t idx = h % map->capacity;
+
+    while (map->keys[idx] != HASHMAP_EMPTY_KEY) {
+        if (map->keys[idx] == key) {
+            return map->values[idx];
+        }
+        idx = (idx + 1) % map->capacity;
+    }
+
+    return HASHMAP_NOT_FOUND;
+}
+
+int64_t hashmap_remove(int64_t handle, int64_t key) {
+    BmbHashmap* map = (BmbHashmap*)(uintptr_t)handle;
+
+    uint64_t h = hashmap_hash(key);
+    int64_t idx = h % map->capacity;
+
+    while (map->keys[idx] != HASHMAP_EMPTY_KEY) {
+        if (map->keys[idx] == key) {
+            int64_t old_value = map->values[idx];
+            map->keys[idx] = HASHMAP_DELETED_KEY;
+            map->size--;
+            return old_value;
+        }
+        idx = (idx + 1) % map->capacity;
+    }
+
+    return HASHMAP_NOT_FOUND;
+}
+
+int64_t hashmap_len(int64_t handle) {
+    BmbHashmap* map = (BmbHashmap*)(uintptr_t)handle;
+    return map->size;
+}
+
+void hashmap_free(int64_t handle) {
+    BmbHashmap* map = (BmbHashmap*)(uintptr_t)handle;
+    free(map->keys);
+    free(map->values);
+    free(map);
 }
 
 // ===================================================

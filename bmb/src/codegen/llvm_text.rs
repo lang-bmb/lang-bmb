@@ -311,6 +311,16 @@ impl TextCodeGen {
         writeln!(out, "declare ptr @calloc(i64, i64)")?;
         writeln!(out)?;
 
+        // v0.50.64: Hashmap runtime functions
+        writeln!(out, "; Runtime declarations - Hashmap")?;
+        writeln!(out, "declare i64 @hashmap_new()")?;
+        writeln!(out, "declare i64 @hashmap_insert(i64, i64, i64)")?;
+        writeln!(out, "declare i64 @hashmap_get(i64, i64)")?;
+        writeln!(out, "declare i64 @hashmap_remove(i64, i64)")?;
+        writeln!(out, "declare i64 @hashmap_len(i64)")?;
+        writeln!(out, "declare void @hashmap_free(i64)")?;
+        writeln!(out)?;
+
         Ok(())
     }
 
