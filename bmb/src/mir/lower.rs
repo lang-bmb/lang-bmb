@@ -467,9 +467,10 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
                         "int_to_string" | "read_file" | "slice" | "digit_char" | "get_arg" | "sb_build" | "chr" => MirType::String,
                         // i64-returning runtime functions
                         // v0.46: arg_count returns i64
-                        "byte_at" | "len" | "strlen" | "cstr_byte_at" | "arg_count" => MirType::I64,
-                        // Bool-returning runtime functions
-                        "file_exists" | "cstr_eq" => MirType::Bool,
+                        // v0.50.71: file_exists returns i64 (0 or 1), not bool - runtime uses int64_t
+                        "byte_at" | "len" | "strlen" | "cstr_byte_at" | "arg_count" | "file_exists" => MirType::I64,
+                        // Bool-returning runtime functions (actual C bool or i1)
+                        "cstr_eq" => MirType::Bool,
                         // Default to i64 for unknown functions
                         _ => MirType::I64,
                     }
