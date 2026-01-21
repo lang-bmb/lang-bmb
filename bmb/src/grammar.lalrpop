@@ -1148,28 +1148,47 @@ Expr: Expr = {
         arms,
     },
     // While loop (v0.5 Phase 2, v0.37: optional invariant)
-    // Syntax: while cond invariant inv { body }
-    "while" <c:SpannedExpr> "invariant" <inv:SpannedExpr> "{" <body:SpannedExpr> "}" => Expr::While {
+    // v0.51: Body now accepts BlockStmt sequence (let bindings + assignments)
+    // Syntax: while cond invariant inv { stmts }
+    "while" <c:SpannedExpr> "invariant" <inv:SpannedExpr> <l:@L> "{" <es:(<BlockStmt> ";")*> <last:BlockStmt?> "}" <r:@R> => Expr::While {
         cond: Box::new(c),
         invariant: Some(Box::new(inv)),
-        body: Box::new(body),
+        body: Box::new(Spanned::new({
+            let mut exprs = es;
+            if let Some(e) = last { exprs.push(e); }
+            Expr::Block(exprs)
+        }, Span::new(l, r))),
     },
     // While without invariant (backward compatible)
-    "while" <c:SpannedExpr> "{" <body:SpannedExpr> "}" => Expr::While {
+    "while" <c:SpannedExpr> <l:@L> "{" <es:(<BlockStmt> ";")*> <last:BlockStmt?> "}" <r:@R> => Expr::While {
         cond: Box::new(c),
         invariant: None,
-        body: Box::new(body),
+        body: Box::new(Spanned::new({
+            let mut exprs = es;
+            if let Some(e) = last { exprs.push(e); }
+            Expr::Block(exprs)
+        }, Span::new(l, r))),
     },
     // For loop (v0.5 Phase 3)
-    "for" <var:RawIdent> "in" <iter:SpannedRangeExpr> "{" <body:SpannedExpr> "}" => Expr::For {
+    // v0.51: Body now accepts BlockStmt sequence
+    "for" <var:RawIdent> "in" <iter:SpannedRangeExpr> <l:@L> "{" <es:(<BlockStmt> ";")*> <last:BlockStmt?> "}" <r:@R> => Expr::For {
         var,
         iter: Box::new(iter),
-        body: Box::new(body),
+        body: Box::new(Spanned::new({
+            let mut exprs = es;
+            if let Some(e) = last { exprs.push(e); }
+            Expr::Block(exprs)
+        }, Span::new(l, r))),
     },
     // v0.36: Additional control flow
     // Infinite loop: loop { body }
-    "loop" "{" <body:SpannedExpr> "}" => Expr::Loop {
-        body: Box::new(body),
+    // v0.51: Body now accepts BlockStmt sequence
+    "loop" <l:@L> "{" <es:(<BlockStmt> ";")*> <last:BlockStmt?> "}" <r:@R> => Expr::Loop {
+        body: Box::new(Spanned::new({
+            let mut exprs = es;
+            if let Some(e) = last { exprs.push(e); }
+            Expr::Block(exprs)
+        }, Span::new(l, r))),
     },
     // Break: exits the innermost loop
     "break" => Expr::Break { value: None },

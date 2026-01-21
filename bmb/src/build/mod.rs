@@ -313,10 +313,11 @@ pub fn build(config: &BuildConfig) -> BuildResult<()> {
             println!("  Compiled to object file: {}", obj_path.display());
         }
 
-        // Compile runtime
+        // Compile runtime with same optimization level as BMB code
+        // v0.51: Critical fix - runtime was compiled with -O0, causing 3x slowdown in FFI calls
         let runtime_obj = config.output.with_file_name("runtime").with_extension(if cfg!(windows) { "obj" } else { "o" });
         let mut cmd = Command::new(&clang);
-        cmd.args(["-c", runtime_path.to_str().unwrap(), "-o", runtime_obj.to_str().unwrap()]);
+        cmd.args([opt_flag, "-c", runtime_path.to_str().unwrap(), "-o", runtime_obj.to_str().unwrap()]);
 
         // Add Windows SDK include paths if on Windows
         #[cfg(target_os = "windows")]
