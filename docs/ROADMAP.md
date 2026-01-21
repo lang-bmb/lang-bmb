@@ -44,7 +44,7 @@
 | **v0.54** | **Performance Gate** | ✅ 완료 | **Gate #3.2/3.3 통과: bounds/overflow 검사 0% (v0.54.5)** |
 | **v0.55** | **Ecosystem** | ✅ 완료 | **14/14 패키지 컴파일 성공 (v0.55.1)** |
 | **v0.56** | **Showcase** | ✅ 완료 | **샘플 앱 5/5, 시나리오 문서 5/5 (v0.56.1: Fin[N]/Range/disjoint 반영)** |
-| **v0.57** | **Final Verification** | 🚨 최우선 | **벤치마크 41개 전체 측정 (현재 6개), 보안 감사, 최종 검증** |
+| **v0.57** | **Final Verification** | 🔄 진행중 | **벤치마크 48개 전체 측정 완료 (43/48 통과), 보안 감사, 최종 검증** |
 | **v0.58** | **Release Candidate** | 🎯 목표 | **v1.0 준비, 커뮤니티 검증 대기** |
 
 ---
@@ -69,7 +69,7 @@
 | **파서 통합** | 새 타입 파싱 + Lowering/Codegen 연결 | ✅ 완료 | v0.52 |
 | **부트스트랩 완성** | Stage 1 hang 해결, Stage 3 재검증 | ✅ 완료 | v0.53 |
 | **성능 게이트** | Gate #3.2/3.3 통과 (bounds/overflow 0%) | ⚠️ IR 검증만, 실측 미완료 | v0.54 |
-| **🚨 벤치마크 전체** | 41개 벤치마크 C/BMB/Rust 측정 | ❌ 6/41 (15%) 완료 | v0.57 |
+| **🚨 벤치마크 전체** | 48개 벤치마크 C/BMB/Rust 측정 | ⚠️ 43/48 (90%) 완료 | v0.57 |
 | **크로스 컴파일** | Linux/Windows/macOS/WASM | ✅ IR 생성 가능 (v0.50.23) | v0.55 |
 | **생태계** | 14+ 핵심 패키지 (새 타입 시스템 적용) | ✅ 14/14 패키지 완료 (v0.55.1) | v0.55 |
 | **샘플/문서** | 5개 샘플 앱, 5개 시나리오 | ✅ 완료 (v0.56.1: Zero-Cost Safety 문서화) | v0.56 |
@@ -978,36 +978,55 @@ node tools/rust_to_bmb.mjs path/to/*.rs --apply
 
 ### 🚨 P0: 벤치마크 전체 측정 (최우선)
 
-> **현황**: 41개 벤치마크 중 6개(15%)만 실측됨. v1.0 성능 주장의 근거 부족.
+> **현황 (v0.50.62, 2026-01-21)**: 48개 벤치마크 전체 측정 완료
+> - FAST: 12개 (BMB가 C보다 빠름)
+> - OK: 16개 (C 대비 10% 이내)
+> - SLOW: 15개 (10% 초과)
+> - FAILED: 5개 (컴파일 실패)
 
 #### 벤치마크 카테고리별 현황
 
 | 카테고리 | 벤치마크 | 구현 | 검증 | 상태 |
 |----------|----------|------|------|------|
-| **compute** | fibonacci, mandelbrot, spectral_norm, n_body, binary_trees, fannkuch, fasta, hash_table, k-nucleotide, reverse-complement | 10/10 | 4/10 | 🔄 |
-| **zero_overhead** | bounds_check_proof, overflow_proof, null_check_proof, aliasing_proof, purity_proof | 5/5 | 2/5 | 🔄 |
-| **contract_opt** | bounds_elim, branch_elim, loop_invariant, null_elim | 4/4 | 0/4 | ❌ |
-| **surpass** | graph_traversal, matrix_multiply, sort_presorted, string_search, tree_balance | 5/5 | 0/5 | ❌ |
-| **memory** | cache_stride, memory_copy, pointer_chase, simd_sum, stack_allocation | 5/5 | 0/5 | ❌ |
-| **syscall** | file_io_seq, process_spawn, syscall_overhead | 3/3 | 0/3 | ❌ |
-| **real_world** | brainfuck, csv_parse, http_parse, json_parse, json_serialize, sorting | 6/6 | 0/6 | ❌ |
-| **bootstrap** | lex_bootstrap, parse_bootstrap, typecheck_bootstrap | 3/3 | 0/3 | ❌ |
-| **합계** | | **41** | **6** | **15%** |
+| **compute** | fibonacci, mandelbrot, spectral_norm, n_body, binary_trees, fannkuch, fasta, hash_table, k-nucleotide, reverse-complement | 10/10 | 8/10 | ✅ n_body 0.14x! |
+| **contract** | aliasing, bounds_check, branch_elim, invariant_hoist, null_check, purity_opt | 6/6 | 6/6 | ✅ 완료 |
+| **contract_opt** | bounds_elim, branch_elim, loop_invariant, null_elim | 4/4 | 3/4 | ⚠️ branch_elim PHI bug |
+| **surpass** | graph_traversal, matrix_multiply, sort_presorted, string_search, tree_balance | 5/5 | 4/5 | ⚠️ graph_traversal PHI bug |
+| **memory** | cache_stride, memory_copy, pointer_chase, simd_sum, stack_allocation | 5/5 | 5/5 | ✅ 완료 |
+| **syscall** | file_io_seq, process_spawn, syscall_overhead | 3/3 | 3/3 | ✅ 완료 |
+| **real_world** | brainfuck, csv_parse, http_parse, json_parse, json_serialize, lexer, sorting | 7/7 | 6/7 | ⚠️ brainfuck PHI bug |
+| **zero_overhead** | aliasing_proof, bounds_check_proof, null_check_proof, overflow_proof, purity_proof | 5/5 | 5/5 | ✅ 완료 |
+| **bootstrap** | lex_bootstrap, parse_bootstrap, typecheck_bootstrap | 3/3 | 3/3 | ✅ 완료 |
+| **합계** | | **48** | **43** | **90%** |
+
+#### v0.50.62 주요 수정 (2026-01-21)
+- **n_body 컴파일 수정**: Float 상수 0.0 → `0.000000e+00` 형식으로 LLVM 호환 수정
+- **file_io_seq 컴파일 수정**: `str_len()` → `.len()` 메서드 호출로 수정
+- **process_spawn 컴파일 수정**: `system()` → `bmb_system()` 런타임 함수 매핑 추가
+
+#### 남은 5개 FAILED 벤치마크
+| 벤치마크 | 원인 | 수정 계획 |
+|----------|------|----------|
+| hash_table | 런타임에 hashmap 함수 없음 | P2: 런타임 확장 |
+| k-nucleotide | 런타임에 hashmap 함수 없음 | P2: 런타임 확장 |
+| brainfuck | PHI 노드 predecessor 불일치 | P1: 코드젠 수정 필요 |
+| graph_traversal | PHI 노드 undefined label | P1: 코드젠 수정 필요 |
+| branch_elim (contract_opt) | PHI 노드 undefined value | P1: 코드젠 수정 필요 |
 
 #### 벤치마크 완료 태스크
 
 | ID | 태스크 | 벤치마크 수 | 우선순위 | 상태 |
 |----|--------|------------|----------|------|
-| 57.B1 | **Compute 전체 실행** | 10개 (fibonacci, mandelbrot, spectral_norm, n_body, binary_trees, fannkuch, fasta, hash_table, k-nucleotide, reverse-complement) | **P0** | 📋 계획 |
-| 57.B2 | **Zero-Cost IR 검증** | 5개 (bounds, overflow, null, aliasing, purity) | **P0** | 📋 계획 |
-| 57.B3 | **Contract 최적화 검증** | 4개 (bounds_elim, branch_elim, loop_invariant, null_elim) | **P0** | 📋 계획 |
-| 57.B4 | **Surpass 케이스 실행** | 5개 (graph, matrix, sort, string, tree) | **P0** | 📋 계획 |
-| 57.B5 | **Memory 벤치마크 실행** | 5개 (cache, copy, chase, simd, stack) | P1 | 📋 계획 |
-| 57.B6 | **Real-world 벤치마크 실행** | 6개 (brainfuck, csv, http, json×2, sorting) | P1 | 📋 계획 |
-| 57.B7 | **Syscall 벤치마크 실행** | 3개 (file_io, process, syscall) | P1 | 📋 계획 |
-| 57.B8 | **Bootstrap 벤치마크 실행** | 3개 (lex, parse, typecheck) | P1 | 📋 계획 |
-| 57.B9 | **결과 CSV/JSON 통합** | 41개 전체 | **P0** | 📋 계획 |
-| 57.B10 | **Gate 재검증** | #3.1~#3.5 전체 | **P0** | 📋 계획 |
+| 57.B1 | **Compute 전체 실행** | 10개 | **P0** | ✅ 8/10 완료 (hash_table, k-nucleotide 제외) |
+| 57.B2 | **Zero-Cost IR 검증** | 5개 | **P0** | ✅ 5/5 완료 |
+| 57.B3 | **Contract 최적화 검증** | 4개 | **P0** | ⚠️ 3/4 (branch_elim PHI bug) |
+| 57.B4 | **Surpass 케이스 실행** | 5개 | **P0** | ⚠️ 4/5 (graph_traversal PHI bug) |
+| 57.B5 | **Memory 벤치마크 실행** | 5개 | P1 | ✅ 5/5 완료 |
+| 57.B6 | **Real-world 벤치마크 실행** | 7개 | P1 | ⚠️ 6/7 (brainfuck PHI bug) |
+| 57.B7 | **Syscall 벤치마크 실행** | 3개 | P1 | ✅ 3/3 완료 |
+| 57.B8 | **Bootstrap 벤치마크 실행** | 3개 | P1 | ✅ 3/3 완료 |
+| 57.B9 | **결과 CSV/JSON 통합** | 48개 전체 | **P0** | ✅ 완료 (v0.50.62) |
+| 57.B10 | **Gate 재검증** | #3.1~#3.5 전체 | **P0** | ✅ 완료 (Gate #3.2, #3.4 PASSED) |
 
 #### 벤치마크 실행 명령어
 

@@ -674,7 +674,15 @@ impl TextCodeGen {
                             writeln!(out, "  %{} = add {} 0, {}", temp_name, ty, v)?;
                         }
                         Constant::Float(f) => {
-                            writeln!(out, "  %{} = fadd {} 0.0, {}", temp_name, ty, f)?;
+                            // Format float in LLVM-compatible way (scientific notation)
+                            let f_str = if f.is_nan() {
+                                "0x7FF8000000000000".to_string()
+                            } else if f.is_infinite() {
+                                if f.is_sign_positive() { "0x7FF0000000000000".to_string() } else { "0xFFF0000000000000".to_string() }
+                            } else {
+                                format!("{:.6e}", f)
+                            };
+                            writeln!(out, "  %{} = fadd {} 0.0, {}", temp_name, ty, f_str)?;
                         }
                         Constant::Unit => {
                             writeln!(out, "  %{} = add i8 0, 0", temp_name)?;
@@ -706,7 +714,15 @@ impl TextCodeGen {
                             writeln!(out, "  %{} = add {} 0, {}", dest_name, ty, v)?;
                         }
                         Constant::Float(f) => {
-                            writeln!(out, "  %{} = fadd {} 0.0, {}", dest_name, ty, f)?;
+                            // Format float in LLVM-compatible way (scientific notation)
+                            let f_str = if f.is_nan() {
+                                "0x7FF8000000000000".to_string()
+                            } else if f.is_infinite() {
+                                if f.is_sign_positive() { "0x7FF0000000000000".to_string() } else { "0xFFF0000000000000".to_string() }
+                            } else {
+                                format!("{:.6e}", f)
+                            };
+                            writeln!(out, "  %{} = fadd {} 0.0, {}", dest_name, ty, f_str)?;
                         }
                         Constant::Unit => {
                             // Unit type - just assign 0
@@ -1819,12 +1835,18 @@ impl TextCodeGen {
                     .map(|(ty, val)| format!("{} {}", ty, val))
                     .collect();
 
+                // Map BMB function names to runtime function names
+                let runtime_fn_name = match fn_name.as_str() {
+                    "system" => "bmb_system",
+                    _ => fn_name.as_str(),
+                };
+
                 if ret_ty == "void" {
                     writeln!(
                         out,
                         "  call {} @{}({})",
                         ret_ty,
-                        fn_name,
+                        runtime_fn_name,
                         args_str.join(", ")
                     )?;
                 } else if let Some(d) = dest {
@@ -1836,7 +1858,7 @@ impl TextCodeGen {
                             "  %{} = call {} @{}({})",
                             temp_name,
                             ret_ty,
-                            fn_name,
+                            runtime_fn_name,
                             args_str.join(", ")
                         )?;
                         writeln!(out, "  store {} %{}, ptr %{}.addr", ret_ty, temp_name, d.name)?;
@@ -1847,7 +1869,7 @@ impl TextCodeGen {
                             "  %{} = call {} @{}({})",
                             dest_name,
                             ret_ty,
-                            fn_name,
+                            runtime_fn_name,
                             args_str.join(", ")
                         )?;
                     }
@@ -1856,7 +1878,7 @@ impl TextCodeGen {
                         out,
                         "  call {} @{}({})",
                         ret_ty,
-                        fn_name,
+                        runtime_fn_name,
                         args_str.join(", ")
                     )?;
                 }
