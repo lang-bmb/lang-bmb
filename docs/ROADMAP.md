@@ -1171,11 +1171,12 @@ zero_overhead,bounds_check_proof,10.0,10.0,12.0,1.00,0.83,PASS_ZERO_COST
 | 57.P5 | **인라인 임계치 조정** | 전체 | LLVM 기본값 최적 (v0.50.66 테스트) | ✅ 검증완료 |
 | 57.P6 | **memcpy 인트린직** | memory_copy | memory_copy **1.09x** - 목표 달성 | ✅ 완료 |
 | 57.P7 | **DCE 최적화 강화** | purity_opt, null_check_proof | purity_opt **1.05x** 목표달성, null_proof **1.11x** | ✅ 완료 |
-| 57.P8 | **전체 벤치마크 재검증** | 48개 전체 | **37/48 (77%) 목표 달성** - 벤치마크 러너 수정 (v0.50.69) | ✅ 완료 |
+| 57.P8 | **전체 벤치마크 재검증** | 48개 전체 | **40/48 (83%) ≤1.10x** - v0.50.76 Contract최적화 후 | ✅ 완료 |
 | 57.P9 | **vec_push PHI 버그 수정** | brainfuck | 인라인→런타임 함수로 변경 (v0.50.70) - **1.24x** (시스템 노이즈 영향) | ✅ 완료 |
 | 57.P10 | **file_exists 타입 버그 수정** | 전체 | Bool→I64 타입 불일치 수정 (v0.50.71) - segfault 해결 | ✅ 완료 |
 | 57.P11 | **runtime.c -O3 컴파일** | 전체 FFI | runtime이 -O0으로 컴파일되던 버그 수정 (v0.51) - **FFI 30% 향상** | ✅ 완료 |
 | 57.P12 | **while/for/loop 문법 개선** | 전체 | 블록 내 직접 assignment 지원 (v0.51) - nested block 불필요 | ✅ 완료 |
+| 57.P13 | **Contract최적화 Release 적용** | 전체 | Contract기반 dead branch 제거 (v0.50.76) - **8개 벤치마크 ≤1.10x 달성** | ✅ **완료** |
 
 ---
 
