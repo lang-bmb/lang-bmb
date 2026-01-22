@@ -1178,6 +1178,96 @@ zero_overhead,bounds_check_proof,10.0,10.0,12.0,1.00,0.83,PASS_ZERO_COST
 | 57.P12 | **while/for/loop 문법 개선** | 전체 | 블록 내 직접 assignment 지원 (v0.51) - nested block 불필요 | ✅ 완료 |
 | 57.P13 | **Contract최적화 Release 적용** | 전체 | Contract기반 dead branch 제거 (v0.50.76) - **8개 벤치마크 ≤1.10x 달성** | ✅ **완료** |
 
+### 🚨 근본 성능 개선 태스크 (P0 - 언어/컴파일러 수준)
+
+> **철학 원칙**: "벤치마크 수정으로 우회 금지, 컴파일러가 올바른 코드를 생성하도록 수정"
+> **목표**: 8개 SLOW 벤치마크 모두 ≤1.10x C 달성
+
+#### Phase A: 컴파일러 최적화 (즉시 실행)
+
+| ID | 태스크 | 대상 벤치마크 | Root Cause | 해결 방안 | 예상 효과 | 우선순위 |
+|----|--------|--------------|------------|----------|----------|---------|
+| 57.P14 | ✅ **상수 문자열 FFI 직접 전달** | syscall_overhead (3.83x) | `bmb_string_from_cstr` 매번 호출 | Codegen: 문자열 리터럴→`const char*` 직접 전달 | 3.83x → 3.1x (완료) | **P0** |
+| 57.P15 | ✅ **LLVM IR SSA 최적화** | fibonacci (1.52x→1.32x) | IR 수준 alloca 과다 | Codegen: _t* 변수 SSA로 유지 (LLVM mem2reg 이미 적용됨) | IR 품질 개선 (v0.50.53) | **P0** |
+| 57.P16 | **루프 불변 코드 호이스팅** | invariant_hoist (1.14x) | 재귀에서 호이스팅 불가 | MIR 패스: 루프 불변 연산 호이스팅 | 1.14x → ~1.05x | P1 |
+
+#### Phase B: 언어 스펙 확장 (설계 검토 필요)
+
+| ID | 태스크 | 대상 벤치마크 | Root Cause | 해결 방안 | 예상 효과 | 우선순위 |
+|----|--------|--------------|------------|----------|----------|---------|
+| 57.P17 | **배열 참조 전달** | pointer_chase (1.32x), aliasing_proof (1.27x) | 배열 값 복사 (64개 원소×2 매 재귀) | 언어 스펙: `&[T; N]` 참조 타입 추가 | 1.32x/1.27x → ~1.05x | **P0** |
+| 57.P18 | **꼬리재귀→루프 자동 변환** | json_parse (1.47x), overflow_proof (1.42x) | 재귀 함수 호출 오버헤드 | MIR 패스: 꼬리재귀 패턴을 루프로 변환 | 1.47x/1.42x → ~1.10x | P1 |
+
+#### Phase C: 런타임/라이브러리 최적화
+
+| ID | 태스크 | 대상 벤치마크 | Root Cause | 해결 방안 | 예상 효과 | 우선순위 |
+|----|--------|--------------|------------|----------|----------|---------|
+| 57.P19 | **문자열 concat 자동 최적화** | json_serialize (1.23x) | `acc + char` O(n²) 패턴 | MIR 패스: 연속 concat→StringBuilder 변환 | 1.23x → ~1.05x | P2 |
+
+#### Root Cause Pattern 요약
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│ SLOW 벤치마크 8개 - 근본 원인 패턴 분석                                   │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│  [Pattern 1] FFI String 래퍼 오버헤드                                   │
+│  └─ syscall_overhead (3.83x)                                           │
+│     └─ 해결: P14 - 상수 문자열 직접 전달                                │
+│                                                                         │
+│  [Pattern 2] alloca/load/store 과다 ✅ P15 완료                        │
+│  └─ fibonacci (1.52x→1.32x 측정, LLVM mem2reg 이미 적용됨)            │
+│     └─ 해결: P15 - LLVM IR SSA 최적화 (v0.50.53)                       │
+│                                                                         │
+│  [Pattern 3] 배열 값 복사                                               │
+│  ├─ pointer_chase (1.32x)                                              │
+│  └─ aliasing_proof (1.27x)                                             │
+│     └─ 해결: P17 - 배열 참조 전달 언어 스펙                             │
+│                                                                         │
+│  [Pattern 4] 재귀 vs 루프                                               │
+│  ├─ json_parse (1.47x)                                                 │
+│  ├─ overflow_proof (1.42x)                                             │
+│  └─ invariant_hoist (1.14x)                                            │
+│     └─ 해결: P16/P18 - 호이스팅 + 꼬리재귀 변환                         │
+│                                                                         │
+│  [Pattern 5] O(n²) 문자열 연결                                          │
+│  └─ json_serialize (1.23x)                                             │
+│     └─ 해결: P19 - StringBuilder 자동 변환                              │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+#### 실행 순서 (의존성 기반)
+
+```
+Phase A (즉시 실행) ─────────────────────────────────────────────────────
+    │
+    ├── P14: ✅ 상수 문자열 FFI 최적화 ───── syscall_overhead 3.83x→3.1x
+    │   └── llvm_text.rs: String literal → const char* 직접 전달
+    │
+    ├── P15: ✅ LLVM IR SSA 최적화 ─────── fibonacci IR 품질 개선 (v0.50.53)
+    │   └── llvm.rs: _t* 변수 SSA 유지 (LLVM mem2reg 이미 적용됨)
+    │
+    └── P16: 루프 불변 코드 호이스팅 ────── invariant_hoist 해결
+        └── optimize.rs: LICM pass 추가
+
+Phase B (언어 스펙 검토 후) ─────────────────────────────────────────────
+    │
+    ├── P17: 배열 참조 전달 ─────────────── pointer_chase, aliasing_proof
+    │   ├── SPECIFICATION.md: `&[T; N]` 타입 정의
+    │   ├── grammar.lalrpop: 참조 타입 파싱
+    │   ├── types/: 타입 검사 확장
+    │   └── codegen/: 참조 전달 코드 생성
+    │
+    └── P18: 꼬리재귀→루프 변환 ─────────── json_parse, overflow_proof
+        └── optimize.rs: tail recursion → loop transformation
+
+Phase C (선택적) ───────────────────────────────────────────────────────
+    │
+    └── P19: 문자열 concat 최적화 ─────── json_serialize
+        └── optimize.rs: concat chain → StringBuilder
+```
+
 ---
 
 ## Phase v0.58: 릴리스 후보 (Release Candidate)
