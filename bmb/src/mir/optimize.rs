@@ -296,17 +296,53 @@ impl OptimizationPass for ConstantFolding {
                         new_instructions.push(inst.clone());
                     }
                     // v0.50.68: Evaluate builtin functions with constant arguments
-                    MirInst::Call { dest: Some(dest), func: func_name, args, .. } => {
-                        if let Some(result) = fold_builtin_call(func_name, args, &constants) {
-                            constants.insert(dest.name.clone(), result.clone());
-                            new_instructions.push(MirInst::Const {
-                                dest: dest.clone(),
-                                value: result,
-                            });
-                            changed = true;
-                            continue;
+                    // v0.51.2: Propagate constants to call arguments for FFI string optimization
+                    MirInst::Call { dest, func: func_name, args, is_tail } => {
+                        // First, try to fold builtin calls completely
+                        if let Some(d) = dest {
+                            if let Some(result) = fold_builtin_call(func_name, args, &constants) {
+                                constants.insert(d.name.clone(), result.clone());
+                                new_instructions.push(MirInst::Const {
+                                    dest: d.clone(),
+                                    value: result,
+                                });
+                                changed = true;
+                                continue;
+                            }
                         }
-                        new_instructions.push(inst.clone());
+
+                        // v0.51.2: Propagate constants to call arguments
+                        // This enables LLVM codegen to detect string literal arguments
+                        let propagated_args: Vec<Operand> = args.iter().map(|arg| {
+                            match arg {
+                                Operand::Place(p) => {
+                                    // Don't propagate loop-modified variables
+                                    if !loop_modified.contains(&p.name) {
+                                        if let Some(c) = constants.get(&p.name) {
+                                            return Operand::Constant(c.clone());
+                                        }
+                                    }
+                                    arg.clone()
+                                }
+                                Operand::Constant(_) => arg.clone(),
+                            }
+                        }).collect();
+
+                        // Check if any argument was propagated
+                        let any_propagated = args.iter().zip(propagated_args.iter()).any(|(orig, prop)| {
+                            matches!((orig, prop), (Operand::Place(_), Operand::Constant(_)))
+                        });
+
+                        if any_propagated {
+                            changed = true;
+                        }
+
+                        new_instructions.push(MirInst::Call {
+                            dest: dest.clone(),
+                            func: func_name.clone(),
+                            args: propagated_args,
+                            is_tail: *is_tail,
+                        });
                     }
                     _ => {
                         new_instructions.push(inst.clone());

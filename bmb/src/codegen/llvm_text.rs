@@ -282,6 +282,9 @@ impl TextCodeGen {
 
         // File I/O wrappers
         writeln!(out, "declare i64 @file_exists(ptr)")?;
+        // v0.51.2: cstr variants for string literal optimization
+        writeln!(out, "declare i64 @file_exists_cstr(ptr)")?;
+        writeln!(out, "declare i64 @bmb_file_exists_cstr(ptr)")?;
         writeln!(out, "declare i64 @file_size(ptr)")?;
         writeln!(out, "declare ptr @read_file(ptr)")?;
         writeln!(out, "declare i64 @write_file(ptr, ptr)")?;
@@ -1764,13 +1767,17 @@ impl TextCodeGen {
                     .unwrap_or_else(|| format!("call_{}.{}", fn_name, call_cnt));
 
                 // Emit loads for local variables used as arguments
-                let mut arg_vals: Vec<(String, String)> = Vec::new(); // (type, value)
+                // v0.51.2: Track (type, value, is_string_literal) for cstr optimization
+                let mut arg_vals: Vec<(String, String, bool)> = Vec::new();
                 for (i, arg) in args.iter().enumerate() {
                     let ty = match arg {
                         Operand::Constant(c) => self.constant_type(c),
                         Operand::Place(p) => place_types.get(&p.name).copied()
                             .unwrap_or_else(|| self.infer_place_type(p, func)),
                     };
+
+                    // v0.51.2: Track if this arg is a string literal for cstr optimization
+                    let is_string_literal = matches!(arg, Operand::Constant(Constant::String(_)));
 
                     let val = match arg {
                         Operand::Place(p) if local_names.contains(&p.name) => {
@@ -1780,28 +1787,49 @@ impl TextCodeGen {
                             format!("%{}", load_name)
                         }
                         Operand::Constant(Constant::String(s)) => {
-                            // String constants need to be wrapped with bmb_string_from_cstr
-                            if let Some(global_name) = string_table.get(s) {
-                                let wrapper_name = format!("{}.strarg{}", call_base, i);
-                                writeln!(out, "  %{} = call ptr @bmb_string_from_cstr(ptr @{})", wrapper_name, global_name)?;
-                                format!("%{}", wrapper_name)
+                            // v0.51.2: Check if function has _cstr variant for direct string literal pass
+                            // If so, we'll pass the raw pointer without wrapping
+                            let has_cstr_variant = matches!(fn_name.as_str(),
+                                "file_exists" | "bmb_file_exists");
+
+                            if has_cstr_variant {
+                                // Direct pass: just use the global string pointer
+                                if let Some(global_name) = string_table.get(s) {
+                                    format!("@{}", global_name)
+                                } else {
+                                    self.format_operand_with_strings(arg, string_table)
+                                }
                             } else {
-                                self.format_operand_with_strings(arg, string_table)
+                                // Standard: wrap with bmb_string_from_cstr
+                                if let Some(global_name) = string_table.get(s) {
+                                    let wrapper_name = format!("{}.strarg{}", call_base, i);
+                                    writeln!(out, "  %{} = call ptr @bmb_string_from_cstr(ptr @{})", wrapper_name, global_name)?;
+                                    format!("%{}", wrapper_name)
+                                } else {
+                                    self.format_operand_with_strings(arg, string_table)
+                                }
                             }
                         }
                         _ => self.format_operand_with_strings(arg, string_table),
                     };
-                    arg_vals.push((ty.to_string(), val));
+                    arg_vals.push((ty.to_string(), val, is_string_literal));
                 }
 
                 let args_str: Vec<String> = arg_vals
                     .iter()
-                    .map(|(ty, val)| format!("{} {}", ty, val))
+                    .map(|(ty, val, _)| format!("{} {}", ty, val))
                     .collect();
 
+                // v0.51.2: Check if all string args are literals for cstr variant optimization
+                let all_string_args_are_literals = arg_vals.iter()
+                    .all(|(ty, _, is_literal)| ty != "ptr" || *is_literal);
+
                 // Map BMB function names to runtime function names
+                // v0.51.2: Use _cstr variant when all string args are literals
                 let runtime_fn_name = match fn_name.as_str() {
                     "system" => "bmb_system",
+                    "file_exists" if all_string_args_are_literals => "file_exists_cstr",
+                    "bmb_file_exists" if all_string_args_are_literals => "bmb_file_exists_cstr",
                     _ => fn_name.as_str(),
                 };
 

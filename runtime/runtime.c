@@ -251,18 +251,36 @@ void bmb_println_str(BmbString* s) {
 // File I/O Runtime Functions (Phase 32.3)
 // ===================================================
 
+// v0.51.2: Use _stat64 on Windows for better performance
+// clang's default stat() maps to _stat64i32 which is 3x slower than _stat64
+#ifdef _WIN32
+#define BMB_STAT _stat64
+#define BMB_STAT_STRUCT struct __stat64
+#else
+#define BMB_STAT stat
+#define BMB_STAT_STRUCT struct stat
+#endif
+
 // Check if file exists (returns 1 if exists, 0 otherwise)
 int64_t bmb_file_exists(BmbString* path) {
     if (!path) return 0;
-    struct stat st;
-    return stat(path->data, &st) == 0 ? 1 : 0;
+    BMB_STAT_STRUCT st;
+    return BMB_STAT(path->data, &st) == 0 ? 1 : 0;
+}
+
+// v0.51.2: Direct cstr version for string literal optimization
+// Avoids BmbString wrapper overhead when called with constant strings
+int64_t bmb_file_exists_cstr(const char* path) {
+    if (!path) return 0;
+    BMB_STAT_STRUCT st;
+    return BMB_STAT(path, &st) == 0 ? 1 : 0;
 }
 
 // Get file size (-1 on error)
 int64_t bmb_file_size(BmbString* path) {
     if (!path) return -1;
-    struct stat st;
-    if (stat(path->data, &st) != 0) return -1;
+    BMB_STAT_STRUCT st;
+    if (BMB_STAT(path->data, &st) != 0) return -1;
     return (int64_t)st.st_size;
 }
 
@@ -461,8 +479,16 @@ int64_t ord(BmbString* s) {
 }
 
 // File I/O wrappers
+// v0.51.2: Inlined for performance - avoid indirect call overhead
 int64_t file_exists(BmbString* path) {
-    return bmb_file_exists(path);
+    if (!path) return 0;
+    BMB_STAT_STRUCT st;
+    return BMB_STAT(path->data, &st) == 0 ? 1 : 0;
+}
+
+// v0.51.2: cstr version for string literal optimization
+int64_t file_exists_cstr(const char* path) {
+    return bmb_file_exists_cstr(path);
 }
 
 int64_t file_size(BmbString* path) {
