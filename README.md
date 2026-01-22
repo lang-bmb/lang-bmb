@@ -1,168 +1,151 @@
-# BMB - Bare-Metal-Banter
+# BMB — Bare-Metal-Banter
+
+> **Banter for AI. Bare-metal for humans.**
 
 A contract-verified systems programming language.
 
+---
+
+## The Trade-off
+
+Most languages optimize for humans. BMB doesn't.
+
+| You Give Up | You Get |
+|-------------|---------|
+| More type annotations | More aggressive optimization |
+| Contracts required | Runtime checks eliminated |
+| Explicit conversions | Predictable performance |
+| More compile errors | Fewer runtime errors |
+
 **Hard to write. Hard to get wrong. And that's what AI prefers.**
 
-## Why BMB?
+---
 
-Traditional languages prioritize human convenience—readable syntax, flexible conventions, implicit behaviors. The cost: ambiguity, guesswork, runtime surprises.
+## Zero-Overhead Safety
 
-BMB takes a different approach. Contracts are mandatory. Specifications are explicit. Invariants are verified at compile time.
+Every safety check compiles away to nothing:
+
+| Runtime Check (Other Languages) | BMB Approach | Overhead |
+|---------------------------------|--------------|----------|
+| Bounds checking | `pre idx < arr.len()` | **0%** |
+| Null checking | `T?` type + contract | **0%** |
+| Overflow checking | Contract or explicit op | **0%** |
+| Division by zero | `pre divisor != 0` | **0%** |
 
 ```bmb
-fn binary_search(arr: &[i64], target: i64) -> i64
-  pre is_sorted(arr)
-  post ret == -1 || (0 <= ret && ret < len(arr))
-  post ret != -1 implies arr[ret] == target
-= {
-    var lo = 0;
-    var hi = len(arr) - 1;
-    while lo <= hi
-      invariant 0 <= lo && hi < len(arr)
-    {
-        let mid = lo + (hi - lo) / 2;
-        if arr[mid] == target { mid }
-        else if arr[mid] < target { lo = mid + 1; }
-        else { hi = mid - 1; }
-    };
-    -1
-};
+fn get(arr: &[i32], idx: usize) -> i32
+  pre idx < arr.len()
+= arr[idx];
 ```
 
-## Priorities
+This generates **identical assembly** to unchecked C. The proof happens at compile-time. The runtime cost is zero.
 
-| Priority | Principle |
-|----------|-----------|
-| **P0** | **Performance** — No syntax that constrains optimization. Target: exceed C/Rust. |
-| **P0** | **Correctness** — If it can be verified at compile time, it must be. |
+---
+
+## Why AI-First?
+
+| | Humans | AI |
+|---|--------|-----|
+| Verbose types | Annoying | Trivial |
+| Explicit contracts | Tedious | Natural |
+| Formal proofs | Difficult | Preferred |
+| No shortcuts | Frustrating | Irrelevant |
+
+Traditional languages hide complexity to help humans. BMB exposes everything—because AI handles verbosity effortlessly.
+
+---
+
+## A Taste of BMB
+
+### Contracts as Code
+
+```bmb
+fn binary_search(arr: &[i32], target: i32) -> usize?
+  pre is_sorted(arr)
+  post ret.is_none() implies forall i: 0..arr.len(). arr[i] != target
+  post ret.is_some() implies arr[ret.unwrap()] == target
+{
+    // implementation
+}
+```
+
+Pass an unsorted array? **Compile error.**
+
+### Overflow—Your Choice
+
+```bmb
+let a = x + y;      // requires contract proving no overflow
+let b = x +% y;     // wrapping (mod 2^n)
+let c = x +| y;     // saturating (clamp to bounds)
+let d = x +? y;     // checked (returns T?)
+```
+
+No silent overflow. No debug/release differences. You decide the semantics.
+
+### Pure Functions
+
+```bmb
+pure fn square(x: i64) -> i64 = x * x;
+```
+
+The compiler guarantees: no side effects, deterministic output. Safe for memoization, reordering, parallelization.
+
+### Refinement Types
+
+```bmb
+type NonZero = i64 where self != 0;
+type Percentage = f64 where self >= 0.0 and self <= 100.0;
+```
+
+Types that carry their own proofs.
+
+---
 
 ## Quick Start
 
 ```bash
-# Build
-cargo build --release
-
-# Run
-bmb run examples/hello.bmb
-
-# Type check
-bmb check examples/simple.bmb
-
-# Contract verification (requires Z3)
-bmb verify examples/contracts.bmb
-
-# Native compile (requires LLVM)
-bmb build examples/hello.bmb -o hello
-
-# REPL
-bmb repl
+bmb run examples/hello.bmb        # run
+bmb check examples/simple.bmb     # type check
+bmb verify examples/contracts.bmb # prove contracts (requires Z3)
+bmb build examples/hello.bmb -o hello  # compile native (requires LLVM)
+bmb repl                          # interactive
 ```
 
-## Current Status: v0.46 (Independence)
-
-| Category | Status |
-|----------|--------|
-| Language Core | ✅ Complete |
-| Type System | ✅ Complete |
-| Contract System | ✅ Complete |
-| Bootstrap Compiler | ✅ 30K LOC |
-| Test Suite | ✅ 1,753+ tests |
-| Documentation | ✅ Complete |
-| CI/CD | ✅ Complete |
-| **Performance** | ✅ 0.89x-0.99x vs C |
-| **Self-Compile** | ✅ 0.56s |
-| **v1.0.0-beta** | 🎯 Target |
-
-## Features
-
-### Completed
-
-- **Types**: i8-i128, u8-u128, f64, bool, char, String
-- **Generics**: `<T>`, `<K, V>`, bounds, where clauses
-- **Contracts**: `pre`, `post`, `invariant`, `where`, `pure`, `@trust`
-- **Control Flow**: if-else, match, while, for-in, loop
-- **Operators**: Arithmetic, overflow-safe (`+%`, `+|`, `+?`), bitwise (`band`, `bor`), shift (`<<`, `>>`)
-- **Collections**: Vec, Box, HashMap (stdlib)
-- **Tooling**: Package manager (gotgan), VS Code, formatter, LSP
-
-### In Progress
-
-- 3-Stage self-hosting verification (WSL)
-- Performance Gate #3.2, #3.3 (Benchmarks Game, Contract optimization)
-- Ecosystem packages (14+ target, 12 complete)
-
-## Project Structure
-
-```
-lang-bmb/
-├── bmb/           # Rust compiler (being replaced)
-├── bootstrap/     # Self-hosted BMB compiler (30K LOC)
-├── stdlib/        # Standard library
-├── examples/      # Example programs
-├── ecosystem/     # Tools & extensions
-│   ├── gotgan/           # Package manager
-│   ├── vscode-bmb/       # VS Code extension
-│   ├── tree-sitter-bmb/  # Syntax highlighting
-│   ├── playground/       # Online editor
-│   └── benchmark-bmb/    # Performance suite
-└── docs/          # Documentation
-```
-
-## Requirements
-
-| Requirement | Purpose | Required |
-|-------------|---------|----------|
-| Rust 1.70+ | Build compiler | Yes (until v0.45) |
-| LLVM 21+ | Native codegen | Optional |
-| Z3 | Contract verification | Optional |
-
-## Documentation
-
-| Document | Description |
-|----------|-------------|
-| [SPECIFICATION.md](docs/SPECIFICATION.md) | Language specification |
-| [LANGUAGE_REFERENCE.md](docs/LANGUAGE_REFERENCE.md) | Complete reference |
-| [ARCHITECTURE.md](docs/ARCHITECTURE.md) | Compiler internals |
-| [ROADMAP.md](docs/ROADMAP.md) | Development roadmap |
-| [API_STABILITY.md](docs/API_STABILITY.md) | API guarantees |
-| [BENCHMARK_COMPARISON.md](docs/BENCHMARK_COMPARISON.md) | C/Rust/BMB performance |
-| [tutorials/](docs/tutorials/) | Getting started guides |
-
-## Roadmap to v1.0.0-beta
-
-```
-v0.46 (Current) ─── Independence (3-Stage verification)
-     │
-v0.47 ─────────── Performance Gates (C parity verified)
-     │
-v0.48 ─────────── Ecosystem (14+ core packages)
-     │
-v0.49 ─────────── Samples & scenarios
-     │
-v0.50 ─────────── Final verification
-     │
-v1.0.0-beta ───── Complete programming language ★
-```
-
-See [ROADMAP.md](docs/ROADMAP.md) for detailed phases.
+---
 
 ## Performance
 
-BMB matches or exceeds C/Rust performance on compute-intensive workloads:
+When the compiler knows your invariants, it knows what's safe to optimize.
 
 ```
-                     C         Rust      BMB       Winner
-─────────────────────────────────────────────────────────
-fibonacci(45)        1.65s     1.66s     1.63s     ★ BMB (0.99x)
-fibonacci(40)        177ms     180ms     150ms     ★ BMB (0.85x)
-mandelbrot           42ms      42ms      39ms      ★ BMB (0.93x)
-spectral_norm        44ms      44ms      39ms      ★ BMB (0.89x)
-self-compile         -         -         0.56s     ✅ (30K LOC)
+                     C          Rust       BMB
+─────────────────────────────────────────────────
+fibonacci(45)        1.65s      1.66s      1.63s
+mandelbrot           42ms       42ms       39ms
+spectral_norm        44ms       44ms       39ms
 ```
 
-See [BENCHMARK_COMPARISON.md](docs/BENCHMARK_COMPARISON.md) for detailed methodology and results.
+BMB's goal: safe code that generates **identical assembly** to unsafe C.
+
+---
+
+## Documentation
+
+| | |
+|---|---|
+| [Specification](docs/SPECIFICATION.md) | Formal language definition |
+| [Language Reference](docs/LANGUAGE_REFERENCE.md) | Complete feature guide |
+| [Architecture](docs/ARCHITECTURE.md) | Compiler internals |
+| [Tutorials](docs/tutorials/) | Getting started |
+
+---
 
 ## License
 
 MIT
+
+---
+
+<p align="center">
+  <b>Performance + Stability > Human Convenience</b>
+</p>
