@@ -1092,8 +1092,8 @@ zero_overhead,bounds_check_proof,10.0,10.0,12.0,1.00,0.83,PASS_ZERO_COST
 | **SEVERE** | http_parse | **2.21x** | 문자열 연결 + 함수 경계 상수 전파 필요 | ✅ 분석완료 | 컴파일러 최적화 |
 | **SEVERE** | fannkuch | **2.04x** | array_get/set 함수 호출 오버헤드 | ✅ 분석완료 | 언어 문법 (`arr[i]=v`) |
 | **SEVERE** | fibonacci | **1.51x** | Non-tail 재귀 (알고리즘 한계) | ✅ 분석완료 | 알고리즘 수준 |
-| **HIGH** | loop_invariant | **1.40x** | 루프 불변 코드 이동 | 📝 분석 필요 | - |
-| **HIGH** | stack_allocation | **1.34x** | 스택 프레임 크기 | 📝 분석 필요 | - |
+| **RESOLVED** | loop_invariant | **~1.00x** | TCO 구현으로 해결 (v0.50.66) | ✅ 완료 | 꼬리 호출 최적화 |
+| **RESOLVED** | stack_allocation | **~0.86x** | TCO 구현으로 해결 - BMB가 C보다 빠름! (v0.50.66) | ✅ 완료 | 꼬리 호출 최적화 |
 | **HIGH** | null_check | **1.32x** | Null 검사 오버헤드 | 📝 분석 필요 | - |
 | **HIGH** | graph_traversal | **1.27x** | 재귀 순회 | 📝 분석 필요 | - |
 | **HIGH** | lexer | **1.27x** | 문자열 처리 | 📝 분석 필요 | - |
@@ -1164,7 +1164,7 @@ zero_overhead,bounds_check_proof,10.0,10.0,12.0,1.00,0.83,PASS_ZERO_COST
 
 | ID | 태스크 | 대상 | 예상 효과 | 상태 |
 |----|--------|------|----------|------|
-| 57.P1 | **TCO 강화** | fannkuch, fibonacci | phi-based TCO 추가 (v0.50.67) - array_get/set 오버헤드가 주 원인 | ✅ 근본분석완료 |
+| 57.P1 | ✅ **TCO 강화** | loop_invariant, stack_allocation | inkwell TCO 구현 완료 (v0.50.66) - stack_allocation BMB 0.86x (C보다 빠름!) | ✅ **완료** |
 | 57.P2 | **문자열 상수 접기** | http_parse, json_serialize | chr+crlf 인라인+접기 (v0.50.75) - **http_parse 1.7x→1.06x** (83% concat 제거) | ✅ **완료** |
 | 57.P3 | **syscall_overhead 분석** | syscall_overhead | **~2.5x** - BmbString 래퍼 오버헤드 (타입 안전성 비용). while 루프로 변경했으나 언어 설계 특성 | ✅ 분석완료 |
 | 57.P4 | **SIMD 벡터화 힌트** | simd_sum | BMB simd_sum **0.75x** - C 추월 달성! | ✅ 완료 |
@@ -1189,7 +1189,7 @@ zero_overhead,bounds_check_proof,10.0,10.0,12.0,1.00,0.83,PASS_ZERO_COST
 |----|--------|--------------|------------|----------|----------|---------|
 | 57.P14 | ✅ **상수 문자열 FFI 직접 전달** | syscall_overhead (3.83x) | `bmb_string_from_cstr` 매번 호출 | Codegen: 문자열 리터럴→`const char*` 직접 전달 | 3.83x → 3.1x (완료) | **P0** |
 | 57.P15 | ✅ **LLVM IR SSA 최적화** | fibonacci (1.52x→1.32x) | IR 수준 alloca 과다 | Codegen: _t* 변수 SSA로 유지 (LLVM mem2reg 이미 적용됨) | IR 품질 개선 (v0.50.53) | **P0** |
-| 57.P16 | ⚠️ **루프 불변 코드 호이스팅** | loop_invariant (1.40x) | BMB 재귀 vs C 수동 호이스팅 (비공정 비교) | 언어 설계 비용으로 문서화 (v0.50.54 분석) | 벤치마크 수정 또는 TCO 구현 필요 | P2 |
+| 57.P16 | ✅ **꼬리 호출 최적화 (TCO)** | loop_invariant (1.40x→1.00x), stack_allocation (1.34x→0.86x) | inkwell `set_tail_call()` 적용 | TCO 완료 (v0.50.66) - BMB가 C보다 빠름! | **완료** | **P0** |
 
 #### Phase B: 언어 스펙 확장 (설계 검토 필요)
 
