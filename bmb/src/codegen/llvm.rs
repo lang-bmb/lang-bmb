@@ -785,9 +785,9 @@ impl<'ctx> LlvmContext<'ctx> {
                 self.store_to_place(dest, result)?;
             }
 
-            MirInst::Call { dest, func, args, is_tail: _ } => {
+            MirInst::Call { dest, func, args, is_tail } => {
                 // v0.35.4: Handle type conversion intrinsics specially
-                // TODO: Use is_tail for tail call optimization with inkwell API
+                // v0.50.66: Tail call optimization support via inkwell API
                 if func == "i64_to_f64" && args.len() == 1 {
                     let arg = self.gen_operand(&args[0])?;
                     let result = self.builder
@@ -818,6 +818,11 @@ impl<'ctx> LlvmContext<'ctx> {
                     let call_result = self.builder
                         .build_call(*function, &arg_values, "call")
                         .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+
+                    // v0.50.66: Enable tail call optimization when MIR marks it as tail position
+                    if *is_tail {
+                        call_result.set_tail_call(true);
+                    }
 
                     if let Some(dest_place) = dest {
                         if let Some(ret_val) = call_result.try_as_basic_value().basic() {
