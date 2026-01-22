@@ -1189,7 +1189,7 @@ zero_overhead,bounds_check_proof,10.0,10.0,12.0,1.00,0.83,PASS_ZERO_COST
 |----|--------|--------------|------------|----------|----------|---------|
 | 57.P14 | ✅ **상수 문자열 FFI 직접 전달** | syscall_overhead (3.83x) | `bmb_string_from_cstr` 매번 호출 | Codegen: 문자열 리터럴→`const char*` 직접 전달 | 3.83x → 3.1x (완료) | **P0** |
 | 57.P15 | ✅ **LLVM IR SSA 최적화** | fibonacci (1.52x→1.32x) | IR 수준 alloca 과다 | Codegen: _t* 변수 SSA로 유지 (LLVM mem2reg 이미 적용됨) | IR 품질 개선 (v0.50.53) | **P0** |
-| 57.P16 | **루프 불변 코드 호이스팅** | invariant_hoist (1.14x) | 재귀에서 호이스팅 불가 | MIR 패스: 루프 불변 연산 호이스팅 | 1.14x → ~1.05x | P1 |
+| 57.P16 | ⚠️ **루프 불변 코드 호이스팅** | loop_invariant (1.40x) | BMB 재귀 vs C 수동 호이스팅 (비공정 비교) | 언어 설계 비용으로 문서화 (v0.50.54 분석) | 벤치마크 수정 또는 TCO 구현 필요 | P2 |
 
 #### Phase B: 언어 스펙 확장 (설계 검토 필요)
 
