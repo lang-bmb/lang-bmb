@@ -2,7 +2,7 @@
 //!
 //! This module generates LLVM IR from MIR and compiles to object files.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 use inkwell::builder::Builder;
@@ -596,20 +596,27 @@ impl<'ctx> LlvmContext<'ctx> {
             self.variables.insert(name.clone(), (alloca, llvm_ty));
         }
 
+        // v0.35.3: Collect PHI stores needed for each block
+        // PHI nodes are transformed into stores in predecessor blocks
+        let phi_stores = self.collect_phi_stores(func);
+
+        // v0.50.53: Collect variables that need alloca (used in PHI)
+        // PHI destinations and incoming values need memory allocation
+        let phi_vars = self.collect_phi_variables(func);
+
         // Allocate locals
-        // v0.50.52: We still allocate locals declared in MIR, as they may cross block boundaries
-        // The SSA optimization only applies to temporaries created by instructions
-        // that aren't explicitly listed in locals
+        // v0.50.53: Skip _t* temporaries that aren't involved in PHI operations
+        // These can stay in SSA form for better performance
         for (name, ty) in &func.locals {
+            // Skip _t* temporaries not involved in PHI - they stay as SSA values
+            if name.starts_with("_t") && !phi_vars.contains(name) {
+                continue;
+            }
             let llvm_ty = self.mir_type_to_llvm(ty);
             let alloca = self.builder.build_alloca(llvm_ty, name)
                 .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
             self.variables.insert(name.clone(), (alloca, llvm_ty));
         }
-
-        // v0.35.3: Collect PHI stores needed for each block
-        // PHI nodes are transformed into stores in predecessor blocks
-        let phi_stores = self.collect_phi_stores(func);
 
         // v0.35.3: Pre-allocate PHI destination variables at function entry
         // This ensures all PHI destinations have allocas in the entry block
@@ -644,6 +651,31 @@ impl<'ctx> LlvmContext<'ctx> {
         }
 
         phi_stores
+    }
+
+    /// v0.50.53: Collect variables involved in PHI operations
+    /// These variables need memory allocation (alloca) because:
+    /// - PHI destinations are written from multiple predecessor blocks
+    /// - PHI incoming values may be read across block boundaries
+    fn collect_phi_variables(&self, func: &MirFunction) -> HashSet<String> {
+        let mut phi_vars = HashSet::new();
+
+        for block in &func.blocks {
+            for inst in &block.instructions {
+                if let MirInst::Phi { dest, values } = inst {
+                    // PHI destination needs alloca
+                    phi_vars.insert(dest.name.clone());
+                    // Incoming values (if Place) need alloca for cross-block access
+                    for (value, _) in values {
+                        if let Operand::Place(p) = value {
+                            phi_vars.insert(p.name.clone());
+                        }
+                    }
+                }
+            }
+        }
+
+        phi_vars
     }
 
     /// v0.35.3: Pre-allocate PHI destination variables at function entry
