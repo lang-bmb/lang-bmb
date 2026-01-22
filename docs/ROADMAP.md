@@ -69,7 +69,7 @@
 | **파서 통합** | 새 타입 파싱 + Lowering/Codegen 연결 | ✅ 완료 | v0.52 |
 | **부트스트랩 완성** | Stage 1 hang 해결, Stage 3 재검증 | ✅ 완료 | v0.53 |
 | **성능 게이트** | Gate #3.2/3.3 통과 (bounds/overflow 0%) | ✅ 실측 완료 (v0.50.64: 0.959x) | v0.54 |
-| **🚨 벤치마크 전체** | 48개 벤치마크 ALL ≤1.10x C | ✅ 37/48 (77%), 11개 SLOW는 설계 비용 (문서화 완료) | v0.57 |
+| **🚨 벤치마크 전체** | 48개 벤치마크 ALL ≤1.10x C | ✅ 45/48 (94%), 3개 SLOW는 설계/알고리즘 비용 (v0.50.66 TCO 완료) | v0.57 |
 | **크로스 컴파일** | Linux/Windows/macOS/WASM | ✅ IR 생성 가능 (v0.50.23) | v0.55 |
 | **생태계** | 14+ 핵심 패키지 (새 타입 시스템 적용) | ✅ 14/14 패키지 완료 (v0.55.1) | v0.55 |
 | **샘플/문서** | 5개 샘플 앱, 5개 시나리오 | ✅ 완료 (v0.56.1: Zero-Cost Safety 문서화) | v0.56 |
@@ -1084,31 +1084,32 @@ zero_overhead,bounds_check_proof,10.0,10.0,12.0,1.00,0.83,PASS_ZERO_COST
 - [ ] **fannkuch 2.13x** - 재귀 오버헤드 (while 문법 제약으로 변환 어려움)
 - [ ] **http/json 1.67x/1.37x** - 문자열 연결 (StringBuilder 가이드 필요)
 
-#### 성능 개선 필요 (11개 SLOW > 1.10x C) - v0.51 업데이트
+#### 성능 개선 필요 - v0.50.66 업데이트
 
 | 심각도 | 벤치마크 | BMB/C | 근본 원인 | 상태 | 해결 수준 |
 |--------|----------|-------|----------|------|-----------|
-| **CRITICAL** | syscall_overhead | **3.06x** | BmbString 래퍼 오버헤드 | ✅ 분석완료 | 런타임 설계 비용 |
-| **SEVERE** | http_parse | **2.21x** | 문자열 연결 + 함수 경계 상수 전파 필요 | ✅ 분석완료 | 컴파일러 최적화 |
-| **SEVERE** | fannkuch | **2.04x** | array_get/set 함수 호출 오버헤드 | ✅ 분석완료 | 언어 문법 (`arr[i]=v`) |
-| **SEVERE** | fibonacci | **1.51x** | Non-tail 재귀 (알고리즘 한계) | ✅ 분석완료 | 알고리즘 수준 |
+| **CRITICAL** | syscall_overhead | **7.42x** | BmbString 래퍼 오버헤드 | ✅ 분석완료 | 런타임 설계 비용 |
+| **HIGH** | fibonacci | **1.41x** | Non-tail 재귀 (`fib(n-1)+fib(n-2)`) | ✅ 분석완료 | 알고리즘 수준 (수정 불가) |
+| **HIGH** | json_serialize | **1.27x** | O(n²) 문자열 연결 | ✅ 분석완료 | StringBuilder 사용 권장 |
 | **RESOLVED** | loop_invariant | **~1.00x** | TCO 구현으로 해결 (v0.50.66) | ✅ 완료 | 꼬리 호출 최적화 |
 | **RESOLVED** | stack_allocation | **~0.86x** | TCO 구현으로 해결 - BMB가 C보다 빠름! (v0.50.66) | ✅ 완료 | 꼬리 호출 최적화 |
-| **HIGH** | null_check | **1.32x** | Null 검사 오버헤드 | 📝 분석 필요 | - |
-| **HIGH** | graph_traversal | **1.27x** | 재귀 순회 | 📝 분석 필요 | - |
-| **HIGH** | lexer | **1.27x** | 문자열 처리 | 📝 분석 필요 | - |
-| **MODERATE** | memory_copy | **1.25x** | memcpy 효율성 | 📝 분석 필요 | - |
-| **MODERATE** | json_serialize | **1.23x** | 문자열 연결 O(n) | ✅ 분석완료 | 컴파일러 최적화 |
+| **RESOLVED** | binary_trees | **1.06x** | TCO로 개선 (v0.50.66) | ✅ 완료 | 임계값 이내 |
+| **RESOLVED** | purity_opt | **~0.89x** | BMB가 C보다 빠름! (v0.50.66) | ✅ 완료 | 꼬리 호출 최적화 |
+| **RESOLVED** | http_parse | **1.05x** | 문자열 상수 접기 (v0.50.75) | ✅ 완료 | 임계값 이내 |
+| **RESOLVED** | null_check | **~1.00x** | TCO로 개선 (v0.50.66) | ✅ 완료 | 임계값 이내 |
+| **RESOLVED** | graph_traversal | **~1.00x** | TCO로 개선 (v0.50.66) | ✅ 완료 | 임계값 이내 |
+| **RESOLVED** | lexer | **~0.77x** | BMB가 C보다 빠름! (v0.50.66) | ✅ 완료 | 꼬리 호출 최적화 |
+| **RESOLVED** | memory_copy | **1.02x** | TCO로 개선 (v0.50.66) | ✅ 완료 | 임계값 이내 |
+| **RESOLVED** | fannkuch | **0.82x** | BMB가 C보다 빠름! (v0.50.66) | ✅ 완료 | 최적화 효과 |
 
-> **근본 분석 결론**: CRITICAL/SEVERE 벤치마크의 성능 갭은 **언어/런타임 설계 비용**입니다.
-> - syscall_overhead: `BmbString*` 타입 안전성 vs C의 raw `char*`
-> - fannkuch: `array_get/set` 함수 호출 vs C의 `arr[i]` 직접 인덱싱
-> - http_parse: 함수 경계를 넘는 상수 전파 부재
+> **v0.50.66 TCO 구현 결과**: 대부분의 SLOW 벤치마크가 **해결**되었습니다!
+> - **8개 벤치마크**가 TCO로 C와 동등하거나 더 빠르게 개선
+> - **5개 벤치마크**가 BMB가 C보다 빠름 (fannkuch 0.82x, lexer 0.77x, purity_opt 0.89x, stack_allocation 0.86x, n_body 0.18x!)
 >
-> **v0.58+에서 해결 가능한 언어 스펙 변경**:
-> 1. 배열 요소 assignment 문법: `arr[i] = value`
-> 2. Raw 포인터 FFI: `extern fn stat(path: *i8) -> i64`
-> 3. MIR 함수 인라이닝 최적화 패스
+> **남은 SLOW 벤치마크 (3개)**:
+> - syscall_overhead (7.42x): BmbString 타입 안전성 비용 (설계 결정)
+> - fibonacci (1.41x): Non-tail 재귀 알고리즘 한계 (수정 불가)
+> - json_serialize (1.27x): O(n²) 문자열 연결 → StringBuilder 사용 권장
 
 #### ✅ C 추월 달성 벤치마크 (26개 하이라이트) - v0.51
 
