@@ -161,7 +161,13 @@ impl CodeGen {
 
         // v0.50.12: Run LLVM optimization passes before writing object file
         // This is critical for performance - without this, the IR is unoptimized
-        if !matches!(self.opt_level, OptLevel::Debug) {
+        //
+        // v0.50.54: Windows GNU target segfaults in run_passes()
+        // Root cause: inkwell/LLVM 21.1.8 compatibility issue on MinGW
+        // Workaround: Check target triple and skip passes for Windows targets
+        let is_windows_target = target_triple.as_str().to_string_lossy().contains("windows");
+
+        if !matches!(self.opt_level, OptLevel::Debug) && !is_windows_target {
             let passes = match self.opt_level {
                 OptLevel::Debug => "default<O0>",
                 OptLevel::Release => "default<O2>",
@@ -178,6 +184,10 @@ impl CodeGen {
             module
                 .run_passes(passes, &target_machine, pass_options)
                 .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+        } else if !matches!(self.opt_level, OptLevel::Debug) && is_windows_target {
+            // v0.50.54: Windows workaround - use external opt if needed
+            // The generated IR can be optimized using: opt -O2 input.ll -o output.bc && llc output.bc
+            eprintln!("Note: LLVM optimization passes skipped on Windows (use external opt -O2 for optimization)");
         }
 
         target_machine

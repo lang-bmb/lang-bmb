@@ -1,7 +1,8 @@
 [target.x86_64-pc-windows-gnu]
 linker = "C:/msys64/ucrt64/bin/gcc.exe"
 # Increase stack size to 16MB for deep recursion in BMB interpreter
-rustflags = ["-C", "link-args=-Wl,--stack,16777216"]
+# Allow multiple definition for pthread (static + dynamic conflict)
+rustflags = ["-C", "link-args=-Wl,--stack,16777216 -Wl,--allow-multiple-definition"]
 
 [env]
 LLVM_SYS_211_PREFIX = "C:/msys64/ucrt64"
