@@ -152,15 +152,53 @@ BMB's goal: safe code that generates **identical assembly** to unsafe C.
 
 ---
 
+## Contract-Driven Optimization (CDO)
+
+> **Contracts are not just guards. They are guides.**
+
+Beyond safety verification, contracts enable unprecedented optimization:
+
+```bmb
+fn parse(s: &str) -> Value
+  pre s.len() < 10000        // Enables: small-string optimization
+  pre s.is_ascii()           // Enables: skip unicode handling
+  post ret.is_valid()        // Enables: skip validation at call sites
+```
+
+| CDO Capability | Example | Impact |
+|----------------|---------|--------|
+| **Semantic DCE** | `pre x > 0` eliminates `if x <= 0` branch | Dead code removal |
+| **Minimal Extraction** | Import only contract-compatible paths | 60-80% less dependency code |
+| **Pure Precomputation** | `pure fn` + bounded input → lookup table | Zero runtime cost |
+| **Semantic Deduplication** | Merge functions with equivalent contracts | Smaller binaries |
+
+See [RFC-0001: Contract-Driven Optimization](docs/rfcs/RFC-0008-contract-driven-optimization.md).
+
+---
+
+## Ecosystem
+
+| Tool | Purpose |
+|------|---------|
+| [bmb-mcp](ecosystem/bmb-mcp) | MCP server for AI integration (Chatter) |
+| [bmb-test](ecosystem/bmb-test) | Property-based testing with contract awareness |
+| [bmb-query](ecosystem/bmb-query) | Natural language queries against contracts |
+| [gotgan](ecosystem/gotgan) | Package manager |
+| [vscode-bmb](ecosystem/vscode-bmb) | VS Code extension |
+
+---
+
 ## Documentation
 
 | | |
 |---|---|
-| [Specification](docs/SPECIFICATION.md) | Formal language definition |
+| [Specification](docs/SPECIFICATION.md) | Formal language definition (v0.32.1) |
 | [Language Reference](docs/LANGUAGE_REFERENCE.md) | Complete feature guide |
 | [Architecture](docs/ARCHITECTURE.md) | Compiler internals |
-| [Development](docs/DEVELOPMENT.md) | Development philosophy and guidelines |
-| [Tutorials](docs/tutorials/) | Getting started |
+| [Development](docs/DEVELOPMENT.md) | Development philosophy |
+| [Roadmap](docs/ROADMAP.md) | Development roadmap |
+| [Ecosystem](docs/ECOSYSTEM.md) | Tools and submodules |
+| [RFCs](docs/rfcs/) | Design proposals |
 
 ---
 

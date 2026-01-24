@@ -189,6 +189,7 @@ Middle Intermediate Representation for optimization and codegen.
 |------|---------|
 | `mod.rs` | MIR types and builder |
 | `lower.rs` | AST to MIR lowering |
+| `optimize.rs` | MIR optimization passes |
 
 **MIR structure:**
 ```rust
@@ -204,6 +205,47 @@ pub struct BasicBlock {
     pub instructions: Vec<MirInstr>,
     pub terminator: Terminator,
 }
+```
+
+**Optimization Passes:**
+
+| Pass | Description | Status |
+|------|-------------|--------|
+| **LICM** | Loop Invariant Code Motion | ✅ v0.51.16 |
+| **TCO** | Tail Call Optimization | ✅ v0.50.66 |
+| **Contract-Based Opt** | Pre/post elimination | ✅ v0.50.76 |
+| **Pure Function CSE** | Common subexpression elimination for `pure fn` | ✅ |
+| **Constant Propagation** | Including narrowing (i64→i32) | ✅ v0.50.80 |
+| **Semantic DCE** | Contract-based dead code elimination | 📋 CDO Phase |
+
+**CDO (Contract-Driven Optimization) Pipeline** — [RFC-0001](rfcs/RFC-0008-contract-driven-optimization.md):
+
+```
+Typed AST
+    │
+    ▼
+┌──────────────────┐
+│  Contract IR     │  Contract intermediate representation
+└────────┬─────────┘
+         │
+    ┌────┴────┐
+    ▼         ▼
+┌────────┐ ┌──────────────┐
+│Semantic│ │  Contract    │
+│  DCE   │ │Specialization│
+└────┬───┘ └──────┬───────┘
+     │            │
+     └────┬───────┘
+          ▼
+    ┌─────────┐
+    │   MIR   │  Optimized MIR
+    └────┬────┘
+         │
+         ▼
+┌─────────────────┐
+│ Cross-Module    │  Link-time CDO
+│ Optimization    │
+└─────────────────┘
 ```
 
 ### Code Generation (`bmb/src/codegen/`)
@@ -319,6 +361,8 @@ fn max<T: Ord>(a: T, b: T) -> T
 
 ## Testing
 
+### Compiler Tests
+
 ```bash
 # Run all tests
 cargo test
@@ -331,9 +375,84 @@ cargo test types::tests
 cargo test -- --nocapture
 ```
 
+### BMB Test Framework (`ecosystem/bmb-test`)
+
+The bmb-test framework provides advanced testing capabilities:
+
+| Feature | Description |
+|---------|-------------|
+| **Property-Based Testing** | Generate thousands of inputs automatically |
+| **Contract-Aware Generation** | Inputs respect preconditions |
+| **Fuzz Testing** | Find edge cases through randomization |
+
+```bmb
+#[property]
+fn sort_is_idempotent(arr: [i32; 100]) {
+    assert(sort(sort(arr)) == sort(arr));
+}
+
+#[test]
+fn test_binary_search() {
+    let arr = [1, 3, 5, 7, 9];
+    assert(binary_search(&arr, 5) == Some(2));
+}
+```
+
+**Philosophy**: Tests define intent, AI implements. Contracts are the specification.
+
+### Test Categories
+
+| Category | Purpose | Location |
+|----------|---------|----------|
+| Unit Tests | Individual module testing | `bmb/src/*/tests.rs` |
+| Integration Tests | Cross-module behavior | `bmb/tests/` |
+| Bootstrap Tests | Self-hosted compiler | `bootstrap/*.bmb` |
+| Benchmark Tests | Performance validation | `ecosystem/benchmark-bmb/` |
+| Contract Tests | Verification coverage | `ecosystem/bmb-test/` |
+
+## Ecosystem Integration
+
+The compiler integrates with several ecosystem tools:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        BMB Ecosystem                            │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐         │
+│  │  bmb-mcp    │    │  bmb-test   │    │  bmb-query  │         │
+│  │  (Chatter)  │    │  (Testing)  │    │  (Query)    │         │
+│  └──────┬──────┘    └──────┬──────┘    └──────┬──────┘         │
+│         │                  │                  │                 │
+│         └──────────────────┼──────────────────┘                 │
+│                            │                                    │
+│                     ┌──────▼──────┐                            │
+│                     │ BMB Compiler │                            │
+│                     │   (bmb/)     │                            │
+│                     └──────┬──────┘                            │
+│                            │                                    │
+│              ┌─────────────┼─────────────┐                     │
+│              │             │             │                     │
+│       ┌──────▼──────┐ ┌────▼────┐ ┌─────▼─────┐               │
+│       │   gotgan    │ │ vscode  │ │ benchmark │               │
+│       │ (packages)  │ │  -bmb   │ │   -bmb    │               │
+│       └─────────────┘ └─────────┘ └───────────┘               │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+| Tool | Compiler Integration |
+|------|---------------------|
+| **bmb-mcp** | Invokes `bmb check`, `bmb verify` for AI feedback |
+| **bmb-test** | Uses compiler's contract system for test generation |
+| **bmb-query** | Parses contracts for natural language queries |
+| **gotgan** | Orchestrates builds, CDO-aware dependency resolution |
+| **vscode-bmb** | LSP integration via `bmb lsp` |
+
 ## Performance Considerations
 
 1. **Parallel Verification**: Contract verification can be parallelized per function
 2. **Incremental Compilation**: MIR caching for unchanged functions
 3. **Lazy Type Inference**: Type inference deferred until needed
 4. **SMT Caching**: Verification results cached for unchanged contracts
+5. **CDO Caching**: Contract analysis results cached for unchanged modules

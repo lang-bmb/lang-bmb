@@ -1093,5 +1093,67 @@ diff with.ll without.ll  # Check optimization difference
 
 ---
 
-*Last updated: 2026-01-17*
+## Appendix C: Contract-Driven Optimization (CDO)
+
+> **RFC**: [RFC-0008-contract-driven-optimization](rfcs/RFC-0008-contract-driven-optimization.md)
+
+### C.1 Philosophy
+
+Contracts are not just safety guards—they are **optimization fuel**.
+
+```
+OLD: Contracts prove code is safe
+NEW: Contracts describe what code MEANS, enabling everything that follows
+```
+
+### C.2 CDO Capabilities
+
+| Capability | Contract Example | Optimization |
+|------------|------------------|--------------|
+| **Semantic DCE** | `pre x > 0` | Eliminate `if x <= 0` branch |
+| **Minimal Extraction** | `pre s.len() < 1000` | Skip large-string handling paths |
+| **Pure Precomputation** | `pure fn` + `pre n <= 50` | Generate lookup table |
+| **Semantic Deduplication** | Equivalent `post` contracts | Merge implementations |
+| **Contract Specialization** | `pre is_ascii(s)` | Skip unicode normalization |
+
+### C.3 CDO Example
+
+```bmb
+// Library provides generic parser
+fn parse(s: &str) -> Result<Value, Error>
+  // Handles: large files, streaming, unicode, errors
+
+// Application uses with constraints
+fn my_parse(s: &str) -> Value
+  pre s.len() < 1000
+  pre s.is_ascii()
+= parse(s).unwrap();
+
+// CDO extracts only:
+// - Small-string paths
+// - ASCII-only paths
+// - No error handling (unwrap)
+// Result: 80%+ code reduction
+```
+
+### C.4 CDO Phases
+
+| Phase | Version | Description |
+|-------|---------|-------------|
+| Foundation | v0.55-56 | Contract IR, Semantic DCE |
+| Intra-Module | v0.57-58 | Specialization, Pure optimization |
+| Cross-Module | v0.60 | Link-time CDO |
+| Ecosystem | v0.65 | gotgan integration |
+
+### C.5 AI Synergy
+
+BMB is AI-first. AI writes verbose contracts without complaint.
+
+**More contracts = More semantic information = More optimization opportunities**
+
+This creates a virtuous cycle where AI-generated code with rich contracts outperforms hand-written code.
+
+---
+
+*Last updated: 2026-01-24*
 *Specification version: v0.32.1*

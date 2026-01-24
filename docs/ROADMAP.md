@@ -3200,6 +3200,120 @@ fn compute(a: &mut [i64], b: &[i64], c: &[i64])
 
 **이론적 최소 손실**: ~3~7% (절대 제거 불가)
 
+---
+
+## Phase F: Contract-Driven Optimization (CDO) — v0.55+ (RFC-0008)
+
+> **RFC**: [RFC-0008-contract-driven-optimization](rfcs/RFC-0008-contract-driven-optimization.md)
+
+**핵심 원칙**: 계약은 안전성 검증만이 아니라 **모든 워크플로우 단계에서 최적화 연료**로 활용
+
+```
+OLD: Contracts prove code is safe
+NEW: Contracts describe what code MEANS, enabling everything that follows
+```
+
+### Phase F.1: CDO Foundation (v0.55-v0.56)
+
+| ID | 태스크 | 설명 | 우선순위 |
+|----|--------|------|----------|
+| F.1.1 | **Contract IR** | 계약 중간 표현 설계 | P0 |
+| F.1.2 | **Semantic Equivalence Checker** | Z3 기반 계약 동등성 검사 | P0 |
+| F.1.3 | **Contract Propagation** | 호출 그래프 통한 계약 전파 | P1 |
+| F.1.4 | **Semantic DCE** | 계약 기반 죽은 코드 제거 | P0 |
+
+**예시 - Semantic DCE**:
+```bmb
+fn process(x: i32) -> i32
+  pre x > 0
+{
+    if x <= 0 { return handle_error(); }  // CDO 제거: pre x > 0 위반
+    return compute(x);
+}
+```
+
+### Phase F.2: Intra-Module CDO (v0.57-v0.58)
+
+| ID | 태스크 | 설명 | 우선순위 |
+|----|--------|------|----------|
+| F.2.1 | **Contract Specialization** | 제약 조건별 특화 버전 생성 | P0 |
+| F.2.2 | **Pure Function Optimization** | CSE, 메모이제이션, 상수 접기 | P0 |
+| F.2.3 | **Bounded Precomputation** | `pre n <= 50` → 룩업 테이블 생성 | P1 |
+
+**예시 - Pure Function Optimization**:
+```bmb
+pure fn fibonacci(n: u32) -> u64
+  pre n <= 50
+
+// Before CDO
+let a = fibonacci(10);
+let b = fibonacci(10);
+return a + b;
+
+// After CDO
+return 110;  // 완전 상수 접기
+```
+
+### Phase F.3: Cross-Module CDO (v0.60)
+
+| ID | 태스크 | 설명 | 우선순위 |
+|----|--------|------|----------|
+| F.3.1 | **Semantic Deduplication** | 동등 계약 함수 병합 | P1 |
+| F.3.2 | **Optimal Implementation Selection** | 동등 구현 중 최적 선택 | P1 |
+| F.3.3 | **Contract-Aware LTO** | 링크 타임 계약 최적화 | P1 |
+
+**예시 - Semantic Deduplication**:
+```bmb
+// Library A
+fn sort_ascending(arr: &[i32]) -> Vec<i32>
+  post forall i: 0..ret.len()-1. ret[i] <= ret[i+1]
+
+// Library B
+fn order_numbers(arr: &[i32]) -> Vec<i32>
+  post forall i: 0..ret.len()-1. ret[i] <= ret[i+1]
+
+// CDO: 동등 계약 감지 → 단일 구현으로 병합
+```
+
+### Phase F.4: Ecosystem CDO (v0.65)
+
+| ID | 태스크 | 설명 | 우선순위 |
+|----|--------|------|----------|
+| F.4.1 | **gotgan CDO Integration** | 계약 인식 패키지 해결 | P1 |
+| F.4.2 | **Minimal Extraction** | 계약 호환 코드만 추출 | P1 |
+| F.4.3 | **Target Specialization** | 타겟별 계약 특화 빌드 | P2 |
+
+**예시 - Minimal Extraction**:
+```bmb
+// my_app uses json::parse() with pre input.len() < 1000
+// CDO extracts:
+// - Only small-string paths (no streaming)
+// - Only ASCII paths (if pre s.is_ascii())
+// - Simplified error handling
+
+// Impact: 80%+ 의존성 코드 감소
+```
+
+### CDO 예상 효과
+
+| 메트릭 | 기존 | CDO 적용 후 | 개선 |
+|--------|------|------------|------|
+| 바이너리 크기 | 100% | 30-50% | 50-70% 감소 |
+| 의존성 코드 | 100% | 20-40% | 60-80% 감소 |
+| 죽은 코드 제거 | ~10% | ~40% | 4x 증가 |
+| 컴파일 최적화 기회 | 제한적 | 광범위 | 5-10x 증가 |
+
+### CDO 연관 컴포넌트
+
+| 컴포넌트 | CDO 통합 |
+|----------|----------|
+| **BMB Compiler** | MIR 최적화에 CDO 패스 추가 |
+| **gotgan** | 계약 인식 의존성 해결 |
+| **bmb-mcp (Chatter)** | AI가 CDO 이점 인식하여 코드 생성 |
+| **vscode-bmb** | CDO 분석 기반 시맨틱 자동완성 |
+
+---
+
 ### 로드맵 요약
 
 ```
