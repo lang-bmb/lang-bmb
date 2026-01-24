@@ -34,3 +34,6 @@
 [submodule "ecosystem/bmb-query"]
 	path = ecosystem/bmb-query
 	url = https://github.com/lang-bmb/bmb-query.git
+[submodule "ecosystem/bmb-mcp"]
+	path = ecosystem/bmb-mcp
+	url = https://github.com/lang-bmb/bmb-mcp.git
