@@ -417,6 +417,132 @@ int64_t bmb_sb_clear(int64_t handle) {
     return 0;
 }
 
+// v0.51.18: HashMap implementation (open addressing with linear probing)
+// Based on: https://github.com/DavidLeeds/hashmap
+// See also: https://en.wikipedia.org/wiki/Linear_probing
+
+#define HASHMAP_INITIAL_CAPACITY 131072  // Power of 2, suitable for ~100k entries
+
+typedef struct {
+    int64_t key;
+    int64_t value;
+    int state;  // 0=empty, 1=occupied, 2=deleted (tombstone)
+} HashEntry;
+
+typedef struct {
+    HashEntry* entries;
+    int64_t count;
+    int64_t capacity;
+} HashMap;
+
+// Hash function for i64 keys (Fibonacci hashing variant)
+static int64_t hashmap_hash_i64(int64_t key) {
+    uint64_t h = (uint64_t)key * 0x517cc1b727220a95ULL;
+    return (int64_t)(h ^ (h >> 32));
+}
+
+int64_t hashmap_new(void) {
+    HashMap* m = (HashMap*)malloc(sizeof(HashMap));
+    if (!m) return 0;
+    m->entries = (HashEntry*)calloc(HASHMAP_INITIAL_CAPACITY, sizeof(HashEntry));
+    if (!m->entries) {
+        free(m);
+        return 0;
+    }
+    m->count = 0;
+    m->capacity = HASHMAP_INITIAL_CAPACITY;
+    return (int64_t)m;
+}
+
+void hashmap_free(int64_t handle) {
+    if (!handle) return;
+    HashMap* m = (HashMap*)handle;
+    free(m->entries);
+    free(m);
+}
+
+int64_t hashmap_len(int64_t handle) {
+    if (!handle) return 0;
+    HashMap* m = (HashMap*)handle;
+    return m->count;
+}
+
+int64_t hashmap_insert(int64_t handle, int64_t key, int64_t value) {
+    if (!handle) return 0;
+    HashMap* m = (HashMap*)handle;
+
+    int64_t hash = hashmap_hash_i64(key);
+    int64_t mask = m->capacity - 1;
+    int64_t idx = hash & mask;
+
+    for (int64_t i = 0; i < m->capacity; i++) {
+        HashEntry* e = &m->entries[idx];
+        if (e->state == 0 || e->state == 2) {
+            // Empty or deleted slot - insert here
+            e->key = key;
+            e->value = value;
+            e->state = 1;
+            m->count++;
+            return 0;
+        } else if (e->state == 1 && e->key == key) {
+            // Key exists - update value
+            int64_t old = e->value;
+            e->value = value;
+            return old;
+        }
+        idx = (idx + 1) & mask;
+    }
+    return 0;  // Table full (shouldn't happen with proper sizing)
+}
+
+int64_t hashmap_get(int64_t handle, int64_t key) {
+    if (!handle) return INT64_MIN;
+    HashMap* m = (HashMap*)handle;
+
+    int64_t hash = hashmap_hash_i64(key);
+    int64_t mask = m->capacity - 1;
+    int64_t idx = hash & mask;
+
+    for (int64_t i = 0; i < m->capacity; i++) {
+        HashEntry* e = &m->entries[idx];
+        if (e->state == 0) {
+            // Empty slot - key not found
+            return INT64_MIN;
+        } else if (e->state == 1 && e->key == key) {
+            // Found
+            return e->value;
+        }
+        // Continue probing (skip deleted slots)
+        idx = (idx + 1) & mask;
+    }
+    return INT64_MIN;
+}
+
+int64_t hashmap_remove(int64_t handle, int64_t key) {
+    if (!handle) return INT64_MIN;
+    HashMap* m = (HashMap*)handle;
+
+    int64_t hash = hashmap_hash_i64(key);
+    int64_t mask = m->capacity - 1;
+    int64_t idx = hash & mask;
+
+    for (int64_t i = 0; i < m->capacity; i++) {
+        HashEntry* e = &m->entries[idx];
+        if (e->state == 0) {
+            // Empty slot - key not found
+            return INT64_MIN;
+        } else if (e->state == 1 && e->key == key) {
+            // Found - mark as deleted (tombstone)
+            int64_t old = e->value;
+            e->state = 2;
+            m->count--;
+            return old;
+        }
+        idx = (idx + 1) & mask;
+    }
+    return INT64_MIN;
+}
+
 // v0.46: Additional file functions
 int64_t bmb_file_size(const char* path) {
     FILE* f = fopen(path, "rb");
@@ -530,16 +656,9 @@ char* bmb_get_arg(int64_t index) {
     return result;
 }
 
-// v0.50.20: String operation wrappers for bootstrap compiler
-char* str_concat(const char* a, const char* b) {
-    return bmb_string_concat(a, b);
-}
-
-int64_t str_eq(const char* a, const char* b) {
-    return bmb_string_eq(a, b);
-}
-
 // v0.50.20: StringBuilder wrappers
+// Note: str_concat and str_eq wrappers removed in v0.51.18 to avoid symbol collisions
+// Use bmb_string_concat and bmb_string_eq instead
 int64_t sb_new(void) {
     return bmb_sb_new();
 }

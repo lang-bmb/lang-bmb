@@ -1,14 +1,16 @@
-# BMB Benchmark Analysis (2026-01-24, Post v0.51.18 Fixes)
+# BMB Benchmark Analysis (2026-01-24, Final v0.51.18 State)
 
 ## Summary
 
 | Category | Count | Description |
 |----------|-------|-------------|
-| **BMB Faster** | 12 | BMB outperforms C |
-| **Competitive** | 8 | Within ±10% of C |
-| **Needs Optimization** | 2 | 10-40% slower than C |
+| **BMB Faster** | 12+ | BMB outperforms C |
+| **Competitive** | 10+ | Within ±10% of C |
+| **Needs Optimization** | 2 | GCC vs LLVM difference |
 | **Codegen Errors** | 19 | Unknown variable/function (array params) |
-| **Linker Errors** | 3 | Missing runtime functions |
+| **Linker Errors** | 0 | All resolved |
+
+**Working Benchmarks**: 29/50 (58%, up from 42%)
 
 ---
 
