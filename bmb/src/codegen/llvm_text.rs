@@ -177,18 +177,29 @@ impl TextCodeGen {
     }
 
     /// Emit string global constants
+    /// v0.51.22: Also emit pre-initialized BmbString structs for zero-overhead string constants
     fn emit_string_globals(&self, out: &mut String, table: &HashMap<String, String>) -> TextCodeGenResult<()> {
         if table.is_empty() {
             return Ok(());
         }
 
+        // v0.51.22: BmbString struct type: { ptr, i64, i64 } (data, len, cap)
+        writeln!(out, "; BmbString struct type")?;
+        writeln!(out, "%BmbString = type {{ ptr, i64, i64 }}")?;
+        writeln!(out)?;
+
         writeln!(out, "; String constants")?;
         for (content, name) in table {
             // Escape the string for LLVM IR
             let escaped = self.escape_string_for_llvm(content);
-            let len = content.len() + 1; // +1 for null terminator
+            let byte_len = content.len() + 1; // +1 for null terminator
+            let str_len = content.len() as i64; // actual string length (without null)
             writeln!(out, "@{} = private unnamed_addr constant [{} x i8] c\"{}\\00\"",
-                     name, len, escaped)?;
+                     name, byte_len, escaped)?;
+            // v0.51.22: Pre-initialized BmbString struct pointing to the constant
+            // This avoids bmb_string_from_cstr overhead entirely
+            writeln!(out, "@{}.bmb = private unnamed_addr global %BmbString {{ ptr @{}, i64 {}, i64 {} }}",
+                     name, name, str_len, str_len)?;
         }
         writeln!(out)?;
 
@@ -785,13 +796,14 @@ impl TextCodeGen {
             }
         }
 
-        // Emit bmb_string_from_cstr calls for string constants in phi nodes
+        // v0.51.22: String constants in phi nodes use pre-initialized global BmbString
         // This must happen BEFORE the terminator
         for ((_dest_block, string_val, pred_block), temp_name) in phi_string_map {
             if pred_block == &block.label {
                 // Look up the global string constant name
                 if let Some(global_name) = string_table.get(string_val) {
-                    writeln!(out, "  %{} = call ptr @bmb_string_from_cstr(ptr @{})", temp_name, global_name)?;
+                    // Use getelementptr to get pointer to global BmbString
+                    writeln!(out, "  %{} = getelementptr %BmbString, ptr @{}.bmb, i32 0", temp_name, global_name)?;
                 }
             }
         }
@@ -891,8 +903,9 @@ impl TextCodeGen {
                             writeln!(out, "  %{} = add i8 0, 0", temp_name)?;
                         }
                         Constant::String(s) => {
+                            // v0.51.22: Use pre-initialized global BmbString
                             if let Some(global_name) = string_table.get(s) {
-                                writeln!(out, "  %{} = call ptr @bmb_string_from_cstr(ptr @{})",
+                                writeln!(out, "  %{} = getelementptr %BmbString, ptr @{}.bmb, i32 0",
                                          temp_name, global_name)?;
                             } else {
                                 writeln!(out, "  ; string constant not in table: {}", s)?;
@@ -932,9 +945,10 @@ impl TextCodeGen {
                             writeln!(out, "  %{} = add i8 0, 0", dest_name)?;
                         }
                         Constant::String(s) => {
-                            // Phase 32.3: String constants are loaded via bmb_string_from_cstr
+                            // v0.51.22: Use pre-initialized global BmbString instead of bmb_string_from_cstr
+                            // This eliminates runtime overhead for string constants
                             if let Some(global_name) = string_table.get(s) {
-                                writeln!(out, "  %{} = call ptr @bmb_string_from_cstr(ptr @{})",
+                                writeln!(out, "  %{} = getelementptr %BmbString, ptr @{}.bmb, i32 0",
                                          dest_name, global_name)?;
                             } else {
                                 // Fallback if string not in table (shouldn't happen)
@@ -1025,19 +1039,15 @@ impl TextCodeGen {
 
                 // String concatenation: either operand is ptr with Add op
                 if (lhs_ty == "ptr" || rhs_ty == "ptr") && *op == MirBinOp::Add {
-                    // Wrap string constant operands with bmb_string_from_cstr
+                    // v0.51.22: Use pre-initialized global BmbString
                     let lhs_final = if let Operand::Constant(Constant::String(s)) = lhs {
                         if let Some(global_name) = string_table.get(s) {
-                            let wrapper_name = format!("{}.lhs.str", dest_name);
-                            writeln!(out, "  %{} = call ptr @bmb_string_from_cstr(ptr @{})", wrapper_name, global_name)?;
-                            format!("%{}", wrapper_name)
+                            format!("@{}.bmb", global_name)
                         } else { lhs_str.clone() }
                     } else { lhs_str.clone() };
                     let rhs_final = if let Operand::Constant(Constant::String(s)) = rhs {
                         if let Some(global_name) = string_table.get(s) {
-                            let wrapper_name = format!("{}.rhs.str", dest_name);
-                            writeln!(out, "  %{} = call ptr @bmb_string_from_cstr(ptr @{})", wrapper_name, global_name)?;
-                            format!("%{}", wrapper_name)
+                            format!("@{}.bmb", global_name)
                         } else { rhs_str.clone() }
                     } else { rhs_str.clone() };
                     // Call bmb_string_concat for string concatenation
@@ -1048,19 +1058,15 @@ impl TextCodeGen {
                         writeln!(out, "  store ptr %{}, ptr %{}.addr", dest_name, dest.name)?;
                     }
                 } else if (lhs_ty == "ptr" || rhs_ty == "ptr") && *op == MirBinOp::Eq {
-                    // Wrap string constant operands with bmb_string_from_cstr
+                    // v0.51.22: Use pre-initialized global BmbString
                     let lhs_final = if let Operand::Constant(Constant::String(s)) = lhs {
                         if let Some(global_name) = string_table.get(s) {
-                            let wrapper_name = format!("{}.lhs.str", dest_name);
-                            writeln!(out, "  %{} = call ptr @bmb_string_from_cstr(ptr @{})", wrapper_name, global_name)?;
-                            format!("%{}", wrapper_name)
+                            format!("@{}.bmb", global_name)
                         } else { lhs_str.clone() }
                     } else { lhs_str.clone() };
                     let rhs_final = if let Operand::Constant(Constant::String(s)) = rhs {
                         if let Some(global_name) = string_table.get(s) {
-                            let wrapper_name = format!("{}.rhs.str", dest_name);
-                            writeln!(out, "  %{} = call ptr @bmb_string_from_cstr(ptr @{})", wrapper_name, global_name)?;
-                            format!("%{}", wrapper_name)
+                            format!("@{}.bmb", global_name)
                         } else { rhs_str.clone() }
                     } else { rhs_str.clone() };
                     // Call bmb_string_eq for string equality comparison
@@ -1074,19 +1080,15 @@ impl TextCodeGen {
                         writeln!(out, "  store i1 %{}, ptr %{}.addr", dest_name, dest.name)?;
                     }
                 } else if (lhs_ty == "ptr" || rhs_ty == "ptr") && *op == MirBinOp::Ne {
-                    // Wrap string constant operands with bmb_string_from_cstr
+                    // v0.51.22: Use pre-initialized global BmbString
                     let lhs_final = if let Operand::Constant(Constant::String(s)) = lhs {
                         if let Some(global_name) = string_table.get(s) {
-                            let wrapper_name = format!("{}.lhs.str", dest_name);
-                            writeln!(out, "  %{} = call ptr @bmb_string_from_cstr(ptr @{})", wrapper_name, global_name)?;
-                            format!("%{}", wrapper_name)
+                            format!("@{}.bmb", global_name)
                         } else { lhs_str.clone() }
                     } else { lhs_str.clone() };
                     let rhs_final = if let Operand::Constant(Constant::String(s)) = rhs {
                         if let Some(global_name) = string_table.get(s) {
-                            let wrapper_name = format!("{}.rhs.str", dest_name);
-                            writeln!(out, "  %{} = call ptr @bmb_string_from_cstr(ptr @{})", wrapper_name, global_name)?;
-                            format!("%{}", wrapper_name)
+                            format!("@{}.bmb", global_name)
                         } else { rhs_str.clone() }
                     } else { rhs_str.clone() };
                     // Call bmb_string_eq and negate for string inequality
@@ -2059,11 +2061,9 @@ impl TextCodeGen {
                                     self.format_operand_with_strings(arg, string_table)
                                 }
                             } else {
-                                // Standard: wrap with bmb_string_from_cstr
+                                // v0.51.22: Use pre-initialized global BmbString
                                 if let Some(global_name) = string_table.get(s) {
-                                    let wrapper_name = format!("{}.strarg{}", call_base, i);
-                                    writeln!(out, "  %{} = call ptr @bmb_string_from_cstr(ptr @{})", wrapper_name, global_name)?;
-                                    format!("%{}", wrapper_name)
+                                    format!("@{}.bmb", global_name)
                                 } else {
                                     self.format_operand_with_strings(arg, string_table)
                                 }
@@ -2439,11 +2439,11 @@ impl TextCodeGen {
 
             Terminator::Return(Some(val)) => {
                 let ty = self.mir_type_to_llvm(&func.ret_ty);
-                // Special handling for string constant returns
+                // v0.51.22: String constant returns use pre-initialized global BmbString
                 if let Operand::Constant(Constant::String(s)) = val {
                     if let Some(global_name) = string_table.get(s) {
-                        writeln!(out, "  %_ret_str = call ptr @bmb_string_from_cstr(ptr @{})", global_name)?;
-                        writeln!(out, "  ret ptr %_ret_str")?;
+                        // Return pointer to global BmbString struct directly
+                        writeln!(out, "  ret ptr @{}.bmb", global_name)?;
                     } else {
                         // Fallback - shouldn't happen
                         writeln!(out, "  ret {} {}", ty, self.format_operand_with_strings_and_narrowing(val, string_table, narrowed_param_names))?;
