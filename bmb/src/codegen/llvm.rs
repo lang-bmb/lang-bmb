@@ -305,6 +305,10 @@ struct LlvmContext<'ctx> {
     /// Maps string content to pointer to static BmbString struct
     static_strings: HashMap<String, PointerValue<'ctx>>,
 
+    /// v0.51.18: Cache for raw C string pointers (maps string content to raw data pointer)
+    /// Used for functions like file_exists that expect const char* instead of BMB String
+    static_cstrings: HashMap<String, PointerValue<'ctx>>,
+
     /// Counter for unique static string names
     static_string_counter: usize,
 
@@ -327,6 +331,7 @@ impl<'ctx> LlvmContext<'ctx> {
             phi_nodes: HashMap::new(),
             blocks: HashMap::new(),
             static_strings: HashMap::new(),
+            static_cstrings: HashMap::new(),
             static_string_counter: 0,
             current_ret_type: None,
         }
@@ -707,6 +712,12 @@ impl<'ctx> LlvmContext<'ctx> {
         let file_exists_type = i64_type.fn_type(&[ptr_type.into()], false);
         let file_exists_fn = self.module.add_function("bmb_file_exists", file_exists_type, None);
         self.functions.insert("file_exists".to_string(), file_exists_fn);
+
+        // v0.51.18: _cstr variants for string literal optimization (zero overhead)
+        let file_exists_cstr_fn = self.module.add_function("file_exists_cstr", file_exists_type, None);
+        self.functions.insert("file_exists_cstr".to_string(), file_exists_cstr_fn);
+        let bmb_file_exists_cstr_fn = self.module.add_function("bmb_file_exists_cstr", file_exists_type, None);
+        self.functions.insert("bmb_file_exists_cstr".to_string(), bmb_file_exists_cstr_fn);
 
         // v0.46: Command-line argument functions for CLI Independence
         // arg_count() -> i64
@@ -1337,10 +1348,30 @@ impl<'ctx> LlvmContext<'ctx> {
                         self.store_to_place(dest_place, unit_value.into())?;
                     }
                 } else {
+                    // v0.51.18: Check if function has _cstr variant for string literal optimization
+                    // This avoids BMB String wrapper overhead (2.81x → 1.0x for syscall_overhead)
+                    let has_cstr_variant = matches!(func.as_str(),
+                        "file_exists" | "bmb_file_exists");
+
+                    // Check if all string args are literals (for _cstr optimization)
+                    // Only use _cstr variant if ALL arguments are string literal constants
+                    let all_string_args_are_literals = has_cstr_variant && args.iter().all(|arg| {
+                        matches!(arg, Operand::Constant(Constant::String(_)))
+                    });
+
+                    // Use _cstr variant if available and all string args are literals
+                    let use_cstr = has_cstr_variant && all_string_args_are_literals;
+                    let actual_func_name = if use_cstr {
+                        format!("{}_cstr", func)
+                    } else {
+                        func.clone()
+                    };
+
                     // v0.50.67: Get function first and copy to avoid borrow conflict
                     let function = *self
                         .functions
-                        .get(func)
+                        .get(&actual_func_name)
+                        .or_else(|| self.functions.get(func))
                         .ok_or_else(|| CodeGenError::UnknownFunction(func.clone()))?;
 
                     // Get the function's parameter types for argument coercion
@@ -1352,7 +1383,16 @@ impl<'ctx> LlvmContext<'ctx> {
                     // v0.51.1: Handle ptr <-> i64 conversions for external calls (malloc, free, etc.)
                     let mut arg_values: Vec<BasicMetadataValueEnum> = Vec::with_capacity(args.len());
                     for (i, arg) in args.iter().enumerate() {
-                        let mut arg_val = self.gen_operand(arg)?;
+                        // v0.51.18: For functions with _cstr variants, pass raw C string directly
+                        let mut arg_val = if use_cstr {
+                            if let Operand::Constant(Constant::String(s)) = arg {
+                                self.gen_cstring_constant(s).into()
+                            } else {
+                                self.gen_operand(arg)?
+                            }
+                        } else {
+                            self.gen_operand(arg)?
+                        };
 
                         // Check if argument type matches parameter type
                         if i < param_types.len() {
@@ -1764,6 +1804,9 @@ impl<'ctx> LlvmContext<'ctx> {
 
                 self.static_string_counter += 1;
 
+                // v0.51.18: Also cache the raw C string pointer for _cstr variants
+                self.static_cstrings.insert(s.clone(), global_str.as_pointer_value());
+
                 // Cache and return pointer to the static struct
                 let struct_ptr = global_struct.as_pointer_value();
                 self.static_strings.insert(s.clone(), struct_ptr);
@@ -1773,6 +1816,21 @@ impl<'ctx> LlvmContext<'ctx> {
             // v0.95: Char as i32 Unicode code point
             Constant::Char(c) => self.context.i32_type().const_int(*c as u64, false).into(),
         }
+    }
+
+    /// v0.51.18: Generate raw C string constant for functions that expect const char*
+    /// Returns pointer to null-terminated string data (not BMB String struct)
+    fn gen_cstring_constant(&mut self, s: &str) -> PointerValue<'ctx> {
+        // Check cache first
+        if let Some(cached_ptr) = self.static_cstrings.get(s) {
+            return *cached_ptr;
+        }
+
+        // Create global string data (this will also populate the cache via gen_constant)
+        let _ = self.gen_constant(&Constant::String(s.to_string()));
+
+        // Return the cached raw C string pointer
+        *self.static_cstrings.get(s).expect("C string should be cached after gen_constant")
     }
 
     /// Generate code for an operand

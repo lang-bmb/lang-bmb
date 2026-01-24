@@ -404,6 +404,18 @@ int64_t bmb_file_exists(const char* path) {
     return (stat(path, &st) == 0) ? 1 : 0;
 }
 
+// v0.51.18: _cstr variants for string literal optimization (zero overhead)
+// These take raw C strings directly, avoiding BMB String wrapper overhead
+int64_t file_exists_cstr(const char* path) {
+    struct stat st;
+    return (stat(path, &st) == 0) ? 1 : 0;
+}
+
+int64_t bmb_file_exists_cstr(const char* path) {
+    struct stat st;
+    return (stat(path, &st) == 0) ? 1 : 0;
+}
+
 // v0.46: Command-line argument support for CLI Independence
 static int g_argc = 0;
 static char** g_argv = NULL;
