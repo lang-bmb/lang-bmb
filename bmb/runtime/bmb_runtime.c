@@ -197,6 +197,11 @@ int64_t bmb_string_char_at(const char* s, int64_t index) {
     return (int64_t)(unsigned char)s[index];
 }
 
+// v0.51.18: Alias for codegen compatibility
+int64_t char_at(const char* s, int64_t index) {
+    return bmb_string_char_at(s, index);
+}
+
 // String equality comparison
 int64_t bmb_string_eq(const char* a, const char* b) {
     if (a == b) return 1;  // Same pointer
@@ -296,6 +301,91 @@ int64_t bmb_sb_push(int64_t handle, const char* s) {
         sb->data[sb->len + i] = s[i];
     }
     sb->len += slen;
+    sb->data[sb->len] = '\0';
+    return sb->len;
+}
+
+// v0.51.18: Push a single character to StringBuilder
+int64_t bmb_sb_push_char(int64_t handle, int64_t ch) {
+    if (!handle) return 0;
+    StringBuilder* sb = (StringBuilder*)handle;
+
+    // Grow if needed
+    if (sb->len + 2 > sb->cap) {
+        sb->cap *= 2;
+        sb->data = (char*)realloc(sb->data, sb->cap);
+    }
+
+    sb->data[sb->len++] = (char)ch;
+    sb->data[sb->len] = '\0';
+    return sb->len;
+}
+
+// v0.51.18: Push an integer as string to StringBuilder
+int64_t bmb_sb_push_int(int64_t handle, int64_t n) {
+    if (!handle) return 0;
+    StringBuilder* sb = (StringBuilder*)handle;
+
+    // Convert integer to string (max 20 digits for i64 + sign + null)
+    char buf[32];
+    int neg = (n < 0);
+    if (neg) n = -n;
+
+    int i = 0;
+    if (n == 0) {
+        buf[i++] = '0';
+    } else {
+        while (n > 0) {
+            buf[i++] = '0' + (n % 10);
+            n /= 10;
+        }
+    }
+    if (neg) buf[i++] = '-';
+
+    // Grow if needed
+    while (sb->len + i + 1 > sb->cap) {
+        sb->cap *= 2;
+        sb->data = (char*)realloc(sb->data, sb->cap);
+    }
+
+    // Append in reverse order
+    while (i > 0) {
+        sb->data[sb->len++] = buf[--i];
+    }
+    sb->data[sb->len] = '\0';
+    return sb->len;
+}
+
+// v0.51.18: Push escaped string (JSON-style escaping) to StringBuilder
+int64_t bmb_sb_push_escaped(int64_t handle, const char* s) {
+    if (!handle || !s) return 0;
+    StringBuilder* sb = (StringBuilder*)handle;
+
+    while (*s) {
+        char c = *s++;
+        char esc = 0;
+        switch (c) {
+            case '"':  esc = '"';  break;
+            case '\\': esc = '\\'; break;
+            case '\n': esc = 'n';  break;
+            case '\r': esc = 'r';  break;
+            case '\t': esc = 't';  break;
+            default: break;
+        }
+
+        // Grow if needed (max 2 chars per iteration)
+        if (sb->len + 3 > sb->cap) {
+            sb->cap *= 2;
+            sb->data = (char*)realloc(sb->data, sb->cap);
+        }
+
+        if (esc) {
+            sb->data[sb->len++] = '\\';
+            sb->data[sb->len++] = esc;
+        } else {
+            sb->data[sb->len++] = c;
+        }
+    }
     sb->data[sb->len] = '\0';
     return sb->len;
 }
