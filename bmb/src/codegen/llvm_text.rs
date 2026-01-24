@@ -400,23 +400,42 @@ impl TextCodeGen {
                             .unwrap_or_else(|| self.infer_call_return_type(fn_name, func));
                         place_types.insert(d.name.clone(), ret_ty);
                     }
-                    MirInst::BinOp { dest, op, lhs, .. } => {
+                    MirInst::BinOp { dest, op, lhs, rhs } => {
                         // Determine result type based on operator
+                        // v0.51.20: Consider both operand types and use widest to handle narrowed params
                         let lhs_ty = match lhs {
                             Operand::Constant(c) => self.constant_type(c),
                             Operand::Place(p) => place_types.get(&p.name).copied().unwrap_or("i64"),
+                        };
+                        let rhs_ty = match rhs {
+                            Operand::Constant(c) => self.constant_type(c),
+                            Operand::Place(p) => place_types.get(&p.name).copied().unwrap_or("i64"),
+                        };
+
+                        // Use widest integer type (handles i32/i64 narrowing mismatch)
+                        let widest_ty = match (lhs_ty, rhs_ty) {
+                            (_, "i64") | ("i64", _) => "i64",
+                            (_, "double") | ("double", _) => "double",
+                            (_, "ptr") | ("ptr", _) => "ptr",
+                            ("i32", "i32") => "i32",
+                            ("i32", "i1") | ("i1", "i32") => "i32",
+                            ("i1", "i1") => "i1",
+                            _ => lhs_ty, // Default to lhs type
                         };
 
                         let result_ty = match op {
                             // Comparison operators return i1
                             MirBinOp::Eq | MirBinOp::Ne | MirBinOp::Lt | MirBinOp::Le
                             | MirBinOp::Gt | MirBinOp::Ge => "i1",
+                            // Float comparisons return i1
+                            MirBinOp::FEq | MirBinOp::FNe | MirBinOp::FLt | MirBinOp::FLe
+                            | MirBinOp::FGt | MirBinOp::FGe => "i1",
                             // String concat returns ptr
-                            MirBinOp::Add if lhs_ty == "ptr" => "ptr",
+                            MirBinOp::Add if lhs_ty == "ptr" || rhs_ty == "ptr" => "ptr",
                             // Logical ops preserve operand type
-                            MirBinOp::And | MirBinOp::Or => lhs_ty,
-                            // Arithmetic ops preserve operand type
-                            _ => lhs_ty,
+                            MirBinOp::And | MirBinOp::Or => widest_ty,
+                            // Arithmetic ops use widest type
+                            _ => widest_ty,
                         };
                         place_types.insert(dest.name.clone(), result_ty);
                     }
@@ -1125,13 +1144,32 @@ impl TextCodeGen {
                         let (s, _) = self.binop_to_llvm(*op);
                         s
                     };
+
+                    // v0.51.20: Handle type mismatch between operands (e.g., i32 param vs i64)
+                    // This can happen when ConstantPropagationNarrowing narrows a parameter
+                    // but the MIR still uses it in operations with wider types
+                    let (final_lhs_str, final_rhs_str, final_ty) = if lhs_ty == "i32" && rhs_ty == "i64" {
+                        // Sign-extend lhs from i32 to i64
+                        let sext_name = format!("{}.lhs.sext", dest_name);
+                        writeln!(out, "  %{} = sext i32 {} to i64", sext_name, lhs_str)?;
+                        (format!("%{}", sext_name), rhs_str.clone(), "i64")
+                    } else if lhs_ty == "i64" && rhs_ty == "i32" {
+                        // Sign-extend rhs from i32 to i64
+                        let sext_name = format!("{}.rhs.sext", dest_name);
+                        writeln!(out, "  %{} = sext i32 {} to i64", sext_name, rhs_str)?;
+                        (lhs_str.clone(), format!("%{}", sext_name), "i64")
+                    } else {
+                        (lhs_str.clone(), rhs_str.clone(), lhs_ty)
+                    };
+
                     // Note: LLVM IR always uses the operand type in the instruction
                     // The result type (i1 for comparisons) is implicit
-                    writeln!(out, "  %{} = {} {} {}, {}", dest_name, op_str, lhs_ty, lhs_str, rhs_str)?;
+                    writeln!(out, "  %{} = {} {} {}, {}", dest_name, op_str, final_ty, final_lhs_str, final_rhs_str)?;
                     // v0.46: Store result to alloca if destination is a local variable
                     if local_names.contains(&dest.name) {
                         // Get result type from place_types (handles comparisons returning i1)
-                        let result_ty = place_types.get(&dest.name).copied().unwrap_or(lhs_ty);
+                        // v0.51.20: Use final_ty (after type coercion) not lhs_ty
+                        let result_ty = place_types.get(&dest.name).copied().unwrap_or(final_ty);
                         writeln!(out, "  store {} %{}, ptr %{}.addr", result_ty, dest_name, dest.name)?;
                     }
                 }
