@@ -294,9 +294,11 @@ pub fn build(config: &BuildConfig) -> BuildResult<()> {
         let mut cmd = Command::new(&clang);
 
         // Apply optimization based on config
+        // v0.51.21: Changed Release from -O2 to -O3 for better performance
+        // -O3 enables more aggressive loop optimizations and inlining
         let opt_flag = match config.opt_level {
             OptLevel::Debug => "-O0",
-            OptLevel::Release => "-O2",
+            OptLevel::Release => "-O3",  // Was -O2, changed for better benchmarks
             OptLevel::Size => "-Os",
             OptLevel::Aggressive => "-O3",
         };
