@@ -1533,10 +1533,15 @@ impl<'ctx> LlvmContext<'ctx> {
             }
 
             MirInst::IndexLoad { dest, array, index } => {
-                // Get array pointer from variables
-                let (array_ptr, _) = self.variables.get(&array.name)
-                    .ok_or_else(|| CodeGenError::UnknownVariable(array.name.clone()))?;
-                let array_ptr = *array_ptr;
+                // Get array pointer from variables or ssa_values
+                // v0.51.19: Read-only array parameters are stored in ssa_values, not variables
+                let array_ptr = if let Some((ptr, _)) = self.variables.get(&array.name) {
+                    *ptr
+                } else if let Some(val) = self.ssa_values.get(&array.name) {
+                    val.into_pointer_value()
+                } else {
+                    return Err(CodeGenError::UnknownVariable(array.name.clone()));
+                };
 
                 // Evaluate index operand
                 let index_val = self.gen_operand(index)?;
@@ -1565,10 +1570,15 @@ impl<'ctx> LlvmContext<'ctx> {
             }
 
             MirInst::IndexStore { array, index, value } => {
-                // Get array pointer from variables
-                let (array_ptr, _) = self.variables.get(&array.name)
-                    .ok_or_else(|| CodeGenError::UnknownVariable(array.name.clone()))?;
-                let array_ptr = *array_ptr;
+                // Get array pointer from variables or ssa_values
+                // v0.51.19: Array parameters may be stored in ssa_values if read-only
+                let array_ptr = if let Some((ptr, _)) = self.variables.get(&array.name) {
+                    *ptr
+                } else if let Some(val) = self.ssa_values.get(&array.name) {
+                    val.into_pointer_value()
+                } else {
+                    return Err(CodeGenError::UnknownVariable(array.name.clone()));
+                };
 
                 // Evaluate operands
                 let index_val = self.gen_operand(index)?;
