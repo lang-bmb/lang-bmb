@@ -91,6 +91,21 @@ impl TextCodeGen {
             .map(|f| (f.name.clone(), self.mir_type_to_llvm(&f.ret_ty)))
             .collect();
 
+        // v0.51.17: Build function parameter type map for call site type coercion
+        // This is needed because ConstantPropagationNarrowing may change i64 params to i32
+        let fn_param_types: HashMap<String, Vec<&'static str>> = program
+            .functions
+            .iter()
+            .map(|f| {
+                let param_types: Vec<&'static str> = f
+                    .params
+                    .iter()
+                    .map(|(_, ty)| self.mir_type_to_llvm(ty))
+                    .collect();
+                (f.name.clone(), param_types)
+            })
+            .collect();
+
         // Emit string globals
         self.emit_string_globals(&mut output, &string_table)?;
 
@@ -99,7 +114,7 @@ impl TextCodeGen {
 
         // Generate functions with string table and function type map
         for func in &program.functions {
-            self.emit_function_with_strings(&mut output, func, &string_table, &fn_return_types)?;
+            self.emit_function_with_strings(&mut output, func, &string_table, &fn_return_types, &fn_param_types)?;
         }
 
         Ok(output)
@@ -349,7 +364,8 @@ impl TextCodeGen {
     fn emit_function(&self, out: &mut String, func: &MirFunction) -> TextCodeGenResult<()> {
         let empty_str_table = HashMap::new();
         let empty_fn_types = HashMap::new();
-        self.emit_function_with_strings(out, func, &empty_str_table, &empty_fn_types)
+        let empty_fn_param_types = HashMap::new();
+        self.emit_function_with_strings(out, func, &empty_str_table, &empty_fn_types, &empty_fn_param_types)
     }
 
     /// Build a map of place names to their types by pre-scanning instructions
@@ -408,7 +424,8 @@ impl TextCodeGen {
                         // v0.51.13: Use WIDEST type among all phi values to avoid type mismatch
                         // This handles ConstantPropagationNarrowing which may narrow parameters to i32
                         // while recursive calls return i64
-                        let mut widest_ty = "i32"; // Start with narrowest integer type
+                        // v0.51.17: Fixed - start with "i1" (narrowest) not "i32"
+                        let mut widest_ty = "i1"; // Start with narrowest integer type
                         for (val, _) in values {
                             let ty = match val {
                                 Operand::Constant(c) => self.constant_type(c),
@@ -459,9 +476,25 @@ impl TextCodeGen {
         func: &MirFunction,
         string_table: &HashMap<String, String>,
         fn_return_types: &HashMap<String, &'static str>,
+        fn_param_types: &HashMap<String, Vec<&'static str>>,
     ) -> TextCodeGenResult<()> {
         // Pre-scan to build place type map
         let place_types = self.build_place_type_map(func, fn_return_types);
+
+        // v0.51.18: Track narrowed i32 params but DON'T override to i64
+        // With proper i32 propagation:
+        // - Narrowed params stay as i32 in place_types (built by build_place_type_map)
+        // - Derived temporaries (_t2 = n - 1) are also i32
+        // - No sext at entry, no trunc before recursive calls
+        // - Phi coercion handles i32→i64 when mixing with call results
+        let mut narrowed_param_set: std::collections::HashSet<String> = std::collections::HashSet::new();
+        for (name, ty) in &func.params {
+            let llvm_ty = self.mir_type_to_llvm(ty);
+            if llvm_ty == "i32" {
+                narrowed_param_set.insert(name.clone());
+                // DON'T override to i64 - keep as i32 for proper 32-bit operations
+            }
+        }
 
         // Track defined names to handle SSA violations from MIR
         let mut name_counts: HashMap<String, u32> = HashMap::new();
@@ -631,6 +664,14 @@ impl TextCodeGen {
             .map(|(name, _)| name.clone())
             .collect();
 
+        // v0.51.18: Track narrowed i32 parameters (used for phi coercion and return handling)
+        // With proper i32 propagation, we DON'T emit sext at entry
+        let narrowed_param_names: std::collections::HashSet<String> = func.params
+            .iter()
+            .filter(|(_, ty)| self.mir_type_to_llvm(ty) == "i32")
+            .map(|(name, _)| name.clone())
+            .collect();
+
         // Emit entry block with allocas for local variables (excluding phi-referenced ones)
         // Use "alloca_entry" to avoid conflicts with user variables named "entry"
         if !local_names.is_empty() {
@@ -644,6 +685,7 @@ impl TextCodeGen {
                     }
                 }
             }
+            // v0.51.18: NO sext for narrowed params - use i32 directly for proper 32-bit ops
             // Jump to the actual first block
             if let Some(first_block) = func.blocks.first() {
                 writeln!(out, "  br label %bb_{}", first_block.label)?;
@@ -652,7 +694,7 @@ impl TextCodeGen {
 
         // Emit basic blocks with place type information
         for block in &func.blocks {
-            self.emit_block_with_strings(out, block, func, string_table, fn_return_types, &place_types, &mut name_counts, &local_names, &phi_load_map, &phi_string_map, &phi_coerce_map)?;
+            self.emit_block_with_strings(out, block, func, string_table, fn_return_types, fn_param_types, &place_types, &mut name_counts, &local_names, &narrowed_param_names, &phi_load_map, &phi_string_map, &phi_coerce_map)?;
         }
 
         writeln!(out, "}}")?;
@@ -671,13 +713,15 @@ impl TextCodeGen {
     ) -> TextCodeGenResult<()> {
         let empty_str_table = HashMap::new();
         let empty_fn_types = HashMap::new();
+        let empty_fn_param_types = HashMap::new();
         let empty_place_types = HashMap::new();
         let mut empty_name_counts = HashMap::new();
         let empty_local_names = std::collections::HashSet::new();
         let empty_phi_map = std::collections::HashMap::new();
         let empty_phi_string_map = std::collections::HashMap::new();
         let empty_phi_coerce_map = std::collections::HashMap::new();
-        self.emit_block_with_strings(out, block, func, &empty_str_table, &empty_fn_types, &empty_place_types, &mut empty_name_counts, &empty_local_names, &empty_phi_map, &empty_phi_string_map, &empty_phi_coerce_map)
+        let empty_narrowed = std::collections::HashSet::new();
+        self.emit_block_with_strings(out, block, func, &empty_str_table, &empty_fn_types, &empty_fn_param_types, &empty_place_types, &mut empty_name_counts, &empty_local_names, &empty_narrowed, &empty_phi_map, &empty_phi_string_map, &empty_phi_coerce_map)
     }
 
     /// Emit a basic block with string table support
@@ -689,9 +733,11 @@ impl TextCodeGen {
         func: &MirFunction,
         string_table: &HashMap<String, String>,
         fn_return_types: &HashMap<String, &'static str>,
+        fn_param_types: &HashMap<String, Vec<&'static str>>,
         place_types: &HashMap<String, &'static str>,
         name_counts: &mut HashMap<String, u32>,
         local_names: &std::collections::HashSet<String>,
+        narrowed_param_names: &std::collections::HashSet<String>,
         phi_load_map: &std::collections::HashMap<(String, String, String), String>,
         phi_string_map: &std::collections::HashMap<(String, String, String), String>,
         phi_coerce_map: &std::collections::HashMap<(String, String, String), (String, &'static str, &'static str)>,
@@ -701,7 +747,7 @@ impl TextCodeGen {
 
         // Emit instructions (pass phi_load_map for phi node handling)
         for inst in &block.instructions {
-            self.emit_instruction_with_strings(out, inst, func, string_table, fn_return_types, place_types, name_counts, local_names, phi_load_map, phi_string_map, phi_coerce_map, &block.label)?;
+            self.emit_instruction_with_strings(out, inst, func, string_table, fn_return_types, fn_param_types, place_types, name_counts, local_names, narrowed_param_names, phi_load_map, phi_string_map, phi_coerce_map, &block.label)?;
         }
 
         // Emit loads for locals that will be used in phi nodes of successor blocks
@@ -759,7 +805,7 @@ impl TextCodeGen {
         }
 
         // Emit terminator
-        self.emit_terminator(out, &block.terminator, func, string_table, local_names, &block.label)?;
+        self.emit_terminator(out, &block.terminator, func, string_table, local_names, narrowed_param_names, &block.label)?;
 
         Ok(())
     }
@@ -784,9 +830,11 @@ impl TextCodeGen {
         func: &MirFunction,
         string_table: &HashMap<String, String>,
         fn_return_types: &HashMap<String, &'static str>,
+        fn_param_types: &HashMap<String, Vec<&'static str>>,
         place_types: &HashMap<String, &'static str>,
         name_counts: &mut HashMap<String, u32>,
         local_names: &std::collections::HashSet<String>,
+        narrowed_param_names: &std::collections::HashSet<String>,
         _phi_load_map: &std::collections::HashMap<(String, String, String), String>,
         phi_string_map: &std::collections::HashMap<(String, String, String), String>,
         phi_coerce_map: &std::collections::HashMap<(String, String, String), (String, &'static str, &'static str)>,
@@ -938,21 +986,22 @@ impl TextCodeGen {
                 };
 
                 // Emit loads for local operands (use dest_name for uniqueness)
+                // v0.51.17: Use narrowing-aware formatting for non-local operands
                 let lhs_str = match lhs {
                     Operand::Place(p) if local_names.contains(&p.name) => {
                         let load_name = format!("{}.{}.lhs", dest_name, p.name);
                         writeln!(out, "  %{} = load {}, ptr %{}.addr", load_name, lhs_ty, p.name)?;
                         format!("%{}", load_name)
                     }
-                    _ => self.format_operand_with_strings(lhs, string_table),
+                    _ => self.format_operand_with_strings_and_narrowing(lhs, string_table, narrowed_param_names),
                 };
                 let rhs_str = match rhs {
                     Operand::Place(p) if local_names.contains(&p.name) => {
-                        let load_name = format!("{}.{}.rhs", dest_name, p.name, );
+                        let load_name = format!("{}.{}.rhs", dest_name, p.name);
                         writeln!(out, "  %{} = load {}, ptr %{}.addr", load_name, rhs_ty, p.name)?;
                         format!("%{}", load_name)
                     }
-                    _ => self.format_operand_with_strings(rhs, string_table),
+                    _ => self.format_operand_with_strings_and_narrowing(rhs, string_table, narrowed_param_names),
                 };
 
                 // String concatenation: either operand is ptr with Add op
@@ -1982,14 +2031,48 @@ impl TextCodeGen {
                                 }
                             }
                         }
-                        _ => self.format_operand_with_strings(arg, string_table),
+                        // v0.51.17: Use narrowing-aware formatting so %n becomes %n.i64
+                        _ => self.format_operand_with_strings_and_narrowing(arg, string_table, narrowed_param_names),
                     };
                     arg_vals.push((ty.to_string(), val, is_string_literal));
                 }
 
+                // v0.51.17: Type coercion for narrowed parameters
+                // ConstantPropagationNarrowing may change i64 params to i32,
+                // so we need to truncate i64 arguments to i32 when calling such functions
+                let param_types_opt = fn_param_types.get(fn_name);
+
+                // v0.51.17: Pre-emit truncation instructions for narrowed parameters
+                if let Some(param_types) = param_types_opt {
+                    for (i, (arg_ty, val, _)) in arg_vals.iter().enumerate() {
+                        if let Some(&param_ty) = param_types.get(i) {
+                            if arg_ty == "i64" && param_ty == "i32" {
+                                let trunc_name = format!("{}.arg{}.trunc", call_base, i);
+                                writeln!(out, "  %{} = trunc i64 {} to i32", trunc_name, val)?;
+                            }
+                        }
+                    }
+                }
+
+                // v0.51.17: Rebuild args_str with proper truncation references
                 let args_str: Vec<String> = arg_vals
                     .iter()
-                    .map(|(ty, val, _)| format!("{} {}", ty, val))
+                    .enumerate()
+                    .map(|(i, (arg_ty, val, _))| {
+                        if let Some(param_types) = param_types_opt {
+                            if let Some(&param_ty) = param_types.get(i) {
+                                if arg_ty == "i64" && param_ty == "i32" {
+                                    let trunc_name = format!("{}.arg{}.trunc", call_base, i);
+                                    return format!("i32 %{}", trunc_name);
+                                }
+                                if arg_ty == "i32" && param_ty == "i64" {
+                                    // Sign extend would be needed, but this case is rarer
+                                    return format!("{} {}", param_ty, val);
+                                }
+                            }
+                        }
+                        format!("{} {}", arg_ty, val)
+                    })
                     .collect();
 
                 // v0.51.2: Check if all string args are literals for cstr variant optimization
@@ -2095,6 +2178,7 @@ impl TextCodeGen {
                         }
 
                         // Check if this is a local variable that was pre-loaded for phi
+                        // v0.51.17: Use narrowing-aware formatting for phi operands
                         let val_str = if let Operand::Place(p) = val {
                             if local_names.contains(&p.name) {
                                 // This local should have been pre-loaded in the predecessor block
@@ -2102,7 +2186,7 @@ impl TextCodeGen {
                                 let load_temp = format!("{}.phi.{}", p.name, label);
                                 format!("%{}", load_temp)
                             } else {
-                                self.format_operand_with_strings(val, string_table)
+                                self.format_operand_with_strings_and_narrowing(val, string_table, narrowed_param_names)
                             }
                         } else if let Operand::Constant(Constant::String(s)) = val {
                             // Check if this string constant was pre-wrapped for phi
@@ -2110,10 +2194,10 @@ impl TextCodeGen {
                             if let Some(temp_name) = phi_string_map.get(&key) {
                                 format!("%{}", temp_name)
                             } else {
-                                self.format_operand_with_strings(val, string_table)
+                                self.format_operand_with_strings_and_narrowing(val, string_table, narrowed_param_names)
                             }
                         } else {
-                            self.format_operand_with_strings(val, string_table)
+                            self.format_operand_with_strings_and_narrowing(val, string_table, narrowed_param_names)
                         };
                         format!("[ {}, %bb_{} ]", val_str, label)
                     })
@@ -2302,6 +2386,7 @@ impl TextCodeGen {
         func: &MirFunction,
         string_table: &HashMap<String, String>,
         local_names: &std::collections::HashSet<String>,
+        narrowed_param_names: &std::collections::HashSet<String>,
         block_label: &str,
     ) -> TextCodeGenResult<()> {
         match term {
@@ -2323,7 +2408,7 @@ impl TextCodeGen {
                         writeln!(out, "  ret ptr %_ret_str")?;
                     } else {
                         // Fallback - shouldn't happen
-                        writeln!(out, "  ret {} {}", ty, self.format_operand_with_strings(val, string_table))?;
+                        writeln!(out, "  ret {} {}", ty, self.format_operand_with_strings_and_narrowing(val, string_table, narrowed_param_names))?;
                     }
                 } else if ty == "void" {
                     // v0.50.49: Void return - just emit ret void, don't try to load the value
@@ -2336,10 +2421,11 @@ impl TextCodeGen {
                         writeln!(out, "  %_ret_val.{}.{} = load {}, ptr %{}.addr", block_label, p.name, ty, p.name)?;
                         writeln!(out, "  ret {} %_ret_val.{}.{}", ty, block_label, p.name)?;
                     } else {
-                        writeln!(out, "  ret {} {}", ty, self.format_operand_with_strings(val, string_table))?;
+                        // v0.51.17: Use narrowing-aware formatting
+                        writeln!(out, "  ret {} {}", ty, self.format_operand_with_strings_and_narrowing(val, string_table, narrowed_param_names))?;
                     }
                 } else {
-                    writeln!(out, "  ret {} {}", ty, self.format_operand_with_strings(val, string_table))?;
+                    writeln!(out, "  ret {} {}", ty, self.format_operand_with_strings_and_narrowing(val, string_table, narrowed_param_names))?;
                 }
             }
 
@@ -2349,16 +2435,17 @@ impl TextCodeGen {
 
             Terminator::Branch { cond, then_label, else_label } => {
                 // Check if condition is a local that needs loading from alloca
+                // v0.51.17: Use narrowing-aware formatting for non-locals
                 let cond_str = if let Operand::Place(p) = cond {
                     if local_names.contains(&p.name) {
                         // Load the condition from alloca first (use then_label to make name unique)
                         writeln!(out, "  %{}.cond_{} = load i1, ptr %{}.addr", p.name, then_label, p.name)?;
                         format!("%{}.cond_{}", p.name, then_label)
                     } else {
-                        self.format_operand(cond)
+                        self.format_operand_with_narrowing(cond, narrowed_param_names)
                     }
                 } else {
-                    self.format_operand(cond)
+                    self.format_operand_with_narrowing(cond, narrowed_param_names)
                 };
                 writeln!(
                     out,
@@ -2374,16 +2461,17 @@ impl TextCodeGen {
             // v0.19.2: Switch for pattern matching
             Terminator::Switch { discriminant, cases, default } => {
                 // Check if discriminant is a local that needs loading from alloca
+                // v0.51.17: Use narrowing-aware formatting
                 let disc_str = if let Operand::Place(p) = discriminant {
                     if local_names.contains(&p.name) {
                         // Use default label to make name unique
                         writeln!(out, "  %{}.disc_{} = load i64, ptr %{}.addr", p.name, default, p.name)?;
                         format!("%{}.disc_{}", p.name, default)
                     } else {
-                        self.format_operand(discriminant)
+                        self.format_operand_with_narrowing(discriminant, narrowed_param_names)
                     }
                 } else {
-                    self.format_operand(discriminant)
+                    self.format_operand_with_narrowing(discriminant, narrowed_param_names)
                 };
                 writeln!(out, "  switch i64 {}, label %bb_{} [", disc_str, default)?;
                 for (val, label) in cases {
@@ -2497,6 +2585,20 @@ impl TextCodeGen {
         }
     }
 
+    /// Format an operand with narrowed parameter substitution
+    /// v0.51.18: Narrowed params stay as i32, no special handling needed
+    fn format_operand_with_narrowing(
+        &self,
+        op: &Operand,
+        _narrowed_param_names: &std::collections::HashSet<String>,
+    ) -> String {
+        match op {
+            // v0.51.18: No special handling - narrowed params stay as i32
+            Operand::Place(p) => format!("%{}", p.name),
+            Operand::Constant(c) => self.format_constant(c),
+        }
+    }
+
     /// Format an operand with string table for phi instructions
     fn format_operand_with_strings(&self, op: &Operand, string_table: &HashMap<String, String>) -> String {
         match op {
@@ -2507,6 +2609,30 @@ impl TextCodeGen {
                         format!("@{}", global_name)
                     } else {
                         // Fallback - shouldn't happen if collect_string_constants is correct
+                        format!("\"{}\"", s)
+                    }
+                }
+                _ => self.format_constant(c),
+            },
+        }
+    }
+
+    /// Format an operand with string table and narrowed parameter substitution
+    /// v0.51.18: Narrowed params stay as i32, no special handling needed
+    fn format_operand_with_strings_and_narrowing(
+        &self,
+        op: &Operand,
+        string_table: &HashMap<String, String>,
+        _narrowed_param_names: &std::collections::HashSet<String>,
+    ) -> String {
+        match op {
+            // v0.51.18: No special handling - narrowed params stay as i32
+            Operand::Place(p) => format!("%{}", p.name),
+            Operand::Constant(c) => match c {
+                Constant::String(s) => {
+                    if let Some(global_name) = string_table.get(s) {
+                        format!("@{}", global_name)
+                    } else {
                         format!("\"{}\"", s)
                     }
                 }

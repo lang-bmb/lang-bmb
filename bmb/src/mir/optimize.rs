@@ -3210,15 +3210,18 @@ impl ConstantPropagationNarrowing {
     /// - `cmpq $3, %rdi` becomes `cmpl $3, %edi`
     ///
     /// This eliminates the 8% performance gap vs C on fibonacci-like benchmarks.
+    ///
+    /// Apply type narrowing to a function: change i64 parameter to i32
+    ///
+    /// v0.51.18: Proper i32 propagation implemented.
+    /// The codegen now:
+    /// 1. Does NOT emit sext at function entry (keeps param as i32)
+    /// 2. Uses i32 for arithmetic on narrowed params
+    /// 3. Handles phi coercion (i32→i64) when mixing with call results
+    /// 4. No trunc needed for recursive calls (arg is i32, param is i32)
     fn narrow_function(&self, func: &mut MirFunction, param_idx: usize) -> bool {
-        let _param_name = func.params[param_idx].0.clone();
-
-        // Change parameter type to i32
-        // The LLVM codegen automatically handles:
-        // - 32-bit arithmetic operations on the parameter
-        // - Sign extension when returning i64 from i32 computation
+        // Change parameter type from I64 to I32
         func.params[param_idx].1 = MirType::I32;
-
         true
     }
 
@@ -4718,7 +4721,7 @@ mod tests {
         let narrowing = ConstantPropagationNarrowing::from_program(&program);
         let changed = narrowing.run_on_program(&mut program);
 
-        // Verify the fibonacci parameter was narrowed from i64 to i32
+        // v0.51.18: Narrowing is enabled with proper i32 propagation
         assert!(changed, "Narrowing pass should have made changes");
 
         let fib = program.functions.iter().find(|f| f.name == "fibonacci").unwrap();
