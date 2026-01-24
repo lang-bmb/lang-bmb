@@ -137,6 +137,8 @@ fn lower_function(fn_def: &FnDef, func_return_types: &std::collections::HashMap<
         postconditions,
         is_pure,
         is_const,
+        always_inline: false, // Set by AggressiveInlining pass
+        is_memory_free: false, // Set by MemoryEffectAnalysis pass
     }
 }
 
@@ -973,10 +975,27 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
             Operand::Constant(crate::mir::Constant::Unit)
         }
 
-        // v0.39: Type cast - lowered as Copy with type annotation
-        // The actual cast semantics are handled by codegen
-        Expr::Cast { expr, ty: _ } => {
-            lower_expr(expr, ctx)
+        // v0.50.80: Type cast - emit explicit Cast instruction
+        // Required for correct phi node types in if-else with mixed types
+        Expr::Cast { expr, ty } => {
+            let src_op = lower_expr(expr, ctx);
+            let from_ty = ctx.operand_type(&src_op);
+            let to_ty = ast_type_to_mir(&ty.node);
+
+            // If types are the same, no cast needed
+            if from_ty == to_ty {
+                return src_op;
+            }
+
+            // Generate cast instruction
+            let dest = ctx.fresh_temp();
+            ctx.push_inst(MirInst::Cast {
+                dest: dest.clone(),
+                src: src_op,
+                from_ty,
+                to_ty,
+            });
+            Operand::Place(dest)
         }
     }
 }

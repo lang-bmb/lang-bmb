@@ -526,7 +526,11 @@ fn build_wasm(
     checker.check_program(&ast)?;
 
     // Lower to MIR
-    let mir = bmb::mir::lower_program(&ast);
+    let mut mir = bmb::mir::lower_program(&ast);
+
+    // v0.51.9: Run MIR optimization pipeline
+    let pipeline = bmb::mir::OptimizationPipeline::for_level(bmb::mir::OptLevel::Release);
+    pipeline.optimize(&mut mir);
 
     // Parse WASM target
     let target = match wasm_target {
@@ -2690,7 +2694,12 @@ fn generate_rust_ir(source: &str, filename: &str) -> Result<String, Box<dyn std:
     checker.check_program(&ast)?;
 
     // Lower to MIR
-    let mir = bmb::mir::lower_program(&ast);
+    let mut mir = bmb::mir::lower_program(&ast);
+
+    // v0.51.9: Run MIR optimization pipeline
+    // This includes TailCallOptimization, TailRecursiveToLoop, IfElseToSwitch, etc.
+    let pipeline = bmb::mir::OptimizationPipeline::for_level(bmb::mir::OptLevel::Release);
+    pipeline.optimize(&mut mir);
 
     // Generate LLVM IR
     let codegen = bmb::codegen::TextCodeGen::new();

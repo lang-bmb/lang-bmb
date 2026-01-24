@@ -115,6 +115,21 @@ int64_t max(int64_t a, int64_t b) {
 }
 
 // ===================================================
+// Memory Access Functions (v0.50.75)
+// For direct memory read/write in BMB programs
+// ===================================================
+
+// store_i64(ptr, value) - Store 64-bit value at memory address
+void bmb_store_i64(int64_t ptr, int64_t value) {
+    *((int64_t*)ptr) = value;
+}
+
+// load_i64(ptr) - Load 64-bit value from memory address
+int64_t bmb_load_i64(int64_t ptr) {
+    return *((int64_t*)ptr);
+}
+
+// ===================================================
 // String Runtime Functions (Phase 32.3)
 // For native Bootstrap compiler support
 // ===================================================
@@ -136,6 +151,36 @@ typedef struct {
 static BmbString* string_pool[MAX_STRINGS];
 static int64_t string_pool_count = 0;
 
+// v0.51.14: String constant cache - avoids repeated allocation for string literals
+// Uses C string pointer as key (string literals have constant addresses)
+#define STRING_CONST_CACHE_SIZE 1024
+typedef struct {
+    const char* cstr_ptr;  // Key: pointer to C string literal
+    BmbString* bmb_str;    // Value: cached BmbString
+} StringConstEntry;
+static StringConstEntry string_const_cache[STRING_CONST_CACHE_SIZE];
+static int64_t string_const_count = 0;
+
+// Lookup cached string by C string pointer
+static BmbString* string_const_cache_get(const char* cstr) {
+    // Linear search is fast for small caches and avoids hash collisions
+    for (int64_t i = 0; i < string_const_count; i++) {
+        if (string_const_cache[i].cstr_ptr == cstr) {
+            return string_const_cache[i].bmb_str;
+        }
+    }
+    return NULL;
+}
+
+// Add string to cache
+static void string_const_cache_put(const char* cstr, BmbString* s) {
+    if (string_const_count < STRING_CONST_CACHE_SIZE) {
+        string_const_cache[string_const_count].cstr_ptr = cstr;
+        string_const_cache[string_const_count].bmb_str = s;
+        string_const_count++;
+    }
+}
+
 // Allocate new string
 BmbString* bmb_string_new(const char* data, int64_t len) {
     BmbString* s = (BmbString*)malloc(sizeof(BmbString));
@@ -151,8 +196,17 @@ BmbString* bmb_string_new(const char* data, int64_t len) {
 }
 
 // String from C string literal
+// v0.51.14: Uses cache to avoid repeated allocation for the same literal
 BmbString* bmb_string_from_cstr(const char* cstr) {
-    return bmb_string_new(cstr, strlen(cstr));
+    // Check cache first (fast path for repeated string literal access)
+    BmbString* cached = string_const_cache_get(cstr);
+    if (cached) {
+        return cached;
+    }
+    // Cache miss: allocate new string and cache it
+    BmbString* s = bmb_string_new(cstr, strlen(cstr));
+    string_const_cache_put(cstr, s);
+    return s;
 }
 
 // Get string length
@@ -331,98 +385,210 @@ int64_t bmb_append_file(BmbString* path, BmbString* content) {
 
 // ===================================================
 // StringBuilder Runtime Functions (Phase 32.3)
+// v0.50.73: Refactored to single growable buffer for O(log n) allocations
 // ===================================================
 
 typedef struct {
-    char** fragments;
-    int64_t* lengths;
-    int64_t count;
-    int64_t capacity;
+    char* buffer;       // Single growable buffer
+    int64_t length;     // Current content length
+    int64_t capacity;   // Buffer capacity
 } StringBuilder;
 
 #define MAX_STRING_BUILDERS 8192
+#define SB_INITIAL_CAPACITY 256  // Start with reasonable size to reduce reallocs
 static StringBuilder* builders[MAX_STRING_BUILDERS];
 static int64_t builder_count = 0;
+
+// Helper: ensure StringBuilder has space for additional bytes
+static void sb_ensure_capacity(StringBuilder* sb, int64_t additional) {
+    int64_t required = sb->length + additional + 1;  // +1 for null terminator
+    if (required > sb->capacity) {
+        while (sb->capacity < required) {
+            sb->capacity *= 2;
+        }
+        sb->buffer = (char*)realloc(sb->buffer, sb->capacity);
+    }
+}
 
 // Create new StringBuilder, return handle (index)
 int64_t bmb_sb_new(void) {
     if (builder_count >= MAX_STRING_BUILDERS) return -1;
     StringBuilder* sb = (StringBuilder*)malloc(sizeof(StringBuilder));
-    sb->fragments = (char**)malloc(64 * sizeof(char*));
-    sb->lengths = (int64_t*)malloc(64 * sizeof(int64_t));
-    sb->count = 0;
-    sb->capacity = 64;
+    sb->buffer = (char*)malloc(SB_INITIAL_CAPACITY);
+    sb->buffer[0] = '\0';
+    sb->length = 0;
+    sb->capacity = SB_INITIAL_CAPACITY;
     builders[builder_count] = sb;
     return builder_count++;
 }
 
-// Push string to StringBuilder
+// Push string to StringBuilder - direct append, no fragment allocation
 int64_t bmb_sb_push(int64_t handle, BmbString* s) {
     if (handle < 0 || handle >= builder_count) return -1;
     StringBuilder* sb = builders[handle];
     if (!sb || !s) return -1;
 
-    if (sb->count >= sb->capacity) {
-        sb->capacity *= 2;
-        sb->fragments = (char**)realloc(sb->fragments, sb->capacity * sizeof(char*));
-        sb->lengths = (int64_t*)realloc(sb->lengths, sb->capacity * sizeof(int64_t));
-    }
-
-    char* copy = (char*)malloc(s->len + 1);
-    memcpy(copy, s->data, s->len);
-    copy[s->len] = '\0';
-    sb->fragments[sb->count] = copy;
-    sb->lengths[sb->count] = s->len;
-    sb->count++;
+    sb_ensure_capacity(sb, s->len);
+    memcpy(sb->buffer + sb->length, s->data, s->len);
+    sb->length += s->len;
+    sb->buffer[sb->length] = '\0';
     return 0;
 }
 
-// Get total length
+// v0.50.77: Push C string literal directly - ZERO ALLOCATION
+// Used for string literals passed to sb_push, avoiding bmb_string_from_cstr overhead
+int64_t bmb_sb_push_cstr(int64_t handle, const char* cstr) {
+    if (handle < 0 || handle >= builder_count) return -1;
+    StringBuilder* sb = builders[handle];
+    if (!sb || !cstr) return -1;
+
+    int64_t len = strlen(cstr);
+    sb_ensure_capacity(sb, len);
+    memcpy(sb->buffer + sb->length, cstr, len);
+    sb->length += len;
+    sb->buffer[sb->length] = '\0';
+    return 0;
+}
+
+// Push single character to StringBuilder - direct append
+int64_t bmb_sb_push_char(int64_t handle, int64_t char_code) {
+    if (handle < 0 || handle >= builder_count) return -1;
+    StringBuilder* sb = builders[handle];
+    if (!sb) return -1;
+
+    sb_ensure_capacity(sb, 1);
+    sb->buffer[sb->length++] = (char)char_code;
+    sb->buffer[sb->length] = '\0';
+    return 0;
+}
+
+// v0.50.74: Push JSON-escaped string to StringBuilder in one call
+// Eliminates per-character function call overhead (0 calls vs 3-4 per char)
+int64_t bmb_sb_push_escaped(int64_t handle, BmbString* s) {
+    if (handle < 0 || handle >= builder_count) return -1;
+    StringBuilder* sb = builders[handle];
+    if (!sb || !s) return -1;
+
+    // Worst case: every char becomes \uXXXX (6 chars)
+    sb_ensure_capacity(sb, s->len * 6);
+
+    for (int64_t i = 0; i < s->len; i++) {
+        unsigned char c = (unsigned char)s->data[i];
+        if (c == '"') {
+            sb->buffer[sb->length++] = '\\';
+            sb->buffer[sb->length++] = '"';
+        } else if (c == '\\') {
+            sb->buffer[sb->length++] = '\\';
+            sb->buffer[sb->length++] = '\\';
+        } else if (c == '\n') {
+            sb->buffer[sb->length++] = '\\';
+            sb->buffer[sb->length++] = 'n';
+        } else if (c == '\r') {
+            sb->buffer[sb->length++] = '\\';
+            sb->buffer[sb->length++] = 'r';
+        } else if (c == '\t') {
+            sb->buffer[sb->length++] = '\\';
+            sb->buffer[sb->length++] = 't';
+        } else if (c >= 32 && c < 127) {
+            // Printable ASCII - direct copy
+            sb->buffer[sb->length++] = c;
+        } else {
+            // \uXXXX escape for other bytes
+            static const char hex[] = "0123456789abcdef";
+            sb->buffer[sb->length++] = '\\';
+            sb->buffer[sb->length++] = 'u';
+            sb->buffer[sb->length++] = '0';
+            sb->buffer[sb->length++] = '0';
+            sb->buffer[sb->length++] = hex[(c >> 4) & 0xF];
+            sb->buffer[sb->length++] = hex[c & 0xF];
+        }
+    }
+    sb->buffer[sb->length] = '\0';
+    return 0;
+}
+
+// v0.50.73: Push integer directly to StringBuilder
+int64_t bmb_sb_push_int(int64_t handle, int64_t n) {
+    if (handle < 0 || handle >= builder_count) return -1;
+    StringBuilder* sb = builders[handle];
+    if (!sb) return -1;
+
+    // Convert integer to string (max 20 digits for int64 + sign)
+    char buf[24];
+    int len = 0;
+    int64_t abs_n = n;
+    int negative = 0;
+
+    if (n < 0) {
+        negative = 1;
+        abs_n = -n;
+    }
+
+    // Handle zero case
+    if (abs_n == 0) {
+        buf[len++] = '0';
+    } else {
+        // Build digits in reverse
+        char temp[24];
+        int temp_len = 0;
+        while (abs_n > 0) {
+            temp[temp_len++] = '0' + (abs_n % 10);
+            abs_n /= 10;
+        }
+        // Add sign if negative
+        if (negative) {
+            buf[len++] = '-';
+        }
+        // Reverse digits into buf
+        for (int i = temp_len - 1; i >= 0; i--) {
+            buf[len++] = temp[i];
+        }
+    }
+    buf[len] = '\0';
+
+    // Append to buffer directly (no fragment allocation)
+    sb_ensure_capacity(sb, len);
+    memcpy(sb->buffer + sb->length, buf, len);
+    sb->length += len;
+    sb->buffer[sb->length] = '\0';
+    return 0;
+}
+
+// Get total length - now O(1) instead of O(n)
 int64_t bmb_sb_len(int64_t handle) {
     if (handle < 0 || handle >= builder_count) return 0;
     StringBuilder* sb = builders[handle];
     if (!sb) return 0;
-    int64_t total = 0;
-    for (int64_t i = 0; i < sb->count; i++) {
-        total += sb->lengths[i];
-    }
-    return total;
+    return sb->length;
 }
 
-// Build final string
+// Build final string - minimal allocation, just wrap buffer
 BmbString* bmb_sb_build(int64_t handle) {
     if (handle < 0 || handle >= builder_count) return bmb_string_new("", 0);
     StringBuilder* sb = builders[handle];
     if (!sb) return bmb_string_new("", 0);
 
-    int64_t total = bmb_sb_len(handle);
-    char* data = (char*)malloc(total + 1);
-    int64_t pos = 0;
-    for (int64_t i = 0; i < sb->count; i++) {
-        memcpy(data + pos, sb->fragments[i], sb->lengths[i]);
-        pos += sb->lengths[i];
-    }
-    data[total] = '\0';
+    // Copy buffer to new string (we can't transfer ownership as sb may be reused)
+    char* data = (char*)malloc(sb->length + 1);
+    memcpy(data, sb->buffer, sb->length + 1);
 
     BmbString* result = (BmbString*)malloc(sizeof(BmbString));
     result->data = data;
-    result->len = total;
-    result->cap = total + 1;
+    result->len = sb->length;
+    result->cap = sb->length + 1;
     if (string_pool_count < MAX_STRINGS) {
         string_pool[string_pool_count++] = result;
     }
     return result;
 }
 
-// Clear StringBuilder
+// Clear StringBuilder - reset length, keep buffer (reuse memory)
 int64_t bmb_sb_clear(int64_t handle) {
     if (handle < 0 || handle >= builder_count) return -1;
     StringBuilder* sb = builders[handle];
     if (!sb) return -1;
-    for (int64_t i = 0; i < sb->count; i++) {
-        free(sb->fragments[i]);
-    }
-    sb->count = 0;
+    sb->length = 0;
+    sb->buffer[0] = '\0';
     return 0;
 }
 
@@ -514,6 +680,25 @@ int64_t sb_new(void) {
 
 int64_t sb_push(int64_t handle, BmbString* s) {
     return bmb_sb_push(handle, s);
+}
+
+// v0.50.77: Push C string literal directly (wrapper)
+int64_t sb_push_cstr(int64_t handle, const char* cstr) {
+    return bmb_sb_push_cstr(handle, cstr);
+}
+
+int64_t sb_push_char(int64_t handle, int64_t char_code) {
+    return bmb_sb_push_char(handle, char_code);
+}
+
+// v0.50.73: Push integer directly (wrapper)
+int64_t sb_push_int(int64_t handle, int64_t n) {
+    return bmb_sb_push_int(handle, n);
+}
+
+// v0.50.74: Push JSON-escaped string (wrapper)
+int64_t sb_push_escaped(int64_t handle, BmbString* s) {
+    return bmb_sb_push_escaped(handle, s);
 }
 
 int64_t sb_len(int64_t handle) {
@@ -628,9 +813,9 @@ static void hashmap_resize(BmbHashmap* map, int64_t new_cap) {
     for (int64_t i = 0; i < old_cap; i++) {
         if (old_keys[i] != HASHMAP_EMPTY_KEY && old_keys[i] != HASHMAP_DELETED_KEY) {
             uint64_t h = hashmap_hash(old_keys[i]);
-            int64_t idx = h % new_cap;
+            int64_t idx = h & (new_cap - 1);
             while (map->keys[idx] != HASHMAP_EMPTY_KEY) {
-                idx = (idx + 1) % new_cap;
+                idx = (idx + 1) & (new_cap - 1);
             }
             map->keys[idx] = old_keys[i];
             map->values[idx] = old_values[i];
@@ -665,7 +850,7 @@ int64_t hashmap_insert(int64_t handle, int64_t key, int64_t value) {
     }
 
     uint64_t h = hashmap_hash(key);
-    int64_t idx = h % map->capacity;
+    int64_t idx = h & (map->capacity - 1);
     int64_t first_deleted = -1;
 
     while (map->keys[idx] != HASHMAP_EMPTY_KEY) {
@@ -677,7 +862,7 @@ int64_t hashmap_insert(int64_t handle, int64_t key, int64_t value) {
         if (map->keys[idx] == HASHMAP_DELETED_KEY && first_deleted < 0) {
             first_deleted = idx;
         }
-        idx = (idx + 1) % map->capacity;
+        idx = (idx + 1) & (map->capacity - 1);
     }
 
     // Insert at deleted slot if found, otherwise at empty slot
@@ -695,13 +880,13 @@ int64_t hashmap_get(int64_t handle, int64_t key) {
     BmbHashmap* map = (BmbHashmap*)(uintptr_t)handle;
 
     uint64_t h = hashmap_hash(key);
-    int64_t idx = h % map->capacity;
+    int64_t idx = h & (map->capacity - 1);
 
     while (map->keys[idx] != HASHMAP_EMPTY_KEY) {
         if (map->keys[idx] == key) {
             return map->values[idx];
         }
-        idx = (idx + 1) % map->capacity;
+        idx = (idx + 1) & (map->capacity - 1);
     }
 
     return HASHMAP_NOT_FOUND;
@@ -711,7 +896,7 @@ int64_t hashmap_remove(int64_t handle, int64_t key) {
     BmbHashmap* map = (BmbHashmap*)(uintptr_t)handle;
 
     uint64_t h = hashmap_hash(key);
-    int64_t idx = h % map->capacity;
+    int64_t idx = h & (map->capacity - 1);
 
     while (map->keys[idx] != HASHMAP_EMPTY_KEY) {
         if (map->keys[idx] == key) {
@@ -720,7 +905,7 @@ int64_t hashmap_remove(int64_t handle, int64_t key) {
             map->size--;
             return old_value;
         }
-        idx = (idx + 1) % map->capacity;
+        idx = (idx + 1) & (map->capacity - 1);
     }
 
     return HASHMAP_NOT_FOUND;
@@ -739,10 +924,29 @@ void hashmap_free(int64_t handle) {
 }
 
 // ===================================================
-// Vector Runtime Functions (v0.50.70)
+// Vector Runtime Functions (v0.50.75)
 // Vec is a dynamic array: [ptr to data, len, cap]
 // Header is 3 x i64 = 24 bytes
 // ===================================================
+
+// vec_new() - Create new empty vector, returns handle (pointer to header)
+int64_t bmb_vec_new(void) {
+    int64_t* header = (int64_t*)malloc(24);  // 3 x i64
+    header[0] = 0;  // ptr = null
+    header[1] = 0;  // len = 0
+    header[2] = 0;  // cap = 0
+    return (int64_t)(uintptr_t)header;
+}
+
+// vec_with_capacity(cap) - Create vector with pre-allocated capacity
+int64_t bmb_vec_with_capacity(int64_t cap) {
+    int64_t* header = (int64_t*)malloc(24);
+    int64_t* data = (cap > 0) ? (int64_t*)malloc(cap * sizeof(int64_t)) : NULL;
+    header[0] = (int64_t)(uintptr_t)data;
+    header[1] = 0;  // len = 0
+    header[2] = cap;
+    return (int64_t)(uintptr_t)header;
+}
 
 // vec_push(vec_handle, value) - Push value to vector with auto-grow
 void bmb_vec_push(int64_t vec_handle, int64_t value) {
@@ -770,6 +974,58 @@ void bmb_vec_push(int64_t vec_handle, int64_t value) {
     int64_t* data = (int64_t*)(uintptr_t)ptr;
     data[len] = value;
     header[1] = len + 1;
+}
+
+// vec_pop(vec_handle) - Remove and return last element
+int64_t bmb_vec_pop(int64_t vec_handle) {
+    int64_t* header = (int64_t*)(uintptr_t)vec_handle;
+    int64_t len = header[1];
+    if (len == 0) return 0;  // Empty vector
+    int64_t* data = (int64_t*)(uintptr_t)header[0];
+    header[1] = len - 1;
+    return data[len - 1];
+}
+
+// vec_get(vec_handle, index) - Get element at index
+int64_t bmb_vec_get(int64_t vec_handle, int64_t index) {
+    int64_t* header = (int64_t*)(uintptr_t)vec_handle;
+    int64_t* data = (int64_t*)(uintptr_t)header[0];
+    return data[index];
+}
+
+// vec_set(vec_handle, index, value) - Set element at index
+void bmb_vec_set(int64_t vec_handle, int64_t index, int64_t value) {
+    int64_t* header = (int64_t*)(uintptr_t)vec_handle;
+    int64_t* data = (int64_t*)(uintptr_t)header[0];
+    data[index] = value;
+}
+
+// vec_len(vec_handle) - Get length
+int64_t bmb_vec_len(int64_t vec_handle) {
+    int64_t* header = (int64_t*)(uintptr_t)vec_handle;
+    return header[1];
+}
+
+// vec_cap(vec_handle) - Get capacity
+int64_t bmb_vec_cap(int64_t vec_handle) {
+    int64_t* header = (int64_t*)(uintptr_t)vec_handle;
+    return header[2];
+}
+
+// vec_free(vec_handle) - Free vector and its data
+void bmb_vec_free(int64_t vec_handle) {
+    int64_t* header = (int64_t*)(uintptr_t)vec_handle;
+    int64_t ptr = header[0];
+    if (ptr != 0) {
+        free((void*)(uintptr_t)ptr);
+    }
+    free(header);
+}
+
+// vec_clear(vec_handle) - Clear all elements (keep capacity)
+void bmb_vec_clear(int64_t vec_handle) {
+    int64_t* header = (int64_t*)(uintptr_t)vec_handle;
+    header[1] = 0;  // Set len to 0
 }
 
 // ===================================================

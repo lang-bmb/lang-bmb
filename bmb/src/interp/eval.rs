@@ -135,6 +135,7 @@ impl Interpreter {
         // v0.31.13: StringBuilder builtins for Phase 32.0.4 O(n²) fix
         self.builtins.insert("sb_new".to_string(), builtin_sb_new);
         self.builtins.insert("sb_push".to_string(), builtin_sb_push);
+        self.builtins.insert("sb_push_char".to_string(), builtin_sb_push_char);
         self.builtins.insert("sb_build".to_string(), builtin_sb_build);
         self.builtins.insert("sb_len".to_string(), builtin_sb_len);
         self.builtins.insert("sb_clear".to_string(), builtin_sb_clear);
@@ -162,6 +163,9 @@ impl Interpreter {
         self.builtins.insert("calloc".to_string(), builtin_calloc);
         self.builtins.insert("store_i64".to_string(), builtin_store_i64);
         self.builtins.insert("load_i64".to_string(), builtin_load_i64);
+        // v0.51.5: f64 memory operations
+        self.builtins.insert("store_f64".to_string(), builtin_store_f64);
+        self.builtins.insert("load_f64".to_string(), builtin_load_f64);
         // Box convenience functions
         self.builtins.insert("box_new_i64".to_string(), builtin_box_new_i64);
         self.builtins.insert("box_get_i64".to_string(), builtin_load_i64); // alias
@@ -1964,6 +1968,50 @@ fn builtin_load_i64(args: &[Value]) -> InterpResult<Value> {
     }
 }
 
+/// store_f64(ptr: i64, value: f64) -> ()
+/// Stores an f64 value at the given memory address.
+/// v0.51.5: Added for numerical benchmark fairness (n_body, spectral_norm)
+fn builtin_store_f64(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 2 {
+        return Err(RuntimeError::arity_mismatch("store_f64", 2, args.len()));
+    }
+    match (&args[0], &args[1]) {
+        (Value::Int(ptr), Value::Float(value)) => {
+            if *ptr == 0 {
+                return Err(RuntimeError::io_error("store_f64: null pointer dereference"));
+            }
+            unsafe {
+                let p = *ptr as *mut f64;
+                *p = *value;
+            }
+            Ok(Value::Unit)
+        }
+        _ => Err(RuntimeError::type_error("i64, f64", "other")),
+    }
+}
+
+/// load_f64(ptr: i64) -> f64
+/// Loads an f64 value from the given memory address.
+/// v0.51.5: Added for numerical benchmark fairness (n_body, spectral_norm)
+fn builtin_load_f64(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 1 {
+        return Err(RuntimeError::arity_mismatch("load_f64", 1, args.len()));
+    }
+    match &args[0] {
+        Value::Int(ptr) => {
+            if *ptr == 0 {
+                return Err(RuntimeError::io_error("load_f64: null pointer dereference"));
+            }
+            let value = unsafe {
+                let p = *ptr as *const f64;
+                *p
+            };
+            Ok(Value::Float(value))
+        }
+        _ => Err(RuntimeError::type_error("i64", args[0].type_name())),
+    }
+}
+
 /// box_new_i64(value: i64) -> i64
 /// Allocates 8 bytes on the heap, stores the value, and returns the pointer.
 /// This is a convenience wrapper: malloc(8) + store_i64(ptr, value)
@@ -3034,6 +3082,33 @@ fn builtin_sb_push(args: &[Value]) -> InterpResult<Value> {
             })
         }
         _ => Err(RuntimeError::type_error("(i64, string)", "other")),
+    }
+}
+
+/// sb_push_char(id: i64, char_code: i64) -> i64
+/// Appends a single character (by code point) to the builder. Returns the same ID for chaining.
+fn builtin_sb_push_char(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 2 {
+        return Err(RuntimeError::arity_mismatch("sb_push_char", 2, args.len()));
+    }
+    match (&args[0], &args[1]) {
+        (Value::Int(id), Value::Int(char_code)) => {
+            STRING_BUILDERS.with(|builders| {
+                let mut map = builders.borrow_mut();
+                if let Some(builder) = map.get_mut(id) {
+                    // Convert char code to single-char string
+                    if let Some(c) = char::from_u32(*char_code as u32) {
+                        builder.push(c.to_string());
+                        Ok(Value::Int(*id))
+                    } else {
+                        Err(RuntimeError::io_error(&format!("Invalid char code: {}", char_code)))
+                    }
+                } else {
+                    Err(RuntimeError::io_error(&format!("Invalid string builder ID: {}", id)))
+                }
+            })
+        }
+        _ => Err(RuntimeError::type_error("(i64, i64)", "other")),
     }
 }
 

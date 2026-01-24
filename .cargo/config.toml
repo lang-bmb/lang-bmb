@@ -5,4 +5,6 @@ linker = "C:/msys64/ucrt64/bin/gcc.exe"
 rustflags = ["-C", "link-args=-Wl,--stack,16777216 -Wl,--allow-multiple-definition"]
 
 [env]
+# Use MSYS2 UCRT64 LLVM (compatible with GNU target)
+# For MSVC target, use LLVM_SYS_211_LLVM_CONFIG=C:/Program Files/LLVM/bin/llvm-config.bat
 LLVM_SYS_211_PREFIX = "C:/msys64/ucrt64"

@@ -219,19 +219,23 @@ impl TextCodeGen {
         writeln!(out)?;
 
         // Phase 32.3: String runtime functions
+        // v0.51.13: Added speculatable for LICM optimization
+        // Functions marked speculatable can be hoisted out of loops by LLVM
         writeln!(out, "; Runtime declarations - String operations")?;
-        writeln!(out, "declare ptr @bmb_string_new(ptr, i64)")?;
-        writeln!(out, "declare ptr @bmb_string_from_cstr(ptr)")?;
-        writeln!(out, "declare i64 @bmb_string_len(ptr)")?;
+        writeln!(out, "declare ptr @bmb_string_new(ptr, i64) nounwind")?;
+        writeln!(out, "declare ptr @bmb_string_from_cstr(ptr) nounwind")?;
+        // v0.51.15: memory(argmem: read) tells LLVM these only read from args, enabling LICM
+        // This is more precise than "readonly" which means "may read any memory"
+        writeln!(out, "declare i64 @bmb_string_len(ptr nocapture) memory(argmem: read) nounwind willreturn speculatable")?;
         // Note: Returns byte at index, not Unicode char. Name kept for ABI compatibility.
         // v0.67: Interpreter method renamed to byte_at for clarity
-        writeln!(out, "declare i64 @bmb_string_char_at(ptr, i64)")?;
-        writeln!(out, "declare ptr @bmb_string_slice(ptr, i64, i64)")?;
-        writeln!(out, "declare ptr @bmb_string_concat(ptr, ptr)")?;
-        writeln!(out, "declare i64 @bmb_string_eq(ptr, ptr)")?;
-        writeln!(out, "declare ptr @bmb_chr(i64)")?;
-        writeln!(out, "declare i64 @bmb_ord(ptr)")?;
-        writeln!(out, "declare void @bmb_print_str(ptr)")?;
+        writeln!(out, "declare i64 @bmb_string_char_at(ptr nocapture, i64) memory(argmem: read) nounwind willreturn speculatable")?;
+        writeln!(out, "declare ptr @bmb_string_slice(ptr, i64, i64) memory(argmem: read) nounwind willreturn")?;
+        writeln!(out, "declare ptr @bmb_string_concat(ptr, ptr) nounwind")?;
+        writeln!(out, "declare i64 @bmb_string_eq(ptr, ptr) memory(argmem: read) nounwind willreturn")?;
+        writeln!(out, "declare ptr @bmb_chr(i64) nounwind willreturn")?;
+        writeln!(out, "declare i64 @bmb_ord(ptr nocapture) memory(argmem: read) nounwind willreturn speculatable")?;
+        writeln!(out, "declare void @bmb_print_str(ptr) nounwind")?;
         writeln!(out)?;
 
         // Phase 32.3: File I/O runtime functions
@@ -247,6 +251,9 @@ impl TextCodeGen {
         writeln!(out, "; Runtime declarations - StringBuilder")?;
         writeln!(out, "declare i64 @bmb_sb_new()")?;
         writeln!(out, "declare i64 @bmb_sb_push(i64, ptr)")?;
+        writeln!(out, "declare i64 @bmb_sb_push_char(i64, i64)")?;
+        writeln!(out, "declare i64 @bmb_sb_push_int(i64, i64)")?;  // v0.50.73
+        writeln!(out, "declare i64 @bmb_sb_push_escaped(i64, ptr)")?;  // v0.50.74
         writeln!(out, "declare i64 @bmb_sb_len(i64)")?;
         writeln!(out, "declare ptr @bmb_sb_build(i64)")?;
         writeln!(out, "declare i64 @bmb_sb_clear(i64)")?;
@@ -266,14 +273,15 @@ impl TextCodeGen {
 
         // Phase 32.3: Simple-name wrappers (for method call lowering)
         // BMB methods like s.len() generate calls to @len
+        // v0.51.15: memory(argmem: read) enables full LICM hoisting
         writeln!(out, "; Runtime declarations - Method name wrappers")?;
-        writeln!(out, "declare i64 @len(ptr)")?;
-        writeln!(out, "declare i64 @char_at(ptr, i64)")?;
+        writeln!(out, "declare i64 @len(ptr nocapture) memory(argmem: read) nounwind willreturn speculatable")?;
+        writeln!(out, "declare i64 @char_at(ptr nocapture, i64) memory(argmem: read) nounwind willreturn speculatable")?;
         // v0.46: byte_at is the preferred name (same as interpreter)
-        writeln!(out, "declare i64 @byte_at(ptr, i64)")?;
-        writeln!(out, "declare ptr @slice(ptr, i64, i64)")?;
-        writeln!(out, "declare ptr @chr(i64)")?;
-        writeln!(out, "declare i64 @ord(ptr)")?;
+        writeln!(out, "declare i64 @byte_at(ptr nocapture, i64) memory(argmem: read) nounwind willreturn speculatable")?;
+        writeln!(out, "declare ptr @slice(ptr, i64, i64) memory(argmem: read) nounwind willreturn")?;
+        writeln!(out, "declare ptr @chr(i64) nounwind willreturn")?;
+        writeln!(out, "declare i64 @ord(ptr) memory(argmem: read) nounwind willreturn")?;
         // v0.50.18: char_to_string for bootstrap compiler (takes i32 char code)
         writeln!(out, "declare ptr @char_to_string(i32)")?;
         writeln!(out, "declare void @print_str(ptr)")?;
@@ -294,6 +302,10 @@ impl TextCodeGen {
         // StringBuilder wrappers
         writeln!(out, "declare i64 @sb_new()")?;
         writeln!(out, "declare i64 @sb_push(i64, ptr)")?;
+        writeln!(out, "declare i64 @sb_push_cstr(i64, ptr)")?;  // v0.50.77: zero allocation for string literals
+        writeln!(out, "declare i64 @sb_push_char(i64, i64)")?;
+        writeln!(out, "declare i64 @sb_push_int(i64, i64)")?;  // v0.50.73
+        writeln!(out, "declare i64 @sb_push_escaped(i64, ptr)")?;  // v0.50.74
         writeln!(out, "declare i64 @sb_len(i64)")?;
         writeln!(out, "declare ptr @sb_build(i64)")?;
         writeln!(out, "declare i64 @sb_clear(i64)")?;
@@ -393,14 +405,27 @@ impl TextCodeGen {
                         place_types.insert(dest.name.clone(), result_ty);
                     }
                     MirInst::Phi { dest, values } => {
-                        // Use type from first value
-                        if let Some((val, _)) = values.first() {
+                        // v0.51.13: Use WIDEST type among all phi values to avoid type mismatch
+                        // This handles ConstantPropagationNarrowing which may narrow parameters to i32
+                        // while recursive calls return i64
+                        let mut widest_ty = "i32"; // Start with narrowest integer type
+                        for (val, _) in values {
                             let ty = match val {
                                 Operand::Constant(c) => self.constant_type(c),
                                 Operand::Place(p) => place_types.get(&p.name).copied().unwrap_or("i64"),
                             };
-                            place_types.insert(dest.name.clone(), ty);
+                            // Compare integer widths: i64 > i32 > i1
+                            widest_ty = match (widest_ty, ty) {
+                                (_, "i64") | ("i64", _) => "i64",
+                                (_, "double") | ("double", _) => "double",
+                                (_, "ptr") | ("ptr", _) => "ptr",
+                                ("i32", "i32") => "i32",
+                                ("i32", "i1") | ("i1", "i32") => "i32",
+                                ("i1", "i1") => "i1",
+                                _ => ty, // Default to the new type
+                            };
                         }
+                        place_types.insert(dest.name.clone(), widest_ty);
                     }
                     MirInst::Copy { dest, src } => {
                         // Copy inherits type from source
@@ -456,12 +481,28 @@ impl TextCodeGen {
 
         // Function attributes for optimization:
         // - nounwind: BMB doesn't have exceptions, enables better codegen
+        // - willreturn: Most functions will eventually return (helps optimization)
+        // - mustprogress: Function must make forward progress (LLVM 12+)
         // - For main: no special attributes (ABI compatibility)
         // - Attributes go AFTER the parameter list in LLVM IR syntax
         //
         // NOTE: inlinehint was tested (v0.50.66) but caused performance regression
         // LLVM's default inlining heuristics are better than manual hints
-        let attrs = if func.name == "main" { "" } else { " nounwind" };
+        //
+        // v0.50.76: Added willreturn and mustprogress for better recursion optimization
+        // v0.51.8: Added alwaysinline for small functions to eliminate call overhead
+        // v0.51.11: Added memory(none) for memory-free functions to enable LICM
+        let attrs = if func.name == "main" {
+            String::new()
+        } else if func.always_inline && func.is_memory_free {
+            " alwaysinline nounwind willreturn mustprogress memory(none)".to_string()
+        } else if func.always_inline {
+            " alwaysinline nounwind willreturn mustprogress".to_string()
+        } else if func.is_memory_free {
+            " nounwind willreturn mustprogress memory(none)".to_string()
+        } else {
+            " nounwind willreturn mustprogress".to_string()
+        };
 
         // v0.31.23: Rename BMB main to bmb_user_main so C runtime can provide real main()
         // This enables argv support through bmb_init_argv called from real main()
@@ -539,6 +580,46 @@ impl TextCodeGen {
             }
         }
 
+        // v0.51.13: Build map for phi value coercion (type widening)
+        // Key: (phi_dest_block, value_name, pred_block) -> (coerced_temp_name, from_type, to_type)
+        // When ConstantPropagationNarrowing changes a parameter to i32 but the function returns i64,
+        // phi nodes may have mixed types. We need to emit sext instructions to widen narrower values.
+        let mut phi_coerce_map: std::collections::HashMap<(String, String, String), (String, &'static str, &'static str)> =
+            std::collections::HashMap::new();
+        let mut coerce_counter = 0u32;
+
+        for block in &func.blocks {
+            for inst in &block.instructions {
+                if let MirInst::Phi { dest, values } = inst {
+                    // Get the phi's target type from place_types (computed above with widest type)
+                    let phi_ty = place_types.get(&dest.name).copied().unwrap_or("i64");
+
+                    for (val, pred_label) in values {
+                        let val_ty = match val {
+                            Operand::Constant(c) => self.constant_type(c),
+                            Operand::Place(p) => place_types.get(&p.name).copied().unwrap_or("i64"),
+                        };
+
+                        // Check if this value needs coercion (narrower than phi type)
+                        let needs_coerce = match (val_ty, phi_ty) {
+                            ("i32", "i64") => true,
+                            ("i1", "i64") | ("i1", "i32") => true,
+                            _ => false,
+                        };
+
+                        if needs_coerce {
+                            if let Operand::Place(p) = val {
+                                let key = (block.label.clone(), p.name.clone(), pred_label.clone());
+                                let temp_name = format!("_phi_sext_{}", coerce_counter);
+                                coerce_counter += 1;
+                                phi_coerce_map.insert(key, (temp_name, val_ty, phi_ty));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // Collect local variable names for alloca-based handling
         // Using alloca avoids SSA dominance issues when locals are assigned in branches
         // Exclude: void-typed locals (can't allocate), phi destinations (they're SSA values)
@@ -571,7 +652,7 @@ impl TextCodeGen {
 
         // Emit basic blocks with place type information
         for block in &func.blocks {
-            self.emit_block_with_strings(out, block, func, string_table, fn_return_types, &place_types, &mut name_counts, &local_names, &phi_load_map, &phi_string_map)?;
+            self.emit_block_with_strings(out, block, func, string_table, fn_return_types, &place_types, &mut name_counts, &local_names, &phi_load_map, &phi_string_map, &phi_coerce_map)?;
         }
 
         writeln!(out, "}}")?;
@@ -595,7 +676,8 @@ impl TextCodeGen {
         let empty_local_names = std::collections::HashSet::new();
         let empty_phi_map = std::collections::HashMap::new();
         let empty_phi_string_map = std::collections::HashMap::new();
-        self.emit_block_with_strings(out, block, func, &empty_str_table, &empty_fn_types, &empty_place_types, &mut empty_name_counts, &empty_local_names, &empty_phi_map, &empty_phi_string_map)
+        let empty_phi_coerce_map = std::collections::HashMap::new();
+        self.emit_block_with_strings(out, block, func, &empty_str_table, &empty_fn_types, &empty_place_types, &mut empty_name_counts, &empty_local_names, &empty_phi_map, &empty_phi_string_map, &empty_phi_coerce_map)
     }
 
     /// Emit a basic block with string table support
@@ -612,13 +694,14 @@ impl TextCodeGen {
         local_names: &std::collections::HashSet<String>,
         phi_load_map: &std::collections::HashMap<(String, String, String), String>,
         phi_string_map: &std::collections::HashMap<(String, String, String), String>,
+        phi_coerce_map: &std::collections::HashMap<(String, String, String), (String, &'static str, &'static str)>,
     ) -> TextCodeGenResult<()> {
         // Use bb_ prefix to avoid collision with variable names
         writeln!(out, "bb_{}:", block.label)?;
 
         // Emit instructions (pass phi_load_map for phi node handling)
         for inst in &block.instructions {
-            self.emit_instruction_with_strings(out, inst, func, string_table, fn_return_types, place_types, name_counts, local_names, phi_load_map, phi_string_map, &block.label)?;
+            self.emit_instruction_with_strings(out, inst, func, string_table, fn_return_types, place_types, name_counts, local_names, phi_load_map, phi_string_map, phi_coerce_map, &block.label)?;
         }
 
         // Emit loads for locals that will be used in phi nodes of successor blocks
@@ -645,6 +728,33 @@ impl TextCodeGen {
                 if let Some(global_name) = string_table.get(string_val) {
                     writeln!(out, "  %{} = call ptr @bmb_string_from_cstr(ptr @{})", temp_name, global_name)?;
                 }
+            }
+        }
+
+        // v0.51.13: Emit sext instructions for phi value type coercion
+        // This handles ConstantPropagationNarrowing: when parameter is i32 but return is i64
+        for ((_dest_block, val_name, pred_block), (coerce_temp, from_ty, to_ty)) in phi_coerce_map {
+            if pred_block == &block.label {
+                // Check if the value was loaded via phi_load_map (local variable)
+                // or is a direct parameter/SSA value
+                let source_name = if let Some(load_temp) = phi_load_map.iter()
+                    .find(|((_, ln, pb), _)| ln == val_name && pb == pred_block)
+                    .map(|(_, lt)| lt.clone())
+                {
+                    // Use the loaded value
+                    format!("%{}", load_temp)
+                } else {
+                    // Direct SSA value (parameter or temp)
+                    format!("%{}", val_name)
+                };
+
+                // Emit the appropriate coercion instruction
+                let instr = match (*from_ty, *to_ty) {
+                    ("i32", "i64") | ("i1", "i64") | ("i1", "i32") => "sext",
+                    ("i64", "i32") => "trunc",
+                    _ => "bitcast", // Fallback
+                };
+                writeln!(out, "  %{} = {} {} {} to {}", coerce_temp, instr, from_ty, source_name, to_ty)?;
             }
         }
 
@@ -679,6 +789,7 @@ impl TextCodeGen {
         local_names: &std::collections::HashSet<String>,
         _phi_load_map: &std::collections::HashMap<(String, String, String), String>,
         phi_string_map: &std::collections::HashMap<(String, String, String), String>,
+        phi_coerce_map: &std::collections::HashMap<(String, String, String), (String, &'static str, &'static str)>,
         current_block_label: &str,
     ) -> TextCodeGenResult<()> {
         match inst {
@@ -1254,6 +1365,65 @@ impl TextCodeGen {
                     return Ok(());
                 }
 
+                // v0.51.5: store_f64(ptr, value) -> Unit - writes f64 value to memory
+                if fn_name == "store_f64" && args.len() == 2 {
+                    let store_idx = *name_counts.entry("store_f64_op".to_string()).or_insert(0);
+                    *name_counts.get_mut("store_f64_op").unwrap() += 1;
+                    // Get pointer argument
+                    let ptr_val = match &args[0] {
+                        Operand::Place(p) if local_names.contains(&p.name) => {
+                            let load_name = format!("{}.store_f64.ptr.{}", p.name, store_idx);
+                            writeln!(out, "  %{} = load i64, ptr %{}.addr", load_name, p.name)?;
+                            format!("%{}", load_name)
+                        }
+                        _ => self.format_operand_with_strings(&args[0], string_table),
+                    };
+                    // Get value argument (f64)
+                    let val_val = match &args[1] {
+                        Operand::Place(p) if local_names.contains(&p.name) => {
+                            let load_name = format!("{}.store_f64.val.{}", p.name, store_idx);
+                            writeln!(out, "  %{} = load double, ptr %{}.addr", load_name, p.name)?;
+                            format!("%{}", load_name)
+                        }
+                        Operand::Constant(crate::mir::Constant::Float(f)) => format!("{:e}", f),
+                        _ => self.format_operand_with_strings(&args[1], string_table),
+                    };
+                    // Convert i64 pointer to ptr type and store f64
+                    let ptr_conv = format!("store_f64_ptr.{}", store_idx);
+                    writeln!(out, "  %{} = inttoptr i64 {} to ptr", ptr_conv, ptr_val)?;
+                    writeln!(out, "  store double {}, ptr %{}", val_val, ptr_conv)?;
+                    return Ok(());
+                }
+
+                // v0.51.5: load_f64(ptr) -> f64 - reads f64 value from memory
+                if fn_name == "load_f64" && args.len() == 1 {
+                    let load_idx = *name_counts.entry("load_f64_op".to_string()).or_insert(0);
+                    *name_counts.get_mut("load_f64_op").unwrap() += 1;
+                    // Get pointer argument
+                    let ptr_val = match &args[0] {
+                        Operand::Place(p) if local_names.contains(&p.name) => {
+                            let load_name = format!("{}.load_f64.ptr.{}", p.name, load_idx);
+                            writeln!(out, "  %{} = load i64, ptr %{}.addr", load_name, p.name)?;
+                            format!("%{}", load_name)
+                        }
+                        _ => self.format_operand_with_strings(&args[0], string_table),
+                    };
+                    // Convert i64 pointer to ptr type and load f64
+                    let ptr_conv = format!("load_f64_ptr.{}", load_idx);
+                    writeln!(out, "  %{} = inttoptr i64 {} to ptr", ptr_conv, ptr_val)?;
+                    if let Some(d) = dest {
+                        if local_names.contains(&d.name) {
+                            let temp_name = format!("{}.load_f64.{}", d.name, load_idx);
+                            writeln!(out, "  %{} = load double, ptr %{}", temp_name, ptr_conv)?;
+                            writeln!(out, "  store double %{}, ptr %{}.addr", temp_name, d.name)?;
+                        } else {
+                            let dest_name = self.unique_name(&d.name, name_counts);
+                            writeln!(out, "  %{} = load double, ptr %{}", dest_name, ptr_conv)?;
+                        }
+                    }
+                    return Ok(());
+                }
+
                 // v0.34.2.3: Vec<i64> dynamic array builtins (RFC-0007)
                 // vec_new() -> i64: allocate header (24 bytes) with zeroed ptr/len/cap
                 if fn_name == "vec_new" && args.is_empty() {
@@ -1789,8 +1959,10 @@ impl TextCodeGen {
                         Operand::Constant(Constant::String(s)) => {
                             // v0.51.2: Check if function has _cstr variant for direct string literal pass
                             // If so, we'll pass the raw pointer without wrapping
+                            // v0.50.77: sb_push with string literal -> sb_push_cstr (zero allocation)
                             let has_cstr_variant = matches!(fn_name.as_str(),
-                                "file_exists" | "bmb_file_exists");
+                                "file_exists" | "bmb_file_exists" |
+                                "sb_push" | "bmb_sb_push");  // v0.50.77: StringBuilder optimization
 
                             if has_cstr_variant {
                                 // Direct pass: just use the global string pointer
@@ -1826,10 +1998,14 @@ impl TextCodeGen {
 
                 // Map BMB function names to runtime function names
                 // v0.51.2: Use _cstr variant when all string args are literals
+                // v0.50.77: sb_push -> sb_push_cstr for string literals (zero allocation)
                 let runtime_fn_name = match fn_name.as_str() {
                     "system" => "bmb_system",
                     "file_exists" if all_string_args_are_literals => "file_exists_cstr",
                     "bmb_file_exists" if all_string_args_are_literals => "bmb_file_exists_cstr",
+                    // v0.50.77: StringBuilder optimization - use cstr variant for string literals
+                    "sb_push" if args.len() == 2 && matches!(&args[1], Operand::Constant(Constant::String(_))) => "sb_push_cstr",
+                    "bmb_sb_push" if args.len() == 2 && matches!(&args[1], Operand::Constant(Constant::String(_))) => "bmb_sb_push_cstr",
                     _ => fn_name.as_str(),
                 };
 
@@ -1887,23 +2063,37 @@ impl TextCodeGen {
                 let dest_name = self.unique_name(&dest.name, name_counts);
                 // PHI nodes must come at the start of a basic block
                 // %dest = phi type [ val1, %label1 ], [ val2, %label2 ], ...
-                let ty = if !values.is_empty() {
-                    // Use place_types for accurate type inference
-                    match &values[0].0 {
-                        Operand::Constant(c) => self.constant_type(c),
-                        Operand::Place(p) => place_types.get(&p.name).copied()
-                            .unwrap_or_else(|| self.infer_place_type(p, func)),
+                // v0.51.13: Use place_types for phi type - this has the WIDEST type among all values
+                // This handles ConstantPropagationNarrowing where param is i32 but return is i64
+                let ty = place_types.get(&dest.name).copied().unwrap_or_else(|| {
+                    // Fallback: infer from first value
+                    if !values.is_empty() {
+                        match &values[0].0 {
+                            Operand::Constant(c) => self.constant_type(c),
+                            Operand::Place(p) => place_types.get(&p.name).copied()
+                                .unwrap_or_else(|| self.infer_place_type(p, func)),
+                        }
+                    } else {
+                        "i64"
                     }
-                } else {
-                    "i64" // Default fallback
-                };
+                });
 
                 // Find the dest block label by looking at which block contains this phi
                 // We need to check phi_load_map for locals that were pre-loaded
-                // and phi_string_map for string constants that were wrapped
+                // phi_string_map for string constants that were wrapped
+                // phi_coerce_map for values that need type widening (sext)
                 let phi_args: Vec<String> = values
                     .iter()
                     .map(|(val, label)| {
+                        // v0.51.13: First check if this value was coerced (type widening)
+                        if let Operand::Place(p) = val {
+                            let coerce_key = (current_block_label.to_string(), p.name.clone(), label.clone());
+                            if let Some((coerce_temp, _, _)) = phi_coerce_map.get(&coerce_key) {
+                                // Use the coerced value
+                                return format!("[ %{}, %bb_{} ]", coerce_temp, label);
+                            }
+                        }
+
                         // Check if this is a local variable that was pre-loaded for phi
                         let val_str = if let Operand::Place(p) = val {
                             if local_names.contains(&p.name) {
@@ -2070,6 +2260,35 @@ impl TextCodeGen {
                          array.name, store_cnt, ty, array.name, idx_str)?;
                 writeln!(out, "  store {} {}, ptr %{}_idx_ptr.{}", ty, val_str, array.name, store_cnt)?;
             }
+
+            // v0.50.80: Type cast instruction
+            MirInst::Cast { dest, src, from_ty, to_ty } => {
+                let src_str = if let Operand::Place(p) = src {
+                    if local_names.contains(&p.name) {
+                        let load_name = self.unique_name(&format!("{}_cast_load", dest.name), name_counts);
+                        writeln!(out, "  %{} = load {}, ptr %{}.addr", load_name, self.mir_type_to_llvm(from_ty), p.name)?;
+                        format!("%{}", load_name)
+                    } else {
+                        self.format_operand(src)
+                    }
+                } else {
+                    self.format_operand(src)
+                };
+
+                let from_ty_str = self.mir_type_to_llvm(from_ty);
+                let to_ty_str = self.mir_type_to_llvm(to_ty);
+                let dest_name = self.unique_name(&dest.name, name_counts);
+
+                // Determine cast instruction based on types
+                let cast_inst = self.get_cast_instruction(from_ty, to_ty);
+                if local_names.contains(&dest.name) {
+                    let temp_name = self.unique_name(&format!("{}_cast", dest.name), name_counts);
+                    writeln!(out, "  %{} = {} {} {} to {}", temp_name, cast_inst, from_ty_str, src_str, to_ty_str)?;
+                    writeln!(out, "  store {} %{}, ptr %{}.addr", to_ty_str, temp_name, dest.name)?;
+                } else {
+                    writeln!(out, "  %{} = {} {} {} to {}", dest_name, cast_inst, from_ty_str, src_str, to_ty_str)?;
+                }
+            }
         }
 
         Ok(())
@@ -2201,6 +2420,35 @@ impl TextCodeGen {
         }
     }
 
+    /// v0.50.80: Get LLVM cast instruction name for type conversion
+    fn get_cast_instruction(&self, from_ty: &MirType, to_ty: &MirType) -> &'static str {
+        use MirType::*;
+        match (from_ty, to_ty) {
+            // Integer widening (sign extend)
+            (I32, I64) | (I32, U64) | (Char, I64) | (Char, U64) => "sext",
+            (U32, I64) | (U32, U64) => "zext",
+            (Bool, I32) | (Bool, I64) | (Bool, U32) | (Bool, U64) => "zext",
+
+            // Integer narrowing (truncate)
+            (I64, I32) | (U64, I32) | (I64, U32) | (U64, U32) => "trunc",
+            (I64, Char) | (U64, Char) | (I32, Char) | (U32, Char) => "trunc",
+
+            // Integer to float
+            (I32, F64) | (I64, F64) | (Char, F64) => "sitofp",
+            (U32, F64) | (U64, F64) => "uitofp",
+
+            // Float to integer
+            (F64, I32) | (F64, I64) | (F64, Char) => "fptosi",
+            (F64, U32) | (F64, U64) => "fptoui",
+
+            // Same size, different signedness - bitcast
+            (I32, U32) | (U32, I32) | (I64, U64) | (U64, I64) => "bitcast",
+
+            // Default fallback
+            _ => "bitcast",
+        }
+    }
+
     /// Get LLVM type for a constant
     fn constant_type(&self, c: &Constant) -> &'static str {
         match c {
@@ -2316,8 +2564,8 @@ impl TextCodeGen {
             | "file_exists" | "file_size" | "write_file" | "append_file" => "i64",
 
             // i64 return - StringBuilder (handle is i64)
-            "bmb_sb_new" | "bmb_sb_push" | "bmb_sb_len" | "bmb_sb_clear"
-            | "sb_new" | "sb_push" | "sb_len" | "sb_clear" => "i64",
+            "bmb_sb_new" | "bmb_sb_push" | "bmb_sb_push_cstr" | "bmb_sb_push_char" | "bmb_sb_push_int" | "bmb_sb_push_escaped" | "bmb_sb_len" | "bmb_sb_clear"
+            | "sb_new" | "sb_push" | "sb_push_cstr" | "sb_push_char" | "sb_push_int" | "sb_push_escaped" | "sb_len" | "sb_clear" => "i64",
 
             // i64 return - Process
             "bmb_system" => "i64",
@@ -2461,6 +2709,8 @@ mod tests {
                 postconditions: vec![],
                 is_pure: false,
                 is_const: false,
+                always_inline: false,
+                is_memory_free: false,
             }],
             extern_fns: vec![],
         };

@@ -358,6 +358,12 @@ impl TypeChecker {
         functions.insert("sb_new".to_string(), (vec![], Type::I64));
         // sb_push(id: i64, str: String) -> i64 (same ID for chaining)
         functions.insert("sb_push".to_string(), (vec![Type::I64, Type::String], Type::I64));
+        // sb_push_char(id: i64, char_code: i64) -> i64 (push single char, no allocation)
+        functions.insert("sb_push_char".to_string(), (vec![Type::I64, Type::I64], Type::I64));
+        // v0.50.73: sb_push_int(id: i64, n: i64) -> i64 (push integer directly, O(1) allocation)
+        functions.insert("sb_push_int".to_string(), (vec![Type::I64, Type::I64], Type::I64));
+        // v0.50.74: sb_push_escaped(id: i64, str: String) -> i64 (escape & push entire string in one call)
+        functions.insert("sb_push_escaped".to_string(), (vec![Type::I64, Type::String], Type::I64));
         // sb_build(id: i64) -> String (final string)
         functions.insert("sb_build".to_string(), (vec![Type::I64], Type::String));
         // sb_len(id: i64) -> i64 (total length)
@@ -404,6 +410,11 @@ impl TypeChecker {
         functions.insert("store_i64".to_string(), (vec![Type::I64, Type::I64], Type::Unit));
         // load_i64(ptr: i64) -> i64 (read from memory)
         functions.insert("load_i64".to_string(), (vec![Type::I64], Type::I64));
+        // v0.51.5: f64 memory operations for numerical benchmarks
+        // store_f64(ptr: i64, value: f64) -> Unit (write f64 to memory)
+        functions.insert("store_f64".to_string(), (vec![Type::I64, Type::F64], Type::Unit));
+        // load_f64(ptr: i64) -> f64 (read f64 from memory)
+        functions.insert("load_f64".to_string(), (vec![Type::I64], Type::F64));
         // Box convenience functions
         // box_new_i64(value: i64) -> i64 (allocate + store)
         functions.insert("box_new_i64".to_string(), (vec![Type::I64], Type::I64));

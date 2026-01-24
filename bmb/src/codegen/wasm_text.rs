@@ -745,6 +745,14 @@ impl WasmCodeGen {
                 self.emit_operand(out, value)?;
                 writeln!(out, "    i64.store")?;
             }
+
+            // v0.50.80: Type cast instruction
+            MirInst::Cast { dest, src, from_ty, to_ty } => {
+                writeln!(out, "    ;; cast {} -> {}", self.mir_type_str(from_ty), self.mir_type_str(to_ty))?;
+                self.emit_operand(out, src)?;
+                self.emit_wasm_cast(out, from_ty, to_ty)?;
+                writeln!(out, "    local.set ${}", dest.name)?;
+            }
         }
 
         Ok(())
@@ -773,6 +781,90 @@ impl WasmCodeGen {
         match op {
             Operand::Place(p) => writeln!(out, "    local.get ${}", p.name)?,
             Operand::Constant(c) => self.emit_constant(out, c)?,
+        }
+        Ok(())
+    }
+
+    /// v0.50.80: Get MIR type as string for comments
+    fn mir_type_str(&self, ty: &MirType) -> &'static str {
+        match ty {
+            MirType::I32 => "i32",
+            MirType::I64 => "i64",
+            MirType::U32 => "u32",
+            MirType::U64 => "u64",
+            MirType::F64 => "f64",
+            MirType::Bool => "bool",
+            MirType::String => "string",
+            MirType::Unit => "unit",
+            MirType::Char => "char",
+            MirType::Struct { .. } | MirType::StructPtr(_) => "struct",
+            MirType::Enum { .. } => "enum",
+            MirType::Array { .. } => "array",
+        }
+    }
+
+    /// v0.50.80: Emit WASM type cast instructions
+    fn emit_wasm_cast(&self, out: &mut String, from_ty: &MirType, to_ty: &MirType) -> WasmCodeGenResult<()> {
+        use MirType::*;
+        match (from_ty, to_ty) {
+            // Same type - no conversion
+            (a, b) if a == b => {}
+
+            // i32 -> i64 (sign extend)
+            (I32, I64) | (I32, U64) | (Char, I64) | (Char, U64) => {
+                writeln!(out, "    i64.extend_i32_s")?;
+            }
+            (U32, I64) | (U32, U64) => {
+                writeln!(out, "    i64.extend_i32_u")?;
+            }
+            (Bool, I64) | (Bool, U64) => {
+                writeln!(out, "    i64.extend_i32_u")?;
+            }
+            (Bool, I32) | (Bool, U32) => {
+                // Bool is already i32 in WASM, no conversion needed
+            }
+
+            // i64 -> i32 (truncate)
+            (I64, I32) | (U64, I32) | (I64, U32) | (U64, U32) => {
+                writeln!(out, "    i32.wrap_i64")?;
+            }
+            (I64, Char) | (U64, Char) => {
+                writeln!(out, "    i32.wrap_i64")?;
+            }
+
+            // Integer to float
+            (I32, F64) | (I64, F64) | (Char, F64) => {
+                if matches!(from_ty, I32 | Char) {
+                    writeln!(out, "    f64.convert_i32_s")?;
+                } else {
+                    writeln!(out, "    f64.convert_i64_s")?;
+                }
+            }
+            (U32, F64) => {
+                writeln!(out, "    f64.convert_i32_u")?;
+            }
+            (U64, F64) => {
+                writeln!(out, "    f64.convert_i64_u")?;
+            }
+
+            // Float to integer
+            (F64, I32) | (F64, Char) => {
+                writeln!(out, "    i32.trunc_f64_s")?;
+            }
+            (F64, U32) => {
+                writeln!(out, "    i32.trunc_f64_u")?;
+            }
+            (F64, I64) => {
+                writeln!(out, "    i64.trunc_f64_s")?;
+            }
+            (F64, U64) => {
+                writeln!(out, "    i64.trunc_f64_u")?;
+            }
+
+            // Fallback - no conversion
+            _ => {
+                writeln!(out, "    ;; unsupported cast {:?} -> {:?}", from_ty, to_ty)?;
+            }
         }
         Ok(())
     }
@@ -1065,6 +1157,10 @@ impl WasmCodeGen {
                 // Index store has no destination
                 None
             }
+            // v0.50.80: Type cast
+            MirInst::Cast { dest, to_ty, .. } => {
+                Some((dest.name.clone(), to_ty.clone()))
+            }
         }
     }
 
@@ -1170,6 +1266,8 @@ mod tests {
                 postconditions: vec![],
                 is_pure: false,
                 is_const: false,
+                always_inline: false,
+                is_memory_free: false,
             }],
             extern_fns: vec![],
         };
@@ -1203,6 +1301,8 @@ mod tests {
                 postconditions: vec![],
                 is_pure: false,
                 is_const: false,
+                always_inline: false,
+                is_memory_free: false,
             }],
             extern_fns: vec![],
         };
@@ -1323,6 +1423,8 @@ mod tests {
                 postconditions: vec![],
                 is_pure: false,
                 is_const: false,
+                always_inline: false,
+                is_memory_free: false,
             }],
             extern_fns: vec![],
         };

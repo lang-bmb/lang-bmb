@@ -21,7 +21,7 @@
 use std::collections::{HashMap, HashSet};
 
 use super::{
-    CmpOp, Constant, ContractFact, MirBinOp, MirFunction, MirInst, MirProgram, MirUnaryOp,
+    BasicBlock, CmpOp, Constant, ContractFact, MirBinOp, MirFunction, MirInst, MirProgram, MirType, MirUnaryOp,
     Operand, Place, Terminator,
 };
 
@@ -65,12 +65,22 @@ impl OptimizationPipeline {
                 pipeline.add_pass(Box::new(ConstantFolding));
                 pipeline.add_pass(Box::new(DeadCodeElimination));
                 pipeline.add_pass(Box::new(SimplifyBranches));
+                // v0.51.8: If-else chain to switch for jump tables
+                pipeline.add_pass(Box::new(IfElseToSwitch));
                 pipeline.add_pass(Box::new(CopyPropagation));
+                // v0.51.10: Memory load CSE for repeated load_f64/load_i64 calls
+                pipeline.add_pass(Box::new(MemoryLoadCSE));
                 // v0.50.76: Add contract-based optimization for dead branch elimination
                 pipeline.add_pass(Box::new(ContractBasedOptimization));
                 pipeline.add_pass(Box::new(ContractUnreachableElimination));
                 // v0.50.65: Add tail call optimization for recursive functions
                 pipeline.add_pass(Box::new(TailCallOptimization));
+                // v0.51.9: Convert tail recursion to loops for better performance
+                pipeline.add_pass(Box::new(TailRecursiveToLoop));
+                // v0.51.16: Loop invariant code motion - hoist len() calls out of loops
+                pipeline.add_pass(Box::new(LoopInvariantCodeMotion::new()));
+                // v0.50.73: String concat chain optimization for O(n) allocation
+                pipeline.add_pass(Box::new(StringConcatOptimization));
             }
             OptLevel::Aggressive => {
                 // All optimizations
@@ -79,12 +89,22 @@ impl OptimizationPipeline {
                 pipeline.add_pass(Box::new(ConstantFolding));
                 pipeline.add_pass(Box::new(DeadCodeElimination));
                 pipeline.add_pass(Box::new(SimplifyBranches));
+                // v0.51.8: If-else chain to switch for jump tables
+                pipeline.add_pass(Box::new(IfElseToSwitch));
                 pipeline.add_pass(Box::new(CopyPropagation));
                 pipeline.add_pass(Box::new(CommonSubexpressionElimination));
+                // v0.51.10: Memory load CSE for repeated load_f64/load_i64 calls
+                pipeline.add_pass(Box::new(MemoryLoadCSE));
                 pipeline.add_pass(Box::new(ContractBasedOptimization));
                 pipeline.add_pass(Box::new(ContractUnreachableElimination));
                 // v0.50.65: Add tail call optimization for recursive functions
                 pipeline.add_pass(Box::new(TailCallOptimization));
+                // v0.51.9: Convert tail recursion to loops for better performance
+                pipeline.add_pass(Box::new(TailRecursiveToLoop));
+                // v0.51.16: Loop invariant code motion - hoist len() calls out of loops
+                pipeline.add_pass(Box::new(LoopInvariantCodeMotion::new()));
+                // v0.50.73: String concat chain optimization for O(n) allocation
+                pipeline.add_pass(Box::new(StringConcatOptimization));
             }
         }
 
@@ -105,6 +125,15 @@ impl OptimizationPipeline {
     pub fn optimize(&self, program: &mut MirProgram) -> OptimizationStats {
         let mut stats = OptimizationStats::new();
 
+        // v0.50.80: Run interprocedural constant propagation narrowing FIRST
+        // This pass narrows i64 parameters to i32 when call sites use small constants
+        // and the function has decreasing recursive patterns (e.g., fibonacci)
+        // v0.51.0: PHI codegen now handles type mismatches via coerce_phi_value()
+        let narrowing = ConstantPropagationNarrowing::from_program(program);
+        if narrowing.run_on_program(program) {
+            stats.record_pass(narrowing.name());
+        }
+
         // v0.38.3: Create PureFunctionCSE pass with program-level information
         let pure_cse = PureFunctionCSE::from_program(program);
 
@@ -114,6 +143,21 @@ impl OptimizationPipeline {
         for func in &mut program.functions {
             let func_stats = self.optimize_function_with_program_passes(func, &pure_cse, &const_eval);
             stats.merge(&func_stats);
+        }
+
+        // v0.51.8: Run aggressive inlining LAST (after all optimizations)
+        // This marks small, simple functions for LLVM's alwaysinline attribute
+        // to eliminate function call overhead in tight loops
+        let inlining = AggressiveInlining::new();
+        if inlining.run_on_program(program) {
+            stats.record_pass(inlining.name());
+        }
+
+        // v0.51.11: Run memory effect analysis to detect memory-free functions
+        // This enables LLVM memory(none) attribute for better LICM
+        let memory_analysis = MemoryEffectAnalysis::new();
+        if memory_analysis.run_on_program(program) {
+            stats.record_pass(memory_analysis.name());
         }
 
         stats
@@ -808,6 +852,9 @@ fn collect_used_in_instruction(inst: &MirInst, used: &mut HashSet<String>) {
             collect_used_in_operand(index, used);
             collect_used_in_operand(value, used);
         }
+        MirInst::Cast { src, .. } => {
+            collect_used_in_operand(src, used);
+        }
     }
 }
 
@@ -830,6 +877,8 @@ fn get_inst_dest(inst: &MirInst) -> Option<&Place> {
         MirInst::EnumVariant { dest, .. } => Some(dest),
         MirInst::ArrayInit { dest, .. } => Some(dest),
         MirInst::IndexLoad { dest, .. } => Some(dest),
+        // v0.51.8: Handle Cast instruction
+        MirInst::Cast { dest, .. } => Some(dest),
         _ => None,
     }
 }
@@ -985,58 +1034,28 @@ impl OptimizationPass for CommonSubexpressionElimination {
 
     fn run_on_function(&self, func: &mut MirFunction) -> bool {
         let mut changed = false;
-        let mut expressions: HashMap<String, Place> = HashMap::new();
 
-        // v0.50.73: Track which variables are modified in non-entry blocks
-        // These are potentially loop-carried variables whose values change between iterations
-        let mut modified_vars: HashSet<String> = HashSet::new();
-        for (block_idx, block) in func.blocks.iter().enumerate() {
-            if block_idx > 0 {  // Skip entry block
-                for inst in &block.instructions {
-                    // Collect all variables that are assigned/modified
-                    let dest_name = match inst {
-                        MirInst::Const { dest, .. } => Some(&dest.name),
-                        MirInst::Copy { dest, .. } => Some(&dest.name),
-                        MirInst::BinOp { dest, .. } => Some(&dest.name),
-                        MirInst::UnaryOp { dest, .. } => Some(&dest.name),
-                        MirInst::Call { dest: Some(d), .. } => Some(&d.name),
-                        MirInst::IndexLoad { dest, .. } => Some(&dest.name),
-                        MirInst::Phi { dest, .. } => Some(&dest.name),
-                        _ => None,
-                    };
-                    if let Some(name) = dest_name {
-                        modified_vars.insert(name.clone());
-                    }
-                }
-            }
-        }
+        // v0.51.6: CSE now operates per-block only to avoid SSA domination issues
+        // Previously, expressions were shared across all blocks, which caused
+        // values defined in one branch to be incorrectly reused in sibling branches.
+        // For example: if j < 0 { j+1... } else { j+1... } would share %add
+        // but %add from the "then" branch doesn't dominate the "else" branch.
+        //
+        // The safe approach is to only apply CSE within a single basic block,
+        // where all expressions naturally dominate their uses.
 
         for block in &mut func.blocks {
+            // v0.51.6: Clear expressions at the start of each block
+            // This ensures we only reuse expressions within the same block
+            let mut expressions: HashMap<String, Place> = HashMap::new();
             let mut new_instructions = Vec::new();
 
             for inst in &block.instructions {
                 if let MirInst::BinOp { dest, op, lhs, rhs } = inst {
-                    // v0.50.73: Check if any operand uses a modified variable
-                    // If so, skip CSE for this expression to avoid incorrect reuse
-                    let lhs_uses_modified = match lhs {
-                        Operand::Place(p) => modified_vars.contains(&p.name),
-                        _ => false,
-                    };
-                    let rhs_uses_modified = match rhs {
-                        Operand::Place(p) => modified_vars.contains(&p.name),
-                        _ => false,
-                    };
-
-                    if lhs_uses_modified || rhs_uses_modified {
-                        // Don't apply CSE to expressions using loop-modified variables
-                        new_instructions.push(inst.clone());
-                        continue;
-                    }
-
                     let key = format!("{:?}:{:?}:{:?}", op, lhs, rhs);
 
                     if let Some(existing) = expressions.get(&key) {
-                        // Replace with copy
+                        // Replace with copy - safe because both are in the same block
                         new_instructions.push(MirInst::Copy {
                             dest: dest.clone(),
                             src: existing.clone(),
@@ -1056,6 +1075,107 @@ impl OptimizationPass for CommonSubexpressionElimination {
 
         changed
     }
+}
+
+// ============================================================================
+// Memory Load CSE Pass (v0.51.10)
+// ============================================================================
+
+/// Memory load CSE: eliminate redundant load_f64/load_i64 calls within basic blocks
+///
+/// Within a basic block, consecutive loads from the same memory address are equivalent
+/// if no stores occur between them. This pass:
+/// 1. Tracks (load_fn, ptr_arg) -> cached_dest for load calls
+/// 2. Replaces duplicate loads with Copy instructions
+/// 3. Invalidates cache on store_f64/store_i64 calls (conservative)
+///
+/// Example:
+/// ```text
+/// %dx = call load_f64(%ptr1)
+/// %dy = call load_f64(%ptr2)
+/// %dx2 = call load_f64(%ptr1)  // eliminated -> Copy %dx2, %dx
+/// ```
+pub struct MemoryLoadCSE;
+
+impl OptimizationPass for MemoryLoadCSE {
+    fn name(&self) -> &'static str {
+        "memory_load_cse"
+    }
+
+    fn run_on_function(&self, func: &mut MirFunction) -> bool {
+        let mut changed = false;
+
+        for block in &mut func.blocks {
+            // Track: (load_fn_name, ptr_operand_key) -> cached_place
+            let mut load_cache: HashMap<(String, String), Place> = HashMap::new();
+            let mut new_instructions = Vec::new();
+
+            for inst in &block.instructions {
+                match inst {
+                    MirInst::Call { dest, func: fn_name, args, .. } => {
+                        // Check if this is a memory load function with a destination
+                        if (fn_name == "load_f64" || fn_name == "load_i64")
+                            && args.len() == 1
+                            && dest.is_some()
+                        {
+                            let dest = dest.as_ref().unwrap();
+                            // Create a key from the function name and pointer argument
+                            let ptr_key = format!("{:?}", args[0]);
+                            let cache_key = (fn_name.clone(), ptr_key);
+
+                            if let Some(cached) = load_cache.get(&cache_key) {
+                                // Replace with copy from cached value
+                                new_instructions.push(MirInst::Copy {
+                                    dest: dest.clone(),
+                                    src: cached.clone(),
+                                });
+                                changed = true;
+                            } else {
+                                // Cache this load and keep original instruction
+                                load_cache.insert(cache_key, dest.clone());
+                                new_instructions.push(inst.clone());
+                            }
+                        }
+                        // Check if this is a memory store function - invalidate cache
+                        else if fn_name == "store_f64" || fn_name == "store_i64" {
+                            // Conservative: invalidate ALL loads since we don't track aliasing
+                            // A more sophisticated analysis could check if store ptr might alias
+                            load_cache.clear();
+                            new_instructions.push(inst.clone());
+                        }
+                        else {
+                            // Other function calls may have side effects - be conservative
+                            // Only invalidate if function might write to memory
+                            if might_write_memory(fn_name) {
+                                load_cache.clear();
+                            }
+                            new_instructions.push(inst.clone());
+                        }
+                    }
+                    _ => {
+                        new_instructions.push(inst.clone());
+                    }
+                }
+            }
+
+            block.instructions = new_instructions;
+        }
+
+        changed
+    }
+}
+
+/// Check if a function might write to memory
+/// Conservative: assume most functions don't write, but some known ones do
+fn might_write_memory(fn_name: &str) -> bool {
+    // Known memory-writing functions
+    matches!(fn_name,
+        "store_i64" | "store_f64" |
+        "bmb_vec_push" | "hashmap_insert" | "hashmap_remove" |
+        "sb_push" | "sb_push_char" | "sb_push_int" | "sb_push_cstr" |
+        "bmb_sb_push" | "bmb_sb_push_char" | "bmb_sb_push_int" |
+        "free" | "realloc"
+    )
 }
 
 // ============================================================================
@@ -1765,6 +1885,78 @@ impl OptimizationPass for TailCallOptimization {
 }
 
 impl TailCallOptimization {
+    /// Trace through phi chains to find the original Call that produces a value
+    ///
+    /// v0.50.79: Handles nested phi patterns like:
+    ///   then_3: %_t8 = call f(); goto merge_5
+    ///   merge_5: %_t6 = phi [%_t8, then_3], [...]; goto merge_2
+    ///   merge_2: %_t2 = phi [..., merge_5]; return %_t2
+    ///
+    /// Returns: Vec<(block_label, call_index)> of tail calls found
+    fn trace_phi_to_calls(
+        &self,
+        func: &MirFunction,
+        value_name: &str,
+        source_label: &str,
+        visited: &mut std::collections::HashSet<String>,
+    ) -> Vec<(String, usize)> {
+        // Prevent infinite loops in cyclic phi references
+        let visit_key = format!("{}:{}", source_label, value_name);
+        if !visited.insert(visit_key) {
+            return vec![];
+        }
+
+        let source_block = match func.blocks.iter().find(|b| b.label == source_label) {
+            Some(b) => b,
+            None => return vec![],
+        };
+
+        // Block must end with Goto for tail call pattern
+        if !matches!(source_block.terminator, Terminator::Goto(_)) {
+            return vec![];
+        }
+
+        // Search for the definition of value_name in this block
+        for (idx, inst) in source_block.instructions.iter().enumerate().rev() {
+            match inst {
+                // Direct Call -> this is a tail call candidate
+                MirInst::Call { dest: Some(dest), is_tail: false, .. }
+                    if dest.name == value_name =>
+                {
+                    // Check no intervening uses after the call
+                    let has_intervening_use = source_block.instructions[idx + 1..]
+                        .iter()
+                        .any(|i| uses_place(i, value_name));
+
+                    if !has_intervening_use {
+                        return vec![(source_label.to_string(), idx)];
+                    }
+                    break;
+                }
+
+                // Phi node -> trace through its sources recursively
+                MirInst::Phi { dest, values } if dest.name == value_name => {
+                    let mut results = vec![];
+                    for (operand, phi_source_label) in values {
+                        if let Operand::Place(p) = operand {
+                            // Recursively trace through the phi's source
+                            results.extend(
+                                self.trace_phi_to_calls(func, &p.name, phi_source_label, visited)
+                            );
+                        }
+                    }
+                    return results;
+                }
+
+                // Some other instruction defines this value -> not a tail call
+                _ if defines_place(inst, value_name) => break,
+                _ => continue,
+            }
+        }
+
+        vec![]
+    }
+
     /// Detect tail calls that flow through phi nodes
     ///
     /// Pattern: Call in one block -> Goto -> Phi in merge block -> Return
@@ -1809,37 +2001,15 @@ impl TailCallOptimization {
         }
 
         // For each phi return block, check source blocks for tail calls
+        // v0.50.79: Support nested phi chains (e.g., Call -> Phi -> Phi -> Return)
         let mut tail_calls_to_mark: Vec<(String, usize)> = Vec::new();
 
         for (_merge_label, _phi_dest, edges) in &phi_return_blocks {
             for (value_name, source_label) in edges {
-                // Find the source block
-                if let Some(source_block) = func.blocks.iter().find(|b| &b.label == source_label) {
-                    // Check if the block ends with Goto (to merge)
-                    if !matches!(source_block.terminator, Terminator::Goto(_)) {
-                        continue;
-                    }
-
-                    // Find the Call that produces value_name
-                    for (idx, inst) in source_block.instructions.iter().enumerate().rev() {
-                        match inst {
-                            MirInst::Call { dest: Some(dest), is_tail: false, .. }
-                                if dest.name == *value_name => {
-                                // Check no intervening uses
-                                let has_intervening_use = source_block.instructions[idx + 1..]
-                                    .iter()
-                                    .any(|i| uses_place(i, value_name));
-
-                                if !has_intervening_use {
-                                    tail_calls_to_mark.push((source_label.clone(), idx));
-                                }
-                                break;
-                            }
-                            _ if defines_place(inst, value_name) => break,
-                            _ => continue,
-                        }
-                    }
-                }
+                // Use transitive phi tracing to find tail calls through nested phis
+                let mut visited = std::collections::HashSet::new();
+                let found_calls = self.trace_phi_to_calls(func, value_name, source_label, &mut visited);
+                tail_calls_to_mark.extend(found_calls);
             }
         }
 
@@ -1919,6 +2089,7 @@ fn uses_place(inst: &MirInst, name: &str) -> bool {
         MirInst::ArrayInit { elements, .. } => {
             elements.iter().any(|e| matches!(e, Operand::Place(p) if p.name == name))
         }
+        MirInst::Cast { src, .. } => matches!(src, Operand::Place(p) if p.name == name),
         _ => false,
     }
 }
@@ -1937,7 +2108,1625 @@ fn defines_place(inst: &MirInst, name: &str) -> bool {
         MirInst::IndexLoad { dest, .. } => dest.name == name,
         MirInst::EnumVariant { dest, .. } => dest.name == name,
         MirInst::ArrayInit { dest, .. } => dest.name == name,
+        MirInst::Cast { dest, .. } => dest.name == name,
         _ => false,
+    }
+}
+
+// ============================================================================
+// If-Else Chain to Switch Optimization
+// ============================================================================
+
+/// v0.51.8: If-else chain to switch optimization
+///
+/// Transforms cascading if-else chains comparing the same variable against constants
+/// into a single switch statement. This enables LLVM to generate jump tables,
+/// dramatically improving performance for large dispatch tables (like fasta's 14-way branch).
+///
+/// Pattern detected:
+/// ```text
+/// block_0:
+///   %cmp0 = Eq %x, 0
+///   Branch %cmp0, case_0, block_1
+/// block_1:
+///   %cmp1 = Eq %x, 1
+///   Branch %cmp1, case_1, block_2
+/// ...
+/// ```
+///
+/// Transformed to:
+/// ```text
+/// block_0:
+///   Switch %x { 0 -> case_0, 1 -> case_1, ... } default -> default_block
+/// ```
+pub struct IfElseToSwitch;
+
+impl IfElseToSwitch {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Default for IfElseToSwitch {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl OptimizationPass for IfElseToSwitch {
+    fn name(&self) -> &'static str {
+        "IfElseToSwitch"
+    }
+
+    fn run_on_function(&self, func: &mut MirFunction) -> bool {
+        let mut changed = false;
+
+        // Build a map from place name to the instruction that defines it
+        // This allows us to look up what comparison produces a condition
+        let mut def_map: HashMap<String, (usize, usize)> = HashMap::new(); // name -> (block_idx, inst_idx)
+        for (block_idx, block) in func.blocks.iter().enumerate() {
+            for (inst_idx, inst) in block.instructions.iter().enumerate() {
+                if let Some(dest) = get_inst_dest(inst) {
+                    def_map.insert(dest.name.clone(), (block_idx, inst_idx));
+                }
+            }
+        }
+
+        // Build a map from label to block index
+        let label_to_idx: HashMap<String, usize> = func.blocks
+            .iter()
+            .enumerate()
+            .map(|(idx, b)| (b.label.clone(), idx))
+            .collect();
+
+        // Find if-else chains and convert them to switches
+        // We need to process blocks that start chains
+        let mut blocks_to_skip: HashSet<usize> = HashSet::new();
+
+        for start_block_idx in 0..func.blocks.len() {
+            if blocks_to_skip.contains(&start_block_idx) {
+                continue;
+            }
+
+            // Try to detect an if-else chain starting from this block
+            if let Some(chain) = self.detect_if_else_chain(
+                func,
+                start_block_idx,
+                &def_map,
+                &label_to_idx,
+            ) {
+                // Only convert if we have at least 3 cases (threshold for switch benefit)
+                if chain.cases.len() >= 3 {
+                    // Mark intermediate blocks to skip
+                    for &idx in &chain.intermediate_blocks {
+                        blocks_to_skip.insert(idx);
+                    }
+
+                    // Convert the first block's terminator to Switch
+                    let first_block = &mut func.blocks[start_block_idx];
+                    first_block.terminator = Terminator::Switch {
+                        discriminant: chain.discriminant,
+                        cases: chain.cases,
+                        default: chain.default,
+                    };
+
+                    // Remove intermediate blocks' comparisons (they're now dead code)
+                    // DCE will clean up the comparison instructions later
+                    changed = true;
+                }
+            }
+        }
+
+        changed
+    }
+}
+
+/// Information about a detected if-else chain
+struct IfElseChain {
+    /// The variable being compared
+    discriminant: Operand,
+    /// Collected cases: (constant_value, target_label)
+    cases: Vec<(i64, String)>,
+    /// Default target (final else branch)
+    default: String,
+    /// Block indices of intermediate blocks in the chain
+    intermediate_blocks: Vec<usize>,
+}
+
+impl IfElseToSwitch {
+    /// Detect an if-else chain starting from the given block
+    fn detect_if_else_chain(
+        &self,
+        func: &MirFunction,
+        start_block_idx: usize,
+        def_map: &HashMap<String, (usize, usize)>,
+        label_to_idx: &HashMap<String, usize>,
+    ) -> Option<IfElseChain> {
+        let mut cases: Vec<(i64, String)> = Vec::new();
+        let mut intermediate_blocks: Vec<usize> = Vec::new();
+        let mut discriminant_var: Option<String> = None;
+        let mut current_block_idx = start_block_idx;
+
+        loop {
+            let block = &func.blocks[current_block_idx];
+
+            // The terminator must be a Branch
+            let (cond, then_label, else_label) = match &block.terminator {
+                Terminator::Branch { cond, then_label, else_label } => {
+                    (cond, then_label.clone(), else_label.clone())
+                }
+                _ => break,
+            };
+
+            // The condition must be a Place (result of a comparison)
+            let cond_name = match cond {
+                Operand::Place(p) => &p.name,
+                _ => break,
+            };
+
+            // Look up the instruction that defines this condition
+            let (def_block_idx, def_inst_idx) = match def_map.get(cond_name) {
+                Some(&(bi, ii)) => (bi, ii),
+                None => break,
+            };
+
+            // The defining instruction must be in the current block
+            // (otherwise control flow gets complicated)
+            if def_block_idx != current_block_idx {
+                break;
+            }
+
+            let def_inst = &func.blocks[def_block_idx].instructions[def_inst_idx];
+
+            // It must be an equality comparison: %cmp = Eq %x, const
+            let (var_name, const_val) = match def_inst {
+                MirInst::BinOp { op: MirBinOp::Eq, lhs, rhs, .. } => {
+                    // Check for: %x == const
+                    match (lhs, rhs) {
+                        (Operand::Place(p), Operand::Constant(Constant::Int(n))) => {
+                            (p.name.clone(), *n)
+                        }
+                        (Operand::Constant(Constant::Int(n)), Operand::Place(p)) => {
+                            (p.name.clone(), *n)
+                        }
+                        _ => break,
+                    }
+                }
+                _ => break,
+            };
+
+            // Check that we're comparing the same variable throughout the chain
+            match &discriminant_var {
+                None => discriminant_var = Some(var_name.clone()),
+                Some(v) if *v != var_name => break, // Different variable, not a valid chain
+                _ => {}
+            }
+
+            // Add this case
+            cases.push((const_val, then_label.clone()));
+
+            // Follow the else branch to the next block
+            let next_block_idx = match label_to_idx.get(&else_label) {
+                Some(&idx) => idx,
+                None => break,
+            };
+
+            // Check if the next block has another comparison in the chain
+            let next_block = &func.blocks[next_block_idx];
+
+            // The next block should only have comparison instructions and branch
+            // If it has other side effects, we can't safely merge it
+            let has_side_effects = next_block.instructions.iter().any(|inst| {
+                matches!(inst, MirInst::Call { .. } |
+                              MirInst::FieldStore { .. } |
+                              MirInst::IndexStore { .. })
+            });
+
+            if has_side_effects {
+                // This block has side effects, so it's the default case
+                return Some(IfElseChain {
+                    discriminant: Operand::Place(Place::new(discriminant_var?)),
+                    cases,
+                    default: else_label,
+                    intermediate_blocks,
+                });
+            }
+
+            // Check if next block continues the chain
+            if !matches!(&next_block.terminator, Terminator::Branch { .. }) {
+                // Chain ends here, else_label is the default
+                return Some(IfElseChain {
+                    discriminant: Operand::Place(Place::new(discriminant_var?)),
+                    cases,
+                    default: else_label,
+                    intermediate_blocks,
+                });
+            }
+
+            // Add current else block to intermediate blocks (will be skipped after conversion)
+            intermediate_blocks.push(next_block_idx);
+            current_block_idx = next_block_idx;
+        }
+
+        // Need at least one case to form a valid chain
+        if cases.is_empty() {
+            return None;
+        }
+
+        // Return the final else as default
+        if let Terminator::Branch { else_label, .. } = &func.blocks[current_block_idx].terminator {
+            Some(IfElseChain {
+                discriminant: Operand::Place(Place::new(discriminant_var?)),
+                cases,
+                default: else_label.clone(),
+                intermediate_blocks,
+            })
+        } else {
+            None
+        }
+    }
+}
+
+// ============================================================================
+// String Concatenation Optimization
+// ============================================================================
+
+
+// ============================================================================
+// Tail Recursive to Loop Optimization
+// ============================================================================
+
+/// v0.51.9: Tail-recursive to loop conversion
+///
+/// Converts self-recursive tail calls into native loops with phi nodes.
+/// This eliminates function call overhead even with musttail, giving
+/// performance equivalent to hand-written loops.
+///
+/// Pattern detected:
+/// ```text
+/// fn f(data, pos, acc) =
+///   if cond { return acc }
+///   else { return f(data, new_pos, new_acc) }  // is_tail = true
+/// ```
+///
+/// Transformed to:
+/// ```text
+/// entry:
+///   br loop_header
+/// loop_header:
+///   %pos_phi = phi [%pos_param, entry], [%new_pos, loop_latch]
+///   %acc_phi = phi [%acc_param, entry], [%new_acc, loop_latch]
+///   if cond { goto exit } else { goto loop_body }
+/// loop_body:
+///   ... compute new_pos, new_acc ...
+///   goto loop_latch
+/// loop_latch:
+///   br loop_header
+/// exit:
+///   return %acc_phi
+/// ```
+///
+/// Affected benchmarks: csv_parse (118%), lexer (118%), json_parse (104%), sorting (106%)
+pub struct TailRecursiveToLoop;
+
+impl TailRecursiveToLoop {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Default for TailRecursiveToLoop {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl OptimizationPass for TailRecursiveToLoop {
+    fn name(&self) -> &'static str {
+        "TailRecursiveToLoop"
+    }
+
+    fn run_on_function(&self, func: &mut MirFunction) -> bool {
+        // Only process functions with self-recursive tail calls
+        let self_name = func.name.clone();
+
+        // Find all blocks with self-recursive tail calls
+        // v0.51.16: Support multiple tail call sites
+        let mut tail_call_blocks: Vec<(usize, usize, Vec<Operand>)> = Vec::new(); // (block_idx, call_idx, args)
+
+        for (block_idx, block) in func.blocks.iter().enumerate() {
+            for (inst_idx, inst) in block.instructions.iter().enumerate() {
+                if let MirInst::Call { func: callee, args, is_tail: true, .. } = inst {
+                    if *callee == self_name {
+                        tail_call_blocks.push((block_idx, inst_idx, args.clone()));
+                    }
+                }
+            }
+        }
+
+        // No self-recursive tail calls, nothing to do
+        if tail_call_blocks.is_empty() {
+            return false;
+        }
+
+        // Verify all tail call sites have correct argument count
+        for (_, _, args) in &tail_call_blocks {
+            if args.len() != func.params.len() {
+                return false;
+            }
+        }
+
+        // v0.51.16: Determine invariants across ALL tail call sites
+        // A parameter is invariant only if ALL tail call sites pass it unchanged
+        let mut param_is_invariant: Vec<bool> = vec![true; func.params.len()];
+        for (_, _, tail_args) in &tail_call_blocks {
+            for (i, arg) in tail_args.iter().enumerate() {
+                let param_name = &func.params[i].0;
+                let is_same = match arg {
+                    Operand::Place(p) => p.name == *param_name,
+                    _ => false,
+                };
+                if !is_same {
+                    param_is_invariant[i] = false;
+                }
+            }
+        }
+
+        // Need at least one accumulator parameter, otherwise no loop needed
+        if param_is_invariant.iter().all(|&b| b) {
+            return false; // All invariant - infinite loop, don't transform
+        }
+
+        // Create the loop transformation
+        let loop_header_label = format!("loop_header_{}", func.blocks.len());
+        let entry_label = func.blocks[0].label.clone();
+
+        // v0.51.16: Create phi nodes with edges from entry AND all tail call sites
+        let mut phi_names: Vec<String> = Vec::new();
+        let mut phi_instructions: Vec<MirInst> = Vec::new();
+
+        for (i, (param_name, param_ty)) in func.params.iter().enumerate() {
+            if !param_is_invariant[i] {
+                let phi_name = format!("{}_loop", param_name);
+                phi_names.push(phi_name.clone());
+
+                // Add to locals
+                func.locals.push((phi_name.clone(), param_ty.clone()));
+
+                // Create phi instruction with multiple incoming edges
+                // Start with entry value
+                let mut phi_values = vec![
+                    (Operand::Place(Place::new(param_name.clone())), entry_label.clone()),
+                ];
+
+                // Add placeholder edges for each tail call site
+                // Will be updated with actual labels after block insertion
+                for (block_idx, _, tail_args) in &tail_call_blocks {
+                    let block_label = func.blocks[*block_idx].label.clone();
+                    phi_values.push((tail_args[i].clone(), block_label));
+                }
+
+                phi_instructions.push(MirInst::Phi {
+                    dest: Place::new(phi_name),
+                    values: phi_values,
+                });
+            } else {
+                phi_names.push(param_name.clone()); // Use original param name
+            }
+        }
+
+        // Create substitution map: param_name -> phi_name
+        let mut subst_map: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+        for (i, (param_name, _)) in func.params.iter().enumerate() {
+            if !param_is_invariant[i] {
+                subst_map.insert(param_name.clone(), format!("{}_loop", param_name));
+            }
+        }
+
+        // Get the old entry block's content
+        let old_entry = func.blocks[0].clone();
+
+        // Create new entry that just jumps to loop_header
+        func.blocks[0] = BasicBlock {
+            label: entry_label.clone(),
+            instructions: vec![],
+            terminator: Terminator::Goto(loop_header_label.clone()),
+        };
+
+        // Create loop_header with phis + old entry's content
+        let mut loop_header_insts = phi_instructions;
+
+        // Apply substitution to old entry's instructions
+        let mut old_entry_insts: Vec<MirInst> = old_entry.instructions.into_iter()
+            .map(|inst| self.substitute_params(inst, &subst_map))
+            .collect();
+        loop_header_insts.append(&mut old_entry_insts);
+
+        let loop_header_terminator = self.substitute_terminator(old_entry.terminator, &subst_map);
+
+        let loop_header_block = BasicBlock {
+            label: loop_header_label.clone(),
+            instructions: loop_header_insts,
+            terminator: loop_header_terminator,
+        };
+
+        // Insert loop_header after entry
+        func.blocks.insert(1, loop_header_block);
+
+        // Update all blocks (except entry and loop_header)
+        for i in 2..func.blocks.len() {
+            let block = &mut func.blocks[i];
+
+            // Apply substitution to instructions
+            block.instructions = block.instructions.drain(..)
+                .map(|inst| self.substitute_params(inst, &subst_map))
+                .collect();
+
+            // Apply substitution to terminator
+            block.terminator = self.substitute_terminator(block.terminator.clone(), &subst_map);
+        }
+
+        // v0.51.16: Replace ALL tail calls with goto loop_header
+        // Block indices are shifted by 1 due to loop_header insertion
+        for (original_block_idx, _, _) in &tail_call_blocks {
+            let new_block_idx = *original_block_idx + 1;
+
+            if new_block_idx < func.blocks.len() {
+                let block = &mut func.blocks[new_block_idx];
+
+                // Find and remove the tail call instruction
+                let call_idx = block.instructions.iter().position(|inst| {
+                    matches!(inst, MirInst::Call { func: f, is_tail: true, .. } if f == &self_name)
+                });
+
+                if let Some(idx) = call_idx {
+                    // Keep only instructions before the call
+                    block.instructions.truncate(idx);
+
+                    // Change terminator to goto loop_header
+                    block.terminator = Terminator::Goto(loop_header_label.clone());
+                }
+            }
+        }
+
+        true
+    }
+}
+
+impl TailRecursiveToLoop {
+    /// Substitute parameter references with phi variable references
+    fn substitute_params(&self, inst: MirInst, subst: &std::collections::HashMap<String, String>) -> MirInst {
+        match inst {
+            MirInst::Copy { dest, src } => MirInst::Copy {
+                dest,
+                src: Place::new(subst.get(&src.name).cloned().unwrap_or(src.name)),
+            },
+            MirInst::BinOp { dest, op, lhs, rhs } => MirInst::BinOp {
+                dest,
+                op,
+                lhs: self.substitute_operand(lhs, subst),
+                rhs: self.substitute_operand(rhs, subst),
+            },
+            MirInst::UnaryOp { dest, op, src } => MirInst::UnaryOp {
+                dest,
+                op,
+                src: self.substitute_operand(src, subst),
+            },
+            MirInst::Call { dest, func, args, is_tail } => MirInst::Call {
+                dest,
+                func,
+                args: args.into_iter().map(|a| self.substitute_operand(a, subst)).collect(),
+                is_tail,
+            },
+            MirInst::Phi { dest, values } => MirInst::Phi {
+                dest,
+                values: values.into_iter()
+                    .map(|(v, l)| (self.substitute_operand(v, subst), l))
+                    .collect(),
+            },
+            MirInst::StructInit { dest, struct_name, fields } => MirInst::StructInit {
+                dest,
+                struct_name,
+                fields: fields.into_iter()
+                    .map(|(name, v)| (name, self.substitute_operand(v, subst)))
+                    .collect(),
+            },
+            MirInst::FieldAccess { dest, base, field } => MirInst::FieldAccess {
+                dest,
+                base: Place::new(subst.get(&base.name).cloned().unwrap_or(base.name)),
+                field,
+            },
+            MirInst::FieldStore { base, field, value } => MirInst::FieldStore {
+                base: Place::new(subst.get(&base.name).cloned().unwrap_or(base.name)),
+                field,
+                value: self.substitute_operand(value, subst),
+            },
+            MirInst::IndexLoad { dest, array, index } => MirInst::IndexLoad {
+                dest,
+                array: Place::new(subst.get(&array.name).cloned().unwrap_or(array.name)),
+                index: self.substitute_operand(index, subst),
+            },
+            MirInst::IndexStore { array, index, value } => MirInst::IndexStore {
+                array: Place::new(subst.get(&array.name).cloned().unwrap_or(array.name)),
+                index: self.substitute_operand(index, subst),
+                value: self.substitute_operand(value, subst),
+            },
+            MirInst::EnumVariant { dest, enum_name, variant, args } => MirInst::EnumVariant {
+                dest,
+                enum_name,
+                variant,
+                args: args.into_iter().map(|a| self.substitute_operand(a, subst)).collect(),
+            },
+            MirInst::ArrayInit { dest, element_type, elements } => MirInst::ArrayInit {
+                dest,
+                element_type,
+                elements: elements.into_iter().map(|e| self.substitute_operand(e, subst)).collect(),
+            },
+            MirInst::Cast { dest, src, from_ty, to_ty } => MirInst::Cast {
+                dest,
+                src: self.substitute_operand(src, subst),
+                from_ty,
+                to_ty,
+            },
+            other => other, // Const doesn't need substitution
+        }
+    }
+    
+    fn substitute_operand(&self, op: Operand, subst: &std::collections::HashMap<String, String>) -> Operand {
+        match op {
+            Operand::Place(p) => {
+                Operand::Place(Place::new(subst.get(&p.name).cloned().unwrap_or(p.name)))
+            }
+            other => other,
+        }
+    }
+    
+    fn substitute_terminator(&self, term: Terminator, subst: &std::collections::HashMap<String, String>) -> Terminator {
+        match term {
+            Terminator::Return(Some(op)) => {
+                Terminator::Return(Some(self.substitute_operand(op, subst)))
+            }
+            Terminator::Branch { cond, then_label, else_label } => {
+                Terminator::Branch {
+                    cond: self.substitute_operand(cond, subst),
+                    then_label,
+                    else_label,
+                }
+            }
+            Terminator::Switch { discriminant, cases, default } => {
+                Terminator::Switch {
+                    discriminant: self.substitute_operand(discriminant, subst),
+                    cases,
+                    default,
+                }
+            }
+            other => other,
+        }
+    }
+}
+
+/// v0.50.73: String concatenation chain optimization
+///
+/// Transforms chains of string concatenations from O(n²) to O(n):
+/// ```text
+/// %_t0 = BinOp Add %a, %b       ; concat #1: 2 allocations
+/// %_t1 = BinOp Add %_t0, %c     ; concat #2: 2 more allocations
+/// %_t2 = BinOp Add %_t1, %d     ; concat #3: 2 more allocations
+/// ```
+/// Into:
+/// ```text
+/// %_sb = Call sb_new()
+/// %_ = Call sb_push(%_sb, %a)
+/// %_ = Call sb_push(%_sb, %b)
+/// %_ = Call sb_push(%_sb, %c)
+/// %_ = Call sb_push(%_sb, %d)
+/// %_t2 = Call sb_build(%_sb)
+/// ```
+///
+/// This reduces allocations from O(n) to O(1) for n-element concat chains.
+pub struct StringConcatOptimization;
+
+impl StringConcatOptimization {
+    pub fn new() -> Self {
+        Self
+    }
+
+    /// Minimum chain length to optimize (3+ concats benefit from StringBuilder)
+    const MIN_CHAIN_LENGTH: usize = 3;
+}
+
+impl Default for StringConcatOptimization {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Represents a chain of string concatenations
+#[derive(Debug)]
+struct ConcatChain {
+    /// All operands in the chain, in order
+    operands: Vec<Operand>,
+    /// Final destination place
+    final_dest: Place,
+    /// Indices of instructions to replace (in order)
+    instruction_indices: Vec<usize>,
+}
+
+impl OptimizationPass for StringConcatOptimization {
+    fn name(&self) -> &'static str {
+        "StringConcatOptimization"
+    }
+
+    fn run_on_function(&self, func: &mut MirFunction) -> bool {
+        let mut changed = false;
+        let mut temp_counter: usize = 0;
+
+        for block in &mut func.blocks {
+            // Find concat chains in this block
+            let chains = find_concat_chains(&block.instructions);
+
+            // Filter to chains worth optimizing
+            let worthwhile_chains: Vec<_> = chains
+                .into_iter()
+                .filter(|c| c.operands.len() >= StringConcatOptimization::MIN_CHAIN_LENGTH)
+                .collect();
+
+            if worthwhile_chains.is_empty() {
+                continue;
+            }
+
+            // Transform each chain (process in reverse order to maintain indices)
+            for chain in worthwhile_chains.into_iter().rev() {
+                let new_instructions = transform_concat_chain(&chain, &mut temp_counter);
+
+                // Remove old instructions (indices are sorted ascending)
+                // Remove in reverse order to maintain validity of indices
+                for &idx in chain.instruction_indices.iter().rev() {
+                    if idx < block.instructions.len() {
+                        block.instructions.remove(idx);
+                    }
+                }
+
+                // Insert new instructions at the position of first removed instruction
+                if let Some(&first_idx) = chain.instruction_indices.first() {
+                    let insert_pos = first_idx.min(block.instructions.len());
+                    for (i, inst) in new_instructions.into_iter().enumerate() {
+                        block.instructions.insert(insert_pos + i, inst);
+                    }
+                }
+
+                changed = true;
+            }
+        }
+
+        changed
+    }
+}
+
+/// Find chains of string concatenation in a block
+fn find_concat_chains(instructions: &[MirInst]) -> Vec<ConcatChain> {
+    let mut chains = Vec::new();
+    let mut visited = HashSet::new();
+
+    // Build a map of variable to (defining_instruction_index, instruction)
+    let mut def_map: HashMap<String, (usize, &MirInst)> = HashMap::new();
+    for (idx, inst) in instructions.iter().enumerate() {
+        if let Some(dest) = get_dest(inst) {
+            def_map.insert(dest.name.clone(), (idx, inst));
+        }
+    }
+
+    // Count uses of each variable in the block
+    let mut use_count: HashMap<String, usize> = HashMap::new();
+    for inst in instructions {
+        for name in get_used_place_names(inst) {
+            *use_count.entry(name).or_insert(0) += 1;
+        }
+    }
+
+    // Find potential chain endpoints (concat results that aren't used in another concat)
+    for (idx, inst) in instructions.iter().enumerate() {
+        if visited.contains(&idx) {
+            continue;
+        }
+
+        if let MirInst::BinOp { dest, op: MirBinOp::Add, lhs, rhs } = inst {
+            // Check if this could be a string concat by looking for string constant or known string place
+            if !could_be_string_concat(lhs, rhs, instructions) {
+                continue;
+            }
+
+            // Check if result is used in another concat (then it's not an endpoint)
+            let dest_name = &dest.name;
+            let is_endpoint = !instructions.iter().skip(idx + 1).any(|later_inst| {
+                matches!(later_inst, MirInst::BinOp { op: MirBinOp::Add, lhs: Operand::Place(p), .. } if &p.name == dest_name)
+                    || matches!(later_inst, MirInst::BinOp { op: MirBinOp::Add, rhs: Operand::Place(p), .. } if &p.name == dest_name)
+            });
+
+            if is_endpoint {
+                // Trace back to find the full chain
+                if let Some(chain) = trace_concat_chain(inst, idx, &def_map, &use_count, &visited) {
+                    // Mark all instructions in this chain as visited
+                    for &chain_idx in &chain.instruction_indices {
+                        visited.insert(chain_idx);
+                    }
+                    chains.push(chain);
+                }
+            }
+        }
+    }
+
+    chains
+}
+
+/// Check if a BinOp Add could be a string concatenation
+fn could_be_string_concat(lhs: &Operand, rhs: &Operand, _instructions: &[MirInst]) -> bool {
+    // If either operand is a string constant, it's definitely a string concat
+    matches!(lhs, Operand::Constant(Constant::String(_)))
+        || matches!(rhs, Operand::Constant(Constant::String(_)))
+        // If operand name suggests string (heuristic)
+        || matches!(lhs, Operand::Place(p) if p.name.starts_with("str") || p.name.contains("_str"))
+        || matches!(rhs, Operand::Place(p) if p.name.starts_with("str") || p.name.contains("_str"))
+}
+
+/// Trace back through a chain of concatenations
+fn trace_concat_chain(
+    inst: &MirInst,
+    idx: usize,
+    def_map: &HashMap<String, (usize, &MirInst)>,
+    use_count: &HashMap<String, usize>,
+    visited: &HashSet<usize>,
+) -> Option<ConcatChain> {
+    let (dest, lhs, rhs) = match inst {
+        MirInst::BinOp { dest, op: MirBinOp::Add, lhs, rhs } => (dest, lhs, rhs),
+        _ => return None,
+    };
+
+    let mut operands = Vec::new();
+    let mut instruction_indices = Vec::new();
+
+    // Recursively trace left operand
+    trace_operand(lhs, def_map, use_count, visited, &mut operands, &mut instruction_indices);
+    // Recursively trace right operand
+    trace_operand(rhs, def_map, use_count, visited, &mut operands, &mut instruction_indices);
+
+    // Add current instruction index
+    instruction_indices.push(idx);
+    instruction_indices.sort();
+
+    Some(ConcatChain {
+        operands,
+        final_dest: dest.clone(),
+        instruction_indices,
+    })
+}
+
+/// Trace an operand, expanding concat chains if found
+fn trace_operand(
+    operand: &Operand,
+    def_map: &HashMap<String, (usize, &MirInst)>,
+    use_count: &HashMap<String, usize>,
+    visited: &HashSet<usize>,
+    operands: &mut Vec<Operand>,
+    instruction_indices: &mut Vec<usize>,
+) {
+    match operand {
+        Operand::Constant(_) => {
+            operands.push(operand.clone());
+        }
+        Operand::Place(p) => {
+            // Check if this place is defined by a concat that's only used once
+            if let Some(&(def_idx, def_inst)) = def_map.get(&p.name) {
+                if visited.contains(&def_idx) {
+                    operands.push(operand.clone());
+                    return;
+                }
+
+                if let MirInst::BinOp { op: MirBinOp::Add, lhs, rhs, .. } = def_inst {
+                    // Check if this intermediate result is used only once
+                    let uses = use_count.get(&p.name).copied().unwrap_or(0);
+                    if uses == 1 && could_be_string_concat(lhs, rhs, &[]) {
+                        // Expand this concat into the chain
+                        trace_operand(lhs, def_map, use_count, visited, operands, instruction_indices);
+                        trace_operand(rhs, def_map, use_count, visited, operands, instruction_indices);
+                        instruction_indices.push(def_idx);
+                        return;
+                    }
+                }
+            }
+            // Not expandable, add as-is
+            operands.push(operand.clone());
+        }
+    }
+}
+
+/// Get used place names from an instruction
+fn get_used_place_names(inst: &MirInst) -> Vec<String> {
+    match inst {
+        MirInst::BinOp { lhs, rhs, .. } => {
+            let mut names = Vec::new();
+            if let Operand::Place(p) = lhs {
+                names.push(p.name.clone());
+            }
+            if let Operand::Place(p) = rhs {
+                names.push(p.name.clone());
+            }
+            names
+        }
+        MirInst::UnaryOp { src, .. } => {
+            if let Operand::Place(p) = src {
+                vec![p.name.clone()]
+            } else {
+                vec![]
+            }
+        }
+        MirInst::Copy { src, .. } => vec![src.name.clone()],
+        MirInst::Call { args, .. } => {
+            args.iter()
+                .filter_map(|a| match a {
+                    Operand::Place(p) => Some(p.name.clone()),
+                    _ => None,
+                })
+                .collect()
+        }
+        _ => vec![],
+    }
+}
+
+/// Get destination place from an instruction
+fn get_dest(inst: &MirInst) -> Option<&Place> {
+    match inst {
+        MirInst::Const { dest, .. }
+        | MirInst::Copy { dest, .. }
+        | MirInst::BinOp { dest, .. }
+        | MirInst::UnaryOp { dest, .. }
+        | MirInst::StructInit { dest, .. }
+        | MirInst::FieldAccess { dest, .. }
+        | MirInst::EnumVariant { dest, .. }
+        | MirInst::ArrayInit { dest, .. }
+        | MirInst::IndexLoad { dest, .. } => Some(dest),
+        MirInst::Call { dest, .. } => dest.as_ref(),
+        _ => None,
+    }
+}
+
+/// Transform a concat chain into StringBuilder operations
+fn transform_concat_chain(chain: &ConcatChain, temp_counter: &mut usize) -> Vec<MirInst> {
+    let mut result = Vec::new();
+
+    // Create unique names for this transformation
+    let sb_name = format!("_str_sb_{}", *temp_counter);
+    *temp_counter += 1;
+
+    // sb_new()
+    result.push(MirInst::Call {
+        dest: Some(Place::new(&sb_name)),
+        func: "sb_new".to_string(),
+        args: vec![],
+        is_tail: false,
+    });
+
+    // sb_push for each operand
+    for (i, operand) in chain.operands.iter().enumerate() {
+        let push_dest = format!("_str_push_{}_{}", *temp_counter - 1, i);
+        result.push(MirInst::Call {
+            dest: Some(Place::new(&push_dest)),
+            func: "sb_push".to_string(),
+            args: vec![
+                Operand::Place(Place::new(&sb_name)),
+                operand.clone(),
+            ],
+            is_tail: false,
+        });
+    }
+
+    // sb_build()
+    result.push(MirInst::Call {
+        dest: Some(chain.final_dest.clone()),
+        func: "sb_build".to_string(),
+        args: vec![Operand::Place(Place::new(&sb_name))],
+        is_tail: false,
+    });
+
+    result
+}
+
+// ============================================================================
+// Constant Propagation Narrowing Pass (v0.50.80)
+// ============================================================================
+
+/// Interprocedural constant propagation for type narrowing
+///
+/// When a function is called with constant arguments from `main()`:
+///   `main() { fibonacci(35) }`
+/// We can:
+///   1. Detect that argument 35 fits in i32
+///   2. Analyze recursive calls: fibonacci(n-1), fibonacci(n-2)
+///   3. Conclude all values of n are in [0, 35] (fits i32)
+///   4. Generate function with i32 parameter operations
+///
+/// This optimization is critical for matching C performance when BMB uses
+/// i64 by default but the algorithm only needs 32-bit operations.
+pub struct ConstantPropagationNarrowing {
+    /// Map: function_name → Vec<(param_index, max_constant_value)>
+    /// Tracks the maximum constant value each parameter is called with
+    call_site_constants: HashMap<String, Vec<(usize, i64)>>,
+}
+
+impl ConstantPropagationNarrowing {
+    /// Create from a MirProgram by analyzing all call sites for constant arguments
+    pub fn from_program(program: &MirProgram) -> Self {
+        let mut call_site_constants: HashMap<String, Vec<(usize, i64)>> = HashMap::new();
+
+        for func in &program.functions {
+            for block in &func.blocks {
+                for inst in &block.instructions {
+                    if let MirInst::Call { func: callee, args, .. } = inst {
+                        // Collect constant arguments
+                        let consts: Vec<(usize, i64)> = args
+                            .iter()
+                            .enumerate()
+                            .filter_map(|(i, arg)| {
+                                if let Operand::Constant(Constant::Int(v)) = arg {
+                                    Some((i, *v))
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect();
+
+                        if !consts.is_empty() {
+                            call_site_constants
+                                .entry(callee.clone())
+                                .or_default()
+                                .extend(consts);
+                        }
+                    }
+                }
+            }
+        }
+
+        Self { call_site_constants }
+    }
+
+    /// Check if a parameter can be narrowed to i32 based on:
+    /// 1. All constant call-site values fit in i32
+    /// 2. Function is self-recursive with decreasing arguments (monotonically decreasing)
+    fn can_narrow_param(&self, func: &MirFunction, param_idx: usize) -> bool {
+        // Only narrow i64 parameters
+        if func.params.get(param_idx).map(|(_, ty)| ty) != Some(&MirType::I64) {
+            return false;
+        }
+
+        let func_name = &func.name;
+        let Some(consts) = self.call_site_constants.get(func_name) else {
+            return false;
+        };
+
+        // Find maximum constant value for this parameter across all call sites
+        let max_val: Option<i64> = consts
+            .iter()
+            .filter(|(idx, _)| *idx == param_idx)
+            .map(|(_, v)| *v)
+            .max();
+
+        let Some(max_val) = max_val else {
+            return false;
+        };
+
+        // Check if max value fits in i32 (and is non-negative for decreasing recursive patterns)
+        if max_val > i32::MAX as i64 || max_val < 0 {
+            return false;
+        }
+
+        // Check if function is self-recursive with decreasing arguments
+        self.is_decreasing_recursive(func, param_idx)
+    }
+
+    /// Check if the parameter decreases (or stays same) in all recursive calls
+    /// Patterns detected:
+    /// - `f(n-1)`, `f(n-2)` - subtracting positive constants
+    /// - `f(n/2)` - division by constant > 1
+    fn is_decreasing_recursive(&self, func: &MirFunction, param_idx: usize) -> bool {
+        let param_name = &func.params[param_idx].0;
+        let mut has_self_recursion = false;
+
+        // Build a map of variable definitions to track expressions
+        let mut definitions: HashMap<String, (&MirBinOp, &Operand, &Operand)> = HashMap::new();
+
+        for block in &func.blocks {
+            for inst in &block.instructions {
+                // Track BinOp definitions
+                if let MirInst::BinOp { dest, op, lhs, rhs } = inst {
+                    definitions.insert(dest.name.clone(), (op, lhs, rhs));
+                }
+
+                // Check self-recursive calls
+                if let MirInst::Call { func: callee, args, .. } = inst {
+                    if callee == &func.name {
+                        has_self_recursion = true;
+
+                        // Check if the argument at param_idx is decreasing
+                        if let Some(arg) = args.get(param_idx) {
+                            if !self.is_decreasing_operand(arg, param_name, &definitions) {
+                                return false;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Must have at least one self-recursive call to benefit from narrowing
+        has_self_recursion
+    }
+
+    /// Check if an operand represents a value that is <= the parameter value
+    fn is_decreasing_operand(
+        &self,
+        operand: &Operand,
+        param_name: &str,
+        definitions: &HashMap<String, (&MirBinOp, &Operand, &Operand)>,
+    ) -> bool {
+        match operand {
+            // Direct use of parameter (n) - same value, OK
+            Operand::Place(p) if p.name == param_name => true,
+            // Constant <= 0 is always decreasing from non-negative param
+            Operand::Constant(Constant::Int(v)) if *v >= 0 => true,
+            // Check if it's a derived value
+            Operand::Place(p) => {
+                if let Some((op, lhs, rhs)) = definitions.get(&p.name) {
+                    match op {
+                        // param - positive_const is decreasing
+                        MirBinOp::Sub => {
+                            let lhs_is_param = matches!(lhs, Operand::Place(l) if l.name == param_name);
+                            let rhs_is_positive = matches!(rhs, Operand::Constant(Constant::Int(v)) if *v > 0);
+                            // Also check if lhs is another decreasing value
+                            let lhs_decreasing = self.is_decreasing_operand(lhs, param_name, definitions);
+                            (lhs_is_param || lhs_decreasing) && rhs_is_positive
+                        }
+                        // param / constant > 1 is decreasing
+                        MirBinOp::Div => {
+                            let lhs_is_param = matches!(lhs, Operand::Place(l) if l.name == param_name);
+                            let lhs_decreasing = self.is_decreasing_operand(lhs, param_name, definitions);
+                            let rhs_is_divisor = matches!(rhs, Operand::Constant(Constant::Int(v)) if *v > 1);
+                            (lhs_is_param || lhs_decreasing) && rhs_is_divisor
+                        }
+                        _ => false,
+                    }
+                } else {
+                    false
+                }
+            }
+            _ => false,
+        }
+    }
+
+    /// Apply type narrowing to a function: change i64 parameter to i32
+    ///
+    /// The key insight: just changing the MIR parameter type from I64 to I32
+    /// causes the LLVM codegen to generate 32-bit operations:
+    /// - `leaq -1(%rdi), %rcx` becomes `leal -1(%edi), %ecx`
+    /// - `cmpq $3, %rdi` becomes `cmpl $3, %edi`
+    ///
+    /// This eliminates the 8% performance gap vs C on fibonacci-like benchmarks.
+    fn narrow_function(&self, func: &mut MirFunction, param_idx: usize) -> bool {
+        let _param_name = func.params[param_idx].0.clone();
+
+        // Change parameter type to i32
+        // The LLVM codegen automatically handles:
+        // - 32-bit arithmetic operations on the parameter
+        // - Sign extension when returning i64 from i32 computation
+        func.params[param_idx].1 = MirType::I32;
+
+        true
+    }
+
+    /// Get the optimization name
+    pub fn name(&self) -> &'static str {
+        "constant_propagation_narrowing"
+    }
+
+    /// Run on the entire program (interprocedural pass)
+    pub fn run_on_program(&self, program: &mut MirProgram) -> bool {
+        let mut changed = false;
+
+        // Clone the struct to allow mutable iteration
+        let narrowable: Vec<(String, usize)> = program
+            .functions
+            .iter()
+            .flat_map(|func| {
+                (0..func.params.len())
+                    .filter(|&idx| self.can_narrow_param(func, idx))
+                    .map(|idx| (func.name.clone(), idx))
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+
+        for (func_name, param_idx) in narrowable {
+            if let Some(func) = program.functions.iter_mut().find(|f| f.name == func_name) {
+                if self.narrow_function(func, param_idx) {
+                    changed = true;
+                }
+            }
+        }
+
+        changed
+    }
+}
+
+// ============================================================================
+// v0.51.8: Aggressive Inlining Pass
+// Marks small, simple functions for alwaysinline LLVM attribute
+// ============================================================================
+
+/// AggressiveInlining: Marks small functions for LLVM alwaysinline attribute
+///
+/// This pass identifies functions that should be aggressively inlined:
+/// - Functions with ≤ MAX_INLINE_INSTRUCTIONS instructions (default: 15)
+/// - Pure functions (no side effects) with ≤ MAX_PURE_INLINE_INSTRUCTIONS (default: 20)
+/// - Functions with single basic block preferred
+///
+/// Marking with alwaysinline ensures LLVM inlines these at all call sites,
+/// eliminating function call overhead in tight loops (e.g., spectral_norm inner loop).
+#[derive(Default)]
+pub struct AggressiveInlining {
+    /// Maximum instructions for regular functions to be inlined
+    max_instructions: usize,
+    /// Maximum instructions for pure functions (higher threshold since safer to inline)
+    max_pure_instructions: usize,
+}
+
+impl AggressiveInlining {
+    /// Default threshold: 15 instructions for regular, 20 for pure functions
+    pub fn new() -> Self {
+        Self {
+            max_instructions: 15,
+            max_pure_instructions: 20,
+        }
+    }
+
+    /// Create with custom thresholds
+    pub fn with_thresholds(max_instructions: usize, max_pure_instructions: usize) -> Self {
+        Self {
+            max_instructions,
+            max_pure_instructions,
+        }
+    }
+
+    /// Get the optimization name
+    pub fn name(&self) -> &'static str {
+        "aggressive_inlining"
+    }
+
+    /// Count total instructions in a function
+    fn count_instructions(func: &MirFunction) -> usize {
+        func.blocks.iter().map(|b| b.instructions.len()).sum()
+    }
+
+    /// Check if a function has only simple, inlinable instructions
+    /// (no loops detected via back edges, no complex control flow)
+    fn is_simple_control_flow(func: &MirFunction) -> bool {
+        // Single block is always simple
+        if func.blocks.len() == 1 {
+            return true;
+        }
+
+        // Check for back edges (loops) - functions with loops are less beneficial to inline
+        // A back edge exists if a block jumps to a label that appears earlier
+        let label_indices: std::collections::HashMap<&str, usize> = func
+            .blocks
+            .iter()
+            .enumerate()
+            .map(|(i, b)| (b.label.as_str(), i))
+            .collect();
+
+        for (idx, block) in func.blocks.iter().enumerate() {
+            let targets = match &block.terminator {
+                Terminator::Goto(target) => vec![target.as_str()],
+                Terminator::Branch { then_label, else_label, .. } => {
+                    vec![then_label.as_str(), else_label.as_str()]
+                }
+                Terminator::Switch { cases, default, .. } => {
+                    let mut targets: Vec<&str> = cases.iter().map(|(_, l)| l.as_str()).collect();
+                    targets.push(default.as_str());
+                    targets
+                }
+                _ => vec![],
+            };
+
+            for target in targets {
+                if let Some(&target_idx) = label_indices.get(target) {
+                    // Back edge detected - this is a loop
+                    if target_idx <= idx {
+                        return false;
+                    }
+                }
+            }
+        }
+
+        // Few blocks is simple enough
+        func.blocks.len() <= 4
+    }
+
+    /// Check if function is recursive (calls itself)
+    /// Recursive functions should NOT be marked alwaysinline because LLVM has
+    /// sophisticated recursive-to-iterative transformations that are more valuable
+    fn is_recursive(func: &MirFunction) -> bool {
+        for block in &func.blocks {
+            for inst in &block.instructions {
+                if let MirInst::Call { func: callee, .. } = inst {
+                    if callee == &func.name {
+                        return true;
+                    }
+                }
+            }
+        }
+        false
+    }
+
+    /// Check if function should be marked for aggressive inlining
+    fn should_inline(&self, func: &MirFunction) -> bool {
+        // Never inline main function
+        if func.name == "main" || func.name == "bmb_user_main" {
+            return false;
+        }
+
+        // v0.51.12: Never inline recursive functions
+        // LLVM's recursive-to-iterative transformation is more valuable than inlining
+        // For example, LLVM can transform fib(n) = fib(n-1) + fib(n-2) into a loop
+        if Self::is_recursive(func) {
+            return false;
+        }
+
+        let inst_count = Self::count_instructions(func);
+        let is_simple = Self::is_simple_control_flow(func);
+
+        // Pure functions get higher threshold
+        let threshold = if func.is_pure {
+            self.max_pure_instructions
+        } else {
+            self.max_instructions
+        };
+
+        // Must be below threshold and have simple control flow
+        inst_count <= threshold && is_simple
+    }
+
+    /// Run on the entire program (interprocedural pass)
+    pub fn run_on_program(&self, program: &mut MirProgram) -> bool {
+        let mut changed = false;
+
+        for func in &mut program.functions {
+            if !func.always_inline && self.should_inline(func) {
+                func.always_inline = true;
+                changed = true;
+            }
+        }
+
+        changed
+    }
+}
+
+// ============================================================================
+// v0.51.11: Memory Effect Analysis Pass
+// Detects functions that don't access memory (pure arithmetic only)
+// Enables LLVM memory(none) attribute for better LICM
+// ============================================================================
+
+/// Memory effect analysis: detects functions that have no memory side effects
+/// Such functions can get the LLVM memory(none) attribute, enabling better optimization
+pub struct MemoryEffectAnalysis;
+
+impl MemoryEffectAnalysis {
+    pub fn new() -> Self {
+        Self
+    }
+
+    pub fn name(&self) -> &'static str {
+        "memory_effect_analysis"
+    }
+
+    /// Check if an instruction accesses memory or calls functions
+    fn inst_accesses_memory(inst: &MirInst) -> bool {
+        match inst {
+            // Function calls might access memory
+            MirInst::Call { .. } => true,
+            // Array/struct operations access memory
+            MirInst::IndexLoad { .. }
+            | MirInst::IndexStore { .. }
+            | MirInst::FieldAccess { .. }
+            | MirInst::FieldStore { .. }
+            | MirInst::ArrayInit { .. }
+            | MirInst::StructInit { .. }
+            | MirInst::EnumVariant { .. } => true,
+            // Pure operations don't access memory
+            MirInst::BinOp { .. }
+            | MirInst::UnaryOp { .. }
+            | MirInst::Const { .. }
+            | MirInst::Copy { .. }
+            | MirInst::Phi { .. }
+            | MirInst::Cast { .. } => false,
+        }
+    }
+
+    /// Check if a function is memory-free (no memory accesses)
+    fn is_memory_free(func: &MirFunction) -> bool {
+        // Skip main since it will call other functions
+        if func.name == "main" {
+            return false;
+        }
+
+        // Check all instructions in all blocks
+        for block in &func.blocks {
+            for inst in &block.instructions {
+                if Self::inst_accesses_memory(inst) {
+                    return false;
+                }
+            }
+        }
+
+        true
+    }
+
+    /// Run on the entire program (interprocedural pass)
+    pub fn run_on_program(&self, program: &mut MirProgram) -> bool {
+        let mut changed = false;
+
+        for func in &mut program.functions {
+            if !func.is_memory_free && Self::is_memory_free(func) {
+                func.is_memory_free = true;
+                changed = true;
+            }
+        }
+
+        changed
+    }
+}
+
+// ============================================================================
+// v0.51.16: Loop Invariant Code Motion (LICM)
+// Hoists loop-invariant calls (like len()) to loop preheaders
+// ============================================================================
+
+/// LoopInvariantCodeMotion: Hoists invariant computations out of loops
+///
+/// After TailRecursiveToLoop converts recursive calls to loops, we often have:
+/// ```text
+/// loop_header:
+///   %pos_loop = phi [%start, entry], [%next, loop_body]
+///   %len = call len(%s)         ; <-- Called EVERY iteration!
+///   %cmp = icmp sge %pos_loop, %len
+///   ...
+/// ```
+///
+/// This pass hoists the `len(%s)` call to the entry block since `%s` is loop-invariant:
+/// ```text
+/// entry:
+///   %len_hoisted = call len(%s)  ; <-- Called ONCE
+///   br loop_header
+/// loop_header:
+///   %pos_loop = phi [%start, entry], [%next, loop_body]
+///   %cmp = icmp sge %pos_loop, %len_hoisted
+///   ...
+/// ```
+///
+/// Affected benchmarks: http_parse (218%), csv_parse (151%), lexer (113%)
+pub struct LoopInvariantCodeMotion {
+    /// Functions known to be pure (safe to hoist)
+    pure_functions: HashSet<String>,
+}
+
+impl LoopInvariantCodeMotion {
+    pub fn new() -> Self {
+        let mut pure_functions = HashSet::new();
+        // String functions that only read their arguments
+        pure_functions.insert("len".to_string());
+        pure_functions.insert("char_at".to_string());
+        pure_functions.insert("ord".to_string());
+        pure_functions.insert("byte_at".to_string());
+        Self { pure_functions }
+    }
+}
+
+impl Default for LoopInvariantCodeMotion {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl OptimizationPass for LoopInvariantCodeMotion {
+    fn name(&self) -> &'static str {
+        "loop_invariant_code_motion"
+    }
+
+    fn run_on_function(&self, func: &mut MirFunction) -> bool {
+        // Collect parameter names as loop-invariant values
+        let params: HashSet<String> = func.params.iter().map(|(n, _)| n.clone()).collect();
+
+        // Find loop headers (blocks with phi nodes that have back edges)
+        // A loop header is identified by having phi nodes where one predecessor
+        // comes from a later block (the back edge)
+        let mut loop_headers: Vec<usize> = Vec::new();
+
+        // Build block index map
+        let block_map: HashMap<&str, usize> = func.blocks.iter()
+            .enumerate()
+            .map(|(i, b)| (b.label.as_str(), i))
+            .collect();
+
+        for (block_idx, block) in func.blocks.iter().enumerate() {
+            // Check if this block has phi nodes
+            let has_phi = block.instructions.iter().any(|i| matches!(i, MirInst::Phi { .. }));
+            if !has_phi {
+                continue;
+            }
+
+            // Check if any phi source is from a later block (back edge)
+            for inst in &block.instructions {
+                if let MirInst::Phi { values, .. } = inst {
+                    for (_, label) in values {
+                        if let Some(&pred_idx) = block_map.get(label.as_str()) {
+                            if pred_idx > block_idx {
+                                // This is a loop header with back edge from pred_idx
+                                loop_headers.push(block_idx);
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if loop_headers.is_empty() {
+            return false;
+        }
+
+        let mut changed = false;
+
+        // For each loop header, find calls to pure functions with invariant args
+        for &header_idx in &loop_headers {
+            // Find the entry block that jumps to this header
+            // Usually it's the block at index 0 or header_idx - 1
+            let entry_idx = if header_idx > 0 { header_idx - 1 } else { continue };
+
+            // Verify it's the entry block by checking it jumps to the header
+            let jumps_to_header = match &func.blocks[entry_idx].terminator {
+                Terminator::Goto(label) => *label == func.blocks[header_idx].label,
+                _ => false,
+            };
+
+            if !jumps_to_header {
+                continue;
+            }
+
+            let header = &func.blocks[header_idx];
+            let mut to_hoist: Vec<(usize, MirInst)> = Vec::new();
+            let mut hoisted_mapping: HashMap<String, String> = HashMap::new();
+
+            // Find invariant calls in the header (skip phi nodes first)
+            for (inst_idx, inst) in header.instructions.iter().enumerate() {
+                if let MirInst::Call { dest: Some(dest), func: callee, args, is_tail: false } = inst {
+                    // Only hoist known pure functions
+                    if !self.pure_functions.contains(callee) {
+                        continue;
+                    }
+
+                    // Check if all arguments are loop-invariant
+                    let all_invariant = args.iter().all(|arg| {
+                        match arg {
+                            Operand::Place(p) => {
+                                // Invariant if it's a parameter or defined in entry
+                                params.contains(&p.name)
+                            }
+                            Operand::Constant(_) => true,
+                        }
+                    });
+
+                    if all_invariant {
+                        // Create hoisted version
+                        let hoisted_dest = Place::new(format!("{}_hoisted", dest.name));
+                        let hoisted_inst = MirInst::Call {
+                            dest: Some(hoisted_dest.clone()),
+                            func: callee.clone(),
+                            args: args.clone(),
+                            is_tail: false,
+                        };
+                        to_hoist.push((inst_idx, hoisted_inst));
+                        hoisted_mapping.insert(dest.name.clone(), hoisted_dest.name);
+                    }
+                }
+            }
+
+            if to_hoist.is_empty() {
+                continue;
+            }
+
+            changed = true;
+
+            // Add hoisted instructions to the entry block (before terminator)
+            for (_, hoisted_inst) in &to_hoist {
+                // Add the local for the hoisted variable
+                if let MirInst::Call { dest: Some(dest), .. } = hoisted_inst {
+                    // Find the type from the original - assume i64 for len
+                    func.locals.push((dest.name.clone(), MirType::I64));
+                }
+                func.blocks[entry_idx].instructions.push(hoisted_inst.clone());
+            }
+
+            // Replace original calls with copies from hoisted values
+            let header = &mut func.blocks[header_idx];
+
+            for (original_idx, _) in to_hoist.iter().rev() {
+                if let MirInst::Call { dest: Some(dest), .. } = &header.instructions[*original_idx] {
+                    let hoisted_name = hoisted_mapping.get(&dest.name).unwrap();
+                    header.instructions[*original_idx] = MirInst::Copy {
+                        dest: dest.clone(),
+                        src: Place::new(hoisted_name.clone()),
+                    };
+                }
+            }
+
+            // Also update references in subsequent instructions in all loop blocks
+            // Find all blocks that belong to this loop (blocks between header and back edge source)
+            for block in &mut func.blocks[header_idx..] {
+                for inst in &mut block.instructions {
+                    // Skip the copy instructions we just created
+                    if let MirInst::Copy { dest, src } = inst {
+                        if hoisted_mapping.get(&dest.name) == Some(&src.name) {
+                            continue;
+                        }
+                    }
+
+                    // Replace references to original with hoisted
+                    Self::substitute_hoisted_refs(inst, &hoisted_mapping);
+                }
+
+                // Also check terminator
+                if let Terminator::Branch { cond, .. } = &mut block.terminator {
+                    if let Operand::Place(p) = cond {
+                        if let Some(hoisted) = hoisted_mapping.get(&p.name) {
+                            *p = Place::new(hoisted.clone());
+                        }
+                    }
+                }
+            }
+        }
+
+        changed
+    }
+}
+
+impl LoopInvariantCodeMotion {
+    fn substitute_hoisted_refs(inst: &mut MirInst, mapping: &HashMap<String, String>) {
+        match inst {
+            MirInst::BinOp { lhs, rhs, .. } => {
+                Self::substitute_operand(lhs, mapping);
+                Self::substitute_operand(rhs, mapping);
+            }
+            MirInst::UnaryOp { src, .. } => {
+                Self::substitute_operand(src, mapping);
+            }
+            MirInst::Call { args, .. } => {
+                for arg in args {
+                    Self::substitute_operand(arg, mapping);
+                }
+            }
+            MirInst::Phi { values, .. } => {
+                for (val, _) in values {
+                    Self::substitute_operand(val, mapping);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn substitute_operand(op: &mut Operand, mapping: &HashMap<String, String>) {
+        if let Operand::Place(p) = op {
+            if let Some(hoisted) = mapping.get(&p.name) {
+                p.name = hoisted.clone();
+            }
+        }
     }
 }
 
@@ -1980,6 +3769,8 @@ mod tests {
             postconditions: vec![],
             is_pure: false,
             is_const: false,
+            always_inline: false,
+            is_memory_free: false,
         }
     }
 
@@ -2021,6 +3812,8 @@ mod tests {
             postconditions: vec![],
             is_pure: false,
             is_const: false,
+            always_inline: false,
+            is_memory_free: false,
         };
 
         let pass = DeadCodeElimination;
@@ -2075,6 +3868,8 @@ mod tests {
             postconditions: vec![],
             is_pure: false,
             is_const: false,
+            always_inline: false,
+            is_memory_free: false,
         };
 
         let pass = ContractBasedOptimization;
@@ -2119,6 +3914,8 @@ mod tests {
             postconditions: vec![],
             is_pure: false,
             is_const: false,
+            always_inline: false,
+            is_memory_free: false,
         };
 
         let pass = ContractBasedOptimization;
@@ -2183,6 +3980,8 @@ mod tests {
             postconditions: vec![],
             is_pure: false,
             is_const: false,
+            always_inline: false,
+            is_memory_free: false,
         };
 
         let pass = ContractUnreachableElimination;
@@ -2243,6 +4042,8 @@ mod tests {
             postconditions: vec![],
             is_pure: false,
             is_const: false,
+            always_inline: false,
+            is_memory_free: false,
         };
 
         let pass = ContractUnreachableElimination;
@@ -2291,6 +4092,8 @@ mod tests {
             postconditions: vec![],
             is_pure: false,
             is_const: false,
+            always_inline: false,
+            is_memory_free: false,
         };
 
         let pass = ContractUnreachableElimination;
@@ -2342,6 +4145,8 @@ mod tests {
             postconditions: vec![],
             is_pure: false,
             is_const: false,
+            always_inline: false,
+            is_memory_free: false,
         };
 
         // Create a pure function set containing "square"
@@ -2394,6 +4199,8 @@ mod tests {
             postconditions: vec![],
             is_pure: false,
             is_const: false,
+            always_inline: false,
+            is_memory_free: false,
         };
 
         let mut pure_functions = HashSet::new();
@@ -2434,6 +4241,8 @@ mod tests {
             postconditions: vec![],
             is_pure: false,
             is_const: false,
+            always_inline: false,
+            is_memory_free: false,
         };
 
         // Empty pure function set - no functions are pure
@@ -2463,6 +4272,8 @@ mod tests {
             postconditions: vec![],
             is_pure: true,
             is_const: true,
+        always_inline: false,
+            is_memory_free: false,
         };
 
         let mut caller_fn = MirFunction {
@@ -2492,6 +4303,8 @@ mod tests {
             postconditions: vec![],
             is_pure: false,
             is_const: false,
+            always_inline: false,
+            is_memory_free: false,
         };
 
         // Create program with both functions
@@ -2540,6 +4353,8 @@ mod tests {
             postconditions: vec![],
             is_pure: true,
             is_const: true,
+        always_inline: false,
+            is_memory_free: false,
         };
 
         let mut caller_fn = MirFunction {
@@ -2561,6 +4376,8 @@ mod tests {
             postconditions: vec![],
             is_pure: false,
             is_const: false,
+            always_inline: false,
+            is_memory_free: false,
         };
 
         let program = MirProgram {
@@ -2603,6 +4420,8 @@ mod tests {
             postconditions: vec![],
             is_pure: false,
             is_const: false,
+            always_inline: false,
+            is_memory_free: false,
         };
 
         let pass = AlgebraicSimplification;
@@ -2639,6 +4458,8 @@ mod tests {
             postconditions: vec![],
             is_pure: false,
             is_const: false,
+            always_inline: false,
+            is_memory_free: false,
         };
 
         let pass = AlgebraicSimplification;
@@ -2675,6 +4496,8 @@ mod tests {
             postconditions: vec![],
             is_pure: false,
             is_const: false,
+            always_inline: false,
+            is_memory_free: false,
         };
 
         let pass = AlgebraicSimplification;
@@ -2710,6 +4533,8 @@ mod tests {
             postconditions: vec![],
             is_pure: false,
             is_const: false,
+            always_inline: false,
+            is_memory_free: false,
         };
 
         let pass = AlgebraicSimplification;
@@ -2745,6 +4570,8 @@ mod tests {
             postconditions: vec![],
             is_pure: false,
             is_const: false,
+            always_inline: false,
+            is_memory_free: false,
         };
 
         let pass = AlgebraicSimplification;
@@ -2780,6 +4607,8 @@ mod tests {
             postconditions: vec![],
             is_pure: false,
             is_const: false,
+            always_inline: false,
+            is_memory_free: false,
         };
 
         let pass = AlgebraicSimplification;
@@ -2790,6 +4619,576 @@ mod tests {
         assert!(
             matches!(inst, MirInst::BinOp { .. }),
             "x + 1 should remain as BinOp"
+        );
+    }
+
+    #[test]
+    fn test_constant_propagation_narrowing() {
+        // Test: fibonacci-like pattern should narrow i64 parameter to i32
+        //
+        // fibonacci(n: i64) called with fibonacci(35) from main
+        // Recursive calls: fibonacci(n-1), fibonacci(n-2)
+        // Since n starts at 35 and only decreases, all values fit in i32
+        //
+        // This optimization produces 32-bit x86 instructions instead of 64-bit,
+        // closing the 8% performance gap vs C.
+
+        // Create fibonacci function (simplified)
+        let fib_func = MirFunction {
+            name: "fibonacci".to_string(),
+            params: vec![("n".to_string(), MirType::I64)],
+            ret_ty: MirType::I64,
+            locals: vec![
+                ("sub1".to_string(), MirType::I64),
+                ("sub2".to_string(), MirType::I64),
+            ],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![
+                    // sub1 = n - 1
+                    MirInst::BinOp {
+                        dest: Place::new("sub1"),
+                        op: MirBinOp::Sub,
+                        lhs: Operand::Place(Place::new("n")),
+                        rhs: Operand::Constant(Constant::Int(1)),
+                    },
+                    // sub2 = n - 2
+                    MirInst::BinOp {
+                        dest: Place::new("sub2"),
+                        op: MirBinOp::Sub,
+                        lhs: Operand::Place(Place::new("n")),
+                        rhs: Operand::Constant(Constant::Int(2)),
+                    },
+                    // Recursive call: fibonacci(sub1)
+                    MirInst::Call {
+                        dest: Some(Place::new("r1")),
+                        func: "fibonacci".to_string(),
+                        args: vec![Operand::Place(Place::new("sub1"))],
+                        is_tail: false,
+                    },
+                    // Recursive call: fibonacci(sub2)
+                    MirInst::Call {
+                        dest: Some(Place::new("r2")),
+                        func: "fibonacci".to_string(),
+                        args: vec![Operand::Place(Place::new("sub2"))],
+                        is_tail: false,
+                    },
+                ],
+                terminator: Terminator::Return(Some(Operand::Place(Place::new("r1")))),
+            }],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            is_memory_free: false,
+        };
+
+        // Create main function that calls fibonacci(35)
+        let main_func = MirFunction {
+            name: "main".to_string(),
+            params: vec![],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![MirInst::Call {
+                    dest: Some(Place::new("result")),
+                    func: "fibonacci".to_string(),
+                    args: vec![Operand::Constant(Constant::Int(35))],  // Constant arg that fits in i32
+                    is_tail: false,
+                }],
+                terminator: Terminator::Return(Some(Operand::Place(Place::new("result")))),
+            }],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            is_memory_free: false,
+        };
+
+        // Create program
+        let mut program = MirProgram {
+            functions: vec![fib_func, main_func],
+            extern_fns: vec![],
+        };
+
+        // Run the narrowing pass
+        let narrowing = ConstantPropagationNarrowing::from_program(&program);
+        let changed = narrowing.run_on_program(&mut program);
+
+        // Verify the fibonacci parameter was narrowed from i64 to i32
+        assert!(changed, "Narrowing pass should have made changes");
+
+        let fib = program.functions.iter().find(|f| f.name == "fibonacci").unwrap();
+        assert_eq!(
+            fib.params[0].1,
+            MirType::I32,
+            "fibonacci's n parameter should be narrowed to i32"
+        );
+
+        // main's parameter to fibonacci call is still a constant, unchanged
+        let main = program.functions.iter().find(|f| f.name == "main").unwrap();
+        if let MirInst::Call { args, .. } = &main.blocks[0].instructions[0] {
+            assert!(
+                matches!(args[0], Operand::Constant(Constant::Int(35))),
+                "main's call should still have constant 35"
+            );
+        }
+    }
+
+    #[test]
+    fn test_tail_call_optimization_phi_constant_edge() {
+        // Test the pattern from count_down:
+        // then_0: goto merge
+        // else_1: %_t3 = call f(...); goto merge
+        // merge: %_t1 = phi [I:0, then_0], [%_t3, else_1]; return %_t1
+        //
+        // The phi has one CONSTANT edge and one Place edge.
+        // TCO should still detect the Place edge and mark the call.
+
+        let mut func = MirFunction {
+            name: "count_down".to_string(),
+            params: vec![
+                ("n".to_string(), MirType::I64),
+            ],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![
+                BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![
+                        MirInst::BinOp {
+                            dest: Place::new("cmp"),
+                            op: MirBinOp::Le,
+                            lhs: Operand::Place(Place::new("n")),
+                            rhs: Operand::Constant(Constant::Int(0)),
+                        },
+                    ],
+                    terminator: Terminator::Branch {
+                        cond: Operand::Place(Place::new("cmp")),
+                        then_label: "then_0".to_string(),
+                        else_label: "else_1".to_string(),
+                    },
+                },
+                BasicBlock {
+                    label: "then_0".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Goto("merge_2".to_string()),
+                },
+                BasicBlock {
+                    label: "else_1".to_string(),
+                    instructions: vec![
+                        MirInst::BinOp {
+                            dest: Place::new("_t2"),
+                            op: MirBinOp::Sub,
+                            lhs: Operand::Place(Place::new("n")),
+                            rhs: Operand::Constant(Constant::Int(1)),
+                        },
+                        MirInst::Call {
+                            dest: Some(Place::new("_t3")),
+                            func: "count_down".to_string(),
+                            args: vec![
+                                Operand::Place(Place::new("_t2")),
+                            ],
+                            is_tail: false,
+                        },
+                    ],
+                    terminator: Terminator::Goto("merge_2".to_string()),
+                },
+                BasicBlock {
+                    label: "merge_2".to_string(),
+                    instructions: vec![
+                        MirInst::Phi {
+                            dest: Place::new("_t1"),
+                            values: vec![
+                                (Operand::Constant(Constant::Int(0)), "then_0".to_string()),
+                                (Operand::Place(Place::new("_t3")), "else_1".to_string()),
+                            ],
+                        },
+                    ],
+                    terminator: Terminator::Return(Some(Operand::Place(Place::new("_t1")))),
+                },
+            ],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: true,
+            is_const: false,
+            always_inline: false,
+            is_memory_free: false,
+        };
+
+        let pass = TailCallOptimization::new();
+        let changed = pass.run_on_function(&mut func);
+
+        assert!(changed, "TailCallOptimization should detect the phi-based tail call with constant edge");
+
+        // Find the else_1 block
+        let else_block = func.blocks.iter().find(|b| b.label == "else_1").unwrap();
+
+        // The call should now be marked is_tail = true
+        let has_tail_call = else_block.instructions.iter().any(|inst| {
+            matches!(inst, MirInst::Call { is_tail: true, .. })
+        });
+        assert!(has_tail_call, "The call in else_1 should be marked as tail call");
+
+        // The terminator should now be Return, not Goto
+        assert!(
+            matches!(else_block.terminator, Terminator::Return(_)),
+            "else_1 should now return directly, got {:?}", else_block.terminator
+        );
+    }
+
+    #[test]
+    fn test_tail_call_optimization_phi_pattern() {
+        // Test the phi-based tail call pattern:
+        // else_1: %result = call f(...); goto merge
+        // merge: %phi = phi [...], [%result, else_1]; return %phi
+        //
+        // After TCO, else_1 should be:
+        // else_1: %result = call f(...) is_tail=true; return %result
+
+        let mut func = MirFunction {
+            name: "sum".to_string(),
+            params: vec![
+                ("n".to_string(), MirType::I64),
+                ("acc".to_string(), MirType::I64),
+            ],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![
+                BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![
+                        MirInst::BinOp {
+                            dest: Place::new("cmp"),
+                            op: MirBinOp::Le,
+                            lhs: Operand::Place(Place::new("n")),
+                            rhs: Operand::Constant(Constant::Int(0)),
+                        },
+                    ],
+                    terminator: Terminator::Branch {
+                        cond: Operand::Place(Place::new("cmp")),
+                        then_label: "then_0".to_string(),
+                        else_label: "else_1".to_string(),
+                    },
+                },
+                BasicBlock {
+                    label: "then_0".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Goto("merge_2".to_string()),
+                },
+                BasicBlock {
+                    label: "else_1".to_string(),
+                    instructions: vec![
+                        MirInst::BinOp {
+                            dest: Place::new("new_n"),
+                            op: MirBinOp::Sub,
+                            lhs: Operand::Place(Place::new("n")),
+                            rhs: Operand::Constant(Constant::Int(1)),
+                        },
+                        MirInst::BinOp {
+                            dest: Place::new("new_acc"),
+                            op: MirBinOp::Add,
+                            lhs: Operand::Place(Place::new("acc")),
+                            rhs: Operand::Place(Place::new("n")),
+                        },
+                        MirInst::Call {
+                            dest: Some(Place::new("_t4")),
+                            func: "sum".to_string(),
+                            args: vec![
+                                Operand::Place(Place::new("new_n")),
+                                Operand::Place(Place::new("new_acc")),
+                            ],
+                            is_tail: false, // Should be marked true by TCO
+                        },
+                    ],
+                    terminator: Terminator::Goto("merge_2".to_string()),
+                },
+                BasicBlock {
+                    label: "merge_2".to_string(),
+                    instructions: vec![
+                        MirInst::Phi {
+                            dest: Place::new("_t1"),
+                            values: vec![
+                                (Operand::Place(Place::new("acc")), "then_0".to_string()),
+                                (Operand::Place(Place::new("_t4")), "else_1".to_string()),
+                            ],
+                        },
+                    ],
+                    terminator: Terminator::Return(Some(Operand::Place(Place::new("_t1")))),
+                },
+            ],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: true,
+            is_const: false,
+            always_inline: false,
+            is_memory_free: false,
+        };
+
+        let pass = TailCallOptimization::new();
+        let changed = pass.run_on_function(&mut func);
+
+        assert!(changed, "TailCallOptimization should detect the phi-based tail call");
+
+        // Find the else_1 block
+        let else_block = func.blocks.iter().find(|b| b.label == "else_1").unwrap();
+
+        // The call should now be marked is_tail = true
+        let has_tail_call = else_block.instructions.iter().any(|inst| {
+            matches!(inst, MirInst::Call { is_tail: true, .. })
+        });
+        assert!(has_tail_call, "The call in else_1 should be marked as tail call");
+
+        // The terminator should now be Return, not Goto
+        assert!(
+            matches!(else_block.terminator, Terminator::Return(_)),
+            "else_1 should now return directly, got {:?}", else_block.terminator
+        );
+    }
+
+    #[test]
+    fn test_tail_recursive_to_loop() {
+        // Create a tail-recursive sum function:
+        // fn sum(n, acc) = if n <= 0 { acc } else { sum(n - 1, acc + n) }
+        //
+        // MIR structure after TailCallOptimization:
+        // entry:
+        //   %cmp = n <= 0
+        //   branch %cmp, base_case, recursive
+        // base_case:
+        //   return acc
+        // recursive:
+        //   %new_n = n - 1
+        //   %new_acc = acc + n
+        //   %result = call sum(%new_n, %new_acc) [is_tail=true]
+        //   return %result
+
+        let mut func = MirFunction {
+            name: "sum".to_string(),
+            params: vec![
+                ("n".to_string(), MirType::I64),
+                ("acc".to_string(), MirType::I64),
+            ],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![
+                BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![
+                        MirInst::BinOp {
+                            dest: Place::new("cmp"),
+                            op: MirBinOp::Le,
+                            lhs: Operand::Place(Place::new("n")),
+                            rhs: Operand::Constant(Constant::Int(0)),
+                        },
+                    ],
+                    terminator: Terminator::Branch {
+                        cond: Operand::Place(Place::new("cmp")),
+                        then_label: "base_case".to_string(),
+                        else_label: "recursive".to_string(),
+                    },
+                },
+                BasicBlock {
+                    label: "base_case".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Return(Some(Operand::Place(Place::new("acc")))),
+                },
+                BasicBlock {
+                    label: "recursive".to_string(),
+                    instructions: vec![
+                        MirInst::BinOp {
+                            dest: Place::new("new_n"),
+                            op: MirBinOp::Sub,
+                            lhs: Operand::Place(Place::new("n")),
+                            rhs: Operand::Constant(Constant::Int(1)),
+                        },
+                        MirInst::BinOp {
+                            dest: Place::new("new_acc"),
+                            op: MirBinOp::Add,
+                            lhs: Operand::Place(Place::new("acc")),
+                            rhs: Operand::Place(Place::new("n")),
+                        },
+                        MirInst::Call {
+                            dest: Some(Place::new("result")),
+                            func: "sum".to_string(),
+                            args: vec![
+                                Operand::Place(Place::new("new_n")),
+                                Operand::Place(Place::new("new_acc")),
+                            ],
+                            is_tail: true, // Already marked by TailCallOptimization
+                        },
+                    ],
+                    terminator: Terminator::Return(Some(Operand::Place(Place::new("result")))),
+                },
+            ],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: true,
+            is_const: false,
+            always_inline: false,
+            is_memory_free: false,
+        };
+
+        let pass = TailRecursiveToLoop::new();
+        let changed = pass.run_on_function(&mut func);
+
+        assert!(changed, "TailRecursiveToLoop should transform the function");
+
+        // Verify transformation:
+        // 1. Entry should now just jump to loop_header
+        assert!(
+            matches!(func.blocks[0].terminator, Terminator::Goto(_)),
+            "Entry should jump to loop_header, got {:?}", func.blocks[0].terminator
+        );
+
+        // 2. Loop header should have phi nodes
+        let loop_header = &func.blocks[1];
+        let has_phi = loop_header.instructions.iter().any(|i| matches!(i, MirInst::Phi { .. }));
+        assert!(has_phi, "Loop header should have phi nodes");
+
+        // 3. Recursive block should jump back to loop_header (not call)
+        let recursive_block = func.blocks.iter().find(|b| b.label == "recursive");
+        if let Some(block) = recursive_block {
+            // Should not have a Call instruction anymore
+            let has_call = block.instructions.iter().any(|i| matches!(i, MirInst::Call { .. }));
+            assert!(!has_call, "Recursive block should not have a call after transformation");
+
+            // Should have a Goto back to loop_header
+            assert!(
+                matches!(&block.terminator, Terminator::Goto(label) if label.starts_with("loop_header")),
+                "Recursive block should jump back to loop_header"
+            );
+        }
+    }
+
+    #[test]
+    fn test_memory_load_cse() {
+        // Test that duplicate load_f64 calls with same args are CSE'd
+        let mut func = MirFunction {
+            name: "test".to_string(),
+            params: vec![("ptr".to_string(), MirType::I64)],
+            ret_ty: MirType::F64,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![
+                    // First load: %a = load_f64(%ptr)
+                    MirInst::Call {
+                        dest: Some(Place::new("a")),
+                        func: "load_f64".to_string(),
+                        args: vec![Operand::Place(Place::new("ptr"))],
+                        is_tail: false,
+                    },
+                    // Second load with same args: %b = load_f64(%ptr)
+                    MirInst::Call {
+                        dest: Some(Place::new("b")),
+                        func: "load_f64".to_string(),
+                        args: vec![Operand::Place(Place::new("ptr"))],
+                        is_tail: false,
+                    },
+                    // Different ptr: %c = load_f64(%ptr2) - should NOT be CSE'd
+                    MirInst::Call {
+                        dest: Some(Place::new("c")),
+                        func: "load_f64".to_string(),
+                        args: vec![Operand::Place(Place::new("ptr2"))],
+                        is_tail: false,
+                    },
+                ],
+                terminator: Terminator::Return(Some(Operand::Place(Place::new("a")))),
+            }],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            is_memory_free: false,
+        };
+
+        let pass = MemoryLoadCSE;
+        let changed = pass.run_on_function(&mut func);
+
+        // Should have made changes
+        assert!(changed, "MemoryLoadCSE should have made changes");
+
+        // Second instruction should now be a Copy
+        let second_inst = &func.blocks[0].instructions[1];
+        assert!(
+            matches!(second_inst, MirInst::Copy { dest, src }
+                if dest.name == "b" && src.name == "a"),
+            "Second load should be replaced with copy from first, got {:?}",
+            second_inst
+        );
+
+        // Third instruction should still be a Call (different ptr)
+        let third_inst = &func.blocks[0].instructions[2];
+        assert!(
+            matches!(third_inst, MirInst::Call { func: f, .. } if f == "load_f64"),
+            "Third load should remain a call (different ptr), got {:?}",
+            third_inst
+        );
+    }
+
+    #[test]
+    fn test_memory_load_cse_invalidation_on_store() {
+        // Test that store invalidates the load cache
+        let mut func = MirFunction {
+            name: "test".to_string(),
+            params: vec![("ptr".to_string(), MirType::I64)],
+            ret_ty: MirType::F64,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![
+                    // First load: %a = load_f64(%ptr)
+                    MirInst::Call {
+                        dest: Some(Place::new("a")),
+                        func: "load_f64".to_string(),
+                        args: vec![Operand::Place(Place::new("ptr"))],
+                        is_tail: false,
+                    },
+                    // Store invalidates cache: store_f64(%ptr, %val)
+                    MirInst::Call {
+                        dest: None,
+                        func: "store_f64".to_string(),
+                        args: vec![
+                            Operand::Place(Place::new("ptr")),
+                            Operand::Place(Place::new("val")),
+                        ],
+                        is_tail: false,
+                    },
+                    // Second load after store: %b = load_f64(%ptr) - should NOT be CSE'd
+                    MirInst::Call {
+                        dest: Some(Place::new("b")),
+                        func: "load_f64".to_string(),
+                        args: vec![Operand::Place(Place::new("ptr"))],
+                        is_tail: false,
+                    },
+                ],
+                terminator: Terminator::Return(Some(Operand::Place(Place::new("a")))),
+            }],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            is_memory_free: false,
+        };
+
+        let pass = MemoryLoadCSE;
+        let changed = pass.run_on_function(&mut func);
+
+        // Should NOT have made changes (store invalidates)
+        assert!(!changed, "MemoryLoadCSE should not CSE across store");
+
+        // Third instruction should still be a Call
+        let third_inst = &func.blocks[0].instructions[2];
+        assert!(
+            matches!(third_inst, MirInst::Call { func: f, .. } if f == "load_f64"),
+            "Load after store should not be CSE'd, got {:?}",
+            third_inst
         );
     }
 }

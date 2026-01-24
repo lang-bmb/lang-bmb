@@ -19,9 +19,10 @@ mod optimize;
 pub use lower::lower_program;
 pub use optimize::{
     OptimizationPass, OptimizationPipeline, OptimizationStats, OptLevel,
-    ConstantFolding, DeadCodeElimination, SimplifyBranches,
+    ConstantFolding, DeadCodeElimination, SimplifyBranches, IfElseToSwitch,
     CopyPropagation, CommonSubexpressionElimination, ContractBasedOptimization,
     ContractUnreachableElimination, PureFunctionCSE, ConstFunctionEval,
+    ConstantPropagationNarrowing, AggressiveInlining,
 };
 
 use std::collections::HashMap;
@@ -72,6 +73,12 @@ pub struct MirFunction {
     /// v0.38.4: Function is marked @const (compile-time evaluatable)
     /// Const functions are pure + can be evaluated at compile time with constant args
     pub is_const: bool,
+    /// v0.51.8: Function should be aggressively inlined
+    /// Set by AggressiveInlining pass for small pure functions
+    pub always_inline: bool,
+    /// v0.51.11: Function does not access memory (only arithmetic/comparisons)
+    /// Set by MemoryEffectAnalysis pass. Used for LLVM memory(none) attribute.
+    pub is_memory_free: bool,
 }
 
 /// v0.38: A proven fact from a contract condition
@@ -205,6 +212,14 @@ pub enum MirInst {
         array: Place,
         index: Operand,
         value: Operand,
+    },
+    /// v0.50.80: Type cast: %dest = cast %src from_ty to to_ty
+    /// Generates: sext/zext/trunc/fpext/fptosi/sitofp depending on types
+    Cast {
+        dest: Place,
+        src: Operand,
+        from_ty: MirType,
+        to_ty: MirType,
     },
 }
 
@@ -657,6 +672,9 @@ fn format_mir_inst(inst: &MirInst) -> String {
         }
         MirInst::IndexStore { array, index, value } => {
             format!("%{}[{}] = {}", array.name, format_operand(index), format_operand(value))
+        }
+        MirInst::Cast { dest, src, from_ty, to_ty } => {
+            format!("%{} = cast {} {} to {}", dest.name, format_operand(src), format_mir_type(from_ty), format_mir_type(to_ty))
         }
     }
 }
