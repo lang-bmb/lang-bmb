@@ -1,6 +1,6 @@
 # BMB Benchmark Master Plan
 
-> **Philosophy**: Performance + Stability > Human Convenience
+> **Philosophy**: Performance > Everything
 > **Benchmark Goal**: Verify zero-overhead safety and competitive performance vs C/Rust
 
 ---
@@ -12,9 +12,9 @@
 - Runtime overhead = 0 (all verification at compile-time)
 - If optimization is possible, it MUST be done
 
-### 2. Stability Through Language Complexity
-- Replace runtime checks with type system/contracts
-- Unverifiable → compile error (no runtime cost)
+### 2. Safety as Consequence
+- Safety is not a goal—it's a consequence of pursuing maximum performance
+- Replace runtime checks with compile-time proofs → faster AND safer
 - AI provides complete specifications → compiler optimizes aggressively
 
 ### 3. Verifiable Claims

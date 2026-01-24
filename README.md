@@ -6,6 +6,29 @@ A contract-verified systems programming language.
 
 ---
 
+## Why BMB?
+
+Every language faces this trade-off:
+
+```
+Runtime Overhead ←――――――――――→ Developer Effort
+```
+
+To eliminate runtime overhead, you need exhaustive type annotations, formal proofs, and explicit everything. **For humans, this is unsustainable.**
+
+AI changes the equation. LLMs can write verbose, formally-specified code without complaint.
+
+But AI isn't infinite—context limits, hallucination, and verification needs prevent direct machine code generation.
+
+**BMB is the lowest abstraction level that AI can efficiently produce.**
+
+- Lower than BMB → Context explosion, unverifiable, hallucination
+- Higher than BMB → Runtime overhead unavoidable
+
+This position could not exist before AI.
+
+---
+
 ## The Trade-off
 
 Most languages optimize for humans. BMB doesn't.
@@ -136,6 +159,7 @@ BMB's goal: safe code that generates **identical assembly** to unsafe C.
 | [Specification](docs/SPECIFICATION.md) | Formal language definition |
 | [Language Reference](docs/LANGUAGE_REFERENCE.md) | Complete feature guide |
 | [Architecture](docs/ARCHITECTURE.md) | Compiler internals |
+| [Development](docs/DEVELOPMENT.md) | Development philosophy and guidelines |
 | [Tutorials](docs/tutorials/) | Getting started |
 
 ---
@@ -147,5 +171,6 @@ MIT
 ---
 
 <p align="center">
-  <b>Performance + Stability > Human Convenience</b>
+  <b>Performance > Everything</b><br>
+  <sub>Safety is not a goal—it's a consequence of pursuing maximum performance.</sub>
 </p>

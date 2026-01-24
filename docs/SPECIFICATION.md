@@ -8,15 +8,137 @@
 
 ## 0. Core Philosophy
 
-> **"Sacrifice human convenience to achieve maximum performance AND stability"**
+> **"Performance > Everything"**
 
-BMB is designed for an **AI-first development paradigm**. By prioritizing machine efficiency over human ergonomics, BMB becomes the language that AI can write most effectively.
+### 0.1 Why BMB Exists
 
-### 0.1 The BMB Principle
+#### The Fundamental Question
+
+> **"What should a language look like to achieve Runtime Overhead Zero?"**
+
+Every programming language faces this trade-off:
 
 ```
-Performance + Stability > Human Convenience
+Runtime Overhead ←―――――――――――――――――→ Developer Effort
+      (decrease)                        (increase)
 ```
+
+To eliminate runtime overhead, you need:
+- Complete type annotations on every function
+- Formal proofs for every edge case
+- Explicit memory management
+- Pre/post conditions on every function
+
+**For human developers, this is unsustainable.**
+
+#### Every Language is a Compromise
+
+| Language | Compromise | Cost |
+|----------|------------|------|
+| **C** | Shifts responsibility to developer | Safety abandoned (undefined behavior) |
+| **Rust** | Automates via Borrow Checker | Learning curve, compile times |
+| **Go** | Sidesteps memory issues with GC | Runtime overhead accepted |
+| **Java/C#** | Full embrace of GC + runtime checks | Performance compromised |
+| **Python** | Everything deferred to runtime | Severe performance penalty |
+
+No language has achieved "Runtime Overhead Zero + Human-writable" simultaneously.
+
+This isn't a failure of language designers. It's a **physical constraint of human cognition**.
+
+#### AI Changes the Equation
+
+LLMs fundamentally alter this constraint:
+
+```
+Before:  Runtime Overhead ←→ Developer Effort (human limits)
+After:   Runtime Overhead ←→ AI Effort (AI handles it)
+```
+
+| Painful for Humans | AI's Response |
+|-------------------|---------------|
+| Type annotations everywhere | Does it without complaint |
+| Contracts on every function | Generates consistently |
+| Mathematical proofs | High accuracy |
+| Repetitive, verbose code | No fatigue |
+| Exhaustive edge case enumeration | Systematic coverage |
+
+**Developer effort is no longer the bottleneck.**
+
+#### Why Not Generate Machine Code Directly?
+
+If AI is so capable, why not skip programming languages entirely?
+
+Because **LLMs are not infinite**:
+
+| LLM Limitation | Description |
+|----------------|-------------|
+| **Context Window** | 128K, 1M tokens are still finite |
+| **Token Efficiency** | Longer output = higher cost, slower generation |
+| **Verifiability** | Generated output must be checkable |
+| **Hallucination** | Error rate explodes without abstraction |
+| **Modifiability** | Bug fixes need clear intervention points |
+
+Direct machine code generation fails:
+- 1,000 lines of high-level code = tens of thousands of assembly lines (context explosion)
+- No way to verify correctness of generated machine code
+- Hallucination rate skyrockets without abstraction
+- Debugging becomes impossible
+
+**Conclusion: AI also needs appropriate abstraction.**
+
+#### BMB's Position: The Optimal Abstraction Level
+
+```
+High-level (Python, JavaScript)
+    ↑
+    │  ✓ Token efficient
+    │  ✓ Easy to verify
+    │  ✗ Runtime overhead unavoidable
+    │
+BMB ◀── Optimal point for AI
+    │
+    │  ✓ Runtime Overhead Zero
+    │  ✓ Verifiable (Contracts)
+    │  ✗ Verbose for humans
+    │
+Low-level (Assembly)
+    │
+    │  ✗ Context explosion
+    │  ✗ Unverifiable
+    │  ✗ Hallucination surge
+    ↓
+Machine Code
+```
+
+> **BMB is the lowest abstraction level that AI can efficiently produce.**
+
+- **Lower than BMB**: Context explosion, verification impossible, hallucination
+- **Higher than BMB**: Runtime overhead unavoidable
+
+BMB exists at the intersection of two constraints:
+
+```
+Constraint 1: Runtime Overhead Zero → Must lower abstraction
+Constraint 2: AI limitations → Cannot go too low
+
+Solution: The intersection satisfying both = BMB
+```
+
+### 0.2 The Single Goal
+
+```
+Performance > Everything
+```
+
+**Safety is not a goal—it's a consequence of pursuing maximum performance.**
+
+When you eliminate runtime checks through compile-time proofs, you get both:
+- **Maximum performance**: No runtime overhead
+- **Maximum safety**: Errors caught at compile time
+
+These aren't trade-offs. They're the same thing.
+
+### 0.3 Design Principles
 
 | Principle | Description | Why AI-Friendly |
 |-----------|-------------|-----------------|
@@ -25,7 +147,7 @@ Performance + Stability > Human Convenience
 | **Explicit Everything** | No implicit conversions, no hidden control flow | AI handles verbosity easily |
 | **Contract-Driven** | Formal specifications required for optimization | AI excels at formal specification |
 
-### 0.2 What BMB Eliminates
+### 0.4 What BMB Eliminates
 
 Runtime checks are replaced with **compile-time proofs**:
 
@@ -37,17 +159,18 @@ Runtime checks are replaced with **compile-time proofs**:
 | Type casting | Static types + refinement types | **0%** |
 | Division by zero | `pre divisor != 0` proof | **0%** |
 
-### 0.3 The Trade-off
+### 0.5 The Trade-off
 
-| Sacrifice (Human Convenience) | Gain (Machine Efficiency) |
-|-------------------------------|---------------------------|
+| You Give Up | You Get |
+|-------------|---------|
 | More type annotations | More aggressive optimization |
 | Contracts required | Runtime checks eliminated |
 | Explicit conversions | Predictable performance |
 | More compile errors | Fewer runtime errors |
-| Steeper learning curve | AI handles complexity |
 
-### 0.4 Why This Works for AI
+**Hard to write. Hard to get wrong. And that's what AI prefers.**
+
+### 0.6 Why This Works for AI
 
 Traditional languages optimize for human readability and convenience. BMB inverts this:
 
@@ -56,7 +179,7 @@ Traditional languages optimize for human readability and convenience. BMB invert
 
 The result: A language where AI-generated code is both **correct** and **maximally optimized**.
 
-### 0.5 Value Verification
+### 0.7 Value Verification
 
 BMB's design choices must be **verified through benchmarks**.
 
@@ -71,6 +194,56 @@ bmb verify --zero-overhead bench.bmb   # Assembly comparison
 benchmark-bmb gate 3.1 3.2 3.3         # Performance gate verification
 ```
 
+### 0.8 BMB vs Other Languages
+
+#### Why Not C?
+
+| Aspect | C | BMB |
+|--------|---|-----|
+| **Philosophy** | Trust the programmer | Prove the program |
+| **Safety** | Undefined behavior | Compile-time proofs |
+| **Performance** | Manual optimization | Compiler optimization via contracts |
+| **AI fit** | Dangerous (UB is hard to avoid) | Natural (explicit proofs) |
+
+C achieves zero overhead but sacrifices safety. BMB achieves zero overhead **through** safety proofs.
+
+#### Why Not Rust?
+
+| Aspect | Rust | BMB |
+|--------|------|-----|
+| **Primary goal** | Memory safety | Performance |
+| **Safety mechanism** | Borrow checker | Compile-time contracts |
+| **Developer focus** | Fight the compiler | Specify the invariants |
+| **AI fit** | Complex lifetime annotations | Straightforward contracts |
+
+Rust optimizes for safety and achieves good performance. BMB optimizes for performance and achieves safety as a consequence.
+
+#### Why Not Use Existing Language + AI?
+
+> "Just have AI write careful C or verbose Rust"
+
+| Problem | Description |
+|---------|-------------|
+| **No verification** | AI-generated C has no proof of correctness |
+| **Implicit overhead** | High-level Rust patterns can hide runtime costs |
+| **Hallucination risk** | No language-level contract to catch AI errors |
+| **Optimization ceiling** | Existing compilers don't have contract information |
+
+BMB provides:
+- **Contracts as verification**: AI must provide proofs the compiler checks
+- **Explicit everything**: No hidden costs
+- **Contract-driven optimization**: Compiler uses proofs to eliminate checks
+
+#### BMB's Unique Position
+
+```
+"A language that is difficult for humans to write,
+ possible for AI to write,
+ and achieves Runtime Overhead Zero as a result."
+```
+
+This position **could not exist before AI**.
+
 ---
 
 ## 1. Design Principles
@@ -79,10 +252,12 @@ benchmark-bmb gate 3.1 3.2 3.3         # Performance gate verification
 
 | Priority | Principle | Description |
 |----------|-----------|-------------|
-| **P0** | **Performance** | No syntax that prevents optimization. Contracts enable check elimination. |
-| **P0** | **Zero-Overhead** | Safety = compile-time. Runtime cost = 0. |
-| **P0** | **Correctness** | No implicit/ambiguous behavior. Same syntax = same meaning. |
+| **P0** | **Performance** | The single goal. No syntax that prevents optimization. Contracts enable check elimination. |
+| **—** | **Zero-Overhead** | Consequence of P0. Safety = compile-time. Runtime cost = 0. |
+| **—** | **Correctness** | Consequence of P0. No implicit/ambiguous behavior. Same syntax = same meaning. |
 | **P1** | **LLM Efficiency** | Maximize code generation accuracy through universal conventions. |
+
+> Zero-overhead and correctness are not separate goals—they are automatic consequences of pursuing maximum performance through compile-time verification.
 
 ### 1.2 P0 Rules (Non-negotiable)
 
