@@ -1835,6 +1835,11 @@ fn format_expr(expr: &bmb::ast::Expr) -> String {
             format!("{}.{}", format_expr(&expr.node), field.node)
         }
 
+        // v0.51.23: Field assignment
+        Expr::FieldAssign { object, field, value } => {
+            format!("{}.{} = {}", format_expr(&object.node), field.node, format_expr(&value.node))
+        }
+
         // v0.43: Tuple field access
         Expr::TupleField { expr, index } => {
             format!("{}.{}", format_expr(&expr.node), index)

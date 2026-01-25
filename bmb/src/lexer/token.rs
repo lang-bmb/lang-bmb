@@ -49,6 +49,9 @@ pub enum Token {
     // v0.5 Phase 2: Mutability and loops
     #[token("mut")]
     Mut,
+    // v0.51.23: Store assignment keyword
+    #[token("set")]
+    Set,
     #[token("while")]
     While,
     // v0.5 Phase 3: For loop
@@ -220,6 +223,9 @@ pub enum Token {
     Ident(String),
 
     // Symbols
+    // v0.51.23: Store operator for index/field assignment
+    #[token(":=")]
+    ColonEq,
     #[token(":")]
     Colon,
     #[token("::")]
@@ -355,6 +361,8 @@ impl std::fmt::Display for Token {
             Token::Match => write!(f, "match"),
             Token::New => write!(f, "new"),
             Token::Mut => write!(f, "mut"),
+            // v0.51.23: Store assignment keyword
+            Token::Set => write!(f, "set"),
             Token::While => write!(f, "while"),
             Token::For => write!(f, "for"),
             Token::In => write!(f, "in"),
@@ -385,6 +393,8 @@ impl std::fmt::Display for Token {
             Token::CharLit(c) => write!(f, "'{c}'"),
             Token::Ident(s) => write!(f, "{s}"),
             Token::Colon => write!(f, ":"),
+            // v0.51.23: Store operator
+            Token::ColonEq => write!(f, ":="),
             Token::ColonColon => write!(f, "::"),
             Token::Arrow => write!(f, "->"),
             Token::FatArrow => write!(f, "=>"),

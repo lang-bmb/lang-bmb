@@ -663,19 +663,27 @@ impl WasmCodeGen {
                 }
             }
 
-            MirInst::FieldAccess { dest, base, field } => {
-                // Load field from struct in linear memory
-                writeln!(out, "    ;; field access .{} from ${}", field, base.name)?;
-                // Get base pointer (simplified: just load from base)
+            MirInst::FieldAccess { dest, base, field, field_index } => {
+                // v0.51.23: Load field from struct in linear memory using field_index
+                writeln!(out, "    ;; field access .{}[{}] from ${}", field, field_index, base.name)?;
+                // Get base pointer and add field offset
                 writeln!(out, "    local.get ${}", base.name)?;
+                if *field_index > 0 {
+                    writeln!(out, "    i32.const {}", field_index * 8)?;
+                    writeln!(out, "    i32.add")?;
+                }
                 writeln!(out, "    i64.load")?;
                 writeln!(out, "    local.set ${}", dest.name)?;
             }
 
-            MirInst::FieldStore { base, field, value } => {
-                // Store value to field in struct
-                writeln!(out, "    ;; field store .{}", field)?;
+            MirInst::FieldStore { base, field, field_index, value } => {
+                // v0.51.23: Store value to field in struct using field_index
+                writeln!(out, "    ;; field store .{}[{}]", field, field_index)?;
                 writeln!(out, "    local.get ${}", base.name)?;
+                if *field_index > 0 {
+                    writeln!(out, "    i32.const {}", field_index * 8)?;
+                    writeln!(out, "    i32.add")?;
+                }
                 self.emit_operand(out, value)?;
                 writeln!(out, "    i64.store")?;
             }

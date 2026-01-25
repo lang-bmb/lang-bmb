@@ -186,6 +186,14 @@ pub enum Expr {
         value: Box<Spanned<Expr>>,
     },
 
+    /// Field assignment: `obj.field = value` (v0.51.23)
+    /// Enables mutable struct patterns for C-like performance
+    FieldAssign {
+        object: Box<Spanned<Expr>>,
+        field: Spanned<String>,
+        value: Box<Spanned<Expr>>,
+    },
+
     // v0.5 Phase 8: Method calls
 
     /// Method call: expr.method(args) (v0.5 Phase 8)

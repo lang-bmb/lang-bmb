@@ -422,6 +422,11 @@ impl ContractVerifier {
             Expr::Assign { value, .. } => {
                 self.check_expr_for_conflicts(&value.node, function_index, report);
             }
+            // v0.51.23: Field assignment
+            Expr::FieldAssign { object, value, .. } => {
+                self.check_expr_for_conflicts(&object.node, function_index, report);
+                self.check_expr_for_conflicts(&value.node, function_index, report);
+            }
             Expr::Forall { body, .. } | Expr::Exists { body, .. } => {
                 self.check_expr_for_conflicts(&body.node, function_index, report);
             }

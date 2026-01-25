@@ -30,6 +30,7 @@ extern {
         "new" => Token::New,
         // v0.5 Phase 2
         "mut" => Token::Mut,
+        "set" => Token::Set,  // v0.51.23: Store assignment
         "while" => Token::While,
         // v0.5 Phase 3
         "for" => Token::For,
@@ -101,6 +102,7 @@ extern {
         "ident" => Token::Ident(<String>),
 
         ":" => Token::Colon,
+        ":=" => Token::ColonEq,
         "::" => Token::ColonColon,
         "->" => Token::Arrow,
         "=>" => Token::FatArrow,
@@ -1104,16 +1106,12 @@ SpannedIfExpr: Spanned<Expr> = {
 };
 
 // Block statements (expressions or assignments)
+// v0.51.23: Support variable, index, and field assignments
+// Note: 'set' for index/field assignment is handled in Expr, accessible via SpannedExpr
 BlockStmt: Spanned<Expr> = {
-    // Assignment (v0.5 Phase 2) - only valid in blocks
+    // Simple variable assignment: x = value (v0.5 Phase 2)
     <l:@L> <n:RawIdent> "=" <v:SpannedExpr> <r:@R> => Spanned::new(Expr::Assign {
         name: n,
-        value: Box::new(v),
-    }, Span::new(l, r)),
-    // Index assignment (v0.51): arr[i] = value
-    <l:@L> <arr:SpannedPostfixExpr> "[" <idx:SpannedExpr> "]" "=" <v:SpannedExpr> <r:@R> => Spanned::new(Expr::IndexAssign {
-        array: Box::new(arr),
-        index: Box::new(idx),
         value: Box::new(v),
     }, Span::new(l, r)),
     SpannedExpr,
@@ -1122,6 +1120,23 @@ BlockStmt: Spanned<Expr> = {
 // Expressions (precedence from low to high)
 Expr: Expr = {
     ImpliesExpr,
+    // v0.51.23: Store assignment expression using 'set' keyword
+    // Allows set to appear in any expression context (e.g., after let body)
+    "set" <lhs:SpannedPostfixExpr> "=" <rhs:SpannedExpr> => {
+        match lhs.node {
+            Expr::Index { expr, index } => Expr::IndexAssign {
+                array: expr,
+                index,
+                value: Box::new(rhs),
+            },
+            Expr::FieldAccess { expr, field } => Expr::FieldAssign {
+                object: expr,
+                field,
+                value: Box::new(rhs),
+            },
+            other => panic!("Expected index or field access after 'set', got {:?}", other),
+        }
+    },
     // v0.32: Braced if-else syntax (Rust style)
     "if" <c:SpannedExpr> "{" <t:SpannedExpr> "}" "else" "{" <e:SpannedExpr> "}" => Expr::If {
         cond: Box::new(c),

@@ -348,6 +348,11 @@ impl Backend {
                 self.collect_expr_refs(&index.node, refs);
                 self.collect_expr_refs(&value.node, refs);
             }
+            // v0.51.23: Field assignment
+            Expr::FieldAssign { object, value, .. } => {
+                self.collect_expr_refs(&object.node, refs);
+                self.collect_expr_refs(&value.node, refs);
+            }
             Expr::ArrayLit(elems) => {
                 for elem in elems {
                     self.collect_expr_refs(&elem.node, refs);
@@ -485,6 +490,11 @@ impl Backend {
             Expr::IndexAssign { array, index, value } => {
                 self.collect_locals(&array.node, scope_span, locals);
                 self.collect_locals(&index.node, scope_span, locals);
+                self.collect_locals(&value.node, scope_span, locals);
+            }
+            // v0.51.23: Field assignment
+            Expr::FieldAssign { object, value, .. } => {
+                self.collect_locals(&object.node, scope_span, locals);
                 self.collect_locals(&value.node, scope_span, locals);
             }
             Expr::FieldAccess { expr, .. } | Expr::TupleField { expr, .. } => {
@@ -1413,6 +1423,11 @@ fn format_expr(expr: &Expr) -> String {
 
         Expr::FieldAccess { expr, field } => {
             format!("{}.{}", format_expr(&expr.node), field.node)
+        }
+
+        // v0.51.23: Field assignment
+        Expr::FieldAssign { object, field, value } => {
+            format!("{}.{} = {}", format_expr(&object.node), field.node, format_expr(&value.node))
         }
 
         // v0.43: Tuple field access

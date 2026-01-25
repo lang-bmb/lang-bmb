@@ -473,6 +473,11 @@ pub fn format_expr(expr: &Expr) -> String {
             format!("(. {} {})", format_expr(&expr.node), field.node)
         }
 
+        // v0.51.23: Field assignment
+        Expr::FieldAssign { object, field, value } => {
+            format!("(set-field {} {} {})", format_expr(&object.node), field.node, format_expr(&value.node))
+        }
+
         // v0.43: Tuple field access
         Expr::TupleField { expr, index } => {
             format!("(tuple-field {} {})", format_expr(&expr.node), index)

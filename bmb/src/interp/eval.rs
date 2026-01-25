@@ -509,6 +509,37 @@ impl Interpreter {
                 }
             }
 
+            // v0.51.23: Field assignment
+            Expr::FieldAssign { object, field, value } => {
+                // Get the new value first
+                let new_val = self.eval(value, env)?;
+
+                // The object must be a variable for field assignment to work
+                if let Expr::Var(var_name) = &object.node {
+                    // Get the struct from the environment
+                    let struct_val = env.borrow().get(var_name)
+                        .ok_or_else(|| RuntimeError::undefined_variable(var_name))?;
+
+                    // Modify the field
+                    match struct_val {
+                        Value::Struct(struct_name, mut fields) => {
+                            if !fields.contains_key(&field.node) {
+                                return Err(RuntimeError::type_error("field", &field.node));
+                            }
+                            fields.insert(field.node.clone(), new_val);
+                            // Store the modified struct back
+                            env.borrow_mut().set(var_name, Value::Struct(struct_name, fields));
+                            Ok(Value::Unit)
+                        }
+                        _ => Err(RuntimeError::type_error("struct", struct_val.type_name())),
+                    }
+                } else {
+                    // For complex expressions, we need to recursively handle the assignment
+                    // For now, return an error for unsupported cases
+                    Err(RuntimeError::type_error("variable", "complex expression"))
+                }
+            }
+
             // v0.43: Tuple field access
             Expr::TupleField { expr: tuple_expr, index } => {
                 let tuple_val = self.eval(tuple_expr, env)?;
@@ -1538,6 +1569,35 @@ impl Interpreter {
                             .ok_or_else(|| RuntimeError::type_error("field", &field.node))
                     }
                     _ => Err(RuntimeError::type_error("struct", obj.type_name())),
+                }
+            }
+
+            // v0.51.23: Field assignment (eval_fast version)
+            Expr::FieldAssign { object, field, value } => {
+                // Get the new value first
+                let new_val = self.eval_fast(value)?;
+
+                // The object must be a variable for field assignment to work
+                if let Expr::Var(var_name) = &object.node {
+                    // Get the struct from the scope stack
+                    let struct_val = self.scope_stack.get(var_name)
+                        .ok_or_else(|| RuntimeError::undefined_variable(var_name))?;
+
+                    // Modify the field
+                    match struct_val {
+                        Value::Struct(struct_name, mut fields) => {
+                            if !fields.contains_key(&field.node) {
+                                return Err(RuntimeError::type_error("field", &field.node));
+                            }
+                            fields.insert(field.node.clone(), new_val);
+                            // Store the modified struct back
+                            self.scope_stack.set(var_name, Value::Struct(struct_name, fields));
+                            Ok(Value::Unit)
+                        }
+                        _ => Err(RuntimeError::type_error("struct", struct_val.type_name())),
+                    }
+                } else {
+                    Err(RuntimeError::type_error("variable", "complex expression"))
                 }
             }
 

@@ -2060,6 +2060,93 @@ impl TypeChecker {
                 Ok(Type::Unit)
             }
 
+            // v0.51.23: Field assignment: obj.field = value
+            Expr::FieldAssign { object, field, value } => {
+                let obj_ty = self.infer(&object.node, object.span)?;
+                let value_ty = self.infer(&value.node, value.span)?;
+
+                // Object must be a struct type
+                let field_ty = match &obj_ty {
+                    Type::Named(struct_name) => {
+                        let struct_fields = self.structs.get(struct_name).ok_or_else(|| {
+                            CompileError::type_error(
+                                format!("Cannot assign to field of non-struct type: {}", struct_name),
+                                object.span,
+                            )
+                        })?;
+
+                        // Find the field
+                        let mut found_ty = None;
+                        for (fname, fty) in struct_fields {
+                            if fname == &field.node {
+                                found_ty = Some(fty.clone());
+                                break;
+                            }
+                        }
+
+                        found_ty.ok_or_else(|| {
+                            // v0.60: Suggest similar field names
+                            let field_names: Vec<&str> = struct_fields.iter().map(|(n, _)| n.as_str()).collect();
+                            let suggestion = find_similar_name(&field.node, &field_names, 2);
+                            CompileError::type_error(
+                                format!("Unknown field `{}` on struct `{}`{}", field.node, struct_name, format_suggestion_hint(suggestion)),
+                                field.span,
+                            )
+                        })?
+                    }
+                    Type::Generic { name: struct_name, type_args } => {
+                        // Handle generic struct field assignment
+                        if let Some((type_params, struct_fields)) = self.generic_structs.get(struct_name).cloned() {
+                            // Build type substitution
+                            let mut type_subst: HashMap<String, Type> = HashMap::new();
+                            for (tp, arg) in type_params.iter().zip(type_args.iter()) {
+                                type_subst.insert(tp.name.clone(), (**arg).clone());
+                            }
+
+                            // Find the field and substitute types
+                            let mut found_ty = None;
+                            for (fname, fty) in &struct_fields {
+                                if fname == &field.node {
+                                    found_ty = Some(self.substitute_type(&fty, &type_subst));
+                                    break;
+                                }
+                            }
+
+                            found_ty.ok_or_else(|| {
+                                let field_names: Vec<&str> = struct_fields.iter().map(|(n, _)| n.as_str()).collect();
+                                let suggestion = find_similar_name(&field.node, &field_names, 2);
+                                CompileError::type_error(
+                                    format!("Unknown field `{}` on struct `{}`{}", field.node, struct_name, format_suggestion_hint(suggestion)),
+                                    field.span,
+                                )
+                            })?
+                        } else {
+                            return Err(CompileError::type_error(
+                                format!("Cannot assign to field of non-struct type: {}", obj_ty),
+                                object.span,
+                            ));
+                        }
+                    }
+                    _ => {
+                        return Err(CompileError::type_error(
+                            format!("Cannot assign to field of non-struct type: {}", obj_ty),
+                            object.span,
+                        ));
+                    }
+                };
+
+                // Value must match field type
+                if field_ty != value_ty {
+                    return Err(CompileError::type_error(
+                        format!("Cannot assign {} to field `{}` of type {}", value_ty, field.node, field_ty),
+                        value.span,
+                    ));
+                }
+
+                // FieldAssign returns unit
+                Ok(Type::Unit)
+            }
+
             // v0.5 Phase 8: Method calls
             Expr::MethodCall { receiver, method, args } => {
                 let receiver_ty = self.infer(&receiver.node, receiver.span)?;

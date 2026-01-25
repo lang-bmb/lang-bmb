@@ -263,6 +263,11 @@ impl SmtTranslator {
                 Err(TranslateError::UnsupportedFeature(format!("field access: {}", field.node)))
             }
 
+            // v0.51.23: Field assignment
+            Expr::FieldAssign { field, .. } => {
+                Err(TranslateError::UnsupportedFeature(format!("field assignment: {}", field.node)))
+            }
+
             // v0.43: Tuple field access
             Expr::TupleField { index, .. } => {
                 Err(TranslateError::UnsupportedFeature(format!("tuple field access: .{}", index)))
