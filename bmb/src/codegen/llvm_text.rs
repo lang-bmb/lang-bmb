@@ -326,45 +326,63 @@ impl TextCodeGen {
         writeln!(out)?;
 
         // StringBuilder wrappers
-        writeln!(out, "declare i64 @sb_new()")?;
-        writeln!(out, "declare i64 @sb_push(i64, ptr)")?;
-        writeln!(out, "declare i64 @sb_push_cstr(i64, ptr)")?;  // v0.50.77: zero allocation for string literals
-        writeln!(out, "declare i64 @sb_push_char(i64, i64)")?;
-        writeln!(out, "declare i64 @sb_push_int(i64, i64)")?;  // v0.50.73
-        writeln!(out, "declare i64 @sb_push_escaped(i64, ptr)")?;  // v0.50.74
-        writeln!(out, "declare i64 @sb_len(i64)")?;
-        writeln!(out, "declare ptr @sb_build(i64)")?;
-        writeln!(out, "declare i64 @sb_clear(i64)")?;
+        // v0.51.26: Added nounwind for better optimization
+        writeln!(out, "declare i64 @sb_new() nounwind")?;
+        writeln!(out, "declare i64 @sb_push(i64, ptr) nounwind")?;
+        writeln!(out, "declare i64 @sb_push_cstr(i64, ptr) nounwind")?;  // v0.50.77: zero allocation for string literals
+        writeln!(out, "declare i64 @sb_push_char(i64, i64) nounwind")?;
+        writeln!(out, "declare i64 @sb_push_int(i64, i64) nounwind")?;  // v0.50.73
+        writeln!(out, "declare i64 @sb_push_escaped(i64, ptr) nounwind")?;  // v0.50.74
+        writeln!(out, "declare i64 @sb_len(i64) nounwind willreturn")?;
+        writeln!(out, "declare ptr @sb_build(i64) nounwind")?;
+        writeln!(out, "declare i64 @sb_clear(i64) nounwind")?;
         writeln!(out)?;
 
         // v0.50.36: find_close_paren is now defined in BMB, no extern needed
 
         // v0.34: Math intrinsics for Phase 34.4 Benchmark Gate
+        // v0.51.26: Added more LLVM intrinsics for better optimization
         writeln!(out, "; Runtime declarations - Math intrinsics")?;
         writeln!(out, "declare double @llvm.sqrt.f64(double)")?;
+        writeln!(out, "declare double @llvm.sin.f64(double)")?;
+        writeln!(out, "declare double @llvm.cos.f64(double)")?;
+        writeln!(out, "declare double @llvm.floor.f64(double)")?;
+        writeln!(out, "declare double @llvm.ceil.f64(double)")?;
+        writeln!(out, "declare double @llvm.fabs.f64(double)")?;
+        writeln!(out, "declare double @llvm.pow.f64(double, double)")?;
+        writeln!(out, "declare double @llvm.fma.f64(double, double, double)")?;
         writeln!(out)?;
 
         // v0.34.2: Memory allocation for Phase 34.2 Dynamic Collections
+        // v0.51.26: Added noalias and nounwind for better optimization
         writeln!(out, "; Runtime declarations - Memory allocation")?;
-        writeln!(out, "declare ptr @malloc(i64)")?;
-        writeln!(out, "declare ptr @realloc(ptr, i64)")?;
-        writeln!(out, "declare void @free(ptr)")?;
-        writeln!(out, "declare ptr @calloc(i64, i64)")?;
+        writeln!(out, "declare noalias ptr @malloc(i64) nounwind allocsize(0)")?;
+        writeln!(out, "declare noalias ptr @realloc(ptr, i64) nounwind allocsize(1)")?;
+        writeln!(out, "declare void @free(ptr nocapture) nounwind")?;
+        writeln!(out, "declare noalias ptr @calloc(i64, i64) nounwind allocsize(0,1)")?;
         writeln!(out)?;
 
         // v0.50.70: Vector runtime functions (avoids inline PHI bug)
+        // v0.51.26: Added nounwind attributes for better optimization
         writeln!(out, "; Runtime declarations - Vector")?;
-        writeln!(out, "declare void @bmb_vec_push(i64, i64)")?;
+        writeln!(out, "declare i64 @vec_new() nounwind")?;
+        writeln!(out, "declare void @vec_free(i64) nounwind")?;
+        writeln!(out, "declare i64 @vec_len(i64) nounwind willreturn")?;
+        writeln!(out, "declare i64 @vec_get(i64, i64) nounwind willreturn")?;
+        writeln!(out, "declare void @vec_set(i64, i64, i64) nounwind")?;
+        writeln!(out, "declare void @vec_push(i64, i64) nounwind")?;
+        writeln!(out, "declare void @bmb_vec_push(i64, i64) nounwind")?;
         writeln!(out)?;
 
         // v0.50.64: Hashmap runtime functions
+        // v0.51.26: Added optimization attributes - readonly for get/len, nounwind for all
         writeln!(out, "; Runtime declarations - Hashmap")?;
-        writeln!(out, "declare i64 @hashmap_new()")?;
-        writeln!(out, "declare i64 @hashmap_insert(i64, i64, i64)")?;
-        writeln!(out, "declare i64 @hashmap_get(i64, i64)")?;
-        writeln!(out, "declare i64 @hashmap_remove(i64, i64)")?;
-        writeln!(out, "declare i64 @hashmap_len(i64)")?;
-        writeln!(out, "declare void @hashmap_free(i64)")?;
+        writeln!(out, "declare i64 @hashmap_new() nounwind")?;
+        writeln!(out, "declare i64 @hashmap_insert(i64, i64, i64) nounwind")?;
+        writeln!(out, "declare i64 @hashmap_get(i64, i64) nounwind willreturn")?;
+        writeln!(out, "declare i64 @hashmap_remove(i64, i64) nounwind")?;
+        writeln!(out, "declare i64 @hashmap_len(i64) nounwind willreturn")?;
+        writeln!(out, "declare void @hashmap_free(i64) nounwind")?;
         writeln!(out)?;
 
         Ok(())
@@ -377,6 +395,138 @@ impl TextCodeGen {
         let empty_fn_types = HashMap::new();
         let empty_fn_param_types = HashMap::new();
         self.emit_function_with_strings(out, func, &empty_str_table, &empty_fn_types, &empty_fn_param_types)
+    }
+
+    /// v0.51.25: Check if a specific struct variable escapes the function
+    /// A struct escapes if it's returned, passed to a call, or copied to something that escapes
+    fn check_struct_escapes(&self, func: &MirFunction, struct_name: &str) -> bool {
+        use crate::mir::{Terminator, Operand};
+
+        for block in &func.blocks {
+            // Check if returned
+            if let Terminator::Return(Some(Operand::Place(p))) = &block.terminator {
+                if p.name == struct_name {
+                    return true;
+                }
+            }
+
+            for inst in &block.instructions {
+                match inst {
+                    // Passed to a call
+                    MirInst::Call { args, .. } => {
+                        for arg in args {
+                            if let Operand::Place(p) = arg {
+                                if p.name == struct_name {
+                                    return true;
+                                }
+                            }
+                        }
+                    }
+                    // Copied to another variable (conservative: treat as escape)
+                    MirInst::Copy { src, .. } => {
+                        if src.name == struct_name {
+                            return true;
+                        }
+                    }
+                    // Used in phi node (may be returned through phi)
+                    MirInst::Phi { values, .. } => {
+                        for (val, _) in values {
+                            if let Operand::Place(p) = val {
+                                if p.name == struct_name {
+                                    return true;
+                                }
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        false
+    }
+
+    /// v0.51.25: Escape analysis for struct allocation (batch version)
+    /// Returns set of struct variable names that escape the function (returned or passed to calls)
+    /// These must be heap-allocated, others can use stack allocation
+    #[allow(dead_code)]
+    fn collect_escaped_structs(&self, func: &MirFunction) -> std::collections::HashSet<String> {
+        use crate::mir::{Terminator, Operand};
+        let mut escaped = std::collections::HashSet::new();
+
+        // Find all struct init destinations
+        let mut struct_vars: std::collections::HashSet<String> = std::collections::HashSet::new();
+        for block in &func.blocks {
+            for inst in &block.instructions {
+                if let MirInst::StructInit { dest, .. } = inst {
+                    struct_vars.insert(dest.name.clone());
+                }
+            }
+        }
+
+        // Check what escapes:
+        // 1. Returned values
+        // 2. Call arguments
+        // 3. Values copied to parameters that might escape
+        for block in &func.blocks {
+            // Check terminator for returns
+            if let Terminator::Return(Some(Operand::Place(p))) = &block.terminator {
+                if struct_vars.contains(&p.name) {
+                    escaped.insert(p.name.clone());
+                }
+            }
+
+            // Check instructions for call arguments and assignments
+            for inst in &block.instructions {
+                match inst {
+                    // Calls: any struct passed as argument escapes
+                    MirInst::Call { args, .. } => {
+                        for arg in args {
+                            if let Operand::Place(p) = arg {
+                                if struct_vars.contains(&p.name) {
+                                    escaped.insert(p.name.clone());
+                                }
+                            }
+                        }
+                    }
+                    // Copy: if source is struct and dest might escape, source escapes
+                    MirInst::Copy { dest, src } => {
+                        if struct_vars.contains(&src.name) {
+                            // Conservative: any copy of struct marks it as escaped
+                            escaped.insert(src.name.clone());
+                        }
+                        // Also check if dest was already marked as escaped
+                        if escaped.contains(&dest.name) && struct_vars.contains(&src.name) {
+                            escaped.insert(src.name.clone());
+                        }
+                    }
+                    // Phi: if any incoming value is struct and phi result might escape
+                    MirInst::Phi { dest, values } => {
+                        for (val, _) in values {
+                            if let Operand::Place(p) = val {
+                                if struct_vars.contains(&p.name) {
+                                    // If this phi is returned, the struct escapes
+                                    // Mark it conservatively
+                                    escaped.insert(p.name.clone());
+                                }
+                            }
+                        }
+                        // If dest is escaped, mark all incoming struct values
+                        if escaped.contains(&dest.name) {
+                            for (val, _) in values {
+                                if let Operand::Place(p) = val {
+                                    if struct_vars.contains(&p.name) {
+                                        escaped.insert(p.name.clone());
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        escaped
     }
 
     /// Build a map of place names to their types by pre-scanning instructions
@@ -510,6 +660,9 @@ impl TextCodeGen {
     ) -> TextCodeGenResult<()> {
         // Pre-scan to build place type map
         let place_types = self.build_place_type_map(func, fn_return_types);
+
+        // v0.51.25: Escape analysis is now done inline in emit_instruction_with_strings
+        // via check_struct_escapes() for each StructInit instruction
 
         // v0.51.18: Track narrowed i32 params but DON'T override to i64
         // With proper i32 propagation:
@@ -2251,12 +2404,23 @@ impl TextCodeGen {
             }
 
             // v0.19.0: Struct operations
+            // v0.51.25: Escape analysis for struct allocation
+            // - Escaped structs (returned/passed to calls): malloc (heap)
+            // - Local-only structs: alloca (stack, faster)
             MirInst::StructInit { dest, struct_name, fields } => {
-                // In LLVM, we allocate space for the struct and store each field
-                // For now, treat struct as a pointer (i64) and use insertvalue
-                writeln!(out, "  ; struct {} init with {} fields", struct_name, fields.len())?;
-                // Create zeroinitializer and insertvalue for each field
-                writeln!(out, "  %{} = alloca i64, i32 {}", dest.name, fields.len().max(1))?;
+                // Inline escape analysis: check if this struct escapes the function
+                let escapes = self.check_struct_escapes(func, &dest.name);
+                let num_fields = fields.len().max(1);
+                if escapes {
+                    // Escaped struct: must use heap allocation
+                    let size = num_fields * 8;
+                    writeln!(out, "  ; struct {} init with {} fields (heap - escapes)", struct_name, fields.len())?;
+                    writeln!(out, "  %{} = call ptr @malloc(i64 {})", dest.name, size)?;
+                } else {
+                    // Local struct: can use stack allocation (faster)
+                    writeln!(out, "  ; struct {} init with {} fields (stack - local only)", struct_name, fields.len())?;
+                    writeln!(out, "  %{} = alloca i64, i32 {}", dest.name, num_fields)?;
+                }
                 for (i, (field_name, value)) in fields.iter().enumerate() {
                     let val_str = self.format_operand(value);
                     writeln!(out, "  ; field {} = {}", field_name, val_str)?;
@@ -2267,19 +2431,42 @@ impl TextCodeGen {
                 }
             }
 
-            MirInst::FieldAccess { dest, base, field } => {
-                // Load field from struct pointer
-                writeln!(out, "  ; field access .{} from %{}", field, base.name)?;
-                // For now, just load from base (simplified - needs field offset calculation)
-                writeln!(out, "  %{} = load i64, ptr %{}", dest.name, base.name)?;
+            MirInst::FieldAccess { dest, base, field, field_index } => {
+                // v0.51.23: Load field from struct pointer using correct offset
+                // v0.51.24: Check if base is a parameter (already ptr) or local (needs load from .addr)
+                writeln!(out, "  ; field access .{}[{}] from %{}", field, field_index, base.name)?;
+                let is_param = func.params.iter().any(|(name, _)| name == &base.name);
+                if is_param {
+                    // Parameters are already ptr values - use directly
+                    writeln!(out, "  %{}_ptr = getelementptr i64, ptr %{}, i32 {}",
+                             dest.name, base.name, field_index)?;
+                } else {
+                    // Locals: load struct pointer from variable address
+                    writeln!(out, "  %{}_base_ptr = load ptr, ptr %{}.addr", dest.name, base.name)?;
+                    writeln!(out, "  %{}_ptr = getelementptr i64, ptr %{}_base_ptr, i32 {}",
+                             dest.name, dest.name, field_index)?;
+                }
+                writeln!(out, "  %{} = load i64, ptr %{}_ptr", dest.name, dest.name)?;
             }
 
-            MirInst::FieldStore { base, field, value } => {
-                // Store value to field in struct pointer
+            MirInst::FieldStore { base, field, field_index, value } => {
+                // v0.51.23: Store value to field in struct pointer using correct offset
+                // v0.51.24: Check if base is a parameter (already ptr) or local (needs load from .addr)
                 let val_str = self.format_operand(value);
                 let ty = self.infer_operand_type(value, func);
-                writeln!(out, "  ; field store .{} = {}", field, val_str)?;
-                writeln!(out, "  store {} {}, ptr %{}", ty, val_str, base.name)?;
+                writeln!(out, "  ; field store .{}[{}] = {}", field, field_index, val_str)?;
+                let is_param = func.params.iter().any(|(name, _)| name == &base.name);
+                if is_param {
+                    // Parameters are already ptr values - use directly
+                    writeln!(out, "  %{}_f{}_ptr = getelementptr i64, ptr %{}, i32 {}",
+                             base.name, field_index, base.name, field_index)?;
+                } else {
+                    // Locals: load struct pointer from variable address (unique name per field)
+                    writeln!(out, "  %{}_f{}_base = load ptr, ptr %{}.addr", base.name, field_index, base.name)?;
+                    writeln!(out, "  %{}_f{}_ptr = getelementptr i64, ptr %{}_f{}_base, i32 {}",
+                             base.name, field_index, base.name, field_index, field_index)?;
+                }
+                writeln!(out, "  store {} {}, ptr %{}_f{}_ptr", ty, val_str, base.name, field_index)?;
             }
 
             // v0.19.1: Enum variant
@@ -2333,7 +2520,16 @@ impl TextCodeGen {
             }
 
             // v0.50.60: Fix - load index from local alloca if needed
+            // v0.51.23: Load array pointer from .addr for local variables
             MirInst::IndexLoad { dest, array, index } => {
+                // Load array pointer from .addr if it's a local variable
+                let arr_ptr = if local_names.contains(&array.name) {
+                    writeln!(out, "  %{}_arr_ptr = load ptr, ptr %{}.addr", dest.name, array.name)?;
+                    format!("%{}_arr_ptr", dest.name)
+                } else {
+                    format!("%{}", array.name)
+                };
+
                 let idx_str = if let Operand::Place(p) = index {
                     if local_names.contains(&p.name) {
                         writeln!(out, "  %{}_idx_load = load i64, ptr %{}.addr", dest.name, p.name)?;
@@ -2345,16 +2541,25 @@ impl TextCodeGen {
                     self.format_operand(index)
                 };
                 writeln!(out, "  ; index load %{}[{}]", array.name, idx_str)?;
-                writeln!(out, "  %{}_ptr = getelementptr i64, ptr %{}, i64 {}",
-                         dest.name, array.name, idx_str)?;
+                writeln!(out, "  %{}_ptr = getelementptr i64, ptr {}, i64 {}",
+                         dest.name, arr_ptr, idx_str)?;
                 writeln!(out, "  %{} = load i64, ptr %{}_ptr", dest.name, dest.name)?;
             }
 
             // v0.50.60: Fix - load index and value from local alloca if needed
             // v0.50.72: Fix SSA violation - use unique counter for each IndexStore
+            // v0.51.23: Load array pointer from .addr for local variables
             MirInst::IndexStore { array, index, value } => {
                 let store_cnt = *name_counts.entry(format!("{}_idx_store", array.name)).or_insert(0);
                 *name_counts.entry(format!("{}_idx_store", array.name)).or_insert(0) += 1;
+
+                // Load array pointer from .addr if it's a local variable
+                let arr_ptr = if local_names.contains(&array.name) {
+                    writeln!(out, "  %{}_arr_ptr.{} = load ptr, ptr %{}.addr", array.name, store_cnt, array.name)?;
+                    format!("%{}_arr_ptr.{}", array.name, store_cnt)
+                } else {
+                    format!("%{}", array.name)
+                };
 
                 let idx_str = if let Operand::Place(p) = index {
                     if local_names.contains(&p.name) {
@@ -2378,8 +2583,8 @@ impl TextCodeGen {
                     self.format_operand(value)
                 };
                 writeln!(out, "  ; index store %{}[{}] = {}", array.name, idx_str, val_str)?;
-                writeln!(out, "  %{}_idx_ptr.{} = getelementptr {}, ptr %{}, i64 {}",
-                         array.name, store_cnt, ty, array.name, idx_str)?;
+                writeln!(out, "  %{}_idx_ptr.{} = getelementptr {}, ptr {}, i64 {}",
+                         array.name, store_cnt, ty, arr_ptr, idx_str)?;
                 writeln!(out, "  store {} {}, ptr %{}_idx_ptr.{}", ty, val_str, array.name, store_cnt)?;
             }
 

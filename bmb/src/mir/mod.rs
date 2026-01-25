@@ -177,15 +177,21 @@ pub enum MirInst {
         fields: Vec<(String, Operand)>, // (field_name, value)
     },
     /// v0.19.0: Field access: %dest = %base.field
+    /// v0.51.23: Added field_index for correct getelementptr codegen
     FieldAccess {
         dest: Place,
         base: Place,
         field: String,
+        /// Index of the field in struct definition (for getelementptr offset)
+        field_index: usize,
     },
     /// v0.19.0: Field store: %base.field = %value
+    /// v0.51.23: Added field_index for correct getelementptr codegen
     FieldStore {
         base: Place,
         field: String,
+        /// Index of the field in struct definition (for getelementptr offset)
+        field_index: usize,
         value: Operand,
     },
     /// v0.19.1: Enum variant creation: %dest = EnumName::Variant(args)
@@ -455,6 +461,12 @@ pub struct LoweringContext {
     pub params: HashMap<String, MirType>,
     /// v0.35.4: Function return types for Call type inference
     pub func_return_types: HashMap<String, MirType>,
+    /// v0.51.23: Struct definitions for field index lookup
+    /// Maps struct name -> list of field names (in declaration order)
+    pub struct_defs: HashMap<String, Vec<String>>,
+    /// v0.51.23: Struct type of variables
+    /// Maps variable name -> struct name (for field index lookup)
+    pub var_struct_types: HashMap<String, String>,
 }
 
 impl LoweringContext {
@@ -485,7 +497,24 @@ impl LoweringContext {
             locals: HashMap::new(),
             params: HashMap::new(),
             func_return_types,
+            struct_defs: HashMap::new(),
+            var_struct_types: HashMap::new(),
         }
+    }
+
+    /// v0.51.23: Look up field index for a struct field
+    /// Returns 0 if struct or field not found (fallback for unknown types)
+    pub fn field_index(&self, struct_name: &str, field_name: &str) -> usize {
+        if let Some(fields) = self.struct_defs.get(struct_name) {
+            fields.iter().position(|f| f == field_name).unwrap_or(0)
+        } else {
+            0
+        }
+    }
+
+    /// v0.51.23: Get the struct type of a place (if known)
+    pub fn place_struct_type(&self, place: &Place) -> Option<String> {
+        self.var_struct_types.get(&place.name).cloned()
     }
 
     /// Generate a fresh temporary name
@@ -649,11 +678,11 @@ fn format_mir_inst(inst: &MirInst) -> String {
                 .collect();
             format!("%{} = struct-init {} {{ {} }}", dest.name, struct_name, fields_str.join(", "))
         }
-        MirInst::FieldAccess { dest, base, field } => {
-            format!("%{} = field-access %{}.{}", dest.name, base.name, field)
+        MirInst::FieldAccess { dest, base, field, field_index } => {
+            format!("%{} = field-access %{}.{}[{}]", dest.name, base.name, field, field_index)
         }
-        MirInst::FieldStore { base, field, value } => {
-            format!("%{}.{} = {}", base.name, field, format_operand(value))
+        MirInst::FieldStore { base, field, field_index, value } => {
+            format!("%{}.{}[{}] = {}", base.name, field, field_index, format_operand(value))
         }
         MirInst::EnumVariant { dest, enum_name, variant, args } => {
             if args.is_empty() {

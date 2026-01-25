@@ -2631,14 +2631,16 @@ impl TailRecursiveToLoop {
                     .map(|(name, v)| (name, self.substitute_operand(v, subst)))
                     .collect(),
             },
-            MirInst::FieldAccess { dest, base, field } => MirInst::FieldAccess {
+            MirInst::FieldAccess { dest, base, field, field_index } => MirInst::FieldAccess {
                 dest,
                 base: Place::new(subst.get(&base.name).cloned().unwrap_or(base.name)),
                 field,
+                field_index,
             },
-            MirInst::FieldStore { base, field, value } => MirInst::FieldStore {
+            MirInst::FieldStore { base, field, field_index, value } => MirInst::FieldStore {
                 base: Place::new(subst.get(&base.name).cloned().unwrap_or(base.name)),
                 field,
+                field_index,
                 value: self.substitute_operand(value, subst),
             },
             MirInst::IndexLoad { dest, array, index } => MirInst::IndexLoad {

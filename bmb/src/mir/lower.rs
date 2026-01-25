@@ -14,12 +14,38 @@ use super::{
 
 /// Lower an entire program to MIR
 pub fn lower_program(program: &Program) -> MirProgram {
+    // v0.51.24: Collect struct type definitions FIRST (full type info, not just field names)
+    // This is needed to properly convert Type::Named to MirType::Struct
+    let mut struct_type_defs: std::collections::HashMap<String, Vec<(String, Type)>> = std::collections::HashMap::new();
+    for item in &program.items {
+        if let Item::StructDef(struct_def) = item {
+            let fields: Vec<(String, Type)> = struct_def.fields
+                .iter()
+                .map(|f| (f.name.node.clone(), f.ty.node.clone()))
+                .collect();
+            struct_type_defs.insert(struct_def.name.node.clone(), fields);
+        }
+    }
+
     // v0.35.4: First pass - collect all function return types
+    // v0.51.24: Use struct_type_defs to properly resolve named types
     let mut func_return_types = std::collections::HashMap::new();
     for item in &program.items {
         if let Item::FnDef(fn_def) = item {
-            let ret_ty = ast_type_to_mir(&fn_def.ret_ty.node);
+            let ret_ty = ast_type_to_mir_with_structs(&fn_def.ret_ty.node, &struct_type_defs);
             func_return_types.insert(fn_def.name.node.clone(), ret_ty);
+        }
+    }
+
+    // v0.51.23: Collect struct definitions for field index lookup (field names only)
+    let mut struct_defs = std::collections::HashMap::new();
+    for item in &program.items {
+        if let Item::StructDef(struct_def) = item {
+            let field_names: Vec<String> = struct_def.fields
+                .iter()
+                .map(|f| f.name.node.clone())
+                .collect();
+            struct_defs.insert(struct_def.name.node.clone(), field_names);
         }
     }
 
@@ -27,7 +53,7 @@ pub fn lower_program(program: &Program) -> MirProgram {
         .items
         .iter()
         .filter_map(|item| match item {
-            Item::FnDef(fn_def) => Some(lower_function(fn_def, &func_return_types)),
+            Item::FnDef(fn_def) => Some(lower_function(fn_def, &func_return_types, &struct_defs, &struct_type_defs)),
             // Type definitions, use statements, extern fns, traits, impl blocks, and type aliases don't produce MIR functions
             Item::StructDef(_) | Item::EnumDef(_) | Item::Use(_) | Item::ExternFn(_) |
             Item::TraitDef(_) | Item::ImplBlock(_) | Item::TypeAlias(_) => None,
@@ -89,7 +115,12 @@ fn extract_module_from_attrs(attrs: &[Attribute]) -> String {
 }
 
 /// Lower a function definition to MIR
-fn lower_function(fn_def: &FnDef, func_return_types: &std::collections::HashMap<String, MirType>) -> MirFunction {
+fn lower_function(
+    fn_def: &FnDef,
+    func_return_types: &std::collections::HashMap<String, MirType>,
+    struct_defs: &std::collections::HashMap<String, Vec<String>>,
+    struct_type_defs: &std::collections::HashMap<String, Vec<(String, Type)>>,
+) -> MirFunction {
     let mut ctx = LoweringContext::new();
 
     // v0.35.4: Add user-defined function return types to context
@@ -97,18 +128,30 @@ fn lower_function(fn_def: &FnDef, func_return_types: &std::collections::HashMap<
         ctx.func_return_types.insert(name.clone(), ty.clone());
     }
 
+    // v0.51.23: Add struct definitions for field index lookup
+    for (name, fields) in struct_defs {
+        ctx.struct_defs.insert(name.clone(), fields.clone());
+    }
+
     // Register parameters
+    // v0.51.24: Use ast_type_to_mir_with_structs to properly resolve named struct types
     let params: Vec<(String, MirType)> = fn_def
         .params
         .iter()
         .map(|p| {
-            let ty = ast_type_to_mir(&p.ty.node);
+            let ty = ast_type_to_mir_with_structs(&p.ty.node, struct_type_defs);
             ctx.params.insert(p.name.node.clone(), ty.clone());
+            // v0.51.23: Track struct type for parameters
+            if let Type::Named(struct_name) = &p.ty.node {
+                if ctx.struct_defs.contains_key(struct_name) {
+                    ctx.var_struct_types.insert(p.name.node.clone(), struct_name.clone());
+                }
+            }
             (p.name.node.clone(), ty)
         })
         .collect();
 
-    let ret_ty = ast_type_to_mir(&fn_def.ret_ty.node);
+    let ret_ty = ast_type_to_mir_with_structs(&fn_def.ret_ty.node, struct_type_defs);
 
     // Lower the function body
     let result = lower_expr(&fn_def.body, &mut ctx);
@@ -370,6 +413,10 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
                     });
                 }
                 Operand::Place(src) => {
+                    // v0.51.23: Propagate struct type info for field access tracking
+                    if let Some(struct_name) = ctx.var_struct_types.get(&src.name).cloned() {
+                        ctx.var_struct_types.insert(name.clone(), struct_name);
+                    }
                     ctx.push_inst(MirInst::Copy {
                         dest: var_place,
                         src,
@@ -477,6 +524,10 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
                         _ => MirType::I64,
                     }
                 };
+                // v0.51.24: If return type is a struct, register in var_struct_types for field_index lookup
+                if let MirType::Struct { name: struct_name, .. } = &ret_ty {
+                    ctx.var_struct_types.insert(dest.name.clone(), struct_name.clone());
+                }
                 ctx.locals.insert(dest.name.clone(), ret_ty);
 
                 ctx.push_inst(MirInst::Call {
@@ -522,6 +573,9 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
             // Create destination for the struct
             let dest = ctx.fresh_temp();
 
+            // v0.51.23: Track struct type for the destination
+            ctx.var_struct_types.insert(dest.name.clone(), name.clone());
+
             ctx.push_inst(MirInst::StructInit {
                 dest: dest.clone(),
                 struct_name: name.clone(),
@@ -539,6 +593,11 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
             // Convert operand to place if needed
             let base_place = operand_to_place(base_op, ctx);
 
+            // v0.51.23: Compute field index using struct type info
+            let field_index = ctx.place_struct_type(&base_place)
+                .map(|struct_name| ctx.field_index(&struct_name, &field.node))
+                .unwrap_or(0);
+
             // Create destination for the field value
             let dest = ctx.fresh_temp();
 
@@ -546,6 +605,7 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
                 dest: dest.clone(),
                 base: base_place,
                 field: field.node.clone(),
+                field_index,
             });
 
             Operand::Place(dest)
@@ -883,6 +943,31 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
             Operand::Constant(Constant::Unit)
         }
 
+        // v0.51.23: Field assignment: obj.field = value
+        Expr::FieldAssign { object, field, value } => {
+            // Lower the object expression
+            let obj_op = lower_expr(object, ctx);
+            let base_place = operand_to_place(obj_op, ctx);
+
+            // Compute field index using struct type info
+            let field_index = ctx.place_struct_type(&base_place)
+                .map(|struct_name| ctx.field_index(&struct_name, &field.node))
+                .unwrap_or(0);
+
+            // Lower the value expression
+            let val = lower_expr(value, ctx);
+
+            ctx.push_inst(MirInst::FieldStore {
+                base: base_place,
+                field: field.node.clone(),
+                field_index,
+                value: val,
+            });
+
+            // Return unit
+            Operand::Constant(Constant::Unit)
+        }
+
         // v0.19.4: Method calls - static dispatch
         // Methods are lowered as function calls with receiver as first argument
         // The method name is prefixed with the receiver type for name mangling
@@ -1085,6 +1170,78 @@ fn ast_type_to_mir(ty: &Type) -> MirType {
     }
 }
 
+/// v0.51.24: Convert AST type to MIR type with struct definition lookup
+/// This properly converts Type::Named to MirType::Struct when the name is a known struct
+fn ast_type_to_mir_with_structs(
+    ty: &Type,
+    struct_type_defs: &std::collections::HashMap<String, Vec<(String, Type)>>,
+) -> MirType {
+    match ty {
+        Type::I32 => MirType::I32,
+        Type::I64 => MirType::I64,
+        Type::U32 => MirType::U32,
+        Type::U64 => MirType::U64,
+        Type::F64 => MirType::F64,
+        Type::Bool => MirType::Bool,
+        Type::String => MirType::String,
+        Type::Char => MirType::Char,
+        Type::Unit => MirType::Unit,
+        Type::Range(elem) => ast_type_to_mir_with_structs(elem, struct_type_defs),
+        // v0.51.24: Named types that are structs get converted to MirType::Struct
+        Type::Named(name) => {
+            if let Some(fields) = struct_type_defs.get(name) {
+                MirType::Struct {
+                    name: name.clone(),
+                    fields: fields
+                        .iter()
+                        .map(|(fname, fty)| (fname.clone(), Box::new(ast_type_to_mir_with_structs(fty, struct_type_defs))))
+                        .collect(),
+                }
+            } else {
+                // Not a known struct, fall back to i64
+                MirType::I64
+            }
+        }
+        Type::TypeVar(_) => MirType::I64,
+        Type::Generic { .. } => MirType::I64,
+        Type::Struct { name, fields } => MirType::Struct {
+            name: name.clone(),
+            fields: fields
+                .iter()
+                .map(|(fname, fty)| (fname.clone(), Box::new(ast_type_to_mir_with_structs(fty, struct_type_defs))))
+                .collect(),
+        },
+        Type::Enum { name, variants } => MirType::Enum {
+            name: name.clone(),
+            variants: variants
+                .iter()
+                .map(|(vname, vtypes)| {
+                    (vname.clone(), vtypes.iter().map(|t| Box::new(ast_type_to_mir_with_structs(t, struct_type_defs))).collect())
+                })
+                .collect(),
+        },
+        Type::Ref(inner) | Type::RefMut(inner) => {
+            if let Type::Array(elem, size) = inner.as_ref() {
+                MirType::Array {
+                    element_type: Box::new(ast_type_to_mir_with_structs(elem, struct_type_defs)),
+                    size: Some(*size),
+                }
+            } else {
+                MirType::I64
+            }
+        }
+        Type::Array(elem, size) => MirType::Array {
+            element_type: Box::new(ast_type_to_mir_with_structs(elem, struct_type_defs)),
+            size: Some(*size),
+        },
+        Type::Refined { base, .. } => ast_type_to_mir_with_structs(base, struct_type_defs),
+        Type::Fn { .. } => MirType::I64,
+        Type::Never => MirType::Unit,
+        Type::Nullable(inner) => ast_type_to_mir_with_structs(inner, struct_type_defs),
+        Type::Tuple(_) => MirType::I64,
+    }
+}
+
 /// Convert AST binary operator to MIR operator
 fn ast_binop_to_mir(op: BinOp, ty: &MirType) -> MirBinOp {
     match (op, ty.is_float()) {
@@ -1267,23 +1424,28 @@ fn bind_pattern_variables(pattern: &Pattern, match_place: &Place, ctx: &mut Lowe
             for (i, binding) in bindings.iter().enumerate() {
                 let field_place = ctx.fresh_temp();
                 // Use field access to extract (simplified - real impl needs tag/data extraction)
+                // v0.51.23: field_index = i for enum variant tuple-like fields
                 ctx.push_inst(MirInst::FieldAccess {
                     dest: field_place.clone(),
                     base: match_place.clone(),
                     field: format!("_{}", i), // Tuple-like access
+                    field_index: i,
                 });
                 // Recursively bind inner patterns
                 bind_pattern_variables(&binding.node, &field_place, ctx);
             }
         }
-        Pattern::Struct { fields, .. } => {
+        Pattern::Struct { name, fields } => {
             // For struct patterns, bind field patterns
             for (field_name, field_pattern) in fields {
                 let field_place = ctx.fresh_temp();
+                // v0.51.23: Compute field index from struct definition
+                let field_index = ctx.field_index(name, &field_name.node);
                 ctx.push_inst(MirInst::FieldAccess {
                     dest: field_place.clone(),
                     base: match_place.clone(),
                     field: field_name.node.clone(),
+                    field_index,
                 });
                 // Recursively bind inner patterns
                 bind_pattern_variables(&field_pattern.node, &field_place, ctx);
