@@ -106,6 +106,36 @@ impl TextCodeGen {
             })
             .collect();
 
+        // v0.51.27: Build sret function map for struct return optimization
+        // v0.51.28: Only use sret for large structs (3+ fields)
+        // Small structs (1-2 fields) use register return instead
+        let sret_functions: HashMap<String, usize> = program
+            .functions
+            .iter()
+            .filter_map(|f| {
+                if let MirType::Struct { fields, .. } = &f.ret_ty {
+                    if fields.len() > 2 {  // Only 3+ fields use sret
+                        return Some((f.name.clone(), fields.len()));
+                    }
+                }
+                None
+            })
+            .collect();
+
+        // v0.51.28: Small struct functions (1-2 fields) use register return
+        let small_struct_functions: HashMap<String, usize> = program
+            .functions
+            .iter()
+            .filter_map(|f| {
+                if let MirType::Struct { fields, .. } = &f.ret_ty {
+                    if !fields.is_empty() && fields.len() <= 2 {
+                        return Some((f.name.clone(), fields.len()));
+                    }
+                }
+                None
+            })
+            .collect();
+
         // Emit string globals
         self.emit_string_globals(&mut output, &string_table)?;
 
@@ -114,7 +144,7 @@ impl TextCodeGen {
 
         // Generate functions with string table and function type map
         for func in &program.functions {
-            self.emit_function_with_strings(&mut output, func, &string_table, &fn_return_types, &fn_param_types)?;
+            self.emit_function_with_strings(&mut output, func, &string_table, &fn_return_types, &fn_param_types, &sret_functions, &small_struct_functions)?;
         }
 
         Ok(output)
@@ -394,7 +424,9 @@ impl TextCodeGen {
         let empty_str_table = HashMap::new();
         let empty_fn_types = HashMap::new();
         let empty_fn_param_types = HashMap::new();
-        self.emit_function_with_strings(out, func, &empty_str_table, &empty_fn_types, &empty_fn_param_types)
+        let empty_sret_functions = HashMap::new();
+        let empty_small_struct_functions = HashMap::new();
+        self.emit_function_with_strings(out, func, &empty_str_table, &empty_fn_types, &empty_fn_param_types, &empty_sret_functions, &empty_small_struct_functions)
     }
 
     /// v0.51.25: Check if a specific struct variable escapes the function
@@ -439,6 +471,54 @@ impl TextCodeGen {
                         }
                     }
                     _ => {}
+                }
+            }
+        }
+        false
+    }
+
+    /// v0.51.27: Check if a struct variable is directly returned from the function
+    /// This is used to determine if we can use sret pointer instead of malloc
+    fn is_struct_returned(&self, func: &MirFunction, struct_name: &str) -> bool {
+        let mut visited = std::collections::HashSet::new();
+        self.is_struct_returned_inner(func, struct_name, &mut visited)
+    }
+
+    fn is_struct_returned_inner(
+        &self,
+        func: &MirFunction,
+        struct_name: &str,
+        visited: &mut std::collections::HashSet<String>,
+    ) -> bool {
+        use crate::mir::{Terminator, Operand};
+
+        // Prevent infinite recursion
+        if visited.contains(struct_name) {
+            return false;
+        }
+        visited.insert(struct_name.to_string());
+
+        for block in &func.blocks {
+            // Check if directly returned
+            if let Terminator::Return(Some(Operand::Place(p))) = &block.terminator {
+                if p.name == struct_name {
+                    return true;
+                }
+            }
+
+            // Check if flows through phi to return
+            for inst in &block.instructions {
+                if let MirInst::Phi { dest, values } = inst {
+                    // If phi dest is returned and this struct is one of phi inputs
+                    if self.is_struct_returned_inner(func, &dest.name, visited) {
+                        for (val, _) in values {
+                            if let Operand::Place(p) = val {
+                                if p.name == struct_name {
+                                    return true;
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -657,6 +737,8 @@ impl TextCodeGen {
         string_table: &HashMap<String, String>,
         fn_return_types: &HashMap<String, &'static str>,
         fn_param_types: &HashMap<String, Vec<&'static str>>,
+        sret_functions: &HashMap<String, usize>,
+        small_struct_functions: &HashMap<String, usize>,
     ) -> TextCodeGenResult<()> {
         // Pre-scan to build place type map
         let place_types = self.build_place_type_map(func, fn_return_types);
@@ -682,17 +764,41 @@ impl TextCodeGen {
         // Track defined names to handle SSA violations from MIR
         let mut name_counts: HashMap<String, u32> = HashMap::new();
 
-        // Function signature
-        let ret_type = self.mir_type_to_llvm(&func.ret_ty);
-        let params: Vec<String> = func
+        // v0.51.27: Detect struct return functions for sret optimization
+        // v0.51.28: Small structs (1-2 fields) use register return, larger structs use sret
+        let struct_field_count = if let MirType::Struct { fields, .. } = &func.ret_ty {
+            fields.len()
+        } else {
+            0
+        };
+        let is_small_struct = struct_field_count > 0 && struct_field_count <= 2;
+        let is_sret = struct_field_count > 2;  // Only use sret for 3+ field structs
+
+        // Function signature - small structs use aggregate return type
+        let ret_type = if is_sret {
+            "void"
+        } else if is_small_struct {
+            if struct_field_count == 1 { "{i64}" } else { "{i64, i64}" }
+        } else {
+            self.mir_type_to_llvm(&func.ret_ty)
+        };
+        let mut params: Vec<String> = func
             .params
             .iter()
             .map(|(name, ty)| format!("{} %{}", self.mir_type_to_llvm(ty), name))
             .collect();
 
+        // v0.51.27: Add sret parameter for struct return functions
+        if is_sret {
+            params.insert(0, format!("ptr noalias sret(i8) %_sret"));
+        }
+
         // Mark parameters as defined
         for (name, _) in &func.params {
             name_counts.insert(name.clone(), 1);
+        }
+        if is_sret {
+            name_counts.insert("_sret".to_string(), 1);
         }
 
         // Function attributes for optimization:
@@ -877,7 +983,7 @@ impl TextCodeGen {
 
         // Emit basic blocks with place type information
         for block in &func.blocks {
-            self.emit_block_with_strings(out, block, func, string_table, fn_return_types, fn_param_types, &place_types, &mut name_counts, &local_names, &narrowed_param_names, &phi_load_map, &phi_string_map, &phi_coerce_map)?;
+            self.emit_block_with_strings(out, block, func, string_table, fn_return_types, fn_param_types, sret_functions, small_struct_functions, &place_types, &mut name_counts, &local_names, &narrowed_param_names, &phi_load_map, &phi_string_map, &phi_coerce_map)?;
         }
 
         writeln!(out, "}}")?;
@@ -897,6 +1003,7 @@ impl TextCodeGen {
         let empty_str_table = HashMap::new();
         let empty_fn_types = HashMap::new();
         let empty_fn_param_types = HashMap::new();
+        let empty_sret_functions = HashMap::new();
         let empty_place_types = HashMap::new();
         let mut empty_name_counts = HashMap::new();
         let empty_local_names = std::collections::HashSet::new();
@@ -904,7 +1011,8 @@ impl TextCodeGen {
         let empty_phi_string_map = std::collections::HashMap::new();
         let empty_phi_coerce_map = std::collections::HashMap::new();
         let empty_narrowed = std::collections::HashSet::new();
-        self.emit_block_with_strings(out, block, func, &empty_str_table, &empty_fn_types, &empty_fn_param_types, &empty_place_types, &mut empty_name_counts, &empty_local_names, &empty_narrowed, &empty_phi_map, &empty_phi_string_map, &empty_phi_coerce_map)
+        let empty_small_struct_functions = HashMap::new();
+        self.emit_block_with_strings(out, block, func, &empty_str_table, &empty_fn_types, &empty_fn_param_types, &empty_sret_functions, &empty_small_struct_functions, &empty_place_types, &mut empty_name_counts, &empty_local_names, &empty_narrowed, &empty_phi_map, &empty_phi_string_map, &empty_phi_coerce_map)
     }
 
     /// Emit a basic block with string table support
@@ -917,6 +1025,8 @@ impl TextCodeGen {
         string_table: &HashMap<String, String>,
         fn_return_types: &HashMap<String, &'static str>,
         fn_param_types: &HashMap<String, Vec<&'static str>>,
+        sret_functions: &HashMap<String, usize>,
+        small_struct_functions: &HashMap<String, usize>,
         place_types: &HashMap<String, &'static str>,
         name_counts: &mut HashMap<String, u32>,
         local_names: &std::collections::HashSet<String>,
@@ -930,7 +1040,7 @@ impl TextCodeGen {
 
         // Emit instructions (pass phi_load_map for phi node handling)
         for inst in &block.instructions {
-            self.emit_instruction_with_strings(out, inst, func, string_table, fn_return_types, fn_param_types, place_types, name_counts, local_names, narrowed_param_names, phi_load_map, phi_string_map, phi_coerce_map, &block.label)?;
+            self.emit_instruction_with_strings(out, inst, func, string_table, fn_return_types, fn_param_types, sret_functions, small_struct_functions, place_types, name_counts, local_names, narrowed_param_names, phi_load_map, phi_string_map, phi_coerce_map, &block.label)?;
         }
 
         // Emit loads for locals that will be used in phi nodes of successor blocks
@@ -1015,6 +1125,8 @@ impl TextCodeGen {
         string_table: &HashMap<String, String>,
         fn_return_types: &HashMap<String, &'static str>,
         fn_param_types: &HashMap<String, Vec<&'static str>>,
+        sret_functions: &HashMap<String, usize>,
+        small_struct_functions: &HashMap<String, usize>,
         place_types: &HashMap<String, &'static str>,
         name_counts: &mut HashMap<String, u32>,
         local_names: &std::collections::HashSet<String>,
@@ -2171,6 +2283,14 @@ impl TextCodeGen {
                     .copied()
                     .unwrap_or_else(|| self.infer_call_return_type(fn_name, func));
 
+                // v0.51.27: Check if this is an sret function (struct return via caller-allocated pointer)
+                let is_sret_call = sret_functions.contains_key(fn_name);
+                let sret_field_count = sret_functions.get(fn_name).copied().unwrap_or(0);
+
+                // v0.51.28: Check if this is a small struct function (1-2 fields via register)
+                let is_small_struct_call = small_struct_functions.contains_key(fn_name);
+                let small_struct_field_count = small_struct_functions.get(fn_name).copied().unwrap_or(0);
+
                 // Generate unique base name for this call instruction
                 // v0.50.72: Use unique counter to avoid SSA violations with multiple calls
                 let call_cnt = *name_counts.entry(format!("call_{}", fn_name)).or_insert(0);
@@ -2286,7 +2406,74 @@ impl TextCodeGen {
                 // v0.50.65: Tail call optimization support
                 let call_prefix = if *is_tail { "tail " } else { "" };
 
-                if ret_ty == "void" {
+                // v0.51.27: sret call handling - caller allocates space and passes pointer
+                if is_sret_call {
+                    // Allocate stack space for struct return
+                    let sret_ptr = format!("{}.sret", call_base);
+                    writeln!(out, "  %{} = alloca i64, i32 {}", sret_ptr, sret_field_count)?;
+
+                    // Build sret call args: prepend sret pointer
+                    let sret_args = format!("ptr noalias sret(i8) %{}", sret_ptr);
+                    let full_args = if args_str.is_empty() {
+                        sret_args
+                    } else {
+                        format!("{}, {}", sret_args, args_str.join(", "))
+                    };
+
+                    // Call with void return
+                    writeln!(out, "  {}call void @{}({})", call_prefix, runtime_fn_name, full_args)?;
+
+                    // The sret pointer IS the result
+                    if let Some(d) = dest {
+                        if local_names.contains(&d.name) {
+                            // Store pointer to local
+                            writeln!(out, "  store ptr %{}, ptr %{}.addr", sret_ptr, d.name)?;
+                        } else {
+                            // SSA assignment: bitcast to create the named value
+                            let dest_name = self.unique_name(&d.name, name_counts);
+                            writeln!(out, "  %{} = bitcast ptr %{} to ptr", dest_name, sret_ptr)?;
+                        }
+                    }
+                } else if is_small_struct_call {
+                    // v0.51.28: Small struct call handling - receive aggregate in registers
+                    let agg_type = if small_struct_field_count == 1 { "{i64}" } else { "{i64, i64}" };
+
+                    // Call with aggregate return type
+                    let agg_temp = format!("{}.agg", call_base);
+                    writeln!(out, "  %{} = {}call {} @{}({})", agg_temp, call_prefix, agg_type, runtime_fn_name, args_str.join(", "))?;
+
+                    // Allocate stack space and unpack aggregate into memory
+                    let struct_ptr = format!("{}.ptr", call_base);
+                    writeln!(out, "  %{} = alloca i64, i32 {}", struct_ptr, small_struct_field_count)?;
+
+                    // Extract field 0
+                    let f0_val = format!("{}.f0", call_base);
+                    writeln!(out, "  %{} = extractvalue {} %{}, 0", f0_val, agg_type, agg_temp)?;
+                    let f0_ptr = format!("{}.f0.ptr", call_base);
+                    writeln!(out, "  %{} = getelementptr i64, ptr %{}, i32 0", f0_ptr, struct_ptr)?;
+                    writeln!(out, "  store i64 %{}, ptr %{}", f0_val, f0_ptr)?;
+
+                    if small_struct_field_count == 2 {
+                        // Extract field 1
+                        let f1_val = format!("{}.f1", call_base);
+                        writeln!(out, "  %{} = extractvalue {} %{}, 1", f1_val, agg_type, agg_temp)?;
+                        let f1_ptr = format!("{}.f1.ptr", call_base);
+                        writeln!(out, "  %{} = getelementptr i64, ptr %{}, i32 1", f1_ptr, struct_ptr)?;
+                        writeln!(out, "  store i64 %{}, ptr %{}", f1_val, f1_ptr)?;
+                    }
+
+                    // The struct pointer is the result
+                    if let Some(d) = dest {
+                        if local_names.contains(&d.name) {
+                            // Store pointer to local
+                            writeln!(out, "  store ptr %{}, ptr %{}.addr", struct_ptr, d.name)?;
+                        } else {
+                            // SSA assignment: bitcast to create the named value
+                            let dest_name = self.unique_name(&d.name, name_counts);
+                            writeln!(out, "  %{} = bitcast ptr %{} to ptr", dest_name, struct_ptr)?;
+                        }
+                    }
+                } else if ret_ty == "void" {
                     writeln!(
                         out,
                         "  {}call {} @{}({})",
@@ -2405,13 +2592,41 @@ impl TextCodeGen {
 
             // v0.19.0: Struct operations
             // v0.51.25: Escape analysis for struct allocation
-            // - Escaped structs (returned/passed to calls): malloc (heap)
+            // v0.51.27: sret optimization - returned structs use caller-provided pointer
+            // - Escaped structs (returned/passed to calls):
+            //   - In sret functions: if directly returned, use %_sret
+            //   - Otherwise: malloc (heap)
             // - Local-only structs: alloca (stack, faster)
             MirInst::StructInit { dest, struct_name, fields } => {
+                // Check if this is a sret function (returns struct with 3+ fields)
+                // v0.51.28: Small structs (1-2 fields) use register return, not sret
+                let ret_field_count = if let MirType::Struct { fields: f, .. } = &func.ret_ty {
+                    f.len()
+                } else {
+                    0
+                };
+                let is_sret_func = ret_field_count > 2;
+
+                // Check if this struct is directly returned (flows to return statement)
+                let is_returned = self.is_struct_returned(func, &dest.name);
+
                 // Inline escape analysis: check if this struct escapes the function
                 let escapes = self.check_struct_escapes(func, &dest.name);
                 let num_fields = fields.len().max(1);
-                if escapes {
+
+                // Determine allocation strategy
+                let use_sret = is_sret_func && is_returned;
+
+                if use_sret {
+                    // v0.51.27: Use sret pointer from caller (no allocation needed)
+                    writeln!(out, "  ; struct {} init with {} fields (sret - caller allocated)", struct_name, fields.len())?;
+                    writeln!(out, "  %{} = bitcast ptr %_sret to ptr", dest.name)?;
+                } else if escapes && ret_field_count <= 2 && is_returned {
+                    // v0.51.28: Small struct register return - use stack allocation
+                    // The struct will be packed into an aggregate at return
+                    writeln!(out, "  ; struct {} init with {} fields (stack - small struct return)", struct_name, fields.len())?;
+                    writeln!(out, "  %{} = alloca i64, i32 {}", dest.name, num_fields)?;
+                } else if escapes {
                     // Escaped struct: must use heap allocation
                     let size = num_fields * 8;
                     writeln!(out, "  ; struct {} init with {} fields (heap - escapes)", struct_name, fields.len())?;
@@ -2643,32 +2858,110 @@ impl TextCodeGen {
             }
 
             Terminator::Return(Some(val)) => {
-                let ty = self.mir_type_to_llvm(&func.ret_ty);
-                // v0.51.22: String constant returns use pre-initialized global BmbString
-                if let Operand::Constant(Constant::String(s)) = val {
-                    if let Some(global_name) = string_table.get(s) {
-                        // Return pointer to global BmbString struct directly
-                        writeln!(out, "  ret ptr @{}.bmb", global_name)?;
-                    } else {
-                        // Fallback - shouldn't happen
-                        writeln!(out, "  ret {} {}", ty, self.format_operand_with_strings_and_narrowing(val, string_table, narrowed_param_names))?;
-                    }
-                } else if ty == "void" {
-                    // v0.50.49: Void return - just emit ret void, don't try to load the value
-                    writeln!(out, "  ret void")?;
-                } else if let Operand::Place(p) = val {
-                    // Check if this is a local that uses alloca
-                    if local_names.contains(&p.name) {
-                        // Load from alloca before returning
-                        // Use block_label + var name for SSA uniqueness across multiple return blocks
-                        writeln!(out, "  %_ret_val.{}.{} = load {}, ptr %{}.addr", block_label, p.name, ty, p.name)?;
-                        writeln!(out, "  ret {} %_ret_val.{}.{}", ty, block_label, p.name)?;
-                    } else {
-                        // v0.51.17: Use narrowing-aware formatting
-                        writeln!(out, "  ret {} {}", ty, self.format_operand_with_strings_and_narrowing(val, string_table, narrowed_param_names))?;
-                    }
+                // v0.51.27: Check if this is a sret function (struct return via pointer)
+                // v0.51.28: Small structs (1-2 fields) use register return instead of sret
+                let struct_field_count = if let MirType::Struct { fields, .. } = &func.ret_ty {
+                    fields.len()
                 } else {
-                    writeln!(out, "  ret {} {}", ty, self.format_operand_with_strings_and_narrowing(val, string_table, narrowed_param_names))?;
+                    0
+                };
+                let is_small_struct = struct_field_count > 0 && struct_field_count <= 2;
+                let is_sret = struct_field_count > 2;
+
+                if is_small_struct {
+                    // v0.51.28: Small struct register return - pack fields into aggregate
+                    let ret_type = if struct_field_count == 1 { "{i64}" } else { "{i64, i64}" };
+
+                    if let Operand::Place(p) = val {
+                        // Load source pointer
+                        let src_ptr = if local_names.contains(&p.name) {
+                            writeln!(out, "  %_small_src.{} = load ptr, ptr %{}.addr", block_label, p.name)?;
+                            format!("%_small_src.{}", block_label)
+                        } else {
+                            format!("%{}", p.name)
+                        };
+
+                        // Load fields and pack into aggregate
+                        writeln!(out, "  ; small struct return - pack {} fields", struct_field_count)?;
+
+                        // Load field 0
+                        writeln!(out, "  %_agg_gep0.{} = getelementptr i64, ptr {}, i32 0", block_label, src_ptr)?;
+                        writeln!(out, "  %_agg_f0.{} = load i64, ptr %_agg_gep0.{}", block_label, block_label)?;
+                        writeln!(out, "  %_agg_v0.{} = insertvalue {} undef, i64 %_agg_f0.{}, 0", block_label, ret_type, block_label)?;
+
+                        if struct_field_count == 2 {
+                            // Load field 1
+                            writeln!(out, "  %_agg_gep1.{} = getelementptr i64, ptr {}, i32 1", block_label, src_ptr)?;
+                            writeln!(out, "  %_agg_f1.{} = load i64, ptr %_agg_gep1.{}", block_label, block_label)?;
+                            writeln!(out, "  %_agg_v1.{} = insertvalue {} %_agg_v0.{}, i64 %_agg_f1.{}, 1", block_label, ret_type, block_label, block_label)?;
+                            writeln!(out, "  ret {} %_agg_v1.{}", ret_type, block_label)?;
+                        } else {
+                            writeln!(out, "  ret {} %_agg_v0.{}", ret_type, block_label)?;
+                        }
+                    } else {
+                        // Direct constant return (unlikely for struct)
+                        writeln!(out, "  ret {} undef", ret_type)?;
+                    }
+                } else if is_sret {
+                    // sret function: copy return value to %_sret pointer, then return void
+                    // The value could be a struct pointer that needs to be copied
+                    if let Operand::Place(p) = val {
+                        // Get the number of fields to copy
+                        let num_fields = if let MirType::Struct { fields, .. } = &func.ret_ty {
+                            fields.len()
+                        } else {
+                            0
+                        };
+
+                        // Load source pointer value (struct pointer)
+                        let src_ptr = if local_names.contains(&p.name) {
+                            writeln!(out, "  %_sret_src.{} = load ptr, ptr %{}.addr", block_label, p.name)?;
+                            format!("%_sret_src.{}", block_label)
+                        } else {
+                            format!("%{}", p.name)
+                        };
+
+                        // Copy each field from source to sret
+                        writeln!(out, "  ; sret return - copy {} fields from {} to %_sret", num_fields, src_ptr)?;
+                        for i in 0..num_fields {
+                            let field_load = format!("_sret_f{}.{}.load", i, block_label);
+                            writeln!(out, "  %{} = getelementptr i64, ptr {}, i32 {}", format!("_sret_gep_src.{}.{}", i, block_label), src_ptr, i)?;
+                            writeln!(out, "  %{} = load i64, ptr %{}", field_load, format!("_sret_gep_src.{}.{}", i, block_label))?;
+                            writeln!(out, "  %{} = getelementptr i64, ptr %_sret, i32 {}", format!("_sret_gep_dst.{}.{}", i, block_label), i)?;
+                            writeln!(out, "  store i64 %{}, ptr %{}", field_load, format!("_sret_gep_dst.{}.{}", i, block_label))?;
+                        }
+                    } else {
+                        writeln!(out, "  ; sret return - value already in %_sret")?;
+                    }
+                    writeln!(out, "  ret void")?;
+                } else {
+                    let ty = self.mir_type_to_llvm(&func.ret_ty);
+                    // v0.51.22: String constant returns use pre-initialized global BmbString
+                    if let Operand::Constant(Constant::String(s)) = val {
+                        if let Some(global_name) = string_table.get(s) {
+                            // Return pointer to global BmbString struct directly
+                            writeln!(out, "  ret ptr @{}.bmb", global_name)?;
+                        } else {
+                            // Fallback - shouldn't happen
+                            writeln!(out, "  ret {} {}", ty, self.format_operand_with_strings_and_narrowing(val, string_table, narrowed_param_names))?;
+                        }
+                    } else if ty == "void" {
+                        // v0.50.49: Void return - just emit ret void, don't try to load the value
+                        writeln!(out, "  ret void")?;
+                    } else if let Operand::Place(p) = val {
+                        // Check if this is a local that uses alloca
+                        if local_names.contains(&p.name) {
+                            // Load from alloca before returning
+                            // Use block_label + var name for SSA uniqueness across multiple return blocks
+                            writeln!(out, "  %_ret_val.{}.{} = load {}, ptr %{}.addr", block_label, p.name, ty, p.name)?;
+                            writeln!(out, "  ret {} %_ret_val.{}.{}", ty, block_label, p.name)?;
+                        } else {
+                            // v0.51.17: Use narrowing-aware formatting
+                            writeln!(out, "  ret {} {}", ty, self.format_operand_with_strings_and_narrowing(val, string_table, narrowed_param_names))?;
+                        }
+                    } else {
+                        writeln!(out, "  ret {} {}", ty, self.format_operand_with_strings_and_narrowing(val, string_table, narrowed_param_names))?;
+                    }
                 }
             }
 
