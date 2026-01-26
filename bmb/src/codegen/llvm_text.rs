@@ -2734,9 +2734,24 @@ impl TextCodeGen {
                     writeln!(out, "  %{} = alloca {}, align 8", dest.name, struct_ty)?;
                 }
                 for (i, (field_name, value)) in fields.iter().enumerate() {
-                    let val_str = self.format_operand(value);
-                    writeln!(out, "  ; field {} = {}", field_name, val_str)?;
                     let ty = self.infer_operand_type(value, func);
+                    // v0.51.32: Properly load operand values from .addr if they're locals
+                    let val_str = match value {
+                        Operand::Place(p) => {
+                            let is_param = func.params.iter().any(|(name, _)| name == &p.name);
+                            if !is_param {
+                                // Local: load from .addr
+                                let load_name = format!("{}_f{}_val", dest.name, i);
+                                writeln!(out, "  %{} = load {}, ptr %{}.addr", load_name, ty, p.name)?;
+                                format!("%{}", load_name)
+                            } else {
+                                // Param: use directly
+                                format!("%{}", p.name)
+                            }
+                        }
+                        Operand::Constant(c) => self.format_constant(c),
+                    };
+                    writeln!(out, "  ; field {} = {}", field_name, val_str)?;
                     // v0.51.32: Use struct type GEP for better LLVM optimization
                     writeln!(out, "  %{}_f{} = getelementptr {}, ptr %{}, i32 0, i32 {}",
                              dest.name, i, struct_ty, dest.name, i)?;
