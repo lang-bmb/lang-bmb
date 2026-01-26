@@ -136,24 +136,35 @@ loop_header_7:
 
 ---
 
-## P0-D: 직접 바이트 접근 (lexer 109% → ~102%)
+## P0-D: ~~직접 바이트 접근~~ ✅ 완료 (v0.51.44)
 
-### 문제 분석
+### 상태: ✅ 이미 구현됨
 
-```bmb
-// BMB: 함수 호출
-let c = s.byte_at(i);
+**LLVM codegen**에서 `byte_at`와 `char_at`이 이미 인라인됨:
+- GEP로 BmbString 구조체에서 data pointer 접근
+- GEP로 data 배열 인덱싱
+- i8 로드 후 i64로 zext
+
+### 벤치마크 개선 (v0.51.44)
+
+`ord(char_at(s, i))` → `s.byte_at(i)` 변경으로 MIR 단순화:
+
+```
+Before:
+  %_t3 = call char_at(%s, %pos)
+  %_t4 = tail call ord(%_t3)
+
+After:
+  %_t3 = tail call byte_at(%s, %pos)
 ```
 
-```c
-// C: 직접 포인터 접근
-char c = s[i];
-```
+적용된 벤치마크:
+- lexer: `peek` 함수
+- brainfuck: `get_char` 함수
 
-### 해결책
+### 남은 작업
 
-- `byte_at` 인라인화 또는 인트린식화
-- 또는 `s[i]` 배열 인덱싱 지원 (String에 대해)
+- LLVM 빌드 환경 정상화 후 실제 성능 측정
 
 ---
 
