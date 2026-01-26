@@ -1,6 +1,6 @@
 # BMB Language Reference
 
-**Version**: v0.31
+**Version**: v0.51.40
 **Status**: Implementation Reference
 
 This document provides a comprehensive reference for the BMB programming language syntax and semantics.
@@ -39,11 +39,12 @@ fn add(a: i64, b: i64) -> i64 = a + b;  -- inline comment
 | Definitions | `fn`, `struct`, `enum`, `trait`, `impl`, `type` |
 | Contracts | `pre`, `post`, `where`, `it`, `ret` |
 | Control Flow | `if`, `then`, `else`, `match`, `while`, `for`, `in`, `try` |
-| Bindings | `let`, `var`, `mut` |
-| Memory | `new`, `&`, `mut` |
+| Bindings | `let`, `var`, `mut`, `set` |
+| Memory | `new`, `&`, `mut`, `null` |
+| Type Operations | `as` |
 | Visibility | `pub`, `use`, `mod` |
 | External | `extern` |
-| Literals | `true`, `false` |
+| Literals | `true`, `false`, `null` |
 | Module Header | `module`, `version`, `summary`, `exports`, `depends` |
 | Incremental | `todo` |
 | Logical | `and`, `or`, `not` |
@@ -89,11 +90,13 @@ fn add(a: i64, b: i64) -> i64 = a + b;  -- inline comment
 | `?` | Error propagation |
 | `&` | Reference / immutable borrow |
 | `&mut` | Mutable borrow |
-| `*` | Dereference |
+| `*` | Dereference / pointer type |
 | `.` | Field access / method call |
 | `::` | Path separator (enum variants) |
 | `->` | Return type arrow |
 | `=>` | Match arm arrow |
+| `as` | Type casting (v0.39) |
+| `:=` | Field/index assignment (v0.51.23) |
 
 ### 1.4 Literals
 
@@ -160,7 +163,40 @@ var123
 &mut T    -- mutable reference to T
 ```
 
-### 2.3 Array Types
+### 2.3 Pointer Types (v0.51.37)
+
+Typed pointer types for low-level memory operations:
+
+```bmb
+*T        -- typed pointer to T
+
+-- Example: Self-referential struct
+struct Node {
+    value: i64,
+    next: *Node      -- pointer to Node
+}
+
+-- Null pointer literal (v0.51.40)
+let p: *Node = null;
+
+-- Cast between pointer and integer
+let addr: i64 = ptr as i64;
+let ptr: *Node = addr as *Node;
+
+-- Field access through pointer (auto-dereference)
+let n = malloc(16) as *Node;
+let v = n.value;              -- auto-derefs: (*n).value
+set n.value = 42;             -- field assignment through pointer
+```
+
+**Key Features:**
+- `*T` creates a typed pointer to type T
+- `null` is the null pointer literal (type-inferred)
+- Pointers auto-dereference for field access
+- Use `as` for casting between `*T` and `i64`
+- Pointer comparisons work with `==` and `!=`
+
+### 2.4 Array Types
 
 ```bmb
 [T; N]    -- fixed-size array of N elements of type T
