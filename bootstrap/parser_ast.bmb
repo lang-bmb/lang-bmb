@@ -51,6 +51,8 @@ fn TK_BREAK() -> i64 = 125;   // v0.30.42: break keyword
 fn TK_CONTINUE() -> i64 = 126; // v0.30.42: continue keyword
 fn TK_TRAIT() -> i64 = 127;   // v0.30.57: trait keyword
 fn TK_IMPL() -> i64 = 128;    // v0.30.57: impl keyword
+fn TK_NULL() -> i64 = 129;    // v0.51.41: null keyword
+fn TK_SIZEOF() -> i64 = 130;  // v0.51.41: sizeof keyword
 
 fn TK_I32() -> i64 = 150;
 fn TK_I64() -> i64 = 151;
@@ -131,9 +133,9 @@ fn find_number_end(s: String, pos: i64) -> i64 =
 fn find_string_end(s: String, pos: i64) -> i64 =
     if pos >= s.len() { pos } else if s.byte_at(pos) == 34 { pos + 1 } else { find_string_end(s, pos + 1) };
 
-// Keyword lookup table: struct/new=v0.22.0, enum/match=v0.22.1, while=v0.30.37, for/in=v0.30.39, break/continue=v0.30.42, trait/impl=v0.30.57
+// Keyword lookup table: struct/new=v0.22.0, enum/match=v0.22.1, while=v0.30.37, for/in=v0.30.39, break/continue=v0.30.42, trait/impl=v0.30.57, null/sizeof=v0.51.41
 fn lookup_keyword(w: String) -> i64 =
-    if w == "fn" { 100 } else if w == "let" { 101 } else if w == "if" { 102 } else if w == "then" { 103 } else if w == "else" { 104 } else if w == "true" { 105 } else if w == "false" { 106 } else if w == "and" { 107 } else if w == "or" { 108 } else if w == "not" { 109 } else if w == "pre" { 110 } else if w == "post" { 111 } else if w == "mut" { 117 } else if w == "struct" { 118 } else if w == "new" { 119 } else if w == "enum" { 120 } else if w == "match" { 121 } else if w == "while" { 122 } else if w == "for" { 123 } else if w == "in" { 124 } else if w == "break" { 125 } else if w == "continue" { 126 } else if w == "trait" { 127 } else if w == "impl" { 128 } else if w == "i32" { 150 } else if w == "i64" { 151 } else if w == "f64" { 152 } else if w == "bool" { 153 } else if w == "String" { 154 } else { 201 };
+    if w == "fn" { 100 } else if w == "let" { 101 } else if w == "if" { 102 } else if w == "then" { 103 } else if w == "else" { 104 } else if w == "true" { 105 } else if w == "false" { 106 } else if w == "and" { 107 } else if w == "or" { 108 } else if w == "not" { 109 } else if w == "pre" { 110 } else if w == "post" { 111 } else if w == "mut" { 117 } else if w == "struct" { 118 } else if w == "new" { 119 } else if w == "enum" { 120 } else if w == "match" { 121 } else if w == "while" { 122 } else if w == "for" { 123 } else if w == "in" { 124 } else if w == "break" { 125 } else if w == "continue" { 126 } else if w == "trait" { 127 } else if w == "impl" { 128 } else if w == "null" { 129 } else if w == "sizeof" { 130 } else if w == "i32" { 150 } else if w == "i64" { 151 } else if w == "f64" { 152 } else if w == "bool" { 153 } else if w == "String" { 154 } else { 201 };
 
 // Symbol codes: | (124)=309 for lambda params (v0.30.35), [ (91)=313 and ] (93)=314 for arrays (v0.30.60), @ (64)=315 for attributes (v0.52)
 fn symbol_code(c: i64) -> i64 =
@@ -441,15 +443,42 @@ fn parse_attribute(src: String, pos: i64) -> String =
         }
     };
 
+// v0.51.41: sizeof<Type>() expression
+// Syntax: sizeof<Type>()
+// Returns: (sizeof type_ast)
+fn parse_sizeof(src: String, pos: i64) -> String =
+    let t1 = next_token_raw(src, pos);
+    if tok_kind(t1) != TK_LT() { pack_result(pos, make_error("sizeof-lt")) } else {
+        let ty = parse_type_or_ident(src, tok_end(t1));
+        if is_error(unpack_ast(ty)) { ty } else {
+            let t2 = next_token_raw(src, unpack_pos(ty));
+            if tok_kind(t2) != TK_GT() { pack_result(unpack_pos(ty), make_error("sizeof-gt")) } else {
+                let t3 = next_token_raw(src, tok_end(t2));
+                if tok_kind(t3) != TK_LPAREN() { pack_result(tok_end(t2), make_error("sizeof-lparen")) } else {
+                    let t4 = next_token_raw(src, tok_end(t3));
+                    if tok_kind(t4) != TK_RPAREN() { pack_result(tok_end(t3), make_error("sizeof-rparen")) } else {
+                        pack_result(tok_end(t4), "(sizeof " + unpack_ast(ty) + ")")
+                    }
+                }
+            }
+        }
+    };
+
 // Parse type or identifier with optional type arguments
-// Examples: i64, String, Point, Vec<i64>, Map<String, i64>, [i64]
+// Examples: i64, String, Point, Vec<i64>, Map<String, i64>, [i64], *Node
 // v0.30.62: Extended for array types [T]
 // v0.52: Extended for Fin[N], Range[lo,hi], Unique[T]
+// v0.51.41: Extended for pointer types *T
 // Check for type arguments: <T, U, ...>
 fn parse_type_or_ident(src: String, pos: i64) -> String =
     let tok = next_token_raw(src, pos);
     let kind = tok_kind(tok);
-    if kind >= 150 and kind <= 154 { pack_result(tok_end(tok), type_str(kind)) } else if kind == TK_IDENT() {
+    // v0.51.41: Pointer type *T
+    if kind == TK_STAR() {
+        let inner = parse_type_or_ident(src, tok_end(tok));
+        if is_error(unpack_ast(inner)) { inner }
+        else { pack_result(unpack_pos(inner), "(ptr_type " + unpack_ast(inner) + ")") }
+    } else if kind >= 150 and kind <= 154 { pack_result(tok_end(tok), type_str(kind)) } else if kind == TK_IDENT() {
         let ns = skip_all(src, pos);
         let ne = tok_end(tok);
         let name = src.slice(ns, ne);
@@ -857,7 +886,7 @@ fn parse_primary(src: String, pos: i64) -> String =
     } else if kind == TK_MINUS() {
         let r = parse_primary(src, end);
         if is_error(unpack_ast(r)) { r } else { pack_result(unpack_pos(r), "(neg " + unpack_ast(r) + ")") }
-    } else if kind == TK_NEW() { parse_struct_init(src, end) } else if kind == TK_MATCH() { parse_match(src, end) } else if kind == TK_FN() { parse_lambda(src, end) } else if kind == TK_LBRACKET() { parse_array_literal(src, end) } else if kind == TK_AT() { parse_attribute(src, end) } else { pack_result(pos, make_error("expr")) };
+    } else if kind == TK_NEW() { parse_struct_init(src, end) } else if kind == TK_MATCH() { parse_match(src, end) } else if kind == TK_FN() { parse_lambda(src, end) } else if kind == TK_LBRACKET() { parse_array_literal(src, end) } else if kind == TK_AT() { parse_attribute(src, end) } else if kind == TK_NULL() { pack_result(end, "(null)") } else if kind == TK_SIZEOF() { parse_sizeof(src, end) } else { pack_result(pos, make_error("expr")) };
 
 fn parse_call_or_var(src: String, pos: i64, name: String) -> String =
     let tok = next_token_raw(src, pos);

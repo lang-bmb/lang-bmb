@@ -72,6 +72,9 @@ pub struct Interpreter {
     use_scope_stack: bool,
     /// v0.35.1: String intern table for O(1) literal reuse (json_parse optimization)
     string_intern: HashMap<String, Rc<String>>,
+    /// v0.51.41: Heap storage for typed pointer support
+    /// Maps pointer address to struct values for field access through pointers
+    heap: RefCell<HashMap<i64, Value>>,
 }
 
 impl Interpreter {
@@ -87,6 +90,7 @@ impl Interpreter {
             scope_stack: ScopeStack::new(),
             use_scope_stack: false,
             string_intern: HashMap::new(),
+            heap: RefCell::new(HashMap::new()),
         };
         interp.register_builtins();
         interp
@@ -536,29 +540,40 @@ impl Interpreter {
             }
 
             Expr::FieldAccess { expr: obj_expr, field } => {
-                let obj = self.eval(obj_expr, env)?;
+                // Interpret the object expression
+                let obj = { let o = obj_expr; self.eval(o, env)? };
                 match obj {
                     Value::Struct(_, fields) => {
                         fields.get(&field.node).cloned()
                             .ok_or_else(|| RuntimeError::type_error("field", &field.node))
                     }
+                    // v0.51.41: Typed pointer field access - look up struct in heap
+                    Value::Int(ptr) if ptr != 0 => {
+                        let heap = self.heap.borrow();
+                        if let Some(Value::Struct(_, fields)) = heap.get(&ptr) {
+                            fields.get(&field.node).cloned()
+                                .ok_or_else(|| RuntimeError::type_error("field", &field.node))
+                        } else {
+                            Err(RuntimeError::type_error("struct at pointer", "uninitialized"))
+                        }
+                    }
                     _ => Err(RuntimeError::type_error("struct", obj.type_name())),
                 }
             }
 
-            // v0.51.23: Field assignment
+            // v0.51.23: Field assignment (v0.51.41: with typed pointer support)
             Expr::FieldAssign { object, field, value } => {
                 // Get the new value first
-                let new_val = self.eval(value, env)?;
+                let new_val = { let v = value; self.eval(v, env)? };
 
                 // The object must be a variable for field assignment to work
                 if let Expr::Var(var_name) = &object.node {
-                    // Get the struct from the environment
-                    let struct_val = env.borrow().get(var_name)
+                    // Get the value from environment
+                    let obj_val = env.borrow().get(var_name)
                         .ok_or_else(|| RuntimeError::undefined_variable(var_name))?;
 
                     // Modify the field
-                    match struct_val {
+                    match obj_val {
                         Value::Struct(struct_name, mut fields) => {
                             if !fields.contains_key(&field.node) {
                                 return Err(RuntimeError::type_error("field", &field.node));
@@ -568,7 +583,18 @@ impl Interpreter {
                             env.borrow_mut().set(var_name, Value::Struct(struct_name, fields));
                             Ok(Value::Unit)
                         }
-                        _ => Err(RuntimeError::type_error("struct", struct_val.type_name())),
+                        // v0.51.41: Typed pointer field assignment - store in heap
+                        Value::Int(ptr) if ptr != 0 => {
+                            let mut heap = self.heap.borrow_mut();
+                            let entry = heap.entry(ptr).or_insert_with(|| {
+                                Value::Struct("_heap_struct".to_string(), HashMap::new())
+                            });
+                            if let Value::Struct(_, fields) = entry {
+                                fields.insert(field.node.clone(), new_val);
+                            }
+                            Ok(Value::Unit)
+                        }
+                        _ => Err(RuntimeError::type_error("struct", obj_val.type_name())),
                     }
                 } else {
                     // For complex expressions, we need to recursively handle the assignment
@@ -1190,6 +1216,9 @@ impl Interpreter {
             (Value::Bool(b), Type::U64) => Ok(Value::Int(if *b { 1 } else { 0 })),
             (Value::Bool(b), Type::F64) => Ok(Value::Float(if *b { 1.0 } else { 0.0 })),
             (Value::Bool(b), Type::Bool) => Ok(Value::Bool(*b)),
+            // v0.51.41: Pointer casts for malloc/free
+            // i64 -> *T (malloc result to typed pointer)
+            (Value::Int(n), Type::Ptr(_)) => Ok(Value::Int(*n)),
             _ => Err(RuntimeError::type_error(
                 &format!("{:?}", target_ty),
                 &format!("cannot cast {} to {:?}", val.type_name(), target_ty),
