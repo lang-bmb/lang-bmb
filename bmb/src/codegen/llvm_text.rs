@@ -644,6 +644,7 @@ impl TextCodeGen {
                     MirInst::BinOp { dest, op, lhs, rhs } => {
                         // Determine result type based on operator
                         // v0.51.20: Consider both operand types and use widest to handle narrowed params
+                        // v0.51.30: Keep operation in i32 when narrowed param is used with i32-safe constant
                         let lhs_ty = match lhs {
                             Operand::Constant(c) => self.constant_type(c),
                             Operand::Place(p) => place_types.get(&p.name).copied().unwrap_or("i64"),
@@ -653,15 +654,33 @@ impl TextCodeGen {
                             Operand::Place(p) => place_types.get(&p.name).copied().unwrap_or("i64"),
                         };
 
+                        // v0.51.30: Check for i32 + i64 constant optimization
+                        // When one operand is i32 (narrowed param) and the other is an i64 constant
+                        // that fits in i32, we can keep the operation in i32 to avoid sext/trunc overhead.
+                        let can_narrow_to_i32 = if lhs_ty == "i32" && rhs_ty == "i64" {
+                            // Check if rhs is a constant that fits in i32
+                            matches!(rhs, Operand::Constant(Constant::Int(v)) if *v >= i32::MIN as i64 && *v <= i32::MAX as i64)
+                        } else if lhs_ty == "i64" && rhs_ty == "i32" {
+                            // Check if lhs is a constant that fits in i32
+                            matches!(lhs, Operand::Constant(Constant::Int(v)) if *v >= i32::MIN as i64 && *v <= i32::MAX as i64)
+                        } else {
+                            false
+                        };
+
                         // Use widest integer type (handles i32/i64 narrowing mismatch)
-                        let widest_ty = match (lhs_ty, rhs_ty) {
-                            (_, "i64") | ("i64", _) => "i64",
-                            (_, "double") | ("double", _) => "double",
-                            (_, "ptr") | ("ptr", _) => "ptr",
-                            ("i32", "i32") => "i32",
-                            ("i32", "i1") | ("i1", "i32") => "i32",
-                            ("i1", "i1") => "i1",
-                            _ => lhs_ty, // Default to lhs type
+                        // UNLESS we can narrow to i32 (i32 param with i32-safe constant)
+                        let widest_ty = if can_narrow_to_i32 {
+                            "i32"
+                        } else {
+                            match (lhs_ty, rhs_ty) {
+                                (_, "i64") | ("i64", _) => "i64",
+                                (_, "double") | ("double", _) => "double",
+                                (_, "ptr") | ("ptr", _) => "ptr",
+                                ("i32", "i32") => "i32",
+                                ("i32", "i1") | ("i1", "i32") => "i32",
+                                ("i1", "i1") => "i1",
+                                _ => lhs_ty, // Default to lhs type
+                            }
                         };
 
                         let result_ty = match op {
@@ -967,7 +986,10 @@ impl TextCodeGen {
             writeln!(out, "alloca_entry:")?;
             for (name, ty) in &func.locals {
                 if local_names.contains(name) {
-                    let llvm_ty = self.mir_type_to_llvm(ty);
+                    // v0.51.30: Use place_types for alloca to handle narrowed types correctly
+                    // This ensures that when a BinaryOp produces i32 (due to narrowing optimization),
+                    // the alloca is also i32, avoiding mismatched store/load sizes.
+                    let llvm_ty = place_types.get(name).copied().unwrap_or_else(|| self.mir_type_to_llvm(ty));
                     // Skip void types - they can't be allocated
                     if llvm_ty != "void" {
                         writeln!(out, "  %{}.addr = alloca {}", name, llvm_ty)?;
@@ -1415,16 +1437,47 @@ impl TextCodeGen {
                     // v0.51.20: Handle type mismatch between operands (e.g., i32 param vs i64)
                     // This can happen when ConstantPropagationNarrowing narrows a parameter
                     // but the MIR still uses it in operations with wider types
+                    //
+                    // v0.51.30: Optimize i32 + i64 constant case - keep operation in i32
+                    // When one operand is i32 (narrowed param) and the other is an i64 constant
+                    // that fits in i32, we should keep the operation in i32 to avoid sext/trunc overhead.
+                    // This is critical for matching C performance in recursive functions like fibonacci.
                     let (final_lhs_str, final_rhs_str, final_ty) = if lhs_ty == "i32" && rhs_ty == "i64" {
-                        // Sign-extend lhs from i32 to i64
-                        let sext_name = format!("{}.lhs.sext", dest_name);
-                        writeln!(out, "  %{} = sext i32 {} to i64", sext_name, lhs_str)?;
-                        (format!("%{}", sext_name), rhs_str.clone(), "i64")
+                        // Check if rhs is a constant that fits in i32
+                        if let Operand::Constant(Constant::Int(v)) = rhs {
+                            if *v >= i32::MIN as i64 && *v <= i32::MAX as i64 {
+                                // Keep operation in i32 - just use the constant value as i32
+                                (lhs_str.clone(), rhs_str.clone(), "i32")
+                            } else {
+                                // Constant doesn't fit in i32, must extend lhs
+                                let sext_name = format!("{}.lhs.sext", dest_name);
+                                writeln!(out, "  %{} = sext i32 {} to i64", sext_name, lhs_str)?;
+                                (format!("%{}", sext_name), rhs_str.clone(), "i64")
+                            }
+                        } else {
+                            // rhs is not a constant, must extend lhs
+                            let sext_name = format!("{}.lhs.sext", dest_name);
+                            writeln!(out, "  %{} = sext i32 {} to i64", sext_name, lhs_str)?;
+                            (format!("%{}", sext_name), rhs_str.clone(), "i64")
+                        }
                     } else if lhs_ty == "i64" && rhs_ty == "i32" {
-                        // Sign-extend rhs from i32 to i64
-                        let sext_name = format!("{}.rhs.sext", dest_name);
-                        writeln!(out, "  %{} = sext i32 {} to i64", sext_name, rhs_str)?;
-                        (lhs_str.clone(), format!("%{}", sext_name), "i64")
+                        // Check if lhs is a constant that fits in i32
+                        if let Operand::Constant(Constant::Int(v)) = lhs {
+                            if *v >= i32::MIN as i64 && *v <= i32::MAX as i64 {
+                                // Keep operation in i32 - just use the constant value as i32
+                                (lhs_str.clone(), rhs_str.clone(), "i32")
+                            } else {
+                                // Constant doesn't fit in i32, must extend rhs
+                                let sext_name = format!("{}.rhs.sext", dest_name);
+                                writeln!(out, "  %{} = sext i32 {} to i64", sext_name, rhs_str)?;
+                                (lhs_str.clone(), format!("%{}", sext_name), "i64")
+                            }
+                        } else {
+                            // lhs is not a constant, must extend rhs
+                            let sext_name = format!("{}.rhs.sext", dest_name);
+                            writeln!(out, "  %{} = sext i32 {} to i64", sext_name, rhs_str)?;
+                            (lhs_str.clone(), format!("%{}", sext_name), "i64")
+                        }
                     } else {
                         (lhs_str.clone(), rhs_str.clone(), lhs_ty)
                     };
