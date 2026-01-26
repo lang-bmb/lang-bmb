@@ -656,14 +656,30 @@ pub fn format_mir(program: &MirProgram) -> String {
 fn format_mir_function(func: &MirFunction) -> String {
     let mut out = String::new();
 
-    // Function header
+    // v0.51.44: Show function attributes
+    let mut attrs = Vec::new();
+    if func.is_pure { attrs.push("pure"); }
+    if func.is_const { attrs.push("const"); }
+    if func.always_inline { attrs.push("alwaysinline"); }
+    if func.is_memory_free { attrs.push("memory(none)"); }
+
+    // Function header with optional attributes
     let params_str: Vec<_> = func.params.iter()
         .map(|(name, ty)| format!("{}: {}", name, format_mir_type(ty)))
         .collect();
-    out.push_str(&format!("fn {}({}) -> {} {{\n",
-        func.name,
-        params_str.join(", "),
-        format_mir_type(&func.ret_ty)));
+
+    if attrs.is_empty() {
+        out.push_str(&format!("fn {}({}) -> {} {{\n",
+            func.name,
+            params_str.join(", "),
+            format_mir_type(&func.ret_ty)));
+    } else {
+        out.push_str(&format!("fn {}({}) -> {} @{} {{\n",
+            func.name,
+            params_str.join(", "),
+            format_mir_type(&func.ret_ty),
+            attrs.join(" @")));
+    }
 
     // Blocks
     for block in &func.blocks {
