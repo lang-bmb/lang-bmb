@@ -40,10 +40,10 @@
 | 벤치마크 | 비율 | 근본 원인 | 해결책 | 우선순위 |
 |----------|------|----------|--------|----------|
 | **brainfuck** | 111% | if-else 체인 vs switch | ✅ v0.51.8 IfElseToSwitch 완료 | 재측정 필요 |
-| **hash_table** | 111% | HashMap 구현 오버헤드 | 런타임 최적화 | P0-B |
+| **hash_table** | 111% | HashMap 구현 오버헤드 | ✅ Pure BMB HashMap 구현 완료 | P0-B 재측정 필요 |
 | **sorting** | 110% | 재귀 오버헤드 | ✅ TailRecursiveToLoop + alwaysinline 완료 | 재측정 필요 |
 | **lexer** | 109% | byte_at 호출 + if-else | IfElseToSwitch 적용됨, byte_at 인라인 필요 | P0-D |
-| **fasta** | 108% | 문자열 빌더 오버헤드 | StringBuilder 최적화 | P0-E |
+| **fasta** | 108% | 문자열 빌더 오버헤드 | ✅ sb_with_capacity 구현 완료 | P0-E 재측정 필요 |
 | **binary_trees** | 106% | 메모리 할당 패턴 | typed pointer 최적화 | P0-F |
 | **n_body** | 106% | FP 연산 | SIMD 고려 | P0-G |
 
@@ -87,18 +87,98 @@ switch i64 %c, label %bb_else_31 [
 
 ---
 
-## P0-B: HashMap 최적화 (hash_table 111% → ~105%)
+## P0-B: HashMap 최적화 (hash_table 111% → ~105%) ✅ 구현 완료
 
 ### 문제 분석
 
-- 런타임 HashMap 구현 오버헤드
-- C는 간단한 open addressing, BMB는 범용 HashMap
+**C 구현:**
+```c
+typedef struct Entry { int64_t key, value, state; } Entry;  // 24바이트
+Entry* table = calloc(TABLE_SIZE, sizeof(Entry));            // 직접 포인터 연산
+uint64_t hash = key * 0x517cc1b727220a95ULL;                // 인라인 해시
+table[idx].value = val;                                      // 직접 메모리 접근
+```
 
-### 해결책
+**이전 BMB 구현:**
+```
+%m = call hm_new()              // 런타임 HashMap 생성
+%_r = call hm_insert(%m, %k, %v)  // 함수 호출 (인라인 불가)
+%v = call hm_get(%m, %k)        // 함수 호출 (인라인 불가)
+```
 
-- 해시 함수 인라인화
-- 버킷 크기 최적화
-- 또는 벤치마크 코드를 C와 동일한 알고리즘으로 재작성
+**근본 원인:**
+1. **런타임 HashMap 외부 호출**: 모든 연산이 C 런타임으로 가서 LLVM이 인라인 불가
+2. **범용 구현**: BMB HashMap은 다양한 타입 지원, C는 벤치마크 전용
+
+### 해결책: Pure BMB HashMap (v0.51.45)
+
+BMB 프리미티브만으로 HashMap 구현:
+- `load_i64`, `store_i64`: 직접 메모리 접근
+- `calloc`, `free`: 메모리 할당
+- `band`, `bor`, `bxor`, `>>`: 해시 및 마스킹
+
+**새 BMB 구현:**
+```bmb
+fn hash_i64(key: i64) -> i64 = {
+    let h = key * 5871781006564002453;  // 0x517cc1b727220a95
+    h bxor (h >> 32)
+};
+
+fn hm_insert_loop(m: i64, key: i64, value: i64, idx: i64, mask: i64) -> i64 =
+    if idx > mask { 0 }
+    else {
+        let e = entry_ptr(m, idx);
+        let state = entry_state(e);
+        if state == 0 or state == 2 {
+            let _s = set_entry(e, key, value, 1);
+            0
+        } else if state == 1 and entry_key(e) == key {
+            let old = entry_value(e);
+            let _u = store_i64(e + 8, value);
+            old
+        } else {
+            hm_insert_loop(m, key, value, (idx + 1) band mask, mask)
+        }
+    };
+```
+
+**MIR 최적화 확인:**
+```
+fn hash_i64(key: i64) -> i64 @alwaysinline @memory(none) {
+  %h = mul %key, 5871781006564002453
+  %_t1 = shr %h, 32
+  %_t2 = bxor %h, %_t1
+  ret %_t2
+}
+
+fn hm_insert_loop(...) {
+entry:
+  goto loop_header_10
+loop_header_10:
+  %idx_loop = phi [%idx, entry], [%_t14, else_7]
+  ...  // TailRecursiveToLoop 변환 완료
+}
+```
+
+### 구현 파일
+
+- `ecosystem/benchmark-bmb/benches/compute/hash_table/bmb/hashmap_pure.bmb`: 라이브러리
+- `ecosystem/benchmark-bmb/benches/compute/hash_table/bmb/main_pure.bmb`: 벤치마크
+
+### 검증
+
+인터프리터로 실행 결과 확인 (원본과 동일):
+```
+95259    <- 삽입 후 엔트리 수
+100000   <- 검색 성공 수
+46445    <- 삭제 후 엔트리 수
+46445    <- 최종 출력
+```
+
+### 남은 작업
+
+- LLVM 빌드 환경 정상화 후 네이티브 성능 측정
+- C 대비 111% → 목표 105% 달성 여부 확인
 
 ---
 
@@ -168,7 +248,7 @@ After:
 
 ---
 
-## P0-E: StringBuilder 최적화 (fasta 108% → ~100%)
+## P0-E: StringBuilder 최적화 (fasta 108% → ~100%) 🔧 진행 중
 
 ### 문제 분석 (v0.51.44 분석 완료)
 
@@ -179,11 +259,11 @@ line[pos++] = char;          // 직접 메모리 쓰기
 puts(line);                  // 배치 출력
 ```
 
-**BMB 구현:**
+**BMB 구현 (이전):**
 ```
 fn print_repeat_lines(...) {
   ...
-  %_t2 = call sb_new()           // 매 라인마다 힙 할당
+  %_t2 = call sb_new()           // 매 라인마다 힙 할당 (기본 64바이트)
   ...
   %_t5 = call sb_push_char(...)  // 문자당 함수 호출
   ...
@@ -202,20 +282,48 @@ fn print_repeat_lines(...) {
 switch %idx, [0 -> then_0, 1 -> then_3, ..., 13 -> then_39], else_40
 ```
 
-### 해결책 옵션
+### 해결책: sb_with_capacity 구현 (v0.51.45) ✅
+
+**런타임 함수 추가:**
+```c
+// bmb_runtime.c
+int64_t bmb_sb_with_capacity(int64_t capacity) {
+    StringBuilder* sb = (StringBuilder*)malloc(sizeof(StringBuilder));
+    sb->cap = capacity > 0 ? capacity : 64;
+    sb->len = 0;
+    sb->data = (char*)malloc(sb->cap);
+    sb->data[0] = '\0';
+    return (int64_t)sb;
+}
+```
+
+**벤치마크 수정:**
+```bmb
+fn print_repeat_lines(alu_str: String, k: i64, remaining: i64) -> i64 =
+    if remaining <= 0 { k }
+    else {
+        let sb = sb_with_capacity(61);  // v0.51.45: pre-allocate 61 bytes (60 + null)
+        ...
+    };
+```
+
+**MIR 확인:**
+```
+%sb = call sb_with_capacity(61)  // 용량 힌트 전달
+```
+
+### 남은 최적화
 
 | 옵션 | 접근 방식 | 난이도 | 효과 |
 |------|----------|--------|------|
-| A | `sb_with_capacity(60)` 런타임 함수 추가 | 낮음 | 재할당 제거 |
+| ~~A~~ | ~~`sb_with_capacity(60)` 런타임 함수 추가~~ | ~~낮음~~ | ✅ 완료 |
 | B | 고정 크기 배열 타입 추가 `Array<u8, 60>` | 높음 | C와 동등 |
 | C | sb_push_char LLVM 인라인 | 중간 | 함수 호출 제거 |
-| D | 벤치마크를 raw pointer로 재작성 | 중간 | 알고리즘 변경 |
 
-### 권장 순서
+### 남은 작업
 
-1. **단기**: `sb_with_capacity` 런타임 함수 추가
-2. **중기**: 벤치마크에서 용량 힌트 활용
-3. **장기**: 고정 크기 배열 타입 검토
+- LLVM 빌드 환경 정상화 후 네이티브 성능 측정
+- 108% → 목표 100% 달성 여부 확인
 
 ---
 
