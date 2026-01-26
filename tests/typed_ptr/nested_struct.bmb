@@ -47,7 +47,6 @@ fn rect_height(r: *Rect) -> i64 = {
 };
 
 fn rect_free(r: *Rect) -> i64 = {
-    let null = null_rect();
     if r != null {
         let tl = r.top_left;
         let br = r.bottom_right;

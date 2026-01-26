@@ -12,10 +12,10 @@ fn main() -> i64 = {
     let _f = free(addr);
 
     // 0 -> *T (valid: null pointer)
-    let null = 0 as *Node;
+    let nil = 0 as *Node;
 
     // *T -> *T (same type, identity)
-    let ptr2 = null as *Node;
+    let ptr2 = nil as *Node;
 
     // i64 -> *T -> i64 roundtrip
     let raw = 12345 as i64;
