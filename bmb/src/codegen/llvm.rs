@@ -624,6 +624,11 @@ impl<'ctx> LlvmContext<'ctx> {
         let sb_new_fn = self.module.add_function("bmb_sb_new", sb_new_type, None);
         self.functions.insert("sb_new".to_string(), sb_new_fn);
 
+        // v0.51.45: sb_with_capacity(capacity: i64) -> i64 (returns handle with pre-allocated capacity)
+        let sb_with_capacity_type = i64_type.fn_type(&[i64_type.into()], false);
+        let sb_with_capacity_fn = self.module.add_function("bmb_sb_with_capacity", sb_with_capacity_type, None);
+        self.functions.insert("sb_with_capacity".to_string(), sb_with_capacity_fn);
+
         // sb_push(handle: i64, s: ptr) -> i64
         let sb_push_type = i64_type.fn_type(&[i64_type.into(), ptr_type.into()], false);
         let sb_push_fn = self.module.add_function("bmb_sb_push", sb_push_type, None);
