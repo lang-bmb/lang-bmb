@@ -170,15 +170,52 @@ After:
 
 ## P0-E: StringBuilder 최적화 (fasta 108% → ~100%)
 
-### 문제 분석
+### 문제 분석 (v0.51.44 분석 완료)
 
-- StringBuilder 구현의 재할당 오버헤드
-- C는 고정 버퍼 사용
+**C 구현:**
+```c
+char line[LINE_WIDTH + 1];  // 스택 고정 버퍼, 할당 오버헤드 0
+line[pos++] = char;          // 직접 메모리 쓰기
+puts(line);                  // 배치 출력
+```
 
-### 해결책
+**BMB 구현:**
+```
+fn print_repeat_lines(...) {
+  ...
+  %_t2 = call sb_new()           // 매 라인마다 힙 할당
+  ...
+  %_t5 = call sb_push_char(...)  // 문자당 함수 호출
+  ...
+  %_t8 = call sb_build(%sb)      // 문자열 생성
+}
+```
 
-- 용량 힌트 활용 개선
-- 또는 벤치마크를 고정 배열로 재작성
+**근본 원인:**
+1. **매 라인 sb_new() 할당**: 60자 출력마다 새 StringBuilder 할당
+2. **문자당 함수 호출**: sb_push_char가 인라인되지 않음
+3. **동적 버퍼 성장**: 고정 크기가 아니라 realloc 가능성
+
+**긍정적 사항:**
+- `iub_prob`, `iub_char_code` 등 15-case if-else가 switch로 변환됨:
+```
+switch %idx, [0 -> then_0, 1 -> then_3, ..., 13 -> then_39], else_40
+```
+
+### 해결책 옵션
+
+| 옵션 | 접근 방식 | 난이도 | 효과 |
+|------|----------|--------|------|
+| A | `sb_with_capacity(60)` 런타임 함수 추가 | 낮음 | 재할당 제거 |
+| B | 고정 크기 배열 타입 추가 `Array<u8, 60>` | 높음 | C와 동등 |
+| C | sb_push_char LLVM 인라인 | 중간 | 함수 호출 제거 |
+| D | 벤치마크를 raw pointer로 재작성 | 중간 | 알고리즘 변경 |
+
+### 권장 순서
+
+1. **단기**: `sb_with_capacity` 런타임 함수 추가
+2. **중기**: 벤치마크에서 용량 힌트 활용
+3. **장기**: 고정 크기 배열 타입 검토
 
 ---
 
@@ -254,6 +291,36 @@ P0 달성을 위해 검토 중인 스펙 변경:
 | match → switch IR | jump table 생성 | 코드젠만 | 🎯 우선 |
 | 자동 인라인 확대 | 함수 호출 제거 | 최적화 정책 | 검토 중 |
 | String 인덱싱 | 직접 바이트 접근 | 타입 시스템 | 검토 중 |
+
+---
+
+## 🚧 현재 차단 요소: LLVM 빌드 환경
+
+### 문제
+
+MSYS2 환경에서 빌드 시 llvm-sys가 MSYS2의 llvm-config를 사용하여
+MSVC와 호환되지 않는 헤더 경로를 주입:
+
+```
+llvm-config --cflags → -IC:/msys64/ucrt64/include
+```
+
+MSVC는 MSYS2 stdlib.h를 파싱하지 못함:
+```
+C:/msys64/ucrt64/include\stdlib.h: error C2085: '_Exit': not in formal parameter list
+```
+
+### 해결책
+
+1. **Windows CMD에서 빌드**: MSYS2 없는 환경에서 cargo build
+2. **LLVM 개발 패키지 설치**: MSVC용 LLVM 설치 (llvm-config 포함)
+3. **llvm-sys 패치**: MSYS2 경로 필터링
+
+### 영향
+
+- 모든 벤치마크 재측정 불가
+- LLVM 네이티브 컴파일 불가
+- MIR 분석으로만 최적화 효과 검증 가능
 
 ---
 
