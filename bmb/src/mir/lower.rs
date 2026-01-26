@@ -1207,6 +1207,23 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
             } else { None };
 
             if let Some(struct_name) = struct_name_opt {
+                // v0.51.37: For pointer types, we need actual Cast instruction
+                // to generate proper inttoptr/null in LLVM IR
+                let is_ptr_cast = matches!(&ty.node, Type::Ptr(_));
+
+                if is_ptr_cast {
+                    // Pointer casts need actual Cast instruction for correct LLVM IR
+                    let dest = ctx.fresh_temp();
+                    ctx.push_inst(MirInst::Cast {
+                        dest: dest.clone(),
+                        src: src_op,
+                        from_ty: from_ty.clone(),
+                        to_ty: to_ty.clone(),
+                    });
+                    ctx.var_struct_types.insert(dest.name.clone(), struct_name);
+                    return Operand::Place(dest);
+                }
+
                 match &src_op {
                     Operand::Constant(c) => {
                         // Constants need a temp to hold the value

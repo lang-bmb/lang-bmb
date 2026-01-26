@@ -2825,27 +2825,44 @@ impl TextCodeGen {
                 // v0.51.31: Use struct_defs to look up correct field type for GEP instruction
                 // v0.51.32: Use struct type GEPs for better LLVM alias analysis
                 // v0.51.36: Handle temps from struct array IndexLoad (direct ptrs, not in locals)
-                let val_str = self.format_operand(value);
+                // v0.51.38: Load value from .addr if it's a local variable
                 let ty = self.infer_operand_type(value, func);
+
+                // v0.51.38: Generate unique key for this field store
+                let fstore_key = format!("{}_f{}", base.name, field_index);
+                let fstore_cnt = *name_counts.entry(fstore_key.clone()).or_insert(0);
+                *name_counts.entry(fstore_key).or_insert(0) += 1;
+                let suffix = if fstore_cnt == 0 { String::new() } else { format!(".{}", fstore_cnt) };
+
+                // v0.51.38: Check if value is a local that needs loading from .addr
+                let val_str = match value {
+                    Operand::Place(p) if local_names.contains(&p.name) => {
+                        // Local variable - load from .addr
+                        let load_name = format!("{}_f{}_val{}", base.name, field_index, suffix);
+                        writeln!(out, "  %{} = load {}, ptr %{}.addr", load_name, ty, p.name)?;
+                        format!("%{}", load_name)
+                    }
+                    _ => self.format_operand(value),
+                };
                 writeln!(out, "  ; field store .{}[{}] ({}) = {}", field, field_index, struct_name, val_str)?;
 
                 // v0.51.32: Use proper struct type for GEP
                 let struct_ty = format!("%struct.{}", struct_name);
 
                 let is_param = func.params.iter().any(|(name, _)| name == &base.name);
-                let is_local = local_names.contains(&base.name);
+                let base_is_local = local_names.contains(&base.name);
                 // v0.51.36: Temps (not params, not locals) are direct pointers from IndexLoad
-                if is_param || !is_local {
+                if is_param || !base_is_local {
                     // Parameters and temps are already ptr values - use directly
-                    writeln!(out, "  %{}_f{}_ptr = getelementptr {}, ptr %{}, i32 0, i32 {}",
-                             base.name, field_index, struct_ty, base.name, field_index)?;
+                    writeln!(out, "  %{}_f{}_ptr{} = getelementptr {}, ptr %{}, i32 0, i32 {}",
+                             base.name, field_index, suffix, struct_ty, base.name, field_index)?;
                 } else {
                     // Locals: load struct pointer from variable address (unique name per field)
-                    writeln!(out, "  %{}_f{}_base = load ptr, ptr %{}.addr", base.name, field_index, base.name)?;
-                    writeln!(out, "  %{}_f{}_ptr = getelementptr {}, ptr %{}_f{}_base, i32 0, i32 {}",
-                             base.name, field_index, struct_ty, base.name, field_index, field_index)?;
+                    writeln!(out, "  %{}_f{}_base{} = load ptr, ptr %{}.addr", base.name, field_index, suffix, base.name)?;
+                    writeln!(out, "  %{}_f{}_ptr{} = getelementptr {}, ptr %{}_f{}_base{}, i32 0, i32 {}",
+                             base.name, field_index, suffix, struct_ty, base.name, field_index, suffix, field_index)?;
                 }
-                writeln!(out, "  store {} {}, ptr %{}_f{}_ptr", ty, val_str, base.name, field_index)?;
+                writeln!(out, "  store {} {}, ptr %{}_f{}_ptr{}", ty, val_str, base.name, field_index, suffix)?;
             }
 
             // v0.19.1: Enum variant
@@ -3318,6 +3335,11 @@ impl TextCodeGen {
             (StructPtr(_), I64) | (StructPtr(_), U64) => "ptrtoint",
             // v0.51.33: Integer to struct pointer (inttoptr)
             (I64, StructPtr(_)) | (U64, StructPtr(_)) => "inttoptr",
+
+            // v0.51.38: Generic pointer to integer (ptrtoint)
+            (Ptr(_), I64) | (Ptr(_), U64) => "ptrtoint",
+            // v0.51.38: Integer to generic pointer (inttoptr)
+            (I64, Ptr(_)) | (U64, Ptr(_)) => "inttoptr",
 
             // Default fallback
             _ => "bitcast",
