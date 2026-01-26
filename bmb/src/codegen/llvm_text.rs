@@ -1204,17 +1204,15 @@ impl TextCodeGen {
                 let ty = self.constant_type(value);
                 // Check if destination is a local (uses alloca)
                 if local_names.contains(&dest.name) {
-                    // For locals, emit a temp then store
-                    // Use unique_name to avoid SSA violations when same variable is assigned multiple times
-                    let temp_base = format!("{}.tmp", dest.name);
-                    let temp_name = self.unique_name(&temp_base, name_counts);
+                    // v0.51.33: Store constants directly to allocas without intermediate SSA values
+                    // This eliminates unnecessary `add 0, const` instructions
                     match value {
                         Constant::Int(n) => {
-                            writeln!(out, "  %{} = add {} 0, {}", temp_name, ty, n)?;
+                            writeln!(out, "  store {} {}, ptr %{}.addr", ty, n, dest.name)?;
                         }
                         Constant::Bool(b) => {
                             let v = if *b { 1 } else { 0 };
-                            writeln!(out, "  %{} = add {} 0, {}", temp_name, ty, v)?;
+                            writeln!(out, "  store {} {}, ptr %{}.addr", ty, v, dest.name)?;
                         }
                         Constant::Float(f) => {
                             // Format float in LLVM-compatible way (scientific notation)
@@ -1225,27 +1223,30 @@ impl TextCodeGen {
                             } else {
                                 format!("{:.6e}", f)
                             };
-                            writeln!(out, "  %{} = fadd {} 0.0, {}", temp_name, ty, f_str)?;
+                            writeln!(out, "  store {} {}, ptr %{}.addr", ty, f_str, dest.name)?;
                         }
                         Constant::Unit => {
-                            writeln!(out, "  %{} = add i8 0, 0", temp_name)?;
+                            writeln!(out, "  store i8 0, ptr %{}.addr", dest.name)?;
                         }
                         Constant::String(s) => {
                             // v0.51.22: Use pre-initialized global BmbString
                             if let Some(global_name) = string_table.get(s) {
+                                // Need temp for getelementptr result
+                                let temp_base = format!("{}.tmp", dest.name);
+                                let temp_name = self.unique_name(&temp_base, name_counts);
                                 writeln!(out, "  %{} = getelementptr %BmbString, ptr @{}.bmb, i32 0",
                                          temp_name, global_name)?;
+                                writeln!(out, "  store ptr %{}, ptr %{}.addr", temp_name, dest.name)?;
                             } else {
                                 writeln!(out, "  ; string constant not in table: {}", s)?;
-                                writeln!(out, "  %{} = add ptr null, null", temp_name)?;
+                                writeln!(out, "  store ptr null, ptr %{}.addr", dest.name)?;
                             }
                         }
                         // v0.64: Character constant (stored as i32 Unicode codepoint)
                         Constant::Char(c) => {
-                            writeln!(out, "  %{} = add {} 0, {}", temp_name, ty, *c as u32)?;
+                            writeln!(out, "  store {} {}, ptr %{}.addr", ty, *c as u32, dest.name)?;
                         }
                     }
-                    writeln!(out, "  store {} %{}, ptr %{}.addr", ty, temp_name, dest.name)?;
                 } else {
                     let dest_name = self.unique_name(&dest.name, name_counts);
                     // Use add with 0 for integer constants (LLVM IR idiom)
@@ -3198,6 +3199,11 @@ impl TextCodeGen {
 
             // Same size, different signedness - bitcast
             (I32, U32) | (U32, I32) | (I64, U64) | (U64, I64) => "bitcast",
+
+            // v0.51.33: Struct pointer to integer (ptrtoint)
+            (StructPtr(_), I64) | (StructPtr(_), U64) => "ptrtoint",
+            // v0.51.33: Integer to struct pointer (inttoptr)
+            (I64, StructPtr(_)) | (U64, StructPtr(_)) => "inttoptr",
 
             // Default fallback
             _ => "bitcast",

@@ -1108,7 +1108,16 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
         // v0.51.32: Extended to support struct pointer casts
         Expr::Cast { expr, ty } => {
             let src_op = lower_expr(expr, ctx);
-            let from_ty = ctx.operand_type(&src_op);
+            // v0.51.33: Check if source is a struct pointer for correct type tracking
+            let from_ty = if let Operand::Place(p) = &src_op {
+                if let Some(struct_name) = ctx.var_struct_types.get(&p.name) {
+                    MirType::StructPtr(struct_name.clone())  // Struct pointers need special handling
+                } else {
+                    ctx.operand_type(&src_op)
+                }
+            } else {
+                ctx.operand_type(&src_op)
+            };
             let to_ty = ast_type_to_mir(&ty.node);
 
             // v0.51.32: If casting to a struct type, we need to track the type
@@ -1138,8 +1147,12 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
                 }
             }
 
-            // If types are the same, no cast needed
-            if from_ty == to_ty {
+            // v0.51.33: Check if source is a struct pointer
+            // Struct pointer to i64 requires ptrtoint in LLVM IR
+            let src_is_struct_ptr = matches!(&from_ty, MirType::StructPtr(_));
+
+            // If types are the same and source is NOT a struct pointer, no cast needed
+            if from_ty == to_ty && !src_is_struct_ptr {
                 return src_op;
             }
 
