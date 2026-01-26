@@ -7,8 +7,9 @@ struct Node {
 }
 
 // v0.51.40: Using null keyword instead of helper function
+// v0.51.41: Using sizeof<Node>() instead of hardcoded size
 fn node_new(val: i64) -> *Node = {
-    let n = malloc(16) as *Node;
+    let n = malloc(sizeof<Node>()) as *Node;
     let _v = set n.value = val;
     let _n = set n.next = null;
     n

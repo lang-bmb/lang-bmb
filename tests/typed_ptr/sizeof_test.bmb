@@ -1,0 +1,35 @@
+// v0.51.41: Test sizeof operator
+
+struct Point {
+    x: i64,
+    y: i64
+}
+
+struct Node {
+    value: i64,
+    left: *Node,
+    right: *Node
+}
+
+fn test_sizeof() -> i64 = {
+    let point_size = sizeof<Point>();   // Expected: 16 (2 x i64)
+    let node_size = sizeof<Node>();     // Expected: 24 (i64 + 2 x ptr)
+    let i32_size = sizeof<i32>();       // Expected: 4
+    let i64_size = sizeof<i64>();       // Expected: 8
+    
+    let _p1 = println(point_size);
+    let _p2 = println(node_size);
+    let _p3 = println(i32_size);
+    let _p4 = println(i64_size);
+    
+    // Return 0 if all sizes are correct
+    if point_size == 16 {
+        if node_size == 24 {
+            if i32_size == 4 {
+                if i64_size == 8 { 0 } else { 4 }
+            } else { 3 }
+        } else { 2 }
+    } else { 1 }
+};
+
+fn main() -> i64 = test_sizeof();

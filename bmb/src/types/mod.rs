@@ -1287,6 +1287,8 @@ impl TypeChecker {
             // v0.51.40: Null pointer literal - creates a polymorphic pointer type
             // that will unify with any expected pointer type via TypeVar matching
             Expr::Null => Ok(Type::Ptr(Box::new(Type::TypeVar("_null".to_string())))),
+            // v0.51.41: Sizeof returns i64 (size in bytes)
+            Expr::Sizeof { .. } => Ok(Type::I64),
             Expr::Unit => Ok(Type::Unit),
 
             Expr::Ret => self.current_ret_ty.clone().ok_or_else(|| {

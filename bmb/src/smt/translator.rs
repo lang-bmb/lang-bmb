@@ -196,6 +196,9 @@ impl SmtTranslator {
             // v0.51.40: Null pointer literal - represented as 0
             Expr::Null => Ok("0".to_string()),
 
+            // v0.51.41: Sizeof - approximate as constant (SMT doesn't track memory layout)
+            Expr::Sizeof { .. } => Ok("8".to_string()),
+
             Expr::Var(name) => {
                 if self.var_types.contains_key(name) {
                     Ok(name.clone())

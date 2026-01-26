@@ -102,6 +102,9 @@ pub enum Token {
     // v0.51.40: Null pointer literal
     #[token("null")]
     Null,
+    // v0.51.41: Sizeof operator
+    #[token("sizeof")]
+    Sizeof,
     // v0.20.1: Trait system
     #[token("trait")]
     Trait,
@@ -378,6 +381,7 @@ impl std::fmt::Display for Token {
             Token::Try => write!(f, "try"),
             Token::As => write!(f, "as"),
             Token::Null => write!(f, "null"),
+            Token::Sizeof => write!(f, "sizeof"),
             Token::Trait => write!(f, "trait"),
             Token::Impl => write!(f, "impl"),
             Token::TyI32 => write!(f, "i32"),

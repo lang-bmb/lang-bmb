@@ -67,6 +67,8 @@ extern {
         "as" => Token::As,
         // v0.51.40: Null pointer literal
         "null" => Token::Null,
+        // v0.51.41: Sizeof operator
+        "sizeof" => Token::Sizeof,
         // v0.20.0: Closure syntax
         "|" => Token::Pipe,
         // v0.20.1: Trait system
@@ -1711,6 +1713,8 @@ SpannedPostfixExpr: Spanned<Expr> = {
 
 // Call expression / Identifier-based expressions
 CallExpr: Expr = {
+    // v0.51.41: Sizeof operator: sizeof<Type>()
+    "sizeof" "<" <ty:SpannedType> ">" "(" ")" => Expr::Sizeof { ty },
     // Function call: func(args)
     <f:RawIdent> "(" <args:Args> ")" => Expr::Call { func: f, args },
     // Enum variant with args: EnumName::Variant(args)

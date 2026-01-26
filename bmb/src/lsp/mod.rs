@@ -1313,6 +1313,8 @@ fn format_expr(expr: &Expr) -> String {
         Expr::Unit => "()".to_string(),
         // v0.51.40: Null pointer literal
         Expr::Null => "null".to_string(),
+        // v0.51.41: Sizeof expression
+        Expr::Sizeof { ty } => format!("sizeof<{}>()", format_type(&ty.node)),
         Expr::Var(name) => name.clone(),
         Expr::Ret => "ret".to_string(),
         Expr::It => "it".to_string(),

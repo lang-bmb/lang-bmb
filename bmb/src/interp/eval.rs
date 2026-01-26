@@ -92,6 +92,34 @@ impl Interpreter {
         interp
     }
 
+    /// v0.51.41: Compute size of a type in bytes (for sizeof operator)
+    fn compute_type_size(&self, ty: &Type) -> i64 {
+        use crate::ast::Type;
+        match ty {
+            Type::I32 | Type::U32 => 4,
+            Type::I64 | Type::U64 | Type::F64 => 8,
+            Type::Bool => 1,
+            Type::Char => 4,
+            Type::Unit => 0,
+            Type::Ptr(_) | Type::Ref(_) | Type::RefMut(_) => 8,
+            Type::Named(name) => {
+                // Look up struct size
+                if let Some(struct_def) = self.struct_defs.get(name) {
+                    struct_def.fields.iter().map(|f| self.compute_type_size(&f.ty.node)).sum()
+                } else {
+                    8 // Default
+                }
+            }
+            Type::Array(elem_ty, size) => {
+                self.compute_type_size(elem_ty) * (*size as i64)
+            }
+            Type::Tuple(elems) => {
+                elems.iter().map(|e| self.compute_type_size(e)).sum()
+            }
+            _ => 8, // Default for unknown types
+        }
+    }
+
     /// v0.35.1: Intern a string literal for O(1) reuse
     /// Returns Rc::clone() if already interned, otherwise creates new Rc and stores it
     fn intern_string(&mut self, s: &str) -> Rc<String> {
@@ -350,6 +378,12 @@ impl Interpreter {
 
             // v0.51.40: Null pointer literal - interpreted as 0
             Expr::Null => Ok(Value::Int(0)),
+
+            // v0.51.41: Sizeof - return size in bytes
+            Expr::Sizeof { ty } => {
+                let size = self.compute_type_size(&ty.node);
+                Ok(Value::Int(size))
+            }
 
             Expr::Var(name) => {
                 env.borrow()

@@ -305,6 +305,56 @@ fn flip_cmp_op(op: CmpOp) -> CmpOp {
     }
 }
 
+/// v0.51.41: Compute the size of a type in bytes
+fn compute_type_size(ty: &Type, ctx: &LoweringContext) -> i64 {
+    match ty {
+        Type::I32 | Type::U32 => 4,
+        Type::I64 | Type::U64 | Type::F64 => 8,
+        Type::Bool => 1,
+        Type::Char => 4, // Unicode codepoint
+        Type::Unit => 0,
+        Type::Ptr(_) => 8, // 64-bit pointers
+        Type::Ref(_) | Type::RefMut(_) => 8, // References are pointers
+        Type::Named(name) => {
+            // Look up struct size from struct_type_defs (has full type info)
+            if let Some(fields) = ctx.struct_type_defs.get(name) {
+                fields.iter().map(|(_, field_ty)| compute_mir_type_size(field_ty)).sum()
+            } else {
+                8 // Default to pointer size for unknown types
+            }
+        }
+        Type::Array(elem_ty, size) => {
+            compute_type_size(elem_ty, ctx) * (*size as i64)
+        }
+        Type::Tuple(elems) => {
+            elems.iter().map(|e| compute_type_size(e, ctx)).sum()
+        }
+        // Generic types, function types, etc. - default to pointer size
+        _ => 8,
+    }
+}
+
+/// v0.51.41: Compute size of MIR type in bytes
+fn compute_mir_type_size(ty: &MirType) -> i64 {
+    match ty {
+        MirType::I32 | MirType::U32 => 4,
+        MirType::I64 | MirType::U64 | MirType::F64 => 8,
+        MirType::Bool => 1,
+        MirType::Char => 4,
+        MirType::Unit => 0,
+        MirType::Ptr(_) | MirType::StructPtr(_) => 8,
+        MirType::Array { element_type, size } => {
+            let elem_size = compute_mir_type_size(element_type);
+            elem_size * (size.unwrap_or(1) as i64)
+        }
+        MirType::Struct { fields, .. } => {
+            fields.iter().map(|(_, ty)| compute_mir_type_size(ty)).sum()
+        }
+        // Default for other types (String, Enum, etc.)
+        _ => 8,
+    }
+}
+
 /// Lower an expression, returning the operand holding its result
 fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
     match &expr.node {
@@ -323,6 +373,12 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
 
         // v0.51.40: Null pointer literal - lowered as integer 0
         Expr::Null => Operand::Constant(Constant::Int(0)),
+
+        // v0.51.41: Sizeof - compute size based on type
+        Expr::Sizeof { ty } => {
+            let size = compute_type_size(&ty.node, ctx);
+            Operand::Constant(Constant::Int(size))
+        }
 
         Expr::Var(name) => Operand::Place(Place::new(name.clone())),
 

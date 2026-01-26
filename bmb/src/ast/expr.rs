@@ -274,6 +274,13 @@ pub enum Expr {
         /// Target type
         ty: Spanned<Type>,
     },
+
+    /// Size of type in bytes (v0.51.41)
+    /// Example: sizeof<Node>() returns the size of Node struct in bytes
+    Sizeof {
+        /// The type to get the size of
+        ty: Spanned<Type>,
+    },
 }
 
 /// A single arm in a match expression

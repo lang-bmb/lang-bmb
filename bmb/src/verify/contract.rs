@@ -432,9 +432,10 @@ impl ContractVerifier {
             }
             // Leaf expressions - no recursion needed
             // v0.51.40: Added Expr::Null
+            // v0.51.41: Added Expr::Sizeof
             Expr::IntLit(_) | Expr::FloatLit(_) | Expr::BoolLit(_) | Expr::StringLit(_)
             | Expr::CharLit(_) | Expr::Var(_) | Expr::Ret | Expr::Unit | Expr::It
-            | Expr::Continue | Expr::Todo { .. } | Expr::Null => {}
+            | Expr::Continue | Expr::Todo { .. } | Expr::Null | Expr::Sizeof { .. } => {}
         }
     }
 

@@ -342,6 +342,8 @@ pub fn format_expr(expr: &Expr) -> String {
         Expr::CharLit(c) => format!("'{}'", c.escape_default()),
         // v0.51.40: Null pointer literal
         Expr::Null => "null".to_string(),
+        // v0.51.41: Sizeof expression
+        Expr::Sizeof { ty } => format!("(sizeof {})", format_type(&ty.node)),
         Expr::Unit => "()".to_string(),
         Expr::Var(name) => name.clone(),
         Expr::Ret => "ret".to_string(),
