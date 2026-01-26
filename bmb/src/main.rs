@@ -597,7 +597,12 @@ fn emit_mir_file(
     checker.check_program(&ast)?;
 
     // Lower to MIR
-    let mir = bmb::mir::lower_program(&ast);
+    let mut mir = bmb::mir::lower_program(&ast);
+
+    // v0.51.44: Run MIR optimization pipeline (same as actual codegen)
+    // This ensures --emit-mir shows the optimized MIR that will be codegen'd
+    let pipeline = bmb::mir::OptimizationPipeline::for_level(bmb::mir::OptLevel::Release);
+    pipeline.optimize(&mut mir);
 
     // Format MIR as text
     let mir_text = bmb::mir::format_mir(&mir);
