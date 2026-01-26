@@ -231,6 +231,20 @@ fn is_method_call_node(s: String) -> bool = get_node_type(s) == "method_call";
 // Used for @likely/@unlikely branch hints
 fn is_attr_node(s: String) -> bool = get_node_type(s) == "attr";
 
+// v0.51.43: Null literal detection - exactly "(null)"
+// '(' = 40, 'n' = 110, 'u' = 117, 'l' = 108, 'l' = 108, ')' = 41
+fn is_null_node(s: String) -> bool =
+    s.len() == 6 and
+    s.byte_at(0) == 40 and   // '('
+    s.byte_at(1) == 110 and  // 'n'
+    s.byte_at(2) == 117 and  // 'u'
+    s.byte_at(3) == 108 and  // 'l'
+    s.byte_at(4) == 108 and  // 'l'
+    s.byte_at(5) == 41;      // ')'
+
+// v0.51.43: Sizeof expression detection - (sizeof type)
+fn is_sizeof_node(s: String) -> bool = get_node_type(s) == "sizeof";
+
 // v0.52: Type nodes - these are passed through for type checking
 fn is_fin_type_node(s: String) -> bool = get_node_type(s) == "fin_type";
 fn is_range_type_node(s: String) -> bool = get_node_type(s) == "range_type";
@@ -604,6 +618,22 @@ fn lower_unit_sb(ast: String, temp: i64, block: i64, sb: i64) -> String =
     let w1 = sb_push_mir(sb, text);
     pack_result_sb(temp + 1, block, dest);
 
+// v0.51.43: StringBuilder-aware null lowering
+fn lower_null_sb(ast: String, temp: i64, block: i64, sb: i64) -> String =
+    let dest = place_temp(temp);
+    let text = mir_text_const(dest, "I:0");
+    let w1 = sb_push_mir(sb, text);
+    pack_result_sb(temp + 1, block, dest);
+
+// v0.51.43: StringBuilder-aware sizeof lowering
+fn lower_sizeof_sb(ast: String, temp: i64, block: i64, sb: i64) -> String =
+    let type_ast = sizeof_extract_type(ast);
+    let size = sizeof_compute(type_ast);
+    let dest = place_temp(temp);
+    let text = mir_text_const(dest, "I:" + int_to_string(size));
+    let w1 = sb_push_mir(sb, text);
+    pack_result_sb(temp + 1, block, dest);
+
 // StringBuilder-aware compound lowering functions
 fn lower_binop_sb(ast: String, temp: i64, block: i64, sb: i64) -> String =
     let op = get_op_symbol(ast);
@@ -711,8 +741,9 @@ fn lower_call_args_sb(ast: String, idx: i64, temp: i64, block: i64, acc: String,
 
 // StringBuilder-aware expression dispatcher
 // Fallback to original for complex nodes (struct, enum, lambda, etc.)
+// v0.51.43: Added null and sizeof support
 fn lower_expr_sb(ast: String, temp: i64, block: i64, sb: i64) -> String =
-    if is_int_node(ast) { lower_int_sb(ast, temp, block, sb) } else if is_bool_node(ast) { lower_bool_sb(ast, temp, block, sb) } else if is_string_node(ast) { lower_string_sb(ast, temp, block, sb) } else if is_var_node(ast) { lower_var_sb(ast, temp, block, sb) } else if is_op_node(ast) { lower_binop_sb(ast, temp, block, sb) } else if is_neg_node(ast) { lower_neg_sb(ast, temp, block, sb) } else if is_not_node(ast) { lower_not_sb(ast, temp, block, sb) } else if is_if_node(ast) { lower_if_sb(ast, temp, block, sb) } else if is_let_node(ast) or is_let_mut_node(ast) { lower_let_sb(ast, temp, block, sb) } else if is_call_node(ast) { lower_call_sb(ast, temp, block, sb) } else if is_unit_node(ast) { lower_unit_sb(ast, temp, block, sb) } else {
+    if is_int_node(ast) { lower_int_sb(ast, temp, block, sb) } else if is_bool_node(ast) { lower_bool_sb(ast, temp, block, sb) } else if is_string_node(ast) { lower_string_sb(ast, temp, block, sb) } else if is_var_node(ast) { lower_var_sb(ast, temp, block, sb) } else if is_op_node(ast) { lower_binop_sb(ast, temp, block, sb) } else if is_neg_node(ast) { lower_neg_sb(ast, temp, block, sb) } else if is_not_node(ast) { lower_not_sb(ast, temp, block, sb) } else if is_if_node(ast) { lower_if_sb(ast, temp, block, sb) } else if is_let_node(ast) or is_let_mut_node(ast) { lower_let_sb(ast, temp, block, sb) } else if is_call_node(ast) { lower_call_sb(ast, temp, block, sb) } else if is_unit_node(ast) { lower_unit_sb(ast, temp, block, sb) } else if is_null_node(ast) { lower_null_sb(ast, temp, block, sb) } else if is_sizeof_node(ast) { lower_sizeof_sb(ast, temp, block, sb) } else {
         let r = lower_expr(ast, temp, block);
         let t = unpack_temp(r);
         let b = unpack_block(r);
@@ -740,8 +771,9 @@ fn lower_expr_sb(ast: String, temp: i64, block: i64, sb: i64) -> String =
 // v0.30.65: Index expression support
 // v0.30.63: Method call support
 // v0.52: Attribute expression support (@likely/@unlikely)
+// v0.51.43: Null and sizeof expression support
 fn lower_expr(ast: String, temp: i64, block: i64) -> String =
-    if is_int_node(ast) { lower_int(ast, temp, block) } else if is_bool_node(ast) { lower_bool(ast, temp, block) } else if is_string_node(ast) { lower_string(ast, temp, block) } else if is_var_node(ast) { lower_var(ast, temp, block) } else if is_op_node(ast) { lower_binop(ast, temp, block) } else if is_neg_node(ast) { lower_neg(ast, temp, block) } else if is_not_node(ast) { lower_not(ast, temp, block) } else if is_if_node(ast) { lower_if(ast, temp, block) } else if is_let_node(ast) or is_let_mut_node(ast) { lower_let(ast, temp, block) } else if is_call_node(ast) { lower_call(ast, temp, block) } else if is_new_node(ast) { lower_struct_init(ast, temp, block) } else if is_dot_node(ast) { lower_field_access(ast, temp, block) } else if is_enum_variant_node(ast) { lower_enum_variant(ast, temp, block) } else if is_match_node(ast) { lower_match(ast, temp, block) } else if is_lambda_node(ast) { lower_lambda(ast, temp, block) } else if is_block_node(ast) { lower_block(ast, temp, block) } else if is_unit_node(ast) { lower_unit(ast, temp, block) } else if is_while_node(ast) { lower_while(ast, temp, block) } else if is_for_node(ast) { lower_for(ast, temp, block) } else if is_break_node(ast) { lower_break(ast, temp, block) } else if is_continue_node(ast) { lower_continue(ast, temp, block) } else if is_array_node(ast) { lower_array(ast, temp, block) } else if is_index_node(ast) { lower_index(ast, temp, block) } else if is_method_call_node(ast) { lower_method_call(ast, temp, block) } else if is_attr_node(ast) { lower_attr(ast, temp, block) } else { pack_lower_result(temp, block, "%error", "  ; unknown: " + get_node_type(ast)) };
+    if is_int_node(ast) { lower_int(ast, temp, block) } else if is_bool_node(ast) { lower_bool(ast, temp, block) } else if is_string_node(ast) { lower_string(ast, temp, block) } else if is_var_node(ast) { lower_var(ast, temp, block) } else if is_op_node(ast) { lower_binop(ast, temp, block) } else if is_neg_node(ast) { lower_neg(ast, temp, block) } else if is_not_node(ast) { lower_not(ast, temp, block) } else if is_if_node(ast) { lower_if(ast, temp, block) } else if is_let_node(ast) or is_let_mut_node(ast) { lower_let(ast, temp, block) } else if is_call_node(ast) { lower_call(ast, temp, block) } else if is_new_node(ast) { lower_struct_init(ast, temp, block) } else if is_dot_node(ast) { lower_field_access(ast, temp, block) } else if is_enum_variant_node(ast) { lower_enum_variant(ast, temp, block) } else if is_match_node(ast) { lower_match(ast, temp, block) } else if is_lambda_node(ast) { lower_lambda(ast, temp, block) } else if is_block_node(ast) { lower_block(ast, temp, block) } else if is_unit_node(ast) { lower_unit(ast, temp, block) } else if is_while_node(ast) { lower_while(ast, temp, block) } else if is_for_node(ast) { lower_for(ast, temp, block) } else if is_break_node(ast) { lower_break(ast, temp, block) } else if is_continue_node(ast) { lower_continue(ast, temp, block) } else if is_array_node(ast) { lower_array(ast, temp, block) } else if is_index_node(ast) { lower_index(ast, temp, block) } else if is_method_call_node(ast) { lower_method_call(ast, temp, block) } else if is_attr_node(ast) { lower_attr(ast, temp, block) } else if is_null_node(ast) { lower_null(ast, temp, block) } else if is_sizeof_node(ast) { lower_sizeof(ast, temp, block) } else { pack_lower_result(temp, block, "%error", "  ; unknown: " + get_node_type(ast)) };
 
 // Lower integer literal: (int 42)
 fn lower_int(ast: String, temp: i64, block: i64) -> String =
@@ -1100,6 +1132,55 @@ fn lower_unit(ast: String, temp: i64, block: i64) -> String =
     let dest = place_temp(temp);
     let text = "  " + dest + " = UNIT";
     pack_lower_result(temp + 1, block, dest, text);
+
+// v0.51.43: Lower null literal: (null) -> constant 0
+// Null pointers are represented as integer 0 in MIR
+fn lower_null(ast: String, temp: i64, block: i64) -> String =
+    let dest = place_temp(temp);
+    let text = mir_text_const(dest, "I:0");
+    pack_lower_result(temp + 1, block, dest, text);
+
+// v0.51.43: Lower sizeof expression: (sizeof type)
+// Sizeof computes size at compile-time and returns constant
+fn lower_sizeof(ast: String, temp: i64, block: i64) -> String =
+    let type_ast = sizeof_extract_type(ast);
+    let size = sizeof_compute(type_ast);
+    let dest = place_temp(temp);
+    let text = mir_text_const(dest, "I:" + int_to_string(size));
+    pack_lower_result(temp + 1, block, dest, text);
+
+// v0.51.43: Extract type from (sizeof type)
+// After "(sizeof " is 8 chars, before closing ")" is len-1
+fn sizeof_extract_type(ast: String) -> String =
+    let len = ast.len();
+    if len < 10 { "" } else { ast.slice(8, len - 1) };
+
+// v0.51.43: Compute size of type in bytes
+// i32 = 4, i64/f64/ptr = 8, bool = 1, structs = sum of fields
+fn sizeof_compute(type_ast: String) -> i64 =
+    if type_ast == "i32" { 4 }
+    else if type_ast == "i64" { 8 }
+    else if type_ast == "f64" { 8 }
+    else if type_ast == "bool" { 1 }
+    else if type_ast == "()" { 0 }
+    else if sizeof_is_ptr(type_ast) { 8 }
+    else { 8 };  // Default to pointer size for unknown types
+
+// v0.51.43: Check if type is a pointer type (starts with "(ptr_type")
+fn sizeof_is_ptr(type_ast: String) -> bool =
+    if type_ast.len() < 10 { false }
+    else {
+        // "(ptr_type" = 40, 112, 116, 114, 95, 116, 121, 112, 101
+        type_ast.byte_at(0) == 40 and   // '('
+        type_ast.byte_at(1) == 112 and  // 'p'
+        type_ast.byte_at(2) == 116 and  // 't'
+        type_ast.byte_at(3) == 114 and  // 'r'
+        type_ast.byte_at(4) == 95 and   // '_'
+        type_ast.byte_at(5) == 116 and  // 't'
+        type_ast.byte_at(6) == 121 and  // 'y'
+        type_ast.byte_at(7) == 112 and  // 'p'
+        type_ast.byte_at(8) == 101      // 'e'
+    };
 
 // v0.30.38: Lower while expression: (while cond body)
 // While MIR structure:
