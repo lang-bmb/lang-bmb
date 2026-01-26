@@ -2781,16 +2781,18 @@ impl TextCodeGen {
                 for (i, (field_name, value)) in fields.iter().enumerate() {
                     let ty = self.infer_operand_type(value, func);
                     // v0.51.32: Properly load operand values from .addr if they're locals
+                    // v0.51.42: Also check local_names - temps from FieldAccess don't have .addr
                     let val_str = match value {
                         Operand::Place(p) => {
                             let is_param = func.params.iter().any(|(name, _)| name == &p.name);
-                            if !is_param {
+                            let is_local = local_names.contains(&p.name);
+                            if !is_param && is_local {
                                 // Local: load from .addr
                                 let load_name = format!("{}_f{}_val", dest.name, i);
                                 writeln!(out, "  %{} = load {}, ptr %{}.addr", load_name, ty, p.name)?;
                                 format!("%{}", load_name)
                             } else {
-                                // Param: use directly
+                                // Param or temp: use directly
                                 format!("%{}", p.name)
                             }
                         }
