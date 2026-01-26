@@ -136,6 +136,9 @@ impl TextCodeGen {
             })
             .collect();
 
+        // v0.51.31: Emit struct type definitions
+        self.emit_struct_types(&mut output, &program.struct_defs)?;
+
         // Emit string globals
         self.emit_string_globals(&mut output, &string_table)?;
 
@@ -144,7 +147,7 @@ impl TextCodeGen {
 
         // Generate functions with string table and function type map
         for func in &program.functions {
-            self.emit_function_with_strings(&mut output, func, &string_table, &fn_return_types, &fn_param_types, &sret_functions, &small_struct_functions)?;
+            self.emit_function_with_strings(&mut output, func, &string_table, &fn_return_types, &fn_param_types, &sret_functions, &small_struct_functions, &program.struct_defs)?;
         }
 
         Ok(output)
@@ -204,6 +207,30 @@ impl TextCodeGen {
         }
 
         table
+    }
+
+    /// v0.51.31: Emit LLVM struct type definitions
+    /// This provides LLVM with proper type information for better alias analysis and optimization
+    fn emit_struct_types(&self, out: &mut String, struct_defs: &HashMap<String, Vec<(String, MirType)>>) -> TextCodeGenResult<()> {
+        if struct_defs.is_empty() {
+            return Ok(());
+        }
+
+        writeln!(out, "; Struct type definitions")?;
+        // Sort by name for deterministic output
+        let mut sorted: Vec<_> = struct_defs.iter().collect();
+        sorted.sort_by_key(|(name, _)| *name);
+
+        for (name, fields) in sorted {
+            let field_types: Vec<&str> = fields
+                .iter()
+                .map(|(_, ty)| self.mir_type_to_llvm(ty))
+                .collect();
+            writeln!(out, "%struct.{} = type {{ {} }}", name, field_types.join(", "))?;
+        }
+        writeln!(out)?;
+
+        Ok(())
     }
 
     /// Emit string global constants
@@ -426,7 +453,8 @@ impl TextCodeGen {
         let empty_fn_param_types = HashMap::new();
         let empty_sret_functions = HashMap::new();
         let empty_small_struct_functions = HashMap::new();
-        self.emit_function_with_strings(out, func, &empty_str_table, &empty_fn_types, &empty_fn_param_types, &empty_sret_functions, &empty_small_struct_functions)
+        let empty_struct_defs = HashMap::new();
+        self.emit_function_with_strings(out, func, &empty_str_table, &empty_fn_types, &empty_fn_param_types, &empty_sret_functions, &empty_small_struct_functions, &empty_struct_defs)
     }
 
     /// v0.51.25: Check if a specific struct variable escapes the function
@@ -614,6 +642,7 @@ impl TextCodeGen {
         &self,
         func: &MirFunction,
         fn_return_types: &HashMap<String, &'static str>,
+        struct_defs: &HashMap<String, Vec<(String, MirType)>>,
     ) -> HashMap<String, &'static str> {
         let mut place_types: HashMap<String, &'static str> = HashMap::new();
 
@@ -740,6 +769,14 @@ impl TextCodeGen {
                     MirInst::IndexLoad { dest, .. } => {
                         place_types.insert(dest.name.clone(), "i64");
                     }
+                    // v0.51.31: FieldAccess produces the field's type
+                    MirInst::FieldAccess { dest, struct_name, field_index, .. } => {
+                        let field_llvm_ty = struct_defs.get(struct_name)
+                            .and_then(|fields| fields.get(*field_index))
+                            .map(|(_, ty)| self.mir_type_to_llvm(ty))
+                            .unwrap_or("i64");
+                        place_types.insert(dest.name.clone(), field_llvm_ty);
+                    }
                     _ => {}
                 }
             }
@@ -758,9 +795,10 @@ impl TextCodeGen {
         fn_param_types: &HashMap<String, Vec<&'static str>>,
         sret_functions: &HashMap<String, usize>,
         small_struct_functions: &HashMap<String, usize>,
+        struct_defs: &HashMap<String, Vec<(String, MirType)>>,
     ) -> TextCodeGenResult<()> {
         // Pre-scan to build place type map
-        let place_types = self.build_place_type_map(func, fn_return_types);
+        let place_types = self.build_place_type_map(func, fn_return_types, struct_defs);
 
         // v0.51.25: Escape analysis is now done inline in emit_instruction_with_strings
         // via check_struct_escapes() for each StructInit instruction
@@ -1005,7 +1043,7 @@ impl TextCodeGen {
 
         // Emit basic blocks with place type information
         for block in &func.blocks {
-            self.emit_block_with_strings(out, block, func, string_table, fn_return_types, fn_param_types, sret_functions, small_struct_functions, &place_types, &mut name_counts, &local_names, &narrowed_param_names, &phi_load_map, &phi_string_map, &phi_coerce_map)?;
+            self.emit_block_with_strings(out, block, func, string_table, fn_return_types, fn_param_types, sret_functions, small_struct_functions, &place_types, &mut name_counts, &local_names, &narrowed_param_names, &phi_load_map, &phi_string_map, &phi_coerce_map, struct_defs)?;
         }
 
         writeln!(out, "}}")?;
@@ -1034,7 +1072,8 @@ impl TextCodeGen {
         let empty_phi_coerce_map = std::collections::HashMap::new();
         let empty_narrowed = std::collections::HashSet::new();
         let empty_small_struct_functions = HashMap::new();
-        self.emit_block_with_strings(out, block, func, &empty_str_table, &empty_fn_types, &empty_fn_param_types, &empty_sret_functions, &empty_small_struct_functions, &empty_place_types, &mut empty_name_counts, &empty_local_names, &empty_narrowed, &empty_phi_map, &empty_phi_string_map, &empty_phi_coerce_map)
+        let empty_struct_defs = HashMap::new();
+        self.emit_block_with_strings(out, block, func, &empty_str_table, &empty_fn_types, &empty_fn_param_types, &empty_sret_functions, &empty_small_struct_functions, &empty_place_types, &mut empty_name_counts, &empty_local_names, &empty_narrowed, &empty_phi_map, &empty_phi_string_map, &empty_phi_coerce_map, &empty_struct_defs)
     }
 
     /// Emit a basic block with string table support
@@ -1056,13 +1095,14 @@ impl TextCodeGen {
         phi_load_map: &std::collections::HashMap<(String, String, String), String>,
         phi_string_map: &std::collections::HashMap<(String, String, String), String>,
         phi_coerce_map: &std::collections::HashMap<(String, String, String), (String, &'static str, &'static str)>,
+        struct_defs: &HashMap<String, Vec<(String, MirType)>>,
     ) -> TextCodeGenResult<()> {
         // Use bb_ prefix to avoid collision with variable names
         writeln!(out, "bb_{}:", block.label)?;
 
         // Emit instructions (pass phi_load_map for phi node handling)
         for inst in &block.instructions {
-            self.emit_instruction_with_strings(out, inst, func, string_table, fn_return_types, fn_param_types, sret_functions, small_struct_functions, place_types, name_counts, local_names, narrowed_param_names, phi_load_map, phi_string_map, phi_coerce_map, &block.label)?;
+            self.emit_instruction_with_strings(out, inst, func, string_table, fn_return_types, fn_param_types, sret_functions, small_struct_functions, place_types, name_counts, local_names, narrowed_param_names, phi_load_map, phi_string_map, phi_coerce_map, &block.label, struct_defs)?;
         }
 
         // Emit loads for locals that will be used in phi nodes of successor blocks
@@ -1157,6 +1197,7 @@ impl TextCodeGen {
         phi_string_map: &std::collections::HashMap<(String, String, String), String>,
         phi_coerce_map: &std::collections::HashMap<(String, String, String), (String, &'static str, &'static str)>,
         current_block_label: &str,
+        struct_defs: &HashMap<String, Vec<(String, MirType)>>,
     ) -> TextCodeGenResult<()> {
         match inst {
             MirInst::Const { dest, value } => {
@@ -2670,6 +2711,9 @@ impl TextCodeGen {
                 // Determine allocation strategy
                 let use_sret = is_sret_func && is_returned;
 
+                // v0.51.32: Use proper LLVM struct types for better alias analysis
+                let struct_ty = format!("%struct.{}", struct_name);
+
                 if use_sret {
                     // v0.51.27: Use sret pointer from caller (no allocation needed)
                     writeln!(out, "  ; struct {} init with {} fields (sret - caller allocated)", struct_name, fields.len())?;
@@ -2678,7 +2722,7 @@ impl TextCodeGen {
                     // v0.51.28: Small struct register return - use stack allocation
                     // The struct will be packed into an aggregate at return
                     writeln!(out, "  ; struct {} init with {} fields (stack - small struct return)", struct_name, fields.len())?;
-                    writeln!(out, "  %{} = alloca i64, i32 {}", dest.name, num_fields)?;
+                    writeln!(out, "  %{} = alloca {}, align 8", dest.name, struct_ty)?;
                 } else if escapes {
                     // Escaped struct: must use heap allocation
                     let size = num_fields * 8;
@@ -2687,52 +2731,71 @@ impl TextCodeGen {
                 } else {
                     // Local struct: can use stack allocation (faster)
                     writeln!(out, "  ; struct {} init with {} fields (stack - local only)", struct_name, fields.len())?;
-                    writeln!(out, "  %{} = alloca i64, i32 {}", dest.name, num_fields)?;
+                    writeln!(out, "  %{} = alloca {}, align 8", dest.name, struct_ty)?;
                 }
                 for (i, (field_name, value)) in fields.iter().enumerate() {
                     let val_str = self.format_operand(value);
                     writeln!(out, "  ; field {} = {}", field_name, val_str)?;
                     let ty = self.infer_operand_type(value, func);
-                    writeln!(out, "  %{}_f{} = getelementptr i64, ptr %{}, i32 {}",
-                             dest.name, i, dest.name, i)?;
+                    // v0.51.32: Use struct type GEP for better LLVM optimization
+                    writeln!(out, "  %{}_f{} = getelementptr {}, ptr %{}, i32 0, i32 {}",
+                             dest.name, i, struct_ty, dest.name, i)?;
                     writeln!(out, "  store {} {}, ptr %{}_f{}", ty, val_str, dest.name, i)?;
                 }
             }
 
-            MirInst::FieldAccess { dest, base, field, field_index } => {
+            MirInst::FieldAccess { dest, base, field, field_index, struct_name } => {
                 // v0.51.23: Load field from struct pointer using correct offset
                 // v0.51.24: Check if base is a parameter (already ptr) or local (needs load from .addr)
-                writeln!(out, "  ; field access .{}[{}] from %{}", field, field_index, base.name)?;
+                // v0.51.31: Use struct_defs to look up correct field type for load instruction
+                // v0.51.32: Use struct type GEPs for better LLVM alias analysis
+                writeln!(out, "  ; field access .{}[{}] from %{} ({})", field, field_index, base.name, struct_name)?;
+
+                // Look up the field type from struct_defs
+                let field_llvm_ty = struct_defs.get(struct_name)
+                    .and_then(|fields| fields.get(*field_index))
+                    .map(|(_, ty)| self.mir_type_to_llvm(ty))
+                    .unwrap_or("i64"); // Default to i64 if not found
+
+                // v0.51.32: Use proper struct type for GEP
+                let struct_ty = format!("%struct.{}", struct_name);
+
                 let is_param = func.params.iter().any(|(name, _)| name == &base.name);
                 if is_param {
                     // Parameters are already ptr values - use directly
-                    writeln!(out, "  %{}_ptr = getelementptr i64, ptr %{}, i32 {}",
-                             dest.name, base.name, field_index)?;
+                    writeln!(out, "  %{}_ptr = getelementptr {}, ptr %{}, i32 0, i32 {}",
+                             dest.name, struct_ty, base.name, field_index)?;
                 } else {
                     // Locals: load struct pointer from variable address
                     writeln!(out, "  %{}_base_ptr = load ptr, ptr %{}.addr", dest.name, base.name)?;
-                    writeln!(out, "  %{}_ptr = getelementptr i64, ptr %{}_base_ptr, i32 {}",
-                             dest.name, dest.name, field_index)?;
+                    writeln!(out, "  %{}_ptr = getelementptr {}, ptr %{}_base_ptr, i32 0, i32 {}",
+                             dest.name, struct_ty, dest.name, field_index)?;
                 }
-                writeln!(out, "  %{} = load i64, ptr %{}_ptr", dest.name, dest.name)?;
+                writeln!(out, "  %{} = load {}, ptr %{}_ptr", dest.name, field_llvm_ty, dest.name)?;
             }
 
-            MirInst::FieldStore { base, field, field_index, value } => {
+            MirInst::FieldStore { base, field, field_index, struct_name, value } => {
                 // v0.51.23: Store value to field in struct pointer using correct offset
                 // v0.51.24: Check if base is a parameter (already ptr) or local (needs load from .addr)
+                // v0.51.31: Use struct_defs to look up correct field type for GEP instruction
+                // v0.51.32: Use struct type GEPs for better LLVM alias analysis
                 let val_str = self.format_operand(value);
                 let ty = self.infer_operand_type(value, func);
-                writeln!(out, "  ; field store .{}[{}] = {}", field, field_index, val_str)?;
+                writeln!(out, "  ; field store .{}[{}] ({}) = {}", field, field_index, struct_name, val_str)?;
+
+                // v0.51.32: Use proper struct type for GEP
+                let struct_ty = format!("%struct.{}", struct_name);
+
                 let is_param = func.params.iter().any(|(name, _)| name == &base.name);
                 if is_param {
                     // Parameters are already ptr values - use directly
-                    writeln!(out, "  %{}_f{}_ptr = getelementptr i64, ptr %{}, i32 {}",
-                             base.name, field_index, base.name, field_index)?;
+                    writeln!(out, "  %{}_f{}_ptr = getelementptr {}, ptr %{}, i32 0, i32 {}",
+                             base.name, field_index, struct_ty, base.name, field_index)?;
                 } else {
                     // Locals: load struct pointer from variable address (unique name per field)
                     writeln!(out, "  %{}_f{}_base = load ptr, ptr %{}.addr", base.name, field_index, base.name)?;
-                    writeln!(out, "  %{}_f{}_ptr = getelementptr i64, ptr %{}_f{}_base, i32 {}",
-                             base.name, field_index, base.name, field_index, field_index)?;
+                    writeln!(out, "  %{}_f{}_ptr = getelementptr {}, ptr %{}_f{}_base, i32 0, i32 {}",
+                             base.name, field_index, struct_ty, base.name, field_index, field_index)?;
                 }
                 writeln!(out, "  store {} {}, ptr %{}_f{}_ptr", ty, val_str, base.name, field_index)?;
             }
@@ -3428,6 +3491,7 @@ mod tests {
                 is_memory_free: false,
             }],
             extern_fns: vec![],
+            struct_defs: std::collections::HashMap::new(),
         };
 
         let codegen = TextCodeGen::new();

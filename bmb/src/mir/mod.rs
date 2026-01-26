@@ -33,6 +33,9 @@ pub struct MirProgram {
     pub functions: Vec<MirFunction>,
     /// External function declarations (v0.13.0)
     pub extern_fns: Vec<MirExternFn>,
+    /// v0.51.31: Struct type definitions for codegen
+    /// Maps struct name -> list of (field_name, field_type)
+    pub struct_defs: HashMap<String, Vec<(String, MirType)>>,
 }
 
 /// External function declaration (v0.13.0)
@@ -178,20 +181,26 @@ pub enum MirInst {
     },
     /// v0.19.0: Field access: %dest = %base.field
     /// v0.51.23: Added field_index for correct getelementptr codegen
+    /// v0.51.31: Added struct_name for correct field type lookup in codegen
     FieldAccess {
         dest: Place,
         base: Place,
         field: String,
         /// Index of the field in struct definition (for getelementptr offset)
         field_index: usize,
+        /// Name of the struct type (for field type lookup)
+        struct_name: String,
     },
     /// v0.19.0: Field store: %base.field = %value
     /// v0.51.23: Added field_index for correct getelementptr codegen
+    /// v0.51.31: Added struct_name for correct field type lookup in codegen
     FieldStore {
         base: Place,
         field: String,
         /// Index of the field in struct definition (for getelementptr offset)
         field_index: usize,
+        /// Name of the struct type (for field type lookup)
+        struct_name: String,
         value: Operand,
     },
     /// v0.19.1: Enum variant creation: %dest = EnumName::Variant(args)
@@ -443,7 +452,7 @@ impl MirType {
 }
 
 /// Context for MIR lowering
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct LoweringContext {
     /// Counter for generating unique temporary names
     temp_counter: usize,
@@ -467,6 +476,12 @@ pub struct LoweringContext {
     /// v0.51.23: Struct type of variables
     /// Maps variable name -> struct name (for field index lookup)
     pub var_struct_types: HashMap<String, String>,
+    /// v0.51.31: Struct type definitions with full type info for field type lookup
+    /// Maps struct name -> list of (field_name, field_type)
+    pub struct_type_defs: HashMap<String, Vec<(String, MirType)>>,
+    /// v0.51.31: Temporary variable types for type inference
+    /// Maps temp name -> type (used for temps that aren't in locals)
+    pub temp_types: HashMap<String, MirType>,
 }
 
 impl LoweringContext {
@@ -499,6 +514,8 @@ impl LoweringContext {
             func_return_types,
             struct_defs: HashMap::new(),
             var_struct_types: HashMap::new(),
+            struct_type_defs: HashMap::new(),
+            temp_types: HashMap::new(),
         }
     }
 
@@ -509,6 +526,19 @@ impl LoweringContext {
             fields.iter().position(|f| f == field_name).unwrap_or(0)
         } else {
             0
+        }
+    }
+
+    /// v0.51.31: Look up field type for a struct field
+    /// Returns the MirType of the field, or I64 if not found
+    pub fn field_type(&self, struct_name: &str, field_name: &str) -> MirType {
+        if let Some(fields) = self.struct_type_defs.get(struct_name) {
+            fields.iter()
+                .find(|(name, _)| name == field_name)
+                .map(|(_, ty)| ty.clone())
+                .unwrap_or(MirType::I64)
+        } else {
+            MirType::I64
         }
     }
 
@@ -573,6 +603,9 @@ impl LoweringContext {
                 if let Some(ty) = self.locals.get(&p.name) {
                     ty.clone()
                 } else if let Some(ty) = self.params.get(&p.name) {
+                    ty.clone()
+                } else if let Some(ty) = self.temp_types.get(&p.name) {
+                    // v0.51.31: Check temp_types for temporaries (e.g., from FieldAccess)
                     ty.clone()
                 } else {
                     // Temporary - infer from usage or default to i64
@@ -678,11 +711,11 @@ fn format_mir_inst(inst: &MirInst) -> String {
                 .collect();
             format!("%{} = struct-init {} {{ {} }}", dest.name, struct_name, fields_str.join(", "))
         }
-        MirInst::FieldAccess { dest, base, field, field_index } => {
-            format!("%{} = field-access %{}.{}[{}]", dest.name, base.name, field, field_index)
+        MirInst::FieldAccess { dest, base, field, field_index, struct_name } => {
+            format!("%{} = field-access %{}.{}[{}] ({})", dest.name, base.name, field, field_index, struct_name)
         }
-        MirInst::FieldStore { base, field, field_index, value } => {
-            format!("%{}.{}[{}] = {}", base.name, field, field_index, format_operand(value))
+        MirInst::FieldStore { base, field, field_index, struct_name, value } => {
+            format!("%{}.{}[{}] ({}) = {}", base.name, field, field_index, struct_name, format_operand(value))
         }
         MirInst::EnumVariant { dest, enum_name, variant, args } => {
             if args.is_empty() {

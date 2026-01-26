@@ -2279,18 +2279,30 @@ impl TypeChecker {
             }
 
             // v0.39: Type cast: expr as Type
+            // v0.51.32: Extended to support struct pointer casts
             Expr::Cast { expr, ty } => {
                 // Infer source expression type
                 let src_ty = self.infer(&expr.node, expr.span)?;
                 let target_ty = ty.node.clone();
 
-                // Validate cast is allowed (numeric types only)
+                // Validate cast is allowed
                 let src_numeric = matches!(&src_ty, Type::I32 | Type::I64 | Type::U32 | Type::U64 | Type::F64 | Type::Bool);
                 let tgt_numeric = matches!(&target_ty, Type::I32 | Type::I64 | Type::U32 | Type::U64 | Type::F64 | Type::Bool);
 
-                if !src_numeric || !tgt_numeric {
+                // v0.51.32: Allow struct <-> i64 casts for pointer operations
+                let src_struct = matches!(&src_ty, Type::Struct { .. } | Type::Named(_));
+                let tgt_struct = matches!(&target_ty, Type::Struct { .. } | Type::Named(_));
+                let src_is_i64 = matches!(&src_ty, Type::I64);
+                let tgt_is_i64 = matches!(&target_ty, Type::I64);
+
+                // Allow: numeric <-> numeric, struct -> i64, i64 -> struct
+                let valid_cast = (src_numeric && tgt_numeric)
+                    || (src_struct && tgt_is_i64)  // struct pointer to i64
+                    || (src_is_i64 && tgt_struct);  // i64 to struct pointer
+
+                if !valid_cast {
                     return Err(CompileError::type_error(
-                        format!("cannot cast {:?} to {:?}: only numeric types are supported", src_ty, target_ty),
+                        format!("cannot cast {:?} to {:?}: only numeric types and struct pointers are supported", src_ty, target_ty),
                         span,
                     ));
                 }

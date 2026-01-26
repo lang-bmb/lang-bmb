@@ -663,8 +663,9 @@ impl WasmCodeGen {
                 }
             }
 
-            MirInst::FieldAccess { dest, base, field, field_index } => {
+            MirInst::FieldAccess { dest, base, field, field_index, struct_name: _ } => {
                 // v0.51.23: Load field from struct in linear memory using field_index
+                // v0.51.31: struct_name available for future type-aware codegen
                 writeln!(out, "    ;; field access .{}[{}] from ${}", field, field_index, base.name)?;
                 // Get base pointer and add field offset
                 writeln!(out, "    local.get ${}", base.name)?;
@@ -676,7 +677,7 @@ impl WasmCodeGen {
                 writeln!(out, "    local.set ${}", dest.name)?;
             }
 
-            MirInst::FieldStore { base, field, field_index, value } => {
+            MirInst::FieldStore { base, field, field_index, struct_name: _, value } => {
                 // v0.51.23: Store value to field in struct using field_index
                 writeln!(out, "    ;; field store .{}[{}]", field, field_index)?;
                 writeln!(out, "    local.get ${}", base.name)?;
@@ -1278,6 +1279,7 @@ mod tests {
                 is_memory_free: false,
             }],
             extern_fns: vec![],
+            struct_defs: std::collections::HashMap::new(),
         };
 
         let codegen = WasmCodeGen::new();
@@ -1313,6 +1315,7 @@ mod tests {
                 is_memory_free: false,
             }],
             extern_fns: vec![],
+            struct_defs: std::collections::HashMap::new(),
         };
 
         let codegen = WasmCodeGen::with_target(WasmTarget::Wasi);
@@ -1327,6 +1330,7 @@ mod tests {
         let program = MirProgram {
             functions: vec![],
             extern_fns: vec![],
+            struct_defs: std::collections::HashMap::new(),
         };
 
         let codegen = WasmCodeGen::with_target(WasmTarget::Browser);
@@ -1341,6 +1345,7 @@ mod tests {
         let program = MirProgram {
             functions: vec![],
             extern_fns: vec![],
+            struct_defs: std::collections::HashMap::new(),
         };
 
         let codegen = WasmCodeGen::with_target(WasmTarget::Wasi);
@@ -1363,6 +1368,7 @@ mod tests {
         let program = MirProgram {
             functions: vec![],
             extern_fns: vec![],
+            struct_defs: std::collections::HashMap::new(),
         };
 
         let codegen = WasmCodeGen::with_target(WasmTarget::Browser);
@@ -1387,6 +1393,7 @@ mod tests {
         let program = MirProgram {
             functions: vec![],
             extern_fns: vec![],
+            struct_defs: std::collections::HashMap::new(),
         };
 
         let codegen = WasmCodeGen::with_target(WasmTarget::Standalone);
@@ -1435,6 +1442,7 @@ mod tests {
                 is_memory_free: false,
             }],
             extern_fns: vec![],
+            struct_defs: std::collections::HashMap::new(),
         };
 
         let codegen = WasmCodeGen::new();
@@ -1456,6 +1464,7 @@ mod tests {
                 params: vec![MirType::I32, MirType::I32, MirType::I32, MirType::I32],
                 ret_ty: MirType::I32,
             }],
+            struct_defs: std::collections::HashMap::new(),
         };
 
         let codegen = WasmCodeGen::with_target(WasmTarget::Wasi);

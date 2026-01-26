@@ -1071,6 +1071,7 @@ SpannedPlainType: Spanned<Type> = {
 
 // v0.39: Cast target types (only primitive numeric types to avoid grammar ambiguity)
 // For complex type casts, use explicit let bindings with type annotations
+// v0.51.32: Added struct types (identifiers) to support `expr as StructName` casts
 CastType: Type = {
     "i32" => Type::I32,
     "i64" => Type::I64,
@@ -1078,6 +1079,7 @@ CastType: Type = {
     "u64" => Type::U64,
     "f64" => Type::F64,
     "bool" => Type::Bool,
+    <name:Ident> => Type::Named(name.node),
 };
 
 SpannedCastType: Spanned<Type> = {

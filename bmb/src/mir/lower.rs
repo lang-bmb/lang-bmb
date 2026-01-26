@@ -70,9 +70,24 @@ pub fn lower_program(program: &Program) -> MirProgram {
         })
         .collect();
 
+    // v0.51.31: Convert struct_type_defs to MirType format for codegen
+    let mir_struct_defs: std::collections::HashMap<String, Vec<(String, MirType)>> = struct_type_defs
+        .iter()
+        .map(|(name, fields)| {
+            let mir_fields: Vec<(String, MirType)> = fields
+                .iter()
+                .map(|(field_name, field_ty)| {
+                    (field_name.clone(), ast_type_to_mir_with_structs(field_ty, &struct_type_defs))
+                })
+                .collect();
+            (name.clone(), mir_fields)
+        })
+        .collect();
+
     MirProgram {
         functions,
         extern_fns,
+        struct_defs: mir_struct_defs,
     }
 }
 
@@ -131,6 +146,17 @@ fn lower_function(
     // v0.51.23: Add struct definitions for field index lookup
     for (name, fields) in struct_defs {
         ctx.struct_defs.insert(name.clone(), fields.clone());
+    }
+
+    // v0.51.31: Add struct type definitions for field type lookup
+    for (name, fields) in struct_type_defs {
+        let mir_fields: Vec<(String, MirType)> = fields
+            .iter()
+            .map(|(field_name, field_ty)| {
+                (field_name.clone(), ast_type_to_mir_with_structs(field_ty, struct_type_defs))
+            })
+            .collect();
+        ctx.struct_type_defs.insert(name.clone(), mir_fields);
     }
 
     // Register parameters
@@ -594,18 +620,30 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
             let base_place = operand_to_place(base_op, ctx);
 
             // v0.51.23: Compute field index using struct type info
-            let field_index = ctx.place_struct_type(&base_place)
-                .map(|struct_name| ctx.field_index(&struct_name, &field.node))
-                .unwrap_or(0);
+            // v0.51.31: Also capture struct_name for field type lookup in codegen
+            let struct_name = ctx.place_struct_type(&base_place).unwrap_or_default();
+            let field_index = if struct_name.is_empty() {
+                0
+            } else {
+                ctx.field_index(&struct_name, &field.node)
+            };
+
+            // v0.51.31: Get the field type for type inference
+            let field_ty = ctx.field_type(&struct_name, &field.node);
 
             // Create destination for the field value
             let dest = ctx.fresh_temp();
+
+            // v0.51.31: Register temp type for operand_type() to find
+            // (Don't add to locals - temps don't need allocas)
+            ctx.temp_types.insert(dest.name.clone(), field_ty);
 
             ctx.push_inst(MirInst::FieldAccess {
                 dest: dest.clone(),
                 base: base_place,
                 field: field.node.clone(),
                 field_index,
+                struct_name,
             });
 
             Operand::Place(dest)
@@ -944,15 +982,19 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
         }
 
         // v0.51.23: Field assignment: obj.field = value
+        // v0.51.31: Added struct_name for field type lookup in codegen
         Expr::FieldAssign { object, field, value } => {
             // Lower the object expression
             let obj_op = lower_expr(object, ctx);
             let base_place = operand_to_place(obj_op, ctx);
 
-            // Compute field index using struct type info
-            let field_index = ctx.place_struct_type(&base_place)
-                .map(|struct_name| ctx.field_index(&struct_name, &field.node))
-                .unwrap_or(0);
+            // Compute field index and struct name using struct type info
+            let struct_name = ctx.place_struct_type(&base_place).unwrap_or_default();
+            let field_index = if struct_name.is_empty() {
+                0
+            } else {
+                ctx.field_index(&struct_name, &field.node)
+            };
 
             // Lower the value expression
             let val = lower_expr(value, ctx);
@@ -961,6 +1003,7 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
                 base: base_place,
                 field: field.node.clone(),
                 field_index,
+                struct_name,
                 value: val,
             });
 
@@ -1062,24 +1105,53 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
 
         // v0.50.80: Type cast - emit explicit Cast instruction
         // Required for correct phi node types in if-else with mixed types
+        // v0.51.32: Extended to support struct pointer casts
         Expr::Cast { expr, ty } => {
             let src_op = lower_expr(expr, ctx);
             let from_ty = ctx.operand_type(&src_op);
             let to_ty = ast_type_to_mir(&ty.node);
+
+            // v0.51.32: If casting to a struct type, we need to track the type
+            // even if the underlying representation is the same (i64 pointer)
+            if let Type::Named(struct_name) = &ty.node {
+                if ctx.struct_defs.contains_key(struct_name) {
+                    // Create a temp to hold the "typed" pointer
+                    let dest = ctx.fresh_temp();
+                    // Copy the value (no actual conversion needed)
+                    match &src_op {
+                        Operand::Constant(c) => {
+                            ctx.push_inst(MirInst::Const {
+                                dest: dest.clone(),
+                                value: c.clone(),
+                            });
+                        }
+                        Operand::Place(src) => {
+                            ctx.push_inst(MirInst::Copy {
+                                dest: dest.clone(),
+                                src: src.clone(),
+                            });
+                        }
+                    }
+                    // Register the struct type for field access resolution
+                    ctx.var_struct_types.insert(dest.name.clone(), struct_name.clone());
+                    return Operand::Place(dest);
+                }
+            }
 
             // If types are the same, no cast needed
             if from_ty == to_ty {
                 return src_op;
             }
 
-            // Generate cast instruction
+            // Generate cast instruction for numeric type conversions
             let dest = ctx.fresh_temp();
             ctx.push_inst(MirInst::Cast {
                 dest: dest.clone(),
-                src: src_op,
+                src: src_op.clone(),
                 from_ty,
-                to_ty,
+                to_ty: to_ty.clone(),
             });
+
             Operand::Place(dest)
         }
     }
@@ -1419,6 +1491,7 @@ fn bind_pattern_variables(pattern: &Pattern, match_place: &Place, ctx: &mut Lowe
             }
         }
         // v0.41: Nested patterns in enum bindings
+        // v0.51.31: Added struct_name (empty for enum variant tuple-like fields)
         Pattern::EnumVariant { bindings, .. } => {
             // For enum variants with bindings, extract fields
             for (i, binding) in bindings.iter().enumerate() {
@@ -1430,6 +1503,7 @@ fn bind_pattern_variables(pattern: &Pattern, match_place: &Place, ctx: &mut Lowe
                     base: match_place.clone(),
                     field: format!("_{}", i), // Tuple-like access
                     field_index: i,
+                    struct_name: String::new(), // Enum variants don't have struct names
                 });
                 // Recursively bind inner patterns
                 bind_pattern_variables(&binding.node, &field_place, ctx);
@@ -1437,6 +1511,7 @@ fn bind_pattern_variables(pattern: &Pattern, match_place: &Place, ctx: &mut Lowe
         }
         Pattern::Struct { name, fields } => {
             // For struct patterns, bind field patterns
+            // v0.51.31: Added struct_name for field type lookup
             for (field_name, field_pattern) in fields {
                 let field_place = ctx.fresh_temp();
                 // v0.51.23: Compute field index from struct definition
@@ -1446,6 +1521,7 @@ fn bind_pattern_variables(pattern: &Pattern, match_place: &Place, ctx: &mut Lowe
                     base: match_place.clone(),
                     field: field_name.node.clone(),
                     field_index,
+                    struct_name: name.clone(),
                 });
                 // Recursively bind inner patterns
                 bind_pattern_variables(&field_pattern.node, &field_place, ctx);

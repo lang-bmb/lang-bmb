@@ -2631,16 +2631,18 @@ impl TailRecursiveToLoop {
                     .map(|(name, v)| (name, self.substitute_operand(v, subst)))
                     .collect(),
             },
-            MirInst::FieldAccess { dest, base, field, field_index } => MirInst::FieldAccess {
+            MirInst::FieldAccess { dest, base, field, field_index, struct_name } => MirInst::FieldAccess {
                 dest,
                 base: Place::new(subst.get(&base.name).cloned().unwrap_or(base.name)),
                 field,
                 field_index,
+                struct_name,
             },
-            MirInst::FieldStore { base, field, field_index, value } => MirInst::FieldStore {
+            MirInst::FieldStore { base, field, field_index, struct_name, value } => MirInst::FieldStore {
                 base: Place::new(subst.get(&base.name).cloned().unwrap_or(base.name)),
                 field,
                 field_index,
+                struct_name,
                 value: self.substitute_operand(value, subst),
             },
             MirInst::IndexLoad { dest, array, index } => MirInst::IndexLoad {
@@ -3834,6 +3836,7 @@ mod tests {
         let mut program = MirProgram {
             functions: vec![make_test_function()],
             extern_fns: vec![],
+            struct_defs: std::collections::HashMap::new(),
         };
 
         let pipeline = OptimizationPipeline::for_level(OptLevel::Release);
@@ -4316,6 +4319,7 @@ mod tests {
         let program = MirProgram {
             functions: vec![const_fn, caller_fn.clone()],
             extern_fns: vec![],
+            struct_defs: std::collections::HashMap::new(),
         };
 
         // Create pass from program
@@ -4388,6 +4392,7 @@ mod tests {
         let program = MirProgram {
             functions: vec![const_fn, caller_fn.clone()],
             extern_fns: vec![],
+            struct_defs: std::collections::HashMap::new(),
         };
 
         let pass = ConstFunctionEval::from_program(&program);
@@ -4717,6 +4722,7 @@ mod tests {
         let mut program = MirProgram {
             functions: vec![fib_func, main_func],
             extern_fns: vec![],
+            struct_defs: std::collections::HashMap::new(),
         };
 
         // Run the narrowing pass
