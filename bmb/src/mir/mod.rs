@@ -217,16 +217,20 @@ pub enum MirInst {
         elements: Vec<Operand>,
     },
     /// v0.19.3: Array index load: `%dest = %array[%index]`
+    /// v0.51.35: Added element_type for proper struct array handling
     IndexLoad {
         dest: Place,
         array: Place,
         index: Operand,
+        element_type: MirType,
     },
     /// v0.19.3: Array index store: `%array[%index] = %value`
+    /// v0.51.35: Added element_type for proper struct array handling
     IndexStore {
         array: Place,
         index: Operand,
         value: Operand,
+        element_type: MirType,
     },
     /// v0.50.80: Type cast: %dest = cast %src from_ty to to_ty
     /// Generates: sext/zext/trunc/fpext/fptosi/sitofp depending on types
@@ -482,6 +486,9 @@ pub struct LoweringContext {
     /// v0.51.31: Temporary variable types for type inference
     /// Maps temp name -> type (used for temps that aren't in locals)
     pub temp_types: HashMap<String, MirType>,
+    /// v0.51.35: Array element types for proper struct array handling
+    /// Maps array variable name -> element type
+    pub array_element_types: HashMap<String, MirType>,
 }
 
 impl LoweringContext {
@@ -516,6 +523,7 @@ impl LoweringContext {
             var_struct_types: HashMap::new(),
             struct_type_defs: HashMap::new(),
             temp_types: HashMap::new(),
+            array_element_types: HashMap::new(),
         }
     }
 
@@ -729,11 +737,11 @@ fn format_mir_inst(inst: &MirInst) -> String {
             let elems: Vec<_> = elements.iter().map(format_operand).collect();
             format!("%{} = array-init [{}]", dest.name, elems.join(", "))
         }
-        MirInst::IndexLoad { dest, array, index } => {
-            format!("%{} = index-load %{}[{}]", dest.name, array.name, format_operand(index))
+        MirInst::IndexLoad { dest, array, index, element_type } => {
+            format!("%{} = index-load %{}[{}] : {}", dest.name, array.name, format_operand(index), format_mir_type(element_type))
         }
-        MirInst::IndexStore { array, index, value } => {
-            format!("%{}[{}] = {}", array.name, format_operand(index), format_operand(value))
+        MirInst::IndexStore { array, index, value, element_type } => {
+            format!("%{}[{}] = {} : {}", array.name, format_operand(index), format_operand(value), format_mir_type(element_type))
         }
         MirInst::Cast { dest, src, from_ty, to_ty } => {
             format!("%{} = cast {} {} to {}", dest.name, format_operand(src), format_mir_type(from_ty), format_mir_type(to_ty))

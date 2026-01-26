@@ -729,7 +729,8 @@ impl WasmCodeGen {
                 }
             }
 
-            MirInst::IndexLoad { dest, array, index } => {
+            // v0.51.35: Added element_type field (unused in WASM, uses i64 for all)
+            MirInst::IndexLoad { dest, array, index, element_type: _ } => {
                 writeln!(out, "    ;; index load")?;
                 // Calculate address: array_base + index * 8
                 writeln!(out, "    local.get ${}", array.name)?;
@@ -742,7 +743,8 @@ impl WasmCodeGen {
                 writeln!(out, "    local.set ${}", dest.name)?;
             }
 
-            MirInst::IndexStore { array, index, value } => {
+            // v0.51.35: Added element_type field (unused in WASM, uses i64 for all)
+            MirInst::IndexStore { array, index, value, element_type: _ } => {
                 writeln!(out, "    ;; index store")?;
                 // Calculate address: array_base + index * 8
                 writeln!(out, "    local.get ${}", array.name)?;

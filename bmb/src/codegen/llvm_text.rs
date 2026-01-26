@@ -408,6 +408,8 @@ impl TextCodeGen {
         writeln!(out, "declare double @llvm.fabs.f64(double)")?;
         writeln!(out, "declare double @llvm.pow.f64(double, double)")?;
         writeln!(out, "declare double @llvm.fma.f64(double, double, double)")?;
+        // v0.51.35: memcpy intrinsic for struct array initialization
+        writeln!(out, "declare void @llvm.memcpy.p0.p0.i64(ptr, ptr, i64, i1)")?;
         writeln!(out)?;
 
         // v0.34.2: Memory allocation for Phase 34.2 Dynamic Collections
@@ -765,9 +767,14 @@ impl TextCodeGen {
                     MirInst::StructInit { dest, .. } => {
                         place_types.insert(dest.name.clone(), "ptr");
                     }
-                    // v0.50.50: IndexLoad produces element type (default i64)
-                    MirInst::IndexLoad { dest, .. } => {
-                        place_types.insert(dest.name.clone(), "i64");
+                    // v0.50.50: IndexLoad produces element type
+                    // v0.51.35: Use actual element type for struct arrays
+                    MirInst::IndexLoad { dest, element_type, .. } => {
+                        let ty = match element_type {
+                            MirType::Struct { .. } => "ptr",  // Struct arrays return pointers
+                            _ => self.mir_type_to_llvm(element_type),
+                        };
+                        place_types.insert(dest.name.clone(), ty);
                     }
                     // v0.51.31: FieldAccess produces the field's type
                     MirInst::FieldAccess { dest, struct_name, field_index, .. } => {
@@ -2765,6 +2772,7 @@ impl TextCodeGen {
                 // v0.51.24: Check if base is a parameter (already ptr) or local (needs load from .addr)
                 // v0.51.31: Use struct_defs to look up correct field type for load instruction
                 // v0.51.32: Use struct type GEPs for better LLVM alias analysis
+                // v0.51.36: Handle temps from struct array IndexLoad (direct ptrs, not in locals)
                 writeln!(out, "  ; field access .{}[{}] from %{} ({})", field, field_index, base.name, struct_name)?;
 
                 // Look up the field type from struct_defs
@@ -2777,8 +2785,10 @@ impl TextCodeGen {
                 let struct_ty = format!("%struct.{}", struct_name);
 
                 let is_param = func.params.iter().any(|(name, _)| name == &base.name);
-                if is_param {
-                    // Parameters are already ptr values - use directly
+                let is_local = local_names.contains(&base.name);
+                // v0.51.36: Temps (not params, not locals) are direct pointers from IndexLoad
+                if is_param || !is_local {
+                    // Parameters and temps are already ptr values - use directly
                     writeln!(out, "  %{}_ptr = getelementptr {}, ptr %{}, i32 0, i32 {}",
                              dest.name, struct_ty, base.name, field_index)?;
                 } else {
@@ -2795,6 +2805,7 @@ impl TextCodeGen {
                 // v0.51.24: Check if base is a parameter (already ptr) or local (needs load from .addr)
                 // v0.51.31: Use struct_defs to look up correct field type for GEP instruction
                 // v0.51.32: Use struct type GEPs for better LLVM alias analysis
+                // v0.51.36: Handle temps from struct array IndexLoad (direct ptrs, not in locals)
                 let val_str = self.format_operand(value);
                 let ty = self.infer_operand_type(value, func);
                 writeln!(out, "  ; field store .{}[{}] ({}) = {}", field, field_index, struct_name, val_str)?;
@@ -2803,8 +2814,10 @@ impl TextCodeGen {
                 let struct_ty = format!("%struct.{}", struct_name);
 
                 let is_param = func.params.iter().any(|(name, _)| name == &base.name);
-                if is_param {
-                    // Parameters are already ptr values - use directly
+                let is_local = local_names.contains(&base.name);
+                // v0.51.36: Temps (not params, not locals) are direct pointers from IndexLoad
+                if is_param || !is_local {
+                    // Parameters and temps are already ptr values - use directly
                     writeln!(out, "  %{}_f{}_ptr = getelementptr {}, ptr %{}, i32 0, i32 {}",
                              base.name, field_index, struct_ty, base.name, field_index)?;
                 } else {
@@ -2841,34 +2854,69 @@ impl TextCodeGen {
 
             // v0.19.3: Array operations
             // v0.50.60: Fix - load from local alloca before storing to array element
+            // v0.51.35: Support struct arrays with proper LLVM type and memcpy
             MirInst::ArrayInit { dest, element_type, elements } => {
-                let elem_ty = self.mir_type_to_llvm(element_type);
                 let size = elements.len();
-                writeln!(out, "  ; array init with {} elements of type {}", size, elem_ty)?;
-                writeln!(out, "  %{} = alloca {}, i32 {}", dest.name, elem_ty, size.max(1))?;
-                for (i, elem) in elements.iter().enumerate() {
-                    // Check if element is a local that needs loading from alloca
-                    let elem_str = if let Operand::Place(p) = elem {
-                        if local_names.contains(&p.name) {
-                            // Load from alloca first
-                            writeln!(out, "  %{}_arr_elem{} = load {}, ptr %{}.addr",
-                                     dest.name, i, elem_ty, p.name)?;
-                            format!("%{}_arr_elem{}", dest.name, i)
+
+                // v0.51.35: Handle struct arrays specially for packed SIMD optimization
+                if let MirType::Struct { name: struct_name, fields } = element_type {
+                    let struct_ty = format!("%struct.{}", struct_name);
+                    let struct_size = fields.len() * 8; // 8 bytes per field
+                    writeln!(out, "  ; struct array init with {} elements of type {}", size, struct_ty)?;
+                    writeln!(out, "  %{} = alloca {}, i32 {}", dest.name, struct_ty, size.max(1))?;
+
+                    for (i, elem) in elements.iter().enumerate() {
+                        // Get the source struct pointer
+                        let src_ptr = if let Operand::Place(p) = elem {
+                            if local_names.contains(&p.name) {
+                                // Local struct: load pointer from .addr
+                                writeln!(out, "  %{}_src{} = load ptr, ptr %{}.addr", dest.name, i, p.name)?;
+                                format!("%{}_src{}", dest.name, i)
+                            } else {
+                                format!("%{}", p.name)
+                            }
                         } else {
                             self.format_operand(elem)
-                        }
-                    } else {
-                        self.format_operand(elem)
-                    };
-                    writeln!(out, "  %{}_e{} = getelementptr {}, ptr %{}, i32 {}",
-                             dest.name, i, elem_ty, dest.name, i)?;
-                    writeln!(out, "  store {} {}, ptr %{}_e{}", elem_ty, elem_str, dest.name, i)?;
+                        };
+
+                        // Get destination element pointer
+                        writeln!(out, "  %{}_e{} = getelementptr {}, ptr %{}, i32 {}",
+                                 dest.name, i, struct_ty, dest.name, i)?;
+
+                        // Copy struct using memcpy for proper value semantics
+                        writeln!(out, "  call void @llvm.memcpy.p0.p0.i64(ptr %{}_e{}, ptr {}, i64 {}, i1 false)",
+                                 dest.name, i, src_ptr, struct_size)?;
+                    }
+                } else {
+                    // Original code path for primitive arrays
+                    let elem_ty = self.mir_type_to_llvm(element_type);
+                    writeln!(out, "  ; array init with {} elements of type {}", size, elem_ty)?;
+                    writeln!(out, "  %{} = alloca {}, i32 {}", dest.name, elem_ty, size.max(1))?;
+                    for (i, elem) in elements.iter().enumerate() {
+                        // Check if element is a local that needs loading from alloca
+                        let elem_str = if let Operand::Place(p) = elem {
+                            if local_names.contains(&p.name) {
+                                // Load from alloca first
+                                writeln!(out, "  %{}_arr_elem{} = load {}, ptr %{}.addr",
+                                         dest.name, i, elem_ty, p.name)?;
+                                format!("%{}_arr_elem{}", dest.name, i)
+                            } else {
+                                self.format_operand(elem)
+                            }
+                        } else {
+                            self.format_operand(elem)
+                        };
+                        writeln!(out, "  %{}_e{} = getelementptr {}, ptr %{}, i32 {}",
+                                 dest.name, i, elem_ty, dest.name, i)?;
+                        writeln!(out, "  store {} {}, ptr %{}_e{}", elem_ty, elem_str, dest.name, i)?;
+                    }
                 }
             }
 
             // v0.50.60: Fix - load index from local alloca if needed
             // v0.51.23: Load array pointer from .addr for local variables
-            MirInst::IndexLoad { dest, array, index } => {
+            // v0.51.35: Support struct arrays with proper type handling
+            MirInst::IndexLoad { dest, array, index, element_type } => {
                 // Load array pointer from .addr if it's a local variable
                 let arr_ptr = if local_names.contains(&array.name) {
                     writeln!(out, "  %{}_arr_ptr = load ptr, ptr %{}.addr", dest.name, array.name)?;
@@ -2887,16 +2935,36 @@ impl TextCodeGen {
                 } else {
                     self.format_operand(index)
                 };
-                writeln!(out, "  ; index load %{}[{}]", array.name, idx_str)?;
-                writeln!(out, "  %{}_ptr = getelementptr i64, ptr {}, i64 {}",
-                         dest.name, arr_ptr, idx_str)?;
-                writeln!(out, "  %{} = load i64, ptr %{}_ptr", dest.name, dest.name)?;
+
+                // v0.51.35: Handle struct arrays with getelementptr using struct type
+                // v0.51.36: Store struct pointer to .addr so FieldStore/FieldAccess can load it
+                if let MirType::Struct { name: struct_name, .. } = element_type {
+                    let struct_ty = format!("%struct.{}", struct_name);
+                    writeln!(out, "  ; struct array index load %{}[{}]", array.name, idx_str)?;
+                    // Get pointer to struct element
+                    writeln!(out, "  %{}_gep = getelementptr {}, ptr {}, i64 {}",
+                             dest.name, struct_ty, arr_ptr, idx_str)?;
+                    // Store pointer to .addr for FieldStore/FieldAccess to load
+                    if local_names.contains(&dest.name) {
+                        writeln!(out, "  store ptr %{}_gep, ptr %{}.addr", dest.name, dest.name)?;
+                    } else {
+                        // For non-local (e.g., temps not in locals), create an SSA value
+                        writeln!(out, "  %{} = select i1 true, ptr %{}_gep, ptr null", dest.name, dest.name)?;
+                    }
+                } else {
+                    let elem_ty = self.mir_type_to_llvm(element_type);
+                    writeln!(out, "  ; index load %{}[{}]", array.name, idx_str)?;
+                    writeln!(out, "  %{}_ptr = getelementptr {}, ptr {}, i64 {}",
+                             dest.name, elem_ty, arr_ptr, idx_str)?;
+                    writeln!(out, "  %{} = load {}, ptr %{}_ptr", dest.name, elem_ty, dest.name)?;
+                }
             }
 
             // v0.50.60: Fix - load index and value from local alloca if needed
             // v0.50.72: Fix SSA violation - use unique counter for each IndexStore
             // v0.51.23: Load array pointer from .addr for local variables
-            MirInst::IndexStore { array, index, value } => {
+            // v0.51.35: Support struct arrays with memcpy for struct values
+            MirInst::IndexStore { array, index, value, element_type } => {
                 let store_cnt = *name_counts.entry(format!("{}_idx_store", array.name)).or_insert(0);
                 *name_counts.entry(format!("{}_idx_store", array.name)).or_insert(0) += 1;
 
@@ -2918,21 +2986,46 @@ impl TextCodeGen {
                 } else {
                     self.format_operand(index)
                 };
-                let ty = self.infer_operand_type(value, func);
-                let val_str = if let Operand::Place(p) = value {
-                    if local_names.contains(&p.name) {
-                        writeln!(out, "  %{}_store_val.{} = load {}, ptr %{}.addr", array.name, store_cnt, ty, p.name)?;
-                        format!("%{}_store_val.{}", array.name, store_cnt)
+
+                // v0.51.35: Handle struct arrays with memcpy
+                if let MirType::Struct { name: struct_name, fields } = element_type {
+                    let struct_ty = format!("%struct.{}", struct_name);
+                    let struct_size = fields.len() * 8;
+
+                    // Get source struct pointer
+                    let src_ptr = if let Operand::Place(p) = value {
+                        if local_names.contains(&p.name) {
+                            writeln!(out, "  %{}_store_src.{} = load ptr, ptr %{}.addr", array.name, store_cnt, p.name)?;
+                            format!("%{}_store_src.{}", array.name, store_cnt)
+                        } else {
+                            format!("%{}", p.name)
+                        }
                     } else {
                         self.format_operand(value)
-                    }
+                    };
+
+                    writeln!(out, "  ; struct array index store %{}[{}]", array.name, idx_str)?;
+                    writeln!(out, "  %{}_idx_ptr.{} = getelementptr {}, ptr {}, i64 {}",
+                             array.name, store_cnt, struct_ty, arr_ptr, idx_str)?;
+                    writeln!(out, "  call void @llvm.memcpy.p0.p0.i64(ptr %{}_idx_ptr.{}, ptr {}, i64 {}, i1 false)",
+                             array.name, store_cnt, src_ptr, struct_size)?;
                 } else {
-                    self.format_operand(value)
-                };
-                writeln!(out, "  ; index store %{}[{}] = {}", array.name, idx_str, val_str)?;
-                writeln!(out, "  %{}_idx_ptr.{} = getelementptr {}, ptr {}, i64 {}",
-                         array.name, store_cnt, ty, arr_ptr, idx_str)?;
-                writeln!(out, "  store {} {}, ptr %{}_idx_ptr.{}", ty, val_str, array.name, store_cnt)?;
+                    let ty = self.infer_operand_type(value, func);
+                    let val_str = if let Operand::Place(p) = value {
+                        if local_names.contains(&p.name) {
+                            writeln!(out, "  %{}_store_val.{} = load {}, ptr %{}.addr", array.name, store_cnt, ty, p.name)?;
+                            format!("%{}_store_val.{}", array.name, store_cnt)
+                        } else {
+                            self.format_operand(value)
+                        }
+                    } else {
+                        self.format_operand(value)
+                    };
+                    writeln!(out, "  ; index store %{}[{}] = {}", array.name, idx_str, val_str)?;
+                    writeln!(out, "  %{}_idx_ptr.{} = getelementptr {}, ptr {}, i64 {}",
+                             array.name, store_cnt, ty, arr_ptr, idx_str)?;
+                    writeln!(out, "  store {} {}, ptr %{}_idx_ptr.{}", ty, val_str, array.name, store_cnt)?;
+                }
             }
 
             // v0.50.80: Type cast instruction

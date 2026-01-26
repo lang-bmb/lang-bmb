@@ -847,7 +847,7 @@ fn collect_used_in_instruction(inst: &MirInst, used: &mut HashSet<String>) {
             used.insert(array.name.clone());
             collect_used_in_operand(index, used);
         }
-        MirInst::IndexStore { array, index, value } => {
+        MirInst::IndexStore { array, index, value, .. } => {
             used.insert(array.name.clone());
             collect_used_in_operand(index, used);
             collect_used_in_operand(value, used);
@@ -2645,15 +2645,17 @@ impl TailRecursiveToLoop {
                 struct_name,
                 value: self.substitute_operand(value, subst),
             },
-            MirInst::IndexLoad { dest, array, index } => MirInst::IndexLoad {
+            MirInst::IndexLoad { dest, array, index, element_type } => MirInst::IndexLoad {
                 dest,
                 array: Place::new(subst.get(&array.name).cloned().unwrap_or(array.name)),
                 index: self.substitute_operand(index, subst),
+                element_type,
             },
-            MirInst::IndexStore { array, index, value } => MirInst::IndexStore {
+            MirInst::IndexStore { array, index, value, element_type } => MirInst::IndexStore {
                 array: Place::new(subst.get(&array.name).cloned().unwrap_or(array.name)),
                 index: self.substitute_operand(index, subst),
                 value: self.substitute_operand(value, subst),
+                element_type,
             },
             MirInst::EnumVariant { dest, enum_name, variant, args } => MirInst::EnumVariant {
                 dest,

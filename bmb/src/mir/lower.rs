@@ -161,6 +161,7 @@ fn lower_function(
 
     // Register parameters
     // v0.51.24: Use ast_type_to_mir_with_structs to properly resolve named struct types
+    // v0.51.36: Also track array element types for struct arrays
     let params: Vec<(String, MirType)> = fn_def
         .params
         .iter()
@@ -172,6 +173,11 @@ fn lower_function(
                 if ctx.struct_defs.contains_key(struct_name) {
                     ctx.var_struct_types.insert(p.name.node.clone(), struct_name.clone());
                 }
+            }
+            // v0.51.36: Track array element types for struct array parameters
+            if let Type::Array(elem_ty, _) = &p.ty.node {
+                let elem_mir_ty = ast_type_to_mir_with_structs(elem_ty.as_ref(), struct_type_defs);
+                ctx.array_element_types.insert(p.name.node.clone(), elem_mir_ty);
             }
             (p.name.node.clone(), ty)
         })
@@ -443,6 +449,10 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
                     if let Some(struct_name) = ctx.var_struct_types.get(&src.name).cloned() {
                         ctx.var_struct_types.insert(name.clone(), struct_name);
                     }
+                    // v0.51.35: Propagate array element types for struct array handling
+                    if let Some(elem_ty) = ctx.array_element_types.get(&src.name).cloned() {
+                        ctx.array_element_types.insert(name.clone(), elem_ty);
+                    }
                     ctx.push_inst(MirInst::Copy {
                         dest: var_place,
                         src,
@@ -586,6 +596,7 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
         }
 
         // v0.19.0: Struct initialization
+        // v0.51.35: Register struct type in temp_types for proper array element type inference
         Expr::StructInit { name, fields } => {
             // Lower each field value
             let mir_fields: Vec<(String, Operand)> = fields
@@ -601,6 +612,25 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
 
             // v0.51.23: Track struct type for the destination
             ctx.var_struct_types.insert(dest.name.clone(), name.clone());
+
+            // v0.51.35: Register the struct type in temp_types for operand_type()
+            let struct_mir_type = if let Some(field_types) = ctx.struct_type_defs.get(name) {
+                MirType::Struct {
+                    name: name.clone(),
+                    fields: field_types.iter()
+                        .map(|(n, t)| (n.clone(), Box::new(t.clone())))
+                        .collect(),
+                }
+            } else {
+                // Fallback: create type from field names only
+                MirType::Struct {
+                    name: name.clone(),
+                    fields: mir_fields.iter()
+                        .map(|(n, _)| (n.clone(), Box::new(MirType::I64)))
+                        .collect(),
+                }
+            };
+            ctx.temp_types.insert(dest.name.clone(), struct_mir_type);
 
             ctx.push_inst(MirInst::StructInit {
                 dest: dest.clone(),
@@ -661,10 +691,12 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
             let dest = ctx.fresh_temp();
 
             // Use IndexLoad with constant index for tuple field access
+            // v0.51.35: Default to I64 for tuple elements (tuples are homogeneous in MIR)
             ctx.push_inst(MirInst::IndexLoad {
                 dest: dest.clone(),
                 array: tuple_place,
                 index: Operand::Constant(Constant::Int(*index as i64)),
+                element_type: MirType::I64,
             });
 
             Operand::Place(dest)
@@ -878,6 +910,7 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
         }
 
         // v0.19.3: Array support
+        // v0.51.35: Track element types for struct array support
         Expr::ArrayLit(elems) => {
             // Lower each element
             let mir_elements: Vec<Operand> = elems
@@ -893,6 +926,8 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
             };
 
             let dest = ctx.fresh_temp();
+            // v0.51.35: Track array element type for IndexLoad/IndexStore
+            ctx.array_element_types.insert(dest.name.clone(), element_type.clone());
             ctx.push_inst(MirInst::ArrayInit {
                 dest: dest.clone(),
                 element_type,
@@ -918,6 +953,8 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
             };
 
             let dest = ctx.fresh_temp();
+            // v0.51.35: Track tuple element type for IndexLoad
+            ctx.array_element_types.insert(dest.name.clone(), element_type.clone());
             ctx.push_inst(MirInst::ArrayInit {
                 dest: dest.clone(),
                 element_type,
@@ -928,6 +965,7 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
 
         Expr::Index { expr, index } => {
             // v0.19.3: Array indexing
+            // v0.51.35: Track element type for struct array support
             let arr = lower_expr(expr, ctx);
             let arr_place = match &arr {
                 Operand::Place(p) => p.clone(),
@@ -942,17 +980,30 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
                 }
             };
 
+            // v0.51.35: Get element type from tracked array types or default to I64
+            let element_type = ctx.array_element_types.get(&arr_place.name)
+                .cloned()
+                .unwrap_or(MirType::I64);
+
             let idx = lower_expr(index, ctx);
             let dest = ctx.fresh_temp();
+
+            // v0.51.36: Register struct type for IndexLoad dest so FieldStore/FieldAccess work
+            if let MirType::Struct { name: struct_name, .. } = &element_type {
+                ctx.var_struct_types.insert(dest.name.clone(), struct_name.clone());
+            }
+
             ctx.push_inst(MirInst::IndexLoad {
                 dest: dest.clone(),
                 array: arr_place,
                 index: idx,
+                element_type,
             });
             Operand::Place(dest)
         }
 
         // v0.51: Index assignment: arr[i] = value
+        // v0.51.35: Track element type for struct array support
         Expr::IndexAssign { array, index, value } => {
             let arr = lower_expr(array, ctx);
             let arr_place = match &arr {
@@ -968,6 +1019,11 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
                 }
             };
 
+            // v0.51.35: Get element type from tracked array types or default to I64
+            let element_type = ctx.array_element_types.get(&arr_place.name)
+                .cloned()
+                .unwrap_or(MirType::I64);
+
             let idx = lower_expr(index, ctx);
             let val = lower_expr(value, ctx);
 
@@ -975,6 +1031,7 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
                 array: arr_place,
                 index: idx,
                 value: val,
+                element_type,
             });
 
             // Return unit
