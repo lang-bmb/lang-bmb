@@ -148,6 +148,8 @@ impl SmtTranslator {
             Type::Nullable(inner) => Self::type_to_sort(inner),
             // v0.42: Tuple type - use Int for now (simplified)
             Type::Tuple(_) => SmtSort::Int,
+            // v0.51.37: Pointer type - use Int (addresses)
+            Type::Ptr(_) => SmtSort::Int,
         }
     }
 

@@ -169,9 +169,16 @@ fn lower_function(
             let ty = ast_type_to_mir_with_structs(&p.ty.node, struct_type_defs);
             ctx.params.insert(p.name.node.clone(), ty.clone());
             // v0.51.23: Track struct type for parameters
+            // v0.51.37: Also handle pointer types (*Node)
             if let Type::Named(struct_name) = &p.ty.node {
                 if ctx.struct_defs.contains_key(struct_name) {
                     ctx.var_struct_types.insert(p.name.node.clone(), struct_name.clone());
+                }
+            } else if let Type::Ptr(inner) = &p.ty.node {
+                if let Type::Named(struct_name) = inner.as_ref() {
+                    if ctx.struct_defs.contains_key(struct_name) {
+                        ctx.var_struct_types.insert(p.name.node.clone(), struct_name.clone());
+                    }
                 }
             }
             // v0.51.36: Track array element types for struct array parameters
@@ -561,8 +568,13 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
                     }
                 };
                 // v0.51.24: If return type is a struct, register in var_struct_types for field_index lookup
+                // v0.51.37: Also handle pointer return types (*Node)
                 if let MirType::Struct { name: struct_name, .. } = &ret_ty {
                     ctx.var_struct_types.insert(dest.name.clone(), struct_name.clone());
+                } else if let MirType::Ptr(inner) = &ret_ty {
+                    if let MirType::StructPtr(struct_name) = inner.as_ref() {
+                        ctx.var_struct_types.insert(dest.name.clone(), struct_name.clone());
+                    }
                 }
                 ctx.locals.insert(dest.name.clone(), ret_ty);
 
@@ -1181,26 +1193,37 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
             // even if the underlying representation is the same (i64 pointer)
             // v0.51.34: Avoid generating Copy instructions for struct casts
             // Just register the existing place as having the struct type
-            if let Type::Named(struct_name) = &ty.node {
+            // v0.51.37: Also handle pointer types (*Node)
+            let struct_name_opt = if let Type::Named(struct_name) = &ty.node {
                 if ctx.struct_defs.contains_key(struct_name) {
-                    match &src_op {
-                        Operand::Constant(c) => {
-                            // Constants need a temp to hold the value
-                            let dest = ctx.fresh_temp();
-                            ctx.push_inst(MirInst::Const {
-                                dest: dest.clone(),
-                                value: c.clone(),
-                            });
-                            ctx.var_struct_types.insert(dest.name.clone(), struct_name.clone());
-                            return Operand::Place(dest);
-                        }
-                        Operand::Place(src) => {
-                            // v0.51.34: Reuse existing place, just register struct type
-                            // This eliminates unnecessary Copy instructions that become
-                            // `add i64 %val, 0` in LLVM IR
-                            ctx.var_struct_types.insert(src.name.clone(), struct_name.clone());
-                            return src_op;
-                        }
+                    Some(struct_name.clone())
+                } else { None }
+            } else if let Type::Ptr(inner) = &ty.node {
+                if let Type::Named(struct_name) = inner.as_ref() {
+                    if ctx.struct_defs.contains_key(struct_name) {
+                        Some(struct_name.clone())
+                    } else { None }
+                } else { None }
+            } else { None };
+
+            if let Some(struct_name) = struct_name_opt {
+                match &src_op {
+                    Operand::Constant(c) => {
+                        // Constants need a temp to hold the value
+                        let dest = ctx.fresh_temp();
+                        ctx.push_inst(MirInst::Const {
+                            dest: dest.clone(),
+                            value: c.clone(),
+                        });
+                        ctx.var_struct_types.insert(dest.name.clone(), struct_name);
+                        return Operand::Place(dest);
+                    }
+                    Operand::Place(src) => {
+                        // v0.51.34: Reuse existing place, just register struct type
+                        // This eliminates unnecessary Copy instructions that become
+                        // `add i64 %val, 0` in LLVM IR
+                        ctx.var_struct_types.insert(src.name.clone(), struct_name);
+                        return src_op;
                     }
                 }
             }
@@ -1310,6 +1333,14 @@ fn ast_type_to_mir(ty: &Type) -> MirType {
         Type::Nullable(inner) => ast_type_to_mir(inner),
         // v0.42: Tuple type - represent as struct-like aggregate
         Type::Tuple(_) => MirType::I64, // Simplified for now
+        // v0.51.37: Pointer type - preserve the pointee type for proper codegen
+        // For struct pointers, use StructPtr to avoid issues with unknown struct definitions
+        Type::Ptr(inner) => {
+            match inner.as_ref() {
+                Type::Named(name) => MirType::Ptr(Box::new(MirType::StructPtr(name.clone()))),
+                _ => MirType::Ptr(Box::new(ast_type_to_mir(inner)))
+            }
+        }
     }
 }
 
@@ -1382,6 +1413,16 @@ fn ast_type_to_mir_with_structs(
         Type::Never => MirType::Unit,
         Type::Nullable(inner) => ast_type_to_mir_with_structs(inner, struct_type_defs),
         Type::Tuple(_) => MirType::I64,
+        // v0.51.37: Pointer type - preserve the pointee type for proper codegen
+        // For struct pointers, use StructPtr to avoid infinite recursion on self-referential types
+        Type::Ptr(inner) => {
+            match inner.as_ref() {
+                Type::Named(name) if struct_type_defs.contains_key(name) => {
+                    MirType::Ptr(Box::new(MirType::StructPtr(name.clone())))
+                }
+                _ => MirType::Ptr(Box::new(ast_type_to_mir_with_structs(inner, struct_type_defs)))
+            }
+        }
     }
 }
 

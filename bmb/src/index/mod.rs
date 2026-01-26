@@ -516,6 +516,8 @@ impl IndexGenerator {
                 let elems_str: Vec<_> = elems.iter().map(|t| self.format_type(t)).collect();
                 format!("({})", elems_str.join(", "))
             }
+            // v0.51.37: Pointer type
+            Type::Ptr(inner) => format!("*{}", self.format_type(inner)),
         }
     }
 

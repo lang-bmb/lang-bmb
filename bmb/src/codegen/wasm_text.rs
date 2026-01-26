@@ -811,6 +811,8 @@ impl WasmCodeGen {
             MirType::Struct { .. } | MirType::StructPtr(_) => "struct",
             MirType::Enum { .. } => "enum",
             MirType::Array { .. } => "array",
+            // v0.51.37: Pointer type
+            MirType::Ptr(_) => "ptr",
         }
     }
 
@@ -973,6 +975,8 @@ impl WasmCodeGen {
             MirType::Array { .. } => "i32",
             // v0.64: Character type (Unicode codepoint as i32)
             MirType::Char => "i32",
+            // v0.51.37: Pointer types are i32 in WASM (memory offsets)
+            MirType::Ptr(_) => "i32",
         }
     }
 
@@ -1005,6 +1009,8 @@ impl WasmCodeGen {
             MirType::Enum { .. } => "i32.const 0",
             // v0.19.3: Array pointers default to null (0)
             MirType::Array { .. } => "i32.const 0",
+            // v0.51.37: Pointer types default to null (0)
+            MirType::Ptr(_) => "i32.const 0",
         }
     }
 

@@ -105,6 +105,10 @@ pub enum Type {
     /// Tuple type (v0.42): (T, U, V)
     /// Heterogeneous fixed-size collection
     Tuple(Vec<Box<Type>>),
+    /// Raw pointer type (v0.51.37): *T
+    /// Used for heap-allocated data structures (trees, linked lists)
+    /// Nullable by default (0 = null pointer)
+    Ptr(Box<Type>),
 }
 
 /// Manual PartialEq implementation for Type
@@ -164,6 +168,8 @@ impl PartialEq for Type {
             }
             // v0.42: Tuple type equality
             (Type::Tuple(a), Type::Tuple(b)) => a == b,
+            // v0.51.37: Pointer type equality
+            (Type::Ptr(a), Type::Ptr(b)) => a == b,
             _ => false,
         }
     }
@@ -269,6 +275,8 @@ impl std::fmt::Display for Type {
                 }
                 write!(f, ")")
             }
+            // v0.51.37: Pointer type display
+            Type::Ptr(inner) => write!(f, "*{inner}"),
         }
     }
 }

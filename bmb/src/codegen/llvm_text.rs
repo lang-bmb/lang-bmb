@@ -1394,44 +1394,63 @@ impl TextCodeGen {
                         writeln!(out, "  store ptr %{}, ptr %{}.addr", dest_name, dest.name)?;
                     }
                 } else if (lhs_ty == "ptr" || rhs_ty == "ptr") && *op == MirBinOp::Eq {
-                    // v0.51.22: Use pre-initialized global BmbString
-                    let lhs_final = if let Operand::Constant(Constant::String(s)) = lhs {
-                        if let Some(global_name) = string_table.get(s) {
-                            format!("@{}.bmb", global_name)
-                        } else { lhs_str.clone() }
-                    } else { lhs_str.clone() };
-                    let rhs_final = if let Operand::Constant(Constant::String(s)) = rhs {
-                        if let Some(global_name) = string_table.get(s) {
-                            format!("@{}.bmb", global_name)
-                        } else { rhs_str.clone() }
-                    } else { rhs_str.clone() };
-                    // Call bmb_string_eq for string equality comparison
-                    // bmb_string_eq returns i64 (1 for equal, 0 for not equal)
-                    writeln!(out, "  %{}.i64 = call i64 @bmb_string_eq(ptr {}, ptr {})",
-                             dest_name, lhs_final, rhs_final)?;
-                    // Convert i64 to i1 for boolean result
-                    writeln!(out, "  %{} = icmp ne i64 %{}.i64, 0", dest_name, dest_name)?;
+                    // v0.51.37: Distinguish string comparison from typed pointer comparison
+                    // String comparison: at least one operand is a string constant
+                    let lhs_is_string = matches!(lhs, Operand::Constant(Constant::String(_)));
+                    let rhs_is_string = matches!(rhs, Operand::Constant(Constant::String(_)));
+
+                    if lhs_is_string || rhs_is_string {
+                        // v0.51.22: Use pre-initialized global BmbString for string comparison
+                        let lhs_final = if let Operand::Constant(Constant::String(s)) = lhs {
+                            if let Some(global_name) = string_table.get(s) {
+                                format!("@{}.bmb", global_name)
+                            } else { lhs_str.clone() }
+                        } else { lhs_str.clone() };
+                        let rhs_final = if let Operand::Constant(Constant::String(s)) = rhs {
+                            if let Some(global_name) = string_table.get(s) {
+                                format!("@{}.bmb", global_name)
+                            } else { rhs_str.clone() }
+                        } else { rhs_str.clone() };
+                        // Call bmb_string_eq for string equality comparison
+                        // bmb_string_eq returns i64 (1 for equal, 0 for not equal)
+                        writeln!(out, "  %{}.i64 = call i64 @bmb_string_eq(ptr {}, ptr {})",
+                                 dest_name, lhs_final, rhs_final)?;
+                        // Convert i64 to i1 for boolean result
+                        writeln!(out, "  %{} = icmp ne i64 %{}.i64, 0", dest_name, dest_name)?;
+                    } else {
+                        // v0.51.37: Typed pointer comparison - use icmp eq ptr directly
+                        writeln!(out, "  %{} = icmp eq ptr {}, {}", dest_name, lhs_str, rhs_str)?;
+                    }
                     // v0.46: Store result to alloca if destination is a local variable
                     if local_names.contains(&dest.name) {
                         writeln!(out, "  store i1 %{}, ptr %{}.addr", dest_name, dest.name)?;
                     }
                 } else if (lhs_ty == "ptr" || rhs_ty == "ptr") && *op == MirBinOp::Ne {
-                    // v0.51.22: Use pre-initialized global BmbString
-                    let lhs_final = if let Operand::Constant(Constant::String(s)) = lhs {
-                        if let Some(global_name) = string_table.get(s) {
-                            format!("@{}.bmb", global_name)
-                        } else { lhs_str.clone() }
-                    } else { lhs_str.clone() };
-                    let rhs_final = if let Operand::Constant(Constant::String(s)) = rhs {
-                        if let Some(global_name) = string_table.get(s) {
-                            format!("@{}.bmb", global_name)
-                        } else { rhs_str.clone() }
-                    } else { rhs_str.clone() };
-                    // Call bmb_string_eq and negate for string inequality
-                    writeln!(out, "  %{}.i64 = call i64 @bmb_string_eq(ptr {}, ptr {})",
-                             dest_name, lhs_final, rhs_final)?;
-                    // Convert i64 to i1 and negate (0 means not equal, so i64==0 means Ne is true)
-                    writeln!(out, "  %{} = icmp eq i64 %{}.i64, 0", dest_name, dest_name)?;
+                    // v0.51.37: Distinguish string comparison from typed pointer comparison
+                    let lhs_is_string = matches!(lhs, Operand::Constant(Constant::String(_)));
+                    let rhs_is_string = matches!(rhs, Operand::Constant(Constant::String(_)));
+
+                    if lhs_is_string || rhs_is_string {
+                        // v0.51.22: Use pre-initialized global BmbString for string comparison
+                        let lhs_final = if let Operand::Constant(Constant::String(s)) = lhs {
+                            if let Some(global_name) = string_table.get(s) {
+                                format!("@{}.bmb", global_name)
+                            } else { lhs_str.clone() }
+                        } else { lhs_str.clone() };
+                        let rhs_final = if let Operand::Constant(Constant::String(s)) = rhs {
+                            if let Some(global_name) = string_table.get(s) {
+                                format!("@{}.bmb", global_name)
+                            } else { rhs_str.clone() }
+                        } else { rhs_str.clone() };
+                        // Call bmb_string_eq and negate for string inequality
+                        writeln!(out, "  %{}.i64 = call i64 @bmb_string_eq(ptr {}, ptr {})",
+                                 dest_name, lhs_final, rhs_final)?;
+                        // Convert i64 to i1 and negate (0 means not equal, so i64==0 means Ne is true)
+                        writeln!(out, "  %{} = icmp eq i64 %{}.i64, 0", dest_name, dest_name)?;
+                    } else {
+                        // v0.51.37: Typed pointer comparison - use icmp ne ptr directly
+                        writeln!(out, "  %{} = icmp ne ptr {}, {}", dest_name, lhs_str, rhs_str)?;
+                    }
                     // v0.46: Store result to alloca if destination is a local variable
                     if local_names.contains(&dest.name) {
                         writeln!(out, "  store i1 %{}, ptr %{}.addr", dest_name, dest.name)?;
@@ -3266,6 +3285,8 @@ impl TextCodeGen {
             MirType::Array { .. } => "ptr",
             // v0.64: Character type (32-bit Unicode codepoint)
             MirType::Char => "i32",
+            // v0.51.37: Pointer types are opaque pointers in modern LLVM
+            MirType::Ptr(_) => "ptr",
         }
     }
 

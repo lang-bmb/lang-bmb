@@ -443,6 +443,9 @@ pub enum MirType {
         element_type: Box<MirType>,
         size: Option<usize>, // None for dynamic arrays (slices)
     },
+    /// v0.51.37: Raw pointer type for heap-allocated data
+    /// Used for proper LLVM codegen with typed pointers
+    Ptr(Box<MirType>),
 }
 
 impl MirType {
@@ -874,5 +877,7 @@ fn format_mir_type(ty: &MirType) -> String {
                 format!("[{}]", format_mir_type(element_type))
             }
         }
+        // v0.51.37: Pointer type
+        MirType::Ptr(inner) => format!("*{}", format_mir_type(inner)),
     }
 }

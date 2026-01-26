@@ -325,6 +325,8 @@ pub fn format_type(ty: &Type) -> String {
             let elems_str: Vec<_> = elems.iter().map(|t| format_type(t)).collect();
             format!("({})", elems_str.join(", "))
         }
+        // v0.51.37: Pointer type
+        Type::Ptr(inner) => format!("*{}", format_type(inner)),
     }
 }
 

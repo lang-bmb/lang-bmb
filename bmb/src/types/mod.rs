@@ -890,7 +890,8 @@ impl TypeChecker {
                     self.mark_type_names_used(elem);
                 }
             }
-            Type::Range(inner) | Type::Nullable(inner) => {
+            // v0.51.37: Added Ptr to list of wrapper types
+            Type::Range(inner) | Type::Nullable(inner) | Type::Ptr(inner) => {
                 self.mark_type_names_used(inner);
             }
             Type::Refined { base, .. } => {
@@ -930,8 +931,9 @@ impl TypeChecker {
                         collect_type_refs(arg, refs);
                     }
                 }
+                // v0.51.37: Added Ptr to wrapper types
                 Type::Array(inner, _) | Type::Ref(inner) | Type::RefMut(inner)
-                | Type::Nullable(inner) | Type::Range(inner) => {
+                | Type::Nullable(inner) | Type::Range(inner) | Type::Ptr(inner) => {
                     collect_type_refs(inner, refs);
                 }
                 Type::Fn { params, ret } => {
@@ -1739,6 +1741,64 @@ impl TypeChecker {
                             span,
                         ))
                     }
+                    // v0.51.37: Auto-dereference pointer types for field access
+                    // *Node.left automatically dereferences to access Node.left
+                    Type::Ptr(inner) => {
+                        // Recursively look up field on the pointee type
+                        match inner.as_ref() {
+                            Type::Named(struct_name) => {
+                                let struct_fields = self.structs.get(struct_name).ok_or_else(|| {
+                                    CompileError::type_error(format!("not a struct: {struct_name}"), span)
+                                })?;
+
+                                for (fname, fty) in struct_fields {
+                                    if fname == &field.node {
+                                        return Ok(fty.clone());
+                                    }
+                                }
+
+                                let field_names: Vec<&str> = struct_fields.iter().map(|(n, _)| n.as_str()).collect();
+                                let suggestion = find_similar_name(&field.node, &field_names, 2);
+                                Err(CompileError::type_error(
+                                    format!("unknown field `{}` on struct `{}`{}", field.node, struct_name, format_suggestion_hint(suggestion)),
+                                    span,
+                                ))
+                            }
+                            Type::Generic { name: struct_name, type_args } => {
+                                if let Some((type_params, struct_fields)) = self.generic_structs.get(struct_name).cloned() {
+                                    let mut type_subst: HashMap<String, Type> = HashMap::new();
+                                    for (tp, arg) in type_params.iter().zip(type_args.iter()) {
+                                        type_subst.insert(tp.name.clone(), (**arg).clone());
+                                    }
+
+                                    let type_param_names: Vec<_> = type_params.iter().map(|tp| tp.name.as_str()).collect();
+
+                                    for (fname, fty) in &struct_fields {
+                                        if fname == &field.node {
+                                            let resolved_fty = self.resolve_type_vars(fty, &type_param_names);
+                                            let substituted_fty = self.substitute_type(&resolved_fty, &type_subst);
+                                            return Ok(substituted_fty);
+                                        }
+                                    }
+
+                                    let field_names: Vec<&str> = struct_fields.iter().map(|(n, _)| n.as_str()).collect();
+                                    let suggestion = find_similar_name(&field.node, &field_names, 2);
+                                    return Err(CompileError::type_error(
+                                        format!("unknown field `{}` on struct `{}`{}", field.node, struct_name, format_suggestion_hint(suggestion)),
+                                        span,
+                                    ));
+                                }
+                                Err(CompileError::type_error(
+                                    format!("not a struct: {struct_name}"),
+                                    span,
+                                ))
+                            }
+                            _ => Err(CompileError::type_error(
+                                format!("cannot access field on pointer to non-struct type: {inner}"),
+                                span,
+                            )),
+                        }
+                    }
                     _ => Err(CompileError::type_error(
                         format!("field access on non-struct type: {obj_ty}"),
                         span,
@@ -2107,7 +2167,7 @@ impl TypeChecker {
                             let mut found_ty = None;
                             for (fname, fty) in &struct_fields {
                                 if fname == &field.node {
-                                    found_ty = Some(self.substitute_type(&fty, &type_subst));
+                                    found_ty = Some(self.substitute_type(fty, &type_subst));
                                     break;
                                 }
                             }
@@ -2125,6 +2185,73 @@ impl TypeChecker {
                                 format!("Cannot assign to field of non-struct type: {}", obj_ty),
                                 object.span,
                             ));
+                        }
+                    }
+                    // v0.51.37: Auto-dereference pointer types for field assignment
+                    // set (*Node).left = value automatically dereferences to set Node.left
+                    Type::Ptr(inner) => {
+                        match inner.as_ref() {
+                            Type::Named(struct_name) => {
+                                let struct_fields = self.structs.get(struct_name).ok_or_else(|| {
+                                    CompileError::type_error(
+                                        format!("Cannot assign to field of non-struct type: {}", struct_name),
+                                        object.span,
+                                    )
+                                })?;
+
+                                let mut found_ty = None;
+                                for (fname, fty) in struct_fields {
+                                    if fname == &field.node {
+                                        found_ty = Some(fty.clone());
+                                        break;
+                                    }
+                                }
+
+                                found_ty.ok_or_else(|| {
+                                    let field_names: Vec<&str> = struct_fields.iter().map(|(n, _)| n.as_str()).collect();
+                                    let suggestion = find_similar_name(&field.node, &field_names, 2);
+                                    CompileError::type_error(
+                                        format!("Unknown field `{}` on struct `{}`{}", field.node, struct_name, format_suggestion_hint(suggestion)),
+                                        field.span,
+                                    )
+                                })?
+                            }
+                            Type::Generic { name: struct_name, type_args } => {
+                                if let Some((type_params, struct_fields)) = self.generic_structs.get(struct_name).cloned() {
+                                    let mut type_subst: HashMap<String, Type> = HashMap::new();
+                                    for (tp, arg) in type_params.iter().zip(type_args.iter()) {
+                                        type_subst.insert(tp.name.clone(), (**arg).clone());
+                                    }
+
+                                    let mut found_ty = None;
+                                    for (fname, fty) in &struct_fields {
+                                        if fname == &field.node {
+                                            found_ty = Some(self.substitute_type(fty, &type_subst));
+                                            break;
+                                        }
+                                    }
+
+                                    found_ty.ok_or_else(|| {
+                                        let field_names: Vec<&str> = struct_fields.iter().map(|(n, _)| n.as_str()).collect();
+                                        let suggestion = find_similar_name(&field.node, &field_names, 2);
+                                        CompileError::type_error(
+                                            format!("Unknown field `{}` on struct `{}`{}", field.node, struct_name, format_suggestion_hint(suggestion)),
+                                            field.span,
+                                        )
+                                    })?
+                                } else {
+                                    return Err(CompileError::type_error(
+                                        format!("Cannot assign to field of non-struct type: {}", obj_ty),
+                                        object.span,
+                                    ));
+                                }
+                            }
+                            _ => {
+                                return Err(CompileError::type_error(
+                                    format!("Cannot assign to field on pointer to non-struct type: {}", inner),
+                                    object.span,
+                                ));
+                            }
                         }
                     }
                     _ => {
@@ -2290,15 +2417,22 @@ impl TypeChecker {
                 let tgt_numeric = matches!(&target_ty, Type::I32 | Type::I64 | Type::U32 | Type::U64 | Type::F64 | Type::Bool);
 
                 // v0.51.32: Allow struct <-> i64 casts for pointer operations
+                // v0.51.37: Extended to support typed pointer types (*T)
                 let src_struct = matches!(&src_ty, Type::Struct { .. } | Type::Named(_));
                 let tgt_struct = matches!(&target_ty, Type::Struct { .. } | Type::Named(_));
                 let src_is_i64 = matches!(&src_ty, Type::I64);
                 let tgt_is_i64 = matches!(&target_ty, Type::I64);
+                let src_ptr = matches!(&src_ty, Type::Ptr(_));
+                let tgt_ptr = matches!(&target_ty, Type::Ptr(_));
 
                 // Allow: numeric <-> numeric, struct -> i64, i64 -> struct
+                // v0.51.37: Also allow i64 <-> *T and *T <-> *U casts
                 let valid_cast = (src_numeric && tgt_numeric)
                     || (src_struct && tgt_is_i64)  // struct pointer to i64
-                    || (src_is_i64 && tgt_struct);  // i64 to struct pointer
+                    || (src_is_i64 && tgt_struct)  // i64 to struct pointer
+                    || (src_is_i64 && tgt_ptr)     // i64 to *T (malloc result)
+                    || (src_ptr && tgt_is_i64)     // *T to i64 (null check, arithmetic)
+                    || (src_ptr && tgt_ptr);       // *T to *U (pointer cast)
 
                 if !valid_cast {
                     return Err(CompileError::type_error(
@@ -3042,7 +3176,8 @@ impl TypeChecker {
                 self.unify(left_base, right_base, span)?;
                 match left_base {
                     // v0.38: Include unsigned types, v0.64: Include Char type
-                    Type::I32 | Type::I64 | Type::U32 | Type::U64 | Type::F64 | Type::Bool | Type::String | Type::Char => Ok(Type::Bool),
+                    // v0.51.37: Include pointer types for null checks
+                    Type::I32 | Type::I64 | Type::U32 | Type::U64 | Type::F64 | Type::Bool | Type::String | Type::Char | Type::Ptr(_) => Ok(Type::Bool),
                     _ => Err(CompileError::type_error(
                         format!("equality operator requires comparable type, got {left}"),
                         span,
@@ -3480,6 +3615,8 @@ impl TypeChecker {
                 let elems_str: Vec<_> = elems.iter().map(|t| self.type_to_string(t)).collect();
                 format!("({})", elems_str.join(", "))
             }
+            // v0.51.37: Pointer type
+            Type::Ptr(inner) => format!("*{}", self.type_to_string(inner)),
         }
     }
 
