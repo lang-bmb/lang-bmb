@@ -1122,28 +1122,29 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
 
             // v0.51.32: If casting to a struct type, we need to track the type
             // even if the underlying representation is the same (i64 pointer)
+            // v0.51.34: Avoid generating Copy instructions for struct casts
+            // Just register the existing place as having the struct type
             if let Type::Named(struct_name) = &ty.node {
                 if ctx.struct_defs.contains_key(struct_name) {
-                    // Create a temp to hold the "typed" pointer
-                    let dest = ctx.fresh_temp();
-                    // Copy the value (no actual conversion needed)
                     match &src_op {
                         Operand::Constant(c) => {
+                            // Constants need a temp to hold the value
+                            let dest = ctx.fresh_temp();
                             ctx.push_inst(MirInst::Const {
                                 dest: dest.clone(),
                                 value: c.clone(),
                             });
+                            ctx.var_struct_types.insert(dest.name.clone(), struct_name.clone());
+                            return Operand::Place(dest);
                         }
                         Operand::Place(src) => {
-                            ctx.push_inst(MirInst::Copy {
-                                dest: dest.clone(),
-                                src: src.clone(),
-                            });
+                            // v0.51.34: Reuse existing place, just register struct type
+                            // This eliminates unnecessary Copy instructions that become
+                            // `add i64 %val, 0` in LLVM IR
+                            ctx.var_struct_types.insert(src.name.clone(), struct_name.clone());
+                            return src_op;
                         }
                     }
-                    // Register the struct type for field access resolution
-                    ctx.var_struct_types.insert(dest.name.clone(), struct_name.clone());
-                    return Operand::Place(dest);
                 }
             }
 
