@@ -356,6 +356,8 @@ impl TypeChecker {
         // v0.31.13: StringBuilder builtins for Phase 32.0.4 O(n²) fix
         // sb_new() -> i64 (builder ID)
         functions.insert("sb_new".to_string(), (vec![], Type::I64));
+        // v0.51.45: sb_with_capacity(capacity: i64) -> i64 (builder ID with pre-allocated capacity)
+        functions.insert("sb_with_capacity".to_string(), (vec![Type::I64], Type::I64));
         // sb_push(id: i64, str: String) -> i64 (same ID for chaining)
         functions.insert("sb_push".to_string(), (vec![Type::I64, Type::String], Type::I64));
         // sb_push_char(id: i64, char_code: i64) -> i64 (push single char, no allocation)

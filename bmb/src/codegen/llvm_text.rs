@@ -333,6 +333,7 @@ impl TextCodeGen {
         // Phase 32.3: StringBuilder runtime functions
         writeln!(out, "; Runtime declarations - StringBuilder")?;
         writeln!(out, "declare i64 @bmb_sb_new()")?;
+        writeln!(out, "declare i64 @bmb_sb_with_capacity(i64)")?;  // v0.51.45: P0-E optimization
         writeln!(out, "declare i64 @bmb_sb_push(i64, ptr)")?;
         writeln!(out, "declare i64 @bmb_sb_push_char(i64, i64)")?;
         writeln!(out, "declare i64 @bmb_sb_push_int(i64, i64)")?;  // v0.50.73
@@ -3520,7 +3521,7 @@ impl TextCodeGen {
 
             // i64 return - StringBuilder (handle is i64)
             "bmb_sb_new" | "bmb_sb_push" | "bmb_sb_push_cstr" | "bmb_sb_push_char" | "bmb_sb_push_int" | "bmb_sb_push_escaped" | "bmb_sb_len" | "bmb_sb_clear"
-            | "sb_new" | "sb_push" | "sb_push_cstr" | "sb_push_char" | "sb_push_int" | "sb_push_escaped" | "sb_len" | "sb_clear" => "i64",
+            | "sb_new" | "sb_with_capacity" | "sb_push" | "sb_push_cstr" | "sb_push_char" | "sb_push_int" | "sb_push_escaped" | "sb_len" | "sb_clear" => "i64",
 
             // i64 return - Process
             "bmb_system" => "i64",

@@ -166,6 +166,8 @@ impl Interpreter {
 
         // v0.31.13: StringBuilder builtins for Phase 32.0.4 O(n²) fix
         self.builtins.insert("sb_new".to_string(), builtin_sb_new);
+        self.builtins
+            .insert("sb_with_capacity".to_string(), builtin_sb_with_capacity);  // v0.51.45
         self.builtins.insert("sb_push".to_string(), builtin_sb_push);
         self.builtins.insert("sb_push_char".to_string(), builtin_sb_push_char);
         self.builtins.insert("sb_build".to_string(), builtin_sb_build);
@@ -3184,6 +3186,37 @@ fn builtin_sb_new(args: &[Value]) -> InterpResult<Value> {
 
     STRING_BUILDERS.with(|builders| {
         builders.borrow_mut().insert(id, Vec::new());
+    });
+
+    Ok(Value::Int(id))
+}
+
+/// sb_with_capacity(capacity: i64) -> i64
+/// Creates a new string builder with pre-allocated capacity.
+/// v0.51.45: P0-E optimization to avoid reallocations.
+fn builtin_sb_with_capacity(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 1 {
+        return Err(RuntimeError::arity_mismatch("sb_with_capacity", 1, args.len()));
+    }
+    let capacity = match &args[0] {
+        Value::Int(n) => *n as usize,
+        _ => 64,  // Default capacity if not an integer
+    };
+
+    let id = SB_COUNTER.with(|counter| {
+        let mut c = counter.borrow_mut();
+        let id = *c;
+        *c += 1;
+        id
+    });
+
+    STRING_BUILDERS.with(|builders| {
+        // Pre-allocate with capacity hint (Vec::with_capacity approximation)
+        // Note: The interpreter uses Vec<String> so capacity hint is ignored,
+        // but the native runtime (bmb_runtime.c) does use real capacity.
+        let mut v = Vec::new();
+        v.reserve(capacity);
+        builders.borrow_mut().insert(id, v);
     });
 
     Ok(Value::Int(id))

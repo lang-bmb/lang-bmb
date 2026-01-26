@@ -284,6 +284,17 @@ int64_t bmb_sb_new(void) {
     return (int64_t)sb;
 }
 
+// v0.51.45: StringBuilder with pre-allocated capacity (P0-E optimization)
+// Avoids reallocations when final size is known
+int64_t bmb_sb_with_capacity(int64_t capacity) {
+    StringBuilder* sb = (StringBuilder*)malloc(sizeof(StringBuilder));
+    sb->cap = capacity > 0 ? capacity : 64;
+    sb->len = 0;
+    sb->data = (char*)malloc(sb->cap);
+    sb->data[0] = '\0';
+    return (int64_t)sb;
+}
+
 int64_t bmb_sb_push(int64_t handle, const char* s) {
     if (!s || !handle) return 0;
     StringBuilder* sb = (StringBuilder*)handle;
@@ -661,6 +672,11 @@ char* bmb_get_arg(int64_t index) {
 // Use bmb_string_concat and bmb_string_eq instead
 int64_t sb_new(void) {
     return bmb_sb_new();
+}
+
+// v0.51.45: sb_with_capacity wrapper
+int64_t sb_with_capacity(int64_t capacity) {
+    return bmb_sb_with_capacity(capacity);
 }
 
 int64_t sb_push(int64_t handle, const char* s) {
