@@ -784,6 +784,10 @@ impl TextCodeGen {
                             .unwrap_or("i64");
                         place_types.insert(dest.name.clone(), field_llvm_ty);
                     }
+                    // v0.51.39: Cast produces the target type
+                    MirInst::Cast { dest, to_ty, .. } => {
+                        place_types.insert(dest.name.clone(), self.mir_type_to_llvm(to_ty));
+                    }
                     _ => {}
                 }
             }

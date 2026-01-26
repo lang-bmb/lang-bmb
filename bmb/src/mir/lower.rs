@@ -678,7 +678,21 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
 
             // v0.51.31: Register temp type for operand_type() to find
             // (Don't add to locals - temps don't need allocas)
-            ctx.temp_types.insert(dest.name.clone(), field_ty);
+            ctx.temp_types.insert(dest.name.clone(), field_ty.clone());
+
+            // v0.51.39: If field type is a pointer to struct, register the inner struct name
+            // so subsequent field accesses on this value work correctly
+            match &field_ty {
+                MirType::StructPtr(inner_name) => {
+                    ctx.var_struct_types.insert(dest.name.clone(), inner_name.clone());
+                }
+                MirType::Ptr(inner) => {
+                    if let MirType::StructPtr(inner_name) = inner.as_ref() {
+                        ctx.var_struct_types.insert(dest.name.clone(), inner_name.clone());
+                    }
+                }
+                _ => {}
+            }
 
             ctx.push_inst(MirInst::FieldAccess {
                 dest: dest.clone(),

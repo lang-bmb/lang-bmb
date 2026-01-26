@@ -1,0 +1,26 @@
+// Test: Valid pointer casts should compile
+// Tests i64 <-> *T conversions
+
+struct Node { value: i64 }
+
+fn main() -> i64 = {
+    // i64 -> *T (valid: malloc returns i64, cast to pointer)
+    let ptr = malloc(8) as *Node;
+
+    // *T -> i64 (valid: free expects i64)
+    let addr = ptr as i64;
+    let _f = free(addr);
+
+    // 0 -> *T (valid: null pointer)
+    let null = 0 as *Node;
+
+    // *T -> *T (same type, identity)
+    let ptr2 = null as *Node;
+
+    // i64 -> *T -> i64 roundtrip
+    let raw = 12345 as i64;
+    let ptr3 = raw as *Node;
+    let back = ptr3 as i64;
+
+    if back == 12345 { 0 } else { 1 }
+};

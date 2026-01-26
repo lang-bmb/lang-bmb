@@ -1,0 +1,60 @@
+// Test: Array-like access with typed pointer arithmetic
+// Validates: body_at pattern from n_body benchmark
+
+struct Vec3 {
+    x: f64,
+    y: f64,
+    z: f64
+}
+
+// Allocate array of Vec3 (n * 24 bytes)
+fn vec3_array_new(n: i64) -> *Vec3 = malloc(n * 24) as *Vec3;
+
+// Get pointer to element at index i
+fn vec3_at(arr: *Vec3, i: i64) -> *Vec3 =
+    (arr as i64 + i * 24) as *Vec3;
+
+fn vec3_init(v: *Vec3, x: f64, y: f64, z: f64) -> i64 = {
+    let _x = set v.x = x;
+    let _y = set v.y = y;
+    let _z = set v.z = z;
+    0
+};
+
+fn vec3_dot(a: *Vec3, b: *Vec3) -> f64 =
+    a.x * b.x + a.y * b.y + a.z * b.z;
+
+fn vec3_length_sq(v: *Vec3) -> f64 =
+    v.x * v.x + v.y * v.y + v.z * v.z;
+
+fn main() -> i64 = {
+    // Create array of 3 vectors
+    let arr = vec3_array_new(3);
+
+    // Initialize
+    let v0 = vec3_at(arr, 0);
+    let v1 = vec3_at(arr, 1);
+    let v2 = vec3_at(arr, 2);
+
+    let _i0 = vec3_init(v0, 1.0, 0.0, 0.0);
+    let _i1 = vec3_init(v1, 0.0, 1.0, 0.0);
+    let _i2 = vec3_init(v2, 3.0, 4.0, 0.0);
+
+    // Tests
+    let dot01 = vec3_dot(v0, v1);     // Expected: 0.0
+    let len2_sq = vec3_length_sq(v2); // Expected: 25.0
+
+    // Convert to i64 for printing
+    let dot01_i = f64_to_i64(dot01);
+    let len2_sq_i = f64_to_i64(len2_sq);
+
+    let _p1 = println(dot01_i);   // 0
+    let _p2 = println(len2_sq_i); // 25
+
+    let _f = free(arr as i64);
+
+    // Validate
+    if dot01_i == 0 {
+        if len2_sq_i == 25 { 0 } else { 2 }
+    } else { 1 }
+};

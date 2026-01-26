@@ -1,0 +1,14 @@
+// Test: Type checker should catch invalid pointer operations
+// This file should FAIL type checking
+
+struct A { x: i64 }
+struct B { y: i64 }
+
+fn test_wrong_ptr_type() -> i64 = {
+    let a = malloc(8) as *A;
+    // ERROR: Should not allow assigning *A to *B
+    let b: *B = a;
+    0
+};
+
+fn main() -> i64 = 0;

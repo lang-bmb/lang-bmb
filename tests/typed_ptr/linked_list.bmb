@@ -1,0 +1,73 @@
+// Test: Self-referential struct - LinkedList
+// Validates: *Node pointing to same struct type
+
+struct Node {
+    value: i64,
+    next: *Node
+}
+
+fn null_node() -> *Node = 0 as *Node;
+
+fn node_new(val: i64) -> *Node = {
+    let n = malloc(16) as *Node;
+    let _v = set n.value = val;
+    let _n = set n.next = null_node();
+    n
+};
+
+fn list_push(head: *Node, val: i64) -> *Node = {
+    let new_node = node_new(val);
+    let _n = set new_node.next = head;
+    new_node
+};
+
+fn list_sum(node: *Node) -> i64 = {
+    let null = null_node();
+    if node == null {
+        0
+    } else {
+        node.value + list_sum(node.next)
+    }
+};
+
+fn list_length(node: *Node) -> i64 = {
+    let null = null_node();
+    if node == null {
+        0
+    } else {
+        1 + list_length(node.next)
+    }
+};
+
+fn list_free(node: *Node) -> i64 = {
+    let null = null_node();
+    if node != null {
+        let next = node.next;
+        let _f = free(node as i64);
+        list_free(next)
+    } else {
+        0
+    }
+};
+
+fn main() -> i64 = {
+    // Build list: 5 -> 4 -> 3 -> 2 -> 1 -> null
+    let list = node_new(1);
+    let list = list_push(list, 2);
+    let list = list_push(list, 3);
+    let list = list_push(list, 4);
+    let list = list_push(list, 5);
+
+    let sum = list_sum(list);      // Expected: 15
+    let len = list_length(list);   // Expected: 5
+
+    let _p1 = println(sum);
+    let _p2 = println(len);
+
+    let _f = list_free(list);
+
+    // Return 0 if correct
+    if sum == 15 {
+        if len == 5 { 0 } else { 2 }
+    } else { 1 }
+};

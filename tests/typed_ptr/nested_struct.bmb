@@ -1,0 +1,82 @@
+// Test: Nested struct with pointer fields
+// Validates: Accessing fields through multiple pointer dereferences
+
+struct Point {
+    x: i64,
+    y: i64
+}
+
+struct Rect {
+    top_left: *Point,
+    bottom_right: *Point,
+    area: i64
+}
+
+fn null_point() -> *Point = 0 as *Point;
+fn null_rect() -> *Rect = 0 as *Rect;
+
+fn point_new(x: i64, y: i64) -> *Point = {
+    let p = malloc(16) as *Point;
+    let _x = set p.x = x;
+    let _y = set p.y = y;
+    p
+};
+
+fn rect_new(x1: i64, y1: i64, x2: i64, y2: i64) -> *Rect = {
+    let r = malloc(24) as *Rect;  // 3 fields * 8 bytes
+    let tl = point_new(x1, y1);
+    let br = point_new(x2, y2);
+    let _tl = set r.top_left = tl;
+    let _br = set r.bottom_right = br;
+    let w = x2 - x1;
+    let h = y2 - y1;
+    let _a = set r.area = w * h;
+    r
+};
+
+fn rect_width(r: *Rect) -> i64 = {
+    let tl = r.top_left;
+    let br = r.bottom_right;
+    br.x - tl.x
+};
+
+fn rect_height(r: *Rect) -> i64 = {
+    let tl = r.top_left;
+    let br = r.bottom_right;
+    br.y - tl.y
+};
+
+fn rect_free(r: *Rect) -> i64 = {
+    let null = null_rect();
+    if r != null {
+        let tl = r.top_left;
+        let br = r.bottom_right;
+        let _f1 = free(tl as i64);
+        let _f2 = free(br as i64);
+        let _f3 = free(r as i64);
+        0
+    } else {
+        0
+    }
+};
+
+fn main() -> i64 = {
+    let r = rect_new(10, 20, 50, 80);
+
+    let w = rect_width(r);    // Expected: 40
+    let h = rect_height(r);   // Expected: 60
+    let a = r.area;           // Expected: 2400
+
+    let _p1 = println(w);
+    let _p2 = println(h);
+    let _p3 = println(a);
+
+    let _f = rect_free(r);
+
+    // Validate
+    if w == 40 {
+        if h == 60 {
+            if a == 2400 { 0 } else { 3 }
+        } else { 2 }
+    } else { 1 }
+};
