@@ -749,11 +749,12 @@ impl<'ctx> LlvmContext<'ctx> {
                 .context
                 .ptr_type(inkwell::AddressSpace::default())
                 .into(),
-            // Struct/Enum/Array types - use i64 pointer as placeholder for now
+            // Struct/Enum/Array/Ptr types - use pointer as placeholder for now
             MirType::Struct { .. }
             | MirType::StructPtr(_)
             | MirType::Enum { .. }
-            | MirType::Array { .. } => self
+            | MirType::Array { .. }
+            | MirType::Ptr(_) => self
                 .context
                 .ptr_type(inkwell::AddressSpace::default())
                 .into(),
@@ -1532,7 +1533,7 @@ impl<'ctx> LlvmContext<'ctx> {
                 self.variables.insert(dest.name.clone(), (array_ptr, ptr_type.into()));
             }
 
-            MirInst::IndexLoad { dest, array, index } => {
+            MirInst::IndexLoad { dest, array, index, element_type: _ } => {
                 // Get array pointer from variables or ssa_values
                 // v0.51.19: Read-only array parameters are stored in ssa_values, not variables
                 let array_ptr = if let Some((ptr, _)) = self.variables.get(&array.name) {
@@ -1569,7 +1570,7 @@ impl<'ctx> LlvmContext<'ctx> {
                 self.store_to_place(dest, loaded)?;
             }
 
-            MirInst::IndexStore { array, index, value } => {
+            MirInst::IndexStore { array, index, value, element_type: _ } => {
                 // Get array pointer from variables or ssa_values
                 // v0.51.19: Array parameters may be stored in ssa_values if read-only
                 let array_ptr = if let Some((ptr, _)) = self.variables.get(&array.name) {

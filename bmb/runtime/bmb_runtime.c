@@ -1,11 +1,18 @@
+// v0.51.46: Windows compatibility fixes
+#ifdef _WIN32
+#define NOMINMAX  // Prevent min/max macros
+#define _CRT_SECURE_NO_WARNINGS  // Suppress fopen/scanf warnings
+#endif
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <inttypes.h>
 
 // BMB Runtime Library
-void bmb_println_i64(int64_t n) { printf("%ld\n", n); }
-void bmb_print_i64(int64_t n) { printf("%ld", n); }
-int64_t bmb_read_int() { int64_t n; scanf("%ld", &n); return n; }
+void bmb_println_i64(int64_t n) { printf("%" PRId64 "\n", n); }
+void bmb_print_i64(int64_t n) { printf("%" PRId64, n); }
+int64_t bmb_read_int() { int64_t n; scanf("%" SCNd64, &n); return n; }
 void bmb_assert(int cond) { if (!cond) { fprintf(stderr, "Assertion failed!\n"); exit(1); } }
 int64_t bmb_abs(int64_t n) { return n < 0 ? -n : n; }
 int64_t bmb_min(int64_t a, int64_t b) { return a < b ? a : b; }
@@ -714,6 +721,13 @@ char* get_arg(int64_t index) {
 }
 
 // v0.50.20: Math wrappers (note: abs conflicts with stdlib, named differently)
+// v0.51.46: Windows defines min/max as macros, undef them
+#ifdef min
+#undef min
+#endif
+#ifdef max
+#undef max
+#endif
 int64_t min(int64_t a, int64_t b) {
     return bmb_min(a, b);
 }
