@@ -65,6 +65,8 @@ extern {
         "?" => Token::Question,
         // v0.39: Type casting
         "as" => Token::As,
+        // v0.51.40: Null pointer literal
+        "null" => Token::Null,
         // v0.20.0: Closure syntax
         "|" => Token::Pipe,
         // v0.20.1: Trait system
@@ -1747,6 +1749,8 @@ Primary: Expr = {
     "charlit" => Expr::CharLit(<>),
     "true" => Expr::BoolLit(true),
     "false" => Expr::BoolLit(false),
+    // v0.51.40: Null pointer literal
+    "null" => Expr::Null,
     "ret" => Expr::Ret,
     "it" => Expr::It,
     // v0.31: Todo expression

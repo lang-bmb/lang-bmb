@@ -1423,7 +1423,14 @@ impl TextCodeGen {
                         writeln!(out, "  %{} = icmp ne i64 %{}.i64, 0", dest_name, dest_name)?;
                     } else {
                         // v0.51.37: Typed pointer comparison - use icmp eq ptr directly
-                        writeln!(out, "  %{} = icmp eq ptr {}, {}", dest_name, lhs_str, rhs_str)?;
+                        // v0.51.40: Handle null comparison - LLVM requires "null" not "0" for ptr
+                        let lhs_ptr = if matches!(lhs, Operand::Constant(Constant::Int(0))) {
+                            "null".to_string()
+                        } else { lhs_str.clone() };
+                        let rhs_ptr = if matches!(rhs, Operand::Constant(Constant::Int(0))) {
+                            "null".to_string()
+                        } else { rhs_str.clone() };
+                        writeln!(out, "  %{} = icmp eq ptr {}, {}", dest_name, lhs_ptr, rhs_ptr)?;
                     }
                     // v0.46: Store result to alloca if destination is a local variable
                     if local_names.contains(&dest.name) {
@@ -1453,7 +1460,14 @@ impl TextCodeGen {
                         writeln!(out, "  %{} = icmp eq i64 %{}.i64, 0", dest_name, dest_name)?;
                     } else {
                         // v0.51.37: Typed pointer comparison - use icmp ne ptr directly
-                        writeln!(out, "  %{} = icmp ne ptr {}, {}", dest_name, lhs_str, rhs_str)?;
+                        // v0.51.40: Handle null comparison - LLVM requires "null" not "0" for ptr
+                        let lhs_ptr = if matches!(lhs, Operand::Constant(Constant::Int(0))) {
+                            "null".to_string()
+                        } else { lhs_str.clone() };
+                        let rhs_ptr = if matches!(rhs, Operand::Constant(Constant::Int(0))) {
+                            "null".to_string()
+                        } else { rhs_str.clone() };
+                        writeln!(out, "  %{} = icmp ne ptr {}, {}", dest_name, lhs_ptr, rhs_ptr)?;
                     }
                     // v0.46: Store result to alloca if destination is a local variable
                     if local_names.contains(&dest.name) {

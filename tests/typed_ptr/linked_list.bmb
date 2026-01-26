@@ -6,12 +6,11 @@ struct Node {
     next: *Node
 }
 
-fn null_node() -> *Node = 0 as *Node;
-
+// v0.51.40: Using null keyword instead of helper function
 fn node_new(val: i64) -> *Node = {
     let n = malloc(16) as *Node;
     let _v = set n.value = val;
-    let _n = set n.next = null_node();
+    let _n = set n.next = null;
     n
 };
 
@@ -22,7 +21,6 @@ fn list_push(head: *Node, val: i64) -> *Node = {
 };
 
 fn list_sum(node: *Node) -> i64 = {
-    let null = null_node();
     if node == null {
         0
     } else {
@@ -31,7 +29,6 @@ fn list_sum(node: *Node) -> i64 = {
 };
 
 fn list_length(node: *Node) -> i64 = {
-    let null = null_node();
     if node == null {
         0
     } else {
@@ -40,7 +37,6 @@ fn list_length(node: *Node) -> i64 = {
 };
 
 fn list_free(node: *Node) -> i64 = {
-    let null = null_node();
     if node != null {
         let next = node.next;
         let _f = free(node as i64);

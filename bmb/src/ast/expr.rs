@@ -16,6 +16,8 @@ pub enum Expr {
     StringLit(String),
     /// Character literal (v0.64)
     CharLit(char),
+    /// Null pointer literal (v0.51.40)
+    Null,
     /// Unit value
     Unit,
 

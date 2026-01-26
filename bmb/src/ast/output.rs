@@ -340,6 +340,8 @@ pub fn format_expr(expr: &Expr) -> String {
         Expr::StringLit(s) => format!("\"{}\"", s.escape_default()),
         // v0.64: Character literal
         Expr::CharLit(c) => format!("'{}'", c.escape_default()),
+        // v0.51.40: Null pointer literal
+        Expr::Null => "null".to_string(),
         Expr::Unit => "()".to_string(),
         Expr::Var(name) => name.clone(),
         Expr::Ret => "ret".to_string(),

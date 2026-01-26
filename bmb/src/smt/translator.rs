@@ -193,6 +193,9 @@ impl SmtTranslator {
 
             Expr::Unit => Ok("true".to_string()),
 
+            // v0.51.40: Null pointer literal - represented as 0
+            Expr::Null => Ok("0".to_string()),
+
             Expr::Var(name) => {
                 if self.var_types.contains_key(name) {
                     Ok(name.clone())

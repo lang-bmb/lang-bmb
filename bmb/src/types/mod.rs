@@ -1284,6 +1284,9 @@ impl TypeChecker {
             Expr::StringLit(_) => Ok(Type::String),
             // v0.64: Character literal type inference
             Expr::CharLit(_) => Ok(Type::Char),
+            // v0.51.40: Null pointer literal - creates a polymorphic pointer type
+            // that will unify with any expected pointer type via TypeVar matching
+            Expr::Null => Ok(Type::Ptr(Box::new(Type::TypeVar("_null".to_string())))),
             Expr::Unit => Ok(Type::Unit),
 
             Expr::Ret => self.current_ret_ty.clone().ok_or_else(|| {
@@ -2108,13 +2111,8 @@ impl TypeChecker {
                     )),
                 };
 
-                // Value must match element type
-                if elem_ty != value_ty {
-                    return Err(CompileError::type_error(
-                        format!("Cannot assign {} to array of {}", value_ty, elem_ty),
-                        value.span,
-                    ));
-                }
+                // Value must match element type (v0.51.40: use unify for null support)
+                self.unify(&elem_ty, &value_ty, value.span)?;
 
                 // IndexAssign returns unit
                 Ok(Type::Unit)
@@ -2262,13 +2260,8 @@ impl TypeChecker {
                     }
                 };
 
-                // Value must match field type
-                if field_ty != value_ty {
-                    return Err(CompileError::type_error(
-                        format!("Cannot assign {} to field `{}` of type {}", value_ty, field.node, field_ty),
-                        value.span,
-                    ));
-                }
+                // Value must match field type (v0.51.40: use unify for null support)
+                self.unify(&field_ty, &value_ty, value.span)?;
 
                 // FieldAssign returns unit
                 Ok(Type::Unit)
@@ -3323,6 +3316,12 @@ impl TypeChecker {
         if let Type::TypeVar(_) = &actual {
             // Allow unbound TypeVar to match any expected type
             return Ok(());
+        }
+
+        // v0.51.40: Handle Ptr types - recursively unify inner types
+        // This allows null (*_null) to match any pointer type (*T)
+        if let (Type::Ptr(inner1), Type::Ptr(inner2)) = (&expected, &actual) {
+            return self.unify(inner1, inner2, span);
         }
 
         if expected == actual {

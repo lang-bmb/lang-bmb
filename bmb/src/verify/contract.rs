@@ -431,9 +431,10 @@ impl ContractVerifier {
                 self.check_expr_for_conflicts(&body.node, function_index, report);
             }
             // Leaf expressions - no recursion needed
+            // v0.51.40: Added Expr::Null
             Expr::IntLit(_) | Expr::FloatLit(_) | Expr::BoolLit(_) | Expr::StringLit(_)
             | Expr::CharLit(_) | Expr::Var(_) | Expr::Ret | Expr::Unit | Expr::It
-            | Expr::Continue | Expr::Todo { .. } => {}
+            | Expr::Continue | Expr::Todo { .. } | Expr::Null => {}
         }
     }
 

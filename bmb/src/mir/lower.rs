@@ -321,6 +321,9 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
 
         Expr::Unit => Operand::Constant(Constant::Unit),
 
+        // v0.51.40: Null pointer literal - lowered as integer 0
+        Expr::Null => Operand::Constant(Constant::Int(0)),
+
         Expr::Var(name) => Operand::Place(Place::new(name.clone())),
 
         Expr::Binary { left, op, right } => {

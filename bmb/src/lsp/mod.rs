@@ -1311,6 +1311,8 @@ fn format_expr(expr: &Expr) -> String {
         // v0.64: Character literal
         Expr::CharLit(c) => format!("'{}'", c.escape_default()),
         Expr::Unit => "()".to_string(),
+        // v0.51.40: Null pointer literal
+        Expr::Null => "null".to_string(),
         Expr::Var(name) => name.clone(),
         Expr::Ret => "ret".to_string(),
         Expr::It => "it".to_string(),

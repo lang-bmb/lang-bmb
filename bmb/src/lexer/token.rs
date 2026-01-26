@@ -99,6 +99,9 @@ pub enum Token {
     // v0.39: Type casting
     #[token("as")]
     As,
+    // v0.51.40: Null pointer literal
+    #[token("null")]
+    Null,
     // v0.20.1: Trait system
     #[token("trait")]
     Trait,
@@ -374,6 +377,7 @@ impl std::fmt::Display for Token {
             Token::Extern => write!(f, "extern"),
             Token::Try => write!(f, "try"),
             Token::As => write!(f, "as"),
+            Token::Null => write!(f, "null"),
             Token::Trait => write!(f, "trait"),
             Token::Impl => write!(f, "impl"),
             Token::TyI32 => write!(f, "i32"),

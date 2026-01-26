@@ -348,6 +348,9 @@ impl Interpreter {
             Expr::CharLit(c) => Ok(Value::Char(*c)),
             Expr::Unit => Ok(Value::Unit),
 
+            // v0.51.40: Null pointer literal - interpreted as 0
+            Expr::Null => Ok(Value::Int(0)),
+
             Expr::Var(name) => {
                 env.borrow()
                     .get(name)

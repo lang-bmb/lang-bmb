@@ -1,0 +1,18 @@
+// v0.51.40: Test null pointer literal
+
+struct Node {
+    value: i64,
+    next: *Node
+}
+
+fn test_null() -> i64 = {
+    // Use null as a typed pointer
+    let p: *Node = null;
+    let ptr_val: i64 = p as i64;
+    ptr_val
+};
+
+fn main() -> i64 = {
+    let result = test_null();
+    result
+};
