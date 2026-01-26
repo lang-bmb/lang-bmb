@@ -15,7 +15,7 @@
 
 ---
 
-## 현재 벤치마크 현황 (v0.51.43)
+## 현재 벤치마크 현황 (v0.51.44)
 
 ### ✅ BMB > C (이미 달성)
 
@@ -39,61 +39,51 @@
 
 | 벤치마크 | 비율 | 근본 원인 | 해결책 | 우선순위 |
 |----------|------|----------|--------|----------|
-| **brainfuck** | 111% | if-else 체인 vs switch | match → jump table | P0-A |
+| **brainfuck** | 111% | if-else 체인 vs switch | ✅ v0.51.8 IfElseToSwitch 완료 | 재측정 필요 |
 | **hash_table** | 111% | HashMap 구현 오버헤드 | 런타임 최적화 | P0-B |
 | **sorting** | 110% | 비교 함수 호출 | 인라인 비교 | P0-C |
-| **lexer** | 109% | byte_at 호출 + if-else | 직접 바이트 접근 | P0-D |
+| **lexer** | 109% | byte_at 호출 + if-else | IfElseToSwitch 적용됨, byte_at 인라인 필요 | P0-D |
 | **fasta** | 108% | 문자열 빌더 오버헤드 | StringBuilder 최적화 | P0-E |
 | **binary_trees** | 106% | 메모리 할당 패턴 | typed pointer 최적화 | P0-F |
 | **n_body** | 106% | FP 연산 | SIMD 고려 | P0-G |
 
 ---
 
-## P0-A: match → jump table (brainfuck 111% → ~100%)
+## P0-A: ~~match → jump table~~ ✅ 완료 (v0.51.8)
 
-### 문제 분석
+### 상태: ✅ 이미 구현됨
 
-**C switch 컴파일 결과**:
+**v0.51.8**에서 `IfElseToSwitch` MIR 최적화 패스가 이미 구현되어 있음.
+**v0.51.44**에서 `--emit-mir`가 최적화된 MIR을 출력하도록 수정하여 확인 완료.
+
+### 동작 확인
+
+brainfuck의 `execute_instruction` 함수 MIR 출력:
+```
+switch %c, [62 -> then_0, 60 -> then_3, 43 -> then_9, 45 -> then_12,
+            46 -> then_18, 44 -> then_21, 91 -> then_24, 93 -> then_30], else_31
+```
+
+생성되는 LLVM IR:
 ```llvm
-switch i8 %cmd, label %default [
-  i8 43, label %add    ; '+'
-  i8 45, label %sub    ; '-'
-  i8 62, label %right  ; '>'
-  i8 60, label %left   ; '<'
+switch i64 %c, label %bb_else_31 [
+  i64 62, label %bb_then_0
+  i64 60, label %bb_then_3
+  i64 43, label %bb_then_9
   ...
 ]
 ```
 
-**BMB if-else 체인 컴파일 결과**:
-```llvm
-%cmp1 = icmp eq i8 %cmd, 43
-br i1 %cmp1, label %add, label %check2
-check2:
-%cmp2 = icmp eq i8 %cmd, 45
-br i1 %cmp2, label %sub, label %check3
-...  ; O(n) 비교
-```
+### 구현 내역
 
-### 해결책
+- `MIR Switch 인스트럭션`: `Terminator::Switch { discriminant, cases, default }`
+- `IfElseToSwitch 패스`: 3개 이상의 정수 상수 비교 if-else 체인 감지 및 변환
+- `LLVM codegen`: Switch → `switch i64` IR 생성
 
-**옵션 A: match 표현식 → switch IR 변환** (권장)
-- 기존 match 표현식의 코드젠 개선
-- 언어 스펙 변경 없음
-- 패턴이 정수 상수일 때 switch 생성
+### 다음 단계
 
-**옵션 B: switch 키워드 추가**
-- 명시적 switch 구문 추가
-- 언어 스펙 변경 필요
-
-### 구현 계획
-
-```
-1. MIR에 Switch 인스트럭션 추가
-2. match 표현식 lowering에서 Switch 생성 조건 감지
-3. LLVM codegen에서 switch IR 생성
-```
-
-**예상 효과**: brainfuck 111% → 100%, lexer 109% → 102%
+- **벤치마크 재측정 필요**: LLVM 빌드 환경 정상화 후 brainfuck 111% 개선 확인
+- lexer 벤치마크도 동일한 최적화 적용 확인 필요
 
 ---
 
