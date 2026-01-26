@@ -41,7 +41,7 @@
 |----------|------|----------|--------|----------|
 | **brainfuck** | 111% | if-else 체인 vs switch | ✅ v0.51.8 IfElseToSwitch 완료 | 재측정 필요 |
 | **hash_table** | 111% | HashMap 구현 오버헤드 | 런타임 최적화 | P0-B |
-| **sorting** | 110% | 비교 함수 호출 | 인라인 비교 | P0-C |
+| **sorting** | 110% | 재귀 오버헤드 | ✅ TailRecursiveToLoop + alwaysinline 완료 | 재측정 필요 |
 | **lexer** | 109% | byte_at 호출 + if-else | IfElseToSwitch 적용됨, byte_at 인라인 필요 | P0-D |
 | **fasta** | 108% | 문자열 빌더 오버헤드 | StringBuilder 최적화 | P0-E |
 | **binary_trees** | 106% | 메모리 할당 패턴 | typed pointer 최적화 | P0-F |
@@ -102,27 +102,37 @@ switch i64 %c, label %bb_else_31 [
 
 ---
 
-## P0-C: 비교 함수 인라인 (sorting 110% → ~100%)
+## P0-C: ~~비교 함수 인라인~~ ✅ 완료 (v0.51.8)
 
-### 문제 분석
+### 상태: ✅ 이미 구현됨
 
-```bmb
-// BMB: 함수 호출
-fn compare(a: i64, b: i64) -> bool = a < b;
+**v0.51.8**에서 `AggressiveInlining` MIR 패스가 구현되어 있음.
+**v0.51.9**에서 `TailRecursiveToLoop` 패스로 재귀 함수가 루프로 변환됨.
+
+### 동작 확인 (sorting 벤치마크)
+
+MIR 출력에서 확인:
+```
+fn array_get(arr: i64, i: i64) -> i64 @alwaysinline {
+fn array_set(arr: i64, i: i64, val: i64) -> i64 @alwaysinline {
+fn swap(arr: i64, i: i64, j: i64) -> i64 @alwaysinline {
 ```
 
-```c
-// C: 인라인 비교
-#define LESS(a, b) ((a) < (b))
+재귀 함수도 루프로 변환됨:
+```
+fn bubble_inner(...) {
+entry:
+  goto loop_header_7
+loop_header_7:
+  %j_loop = phi [%j, entry], [%_t11, merge_5]
+  ...
+}
 ```
 
-### 해결책
+### 남은 차이 (110%)
 
-**옵션 A: 인라인 힌트 강화**
-- `@inline` 속성이 더 공격적으로 동작하도록
-
-**옵션 B: 작은 함수 자동 인라인**
-- 단일 표현식 함수는 항상 인라인
+- C와 BMB의 근본적 구조 차이 (직접 배열 접근 vs 함수 호출)
+- LLVM 빌드 환경 정상화 후 실제 성능 측정 필요
 
 ---
 
