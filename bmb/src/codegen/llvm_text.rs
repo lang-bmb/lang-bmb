@@ -386,6 +386,7 @@ impl TextCodeGen {
         // StringBuilder wrappers
         // v0.51.26: Added nounwind for better optimization
         writeln!(out, "declare i64 @sb_new() nounwind")?;
+        writeln!(out, "declare i64 @sb_with_capacity(i64) nounwind")?;  // v0.51.46: P0-E optimization
         writeln!(out, "declare i64 @sb_push(i64, ptr) nounwind")?;
         writeln!(out, "declare i64 @sb_push_cstr(i64, ptr) nounwind")?;  // v0.50.77: zero allocation for string literals
         writeln!(out, "declare i64 @sb_push_char(i64, i64) nounwind")?;
@@ -664,7 +665,12 @@ impl TextCodeGen {
             for inst in &block.instructions {
                 match inst {
                     MirInst::Const { dest, value } => {
-                        place_types.insert(dest.name.clone(), self.constant_type(value));
+                        // v0.51.48: Don't override type of declared locals
+                        // This preserves i32 type when assigning i64 constant literals
+                        let is_declared_local = func.locals.iter().any(|(name, _)| name == &dest.name);
+                        if !is_declared_local {
+                            place_types.insert(dest.name.clone(), self.constant_type(value));
+                        }
                     }
                     MirInst::Call { dest: Some(d), func: fn_name, .. } => {
                         let ret_ty = fn_return_types
@@ -756,9 +762,14 @@ impl TextCodeGen {
                         place_types.insert(dest.name.clone(), widest_ty);
                     }
                     MirInst::Copy { dest, src } => {
-                        // Copy inherits type from source
-                        let ty = place_types.get(&src.name).copied().unwrap_or("i64");
-                        place_types.insert(dest.name.clone(), ty);
+                        // v0.51.48: If dest is a local with explicit type annotation, preserve it
+                        // This prevents i64 constants from overriding i32 declared variables
+                        let is_declared_local = func.locals.iter().any(|(name, _)| name == &dest.name);
+                        if !is_declared_local {
+                            // Only inherit type from source for temps, not declared locals
+                            let ty = place_types.get(&src.name).copied().unwrap_or("i64");
+                            place_types.insert(dest.name.clone(), ty);
+                        }
                     }
                     // v0.50.50: ArrayInit produces ptr type (pointer to allocated array)
                     MirInst::ArrayInit { dest, .. } => {
@@ -1213,18 +1224,21 @@ impl TextCodeGen {
     ) -> TextCodeGenResult<()> {
         match inst {
             MirInst::Const { dest, value } => {
-                let ty = self.constant_type(value);
+                let const_ty = self.constant_type(value);
                 // Check if destination is a local (uses alloca)
                 if local_names.contains(&dest.name) {
+                    // v0.51.48: Use destination type from place_types for locals
+                    // This ensures i32 locals get i32 stores, not i64
+                    let dest_ty = place_types.get(&dest.name).copied().unwrap_or(const_ty);
                     // v0.51.33: Store constants directly to allocas without intermediate SSA values
                     // This eliminates unnecessary `add 0, const` instructions
                     match value {
                         Constant::Int(n) => {
-                            writeln!(out, "  store {} {}, ptr %{}.addr", ty, n, dest.name)?;
+                            writeln!(out, "  store {} {}, ptr %{}.addr", dest_ty, n, dest.name)?;
                         }
                         Constant::Bool(b) => {
                             let v = if *b { 1 } else { 0 };
-                            writeln!(out, "  store {} {}, ptr %{}.addr", ty, v, dest.name)?;
+                            writeln!(out, "  store {} {}, ptr %{}.addr", dest_ty, v, dest.name)?;
                         }
                         Constant::Float(f) => {
                             // Format float in LLVM-compatible way (scientific notation)
@@ -1235,7 +1249,7 @@ impl TextCodeGen {
                             } else {
                                 format!("{:.6e}", f)
                             };
-                            writeln!(out, "  store {} {}, ptr %{}.addr", ty, f_str, dest.name)?;
+                            writeln!(out, "  store {} {}, ptr %{}.addr", dest_ty, f_str, dest.name)?;
                         }
                         Constant::Unit => {
                             writeln!(out, "  store i8 0, ptr %{}.addr", dest.name)?;
@@ -1256,7 +1270,7 @@ impl TextCodeGen {
                         }
                         // v0.64: Character constant (stored as i32 Unicode codepoint)
                         Constant::Char(c) => {
-                            writeln!(out, "  store {} {}, ptr %{}.addr", ty, *c as u32, dest.name)?;
+                            writeln!(out, "  store {} {}, ptr %{}.addr", dest_ty, *c as u32, dest.name)?;
                         }
                     }
                 } else {
@@ -1264,11 +1278,11 @@ impl TextCodeGen {
                     // Use add with 0 for integer constants (LLVM IR idiom)
                     match value {
                         Constant::Int(n) => {
-                            writeln!(out, "  %{} = add {} 0, {}", dest_name, ty, n)?;
+                            writeln!(out, "  %{} = add {} 0, {}", dest_name, const_ty, n)?;
                         }
                         Constant::Bool(b) => {
                             let v = if *b { 1 } else { 0 };
-                            writeln!(out, "  %{} = add {} 0, {}", dest_name, ty, v)?;
+                            writeln!(out, "  %{} = add {} 0, {}", dest_name, const_ty, v)?;
                         }
                         Constant::Float(f) => {
                             // Format float in LLVM-compatible way (scientific notation)
@@ -1279,7 +1293,7 @@ impl TextCodeGen {
                             } else {
                                 format!("{:.6e}", f)
                             };
-                            writeln!(out, "  %{} = fadd {} 0.0, {}", dest_name, ty, f_str)?;
+                            writeln!(out, "  %{} = fadd {} 0.0, {}", dest_name, const_ty, f_str)?;
                         }
                         Constant::Unit => {
                             // Unit type - just assign 0
@@ -1298,7 +1312,7 @@ impl TextCodeGen {
                         }
                         // v0.64: Character constant (stored as i32 Unicode codepoint)
                         Constant::Char(c) => {
-                            writeln!(out, "  %{} = add {} 0, {}", dest_name, ty, *c as u32)?;
+                            writeln!(out, "  %{} = add {} 0, {}", dest_name, const_ty, *c as u32)?;
                         }
                     }
                 }
@@ -1710,6 +1724,90 @@ impl TextCodeGen {
                         } else {
                             let dest_name = self.unique_name(&d.name, name_counts);
                             writeln!(out, "  %{} = fptosi double {} to i64", dest_name, arg_val)?;
+                        }
+                    }
+                    return Ok(());
+                }
+
+                // v0.51.47: i32_to_f64(x: i32) -> f64 via sitofp
+                if fn_name == "i32_to_f64" && args.len() == 1 {
+                    let arg_ty = match &args[0] {
+                        Operand::Constant(c) => self.constant_type(c),
+                        Operand::Place(p) => place_types.get(&p.name).copied()
+                            .unwrap_or_else(|| self.infer_place_type(p, func)),
+                    };
+                    let arg_val = match &args[0] {
+                        Operand::Place(p) if local_names.contains(&p.name) => {
+                            let load_name = format!("{}.i32_to_f64.arg", p.name);
+                            writeln!(out, "  %{} = load {}, ptr %{}.addr", load_name, arg_ty, p.name)?;
+                            format!("%{}", load_name)
+                        }
+                        _ => self.format_operand_with_strings(&args[0], string_table),
+                    };
+                    if let Some(d) = dest {
+                        if local_names.contains(&d.name) {
+                            let temp_name = format!("{}.conv", d.name);
+                            writeln!(out, "  %{} = sitofp i32 {} to double", temp_name, arg_val)?;
+                            writeln!(out, "  store double %{}, ptr %{}.addr", temp_name, d.name)?;
+                        } else {
+                            let dest_name = self.unique_name(&d.name, name_counts);
+                            writeln!(out, "  %{} = sitofp i32 {} to double", dest_name, arg_val)?;
+                        }
+                    }
+                    return Ok(());
+                }
+
+                // v0.51.47: i32_to_i64(x: i32) -> i64 via sext
+                if fn_name == "i32_to_i64" && args.len() == 1 {
+                    let arg_ty = match &args[0] {
+                        Operand::Constant(c) => self.constant_type(c),
+                        Operand::Place(p) => place_types.get(&p.name).copied()
+                            .unwrap_or_else(|| self.infer_place_type(p, func)),
+                    };
+                    let arg_val = match &args[0] {
+                        Operand::Place(p) if local_names.contains(&p.name) => {
+                            let load_name = format!("{}.i32_to_i64.arg", p.name);
+                            writeln!(out, "  %{} = load {}, ptr %{}.addr", load_name, arg_ty, p.name)?;
+                            format!("%{}", load_name)
+                        }
+                        _ => self.format_operand_with_strings(&args[0], string_table),
+                    };
+                    if let Some(d) = dest {
+                        if local_names.contains(&d.name) {
+                            let temp_name = format!("{}.conv", d.name);
+                            writeln!(out, "  %{} = sext i32 {} to i64", temp_name, arg_val)?;
+                            writeln!(out, "  store i64 %{}, ptr %{}.addr", temp_name, d.name)?;
+                        } else {
+                            let dest_name = self.unique_name(&d.name, name_counts);
+                            writeln!(out, "  %{} = sext i32 {} to i64", dest_name, arg_val)?;
+                        }
+                    }
+                    return Ok(());
+                }
+
+                // v0.51.47: i64_to_i32(x: i64) -> i32 via trunc
+                if fn_name == "i64_to_i32" && args.len() == 1 {
+                    let arg_ty = match &args[0] {
+                        Operand::Constant(c) => self.constant_type(c),
+                        Operand::Place(p) => place_types.get(&p.name).copied()
+                            .unwrap_or_else(|| self.infer_place_type(p, func)),
+                    };
+                    let arg_val = match &args[0] {
+                        Operand::Place(p) if local_names.contains(&p.name) => {
+                            let load_name = format!("{}.i64_to_i32.arg", p.name);
+                            writeln!(out, "  %{} = load {}, ptr %{}.addr", load_name, arg_ty, p.name)?;
+                            format!("%{}", load_name)
+                        }
+                        _ => self.format_operand_with_strings(&args[0], string_table),
+                    };
+                    if let Some(d) = dest {
+                        if local_names.contains(&d.name) {
+                            let temp_name = format!("{}.conv", d.name);
+                            writeln!(out, "  %{} = trunc i64 {} to i32", temp_name, arg_val)?;
+                            writeln!(out, "  store i32 %{}, ptr %{}.addr", temp_name, d.name)?;
+                        } else {
+                            let dest_name = self.unique_name(&d.name, name_counts);
+                            writeln!(out, "  %{} = trunc i64 {} to i32", dest_name, arg_val)?;
                         }
                     }
                     return Ok(());
@@ -3505,10 +3603,15 @@ impl TextCodeGen {
             "println" | "print" | "assert" | "bmb_print_str" | "print_str" => "void",
 
             // i64 return - Basic
-            "read_int" | "abs" | "bmb_abs" | "min" | "max" | "f64_to_i64" => "i64",
+            // v0.51.48: Added i32_to_i64, i64_to_i32 for i32 conversion support
+            "read_int" | "abs" | "bmb_abs" | "min" | "max" | "f64_to_i64" | "i32_to_i64" => "i64",
+
+            // i32 return - Type conversions
+            "i64_to_i32" => "i32",
 
             // f64 return - Math intrinsics (v0.34)
-            "sqrt" | "i64_to_f64" => "double",
+            // v0.51.48: Added i32_to_f64 for i32 conversion support
+            "sqrt" | "i64_to_f64" | "i32_to_f64" => "double",
 
             // i64 return - String operations (both full and wrapper names)
             // v0.46: byte_at added as preferred name (same as interpreter)

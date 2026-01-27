@@ -399,6 +399,14 @@ impl TypeChecker {
         // f64_to_i64(x: f64) -> i64 (type conversion, truncates toward zero)
         functions.insert("f64_to_i64".to_string(), (vec![Type::F64], Type::I64));
 
+        // v0.51.47: i32 conversion functions for performance-critical code
+        // i32_to_f64(x: i32) -> f64 (type conversion)
+        functions.insert("i32_to_f64".to_string(), (vec![Type::I32], Type::F64));
+        // i32_to_i64(x: i32) -> i64 (sign extension)
+        functions.insert("i32_to_i64".to_string(), (vec![Type::I32], Type::I64));
+        // i64_to_i32(x: i64) -> i32 (truncation)
+        functions.insert("i64_to_i32".to_string(), (vec![Type::I64], Type::I32));
+
         // v0.34.2: Memory allocation builtins for Phase 34.2 Dynamic Collections
         // malloc(size: i64) -> i64 (pointer as integer)
         functions.insert("malloc".to_string(), (vec![Type::I64], Type::I64));
@@ -1346,11 +1354,16 @@ impl TypeChecker {
             } => {
                 let value_ty = self.infer(&value.node, value.span)?;
 
-                if let Some(ann_ty) = ty {
+                // v0.51.48: When type annotation is present, use it as the variable's type
+                // This fixes i32 variables being incorrectly stored as i64 when initialized with literals
+                let stored_ty = if let Some(ann_ty) = ty {
                     // v0.75: Mark type names in annotation as used
                     self.mark_type_names_used(&ann_ty.node);
                     self.unify(&ann_ty.node, &value_ty, value.span)?;
-                }
+                    ann_ty.node.clone()
+                } else {
+                    value_ty
+                };
 
                 // v0.48: Track binding for unused detection
                 // v0.52: Track mutability for unused-mut detection
@@ -1363,7 +1376,7 @@ impl TypeChecker {
 
                 self.binding_tracker.bind_with_mutability(name.clone(), span, *mutable);
 
-                self.env.insert(name.clone(), value_ty);
+                self.env.insert(name.clone(), stored_ty);
                 let result = self.infer(&body.node, body.span)?;
 
                 // v0.48: Check for unused bindings and emit warnings

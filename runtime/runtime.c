@@ -422,6 +422,19 @@ int64_t bmb_sb_new(void) {
     return builder_count++;
 }
 
+// v0.51.46: Create StringBuilder with pre-allocated capacity (P0-E optimization)
+int64_t bmb_sb_with_capacity(int64_t capacity) {
+    if (builder_count >= MAX_STRING_BUILDERS) return -1;
+    StringBuilder* sb = (StringBuilder*)malloc(sizeof(StringBuilder));
+    int64_t actual_capacity = capacity > SB_INITIAL_CAPACITY ? capacity : SB_INITIAL_CAPACITY;
+    sb->buffer = (char*)malloc(actual_capacity);
+    sb->buffer[0] = '\0';
+    sb->length = 0;
+    sb->capacity = actual_capacity;
+    builders[builder_count] = sb;
+    return builder_count++;
+}
+
 // Push string to StringBuilder - direct append, no fragment allocation
 int64_t bmb_sb_push(int64_t handle, BmbString* s) {
     if (handle < 0 || handle >= builder_count) return -1;
@@ -676,6 +689,11 @@ int64_t append_file(BmbString* path, BmbString* content) {
 // StringBuilder wrappers
 int64_t sb_new(void) {
     return bmb_sb_new();
+}
+
+// v0.51.46: P0-E optimization
+int64_t sb_with_capacity(int64_t capacity) {
+    return bmb_sb_with_capacity(capacity);
 }
 
 int64_t sb_push(int64_t handle, BmbString* s) {

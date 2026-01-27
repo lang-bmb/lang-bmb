@@ -189,6 +189,10 @@ impl Interpreter {
         self.builtins.insert("sqrt".to_string(), builtin_sqrt);
         self.builtins.insert("i64_to_f64".to_string(), builtin_i64_to_f64);
         self.builtins.insert("f64_to_i64".to_string(), builtin_f64_to_i64);
+        // v0.51.47: i32 conversion functions for performance-critical code
+        self.builtins.insert("i32_to_f64".to_string(), builtin_i32_to_f64);
+        self.builtins.insert("i32_to_i64".to_string(), builtin_i32_to_i64);
+        self.builtins.insert("i64_to_i32".to_string(), builtin_i64_to_i32);
 
         // v0.34.2: Memory allocation for Phase 34.2 Dynamic Collections
         self.builtins.insert("malloc".to_string(), builtin_malloc);
@@ -1955,6 +1959,45 @@ fn builtin_f64_to_i64(args: &[Value]) -> InterpResult<Value> {
     match &args[0] {
         Value::Float(f) => Ok(Value::Int(*f as i64)),
         _ => Err(RuntimeError::type_error("f64", args[0].type_name())),
+    }
+}
+
+/// v0.51.47: i32_to_f64(x: i32) -> f64
+/// Converts a 32-bit integer to a floating-point number.
+/// In the interpreter, integers are stored as i64, but we treat them as i32.
+fn builtin_i32_to_f64(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 1 {
+        return Err(RuntimeError::arity_mismatch("i32_to_f64", 1, args.len()));
+    }
+    match &args[0] {
+        Value::Int(n) => Ok(Value::Float((*n as i32) as f64)),
+        _ => Err(RuntimeError::type_error("i32", args[0].type_name())),
+    }
+}
+
+/// v0.51.47: i32_to_i64(x: i32) -> i64
+/// Sign-extends a 32-bit integer to 64-bit.
+/// In the interpreter, this is a no-op since we store all ints as i64.
+fn builtin_i32_to_i64(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 1 {
+        return Err(RuntimeError::arity_mismatch("i32_to_i64", 1, args.len()));
+    }
+    match &args[0] {
+        Value::Int(n) => Ok(Value::Int((*n as i32) as i64)), // sign-extend
+        _ => Err(RuntimeError::type_error("i32", args[0].type_name())),
+    }
+}
+
+/// v0.51.47: i64_to_i32(x: i64) -> i32
+/// Truncates a 64-bit integer to 32-bit.
+/// In the interpreter, we still return i64 but truncated value.
+fn builtin_i64_to_i32(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 1 {
+        return Err(RuntimeError::arity_mismatch("i64_to_i32", 1, args.len()));
+    }
+    match &args[0] {
+        Value::Int(n) => Ok(Value::Int((*n as i32) as i64)), // truncate then sign-extend back
+        _ => Err(RuntimeError::type_error("i64", args[0].type_name())),
     }
 }
 
