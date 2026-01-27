@@ -3,7 +3,7 @@
 //! Phase 2.3: Convert PIR to MIR while preserving proof information.
 //! The proof annotations are carried through to enable proof-guided optimization.
 
-use super::{PirProgram, PirFunction, PirExpr, PirExprKind, PirType, ProvenFact};
+use super::{PirProgram, PirExpr, PirExprKind};
 use crate::cir::Proposition;
 
 /// Lower PIR program to MIR (stub implementation)

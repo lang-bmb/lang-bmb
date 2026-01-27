@@ -31,7 +31,7 @@ pub use to_mir_facts::{
 use std::collections::HashMap;
 
 use crate::cir::Proposition;
-use crate::verify::{ProofDatabase, ProofFact, ProofScope, ProofEvidence, FunctionId};
+use crate::verify::{ProofDatabase, ProofEvidence};
 
 /// A PIR program with proof database
 #[derive(Debug)]
@@ -455,7 +455,7 @@ impl PirType {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cir::{CirExpr, CompareOp};
+    use crate::cir::CirExpr;
 
     #[test]
     fn test_pir_program_creation() {

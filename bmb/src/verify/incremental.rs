@@ -99,8 +99,8 @@ impl IncrementalVerifier {
             time_saved_ms: 0,
         };
 
-        let total_functions = new_cir.functions.len();
-        let functions_to_verify_count = functions_to_verify.len();
+        let _total_functions = new_cir.functions.len();
+        let _functions_to_verify_count = functions_to_verify.len();
 
         for func in &new_cir.functions {
             let id = FunctionId::simple(&func.name);
@@ -380,7 +380,7 @@ fn extract_callees(expr: &crate::cir::CirExpr) -> HashSet<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cir::{CirParam, CirType, CirExpr, NamedProposition, CompareOp, EffectSet};
+    use crate::cir::{CirParam, CirType, CirExpr, EffectSet};
 
     fn make_test_function(name: &str) -> CirFunction {
         CirFunction {

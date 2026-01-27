@@ -494,6 +494,24 @@ impl<'ctx> LlvmContext<'ctx> {
         char_at_fn.add_attribute(AttributeLoc::Param(0), nocapture_attr);
         self.functions.insert("char_at".to_string(), char_at_fn);
 
+        // v0.60.1: load_u8(addr: i64) -> i64 - read single byte from memory address
+        // Used for byte-level memory access in brainfuck interpreter, etc.
+        let load_u8_type = i64_type.fn_type(&[i64_type.into()], false);
+        let load_u8_fn = self.module.add_function("load_u8", load_u8_type, None);
+        load_u8_fn.add_attribute(AttributeLoc::Function, memory_read_attr);
+        load_u8_fn.add_attribute(AttributeLoc::Function, nounwind_attr);
+        load_u8_fn.add_attribute(AttributeLoc::Function, willreturn_attr);
+        load_u8_fn.add_attribute(AttributeLoc::Function, speculatable_attr);
+        load_u8_fn.add_attribute(AttributeLoc::Function, nosync_attr);
+        self.functions.insert("load_u8".to_string(), load_u8_fn);
+
+        // v0.60.1: store_u8(addr: i64, val: i64) -> void - write single byte to memory address
+        let store_u8_type = void_type.fn_type(&[i64_type.into(), i64_type.into()], false);
+        let store_u8_fn = self.module.add_function("store_u8", store_u8_type, None);
+        store_u8_fn.add_attribute(AttributeLoc::Function, nounwind_attr);
+        store_u8_fn.add_attribute(AttributeLoc::Function, willreturn_attr);
+        self.functions.insert("store_u8".to_string(), store_u8_fn);
+
         // v0.46: slice(ptr, i64, i64) -> ptr
         // Note: slice allocates memory, so don't mark as speculatable
         let slice_type = ptr_type.fn_type(&[ptr_type.into(), i64_type.into(), i64_type.into()], false);
@@ -692,9 +710,10 @@ impl<'ctx> LlvmContext<'ctx> {
         let load_i64_fn = self.module.add_function("bmb_load_i64", load_i64_type, None);
         self.functions.insert("load_i64".to_string(), load_i64_fn);
 
-        // calloc(count: i64, size: i64) -> i64
-        let calloc_type = i64_type.fn_type(&[i64_type.into(), i64_type.into()], false);
-        let calloc_fn = self.module.add_function("bmb_calloc", calloc_type, None);
+        // calloc(count: i64, size: i64) -> ptr (libc function)
+        // v0.60.3: Use libc calloc directly like malloc, convert ptr->i64 at call site
+        let calloc_type = ptr_type.fn_type(&[i64_type.into(), i64_type.into()], false);
+        let calloc_fn = self.module.add_function("calloc", calloc_type, None);
         self.functions.insert("calloc".to_string(), calloc_fn);
 
         // box_new_i64(value: i64) -> i64
@@ -1169,6 +1188,7 @@ impl<'ctx> LlvmContext<'ctx> {
 
     /// v0.51.0: Coerce a PHI incoming value to match the expected PHI type
     /// Handles type mismatches from the ConstantPropagationNarrowing pass
+    /// v0.60.2: Extended to handle struct (tuple) types that are structurally equal
     fn coerce_phi_value(
         &self,
         value: BasicValueEnum<'ctx>,
@@ -1181,6 +1201,23 @@ impl<'ctx> LlvmContext<'ctx> {
         // If types match, no coercion needed
         if value_type == phi_type {
             return Ok(value);
+        }
+
+        // v0.60.2: Handle struct type comparison by structure
+        // LLVM anonymous struct types may have different identity but same structure
+        // This is common with tuples where (i64, i64) is created in multiple places
+        if let (BasicTypeEnum::StructType(from_struct), BasicTypeEnum::StructType(to_struct)) =
+            (value_type, phi_type)
+        {
+            // Check if structs are structurally equivalent
+            let from_fields = from_struct.get_field_types();
+            let to_fields = to_struct.get_field_types();
+
+            if from_fields == to_fields {
+                // Structs are structurally identical - no coercion needed
+                // The LLVM types may differ by identity but values are compatible
+                return Ok(value);
+            }
         }
 
         // Handle integer type coercion
@@ -1213,8 +1250,11 @@ impl<'ctx> LlvmContext<'ctx> {
             return Ok(coerced.into());
         }
 
-        // For non-integer type mismatches, return error
-        Err(CodeGenError::TypeMismatch)
+        // For non-integer type mismatches, return error with details
+        Err(CodeGenError::LlvmError(format!(
+            "PHI type mismatch in block {}: value type {:?} vs phi type {:?}",
+            source_label, value_type, phi_type
+        )))
     }
 
     /// v0.51.0: Generate code for a basic block (skips PHI instructions)
@@ -1366,6 +1406,83 @@ impl<'ctx> LlvmContext<'ctx> {
                     if let Some(dest_place) = dest {
                         let unit_value = self.context.i64_type().const_int(0, false);
                         self.store_to_place(dest_place, unit_value.into())?;
+                    }
+                } else if func == "byte_at" && args.len() == 2 {
+                    // v0.60.5: Inline byte_at as direct memory access for performance
+                    // String struct layout: { ptr data, i64 len, i64 capacity }
+                    // byte_at(s, idx) -> s.data[idx] as i64
+                    let string_ptr = self.gen_operand(&args[0])?;
+                    let index = self.gen_operand(&args[1])?;
+
+                    let ptr_type = self.context.ptr_type(inkwell::AddressSpace::default());
+                    let i64_type = self.context.i64_type();
+                    let i8_type = self.context.i8_type();
+
+                    // String struct type: { ptr, i64, i64 }
+                    let string_struct_type = self.context.struct_type(
+                        &[ptr_type.into(), i64_type.into(), i64_type.into()],
+                        false
+                    );
+
+                    // GEP to get data pointer (field 0)
+                    let data_ptr_ptr = self.builder
+                        .build_struct_gep(string_struct_type, string_ptr.into_pointer_value(), 0, "data_ptr_ptr")
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+
+                    // Load the data pointer
+                    let data_ptr = self.builder
+                        .build_load(ptr_type, data_ptr_ptr, "data_ptr")
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                        .into_pointer_value();
+
+                    // GEP to byte at data[index]
+                    let byte_ptr = unsafe {
+                        self.builder
+                            .build_gep(i8_type, data_ptr, &[index.into_int_value()], "byte_ptr")
+                            .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                    };
+
+                    // Load byte as i8
+                    let byte_val = self.builder
+                        .build_load(i8_type, byte_ptr, "byte")
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                        .into_int_value();
+
+                    // Zero-extend to i64
+                    let result = self.builder
+                        .build_int_z_extend(byte_val, i64_type, "byte_i64")
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+
+                    if let Some(dest_place) = dest {
+                        self.store_to_place(dest_place, result.into())?;
+                    }
+                } else if func == "len" && args.len() == 1 {
+                    // v0.60.5: Inline len as direct struct field access for performance
+                    // String struct layout: { ptr data, i64 len, i64 capacity }
+                    // len(s) -> s.len
+                    let string_ptr = self.gen_operand(&args[0])?;
+
+                    let ptr_type = self.context.ptr_type(inkwell::AddressSpace::default());
+                    let i64_type = self.context.i64_type();
+
+                    // String struct type: { ptr, i64, i64 }
+                    let string_struct_type = self.context.struct_type(
+                        &[ptr_type.into(), i64_type.into(), i64_type.into()],
+                        false
+                    );
+
+                    // GEP to get len field (field 1)
+                    let len_ptr = self.builder
+                        .build_struct_gep(string_struct_type, string_ptr.into_pointer_value(), 1, "len_ptr")
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+
+                    // Load the length
+                    let len_val = self.builder
+                        .build_load(i64_type, len_ptr, "len")
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+
+                    if let Some(dest_place) = dest {
+                        self.store_to_place(dest_place, len_val)?;
                     }
                 } else {
                     // v0.51.18: Check if function has _cstr variant for string literal optimization
@@ -1998,6 +2115,36 @@ impl<'ctx> LlvmContext<'ctx> {
                     .build_int_z_extend(bool_val, target_ty.into_int_type(), "bool_to_int")
                     .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
                 Ok(result.into())
+            }
+
+            // v0.60.1: Integer to pointer (inttoptr)
+            // Used for `0 as *T` null pointer patterns and raw memory address casts
+            (I64, _) | (U64, _) if to_ty.is_pointer_type() => {
+                let int_val = src_val.into_int_value();
+                let ptr_type = self.mir_type_to_llvm(to_ty).into_pointer_type();
+                let result = self
+                    .builder
+                    .build_int_to_ptr(int_val, ptr_type, "inttoptr")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                Ok(result.into())
+            }
+
+            // v0.60.1: Pointer to integer (ptrtoint)
+            // Used for `ptr as i64` patterns for pointer arithmetic or passing to functions
+            (_, I64) | (_, U64) if from_ty.is_pointer_type() => {
+                let ptr_val = src_val.into_pointer_value();
+                let int_type = self.mir_type_to_llvm(to_ty).into_int_type();
+                let result = self
+                    .builder
+                    .build_ptr_to_int(ptr_val, int_type, "ptrtoint")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                Ok(result.into())
+            }
+
+            // v0.60.1: Pointer to pointer (bitcast in opaque pointer era is identity)
+            (_, _) if from_ty.is_pointer_type() && to_ty.is_pointer_type() => {
+                // With opaque pointers (LLVM 15+), ptr to ptr cast is identity
+                Ok(src_val)
             }
 
             // Unsupported cast

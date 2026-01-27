@@ -198,8 +198,15 @@ fn lower_function(
     // Finish with a return
     ctx.finish_block(Terminator::Return(Some(result)));
 
-    // Collect locals
-    let locals: Vec<(String, MirType)> = ctx.locals.clone().into_iter().collect();
+    // Collect locals (including temp_types for tuple variables)
+    // v0.60.3: temp_types contains tuple type info that wasn't in locals
+    // This is needed for PHI type inference in LLVM codegen
+    let mut locals: Vec<(String, MirType)> = ctx.locals.clone().into_iter().collect();
+    for (name, ty) in ctx.temp_types.iter() {
+        if !ctx.locals.contains_key(name) {
+            locals.push((name.clone(), ty.clone()));
+        }
+    }
 
     // v0.38: Extract contract facts for optimization
     let preconditions = extract_contract_facts(fn_def.pre.as_ref());

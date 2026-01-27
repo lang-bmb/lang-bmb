@@ -242,7 +242,7 @@ pub fn build(config: &BuildConfig) -> BuildResult<()> {
 
         // v0.55: Load or create proof database for caching
         let cache_path = ProofDatabase::cache_path_for(&config.input);
-        let mut proof_db = if config.proof_cache {
+        let proof_db = if config.proof_cache {
             ProofDatabase::load_from_file(&cache_path).unwrap_or_else(|_| {
                 if config.verbose {
                     println!("  Creating new proof cache");

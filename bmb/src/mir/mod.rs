@@ -484,6 +484,11 @@ impl MirType {
     pub fn is_float(&self) -> bool {
         matches!(self, MirType::F64)
     }
+
+    /// v0.60.1: Check if this is a pointer type (Ptr or StructPtr)
+    pub fn is_pointer_type(&self) -> bool {
+        matches!(self, MirType::Ptr(_) | MirType::StructPtr(_))
+    }
 }
 
 /// Context for MIR lowering
