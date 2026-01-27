@@ -690,6 +690,23 @@ int64_t sb_push(int64_t handle, const char* s) {
     return bmb_sb_push(handle, s);
 }
 
+// v0.51.49: Missing sb_push_* wrapper functions for fasta and json_serialize benchmarks
+int64_t sb_push_cstr(int64_t handle, const char* s) {
+    return bmb_sb_push(handle, s);
+}
+
+int64_t sb_push_char(int64_t handle, int64_t ch) {
+    return bmb_sb_push_char(handle, ch);
+}
+
+int64_t sb_push_int(int64_t handle, int64_t n) {
+    return bmb_sb_push_int(handle, n);
+}
+
+int64_t sb_push_escaped(int64_t handle, const char* s) {
+    return bmb_sb_push_escaped(handle, s);
+}
+
 char* sb_build(int64_t handle) {
     return bmb_sb_build(handle);
 }
