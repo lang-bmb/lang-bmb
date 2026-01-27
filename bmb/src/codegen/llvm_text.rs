@@ -423,6 +423,13 @@ impl TextCodeGen {
         writeln!(out, "declare noalias ptr @calloc(i64, i64) nounwind allocsize(0,1)")?;
         writeln!(out)?;
 
+        // v0.51.51: Byte-level memory access for high-performance string parsing
+        writeln!(out, "; Runtime declarations - Low-level memory access")?;
+        writeln!(out, "declare i64 @load_u8(i64) memory(read) nounwind willreturn speculatable")?;
+        writeln!(out, "declare void @store_u8(i64, i64) memory(write) nounwind willreturn")?;
+        writeln!(out, "declare i64 @str_data(ptr nocapture) memory(argmem: read) nounwind willreturn speculatable")?;
+        writeln!(out)?;
+
         // v0.50.70: Vector runtime functions (avoids inline PHI bug)
         // v0.51.26: Added nounwind attributes for better optimization
         writeln!(out, "; Runtime declarations - Vector")?;
@@ -2016,6 +2023,102 @@ impl TextCodeGen {
                     return Ok(());
                 }
 
+                // v0.51.51: load_u8(ptr) -> i64 - reads single byte from memory
+                // Inlined for high-performance string parsing (avoids function call overhead)
+                if fn_name == "load_u8" && args.len() == 1 {
+                    let load_idx = *name_counts.entry("load_u8_op".to_string()).or_insert(0);
+                    *name_counts.get_mut("load_u8_op").unwrap() += 1;
+                    // Get pointer argument
+                    let ptr_val = match &args[0] {
+                        Operand::Place(p) if local_names.contains(&p.name) => {
+                            let load_name = format!("{}.load_u8.ptr.{}", p.name, load_idx);
+                            writeln!(out, "  %{} = load i64, ptr %{}.addr", load_name, p.name)?;
+                            format!("%{}", load_name)
+                        }
+                        _ => self.format_operand_with_strings(&args[0], string_table),
+                    };
+                    // Convert i64 pointer to ptr type and load u8
+                    let ptr_conv = format!("load_u8_ptr.{}", load_idx);
+                    writeln!(out, "  %{} = inttoptr i64 {} to ptr", ptr_conv, ptr_val)?;
+                    if let Some(d) = dest {
+                        if local_names.contains(&d.name) {
+                            let byte_name = format!("{}.u8.{}", d.name, load_idx);
+                            let ext_name = format!("{}.zext.{}", d.name, load_idx);
+                            writeln!(out, "  %{} = load i8, ptr %{}", byte_name, ptr_conv)?;
+                            writeln!(out, "  %{} = zext i8 %{} to i64", ext_name, byte_name)?;
+                            writeln!(out, "  store i64 %{}, ptr %{}.addr", ext_name, d.name)?;
+                        } else {
+                            let byte_name = format!("{}.u8", d.name);
+                            writeln!(out, "  %{} = load i8, ptr %{}", byte_name, ptr_conv)?;
+                            writeln!(out, "  %{} = zext i8 %{} to i64", d.name, byte_name)?;
+                        }
+                    }
+                    return Ok(());
+                }
+
+                // v0.51.51: store_u8(ptr, value) -> Unit - writes single byte to memory
+                if fn_name == "store_u8" && args.len() == 2 {
+                    let store_idx = *name_counts.entry("store_u8_op".to_string()).or_insert(0);
+                    *name_counts.get_mut("store_u8_op").unwrap() += 1;
+                    // Get pointer argument
+                    let ptr_val = match &args[0] {
+                        Operand::Place(p) if local_names.contains(&p.name) => {
+                            let load_name = format!("{}.store_u8.ptr.{}", p.name, store_idx);
+                            writeln!(out, "  %{} = load i64, ptr %{}.addr", load_name, p.name)?;
+                            format!("%{}", load_name)
+                        }
+                        _ => self.format_operand_with_strings(&args[0], string_table),
+                    };
+                    // Get value argument
+                    let val_val = match &args[1] {
+                        Operand::Place(p) if local_names.contains(&p.name) => {
+                            let load_name = format!("{}.store_u8.val.{}", p.name, store_idx);
+                            writeln!(out, "  %{} = load i64, ptr %{}.addr", load_name, p.name)?;
+                            format!("%{}", load_name)
+                        }
+                        _ => self.format_operand_with_strings(&args[1], string_table),
+                    };
+                    // Convert i64 pointer to ptr type and truncate value to i8
+                    let ptr_conv = format!("store_u8_ptr.{}", store_idx);
+                    let trunc_val = format!("store_u8_trunc.{}", store_idx);
+                    writeln!(out, "  %{} = inttoptr i64 {} to ptr", ptr_conv, ptr_val)?;
+                    writeln!(out, "  %{} = trunc i64 {} to i8", trunc_val, val_val)?;
+                    writeln!(out, "  store i8 %{}, ptr %{}", trunc_val, ptr_conv)?;
+                    return Ok(());
+                }
+
+                // v0.51.51: str_data(s: String) -> i64 - get raw pointer to string data
+                // BMB strings are structs {ptr, i64, i64} - we need to extract the first field
+                if fn_name == "str_data" && args.len() == 1 {
+                    let str_idx = *name_counts.entry("str_data_op".to_string()).or_insert(0);
+                    *name_counts.get_mut("str_data_op").unwrap() += 1;
+                    // Get string struct pointer argument
+                    let str_val = match &args[0] {
+                        Operand::Place(p) if local_names.contains(&p.name) => {
+                            let load_name = format!("{}.str_data.struct.{}", p.name, str_idx);
+                            writeln!(out, "  %{} = load ptr, ptr %{}.addr", load_name, p.name)?;
+                            format!("%{}", load_name)
+                        }
+                        _ => self.format_operand_with_strings(&args[0], string_table),
+                    };
+                    // Get pointer to first field (data ptr) and load it
+                    let data_gep = format!("str_data.gep.{}", str_idx);
+                    let data_ptr = format!("str_data.ptr.{}", str_idx);
+                    writeln!(out, "  %{} = getelementptr {{ptr, i64, i64}}, ptr {}, i32 0, i32 0", data_gep, str_val)?;
+                    writeln!(out, "  %{} = load ptr, ptr %{}", data_ptr, data_gep)?;
+                    // Convert data ptr to i64
+                    if let Some(d) = dest {
+                        if local_names.contains(&d.name) {
+                            let conv_name = format!("{}.ptrtoint.{}", d.name, str_idx);
+                            writeln!(out, "  %{} = ptrtoint ptr %{} to i64", conv_name, data_ptr)?;
+                            writeln!(out, "  store i64 %{}, ptr %{}.addr", conv_name, d.name)?;
+                        } else {
+                            writeln!(out, "  %{} = ptrtoint ptr %{} to i64", d.name, data_ptr)?;
+                        }
+                    }
+                    return Ok(());
+                }
+
                 // v0.34.2.3: Vec<i64> dynamic array builtins (RFC-0007)
                 // vec_new() -> i64: allocate header (24 bytes) with zeroed ptr/len/cap
                 if fn_name == "vec_new" && args.is_empty() {
@@ -2354,6 +2457,7 @@ impl TextCodeGen {
                 // BmbString layout: {ptr data, i64 len, i64 cap}
 
                 // len(s) -> i64: inline string length access
+                // v0.51.51: Re-enabled after fixing runtime to use BmbString structs consistently
                 if (fn_name == "len" || fn_name == "bmb_string_len") && args.len() == 1 {
                     let str_idx = *name_counts.entry("str_len".to_string()).or_insert(0);
                     *name_counts.get_mut("str_len").unwrap() += 1;
@@ -2387,6 +2491,7 @@ impl TextCodeGen {
                 }
 
                 // char_at(s, idx) / byte_at(s, idx) -> i64: inline character access
+                // v0.51.51: Re-enabled after fixing runtime to use BmbString structs consistently
                 if (fn_name == "char_at" || fn_name == "byte_at" || fn_name == "bmb_string_char_at") && args.len() == 2 {
                     let str_idx = *name_counts.entry("str_char_at".to_string()).or_insert(0);
                     *name_counts.get_mut("str_char_at").unwrap() += 1;

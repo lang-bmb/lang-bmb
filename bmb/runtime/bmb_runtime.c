@@ -10,6 +10,30 @@
 #include <inttypes.h>
 
 // BMB Runtime Library
+
+// v0.51.51: BmbString struct for type-safe string handling
+// Matches LLVM IR: %BmbString = type { ptr, i64, i64 }
+typedef struct {
+    char* data;      // pointer to null-terminated string data
+    int64_t len;     // string length (excluding null terminator)
+    int64_t cap;     // capacity (excluding null terminator)
+} BmbString;
+
+// Helper to create a new BmbString from raw char*
+static BmbString* bmb_string_wrap(char* data) {
+    if (!data) {
+        data = (char*)malloc(1);
+        data[0] = '\0';
+    }
+    BmbString* s = (BmbString*)malloc(sizeof(BmbString));
+    int64_t len = 0;
+    while (data[len]) len++;
+    s->data = data;
+    s->len = len;
+    s->cap = len;
+    return s;
+}
+
 void bmb_println_i64(int64_t n) { printf("%" PRId64 "\n", n); }
 void bmb_print_i64(int64_t n) { printf("%" PRId64, n); }
 int64_t bmb_read_int() { int64_t n; scanf("%" SCNd64, &n); return n; }
@@ -147,6 +171,20 @@ int64_t bmb_load_i64(int64_t ptr) {
     return *((int64_t*)ptr);
 }
 
+// v0.51.51: Byte-level memory access for high-performance string parsing
+int64_t bmb_load_u8(int64_t ptr) {
+    return (int64_t)(*((unsigned char*)ptr));
+}
+
+void bmb_store_u8(int64_t ptr, int64_t value) {
+    *((unsigned char*)ptr) = (unsigned char)value;
+}
+
+// Get raw pointer to string data for direct memory access
+int64_t bmb_str_data(const char* s) {
+    return (int64_t)s;
+}
+
 // calloc wrapper (returns pointer as i64)
 int64_t bmb_calloc(int64_t count, int64_t size) {
     return (int64_t)calloc((size_t)count, (size_t)size);
@@ -159,120 +197,153 @@ int64_t bmb_box_new_i64(int64_t value) {
     return (int64_t)ptr;
 }
 
-// v0.100: String concatenation
-char* bmb_string_concat(const char* a, const char* b) {
-    if (!a || !b) {
-        char* result = (char*)malloc(1);
-        result[0] = '\0';
-        return result;
+// v0.51.51: String concatenation - updated to work with BmbString structs
+// Parameters are BmbString* (from LLVM IR %BmbString structs)
+BmbString* bmb_string_concat(const BmbString* a, const BmbString* b) {
+    if (!a || !b || !a->data || !b->data) {
+        return bmb_string_wrap(NULL);
     }
-    size_t len_a = 0, len_b = 0;
-    while (a[len_a]) len_a++;
-    while (b[len_b]) len_b++;
+    int64_t len_a = a->len;
+    int64_t len_b = b->len;
     char* result = (char*)malloc(len_a + len_b + 1);
-    for (size_t i = 0; i < len_a; i++) result[i] = a[i];
-    for (size_t i = 0; i < len_b; i++) result[len_a + i] = b[i];
+    for (int64_t i = 0; i < len_a; i++) result[i] = a->data[i];
+    for (int64_t i = 0; i < len_b; i++) result[len_a + i] = b->data[i];
     result[len_a + len_b] = '\0';
-    return result;
+
+    BmbString* s = (BmbString*)malloc(sizeof(BmbString));
+    s->data = result;
+    s->len = len_a + len_b;
+    s->cap = len_a + len_b;
+    return s;
 }
 
-// v0.46: String functions for native compilation
-// Convert C string to BmbString (identity in our simple runtime)
-char* bmb_string_from_cstr(const char* s) {
-    return (char*)s;
+// v0.51.51: String functions updated for BmbString structs
+
+// Convert C string to BmbString
+BmbString* bmb_string_from_cstr(const char* s) {
+    if (!s) return bmb_string_wrap(NULL);
+    int64_t len = 0;
+    while (s[len]) len++;
+    char* copy = (char*)malloc(len + 1);
+    for (int64_t i = 0; i <= len; i++) copy[i] = s[i];
+    return bmb_string_wrap(copy);
 }
 
 // Create new string with given length (allocates copy)
-char* bmb_string_new(const char* s, int64_t len) {
+BmbString* bmb_string_new(const char* s, int64_t len) {
     char* result = (char*)malloc(len + 1);
     for (int64_t i = 0; i < len; i++) result[i] = s[i];
     result[len] = '\0';
-    return result;
+    return bmb_string_wrap(result);
 }
 
-// String length (alias for bmb_str_len with ptr signature)
-int64_t bmb_string_len(const char* s) {
+// String length - parameter is BmbString*
+int64_t bmb_string_len(const BmbString* s) {
     if (!s) return 0;
-    int64_t len = 0;
-    while (s[len]) len++;
-    return len;
+    return s->len;
 }
 
-// Get byte at index (NOT Unicode character)
-int64_t bmb_string_char_at(const char* s, int64_t index) {
-    if (!s || index < 0) return 0;
-    return (int64_t)(unsigned char)s[index];
+// Get byte at index - parameter is BmbString*
+int64_t bmb_string_char_at(const BmbString* s, int64_t index) {
+    if (!s || !s->data || index < 0 || index >= s->len) return 0;
+    return (int64_t)(unsigned char)s->data[index];
 }
 
-// v0.51.18: Alias for codegen compatibility
-int64_t char_at(const char* s, int64_t index) {
+// v0.51.51: Alias for codegen compatibility - takes BmbString*
+int64_t char_at(const BmbString* s, int64_t index) {
     return bmb_string_char_at(s, index);
 }
 
-// String equality comparison
-int64_t bmb_string_eq(const char* a, const char* b) {
-    if (a == b) return 1;  // Same pointer
-    if (!a || !b) return 0;  // One is null
-    while (*a && *b) {
-        if (*a != *b) return 0;
-        a++; b++;
+// String equality comparison - parameters are BmbString*
+int64_t bmb_string_eq(const BmbString* a, const BmbString* b) {
+    if (a == b) return 1;  // Same struct pointer
+    if (!a || !b) return 0;
+    if (a->len != b->len) return 0;  // Different lengths
+    for (int64_t i = 0; i < a->len; i++) {
+        if (a->data[i] != b->data[i]) return 0;
     }
-    return (*a == *b) ? 1 : 0;  // Both should be '\0'
+    return 1;
 }
 
-// String slice (substring from start to end, exclusive)
-char* bmb_string_slice(const char* s, int64_t start, int64_t end) {
-    if (!s || start < 0 || end < start) {
-        char* empty = (char*)malloc(1);
-        empty[0] = '\0';
-        return empty;
+// String slice (substring from start to end, exclusive) - returns BmbString*
+BmbString* bmb_string_slice(const BmbString* s, int64_t start, int64_t end) {
+    if (!s || !s->data || start < 0 || end < start || start > s->len) {
+        return bmb_string_wrap(NULL);
     }
+    if (end > s->len) end = s->len;
     int64_t len = end - start;
     char* result = (char*)malloc(len + 1);
     for (int64_t i = 0; i < len; i++) {
-        result[i] = s[start + i];
+        result[i] = s->data[start + i];
     }
     result[len] = '\0';
-    return result;
+    return bmb_string_wrap(result);
 }
 
-// v0.46: Wrapper functions (LLVM codegen uses short names)
-// These call the bmb_string_* functions with matching signatures
-char* slice(const char* s, int64_t start, int64_t end) {
+// v0.51.51: Wrapper functions updated for BmbString*
+BmbString* slice(const BmbString* s, int64_t start, int64_t end) {
     return bmb_string_slice(s, start, end);
 }
 
-int64_t byte_at(const char* s, int64_t index) {
+int64_t byte_at(const BmbString* s, int64_t index) {
     return bmb_string_char_at(s, index);
 }
 
-// v0.50.18: Additional wrapper functions for bootstrap compiler
-int64_t len(const char* s) {
+// v0.51.51: len wrapper takes BmbString*
+int64_t len(const BmbString* s) {
     return bmb_string_len(s);
 }
 
-char* chr(int64_t n) {
-    return bmb_chr(n);
+// v0.51.51: chr returns BmbString*
+BmbString* chr(int64_t n) {
+    char* data = (char*)malloc(2);
+    data[0] = (char)n;
+    data[1] = '\0';
+    return bmb_string_wrap(data);
 }
 
-char* char_to_string(int32_t c) {
-    return bmb_char_to_string(c);
+// v0.51.51: char_to_string returns BmbString*
+BmbString* char_to_string(int32_t c) {
+    char* data = (char*)malloc(2);
+    data[0] = (char)c;
+    data[1] = '\0';
+    return bmb_string_wrap(data);
 }
 
-int64_t ord(const char* s) {
-    return bmb_ord(s);
+// v0.51.51: ord takes BmbString*
+int64_t ord(const BmbString* s) {
+    if (!s || !s->data || s->len == 0) return 0;
+    return (int64_t)(unsigned char)s->data[0];
 }
 
-void print_str(const char* s) {
-    bmb_print_str(s);
+// v0.51.51: Low-level memory access wrappers for high-performance parsing
+int64_t load_u8(int64_t ptr) {
+    return bmb_load_u8(ptr);
+}
+
+void store_u8(int64_t ptr, int64_t value) {
+    bmb_store_u8(ptr, value);
+}
+
+// v0.51.51: str_data takes BmbString*, returns pointer to data
+int64_t str_data(const BmbString* s) {
+    if (!s || !s->data) return 0;
+    return (int64_t)s->data;
+}
+
+// v0.51.51: print_str takes BmbString*
+void print_str(const BmbString* s) {
+    if (s && s->data) printf("%s", s->data);
 }
 
 void println(int64_t n) {
     bmb_println_i64(n);
 }
 
-void println_str(const char* s) {
-    bmb_println_str(s);
+// v0.51.51: println_str takes BmbString*
+void println_str(const BmbString* s) {
+    if (s && s->data) printf("%s\n", s->data);
+    else printf("\n");
 }
 
 // v0.46: StringBuilder functions for efficient string building
@@ -302,11 +373,11 @@ int64_t bmb_sb_with_capacity(int64_t capacity) {
     return (int64_t)sb;
 }
 
-int64_t bmb_sb_push(int64_t handle, const char* s) {
-    if (!s || !handle) return 0;
+// v0.51.51: sb_push takes BmbString*
+int64_t bmb_sb_push(int64_t handle, const BmbString* s) {
+    if (!s || !s->data || !handle) return 0;
     StringBuilder* sb = (StringBuilder*)handle;
-    int64_t slen = 0;
-    while (s[slen]) slen++;
+    int64_t slen = s->len;
 
     // Grow if needed
     while (sb->len + slen + 1 > sb->cap) {
@@ -316,7 +387,7 @@ int64_t bmb_sb_push(int64_t handle, const char* s) {
 
     // Append
     for (int64_t i = 0; i < slen; i++) {
-        sb->data[sb->len + i] = s[i];
+        sb->data[sb->len + i] = s->data[i];
     }
     sb->len += slen;
     sb->data[sb->len] = '\0';
@@ -374,13 +445,13 @@ int64_t bmb_sb_push_int(int64_t handle, int64_t n) {
     return sb->len;
 }
 
-// v0.51.18: Push escaped string (JSON-style escaping) to StringBuilder
-int64_t bmb_sb_push_escaped(int64_t handle, const char* s) {
-    if (!handle || !s) return 0;
+// v0.51.51: Push escaped string (JSON-style escaping) to StringBuilder - takes BmbString*
+int64_t bmb_sb_push_escaped(int64_t handle, const BmbString* s) {
+    if (!handle || !s || !s->data) return 0;
     StringBuilder* sb = (StringBuilder*)handle;
 
-    while (*s) {
-        char c = *s++;
+    for (int64_t i = 0; i < s->len; i++) {
+        char c = s->data[i];
         char esc = 0;
         switch (c) {
             case '"':  esc = '"';  break;
@@ -413,11 +484,10 @@ int64_t bmb_sb_len(int64_t handle) {
     return sb->len;
 }
 
-char* bmb_sb_build(int64_t handle) {
+// v0.51.51: sb_build returns BmbString*
+BmbString* bmb_sb_build(int64_t handle) {
     if (!handle) {
-        char* empty = (char*)malloc(1);
-        empty[0] = '\0';
-        return empty;
+        return bmb_string_wrap(NULL);
     }
     StringBuilder* sb = (StringBuilder*)handle;
     // Return copy of the built string
@@ -425,7 +495,7 @@ char* bmb_sb_build(int64_t handle) {
     for (int64_t i = 0; i <= sb->len; i++) {
         result[i] = sb->data[i];
     }
-    return result;
+    return bmb_string_wrap(result);
 }
 
 int64_t bmb_sb_clear(int64_t handle) {
@@ -605,12 +675,12 @@ char* bmb_getenv(const char* name) {
 #include <string.h>
 #include <sys/stat.h>
 
-char* bmb_read_file(const char* path) {
-    FILE* f = fopen(path, "rb");
+// v0.51.51: read_file returns BmbString*, path is BmbString*
+BmbString* bmb_read_file(const BmbString* path) {
+    if (!path || !path->data) return bmb_string_wrap(NULL);
+    FILE* f = fopen(path->data, "rb");
     if (!f) {
-        char* empty = (char*)malloc(1);
-        empty[0] = '\0';
-        return empty;
+        return bmb_string_wrap(NULL);
     }
     fseek(f, 0, SEEK_END);
     long size = ftell(f);
@@ -621,16 +691,17 @@ char* bmb_read_file(const char* path) {
         content[read] = '\0';
     }
     fclose(f);
-    return content ? content : "";
+    return bmb_string_wrap(content);
 }
 
-int64_t bmb_write_file(const char* path, const char* content) {
-    FILE* f = fopen(path, "wb");
+// v0.51.51: write_file takes BmbString* for path and content
+int64_t bmb_write_file(const BmbString* path, const BmbString* content) {
+    if (!path || !path->data || !content || !content->data) return -1;
+    FILE* f = fopen(path->data, "wb");
     if (!f) return -1;
-    size_t len = strlen(content);
-    size_t written = fwrite(content, 1, len, f);
+    size_t written = fwrite(content->data, 1, content->len, f);
     fclose(f);
-    return (written == len) ? 0 : -1;
+    return (written == (size_t)content->len) ? 0 : -1;
 }
 
 int64_t bmb_file_exists(const char* path) {
@@ -686,13 +757,27 @@ int64_t sb_with_capacity(int64_t capacity) {
     return bmb_sb_with_capacity(capacity);
 }
 
-int64_t sb_push(int64_t handle, const char* s) {
+// v0.51.51: sb_push takes BmbString*
+int64_t sb_push(int64_t handle, const BmbString* s) {
     return bmb_sb_push(handle, s);
 }
 
-// v0.51.49: Missing sb_push_* wrapper functions for fasta and json_serialize benchmarks
+// v0.51.51: sb_push_cstr takes raw char* for internal use
 int64_t sb_push_cstr(int64_t handle, const char* s) {
-    return bmb_sb_push(handle, s);
+    if (!s || !handle) return 0;
+    StringBuilder* sb = (StringBuilder*)handle;
+    int64_t slen = 0;
+    while (s[slen]) slen++;
+    while (sb->len + slen + 1 > sb->cap) {
+        sb->cap *= 2;
+        sb->data = (char*)realloc(sb->data, sb->cap);
+    }
+    for (int64_t i = 0; i < slen; i++) {
+        sb->data[sb->len + i] = s[i];
+    }
+    sb->len += slen;
+    sb->data[sb->len] = '\0';
+    return sb->len;
 }
 
 int64_t sb_push_char(int64_t handle, int64_t ch) {
@@ -703,11 +788,20 @@ int64_t sb_push_int(int64_t handle, int64_t n) {
     return bmb_sb_push_int(handle, n);
 }
 
-int64_t sb_push_escaped(int64_t handle, const char* s) {
-    return bmb_sb_push_escaped(handle, s);
+// v0.51.51: sb_push_escaped takes BmbString*
+int64_t sb_push_escaped(int64_t handle, const BmbString* s) {
+    if (!s || !s->data || !handle) return 0;
+    StringBuilder* sb = (StringBuilder*)handle;
+    for (int64_t i = 0; i < s->len; i++) {
+        char c = s->data[i];
+        if (c == '\\' || c == '"') sb_push_char(handle, '\\');
+        sb_push_char(handle, c);
+    }
+    return sb->len;
 }
 
-char* sb_build(int64_t handle) {
+// v0.51.51: sb_build returns BmbString*
+BmbString* sb_build(int64_t handle) {
     return bmb_sb_build(handle);
 }
 
@@ -719,12 +813,12 @@ int64_t sb_clear(int64_t handle) {
     return bmb_sb_clear(handle);
 }
 
-// v0.50.20: File I/O wrappers
-char* read_file(const char* path) {
+// v0.51.51: File I/O wrappers updated for BmbString*
+BmbString* read_file(const BmbString* path) {
     return bmb_read_file(path);
 }
 
-int64_t write_file(const char* path, const char* content) {
+int64_t write_file(const BmbString* path, const BmbString* content) {
     return bmb_write_file(path, content);
 }
 

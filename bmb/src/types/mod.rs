@@ -425,6 +425,13 @@ impl TypeChecker {
         functions.insert("store_f64".to_string(), (vec![Type::I64, Type::F64], Type::Unit));
         // load_f64(ptr: i64) -> f64 (read f64 from memory)
         functions.insert("load_f64".to_string(), (vec![Type::I64], Type::F64));
+        // v0.51.51: Byte-level memory access for high-performance string parsing
+        // load_u8(ptr: i64) -> i64 (read single byte from memory)
+        functions.insert("load_u8".to_string(), (vec![Type::I64], Type::I64));
+        // store_u8(ptr: i64, value: i64) -> Unit (write single byte to memory)
+        functions.insert("store_u8".to_string(), (vec![Type::I64, Type::I64], Type::Unit));
+        // str_data(s: String) -> i64 (get raw pointer to string data)
+        functions.insert("str_data".to_string(), (vec![Type::String], Type::I64));
         // Box convenience functions
         // box_new_i64(value: i64) -> i64 (allocate + store)
         functions.insert("box_new_i64".to_string(), (vec![Type::I64], Type::I64));
