@@ -2,6 +2,17 @@
 //!
 //! This module orchestrates the full compilation pipeline:
 //! BMB Source → AST → MIR → LLVM IR → Object File → Executable
+//!
+//! # v0.55+ CIR/PIR Pipeline
+//!
+//! The build pipeline now supports the full CIR/PIR verification and
+//! optimization pipeline:
+//!
+//! ```text
+//! BMB Source → AST → TAST → CIR → PIR → MIR → LLVM IR
+//!                            ↓      ↓
+//!                         Verify  Optimize
+//! ```
 
 use std::path::PathBuf;
 
@@ -20,6 +31,12 @@ use crate::mir::lower_program;
 use crate::parser::parse;
 use crate::lexer::tokenize;
 use crate::types::TypeChecker;
+
+// v0.55: CIR/PIR pipeline imports
+use crate::mir::run_proof_guided_program;
+use crate::cir::{lower_to_cir, extract_all_facts};
+use crate::pir::{propagate_proofs, extract_all_pir_facts};
+use crate::verify::ProofDatabase;
 
 /// Build configuration
 #[derive(Debug, Clone)]
@@ -41,6 +58,21 @@ pub struct BuildConfig {
     /// Target triple for cross-compilation (v0.50.23)
     /// e.g., "x86_64-unknown-linux-gnu", "x86_64-pc-windows-msvc", "aarch64-apple-darwin"
     pub target_triple: Option<String>,
+
+    // === v0.55: CIR/PIR Pipeline Options ===
+
+    /// Emit CIR (Contract IR) output instead of compiling
+    pub emit_cir: bool,
+    /// Emit PIR (Proof-Indexed IR) output instead of compiling
+    pub emit_pir: bool,
+    /// Show proof annotations in output
+    pub show_proofs: bool,
+    /// Generate optimization report
+    pub opt_report: bool,
+    /// Enable proof-guided optimizations (BCE, NCE, DCE, PUE)
+    pub proof_optimizations: bool,
+    /// Enable proof caching for incremental compilation
+    pub proof_cache: bool,
 }
 
 impl BuildConfig {
@@ -56,6 +88,13 @@ impl BuildConfig {
             verbose: false,
             target: Target::Native,
             target_triple: None,
+            // v0.55: CIR/PIR defaults
+            emit_cir: false,
+            emit_pir: false,
+            show_proofs: false,
+            opt_report: false,
+            proof_optimizations: true, // Enabled by default
+            proof_cache: true, // Enabled by default for incremental compilation
         }
     }
 
@@ -191,6 +230,103 @@ pub fn build(config: &BuildConfig) -> BuildResult<()> {
         println!("  Generated MIR for {} functions", mir.functions.len());
     }
 
+    // v0.55: Full CIR → PIR → MIR proof pipeline
+    // 1. CIR: Extract contract propositions
+    // 2. PIR: Propagate proofs through control flow (branch conditions, loops)
+    // 3. MIR: Augment with extracted ContractFacts for optimization
+    if config.proof_optimizations {
+        let cir = lower_to_cir(&program);
+
+        // Extract basic CIR facts
+        let cir_facts = extract_all_facts(&cir);
+
+        // v0.55: Load or create proof database for caching
+        let cache_path = ProofDatabase::cache_path_for(&config.input);
+        let mut proof_db = if config.proof_cache {
+            ProofDatabase::load_from_file(&cache_path).unwrap_or_else(|_| {
+                if config.verbose {
+                    println!("  Creating new proof cache");
+                }
+                ProofDatabase::new()
+            })
+        } else {
+            ProofDatabase::new()
+        };
+
+        let cache_hits = proof_db.stats().cache_hits;
+
+        // v0.55: Run PIR proof propagation for richer facts
+        // PIR captures branch conditions, loop invariants, postconditions from calls
+        let pir = propagate_proofs(&cir, &proof_db);
+        let pir_facts = extract_all_pir_facts(&pir);
+
+        // Augment MIR functions with both CIR and PIR facts
+        let mut cir_augmented = 0;
+        let mut pir_augmented = 0;
+
+        for func in &mut mir.functions {
+            // Add CIR-derived facts (from explicit contracts)
+            if let Some((cir_pre, cir_post)) = cir_facts.get(&func.name) {
+                for fact in cir_pre {
+                    if !func.preconditions.contains(fact) {
+                        func.preconditions.push(fact.clone());
+                        cir_augmented += 1;
+                    }
+                }
+                for fact in cir_post {
+                    if !func.postconditions.contains(fact) {
+                        func.postconditions.push(fact.clone());
+                        cir_augmented += 1;
+                    }
+                }
+            }
+
+            // Add PIR-derived facts (from proof propagation)
+            if let Some(pir_func_facts) = pir_facts.get(&func.name) {
+                // Add preconditions from PIR
+                for fact in &pir_func_facts.preconditions {
+                    if !func.preconditions.contains(fact) {
+                        func.preconditions.push(fact.clone());
+                        pir_augmented += 1;
+                    }
+                }
+                // Add postconditions from PIR
+                for fact in &pir_func_facts.postconditions {
+                    if !func.postconditions.contains(fact) {
+                        func.postconditions.push(fact.clone());
+                        pir_augmented += 1;
+                    }
+                }
+            }
+        }
+
+        // v0.55: Save proof cache for incremental compilation
+        if config.proof_cache {
+            if let Err(e) = proof_db.save_to_file(&cache_path) {
+                if config.verbose {
+                    println!("  Warning: Failed to save proof cache: {}", e);
+                }
+            }
+        }
+
+        if config.verbose {
+            let total = cir_augmented + pir_augmented;
+            if total > 0 {
+                println!("  Contract facts augmented: {} total", total);
+                if cir_augmented > 0 {
+                    println!("    - From CIR (explicit contracts): {}", cir_augmented);
+                }
+                if pir_augmented > 0 {
+                    println!("    - From PIR (proof propagation): {}", pir_augmented);
+                }
+            }
+            let new_cache_hits = proof_db.stats().cache_hits - cache_hits;
+            if new_cache_hits > 0 {
+                println!("  Proof cache hits: {}", new_cache_hits);
+            }
+        }
+    }
+
     // v0.29: Run MIR optimizations
     {
         use crate::mir::{OptimizationPipeline, OptLevel as MirOptLevel};
@@ -207,6 +343,38 @@ pub fn build(config: &BuildConfig) -> BuildResult<()> {
 
         if config.verbose && !stats.pass_counts.is_empty() {
             println!("  MIR optimizations applied: {:?}", stats.pass_counts);
+        }
+    }
+
+    // v0.55: Run proof-guided optimizations (BCE, NCE, DCE, PUE)
+    if config.proof_optimizations && !matches!(config.opt_level, OptLevel::Debug) {
+        let proof_stats = run_proof_guided_program(&mut mir);
+
+        if config.verbose && proof_stats.total() > 0 {
+            println!("  Proof-guided optimizations:");
+            if proof_stats.bounds_checks_eliminated > 0 {
+                println!("    - Bounds checks eliminated: {}", proof_stats.bounds_checks_eliminated);
+            }
+            if proof_stats.null_checks_eliminated > 0 {
+                println!("    - Null checks eliminated: {}", proof_stats.null_checks_eliminated);
+            }
+            if proof_stats.division_checks_eliminated > 0 {
+                println!("    - Division checks eliminated: {}", proof_stats.division_checks_eliminated);
+            }
+            if proof_stats.unreachable_blocks_eliminated > 0 {
+                println!("    - Unreachable blocks eliminated: {}", proof_stats.unreachable_blocks_eliminated);
+            }
+        }
+
+        // v0.55: Generate optimization report if requested
+        if config.opt_report {
+            println!("\n=== Proof-Guided Optimization Report ===");
+            println!("Total optimizations: {}", proof_stats.total());
+            println!("  Bounds Check Elimination (BCE): {}", proof_stats.bounds_checks_eliminated);
+            println!("  Null Check Elimination (NCE): {}", proof_stats.null_checks_eliminated);
+            println!("  Division Check Elimination (DCE): {}", proof_stats.division_checks_eliminated);
+            println!("  Unreachable Block Elimination (PUE): {}", proof_stats.unreachable_blocks_eliminated);
+            println!("=========================================\n");
         }
     }
 

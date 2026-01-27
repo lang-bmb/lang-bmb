@@ -802,14 +802,11 @@ typedef struct {
 } BmbHashmap;
 
 static inline uint64_t hashmap_hash(int64_t key) {
-    // FNV-1a inspired hash
-    uint64_t h = (uint64_t)key;
-    h ^= h >> 33;
-    h *= 0xff51afd7ed558ccdULL;
-    h ^= h >> 33;
-    h *= 0xc4ceb9fe1a85ec53ULL;
-    h ^= h >> 33;
-    return h;
+    // v0.51.52: Simplified hash function (same as C benchmark)
+    // Previous FNV-1a style was slower (3 xor-shifts + 2 multiplies)
+    // This version: 1 multiply + 1 xor-shift
+    uint64_t h = (uint64_t)key * 0x517cc1b727220a95ULL;
+    return h ^ (h >> 32);
 }
 
 static void hashmap_resize(BmbHashmap* map, int64_t new_cap) {

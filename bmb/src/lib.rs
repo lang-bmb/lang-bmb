@@ -36,6 +36,7 @@
 pub mod ast;
 pub mod build;
 pub mod cfg;
+pub mod cir;
 pub mod codegen;
 pub mod derive;
 pub mod error;
@@ -45,6 +46,7 @@ pub mod lexer;
 pub mod lsp;
 pub mod mir;
 pub mod parser;
+pub mod pir;
 pub mod query;
 pub mod repl;
 pub mod resolver;

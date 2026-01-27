@@ -44,6 +44,9 @@ enum Command {
         /// Emit MIR (Mid-level IR) - v0.21.2
         #[arg(long)]
         emit_mir: bool,
+        /// Emit CIR (Contract IR) - v0.52
+        #[arg(long)]
+        emit_cir: bool,
         /// Emit WASM text format (.wat)
         #[arg(long)]
         emit_wasm: bool,
@@ -353,12 +356,13 @@ fn main() {
             aggressive,
             emit_ir,
             emit_mir,
+            emit_cir,
             emit_wasm,
             wasm_target,
             all_targets,
             target,
             verbose,
-        } => build_file(&file, output, release, aggressive, emit_ir, emit_mir, emit_wasm, &wasm_target, all_targets, target.as_deref(), verbose),
+        } => build_file(&file, output, release, aggressive, emit_ir, emit_mir, emit_cir, emit_wasm, &wasm_target, all_targets, target.as_deref(), verbose),
         Command::Run { file, args, human: _ } => run_file(&file, &args),
         Command::Repl => start_repl(),
         Command::Check { file, include_paths } => check_file_with_includes(&file, &include_paths),
@@ -394,12 +398,18 @@ fn build_file(
     aggressive: bool,
     emit_ir: bool,
     emit_mir: bool,
+    emit_cir: bool,
     emit_wasm: bool,
     wasm_target: &str,
     all_targets: bool,
     target: Option<&str>,
     verbose: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    // v0.52: If emitting CIR, output Contract IR and return
+    if emit_cir {
+        return emit_cir_file(path, output, verbose);
+    }
+
     // v0.21.2: If emitting MIR, just output MIR and return
     if emit_mir {
         return emit_mir_file(path, output, verbose);
@@ -624,6 +634,67 @@ fn emit_mir_file(
     } else {
         println!(r#"{{"type":"build_success","output":"{}","functions":{},"size":{}}}"#,
             output_path.display().to_string().replace('\\', "\\\\"), mir.functions.len(), mir_text.len());
+    }
+
+    Ok(())
+}
+
+/// v0.52: Emit CIR (Contract IR) output
+fn emit_cir_file(
+    path: &PathBuf,
+    output: Option<PathBuf>,
+    verbose: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let source = std::fs::read_to_string(path)?;
+    let filename = path.display().to_string();
+
+    if verbose {
+        println!("Compiling {} to CIR...", filename);
+    }
+
+    // Tokenize
+    let tokens = bmb::lexer::tokenize(&source)?;
+
+    // Parse
+    let ast = bmb::parser::parse(&filename, &source, tokens)?;
+
+    if verbose {
+        println!("  Parsed {} items", ast.items.len());
+    }
+
+    // Type check (required before CIR lowering)
+    let mut checker = bmb::types::TypeChecker::new();
+    checker.check_program(&ast)?;
+
+    // Lower to CIR
+    let cir = bmb::cir::lower_to_cir(&ast);
+
+    // Format CIR as text
+    let cir_text = bmb::cir::CirOutput::format_text(&cir);
+
+    // Determine output path
+    let output_path = output.unwrap_or_else(|| {
+        path.with_extension("cir")
+    });
+
+    // Write output
+    std::fs::write(&output_path, &cir_text)?;
+
+    if is_human_output() {
+        println!("Generated: {}", output_path.display());
+        if verbose {
+            println!("  Functions: {}", cir.functions.len());
+            println!("  Structs: {}", cir.structs.len());
+            println!("  Extern Fns: {}", cir.extern_fns.len());
+            println!("  Size: {} bytes", cir_text.len());
+        }
+    } else {
+        println!(r#"{{"type":"build_success","output":"{}","functions":{},"structs":{},"extern_fns":{},"size":{}}}"#,
+            output_path.display().to_string().replace('\\', "\\\\"),
+            cir.functions.len(),
+            cir.structs.len(),
+            cir.extern_fns.len(),
+            cir_text.len());
     }
 
     Ok(())

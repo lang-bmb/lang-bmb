@@ -4,6 +4,8 @@ This document describes the internal architecture of the BMB compiler.
 
 ## Compilation Pipeline
 
+### Current Pipeline (v0.51)
+
 ```
 Source (.bmb)
     │
@@ -31,7 +33,7 @@ Source (.bmb)
 ┌─────────┐
 │   MIR   │  Middle Intermediate Representation
 └────┬────┘
-     │ MIR
+     │ MIR (with optimizations)
      ▼
 ┌─────────┐
 │ CodeGen │  LLVM IR / WASM generation
@@ -40,6 +42,78 @@ Source (.bmb)
      ▼
   Native Binary
 ```
+
+### Target Pipeline (v0.55+)
+
+```
+Source (.bmb)
+    │
+    ▼
+┌─────────┐
+│  Lexer  │  logos-based tokenizer
+└────┬────┘
+     │ Token stream
+     ▼
+┌─────────┐
+│ Parser  │  lalrpop LR(1) parser
+└────┬────┘
+     │ AST
+     ▼
+┌─────────┐
+│  Types  │  Type inference and checking
+└────┬────┘
+     │ Typed AST
+     ▼
+┌─────────┐
+│   CIR   │  Contract IR - contracts as logical propositions
+└────┬────┘   (bmb/src/cir/ - implemented, not integrated)
+     │ CIR
+     ▼
+┌─────────┐
+│ Verify  │  SMT verification + proof generation
+└────┬────┘   (bmb/src/verify/ - ProofDatabase implemented)
+     │ Verified CIR + ProofFacts
+     ▼
+┌─────────┐
+│   PIR   │  Proof-Indexed IR - every expr carries proven facts
+└────┬────┘   (bmb/src/pir/ - implemented, not integrated)
+     │ PIR
+     ▼
+┌─────────┐
+│   MIR   │  Middle IR with proof-guided optimization
+└────┬────┘
+     │ Optimized MIR
+     ▼
+┌─────────┐
+│ CodeGen │  LLVM IR / WASM generation
+└────┬────┘
+     │
+     ▼
+  Native Binary
+```
+
+### Integration Status (v0.55)
+
+| IR | Module | Status | Integration |
+|----|--------|--------|-------------|
+| AST | `bmb/src/ast/` | ✅ Complete | ✅ Integrated |
+| CIR | `bmb/src/cir/` | ✅ Complete | ✅ **Integrated (v0.52)** |
+| CIR→MIR Facts | `bmb/src/cir/to_mir_facts.rs` | ✅ Complete | ✅ **Integrated (v0.52)** |
+| PIR | `bmb/src/pir/` | ✅ Complete | ✅ **Integrated (v0.55)** |
+| PIR→MIR Facts | `bmb/src/pir/to_mir_facts.rs` | ✅ Complete | ✅ **Integrated (v0.55)** |
+| MIR | `bmb/src/mir/` | ✅ Complete | ✅ Integrated |
+| ProofDB | `bmb/src/verify/proof_db.rs` | ✅ Complete | ✅ **Integrated (v0.55)** |
+
+**v0.55 Full Pipeline Integration**:
+
+1. **CIR Integration (v0.52)**: Extracts contract propositions from AST
+2. **PIR Integration (v0.55)**: Propagates proofs through control flow
+   - Branch conditions (if/else)
+   - Loop invariants (while/for)
+   - Postconditions from function calls
+3. **ProofDatabase (v0.55)**: Caches proofs for incremental compilation
+4. **Fact Extraction**: Both CIR and PIR facts merged with MIR's `ContractFact`
+5. **Proof-Guided Optimizations**: BCE, NCE, DCE, PUE use augmented facts
 
 ## Module Overview
 
@@ -149,13 +223,38 @@ SMT-LIB2 generation and Z3 integration.
 
 ### Verifier (`bmb/src/verify/`)
 
-Contract verification orchestration.
+Contract verification orchestration with proof caching.
 
 | File | Purpose |
 |------|---------|
 | `mod.rs` | Verification orchestration |
-| `z3.rs` | Z3 process communication |
-| `counterexample.rs` | Counterexample parsing |
+| `contract.rs` | ContractVerifier implementation |
+| `proof_db.rs` | ProofDatabase for caching (v0.53) |
+| `summary.rs` | FunctionSummary extraction |
+| `incremental.rs` | IncrementalVerifier (v0.53) |
+
+**ProofDatabase structure:**
+```rust
+pub struct ProofDatabase {
+    function_proofs: HashMap<String, FunctionProofResult>,
+    file_hashes: HashMap<String, u64>,  // For incremental compilation
+    stats: ProofDbStats,
+}
+
+pub struct ProofFact {
+    pub proposition: Proposition,
+    pub scope: ProofScope,
+    pub evidence: ProofEvidence,
+}
+
+pub enum ProofEvidence {
+    SmtProof { query_hash, solver },
+    Precondition,
+    TypeInvariant(String),
+    FunctionCall { callee, postcondition_index },
+    ControlFlow,
+}
+```
 
 ### Interpreter (`bmb/src/interp/`)
 
@@ -181,6 +280,67 @@ Interactive Read-Eval-Print Loop using `rustyline`.
 - `:type <expr>` - Show expression type
 - `:quit` - Exit REPL
 
+### CIR (`bmb/src/cir/`) - v0.52
+
+Contract Intermediate Representation - contracts as first-class logical propositions.
+
+| File | Purpose |
+|------|---------|
+| `mod.rs` | CIR types: CirProgram, CirFunction, Proposition |
+| `lower.rs` | AST to CIR lowering |
+| `output.rs` | CIR text output |
+| `smt.rs` | CIR to SMT-LIB2 translation |
+| `verify.rs` | CIR-based verification |
+| `to_mir_facts.rs` | **v0.52**: CIR → MIR ContractFact conversion |
+
+**CIR structure:**
+```rust
+pub struct CirProgram {
+    pub functions: Vec<CirFunction>,
+    pub structs: HashMap<String, CirStruct>,
+    pub type_invariants: HashMap<String, Vec<Proposition>>,
+}
+
+pub enum Proposition {
+    True, False,
+    Compare { lhs, op, rhs },
+    Not(Box<Proposition>),
+    And(Vec<Proposition>),
+    Or(Vec<Proposition>),
+    InBounds { index, array },
+    NonNull(Box<CirExpr>),
+    // ... more variants
+}
+```
+
+### PIR (`bmb/src/pir/`) - v0.55
+
+Proof-Indexed IR - every expression carries proven facts.
+
+| File | Purpose |
+|------|---------|
+| `mod.rs` | PIR types: PirProgram, PirExpr, ProvenFact |
+| `propagate.rs` | Proof propagation through the program |
+| `to_mir_facts.rs` | **v0.55**: PIR → MIR ContractFact extraction |
+| `lower_to_mir.rs` | PIR to MIR lowering (stub - not used) |
+
+**PIR structure:**
+```rust
+pub struct PirExpr {
+    pub kind: PirExprKind,
+    pub proven: Vec<ProvenFact>,       // Facts available at this point
+    pub result_facts: Vec<ProvenFact>, // Facts about the result
+    pub ty: PirType,
+}
+
+// Example: Index with bounds proof
+PirExprKind::Index {
+    array: Box<PirExpr>,
+    index: Box<PirExpr>,
+    bounds_proof: Option<ProvenFact>, // If Some, bounds check eliminated
+}
+```
+
 ### MIR (`bmb/src/mir/`)
 
 Middle Intermediate Representation for optimization and codegen.
@@ -189,7 +349,7 @@ Middle Intermediate Representation for optimization and codegen.
 |------|---------|
 | `mod.rs` | MIR types and builder |
 | `lower.rs` | AST to MIR lowering |
-| `optimize.rs` | MIR optimization passes |
+| `optimize.rs` | 15+ MIR optimization passes |
 
 **MIR structure:**
 ```rust
@@ -198,6 +358,8 @@ pub struct MirFunction {
     pub params: Vec<MirParam>,
     pub return_type: MirType,
     pub blocks: Vec<BasicBlock>,
+    pub is_memory_free: bool,  // For memory(none) attribute
+    pub inline_hint: bool,     // For inlinehint attribute
 }
 
 pub struct BasicBlock {
@@ -303,6 +465,8 @@ Build orchestration and caching.
 
 ## Data Flow
 
+### Current Flow (v0.51)
+
 ```
 1. Source file → Lexer → Token stream
 2. Token stream → Parser → Untyped AST
@@ -310,9 +474,32 @@ Build orchestration and caching.
 4. Typed AST → SMT Generator → SMT-LIB2
 5. SMT-LIB2 → Z3 → Verification result
 6. Typed AST → MIR Lowering → MIR
-7. MIR → CodeGen → LLVM IR / WASM
-8. LLVM IR → LLVM → Native binary
+7. MIR → Optimizer → Optimized MIR
+8. Optimized MIR → CodeGen → LLVM IR / WASM
+9. LLVM IR → clang → Native binary
 ```
+
+### Target Flow (v0.55+)
+
+```
+1. Source file → Lexer → Token stream
+2. Token stream → Parser → Untyped AST
+3. Untyped AST → Type Checker → Typed AST
+4. Typed AST → CIR Lowering → CIR [cir/lower.rs - implemented]
+5. CIR → SMT Generator → SMT-LIB2 [cir/smt.rs - implemented]
+6. SMT-LIB2 → Z3 → ProofFacts [verify/proof_db.rs - implemented]
+7. CIR + ProofFacts → PIR Lowering → PIR [pir/ - implemented]
+8. PIR → Proof Propagation → PIR with facts [pir/propagate.rs - implemented]
+9. PIR → MIR Lowering → MIR [pir/lower_to_mir.rs - implemented]
+10. MIR → Contract-Based Optimizer → Optimized MIR [NOT IMPLEMENTED]
+11. Optimized MIR → CodeGen → LLVM IR / WASM
+12. LLVM IR → clang → Native binary
+```
+
+### Gap Analysis
+
+Steps 4-10 have code implemented but are **not integrated** into the main pipeline.
+The main pipeline still uses: AST → MIR → CodeGen (skipping CIR/PIR).
 
 ## Key Design Decisions
 
