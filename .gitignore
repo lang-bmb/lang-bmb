@@ -54,6 +54,8 @@ stage2_bin
 
 # Build directories
 build/
+build_test/
+build_wsl/
 
 # Temporary scripts
 convert_mir.py
