@@ -56,6 +56,7 @@ stage2_bin
 build/
 build_test/
 build_wsl/
+benchmark_run/
 
 # Temporary scripts
 convert_mir.py
