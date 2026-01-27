@@ -59,12 +59,18 @@
 | binary_trees | 90.94 | 79.76 | 1.14x | |
 | k-nucleotide | 4.19 | 3.67 | 1.14x | |
 
-#### ⏳ 알려진 한계 (컴파일러 변경 필요)
+#### ✅ v0.51.48 성능 개선 완료 (2026-01-27)
 
-| 벤치마크 | BMB vs C | 근본 원인 | 해결 방안 | 상태 |
-|----------|----------|----------|----------|------|
-| **syscall_overhead** | 2.81x | String wrapper overhead | extern fn 문자열 리터럴 최적화 | ⏳ 컴파일러 변경 필요 |
-| **fibonacci** | 1.56x | 비-꼬리재귀 (TCO 불가) | 언어 한계 또는 i32 파라미터 | ⏳ ConstantPropagationNarrowing 버그 수정 필요 |
+| 벤치마크 | 이전 | 이후 | 수정 내용 |
+|----------|------|------|----------|
+| **syscall_overhead** | 2.81x | ~1.0x | file_exists_cstr 최적화 (string literal → raw const char*) |
+| **fibonacci** | 1.56x | ~1.0x | LLVM이 i64→i32 자동 narrowing (clang 22.1.0) |
+| **spectral_norm** | ~1.25x | ~1.2x | i32 타입 지원 추가 (types/codegen/interp/runtime) |
+
+**v0.51.48 변경 사항:**
+- `i32_to_f64`, `i32_to_i64`, `i64_to_i32` 타입 변환 함수 추가
+- Let 표현식의 타입 어노테이션 존중 (i32 변수가 i64로 추론되는 버그 수정)
+- 코드젠에서 declared local 타입 보존 (Const/Copy에서 덮어쓰기 방지)
 
 ---
 
