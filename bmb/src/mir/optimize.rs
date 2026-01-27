@@ -855,6 +855,15 @@ fn collect_used_in_instruction(inst: &MirInst, used: &mut HashSet<String>) {
         MirInst::Cast { src, .. } => {
             collect_used_in_operand(src, used);
         }
+        // v0.55: Tuple instructions
+        MirInst::TupleInit { elements, .. } => {
+            for (_, val) in elements {
+                collect_used_in_operand(val, used);
+            }
+        }
+        MirInst::TupleExtract { tuple, .. } => {
+            used.insert(tuple.name.clone());
+        }
     }
 }
 
@@ -3506,6 +3515,9 @@ impl MemoryEffectAnalysis {
             | MirInst::Copy { .. }
             | MirInst::Phi { .. }
             | MirInst::Cast { .. } => false,
+            // v0.55: Tuple operations - TupleInit builds a value, TupleExtract reads from it
+            // These are aggregate operations that may involve stack allocation
+            MirInst::TupleInit { .. } | MirInst::TupleExtract { .. } => true,
         }
     }
 

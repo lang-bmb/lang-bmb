@@ -764,6 +764,38 @@ impl WasmCodeGen {
                 self.emit_wasm_cast(out, from_ty, to_ty)?;
                 writeln!(out, "    local.set ${}", dest.name)?;
             }
+
+            // v0.55: Tuple initialization - store elements in linear memory
+            MirInst::TupleInit { dest, elements } => {
+                writeln!(out, "    ;; tuple init with {} elements", elements.len())?;
+                // Allocate space on the heap (simplified: 8 bytes per element)
+                let size = elements.len() * 8;
+                writeln!(out, "    global.get $heap_ptr")?;
+                writeln!(out, "    local.tee ${}", dest.name)?;
+                // Store each element
+                for (i, (_, op)) in elements.iter().enumerate() {
+                    writeln!(out, "    local.get ${}", dest.name)?;
+                    writeln!(out, "    i32.const {}", i * 8)?;
+                    writeln!(out, "    i32.add")?;
+                    self.emit_operand(out, op)?;
+                    writeln!(out, "    i64.store")?;
+                }
+                // Bump heap pointer
+                writeln!(out, "    global.get $heap_ptr")?;
+                writeln!(out, "    i32.const {}", size)?;
+                writeln!(out, "    i32.add")?;
+                writeln!(out, "    global.set $heap_ptr")?;
+            }
+
+            // v0.55: Tuple field extraction - load element from memory
+            MirInst::TupleExtract { dest, tuple, index, element_type: _ } => {
+                writeln!(out, "    ;; tuple extract index {}", index)?;
+                writeln!(out, "    local.get ${}", tuple.name)?;
+                writeln!(out, "    i32.const {}", index * 8)?;
+                writeln!(out, "    i32.add")?;
+                writeln!(out, "    i64.load")?;
+                writeln!(out, "    local.set ${}", dest.name)?;
+            }
         }
 
         Ok(())
@@ -813,6 +845,8 @@ impl WasmCodeGen {
             MirType::Array { .. } => "array",
             // v0.51.37: Pointer type
             MirType::Ptr(_) => "ptr",
+            // v0.55: Tuple type
+            MirType::Tuple(_) => "tuple",
         }
     }
 
@@ -977,6 +1011,8 @@ impl WasmCodeGen {
             MirType::Char => "i32",
             // v0.51.37: Pointer types are i32 in WASM (memory offsets)
             MirType::Ptr(_) => "i32",
+            // v0.55: Tuple types are pointers (i32 in WASM)
+            MirType::Tuple(_) => "i32",
         }
     }
 
@@ -1011,6 +1047,8 @@ impl WasmCodeGen {
             MirType::Array { .. } => "i32.const 0",
             // v0.51.37: Pointer types default to null (0)
             MirType::Ptr(_) => "i32.const 0",
+            // v0.55: Tuple pointers default to null (0)
+            MirType::Tuple(_) => "i32.const 0",
         }
     }
 
@@ -1177,6 +1215,15 @@ impl WasmCodeGen {
             // v0.50.80: Type cast
             MirInst::Cast { dest, to_ty, .. } => {
                 Some((dest.name.clone(), to_ty.clone()))
+            }
+            // v0.55: Tuple operations
+            MirInst::TupleInit { dest, elements } => {
+                Some((dest.name.clone(), MirType::Tuple(
+                    elements.iter().map(|(ty, _)| Box::new(ty.clone())).collect()
+                )))
+            }
+            MirInst::TupleExtract { dest, element_type, .. } => {
+                Some((dest.name.clone(), element_type.clone()))
             }
         }
     }

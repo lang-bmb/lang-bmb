@@ -242,6 +242,21 @@ pub enum MirInst {
         value: Operand,
         element_type: MirType,
     },
+    /// v0.55: Tuple initialization with heterogeneous elements
+    /// Used for native tuple returns to enable struct-based LLVM codegen
+    TupleInit {
+        dest: Place,
+        /// Each element has its type and value
+        elements: Vec<(MirType, Operand)>,
+    },
+    /// v0.55: Tuple field extraction by index
+    /// Gets the Nth element from a tuple (compile-time constant index)
+    TupleExtract {
+        dest: Place,
+        tuple: Place,
+        index: usize,
+        element_type: MirType,
+    },
     /// v0.50.80: Type cast: %dest = cast %src from_ty to to_ty
     /// Generates: sext/zext/trunc/fpext/fptosi/sitofp depending on types
     Cast {
@@ -456,6 +471,9 @@ pub enum MirType {
     /// v0.51.37: Raw pointer type for heap-allocated data
     /// Used for proper LLVM codegen with typed pointers
     Ptr(Box<MirType>),
+    /// v0.55: Tuple type with heterogeneous element types
+    /// Used for native tuple returns and multiple return values
+    Tuple(Vec<Box<MirType>>),
 }
 
 impl MirType {
@@ -776,6 +794,16 @@ fn format_mir_inst(inst: &MirInst) -> String {
         MirInst::Cast { dest, src, from_ty, to_ty } => {
             format!("%{} = cast {} {} to {}", dest.name, format_operand(src), format_mir_type(from_ty), format_mir_type(to_ty))
         }
+        // v0.55: Tuple instructions
+        MirInst::TupleInit { dest, elements } => {
+            let elems: Vec<_> = elements.iter()
+                .map(|(ty, op)| format!("{}: {}", format_mir_type(ty), format_operand(op)))
+                .collect();
+            format!("%{} = tuple-init ({})", dest.name, elems.join(", "))
+        }
+        MirInst::TupleExtract { dest, tuple, index, element_type } => {
+            format!("%{} = tuple-extract %{}.{} : {}", dest.name, tuple.name, index, format_mir_type(element_type))
+        }
     }
 }
 
@@ -906,5 +934,10 @@ fn format_mir_type(ty: &MirType) -> String {
         }
         // v0.51.37: Pointer type
         MirType::Ptr(inner) => format!("*{}", format_mir_type(inner)),
+        // v0.55: Tuple type
+        MirType::Tuple(elems) => {
+            let elems_str: Vec<_> = elems.iter().map(|e| format_mir_type(e)).collect();
+            format!("({})", elems_str.join(", "))
+        }
     }
 }

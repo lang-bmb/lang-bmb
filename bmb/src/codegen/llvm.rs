@@ -763,6 +763,14 @@ impl<'ctx> LlvmContext<'ctx> {
                 .context
                 .ptr_type(inkwell::AddressSpace::default())
                 .into(),
+            // v0.55: Tuple type - LLVM struct with heterogeneous element types
+            MirType::Tuple(elems) => {
+                let elem_types: Vec<BasicTypeEnum<'ctx>> = elems
+                    .iter()
+                    .map(|e| self.mir_type_to_llvm(e))
+                    .collect();
+                self.context.struct_type(&elem_types, false).into()
+            }
         }
     }
 
@@ -1029,6 +1037,9 @@ impl<'ctx> LlvmContext<'ctx> {
                     MirInst::IndexLoad { dest, .. } => Some(&dest.name),
                     MirInst::IndexStore { array, .. } => Some(&array.name),
                     MirInst::Cast { dest, .. } => Some(&dest.name),
+                    // v0.55: Tuple instructions
+                    MirInst::TupleInit { dest, .. } => Some(&dest.name),
+                    MirInst::TupleExtract { dest, .. } => Some(&dest.name),
                 };
                 if let Some(name) = dest {
                     written.insert(name.clone());
@@ -1069,6 +1080,9 @@ impl<'ctx> LlvmContext<'ctx> {
                     MirInst::IndexLoad { dest, .. } => Some(&dest.name),
                     MirInst::IndexStore { .. } => None, // Index stores modify existing array
                     MirInst::Cast { dest, .. } => Some(&dest.name),
+                    // v0.55: Tuple instructions
+                    MirInst::TupleInit { dest, .. } => Some(&dest.name),
+                    MirInst::TupleExtract { dest, .. } => Some(&dest.name),
                 };
 
                 if let Some(name) = dest {
@@ -1614,6 +1628,43 @@ impl<'ctx> LlvmContext<'ctx> {
                 let src_val = self.gen_operand(src)?;
                 let cast_val = self.gen_cast(src_val, from_ty, to_ty)?;
                 self.store_to_place(dest, cast_val)?;
+            }
+
+            // v0.55: Tuple initialization - builds LLVM struct from elements
+            MirInst::TupleInit { dest, elements } => {
+                // Create the LLVM struct type from element types
+                let elem_types: Vec<BasicTypeEnum<'ctx>> = elements
+                    .iter()
+                    .map(|(ty, _)| self.mir_type_to_llvm(ty))
+                    .collect();
+                let struct_type = self.context.struct_type(&elem_types, false);
+
+                // Build the struct value using insertvalue instructions
+                let mut struct_val = struct_type.get_undef();
+                for (i, (_, operand)) in elements.iter().enumerate() {
+                    let elem_val = self.gen_operand(operand)?;
+                    let result = self.builder
+                        .build_insert_value(struct_val, elem_val, i as u32, &format!("{}_elem{}", dest.name, i))
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                    struct_val = result.into_struct_value();
+                }
+
+                // Store the tuple value
+                self.store_to_place(dest, struct_val.into())?;
+            }
+
+            // v0.55: Tuple field extraction - extracts element from LLVM struct
+            MirInst::TupleExtract { dest, tuple, index, element_type: _ } => {
+                // Load the tuple value
+                let tuple_val = self.load_from_place(tuple)?;
+
+                // Extract the element using extractvalue
+                let elem_val = self.builder
+                    .build_extract_value(tuple_val.into_struct_value(), *index as u32, &format!("{}_extract", dest.name))
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+
+                // Store the extracted value
+                self.store_to_place(dest, elem_val)?;
             }
 
             // Struct/Enum operations not yet supported

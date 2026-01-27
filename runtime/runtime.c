@@ -129,6 +129,17 @@ int64_t bmb_load_i64(int64_t ptr) {
     return *((int64_t*)ptr);
 }
 
+// v0.55: Byte-level memory access for brainfuck and other byte-oriented code
+// store_u8(ptr, value) - Store single byte at memory address
+void store_u8(int64_t ptr, int64_t value) {
+    *((uint8_t*)ptr) = (uint8_t)(value & 0xFF);
+}
+
+// load_u8(ptr) - Load single byte from memory address (zero-extended to i64)
+int64_t load_u8(int64_t ptr) {
+    return (int64_t)(*((uint8_t*)ptr));
+}
+
 // ===================================================
 // String Runtime Functions (Phase 32.3)
 // For native Bootstrap compiler support

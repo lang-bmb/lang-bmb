@@ -136,6 +136,22 @@ impl TextCodeGen {
             })
             .collect();
 
+        // v0.55: Tuple-returning functions map (function name -> element types as LLVM string)
+        let tuple_functions: HashMap<String, String> = program
+            .functions
+            .iter()
+            .filter_map(|f| {
+                if let MirType::Tuple(elems) = &f.ret_ty {
+                    let elem_types: Vec<&str> = elems.iter()
+                        .map(|e| self.mir_type_to_llvm(e))
+                        .collect();
+                    let llvm_type = format!("{{ {} }}", elem_types.join(", "));
+                    return Some((f.name.clone(), llvm_type));
+                }
+                None
+            })
+            .collect();
+
         // v0.51.31: Emit struct type definitions
         self.emit_struct_types(&mut output, &program.struct_defs)?;
 
@@ -147,7 +163,7 @@ impl TextCodeGen {
 
         // Generate functions with string table and function type map
         for func in &program.functions {
-            self.emit_function_with_strings(&mut output, func, &string_table, &fn_return_types, &fn_param_types, &sret_functions, &small_struct_functions, &program.struct_defs)?;
+            self.emit_function_with_strings(&mut output, func, &string_table, &fn_return_types, &fn_param_types, &sret_functions, &small_struct_functions, &tuple_functions, &program.struct_defs)?;
         }
 
         Ok(output)
@@ -464,8 +480,9 @@ impl TextCodeGen {
         let empty_fn_param_types = HashMap::new();
         let empty_sret_functions = HashMap::new();
         let empty_small_struct_functions = HashMap::new();
+        let empty_tuple_functions = HashMap::new();
         let empty_struct_defs = HashMap::new();
-        self.emit_function_with_strings(out, func, &empty_str_table, &empty_fn_types, &empty_fn_param_types, &empty_sret_functions, &empty_small_struct_functions, &empty_struct_defs)
+        self.emit_function_with_strings(out, func, &empty_str_table, &empty_fn_types, &empty_fn_param_types, &empty_sret_functions, &empty_small_struct_functions, &empty_tuple_functions, &empty_struct_defs)
     }
 
     /// v0.51.25: Check if a specific struct variable escapes the function
@@ -807,6 +824,14 @@ impl TextCodeGen {
                     MirInst::Cast { dest, to_ty, .. } => {
                         place_types.insert(dest.name.clone(), self.mir_type_to_llvm(to_ty));
                     }
+                    // v0.55: TupleInit produces ptr type (aggregate value)
+                    MirInst::TupleInit { dest, .. } => {
+                        place_types.insert(dest.name.clone(), "ptr");
+                    }
+                    // v0.55: TupleExtract produces element type
+                    MirInst::TupleExtract { dest, element_type, .. } => {
+                        place_types.insert(dest.name.clone(), self.mir_type_to_llvm(element_type));
+                    }
                     _ => {}
                 }
             }
@@ -825,6 +850,7 @@ impl TextCodeGen {
         fn_param_types: &HashMap<String, Vec<&'static str>>,
         sret_functions: &HashMap<String, usize>,
         small_struct_functions: &HashMap<String, usize>,
+        tuple_functions: &HashMap<String, String>,
         struct_defs: &HashMap<String, Vec<(String, MirType)>>,
     ) -> TextCodeGenResult<()> {
         // Pre-scan to build place type map
@@ -851,6 +877,65 @@ impl TextCodeGen {
         // Track defined names to handle SSA violations from MIR
         let mut name_counts: HashMap<String, u32> = HashMap::new();
 
+        // v0.55: Build map of tuple variable names to their LLVM struct types
+        // This is needed for TupleExtract to know the correct type for load/extractvalue
+        // We need to iterate multiple times to propagate types through phi nodes
+        let mut tuple_var_types: HashMap<String, String> = HashMap::new();
+        // First pass: collect direct tuple sources (calls, TupleInit)
+        for block in &func.blocks {
+            for inst in &block.instructions {
+                if let MirInst::Call { dest: Some(d), func: fn_name, .. } = inst {
+                    if let Some(tuple_type) = tuple_functions.get(fn_name) {
+                        tuple_var_types.insert(d.name.clone(), tuple_type.clone());
+                    }
+                }
+                // Also track TupleInit instructions - these create tuple values directly
+                if let MirInst::TupleInit { dest, elements } = inst {
+                    let elem_types: Vec<&str> = elements.iter()
+                        .map(|(ty, _)| self.mir_type_to_llvm(ty))
+                        .collect();
+                    let tuple_type = format!("{{ {} }}", elem_types.join(", "));
+                    tuple_var_types.insert(dest.name.clone(), tuple_type);
+                }
+            }
+        }
+        // Second pass: propagate through phi nodes and copies (iterate until stable)
+        for _ in 0..10 {  // Limit iterations to avoid infinite loops
+            let mut changed = false;
+            for block in &func.blocks {
+                for inst in &block.instructions {
+                    // Track Copy instructions that copy from a tuple variable
+                    if let MirInst::Copy { dest, src } = inst {
+                        if !tuple_var_types.contains_key(&dest.name) {
+                            if let Some(tuple_type) = tuple_var_types.get(&src.name) {
+                                tuple_var_types.insert(dest.name.clone(), tuple_type.clone());
+                                changed = true;
+                            }
+                        }
+                    }
+                    // Track Phi instructions where any input is a tuple
+                    if let MirInst::Phi { dest, values } = inst {
+                        if !tuple_var_types.contains_key(&dest.name) {
+                            let tuple_type = values.iter().find_map(|(val, _)| {
+                                if let Operand::Place(p) = val {
+                                    tuple_var_types.get(&p.name).cloned()
+                                } else {
+                                    None
+                                }
+                            });
+                            if let Some(tt) = tuple_type {
+                                tuple_var_types.insert(dest.name.clone(), tt);
+                                changed = true;
+                            }
+                        }
+                    }
+                }
+            }
+            if !changed {
+                break;
+            }
+        }
+
         // v0.51.27: Detect struct return functions for sret optimization
         // v0.51.28: Small structs (1-2 fields) use register return, larger structs use sret
         let struct_field_count = if let MirType::Struct { fields, .. } = &func.ret_ty {
@@ -861,13 +946,26 @@ impl TextCodeGen {
         let is_small_struct = struct_field_count > 0 && struct_field_count <= 2;
         let is_sret = struct_field_count > 2;  // Only use sret for 3+ field structs
 
-        // Function signature - small structs use aggregate return type
-        let ret_type = if is_sret {
-            "void"
-        } else if is_small_struct {
-            if struct_field_count == 1 { "{i64}" } else { "{i64, i64}" }
+        // v0.55: Check if return type is a tuple
+        let tuple_elems = if let MirType::Tuple(elems) = &func.ret_ty {
+            Some(elems)
         } else {
-            self.mir_type_to_llvm(&func.ret_ty)
+            None
+        };
+
+        // Function signature - small structs and tuples use aggregate return type
+        let ret_type = if is_sret {
+            "void".to_string()
+        } else if is_small_struct {
+            if struct_field_count == 1 { "{i64}".to_string() } else { "{i64, i64}".to_string() }
+        } else if let Some(elems) = &tuple_elems {
+            // v0.55: Tuple return type - build LLVM struct type string
+            let elem_types: Vec<&str> = elems.iter()
+                .map(|e| self.mir_type_to_llvm(e))
+                .collect();
+            format!("{{ {} }}", elem_types.join(", "))
+        } else {
+            self.mir_type_to_llvm(&func.ret_ty).to_string()
         };
         let mut params: Vec<String> = func
             .params
@@ -1059,10 +1157,15 @@ impl TextCodeGen {
             writeln!(out, "alloca_entry:")?;
             for (name, ty) in &func.locals {
                 if local_names.contains(name) {
-                    // v0.51.30: Use place_types for alloca to handle narrowed types correctly
-                    // This ensures that when a BinaryOp produces i32 (due to narrowing optimization),
-                    // the alloca is also i32, avoiding mismatched store/load sizes.
-                    let llvm_ty = place_types.get(name).copied().unwrap_or_else(|| self.mir_type_to_llvm(ty));
+                    // v0.55: Check if this is a tuple variable first
+                    let llvm_ty = if let Some(tuple_type) = tuple_var_types.get(name) {
+                        tuple_type.as_str()
+                    } else {
+                        // v0.51.30: Use place_types for alloca to handle narrowed types correctly
+                        // This ensures that when a BinaryOp produces i32 (due to narrowing optimization),
+                        // the alloca is also i32, avoiding mismatched store/load sizes.
+                        place_types.get(name).copied().unwrap_or_else(|| self.mir_type_to_llvm(ty))
+                    };
                     // Skip void types - they can't be allocated
                     if llvm_ty != "void" {
                         writeln!(out, "  %{}.addr = alloca {}", name, llvm_ty)?;
@@ -1078,7 +1181,7 @@ impl TextCodeGen {
 
         // Emit basic blocks with place type information
         for block in &func.blocks {
-            self.emit_block_with_strings(out, block, func, string_table, fn_return_types, fn_param_types, sret_functions, small_struct_functions, &place_types, &mut name_counts, &local_names, &narrowed_param_names, &phi_load_map, &phi_string_map, &phi_coerce_map, struct_defs)?;
+            self.emit_block_with_strings(out, block, func, string_table, fn_return_types, fn_param_types, sret_functions, small_struct_functions, tuple_functions, &tuple_var_types, &place_types, &mut name_counts, &local_names, &narrowed_param_names, &phi_load_map, &phi_string_map, &phi_coerce_map, struct_defs)?;
         }
 
         writeln!(out, "}}")?;
@@ -1107,8 +1210,10 @@ impl TextCodeGen {
         let empty_phi_coerce_map = std::collections::HashMap::new();
         let empty_narrowed = std::collections::HashSet::new();
         let empty_small_struct_functions = HashMap::new();
+        let empty_tuple_functions = HashMap::new();
+        let empty_tuple_var_types = HashMap::new();
         let empty_struct_defs = HashMap::new();
-        self.emit_block_with_strings(out, block, func, &empty_str_table, &empty_fn_types, &empty_fn_param_types, &empty_sret_functions, &empty_small_struct_functions, &empty_place_types, &mut empty_name_counts, &empty_local_names, &empty_narrowed, &empty_phi_map, &empty_phi_string_map, &empty_phi_coerce_map, &empty_struct_defs)
+        self.emit_block_with_strings(out, block, func, &empty_str_table, &empty_fn_types, &empty_fn_param_types, &empty_sret_functions, &empty_small_struct_functions, &empty_tuple_functions, &empty_tuple_var_types, &empty_place_types, &mut empty_name_counts, &empty_local_names, &empty_narrowed, &empty_phi_map, &empty_phi_string_map, &empty_phi_coerce_map, &empty_struct_defs)
     }
 
     /// Emit a basic block with string table support
@@ -1123,6 +1228,8 @@ impl TextCodeGen {
         fn_param_types: &HashMap<String, Vec<&'static str>>,
         sret_functions: &HashMap<String, usize>,
         small_struct_functions: &HashMap<String, usize>,
+        tuple_functions: &HashMap<String, String>,
+        tuple_var_types: &HashMap<String, String>,
         place_types: &HashMap<String, &'static str>,
         name_counts: &mut HashMap<String, u32>,
         local_names: &std::collections::HashSet<String>,
@@ -1137,20 +1244,22 @@ impl TextCodeGen {
 
         // Emit instructions (pass phi_load_map for phi node handling)
         for inst in &block.instructions {
-            self.emit_instruction_with_strings(out, inst, func, string_table, fn_return_types, fn_param_types, sret_functions, small_struct_functions, place_types, name_counts, local_names, narrowed_param_names, phi_load_map, phi_string_map, phi_coerce_map, &block.label, struct_defs)?;
+            self.emit_instruction_with_strings(out, inst, func, string_table, fn_return_types, fn_param_types, sret_functions, small_struct_functions, tuple_functions, tuple_var_types, place_types, name_counts, local_names, narrowed_param_names, phi_load_map, phi_string_map, phi_coerce_map, &block.label, struct_defs)?;
         }
 
         // Emit loads for locals that will be used in phi nodes of successor blocks
         // This must happen BEFORE the terminator
         for ((_dest_block, local_name, pred_block), load_temp) in phi_load_map {
             if pred_block == &block.label {
-                // Use place_types if available (more accurate), fall back to func.locals
-                let llvm_ty = if let Some(ty) = place_types.get(local_name) {
-                    *ty
+                // v0.55: Check tuple_var_types first for tuple locals
+                let llvm_ty: std::borrow::Cow<'static, str> = if let Some(tuple_type) = tuple_var_types.get(local_name) {
+                    std::borrow::Cow::Owned(tuple_type.clone())
+                } else if let Some(ty) = place_types.get(local_name) {
+                    std::borrow::Cow::Borrowed(*ty)
                 } else if let Some((_, ty)) = func.locals.iter().find(|(n, _)| n == local_name) {
-                    self.mir_type_to_llvm(ty)
+                    std::borrow::Cow::Borrowed(self.mir_type_to_llvm(ty))
                 } else {
-                    "ptr" // Default to ptr for unknown types
+                    std::borrow::Cow::Borrowed("ptr") // Default to ptr for unknown types
                 };
                 writeln!(out, "  %{} = load {}, ptr %{}.addr", load_temp, llvm_ty, local_name)?;
             }
@@ -1224,6 +1333,8 @@ impl TextCodeGen {
         fn_param_types: &HashMap<String, Vec<&'static str>>,
         sret_functions: &HashMap<String, usize>,
         small_struct_functions: &HashMap<String, usize>,
+        tuple_functions: &HashMap<String, String>,
+        tuple_var_types: &HashMap<String, String>,
         place_types: &HashMap<String, &'static str>,
         name_counts: &mut HashMap<String, u32>,
         local_names: &std::collections::HashSet<String>,
@@ -1331,9 +1442,15 @@ impl TextCodeGen {
             }
 
             MirInst::Copy { dest, src } => {
-                // Use place_types for accurate type inference
-                let ty = place_types.get(&src.name).copied()
-                    .unwrap_or_else(|| self.infer_place_type(src, func));
+                // v0.55: Check if source is a tuple variable - use actual tuple type
+                let (ty, is_tuple) = if let Some(tuple_type) = tuple_var_types.get(&src.name) {
+                    (tuple_type.as_str(), true)
+                } else {
+                    // Use place_types for accurate type inference
+                    let t = place_types.get(&src.name).copied()
+                        .unwrap_or_else(|| self.infer_place_type(src, func));
+                    (t, false)
+                };
 
                 // v0.31.23: Skip void type copies (result of void-returning function calls)
                 if ty == "void" {
@@ -1356,6 +1473,8 @@ impl TextCodeGen {
                 // Store to alloca if destination is a local
                 if local_names.contains(&dest.name) {
                     writeln!(out, "  store {} {}, ptr %{}.addr", ty, src_val, dest.name)?;
+                    // Suppress unused warning for is_tuple
+                    let _ = is_tuple;
                 } else {
                     let dest_name = self.unique_name(&dest.name, name_counts);
                     if ty == "ptr" {
@@ -2655,6 +2774,10 @@ impl TextCodeGen {
                 let is_small_struct_call = small_struct_functions.contains_key(fn_name);
                 let small_struct_field_count = small_struct_functions.get(fn_name).copied().unwrap_or(0);
 
+                // v0.55: Check if this is a tuple-returning function
+                let is_tuple_call = tuple_functions.contains_key(fn_name);
+                let tuple_type = tuple_functions.get(fn_name).cloned();
+
                 // Generate unique base name for this call instruction
                 // v0.50.72: Use unique counter to avoid SSA violations with multiple calls
                 let call_cnt = *name_counts.entry(format!("call_{}", fn_name)).or_insert(0);
@@ -2837,6 +2960,27 @@ impl TextCodeGen {
                             writeln!(out, "  %{} = bitcast ptr %{} to ptr", dest_name, struct_ptr)?;
                         }
                     }
+                } else if is_tuple_call {
+                    // v0.55: Tuple return call handling - receive aggregate in registers
+                    let tuple_llvm_type = tuple_type.as_ref().unwrap();
+
+                    // Call with tuple aggregate return type
+                    let agg_temp = format!("{}.tuple", call_base);
+                    writeln!(out, "  %{} = {}call {} @{}({})", agg_temp, call_prefix, tuple_llvm_type, runtime_fn_name, args_str.join(", "))?;
+
+                    // Store the tuple result if there's a destination
+                    if let Some(d) = dest {
+                        if local_names.contains(&d.name) {
+                            // Store aggregate to alloca
+                            writeln!(out, "  store {} %{}, ptr %{}.addr", tuple_llvm_type, agg_temp, d.name)?;
+                        } else {
+                            // SSA assignment: create named tuple value
+                            let dest_name = self.unique_name(&d.name, name_counts);
+                            // Just pass through the aggregate value
+                            writeln!(out, "  %{} = add i8 0, 0 ; tuple placeholder", dest_name)?;
+                            // Note: The actual tuple value is in %agg_temp, handled by TupleExtract
+                        }
+                    }
                 } else if ret_ty == "void" {
                     writeln!(
                         out,
@@ -2888,20 +3032,35 @@ impl TextCodeGen {
                 let dest_name = self.unique_name(&dest.name, name_counts);
                 // PHI nodes must come at the start of a basic block
                 // %dest = phi type [ val1, %label1 ], [ val2, %label2 ], ...
+                // v0.55: Check tuple_var_types first for tuple phis
                 // v0.51.13: Use place_types for phi type - this has the WIDEST type among all values
                 // This handles ConstantPropagationNarrowing where param is i32 but return is i64
-                let ty = place_types.get(&dest.name).copied().unwrap_or_else(|| {
-                    // Fallback: infer from first value
-                    if !values.is_empty() {
-                        match &values[0].0 {
-                            Operand::Constant(c) => self.constant_type(c),
-                            Operand::Place(p) => place_types.get(&p.name).copied()
-                                .unwrap_or_else(|| self.infer_place_type(p, func)),
+                let ty: std::borrow::Cow<'static, str> = {
+                    // First check if any phi value is a tuple (from tuple_var_types)
+                    let tuple_ty = values.iter().find_map(|(val, _)| {
+                        if let Operand::Place(p) = val {
+                            tuple_var_types.get(&p.name).cloned()
+                        } else {
+                            None
                         }
+                    });
+                    if let Some(tt) = tuple_ty {
+                        std::borrow::Cow::Owned(tt)
+                    } else if let Some(t) = place_types.get(&dest.name) {
+                        std::borrow::Cow::Borrowed(*t)
                     } else {
-                        "i64"
+                        // Fallback: infer from first value
+                        if !values.is_empty() {
+                            std::borrow::Cow::Borrowed(match &values[0].0 {
+                                Operand::Constant(c) => self.constant_type(c),
+                                Operand::Place(p) => place_types.get(&p.name).copied()
+                                    .unwrap_or_else(|| self.infer_place_type(p, func)),
+                            })
+                        } else {
+                            std::borrow::Cow::Borrowed("i64")
+                        }
                     }
-                });
+                };
 
                 // Find the dest block label by looking at which block contains this phi
                 // We need to check phi_load_map for locals that were pre-loaded
@@ -3337,6 +3496,87 @@ impl TextCodeGen {
                     writeln!(out, "  %{} = {} {} {} to {}", dest_name, cast_inst, from_ty_str, src_str, to_ty_str)?;
                 }
             }
+
+            // v0.55: Tuple initialization - builds LLVM struct from elements
+            MirInst::TupleInit { dest, elements } => {
+                // Create the LLVM struct type string
+                let elem_types: Vec<String> = elements
+                    .iter()
+                    .map(|(ty, _)| self.mir_type_to_llvm(ty).to_string())
+                    .collect();
+                let struct_type = format!("{{ {} }}", elem_types.join(", "));
+
+                // Helper to format operand with local variable loading
+                let format_element_val = |out: &mut String, ty: &MirType, op: &Operand, idx: usize, name_counts: &mut HashMap<String, u32>| -> TextCodeGenResult<String> {
+                    let ty_str = self.mir_type_to_llvm(ty);
+                    match op {
+                        Operand::Place(p) if local_names.contains(&p.name) => {
+                            // Load from alloca for local variables
+                            let load_name = self.unique_name(&format!("{}_tuple_elem{}", dest.name, idx), name_counts);
+                            writeln!(out, "  %{} = load {}, ptr %{}.addr", load_name, ty_str, p.name)?;
+                            Ok(format!("%{}", load_name))
+                        }
+                        _ => Ok(self.format_operand(op)),
+                    }
+                };
+
+                // Build the struct value using insertvalue instructions
+                let dest_name = self.unique_name(&dest.name, name_counts);
+                if elements.is_empty() {
+                    writeln!(out, "  %{} = insertvalue {} undef, i64 0, 0", dest_name, struct_type)?;
+                } else {
+                    // First element: insertvalue into undef
+                    let (first_ty, first_op) = &elements[0];
+                    let first_val = format_element_val(out, first_ty, first_op, 0, name_counts)?;
+                    let first_ty_str = self.mir_type_to_llvm(first_ty);
+                    writeln!(out, "  %{}_0 = insertvalue {} undef, {} {}, 0", dest_name, struct_type, first_ty_str, first_val)?;
+
+                    // Remaining elements: chain insertvalue
+                    for (i, (ty, op)) in elements.iter().enumerate().skip(1) {
+                        let val_str = format_element_val(out, ty, op, i, name_counts)?;
+                        let ty_str = self.mir_type_to_llvm(ty);
+                        let prev = if i == 1 { format!("%{}_0", dest_name) } else { format!("%{}_{}", dest_name, i - 1) };
+                        if i == elements.len() - 1 {
+                            // Last element uses final dest name
+                            writeln!(out, "  %{} = insertvalue {} {}, {} {}, {}", dest_name, struct_type, prev, ty_str, val_str, i)?;
+                        } else {
+                            writeln!(out, "  %{}_{} = insertvalue {} {}, {} {}, {}", dest_name, i, struct_type, prev, ty_str, val_str, i)?;
+                        }
+                    }
+                    // Single element case - rename _0 to final name
+                    if elements.len() == 1 {
+                        writeln!(out, "  %{} = insertvalue {} %{}_0, i64 0, 0 ; alias", dest_name, struct_type, dest_name)?;
+                    }
+                }
+            }
+
+            // v0.55: Tuple field extraction - extracts element from LLVM struct
+            MirInst::TupleExtract { dest, tuple, index, element_type } => {
+                let dest_name = self.unique_name(&dest.name, name_counts);
+                let elem_ty_str = self.mir_type_to_llvm(element_type);
+
+                // Get the tuple's LLVM struct type from the tracking map
+                let tuple_llvm_type = tuple_var_types.get(&tuple.name)
+                    .cloned()
+                    .unwrap_or_else(|| "{ i64, i64 }".to_string()); // fallback
+
+                // Load the tuple value with correct struct type if stored locally
+                let tuple_val = if local_names.contains(&tuple.name) {
+                    let load_name = self.unique_name(&format!("{}_tuple_load", dest.name), name_counts);
+                    writeln!(out, "  %{} = load {}, ptr %{}.addr", load_name, tuple_llvm_type, tuple.name)?;
+                    format!("%{}", load_name)
+                } else {
+                    format!("%{}", tuple.name)
+                };
+
+                // Extract the element with correct struct type
+                writeln!(out, "  %{} = extractvalue {} {}, {}", dest_name, tuple_llvm_type, tuple_val, index)?;
+
+                // Store to alloca if dest is a local
+                if local_names.contains(&dest.name) {
+                    writeln!(out, "  store {} %{}, ptr %{}.addr", elem_ty_str, dest_name, dest.name)?;
+                }
+            }
         }
 
         Ok(())
@@ -3374,7 +3614,34 @@ impl TextCodeGen {
                 let is_small_struct = struct_field_count > 0 && struct_field_count <= 2;
                 let is_sret = struct_field_count > 2;
 
-                if is_small_struct {
+                // v0.55: Check if return type is a tuple
+                let tuple_elems = if let MirType::Tuple(elems) = &func.ret_ty {
+                    Some(elems)
+                } else {
+                    None
+                };
+
+                // v0.55: Tuple return - return the aggregate value directly
+                if let Some(elems) = tuple_elems {
+                    let elem_types: Vec<&str> = elems.iter()
+                        .map(|e| self.mir_type_to_llvm(e))
+                        .collect();
+                    let ret_type = format!("{{ {} }}", elem_types.join(", "));
+
+                    // The value should be a tuple value (SSA or loaded from local)
+                    if let Operand::Place(p) = val {
+                        // If it's a local, load from alloca first
+                        if local_names.contains(&p.name) {
+                            writeln!(out, "  %{}_ret_load = load {}, ptr %{}.addr", p.name, ret_type, p.name)?;
+                            writeln!(out, "  ret {} %{}_ret_load", ret_type, p.name)?;
+                        } else {
+                            // Return the tuple value directly - it was built with insertvalue
+                            writeln!(out, "  ret {} %{}", ret_type, p.name)?;
+                        }
+                    } else {
+                        writeln!(out, "  ret {} undef", ret_type)?;
+                    }
+                } else if is_small_struct {
                     // v0.51.28: Small struct register return - pack fields into aggregate
                     let ret_type = if struct_field_count == 1 { "{i64}" } else { "{i64, i64}" };
 
@@ -3549,6 +3816,8 @@ impl TextCodeGen {
             MirType::Char => "i32",
             // v0.51.37: Pointer types are opaque pointers in modern LLVM
             MirType::Ptr(_) => "ptr",
+            // v0.55: Tuple types - use ptr as placeholder (actual struct type handled inline)
+            MirType::Tuple(_) => "ptr",
         }
     }
 

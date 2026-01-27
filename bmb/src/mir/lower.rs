@@ -208,6 +208,10 @@ fn lower_function(
     // v0.38.3: Extract @pure and @const attributes
     let is_pure = has_attribute(&fn_def.attributes, "pure");
     let is_const = has_attribute(&fn_def.attributes, "const");
+    // v0.59: Support explicit @alwaysinline attribute to bypass size heuristics
+    let explicit_always_inline = has_attribute(&fn_def.attributes, "alwaysinline");
+    // v0.59: Support @inline attribute as an alias for @alwaysinline
+    let explicit_inline = has_attribute(&fn_def.attributes, "inline");
 
     MirFunction {
         name: fn_def.name.node.clone(),
@@ -219,7 +223,7 @@ fn lower_function(
         postconditions,
         is_pure,
         is_const,
-        always_inline: false, // Set by AggressiveInlining pass
+        always_inline: explicit_always_inline || explicit_inline, // v0.59: Can be set by source attribute OR AggressiveInlining pass
         inline_hint: false, // v0.51.52: Set by AggressiveInlining pass for medium-sized functions
         is_memory_free: false, // Set by MemoryEffectAnalysis pass
     }
@@ -765,24 +769,29 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
             Operand::Place(dest)
         }
 
-        // v0.43: Tuple field access (compile-time constant index)
+        // v0.55: Tuple field access (compile-time constant index)
         Expr::TupleField { expr, index } => {
             // Lower the tuple expression
             let tuple_op = lower_expr(expr, ctx);
 
             // Convert operand to place if needed
-            let tuple_place = operand_to_place(tuple_op, ctx);
+            let tuple_place = operand_to_place(tuple_op.clone(), ctx);
+
+            // Get the element type from the tuple's type
+            let element_type = match ctx.operand_type(&tuple_op) {
+                MirType::Tuple(elems) if *index < elems.len() => (*elems[*index]).clone(),
+                _ => MirType::I64, // Fallback for unknown types
+            };
 
             // Create destination for the element value
             let dest = ctx.fresh_temp();
 
-            // Use IndexLoad with constant index for tuple field access
-            // v0.51.35: Default to I64 for tuple elements (tuples are homogeneous in MIR)
-            ctx.push_inst(MirInst::IndexLoad {
+            // v0.55: Use TupleExtract for proper struct-based tuple access
+            ctx.push_inst(MirInst::TupleExtract {
                 dest: dest.clone(),
-                array: tuple_place,
-                index: Operand::Constant(Constant::Int(*index as i64)),
-                element_type: MirType::I64,
+                tuple: tuple_place,
+                index: *index,
+                element_type,
             });
 
             Operand::Place(dest)
@@ -1022,29 +1031,29 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
             Operand::Place(dest)
         }
 
-        // v0.42: Tuple expressions
+        // v0.55: Tuple expressions - native heterogeneous tuple support
         Expr::Tuple(elems) => {
-            // Lower each element
-            let mir_elements: Vec<Operand> = elems
+            // Lower each element and collect its type
+            let typed_elements: Vec<(MirType, Operand)> = elems
                 .iter()
-                .map(|e| lower_expr(e, ctx))
+                .map(|e| {
+                    let op = lower_expr(e, ctx);
+                    let ty = ctx.operand_type(&op);
+                    (ty, op)
+                })
                 .collect();
 
-            // For now, represent tuples using ArrayInit (simplified)
-            // A proper implementation would use a struct-like aggregate
-            let element_type = if !mir_elements.is_empty() {
-                ctx.operand_type(&mir_elements[0])
-            } else {
-                MirType::I64
-            };
+            // Create tuple type for tracking
+            let tuple_type = MirType::Tuple(
+                typed_elements.iter().map(|(ty, _)| Box::new(ty.clone())).collect()
+            );
 
             let dest = ctx.fresh_temp();
-            // v0.51.35: Track tuple element type for IndexLoad
-            ctx.array_element_types.insert(dest.name.clone(), element_type.clone());
-            ctx.push_inst(MirInst::ArrayInit {
+            // Track tuple type for TupleExtract
+            ctx.temp_types.insert(dest.name.clone(), tuple_type);
+            ctx.push_inst(MirInst::TupleInit {
                 dest: dest.clone(),
-                element_type,
-                elements: mir_elements,
+                elements: typed_elements,
             });
             Operand::Place(dest)
         }
@@ -1422,8 +1431,10 @@ fn ast_type_to_mir(ty: &Type) -> MirType {
         Type::Never => MirType::Unit,
         // v0.37: Nullable type - convert inner type (for MIR, nullable is just a tagged union)
         Type::Nullable(inner) => ast_type_to_mir(inner),
-        // v0.42: Tuple type - represent as struct-like aggregate
-        Type::Tuple(_) => MirType::I64, // Simplified for now
+        // v0.55: Tuple type - native heterogeneous tuple support for struct-based LLVM codegen
+        Type::Tuple(elems) => MirType::Tuple(
+            elems.iter().map(|e| Box::new(ast_type_to_mir(e))).collect()
+        ),
         // v0.51.37: Pointer type - preserve the pointee type for proper codegen
         // For struct pointers, use StructPtr to avoid issues with unknown struct definitions
         Type::Ptr(inner) => {
@@ -1503,7 +1514,10 @@ fn ast_type_to_mir_with_structs(
         Type::Fn { .. } => MirType::I64,
         Type::Never => MirType::Unit,
         Type::Nullable(inner) => ast_type_to_mir_with_structs(inner, struct_type_defs),
-        Type::Tuple(_) => MirType::I64,
+        // v0.55: Tuple type - native heterogeneous tuple support
+        Type::Tuple(elems) => MirType::Tuple(
+            elems.iter().map(|e| Box::new(ast_type_to_mir_with_structs(e, struct_type_defs))).collect()
+        ),
         // v0.51.37: Pointer type - preserve the pointee type for proper codegen
         // For struct pointers, use StructPtr to avoid infinite recursion on self-referential types
         Type::Ptr(inner) => {
