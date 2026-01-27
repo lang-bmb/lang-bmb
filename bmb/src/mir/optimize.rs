@@ -2501,9 +2501,25 @@ impl OptimizationPass for TailRecursiveToLoop {
 
                 // Add placeholder edges for each tail call site
                 // Will be updated with actual labels after block insertion
+                // v0.51.53: Fix: when a specific call passes the param unchanged,
+                // use the loop variable, not the original param
                 for (block_idx, _, tail_args) in &tail_call_blocks {
                     let block_label = func.blocks[*block_idx].label.clone();
-                    phi_values.push((tail_args[i].clone(), block_label));
+
+                    // Check if this specific arg passes the param unchanged
+                    let arg = &tail_args[i];
+                    let passes_unchanged = match arg {
+                        Operand::Place(p) => p.name == *param_name,
+                        _ => false,
+                    };
+
+                    if passes_unchanged {
+                        // Use loop variable instead of original param
+                        let loop_var = format!("{}_loop", param_name);
+                        phi_values.push((Operand::Place(Place::new(loop_var)), block_label));
+                    } else {
+                        phi_values.push((tail_args[i].clone(), block_label));
+                    }
                 }
 
                 phi_instructions.push(MirInst::Phi {

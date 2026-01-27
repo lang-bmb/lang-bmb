@@ -2468,11 +2468,19 @@ impl TextCodeGen {
                     *name_counts.get_mut("str_len").unwrap() += 1;
 
                     // Get string pointer argument
+                    // v0.51.53: String constants need .bmb suffix for BmbString struct
                     let str_val = match &args[0] {
                         Operand::Place(p) if local_names.contains(&p.name) => {
                             let load_name = format!("strlen.str.{}", str_idx);
                             writeln!(out, "  %{} = load ptr, ptr %{}.addr", load_name, p.name)?;
                             format!("%{}", load_name)
+                        }
+                        Operand::Constant(Constant::String(s)) => {
+                            if let Some(global_name) = string_table.get(s) {
+                                format!("@{}.bmb", global_name)
+                            } else {
+                                self.format_operand_with_strings(&args[0], string_table)
+                            }
                         }
                         _ => self.format_operand_with_strings(&args[0], string_table),
                     };
@@ -2502,11 +2510,19 @@ impl TextCodeGen {
                     *name_counts.get_mut("str_char_at").unwrap() += 1;
 
                     // Get string pointer argument
+                    // v0.51.53: String constants need .bmb suffix for BmbString struct
                     let str_val = match &args[0] {
                         Operand::Place(p) if local_names.contains(&p.name) => {
                             let load_name = format!("charat.str.{}", str_idx);
                             writeln!(out, "  %{} = load ptr, ptr %{}.addr", load_name, p.name)?;
                             format!("%{}", load_name)
+                        }
+                        Operand::Constant(Constant::String(s)) => {
+                            if let Some(global_name) = string_table.get(s) {
+                                format!("@{}.bmb", global_name)
+                            } else {
+                                self.format_operand_with_strings(&args[0], string_table)
+                            }
                         }
                         _ => self.format_operand_with_strings(&args[0], string_table),
                     };
