@@ -15,6 +15,7 @@
 
 mod lower;
 mod optimize;
+pub mod proof_guided;
 
 pub use lower::lower_program;
 pub use optimize::{
@@ -23,6 +24,11 @@ pub use optimize::{
     CopyPropagation, CommonSubexpressionElimination, ContractBasedOptimization,
     ContractUnreachableElimination, PureFunctionCSE, ConstFunctionEval,
     ConstantPropagationNarrowing, AggressiveInlining,
+};
+pub use proof_guided::{
+    BoundsCheckElimination, NullCheckElimination, DivisionCheckElimination,
+    ProofUnreachableElimination, ProvenFactSet, ProofOptimizationStats,
+    run_proof_guided_optimizations, run_proof_guided_program,
 };
 
 use std::collections::HashMap;
@@ -79,6 +85,10 @@ pub struct MirFunction {
     /// v0.51.8: Function should be aggressively inlined
     /// Set by AggressiveInlining pass for small pure functions
     pub always_inline: bool,
+    /// v0.51.52: Function should be preferentially inlined by LLVM
+    /// Set by AggressiveInlining pass for medium-sized functions that don't qualify
+    /// for alwaysinline but would benefit from inlining in hot loops
+    pub inline_hint: bool,
     /// v0.51.11: Function does not access memory (only arithmetic/comparisons)
     /// Set by MemoryEffectAnalysis pass. Used for LLVM memory(none) attribute.
     pub is_memory_free: bool,
@@ -661,6 +671,7 @@ fn format_mir_function(func: &MirFunction) -> String {
     if func.is_pure { attrs.push("pure"); }
     if func.is_const { attrs.push("const"); }
     if func.always_inline { attrs.push("alwaysinline"); }
+    if func.inline_hint { attrs.push("inlinehint"); }
     if func.is_memory_free { attrs.push("memory(none)"); }
 
     // Function header with optional attributes

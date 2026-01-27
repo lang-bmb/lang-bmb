@@ -901,12 +901,17 @@ impl TextCodeGen {
         // v0.50.76: Added willreturn and mustprogress for better recursion optimization
         // v0.51.8: Added alwaysinline for small functions to eliminate call overhead
         // v0.51.11: Added memory(none) for memory-free functions to enable LICM
+        // v0.51.52: Added inlinehint for medium-sized functions (like lexer's next_token)
         let attrs = if func.name == "main" {
             String::new()
         } else if func.always_inline && func.is_memory_free {
             " alwaysinline nounwind willreturn mustprogress memory(none)".to_string()
         } else if func.always_inline {
             " alwaysinline nounwind willreturn mustprogress".to_string()
+        } else if func.inline_hint && func.is_memory_free {
+            " inlinehint nounwind willreturn mustprogress memory(none)".to_string()
+        } else if func.inline_hint {
+            " inlinehint nounwind willreturn mustprogress".to_string()
         } else if func.is_memory_free {
             " nounwind willreturn mustprogress memory(none)".to_string()
         } else {
@@ -3874,6 +3879,7 @@ mod tests {
                 is_pure: false,
                 is_const: false,
                 always_inline: false,
+                inline_hint: false,
                 is_memory_free: false,
             }],
             extern_fns: vec![],

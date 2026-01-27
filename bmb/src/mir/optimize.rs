@@ -3374,7 +3374,7 @@ impl AggressiveInlining {
         false
     }
 
-    /// Check if function should be marked for aggressive inlining
+    /// Check if function should be marked for aggressive inlining (alwaysinline)
     fn should_inline(&self, func: &MirFunction) -> bool {
         // Never inline main function
         if func.name == "main" || func.name == "bmb_user_main" {
@@ -3402,13 +3402,47 @@ impl AggressiveInlining {
         inst_count <= threshold && is_simple
     }
 
+    /// v0.51.52: Check if function should get inlinehint attribute
+    /// For medium-sized functions that don't qualify for alwaysinline but would
+    /// benefit from inlining when called in hot loops (like lexer's next_token)
+    fn should_hint_inline(&self, func: &MirFunction) -> bool {
+        // Never hint main function
+        if func.name == "main" || func.name == "bmb_user_main" {
+            return false;
+        }
+
+        // Never hint recursive functions
+        if Self::is_recursive(func) {
+            return false;
+        }
+
+        let inst_count = Self::count_instructions(func);
+        let block_count = func.blocks.len();
+
+        // Medium-sized functions: up to 150 instructions and 50 blocks
+        // These are too large for alwaysinline but can benefit from context-sensitive
+        // inlining by LLVM (e.g., when called in tight loops like lexer's next_token)
+        // v0.51.52: Increased from 100 to 150 to cover next_token (101 instructions)
+        let max_hint_instructions = 150;
+        let max_hint_blocks = 50;
+
+        inst_count <= max_hint_instructions && block_count <= max_hint_blocks
+    }
+
     /// Run on the entire program (interprocedural pass)
     pub fn run_on_program(&self, program: &mut MirProgram) -> bool {
         let mut changed = false;
 
         for func in &mut program.functions {
+            // First, check for alwaysinline (small, simple functions)
             if !func.always_inline && self.should_inline(func) {
                 func.always_inline = true;
+                changed = true;
+            }
+            // v0.51.52: Then, check for inlinehint (medium-sized functions)
+            // Only if not already marked for always_inline
+            else if !func.always_inline && !func.inline_hint && self.should_hint_inline(func) {
+                func.inline_hint = true;
                 changed = true;
             }
         }
@@ -3779,6 +3813,7 @@ mod tests {
             is_pure: false,
             is_const: false,
             always_inline: false,
+            inline_hint: false,
             is_memory_free: false,
         }
     }
@@ -3822,6 +3857,7 @@ mod tests {
             is_pure: false,
             is_const: false,
             always_inline: false,
+            inline_hint: false,
             is_memory_free: false,
         };
 
@@ -3879,6 +3915,7 @@ mod tests {
             is_pure: false,
             is_const: false,
             always_inline: false,
+            inline_hint: false,
             is_memory_free: false,
         };
 
@@ -3925,6 +3962,7 @@ mod tests {
             is_pure: false,
             is_const: false,
             always_inline: false,
+            inline_hint: false,
             is_memory_free: false,
         };
 
@@ -3991,6 +4029,7 @@ mod tests {
             is_pure: false,
             is_const: false,
             always_inline: false,
+            inline_hint: false,
             is_memory_free: false,
         };
 
@@ -4053,6 +4092,7 @@ mod tests {
             is_pure: false,
             is_const: false,
             always_inline: false,
+            inline_hint: false,
             is_memory_free: false,
         };
 
@@ -4103,6 +4143,7 @@ mod tests {
             is_pure: false,
             is_const: false,
             always_inline: false,
+            inline_hint: false,
             is_memory_free: false,
         };
 
@@ -4156,6 +4197,7 @@ mod tests {
             is_pure: false,
             is_const: false,
             always_inline: false,
+            inline_hint: false,
             is_memory_free: false,
         };
 
@@ -4210,6 +4252,7 @@ mod tests {
             is_pure: false,
             is_const: false,
             always_inline: false,
+            inline_hint: false,
             is_memory_free: false,
         };
 
@@ -4252,6 +4295,7 @@ mod tests {
             is_pure: false,
             is_const: false,
             always_inline: false,
+            inline_hint: false,
             is_memory_free: false,
         };
 
@@ -4283,6 +4327,7 @@ mod tests {
             is_pure: true,
             is_const: true,
         always_inline: false,
+            inline_hint: false,
             is_memory_free: false,
         };
 
@@ -4314,6 +4359,7 @@ mod tests {
             is_pure: false,
             is_const: false,
             always_inline: false,
+            inline_hint: false,
             is_memory_free: false,
         };
 
@@ -4365,6 +4411,7 @@ mod tests {
             is_pure: true,
             is_const: true,
         always_inline: false,
+            inline_hint: false,
             is_memory_free: false,
         };
 
@@ -4388,6 +4435,7 @@ mod tests {
             is_pure: false,
             is_const: false,
             always_inline: false,
+            inline_hint: false,
             is_memory_free: false,
         };
 
@@ -4433,6 +4481,7 @@ mod tests {
             is_pure: false,
             is_const: false,
             always_inline: false,
+            inline_hint: false,
             is_memory_free: false,
         };
 
@@ -4471,6 +4520,7 @@ mod tests {
             is_pure: false,
             is_const: false,
             always_inline: false,
+            inline_hint: false,
             is_memory_free: false,
         };
 
@@ -4509,6 +4559,7 @@ mod tests {
             is_pure: false,
             is_const: false,
             always_inline: false,
+            inline_hint: false,
             is_memory_free: false,
         };
 
@@ -4546,6 +4597,7 @@ mod tests {
             is_pure: false,
             is_const: false,
             always_inline: false,
+            inline_hint: false,
             is_memory_free: false,
         };
 
@@ -4583,6 +4635,7 @@ mod tests {
             is_pure: false,
             is_const: false,
             always_inline: false,
+            inline_hint: false,
             is_memory_free: false,
         };
 
@@ -4620,6 +4673,7 @@ mod tests {
             is_pure: false,
             is_const: false,
             always_inline: false,
+            inline_hint: false,
             is_memory_free: false,
         };
 
@@ -4693,6 +4747,7 @@ mod tests {
             is_pure: false,
             is_const: false,
             always_inline: false,
+            inline_hint: false,
             is_memory_free: false,
         };
 
@@ -4717,6 +4772,7 @@ mod tests {
             is_pure: false,
             is_const: false,
             always_inline: false,
+            inline_hint: false,
             is_memory_free: false,
         };
 
@@ -4829,6 +4885,7 @@ mod tests {
             is_pure: true,
             is_const: false,
             always_inline: false,
+            inline_hint: false,
             is_memory_free: false,
         };
 
@@ -4938,6 +4995,7 @@ mod tests {
             is_pure: true,
             is_const: false,
             always_inline: false,
+            inline_hint: false,
             is_memory_free: false,
         };
 
@@ -5042,6 +5100,7 @@ mod tests {
             is_pure: true,
             is_const: false,
             always_inline: false,
+            inline_hint: false,
             is_memory_free: false,
         };
 
@@ -5117,6 +5176,7 @@ mod tests {
             is_pure: false,
             is_const: false,
             always_inline: false,
+            inline_hint: false,
             is_memory_free: false,
         };
 
@@ -5187,6 +5247,7 @@ mod tests {
             is_pure: false,
             is_const: false,
             always_inline: false,
+            inline_hint: false,
             is_memory_free: false,
         };
 

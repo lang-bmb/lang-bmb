@@ -157,6 +157,7 @@ Users shouldn't need to work around compiler limitations. If there's a pattern t
 
 ## Related Documents
 
+- [PRINCIPLES.md](PRINCIPLES.md) - **핵심 원칙 및 벤치마크 주도 개발 프로세스**
 - [SPECIFICATION.md](SPECIFICATION.md) - Language specification
 - [ARCHITECTURE.md](ARCHITECTURE.md) - Compiler architecture
 - [ROADMAP.md](ROADMAP.md) - Development roadmap

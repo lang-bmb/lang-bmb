@@ -220,6 +220,7 @@ fn lower_function(
         is_pure,
         is_const,
         always_inline: false, // Set by AggressiveInlining pass
+        inline_hint: false, // v0.51.52: Set by AggressiveInlining pass for medium-sized functions
         is_memory_free: false, // Set by MemoryEffectAnalysis pass
     }
 }
