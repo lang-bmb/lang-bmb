@@ -1484,6 +1484,63 @@ impl<'ctx> LlvmContext<'ctx> {
                     if let Some(dest_place) = dest {
                         self.store_to_place(dest_place, len_val)?;
                     }
+                } else if func == "load_u8" && args.len() == 1 {
+                    // v0.60.6: Inline load_u8 as direct byte memory access for performance
+                    // load_u8(addr) -> *((uint8_t*)addr) as i64
+                    let addr = self.gen_operand(&args[0])?;
+
+                    let ptr_type = self.context.ptr_type(inkwell::AddressSpace::default());
+                    let i8_type = self.context.i8_type();
+                    let i64_type = self.context.i64_type();
+
+                    // Convert i64 address to pointer
+                    let ptr = self.builder
+                        .build_int_to_ptr(addr.into_int_value(), ptr_type, "addr_ptr")
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+
+                    // Load byte as i8
+                    let byte_val = self.builder
+                        .build_load(i8_type, ptr, "byte")
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                        .into_int_value();
+
+                    // Zero-extend to i64
+                    let result = self.builder
+                        .build_int_z_extend(byte_val, i64_type, "byte_i64")
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+
+                    if let Some(dest_place) = dest {
+                        self.store_to_place(dest_place, result.into())?;
+                    }
+                } else if func == "store_u8" && args.len() == 2 {
+                    // v0.60.6: Inline store_u8 as direct byte memory write for performance
+                    // store_u8(addr, val) -> *((uint8_t*)addr) = val & 0xFF
+                    let addr = self.gen_operand(&args[0])?;
+                    let val = self.gen_operand(&args[1])?;
+
+                    let ptr_type = self.context.ptr_type(inkwell::AddressSpace::default());
+                    let i8_type = self.context.i8_type();
+
+                    // Convert i64 address to pointer
+                    let ptr = self.builder
+                        .build_int_to_ptr(addr.into_int_value(), ptr_type, "addr_ptr")
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+
+                    // Truncate i64 value to i8
+                    let byte_val = self.builder
+                        .build_int_truncate(val.into_int_value(), i8_type, "val_byte")
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+
+                    // Store the byte
+                    self.builder
+                        .build_store(ptr, byte_val)
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+
+                    // store_u8 returns void, but MIR may expect a value
+                    if let Some(dest_place) = dest {
+                        let unit_value = self.context.i64_type().const_int(0, false);
+                        self.store_to_place(dest_place, unit_value.into())?;
+                    }
                 } else {
                     // v0.51.18: Check if function has _cstr variant for string literal optimization
                     // This avoids BMB String wrapper overhead (2.81x → 1.0x for syscall_overhead)
