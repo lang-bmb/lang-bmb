@@ -3458,11 +3458,70 @@ impl LoopBoundedNarrowing {
             return false;
         }
 
+        // v0.60.13: Don't narrow parameters used in multiplication
+        // Multiplication can easily overflow i32 even with small inputs (e.g., 50000 * 50000)
+        // This prevents bugs like mandelbrot's mul_fp overflowing when zr * zi is computed
+        let param_name = &func.params[param_idx].0;
+        if Self::is_used_in_multiplication(func, param_name) {
+            return false;
+        }
+
         // Check if we have bounds for this parameter
         if let Some(bounds) = self.param_bounds.get(&func.name) {
             if let Some(&max_val) = bounds.get(&param_idx) {
                 // Check if max value fits in i32 (and is non-negative)
                 return max_val >= 0 && max_val <= i32::MAX as i64;
+            }
+        }
+
+        false
+    }
+
+    /// v0.60.13: Check if a parameter is used in multiplication
+    /// This includes direct use and use through derived variables
+    fn is_used_in_multiplication(func: &MirFunction, param_name: &str) -> bool {
+        // Track which variables are derived from the parameter
+        let mut derived: std::collections::HashSet<String> = std::collections::HashSet::new();
+        derived.insert(param_name.to_string());
+
+        // Multiple passes to propagate derived status
+        for _ in 0..5 {
+            for block in &func.blocks {
+                for inst in &block.instructions {
+                    match inst {
+                        // Check if result is derived from a derived variable
+                        MirInst::BinOp { dest, lhs, rhs, op } => {
+                            let lhs_derived = matches!(lhs, Operand::Place(p) if derived.contains(&p.name));
+                            let rhs_derived = matches!(rhs, Operand::Place(p) if derived.contains(&p.name));
+
+                            // If used in multiplication, return true immediately
+                            if matches!(op, MirBinOp::Mul) && (lhs_derived || rhs_derived) {
+                                return true;
+                            }
+
+                            // Propagate derived status through arithmetic
+                            if lhs_derived || rhs_derived {
+                                derived.insert(dest.name.clone());
+                            }
+                        }
+                        MirInst::Copy { dest, src } if derived.contains(&src.name) => {
+                            derived.insert(dest.name.clone());
+                        }
+                        MirInst::Call { args, .. } => {
+                            // If parameter is passed to another function, check conservatively
+                            // We can't easily analyze callee, so if a derived value is passed, be safe
+                            for arg in args {
+                                if let Operand::Place(p) = arg {
+                                    if derived.contains(&p.name) {
+                                        // Parameter flows to another function - could be multiplied there
+                                        return true;
+                                    }
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                }
             }
         }
 

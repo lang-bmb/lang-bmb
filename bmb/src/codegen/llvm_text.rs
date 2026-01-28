@@ -1305,7 +1305,7 @@ impl TextCodeGen {
         }
 
         // Emit terminator
-        self.emit_terminator(out, &block.terminator, func, string_table, local_names, narrowed_param_names, &block.label)?;
+        self.emit_terminator(out, &block.terminator, func, string_table, local_names, narrowed_param_names, place_types, &block.label)?;
 
         Ok(())
     }
@@ -1472,7 +1472,22 @@ impl TextCodeGen {
 
                 // Store to alloca if destination is a local
                 if local_names.contains(&dest.name) {
-                    writeln!(out, "  store {} {}, ptr %{}.addr", ty, src_val, dest.name)?;
+                    // v0.60.13: Get destination alloca type - handle type width mismatches
+                    // This handles Copy between different-width types correctly
+                    let dest_ty = place_types.get(&dest.name).copied().unwrap_or(ty);
+                    if ty == "i64" && dest_ty == "i32" {
+                        // Need to truncate i64 to i32 before storing
+                        let trunc_name = self.unique_name(&format!("{}.trunc", dest.name), name_counts);
+                        writeln!(out, "  %{} = trunc i64 {} to i32", trunc_name, src_val)?;
+                        writeln!(out, "  store i32 %{}, ptr %{}.addr", trunc_name, dest.name)?;
+                    } else if ty == "i32" && dest_ty == "i64" {
+                        // v0.60.13: Need to sign extend i32 to i64 before storing
+                        let sext_name = self.unique_name(&format!("{}.sext", dest.name), name_counts);
+                        writeln!(out, "  %{} = sext i32 {} to i64", sext_name, src_val)?;
+                        writeln!(out, "  store i64 %{}, ptr %{}.addr", sext_name, dest.name)?;
+                    } else {
+                        writeln!(out, "  store {} {}, ptr %{}.addr", ty, src_val, dest.name)?;
+                    }
                     // Suppress unused warning for is_tuple
                     let _ = is_tuple;
                 } else {
@@ -2844,33 +2859,65 @@ impl TextCodeGen {
                 // so we need to truncate i64 arguments to i32 when calling such functions
                 let param_types_opt = fn_param_types.get(fn_name);
 
-                // v0.51.17: Pre-emit truncation instructions for narrowed parameters
-                if let Some(param_types) = param_types_opt {
-                    for (i, (arg_ty, val, _)) in arg_vals.iter().enumerate() {
-                        if let Some(&param_ty) = param_types.get(i) {
-                            if arg_ty == "i64" && param_ty == "i32" {
-                                let trunc_name = format!("{}.arg{}.trunc", call_base, i);
-                                writeln!(out, "  %{} = trunc i64 {} to i32", trunc_name, val)?;
-                            }
+                // v0.60.13: Helper to get runtime function parameter types
+                // Runtime functions like println, print take i64 parameters
+                let runtime_param_type = |fn_name: &str, idx: usize| -> Option<&'static str> {
+                    match (fn_name, idx) {
+                        ("println", 0) | ("print", 0) => Some("i64"),
+                        ("assert", 0) => Some("i1"),
+                        ("bmb_abs", 0) | ("min", 0) | ("min", 1) | ("max", 0) | ("max", 1) => Some("i64"),
+                        ("sb_push_char", 0) | ("sb_push_char", 1) => Some("i64"),
+                        ("sb_push_int", 0) | ("sb_push_int", 1) => Some("i64"),
+                        ("bmb_sb_push_char", 0) | ("bmb_sb_push_char", 1) => Some("i64"),
+                        ("bmb_sb_push_int", 0) | ("bmb_sb_push_int", 1) => Some("i64"),
+                        _ => None,
+                    }
+                };
+
+                // v0.51.17: Pre-emit truncation/extension instructions for narrowed parameters
+                // v0.60.12: Also emit sext for i32 -> i64 conversions (bug fix)
+                // v0.60.13: Also handle runtime functions not in fn_param_types
+                for (i, (arg_ty, val, _)) in arg_vals.iter().enumerate() {
+                    let param_ty = if let Some(param_types) = param_types_opt {
+                        param_types.get(i).copied()
+                    } else {
+                        runtime_param_type(fn_name, i)
+                    };
+
+                    if let Some(param_ty) = param_ty {
+                        if arg_ty == "i64" && param_ty == "i32" {
+                            let trunc_name = format!("{}.arg{}.trunc", call_base, i);
+                            writeln!(out, "  %{} = trunc i64 {} to i32", trunc_name, val)?;
+                        } else if arg_ty == "i32" && param_ty == "i64" {
+                            // v0.60.12: Sign extend i32 to i64 when function expects i64
+                            let sext_name = format!("{}.arg{}.sext", call_base, i);
+                            writeln!(out, "  %{} = sext i32 {} to i64", sext_name, val)?;
                         }
                     }
                 }
 
-                // v0.51.17: Rebuild args_str with proper truncation references
+                // v0.51.17: Rebuild args_str with proper truncation/extension references
+                // v0.60.12: Also handle i32 -> i64 sign extension
+                // v0.60.13: Also handle runtime functions not in fn_param_types
                 let args_str: Vec<String> = arg_vals
                     .iter()
                     .enumerate()
                     .map(|(i, (arg_ty, val, _))| {
-                        if let Some(param_types) = param_types_opt {
-                            if let Some(&param_ty) = param_types.get(i) {
-                                if arg_ty == "i64" && param_ty == "i32" {
-                                    let trunc_name = format!("{}.arg{}.trunc", call_base, i);
-                                    return format!("i32 %{}", trunc_name);
-                                }
-                                if arg_ty == "i32" && param_ty == "i64" {
-                                    // Sign extend would be needed, but this case is rarer
-                                    return format!("{} {}", param_ty, val);
-                                }
+                        let param_ty = if let Some(param_types) = param_types_opt {
+                            param_types.get(i).copied()
+                        } else {
+                            runtime_param_type(fn_name, i)
+                        };
+
+                        if let Some(param_ty) = param_ty {
+                            if arg_ty == "i64" && param_ty == "i32" {
+                                let trunc_name = format!("{}.arg{}.trunc", call_base, i);
+                                return format!("i32 %{}", trunc_name);
+                            }
+                            if arg_ty == "i32" && param_ty == "i64" {
+                                // v0.60.12: Use sign-extended value
+                                let sext_name = format!("{}.arg{}.sext", call_base, i);
+                                return format!("i64 %{}", sext_name);
                             }
                         }
                         format!("{} {}", arg_ty, val)
@@ -3602,6 +3649,7 @@ impl TextCodeGen {
         string_table: &HashMap<String, String>,
         local_names: &std::collections::HashSet<String>,
         narrowed_param_names: &std::collections::HashSet<String>,
+        place_types: &HashMap<String, &'static str>,  // v0.60.13: For return value type widening
         block_label: &str,
     ) -> TextCodeGenResult<()> {
         match term {
@@ -3736,9 +3784,19 @@ impl TextCodeGen {
                         // Check if this is a local that uses alloca
                         if local_names.contains(&p.name) {
                             // Load from alloca before returning
+                            // v0.60.13: Use the local's actual alloca type (from place_types), then sign extend if needed
+                            // This fixes bugs where narrowed locals (i32) are returned as i64
+                            let local_ty = place_types.get(&p.name).copied().unwrap_or(ty);
                             // Use block_label + var name for SSA uniqueness across multiple return blocks
-                            writeln!(out, "  %_ret_val.{}.{} = load {}, ptr %{}.addr", block_label, p.name, ty, p.name)?;
-                            writeln!(out, "  ret {} %_ret_val.{}.{}", ty, block_label, p.name)?;
+                            writeln!(out, "  %_ret_val.{}.{} = load {}, ptr %{}.addr", block_label, p.name, local_ty, p.name)?;
+                            if local_ty == "i32" && ty == "i64" {
+                                // Sign extend i32 to i64 for return
+                                let sext_name = format!("_ret_val.{}.{}.sext", block_label, p.name);
+                                writeln!(out, "  %{} = sext i32 %_ret_val.{}.{} to i64", sext_name, block_label, p.name)?;
+                                writeln!(out, "  ret i64 %{}", sext_name)?;
+                            } else {
+                                writeln!(out, "  ret {} %_ret_val.{}.{}", ty, block_label, p.name)?;
+                            }
                         } else {
                             // v0.51.17: Use narrowing-aware formatting
                             writeln!(out, "  ret {} {}", ty, self.format_operand_with_strings_and_narrowing(val, string_table, narrowed_param_names))?;
