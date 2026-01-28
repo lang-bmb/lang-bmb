@@ -568,6 +568,7 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
         }
 
         // v0.37: Invariant is for SMT verification, MIR lowering ignores it
+        // v0.60.16: Push loop context for break/continue support
         Expr::While { cond, invariant: _, body } => {
             // Create labels for loop structure
             let cond_label = ctx.fresh_label("while_cond");
@@ -586,10 +587,16 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
                 else_label: exit_label.clone(),
             });
 
+            // v0.60.16: Push loop context for break/continue
+            ctx.loop_context_stack.push((cond_label.clone(), exit_label.clone()));
+
             // Body block
             ctx.start_block(body_label);
             let _ = lower_expr(body, ctx);
             ctx.finish_block(Terminator::Goto(cond_label));
+
+            // v0.60.16: Pop loop context
+            ctx.loop_context_stack.pop();
 
             // Exit block
             ctx.start_block(exit_label);
@@ -1234,16 +1241,36 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
             lower_expr(body, ctx)
         }
 
-        // Break - placeholder, full implementation requires control flow
+        // v0.60.16: Break - jump to loop exit
         Expr::Break { value } => {
-            match value {
-                Some(v) => lower_expr(v, ctx),
-                None => Operand::Constant(crate::mir::Constant::Unit),
+            // If break has a value, lower it (but while loops ignore it)
+            if let Some(v) = value {
+                let _ = lower_expr(v, ctx);
             }
+
+            // Get the exit label from the loop context stack
+            if let Some((_, exit_label)) = ctx.loop_context_stack.last() {
+                // Finish current block with jump to exit
+                ctx.finish_block(Terminator::Goto(exit_label.clone()));
+                // Start a new unreachable block for code after break
+                let unreachable_label = ctx.fresh_label("after_break");
+                ctx.start_block(unreachable_label);
+            }
+            // Return unit (break is a divergent expression)
+            Operand::Constant(crate::mir::Constant::Unit)
         }
 
-        // Continue - placeholder
+        // v0.60.16: Continue - jump to loop condition
         Expr::Continue => {
+            // Get the continue label from the loop context stack
+            if let Some((cond_label, _)) = ctx.loop_context_stack.last() {
+                // Finish current block with jump to condition check
+                ctx.finish_block(Terminator::Goto(cond_label.clone()));
+                // Start a new unreachable block for code after continue
+                let unreachable_label = ctx.fresh_label("after_continue");
+                ctx.start_block(unreachable_label);
+            }
+            // Return unit (continue is a divergent expression)
             Operand::Constant(crate::mir::Constant::Unit)
         }
 

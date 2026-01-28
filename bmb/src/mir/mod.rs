@@ -526,6 +526,9 @@ pub struct LoweringContext {
     /// v0.51.35: Array element types for proper struct array handling
     /// Maps array variable name -> element type
     pub array_element_types: HashMap<String, MirType>,
+    /// v0.60.16: Loop context stack for break/continue support
+    /// Each entry is (continue_label, break_label) for the enclosing loop
+    pub loop_context_stack: Vec<(String, String)>,
 }
 
 impl LoweringContext {
@@ -561,6 +564,7 @@ impl LoweringContext {
             struct_type_defs: HashMap::new(),
             temp_types: HashMap::new(),
             array_element_types: HashMap::new(),
+            loop_context_stack: Vec::new(),
         }
     }
 
