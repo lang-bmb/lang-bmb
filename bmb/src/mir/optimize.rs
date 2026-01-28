@@ -3334,6 +3334,9 @@ pub struct LoopBoundedNarrowing {
     /// Map: function_name → set of (param_index, max_constant_value)
     /// Tracks the maximum constant value each parameter is called with from main
     param_bounds: HashMap<String, HashMap<usize, i64>>,
+    /// v0.60.14: Set of functions that have direct Mul operations
+    /// Used to prevent narrowing params that flow to functions with multiplication
+    functions_with_mul: HashSet<String>,
 }
 
 impl LoopBoundedNarrowing {
@@ -3367,7 +3370,27 @@ impl LoopBoundedNarrowing {
             }
         }
 
-        Self { param_bounds }
+        // v0.60.14: Build set of functions that have direct Mul operations
+        let mut functions_with_mul: HashSet<String> = HashSet::new();
+        for func in &program.functions {
+            if Self::has_direct_multiplication(func) {
+                functions_with_mul.insert(func.name.clone());
+            }
+        }
+
+        Self { param_bounds, functions_with_mul }
+    }
+
+    /// v0.60.14: Check if a function has direct Mul operations
+    fn has_direct_multiplication(func: &MirFunction) -> bool {
+        for block in &func.blocks {
+            for inst in &block.instructions {
+                if let MirInst::BinOp { op: MirBinOp::Mul, .. } = inst {
+                    return true;
+                }
+            }
+        }
+        false
     }
 
     /// Analyze a function for call sites with constant or bounded arguments
@@ -3458,11 +3481,11 @@ impl LoopBoundedNarrowing {
             return false;
         }
 
-        // v0.60.13: Don't narrow parameters used in multiplication
+        // v0.60.14: Don't narrow parameters used in multiplication
         // Multiplication can easily overflow i32 even with small inputs (e.g., 50000 * 50000)
         // This prevents bugs like mandelbrot's mul_fp overflowing when zr * zi is computed
         let param_name = &func.params[param_idx].0;
-        if Self::is_used_in_multiplication(func, param_name) {
+        if Self::is_used_in_multiplication(func, param_name, &self.functions_with_mul) {
             return false;
         }
 
@@ -3477,9 +3500,10 @@ impl LoopBoundedNarrowing {
         false
     }
 
-    /// v0.60.13: Check if a parameter is used in multiplication
+    /// v0.60.14: Check if a parameter is used in multiplication
     /// This includes direct use and use through derived variables
-    fn is_used_in_multiplication(func: &MirFunction, param_name: &str) -> bool {
+    /// Also checks if the parameter flows to a call to a function that has multiplication
+    fn is_used_in_multiplication(func: &MirFunction, param_name: &str, functions_with_mul: &HashSet<String>) -> bool {
         // Track which variables are derived from the parameter
         let mut derived: std::collections::HashSet<String> = std::collections::HashSet::new();
         derived.insert(param_name.to_string());
@@ -3507,16 +3531,18 @@ impl LoopBoundedNarrowing {
                         MirInst::Copy { dest, src } if derived.contains(&src.name) => {
                             derived.insert(dest.name.clone());
                         }
-                        MirInst::Call { args, .. } => {
-                            // If parameter is passed to another function, check conservatively
-                            // We can't easily analyze callee, so if a derived value is passed, be safe
-                            for arg in args {
-                                if let Operand::Place(p) = arg {
-                                    if derived.contains(&p.name) {
-                                        // Parameter flows to another function - could be multiplied there
-                                        return true;
-                                    }
-                                }
+                        // v0.60.14: Check if param flows to a call to a function that has multiplication
+                        // This allows narrowing for recursive calls (fibonacci has no Mul)
+                        // but prevents narrowing for calls to mul_fp (which has direct Mul)
+                        MirInst::Call { func: callee, args, .. } => {
+                            // Check if any argument is derived from the parameter
+                            let arg_is_derived = args.iter().any(|arg| {
+                                matches!(arg, Operand::Place(p) if derived.contains(&p.name))
+                            });
+
+                            // If derived arg is passed to a function that has multiplication, block narrowing
+                            if arg_is_derived && functions_with_mul.contains(callee) {
+                                return true;
                             }
                         }
                         _ => {}

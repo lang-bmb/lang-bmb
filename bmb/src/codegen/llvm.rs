@@ -95,6 +95,9 @@ impl CodeGen {
         let context = Context::create();
         let mut ctx = LlvmContext::new(&context);
 
+        // v0.60.15: Copy struct definitions for field access codegen
+        ctx.struct_defs = program.struct_defs.clone();
+
         // Declare built-in functions
         ctx.declare_builtins();
 
@@ -322,6 +325,10 @@ struct LlvmContext<'ctx> {
     /// v0.60.7: Struct type definitions for field access codegen
     /// Maps struct name -> list of (field_name, field_type)
     struct_defs: HashMap<String, Vec<(String, MirType)>>,
+
+    /// v0.60.15: Function return types for PHI type inference
+    /// Maps function name -> MIR return type
+    function_return_types: HashMap<String, MirType>,
 }
 
 impl<'ctx> LlvmContext<'ctx> {
@@ -342,6 +349,7 @@ impl<'ctx> LlvmContext<'ctx> {
             static_string_counter: 0,
             current_ret_type: None,
             struct_defs: HashMap::new(),
+            function_return_types: HashMap::new(),
         }
     }
 
@@ -860,6 +868,8 @@ impl<'ctx> LlvmContext<'ctx> {
         }
 
         self.functions.insert(func.name.clone(), function);
+        // v0.60.15: Store return type for PHI type inference
+        self.function_return_types.insert(func.name.clone(), func.ret_ty.clone());
         Ok(())
     }
 
@@ -1183,6 +1193,10 @@ impl<'ctx> LlvmContext<'ctx> {
                     else if let Some((_, ty)) = func.params.iter().find(|(n, _)| n == &p.name) {
                         self.mir_type_to_llvm(ty)
                     }
+                    // v0.60.15: Check the defining instruction for this place
+                    else if let Some(mir_ty) = self.find_place_type_from_instructions(&p.name, func) {
+                        self.mir_type_to_llvm(&mir_ty)
+                    }
                     // Default to i64 if type unknown
                     else {
                         self.context.i64_type().into()
@@ -1206,6 +1220,62 @@ impl<'ctx> LlvmContext<'ctx> {
         }
 
         Ok(result_type.unwrap_or_else(|| self.context.i64_type().into()))
+    }
+
+    /// v0.60.15: Find the MIR type of a place by looking at its defining instruction
+    /// This is used in pass 1 when SSA values haven't been generated yet
+    fn find_place_type_from_instructions(&self, place_name: &str, func: &MirFunction) -> Option<MirType> {
+        for block in &func.blocks {
+            for inst in &block.instructions {
+                match inst {
+                    // Copy instruction: trace through to the source
+                    MirInst::Copy { dest, src } if dest.name == place_name => {
+                        // Recursively find the type of the source
+                        return self.find_place_type_from_instructions(&src.name, func);
+                    }
+                    // Call instruction: use return type
+                    MirInst::Call { dest: Some(dest), func: callee, .. } if dest.name == place_name => {
+                        // Find the callee function's return type
+                        if let Some(ret_ty) = self.function_return_types.get(callee) {
+                            return Some(ret_ty.clone());
+                        }
+                    }
+                    // Cast instruction: use target type
+                    MirInst::Cast { dest, to_ty, .. } if dest.name == place_name => {
+                        return Some(to_ty.clone());
+                    }
+                    // FieldAccess: use field type from struct
+                    MirInst::FieldAccess { dest, struct_name, field_index, .. } if dest.name == place_name => {
+                        if let Some(fields) = self.struct_defs.get(struct_name) {
+                            if let Some((_, field_ty)) = fields.get(*field_index) {
+                                return Some(field_ty.clone());
+                            }
+                        }
+                    }
+                    // BinOp: typically returns i64
+                    MirInst::BinOp { dest, .. } if dest.name == place_name => {
+                        return Some(MirType::I64);
+                    }
+                    // UnaryOp: typically returns same type as operand
+                    MirInst::UnaryOp { dest, .. } if dest.name == place_name => {
+                        return Some(MirType::I64);
+                    }
+                    // Const: use constant type
+                    MirInst::Const { dest, value } if dest.name == place_name => {
+                        return Some(match value {
+                            Constant::Int(_) => MirType::I64,
+                            Constant::Float(_) => MirType::F64,
+                            Constant::Bool(_) => MirType::Bool,
+                            Constant::Char(_) => MirType::I32,
+                            Constant::String(_) => MirType::I64, // String is pointer as i64
+                            Constant::Unit => MirType::Unit,
+                        });
+                    }
+                    _ => {}
+                }
+            }
+        }
+        None
     }
 
     /// v0.51.0: Coerce a PHI incoming value to match the expected PHI type
@@ -1268,6 +1338,42 @@ impl<'ctx> LlvmContext<'ctx> {
                     .build_int_truncate(int_val, to_int, "phi_trunc")
                     .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
             };
+
+            return Ok(coerced.into());
+        }
+
+        // v0.60.15: Handle integer to pointer coercion
+        // This occurs when a PHI expects a pointer but receives an integer (e.g., from ptrtoint/cast)
+        if let (BasicTypeEnum::IntType(_), BasicTypeEnum::PointerType(to_ptr)) =
+            (value_type, phi_type)
+        {
+            let terminator = source_bb.get_terminator()
+                .ok_or_else(|| CodeGenError::LlvmError(
+                    format!("Block {} has no terminator for phi coercion", source_label)))?;
+            self.builder.position_before(&terminator);
+
+            let int_val = value.into_int_value();
+            let coerced = self.builder
+                .build_int_to_ptr(int_val, to_ptr, "phi_inttoptr")
+                .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+
+            return Ok(coerced.into());
+        }
+
+        // v0.60.15: Handle pointer to integer coercion
+        // This occurs when a PHI expects an integer but receives a pointer
+        if let (BasicTypeEnum::PointerType(_), BasicTypeEnum::IntType(to_int)) =
+            (value_type, phi_type)
+        {
+            let terminator = source_bb.get_terminator()
+                .ok_or_else(|| CodeGenError::LlvmError(
+                    format!("Block {} has no terminator for phi coercion", source_label)))?;
+            self.builder.position_before(&terminator);
+
+            let ptr_val = value.into_pointer_value();
+            let coerced = self.builder
+                .build_ptr_to_int(ptr_val, to_int, "phi_ptrtoint")
+                .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
 
             return Ok(coerced.into());
         }
@@ -1869,11 +1975,26 @@ impl<'ctx> LlvmContext<'ctx> {
                 let struct_type = self.get_struct_llvm_type(struct_name)?;
 
                 // Load the base pointer (struct pointer)
-                let base_ptr = self.load_from_place(base)?;
+                let base_val = self.load_from_place(base)?;
+
+                // v0.60.15: Handle IntValue from ptrtoint/cast - convert back to pointer
+                // This occurs when typed pointers are created via `malloc() as *T`
+                let base_ptr = if base_val.is_pointer_value() {
+                    base_val.into_pointer_value()
+                } else if base_val.is_int_value() {
+                    let ptr_type = self.context.ptr_type(inkwell::AddressSpace::default());
+                    self.builder
+                        .build_int_to_ptr(base_val.into_int_value(), ptr_type, "inttoptr")
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                } else {
+                    return Err(CodeGenError::LlvmError(format!(
+                        "FieldAccess base must be pointer or integer, got {:?}", base_val
+                    )));
+                };
 
                 // GEP to the field
                 let field_ptr = self.builder
-                    .build_struct_gep(struct_type, base_ptr.into_pointer_value(), *field_index as u32, "field_ptr")
+                    .build_struct_gep(struct_type, base_ptr, *field_index as u32, "field_ptr")
                     .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
 
                 // Get field type for load
@@ -1891,16 +2012,32 @@ impl<'ctx> LlvmContext<'ctx> {
             }
 
             // v0.60.7: Field store via GEP + store
+            // v0.60.15: Handle IntValue from ptrtoint/cast
             MirInst::FieldStore { base, field: _, field_index, struct_name, value } => {
                 // Get the struct type for GEP
                 let struct_type = self.get_struct_llvm_type(struct_name)?;
 
                 // Load the base pointer (struct pointer)
-                let base_ptr = self.load_from_place(base)?;
+                let base_val = self.load_from_place(base)?;
+
+                // v0.60.15: Handle IntValue from ptrtoint/cast - convert back to pointer
+                // This occurs when typed pointers are created via `malloc() as *T`
+                let base_ptr = if base_val.is_pointer_value() {
+                    base_val.into_pointer_value()
+                } else if base_val.is_int_value() {
+                    let ptr_type = self.context.ptr_type(inkwell::AddressSpace::default());
+                    self.builder
+                        .build_int_to_ptr(base_val.into_int_value(), ptr_type, "inttoptr")
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                } else {
+                    return Err(CodeGenError::LlvmError(format!(
+                        "FieldStore base must be pointer or integer, got {:?}", base_val
+                    )));
+                };
 
                 // GEP to the field
                 let field_ptr = self.builder
-                    .build_struct_gep(struct_type, base_ptr.into_pointer_value(), *field_index as u32, "field_ptr")
+                    .build_struct_gep(struct_type, base_ptr, *field_index as u32, "field_ptr")
                     .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
 
                 // Generate the value to store
