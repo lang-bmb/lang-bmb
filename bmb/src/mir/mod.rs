@@ -23,7 +23,7 @@ pub use optimize::{
     ConstantFolding, DeadCodeElimination, SimplifyBranches, IfElseToSwitch,
     CopyPropagation, CommonSubexpressionElimination, ContractBasedOptimization,
     ContractUnreachableElimination, PureFunctionCSE, ConstFunctionEval,
-    ConstantPropagationNarrowing, AggressiveInlining,
+    ConstantPropagationNarrowing, LoopBoundedNarrowing, AggressiveInlining,
 };
 pub use proof_guided::{
     BoundsCheckElimination, NullCheckElimination, DivisionCheckElimination,

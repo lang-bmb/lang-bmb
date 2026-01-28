@@ -145,6 +145,14 @@ impl OptimizationPipeline {
             stats.merge(&func_stats);
         }
 
+        // v0.60.9: Run loop bounded narrowing AFTER per-function optimization
+        // This runs after ConstFunctionEval has inlined constant functions (e.g., N() -> 1000)
+        // Critical for spectral_norm: while i < n loops where n=1000 can use 32-bit ops
+        let loop_narrowing = LoopBoundedNarrowing::from_program(program);
+        if loop_narrowing.run_on_program(program) {
+            stats.record_pass(loop_narrowing.name());
+        }
+
         // v0.51.8: Run aggressive inlining LAST (after all optimizations)
         // This marks small, simple functions for LLVM's alwaysinline attribute
         // to eliminate function call overhead in tight loops
@@ -3281,6 +3289,468 @@ impl ConstantPropagationNarrowing {
             if let Some(func) = program.functions.iter_mut().find(|f| f.name == func_name) {
                 if self.narrow_function(func, param_idx) {
                     changed = true;
+                }
+            }
+        }
+
+        changed
+    }
+}
+
+// ============================================================================
+// v0.60.9: Loop Bounded Narrowing Pass
+// Narrows i64 loop variables and function parameters to i32 when bounded by constants
+// ============================================================================
+
+/// LoopBoundedNarrowing: Interprocedural narrowing for loop-bounded values
+///
+/// This pass analyzes the program to find:
+/// 1. Function parameters that are always called with small constants (≤ i32::MAX)
+/// 2. Loop variables bounded by those parameters (pattern: `let mut i = 0; while i < n { ... i = i + 1 }`)
+/// 3. Function parameters that only receive loop variables as arguments
+///
+/// The pass then narrows types from I64 to I32 where safe, enabling 32-bit operations
+/// in the generated code. This is critical for matching C performance where `int` is 32-bit.
+///
+/// Example transformation:
+/// ```text
+/// // Before: all i64
+/// fn mult_av(v: i64, av: i64, n: i64) {
+///     let mut i: i64 = 0;
+///     while i < n { matrix_a(i, j); ... }
+/// }
+///
+/// // After: narrowed to i32
+/// fn mult_av(v: i64, av: i64, n: i32) {
+///     let mut i: i32 = 0;
+///     while i < n { matrix_a(i, j); ... }  // matrix_a params also narrowed
+/// }
+/// ```
+pub struct LoopBoundedNarrowing {
+    /// Map: function_name → set of (param_index, max_constant_value)
+    /// Tracks the maximum constant value each parameter is called with from main
+    param_bounds: HashMap<String, HashMap<usize, i64>>,
+}
+
+impl LoopBoundedNarrowing {
+    /// Create from a MirProgram by analyzing call sites
+    pub fn from_program(program: &MirProgram) -> Self {
+        let mut param_bounds: HashMap<String, HashMap<usize, i64>> = HashMap::new();
+
+        // Phase 1: Find all constant arguments from main function
+        if let Some(main_func) = program.functions.iter().find(|f| f.name == "main" || f.name == "bmb_user_main") {
+            Self::analyze_call_sites_for_constants(main_func, &mut param_bounds, &HashMap::new());
+        }
+
+        // Phase 2: Interprocedural propagation - propagate bounds through call chains
+        // Keep iterating until no new bounds are discovered
+        let mut changed = true;
+        while changed {
+            changed = false;
+            for func in &program.functions {
+                let current_bounds = param_bounds.get(&func.name).cloned().unwrap_or_default();
+                if current_bounds.is_empty() {
+                    continue;
+                }
+
+                // Propagate bounds to callees
+                let prev_len: usize = param_bounds.values().map(|m| m.len()).sum();
+                Self::analyze_call_sites_for_constants(func, &mut param_bounds, &current_bounds);
+                let new_len: usize = param_bounds.values().map(|m| m.len()).sum();
+                if new_len > prev_len {
+                    changed = true;
+                }
+            }
+        }
+
+        Self { param_bounds }
+    }
+
+    /// Analyze a function for call sites with constant or bounded arguments
+    /// `caller_bounds` contains the bounds for the caller's parameters (param_idx -> max_value)
+    fn analyze_call_sites_for_constants(
+        func: &MirFunction,
+        param_bounds: &mut HashMap<String, HashMap<usize, i64>>,
+        caller_bounds: &HashMap<usize, i64>,
+    ) {
+        // Build map of param name -> bound (from caller's bounded params)
+        let mut var_bounds: HashMap<String, i64> = func.params.iter()
+            .enumerate()
+            .filter_map(|(idx, (name, _))| {
+                caller_bounds.get(&idx).map(|&bound| (name.clone(), bound))
+            })
+            .collect();
+
+        // Track constant assignments (Const and Copy instructions)
+        // This handles patterns like: _t0 = 1000; n = _t0
+        for block in &func.blocks {
+            for inst in &block.instructions {
+                match inst {
+                    MirInst::Const { dest, value: Constant::Int(v) } => {
+                        if *v >= 0 && *v <= i32::MAX as i64 {
+                            var_bounds.insert(dest.name.clone(), *v);
+                        }
+                    }
+                    MirInst::Copy { dest, src } => {
+                        // Propagate constant through copy
+                        if let Some(&bound) = var_bounds.get(&src.name) {
+                            var_bounds.insert(dest.name.clone(), bound);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        // Now analyze call sites
+        for block in &func.blocks {
+            for inst in &block.instructions {
+                if let MirInst::Call { func: callee, args, .. } = inst {
+                    // Skip built-in functions
+                    if Self::is_builtin(callee) {
+                        continue;
+                    }
+
+                    for (idx, arg) in args.iter().enumerate() {
+                        let bound = match arg {
+                            // Direct constant
+                            Operand::Constant(Constant::Int(v)) => Some(*v),
+                            // Variable with known bound (from params or const assignments)
+                            Operand::Place(p) => var_bounds.get(&p.name).copied(),
+                            _ => None,
+                        };
+
+                        if let Some(v) = bound {
+                            if v >= 0 && v <= i32::MAX as i64 {
+                                param_bounds
+                                    .entry(callee.clone())
+                                    .or_default()
+                                    .entry(idx)
+                                    .and_modify(|max| *max = (*max).max(v))
+                                    .or_insert(v);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    fn is_builtin(name: &str) -> bool {
+        matches!(name,
+            "malloc" | "free" | "calloc" | "realloc" |
+            "println" | "print" | "eprintln" | "eprint" |
+            "sqrt" | "abs" | "min" | "max" |
+            "i64_to_f64" | "f64_to_i64" |
+            "load_f64" | "store_f64" | "load_i64" | "store_i64" |
+            "load_u8" | "store_u8" | "byte_at" | "len"
+        )
+    }
+
+    /// Check if a parameter can be narrowed based on constant bounds from call sites
+    fn can_narrow_param(&self, func: &MirFunction, param_idx: usize) -> bool {
+        // Only narrow i64 parameters
+        if func.params.get(param_idx).map(|(_, ty)| ty) != Some(&MirType::I64) {
+            return false;
+        }
+
+        // Check if we have bounds for this parameter
+        if let Some(bounds) = self.param_bounds.get(&func.name) {
+            if let Some(&max_val) = bounds.get(&param_idx) {
+                // Check if max value fits in i32 (and is non-negative)
+                return max_val >= 0 && max_val <= i32::MAX as i64;
+            }
+        }
+
+        false
+    }
+
+    /// Detect while loop patterns and find bounded loop variables
+    /// Returns: Map of variable name -> (param_name that bounds it)
+    fn find_loop_variables(func: &MirFunction) -> HashMap<String, String> {
+        let mut loop_vars: HashMap<String, String> = HashMap::new();
+
+        // Pattern: entry block has `%var = const I:0`
+        // Pattern: while_cond block has `%cmp = < %var, %param` followed by branch
+        // Pattern: while_body block has `%var = copy %new_var` after `%new_var = + %var, I:1`
+
+        for block in &func.blocks {
+            // Look for comparison pattern: %cmp = < %var, %param
+            for inst in &block.instructions {
+                if let MirInst::BinOp { op: MirBinOp::Lt, lhs, rhs, .. } = inst {
+                    // lhs is the loop variable, rhs might be a parameter
+                    if let (Operand::Place(var), Operand::Place(param)) = (lhs, rhs) {
+                        // Check if param is actually a function parameter
+                        let is_param = func.params.iter().any(|(name, _)| name == &param.name);
+                        if is_param {
+                            // Check if var looks like a loop variable (starts at 0, increments by 1)
+                            if Self::is_loop_variable(func, &var.name) {
+                                loop_vars.insert(var.name.clone(), param.name.clone());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        loop_vars
+    }
+
+    /// Check if a variable follows the loop variable pattern:
+    /// - Initialized to 0 in entry block
+    /// - Incremented by 1 in some block
+    fn is_loop_variable(func: &MirFunction, var_name: &str) -> bool {
+        let mut starts_at_zero = false;
+        let mut increments_by_one = false;
+
+        for block in &func.blocks {
+            for inst in &block.instructions {
+                match inst {
+                    // Check for initialization: %var = const I:0
+                    MirInst::Const { dest, value: Constant::Int(0) } if dest.name == var_name => {
+                        starts_at_zero = true;
+                    }
+                    // Check for increment: %temp = + %var, I:1
+                    MirInst::BinOp { op: MirBinOp::Add, lhs: Operand::Place(p), rhs: Operand::Constant(Constant::Int(1)), .. }
+                        if p.name == var_name => {
+                        increments_by_one = true;
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        starts_at_zero && increments_by_one
+    }
+
+    /// Narrow a function's parameter from I64 to I32
+    fn narrow_param(func: &mut MirFunction, param_idx: usize) -> bool {
+        if let Some((_, ty)) = func.params.get_mut(param_idx) {
+            if *ty == MirType::I64 {
+                *ty = MirType::I32;
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Narrow a local variable from I64 to I32
+    fn narrow_local(func: &mut MirFunction, var_name: &str) -> bool {
+        for (name, ty) in &mut func.locals {
+            if name == var_name && *ty == MirType::I64 {
+                *ty = MirType::I32;
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Get the optimization name
+    pub fn name(&self) -> &'static str {
+        "loop_bounded_narrowing"
+    }
+
+    /// Run on the entire program (interprocedural pass)
+    pub fn run_on_program(&self, program: &mut MirProgram) -> bool {
+        let mut changed = false;
+
+        // Phase 1: Narrow parameters that receive constants from main
+        let narrowable_params: Vec<(String, usize)> = program
+            .functions
+            .iter()
+            .flat_map(|func| {
+                (0..func.params.len())
+                    .filter(|&idx| self.can_narrow_param(func, idx))
+                    .map(|idx| (func.name.clone(), idx))
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+
+        for (func_name, param_idx) in &narrowable_params {
+            if let Some(func) = program.functions.iter_mut().find(|f| &f.name == func_name) {
+                if Self::narrow_param(func, *param_idx) {
+                    changed = true;
+                }
+            }
+        }
+
+        // Phase 2: Narrow loop variables that are bounded by narrowed parameters
+        for func in &mut program.functions {
+            let loop_vars = Self::find_loop_variables(func);
+
+            for (var_name, param_name) in loop_vars {
+                // Check if the bounding parameter was narrowed
+                let param_narrowed = func.params.iter()
+                    .any(|(name, ty)| name == &param_name && *ty == MirType::I32);
+
+                if param_narrowed {
+                    if Self::narrow_local(func, &var_name) {
+                        changed = true;
+                    }
+                }
+            }
+        }
+
+        // Phase 3: Propagate narrowing to callee functions
+        // Functions like matrix_a(i, j) that are only called with loop variables
+        // should have their parameters narrowed too
+        changed |= self.propagate_narrowing_to_callees(program);
+
+        // Phase 4: Propagate narrowing to derived local variables
+        // If sum = i + j where both i and j are i32, then sum can be i32 too
+        for func in &mut program.functions {
+            changed |= Self::propagate_narrowing_to_locals(func);
+        }
+
+        changed
+    }
+
+    /// Propagate narrowing to derived local variables within a function
+    /// If a variable is computed from i32 operands with i32-preserving ops, it can be i32
+    fn propagate_narrowing_to_locals(func: &mut MirFunction) -> bool {
+        let mut changed = false;
+
+        // Build initial set of narrowed variables (params and locals that are i32)
+        let mut narrowed: HashSet<String> = func.params.iter()
+            .filter(|(_, ty)| *ty == MirType::I32)
+            .map(|(name, _)| name.clone())
+            .collect();
+        narrowed.extend(func.locals.iter()
+            .filter(|(_, ty)| *ty == MirType::I32)
+            .map(|(name, _)| name.clone()));
+
+        // Iterate until fixed point
+        let mut local_changed = true;
+        while local_changed {
+            local_changed = false;
+
+            for block in &func.blocks {
+                for inst in &block.instructions {
+                    match inst {
+                        // Copy propagation: if src is narrowed, dest can be narrowed
+                        MirInst::Copy { dest, src } => {
+                            if narrowed.contains(&src.name) && !narrowed.contains(&dest.name) {
+                                narrowed.insert(dest.name.clone());
+                                local_changed = true;
+                            }
+                        }
+
+                        // BinOp: if both operands are narrowed/constant, dest can be narrowed
+                        // Only for ops that preserve i32 range (add, sub, comparisons, etc.)
+                        MirInst::BinOp { dest, op, lhs, rhs } => {
+                            if narrowed.contains(&dest.name) {
+                                continue;
+                            }
+
+                            let lhs_narrow = match lhs {
+                                Operand::Place(p) => narrowed.contains(&p.name),
+                                Operand::Constant(Constant::Int(v)) => *v >= i32::MIN as i64 && *v <= i32::MAX as i64,
+                                _ => false,
+                            };
+                            let rhs_narrow = match rhs {
+                                Operand::Place(p) => narrowed.contains(&p.name),
+                                Operand::Constant(Constant::Int(v)) => *v >= i32::MIN as i64 && *v <= i32::MAX as i64,
+                                _ => false,
+                            };
+
+                            // Check if operation preserves i32 range
+                            let op_preserves_i32 = matches!(op,
+                                MirBinOp::Add | MirBinOp::Sub | MirBinOp::Mul |
+                                MirBinOp::Lt | MirBinOp::Le | MirBinOp::Gt | MirBinOp::Ge |
+                                MirBinOp::Eq | MirBinOp::Ne |
+                                MirBinOp::And | MirBinOp::Or |
+                                MirBinOp::Band | MirBinOp::Bor | MirBinOp::Bxor |
+                                MirBinOp::Shl | MirBinOp::Shr
+                            );
+
+                            if lhs_narrow && rhs_narrow && op_preserves_i32 {
+                                narrowed.insert(dest.name.clone());
+                                local_changed = true;
+                            }
+                        }
+
+                        // Const: small integer constants can be narrowed
+                        MirInst::Const { dest, value: Constant::Int(v) } => {
+                            if !narrowed.contains(&dest.name) && *v >= i32::MIN as i64 && *v <= i32::MAX as i64 {
+                                narrowed.insert(dest.name.clone());
+                                local_changed = true;
+                            }
+                        }
+
+                        _ => {}
+                    }
+                }
+            }
+        }
+
+        // Apply narrowing to locals
+        for (name, ty) in &mut func.locals {
+            if *ty == MirType::I64 && narrowed.contains(name) {
+                *ty = MirType::I32;
+                changed = true;
+            }
+        }
+
+        changed
+    }
+
+    /// Propagate narrowing to callee functions
+    /// If a function is only called with narrowed arguments, narrow its parameters
+    fn propagate_narrowing_to_callees(&self, program: &mut MirProgram) -> bool {
+        let mut changed = false;
+
+        // Collect information about all call sites
+        // Map: callee_name -> param_idx -> all_narrowed
+        let mut callee_param_types: HashMap<String, HashMap<usize, bool>> = HashMap::new();
+
+        for func in &program.functions {
+            let loop_vars = Self::find_loop_variables(func);
+
+            for block in &func.blocks {
+                for inst in &block.instructions {
+                    if let MirInst::Call { func: callee, args, .. } = inst {
+                        if Self::is_builtin(callee) {
+                            continue;
+                        }
+
+                        for (idx, arg) in args.iter().enumerate() {
+                            let is_narrowed = match arg {
+                                Operand::Place(p) => {
+                                    // Check if it's a narrowed loop variable
+                                    loop_vars.contains_key(&p.name) ||
+                                    // Or a narrowed parameter
+                                    func.params.iter().any(|(name, ty)| name == &p.name && *ty == MirType::I32)
+                                }
+                                Operand::Constant(Constant::Int(v)) => {
+                                    *v >= 0 && *v <= i32::MAX as i64
+                                }
+                                _ => false,
+                            };
+
+                            callee_param_types
+                                .entry(callee.clone())
+                                .or_default()
+                                .entry(idx)
+                                .and_modify(|all_narrow| *all_narrow = *all_narrow && is_narrowed)
+                                .or_insert(is_narrowed);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Narrow parameters in callees where ALL call sites use narrowed values
+        for func in &mut program.functions {
+            if let Some(param_info) = callee_param_types.get(&func.name) {
+                for (&param_idx, &all_narrowed) in param_info {
+                    if all_narrowed {
+                        if let Some((_, ty)) = func.params.get_mut(param_idx) {
+                            if *ty == MirType::I64 {
+                                *ty = MirType::I32;
+                                changed = true;
+                            }
+                        }
+                    }
                 }
             }
         }

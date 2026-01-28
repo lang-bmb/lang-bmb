@@ -118,6 +118,9 @@ impl CodeGen {
         let context = Context::create();
         let mut ctx = LlvmContext::new(&context);
 
+        // v0.60.7: Copy struct definitions for field access codegen
+        ctx.struct_defs = program.struct_defs.clone();
+
         // Declare built-in functions
         ctx.declare_builtins();
 
@@ -315,6 +318,10 @@ struct LlvmContext<'ctx> {
     /// v0.50.80: Current function's return type (for type coercion in Return)
     /// Set at the start of gen_function_body, used by gen_terminator
     current_ret_type: Option<BasicTypeEnum<'ctx>>,
+
+    /// v0.60.7: Struct type definitions for field access codegen
+    /// Maps struct name -> list of (field_name, field_type)
+    struct_defs: HashMap<String, Vec<(String, MirType)>>,
 }
 
 impl<'ctx> LlvmContext<'ctx> {
@@ -334,6 +341,7 @@ impl<'ctx> LlvmContext<'ctx> {
             static_cstrings: HashMap::new(),
             static_string_counter: 0,
             current_ret_type: None,
+            struct_defs: HashMap::new(),
         }
     }
 
@@ -791,6 +799,20 @@ impl<'ctx> LlvmContext<'ctx> {
                 self.context.struct_type(&elem_types, false).into()
             }
         }
+    }
+
+    /// v0.60.7: Build LLVM struct type from struct definition
+    /// Used for GEP-based field access codegen
+    fn get_struct_llvm_type(&self, struct_name: &str) -> CodeGenResult<inkwell::types::StructType<'ctx>> {
+        let fields = self.struct_defs.get(struct_name)
+            .ok_or_else(|| CodeGenError::LlvmError(format!("Unknown struct: {}", struct_name)))?;
+
+        let field_types: Vec<BasicTypeEnum<'ctx>> = fields
+            .iter()
+            .map(|(_, ty)| self.mir_type_to_llvm(ty))
+            .collect();
+
+        Ok(self.context.struct_type(&field_types, false))
     }
 
     /// v0.35.4: Declare a function signature (pass 1 of two-pass approach)
@@ -1841,13 +1863,60 @@ impl<'ctx> LlvmContext<'ctx> {
                 self.store_to_place(dest, elem_val)?;
             }
 
-            // Struct/Enum operations not yet supported
+            // v0.60.7: Field access via GEP + load
+            MirInst::FieldAccess { dest, base, field: _, field_index, struct_name } => {
+                // Get the struct type for GEP
+                let struct_type = self.get_struct_llvm_type(struct_name)?;
+
+                // Load the base pointer (struct pointer)
+                let base_ptr = self.load_from_place(base)?;
+
+                // GEP to the field
+                let field_ptr = self.builder
+                    .build_struct_gep(struct_type, base_ptr.into_pointer_value(), *field_index as u32, "field_ptr")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+
+                // Get field type for load
+                let fields = self.struct_defs.get(struct_name)
+                    .ok_or_else(|| CodeGenError::LlvmError(format!("Unknown struct: {}", struct_name)))?;
+                let field_llvm_type = self.mir_type_to_llvm(&fields[*field_index].1);
+
+                // Load the field value
+                let field_val = self.builder
+                    .build_load(field_llvm_type, field_ptr, "field_val")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+
+                // Store to destination
+                self.store_to_place(dest, field_val)?;
+            }
+
+            // v0.60.7: Field store via GEP + store
+            MirInst::FieldStore { base, field: _, field_index, struct_name, value } => {
+                // Get the struct type for GEP
+                let struct_type = self.get_struct_llvm_type(struct_name)?;
+
+                // Load the base pointer (struct pointer)
+                let base_ptr = self.load_from_place(base)?;
+
+                // GEP to the field
+                let field_ptr = self.builder
+                    .build_struct_gep(struct_type, base_ptr.into_pointer_value(), *field_index as u32, "field_ptr")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+
+                // Generate the value to store
+                let store_val = self.gen_operand(value)?;
+
+                // Store the value
+                self.builder
+                    .build_store(field_ptr, store_val)
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+            }
+
+            // StructInit and EnumVariant not yet supported
             MirInst::StructInit { .. }
-            | MirInst::FieldAccess { .. }
-            | MirInst::FieldStore { .. }
             | MirInst::EnumVariant { .. } => {
                 return Err(CodeGenError::LlvmError(
-                    "Struct/Enum instructions not yet supported in LLVM codegen".to_string(),
+                    "StructInit/EnumVariant instructions not yet supported in LLVM codegen".to_string(),
                 ));
             }
         }
@@ -2223,9 +2292,9 @@ impl<'ctx> LlvmContext<'ctx> {
     /// when all values involved fit in i32.
     ///
     /// Example for fibonacci(n):
-    /// - n is narrowed to i32 (parameter type changed)
-    /// - n - 1: lhs is i32, rhs (constant 1) is i64
-    /// - Truncate rhs to i32: i32 - i32 → 32-bit operation ✓
+    /// v0.60.10: Type coercion for mixed-width integer operations
+    /// Smart coercion: truncate small constants to match i32 operands,
+    /// but extend i32 to i64 when the larger value might be a pointer
     fn coerce_int_types(
         &self,
         lhs: BasicValueEnum<'ctx>,
@@ -2246,17 +2315,39 @@ impl<'ctx> LlvmContext<'ctx> {
             // Same width, no coercion needed
             Ok((lhs_int.into(), rhs_int.into()))
         } else if lhs_bits < rhs_bits {
-            // Truncate rhs to match lhs (preserve smaller type for optimization)
-            let truncated = self.builder
-                .build_int_truncate(rhs_int, lhs_int.get_type(), "trunc_rhs")
+            // lhs is smaller (e.g., i32), rhs is larger (e.g., i64)
+            // Check if rhs is a small constant that can be truncated
+            if let Some(const_val) = rhs_int.get_sign_extended_constant() {
+                if const_val >= i32::MIN as i64 && const_val <= i32::MAX as i64 {
+                    // Safe to truncate the constant
+                    let truncated = self.builder
+                        .build_int_truncate(rhs_int, lhs_int.get_type(), "trunc_const")
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                    return Ok((lhs_int.into(), truncated.into()));
+                }
+            }
+            // rhs is not a small constant, extend lhs to match rhs
+            let extended = self.builder
+                .build_int_s_extend(lhs_int, rhs_int.get_type(), "sext_lhs")
                 .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
-            Ok((lhs_int.into(), truncated.into()))
+            Ok((extended.into(), rhs_int.into()))
         } else {
-            // Truncate lhs to match rhs (preserve smaller type for optimization)
-            let truncated = self.builder
-                .build_int_truncate(lhs_int, rhs_int.get_type(), "trunc_lhs")
+            // lhs is larger (e.g., i64), rhs is smaller (e.g., i32)
+            // Check if lhs is a small constant that can be truncated
+            if let Some(const_val) = lhs_int.get_sign_extended_constant() {
+                if const_val >= i32::MIN as i64 && const_val <= i32::MAX as i64 {
+                    // Safe to truncate the constant
+                    let truncated = self.builder
+                        .build_int_truncate(lhs_int, rhs_int.get_type(), "trunc_const")
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                    return Ok((truncated.into(), rhs_int.into()));
+                }
+            }
+            // lhs is not a small constant, extend rhs to match lhs
+            let extended = self.builder
+                .build_int_s_extend(rhs_int, lhs_int.get_type(), "sext_rhs")
                 .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
-            Ok((truncated.into(), rhs_int.into()))
+            Ok((lhs_int.into(), extended.into()))
         }
     }
 
@@ -2284,8 +2375,11 @@ impl<'ctx> LlvmContext<'ctx> {
     /// v0.51.9: Also uses SSA values for SSA-eligible locals (not pre-allocated)
     fn store_to_place(&mut self, place: &Place, value: BasicValueEnum<'ctx>) -> CodeGenResult<()> {
         // If it's an existing memory variable (param, local, PHI dest), store to memory
-        if let Some((ptr, _)) = self.variables.get(&place.name) {
-            self.builder.build_store(*ptr, value)
+        if let Some((ptr, pointee_type)) = self.variables.get(&place.name) {
+            // v0.60.10: Coerce value type to match destination pointee type
+            // This handles narrowed locals receiving i64 constants
+            let coerced_value = self.coerce_value_to_type(value, *pointee_type)?;
+            self.builder.build_store(*ptr, coerced_value)
                 .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
         } else {
             // v0.51.9: For all non-allocated places, use SSA values
@@ -2296,6 +2390,41 @@ impl<'ctx> LlvmContext<'ctx> {
             self.ssa_values.insert(place.name.clone(), value);
         }
         Ok(())
+    }
+
+    /// v0.60.10: Coerce a value to match the expected type
+    /// Handles narrowing (i64 -> i32) and widening (i32 -> i64) for integer stores
+    fn coerce_value_to_type(
+        &self,
+        value: BasicValueEnum<'ctx>,
+        expected_type: inkwell::types::BasicTypeEnum<'ctx>,
+    ) -> CodeGenResult<BasicValueEnum<'ctx>> {
+        // Only coerce integer types
+        if !value.is_int_value() || !expected_type.is_int_type() {
+            return Ok(value);
+        }
+
+        let value_int = value.into_int_value();
+        let expected_int_type = expected_type.into_int_type();
+
+        let value_bits = value_int.get_type().get_bit_width();
+        let expected_bits = expected_int_type.get_bit_width();
+
+        if value_bits == expected_bits {
+            Ok(value_int.into())
+        } else if value_bits > expected_bits {
+            // Truncate (e.g., i64 -> i32)
+            let truncated = self.builder
+                .build_int_truncate(value_int, expected_int_type, "trunc_store")
+                .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+            Ok(truncated.into())
+        } else {
+            // Sign-extend (e.g., i32 -> i64)
+            let extended = self.builder
+                .build_int_s_extend(value_int, expected_int_type, "sext_store")
+                .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+            Ok(extended.into())
+        }
     }
 
     /// Generate a binary operation

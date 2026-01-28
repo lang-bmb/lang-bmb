@@ -1416,7 +1416,7 @@ impl TextCodeGen {
                             } else {
                                 format!("{:.6e}", f)
                             };
-                            writeln!(out, "  %{} = fadd {} 0.0, {}", dest_name, const_ty, f_str)?;
+                            writeln!(out, "  %{} = fadd fast {} 0.0, {}", dest_name, const_ty, f_str)?;
                         }
                         Constant::Unit => {
                             // Unit type - just assign 0
@@ -1481,8 +1481,8 @@ impl TextCodeGen {
                         // For pointers, use select with always-true condition
                         writeln!(out, "  %{} = select i1 true, ptr {}, ptr null", dest_name, src_val)?;
                     } else if ty == "f64" {
-                        // For floats, use fadd
-                        writeln!(out, "  %{} = fadd {} {}, 0.0", dest_name, ty, src_val)?;
+                        // For floats, use fadd (v0.60.8: with fast flag)
+                        writeln!(out, "  %{} = fadd fast {} {}, 0.0", dest_name, ty, src_val)?;
                     } else {
                         // For integers, use add
                         writeln!(out, "  %{} = add {} {}, 0", dest_name, ty, src_val)?;
@@ -1632,12 +1632,15 @@ impl TextCodeGen {
                 } else {
                     // v0.34: Fix float operations - MIR may use Add/Sub/etc. for f64 due to type inference issues
                     // Override to float operations when operand type is double/f64
+                    // v0.60.8: Add 'fast' math flags to enable LLVM vectorization
+                    // Without fast flags, LLVM cannot reorder FP operations, preventing vectorization
+                    // The 'fast' flag enables: nnan ninf nsz arcp contract afn reassoc
                     let op_str = if lhs_ty == "double" || lhs_ty == "f64" {
                         match op {
-                            MirBinOp::Add | MirBinOp::FAdd => "fadd",
-                            MirBinOp::Sub | MirBinOp::FSub => "fsub",
-                            MirBinOp::Mul | MirBinOp::FMul => "fmul",
-                            MirBinOp::Div | MirBinOp::FDiv => "fdiv",
+                            MirBinOp::Add | MirBinOp::FAdd => "fadd fast",
+                            MirBinOp::Sub | MirBinOp::FSub => "fsub fast",
+                            MirBinOp::Mul | MirBinOp::FMul => "fmul fast",
+                            MirBinOp::Div | MirBinOp::FDiv => "fdiv fast",
                             MirBinOp::Mod => "frem",
                             // v0.37: Wrapping arithmetic (not applicable to floats)
                             MirBinOp::AddWrap | MirBinOp::SubWrap | MirBinOp::MulWrap |
@@ -1746,7 +1749,8 @@ impl TextCodeGen {
                         writeln!(out, "  %{} = sub {} 0, {}", dest_name, ty, src_str)?;
                     }
                     MirUnaryOp::FNeg => {
-                        writeln!(out, "  %{} = fsub {} 0.0, {}", dest_name, ty, src_str)?;
+                        // v0.60.8: fast flag for vectorization
+                        writeln!(out, "  %{} = fsub fast {} 0.0, {}", dest_name, ty, src_str)?;
                     }
                     MirUnaryOp::Not => {
                         writeln!(out, "  %{} = xor i1 {}, 1", dest_name, src_str)?;
@@ -3220,7 +3224,14 @@ impl TextCodeGen {
                     writeln!(out, "  %{}_ptr = getelementptr {}, ptr %{}_base_ptr, i32 0, i32 {}",
                              dest.name, struct_ty, dest.name, field_index)?;
                 }
-                writeln!(out, "  %{} = load {}, ptr %{}_ptr", dest.name, field_llvm_ty, dest.name)?;
+                // v0.60.7: Store to .addr if dest is a local, otherwise create SSA value
+                let dest_is_local = local_names.contains(&dest.name);
+                if dest_is_local {
+                    writeln!(out, "  %{}_val = load {}, ptr %{}_ptr", dest.name, field_llvm_ty, dest.name)?;
+                    writeln!(out, "  store {} %{}_val, ptr %{}.addr", field_llvm_ty, dest.name, dest.name)?;
+                } else {
+                    writeln!(out, "  %{} = load {}, ptr %{}_ptr", dest.name, field_llvm_ty, dest.name)?;
+                }
             }
 
             MirInst::FieldStore { base, field, field_index, struct_name, value } => {
@@ -4087,10 +4098,11 @@ impl TextCodeGen {
             MirBinOp::MulSat => ("mul", true),
 
             // Floating-point arithmetic - result type same as operand
-            MirBinOp::FAdd => ("fadd", true),
-            MirBinOp::FSub => ("fsub", true),
-            MirBinOp::FMul => ("fmul", true),
-            MirBinOp::FDiv => ("fdiv", true),
+            // v0.60.8: Add 'fast' math flags for LLVM vectorization
+            MirBinOp::FAdd => ("fadd fast", true),
+            MirBinOp::FSub => ("fsub fast", true),
+            MirBinOp::FMul => ("fmul fast", true),
+            MirBinOp::FDiv => ("fdiv fast", true),
 
             // Integer comparison - result is i1
             MirBinOp::Eq => ("icmp eq", false),
