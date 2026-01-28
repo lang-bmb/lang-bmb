@@ -2060,12 +2060,34 @@ impl TextCodeGen {
                         }
                         _ => self.format_operand_with_strings(&args[0], string_table),
                     };
-                    // Get value argument
+                    // Get value argument - v0.60.17: Handle narrowed i32 parameters
+                    let val_ty = match &args[1] {
+                        Operand::Constant(c) => self.constant_type(c),
+                        Operand::Place(p) => place_types.get(&p.name).copied()
+                            .unwrap_or_else(|| self.infer_place_type(p, func)),
+                    };
                     let val_val = match &args[1] {
                         Operand::Place(p) if local_names.contains(&p.name) => {
                             let load_name = format!("{}.store.val.{}", p.name, store_idx);
-                            writeln!(out, "  %{} = load i64, ptr %{}.addr", load_name, p.name)?;
-                            format!("%{}", load_name)
+                            writeln!(out, "  %{} = load {}, ptr %{}.addr", load_name, val_ty, p.name)?;
+                            // If value is i32, extend to i64 for store_i64
+                            if val_ty == "i32" {
+                                let ext_name = format!("{}.store.ext.{}", p.name, store_idx);
+                                writeln!(out, "  %{} = sext i32 %{} to i64", ext_name, load_name)?;
+                                format!("%{}", ext_name)
+                            } else {
+                                format!("%{}", load_name)
+                            }
+                        }
+                        Operand::Place(p) => {
+                            // Non-local place (parameter) - check if narrowed
+                            if val_ty == "i32" {
+                                let ext_name = format!("{}.store.ext.{}", p.name, store_idx);
+                                writeln!(out, "  %{} = sext i32 %{} to i64", ext_name, p.name)?;
+                                format!("%{}", ext_name)
+                            } else {
+                                format!("%{}", p.name)
+                            }
                         }
                         _ => self.format_operand_with_strings(&args[1], string_table),
                     };
@@ -3798,8 +3820,18 @@ impl TextCodeGen {
                                 writeln!(out, "  ret {} %_ret_val.{}.{}", ty, block_label, p.name)?;
                             }
                         } else {
-                            // v0.51.17: Use narrowing-aware formatting
-                            writeln!(out, "  ret {} {}", ty, self.format_operand_with_strings_and_narrowing(val, string_table, narrowed_param_names))?;
+                            // v0.60.17: Check if SSA value (e.g., from phi) needs type conversion
+                            // The phi might produce i32 due to narrowed parameters, but ret type is i64
+                            let val_ty = place_types.get(&p.name).copied().unwrap_or(ty);
+                            if val_ty == "i32" && ty == "i64" {
+                                // Sign extend i32 SSA value to i64 for return
+                                let sext_name = format!("_ret_sext.{}.{}", block_label, p.name);
+                                writeln!(out, "  %{} = sext i32 %{} to i64", sext_name, p.name)?;
+                                writeln!(out, "  ret i64 %{}", sext_name)?;
+                            } else {
+                                // v0.51.17: Use narrowing-aware formatting
+                                writeln!(out, "  ret {} {}", ty, self.format_operand_with_strings_and_narrowing(val, string_table, narrowed_param_names))?;
+                            }
                         }
                     } else {
                         writeln!(out, "  ret {} {}", ty, self.format_operand_with_strings_and_narrowing(val, string_table, narrowed_param_names))?;
