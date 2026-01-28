@@ -3578,6 +3578,7 @@ impl TextCodeGen {
             }
 
             // v0.55: Tuple initialization - builds LLVM struct from elements
+            // v0.60.18: Handle narrowed types - operands may be i32 but tuple expects i64
             MirInst::TupleInit { dest, elements } => {
                 // Create the LLVM struct type string
                 let elem_types: Vec<String> = elements
@@ -3586,19 +3587,51 @@ impl TextCodeGen {
                     .collect();
                 let struct_type = format!("{{ {} }}", elem_types.join(", "));
 
+                // v0.60.18: Helper to get actual type of operand (checking place_types for narrowed types)
+                let get_operand_actual_type = |op: &Operand, expected_ty: &'static str| -> &'static str {
+                    match op {
+                        Operand::Place(p) => place_types.get(&p.name).copied().unwrap_or(expected_ty),
+                        Operand::Constant(c) => self.constant_type(c),
+                    }
+                };
+
                 // Helper to format operand with local variable loading
-                let format_element_val = |out: &mut String, ty: &MirType, op: &Operand, idx: usize, name_counts: &mut HashMap<String, u32>| -> TextCodeGenResult<String> {
-                    let ty_str = self.mir_type_to_llvm(ty);
+                // Returns (value_string, actual_type)
+                let format_element_val = |out: &mut String, expected_ty: &'static str, actual_ty: &'static str, op: &Operand, idx: usize, name_counts: &mut HashMap<String, u32>| -> TextCodeGenResult<String> {
                     match op {
                         Operand::Place(p) if local_names.contains(&p.name) => {
                             // Load from alloca for local variables
+                            // v0.60.18: Use actual alloca type from place_types
                             let load_name = self.unique_name(&format!("{}_tuple_elem{}", dest.name, idx), name_counts);
-                            writeln!(out, "  %{} = load {}, ptr %{}.addr", load_name, ty_str, p.name)?;
+                            writeln!(out, "  %{} = load {}, ptr %{}.addr", load_name, actual_ty, p.name)?;
                             Ok(format!("%{}", load_name))
+                        }
+                        Operand::Place(p) => {
+                            // v0.60.18: Non-local place (parameter or SSA value) - use as-is
+                            Ok(format!("%{}", p.name))
                         }
                         _ => Ok(self.format_operand(op)),
                     }
                 };
+
+                // Helper to widen i32 to i64 if needed for tuple element
+                // Returns (value_string, type_for_insertvalue)
+                fn widen_if_needed(out: &mut String, val: &str, actual_ty: &'static str, expected_ty: &'static str, dest_name: &str, idx: usize, name_counts: &mut HashMap<String, u32>) -> TextCodeGenResult<(String, &'static str)> {
+                    if actual_ty == "i32" && expected_ty == "i64" {
+                        // Sign extend i32 to i64
+                        let count = name_counts.entry(format!("{}_tuple_sext{}", dest_name, idx)).or_insert(0);
+                        let ext_name = if *count == 0 {
+                            format!("{}_tuple_sext{}", dest_name, idx)
+                        } else {
+                            format!("{}_tuple_sext{}.{}", dest_name, idx, count)
+                        };
+                        *count += 1;
+                        writeln!(out, "  %{} = sext i32 {} to i64", ext_name, val)?;
+                        Ok((format!("%{}", ext_name), "i64"))
+                    } else {
+                        Ok((val.to_string(), actual_ty))
+                    }
+                }
 
                 // Build the struct value using insertvalue instructions
                 let dest_name = self.unique_name(&dest.name, name_counts);
@@ -3607,20 +3640,24 @@ impl TextCodeGen {
                 } else {
                     // First element: insertvalue into undef
                     let (first_ty, first_op) = &elements[0];
-                    let first_val = format_element_val(out, first_ty, first_op, 0, name_counts)?;
-                    let first_ty_str = self.mir_type_to_llvm(first_ty);
-                    writeln!(out, "  %{}_0 = insertvalue {} undef, {} {}, 0", dest_name, struct_type, first_ty_str, first_val)?;
+                    let first_expected_ty = self.mir_type_to_llvm(first_ty);
+                    let first_actual_ty = get_operand_actual_type(first_op, first_expected_ty);
+                    let first_val = format_element_val(out, first_expected_ty, first_actual_ty, first_op, 0, name_counts)?;
+                    let (first_val_final, first_ty_final) = widen_if_needed(out, &first_val, first_actual_ty, first_expected_ty, &dest_name, 0, name_counts)?;
+                    writeln!(out, "  %{}_0 = insertvalue {} undef, {} {}, 0", dest_name, struct_type, first_ty_final, first_val_final)?;
 
                     // Remaining elements: chain insertvalue
                     for (i, (ty, op)) in elements.iter().enumerate().skip(1) {
-                        let val_str = format_element_val(out, ty, op, i, name_counts)?;
-                        let ty_str = self.mir_type_to_llvm(ty);
+                        let expected_ty = self.mir_type_to_llvm(ty);
+                        let actual_ty = get_operand_actual_type(op, expected_ty);
+                        let val_str = format_element_val(out, expected_ty, actual_ty, op, i, name_counts)?;
+                        let (val_final, ty_final) = widen_if_needed(out, &val_str, actual_ty, expected_ty, &dest_name, i, name_counts)?;
                         let prev = if i == 1 { format!("%{}_0", dest_name) } else { format!("%{}_{}", dest_name, i - 1) };
                         if i == elements.len() - 1 {
                             // Last element uses final dest name
-                            writeln!(out, "  %{} = insertvalue {} {}, {} {}, {}", dest_name, struct_type, prev, ty_str, val_str, i)?;
+                            writeln!(out, "  %{} = insertvalue {} {}, {} {}, {}", dest_name, struct_type, prev, ty_final, val_final, i)?;
                         } else {
-                            writeln!(out, "  %{}_{} = insertvalue {} {}, {} {}, {}", dest_name, i, struct_type, prev, ty_str, val_str, i)?;
+                            writeln!(out, "  %{}_{} = insertvalue {} {}, {} {}, {}", dest_name, i, struct_type, prev, ty_final, val_final, i)?;
                         }
                     }
                     // Single element case - rename _0 to final name

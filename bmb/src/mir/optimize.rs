@@ -2711,6 +2711,20 @@ impl TailRecursiveToLoop {
                 from_ty,
                 to_ty,
             },
+            // v0.60.18: Handle tuple operations - critical for correctness when tuples
+            // use loop-varying parameters (e.g., partition_loop returning (i, cost))
+            MirInst::TupleInit { dest, elements } => MirInst::TupleInit {
+                dest,
+                elements: elements.into_iter()
+                    .map(|(ty, op)| (ty, self.substitute_operand(op, subst)))
+                    .collect(),
+            },
+            MirInst::TupleExtract { dest, tuple, index, element_type } => MirInst::TupleExtract {
+                dest,
+                tuple: Place::new(subst.get(&tuple.name).cloned().unwrap_or(tuple.name)),
+                index,
+                element_type,
+            },
             other => other, // Const doesn't need substitution
         }
     }

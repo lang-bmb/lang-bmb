@@ -1933,6 +1933,7 @@ impl<'ctx> LlvmContext<'ctx> {
             }
 
             // v0.55: Tuple initialization - builds LLVM struct from elements
+            // v0.60.18: Handle narrowed types - operand may be i32 but tuple expects i64
             MirInst::TupleInit { dest, elements } => {
                 // Create the LLVM struct type from element types
                 let elem_types: Vec<BasicTypeEnum<'ctx>> = elements
@@ -1945,8 +1946,38 @@ impl<'ctx> LlvmContext<'ctx> {
                 let mut struct_val = struct_type.get_undef();
                 for (i, (_, operand)) in elements.iter().enumerate() {
                     let elem_val = self.gen_operand(operand)?;
+
+                    // v0.60.18: Check if type widening is needed due to ConstantPropagationNarrowing
+                    // When a parameter is narrowed to i32, but the tuple element type is i64,
+                    // we need to sign-extend the value before insertion
+                    let expected_ty = elem_types[i];
+                    let elem_val_final = if elem_val.is_int_value() && expected_ty.is_int_type() {
+                        let actual_int = elem_val.into_int_value();
+                        let expected_int = expected_ty.into_int_type();
+                        let actual_bits = actual_int.get_type().get_bit_width();
+                        let expected_bits = expected_int.get_bit_width();
+
+                        if actual_bits < expected_bits {
+                            // Need sign extension (i32 -> i64)
+                            self.builder
+                                .build_int_s_extend(actual_int, expected_int, &format!("{}_sext{}", dest.name, i))
+                                .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                                .into()
+                        } else if actual_bits > expected_bits {
+                            // Need truncation (shouldn't happen normally, but handle it)
+                            self.builder
+                                .build_int_truncate(actual_int, expected_int, &format!("{}_trunc{}", dest.name, i))
+                                .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                                .into()
+                        } else {
+                            elem_val
+                        }
+                    } else {
+                        elem_val
+                    };
+
                     let result = self.builder
-                        .build_insert_value(struct_val, elem_val, i as u32, &format!("{}_elem{}", dest.name, i))
+                        .build_insert_value(struct_val, elem_val_final, i as u32, &format!("{}_elem{}", dest.name, i))
                         .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
                     struct_val = result.into_struct_value();
                 }
