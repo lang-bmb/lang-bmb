@@ -12,7 +12,7 @@ use inkwell::targets::{
     CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine,
 };
 use inkwell::types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum};
-use inkwell::values::{BasicMetadataValueEnum, BasicValueEnum, FunctionValue, PhiValue, PointerValue};
+use inkwell::values::{BasicMetadataValueEnum, BasicValue, BasicValueEnum, FunctionValue, PhiValue, PointerValue};
 use inkwell::passes::PassBuilderOptions;
 use inkwell::OptimizationLevel;
 use inkwell::{FloatPredicate, IntPredicate};
@@ -857,19 +857,23 @@ impl<'ctx> LlvmContext<'ctx> {
         // - nounwind: BMB has no exceptions, so no unwinding
         // - willreturn: Most functions will eventually return
         // These help LLVM's optimization passes, especially for recursive functions
-        use inkwell::attributes::AttributeLoc;
-        let nounwind = self.context.create_string_attribute("nounwind", "");
-        let willreturn = self.context.create_string_attribute("willreturn", "");
-        let mustprogress = self.context.create_string_attribute("mustprogress", "");
-        function.add_attribute(AttributeLoc::Function, nounwind);
-        function.add_attribute(AttributeLoc::Function, willreturn);
-        function.add_attribute(AttributeLoc::Function, mustprogress);
+        use inkwell::attributes::{Attribute, AttributeLoc};
+        // v0.60.35: Use proper enum attributes instead of string attributes
+        // String attributes like "alwaysinline" are just metadata and don't trigger LLVM optimizations
+        // We must use enum attributes (LLVM built-in attributes) for actual effect
+        let nounwind_id = Attribute::get_named_enum_kind_id("nounwind");
+        let willreturn_id = Attribute::get_named_enum_kind_id("willreturn");
+        let mustprogress_id = Attribute::get_named_enum_kind_id("mustprogress");
+        function.add_attribute(AttributeLoc::Function, self.context.create_enum_attribute(nounwind_id, 0));
+        function.add_attribute(AttributeLoc::Function, self.context.create_enum_attribute(willreturn_id, 0));
+        function.add_attribute(AttributeLoc::Function, self.context.create_enum_attribute(mustprogress_id, 0));
 
         // v0.51.8: Add alwaysinline for small functions to eliminate call overhead
         // This is critical for tight loops like spectral_norm's inner loop
+        // v0.60.35: Fixed - use enum attribute, not string attribute
         if func.always_inline {
-            let alwaysinline = self.context.create_string_attribute("alwaysinline", "");
-            function.add_attribute(AttributeLoc::Function, alwaysinline);
+            let alwaysinline_id = Attribute::get_named_enum_kind_id("alwaysinline");
+            function.add_attribute(AttributeLoc::Function, self.context.create_enum_attribute(alwaysinline_id, 0));
         }
 
         self.functions.insert(func.name.clone(), function);
@@ -1087,11 +1091,15 @@ impl<'ctx> LlvmContext<'ctx> {
                     MirInst::Phi { dest, .. } => Some(&dest.name),
                     MirInst::StructInit { dest, .. } => Some(&dest.name),
                     MirInst::FieldAccess { dest, .. } => Some(&dest.name),
-                    MirInst::FieldStore { base, .. } => Some(&base.name),
+                    // v0.60.29: FieldStore reads the base pointer to write through it
+                    // The pointer itself is not modified, only memory accessed through it
+                    MirInst::FieldStore { .. } => None,
                     MirInst::EnumVariant { dest, .. } => Some(&dest.name),
                     MirInst::ArrayInit { dest, .. } => Some(&dest.name),
                     MirInst::IndexLoad { dest, .. } => Some(&dest.name),
-                    MirInst::IndexStore { array, .. } => Some(&array.name),
+                    // v0.60.29: IndexStore reads the array pointer to write through it
+                    // The pointer itself is not modified, only memory accessed through it
+                    MirInst::IndexStore { .. } => None,
                     MirInst::Cast { dest, .. } => Some(&dest.name),
                     // v0.55: Tuple instructions
                     MirInst::TupleInit { dest, .. } => Some(&dest.name),
@@ -1440,7 +1448,11 @@ impl<'ctx> LlvmContext<'ctx> {
             MirInst::BinOp { dest, op, lhs, rhs } => {
                 let lhs_val = self.gen_operand(lhs)?;
                 let rhs_val = self.gen_operand(rhs)?;
-                let result = self.gen_binop(*op, lhs_val, rhs_val)?;
+                // v0.60.33: Detect if this is a String comparison (not typed pointer)
+                // String constants come from Operand::Constant(Constant::String(_))
+                let is_string_comparison = matches!(lhs, Operand::Constant(Constant::String(_)))
+                    || matches!(rhs, Operand::Constant(Constant::String(_)));
+                let result = self.gen_binop_with_string_hint(*op, lhs_val, rhs_val, is_string_comparison)?;
                 self.store_to_place(dest, result)?;
             }
 
@@ -1934,9 +1946,21 @@ impl<'ctx> LlvmContext<'ctx> {
                 }.map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
 
                 // Load element
+                // v0.60.35: Add alignment hint based on element type for better performance
                 let loaded = self.builder
                     .build_load(llvm_elem_type, elem_ptr, &dest.name)
                     .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+
+                // Set alignment based on element type size
+                let alignment = match element_type {
+                    MirType::I64 | MirType::U64 | MirType::F64 | MirType::Ptr(_) | MirType::StructPtr(_) | MirType::String => 8,
+                    MirType::I32 | MirType::U32 | MirType::Char => 4,
+                    MirType::Bool => 1,
+                    _ => 8, // Default to 8 for structs and other types
+                };
+                if let Some(load_inst) = loaded.as_instruction_value() {
+                    let _ = load_inst.set_alignment(alignment);
+                }
 
                 // Store to destination
                 self.store_to_place(dest, loaded)?;
@@ -1974,8 +1998,18 @@ impl<'ctx> LlvmContext<'ctx> {
                 }.map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
 
                 // Store value
-                self.builder.build_store(elem_ptr, store_val)
+                // v0.60.35: Add alignment hint based on element type for better performance
+                let store_inst = self.builder.build_store(elem_ptr, store_val)
                     .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+
+                // Set alignment based on element type size
+                let alignment = match element_type {
+                    MirType::I64 | MirType::U64 | MirType::F64 | MirType::Ptr(_) | MirType::StructPtr(_) | MirType::String => 8,
+                    MirType::I32 | MirType::U32 | MirType::Char => 4,
+                    MirType::Bool => 1,
+                    _ => 8, // Default to 8 for structs and other types
+                };
+                let _ = store_inst.set_alignment(alignment);
             }
 
             // v0.50.80: Type cast instruction
@@ -2141,9 +2175,21 @@ impl<'ctx> LlvmContext<'ctx> {
                 let llvm_elem_type = self.mir_type_to_llvm(element_type);
 
                 // Load the value
+                // v0.60.35: Add alignment hint based on element type
                 let loaded = self.builder
                     .build_load(llvm_elem_type, ptr_ptr, &dest.name)
                     .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+
+                // Set alignment based on element type size
+                let alignment = match element_type {
+                    MirType::I64 | MirType::U64 | MirType::F64 | MirType::Ptr(_) | MirType::StructPtr(_) | MirType::String => 8,
+                    MirType::I32 | MirType::U32 | MirType::Char => 4,
+                    MirType::Bool => 1,
+                    _ => 8, // Default to 8 for structs and other types
+                };
+                if let Some(load_inst) = loaded.as_instruction_value() {
+                    let _ = load_inst.set_alignment(alignment);
+                }
 
                 // Store to destination
                 self.store_to_place(dest, loaded)?;
@@ -2172,8 +2218,18 @@ impl<'ctx> LlvmContext<'ctx> {
                 let _llvm_elem_type = self.mir_type_to_llvm(element_type);
 
                 // Store the value
-                self.builder.build_store(ptr_ptr, store_val)
+                // v0.60.35: Add alignment hint based on element type
+                let store_inst = self.builder.build_store(ptr_ptr, store_val)
                     .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+
+                // Set alignment based on element type size
+                let alignment = match element_type {
+                    MirType::I64 | MirType::U64 | MirType::F64 | MirType::Ptr(_) | MirType::StructPtr(_) | MirType::String => 8,
+                    MirType::I32 | MirType::U32 | MirType::Char => 4,
+                    MirType::Bool => 1,
+                    _ => 8, // Default to 8 for structs and other types
+                };
+                let _ = store_inst.set_alignment(alignment);
             }
 
             // v0.60.7: Field access via GEP + load
@@ -2271,6 +2327,7 @@ impl<'ctx> LlvmContext<'ctx> {
     /// Generate code for a terminator
     /// v0.50.67: Now takes &mut self for static string generation
     /// v0.50.80: Added type coercion for Return when value type doesn't match function return type
+    /// v0.60.31: Added int->ptr coercion for String-returning functions with early returns
     fn gen_terminator(&mut self, term: &Terminator) -> CodeGenResult<()> {
         match term {
             Terminator::Return(Some(op)) => {
@@ -2279,6 +2336,7 @@ impl<'ctx> LlvmContext<'ctx> {
                 // v0.50.80: Coerce return value type if needed
                 // When ConstantPropagationNarrowing narrows a parameter to i32,
                 // the returned value might be i32 but function returns i64
+                // v0.60.31: Also handle int->ptr coercion for String-returning functions
                 let coerced_value = if let Some(ret_type) = self.current_ret_type {
                     if value.is_int_value() && ret_type.is_int_type() {
                         let val_int = value.into_int_value();
@@ -2301,6 +2359,24 @@ impl<'ctx> LlvmContext<'ctx> {
                         } else {
                             value
                         }
+                    } else if value.is_int_value() && ret_type.is_pointer_type() {
+                        // v0.60.31: Convert int to ptr for String-returning functions
+                        // This happens when TailRecursiveToLoop creates early returns
+                        // that bypass the normal inttoptr conversion
+                        let val_int = value.into_int_value();
+                        let ret_ptr = ret_type.into_pointer_type();
+                        let converted = self.builder
+                            .build_int_to_ptr(val_int, ret_ptr, "ret_inttoptr")
+                            .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                        converted.into()
+                    } else if value.is_pointer_value() && ret_type.is_int_type() {
+                        // v0.60.31: Convert ptr to int if needed (rare case)
+                        let val_ptr = value.into_pointer_value();
+                        let ret_int = ret_type.into_int_type();
+                        let converted = self.builder
+                            .build_ptr_to_int(val_ptr, ret_int, "ret_ptrtoint")
+                            .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                        converted.into()
                     } else {
                         value
                     }
@@ -2811,6 +2887,18 @@ impl<'ctx> LlvmContext<'ctx> {
         lhs: BasicValueEnum<'ctx>,
         rhs: BasicValueEnum<'ctx>,
     ) -> CodeGenResult<BasicValueEnum<'ctx>> {
+        self.gen_binop_with_string_hint(op, lhs, rhs, false)
+    }
+
+    /// Generate a binary operation with string comparison hint
+    /// v0.60.33: Added is_string_comparison to distinguish String from typed pointers
+    fn gen_binop_with_string_hint(
+        &self,
+        op: MirBinOp,
+        lhs: BasicValueEnum<'ctx>,
+        rhs: BasicValueEnum<'ctx>,
+        is_string_comparison: bool,
+    ) -> CodeGenResult<BasicValueEnum<'ctx>> {
         // v0.50.80: Type coercion for mixed integer operations
         // When ConstantPropagationNarrowing narrows a parameter to i32,
         // constants may still be i64. Extend the smaller type to match.
@@ -2919,10 +3007,11 @@ impl<'ctx> LlvmContext<'ctx> {
                 Ok(result.into())
             }
 
-            // Integer/String comparison
+            // Integer/String/Pointer comparison
             MirBinOp::Eq => {
-                // v0.46: Check if either operand is a pointer (strings) - use string_eq
-                if lhs.is_pointer_value() || rhs.is_pointer_value() {
+                // v0.60.33: Only use string_eq for actual String comparisons
+                // Typed pointers (*T) should use direct pointer comparison
+                if is_string_comparison && (lhs.is_pointer_value() || rhs.is_pointer_value()) {
                     let string_eq_fn = self.functions.get("string_eq")
                         .ok_or_else(|| CodeGenError::UnknownFunction("string_eq".to_string()))?;
                     let call_result = self.builder
@@ -2935,6 +3024,15 @@ impl<'ctx> LlvmContext<'ctx> {
                         .build_int_compare(IntPredicate::NE, eq_i64.into_int_value(), self.context.i64_type().const_zero(), "streq_bool")
                         .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
                     Ok(result.into())
+                } else if lhs.is_pointer_value() && rhs.is_pointer_value() {
+                    // v0.60.33: Direct pointer comparison for typed pointers (*T)
+                    let result = self.builder
+                        .build_int_compare(IntPredicate::EQ,
+                            self.builder.build_ptr_to_int(lhs.into_pointer_value(), self.context.i64_type(), "lhs_ptr").map_err(|e| CodeGenError::LlvmError(e.to_string()))?,
+                            self.builder.build_ptr_to_int(rhs.into_pointer_value(), self.context.i64_type(), "rhs_ptr").map_err(|e| CodeGenError::LlvmError(e.to_string()))?,
+                            "ptr_eq")
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                    Ok(result.into())
                 } else {
                     let result = self.builder
                         .build_int_compare(IntPredicate::EQ, lhs.into_int_value(), rhs.into_int_value(), "eq")
@@ -2943,8 +3041,9 @@ impl<'ctx> LlvmContext<'ctx> {
                 }
             }
             MirBinOp::Ne => {
-                // v0.46: Check if either operand is a pointer (strings) - use string_eq and negate
-                if lhs.is_pointer_value() || rhs.is_pointer_value() {
+                // v0.60.33: Only use string_eq for actual String comparisons
+                // Typed pointers (*T) should use direct pointer comparison
+                if is_string_comparison && (lhs.is_pointer_value() || rhs.is_pointer_value()) {
                     let string_eq_fn = self.functions.get("string_eq")
                         .ok_or_else(|| CodeGenError::UnknownFunction("string_eq".to_string()))?;
                     let call_result = self.builder
@@ -2955,6 +3054,15 @@ impl<'ctx> LlvmContext<'ctx> {
                     // Convert i64 to i1 (bool): zero means not equal
                     let result = self.builder
                         .build_int_compare(IntPredicate::EQ, eq_i64.into_int_value(), self.context.i64_type().const_zero(), "strne_bool")
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                    Ok(result.into())
+                } else if lhs.is_pointer_value() && rhs.is_pointer_value() {
+                    // v0.60.33: Direct pointer comparison for typed pointers (*T)
+                    let result = self.builder
+                        .build_int_compare(IntPredicate::NE,
+                            self.builder.build_ptr_to_int(lhs.into_pointer_value(), self.context.i64_type(), "lhs_ptr").map_err(|e| CodeGenError::LlvmError(e.to_string()))?,
+                            self.builder.build_ptr_to_int(rhs.into_pointer_value(), self.context.i64_type(), "rhs_ptr").map_err(|e| CodeGenError::LlvmError(e.to_string()))?,
+                            "ptr_ne")
                         .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
                     Ok(result.into())
                 } else {
