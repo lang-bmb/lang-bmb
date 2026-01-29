@@ -498,10 +498,25 @@ impl TypeChecker {
         // hashset_free(set: i64) -> Unit (deallocate hashset)
         functions.insert("hashset_free".to_string(), (vec![Type::I64], Type::Unit));
 
+        // v0.60.27: Initialize generic builtin functions
+        let mut generic_functions = HashMap::new();
+
+        // free<T>(ptr: *T) -> Unit
+        // Allows calling free with typed pointers directly, avoiding unnecessary inttoptr/ptrtoint
+        // The i64 version above is kept for backward compatibility with legacy pointer code
+        generic_functions.insert(
+            "free".to_string(),
+            (
+                vec![TypeParam::new("T")],
+                vec![Type::Ptr(Box::new(Type::TypeVar("T".to_string())))],
+                Type::Unit,
+            ),
+        );
+
         Self {
             env: HashMap::new(),
             functions,
-            generic_functions: HashMap::new(),
+            generic_functions,
             generic_structs: HashMap::new(),
             structs: HashMap::new(),
             generic_enums: HashMap::new(),
@@ -1399,6 +1414,46 @@ impl TypeChecker {
                 Ok(result)
             }
 
+            // v0.60.21: Uninitialized let binding for stack arrays
+            // Only allowed for array types - uninitialized primitives are dangerous
+            Expr::LetUninit { name, mutable, ty, body } => {
+                // v0.75: Mark type names in annotation as used
+                self.mark_type_names_used(&ty.node);
+
+                // Only allow for array types (safety check)
+                match &ty.node {
+                    Type::Array(_, _) => {
+                        // Track binding
+                        self.binding_tracker.push_scope();
+
+                        // v0.79: Check for shadow binding
+                        if let Some(original_span) = self.binding_tracker.find_shadow(name) {
+                            self.add_warning(CompileWarning::shadow_binding(name, span, original_span));
+                        }
+
+                        self.binding_tracker.bind_with_mutability(name.clone(), span, *mutable);
+                        self.env.insert(name.clone(), ty.node.clone());
+
+                        let result = self.infer(&body.node, body.span)?;
+
+                        // Check for unused bindings
+                        let (unused, unused_mut) = self.binding_tracker.pop_scope();
+                        for (unused_name, unused_span) in unused {
+                            self.add_warning(CompileWarning::unused_binding(unused_name, unused_span));
+                        }
+                        for (name, span) in unused_mut {
+                            self.add_warning(CompileWarning::unused_mut(name, span));
+                        }
+
+                        Ok(result)
+                    }
+                    _ => Err(CompileError::type_error(
+                        "uninitialized declaration only allowed for array types".to_string(),
+                        ty.span,
+                    )),
+                }
+            }
+
             Expr::Assign { name, value } => {
                 // Check that variable exists
                 let var_ty = self.env.get(name).cloned().ok_or_else(|| {
@@ -1514,6 +1569,39 @@ impl TypeChecker {
                     return Ok(*ret_ty);
                 }
 
+                // v0.60.27: Try generic functions FIRST for pointer-accepting overloads
+                // This allows `free(ptr)` to match `free<T>(*T)` before `free(i64)` fails
+                if let Some((type_params, param_tys, ret_ty)) = self.generic_functions.get(func).cloned() {
+                    if args.len() == param_tys.len() {
+                        // Try to infer type arguments - if this fails, fall through to non-generic
+                        let mut type_subst: HashMap<String, Type> = HashMap::new();
+                        let mut generic_match = true;
+
+                        for (arg, param_ty) in args.iter().zip(param_tys.iter()) {
+                            let arg_ty = self.infer(&arg.node, arg.span)?;
+                            if self.infer_type_args(param_ty, &arg_ty, &mut type_subst, arg.span).is_err() {
+                                generic_match = false;
+                                break;
+                            }
+                        }
+
+                        // Check that all type parameters were inferred
+                        if generic_match {
+                            let uninferred: Vec<_> = type_params
+                                .iter()
+                                .filter(|tp| !type_subst.contains_key(&tp.name))
+                                .collect();
+
+                            if uninferred.is_empty() {
+                                // All type params inferred - use generic version
+                                let instantiated_ret_ty = self.substitute_type(&ret_ty, &type_subst);
+                                return Ok(instantiated_ret_ty);
+                            }
+                        }
+                        // Fall through to try non-generic version
+                    }
+                }
+
                 // v0.15: Try non-generic functions
                 if let Some((param_tys, ret_ty)) = self.functions.get(func).cloned() {
                     if args.len() != param_tys.len() {
@@ -1535,7 +1623,7 @@ impl TypeChecker {
                     return Ok(ret_ty);
                 }
 
-                // v0.15: Try generic functions
+                // v0.15: Try generic functions (original position - for functions only in generic_functions)
                 if let Some((type_params, param_tys, ret_ty)) = self.generic_functions.get(func).cloned() {
                     if args.len() != param_tys.len() {
                         return Err(CompileError::type_error(
@@ -2055,7 +2143,10 @@ impl TypeChecker {
                 let inner_ty = self.infer(&inner.node, inner.span)?;
                 match inner_ty {
                     Type::Ref(t) | Type::RefMut(t) => Ok(*t),
-                    _ => Err(CompileError::type_error(format!("Cannot dereference non-reference type: {}", inner_ty), span)),
+                    // v0.60.20: Support dereferencing raw pointers (*T)
+                    // This enables native pointer operations for performance-critical code
+                    Type::Ptr(t) => Ok(*t),
+                    _ => Err(CompileError::type_error(format!("Cannot dereference non-pointer type: {}", inner_ty), span)),
                 }
             }
 
@@ -2072,6 +2163,12 @@ impl TypeChecker {
                     }
                     Ok(Type::Array(Box::new(first_ty), elems.len()))
                 }
+            }
+
+            // v0.60.22: Array repeat syntax [val; N]
+            Expr::ArrayRepeat { value, count } => {
+                let elem_ty = self.infer(&value.node, value.span)?;
+                Ok(Type::Array(Box::new(elem_ty), *count))
             }
 
             // v0.42: Tuple expressions
@@ -2094,7 +2191,7 @@ impl TypeChecker {
                     _ => return Err(CompileError::type_error(format!("Array index must be integer, got: {}", index_ty), index.span)),
                 }
 
-                // Expression must be an array or reference to array (v0.50.26)
+                // Expression must be an array, reference to array, or pointer (v0.50.26, v0.60.19)
                 match &expr_ty {
                     Type::Array(elem_ty, _) => Ok(*elem_ty.clone()),
                     // v0.50.26: Support indexing through references to arrays
@@ -2106,6 +2203,9 @@ impl TypeChecker {
                             expr.span,
                         )),
                     },
+                    // v0.60.19: Support pointer indexing: ptr[i] returns element type
+                    // This enables proper LLVM GEP generation instead of inttoptr
+                    Type::Ptr(elem_ty) => Ok(*elem_ty.clone()),
                     Type::String => Ok(Type::I64), // String indexing returns char code
                     _ => Err(CompileError::type_error(format!("Cannot index into type: {}", expr_ty), expr.span)),
                 }
@@ -2126,9 +2226,11 @@ impl TypeChecker {
                     )),
                 }
 
-                // Array must be a mutable array type
+                // Array must be a mutable array type or pointer (v0.60.19)
                 let elem_ty = match &array_ty {
                     Type::Array(elem_ty, _) => *elem_ty.clone(),
+                    // v0.60.19: Support pointer index assignment: ptr[i] = value
+                    Type::Ptr(elem_ty) => *elem_ty.clone(),
                     _ => return Err(CompileError::type_error(
                         format!("Cannot assign to index of non-array type: {}", array_ty),
                         array.span,
@@ -2291,6 +2393,27 @@ impl TypeChecker {
                 Ok(Type::Unit)
             }
 
+            // v0.60.21: Dereference assignment: set *ptr = value
+            Expr::DerefAssign { ptr, value } => {
+                let ptr_ty = self.infer(&ptr.node, ptr.span)?;
+                let value_ty = self.infer(&value.node, value.span)?;
+
+                // ptr must be a pointer type
+                let elem_ty = match &ptr_ty {
+                    Type::Ptr(inner) => *inner.clone(),
+                    _ => return Err(CompileError::type_error(
+                        format!("Cannot dereference and assign to non-pointer type: {}", ptr_ty),
+                        ptr.span,
+                    )),
+                };
+
+                // Value must match element type
+                self.unify(&elem_ty, &value_ty, value.span)?;
+
+                // DerefAssign returns unit
+                Ok(Type::Unit)
+            }
+
             // v0.5 Phase 8: Method calls
             Expr::MethodCall { receiver, method, args } => {
                 let receiver_ty = self.infer(&receiver.node, receiver.span)?;
@@ -2442,14 +2565,22 @@ impl TypeChecker {
                 let src_ptr = matches!(&src_ty, Type::Ptr(_));
                 let tgt_ptr = matches!(&target_ty, Type::Ptr(_));
 
+                // v0.60.23: Array to pointer cast - [T; N] -> *T
+                let array_to_ptr = match (&src_ty, &target_ty) {
+                    (Type::Array(elem_ty, _), Type::Ptr(ptr_elem_ty)) => elem_ty == ptr_elem_ty,
+                    _ => false,
+                };
+
                 // Allow: numeric <-> numeric, struct -> i64, i64 -> struct
                 // v0.51.37: Also allow i64 <-> *T and *T <-> *U casts
+                // v0.60.23: Also allow [T; N] -> *T (array decay to pointer)
                 let valid_cast = (src_numeric && tgt_numeric)
                     || (src_struct && tgt_is_i64)  // struct pointer to i64
                     || (src_is_i64 && tgt_struct)  // i64 to struct pointer
                     || (src_is_i64 && tgt_ptr)     // i64 to *T (malloc result)
                     || (src_ptr && tgt_is_i64)     // *T to i64 (null check, arithmetic)
-                    || (src_ptr && tgt_ptr);       // *T to *U (pointer cast)
+                    || (src_ptr && tgt_ptr)        // *T to *U (pointer cast)
+                    || array_to_ptr;               // [T; N] -> *T (array decay)
 
                 if !valid_cast {
                     return Err(CompileError::type_error(
@@ -3122,19 +3253,55 @@ impl TypeChecker {
 
         match op {
             BinOp::Add => {
-                self.unify(left_base, right_base, span)?;
-                match left_base {
-                    // v0.38: Include unsigned types
-                    Type::I32 | Type::I64 | Type::U32 | Type::U64 | Type::F64 => Ok(left_base.clone()),
-                    Type::String => Ok(Type::String), // String concatenation
-                    _ => Err(CompileError::type_error(
-                        format!("+ operator requires numeric or String type, got {left}"),
-                        span,
-                    )),
+                // v0.60.19: Support pointer arithmetic: ptr + i64 or i64 + ptr
+                match (left_base, right_base) {
+                    // Pointer arithmetic: *T + integer = *T
+                    (Type::Ptr(elem_ty), Type::I64 | Type::I32 | Type::U64 | Type::U32) => {
+                        Ok(Type::Ptr(elem_ty.clone()))
+                    }
+                    // Commutative: integer + *T = *T
+                    (Type::I64 | Type::I32 | Type::U64 | Type::U32, Type::Ptr(elem_ty)) => {
+                        Ok(Type::Ptr(elem_ty.clone()))
+                    }
+                    // Standard numeric and string cases
+                    _ => {
+                        self.unify(left_base, right_base, span)?;
+                        match left_base {
+                            // v0.38: Include unsigned types
+                            Type::I32 | Type::I64 | Type::U32 | Type::U64 | Type::F64 => Ok(left_base.clone()),
+                            Type::String => Ok(Type::String), // String concatenation
+                            _ => Err(CompileError::type_error(
+                                format!("+ operator requires numeric, String, or pointer type, got {left}"),
+                                span,
+                            )),
+                        }
+                    }
                 }
             }
 
-            BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Mod => {
+            BinOp::Sub => {
+                // v0.60.19: Support pointer arithmetic: ptr - integer = *T
+                match (left_base, right_base) {
+                    // Pointer arithmetic: *T - integer = *T
+                    (Type::Ptr(elem_ty), Type::I64 | Type::I32 | Type::U64 | Type::U32) => {
+                        Ok(Type::Ptr(elem_ty.clone()))
+                    }
+                    // Standard numeric case
+                    _ => {
+                        self.unify(left_base, right_base, span)?;
+                        match left_base {
+                            // v0.38: Include unsigned types
+                            Type::I32 | Type::I64 | Type::U32 | Type::U64 | Type::F64 => Ok(left_base.clone()),
+                            _ => Err(CompileError::type_error(
+                                format!("- operator requires numeric or pointer type, got {left}"),
+                                span,
+                            )),
+                        }
+                    }
+                }
+            }
+
+            BinOp::Mul | BinOp::Div | BinOp::Mod => {
                 self.unify(left_base, right_base, span)?;
                 match left_base {
                     // v0.38: Include unsigned types
@@ -3414,6 +3581,17 @@ impl TypeChecker {
                 } else {
                     Err(CompileError::type_error(
                         format!("expected mutable reference type, got {}", arg_ty),
+                        span,
+                    ))
+                }
+            }
+            // v0.60.27: Support generic pointer types like *T
+            Type::Ptr(inner) => {
+                if let Type::Ptr(arg_inner) = arg_ty {
+                    self.infer_type_args(inner, arg_inner, type_subst, span)
+                } else {
+                    Err(CompileError::type_error(
+                        format!("expected pointer type, got {}", arg_ty),
                         span,
                     ))
                 }
