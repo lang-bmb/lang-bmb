@@ -832,6 +832,20 @@ impl TextCodeGen {
                     MirInst::TupleExtract { dest, element_type, .. } => {
                         place_types.insert(dest.name.clone(), self.mir_type_to_llvm(element_type));
                     }
+                    // v0.60.19: PtrOffset produces ptr type
+                    MirInst::PtrOffset { dest, .. } => {
+                        place_types.insert(dest.name.clone(), "ptr");
+                    }
+                    // v0.60.21: ArrayAlloc produces ptr type
+                    MirInst::ArrayAlloc { dest, .. } => {
+                        place_types.insert(dest.name.clone(), "ptr");
+                    }
+                    // v0.60.20: PtrLoad produces the element type
+                    MirInst::PtrLoad { dest, element_type, .. } => {
+                        place_types.insert(dest.name.clone(), self.mir_type_to_llvm(element_type));
+                    }
+                    // v0.60.20: PtrStore has no destination
+                    MirInst::PtrStore { .. } => {}
                     _ => {}
                 }
             }
@@ -3445,12 +3459,28 @@ impl TextCodeGen {
                     format!("%{}", array.name)
                 };
 
+                // v0.60.24: Handle narrowed index types - GEP requires i64 index
+                // Type narrowing may produce i32 indices that need sign extension
                 let idx_str = if let Operand::Place(p) = index {
+                    let idx_type = self.infer_operand_type(index, func);
                     if local_names.contains(&p.name) {
-                        writeln!(out, "  %{}_idx_load = load i64, ptr %{}.addr", dest.name, p.name)?;
-                        format!("%{}_idx_load", dest.name)
+                        // Load from alloca using actual type, then sext if needed
+                        writeln!(out, "  %{}_idx_load = load {}, ptr %{}.addr", dest.name, idx_type, p.name)?;
+                        if idx_type != "i64" {
+                            writeln!(out, "  %{}_idx_sext = sext {} %{}_idx_load to i64", dest.name, idx_type, dest.name)?;
+                            format!("%{}_idx_sext", dest.name)
+                        } else {
+                            format!("%{}_idx_load", dest.name)
+                        }
                     } else {
-                        self.format_operand(index)
+                        // Parameter or temp - check if sext needed
+                        let base = self.format_operand(index);
+                        if idx_type != "i64" {
+                            writeln!(out, "  %{}_idx_sext = sext {} {} to i64", dest.name, idx_type, base)?;
+                            format!("%{}_idx_sext", dest.name)
+                        } else {
+                            base
+                        }
                     }
                 } else {
                     self.format_operand(index)
@@ -3477,6 +3507,11 @@ impl TextCodeGen {
                     writeln!(out, "  %{}_ptr = getelementptr {}, ptr {}, i64 {}",
                              dest.name, elem_ty, arr_ptr, idx_str)?;
                     writeln!(out, "  %{} = load {}, ptr %{}_ptr", dest.name, elem_ty, dest.name)?;
+                    // v0.60.24: Store to .addr if dest is a local variable
+                    // This ensures the value is available for subsequent reads from .addr
+                    if local_names.contains(&dest.name) {
+                        writeln!(out, "  store {} %{}, ptr %{}.addr", elem_ty, dest.name, dest.name)?;
+                    }
                 }
             }
 
@@ -3496,12 +3531,27 @@ impl TextCodeGen {
                     format!("%{}", array.name)
                 };
 
+                // v0.60.24: Handle narrowed index types - GEP requires i64 index
                 let idx_str = if let Operand::Place(p) = index {
+                    let idx_type = self.infer_operand_type(index, func);
                     if local_names.contains(&p.name) {
-                        writeln!(out, "  %{}_store_idx.{} = load i64, ptr %{}.addr", array.name, store_cnt, p.name)?;
-                        format!("%{}_store_idx.{}", array.name, store_cnt)
+                        // Load from alloca using actual type, then sext if needed
+                        writeln!(out, "  %{}_store_idx.{} = load {}, ptr %{}.addr", array.name, store_cnt, idx_type, p.name)?;
+                        if idx_type != "i64" {
+                            writeln!(out, "  %{}_store_idx_sext.{} = sext {} %{}_store_idx.{} to i64", array.name, store_cnt, idx_type, array.name, store_cnt)?;
+                            format!("%{}_store_idx_sext.{}", array.name, store_cnt)
+                        } else {
+                            format!("%{}_store_idx.{}", array.name, store_cnt)
+                        }
                     } else {
-                        self.format_operand(index)
+                        // Parameter or temp - check if sext needed
+                        let base = self.format_operand(index);
+                        if idx_type != "i64" {
+                            writeln!(out, "  %{}_store_idx_sext.{} = sext {} {} to i64", array.name, store_cnt, idx_type, base)?;
+                            format!("%{}_store_idx_sext.{}", array.name, store_cnt)
+                        } else {
+                            base
+                        }
                     }
                 } else {
                     self.format_operand(index)
@@ -3530,10 +3580,13 @@ impl TextCodeGen {
                     writeln!(out, "  call void @llvm.memcpy.p0.p0.i64(ptr %{}_idx_ptr.{}, ptr {}, i64 {}, i1 false)",
                              array.name, store_cnt, src_ptr, struct_size)?;
                 } else {
-                    let ty = self.infer_operand_type(value, func);
+                    // v0.60.24: Use actual element type for GEP, not narrowed value type
+                    // Value may be narrowed (e.g., i32) but array element type might be i64
+                    let elem_ty_str = self.mir_type_to_llvm(element_type);
+                    let val_ty = self.infer_operand_type(value, func);
                     let val_str = if let Operand::Place(p) = value {
                         if local_names.contains(&p.name) {
-                            writeln!(out, "  %{}_store_val.{} = load {}, ptr %{}.addr", array.name, store_cnt, ty, p.name)?;
+                            writeln!(out, "  %{}_store_val.{} = load {}, ptr %{}.addr", array.name, store_cnt, val_ty, p.name)?;
                             format!("%{}_store_val.{}", array.name, store_cnt)
                         } else {
                             self.format_operand(value)
@@ -3541,10 +3594,19 @@ impl TextCodeGen {
                     } else {
                         self.format_operand(value)
                     };
-                    writeln!(out, "  ; index store %{}[{}] = {}", array.name, idx_str, val_str)?;
+
+                    // If value type is narrower than element type, sign-extend
+                    let final_val_str = if val_ty != elem_ty_str && (val_ty == "i32" && elem_ty_str == "i64") {
+                        writeln!(out, "  %{}_store_val_sext.{} = sext {} {} to {}", array.name, store_cnt, val_ty, val_str, elem_ty_str)?;
+                        format!("%{}_store_val_sext.{}", array.name, store_cnt)
+                    } else {
+                        val_str
+                    };
+
+                    writeln!(out, "  ; index store %{}[{}] = {}", array.name, idx_str, final_val_str)?;
                     writeln!(out, "  %{}_idx_ptr.{} = getelementptr {}, ptr {}, i64 {}",
-                             array.name, store_cnt, ty, arr_ptr, idx_str)?;
-                    writeln!(out, "  store {} {}, ptr %{}_idx_ptr.{}", ty, val_str, array.name, store_cnt)?;
+                             array.name, store_cnt, elem_ty_str, arr_ptr, idx_str)?;
+                    writeln!(out, "  store {} {}, ptr %{}_idx_ptr.{}", elem_ty_str, final_val_str, array.name, store_cnt)?;
                 }
             }
 
@@ -3693,6 +3755,127 @@ impl TextCodeGen {
                 if local_names.contains(&dest.name) {
                     writeln!(out, "  store {} %{}, ptr %{}.addr", elem_ty_str, dest_name, dest.name)?;
                 }
+            }
+
+            // v0.60.19: Pointer offset - generates proper LLVM GEP
+            MirInst::PtrOffset { dest, ptr, offset, element_type } => {
+                let dest_name = self.unique_name(&dest.name, name_counts);
+                let elem_ty_str = self.mir_type_to_llvm(element_type);
+
+                // Get ptr operand
+                let ptr_val = match ptr {
+                    Operand::Place(p) => {
+                        if local_names.contains(&p.name) {
+                            let load_name = self.unique_name(&format!("{}_ptr_load", dest.name), name_counts);
+                            writeln!(out, "  %{} = load ptr, ptr %{}.addr", load_name, p.name)?;
+                            format!("%{}", load_name)
+                        } else {
+                            format!("%{}", p.name)
+                        }
+                    }
+                    Operand::Constant(c) => self.format_constant(c),
+                };
+
+                // Get offset operand
+                let offset_val = match offset {
+                    Operand::Place(p) => {
+                        if local_names.contains(&p.name) {
+                            let load_name = self.unique_name(&format!("{}_offset_load", dest.name), name_counts);
+                            writeln!(out, "  %{} = load i64, ptr %{}.addr", load_name, p.name)?;
+                            format!("%{}", load_name)
+                        } else {
+                            format!("%{}", p.name)
+                        }
+                    }
+                    Operand::Constant(c) => self.format_constant(c),
+                };
+
+                // Emit GEP instruction
+                writeln!(out, "  %{} = getelementptr inbounds {}, ptr {}, i64 {}", dest_name, elem_ty_str, ptr_val, offset_val)?;
+
+                // Store to alloca if dest is a local
+                if local_names.contains(&dest.name) {
+                    writeln!(out, "  store ptr %{}, ptr %{}.addr", dest_name, dest.name)?;
+                }
+            }
+
+            // v0.60.21: Stack array allocation without initialization
+            MirInst::ArrayAlloc { dest, element_type, size } => {
+                let dest_name = self.unique_name(&dest.name, name_counts);
+                let elem_ty_str = self.mir_type_to_llvm(element_type);
+
+                // Allocate array on stack
+                writeln!(out, "  %{} = alloca [{} x {}]", dest_name, size, elem_ty_str)?;
+
+                // Store to alloca if dest is a local (array pointer)
+                if local_names.contains(&dest.name) {
+                    writeln!(out, "  store ptr %{}, ptr %{}.addr", dest_name, dest.name)?;
+                }
+            }
+
+            // v0.60.20: Pointer load - load value through native pointer
+            MirInst::PtrLoad { dest, ptr, element_type } => {
+                let dest_name = self.unique_name(&dest.name, name_counts);
+                let elem_ty_str = self.mir_type_to_llvm(element_type);
+
+                // Get pointer operand
+                let ptr_val = match ptr {
+                    Operand::Place(p) => {
+                        if local_names.contains(&p.name) {
+                            let load_name = self.unique_name(&format!("{}_ptr_load", dest.name), name_counts);
+                            writeln!(out, "  %{} = load ptr, ptr %{}.addr", load_name, p.name)?;
+                            format!("%{}", load_name)
+                        } else {
+                            format!("%{}", p.name)
+                        }
+                    }
+                    Operand::Constant(c) => self.format_constant(c),
+                };
+
+                // Emit load instruction
+                writeln!(out, "  %{} = load {}, ptr {}", dest_name, elem_ty_str, ptr_val)?;
+
+                // Store to alloca if dest is a local
+                if local_names.contains(&dest.name) {
+                    writeln!(out, "  store {} %{}, ptr %{}.addr", elem_ty_str, dest_name, dest.name)?;
+                }
+            }
+
+            // v0.60.20: Pointer store - store value through native pointer
+            MirInst::PtrStore { ptr, value, element_type } => {
+                let elem_ty_str = self.mir_type_to_llvm(element_type);
+
+                // Get pointer operand
+                let ptr_val = match ptr {
+                    Operand::Place(p) => {
+                        if local_names.contains(&p.name) {
+                            let load_name = self.unique_name(&format!("{}_ptr_store_addr", p.name), name_counts);
+                            writeln!(out, "  %{} = load ptr, ptr %{}.addr", load_name, p.name)?;
+                            format!("%{}", load_name)
+                        } else {
+                            format!("%{}", p.name)
+                        }
+                    }
+                    Operand::Constant(c) => self.format_constant(c),
+                };
+
+                // Get value operand
+                let val_str = match value {
+                    Operand::Place(p) => {
+                        let val_ty = place_types.get(&p.name).copied().unwrap_or(elem_ty_str);
+                        if local_names.contains(&p.name) {
+                            let load_name = self.unique_name(&format!("{}_val_load", p.name), name_counts);
+                            writeln!(out, "  %{} = load {}, ptr %{}.addr", load_name, val_ty, p.name)?;
+                            format!("%{}", load_name)
+                        } else {
+                            format!("%{}", p.name)
+                        }
+                    }
+                    Operand::Constant(c) => self.format_constant(c),
+                };
+
+                // Emit store instruction
+                writeln!(out, "  store {} {}, ptr {}", elem_ty_str, val_str, ptr_val)?;
             }
         }
 
@@ -3992,6 +4175,10 @@ impl TextCodeGen {
             (Ptr(_), I64) | (Ptr(_), U64) => "ptrtoint",
             // v0.51.38: Integer to generic pointer (inttoptr)
             (I64, Ptr(_)) | (U64, Ptr(_)) => "inttoptr",
+
+            // v0.60.23: Array to pointer (array decay)
+            // Arrays are already pointers in LLVM (alloca returns ptr)
+            (Array { .. }, Ptr(_)) => "bitcast",
 
             // Default fallback
             _ => "bitcast",

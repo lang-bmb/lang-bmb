@@ -1091,6 +1091,13 @@ impl<'ctx> LlvmContext<'ctx> {
                     // v0.55: Tuple instructions
                     MirInst::TupleInit { dest, .. } => Some(&dest.name),
                     MirInst::TupleExtract { dest, .. } => Some(&dest.name),
+                    // v0.60.19: Pointer offset
+                    MirInst::PtrOffset { dest, .. } => Some(&dest.name),
+                    // v0.60.21: Array allocation
+                    MirInst::ArrayAlloc { dest, .. } => Some(&dest.name),
+                    // v0.60.20: Pointer load/store
+                    MirInst::PtrLoad { dest, .. } => Some(&dest.name),
+                    MirInst::PtrStore { .. } => None, // Modifies memory through pointer, not a named place
                 };
                 if let Some(name) = dest {
                     written.insert(name.clone());
@@ -1134,6 +1141,13 @@ impl<'ctx> LlvmContext<'ctx> {
                     // v0.55: Tuple instructions
                     MirInst::TupleInit { dest, .. } => Some(&dest.name),
                     MirInst::TupleExtract { dest, .. } => Some(&dest.name),
+                    // v0.60.19: Pointer offset
+                    MirInst::PtrOffset { dest, .. } => Some(&dest.name),
+                    // v0.60.21: Array allocation
+                    MirInst::ArrayAlloc { dest, .. } => Some(&dest.name),
+                    // v0.60.20: Pointer load/store
+                    MirInst::PtrLoad { dest, .. } => Some(&dest.name),
+                    MirInst::PtrStore { .. } => None, // Modifies memory through pointer
                 };
 
                 if let Some(name) = dest {
@@ -1854,68 +1868,72 @@ impl<'ctx> LlvmContext<'ctx> {
                 self.variables.insert(dest.name.clone(), (array_ptr, ptr_type.into()));
             }
 
-            MirInst::IndexLoad { dest, array, index, element_type: _ } => {
-                // Get array pointer from variables or ssa_values
-                // v0.51.19: Read-only array parameters are stored in ssa_values, not variables
-                let array_ptr = if let Some((ptr, _)) = self.variables.get(&array.name) {
-                    *ptr
-                } else if let Some(val) = self.ssa_values.get(&array.name) {
-                    val.into_pointer_value()
+            MirInst::IndexLoad { dest, array, index, element_type } => {
+                // v0.60.20: Load the array pointer value from the variable
+                // We need to load the pointer value, not use the alloca address directly
+                let array_val = self.load_from_place(array)?;
+                let array_ptr = if array_val.is_pointer_value() {
+                    array_val.into_pointer_value()
                 } else {
-                    return Err(CodeGenError::UnknownVariable(array.name.clone()));
+                    // Convert i64 to pointer if needed (legacy code compatibility)
+                    let ptr_type = self.context.ptr_type(inkwell::AddressSpace::default());
+                    self.builder
+                        .build_int_to_ptr(array_val.into_int_value(), ptr_type, "inttoptr")
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
                 };
 
                 // Evaluate index operand
                 let index_val = self.gen_operand(index)?;
-                let i64_type = self.context.i64_type();
 
-                // GEP to element pointer
+                // v0.60.20: Use actual element type for GEP and load
+                let llvm_elem_type = self.mir_type_to_llvm(element_type);
+
+                // v0.60.19: GEP to element pointer using single index (works for both arrays and pointers)
                 let elem_ptr = unsafe {
                     self.builder.build_in_bounds_gep(
-                        i64_type,
+                        llvm_elem_type,
                         array_ptr,
-                        &[
-                            self.context.i64_type().const_int(0, false),
-                            index_val.into_int_value()
-                        ],
+                        &[index_val.into_int_value()],
                         &format!("{}_ptr", dest.name)
                     )
                 }.map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
 
                 // Load element
                 let loaded = self.builder
-                    .build_load(i64_type, elem_ptr, &dest.name)
+                    .build_load(llvm_elem_type, elem_ptr, &dest.name)
                     .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
 
                 // Store to destination
                 self.store_to_place(dest, loaded)?;
             }
 
-            MirInst::IndexStore { array, index, value, element_type: _ } => {
-                // Get array pointer from variables or ssa_values
-                // v0.51.19: Array parameters may be stored in ssa_values if read-only
-                let array_ptr = if let Some((ptr, _)) = self.variables.get(&array.name) {
-                    *ptr
-                } else if let Some(val) = self.ssa_values.get(&array.name) {
-                    val.into_pointer_value()
+            MirInst::IndexStore { array, index, value, element_type } => {
+                // v0.60.20: Load the array pointer value from the variable
+                // We need to load the pointer value, not use the alloca address directly
+                let array_val = self.load_from_place(array)?;
+                let array_ptr = if array_val.is_pointer_value() {
+                    array_val.into_pointer_value()
                 } else {
-                    return Err(CodeGenError::UnknownVariable(array.name.clone()));
+                    // Convert i64 to pointer if needed (legacy code compatibility)
+                    let ptr_type = self.context.ptr_type(inkwell::AddressSpace::default());
+                    self.builder
+                        .build_int_to_ptr(array_val.into_int_value(), ptr_type, "inttoptr")
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
                 };
 
                 // Evaluate operands
                 let index_val = self.gen_operand(index)?;
                 let store_val = self.gen_operand(value)?;
-                let i64_type = self.context.i64_type();
 
-                // GEP to element pointer
+                // v0.60.20: Use actual element type for GEP
+                let llvm_elem_type = self.mir_type_to_llvm(element_type);
+
+                // v0.60.19: GEP to element pointer using single index (works for both arrays and pointers)
                 let elem_ptr = unsafe {
                     self.builder.build_in_bounds_gep(
-                        i64_type,
+                        llvm_elem_type,
                         array_ptr,
-                        &[
-                            self.context.i64_type().const_int(0, false),
-                            index_val.into_int_value()
-                        ],
+                        &[index_val.into_int_value()],
                         &format!("{}_store_ptr", array.name)
                     )
                 }.map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
@@ -1998,6 +2016,129 @@ impl<'ctx> LlvmContext<'ctx> {
 
                 // Store the extracted value
                 self.store_to_place(dest, elem_val)?;
+            }
+
+            // v0.60.19: Pointer offset - generates proper LLVM GEP for alias analysis
+            MirInst::PtrOffset { dest, ptr, offset, element_type } => {
+                // Get the pointer value
+                let ptr_val = self.gen_operand(ptr)?;
+                let offset_val = self.gen_operand(offset)?;
+
+                // v0.60.20: Get LLVM type for the element - use actual struct type for struct pointers
+                // This ensures GEP uses correct stride (e.g., 56 bytes for Body struct, not 8 bytes)
+                let llvm_elem_type: BasicTypeEnum = match element_type {
+                    MirType::Struct { name, .. } => {
+                        self.get_struct_llvm_type(name)?.into()
+                    }
+                    MirType::StructPtr(name) => {
+                        // StructPtr is the element type for *T where T is a struct
+                        self.get_struct_llvm_type(name)?.into()
+                    }
+                    _ => self.mir_type_to_llvm(element_type),
+                };
+
+                // Ensure we have a pointer value
+                let ptr_ptr = if ptr_val.is_pointer_value() {
+                    ptr_val.into_pointer_value()
+                } else {
+                    // Convert i64 to pointer if needed (fallback for legacy code)
+                    let ptr_type = self.context.ptr_type(inkwell::AddressSpace::default());
+                    self.builder
+                        .build_int_to_ptr(ptr_val.into_int_value(), ptr_type, &format!("{}_inttoptr", dest.name))
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                };
+
+                // Generate GEP instruction - this enables LLVM's alias analysis
+                let result_ptr = unsafe {
+                    self.builder.build_gep(
+                        llvm_elem_type,
+                        ptr_ptr,
+                        &[offset_val.into_int_value()],
+                        &format!("{}_gep", dest.name),
+                    )
+                }.map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+
+                // Store the result pointer
+                self.store_to_place(dest, result_ptr.into())?;
+            }
+
+            // v0.60.21: Stack array allocation without initialization
+            // Used for: `let arr: [T; N];` - zero-overhead stack arrays
+            MirInst::ArrayAlloc { dest, element_type, size } => {
+                let llvm_elem_type = self.mir_type_to_llvm(element_type);
+                let array_type = llvm_elem_type.array_type(*size as u32);
+
+                // Allocate array on stack (no initialization)
+                let array_ptr = self.builder
+                    .build_alloca(array_type, &dest.name)
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+
+                // Store array pointer to destination variable
+                // For compatibility with IndexLoad/IndexStore, we need to store the pointer
+                // in a way that load_from_place can retrieve it
+                let ptr_type = self.context.ptr_type(inkwell::AddressSpace::default());
+                let alloca = self.builder
+                    .build_alloca(ptr_type, &format!("{}_var", dest.name))
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                self.builder.build_store(alloca, array_ptr)
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+
+                self.variables.insert(dest.name.clone(), (alloca, ptr_type.into()));
+            }
+
+            // v0.60.20: Pointer load - load value through native pointer
+            MirInst::PtrLoad { dest, ptr, element_type } => {
+                // Get the pointer value
+                let ptr_val = self.gen_operand(ptr)?;
+
+                // Ensure we have a pointer value
+                let ptr_ptr = if ptr_val.is_pointer_value() {
+                    ptr_val.into_pointer_value()
+                } else {
+                    // Convert i64 to pointer if needed
+                    let ptr_type = self.context.ptr_type(inkwell::AddressSpace::default());
+                    self.builder
+                        .build_int_to_ptr(ptr_val.into_int_value(), ptr_type, &format!("{}_inttoptr", dest.name))
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                };
+
+                // Get element type for load
+                let llvm_elem_type = self.mir_type_to_llvm(element_type);
+
+                // Load the value
+                let loaded = self.builder
+                    .build_load(llvm_elem_type, ptr_ptr, &dest.name)
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+
+                // Store to destination
+                self.store_to_place(dest, loaded)?;
+            }
+
+            // v0.60.20: Pointer store - store value through native pointer
+            MirInst::PtrStore { ptr, value, element_type } => {
+                // Get the pointer value
+                let ptr_val = self.gen_operand(ptr)?;
+
+                // Ensure we have a pointer value
+                let ptr_ptr = if ptr_val.is_pointer_value() {
+                    ptr_val.into_pointer_value()
+                } else {
+                    // Convert i64 to pointer if needed
+                    let ptr_type = self.context.ptr_type(inkwell::AddressSpace::default());
+                    self.builder
+                        .build_int_to_ptr(ptr_val.into_int_value(), ptr_type, "ptr_inttoptr")
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                };
+
+                // Get value to store
+                let store_val = self.gen_operand(value)?;
+
+                // Get element type for proper alignment hints
+                let _llvm_elem_type = self.mir_type_to_llvm(element_type);
+
+                // Store the value
+                self.builder.build_store(ptr_ptr, store_val)
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
             }
 
             // v0.60.7: Field access via GEP + load
@@ -2439,6 +2580,23 @@ impl<'ctx> LlvmContext<'ctx> {
             (_, _) if from_ty.is_pointer_type() && to_ty.is_pointer_type() => {
                 // With opaque pointers (LLVM 15+), ptr to ptr cast is identity
                 Ok(src_val)
+            }
+
+            // v0.60.23: Array to pointer (array decay)
+            // Used for `[T; N] as *T` patterns - the array pointer becomes an element pointer
+            // The stack array's alloca pointer is the same as a pointer to its first element
+            (Array { element_type, .. }, Ptr(target_elem)) if element_type.as_ref() == target_elem.as_ref() => {
+                // Array decay: array pointer -> element pointer
+                // With LLVM opaque pointers, the pointer value itself doesn't change
+                // we just need to ensure we have a pointer value
+                if src_val.is_pointer_value() {
+                    Ok(src_val)
+                } else {
+                    // Should not happen normally since arrays are stack-allocated
+                    Err(CodeGenError::LlvmError(format!(
+                        "Array decay expected pointer value, got {:?}", src_val
+                    )))
+                }
             }
 
             // Unsupported cast
