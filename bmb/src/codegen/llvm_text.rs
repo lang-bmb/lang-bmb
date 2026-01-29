@@ -1839,6 +1839,7 @@ impl TextCodeGen {
 
                 if fn_name == "i64_to_f64" && args.len() == 1 {
                     // i64_to_f64(x: i64) -> f64 via sitofp
+                    // v0.60.24: Handle type-narrowed i32 arguments - need sext before sitofp
                     let arg_ty = match &args[0] {
                         Operand::Constant(c) => self.constant_type(c),
                         Operand::Place(p) => place_types.get(&p.name).copied()
@@ -1852,14 +1853,22 @@ impl TextCodeGen {
                         }
                         _ => self.format_operand_with_strings(&args[0], string_table),
                     };
+                    // v0.60.24: If argument is i32 (narrowed), sign-extend to i64 first
+                    let (final_arg, final_ty) = if arg_ty == "i32" {
+                        let sext_name = format!("{}_sext", arg_val.trim_start_matches('%'));
+                        writeln!(out, "  %{} = sext i32 {} to i64", sext_name, arg_val)?;
+                        (format!("%{}", sext_name), "i64")
+                    } else {
+                        (arg_val, arg_ty)
+                    };
                     if let Some(d) = dest {
                         if local_names.contains(&d.name) {
                             let temp_name = format!("{}.conv", d.name);
-                            writeln!(out, "  %{} = sitofp i64 {} to double", temp_name, arg_val)?;
+                            writeln!(out, "  %{} = sitofp {} {} to double", temp_name, final_ty, final_arg)?;
                             writeln!(out, "  store double %{}, ptr %{}.addr", temp_name, d.name)?;
                         } else {
                             let dest_name = self.unique_name(&d.name, name_counts);
-                            writeln!(out, "  %{} = sitofp i64 {} to double", dest_name, arg_val)?;
+                            writeln!(out, "  %{} = sitofp {} {} to double", dest_name, final_ty, final_arg)?;
                         }
                     }
                     return Ok(());
