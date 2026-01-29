@@ -1804,14 +1804,27 @@ impl<'ctx> LlvmContext<'ctx> {
                                         // User function: use its declared return type
                                         !mir_ret_ty.is_pointer_type()
                                     } else {
-                                        // External function (malloc, calloc, etc.)
-                                        // Check if CURRENT function returns pointer type
-                                        // If so, keep ptr as ptr to enable `fn f() -> *T = malloc() as *T` optimization
-                                        // Otherwise, use legacy i64 conversion for backward compatibility
-                                        let current_returns_ptr = self.current_ret_type
-                                            .map(|ty| ty.is_pointer_type())
-                                            .unwrap_or(false);
-                                        !current_returns_ptr
+                                        // External function
+                                        // v0.60.28: Check if this is a String-returning function
+                                        // These should keep ptr as ptr to avoid unnecessary ptrtoint/inttoptr
+                                        let string_returning_funcs = [
+                                            "sb_build", "chr", "slice", "char_to_string",
+                                            "int_to_string", "string_from_cstr", "string_concat",
+                                            "read_file", "get_arg"
+                                        ];
+                                        if string_returning_funcs.contains(&func.as_str()) {
+                                            // String-returning functions: keep ptr as ptr
+                                            false
+                                        } else {
+                                            // Other external functions (malloc, calloc, etc.)
+                                            // Check if CURRENT function returns pointer type
+                                            // If so, keep ptr as ptr to enable `fn f() -> *T = malloc() as *T` optimization
+                                            // Otherwise, use legacy i64 conversion for backward compatibility
+                                            let current_returns_ptr = self.current_ret_type
+                                                .map(|ty| ty.is_pointer_type())
+                                                .unwrap_or(false);
+                                            !current_returns_ptr
+                                        }
                                     }
                                 };
 
