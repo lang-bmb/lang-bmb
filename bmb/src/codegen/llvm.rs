@@ -322,6 +322,10 @@ struct LlvmContext<'ctx> {
     /// Set at the start of gen_function_body, used by gen_terminator
     current_ret_type: Option<BasicTypeEnum<'ctx>>,
 
+    /// v0.60.25: Track array variables - these should NOT be loaded from
+    /// Array variables store the alloca pointer directly, not a pointer to a pointer
+    array_variables: std::collections::HashSet<String>,
+
     /// v0.60.7: Struct type definitions for field access codegen
     /// Maps struct name -> list of (field_name, field_type)
     struct_defs: HashMap<String, Vec<(String, MirType)>>,
@@ -350,6 +354,7 @@ impl<'ctx> LlvmContext<'ctx> {
             current_ret_type: None,
             struct_defs: HashMap::new(),
             function_return_types: HashMap::new(),
+            array_variables: std::collections::HashSet::new(),
         }
     }
 
@@ -1845,11 +1850,13 @@ impl<'ctx> LlvmContext<'ctx> {
                     .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
 
                 // Initialize elements
+                // v0.60.25: Use array_type as GEP base type with two indices
+                // First index dereferences the array, second indexes into elements
                 for (i, elem) in elements.iter().enumerate() {
                     let elem_val = self.gen_operand(elem)?;
                     let elem_ptr = unsafe {
                         self.builder.build_in_bounds_gep(
-                            i64_type,
+                            array_type,  // Use array type, not element type
                             array_ptr,
                             &[
                                 self.context.i64_type().const_int(0, false),
@@ -1866,6 +1873,10 @@ impl<'ctx> LlvmContext<'ctx> {
                 // Arrays are represented as pointers in variables
                 let ptr_type = self.context.ptr_type(inkwell::AddressSpace::default());
                 self.variables.insert(dest.name.clone(), (array_ptr, ptr_type.into()));
+
+                // v0.60.25: Track this as an array variable
+                // Array variables should NOT be loaded from - the alloca pointer IS the array
+                self.array_variables.insert(dest.name.clone());
             }
 
             MirInst::IndexLoad { dest, array, index, element_type } => {
@@ -2690,6 +2701,13 @@ impl<'ctx> LlvmContext<'ctx> {
             .variables
             .get(&place.name)
             .ok_or_else(|| CodeGenError::UnknownVariable(place.name.clone()))?;
+
+        // v0.60.25: Array variables store the alloca pointer directly
+        // The alloca address IS the array data - don't load from it
+        // Return the pointer value directly as ptr type
+        if self.array_variables.contains(&place.name) {
+            return Ok((*ptr).into());
+        }
 
         self.builder
             .build_load(*pointee_type, *ptr, &place.name)
