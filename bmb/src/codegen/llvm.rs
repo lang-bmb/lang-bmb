@@ -1793,15 +1793,26 @@ impl<'ctx> LlvmContext<'ctx> {
                             // v0.51.1: Convert ptr return values to i64 for BMB's pointer representation
                             // v0.51.3: Only convert ptr->i64 when destination expects i64 (e.g., malloc)
                             //          Keep ptr as-is when destination is ptr type (e.g., String functions)
+                            // v0.60.26: Improved logic to eliminate unnecessary ptrtoint/inttoptr pairs
                             let stored_val = if ret_val.is_pointer_value() {
                                 // Check if destination variable expects a pointer or integer
                                 let dest_expects_int = if let Some((_, dest_ty)) = self.variables.get(&dest_place.name) {
                                     dest_ty.is_int_type()
                                 } else {
-                                    // For SSA temps, assume i64 if the function is known to return handles
-                                    // External functions like malloc, calloc return handles (ptr->i64)
-                                    // Internal functions returning String keep as ptr
-                                    func == "malloc" || func == "calloc" || func == "node_new"
+                                    // v0.60.26: For SSA temps, determine based on context
+                                    if let Some(mir_ret_ty) = self.function_return_types.get(func) {
+                                        // User function: use its declared return type
+                                        !mir_ret_ty.is_pointer_type()
+                                    } else {
+                                        // External function (malloc, calloc, etc.)
+                                        // Check if CURRENT function returns pointer type
+                                        // If so, keep ptr as ptr to enable `fn f() -> *T = malloc() as *T` optimization
+                                        // Otherwise, use legacy i64 conversion for backward compatibility
+                                        let current_returns_ptr = self.current_ret_type
+                                            .map(|ty| ty.is_pointer_type())
+                                            .unwrap_or(false);
+                                        !current_returns_ptr
+                                    }
                                 };
 
                                 if dest_expects_int {
@@ -2565,7 +2576,14 @@ impl<'ctx> LlvmContext<'ctx> {
 
             // v0.60.1: Integer to pointer (inttoptr)
             // Used for `0 as *T` null pointer patterns and raw memory address casts
+            // v0.60.26: If src is already a pointer (e.g., from malloc), skip inttoptr
             (I64, _) | (U64, _) if to_ty.is_pointer_type() => {
+                // v0.60.26: Check if src is actually a pointer (optimization from improved Call handling)
+                // MIR may say from_ty=I64, but the actual value is ptr (from malloc/calloc keeping ptr)
+                if src_val.is_pointer_value() {
+                    // Already a pointer, no conversion needed (ptr-to-ptr is identity)
+                    return Ok(src_val);
+                }
                 let int_val = src_val.into_int_value();
                 let ptr_type = self.mir_type_to_llvm(to_ty).into_pointer_type();
                 let result = self
@@ -2577,7 +2595,8 @@ impl<'ctx> LlvmContext<'ctx> {
 
             // v0.60.1: Pointer to integer (ptrtoint)
             // Used for `ptr as i64` patterns for pointer arithmetic or passing to functions
-            (_, I64) | (_, U64) if from_ty.is_pointer_type() => {
+            // v0.60.26: Also handle case where src is ptr but MIR says I64 (from improved Call handling)
+            (_, I64) | (_, U64) if from_ty.is_pointer_type() || src_val.is_pointer_value() => {
                 let ptr_val = src_val.into_pointer_value();
                 let int_type = self.mir_type_to_llvm(to_ty).into_int_type();
                 let result = self
