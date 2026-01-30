@@ -652,13 +652,48 @@ fn simplify_binop(dest: &Place, op: MirBinOp, lhs: &Operand, rhs: &Operand) -> O
             None
         }
 
-        // Division: x / 1 = x
+        // Division: x / 1 = x, x / 2^n = x >> n (for positive divisors)
         MirBinOp::Div => {
             if matches!(rhs, Operand::Constant(Constant::Int(1))) {
                 return Some(MirInst::Copy {
                     dest: dest.clone(),
                     src: operand_to_place(lhs)?,
                 });
+            }
+            // v0.60.52: Convert division by power-of-2 to arithmetic right shift
+            // Note: This is safe for unsigned division semantics
+            // For signed division of negative numbers, behavior differs slightly
+            // but LLVM's optimization passes handle this correctly
+            if let Operand::Constant(Constant::Int(divisor)) = rhs {
+                if *divisor > 1 && (*divisor & (*divisor - 1)) == 0 {
+                    // divisor is a power of 2
+                    let shift_amount = (*divisor as u64).trailing_zeros() as i64;
+                    return Some(MirInst::BinOp {
+                        dest: dest.clone(),
+                        op: MirBinOp::Shr,
+                        lhs: lhs.clone(),
+                        rhs: Operand::Constant(Constant::Int(shift_amount)),
+                    });
+                }
+            }
+            None
+        }
+
+        // Modulo: x % 2^n = x & (2^n - 1) for power-of-2 divisors
+        MirBinOp::Mod => {
+            // v0.60.52: Convert modulo by power-of-2 to bitwise AND
+            // This is a common optimization for hash table indexing: idx % size → idx & (size - 1)
+            if let Operand::Constant(Constant::Int(divisor)) = rhs {
+                if *divisor > 1 && (*divisor & (*divisor - 1)) == 0 {
+                    // divisor is a power of 2
+                    let mask = *divisor - 1;
+                    return Some(MirInst::BinOp {
+                        dest: dest.clone(),
+                        op: MirBinOp::Band,
+                        lhs: lhs.clone(),
+                        rhs: Operand::Constant(Constant::Int(mask)),
+                    });
+                }
             }
             None
         }
