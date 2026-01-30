@@ -32,7 +32,10 @@ enum Command {
         /// Output file path
         #[arg(short, long)]
         output: Option<PathBuf>,
-        /// Build with optimizations (-O2)
+        /// Build without optimizations (-O0) for debugging
+        #[arg(long)]
+        debug: bool,
+        /// Build with optimizations (-O2) - this is the default
         #[arg(long)]
         release: bool,
         /// Build with aggressive optimizations (-O3)
@@ -63,6 +66,23 @@ enum Command {
         /// Verbose output
         #[arg(short, long)]
         verbose: bool,
+
+        // === v0.60: Verification Mode Options ===
+
+        /// Contract verification mode (v0.60)
+        /// - check: Verify contracts, fail on verification failure (release default)
+        /// - warn: Verify contracts, warn on failure but continue
+        /// - trust: Use contracts without verification (unsafe)
+        /// - none: Skip verification and proof-guided optimizations (debug default)
+        #[arg(long, value_name = "MODE")]
+        verify: Option<String>,
+        /// Use contracts without verification (shortcut for --verify=trust)
+        /// WARNING: This is unsafe. Only use if you are certain contracts are valid.
+        #[arg(long)]
+        trust_contracts: bool,
+        /// SMT solver timeout in seconds (default: 30)
+        #[arg(long, default_value = "30")]
+        verification_timeout: u32,
     },
     /// Run a BMB program (interpreter)
     Run {
@@ -352,6 +372,7 @@ fn main() {
         Command::Build {
             file,
             output,
+            debug,
             release,
             aggressive,
             emit_ir,
@@ -362,7 +383,10 @@ fn main() {
             all_targets,
             target,
             verbose,
-        } => build_file(&file, output, release, aggressive, emit_ir, emit_mir, emit_cir, emit_wasm, &wasm_target, all_targets, target.as_deref(), verbose),
+            verify,
+            trust_contracts,
+            verification_timeout,
+        } => build_file(&file, output, debug, release, aggressive, emit_ir, emit_mir, emit_cir, emit_wasm, &wasm_target, all_targets, target.as_deref(), verbose, verify.as_deref(), trust_contracts, verification_timeout),
         Command::Run { file, args, human: _ } => run_file(&file, &args),
         Command::Repl => start_repl(),
         Command::Check { file, include_paths } => check_file_with_includes(&file, &include_paths),
@@ -394,6 +418,7 @@ fn main() {
 fn build_file(
     path: &PathBuf,
     output: Option<PathBuf>,
+    debug: bool,
     release: bool,
     aggressive: bool,
     emit_ir: bool,
@@ -404,6 +429,9 @@ fn build_file(
     all_targets: bool,
     target: Option<&str>,
     verbose: bool,
+    verify_mode: Option<&str>,
+    trust_contracts: bool,
+    verification_timeout: u32,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // v0.52: If emitting CIR, output Contract IR and return
     if emit_cir {
@@ -425,7 +453,7 @@ fn build_file(
         if verbose {
             println!("\n=== Native Build ===");
         }
-        build_native(path, output.clone(), release, aggressive, emit_ir, target, verbose)?;
+        build_native(path, output.clone(), debug, release, aggressive, emit_ir, target, verbose, verify_mode, trust_contracts, verification_timeout)?;
 
         // Then build WASM
         if verbose {
@@ -445,23 +473,46 @@ fn build_file(
     }
 
     // Default: build native
-    build_native(path, output, release, aggressive, emit_ir, target, verbose)
+    build_native(path, output, debug, release, aggressive, emit_ir, target, verbose, verify_mode, trust_contracts, verification_timeout)
 }
 
 fn build_native(
     path: &Path,
     output: Option<PathBuf>,
+    debug: bool,
     release: bool,
     aggressive: bool,
     emit_ir: bool,
     target: Option<&str>,
     verbose: bool,
+    verify_mode: Option<&str>,
+    trust_contracts: bool,
+    verification_timeout: u32,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    use bmb::build::{BuildConfig, OptLevel};
+    use bmb::build::{BuildConfig, OptLevel, VerificationMode};
 
     let mut config = BuildConfig::new(path.to_path_buf())
         .emit_ir(emit_ir)
-        .verbose(verbose);
+        .verbose(verbose)
+        .verification_timeout(verification_timeout);
+
+    // v0.60: Parse verification mode from CLI
+    let verification_mode = if trust_contracts {
+        VerificationMode::Trust
+    } else {
+        match verify_mode {
+            Some("check") => VerificationMode::Check,
+            Some("warn") => VerificationMode::Warn,
+            Some("trust") => VerificationMode::Trust,
+            Some("none") => VerificationMode::None,
+            Some(other) => {
+                eprintln!("Warning: Unknown verification mode '{}', using default", other);
+                VerificationMode::Check
+            }
+            None => VerificationMode::Check, // Default for release builds
+        }
+    };
+    config = config.verification_mode(verification_mode);
 
     // v0.50.23: Cross-compilation target
     if let Some(triple) = target {
@@ -475,11 +526,13 @@ fn build_native(
         config = config.output(out);
     }
 
+    // v0.60.38: Default is now Release (O2), use --debug for unoptimized builds
     if aggressive {
         config = config.opt_level(OptLevel::Aggressive);
-    } else if release {
-        config = config.opt_level(OptLevel::Release);
+    } else if debug {
+        config = config.opt_level(OptLevel::Debug);
     }
+    // else: default is Release (O2)
 
     bmb::build::build(&config)?;
 
@@ -1872,6 +1925,18 @@ fn format_expr(expr: &bmb::ast::Expr) -> String {
             )
         }
 
+        // v0.60.21: Uninitialized let binding
+        Expr::LetUninit { name, mutable, ty, body } => {
+            let mut_str = if *mutable { "mut " } else { "" };
+            format!(
+                "let {}{}: {};\n    {}",
+                mut_str,
+                name,
+                format_type(&ty.node),
+                format_expr(&body.node)
+            )
+        }
+
         Expr::Call { func, args } => {
             let args_str: Vec<_> = args.iter().map(|a| format_expr(&a.node)).collect();
             format!("{}({})", func, args_str.join(", "))
@@ -1894,6 +1959,11 @@ fn format_expr(expr: &bmb::ast::Expr) -> String {
         Expr::ArrayLit(elems) => {
             let elems_str: Vec<_> = elems.iter().map(|e| format_expr(&e.node)).collect();
             format!("[{}]", elems_str.join(", "))
+        }
+
+        // v0.60.22: Array repeat
+        Expr::ArrayRepeat { value, count } => {
+            format!("[{}; {}]", format_expr(&value.node), count)
         }
 
         // v0.42: Tuple expression
@@ -1920,6 +1990,11 @@ fn format_expr(expr: &bmb::ast::Expr) -> String {
         // v0.51.23: Field assignment
         Expr::FieldAssign { object, field, value } => {
             format!("{}.{} = {}", format_expr(&object.node), field.node, format_expr(&value.node))
+        }
+
+        // v0.60.21: Dereference assignment
+        Expr::DerefAssign { ptr, value } => {
+            format!("*{} = {}", format_expr(&ptr.node), format_expr(&value.node))
         }
 
         // v0.43: Tuple field access

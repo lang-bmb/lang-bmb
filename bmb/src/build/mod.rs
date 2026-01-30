@@ -21,6 +21,8 @@ use std::path::Path;
 #[cfg(feature = "llvm")]
 use std::process::Command;
 
+use std::collections::HashSet;
+
 use thiserror::Error;
 
 use crate::cfg::{CfgEvaluator, Target};
@@ -34,9 +36,44 @@ use crate::types::TypeChecker;
 
 // v0.55: CIR/PIR pipeline imports
 use crate::mir::run_proof_guided_program;
-use crate::cir::{lower_to_cir, extract_all_facts};
+use crate::cir::{lower_to_cir, extract_all_facts, CirVerifier, CirVerificationReport, ProofOutcome};
 use crate::pir::{propagate_proofs, extract_all_pir_facts};
 use crate::verify::ProofDatabase;
+
+/// Verification mode for contract checking during build
+///
+/// # Soundness Guarantee
+///
+/// BMB's core philosophy is "Performance > Everything". Contract-verified code
+/// enables proof-guided optimizations (BCE, NCE, DCE, PUE) that eliminate runtime
+/// checks. However, using unverified contracts for optimization is **unsound**:
+/// the compiler would assume properties that haven't been proven.
+///
+/// This enum controls when and how verification is performed:
+/// - `None`: Skip verification entirely (Debug builds) - no proof-guided optimizations
+/// - `Check`: Require verification to succeed (Release default) - sound optimizations
+/// - `Warn`: Verify but only warn on failures - optimizations only for verified code
+/// - `Trust`: Use contracts without verification (explicit unsafe) - user takes responsibility
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum VerificationMode {
+    /// Debug mode: Skip verification and proof-guided optimizations
+    /// Fast builds, no soundness guarantees needed (no optimizations use proofs)
+    None,
+
+    /// Release mode (default): Verify contracts, fail build on verification failure
+    /// This is the sound default - only verified facts enable optimizations
+    #[default]
+    Check,
+
+    /// Warning mode: Verify contracts, warn on failure but continue
+    /// Only verified functions get proof-guided optimizations
+    Warn,
+
+    /// Trust mode: Use contracts without verification
+    /// **WARNING**: This is explicitly unsafe. The user takes responsibility
+    /// for ensuring contracts are valid. Unsound optimizations possible.
+    Trust,
+}
 
 /// Build configuration
 #[derive(Debug, Clone)]
@@ -73,6 +110,14 @@ pub struct BuildConfig {
     pub proof_optimizations: bool,
     /// Enable proof caching for incremental compilation
     pub proof_cache: bool,
+
+    // === v0.60: Verification Mode Options ===
+
+    /// Verification mode for contract checking
+    /// Controls soundness guarantees for proof-guided optimizations
+    pub verification_mode: VerificationMode,
+    /// SMT solver timeout in seconds (default: 30)
+    pub verification_timeout: u32,
 }
 
 impl BuildConfig {
@@ -82,7 +127,7 @@ impl BuildConfig {
         Self {
             input,
             output,
-            opt_level: OptLevel::Debug,
+            opt_level: OptLevel::Release,  // v0.60.38: Default to Release for optimized builds
             output_type: OutputType::Executable,
             emit_ir: false,
             verbose: false,
@@ -95,7 +140,22 @@ impl BuildConfig {
             opt_report: false,
             proof_optimizations: true, // Enabled by default
             proof_cache: true, // Enabled by default for incremental compilation
+            // v0.60: Verification mode defaults
+            verification_mode: VerificationMode::Check, // Sound default for release
+            verification_timeout: 30, // 30 seconds default timeout
         }
+    }
+
+    /// Set verification mode
+    pub fn verification_mode(mut self, mode: VerificationMode) -> Self {
+        self.verification_mode = mode;
+        self
+    }
+
+    /// Set verification timeout in seconds
+    pub fn verification_timeout(mut self, timeout: u32) -> Self {
+        self.verification_timeout = timeout;
+        self
     }
 
     /// Set compilation target (v0.12.3)
@@ -178,6 +238,11 @@ pub enum BuildError {
 
     #[error("Linker error: {0}")]
     Linker(String),
+
+    /// Contract verification failed (v0.60)
+    /// This error occurs when VerificationMode::Check is set and contracts fail verification
+    #[error("Contract verification failed:\n{0}")]
+    Verification(String),
 }
 
 /// Build result
@@ -230,14 +295,126 @@ pub fn build(config: &BuildConfig) -> BuildResult<()> {
         println!("  Generated MIR for {} functions", mir.functions.len());
     }
 
-    // v0.55: Full CIR → PIR → MIR proof pipeline
+    // v0.60: Determine effective verification mode based on build configuration
+    // Debug builds skip verification and proof-guided optimizations entirely
+    // Release builds verify contracts and only use verified facts for optimization
+    let effective_verification_mode = if matches!(config.opt_level, OptLevel::Debug) {
+        VerificationMode::None
+    } else {
+        config.verification_mode
+    };
+
+    // v0.55/v0.60: Full CIR → PIR → MIR proof pipeline with verification gate
+    //
+    // # Soundness Guarantee (v0.60)
+    //
+    // The proof-guided optimization pipeline now includes a verification gate:
     // 1. CIR: Extract contract propositions
-    // 2. PIR: Propagate proofs through control flow (branch conditions, loops)
-    // 3. MIR: Augment with extracted ContractFacts for optimization
-    if config.proof_optimizations {
+    // 2. **Verification Gate**: Run SMT verification on CIR contracts
+    // 3. PIR: Propagate proofs through control flow (only for verified functions)
+    // 4. MIR: Augment with extracted ContractFacts for optimization
+    //
+    // Without verification, using contracts for optimization is UNSOUND.
+    // The compiler would assume properties that haven't been proven.
+    if config.proof_optimizations && !matches!(effective_verification_mode, VerificationMode::None) {
         let cir = lower_to_cir(&program);
 
-        // Extract basic CIR facts
+        // v0.60: Run verification based on mode
+        let verified_functions: HashSet<String> = match effective_verification_mode {
+            VerificationMode::None => {
+                // Should not reach here due to outer condition
+                HashSet::new()
+            }
+            VerificationMode::Check => {
+                // Strict mode: verify and fail on any verification failure
+                let verifier = CirVerifier::new()
+                    .with_timeout(config.verification_timeout);
+
+                if !verifier.is_solver_available() {
+                    if config.verbose {
+                        println!("  Warning: Z3 solver not available, skipping verification");
+                        println!("  Falling back to Trust mode (using contracts without verification)");
+                    }
+                    // Fallback to trust mode if solver unavailable
+                    cir.functions.iter().map(|f| f.name.clone()).collect()
+                } else {
+                    let report = verifier.verify_program(&cir);
+
+                    if config.verbose {
+                        println!("  Contract verification: {}", report.summary());
+                    }
+
+                    // Check for failures
+                    if report.has_failures() {
+                        let mut errors = String::new();
+                        for witness in &report.witnesses {
+                            if let ProofOutcome::Failed(reason) = &witness.outcome {
+                                errors.push_str(&format!(
+                                    "  Function '{}': {}\n",
+                                    witness.function, reason
+                                ));
+                                if let Some(ce) = &witness.counterexample {
+                                    errors.push_str(&format!("    Counterexample: {:?}\n", ce));
+                                }
+                            }
+                        }
+                        return Err(BuildError::Verification(errors));
+                    }
+
+                    // Return only verified function names
+                    report.witnesses.iter()
+                        .filter(|w| matches!(w.outcome, ProofOutcome::Verified))
+                        .map(|w| w.function.clone())
+                        .collect()
+                }
+            }
+            VerificationMode::Warn => {
+                // Warning mode: verify but continue on failure
+                let verifier = CirVerifier::new()
+                    .with_timeout(config.verification_timeout);
+
+                if !verifier.is_solver_available() {
+                    if config.verbose {
+                        println!("  Warning: Z3 solver not available");
+                    }
+                    HashSet::new() // No verified functions without solver
+                } else {
+                    let report = verifier.verify_program(&cir);
+
+                    if config.verbose {
+                        println!("  Contract verification: {}", report.summary());
+                    }
+
+                    // Warn about failures but continue
+                    if report.has_failures() {
+                        eprintln!("Warning: Contract verification issues detected:");
+                        for witness in &report.witnesses {
+                            if let ProofOutcome::Failed(reason) = &witness.outcome {
+                                eprintln!("  Function '{}': {}", witness.function, reason);
+                            }
+                        }
+                        eprintln!("  (Only verified functions will use proof-guided optimizations)");
+                    }
+
+                    // Return only verified function names
+                    report.witnesses.iter()
+                        .filter(|w| matches!(w.outcome, ProofOutcome::Verified))
+                        .map(|w| w.function.clone())
+                        .collect()
+                }
+            }
+            VerificationMode::Trust => {
+                // Trust mode: use all contracts without verification
+                // WARNING: This is explicitly unsafe
+                if config.verbose {
+                    println!("  Using contracts without verification (--trust-contracts)");
+                    println!("  WARNING: Unsound optimizations possible if contracts are invalid");
+                }
+                cir.functions.iter().map(|f| f.name.clone()).collect()
+            }
+        };
+
+        // Extract CIR facts only for verified functions
         let cir_facts = extract_all_facts(&cir);
 
         // v0.55: Load or create proof database for caching
@@ -261,10 +438,18 @@ pub fn build(config: &BuildConfig) -> BuildResult<()> {
         let pir_facts = extract_all_pir_facts(&pir);
 
         // Augment MIR functions with both CIR and PIR facts
+        // v0.60: Only augment facts for VERIFIED functions
         let mut cir_augmented = 0;
         let mut pir_augmented = 0;
+        let mut skipped_unverified = 0;
 
         for func in &mut mir.functions {
+            // v0.60: Soundness check - only use facts from verified functions
+            if !verified_functions.contains(&func.name) {
+                skipped_unverified += 1;
+                continue;
+            }
+
             // Add CIR-derived facts (from explicit contracts)
             if let Some((cir_pre, cir_post)) = cir_facts.get(&func.name) {
                 for fact in cir_pre {
@@ -319,6 +504,9 @@ pub fn build(config: &BuildConfig) -> BuildResult<()> {
                 if pir_augmented > 0 {
                     println!("    - From PIR (proof propagation): {}", pir_augmented);
                 }
+            }
+            if skipped_unverified > 0 {
+                println!("  Functions skipped (unverified): {}", skipped_unverified);
             }
             let new_cache_hits = proof_db.stats().cache_hits - cache_hits;
             if new_cache_hits > 0 {
@@ -706,8 +894,20 @@ fn link_executable(obj_path: &Path, output: &Path, verbose: bool) -> BuildResult
 fn find_runtime() -> BuildResult<PathBuf> {
     // Check BMB_RUNTIME_PATH environment variable
     if let Ok(path) = std::env::var("BMB_RUNTIME_PATH") {
-        let p = PathBuf::from(path);
-        if p.exists() {
+        let p = PathBuf::from(&path);
+        // v0.60.42: If path is a directory, look for the library file inside it
+        if p.is_dir() {
+            let lib_path = p.join("libbmb_runtime.a");
+            if lib_path.exists() {
+                return Ok(lib_path);
+            }
+            // Also try Windows-style naming
+            let lib_path_win = p.join("bmb_runtime.lib");
+            if lib_path_win.exists() {
+                return Ok(lib_path_win);
+            }
+        } else if p.exists() {
+            // Path is a file, use it directly
             return Ok(p);
         }
     }

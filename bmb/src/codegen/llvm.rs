@@ -54,9 +54,9 @@ pub type CodeGenResult<T> = Result<T, CodeGenError>;
 /// Optimization level for code generation
 #[derive(Debug, Clone, Copy, Default)]
 pub enum OptLevel {
-    #[default]
     Debug,
-    Release,
+    #[default]
+    Release,  // v0.60.38: Default to Release for optimized builds
     Size,
     Aggressive,
 }
@@ -210,13 +210,22 @@ impl CodeGen {
             module.write_bitcode_to_path(&temp_bc);
 
             // Run external opt tool
+            // v0.60.45: Two-pass optimization: main passes + scalarizer
+            // The scalarizer undoes harmful auto-vectorization for simple loops
+            // Use new pass manager syntax: -passes='default<O2>,scalarizer'
+            let passes_arg = match self.opt_level {
+                OptLevel::Debug => "default<O0>,scalarizer",
+                OptLevel::Release => "default<O2>,scalarizer",
+                OptLevel::Size => "default<Os>,scalarizer",
+                OptLevel::Aggressive => "default<O3>,scalarizer",
+            };
             let opt_result = Command::new("opt")
-                .args([opt_level_str, "-o"])
+                .args(["--passes", passes_arg, "-o"])
                 .arg(&opt_bc)
                 .arg(&temp_bc)
                 .output();
 
-            match opt_result {
+            let opt_success = match opt_result {
                 Ok(output_res) if output_res.status.success() => {
                     // Load optimized bitcode and write object file
                     eprintln!("Note: External opt {} completed successfully", opt_level_str);
@@ -248,22 +257,70 @@ impl CodeGen {
                         }
                         Err(e) => {
                             eprintln!("Warning: Could not load optimized bitcode: {}", e);
+                            false
                         }
                     }
                 }
                 Ok(output_res) => {
                     let stderr = String::from_utf8_lossy(&output_res.stderr);
-                    eprintln!("Warning: opt tool failed (exit: {:?}), falling back to unoptimized code: {}",
+                    eprintln!("Warning: opt tool failed (exit: {:?}): {}",
                               output_res.status.code(), stderr);
+                    false
                 }
                 Err(e) => {
-                    eprintln!("Warning: opt tool not found ({}), falling back to unoptimized code", e);
+                    eprintln!("Warning: opt tool not found ({})", e);
+                    false
                 }
+            };
+
+            // Cleanup temp files
+            let _ = std::fs::remove_file(&opt_bc);
+
+            // v0.60.42: Try llc -O3 as fallback when opt is unavailable
+            // llc performs codegen-level optimizations which are often sufficient
+            // v0.60.43: Use -O3 for Release mode as well since opt is blocked
+            if !opt_success {
+                let llc_opt = match self.opt_level {
+                    OptLevel::Debug => "-O0",
+                    OptLevel::Release => "-O3",  // v0.60.43: -O3 for best codegen without opt
+                    OptLevel::Size => "-Os",
+                    OptLevel::Aggressive => "-O3",
+                };
+
+                let obj_from_llc = output.with_extension("llc.o");
+                let llc_result = Command::new("llc")
+                    .args([llc_opt, "-filetype=obj", "-o"])
+                    .arg(&obj_from_llc)
+                    .arg(&temp_bc)
+                    .output();
+
+                match llc_result {
+                    Ok(output_res) if output_res.status.success() => {
+                        eprintln!("Note: llc {} optimization successful", llc_opt);
+                        // Move llc output to final destination
+                        if let Err(e) = std::fs::rename(&obj_from_llc, output) {
+                            // If rename fails (cross-device), try copy
+                            if let Err(e2) = std::fs::copy(&obj_from_llc, output) {
+                                eprintln!("Warning: Could not move llc output: {}, {}", e, e2);
+                            }
+                            let _ = std::fs::remove_file(&obj_from_llc);
+                        }
+                        let _ = std::fs::remove_file(&temp_bc);
+                        return Ok(());
+                    }
+                    Ok(output_res) => {
+                        let stderr = String::from_utf8_lossy(&output_res.stderr);
+                        eprintln!("Warning: llc failed (exit: {:?}): {}",
+                                  output_res.status.code(), stderr);
+                    }
+                    Err(e) => {
+                        eprintln!("Warning: llc not found ({})", e);
+                    }
+                }
+                let _ = std::fs::remove_file(&obj_from_llc);
             }
 
-            // Cleanup temp files on failure
             let _ = std::fs::remove_file(&temp_bc);
-            let _ = std::fs::remove_file(&opt_bc);
             eprintln!("Note: Writing UNOPTIMIZED object file (fallback)");
         }
 
@@ -3033,6 +3090,24 @@ impl<'ctx> LlvmContext<'ctx> {
                             "ptr_eq")
                         .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
                     Ok(result.into())
+                } else if lhs.is_pointer_value() && rhs.is_int_value() {
+                    // v0.60.39: Pointer-to-int comparison (e.g., ptr == null where null is 0)
+                    let result = self.builder
+                        .build_int_compare(IntPredicate::EQ,
+                            self.builder.build_ptr_to_int(lhs.into_pointer_value(), self.context.i64_type(), "lhs_ptr").map_err(|e| CodeGenError::LlvmError(e.to_string()))?,
+                            rhs.into_int_value(),
+                            "ptr_null_eq")
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                    Ok(result.into())
+                } else if lhs.is_int_value() && rhs.is_pointer_value() {
+                    // v0.60.39: Int-to-pointer comparison (e.g., null == ptr where null is 0)
+                    let result = self.builder
+                        .build_int_compare(IntPredicate::EQ,
+                            lhs.into_int_value(),
+                            self.builder.build_ptr_to_int(rhs.into_pointer_value(), self.context.i64_type(), "rhs_ptr").map_err(|e| CodeGenError::LlvmError(e.to_string()))?,
+                            "null_ptr_eq")
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                    Ok(result.into())
                 } else {
                     let result = self.builder
                         .build_int_compare(IntPredicate::EQ, lhs.into_int_value(), rhs.into_int_value(), "eq")
@@ -3063,6 +3138,24 @@ impl<'ctx> LlvmContext<'ctx> {
                             self.builder.build_ptr_to_int(lhs.into_pointer_value(), self.context.i64_type(), "lhs_ptr").map_err(|e| CodeGenError::LlvmError(e.to_string()))?,
                             self.builder.build_ptr_to_int(rhs.into_pointer_value(), self.context.i64_type(), "rhs_ptr").map_err(|e| CodeGenError::LlvmError(e.to_string()))?,
                             "ptr_ne")
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                    Ok(result.into())
+                } else if lhs.is_pointer_value() && rhs.is_int_value() {
+                    // v0.60.39: Pointer-to-int comparison (e.g., ptr != null where null is 0)
+                    let result = self.builder
+                        .build_int_compare(IntPredicate::NE,
+                            self.builder.build_ptr_to_int(lhs.into_pointer_value(), self.context.i64_type(), "lhs_ptr").map_err(|e| CodeGenError::LlvmError(e.to_string()))?,
+                            rhs.into_int_value(),
+                            "ptr_null_ne")
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                    Ok(result.into())
+                } else if lhs.is_int_value() && rhs.is_pointer_value() {
+                    // v0.60.39: Int-to-pointer comparison (e.g., null != ptr where null is 0)
+                    let result = self.builder
+                        .build_int_compare(IntPredicate::NE,
+                            lhs.into_int_value(),
+                            self.builder.build_ptr_to_int(rhs.into_pointer_value(), self.context.i64_type(), "rhs_ptr").map_err(|e| CodeGenError::LlvmError(e.to_string()))?,
+                            "null_ptr_ne")
                         .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
                     Ok(result.into())
                 } else {
