@@ -1019,6 +1019,22 @@ impl<'ctx> LlvmContext<'ctx> {
             }
         }
 
+        // v0.60.54: Pre-extend i32 read-only parameters to i64 at function entry
+        // This enables LLVM to use the pre-extended value instead of sign-extending
+        // inside loops. The original i32 value is kept for i32-only operations.
+        for (name, ty) in func.params.iter() {
+            if *ty == MirType::I32 && !written_places.contains(name) {
+                if let Some(param_val) = self.ssa_values.get(name).cloned() {
+                    let i32_val = param_val.into_int_value();
+                    let i64_val = self.builder
+                        .build_int_s_extend(i32_val, self.context.i64_type(), &format!("{}_sext", name))
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                    // Store under a special name that coercion can look up
+                    self.ssa_values.insert(format!("{}_i64", name), i64_val.into());
+                }
+            }
+        }
+
         // Allocate locals (excluding PHI destinations, _t* temporaries, and SSA-eligible locals)
         for (name, ty) in &func.locals {
             // Skip _t* temporaries - they stay as SSA values
