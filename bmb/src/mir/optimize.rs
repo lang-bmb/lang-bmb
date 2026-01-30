@@ -4173,6 +4173,17 @@ impl LoopBoundedNarrowing {
         // Check if we have bounds for this parameter
         if let Some(bounds) = self.param_bounds.get(&func.name) {
             if let Some(&max_val) = bounds.get(&param_idx) {
+                // v0.60.51: Check multiplication with large constants
+                // If parameter is multiplied by a large constant, the result can overflow i32
+                // Example: seed * 1103515245 where seed=42 → 46347640290 (overflows i32)
+                if let Some(max_multiplier) = Self::find_max_constant_multiplier(func, param_name) {
+                    // Check if max_val * max_multiplier fits in i32
+                    let product = (max_val as i128) * (max_multiplier as i128);
+                    if product > i32::MAX as i128 || product < i32::MIN as i128 {
+                        return false;
+                    }
+                }
+
                 // v0.60.48: Smart multiplication-aware narrowing
                 // If parameter is used in multiplication, check if bounds are small enough
                 // that multiplication won't overflow i32 (max_val * max_val < i32::MAX)
@@ -4232,6 +4243,63 @@ impl LoopBoundedNarrowing {
         }
 
         false
+    }
+
+    /// v0.60.51: Find the maximum constant that a parameter is multiplied by
+    /// Returns None if not multiplied by any constant, Some(max) otherwise
+    fn find_max_constant_multiplier(func: &MirFunction, param_name: &str) -> Option<i64> {
+        let mut derived: std::collections::HashSet<String> = std::collections::HashSet::new();
+        derived.insert(param_name.to_string());
+        let mut max_constant: Option<i64> = None;
+
+        // Multiple passes to propagate derived status
+        for _ in 0..5 {
+            for block in &func.blocks {
+                for inst in &block.instructions {
+                    match inst {
+                        MirInst::BinOp { dest, lhs, rhs, op } => {
+                            let lhs_derived = matches!(lhs, Operand::Place(p) if derived.contains(&p.name));
+                            let rhs_derived = matches!(rhs, Operand::Place(p) if derived.contains(&p.name));
+
+                            // Check for multiplication with a constant
+                            if matches!(op, MirBinOp::Mul) {
+                                if lhs_derived {
+                                    if let Operand::Constant(Constant::Int(c)) = rhs {
+                                        let abs_c = c.abs();
+                                        max_constant = Some(max_constant.map_or(abs_c, |m| m.max(abs_c)));
+                                    }
+                                }
+                                if rhs_derived {
+                                    if let Operand::Constant(Constant::Int(c)) = lhs {
+                                        let abs_c = c.abs();
+                                        max_constant = Some(max_constant.map_or(abs_c, |m| m.max(abs_c)));
+                                    }
+                                }
+                            }
+
+                            // Propagate derived status
+                            if lhs_derived || rhs_derived {
+                                derived.insert(dest.name.clone());
+                            }
+                        }
+                        MirInst::Copy { dest, src } if derived.contains(&src.name) => {
+                            derived.insert(dest.name.clone());
+                        }
+                        MirInst::Phi { dest, values } => {
+                            let any_derived = values.iter().any(|(operand, _)| {
+                                matches!(operand, Operand::Place(p) if derived.contains(&p.name))
+                            });
+                            if any_derived {
+                                derived.insert(dest.name.clone());
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+
+        max_constant
     }
 
     /// v0.60.14: Check if a parameter is used in multiplication
