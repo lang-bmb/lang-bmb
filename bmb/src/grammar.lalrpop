@@ -1086,6 +1086,13 @@ CastType: Type = {
     "u64" => Type::U64,
     "f64" => Type::F64,
     "bool" => Type::Bool,
+    // v0.60.19: Primitive pointer types for casts
+    "*" "i32" => Type::Ptr(Box::new(Type::I32)),
+    "*" "i64" => Type::Ptr(Box::new(Type::I64)),
+    "*" "u32" => Type::Ptr(Box::new(Type::U32)),
+    "*" "u64" => Type::Ptr(Box::new(Type::U64)),
+    "*" "f64" => Type::Ptr(Box::new(Type::F64)),
+    "*" "bool" => Type::Ptr(Box::new(Type::Bool)),
     "*" <name:Ident> => Type::Ptr(Box::new(Type::Named(name.node))),
     <name:Ident> => Type::Named(name.node),
 };
@@ -1132,7 +1139,8 @@ Expr: Expr = {
     ImpliesExpr,
     // v0.51.23: Store assignment expression using 'set' keyword
     // Allows set to appear in any expression context (e.g., after let body)
-    "set" <lhs:SpannedPostfixExpr> "=" <rhs:SpannedExpr> => {
+    // v0.60.21: Changed to SpannedUnaryExpr to support dereference: set *p = value
+    "set" <lhs:SpannedUnaryExpr> "=" <rhs:SpannedExpr> => {
         match lhs.node {
             Expr::Index { expr, index } => Expr::IndexAssign {
                 array: expr,
@@ -1144,7 +1152,12 @@ Expr: Expr = {
                 field,
                 value: Box::new(rhs),
             },
-            other => panic!("Expected index or field access after 'set', got {:?}", other),
+            // v0.60.21: Native pointer dereference assignment
+            Expr::Deref(ptr) => Expr::DerefAssign {
+                ptr,
+                value: Box::new(rhs),
+            },
+            other => panic!("Expected index, field access, or dereference after 'set', got {:?}", other),
         }
     },
     // v0.32: Braced if-else syntax (Rust style)
@@ -1164,6 +1177,13 @@ Expr: Expr = {
         mutable: m.is_some(),
         ty,
         value: Box::new(v),
+        body: Box::new(b),
+    },
+    // v0.60.21: Uninitialized let binding for stack arrays: `let [mut] name: Type; body`
+    "let" <m:"mut"?> <n:RawIdent> ":" <ty:SpannedType> ";" <b:SpannedExpr> => Expr::LetUninit {
+        name: n,
+        mutable: m.is_some(),
+        ty: Box::new(ty),
         body: Box::new(b),
     },
     "{" <es:(<BlockStmt> ";")*> <last:BlockStmt?> "}" => {
@@ -1778,6 +1798,11 @@ Primary: Expr = {
     },
     // v0.5 Phase 6: Array literal
     "[" <elems:ArrayElems> "]" => Expr::ArrayLit(elems),
+    // v0.60.22: Array repeat syntax [val; N]
+    "[" <value:SpannedExpr> ";" <count:"int"> "]" => Expr::ArrayRepeat {
+        value: Box::new(value),
+        count: count as usize,
+    },
     // v0.20.0: Closure expressions
     // Using "fn" prefix for unambiguous parsing: fn |params| { body }
     // Body must be a block expression to avoid grammar conflicts

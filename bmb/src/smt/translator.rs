@@ -240,6 +240,14 @@ impl SmtTranslator {
                 Ok(format!("(let (({} {})) {})", name, v, b))
             }
 
+            // v0.60.21: Uninitialized let binding - for SMT verification, treat as uninterpreted
+            Expr::LetUninit { name, mutable: _, ty: _, body } => {
+                // For SMT-LIB, declare variable without value (uninitialized)
+                let b = self.translate(body)?;
+                // Use a fresh constant for uninitialized value
+                Ok(format!("(let (({} undefined_array)) {})", name, b))
+            }
+
             Expr::Assign { name, .. } => {
                 // Assignment not fully supported in pure SMT
                 Err(TranslateError::UnsupportedFeature(format!("assignment: {}", name)))
@@ -276,6 +284,11 @@ impl SmtTranslator {
                 Err(TranslateError::UnsupportedFeature(format!("field assignment: {}", field.node)))
             }
 
+            // v0.60.21: Dereference assignment
+            Expr::DerefAssign { .. } => {
+                Err(TranslateError::UnsupportedFeature("dereference assignment".to_string()))
+            }
+
             // v0.43: Tuple field access
             Expr::TupleField { index, .. } => {
                 Err(TranslateError::UnsupportedFeature(format!("tuple field access: .{}", index)))
@@ -310,6 +323,11 @@ impl SmtTranslator {
             // v0.5 Phase 6: Arrays - not supported in SMT
             Expr::ArrayLit(_) => {
                 Err(TranslateError::UnsupportedFeature("array literal".to_string()))
+            }
+
+            // v0.60.22: Array repeat - not supported in SMT
+            Expr::ArrayRepeat { .. } => {
+                Err(TranslateError::UnsupportedFeature("array repeat".to_string()))
             }
 
             // v0.42: Tuple expressions - not supported in SMT

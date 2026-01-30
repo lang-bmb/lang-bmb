@@ -186,6 +186,11 @@ fn lower_function(
                 let elem_mir_ty = ast_type_to_mir_with_structs(elem_ty.as_ref(), struct_type_defs);
                 ctx.array_element_types.insert(p.name.node.clone(), elem_mir_ty);
             }
+            // v0.60.20: Track pointer element types for ptr[i] indexing
+            if let Type::Ptr(elem_ty) = &p.ty.node {
+                let elem_mir_ty = ast_type_to_mir_with_structs(elem_ty.as_ref(), struct_type_defs);
+                ctx.array_element_types.insert(p.name.node.clone(), elem_mir_ty);
+            }
             (p.name.node.clone(), ty)
         })
         .collect();
@@ -401,18 +406,79 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
 
             // Determine the MIR operator based on operand types
             let lhs_ty = ctx.operand_type(&lhs);
-            let mir_op = ast_binop_to_mir(*op, &lhs_ty);
+            let rhs_ty = ctx.operand_type(&rhs);
 
-            // v0.35.4: Store result type for temporary variable
-            let result_ty = mir_op.result_type(&lhs_ty);
-            ctx.locals.insert(dest.name.clone(), result_ty);
+            // v0.60.19: Check for pointer arithmetic (ptr + i or ptr - i)
+            let is_ptr_add = (*op == BinOp::Add || *op == BinOp::Sub)
+                && lhs_ty.is_pointer_type()
+                && (rhs_ty == MirType::I64 || rhs_ty == MirType::I32);
+            let is_add_ptr = *op == BinOp::Add
+                && (lhs_ty == MirType::I64 || lhs_ty == MirType::I32)
+                && rhs_ty.is_pointer_type();
 
-            ctx.push_inst(MirInst::BinOp {
-                dest: dest.clone(),
-                op: mir_op,
-                lhs,
-                rhs,
-            });
+            if is_ptr_add {
+                // ptr + i or ptr - i: generate PtrOffset
+                let element_type = lhs_ty.pointer_element_type().unwrap_or(MirType::I64);
+                let result_ty = lhs_ty.clone();
+                ctx.locals.insert(dest.name.clone(), result_ty);
+
+                // v0.60.20: Register struct type for PtrOffset destination so FieldStore/FieldAccess work
+                if let MirType::StructPtr(struct_name) = &element_type {
+                    ctx.var_struct_types.insert(dest.name.clone(), struct_name.clone());
+                }
+
+                // For subtraction, negate the offset
+                let offset = if *op == BinOp::Sub {
+                    let neg_dest = ctx.fresh_temp();
+                    ctx.locals.insert(neg_dest.name.clone(), rhs_ty.clone());
+                    ctx.push_inst(MirInst::UnaryOp {
+                        dest: neg_dest.clone(),
+                        op: MirUnaryOp::Neg,
+                        src: rhs.clone(),
+                    });
+                    Operand::Place(neg_dest)
+                } else {
+                    rhs
+                };
+
+                ctx.push_inst(MirInst::PtrOffset {
+                    dest: dest.clone(),
+                    ptr: lhs,
+                    offset,
+                    element_type,
+                });
+            } else if is_add_ptr {
+                // i + ptr: swap operands and generate PtrOffset
+                let element_type = rhs_ty.pointer_element_type().unwrap_or(MirType::I64);
+                let result_ty = rhs_ty.clone();
+                ctx.locals.insert(dest.name.clone(), result_ty);
+
+                // v0.60.20: Register struct type for PtrOffset destination so FieldStore/FieldAccess work
+                if let MirType::StructPtr(struct_name) = &element_type {
+                    ctx.var_struct_types.insert(dest.name.clone(), struct_name.clone());
+                }
+
+                ctx.push_inst(MirInst::PtrOffset {
+                    dest: dest.clone(),
+                    ptr: rhs,
+                    offset: lhs,
+                    element_type,
+                });
+            } else {
+                // Standard binary operation
+                let mir_op = ast_binop_to_mir(*op, &lhs_ty);
+
+                // v0.35.4: Store result type for temporary variable
+                let result_ty = mir_op.result_type(&lhs_ty);
+                ctx.locals.insert(dest.name.clone(), result_ty);
+
+                ctx.push_inst(MirInst::BinOp {
+                    dest: dest.clone(),
+                    op: mir_op,
+                    lhs,
+                    rhs,
+                });
+            }
 
             Operand::Place(dest)
         }
@@ -536,6 +602,30 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
                         src,
                     });
                 }
+            }
+
+            // Lower the body
+            lower_expr(body, ctx)
+        }
+
+        // v0.60.21: Uninitialized let binding for stack arrays
+        Expr::LetUninit { name, mutable: _, ty, body } => {
+            let mir_ty = ast_type_to_mir(&ty.node);
+
+            // Only array types should reach here (type checker enforces this)
+            if let MirType::Array { element_type, size: Some(n) } = &mir_ty {
+                let var_place = Place::new(name.clone());
+                ctx.locals.insert(name.clone(), mir_ty.clone());
+                ctx.array_element_types.insert(name.clone(), *element_type.clone());
+
+                ctx.push_inst(MirInst::ArrayAlloc {
+                    dest: var_place,
+                    element_type: *element_type.clone(),
+                    size: *n,
+                });
+            } else {
+                // Should not reach here due to type checker, but handle gracefully
+                ctx.locals.insert(name.clone(), mir_ty);
             }
 
             // Lower the body
@@ -1014,8 +1104,27 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
             lower_expr(inner, ctx)
         }
 
+        // v0.60.20: Dereference - for native pointers, generate PtrLoad
         Expr::Deref(inner) => {
-            lower_expr(inner, ctx)
+            let ptr_op = lower_expr(inner, ctx);
+            let ptr_ty = ctx.operand_type(&ptr_op);
+
+            // Check if this is a native pointer type
+            if let MirType::Ptr(element_type) = ptr_ty {
+                // Generate PtrLoad to load value through pointer
+                let dest = ctx.fresh_temp();
+                // Track the result type for downstream type inference
+                ctx.temp_types.insert(dest.name.clone(), *element_type.clone());
+                ctx.push_inst(MirInst::PtrLoad {
+                    dest: dest.clone(),
+                    ptr: ptr_op,
+                    element_type: *element_type,
+                });
+                Operand::Place(dest)
+            } else {
+                // For references, just pass through (semantically the same)
+                ptr_op
+            }
         }
 
         // v0.19.3: Array support
@@ -1036,6 +1145,27 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
 
             let dest = ctx.fresh_temp();
             // v0.51.35: Track array element type for IndexLoad/IndexStore
+            ctx.array_element_types.insert(dest.name.clone(), element_type.clone());
+            ctx.push_inst(MirInst::ArrayInit {
+                dest: dest.clone(),
+                element_type,
+                elements: mir_elements,
+            });
+            Operand::Place(dest)
+        }
+
+        // v0.60.22: Array repeat [val; N] - creates array of N repeated values
+        Expr::ArrayRepeat { value, count } => {
+            // Lower the value expression once
+            let value_op = lower_expr(value, ctx);
+            let element_type = ctx.operand_type(&value_op);
+
+            // Create N copies of the operand for ArrayInit
+            let mir_elements: Vec<Operand> = (0..*count)
+                .map(|_| value_op.clone())
+                .collect();
+
+            let dest = ctx.fresh_temp();
             ctx.array_element_types.insert(dest.name.clone(), element_type.clone());
             ctx.push_inst(MirInst::ArrayInit {
                 dest: dest.clone(),
@@ -1101,6 +1231,10 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
             if let MirType::Struct { name: struct_name, .. } = &element_type {
                 ctx.var_struct_types.insert(dest.name.clone(), struct_name.clone());
             }
+
+            // v0.60.20: Register element type for dest so operand_type returns correct type
+            // This is needed for float operations to use FMul/FAdd instead of Mul/Add
+            ctx.locals.insert(dest.name.clone(), element_type.clone());
 
             ctx.push_inst(MirInst::IndexLoad {
                 dest: dest.clone(),
@@ -1171,6 +1305,28 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
                 field_index,
                 struct_name,
                 value: val,
+            });
+
+            // Return unit
+            Operand::Constant(Constant::Unit)
+        }
+
+        // v0.60.21: Dereference assignment: set *ptr = value
+        // Stores value through a native pointer using PtrStore instruction
+        Expr::DerefAssign { ptr, value } => {
+            let ptr_op = lower_expr(ptr, ctx);
+            let val_op = lower_expr(value, ctx);
+
+            // Get element type from the pointer type
+            let element_type = match ctx.operand_type(&ptr_op) {
+                MirType::Ptr(inner) => *inner,
+                _ => MirType::I64, // Fallback
+            };
+
+            ctx.push_inst(MirInst::PtrStore {
+                ptr: ptr_op,
+                value: val_op,
+                element_type,
             });
 
             // Return unit
@@ -1337,7 +1493,17 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
                         from_ty: from_ty.clone(),
                         to_ty: to_ty.clone(),
                     });
-                    ctx.var_struct_types.insert(dest.name.clone(), struct_name);
+                    ctx.var_struct_types.insert(dest.name.clone(), struct_name.clone());
+                    // v0.60.19: Also register the destination type for pointer type lookup
+                    ctx.locals.insert(dest.name.clone(), to_ty.clone());
+                    // v0.60.20: Track element type for pointer indexing (ptr[i])
+                    // This allows IndexLoad/IndexStore to know the element type
+                    if let MirType::Ptr(inner) = &to_ty {
+                        ctx.array_element_types.insert(dest.name.clone(), *inner.clone());
+                    } else {
+                        // For *StructName, track the struct type
+                        ctx.array_element_types.insert(dest.name.clone(), MirType::StructPtr(struct_name));
+                    }
                     return Operand::Place(dest);
                 }
 
@@ -1362,6 +1528,29 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
                 }
             }
 
+            // v0.60.23: Array to pointer cast - [T; N] -> *T
+            // Arrays decay to pointers to their first element
+            if let MirType::Array { element_type, .. } = &from_ty {
+                if let MirType::Ptr(target_elem) = &to_ty {
+                    // Verify element types match
+                    if element_type.as_ref() == target_elem.as_ref() {
+                        // For arrays allocated on stack (alloca), the array variable
+                        // is already a pointer to the first element
+                        // Just register the new type and return
+                        let dest = ctx.fresh_temp();
+                        ctx.push_inst(MirInst::Cast {
+                            dest: dest.clone(),
+                            src: src_op.clone(),
+                            from_ty: from_ty.clone(),
+                            to_ty: to_ty.clone(),
+                        });
+                        ctx.locals.insert(dest.name.clone(), to_ty.clone());
+                        ctx.array_element_types.insert(dest.name.clone(), *element_type.clone());
+                        return Operand::Place(dest);
+                    }
+                }
+            }
+
             // v0.51.33: Check if source is a struct pointer
             // Struct pointer to i64 requires ptrtoint in LLVM IR
             let src_is_struct_ptr = matches!(&from_ty, MirType::StructPtr(_));
@@ -1379,6 +1568,15 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
                 from_ty,
                 to_ty: to_ty.clone(),
             });
+
+            // v0.60.19: Register the destination type for pointer casts
+            // This ensures operand_type() returns the correct pointer type
+            ctx.locals.insert(dest.name.clone(), to_ty.clone());
+
+            // v0.60.20: Track element type for primitive pointer casts like *f64
+            if let MirType::Ptr(inner) = &to_ty {
+                ctx.array_element_types.insert(dest.name.clone(), *inner.clone());
+            }
 
             Operand::Place(dest)
         }

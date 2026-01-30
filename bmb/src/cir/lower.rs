@@ -413,6 +413,10 @@ impl CirLowerer {
             Expr::Let { body, .. } => {
                 self.collect_loop_invariants(&body.node, invariants);
             }
+            // v0.60.21: Uninitialized let binding
+            Expr::LetUninit { body, .. } => {
+                self.collect_loop_invariants(&body.node, invariants);
+            }
             Expr::Loop { body } => {
                 let loop_id = self.loop_counter;
                 self.loop_counter += 1;
@@ -546,6 +550,28 @@ impl CirLowerer {
                 }
             }
 
+            // v0.60.21: Uninitialized let binding for stack arrays
+            Expr::LetUninit { name, mutable, ty, body } => {
+                let cir_ty = self.lower_type(&ty.node);
+                let cir_body = self.lower_expr(&body.node);
+                // Treat as a mutable binding with undefined value
+                if *mutable {
+                    CirExpr::LetMut {
+                        name: name.clone(),
+                        ty: cir_ty,
+                        value: Box::new(CirExpr::Unit), // undefined
+                        body: Box::new(cir_body),
+                    }
+                } else {
+                    CirExpr::Let {
+                        name: name.clone(),
+                        ty: cir_ty,
+                        value: Box::new(CirExpr::Unit), // undefined
+                        body: Box::new(cir_body),
+                    }
+                }
+            }
+
             Expr::Assign { name, value } => {
                 let cir_value = self.lower_expr(&value.node);
                 CirExpr::Assign {
@@ -572,6 +598,16 @@ impl CirLowerer {
                 CirExpr::FieldAssign {
                     object: Box::new(cir_object),
                     field: field.node.clone(),
+                    value: Box::new(cir_value),
+                }
+            }
+
+            // v0.60.21: Dereference assignment (CIR just passes through as deref + store)
+            Expr::DerefAssign { ptr, value } => {
+                let cir_ptr = self.lower_expr(&ptr.node);
+                let cir_value = self.lower_expr(&value.node);
+                CirExpr::DerefStore {
+                    ptr: Box::new(cir_ptr),
                     value: Box::new(cir_value),
                 }
             }
@@ -635,6 +671,15 @@ impl CirLowerer {
                 let cir_elems: Vec<CirExpr> = elems
                     .iter()
                     .map(|e| self.lower_expr(&e.node))
+                    .collect();
+                CirExpr::Array(cir_elems)
+            }
+
+            // v0.60.22: Array repeat [val; N]
+            Expr::ArrayRepeat { value, count } => {
+                let val_expr = self.lower_expr(&value.node);
+                let cir_elems: Vec<CirExpr> = (0..*count)
+                    .map(|_| val_expr.clone())
                     .collect();
                 CirExpr::Array(cir_elems)
             }

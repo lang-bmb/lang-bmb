@@ -231,6 +231,48 @@ pub fn extract_all_facts(
     result
 }
 
+/// Extract ContractFacts only for functions that have been verified
+///
+/// # v0.60: Soundness Guarantee
+///
+/// This function is the cornerstone of BMB's soundness guarantee for proof-guided
+/// optimizations. It only extracts facts from functions that have passed verification,
+/// ensuring that the compiler never uses unproven assumptions for optimization.
+///
+/// ## Why This Matters
+///
+/// Using unverified contracts for optimization is **unsound**:
+/// - The compiler assumes `pre idx < len(arr)` holds
+/// - It eliminates bounds check based on this assumption
+/// - If the contract is wrong, the program has undefined behavior
+///
+/// By only extracting facts from verified functions, we guarantee that every
+/// optimization is backed by a mathematical proof.
+///
+/// # Arguments
+/// * `program` - The CIR program containing all functions
+/// * `verified_functions` - Set of function names that passed SMT verification
+///
+/// # Returns
+/// Map from function name to (preconditions, postconditions) for verified functions only
+pub fn extract_verified_facts(
+    program: &CirProgram,
+    verified_functions: &std::collections::HashSet<String>,
+) -> std::collections::HashMap<String, (Vec<ContractFact>, Vec<ContractFact>)> {
+    let mut result = std::collections::HashMap::new();
+
+    for func in &program.functions {
+        // Only extract facts for verified functions
+        if verified_functions.contains(&func.name) {
+            let pre_facts = extract_precondition_facts(func);
+            let post_facts = extract_postcondition_facts(func);
+            result.insert(func.name.clone(), (pre_facts, post_facts));
+        }
+    }
+
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

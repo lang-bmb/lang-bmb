@@ -53,6 +53,16 @@ pub enum Expr {
         body: Box<Spanned<Expr>>,
     },
 
+    /// Let binding without initializer: `let [mut] name: Type; body` (v0.60.21)
+    /// Used for stack-allocated arrays: `let mut arr: [i64; 100];`
+    /// Only allowed for array types - uninitialized primitives are dangerous
+    LetUninit {
+        name: String,
+        mutable: bool,
+        ty: Box<Spanned<Type>>,
+        body: Box<Spanned<Expr>>,
+    },
+
     /// Assignment: name = value (v0.5 Phase 2)
     Assign {
         name: String,
@@ -172,6 +182,12 @@ pub enum Expr {
     /// Array literal: [elem1, elem2, ...]
     ArrayLit(Vec<Spanned<Expr>>),
 
+    /// v0.60.22: Array repeat: [val; N] - creates array of N elements with value val
+    ArrayRepeat {
+        value: Box<Spanned<Expr>>,
+        count: usize,
+    },
+
     /// v0.42: Tuple expression: (expr1, expr2, ...)
     Tuple(Vec<Spanned<Expr>>),
 
@@ -193,6 +209,13 @@ pub enum Expr {
     FieldAssign {
         object: Box<Spanned<Expr>>,
         field: Spanned<String>,
+        value: Box<Spanned<Expr>>,
+    },
+
+    /// Dereference assignment: `set *ptr = value` (v0.60.21)
+    /// Stores value through a native pointer, generating PtrStore MIR instruction
+    DerefAssign {
+        ptr: Box<Spanned<Expr>>,
         value: Box<Spanned<Expr>>,
     },
 

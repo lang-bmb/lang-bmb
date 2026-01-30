@@ -469,6 +469,21 @@ impl Interpreter {
                 Ok(Value::Unit)
             }
 
+            // v0.60.21: Uninitialized let binding for stack arrays
+            // In interpreter, create array with default values
+            Expr::LetUninit { name, mutable: _, ty, body } => {
+                // Create uninitialized array based on type
+                let val = match &ty.node {
+                    crate::ast::Type::Array(_, size) => {
+                        // Create array filled with zeros
+                        Value::Array(vec![Value::Int(0); *size].into())
+                    }
+                    _ => Value::Unit, // Shouldn't happen - type checker ensures array type
+                };
+                env.borrow_mut().define(name.clone(), val);
+                self.eval(body, env)
+            }
+
             // v0.37: Invariant is for SMT verification, not runtime
             Expr::While { cond, invariant: _, body } => {
                 while self.eval(cond, env)?.is_truthy() {
@@ -609,6 +624,22 @@ impl Interpreter {
                 }
             }
 
+            // v0.60.21: Dereference assignment: *ptr = value
+            Expr::DerefAssign { ptr, value } => {
+                let ptr_val = self.eval(ptr, env)?;
+                let new_val = self.eval(value, env)?;
+
+                match ptr_val {
+                    Value::Int(addr) if addr != 0 => {
+                        // Store value at the pointer address
+                        self.heap.borrow_mut().insert(addr, new_val);
+                        Ok(Value::Unit)
+                    }
+                    Value::Int(0) => Err(RuntimeError::type_error("non-null pointer", "null")),
+                    _ => Err(RuntimeError::type_error("pointer", ptr_val.type_name())),
+                }
+            }
+
             // v0.43: Tuple field access
             Expr::TupleField { expr: tuple_expr, index } => {
                 let tuple_val = self.eval(tuple_expr, env)?;
@@ -677,6 +708,13 @@ impl Interpreter {
                 for elem in elems {
                     values.push(self.eval(elem, env)?);
                 }
+                Ok(Value::Array(values))
+            }
+
+            // v0.60.22: Array repeat [val; N]
+            Expr::ArrayRepeat { value, count } => {
+                let val = self.eval(value, env)?;
+                let values = vec![val; *count];
                 Ok(Value::Array(values))
             }
 
@@ -1552,6 +1590,20 @@ impl Interpreter {
                 self.eval_fast(body)
             }
 
+            // v0.60.21: Uninitialized let binding for stack arrays (fast path)
+            Expr::LetUninit { name, mutable: _, ty, body } => {
+                // Create uninitialized array based on type
+                let val = match &ty.node {
+                    crate::ast::Type::Array(_, size) => {
+                        // Create array filled with zeros
+                        Value::Array(vec![Value::Int(0); *size].into())
+                    }
+                    _ => Value::Unit, // Shouldn't happen - type checker ensures array type
+                };
+                self.scope_stack.define(name.clone(), val);
+                self.eval_fast(body)
+            }
+
             Expr::Call { func, args } => {
                 let arg_vals: Vec<Value> = args
                     .iter()
@@ -1673,6 +1725,21 @@ impl Interpreter {
                 }
             }
 
+            // v0.60.21: Dereference assignment (eval_fast version)
+            Expr::DerefAssign { ptr, value } => {
+                let ptr_val = self.eval_fast(ptr)?;
+                let new_val = self.eval_fast(value)?;
+
+                match ptr_val {
+                    Value::Int(addr) if addr != 0 => {
+                        self.heap.borrow_mut().insert(addr, new_val);
+                        Ok(Value::Unit)
+                    }
+                    Value::Int(0) => Err(RuntimeError::type_error("non-null pointer", "null")),
+                    _ => Err(RuntimeError::type_error("pointer", ptr_val.type_name())),
+                }
+            }
+
             // v0.43: Tuple field access
             Expr::TupleField { expr: tuple_expr, index } => {
                 let tuple_val = self.eval_fast(tuple_expr)?;
@@ -1700,6 +1767,13 @@ impl Interpreter {
                 for elem in elems {
                     values.push(self.eval_fast(elem)?);
                 }
+                Ok(Value::Array(values))
+            }
+
+            // v0.60.22: Array repeat [val; N]
+            Expr::ArrayRepeat { value, count } => {
+                let val = self.eval_fast(value)?;
+                let values = vec![val; *count];
                 Ok(Value::Array(values))
             }
 

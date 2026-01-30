@@ -266,6 +266,37 @@ pub enum MirInst {
         from_ty: MirType,
         to_ty: MirType,
     },
+    /// v0.60.19: Pointer offset: %dest = %ptr + %offset (scaled by element size)
+    /// Generates LLVM GEP instruction for proper alias analysis
+    PtrOffset {
+        dest: Place,
+        ptr: Operand,
+        offset: Operand,
+        element_type: MirType,
+    },
+    /// v0.60.21: Stack array allocation without initialization
+    /// Used for: `let arr: [T; N];`
+    /// Generates LLVM alloca for zero-overhead stack arrays
+    ArrayAlloc {
+        dest: Place,
+        element_type: MirType,
+        size: usize,
+    },
+    /// v0.60.20: Pointer load (dereference): %dest = *%ptr
+    /// Generates native LLVM load instruction for proper alias analysis
+    /// This enables LLVM to optimize pointer-based code (vectorization, LICM)
+    PtrLoad {
+        dest: Place,
+        ptr: Operand,
+        element_type: MirType,
+    },
+    /// v0.60.20: Pointer store: *%ptr = %value
+    /// Generates native LLVM store instruction for proper alias analysis
+    PtrStore {
+        ptr: Operand,
+        value: Operand,
+        element_type: MirType,
+    },
 }
 
 /// Block terminator (control flow)
@@ -486,9 +517,23 @@ impl MirType {
         matches!(self, MirType::F64)
     }
 
-    /// v0.60.1: Check if this is a pointer type (Ptr or StructPtr)
+    /// v0.60.1: Check if this is a pointer type (Ptr, StructPtr, or String)
+    /// v0.60.32: Include String since it's represented as ptr in LLVM
     pub fn is_pointer_type(&self) -> bool {
-        matches!(self, MirType::Ptr(_) | MirType::StructPtr(_))
+        matches!(self, MirType::Ptr(_) | MirType::StructPtr(_) | MirType::String)
+    }
+
+    /// v0.60.19: Get element type from a pointer type
+    /// Returns None if not a pointer type
+    pub fn pointer_element_type(&self) -> Option<MirType> {
+        match self {
+            MirType::Ptr(inner) => Some(*inner.clone()),
+            MirType::StructPtr(name) => Some(MirType::Struct {
+                name: name.clone(),
+                fields: vec![], // Fields not known at this level
+            }),
+            _ => None,
+        }
     }
 }
 
@@ -813,6 +858,18 @@ fn format_mir_inst(inst: &MirInst) -> String {
         }
         MirInst::TupleExtract { dest, tuple, index, element_type } => {
             format!("%{} = tuple-extract %{}.{} : {}", dest.name, tuple.name, index, format_mir_type(element_type))
+        }
+        MirInst::PtrOffset { dest, ptr, offset, element_type } => {
+            format!("%{} = ptr-offset {} + {} : *{}", dest.name, format_operand(ptr), format_operand(offset), format_mir_type(element_type))
+        }
+        MirInst::ArrayAlloc { dest, element_type, size } => {
+            format!("%{} = array-alloc [{}; {}]", dest.name, format_mir_type(element_type), size)
+        }
+        MirInst::PtrLoad { dest, ptr, element_type } => {
+            format!("%{} = ptr-load {} : {}", dest.name, format_operand(ptr), format_mir_type(element_type))
+        }
+        MirInst::PtrStore { ptr, value, element_type } => {
+            format!("ptr-store {} = {} : {}", format_operand(ptr), format_operand(value), format_mir_type(element_type))
         }
     }
 }

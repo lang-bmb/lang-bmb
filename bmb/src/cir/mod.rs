@@ -33,7 +33,7 @@ pub use smt::{CirSmtGenerator, SmtSort, SmtError};
 pub use verify::{CirVerifier, CirVerificationReport, ProofWitness, ProofOutcome};
 pub use to_mir_facts::{
     proposition_to_facts, extract_precondition_facts, extract_postcondition_facts,
-    extract_all_facts,
+    extract_all_facts, extract_verified_facts,
 };
 
 use std::collections::HashMap;
@@ -372,6 +372,12 @@ pub enum CirExpr {
     FieldAssign {
         object: Box<CirExpr>,
         field: String,
+        value: Box<CirExpr>,
+    },
+
+    /// Dereference store: *ptr = value (v0.60.21)
+    DerefStore {
+        ptr: Box<CirExpr>,
         value: Box<CirExpr>,
     },
 

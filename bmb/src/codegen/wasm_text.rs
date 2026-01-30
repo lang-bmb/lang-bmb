@@ -796,6 +796,78 @@ impl WasmCodeGen {
                 writeln!(out, "    i64.load")?;
                 writeln!(out, "    local.set ${}", dest.name)?;
             }
+
+            // v0.60.19: Pointer offset - compute ptr + offset * element_size
+            MirInst::PtrOffset { dest, ptr, offset, element_type } => {
+                // Calculate element size (8 for i64/f64/ptr, 4 for i32, etc.)
+                let elem_size = match element_type {
+                    MirType::I32 | MirType::U32 => 4,
+                    MirType::I64 | MirType::U64 | MirType::F64 | MirType::Ptr(_) | MirType::StructPtr(_) => 8,
+                    MirType::Bool | MirType::Char => 1,
+                    MirType::Struct { fields, .. } => fields.len() * 8, // Rough estimate
+                    _ => 8, // Default to 8 bytes
+                };
+                writeln!(out, "    ;; ptr offset")?;
+                self.emit_operand(out, ptr)?;
+                self.emit_operand(out, offset)?;
+                writeln!(out, "    i64.const {}", elem_size)?;
+                writeln!(out, "    i64.mul")?;
+                writeln!(out, "    i64.add")?;
+                writeln!(out, "    local.set ${}", dest.name)?;
+            }
+
+            // v0.60.21: Stack array allocation - for WASM we need to use linear memory
+            // This is a simplified implementation that allocates from the stack pointer
+            MirInst::ArrayAlloc { dest, element_type, size } => {
+                // Calculate element size (8 for i64/f64/ptr, 4 for i32, etc.)
+                let elem_size = match element_type {
+                    MirType::I32 | MirType::U32 => 4,
+                    MirType::I64 | MirType::U64 | MirType::F64 | MirType::Ptr(_) | MirType::StructPtr(_) => 8,
+                    MirType::Bool | MirType::Char => 1,
+                    _ => 8, // Default to 8 bytes
+                };
+                let total_size = elem_size * size;
+                writeln!(out, "    ;; array alloc [{} x {} bytes]", size, elem_size)?;
+                // Simple bump allocation from a hypothetical stack pointer global
+                // In a real implementation, this would use proper stack management
+                writeln!(out, "    global.get $__stack_pointer")?;
+                writeln!(out, "    global.get $__stack_pointer")?;
+                writeln!(out, "    i32.const {}", total_size)?;
+                writeln!(out, "    i32.sub")?;
+                writeln!(out, "    global.set $__stack_pointer")?;
+                writeln!(out, "    i64.extend_i32_u")?; // Convert to i64 for pointer
+                writeln!(out, "    local.set ${}", dest.name)?;
+            }
+
+            // v0.60.20: Pointer load - load from memory through pointer
+            MirInst::PtrLoad { dest, ptr, element_type } => {
+                self.emit_operand(out, ptr)?;
+                writeln!(out, "    i32.wrap_i64")?; // Convert i64 ptr to i32 address
+                let load_op = match element_type {
+                    MirType::I32 | MirType::U32 => "i32.load",
+                    MirType::I64 | MirType::U64 | MirType::Ptr(_) | MirType::StructPtr(_) => "i64.load",
+                    MirType::F64 => "f64.load",
+                    MirType::Bool | MirType::Char => "i32.load8_u",
+                    _ => "i64.load", // Default
+                };
+                writeln!(out, "    {}", load_op)?;
+                writeln!(out, "    local.set ${}", dest.name)?;
+            }
+
+            // v0.60.20: Pointer store - store to memory through pointer
+            MirInst::PtrStore { ptr, value, element_type } => {
+                self.emit_operand(out, ptr)?;
+                writeln!(out, "    i32.wrap_i64")?; // Convert i64 ptr to i32 address
+                self.emit_operand(out, value)?;
+                let store_op = match element_type {
+                    MirType::I32 | MirType::U32 => "i32.store",
+                    MirType::I64 | MirType::U64 | MirType::Ptr(_) | MirType::StructPtr(_) => "i64.store",
+                    MirType::F64 => "f64.store",
+                    MirType::Bool | MirType::Char => "i32.store8",
+                    _ => "i64.store", // Default
+                };
+                writeln!(out, "    {}", store_op)?;
+            }
         }
 
         Ok(())
@@ -1225,6 +1297,20 @@ impl WasmCodeGen {
             MirInst::TupleExtract { dest, element_type, .. } => {
                 Some((dest.name.clone(), element_type.clone()))
             }
+            // v0.60.19: Pointer offset produces pointer type
+            MirInst::PtrOffset { dest, element_type, .. } => {
+                Some((dest.name.clone(), MirType::Ptr(Box::new(element_type.clone()))))
+            }
+            // v0.60.21: Array allocation produces pointer type
+            MirInst::ArrayAlloc { dest, element_type, .. } => {
+                Some((dest.name.clone(), MirType::Ptr(Box::new(element_type.clone()))))
+            }
+            // v0.60.20: Pointer load produces the element type
+            MirInst::PtrLoad { dest, element_type, .. } => {
+                Some((dest.name.clone(), element_type.clone()))
+            }
+            // v0.60.20: Pointer store has no destination
+            MirInst::PtrStore { .. } => None,
         }
     }
 

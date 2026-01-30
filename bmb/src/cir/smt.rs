@@ -432,7 +432,8 @@ impl CirSmtGenerator {
             CirExpr::Exists { .. } |
             CirExpr::Todo(_) |
             CirExpr::IndexAssign { .. } |
-            CirExpr::FieldAssign { .. } => {
+            CirExpr::FieldAssign { .. } |
+            CirExpr::DerefStore { .. } => {
                 Err(SmtError::UnsupportedExpression(format!("{:?}", expr)))
             }
         }

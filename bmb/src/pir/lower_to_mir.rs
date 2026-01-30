@@ -2,17 +2,79 @@
 //!
 //! Phase 2.3: Convert PIR to MIR while preserving proof information.
 //! The proof annotations are carried through to enable proof-guided optimization.
+//!
+//! # Architectural Decision (v0.60)
+//!
+//! **This module is intentionally minimal.** The BMB compiler uses a
+//! **"fact-extraction" approach** rather than full PIR → MIR lowering.
+//!
+//! ## Current Architecture
+//!
+//! ```text
+//! AST ──→ MIR (direct lowering for code generation)
+//!  │
+//!  └──→ CIR ──→ SMT Verification ──→ Verified CIR
+//!                                       │
+//!                                       ↓
+//!                                     PIR (proof propagation)
+//!                                       │
+//!                                       ↓
+//!                              Verified Facts ──→ MIR augmentation
+//!                                                   │
+//!                                                   ↓
+//!                                          Proof-guided optimization
+//!                                          (only verified facts = SOUND)
+//! ```
+//!
+//! ## Why Not Full PIR → MIR Lowering?
+//!
+//! 1. **Fact-extraction is sufficient**: We only need contract facts to guide
+//!    optimization. The MIR code generation doesn't change based on proofs.
+//!
+//! 2. **Avoids duplication**: Full lowering would duplicate AST → MIR logic,
+//!    leading to potential inconsistencies.
+//!
+//! 3. **Verification at CIR level**: Soundness is guaranteed by verifying
+//!    contracts at the CIR level before extracting facts.
+//!
+//! 4. **Simpler integration**: Adding facts to existing MIR is less invasive
+//!    than replacing the entire MIR generation pipeline.
+//!
+//! ## Soundness Guarantee
+//!
+//! The key insight is that **proofs don't change what code does, only how
+//! efficiently it runs**. The MIR from AST is always correct. The facts from
+//! verified PIR just tell us which runtime checks can be safely eliminated.
+//!
+//! ## Usage in Build Pipeline
+//!
+//! The build pipeline (`bmb/src/build/mod.rs`) uses:
+//! 1. `extract_all_facts()` / `extract_verified_facts()` from CIR
+//! 2. `extract_all_pir_facts()` from PIR
+//! 3. Direct augmentation of MIR function preconditions/postconditions
+//!
+//! The `lower_pir_to_mir()` function below is kept as a stub for potential
+//! future use but is not used in the current architecture.
 
 use super::{PirProgram, PirExpr, PirExprKind};
 use crate::cir::Proposition;
 
 /// Lower PIR program to MIR (stub implementation)
 ///
-/// This function converts PIR to MIR while preserving proof annotations.
-/// The actual MIR representation depends on the existing MIR infrastructure.
+/// # Deprecation Notice
+///
+/// This function is **intentionally minimal** per the architectural decision above.
+/// The BMB compiler uses fact-extraction from PIR rather than full lowering.
+///
+/// See `bmb/src/pir/to_mir_facts.rs` for the actual PIR → MIR fact extraction.
+/// See `bmb/src/build/mod.rs` for how these facts are integrated into the pipeline.
+#[deprecated(
+    since = "0.60.0",
+    note = "Use fact-extraction approach via to_mir_facts.rs instead of full lowering"
+)]
 pub fn lower_pir_to_mir(_pir: &PirProgram) -> MirWithProofs {
-    // This is a stub implementation
-    // Full implementation would integrate with existing MIR infrastructure
+    // This is a stub implementation kept for potential future use.
+    // The current architecture uses fact-extraction instead.
 
     MirWithProofs {
         functions: vec![],

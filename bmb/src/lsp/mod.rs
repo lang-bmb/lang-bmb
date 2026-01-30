@@ -290,6 +290,10 @@ impl Backend {
                 self.collect_expr_refs(&value.node, refs);
                 self.collect_expr_refs(&body.node, refs);
             }
+            // v0.60.21: Uninitialized let binding
+            Expr::LetUninit { body, .. } => {
+                self.collect_expr_refs(&body.node, refs);
+            }
             Expr::If { cond, then_branch, else_branch } => {
                 self.collect_expr_refs(&cond.node, refs);
                 self.collect_expr_refs(&then_branch.node, refs);
@@ -353,10 +357,19 @@ impl Backend {
                 self.collect_expr_refs(&object.node, refs);
                 self.collect_expr_refs(&value.node, refs);
             }
+            // v0.60.21: Dereference assignment
+            Expr::DerefAssign { ptr, value } => {
+                self.collect_expr_refs(&ptr.node, refs);
+                self.collect_expr_refs(&value.node, refs);
+            }
             Expr::ArrayLit(elems) => {
                 for elem in elems {
                     self.collect_expr_refs(&elem.node, refs);
                 }
+            }
+            // v0.60.22: Array repeat
+            Expr::ArrayRepeat { value, .. } => {
+                self.collect_expr_refs(&value.node, refs);
             }
             // v0.42: Tuple expressions
             Expr::Tuple(elems) => {
@@ -412,6 +425,20 @@ impl Backend {
 
                 // Recurse into value and body
                 self.collect_locals(&value.node, scope_span, locals);
+                self.collect_locals(&body.node, body_span, locals);
+            }
+            // v0.60.21: Uninitialized let binding
+            Expr::LetUninit { name, ty, body, .. } => {
+                let type_str = format_type(&ty.node);
+                let body_span = body.span;
+                locals.push(LocalVar {
+                    name: name.clone(),
+                    type_str,
+                    def_span: ty.span, // Use type annotation span as def location
+                    scope_span: body_span,
+                });
+
+                // Recurse into body only (no value for uninitialized binding)
                 self.collect_locals(&body.node, body_span, locals);
             }
             Expr::Block(stmts) => {
@@ -497,6 +524,11 @@ impl Backend {
                 self.collect_locals(&object.node, scope_span, locals);
                 self.collect_locals(&value.node, scope_span, locals);
             }
+            // v0.60.21: Dereference assignment
+            Expr::DerefAssign { ptr, value } => {
+                self.collect_locals(&ptr.node, scope_span, locals);
+                self.collect_locals(&value.node, scope_span, locals);
+            }
             Expr::FieldAccess { expr, .. } | Expr::TupleField { expr, .. } => {
                 self.collect_locals(&expr.node, scope_span, locals);
             }
@@ -504,6 +536,10 @@ impl Backend {
                 for elem in elems {
                     self.collect_locals(&elem.node, scope_span, locals);
                 }
+            }
+            // v0.60.22: Array repeat
+            Expr::ArrayRepeat { value, .. } => {
+                self.collect_locals(&value.node, scope_span, locals);
             }
             Expr::StructInit { fields, .. } => {
                 for (_, value) in fields {
@@ -1391,6 +1427,18 @@ fn format_expr(expr: &Expr) -> String {
             )
         }
 
+        // v0.60.21: Uninitialized let binding
+        Expr::LetUninit { name, mutable, ty, body } => {
+            let mut_str = if *mutable { "mut " } else { "" };
+            format!(
+                "let {}{}: {};\n    {}",
+                mut_str,
+                name,
+                format_type(&ty.node),
+                format_expr(&body.node)
+            )
+        }
+
         Expr::Call { func, args } => {
             let args_str: Vec<_> = args.iter().map(|a| format_expr(&a.node)).collect();
             format!("{}({})", func, args_str.join(", "))
@@ -1408,6 +1456,11 @@ fn format_expr(expr: &Expr) -> String {
         Expr::ArrayLit(elems) => {
             let elems_str: Vec<_> = elems.iter().map(|e| format_expr(&e.node)).collect();
             format!("[{}]", elems_str.join(", "))
+        }
+
+        // v0.60.22: Array repeat
+        Expr::ArrayRepeat { value, count } => {
+            format!("[{}; {}]", format_expr(&value.node), count)
         }
 
         // v0.42: Tuple expressions
@@ -1434,6 +1487,11 @@ fn format_expr(expr: &Expr) -> String {
         // v0.51.23: Field assignment
         Expr::FieldAssign { object, field, value } => {
             format!("{}.{} = {}", format_expr(&object.node), field.node, format_expr(&value.node))
+        }
+
+        // v0.60.21: Dereference assignment
+        Expr::DerefAssign { ptr, value } => {
+            format!("*{} = {}", format_expr(&ptr.node), format_expr(&value.node))
         }
 
         // v0.43: Tuple field access

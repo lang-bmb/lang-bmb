@@ -981,10 +981,21 @@ impl TextCodeGen {
         } else {
             self.mir_type_to_llvm(&func.ret_ty).to_string()
         };
+        // v0.60.37: Add nocapture readonly for String parameters (ptr type)
+        // This tells LLVM the string isn't modified, enabling LICM to hoist
+        // string data pointer loads out of loops (fixes fasta 440% regression)
         let mut params: Vec<String> = func
             .params
             .iter()
-            .map(|(name, ty)| format!("{} %{}", self.mir_type_to_llvm(ty), name))
+            .map(|(name, ty)| {
+                let llvm_ty = self.mir_type_to_llvm(ty);
+                if matches!(ty, MirType::String) {
+                    // String parameters are read-only (immutable in BMB)
+                    format!("ptr nocapture readonly %{}", name)
+                } else {
+                    format!("{} %{}", llvm_ty, name)
+                }
+            })
             .collect();
 
         // v0.51.27: Add sret parameter for struct return functions
@@ -4051,12 +4062,20 @@ impl TextCodeGen {
                         } else {
                             // v0.60.17: Check if SSA value (e.g., from phi) needs type conversion
                             // The phi might produce i32 due to narrowed parameters, but ret type is i64
+                            // v0.60.31: Also handle i64->ptr conversion for String-returning functions
                             let val_ty = place_types.get(&p.name).copied().unwrap_or(ty);
                             if val_ty == "i32" && ty == "i64" {
                                 // Sign extend i32 SSA value to i64 for return
                                 let sext_name = format!("_ret_sext.{}.{}", block_label, p.name);
                                 writeln!(out, "  %{} = sext i32 %{} to i64", sext_name, p.name)?;
                                 writeln!(out, "  ret i64 %{}", sext_name)?;
+                            } else if val_ty == "i64" && ty == "ptr" {
+                                // v0.60.31: Convert i64 to ptr for String-returning functions
+                                // This happens when TailRecursiveToLoop creates early returns
+                                // that bypass the normal inttoptr conversion
+                                let inttoptr_name = format!("_ret_inttoptr.{}.{}", block_label, p.name);
+                                writeln!(out, "  %{} = inttoptr i64 %{} to ptr", inttoptr_name, p.name)?;
+                                writeln!(out, "  ret ptr %{}", inttoptr_name)?;
                             } else {
                                 // v0.51.17: Use narrowing-aware formatting
                                 writeln!(out, "  ret {} {}", ty, self.format_operand_with_strings_and_narrowing(val, string_table, narrowed_param_names))?;

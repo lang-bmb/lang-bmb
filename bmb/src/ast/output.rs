@@ -401,6 +401,18 @@ pub fn format_expr(expr: &Expr) -> String {
             format!("(set! {} {})", name, format_expr(&value.node))
         }
 
+        // v0.60.21: Uninitialized let binding for stack arrays
+        Expr::LetUninit { name, mutable, ty, body } => {
+            let mut_str = if *mutable { "mut " } else { "" };
+            format!(
+                "(let {}{} : {} {})",
+                mut_str,
+                name,
+                format_type(&ty.node),
+                format_expr(&body.node)
+            )
+        }
+
         // v0.37: Include invariant if present
         Expr::While { cond, invariant, body } => {
             match invariant {
@@ -484,6 +496,11 @@ pub fn format_expr(expr: &Expr) -> String {
             format!("(set-field {} {} {})", format_expr(&object.node), field.node, format_expr(&value.node))
         }
 
+        // v0.60.21: Dereference assignment
+        Expr::DerefAssign { ptr, value } => {
+            format!("(set-deref {} {})", format_expr(&ptr.node), format_expr(&value.node))
+        }
+
         // v0.43: Tuple field access
         Expr::TupleField { expr, index } => {
             format!("(tuple-field {} {})", format_expr(&expr.node), index)
@@ -532,6 +549,11 @@ pub fn format_expr(expr: &Expr) -> String {
                 .collect::<Vec<_>>()
                 .join(" ");
             format!("[{}]", es)
+        }
+
+        // v0.60.22: Array repeat [val; N]
+        Expr::ArrayRepeat { value, count } => {
+            format!("[{}; {}]", format_expr(&value.node), count)
         }
 
         // v0.42: Tuple expression

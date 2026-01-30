@@ -22,6 +22,7 @@ mod lower_to_mir;
 mod to_mir_facts;
 
 pub use propagate::{propagate_proofs, PropagationRule};
+#[allow(deprecated)]
 pub use lower_to_mir::lower_pir_to_mir;
 pub use to_mir_facts::{
     extract_function_facts, extract_all_pir_facts, FunctionFacts,

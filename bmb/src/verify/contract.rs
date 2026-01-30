@@ -337,6 +337,10 @@ impl ContractVerifier {
                 self.check_expr_for_conflicts(&value.node, function_index, report);
                 self.check_expr_for_conflicts(&body.node, function_index, report);
             }
+            // v0.60.21: Uninitialized let binding
+            Expr::LetUninit { body, .. } => {
+                self.check_expr_for_conflicts(&body.node, function_index, report);
+            }
             Expr::Binary { left, right, .. } => {
                 self.check_expr_for_conflicts(&left.node, function_index, report);
                 self.check_expr_for_conflicts(&right.node, function_index, report);
@@ -377,6 +381,10 @@ impl ContractVerifier {
                 for elem in elems {
                     self.check_expr_for_conflicts(&elem.node, function_index, report);
                 }
+            }
+            // v0.60.22: Array repeat
+            Expr::ArrayRepeat { value, .. } => {
+                self.check_expr_for_conflicts(&value.node, function_index, report);
             }
             Expr::StructInit { fields, .. } => {
                 for (_, value) in fields {
@@ -425,6 +433,11 @@ impl ContractVerifier {
             // v0.51.23: Field assignment
             Expr::FieldAssign { object, value, .. } => {
                 self.check_expr_for_conflicts(&object.node, function_index, report);
+                self.check_expr_for_conflicts(&value.node, function_index, report);
+            }
+            // v0.60.21: Dereference assignment
+            Expr::DerefAssign { ptr, value } => {
+                self.check_expr_for_conflicts(&ptr.node, function_index, report);
                 self.check_expr_for_conflicts(&value.node, function_index, report);
             }
             Expr::Forall { body, .. } | Expr::Exists { body, .. } => {
