@@ -36,6 +36,9 @@ static BmbString* bmb_string_wrap(char* data) {
 
 void bmb_println_i64(int64_t n) { printf("%" PRId64 "\n", n); }
 void bmb_print_i64(int64_t n) { printf("%" PRId64, n); }
+// v0.60.43: Float output for spectral_norm, n_body benchmarks
+void bmb_println_f64(double f) { printf("%.9f\n", f); }
+void bmb_print_f64(double f) { printf("%.9f", f); }
 int64_t bmb_read_int() { int64_t n; scanf("%" SCNd64, &n); return n; }
 void bmb_assert(int cond) { if (!cond) { fprintf(stderr, "Assertion failed!\n"); exit(1); } }
 int64_t bmb_abs(int64_t n) { return n < 0 ? -n : n; }
@@ -348,6 +351,15 @@ void print_str(const BmbString* s) {
 
 void println(int64_t n) {
     bmb_println_i64(n);
+}
+
+// v0.60.43: Float output wrappers
+void println_f64(double f) {
+    bmb_println_f64(f);
+}
+
+void print_f64(double f) {
+    bmb_print_f64(f);
 }
 
 // v0.51.51: println_str takes BmbString*

@@ -310,6 +310,9 @@ impl TextCodeGen {
         writeln!(out, "; Runtime declarations - Basic I/O")?;
         writeln!(out, "declare void @println(i64)")?;
         writeln!(out, "declare void @print(i64)")?;
+        // v0.60.43: Float output for spectral_norm, n_body benchmarks
+        writeln!(out, "declare void @println_f64(double)")?;
+        writeln!(out, "declare void @print_f64(double)")?;
         writeln!(out, "declare i64 @read_int()")?;
         writeln!(out, "declare void @assert(i1)")?;
         writeln!(out, "declare i64 @bmb_abs(i64)")?;  // bmb_ prefix to avoid stdlib conflict

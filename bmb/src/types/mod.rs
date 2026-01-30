@@ -314,6 +314,9 @@ impl TypeChecker {
         functions.insert("print_str".to_string(), (vec![Type::String], Type::I64));
         // v0.100: println_str(s: String) -> Unit
         functions.insert("println_str".to_string(), (vec![Type::String], Type::Unit));
+        // v0.60.44: Float output functions for spectral_norm, n_body benchmarks
+        functions.insert("println_f64".to_string(), (vec![Type::F64], Type::Unit));
+        functions.insert("print_f64".to_string(), (vec![Type::F64], Type::Unit));
         // assert(cond) -> Unit
         functions.insert("assert".to_string(), (vec![Type::Bool], Type::Unit));
         // read_int() -> i64

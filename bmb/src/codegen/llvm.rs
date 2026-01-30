@@ -431,6 +431,17 @@ impl<'ctx> LlvmContext<'ctx> {
         let print_fn = self.module.add_function("bmb_print_i64", print_type, None);
         self.functions.insert("print".to_string(), print_fn);
 
+        // v0.60.43: println_f64(f64) -> void - for proper float output
+        let f64_type_decl = self.context.f64_type();
+        let println_f64_type = void_type.fn_type(&[f64_type_decl.into()], false);
+        let println_f64_fn = self.module.add_function("bmb_println_f64", println_f64_type, None);
+        self.functions.insert("println_f64".to_string(), println_f64_fn);
+
+        // v0.60.43: print_f64(f64) -> void
+        let print_f64_type = void_type.fn_type(&[f64_type_decl.into()], false);
+        let print_f64_fn = self.module.add_function("bmb_print_f64", print_f64_type, None);
+        self.functions.insert("print_f64".to_string(), print_f64_fn);
+
         // read_int() -> i64
         let read_int_type = i64_type.fn_type(&[], false);
         let read_int_fn = self.module.add_function("bmb_read_int", read_int_type, None);

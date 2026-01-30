@@ -142,6 +142,9 @@ impl Interpreter {
         self.builtins.insert("println".to_string(), builtin_println);
         self.builtins.insert("print_str".to_string(), builtin_print_str);
         self.builtins.insert("println_str".to_string(), builtin_println_str);
+        // v0.60.44: Float output functions for spectral_norm, n_body benchmarks
+        self.builtins.insert("println_f64".to_string(), builtin_println_f64);
+        self.builtins.insert("print_f64".to_string(), builtin_print_f64);
         self.builtins.insert("assert".to_string(), builtin_assert);
         self.builtins.insert("read_int".to_string(), builtin_read_int);
         self.builtins.insert("abs".to_string(), builtin_abs);
@@ -1935,6 +1938,39 @@ fn builtin_println_str(args: &[Value]) -> InterpResult<Value> {
         Ok(Value::Unit)
     } else {
         Err(RuntimeError::type_error("String", args[0].type_name()))
+    }
+}
+
+/// println_f64(f: f64) -> Unit
+/// Prints a float with newline (9 decimal places).
+/// v0.60.44: Added for spectral_norm, n_body benchmarks
+fn builtin_println_f64(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 1 {
+        return Err(RuntimeError::arity_mismatch("println_f64", 1, args.len()));
+    }
+    match &args[0] {
+        Value::Float(f) => {
+            println!("{:.9}", f);
+            Ok(Value::Unit)
+        }
+        _ => Err(RuntimeError::type_error("f64", args[0].type_name())),
+    }
+}
+
+/// print_f64(f: f64) -> Unit
+/// Prints a float without newline (9 decimal places).
+/// v0.60.44: Added for spectral_norm, n_body benchmarks
+fn builtin_print_f64(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 1 {
+        return Err(RuntimeError::arity_mismatch("print_f64", 1, args.len()));
+    }
+    match &args[0] {
+        Value::Float(f) => {
+            print!("{:.9}", f);
+            io::stdout().flush().map_err(|e| RuntimeError::io_error(&e.to_string()))?;
+            Ok(Value::Unit)
+        }
+        _ => Err(RuntimeError::type_error("f64", args[0].type_name())),
     }
 }
 

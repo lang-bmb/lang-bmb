@@ -1582,7 +1582,9 @@ fn might_write_memory(fn_name: &str) -> bool {
         "hash_i64" | "hash_str" |
         // Print functions (write to stdout, not memory we care about)
         "println" | "print" | "println_str" | "print_str" |
-        "bmb_println_i64" | "bmb_print_i64" | "bmb_println_str" | "bmb_print_str"
+        "println_f64" | "print_f64" |  // v0.60.44: Float output functions
+        "bmb_println_i64" | "bmb_print_i64" | "bmb_println_str" | "bmb_print_str" |
+        "bmb_println_f64" | "bmb_print_f64"  // v0.60.44: Float output functions
     );
 
     // If not known pure, assume it might write to memory
