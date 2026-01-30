@@ -4156,13 +4156,7 @@ impl LoopBoundedNarrowing {
             return false;
         }
 
-        // v0.60.14: Don't narrow parameters used in multiplication
-        // Multiplication can easily overflow i32 even with small inputs (e.g., 50000 * 50000)
-        // This prevents bugs like mandelbrot's mul_fp overflowing when zr * zi is computed
         let param_name = &func.params[param_idx].0;
-        if Self::is_used_in_multiplication(func, param_name, &self.functions_with_mul) {
-            return false;
-        }
 
         // v0.60.30: Don't narrow parameters used as values in IndexStore with i64 element type
         // Narrowing would cause type mismatch: storing i32 (4 bytes) but reading i64 (8 bytes)
@@ -4173,7 +4167,20 @@ impl LoopBoundedNarrowing {
         // Check if we have bounds for this parameter
         if let Some(bounds) = self.param_bounds.get(&func.name) {
             if let Some(&max_val) = bounds.get(&param_idx) {
-                // Check if max value fits in i32 (and is non-negative)
+                // v0.60.48: Smart multiplication-aware narrowing
+                // If parameter is used in multiplication, check if bounds are small enough
+                // that multiplication won't overflow i32 (max_val * max_val < i32::MAX)
+                // sqrt(i32::MAX) ≈ 46340
+                const SAFE_MUL_BOUND: i64 = 46340;
+
+                if Self::is_used_in_multiplication(func, param_name, &self.functions_with_mul) {
+                    // For multiplication, require smaller bound to prevent overflow
+                    // This allows spectral_norm (n=1000, so sum<=2000) to be narrowed
+                    // but blocks mandelbrot (values can be 20000+)
+                    return max_val >= 0 && max_val <= SAFE_MUL_BOUND;
+                }
+
+                // For non-multiplication cases, just check i32 fit
                 return max_val >= 0 && max_val <= i32::MAX as i64;
             }
         }
