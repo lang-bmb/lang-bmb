@@ -876,6 +876,21 @@ fn collect_used_in_instruction(inst: &MirInst, used: &mut HashSet<String>) {
         MirInst::TupleExtract { tuple, .. } => {
             used.insert(tuple.name.clone());
         }
+        // v0.60.19: Pointer offset
+        MirInst::PtrOffset { ptr, offset, .. } => {
+            collect_used_in_operand(ptr, used);
+            collect_used_in_operand(offset, used);
+        }
+        // v0.60.21: Array allocation - no operands
+        MirInst::ArrayAlloc { .. } => {}
+        // v0.60.20: Pointer load/store
+        MirInst::PtrLoad { ptr, .. } => {
+            collect_used_in_operand(ptr, used);
+        }
+        MirInst::PtrStore { ptr, value, .. } => {
+            collect_used_in_operand(ptr, used);
+            collect_used_in_operand(value, used);
+        }
     }
 }
 
@@ -2725,6 +2740,30 @@ impl TailRecursiveToLoop {
                 index,
                 element_type,
             },
+            // v0.60.19: Pointer offset substitution
+            MirInst::PtrOffset { dest, ptr, offset, element_type } => MirInst::PtrOffset {
+                dest,
+                ptr: self.substitute_operand(ptr, subst),
+                offset: self.substitute_operand(offset, subst),
+                element_type,
+            },
+            // v0.60.21: Array allocation - no substitution needed
+            MirInst::ArrayAlloc { dest, element_type, size } => MirInst::ArrayAlloc {
+                dest,
+                element_type,
+                size,
+            },
+            // v0.60.20: Pointer load/store substitution
+            MirInst::PtrLoad { dest, ptr, element_type } => MirInst::PtrLoad {
+                dest,
+                ptr: self.substitute_operand(ptr, subst),
+                element_type,
+            },
+            MirInst::PtrStore { ptr, value, element_type } => MirInst::PtrStore {
+                ptr: self.substitute_operand(ptr, subst),
+                value: self.substitute_operand(value, subst),
+                element_type,
+            },
             other => other, // Const doesn't need substitution
         }
     }
@@ -3108,6 +3147,9 @@ pub struct ConstantPropagationNarrowing {
     /// Map: function_name → Vec<(param_index, max_constant_value)>
     /// Tracks the maximum constant value each parameter is called with
     call_site_constants: HashMap<String, Vec<(usize, i64)>>,
+    /// v0.60.35: Set of functions that have direct Mul operations
+    /// Used to prevent narrowing params that flow to functions with multiplication
+    functions_with_mul: HashSet<String>,
 }
 
 impl ConstantPropagationNarrowing {
@@ -3143,15 +3185,128 @@ impl ConstantPropagationNarrowing {
             }
         }
 
-        Self { call_site_constants }
+        // v0.60.35: Build set of functions that have direct Mul operations
+        let mut functions_with_mul: HashSet<String> = HashSet::new();
+        for func in &program.functions {
+            if Self::has_direct_multiplication(func) {
+                functions_with_mul.insert(func.name.clone());
+            }
+        }
+
+        // v0.60.35: Transitive closure - also include functions that CALL functions with mul
+        // e.g., square_fp calls mul_fp which has Mul, so square_fp should be in the set
+        // Build call graph
+        let mut callers_of: HashMap<String, HashSet<String>> = HashMap::new();
+        for func in &program.functions {
+            for block in &func.blocks {
+                for inst in &block.instructions {
+                    if let MirInst::Call { func: callee, .. } = inst {
+                        callers_of.entry(callee.clone())
+                            .or_default()
+                            .insert(func.name.clone());
+                    }
+                }
+            }
+        }
+
+        // Propagate: if f calls g and g is in functions_with_mul, add f
+        let mut changed = true;
+        while changed {
+            changed = false;
+            let current: Vec<_> = functions_with_mul.iter().cloned().collect();
+            for func_with_mul in current {
+                if let Some(callers) = callers_of.get(&func_with_mul) {
+                    for caller in callers {
+                        if functions_with_mul.insert(caller.clone()) {
+                            changed = true;
+                        }
+                    }
+                }
+            }
+        }
+
+        Self { call_site_constants, functions_with_mul }
+    }
+
+    /// v0.60.35: Check if a function has direct Mul operations
+    fn has_direct_multiplication(func: &MirFunction) -> bool {
+        for block in &func.blocks {
+            for inst in &block.instructions {
+                if let MirInst::BinOp { op: MirBinOp::Mul, .. } = inst {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    /// v0.60.35: Check if parameter flows to multiplication
+    fn is_used_in_multiplication(&self, func: &MirFunction, param_name: &str) -> bool {
+        let mut derived: HashSet<String> = HashSet::new();
+        derived.insert(param_name.to_string());
+
+        // Multiple passes to propagate derived status
+        for _ in 0..5 {
+            for block in &func.blocks {
+                for inst in &block.instructions {
+                    match inst {
+                        MirInst::BinOp { dest, lhs, rhs, op } => {
+                            let lhs_derived = matches!(lhs, Operand::Place(p) if derived.contains(&p.name));
+                            let rhs_derived = matches!(rhs, Operand::Place(p) if derived.contains(&p.name));
+
+                            // If used in multiplication, return true
+                            if matches!(op, MirBinOp::Mul) && (lhs_derived || rhs_derived) {
+                                return true;
+                            }
+
+                            if lhs_derived || rhs_derived {
+                                derived.insert(dest.name.clone());
+                            }
+                        }
+                        MirInst::Copy { dest, src } if derived.contains(&src.name) => {
+                            derived.insert(dest.name.clone());
+                        }
+                        // v0.60.35: Handle phi nodes - if any incoming value is derived, the phi result is too
+                        MirInst::Phi { dest, values } => {
+                            let any_derived = values.iter().any(|(operand, _)| {
+                                matches!(operand, Operand::Place(p) if derived.contains(&p.name))
+                            });
+                            if any_derived {
+                                derived.insert(dest.name.clone());
+                            }
+                        }
+                        MirInst::Call { func: callee, args, .. } => {
+                            let arg_is_derived = args.iter().any(|arg| {
+                                matches!(arg, Operand::Place(p) if derived.contains(&p.name))
+                            });
+
+                            if arg_is_derived && self.functions_with_mul.contains(callee) {
+                                return true;
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+
+        false
     }
 
     /// Check if a parameter can be narrowed to i32 based on:
     /// 1. All constant call-site values fit in i32
     /// 2. Function is self-recursive with decreasing arguments (monotonically decreasing)
+    /// 3. v0.60.35: Parameter is not used in multiplication (which can overflow i32)
     fn can_narrow_param(&self, func: &MirFunction, param_idx: usize) -> bool {
         // Only narrow i64 parameters
         if func.params.get(param_idx).map(|(_, ty)| ty) != Some(&MirType::I64) {
+            return false;
+        }
+
+        // v0.60.35: Don't narrow parameters used in multiplication
+        // Multiplication can easily overflow i32 even with small inputs (e.g., 50000 * 50000)
+        let param_name = &func.params[param_idx].0;
+        if self.is_used_in_multiplication(func, param_name) {
             return false;
         }
 
@@ -3392,6 +3547,37 @@ impl LoopBoundedNarrowing {
             }
         }
 
+        // v0.60.35: Transitive closure - also include functions that CALL functions with mul
+        // e.g., square_fp calls mul_fp which has Mul, so square_fp should be in the set
+        let mut callers_of: HashMap<String, HashSet<String>> = HashMap::new();
+        for func in &program.functions {
+            for block in &func.blocks {
+                for inst in &block.instructions {
+                    if let MirInst::Call { func: callee, .. } = inst {
+                        callers_of.entry(callee.clone())
+                            .or_default()
+                            .insert(func.name.clone());
+                    }
+                }
+            }
+        }
+
+        // Propagate: if f calls g and g is in functions_with_mul, add f
+        let mut changed = true;
+        while changed {
+            changed = false;
+            let current: Vec<_> = functions_with_mul.iter().cloned().collect();
+            for func_with_mul in current {
+                if let Some(callers) = callers_of.get(&func_with_mul) {
+                    for caller in callers {
+                        if functions_with_mul.insert(caller.clone()) {
+                            changed = true;
+                        }
+                    }
+                }
+            }
+        }
+
         Self { param_bounds, functions_with_mul }
     }
 
@@ -3503,11 +3689,57 @@ impl LoopBoundedNarrowing {
             return false;
         }
 
+        // v0.60.30: Don't narrow parameters used as values in IndexStore with i64 element type
+        // Narrowing would cause type mismatch: storing i32 (4 bytes) but reading i64 (8 bytes)
+        if Self::is_used_as_i64_store_value(func, param_name) {
+            return false;
+        }
+
         // Check if we have bounds for this parameter
         if let Some(bounds) = self.param_bounds.get(&func.name) {
             if let Some(&max_val) = bounds.get(&param_idx) {
                 // Check if max value fits in i32 (and is non-negative)
                 return max_val >= 0 && max_val <= i32::MAX as i64;
+            }
+        }
+
+        false
+    }
+
+    /// v0.60.30: Check if a parameter is used as the value in IndexStore with i64 element type
+    /// If so, narrowing to i32 would cause a type mismatch (storing 4 bytes, reading 8 bytes)
+    fn is_used_as_i64_store_value(func: &MirFunction, param_name: &str) -> bool {
+        // Track which variables are derived from the parameter
+        let mut derived: std::collections::HashSet<String> = std::collections::HashSet::new();
+        derived.insert(param_name.to_string());
+
+        // Multiple passes to propagate derived status
+        for _ in 0..5 {
+            for block in &func.blocks {
+                for inst in &block.instructions {
+                    match inst {
+                        // Check if used as value in IndexStore with i64 element type
+                        MirInst::IndexStore { value, element_type, .. } => {
+                            let value_derived = matches!(value, Operand::Place(p) if derived.contains(&p.name));
+                            if value_derived && *element_type == MirType::I64 {
+                                return true;
+                            }
+                        }
+                        // Propagate derived status through copy
+                        MirInst::Copy { dest, src } if derived.contains(&src.name) => {
+                            derived.insert(dest.name.clone());
+                        }
+                        // Propagate derived status through arithmetic
+                        MirInst::BinOp { dest, lhs, rhs, .. } => {
+                            let lhs_derived = matches!(lhs, Operand::Place(p) if derived.contains(&p.name));
+                            let rhs_derived = matches!(rhs, Operand::Place(p) if derived.contains(&p.name));
+                            if lhs_derived || rhs_derived {
+                                derived.insert(dest.name.clone());
+                            }
+                        }
+                        _ => {}
+                    }
+                }
             }
         }
 
@@ -3544,6 +3776,15 @@ impl LoopBoundedNarrowing {
                         }
                         MirInst::Copy { dest, src } if derived.contains(&src.name) => {
                             derived.insert(dest.name.clone());
+                        }
+                        // v0.60.35: Handle phi nodes - if any incoming value is derived, the phi result is too
+                        MirInst::Phi { dest, values } => {
+                            let any_derived = values.iter().any(|(operand, _)| {
+                                matches!(operand, Operand::Place(p) if derived.contains(&p.name))
+                            });
+                            if any_derived {
+                                derived.insert(dest.name.clone());
+                            }
                         }
                         // v0.60.14: Check if param flows to a call to a function that has multiplication
                         // This allows narrowing for recursive calls (fibonacci has no Mul)
@@ -3843,10 +4084,25 @@ impl LoopBoundedNarrowing {
         }
 
         // Narrow parameters in callees where ALL call sites use narrowed values
+        // v0.60.30: But don't narrow if param is used as i64 IndexStore value
+        // v0.60.36: Also don't narrow if param is used in multiplication
         for func in &mut program.functions {
             if let Some(param_info) = callee_param_types.get(&func.name) {
                 for (&param_idx, &all_narrowed) in param_info {
                     if all_narrowed {
+                        let param_name = &func.params[param_idx].0;
+
+                        // v0.60.30: Check if parameter is used as i64 IndexStore value
+                        if Self::is_used_as_i64_store_value(func, param_name) {
+                            continue; // Don't narrow this parameter
+                        }
+
+                        // v0.60.36: Check if parameter is used in multiplication
+                        // This is critical for mandelbrot: zr/zi flow to mul_fp which can overflow i32
+                        if Self::is_used_in_multiplication(func, param_name, &self.functions_with_mul) {
+                            continue; // Don't narrow this parameter
+                        }
+
                         if let Some((_, ty)) = func.params.get_mut(param_idx) {
                             if *ty == MirType::I64 {
                                 *ty = MirType::I32;
@@ -4080,17 +4336,24 @@ impl MemoryEffectAnalysis {
             | MirInst::FieldStore { .. }
             | MirInst::ArrayInit { .. }
             | MirInst::StructInit { .. }
-            | MirInst::EnumVariant { .. } => true,
+            | MirInst::EnumVariant { .. }
+            // v0.60.20: Pointer load/store access memory
+            | MirInst::PtrLoad { .. }
+            | MirInst::PtrStore { .. } => true,
             // Pure operations don't access memory
             MirInst::BinOp { .. }
             | MirInst::UnaryOp { .. }
             | MirInst::Const { .. }
             | MirInst::Copy { .. }
             | MirInst::Phi { .. }
-            | MirInst::Cast { .. } => false,
+            | MirInst::Cast { .. }
+            // v0.60.19: Pointer offset is pure (just address arithmetic)
+            | MirInst::PtrOffset { .. } => false,
             // v0.55: Tuple operations - TupleInit builds a value, TupleExtract reads from it
             // These are aggregate operations that may involve stack allocation
             MirInst::TupleInit { .. } | MirInst::TupleExtract { .. } => true,
+            // v0.60.21: Array allocation has side effects (allocates stack memory)
+            MirInst::ArrayAlloc { .. } => true,
         }
     }
 
