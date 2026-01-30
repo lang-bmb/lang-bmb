@@ -58,9 +58,19 @@ int64_t bmb_ord(const char* s) {
     return (int64_t)(unsigned char)s[0];
 }
 
-// v0.97: String functions
-void bmb_print_str(const char* s) { printf("%s", s); }
-void bmb_println_str(const char* s) { printf("%s\n", s); }
+// v0.97: String functions - updated to use BmbString* (v0.60.47)
+void bmb_print_str(const BmbString* s) {
+    if (s && s->data) {
+        printf("%.*s", (int)s->len, s->data);
+    }
+}
+void bmb_println_str(const BmbString* s) {
+    if (s && s->data) {
+        printf("%.*s\n", (int)s->len, s->data);
+    } else {
+        printf("\n");
+    }
+}
 int64_t bmb_str_len(const char* s) { int64_t len = 0; while (s[len]) len++; return len; }
 
 // v0.98: Vector functions

@@ -65,11 +65,19 @@ impl OptimizationPipeline {
                 pipeline.add_pass(Box::new(ConstantFolding));
                 pipeline.add_pass(Box::new(DeadCodeElimination));
                 pipeline.add_pass(Box::new(SimplifyBranches));
+                // v0.60.41: Remove unreachable blocks after branch simplification
+                pipeline.add_pass(Box::new(UnreachableBlockElimination));
+                // v0.60.44: Simplify single-value phi nodes after unreachable block elimination
+                pipeline.add_pass(Box::new(PhiSimplification));
+                // v0.60.44: Merge blocks connected by unconditional jumps
+                pipeline.add_pass(Box::new(BlockMerging));
                 // v0.51.8: If-else chain to switch for jump tables
                 pipeline.add_pass(Box::new(IfElseToSwitch));
                 pipeline.add_pass(Box::new(CopyPropagation));
                 // v0.51.10: Memory load CSE for repeated load_f64/load_i64 calls
                 pipeline.add_pass(Box::new(MemoryLoadCSE));
+                // v0.60.38: Global field access CSE for cross-block field access dedup
+                pipeline.add_pass(Box::new(GlobalFieldAccessCSE));
                 // v0.50.76: Add contract-based optimization for dead branch elimination
                 pipeline.add_pass(Box::new(ContractBasedOptimization));
                 pipeline.add_pass(Box::new(ContractUnreachableElimination));
@@ -91,12 +99,20 @@ impl OptimizationPipeline {
                 pipeline.add_pass(Box::new(ConstantFolding));
                 pipeline.add_pass(Box::new(DeadCodeElimination));
                 pipeline.add_pass(Box::new(SimplifyBranches));
+                // v0.60.41: Remove unreachable blocks after branch simplification
+                pipeline.add_pass(Box::new(UnreachableBlockElimination));
+                // v0.60.44: Simplify single-value phi nodes after unreachable block elimination
+                pipeline.add_pass(Box::new(PhiSimplification));
+                // v0.60.44: Merge blocks connected by unconditional jumps
+                pipeline.add_pass(Box::new(BlockMerging));
                 // v0.51.8: If-else chain to switch for jump tables
                 pipeline.add_pass(Box::new(IfElseToSwitch));
                 pipeline.add_pass(Box::new(CopyPropagation));
                 pipeline.add_pass(Box::new(CommonSubexpressionElimination));
                 // v0.51.10: Memory load CSE for repeated load_f64/load_i64 calls
                 pipeline.add_pass(Box::new(MemoryLoadCSE));
+                // v0.60.38: Global field access CSE for cross-block field access dedup
+                pipeline.add_pass(Box::new(GlobalFieldAccessCSE));
                 pipeline.add_pass(Box::new(ContractBasedOptimization));
                 pipeline.add_pass(Box::new(ContractUnreachableElimination));
                 // v0.50.65: Add tail call optimization for recursive functions
@@ -964,6 +980,316 @@ impl OptimizationPass for SimplifyBranches {
 }
 
 // ============================================================================
+// Unreachable Block Elimination Pass (v0.60.41)
+// ============================================================================
+
+/// Remove blocks that are not reachable from the entry block.
+/// This should run after SimplifyBranches to clean up dead else branches.
+pub struct UnreachableBlockElimination;
+
+impl OptimizationPass for UnreachableBlockElimination {
+    fn name(&self) -> &'static str {
+        "unreachable_block_elimination"
+    }
+
+    fn run_on_function(&self, func: &mut MirFunction) -> bool {
+        if func.blocks.is_empty() {
+            return false;
+        }
+
+        // Find all reachable blocks starting from entry
+        let mut reachable: HashSet<String> = HashSet::new();
+        let mut worklist: Vec<String> = vec!["entry".to_string()];
+
+        while let Some(label) = worklist.pop() {
+            if reachable.contains(&label) {
+                continue;
+            }
+            reachable.insert(label.clone());
+
+            // Find the block and add its successors
+            if let Some(block) = func.blocks.iter().find(|b| b.label == label) {
+                match &block.terminator {
+                    Terminator::Goto(target) => {
+                        worklist.push(target.clone());
+                    }
+                    Terminator::Branch { then_label, else_label, .. } => {
+                        worklist.push(then_label.clone());
+                        worklist.push(else_label.clone());
+                    }
+                    Terminator::Switch { cases, default, .. } => {
+                        for (_, target) in cases {
+                            worklist.push(target.clone());
+                        }
+                        worklist.push(default.clone());
+                    }
+                    Terminator::Return(_) | Terminator::Unreachable => {}
+                }
+            }
+        }
+
+        let original_count = func.blocks.len();
+
+        // Remove unreachable blocks
+        func.blocks.retain(|b| reachable.contains(&b.label));
+
+        // Update PHI nodes to remove references to removed blocks
+        let removed_blocks: HashSet<_> = func.blocks.iter()
+            .flat_map(|b| {
+                b.instructions.iter().filter_map(|inst| {
+                    if let MirInst::Phi { values, .. } = inst {
+                        Some(values.iter().map(|(_, label)| label.clone()).collect::<Vec<_>>())
+                    } else {
+                        None
+                    }
+                }).flatten()
+            })
+            .filter(|label| !reachable.contains(label))
+            .collect();
+
+        if !removed_blocks.is_empty() {
+            for block in &mut func.blocks {
+                for inst in &mut block.instructions {
+                    if let MirInst::Phi { values, .. } = inst {
+                        values.retain(|(_, label)| reachable.contains(label));
+                    }
+                }
+            }
+        }
+
+        func.blocks.len() != original_count
+    }
+}
+
+// ============================================================================
+// Phi Simplification Pass (v0.60.44)
+// ============================================================================
+
+/// Simplify PHI nodes: when a phi has only one incoming value, replace with copy/const.
+/// This typically happens after UnreachableBlockElimination removes dead branches.
+pub struct PhiSimplification;
+
+impl OptimizationPass for PhiSimplification {
+    fn name(&self) -> &'static str {
+        "phi_simplification"
+    }
+
+    fn run_on_function(&self, func: &mut MirFunction) -> bool {
+        let mut changed = false;
+
+        for block in &mut func.blocks {
+            let mut i = 0;
+            while i < block.instructions.len() {
+                if let MirInst::Phi { dest, values } = &block.instructions[i] {
+                    if values.len() == 1 {
+                        // Single-value phi: replace with copy or const
+                        let (value, _label) = &values[0];
+                        let new_inst = phi_operand_to_inst(dest.clone(), value);
+                        block.instructions[i] = new_inst;
+                        changed = true;
+                    } else if values.len() > 1 {
+                        // Check if all values are the same
+                        let first_value = &values[0].0;
+                        let all_same = values.iter().all(|(v, _)| phi_operands_equal(v, first_value));
+                        if all_same {
+                            let new_inst = phi_operand_to_inst(dest.clone(), first_value);
+                            block.instructions[i] = new_inst;
+                            changed = true;
+                        }
+                    }
+                    // Empty phi (shouldn't happen) - leave it for DCE
+                }
+                i += 1;
+            }
+        }
+
+        changed
+    }
+}
+
+/// Convert a phi operand to an appropriate instruction (Copy or Const)
+fn phi_operand_to_inst(dest: Place, op: &Operand) -> MirInst {
+    match op {
+        Operand::Place(src) => MirInst::Copy {
+            dest,
+            src: src.clone(),
+        },
+        Operand::Constant(c) => MirInst::Const {
+            dest,
+            value: c.clone(),
+        },
+    }
+}
+
+/// Check if two operands are equal for phi simplification
+fn phi_operands_equal(a: &Operand, b: &Operand) -> bool {
+    match (a, b) {
+        (Operand::Place(pa), Operand::Place(pb)) => pa.name == pb.name,
+        (Operand::Constant(ca), Operand::Constant(cb)) => match (ca, cb) {
+            (Constant::Int(a), Constant::Int(b)) => a == b,
+            (Constant::Float(a), Constant::Float(b)) => a == b,
+            (Constant::Bool(a), Constant::Bool(b)) => a == b,
+            (Constant::String(a), Constant::String(b)) => a == b,
+            (Constant::Char(a), Constant::Char(b)) => a == b,
+            (Constant::Unit, Constant::Unit) => true,
+            _ => false,
+        },
+        _ => false,
+    }
+}
+
+// ============================================================================
+// Block Merging Pass (v0.60.44)
+// ============================================================================
+
+/// Merge blocks connected by unconditional jumps when the target has only one predecessor.
+/// This reduces CFG complexity and enables further optimizations.
+pub struct BlockMerging;
+
+impl OptimizationPass for BlockMerging {
+    fn name(&self) -> &'static str {
+        "block_merging"
+    }
+
+    fn run_on_function(&self, func: &mut MirFunction) -> bool {
+        if func.blocks.len() < 2 {
+            return false;
+        }
+
+        let mut changed = false;
+
+        // Build predecessor map
+        let mut predecessors: HashMap<String, Vec<String>> = HashMap::new();
+        for block in &func.blocks {
+            predecessors.entry(block.label.clone()).or_default();
+            match &block.terminator {
+                Terminator::Goto(target) => {
+                    predecessors.entry(target.clone()).or_default().push(block.label.clone());
+                }
+                Terminator::Branch { then_label, else_label, .. } => {
+                    predecessors.entry(then_label.clone()).or_default().push(block.label.clone());
+                    predecessors.entry(else_label.clone()).or_default().push(block.label.clone());
+                }
+                Terminator::Switch { cases, default, .. } => {
+                    for (_, target) in cases {
+                        predecessors.entry(target.clone()).or_default().push(block.label.clone());
+                    }
+                    predecessors.entry(default.clone()).or_default().push(block.label.clone());
+                }
+                Terminator::Return(_) | Terminator::Unreachable => {}
+            }
+        }
+
+        // Find mergeable pairs: block A -> goto B where B has only A as predecessor
+        // and B is not the entry block
+        loop {
+            let mut merge_pair: Option<(usize, usize)> = None;
+
+            for (i, block) in func.blocks.iter().enumerate() {
+                if let Terminator::Goto(target) = &block.terminator {
+                    // Don't merge into entry
+                    if target == "entry" {
+                        continue;
+                    }
+                    // Find target block
+                    if let Some(j) = func.blocks.iter().position(|b| &b.label == target) {
+                        // Check if target has only this block as predecessor
+                        if let Some(preds) = predecessors.get(target) {
+                            if preds.len() == 1 && preds[0] == block.label {
+                                // Don't merge self-loops
+                                if i != j {
+                                    merge_pair = Some((i, j));
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if let Some((src_idx, dst_idx)) = merge_pair {
+                // Merge dst into src
+                let dst_block = func.blocks.remove(if dst_idx > src_idx { dst_idx } else { dst_idx });
+                let src_idx = if dst_idx < src_idx { src_idx - 1 } else { src_idx };
+
+                // Append dst instructions to src (skip phi nodes since single predecessor)
+                let mut dst_instructions: Vec<MirInst> = dst_block.instructions
+                    .into_iter()
+                    .filter(|inst| !matches!(inst, MirInst::Phi { .. }))
+                    .collect();
+
+                func.blocks[src_idx].instructions.append(&mut dst_instructions);
+                func.blocks[src_idx].terminator = dst_block.terminator;
+
+                // Update predecessor map (remove merged block)
+                predecessors.remove(&dst_block.label);
+
+                // Update references to merged block
+                let old_label = dst_block.label;
+                let new_label = func.blocks[src_idx].label.clone();
+                for block in &mut func.blocks {
+                    update_terminator_labels(&mut block.terminator, &old_label, &new_label);
+                    for inst in &mut block.instructions {
+                        if let MirInst::Phi { values, .. } = inst {
+                            for (_, label) in values {
+                                if label == &old_label {
+                                    *label = new_label.clone();
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Update predecessor map for new references
+                for (_, preds) in predecessors.iter_mut() {
+                    for pred in preds {
+                        if pred == &old_label {
+                            *pred = new_label.clone();
+                        }
+                    }
+                }
+
+                changed = true;
+            } else {
+                break;
+            }
+        }
+
+        changed
+    }
+}
+
+/// Update terminator labels when merging blocks
+fn update_terminator_labels(term: &mut Terminator, old_label: &str, new_label: &str) {
+    match term {
+        Terminator::Goto(target) => {
+            if target == old_label {
+                *target = new_label.to_string();
+            }
+        }
+        Terminator::Branch { then_label, else_label, .. } => {
+            if then_label == old_label {
+                *then_label = new_label.to_string();
+            }
+            if else_label == old_label {
+                *else_label = new_label.to_string();
+            }
+        }
+        Terminator::Switch { cases, default, .. } => {
+            for (_, target) in cases {
+                if target == old_label {
+                    *target = new_label.to_string();
+                }
+            }
+            if default == old_label {
+                *default = new_label.to_string();
+            }
+        }
+        Terminator::Return(_) | Terminator::Unreachable => {}
+    }
+}
+
+// ============================================================================
 // Copy Propagation Pass
 // ============================================================================
 
@@ -1114,16 +1440,24 @@ impl OptimizationPass for CommonSubexpressionElimination {
 }
 
 // ============================================================================
-// Memory Load CSE Pass (v0.51.10)
+// Memory Load CSE Pass (v0.51.10, extended v0.60.38)
 // ============================================================================
 
-/// Memory load CSE: eliminate redundant load_f64/load_i64 calls within basic blocks
+/// Memory load CSE: eliminate redundant load_f64/load_i64 calls and FieldAccess within basic blocks
 ///
 /// Within a basic block, consecutive loads from the same memory address are equivalent
 /// if no stores occur between them. This pass:
 /// 1. Tracks (load_fn, ptr_arg) -> cached_dest for load calls
-/// 2. Replaces duplicate loads with Copy instructions
-/// 3. Invalidates cache on store_f64/store_i64 calls (conservative)
+/// 2. Tracks (base, field_index) -> cached_dest for FieldAccess
+/// 3. Replaces duplicate loads with Copy instructions
+/// 4. Invalidates cache on store_f64/store_i64/FieldStore calls
+///
+/// v0.60.38: Extended to handle FieldAccess CSE for struct field loads
+/// This eliminates duplicate field accesses like:
+/// ```text
+/// %left = field-access %node.left[0]  // for comparison
+/// %left2 = field-access %node.left[0] // for recursion -> Copy %left2, %left
+/// ```
 ///
 /// Example:
 /// ```text
@@ -1144,10 +1478,35 @@ impl OptimizationPass for MemoryLoadCSE {
         for block in &mut func.blocks {
             // Track: (load_fn_name, ptr_operand_key) -> cached_place
             let mut load_cache: HashMap<(String, String), Place> = HashMap::new();
+            // v0.60.38: Track: (base_name, field_index, struct_name) -> cached_dest
+            let mut field_cache: HashMap<(String, usize, String), Place> = HashMap::new();
             let mut new_instructions = Vec::new();
 
             for inst in &block.instructions {
                 match inst {
+                    // v0.60.38: FieldAccess CSE - eliminate duplicate struct field loads
+                    MirInst::FieldAccess { dest, base, field_index, struct_name, .. } => {
+                        let cache_key = (base.name.clone(), *field_index, struct_name.clone());
+
+                        if let Some(cached) = field_cache.get(&cache_key) {
+                            // Replace with copy from cached value
+                            new_instructions.push(MirInst::Copy {
+                                dest: dest.clone(),
+                                src: cached.clone(),
+                            });
+                            changed = true;
+                        } else {
+                            // Cache this field access and keep original instruction
+                            field_cache.insert(cache_key, dest.clone());
+                            new_instructions.push(inst.clone());
+                        }
+                    }
+                    // v0.60.38: FieldStore invalidates field cache for that base
+                    MirInst::FieldStore { base, .. } => {
+                        // Invalidate all cached fields for this base
+                        field_cache.retain(|(b, _, _), _| b != &base.name);
+                        new_instructions.push(inst.clone());
+                    }
                     MirInst::Call { dest, func: fn_name, args, .. } => {
                         // Check if this is a memory load function with a destination
                         if (fn_name == "load_f64" || fn_name == "load_i64")
@@ -1177,6 +1536,7 @@ impl OptimizationPass for MemoryLoadCSE {
                             // Conservative: invalidate ALL loads since we don't track aliasing
                             // A more sophisticated analysis could check if store ptr might alias
                             load_cache.clear();
+                            field_cache.clear(); // Also invalidate field cache
                             new_instructions.push(inst.clone());
                         }
                         else {
@@ -1184,6 +1544,7 @@ impl OptimizationPass for MemoryLoadCSE {
                             // Only invalidate if function might write to memory
                             if might_write_memory(fn_name) {
                                 load_cache.clear();
+                                field_cache.clear(); // Also invalidate field cache
                             }
                             new_instructions.push(inst.clone());
                         }
@@ -1202,16 +1563,115 @@ impl OptimizationPass for MemoryLoadCSE {
 }
 
 /// Check if a function might write to memory
-/// Conservative: assume most functions don't write, but some known ones do
+/// v0.60.47: Conservative approach - assume ALL functions write unless proven pure
+/// This fixes CSE bug where user-defined functions like hm_remove were not
+/// invalidating the load cache, causing stale values to be used after the call.
 fn might_write_memory(fn_name: &str) -> bool {
-    // Known memory-writing functions
-    matches!(fn_name,
-        "store_i64" | "store_f64" |
-        "bmb_vec_push" | "hashmap_insert" | "hashmap_remove" |
-        "sb_push" | "sb_push_char" | "sb_push_int" | "sb_push_cstr" |
-        "bmb_sb_push" | "bmb_sb_push_char" | "bmb_sb_push_int" |
-        "free" | "realloc"
-    )
+    // Known pure (non-writing) functions - these are safe to CSE across
+    let is_pure = matches!(fn_name,
+        // Arithmetic/math functions
+        "abs" | "min" | "max" | "sqrt" | "floor" | "ceil" |
+        "sin" | "cos" | "tan" | "exp" | "log" | "pow" |
+        // Type conversions
+        "i64_to_f64" | "f64_to_i64" | "chr" | "ord" |
+        // String queries (don't modify)
+        "len" | "byte_at" | "char_at" | "str_eq" | "str_cmp" |
+        // Memory reads (don't write)
+        "load_i64" | "load_f64" | "load_u8" | "load_i32" |
+        // Hash functions
+        "hash_i64" | "hash_str" |
+        // Print functions (write to stdout, not memory we care about)
+        "println" | "print" | "println_str" | "print_str" |
+        "bmb_println_i64" | "bmb_print_i64" | "bmb_println_str" | "bmb_print_str"
+    );
+
+    // If not known pure, assume it might write to memory
+    !is_pure
+}
+
+// ============================================================================
+// Global Field Access CSE Pass (v0.60.38)
+// ============================================================================
+
+/// Global field access CSE: eliminate duplicate field accesses across blocks
+///
+/// When a parameter's field is accessed in the entry block, and the same field
+/// is accessed again in successor blocks, replace with a copy of the original value.
+///
+/// This handles patterns like:
+/// ```text
+/// entry:
+///   %left = field-access %node.left[0]   // for null check
+///   branch %cond, then, else
+/// else:
+///   %left2 = field-access %node.left[0]  // for recursion - replace with %left
+///   call f(%left2)
+/// ```
+///
+/// This is safe because:
+/// 1. The parameter is not modified (BMB has no mutable parameters)
+/// 2. The struct field is not modified (no FieldStore between accesses)
+pub struct GlobalFieldAccessCSE;
+
+impl OptimizationPass for GlobalFieldAccessCSE {
+    fn name(&self) -> &'static str {
+        "global_field_access_cse"
+    }
+
+    fn run_on_function(&self, func: &mut MirFunction) -> bool {
+        let mut changed = false;
+
+        // Collect parameter names
+        let params: HashSet<String> = func.params.iter().map(|(n, _)| n.clone()).collect();
+
+        // Phase 1: Collect field accesses from entry block on parameters
+        // Key: (base_name, field_index, struct_name) -> dest_name
+        let mut entry_field_cache: HashMap<(String, usize, String), String> = HashMap::new();
+
+        if let Some(entry_block) = func.blocks.first() {
+            for inst in &entry_block.instructions {
+                if let MirInst::FieldAccess { dest, base, field_index, struct_name, .. } = inst {
+                    // Only cache if base is a parameter (guaranteed not modified)
+                    if params.contains(&base.name) {
+                        let cache_key = (base.name.clone(), *field_index, struct_name.clone());
+                        entry_field_cache.insert(cache_key, dest.name.clone());
+                    }
+                }
+            }
+        }
+
+        // No field accesses to optimize
+        if entry_field_cache.is_empty() {
+            return false;
+        }
+
+        // Phase 2: Replace duplicate field accesses in non-entry blocks
+        for block_idx in 1..func.blocks.len() {
+            let block = &mut func.blocks[block_idx];
+            let mut new_instructions = Vec::new();
+
+            for inst in &block.instructions {
+                if let MirInst::FieldAccess { dest, base, field_index, struct_name, .. } = inst {
+                    let cache_key = (base.name.clone(), *field_index, struct_name.clone());
+
+                    if let Some(cached_name) = entry_field_cache.get(&cache_key) {
+                        // Replace with copy from entry block's cached value
+                        new_instructions.push(MirInst::Copy {
+                            dest: dest.clone(),
+                            src: Place::new(cached_name.clone()),
+                        });
+                        changed = true;
+                        continue;
+                    }
+                }
+                new_instructions.push(inst.clone());
+            }
+
+            block.instructions = new_instructions;
+        }
+
+        changed
+    }
 }
 
 // ============================================================================
@@ -1364,6 +1824,16 @@ impl ConstFunctionEval {
                     && dest.name == place.name
                 {
                     return Some(value.clone());
+                }
+                // v0.60.40: Handle `0 as *T` pattern (null pointer)
+                // This recognizes functions like `fn null_ptr() -> *T = 0 as *T`
+                if let MirInst::Cast { dest, src, to_ty, .. } = inst
+                    && dest.name == place.name
+                    && matches!(to_ty, MirType::Ptr(_) | MirType::StructPtr(_))
+                    && matches!(src, Operand::Constant(Constant::Int(0)))
+                {
+                    // Null pointer is just constant 0
+                    return Some(Constant::Int(0));
                 }
             }
         }
@@ -3954,6 +4424,31 @@ impl LoopBoundedNarrowing {
     fn propagate_narrowing_to_locals(func: &mut MirFunction) -> bool {
         let mut changed = false;
 
+        // First, count how many times each variable is defined (assigned to)
+        // Variables with multiple definitions might be accumulators that grow beyond i32
+        let mut def_count: HashMap<String, usize> = HashMap::new();
+        for block in &func.blocks {
+            for inst in &block.instructions {
+                let dest_name = match inst {
+                    MirInst::Const { dest, .. } |
+                    MirInst::Copy { dest, .. } |
+                    MirInst::BinOp { dest, .. } |
+                    MirInst::UnaryOp { dest, .. } |
+                    MirInst::Phi { dest, .. } |
+                    MirInst::StructInit { dest, .. } |
+                    MirInst::FieldAccess { dest, .. } |
+                    MirInst::EnumVariant { dest, .. } |
+                    MirInst::ArrayInit { dest, .. } |
+                    MirInst::IndexLoad { dest, .. } => Some(&dest.name),
+                    MirInst::Call { dest: Some(d), .. } => Some(&d.name),
+                    _ => None,
+                };
+                if let Some(name) = dest_name {
+                    *def_count.entry(name.clone()).or_insert(0) += 1;
+                }
+            }
+        }
+
         // Build initial set of narrowed variables (params and locals that are i32)
         let mut narrowed: HashSet<String> = func.params.iter()
             .filter(|(_, ty)| *ty == MirType::I32)
@@ -3972,17 +4467,26 @@ impl LoopBoundedNarrowing {
                 for inst in &block.instructions {
                     match inst {
                         // Copy propagation: if src is narrowed, dest can be narrowed
+                        // But only if dest is not reassigned (single definition)
                         MirInst::Copy { dest, src } => {
-                            if narrowed.contains(&src.name) && !narrowed.contains(&dest.name) {
+                            let single_def = def_count.get(&dest.name).copied().unwrap_or(0) == 1;
+                            if single_def && narrowed.contains(&src.name) && !narrowed.contains(&dest.name) {
                                 narrowed.insert(dest.name.clone());
                                 local_changed = true;
                             }
                         }
 
                         // BinOp: if both operands are narrowed/constant, dest can be narrowed
-                        // Only for ops that preserve i32 range (add, sub, comparisons, etc.)
+                        // Only for ops that preserve i32 range
+                        // But only if dest is not reassigned (single definition)
                         MirInst::BinOp { dest, op, lhs, rhs } => {
                             if narrowed.contains(&dest.name) {
+                                continue;
+                            }
+
+                            // Skip if variable has multiple definitions (could be accumulator)
+                            let single_def = def_count.get(&dest.name).copied().unwrap_or(0) == 1;
+                            if !single_def {
                                 continue;
                             }
 
@@ -3998,11 +4502,17 @@ impl LoopBoundedNarrowing {
                             };
 
                             // Check if operation preserves i32 range
+                            // NOTE: Add/Sub/Mul are EXCLUDED because they can overflow!
+                            // Even if both inputs fit in i32, the result can exceed i32::MAX.
+                            // Example: fibonacci accumulator variables grow beyond i32 range.
+                            // Loop counter narrowing is handled separately in Phase 2.
                             let op_preserves_i32 = matches!(op,
-                                MirBinOp::Add | MirBinOp::Sub | MirBinOp::Mul |
+                                // Comparisons return bool, always fits in i32
                                 MirBinOp::Lt | MirBinOp::Le | MirBinOp::Gt | MirBinOp::Ge |
                                 MirBinOp::Eq | MirBinOp::Ne |
+                                // Logical ops return bool
                                 MirBinOp::And | MirBinOp::Or |
+                                // Bitwise ops preserve range (result <= max(lhs, rhs))
                                 MirBinOp::Band | MirBinOp::Bor | MirBinOp::Bxor |
                                 MirBinOp::Shl | MirBinOp::Shr
                             );
@@ -4014,8 +4524,11 @@ impl LoopBoundedNarrowing {
                         }
 
                         // Const: small integer constants can be narrowed
+                        // But only if the variable is not reassigned elsewhere (single definition)
+                        // Variables with multiple definitions might be accumulators (e.g., fibonacci a, b)
                         MirInst::Const { dest, value: Constant::Int(v) } => {
-                            if !narrowed.contains(&dest.name) && *v >= i32::MIN as i64 && *v <= i32::MAX as i64 {
+                            let single_def = def_count.get(&dest.name).copied().unwrap_or(0) == 1;
+                            if single_def && !narrowed.contains(&dest.name) && *v >= i32::MIN as i64 && *v <= i32::MAX as i64 {
                                 narrowed.insert(dest.name.clone());
                                 local_changed = true;
                             }
