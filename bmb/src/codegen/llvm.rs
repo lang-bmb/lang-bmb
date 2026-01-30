@@ -210,14 +210,16 @@ impl CodeGen {
             module.write_bitcode_to_path(&temp_bc);
 
             // Run external opt tool
-            // v0.60.46: Use O3 for Release mode for better loop optimization
-            // O3 enables more aggressive inlining, loop unrolling, and vectorization
-            // Use new pass manager syntax: -passes='default<O3>'
+            // v0.60.47: Use O3 with scalarizer to undo inefficient auto-vectorization
+            // O3 enables aggressive inlining and loop unrolling, but its vectorization
+            // can hurt performance for integer-heavy loops (e.g., mandelbrot).
+            // The scalarizer undoes vector operations, returning to efficient scalar code.
+            // Use new pass manager syntax: -passes='default<O3>,scalarizer'
             let passes_arg = match self.opt_level {
                 OptLevel::Debug => "default<O0>",
-                OptLevel::Release => "default<O3>",  // v0.60.46: Upgrade to O3
+                OptLevel::Release => "default<O3>,scalarizer",  // v0.60.47: Add scalarizer
                 OptLevel::Size => "default<Os>",
-                OptLevel::Aggressive => "default<O3>",
+                OptLevel::Aggressive => "default<O3>",  // Keep vectorization for aggressive
             };
             let opt_result = Command::new("opt")
                 .args(["--passes", passes_arg, "-o"])
