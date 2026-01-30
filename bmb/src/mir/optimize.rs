@@ -938,7 +938,13 @@ fn get_inst_dest(inst: &MirInst) -> Option<&Place> {
 fn has_side_effects(inst: &MirInst) -> bool {
     matches!(
         inst,
-        MirInst::Call { .. } | MirInst::FieldStore { .. } | MirInst::IndexStore { .. }
+        MirInst::Call { .. }
+            | MirInst::FieldStore { .. }
+            | MirInst::IndexStore { .. }
+            // v0.60.51: PtrStore has memory side effects - critical for hash_table benchmark
+            | MirInst::PtrStore { .. }
+            // v0.60.51: ArrayAlloc allocates stack memory
+            | MirInst::ArrayAlloc { .. }
     )
 }
 
