@@ -2987,6 +2987,14 @@ impl OptimizationPass for TailRecursiveToLoop {
         let loop_header_label = format!("loop_header_{}", func.blocks.len());
         let entry_label = func.blocks[0].label.clone();
 
+        // v0.60.40: Create substitution map FIRST so we can apply it to phi values
+        let mut subst_map: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+        for (i, (param_name, _)) in func.params.iter().enumerate() {
+            if !param_is_invariant[i] {
+                subst_map.insert(param_name.clone(), format!("{}_loop", param_name));
+            }
+        }
+
         // v0.51.16: Create phi nodes with edges from entry AND all tail call sites
         let mut phi_names: Vec<String> = Vec::new();
         let mut phi_instructions: Vec<MirInst> = Vec::new();
@@ -3024,7 +3032,10 @@ impl OptimizationPass for TailRecursiveToLoop {
                         let loop_var = format!("{}_loop", param_name);
                         phi_values.push((Operand::Place(Place::new(loop_var)), block_label));
                     } else {
-                        phi_values.push((tail_args[i].clone(), block_label));
+                        // v0.60.40: Apply substitution to tail_args that reference other params
+                        // e.g., gcd(b, a%b) - the 'b' arg for 'a' param needs to become 'b_loop'
+                        let substituted_arg = self.substitute_operand(tail_args[i].clone(), &subst_map);
+                        phi_values.push((substituted_arg, block_label));
                     }
                 }
 
@@ -3034,14 +3045,6 @@ impl OptimizationPass for TailRecursiveToLoop {
                 });
             } else {
                 phi_names.push(param_name.clone()); // Use original param name
-            }
-        }
-
-        // Create substitution map: param_name -> phi_name
-        let mut subst_map: std::collections::HashMap<String, String> = std::collections::HashMap::new();
-        for (i, (param_name, _)) in func.params.iter().enumerate() {
-            if !param_is_invariant[i] {
-                subst_map.insert(param_name.clone(), format!("{}_loop", param_name));
             }
         }
 
