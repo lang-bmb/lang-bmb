@@ -628,6 +628,7 @@ fn simplify_binop(dest: &Place, op: MirBinOp, lhs: &Operand, rhs: &Operand) -> O
         }
 
         // Multiplication: x * 1 = x, 1 * x = x, x * 0 = 0, 0 * x = 0
+        // v0.60.53: x * 2^n = x << n (power-of-2 multiplication to left shift)
         MirBinOp::Mul => {
             if matches!(rhs, Operand::Constant(Constant::Int(1))) {
                 return Some(MirInst::Copy {
@@ -648,6 +649,31 @@ fn simplify_binop(dest: &Place, op: MirBinOp, lhs: &Operand, rhs: &Operand) -> O
                     dest: dest.clone(),
                     value: Constant::Int(0),
                 });
+            }
+            // v0.60.53: Convert multiplication by power-of-2 to left shift
+            // x * 2 → x << 1, x * 4 → x << 2, x * 8 → x << 3, etc.
+            if let Operand::Constant(Constant::Int(multiplier)) = rhs {
+                if *multiplier > 1 && (*multiplier & (*multiplier - 1)) == 0 {
+                    let shift_amount = (*multiplier as u64).trailing_zeros() as i64;
+                    return Some(MirInst::BinOp {
+                        dest: dest.clone(),
+                        op: MirBinOp::Shl,
+                        lhs: lhs.clone(),
+                        rhs: Operand::Constant(Constant::Int(shift_amount)),
+                    });
+                }
+            }
+            // Handle commutative case: 2^n * x → x << n
+            if let Operand::Constant(Constant::Int(multiplier)) = lhs {
+                if *multiplier > 1 && (*multiplier & (*multiplier - 1)) == 0 {
+                    let shift_amount = (*multiplier as u64).trailing_zeros() as i64;
+                    return Some(MirInst::BinOp {
+                        dest: dest.clone(),
+                        op: MirBinOp::Shl,
+                        lhs: rhs.clone(),
+                        rhs: Operand::Constant(Constant::Int(shift_amount)),
+                    });
+                }
             }
             None
         }
@@ -6661,6 +6687,44 @@ mod tests {
         assert!(
             matches!(inst, MirInst::BinOp { .. }),
             "x + 1 should remain as BinOp"
+        );
+    }
+
+    #[test]
+    fn test_algebraic_mul_power_of_2_to_shift() {
+        // Test: x * 8 = x << 3 (v0.60.53)
+        let mut func = MirFunction {
+            name: "test_mul_pow2".to_string(),
+            params: vec![("x".to_string(), MirType::I64)],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![MirInst::BinOp {
+                    dest: Place::new("result"),
+                    op: MirBinOp::Mul,
+                    lhs: Operand::Place(Place::new("x")),
+                    rhs: Operand::Constant(Constant::Int(8)),
+                }],
+                terminator: Terminator::Return(Some(Operand::Place(Place::new("result")))),
+            }],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let pass = AlgebraicSimplification;
+        let changed = pass.run_on_function(&mut func);
+        assert!(changed, "x * 8 should be simplified to shift");
+
+        let inst = &func.blocks[0].instructions[0];
+        assert!(
+            matches!(inst, MirInst::BinOp { op: MirBinOp::Shl, rhs: Operand::Constant(Constant::Int(3)), .. }),
+            "x * 8 should become x << 3, got {:?}", inst
         );
     }
 
