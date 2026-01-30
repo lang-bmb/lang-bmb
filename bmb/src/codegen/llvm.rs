@@ -210,14 +210,14 @@ impl CodeGen {
             module.write_bitcode_to_path(&temp_bc);
 
             // Run external opt tool
-            // v0.60.45: Two-pass optimization: main passes + scalarizer
-            // The scalarizer undoes harmful auto-vectorization for simple loops
-            // Use new pass manager syntax: -passes='default<O2>,scalarizer'
+            // v0.60.46: Use O3 for Release mode for better loop optimization
+            // O3 enables more aggressive inlining, loop unrolling, and vectorization
+            // Use new pass manager syntax: -passes='default<O3>'
             let passes_arg = match self.opt_level {
-                OptLevel::Debug => "default<O0>,scalarizer",
-                OptLevel::Release => "default<O2>,scalarizer",
-                OptLevel::Size => "default<Os>,scalarizer",
-                OptLevel::Aggressive => "default<O3>,scalarizer",
+                OptLevel::Debug => "default<O0>",
+                OptLevel::Release => "default<O3>",  // v0.60.46: Upgrade to O3
+                OptLevel::Size => "default<Os>",
+                OptLevel::Aggressive => "default<O3>",
             };
             let opt_result = Command::new("opt")
                 .args(["--passes", passes_arg, "-o"])
@@ -228,7 +228,8 @@ impl CodeGen {
             let opt_success = match opt_result {
                 Ok(output_res) if output_res.status.success() => {
                     // Load optimized bitcode and write object file
-                    eprintln!("Note: External opt {} completed successfully", opt_level_str);
+                    // v0.60.46: Log the actual passes being used
+                    eprintln!("Note: External opt --passes={} completed successfully", passes_arg);
                     let opt_context = Context::create();
                     match inkwell::module::Module::parse_bitcode_from_path(&opt_bc, &opt_context) {
                         Ok(opt_module) => {
