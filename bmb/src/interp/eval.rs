@@ -176,6 +176,7 @@ impl Interpreter {
         self.builtins.insert("sb_build".to_string(), builtin_sb_build);
         self.builtins.insert("sb_len".to_string(), builtin_sb_len);
         self.builtins.insert("sb_clear".to_string(), builtin_sb_clear);
+        self.builtins.insert("sb_println".to_string(), builtin_sb_println);
 
         // v0.31.21: Character conversion builtins for gotgan string handling
         self.builtins.insert("chr".to_string(), builtin_chr);
@@ -3495,6 +3496,32 @@ fn builtin_sb_clear(args: &[Value]) -> InterpResult<Value> {
                 if let Some(builder) = map.get_mut(id) {
                     builder.clear();
                     Ok(Value::Int(*id))
+                } else {
+                    Err(RuntimeError::io_error(&format!("Invalid string builder ID: {}", id)))
+                }
+            })
+        }
+        _ => Err(RuntimeError::type_error("i64", args[0].type_name())),
+    }
+}
+
+/// sb_println(id: i64) -> i64
+/// Prints the builder contents directly without allocating a new string.
+/// v0.60.64: Added for zero-allocation output
+fn builtin_sb_println(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 1 {
+        return Err(RuntimeError::arity_mismatch("sb_println", 1, args.len()));
+    }
+    match &args[0] {
+        Value::Int(id) => {
+            STRING_BUILDERS.with(|builders| {
+                let map = builders.borrow();
+                if let Some(fragments) = map.get(id) {
+                    for frag in fragments {
+                        print!("{}", frag);
+                    }
+                    println!();
+                    Ok(Value::Int(0))
                 } else {
                     Err(RuntimeError::io_error(&format!("Invalid string builder ID: {}", id)))
                 }

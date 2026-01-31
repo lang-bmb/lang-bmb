@@ -825,6 +825,11 @@ impl<'ctx> LlvmContext<'ctx> {
         let sb_clear_fn = self.module.add_function("bmb_sb_clear", sb_clear_type, None);
         self.functions.insert("sb_clear".to_string(), sb_clear_fn);
 
+        // sb_println(handle: i64) -> i64 (v0.60.63: print without allocation)
+        let sb_println_type = i64_type.fn_type(&[i64_type.into()], false);
+        let sb_println_fn = self.module.add_function("bmb_sb_println", sb_println_type, None);
+        self.functions.insert("sb_println".to_string(), sb_println_fn);
+
         // Memory allocation (libc)
         // malloc(size: i64) -> ptr
         let malloc_type = ptr_type.fn_type(&[i64_type.into()], false);

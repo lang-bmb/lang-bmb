@@ -534,6 +534,17 @@ int64_t bmb_sb_clear(int64_t handle) {
     return 0;
 }
 
+// v0.60.63: Print StringBuilder directly without allocation
+int64_t bmb_sb_println(int64_t handle) {
+    StringBuilder* sb = (StringBuilder*)handle;
+    if (sb && sb->data) {
+        puts(sb->data);  // puts adds newline automatically
+    } else {
+        puts("");
+    }
+    return 0;
+}
+
 // v0.51.18: HashMap implementation (open addressing with linear probing)
 // Based on: https://github.com/DavidLeeds/hashmap
 // See also: https://en.wikipedia.org/wiki/Linear_probing
@@ -840,6 +851,10 @@ int64_t sb_len(int64_t handle) {
 
 int64_t sb_clear(int64_t handle) {
     return bmb_sb_clear(handle);
+}
+
+int64_t sb_println(int64_t handle) {
+    return bmb_sb_println(handle);
 }
 
 // v0.51.51: File I/O wrappers updated for BmbString*
