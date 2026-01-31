@@ -545,6 +545,16 @@ int64_t bmb_sb_println(int64_t handle) {
     return 0;
 }
 
+// v0.60.65: Print null-terminated C string directly
+int64_t bmb_puts_cstr(const char* s) {
+    if (s) {
+        puts(s);
+    } else {
+        puts("");
+    }
+    return 0;
+}
+
 // v0.51.18: HashMap implementation (open addressing with linear probing)
 // Based on: https://github.com/DavidLeeds/hashmap
 // See also: https://en.wikipedia.org/wiki/Linear_probing
@@ -855,6 +865,10 @@ int64_t sb_clear(int64_t handle) {
 
 int64_t sb_println(int64_t handle) {
     return bmb_sb_println(handle);
+}
+
+int64_t puts_cstr(const char* s) {
+    return bmb_puts_cstr(s);
 }
 
 // v0.51.51: File I/O wrappers updated for BmbString*

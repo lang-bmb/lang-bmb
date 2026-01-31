@@ -453,6 +453,7 @@ impl TextCodeGen {
         writeln!(out, "declare ptr @sb_build(i64) nounwind")?;
         writeln!(out, "declare i64 @sb_clear(i64) nounwind")?;
         writeln!(out, "declare i64 @sb_println(i64) nounwind")?;
+        writeln!(out, "declare i64 @puts_cstr(ptr) nounwind")?;
         writeln!(out)?;
 
         // v0.50.36: find_close_paren is now defined in BMB, no extern needed
@@ -4746,7 +4747,8 @@ impl TextCodeGen {
 
             // i64 return - StringBuilder (handle is i64)
             "bmb_sb_new" | "bmb_sb_push" | "bmb_sb_push_cstr" | "bmb_sb_push_char" | "bmb_sb_push_int" | "bmb_sb_push_escaped" | "bmb_sb_len" | "bmb_sb_clear" | "bmb_sb_println"
-            | "sb_new" | "sb_with_capacity" | "sb_push" | "sb_push_cstr" | "sb_push_char" | "sb_push_int" | "sb_push_escaped" | "sb_len" | "sb_clear" | "sb_println" => "i64",
+            | "sb_new" | "sb_with_capacity" | "sb_push" | "sb_push_cstr" | "sb_push_char" | "sb_push_int" | "sb_push_escaped" | "sb_len" | "sb_clear" | "sb_println"
+            | "puts_cstr" | "bmb_puts_cstr" => "i64",
 
             // i64 return - Process
             "bmb_system" => "i64",

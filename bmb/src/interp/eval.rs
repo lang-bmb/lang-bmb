@@ -177,6 +177,7 @@ impl Interpreter {
         self.builtins.insert("sb_len".to_string(), builtin_sb_len);
         self.builtins.insert("sb_clear".to_string(), builtin_sb_clear);
         self.builtins.insert("sb_println".to_string(), builtin_sb_println);
+        self.builtins.insert("puts_cstr".to_string(), builtin_puts_cstr);
 
         // v0.31.21: Character conversion builtins for gotgan string handling
         self.builtins.insert("chr".to_string(), builtin_chr);
@@ -3526,6 +3527,24 @@ fn builtin_sb_println(args: &[Value]) -> InterpResult<Value> {
                     Err(RuntimeError::io_error(&format!("Invalid string builder ID: {}", id)))
                 }
             })
+        }
+        _ => Err(RuntimeError::type_error("i64", args[0].type_name())),
+    }
+}
+
+/// puts_cstr(ptr: i64) -> i64
+/// Prints a null-terminated C string from a raw memory address.
+/// v0.60.65: Added for low-level I/O
+fn builtin_puts_cstr(args: &[Value]) -> InterpResult<Value> {
+    if args.len() != 1 {
+        return Err(RuntimeError::arity_mismatch("puts_cstr", 1, args.len()));
+    }
+    // In interpreter mode, we can't really handle raw pointers
+    // Just print a placeholder for now
+    match &args[0] {
+        Value::Int(_ptr) => {
+            println!("[puts_cstr: interpreter cannot access raw memory]");
+            Ok(Value::Int(0))
         }
         _ => Err(RuntimeError::type_error("i64", args[0].type_name())),
     }

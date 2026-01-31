@@ -830,6 +830,11 @@ impl<'ctx> LlvmContext<'ctx> {
         let sb_println_fn = self.module.add_function("bmb_sb_println", sb_println_type, None);
         self.functions.insert("sb_println".to_string(), sb_println_fn);
 
+        // puts_cstr(ptr: i64) -> i64 (v0.60.65: print C string from raw pointer)
+        let puts_cstr_type = i64_type.fn_type(&[ptr_type.into()], false);
+        let puts_cstr_fn = self.module.add_function("puts_cstr", puts_cstr_type, None);
+        self.functions.insert("puts_cstr".to_string(), puts_cstr_fn);
+
         // Memory allocation (libc)
         // malloc(size: i64) -> ptr
         let malloc_type = ptr_type.fn_type(&[i64_type.into()], false);

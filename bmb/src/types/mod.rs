@@ -377,6 +377,8 @@ impl TypeChecker {
         functions.insert("sb_clear".to_string(), (vec![Type::I64], Type::I64));
         // sb_println(id: i64) -> i64 (v0.60.64: print without allocation)
         functions.insert("sb_println".to_string(), (vec![Type::I64], Type::I64));
+        // puts_cstr(ptr: i64) -> i64 (v0.60.65: print C string from raw pointer)
+        functions.insert("puts_cstr".to_string(), (vec![Type::I64], Type::I64));
 
         // v0.50.36: find_close_paren is now defined in BMB, not as builtin
 
