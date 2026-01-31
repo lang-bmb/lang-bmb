@@ -85,6 +85,8 @@ impl OptimizationPipeline {
                 pipeline.add_pass(Box::new(TailCallOptimization));
                 // v0.51.9: Convert tail recursion to loops for better performance
                 pipeline.add_pass(Box::new(TailRecursiveToLoop));
+                // v0.60.55: Convert conditional increment to branchless add
+                pipeline.add_pass(Box::new(ConditionalIncrementToSelect));
                 // v0.60.11: Convert fibonacci-like double recursion to O(n) loops
                 pipeline.add_pass(Box::new(LinearRecurrenceToLoop));
                 // v0.51.16: Loop invariant code motion - hoist len() calls out of loops
@@ -119,6 +121,8 @@ impl OptimizationPipeline {
                 pipeline.add_pass(Box::new(TailCallOptimization));
                 // v0.51.9: Convert tail recursion to loops for better performance
                 pipeline.add_pass(Box::new(TailRecursiveToLoop));
+                // v0.60.55: Convert conditional increment to branchless add
+                pipeline.add_pass(Box::new(ConditionalIncrementToSelect));
                 // v0.60.11: Convert fibonacci-like double recursion to O(n) loops
                 pipeline.add_pass(Box::new(LinearRecurrenceToLoop));
                 // v0.51.16: Loop invariant code motion - hoist len() calls out of loops
@@ -5770,6 +5774,263 @@ impl LinearRecurrenceToLoop {
         func.blocks.push(loop_header_block);
         func.blocks.push(loop_body_block);
         func.blocks.push(loop_exit_block);
+
+        true
+    }
+}
+
+// ============================================================================
+// Conditional Increment to Branchless Add (v0.60.55)
+// ============================================================================
+
+/// Convert conditional increment pattern to branchless arithmetic
+///
+/// Pattern detected:
+/// ```text
+/// cond_block:
+///   %cond = ...
+///   branch %cond, then_block, else_block
+///
+/// then_block:
+///   %new_val = add %val, 1
+///   goto merge_block
+///
+/// else_block:
+///   goto merge_block
+///
+/// merge_block:
+///   %result = phi [%new_val, then_block], [%val, else_block]
+/// ```
+///
+/// Transformed to:
+/// ```text
+/// cond_block:
+///   %cond = ...
+///   %cond_i64 = cast %cond Bool to I64
+///   %result = add %val, %cond_i64
+///   goto merge_block
+///
+/// merge_block:
+///   ; (phi removed)
+/// ```
+///
+/// This eliminates a branch and enables better vectorization.
+pub struct ConditionalIncrementToSelect;
+
+impl OptimizationPass for ConditionalIncrementToSelect {
+    fn name(&self) -> &'static str {
+        "conditional_increment_to_select"
+    }
+
+    fn run_on_function(&self, func: &mut MirFunction) -> bool {
+        let mut changed = false;
+
+        // Collect patterns to transform (avoid borrowing issues)
+        let patterns = self.find_patterns(func);
+
+        for pattern in patterns {
+            if self.apply_transformation(func, &pattern) {
+                changed = true;
+            }
+        }
+
+        changed
+    }
+}
+
+/// Information about a conditional increment pattern
+#[allow(dead_code)]
+struct ConditionalIncrementPattern {
+    /// Block index that has the conditional branch
+    cond_block_idx: usize,
+    /// The condition operand
+    cond: Operand,
+    /// Block label that has the increment (kept for debugging)
+    then_label: String,
+    /// Block label that is empty (kept for debugging)
+    else_label: String,
+    /// Block label where phi merges
+    merge_label: String,
+    /// The value being incremented
+    base_value: Operand,
+    /// The destination of the phi (will become destination of the add)
+    phi_dest: Place,
+    /// Index of the phi instruction in merge block
+    phi_inst_idx: usize,
+}
+
+impl ConditionalIncrementToSelect {
+    fn find_patterns(&self, func: &MirFunction) -> Vec<ConditionalIncrementPattern> {
+        let mut patterns = Vec::new();
+
+        // Build a map of block labels to indices
+        let block_map: HashMap<String, usize> = func.blocks.iter()
+            .enumerate()
+            .map(|(i, b)| (b.label.clone(), i))
+            .collect();
+
+        for (cond_idx, cond_block) in func.blocks.iter().enumerate() {
+            // Look for branch terminators
+            let (cond, then_label, else_label) = match &cond_block.terminator {
+                Terminator::Branch { cond, then_label, else_label } => {
+                    (cond.clone(), then_label.clone(), else_label.clone())
+                }
+                _ => continue,
+            };
+
+            // Get then and else blocks
+            let then_idx = match block_map.get(&then_label) {
+                Some(&idx) => idx,
+                None => continue,
+            };
+            let else_idx = match block_map.get(&else_label) {
+                Some(&idx) => idx,
+                None => continue,
+            };
+
+            let then_block = &func.blocks[then_idx];
+            let else_block = &func.blocks[else_idx];
+
+            // Check if both blocks jump to the same merge block
+            let then_target = match &then_block.terminator {
+                Terminator::Goto(target) => target.clone(),
+                _ => continue,
+            };
+            let else_target = match &else_block.terminator {
+                Terminator::Goto(target) => target.clone(),
+                _ => continue,
+            };
+
+            if then_target != else_target {
+                continue;
+            }
+            let merge_label = then_target;
+
+            // else_block should be empty
+            if !else_block.instructions.is_empty() {
+                continue;
+            }
+
+            // then_block should have exactly one instruction: add by 1
+            if then_block.instructions.len() != 1 {
+                continue;
+            }
+
+            let (add_dest, base_value) = match &then_block.instructions[0] {
+                MirInst::BinOp {
+                    dest,
+                    op: MirBinOp::Add,
+                    lhs,
+                    rhs: Operand::Constant(Constant::Int(1)),
+                } => (dest.clone(), lhs.clone()),
+                _ => continue,
+            };
+
+            // Find merge block and check for phi
+            let merge_idx = match block_map.get(&merge_label) {
+                Some(&idx) => idx,
+                None => continue,
+            };
+            let merge_block = &func.blocks[merge_idx];
+
+            // Look for matching phi in merge block
+            let mut phi_info = None;
+            for (inst_idx, inst) in merge_block.instructions.iter().enumerate() {
+                if let MirInst::Phi { dest, values } = inst {
+                    // Check if phi merges add_dest from then_label and base_value from else_label
+                    if values.len() == 2 {
+                        let has_then_val = values.iter().any(|(v, l)| {
+                            l == &then_label && matches!(v, Operand::Place(p) if p.name == add_dest.name)
+                        });
+                        let has_else_val = values.iter().any(|(v, l)| {
+                            l == &else_label && Self::operands_equal(v, &base_value)
+                        });
+
+                        if has_then_val && has_else_val {
+                            phi_info = Some((dest.clone(), inst_idx));
+                            break;
+                        }
+                    }
+                }
+            }
+
+            let (phi_dest, phi_inst_idx) = match phi_info {
+                Some(info) => info,
+                None => continue,
+            };
+
+            patterns.push(ConditionalIncrementPattern {
+                cond_block_idx: cond_idx,
+                cond,
+                then_label,
+                else_label,
+                merge_label,
+                base_value,
+                phi_dest,
+                phi_inst_idx,
+            });
+        }
+
+        patterns
+    }
+
+    fn operands_equal(a: &Operand, b: &Operand) -> bool {
+        match (a, b) {
+            (Operand::Place(pa), Operand::Place(pb)) => pa.name == pb.name,
+            (Operand::Constant(ca), Operand::Constant(cb)) => {
+                match (ca, cb) {
+                    (Constant::Int(ia), Constant::Int(ib)) => ia == ib,
+                    (Constant::Float(fa), Constant::Float(fb)) => fa == fb,
+                    (Constant::Bool(ba), Constant::Bool(bb)) => ba == bb,
+                    (Constant::String(sa), Constant::String(sb)) => sa == sb,
+                    _ => false,
+                }
+            }
+            _ => false,
+        }
+    }
+
+    fn apply_transformation(&self, func: &mut MirFunction, pattern: &ConditionalIncrementPattern) -> bool {
+        // Generate unique names for the new instructions
+        let cast_name = format!("{}_cond_ext", pattern.phi_dest.name);
+
+        // Create the cast instruction: %cast = cast %cond Bool to I64
+        let cast_inst = MirInst::Cast {
+            dest: Place::new(&cast_name),
+            src: pattern.cond.clone(),
+            from_ty: MirType::Bool,
+            to_ty: MirType::I64,
+        };
+
+        // Create the add instruction: %result = add %base_value, %cast
+        let add_inst = MirInst::BinOp {
+            dest: pattern.phi_dest.clone(),
+            op: MirBinOp::Add,
+            lhs: pattern.base_value.clone(),
+            rhs: Operand::Place(Place::new(&cast_name)),
+        };
+
+        // Insert instructions into cond_block before the terminator
+        let cond_block = &mut func.blocks[pattern.cond_block_idx];
+        cond_block.instructions.push(cast_inst);
+        cond_block.instructions.push(add_inst);
+
+        // Change terminator from Branch to Goto(merge_label)
+        cond_block.terminator = Terminator::Goto(pattern.merge_label.clone());
+
+        // Find and remove phi from merge block
+        let merge_block = func.blocks.iter_mut()
+            .find(|b| b.label == pattern.merge_label)
+            .expect("merge block should exist");
+
+        // Remove the phi instruction
+        if pattern.phi_inst_idx < merge_block.instructions.len() {
+            merge_block.instructions.remove(pattern.phi_inst_idx);
+        }
+
+        // Mark then and else blocks as unreachable (they will be cleaned up by DCE)
+        // Actually, they become unreachable because no one jumps to them anymore
+        // UnreachableBlockElimination will clean them up
 
         true
     }

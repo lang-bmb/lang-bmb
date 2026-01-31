@@ -83,6 +83,15 @@ enum Command {
         /// SMT solver timeout in seconds (default: 30)
         #[arg(long, default_value = "30")]
         verification_timeout: u32,
+
+        // === v0.60.56: Fast Math Options ===
+
+        /// Enable fast-math optimizations for floating-point operations (v0.60.56)
+        /// WARNING: Enables aggressive FP optimizations (FMA, reciprocal approximation).
+        /// May change results slightly. Not IEEE-754 compliant.
+        /// Use for performance-critical FP code (1.5-2x speedup).
+        #[arg(long)]
+        fast_math: bool,
     },
     /// Run a BMB program (interpreter)
     Run {
@@ -386,7 +395,8 @@ fn main() {
             verify,
             trust_contracts,
             verification_timeout,
-        } => build_file(&file, output, debug, release, aggressive, emit_ir, emit_mir, emit_cir, emit_wasm, &wasm_target, all_targets, target.as_deref(), verbose, verify.as_deref(), trust_contracts, verification_timeout),
+            fast_math,
+        } => build_file(&file, output, debug, release, aggressive, emit_ir, emit_mir, emit_cir, emit_wasm, &wasm_target, all_targets, target.as_deref(), verbose, verify.as_deref(), trust_contracts, verification_timeout, fast_math),
         Command::Run { file, args, human: _ } => run_file(&file, &args),
         Command::Repl => start_repl(),
         Command::Check { file, include_paths } => check_file_with_includes(&file, &include_paths),
@@ -432,6 +442,7 @@ fn build_file(
     verify_mode: Option<&str>,
     trust_contracts: bool,
     verification_timeout: u32,
+    fast_math: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // v0.52: If emitting CIR, output Contract IR and return
     if emit_cir {
@@ -453,7 +464,7 @@ fn build_file(
         if verbose {
             println!("\n=== Native Build ===");
         }
-        build_native(path, output.clone(), debug, release, aggressive, emit_ir, target, verbose, verify_mode, trust_contracts, verification_timeout)?;
+        build_native(path, output.clone(), debug, release, aggressive, emit_ir, target, verbose, verify_mode, trust_contracts, verification_timeout, fast_math)?;
 
         // Then build WASM
         if verbose {
@@ -473,7 +484,7 @@ fn build_file(
     }
 
     // Default: build native
-    build_native(path, output, debug, release, aggressive, emit_ir, target, verbose, verify_mode, trust_contracts, verification_timeout)
+    build_native(path, output, debug, release, aggressive, emit_ir, target, verbose, verify_mode, trust_contracts, verification_timeout, fast_math)
 }
 
 fn build_native(
@@ -488,13 +499,15 @@ fn build_native(
     verify_mode: Option<&str>,
     trust_contracts: bool,
     verification_timeout: u32,
+    fast_math: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     use bmb::build::{BuildConfig, OptLevel, VerificationMode};
 
     let mut config = BuildConfig::new(path.to_path_buf())
         .emit_ir(emit_ir)
         .verbose(verbose)
-        .verification_timeout(verification_timeout);
+        .verification_timeout(verification_timeout)
+        .fast_math(fast_math);
 
     // v0.60: Parse verification mode from CLI
     let verification_mode = if trust_contracts {

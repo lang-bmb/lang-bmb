@@ -75,6 +75,8 @@ impl From<OptLevel> for OptimizationLevel {
 /// LLVM Code Generator
 pub struct CodeGen {
     opt_level: OptLevel,
+    /// v0.60.56: Enable fast-math optimizations for floating-point operations
+    fast_math: bool,
 }
 
 impl CodeGen {
@@ -82,18 +84,25 @@ impl CodeGen {
     pub fn new() -> Self {
         Self {
             opt_level: OptLevel::default(),
+            fast_math: false,
         }
     }
 
     /// Create a new code generator with optimization level
     pub fn with_opt_level(opt_level: OptLevel) -> Self {
-        Self { opt_level }
+        Self { opt_level, fast_math: false }
+    }
+
+    /// Create a new code generator with optimization level and fast-math enabled
+    pub fn with_fast_math(opt_level: OptLevel, fast_math: bool) -> Self {
+        Self { opt_level, fast_math }
     }
 
     /// Compile MIR to object file
     pub fn compile(&self, program: &MirProgram, output: &Path) -> CodeGenResult<()> {
         let context = Context::create();
-        let mut ctx = LlvmContext::new(&context);
+        // v0.60.56: Pass fast_math flag to context
+        let mut ctx = LlvmContext::with_fast_math(&context, self.fast_math);
 
         // v0.60.15: Copy struct definitions for field access codegen
         ctx.struct_defs = program.struct_defs.clone();
@@ -119,7 +128,8 @@ impl CodeGen {
     /// Generate LLVM IR as string
     pub fn generate_ir(&self, program: &MirProgram) -> CodeGenResult<String> {
         let context = Context::create();
-        let mut ctx = LlvmContext::new(&context);
+        // v0.60.56: Pass fast_math flag to context
+        let mut ctx = LlvmContext::with_fast_math(&context, self.fast_math);
 
         // v0.60.7: Copy struct definitions for field access codegen
         ctx.struct_defs = program.struct_defs.clone();
@@ -221,11 +231,25 @@ impl CodeGen {
                 OptLevel::Size => "default<Os>",
                 OptLevel::Aggressive => "default<O3>",  // Keep vectorization for aggressive
             };
-            let opt_result = Command::new("opt")
-                .args(["--passes", passes_arg, "-o"])
-                .arg(&opt_bc)
-                .arg(&temp_bc)
-                .output();
+
+            // v0.60.56: Build opt command with optional fast-math flags
+            let mut opt_cmd = Command::new("opt");
+            opt_cmd.args(["--passes", passes_arg]);
+
+            // v0.60.56: Add fast-math flags when enabled
+            // These enable aggressive FP optimizations (FMA, reciprocal, reassociation)
+            if self.fast_math {
+                opt_cmd.args([
+                    "--enable-unsafe-fp-math",
+                    "--enable-no-nans-fp-math",
+                    "--enable-no-infs-fp-math",
+                    "--enable-no-signed-zeros-fp-math",
+                    "--fp-contract=fast",
+                ]);
+            }
+
+            opt_cmd.arg("-o").arg(&opt_bc).arg(&temp_bc);
+            let opt_result = opt_cmd.output();
 
             let opt_success = match opt_result {
                 Ok(output_res) if output_res.status.success() => {
@@ -393,10 +417,18 @@ struct LlvmContext<'ctx> {
     /// v0.60.15: Function return types for PHI type inference
     /// Maps function name -> MIR return type
     function_return_types: HashMap<String, MirType>,
+
+    /// v0.60.56: Enable fast-math optimizations for floating-point operations
+    /// When enabled, FP operations use aggressive optimizations (FMA, reciprocal, etc.)
+    fast_math: bool,
 }
 
 impl<'ctx> LlvmContext<'ctx> {
     fn new(context: &'ctx Context) -> Self {
+        Self::with_fast_math(context, false)
+    }
+
+    fn with_fast_math(context: &'ctx Context, fast_math: bool) -> Self {
         let module = context.create_module("bmb_program");
         let builder = context.create_builder();
         Self {
@@ -415,6 +447,7 @@ impl<'ctx> LlvmContext<'ctx> {
             struct_defs: HashMap::new(),
             function_return_types: HashMap::new(),
             array_variables: std::collections::HashSet::new(),
+            fast_math,
         }
     }
 
@@ -603,6 +636,23 @@ impl<'ctx> LlvmContext<'ctx> {
         store_u8_fn.add_attribute(AttributeLoc::Function, nounwind_attr);
         store_u8_fn.add_attribute(AttributeLoc::Function, willreturn_attr);
         self.functions.insert("store_u8".to_string(), store_u8_fn);
+
+        // v0.60.58: load_i32(addr: i64) -> i64 - read 32-bit signed integer, sign-extended
+        let load_i32_type = i64_type.fn_type(&[i64_type.into()], false);
+        let load_i32_fn = self.module.add_function("load_i32", load_i32_type, None);
+        load_i32_fn.add_attribute(AttributeLoc::Function, memory_read_attr);
+        load_i32_fn.add_attribute(AttributeLoc::Function, nounwind_attr);
+        load_i32_fn.add_attribute(AttributeLoc::Function, willreturn_attr);
+        load_i32_fn.add_attribute(AttributeLoc::Function, speculatable_attr);
+        load_i32_fn.add_attribute(AttributeLoc::Function, nosync_attr);
+        self.functions.insert("load_i32".to_string(), load_i32_fn);
+
+        // v0.60.58: store_i32(addr: i64, val: i64) -> void - write lower 32 bits to memory
+        let store_i32_type = void_type.fn_type(&[i64_type.into(), i64_type.into()], false);
+        let store_i32_fn = self.module.add_function("store_i32", store_i32_type, None);
+        store_i32_fn.add_attribute(AttributeLoc::Function, nounwind_attr);
+        store_i32_fn.add_attribute(AttributeLoc::Function, willreturn_attr);
+        self.functions.insert("store_i32".to_string(), store_i32_fn);
 
         // v0.46: slice(ptr, i64, i64) -> ptr
         // Note: slice allocates memory, so don't mark as speculatable
@@ -945,6 +995,22 @@ impl<'ctx> LlvmContext<'ctx> {
         if func.always_inline {
             let alwaysinline_id = Attribute::get_named_enum_kind_id("alwaysinline");
             function.add_attribute(AttributeLoc::Function, self.context.create_enum_attribute(alwaysinline_id, 0));
+        }
+
+        // v0.60.56: Add fast-math attributes for FP-heavy workloads
+        // These enable aggressive FP optimizations (FMA, reciprocal, reassociation)
+        // WARNING: Not IEEE-754 compliant - results may differ slightly
+        if self.fast_math {
+            let unsafe_fp_attr = self.context.create_string_attribute("unsafe-fp-math", "true");
+            let no_nans_attr = self.context.create_string_attribute("no-nans-fp-math", "true");
+            let no_infs_attr = self.context.create_string_attribute("no-infs-fp-math", "true");
+            let no_signed_zeros_attr = self.context.create_string_attribute("no-signed-zeros-fp-math", "true");
+            let approx_func_attr = self.context.create_string_attribute("approx-func-fp-math", "true");
+            function.add_attribute(AttributeLoc::Function, unsafe_fp_attr);
+            function.add_attribute(AttributeLoc::Function, no_nans_attr);
+            function.add_attribute(AttributeLoc::Function, no_infs_attr);
+            function.add_attribute(AttributeLoc::Function, no_signed_zeros_attr);
+            function.add_attribute(AttributeLoc::Function, approx_func_attr);
         }
 
         self.functions.insert(func.name.clone(), function);
@@ -1783,6 +1849,63 @@ impl<'ctx> LlvmContext<'ctx> {
                         .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
 
                     // store_u8 returns void, but MIR may expect a value
+                    if let Some(dest_place) = dest {
+                        let unit_value = self.context.i64_type().const_int(0, false);
+                        self.store_to_place(dest_place, unit_value.into())?;
+                    }
+                } else if func == "load_i32" && args.len() == 1 {
+                    // v0.60.58: Inline load_i32 as direct 32-bit memory access
+                    // load_i32(addr) -> (int64_t)(*((int32_t*)addr))
+                    let addr = self.gen_operand(&args[0])?;
+
+                    let ptr_type = self.context.ptr_type(inkwell::AddressSpace::default());
+                    let i32_type = self.context.i32_type();
+                    let i64_type = self.context.i64_type();
+
+                    // Convert i64 address to pointer
+                    let ptr = self.builder
+                        .build_int_to_ptr(addr.into_int_value(), ptr_type, "addr_ptr")
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+
+                    // Load the 32-bit integer
+                    let int32_val = self.builder
+                        .build_load(i32_type, ptr, "int32")
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                        .into_int_value();
+
+                    // Sign-extend to i64
+                    let result = self.builder
+                        .build_int_s_extend(int32_val, i64_type, "int64")
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+
+                    if let Some(dest_place) = dest {
+                        self.store_to_place(dest_place, result.into())?;
+                    }
+                } else if func == "store_i32" && args.len() == 2 {
+                    // v0.60.58: Inline store_i32 as direct 32-bit memory write
+                    // store_i32(addr, val) -> *((int32_t*)addr) = (int32_t)val
+                    let addr = self.gen_operand(&args[0])?;
+                    let val = self.gen_operand(&args[1])?;
+
+                    let ptr_type = self.context.ptr_type(inkwell::AddressSpace::default());
+                    let i32_type = self.context.i32_type();
+
+                    // Convert i64 address to pointer
+                    let ptr = self.builder
+                        .build_int_to_ptr(addr.into_int_value(), ptr_type, "addr_ptr")
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+
+                    // Truncate i64 value to i32
+                    let int32_val = self.builder
+                        .build_int_truncate(val.into_int_value(), i32_type, "val_i32")
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+
+                    // Store the 32-bit integer
+                    self.builder
+                        .build_store(ptr, int32_val)
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+
+                    // store_i32 returns void, but MIR may expect a value
                     if let Some(dest_place) = dest {
                         let unit_value = self.context.i64_type().const_int(0, false);
                         self.store_to_place(dest_place, unit_value.into())?;

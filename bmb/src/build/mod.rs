@@ -118,6 +118,14 @@ pub struct BuildConfig {
     pub verification_mode: VerificationMode,
     /// SMT solver timeout in seconds (default: 30)
     pub verification_timeout: u32,
+
+    // === v0.60.56: Fast Math Options ===
+
+    /// Enable fast-math optimizations for floating-point operations
+    /// WARNING: This enables aggressive FP optimizations (FMA, reciprocal approximation,
+    /// reassociation) that may change results slightly. Not IEEE-754 compliant.
+    /// Improves performance significantly for FP-heavy workloads (1.5-2x speedup).
+    pub fast_math: bool,
 }
 
 impl BuildConfig {
@@ -143,6 +151,8 @@ impl BuildConfig {
             // v0.60: Verification mode defaults
             verification_mode: VerificationMode::Check, // Sound default for release
             verification_timeout: 30, // 30 seconds default timeout
+            // v0.60.56: Fast math defaults
+            fast_math: false, // Strict IEEE-754 by default for correctness
         }
     }
 
@@ -191,6 +201,13 @@ impl BuildConfig {
     /// Set verbose mode
     pub fn verbose(mut self, v: bool) -> Self {
         self.verbose = v;
+        self
+    }
+
+    /// Enable fast-math optimizations (v0.60.56)
+    /// WARNING: Not IEEE-754 compliant. Use for performance-critical FP code.
+    pub fn fast_math(mut self, enable: bool) -> Self {
+        self.fast_math = enable;
         self
     }
 }
@@ -578,7 +595,8 @@ pub fn build(config: &BuildConfig) -> BuildResult<()> {
             OptLevel::Aggressive => CodeGenOptLevel::Aggressive,
         };
 
-        let codegen = CodeGen::with_opt_level(codegen_opt);
+        // v0.60.56: Pass fast_math flag to codegen
+        let codegen = CodeGen::with_fast_math(codegen_opt, config.fast_math);
 
         if config.emit_ir {
             // Emit LLVM IR

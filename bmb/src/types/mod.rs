@@ -433,6 +433,11 @@ impl TypeChecker {
         functions.insert("load_u8".to_string(), (vec![Type::I64], Type::I64));
         // store_u8(ptr: i64, value: i64) -> Unit (write single byte to memory)
         functions.insert("store_u8".to_string(), (vec![Type::I64, Type::I64], Type::Unit));
+        // v0.60.58: 32-bit integer intrinsics for efficient struct packing
+        // load_i32(ptr: i64) -> i64 (read 32-bit signed integer, sign-extended to i64)
+        functions.insert("load_i32".to_string(), (vec![Type::I64], Type::I64));
+        // store_i32(ptr: i64, value: i64) -> Unit (write lower 32 bits to memory)
+        functions.insert("store_i32".to_string(), (vec![Type::I64, Type::I64], Type::Unit));
         // str_data(s: String) -> i64 (get raw pointer to string data)
         functions.insert("str_data".to_string(), (vec![Type::String], Type::I64));
         // Box convenience functions
