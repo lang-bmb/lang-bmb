@@ -276,9 +276,10 @@ run_tier_1() {
             fi
         fi
 
-        # Build and run C
+        # Build and run C (use clang for fair LLVM-to-LLVM comparison)
         if [ -f "$c_src" ]; then
-            if gcc -O3 -march=native -o "$c_exe" "$c_src" -lm 2>/dev/null; then
+            if clang -O3 -march=native -o "$c_exe" "$c_src" -lm 2>/dev/null || \
+               gcc -O3 -march=native -o "$c_exe" "$c_src" -lm 2>/dev/null; then
                 local exe_actual="$c_exe"
                 [ -f "${c_exe}.exe" ] && exe_actual="${c_exe}.exe"
                 if [ -x "$exe_actual" ] || [ -f "$exe_actual" ]; then
@@ -422,9 +423,10 @@ run_tier_3() {
             fi
         fi
 
-        # Build and run C
+        # Build and run C (use clang for fair LLVM-to-LLVM comparison)
         if [ -f "$c_src" ]; then
-            if gcc -O3 -march=native -o "$c_exe" "$c_src" -lm 2>/dev/null; then
+            if clang -O3 -march=native -o "$c_exe" "$c_src" -lm 2>/dev/null || \
+               gcc -O3 -march=native -o "$c_exe" "$c_src" -lm 2>/dev/null; then
                 local exe_actual="$c_exe"
                 [ -f "${c_exe}.exe" ] && exe_actual="${c_exe}.exe"
                 if [ -x "$exe_actual" ] || [ -f "$exe_actual" ]; then
