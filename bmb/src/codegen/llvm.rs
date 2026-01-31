@@ -2087,7 +2087,8 @@ impl<'ctx> LlvmContext<'ctx> {
                 // If we reach here, it's a bug in gen_basic_block
             }
             // v0.50.73: Array operations for native array support
-            MirInst::ArrayInit { dest, element_type: _, elements } => {
+            // v0.60.59: Optimized with memset for zero-initialized arrays
+            MirInst::ArrayInit { dest, element_type, elements } => {
                 // Allocate array on stack
                 let array_size = elements.len() as u32;
 
@@ -2099,24 +2100,54 @@ impl<'ctx> LlvmContext<'ctx> {
                     .build_alloca(array_type, &dest.name)
                     .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
 
-                // Initialize elements
-                // v0.60.25: Use array_type as GEP base type with two indices
-                // First index dereferences the array, second indexes into elements
-                for (i, elem) in elements.iter().enumerate() {
-                    let elem_val = self.gen_operand(elem)?;
-                    let elem_ptr = unsafe {
-                        self.builder.build_in_bounds_gep(
-                            array_type,  // Use array type, not element type
-                            array_ptr,
-                            &[
-                                self.context.i64_type().const_int(0, false),
-                                self.context.i64_type().const_int(i as u64, false)
-                            ],
-                            &format!("{}_e{}", dest.name, i)
-                        )
-                    }.map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
-                    self.builder.build_store(elem_ptr, elem_val)
-                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                // v0.60.59: Check if all elements are zero constants (threshold: 64 elements)
+                let all_zeros = array_size >= 64 && elements.iter().all(|e| {
+                    match e {
+                        Operand::Constant(Constant::Int(0)) => true,
+                        Operand::Constant(Constant::Float(f)) => *f == 0.0,
+                        _ => false,
+                    }
+                });
+
+                if all_zeros {
+                    // Use memset for zero initialization
+                    let elem_size: u64 = match element_type {
+                        MirType::I64 | MirType::F64 | MirType::U64 => 8,
+                        MirType::I32 | MirType::U32 => 4,
+                        MirType::Bool => 1,
+                        _ => 8, // default to 8 for pointer-sized types
+                    };
+                    let total_bytes = (array_size as u64) * elem_size;
+
+                    // Build memset intrinsic call
+                    let i8_type = self.context.i8_type();
+                    let i64_type = self.context.i64_type();
+                    self.builder.build_memset(
+                        array_ptr,
+                        8, // alignment
+                        i8_type.const_int(0, false),
+                        i64_type.const_int(total_bytes, false),
+                    ).map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                } else {
+                    // Initialize elements one by one
+                    // v0.60.25: Use array_type as GEP base type with two indices
+                    // First index dereferences the array, second indexes into elements
+                    for (i, elem) in elements.iter().enumerate() {
+                        let elem_val = self.gen_operand(elem)?;
+                        let elem_ptr = unsafe {
+                            self.builder.build_in_bounds_gep(
+                                array_type,  // Use array type, not element type
+                                array_ptr,
+                                &[
+                                    self.context.i64_type().const_int(0, false),
+                                    self.context.i64_type().const_int(i as u64, false)
+                                ],
+                                &format!("{}_e{}", dest.name, i)
+                            )
+                        }.map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                        self.builder.build_store(elem_ptr, elem_val)
+                            .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                    }
                 }
 
                 // Store array pointer to destination

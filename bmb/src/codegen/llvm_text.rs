@@ -468,6 +468,8 @@ impl TextCodeGen {
         writeln!(out, "declare double @llvm.fma.f64(double, double, double)")?;
         // v0.51.35: memcpy intrinsic for struct array initialization
         writeln!(out, "declare void @llvm.memcpy.p0.p0.i64(ptr, ptr, i64, i1)")?;
+        // v0.60.59: memset intrinsic for zero-initialized array optimization
+        writeln!(out, "declare void @llvm.memset.p0.i64(ptr, i8, i64, i1)")?;
         writeln!(out)?;
 
         // v0.34.2: Memory allocation for Phase 34.2 Dynamic Collections
@@ -3486,23 +3488,50 @@ impl TextCodeGen {
                     let elem_ty = self.mir_type_to_llvm(element_type);
                     writeln!(out, "  ; array init with {} elements of type {}", size, elem_ty)?;
                     writeln!(out, "  %{} = alloca {}, i32 {}", dest.name, elem_ty, size.max(1))?;
-                    for (i, elem) in elements.iter().enumerate() {
-                        // Check if element is a local that needs loading from alloca
-                        let elem_str = if let Operand::Place(p) = elem {
-                            if local_names.contains(&p.name) {
-                                // Load from alloca first
-                                writeln!(out, "  %{}_arr_elem{} = load {}, ptr %{}.addr",
-                                         dest.name, i, elem_ty, p.name)?;
-                                format!("%{}_arr_elem{}", dest.name, i)
+
+                    // v0.60.59: Optimize zero-initialized arrays with memset
+                    // Check if all elements are zero constants (threshold: 64 elements)
+                    let all_zeros = size >= 64 && elements.iter().all(|e| {
+                        match e {
+                            Operand::Constant(Constant::Int(0)) => true,
+                            Operand::Constant(Constant::Float(f)) => *f == 0.0,
+                            _ => false,
+                        }
+                    });
+
+                    if all_zeros {
+                        // Use memset for zero initialization
+                        let elem_size: usize = match element_type {
+                            MirType::I64 | MirType::F64 | MirType::U64 => 8,
+                            MirType::I32 | MirType::U32 => 4,
+                            MirType::Bool => 1,
+                            _ => 8, // default to 8 for pointer-sized types
+                        };
+                        let total_bytes = size * elem_size;
+                        writeln!(out, "  ; optimized: memset for {} zero elements ({} bytes)",
+                                 size, total_bytes)?;
+                        writeln!(out, "  call void @llvm.memset.p0.i64(ptr %{}, i8 0, i64 {}, i1 false)",
+                                 dest.name, total_bytes)?;
+                    } else {
+                        // Original element-by-element initialization
+                        for (i, elem) in elements.iter().enumerate() {
+                            // Check if element is a local that needs loading from alloca
+                            let elem_str = if let Operand::Place(p) = elem {
+                                if local_names.contains(&p.name) {
+                                    // Load from alloca first
+                                    writeln!(out, "  %{}_arr_elem{} = load {}, ptr %{}.addr",
+                                             dest.name, i, elem_ty, p.name)?;
+                                    format!("%{}_arr_elem{}", dest.name, i)
+                                } else {
+                                    self.format_operand(elem)
+                                }
                             } else {
                                 self.format_operand(elem)
-                            }
-                        } else {
-                            self.format_operand(elem)
-                        };
-                        writeln!(out, "  %{}_e{} = getelementptr {}, ptr %{}, i32 {}",
-                                 dest.name, i, elem_ty, dest.name, i)?;
-                        writeln!(out, "  store {} {}, ptr %{}_e{}", elem_ty, elem_str, dest.name, i)?;
+                            };
+                            writeln!(out, "  %{}_e{} = getelementptr {}, ptr %{}, i32 {}",
+                                     dest.name, i, elem_ty, dest.name, i)?;
+                            writeln!(out, "  store {} {}, ptr %{}_e{}", elem_ty, elem_str, dest.name, i)?;
+                        }
                     }
                 }
             }
