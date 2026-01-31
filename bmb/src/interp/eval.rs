@@ -398,6 +398,16 @@ impl Interpreter {
                 Ok(Value::Int(size))
             }
 
+            // v0.70: Spawn expression - not supported in interpreter (requires native threads)
+            Expr::Spawn { .. } => {
+                Err(RuntimeError::todo("spawn expressions require native compilation; use 'bmb build' instead of 'bmb run'"))
+            }
+
+            // v0.73: Channel creation - not supported in interpreter (requires native threads)
+            Expr::ChannelNew { .. } => {
+                Err(RuntimeError::todo("channel expressions require native compilation; use 'bmb build' instead of 'bmb run'"))
+            }
+
             Expr::Var(name) => {
                 env.borrow()
                     .get(name)

@@ -114,6 +114,28 @@ pub enum Token {
     #[token("todo")]
     Todo,
 
+    // v0.70: Concurrency primitives
+    #[token("spawn")]
+    Spawn,
+
+    // v0.71: Mutex type for thread-safe synchronization
+    #[token("Mutex")]
+    MutexType,
+
+    // v0.72: Arc and Atomic types for shared memory concurrency
+    #[token("Arc")]
+    ArcType,
+    #[token("Atomic")]
+    AtomicType,
+
+    // v0.73: Channel types for message-passing concurrency
+    #[token("channel")]
+    ChannelKw,
+    #[token("Sender")]
+    SenderType,
+    #[token("Receiver")]
+    ReceiverType,
+
     // v0.50.6: Type aliases and refinement types
     #[token("type")]
     Type,
@@ -455,6 +477,17 @@ impl std::fmt::Display for Token {
             Token::PipePipe => write!(f, "||"),
             Token::Bang => write!(f, "!"),
             Token::Todo => write!(f, "todo"),
+            // v0.70: Concurrency primitives
+            Token::Spawn => write!(f, "spawn"),
+            // v0.71: Mutex type
+            Token::MutexType => write!(f, "Mutex"),
+            // v0.72: Arc and Atomic types
+            Token::ArcType => write!(f, "Arc"),
+            Token::AtomicType => write!(f, "Atomic"),
+            // v0.73: Channel types
+            Token::ChannelKw => write!(f, "channel"),
+            Token::SenderType => write!(f, "Sender"),
+            Token::ReceiverType => write!(f, "Receiver"),
             // v0.50.6: Type aliases
             Token::Type => write!(f, "type"),
             // v0.31: Module header tokens

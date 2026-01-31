@@ -384,6 +384,38 @@ fn test_parse_loop() {
     }
 }
 
+// v0.70: Spawn expression parsing
+#[test]
+fn test_parse_spawn() {
+    let source = r#"
+        fn test() -> i64 = {
+            let t = spawn { 42 };
+            t.join()
+        };
+    "#;
+    let prog = parse_ok(source);
+    if let Item::FnDef(f) = &prog.items[0] {
+        // The body should be a block containing spawn
+        assert!(matches!(f.body.node, Expr::Block(_)));
+    }
+}
+
+#[test]
+fn test_parse_spawn_complex() {
+    // Spawn with more complex body
+    let source = r#"
+        fn compute() -> i64 = {
+            let t = spawn {
+                let x: i64 = 10;
+                let y: i64 = 20;
+                x + y
+            };
+            t.join()
+        };
+    "#;
+    parse_ok(source);
+}
+
 #[test]
 fn test_parse_break_continue() {
     let source = r#"

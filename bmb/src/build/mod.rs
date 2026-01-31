@@ -886,11 +886,14 @@ fn link_executable(obj_path: &Path, output: &Path, verbose: bool) -> BuildResult
         // v0.100: Disable PIE to avoid PIC relocation issues
         cmd.arg("-no-pie");
         cmd.arg("-lc");
+        // v0.70: Link pthread for threading support
+        cmd.arg("-lpthread");
     }
 
     #[cfg(target_os = "macos")]
     {
         cmd.arg("-lSystem");
+        // v0.70: Link pthread for threading support (part of System on macOS)
     }
 
     let output_result = cmd.output()?;

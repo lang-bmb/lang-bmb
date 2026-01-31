@@ -1264,6 +1264,8 @@ impl<'ctx> LlvmContext<'ctx> {
                     // v0.60.20: Pointer load/store
                     MirInst::PtrLoad { dest, .. } => Some(&dest.name),
                     MirInst::PtrStore { .. } => None, // Modifies memory through pointer, not a named place
+                    // v0.73+: Concurrency and other new instructions - handled by text-based codegen
+                    _ => None,
                 };
                 if let Some(name) = dest {
                     written.insert(name.clone());
@@ -1314,6 +1316,8 @@ impl<'ctx> LlvmContext<'ctx> {
                     // v0.60.20: Pointer load/store
                     MirInst::PtrLoad { dest, .. } => Some(&dest.name),
                     MirInst::PtrStore { .. } => None, // Modifies memory through pointer
+                    // v0.73+: Concurrency and other new instructions - handled by text-based codegen
+                    _ => None,
                 };
 
                 if let Some(name) = dest {
@@ -2527,6 +2531,14 @@ impl<'ctx> LlvmContext<'ctx> {
             | MirInst::EnumVariant { .. } => {
                 return Err(CodeGenError::LlvmError(
                     "StructInit/EnumVariant instructions not yet supported in LLVM codegen".to_string(),
+                ));
+            }
+
+            // v0.73+: Concurrency and other new instructions not yet supported in inkwell codegen
+            // These are handled by the text-based LLVM IR generator (llvm_text.rs)
+            _ => {
+                return Err(CodeGenError::LlvmError(
+                    "Instruction not yet supported in inkwell codegen - use text-based codegen".to_string(),
                 ));
             }
         }

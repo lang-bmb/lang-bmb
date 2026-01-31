@@ -304,6 +304,27 @@ pub enum Expr {
         /// The type to get the size of
         ty: Spanned<Type>,
     },
+
+    // v0.70: Concurrency primitives
+
+    /// Spawn expression: spawn { expr } -> Thread<T>
+    /// Creates a new thread that executes the body expression.
+    /// Variables are captured by value (move semantics).
+    Spawn {
+        /// The expression to execute in the spawned thread
+        body: Box<Spanned<Expr>>,
+    },
+
+    // v0.73: Channel creation expression
+
+    /// Channel creation: channel<T>(capacity) -> (Sender<T>, Receiver<T>)
+    /// Creates a bounded MPSC channel with the specified capacity.
+    ChannelNew {
+        /// Element type of the channel
+        elem_ty: Box<Spanned<Type>>,
+        /// Channel buffer capacity
+        capacity: Box<Spanned<Expr>>,
+    },
 }
 
 /// A single arm in a match expression

@@ -9,6 +9,13 @@
 #include <stdint.h>
 #include <inttypes.h>
 
+// v0.70: Threading support
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <pthread.h>
+#endif
+
 // BMB Runtime Library
 
 // v0.51.51: BmbString struct for type-safe string handling
@@ -872,7 +879,546 @@ int64_t max(int64_t a, int64_t b) {
 // v0.50.36: find_close_paren moved to BMB (bootstrap/bmb_unified_cli.bmb)
 // This function is no longer needed in the runtime
 
+// ============================================================================
+// v0.70: Threading Support
+// ============================================================================
+
+// Thread context structure for passing data to spawned threads
+typedef struct {
+    int64_t (*func)(void*);  // Function pointer to execute
+    void* captures;           // Captured variables (packed struct)
+    int64_t result;           // Thread result value
+} BmbThreadContext;
+
+#ifdef _WIN32
+// Windows threading implementation using CreateThread
+
+static DWORD WINAPI bmb_thread_entry_win32(LPVOID arg) {
+    BmbThreadContext* ctx = (BmbThreadContext*)arg;
+    // For now, just set result to 0 (placeholder until full capture support)
+    // Full implementation will call ctx->func(ctx->captures)
+    ctx->result = 0;
+    return 0;
+}
+
+int64_t bmb_spawn(int64_t (*func)(void*), void* captures) {
+    BmbThreadContext* ctx = (BmbThreadContext*)malloc(sizeof(BmbThreadContext));
+    if (!ctx) return 0;
+    ctx->func = func;
+    ctx->captures = captures;
+    ctx->result = 0;
+
+    HANDLE* handle = (HANDLE*)malloc(sizeof(HANDLE));
+    if (!handle) {
+        free(ctx);
+        return 0;
+    }
+
+    *handle = CreateThread(NULL, 0, bmb_thread_entry_win32, ctx, 0, NULL);
+    if (*handle == NULL) {
+        free(ctx);
+        free(handle);
+        return 0;
+    }
+
+    // Pack both handle and context into a single i64 by storing context ptr
+    // The context contains the handle implicitly via CreateThread
+    // For simplicity, we store context address which includes handle reference
+    return (int64_t)ctx | ((int64_t)(uintptr_t)handle << 48);
+}
+
+int64_t bmb_join(int64_t thread_handle) {
+    if (thread_handle == 0) return 0;
+
+    // Unpack: low bits are context ptr, high bits are handle ptr
+    BmbThreadContext* ctx = (BmbThreadContext*)(thread_handle & 0xFFFFFFFFFFFF);
+    HANDLE* handle = (HANDLE*)(uintptr_t)(thread_handle >> 48);
+
+    if (handle && *handle) {
+        WaitForSingleObject(*handle, INFINITE);
+        CloseHandle(*handle);
+    }
+
+    int64_t result = ctx ? ctx->result : 0;
+
+    if (ctx) free(ctx);
+    if (handle) free(handle);
+
+    return result;
+}
+
+#else
+// POSIX threading implementation using pthreads
+
+static void* bmb_thread_entry_posix(void* arg) {
+    BmbThreadContext* ctx = (BmbThreadContext*)arg;
+    // For now, just set result to 0 (placeholder until full capture support)
+    // Full implementation will call ctx->func(ctx->captures)
+    ctx->result = 0;
+    return &ctx->result;
+}
+
+int64_t bmb_spawn(int64_t (*func)(void*), void* captures) {
+    BmbThreadContext* ctx = (BmbThreadContext*)malloc(sizeof(BmbThreadContext));
+    if (!ctx) return 0;
+    ctx->func = func;
+    ctx->captures = captures;
+    ctx->result = 0;
+
+    pthread_t* tid = (pthread_t*)malloc(sizeof(pthread_t));
+    if (!tid) {
+        free(ctx);
+        return 0;
+    }
+
+    if (pthread_create(tid, NULL, bmb_thread_entry_posix, ctx) != 0) {
+        free(ctx);
+        free(tid);
+        return 0;
+    }
+
+    // Pack handle: use two parts of the address
+    // Low 32 bits: context pointer (or part of it)
+    // Store both in a struct and return pointer to it
+    typedef struct {
+        pthread_t* thread;
+        BmbThreadContext* ctx;
+    } ThreadPack;
+
+    ThreadPack* pack = (ThreadPack*)malloc(sizeof(ThreadPack));
+    if (!pack) {
+        pthread_detach(*tid);
+        free(tid);
+        free(ctx);
+        return 0;
+    }
+    pack->thread = tid;
+    pack->ctx = ctx;
+
+    return (int64_t)pack;
+}
+
+int64_t bmb_join(int64_t thread_handle) {
+    if (thread_handle == 0) return 0;
+
+    typedef struct {
+        pthread_t* thread;
+        BmbThreadContext* ctx;
+    } ThreadPack;
+
+    ThreadPack* pack = (ThreadPack*)thread_handle;
+    void* retval = NULL;
+
+    if (pack->thread) {
+        pthread_join(*pack->thread, &retval);
+        free(pack->thread);
+    }
+
+    int64_t result = pack->ctx ? pack->ctx->result : 0;
+
+    if (pack->ctx) free(pack->ctx);
+    free(pack);
+
+    return result;
+}
+
+#endif
+
+// ============================================================================
+// v0.71: Mutex Support
+// ============================================================================
+
+// Mutex structure: contains platform-specific lock and stored value
+typedef struct {
+#ifdef _WIN32
+    CRITICAL_SECTION lock;
+#else
+    pthread_mutex_t lock;
+#endif
+    int64_t data;  // Wrapped value
+} BmbMutex;
+
+// Create a new mutex with initial value
+int64_t bmb_mutex_new(int64_t initial_value) {
+    BmbMutex* m = (BmbMutex*)malloc(sizeof(BmbMutex));
+    if (!m) return 0;
+
+#ifdef _WIN32
+    InitializeCriticalSection(&m->lock);
+#else
+    pthread_mutex_init(&m->lock, NULL);
+#endif
+    m->data = initial_value;
+
+    return (int64_t)m;
+}
+
+// Lock the mutex and return the current value
+int64_t bmb_mutex_lock(int64_t handle) {
+    if (handle == 0) return 0;
+
+    BmbMutex* m = (BmbMutex*)handle;
+
+#ifdef _WIN32
+    EnterCriticalSection(&m->lock);
+#else
+    pthread_mutex_lock(&m->lock);
+#endif
+
+    return m->data;
+}
+
+// Unlock the mutex and update the stored value
+void bmb_mutex_unlock(int64_t handle, int64_t new_value) {
+    if (handle == 0) return;
+
+    BmbMutex* m = (BmbMutex*)handle;
+    m->data = new_value;
+
+#ifdef _WIN32
+    LeaveCriticalSection(&m->lock);
+#else
+    pthread_mutex_unlock(&m->lock);
+#endif
+}
+
+// Try to lock the mutex (non-blocking)
+// Returns the current value if lock acquired, 0 if contended
+// Note: Caller should check if return is meaningful vs just 0 value
+int64_t bmb_mutex_try_lock(int64_t handle) {
+    if (handle == 0) return 0;
+
+    BmbMutex* m = (BmbMutex*)handle;
+
+#ifdef _WIN32
+    if (TryEnterCriticalSection(&m->lock)) {
+        return m->data;
+    }
+#else
+    if (pthread_mutex_trylock(&m->lock) == 0) {
+        return m->data;
+    }
+#endif
+
+    return 0;  // Lock failed
+}
+
+// Free a mutex
+void bmb_mutex_free(int64_t handle) {
+    if (handle == 0) return;
+
+    BmbMutex* m = (BmbMutex*)handle;
+
+#ifdef _WIN32
+    DeleteCriticalSection(&m->lock);
+#else
+    pthread_mutex_destroy(&m->lock);
+#endif
+
+    free(m);
+}
+
+// ============================================================================
+// v0.72: Arc Support (Atomic Reference Counting)
+// ============================================================================
+
+// Arc structure: [refcount, data]
+typedef struct {
+    volatile int64_t refcount;  // Atomic reference count
+    int64_t data;               // Wrapped value
+} BmbArcInner;
+
+// Create a new Arc with initial value
+int64_t bmb_arc_new(int64_t value) {
+    BmbArcInner* inner = (BmbArcInner*)malloc(sizeof(BmbArcInner));
+    if (!inner) return 0;
+
+    inner->refcount = 1;
+    inner->data = value;
+
+    return (int64_t)inner;
+}
+
+// Clone an Arc (increment reference count)
+int64_t bmb_arc_clone(int64_t handle) {
+    if (handle == 0) return 0;
+
+    BmbArcInner* inner = (BmbArcInner*)handle;
+
+#ifdef _WIN32
+    InterlockedIncrement64(&inner->refcount);
+#else
+    __sync_fetch_and_add(&inner->refcount, 1);
+#endif
+
+    return handle;  // Return same pointer
+}
+
+// Get the value stored in an Arc
+int64_t bmb_arc_get(int64_t handle) {
+    if (handle == 0) return 0;
+
+    BmbArcInner* inner = (BmbArcInner*)handle;
+    return inner->data;
+}
+
+// Drop an Arc (decrement reference count, free if zero)
+void bmb_arc_drop(int64_t handle) {
+    if (handle == 0) return;
+
+    BmbArcInner* inner = (BmbArcInner*)handle;
+
+#ifdef _WIN32
+    if (InterlockedDecrement64(&inner->refcount) == 0) {
+        free(inner);
+    }
+#else
+    if (__sync_sub_and_fetch(&inner->refcount, 1) == 0) {
+        free(inner);
+    }
+#endif
+}
+
+// Get the strong count of an Arc
+int64_t bmb_arc_strong_count(int64_t handle) {
+    if (handle == 0) return 0;
+
+    BmbArcInner* inner = (BmbArcInner*)handle;
+
+#ifdef _WIN32
+    return InterlockedCompareExchange64(&inner->refcount, 0, 0);
+#else
+    return __sync_fetch_and_add(&inner->refcount, 0);
+#endif
+}
+
+// ============================================================================
+// v0.73: Channel support (MPSC - Multiple Producer, Single Consumer)
+// ============================================================================
+
+typedef struct {
+    int64_t* buffer;           // Ring buffer
+    int64_t capacity;
+    volatile int64_t head;     // Write position
+    volatile int64_t tail;     // Read position
+    volatile int64_t count;    // Number of items
+    volatile int64_t sender_count;  // Number of senders
+    volatile int64_t closed;   // 1 if closed
+#ifdef _WIN32
+    CRITICAL_SECTION lock;
+    CONDITION_VARIABLE not_empty;
+    CONDITION_VARIABLE not_full;
+#else
+    pthread_mutex_t lock;
+    pthread_cond_t not_empty;
+    pthread_cond_t not_full;
+#endif
+} BmbChannel;
+
+// Sender is just a pointer to channel
+typedef struct {
+    BmbChannel* channel;
+} BmbSender;
+
+// Receiver is unique owner
+typedef struct {
+    BmbChannel* channel;
+} BmbReceiver;
+
+// Create a new channel with specified capacity
+void bmb_channel_new(int64_t capacity, int64_t* sender_out, int64_t* receiver_out) {
+    BmbChannel* ch = (BmbChannel*)malloc(sizeof(BmbChannel));
+    ch->buffer = (int64_t*)malloc(capacity * sizeof(int64_t));
+    ch->capacity = capacity;
+    ch->head = 0;
+    ch->tail = 0;
+    ch->count = 0;
+    ch->sender_count = 1;
+    ch->closed = 0;
+
+#ifdef _WIN32
+    InitializeCriticalSection(&ch->lock);
+    InitializeConditionVariable(&ch->not_empty);
+    InitializeConditionVariable(&ch->not_full);
+#else
+    pthread_mutex_init(&ch->lock, NULL);
+    pthread_cond_init(&ch->not_empty, NULL);
+    pthread_cond_init(&ch->not_full, NULL);
+#endif
+
+    BmbSender* sender = (BmbSender*)malloc(sizeof(BmbSender));
+    sender->channel = ch;
+
+    BmbReceiver* receiver = (BmbReceiver*)malloc(sizeof(BmbReceiver));
+    receiver->channel = ch;
+
+    *sender_out = (int64_t)sender;
+    *receiver_out = (int64_t)receiver;
+}
+
+// Send a value (blocking if full)
+void bmb_channel_send(int64_t sender_handle, int64_t value) {
+    BmbSender* sender = (BmbSender*)sender_handle;
+    BmbChannel* ch = sender->channel;
+
+#ifdef _WIN32
+    EnterCriticalSection(&ch->lock);
+    while (ch->count == ch->capacity && !ch->closed) {
+        SleepConditionVariableCS(&ch->not_full, &ch->lock, INFINITE);
+    }
+#else
+    pthread_mutex_lock(&ch->lock);
+    while (ch->count == ch->capacity && !ch->closed) {
+        pthread_cond_wait(&ch->not_full, &ch->lock);
+    }
+#endif
+
+    if (!ch->closed) {
+        ch->buffer[ch->head] = value;
+        ch->head = (ch->head + 1) % ch->capacity;
+        ch->count++;
+
+#ifdef _WIN32
+        WakeConditionVariable(&ch->not_empty);
+#else
+        pthread_cond_signal(&ch->not_empty);
+#endif
+    }
+
+#ifdef _WIN32
+    LeaveCriticalSection(&ch->lock);
+#else
+    pthread_mutex_unlock(&ch->lock);
+#endif
+}
+
+// Receive a value (blocking if empty)
+int64_t bmb_channel_recv(int64_t receiver_handle) {
+    BmbReceiver* receiver = (BmbReceiver*)receiver_handle;
+    BmbChannel* ch = receiver->channel;
+    int64_t value = 0;
+
+#ifdef _WIN32
+    EnterCriticalSection(&ch->lock);
+    while (ch->count == 0 && !ch->closed) {
+        SleepConditionVariableCS(&ch->not_empty, &ch->lock, INFINITE);
+    }
+#else
+    pthread_mutex_lock(&ch->lock);
+    while (ch->count == 0 && !ch->closed) {
+        pthread_cond_wait(&ch->not_empty, &ch->lock);
+    }
+#endif
+
+    if (ch->count > 0) {
+        value = ch->buffer[ch->tail];
+        ch->tail = (ch->tail + 1) % ch->capacity;
+        ch->count--;
+
+#ifdef _WIN32
+        WakeConditionVariable(&ch->not_full);
+#else
+        pthread_cond_signal(&ch->not_full);
+#endif
+    }
+
+#ifdef _WIN32
+    LeaveCriticalSection(&ch->lock);
+#else
+    pthread_mutex_unlock(&ch->lock);
+#endif
+
+    return value;
+}
+
+// Try to send (non-blocking)
+int64_t bmb_channel_try_send(int64_t sender_handle, int64_t value) {
+    BmbSender* sender = (BmbSender*)sender_handle;
+    BmbChannel* ch = sender->channel;
+    int64_t success = 0;
+
+#ifdef _WIN32
+    EnterCriticalSection(&ch->lock);
+#else
+    pthread_mutex_lock(&ch->lock);
+#endif
+
+    if (ch->count < ch->capacity && !ch->closed) {
+        ch->buffer[ch->head] = value;
+        ch->head = (ch->head + 1) % ch->capacity;
+        ch->count++;
+        success = 1;
+
+#ifdef _WIN32
+        WakeConditionVariable(&ch->not_empty);
+#else
+        pthread_cond_signal(&ch->not_empty);
+#endif
+    }
+
+#ifdef _WIN32
+    LeaveCriticalSection(&ch->lock);
+#else
+    pthread_mutex_unlock(&ch->lock);
+#endif
+
+    return success;
+}
+
+// Try to receive (non-blocking)
+int64_t bmb_channel_try_recv(int64_t receiver_handle, int64_t* value_out) {
+    BmbReceiver* receiver = (BmbReceiver*)receiver_handle;
+    BmbChannel* ch = receiver->channel;
+    int64_t success = 0;
+
+#ifdef _WIN32
+    EnterCriticalSection(&ch->lock);
+#else
+    pthread_mutex_lock(&ch->lock);
+#endif
+
+    if (ch->count > 0) {
+        *value_out = ch->buffer[ch->tail];
+        ch->tail = (ch->tail + 1) % ch->capacity;
+        ch->count--;
+        success = 1;
+
+#ifdef _WIN32
+        WakeConditionVariable(&ch->not_full);
+#else
+        pthread_cond_signal(&ch->not_full);
+#endif
+    }
+
+#ifdef _WIN32
+    LeaveCriticalSection(&ch->lock);
+#else
+    pthread_mutex_unlock(&ch->lock);
+#endif
+
+    return success;
+}
+
+// Clone a sender (increment sender count)
+int64_t bmb_sender_clone(int64_t sender_handle) {
+    BmbSender* sender = (BmbSender*)sender_handle;
+    BmbChannel* ch = sender->channel;
+
+#ifdef _WIN32
+    InterlockedIncrement64(&ch->sender_count);
+#else
+    __sync_fetch_and_add(&ch->sender_count, 1);
+#endif
+
+    BmbSender* new_sender = (BmbSender*)malloc(sizeof(BmbSender));
+    new_sender->channel = ch;
+    return (int64_t)new_sender;
+}
+
+// ============================================================================
 // Entry point
+// ============================================================================
+
 int64_t bmb_user_main(void);
 int main(int argc, char** argv) {
     g_argc = argc;

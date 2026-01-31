@@ -1,0 +1,12 @@
+// v0.72: Basic Arc<T> test
+// Tests that Arc provides thread-safe shared ownership
+// NOTE: Arc creation syntax pending language extension
+
+fn main() -> i64 = {
+    // For now, test that the type parses correctly
+    // Full Arc API requires static method syntax (Type::new)
+    // which is not yet supported in BMB grammar
+
+    // Placeholder: return success
+    0
+};

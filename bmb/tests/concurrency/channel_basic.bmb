@@ -1,0 +1,27 @@
+// v0.73: Basic channel test
+// Tests that channels provide message passing between threads
+
+fn main() -> i64 = {
+    // Create a channel with capacity 16
+    let ch = channel<i64>(16);
+    let tx = ch.0;  // Sender
+    let rx = ch.1;  // Receiver
+
+    // Spawn a thread that sends a value
+    let t = spawn {
+        tx.send(42);
+        0
+    };
+
+    // Receive the value
+    let val = rx.recv();
+
+    // Wait for the thread
+    let thread_result = t.join();
+
+    // Print the received value
+    let _p = println(val);
+
+    // Return 0 if correct
+    if val == 42 { 0 } else { 1 }
+};

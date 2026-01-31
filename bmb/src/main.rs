@@ -1844,6 +1844,16 @@ fn format_type(ty: &bmb::ast::Type) -> String {
         }
         // v0.51.37: Pointer type
         Type::Ptr(inner) => format!("*{}", format_type(inner)),
+        // v0.70: Thread type
+        Type::Thread(inner) => format!("Thread<{}>", format_type(inner)),
+        // v0.71: Mutex type
+        Type::Mutex(inner) => format!("Mutex<{}>", format_type(inner)),
+        // v0.72: Arc and Atomic types
+        Type::Arc(inner) => format!("Arc<{}>", format_type(inner)),
+        Type::Atomic(inner) => format!("Atomic<{}>", format_type(inner)),
+        // v0.73: Sender and Receiver types
+        Type::Sender(inner) => format!("Sender<{}>", format_type(inner)),
+        Type::Receiver(inner) => format!("Receiver<{}>", format_type(inner)),
     }
 }
 
@@ -1862,6 +1872,14 @@ fn format_expr(expr: &bmb::ast::Expr) -> String {
         Expr::Null => "null".to_string(),
         // v0.51.41: Sizeof expression
         Expr::Sizeof { ty } => format!("sizeof<{}>()", format_type(&ty.node)),
+        // v0.70: Spawn expression
+        Expr::Spawn { body } => format!("spawn {{ {} }}", format_expr(&body.node)),
+        // v0.73: Channel creation expression
+        Expr::ChannelNew { elem_ty, capacity } => format!(
+            "channel<{}>({})",
+            format_type(&elem_ty.node),
+            format_expr(&capacity.node)
+        ),
         Expr::Var(name) => name.clone(),
         Expr::Ret => "ret".to_string(),
         Expr::It => "it".to_string(),

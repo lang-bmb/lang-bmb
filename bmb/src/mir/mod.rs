@@ -297,6 +297,181 @@ pub enum MirInst {
         value: Operand,
         element_type: MirType,
     },
+
+    // v0.70: Concurrency instructions
+
+    /// Spawn a new thread: %dest = spawn(func_ptr, captures_ptr)
+    /// Creates a new thread that executes the given function with captured variables.
+    /// Returns a thread handle (i64) that can be used with ThreadJoin.
+    ThreadSpawn {
+        dest: Place,
+        /// Name of the synthetic function to execute in the spawned thread
+        func: String,
+        /// Captured variables to pass to the spawned function
+        captures: Vec<Operand>,
+    },
+
+    /// Join a thread (blocking): %dest = join(%handle)
+    /// Waits for the thread to complete and returns its result.
+    ThreadJoin {
+        dest: Option<Place>,
+        /// Thread handle returned by ThreadSpawn
+        handle: Operand,
+    },
+
+    // v0.71: Mutex instructions
+
+    /// Create a new mutex: %dest = mutex-new(%initial_value)
+    MutexNew {
+        dest: Place,
+        initial_value: Operand,
+    },
+
+    /// Lock a mutex: %guard = mutex-lock(%mutex)
+    /// Blocks until the mutex is acquired. Returns the guarded value.
+    MutexLock {
+        dest: Place,
+        mutex: Operand,
+    },
+
+    /// Unlock a mutex: mutex-unlock(%mutex, %new_value)
+    /// Releases the lock and updates the stored value.
+    MutexUnlock {
+        mutex: Operand,
+        new_value: Operand,
+    },
+
+    /// Try to lock a mutex (non-blocking): %result = mutex-try-lock(%mutex)
+    /// Returns Some(value) if lock acquired, None if contended.
+    MutexTryLock {
+        dest: Place,
+        mutex: Operand,
+    },
+
+    /// Free a mutex: mutex-free(%mutex)
+    MutexFree {
+        mutex: Operand,
+    },
+
+    // v0.72: Arc instructions
+
+    /// Create a new Arc: %dest = arc-new(%value)
+    ArcNew {
+        dest: Place,
+        value: Operand,
+    },
+
+    /// Clone an Arc: %dest = arc-clone(%arc)
+    ArcClone {
+        dest: Place,
+        arc: Operand,
+    },
+
+    /// Get value from Arc: %dest = arc-get(%arc)
+    ArcGet {
+        dest: Place,
+        arc: Operand,
+    },
+
+    /// Drop an Arc (decrement refcount): arc-drop(%arc)
+    ArcDrop {
+        arc: Operand,
+    },
+
+    /// Get strong count: %dest = arc-strong-count(%arc)
+    ArcStrongCount {
+        dest: Place,
+        arc: Operand,
+    },
+
+    // v0.72: Atomic instructions
+
+    /// Create a new Atomic: %dest = atomic-new(%value)
+    AtomicNew {
+        dest: Place,
+        value: Operand,
+    },
+
+    /// Atomic load: %dest = atomic-load(%ptr)
+    AtomicLoad {
+        dest: Place,
+        ptr: Operand,
+    },
+
+    /// Atomic store: atomic-store(%ptr, %value)
+    AtomicStore {
+        ptr: Operand,
+        value: Operand,
+    },
+
+    /// Atomic fetch-add: %dest = atomic-fetch-add(%ptr, %delta)
+    AtomicFetchAdd {
+        dest: Place,
+        ptr: Operand,
+        delta: Operand,
+    },
+
+    /// Atomic fetch-sub: %dest = atomic-fetch-sub(%ptr, %delta)
+    AtomicFetchSub {
+        dest: Place,
+        ptr: Operand,
+        delta: Operand,
+    },
+
+    /// Atomic swap: %dest = atomic-swap(%ptr, %new_value)
+    AtomicSwap {
+        dest: Place,
+        ptr: Operand,
+        new_value: Operand,
+    },
+
+    /// Atomic compare-exchange: %dest = atomic-cmpxchg(%ptr, %expected, %new_value)
+    AtomicCompareExchange {
+        dest: Place,
+        ptr: Operand,
+        expected: Operand,
+        new_value: Operand,
+    },
+
+    // v0.73: Channel instructions
+
+    /// Create a new channel: (sender, receiver) = channel-new(capacity)
+    ChannelNew {
+        sender_dest: Place,
+        receiver_dest: Place,
+        capacity: Operand,
+    },
+
+    /// Send a value on a channel: channel-send(sender, value)
+    ChannelSend {
+        sender: Operand,
+        value: Operand,
+    },
+
+    /// Receive a value from a channel: %dest = channel-recv(receiver)
+    ChannelRecv {
+        dest: Place,
+        receiver: Operand,
+    },
+
+    /// Try to send (non-blocking): %success = channel-try-send(sender, value)
+    ChannelTrySend {
+        dest: Place,
+        sender: Operand,
+        value: Operand,
+    },
+
+    /// Try to receive (non-blocking): %result = channel-try-recv(receiver)
+    ChannelTryRecv {
+        dest: Place,
+        receiver: Operand,
+    },
+
+    /// Clone a sender: %dest = sender-clone(sender)
+    SenderClone {
+        dest: Place,
+        sender: Operand,
+    },
 }
 
 /// Block terminator (control flow)
@@ -574,6 +749,8 @@ pub struct LoweringContext {
     /// v0.60.16: Loop context stack for break/continue support
     /// Each entry is (continue_label, break_label) for the enclosing loop
     pub loop_context_stack: Vec<(String, String)>,
+    /// v0.70: Counter for generating unique spawn function names
+    pub spawn_counter: usize,
 }
 
 impl LoweringContext {
@@ -610,6 +787,7 @@ impl LoweringContext {
             temp_types: HashMap::new(),
             array_element_types: HashMap::new(),
             loop_context_stack: Vec::new(),
+            spawn_counter: 0,
         }
     }
 
@@ -658,6 +836,11 @@ impl LoweringContext {
     /// Add an instruction to the current block
     pub fn push_inst(&mut self, inst: MirInst) {
         self.current_instructions.push(inst);
+    }
+
+    /// v0.70: Alias for push_inst for consistency with other MIR builders
+    pub fn emit(&mut self, inst: MirInst) {
+        self.push_inst(inst);
     }
 
     /// Finish the current block with a terminator
@@ -870,6 +1053,91 @@ fn format_mir_inst(inst: &MirInst) -> String {
         }
         MirInst::PtrStore { ptr, value, element_type } => {
             format!("ptr-store {} = {} : {}", format_operand(ptr), format_operand(value), format_mir_type(element_type))
+        }
+        // v0.70: Threading instructions
+        MirInst::ThreadSpawn { dest, func, captures } => {
+            let captures_str: Vec<_> = captures.iter().map(format_operand).collect();
+            format!("%{} = thread-spawn {}({})", dest.name, func, captures_str.join(", "))
+        }
+        MirInst::ThreadJoin { dest, handle } => {
+            if let Some(d) = dest {
+                format!("%{} = thread-join {}", d.name, format_operand(handle))
+            } else {
+                format!("thread-join {}", format_operand(handle))
+            }
+        }
+        // v0.71: Mutex instructions
+        MirInst::MutexNew { dest, initial_value } => {
+            format!("%{} = mutex-new {}", dest.name, format_operand(initial_value))
+        }
+        MirInst::MutexLock { dest, mutex } => {
+            format!("%{} = mutex-lock {}", dest.name, format_operand(mutex))
+        }
+        MirInst::MutexUnlock { mutex, new_value } => {
+            format!("mutex-unlock {} = {}", format_operand(mutex), format_operand(new_value))
+        }
+        MirInst::MutexTryLock { dest, mutex } => {
+            format!("%{} = mutex-try-lock {}", dest.name, format_operand(mutex))
+        }
+        MirInst::MutexFree { mutex } => {
+            format!("mutex-free {}", format_operand(mutex))
+        }
+        // v0.72: Arc instructions
+        MirInst::ArcNew { dest, value } => {
+            format!("%{} = arc-new {}", dest.name, format_operand(value))
+        }
+        MirInst::ArcClone { dest, arc } => {
+            format!("%{} = arc-clone {}", dest.name, format_operand(arc))
+        }
+        MirInst::ArcGet { dest, arc } => {
+            format!("%{} = arc-get {}", dest.name, format_operand(arc))
+        }
+        MirInst::ArcDrop { arc } => {
+            format!("arc-drop {}", format_operand(arc))
+        }
+        MirInst::ArcStrongCount { dest, arc } => {
+            format!("%{} = arc-strong-count {}", dest.name, format_operand(arc))
+        }
+        // v0.72: Atomic instructions
+        MirInst::AtomicNew { dest, value } => {
+            format!("%{} = atomic-new {}", dest.name, format_operand(value))
+        }
+        MirInst::AtomicLoad { dest, ptr } => {
+            format!("%{} = atomic-load {}", dest.name, format_operand(ptr))
+        }
+        MirInst::AtomicStore { ptr, value } => {
+            format!("atomic-store {} = {}", format_operand(ptr), format_operand(value))
+        }
+        MirInst::AtomicFetchAdd { dest, ptr, delta } => {
+            format!("%{} = atomic-fetch-add {} {}", dest.name, format_operand(ptr), format_operand(delta))
+        }
+        MirInst::AtomicFetchSub { dest, ptr, delta } => {
+            format!("%{} = atomic-fetch-sub {} {}", dest.name, format_operand(ptr), format_operand(delta))
+        }
+        MirInst::AtomicSwap { dest, ptr, new_value } => {
+            format!("%{} = atomic-swap {} {}", dest.name, format_operand(ptr), format_operand(new_value))
+        }
+        MirInst::AtomicCompareExchange { dest, ptr, expected, new_value } => {
+            format!("%{} = atomic-cmpxchg {} {} {}", dest.name, format_operand(ptr), format_operand(expected), format_operand(new_value))
+        }
+        // v0.73: Channel instructions
+        MirInst::ChannelNew { sender_dest, receiver_dest, capacity } => {
+            format!("(%{}, %{}) = channel-new {}", sender_dest.name, receiver_dest.name, format_operand(capacity))
+        }
+        MirInst::ChannelSend { sender, value } => {
+            format!("channel-send {} {}", format_operand(sender), format_operand(value))
+        }
+        MirInst::ChannelRecv { dest, receiver } => {
+            format!("%{} = channel-recv {}", dest.name, format_operand(receiver))
+        }
+        MirInst::ChannelTrySend { dest, sender, value } => {
+            format!("%{} = channel-try-send {} {}", dest.name, format_operand(sender), format_operand(value))
+        }
+        MirInst::ChannelTryRecv { dest, receiver } => {
+            format!("%{} = channel-try-recv {}", dest.name, format_operand(receiver))
+        }
+        MirInst::SenderClone { dest, sender } => {
+            format!("%{} = sender-clone {}", dest.name, format_operand(sender))
         }
     }
 }

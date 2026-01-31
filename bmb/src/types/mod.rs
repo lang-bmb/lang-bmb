@@ -931,7 +931,11 @@ impl TypeChecker {
                 }
             }
             // v0.51.37: Added Ptr to list of wrapper types
-            Type::Range(inner) | Type::Nullable(inner) | Type::Ptr(inner) => {
+            // v0.70: Added Thread to list of wrapper types
+            // v0.71: Added Mutex to list of wrapper types
+            // v0.72: Added Arc and Atomic to list of wrapper types
+            // v0.73: Added Sender and Receiver to list of wrapper types
+            Type::Range(inner) | Type::Nullable(inner) | Type::Ptr(inner) | Type::Thread(inner) | Type::Mutex(inner) | Type::Arc(inner) | Type::Atomic(inner) | Type::Sender(inner) | Type::Receiver(inner) => {
                 self.mark_type_names_used(inner);
             }
             Type::Refined { base, .. } => {
@@ -1329,6 +1333,23 @@ impl TypeChecker {
             Expr::Null => Ok(Type::Ptr(Box::new(Type::TypeVar("_null".to_string())))),
             // v0.51.41: Sizeof returns i64 (size in bytes)
             Expr::Sizeof { .. } => Ok(Type::I64),
+
+            // v0.70: Spawn expression - creates a thread that produces T
+            Expr::Spawn { body } => {
+                let body_type = self.infer(&body.node, body.span)?;
+                Ok(Type::Thread(Box::new(body_type)))
+            }
+
+            // v0.73: Channel creation - returns (Sender<T>, Receiver<T>)
+            Expr::ChannelNew { elem_ty, capacity } => {
+                let cap_ty = self.infer(&capacity.node, capacity.span)?;
+                self.unify(&cap_ty, &Type::I64, capacity.span)?;
+                Ok(Type::Tuple(vec![
+                    Box::new(Type::Sender(Box::new(elem_ty.node.clone()))),
+                    Box::new(Type::Receiver(Box::new(elem_ty.node.clone()))),
+                ]))
+            }
+
             Expr::Unit => Ok(Type::Unit),
 
             Expr::Ret => self.current_ret_ty.clone().ok_or_else(|| {
@@ -2694,6 +2715,385 @@ impl TypeChecker {
                 let err_ty = type_args.get(1).map(|t| t.as_ref().clone());
                 self.check_result_method(method, args, ok_ty, err_ty, span)
             }
+            // v0.70: Thread<T> methods
+            Type::Thread(inner_ty) => {
+                match method {
+                    // join() -> T - blocks until thread completes, returns result
+                    "join" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("join() takes no arguments", span));
+                        }
+                        Ok(*inner_ty.clone())
+                    }
+                    // is_alive() -> bool - checks if thread is still running
+                    "is_alive" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("is_alive() takes no arguments", span));
+                        }
+                        Ok(Type::Bool)
+                    }
+                    _ => Err(CompileError::type_error(
+                        format!("unknown method '{}' for Thread<{}>", method, inner_ty),
+                        span,
+                    )),
+                }
+            }
+            // v0.71: Mutex<T> methods
+            Type::Mutex(inner_ty) => {
+                match method {
+                    // with(fn(&mut T) -> R) -> R - RAII-based lock pattern
+                    // Acquires lock, calls closure with mutable reference, releases lock
+                    "with" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error(
+                                "with() takes exactly one closure argument",
+                                span,
+                            ));
+                        }
+                        // The closure should be fn(&mut T) -> R
+                        // For now, infer the closure's return type as the method's return type
+                        let closure_ty = self.infer(&args[0].node, args[0].span)?;
+                        match closure_ty {
+                            Type::Fn { ret, .. } => Ok(*ret),
+                            _ => Err(CompileError::type_error(
+                                "with() requires a closure argument",
+                                span,
+                            )),
+                        }
+                    }
+                    // try_lock() -> Option<&mut T> - non-blocking lock attempt
+                    "try_lock" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("try_lock() takes no arguments", span));
+                        }
+                        Ok(Type::Nullable(Box::new(Type::RefMut(inner_ty.clone()))))
+                    }
+                    _ => Err(CompileError::type_error(
+                        format!("unknown method '{}' for Mutex<{}>", method, inner_ty),
+                        span,
+                    )),
+                }
+            }
+            // v0.71: Handle Mutex<T> as Generic type (parsed as Generic { name: "Mutex", ... })
+            Type::Generic { name, type_args } if name == "Mutex" => {
+                let inner_ty = type_args.first().map(|t| t.as_ref().clone()).unwrap_or(Type::I64);
+                match method {
+                    "with" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error(
+                                "with() takes exactly one closure argument",
+                                span,
+                            ));
+                        }
+                        let closure_ty = self.infer(&args[0].node, args[0].span)?;
+                        match closure_ty {
+                            Type::Fn { ret, .. } => Ok(*ret),
+                            _ => Err(CompileError::type_error(
+                                "with() requires a closure argument",
+                                span,
+                            )),
+                        }
+                    }
+                    "try_lock" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("try_lock() takes no arguments", span));
+                        }
+                        Ok(Type::Nullable(Box::new(Type::RefMut(Box::new(inner_ty)))))
+                    }
+                    _ => Err(CompileError::type_error(
+                        format!("unknown method '{}' for Mutex<{}>", method, inner_ty),
+                        span,
+                    )),
+                }
+            }
+            // v0.72: Arc<T> methods
+            Type::Arc(inner_ty) => {
+                match method {
+                    // clone() -> Arc<T> - increments reference count
+                    "clone" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("clone() takes no arguments", span));
+                        }
+                        Ok(Type::Arc(inner_ty.clone()))
+                    }
+                    // get() -> T - returns a copy of the value (for primitives)
+                    "get" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("get() takes no arguments", span));
+                        }
+                        Ok(*inner_ty.clone())
+                    }
+                    // get_ref() -> &T - returns a reference to the value
+                    "get_ref" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("get_ref() takes no arguments", span));
+                        }
+                        Ok(Type::Ref(inner_ty.clone()))
+                    }
+                    // strong_count() -> i64 - returns the reference count
+                    "strong_count" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("strong_count() takes no arguments", span));
+                        }
+                        Ok(Type::I64)
+                    }
+                    _ => Err(CompileError::type_error(
+                        format!("unknown method '{}' for Arc<{}>", method, inner_ty),
+                        span,
+                    )),
+                }
+            }
+            // v0.72: Handle Arc<T> as Generic type
+            Type::Generic { name, type_args } if name == "Arc" => {
+                let inner_ty = type_args.first().map(|t| t.as_ref().clone()).unwrap_or(Type::I64);
+                match method {
+                    "clone" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("clone() takes no arguments", span));
+                        }
+                        Ok(Type::Generic { name: "Arc".to_string(), type_args: type_args.clone() })
+                    }
+                    "get" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("get() takes no arguments", span));
+                        }
+                        Ok(inner_ty)
+                    }
+                    "get_ref" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("get_ref() takes no arguments", span));
+                        }
+                        Ok(Type::Ref(Box::new(type_args.first().map(|t| t.as_ref().clone()).unwrap_or(Type::I64))))
+                    }
+                    "strong_count" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("strong_count() takes no arguments", span));
+                        }
+                        Ok(Type::I64)
+                    }
+                    _ => Err(CompileError::type_error(
+                        format!("unknown method '{}' for Arc<{}>", method, inner_ty),
+                        span,
+                    )),
+                }
+            }
+            // v0.72: Atomic<i64> methods
+            Type::Atomic(inner_ty) => {
+                match method {
+                    // load() -> T - atomically load the current value
+                    "load" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("load() takes no arguments", span));
+                        }
+                        Ok(*inner_ty.clone())
+                    }
+                    // store(value: T) -> () - atomically store a value
+                    "store" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("store() takes exactly one argument", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg_ty, inner_ty, args[0].span)?;
+                        Ok(Type::Unit)
+                    }
+                    // fetch_add(delta: T) -> T - atomically add and return old value
+                    "fetch_add" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("fetch_add() takes exactly one argument", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg_ty, inner_ty, args[0].span)?;
+                        Ok(*inner_ty.clone())
+                    }
+                    // fetch_sub(delta: T) -> T - atomically subtract and return old value
+                    "fetch_sub" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("fetch_sub() takes exactly one argument", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg_ty, inner_ty, args[0].span)?;
+                        Ok(*inner_ty.clone())
+                    }
+                    // swap(new: T) -> T - atomically swap and return old value
+                    "swap" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("swap() takes exactly one argument", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg_ty, inner_ty, args[0].span)?;
+                        Ok(*inner_ty.clone())
+                    }
+                    // compare_exchange(expected: T, new: T) -> T
+                    // Returns the old value (caller checks if exchange happened)
+                    "compare_exchange" => {
+                        if args.len() != 2 {
+                            return Err(CompileError::type_error("compare_exchange() takes exactly two arguments", span));
+                        }
+                        let expected_ty = self.infer(&args[0].node, args[0].span)?;
+                        let new_ty = self.infer(&args[1].node, args[1].span)?;
+                        self.unify(&expected_ty, inner_ty, args[0].span)?;
+                        self.unify(&new_ty, inner_ty, args[1].span)?;
+                        Ok(*inner_ty.clone())
+                    }
+                    _ => Err(CompileError::type_error(
+                        format!("unknown method '{}' for Atomic<{}>", method, inner_ty),
+                        span,
+                    )),
+                }
+            }
+            // v0.72: Handle Atomic<T> as Generic type
+            Type::Generic { name, type_args } if name == "Atomic" => {
+                let inner_ty = type_args.first().map(|t| t.as_ref().clone()).unwrap_or(Type::I64);
+                match method {
+                    "load" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("load() takes no arguments", span));
+                        }
+                        Ok(inner_ty)
+                    }
+                    "store" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("store() takes exactly one argument", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg_ty, &inner_ty, args[0].span)?;
+                        Ok(Type::Unit)
+                    }
+                    "fetch_add" | "fetch_sub" | "swap" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error(format!("{}() takes exactly one argument", method), span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg_ty, &inner_ty, args[0].span)?;
+                        Ok(inner_ty)
+                    }
+                    "compare_exchange" => {
+                        if args.len() != 2 {
+                            return Err(CompileError::type_error("compare_exchange() takes exactly two arguments", span));
+                        }
+                        let expected_ty = self.infer(&args[0].node, args[0].span)?;
+                        let new_ty = self.infer(&args[1].node, args[1].span)?;
+                        self.unify(&expected_ty, &inner_ty, args[0].span)?;
+                        self.unify(&new_ty, &inner_ty, args[1].span)?;
+                        Ok(inner_ty)
+                    }
+                    _ => Err(CompileError::type_error(
+                        format!("unknown method '{}' for Atomic<{}>", method, inner_ty),
+                        span,
+                    )),
+                }
+            }
+            // v0.73: Sender<T> methods
+            Type::Sender(inner_ty) => {
+                match method {
+                    // send(value: T) -> () - blocking send
+                    "send" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("send() takes exactly one argument", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg_ty, inner_ty, args[0].span)?;
+                        Ok(Type::Unit)
+                    }
+                    // try_send(value: T) -> bool - non-blocking send
+                    "try_send" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("try_send() takes exactly one argument", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg_ty, inner_ty, args[0].span)?;
+                        Ok(Type::Bool)
+                    }
+                    // clone() -> Sender<T> - clone the sender for MPSC
+                    "clone" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("clone() takes no arguments", span));
+                        }
+                        Ok(Type::Sender(inner_ty.clone()))
+                    }
+                    _ => Err(CompileError::type_error(
+                        format!("unknown method '{}' for Sender<{}>", method, inner_ty),
+                        span,
+                    )),
+                }
+            }
+            // v0.73: Handle Sender<T> as Generic type
+            Type::Generic { name, type_args } if name == "Sender" => {
+                let inner_ty = type_args.first().map(|t| t.as_ref().clone()).unwrap_or(Type::I64);
+                match method {
+                    "send" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("send() takes exactly one argument", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg_ty, &inner_ty, args[0].span)?;
+                        Ok(Type::Unit)
+                    }
+                    "try_send" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("try_send() takes exactly one argument", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg_ty, &inner_ty, args[0].span)?;
+                        Ok(Type::Bool)
+                    }
+                    "clone" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("clone() takes no arguments", span));
+                        }
+                        Ok(Type::Generic { name: "Sender".to_string(), type_args: type_args.clone() })
+                    }
+                    _ => Err(CompileError::type_error(
+                        format!("unknown method '{}' for Sender<{}>", method, inner_ty),
+                        span,
+                    )),
+                }
+            }
+            // v0.73: Receiver<T> methods
+            Type::Receiver(inner_ty) => {
+                match method {
+                    // recv() -> T - blocking receive
+                    "recv" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("recv() takes no arguments", span));
+                        }
+                        Ok(*inner_ty.clone())
+                    }
+                    // try_recv() -> T? - non-blocking receive
+                    "try_recv" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("try_recv() takes no arguments", span));
+                        }
+                        Ok(Type::Nullable(inner_ty.clone()))
+                    }
+                    _ => Err(CompileError::type_error(
+                        format!("unknown method '{}' for Receiver<{}>", method, inner_ty),
+                        span,
+                    )),
+                }
+            }
+            // v0.73: Handle Receiver<T> as Generic type
+            Type::Generic { name, type_args } if name == "Receiver" => {
+                let inner_ty = type_args.first().map(|t| t.as_ref().clone()).unwrap_or(Type::I64);
+                match method {
+                    "recv" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("recv() takes no arguments", span));
+                        }
+                        Ok(inner_ty)
+                    }
+                    "try_recv" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("try_recv() takes no arguments", span));
+                        }
+                        Ok(Type::Nullable(Box::new(inner_ty)))
+                    }
+                    _ => Err(CompileError::type_error(
+                        format!("unknown method '{}' for Receiver<{}>", method, inner_ty),
+                        span,
+                    )),
+                }
+            }
             // v0.20.1: For other types, look up trait methods
             _ => {
                 if let Some((param_types, ret_type)) = self.lookup_trait_method(receiver_ty, method) {
@@ -3826,6 +4226,16 @@ impl TypeChecker {
             }
             // v0.51.37: Pointer type
             Type::Ptr(inner) => format!("*{}", self.type_to_string(inner)),
+            // v0.70: Thread type
+            Type::Thread(inner) => format!("Thread<{}>", self.type_to_string(inner)),
+            // v0.71: Mutex type
+            Type::Mutex(inner) => format!("Mutex<{}>", self.type_to_string(inner)),
+            // v0.72: Arc and Atomic types
+            Type::Arc(inner) => format!("Arc<{}>", self.type_to_string(inner)),
+            Type::Atomic(inner) => format!("Atomic<{}>", self.type_to_string(inner)),
+            // v0.73: Sender and Receiver types
+            Type::Sender(inner) => format!("Sender<{}>", self.type_to_string(inner)),
+            Type::Receiver(inner) => format!("Receiver<{}>", self.type_to_string(inner)),
         }
     }
 

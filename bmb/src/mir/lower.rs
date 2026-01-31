@@ -397,6 +397,71 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
             Operand::Constant(Constant::Int(size))
         }
 
+        // v0.70: Spawn expression - creates a new thread
+        // For Phase 1, we use a simplified approach where the body is lowered inline
+        // and we emit a ThreadSpawn instruction that the codegen will handle.
+        // Full capture analysis and synthetic function creation will be added in Phase 2.
+        Expr::Spawn { body } => {
+            // Generate a unique name for the spawn function
+            let spawn_fn_name = format!("__spawn_fn_{}", ctx.spawn_counter);
+            ctx.spawn_counter += 1;
+
+            // Lower the body expression to get its value
+            // Note: In a full implementation, we would extract this as a separate function
+            let body_operand = lower_expr(body, ctx);
+
+            // Emit ThreadSpawn instruction
+            let dest = ctx.fresh_temp();
+            ctx.push_inst(MirInst::ThreadSpawn {
+                dest: dest.clone(),
+                func: spawn_fn_name,
+                // For now, pass the body result as the only "capture"
+                // This is a simplified model - the codegen will need to handle this specially
+                captures: vec![body_operand],
+            });
+
+            // The result is a thread handle
+            ctx.locals.insert(dest.name.clone(), MirType::I64);
+            Operand::Place(dest)
+        }
+
+        // v0.73: Channel creation expression
+        Expr::ChannelNew { capacity, .. } => {
+            // Lower the capacity expression
+            let cap_operand = lower_expr(capacity, ctx);
+
+            // Create destinations for sender and receiver
+            let sender_dest = ctx.fresh_temp();
+            let receiver_dest = ctx.fresh_temp();
+
+            // Emit ChannelNew instruction
+            ctx.push_inst(MirInst::ChannelNew {
+                sender_dest: sender_dest.clone(),
+                receiver_dest: receiver_dest.clone(),
+                capacity: cap_operand,
+            });
+
+            // Register the types
+            ctx.locals.insert(sender_dest.name.clone(), MirType::I64);
+            ctx.locals.insert(receiver_dest.name.clone(), MirType::I64);
+
+            // Return a tuple of (sender, receiver)
+            let tuple_dest = ctx.fresh_temp();
+            ctx.push_inst(MirInst::TupleInit {
+                dest: tuple_dest.clone(),
+                elements: vec![
+                    (MirType::I64, Operand::Place(sender_dest)),
+                    (MirType::I64, Operand::Place(receiver_dest)),
+                ],
+            });
+            ctx.locals.insert(tuple_dest.name.clone(), MirType::Tuple(vec![
+                Box::new(MirType::I64),
+                Box::new(MirType::I64),
+            ]));
+
+            Operand::Place(tuple_dest)
+        }
+
         Expr::Var(name) => Operand::Place(Place::new(name.clone())),
 
         Expr::Binary { left, op, right } => {
@@ -1675,6 +1740,16 @@ fn ast_type_to_mir(ty: &Type) -> MirType {
                 _ => MirType::Ptr(Box::new(ast_type_to_mir(inner)))
             }
         }
+        // v0.70: Thread type - represented as i64 handle
+        Type::Thread(_) => MirType::I64,
+        // v0.71: Mutex type - represented as i64 handle
+        Type::Mutex(_) => MirType::I64,
+        // v0.72: Arc and Atomic types - represented as i64 handle
+        Type::Arc(_) => MirType::I64,
+        Type::Atomic(_) => MirType::I64,
+        // v0.73: Sender and Receiver types - represented as i64 handle
+        Type::Sender(_) => MirType::I64,
+        Type::Receiver(_) => MirType::I64,
     }
 }
 
@@ -1760,6 +1835,16 @@ fn ast_type_to_mir_with_structs(
                 _ => MirType::Ptr(Box::new(ast_type_to_mir_with_structs(inner, struct_type_defs)))
             }
         }
+        // v0.70: Thread type - represented as i64 handle
+        Type::Thread(_) => MirType::I64,
+        // v0.71: Mutex type - represented as i64 handle
+        Type::Mutex(_) => MirType::I64,
+        // v0.72: Arc and Atomic types - represented as i64 handle
+        Type::Arc(_) => MirType::I64,
+        Type::Atomic(_) => MirType::I64,
+        // v0.73: Sender and Receiver types - represented as i64 handle
+        Type::Sender(_) => MirType::I64,
+        Type::Receiver(_) => MirType::I64,
     }
 }
 

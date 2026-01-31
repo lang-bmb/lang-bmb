@@ -109,6 +109,44 @@ pub enum Type {
     /// Used for heap-allocated data structures (trees, linked lists)
     /// Nullable by default (0 = null pointer)
     Ptr(Box<Type>),
+
+    // v0.70: Concurrency types
+
+    /// Thread handle type: Thread<T>
+    /// Represents a spawned thread that will produce a value of type T.
+    /// Use .join() to wait for completion and get the result.
+    Thread(Box<Type>),
+
+    // v0.71: Mutex type for thread-safe synchronization
+
+    /// Mutex type: Mutex<T>
+    /// Thread-safe wrapper that protects access to shared data.
+    /// Use .with(|val| { ... }) for RAII-based locking.
+    Mutex(Box<Type>),
+
+    // v0.72: Arc and Atomic types for shared memory concurrency
+
+    /// Arc type: Arc<T>
+    /// Atomic reference counted pointer for thread-safe shared ownership.
+    /// Use .clone() to share, .get() to read value.
+    Arc(Box<Type>),
+
+    /// Atomic type: Atomic<i64>
+    /// Atomic integer for lock-free concurrent access.
+    /// Supports load, store, fetch_add, fetch_sub, compare_exchange, swap.
+    Atomic(Box<Type>),
+
+    // v0.73: Channel types for message-passing concurrency
+
+    /// Sender half of a channel: Sender<T>
+    /// Use .send(value) to send messages (blocking when buffer is full).
+    /// Senders can be cloned for MPSC (multi-producer, single-consumer) pattern.
+    Sender(Box<Type>),
+
+    /// Receiver half of a channel: Receiver<T>
+    /// Use .recv() to receive messages (blocking when buffer is empty).
+    /// There is only one receiver per channel (single-consumer).
+    Receiver(Box<Type>),
 }
 
 /// Manual PartialEq implementation for Type
@@ -170,6 +208,16 @@ impl PartialEq for Type {
             (Type::Tuple(a), Type::Tuple(b)) => a == b,
             // v0.51.37: Pointer type equality
             (Type::Ptr(a), Type::Ptr(b)) => a == b,
+            // v0.70: Thread type equality
+            (Type::Thread(a), Type::Thread(b)) => a == b,
+            // v0.71: Mutex type equality
+            (Type::Mutex(a), Type::Mutex(b)) => a == b,
+            // v0.72: Arc and Atomic type equality
+            (Type::Arc(a), Type::Arc(b)) => a == b,
+            (Type::Atomic(a), Type::Atomic(b)) => a == b,
+            // v0.73: Sender and Receiver type equality
+            (Type::Sender(a), Type::Sender(b)) => a == b,
+            (Type::Receiver(a), Type::Receiver(b)) => a == b,
             _ => false,
         }
     }
@@ -277,6 +325,16 @@ impl std::fmt::Display for Type {
             }
             // v0.51.37: Pointer type display
             Type::Ptr(inner) => write!(f, "*{inner}"),
+            // v0.70: Thread type display
+            Type::Thread(inner) => write!(f, "Thread<{inner}>"),
+            // v0.71: Mutex type display
+            Type::Mutex(inner) => write!(f, "Mutex<{inner}>"),
+            // v0.72: Arc and Atomic type display
+            Type::Arc(inner) => write!(f, "Arc<{inner}>"),
+            Type::Atomic(inner) => write!(f, "Atomic<{inner}>"),
+            // v0.73: Sender and Receiver type display
+            Type::Sender(inner) => write!(f, "Sender<{inner}>"),
+            Type::Receiver(inner) => write!(f, "Receiver<{inner}>"),
         }
     }
 }

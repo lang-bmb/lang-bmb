@@ -791,6 +791,25 @@ impl CirLowerer {
                 CirExpr::Sizeof(cir_ty)
             }
 
+            // v0.70: Spawn expression - lower the body
+            Expr::Spawn { body } => {
+                let cir_body = self.lower_expr(&body.node);
+                // Represent spawn as a call (for CIR purposes)
+                CirExpr::Call {
+                    func: "__spawn".to_string(),
+                    args: vec![cir_body],
+                }
+            }
+
+            // v0.73: Channel creation expression
+            Expr::ChannelNew { capacity, .. } => {
+                let cap = self.lower_expr(&capacity.node);
+                CirExpr::Call {
+                    func: "__channel_new".to_string(),
+                    args: vec![cap],
+                }
+            }
+
             Expr::Forall { var, ty, body } => {
                 // Forall as boolean expression
                 let cir_body = self.lower_expr(&body.node);
@@ -887,6 +906,16 @@ impl CirLowerer {
                 let cir_inner = self.lower_type(inner);
                 CirType::Ptr(Box::new(cir_inner))
             }
+            // v0.70: Thread type - represented as i64 handle
+            Type::Thread(_) => CirType::I64,
+            // v0.71: Mutex type - represented as i64 handle
+            Type::Mutex(_) => CirType::I64,
+            // v0.72: Arc and Atomic types - represented as i64 handle
+            Type::Arc(_) => CirType::I64,
+            Type::Atomic(_) => CirType::I64,
+            // v0.73: Sender and Receiver types - represented as i64 handle
+            Type::Sender(_) => CirType::I64,
+            Type::Receiver(_) => CirType::I64,
             Type::Nullable(inner) => {
                 let cir_inner = self.lower_type(inner);
                 CirType::Option(Box::new(cir_inner))

@@ -150,6 +150,16 @@ impl SmtTranslator {
             Type::Tuple(_) => SmtSort::Int,
             // v0.51.37: Pointer type - use Int (addresses)
             Type::Ptr(_) => SmtSort::Int,
+            // v0.70: Thread type - use Int for handle
+            Type::Thread(_) => SmtSort::Int,
+            // v0.71: Mutex type - use Int for handle
+            Type::Mutex(_) => SmtSort::Int,
+            // v0.72: Arc and Atomic types - use Int for handle
+            Type::Arc(_) => SmtSort::Int,
+            Type::Atomic(_) => SmtSort::Int,
+            // v0.73: Sender and Receiver types - use Int for handle
+            Type::Sender(_) => SmtSort::Int,
+            Type::Receiver(_) => SmtSort::Int,
         }
     }
 
@@ -198,6 +208,14 @@ impl SmtTranslator {
 
             // v0.51.41: Sizeof - approximate as constant (SMT doesn't track memory layout)
             Expr::Sizeof { .. } => Ok("8".to_string()),
+
+            // v0.70: Spawn - threads are not relevant for SMT verification
+            // Just return a placeholder integer (thread handle)
+            Expr::Spawn { .. } => Ok("0".to_string()),
+
+            // v0.73: Channel creation - not relevant for SMT verification
+            // Just return a placeholder tuple (sender, receiver handles)
+            Expr::ChannelNew { .. } => Ok("(tuple 0 0)".to_string()),
 
             Expr::Var(name) => {
                 if self.var_types.contains_key(name) {

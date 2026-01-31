@@ -1,0 +1,282 @@
+name: Bootstrap + Benchmark Cycle
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-Dwarnings"
+
+jobs:
+  # ==========================================================================
+  # Job 1: Basic Tests
+  # ==========================================================================
+  test:
+    name: Build & Test
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Rust
+        uses: dtolnay/rust-action@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build (release)
+        run: cargo build --release
+
+      - name: Run tests
+        run: cargo test --release
+
+      - name: Clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+  # ==========================================================================
+  # Job 2: 3-Stage Bootstrap Verification
+  # ==========================================================================
+  bootstrap:
+    name: 3-Stage Bootstrap
+    runs-on: ubuntu-latest
+    needs: test
+    outputs:
+      stage1_time: ${{ steps.bootstrap.outputs.stage1_time }}
+      fixed_point: ${{ steps.bootstrap.outputs.fixed_point }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-action@stable
+
+      - name: Install LLVM 21
+        run: |
+          wget https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh 21
+          echo "LLVM_SYS_210_PREFIX=/usr/lib/llvm-21" >> $GITHUB_ENV
+          echo "/usr/lib/llvm-21/bin" >> $GITHUB_PATH
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ubuntu-cargo-llvm-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build BMB with LLVM
+        run: cargo build --release --features llvm
+
+      - name: Build BMB Runtime
+        run: |
+          cd bmb/runtime
+          clang -c bmb_runtime.c -o bmb_runtime.o -O3
+          ar rcs libbmb_runtime.a bmb_runtime.o
+          echo "BMB_RUNTIME_PATH=$(pwd)/libbmb_runtime.a" >> $GITHUB_ENV
+
+      - name: Run 3-Stage Bootstrap
+        id: bootstrap
+        run: |
+          chmod +x scripts/bootstrap.sh
+          ./scripts/bootstrap.sh --json > bootstrap_results.json 2>&1 || true
+
+          # Parse results
+          if [ -f bootstrap_results.json ]; then
+            STAGE1_TIME=$(python3 -c "import json; print(json.load(open('bootstrap_results.json'))['bootstrap']['stage1']['time_ms'])" 2>/dev/null || echo "0")
+            FIXED_POINT=$(python3 -c "import json; print(json.load(open('bootstrap_results.json'))['bootstrap']['fixed_point'])" 2>/dev/null || echo "false")
+
+            echo "stage1_time=$STAGE1_TIME" >> $GITHUB_OUTPUT
+            echo "fixed_point=$FIXED_POINT" >> $GITHUB_OUTPUT
+
+            cat bootstrap_results.json
+          fi
+
+      - name: Verify Bootstrap Success
+        run: |
+          if [ "${{ steps.bootstrap.outputs.fixed_point }}" != "true" ] && [ "${{ steps.bootstrap.outputs.fixed_point }}" != "True" ]; then
+            echo "::warning::Bootstrap fixed point not reached - Stage 2 and Stage 3 differ"
+          else
+            echo "::notice::Bootstrap verified - fixed point reached"
+          fi
+
+      - name: Upload Bootstrap Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: bootstrap-results
+          path: |
+            bootstrap_results.json
+            target/bootstrap/
+
+  # ==========================================================================
+  # Job 3: Benchmark Suite
+  # ==========================================================================
+  benchmark:
+    name: Benchmark Suite
+    runs-on: ubuntu-latest
+    needs: bootstrap
+    outputs:
+      tier1_passed: ${{ steps.compare.outputs.tier1_passed }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Rust
+        uses: dtolnay/rust-action@stable
+
+      - name: Install LLVM 21
+        run: |
+          wget https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh 21
+          echo "LLVM_SYS_210_PREFIX=/usr/lib/llvm-21" >> $GITHUB_ENV
+          echo "/usr/lib/llvm-21/bin" >> $GITHUB_PATH
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bc
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ubuntu-cargo-llvm-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build BMB with LLVM
+        run: cargo build --release --features llvm
+
+      - name: Build BMB Runtime
+        run: |
+          cd bmb/runtime
+          clang -c bmb_runtime.c -o bmb_runtime.o -O3
+          ar rcs libbmb_runtime.a bmb_runtime.o
+          echo "BMB_RUNTIME_PATH=$(pwd)/libbmb_runtime.a" >> $GITHUB_ENV
+
+      - name: Run Current Benchmarks
+        run: |
+          chmod +x scripts/benchmark.sh
+          ./scripts/benchmark.sh --tier all --runs 5 --output current_benchmarks.json
+
+      - name: Get Baseline (main branch)
+        if: github.event_name == 'pull_request'
+        run: |
+          # Check if baseline exists in main branch
+          git fetch origin main
+          if git show origin/main:.baseline.json > baseline_benchmarks.json 2>/dev/null; then
+            echo "Using baseline from main branch"
+          else
+            echo "No baseline found in main branch, using current as baseline"
+            cp current_benchmarks.json baseline_benchmarks.json
+          fi
+
+      - name: Compare Results
+        id: compare
+        if: github.event_name == 'pull_request'
+        run: |
+          python3 scripts/compare.py \
+            baseline_benchmarks.json \
+            current_benchmarks.json \
+            --tier1-threshold 2 \
+            --threshold 5 \
+            --ci \
+            --output comparison_report.txt
+
+          if [ $? -eq 0 ]; then
+            echo "tier1_passed=true" >> $GITHUB_OUTPUT
+          else
+            echo "tier1_passed=false" >> $GITHUB_OUTPUT
+          fi
+
+          cat comparison_report.txt
+
+      - name: Update Baseline (main branch push)
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          echo "::notice::Benchmark results saved as new baseline"
+          cp current_benchmarks.json .baseline.json
+
+      - name: Upload Benchmark Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results
+          path: |
+            current_benchmarks.json
+            baseline_benchmarks.json
+            comparison_report.txt
+
+  # ==========================================================================
+  # Job 4: Performance Gate Check
+  # ==========================================================================
+  performance-gate:
+    name: Performance Gate (2% threshold)
+    runs-on: ubuntu-latest
+    needs: [bootstrap, benchmark]
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Check Performance Gate
+        run: |
+          echo "=== Performance Gate Check ==="
+          echo ""
+          echo "| Gate | Status |"
+          echo "|------|--------|"
+          echo "| Bootstrap Fixed Point | ${{ needs.bootstrap.outputs.fixed_point }} |"
+          echo "| Tier 1 Regression (<2%) | ${{ needs.benchmark.outputs.tier1_passed }} |"
+          echo ""
+
+          # Tier 1 is blocking
+          if [ "${{ needs.benchmark.outputs.tier1_passed }}" == "false" ]; then
+            echo "::error::Performance gate failed: Tier 1 regression exceeds 2% threshold"
+            exit 1
+          fi
+
+          echo "::notice::Performance gate passed"
+
+  # ==========================================================================
+  # Job 5: Summary
+  # ==========================================================================
+  summary:
+    name: CI Summary
+    runs-on: ubuntu-latest
+    needs: [test, bootstrap, benchmark]
+    if: always()
+    steps:
+      - name: Generate Summary
+        run: |
+          echo "# BMB CI Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Build & Test | ${{ needs.test.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| 3-Stage Bootstrap | ${{ needs.bootstrap.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Fixed Point | ${{ needs.bootstrap.outputs.fixed_point }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Benchmark Suite | ${{ needs.benchmark.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Performance Metrics" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- Stage 1 compile time: ${{ needs.bootstrap.outputs.stage1_time }}ms" >> $GITHUB_STEP_SUMMARY

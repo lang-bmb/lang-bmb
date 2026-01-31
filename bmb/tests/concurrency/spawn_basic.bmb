@@ -1,0 +1,16 @@
+// v0.70: Basic spawn/join test
+// Tests that spawn creates a thread and join waits for it
+
+fn main() -> i64 = {
+    // Spawn a thread that returns 42
+    let t = spawn { 42 };
+
+    // Join the thread and get the result
+    let result = t.join();
+
+    // Print the result
+    let _p = println(result);
+
+    // Return 0 if correct, 1 if wrong
+    if result == 42 { 0 } else { 1 }
+};

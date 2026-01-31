@@ -972,6 +972,97 @@ fn collect_used_in_instruction(inst: &MirInst, used: &mut HashSet<String>) {
             collect_used_in_operand(ptr, used);
             collect_used_in_operand(value, used);
         }
+        // v0.70: Thread spawn/join
+        MirInst::ThreadSpawn { captures, .. } => {
+            for cap in captures {
+                collect_used_in_operand(cap, used);
+            }
+        }
+        MirInst::ThreadJoin { handle, .. } => {
+            collect_used_in_operand(handle, used);
+        }
+        // v0.71: Mutex operations
+        MirInst::MutexNew { initial_value, .. } => {
+            collect_used_in_operand(initial_value, used);
+        }
+        MirInst::MutexLock { mutex, .. } => {
+            collect_used_in_operand(mutex, used);
+        }
+        MirInst::MutexUnlock { mutex, new_value } => {
+            collect_used_in_operand(mutex, used);
+            collect_used_in_operand(new_value, used);
+        }
+        MirInst::MutexTryLock { mutex, .. } => {
+            collect_used_in_operand(mutex, used);
+        }
+        MirInst::MutexFree { mutex } => {
+            collect_used_in_operand(mutex, used);
+        }
+        // v0.72: Arc operations
+        MirInst::ArcNew { value, .. } => {
+            collect_used_in_operand(value, used);
+        }
+        MirInst::ArcClone { arc, .. } => {
+            collect_used_in_operand(arc, used);
+        }
+        MirInst::ArcGet { arc, .. } => {
+            collect_used_in_operand(arc, used);
+        }
+        MirInst::ArcDrop { arc } => {
+            collect_used_in_operand(arc, used);
+        }
+        MirInst::ArcStrongCount { arc, .. } => {
+            collect_used_in_operand(arc, used);
+        }
+        // v0.72: Atomic operations
+        MirInst::AtomicNew { value, .. } => {
+            collect_used_in_operand(value, used);
+        }
+        MirInst::AtomicLoad { ptr, .. } => {
+            collect_used_in_operand(ptr, used);
+        }
+        MirInst::AtomicStore { ptr, value } => {
+            collect_used_in_operand(ptr, used);
+            collect_used_in_operand(value, used);
+        }
+        MirInst::AtomicFetchAdd { ptr, delta, .. } => {
+            collect_used_in_operand(ptr, used);
+            collect_used_in_operand(delta, used);
+        }
+        MirInst::AtomicFetchSub { ptr, delta, .. } => {
+            collect_used_in_operand(ptr, used);
+            collect_used_in_operand(delta, used);
+        }
+        MirInst::AtomicSwap { ptr, new_value, .. } => {
+            collect_used_in_operand(ptr, used);
+            collect_used_in_operand(new_value, used);
+        }
+        MirInst::AtomicCompareExchange { ptr, expected, new_value, .. } => {
+            collect_used_in_operand(ptr, used);
+            collect_used_in_operand(expected, used);
+            collect_used_in_operand(new_value, used);
+        }
+        // v0.73: Channel operations
+        MirInst::ChannelNew { capacity, .. } => {
+            collect_used_in_operand(capacity, used);
+        }
+        MirInst::ChannelSend { sender, value } => {
+            collect_used_in_operand(sender, used);
+            collect_used_in_operand(value, used);
+        }
+        MirInst::ChannelRecv { receiver, .. } => {
+            collect_used_in_operand(receiver, used);
+        }
+        MirInst::ChannelTrySend { sender, value, .. } => {
+            collect_used_in_operand(sender, used);
+            collect_used_in_operand(value, used);
+        }
+        MirInst::ChannelTryRecv { receiver, .. } => {
+            collect_used_in_operand(receiver, used);
+        }
+        MirInst::SenderClone { sender, .. } => {
+            collect_used_in_operand(sender, used);
+        }
     }
 }
 
@@ -1010,6 +1101,36 @@ fn has_side_effects(inst: &MirInst) -> bool {
             | MirInst::PtrStore { .. }
             // v0.60.51: ArrayAlloc allocates stack memory
             | MirInst::ArrayAlloc { .. }
+            // v0.70: Thread spawn/join have side effects (create/wait for threads)
+            | MirInst::ThreadSpawn { .. }
+            | MirInst::ThreadJoin { .. }
+            // v0.71: Mutex operations have side effects (synchronization)
+            | MirInst::MutexNew { .. }
+            | MirInst::MutexLock { .. }
+            | MirInst::MutexUnlock { .. }
+            | MirInst::MutexTryLock { .. }
+            | MirInst::MutexFree { .. }
+            // v0.72: Arc operations have side effects (refcount manipulation)
+            | MirInst::ArcNew { .. }
+            | MirInst::ArcClone { .. }
+            | MirInst::ArcGet { .. }
+            | MirInst::ArcDrop { .. }
+            | MirInst::ArcStrongCount { .. }
+            // v0.72: Atomic operations have side effects (memory synchronization)
+            | MirInst::AtomicNew { .. }
+            | MirInst::AtomicLoad { .. }
+            | MirInst::AtomicStore { .. }
+            | MirInst::AtomicFetchAdd { .. }
+            | MirInst::AtomicFetchSub { .. }
+            | MirInst::AtomicSwap { .. }
+            | MirInst::AtomicCompareExchange { .. }
+            // v0.73: Channel operations have side effects (message passing)
+            | MirInst::ChannelNew { .. }
+            | MirInst::ChannelSend { .. }
+            | MirInst::ChannelRecv { .. }
+            | MirInst::ChannelTrySend { .. }
+            | MirInst::ChannelTryRecv { .. }
+            | MirInst::SenderClone { .. }
     )
 }
 
@@ -5003,7 +5124,37 @@ impl MemoryEffectAnalysis {
             | MirInst::EnumVariant { .. }
             // v0.60.20: Pointer load/store access memory
             | MirInst::PtrLoad { .. }
-            | MirInst::PtrStore { .. } => true,
+            | MirInst::PtrStore { .. }
+            // v0.70: Thread spawn/join access shared state
+            | MirInst::ThreadSpawn { .. }
+            | MirInst::ThreadJoin { .. }
+            // v0.71: Mutex operations access shared state
+            | MirInst::MutexNew { .. }
+            | MirInst::MutexLock { .. }
+            | MirInst::MutexUnlock { .. }
+            | MirInst::MutexTryLock { .. }
+            | MirInst::MutexFree { .. }
+            // v0.72: Arc operations access shared state (refcount)
+            | MirInst::ArcNew { .. }
+            | MirInst::ArcClone { .. }
+            | MirInst::ArcGet { .. }
+            | MirInst::ArcDrop { .. }
+            | MirInst::ArcStrongCount { .. }
+            // v0.72: Atomic operations access shared memory
+            | MirInst::AtomicNew { .. }
+            | MirInst::AtomicLoad { .. }
+            | MirInst::AtomicStore { .. }
+            | MirInst::AtomicFetchAdd { .. }
+            | MirInst::AtomicFetchSub { .. }
+            | MirInst::AtomicSwap { .. }
+            | MirInst::AtomicCompareExchange { .. }
+            // v0.73: Channel operations access shared memory (message queue)
+            | MirInst::ChannelNew { .. }
+            | MirInst::ChannelSend { .. }
+            | MirInst::ChannelRecv { .. }
+            | MirInst::ChannelTrySend { .. }
+            | MirInst::ChannelTryRecv { .. }
+            | MirInst::SenderClone { .. } => true,
             // Pure operations don't access memory
             MirInst::BinOp { .. }
             | MirInst::UnaryOp { .. }

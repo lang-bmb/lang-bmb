@@ -518,6 +518,16 @@ impl IndexGenerator {
             }
             // v0.51.37: Pointer type
             Type::Ptr(inner) => format!("*{}", self.format_type(inner)),
+            // v0.70: Thread type
+            Type::Thread(inner) => format!("Thread<{}>", self.format_type(inner)),
+            // v0.71: Mutex type
+            Type::Mutex(inner) => format!("Mutex<{}>", self.format_type(inner)),
+            // v0.72: Arc and Atomic types
+            Type::Arc(inner) => format!("Arc<{}>", self.format_type(inner)),
+            Type::Atomic(inner) => format!("Atomic<{}>", self.format_type(inner)),
+            // v0.73: Sender and Receiver types
+            Type::Sender(inner) => format!("Sender<{}>", self.format_type(inner)),
+            Type::Receiver(inner) => format!("Receiver<{}>", self.format_type(inner)),
         }
     }
 

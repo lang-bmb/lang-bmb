@@ -868,6 +868,211 @@ impl WasmCodeGen {
                 };
                 writeln!(out, "    {}", store_op)?;
             }
+
+            // v0.70: Threading is not supported in WASM
+            MirInst::ThreadSpawn { dest, .. } => {
+                writeln!(out, "    ;; WARNING: ThreadSpawn not supported in WASM")?;
+                writeln!(out, "    i64.const 0")?;
+                writeln!(out, "    local.set ${}", dest.name)?;
+            }
+
+            MirInst::ThreadJoin { dest, handle } => {
+                writeln!(out, "    ;; WARNING: ThreadJoin not supported in WASM")?;
+                self.emit_operand(out, handle)?;
+                writeln!(out, "    drop")?;
+                if let Some(d) = dest {
+                    writeln!(out, "    i64.const 0")?;
+                    writeln!(out, "    local.set ${}", d.name)?;
+                }
+            }
+
+            // v0.71: Mutex operations not supported in WASM
+            MirInst::MutexNew { dest, initial_value } => {
+                writeln!(out, "    ;; WARNING: MutexNew not supported in WASM")?;
+                self.emit_operand(out, initial_value)?;
+                writeln!(out, "    drop")?;
+                writeln!(out, "    i64.const 0")?;
+                writeln!(out, "    local.set ${}", dest.name)?;
+            }
+
+            MirInst::MutexLock { dest, mutex } => {
+                writeln!(out, "    ;; WARNING: MutexLock not supported in WASM")?;
+                self.emit_operand(out, mutex)?;
+                writeln!(out, "    drop")?;
+                writeln!(out, "    i64.const 0")?;
+                writeln!(out, "    local.set ${}", dest.name)?;
+            }
+
+            MirInst::MutexUnlock { mutex, new_value } => {
+                writeln!(out, "    ;; WARNING: MutexUnlock not supported in WASM")?;
+                self.emit_operand(out, mutex)?;
+                writeln!(out, "    drop")?;
+                self.emit_operand(out, new_value)?;
+                writeln!(out, "    drop")?;
+            }
+
+            MirInst::MutexTryLock { dest, mutex } => {
+                writeln!(out, "    ;; WARNING: MutexTryLock not supported in WASM")?;
+                self.emit_operand(out, mutex)?;
+                writeln!(out, "    drop")?;
+                writeln!(out, "    i64.const 0")?;
+                writeln!(out, "    local.set ${}", dest.name)?;
+            }
+
+            MirInst::MutexFree { mutex } => {
+                writeln!(out, "    ;; WARNING: MutexFree not supported in WASM")?;
+                self.emit_operand(out, mutex)?;
+                writeln!(out, "    drop")?;
+            }
+
+            // v0.72: Arc operations not supported in WASM
+            MirInst::ArcNew { dest, value } => {
+                writeln!(out, "    ;; WARNING: ArcNew not supported in WASM")?;
+                self.emit_operand(out, value)?;
+                writeln!(out, "    drop")?;
+                writeln!(out, "    i64.const 0")?;
+                writeln!(out, "    local.set ${}", dest.name)?;
+            }
+
+            MirInst::ArcClone { dest, arc } => {
+                writeln!(out, "    ;; WARNING: ArcClone not supported in WASM")?;
+                self.emit_operand(out, arc)?;
+                writeln!(out, "    drop")?;
+                writeln!(out, "    i64.const 0")?;
+                writeln!(out, "    local.set ${}", dest.name)?;
+            }
+
+            MirInst::ArcGet { dest, arc } => {
+                writeln!(out, "    ;; WARNING: ArcGet not supported in WASM")?;
+                self.emit_operand(out, arc)?;
+                writeln!(out, "    drop")?;
+                writeln!(out, "    i64.const 0")?;
+                writeln!(out, "    local.set ${}", dest.name)?;
+            }
+
+            MirInst::ArcDrop { arc } => {
+                writeln!(out, "    ;; WARNING: ArcDrop not supported in WASM")?;
+                self.emit_operand(out, arc)?;
+                writeln!(out, "    drop")?;
+            }
+
+            MirInst::ArcStrongCount { dest, arc } => {
+                writeln!(out, "    ;; WARNING: ArcStrongCount not supported in WASM")?;
+                self.emit_operand(out, arc)?;
+                writeln!(out, "    drop")?;
+                writeln!(out, "    i64.const 0")?;
+                writeln!(out, "    local.set ${}", dest.name)?;
+            }
+
+            // v0.72: Atomic operations - WASM has atomic support but we use stubs for now
+            MirInst::AtomicNew { dest, value } => {
+                writeln!(out, "    ;; WARNING: AtomicNew - using non-atomic fallback in WASM")?;
+                self.emit_operand(out, value)?;
+                writeln!(out, "    local.set ${}", dest.name)?;
+            }
+
+            MirInst::AtomicLoad { dest, ptr } => {
+                writeln!(out, "    ;; WARNING: AtomicLoad - using non-atomic fallback in WASM")?;
+                self.emit_operand(out, ptr)?;
+                writeln!(out, "    i64.load")?;
+                writeln!(out, "    local.set ${}", dest.name)?;
+            }
+
+            MirInst::AtomicStore { ptr, value } => {
+                writeln!(out, "    ;; WARNING: AtomicStore - using non-atomic fallback in WASM")?;
+                self.emit_operand(out, ptr)?;
+                self.emit_operand(out, value)?;
+                writeln!(out, "    i64.store")?;
+            }
+
+            MirInst::AtomicFetchAdd { dest, ptr, delta } => {
+                writeln!(out, "    ;; WARNING: AtomicFetchAdd - using non-atomic fallback in WASM")?;
+                self.emit_operand(out, ptr)?;
+                writeln!(out, "    i64.load")?;
+                writeln!(out, "    local.tee ${}", dest.name)?;
+                self.emit_operand(out, delta)?;
+                writeln!(out, "    i64.add")?;
+                self.emit_operand(out, ptr)?;
+                writeln!(out, "    i64.store")?;
+            }
+
+            MirInst::AtomicFetchSub { dest, ptr, delta } => {
+                writeln!(out, "    ;; WARNING: AtomicFetchSub - using non-atomic fallback in WASM")?;
+                self.emit_operand(out, ptr)?;
+                writeln!(out, "    i64.load")?;
+                writeln!(out, "    local.tee ${}", dest.name)?;
+                self.emit_operand(out, delta)?;
+                writeln!(out, "    i64.sub")?;
+                self.emit_operand(out, ptr)?;
+                writeln!(out, "    i64.store")?;
+            }
+
+            MirInst::AtomicSwap { dest, ptr, new_value } => {
+                writeln!(out, "    ;; WARNING: AtomicSwap - using non-atomic fallback in WASM")?;
+                self.emit_operand(out, ptr)?;
+                writeln!(out, "    i64.load")?;
+                writeln!(out, "    local.set ${}", dest.name)?;
+                self.emit_operand(out, ptr)?;
+                self.emit_operand(out, new_value)?;
+                writeln!(out, "    i64.store")?;
+            }
+
+            MirInst::AtomicCompareExchange { dest, ptr, expected, new_value } => {
+                writeln!(out, "    ;; WARNING: AtomicCompareExchange - using non-atomic fallback in WASM")?;
+                // Load current value
+                self.emit_operand(out, ptr)?;
+                writeln!(out, "    i64.load")?;
+                writeln!(out, "    local.tee ${}", dest.name)?;
+                // Compare with expected
+                self.emit_operand(out, expected)?;
+                writeln!(out, "    i64.eq")?;
+                writeln!(out, "    if")?;
+                // If equal, store new value
+                self.emit_operand(out, ptr)?;
+                self.emit_operand(out, new_value)?;
+                writeln!(out, "    i64.store")?;
+                writeln!(out, "    end")?;
+            }
+
+            // ================================================================
+            // v0.73: Channel operations (not supported in WASM - stubs)
+            // ================================================================
+
+            MirInst::ChannelNew { sender_dest, receiver_dest, .. } => {
+                writeln!(out, "    ;; ERROR: Channels not supported in WASM")?;
+                writeln!(out, "    i64.const 0")?;
+                writeln!(out, "    local.set ${}", sender_dest.name)?;
+                writeln!(out, "    i64.const 0")?;
+                writeln!(out, "    local.set ${}", receiver_dest.name)?;
+            }
+
+            MirInst::ChannelSend { .. } => {
+                writeln!(out, "    ;; ERROR: Channels not supported in WASM")?;
+            }
+
+            MirInst::ChannelRecv { dest, .. } => {
+                writeln!(out, "    ;; ERROR: Channels not supported in WASM")?;
+                writeln!(out, "    i64.const 0")?;
+                writeln!(out, "    local.set ${}", dest.name)?;
+            }
+
+            MirInst::ChannelTrySend { dest, .. } => {
+                writeln!(out, "    ;; ERROR: Channels not supported in WASM")?;
+                writeln!(out, "    i64.const 0")?;
+                writeln!(out, "    local.set ${}", dest.name)?;
+            }
+
+            MirInst::ChannelTryRecv { dest, .. } => {
+                writeln!(out, "    ;; ERROR: Channels not supported in WASM")?;
+                writeln!(out, "    i64.const 0")?;
+                writeln!(out, "    local.set ${}", dest.name)?;
+            }
+
+            MirInst::SenderClone { dest, .. } => {
+                writeln!(out, "    ;; ERROR: Channels not supported in WASM")?;
+                writeln!(out, "    i64.const 0")?;
+                writeln!(out, "    local.set ${}", dest.name)?;
+            }
         }
 
         Ok(())
@@ -1311,6 +1516,38 @@ impl WasmCodeGen {
             }
             // v0.60.20: Pointer store has no destination
             MirInst::PtrStore { .. } => None,
+            // v0.70: Thread spawn produces i64 handle
+            MirInst::ThreadSpawn { dest, .. } => Some((dest.name.clone(), MirType::I64)),
+            // v0.70: Thread join produces i64 (result value)
+            MirInst::ThreadJoin { dest, .. } => dest.as_ref().map(|d| (d.name.clone(), MirType::I64)),
+            // v0.71: Mutex operations produce i64 handles
+            MirInst::MutexNew { dest, .. } => Some((dest.name.clone(), MirType::I64)),
+            MirInst::MutexLock { dest, .. } => Some((dest.name.clone(), MirType::I64)),
+            MirInst::MutexUnlock { .. } => None,
+            MirInst::MutexTryLock { dest, .. } => Some((dest.name.clone(), MirType::I64)),
+            MirInst::MutexFree { .. } => None,
+            // v0.72: Arc operations produce i64 handles
+            MirInst::ArcNew { dest, .. } => Some((dest.name.clone(), MirType::I64)),
+            MirInst::ArcClone { dest, .. } => Some((dest.name.clone(), MirType::I64)),
+            MirInst::ArcGet { dest, .. } => Some((dest.name.clone(), MirType::I64)),
+            MirInst::ArcDrop { .. } => None,
+            MirInst::ArcStrongCount { dest, .. } => Some((dest.name.clone(), MirType::I64)),
+            // v0.72: Atomic operations produce i64 values
+            MirInst::AtomicNew { dest, .. } => Some((dest.name.clone(), MirType::I64)),
+            MirInst::AtomicLoad { dest, .. } => Some((dest.name.clone(), MirType::I64)),
+            MirInst::AtomicStore { .. } => None,
+            MirInst::AtomicFetchAdd { dest, .. } => Some((dest.name.clone(), MirType::I64)),
+            MirInst::AtomicFetchSub { dest, .. } => Some((dest.name.clone(), MirType::I64)),
+            MirInst::AtomicSwap { dest, .. } => Some((dest.name.clone(), MirType::I64)),
+            MirInst::AtomicCompareExchange { dest, .. } => Some((dest.name.clone(), MirType::I64)),
+            // v0.73: Channel operations - ChannelNew produces two i64 handles
+            // Note: This function only returns one dest, so ChannelNew is special-cased
+            MirInst::ChannelNew { sender_dest, .. } => Some((sender_dest.name.clone(), MirType::I64)),
+            MirInst::ChannelSend { .. } => None,
+            MirInst::ChannelRecv { dest, .. } => Some((dest.name.clone(), MirType::I64)),
+            MirInst::ChannelTrySend { dest, .. } => Some((dest.name.clone(), MirType::I64)),
+            MirInst::ChannelTryRecv { dest, .. } => Some((dest.name.clone(), MirType::I64)),
+            MirInst::SenderClone { dest, .. } => Some((dest.name.clone(), MirType::I64)),
         }
     }
 

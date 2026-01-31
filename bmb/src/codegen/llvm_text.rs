@@ -368,6 +368,43 @@ impl TextCodeGen {
         writeln!(out, "declare ptr @bmb_getenv(ptr)")?;
         writeln!(out)?;
 
+        // v0.70: Threading runtime functions
+        writeln!(out, "; Runtime declarations - Threading (v0.70)")?;
+        writeln!(out, "declare i64 @bmb_spawn(ptr, ptr) nounwind")?;
+        writeln!(out, "declare i64 @bmb_join(i64) nounwind")?;
+        writeln!(out)?;
+
+        // v0.71: Mutex runtime functions
+        writeln!(out, "; Runtime declarations - Mutex (v0.71)")?;
+        writeln!(out, "declare i64 @bmb_mutex_new(i64) nounwind")?;
+        writeln!(out, "declare i64 @bmb_mutex_lock(i64) nounwind")?;
+        writeln!(out, "declare void @bmb_mutex_unlock(i64, i64) nounwind")?;
+        writeln!(out, "declare i64 @bmb_mutex_try_lock(i64) nounwind")?;
+        writeln!(out, "declare void @bmb_mutex_free(i64) nounwind")?;
+        writeln!(out)?;
+
+        // v0.72: Arc runtime functions
+        writeln!(out, "; Runtime declarations - Arc (v0.72)")?;
+        writeln!(out, "declare i64 @bmb_arc_new(i64) nounwind")?;
+        writeln!(out, "declare i64 @bmb_arc_clone(i64) nounwind")?;
+        writeln!(out, "declare i64 @bmb_arc_get(i64) nounwind")?;
+        writeln!(out, "declare void @bmb_arc_drop(i64) nounwind")?;
+        writeln!(out, "declare i64 @bmb_arc_strong_count(i64) nounwind")?;
+        writeln!(out)?;
+
+        // v0.72: malloc for atomic allocation - moved to memory allocation section (line ~477)
+        // to avoid duplicate declaration conflict
+
+        // v0.73: Channel runtime functions
+        writeln!(out, "; Runtime declarations - Channel (v0.73)")?;
+        writeln!(out, "declare void @bmb_channel_new(i64, ptr, ptr) nounwind")?;
+        writeln!(out, "declare void @bmb_channel_send(i64, i64) nounwind")?;
+        writeln!(out, "declare i64 @bmb_channel_recv(i64) nounwind")?;
+        writeln!(out, "declare i64 @bmb_channel_try_send(i64, i64) nounwind")?;
+        writeln!(out, "declare i64 @bmb_channel_try_recv(i64, ptr) nounwind")?;
+        writeln!(out, "declare i64 @bmb_sender_clone(i64) nounwind")?;
+        writeln!(out)?;
+
         // v0.31.23: Command-line argument builtins for Phase 32.3.G CLI Independence
         writeln!(out, "; Runtime declarations - CLI arguments")?;
         writeln!(out, "declare i64 @arg_count()")?;
@@ -3899,6 +3936,309 @@ impl TextCodeGen {
 
                 // Emit store instruction
                 writeln!(out, "  store {} {}, ptr {}", elem_ty_str, val_str, ptr_val)?;
+            }
+
+            // v0.70: Thread spawn - call runtime spawn function
+            MirInst::ThreadSpawn { dest, func, captures } => {
+                // For now, just call bmb_spawn with a placeholder
+                // Full implementation with captures will be in Phase 2
+                let _ = (func, captures); // Suppress unused warnings
+                writeln!(out, "  ; TODO: ThreadSpawn {} - full implementation in Phase 2", dest.name)?;
+                writeln!(out, "  %{} = call i64 @bmb_spawn(ptr null, ptr null)", dest.name)?;
+
+                // Store to alloca if dest is a local
+                if local_names.contains(&dest.name) {
+                    writeln!(out, "  store i64 %{}, ptr %{}.addr", dest.name, dest.name)?;
+                }
+            }
+
+            // v0.70: Thread join - call runtime join function
+            MirInst::ThreadJoin { dest, handle } => {
+                let handle_val = match handle {
+                    Operand::Place(p) => {
+                        if local_names.contains(&p.name) {
+                            let load_name = self.unique_name(&format!("{}_load", p.name), name_counts);
+                            writeln!(out, "  %{} = load i64, ptr %{}.addr", load_name, p.name)?;
+                            format!("%{}", load_name)
+                        } else {
+                            format!("%{}", p.name)
+                        }
+                    }
+                    Operand::Constant(c) => self.format_constant(c),
+                };
+
+                if let Some(d) = dest {
+                    writeln!(out, "  %{} = call i64 @bmb_join(i64 {})", d.name, handle_val)?;
+
+                    // Store to alloca if dest is a local
+                    if local_names.contains(&d.name) {
+                        writeln!(out, "  store i64 %{}, ptr %{}.addr", d.name, d.name)?;
+                    }
+                } else {
+                    writeln!(out, "  call i64 @bmb_join(i64 {})", handle_val)?;
+                }
+            }
+
+            // v0.71: Mutex operations
+            MirInst::MutexNew { dest, initial_value } => {
+                let value_str = self.format_operand(initial_value);
+                writeln!(out, "  %{} = call i64 @bmb_mutex_new(i64 {})", dest.name, value_str)?;
+
+                if local_names.contains(&dest.name) {
+                    writeln!(out, "  store i64 %{}, ptr %{}.addr", dest.name, dest.name)?;
+                }
+            }
+
+            MirInst::MutexLock { dest, mutex } => {
+                let mutex_val = match mutex {
+                    Operand::Place(p) => {
+                        if local_names.contains(&p.name) {
+                            let load_name = self.unique_name(&format!("{}_load", p.name), name_counts);
+                            writeln!(out, "  %{} = load i64, ptr %{}.addr", load_name, p.name)?;
+                            format!("%{}", load_name)
+                        } else {
+                            format!("%{}", p.name)
+                        }
+                    }
+                    Operand::Constant(c) => self.format_constant(c),
+                };
+
+                writeln!(out, "  %{} = call i64 @bmb_mutex_lock(i64 {})", dest.name, mutex_val)?;
+
+                if local_names.contains(&dest.name) {
+                    writeln!(out, "  store i64 %{}, ptr %{}.addr", dest.name, dest.name)?;
+                }
+            }
+
+            MirInst::MutexUnlock { mutex, new_value } => {
+                let mutex_val = match mutex {
+                    Operand::Place(p) => {
+                        if local_names.contains(&p.name) {
+                            let load_name = self.unique_name(&format!("{}_load", p.name), name_counts);
+                            writeln!(out, "  %{} = load i64, ptr %{}.addr", load_name, p.name)?;
+                            format!("%{}", load_name)
+                        } else {
+                            format!("%{}", p.name)
+                        }
+                    }
+                    Operand::Constant(c) => self.format_constant(c),
+                };
+                let value_str = self.format_operand(new_value);
+
+                writeln!(out, "  call void @bmb_mutex_unlock(i64 {}, i64 {})", mutex_val, value_str)?;
+            }
+
+            MirInst::MutexTryLock { dest, mutex } => {
+                let mutex_val = match mutex {
+                    Operand::Place(p) => {
+                        if local_names.contains(&p.name) {
+                            let load_name = self.unique_name(&format!("{}_load", p.name), name_counts);
+                            writeln!(out, "  %{} = load i64, ptr %{}.addr", load_name, p.name)?;
+                            format!("%{}", load_name)
+                        } else {
+                            format!("%{}", p.name)
+                        }
+                    }
+                    Operand::Constant(c) => self.format_constant(c),
+                };
+
+                writeln!(out, "  %{} = call i64 @bmb_mutex_try_lock(i64 {})", dest.name, mutex_val)?;
+
+                if local_names.contains(&dest.name) {
+                    writeln!(out, "  store i64 %{}, ptr %{}.addr", dest.name, dest.name)?;
+                }
+            }
+
+            MirInst::MutexFree { mutex } => {
+                let mutex_val = match mutex {
+                    Operand::Place(p) => {
+                        if local_names.contains(&p.name) {
+                            let load_name = self.unique_name(&format!("{}_load", p.name), name_counts);
+                            writeln!(out, "  %{} = load i64, ptr %{}.addr", load_name, p.name)?;
+                            format!("%{}", load_name)
+                        } else {
+                            format!("%{}", p.name)
+                        }
+                    }
+                    Operand::Constant(c) => self.format_constant(c),
+                };
+
+                writeln!(out, "  call void @bmb_mutex_free(i64 {})", mutex_val)?;
+            }
+
+            // v0.72: Arc operations
+            MirInst::ArcNew { dest, value } => {
+                let value_str = self.format_operand(value);
+                writeln!(out, "  %{} = call i64 @bmb_arc_new(i64 {})", dest.name, value_str)?;
+                if local_names.contains(&dest.name) {
+                    writeln!(out, "  store i64 %{}, ptr %{}.addr", dest.name, dest.name)?;
+                }
+            }
+
+            MirInst::ArcClone { dest, arc } => {
+                let arc_val = self.format_operand(arc);
+                writeln!(out, "  %{} = call i64 @bmb_arc_clone(i64 {})", dest.name, arc_val)?;
+                if local_names.contains(&dest.name) {
+                    writeln!(out, "  store i64 %{}, ptr %{}.addr", dest.name, dest.name)?;
+                }
+            }
+
+            MirInst::ArcGet { dest, arc } => {
+                let arc_val = self.format_operand(arc);
+                writeln!(out, "  %{} = call i64 @bmb_arc_get(i64 {})", dest.name, arc_val)?;
+                if local_names.contains(&dest.name) {
+                    writeln!(out, "  store i64 %{}, ptr %{}.addr", dest.name, dest.name)?;
+                }
+            }
+
+            MirInst::ArcDrop { arc } => {
+                let arc_val = self.format_operand(arc);
+                writeln!(out, "  call void @bmb_arc_drop(i64 {})", arc_val)?;
+            }
+
+            MirInst::ArcStrongCount { dest, arc } => {
+                let arc_val = self.format_operand(arc);
+                writeln!(out, "  %{} = call i64 @bmb_arc_strong_count(i64 {})", dest.name, arc_val)?;
+                if local_names.contains(&dest.name) {
+                    writeln!(out, "  store i64 %{}, ptr %{}.addr", dest.name, dest.name)?;
+                }
+            }
+
+            // v0.72: Atomic operations - using LLVM atomic intrinsics for optimal codegen
+            MirInst::AtomicNew { dest, value } => {
+                // Allocate an i64 on the heap for the atomic value
+                let value_str = self.format_operand(value);
+                writeln!(out, "  %{}_ptr = call ptr @malloc(i64 8)", dest.name)?;
+                writeln!(out, "  store atomic i64 {}, ptr %{}_ptr seq_cst, align 8", value_str, dest.name)?;
+                writeln!(out, "  %{} = ptrtoint ptr %{}_ptr to i64", dest.name, dest.name)?;
+                if local_names.contains(&dest.name) {
+                    writeln!(out, "  store i64 %{}, ptr %{}.addr", dest.name, dest.name)?;
+                }
+            }
+
+            MirInst::AtomicLoad { dest, ptr } => {
+                let ptr_val = self.format_operand(ptr);
+                writeln!(out, "  %{}_ptr = inttoptr i64 {} to ptr", dest.name, ptr_val)?;
+                writeln!(out, "  %{} = load atomic i64, ptr %{}_ptr seq_cst, align 8", dest.name, dest.name)?;
+                if local_names.contains(&dest.name) {
+                    writeln!(out, "  store i64 %{}, ptr %{}.addr", dest.name, dest.name)?;
+                }
+            }
+
+            MirInst::AtomicStore { ptr, value } => {
+                let ptr_val = self.format_operand(ptr);
+                let value_str = self.format_operand(value);
+                let store_ptr_name = self.unique_name("atomic_store_ptr", name_counts);
+                writeln!(out, "  %{} = inttoptr i64 {} to ptr", store_ptr_name, ptr_val)?;
+                writeln!(out, "  store atomic i64 {}, ptr %{} seq_cst, align 8", value_str, store_ptr_name)?;
+            }
+
+            MirInst::AtomicFetchAdd { dest, ptr, delta } => {
+                let ptr_val = self.format_operand(ptr);
+                let delta_str = self.format_operand(delta);
+                writeln!(out, "  %{}_ptr = inttoptr i64 {} to ptr", dest.name, ptr_val)?;
+                writeln!(out, "  %{} = atomicrmw add ptr %{}_ptr, i64 {} seq_cst, align 8", dest.name, dest.name, delta_str)?;
+                if local_names.contains(&dest.name) {
+                    writeln!(out, "  store i64 %{}, ptr %{}.addr", dest.name, dest.name)?;
+                }
+            }
+
+            MirInst::AtomicFetchSub { dest, ptr, delta } => {
+                let ptr_val = self.format_operand(ptr);
+                let delta_str = self.format_operand(delta);
+                writeln!(out, "  %{}_ptr = inttoptr i64 {} to ptr", dest.name, ptr_val)?;
+                writeln!(out, "  %{} = atomicrmw sub ptr %{}_ptr, i64 {} seq_cst, align 8", dest.name, dest.name, delta_str)?;
+                if local_names.contains(&dest.name) {
+                    writeln!(out, "  store i64 %{}, ptr %{}.addr", dest.name, dest.name)?;
+                }
+            }
+
+            MirInst::AtomicSwap { dest, ptr, new_value } => {
+                let ptr_val = self.format_operand(ptr);
+                let new_val_str = self.format_operand(new_value);
+                writeln!(out, "  %{}_ptr = inttoptr i64 {} to ptr", dest.name, ptr_val)?;
+                writeln!(out, "  %{} = atomicrmw xchg ptr %{}_ptr, i64 {} seq_cst, align 8", dest.name, dest.name, new_val_str)?;
+                if local_names.contains(&dest.name) {
+                    writeln!(out, "  store i64 %{}, ptr %{}.addr", dest.name, dest.name)?;
+                }
+            }
+
+            MirInst::AtomicCompareExchange { dest, ptr, expected, new_value } => {
+                let ptr_val = self.format_operand(ptr);
+                let expected_str = self.format_operand(expected);
+                let new_val_str = self.format_operand(new_value);
+                writeln!(out, "  %{}_ptr = inttoptr i64 {} to ptr", dest.name, ptr_val)?;
+                writeln!(out, "  %{}_result = cmpxchg ptr %{}_ptr, i64 {}, i64 {} seq_cst seq_cst, align 8", dest.name, dest.name, expected_str, new_val_str)?;
+                writeln!(out, "  %{} = extractvalue {{ i64, i1 }} %{}_result, 0", dest.name, dest.name)?;
+                if local_names.contains(&dest.name) {
+                    writeln!(out, "  store i64 %{}, ptr %{}.addr", dest.name, dest.name)?;
+                }
+            }
+
+            // ================================================================
+            // v0.73: Channel operations
+            // ================================================================
+
+            MirInst::ChannelNew { sender_dest, receiver_dest, capacity } => {
+                let cap_val = self.format_operand(capacity);
+                // Call bmb_channel_new(capacity, &sender, &receiver)
+                // Allocate temps for sender/receiver
+                writeln!(out, "  %{}_alloc = alloca i64, align 8", sender_dest.name)?;
+                writeln!(out, "  %{}_alloc = alloca i64, align 8", receiver_dest.name)?;
+                writeln!(out, "  call void @bmb_channel_new(i64 {}, ptr %{}_alloc, ptr %{}_alloc)",
+                    cap_val, sender_dest.name, receiver_dest.name)?;
+                writeln!(out, "  %{} = load i64, ptr %{}_alloc", sender_dest.name, sender_dest.name)?;
+                writeln!(out, "  %{} = load i64, ptr %{}_alloc", receiver_dest.name, receiver_dest.name)?;
+                if local_names.contains(&sender_dest.name) {
+                    writeln!(out, "  store i64 %{}, ptr %{}.addr", sender_dest.name, sender_dest.name)?;
+                }
+                if local_names.contains(&receiver_dest.name) {
+                    writeln!(out, "  store i64 %{}, ptr %{}.addr", receiver_dest.name, receiver_dest.name)?;
+                }
+            }
+
+            MirInst::ChannelSend { sender, value } => {
+                let sender_val = self.format_operand(sender);
+                let val = self.format_operand(value);
+                writeln!(out, "  call void @bmb_channel_send(i64 {}, i64 {})", sender_val, val)?;
+            }
+
+            MirInst::ChannelRecv { dest, receiver } => {
+                let receiver_val = self.format_operand(receiver);
+                writeln!(out, "  %{} = call i64 @bmb_channel_recv(i64 {})", dest.name, receiver_val)?;
+                if local_names.contains(&dest.name) {
+                    writeln!(out, "  store i64 %{}, ptr %{}.addr", dest.name, dest.name)?;
+                }
+            }
+
+            MirInst::ChannelTrySend { dest, sender, value } => {
+                let sender_val = self.format_operand(sender);
+                let val = self.format_operand(value);
+                writeln!(out, "  %{} = call i64 @bmb_channel_try_send(i64 {}, i64 {})", dest.name, sender_val, val)?;
+                if local_names.contains(&dest.name) {
+                    writeln!(out, "  store i64 %{}, ptr %{}.addr", dest.name, dest.name)?;
+                }
+            }
+
+            MirInst::ChannelTryRecv { dest, receiver } => {
+                let receiver_val = self.format_operand(receiver);
+                // try_recv returns value via out param, success as return
+                writeln!(out, "  %{}_alloc = alloca i64, align 8", dest.name)?;
+                writeln!(out, "  %{}_success = call i64 @bmb_channel_try_recv(i64 {}, ptr %{}_alloc)",
+                    dest.name, receiver_val, dest.name)?;
+                // For now, just load the value (caller should check success)
+                writeln!(out, "  %{} = load i64, ptr %{}_alloc", dest.name, dest.name)?;
+                if local_names.contains(&dest.name) {
+                    writeln!(out, "  store i64 %{}, ptr %{}.addr", dest.name, dest.name)?;
+                }
+            }
+
+            MirInst::SenderClone { dest, sender } => {
+                let sender_val = self.format_operand(sender);
+                writeln!(out, "  %{} = call i64 @bmb_sender_clone(i64 {})", dest.name, sender_val)?;
+                if local_names.contains(&dest.name) {
+                    writeln!(out, "  store i64 %{}, ptr %{}.addr", dest.name, dest.name)?;
+                }
             }
         }
 

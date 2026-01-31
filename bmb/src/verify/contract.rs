@@ -446,9 +446,18 @@ impl ContractVerifier {
             // Leaf expressions - no recursion needed
             // v0.51.40: Added Expr::Null
             // v0.51.41: Added Expr::Sizeof
+            // v0.70: Added Expr::Spawn (body is handled recursively below)
             Expr::IntLit(_) | Expr::FloatLit(_) | Expr::BoolLit(_) | Expr::StringLit(_)
             | Expr::CharLit(_) | Expr::Var(_) | Expr::Ret | Expr::Unit | Expr::It
             | Expr::Continue | Expr::Todo { .. } | Expr::Null | Expr::Sizeof { .. } => {}
+            // v0.70: Spawn expression - check body for conflicts
+            Expr::Spawn { body } => {
+                self.check_expr_for_conflicts(&body.node, function_index, report);
+            }
+            // v0.73: Channel creation - check capacity expression
+            Expr::ChannelNew { capacity, .. } => {
+                self.check_expr_for_conflicts(&capacity.node, function_index, report);
+            }
         }
     }
 

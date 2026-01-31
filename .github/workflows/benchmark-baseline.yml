@@ -1,0 +1,85 @@
+name: Update Benchmark Baseline
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'bmb/src/**'
+      - 'ecosystem/benchmark-bmb/**'
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  update-baseline:
+    name: Update Benchmark Baseline
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Rust
+        uses: dtolnay/rust-action@stable
+
+      - name: Install LLVM 21
+        run: |
+          wget https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh 21
+          echo "LLVM_SYS_210_PREFIX=/usr/lib/llvm-21" >> $GITHUB_ENV
+          echo "/usr/lib/llvm-21/bin" >> $GITHUB_PATH
+
+      - name: Install dependencies
+        run: sudo apt-get install -y bc
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ubuntu-cargo-llvm-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build BMB with LLVM
+        run: cargo build --release --features llvm
+
+      - name: Build BMB Runtime
+        run: |
+          cd bmb/runtime
+          clang -c bmb_runtime.c -o bmb_runtime.o -O3
+          ar rcs libbmb_runtime.a bmb_runtime.o
+          echo "BMB_RUNTIME_PATH=$(pwd)/libbmb_runtime.a" >> $GITHUB_ENV
+
+      - name: Run Benchmarks
+        run: |
+          chmod +x scripts/benchmark.sh
+          ./scripts/benchmark.sh --tier all --runs 10 --output .baseline.json
+
+      - name: Create Baseline Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: baseline-${{ github.sha }}
+          path: .baseline.json
+          retention-days: 90
+
+      - name: Store Baseline in Cache
+        uses: actions/cache/save@v4
+        with:
+          path: .baseline.json
+          key: baseline-${{ github.sha }}
+
+      - name: Summary
+        run: |
+          echo "# Benchmark Baseline Updated" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Commit: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Benchmark Results" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`json" >> $GITHUB_STEP_SUMMARY
+          cat .baseline.json >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY

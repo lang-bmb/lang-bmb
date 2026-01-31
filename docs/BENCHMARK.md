@@ -64,10 +64,14 @@ BMB includes a comprehensive benchmark suite comparing performance against C (-O
 ## Running Benchmarks
 
 ```bash
-# Build compiler
+# Using verification scripts (recommended)
+./scripts/benchmark.sh --tier 1       # Run Tier 1 benchmarks
+./scripts/benchmark.sh --tier all     # Run all tiers
+./scripts/benchmark.sh --list         # List available benchmarks
+
+# Manual build and run
 cargo build --release --features llvm --target x86_64-pc-windows-gnu
 
-# Run individual benchmark
 ./target/x86_64-pc-windows-gnu/release/bmb build \
     ecosystem/benchmark-bmb/benches/compute/fibonacci/bmb/main.bmb \
     -o fib.exe
@@ -78,6 +82,8 @@ gcc -O3 -march=native -o fib_c.exe \
     ecosystem/benchmark-bmb/benches/compute/fibonacci/c/main.c
 ./fib_c.exe
 ```
+
+See `docs/BOOTSTRAP_BENCHMARK.md` for CI/CD integration and regression detection.
 
 ## Benchmark Categories
 
