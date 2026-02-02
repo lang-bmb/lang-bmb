@@ -1,0 +1,177 @@
+// ============================================================================
+// Bootstrap Compiler Bug Fix Tests
+// Version: v0.60.218
+//
+// This file tests specific bug fixes in the bootstrap compiler:
+//   1. Call argument collection (v0.60.211)
+//   2. Variable scoping across branches (v0.60.212)
+// ============================================================================
+
+// ============================================================================
+// CATEGORY 1: Call Argument Collection Tests
+//
+// BUG (v0.60.210): step_call_arg used build_args_str(first_temp, cur_temp)
+// which included ALL intermediate temps as call arguments, not just actual args.
+//
+// FIX (v0.60.211): Track actual arg result temps explicitly in work item field 4
+// ============================================================================
+
+fn add2(a: i64, b: i64) -> i64 = a + b;
+fn add3(a: i64, b: i64, c: i64) -> i64 = a + b + c;
+fn mul2(a: i64, b: i64) -> i64 = a * b;
+
+// Test: Simple call with literal args
+fn test_call_literals() -> i64 =
+    add2(1, 2);
+
+// Test: Call with expression args (generates intermediate temps)
+fn test_call_expressions() -> i64 =
+    add2(1 + 2, 3 + 4);  // Should be add2(3, 7) = 10
+
+// Test: Call with nested calls
+fn test_call_nested() -> i64 =
+    add2(add2(1, 2), add2(3, 4));  // add2(3, 7) = 10
+
+// Test: Multiple args with complex expressions
+fn test_call_complex() -> i64 =
+    add3(1 * 2, 3 + 4, 5 - 1);  // add3(2, 7, 4) = 13
+
+// Test: Chained calls
+fn test_call_chained() -> i64 =
+    mul2(add2(1, 2), add2(3, 4));  // mul2(3, 7) = 21
+
+// Test: Call inside if expression (tests arg collection in branches)
+fn test_call_in_branch(x: i64) -> i64 =
+    if x > 0 {
+        add2(x, x)
+    } else {
+        add2(0 - x, 0 - x)
+    };
+
+// ============================================================================
+// CATEGORY 2: Variable Scoping Tests
+//
+// BUG (v0.60.211): lookup_mapping_at returned FIRST match instead of LAST
+// This caused inner variable bindings to be overshadowed by outer ones.
+//
+// FIX (v0.60.212): Changed to return LAST match (most recent definition)
+// ============================================================================
+
+// Test: Simple shadowing in let
+fn test_shadow_simple() -> i64 =
+    let x = 10;
+    let x = 20;  // shadows outer x
+    x;  // should be 20
+
+// Test: Shadowing with different values
+fn test_shadow_different() -> i64 =
+    let a = 1;
+    let b = 2;
+    let a = 3;  // shadows first a
+    a + b;  // should be 3 + 2 = 5
+
+// Test: Shadowing in nested lets
+// Note: In BMB, let inside parentheses still affects outer scope
+fn test_shadow_nested() -> i64 =
+    let x = 10;
+    let y = (let x = 20; x);  // x is now 20 in same scope
+    x + y;  // should be 20 + 20 = 40
+
+// Test: Variable scoping across if branches
+fn test_scope_branch(cond: bool) -> i64 =
+    let x = 5;
+    let result = if cond {
+        let x = 10;  // shadows in then branch only
+        x
+    } else {
+        x  // outer x
+    };
+    result;
+
+// Test: Multiple levels of shadowing
+fn test_shadow_multi() -> i64 =
+    let x = 1;
+    let x = x + 1;  // x = 2
+    let x = x + 1;  // x = 3
+    let x = x + 1;  // x = 4
+    x;
+
+// Test: Shadowing with expressions
+fn test_shadow_expr() -> i64 =
+    let a = 10;
+    let b = a + 5;  // b = 15
+    let a = b + 5;  // a = 20 (shadows old a)
+    a + b;  // should be 20 + 15 = 35
+
+// ============================================================================
+// CATEGORY 3: Combined Tests (Call Args + Scoping)
+// ============================================================================
+
+// Test: Call with shadowed variables
+fn test_call_shadowed() -> i64 =
+    let x = 10;
+    let x = 20;
+    add2(x, x);  // should use shadowed x = 20, result = 40
+
+// Test: Nested calls with shadowed variables
+fn test_nested_call_shadow() -> i64 =
+    let a = 5;
+    let b = add2(a, a);  // b = 10
+    let a = 10;  // shadow a
+    add2(a, b);  // add2(10, 10) = 20
+
+// Test: Complex expression with shadowing
+fn test_complex_shadow() -> i64 =
+    let x = 1;
+    let y = x + 1;  // y = 2
+    let x = y + 1;  // x = 3 (shadows)
+    let z = x + y;  // z = 5
+    add3(x, y, z);  // add3(3, 2, 5) = 10
+
+// ============================================================================
+// Test Runner
+// ============================================================================
+
+fn run_call_tests() -> i64 =
+    let t1 = if test_call_literals() == 3 { 1 } else { 0 };
+    let t2 = if test_call_expressions() == 10 { 1 } else { 0 };
+    let t3 = if test_call_nested() == 10 { 1 } else { 0 };
+    let t4 = if test_call_complex() == 13 { 1 } else { 0 };
+    let t5 = if test_call_chained() == 21 { 1 } else { 0 };
+    let t6 = if test_call_in_branch(5) == 10 { 1 } else { 0 };
+    let t7 = if test_call_in_branch(0 - 3) == 6 { 1 } else { 0 };
+    t1 + t2 + t3 + t4 + t5 + t6 + t7;
+
+fn run_scope_tests() -> i64 =
+    let t1 = if test_shadow_simple() == 20 { 1 } else { 0 };
+    let t2 = if test_shadow_different() == 5 { 1 } else { 0 };
+    let t3 = if test_shadow_nested() == 40 { 1 } else { 0 };
+    let t4 = if test_scope_branch(true) == 10 { 1 } else { 0 };
+    let t5 = if test_scope_branch(false) == 5 { 1 } else { 0 };
+    let t6 = if test_shadow_multi() == 4 { 1 } else { 0 };
+    let t7 = if test_shadow_expr() == 35 { 1 } else { 0 };
+    t1 + t2 + t3 + t4 + t5 + t6 + t7;
+
+fn run_combined_tests() -> i64 =
+    let t1 = if test_call_shadowed() == 40 { 1 } else { 0 };
+    let t2 = if test_nested_call_shadow() == 20 { 1 } else { 0 };
+    let t3 = if test_complex_shadow() == 10 { 1 } else { 0 };
+    t1 + t2 + t3;
+
+fn main() -> i64 =
+    let start = println(777);
+
+    let call_tests = run_call_tests();
+    let s1 = println(call_tests);  // Expected: 7
+
+    let scope_tests = run_scope_tests();
+    let s2 = println(scope_tests);  // Expected: 7
+
+    let combined = run_combined_tests();
+    let s3 = println(combined);  // Expected: 3
+
+    let total = call_tests + scope_tests + combined;
+    let s4 = println(total);  // Expected: 17
+
+    let end = println(999);
+    total;

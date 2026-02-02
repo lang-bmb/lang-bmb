@@ -1,0 +1,269 @@
+// ============================================================================
+// PHI Node Pattern Tests for Bootstrap Compiler
+// Version: v0.60.218
+//
+// This file tests various control flow patterns that generate PHI nodes.
+// It serves as a regression test suite for the bootstrap compiler's PHI
+// node exit label computation.
+//
+// Test Categories:
+//   - Simple branches (baseline)
+//   - Nested ifs (currently working)
+//   - Else-if chains (currently working)
+//   - Sequential ifs with lets (currently FAILING in Stage 2)
+//   - Complex mixed patterns
+// ============================================================================
+
+// ============================================================================
+// CATEGORY 1: Simple Branches (Baseline - Should Always Work)
+// ============================================================================
+
+// Simple if-else with immediate values
+fn simple_if_else(x: i64) -> i64 =
+    if x > 0 { 1 } else { 0 };
+
+// Simple if-else with expressions
+fn simple_if_expr(x: i64, y: i64) -> i64 =
+    if x > y { x - y } else { y - x };
+
+// Boolean condition in if
+fn simple_bool_if(cond: bool) -> i64 =
+    if cond { 100 } else { 200 };
+
+// ============================================================================
+// CATEGORY 2: Nested Ifs (Currently Working)
+// ============================================================================
+
+// Basic nested if - inner if is the entire then branch
+fn nested_basic(x: i64) -> i64 =
+    if x == 1 {
+        if x > 0 { 100 } else { 0 }
+    } else { 0 };
+
+// Triple nested ifs
+fn nested_triple(x: i64) -> i64 =
+    if x > 0 {
+        if x > 5 {
+            if x > 10 { 300 } else { 200 }
+        } else { 100 }
+    } else { 0 };
+
+// Nested in both branches
+fn nested_both(x: i64) -> i64 =
+    if x == 0 {
+        if x >= 0 { 1 } else { 2 }
+    } else {
+        if x > 0 { 3 } else { 4 }
+    };
+
+// ============================================================================
+// CATEGORY 3: Else-If Chains (Currently Working)
+// ============================================================================
+
+// Simple else-if chain
+fn elseif_simple(x: i64) -> i64 =
+    if x == 0 { 0 }
+    else if x == 1 { 1 }
+    else { 99 };
+
+// Longer else-if chain
+fn elseif_chain(x: i64) -> i64 =
+    if x == 0 { 0 }
+    else if x == 1 { 1 }
+    else if x == 2 { 2 }
+    else if x == 3 { 3 }
+    else { 99 };
+
+// Else-if with expressions
+fn elseif_expr(x: i64) -> i64 =
+    if x < 0 { 0 - x }
+    else if x == 0 { 0 }
+    else { x };
+
+// ============================================================================
+// CATEGORY 4: Sequential Ifs with Lets (FAILING in Stage 2)
+// ============================================================================
+
+// KNOWN BUG: This pattern fails due to PHI exit label mismatch
+// The issue: After merge_1 (for inner if1), code continues in merge_1
+// Then if2 creates merge_2 inside merge_1
+// But the exit from then_0 should be from merge_2, not merge_1
+fn sequential_lets(x: i64) -> i64 =
+    if x == 1 {
+        let a = if x > 0 { 100 } else { 0 };
+        let b = if x > 0 { 200 } else { 0 };
+        a + b
+    } else { 0 };
+
+// Simpler case: single let with if value, then more code
+fn let_if_then_code(x: i64) -> i64 =
+    if x == 1 {
+        let a = if x > 0 { 100 } else { 0 };
+        a + 50
+    } else { 0 };
+
+// Three sequential let-ifs
+fn sequential_three(x: i64) -> i64 =
+    if x == 1 {
+        let a = if x > 0 { 100 } else { 0 };
+        let b = if x > 0 { 200 } else { 0 };
+        let c = if x > 0 { 300 } else { 0 };
+        a + b + c
+    } else { 0 };
+
+// ============================================================================
+// CATEGORY 5: Mixed Patterns (Various Complexity Levels)
+// ============================================================================
+
+// Nested inside then, simple else
+fn mixed_nested_then(x: i64) -> i64 =
+    if x > 0 {
+        if x > 5 { 2 } else { 1 }
+    } else { 0 };
+
+// Simple then, nested inside else
+fn mixed_nested_else(x: i64) -> i64 =
+    if x > 0 { 1 }
+    else {
+        if x < 0 { 0 - 1 } else { 0 }
+    };
+
+// Let before if (should work)
+fn let_before_if(x: i64) -> i64 =
+    let y = x + 1;
+    if y > 0 { y } else { 0 };
+
+// Let after if (should work)
+fn let_after_if(x: i64) -> i64 =
+    let a = if x > 0 { x } else { 0 };
+    a;
+
+// Let wrapping nested if
+fn let_wrap_nested(x: i64) -> i64 =
+    let result = if x > 0 {
+        if x > 5 { 2 } else { 1 }
+    } else { 0 };
+    result;
+
+// ============================================================================
+// CATEGORY 6: Edge Cases
+// ============================================================================
+
+// Empty-ish branches (just return constants)
+fn edge_constants(x: i64) -> i64 =
+    if x == 0 { 0 }
+    else if x == 1 { 1 }
+    else if x == 2 { 2 }
+    else { 3 };
+
+// Deep nesting (stress test)
+fn edge_deep_nesting(x: i64) -> i64 =
+    if x > 0 {
+        if x > 1 {
+            if x > 2 {
+                if x > 3 {
+                    if x > 4 { 5 } else { 4 }
+                } else { 3 }
+            } else { 2 }
+        } else { 1 }
+    } else { 0 };
+
+// Multiple returns from different nesting levels
+fn edge_multi_level(a: i64, b: i64) -> i64 =
+    if a == 0 {
+        if b == 0 { 0 }
+        else { b }
+    } else {
+        if b == 0 { a }
+        else { a + b }
+    };
+
+// ============================================================================
+// Test Runner
+// ============================================================================
+
+fn run_simple_tests() -> i64 =
+    let t1 = if simple_if_else(5) == 1 { 1 } else { 0 };
+    let t2 = if simple_if_else(0 - 1) == 0 { 1 } else { 0 };
+    let t3 = if simple_if_expr(10, 3) == 7 { 1 } else { 0 };
+    let t4 = if simple_bool_if(true) == 100 { 1 } else { 0 };
+    let t5 = if simple_bool_if(false) == 200 { 1 } else { 0 };
+    t1 + t2 + t3 + t4 + t5;
+
+fn run_nested_tests() -> i64 =
+    let t1 = if nested_basic(1) == 100 { 1 } else { 0 };
+    let t2 = if nested_basic(0) == 0 { 1 } else { 0 };
+    let t3 = if nested_triple(15) == 300 { 1 } else { 0 };
+    let t4 = if nested_triple(7) == 200 { 1 } else { 0 };
+    let t5 = if nested_triple(3) == 100 { 1 } else { 0 };
+    let t6 = if nested_both(0) == 1 { 1 } else { 0 };
+    let t7 = if nested_both(5) == 3 { 1 } else { 0 };
+    t1 + t2 + t3 + t4 + t5 + t6 + t7;
+
+fn run_elseif_tests() -> i64 =
+    let t1 = if elseif_simple(0) == 0 { 1 } else { 0 };
+    let t2 = if elseif_simple(1) == 1 { 1 } else { 0 };
+    let t3 = if elseif_simple(5) == 99 { 1 } else { 0 };
+    let t4 = if elseif_chain(0) == 0 { 1 } else { 0 };
+    let t5 = if elseif_chain(2) == 2 { 1 } else { 0 };
+    let t6 = if elseif_chain(99) == 99 { 1 } else { 0 };
+    let t7 = if elseif_expr(0 - 5) == 5 { 1 } else { 0 };
+    let t8 = if elseif_expr(0) == 0 { 1 } else { 0 };
+    t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8;
+
+fn run_sequential_tests() -> i64 =
+    // These tests verify correctness at runtime
+    // They will pass in Rust compiler but fail in Stage 2 bootstrap
+    let t1 = if sequential_lets(1) == 300 { 1 } else { 0 };
+    let t2 = if sequential_lets(0) == 0 { 1 } else { 0 };
+    let t3 = if let_if_then_code(1) == 150 { 1 } else { 0 };
+    let t4 = if let_if_then_code(0) == 0 { 1 } else { 0 };
+    let t5 = if sequential_three(1) == 600 { 1 } else { 0 };
+    let t6 = if sequential_three(0) == 0 { 1 } else { 0 };
+    t1 + t2 + t3 + t4 + t5 + t6;
+
+fn run_mixed_tests() -> i64 =
+    let t1 = if mixed_nested_then(10) == 2 { 1 } else { 0 };
+    let t2 = if mixed_nested_then(3) == 1 { 1 } else { 0 };
+    let t3 = if mixed_nested_else(5) == 1 { 1 } else { 0 };
+    let t4 = if mixed_nested_else(0 - 3) == 0 - 1 { 1 } else { 0 };
+    let t5 = if let_before_if(5) == 6 { 1 } else { 0 };
+    let t6 = if let_after_if(10) == 10 { 1 } else { 0 };
+    let t7 = if let_wrap_nested(10) == 2 { 1 } else { 0 };
+    t1 + t2 + t3 + t4 + t5 + t6 + t7;
+
+fn run_edge_tests() -> i64 =
+    let t1 = if edge_constants(0) == 0 { 1 } else { 0 };
+    let t2 = if edge_constants(2) == 2 { 1 } else { 0 };
+    let t3 = if edge_deep_nesting(5) == 5 { 1 } else { 0 };
+    let t4 = if edge_deep_nesting(2) == 2 { 1 } else { 0 };
+    let t5 = if edge_multi_level(0, 0) == 0 { 1 } else { 0 };
+    let t6 = if edge_multi_level(3, 4) == 7 { 1 } else { 0 };
+    t1 + t2 + t3 + t4 + t5 + t6;
+
+fn main() -> i64 =
+    let start = println(777);
+
+    let simple = run_simple_tests();
+    let s1 = println(simple);  // Expected: 5
+
+    let nested = run_nested_tests();
+    let s2 = println(nested);  // Expected: 7
+
+    let elseif = run_elseif_tests();
+    let s3 = println(elseif);  // Expected: 8
+
+    let sequential = run_sequential_tests();
+    let s4 = println(sequential);  // Expected: 6 (may fail in Stage 2)
+
+    let mixed = run_mixed_tests();
+    let s5 = println(mixed);  // Expected: 7
+
+    let edge = run_edge_tests();
+    let s6 = println(edge);  // Expected: 6
+
+    let total = simple + nested + elseif + sequential + mixed + edge;
+    let s7 = println(total);  // Expected: 39
+
+    let end = println(999);
+    total;
