@@ -886,7 +886,7 @@ fn parse_primary(src: String, pos: i64) -> String =
     } else if kind == TK_MINUS() {
         let r = parse_primary(src, end);
         if is_error(unpack_ast(r)) { r } else { pack_result(unpack_pos(r), "(neg " + unpack_ast(r) + ")") }
-    } else if kind == TK_NEW() { parse_struct_init(src, end) } else if kind == TK_MATCH() { parse_match(src, end) } else if kind == TK_FN() { parse_lambda(src, end) } else if kind == TK_LBRACKET() { parse_array_literal(src, end) } else if kind == TK_AT() { parse_attribute(src, end) } else if kind == TK_NULL() { pack_result(end, "(null)") } else if kind == TK_SIZEOF() { parse_sizeof(src, end) } else { pack_result(pos, make_error("expr")) };
+    } else if kind == TK_NEW() { parse_struct_init(src, end) } else if kind == TK_MATCH() { parse_match(src, end) } else if kind == TK_FN() { parse_lambda(src, end) } else if kind == TK_LBRACKET() { parse_array_literal(src, end) } else if kind == TK_AT() { parse_attribute(src, end) } else if kind == TK_NULL() { pack_result(end, "(null)") } else if kind == TK_SIZEOF() { parse_sizeof(src, end) } else if kind == TK_LBRACE() { parse_block(src, end) } else { pack_result(pos, make_error("expr")) };
 
 fn parse_call_or_var(src: String, pos: i64, name: String) -> String =
     let tok = next_token_raw(src, pos);
@@ -1050,6 +1050,100 @@ fn parse_array_elements(src: String, pos: i64, elements: String) -> String =
         let rn = parse_expr(src, tok_end(tok));
         if is_error(unpack_ast(rn)) { rn } else { parse_array_elements(src, unpack_pos(rn), elements + " " + unpack_ast(rn)) }
     } else { pack_result(pos, make_error("array-elem")) };
+
+// ============================================================
+// v0.60.126: Block Expression Parser
+// ============================================================
+
+// Parse block expression: { stmt; stmt; ... final_expr }
+// Block expressions allow sequencing multiple statements.
+// Let bindings are naturally nested via parse_let.
+// For assignments { lhs = rhs }, parse as expression statement.
+// AST format: (block inner_expr)
+fn parse_block(src: String, pos: i64) -> String =
+    // pos is after '{', check for empty block
+    let tok = next_token_raw(src, pos);
+    if tok_kind(tok) == TK_RBRACE() {
+        // Empty block: { } -> unit
+        pack_result(tok_end(tok), "(unit)")
+    } else {
+        // Parse block contents - may include let bindings, expressions, assignments
+        let rb = parse_block_stmts(src, pos);
+        if is_error(unpack_ast(rb)) { rb } else {
+            let t2 = next_token_raw(src, unpack_pos(rb));
+            if tok_kind(t2) != TK_RBRACE() {
+                pack_result(unpack_pos(rb), make_error("block-rbrace"))
+            } else {
+                pack_result(tok_end(t2), "(block " + unpack_ast(rb) + ")")
+            }
+        }
+    };
+
+// Parse block statements: either let binding chain, assignment, or expression
+// Handles: let x = 1; y, or { x = 1 }; y, or just expr
+fn parse_block_stmts(src: String, pos: i64) -> String =
+    let tok = next_token_raw(src, pos);
+    let kind = tok_kind(tok);
+    if kind == TK_LET() {
+        // Let binding: let name = val; body
+        parse_let(src, tok_end(tok))
+    } else if kind == TK_LBRACE() {
+        // Assignment block: { lhs = rhs }; rest
+        parse_assignment_stmt(src, pos)
+    } else {
+        // Expression or expression-statement
+        parse_expr_stmt(src, pos)
+    };
+
+// Parse assignment statement: { lhs = rhs }; rest_of_block
+// Returns: (seq (assign lhs rhs) rest) or just assign if at end
+fn parse_assignment_stmt(src: String, pos: i64) -> String =
+    let t1 = next_token_raw(src, pos);
+    if tok_kind(t1) != TK_LBRACE() { pack_result(pos, make_error("assign-lbrace")) } else {
+        let rl = parse_expr(src, tok_end(t1));
+        if is_error(unpack_ast(rl)) { rl } else {
+            let t2 = next_token_raw(src, unpack_pos(rl));
+            if tok_kind(t2) != TK_EQ() { pack_result(unpack_pos(rl), make_error("assign-eq")) } else {
+                let rr = parse_expr(src, tok_end(t2));
+                if is_error(unpack_ast(rr)) { rr } else {
+                    let t3 = next_token_raw(src, unpack_pos(rr));
+                    if tok_kind(t3) != TK_RBRACE() { pack_result(unpack_pos(rr), make_error("assign-rbrace")) } else {
+                        let assign_ast = "(assign " + unpack_ast(rl) + " " + unpack_ast(rr) + ")";
+                        let after_assign = tok_end(t3);
+                        // Check for semicolon (more statements follow)
+                        let t4 = next_token_raw(src, after_assign);
+                        if tok_kind(t4) == TK_SEMI() {
+                            // More statements after assignment
+                            let rest = parse_block_stmts(src, tok_end(t4));
+                            if is_error(unpack_ast(rest)) { rest } else {
+                                pack_result(unpack_pos(rest), "(seq " + assign_ast + " " + unpack_ast(rest) + ")")
+                            }
+                        } else {
+                            // Assignment is the final expression
+                            pack_result(after_assign, assign_ast)
+                        }
+                    }
+                }
+            }
+        }
+    };
+
+// Parse expression statement: expr; rest_of_block or just expr at end
+fn parse_expr_stmt(src: String, pos: i64) -> String =
+    let re = parse_expr(src, pos);
+    if is_error(unpack_ast(re)) { re } else {
+        let t1 = next_token_raw(src, unpack_pos(re));
+        if tok_kind(t1) == TK_SEMI() {
+            // Expression statement followed by more
+            let rest = parse_block_stmts(src, tok_end(t1));
+            if is_error(unpack_ast(rest)) { rest } else {
+                pack_result(unpack_pos(rest), "(seq " + unpack_ast(re) + " " + unpack_ast(rest) + ")")
+            }
+        } else {
+            // Final expression (no semicolon)
+            re
+        }
+    };
 
 // ============================================================
 // v0.30.37: While Expression Parser

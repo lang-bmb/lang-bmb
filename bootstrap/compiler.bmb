@@ -270,10 +270,110 @@ fn parse_paren_expr(src: String, tok: i64) -> String =
     let next = next_token_raw(src, unpack_pos(re));
     if tok_kind(next) == TK_RPAREN() { pack_result(tok_end(next), unpack_ast(re)) } else { make_error("paren") };
 
+// v0.60.126: Block expression parser
+// Block syntax: { stmt; stmt; ... final_expr }
+// Where stmt is: let name = expr; or { lhs = rhs }; or expr;
+fn parse_block_expr(src: String, pos: i64) -> String =
+    let tok = next_token_raw(src, pos);
+    if tok_kind(tok) == TK_RBRACE() {
+        // Empty block: { } -> unit
+        pack_result(tok_end(tok), "(unit)")
+    } else {
+        // Parse block contents
+        let rb = parse_block_stmts(src, pos);
+        if is_error(rb) { rb } else {
+            let t2 = next_token_raw(src, unpack_pos(rb));
+            if tok_kind(t2) != TK_RBRACE() {
+                make_error("block-rbrace")
+            } else {
+                pack_result(tok_end(t2), "(block " + unpack_ast(rb) + ")")
+            }
+        }
+    };
+
+// Parse block statements: let binding or assignment or expression
+fn parse_block_stmts(src: String, pos: i64) -> String =
+    let tok = next_token_raw(src, pos);
+    let kind = tok_kind(tok);
+    if kind == TK_LET() {
+        // Let binding: let name = val; body
+        parse_block_let(src, tok_end(tok))
+    } else if kind == TK_LBRACE() {
+        // Assignment block: { lhs = rhs }; rest
+        parse_block_assign(src, pos)
+    } else {
+        // Expression or expression-statement
+        parse_block_expr_stmt(src, pos)
+    };
+
+// Parse let binding inside block: let name = val; rest
+fn parse_block_let(src: String, pos: i64) -> String =
+    let t1 = next_token_raw(src, pos);
+    if tok_kind(t1) == TK_IDENT() {
+        let name = get_ident_text(src, pos, t1);
+        let t2 = next_token_raw(src, tok_end(t1));
+        if tok_kind(t2) == TK_EQ() {
+            let rv = parse_expr(src, tok_end(t2));
+            if is_error(rv) { rv } else {
+                let t3 = next_token_raw(src, unpack_pos(rv));
+                if tok_kind(t3) == TK_SEMI() {
+                    let rb = parse_block_stmts(src, tok_end(t3));
+                    pack_result(unpack_pos(rb), "(let <" + name + "> " + unpack_ast(rv) + " " + unpack_ast(rb) + ")")
+                } else { make_error("block-let-semi") }
+            }
+        } else { make_error("block-let-eq") }
+    } else { make_error("block-let-name") };
+
+// Parse assignment inside block: { lhs = rhs }; rest
+fn parse_block_assign(src: String, pos: i64) -> String =
+    let t1 = next_token_raw(src, pos);
+    if tok_kind(t1) != TK_LBRACE() { make_error("assign-lbrace") } else {
+        let rl = parse_expr(src, tok_end(t1));
+        if is_error(rl) { rl } else {
+            let t2 = next_token_raw(src, unpack_pos(rl));
+            if tok_kind(t2) != TK_EQ() { make_error("assign-eq") } else {
+                let rr = parse_expr(src, tok_end(t2));
+                if is_error(rr) { rr } else {
+                    let t3 = next_token_raw(src, unpack_pos(rr));
+                    if tok_kind(t3) != TK_RBRACE() { make_error("assign-rbrace") } else {
+                        let assign_ast = "(assign " + unpack_ast(rl) + " " + unpack_ast(rr) + ")";
+                        let after_assign = tok_end(t3);
+                        // Check for semicolon (more statements follow)
+                        let t4 = next_token_raw(src, after_assign);
+                        if tok_kind(t4) == TK_SEMI() {
+                            // More statements after assignment
+                            let rest = parse_block_stmts(src, tok_end(t4));
+                            pack_result(unpack_pos(rest), "(seq " + assign_ast + " " + unpack_ast(rest) + ")")
+                        } else {
+                            // Assignment is the final expression
+                            pack_result(after_assign, assign_ast)
+                        }
+                    }
+                }
+            }
+        }
+    };
+
+// Parse expression statement: expr; rest or just expr at end
+fn parse_block_expr_stmt(src: String, pos: i64) -> String =
+    let re = parse_expr(src, pos);
+    if is_error(re) { re } else {
+        let t1 = next_token_raw(src, unpack_pos(re));
+        if tok_kind(t1) == TK_SEMI() {
+            // Expression statement followed by more
+            let rest = parse_block_stmts(src, tok_end(t1));
+            pack_result(unpack_pos(rest), "(seq " + unpack_ast(re) + " " + unpack_ast(rest) + ")")
+        } else {
+            // Final expression (no semicolon)
+            re
+        }
+    };
+
 fn parse_atom(src: String, pos: i64) -> String =
     let tok = next_token_raw(src, pos);
     let kind = tok_kind(tok);
     // v0.60.117: Refactored to use helper functions to reduce nesting depth
+    // v0.60.126: Add block expression support
     if is_int_literal(kind) { parse_int_lit(tok) }
     else if kind == TK_TRUE() or kind == TK_FALSE() { parse_bool_lit(tok, kind) }
     else if kind == TK_IDENT() { parse_ident_or_call(src, pos, tok) }
@@ -281,6 +381,7 @@ fn parse_atom(src: String, pos: i64) -> String =
     else if kind == TK_NOT() { parse_unary(src, tok, "not") }
     else if kind == TK_MINUS() { parse_unary(src, tok, "-") }
     else if kind == TK_LPAREN() { parse_paren_expr(src, tok) }
+    else if kind == TK_LBRACE() { parse_block_expr(src, tok_end(tok)) }
     else { make_error("atom") };
 
 fn parse_args(src: String, pos: i64, acc: String) -> String =
@@ -872,6 +973,12 @@ fn do_step(item: String, cur_temp: i64, cur_block: i64, sb: i64) -> String =
     else if op == "MS" { step_method_start(item, cur_temp, cur_block, sb) }
     else if op == "MA" { step_method_arg(item, cur_temp, cur_block, sb) }
     else if op == "MF" { step_method_final(item, cur_temp, cur_block, sb) }
+    // v0.60.126: Block expression step handlers
+    else if op == "UT" { step_unit(item, cur_temp, cur_block, sb) }
+    else if op == "SQ" { step_seq_start(item, cur_temp, cur_block, sb) }
+    else if op == "S2" { step_seq_second(item, cur_temp, cur_block, sb) }
+    else if op == "AS" { step_assign_start(item, cur_temp, cur_block, sb) }
+    else if op == "AF" { step_assign_final(item, cur_temp, cur_block, sb) }
     else { make_step(cur_temp, cur_block, "") };
 
 // EX: Dispatch based on node type - expand to specific handler
@@ -914,6 +1021,24 @@ fn step_expr(item: String, cur_temp: i64, cur_block: i64, sb: i64) -> String =
         let receiver = get_child(ast, 1);
         let fn_name = method_to_runtime_fn(method_name);
         make_step(cur_temp, cur_block, make_work("MS", fn_name, receiver, ast, "2", ""))
+    }
+    // v0.60.126: Block, unit, seq, assign support
+    else if ntype == "block" {
+        let inner = block_inner(ast);
+        make_step(cur_temp, cur_block, make_work3("EX", inner, "", ""))
+    }
+    else if ntype == "unit" {
+        make_step(cur_temp, cur_block, make_work3("UT", "", "", ""))
+    }
+    else if ntype == "seq" {
+        let e1 = seq_first(ast);
+        let e2 = seq_second(ast);
+        make_step(cur_temp, cur_block, make_work3("SQ", e1, e2, ""))
+    }
+    else if ntype == "assign" {
+        let lhs = assign_lhs_expr(ast);
+        let rhs = assign_rhs_expr(ast);
+        make_step(cur_temp, cur_block, make_work3("AS", lhs, rhs, ""))
     }
     else { make_step(cur_temp, cur_block, "") };
 
@@ -1155,6 +1280,47 @@ fn step_method_arg(item: String, cur_temp: i64, cur_block: i64, sb: i64) -> Stri
 fn step_method_final(item: String, cur_temp: i64, cur_block: i64, sb: i64) -> String =
     make_step(cur_temp, cur_block, "");
 
+// v0.60.126: Unit expression step - returns 0
+fn step_unit(item: String, cur_temp: i64, cur_block: i64, sb: i64) -> String =
+    let tmp = "%_t" + i2s(cur_temp);
+    let w1 = sb_push_mir(sb, "  " + tmp + " = const 0");
+    make_step(cur_temp + 1, cur_block, "");
+
+// v0.60.126: Sequence start - lower first expression, queue second
+fn step_seq_start(item: String, cur_temp: i64, cur_block: i64, sb: i64) -> String =
+    let e1 = get_field(item, 1);
+    let e2 = get_field(item, 2);
+    // First lower e1, then continue with e2
+    let cont = make_work3("S2", e2, "", "");
+    let eval = make_work3("EX", e1, "", "");
+    make_step(cur_temp, cur_block, eval + work_sep() + cont);
+
+// v0.60.126: Sequence second - lower second expression (first already done)
+fn step_seq_second(item: String, cur_temp: i64, cur_block: i64, sb: i64) -> String =
+    let e2 = get_field(item, 1);
+    make_step(cur_temp, cur_block, make_work3("EX", e2, "", ""));
+
+// v0.60.126: Assignment start - lower RHS, queue final
+fn step_assign_start(item: String, cur_temp: i64, cur_block: i64, sb: i64) -> String =
+    let lhs = get_field(item, 1);
+    let rhs = get_field(item, 2);
+    // Lower RHS, then do assignment
+    let cont = make_work3("AF", lhs, "", "");
+    let eval = make_work3("EX", rhs, "", "");
+    make_step(cur_temp, cur_block, eval + work_sep() + cont);
+
+// v0.60.126: Assignment final - store value and return unit
+fn step_assign_final(item: String, cur_temp: i64, cur_block: i64, sb: i64) -> String =
+    let lhs = get_field(item, 1);
+    // RHS value is in %_t(cur_temp-1)
+    let rhs_temp = cur_temp - 1;
+    let name = extract_var_from_assign(lhs);
+    let w1 = sb_push_mir(sb, "  %" + name + " = copy %_t" + i2s(rhs_temp));
+    // Assignment returns unit
+    let tmp = "%_t" + i2s(cur_temp);
+    let w2 = sb_push_mir(sb, "  " + tmp + " = const 0");
+    make_step(cur_temp + 1, cur_block, "");
+
 // Build argument string from temp range [start, end)
 fn build_args_str(start: i64, end: i64) -> String =
     build_args_str_acc(start, end, "");
@@ -1171,9 +1337,10 @@ fn build_args_str_acc(cur: i64, end: i64, acc: String) -> String =
 // SECTION 8b: Original Recursive Lowering (fallback)
 // ===========================================================================
 
+// v0.60.126: Added block, unit, seq, assign support
 fn lower_expr_sb(ast: String, temp_id: i64, block_id: i64, sb: i64) -> i64 =
     let ntype = get_node_type(ast);
-    if ntype == "int" { lower_int_sb(ast, temp_id, block_id, sb) } else if ntype == "bool" { lower_bool_sb(ast, temp_id, block_id, sb) } else if ntype == "string" { lower_string_sb(ast, temp_id, block_id, sb) } else if ntype == "var" { lower_var_sb(ast, temp_id, block_id, sb) } else if ntype == "binop" { lower_binop_sb(ast, temp_id, block_id, sb) } else if ntype == "unary" { lower_unary_sb(ast, temp_id, block_id, sb) } else if ntype == "if" { lower_if_sb(ast, temp_id, block_id, sb) } else if ntype == "let" { lower_let_sb(ast, temp_id, block_id, sb) } else if ntype == "call" { lower_call_sb(ast, temp_id, block_id, sb) } else if ntype == "method" { lower_method_sb(ast, temp_id, block_id, sb) } else { pack_ids(temp_id, block_id) };
+    if ntype == "int" { lower_int_sb(ast, temp_id, block_id, sb) } else if ntype == "bool" { lower_bool_sb(ast, temp_id, block_id, sb) } else if ntype == "string" { lower_string_sb(ast, temp_id, block_id, sb) } else if ntype == "var" { lower_var_sb(ast, temp_id, block_id, sb) } else if ntype == "binop" { lower_binop_sb(ast, temp_id, block_id, sb) } else if ntype == "unary" { lower_unary_sb(ast, temp_id, block_id, sb) } else if ntype == "if" { lower_if_sb(ast, temp_id, block_id, sb) } else if ntype == "let" { lower_let_sb(ast, temp_id, block_id, sb) } else if ntype == "call" { lower_call_sb(ast, temp_id, block_id, sb) } else if ntype == "method" { lower_method_sb(ast, temp_id, block_id, sb) } else if ntype == "block" { lower_block_sb(ast, temp_id, block_id, sb) } else if ntype == "unit" { lower_unit_sb(ast, temp_id, block_id, sb) } else if ntype == "seq" { lower_seq_sb(ast, temp_id, block_id, sb) } else if ntype == "assign" { lower_assign_sb(ast, temp_id, block_id, sb) } else { pack_ids(temp_id, block_id) };
 
 fn lower_int_sb(ast: String, temp_id: i64, block_id: i64, sb: i64) -> i64 =
     let val = extract_int_value(ast);
@@ -1342,6 +1509,113 @@ fn lower_method_extra_args_sb(ast: String, fn_name: String, temp_id: i64, block_
         let arg_id = arg_temp - 1;
         let new_args = args_acc + ", %_t" + int_to_string(arg_id);
         lower_method_extra_args_sb(ast, fn_name, arg_temp, arg_block, idx + 1, new_args, sb)
+    };
+
+// v0.60.126: Block expression lowering
+// Block format: (block inner_expr)
+fn lower_block_sb(ast: String, temp_id: i64, block_id: i64, sb: i64) -> i64 =
+    let inner = block_inner(ast);
+    lower_expr_sb(inner, temp_id, block_id, sb);
+
+// Extract inner expression from (block inner)
+fn block_inner(ast: String) -> String =
+    let len = ast.len();
+    if len < 9 { "" } else { ast.slice(7, len - 1) };
+
+// v0.60.126: Unit expression lowering
+fn lower_unit_sb(ast: String, temp_id: i64, block_id: i64, sb: i64) -> i64 =
+    let tmp = "%_t" + int_to_string(temp_id);
+    let w1 = sb_push_mir(sb, "  " + tmp + " = const 0");
+    pack_ids(temp_id + 1, block_id);
+
+// v0.60.126: Sequence expression lowering
+// Seq format: (seq expr1 expr2)
+fn lower_seq_sb(ast: String, temp_id: i64, block_id: i64, sb: i64) -> i64 =
+    let e1 = seq_first(ast);
+    let e2 = seq_second(ast);
+    // Lower first for side effect
+    let r1 = lower_expr_sb(e1, temp_id, block_id, sb);
+    let t1 = unpack_temp(r1);
+    let b1 = unpack_block(r1);
+    // Lower second for value
+    lower_expr_sb(e2, t1, b1, sb);
+
+// Extract first expression from (seq e1 e2)
+fn seq_first(ast: String) -> String =
+    let len = ast.len();
+    if len < 10 { "" } else {
+        let content = ast.slice(5, len - 1);
+        find_first_balanced(content, 0, 0, "")
+    };
+
+// Extract second expression from (seq e1 e2)
+fn seq_second(ast: String) -> String =
+    let len = ast.len();
+    if len < 10 { "" } else {
+        let content = ast.slice(5, len - 1);
+        find_rest_balanced(content, 0, 0)
+    };
+
+// Find first balanced expression (stop at top-level space)
+fn find_first_balanced(s: String, idx: i64, depth: i64, acc: String) -> String =
+    if idx >= s.len() { acc } else {
+        let c = s.byte_at(idx);
+        if c == 40 { find_first_balanced(s, idx + 1, depth + 1, acc + chr(c)) }
+        else if c == 41 { find_first_balanced(s, idx + 1, depth - 1, acc + chr(c)) }
+        else if c == 32 and depth == 0 { acc }
+        else { find_first_balanced(s, idx + 1, depth, acc + chr(c)) }
+    };
+
+// Find rest after first balanced expression
+fn find_rest_balanced(s: String, idx: i64, depth: i64) -> String =
+    if idx >= s.len() { "" } else {
+        let c = s.byte_at(idx);
+        if c == 40 { find_rest_balanced(s, idx + 1, depth + 1) }
+        else if c == 41 { find_rest_balanced(s, idx + 1, depth - 1) }
+        else if c == 32 and depth == 0 { s.slice(idx + 1, s.len()) }
+        else { find_rest_balanced(s, idx + 1, depth) }
+    };
+
+// v0.60.126: Assignment expression lowering
+// Assign format: (assign lhs rhs)
+fn lower_assign_sb(ast: String, temp_id: i64, block_id: i64, sb: i64) -> i64 =
+    let lhs = assign_lhs_expr(ast);
+    let rhs = assign_rhs_expr(ast);
+    // First lower rhs
+    let rr = lower_expr_sb(rhs, temp_id, block_id, sb);
+    let tr = unpack_temp(rr);
+    let br = unpack_block(rr);
+    let rhs_id = tr - 1;
+    // Extract target name from lhs (var <name>)
+    let name = extract_var_from_assign(lhs);
+    let w1 = sb_push_mir(sb, "  %" + name + " = copy %_t" + int_to_string(rhs_id));
+    // Assignment returns unit
+    let tmp = "%_t" + int_to_string(tr);
+    let w2 = sb_push_mir(sb, "  " + tmp + " = const 0");
+    pack_ids(tr + 1, br);
+
+// Extract lhs from (assign lhs rhs)
+fn assign_lhs_expr(ast: String) -> String =
+    let len = ast.len();
+    if len < 15 { "" } else {
+        let content = ast.slice(8, len - 1);
+        find_first_balanced(content, 0, 0, "")
+    };
+
+// Extract rhs from (assign lhs rhs)
+fn assign_rhs_expr(ast: String) -> String =
+    let len = ast.len();
+    if len < 15 { "" } else {
+        let content = ast.slice(8, len - 1);
+        find_rest_balanced(content, 0, 0)
+    };
+
+// Extract variable name from (var <name>)
+fn extract_var_from_assign(ast: String) -> String =
+    let len = ast.len();
+    if len < 10 { "" } else {
+        // (var <name>) -> skip "(var <" = 6, remove ">)" = 2
+        ast.slice(6, len - 2)
     };
 
 fn lower_function_sb(ast: String) -> String =

@@ -163,6 +163,35 @@ fn is_block_node(s: String) -> bool =
 fn is_unit_node(s: String) -> bool =
     s.len() == 2 and s.byte_at(0) == 40 and s.byte_at(1) == 41;
 
+// v0.60.126: Sequence expression support
+// Seq format: (seq expr1 expr2)
+// '(' = 40, 's' = 115, 'e' = 101, 'q' = 113, ' ' = 32
+fn is_seq_node(s: String) -> bool =
+    if s.len() < 7 { false } else {
+        let c0 = s.byte_at(0);
+        let c1 = s.byte_at(1);
+        let c2 = s.byte_at(2);
+        let c3 = s.byte_at(3);
+        let c4 = s.byte_at(4);
+        c0 == 40 and c1 == 115 and c2 == 101 and c3 == 113 and c4 == 32
+    };
+
+// v0.60.126: Assignment expression support
+// Assign format: (assign lhs rhs)
+// '(' = 40, 'a' = 97, 's' = 115, 's' = 115, 'i' = 105, 'g' = 103, 'n' = 110, ' ' = 32
+fn is_assign_node(s: String) -> bool =
+    if s.len() < 10 { false } else {
+        let c0 = s.byte_at(0);
+        let c1 = s.byte_at(1);
+        let c2 = s.byte_at(2);
+        let c3 = s.byte_at(3);
+        let c4 = s.byte_at(4);
+        let c5 = s.byte_at(5);
+        let c6 = s.byte_at(6);
+        let c7 = s.byte_at(7);
+        c0 == 40 and c1 == 97 and c2 == 115 and c3 == 115 and c4 == 105 and c5 == 103 and c6 == 110 and c7 == 32
+    };
+
 // v0.30.38: While expression support
 // While format: (while cond body)
 // '(' = 40, 'w' = 119, 'h' = 104, 'i' = 105, 'l' = 108, 'e' = 101, ' ' = 32
@@ -773,7 +802,7 @@ fn lower_expr_sb(ast: String, temp: i64, block: i64, sb: i64) -> String =
 // v0.52: Attribute expression support (@likely/@unlikely)
 // v0.51.43: Null and sizeof expression support
 fn lower_expr(ast: String, temp: i64, block: i64) -> String =
-    if is_int_node(ast) { lower_int(ast, temp, block) } else if is_bool_node(ast) { lower_bool(ast, temp, block) } else if is_string_node(ast) { lower_string(ast, temp, block) } else if is_var_node(ast) { lower_var(ast, temp, block) } else if is_op_node(ast) { lower_binop(ast, temp, block) } else if is_neg_node(ast) { lower_neg(ast, temp, block) } else if is_not_node(ast) { lower_not(ast, temp, block) } else if is_if_node(ast) { lower_if(ast, temp, block) } else if is_let_node(ast) or is_let_mut_node(ast) { lower_let(ast, temp, block) } else if is_call_node(ast) { lower_call(ast, temp, block) } else if is_new_node(ast) { lower_struct_init(ast, temp, block) } else if is_dot_node(ast) { lower_field_access(ast, temp, block) } else if is_enum_variant_node(ast) { lower_enum_variant(ast, temp, block) } else if is_match_node(ast) { lower_match(ast, temp, block) } else if is_lambda_node(ast) { lower_lambda(ast, temp, block) } else if is_block_node(ast) { lower_block(ast, temp, block) } else if is_unit_node(ast) { lower_unit(ast, temp, block) } else if is_while_node(ast) { lower_while(ast, temp, block) } else if is_for_node(ast) { lower_for(ast, temp, block) } else if is_break_node(ast) { lower_break(ast, temp, block) } else if is_continue_node(ast) { lower_continue(ast, temp, block) } else if is_array_node(ast) { lower_array(ast, temp, block) } else if is_index_node(ast) { lower_index(ast, temp, block) } else if is_method_call_node(ast) { lower_method_call(ast, temp, block) } else if is_attr_node(ast) { lower_attr(ast, temp, block) } else if is_null_node(ast) { lower_null(ast, temp, block) } else if is_sizeof_node(ast) { lower_sizeof(ast, temp, block) } else { pack_lower_result(temp, block, "%error", "  ; unknown: " + get_node_type(ast)) };
+    if is_int_node(ast) { lower_int(ast, temp, block) } else if is_bool_node(ast) { lower_bool(ast, temp, block) } else if is_string_node(ast) { lower_string(ast, temp, block) } else if is_var_node(ast) { lower_var(ast, temp, block) } else if is_op_node(ast) { lower_binop(ast, temp, block) } else if is_neg_node(ast) { lower_neg(ast, temp, block) } else if is_not_node(ast) { lower_not(ast, temp, block) } else if is_if_node(ast) { lower_if(ast, temp, block) } else if is_let_node(ast) or is_let_mut_node(ast) { lower_let(ast, temp, block) } else if is_call_node(ast) { lower_call(ast, temp, block) } else if is_new_node(ast) { lower_struct_init(ast, temp, block) } else if is_dot_node(ast) { lower_field_access(ast, temp, block) } else if is_enum_variant_node(ast) { lower_enum_variant(ast, temp, block) } else if is_match_node(ast) { lower_match(ast, temp, block) } else if is_lambda_node(ast) { lower_lambda(ast, temp, block) } else if is_block_node(ast) { lower_block(ast, temp, block) } else if is_unit_node(ast) { lower_unit(ast, temp, block) } else if is_seq_node(ast) { lower_seq(ast, temp, block) } else if is_assign_node(ast) { lower_assign(ast, temp, block) } else if is_while_node(ast) { lower_while(ast, temp, block) } else if is_for_node(ast) { lower_for(ast, temp, block) } else if is_break_node(ast) { lower_break(ast, temp, block) } else if is_continue_node(ast) { lower_continue(ast, temp, block) } else if is_array_node(ast) { lower_array(ast, temp, block) } else if is_index_node(ast) { lower_index(ast, temp, block) } else if is_method_call_node(ast) { lower_method_call(ast, temp, block) } else if is_attr_node(ast) { lower_attr(ast, temp, block) } else if is_null_node(ast) { lower_null(ast, temp, block) } else if is_sizeof_node(ast) { lower_sizeof(ast, temp, block) } else { pack_lower_result(temp, block, "%error", "  ; unknown: " + get_node_type(ast)) };
 
 // Lower integer literal: (int 42)
 fn lower_int(ast: String, temp: i64, block: i64) -> String =
@@ -1132,6 +1161,125 @@ fn lower_unit(ast: String, temp: i64, block: i64) -> String =
     let dest = place_temp(temp);
     let text = "  " + dest + " = UNIT";
     pack_lower_result(temp + 1, block, dest, text);
+
+// v0.60.126: Lower sequence expression: (seq expr1 expr2)
+// Sequence evaluates expr1 for side effect, then expr2 for value
+// Extract first expr: skip "(seq " = 5 chars, find space before second expr
+fn seq_first_expr(ast: String) -> String =
+    let len = ast.len();
+    if len < 7 { "" } else {
+        let content = ast.slice(5, len - 1);  // remove "(seq " and ")"
+        // Find the end of first expression (balanced parens)
+        find_balanced_first(content, 0, 0, "")
+    };
+
+fn seq_second_expr(ast: String) -> String =
+    let len = ast.len();
+    if len < 7 { "" } else {
+        let content = ast.slice(5, len - 1);  // remove "(seq " and ")"
+        // Skip first expression to get second
+        find_balanced_rest(content, 0, 0)
+    };
+
+// Find first balanced expression
+fn find_balanced_first(s: String, idx: i64, depth: i64, acc: String) -> String =
+    if idx >= s.len() { acc } else {
+        let c = s.byte_at(idx);
+        if c == 40 { find_balanced_first(s, idx + 1, depth + 1, acc + chr(c)) }  // (
+        else if c == 41 { find_balanced_first(s, idx + 1, depth - 1, acc + chr(c)) }  // )
+        else if c == 32 and depth == 0 { acc }  // space at top level = end of first expr
+        else { find_balanced_first(s, idx + 1, depth, acc + chr(c)) }
+    };
+
+// Find rest after first balanced expression
+fn find_balanced_rest(s: String, idx: i64, depth: i64) -> String =
+    if idx >= s.len() { "" } else {
+        let c = s.byte_at(idx);
+        if c == 40 { find_balanced_rest(s, idx + 1, depth + 1) }  // (
+        else if c == 41 { find_balanced_rest(s, idx + 1, depth - 1) }  // )
+        else if c == 32 and depth == 0 { s.slice(idx + 1, s.len()) }  // skip space, return rest
+        else { find_balanced_rest(s, idx + 1, depth) }
+    };
+
+fn lower_seq(ast: String, temp: i64, block: i64) -> String =
+    let e1 = seq_first_expr(ast);
+    let e2 = seq_second_expr(ast);
+    if e1 == "" or e2 == "" { pack_lower_result(temp, block, "%error", "  ; seq: parse error") } else {
+        // Lower first expression for side effect
+        let r1 = lower_expr(e1, temp, block);
+        let t1 = unpack_temp(r1);
+        let b1 = unpack_block(r1);
+        let text1 = unpack_text(r1);
+        // Lower second expression for value
+        let r2 = lower_expr(e2, t1, b1);
+        let t2 = unpack_temp(r2);
+        let b2 = unpack_block(r2);
+        let p2 = unpack_result_place(r2);
+        let text2 = unpack_text(r2);
+        pack_lower_result(t2, b2, p2, text1 + "|" + text2)
+    };
+
+// v0.60.126: Lower assignment expression: (assign lhs rhs)
+// Assignment sets lhs to rhs, result is unit
+// Extract lhs: skip "(assign " = 8 chars
+fn assign_lhs(ast: String) -> String =
+    let len = ast.len();
+    if len < 12 { "" } else {
+        let content = ast.slice(8, len - 1);  // remove "(assign " and ")"
+        find_balanced_first(content, 0, 0, "")
+    };
+
+fn assign_rhs(ast: String) -> String =
+    let len = ast.len();
+    if len < 12 { "" } else {
+        let content = ast.slice(8, len - 1);  // remove "(assign " and ")"
+        find_balanced_rest(content, 0, 0)
+    };
+
+fn lower_assign(ast: String, temp: i64, block: i64) -> String =
+    let lhs = assign_lhs(ast);
+    let rhs = assign_rhs(ast);
+    if lhs == "" or rhs == "" { pack_lower_result(temp, block, "%error", "  ; assign: parse error") } else {
+        // First lower rhs to get value
+        let rr = lower_expr(rhs, temp, block);
+        let tr = unpack_temp(rr);
+        let br = unpack_block(rr);
+        let pr = unpack_result_place(rr);
+        let textr = unpack_text(rr);
+        // lhs should be a var reference: (var <name>) or (let mut <name>)
+        // Extract name and generate store
+        let name = extract_assign_target_name(lhs);
+        if name == "" {
+            pack_lower_result(tr, br, "%error", textr + "|  ; assign: invalid lhs")
+        } else {
+            let dest = "%" + name;
+            let text_store = "  " + dest + " = copy " + pr;
+            let dest_unit = place_temp(tr);
+            let text_unit = "  " + dest_unit + " = UNIT";
+            pack_lower_result(tr + 1, br, dest_unit, textr + "|" + text_store + "|" + text_unit)
+        }
+    };
+
+// Extract variable name from (var <name>) or (let mut <name>)
+fn extract_assign_target_name(ast: String) -> String =
+    if is_var_node(ast) { extract_var_name(ast) }
+    else if is_let_mut_ref(ast) { extract_let_mut_ref_name(ast) }
+    else { "" };
+
+// Check if it's a let-mut reference: (let mut <name>)
+fn is_let_mut_ref(ast: String) -> bool =
+    if ast.len() < 14 { false } else {
+        ast.slice(0, 9) == "(let mut "
+    };
+
+// Extract name from (let mut <name>)
+fn extract_let_mut_ref_name(ast: String) -> String =
+    let len = ast.len();
+    if len < 14 { "" } else {
+        // Format: (let mut <name>) -> skip "(let mut <" and remove ">)"
+        let inner = ast.slice(10, len - 2);  // skip "(let mut <", remove ">)"
+        inner
+    };
 
 // v0.51.43: Lower null literal: (null) -> constant 0
 // Null pointers are represented as integer 0 in MIR
