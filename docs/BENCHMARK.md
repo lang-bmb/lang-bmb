@@ -4,7 +4,7 @@
 
 BMB includes a comprehensive benchmark suite comparing performance against C (-O3). The suite contains 30 benchmarks covering compute-intensive algorithms and real-world workloads.
 
-## Current Results (v0.60.40)
+## Current Results (v0.60.122)
 
 ### Performance Summary
 
@@ -124,6 +124,9 @@ ecosystem/benchmark-bmb/
 
 ## Version History
 
+- **v0.60.122**: String comparison fix, token constants 10000-10999 range
+- **v0.60.105**: Unbounded recursive arg detection in MIR optimization
+- **v0.60.59**: Runtime puts_cstr(), sb_println() for zero-allocation output
 - **v0.60.40**: 30 benchmarks, TCO phi fix, GCD correct
 - **v0.60.38**: Default Release optimization
 - **v0.60.37**: LoopBoundedNarrowing fix

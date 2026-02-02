@@ -4,6 +4,10 @@
 
 A contract-verified systems programming language.
 
+[![Version](https://img.shields.io/badge/version-0.60-blue.svg)](docs/ROADMAP.md)
+[![Bootstrap](https://img.shields.io/badge/bootstrap-3--stage-green.svg)](docs/BOOTSTRAP_BENCHMARK.md)
+[![Performance](https://img.shields.io/badge/vs%20C-≤1.10x-brightgreen.svg)](docs/BENCHMARK.md)
+
 ---
 
 ## Why BMB?
@@ -140,13 +144,18 @@ bmb repl                          # interactive
 
 When the compiler knows your invariants, it knows what's safe to optimize.
 
-```
-                     C          Rust       BMB
-─────────────────────────────────────────────────
-fibonacci(45)        1.65s      1.66s      1.63s
-mandelbrot           42ms       42ms       39ms
-spectral_norm        44ms       44ms       39ms
-```
+| Benchmark | BMB vs C | Notes |
+|-----------|----------|-------|
+| fasta | **28%** | BMB 3.6x faster |
+| ackermann | **0.4%** | TCO: BMB 250x faster |
+| sorting | **37%** | Tail recursion |
+| fibonacci | **102%** | Near parity |
+| mandelbrot | **100%** | Identical IR |
+
+**Gate Status (v0.60):**
+- ✅ All benchmarks ≤1.10x vs C
+- ✅ 20+ benchmarks where BMB > C
+- ✅ 3-Stage Bootstrap: Fixed Point achieved
 
 BMB's goal: safe code that generates **identical assembly** to unsafe C.
 
@@ -190,15 +199,15 @@ See [RFC-0001: Contract-Driven Optimization](docs/rfcs/RFC-0008-contract-driven-
 
 ## Documentation
 
-| | |
-|---|---|
-| [Specification](docs/SPECIFICATION.md) | Formal language definition (v0.32.1) |
+| Document | Description |
+|----------|-------------|
+| [Specification](docs/SPECIFICATION.md) | Formal language definition |
 | [Language Reference](docs/LANGUAGE_REFERENCE.md) | Complete feature guide |
 | [Architecture](docs/ARCHITECTURE.md) | Compiler internals |
-| [Development](docs/DEVELOPMENT.md) | Development philosophy |
-| [Roadmap](docs/ROADMAP.md) | Development roadmap |
+| [Build from Source](docs/BUILD_FROM_SOURCE.md) | Build instructions |
+| [Benchmark](docs/BENCHMARK.md) | Performance results |
 | [Ecosystem](docs/ECOSYSTEM.md) | Tools and submodules |
-| [RFCs](docs/rfcs/) | Design proposals |
+| [Roadmap](docs/ROADMAP.md) | Development roadmap |
 
 ---
 
