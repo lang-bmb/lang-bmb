@@ -4356,6 +4356,14 @@ impl LoopBoundedNarrowing {
             return false;
         }
 
+        // v0.60.105: Check for self-recursive calls with unbounded arguments
+        // If a function calls itself with a non-constant, non-decreasing argument
+        // for this parameter, we cannot narrow it (e.g., collect_mir_strings_acc
+        // calls itself with str_end + 1 which can grow to arbitrary size)
+        if Self::has_unbounded_recursive_arg(func, param_idx) {
+            return false;
+        }
+
         // Check if we have bounds for this parameter
         if let Some(bounds) = self.param_bounds.get(&func.name) {
             if let Some(&max_val) = bounds.get(&param_idx) {
@@ -4486,6 +4494,277 @@ impl LoopBoundedNarrowing {
         }
 
         max_constant
+    }
+
+    /// v0.60.105: Check if a function has unbounded loop updates or recursive args
+    /// for a specific parameter. This prevents narrowing parameters like `pos` in
+    /// collect_mir_strings_acc which updates pos in a loop with unbounded growth.
+    ///
+    /// Checks for:
+    /// 1. Self-recursive calls with unbounded arguments
+    /// 2. Phi nodes (from loop conversion) that update the parameter with increasing values
+    fn has_unbounded_recursive_arg(func: &MirFunction, param_idx: usize) -> bool {
+        let param_name = &func.params[param_idx].0;
+
+        // Build a map of expressions for pattern analysis
+        let mut definitions: HashMap<String, (&MirBinOp, &Operand, &Operand)> = HashMap::new();
+
+        for block in &func.blocks {
+            for inst in &block.instructions {
+                if let MirInst::BinOp { dest, op, lhs, rhs } = inst {
+                    definitions.insert(dest.name.clone(), (op, lhs, rhs));
+                }
+            }
+        }
+
+        // Check for phi nodes that update parameter-derived values
+        // After tail recursion to loop conversion, the pattern is:
+        //   %pos_loop = phi [%initial_pos, entry], [%next_pos, loop_body]
+        // where %next_pos = %pos_loop + X (increasing pattern)
+        //
+        // v0.60.106: More conservative check - if param flows to phi and the
+        // loop-back value is NOT obviously bounded (decreasing), assume unbounded.
+        for block in &func.blocks {
+            for inst in &block.instructions {
+                if let MirInst::Phi { dest, values } = inst {
+                    let phi_name = &dest.name;
+
+                    // First, check if this phi is related to our parameter
+                    let param_flows = Self::param_flows_to_phi(func, param_name.as_str(), phi_name.as_str());
+                    if !param_flows {
+                        continue;
+                    }
+
+                    // Check each incoming value from loop iterations (not entry)
+                    for (operand, block_name) in values {
+                        // Skip entry block values - those are initial values
+                        if block_name == "entry" {
+                            continue;
+                        }
+                        // Skip constants (bounded)
+                        if matches!(operand, Operand::Constant(_)) {
+                            continue;
+                        }
+                        if let Operand::Place(p) = operand {
+                            // Skip if it's the phi itself (no change)
+                            if &p.name == phi_name {
+                                continue;
+                            }
+
+                            // Check if this is a DECREASING pattern from phi_name
+                            // Only decreasing patterns are safe for narrowing
+                            let is_decreasing = Self::is_decreasing_from_var(operand, phi_name.as_str(), &definitions);
+                            let is_increasing = Self::is_increasing_from_var(operand, phi_name.as_str(), &definitions);
+
+                            // If it's increasing, definitely unbounded
+                            if is_increasing {
+                                return true;
+                            }
+
+                            // If it's not decreasing and not the same variable, assume unbounded
+                            // This catches cases like: pos_loop' = str_end + 1 where str_end
+                            // is derived from external sources and can be arbitrarily large
+                            if !is_decreasing {
+                                // Check if this value is derived from the phi at all
+                                let derived_from_phi = Self::is_derived_from_var(operand, phi_name.as_str(), &definitions);
+                                // If not derived from phi AND not decreasing, it's from external source
+                                // and could be unbounded
+                                if !derived_from_phi {
+                                    return true;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Also check for self-recursive calls (in case loop conversion didn't happen)
+        for block in &func.blocks {
+            for inst in &block.instructions {
+                if let MirInst::Call { func: callee, args, .. } = inst {
+                    if callee == &func.name {
+                        if let Some(arg) = args.get(param_idx) {
+                            // Check if argument is increasing from parameter
+                            if let Operand::Place(_) = arg {
+                                if Self::is_increasing_from_var(arg, param_name.as_str(), &definitions) {
+                                    return true;
+                                }
+                                // Also check for unknown/unbounded patterns
+                                if !Self::is_bounded_from_param(arg, param_name.as_str(), &definitions) {
+                                    return true;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        false
+    }
+
+    /// Check if parameter flows to a phi node (indicating loop update)
+    fn param_flows_to_phi(func: &MirFunction, param_name: &str, phi_name: &str) -> bool {
+        // Simple check: if the phi has an incoming value from entry block that
+        // is the parameter itself, or if phi_name contains "pos" and param contains "pos"
+        // This is a heuristic for common patterns like collect_mir_strings_acc
+
+        // Check if the phi has the parameter as one of its incoming values
+        for block in &func.blocks {
+            for inst in &block.instructions {
+                if let MirInst::Phi { dest, values } = inst {
+                    if dest.name == phi_name {
+                        for (operand, _) in values {
+                            if let Operand::Place(p) = operand {
+                                if p.name == param_name {
+                                    return true;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Heuristic: if phi_name ends with "_loop" and contains a substring of param_name
+        // This handles cases like param "pos" → phi "pos_loop"
+        if phi_name.ends_with("_loop") {
+            let base_name = &phi_name[..phi_name.len() - 5];
+            if base_name == param_name {
+                return true;
+            }
+        }
+
+        false
+    }
+
+    /// Check if an operand is derived from a variable with an increasing pattern (Add)
+    fn is_increasing_from_var(
+        operand: &Operand,
+        var_name: &str,
+        definitions: &HashMap<String, (&MirBinOp, &Operand, &Operand)>,
+    ) -> bool {
+        if let Operand::Place(p) = operand {
+            if let Some((op, lhs, rhs)) = definitions.get(&p.name) {
+                match op {
+                    // var + positive_const is increasing
+                    MirBinOp::Add => {
+                        let lhs_is_var = matches!(lhs, Operand::Place(l) if l.name == var_name);
+                        let rhs_is_positive = matches!(rhs, Operand::Constant(Constant::Int(v)) if *v > 0);
+                        let rhs_is_var = matches!(rhs, Operand::Place(r) if r.name == var_name);
+                        let lhs_is_positive = matches!(lhs, Operand::Constant(Constant::Int(v)) if *v > 0);
+                        // Also check transitive: if lhs is derived from var with Add
+                        let lhs_increasing = Self::is_increasing_from_var(lhs, var_name, definitions);
+                        let rhs_increasing = Self::is_increasing_from_var(rhs, var_name, definitions);
+                        (lhs_is_var && rhs_is_positive) ||
+                        (rhs_is_var && lhs_is_positive) ||
+                        (lhs_increasing && rhs_is_positive) ||
+                        (rhs_increasing && lhs_is_positive)
+                    }
+                    _ => false,
+                }
+            } else {
+                false
+            }
+        } else {
+            false
+        }
+    }
+
+    /// v0.60.106: Check if an operand is derived from a variable with a decreasing pattern (Sub)
+    fn is_decreasing_from_var(
+        operand: &Operand,
+        var_name: &str,
+        definitions: &HashMap<String, (&MirBinOp, &Operand, &Operand)>,
+    ) -> bool {
+        if let Operand::Place(p) = operand {
+            if let Some((op, lhs, rhs)) = definitions.get(&p.name) {
+                match op {
+                    // var - positive_const is decreasing
+                    MirBinOp::Sub => {
+                        let lhs_is_var = matches!(lhs, Operand::Place(l) if l.name == var_name);
+                        let rhs_is_positive = matches!(rhs, Operand::Constant(Constant::Int(v)) if *v > 0);
+                        // Also check transitive: if lhs is derived from var
+                        let lhs_decreasing = Self::is_decreasing_from_var(lhs, var_name, definitions);
+                        (lhs_is_var && rhs_is_positive) || (lhs_decreasing && rhs_is_positive)
+                    }
+                    // var / const > 1 is decreasing
+                    MirBinOp::Div => {
+                        let lhs_is_var = matches!(lhs, Operand::Place(l) if l.name == var_name);
+                        let rhs_is_divisor = matches!(rhs, Operand::Constant(Constant::Int(v)) if *v > 1);
+                        let lhs_decreasing = Self::is_decreasing_from_var(lhs, var_name, definitions);
+                        (lhs_is_var && rhs_is_divisor) || (lhs_decreasing && rhs_is_divisor)
+                    }
+                    _ => false,
+                }
+            } else {
+                false
+            }
+        } else {
+            false
+        }
+    }
+
+    /// v0.60.106: Check if an operand is derived from a variable (through any operation)
+    fn is_derived_from_var(
+        operand: &Operand,
+        var_name: &str,
+        definitions: &HashMap<String, (&MirBinOp, &Operand, &Operand)>,
+    ) -> bool {
+        match operand {
+            Operand::Place(p) if p.name == var_name => true,
+            Operand::Place(p) => {
+                if let Some((_op, lhs, rhs)) = definitions.get(&p.name) {
+                    Self::is_derived_from_var(lhs, var_name, definitions) ||
+                    Self::is_derived_from_var(rhs, var_name, definitions)
+                } else {
+                    false
+                }
+            }
+            _ => false,
+        }
+    }
+
+    /// Check if an operand is bounded relative to a parameter (constant, decreasing, or same)
+    fn is_bounded_from_param(
+        operand: &Operand,
+        param_name: &str,
+        definitions: &HashMap<String, (&MirBinOp, &Operand, &Operand)>,
+    ) -> bool {
+        match operand {
+            // Direct use of parameter
+            Operand::Place(p) if p.name == param_name => true,
+            // Small constants are bounded
+            Operand::Constant(Constant::Int(v)) => *v >= 0 && *v <= i32::MAX as i64,
+            // Check derived values
+            Operand::Place(p) => {
+                if let Some((op, lhs, rhs)) = definitions.get(&p.name) {
+                    match op {
+                        // param - positive_const is bounded (decreasing)
+                        MirBinOp::Sub => {
+                            let lhs_is_param = matches!(lhs, Operand::Place(l) if l.name == param_name);
+                            let lhs_bounded = Self::is_bounded_from_param(lhs, param_name, definitions);
+                            let rhs_is_positive = matches!(rhs, Operand::Constant(Constant::Int(v)) if *v > 0);
+                            (lhs_is_param || lhs_bounded) && rhs_is_positive
+                        }
+                        // param / const > 1 is bounded (decreasing)
+                        MirBinOp::Div => {
+                            let lhs_is_param = matches!(lhs, Operand::Place(l) if l.name == param_name);
+                            let lhs_bounded = Self::is_bounded_from_param(lhs, param_name, definitions);
+                            let rhs_is_divisor = matches!(rhs, Operand::Constant(Constant::Int(v)) if *v > 1);
+                            (lhs_is_param || lhs_bounded) && rhs_is_divisor
+                        }
+                        // param + const is NOT bounded (increasing) - return false
+                        MirBinOp::Add => false,
+                        _ => false,
+                    }
+                } else {
+                    false
+                }
+            }
+            _ => false,
+        }
     }
 
     /// v0.60.14: Check if a parameter is used in multiplication
@@ -4885,6 +5164,13 @@ impl LoopBoundedNarrowing {
                         // v0.60.36: Check if parameter is used in multiplication
                         // This is critical for mandelbrot: zr/zi flow to mul_fp which can overflow i32
                         if Self::is_used_in_multiplication(func, param_name, &self.functions_with_mul) {
+                            continue; // Don't narrow this parameter
+                        }
+
+                        // v0.60.106: Check if parameter is used in unbounded loop/recursive pattern
+                        // Even if all external call sites pass narrow values, the internal loop
+                        // can grow the value beyond i32 (e.g., collect_mir_strings_acc pos)
+                        if Self::has_unbounded_recursive_arg(func, param_idx) {
                             continue; // Don't narrow this parameter
                         }
 

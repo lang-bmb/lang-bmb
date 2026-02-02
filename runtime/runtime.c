@@ -384,6 +384,24 @@ int64_t bmb_write_file(BmbString* path, BmbString* content) {
     return 0;
 }
 
+// v0.60.80: write_file_newlines - converts | to newlines during write
+// Used by bootstrap compiler which uses | as line separator
+int64_t write_file_newlines(BmbString* path, BmbString* content) {
+    if (!path || !content) return -1;
+    FILE* f = fopen(path->data, "wb");
+    if (!f) return -1;
+    for (size_t i = 0; i < content->len; i++) {
+        char c = content->data[i];
+        if (c == '|') {
+            fputc('\n', f);
+        } else {
+            fputc(c, f);
+        }
+    }
+    fclose(f);
+    return 0;
+}
+
 // Append string to file (returns 0 on success, -1 on error)
 int64_t bmb_append_file(BmbString* path, BmbString* content) {
     if (!path || !content) return -1;

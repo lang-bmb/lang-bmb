@@ -333,6 +333,8 @@ impl TypeChecker {
         functions.insert("read_file".to_string(), (vec![Type::String], Type::String));
         // write_file(path: String, content: String) -> i64 (0 = success, -1 = error)
         functions.insert("write_file".to_string(), (vec![Type::String, Type::String], Type::I64));
+        // v0.60.80: write_file_newlines - converts | to newlines (for bootstrap compiler)
+        functions.insert("write_file_newlines".to_string(), (vec![Type::String, Type::String], Type::I64));
         // append_file(path: String, content: String) -> i64
         functions.insert("append_file".to_string(), (vec![Type::String, Type::String], Type::I64));
         // file_exists(path: String) -> i64 (1 = exists, 0 = not found)

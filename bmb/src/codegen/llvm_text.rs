@@ -346,6 +346,7 @@ impl TextCodeGen {
         writeln!(out, "declare i64 @bmb_file_size(ptr)")?;
         writeln!(out, "declare ptr @bmb_read_file(ptr)")?;
         writeln!(out, "declare i64 @bmb_write_file(ptr, ptr)")?;
+        writeln!(out, "declare i64 @write_file_newlines(ptr, ptr)")?;  // v0.60.80: bootstrap support
         writeln!(out, "declare i64 @bmb_append_file(ptr, ptr)")?;
         writeln!(out)?;
 

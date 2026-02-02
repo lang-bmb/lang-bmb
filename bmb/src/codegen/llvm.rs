@@ -12,7 +12,7 @@ use inkwell::targets::{
     CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine,
 };
 use inkwell::types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum};
-use inkwell::values::{BasicMetadataValueEnum, BasicValue, BasicValueEnum, FunctionValue, PhiValue, PointerValue};
+use inkwell::values::{BasicMetadataValueEnum, BasicValue, BasicValueEnum, FastMathFlags, FunctionValue, InstructionValue, PhiValue, PointerValue};
 use inkwell::passes::PassBuilderOptions;
 use inkwell::OptimizationLevel;
 use inkwell::{FloatPredicate, IntPredicate};
@@ -421,6 +421,10 @@ struct LlvmContext<'ctx> {
     /// v0.60.56: Enable fast-math optimizations for floating-point operations
     /// When enabled, FP operations use aggressive optimizations (FMA, reciprocal, etc.)
     fast_math: bool,
+
+    /// v0.60.81: Track String-typed variables for proper string comparison
+    /// Used to distinguish String pointers from typed pointers (*T) in BinOp
+    string_variables: std::collections::HashSet<String>,
 }
 
 impl<'ctx> LlvmContext<'ctx> {
@@ -448,6 +452,7 @@ impl<'ctx> LlvmContext<'ctx> {
             function_return_types: HashMap::new(),
             array_variables: std::collections::HashSet::new(),
             fast_math,
+            string_variables: std::collections::HashSet::new(),
         }
     }
 
@@ -556,6 +561,7 @@ impl<'ctx> LlvmContext<'ctx> {
         chr_fn.add_attribute(AttributeLoc::Function, nounwind_attr);
         chr_fn.add_attribute(AttributeLoc::Function, willreturn_attr);
         self.functions.insert("chr".to_string(), chr_fn);
+        self.function_return_types.insert("chr".to_string(), MirType::String);
 
         // v0.46: ord(ptr) -> i64 (takes string, returns first char code)
         let ord_type = i64_type.fn_type(&[ptr_type.into()], false);
@@ -663,6 +669,8 @@ impl<'ctx> LlvmContext<'ctx> {
         slice_fn.add_attribute(AttributeLoc::Function, willreturn_attr);
         slice_fn.add_attribute(AttributeLoc::Function, nosync_attr);
         self.functions.insert("slice".to_string(), slice_fn);
+        // v0.60.120: Register return type for string comparison tracking
+        self.function_return_types.insert("slice".to_string(), MirType::String);
 
         // v0.46: string_eq(ptr, ptr) -> i64 (for BmbString* comparison)
         let string_eq_type = i64_type.fn_type(&[ptr_type.into(), ptr_type.into()], false);
@@ -760,23 +768,27 @@ impl<'ctx> LlvmContext<'ctx> {
         let char_to_str_type = ptr_type.fn_type(&[i32_type.into()], false);
         let char_to_str_fn = self.module.add_function("bmb_char_to_string", char_to_str_type, None);
         self.functions.insert("char_to_string".to_string(), char_to_str_fn);
+        self.function_return_types.insert("char_to_string".to_string(), MirType::String);
 
         // int_to_string(n: i64) -> ptr
         let int_to_str_type = ptr_type.fn_type(&[i64_type.into()], false);
         let int_to_str_fn = self.module.add_function("bmb_int_to_string", int_to_str_type, None);
         self.functions.insert("int_to_string".to_string(), int_to_str_fn);
+        self.function_return_types.insert("int_to_string".to_string(), MirType::String);
 
         // v0.46: string_from_cstr - convert C string to BmbString
         // string_from_cstr(cstr: ptr) -> ptr (returns BmbString*)
         let string_from_cstr_type = ptr_type.fn_type(&[ptr_type.into()], false);
         let string_from_cstr_fn = self.module.add_function("bmb_string_from_cstr", string_from_cstr_type, None);
         self.functions.insert("string_from_cstr".to_string(), string_from_cstr_fn);
+        self.function_return_types.insert("string_from_cstr".to_string(), MirType::String);
 
         // v0.100: String concatenation
         // string_concat(a: ptr, b: ptr) -> ptr
         let string_concat_type = ptr_type.fn_type(&[ptr_type.into(), ptr_type.into()], false);
         let string_concat_fn = self.module.add_function("bmb_string_concat", string_concat_type, None);
         self.functions.insert("string_concat".to_string(), string_concat_fn);
+        self.function_return_types.insert("string_concat".to_string(), MirType::String);
 
         // v0.46: StringBuilder functions
         // sb_new() -> i64 (returns handle)
@@ -819,6 +831,7 @@ impl<'ctx> LlvmContext<'ctx> {
         let sb_build_type = ptr_type.fn_type(&[i64_type.into()], false);
         let sb_build_fn = self.module.add_function("bmb_sb_build", sb_build_type, None);
         self.functions.insert("sb_build".to_string(), sb_build_fn);
+        self.function_return_types.insert("sb_build".to_string(), MirType::String);
 
         // sb_clear(handle: i64) -> i64
         let sb_clear_type = i64_type.fn_type(&[i64_type.into()], false);
@@ -878,11 +891,16 @@ impl<'ctx> LlvmContext<'ctx> {
         let read_file_type = ptr_type.fn_type(&[ptr_type.into()], false);
         let read_file_fn = self.module.add_function("bmb_read_file", read_file_type, None);
         self.functions.insert("read_file".to_string(), read_file_fn);
+        self.function_return_types.insert("read_file".to_string(), MirType::String);
 
         // write_file(path: ptr, content: ptr) -> i64 (returns 0 on success, -1 on error)
         let write_file_type = i64_type.fn_type(&[ptr_type.into(), ptr_type.into()], false);
         let write_file_fn = self.module.add_function("bmb_write_file", write_file_type, None);
         self.functions.insert("write_file".to_string(), write_file_fn);
+
+        // v0.60.80: write_file_newlines - converts | to newlines (for bootstrap compiler)
+        let write_file_newlines_fn = self.module.add_function("write_file_newlines", write_file_type, None);
+        self.functions.insert("write_file_newlines".to_string(), write_file_newlines_fn);
 
         // file_exists(path: ptr) -> i64 (returns 1 if exists, 0 otherwise)
         let file_exists_type = i64_type.fn_type(&[ptr_type.into()], false);
@@ -905,6 +923,7 @@ impl<'ctx> LlvmContext<'ctx> {
         let get_arg_type = ptr_type.fn_type(&[i64_type.into()], false);
         let get_arg_fn = self.module.add_function("bmb_get_arg", get_arg_type, None);
         self.functions.insert("get_arg".to_string(), get_arg_fn);
+        self.function_return_types.insert("get_arg".to_string(), MirType::String);
     }
 
     /// Convert MIR type to LLVM type
@@ -1040,6 +1059,33 @@ impl<'ctx> LlvmContext<'ctx> {
         self.ssa_values.clear();
         self.phi_nodes.clear();
         self.blocks.clear();
+        self.string_variables.clear();
+
+        // v0.60.81: Track String-typed variables for proper string comparison
+        // This enables bmb_string_eq to be called even when both operands are variables
+        for (name, ty) in &func.params {
+            if *ty == MirType::String {
+                self.string_variables.insert(name.clone());
+            }
+        }
+        for (name, ty) in &func.locals {
+            if *ty == MirType::String {
+                self.string_variables.insert(name.clone());
+            }
+        }
+        // v0.60.119: Also track temporaries that receive String values from function calls
+        // This fixes string comparison when comparing sliced strings (e.g., s.slice(0,3) == "fn ")
+        for block in &func.blocks {
+            for inst in &block.instructions {
+                if let MirInst::Call { dest: Some(dest), func: callee, .. } = inst {
+                    if let Some(ret_ty) = self.function_return_types.get(callee) {
+                        if *ret_ty == MirType::String {
+                            self.string_variables.insert(dest.name.clone());
+                        }
+                    }
+                }
+            }
+        }
 
         // v0.50.80: Set current function's return type for type coercion in Return
         self.current_ret_type = match &func.ret_ty {
@@ -1610,6 +1656,11 @@ impl<'ctx> LlvmContext<'ctx> {
             MirInst::Copy { dest, src } => {
                 let value = self.load_from_place(src)?;
                 self.store_to_place(dest, value)?;
+                // v0.60.96: Propagate string status for proper string comparison
+                // If source is a String variable, destination should also be tracked
+                if self.string_variables.contains(&src.name) {
+                    self.string_variables.insert(dest.name.clone());
+                }
             }
 
             MirInst::BinOp { dest, op, lhs, rhs } => {
@@ -1617,8 +1668,18 @@ impl<'ctx> LlvmContext<'ctx> {
                 let rhs_val = self.gen_operand(rhs)?;
                 // v0.60.33: Detect if this is a String comparison (not typed pointer)
                 // String constants come from Operand::Constant(Constant::String(_))
-                let is_string_comparison = matches!(lhs, Operand::Constant(Constant::String(_)))
-                    || matches!(rhs, Operand::Constant(Constant::String(_)));
+                // v0.60.81: Also check if operands are String-typed variables
+                let lhs_is_string = match lhs {
+                    Operand::Constant(Constant::String(_)) => true,
+                    Operand::Place(p) => self.string_variables.contains(&p.name),
+                    _ => false,
+                };
+                let rhs_is_string = match rhs {
+                    Operand::Constant(Constant::String(_)) => true,
+                    Operand::Place(p) => self.string_variables.contains(&p.name),
+                    _ => false,
+                };
+                let is_string_comparison = lhs_is_string || rhs_is_string;
                 let result = self.gen_binop_with_string_hint(*op, lhs_val, rhs_val, is_string_comparison)?;
                 self.store_to_place(dest, result)?;
             }
@@ -2077,6 +2138,23 @@ impl<'ctx> LlvmContext<'ctx> {
                                 ret_val
                             };
                             self.store_to_place(dest_place, stored_val)?;
+                            // v0.60.81: Track String-typed destinations for proper string comparison
+                            // Check both built-in String-returning functions and user-defined ones
+                            let string_funcs = [
+                                "sb_build", "chr", "slice", "char_to_string",
+                                "int_to_string", "string_from_cstr", "string_concat",
+                                "read_file", "get_arg", "getenv", "bmb_chr",
+                                "bmb_string_slice", "bmb_string_concat", "bmb_read_file",
+                                "bmb_int_to_string", "bmb_string_from_cstr", "bmb_sb_build",
+                                "bmb_getenv"
+                            ];
+                            let is_string_func = string_funcs.contains(&func.as_str())
+                                || self.function_return_types.get(func)
+                                    .map(|ty| *ty == MirType::String)
+                                    .unwrap_or(false);
+                            if is_string_func {
+                                self.string_variables.insert(dest_place.name.clone());
+                            }
                         } else {
                             // v0.50.75: Handle void-returning functions with destinations
                             // MIR may assign the result of a void call to a variable (e.g., let u = println_str(...))
@@ -3245,28 +3323,49 @@ impl<'ctx> LlvmContext<'ctx> {
             }
 
             // Float arithmetic
+            // v0.60.80: Apply AllowContract flag for FMA when fast_math is enabled
             MirBinOp::FAdd => {
                 let result = self.builder
                     .build_float_add(lhs.into_float_value(), rhs.into_float_value(), "fadd")
                     .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                if self.fast_math {
+                    let inst: InstructionValue = result.as_instruction_value()
+                        .ok_or_else(|| CodeGenError::LlvmError("fadd should be an instruction".to_string()))?;
+                    let _ = inst.set_fast_math_flags(FastMathFlags::AllowContract | FastMathFlags::AllowReassoc);
+                }
                 Ok(result.into())
             }
             MirBinOp::FSub => {
                 let result = self.builder
                     .build_float_sub(lhs.into_float_value(), rhs.into_float_value(), "fsub")
                     .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                if self.fast_math {
+                    let inst: InstructionValue = result.as_instruction_value()
+                        .ok_or_else(|| CodeGenError::LlvmError("fsub should be an instruction".to_string()))?;
+                    let _ = inst.set_fast_math_flags(FastMathFlags::AllowContract | FastMathFlags::AllowReassoc);
+                }
                 Ok(result.into())
             }
             MirBinOp::FMul => {
                 let result = self.builder
                     .build_float_mul(lhs.into_float_value(), rhs.into_float_value(), "fmul")
                     .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                if self.fast_math {
+                    let inst: InstructionValue = result.as_instruction_value()
+                        .ok_or_else(|| CodeGenError::LlvmError("fmul should be an instruction".to_string()))?;
+                    let _ = inst.set_fast_math_flags(FastMathFlags::AllowContract | FastMathFlags::AllowReassoc);
+                }
                 Ok(result.into())
             }
             MirBinOp::FDiv => {
                 let result = self.builder
                     .build_float_div(lhs.into_float_value(), rhs.into_float_value(), "fdiv")
                     .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                if self.fast_math {
+                    let inst: InstructionValue = result.as_instruction_value()
+                        .ok_or_else(|| CodeGenError::LlvmError("fdiv should be an instruction".to_string()))?;
+                    let _ = inst.set_fast_math_flags(FastMathFlags::AllowContract | FastMathFlags::AllowReassoc);
+                }
                 Ok(result.into())
             }
 

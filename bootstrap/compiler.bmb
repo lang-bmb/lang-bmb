@@ -46,56 +46,63 @@ fn has_pattern(s: String, pat: String, pos: i64) -> bool =
 // SECTION 2: Token Constants (from pipeline.bmb)
 // ============================================================================
 
-fn TK_FN() -> i64 = 100;
-fn TK_LET() -> i64 = 101;
-fn TK_IF() -> i64 = 102;
-fn TK_THEN() -> i64 = 103;
-fn TK_ELSE() -> i64 = 104;
-fn TK_TRUE() -> i64 = 105;
-fn TK_FALSE() -> i64 = 106;
-fn TK_AND() -> i64 = 107;
-fn TK_OR() -> i64 = 108;
-fn TK_NOT() -> i64 = 109;
-fn TK_PRE() -> i64 = 110;
-fn TK_POST() -> i64 = 111;
-fn TK_MUT() -> i64 = 117;
+// v0.60.116: Token constants in 1000-1999 range (reserved for tokens)
+// Integer literals: 0-999 and 2000+ are parsed as integers
+// Token constants: 1000-1999 are reserved for token types
+// IMPORTANT: Token values use (9999 + 1 + N) = 10000 + N to avoid collision with integer literals
+// v0.60.118: Token constants in 10000-10999 range (integers 0-9999 and 11000+ work)
+fn TK_FN() -> i64 = 9999 + 1 + 100;
+fn TK_LET() -> i64 = 9999 + 1 + 101;
+fn TK_IF() -> i64 = 9999 + 1 + 102;
+fn TK_THEN() -> i64 = 9999 + 1 + 103;
+fn TK_ELSE() -> i64 = 9999 + 1 + 104;
+fn TK_TRUE() -> i64 = 9999 + 1 + 105;
+fn TK_FALSE() -> i64 = 9999 + 1 + 106;
+fn TK_AND() -> i64 = 9999 + 1 + 107;
+fn TK_OR() -> i64 = 9999 + 1 + 108;
+fn TK_NOT() -> i64 = 9999 + 1 + 109;
+fn TK_PRE() -> i64 = 9999 + 1 + 110;
+fn TK_POST() -> i64 = 9999 + 1 + 111;
+fn TK_MUT() -> i64 = 9999 + 1 + 117;
 
-fn TK_I32() -> i64 = 150;
-fn TK_I64() -> i64 = 151;
-fn TK_F64() -> i64 = 152;
-fn TK_BOOL() -> i64 = 153;
-fn TK_STRING_TYPE() -> i64 = 154;
+fn TK_I32() -> i64 = 9999 + 1 + 150;
+fn TK_I64() -> i64 = 9999 + 1 + 151;
+fn TK_F64() -> i64 = 9999 + 1 + 152;
+fn TK_BOOL() -> i64 = 9999 + 1 + 153;
+fn TK_STRING_TYPE() -> i64 = 9999 + 1 + 154;
 
-fn TK_INT() -> i64 = 200;
-fn TK_IDENT() -> i64 = 201;
+fn TK_INT() -> i64 = 9999 + 1 + 200;
+fn TK_IDENT() -> i64 = 9999 + 1 + 201;
+fn TK_STRING_LIT() -> i64 = 9999 + 1 + 202;
 
-fn TK_COLON() -> i64 = 300;
-fn TK_EQ() -> i64 = 302;
-fn TK_SEMI() -> i64 = 303;
-fn TK_COMMA() -> i64 = 304;
-fn TK_LPAREN() -> i64 = 305;
-fn TK_RPAREN() -> i64 = 306;
+fn TK_COLON() -> i64 = 9999 + 1 + 300;
+fn TK_EQ() -> i64 = 9999 + 1 + 302;
+fn TK_SEMI() -> i64 = 9999 + 1 + 303;
+fn TK_COMMA() -> i64 = 9999 + 1 + 304;
+fn TK_LPAREN() -> i64 = 9999 + 1 + 305;
+fn TK_RPAREN() -> i64 = 9999 + 1 + 306;
 // v0.46: Brace tokens for v0.32 braced if-else syntax
-fn TK_LBRACE() -> i64 = 307;
-fn TK_RBRACE() -> i64 = 308;
+fn TK_LBRACE() -> i64 = 9999 + 1 + 307;
+fn TK_RBRACE() -> i64 = 9999 + 1 + 308;
 
-fn TK_ARROW() -> i64 = 321;
-fn TK_DOTDOT() -> i64 = 323;
+fn TK_ARROW() -> i64 = 9999 + 1 + 321;
+fn TK_DOT() -> i64 = 9999 + 1 + 322;
+fn TK_DOTDOT() -> i64 = 9999 + 1 + 323;
 
-fn TK_PLUS() -> i64 = 400;
-fn TK_MINUS() -> i64 = 401;
-fn TK_STAR() -> i64 = 402;
-fn TK_SLASH() -> i64 = 403;
-fn TK_PERCENT() -> i64 = 404;
-fn TK_LT() -> i64 = 405;
-fn TK_GT() -> i64 = 406;
+fn TK_PLUS() -> i64 = 9999 + 1 + 400;
+fn TK_MINUS() -> i64 = 9999 + 1 + 401;
+fn TK_STAR() -> i64 = 9999 + 1 + 402;
+fn TK_SLASH() -> i64 = 9999 + 1 + 403;
+fn TK_PERCENT() -> i64 = 9999 + 1 + 404;
+fn TK_LT() -> i64 = 9999 + 1 + 405;
+fn TK_GT() -> i64 = 9999 + 1 + 406;
 
-fn TK_EQEQ() -> i64 = 410;
-fn TK_NEQ() -> i64 = 411;
-fn TK_LTEQ() -> i64 = 412;
-fn TK_GTEQ() -> i64 = 413;
+fn TK_EQEQ() -> i64 = 9999 + 1 + 410;
+fn TK_NEQ() -> i64 = 9999 + 1 + 411;
+fn TK_LTEQ() -> i64 = 9999 + 1 + 412;
+fn TK_GTEQ() -> i64 = 9999 + 1 + 413;
 
-fn TK_EOF() -> i64 = 900;
+fn TK_EOF() -> i64 = 9999 + 1 + 900;
 
 // ============================================================================
 // SECTION 3: Lexer (from pipeline.bmb)
@@ -124,6 +131,13 @@ fn scan_int(s: String, pos: i64, acc: i64) -> i64 =
 fn scan_ident_end(s: String, pos: i64) -> i64 =
     if pos >= s.len() { pos } else if is_alnum_or_underscore(s.byte_at(pos)) { scan_ident_end(s, pos + 1) } else { pos };
 
+// v0.60.109: Scan string literal - find closing quote
+// Returns position after closing quote, or s.len() if not found
+fn scan_string_end(s: String, pos: i64) -> i64 =
+    if pos >= s.len() { s.len() }
+    else if s.byte_at(pos) == 34 { pos + 1 }
+    else { scan_string_end(s, pos + 1) };
+
 fn tok_val(r: i64) -> i64 = r / 1000000;
 fn tok_end(r: i64) -> i64 = r - (r / 1000000) * 1000000;
 fn tok_kind(r: i64) -> i64 = tok_val(r);
@@ -138,9 +152,13 @@ fn next_token_raw(s: String, pos: i64) -> i64 =
     if p >= s.len() { make_tok(TK_EOF(), p) } else {
         let c = s.byte_at(p);
         if is_digit(c) { scan_int(s, p, 0) } else if is_ident_start(c) {
-            let endpos = scan_ident_end(s, p + 1);
-            keyword_or_ident(s, p, endpos)
-        } else if c == 58 { make_tok(TK_COLON(), p + 1) } else if c == 61 { if p + 1 < s.len() and s.byte_at(p + 1) == 61 { make_tok(TK_EQEQ(), p + 2) } else { make_tok(TK_EQ(), p + 1) } } else if c == 59 { make_tok(TK_SEMI(), p + 1) } else if c == 44 { make_tok(TK_COMMA(), p + 1) } else if c == 40 { make_tok(TK_LPAREN(), p + 1) } else if c == 41 { make_tok(TK_RPAREN(), p + 1) } else if c == 43 { make_tok(TK_PLUS(), p + 1) } else if c == 45 { if p + 1 < s.len() and s.byte_at(p + 1) == 62 { make_tok(TK_ARROW(), p + 2) } else { make_tok(TK_MINUS(), p + 1) } } else if c == 42 { make_tok(TK_STAR(), p + 1) } else if c == 47 { make_tok(TK_SLASH(), p + 1) } else if c == 37 { make_tok(TK_PERCENT(), p + 1) } else if c == 60 { if p + 1 < s.len() and s.byte_at(p + 1) == 61 { make_tok(TK_LTEQ(), p + 2) } else { make_tok(TK_LT(), p + 1) } } else if c == 62 { if p + 1 < s.len() and s.byte_at(p + 1) == 61 { make_tok(TK_GTEQ(), p + 2) } else { make_tok(TK_GT(), p + 1) } } else if c == 33 { if p + 1 < s.len() and s.byte_at(p + 1) == 61 { make_tok(TK_NEQ(), p + 2) } else { make_tok(TK_EOF(), p) } } else if c == 46 { if p + 1 < s.len() and s.byte_at(p + 1) == 46 { make_tok(TK_DOTDOT(), p + 2) } else { make_tok(TK_EOF(), p) } } else if c == 123 { make_tok(TK_LBRACE(), p + 1) } else if c == 125 { make_tok(TK_RBRACE(), p + 1) } else { make_tok(TK_EOF(), p) }
+            let ident_end = scan_ident_end(s, p + 1);
+            keyword_or_ident(s, p, ident_end)
+        } else if c == 34 {
+            // v0.60.109: String literal - scan to closing quote
+            let str_end = scan_string_end(s, p + 1);
+            make_tok(TK_STRING_LIT(), str_end)
+        } else if c == 58 { make_tok(TK_COLON(), p + 1) } else if c == 61 { if p + 1 < s.len() and s.byte_at(p + 1) == 61 { make_tok(TK_EQEQ(), p + 2) } else { make_tok(TK_EQ(), p + 1) } } else if c == 59 { make_tok(TK_SEMI(), p + 1) } else if c == 44 { make_tok(TK_COMMA(), p + 1) } else if c == 40 { make_tok(TK_LPAREN(), p + 1) } else if c == 41 { make_tok(TK_RPAREN(), p + 1) } else if c == 43 { make_tok(TK_PLUS(), p + 1) } else if c == 45 { if p + 1 < s.len() and s.byte_at(p + 1) == 62 { make_tok(TK_ARROW(), p + 2) } else { make_tok(TK_MINUS(), p + 1) } } else if c == 42 { make_tok(TK_STAR(), p + 1) } else if c == 47 { make_tok(TK_SLASH(), p + 1) } else if c == 37 { make_tok(TK_PERCENT(), p + 1) } else if c == 60 { if p + 1 < s.len() and s.byte_at(p + 1) == 61 { make_tok(TK_LTEQ(), p + 2) } else { make_tok(TK_LT(), p + 1) } } else if c == 62 { if p + 1 < s.len() and s.byte_at(p + 1) == 61 { make_tok(TK_GTEQ(), p + 2) } else { make_tok(TK_GT(), p + 1) } } else if c == 33 { if p + 1 < s.len() and s.byte_at(p + 1) == 61 { make_tok(TK_NEQ(), p + 2) } else { make_tok(TK_EOF(), p) } } else if c == 46 { if p + 1 < s.len() and s.byte_at(p + 1) == 46 { make_tok(TK_DOTDOT(), p + 2) } else { make_tok(TK_DOT(), p + 1) } } else if c == 123 { make_tok(TK_LBRACE(), p + 1) } else if c == 125 { make_tok(TK_RBRACE(), p + 1) } else { make_tok(TK_EOF(), p) }
     };
 
 fn get_ident_text(s: String, pos: i64, tok: i64) -> String =
@@ -148,6 +166,50 @@ fn get_ident_text(s: String, pos: i64, tok: i64) -> String =
     let p = skip_ws_comments(s, pos);
     let endp = scan_ident_end(s, p + 1);
     s.slice(p, endp);
+
+// v0.60.109: Extract string literal content (without quotes)
+fn get_string_text(s: String, pos: i64, tok: i64) -> String =
+    let p = skip_ws_comments(s, pos);
+    let endpos = tok_end(tok);
+    s.slice(p + 1, endpos - 1);
+
+// v0.60.120: Escape parens in string content for AST representation
+// This prevents unbalanced parens in strings from breaking AST parsing
+// Uses \L for (, \R for ), \B for \ to avoid actual parens in escaped content
+fn escape_parens_for_ast(s: String) -> String =
+    escape_parens_acc(s, 0, "");
+
+fn escape_parens_acc(s: String, pos: i64, acc: String) -> String =
+    if pos >= s.len() { acc }
+    else {
+        let c = s.byte_at(pos);
+        // 92=\, 40=(, 41=), 76=L, 82=R, 66=B
+        let escaped = if c == 92 { chr(92) + chr(66) }
+                      else if c == 40 { chr(92) + chr(76) }
+                      else if c == 41 { chr(92) + chr(82) }
+                      else { chr(c) };
+        escape_parens_acc(s, pos + 1, acc + escaped)
+    };
+
+// v0.60.120: Unescape parens from AST string content
+// \L -> (, \R -> ), \B -> \
+fn unescape_parens_from_ast(s: String) -> String =
+    unescape_parens_acc(s, 0, "");
+
+fn unescape_parens_acc(s: String, pos: i64, acc: String) -> String =
+    if pos >= s.len() { acc }
+    else if s.byte_at(pos) == 92 and pos + 1 < s.len() {
+        let next = s.byte_at(pos + 1);
+        // 76=L -> 40=(, 82=R -> 41=), 66=B -> 92=\
+        let decoded = if next == 76 { chr(40) }
+                      else if next == 82 { chr(41) }
+                      else if next == 66 { chr(92) }
+                      else { chr(92) + chr(next) };
+        unescape_parens_acc(s, pos + 2, acc + decoded)
+    }
+    else {
+        unescape_parens_acc(s, pos + 1, acc + chr(s.byte_at(pos)))
+    };
 
 // ============================================================================
 // SECTION 4: Parser Result Packing
@@ -174,34 +236,52 @@ fn find_colon(s: String, pos: i64) -> i64 =
 // SECTION 5: Expression Parser (recursive descent)
 // ============================================================================
 
+// v0.60.118: Helper to check if token kind is an integer literal
+// Token constants use 10000-10999 range, so integers are < 10000 OR >= 11000
+fn is_int_literal(kind: i64) -> bool = kind < 9999 + 1 or kind >= 9999 + 1 + 999 + 1;
+
+// v0.60.117: Parse integer literal
+fn parse_int_lit(tok: i64) -> String = pack_result(tok_end(tok), "(int " + int_to_string(tok_val(tok)) + ")");
+
+// v0.60.117: Parse boolean literal
+fn parse_bool_lit(tok: i64, kind: i64) -> String =
+    if kind == TK_TRUE() { pack_result(tok_end(tok), "(bool true)") }
+    else { pack_result(tok_end(tok), "(bool false)") };
+
+// v0.60.117: Parse identifier or function call
+fn parse_ident_or_call(src: String, pos: i64, tok: i64) -> String =
+    let name = get_ident_text(src, pos, tok);
+    let next = next_token_raw(src, tok_end(tok));
+    if tok_kind(next) == TK_LPAREN() {
+        let rargs = parse_args(src, tok_end(next), "");
+        pack_result(unpack_pos(rargs), "(call <" + name + ">" + unpack_ast(rargs) + ")")
+    } else {
+        pack_result(tok_end(tok), "(var <" + name + ">)")
+    };
+
+// v0.60.117: Parse unary expression (not or minus)
+fn parse_unary(src: String, tok: i64, op: String) -> String =
+    let re = parse_atom(src, tok_end(tok));
+    pack_result(unpack_pos(re), "(unary " + op + " " + unpack_ast(re) + ")");
+
+// v0.60.117: Parse parenthesized expression
+fn parse_paren_expr(src: String, tok: i64) -> String =
+    let re = parse_expr(src, tok_end(tok));
+    let next = next_token_raw(src, unpack_pos(re));
+    if tok_kind(next) == TK_RPAREN() { pack_result(tok_end(next), unpack_ast(re)) } else { make_error("paren") };
+
 fn parse_atom(src: String, pos: i64) -> String =
     let tok = next_token_raw(src, pos);
     let kind = tok_kind(tok);
-    // v0.32.1: Fix integer literal parsing - check keywords first, then treat small kinds as integers
-    // Integer tokens have kind = integer value (0-N), not TK_INT (200)
-    // Must check specific keywords first to avoid collision (e.g., TK_TRUE=105)
-    if kind == TK_TRUE() { pack_result(tok_end(tok), "(bool true)") } else if kind == TK_FALSE() { pack_result(tok_end(tok), "(bool false)") } else if kind < TK_INT() { pack_result(tok_end(tok), "(int " + int_to_string(tok_val(tok)) + ")") } else if kind == TK_IDENT() {
-        let name = get_ident_text(src, pos, tok);
-        let next = next_token_raw(src, tok_end(tok));
-        if tok_kind(next) == TK_LPAREN() {
-            let rargs = parse_args(src, tok_end(next), "");
-            pack_result(unpack_pos(rargs), "(call <" + name + ">" + unpack_ast(rargs) + ")")
-        } else {
-            pack_result(tok_end(tok), "(var <" + name + ">)")
-        }
-    } else if kind == TK_NOT() {
-        let re = parse_atom(src, tok_end(tok));
-        pack_result(unpack_pos(re), "(unary not " + unpack_ast(re) + ")")
-    } else if kind == TK_MINUS() {
-        let re = parse_atom(src, tok_end(tok));
-        pack_result(unpack_pos(re), "(unary - " + unpack_ast(re) + ")")
-    } else if kind == TK_LPAREN() {
-        let re = parse_expr(src, tok_end(tok));
-        let next = next_token_raw(src, unpack_pos(re));
-        if tok_kind(next) == TK_RPAREN() { pack_result(tok_end(next), unpack_ast(re)) } else { make_error("paren") }
-    // v0.32.1: Handle large integer literals (kind > highest punctuation token)
-    // Integer tokens with value >= 414 have kind outside token constant range
-    } else if kind > TK_GTEQ() { pack_result(tok_end(tok), "(int " + int_to_string(tok_val(tok)) + ")") } else { make_error("atom") };
+    // v0.60.117: Refactored to use helper functions to reduce nesting depth
+    if is_int_literal(kind) { parse_int_lit(tok) }
+    else if kind == TK_TRUE() or kind == TK_FALSE() { parse_bool_lit(tok, kind) }
+    else if kind == TK_IDENT() { parse_ident_or_call(src, pos, tok) }
+    else if kind == TK_STRING_LIT() { pack_result(tok_end(tok), "(string " + escape_parens_for_ast(get_string_text(src, pos, tok)) + ")") }
+    else if kind == TK_NOT() { parse_unary(src, tok, "not") }
+    else if kind == TK_MINUS() { parse_unary(src, tok, "-") }
+    else if kind == TK_LPAREN() { parse_paren_expr(src, tok) }
+    else { make_error("atom") };
 
 fn parse_args(src: String, pos: i64, acc: String) -> String =
     let tok = next_token_raw(src, pos);
@@ -214,21 +294,46 @@ fn parse_args(src: String, pos: i64, acc: String) -> String =
         }
     };
 
-fn parse_mul(src: String, pos: i64) -> String =
+// v0.60.110: Parse postfix operators (method calls like s.len())
+fn parse_postfix(src: String, pos: i64) -> String =
     let rl = parse_atom(src, pos);
+    if is_error(rl) { rl } else { parse_postfix_rest(src, unpack_pos(rl), unpack_ast(rl)) };
+
+fn parse_postfix_rest(src: String, pos: i64, left: String) -> String =
+    let tok = next_token_raw(src, pos);
+    if tok_kind(tok) == TK_DOT() {
+        let method_tok = next_token_raw(src, tok_end(tok));
+        if tok_kind(method_tok) == TK_IDENT() {
+            let method_name = get_ident_text(src, tok_end(tok), method_tok);
+            let next = next_token_raw(src, tok_end(method_tok));
+            if tok_kind(next) == TK_LPAREN() {
+                // Method call with args: s.slice(0, 1)
+                let rargs = parse_args(src, tok_end(next), "");
+                let ast = "(method " + method_name + " " + left + unpack_ast(rargs) + ")";
+                parse_postfix_rest(src, unpack_pos(rargs), ast)
+            } else {
+                // Method call with no args: s.len()
+                // This shouldn't happen since len() has parens, but handle it
+                make_error("method_paren")
+            }
+        } else { make_error("method_name") }
+    } else { pack_result(pos, left) };
+
+fn parse_mul(src: String, pos: i64) -> String =
+    let rl = parse_postfix(src, pos);
     if is_error(rl) { rl } else { parse_mul_rest(src, unpack_pos(rl), unpack_ast(rl)) };
 
 fn parse_mul_rest(src: String, pos: i64, left: String) -> String =
     let tok = next_token_raw(src, pos);
     let kind = tok_kind(tok);
     if kind == TK_STAR() {
-        let rr = parse_atom(src, tok_end(tok));
+        let rr = parse_postfix(src, tok_end(tok));
         if is_error(rr) { rr } else { parse_mul_rest(src, unpack_pos(rr), "(binop * " + left + " " + unpack_ast(rr) + ")") }
     } else if kind == TK_SLASH() {
-        let rr = parse_atom(src, tok_end(tok));
+        let rr = parse_postfix(src, tok_end(tok));
         if is_error(rr) { rr } else { parse_mul_rest(src, unpack_pos(rr), "(binop / " + left + " " + unpack_ast(rr) + ")") }
     } else if kind == TK_PERCENT() {
-        let rr = parse_atom(src, tok_end(tok));
+        let rr = parse_postfix(src, tok_end(tok));
         if is_error(rr) { rr } else { parse_mul_rest(src, unpack_pos(rr), "(binop % " + left + " " + unpack_ast(rr) + ")") }
     } else { pack_result(pos, left) };
 
@@ -329,6 +434,12 @@ fn parse_expr(src: String, pos: i64) -> String =
                                         pack_result(tok_end(t5), "(if " + unpack_ast(rc) + " " + unpack_ast(rt) + " " + unpack_ast(re) + ")")
                                     } else { make_error("if-rbrace2") }
                                 }
+                            } else if tok_kind(t4) == TK_IF() {
+                                // v0.60.111: Support 'else if' syntax
+                                let re = parse_expr(src, tok_end(t3));
+                                if is_error(re) { re } else {
+                                    pack_result(unpack_pos(re), "(if " + unpack_ast(rc) + " " + unpack_ast(rt) + " " + unpack_ast(re) + ")")
+                                }
                             } else { make_error("if-lbrace2") }
                         } else { make_error("if-else-kw") }
                     } else { make_error("if-rbrace1") }
@@ -365,7 +476,7 @@ fn parse_param(src: String, pos: i64) -> String =
         if tok_kind(t2) == TK_COLON() {
             let t3 = next_token_raw(src, tok_end(t2));
             let kind = tok_kind(t3);
-            if kind == TK_I32() { pack_result(tok_end(t3), "(param <" + name + "> i32)") } else if kind == TK_I64() { pack_result(tok_end(t3), "(param <" + name + "> i64)") } else if kind == TK_F64() { pack_result(tok_end(t3), "(param <" + name + "> f64)") } else if kind == TK_BOOL() { pack_result(tok_end(t3), "(param <" + name + "> bool)") } else { make_error("param-type") }
+            if kind == TK_I32() { pack_result(tok_end(t3), "(param <" + name + "> i32)") } else if kind == TK_I64() { pack_result(tok_end(t3), "(param <" + name + "> i64)") } else if kind == TK_F64() { pack_result(tok_end(t3), "(param <" + name + "> f64)") } else if kind == TK_BOOL() { pack_result(tok_end(t3), "(param <" + name + "> bool)") } else if kind == TK_STRING_TYPE() { pack_result(tok_end(t3), "(param <" + name + "> String)") } else { make_error("param-type") }
         } else { make_error("param-colon") }
     } else { make_error("param-name") };
 
@@ -391,7 +502,7 @@ fn parse_fn(src: String, pos: i64) -> String =
                 let t3 = next_token_raw(src, unpack_pos(rp));
                 if tok_kind(t3) == TK_ARROW() {
                     let t4 = next_token_raw(src, tok_end(t3));
-                    let ret_type = if tok_kind(t4) == TK_I32() { "i32" } else if tok_kind(t4) == TK_I64() { "i64" } else if tok_kind(t4) == TK_F64() { "f64" } else if tok_kind(t4) == TK_BOOL() { "bool" } else { "i64" };
+                    let ret_type = if tok_kind(t4) == TK_I32() { "i32" } else if tok_kind(t4) == TK_I64() { "i64" } else if tok_kind(t4) == TK_F64() { "f64" } else if tok_kind(t4) == TK_BOOL() { "bool" } else if tok_kind(t4) == TK_STRING_TYPE() { "String" } else { "i64" };
                     let t5 = next_token_raw(src, tok_end(t4));
                     if tok_kind(t5) == TK_EQ() {
                         let rb = parse_expr(src, tok_end(t5));
@@ -493,7 +604,9 @@ fn read_sexp_at(s: String, pos: i64) -> String =
         if c == 40 {
             let end = low_find_close_paren(s, p, 0);
             s.slice(p, end + 1)
-        } else if c == 60 {
+        } else if c == 60 and p + 1 < s.len() and is_ident_start(s.byte_at(p + 1)) {
+            // v0.60.117: Only treat <...> as angle-bracketed name if < is followed by identifier
+            // This fixes parsing of < operator in AST like (binop < ...)
             let end = find_angle_end(s, p);
             s.slice(p, end)
         } else if is_digit(c) or c == 45 {
@@ -558,6 +671,24 @@ fn unpack_text(r: String) -> String =
 
 fn pack_lower_result_sb(temp_id: i64) -> i64 = temp_id;
 
+// v0.60.200: Pack temp_id and block_id for tracking block label uniqueness
+// temp_id in upper bits, block_id in lower bits (supports up to 1M each)
+fn pack_ids(temp_id: i64, block_id: i64) -> i64 = temp_id * 1000000 + block_id;
+fn unpack_temp(packed: i64) -> i64 = packed / 1000000;
+fn unpack_block(packed: i64) -> i64 = packed % 1000000;
+
+// v0.60.201: Exit label computation for correct PHI predecessors
+// v0.60.203: Simplified to only check immediate node type to avoid deep recursion
+fn get_exit_label(ast: String, entry_label: String, block_id: i64) -> String =
+    let ntype = get_node_type(ast);
+    if ntype == "if" {
+        "merge_" + int_to_string(block_id)
+    } else {
+        // For non-if expressions, use entry label
+        // This is slightly incorrect for let-with-nested-if but avoids recursion
+        entry_label
+    };
+
 fn sb_push_mir(sb: i64, text: String) -> i64 =
     if text.len() > 0 {
         let len = sb_len(sb);
@@ -565,82 +696,592 @@ fn sb_push_mir(sb: i64, text: String) -> i64 =
         sb_push(sb, text)
     } else { 0 };
 
+// ============================================================================
+// SECTION 8a: Iterative Expression Lowering (v0.60.300)
+// ============================================================================
+// Trampolining approach to avoid stack overflow on deeply nested expressions.
+// Uses string-encoded work stack and result stack.
+// Work items use TILDE (~) as field separator, TAB (chr(9)) as item separator.
+// This allows the trampoline to be tail-recursive, which LLVM optimizes to a loop.
+
+// Work item types:
+// EX~ast~temp_id~block_id - Evaluate expression
+// IN~ast~temp_id~block_id - Evaluate int literal
+// BO~ast~temp_id~block_id - Evaluate bool literal
+// ST~ast~temp_id~block_id - Evaluate string literal
+// VA~ast~temp_id~block_id - Evaluate variable
+// BI~op~temp_id~block_id~left_ast~right_ast - Start binop
+// BM~op~left_id~temp_id~block_id~right_ast - Binop: left done, do right
+// BF~op~left_id~right_id~temp_id~block_id - Binop: finalize
+// UN~op~temp_id~block_id~operand_ast - Start unary
+// UF~op~operand_id~temp_id~block_id - Unary: finalize
+// IF~ast~temp_id~block_id - Start if
+// IC~my_bid~cond_id~cond_temp~then_ast~else_ast - If: cond done, do then
+// IT~my_bid~cond_id~then_label~else_label~merge_label~then_id~then_exit~then_temp~then_block~else_ast - If: then done
+// IX~my_bid~then_id~then_exit~else_id~else_exit~else_temp~else_block - If: finalize
+// LE~name~temp_id~block_id~value_ast~body_ast - Start let
+// LB~name~val_id~val_temp~val_block~body_ast - Let: value done, do body
+// CA~name~temp_id~block_id~idx~args_acc~ast - Call: start/continue
+// CF~name~temp_id~block_id~args_acc - Call: finalize
+// ME~fn_name~temp_id~block_id~recv_ast~idx~ast - Method: start
+// MA~fn_name~recv_id~temp_id~block_id~idx~args_acc~ast - Method: continue
+// MF~fn_name~temp_id~block_id~args_acc - Method: finalize
+
+fn work_sep() -> String = chr(9);
+fn field_sep() -> String = "~";
+
+fn push_work(stack: String, item: String) -> String =
+    if stack == "" { item } else { item + work_sep() + stack };
+
+fn pop_work_item(stack: String) -> String =
+    if stack == "" { "" } else {
+        let sep_pos = find_work_sep(stack, 0);
+        if sep_pos >= stack.len() { stack } else { stack.slice(0, sep_pos) }
+    };
+
+fn pop_work_rest(stack: String) -> String =
+    if stack == "" { "" } else {
+        let sep_pos = find_work_sep(stack, 0);
+        if sep_pos >= stack.len() { "" } else { stack.slice(sep_pos + 1, stack.len()) }
+    };
+
+fn find_work_sep(s: String, pos: i64) -> i64 =
+    if pos >= s.len() { s.len() }
+    else if s.byte_at(pos) == 9 { pos }
+    else { find_work_sep(s, pos + 1) };
+
+fn get_field(item: String, idx: i64) -> String =
+    get_field_at(item, 0, idx);
+
+fn get_field_at(item: String, pos: i64, idx: i64) -> String =
+    if pos >= item.len() { "" }
+    else if idx == 0 {
+        let end = find_field_sep(item, pos);
+        item.slice(pos, end)
+    } else {
+        let sep = find_field_sep(item, pos);
+        if sep >= item.len() { "" } else { get_field_at(item, sep + 1, idx - 1) }
+    };
+
+fn find_field_sep(s: String, pos: i64) -> i64 =
+    if pos >= s.len() { s.len() }
+    else if s.byte_at(pos) == 126 { pos }
+    else { find_field_sep(s, pos + 1) };
+
+fn make_work(t: String, f1: String, f2: String, f3: String, f4: String, f5: String) -> String =
+    t + "~" + f1 + "~" + f2 + "~" + f3 + "~" + f4 + "~" + f5;
+
+fn make_work3(t: String, f1: String, f2: String, f3: String) -> String =
+    t + "~" + f1 + "~" + f2 + "~" + f3;
+
+fn make_work4(t: String, f1: String, f2: String, f3: String, f4: String) -> String =
+    t + "~" + f1 + "~" + f2 + "~" + f3 + "~" + f4;
+
+fn make_work6(t: String, f1: String, f2: String, f3: String, f4: String, f5: String, f6: String) -> String =
+    t + "~" + f1 + "~" + f2 + "~" + f3 + "~" + f4 + "~" + f5 + "~" + f6;
+
+fn make_work7(t: String, f1: String, f2: String, f3: String, f4: String, f5: String, f6: String, f7: String) -> String =
+    t + "~" + f1 + "~" + f2 + "~" + f3 + "~" + f4 + "~" + f5 + "~" + f6 + "~" + f7;
+
+fn make_work10(t: String, f1: String, f2: String, f3: String, f4: String, f5: String, f6: String, f7: String, f8: String, f9: String, f10: String) -> String =
+    t + "~" + f1 + "~" + f2 + "~" + f3 + "~" + f4 + "~" + f5 + "~" + f6 + "~" + f7 + "~" + f8 + "~" + f9 + "~" + f10;
+
+fn i2s(n: i64) -> String = int_to_string(n);
+fn s2i(s: String) -> i64 = parse_int_simple(s, 0, 0);
+
+fn parse_int_simple(s: String, pos: i64, acc: i64) -> i64 =
+    if pos >= s.len() { acc }
+    else {
+        let c = s.byte_at(pos);
+        if c >= 48 and c <= 57 { parse_int_simple(s, pos + 1, acc * 10 + (c - 48)) }
+        else { acc }
+    };
+
+// Main iterative lowering entry point
+// Uses a result-threaded trampoline: each step receives and returns (temp_id, block_id)
+fn lower_expr_iter(ast: String, temp_id: i64, block_id: i64, sb: i64) -> i64 =
+    let init_work = make_work3("EX", ast, i2s(temp_id), i2s(block_id));
+    trampoline_v2(init_work, temp_id, block_id, sb);
+
+// Trampoline v2: threads result (temp_id, block_id) through work items
+// Work stack format: items separated by TAB
+// Each item is processed with current result, producing new result
+fn trampoline_v2(work_stack: String, cur_temp: i64, cur_block: i64, sb: i64) -> i64 =
+    if work_stack == "" { pack_ids(cur_temp, cur_block) }
+    else {
+        let item = pop_work_item(work_stack);
+        let rest = pop_work_rest(work_stack);
+        // Process item with current result
+        let step = do_step(item, cur_temp, cur_block, sb);
+        let new_temp = step_temp(step);
+        let new_block = step_block(step);
+        let new_work = step_work(step);
+        // Combine new work with rest
+        let combined = if new_work == "" { rest }
+                       else if rest == "" { new_work }
+                       else { new_work + work_sep() + rest };
+        trampoline_v2(combined, new_temp, new_block, sb)
+    };
+
+// Step result: encodes new work items and result
+// Format: "new_temp|new_block|new_work"
+fn make_step(temp: i64, block: i64, work: String) -> String =
+    i2s(temp) + "|" + i2s(block) + "|" + work;
+
+fn step_temp(s: String) -> i64 =
+    let p1 = find_single_pipe(s, 0);
+    s2i(s.slice(0, p1));
+
+fn step_block(s: String) -> i64 =
+    let p1 = find_single_pipe(s, 0);
+    let p2 = find_single_pipe(s, p1 + 1);
+    s2i(s.slice(p1 + 1, p2));
+
+fn step_work(s: String) -> String =
+    let p1 = find_single_pipe(s, 0);
+    let p2 = find_single_pipe(s, p1 + 1);
+    if p2 >= s.len() { "" } else { s.slice(p2 + 1, s.len()) };
+
+fn find_single_pipe(s: String, pos: i64) -> i64 =
+    if pos >= s.len() { s.len() }
+    else if s.byte_at(pos) == 124 { pos }
+    else { find_single_pipe(s, pos + 1) };
+
+// Process a single work item with current result
+fn do_step(item: String, cur_temp: i64, cur_block: i64, sb: i64) -> String =
+    let op = get_field(item, 0);
+    if op == "EX" { step_expr(item, cur_temp, cur_block, sb) }
+    else if op == "IN" { step_int(item, cur_temp, cur_block, sb) }
+    else if op == "BO" { step_bool(item, cur_temp, cur_block, sb) }
+    else if op == "ST" { step_string(item, cur_temp, cur_block, sb) }
+    else if op == "VA" { step_var(item, cur_temp, cur_block, sb) }
+    else if op == "BI" { step_binop_start(item, cur_temp, cur_block, sb) }
+    else if op == "BR" { step_binop_right(item, cur_temp, cur_block, sb) }
+    else if op == "BF" { step_binop_final(item, cur_temp, cur_block, sb) }
+    else if op == "UN" { step_unary_start(item, cur_temp, cur_block, sb) }
+    else if op == "UF" { step_unary_final(item, cur_temp, cur_block, sb) }
+    else if op == "IS" { step_if_start(item, cur_temp, cur_block, sb) }
+    else if op == "IT" { step_if_then(item, cur_temp, cur_block, sb) }
+    else if op == "IE" { step_if_else(item, cur_temp, cur_block, sb) }
+    else if op == "IX" { step_if_final(item, cur_temp, cur_block, sb) }
+    else if op == "LS" { step_let_start(item, cur_temp, cur_block, sb) }
+    else if op == "LB" { step_let_body(item, cur_temp, cur_block, sb) }
+    else if op == "CS" { step_call_start(item, cur_temp, cur_block, sb) }
+    else if op == "CA" { step_call_arg(item, cur_temp, cur_block, sb) }
+    else if op == "CF" { step_call_final(item, cur_temp, cur_block, sb) }
+    else if op == "MS" { step_method_start(item, cur_temp, cur_block, sb) }
+    else if op == "MA" { step_method_arg(item, cur_temp, cur_block, sb) }
+    else if op == "MF" { step_method_final(item, cur_temp, cur_block, sb) }
+    else { make_step(cur_temp, cur_block, "") };
+
+// EX: Dispatch based on node type - expand to specific handler
+fn step_expr(item: String, cur_temp: i64, cur_block: i64, sb: i64) -> String =
+    let ast = get_field(item, 1);
+    let ntype = get_node_type(ast);
+    if ntype == "int" { make_step(cur_temp, cur_block, make_work3("IN", ast, "", "")) }
+    else if ntype == "bool" { make_step(cur_temp, cur_block, make_work3("BO", ast, "", "")) }
+    else if ntype == "string" { make_step(cur_temp, cur_block, make_work3("ST", ast, "", "")) }
+    else if ntype == "var" { make_step(cur_temp, cur_block, make_work3("VA", ast, "", "")) }
+    else if ntype == "binop" {
+        let op = get_child(ast, 0);
+        let left = get_child(ast, 1);
+        let right = get_child(ast, 2);
+        make_step(cur_temp, cur_block, make_work4("BI", op, left, right, ""))
+    }
+    else if ntype == "unary" {
+        let op = get_child(ast, 0);
+        let operand = get_child(ast, 1);
+        make_step(cur_temp, cur_block, make_work3("UN", op, operand, ""))
+    }
+    else if ntype == "if" {
+        let cond = get_child(ast, 0);
+        let then_br = get_child(ast, 1);
+        let else_br = get_child(ast, 2);
+        make_step(cur_temp, cur_block, make_work4("IS", cond, then_br, else_br, ""))
+    }
+    else if ntype == "let" {
+        let name = extract_name(ast);
+        let value = get_child(ast, 1);
+        let body = get_child(ast, 2);
+        make_step(cur_temp, cur_block, make_work4("LS", name, value, body, ""))
+    }
+    else if ntype == "call" {
+        let name = extract_name(ast);
+        make_step(cur_temp, cur_block, make_work4("CS", name, ast, "1", ""))
+    }
+    else if ntype == "method" {
+        let method_name = get_child(ast, 0);
+        let receiver = get_child(ast, 1);
+        let fn_name = method_to_runtime_fn(method_name);
+        make_step(cur_temp, cur_block, make_work("MS", fn_name, receiver, ast, "2", ""))
+    }
+    else { make_step(cur_temp, cur_block, "") };
+
+// IN: Integer literal - emit MIR, advance temp
+fn step_int(item: String, cur_temp: i64, cur_block: i64, sb: i64) -> String =
+    let ast = get_field(item, 1);
+    let val = extract_int_value(ast);
+    let tmp = "%_t" + i2s(cur_temp);
+    let w1 = sb_push_mir(sb, "  " + tmp + " = const " + i2s(val));
+    make_step(cur_temp + 1, cur_block, "");
+
+// BO: Boolean literal
+fn step_bool(item: String, cur_temp: i64, cur_block: i64, sb: i64) -> String =
+    let ast = get_field(item, 1);
+    let child = get_child(ast, 0);
+    let val = if child == "true" { 1 } else { 0 };
+    let tmp = "%_t" + i2s(cur_temp);
+    let w1 = sb_push_mir(sb, "  " + tmp + " = const " + i2s(val));
+    make_step(cur_temp + 1, cur_block, "");
+
+// ST: String literal
+fn step_string(item: String, cur_temp: i64, cur_block: i64, sb: i64) -> String =
+    let ast = get_field(item, 1);
+    let str_content = extract_string_content(ast);
+    let tmp = "%_t" + i2s(cur_temp);
+    let w1 = sb_push_mir(sb, "  " + tmp + " = string " + chr(34) + str_content + chr(34));
+    make_step(cur_temp + 1, cur_block, "");
+
+// VA: Variable reference
+fn step_var(item: String, cur_temp: i64, cur_block: i64, sb: i64) -> String =
+    let ast = get_field(item, 1);
+    let name = extract_name(ast);
+    let tmp = "%_t" + i2s(cur_temp);
+    let w1 = sb_push_mir(sb, "  " + tmp + " = copy %" + name);
+    make_step(cur_temp + 1, cur_block, "");
+
+// BI: Start binop - push left expr, then BR continuation
+fn step_binop_start(item: String, cur_temp: i64, cur_block: i64, sb: i64) -> String =
+    let op = get_field(item, 1);
+    let left = get_field(item, 2);
+    let right = get_field(item, 3);
+    // After left, cur_temp will have advanced. BR needs to know where left result is.
+    let cont = make_work("BR", op, right, i2s(cur_temp), "", "");
+    let do_left = make_work3("EX", left, "", "");
+    make_step(cur_temp, cur_block, do_left + work_sep() + cont);
+
+// BR: Binop right - left done, do right. cur_temp-1 is left result.
+fn step_binop_right(item: String, cur_temp: i64, cur_block: i64, sb: i64) -> String =
+    let op = get_field(item, 1);
+    let right = get_field(item, 2);
+    let left_start = s2i(get_field(item, 3));
+    let left_id = cur_temp - 1;
+    // Push right, then BF finalize
+    let cont = make_work4("BF", op, i2s(left_id), i2s(cur_temp), "");
+    let do_right = make_work3("EX", right, "", "");
+    make_step(cur_temp, cur_block, do_right + work_sep() + cont);
+
+// BF: Binop final - both done, emit binop MIR
+fn step_binop_final(item: String, cur_temp: i64, cur_block: i64, sb: i64) -> String =
+    let op = get_field(item, 1);
+    let left_id = s2i(get_field(item, 2));
+    let right_start = s2i(get_field(item, 3));
+    let right_id = cur_temp - 1;
+    let result_tmp = "%_t" + i2s(cur_temp);
+    let w1 = sb_push_mir(sb, "  " + result_tmp + " = " + op + " %_t" + i2s(left_id) + ", %_t" + i2s(right_id));
+    make_step(cur_temp + 1, cur_block, "");
+
+// UN: Start unary - push operand, then UF
+fn step_unary_start(item: String, cur_temp: i64, cur_block: i64, sb: i64) -> String =
+    let op = get_field(item, 1);
+    let operand = get_field(item, 2);
+    let cont = make_work3("UF", op, i2s(cur_temp), "");
+    let do_op = make_work3("EX", operand, "", "");
+    make_step(cur_temp, cur_block, do_op + work_sep() + cont);
+
+// UF: Unary final - emit unary MIR
+fn step_unary_final(item: String, cur_temp: i64, cur_block: i64, sb: i64) -> String =
+    let op = get_field(item, 1);
+    let operand_id = cur_temp - 1;
+    let mir_op = if op == "not" { "not" } else if op == "-" { "neg" } else { op };
+    let result_tmp = "%_t" + i2s(cur_temp);
+    let w1 = sb_push_mir(sb, "  " + result_tmp + " = " + mir_op + " %_t" + i2s(operand_id));
+    make_step(cur_temp + 1, cur_block, "");
+
+// IS: Start if - push cond, then IT
+fn step_if_start(item: String, cur_temp: i64, cur_block: i64, sb: i64) -> String =
+    let cond = get_field(item, 1);
+    let then_br = get_field(item, 2);
+    let else_br = get_field(item, 3);
+    // After cond, we'll have cond_id and need to emit branch then do branches
+    let cont = make_work("IT", then_br, else_br, i2s(cur_temp), i2s(cur_block), "");
+    let do_cond = make_work3("EX", cond, "", "");
+    make_step(cur_temp, cur_block, do_cond + work_sep() + cont);
+
+// IT: If then - cond done, emit branch, do then branch
+fn step_if_then(item: String, cur_temp: i64, cur_block: i64, sb: i64) -> String =
+    let then_br = get_field(item, 1);
+    let else_br = get_field(item, 2);
+    let orig_temp = s2i(get_field(item, 3));
+    let orig_block = s2i(get_field(item, 4));
+    let cond_id = cur_temp - 1;
+    let my_block = cur_block;
+    let then_label = "then_" + i2s(my_block);
+    let else_label = "else_" + i2s(my_block);
+    let merge_label = "merge_" + i2s(my_block);
+    let w1 = sb_push_mir(sb, "  branch %_t" + i2s(cond_id) + ", " + then_label + ", " + else_label);
+    let w2 = sb_push_mir(sb, then_label + ":");
+    // Continue with then, then IE
+    let cont = make_work7("IE", else_br, i2s(my_block), then_label, else_label, merge_label, i2s(cur_temp), then_br);
+    let do_then = make_work3("EX", then_br, "", "");
+    make_step(cur_temp, my_block + 1, do_then + work_sep() + cont);
+
+// IE: If else - then done, emit goto, do else
+fn step_if_else(item: String, cur_temp: i64, cur_block: i64, sb: i64) -> String =
+    let else_br = get_field(item, 1);
+    let my_block = s2i(get_field(item, 2));
+    let then_label = get_field(item, 3);
+    let else_label = get_field(item, 4);
+    let merge_label = get_field(item, 5);
+    let then_start = s2i(get_field(item, 6));
+    let then_ast = get_field(item, 7);
+    let then_id = cur_temp - 1;
+    let then_exit = get_exit_label(then_ast, then_label, my_block + 1);
+    let w1 = sb_push_mir(sb, "  goto " + merge_label);
+    let w2 = sb_push_mir(sb, else_label + ":");
+    // Continue with else, then IX final
+    let cont = make_work7("IX", i2s(my_block), merge_label, i2s(then_id), then_exit, i2s(cur_temp), i2s(cur_block), else_br);
+    let do_else = make_work3("EX", else_br, "", "");
+    make_step(cur_temp, cur_block, do_else + work_sep() + cont);
+
+// IX: If final - else done, emit goto and phi
+fn step_if_final(item: String, cur_temp: i64, cur_block: i64, sb: i64) -> String =
+    let my_block = s2i(get_field(item, 1));
+    let merge_label = get_field(item, 2);
+    let then_id = s2i(get_field(item, 3));
+    let then_exit = get_field(item, 4);
+    let else_start = s2i(get_field(item, 5));
+    let else_entry_block = s2i(get_field(item, 6));
+    let else_ast = get_field(item, 7);
+    let else_id = cur_temp - 1;
+    let else_exit = get_exit_label(else_ast, "else_" + i2s(my_block), else_entry_block);
+    let w1 = sb_push_mir(sb, "  goto " + merge_label);
+    let w2 = sb_push_mir(sb, merge_label + ":");
+    let phi_tmp = "%_t" + i2s(cur_temp);
+    let w3 = sb_push_mir(sb, "  " + phi_tmp + " = phi [%_t" + i2s(then_id) + ", " + then_exit + "], [%_t" + i2s(else_id) + ", " + else_exit + "]");
+    make_step(cur_temp + 1, cur_block, "");
+
+// LS: Start let - push value, then LB
+fn step_let_start(item: String, cur_temp: i64, cur_block: i64, sb: i64) -> String =
+    let name = get_field(item, 1);
+    let value = get_field(item, 2);
+    let body = get_field(item, 3);
+    let cont = make_work4("LB", name, body, i2s(cur_temp), "");
+    let do_val = make_work3("EX", value, "", "");
+    make_step(cur_temp, cur_block, do_val + work_sep() + cont);
+
+// LB: Let body - value done, emit copy, do body
+fn step_let_body(item: String, cur_temp: i64, cur_block: i64, sb: i64) -> String =
+    let name = get_field(item, 1);
+    let body = get_field(item, 2);
+    let val_id = cur_temp - 1;
+    let w1 = sb_push_mir(sb, "  %" + name + " = copy %_t" + i2s(val_id));
+    let do_body = make_work3("EX", body, "", "");
+    make_step(cur_temp, cur_block, do_body);
+
+// CS: Start call - begin processing args
+fn step_call_start(item: String, cur_temp: i64, cur_block: i64, sb: i64) -> String =
+    let name = get_field(item, 1);
+    let ast = get_field(item, 2);
+    let idx = s2i(get_field(item, 3));
+    let arg = get_child(ast, idx);
+    if arg == "" {
+        // No args, emit call
+        let result_tmp = "%_t" + i2s(cur_temp);
+        let w1 = sb_push_mir(sb, "  " + result_tmp + " = call @" + name + "()");
+        make_step(cur_temp + 1, cur_block, "")
+    } else {
+        // Has args, start processing
+        let cont = make_work("CA", name, ast, i2s(idx + 1), i2s(cur_temp), "");
+        let do_arg = make_work3("EX", arg, "", "");
+        make_step(cur_temp, cur_block, do_arg + work_sep() + cont)
+    };
+
+// CA: Call arg - process next arg or finalize
+fn step_call_arg(item: String, cur_temp: i64, cur_block: i64, sb: i64) -> String =
+    let name = get_field(item, 1);
+    let ast = get_field(item, 2);
+    let idx = s2i(get_field(item, 3));
+    let first_temp = s2i(get_field(item, 4));
+    let arg = get_child(ast, idx);
+    if arg == "" {
+        // Done with args, emit call
+        let args_str = build_args_str(first_temp, cur_temp);
+        let result_tmp = "%_t" + i2s(cur_temp);
+        let w1 = sb_push_mir(sb, "  " + result_tmp + " = call @" + name + "(" + args_str + ")");
+        make_step(cur_temp + 1, cur_block, "")
+    } else {
+        // More args
+        let cont = make_work("CA", name, ast, i2s(idx + 1), i2s(first_temp), "");
+        let do_arg = make_work3("EX", arg, "", "");
+        make_step(cur_temp, cur_block, do_arg + work_sep() + cont)
+    };
+
+// CF: Call final (unused in new design, kept for compatibility)
+fn step_call_final(item: String, cur_temp: i64, cur_block: i64, sb: i64) -> String =
+    make_step(cur_temp, cur_block, "");
+
+// MS: Start method - do receiver
+fn step_method_start(item: String, cur_temp: i64, cur_block: i64, sb: i64) -> String =
+    let fn_name = get_field(item, 1);
+    let receiver = get_field(item, 2);
+    let ast = get_field(item, 3);
+    let idx = s2i(get_field(item, 4));
+    let cont = make_work("MA", fn_name, ast, i2s(idx), i2s(cur_temp), "");
+    let do_recv = make_work3("EX", receiver, "", "");
+    make_step(cur_temp, cur_block, do_recv + work_sep() + cont);
+
+// MA: Method arg - process next arg or finalize
+fn step_method_arg(item: String, cur_temp: i64, cur_block: i64, sb: i64) -> String =
+    let fn_name = get_field(item, 1);
+    let ast = get_field(item, 2);
+    let idx = s2i(get_field(item, 3));
+    let first_temp = s2i(get_field(item, 4));
+    let arg = get_child(ast, idx);
+    if arg == "" {
+        // Done with args
+        let args_str = build_args_str(first_temp, cur_temp);
+        let result_tmp = "%_t" + i2s(cur_temp);
+        let w1 = sb_push_mir(sb, "  " + result_tmp + " = call @" + fn_name + "(" + args_str + ")");
+        make_step(cur_temp + 1, cur_block, "")
+    } else {
+        // More args
+        let cont = make_work("MA", fn_name, ast, i2s(idx + 1), i2s(first_temp), "");
+        let do_arg = make_work3("EX", arg, "", "");
+        make_step(cur_temp, cur_block, do_arg + work_sep() + cont)
+    };
+
+// MF: Method final (unused)
+fn step_method_final(item: String, cur_temp: i64, cur_block: i64, sb: i64) -> String =
+    make_step(cur_temp, cur_block, "");
+
+// Build argument string from temp range [start, end)
+fn build_args_str(start: i64, end: i64) -> String =
+    build_args_str_acc(start, end, "");
+
+fn build_args_str_acc(cur: i64, end: i64, acc: String) -> String =
+    if cur >= end { acc }
+    else {
+        let arg = "%_t" + i2s(cur);
+        let new_acc = if acc == "" { arg } else { acc + ", " + arg };
+        build_args_str_acc(cur + 1, end, new_acc)
+    };
+
+// ===========================================================================
+// SECTION 8b: Original Recursive Lowering (fallback)
+// ===========================================================================
+
 fn lower_expr_sb(ast: String, temp_id: i64, block_id: i64, sb: i64) -> i64 =
     let ntype = get_node_type(ast);
-    if ntype == "int" { lower_int_sb(ast, temp_id, sb) } else if ntype == "bool" { lower_bool_sb(ast, temp_id, sb) } else if ntype == "var" { lower_var_sb(ast, temp_id, sb) } else if ntype == "binop" { lower_binop_sb(ast, temp_id, block_id, sb) } else if ntype == "unary" { lower_unary_sb(ast, temp_id, block_id, sb) } else if ntype == "if" { lower_if_sb(ast, temp_id, block_id, sb) } else if ntype == "let" { lower_let_sb(ast, temp_id, block_id, sb) } else if ntype == "call" { lower_call_sb(ast, temp_id, block_id, sb) } else { temp_id };
+    if ntype == "int" { lower_int_sb(ast, temp_id, block_id, sb) } else if ntype == "bool" { lower_bool_sb(ast, temp_id, block_id, sb) } else if ntype == "string" { lower_string_sb(ast, temp_id, block_id, sb) } else if ntype == "var" { lower_var_sb(ast, temp_id, block_id, sb) } else if ntype == "binop" { lower_binop_sb(ast, temp_id, block_id, sb) } else if ntype == "unary" { lower_unary_sb(ast, temp_id, block_id, sb) } else if ntype == "if" { lower_if_sb(ast, temp_id, block_id, sb) } else if ntype == "let" { lower_let_sb(ast, temp_id, block_id, sb) } else if ntype == "call" { lower_call_sb(ast, temp_id, block_id, sb) } else if ntype == "method" { lower_method_sb(ast, temp_id, block_id, sb) } else { pack_ids(temp_id, block_id) };
 
-fn lower_int_sb(ast: String, temp_id: i64, sb: i64) -> i64 =
+fn lower_int_sb(ast: String, temp_id: i64, block_id: i64, sb: i64) -> i64 =
     let val = extract_int_value(ast);
     let tmp = "%_t" + int_to_string(temp_id);
     let w1 = sb_push_mir(sb, "  " + tmp + " = const " + int_to_string(val));
-    temp_id + 1;
+    pack_ids(temp_id + 1, block_id);
 
-fn lower_bool_sb(ast: String, temp_id: i64, sb: i64) -> i64 =
+fn lower_bool_sb(ast: String, temp_id: i64, block_id: i64, sb: i64) -> i64 =
     let child = get_child(ast, 0);
     let val = if child == "true" { 1 } else { 0 };
     let tmp = "%_t" + int_to_string(temp_id);
     let w1 = sb_push_mir(sb, "  " + tmp + " = const " + int_to_string(val));
-    temp_id + 1;
+    pack_ids(temp_id + 1, block_id);
 
-fn lower_var_sb(ast: String, temp_id: i64, sb: i64) -> i64 =
+// v0.60.109: Lower string literal to MIR
+fn lower_string_sb(ast: String, temp_id: i64, block_id: i64, sb: i64) -> i64 =
+    let str_content = extract_string_content(ast);
+    let tmp = "%_t" + int_to_string(temp_id);
+    let w1 = sb_push_mir(sb, "  " + tmp + " = string " + chr(34) + str_content + chr(34));
+    pack_ids(temp_id + 1, block_id);
+
+// v0.60.109: Extract string content from AST node "(string content)"
+// v0.60.120: Updated to unescape parens that were escaped for AST representation
+fn extract_string_content(ast: String) -> String =
+    let start = 8;
+    let end = ast.len() - 1;
+    if end > start { unescape_parens_from_ast(ast.slice(start, end)) } else { "" };
+
+fn lower_var_sb(ast: String, temp_id: i64, block_id: i64, sb: i64) -> i64 =
     let name = extract_name(ast);
     let tmp = "%_t" + int_to_string(temp_id);
     let w1 = sb_push_mir(sb, "  " + tmp + " = copy %" + name);
-    temp_id + 1;
+    pack_ids(temp_id + 1, block_id);
 
 fn lower_binop_sb(ast: String, temp_id: i64, block_id: i64, sb: i64) -> i64 =
     let op = get_child(ast, 0);
     let left_ast = get_child(ast, 1);
     let right_ast = get_child(ast, 2);
-    let left_new = lower_expr_sb(left_ast, temp_id, block_id, sb);
-    let left_id = left_new - 1;
-    let right_new = lower_expr_sb(right_ast, left_new, block_id, sb);
-    let right_id = right_new - 1;
-    let result_tmp = "%_t" + int_to_string(right_new);
+    let left_result = lower_expr_sb(left_ast, temp_id, block_id, sb);
+    let left_temp = unpack_temp(left_result);
+    let left_block = unpack_block(left_result);
+    let left_id = left_temp - 1;
+    let right_result = lower_expr_sb(right_ast, left_temp, left_block, sb);
+    let right_temp = unpack_temp(right_result);
+    let right_block = unpack_block(right_result);
+    let right_id = right_temp - 1;
+    let result_tmp = "%_t" + int_to_string(right_temp);
     let w1 = sb_push_mir(sb, "  " + result_tmp + " = " + op + " %_t" + int_to_string(left_id) + ", %_t" + int_to_string(right_id));
-    right_new + 1;
+    pack_ids(right_temp + 1, right_block);
 
 fn lower_unary_sb(ast: String, temp_id: i64, block_id: i64, sb: i64) -> i64 =
     let op = get_child(ast, 0);
     let operand = get_child(ast, 1);
-    let operand_new = lower_expr_sb(operand, temp_id, block_id, sb);
-    let operand_id = operand_new - 1;
-    let result_tmp = "%_t" + int_to_string(operand_new);
+    let operand_result = lower_expr_sb(operand, temp_id, block_id, sb);
+    let operand_temp = unpack_temp(operand_result);
+    let operand_block = unpack_block(operand_result);
+    let operand_id = operand_temp - 1;
+    let result_tmp = "%_t" + int_to_string(operand_temp);
     let mir_op = if op == "not" { "not" } else if op == "-" { "neg" } else { op };
     let w1 = sb_push_mir(sb, "  " + result_tmp + " = " + mir_op + " %_t" + int_to_string(operand_id));
-    operand_new + 1;
+    pack_ids(operand_temp + 1, operand_block);
 
 fn lower_if_sb(ast: String, temp_id: i64, block_id: i64, sb: i64) -> i64 =
     let cond = get_child(ast, 0);
     let then_branch = get_child(ast, 1);
     let else_branch = get_child(ast, 2);
-    let cond_new = lower_expr_sb(cond, temp_id, block_id, sb);
-    let cond_id = cond_new - 1;
-    let then_label = "then_" + int_to_string(block_id);
-    let else_label = "else_" + int_to_string(block_id);
-    let merge_label = "merge_" + int_to_string(block_id);
+    let cond_result = lower_expr_sb(cond, temp_id, block_id, sb);
+    let cond_temp = unpack_temp(cond_result);
+    let my_block_id = unpack_block(cond_result);
+    let cond_id = cond_temp - 1;
+    let then_label = "then_" + int_to_string(my_block_id);
+    let else_label = "else_" + int_to_string(my_block_id);
+    let merge_label = "merge_" + int_to_string(my_block_id);
     let w1 = sb_push_mir(sb, "  branch %_t" + int_to_string(cond_id) + ", " + then_label + ", " + else_label);
     let w2 = sb_push_mir(sb, then_label + ":");
-    let then_new = lower_expr_sb(then_branch, cond_new, block_id + 1, sb);
-    let then_id = then_new - 1;
+    // v0.60.200: Pass my_block_id + 1 to then branch, track returned block_id
+    let then_result = lower_expr_sb(then_branch, cond_temp, my_block_id + 1, sb);
+    let then_temp = unpack_temp(then_result);
+    let then_block = unpack_block(then_result);
+    let then_id = then_temp - 1;
+    // v0.60.201: Use recursive get_exit_label for correct PHI predecessors
+    let then_exit = get_exit_label(then_branch, then_label, my_block_id + 1);
     let w3 = sb_push_mir(sb, "  goto " + merge_label);
     let w4 = sb_push_mir(sb, else_label + ":");
-    let else_new = lower_expr_sb(else_branch, then_new, block_id + 2, sb);
-    let else_id = else_new - 1;
+    // v0.60.200: Pass then_block (not my_block_id + 2) to else branch for proper tracking
+    let else_result = lower_expr_sb(else_branch, then_temp, then_block, sb);
+    let else_temp = unpack_temp(else_result);
+    let else_block = unpack_block(else_result);
+    let else_id = else_temp - 1;
+    // v0.60.201: Use recursive get_exit_label for correct PHI predecessors
+    let else_exit = get_exit_label(else_branch, else_label, then_block);
     let w5 = sb_push_mir(sb, "  goto " + merge_label);
     let w6 = sb_push_mir(sb, merge_label + ":");
-    let phi_tmp = "%_t" + int_to_string(else_new);
-    let w7 = sb_push_mir(sb, "  " + phi_tmp + " = phi [%_t" + int_to_string(then_id) + ", " + then_label + "], [%_t" + int_to_string(else_id) + ", " + else_label + "]");
-    else_new + 1;
+    let phi_tmp = "%_t" + int_to_string(else_temp);
+    let w7 = sb_push_mir(sb, "  " + phi_tmp + " = phi [%_t" + int_to_string(then_id) + ", " + then_exit + "], [%_t" + int_to_string(else_id) + ", " + else_exit + "]");
+    pack_ids(else_temp + 1, else_block);
 
 fn lower_let_sb(ast: String, temp_id: i64, block_id: i64, sb: i64) -> i64 =
     let name = extract_name(ast);
     let value_ast = get_child(ast, 1);
     let body_ast = get_child(ast, 2);
-    let val_new = lower_expr_sb(value_ast, temp_id, block_id, sb);
-    let val_id = val_new - 1;
+    // v0.60.200: Track block_id properly between value and body
+    let val_result = lower_expr_sb(value_ast, temp_id, block_id, sb);
+    let val_temp = unpack_temp(val_result);
+    let val_block = unpack_block(val_result);
+    let val_id = val_temp - 1;
     let w1 = sb_push_mir(sb, "  %" + name + " = copy %_t" + int_to_string(val_id));
-    lower_expr_sb(body_ast, val_new, block_id, sb);
+    lower_expr_sb(body_ast, val_temp, val_block, sb);
 
 fn lower_call_sb(ast: String, temp_id: i64, block_id: i64, sb: i64) -> i64 =
     let name = extract_name(ast);
@@ -651,12 +1292,56 @@ fn lower_call_args_sb(ast: String, name: String, temp_id: i64, block_id: i64, id
     if arg == "" {
         let result_tmp = "%_t" + int_to_string(temp_id);
         let w1 = sb_push_mir(sb, "  " + result_tmp + " = call @" + name + "(" + args_acc + ")");
-        temp_id + 1
+        pack_ids(temp_id + 1, block_id)
     } else {
-        let arg_new = lower_expr_sb(arg, temp_id, block_id, sb);
-        let arg_id = arg_new - 1;
+        // v0.60.200: Track block_id through arguments
+        let arg_result = lower_expr_sb(arg, temp_id, block_id, sb);
+        let arg_temp = unpack_temp(arg_result);
+        let arg_block = unpack_block(arg_result);
+        let arg_id = arg_temp - 1;
         let new_args = if args_acc == "" { "%_t" + int_to_string(arg_id) } else { args_acc + ", %_t" + int_to_string(arg_id) };
-        lower_call_args_sb(ast, name, arg_new, block_id, idx + 1, new_args, sb)
+        lower_call_args_sb(ast, name, arg_temp, arg_block, idx + 1, new_args, sb)
+    };
+
+// v0.60.110: Lower method call to runtime function call
+// Method AST: (method name receiver arg1 arg2 ...)
+// String methods map to bmb_string_* functions
+fn lower_method_sb(ast: String, temp_id: i64, block_id: i64, sb: i64) -> i64 =
+    let method_name = get_child(ast, 0);
+    let receiver = get_child(ast, 1);
+    let runtime_fn = method_to_runtime_fn(method_name);
+    lower_method_args_sb(ast, runtime_fn, receiver, temp_id, block_id, 2, sb);
+
+fn method_to_runtime_fn(method: String) -> String =
+    if method == "len" { "bmb_string_len" }
+    else if method == "byte_at" { "bmb_string_char_at" }
+    else if method == "slice" { "bmb_string_slice" }
+    else if method == "concat" { "bmb_string_concat" }
+    else { "bmb_" + method };
+
+fn lower_method_args_sb(ast: String, fn_name: String, receiver: String, temp_id: i64, block_id: i64, idx: i64, sb: i64) -> i64 =
+    // First lower the receiver, track block_id
+    let recv_result = lower_expr_sb(receiver, temp_id, block_id, sb);
+    let recv_temp = unpack_temp(recv_result);
+    let recv_block = unpack_block(recv_result);
+    let recv_id = recv_temp - 1;
+    let args_acc = "%_t" + int_to_string(recv_id);
+    lower_method_extra_args_sb(ast, fn_name, recv_temp, recv_block, idx, args_acc, sb);
+
+fn lower_method_extra_args_sb(ast: String, fn_name: String, temp_id: i64, block_id: i64, idx: i64, args_acc: String, sb: i64) -> i64 =
+    let arg = get_child(ast, idx);
+    if arg == "" {
+        let result_tmp = "%_t" + int_to_string(temp_id);
+        let w1 = sb_push_mir(sb, "  " + result_tmp + " = call @" + fn_name + "(" + args_acc + ")");
+        pack_ids(temp_id + 1, block_id)
+    } else {
+        // v0.60.200: Track block_id through arguments
+        let arg_result = lower_expr_sb(arg, temp_id, block_id, sb);
+        let arg_temp = unpack_temp(arg_result);
+        let arg_block = unpack_block(arg_result);
+        let arg_id = arg_temp - 1;
+        let new_args = args_acc + ", %_t" + int_to_string(arg_id);
+        lower_method_extra_args_sb(ast, fn_name, arg_temp, arg_block, idx + 1, new_args, sb)
     };
 
 fn lower_function_sb(ast: String) -> String =
@@ -665,7 +1350,9 @@ fn lower_function_sb(ast: String) -> String =
     let ret_type = get_fn_return_type(ast);
     let body_ast = get_fn_body(ast);
     let sb = sb_new();
-    let final_temp = lower_expr_sb(body_ast, 0, 0, sb);
+    // v0.60.300: Use iterative lowering to avoid stack overflow
+    let final_result = lower_expr_iter(body_ast, 0, 0, sb);
+    let final_temp = unpack_temp(final_result);
     let result_id = final_temp - 1;
     let w1 = sb_push_mir(sb, "  return %_t" + int_to_string(result_id));
     let body_mir = sb_build(sb);
@@ -746,10 +1433,16 @@ fn lower_if(ast: String, temp_id: i64, block_id: i64) -> String =
     let branch = "  branch %_t" + int_to_string(cond_id) + ", " + then_label + ", " + else_label;
     let rt = lower_expr(then_branch, unpack_temp_id(rc), block_id + 1);
     let then_id = unpack_temp_id(rt) - 1;
+    // v0.60.128: Determine then exit label for phi node
+    let then_type = get_node_type(then_branch);
+    let then_exit = if then_type == "if" { "merge_" + int_to_string(block_id + 1) } else { then_label };
     let re = lower_expr(else_branch, unpack_temp_id(rt), block_id + 2);
     let else_id = unpack_temp_id(re) - 1;
+    // v0.60.128: Determine else exit label for phi node
+    let else_type = get_node_type(else_branch);
+    let else_exit = if else_type == "if" { "merge_" + int_to_string(block_id + 2) } else { else_label };
     let phi_tmp = "%_t" + int_to_string(unpack_temp_id(re));
-    let phi = "  " + phi_tmp + " = phi [%_t" + int_to_string(then_id) + ", " + then_label + "], [%_t" + int_to_string(else_id) + ", " + else_label + "]";
+    let phi = "  " + phi_tmp + " = phi [%_t" + int_to_string(then_id) + ", " + then_exit + "], [%_t" + int_to_string(else_id) + ", " + else_exit + "]";
     let mir = unpack_text(rc) + "|" + branch + "|" +
         then_label + ":|" + unpack_text(rt) + "|  goto " + merge_label + "|" +
         else_label + ":|" + unpack_text(re) + "|  goto " + merge_label + "|" +
@@ -857,6 +1550,20 @@ fn lower_program_inner(ast: String, idx: i64, acc: String) -> String =
 fn find_pipe(s: String, pos: i64) -> i64 =
     if pos >= s.len() { pos } else if s.byte_at(pos) == 124 { pos } else { find_pipe(s, pos + 1) };
 
+// v0.60.123: Find pipe character but skip over quoted strings
+// This is needed because MIR lines can contain string literals with pipe characters like string "|"
+fn find_pipe_skip_quotes(s: String, pos: i64) -> i64 =
+    if pos >= s.len() { pos }
+    else if s.byte_at(pos) == 124 { pos }
+    else if s.byte_at(pos) == 34 { find_pipe_skip_quotes(s, skip_quoted_string(s, pos + 1)) }
+    else { find_pipe_skip_quotes(s, pos + 1) };
+
+fn skip_quoted_string(s: String, pos: i64) -> i64 =
+    if pos >= s.len() { pos }
+    else if s.byte_at(pos) == 34 { pos + 1 }
+    else if s.byte_at(pos) == 92 { skip_quoted_string(s, pos + 2) }
+    else { skip_quoted_string(s, pos + 1) };
+
 // v0.46: Extract return type from MIR function signature
 // MIR format: fn name(params) -> RetType {|...|}
 fn extract_mir_return_type(mir: String) -> String =
@@ -869,7 +1576,8 @@ fn extract_mir_return_type(mir: String) -> String =
 fn llvm_gen_line_with_ret(line: String, ret_type: String) -> String =
     let p = low_skip_ws(line, 0);
     if p >= line.len() { "" }
-    else if line.byte_at(p) == 37 { llvm_gen_assign(line, p) }
+    // v0.60.118: Pass ret_type to assign for proper phi type
+    else if line.byte_at(p) == 37 { llvm_gen_assign_typed(line, p, ret_type) }
     else if low_starts_with_at(line, p, "return") { llvm_gen_return_typed(line, p, ret_type) }
     else if low_starts_with_at(line, p, "branch") { llvm_gen_branch(line, p) }
     else if low_starts_with_at(line, p, "goto") { llvm_gen_goto(line, p) }
@@ -885,11 +1593,22 @@ fn llvm_gen_assign(line: String, pos: i64) -> String =
     let after_eq = low_skip_ws(line, eq_pos + 1);
     llvm_gen_rhs(line, after_eq, dest);
 
+// v0.60.118: Typed version for proper phi type
+fn llvm_gen_assign_typed(line: String, pos: i64, ret_type: String) -> String =
+    let eq_pos = find_eq(line, pos);
+    let dest = line.slice(pos, eq_pos - 1);
+    let after_eq = low_skip_ws(line, eq_pos + 1);
+    llvm_gen_rhs_typed(line, after_eq, dest, ret_type);
+
 fn find_eq(s: String, pos: i64) -> i64 =
     if pos >= s.len() { pos } else if s.byte_at(pos) == 61 { pos } else { find_eq(s, pos + 1) };
 
 // v0.31.19: Added nsw for const/copy to match Rust compiler
 fn llvm_gen_rhs(line: String, pos: i64, dest: String) -> String =
+    llvm_gen_rhs_typed(line, pos, dest, "i64");
+
+// v0.60.118: Typed version for proper phi type
+fn llvm_gen_rhs_typed(line: String, pos: i64, dest: String, ret_type: String) -> String =
     if low_starts_with_at(line, pos, "const") {
         let val_start = low_skip_ws(line, pos + 5);
         let val = line.slice(val_start, line.len());
@@ -898,9 +1617,14 @@ fn llvm_gen_rhs(line: String, pos: i64, dest: String) -> String =
         let src_start = low_skip_ws(line, pos + 4);
         let src = line.slice(src_start, line.len());
         "  " + dest + " = add nsw i64 0, " + trim_end(src)
+    } else if low_starts_with_at(line, pos, "string") {
+        // v0.60.109: String literal - emit call to bmb_string_from_cstr
+        let str_start = low_skip_ws(line, pos + 6);
+        let str_content = line.slice(str_start + 1, line.len() - 1);
+        llvm_gen_string_literal(dest, str_content)
     } else if low_starts_with_at(line, pos, "+") { llvm_gen_binop("add", line, pos + 1, dest) } else if low_starts_with_at(line, pos, "-") { llvm_gen_binop("sub", line, pos + 1, dest) } else if low_starts_with_at(line, pos, "*") { llvm_gen_binop("mul", line, pos + 1, dest) } else if low_starts_with_at(line, pos, "/") { llvm_gen_binop("sdiv", line, pos + 1, dest) } else if low_starts_with_at(line, pos, "%") { llvm_gen_binop("srem", line, pos + 1, dest)
     // v0.32.1: Fix comparison operator order - check longer operators first
-    } else if low_starts_with_at(line, pos, "<=") { llvm_gen_cmp("sle", line, pos + 2, dest) } else if low_starts_with_at(line, pos, ">=") { llvm_gen_cmp("sge", line, pos + 2, dest) } else if low_starts_with_at(line, pos, "<") { llvm_gen_cmp("slt", line, pos + 1, dest) } else if low_starts_with_at(line, pos, ">") { llvm_gen_cmp("sgt", line, pos + 1, dest) } else if low_starts_with_at(line, pos, "==") { llvm_gen_cmp("eq", line, pos + 2, dest) } else if low_starts_with_at(line, pos, "!=") { llvm_gen_cmp("ne", line, pos + 2, dest) } else if low_starts_with_at(line, pos, "and") { llvm_gen_binop("and", line, pos + 3, dest) } else if low_starts_with_at(line, pos, "or") { llvm_gen_binop("or", line, pos + 2, dest) } else if low_starts_with_at(line, pos, "not") { llvm_gen_not(line, pos + 3, dest) } else if low_starts_with_at(line, pos, "neg") { llvm_gen_neg(line, pos + 3, dest) } else if low_starts_with_at(line, pos, "phi") { llvm_gen_phi(line, pos, dest) } else if low_starts_with_at(line, pos, "call") { llvm_gen_call(line, pos, dest) } else { "  ; unknown: " + line };
+    } else if low_starts_with_at(line, pos, "<=") { llvm_gen_cmp("sle", line, pos + 2, dest) } else if low_starts_with_at(line, pos, ">=") { llvm_gen_cmp("sge", line, pos + 2, dest) } else if low_starts_with_at(line, pos, "<") { llvm_gen_cmp("slt", line, pos + 1, dest) } else if low_starts_with_at(line, pos, ">") { llvm_gen_cmp("sgt", line, pos + 1, dest) } else if low_starts_with_at(line, pos, "==") { llvm_gen_cmp("eq", line, pos + 2, dest) } else if low_starts_with_at(line, pos, "!=") { llvm_gen_cmp("ne", line, pos + 2, dest) } else if low_starts_with_at(line, pos, "and") { llvm_gen_binop("and", line, pos + 3, dest) } else if low_starts_with_at(line, pos, "or") { llvm_gen_binop("or", line, pos + 2, dest) } else if low_starts_with_at(line, pos, "not") { llvm_gen_not(line, pos + 3, dest) } else if low_starts_with_at(line, pos, "neg") { llvm_gen_neg(line, pos + 3, dest) } else if low_starts_with_at(line, pos, "phi") { llvm_gen_phi_typed(line, pos, dest, ret_type) } else if low_starts_with_at(line, pos, "call") { llvm_gen_call(line, pos, dest) } else { "  ; unknown: " + line };
 
 // v0.31.19: Added nsw (no signed wrap) for add/sub/mul to match Rust compiler
 fn llvm_gen_binop(op: String, line: String, pos: i64, dest: String) -> String =
@@ -912,13 +1636,14 @@ fn llvm_gen_binop(op: String, line: String, pos: i64, dest: String) -> String =
     let op_with_nsw = if op == "add" { "add nsw" } else if op == "sub" { "sub nsw" } else if op == "mul" { "mul nsw" } else { op };
     "  " + dest + " = " + op_with_nsw + " i64 " + trim_end(left) + ", " + trim_end(right);
 
+// v0.60.118: Add zext to convert i1 comparison result to i64 for consistency
 fn llvm_gen_cmp(pred: String, line: String, pos: i64, dest: String) -> String =
     let p1 = low_skip_ws(line, pos);
     let comma = find_comma(line, p1);
     let left = line.slice(p1, comma);
     let p2 = low_skip_ws(line, comma + 1);
     let right = line.slice(p2, line.len());
-    "  " + dest + " = icmp " + pred + " i64 " + trim_end(left) + ", " + trim_end(right);
+    "  " + dest + "_cmp = icmp " + pred + " i64 " + trim_end(left) + ", " + trim_end(right) + "|  " + dest + " = zext i1 " + dest + "_cmp to i64";
 
 fn llvm_gen_not(line: String, pos: i64, dest: String) -> String =
     let p = low_skip_ws(line, pos);
@@ -931,14 +1656,32 @@ fn llvm_gen_neg(line: String, pos: i64, dest: String) -> String =
     let operand = line.slice(p, line.len());
     "  " + dest + " = sub nsw i64 0, " + trim_end(operand);
 
+// v0.60.109: String literal (stub - use llvm_gen_string_ref with string table instead)
+fn llvm_gen_string_literal(dest: String, str_content: String) -> String =
+    "  ; ERROR: string literal without string table: " + str_content;
+
 fn llvm_gen_phi(line: String, pos: i64, dest: String) -> String =
+    llvm_gen_phi_typed(line, pos, dest, "i64");
+
+// v0.60.118: Typed phi instruction with correct type for String-returning functions
+fn llvm_gen_phi_typed(line: String, pos: i64, dest: String, ret_type: String) -> String =
     let bracket_start = find_char(line, pos, 91);
     let first_end = find_char(line, bracket_start, 93);
     let first_content = line.slice(bracket_start + 1, first_end);
     let second_start = find_char(line, first_end, 91);
     let second_end = find_char(line, second_start, 93);
     let second_content = line.slice(second_start + 1, second_end);
-    "  " + dest + " = phi i64 [" + first_content + "], [" + second_content + "]";
+    let first_fixed = fix_phi_label(first_content);
+    let second_fixed = fix_phi_label(second_content);
+    let llvm_type = if ret_type == "String" { "ptr" } else if ret_type == "bool" { "i1" } else { "i64" };
+    "  " + dest + " = phi " + llvm_type + " [ " + first_fixed + " ], [ " + second_fixed + " ]";
+
+// v0.60.118: Add % prefix to phi label
+fn fix_phi_label(content: String) -> String =
+    let comma_pos = find_char(content, 0, 44);
+    let val = content.slice(0, comma_pos);
+    let label = content.slice(comma_pos + 2, content.len());
+    val + ", %" + label;
 
 // v0.46: Determine LLVM return type from function name
 fn get_call_return_type(fn_name: String) -> String =
@@ -948,26 +1691,136 @@ fn get_call_return_type(fn_name: String) -> String =
     else if fn_name == "@get_arg" or fn_name == "@bmb_read_file" or fn_name == "@bmb_getenv" { "ptr" }
     else if fn_name == "@bmb_string_new" or fn_name == "@bmb_string_from_cstr" or fn_name == "@bmb_string_slice" { "ptr" }
     else if fn_name == "@bmb_string_concat" or fn_name == "@bmb_chr" or fn_name == "@bmb_int_to_string" { "ptr" }
-    else if fn_name == "@bmb_sb_build" { "ptr" }
+    else if fn_name == "@bmb_sb_build" or fn_name == "@bmb_read_file" or fn_name == "@bmb_getenv" or fn_name == "@get_arg" { "ptr" }
     // All other functions return i64
     else { "i64" };
 
+// v0.60.120: Map user-facing function names to runtime function names
+fn map_runtime_fn(fn_name: String) -> String =
+    if fn_name == "@main" { "@bmb_user_main" }
+    else if fn_name == "@chr" { "@bmb_chr" }
+    else if fn_name == "@ord" { "@bmb_ord" }
+    else if fn_name == "@int_to_string" { "@bmb_int_to_string" }
+    else if fn_name == "@println" { "@println" }
+    else if fn_name == "@print_str" { "@print_str" }
+    else if fn_name == "@println_str" { "@println_str" }
+    else if fn_name == "@read_file" { "@bmb_read_file" }
+    else if fn_name == "@write_file" { "@bmb_write_file" }
+    else if fn_name == "@write_file_newlines" { "@write_file_newlines" }
+    else if fn_name == "@file_exists" { "@bmb_file_exists" }
+    else if fn_name == "@sb_new" { "@bmb_sb_new" }
+    else if fn_name == "@sb_push" { "@bmb_sb_push" }
+    else if fn_name == "@sb_len" { "@bmb_sb_len" }
+    else if fn_name == "@sb_build" { "@bmb_sb_build" }
+    else if fn_name == "@sb_clear" { "@bmb_sb_clear" }
+    else if fn_name == "@arg_count" { "@arg_count" }
+    else if fn_name == "@get_arg" { "@get_arg" }
+    else if fn_name == "@getenv" { "@bmb_getenv" }
+    else if fn_name == "@system" { "@bmb_system" }
+    else { fn_name };
+
 // v0.32.1: Rename @main calls to @bmb_user_main for runtime compatibility
 // v0.46: Handle different return types (i64, ptr, void)
+// v0.60.119: Add type conversions for ptr-returning functions and ptr arguments
 fn llvm_gen_call(line: String, pos: i64, dest: String) -> String =
     let at_pos = find_char(line, pos, 64);
     let paren_pos = find_char(line, at_pos, 40);
     let close_pos = find_char(line, paren_pos, 41);
     let fn_name = line.slice(at_pos, paren_pos);
-    let emitted_fn = if fn_name == "@main" { "@bmb_user_main" } else { fn_name };
+    let emitted_fn = map_runtime_fn(fn_name);
     let args = line.slice(paren_pos + 1, close_pos);
-    let formatted_args = format_call_args(args, 0, "");
+    let arg_types = get_call_arg_types(emitted_fn);
+    let formatted = format_call_args_typed(args, arg_types, 0, 0, "", "");
+    let conversions = call_arg_conversions(formatted);
+    let formatted_args = call_arg_formatted(formatted);
     let ret_type = get_call_return_type(emitted_fn);
     if ret_type == "void" {
-        "  call void " + emitted_fn + "(" + formatted_args + ")"
+        conversions + "  call void " + emitted_fn + "(" + formatted_args + ")"
+    } else if ret_type == "ptr" {
+        // ptr-returning functions need ptrtoint conversion to i64
+        conversions + "  " + dest + "_ptr = call ptr " + emitted_fn + "(" + formatted_args + ")|  " + dest + " = ptrtoint ptr " + dest + "_ptr to i64"
     } else {
-        "  " + dest + " = call " + ret_type + " " + emitted_fn + "(" + formatted_args + ")"
+        conversions + "  " + dest + " = call " + ret_type + " " + emitted_fn + "(" + formatted_args + ")"
     };
+
+// v0.60.119: Get argument type signature for a function (p=ptr, i=i64)
+fn get_call_arg_types(fn_name: String) -> String =
+    // String functions with ptr first arg
+    if fn_name == "@bmb_string_slice" { "pii" }
+    else if fn_name == "@bmb_string_concat" { "pp" }
+    else if fn_name == "@bmb_string_new" { "pi" }
+    else if fn_name == "@bmb_string_from_cstr" { "p" }
+    else if fn_name == "@bmb_string_eq" { "pp" }
+    else if fn_name == "@bmb_string_len" { "p" }
+    else if fn_name == "@bmb_string_char_at" { "pi" }
+    else if fn_name == "@bmb_read_file" { "p" }
+    else if fn_name == "@bmb_write_file" { "pp" }
+    else if fn_name == "@write_file_newlines" { "pp" }
+    else if fn_name == "@bmb_append_file" { "pp" }
+    else if fn_name == "@bmb_file_exists" { "p" }
+    else if fn_name == "@bmb_file_size" { "p" }
+    else if fn_name == "@bmb_getenv" { "p" }
+    else if fn_name == "@bmb_system" { "p" }
+    else if fn_name == "@bmb_sb_push" { "ip" }
+    else if fn_name == "@print_str" { "p" }
+    else if fn_name == "@println_str" { "p" }
+    else if fn_name == "@bmb_panic" { "p" }
+    // Default: all i64
+    else { "" };
+
+// v0.60.119: Format args with type conversions
+// Returns pair: (conversions_string, formatted_args_string)
+// Uses separator "###" to split conversions from args
+fn format_call_args_typed(args: String, types: String, pos: i64, idx: i64, conv_acc: String, arg_acc: String) -> String =
+    let p = low_skip_ws(args, pos);
+    if p >= args.len() { conv_acc + "###" + arg_acc } else {
+        let comma = find_comma_or_end(args, p);
+        let arg = trim_end(args.slice(p, comma));
+        let typ = if idx < types.len() { types.byte_at(idx) } else { 105 };
+        let pair = if typ == 112 {
+            // 'p' = ptr: need inttoptr conversion
+            let ptr_name = arg + "_p" + int_to_string(idx);
+            let conv = "  " + ptr_name + " = inttoptr i64 " + arg + " to ptr|";
+            let typed_arg = "ptr " + ptr_name;
+            pack_conv_arg(conv, typed_arg)
+        } else {
+            // 'i' or default = i64: no conversion needed
+            pack_conv_arg("", "i64 " + arg)
+        };
+        let new_conv = conv_acc + unpack_conv(pair);
+        let typed_arg = unpack_arg(pair);
+        let new_arg = if arg_acc == "" { typed_arg } else { arg_acc + ", " + typed_arg };
+        if comma >= args.len() { new_conv + "###" + new_arg } else { format_call_args_typed(args, types, comma + 1, idx + 1, new_conv, new_arg) }
+    };
+
+// Helper to pack conversion and arg into a pair string
+fn pack_conv_arg(conv: String, arg: String) -> String = conv + "###" + arg;
+
+// Helper to unpack conversion from pair
+fn unpack_conv(pair: String) -> String =
+    let sep = find_separator(pair, 0);
+    pair.slice(0, sep);
+
+// Helper to unpack arg from pair
+fn unpack_arg(pair: String) -> String =
+    let sep = find_separator(pair, 0);
+    pair.slice(sep + 3, pair.len());
+
+// Find "###" separator
+fn find_separator(s: String, pos: i64) -> i64 =
+    if pos + 2 >= s.len() { s.len() }
+    else if s.byte_at(pos) == 35 and s.byte_at(pos + 1) == 35 and s.byte_at(pos + 2) == 35 { pos }
+    else { find_separator(s, pos + 1) };
+
+// v0.60.119: Extract conversions part from "conversions###args"
+fn call_arg_conversions(formatted: String) -> String =
+    let sep = find_separator(formatted, 0);
+    formatted.slice(0, sep);
+
+// v0.60.119: Extract args part from "conversions###args"
+fn call_arg_formatted(formatted: String) -> String =
+    let sep = find_separator(formatted, 0);
+    formatted.slice(sep + 3, formatted.len());
 
 fn format_call_args(args: String, pos: i64, acc: String) -> String =
     let p = low_skip_ws(args, pos);
@@ -1005,22 +1858,30 @@ fn llvm_gen_return(line: String, pos: i64) -> String =
     "  ret i64 " + trim_end(val);
 
 // v0.46: Return with proper type for String functions
+// v0.60.118: Add inttoptr conversion for String returns (values are i64 internally)
 fn llvm_gen_return_typed(line: String, pos: i64, ret_type: String) -> String =
     let val_start = low_skip_ws(line, pos + 6);
-    let val = line.slice(val_start, line.len());
-    let llvm_ret = if ret_type == "bool" { "i1" } else if ret_type == "String" { "ptr" } else { "i64" };
-    "  ret " + llvm_ret + " " + trim_end(val);
+    let val = trim_end(line.slice(val_start, line.len()));
+    if ret_type == "String" {
+        // String values are stored as i64, need inttoptr to return as ptr
+        "  " + val + "_ret = inttoptr i64 " + val + " to ptr|  ret ptr " + val + "_ret"
+    } else if ret_type == "bool" {
+        "  " + val + "_ret = trunc i64 " + val + " to i1|  ret i1 " + val + "_ret"
+    } else {
+        "  ret i64 " + val
+    };
 
+// v0.60.118: Add trunc to convert i64 condition to i1 for branch
 fn llvm_gen_branch(line: String, pos: i64) -> String =
     let after = low_skip_ws(line, pos + 6);
     let comma1 = find_comma(line, after);
-    let cond = line.slice(after, comma1);
+    let cond = trim_end(line.slice(after, comma1));
     let after1 = low_skip_ws(line, comma1 + 1);
     let comma2 = find_comma(line, after1);
     let then_label = line.slice(after1, comma2);
     let after2 = low_skip_ws(line, comma2 + 1);
     let else_label = trim_end(line.slice(after2, line.len()));
-    "  br i1 " + trim_end(cond) + ", label %" + trim_end(then_label) + ", label %" + else_label;
+    "  " + cond + "_i1 = trunc i64 " + cond + " to i1|  br i1 " + cond + "_i1, label %" + trim_end(then_label) + ", label %" + else_label;
 
 fn llvm_gen_goto(line: String, pos: i64) -> String =
     let label_start = low_skip_ws(line, pos + 4);
@@ -1034,7 +1895,7 @@ fn gen_function(mir: String) -> String =
 
 fn gen_function_lines(mir: String, pos: i64, acc: String) -> String =
     if pos >= mir.len() { acc } else {
-        let pipe_pos = find_pipe(mir, pos);
+        let pipe_pos = find_pipe_skip_quotes(mir, pos);
         let line = mir.slice(pos, pipe_pos);
         let llvm_line = llvm_gen_fn_line(line);
         let new_acc = if acc == "" { llvm_line } else { acc + "|" + llvm_line };
@@ -1044,7 +1905,7 @@ fn gen_function_lines(mir: String, pos: i64, acc: String) -> String =
 // v0.46: Type-aware function line generation
 fn gen_function_lines_typed(mir: String, pos: i64, acc: String, ret_type: String) -> String =
     if pos >= mir.len() { acc } else {
-        let pipe_pos = find_pipe(mir, pos);
+        let pipe_pos = find_pipe_skip_quotes(mir, pos);
         let line = mir.slice(pos, pipe_pos);
         let llvm_line = llvm_gen_fn_line_typed(line, ret_type);
         let new_acc = if acc == "" { llvm_line } else { acc + "|" + llvm_line };
@@ -1065,7 +1926,7 @@ fn gen_function_sb(mir: String) -> String =
 
 fn gen_function_lines_sb(mir: String, pos: i64, sb: i64) -> i64 =
     if pos >= mir.len() { 0 } else {
-        let pipe_pos = find_pipe(mir, pos);
+        let pipe_pos = find_pipe_skip_quotes(mir, pos);
         let line = mir.slice(pos, pipe_pos);
         let llvm_line = llvm_gen_fn_line(line);
         let len = sb_len(sb);
@@ -1077,7 +1938,7 @@ fn gen_function_lines_sb(mir: String, pos: i64, sb: i64) -> i64 =
 // v0.46: Type-aware StringBuilder function line generation
 fn gen_function_lines_sb_typed(mir: String, pos: i64, sb: i64, ret_type: String) -> i64 =
     if pos >= mir.len() { 0 } else {
-        let pipe_pos = find_pipe(mir, pos);
+        let pipe_pos = find_pipe_skip_quotes(mir, pos);
         let line = mir.slice(pos, pipe_pos);
         let llvm_line = llvm_gen_fn_line_typed(line, ret_type);
         let len = sb_len(sb);
@@ -1158,8 +2019,12 @@ fn ends_with_colon(s: String) -> bool =
         if last.len() == 0 { false } else { last.byte_at(last.len() - 1) == 58 }
     };
 
+// v0.60.124: Skip quoted strings to avoid treating "||" inside strings as function separator
 fn find_double_pipe(s: String, pos: i64) -> i64 =
-    if pos + 1 >= s.len() { s.len() } else if s.byte_at(pos) == 124 and s.byte_at(pos + 1) == 124 { pos } else { find_double_pipe(s, pos + 1) };
+    if pos + 1 >= s.len() { s.len() }
+    else if s.byte_at(pos) == 124 and s.byte_at(pos + 1) == 124 { pos }
+    else if s.byte_at(pos) == 34 { find_double_pipe(s, skip_quoted_string(s, pos + 1)) }
+    else { find_double_pipe(s, pos + 1) };
 
 fn gen_program(mir: String) -> String =
     gen_program_acc(mir, 0, "");
@@ -1178,7 +2043,8 @@ fn gen_program_acc(mir: String, pos: i64, acc: String) -> String =
 // ============================================================================
 
 fn gen_module_header() -> String =
-    "; ModuleID = bmb_bootstrap|target triple = x86_64-unknown-linux-gnu";
+    // v0.60.118: Target triple must be quoted in LLVM IR
+    "; ModuleID = bmb_bootstrap|target triple = " + chr(34) + "x86_64-unknown-linux-gnu" + chr(34);
 
 // v0.46: Complete runtime declarations for 3-stage bootstrap
 // Basic I/O
@@ -1209,6 +2075,8 @@ fn gen_extern_file_size() -> String = "declare i64 @bmb_file_size(ptr)";
 fn gen_extern_read_file() -> String = "declare ptr @bmb_read_file(ptr)";
 fn gen_extern_write_file() -> String = "declare i64 @bmb_write_file(ptr, ptr)";
 fn gen_extern_append_file() -> String = "declare i64 @bmb_append_file(ptr, ptr)";
+// v0.60.134: write_file_newlines converts | to newlines during write
+fn gen_extern_write_file_newlines() -> String = "declare i64 @write_file_newlines(ptr, ptr)";
 
 // StringBuilder
 fn gen_extern_sb_new() -> String = "declare i64 @bmb_sb_new()";
@@ -1242,6 +2110,7 @@ fn gen_runtime_decls() -> String =
     // File I/O
     gen_extern_file_exists() + "|" + gen_extern_file_size() + "|" +
     gen_extern_read_file() + "|" + gen_extern_write_file() + "|" + gen_extern_append_file() + "|" +
+    gen_extern_write_file_newlines() + "|" +
     // StringBuilder
     gen_extern_sb_new() + "|" + gen_extern_sb_push() + "|" + gen_extern_sb_len() + "|" +
     gen_extern_sb_build() + "|" + gen_extern_sb_clear() + "|" +
@@ -1251,6 +2120,484 @@ fn gen_runtime_decls() -> String =
     gen_extern_arg_count() + "|" + gen_extern_get_arg() + "|" +
     // Error
     gen_extern_panic();
+
+// ============================================================================
+// SECTION 12b: String Literal Handling (v0.60.109)
+// ============================================================================
+
+// Collect all string literals from MIR, returns pipe-separated list
+fn collect_strings_from_mir(mir: String) -> String =
+    let sb = sb_new();
+    let w1 = collect_strings_acc(mir, 0, sb);
+    sb_build(sb);
+
+// v0.60.123: Use tab character (chr(9)) as separator for string list to avoid
+// conflicts with strings containing pipe character like "|"
+fn collect_strings_acc(mir: String, pos: i64, sb: i64) -> i64 =
+    if pos >= mir.len() { 0 } else {
+        let next = find_string_in_mir(mir, pos);
+        if next < 0 { 0 } else {
+            let str_start = next + 8;
+            let str_end = find_quote_in_mir(mir, str_start);
+            let str_content = mir.slice(str_start, str_end);
+            let existing = sb_build(sb);
+            let is_dup = string_in_list(existing, str_content);
+            let w1 = if is_dup == 0 {
+                let len = sb_len(sb);
+                let w2 = if len > 0 { sb_push(sb, chr(9)) } else { 0 };
+                sb_push(sb, str_content)
+            } else { 0 };
+            collect_strings_acc(mir, str_end + 1, sb)
+        }
+    };
+
+// Find "string " pattern in MIR (returns position or -1)
+fn find_string_in_mir(mir: String, pos: i64) -> i64 =
+    if pos + 8 > mir.len() { 0 - 1 }
+    else if matches_string_pattern(mir, pos) { pos }
+    else { find_string_in_mir(mir, pos + 1) };
+
+fn matches_string_pattern(s: String, pos: i64) -> bool =
+    s.byte_at(pos) == 115 and s.byte_at(pos + 1) == 116 and
+    s.byte_at(pos + 2) == 114 and s.byte_at(pos + 3) == 105 and
+    s.byte_at(pos + 4) == 110 and s.byte_at(pos + 5) == 103 and
+    s.byte_at(pos + 6) == 32 and s.byte_at(pos + 7) == 34;
+
+fn find_quote_in_mir(s: String, pos: i64) -> i64 =
+    if pos >= s.len() { s.len() }
+    else if s.byte_at(pos) == 34 { pos }
+    else { find_quote_in_mir(s, pos + 1) };
+
+fn string_in_list(list: String, target: String) -> i64 =
+    if list == "" { 0 } else { string_in_list_scan(list, target, 0) };
+
+fn string_in_list_scan(list: String, target: String, pos: i64) -> i64 =
+    if pos >= list.len() { 0 } else {
+        let pipe = find_tab_in_list(list, pos);
+        let end = if pipe >= list.len() { list.len() } else { pipe };
+        let item = list.slice(pos, end);
+        if item == target { 1 }
+        else if pipe >= list.len() { 0 }
+        else { string_in_list_scan(list, target, pipe + 1) }
+    };
+
+// v0.60.123: Renamed to find_tab_in_list, uses tab (byte 9) as separator
+fn find_tab_in_list(s: String, pos: i64) -> i64 =
+    if pos >= s.len() { s.len() }
+    else if s.byte_at(pos) == 9 { pos }
+    else { find_tab_in_list(s, pos + 1) };
+
+// Find index of string in list
+fn find_string_index(list: String, target: String) -> i64 =
+    find_string_index_scan(list, target, 0, 0);
+
+fn find_string_index_scan(list: String, target: String, pos: i64, idx: i64) -> i64 =
+    if pos >= list.len() { 0 } else {
+        let pipe = find_tab_in_list(list, pos);
+        let end = if pipe >= list.len() { list.len() } else { pipe };
+        let item = list.slice(pos, end);
+        if item == target { idx }
+        else if pipe >= list.len() { 0 }
+        else { find_string_index_scan(list, target, pipe + 1, idx + 1) }
+    };
+
+// Generate global string constants
+fn gen_string_globals(strings: String) -> String =
+    if strings == "" { "" } else {
+        let sb = sb_new();
+        let w1 = gen_string_globals_acc(strings, 0, 0, sb);
+        sb_build(sb)
+    };
+
+// v0.60.124: Escape pipe character in LLVM IR string constants to avoid
+// confusion with the output line separator. Use \7C for | (byte 124).
+fn escape_llvm_string(s: String) -> String =
+    escape_llvm_string_acc(s, 0, "");
+
+fn escape_llvm_string_acc(s: String, pos: i64, acc: String) -> String =
+    if pos >= s.len() { acc }
+    else {
+        let ch = s.byte_at(pos);
+        let escaped = if ch == 124 { chr(92) + "7C" }
+                      else if ch == 92 { chr(92) + "5C" }
+                      else if ch == 34 { chr(92) + "22" }
+                      else { chr(ch) };
+        escape_llvm_string_acc(s, pos + 1, acc + escaped)
+    };
+
+fn gen_string_globals_acc(strings: String, pos: i64, idx: i64, sb: i64) -> i64 =
+    if pos >= strings.len() { 0 } else {
+        let pipe = find_tab_in_list(strings, pos);
+        let end = if pipe >= strings.len() { strings.len() } else { pipe };
+        let str_content = strings.slice(pos, end);
+        let escaped_content = escape_llvm_string(str_content);
+        let str_len = str_content.len() + 1;
+        let global = "@str_data_" + int_to_string(idx) + " = private unnamed_addr constant [" +
+            int_to_string(str_len) + " x i8] c" + chr(34) + escaped_content + chr(92) + "00" + chr(34);
+        let len = sb_len(sb);
+        let w1 = if len > 0 { sb_push(sb, "|") } else { 0 };
+        let w2 = sb_push(sb, global);
+        if pipe >= strings.len() { 0 } else { gen_string_globals_acc(strings, pipe + 1, idx + 1, sb) }
+    };
+
+// Generate program with string table
+fn gen_program_sb_with_strings(mir: String, strings: String) -> String =
+    let sb = sb_new();
+    let w1 = gen_program_acc_sb_with_strings(mir, 0, strings, sb);
+    sb_build(sb);
+
+fn gen_program_acc_sb_with_strings(mir: String, pos: i64, strings: String, sb: i64) -> i64 =
+    if pos >= mir.len() { 0 } else {
+        let fn_end = find_double_pipe(mir, pos);
+        let fn_mir = mir.slice(pos, fn_end);
+        let fn_llvm = gen_function_sb_with_strings(fn_mir, strings);
+        let len = sb_len(sb);
+        let w1 = if len > 0 { sb_push(sb, "||") } else { 0 };
+        let w2 = sb_push(sb, fn_llvm);
+        if fn_end + 2 >= mir.len() { 0 } else { gen_program_acc_sb_with_strings(mir, fn_end + 2, strings, sb) }
+    };
+
+// v0.60.121: Copy elimination to fix SSA conflicts with user variables
+// Mapping format: "name1:src1,name2:src2,..." where name is user var and src is the temp it copies from
+// v0.60.202: Also includes "S:varname" for string type tracking
+fn gen_function_sb_with_strings(mir: String, strings: String) -> String =
+    let sb = sb_new();
+    let ret_type = extract_mir_return_type(mir);
+    // v0.60.203: Skip string parameter extraction to avoid recursion issues
+    // String parameters will be tracked when they're first used
+    let w1 = gen_function_lines_sb_with_strings_map(mir, 0, sb, ret_type, strings, "");
+    sb_build(sb);
+
+// Extract string parameters from function header and create initial string markers
+fn extract_string_params_from_mir(mir: String) -> String =
+    let fn_start = find_pattern_at(mir, "fn ", 0);
+    if fn_start < 0 { "" } else {
+        let paren_start = find_char(mir, fn_start, 40);
+        let paren_end = find_char(mir, paren_start, 41);
+        if paren_start < 0 or paren_end < 0 { "" }
+        else {
+            let params = mir.slice(paren_start + 1, paren_end);
+            collect_string_params(params, 0, "")
+        }
+    };
+
+// Collect string parameters from params string
+fn collect_string_params(params: String, pos: i64, acc: String) -> String =
+    let p = low_skip_ws(params, pos);
+    if p >= params.len() { acc }
+    else {
+        let comma_pos = find_comma_or_end(params, p);
+        let param = params.slice(p, comma_pos);
+        let colon_pos = find_char(param, 0, 58);
+        if colon_pos < param.len() {
+            let param_name = trim(param.slice(0, colon_pos));
+            let param_type = trim(param.slice(colon_pos + 1, param.len()));
+            let new_acc = if param_type == "String" {
+                if acc == "" { "S:%" + param_name }
+                else { acc + ",S:%" + param_name }
+            } else { acc };
+            if comma_pos >= params.len() { new_acc }
+            else { collect_string_params(params, comma_pos + 1, new_acc) }
+        } else {
+            if comma_pos >= params.len() { acc }
+            else { collect_string_params(params, comma_pos + 1, acc) }
+        }
+    };
+
+// v0.60.202: Iterative pattern finding to avoid stack overflow on large strings
+fn find_pattern_at(s: String, pat: String, pos: i64) -> i64 =
+    // Check from start - MIR functions always start with "fn "
+    if pos == 0 and pat.len() <= s.len() and s.slice(0, pat.len()) == pat { 0 }
+    // If not at start, do linear search (shouldn't happen often for "fn ")
+    else { find_pattern_at_slow(s, pat, pos) };
+
+fn find_pattern_at_slow(s: String, pat: String, pos: i64) -> i64 =
+    if pos + pat.len() > s.len() { 0 - 1 }
+    else if s.slice(pos, pos + pat.len()) == pat { pos }
+    else { find_pattern_at_slow(s, pat, pos + 1) };
+
+fn gen_function_lines_sb_with_strings_map(mir: String, pos: i64, sb: i64, ret_type: String, strings: String, mapping: String) -> i64 =
+    if pos >= mir.len() { 0 } else {
+        let pipe_pos = find_pipe_skip_quotes(mir, pos);
+        let line = mir.slice(pos, pipe_pos);
+        let result = llvm_gen_fn_line_with_strings_map(line, ret_type, strings, mapping);
+        let new_mapping = extract_mapping(result);
+        let llvm_line = extract_llvm_line(result);
+        let len = sb_len(sb);
+        let w1 = if len > 0 and llvm_line != "" { sb_push(sb, "|") } else { 0 };
+        let w2 = if llvm_line != "" { sb_push(sb, llvm_line) } else { 0 };
+        if pipe_pos >= mir.len() { 0 } else { gen_function_lines_sb_with_strings_map(mir, pipe_pos + 1, sb, ret_type, strings, new_mapping) }
+    };
+
+// Returns "mapping@@@llvm_line"
+fn llvm_gen_fn_line_with_strings_map(line: String, ret_type: String, strings: String, mapping: String) -> String =
+    let p = low_skip_ws(line, 0);
+    if p >= line.len() { mapping + "@@@" }
+    else if low_starts_with_at(line, p, "fn ") { mapping + "@@@" + llvm_gen_fn_header(line, p) }
+    else if ends_with_colon(line) { mapping + "@@@" + line }
+    else if line == "}" { mapping + "@@@}" }
+    else { llvm_gen_line_with_strings_map(line, ret_type, strings, mapping) };
+
+// Returns "mapping@@@llvm_line"
+fn llvm_gen_line_with_strings_map(line: String, ret_type: String, strings: String, mapping: String) -> String =
+    let p = low_skip_ws(line, 0);
+    if p >= line.len() { mapping + "@@@" }
+    else if line.byte_at(p) == 37 { llvm_gen_assign_with_strings_map(line, p, strings, mapping) }
+    else if low_starts_with_at(line, p, "return") { mapping + "@@@" + llvm_gen_return_typed(line, p, ret_type) }
+    else if low_starts_with_at(line, p, "branch") { mapping + "@@@" + llvm_gen_branch(line, p) }
+    else if low_starts_with_at(line, p, "goto") { mapping + "@@@" + llvm_gen_goto(line, p) }
+    else { mapping + "@@@" + line };
+
+// Returns "mapping@@@llvm_line"
+fn llvm_gen_assign_with_strings_map(line: String, pos: i64, strings: String, mapping: String) -> String =
+    let eq_pos = find_eq(line, pos);
+    let dest = line.slice(pos, eq_pos - 1);
+    let after_eq = low_skip_ws(line, eq_pos + 1);
+    llvm_gen_rhs_with_strings_map(line, after_eq, dest, strings, mapping);
+
+// Returns "mapping@@@llvm_line"
+// v0.60.202: Track string temporaries for proper string comparison generation
+// Mapping now includes "S:varname" entries to mark string variables
+fn llvm_gen_rhs_with_strings_map(line: String, pos: i64, dest: String, strings: String, mapping: String) -> String =
+    if low_starts_with_at(line, pos, "const") {
+        let val_start = low_skip_ws(line, pos + 5);
+        let val = line.slice(val_start, line.len());
+        mapping + "@@@  " + dest + " = add nsw i64 0, " + trim_end(val)
+    } else if low_starts_with_at(line, pos, "copy") {
+        let src_start = low_skip_ws(line, pos + 4);
+        let src = trim_end(line.slice(src_start, line.len()));
+        // Check if this is a copy TO a user variable (not %_t)
+        if is_user_variable(dest) {
+            // Don't emit code, just update mapping
+            add_mapping(mapping, dest, resolve_variable(src, mapping)) + "@@@"
+        } else {
+            // Check if source is a user variable that needs substitution
+            let resolved_src = resolve_variable(src, mapping);
+            mapping + "@@@  " + dest + " = add nsw i64 0, " + resolved_src
+        }
+    } else if low_starts_with_at(line, pos, "string") {
+        let str_start = low_skip_ws(line, pos + 6);
+        let str_content = line.slice(str_start + 1, line.len() - 1);
+        // v0.60.203: Temporarily disabled string marking to debug crash
+        mapping + "@@@" + llvm_gen_string_ref(dest, str_content, strings)
+    } else if low_starts_with_at(line, pos, "+") { mapping + "@@@" + llvm_gen_binop("add", line, pos + 1, dest) }
+    else if low_starts_with_at(line, pos, "-") { mapping + "@@@" + llvm_gen_binop("sub", line, pos + 1, dest) }
+    else if low_starts_with_at(line, pos, "*") { mapping + "@@@" + llvm_gen_binop("mul", line, pos + 1, dest) }
+    else if low_starts_with_at(line, pos, "/") { mapping + "@@@" + llvm_gen_binop("sdiv", line, pos + 1, dest) }
+    else if low_starts_with_at(line, pos, "%") { mapping + "@@@" + llvm_gen_binop("srem", line, pos + 1, dest) }
+    else if low_starts_with_at(line, pos, "<=") { mapping + "@@@" + llvm_gen_cmp("sle", line, pos + 2, dest) }
+    else if low_starts_with_at(line, pos, ">=") { mapping + "@@@" + llvm_gen_cmp("sge", line, pos + 2, dest) }
+    else if low_starts_with_at(line, pos, "<") { mapping + "@@@" + llvm_gen_cmp("slt", line, pos + 1, dest) }
+    else if low_starts_with_at(line, pos, ">") { mapping + "@@@" + llvm_gen_cmp("sgt", line, pos + 1, dest) }
+    // v0.60.203: Temporarily disabled string comparison to debug crash
+    else if low_starts_with_at(line, pos, "==") { mapping + "@@@" + llvm_gen_cmp("eq", line, pos + 2, dest) }
+    else if low_starts_with_at(line, pos, "!=") { mapping + "@@@" + llvm_gen_cmp("ne", line, pos + 2, dest) }
+    else if low_starts_with_at(line, pos, "and") { mapping + "@@@" + llvm_gen_binop("and", line, pos + 3, dest) }
+    else if low_starts_with_at(line, pos, "or") { mapping + "@@@" + llvm_gen_binop("or", line, pos + 2, dest) }
+    else if low_starts_with_at(line, pos, "not") { mapping + "@@@" + llvm_gen_not(line, pos + 3, dest) }
+    else if low_starts_with_at(line, pos, "neg") { mapping + "@@@" + llvm_gen_neg(line, pos + 3, dest) }
+    else if low_starts_with_at(line, pos, "phi") { mapping + "@@@" + llvm_gen_phi(line, pos, dest) }
+    // v0.60.203: Temporarily disabled string tracking to debug crash
+    else if low_starts_with_at(line, pos, "call") { mapping + "@@@" + llvm_gen_call(line, pos, dest) }
+    else { mapping + "@@@  ; unknown: " + line };
+
+// Add a string marker to the mapping: "S:varname"
+fn add_string_marker(mapping: String, varname: String) -> String =
+    if mapping == "" { "S:" + varname }
+    else { mapping + ",S:" + varname };
+
+// Check if a variable is marked as a string in the mapping
+fn is_string_var(varname: String, mapping: String) -> bool =
+    let marker = "S:" + varname;
+    string_in_mapping(mapping, marker);
+
+// Check if a marker string exists in the mapping
+fn string_in_mapping(mapping: String, marker: String) -> bool =
+    if mapping == "" { false }
+    else { find_string_in_list(mapping, marker, 0) >= 0 };
+
+// Find a string in a comma-separated list (iterative to avoid stack overflow)
+fn find_string_in_list(list: String, target: String, pos: i64) -> i64 =
+    find_string_in_list_iter(list, target, pos);
+
+fn find_string_in_list_iter(list: String, target: String, pos: i64) -> i64 =
+    if pos >= list.len() { 0 - 1 }
+    else {
+        let comma = find_comma_or_end(list, pos);
+        let entry = list.slice(pos, comma);
+        if entry == target { pos }
+        else if comma >= list.len() { 0 - 1 }
+        // Use tail position to help with TCO
+        else { find_string_in_list_iter(list, target, comma + 1) }
+    };
+
+// Generate comparison with string handling
+// v0.60.203: Simplified to only check direct string markers, avoiding deep recursion
+fn llvm_gen_cmp_with_strings(pred: String, line: String, pos: i64, dest: String, mapping: String) -> String =
+    let p1 = low_skip_ws(line, pos);
+    let comma = find_comma(line, p1);
+    let left = line.slice(p1, comma);
+    let p2 = low_skip_ws(line, comma + 1);
+    let right = line.slice(p2, line.len());
+    let left_trimmed = trim_end(left);
+    let right_trimmed = trim_end(right);
+    // Check if either operand is a string using simple prefix check
+    let left_is_string = is_string_var_fast(left_trimmed, mapping);
+    let right_is_string = is_string_var_fast(right_trimmed, mapping);
+    if left_is_string or right_is_string {
+        // Generate bmb_string_eq call
+        llvm_gen_string_cmp(pred, left_trimmed, right_trimmed, dest, mapping)
+    } else {
+        // Generate normal integer comparison
+        mapping + "@@@" + llvm_gen_cmp(pred, line, pos, dest)
+    };
+
+// Fast string variable check - only looks at first few entries to avoid deep recursion
+fn is_string_var_fast(varname: String, mapping: String) -> bool =
+    let marker = "S:" + varname;
+    if mapping == "" { false }
+    else { has_prefix_or_contains_marker(mapping, marker) };
+
+// Check if mapping starts with or contains the marker (limited search)
+fn has_prefix_or_contains_marker(mapping: String, marker: String) -> bool =
+    if mapping.len() < marker.len() { false }
+    else if mapping.slice(0, marker.len()) == marker { true }
+    else { find_marker_limited(mapping, marker, 0, 0) };
+
+// Limited search - only check first 50 entries to avoid stack overflow
+fn find_marker_limited(mapping: String, marker: String, pos: i64, count: i64) -> bool =
+    if count > 50 or pos >= mapping.len() { false }
+    else {
+        let comma = find_comma_or_end(mapping, pos);
+        let entry = mapping.slice(pos, comma);
+        if entry == marker { true }
+        else if comma >= mapping.len() { false }
+        else { find_marker_limited(mapping, marker, comma + 1, count + 1) }
+    };
+
+// Generate string comparison using bmb_string_eq
+fn llvm_gen_string_cmp(pred: String, left: String, right: String, dest: String, mapping: String) -> String =
+    let eq_dest = dest + "_streq";
+    let call_line = "  " + eq_dest + " = call i64 @bmb_string_eq(i64 " + left + ", i64 " + right + ")";
+    let cmp_line = "  " + dest + "_cmp = icmp ne i64 " + eq_dest + ", 0";
+    let result_line = "  " + dest + " = zext i1 " + dest + "_cmp to i64";
+    // For != we need to invert the result
+    if pred == "ne" {
+        let inverted_cmp = "  " + dest + "_cmp = icmp eq i64 " + eq_dest + ", 0";
+        mapping + "@@@" + call_line + "|" + inverted_cmp + "|" + result_line
+    } else {
+        mapping + "@@@" + call_line + "|" + cmp_line + "|" + result_line
+    };
+
+// Track string-returning function calls
+fn llvm_gen_call_with_string_tracking(line: String, pos: i64, dest: String, mapping: String) -> String =
+    let llvm_code = llvm_gen_call(line, pos, dest);
+    // Check if the called function returns a string
+    let fn_name = extract_call_fn_name(line, pos);
+    let is_string_fn = is_string_returning_fn(fn_name);
+    let new_mapping = if is_string_fn { add_string_marker(mapping, dest) } else { mapping };
+    new_mapping + "@@@" + llvm_code;
+
+// Check if a function returns a string
+fn is_string_returning_fn(name: String) -> bool =
+    name == "get_node_type" or name == "get_child" or name == "extract_name" or
+    name == "bmb_string_slice" or name == "bmb_string_concat" or
+    name == "bmb_string_from_cstr" or name == "bmb_chr" or name == "bmb_read_file" or
+    name == "bmb_getenv" or name == "get_arg" or name == "int_to_string" or
+    name == "chr" or name == "slice" or name == "concat" or name == "sb_build" or
+    name == "digit_char" or name == "escape_parens" or name == "unescape_parens_from_ast" or
+    name == "extract_string_content" or name == "get_fn_return_type" or
+    name == "collect_params" or name == "get_fn_body" or name == "lower_function_sb" or
+    name == "lower_program_sb" or name == "compile_function" or name == "compile_source" or
+    name == "parse_source" or name == "gen_function" or name == "gen_program" or
+    name == "tokenize" or name == "read_file" or name == "make_error";
+
+// Extract function name from call instruction
+fn extract_call_fn_name(line: String, pos: i64) -> String =
+    let after_call = low_skip_ws(line, pos + 4);
+    let at_pos = if line.byte_at(after_call) == 64 { after_call + 1 } else { after_call };
+    let paren_pos = find_char(line, at_pos, 40);
+    if paren_pos > at_pos { line.slice(at_pos, paren_pos) } else { "" };
+
+// Check if a variable name is a user variable (not %_t)
+fn is_user_variable(name: String) -> bool =
+    if name.len() < 3 { false }
+    else {
+        let after_pct = name.byte_at(1);
+        // User vars don't start with _t after the %
+        not (after_pct == 95 and name.len() > 2 and name.byte_at(2) == 116)
+    };
+
+// Resolve a variable using the mapping
+fn resolve_variable(varname: String, mapping: String) -> String =
+    if not is_user_variable(varname) { varname }
+    else { lookup_mapping(mapping, varname, varname) };
+
+// Look up a variable in the mapping, return default if not found
+fn lookup_mapping(mapping: String, name: String, default_val: String) -> String =
+    if mapping == "" { default_val }
+    else { lookup_mapping_at(mapping, name, 0, default_val) };
+
+fn lookup_mapping_at(mapping: String, name: String, pos: i64, default_val: String) -> String =
+    if pos >= mapping.len() { default_val }
+    else {
+        let comma = find_comma_or_end(mapping, pos);
+        let entry = mapping.slice(pos, comma);
+        let colon = find_char(entry, 0, 58);
+        let entry_name = entry.slice(0, colon);
+        let entry_val = entry.slice(colon + 1, entry.len());
+        if entry_name == name { entry_val }
+        else if comma >= mapping.len() { default_val }
+        else { lookup_mapping_at(mapping, name, comma + 1, default_val) }
+    };
+
+// Add a name:value pair to the mapping
+fn add_mapping(mapping: String, name: String, value: String) -> String =
+    let entry = name + ":" + value;
+    if mapping == "" { entry } else { mapping + "," + entry };
+
+// Extract mapping from "mapping@@@llvm_line"
+fn extract_mapping(result: String) -> String =
+    let sep = find_triple_at(result, 0);
+    result.slice(0, sep);
+
+// Extract llvm_line from "mapping@@@llvm_line"
+fn extract_llvm_line(result: String) -> String =
+    let sep = find_triple_at(result, 0);
+    result.slice(sep + 3, result.len());
+
+// Find "@@@" separator
+fn find_triple_at(s: String, pos: i64) -> i64 =
+    if pos + 2 >= s.len() { s.len() }
+    else if s.byte_at(pos) == 64 and s.byte_at(pos + 1) == 64 and s.byte_at(pos + 2) == 64 { pos }
+    else { find_triple_at(s, pos + 1) };
+
+// Legacy versions for compatibility
+fn gen_function_lines_sb_with_strings(mir: String, pos: i64, sb: i64, ret_type: String, strings: String) -> i64 =
+    gen_function_lines_sb_with_strings_map(mir, pos, sb, ret_type, strings, "");
+
+fn llvm_gen_fn_line_with_strings(line: String, ret_type: String, strings: String) -> String =
+    extract_llvm_line(llvm_gen_fn_line_with_strings_map(line, ret_type, strings, ""));
+
+fn llvm_gen_line_with_strings(line: String, ret_type: String, strings: String) -> String =
+    extract_llvm_line(llvm_gen_line_with_strings_map(line, ret_type, strings, ""));
+
+fn llvm_gen_assign_with_strings(line: String, pos: i64, strings: String) -> String =
+    extract_llvm_line(llvm_gen_assign_with_strings_map(line, pos, strings, ""));
+
+fn llvm_gen_rhs_with_strings(line: String, pos: i64, dest: String, strings: String) -> String =
+    extract_llvm_line(llvm_gen_rhs_with_strings_map(line, pos, dest, strings, ""));
+
+// Generate reference to string global
+fn llvm_gen_string_ref(dest: String, str_content: String, strings: String) -> String =
+    let idx = find_string_index(strings, str_content);
+    let str_len = str_content.len() + 1;
+    let global_name = "@str_data_" + int_to_string(idx);
+    let gep_dest = dest + "_gep";
+    let call_dest = dest + "_call";
+    "  " + gep_dest + " = getelementptr [" + int_to_string(str_len) + " x i8], ptr " + global_name + ", i64 0, i64 0|" +
+    "  " + call_dest + " = call ptr @bmb_string_from_cstr(ptr " + gep_dest + ")|" +
+    "  " + dest + " = ptrtoint ptr " + call_dest + " to i64";
 
 // ============================================================================
 // SECTION 13: Unified Compiler Entry Point (v0.10.9)
@@ -1268,9 +2615,21 @@ fn compile_program(source: String) -> String =
         if mir == "" { "ERR:LOWERING:empty" } else {
             let header = gen_module_header();
             let decls = gen_runtime_decls();
+            // v0.60.109: Collect string literals and generate globals
+            let strings = collect_strings_from_mir(mir);
+            let string_globals = gen_string_globals(strings);
             // v0.31.20: Use StringBuilder-aware LLVM generation for O(1) IR generation
-            let code = gen_program_sb(mir);
-            header + "|" + decls + "||" + code
+            let code = gen_program_sb_with_strings(mir, strings);
+            // v0.60.127: Use step-by-step concatenation to avoid LLVM codegen bug
+            // with chained string concat on large strings
+            let base = header + "|";
+            let base2 = base + decls;
+            // Build with_globals without nesting
+            let base3 = base2 + "|";
+            let base4 = base3 + string_globals;
+            let with_globals = if string_globals == "" { base2 } else { base4 };
+            let final1 = with_globals + "||";
+            final1 + code
         }
     };
 
@@ -1366,23 +2725,23 @@ fn test_error_utils() -> i64 =
     let t6 = if has_pattern("abcdef", "cde", 0) { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5 + t6;
 
-// Test token constants
+// Test token constants - v0.60.121: Using 9999+1+N to match token definitions
 fn test_token_constants() -> i64 =
-    let t1 = if TK_FN() == 100 { 1 } else { 0 };
-    let t2 = if TK_LET() == 101 { 1 } else { 0 };
-    let t3 = if TK_IF() == 102 { 1 } else { 0 };
-    let t4 = if TK_I64() == 151 { 1 } else { 0 };
-    let t5 = if TK_BOOL() == 153 { 1 } else { 0 };
-    let t6 = if TK_EOF() == 900 { 1 } else { 0 };
+    let t1 = if TK_FN() == (9999 + 1 + 100) { 1 } else { 0 };
+    let t2 = if TK_LET() == (9999 + 1 + 101) { 1 } else { 0 };
+    let t3 = if TK_IF() == (9999 + 1 + 102) { 1 } else { 0 };
+    let t4 = if TK_I64() == (9999 + 1 + 151) { 1 } else { 0 };
+    let t5 = if TK_BOOL() == (9999 + 1 + 153) { 1 } else { 0 };
+    let t6 = if TK_EOF() == (9999 + 1 + 900) { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5 + t6;
 
-// Test token encoding/decoding
+// Test token encoding/decoding - using positive values for testing the mechanism
 fn test_tok_helpers() -> i64 =
-    let tok1 = make_tok(100, 50);  // kind=100, endpos=50
+    let tok1 = make_tok(100, 50);  // kind=100, endpos=50 (test value)
     let t1 = if tok_kind(tok1) == 100 { 1 } else { 0 };
     let t2 = if tok_end(tok1) == 50 { 1 } else { 0 };
     let t3 = if tok_val(tok1) == 100 { 1 } else { 0 };
-    let tok2 = make_tok(200, 0);
+    let tok2 = make_tok(200, 0);  // test value
     let t4 = if tok_kind(tok2) == 200 { 1 } else { 0 };
     let t5 = if tok_end(tok2) == 0 { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5;
@@ -1535,50 +2894,50 @@ fn test_extract_functions() -> i64 =
     let t8 = if low_find_close_paren("(ab(cd)ef)", 0, 0) == 9 { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8;
 
-// v0.30.163: Extended token constants (keywords and control)
+// v0.30.163: Extended token constants - v0.60.121: Using 9999+1+N to match definitions
 fn test_token_constants_ext() -> i64 =
-    let t1 = if TK_THEN() == 103 { 1 } else { 0 };
-    let t2 = if TK_ELSE() == 104 { 1 } else { 0 };
-    let t3 = if TK_TRUE() == 105 { 1 } else { 0 };
-    let t4 = if TK_FALSE() == 106 { 1 } else { 0 };
-    let t5 = if TK_AND() == 107 { 1 } else { 0 };
-    let t6 = if TK_OR() == 108 { 1 } else { 0 };
-    let t7 = if TK_NOT() == 109 { 1 } else { 0 };
-    let t8 = if TK_PRE() == 110 { 1 } else { 0 };
-    let t9 = if TK_POST() == 111 { 1 } else { 0 };
-    let t10 = if TK_MUT() == 117 { 1 } else { 0 };
+    let t1 = if TK_THEN() == (9999 + 1 + 103) { 1 } else { 0 };
+    let t2 = if TK_ELSE() == (9999 + 1 + 104) { 1 } else { 0 };
+    let t3 = if TK_TRUE() == (9999 + 1 + 105) { 1 } else { 0 };
+    let t4 = if TK_FALSE() == (9999 + 1 + 106) { 1 } else { 0 };
+    let t5 = if TK_AND() == (9999 + 1 + 107) { 1 } else { 0 };
+    let t6 = if TK_OR() == (9999 + 1 + 108) { 1 } else { 0 };
+    let t7 = if TK_NOT() == (9999 + 1 + 109) { 1 } else { 0 };
+    let t8 = if TK_PRE() == (9999 + 1 + 110) { 1 } else { 0 };
+    let t9 = if TK_POST() == (9999 + 1 + 111) { 1 } else { 0 };
+    let t10 = if TK_MUT() == (9999 + 1 + 117) { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t9 + t10;
 
-// v0.30.163: Extended token constants (types and operators)
+// v0.30.163: Extended token constants (types and operators) - v0.60.121
 fn test_token_types_ops() -> i64 =
-    let t1 = if TK_I32() == 150 { 1 } else { 0 };
-    let t2 = if TK_F64() == 152 { 1 } else { 0 };
-    let t3 = if TK_STRING_TYPE() == 154 { 1 } else { 0 };
-    let t4 = if TK_INT() == 200 { 1 } else { 0 };
-    let t5 = if TK_IDENT() == 201 { 1 } else { 0 };
-    let t6 = if TK_COLON() == 300 { 1 } else { 0 };
-    let t7 = if TK_EQ() == 302 { 1 } else { 0 };
-    let t8 = if TK_SEMI() == 303 { 1 } else { 0 };
-    let t9 = if TK_COMMA() == 304 { 1 } else { 0 };
-    let t10 = if TK_LPAREN() == 305 { 1 } else { 0 };
-    let t11 = if TK_RPAREN() == 306 { 1 } else { 0 };
-    let t12 = if TK_ARROW() == 321 { 1 } else { 0 };
+    let t1 = if TK_I32() == (9999 + 1 + 150) { 1 } else { 0 };
+    let t2 = if TK_F64() == (9999 + 1 + 152) { 1 } else { 0 };
+    let t3 = if TK_STRING_TYPE() == (9999 + 1 + 154) { 1 } else { 0 };
+    let t4 = if TK_INT() == (9999 + 1 + 200) { 1 } else { 0 };
+    let t5 = if TK_IDENT() == (9999 + 1 + 201) { 1 } else { 0 };
+    let t6 = if TK_COLON() == (9999 + 1 + 300) { 1 } else { 0 };
+    let t7 = if TK_EQ() == (9999 + 1 + 302) { 1 } else { 0 };
+    let t8 = if TK_SEMI() == (9999 + 1 + 303) { 1 } else { 0 };
+    let t9 = if TK_COMMA() == (9999 + 1 + 304) { 1 } else { 0 };
+    let t10 = if TK_LPAREN() == (9999 + 1 + 305) { 1 } else { 0 };
+    let t11 = if TK_RPAREN() == (9999 + 1 + 306) { 1 } else { 0 };
+    let t12 = if TK_ARROW() == (9999 + 1 + 321) { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t9 + t10 + t11 + t12;
 
-// v0.30.163: Extended token constants (arithmetic and comparison)
+// v0.30.163: Extended token constants (arithmetic and comparison) - v0.60.121
 fn test_token_arith_cmp() -> i64 =
-    let t1 = if TK_PLUS() == 400 { 1 } else { 0 };
-    let t2 = if TK_MINUS() == 401 { 1 } else { 0 };
-    let t3 = if TK_STAR() == 402 { 1 } else { 0 };
-    let t4 = if TK_SLASH() == 403 { 1 } else { 0 };
-    let t5 = if TK_PERCENT() == 404 { 1 } else { 0 };
-    let t6 = if TK_LT() == 405 { 1 } else { 0 };
-    let t7 = if TK_GT() == 406 { 1 } else { 0 };
-    let t8 = if TK_EQEQ() == 410 { 1 } else { 0 };
-    let t9 = if TK_NEQ() == 411 { 1 } else { 0 };
-    let t10 = if TK_LTEQ() == 412 { 1 } else { 0 };
-    let t11 = if TK_GTEQ() == 413 { 1 } else { 0 };
-    let t12 = if TK_DOTDOT() == 323 { 1 } else { 0 };
+    let t1 = if TK_PLUS() == (9999 + 1 + 400) { 1 } else { 0 };
+    let t2 = if TK_MINUS() == (9999 + 1 + 401) { 1 } else { 0 };
+    let t3 = if TK_STAR() == (9999 + 1 + 402) { 1 } else { 0 };
+    let t4 = if TK_SLASH() == (9999 + 1 + 403) { 1 } else { 0 };
+    let t5 = if TK_PERCENT() == (9999 + 1 + 404) { 1 } else { 0 };
+    let t6 = if TK_LT() == (9999 + 1 + 405) { 1 } else { 0 };
+    let t7 = if TK_GT() == (9999 + 1 + 406) { 1 } else { 0 };
+    let t8 = if TK_EQEQ() == (9999 + 1 + 410) { 1 } else { 0 };
+    let t9 = if TK_NEQ() == (9999 + 1 + 411) { 1 } else { 0 };
+    let t10 = if TK_LTEQ() == (9999 + 1 + 412) { 1 } else { 0 };
+    let t11 = if TK_GTEQ() == (9999 + 1 + 413) { 1 } else { 0 };
+    let t12 = if TK_DOTDOT() == (9999 + 1 + 323) { 1 } else { 0 };
     t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t9 + t10 + t11 + t12;
 
 // v0.30.163: Extended digit_char (all 10 digits)
@@ -2278,7 +3637,8 @@ fn compile_file_to(input: String, output: String) -> i64 =
             let w1 = println_str("Compile error: " + get_error_type(llvm));
             1
         } else {
-            let w2 = write_file(output, llvm);
+            // v0.60.134: Use write_file_newlines to convert | to newlines
+            let w2 = write_file_newlines(output, llvm);
             0
         }
     };

@@ -55,12 +55,12 @@ double bmb_i64_to_f64(int64_t n) { return (double)n; }
 int64_t bmb_f64_to_i64(double f) { return (int64_t)f; }
 
 // v0.97: Character functions
-// v0.46: bmb_chr returns char* (string) to match LLVM codegen expectations
-char* bmb_chr(int64_t n) {
-    char* s = (char*)malloc(2);
-    s[0] = (char)n;
-    s[1] = '\0';
-    return s;
+// v0.60.107: bmb_chr returns BmbString* to match string type system
+BmbString* bmb_chr(int64_t n) {
+    char* data = (char*)malloc(2);
+    data[0] = (char)n;
+    data[1] = '\0';
+    return bmb_string_wrap(data);
 }
 // v0.46: bmb_ord takes ptr (char*) to match LLVM codegen expectations
 int64_t bmb_ord(const char* s) {
@@ -754,6 +754,28 @@ int64_t bmb_write_file(const BmbString* path, const BmbString* content) {
     return (written == (size_t)content->len) ? 0 : -1;
 }
 
+// v0.60.80: write_file_newlines - converts | to newlines during write
+// Used by bootstrap compiler which uses | as line separator
+int64_t bmb_write_file_newlines(const BmbString* path, const BmbString* content) {
+    if (!path || !path->data || !content || !content->data) return -1;
+    FILE* f = fopen(path->data, "wb");
+    if (!f) return -1;
+
+    size_t written = 0;
+    for (size_t i = 0; i < content->len; i++) {
+        char c = content->data[i];
+        if (c == '|') {
+            fputc('\n', f);
+        } else {
+            fputc(c, f);
+        }
+        written++;
+    }
+
+    fclose(f);
+    return (written == content->len) ? 0 : -1;
+}
+
 int64_t bmb_file_exists(const char* path) {
     struct stat st;
     return (stat(path, &st) == 0) ? 1 : 0;
@@ -779,20 +801,14 @@ int64_t bmb_arg_count(void) {
     return (int64_t)g_argc;
 }
 
-char* bmb_get_arg(int64_t index) {
+// v0.60.87: Returns BMB string struct, not raw C string
+BmbString* bmb_get_arg(int64_t index) {
     if (index < 0 || index >= g_argc) {
         // Return empty string for out-of-bounds
-        char* empty = (char*)malloc(1);
-        empty[0] = '\0';
-        return empty;
+        return bmb_string_from_cstr("");
     }
-    // Return a copy of the argument
-    const char* arg = g_argv[index];
-    size_t len = 0;
-    while (arg[len]) len++;
-    char* result = (char*)malloc(len + 1);
-    for (size_t i = 0; i <= len; i++) result[i] = arg[i];
-    return result;
+    // Return the argument as a BMB string
+    return bmb_string_from_cstr(g_argv[index]);
 }
 
 // v0.50.20: StringBuilder wrappers
@@ -880,12 +896,17 @@ int64_t write_file(const BmbString* path, const BmbString* content) {
     return bmb_write_file(path, content);
 }
 
+// v0.60.80: write_file_newlines wrapper for bootstrap compiler
+int64_t write_file_newlines(const BmbString* path, const BmbString* content) {
+    return bmb_write_file_newlines(path, content);
+}
+
 // v0.50.20: Argument wrappers
 int64_t arg_count(void) {
     return bmb_arg_count();
 }
 
-char* get_arg(int64_t index) {
+BmbString* get_arg(int64_t index) {
     return bmb_get_arg(index);
 }
 
