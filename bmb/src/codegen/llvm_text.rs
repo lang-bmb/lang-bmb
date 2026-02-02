@@ -72,6 +72,30 @@ impl TextCodeGen {
         }
     }
 
+    /// v0.60.122: Check if an operand is of String type
+    /// Used to distinguish String comparison from typed pointer comparison
+    fn is_string_operand(operand: &Operand, func: &MirFunction) -> bool {
+        match operand {
+            Operand::Constant(Constant::String(_)) => true,
+            Operand::Place(p) => {
+                // Check params
+                for (name, ty) in &func.params {
+                    if name == &p.name {
+                        return *ty == MirType::String;
+                    }
+                }
+                // Check locals
+                for (name, ty) in &func.locals {
+                    if name == &p.name {
+                        return *ty == MirType::String;
+                    }
+                }
+                false
+            }
+            _ => false,
+        }
+    }
+
     /// Generate complete LLVM IR module as text
     pub fn generate(&self, program: &MirProgram) -> TextCodeGenResult<String> {
         let mut output = String::new();
@@ -1631,9 +1655,9 @@ impl TextCodeGen {
                     }
                 } else if (lhs_ty == "ptr" || rhs_ty == "ptr") && *op == MirBinOp::Eq {
                     // v0.51.37: Distinguish string comparison from typed pointer comparison
-                    // String comparison: at least one operand is a string constant
-                    let lhs_is_string = matches!(lhs, Operand::Constant(Constant::String(_)));
-                    let rhs_is_string = matches!(rhs, Operand::Constant(Constant::String(_)));
+                    // v0.60.122: Also check if operands are String-typed variables (not just constants)
+                    let lhs_is_string = Self::is_string_operand(lhs, func);
+                    let rhs_is_string = Self::is_string_operand(rhs, func);
 
                     if lhs_is_string || rhs_is_string {
                         // v0.51.22: Use pre-initialized global BmbString for string comparison
@@ -1670,8 +1694,9 @@ impl TextCodeGen {
                     }
                 } else if (lhs_ty == "ptr" || rhs_ty == "ptr") && *op == MirBinOp::Ne {
                     // v0.51.37: Distinguish string comparison from typed pointer comparison
-                    let lhs_is_string = matches!(lhs, Operand::Constant(Constant::String(_)));
-                    let rhs_is_string = matches!(rhs, Operand::Constant(Constant::String(_)));
+                    // v0.60.122: Also check if operands are String-typed variables (not just constants)
+                    let lhs_is_string = Self::is_string_operand(lhs, func);
+                    let rhs_is_string = Self::is_string_operand(rhs, func);
 
                     if lhs_is_string || rhs_is_string {
                         // v0.51.22: Use pre-initialized global BmbString for string comparison

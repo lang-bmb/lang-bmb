@@ -1651,6 +1651,11 @@ impl<'ctx> LlvmContext<'ctx> {
             MirInst::Const { dest, value } => {
                 let llvm_value = self.gen_constant(value);
                 self.store_to_place(dest, llvm_value)?;
+                // v0.60.122: Track String constants for proper string comparison
+                // When a variable is assigned a string literal, track it for bmb_string_eq
+                if matches!(value, Constant::String(_)) {
+                    self.string_variables.insert(dest.name.clone());
+                }
             }
 
             MirInst::Copy { dest, src } => {
