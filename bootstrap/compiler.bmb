@@ -1,4 +1,4 @@
-// BMB Unified Compiler (v0.30.190: Extended test suite)
+// BMB Unified Compiler (v0.60.220: PHI exit label tracking via trampoline)
 // Complete compilation pipeline: Source -> AST -> MIR -> LLVM IR
 //
 // ARCHITECTURE:
@@ -899,35 +899,36 @@ fn parse_int_simple(s: String, pos: i64, acc: i64) -> i64 =
     };
 
 // Main iterative lowering entry point
-// Uses a result-threaded trampoline: each step receives and returns (temp_id, block_id)
+// Uses a result-threaded trampoline: each step receives and returns (temp_id, block_id, exit_label)
 fn lower_expr_iter(ast: String, temp_id: i64, block_id: i64, sb: i64) -> i64 =
     let init_work = make_work3("EX", ast, i2s(temp_id), i2s(block_id));
-    trampoline_v2(init_work, temp_id, block_id, sb);
+    trampoline_v2(init_work, temp_id, block_id, "", sb);
 
-// Trampoline v2: threads result (temp_id, block_id) through work items
+// Trampoline v2: threads result (temp_id, block_id, exit_label) through work items
 // Work stack format: items separated by TAB
 // Each item is processed with current result, producing new result
-fn trampoline_v2(work_stack: String, cur_temp: i64, cur_block: i64, sb: i64) -> i64 =
+fn trampoline_v2(work_stack: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> i64 =
     if work_stack == "" { pack_ids(cur_temp, cur_block) }
     else {
         let item = pop_work_item(work_stack);
         let rest = pop_work_rest(work_stack);
         // Process item with current result
-        let step = do_step(item, cur_temp, cur_block, sb);
+        let step = do_step(item, cur_temp, cur_block, cur_exit_label, sb);
         let new_temp = step_temp(step);
         let new_block = step_block(step);
+        let new_exit_label = step_exit_label(step);
         let new_work = step_work(step);
         // Combine new work with rest
         let combined = if new_work == "" { rest }
                        else if rest == "" { new_work }
                        else { new_work + work_sep() + rest };
-        trampoline_v2(combined, new_temp, new_block, sb)
+        trampoline_v2(combined, new_temp, new_block, new_exit_label, sb)
     };
 
 // Step result: encodes new work items and result
-// Format: "new_temp|new_block|new_work"
-fn make_step(temp: i64, block: i64, work: String) -> String =
-    i2s(temp) + "|" + i2s(block) + "|" + work;
+// Format: "new_temp|new_block|exit_label|new_work"
+fn make_step(temp: i64, block: i64, exit_label: String, work: String) -> String =
+    i2s(temp) + "|" + i2s(block) + "|" + exit_label + "|" + work;
 
 fn step_temp(s: String) -> i64 =
     let p1 = find_single_pipe(s, 0);
@@ -938,10 +939,17 @@ fn step_block(s: String) -> i64 =
     let p2 = find_single_pipe(s, p1 + 1);
     s2i(s.slice(p1 + 1, p2));
 
+fn step_exit_label(s: String) -> String =
+    let p1 = find_single_pipe(s, 0);
+    let p2 = find_single_pipe(s, p1 + 1);
+    let p3 = find_single_pipe(s, p2 + 1);
+    s.slice(p2 + 1, p3);
+
 fn step_work(s: String) -> String =
     let p1 = find_single_pipe(s, 0);
     let p2 = find_single_pipe(s, p1 + 1);
-    if p2 >= s.len() { "" } else { s.slice(p2 + 1, s.len()) };
+    let p3 = find_single_pipe(s, p2 + 1);
+    if p3 >= s.len() { "" } else { s.slice(p3 + 1, s.len()) };
 
 fn find_single_pipe(s: String, pos: i64) -> i64 =
     if pos >= s.len() { s.len() }
@@ -949,144 +957,144 @@ fn find_single_pipe(s: String, pos: i64) -> i64 =
     else { find_single_pipe(s, pos + 1) };
 
 // Process a single work item with current result
-fn do_step(item: String, cur_temp: i64, cur_block: i64, sb: i64) -> String =
+fn do_step(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String =
     let op = get_field(item, 0);
-    if op == "EX" { step_expr(item, cur_temp, cur_block, sb) }
-    else if op == "IN" { step_int(item, cur_temp, cur_block, sb) }
-    else if op == "BO" { step_bool(item, cur_temp, cur_block, sb) }
-    else if op == "ST" { step_string(item, cur_temp, cur_block, sb) }
-    else if op == "VA" { step_var(item, cur_temp, cur_block, sb) }
-    else if op == "BI" { step_binop_start(item, cur_temp, cur_block, sb) }
-    else if op == "BR" { step_binop_right(item, cur_temp, cur_block, sb) }
-    else if op == "BF" { step_binop_final(item, cur_temp, cur_block, sb) }
-    else if op == "UN" { step_unary_start(item, cur_temp, cur_block, sb) }
-    else if op == "UF" { step_unary_final(item, cur_temp, cur_block, sb) }
-    else if op == "IS" { step_if_start(item, cur_temp, cur_block, sb) }
-    else if op == "IT" { step_if_then(item, cur_temp, cur_block, sb) }
-    else if op == "IE" { step_if_else(item, cur_temp, cur_block, sb) }
-    else if op == "IX" { step_if_final(item, cur_temp, cur_block, sb) }
-    else if op == "LS" { step_let_start(item, cur_temp, cur_block, sb) }
-    else if op == "LB" { step_let_body(item, cur_temp, cur_block, sb) }
-    else if op == "CS" { step_call_start(item, cur_temp, cur_block, sb) }
-    else if op == "CA" { step_call_arg(item, cur_temp, cur_block, sb) }
-    else if op == "CF" { step_call_final(item, cur_temp, cur_block, sb) }
-    else if op == "MS" { step_method_start(item, cur_temp, cur_block, sb) }
-    else if op == "MA" { step_method_arg(item, cur_temp, cur_block, sb) }
-    else if op == "MF" { step_method_final(item, cur_temp, cur_block, sb) }
+    if op == "EX" { step_expr(item, cur_temp, cur_block, cur_exit_label, sb) }
+    else if op == "IN" { step_int(item, cur_temp, cur_block, cur_exit_label, sb) }
+    else if op == "BO" { step_bool(item, cur_temp, cur_block, cur_exit_label, sb) }
+    else if op == "ST" { step_string(item, cur_temp, cur_block, cur_exit_label, sb) }
+    else if op == "VA" { step_var(item, cur_temp, cur_block, cur_exit_label, sb) }
+    else if op == "BI" { step_binop_start(item, cur_temp, cur_block, cur_exit_label, sb) }
+    else if op == "BR" { step_binop_right(item, cur_temp, cur_block, cur_exit_label, sb) }
+    else if op == "BF" { step_binop_final(item, cur_temp, cur_block, cur_exit_label, sb) }
+    else if op == "UN" { step_unary_start(item, cur_temp, cur_block, cur_exit_label, sb) }
+    else if op == "UF" { step_unary_final(item, cur_temp, cur_block, cur_exit_label, sb) }
+    else if op == "IS" { step_if_start(item, cur_temp, cur_block, cur_exit_label, sb) }
+    else if op == "IT" { step_if_then(item, cur_temp, cur_block, cur_exit_label, sb) }
+    else if op == "IE" { step_if_else(item, cur_temp, cur_block, cur_exit_label, sb) }
+    else if op == "IX" { step_if_final(item, cur_temp, cur_block, cur_exit_label, sb) }
+    else if op == "LS" { step_let_start(item, cur_temp, cur_block, cur_exit_label, sb) }
+    else if op == "LB" { step_let_body(item, cur_temp, cur_block, cur_exit_label, sb) }
+    else if op == "CS" { step_call_start(item, cur_temp, cur_block, cur_exit_label, sb) }
+    else if op == "CA" { step_call_arg(item, cur_temp, cur_block, cur_exit_label, sb) }
+    else if op == "CF" { step_call_final(item, cur_temp, cur_block, cur_exit_label, sb) }
+    else if op == "MS" { step_method_start(item, cur_temp, cur_block, cur_exit_label, sb) }
+    else if op == "MA" { step_method_arg(item, cur_temp, cur_block, cur_exit_label, sb) }
+    else if op == "MF" { step_method_final(item, cur_temp, cur_block, cur_exit_label, sb) }
     // v0.60.126: Block expression step handlers
-    else if op == "UT" { step_unit(item, cur_temp, cur_block, sb) }
-    else if op == "SQ" { step_seq_start(item, cur_temp, cur_block, sb) }
-    else if op == "S2" { step_seq_second(item, cur_temp, cur_block, sb) }
-    else if op == "AS" { step_assign_start(item, cur_temp, cur_block, sb) }
-    else if op == "AF" { step_assign_final(item, cur_temp, cur_block, sb) }
-    else { make_step(cur_temp, cur_block, "") };
+    else if op == "UT" { step_unit(item, cur_temp, cur_block, cur_exit_label, sb) }
+    else if op == "SQ" { step_seq_start(item, cur_temp, cur_block, cur_exit_label, sb) }
+    else if op == "S2" { step_seq_second(item, cur_temp, cur_block, cur_exit_label, sb) }
+    else if op == "AS" { step_assign_start(item, cur_temp, cur_block, cur_exit_label, sb) }
+    else if op == "AF" { step_assign_final(item, cur_temp, cur_block, cur_exit_label, sb) }
+    else { make_step(cur_temp, cur_block, cur_exit_label, "") };
 
 // EX: Dispatch based on node type - expand to specific handler
-fn step_expr(item: String, cur_temp: i64, cur_block: i64, sb: i64) -> String =
+fn step_expr(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String =
     let ast = get_field(item, 1);
     let ntype = get_node_type(ast);
-    if ntype == "int" { make_step(cur_temp, cur_block, make_work3("IN", ast, "", "")) }
-    else if ntype == "bool" { make_step(cur_temp, cur_block, make_work3("BO", ast, "", "")) }
-    else if ntype == "string" { make_step(cur_temp, cur_block, make_work3("ST", ast, "", "")) }
-    else if ntype == "var" { make_step(cur_temp, cur_block, make_work3("VA", ast, "", "")) }
+    if ntype == "int" { make_step(cur_temp, cur_block, cur_exit_label, make_work3("IN", ast, "", "")) }
+    else if ntype == "bool" { make_step(cur_temp, cur_block, cur_exit_label, make_work3("BO", ast, "", "")) }
+    else if ntype == "string" { make_step(cur_temp, cur_block, cur_exit_label, make_work3("ST", ast, "", "")) }
+    else if ntype == "var" { make_step(cur_temp, cur_block, cur_exit_label, make_work3("VA", ast, "", "")) }
     else if ntype == "binop" {
         let op = get_child(ast, 0);
         let left = get_child(ast, 1);
         let right = get_child(ast, 2);
-        make_step(cur_temp, cur_block, make_work4("BI", op, left, right, ""))
+        make_step(cur_temp, cur_block, cur_exit_label, make_work4("BI", op, left, right, ""))
     }
     else if ntype == "unary" {
         let op = get_child(ast, 0);
         let operand = get_child(ast, 1);
-        make_step(cur_temp, cur_block, make_work3("UN", op, operand, ""))
+        make_step(cur_temp, cur_block, cur_exit_label, make_work3("UN", op, operand, ""))
     }
     else if ntype == "if" {
         let cond = get_child(ast, 0);
         let then_br = get_child(ast, 1);
         let else_br = get_child(ast, 2);
-        make_step(cur_temp, cur_block, make_work4("IS", cond, then_br, else_br, ""))
+        make_step(cur_temp, cur_block, cur_exit_label, make_work4("IS", cond, then_br, else_br, ""))
     }
     else if ntype == "let" {
         let name = extract_name(ast);
         let value = get_child(ast, 1);
         let body = get_child(ast, 2);
-        make_step(cur_temp, cur_block, make_work4("LS", name, value, body, ""))
+        make_step(cur_temp, cur_block, cur_exit_label, make_work4("LS", name, value, body, ""))
     }
     else if ntype == "call" {
         let name = extract_name(ast);
-        make_step(cur_temp, cur_block, make_work4("CS", name, ast, "1", ""))
+        make_step(cur_temp, cur_block, cur_exit_label, make_work4("CS", name, ast, "1", ""))
     }
     else if ntype == "method" {
         let method_name = get_child(ast, 0);
         let receiver = get_child(ast, 1);
         let fn_name = method_to_runtime_fn(method_name);
-        make_step(cur_temp, cur_block, make_work("MS", fn_name, receiver, ast, "2", ""))
+        make_step(cur_temp, cur_block, cur_exit_label, make_work("MS", fn_name, receiver, ast, "2", ""))
     }
     // v0.60.126: Block, unit, seq, assign support
     else if ntype == "block" {
         let inner = block_inner(ast);
-        make_step(cur_temp, cur_block, make_work3("EX", inner, "", ""))
+        make_step(cur_temp, cur_block, cur_exit_label, make_work3("EX", inner, "", ""))
     }
     else if ntype == "unit" {
-        make_step(cur_temp, cur_block, make_work3("UT", "", "", ""))
+        make_step(cur_temp, cur_block, cur_exit_label, make_work3("UT", "", "", ""))
     }
     else if ntype == "seq" {
         let e1 = seq_first(ast);
         let e2 = seq_second(ast);
-        make_step(cur_temp, cur_block, make_work3("SQ", e1, e2, ""))
+        make_step(cur_temp, cur_block, cur_exit_label, make_work3("SQ", e1, e2, ""))
     }
     else if ntype == "assign" {
         let lhs = assign_lhs_expr(ast);
         let rhs = assign_rhs_expr(ast);
-        make_step(cur_temp, cur_block, make_work3("AS", lhs, rhs, ""))
+        make_step(cur_temp, cur_block, cur_exit_label, make_work3("AS", lhs, rhs, ""))
     }
-    else { make_step(cur_temp, cur_block, "") };
+    else { make_step(cur_temp, cur_block, cur_exit_label, "") };
 
 // IN: Integer literal - emit MIR, advance temp
-fn step_int(item: String, cur_temp: i64, cur_block: i64, sb: i64) -> String =
+fn step_int(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String =
     let ast = get_field(item, 1);
     let val = extract_int_value(ast);
     let tmp = "%_t" + i2s(cur_temp);
     let w1 = sb_push_mir(sb, "  " + tmp + " = const " + i2s(val));
-    make_step(cur_temp + 1, cur_block, "");
+    make_step(cur_temp + 1, cur_block, cur_exit_label, "");
 
 // BO: Boolean literal
-fn step_bool(item: String, cur_temp: i64, cur_block: i64, sb: i64) -> String =
+fn step_bool(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String =
     let ast = get_field(item, 1);
     let child = get_child(ast, 0);
     let val = if child == "true" { 1 } else { 0 };
     let tmp = "%_t" + i2s(cur_temp);
     let w1 = sb_push_mir(sb, "  " + tmp + " = const " + i2s(val));
-    make_step(cur_temp + 1, cur_block, "");
+    make_step(cur_temp + 1, cur_block, cur_exit_label, "");
 
 // ST: String literal
-fn step_string(item: String, cur_temp: i64, cur_block: i64, sb: i64) -> String =
+fn step_string(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String =
     let ast = get_field(item, 1);
     let str_content = extract_string_content(ast);
     let tmp = "%_t" + i2s(cur_temp);
     let w1 = sb_push_mir(sb, "  " + tmp + " = string " + chr(34) + str_content + chr(34));
-    make_step(cur_temp + 1, cur_block, "");
+    make_step(cur_temp + 1, cur_block, cur_exit_label, "");
 
 // VA: Variable reference
-fn step_var(item: String, cur_temp: i64, cur_block: i64, sb: i64) -> String =
+fn step_var(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String =
     let ast = get_field(item, 1);
     let name = extract_name(ast);
     let tmp = "%_t" + i2s(cur_temp);
     let w1 = sb_push_mir(sb, "  " + tmp + " = copy %" + name);
-    make_step(cur_temp + 1, cur_block, "");
+    make_step(cur_temp + 1, cur_block, cur_exit_label, "");
 
 // BI: Start binop - push left expr, then BR continuation
-fn step_binop_start(item: String, cur_temp: i64, cur_block: i64, sb: i64) -> String =
+fn step_binop_start(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String =
     let op = get_field(item, 1);
     let left = get_field(item, 2);
     let right = get_field(item, 3);
     // After left, cur_temp will have advanced. BR needs to know where left result is.
     let cont = make_work("BR", op, right, i2s(cur_temp), "", "");
     let do_left = make_work3("EX", left, "", "");
-    make_step(cur_temp, cur_block, do_left + work_sep() + cont);
+    make_step(cur_temp, cur_block, cur_exit_label, do_left + work_sep() + cont);
 
 // BR: Binop right - left done, do right. cur_temp-1 is left result.
-fn step_binop_right(item: String, cur_temp: i64, cur_block: i64, sb: i64) -> String =
+fn step_binop_right(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String =
     let op = get_field(item, 1);
     let right = get_field(item, 2);
     let left_start = s2i(get_field(item, 3));
@@ -1094,47 +1102,48 @@ fn step_binop_right(item: String, cur_temp: i64, cur_block: i64, sb: i64) -> Str
     // Push right, then BF finalize
     let cont = make_work4("BF", op, i2s(left_id), i2s(cur_temp), "");
     let do_right = make_work3("EX", right, "", "");
-    make_step(cur_temp, cur_block, do_right + work_sep() + cont);
+    make_step(cur_temp, cur_block, cur_exit_label, do_right + work_sep() + cont);
 
 // BF: Binop final - both done, emit binop MIR
-fn step_binop_final(item: String, cur_temp: i64, cur_block: i64, sb: i64) -> String =
+fn step_binop_final(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String =
     let op = get_field(item, 1);
     let left_id = s2i(get_field(item, 2));
     let right_start = s2i(get_field(item, 3));
     let right_id = cur_temp - 1;
     let result_tmp = "%_t" + i2s(cur_temp);
     let w1 = sb_push_mir(sb, "  " + result_tmp + " = " + op + " %_t" + i2s(left_id) + ", %_t" + i2s(right_id));
-    make_step(cur_temp + 1, cur_block, "");
+    make_step(cur_temp + 1, cur_block, cur_exit_label, "");
 
 // UN: Start unary - push operand, then UF
-fn step_unary_start(item: String, cur_temp: i64, cur_block: i64, sb: i64) -> String =
+fn step_unary_start(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String =
     let op = get_field(item, 1);
     let operand = get_field(item, 2);
     let cont = make_work3("UF", op, i2s(cur_temp), "");
     let do_op = make_work3("EX", operand, "", "");
-    make_step(cur_temp, cur_block, do_op + work_sep() + cont);
+    make_step(cur_temp, cur_block, cur_exit_label, do_op + work_sep() + cont);
 
 // UF: Unary final - emit unary MIR
-fn step_unary_final(item: String, cur_temp: i64, cur_block: i64, sb: i64) -> String =
+fn step_unary_final(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String =
     let op = get_field(item, 1);
     let operand_id = cur_temp - 1;
     let mir_op = if op == "not" { "not" } else if op == "-" { "neg" } else { op };
     let result_tmp = "%_t" + i2s(cur_temp);
     let w1 = sb_push_mir(sb, "  " + result_tmp + " = " + mir_op + " %_t" + i2s(operand_id));
-    make_step(cur_temp + 1, cur_block, "");
+    make_step(cur_temp + 1, cur_block, cur_exit_label, "");
 
 // IS: Start if - push cond, then IT
-fn step_if_start(item: String, cur_temp: i64, cur_block: i64, sb: i64) -> String =
+fn step_if_start(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String =
     let cond = get_field(item, 1);
     let then_br = get_field(item, 2);
     let else_br = get_field(item, 3);
     // After cond, we'll have cond_id and need to emit branch then do branches
     let cont = make_work("IT", then_br, else_br, i2s(cur_temp), i2s(cur_block), "");
     let do_cond = make_work3("EX", cond, "", "");
-    make_step(cur_temp, cur_block, do_cond + work_sep() + cont);
+    make_step(cur_temp, cur_block, cur_exit_label, do_cond + work_sep() + cont);
 
 // IT: If then - cond done, emit branch, do then branch
-fn step_if_then(item: String, cur_temp: i64, cur_block: i64, sb: i64) -> String =
+// Sets exit_label to then_label for the then branch execution
+fn step_if_then(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String =
     let then_br = get_field(item, 1);
     let else_br = get_field(item, 2);
     let orig_temp = s2i(get_field(item, 3));
@@ -1147,12 +1156,15 @@ fn step_if_then(item: String, cur_temp: i64, cur_block: i64, sb: i64) -> String 
     let w1 = sb_push_mir(sb, "  branch %_t" + i2s(cond_id) + ", " + then_label + ", " + else_label);
     let w2 = sb_push_mir(sb, then_label + ":");
     // Continue with then, then IE
+    // Pass merge_label as the expected exit for then branch (will be updated by nested ifs)
     let cont = make_work7("IE", else_br, i2s(my_block), then_label, else_label, merge_label, i2s(cur_temp), then_br);
     let do_then = make_work3("EX", then_br, "", "");
-    make_step(cur_temp, my_block + 1, do_then + work_sep() + cont);
+    // Set exit_label to then_label - the then branch will update this if it contains nested ifs
+    make_step(cur_temp, my_block + 1, then_label, do_then + work_sep() + cont);
 
 // IE: If else - then done, emit goto, do else
-fn step_if_else(item: String, cur_temp: i64, cur_block: i64, sb: i64) -> String =
+// Uses cur_exit_label as the actual then_exit (propagated through trampoline)
+fn step_if_else(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String =
     let else_br = get_field(item, 1);
     let my_block = s2i(get_field(item, 2));
     let then_label = get_field(item, 3);
@@ -1161,16 +1173,19 @@ fn step_if_else(item: String, cur_temp: i64, cur_block: i64, sb: i64) -> String 
     let then_start = s2i(get_field(item, 6));
     let then_ast = get_field(item, 7);
     let then_id = cur_temp - 1;
-    let then_exit = get_exit_label(then_ast, then_label, my_block + 1);
+    // Use the propagated exit_label from trampoline - this is the actual exit point of the then branch
+    let then_exit = if cur_exit_label == "" { then_label } else { cur_exit_label };
     let w1 = sb_push_mir(sb, "  goto " + merge_label);
     let w2 = sb_push_mir(sb, else_label + ":");
     // Continue with else, then IX final
     let cont = make_work7("IX", i2s(my_block), merge_label, i2s(then_id), then_exit, i2s(cur_temp), i2s(cur_block), else_br);
     let do_else = make_work3("EX", else_br, "", "");
-    make_step(cur_temp, cur_block, do_else + work_sep() + cont);
+    // Set exit_label to else_label - the else branch will update this if it contains nested ifs
+    make_step(cur_temp, cur_block, else_label, do_else + work_sep() + cont);
 
 // IX: If final - else done, emit goto and phi
-fn step_if_final(item: String, cur_temp: i64, cur_block: i64, sb: i64) -> String =
+// Uses cur_exit_label as the actual else_exit (propagated through trampoline)
+fn step_if_final(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String =
     let my_block = s2i(get_field(item, 1));
     let merge_label = get_field(item, 2);
     let then_id = s2i(get_field(item, 3));
@@ -1179,34 +1194,36 @@ fn step_if_final(item: String, cur_temp: i64, cur_block: i64, sb: i64) -> String
     let else_entry_block = s2i(get_field(item, 6));
     let else_ast = get_field(item, 7);
     let else_id = cur_temp - 1;
-    let else_exit = get_exit_label(else_ast, "else_" + i2s(my_block), else_entry_block);
+    // Use the propagated exit_label from trampoline - this is the actual exit point of the else branch
+    let else_exit = if cur_exit_label == "" { "else_" + i2s(my_block) } else { cur_exit_label };
     let w1 = sb_push_mir(sb, "  goto " + merge_label);
     let w2 = sb_push_mir(sb, merge_label + ":");
     let phi_tmp = "%_t" + i2s(cur_temp);
     let w3 = sb_push_mir(sb, "  " + phi_tmp + " = phi [%_t" + i2s(then_id) + ", " + then_exit + "], [%_t" + i2s(else_id) + ", " + else_exit + "]");
-    make_step(cur_temp + 1, cur_block, "");
+    // After if completes, exit_label is merge_label
+    make_step(cur_temp + 1, cur_block, merge_label, "");
 
 // LS: Start let - push value, then LB
-fn step_let_start(item: String, cur_temp: i64, cur_block: i64, sb: i64) -> String =
+fn step_let_start(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String =
     let name = get_field(item, 1);
     let value = get_field(item, 2);
     let body = get_field(item, 3);
     let cont = make_work4("LB", name, body, i2s(cur_temp), "");
     let do_val = make_work3("EX", value, "", "");
-    make_step(cur_temp, cur_block, do_val + work_sep() + cont);
+    make_step(cur_temp, cur_block, cur_exit_label, do_val + work_sep() + cont);
 
 // LB: Let body - value done, emit copy, do body
-fn step_let_body(item: String, cur_temp: i64, cur_block: i64, sb: i64) -> String =
+fn step_let_body(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String =
     let name = get_field(item, 1);
     let body = get_field(item, 2);
     let val_id = cur_temp - 1;
     let w1 = sb_push_mir(sb, "  %" + name + " = copy %_t" + i2s(val_id));
     let do_body = make_work3("EX", body, "", "");
-    make_step(cur_temp, cur_block, do_body);
+    make_step(cur_temp, cur_block, cur_exit_label, do_body);
 
 // CS: Start call - begin processing args
 // v0.60.211: Fixed to track actual arg result temps, not a range
-fn step_call_start(item: String, cur_temp: i64, cur_block: i64, sb: i64) -> String =
+fn step_call_start(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String =
     let name = get_field(item, 1);
     let ast = get_field(item, 2);
     let idx = s2i(get_field(item, 3));
@@ -1215,18 +1232,18 @@ fn step_call_start(item: String, cur_temp: i64, cur_block: i64, sb: i64) -> Stri
         // No args, emit call
         let result_tmp = "%_t" + i2s(cur_temp);
         let w1 = sb_push_mir(sb, "  " + result_tmp + " = call @" + name + "()");
-        make_step(cur_temp + 1, cur_block, "")
+        make_step(cur_temp + 1, cur_block, cur_exit_label, "")
     } else {
         // Has args, start processing
         // Field 4: collected arg temps (starts empty)
         let cont = make_work("CA", name, ast, i2s(idx + 1), "", "");
         let do_arg = make_work3("EX", arg, "", "");
-        make_step(cur_temp, cur_block, do_arg + work_sep() + cont)
+        make_step(cur_temp, cur_block, cur_exit_label, do_arg + work_sep() + cont)
     };
 
 // CA: Call arg - process next arg or finalize
 // v0.60.211: Fixed to collect actual arg temps, not use range
-fn step_call_arg(item: String, cur_temp: i64, cur_block: i64, sb: i64) -> String =
+fn step_call_arg(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String =
     let name = get_field(item, 1);
     let ast = get_field(item, 2);
     let idx = s2i(get_field(item, 3));
@@ -1239,21 +1256,21 @@ fn step_call_arg(item: String, cur_temp: i64, cur_block: i64, sb: i64) -> String
         // Done with args, emit call
         let result_tmp = "%_t" + i2s(cur_temp);
         let w1 = sb_push_mir(sb, "  " + result_tmp + " = call @" + name + "(" + new_collected + ")");
-        make_step(cur_temp + 1, cur_block, "")
+        make_step(cur_temp + 1, cur_block, cur_exit_label, "")
     } else {
         // More args
         let cont = make_work("CA", name, ast, i2s(idx + 1), new_collected, "");
         let do_arg = make_work3("EX", arg, "", "");
-        make_step(cur_temp, cur_block, do_arg + work_sep() + cont)
+        make_step(cur_temp, cur_block, cur_exit_label, do_arg + work_sep() + cont)
     };
 
 // CF: Call final (unused in new design, kept for compatibility)
-fn step_call_final(item: String, cur_temp: i64, cur_block: i64, sb: i64) -> String =
-    make_step(cur_temp, cur_block, "");
+fn step_call_final(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String =
+    make_step(cur_temp, cur_block, cur_exit_label, "");
 
 // MS: Start method - do receiver
 // v0.60.211: Fixed method call to track actual arg temps
-fn step_method_start(item: String, cur_temp: i64, cur_block: i64, sb: i64) -> String =
+fn step_method_start(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String =
     let fn_name = get_field(item, 1);
     let receiver = get_field(item, 2);
     let ast = get_field(item, 3);
@@ -1261,11 +1278,11 @@ fn step_method_start(item: String, cur_temp: i64, cur_block: i64, sb: i64) -> St
     // Field 4: collected arg temps (starts empty, receiver added after eval)
     let cont = make_work("MA", fn_name, ast, i2s(idx), "", "");
     let do_recv = make_work3("EX", receiver, "", "");
-    make_step(cur_temp, cur_block, do_recv + work_sep() + cont);
+    make_step(cur_temp, cur_block, cur_exit_label, do_recv + work_sep() + cont);
 
 // MA: Method arg - process next arg or finalize
 // v0.60.211: Fixed to collect actual arg temps
-fn step_method_arg(item: String, cur_temp: i64, cur_block: i64, sb: i64) -> String =
+fn step_method_arg(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String =
     let fn_name = get_field(item, 1);
     let ast = get_field(item, 2);
     let idx = s2i(get_field(item, 3));
@@ -1278,49 +1295,49 @@ fn step_method_arg(item: String, cur_temp: i64, cur_block: i64, sb: i64) -> Stri
         // Done with args
         let result_tmp = "%_t" + i2s(cur_temp);
         let w1 = sb_push_mir(sb, "  " + result_tmp + " = call @" + fn_name + "(" + new_collected + ")");
-        make_step(cur_temp + 1, cur_block, "")
+        make_step(cur_temp + 1, cur_block, cur_exit_label, "")
     } else {
         // More args
         let cont = make_work("MA", fn_name, ast, i2s(idx + 1), new_collected, "");
         let do_arg = make_work3("EX", arg, "", "");
-        make_step(cur_temp, cur_block, do_arg + work_sep() + cont)
+        make_step(cur_temp, cur_block, cur_exit_label, do_arg + work_sep() + cont)
     };
 
 // MF: Method final (unused)
-fn step_method_final(item: String, cur_temp: i64, cur_block: i64, sb: i64) -> String =
-    make_step(cur_temp, cur_block, "");
+fn step_method_final(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String =
+    make_step(cur_temp, cur_block, cur_exit_label, "");
 
 // v0.60.126: Unit expression step - returns 0
-fn step_unit(item: String, cur_temp: i64, cur_block: i64, sb: i64) -> String =
+fn step_unit(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String =
     let tmp = "%_t" + i2s(cur_temp);
     let w1 = sb_push_mir(sb, "  " + tmp + " = const 0");
-    make_step(cur_temp + 1, cur_block, "");
+    make_step(cur_temp + 1, cur_block, cur_exit_label, "");
 
 // v0.60.126: Sequence start - lower first expression, queue second
-fn step_seq_start(item: String, cur_temp: i64, cur_block: i64, sb: i64) -> String =
+fn step_seq_start(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String =
     let e1 = get_field(item, 1);
     let e2 = get_field(item, 2);
     // First lower e1, then continue with e2
     let cont = make_work3("S2", e2, "", "");
     let eval = make_work3("EX", e1, "", "");
-    make_step(cur_temp, cur_block, eval + work_sep() + cont);
+    make_step(cur_temp, cur_block, cur_exit_label, eval + work_sep() + cont);
 
 // v0.60.126: Sequence second - lower second expression (first already done)
-fn step_seq_second(item: String, cur_temp: i64, cur_block: i64, sb: i64) -> String =
+fn step_seq_second(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String =
     let e2 = get_field(item, 1);
-    make_step(cur_temp, cur_block, make_work3("EX", e2, "", ""));
+    make_step(cur_temp, cur_block, cur_exit_label, make_work3("EX", e2, "", ""));
 
 // v0.60.126: Assignment start - lower RHS, queue final
-fn step_assign_start(item: String, cur_temp: i64, cur_block: i64, sb: i64) -> String =
+fn step_assign_start(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String =
     let lhs = get_field(item, 1);
     let rhs = get_field(item, 2);
     // Lower RHS, then do assignment
     let cont = make_work3("AF", lhs, "", "");
     let eval = make_work3("EX", rhs, "", "");
-    make_step(cur_temp, cur_block, eval + work_sep() + cont);
+    make_step(cur_temp, cur_block, cur_exit_label, eval + work_sep() + cont);
 
 // v0.60.126: Assignment final - store value and return unit
-fn step_assign_final(item: String, cur_temp: i64, cur_block: i64, sb: i64) -> String =
+fn step_assign_final(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String =
     let lhs = get_field(item, 1);
     // RHS value is in %_t(cur_temp-1)
     let rhs_temp = cur_temp - 1;
@@ -1329,7 +1346,7 @@ fn step_assign_final(item: String, cur_temp: i64, cur_block: i64, sb: i64) -> St
     // Assignment returns unit
     let tmp = "%_t" + i2s(cur_temp);
     let w2 = sb_push_mir(sb, "  " + tmp + " = const 0");
-    make_step(cur_temp + 1, cur_block, "");
+    make_step(cur_temp + 1, cur_block, cur_exit_label, "");
 
 // Build argument string from temp range [start, end)
 fn build_args_str(start: i64, end: i64) -> String =
