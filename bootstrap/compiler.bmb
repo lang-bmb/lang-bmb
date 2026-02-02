@@ -1205,6 +1205,7 @@ fn step_let_body(item: String, cur_temp: i64, cur_block: i64, sb: i64) -> String
     make_step(cur_temp, cur_block, do_body);
 
 // CS: Start call - begin processing args
+// v0.60.211: Fixed to track actual arg result temps, not a range
 fn step_call_start(item: String, cur_temp: i64, cur_block: i64, sb: i64) -> String =
     let name = get_field(item, 1);
     let ast = get_field(item, 2);
@@ -1217,27 +1218,31 @@ fn step_call_start(item: String, cur_temp: i64, cur_block: i64, sb: i64) -> Stri
         make_step(cur_temp + 1, cur_block, "")
     } else {
         // Has args, start processing
-        let cont = make_work("CA", name, ast, i2s(idx + 1), i2s(cur_temp), "");
+        // Field 4: collected arg temps (starts empty)
+        let cont = make_work("CA", name, ast, i2s(idx + 1), "", "");
         let do_arg = make_work3("EX", arg, "", "");
         make_step(cur_temp, cur_block, do_arg + work_sep() + cont)
     };
 
 // CA: Call arg - process next arg or finalize
+// v0.60.211: Fixed to collect actual arg temps, not use range
 fn step_call_arg(item: String, cur_temp: i64, cur_block: i64, sb: i64) -> String =
     let name = get_field(item, 1);
     let ast = get_field(item, 2);
     let idx = s2i(get_field(item, 3));
-    let first_temp = s2i(get_field(item, 4));
+    let collected = get_field(item, 4);
+    // Append the result of the just-evaluated arg (cur_temp - 1)
+    let this_arg = "%_t" + i2s(cur_temp - 1);
+    let new_collected = if collected == "" { this_arg } else { collected + ", " + this_arg };
     let arg = get_child(ast, idx);
     if arg == "" {
         // Done with args, emit call
-        let args_str = build_args_str(first_temp, cur_temp);
         let result_tmp = "%_t" + i2s(cur_temp);
-        let w1 = sb_push_mir(sb, "  " + result_tmp + " = call @" + name + "(" + args_str + ")");
+        let w1 = sb_push_mir(sb, "  " + result_tmp + " = call @" + name + "(" + new_collected + ")");
         make_step(cur_temp + 1, cur_block, "")
     } else {
         // More args
-        let cont = make_work("CA", name, ast, i2s(idx + 1), i2s(first_temp), "");
+        let cont = make_work("CA", name, ast, i2s(idx + 1), new_collected, "");
         let do_arg = make_work3("EX", arg, "", "");
         make_step(cur_temp, cur_block, do_arg + work_sep() + cont)
     };
@@ -1247,31 +1252,36 @@ fn step_call_final(item: String, cur_temp: i64, cur_block: i64, sb: i64) -> Stri
     make_step(cur_temp, cur_block, "");
 
 // MS: Start method - do receiver
+// v0.60.211: Fixed method call to track actual arg temps
 fn step_method_start(item: String, cur_temp: i64, cur_block: i64, sb: i64) -> String =
     let fn_name = get_field(item, 1);
     let receiver = get_field(item, 2);
     let ast = get_field(item, 3);
     let idx = s2i(get_field(item, 4));
-    let cont = make_work("MA", fn_name, ast, i2s(idx), i2s(cur_temp), "");
+    // Field 4: collected arg temps (starts empty, receiver added after eval)
+    let cont = make_work("MA", fn_name, ast, i2s(idx), "", "");
     let do_recv = make_work3("EX", receiver, "", "");
     make_step(cur_temp, cur_block, do_recv + work_sep() + cont);
 
 // MA: Method arg - process next arg or finalize
+// v0.60.211: Fixed to collect actual arg temps
 fn step_method_arg(item: String, cur_temp: i64, cur_block: i64, sb: i64) -> String =
     let fn_name = get_field(item, 1);
     let ast = get_field(item, 2);
     let idx = s2i(get_field(item, 3));
-    let first_temp = s2i(get_field(item, 4));
+    let collected = get_field(item, 4);
+    // Append the result of the just-evaluated arg/receiver (cur_temp - 1)
+    let this_arg = "%_t" + i2s(cur_temp - 1);
+    let new_collected = if collected == "" { this_arg } else { collected + ", " + this_arg };
     let arg = get_child(ast, idx);
     if arg == "" {
         // Done with args
-        let args_str = build_args_str(first_temp, cur_temp);
         let result_tmp = "%_t" + i2s(cur_temp);
-        let w1 = sb_push_mir(sb, "  " + result_tmp + " = call @" + fn_name + "(" + args_str + ")");
+        let w1 = sb_push_mir(sb, "  " + result_tmp + " = call @" + fn_name + "(" + new_collected + ")");
         make_step(cur_temp + 1, cur_block, "")
     } else {
         // More args
-        let cont = make_work("MA", fn_name, ast, i2s(idx + 1), i2s(first_temp), "");
+        let cont = make_work("MA", fn_name, ast, i2s(idx + 1), new_collected, "");
         let do_arg = make_work3("EX", arg, "", "");
         make_step(cur_temp, cur_block, do_arg + work_sep() + cont)
     };
@@ -2812,6 +2822,7 @@ fn lookup_mapping(mapping: String, name: String, default_val: String) -> String 
     if mapping == "" { default_val }
     else { lookup_mapping_at(mapping, name, 0, default_val) };
 
+// v0.60.212: Fixed to return LAST match (most recent definition) for proper scoping
 fn lookup_mapping_at(mapping: String, name: String, pos: i64, default_val: String) -> String =
     if pos >= mapping.len() { default_val }
     else {
@@ -2820,9 +2831,13 @@ fn lookup_mapping_at(mapping: String, name: String, pos: i64, default_val: Strin
         let colon = find_char(entry, 0, 58);
         let entry_name = entry.slice(0, colon);
         let entry_val = entry.slice(colon + 1, entry.len());
-        if entry_name == name { entry_val }
-        else if comma >= mapping.len() { default_val }
-        else { lookup_mapping_at(mapping, name, comma + 1, default_val) }
+        // Continue searching to find the LAST match
+        let rest_result = if comma >= mapping.len() { default_val }
+                         else { lookup_mapping_at(mapping, name, comma + 1, default_val) };
+        // If we found a later match, use that; otherwise use this match (if it matches)
+        if rest_result != default_val { rest_result }
+        else if entry_name == name { entry_val }
+        else { default_val }
     };
 
 // Add a name:value pair to the mapping
