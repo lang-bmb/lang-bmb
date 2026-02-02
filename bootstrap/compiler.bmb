@@ -1,4 +1,8 @@
-// BMB Unified Compiler (v0.60.224: Removed hardcoded Linux target triple)
+// BMB Unified Compiler (v0.60.230: Split is_string_returning_fn to reduce stack depth)
+// v0.60.230 changes:
+// - Split is_string_returning_fn into 5 helper functions (is_string_fn_group1-5)
+// - Reduces work stack depth during compilation to prevent stack overflow
+// - Enables Stage 2 to compile full compiler.bmb with 400+ functions
 // v0.60.224 changes:
 // - Removed target triple from IR header (let LLVM use host default)
 // - Fixes Windows linking issues caused by Linux target triple
@@ -2900,25 +2904,40 @@ fn llvm_gen_call_with_string_tracking(line: String, pos: i64, dest: String, mapp
     new_mapping + "@@@" + llvm_code;
 
 // Check if a function returns a string
+// v0.60.230: Split into helper functions to reduce stack depth during compilation
 fn is_string_returning_fn(name: String) -> bool =
+    is_string_fn_group1(name) or is_string_fn_group2(name) or is_string_fn_group3(name) or
+    is_string_fn_group4(name) or is_string_fn_group5(name);
+
+fn is_string_fn_group1(name: String) -> bool =
     name == "get_node_type" or name == "get_child" or name == "extract_name" or
     name == "bmb_string_slice" or name == "bmb_string_concat" or
     name == "bmb_string_from_cstr" or name == "bmb_chr" or name == "bmb_read_file" or
     name == "bmb_getenv" or name == "get_arg" or name == "int_to_string" or
-    name == "chr" or name == "slice" or name == "concat" or name == "sb_build" or
-    name == "digit_char" or name == "escape_parens" or name == "unescape_parens_from_ast" or
-    name == "extract_string_content" or name == "get_fn_return_type" or
-    name == "collect_params" or name == "get_fn_body" or name == "lower_function_sb" or
-    name == "lower_program_sb" or name == "compile_function" or name == "compile_source" or
+    name == "chr" or name == "slice" or name == "concat";
+
+fn is_string_fn_group2(name: String) -> bool =
+    name == "sb_build" or name == "digit_char" or name == "escape_parens" or
+    name == "unescape_parens_from_ast" or name == "extract_string_content" or
+    name == "get_fn_return_type" or name == "collect_params" or name == "get_fn_body" or
+    name == "lower_function_sb" or name == "lower_program_sb" or
+    name == "compile_function" or name == "compile_source";
+
+fn is_string_fn_group3(name: String) -> bool =
     name == "parse_source" or name == "gen_function" or name == "gen_program" or
     name == "tokenize" or name == "read_file" or name == "make_error" or
-    name == "gen_module_header" or name == "gen_runtime_decls" or name == "gen_string_globals" or
-    name == "gen_program_sb_with_strings" or name == "collect_strings_from_mir" or
-    name == "compile_program" or name == "gen_extern_println" or name == "gen_extern_print_str" or
+    name == "gen_module_header" or name == "gen_runtime_decls" or
+    name == "gen_string_globals" or name == "gen_program_sb_with_strings" or
+    name == "collect_strings_from_mir" or name == "compile_program";
+
+fn is_string_fn_group4(name: String) -> bool =
+    name == "gen_extern_println" or name == "gen_extern_print_str" or
     name == "llvm_gen_binop" or name == "llvm_gen_cmp" or name == "llvm_gen_call" or
     name == "llvm_gen_not" or name == "llvm_gen_neg" or name == "llvm_gen_phi" or
     name == "llvm_gen_branch" or name == "llvm_gen_goto" or name == "llvm_gen_return_typed" or
-    name == "llvm_gen_string_ref" or name == "llvm_gen_line_with_ret" or
+    name == "llvm_gen_string_ref" or name == "llvm_gen_line_with_ret";
+
+fn is_string_fn_group5(name: String) -> bool =
     name == "llvm_gen_assign_typed" or name == "llvm_gen_rhs_typed" or
     name == "gen_function_lines_typed" or name == "gen_function_sb_typed" or
     name == "llvm_gen_fn_line_typed" or name == "llvm_gen_fn_header" or
