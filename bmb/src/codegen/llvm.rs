@@ -3328,7 +3328,10 @@ impl<'ctx> LlvmContext<'ctx> {
             }
 
             // Float arithmetic
-            // v0.60.80: Apply AllowContract flag for FMA when fast_math is enabled
+            // v0.60.124: Use fast-math flags that enable FMA but avoid reassociation
+            // AllowReassoc can transform (1.0/x)*y to y/x, which hurts ILP (instruction-level parallelism)
+            // because the division must wait for the load of y. Without reassociation, LLVM keeps
+            // the 1.0/x separate, allowing the load of y to happen in parallel with the division.
             MirBinOp::FAdd => {
                 let result = self.builder
                     .build_float_add(lhs.into_float_value(), rhs.into_float_value(), "fadd")
@@ -3336,7 +3339,14 @@ impl<'ctx> LlvmContext<'ctx> {
                 if self.fast_math {
                     let inst: InstructionValue = result.as_instruction_value()
                         .ok_or_else(|| CodeGenError::LlvmError("fadd should be an instruction".to_string()))?;
-                    let _ = inst.set_fast_math_flags(FastMathFlags::AllowContract | FastMathFlags::AllowReassoc);
+                    // Use flags that enable FMA (AllowContract) but not reassociation
+                    let flags = FastMathFlags::AllowContract
+                        | FastMathFlags::NoNaNs
+                        | FastMathFlags::NoInfs
+                        | FastMathFlags::NoSignedZeros
+                        | FastMathFlags::AllowReciprocal
+                        | FastMathFlags::ApproxFunc;
+                    let _ = inst.set_fast_math_flags(flags);
                 }
                 Ok(result.into())
             }
@@ -3347,7 +3357,13 @@ impl<'ctx> LlvmContext<'ctx> {
                 if self.fast_math {
                     let inst: InstructionValue = result.as_instruction_value()
                         .ok_or_else(|| CodeGenError::LlvmError("fsub should be an instruction".to_string()))?;
-                    let _ = inst.set_fast_math_flags(FastMathFlags::AllowContract | FastMathFlags::AllowReassoc);
+                    let flags = FastMathFlags::AllowContract
+                        | FastMathFlags::NoNaNs
+                        | FastMathFlags::NoInfs
+                        | FastMathFlags::NoSignedZeros
+                        | FastMathFlags::AllowReciprocal
+                        | FastMathFlags::ApproxFunc;
+                    let _ = inst.set_fast_math_flags(flags);
                 }
                 Ok(result.into())
             }
@@ -3358,7 +3374,13 @@ impl<'ctx> LlvmContext<'ctx> {
                 if self.fast_math {
                     let inst: InstructionValue = result.as_instruction_value()
                         .ok_or_else(|| CodeGenError::LlvmError("fmul should be an instruction".to_string()))?;
-                    let _ = inst.set_fast_math_flags(FastMathFlags::AllowContract | FastMathFlags::AllowReassoc);
+                    let flags = FastMathFlags::AllowContract
+                        | FastMathFlags::NoNaNs
+                        | FastMathFlags::NoInfs
+                        | FastMathFlags::NoSignedZeros
+                        | FastMathFlags::AllowReciprocal
+                        | FastMathFlags::ApproxFunc;
+                    let _ = inst.set_fast_math_flags(flags);
                 }
                 Ok(result.into())
             }
@@ -3369,7 +3391,13 @@ impl<'ctx> LlvmContext<'ctx> {
                 if self.fast_math {
                     let inst: InstructionValue = result.as_instruction_value()
                         .ok_or_else(|| CodeGenError::LlvmError("fdiv should be an instruction".to_string()))?;
-                    let _ = inst.set_fast_math_flags(FastMathFlags::AllowContract | FastMathFlags::AllowReassoc);
+                    let flags = FastMathFlags::AllowContract
+                        | FastMathFlags::NoNaNs
+                        | FastMathFlags::NoInfs
+                        | FastMathFlags::NoSignedZeros
+                        | FastMathFlags::AllowReciprocal
+                        | FastMathFlags::ApproxFunc;
+                    let _ = inst.set_fast_math_flags(flags);
                 }
                 Ok(result.into())
             }
