@@ -1,4 +1,12 @@
-// BMB Unified Compiler (v0.60.230: Split is_string_returning_fn to reduce stack depth)
+// BMB Unified Compiler (v0.60.235: Fix int_to_string runtime function mapping)
+// v0.60.235 changes:
+// - Removed int_to_string -> bmb_int_to_string runtime mapping
+// - BMB program's int_to_string should call itself, not the runtime function
+// - Runtime bmb_int_to_string returns char*, not BmbString*, causing type mismatch
+// v0.60.234 changes:
+// - Fixed find_marker_limited to search from END instead of beginning
+// - String markers are appended at end, so must search backwards
+// - Fixes Stage 3 "add nsw i64" instead of bmb_string_concat bug
 // v0.60.230 changes:
 // - Split is_string_returning_fn into 5 helper functions (is_string_fn_group1-5)
 // - Reduces work stack depth during compilation to prevent stack overflow
@@ -904,7 +912,9 @@ fn find_work_sep(s: String, pos: i64) -> i64 =
     else { find_work_sep(s, pos + 1) };
 
 fn get_field(item: String, idx: i64) -> String =
-    get_field_at(item, 0, idx);
+    let raw = get_field_at(item, 0, idx);
+    // v0.60.237: Unescape field to restore tildes
+    if idx == 0 { raw } else { unescape_field(raw) };
 
 fn get_field_at(item: String, pos: i64, idx: i64) -> String =
     if pos >= item.len() { "" }
@@ -921,23 +931,49 @@ fn find_field_sep(s: String, pos: i64) -> i64 =
     else if s.byte_at(pos) == 126 { pos }
     else { find_field_sep(s, pos + 1) };
 
+// v0.60.237: Escape/unescape tilde in work item fields to prevent confusion with separator
+// ~ (126) -> \^ (92, 94), \ (92) -> \\ (92, 92)
+fn escape_field(s: String) -> String = escape_field_acc(s, 0, "");
+fn escape_field_acc(s: String, pos: i64, acc: String) -> String =
+    if pos >= s.len() { acc }
+    else {
+        let c = s.byte_at(pos);
+        if c == 126 { escape_field_acc(s, pos + 1, acc + chr(92) + chr(94)) }
+        else if c == 92 { escape_field_acc(s, pos + 1, acc + chr(92) + chr(92)) }
+        else { escape_field_acc(s, pos + 1, acc + chr(c)) }
+    };
+
+fn unescape_field(s: String) -> String = unescape_field_acc(s, 0, "");
+fn unescape_field_acc(s: String, pos: i64, acc: String) -> String =
+    if pos >= s.len() { acc }
+    else {
+        let c = s.byte_at(pos);
+        if c == 92 and pos + 1 < s.len() {
+            let next = s.byte_at(pos + 1);
+            if next == 94 { unescape_field_acc(s, pos + 2, acc + chr(126)) }
+            else if next == 92 { unescape_field_acc(s, pos + 2, acc + chr(92)) }
+            else { unescape_field_acc(s, pos + 1, acc + chr(c)) }
+        }
+        else { unescape_field_acc(s, pos + 1, acc + chr(c)) }
+    };
+
 fn make_work(t: String, f1: String, f2: String, f3: String, f4: String, f5: String) -> String =
-    t + "~" + f1 + "~" + f2 + "~" + f3 + "~" + f4 + "~" + f5;
+    t + "~" + escape_field(f1) + "~" + escape_field(f2) + "~" + escape_field(f3) + "~" + escape_field(f4) + "~" + escape_field(f5);
 
 fn make_work3(t: String, f1: String, f2: String, f3: String) -> String =
-    t + "~" + f1 + "~" + f2 + "~" + f3;
+    t + "~" + escape_field(f1) + "~" + escape_field(f2) + "~" + escape_field(f3);
 
 fn make_work4(t: String, f1: String, f2: String, f3: String, f4: String) -> String =
-    t + "~" + f1 + "~" + f2 + "~" + f3 + "~" + f4;
+    t + "~" + escape_field(f1) + "~" + escape_field(f2) + "~" + escape_field(f3) + "~" + escape_field(f4);
 
 fn make_work6(t: String, f1: String, f2: String, f3: String, f4: String, f5: String, f6: String) -> String =
-    t + "~" + f1 + "~" + f2 + "~" + f3 + "~" + f4 + "~" + f5 + "~" + f6;
+    t + "~" + escape_field(f1) + "~" + escape_field(f2) + "~" + escape_field(f3) + "~" + escape_field(f4) + "~" + escape_field(f5) + "~" + escape_field(f6);
 
 fn make_work7(t: String, f1: String, f2: String, f3: String, f4: String, f5: String, f6: String, f7: String) -> String =
-    t + "~" + f1 + "~" + f2 + "~" + f3 + "~" + f4 + "~" + f5 + "~" + f6 + "~" + f7;
+    t + "~" + escape_field(f1) + "~" + escape_field(f2) + "~" + escape_field(f3) + "~" + escape_field(f4) + "~" + escape_field(f5) + "~" + escape_field(f6) + "~" + escape_field(f7);
 
 fn make_work10(t: String, f1: String, f2: String, f3: String, f4: String, f5: String, f6: String, f7: String, f8: String, f9: String, f10: String) -> String =
-    t + "~" + f1 + "~" + f2 + "~" + f3 + "~" + f4 + "~" + f5 + "~" + f6 + "~" + f7 + "~" + f8 + "~" + f9 + "~" + f10;
+    t + "~" + escape_field(f1) + "~" + escape_field(f2) + "~" + escape_field(f3) + "~" + escape_field(f4) + "~" + escape_field(f5) + "~" + escape_field(f6) + "~" + escape_field(f7) + "~" + escape_field(f8) + "~" + escape_field(f9) + "~" + escape_field(f10);
 
 fn i2s(n: i64) -> String = int_to_string(n);
 fn s2i(s: String) -> i64 = parse_int_simple(s, 0, 0);
@@ -2016,6 +2052,27 @@ fn llvm_gen_string_literal(dest: String, str_content: String) -> String =
 fn llvm_gen_phi(line: String, pos: i64, dest: String) -> String =
     llvm_gen_phi_typed(line, pos, dest, "i64");
 
+// v0.60.231: PHI with string marker propagation
+// Returns "mapping@@@llvm_line"
+fn llvm_gen_phi_with_strings(line: String, pos: i64, dest: String, mapping: String) -> String =
+    let bracket_start = find_char(line, pos, 91);
+    let first_end = find_char(line, bracket_start, 93);
+    let first_content = line.slice(bracket_start + 1, first_end);
+    let first_val = extract_phi_val(first_content);
+    let second_start = find_char(line, first_end, 91);
+    let second_end = find_char(line, second_start, 93);
+    let second_content = line.slice(second_start + 1, second_end);
+    let second_val = extract_phi_val(second_content);
+    let first_is_string = is_string_var_fast(first_val, mapping);
+    let second_is_string = is_string_var_fast(second_val, mapping);
+    let new_mapping = if first_is_string or second_is_string { add_string_marker(mapping, dest) } else { mapping };
+    new_mapping + "@@@" + llvm_gen_phi(line, pos, dest);
+
+// v0.60.231: Extract value from PHI content "val, label"
+fn extract_phi_val(content: String) -> String =
+    let comma_pos = find_char(content, 0, 44);
+    content.slice(0, comma_pos);
+
 // v0.60.118: Typed phi instruction with correct type for String-returning functions
 fn llvm_gen_phi_typed(line: String, pos: i64, dest: String, ret_type: String) -> String =
     let bracket_start = find_char(line, pos, 91);
@@ -2063,11 +2120,12 @@ fn is_bool_returning_fn(name: String) -> bool =
     name == "@is_user_variable" or name == "@is_compile_error" or name == "@is_bool_returning_fn";
 
 // v0.60.120: Map user-facing function names to runtime function names
+// v0.60.235: Removed int_to_string -> bmb_int_to_string mapping
+// The BMB program defines its own int_to_string, so calls should go there
 fn map_runtime_fn(fn_name: String) -> String =
     if fn_name == "@main" { "@bmb_user_main" }
     else if fn_name == "@chr" { "@bmb_chr" }
     else if fn_name == "@ord" { "@bmb_ord" }
-    else if fn_name == "@int_to_string" { "@bmb_int_to_string" }
     else if fn_name == "@println" { "@println" }
     else if fn_name == "@print_str" { "@print_str" }
     else if fn_name == "@println_str" { "@println_str" }
@@ -2570,6 +2628,79 @@ fn find_string_index_scan(list: String, target: String, pos: i64, idx: i64) -> i
         else { find_string_index_scan(list, target, pipe + 1, idx + 1) }
     };
 
+// v0.60.233: Collect all functions that return String from MIR
+// Returns comma-separated list of function names
+fn collect_string_fns_from_mir(mir: String) -> String =
+    collect_string_fns_acc(mir, 0, "");
+
+fn collect_string_fns_acc(mir: String, pos: i64, acc: String) -> String =
+    if pos >= mir.len() { acc }
+    else {
+        // Find next function definition
+        let fn_start = find_fn_start(mir, pos);
+        if fn_start < 0 { acc }
+        else {
+            let fn_name = extract_fn_name_from_mir(mir, fn_start);
+            let ret_type = extract_fn_ret_type_from_mir(mir, fn_start);
+            let new_acc = if ret_type == "String" {
+                if acc == "" { fn_name } else { acc + "," + fn_name }
+            } else { acc };
+            // Find end of this function and continue
+            let fn_end = find_fn_end(mir, fn_start);
+            if fn_end < 0 { new_acc } else { collect_string_fns_acc(mir, fn_end, new_acc) }
+        }
+    };
+
+// Find "fn " at or after pos
+fn find_fn_start(mir: String, pos: i64) -> i64 =
+    if pos + 3 > mir.len() { 0 - 1 }
+    else if mir.byte_at(pos) == 102 and mir.byte_at(pos + 1) == 110 and mir.byte_at(pos + 2) == 32 { pos }
+    else { find_fn_start(mir, pos + 1) };
+
+// Extract function name after "fn "
+fn extract_fn_name_from_mir(mir: String, fn_start: i64) -> String =
+    let name_start = fn_start + 3;
+    let paren = find_char(mir, name_start, 40);
+    if paren < name_start { "" } else { mir.slice(name_start, paren) };
+
+// Extract return type after "-> "
+fn extract_fn_ret_type_from_mir(mir: String, fn_start: i64) -> String =
+    let arrow = find_arrow_in_mir(mir, fn_start);
+    if arrow < 0 { "i64" }
+    else {
+        let type_start = arrow + 3;
+        let brace = find_char(mir, type_start, 123);
+        if brace < type_start { "i64" } else { trim(mir.slice(type_start, brace)) }
+    };
+
+// Find "-> " after fn_start
+fn find_arrow_in_mir(mir: String, pos: i64) -> i64 =
+    if pos + 3 > mir.len() { 0 - 1 }
+    else if mir.byte_at(pos) == 45 and mir.byte_at(pos + 1) == 62 and mir.byte_at(pos + 2) == 32 { pos }
+    else if mir.byte_at(pos) == 123 { 0 - 1 }  // Hit '{' before finding arrow
+    else { find_arrow_in_mir(mir, pos + 1) };
+
+// Find end of function (||)
+fn find_fn_end(mir: String, pos: i64) -> i64 =
+    if pos + 1 >= mir.len() { 0 - 1 }
+    else if mir.byte_at(pos) == 124 and mir.byte_at(pos + 1) == 124 { pos + 2 }
+    else { find_fn_end(mir, pos + 1) };
+
+// Check if function name is in dynamic string functions list
+fn is_dynamic_string_fn(fn_name: String, string_fns: String) -> bool =
+    if string_fns == "" { false }
+    else { check_fn_in_list(fn_name, string_fns, 0) };
+
+fn check_fn_in_list(fn_name: String, list: String, pos: i64) -> bool =
+    if pos >= list.len() { false }
+    else {
+        let comma = find_comma_or_end(list, pos);
+        let item = list.slice(pos, comma);
+        if item == fn_name { true }
+        else if comma >= list.len() { false }
+        else { check_fn_in_list(fn_name, list, comma + 1) }
+    };
+
 // Generate global string constants
 fn gen_string_globals(strings: String) -> String =
     if strings == "" { "" } else {
@@ -2611,30 +2742,42 @@ fn gen_string_globals_acc(strings: String, pos: i64, idx: i64, sb: i64) -> i64 =
 
 // Generate program with string table
 fn gen_program_sb_with_strings(mir: String, strings: String) -> String =
+    gen_program_sb_with_strings_and_fns(mir, strings, "");
+
+// v0.60.233: Generate program with string table and dynamic string functions
+fn gen_program_sb_with_strings_and_fns(mir: String, strings: String, string_fns: String) -> String =
     let sb = sb_new();
-    let w1 = gen_program_acc_sb_with_strings(mir, 0, strings, sb);
+    let w1 = gen_program_acc_sb_with_strings_and_fns(mir, 0, strings, string_fns, sb);
     sb_build(sb);
 
 fn gen_program_acc_sb_with_strings(mir: String, pos: i64, strings: String, sb: i64) -> i64 =
+    gen_program_acc_sb_with_strings_and_fns(mir, pos, strings, "", sb);
+
+fn gen_program_acc_sb_with_strings_and_fns(mir: String, pos: i64, strings: String, string_fns: String, sb: i64) -> i64 =
     if pos >= mir.len() { 0 } else {
         let fn_end = find_double_pipe(mir, pos);
         let fn_mir = mir.slice(pos, fn_end);
-        let fn_llvm = gen_function_sb_with_strings(fn_mir, strings);
+        let fn_llvm = gen_function_sb_with_strings_and_fns(fn_mir, strings, string_fns);
         let len = sb_len(sb);
         let w1 = if len > 0 { sb_push(sb, "||") } else { 0 };
         let w2 = sb_push(sb, fn_llvm);
-        if fn_end + 2 >= mir.len() { 0 } else { gen_program_acc_sb_with_strings(mir, fn_end + 2, strings, sb) }
+        if fn_end + 2 >= mir.len() { 0 } else { gen_program_acc_sb_with_strings_and_fns(mir, fn_end + 2, strings, string_fns, sb) }
     };
 
 // v0.60.121: Copy elimination to fix SSA conflicts with user variables
 // Mapping format: "name1:src1,name2:src2,..." where name is user var and src is the temp it copies from
 // v0.60.202: Also includes "S:varname" for string type tracking
 fn gen_function_sb_with_strings(mir: String, strings: String) -> String =
+    gen_function_sb_with_strings_and_fns(mir, strings, "");
+
+// v0.60.233: Generate function with string table and dynamic string functions
+// v0.60.236: Re-enable string parameter extraction - it was causing Stage 2/3 bugs
+fn gen_function_sb_with_strings_and_fns(mir: String, strings: String, string_fns: String) -> String =
     let sb = sb_new();
     let ret_type = extract_mir_return_type(mir);
-    // v0.60.203: Skip string parameter extraction to avoid recursion issues
-    // String parameters will be tracked when they're first used
-    let w1 = gen_function_lines_sb_with_strings_map(mir, 0, sb, ret_type, strings, "");
+    // Extract string parameters to initialize the mapping
+    let init_mapping = extract_string_params_from_mir(mir);
+    let w1 = gen_function_lines_sb_with_strings_map_and_fns(mir, 0, sb, ret_type, strings, string_fns, init_mapping);
     sb_build(sb);
 
 // Extract string parameters from function header and create initial string markers
@@ -2686,32 +2829,44 @@ fn find_pattern_at_slow(s: String, pat: String, pos: i64) -> i64 =
     else { find_pattern_at_slow(s, pat, pos + 1) };
 
 fn gen_function_lines_sb_with_strings_map(mir: String, pos: i64, sb: i64, ret_type: String, strings: String, mapping: String) -> i64 =
+    gen_function_lines_sb_with_strings_map_and_fns(mir, pos, sb, ret_type, strings, "", mapping);
+
+// v0.60.233: Version with dynamic string functions
+fn gen_function_lines_sb_with_strings_map_and_fns(mir: String, pos: i64, sb: i64, ret_type: String, strings: String, string_fns: String, mapping: String) -> i64 =
     if pos >= mir.len() { 0 } else {
         let pipe_pos = find_pipe_skip_quotes(mir, pos);
         let line = mir.slice(pos, pipe_pos);
-        let result = llvm_gen_fn_line_with_strings_map(line, ret_type, strings, mapping);
+        let result = llvm_gen_fn_line_with_strings_map_and_fns(line, ret_type, strings, string_fns, mapping);
         let new_mapping = extract_mapping(result);
         let llvm_line = extract_llvm_line(result);
         let len = sb_len(sb);
         let w1 = if len > 0 and llvm_line != "" { sb_push(sb, "|") } else { 0 };
         let w2 = if llvm_line != "" { sb_push(sb, llvm_line) } else { 0 };
-        if pipe_pos >= mir.len() { 0 } else { gen_function_lines_sb_with_strings_map(mir, pipe_pos + 1, sb, ret_type, strings, new_mapping) }
+        if pipe_pos >= mir.len() { 0 } else { gen_function_lines_sb_with_strings_map_and_fns(mir, pipe_pos + 1, sb, ret_type, strings, string_fns, new_mapping) }
     };
 
 // Returns "mapping@@@llvm_line"
 fn llvm_gen_fn_line_with_strings_map(line: String, ret_type: String, strings: String, mapping: String) -> String =
+    llvm_gen_fn_line_with_strings_map_and_fns(line, ret_type, strings, "", mapping);
+
+// v0.60.233: Version with dynamic string functions
+fn llvm_gen_fn_line_with_strings_map_and_fns(line: String, ret_type: String, strings: String, string_fns: String, mapping: String) -> String =
     let p = low_skip_ws(line, 0);
     if p >= line.len() { mapping + "@@@" }
     else if low_starts_with_at(line, p, "fn ") { mapping + "@@@" + llvm_gen_fn_header(line, p) }
     else if ends_with_colon(line) { mapping + "@@@" + line }
     else if line == "}" { mapping + "@@@}" }
-    else { llvm_gen_line_with_strings_map(line, ret_type, strings, mapping) };
+    else { llvm_gen_line_with_strings_map_and_fns(line, ret_type, strings, string_fns, mapping) };
 
 // Returns "mapping@@@llvm_line"
 fn llvm_gen_line_with_strings_map(line: String, ret_type: String, strings: String, mapping: String) -> String =
+    llvm_gen_line_with_strings_map_and_fns(line, ret_type, strings, "", mapping);
+
+// v0.60.233: Version with dynamic string functions
+fn llvm_gen_line_with_strings_map_and_fns(line: String, ret_type: String, strings: String, string_fns: String, mapping: String) -> String =
     let p = low_skip_ws(line, 0);
     if p >= line.len() { mapping + "@@@" }
-    else if line.byte_at(p) == 37 { llvm_gen_assign_with_strings_map(line, p, strings, mapping) }
+    else if line.byte_at(p) == 37 { llvm_gen_assign_with_strings_map_and_fns(line, p, strings, string_fns, mapping) }
     else if low_starts_with_at(line, p, "return") { mapping + "@@@" + llvm_gen_return_typed(line, p, ret_type) }
     else if low_starts_with_at(line, p, "branch") { mapping + "@@@" + llvm_gen_branch(line, p) }
     else if low_starts_with_at(line, p, "goto") { mapping + "@@@" + llvm_gen_goto(line, p) }
@@ -2719,15 +2874,23 @@ fn llvm_gen_line_with_strings_map(line: String, ret_type: String, strings: Strin
 
 // Returns "mapping@@@llvm_line"
 fn llvm_gen_assign_with_strings_map(line: String, pos: i64, strings: String, mapping: String) -> String =
+    llvm_gen_assign_with_strings_map_and_fns(line, pos, strings, "", mapping);
+
+// v0.60.233: Version with dynamic string functions
+fn llvm_gen_assign_with_strings_map_and_fns(line: String, pos: i64, strings: String, string_fns: String, mapping: String) -> String =
     let eq_pos = find_eq(line, pos);
     let dest = line.slice(pos, eq_pos - 1);
     let after_eq = low_skip_ws(line, eq_pos + 1);
-    llvm_gen_rhs_with_strings_map(line, after_eq, dest, strings, mapping);
+    llvm_gen_rhs_with_strings_map_and_fns(line, after_eq, dest, strings, string_fns, mapping);
 
 // Returns "mapping@@@llvm_line"
 // v0.60.202: Track string temporaries for proper string comparison generation
 // Mapping now includes "S:varname" entries to mark string variables
 fn llvm_gen_rhs_with_strings_map(line: String, pos: i64, dest: String, strings: String, mapping: String) -> String =
+    llvm_gen_rhs_with_strings_map_and_fns(line, pos, dest, strings, "", mapping);
+
+// v0.60.233: Version with dynamic string functions
+fn llvm_gen_rhs_with_strings_map_and_fns(line: String, pos: i64, dest: String, strings: String, string_fns: String, mapping: String) -> String =
     if low_starts_with_at(line, pos, "const") {
         let val_start = low_skip_ws(line, pos + 5);
         let val = line.slice(val_start, line.len());
@@ -2738,7 +2901,12 @@ fn llvm_gen_rhs_with_strings_map(line: String, pos: i64, dest: String, strings: 
         // Check if this is a copy TO a user variable (not %_t)
         if is_user_variable(dest) {
             // Don't emit code, just update mapping
-            add_mapping(mapping, dest, resolve_variable(src, mapping)) + "@@@"
+            // v0.60.231: Also propagate string marker for user variables
+            let resolved_src = resolve_variable(src, mapping);
+            let src_is_string = is_string_var_fast(src, mapping);
+            let name_mapping = add_mapping(mapping, dest, resolved_src);
+            let final_mapping = if src_is_string { add_string_marker(name_mapping, dest) } else { name_mapping };
+            final_mapping + "@@@"
         } else {
             // v0.60.223: Propagate string marker if source is string
             let resolved_src = resolve_variable(src, mapping);
@@ -2749,7 +2917,6 @@ fn llvm_gen_rhs_with_strings_map(line: String, pos: i64, dest: String, strings: 
     } else if low_starts_with_at(line, pos, "string") {
         let str_start = low_skip_ws(line, pos + 6);
         let str_content = line.slice(str_start + 1, line.len() - 1);
-        // v0.60.203: Temporarily disabled string marking to debug crash
         add_string_marker(mapping, dest) + "@@@" + llvm_gen_string_ref(dest, str_content, strings)
     } else if low_starts_with_at(line, pos, "+") { llvm_gen_add_with_strings(line, pos + 1, dest, mapping) }
     else if low_starts_with_at(line, pos, "-") { mapping + "@@@" + llvm_gen_binop("sub", line, pos + 1, dest) }
@@ -2767,9 +2934,10 @@ fn llvm_gen_rhs_with_strings_map(line: String, pos: i64, dest: String, strings: 
     else if low_starts_with_at(line, pos, "or") { mapping + "@@@" + llvm_gen_binop("or", line, pos + 2, dest) }
     else if low_starts_with_at(line, pos, "not") { mapping + "@@@" + llvm_gen_not(line, pos + 3, dest) }
     else if low_starts_with_at(line, pos, "neg") { mapping + "@@@" + llvm_gen_neg(line, pos + 3, dest) }
-    else if low_starts_with_at(line, pos, "phi") { mapping + "@@@" + llvm_gen_phi(line, pos, dest) }
-    // v0.60.203: Temporarily disabled string tracking to debug crash
-    else if low_starts_with_at(line, pos, "call") { llvm_gen_call_with_string_tracking(line, pos, dest, mapping) }
+    // v0.60.231: PHI with string marker propagation
+    else if low_starts_with_at(line, pos, "phi") { llvm_gen_phi_with_strings(line, pos, dest, mapping) }
+    // v0.60.233: Call with dynamic string function tracking
+    else if low_starts_with_at(line, pos, "call") { llvm_gen_call_with_string_tracking_and_fns(line, pos, dest, mapping, string_fns) }
     else { mapping + "@@@  ; unknown: " + line };
 
 // Add a string marker to the mapping: "S:varname"
@@ -2830,21 +2998,43 @@ fn is_string_var_fast(varname: String, mapping: String) -> bool =
     else { has_prefix_or_contains_marker(mapping, marker) };
 
 // Check if mapping starts with or contains the marker (limited search)
+// v0.60.234: Search from END since new entries are appended
 fn has_prefix_or_contains_marker(mapping: String, marker: String) -> bool =
     if mapping.len() < marker.len() { false }
-    else if mapping.slice(0, marker.len()) == marker { true }
-    else { find_marker_limited(mapping, marker, 0, 0) };
+    // Check if last entry matches (most common case for recent markers)
+    else if ends_with_marker(mapping, marker) { true }
+    // Search backwards from end for last 100 entries
+    else { find_marker_from_end(mapping, marker, mapping.len(), 0) };
 
-// Limited search - only check first 50 entries to avoid stack overflow
-fn find_marker_limited(mapping: String, marker: String, pos: i64, count: i64) -> bool =
-    if count > 50 or pos >= mapping.len() { false }
+// v0.60.234: Check if mapping ends with ,marker or is just marker
+fn ends_with_marker(mapping: String, marker: String) -> bool =
+    let mlen = mapping.len();
+    let klen = marker.len();
+    if mlen == klen { mapping == marker }
+    else if mlen > klen + 1 {
+        // Check if ends with ,marker
+        let suffix_start = mlen - klen;
+        mapping.byte_at(suffix_start - 1) == 44 and mapping.slice(suffix_start, mlen) == marker
+    }
+    else { false };
+
+// v0.60.234: Search backwards from end - check last 100 entries
+fn find_marker_from_end(mapping: String, marker: String, end_pos: i64, count: i64) -> bool =
+    if count > 100 or end_pos <= 0 { false }
     else {
-        let comma = find_comma_or_end(mapping, pos);
-        let entry = mapping.slice(pos, comma);
+        let start = find_prev_comma(mapping, end_pos - 1);
+        let entry_start = if start < 0 { 0 } else { start + 1 };
+        let entry = mapping.slice(entry_start, end_pos);
         if entry == marker { true }
-        else if comma >= mapping.len() { false }
-        else { find_marker_limited(mapping, marker, comma + 1, count + 1) }
+        else if start < 0 { false }
+        else { find_marker_from_end(mapping, marker, start, count + 1) }
     };
+
+// v0.60.234: Find previous comma position searching backwards
+fn find_prev_comma(s: String, pos: i64) -> i64 =
+    if pos < 0 { -1 }
+    else if s.byte_at(pos) == 44 { pos }
+    else { find_prev_comma(s, pos - 1) };
 
 // Generate string comparison using bmb_string_eq
 // v0.60.225: Fixed - convert i64 to ptr before calling bmb_string_eq
@@ -2896,10 +3086,17 @@ fn llvm_gen_add_with_strings(line: String, pos: i64, dest: String, mapping: Stri
     };
 
 fn llvm_gen_call_with_string_tracking(line: String, pos: i64, dest: String, mapping: String) -> String =
+    llvm_gen_call_with_string_tracking_and_fns(line, pos, dest, mapping, "");
+
+// v0.60.233: Call tracking with dynamic string functions
+fn llvm_gen_call_with_string_tracking_and_fns(line: String, pos: i64, dest: String, mapping: String, string_fns: String) -> String =
     let llvm_code = llvm_gen_call(line, pos, dest);
     // Check if the called function returns a string
     let fn_name = extract_call_fn_name(line, pos);
-    let is_string_fn = is_string_returning_fn(fn_name);
+    // Check both hardcoded list and dynamic functions
+    let is_hardcoded_string_fn = is_string_returning_fn(fn_name);
+    let is_dynamic_string_fn_result = is_dynamic_string_fn(fn_name, string_fns);
+    let is_string_fn = is_hardcoded_string_fn or is_dynamic_string_fn_result;
     let new_mapping = if is_string_fn { add_string_marker(mapping, dest) } else { mapping };
     new_mapping + "@@@" + llvm_code;
 
@@ -3057,8 +3254,10 @@ fn compile_program(source: String) -> String =
             // v0.60.109: Collect string literals and generate globals
             let strings = collect_strings_from_mir(mir);
             let string_globals = gen_string_globals(strings);
+            // v0.60.233: Collect dynamic String-returning functions
+            let string_fns = collect_string_fns_from_mir(mir);
             // v0.31.20: Use StringBuilder-aware LLVM generation for O(1) IR generation
-            let code = gen_program_sb_with_strings(mir, strings);
+            let code = gen_program_sb_with_strings_and_fns(mir, strings, string_fns);
             // v0.60.127: Use step-by-step concatenation to avoid LLVM codegen bug
             // with chained string concat on large strings
             let base = header + "|";
