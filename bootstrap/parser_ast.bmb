@@ -1151,13 +1151,14 @@ fn parse_expr_stmt(src: String, pos: i64) -> String =
 
 // Parse while expression: while condition { body }
 // AST format: (while condition body)
+// v0.60.249: Use parse_block_stmts for body to support multiple statements
 fn parse_while(src: String, pos: i64) -> String =
     // pos is after 'while', parse condition
     let rc = parse_expr(src, pos);
     if is_error(unpack_ast(rc)) { rc } else {
         let t1 = next_token_raw(src, unpack_pos(rc));
         if tok_kind(t1) != TK_LBRACE() { pack_result(unpack_pos(rc), make_error("while-lbrace")) } else {
-            let rb = parse_expr(src, tok_end(t1));
+            let rb = parse_block_stmts(src, tok_end(t1));
             if is_error(unpack_ast(rb)) { rb } else {
                 let t2 = next_token_raw(src, unpack_pos(rb));
                 if tok_kind(t2) != TK_RBRACE() { pack_result(unpack_pos(rb), make_error("while-rbrace")) } else { pack_result(tok_end(t2), "(while " + unpack_ast(rc) + " " + unpack_ast(rb) + ")") }
@@ -1171,6 +1172,7 @@ fn parse_while(src: String, pos: i64) -> String =
 
 // Parse for expression: for let mut in iter { body }
 // AST format: (for <var> iter body)
+// v0.60.249: Use parse_block_stmts for body to support multiple statements
 fn parse_for(src: String, pos: i64) -> String =
     // pos is after 'for', parse variable name
     let t1 = next_token_raw(src, pos);
@@ -1185,7 +1187,7 @@ fn parse_for(src: String, pos: i64) -> String =
             if is_error(unpack_ast(ri)) { ri } else {
                 let t3 = next_token_raw(src, unpack_pos(ri));
                 if tok_kind(t3) != TK_LBRACE() { pack_result(unpack_pos(ri), make_error("for-lbrace")) } else {
-                    let rb = parse_expr(src, tok_end(t3));
+                    let rb = parse_block_stmts(src, tok_end(t3));
                     if is_error(unpack_ast(rb)) { rb } else {
                         let t4 = next_token_raw(src, unpack_pos(rb));
                         if tok_kind(t4) != TK_RBRACE() { pack_result(unpack_pos(rb), make_error("for-rbrace")) } else { pack_result(tok_end(t4), "(for <" + varname + "> " + unpack_ast(ri) + " " + unpack_ast(rb) + ")") }
