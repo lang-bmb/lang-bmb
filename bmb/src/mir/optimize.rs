@@ -4400,6 +4400,7 @@ impl LoopBoundedNarrowing {
     }
 
     /// v0.60.30: Check if a parameter is used as the value in IndexStore with i64 element type
+    /// v0.60.250: Also check store_i64/bmb_store_i64 function calls
     /// If so, narrowing to i32 would cause a type mismatch (storing 4 bytes, reading 8 bytes)
     fn is_used_as_i64_store_value(func: &MirFunction, param_name: &str) -> bool {
         // Track which variables are derived from the parameter
@@ -4416,6 +4417,16 @@ impl LoopBoundedNarrowing {
                             let value_derived = matches!(value, Operand::Place(p) if derived.contains(&p.name));
                             if value_derived && *element_type == MirType::I64 {
                                 return true;
+                            }
+                        }
+                        // v0.60.250: Check store_i64/bmb_store_i64 function calls
+                        // store_i64(ptr, value) - value is the second argument (index 1)
+                        MirInst::Call { func: callee, args, .. } => {
+                            if (callee == "store_i64" || callee == "bmb_store_i64") && args.len() >= 2 {
+                                let value_derived = matches!(&args[1], Operand::Place(p) if derived.contains(&p.name));
+                                if value_derived {
+                                    return true;
+                                }
                             }
                         }
                         // Propagate derived status through copy
