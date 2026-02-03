@@ -89,6 +89,7 @@ fn TK_NOT() -> i64 = 9999 + 1 + 109;
 fn TK_PRE() -> i64 = 9999 + 1 + 110;
 fn TK_POST() -> i64 = 9999 + 1 + 111;
 fn TK_MUT() -> i64 = 9999 + 1 + 117;
+fn TK_WHILE() -> i64 = 9999 + 1 + 118;  // v0.60.248: while loop support
 
 fn TK_I32() -> i64 = 9999 + 1 + 150;
 fn TK_I64() -> i64 = 9999 + 1 + 151;
@@ -207,6 +208,7 @@ fn keyword_len4(word: String, endpos: i64) -> i64 =
 
 fn keyword_len5(word: String, endpos: i64) -> i64 =
     if word == "false" { make_tok(TK_FALSE(), endpos) }
+    else if word == "while" { make_tok(TK_WHILE(), endpos) }  // v0.60.248
     else { make_tok(TK_IDENT(), endpos) };
 
 fn keyword_len6(word: String, endpos: i64) -> i64 =
@@ -647,6 +649,7 @@ fn parse_expr(src: String, pos: i64) -> String =
     let kind = tok_kind(tok);
     if kind == TK_IF() { parse_if_expr(src, tok_end(tok)) }
     else if kind == TK_LET() { parse_let_expr(src, tok_end(tok), pos) }
+    else if kind == TK_WHILE() { parse_while_expr(src, tok_end(tok)) }  // v0.60.248
     else { parse_or(src, pos) };
 
 fn parse_if_expr(src: String, pos: i64) -> String =
@@ -717,16 +720,67 @@ fn make_if_ast(pos: i64, cond_ast: String, then_ast: String, else_ast: String) -
     let p3 = p2 + " " + else_ast;
     pack_result(pos, p3 + ")");
 
+// v0.60.248: Support 'let mut' syntax for mutable variables
 fn parse_let_expr(src: String, pos: i64, start_pos: i64) -> String =
     let t1 = next_token_raw(src, pos);
-    if tok_kind(t1) != TK_IDENT() { make_error("let-name") }
-    else { parse_let_name(src, pos, t1) };
+    let k1 = tok_kind(t1);
+    if k1 == TK_MUT() {
+        // let mut name = ...
+        let t2 = next_token_raw(src, tok_end(t1));
+        if tok_kind(t2) != TK_IDENT() { make_error("let-mut-name") }
+        else { parse_let_name_mut(src, tok_end(t1), t2) }
+    } else if k1 == TK_IDENT() {
+        // let name = ...
+        parse_let_name(src, pos, t1)
+    } else { make_error("let-name") };
 
 fn parse_let_name(src: String, pos: i64, t1: i64) -> String =
     let name = get_ident_text(src, pos, t1);
-    let t2 = next_token_raw(src, tok_end(t1));
-    if tok_kind(t2) != TK_EQ() { make_error("let-eq") }
-    else { parse_let_value(src, tok_end(t2), name) };
+    parse_let_after_name(src, tok_end(t1), name, false);
+
+fn parse_let_name_mut(src: String, pos: i64, t2: i64) -> String =
+    let name = get_ident_text(src, pos, t2);
+    parse_let_after_name(src, tok_end(t2), name, true);
+
+// v0.60.248: Handle optional type annotation and continue to value
+fn parse_let_after_name(src: String, pos: i64, name: String, is_mut: bool) -> String =
+    let t2 = next_token_raw(src, pos);
+    let k2 = tok_kind(t2);
+    if k2 == TK_EQ() {
+        // let name = value
+        parse_let_value_mut(src, tok_end(t2), name, is_mut)
+    } else if k2 == TK_COLON() {
+        // let name: type = value - skip type annotation
+        parse_let_skip_type(src, tok_end(t2), name, is_mut)
+    } else { make_error("let-eq-or-colon") };
+
+fn parse_let_skip_type(src: String, pos: i64, name: String, is_mut: bool) -> String =
+    // Skip type token(s) until we find '='
+    let t = next_token_raw(src, pos);
+    let k = tok_kind(t);
+    if k == TK_EQ() {
+        parse_let_value_mut(src, tok_end(t), name, is_mut)
+    } else if k == TK_IDENT() or k == TK_I64() or k == TK_I32() or k == TK_BOOL() or k == TK_STRING_TYPE() {
+        // Skip the type and continue looking for '='
+        parse_let_skip_type(src, tok_end(t), name, is_mut)
+    } else { make_error("let-skip-type") };
+
+fn parse_let_value_mut(src: String, pos: i64, name: String, is_mut: bool) -> String =
+    let rv = parse_expr(src, pos);
+    if is_error(rv) { rv }
+    else { parse_let_body_mut(src, unpack_pos(rv), name, unpack_ast(rv), is_mut) };
+
+fn parse_let_body_mut(src: String, pos: i64, name: String, val_ast: String, is_mut: bool) -> String =
+    let t3 = next_token_raw(src, pos);
+    if tok_kind(t3) != TK_SEMI() { make_error("let-semi") }
+    else {
+        let rb = parse_expr(src, tok_end(t3));
+        if is_mut {
+            make_let_mut_ast(unpack_pos(rb), name, val_ast, unpack_ast(rb))
+        } else {
+            make_let_ast(unpack_pos(rb), name, val_ast, unpack_ast(rb))
+        }
+    };
 
 fn parse_let_value(src: String, pos: i64, name: String) -> String =
     let rv = parse_expr(src, pos);
@@ -745,6 +799,38 @@ fn make_let_ast(pos: i64, name: String, val_ast: String, body_ast: String) -> St
     let p1 = "(let <" + name + "> ";
     let p2 = p1 + val_ast + " ";
     pack_result(pos, p2 + body_ast + ")");
+
+// v0.60.248: let mut creates (let_mut ...) AST node
+fn make_let_mut_ast(pos: i64, name: String, val_ast: String, body_ast: String) -> String =
+    let p1 = "(let_mut <" + name + "> ";
+    let p2 = p1 + val_ast + " ";
+    pack_result(pos, p2 + body_ast + ")");
+
+// ============================================================================
+// v0.60.248: While Expression Parser
+// ============================================================================
+
+// Parse while expression: while condition { body }
+// AST format: (while condition body)
+fn parse_while_expr(src: String, pos: i64) -> String =
+    let rc = parse_expr(src, pos);
+    if is_error(rc) { rc }
+    else { parse_while_body(src, unpack_pos(rc), unpack_ast(rc)) };
+
+fn parse_while_body(src: String, pos: i64, cond_ast: String) -> String =
+    let t1 = next_token_raw(src, pos);
+    if tok_kind(t1) != TK_LBRACE() { make_error("while-lbrace") }
+    else { parse_while_body_inner(src, tok_end(t1), cond_ast) };
+
+fn parse_while_body_inner(src: String, pos: i64, cond_ast: String) -> String =
+    let rb = parse_expr(src, pos);
+    if is_error(rb) { rb }
+    else { parse_while_finish(src, unpack_pos(rb), cond_ast, unpack_ast(rb)) };
+
+fn parse_while_finish(src: String, pos: i64, cond_ast: String, body_ast: String) -> String =
+    let t2 = next_token_raw(src, pos);
+    if tok_kind(t2) != TK_RBRACE() { make_error("while-rbrace") }
+    else { pack_result(tok_end(t2), "(while " + cond_ast + " " + body_ast + ")") };
 
 // ============================================================================
 // SECTION 6: Function and Program Parser
@@ -1273,6 +1359,13 @@ fn step_expr(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String
         let body = get_child(ast, 2);
         make_step(cur_temp, cur_block, cur_exit_label, make_work4("LS", name, value, body, ""))
     }
+    // v0.60.248: let_mut support - same lowering as let
+    else if ntype == "let_mut" {
+        let name = extract_name(ast);
+        let value = get_child(ast, 1);
+        let body = get_child(ast, 2);
+        make_step(cur_temp, cur_block, cur_exit_label, make_work4("LS", name, value, body, ""))
+    }
     else if ntype == "call" {
         let name = extract_name(ast);
         make_step(cur_temp, cur_block, cur_exit_label, make_work4("CS", name, ast, "1", ""))
@@ -1300,6 +1393,13 @@ fn step_expr(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String
         let lhs = assign_lhs_expr(ast);
         let rhs = assign_rhs_expr(ast);
         make_step(cur_temp, cur_block, cur_exit_label, make_work3("AS", lhs, rhs, ""))
+    }
+    // v0.60.248: While loop support - use recursive lowering
+    else if ntype == "while" {
+        let result = lower_while_sb(ast, cur_temp, cur_block, sb);
+        let new_temp = unpack_temp(result);
+        let new_block = unpack_block(result);
+        make_step(new_temp, new_block, cur_exit_label, "")
     }
     else { make_step(cur_temp, cur_block, cur_exit_label, "") };
 
@@ -1620,7 +1720,7 @@ fn build_args_str_acc(cur: i64, end: i64, acc: String) -> String =
 // v0.60.126: Added block, unit, seq, assign support
 fn lower_expr_sb(ast: String, temp_id: i64, block_id: i64, sb: i64) -> i64 =
     let ntype = get_node_type(ast);
-    if ntype == "int" { lower_int_sb(ast, temp_id, block_id, sb) } else if ntype == "bool" { lower_bool_sb(ast, temp_id, block_id, sb) } else if ntype == "string" { lower_string_sb(ast, temp_id, block_id, sb) } else if ntype == "var" { lower_var_sb(ast, temp_id, block_id, sb) } else if ntype == "binop" { lower_binop_sb(ast, temp_id, block_id, sb) } else if ntype == "unary" { lower_unary_sb(ast, temp_id, block_id, sb) } else if ntype == "if" { lower_if_sb(ast, temp_id, block_id, sb) } else if ntype == "let" { lower_let_sb(ast, temp_id, block_id, sb) } else if ntype == "call" { lower_call_sb(ast, temp_id, block_id, sb) } else if ntype == "method" { lower_method_sb(ast, temp_id, block_id, sb) } else if ntype == "block" { lower_block_sb(ast, temp_id, block_id, sb) } else if ntype == "unit" { lower_unit_sb(ast, temp_id, block_id, sb) } else if ntype == "seq" { lower_seq_sb(ast, temp_id, block_id, sb) } else if ntype == "assign" { lower_assign_sb(ast, temp_id, block_id, sb) } else { pack_ids(temp_id, block_id) };
+    if ntype == "int" { lower_int_sb(ast, temp_id, block_id, sb) } else if ntype == "bool" { lower_bool_sb(ast, temp_id, block_id, sb) } else if ntype == "string" { lower_string_sb(ast, temp_id, block_id, sb) } else if ntype == "var" { lower_var_sb(ast, temp_id, block_id, sb) } else if ntype == "binop" { lower_binop_sb(ast, temp_id, block_id, sb) } else if ntype == "unary" { lower_unary_sb(ast, temp_id, block_id, sb) } else if ntype == "if" { lower_if_sb(ast, temp_id, block_id, sb) } else if ntype == "let" { lower_let_sb(ast, temp_id, block_id, sb) } else if ntype == "let_mut" { lower_let_sb(ast, temp_id, block_id, sb) } else if ntype == "call" { lower_call_sb(ast, temp_id, block_id, sb) } else if ntype == "method" { lower_method_sb(ast, temp_id, block_id, sb) } else if ntype == "block" { lower_block_sb(ast, temp_id, block_id, sb) } else if ntype == "unit" { lower_unit_sb(ast, temp_id, block_id, sb) } else if ntype == "seq" { lower_seq_sb(ast, temp_id, block_id, sb) } else if ntype == "assign" { lower_assign_sb(ast, temp_id, block_id, sb) } else if ntype == "while" { lower_while_sb(ast, temp_id, block_id, sb) } else { pack_ids(temp_id, block_id) };
 
 fn lower_int_sb(ast: String, temp_id: i64, block_id: i64, sb: i64) -> i64 =
     let val = extract_int_value(ast);
@@ -1873,6 +1973,49 @@ fn lower_assign_sb(ast: String, temp_id: i64, block_id: i64, sb: i64) -> i64 =
     let tmp = "%_t" + int_to_string(tr);
     let w2 = sb_push_mir(sb, "  " + tmp + " = const 0");
     pack_ids(tr + 1, br);
+
+// ============================================================================
+// v0.60.248: While Loop Lowering
+// ============================================================================
+// MIR format:
+//   goto loop_N
+//   loop_N:
+//     <cond code>
+//     branch %cond, body_N, exit_N
+//   body_N:
+//     <body code>
+//     goto loop_N
+//   exit_N:
+//     %result = const 0   ; while returns unit
+
+fn lower_while_sb(ast: String, temp_id: i64, block_id: i64, sb: i64) -> i64 =
+    let cond_ast = get_child(ast, 0);
+    let body_ast = get_child(ast, 1);
+    let loop_label = "loop_" + int_to_string(block_id);
+    let body_label = "body_" + int_to_string(block_id);
+    let exit_label = "exit_" + int_to_string(block_id);
+    // Jump to loop header
+    let w1 = sb_push_mir(sb, "  goto " + loop_label);
+    let w2 = sb_push_mir(sb, loop_label + ":");
+    // Lower condition
+    let cond_result = lower_expr_sb(cond_ast, temp_id, block_id + 1, sb);
+    let cond_temp = unpack_temp(cond_result);
+    let cond_block = unpack_block(cond_result);
+    let cond_id = cond_temp - 1;
+    // Branch on condition
+    let w3 = sb_push_mir(sb, "  branch %_t" + int_to_string(cond_id) + ", " + body_label + ", " + exit_label);
+    let w4 = sb_push_mir(sb, body_label + ":");
+    // Lower body
+    let body_result = lower_expr_sb(body_ast, cond_temp, cond_block, sb);
+    let body_temp = unpack_temp(body_result);
+    let body_block = unpack_block(body_result);
+    // Jump back to loop header
+    let w5 = sb_push_mir(sb, "  goto " + loop_label);
+    let w6 = sb_push_mir(sb, exit_label + ":");
+    // While returns unit
+    let result_tmp = "%_t" + int_to_string(body_temp);
+    let w7 = sb_push_mir(sb, "  " + result_tmp + " = const 0");
+    pack_ids(body_temp + 1, body_block);
 
 // Extract lhs from (assign lhs rhs)
 fn assign_lhs_expr(ast: String) -> String =
