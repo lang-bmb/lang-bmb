@@ -527,103 +527,165 @@ fn parse_or_rest(src: String, pos: i64, left: String) -> String =
         if is_error(rr) { rr } else { parse_or_rest(src, unpack_pos(rr), "(binop or " + left + " " + unpack_ast(rr) + ")") }
     } else { pack_result(pos, left) };
 
-// v0.60.222: Iterative if-chain parser using prefix+suffix accumulation
-// Avoids deep recursion for long else-if chains
+// v0.60.238: Refactored if-chain parser with reduced nesting depth
+// Split into helper functions to avoid exponential compilation time
 // prefix = "(if c1 t1 (if c2 t2 ...", suffix = "))"
 // Final AST = prefix + else_body + suffix
+
 fn parse_if_chain_iter(src: String, pos: i64, prefix: String, suffix: String) -> String =
     // pos is right after 'if' keyword, parse: cond { then } else ...
     let rc = parse_or(src, pos);
-    if is_error(rc) { rc } else {
-        let t1 = next_token_raw(src, unpack_pos(rc));
-        if tok_kind(t1) != TK_LBRACE() { make_error("chain-lbrace") } else {
-            let rt = parse_expr(src, tok_end(t1));
-            if is_error(rt) { rt } else {
-                let t2 = next_token_raw(src, unpack_pos(rt));
-                if tok_kind(t2) != TK_RBRACE() { make_error("chain-rbrace1") } else {
-                    let new_prefix = prefix + "(if " + unpack_ast(rc) + " " + unpack_ast(rt) + " ";
-                    let new_suffix = ")" + suffix;
-                    let t3 = next_token_raw(src, tok_end(t2));
-                    if tok_kind(t3) != TK_ELSE() { make_error("chain-else") } else {
-                        let t4 = next_token_raw(src, tok_end(t3));
-                        if tok_kind(t4) == TK_IF() {
-                            parse_if_chain_iter(src, tok_end(t4), new_prefix, new_suffix)
-                        } else if tok_kind(t4) == TK_LBRACE() {
-                            let re = parse_expr(src, tok_end(t4));
-                            if is_error(re) { re } else {
-                                let t5 = next_token_raw(src, unpack_pos(re));
-                                if tok_kind(t5) != TK_RBRACE() { make_error("chain-rbrace2") } else {
-                                    pack_result(tok_end(t5), new_prefix + unpack_ast(re) + new_suffix)
-                                }
-                            }
-                        } else { make_error("chain-else2") }
-                    }
-                }
-            }
-        }
+    if is_error(rc) { rc }
+    else { parse_if_chain_then(src, unpack_pos(rc), unpack_ast(rc), prefix, suffix) };
+
+fn parse_if_chain_then(src: String, pos: i64, cond_ast: String, prefix: String, suffix: String) -> String =
+    let t1 = next_token_raw(src, pos);
+    if tok_kind(t1) != TK_LBRACE() { make_error("chain-lbrace") }
+    else {
+        let rt = parse_expr(src, tok_end(t1));
+        if is_error(rt) { rt }
+        else { parse_if_chain_after_then(src, unpack_pos(rt), cond_ast, unpack_ast(rt), prefix, suffix) }
     };
+
+fn parse_if_chain_after_then(src: String, pos: i64, cond_ast: String, then_ast: String, prefix: String, suffix: String) -> String =
+    let t2 = next_token_raw(src, pos);
+    if tok_kind(t2) != TK_RBRACE() { make_error("chain-rbrace1") }
+    else {
+        let new_prefix = prefix + "(if " + cond_ast + " " + then_ast + " ";
+        let new_suffix = ")" + suffix;
+        parse_if_chain_else(src, tok_end(t2), new_prefix, new_suffix)
+    };
+
+fn parse_if_chain_else(src: String, pos: i64, new_prefix: String, new_suffix: String) -> String =
+    let t3 = next_token_raw(src, pos);
+    if tok_kind(t3) != TK_ELSE() { make_error("chain-else") }
+    else {
+        let t4 = next_token_raw(src, tok_end(t3));
+        let k4 = tok_kind(t4);
+        if k4 == TK_IF() { parse_if_chain_iter(src, tok_end(t4), new_prefix, new_suffix) }
+        else if k4 == TK_LBRACE() { parse_if_chain_final_else(src, tok_end(t4), new_prefix, new_suffix) }
+        else { make_error("chain-else2") }
+    };
+
+fn parse_if_chain_final_else(src: String, pos: i64, new_prefix: String, new_suffix: String) -> String =
+    let re = parse_expr(src, pos);
+    if is_error(re) { re }
+    else { parse_if_chain_finish(src, unpack_pos(re), unpack_ast(re), new_prefix, new_suffix) };
+
+fn parse_if_chain_finish(src: String, pos: i64, else_ast: String, new_prefix: String, new_suffix: String) -> String =
+    let t5 = next_token_raw(src, pos);
+    if tok_kind(t5) != TK_RBRACE() { make_error("chain-rbrace2") }
+    else {
+        let middle = new_prefix + else_ast;
+        let full = middle + new_suffix;
+        pack_result(tok_end(t5), full)
+    };
+
+// v0.60.238: Refactored parse_expr to reduce nesting depth
 
 fn parse_expr(src: String, pos: i64) -> String =
     let tok = next_token_raw(src, pos);
     let kind = tok_kind(tok);
-    if kind == TK_IF() {
-        let rc = parse_expr(src, tok_end(tok));
-        if is_error(rc) { rc } else {
-            let t1 = next_token_raw(src, unpack_pos(rc));
-            // v0.46: Support both 'then/else' (legacy) and '{ } else { }' (v0.32) syntax
-            if tok_kind(t1) == TK_THEN() {
-                let rt = parse_expr(src, tok_end(t1));
-                if is_error(rt) { rt } else {
-                    let t2 = next_token_raw(src, unpack_pos(rt));
-                    if tok_kind(t2) == TK_ELSE() {
-                        let re = parse_expr(src, tok_end(t2));
-                        pack_result(unpack_pos(re), "(if " + unpack_ast(rc) + " " + unpack_ast(rt) + " " + unpack_ast(re) + ")")
-                    } else { make_error("if-else") }
-                }
-            } else if tok_kind(t1) == TK_LBRACE() {
-                let rt = parse_expr(src, tok_end(t1));
-                if is_error(rt) { rt } else {
-                    let t2 = next_token_raw(src, unpack_pos(rt));
-                    if tok_kind(t2) == TK_RBRACE() {
-                        let t3 = next_token_raw(src, tok_end(t2));
-                        if tok_kind(t3) == TK_ELSE() {
-                            let t4 = next_token_raw(src, tok_end(t3));
-                            if tok_kind(t4) == TK_LBRACE() {
-                                let re = parse_expr(src, tok_end(t4));
-                                if is_error(re) { re } else {
-                                    let t5 = next_token_raw(src, unpack_pos(re));
-                                    if tok_kind(t5) == TK_RBRACE() {
-                                        pack_result(tok_end(t5), "(if " + unpack_ast(rc) + " " + unpack_ast(rt) + " " + unpack_ast(re) + ")")
-                                    } else { make_error("if-rbrace2") }
-                                }
-                            } else if tok_kind(t4) == TK_IF() {
-                                // v0.60.222: Use iterative chain parser for else-if
-                                let init_prefix = "(if " + unpack_ast(rc) + " " + unpack_ast(rt) + " ";
-                                let init_suffix = ")";
-                                parse_if_chain_iter(src, tok_end(t4), init_prefix, init_suffix)
-                            } else { make_error("if-lbrace2") }
-                        } else { make_error("if-else-kw") }
-                    } else { make_error("if-rbrace1") }
-                }
-            } else { make_error("if-then-or-brace") }
-        }
-    } else if kind == TK_LET() {
-        let t1 = next_token_raw(src, tok_end(tok));
-        if tok_kind(t1) == TK_IDENT() {
-            let name = get_ident_text(src, tok_end(tok), t1);
-            let t2 = next_token_raw(src, tok_end(t1));
-            if tok_kind(t2) == TK_EQ() {
-                let rv = parse_expr(src, tok_end(t2));
-                if is_error(rv) { rv } else {
-                    let t3 = next_token_raw(src, unpack_pos(rv));
-                    if tok_kind(t3) == TK_SEMI() {
-                        let rb = parse_expr(src, tok_end(t3));
-                        pack_result(unpack_pos(rb), "(let <" + name + "> " + unpack_ast(rv) + " " + unpack_ast(rb) + ")")
-                    } else { make_error("let-semi") }
-                }
-            } else { make_error("let-eq") }
-        } else { make_error("let-name") }
-    } else { parse_or(src, pos) };
+    if kind == TK_IF() { parse_if_expr(src, tok_end(tok)) }
+    else if kind == TK_LET() { parse_let_expr(src, tok_end(tok), pos) }
+    else { parse_or(src, pos) };
+
+fn parse_if_expr(src: String, pos: i64) -> String =
+    let rc = parse_expr(src, pos);
+    if is_error(rc) { rc }
+    else { parse_if_after_cond(src, unpack_pos(rc), unpack_ast(rc)) };
+
+fn parse_if_after_cond(src: String, pos: i64, cond_ast: String) -> String =
+    let t1 = next_token_raw(src, pos);
+    let k1 = tok_kind(t1);
+    // v0.46: Support both 'then/else' (legacy) and '{ } else { }' (v0.32) syntax
+    if k1 == TK_THEN() { parse_if_then_syntax(src, tok_end(t1), cond_ast) }
+    else if k1 == TK_LBRACE() { parse_if_brace_syntax(src, tok_end(t1), cond_ast) }
+    else { make_error("if-then-or-brace") };
+
+fn parse_if_then_syntax(src: String, pos: i64, cond_ast: String) -> String =
+    let rt = parse_expr(src, pos);
+    if is_error(rt) { rt }
+    else { parse_if_then_else(src, unpack_pos(rt), cond_ast, unpack_ast(rt)) };
+
+fn parse_if_then_else(src: String, pos: i64, cond_ast: String, then_ast: String) -> String =
+    let t2 = next_token_raw(src, pos);
+    if tok_kind(t2) != TK_ELSE() { make_error("if-else") }
+    else {
+        let re = parse_expr(src, tok_end(t2));
+        make_if_ast(unpack_pos(re), cond_ast, then_ast, unpack_ast(re))
+    };
+
+fn parse_if_brace_syntax(src: String, pos: i64, cond_ast: String) -> String =
+    let rt = parse_expr(src, pos);
+    if is_error(rt) { rt }
+    else { parse_if_brace_then(src, unpack_pos(rt), cond_ast, unpack_ast(rt)) };
+
+fn parse_if_brace_then(src: String, pos: i64, cond_ast: String, then_ast: String) -> String =
+    let t2 = next_token_raw(src, pos);
+    if tok_kind(t2) != TK_RBRACE() { make_error("if-rbrace1") }
+    else { parse_if_brace_else(src, tok_end(t2), cond_ast, then_ast) };
+
+fn parse_if_brace_else(src: String, pos: i64, cond_ast: String, then_ast: String) -> String =
+    let t3 = next_token_raw(src, pos);
+    if tok_kind(t3) != TK_ELSE() { make_error("if-else-kw") }
+    else { parse_if_brace_else_body(src, tok_end(t3), cond_ast, then_ast) };
+
+fn parse_if_brace_else_body(src: String, pos: i64, cond_ast: String, then_ast: String) -> String =
+    let t4 = next_token_raw(src, pos);
+    let k4 = tok_kind(t4);
+    if k4 == TK_LBRACE() { parse_if_brace_final(src, tok_end(t4), cond_ast, then_ast) }
+    else if k4 == TK_IF() {
+        // v0.60.222: Use iterative chain parser for else-if
+        let init_prefix = "(if " + cond_ast + " " + then_ast + " ";
+        parse_if_chain_iter(src, tok_end(t4), init_prefix, ")")
+    }
+    else { make_error("if-lbrace2") };
+
+fn parse_if_brace_final(src: String, pos: i64, cond_ast: String, then_ast: String) -> String =
+    let re = parse_expr(src, pos);
+    if is_error(re) { re }
+    else { parse_if_brace_finish(src, unpack_pos(re), cond_ast, then_ast, unpack_ast(re)) };
+
+fn parse_if_brace_finish(src: String, pos: i64, cond_ast: String, then_ast: String, else_ast: String) -> String =
+    let t5 = next_token_raw(src, pos);
+    if tok_kind(t5) != TK_RBRACE() { make_error("if-rbrace2") }
+    else { make_if_ast(tok_end(t5), cond_ast, then_ast, else_ast) };
+
+fn make_if_ast(pos: i64, cond_ast: String, then_ast: String, else_ast: String) -> String =
+    let p1 = "(if " + cond_ast;
+    let p2 = p1 + " " + then_ast;
+    let p3 = p2 + " " + else_ast;
+    pack_result(pos, p3 + ")");
+
+fn parse_let_expr(src: String, pos: i64, start_pos: i64) -> String =
+    let t1 = next_token_raw(src, pos);
+    if tok_kind(t1) != TK_IDENT() { make_error("let-name") }
+    else { parse_let_name(src, pos, t1) };
+
+fn parse_let_name(src: String, pos: i64, t1: i64) -> String =
+    let name = get_ident_text(src, pos, t1);
+    let t2 = next_token_raw(src, tok_end(t1));
+    if tok_kind(t2) != TK_EQ() { make_error("let-eq") }
+    else { parse_let_value(src, tok_end(t2), name) };
+
+fn parse_let_value(src: String, pos: i64, name: String) -> String =
+    let rv = parse_expr(src, pos);
+    if is_error(rv) { rv }
+    else { parse_let_body(src, unpack_pos(rv), name, unpack_ast(rv)) };
+
+fn parse_let_body(src: String, pos: i64, name: String, val_ast: String) -> String =
+    let t3 = next_token_raw(src, pos);
+    if tok_kind(t3) != TK_SEMI() { make_error("let-semi") }
+    else {
+        let rb = parse_expr(src, tok_end(t3));
+        make_let_ast(unpack_pos(rb), name, val_ast, unpack_ast(rb))
+    };
+
+fn make_let_ast(pos: i64, name: String, val_ast: String, body_ast: String) -> String =
+    let p1 = "(let <" + name + "> ";
+    let p2 = p1 + val_ast + " ";
+    pack_result(pos, p2 + body_ast + ")");
 
 // ============================================================================
 // SECTION 6: Function and Program Parser
@@ -2970,24 +3032,26 @@ fn find_string_in_list_iter(list: String, target: String, pos: i64) -> i64 =
         else { find_string_in_list_iter(list, target, comma + 1) }
     };
 
-// Generate comparison with string handling
-// v0.60.203: Simplified to only check direct string markers, avoiding deep recursion
+// v0.60.238: Split to reduce let-chain depth
 fn llvm_gen_cmp_with_strings(pred: String, line: String, pos: i64, dest: String, mapping: String) -> String =
     let p1 = low_skip_ws(line, pos);
     let comma = find_comma(line, p1);
     let left = line.slice(p1, comma);
+    llvm_gen_cmp_with_strings_2(pred, line, pos, dest, mapping, left, comma);
+
+fn llvm_gen_cmp_with_strings_2(pred: String, line: String, pos: i64, dest: String, mapping: String, left: String, comma: i64) -> String =
     let p2 = low_skip_ws(line, comma + 1);
     let right = line.slice(p2, line.len());
     let left_trimmed = trim_end(left);
     let right_trimmed = trim_end(right);
-    // Check if either operand is a string using simple prefix check
+    llvm_gen_cmp_with_strings_3(pred, line, pos, dest, mapping, left_trimmed, right_trimmed);
+
+fn llvm_gen_cmp_with_strings_3(pred: String, line: String, pos: i64, dest: String, mapping: String, left_trimmed: String, right_trimmed: String) -> String =
     let left_is_string = is_string_var_fast(left_trimmed, mapping);
     let right_is_string = is_string_var_fast(right_trimmed, mapping);
     if left_is_string or right_is_string {
-        // Generate bmb_string_eq call
         llvm_gen_string_cmp(pred, left_trimmed, right_trimmed, dest, mapping)
     } else {
-        // Generate normal integer comparison
         mapping + "@@@" + llvm_gen_cmp(pred, line, pos, dest)
     };
 
@@ -3036,19 +3100,22 @@ fn find_prev_comma(s: String, pos: i64) -> i64 =
     else if s.byte_at(pos) == 44 { pos }
     else { find_prev_comma(s, pos - 1) };
 
-// Generate string comparison using bmb_string_eq
-// v0.60.225: Fixed - convert i64 to ptr before calling bmb_string_eq
+// v0.60.238: Split to reduce let-chain depth
 fn llvm_gen_string_cmp(pred: String, left: String, right: String, dest: String, mapping: String) -> String =
     let lptr = dest + "_lp";
     let rptr = dest + "_rp";
     let eq_dest = dest + "_streq";
-    // Convert i64 to ptr
+    llvm_gen_string_cmp_2(pred, left, right, dest, mapping, lptr, rptr, eq_dest);
+
+fn llvm_gen_string_cmp_2(pred: String, left: String, right: String, dest: String, mapping: String, lptr: String, rptr: String, eq_dest: String) -> String =
     let conv_left = "  " + lptr + " = inttoptr i64 " + left + " to ptr";
     let conv_right = "  " + rptr + " = inttoptr i64 " + right + " to ptr";
     let call_line = "  " + eq_dest + " = call i64 @bmb_string_eq(ptr " + lptr + ", ptr " + rptr + ")";
+    llvm_gen_string_cmp_3(pred, dest, mapping, eq_dest, conv_left, conv_right, call_line);
+
+fn llvm_gen_string_cmp_3(pred: String, dest: String, mapping: String, eq_dest: String, conv_left: String, conv_right: String, call_line: String) -> String =
     let cmp_line = "  " + dest + "_cmp = icmp ne i64 " + eq_dest + ", 0";
     let result_line = "  " + dest + " = zext i1 " + dest + "_cmp to i64";
-    // For != we need to invert the result
     if pred == "ne" {
         let inverted_cmp = "  " + dest + "_cmp = icmp eq i64 " + eq_dest + ", 0";
         mapping + "@@@" + conv_left + "|" + conv_right + "|" + call_line + "|" + inverted_cmp + "|" + result_line
@@ -3058,32 +3125,41 @@ fn llvm_gen_string_cmp(pred: String, left: String, right: String, dest: String, 
 
 // Track string-returning function calls
 
-// v0.60.223: Generate string concatenation for + operator when operands are strings
+// v0.60.238: Split to reduce let-chain depth
 fn llvm_gen_add_with_strings(line: String, pos: i64, dest: String, mapping: String) -> String =
     let p1 = low_skip_ws(line, pos);
     let comma = find_comma(line, p1);
     let left = line.slice(p1, comma);
+    llvm_gen_add_with_strings_2(line, pos, dest, mapping, p1, comma, left);
+
+fn llvm_gen_add_with_strings_2(line: String, pos: i64, dest: String, mapping: String, p1: i64, comma: i64, left: String) -> String =
     let p2 = low_skip_ws(line, comma + 1);
     let right = line.slice(p2, line.len());
     let left_trimmed = trim_end(left);
     let right_trimmed = trim_end(right);
+    llvm_gen_add_with_strings_3(dest, mapping, left_trimmed, right_trimmed);
+
+fn llvm_gen_add_with_strings_3(dest: String, mapping: String, left_trimmed: String, right_trimmed: String) -> String =
     let left_is_string = is_string_var_fast(left_trimmed, mapping);
     let right_is_string = is_string_var_fast(right_trimmed, mapping);
     if left_is_string or right_is_string {
-        // String concatenation: convert to ptr, call concat, convert back to i64
-        let lptr = dest + "_l";
-        let rptr = dest + "_r";
-        let cptr = dest + "_c";
-        let line1 = "  " + lptr + " = inttoptr i64 " + left_trimmed + " to ptr";
-        let line2 = "  " + rptr + " = inttoptr i64 " + right_trimmed + " to ptr";
-        let line3 = "  " + cptr + " = call ptr @bmb_string_concat(ptr " + lptr + ", ptr " + rptr + ")";
-        let line4 = "  " + dest + " = ptrtoint ptr " + cptr + " to i64";
-        // Mark result as string
-        add_string_marker(mapping, dest) + "@@@" + line1 + "|" + line2 + "|" + line3 + "|" + line4
+        llvm_gen_add_string_concat(dest, mapping, left_trimmed, right_trimmed)
     } else {
-        // Integer addition
         mapping + "@@@  " + dest + " = add nsw i64 " + left_trimmed + ", " + right_trimmed
     };
+
+fn llvm_gen_add_string_concat(dest: String, mapping: String, left_trimmed: String, right_trimmed: String) -> String =
+    let lptr = dest + "_l";
+    let rptr = dest + "_r";
+    let cptr = dest + "_c";
+    llvm_gen_add_string_concat_2(dest, mapping, left_trimmed, right_trimmed, lptr, rptr, cptr);
+
+fn llvm_gen_add_string_concat_2(dest: String, mapping: String, left_trimmed: String, right_trimmed: String, lptr: String, rptr: String, cptr: String) -> String =
+    let line1 = "  " + lptr + " = inttoptr i64 " + left_trimmed + " to ptr";
+    let line2 = "  " + rptr + " = inttoptr i64 " + right_trimmed + " to ptr";
+    let line3 = "  " + cptr + " = call ptr @bmb_string_concat(ptr " + lptr + ", ptr " + rptr + ")";
+    let line4 = "  " + dest + " = ptrtoint ptr " + cptr + " to i64";
+    add_string_marker(mapping, dest) + "@@@" + line1 + "|" + line2 + "|" + line3 + "|" + line4;
 
 fn llvm_gen_call_with_string_tracking(line: String, pos: i64, dest: String, mapping: String) -> String =
     llvm_gen_call_with_string_tracking_and_fns(line, pos, dest, mapping, "");
