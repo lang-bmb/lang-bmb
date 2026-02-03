@@ -182,6 +182,14 @@ char* bmb_int_to_string(int64_t n) {
     return s;
 }
 
+// v0.60.244: Fast integer-to-BmbString conversion for bootstrap compiler
+// Returns BmbString* which matches the bootstrap's String type
+BmbString* bmb_fast_i2s(int64_t n) {
+    char* s = (char*)malloc(21);
+    snprintf(s, 21, "%" PRId64, n);
+    return bmb_string_wrap(s);
+}
+
 // Memory access functions
 void bmb_store_i64(int64_t ptr, int64_t value) {
     *((int64_t*)ptr) = value;

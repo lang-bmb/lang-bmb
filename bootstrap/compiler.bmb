@@ -168,9 +168,50 @@ fn tok_end(r: i64) -> i64 = r - (r / 1000000) * 1000000;
 fn tok_kind(r: i64) -> i64 = tok_val(r);
 fn make_tok(kind: i64, endpos: i64) -> i64 = kind * 1000000 + endpos;
 
+// v0.60.243: Optimized keyword matching with length-based dispatch
+// Reduces average comparisons from 9.5 to ~2-3 by checking length first
 fn keyword_or_ident(s: String, start: i64, endpos: i64) -> i64 =
     let word = s.slice(start, endpos);
-    if word == "fn" { make_tok(TK_FN(), endpos) } else if word == "let" { make_tok(TK_LET(), endpos) } else if word == "if" { make_tok(TK_IF(), endpos) } else if word == "then" { make_tok(TK_THEN(), endpos) } else if word == "else" { make_tok(TK_ELSE(), endpos) } else if word == "true" { make_tok(TK_TRUE(), endpos) } else if word == "false" { make_tok(TK_FALSE(), endpos) } else if word == "and" { make_tok(TK_AND(), endpos) } else if word == "or" { make_tok(TK_OR(), endpos) } else if word == "not" { make_tok(TK_NOT(), endpos) } else if word == "pre" { make_tok(TK_PRE(), endpos) } else if word == "post" { make_tok(TK_POST(), endpos) } else if word == "mut" { make_tok(TK_MUT(), endpos) } else if word == "i32" { make_tok(TK_I32(), endpos) } else if word == "i64" { make_tok(TK_I64(), endpos) } else if word == "f64" { make_tok(TK_F64(), endpos) } else if word == "bool" { make_tok(TK_BOOL(), endpos) } else if word == "String" { make_tok(TK_STRING_TYPE(), endpos) } else { make_tok(TK_IDENT(), endpos) };
+    let len = endpos - start;
+    if len == 2 { keyword_len2(word, endpos) }
+    else if len == 3 { keyword_len3(word, endpos) }
+    else if len == 4 { keyword_len4(word, endpos) }
+    else if len == 5 { keyword_len5(word, endpos) }
+    else if len == 6 { keyword_len6(word, endpos) }
+    else { make_tok(TK_IDENT(), endpos) };
+
+fn keyword_len2(word: String, endpos: i64) -> i64 =
+    if word == "fn" { make_tok(TK_FN(), endpos) }
+    else if word == "if" { make_tok(TK_IF(), endpos) }
+    else if word == "or" { make_tok(TK_OR(), endpos) }
+    else { make_tok(TK_IDENT(), endpos) };
+
+fn keyword_len3(word: String, endpos: i64) -> i64 =
+    if word == "let" { make_tok(TK_LET(), endpos) }
+    else if word == "and" { make_tok(TK_AND(), endpos) }
+    else if word == "not" { make_tok(TK_NOT(), endpos) }
+    else if word == "pre" { make_tok(TK_PRE(), endpos) }
+    else if word == "mut" { make_tok(TK_MUT(), endpos) }
+    else if word == "i32" { make_tok(TK_I32(), endpos) }
+    else if word == "i64" { make_tok(TK_I64(), endpos) }
+    else if word == "f64" { make_tok(TK_F64(), endpos) }
+    else { make_tok(TK_IDENT(), endpos) };
+
+fn keyword_len4(word: String, endpos: i64) -> i64 =
+    if word == "then" { make_tok(TK_THEN(), endpos) }
+    else if word == "else" { make_tok(TK_ELSE(), endpos) }
+    else if word == "true" { make_tok(TK_TRUE(), endpos) }
+    else if word == "bool" { make_tok(TK_BOOL(), endpos) }
+    else if word == "post" { make_tok(TK_POST(), endpos) }
+    else { make_tok(TK_IDENT(), endpos) };
+
+fn keyword_len5(word: String, endpos: i64) -> i64 =
+    if word == "false" { make_tok(TK_FALSE(), endpos) }
+    else { make_tok(TK_IDENT(), endpos) };
+
+fn keyword_len6(word: String, endpos: i64) -> i64 =
+    if word == "String" { make_tok(TK_STRING_TYPE(), endpos) }
+    else { make_tok(TK_IDENT(), endpos) };
 
 fn next_token_raw(s: String, pos: i64) -> i64 =
     let p = skip_ws_comments(s, pos);
@@ -201,39 +242,57 @@ fn get_string_text(s: String, pos: i64, tok: i64) -> String =
 // v0.60.120: Escape parens in string content for AST representation
 // This prevents unbalanced parens in strings from breaking AST parsing
 // Uses \L for (, \R for ), \B for \ to avoid actual parens in escaped content
+// v0.60.245: Rewritten with StringBuilder for O(n) instead of O(n²)
 fn escape_parens_for_ast(s: String) -> String =
-    escape_parens_acc(s, 0, "");
+    let sb = sb_new();
+    let _p1 = escape_parens_sb(s, 0, sb);
+    sb_build(sb);
 
-fn escape_parens_acc(s: String, pos: i64, acc: String) -> String =
-    if pos >= s.len() { acc }
+fn escape_parens_sb(s: String, pos: i64, sb: i64) -> i64 =
+    if pos >= s.len() { 0 }
     else {
         let c = s.byte_at(pos);
         // 92=\, 40=(, 41=), 76=L, 82=R, 66=B
-        let escaped = if c == 92 { chr(92) + chr(66) }
-                      else if c == 40 { chr(92) + chr(76) }
-                      else if c == 41 { chr(92) + chr(82) }
-                      else { chr(c) };
-        escape_parens_acc(s, pos + 1, acc + escaped)
+        let _p2 = if c == 92 {
+            let _p3 = sb_push(sb, chr(92));
+            sb_push(sb, chr(66))
+        } else if c == 40 {
+            let _p4 = sb_push(sb, chr(92));
+            sb_push(sb, chr(76))
+        } else if c == 41 {
+            let _p5 = sb_push(sb, chr(92));
+            sb_push(sb, chr(82))
+        } else {
+            sb_push(sb, chr(c))
+        };
+        escape_parens_sb(s, pos + 1, sb)
     };
 
 // v0.60.120: Unescape parens from AST string content
 // \L -> (, \R -> ), \B -> \
+// v0.60.245: Rewritten with StringBuilder for O(n) instead of O(n²)
 fn unescape_parens_from_ast(s: String) -> String =
-    unescape_parens_acc(s, 0, "");
+    let sb = sb_new();
+    let _q1 = unescape_parens_sb(s, 0, sb);
+    sb_build(sb);
 
-fn unescape_parens_acc(s: String, pos: i64, acc: String) -> String =
-    if pos >= s.len() { acc }
+fn unescape_parens_sb(s: String, pos: i64, sb: i64) -> i64 =
+    if pos >= s.len() { 0 }
     else if s.byte_at(pos) == 92 and pos + 1 < s.len() {
         let next = s.byte_at(pos + 1);
         // 76=L -> 40=(, 82=R -> 41=), 66=B -> 92=\
-        let decoded = if next == 76 { chr(40) }
-                      else if next == 82 { chr(41) }
-                      else if next == 66 { chr(92) }
-                      else { chr(92) + chr(next) };
-        unescape_parens_acc(s, pos + 2, acc + decoded)
+        let _q2 = if next == 76 { sb_push(sb, chr(40)) }
+                  else if next == 82 { sb_push(sb, chr(41)) }
+                  else if next == 66 { sb_push(sb, chr(92)) }
+                  else {
+                      let _q3 = sb_push(sb, chr(92));
+                      sb_push(sb, chr(next))
+                  };
+        unescape_parens_sb(s, pos + 2, sb)
     }
     else {
-        unescape_parens_acc(s, pos + 1, acc + chr(s.byte_at(pos)))
+        let _q4 = sb_push(sb, chr(s.byte_at(pos)));
+        unescape_parens_sb(s, pos + 1, sb)
     };
 
 // ============================================================================
@@ -739,15 +798,27 @@ fn parse_fn(src: String, pos: i64) -> String =
         } else { make_error("fn-lparen") }
     } else { make_error("fn-name") };
 
-fn parse_program(src: String, pos: i64, fns: String) -> String =
+// v0.60.241: Refactored to use StringBuilder for O(1) amortized accumulation
+// Previously O(N²) due to fns + " " + unpack_ast(rf) pattern
+fn parse_program_sb(src: String, pos: i64, sb: i64) -> String =
     let tok = next_token_raw(src, pos);
     let kind = tok_kind(tok);
-    if kind == TK_EOF() { "(program" + fns + ")" } else if kind == TK_FN() {
+    if kind == TK_EOF() {
+        let w1 = sb_push(sb, ")");
+        sb_build(sb)
+    } else if kind == TK_FN() {
         let rf = parse_fn(src, tok_end(tok));
-        if is_error(rf) { rf } else { parse_program(src, unpack_pos(rf), fns + " " + unpack_ast(rf)) }
+        if is_error(rf) { rf } else {
+            let w1 = sb_push(sb, " ");
+            let w2 = sb_push(sb, unpack_ast(rf));
+            parse_program_sb(src, unpack_pos(rf), sb)
+        }
     } else { make_error("program") };
 
-fn parse_source(src: String) -> String = parse_program(src, 0, "");
+fn parse_source(src: String) -> String =
+    let sb = sb_new();
+    let w1 = sb_push(sb, "(program");
+    parse_program_sb(src, 0, sb);
 
 // ============================================================================
 // SECTION 7: S-Expression Utilities (for lowering)
@@ -995,28 +1066,60 @@ fn find_field_sep(s: String, pos: i64) -> i64 =
 
 // v0.60.237: Escape/unescape tilde in work item fields to prevent confusion with separator
 // ~ (126) -> \^ (92, 94), \ (92) -> \\ (92, 92)
-fn escape_field(s: String) -> String = escape_field_acc(s, 0, "");
-fn escape_field_acc(s: String, pos: i64, acc: String) -> String =
-    if pos >= s.len() { acc }
+// v0.60.245: Rewritten with StringBuilder for O(n) instead of O(n²)
+fn escape_field(s: String) -> String =
+    let sb = sb_new();
+    let _e1 = escape_field_sb(s, 0, sb);
+    sb_build(sb);
+
+fn escape_field_sb(s: String, pos: i64, sb: i64) -> i64 =
+    if pos >= s.len() { 0 }
     else {
         let c = s.byte_at(pos);
-        if c == 126 { escape_field_acc(s, pos + 1, acc + chr(92) + chr(94)) }
-        else if c == 92 { escape_field_acc(s, pos + 1, acc + chr(92) + chr(92)) }
-        else { escape_field_acc(s, pos + 1, acc + chr(c)) }
+        if c == 126 {
+            let _e2 = sb_push(sb, chr(92));
+            let _e3 = sb_push(sb, chr(94));
+            escape_field_sb(s, pos + 1, sb)
+        }
+        else if c == 92 {
+            let _e4 = sb_push(sb, chr(92));
+            let _e5 = sb_push(sb, chr(92));
+            escape_field_sb(s, pos + 1, sb)
+        }
+        else {
+            let _e6 = sb_push(sb, chr(c));
+            escape_field_sb(s, pos + 1, sb)
+        }
     };
 
-fn unescape_field(s: String) -> String = unescape_field_acc(s, 0, "");
-fn unescape_field_acc(s: String, pos: i64, acc: String) -> String =
-    if pos >= s.len() { acc }
+fn unescape_field(s: String) -> String =
+    let sb = sb_new();
+    let _u1 = unescape_field_sb(s, 0, sb);
+    sb_build(sb);
+
+fn unescape_field_sb(s: String, pos: i64, sb: i64) -> i64 =
+    if pos >= s.len() { 0 }
     else {
         let c = s.byte_at(pos);
         if c == 92 and pos + 1 < s.len() {
             let next = s.byte_at(pos + 1);
-            if next == 94 { unescape_field_acc(s, pos + 2, acc + chr(126)) }
-            else if next == 92 { unescape_field_acc(s, pos + 2, acc + chr(92)) }
-            else { unescape_field_acc(s, pos + 1, acc + chr(c)) }
+            if next == 94 {
+                let _u2 = sb_push(sb, chr(126));
+                unescape_field_sb(s, pos + 2, sb)
+            }
+            else if next == 92 {
+                let _u3 = sb_push(sb, chr(92));
+                unescape_field_sb(s, pos + 2, sb)
+            }
+            else {
+                let _u4 = sb_push(sb, chr(c));
+                unescape_field_sb(s, pos + 1, sb)
+            }
         }
-        else { unescape_field_acc(s, pos + 1, acc + chr(c)) }
+        else {
+            let _u5 = sb_push(sb, chr(c));
+            unescape_field_sb(s, pos + 1, sb)
+        }
     };
 
 fn make_work(t: String, f1: String, f2: String, f3: String, f4: String, f5: String) -> String =
@@ -2557,6 +2660,8 @@ fn gen_extern_string_eq() -> String = "declare i64 @bmb_string_eq(ptr, ptr)";
 fn gen_extern_chr() -> String = "declare ptr @bmb_chr(i64)";
 fn gen_extern_ord() -> String = "declare i64 @bmb_ord(ptr)";
 fn gen_extern_int_to_string() -> String = "declare ptr @bmb_int_to_string(i64)";
+// v0.60.244: Fast i2s that returns BmbString* (matches String type)
+fn gen_extern_fast_i2s() -> String = "declare ptr @bmb_fast_i2s(i64)";
 
 // File I/O
 fn gen_extern_file_exists() -> String = "declare i64 @bmb_file_exists(ptr)";
@@ -2570,6 +2675,8 @@ fn gen_extern_write_file_newlines() -> String = "declare i64 @write_file_newline
 // StringBuilder
 fn gen_extern_sb_new() -> String = "declare i64 @bmb_sb_new()";
 fn gen_extern_sb_push() -> String = "declare i64 @bmb_sb_push(i64, ptr)";
+fn gen_extern_sb_push_int() -> String = "declare i64 @bmb_sb_push_int(i64, i64)";
+fn gen_extern_sb_push_char() -> String = "declare i64 @bmb_sb_push_char(i64, i64)";
 fn gen_extern_sb_len() -> String = "declare i64 @bmb_sb_len(i64)";
 fn gen_extern_sb_build() -> String = "declare ptr @bmb_sb_build(i64)";
 fn gen_extern_sb_clear() -> String = "declare i64 @bmb_sb_clear(i64)";
@@ -2602,15 +2709,18 @@ fn gen_runtime_decls_string() -> String =
     gen_extern_string_len() + "|" + gen_extern_string_char_at() + "|" +
     gen_extern_string_slice() + "|" + gen_extern_string_concat() + "|" +
     gen_extern_string_eq() + "|" + gen_extern_chr() + "|" + gen_extern_ord() + "|" +
-    gen_extern_int_to_string() + "|";
+    gen_extern_int_to_string() + "|" + gen_extern_fast_i2s() + "|";
 
 fn gen_runtime_decls_file() -> String =
     gen_extern_file_exists() + "|" + gen_extern_file_size() + "|" +
     gen_extern_read_file() + "|" + gen_extern_write_file() + "|" + gen_extern_append_file() + "|" +
     gen_extern_write_file_newlines() + "|";
 
+// v0.60.244: Added sb_push_int and sb_push_char for faster int-to-string conversion
 fn gen_runtime_decls_rest() -> String =
-    gen_extern_sb_new() + "|" + gen_extern_sb_push() + "|" + gen_extern_sb_len() + "|" +
+    gen_extern_sb_new() + "|" + gen_extern_sb_push() + "|" +
+    gen_extern_sb_push_int() + "|" + gen_extern_sb_push_char() + "|" +
+    gen_extern_sb_len() + "|" +
     gen_extern_sb_build() + "|" + gen_extern_sb_clear() + "|" +
     gen_extern_system() + "|" + gen_extern_getenv() + "|" +
     gen_extern_arg_count() + "|" + gen_extern_get_arg() + "|" +
@@ -2620,29 +2730,27 @@ fn gen_runtime_decls_rest() -> String =
 // SECTION 12b: String Literal Handling (v0.60.109)
 // ============================================================================
 
-// Collect all string literals from MIR, returns pipe-separated list
+// Collect all string literals from MIR, returns tab-separated list
+// v0.60.242: Optimized to avoid O(N²) sb_build calls during collection
+// Now passes current list as parameter instead of rebuilding every iteration
 fn collect_strings_from_mir(mir: String) -> String =
-    let sb = sb_new();
-    let w1 = collect_strings_acc(mir, 0, sb);
-    sb_build(sb);
+    collect_strings_acc_v2(mir, 0, "");
 
-// v0.60.123: Use tab character (chr(9)) as separator for string list to avoid
-// conflicts with strings containing pipe character like "|"
-fn collect_strings_acc(mir: String, pos: i64, sb: i64) -> i64 =
-    if pos >= mir.len() { 0 } else {
+// v0.60.242: Rewritten to avoid sb_build on every iteration
+// Uses String accumulator directly, trading some allocation for avoiding
+// the O(N) sb_build call that was happening on every string found
+fn collect_strings_acc_v2(mir: String, pos: i64, acc: String) -> String =
+    if pos >= mir.len() { acc } else {
         let next = find_string_in_mir(mir, pos);
-        if next < 0 { 0 } else {
+        if next < 0 { acc } else {
             let str_start = next + 8;
             let str_end = find_quote_in_mir(mir, str_start);
             let str_content = mir.slice(str_start, str_end);
-            let existing = sb_build(sb);
-            let is_dup = string_in_list(existing, str_content);
-            let w1 = if is_dup == 0 {
-                let len = sb_len(sb);
-                let w2 = if len > 0 { sb_push(sb, chr(9)) } else { 0 };
-                sb_push(sb, str_content)
-            } else { 0 };
-            collect_strings_acc(mir, str_end + 1, sb)
+            let is_dup = string_in_list(acc, str_content);
+            let new_acc = if is_dup == 0 {
+                if acc == "" { str_content } else { acc + chr(9) + str_content }
+            } else { acc };
+            collect_strings_acc_v2(mir, str_end + 1, new_acc)
         }
     };
 
