@@ -294,7 +294,15 @@ log "${YELLOW}[3/4] Stage 3: Stage 2 Binary → Stage 3 LLVM IR${NC}"
 log_verbose "Compiling Stage 2 LLVM IR to native binary..."
 
 if command -v llc &> /dev/null; then
-    llc -filetype=obj -O2 "$STAGE2_LL" -o "$STAGE2_OBJ"
+    # v0.60.240: Use opt for IR optimization before llc (required for correct codegen)
+    STAGE2_BC="${OUTPUT_DIR}/bmb-stage2.bc"
+    if command -v opt &> /dev/null; then
+        log_verbose "Optimizing Stage 2 IR with opt..."
+        opt -passes='default<O3>,scalarizer' "$STAGE2_LL" -o "$STAGE2_BC"
+        llc -filetype=obj -O3 "$STAGE2_BC" -o "$STAGE2_OBJ"
+    else
+        llc -filetype=obj -O2 "$STAGE2_LL" -o "$STAGE2_OBJ"
+    fi
 
     if [ ! -f "$STAGE2_OBJ" ]; then
         log "${RED}Stage 3 FAILED: Could not compile LLVM IR to object file${NC}"
