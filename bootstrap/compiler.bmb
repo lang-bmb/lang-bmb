@@ -2585,29 +2585,35 @@ fn gen_extern_get_arg() -> String = "declare ptr @get_arg(i64)";
 // Panic/Error handling
 fn gen_extern_panic() -> String = "declare void @bmb_panic(ptr)";
 
+// v0.60.238: Split to avoid deep concat nesting
 fn gen_runtime_decls() -> String =
-    // Basic I/O
+    let io = gen_runtime_decls_io();
+    let str = gen_runtime_decls_string();
+    let file = gen_runtime_decls_file();
+    let rest = gen_runtime_decls_rest();
+    io + str + file + rest;
+
+fn gen_runtime_decls_io() -> String =
     gen_extern_println() + "|" + gen_extern_print_str() + "|" + gen_extern_println_str() + "|" +
-    // Math
-    gen_extern_abs() + "|" + gen_extern_min() + "|" + gen_extern_max() + "|" +
-    // String operations
+    gen_extern_abs() + "|" + gen_extern_min() + "|" + gen_extern_max() + "|";
+
+fn gen_runtime_decls_string() -> String =
     gen_extern_string_new() + "|" + gen_extern_string_from_cstr() + "|" +
     gen_extern_string_len() + "|" + gen_extern_string_char_at() + "|" +
     gen_extern_string_slice() + "|" + gen_extern_string_concat() + "|" +
     gen_extern_string_eq() + "|" + gen_extern_chr() + "|" + gen_extern_ord() + "|" +
-    gen_extern_int_to_string() + "|" +
-    // File I/O
+    gen_extern_int_to_string() + "|";
+
+fn gen_runtime_decls_file() -> String =
     gen_extern_file_exists() + "|" + gen_extern_file_size() + "|" +
     gen_extern_read_file() + "|" + gen_extern_write_file() + "|" + gen_extern_append_file() + "|" +
-    gen_extern_write_file_newlines() + "|" +
-    // StringBuilder
+    gen_extern_write_file_newlines() + "|";
+
+fn gen_runtime_decls_rest() -> String =
     gen_extern_sb_new() + "|" + gen_extern_sb_push() + "|" + gen_extern_sb_len() + "|" +
     gen_extern_sb_build() + "|" + gen_extern_sb_clear() + "|" +
-    // Process
     gen_extern_system() + "|" + gen_extern_getenv() + "|" +
-    // CLI
     gen_extern_arg_count() + "|" + gen_extern_get_arg() + "|" +
-    // Error
     gen_extern_panic();
 
 // ============================================================================
@@ -3100,27 +3106,27 @@ fn find_prev_comma(s: String, pos: i64) -> i64 =
     else if s.byte_at(pos) == 44 { pos }
     else { find_prev_comma(s, pos - 1) };
 
-// v0.60.238: Split to reduce let-chain depth
+// v0.60.238: Simplified to avoid deep parameter nesting
 fn llvm_gen_string_cmp(pred: String, left: String, right: String, dest: String, mapping: String) -> String =
     let lptr = dest + "_lp";
     let rptr = dest + "_rp";
     let eq_dest = dest + "_streq";
-    llvm_gen_string_cmp_2(pred, left, right, dest, mapping, lptr, rptr, eq_dest);
+    let conv_l = "  " + lptr + " = inttoptr i64 " + left + " to ptr";
+    llvm_gen_string_cmp_2(pred, right, dest, mapping, lptr, rptr, eq_dest, conv_l);
 
-fn llvm_gen_string_cmp_2(pred: String, left: String, right: String, dest: String, mapping: String, lptr: String, rptr: String, eq_dest: String) -> String =
-    let conv_left = "  " + lptr + " = inttoptr i64 " + left + " to ptr";
-    let conv_right = "  " + rptr + " = inttoptr i64 " + right + " to ptr";
-    let call_line = "  " + eq_dest + " = call i64 @bmb_string_eq(ptr " + lptr + ", ptr " + rptr + ")";
-    llvm_gen_string_cmp_3(pred, dest, mapping, eq_dest, conv_left, conv_right, call_line);
+fn llvm_gen_string_cmp_2(pred: String, right: String, dest: String, mapping: String, lptr: String, rptr: String, eq_dest: String, conv_l: String) -> String =
+    let conv_r = "  " + rptr + " = inttoptr i64 " + right + " to ptr";
+    let call_ln = "  " + eq_dest + " = call i64 @bmb_string_eq(ptr " + lptr + ", ptr " + rptr + ")";
+    let cmp_ln = "  " + dest + "_cmp = icmp ne i64 " + eq_dest + ", 0";
+    llvm_gen_string_cmp_3(pred, dest, mapping, conv_l, conv_r, call_ln, cmp_ln);
 
-fn llvm_gen_string_cmp_3(pred: String, dest: String, mapping: String, eq_dest: String, conv_left: String, conv_right: String, call_line: String) -> String =
-    let cmp_line = "  " + dest + "_cmp = icmp ne i64 " + eq_dest + ", 0";
-    let result_line = "  " + dest + " = zext i1 " + dest + "_cmp to i64";
+fn llvm_gen_string_cmp_3(pred: String, dest: String, mapping: String, conv_l: String, conv_r: String, call_ln: String, cmp_ln: String) -> String =
+    let res_ln = "  " + dest + " = zext i1 " + dest + "_cmp to i64";
     if pred == "ne" {
-        let inverted_cmp = "  " + dest + "_cmp = icmp eq i64 " + eq_dest + ", 0";
-        mapping + "@@@" + conv_left + "|" + conv_right + "|" + call_line + "|" + inverted_cmp + "|" + result_line
+        let inv_cmp = "  " + dest + "_cmp = icmp eq i64 " + dest + "_streq, 0";
+        mapping + "@@@" + conv_l + "|" + conv_r + "|" + call_ln + "|" + inv_cmp + "|" + res_ln
     } else {
-        mapping + "@@@" + conv_left + "|" + conv_right + "|" + call_line + "|" + cmp_line + "|" + result_line
+        mapping + "@@@" + conv_l + "|" + conv_r + "|" + call_ln + "|" + cmp_ln + "|" + res_ln
     };
 
 // Track string-returning function calls
