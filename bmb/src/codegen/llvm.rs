@@ -763,6 +763,32 @@ impl<'ctx> LlvmContext<'ctx> {
         let hashmap_free_fn = self.module.add_function("hashmap_free", hashmap_free_type, None);
         self.functions.insert("hashmap_free".to_string(), hashmap_free_fn);
 
+        // v0.60.246: String-key hashmap functions (strmap_*)
+        // strmap_new() -> i64 (returns handle)
+        let strmap_new_type = i64_type.fn_type(&[], false);
+        let strmap_new_fn = self.module.add_function("strmap_new", strmap_new_type, None);
+        self.functions.insert("strmap_new".to_string(), strmap_new_fn);
+
+        // strmap_insert(handle: i64, key: ptr, value: i64) -> i64
+        let strmap_insert_type = i64_type.fn_type(&[i64_type.into(), ptr_type.into(), i64_type.into()], false);
+        let strmap_insert_fn = self.module.add_function("strmap_insert", strmap_insert_type, None);
+        self.functions.insert("strmap_insert".to_string(), strmap_insert_fn);
+
+        // strmap_get(handle: i64, key: ptr) -> i64
+        let strmap_get_type = i64_type.fn_type(&[i64_type.into(), ptr_type.into()], false);
+        let strmap_get_fn = self.module.add_function("strmap_get", strmap_get_type, None);
+        self.functions.insert("strmap_get".to_string(), strmap_get_fn);
+
+        // strmap_contains(handle: i64, key: ptr) -> i64
+        let strmap_contains_type = i64_type.fn_type(&[i64_type.into(), ptr_type.into()], false);
+        let strmap_contains_fn = self.module.add_function("strmap_contains", strmap_contains_type, None);
+        self.functions.insert("strmap_contains".to_string(), strmap_contains_fn);
+
+        // strmap_size(handle: i64) -> i64
+        let strmap_size_type = i64_type.fn_type(&[i64_type.into()], false);
+        let strmap_size_fn = self.module.add_function("strmap_size", strmap_size_type, None);
+        self.functions.insert("strmap_size".to_string(), strmap_size_fn);
+
         // v0.99: String conversion functions
         // char_to_string(c: i32) -> ptr (returns heap-allocated string)
         let char_to_str_type = ptr_type.fn_type(&[i32_type.into()], false);

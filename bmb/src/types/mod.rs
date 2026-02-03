@@ -382,6 +382,19 @@ impl TypeChecker {
         // puts_cstr(ptr: i64) -> i64 (v0.60.65: print C string from raw pointer)
         functions.insert("puts_cstr".to_string(), (vec![Type::I64], Type::I64));
 
+        // v0.60.246: String-key HashMap for O(1) lookups in bootstrap compiler
+        // (Named strmap_* to avoid conflict with existing i64-key hashmap_* functions)
+        // strmap_new() -> i64 (create new hashmap, returns handle)
+        functions.insert("strmap_new".to_string(), (vec![], Type::I64));
+        // strmap_insert(handle: i64, key: String, value: i64) -> i64 (returns 1 on success)
+        functions.insert("strmap_insert".to_string(), (vec![Type::I64, Type::String, Type::I64], Type::I64));
+        // strmap_get(handle: i64, key: String) -> i64 (returns value or -1 if not found)
+        functions.insert("strmap_get".to_string(), (vec![Type::I64, Type::String], Type::I64));
+        // strmap_contains(handle: i64, key: String) -> i64 (returns 1 if found, 0 if not)
+        functions.insert("strmap_contains".to_string(), (vec![Type::I64, Type::String], Type::I64));
+        // strmap_size(handle: i64) -> i64 (returns number of entries)
+        functions.insert("strmap_size".to_string(), (vec![Type::I64], Type::I64));
+
         // v0.50.36: find_close_paren is now defined in BMB, not as builtin
 
         // v0.31.21: Character conversion builtins

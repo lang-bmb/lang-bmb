@@ -481,6 +481,15 @@ impl TextCodeGen {
         writeln!(out, "declare i64 @puts_cstr(ptr) nounwind")?;
         writeln!(out)?;
 
+        // v0.60.246: String-key HashMap for O(1) lookups (strmap_*)
+        writeln!(out, "; Runtime declarations - String HashMap")?;
+        writeln!(out, "declare i64 @strmap_new() nounwind")?;
+        writeln!(out, "declare i64 @strmap_insert(i64, ptr, i64) nounwind")?;
+        writeln!(out, "declare i64 @strmap_get(i64, ptr) nounwind")?;
+        writeln!(out, "declare i64 @strmap_contains(i64, ptr) nounwind")?;
+        writeln!(out, "declare i64 @strmap_size(i64) nounwind")?;
+        writeln!(out)?;
+
         // v0.50.36: find_close_paren is now defined in BMB, no extern needed
 
         // v0.34: Math intrinsics for Phase 34.4 Benchmark Gate

@@ -1474,6 +1474,182 @@ int64_t bmb_sender_clone(int64_t sender_handle) {
 }
 
 // ============================================================================
+// v0.60.246: String-key HashMap for O(1) lookups in bootstrap compiler
+// ============================================================================
+
+#define STRMAP_INITIAL_CAPACITY 64
+#define STRMAP_LOAD_FACTOR 0.75
+
+typedef struct StrMapEntry {
+    char* key;
+    int64_t value;
+    struct StrMapEntry* next;
+} StrMapEntry;
+
+typedef struct {
+    StrMapEntry** buckets;
+    int64_t capacity;
+    int64_t size;
+} StrMap;
+
+// FNV-1a hash function for string keys
+static uint64_t strmap_hash(const char* key, int64_t len) {
+    uint64_t hash = 14695981039346656037ULL;
+    for (int64_t i = 0; i < len; i++) {
+        hash ^= (unsigned char)key[i];
+        hash *= 1099511628211ULL;
+    }
+    return hash;
+}
+
+// Create new strmap
+int64_t bmb_strmap_new(void) {
+    StrMap* map = (StrMap*)malloc(sizeof(StrMap));
+    map->capacity = STRMAP_INITIAL_CAPACITY;
+    map->size = 0;
+    map->buckets = (StrMapEntry**)calloc(map->capacity, sizeof(StrMapEntry*));
+    return (int64_t)map;
+}
+
+// Free strmap
+void bmb_strmap_free(int64_t handle) {
+    if (!handle) return;
+    StrMap* map = (StrMap*)handle;
+    for (int64_t i = 0; i < map->capacity; i++) {
+        StrMapEntry* entry = map->buckets[i];
+        while (entry) {
+            StrMapEntry* next = entry->next;
+            free(entry->key);
+            free(entry);
+            entry = next;
+        }
+    }
+    free(map->buckets);
+    free(map);
+}
+
+// Resize strmap when load factor exceeded
+static void strmap_resize(StrMap* map) {
+    int64_t old_capacity = map->capacity;
+    StrMapEntry** old_buckets = map->buckets;
+
+    map->capacity *= 2;
+    map->buckets = (StrMapEntry**)calloc(map->capacity, sizeof(StrMapEntry*));
+    map->size = 0;
+
+    for (int64_t i = 0; i < old_capacity; i++) {
+        StrMapEntry* entry = old_buckets[i];
+        while (entry) {
+            StrMapEntry* next = entry->next;
+            // Reinsert into new buckets
+            uint64_t hash = strmap_hash(entry->key, strlen(entry->key));
+            int64_t idx = hash % map->capacity;
+            entry->next = map->buckets[idx];
+            map->buckets[idx] = entry;
+            map->size++;
+            entry = next;
+        }
+    }
+    free(old_buckets);
+}
+
+// Insert key-value pair (BmbString* key)
+int64_t bmb_strmap_insert(int64_t handle, const BmbString* key, int64_t value) {
+    if (!handle || !key || !key->data) return 0;
+    StrMap* map = (StrMap*)handle;
+
+    // Check load factor
+    if ((double)map->size / map->capacity > STRMAP_LOAD_FACTOR) {
+        strmap_resize(map);
+    }
+
+    uint64_t hash = strmap_hash(key->data, key->len);
+    int64_t idx = hash % map->capacity;
+
+    // Check if key exists
+    StrMapEntry* entry = map->buckets[idx];
+    while (entry) {
+        if (strlen(entry->key) == (size_t)key->len &&
+            memcmp(entry->key, key->data, key->len) == 0) {
+            entry->value = value;  // Update existing
+            return 1;
+        }
+        entry = entry->next;
+    }
+
+    // Insert new entry
+    StrMapEntry* new_entry = (StrMapEntry*)malloc(sizeof(StrMapEntry));
+    new_entry->key = (char*)malloc(key->len + 1);
+    memcpy(new_entry->key, key->data, key->len);
+    new_entry->key[key->len] = '\0';
+    new_entry->value = value;
+    new_entry->next = map->buckets[idx];
+    map->buckets[idx] = new_entry;
+    map->size++;
+
+    return 1;
+}
+
+// Get value by key (returns -1 if not found)
+int64_t bmb_strmap_get(int64_t handle, const BmbString* key) {
+    if (!handle || !key || !key->data) return -1;
+    StrMap* map = (StrMap*)handle;
+
+    uint64_t hash = strmap_hash(key->data, key->len);
+    int64_t idx = hash % map->capacity;
+
+    StrMapEntry* entry = map->buckets[idx];
+    while (entry) {
+        if (strlen(entry->key) == (size_t)key->len &&
+            memcmp(entry->key, key->data, key->len) == 0) {
+            return entry->value;
+        }
+        entry = entry->next;
+    }
+    return -1;
+}
+
+// Check if key exists (returns 1 if found, 0 if not)
+int64_t bmb_strmap_contains(int64_t handle, const BmbString* key) {
+    if (!handle || !key || !key->data) return 0;
+    StrMap* map = (StrMap*)handle;
+
+    uint64_t hash = strmap_hash(key->data, key->len);
+    int64_t idx = hash % map->capacity;
+
+    StrMapEntry* entry = map->buckets[idx];
+    while (entry) {
+        if (strlen(entry->key) == (size_t)key->len &&
+            memcmp(entry->key, key->data, key->len) == 0) {
+            return 1;
+        }
+        entry = entry->next;
+    }
+    return 0;
+}
+
+// Get strmap size
+int64_t bmb_strmap_size(int64_t handle) {
+    if (!handle) return 0;
+    StrMap* map = (StrMap*)handle;
+    return map->size;
+}
+
+// Wrapper functions with strmap_ prefix
+int64_t strmap_new(void) { return bmb_strmap_new(); }
+void strmap_free(int64_t handle) { bmb_strmap_free(handle); }
+int64_t strmap_insert(int64_t handle, const BmbString* key, int64_t value) {
+    return bmb_strmap_insert(handle, key, value);
+}
+int64_t strmap_get(int64_t handle, const BmbString* key) {
+    return bmb_strmap_get(handle, key);
+}
+int64_t strmap_contains(int64_t handle, const BmbString* key) {
+    return bmb_strmap_contains(handle, key);
+}
+int64_t strmap_size(int64_t handle) { return bmb_strmap_size(handle); }
+
+// ============================================================================
 // Entry point
 // ============================================================================
 
