@@ -5,11 +5,12 @@
 
 // ============================================
 // Runtime-provided functions (extern declarations)
-// These are implemented in bmb_runtime.c
+// These are implemented in bmb_runtime.c and registered in LLVM codegen
 // ============================================
 
 extern fn min(a: i64, b: i64) -> i64;
 extern fn max(a: i64, b: i64) -> i64;
+extern fn abs(n: i64) -> i64;
 
 // ============================================
 // Numeric operations (i64)

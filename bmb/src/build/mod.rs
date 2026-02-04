@@ -304,6 +304,54 @@ pub enum BuildError {
 /// Build result
 pub type BuildResult<T> = Result<T, BuildError>;
 
+/// Auto-detect prelude path by checking standard locations (v0.60.253)
+///
+/// Search order:
+/// 1. BMB_STDLIB_PATH environment variable
+/// 2. packages/ relative to compiler executable
+/// 3. packages/ relative to current working directory
+fn auto_detect_prelude_path() -> Option<PathBuf> {
+    // 1. Check BMB_STDLIB_PATH environment variable
+    if let Ok(stdlib_path) = std::env::var("BMB_STDLIB_PATH") {
+        let prelude = PathBuf::from(&stdlib_path).join("bmb-core/src/prelude.bmb");
+        if prelude.exists() {
+            return Some(prelude);
+        }
+    }
+
+    // 2. Check relative to compiler executable
+    if let Ok(exe_path) = std::env::current_exe() {
+        if let Some(exe_dir) = exe_path.parent() {
+            // Check sibling packages/ directory (e.g., target/release/packages/)
+            let packages_dir = exe_dir.join("packages");
+            let prelude = packages_dir.join("bmb-core/src/prelude.bmb");
+            if prelude.exists() {
+                return Some(prelude);
+            }
+
+            // Check parent/../packages/ (e.g., from target/release -> project root)
+            if let Some(parent) = exe_dir.parent() {
+                if let Some(grandparent) = parent.parent() {
+                    let prelude = grandparent.join("packages/bmb-core/src/prelude.bmb");
+                    if prelude.exists() {
+                        return Some(prelude);
+                    }
+                }
+            }
+        }
+    }
+
+    // 3. Check relative to current working directory
+    if let Ok(cwd) = std::env::current_dir() {
+        let prelude = cwd.join("packages/bmb-core/src/prelude.bmb");
+        if prelude.exists() {
+            return Some(prelude);
+        }
+    }
+
+    None
+}
+
 /// Build a BMB program
 pub fn build(config: &BuildConfig) -> BuildResult<()> {
     // Read source
@@ -315,11 +363,15 @@ pub fn build(config: &BuildConfig) -> BuildResult<()> {
     }
 
     // v0.60.252: Preprocess @include directives with optional prelude
-    let prelude = if config.no_prelude {
+    // v0.60.253: Auto-detect prelude if not explicitly specified
+    let auto_detected_prelude = if config.no_prelude {
         None
+    } else if config.prelude_path.is_some() {
+        config.prelude_path.clone()
     } else {
-        config.prelude_path.as_deref()
+        auto_detect_prelude_path()
     };
+    let prelude = auto_detected_prelude.as_deref();
     let source = preprocessor::expand_with_prelude(
         &source,
         &config.input,

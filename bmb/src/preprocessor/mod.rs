@@ -11,16 +11,6 @@
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
-/// Prelude packages to auto-include (in order)
-/// These are the foundation packages from packages/
-/// Note: Using prelude.bmb (minimal LLVM-compatible) instead of lib.bmb (full features)
-const PRELUDE_PACKAGES: &[&str] = &[
-    "bmb-core/src/prelude.bmb",
-    // Future: Add more as LLVM codegen support expands
-    // "bmb-option/src/lib.bmb",
-    // "bmb-result/src/lib.bmb",
-];
-
 /// Preprocessor error types
 #[derive(Debug)]
 pub enum PreprocessorError {
@@ -188,8 +178,9 @@ pub fn expand_includes(
 
 /// Expand includes with automatic prelude prepending (v0.60.252)
 ///
-/// If `prelude_path` is Some, automatically prepends @include directives
-/// for standard library packages (bmb-core, etc.) before processing user source.
+/// If `prelude_path` is Some, automatically prepends @include directive
+/// for the prelude file before processing user source.
+/// The prelude_path should be the direct path to the prelude.bmb file.
 pub fn expand_with_prelude(
     source: &str,
     source_path: &Path,
@@ -198,26 +189,15 @@ pub fn expand_with_prelude(
 ) -> Result<String, PreprocessorError> {
     let mut preprocessor = Preprocessor::new(include_paths.to_vec());
 
-    // If prelude is enabled, prepend prelude includes
-    let source_with_prelude = if let Some(prelude_dir) = prelude_path {
-        let mut prelude_source = String::new();
-
-        for pkg in PRELUDE_PACKAGES {
-            let pkg_path = prelude_dir.join(pkg);
-            if pkg_path.exists() {
-                // Add prelude include directive
-                prelude_source.push_str(&format!(
-                    "@include \"{}\"\n",
-                    pkg_path.display().to_string().replace('\\', "/")
-                ));
-            }
-            // If package doesn't exist, skip silently (allow partial stdlib)
-        }
-
-        if !prelude_source.is_empty() {
-            prelude_source.push_str("// === End of prelude ===\n\n");
-            prelude_source.push_str(source);
-            prelude_source
+    // If prelude is enabled, prepend prelude include
+    let source_with_prelude = if let Some(prelude_file) = prelude_path {
+        if prelude_file.exists() {
+            // Add prelude include directive
+            let prelude_include = format!(
+                "@include \"{}\"\n// === End of prelude ===\n\n",
+                prelude_file.display().to_string().replace('\\', "/")
+            );
+            format!("{}{}", prelude_include, source)
         } else {
             source.to_string()
         }
