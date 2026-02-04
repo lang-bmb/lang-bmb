@@ -876,9 +876,19 @@ fn start_repl() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 /// v0.17: Check file with additional include paths for module resolution
+/// v0.60.260: Add prelude auto-detection for consistency with build command
 fn check_file_with_includes(path: &PathBuf, include_paths: &[PathBuf]) -> Result<(), Box<dyn std::error::Error>> {
     let source = std::fs::read_to_string(path)?;
     let filename = path.display().to_string();
+
+    // v0.60.260: Apply prelude auto-detection (same as build command)
+    let prelude_path = bmb::build::auto_detect_prelude_path();
+    let source = bmb::preprocessor::expand_with_prelude(
+        &source,
+        path,
+        include_paths,
+        prelude_path.as_deref(),
+    ).map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
 
     // Tokenize
     let tokens = bmb::lexer::tokenize(&source)?;

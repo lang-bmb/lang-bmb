@@ -310,7 +310,8 @@ pub type BuildResult<T> = Result<T, BuildError>;
 /// 1. BMB_STDLIB_PATH environment variable
 /// 2. packages/ relative to compiler executable
 /// 3. packages/ relative to current working directory
-fn auto_detect_prelude_path() -> Option<PathBuf> {
+/// v0.60.260: Auto-detect prelude path for consistent prelude loading across commands
+pub fn auto_detect_prelude_path() -> Option<PathBuf> {
     // 1. Check BMB_STDLIB_PATH environment variable
     if let Ok(stdlib_path) = std::env::var("BMB_STDLIB_PATH") {
         let prelude = PathBuf::from(&stdlib_path).join("bmb-core/src/prelude.bmb");
