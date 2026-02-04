@@ -425,6 +425,10 @@ struct LlvmContext<'ctx> {
     /// v0.60.81: Track String-typed variables for proper string comparison
     /// Used to distinguish String pointers from typed pointers (*T) in BinOp
     string_variables: std::collections::HashSet<String>,
+
+    /// v0.60.253: Track enum-typed variables for switch discriminant handling
+    /// Enum values are passed as i64 (ptrtoint), but switch needs to load discriminant
+    enum_variables: std::collections::HashSet<String>,
 }
 
 impl<'ctx> LlvmContext<'ctx> {
@@ -453,6 +457,7 @@ impl<'ctx> LlvmContext<'ctx> {
             array_variables: std::collections::HashSet::new(),
             fast_math,
             string_variables: std::collections::HashSet::new(),
+            enum_variables: std::collections::HashSet::new(),
         }
     }
 
@@ -1161,6 +1166,11 @@ impl<'ctx> LlvmContext<'ctx> {
             let llvm_ty = self.mir_type_to_llvm(ty);
             let param = function.get_nth_param(i as u32).unwrap();
 
+            // v0.60.253: Track enum-typed parameters for switch handling
+            if matches!(ty, MirType::Enum { .. }) {
+                self.enum_variables.insert(name.clone());
+            }
+
             if written_places.contains(name) {
                 // Parameter is modified - need alloca for memory location
                 let alloca = self.builder.build_alloca(llvm_ty, name)
@@ -1192,6 +1202,11 @@ impl<'ctx> LlvmContext<'ctx> {
 
         // Allocate locals (excluding PHI destinations, _t* temporaries, and SSA-eligible locals)
         for (name, ty) in &func.locals {
+            // v0.60.253: Track enum-typed locals for switch handling
+            if matches!(ty, MirType::Enum { .. }) {
+                self.enum_variables.insert(name.clone());
+            }
+
             // Skip _t* temporaries - they stay as SSA values
             if name.starts_with("_t") {
                 continue;
@@ -2604,15 +2619,12 @@ impl<'ctx> LlvmContext<'ctx> {
             }
 
             // v0.60.7: Field access via GEP + load
+            // v0.60.253: Handle empty struct_name for enum variant fields
             MirInst::FieldAccess { dest, base, field: _, field_index, struct_name } => {
-                // Get the struct type for GEP
-                let struct_type = self.get_struct_llvm_type(struct_name)?;
-
-                // Load the base pointer (struct pointer)
+                // Load the base pointer
                 let base_val = self.load_from_place(base)?;
 
                 // v0.60.15: Handle IntValue from ptrtoint/cast - convert back to pointer
-                // This occurs when typed pointers are created via `malloc() as *T`
                 let base_ptr = if base_val.is_pointer_value() {
                     base_val.into_pointer_value()
                 } else if base_val.is_int_value() {
@@ -2626,20 +2638,40 @@ impl<'ctx> LlvmContext<'ctx> {
                     )));
                 };
 
-                // GEP to the field
-                let field_ptr = self.builder
-                    .build_struct_gep(struct_type, base_ptr, *field_index as u32, "field_ptr")
-                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                // v0.60.253: Handle empty struct_name (enum variant fields)
+                // Enum variants use i64 array layout: [discriminant, arg0, arg1, ...]
+                // Field index 0 is arg0 (at offset 1 in the array, after discriminant)
+                let field_val = if struct_name.is_empty() {
+                    let i64_type = self.context.i64_type();
+                    // For enum variant fields, use array GEP with field_index + 1
+                    // (skip discriminant at index 0)
+                    let field_ptr = unsafe {
+                        self.builder.build_in_bounds_gep(
+                            i64_type,
+                            base_ptr,
+                            &[i64_type.const_int((*field_index + 1) as u64, false)],
+                            "enum_field_ptr",
+                        ).map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                    };
+                    self.builder
+                        .build_load(i64_type, field_ptr, "enum_field_val")
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                } else {
+                    // Normal struct field access via struct GEP
+                    let struct_type = self.get_struct_llvm_type(struct_name)?;
+                    let field_ptr = self.builder
+                        .build_struct_gep(struct_type, base_ptr, *field_index as u32, "field_ptr")
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
 
-                // Get field type for load
-                let fields = self.struct_defs.get(struct_name)
-                    .ok_or_else(|| CodeGenError::LlvmError(format!("Unknown struct: {}", struct_name)))?;
-                let field_llvm_type = self.mir_type_to_llvm(&fields[*field_index].1);
+                    // Get field type for load
+                    let fields = self.struct_defs.get(struct_name)
+                        .ok_or_else(|| CodeGenError::LlvmError(format!("Unknown struct: {}", struct_name)))?;
+                    let field_llvm_type = self.mir_type_to_llvm(&fields[*field_index].1);
 
-                // Load the field value
-                let field_val = self.builder
-                    .build_load(field_llvm_type, field_ptr, "field_val")
-                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                    self.builder
+                        .build_load(field_llvm_type, field_ptr, "field_val")
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                };
 
                 // Store to destination
                 self.store_to_place(dest, field_val)?;
@@ -2647,15 +2679,12 @@ impl<'ctx> LlvmContext<'ctx> {
 
             // v0.60.7: Field store via GEP + store
             // v0.60.15: Handle IntValue from ptrtoint/cast
+            // v0.60.253: Handle empty struct_name for enum variant fields
             MirInst::FieldStore { base, field: _, field_index, struct_name, value } => {
-                // Get the struct type for GEP
-                let struct_type = self.get_struct_llvm_type(struct_name)?;
-
                 // Load the base pointer (struct pointer)
                 let base_val = self.load_from_place(base)?;
 
                 // v0.60.15: Handle IntValue from ptrtoint/cast - convert back to pointer
-                // This occurs when typed pointers are created via `malloc() as *T`
                 let base_ptr = if base_val.is_pointer_value() {
                     base_val.into_pointer_value()
                 } else if base_val.is_int_value() {
@@ -2669,13 +2698,28 @@ impl<'ctx> LlvmContext<'ctx> {
                     )));
                 };
 
-                // GEP to the field
-                let field_ptr = self.builder
-                    .build_struct_gep(struct_type, base_ptr, *field_index as u32, "field_ptr")
-                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
-
                 // Generate the value to store
                 let store_val = self.gen_operand(value)?;
+
+                // v0.60.253: Handle empty struct_name (enum variant fields)
+                let field_ptr = if struct_name.is_empty() {
+                    let i64_type = self.context.i64_type();
+                    // For enum variant fields, use array GEP with field_index + 1
+                    unsafe {
+                        self.builder.build_in_bounds_gep(
+                            i64_type,
+                            base_ptr,
+                            &[i64_type.const_int((*field_index + 1) as u64, false)],
+                            "enum_field_ptr",
+                        ).map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                    }
+                } else {
+                    // Normal struct field store via struct GEP
+                    let struct_type = self.get_struct_llvm_type(struct_name)?;
+                    self.builder
+                        .build_struct_gep(struct_type, base_ptr, *field_index as u32, "field_ptr")
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                };
 
                 // Store the value
                 self.builder
@@ -2683,12 +2727,123 @@ impl<'ctx> LlvmContext<'ctx> {
                     .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
             }
 
-            // StructInit and EnumVariant not yet supported
-            MirInst::StructInit { .. }
-            | MirInst::EnumVariant { .. } => {
-                return Err(CodeGenError::LlvmError(
-                    "StructInit/EnumVariant instructions not yet supported in LLVM codegen".to_string(),
-                ));
+            // v0.60.253: StructInit - allocate struct and initialize fields
+            MirInst::StructInit { dest, struct_name, fields } => {
+                // Get the struct LLVM type
+                let struct_type = self.get_struct_llvm_type(struct_name)?;
+
+                // Allocate space for the struct on the stack
+                let struct_ptr = self.builder
+                    .build_alloca(struct_type, &dest.name)
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+
+                // Initialize each field
+                for (i, (_field_name, value)) in fields.iter().enumerate() {
+                    // GEP to the field
+                    let field_ptr = self.builder
+                        .build_struct_gep(struct_type, struct_ptr, i as u32, &format!("{}_f{}", dest.name, i))
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+
+                    // Get the value to store
+                    let field_val = self.gen_operand(value)?;
+
+                    // Store the field value
+                    self.builder
+                        .build_store(field_ptr, field_val)
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                }
+
+                // Store the struct pointer to destination
+                self.store_to_place(dest, struct_ptr.into())?;
+            }
+
+            // v0.60.253: EnumVariant - allocate tagged union and initialize
+            MirInst::EnumVariant { dest, enum_name: _, variant, args } => {
+                // Enums are represented as tagged unions:
+                // - First word (i64): discriminant (hash of variant name)
+                // - Following words: variant data
+
+                let i64_type = self.context.i64_type();
+
+                // Calculate size: discriminant + args (minimum 2 words)
+                let size = (1 + args.len()).max(2);
+                let byte_size = size * 8; // Each word is 8 bytes
+
+                // Use malloc for enum allocation to support returning from functions
+                // (alloca would be deallocated when function returns)
+                let malloc_fn = self.module.get_function("malloc")
+                    .ok_or_else(|| CodeGenError::LlvmError("malloc not found".to_string()))?;
+                let call_result = self.builder
+                    .build_call(
+                        malloc_fn,
+                        &[i64_type.const_int(byte_size as u64, false).into()],
+                        &dest.name,
+                    )
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                let enum_ptr = call_result.try_as_basic_value().basic()
+                    .ok_or_else(|| CodeGenError::LlvmError("malloc returned void".to_string()))?
+                    .into_pointer_value();
+
+                let array_type = i64_type.array_type(size as u32);
+
+                // Calculate discriminant - must match variant_to_discriminant in mir/lower.rs
+                let discriminant: i64 = variant.chars()
+                    .enumerate()
+                    .fold(0i64, |acc, (i, c)| acc.wrapping_add((c as i64).wrapping_mul((i + 1) as i64)));
+
+                // Store discriminant at index 0
+                let disc_ptr = unsafe {
+                    self.builder
+                        .build_in_bounds_gep(array_type, enum_ptr, &[
+                            i64_type.const_int(0, false),
+                            i64_type.const_int(0, false),
+                        ], &format!("{}_disc", dest.name))
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                };
+                self.builder
+                    .build_store(disc_ptr, i64_type.const_int(discriminant as u64, true))
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+
+                // Store variant arguments
+                for (i, arg) in args.iter().enumerate() {
+                    let arg_ptr = unsafe {
+                        self.builder
+                            .build_in_bounds_gep(array_type, enum_ptr, &[
+                                i64_type.const_int(0, false),
+                                i64_type.const_int((i + 1) as u64, false),
+                            ], &format!("{}_a{}", dest.name, i))
+                            .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                    };
+
+                    let arg_val = self.gen_operand(arg)?;
+
+                    // Convert to i64 if needed (enums store everything as i64)
+                    let store_val = if arg_val.is_int_value() {
+                        let int_val = arg_val.into_int_value();
+                        if int_val.get_type().get_bit_width() < 64 {
+                            self.builder
+                                .build_int_s_extend(int_val, i64_type, "arg_sext")
+                                .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                                .into()
+                        } else {
+                            arg_val
+                        }
+                    } else if arg_val.is_pointer_value() {
+                        self.builder
+                            .build_ptr_to_int(arg_val.into_pointer_value(), i64_type, "arg_ptrtoint")
+                            .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                            .into()
+                    } else {
+                        arg_val
+                    };
+
+                    self.builder
+                        .build_store(arg_ptr, store_val)
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                }
+
+                // Store the enum pointer to destination
+                self.store_to_place(dest, enum_ptr.into())?;
             }
 
             // v0.73+: Concurrency and other new instructions not yet supported in inkwell codegen
@@ -2809,9 +2964,39 @@ impl<'ctx> LlvmContext<'ctx> {
 
             // v0.35: Switch terminator for enum matching
             // v0.51.8: Full implementation for if-else chain optimization
+            // v0.60.253: Handle enum discriminants by loading from pointer
             Terminator::Switch { discriminant, cases, default } => {
                 let disc_val = self.gen_operand(discriminant)?;
-                let disc_int = disc_val.into_int_value();
+
+                // Check if the discriminant is an enum type using our tracking set
+                let is_enum = if let Operand::Place(p) = discriminant {
+                    self.enum_variables.contains(&p.name)
+                } else {
+                    false
+                };
+
+                // If discriminant is a pointer (enum) or enum type passed as i64,
+                // load the discriminant word from it
+                let disc_int = if disc_val.is_pointer_value() {
+                    let i64_type = self.context.i64_type();
+                    self.builder
+                        .build_load(i64_type, disc_val.into_pointer_value(), "enum_disc")
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                        .into_int_value()
+                } else if is_enum && disc_val.is_int_value() {
+                    // Enum passed as i64 (ptrtoint) - convert back to ptr and load
+                    let i64_type = self.context.i64_type();
+                    let ptr_type = self.context.ptr_type(inkwell::AddressSpace::default());
+                    let enum_ptr = self.builder
+                        .build_int_to_ptr(disc_val.into_int_value(), ptr_type, "enum_inttoptr")
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                    self.builder
+                        .build_load(i64_type, enum_ptr, "enum_disc")
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                        .into_int_value()
+                } else {
+                    disc_val.into_int_value()
+                };
 
                 let default_bb = self
                     .blocks
@@ -3093,6 +3278,26 @@ impl<'ctx> LlvmContext<'ctx> {
                     // Should not happen normally since arrays are stack-allocated
                     Err(CodeGenError::LlvmError(format!(
                         "Array decay expected pointer value, got {:?}", src_val
+                    )))
+                }
+            }
+
+            // v0.60.254: Enum to integer (ptrtoint)
+            // Enums are heap-allocated and passed as pointers, so casting to i64 is ptrtoint
+            (Enum { .. }, I64) | (Enum { .. }, U64) => {
+                let int_type = self.mir_type_to_llvm(to_ty).into_int_type();
+                if src_val.is_pointer_value() {
+                    let result = self
+                        .builder
+                        .build_ptr_to_int(src_val.into_pointer_value(), int_type, "enum_ptrtoint")
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                    Ok(result.into())
+                } else if src_val.is_int_value() {
+                    // Enum already passed as i64 (from another function), no conversion needed
+                    Ok(src_val)
+                } else {
+                    Err(CodeGenError::LlvmError(format!(
+                        "Enum cast expected pointer or int value, got {:?}", src_val
                     )))
                 }
             }

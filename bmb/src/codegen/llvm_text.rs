@@ -3480,8 +3480,10 @@ impl TextCodeGen {
                 // Allocate space for enum (discriminant + max variant size)
                 let size = 1 + args.len().max(1);
                 writeln!(out, "  %{} = alloca i64, i32 {}", dest.name, size)?;
-                // Store discriminant (simplified: hash of variant name)
-                let discriminant: i64 = variant.bytes().fold(0i64, |acc, b| acc.wrapping_mul(31).wrapping_add(b as i64));
+                // Store discriminant - must match variant_to_discriminant in mir/lower.rs
+                let discriminant: i64 = variant.chars()
+                    .enumerate()
+                    .fold(0i64, |acc, (i, c)| acc.wrapping_add((c as i64).wrapping_mul((i + 1) as i64)));
                 writeln!(out, "  %{}_disc = getelementptr i64, ptr %{}, i32 0", dest.name, dest.name)?;
                 writeln!(out, "  store i64 {}, ptr %{}_disc", discriminant, dest.name)?;
                 // Store variant arguments

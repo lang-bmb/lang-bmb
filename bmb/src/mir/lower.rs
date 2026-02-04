@@ -12,6 +12,12 @@ use super::{
     MirProgram, MirType, MirUnaryOp, Operand, Place, Terminator,
 };
 
+/// v0.60.254: Type definitions for struct and enum name resolution
+struct TypeDefs {
+    structs: std::collections::HashMap<String, Vec<(String, Type)>>,
+    enums: std::collections::HashMap<String, Vec<(String, Vec<Type>)>>,
+}
+
 /// Lower an entire program to MIR
 pub fn lower_program(program: &Program) -> MirProgram {
     // v0.51.24: Collect struct type definitions FIRST (full type info, not just field names)
@@ -27,12 +33,30 @@ pub fn lower_program(program: &Program) -> MirProgram {
         }
     }
 
+    // v0.60.254: Collect enum type definitions for proper Type::Named resolution
+    let mut enum_type_defs: std::collections::HashMap<String, Vec<(String, Vec<Type>)>> = std::collections::HashMap::new();
+    for item in &program.items {
+        if let Item::EnumDef(enum_def) = item {
+            let variants: Vec<(String, Vec<Type>)> = enum_def.variants
+                .iter()
+                .map(|v| (v.name.node.clone(), v.fields.iter().map(|f| f.node.clone()).collect()))
+                .collect();
+            enum_type_defs.insert(enum_def.name.node.clone(), variants);
+        }
+    }
+
+    let type_defs = TypeDefs {
+        structs: struct_type_defs.clone(),
+        enums: enum_type_defs,
+    };
+
     // v0.35.4: First pass - collect all function return types
     // v0.51.24: Use struct_type_defs to properly resolve named types
+    // v0.60.254: Now also resolves enum types via type_defs
     let mut func_return_types = std::collections::HashMap::new();
     for item in &program.items {
         if let Item::FnDef(fn_def) = item {
-            let ret_ty = ast_type_to_mir_with_structs(&fn_def.ret_ty.node, &struct_type_defs);
+            let ret_ty = ast_type_to_mir_with_type_defs(&fn_def.ret_ty.node, &type_defs);
             func_return_types.insert(fn_def.name.node.clone(), ret_ty);
         }
     }
@@ -53,7 +77,7 @@ pub fn lower_program(program: &Program) -> MirProgram {
         .items
         .iter()
         .filter_map(|item| match item {
-            Item::FnDef(fn_def) => Some(lower_function(fn_def, &func_return_types, &struct_defs, &struct_type_defs)),
+            Item::FnDef(fn_def) => Some(lower_function(fn_def, &func_return_types, &struct_defs, &type_defs)),
             // Type definitions, use statements, extern fns, traits, impl blocks, and type aliases don't produce MIR functions
             Item::StructDef(_) | Item::EnumDef(_) | Item::Use(_) | Item::ExternFn(_) |
             Item::TraitDef(_) | Item::ImplBlock(_) | Item::TypeAlias(_) => None,
@@ -71,13 +95,14 @@ pub fn lower_program(program: &Program) -> MirProgram {
         .collect();
 
     // v0.51.31: Convert struct_type_defs to MirType format for codegen
-    let mir_struct_defs: std::collections::HashMap<String, Vec<(String, MirType)>> = struct_type_defs
+    // v0.60.254: Now uses type_defs for proper enum resolution
+    let mir_struct_defs: std::collections::HashMap<String, Vec<(String, MirType)>> = type_defs.structs
         .iter()
         .map(|(name, fields)| {
             let mir_fields: Vec<(String, MirType)> = fields
                 .iter()
                 .map(|(field_name, field_ty)| {
-                    (field_name.clone(), ast_type_to_mir_with_structs(field_ty, &struct_type_defs))
+                    (field_name.clone(), ast_type_to_mir_with_type_defs(field_ty, &type_defs))
                 })
                 .collect();
             (name.clone(), mir_fields)
@@ -134,7 +159,7 @@ fn lower_function(
     fn_def: &FnDef,
     func_return_types: &std::collections::HashMap<String, MirType>,
     struct_defs: &std::collections::HashMap<String, Vec<String>>,
-    struct_type_defs: &std::collections::HashMap<String, Vec<(String, Type)>>,
+    type_defs: &TypeDefs,
 ) -> MirFunction {
     let mut ctx = LoweringContext::new();
 
@@ -149,24 +174,25 @@ fn lower_function(
     }
 
     // v0.51.31: Add struct type definitions for field type lookup
-    for (name, fields) in struct_type_defs {
+    // v0.60.254: Now uses type_defs for proper enum resolution
+    for (name, fields) in &type_defs.structs {
         let mir_fields: Vec<(String, MirType)> = fields
             .iter()
             .map(|(field_name, field_ty)| {
-                (field_name.clone(), ast_type_to_mir_with_structs(field_ty, struct_type_defs))
+                (field_name.clone(), ast_type_to_mir_with_type_defs(field_ty, type_defs))
             })
             .collect();
         ctx.struct_type_defs.insert(name.clone(), mir_fields);
     }
 
     // Register parameters
-    // v0.51.24: Use ast_type_to_mir_with_structs to properly resolve named struct types
+    // v0.51.24: Use ast_type_to_mir_with_type_defs to properly resolve named struct/enum types
     // v0.51.36: Also track array element types for struct arrays
     let params: Vec<(String, MirType)> = fn_def
         .params
         .iter()
         .map(|p| {
-            let ty = ast_type_to_mir_with_structs(&p.ty.node, struct_type_defs);
+            let ty = ast_type_to_mir_with_type_defs(&p.ty.node, type_defs);
             ctx.params.insert(p.name.node.clone(), ty.clone());
             // v0.51.23: Track struct type for parameters
             // v0.51.37: Also handle pointer types (*Node)
@@ -183,19 +209,19 @@ fn lower_function(
             }
             // v0.51.36: Track array element types for struct array parameters
             if let Type::Array(elem_ty, _) = &p.ty.node {
-                let elem_mir_ty = ast_type_to_mir_with_structs(elem_ty.as_ref(), struct_type_defs);
+                let elem_mir_ty = ast_type_to_mir_with_type_defs(elem_ty.as_ref(), type_defs);
                 ctx.array_element_types.insert(p.name.node.clone(), elem_mir_ty);
             }
             // v0.60.20: Track pointer element types for ptr[i] indexing
             if let Type::Ptr(elem_ty) = &p.ty.node {
-                let elem_mir_ty = ast_type_to_mir_with_structs(elem_ty.as_ref(), struct_type_defs);
+                let elem_mir_ty = ast_type_to_mir_with_type_defs(elem_ty.as_ref(), type_defs);
                 ctx.array_element_types.insert(p.name.node.clone(), elem_mir_ty);
             }
             (p.name.node.clone(), ty)
         })
         .collect();
 
-    let ret_ty = ast_type_to_mir_with_structs(&fn_def.ret_ty.node, struct_type_defs);
+    let ret_ty = ast_type_to_mir_with_type_defs(&fn_def.ret_ty.node, type_defs);
 
     // Lower the function body
     let result = lower_expr(&fn_def.body, &mut ctx);
@@ -1738,6 +1764,113 @@ fn ast_type_to_mir(ty: &Type) -> MirType {
             match inner.as_ref() {
                 Type::Named(name) => MirType::Ptr(Box::new(MirType::StructPtr(name.clone()))),
                 _ => MirType::Ptr(Box::new(ast_type_to_mir(inner)))
+            }
+        }
+        // v0.70: Thread type - represented as i64 handle
+        Type::Thread(_) => MirType::I64,
+        // v0.71: Mutex type - represented as i64 handle
+        Type::Mutex(_) => MirType::I64,
+        // v0.72: Arc and Atomic types - represented as i64 handle
+        Type::Arc(_) => MirType::I64,
+        Type::Atomic(_) => MirType::I64,
+        // v0.73: Sender and Receiver types - represented as i64 handle
+        Type::Sender(_) => MirType::I64,
+        Type::Receiver(_) => MirType::I64,
+    }
+}
+
+/// v0.60.254: Convert AST type to MIR type with struct AND enum definition lookup
+/// This properly converts Type::Named to MirType::Struct or MirType::Enum when the name is known
+fn ast_type_to_mir_with_type_defs(
+    ty: &Type,
+    type_defs: &TypeDefs,
+) -> MirType {
+    match ty {
+        Type::I32 => MirType::I32,
+        Type::I64 => MirType::I64,
+        Type::U32 => MirType::U32,
+        Type::U64 => MirType::U64,
+        Type::F64 => MirType::F64,
+        Type::Bool => MirType::Bool,
+        Type::String => MirType::String,
+        Type::Char => MirType::Char,
+        Type::Unit => MirType::Unit,
+        Type::Range(elem) => ast_type_to_mir_with_type_defs(elem, type_defs),
+        // v0.51.24: Named types that are structs get converted to MirType::Struct
+        // v0.60.254: Also check for enum types
+        Type::Named(name) => {
+            if let Some(fields) = type_defs.structs.get(name) {
+                MirType::Struct {
+                    name: name.clone(),
+                    fields: fields
+                        .iter()
+                        .map(|(fname, fty)| (fname.clone(), Box::new(ast_type_to_mir_with_type_defs(fty, type_defs))))
+                        .collect(),
+                }
+            } else if let Some(variants) = type_defs.enums.get(name) {
+                // v0.60.254: Named enum types get converted to MirType::Enum
+                MirType::Enum {
+                    name: name.clone(),
+                    variants: variants
+                        .iter()
+                        .map(|(vname, vtypes)| {
+                            (vname.clone(), vtypes.iter().map(|t| Box::new(ast_type_to_mir_with_type_defs(t, type_defs))).collect())
+                        })
+                        .collect(),
+                }
+            } else {
+                // Not a known struct or enum, fall back to i64
+                MirType::I64
+            }
+        }
+        Type::TypeVar(_) => MirType::I64,
+        Type::Generic { .. } => MirType::I64,
+        Type::Struct { name, fields } => MirType::Struct {
+            name: name.clone(),
+            fields: fields
+                .iter()
+                .map(|(fname, fty)| (fname.clone(), Box::new(ast_type_to_mir_with_type_defs(fty, type_defs))))
+                .collect(),
+        },
+        Type::Enum { name, variants } => MirType::Enum {
+            name: name.clone(),
+            variants: variants
+                .iter()
+                .map(|(vname, vtypes)| {
+                    (vname.clone(), vtypes.iter().map(|t| Box::new(ast_type_to_mir_with_type_defs(t, type_defs))).collect())
+                })
+                .collect(),
+        },
+        Type::Ref(inner) | Type::RefMut(inner) => {
+            if let Type::Array(elem, size) = inner.as_ref() {
+                MirType::Array {
+                    element_type: Box::new(ast_type_to_mir_with_type_defs(elem, type_defs)),
+                    size: Some(*size),
+                }
+            } else {
+                MirType::I64
+            }
+        }
+        Type::Array(elem, size) => MirType::Array {
+            element_type: Box::new(ast_type_to_mir_with_type_defs(elem, type_defs)),
+            size: Some(*size),
+        },
+        Type::Refined { base, .. } => ast_type_to_mir_with_type_defs(base, type_defs),
+        Type::Fn { .. } => MirType::I64,
+        Type::Never => MirType::Unit,
+        Type::Nullable(inner) => ast_type_to_mir_with_type_defs(inner, type_defs),
+        // v0.55: Tuple type - native heterogeneous tuple support
+        Type::Tuple(elems) => MirType::Tuple(
+            elems.iter().map(|e| Box::new(ast_type_to_mir_with_type_defs(e, type_defs))).collect()
+        ),
+        // v0.51.37: Pointer type - preserve the pointee type for proper codegen
+        // For struct pointers, use StructPtr to avoid infinite recursion on self-referential types
+        Type::Ptr(inner) => {
+            match inner.as_ref() {
+                Type::Named(name) if type_defs.structs.contains_key(name) => {
+                    MirType::Ptr(Box::new(MirType::StructPtr(name.clone())))
+                }
+                _ => MirType::Ptr(Box::new(ast_type_to_mir_with_type_defs(inner, type_defs)))
             }
         }
         // v0.70: Thread type - represented as i64 handle
