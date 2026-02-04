@@ -1,0 +1,8 @@
+[package]
+name = "bmb-runtime"
+version = "0.1.0"
+edition = "2025"
+description = "BMB Runtime Library - Self-hosted replacement for C runtime"
+license = "MIT"
+
+[dependencies]

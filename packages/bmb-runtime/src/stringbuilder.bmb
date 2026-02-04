@@ -1,0 +1,348 @@
+// BMB Runtime: StringBuilder Module
+// Self-hosted replacement for bmb_runtime.c StringBuilder functions
+// Layout matches C: StringBuilder = { data: *u8, len: i64, cap: i64 }
+//
+// Note: Functions use rt_ prefix to avoid conflicts with C runtime during testing.
+// When fully replacing C runtime, rename to bmb_sb_*.
+
+// Note: malloc, free, realloc, load_i64, store_i64, load_u8, store_u8 are builtin runtime functions
+
+// StringBuilder struct offsets (24 bytes total)
+// offset 0: data (*u8, pointer to char buffer)
+// offset 8: len (i64, current length)
+// offset 16: cap (i64, capacity)
+
+// Helper: Load i64 from pointer (memory access)
+@inline
+fn sb_load_i64(ptr: i64) -> i64 = load_i64(ptr);
+
+// Helper: Store i64 to pointer
+@inline
+fn sb_store_i64(ptr: i64, val: i64) -> i64 = {
+    store_i64(ptr, val);
+    0
+};
+
+// Helper: Store u8 to memory with i64 return
+@inline
+fn sb_store_u8(ptr: i64, val: i64) -> i64 = {
+    store_u8(ptr, val);
+    0
+};
+
+// Helper: Ensure capacity (grow if needed)
+fn sb_ensure_capacity(sb: i64, needed: i64) -> i64 = {
+    let cap = sb_load_i64(sb + 16);
+    if needed <= cap { 0 }
+    else {
+        // Double capacity until sufficient
+        let new_cap = sb_grow_cap(cap, needed);
+        let old_data = sb_load_i64(sb);
+        let new_data = realloc(old_data, new_cap);
+        let _s1 = sb_store_i64(sb, new_data);
+        let _s2 = sb_store_i64(sb + 16, new_cap);
+        0
+    }
+};
+
+// Calculate new capacity (recursive doubling)
+fn sb_grow_cap(current: i64, needed: i64) -> i64 =
+    if current >= needed { current }
+    else { sb_grow_cap(current * 2, needed) };
+
+// Create new StringBuilder with default capacity (64)
+fn rt_sb_new() -> i64 = rt_sb_with_capacity(64);
+
+// Create StringBuilder with pre-allocated capacity
+fn rt_sb_with_capacity(capacity: i64) -> i64 = {
+    let cap = if capacity > 0 { capacity } else { 64 };
+    let sb = malloc(24);
+    let data = malloc(cap);
+    let _t = sb_store_u8(data, 0);  // null terminator
+    let _s1 = sb_store_i64(sb, data);      // data pointer
+    let _s2 = sb_store_i64(sb + 8, 0);     // len = 0
+    let _s3 = sb_store_i64(sb + 16, cap);  // cap
+    sb
+};
+
+// Push string (BmbString as i64 pointer) to StringBuilder
+// Returns new length
+fn rt_sb_push(sb: i64, s: i64) -> i64 = {
+    if sb == 0 { 0 }
+    else if s == 0 { sb_load_i64(sb + 8) }
+    else {
+        let s_data = sb_load_i64(s);
+        let s_len = sb_load_i64(s + 8);
+        if s_data == 0 { sb_load_i64(sb + 8) }
+        else if s_len == 0 { sb_load_i64(sb + 8) }
+        else {
+            let sb_len = sb_load_i64(sb + 8);
+            let needed = sb_len + s_len + 1;
+            let _g = sb_ensure_capacity(sb, needed);
+            let sb_data = sb_load_i64(sb);
+            let _c = sb_copy_bytes(sb_data + sb_len, s_data, 0, s_len);
+            let new_len = sb_len + s_len;
+            let _s = sb_store_i64(sb + 8, new_len);
+            let _t = sb_store_u8(sb_data + new_len, 0);  // null terminator
+            new_len
+        }
+    }
+};
+
+// Copy bytes (recursive)
+fn sb_copy_bytes(dest: i64, src: i64, i: i64, n: i64) -> i64 =
+    if i >= n { 0 }
+    else {
+        let _s = sb_store_u8(dest + i, load_u8(src + i));
+        sb_copy_bytes(dest, src, i + 1, n)
+    };
+
+// Push single character
+fn rt_sb_push_char(sb: i64, ch: i64) -> i64 = {
+    if sb == 0 { 0 }
+    else {
+        let sb_len = sb_load_i64(sb + 8);
+        let needed = sb_len + 2;
+        let _g = sb_ensure_capacity(sb, needed);
+        let sb_data = sb_load_i64(sb);
+        let _s = sb_store_u8(sb_data + sb_len, ch);
+        let new_len = sb_len + 1;
+        let _l = sb_store_i64(sb + 8, new_len);
+        let _t = sb_store_u8(sb_data + new_len, 0);  // null terminator
+        new_len
+    }
+};
+
+// Push integer as string (handles negative numbers)
+fn rt_sb_push_int(sb: i64, n: i64) -> i64 = {
+    if sb == 0 { 0 }
+    else {
+        // Handle negative
+        let actual_n = if n < 0 {
+            let _m = rt_sb_push_char(sb, 45);  // '-'
+            0 - n  // abs
+        } else if n == 0 {
+            // Special case: just push '0'
+            rt_sb_push_char(sb, 48)
+        } else { n };
+
+        if n == 0 { sb_load_i64(sb + 8) }
+        else {
+            // Push digits in reverse using recursion
+            rt_sb_push_int_digits(sb, actual_n)
+        }
+    }
+};
+
+// Push integer digits recursively (most significant first)
+fn rt_sb_push_int_digits(sb: i64, n: i64) -> i64 =
+    if n == 0 { sb_load_i64(sb + 8) }
+    else {
+        let _r = rt_sb_push_int_digits(sb, n / 10);
+        rt_sb_push_char(sb, 48 + (n % 10))  // '0' + digit
+    };
+
+// Get current length
+fn rt_sb_len(sb: i64) -> i64 = {
+    if sb == 0 { 0 }
+    else { sb_load_i64(sb + 8) }
+};
+
+// Build final string (returns BmbString as i64)
+// Note: Returns new string, does not consume StringBuilder
+fn rt_sb_build(sb: i64) -> i64 = {
+    if sb == 0 { rt_empty_string() }
+    else {
+        let sb_len = sb_load_i64(sb + 8);
+        let sb_data = sb_load_i64(sb);
+        // Create new BmbString
+        let result = malloc(24);
+        let result_data = malloc(sb_len + 1);
+        let _c = sb_copy_bytes(result_data, sb_data, 0, sb_len);
+        let _t = sb_store_u8(result_data + sb_len, 0);
+        let _s1 = sb_store_i64(result, result_data);
+        let _s2 = sb_store_i64(result + 8, sb_len);
+        let _s3 = sb_store_i64(result + 16, sb_len);
+        result
+    }
+};
+
+// Create empty string helper
+fn rt_empty_string() -> i64 = {
+    let s = malloc(24);
+    let data = malloc(1);
+    let _t = sb_store_u8(data, 0);
+    let _s1 = sb_store_i64(s, data);
+    let _s2 = sb_store_i64(s + 8, 0);
+    let _s3 = sb_store_i64(s + 16, 0);
+    s
+};
+
+// Clear StringBuilder (reset length to 0)
+fn rt_sb_clear(sb: i64) -> i64 = {
+    if sb == 0 { 0 }
+    else {
+        let _l = sb_store_i64(sb + 8, 0);
+        let sb_data = sb_load_i64(sb);
+        let _t = sb_store_u8(sb_data, 0);  // null terminator
+        0
+    }
+};
+
+// Free StringBuilder memory
+fn rt_sb_free(sb: i64) -> i64 =
+    if sb == 0 { 0 }
+    else { rt_sb_free_inner(sb_load_i64(sb), sb) };
+
+fn rt_sb_free_data(data: i64) -> i64 = {
+    free(data);
+    0
+};
+
+fn rt_sb_free_sb(sb: i64) -> i64 = {
+    free(sb);
+    0
+};
+
+fn rt_sb_free_inner(data: i64, sb: i64) -> i64 =
+    if data != 0 {
+        let _d = rt_sb_free_data(data);
+        rt_sb_free_sb(sb)
+    } else { rt_sb_free_sb(sb) };
+
+// ============================================================================
+// Tests
+// ============================================================================
+
+fn test_sb_basic() -> i64 = {
+    let sb = rt_sb_new();
+
+    // Push "Hello"
+    let hello = make_test_string(72, 101, 108, 108, 111);  // "Hello"
+    let _p1 = rt_sb_push(sb, hello);
+
+    // Check length
+    let len1 = rt_sb_len(sb);  // Should be 5
+    if len1 != 5 { 1 }
+    else {
+        // Push space
+        let _p2 = rt_sb_push_char(sb, 32);  // ' '
+        let len2 = rt_sb_len(sb);  // Should be 6
+        if len2 != 6 { 2 }
+        else {
+            // Push "World"
+            let world = make_test_string(87, 111, 114, 108, 100);  // "World"
+            let _p3 = rt_sb_push(sb, world);
+            let len3 = rt_sb_len(sb);  // Should be 11
+            if len3 != 11 { 3 }
+            else {
+                // Build string
+                let result = rt_sb_build(sb);
+                let result_len = sb_load_i64(result + 8);  // Should be 11
+                if result_len != 11 { 4 }
+                else {
+                    // Cleanup
+                    let _fh = free_test_string(hello);
+                    let _fw = free_test_string(world);
+                    let _fr = free_test_string(result);
+                    let _fs = rt_sb_free(sb);
+                    0  // Success
+                }
+            }
+        }
+    }
+};
+
+fn test_sb_int() -> i64 = {
+    let sb = rt_sb_new();
+
+    // Push positive number
+    let _p1 = rt_sb_push_int(sb, 12345);
+    let len1 = rt_sb_len(sb);  // Should be 5
+    if len1 != 5 { 10 }
+    else {
+        // Clear and push negative
+        let _c = rt_sb_clear(sb);
+        let _p2 = rt_sb_push_int(sb, -42);
+        let len2 = rt_sb_len(sb);  // Should be 3 ("-42")
+        if len2 != 3 { 11 }
+        else {
+            // Clear and push zero
+            let _c2 = rt_sb_clear(sb);
+            let _p3 = rt_sb_push_int(sb, 0);
+            let len3 = rt_sb_len(sb);  // Should be 1
+            if len3 != 1 { 12 }
+            else {
+                let _f = rt_sb_free(sb);
+                0  // Success
+            }
+        }
+    }
+};
+
+fn test_sb_capacity() -> i64 = {
+    let sb = rt_sb_with_capacity(4);  // Small capacity to test growth
+
+    // Push more than 4 characters to trigger growth
+    let _p1 = rt_sb_push_char(sb, 65);  // A
+    let _p2 = rt_sb_push_char(sb, 66);  // B
+    let _p3 = rt_sb_push_char(sb, 67);  // C
+    let _p4 = rt_sb_push_char(sb, 68);  // D
+    let _p5 = rt_sb_push_char(sb, 69);  // E (should trigger growth)
+
+    let len = rt_sb_len(sb);  // Should be 5
+    if len != 5 { 20 }
+    else {
+        let _f = rt_sb_free(sb);
+        0  // Success
+    }
+};
+
+// Helper: Create test string from 5 ASCII codes
+fn make_test_string(c1: i64, c2: i64, c3: i64, c4: i64, c5: i64) -> i64 = {
+    let s = malloc(24);
+    let data = malloc(6);
+    let _s0 = sb_store_u8(data, c1);
+    let _s1 = sb_store_u8(data + 1, c2);
+    let _s2 = sb_store_u8(data + 2, c3);
+    let _s3 = sb_store_u8(data + 3, c4);
+    let _s4 = sb_store_u8(data + 4, c5);
+    let _s5 = sb_store_u8(data + 5, 0);
+    let _p1 = sb_store_i64(s, data);
+    let _p2 = sb_store_i64(s + 8, 5);
+    let _p3 = sb_store_i64(s + 16, 5);
+    s
+};
+
+// Helper: Free test string
+fn free_test_string(s: i64) -> i64 =
+    if s == 0 { 0 }
+    else { free_test_string_impl(sb_load_i64(s), s) };
+
+fn free_test_string_impl(data: i64, s: i64) -> i64 = {
+    let _d = rt_sb_free_data(data);
+    rt_sb_free_sb(s)
+};
+
+fn main() -> i64 = {
+    let r1 = test_sb_basic();
+    if r1 != 0 {
+        let _p = println(r1);
+        r1
+    } else {
+        let r2 = test_sb_int();
+        if r2 != 0 {
+            let _p = println(r2);
+            r2
+        } else {
+            let r3 = test_sb_capacity();
+            if r3 != 0 {
+                let _p = println(r3);
+                r3
+            } else {
+                let _p = println(999);
+                0  // Success - return 0
+            }
+        }
+    }
+};

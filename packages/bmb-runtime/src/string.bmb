@@ -1,0 +1,288 @@
+// BMB Runtime: String Module
+// Self-hosted replacement for bmb_runtime.c string functions
+// Layout matches C: BmbString = { data: *u8, len: i64, cap: i64 }
+
+// Note: malloc, free, load_i64, store_i64, load_u8, store_u8 are builtin runtime functions
+// available without extern declaration
+
+// BmbString struct offsets (24 bytes total)
+// offset 0: data (*u8, pointer to char array)
+// offset 8: len (i64, string length excluding null)
+// offset 16: cap (i64, capacity excluding null)
+
+// Note: load_i64, store_i64, load_u8, store_u8 are builtin runtime functions
+// available without extern declaration
+
+// Memory copy helper (recursive, tail-call optimized)
+fn mem_copy_loop(dest: i64, src: i64, i: i64, n: i64) -> i64 =
+    if i >= n { 0 }
+    else {
+        let _s = store_u8(dest + i, load_u8(src + i));
+        mem_copy_loop(dest, src, i + 1, n)
+    };
+
+fn mem_copy(dest: i64, src: i64, n: i64) -> i64 =
+    mem_copy_loop(dest, src, 0, n);
+
+// Create a new BmbString from raw data pointer and length
+// Allocates and copies the data
+fn rt_string_new(data: i64, length: i64) -> i64 = {
+    // Allocate BmbString struct (24 bytes)
+    let s = malloc(24);
+
+    // Allocate data buffer (length + 1 for null terminator)
+    let buf = malloc(length + 1);
+
+    // Copy data
+    let _c = mem_copy(buf, data, length);
+
+    // Add null terminator
+    let _t = store_u8(buf + length, 0);
+
+    // Set struct fields
+    let _s1 = store_i64(s, buf);           // data pointer
+    let _s2 = store_i64(s + 8, length);    // len
+    let _s3 = store_i64(s + 16, length);   // cap
+
+    s
+};
+
+// Wrap existing data pointer into BmbString (takes ownership)
+fn rt_string_wrap(data: i64, length: i64) -> i64 = {
+    let s = malloc(24);
+    let _s1 = store_i64(s, data);          // data pointer
+    let _s2 = store_i64(s + 8, length);    // len
+    let _s3 = store_i64(s + 16, length);   // cap
+    s
+};
+
+// Get string length
+fn rt_string_len(s: i64) -> i64 = {
+    if s == 0 { 0 }
+    else { load_i64(s + 8) }
+};
+
+// Get character (byte) at index
+fn rt_string_char_at(s: i64, index: i64) -> i64 = {
+    if s == 0 { 0 }
+    else {
+        let len = load_i64(s + 8);
+        if index < 0 { 0 }
+        else if index >= len { 0 }
+        else {
+            let data = load_i64(s);
+            load_u8(data + index)
+        }
+    }
+};
+
+// String equality comparison (recursive helper)
+fn rt_string_eq_loop(data_a: i64, data_b: i64, i: i64, len: i64) -> i64 =
+    if i >= len { 1 }
+    else if load_u8(data_a + i) != load_u8(data_b + i) { 0 }
+    else { rt_string_eq_loop(data_a, data_b, i + 1, len) };
+
+// String equality comparison
+fn rt_string_eq(a: i64, b: i64) -> i64 = {
+    // Same pointer
+    if a == b { 1 }
+    // Null checks
+    else if a == 0 { 0 }
+    else if b == 0 { 0 }
+    else {
+        let len_a = load_i64(a + 8);
+        let len_b = load_i64(b + 8);
+
+        // Different lengths
+        if len_a != len_b { 0 }
+        else {
+            let data_a = load_i64(a);
+            let data_b = load_i64(b);
+            rt_string_eq_loop(data_a, data_b, 0, len_a)
+        }
+    }
+};
+
+// Concatenate two strings
+fn rt_string_concat(a: i64, b: i64) -> i64 = {
+    // Handle null cases
+    if a == 0 {
+        if b == 0 { rt_string_new(0, 0) }
+        else {
+            let len_b = load_i64(b + 8);
+            let data_b = load_i64(b);
+            rt_string_new(data_b, len_b)
+        }
+    } else if b == 0 {
+        let len_a = load_i64(a + 8);
+        let data_a = load_i64(a);
+        rt_string_new(data_a, len_a)
+    } else {
+        let len_a = load_i64(a + 8);
+        let len_b = load_i64(b + 8);
+        let data_a = load_i64(a);
+        let data_b = load_i64(b);
+
+        let new_len = len_a + len_b;
+        let buf = malloc(new_len + 1);
+
+        // Copy first string
+        let ignored1 = mem_copy(buf, data_a, len_a);
+
+        // Copy second string
+        let ignored2 = mem_copy(buf + len_a, data_b, len_b);
+
+        // Null terminate
+        let _t = store_u8(buf + new_len, 0);
+
+        // Create result struct
+        let s = malloc(24);
+        let _s1 = store_i64(s, buf);
+        let _s2 = store_i64(s + 8, new_len);
+        let _s3 = store_i64(s + 16, new_len);
+        s
+    }
+};
+
+// Extract substring [start, end)
+fn rt_string_slice(s: i64, start: i64, end: i64) -> i64 = {
+    if s == 0 { rt_string_new(0, 0) }
+    else {
+        let len = load_i64(s + 8);
+        let data = load_i64(s);
+
+        // Clamp bounds
+        let actual_start = if start < 0 { 0 } else { start };
+        let actual_end = if end > len { len } else { end };
+
+        if actual_start >= actual_end {
+            rt_string_new(0, 0)
+        } else {
+            let slice_len = actual_end - actual_start;
+            rt_string_new(data + actual_start, slice_len)
+        }
+    }
+};
+
+// Free string memory
+fn rt_string_free(s: i64) -> i64 = {
+    if s != 0 {
+        let data = load_i64(s);
+        let _d = if data != 0 { let _f = free(data); 0 } else { 0 };
+        let _s = free(s);
+        0
+    } else { 0 }
+};
+
+// Get raw data pointer
+fn rt_string_data(s: i64) -> i64 = {
+    if s == 0 { 0 }
+    else { load_i64(s) }
+};
+
+// Get capacity
+fn rt_string_cap(s: i64) -> i64 = {
+    if s == 0 { 0 }
+    else { load_i64(s + 16) }
+};
+
+// Create single-character string from ASCII code
+fn rt_chr(code: i64) -> i64 = {
+    let buf = malloc(2);
+    let _c = store_u8(buf, code);
+    let _t = store_u8(buf + 1, 0);
+    rt_string_wrap(buf, 1)
+};
+
+// Get ASCII code of first character
+fn rt_ord(s: i64) -> i64 = {
+    if s == 0 { 0 }
+    else {
+        let len = load_i64(s + 8);
+        if len == 0 { 0 }
+        else {
+            let data = load_i64(s);
+            load_u8(data)
+        }
+    }
+};
+
+// Test function
+fn test_string() -> i64 = {
+    // Test bmb_string_new
+    let hello = malloc(6);
+    let _h0 = store_u8(hello, 72);      // H
+    let _h1 = store_u8(hello + 1, 101); // e
+    let _h2 = store_u8(hello + 2, 108); // l
+    let _h3 = store_u8(hello + 3, 108); // l
+    let _h4 = store_u8(hello + 4, 111); // o
+    let _h5 = store_u8(hello + 5, 0);
+
+    let s1 = rt_string_new(hello, 5);
+    let len1 = rt_string_len(s1);
+
+    // Test char_at
+    let h = rt_string_char_at(s1, 0);  // Should be 72 (H)
+    let o = rt_string_char_at(s1, 4);  // Should be 111 (o)
+
+    // Test equality
+    let s2 = rt_string_new(hello, 5);
+    let eq = rt_string_eq(s1, s2);     // Should be 1
+
+    // Test slice
+    let s3 = rt_string_slice(s1, 1, 4); // "ell"
+    let len3 = rt_string_len(s3);       // Should be 3
+
+    // Test concat
+    let world = malloc(6);
+    let _w0 = store_u8(world, 87);      // W
+    let _w1 = store_u8(world + 1, 111); // o
+    let _w2 = store_u8(world + 2, 114); // r
+    let _w3 = store_u8(world + 3, 108); // l
+    let _w4 = store_u8(world + 4, 100); // d
+    let _w5 = store_u8(world + 5, 0);
+
+    let s4 = rt_string_new(world, 5);
+    let s5 = rt_string_concat(s1, s4);  // "HelloWorld"
+    let len5 = rt_string_len(s5);       // Should be 10
+
+    // Test chr/ord
+    let ch = rt_chr(65);               // "A"
+    let code = rt_ord(ch);             // Should be 65
+
+    // Cleanup
+    let _f1 = free(hello);
+    let _f2 = free(world);
+    let _f3 = rt_string_free(s1);
+    let _f4 = rt_string_free(s2);
+    let _f5 = rt_string_free(s3);
+    let _f6 = rt_string_free(s4);
+    let _f7 = rt_string_free(s5);
+    let _f8 = rt_string_free(ch);
+
+    // Verify results
+    // len1=5, h=72, o=111, eq=1, len3=3, len5=10, code=65
+    // Sum: 5+72+111+1+3+10+65 = 267
+    // Return 999 if all tests pass
+    if len1 == 5 {
+        if h == 72 {
+            if o == 111 {
+                if eq == 1 {
+                    if len3 == 3 {
+                        if len5 == 10 {
+                            if code == 65 {
+                                999
+                            } else { 7 }
+                        } else { 6 }
+                    } else { 5 }
+                } else { 4 }
+            } else { 3 }
+        } else { 2 }
+    } else { 1 }
+};
+
+fn main() -> i64 = {
+    let result = test_string();
+    let _p = println(result);
+    0
+};
