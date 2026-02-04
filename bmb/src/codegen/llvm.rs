@@ -3004,13 +3004,15 @@ impl<'ctx> LlvmContext<'ctx> {
                     .ok_or_else(|| CodeGenError::UnknownBlock(default.clone()))?;
 
                 // Build cases as (IntValue, BasicBlock) pairs
+                // v0.60.262: Use the same type as disc_int for case constants to avoid type mismatch
+                let disc_type = disc_int.get_type();
                 let mut switch_cases: Vec<(inkwell::values::IntValue<'ctx>, inkwell::basic_block::BasicBlock<'ctx>)> = Vec::new();
                 for (val, label) in cases {
                     let case_bb = self
                         .blocks
                         .get(label)
                         .ok_or_else(|| CodeGenError::UnknownBlock(label.clone()))?;
-                    let const_int = self.context.i64_type().const_int(*val as u64, true);
+                    let const_int = disc_type.const_int(*val as u64, true);
                     switch_cases.push((const_int, *case_bb));
                 }
 
