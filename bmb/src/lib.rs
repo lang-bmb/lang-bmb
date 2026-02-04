@@ -47,6 +47,7 @@ pub mod lsp;
 pub mod mir;
 pub mod parser;
 pub mod pir;
+pub mod preprocessor;
 pub mod query;
 pub mod repl;
 pub mod resolver;

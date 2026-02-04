@@ -32,6 +32,7 @@ use crate::codegen::CodeGen;
 use crate::mir::lower_program;
 use crate::parser::parse;
 use crate::lexer::tokenize;
+use crate::preprocessor;
 use crate::types::TypeChecker;
 
 // v0.55: CIR/PIR pipeline imports
@@ -126,6 +127,11 @@ pub struct BuildConfig {
     /// reassociation) that may change results slightly. Not IEEE-754 compliant.
     /// Improves performance significantly for FP-heavy workloads (1.5-2x speedup).
     pub fast_math: bool,
+
+    // === v0.60.251: Include Path Options ===
+
+    /// Include search paths for @include directives
+    pub include_paths: Vec<PathBuf>,
 }
 
 impl BuildConfig {
@@ -153,6 +159,8 @@ impl BuildConfig {
             verification_timeout: 30, // 30 seconds default timeout
             // v0.60.56: Fast math defaults
             fast_math: false, // Strict IEEE-754 by default for correctness
+            // v0.60.251: Include paths
+            include_paths: Vec::new(),
         }
     }
 
@@ -208,6 +216,12 @@ impl BuildConfig {
     /// WARNING: Not IEEE-754 compliant. Use for performance-critical FP code.
     pub fn fast_math(mut self, enable: bool) -> Self {
         self.fast_math = enable;
+        self
+    }
+
+    /// Set include paths for @include directives (v0.60.251)
+    pub fn include_paths(mut self, paths: Vec<PathBuf>) -> Self {
+        self.include_paths = paths;
         self
     }
 }
@@ -274,6 +288,10 @@ pub fn build(config: &BuildConfig) -> BuildResult<()> {
     if config.verbose {
         println!("Compiling: {}", config.input.display());
     }
+
+    // v0.60.251: Preprocess @include directives
+    let source = preprocessor::expand_includes(&source, &config.input, &config.include_paths)
+        .map_err(|e| BuildError::Parse(e.to_string()))?;
 
     // Tokenize
     let tokens = tokenize(&source).map_err(|e| BuildError::Parse(e.message().to_string()))?;
