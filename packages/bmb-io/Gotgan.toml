@@ -1,0 +1,4 @@
+[package]
+name = "bmb-io"
+version = "0.1.0"
+description = "File and console I/O utilities for BMB"

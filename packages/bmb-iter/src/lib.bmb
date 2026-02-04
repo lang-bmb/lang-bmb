@@ -1,4 +1,4 @@
-// BMB Iterator Library v0.17.0
+// BMB Iterator Library v0.17.1
 // 이터레이터 트레이트 및 콤비네이터
 //
 // AI-Native Design:
@@ -9,8 +9,26 @@
 // Note: BMB는 아직 trait 키워드를 지원하지 않음
 // 이터레이터 패턴을 구조체 + 함수로 구현
 
-// v0.17: Import Option for iterator return types
-use bmb_option::Option;
+// v0.17.1: Local Option definition (BMB module system not yet available)
+pub enum Option<T> {
+    Some(T),
+    None,
+}
+
+pub fn is_some<T>(opt: Option<T>) -> bool = match opt {
+    Option::Some(_) => true,
+    Option::None => false,
+};
+
+pub fn is_none<T>(opt: Option<T>) -> bool = match opt {
+    Option::Some(_) => false,
+    Option::None => true,
+};
+
+pub fn unwrap_i64(opt: Option<i64>) -> i64 = match opt {
+    Option::Some(x) => x,
+    Option::None => 0,
+};
 
 // ============================================
 // Range 이터레이터 (i64 범위)
@@ -31,7 +49,7 @@ pub fn range_step(start: i64, end: i64, step: i64) -> Range
   pre step > 0 and start <= end
 = new Range { current: start, end: end, step: step };
 
-pub fn range_next(r: Range) -> i64? =
+pub fn range_next(r: Range) -> Option<i64> =
     if r.current >= r.end { Option::None } else { Option::Some(r.current) };
 
 pub fn range_advance(r: Range) -> Range =
@@ -57,7 +75,7 @@ pub struct Repeat<T> {
 pub fn repeat<T>(value: T) -> Repeat<T> =
     new Repeat { value: value };
 
-pub fn repeat_next<T>(r: Repeat<T>) -> T? =
+pub fn repeat_next<T>(r: Repeat<T>) -> Option<T> =
     Option::Some(r.value);
 
 // ============================================
@@ -97,11 +115,11 @@ pub fn range_count(start: i64, end: i64) -> i64
 = end - start;
 
 // min: 최솟값 (빈 범위는 None)
-pub fn range_min(start: i64, end: i64) -> i64? =
+pub fn range_min(start: i64, end: i64) -> Option<i64> =
     if start >= end { Option::None } else { Option::Some(start) };
 
 // max: 최댓값 (빈 범위는 None)
-pub fn range_max(start: i64, end: i64) -> i64? =
+pub fn range_max(start: i64, end: i64) -> Option<i64> =
     if start >= end { Option::None } else { Option::Some(end - 1) };
 
 // any: 조건을 만족하는 요소 존재 여부 (양수)
@@ -113,7 +131,7 @@ pub fn range_all_positive(start: i64, end: i64) -> bool =
     start > 0;
 
 // find: 조건을 만족하는 첫 요소 (첫 양수)
-pub fn range_find_positive(start: i64, end: i64) -> i64? =
+pub fn range_find_positive(start: i64, end: i64) -> Option<i64> =
     if start >= end { Option::None } else if start > 0 { Option::Some(start) } else if 1 < end { Option::Some(1) } else { Option::None };
 
 // ============================================
@@ -121,7 +139,7 @@ pub fn range_find_positive(start: i64, end: i64) -> i64? =
 // ============================================
 
 // enumerate 시뮬레이션: (index, value) 쌍
-pub fn enumerate_at(start: i64, end: i64, index: i64) -> i64?
+pub fn enumerate_at(start: i64, end: i64, index: i64) -> Option<i64>
   pre start <= end
 = if start + index >= end { Option::None } else { Option::Some(start + index) };
 
@@ -130,7 +148,7 @@ pub fn zip_ranges_at(
     start1: i64, end1: i64,
     start2: i64, end2: i64,
     index: i64
-) -> i64?
+) -> Option<i64>
   pre start1 <= end1 and start2 <= end2
 = {
     let len1: i64 = end1 - start1;
@@ -147,12 +165,12 @@ pub fn collect_sum(start: i64, end: i64) -> i64 =
     range_sum(start, end);
 
 // 범위의 n번째 요소
-pub fn nth(start: i64, end: i64, n: i64) -> i64?
+pub fn nth(start: i64, end: i64, n: i64) -> Option<i64>
   pre start <= end and n >= 0
 = if start + n >= end { Option::None } else { Option::Some(start + n) };
 
 // 범위의 마지막 요소
-pub fn last(start: i64, end: i64) -> i64?
+pub fn last(start: i64, end: i64) -> Option<i64>
   pre start <= end
 = if start >= end { Option::None } else { Option::Some(end - 1) };
 
@@ -170,3 +188,84 @@ pub fn naturals_nth(n: i64) -> i64
 pub fn fibonacci(n: i64) -> i64
   pre n >= 0
 = if n == 0 { 0 } else if n == 1 { 1 } else { fibonacci(n - 1) + fibonacci(n - 2) };
+
+// ============================================
+// Tests
+// ============================================
+
+fn test_range() -> i64 = {
+    let r = range(0, 5);
+    if range_is_empty(r) { 1 }
+    else if range_len(r) != 5 { 2 }
+    else {
+        let first = range_next(r);
+        if is_none(first) { 3 }
+        else if unwrap_i64(first) != 0 { 4 }
+        else {
+            let r2 = range_advance(r);
+            let second = range_next(r2);
+            if unwrap_i64(second) != 1 { 5 }
+            else { 0 }
+        }
+    }
+};
+
+fn test_range_sum() -> i64 = {
+    // sum(0..5) = 0+1+2+3+4 = 10
+    let s = range_sum(0, 5);
+    if s != 10 { 1 }
+    else { 0 }
+};
+
+fn test_range_product() -> i64 = {
+    // product(1..5) = 1*2*3*4 = 24
+    let p = range_product(1, 5);
+    if p != 24 { 1 }
+    else { 0 }
+};
+
+fn test_fibonacci() -> i64 = {
+    // fib(0)=0, fib(1)=1, fib(2)=1, fib(3)=2, fib(4)=3, fib(5)=5, fib(10)=55
+    if fibonacci(0) != 0 { 1 }
+    else if fibonacci(1) != 1 { 2 }
+    else if fibonacci(5) != 5 { 3 }
+    else if fibonacci(10) != 55 { 4 }
+    else { 0 }
+};
+
+fn test_nth_last() -> i64 = {
+    // nth(0, 10, 5) = 5
+    let n = nth(0, 10, 5);
+    if unwrap_i64(n) != 5 { 1 }
+    // last(0, 10) = 9
+    else {
+        let l = last(0, 10);
+        if unwrap_i64(l) != 9 { 2 }
+        else { 0 }
+    }
+};
+
+fn main() -> i64 = {
+    let r1 = test_range();
+    if r1 != 0 { let _p = println(r1); r1 }
+    else {
+        let r2 = test_range_sum();
+        if r2 != 0 { let _p = println(r2 + 10); r2 + 10 }
+        else {
+            let r3 = test_range_product();
+            if r3 != 0 { let _p = println(r3 + 20); r3 + 20 }
+            else {
+                let r4 = test_fibonacci();
+                if r4 != 0 { let _p = println(r4 + 30); r4 + 30 }
+                else {
+                    let r5 = test_nth_last();
+                    if r5 != 0 { let _p = println(r5 + 40); r5 + 40 }
+                    else {
+                        let _p = println(999);
+                        999
+                    }
+                }
+            }
+        }
+    }
+};

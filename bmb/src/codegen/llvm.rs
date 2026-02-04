@@ -940,8 +940,13 @@ impl<'ctx> LlvmContext<'ctx> {
 
         // file_exists(path: ptr) -> i64 (returns 1 if exists, 0 otherwise)
         let file_exists_type = i64_type.fn_type(&[ptr_type.into()], false);
-        let file_exists_fn = self.module.add_function("bmb_file_exists", file_exists_type, None);
+        let file_exists_fn = self.module.add_function("file_exists", file_exists_type, None);
         self.functions.insert("file_exists".to_string(), file_exists_fn);
+
+        // v0.60.262: file_size(path: ptr) -> i64 (returns file size or -1 on error)
+        let file_size_type = i64_type.fn_type(&[ptr_type.into()], false);
+        let file_size_fn = self.module.add_function("file_size", file_size_type, None);
+        self.functions.insert("file_size".to_string(), file_size_fn);
 
         // v0.51.18: _cstr variants for string literal optimization (zero overhead)
         let file_exists_cstr_fn = self.module.add_function("file_exists_cstr", file_exists_type, None);

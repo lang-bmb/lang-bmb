@@ -824,6 +824,21 @@ int64_t bmb_file_exists_cstr(const char* path) {
     return (stat(path, &st) == 0) ? 1 : 0;
 }
 
+// v0.60.262: BmbString* wrappers for file operations
+int64_t file_exists(const BmbString* path) {
+    struct stat st;
+    return (stat(path->data, &st) == 0) ? 1 : 0;
+}
+
+int64_t file_size(const BmbString* path) {
+    FILE* f = fopen(path->data, "rb");
+    if (!f) return -1;
+    fseek(f, 0, SEEK_END);
+    long size = ftell(f);
+    fclose(f);
+    return (int64_t)size;
+}
+
 // v0.46: Command-line argument support for CLI Independence
 static int g_argc = 0;
 static char** g_argv = NULL;
