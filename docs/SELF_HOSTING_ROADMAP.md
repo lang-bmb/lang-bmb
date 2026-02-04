@@ -9,7 +9,7 @@ Rust와 동등한 수준의 언어 생태계 구축:
 
 ---
 
-## 현재 상태 (v0.60.251)
+## 현재 상태 (v0.60.261)
 
 | 구성요소 | 상태 | 비고 |
 |----------|------|------|
@@ -17,7 +17,7 @@ Rust와 동등한 수준의 언어 생태계 구축:
 | 코드젠 | ✅ LLVM | 유지 예정 |
 | 링커 | ✅ 시스템 | 유지 예정 |
 | 런타임 | ❌ C | BMB 재작성 필요 |
-| 표준 라이브러리 | 🔄 초기 | `packages/` 존재하나 미연동 |
+| 표준 라이브러리 | 🔄 진행중 | prelude 자동로드, Option<T>, Result<T,E> |
 | 패키지 매니저 | 🔄 Rust | BMB 재작성 필요 |
 
 ---
@@ -51,13 +51,13 @@ let x = abs(-42);  // bmb-core 자동 로드
 
 | 모듈 | 기능 | 우선순위 | 상태 |
 |------|------|----------|------|
-| `bmb-core` | Unit, Never, abs, min, max | Critical | 🔄 초기 |
-| `bmb-option` | Option<T>, Some, None | Critical | 🔄 초기 |
-| `bmb-result` | Result<T,E>, Ok, Err | Critical | 🔄 초기 |
+| `bmb-core` | Unit, Never, Pair<A,B>, abs, min, max | Critical | ✅ 완료 (v0.60.261) |
+| `bmb-option` | Option<T>, Some, None | Critical | ✅ 완료 (v0.2.0) |
+| `bmb-result` | Result<T,E>, Ok, Err | Critical | ✅ 완료 (v0.2.0) |
 | `bmb-traits` | 핵심 트레이트 | High | 🔄 초기 |
-| `bmb-iter` | Iterator | High | 🔄 초기 |
+| `bmb-iter` | Iterator | High | ❌ 미작성 |
 | `bmb-string` | String 확장 메서드 | High | ❌ 미작성 |
-| `bmb-collections` | Vec, HashMap | High | ❌ 미작성 |
+| `bmb-collections` | Vec, HashMap | High | 🔄 초기 (bmb-hash 있음) |
 | `bmb-io` | 파일/콘솔 I/O | Medium | ❌ 미작성 |
 
 ### 1.3 마일스톤
@@ -294,8 +294,8 @@ Week 7-8:  통합 및 부트스트랩 검증
 
 ### Phase 1 완료 조건
 
-- [ ] `abs(-42)` 가 import 없이 동작
-- [ ] `Option<T>`, `Result<T,E>` 제네릭 사용 가능
+- [x] `abs(-42)` 가 import 없이 동작 (v0.60.253 prelude 자동로드)
+- [x] `Option<T>`, `Result<T,E>` 제네릭 사용 가능 (v0.60.261)
 - [ ] Iterator 패턴 사용 가능
 - [ ] Vec, HashMap 기본 컬렉션 사용 가능
 
