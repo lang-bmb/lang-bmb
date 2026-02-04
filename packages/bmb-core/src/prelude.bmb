@@ -1,7 +1,6 @@
-// BMB Core Prelude - Minimal version for LLVM codegen compatibility
-// Contains only functions that work with current LLVM backend
-// Note: Contracts temporarily disabled due to linker issues with contract codegen
-// Full bmb-core/lib.bmb has additional types (Unit, Never, Pair) and contracts
+// BMB Core Prelude v0.60.260
+// Contains essential functions auto-loaded for all BMB programs
+// v0.60.260: Added postconditions to eliminate warnings
 
 // ============================================
 // Runtime-provided functions (extern declarations)
@@ -17,28 +16,74 @@ extern fn abs(n: i64) -> i64;
 // ============================================
 
 @inline
-pub fn clamp(x: i64, lo: i64, hi: i64) -> i64 =
-    if x < lo { lo } else if x > hi { hi } else { x };
+pub fn clamp(x: i64, lo: i64, hi: i64) -> i64
+  post ret >= lo and ret <= hi
+= if x < lo { lo } else if x > hi { hi } else { x };
 
 @inline
-pub fn sign(x: i64) -> i64 =
-    if x < 0 { -1 } else if x > 0 { 1 } else { 0 };
+pub fn sign(x: i64) -> i64
+  post ret >= -1 and ret <= 1
+= if x < 0 { -1 } else if x > 0 { 1 } else { 0 };
 
 @inline
-pub fn in_range(x: i64, lo: i64, hi: i64) -> bool = x >= lo and x <= hi;
+pub fn in_range(x: i64, lo: i64, hi: i64) -> bool
+  post ret == (x >= lo and x <= hi)
+= x >= lo and x <= hi;
+
+// ============================================
+// Numeric utilities
+// ============================================
+
+@inline
+pub fn diff(a: i64, b: i64) -> i64
+  post ret >= 0
+= if a >= b { a - b } else { b - a };
+
+@inline
+pub fn is_positive(x: i64) -> bool
+  post ret == (x > 0)
+= x > 0;
+
+@inline
+pub fn is_negative(x: i64) -> bool
+  post ret == (x < 0)
+= x < 0;
+
+@inline
+pub fn is_zero(x: i64) -> bool
+  post ret == (x == 0)
+= x == 0;
 
 // ============================================
 // Boolean operations
 // ============================================
 
 @inline
-pub fn bool_and(a: bool, b: bool) -> bool = a and b;
+pub fn bool_and(a: bool, b: bool) -> bool
+  post ret == (a and b)
+= a and b;
 
 @inline
-pub fn bool_or(a: bool, b: bool) -> bool = a or b;
+pub fn bool_or(a: bool, b: bool) -> bool
+  post ret == (a or b)
+= a or b;
 
 @inline
-pub fn bool_not(a: bool) -> bool = not a;
+pub fn bool_not(a: bool) -> bool
+  post ret == (not a)
+= not a;
 
 @inline
-pub fn bool_xor(a: bool, b: bool) -> bool = (a or b) and not (a and b);
+pub fn bool_xor(a: bool, b: bool) -> bool
+  post ret == ((a or b) and not (a and b))
+= (a or b) and not (a and b);
+
+@inline
+pub fn bool_implies(a: bool, b: bool) -> bool
+  post ret == ((not a) or b)
+= (not a) or b;
+
+@inline
+pub fn bool_eq(a: bool, b: bool) -> bool
+  post ret == (a == b)
+= a == b;
