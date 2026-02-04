@@ -132,6 +132,15 @@ pub struct BuildConfig {
 
     /// Include search paths for @include directives
     pub include_paths: Vec<PathBuf>,
+
+    // === v0.60.252: Prelude System ===
+
+    /// Path to the standard library (packages/) directory
+    /// When set, automatically includes prelude packages (bmb-core, etc.)
+    pub prelude_path: Option<PathBuf>,
+
+    /// Disable prelude auto-include (for bootstrap or special cases)
+    pub no_prelude: bool,
 }
 
 impl BuildConfig {
@@ -161,6 +170,9 @@ impl BuildConfig {
             fast_math: false, // Strict IEEE-754 by default for correctness
             // v0.60.251: Include paths
             include_paths: Vec::new(),
+            // v0.60.252: Prelude
+            prelude_path: None,
+            no_prelude: false,
         }
     }
 
@@ -222,6 +234,19 @@ impl BuildConfig {
     /// Set include paths for @include directives (v0.60.251)
     pub fn include_paths(mut self, paths: Vec<PathBuf>) -> Self {
         self.include_paths = paths;
+        self
+    }
+
+    /// Set prelude path (v0.60.252)
+    /// Path to the packages/ directory for standard library auto-include
+    pub fn prelude_path(mut self, path: PathBuf) -> Self {
+        self.prelude_path = Some(path);
+        self
+    }
+
+    /// Disable prelude auto-include (v0.60.252)
+    pub fn no_prelude(mut self, disable: bool) -> Self {
+        self.no_prelude = disable;
         self
     }
 }
@@ -289,9 +314,18 @@ pub fn build(config: &BuildConfig) -> BuildResult<()> {
         println!("Compiling: {}", config.input.display());
     }
 
-    // v0.60.251: Preprocess @include directives
-    let source = preprocessor::expand_includes(&source, &config.input, &config.include_paths)
-        .map_err(|e| BuildError::Parse(e.to_string()))?;
+    // v0.60.252: Preprocess @include directives with optional prelude
+    let prelude = if config.no_prelude {
+        None
+    } else {
+        config.prelude_path.as_deref()
+    };
+    let source = preprocessor::expand_with_prelude(
+        &source,
+        &config.input,
+        &config.include_paths,
+        prelude,
+    ).map_err(|e| BuildError::Parse(e.to_string()))?;
 
     // Tokenize
     let tokens = tokenize(&source).map_err(|e| BuildError::Parse(e.message().to_string()))?;

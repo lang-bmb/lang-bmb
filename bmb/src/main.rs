@@ -99,6 +99,18 @@ enum Command {
         /// Can be specified multiple times: -I path1 -I path2
         #[arg(short = 'I', long = "include", value_name = "PATH")]
         include_paths: Vec<PathBuf>,
+
+        // === v0.60.252: Prelude Options ===
+
+        /// Path to standard library (packages/) directory for auto-include (v0.60.252)
+        /// When set, automatically includes prelude packages (bmb-core, etc.)
+        #[arg(long = "prelude", value_name = "PATH")]
+        prelude_path: Option<PathBuf>,
+
+        /// Disable prelude auto-include (v0.60.252)
+        /// Use for bootstrap compilation or when manual control is needed
+        #[arg(long)]
+        no_prelude: bool,
     },
     /// Run a BMB program (interpreter)
     Run {
@@ -404,7 +416,9 @@ fn main() {
             verification_timeout,
             fast_math,
             include_paths,
-        } => build_file(&file, output, debug, release, aggressive, emit_ir, emit_mir, emit_cir, emit_wasm, &wasm_target, all_targets, target.as_deref(), verbose, verify.as_deref(), trust_contracts, verification_timeout, fast_math, &include_paths),
+            prelude_path,
+            no_prelude,
+        } => build_file(&file, output, debug, release, aggressive, emit_ir, emit_mir, emit_cir, emit_wasm, &wasm_target, all_targets, target.as_deref(), verbose, verify.as_deref(), trust_contracts, verification_timeout, fast_math, &include_paths, prelude_path.as_ref(), no_prelude),
         Command::Run { file, args, human: _ } => run_file(&file, &args),
         Command::Repl => start_repl(),
         Command::Check { file, include_paths } => check_file_with_includes(&file, &include_paths),
@@ -452,6 +466,8 @@ fn build_file(
     verification_timeout: u32,
     fast_math: bool,
     include_paths: &[PathBuf],
+    prelude_path: Option<&PathBuf>,
+    no_prelude: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // v0.52: If emitting CIR, output Contract IR and return
     if emit_cir {
@@ -473,7 +489,7 @@ fn build_file(
         if verbose {
             println!("\n=== Native Build ===");
         }
-        build_native(path, output.clone(), debug, release, aggressive, emit_ir, target, verbose, verify_mode, trust_contracts, verification_timeout, fast_math, include_paths)?;
+        build_native(path, output.clone(), debug, release, aggressive, emit_ir, target, verbose, verify_mode, trust_contracts, verification_timeout, fast_math, include_paths, prelude_path, no_prelude)?;
 
         // Then build WASM
         if verbose {
@@ -493,7 +509,7 @@ fn build_file(
     }
 
     // Default: build native
-    build_native(path, output, debug, release, aggressive, emit_ir, target, verbose, verify_mode, trust_contracts, verification_timeout, fast_math, include_paths)
+    build_native(path, output, debug, release, aggressive, emit_ir, target, verbose, verify_mode, trust_contracts, verification_timeout, fast_math, include_paths, prelude_path, no_prelude)
 }
 
 fn build_native(
@@ -510,6 +526,8 @@ fn build_native(
     verification_timeout: u32,
     fast_math: bool,
     include_paths: &[PathBuf],
+    prelude_path: Option<&PathBuf>,
+    no_prelude: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     use bmb::build::{BuildConfig, OptLevel, VerificationMode};
 
@@ -518,7 +536,13 @@ fn build_native(
         .verbose(verbose)
         .verification_timeout(verification_timeout)
         .fast_math(fast_math)
-        .include_paths(include_paths.to_vec());
+        .include_paths(include_paths.to_vec())
+        .no_prelude(no_prelude);
+
+    // v0.60.252: Set prelude path if provided
+    if let Some(prelude) = prelude_path {
+        config = config.prelude_path(prelude.clone());
+    }
 
     // v0.60: Parse verification mode from CLI
     let verification_mode = if trust_contracts {

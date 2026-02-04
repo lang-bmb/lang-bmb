@@ -1,0 +1,39 @@
+// BMB Core Prelude - Minimal version for LLVM codegen compatibility
+// Contains only functions that work with current LLVM backend
+// Note: Contracts temporarily disabled due to linker issues with contract codegen
+// Full bmb-core/lib.bmb has additional types (Unit, Never, Pair) and contracts
+//
+// IMPORTANT: min/max are provided by the runtime (bmb_runtime.c), not here
+// to avoid symbol collision. Use min(a, b) and max(a, b) directly.
+
+// ============================================
+// Numeric operations (i64)
+// Note: min/max provided by runtime
+// ============================================
+
+@inline
+pub fn clamp(x: i64, lo: i64, hi: i64) -> i64 =
+    if x < lo { lo } else if x > hi { hi } else { x };
+
+@inline
+pub fn sign(x: i64) -> i64 =
+    if x < 0 { -1 } else if x > 0 { 1 } else { 0 };
+
+@inline
+pub fn in_range(x: i64, lo: i64, hi: i64) -> bool = x >= lo and x <= hi;
+
+// ============================================
+// Boolean operations
+// ============================================
+
+@inline
+pub fn bool_and(a: bool, b: bool) -> bool = a and b;
+
+@inline
+pub fn bool_or(a: bool, b: bool) -> bool = a or b;
+
+@inline
+pub fn bool_not(a: bool) -> bool = not a;
+
+@inline
+pub fn bool_xor(a: bool, b: bool) -> bool = (a or b) and not (a and b);
