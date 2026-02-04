@@ -763,6 +763,11 @@ impl<'ctx> LlvmContext<'ctx> {
         let hashmap_len_fn = self.module.add_function("hashmap_len", hashmap_len_type, None);
         self.functions.insert("hashmap_len".to_string(), hashmap_len_fn);
 
+        // v0.60.262: hashmap_contains(handle: i64, key: i64) -> i64
+        let hashmap_contains_type = i64_type.fn_type(&[i64_type.into(), i64_type.into()], false);
+        let hashmap_contains_fn = self.module.add_function("hashmap_contains", hashmap_contains_type, None);
+        self.functions.insert("hashmap_contains".to_string(), hashmap_contains_fn);
+
         // hashmap_free(handle: i64) -> void
         let hashmap_free_type = void_type.fn_type(&[i64_type.into()], false);
         let hashmap_free_fn = self.module.add_function("hashmap_free", hashmap_free_type, None);

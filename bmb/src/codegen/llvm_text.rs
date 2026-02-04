@@ -545,6 +545,7 @@ impl TextCodeGen {
         writeln!(out, "declare i64 @hashmap_get(i64, i64) nounwind willreturn")?;
         writeln!(out, "declare i64 @hashmap_remove(i64, i64) nounwind")?;
         writeln!(out, "declare i64 @hashmap_len(i64) nounwind willreturn")?;
+        writeln!(out, "declare i64 @hashmap_contains(i64, i64) nounwind willreturn")?;
         writeln!(out, "declare void @hashmap_free(i64) nounwind")?;
         writeln!(out)?;
 

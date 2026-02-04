@@ -54,10 +54,10 @@ let x = abs(-42);  // bmb-core 자동 로드
 | `bmb-core` | Unit, Never, Pair<A,B>, abs, min, max | Critical | ✅ 완료 (v0.60.261) |
 | `bmb-option` | Option<T>, Some, None | Critical | ✅ 완료 (v0.2.0) |
 | `bmb-result` | Result<T,E>, Ok, Err | Critical | ✅ 완료 (v0.2.0) |
-| `bmb-traits` | 핵심 트레이트 | High | 🔄 초기 |
+| `bmb-traits` | Ordering, 핵심 트레이트 | High | ✅ 완료 (v0.60.262) |
 | `bmb-iter` | Iterator | High | ❌ 미작성 |
-| `bmb-string` | String 확장 메서드 | High | ❌ 미작성 |
-| `bmb-collections` | Vec, HashMap | High | 🔄 초기 (bmb-hash 있음) |
+| `bmb-string` | String 확장 메서드 | High | ✅ 완료 (v0.60.262) |
+| `bmb-collections` | HashMap, VecDeque, Stack | High | ✅ 완료 (v0.60.262) |
 | `bmb-io` | 파일/콘솔 I/O | Medium | ❌ 미작성 |
 
 ### 1.3 마일스톤

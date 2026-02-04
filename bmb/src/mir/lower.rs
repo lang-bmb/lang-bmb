@@ -1159,13 +1159,20 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
             let default_label = ctx.fresh_label("match_default");
 
             // Analyze patterns to generate switch cases
-            let cases = compile_match_patterns(arms, &arm_labels, &default_label);
+            // v0.60.262: Also get wildcard arm index for proper default handling
+            let (cases, wildcard_arm_index) = compile_match_patterns(arms, &arm_labels, &default_label);
+
+            // v0.60.262: Use wildcard arm label as switch default if present
+            let actual_default_label = match wildcard_arm_index {
+                Some(idx) => arm_labels[idx].clone(),
+                None => default_label.clone(),
+            };
 
             // Close current block with switch terminator
             ctx.finish_block(Terminator::Switch {
                 discriminant: Operand::Place(match_place.clone()),
                 cases,
-                default: default_label.clone(),
+                default: actual_default_label,
             });
 
             // Result place for PHI node
@@ -1190,9 +1197,12 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
                 ctx.finish_block(Terminator::Goto(merge_label.clone()));
             }
 
-            // Generate default block (unreachable for exhaustive matches)
-            ctx.start_block(default_label);
-            ctx.finish_block(Terminator::Unreachable);
+            // v0.60.262: Only generate default block if no wildcard arm
+            // (Wildcard arm handles all unmatched cases)
+            if wildcard_arm_index.is_none() {
+                ctx.start_block(default_label);
+                ctx.finish_block(Terminator::Unreachable);
+            }
 
             // Generate merge block with PHI
             ctx.start_block(merge_label);
@@ -2203,14 +2213,16 @@ fn ast_unop_to_mir(op: UnOp, ty: &MirType) -> MirUnaryOp {
 // v0.19.2: Pattern matching helper functions
 
 /// Compile match patterns to switch cases
-/// Returns a list of (discriminant_value, target_label) pairs
+/// Returns (cases, wildcard_arm_index):
+///   - cases: list of (discriminant_value, target_label) pairs
+///   - wildcard_arm_index: Some(index) if there's a wildcard/var arm, None otherwise
 fn compile_match_patterns(
     arms: &[MatchArm],
     arm_labels: &[String],
-    default_label: &str,
-) -> Vec<(i64, String)> {
+    _default_label: &str,
+) -> (Vec<(i64, String)>, Option<usize>) {
     let mut cases = Vec::new();
-    let mut has_wildcard = false;
+    let mut wildcard_arm_index: Option<usize> = None;
 
     for (i, arm) in arms.iter().enumerate() {
         match &arm.pattern.node {
@@ -2230,11 +2242,9 @@ fn compile_match_patterns(
                 cases.push((disc, arm_labels[i].clone()));
             }
             Pattern::Wildcard | Pattern::Var(_) => {
-                // Wildcard/var patterns catch all - they become the default case
-                // For now, only the last one can be the default
-                has_wildcard = true;
-                // Add a fallthrough to this arm for the default path
-                // We'll handle this by updating the default label
+                // v0.60.262: Wildcard/var patterns catch all - record the arm index
+                // This arm's label will be used as the switch default target
+                wildcard_arm_index = Some(i);
             }
             Pattern::Struct { .. } => {
                 // Struct patterns need field matching - for now, use index
@@ -2255,7 +2265,8 @@ fn compile_match_patterns(
                 // Delegate to inner pattern's logic - for now, use index
                 match &pattern.node {
                     Pattern::Wildcard | Pattern::Var(_) => {
-                        has_wildcard = true;
+                        // v0.60.262: Record wildcard arm index for binding patterns too
+                        wildcard_arm_index = Some(i);
                     }
                     _ => {
                         cases.push((i as i64, arm_labels[i].clone()));
@@ -2277,12 +2288,7 @@ fn compile_match_patterns(
         }
     }
 
-    // If we have a wildcard, we can still use the cases for non-wildcard matches
-    // The default path will go to unreachable or the wildcard arm
-    let _ = has_wildcard; // Silence unused warning for now
-    let _ = default_label;
-
-    cases
+    (cases, wildcard_arm_index)
 }
 
 /// Convert variant name to discriminant value

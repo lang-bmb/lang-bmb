@@ -247,3 +247,75 @@ pub fn bool_from_i64(n: i64) -> bool
 //
 // @derive 지원:
 // - Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default
+
+// ============================================
+// Tests
+// ============================================
+
+fn test_ordering() -> i64 = {
+    let lt = Ordering::Less;
+    let eq = Ordering::Equal;
+    let gt = Ordering::Greater;
+
+    // Test reverse
+    if not ordering_is_gt(ordering_reverse(lt)) { 1 }
+    else if not ordering_is_eq(ordering_reverse(eq)) { 2 }
+    else if not ordering_is_lt(ordering_reverse(gt)) { 3 }
+    // Test predicates
+    else if not ordering_is_lt(lt) { 4 }
+    else if not ordering_is_eq(eq) { 5 }
+    else if not ordering_is_gt(gt) { 6 }
+    else if ordering_is_eq(lt) { 7 }
+    else if ordering_is_lt(gt) { 8 }
+    else { 0 }
+};
+
+fn test_default() -> i64 = {
+    if default_i64() != 0 { 1 }
+    else if default_bool() != false { 2 }
+    else { 0 }
+};
+
+fn test_hash() -> i64 = {
+    let h1 = hash_i64(42);
+    let h2 = hash_i64(42);
+    let h3 = hash_i64(43);
+
+    // Same input = same hash
+    if h1 != h2 { 1 }
+    // Different input = (likely) different hash
+    else if h1 == h3 { 2 }
+    // hash_combine should produce different result
+    else if hash_combine(h1, h2) == h1 { 3 }
+    else { 0 }
+};
+
+fn test_conversion() -> i64 = {
+    if i64_from_bool(true) != 1 { 1 }
+    else if i64_from_bool(false) != 0 { 2 }
+    else if bool_from_i64(0) != false { 3 }
+    else if bool_from_i64(1) != true { 4 }
+    else if bool_from_i64(42) != true { 5 }
+    else { 0 }
+};
+
+fn main() -> i64 = {
+    let r1 = test_ordering();
+    if r1 != 0 { let _p = println(r1); r1 }
+    else {
+        let r2 = test_default();
+        if r2 != 0 { let _p = println(r2 + 10); r2 + 10 }
+        else {
+            let r3 = test_hash();
+            if r3 != 0 { let _p = println(r3 + 20); r3 + 20 }
+            else {
+                let r4 = test_conversion();
+                if r4 != 0 { let _p = println(r4 + 30); r4 + 30 }
+                else {
+                    let _p = println(999);
+                    999
+                }
+            }
+        }
+    }
+};

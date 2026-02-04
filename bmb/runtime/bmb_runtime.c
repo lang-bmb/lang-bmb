@@ -689,6 +689,29 @@ int64_t hashmap_remove(int64_t handle, int64_t key) {
     return INT64_MIN;
 }
 
+// v0.60.262: Check if key exists in hashmap
+int64_t hashmap_contains(int64_t handle, int64_t key) {
+    if (!handle) return 0;
+    HashMap* m = (HashMap*)handle;
+
+    int64_t hash = hashmap_hash_i64(key);
+    int64_t mask = m->capacity - 1;
+    int64_t idx = hash & mask;
+
+    for (int64_t i = 0; i < m->capacity; i++) {
+        HashEntry* e = &m->entries[idx];
+        if (e->state == 0) {
+            // Empty slot - key not found
+            return 0;
+        } else if (e->state == 1 && e->key == key) {
+            // Found
+            return 1;
+        }
+        idx = (idx + 1) & mask;
+    }
+    return 0;
+}
+
 // v0.46: Additional file functions
 int64_t bmb_file_size(const char* path) {
     FILE* f = fopen(path, "rb");
