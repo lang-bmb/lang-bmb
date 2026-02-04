@@ -108,10 +108,10 @@ ecosystem/gotgan/     # Rust로 작성됨
 |------|------|------|
 | 로컬 의존성 | ✅ | 유지 |
 | 버전 해석 | ✅ | 유지 |
-| GitHub fetch | ❌ | 직접 clone/download |
-| 빌드 캐시 | ❌ | 증분 빌드 |
+| GitHub fetch | ✅ 완료 | shallow clone + ~/.gotgan/cache/ |
+| 빌드 캐시 | ✅ 완료 | FNV-1a fingerprinting (v0.60.263) |
 | Lock 파일 | ✅ | 유지 |
-| 워크스페이스 | ❌ | 모노레포 지원 |
+| 워크스페이스 | ✅ 완료 | [workspace] members = ["packages/*"] (v0.60.263) |
 | 패키지 검색 | ❌ | 인덱스 서비스 |
 
 ### 2.4 패키지 소싱 (Go 스타일)
@@ -301,9 +301,9 @@ Week 7-8:  통합 및 부트스트랩 검증
 
 ### Phase 2 완료 조건
 
-- [ ] `gotgan add github.com/lang-bmb/bmb-json@v0.1.0` 으로 GitHub 패키지 설치
-- [ ] 증분 빌드로 재컴파일 시간 50% 감소
-- [ ] 워크스페이스에서 여러 패키지 동시 관리
+- [x] `gotgan add github.com/lang-bmb/bmb-json@v0.1.0` 으로 GitHub 패키지 설치 (v0.60.263 - Git clone 구현됨)
+- [x] 증분 빌드 캐시 (v0.60.263 - BuildCache, FNV-1a fingerprinting)
+- [x] 워크스페이스에서 여러 패키지 동시 관리 (v0.60.263 - [workspace] members glob)
 - [ ] `gotgan search json` 으로 패키지 검색 가능
 
 ### Phase 3 완료 조건
