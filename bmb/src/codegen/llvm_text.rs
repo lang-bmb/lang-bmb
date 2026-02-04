@@ -1124,9 +1124,17 @@ impl TextCodeGen {
         // This enables argv support through bmb_init_argv called from real main()
         let emitted_name = if func.name == "main" { "bmb_user_main" } else { &func.name };
 
+        // v0.60.252: Use private linkage for @inline functions to avoid symbol collision
+        let linkage = if func.always_inline && func.name != "main" && func.name != "bmb_user_main" {
+            "private "
+        } else {
+            ""
+        };
+
         writeln!(
             out,
-            "define {} @{}({}){} {{",
+            "define {}{} @{}({}){} {{",
+            linkage,
             ret_type,
             emitted_name,
             params.join(", "),

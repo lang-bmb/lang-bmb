@@ -1027,7 +1027,14 @@ impl<'ctx> LlvmContext<'ctx> {
         };
 
         // Create function declaration
-        let function = self.module.add_function(emitted_name, fn_type, None);
+        // v0.60.252: Use private linkage for @inline functions to avoid symbol collision
+        use inkwell::module::Linkage;
+        let linkage = if func.always_inline && func.name != "main" && func.name != "bmb_user_main" {
+            Some(Linkage::Private)
+        } else {
+            None
+        };
+        let function = self.module.add_function(emitted_name, fn_type, linkage);
 
         // v0.50.76: Add function attributes for better LLVM optimization
         // - nounwind: BMB has no exceptions, so no unwinding

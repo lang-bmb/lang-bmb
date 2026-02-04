@@ -2,13 +2,17 @@
 // Contains only functions that work with current LLVM backend
 // Note: Contracts temporarily disabled due to linker issues with contract codegen
 // Full bmb-core/lib.bmb has additional types (Unit, Never, Pair) and contracts
-//
-// IMPORTANT: min/max are provided by the runtime (bmb_runtime.c), not here
-// to avoid symbol collision. Use min(a, b) and max(a, b) directly.
+
+// ============================================
+// Runtime-provided functions (extern declarations)
+// These are implemented in bmb_runtime.c
+// ============================================
+
+extern fn min(a: i64, b: i64) -> i64;
+extern fn max(a: i64, b: i64) -> i64;
 
 // ============================================
 // Numeric operations (i64)
-// Note: min/max provided by runtime
 // ============================================
 
 @inline
