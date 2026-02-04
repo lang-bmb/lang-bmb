@@ -63,21 +63,30 @@ fn example() -> i64? = Option::Some(42);
 The file `packages/bmb-option/src/lib.bmb` incorrectly uses `enum T?` syntax.
 It should be rewritten to use `enum Option<T>` syntax.
 
-## Generic Struct Bug
+## Generic Struct Bug (FIXED in v0.60.261)
 
-Note: There is a separate bug with generic struct field access (ISSUE-20260204).
-This affects `Option<T>` if it's implemented as a struct with a tag and value field.
+~~Note: There is a separate bug with generic struct field access (ISSUE-20260204).
+This affects `Option<T>` if it's implemented as a struct with a tag and value field.~~
+
+**Fixed in v0.60.261:** Generic struct field access now works correctly. See `claudedocs/issues/ISSUE-20260204-generic-struct-field-access.md` for details.
 
 ## Recommendation
 
-For now, use non-generic Option until the generic struct bug is fixed:
+Generic structs like `Pair<A, B>` and generic enums like `Option<T>` now work correctly:
 
 ```bmb
-// Non-generic Option for i64
-pub enum OptionI64 {
-    Some(i64),
-    None,
+// Generic Pair - works in v0.60.261+
+struct Pair<A, B> {
+    fst: A,
+    snd: B,
 }
+
+fn main() -> i64 = {
+    let p = new Pair { fst: 1, snd: 2 };
+    println(p.fst);  // Prints 1 (correct)
+    println(p.snd);  // Prints 2 (correct)
+    0
+};
 ```
 
 ## Related Files

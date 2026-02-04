@@ -1,4 +1,4 @@
-// BMB Core Library v0.60.260
+// BMB Core Library v0.60.261
 // Extended types and functions beyond prelude
 //
 // Note: This file extends the prelude (prelude.bmb).
@@ -8,7 +8,7 @@
 // Contents:
 // - Unit type (empty value)
 // - Never type (uninhabited)
-// - Pair<A, B> generic tuple
+// - Pair<A, B> generic tuple (v0.60.261: fixed generic struct field access)
 // - Generic utility functions
 
 // ============================================
@@ -29,7 +29,28 @@ pub fn unit() -> Unit
 pub enum Never {}
 
 // ============================================
-// IntPair - i64 pair (generic Pair has a bug, see ISSUE-20260204)
+// Pair<A, B> - generic tuple (v0.60.261: now works correctly)
+// ============================================
+
+pub struct Pair<A, B> {
+    fst: A,
+    snd: B,
+}
+
+pub fn pair<A, B>(a: A, b: B) -> Pair<A, B>
+= new Pair { fst: a, snd: b };
+
+pub fn fst<A, B>(p: Pair<A, B>) -> A
+= p.fst;
+
+pub fn snd<A, B>(p: Pair<A, B>) -> B
+= p.snd;
+
+pub fn swap<A, B>(p: Pair<A, B>) -> Pair<B, A>
+= new Pair { fst: p.snd, snd: p.fst };
+
+// ============================================
+// IntPair - i64 pair (non-generic version for postconditions)
 // ============================================
 
 pub struct IntPair {
@@ -78,7 +99,23 @@ fn test_unit() -> i64 = {
     0
 };
 
-fn test_pair() -> i64 = {
+fn test_generic_pair() -> i64 = {
+    let p = pair(10, 20);
+    let f = fst(p);
+    let s = snd(p);
+    if f != 10 { 1 }
+    else if s != 20 { 2 }
+    else {
+        let swapped = swap(p);
+        let sf = fst(swapped);
+        let ss = snd(swapped);
+        if sf != 20 { 3 }
+        else if ss != 10 { 4 }
+        else { 0 }
+    }
+};
+
+fn test_int_pair() -> i64 = {
     let p = int_pair(1, 2);
     if int_fst(p) != 1 { 1 }
     else if int_snd(p) != 2 { 2 }
@@ -99,14 +136,18 @@ fn main() -> i64 = {
     let r1 = test_unit();
     if r1 != 0 { let _p = println(r1); r1 }
     else {
-        let r2 = test_pair();
+        let r2 = test_generic_pair();
         if r2 != 0 { let _p = println(r2 + 10); r2 + 10 }
         else {
-            let r3 = test_identity();
+            let r3 = test_int_pair();
             if r3 != 0 { let _p = println(r3 + 20); r3 + 20 }
             else {
-                let _p = println(999);
-                999
+                let r4 = test_identity();
+                if r4 != 0 { let _p = println(r4 + 30); r4 + 30 }
+                else {
+                    let _p = println(999);
+                    999
+                }
             }
         }
     }

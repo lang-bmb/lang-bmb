@@ -1,14 +1,39 @@
 # Generic Struct Field Access Bug
 
-**Status: OPEN**
+**Status: FIXED (v0.60.261)**
 **Severity: High**
 **Discovered: 2026-02-04**
+**Fixed: 2026-02-04**
 
 ## Summary
 
-Accessing fields of generic structs returns incorrect values. The first field (`fst`) returns the value of the second field (`snd`).
+Accessing fields of generic structs returned incorrect values. The first field (`fst`) returned the value of the second field (`snd`).
 
-## Reproduction
+## Root Cause
+
+In `bmb/src/mir/lower.rs`, generic struct parameters were not being registered in `var_struct_types`. This caused `field_index()` to return 0 for all fields.
+
+**Location:** `lower_function()` - parameter type processing (lines 213-223)
+
+**Problem Code:**
+```rust
+// Only handled Type::Named, not Type::Generic
+if let Type::Named(struct_name) = &p.ty.node {
+    ctx.var_struct_types.insert(p.name.node.clone(), struct_name.clone());
+}
+```
+
+**Fix:**
+```rust
+// v0.60.261: Also handle generic struct types
+} else if let Type::Generic { name: struct_name, .. } = &p.ty.node {
+    if ctx.struct_defs.contains_key(struct_name) {
+        ctx.var_struct_types.insert(p.name.node.clone(), struct_name.clone());
+    }
+}
+```
+
+## Reproduction (Before Fix)
 
 ```bmb
 struct Pair<A, B> {
@@ -32,53 +57,34 @@ fn main() -> i64 = {
 };
 ```
 
-**Expected Output:**
+**Before Fix Output:**
+```
+2
+2
+```
+
+**After Fix Output:**
 ```
 1
 2
 ```
 
-**Actual Output:**
-```
-2
-2
-```
+## Verification
 
-## Non-Generic Works
+The fix was verified with:
+1. `test_generic_bug.bmb` - direct test case
+2. `packages/bmb-core/src/lib.bmb` - generic `Pair<A, B>` now works correctly
 
-The same code with concrete types works correctly:
+## Changes
 
-```bmb
-struct IntPair {
-    fst: i64,
-    snd: i64,
-}
+**File:** `bmb/src/mir/lower.rs`
 
-fn main() -> i64 = {
-    let p = new IntPair { fst: 1, snd: 2 };
-    println(p.fst);  // Prints 1 (correct)
-    println(p.snd);  // Prints 2 (correct)
-    0
-};
-```
-
-## Analysis
-
-The bug likely occurs in:
-1. Generic struct monomorphization (bmb/src/types/generics.rs)
-2. Field offset calculation for generic structs (bmb/src/mir/ or bmb/src/codegen/)
+1. Added `struct_type_params` to `TypeDefs` for generic struct type parameter tracking
+2. Added `Type::Generic` handling in parameter registration
+3. Added `Type::Generic` handling in `ast_type_to_mir_with_type_defs()` with proper monomorphization
+4. Added helper functions: `substitute_type_vars()`, `type_to_suffix()`
 
 ## Impact
 
-- Generic types like `Pair<A, B>`, `Option<T>`, `Result<T, E>` are broken
-- Blocks Phase 1 standard library completion
-
-## Workaround
-
-Use non-generic structs with concrete types.
-
-## Files to Investigate
-
-- `bmb/src/types/generics.rs` - Generic instantiation
-- `bmb/src/mir/mod.rs` - MIR struct field access
-- `bmb/src/codegen/llvm.rs` - LLVM IR struct generation
+- Generic types like `Pair<A, B>`, `Option<T>`, `Result<T, E>` now work correctly
+- Phase 1 standard library completion is unblocked

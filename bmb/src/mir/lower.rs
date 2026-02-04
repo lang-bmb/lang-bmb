@@ -13,16 +13,21 @@ use super::{
 };
 
 /// v0.60.254: Type definitions for struct and enum name resolution
+/// v0.60.261: Added type_params for generic struct monomorphization
 struct TypeDefs {
     structs: std::collections::HashMap<String, Vec<(String, Type)>>,
     enums: std::collections::HashMap<String, Vec<(String, Vec<Type>)>>,
+    /// v0.60.261: Type parameters for generic structs (struct name -> param names)
+    struct_type_params: std::collections::HashMap<String, Vec<String>>,
 }
 
 /// Lower an entire program to MIR
 pub fn lower_program(program: &Program) -> MirProgram {
     // v0.51.24: Collect struct type definitions FIRST (full type info, not just field names)
     // This is needed to properly convert Type::Named to MirType::Struct
+    // v0.60.261: Also collect type parameters for generic struct monomorphization
     let mut struct_type_defs: std::collections::HashMap<String, Vec<(String, Type)>> = std::collections::HashMap::new();
+    let mut struct_type_params: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
     for item in &program.items {
         if let Item::StructDef(struct_def) = item {
             let fields: Vec<(String, Type)> = struct_def.fields
@@ -30,6 +35,14 @@ pub fn lower_program(program: &Program) -> MirProgram {
                 .map(|f| (f.name.node.clone(), f.ty.node.clone()))
                 .collect();
             struct_type_defs.insert(struct_def.name.node.clone(), fields);
+            // v0.60.261: Store type parameter names for generic structs
+            if !struct_def.type_params.is_empty() {
+                let param_names: Vec<String> = struct_def.type_params
+                    .iter()
+                    .map(|tp| tp.name.clone())
+                    .collect();
+                struct_type_params.insert(struct_def.name.node.clone(), param_names);
+            }
         }
     }
 
@@ -48,6 +61,7 @@ pub fn lower_program(program: &Program) -> MirProgram {
     let type_defs = TypeDefs {
         structs: struct_type_defs.clone(),
         enums: enum_type_defs,
+        struct_type_params,
     };
 
     // v0.35.4: First pass - collect all function return types
@@ -188,6 +202,7 @@ fn lower_function(
     // Register parameters
     // v0.51.24: Use ast_type_to_mir_with_type_defs to properly resolve named struct/enum types
     // v0.51.36: Also track array element types for struct arrays
+    // v0.60.261: Also track generic struct types (e.g., Pair<i64, i64>)
     let params: Vec<(String, MirType)> = fn_def
         .params
         .iter()
@@ -196,7 +211,14 @@ fn lower_function(
             ctx.params.insert(p.name.node.clone(), ty.clone());
             // v0.51.23: Track struct type for parameters
             // v0.51.37: Also handle pointer types (*Node)
+            // v0.60.261: Also handle generic struct types
             if let Type::Named(struct_name) = &p.ty.node {
+                if ctx.struct_defs.contains_key(struct_name) {
+                    ctx.var_struct_types.insert(p.name.node.clone(), struct_name.clone());
+                }
+            } else if let Type::Generic { name: struct_name, .. } = &p.ty.node {
+                // v0.60.261: For generic structs, use base struct name for field index lookup
+                // The generic struct has the same fields as the base definition
                 if ctx.struct_defs.contains_key(struct_name) {
                     ctx.var_struct_types.insert(p.name.node.clone(), struct_name.clone());
                 }
@@ -1779,6 +1801,71 @@ fn ast_type_to_mir(ty: &Type) -> MirType {
     }
 }
 
+/// v0.60.261: Substitute type variables in a type with concrete types
+/// Used for generic struct/enum monomorphization
+fn substitute_type_vars(ty: &Type, substitutions: &std::collections::HashMap<&str, &Type>) -> Type {
+    match ty {
+        Type::TypeVar(name) => {
+            if let Some(&concrete) = substitutions.get(name.as_str()) {
+                concrete.clone()
+            } else {
+                ty.clone()
+            }
+        }
+        Type::Generic { name, type_args } => {
+            // Recursively substitute in type arguments
+            Type::Generic {
+                name: name.clone(),
+                type_args: type_args.iter()
+                    .map(|arg| Box::new(substitute_type_vars(arg, substitutions)))
+                    .collect(),
+            }
+        }
+        Type::Ptr(inner) => Type::Ptr(Box::new(substitute_type_vars(inner, substitutions))),
+        Type::Ref(inner) => Type::Ref(Box::new(substitute_type_vars(inner, substitutions))),
+        Type::RefMut(inner) => Type::RefMut(Box::new(substitute_type_vars(inner, substitutions))),
+        Type::Array(elem, size) => Type::Array(Box::new(substitute_type_vars(elem, substitutions)), *size),
+        Type::Nullable(inner) => Type::Nullable(Box::new(substitute_type_vars(inner, substitutions))),
+        Type::Tuple(elems) => Type::Tuple(
+            elems.iter().map(|e| Box::new(substitute_type_vars(e, substitutions))).collect()
+        ),
+        // Primitive types and others don't need substitution
+        _ => ty.clone(),
+    }
+}
+
+/// v0.60.261: Convert a type to a suffix string for monomorphized names
+/// e.g., i64 -> "i64", Pair<i64, i64> -> "Pair_i64_i64"
+fn type_to_suffix(ty: &Type) -> String {
+    match ty {
+        Type::I32 => "i32".to_string(),
+        Type::I64 => "i64".to_string(),
+        Type::U32 => "u32".to_string(),
+        Type::U64 => "u64".to_string(),
+        Type::F64 => "f64".to_string(),
+        Type::Bool => "bool".to_string(),
+        Type::String => "str".to_string(),
+        Type::Char => "char".to_string(),
+        Type::Unit => "unit".to_string(),
+        Type::Named(name) => name.clone(),
+        Type::TypeVar(name) => name.clone(),
+        Type::Generic { name, type_args } => {
+            format!("{}_{}", name,
+                type_args.iter()
+                    .map(|t| type_to_suffix(t))
+                    .collect::<Vec<_>>()
+                    .join("_"))
+        }
+        Type::Ptr(inner) => format!("ptr_{}", type_to_suffix(inner)),
+        Type::Ref(inner) | Type::RefMut(inner) => format!("ref_{}", type_to_suffix(inner)),
+        Type::Array(elem, size) => format!("arr{}_{}", size, type_to_suffix(elem)),
+        Type::Nullable(inner) => format!("opt_{}", type_to_suffix(inner)),
+        Type::Tuple(elems) => format!("tup_{}",
+            elems.iter().map(|e| type_to_suffix(e)).collect::<Vec<_>>().join("_")),
+        _ => "unknown".to_string(),
+    }
+}
+
 /// v0.60.254: Convert AST type to MIR type with struct AND enum definition lookup
 /// This properly converts Type::Named to MirType::Struct or MirType::Enum when the name is known
 fn ast_type_to_mir_with_type_defs(
@@ -1824,7 +1911,78 @@ fn ast_type_to_mir_with_type_defs(
             }
         }
         Type::TypeVar(_) => MirType::I64,
-        Type::Generic { .. } => MirType::I64,
+        // v0.60.261: Handle generic type instantiation (e.g., Pair<i64, i64>)
+        // Look up the base struct definition and substitute type arguments
+        Type::Generic { name, type_args } => {
+            if let Some(fields) = type_defs.structs.get(name) {
+                // Get type parameter names for this generic struct
+                let param_names = type_defs.struct_type_params.get(name)
+                    .map(|v| v.as_slice())
+                    .unwrap_or(&[]);
+
+                // Create a mapping from type parameter name to concrete type
+                let substitutions: std::collections::HashMap<&str, &Type> = param_names.iter()
+                    .zip(type_args.iter())
+                    .map(|(param, arg)| (param.as_str(), arg.as_ref()))
+                    .collect();
+
+                // Substitute type arguments in field types
+                let substituted_fields: Vec<(String, Box<MirType>)> = fields.iter()
+                    .map(|(fname, fty)| {
+                        let concrete_ty = substitute_type_vars(fty, &substitutions);
+                        (fname.clone(), Box::new(ast_type_to_mir_with_type_defs(&concrete_ty, type_defs)))
+                    })
+                    .collect();
+
+                // Generate a monomorphized name (e.g., "Pair_i64_i64")
+                let mono_name = format!("{}_{}", name,
+                    type_args.iter()
+                        .map(|t| type_to_suffix(t))
+                        .collect::<Vec<_>>()
+                        .join("_"));
+
+                MirType::Struct {
+                    name: mono_name,
+                    fields: substituted_fields,
+                }
+            } else if let Some(variants) = type_defs.enums.get(name) {
+                // v0.60.261: Also handle generic enums (e.g., Option<i64>)
+                let param_names = type_defs.struct_type_params.get(name)
+                    .map(|v| v.as_slice())
+                    .unwrap_or(&[]);
+
+                let substitutions: std::collections::HashMap<&str, &Type> = param_names.iter()
+                    .zip(type_args.iter())
+                    .map(|(param, arg)| (param.as_str(), arg.as_ref()))
+                    .collect();
+
+                let substituted_variants: Vec<(String, Vec<Box<MirType>>)> = variants.iter()
+                    .map(|(vname, vtypes)| {
+                        let concrete_types: Vec<Box<MirType>> = vtypes.iter()
+                            .map(|vt| {
+                                let concrete_ty = substitute_type_vars(vt, &substitutions);
+                                Box::new(ast_type_to_mir_with_type_defs(&concrete_ty, type_defs))
+                            })
+                            .collect();
+                        (vname.clone(), concrete_types)
+                    })
+                    .collect();
+
+                let mono_name = format!("{}_{}", name,
+                    type_args.iter()
+                        .map(|t| type_to_suffix(t))
+                        .collect::<Vec<_>>()
+                        .join("_"));
+
+                MirType::Enum {
+                    name: mono_name,
+                    variants: substituted_variants,
+                }
+            } else {
+                // Unknown generic type, fall back to i64
+                MirType::I64
+            }
+        }
         Type::Struct { name, fields } => MirType::Struct {
             name: name.clone(),
             fields: fields
