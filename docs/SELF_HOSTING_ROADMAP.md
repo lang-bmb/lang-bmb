@@ -112,7 +112,7 @@ ecosystem/gotgan/     # Rust로 작성됨
 | 빌드 캐시 | ✅ 완료 | FNV-1a fingerprinting (v0.60.263) |
 | Lock 파일 | ✅ | 유지 |
 | 워크스페이스 | ✅ 완료 | [workspace] members = ["packages/*"] (v0.60.263) |
-| 패키지 검색 | ❌ | 인덱스 서비스 |
+| 패키지 검색 | ✅ 완료 | search_all: stdlib + local + remote (v0.60.263) |
 
 ### 2.4 패키지 소싱 (Go 스타일)
 
@@ -304,7 +304,7 @@ Week 7-8:  통합 및 부트스트랩 검증
 - [x] `gotgan add github.com/lang-bmb/bmb-json@v0.1.0` 으로 GitHub 패키지 설치 (v0.60.263 - Git clone 구현됨)
 - [x] 증분 빌드 캐시 (v0.60.263 - BuildCache, FNV-1a fingerprinting)
 - [x] 워크스페이스에서 여러 패키지 동시 관리 (v0.60.263 - [workspace] members glob)
-- [ ] `gotgan search json` 으로 패키지 검색 가능
+- [x] `gotgan search json` 으로 패키지 검색 가능 (v0.60.263 - search_all)
 
 ### Phase 3 완료 조건
 
