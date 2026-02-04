@@ -83,46 +83,91 @@ ecosystem/gotgan/     # Rust로 작성됨
 │   ├── main.rs
 │   ├── config.rs     # Gotgan.toml 파싱
 │   ├── resolver.rs   # 의존성 해석
-│   ├── registry.rs   # 패키지 레지스트리
+│   ├── fetcher.rs    # 패키지 다운로드
 │   └── build.rs      # 빌드 오케스트레이션
 ```
 
-### 2.2 강화 작업
+### 2.2 설계 철학: Go 스타일 분산형
+
+**중앙 레지스트리 없음** - Go 모듈처럼 소스에서 직접 가져옴:
+- GitHub 리포지토리에서 직접 fetch
+- 로컬 파일 경로 지원
+- 버전은 Git 태그/브랜치로 관리
+
+**Gotgan의 역할**:
+| 역할 | 설명 |
+|------|------|
+| 패키지 인덱스 | 공개 패키지 검색/발견 (pkg.go.dev 처럼) |
+| 의존성 관리 | 설치, 업데이트, 버전 해석 |
+| 빌드 오케스트레이션 | 컴파일 순서, 증분 빌드 |
+| **NOT** 호스팅 | 패키지 바이너리를 호스팅하지 않음 |
+
+### 2.3 강화 작업
 
 | 기능 | 현재 | 목표 |
 |------|------|------|
 | 로컬 의존성 | ✅ | 유지 |
 | 버전 해석 | ✅ | 유지 |
-| 레지스트리 | 🔄 로컬만 | 원격 레지스트리 |
+| GitHub fetch | ❌ | 직접 clone/download |
 | 빌드 캐시 | ❌ | 증분 빌드 |
 | Lock 파일 | ✅ | 유지 |
 | 워크스페이스 | ❌ | 모노레포 지원 |
+| 패키지 검색 | ❌ | 인덱스 서비스 |
 
-### 2.3 원격 레지스트리
+### 2.4 패키지 소싱 (Go 스타일)
 
 ```toml
 # Gotgan.toml
 [dependencies]
-bmb-json = "0.2.0"           # 원격 레지스트리에서 다운로드
-bmb-http = { git = "https://github.com/..." }  # Git 의존성
-bmb-local = { path = "../my-lib" }             # 로컬 의존성
+# GitHub에서 직접 (권장)
+bmb-json = "github.com/lang-bmb/bmb-json@v0.2.0"
+bmb-http = "github.com/iyulab/bmb-http@main"
+
+# Git URL 명시
+bmb-custom = { git = "https://github.com/user/repo", tag = "v1.0.0" }
+bmb-dev = { git = "https://github.com/user/repo", branch = "dev" }
+
+# 로컬 경로
+bmb-local = { path = "../my-lib" }
 ```
 
-**레지스트리 옵션**:
+**소싱 우선순위**:
+
+| 소스 | 형식 | 용도 |
+|------|------|------|
+| GitHub 단축 | `github.com/org/repo@version` | 공개 패키지 |
+| Git URL | `{ git = "...", tag/branch = "..." }` | 사설 리포/특정 ref |
+| 로컬 경로 | `{ path = "..." }` | 개발/테스트 |
+
+### 2.5 패키지 인덱스 (선택)
+
+중앙 레지스트리 대신 **검색 인덱스** 제공:
+
+```bash
+# 패키지 검색 (인덱스 조회)
+gotgan search json
+# → github.com/lang-bmb/bmb-json - JSON parser for BMB
+# → github.com/user/fast-json - Fast JSON library
+
+# 패키지 추가 (GitHub에서 직접 fetch)
+gotgan add github.com/lang-bmb/bmb-json@v0.2.0
+```
+
+**인덱스 구현 옵션**:
 
 | 옵션 | 설명 | 복잡도 |
 |------|------|--------|
-| GitHub Releases | 간단, 무료 | Low |
-| 자체 레지스트리 | 완전 제어 | High |
-| crates.io 스타일 | 표준화 | Medium |
+| GitHub Topics 크롤링 | 자동 수집 | Low |
+| 정적 JSON 인덱스 | 수동 등록 | Low |
+| 별도 인덱스 서비스 | 검색 API | Medium |
 
-### 2.4 마일스톤
+### 2.6 마일스톤
 
 ```
-Week 1-2:  증분 빌드 구현
-Week 3-4:  원격 레지스트리 (GitHub Releases)
+Week 1-2:  GitHub fetch 구현 (clone + checkout)
+Week 3-4:  증분 빌드 구현
 Week 5-6:  워크스페이스 지원
-Week 7-8:  문서화 및 안정화
+Week 7-8:  패키지 인덱스 + 문서화
 ```
 
 ---
@@ -256,9 +301,10 @@ Week 7-8:  통합 및 부트스트랩 검증
 
 ### Phase 2 완료 조건
 
-- [ ] `gotgan add bmb-json` 으로 원격 패키지 설치
+- [ ] `gotgan add github.com/lang-bmb/bmb-json@v0.1.0` 으로 GitHub 패키지 설치
 - [ ] 증분 빌드로 재컴파일 시간 50% 감소
 - [ ] 워크스페이스에서 여러 패키지 동시 관리
+- [ ] `gotgan search json` 으로 패키지 검색 가능
 
 ### Phase 3 완료 조건
 
@@ -273,20 +319,24 @@ Week 7-8:  통합 및 부트스트랩 검증
 | 리스크 | 심각도 | 완화 방안 |
 |--------|--------|-----------|
 | 제네릭 구현 복잡도 | High | 단형화(monomorphization) 우선 |
-| 원격 레지스트리 운영 | Medium | GitHub Releases 활용 |
+| GitHub API 레이트 제한 | Low | 캐싱 + 인증 토큰 지원 |
 | 런타임 재작성 버그 | Medium | 기존 C 버전과 출력 비교 |
+| 버전 일관성 | Medium | Lock 파일 + 체크섬 검증 |
 
 ---
 
-## 비교: Rust 생태계
+## 비교: 언어 생태계
 
-| 구성요소 | Rust | BMB 목표 |
-|----------|------|----------|
-| 표준 라이브러리 | `std` | `packages/bmb-*` |
-| 패키지 매니저 | Cargo | Gotgan |
-| 패키지 레지스트리 | crates.io | gotgan.io (또는 GitHub) |
-| 코드젠 | LLVM | LLVM |
-| 런타임 | 자체 | 자체 (BMB) |
+| 구성요소 | Rust | Go | BMB 목표 |
+|----------|------|-----|----------|
+| 표준 라이브러리 | `std` | `std` | `packages/bmb-*` |
+| 패키지 매니저 | Cargo | `go mod` | Gotgan |
+| 패키지 소싱 | 중앙 (crates.io) | **분산 (GitHub)** | **분산 (GitHub/경로)** |
+| 패키지 검색 | crates.io | pkg.go.dev | Gotgan 인덱스 |
+| 코드젠 | LLVM | 자체 | LLVM |
+| 런타임 | 자체 | 자체 | 자체 (BMB) |
+
+**BMB는 Go 모델을 따름**: 중앙 레지스트리 없이 GitHub에서 직접 fetch
 
 ---
 
