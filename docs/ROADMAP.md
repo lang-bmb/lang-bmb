@@ -1534,11 +1534,104 @@ Phase C (선택적) ────────────────────
 
 ---
 
-## Phase v0.58: 릴리스 후보 (Release Candidate)
+## Phase v0.61: 완전한 셀프호스팅 (Complete Self-Hosting)
+
+**목표**: Rust 컴파일러 없이 BMB만으로 전체 빌드 체인 완성
+
+> **의존성**: v0.60 Performance Optimization 완료 필수
+
+### 핵심 목표
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                      완전한 셀프호스팅 달성                              │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│  현재 상태:                                                              │
+│  ┌─────────────────────────────────────────────────────────────────┐   │
+│  │  Rust (cargo build) → Stage 1 → Stage 2 → Stage 3              │   │
+│  │  ↑ Rust 의존성 존재                                              │   │
+│  └─────────────────────────────────────────────────────────────────┘   │
+│                                                                         │
+│  목표 상태:                                                              │
+│  ┌─────────────────────────────────────────────────────────────────┐   │
+│  │  Golden Binary → Stage 1 → Stage 2 → Stage 3                   │   │
+│  │  ↑ BMB-only (Rust 불필요)                                       │   │
+│  └─────────────────────────────────────────────────────────────────┘   │
+│                                                                         │
+│  검증 기준:                                                              │
+│  - Golden Binary로 BMB 컴파일러 전체 재빌드 가능                         │
+│  - 3-Stage Bootstrap Fixed Point 달성                                   │
+│  - 크로스 플랫폼 Golden Binary 배포 (Linux/Windows/macOS)               │
+│  - 신규 사용자가 Rust 없이 BMB 빌드 가능                                 │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+### 태스크
+
+| ID | 태스크 | 설명 | 우선순위 | 상태 |
+|----|--------|------|----------|------|
+| 61.1 | **Golden Binary 최신화** | v0.60.251 기준 Stage 2 바이너리 저장 | P0 | 📋 계획 |
+| 61.2 | **BMB-only 빌드 검증** | Golden Binary만으로 전체 컴파일러 빌드 | P0 | 📋 계획 |
+| 61.3 | **크로스 플랫폼 빌드** | Linux (x86_64, aarch64), Windows, macOS 바이너리 | P0 | 📋 계획 |
+| 61.4 | **설치 스크립트** | `install.sh` / `install.ps1` 원클릭 설치 | P1 | 📋 계획 |
+| 61.5 | **Cargo.toml 의존성 제거** | 개발 시에만 Rust 사용, 배포는 BMB-only | P0 | 📋 계획 |
+| 61.6 | **부트스트랩 문서 완성** | `docs/BUILD_FROM_SOURCE.md` 전면 개정 | P0 | 📋 계획 |
+| 61.7 | **CI/CD 파이프라인** | GitHub Actions: BMB-only 빌드 + 배포 | P1 | 📋 계획 |
+| 61.8 | **버전 관리 시스템** | `bmb --version` 자동 버전 주입 | P1 | 📋 계획 |
+
+### 셀프호스팅 검증 체크리스트
+
+| 항목 | 설명 | 상태 |
+|------|------|------|
+| Golden Binary 생성 | Stage 2 바이너리를 Golden Binary로 저장 | ⏸️ 대기 |
+| 자체 재빌드 | Golden Binary → Stage 1 → Stage 2 → Stage 3 | ⏸️ 대기 |
+| Fixed Point | Stage 2 IR == Stage 3 IR 동일성 | ✅ 완료 (v0.50.56) |
+| Linux x86_64 | Golden Binary 빌드 및 테스트 | 📋 계획 |
+| Linux aarch64 | Golden Binary 빌드 및 테스트 | 📋 계획 |
+| Windows x64 | Golden Binary 빌드 및 테스트 | 📋 계획 |
+| macOS x64/arm64 | Golden Binary 빌드 및 테스트 | 📋 계획 |
+| 문서 검증 | 신규 사용자가 문서만으로 빌드 성공 | 📋 계획 |
+
+### 배포 구조
+
+```
+bmb-v0.61.0/
+├── bin/
+│   ├── linux-x86_64/
+│   │   └── bmb
+│   ├── linux-aarch64/
+│   │   └── bmb
+│   ├── windows-x64/
+│   │   └── bmb.exe
+│   └── darwin-universal/
+│       └── bmb
+├── runtime/
+│   └── *.bmb           # BMB 런타임 모듈
+├── stdlib/
+│   └── *.bmb           # 표준 라이브러리
+├── bootstrap/
+│   └── *.bmb           # 셀프호스팅 컴파일러 소스
+├── install.sh          # Unix 설치 스크립트
+├── install.ps1         # Windows 설치 스크립트
+└── README.md           # 빠른 시작 가이드
+```
+
+### 산출물
+
+- `bmb-v0.61.0-{platform}.tar.gz` - 플랫폼별 배포 패키지
+- `docs/BUILD_FROM_SOURCE.md` - BMB-only 빌드 가이드 (전면 개정)
+- `docs/INSTALLATION.md` - 설치 가이드
+- GitHub Release - 자동화된 릴리스
+
+---
+
+## Phase v0.62: 릴리스 후보 (Release Candidate)
 
 **목표**: v1.0 준비, 커뮤니티 검증 대기
 
-> **의존성**: v0.57 최종 검증 완료 필수
+> **의존성**: v0.61 완전한 셀프호스팅 완료 필수
 
 ### 릴리스 체크리스트
 
