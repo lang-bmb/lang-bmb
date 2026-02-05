@@ -1954,7 +1954,7 @@ fn bench_bootstrap_stage1() -> i64 {
 | 성능 목표 달성 | Zero-Cost Safety: bounds/overflow 검사 0% | 📋 계획 |
 | 문서 완성 | 모든 새 기능 문서화 | 📋 계획 |
 | 커뮤니티 피드백 | RC 버전 배포 및 피드백 수렴 | 📋 계획 |
-| Dogfooding 완료 | 모든 도구가 BMB로 구현됨 | 📋 계획 |
+| Dogfooding 완료 | 모든 도구가 BMB로 구현됨 | ✅ 완료 |
 
 ### RC 진입 조건 (Gate)
 
@@ -1966,7 +1966,7 @@ fn bench_bootstrap_stage1() -> i64 {
 │  ✅ Phase 61: 완전한 셀프호스팅                                          │
 │  ✅ Phase 62: bmb-test로 컴파일러 테스트 821개 통과                      │
 │  ✅ Phase 63: bmb-bench로 9개 벤치마크 + 회귀 감지                       │
-│  📋 Phase 64: bmb-fmt, bmb-lint로 코드베이스 검사 통과                  │
+│  ✅ Phase 64: bmb-fmt, bmb-lint로 코드베이스 검사 통과                  │
 │  ✅ Phase 65: gotgan-bmb로 공식 패키지 14개 관리                        │
 │  ✅ Phase 66: 실용 라이브러리 3개, 순환 빌드 검증 완료                   │
 │                                                                         │
@@ -1977,7 +1977,7 @@ fn bench_bootstrap_stage1() -> i64 {
 
 | ID | 태스크 | 설명 | 우선순위 | 상태 |
 |----|--------|------|----------|------|
-| 67.1 | **RC 바이너리 배포** | 모든 플랫폼 Golden Binary | P0 | 📋 계획 |
+| 67.1 | **RC 바이너리 배포** | 모든 플랫폼 Golden Binary | P0 | ✅ 완료 |
 | 67.2 | **피드백 기간** | 2주간 커뮤니티 테스트 | P0 | 📋 계획 |
 | 67.3 | **최종 버그 수정** | RC 기간 발견 버그 수정 | P0 | 📋 계획 |
 | 67.4 | **보안 감사** | 컴파일러 보안 검토 | P0 | 📋 계획 |

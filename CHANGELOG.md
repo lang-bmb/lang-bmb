@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.67.0] - 2026-02-05 (Release Candidate)
+
+### Added
+
+- **Dogfooding V Complete (v0.66)**: All BMB tools and packages verified through circular build
+  - bmb-test: 821 tests passing (parser, selfhost, lexer, codegen, error)
+  - 7 tools type-check successfully (bmb-test, bmb-bench, bmb-fmt, bmb-lint, bmb-doc, bmb-check, gotgan-bmb)
+  - 11/13 packages compile (bmb-core, bmb-string, bmb-array, bmb-io, bmb-test, bmb-process, bmb-json, bmb-http, bmb-regex, bmb-iter, bmb-traits)
+
+- **New packages (v0.66)**:
+  - `bmb-json`: JSON parser and serializer (587 LOC)
+  - `bmb-http`: HTTP client using curl backend (370 LOC)
+  - `bmb-regex`: Backtracking regex engine with quantifiers, character classes, anchors (444 LOC)
+
+- **Package registry (v0.65)**: 14 official packages in packages/INDEX.toml
+  - Core: bmb-core, bmb-traits, bmb-option, bmb-result
+  - Data: bmb-string, bmb-array, bmb-iter, bmb-json
+  - System: bmb-io, bmb-process, bmb-runtime
+  - Testing: bmb-test
+  - Network: bmb-http, bmb-regex
+
+- **Updated documentation**:
+  - API reference for all packages (docs/api/)
+  - Updated GETTING_STARTED.md with package-based stdlib usage
+  - Practical tutorial example (config processor)
+
+### Changed
+
+- **Stdlib separation (v0.65)**: Standard library reorganized into separate packages
+  - Each package has its own gotgan.toml manifest
+  - Packages can be used independently
+
+### Fixed
+
+- **Bootstrap compiler**: compiler.bmb type-checks with 606 warnings
+- **Performance**: All Tier 1 benchmarks within 2% threshold
+
+### Known Issues
+
+- `bmb-option` and `bmb-result` packages use nullable type syntax (`T?`) not yet supported by bootstrap compiler
+- These packages will be fixed in v1.0 release
+
 ## [0.51.1] - 2026-01-21
 
 ### Added
