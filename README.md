@@ -4,8 +4,8 @@
 
 A contract-verified systems programming language.
 
-[![Version](https://img.shields.io/badge/version-0.60-blue.svg)](docs/ROADMAP.md)
-[![Bootstrap](https://img.shields.io/badge/bootstrap-3--stage-green.svg)](docs/BOOTSTRAP_BENCHMARK.md)
+[![Version](https://img.shields.io/badge/version-0.60.251-blue.svg)](docs/ROADMAP.md)
+[![Bootstrap](https://img.shields.io/badge/bootstrap-3--stage%20fixed%20point-green.svg)](docs/BOOTSTRAP_BENCHMARK.md)
 [![Performance](https://img.shields.io/badge/vs%20C-≤1.10x-brightgreen.svg)](docs/BENCHMARK.md)
 
 ---
