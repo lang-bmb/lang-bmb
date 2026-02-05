@@ -1,11 +1,17 @@
-// BMB Bootstrap MIR Optimizer (v0.30.185: Extended test coverage)
+// BMB Bootstrap MIR Optimizer (v0.30.200: Full optimization pipeline)
 // Port of bmb/src/mir/optimize.rs to BMB
 //
-// Optimization passes for MIR text format:
+// Optimization passes for MIR text format (with fixed-point iteration):
+// Phase 1 (Basic):
 // 1. ConstantFolding - Evaluate constant expressions at compile time
-// 2. DeadCodeElimination - Remove unreachable code
-// 3. SimplifyBranches - Optimize conditional branches
-// 4. CopyPropagation - Replace copies with originals
+// 2. AlgebraicSimplification - Simplify x+0, x*1, x*0, etc.
+// 3. CopyPropagation - Replace copies with originals
+// 4. DeadCodeElimination - Remove unused code
+// 5. BranchSimplification - Optimize conditional branches
+// Phase 2 (CFG):
+// 6. UnreachableBlockElimination - Remove unreachable blocks
+// 7. FallthroughOptimization - Remove redundant gotos
+// 8. TailCallMarking - Mark tail calls for TCO (level >= 2)
 //
 // MIR text format:
 // fn name(params) -> type {
@@ -314,14 +320,585 @@ fn run_constant_folding(mir: String, pos: i64, table: String, acc: String, count
         run_constant_folding(mir, end_pos + 1, new_table, new_acc, count + changed)
     };
 
+// ============================================================================
+// SECTION 8.1: Dead Code Elimination Pass
+// ============================================================================
+
+// Collect all lines from MIR as pipe-separated string starting from pos
+fn collect_lines_from(mir: String, pos: i64) -> String =
+    if pos >= mir.len() { "" } else {
+        let pipe = find_char(mir, 124, pos);
+        let end_pos = if pipe < 0 { mir.len() } else { pipe };
+        let line = mir.slice(pos, end_pos);
+        let rest = collect_lines_from(mir, end_pos + 1);
+        if rest == "" { line } else { line + "|" + rest }
+    };
+
+// Check if a variable is used in any instruction after current position
+// lines: remaining MIR lines (pipe-separated)
+fn check_var_used_in_rest(lines: String, target: String, pos: i64) -> bool =
+    if pos >= lines.len() { false } else {
+        let pipe = find_char(lines, 124, pos);
+        let end_pos = if pipe < 0 { lines.len() } else { pipe };
+        let line = lines.slice(pos, end_pos);
+        // Check if target appears in this line (but not as destination)
+        let dest = extract_dest(line);
+        let appears = find_pattern(line, target, 0) >= 0;
+        let is_dest_only = dest == target and not is_var_used_in_rhs(line, target);
+        if appears and not is_dest_only { true } else { check_var_used_in_rest(lines, target, end_pos + 1) }
+    };
+
+// Check if variable is used in RHS (right-hand side) of instruction
+fn is_var_used_in_rhs(line: String, target: String) -> bool =
+    let eq_pos = find_pattern(line, " = ", 0);
+    if eq_pos < 0 {
+        // No assignment, check whole line (return, branch, etc.)
+        find_pattern(line, target, 0) >= 0
+    } else {
+        // Check after " = "
+        let rhs = line.slice(eq_pos + 3, line.len());
+        find_pattern(rhs, target, 0) >= 0
+    };
+
+// Run DCE on single line, return "changed;new_line"
+fn dce_line(line: String, rest_lines: String) -> String =
+    let dest = extract_dest(line);
+    if dest == "" {
+        // No destination (label, return, branch, etc.) - keep
+        "0;" + line
+    } else if has_side_effects(line) {
+        // Has side effects - keep
+        "0;" + line
+    } else if check_var_used_in_rest(rest_lines, dest, 0) {
+        // Variable is used later - keep
+        "0;" + line
+    } else {
+        // Dead code - remove (return empty comment line)
+        "1;  // DCE: removed " + dest
+    };
+
+// Run DCE pass on MIR
+// Returns: "changed_count:optimized_mir"
+fn run_dce_pass(mir: String, pos: i64, acc: String, count: i64) -> String =
+    if pos >= mir.len() { int_to_string(count) + ":" + acc } else {
+        let pipe = find_char(mir, 124, pos);
+        let end_pos = if pipe < 0 { mir.len() } else { pipe };
+        let line = mir.slice(pos, end_pos);
+        let rest = collect_lines_from(mir, end_pos + 1);
+        let result = dce_line(line, rest);
+        let semi = find_char(result, 59, 0);
+        let changed = parse_int_at(result, 0, 0);
+        let new_line = result.slice(semi + 1, result.len());
+        // Skip DCE comment lines (they start with "  // DCE:")
+        let is_dce_comment = find_pattern(new_line, "// DCE:", 0) >= 0;
+        let new_acc = if is_dce_comment {
+            acc  // Skip removed lines
+        } else if acc == "" {
+            new_line
+        } else {
+            acc + "|" + new_line
+        };
+        run_dce_pass(mir, end_pos + 1, new_acc, count + changed)
+    };
+
+// ============================================================================
+// SECTION 8.2: Copy Propagation Pass
+// ============================================================================
+
+// Replace variable in line if it's in copy table
+fn replace_var_with_copy(line: String, copy_table: String) -> String =
+    // For simplicity, we iterate through known copied variables
+    // This is a simplified version - full impl would scan all %vars
+    line;  // TODO: implement proper variable replacement
+
+// Process line for copy propagation
+// Returns: "changed;new_table;new_line"
+fn copy_prop_line(line: String, copy_table: String) -> String =
+    if is_copy_inst(line) {
+        let dest = extract_dest(line);
+        let src = extract_copy_src(line);
+        // Add to copy table
+        let new_table = copy_table_set(copy_table, dest, src);
+        // Keep the copy instruction for now (DCE will remove if unused)
+        "0;" + new_table + ";" + line
+    } else {
+        // Check if any operands can be replaced
+        // For binop: replace left and right operands if in table
+        if is_binop_inst(line) {
+            let dest = extract_dest(line);
+            let op = extract_binop(line);
+            let left = extract_binop_left(line);
+            let right = extract_binop_right(line);
+            let new_left = copy_table_get(copy_table, left);
+            let new_right = copy_table_get(copy_table, right);
+            let actual_left = if new_left == "" { left } else { new_left };
+            let actual_right = if new_right == "" { right } else { new_right };
+            if new_left != "" or new_right != "" {
+                let new_line = "  " + dest + " = " + op + " " + actual_left + ", " + actual_right;
+                "1;" + copy_table + ";" + new_line
+            } else {
+                "0;" + copy_table + ";" + line
+            }
+        } else if is_return_inst(line) {
+            // return %ret_var - try to replace %ret_var
+            let trimmed = line.slice(skip_ws(line, 0), line.len());
+            let ret_pos = find_pattern(trimmed, "return ", 0);
+            if ret_pos >= 0 {
+                let var_start = ret_pos + 7;
+                let ret_var = trimmed.slice(var_start, trimmed.len());
+                let replacement = copy_table_get(copy_table, ret_var);
+                if replacement != "" {
+                    let new_line = "  return " + replacement;
+                    "1;" + copy_table + ";" + new_line
+                } else {
+                    "0;" + copy_table + ";" + line
+                }
+            } else {
+                "0;" + copy_table + ";" + line
+            }
+        } else {
+            "0;" + copy_table + ";" + line
+        }
+    };
+
+// Run copy propagation pass
+// Returns: "changed_count:optimized_mir"
+fn run_copy_prop_pass(mir: String, pos: i64, table: String, acc: String, count: i64) -> String =
+    if pos >= mir.len() { int_to_string(count) + ":" + acc } else {
+        let pipe = find_char(mir, 124, pos);
+        let end_pos = if pipe < 0 { mir.len() } else { pipe };
+        let line = mir.slice(pos, end_pos);
+        let result = copy_prop_line(line, table);
+        let c1 = find_char(result, 59, 0);
+        let c2 = find_char(result, 59, c1 + 1);
+        let changed = parse_int_at(result, 0, 0);
+        let new_table = result.slice(c1 + 1, c2);
+        let new_line = result.slice(c2 + 1, result.len());
+        let new_acc = if acc == "" { new_line } else { acc + "|" + new_line };
+        run_copy_prop_pass(mir, end_pos + 1, new_table, new_acc, count + changed)
+    };
+
+// ============================================================================
+// SECTION 8.3: Algebraic Simplification Pass
+// ============================================================================
+
+// Check if value is constant zero
+fn is_const_zero(line: String, table: String, varname: String) -> bool =
+    if const_table_has(table, varname) { const_table_get(table, varname) == 0 } else { false };
+
+// Check if value is constant one
+fn is_const_one(line: String, table: String, varname: String) -> bool =
+    if const_table_has(table, varname) { const_table_get(table, varname) == 1 } else { false };
+
+// Simplify algebraic expression
+// Returns: "changed;new_line" or "0;original_line" if no simplification
+fn simplify_algebraic_inst(line: String, const_table: String) -> String =
+    if not is_binop_inst(line) { "0;" + line } else {
+        let dest = extract_dest(line);
+        let op = extract_binop(line);
+        let left = extract_binop_left(line);
+        let right = extract_binop_right(line);
+
+        // x + 0 → copy x
+        if op == "+" and is_const_zero(line, const_table, right) {
+            "1;  " + dest + " = copy " + left
+        // 0 + x → copy x
+        } else if op == "+" and is_const_zero(line, const_table, left) {
+            "1;  " + dest + " = copy " + right
+        // x - 0 → copy x
+        } else if op == "-" and is_const_zero(line, const_table, right) {
+            "1;  " + dest + " = copy " + left
+        // x * 1 → copy x
+        } else if op == "*" and is_const_one(line, const_table, right) {
+            "1;  " + dest + " = copy " + left
+        // 1 * x → copy x
+        } else if op == "*" and is_const_one(line, const_table, left) {
+            "1;  " + dest + " = copy " + right
+        // x * 0 → const 0
+        } else if op == "*" and is_const_zero(line, const_table, right) {
+            "1;  " + dest + " = const I:0"
+        // 0 * x → const 0
+        } else if op == "*" and is_const_zero(line, const_table, left) {
+            "1;  " + dest + " = const I:0"
+        // x / 1 → copy x
+        } else if op == "/" and is_const_one(line, const_table, right) {
+            "1;  " + dest + " = copy " + left
+        // 0 / x → const 0 (if x != 0)
+        } else if op == "/" and is_const_zero(line, const_table, left) and not is_const_zero(line, const_table, right) {
+            "1;  " + dest + " = const I:0"
+        // x % 1 → const 0
+        } else if op == "%" and is_const_one(line, const_table, right) {
+            "1;  " + dest + " = const I:0"
+        // 0 % x → const 0 (if x != 0)
+        } else if op == "%" and is_const_zero(line, const_table, left) and not is_const_zero(line, const_table, right) {
+            "1;  " + dest + " = const I:0"
+        } else {
+            "0;" + line
+        }
+    };
+
+// Run algebraic simplification pass
+// Returns: "changed_count:optimized_mir"
+fn run_algebraic_pass(mir: String, pos: i64, table: String, acc: String, count: i64) -> String =
+    if pos >= mir.len() { int_to_string(count) + ":" + acc } else {
+        let pipe = find_char(mir, 124, pos);
+        let end_pos = if pipe < 0 { mir.len() } else { pipe };
+        let line = mir.slice(pos, end_pos);
+
+        // First, update const table if this is a const instruction
+        let new_table = if is_const_inst(line) {
+            let dest = extract_dest(line);
+            let val = extract_const_value(line);
+            const_table_set(table, dest, val)
+        } else {
+            table
+        };
+
+        // Then try algebraic simplification
+        let result = simplify_algebraic_inst(line, new_table);
+        let semi = find_char(result, 59, 0);
+        let changed = parse_int_at(result, 0, 0);
+        let new_line = result.slice(semi + 1, result.len());
+        let new_acc = if acc == "" { new_line } else { acc + "|" + new_line };
+        run_algebraic_pass(mir, end_pos + 1, new_table, new_acc, count + changed)
+    };
+
+// ============================================================================
+// SECTION 8.4: Branch Simplification Pass
+// ============================================================================
+
+// Run branch simplification pass
+// Returns: "changed_count:optimized_mir"
+fn run_branch_simp_pass(mir: String, pos: i64, table: String, acc: String, count: i64) -> String =
+    if pos >= mir.len() { int_to_string(count) + ":" + acc } else {
+        let pipe = find_char(mir, 124, pos);
+        let end_pos = if pipe < 0 { mir.len() } else { pipe };
+        let line = mir.slice(pos, end_pos);
+
+        // Update const table if this is a const instruction
+        let new_table = if is_const_inst(line) {
+            let dest = extract_dest(line);
+            let val = extract_const_value(line);
+            const_table_set(table, dest, val)
+        } else {
+            table
+        };
+
+        // Simplify branch if condition is known
+        let new_line = if is_branch_inst(line) {
+            simplify_branch(line, new_table)
+        } else {
+            line
+        };
+
+        let changed = if new_line != line { 1 } else { 0 };
+        let new_acc = if acc == "" { new_line } else { acc + "|" + new_line };
+        run_branch_simp_pass(mir, end_pos + 1, new_table, new_acc, count + changed)
+    };
+
+// ============================================================================
+// SECTION 8.5: Fixed-Point Iteration
+// ============================================================================
+
+// Run all passes once and return "total_changed:optimized_mir"
+fn run_all_passes_once(mir: String, level: i64) -> String =
+    // Pass 1: Constant Folding
+    let r1 = run_constant_folding(mir, 0, const_table_empty(), "", 0);
+    let c1_pos = find_char(r1, 58, 0);
+    let count1 = parse_int_at(r1, 0, 0);
+    let mir1 = r1.slice(c1_pos + 1, r1.len());
+
+    // Pass 2: Algebraic Simplification
+    let r2 = run_algebraic_pass(mir1, 0, const_table_empty(), "", 0);
+    let c2_pos = find_char(r2, 58, 0);
+    let count2 = parse_int_at(r2, 0, 0);
+    let mir2 = r2.slice(c2_pos + 1, r2.len());
+
+    // Pass 3: Copy Propagation
+    let r3 = run_copy_prop_pass(mir2, 0, copy_table_empty(), "", 0);
+    let c3_pos = find_char(r3, 58, 0);
+    let count3 = parse_int_at(r3, 0, 0);
+    let mir3 = r3.slice(c3_pos + 1, r3.len());
+
+    // Pass 4: Dead Code Elimination
+    let r4 = run_dce_pass(mir3, 0, "", 0);
+    let c4_pos = find_char(r4, 58, 0);
+    let count4 = parse_int_at(r4, 0, 0);
+    let mir4 = r4.slice(c4_pos + 1, r4.len());
+
+    // Pass 5: Branch Simplification
+    let r5 = run_branch_simp_pass(mir4, 0, const_table_empty(), "", 0);
+    let c5_pos = find_char(r5, 58, 0);
+    let count5 = parse_int_at(r5, 0, 0);
+    let mir5 = r5.slice(c5_pos + 1, r5.len());
+
+    // Pass 6: Unreachable Block Elimination (level >= 1)
+    let r6 = run_unreachable_elim_pass(mir5);
+    let c6_pos = find_char(r6, 58, 0);
+    let count6 = parse_int_at(r6, 0, 0);
+    let mir6 = r6.slice(c6_pos + 1, r6.len());
+
+    // Pass 7: Fall-through Optimization (level >= 1)
+    let r7 = run_fallthrough_opt(mir6, 0, "", 0);
+    let c7_pos = find_char(r7, 58, 0);
+    let count7 = parse_int_at(r7, 0, 0);
+    let mir7 = r7.slice(c7_pos + 1, r7.len());
+
+    // Pass 8: Tail Call Marking (level >= 2 for aggressive)
+    let r8 = if level >= 2 { run_tail_call_pass(mir7) } else { "0:" + mir7 };
+    let c8_pos = find_char(r8, 58, 0);
+    let count8 = parse_int_at(r8, 0, 0);
+    let mir8 = r8.slice(c8_pos + 1, r8.len());
+
+    let total = count1 + count2 + count3 + count4 + count5 + count6 + count7 + count8;
+    int_to_string(total) + ":" + mir8;
+
+// Fixed-point iteration loop
+fn fixed_point_loop(mir: String, level: i64, iteration: i64, max_iterations: i64) -> String =
+    if iteration >= max_iterations { mir } else {
+        let result = run_all_passes_once(mir, level);
+        let colon = find_char(result, 58, 0);
+        let changed = parse_int_at(result, 0, 0);
+        let new_mir = result.slice(colon + 1, result.len());
+        if changed == 0 { new_mir } else { fixed_point_loop(new_mir, level, iteration + 1, max_iterations) }
+    };
+
 // Run optimization pipeline
 // Debug (level 0): no optimization
 fn optimize_mir(mir: String, level: i64) -> String =
     if level == 0 { mir } else {
-        let result = run_constant_folding(mir, 0, const_table_empty(), "", 0);
-        let colon = find_char(result, 58, 0);
-        result.slice(colon + 1, result.len())
+        // Fixed-point iteration with max 10 iterations
+        fixed_point_loop(mir, level, 0, 10)
     };
+
+// ============================================================================
+// SECTION 8.6: CFG Optimization Passes (Phase 2)
+// ============================================================================
+
+// Check if line is a goto instruction: goto label
+fn is_goto_inst(line: String) -> bool =
+    starts_with(line.slice(skip_ws(line, 0), line.len()), "goto ", 0);
+
+// Check if line is a call instruction: %var = call func(...)
+fn is_call_inst(line: String) -> bool =
+    find_pattern(line, " = call ", 0) >= 0 or
+    starts_with(line.slice(skip_ws(line, 0), line.len()), "call ", 0);
+
+// Extract label from goto instruction: goto label -> label
+fn extract_goto_target(line: String) -> String =
+    let trimmed = line.slice(skip_ws(line, 0), line.len());
+    let goto_pos = find_pattern(trimmed, "goto ", 0);
+    if goto_pos < 0 { "" } else { trimmed.slice(goto_pos + 5, trimmed.len()) };
+
+// Extract label name from label line: entry: -> entry
+fn extract_label_name(line: String) -> String =
+    let trimmed = line.slice(skip_ws(line, 0), line.len());
+    let colon_pos = find_char(trimmed, 58, 0);  // ':'
+    if colon_pos < 0 { "" } else { trimmed.slice(0, colon_pos) };
+
+// ============================================================================
+// SECTION 8.6.1: Unreachable Block Elimination
+// ============================================================================
+
+// Simple label set using pipe-separated format: "label1|label2|..."
+fn label_set_empty() -> String = "";
+
+fn label_set_add(lset: String, label: String) -> String =
+    if lset == "" { label } else if label_set_has(lset, label) { lset } else { lset + "|" + label };
+
+fn label_set_has_helper(lset: String, label: String, pos: i64) -> bool =
+    if pos >= lset.len() { false } else {
+        let pipe = find_char(lset, 124, pos);
+        let end_pos = if pipe < 0 { lset.len() } else { pipe };
+        let entry = lset.slice(pos, end_pos);
+        if entry == label { true } else { label_set_has_helper(lset, label, end_pos + 1) }
+    };
+
+fn label_set_has(lset: String, label: String) -> bool =
+    label_set_has_helper(lset, label, 0);
+
+// Extract branch targets: branch %c, label1, label2 -> "label1|label2"
+fn extract_branch_targets(line: String) -> String =
+    if not is_branch_inst(line) { "" } else {
+        let comma1 = find_char(line, 44, 0);
+        if comma1 < 0 { "" } else {
+            let comma2 = find_char(line, 44, comma1 + 1);
+            if comma2 < 0 { "" } else {
+                let then_label = line.slice(comma1 + 2, comma2);
+                let else_label = line.slice(comma2 + 2, line.len());
+                then_label + "|" + else_label
+            }
+        }
+    };
+
+// Collect all jump targets from MIR (goto targets and branch targets)
+fn collect_jump_targets(mir: String, pos: i64, acc: String) -> String =
+    if pos >= mir.len() { acc } else {
+        let pipe = find_char(mir, 124, pos);
+        let end_pos = if pipe < 0 { mir.len() } else { pipe };
+        let line = mir.slice(pos, end_pos);
+        let new_acc = if is_goto_inst(line) {
+            let target = extract_goto_target(line);
+            label_set_add(acc, target)
+        } else if is_branch_inst(line) {
+            let targets = extract_branch_targets(line);
+            // Parse "label1|label2"
+            let sep = find_char(targets, 124, 0);
+            if sep < 0 { acc } else {
+                let t1 = targets.slice(0, sep);
+                let t2 = targets.slice(sep + 1, targets.len());
+                label_set_add(label_set_add(acc, t1), t2)
+            }
+        } else {
+            acc
+        };
+        collect_jump_targets(mir, end_pos + 1, new_acc)
+    };
+
+// Check if a block is reachable (is entry or is jumped to)
+fn is_block_reachable(label: String, reachable_labels: String) -> bool =
+    label == "entry" or label_set_has(reachable_labels, label);
+
+// Run unreachable block elimination
+// Returns: "changed_count:optimized_mir"
+fn run_unreachable_elim(mir: String, pos: i64, reachable: String, acc: String, count: i64, in_unreachable: bool) -> String =
+    if pos >= mir.len() { int_to_string(count) + ":" + acc } else {
+        let pipe = find_char(mir, 124, pos);
+        let end_pos = if pipe < 0 { mir.len() } else { pipe };
+        let line = mir.slice(pos, end_pos);
+
+        if is_label(line) {
+            let label_name = extract_label_name(line);
+            let is_reachable = is_block_reachable(label_name, reachable);
+            if is_reachable {
+                let new_acc = if acc == "" { line } else { acc + "|" + line };
+                run_unreachable_elim(mir, end_pos + 1, reachable, new_acc, count, false)
+            } else {
+                // Skip unreachable block
+                run_unreachable_elim(mir, end_pos + 1, reachable, acc, count + 1, true)
+            }
+        } else if in_unreachable {
+            // Skip instructions in unreachable block
+            run_unreachable_elim(mir, end_pos + 1, reachable, acc, count + 1, true)
+        } else {
+            let new_acc = if acc == "" { line } else { acc + "|" + line };
+            run_unreachable_elim(mir, end_pos + 1, reachable, new_acc, count, false)
+        }
+    };
+
+// Run unreachable block elimination pass
+fn run_unreachable_elim_pass(mir: String) -> String =
+    let reachable = collect_jump_targets(mir, 0, label_set_empty());
+    run_unreachable_elim(mir, 0, reachable, "", 0, false);
+
+// ============================================================================
+// SECTION 8.6.2: Block Merging
+// ============================================================================
+
+// Count predecessors for a label (how many gotos/branches target it)
+fn count_label_refs(mir: String, label: String, pos: i64, count: i64) -> i64 =
+    if pos >= mir.len() { count } else {
+        let pipe = find_char(mir, 124, pos);
+        let end_pos = if pipe < 0 { mir.len() } else { pipe };
+        let line = mir.slice(pos, end_pos);
+        let added = if is_goto_inst(line) {
+            let target = extract_goto_target(line);
+            if target == label { 1 } else { 0 }
+        } else if is_branch_inst(line) {
+            let targets = extract_branch_targets(line);
+            let sep = find_char(targets, 124, 0);
+            if sep < 0 { 0 } else {
+                let t1 = targets.slice(0, sep);
+                let t2 = targets.slice(sep + 1, targets.len());
+                (if t1 == label { 1 } else { 0 }) + (if t2 == label { 1 } else { 0 })
+            }
+        } else { 0 };
+        count_label_refs(mir, label, end_pos + 1, count + added)
+    };
+
+// Check if current block ends with unconditional goto to a single-predecessor block
+// This is complex to implement with string-based MIR, so we do a simpler version:
+// Just remove "goto X" followed immediately by "X:" (fall-through optimization)
+fn run_fallthrough_opt(mir: String, pos: i64, acc: String, count: i64) -> String =
+    if pos >= mir.len() { int_to_string(count) + ":" + acc } else {
+        let pipe = find_char(mir, 124, pos);
+        let end_pos = if pipe < 0 { mir.len() } else { pipe };
+        let line = mir.slice(pos, end_pos);
+
+        // Check if this is "goto X" and next line is "X:"
+        if is_goto_inst(line) {
+            let target = extract_goto_target(line);
+            let next_pipe = find_char(mir, 124, end_pos + 1);
+            let next_end = if next_pipe < 0 { mir.len() } else { next_pipe };
+            let next_line = if end_pos + 1 < mir.len() { mir.slice(end_pos + 1, next_end) } else { "" };
+            if is_label(next_line) {
+                let next_label = extract_label_name(next_line);
+                if target == next_label {
+                    // Fall-through: skip the goto
+                    run_fallthrough_opt(mir, end_pos + 1, acc, count + 1)
+                } else {
+                    let new_acc = if acc == "" { line } else { acc + "|" + line };
+                    run_fallthrough_opt(mir, end_pos + 1, new_acc, count)
+                }
+            } else {
+                let new_acc = if acc == "" { line } else { acc + "|" + line };
+                run_fallthrough_opt(mir, end_pos + 1, new_acc, count)
+            }
+        } else {
+            let new_acc = if acc == "" { line } else { acc + "|" + line };
+            run_fallthrough_opt(mir, end_pos + 1, new_acc, count)
+        }
+    };
+
+// ============================================================================
+// SECTION 8.6.3: Tail Call Marking
+// ============================================================================
+
+// Check if this is a call followed immediately by return of its result
+// Pattern: %x = call f(...) followed by return %x
+fn find_tail_call_pattern(mir: String, pos: i64, acc: String, count: i64) -> String =
+    if pos >= mir.len() { int_to_string(count) + ":" + acc } else {
+        let pipe = find_char(mir, 124, pos);
+        let end_pos = if pipe < 0 { mir.len() } else { pipe };
+        let line = mir.slice(pos, end_pos);
+
+        if is_call_inst(line) {
+            let dest = extract_dest(line);
+            // Look ahead for immediate return
+            let next_pipe = find_char(mir, 124, end_pos + 1);
+            let next_end = if next_pipe < 0 { mir.len() } else { next_pipe };
+            let next_line = if end_pos + 1 < mir.len() { mir.slice(end_pos + 1, next_end) } else { "" };
+
+            if is_return_inst(next_line) and dest != "" {
+                // Check if return uses the call result
+                let ret_var = next_line.slice(skip_ws(next_line, 0) + 7, next_line.len());
+                if ret_var == dest {
+                    // This is a tail call! Mark it with @tail attribute
+                    let call_pos = find_pattern(line, " = call ", 0);
+                    let marked_line = if call_pos >= 0 {
+                        line.slice(0, call_pos) + " = tail call " + line.slice(call_pos + 8, line.len())
+                    } else {
+                        "  tail " + line.slice(skip_ws(line, 0), line.len())
+                    };
+                    let new_acc = if acc == "" { marked_line } else { acc + "|" + marked_line };
+                    find_tail_call_pattern(mir, end_pos + 1, new_acc, count + 1)
+                } else {
+                    let new_acc = if acc == "" { line } else { acc + "|" + line };
+                    find_tail_call_pattern(mir, end_pos + 1, new_acc, count)
+                }
+            } else {
+                let new_acc = if acc == "" { line } else { acc + "|" + line };
+                find_tail_call_pattern(mir, end_pos + 1, new_acc, count)
+            }
+        } else {
+            let new_acc = if acc == "" { line } else { acc + "|" + line };
+            find_tail_call_pattern(mir, end_pos + 1, new_acc, count)
+        }
+    };
+
+// Run tail call optimization pass
+fn run_tail_call_pass(mir: String) -> String =
+    find_tail_call_pattern(mir, 0, "", 0);
 
 // ============================================================================
 // SECTION 9: Statistics
@@ -785,6 +1362,172 @@ fn test_parse_int_positions() -> i64 =
     (if parse_int_at("", 0, 0) == 0 { 1 } else { 0 });
 
 // ============================================================================
+// SECTION 10.1: New Optimization Pass Tests (Phase 1-2)
+// ============================================================================
+
+// Test is_goto_inst and extract_goto_target
+fn test_goto_inst() -> i64 =
+    (if is_goto_inst("  goto then_0") { 1 } else { 0 }) +
+    (if is_goto_inst("goto label") { 1 } else { 0 }) +
+    (if not is_goto_inst("  branch %c, t, e") { 1 } else { 0 }) +
+    (if not is_goto_inst("  return %x") { 1 } else { 0 }) +
+    (if extract_goto_target("  goto then_0") == "then_0" { 1 } else { 0 }) +
+    (if extract_goto_target("goto merge") == "merge" { 1 } else { 0 });
+
+// Test is_call_inst
+fn test_call_inst() -> i64 =
+    (if is_call_inst("  %r = call foo()") { 1 } else { 0 }) +
+    (if is_call_inst("  call print(%x)") { 1 } else { 0 }) +
+    (if not is_call_inst("  %x = const I:42") { 1 } else { 0 }) +
+    (if not is_call_inst("  return %x") { 1 } else { 0 }) +
+    (if is_call_inst("  %_t0 = call bar(%a, %b)") { 1 } else { 0 }) +
+    (if not is_call_inst("entry:") { 1 } else { 0 });
+
+// Test extract_label_name
+fn test_label_name() -> i64 =
+    (if extract_label_name("entry:") == "entry" { 1 } else { 0 }) +
+    (if extract_label_name("then_0:") == "then_0" { 1 } else { 0 }) +
+    (if extract_label_name("else_block:") == "else_block" { 1 } else { 0 }) +
+    (if extract_label_name("merge:") == "merge" { 1 } else { 0 }) +
+    (if extract_label_name("  %x = const I:1") == "" { 1 } else { 0 }) +
+    (if extract_label_name("loop_header:") == "loop_header" { 1 } else { 0 });
+
+// Test label_set operations
+fn test_label_set() -> i64 =
+    let s1 = label_set_empty();
+    let r1 = if s1 == "" { 1 } else { 0 };
+    let s2 = label_set_add(s1, "entry");
+    let r2 = if label_set_has(s2, "entry") { 1 } else { 0 };
+    let s3 = label_set_add(s2, "then_0");
+    let r3 = if label_set_has(s3, "then_0") { 1 } else { 0 };
+    let r4 = if label_set_has(s3, "entry") { 1 } else { 0 };  // still has entry
+    let r5 = if not label_set_has(s3, "else_0") { 1 } else { 0 };
+    let s4 = label_set_add(s3, "entry");  // duplicate add
+    let r6 = if s4 == s3 { 1 } else { 0 };  // should not change
+    r1 + r2 + r3 + r4 + r5 + r6;
+
+// Test extract_branch_targets
+fn test_branch_targets() -> i64 =
+    let t1 = extract_branch_targets("  branch %c, then_0, else_0");
+    let r1 = if find_pattern(t1, "then_0", 0) >= 0 { 1 } else { 0 };
+    let r2 = if find_pattern(t1, "else_0", 0) >= 0 { 1 } else { 0 };
+    let t2 = extract_branch_targets("  branch %x, a, b");
+    let r3 = if find_pattern(t2, "a", 0) >= 0 { 1 } else { 0 };
+    let r4 = if find_pattern(t2, "b", 0) >= 0 { 1 } else { 0 };
+    let t3 = extract_branch_targets("  return %x");
+    let r5 = if t3 == "" { 1 } else { 0 };  // not a branch
+    let t4 = extract_branch_targets("  goto label");
+    let r6 = if t4 == "" { 1 } else { 0 };  // not a branch
+    r1 + r2 + r3 + r4 + r5 + r6;
+
+// Test algebraic simplification
+fn test_algebraic_simp() -> i64 =
+    let table = const_table_set(const_table_set(const_table_empty(), "%zero", 0), "%one", 1);
+    // x + 0 → copy x
+    let r1 = simplify_algebraic_inst("  %r = + %x, %zero", table);
+    let t1 = if find_pattern(r1, "copy %x", 0) >= 0 { 1 } else { 0 };
+    // 0 + x → copy x
+    let r2 = simplify_algebraic_inst("  %r = + %zero, %x", table);
+    let t2 = if find_pattern(r2, "copy %x", 0) >= 0 { 1 } else { 0 };
+    // x * 1 → copy x
+    let r3 = simplify_algebraic_inst("  %r = * %x, %one", table);
+    let t3 = if find_pattern(r3, "copy %x", 0) >= 0 { 1 } else { 0 };
+    // x * 0 → const 0
+    let r4 = simplify_algebraic_inst("  %r = * %x, %zero", table);
+    let t4 = if find_pattern(r4, "const I:0", 0) >= 0 { 1 } else { 0 };
+    // x / 1 → copy x
+    let r5 = simplify_algebraic_inst("  %r = / %x, %one", table);
+    let t5 = if find_pattern(r5, "copy %x", 0) >= 0 { 1 } else { 0 };
+    // x - 0 → copy x
+    let r6 = simplify_algebraic_inst("  %r = - %x, %zero", table);
+    let t6 = if find_pattern(r6, "copy %x", 0) >= 0 { 1 } else { 0 };
+    t1 + t2 + t3 + t4 + t5 + t6;
+
+// Test is_var_used_in_rhs
+fn test_var_used_in_rhs() -> i64 =
+    (if is_var_used_in_rhs("  %r = + %a, %b", "%a") { 1 } else { 0 }) +
+    (if is_var_used_in_rhs("  %r = + %a, %b", "%b") { 1 } else { 0 }) +
+    (if not is_var_used_in_rhs("  %r = + %a, %b", "%r") { 1 } else { 0 }) +  // dest not in rhs
+    (if is_var_used_in_rhs("  return %x", "%x") { 1 } else { 0 }) +
+    (if is_var_used_in_rhs("  branch %c, t, e", "%c") { 1 } else { 0 }) +
+    (if not is_var_used_in_rhs("  %x = const I:42", "%y") { 1 } else { 0 });
+
+// Test DCE basic functionality
+fn test_dce_basic() -> i64 =
+    // Dead assignment (no use after)
+    let mir1 = "  %dead = const I:42|  %live = const I:10|  return %live";
+    let r1 = run_dce_pass(mir1, 0, "", 0);
+    let c1_pos = find_char(r1, 58, 0);
+    let count1 = parse_int_at(r1, 0, 0);
+    let t1 = if count1 >= 1 { 1 } else { 0 };  // should remove %dead
+
+    // Live assignment (used in return)
+    let mir2 = "  %x = const I:5|  return %x";
+    let r2 = run_dce_pass(mir2, 0, "", 0);
+    let c2_pos = find_char(r2, 58, 0);
+    let count2 = parse_int_at(r2, 0, 0);
+    let t2 = if count2 == 0 { 1 } else { 0 };  // should not remove
+
+    // Side effect preserved
+    let mir3 = "  call print(%x)|  return %y";
+    let r3 = run_dce_pass(mir3, 0, "", 0);
+    let mir3_out = r3.slice(find_char(r3, 58, 0) + 1, r3.len());
+    let t3 = if find_pattern(mir3_out, "call print", 0) >= 0 { 1 } else { 0 };
+
+    t1 + t2 + t3;
+
+// Test copy propagation basic
+fn test_copy_prop_basic() -> i64 =
+    // Test binop operand replacement
+    let mir1 = "  %a = copy %b|  %r = + %a, %c";
+    let r1 = run_copy_prop_pass(mir1, 0, copy_table_empty(), "", 0);
+    let mir1_out = r1.slice(find_char(r1, 58, 0) + 1, r1.len());
+    let t1 = if find_pattern(mir1_out, "+ %b", 0) >= 0 { 1 } else { 0 };
+
+    // Test return replacement
+    let mir2 = "  %x = copy %y|  return %x";
+    let r2 = run_copy_prop_pass(mir2, 0, copy_table_empty(), "", 0);
+    let mir2_out = r2.slice(find_char(r2, 58, 0) + 1, r2.len());
+    let t2 = if find_pattern(mir2_out, "return %y", 0) >= 0 { 1 } else { 0 };
+
+    t1 + t2;
+
+// Test fallthrough optimization
+fn test_fallthrough_opt() -> i64 =
+    // goto X followed by X: should remove goto
+    let mir1 = "  goto then_0|then_0:|  return %x";
+    let r1 = run_fallthrough_opt(mir1, 0, "", 0);
+    let c1_pos = find_char(r1, 58, 0);
+    let count1 = parse_int_at(r1, 0, 0);
+    let mir1_out = r1.slice(c1_pos + 1, r1.len());
+    let t1 = if count1 == 1 { 1 } else { 0 };  // should remove 1 goto
+    let t2 = if find_pattern(mir1_out, "goto then_0", 0) < 0 { 1 } else { 0 };  // goto removed
+
+    // goto X followed by different label should keep goto
+    let mir2 = "  goto else_0|then_0:|  return %x";
+    let r2 = run_fallthrough_opt(mir2, 0, "", 0);
+    let c2_pos = find_char(r2, 58, 0);
+    let count2 = parse_int_at(r2, 0, 0);
+    let t3 = if count2 == 0 { 1 } else { 0 };  // should not remove
+
+    t1 + t2 + t3;
+
+// Test fixed-point iteration
+fn test_fixed_point() -> i64 =
+    // Multiple passes needed: const fold → algebraic → DCE
+    let mir = "  %z = const I:0|  %a = const I:5|  %b = + %a, %z|  return %b";
+    let opt = optimize_mir(mir, 1);
+    // After const fold: %z=0, %a=5, %b=5
+    // After algebraic: %a + 0 → copy %a → %b = copy %a
+    // After copy prop: return %b → return %a
+    // Result should be simplified
+    let t1 = if find_pattern(opt, "return", 0) >= 0 { 1 } else { 0 };
+    // Check that optimization happened (result should be smaller)
+    let t2 = if opt.len() < mir.len() { 1 } else { 0 };
+
+    t1 + t2;
+
+// ============================================================================
 // SECTION 11: Integration Tests
 // ============================================================================
 
@@ -842,7 +1585,7 @@ fn test_is_checks() -> i64 =
     if c1 and c2 and c3 and c4 and c5 and c6 { 1 } else { 0 };
 
 fn test_optimize_mir() -> i64 =
-    let mir = "  %_t0 = const I:5|  %_t1 = const I:3|  %_t2 = + %_t0, %_t1";
+    let mir = "  %_t0 = const I:5|  %_t1 = const I:3|  %_t2 = + %_t0, %_t1|  return %_t2";
     let opt = optimize_mir(mir, 1);
     // Should fold 5 + 3 = 8
     if find_pattern(opt, "const I:8", 0) >= 0 { 1 } else { 0 };
@@ -1038,13 +1781,38 @@ fn main() -> i64 =
     let ut43 = test_parse_int_positions();
     let v43 = println(ut43);  // Should be 6
 
+    // v0.30.200: New optimization pass tests (Phase 1-2: 59 new assertions)
+    let ut44 = test_goto_inst();
+    let v44 = println(ut44);  // Should be 6
+    let ut45 = test_call_inst();
+    let v45 = println(ut45);  // Should be 6
+    let ut46 = test_label_name();
+    let v46 = println(ut46);  // Should be 6
+    let ut47 = test_label_set();
+    let v47 = println(ut47);  // Should be 6
+    let ut48 = test_branch_targets();
+    let v48 = println(ut48);  // Should be 6
+    let ut49 = test_algebraic_simp();
+    let v49 = println(ut49);  // Should be 6
+    let ut50 = test_var_used_in_rhs();
+    let v50 = println(ut50);  // Should be 6
+    let ut51 = test_dce_basic();
+    let v51 = println(ut51);  // Should be 3
+    let ut52 = test_copy_prop_basic();
+    let v52 = println(ut52);  // Should be 2
+    let ut53 = test_fallthrough_opt();
+    let v53 = println(ut53);  // Should be 3
+    let ut54 = test_fixed_point();
+    let v54 = println(ut54);  // Should be 2
+
     let unit_base = ut1 + ut2 + ut3 + ut4 + ut5 + ut6 + ut7 + ut8 + ut9 + ut10 +
                     ut11 + ut12 + ut13 + ut14 + ut15 + ut16 + ut17 + ut18 + ut19 + ut20 +
                     ut21 + ut22 + ut23 + ut24 + ut25;
     let unit_ext = ut26 + ut27 + ut28 + ut29 + ut30 + ut31 + ut32 + ut33 + ut34 + ut35 + ut36 + ut37;
     let unit_new = ut38 + ut39 + ut40 + ut41 + ut42 + ut43;
-    let unit_total = unit_base + unit_ext + unit_new;
-    let v26 = println(unit_total);  // Should be 234 (126 base + 72 extended + 36 new)
+    let unit_phase12 = ut44 + ut45 + ut46 + ut47 + ut48 + ut49 + ut50 + ut51 + ut52 + ut53 + ut54;
+    let unit_total = unit_base + unit_ext + unit_new + unit_phase12;
+    let v26 = println(unit_total);  // Should be 285 (126 base + 72 extended + 36 new + 51 phase1-2)
 
     let u2 = println(555);  // Integration tests marker
 
@@ -1071,6 +1839,6 @@ fn main() -> i64 =
 
     let total = unit_total + integration;
     let u4 = println(888);
-    let u5 = println(total);  // Should be 263 (234 unit + 29 integration)
+    let u5 = println(total);  // Should be 314 (285 unit + 29 integration)
     let u6 = println(999);
     0;
