@@ -1166,89 +1166,145 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
 
         // v0.5 Phase 3: For loop (lowered to while loop pattern)
         Expr::For { var, iter, body } => {
-            // Lower the iterator (expecting Range expression)
-            // Extract start and end from range
-            let (start_op, end_op) = match &iter.node {
-                Expr::Range { start, end, .. } => {
-                    (lower_expr(start, ctx), lower_expr(end, ctx))
-                }
-                _ => {
-                    // Non-range iterator - just evaluate and return unit
-                    let _ = lower_expr(iter, ctx);
-                    return Operand::Constant(Constant::Unit);
-                }
-            };
+            // Check if iterator is a Range expression
+            if let Expr::Range { start, end, .. } = &iter.node {
+                // Range-based for loop
+                let start_op = lower_expr(start, ctx);
+                let end_op = lower_expr(end, ctx);
 
-            // Register loop variable
-            let mir_ty = ctx.operand_type(&start_op);
-            ctx.locals.insert(var.clone(), mir_ty);
+                // Register loop variable
+                let mir_ty = ctx.operand_type(&start_op);
+                ctx.locals.insert(var.clone(), mir_ty);
 
-            // Initialize loop variable with start value
-            let var_place = Place::new(var.clone());
-            match start_op {
-                Operand::Constant(c) => {
-                    ctx.push_inst(MirInst::Const {
-                        dest: var_place.clone(),
-                        value: c,
-                    });
+                // Initialize loop variable with start value
+                let var_place = Place::new(var.clone());
+                match start_op {
+                    Operand::Constant(c) => {
+                        ctx.push_inst(MirInst::Const {
+                            dest: var_place.clone(),
+                            value: c,
+                        });
+                    }
+                    Operand::Place(src) => {
+                        ctx.push_inst(MirInst::Copy {
+                            dest: var_place.clone(),
+                            src,
+                        });
+                    }
                 }
-                Operand::Place(src) => {
-                    ctx.push_inst(MirInst::Copy {
-                        dest: var_place.clone(),
-                        src,
-                    });
-                }
+
+                // Store end value in a temp for comparison
+                let end_place = operand_to_place(end_op, ctx);
+
+                // Create labels for loop structure
+                let cond_label = ctx.fresh_label("for_cond");
+                let body_label = ctx.fresh_label("for_body");
+                let exit_label = ctx.fresh_label("for_exit");
+
+                // Jump to condition check
+                ctx.finish_block(Terminator::Goto(cond_label.clone()));
+
+                // Condition block: i < end
+                ctx.start_block(cond_label.clone());
+                let cond_temp = ctx.fresh_temp();
+                ctx.push_inst(MirInst::BinOp {
+                    dest: cond_temp.clone(),
+                    op: MirBinOp::Lt,
+                    lhs: Operand::Place(var_place.clone()),
+                    rhs: Operand::Place(end_place),
+                });
+                ctx.finish_block(Terminator::Branch {
+                    cond: Operand::Place(cond_temp),
+                    then_label: body_label.clone(),
+                    else_label: exit_label.clone(),
+                });
+
+                // Body block
+                ctx.start_block(body_label);
+                let _ = lower_expr(body, ctx);
+
+                // Increment loop variable: i = i + 1
+                let inc_temp = ctx.fresh_temp();
+                ctx.push_inst(MirInst::BinOp {
+                    dest: inc_temp.clone(),
+                    op: MirBinOp::Add,
+                    lhs: Operand::Place(var_place.clone()),
+                    rhs: Operand::Constant(Constant::Int(1)),
+                });
+                ctx.push_inst(MirInst::Copy {
+                    dest: var_place,
+                    src: inc_temp,
+                });
+                ctx.finish_block(Terminator::Goto(cond_label));
+
+                // Exit block
+                ctx.start_block(exit_label);
+
+                // For loop returns unit
+                Operand::Constant(Constant::Unit)
+            } else {
+                // v0.81: Receiver-based for loop (iterate until channel closed)
+                // The iterator must be a Receiver<T> (type checked above)
+                let recv_op = lower_expr(iter, ctx);
+
+                // Register loop variable
+                ctx.locals.insert(var.clone(), MirType::I64);
+                let var_place = Place::new(var.clone());
+
+                // Create labels for loop structure
+                let cond_label = ctx.fresh_label("for_recv_cond");
+                let body_label = ctx.fresh_label("for_recv_body");
+                let exit_label = ctx.fresh_label("for_recv_exit");
+
+                // Jump to condition check (which does recv_opt)
+                ctx.finish_block(Terminator::Goto(cond_label.clone()));
+
+                // Condition block: try recv_opt and check if we got a value
+                ctx.start_block(cond_label.clone());
+
+                // Call recv_opt to get next value (returns -1 if channel closed and empty)
+                let recv_result = ctx.fresh_temp();
+                ctx.locals.insert(recv_result.name.clone(), MirType::I64);
+                ctx.push_inst(MirInst::ChannelRecvOpt {
+                    dest: recv_result.clone(),
+                    receiver: recv_op.clone(),
+                });
+
+                // Check if result != -1 (not closed/empty)
+                let cond_temp = ctx.fresh_temp();
+                ctx.locals.insert(cond_temp.name.clone(), MirType::I64);
+                ctx.push_inst(MirInst::BinOp {
+                    dest: cond_temp.clone(),
+                    op: MirBinOp::Ne,
+                    lhs: Operand::Place(recv_result.clone()),
+                    rhs: Operand::Constant(Constant::Int(-1)),
+                });
+
+                ctx.finish_block(Terminator::Branch {
+                    cond: Operand::Place(cond_temp),
+                    then_label: body_label.clone(),
+                    else_label: exit_label.clone(),
+                });
+
+                // Body block: assign received value to loop variable
+                ctx.start_block(body_label);
+                ctx.push_inst(MirInst::Copy {
+                    dest: var_place,
+                    src: recv_result,
+                });
+
+                // Execute loop body
+                let _ = lower_expr(body, ctx);
+
+                // Loop back to condition (recv_opt again)
+                ctx.finish_block(Terminator::Goto(cond_label));
+
+                // Exit block
+                ctx.start_block(exit_label);
+
+                // For loop returns unit
+                Operand::Constant(Constant::Unit)
             }
-
-            // Store end value in a temp for comparison
-            let end_place = operand_to_place(end_op, ctx);
-
-            // Create labels for loop structure
-            let cond_label = ctx.fresh_label("for_cond");
-            let body_label = ctx.fresh_label("for_body");
-            let exit_label = ctx.fresh_label("for_exit");
-
-            // Jump to condition check
-            ctx.finish_block(Terminator::Goto(cond_label.clone()));
-
-            // Condition block: i < end
-            ctx.start_block(cond_label.clone());
-            let cond_temp = ctx.fresh_temp();
-            ctx.push_inst(MirInst::BinOp {
-                dest: cond_temp.clone(),
-                op: MirBinOp::Lt,
-                lhs: Operand::Place(var_place.clone()),
-                rhs: Operand::Place(end_place),
-            });
-            ctx.finish_block(Terminator::Branch {
-                cond: Operand::Place(cond_temp),
-                then_label: body_label.clone(),
-                else_label: exit_label.clone(),
-            });
-
-            // Body block
-            ctx.start_block(body_label);
-            let _ = lower_expr(body, ctx);
-
-            // Increment loop variable: i = i + 1
-            let inc_temp = ctx.fresh_temp();
-            ctx.push_inst(MirInst::BinOp {
-                dest: inc_temp.clone(),
-                op: MirBinOp::Add,
-                lhs: Operand::Place(var_place.clone()),
-                rhs: Operand::Constant(Constant::Int(1)),
-            });
-            ctx.push_inst(MirInst::Copy {
-                dest: var_place,
-                src: inc_temp,
-            });
-            ctx.finish_block(Terminator::Goto(cond_label));
-
-            // Exit block
-            ctx.start_block(exit_label);
-
-            // For loop returns unit
-            Operand::Constant(Constant::Unit)
         }
 
         Expr::Match { expr, arms } => {

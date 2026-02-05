@@ -1,0 +1,24 @@
+// v0.81: Test channel iteration with for-in loop
+fn main() -> i64 = {
+    // Create a bounded channel with capacity 3
+    let ch = channel<i64>(3);
+    let tx = ch.0;
+    let rx = ch.1;
+
+    // Send some values
+    tx.send(10);
+    tx.send(20);
+    tx.send(30);
+
+    // Close the channel (no more sends)
+    tx.close();
+
+    // Iterate over the channel using for-in loop
+    let sum = 0;
+    for value in rx {
+        sum = sum + value;
+    };
+
+    // sum should be 10 + 20 + 30 = 60
+    if sum == 60 { 0 } else { sum }
+};
