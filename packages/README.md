@@ -1,55 +1,114 @@
-# BMB Standard Library Packages
+# BMB Official Packages
 
-> v0.14 Foundation - Core 패키지 표준화
+This directory contains the official BMB standard library packages.
 
-## 패키지 구조 표준
+## Package List
 
-```
-packages/
-├── bmb-core/           # 핵심 타입 및 프리미티브
-│   ├── Gotgan.toml
-│   └── src/
-│       └── lib.bmb
-├── bmb-option/         # Option<T> 제네릭 타입
-├── bmb-result/         # Result<T, E> 제네릭 타입
-├── bmb-traits/         # 핵심 트레이트 정의
-└── bmb-iter/           # Iterator 트레이트
-```
+### Core Packages
 
-## 패키지 명명 규칙
+| Package | Version | Description |
+|---------|---------|-------------|
+| [bmb-core](./bmb-core) | 0.1.0 | Core types and functions (bool, numeric, math) |
+| [bmb-traits](./bmb-traits) | 0.14.0 | Core traits (Debug, Clone, PartialEq, Default) |
+| [bmb-option](./bmb-option) | 0.14.0 | Generic Option<T> type for optional values |
+| [bmb-result](./bmb-result) | 0.14.0 | Generic Result<T, E> type for error handling |
 
-| 접두사 | 용도 | 예시 |
-|--------|------|------|
-| `bmb-` | 공식 표준 라이브러리 | `bmb-core`, `bmb-option` |
-| `bmb-x-` | 실험적 패키지 | `bmb-x-async` |
+### Data Structure Packages
 
-## Gotgan.toml 표준
+| Package | Version | Description |
+|---------|---------|-------------|
+| [bmb-string](./bmb-string) | 0.1.0 | String utility functions |
+| [bmb-array](./bmb-array) | 0.1.0 | Fixed-size array utilities |
+| [bmb-iter](./bmb-iter) | 0.14.0 | Iterator trait and combinators |
+
+### System Packages
+
+| Package | Version | Description |
+|---------|---------|-------------|
+| [bmb-io](./bmb-io) | 0.1.0 | File I/O operations |
+| [bmb-process](./bmb-process) | 0.1.0 | Process execution utilities |
+| [bmb-runtime](./bmb-runtime) | 0.1.0 | Self-hosted replacement for C runtime |
+
+### Testing Packages
+
+| Package | Version | Description |
+|---------|---------|-------------|
+| [bmb-test](./bmb-test) | 0.1.0 | Test assertion utilities |
+
+## Usage
+
+Add dependencies to your `gotgan.toml`:
 
 ```toml
-[package]
-name = "bmb-core"
-version = "0.14.0"
-description = "BMB core types and primitives"
-license = "MIT OR Apache-2.0"
-authors = ["BMB Team"]
-
 [dependencies]
-# 의존성 목록
-
-[contracts]
-# 계약 검증 설정
-verify = true
+bmb-core = "0.1.0"
+bmb-string = "0.1.0"
+bmb-option = "0.14.0"
 ```
 
-## 버전 체계
+Then import in your BMB code:
 
-- `0.14.x`: Foundation phase (핵심 타입)
-- `0.15.x`: Stream phase (컬렉션/IO)
-- `0.16.x`: Connect phase (네트워크/직렬화)
+```bmb
+use bmb_core::abs;
+use bmb_string::string_eq;
+use bmb_option::Option;
 
-## AI-Native 설계 원칙
+fn main() -> i64 = abs(-42);
+```
 
-1. **계약 우선**: 모든 함수에 `pre`/`post` 조건
-2. **제네릭**: 단형 대신 다형 타입 사용
-3. **@derive 지원**: Debug, Clone, PartialEq 자동 구현
-4. **토큰 효율**: 간결하고 명확한 API
+## Package Structure
+
+Each package follows this structure:
+
+```
+<package-name>/
+├── gotgan.toml    # Package manifest (or Gotgan.toml)
+└── src/
+    └── lib.bmb    # Library source
+```
+
+## Contract Verification
+
+All functions in these packages have explicit pre/post conditions:
+
+```bmb
+pub fn abs(x: i64) -> i64
+    post ret >= 0
+= if x >= 0 { x } else { 0 - x };
+```
+
+This enables:
+- Compile-time verification with Z3
+- Bounds check elimination
+- Documentation of function behavior
+
+## Dependency Graph
+
+```
+bmb-core ─────────────────────────────────────────────────┐
+    │                                                     │
+    ├──► bmb-traits                                       │
+    │                                                     │
+    ├──► bmb-option ─────┬──► bmb-result                  │
+    │                    │                                │
+    │                    └──► bmb-iter                    │
+    │                                                     │
+    ├──► bmb-string ──────────► bmb-test ◄────────────────┤
+    │                              ▲                      │
+    └──► bmb-array ────────────────┘                      │
+                                                          │
+bmb-io, bmb-process, bmb-runtime ◄────────────────────────┘
+```
+
+## Contributing
+
+These packages are part of the BMB compiler distribution. To contribute:
+
+1. Fork the [lang-bmb/bmb](https://github.com/lang-bmb/bmb) repository
+2. Make changes in the `packages/` directory
+3. Run `cargo test` to verify
+4. Submit a pull request
+
+## License
+
+MIT License - See [LICENSE](../LICENSE) for details.

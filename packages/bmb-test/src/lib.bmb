@@ -1,0 +1,379 @@
+// bmb-test: Test assertion utilities for BMB
+// Version: 0.1.0
+//
+// This package provides test assertion functions:
+// - Basic assertions (assert_true, assert_false)
+// - Integer assertions (assert_eq_i64, assert_lt_i64, etc.)
+// - Boolean assertions
+// - String assertions
+// - Array assertions
+// - Compound assertions
+// - Test result utilities
+//
+// All functions have explicit contracts for verification.
+
+// ============================================================
+// Basic Assertions
+// ============================================================
+
+/// Assert condition is true
+pub fn assert_true(cond: bool) -> bool
+    post ret == cond
+= cond;
+
+/// Assert condition is false
+pub fn assert_false(cond: bool) -> bool
+    post ret == (not cond)
+= not cond;
+
+// ============================================================
+// Integer Assertions
+// ============================================================
+
+/// Assert two i64 values are equal
+pub fn assert_eq_i64(actual: i64, expected: i64) -> bool
+    post ret == (actual == expected)
+= actual == expected;
+
+/// Assert two i64 values are not equal
+pub fn assert_ne_i64(actual: i64, expected: i64) -> bool
+    post ret == (actual != expected)
+= actual != expected;
+
+/// Assert actual < expected
+pub fn assert_lt_i64(actual: i64, expected: i64) -> bool
+    post ret == (actual < expected)
+= actual < expected;
+
+/// Assert actual <= expected
+pub fn assert_le_i64(actual: i64, expected: i64) -> bool
+    post ret == (actual <= expected)
+= actual <= expected;
+
+/// Assert actual > expected
+pub fn assert_gt_i64(actual: i64, expected: i64) -> bool
+    post ret == (actual > expected)
+= actual > expected;
+
+/// Assert actual >= expected
+pub fn assert_ge_i64(actual: i64, expected: i64) -> bool
+    post ret == (actual >= expected)
+= actual >= expected;
+
+/// Assert value is in range [min, max]
+pub fn assert_in_range(val: i64, min: i64, max: i64) -> bool
+    pre min <= max
+    post ret == (val >= min and val <= max)
+= val >= min and val <= max;
+
+/// Assert value is positive (> 0)
+pub fn assert_positive(val: i64) -> bool
+    post ret == (val > 0)
+= val > 0;
+
+/// Assert value is non-negative (>= 0)
+pub fn assert_non_negative(val: i64) -> bool
+    post ret == (val >= 0)
+= val >= 0;
+
+/// Assert value is negative (< 0)
+pub fn assert_negative(val: i64) -> bool
+    post ret == (val < 0)
+= val < 0;
+
+/// Assert value is zero
+pub fn assert_zero(val: i64) -> bool
+    post ret == (val == 0)
+= val == 0;
+
+/// Assert value is non-zero
+pub fn assert_non_zero(val: i64) -> bool
+    post ret == (val != 0)
+= val != 0;
+
+// ============================================================
+// Boolean Assertions
+// ============================================================
+
+/// Assert two booleans are equal
+pub fn assert_eq_bool(actual: bool, expected: bool) -> bool
+    post ret == (actual == expected)
+= actual == expected;
+
+/// Assert boolean is truthy
+pub fn assert_truthy(val: bool) -> bool
+    post ret == val
+= val;
+
+/// Assert boolean is falsy
+pub fn assert_falsy(val: bool) -> bool
+    post ret == (not val)
+= not val;
+
+// ============================================================
+// String Assertions (standalone - no dependencies)
+// ============================================================
+
+fn string_eq_local(a: String, b: String) -> bool =
+    a.len() == b.len() and string_eq_from(a, b, 0);
+
+fn string_eq_from(a: String, b: String, pos: i64) -> bool =
+    if pos >= a.len() { true }
+    else if a.byte_at(pos) != b.byte_at(pos) { false }
+    else { string_eq_from(a, b, pos + 1) };
+
+fn starts_with_local(s: String, prefix: String) -> bool =
+    if prefix.len() > s.len() { false } else { starts_with_check(s, prefix, 0) };
+
+fn starts_with_check(s: String, prefix: String, pos: i64) -> bool =
+    if pos >= prefix.len() { true }
+    else if s.byte_at(pos) != prefix.byte_at(pos) { false }
+    else { starts_with_check(s, prefix, pos + 1) };
+
+fn ends_with_local(s: String, suffix: String) -> bool =
+    if suffix.len() > s.len() { false } else { ends_with_check(s, suffix, 0) };
+
+fn ends_with_check(s: String, suffix: String, pos: i64) -> bool =
+    if pos >= suffix.len() { true }
+    else {
+        let s_pos = s.len() - suffix.len() + pos;
+        if s.byte_at(s_pos) != suffix.byte_at(pos) { false }
+        else { ends_with_check(s, suffix, pos + 1) }
+    };
+
+fn contains_char_local(s: String, c: i64) -> bool =
+    contains_char_from(s, c, 0);
+
+fn contains_char_from(s: String, c: i64, pos: i64) -> bool =
+    if pos >= s.len() { false }
+    else if s.byte_at(pos) == c { true }
+    else { contains_char_from(s, c, pos + 1) };
+
+fn char_is_whitespace(c: i64) -> bool = c == 32 or c == 9 or c == 10 or c == 13;
+
+fn is_blank_local(s: String) -> bool = find_trim_start(s) >= s.len();
+
+fn find_trim_start(s: String) -> i64 = find_trim_start_from(s, 0);
+
+fn find_trim_start_from(s: String, pos: i64) -> i64 =
+    if pos >= s.len() { pos }
+    else if char_is_whitespace(s.byte_at(pos)) { find_trim_start_from(s, pos + 1) }
+    else { pos };
+
+/// Assert two strings are equal
+pub fn assert_string_eq(actual: String, expected: String) -> bool
+    post ret == string_eq_local(actual, expected)
+= string_eq_local(actual, expected);
+
+/// Assert two strings are not equal
+pub fn assert_string_ne(actual: String, expected: String) -> bool
+    post ret == (not string_eq_local(actual, expected))
+= not string_eq_local(actual, expected);
+
+/// Assert string starts with prefix
+pub fn assert_starts_with(s: String, prefix: String) -> bool
+    post ret == starts_with_local(s, prefix)
+= starts_with_local(s, prefix);
+
+/// Assert string ends with suffix
+pub fn assert_ends_with(s: String, suffix: String) -> bool
+    post ret == ends_with_local(s, suffix)
+= ends_with_local(s, suffix);
+
+/// Assert string contains character
+pub fn assert_contains_char(s: String, c: i64) -> bool
+    post ret == contains_char_local(s, c)
+= contains_char_local(s, c);
+
+/// Assert string is empty
+pub fn assert_empty(s: String) -> bool
+    post ret == (s.len() == 0)
+= s.len() == 0;
+
+/// Assert string is not empty
+pub fn assert_not_empty(s: String) -> bool
+    post ret == (s.len() > 0)
+= s.len() > 0;
+
+/// Assert string is blank (empty or whitespace only)
+pub fn assert_blank(s: String) -> bool
+    post ret == is_blank_local(s)
+= is_blank_local(s);
+
+/// Assert string is not blank
+pub fn assert_not_blank(s: String) -> bool
+    post ret == (not is_blank_local(s))
+= not is_blank_local(s);
+
+/// Assert string has expected length
+pub fn assert_string_len(s: String, expected_len: i64) -> bool
+    pre expected_len >= 0
+    post ret == (s.len() == expected_len)
+= s.len() == expected_len;
+
+// ============================================================
+// Array Assertions (standalone - no dependencies)
+// ============================================================
+
+fn contains_i64_local(arr: [i64; 8], len: i64, val: i64) -> bool =
+    contains_i64_from(arr, len, val, 0);
+
+fn contains_i64_from(arr: [i64; 8], len: i64, val: i64, pos: i64) -> bool =
+    if pos >= len { false }
+    else if arr[pos] == val { true }
+    else { contains_i64_from(arr, len, val, pos + 1) };
+
+fn is_sorted_asc_local(arr: [i64; 8], len: i64) -> bool =
+    if len <= 1 { true } else { is_sorted_asc_from(arr, len, 0) };
+
+fn is_sorted_asc_from(arr: [i64; 8], len: i64, pos: i64) -> bool =
+    if pos >= len - 1 { true }
+    else if arr[pos] > arr[pos + 1] { false }
+    else { is_sorted_asc_from(arr, len, pos + 1) };
+
+fn is_sorted_desc_local(arr: [i64; 8], len: i64) -> bool =
+    if len <= 1 { true } else { is_sorted_desc_from(arr, len, 0) };
+
+fn is_sorted_desc_from(arr: [i64; 8], len: i64, pos: i64) -> bool =
+    if pos >= len - 1 { true }
+    else if arr[pos] < arr[pos + 1] { false }
+    else { is_sorted_desc_from(arr, len, pos + 1) };
+
+fn all_equal_local(arr: [i64; 8], len: i64) -> bool =
+    if len <= 1 { true } else { all_equal_from(arr, len, arr[0], 1) };
+
+fn all_equal_from(arr: [i64; 8], len: i64, val: i64, pos: i64) -> bool =
+    if pos >= len { true }
+    else if arr[pos] != val { false }
+    else { all_equal_from(arr, len, val, pos + 1) };
+
+fn all_positive_local(arr: [i64; 8], len: i64) -> bool =
+    all_positive_from(arr, len, 0);
+
+fn all_positive_from(arr: [i64; 8], len: i64, pos: i64) -> bool =
+    if pos >= len { true }
+    else if arr[pos] <= 0 { false }
+    else { all_positive_from(arr, len, pos + 1) };
+
+fn sum_i64_local(arr: [i64; 8], len: i64) -> i64 =
+    sum_i64_from(arr, len, 0);
+
+fn sum_i64_from(arr: [i64; 8], len: i64, pos: i64) -> i64 =
+    if pos >= len { 0 } else { arr[pos] + sum_i64_from(arr, len, pos + 1) };
+
+/// Assert array contains value
+pub fn assert_array_contains(arr: [i64; 8], len: i64, val: i64) -> bool
+    pre len >= 0 and len <= 8
+    post ret == contains_i64_local(arr, len, val)
+= contains_i64_local(arr, len, val);
+
+/// Assert array does not contain value
+pub fn assert_array_not_contains(arr: [i64; 8], len: i64, val: i64) -> bool
+    pre len >= 0 and len <= 8
+    post ret == (not contains_i64_local(arr, len, val))
+= not contains_i64_local(arr, len, val);
+
+/// Assert array is sorted ascending
+pub fn assert_sorted_asc(arr: [i64; 8], len: i64) -> bool
+    pre len >= 0 and len <= 8
+    post ret == is_sorted_asc_local(arr, len)
+= is_sorted_asc_local(arr, len);
+
+/// Assert array is sorted descending
+pub fn assert_sorted_desc(arr: [i64; 8], len: i64) -> bool
+    pre len >= 0 and len <= 8
+    post ret == is_sorted_desc_local(arr, len)
+= is_sorted_desc_local(arr, len);
+
+/// Assert all array elements are equal
+pub fn assert_all_equal(arr: [i64; 8], len: i64) -> bool
+    pre len >= 0 and len <= 8
+    post ret == all_equal_local(arr, len)
+= all_equal_local(arr, len);
+
+/// Assert all array elements are positive
+pub fn assert_all_positive(arr: [i64; 8], len: i64) -> bool
+    pre len >= 0 and len <= 8
+    post ret == all_positive_local(arr, len)
+= all_positive_local(arr, len);
+
+/// Assert array sum equals expected
+pub fn assert_array_sum(arr: [i64; 8], len: i64, expected: i64) -> bool
+    pre len >= 0 and len <= 8
+    post ret == (sum_i64_local(arr, len) == expected)
+= sum_i64_local(arr, len) == expected;
+
+/// Assert array length (logical length, not fixed size)
+pub fn assert_array_len(len: i64, expected: i64) -> bool
+    pre len >= 0 and expected >= 0
+    post ret == (len == expected)
+= len == expected;
+
+// ============================================================
+// Compound Assertions
+// ============================================================
+
+/// Assert all conditions are true (and2)
+pub fn assert_all2(a: bool, b: bool) -> bool
+    post ret == (a and b)
+= a and b;
+
+/// Assert all conditions are true (and3)
+pub fn assert_all3(a: bool, b: bool, c: bool) -> bool
+    post ret == (a and b and c)
+= a and b and c;
+
+/// Assert at least one condition is true (or2)
+pub fn assert_any2(a: bool, b: bool) -> bool
+    post ret == (a or b)
+= a or b;
+
+/// Assert at least one condition is true (or3)
+pub fn assert_any3(a: bool, b: bool, c: bool) -> bool
+    post ret == (a or b or c)
+= a or b or c;
+
+/// Assert exactly one of two conditions is true
+pub fn assert_xor(a: bool, b: bool) -> bool
+    post ret == ((a and not b) or (not a and b))
+= (a and not b) or (not a and b);
+
+/// Assert implication: if a then b
+pub fn assert_implies(a: bool, b: bool) -> bool
+    post ret == (not a or b)
+= not a or b;
+
+// ============================================================
+// Test Result Utilities
+// ============================================================
+
+/// Count passing tests from array of results
+pub fn count_passed(results: [i64; 8], len: i64) -> i64
+    pre len >= 0 and len <= 8
+    post ret >= 0 and ret <= len
+= count_passed_from(results, len, 0);
+
+fn count_passed_from(results: [i64; 8], len: i64, pos: i64) -> i64 =
+    if pos >= len { 0 }
+    else {
+        let rest = count_passed_from(results, len, pos + 1);
+        if results[pos] != 0 { 1 + rest } else { rest }
+    };
+
+/// Count failing tests from array of results
+pub fn count_failed(results: [i64; 8], len: i64) -> i64
+    pre len >= 0 and len <= 8
+    post ret >= 0 and ret <= len and ret == len - count_passed(results, len)
+= len - count_passed(results, len);
+
+/// Check if all tests passed
+pub fn all_passed(results: [i64; 8], len: i64) -> bool
+    pre len >= 0 and len <= 8
+    post ret == (count_passed(results, len) == len)
+= count_passed(results, len) == len;
+
+/// Check if any test failed
+pub fn any_failed(results: [i64; 8], len: i64) -> bool
+    pre len >= 0 and len <= 8
+    post ret == (count_failed(results, len) > 0)
+= count_failed(results, len) > 0;

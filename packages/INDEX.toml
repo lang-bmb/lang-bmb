@@ -1,0 +1,97 @@
+# BMB Official Package Registry Index
+# Version: 0.1.0
+#
+# This file serves as the official package index for BMB standard library
+# packages distributed with the BMB compiler.
+#
+# Format: [packages.<name>]
+#   version = "semver"
+#   path = "relative path from packages/"
+#   description = "short description"
+
+[registry]
+name = "bmb-official"
+version = "0.1.0"
+url = "https://github.com/lang-bmb/bmb/tree/main/packages"
+
+# ==============================================================================
+# Core Packages
+# ==============================================================================
+
+[packages.bmb-core]
+version = "0.1.0"
+path = "bmb-core"
+description = "BMB core types and functions"
+keywords = ["core", "bool", "numeric", "math"]
+
+[packages.bmb-traits]
+version = "0.14.0"
+path = "bmb-traits"
+description = "Core traits for BMB types (Debug, Clone, PartialEq, Default)"
+keywords = ["traits", "interfaces", "derive", "foundation"]
+
+[packages.bmb-option]
+version = "0.14.0"
+path = "bmb-option"
+description = "Generic Option<T> type for optional values"
+keywords = ["option", "optional", "maybe", "null-safety"]
+
+[packages.bmb-result]
+version = "0.14.0"
+path = "bmb-result"
+description = "Generic Result<T, E> type for error handling"
+keywords = ["result", "error", "either", "error-handling"]
+
+# ==============================================================================
+# Data Structure Packages
+# ==============================================================================
+
+[packages.bmb-string]
+version = "0.1.0"
+path = "bmb-string"
+description = "BMB string utility functions"
+keywords = ["string", "text", "parse", "format"]
+
+[packages.bmb-array]
+version = "0.1.0"
+path = "bmb-array"
+description = "BMB fixed-size array utilities"
+keywords = ["array", "collection", "search", "aggregate"]
+
+[packages.bmb-iter]
+version = "0.14.0"
+path = "bmb-iter"
+description = "Iterator trait and combinators for BMB"
+keywords = ["iterator", "iter", "lazy", "functional"]
+
+# ==============================================================================
+# System Packages
+# ==============================================================================
+
+[packages.bmb-io]
+version = "0.1.0"
+path = "bmb-io"
+description = "BMB file I/O operations"
+keywords = ["io", "file", "read", "write"]
+
+[packages.bmb-process]
+version = "0.1.0"
+path = "bmb-process"
+description = "BMB process execution utilities"
+keywords = ["process", "exec", "command", "env"]
+
+[packages.bmb-runtime]
+version = "0.1.0"
+path = "bmb-runtime"
+description = "BMB Runtime Library - Self-hosted replacement for C runtime"
+keywords = ["runtime", "syscall", "memory", "bootstrap"]
+
+# ==============================================================================
+# Testing Packages
+# ==============================================================================
+
+[packages.bmb-test]
+version = "0.1.0"
+path = "bmb-test"
+description = "BMB test assertion utilities"
+keywords = ["test", "assert", "unit-test"]

@@ -1,0 +1,79 @@
+// bmb-process: Process execution utilities for BMB
+// Version: 0.1.0
+//
+// This package provides process execution functions:
+// - Command execution (run_command, run_command_output)
+// - System shell commands (run_system)
+// - Environment variables (getenv)
+//
+// Note: These functions are implemented as interpreter builtins.
+// The stub bodies are for type checking.
+//
+// All functions have explicit contracts for verification.
+
+// ============================================================
+// Process Execution
+// ============================================================
+
+/// Run a command with arguments
+/// Returns: Exit code (0 = success, negative = error)
+@trust
+pub fn run_command(command: String, args: String) -> i64
+    pre command.len() > 0
+    post ret >= -1
+= 0;
+
+/// Run a command and capture stdout
+/// Returns: stdout content on success, empty string on error
+@trust
+pub fn run_command_output(command: String, args: String) -> String
+    pre command.len() > 0
+= "";
+
+/// Run a shell command (via system shell)
+/// Returns: Exit code from shell
+@trust
+pub fn run_system(command: String) -> i64
+    pre command.len() > 0
+    post ret >= -1
+= 0;
+
+/// Get environment variable value
+/// Returns: Variable value, or empty string if not set
+@trust
+pub fn getenv(name: String) -> String
+    pre name.len() > 0
+= "";
+
+// ============================================================
+// Exit Codes
+// ============================================================
+
+/// Process success
+pub fn PROC_SUCCESS() -> i64 = 0;
+
+/// Command not found
+pub fn PROC_ERROR_NOT_FOUND() -> i64 = -1;
+
+/// Permission denied
+pub fn PROC_ERROR_PERMISSION() -> i64 = -2;
+
+/// Execution failed
+pub fn PROC_ERROR_FAILED() -> i64 = -3;
+
+// ============================================================
+// Helper Functions
+// ============================================================
+
+/// Check if a command exists by trying to run it with --version
+pub fn command_exists(cmd: String) -> bool
+    pre cmd.len() > 0
+= run_command(cmd, "--version") >= 0;
+
+/// Build a command string with multiple arguments
+pub fn build_args(arg1: String, arg2: String) -> String
+= arg1 + " " + arg2;
+
+/// Build a command string with three arguments
+pub fn build_args3(arg1: String, arg2: String, arg3: String) -> String
+= arg1 + " " + arg2 + " " + arg3;

@@ -1,8 +1,8 @@
 [package]
-name = "bmb-core"
+name = "bmb-test"
 version = "0.1.0"
 edition = "2026"
-description = "BMB core types and functions"
+description = "BMB test assertion utilities"
 license = "MIT"
 repository = "https://github.com/lang-bmb/bmb"
 
@@ -10,3 +10,5 @@ repository = "https://github.com/lang-bmb/bmb"
 path = "src/lib.bmb"
 
 [dependencies]
+bmb-string = "0.1.0"
+bmb-array = "0.1.0"

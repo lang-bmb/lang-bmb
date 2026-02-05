@@ -1,0 +1,261 @@
+// bmb-array: Fixed-size array utilities for BMB
+// Version: 0.1.0
+//
+// This package provides array utility functions:
+// - Array search (contains, index_of, count)
+// - Array aggregation (sum, min, max, avg, product)
+// - Array predicates (all_positive, any_zero, is_sorted, etc.)
+// - Array bounds (is_valid_index, clamp_index, wrap_index)
+// - Range operations
+//
+// Note: Works with fixed-size arrays [T; N]
+// Dynamic Vec requires Rust builtins (future version)
+//
+// All functions have explicit contracts for verification.
+
+// ============================================================
+// Array Search (for i64 arrays of size 8)
+// ============================================================
+
+/// Check if array contains value
+pub fn contains_i64(arr: [i64; 8], len: i64, val: i64) -> bool
+    pre len >= 0 and len <= 8
+    post (len == 0) implies not ret
+= contains_i64_from(arr, len, val, 0);
+
+fn contains_i64_from(arr: [i64; 8], len: i64, val: i64, pos: i64) -> bool
+    pre pos >= 0
+    post (pos >= len) implies not ret
+= if pos >= len { false }
+  else if arr[pos] == val { true }
+  else { contains_i64_from(arr, len, val, pos + 1) };
+
+/// Find index of value, returns -1 if not found
+pub fn index_of_i64(arr: [i64; 8], len: i64, val: i64) -> i64
+    pre len >= 0 and len <= 8
+    post ret >= -1 and ret < len
+= index_of_i64_from(arr, len, val, 0);
+
+fn index_of_i64_from(arr: [i64; 8], len: i64, val: i64, pos: i64) -> i64
+    pre pos >= 0
+    post ret >= -1 and ret < len and ((ret == -1) or (ret >= pos))
+= if pos >= len { -1 }
+  else if arr[pos] == val { pos }
+  else { index_of_i64_from(arr, len, val, pos + 1) };
+
+/// Count occurrences of value
+pub fn count_i64(arr: [i64; 8], len: i64, val: i64) -> i64
+    pre len >= 0 and len <= 8
+    post ret >= 0 and ret <= len
+= count_i64_from(arr, len, val, 0);
+
+fn count_i64_from(arr: [i64; 8], len: i64, val: i64, pos: i64) -> i64
+    pre pos >= 0
+    post ret >= 0 and ret <= len - pos
+= if pos >= len { 0 }
+  else {
+      let rest = count_i64_from(arr, len, val, pos + 1);
+      if arr[pos] == val { 1 + rest } else { rest }
+  };
+
+// ============================================================
+// Array Aggregation
+// ============================================================
+
+/// Sum all elements
+pub fn sum_i64(arr: [i64; 8], len: i64) -> i64
+    pre len >= 0 and len <= 8
+    post (len == 0) implies ret == 0
+= sum_i64_from(arr, len, 0);
+
+fn sum_i64_from(arr: [i64; 8], len: i64, pos: i64) -> i64
+    pre pos >= 0
+    post (pos >= len) implies ret == 0
+= if pos >= len { 0 } else { arr[pos] + sum_i64_from(arr, len, pos + 1) };
+
+/// Find minimum value (requires non-empty)
+pub fn min_i64(arr: [i64; 8], len: i64) -> i64
+    pre len > 0 and len <= 8
+    post ret <= arr[0]
+= min_i64_from(arr, len, arr[0], 1);
+
+fn min_i64_from(arr: [i64; 8], len: i64, current_min: i64, pos: i64) -> i64
+    pre pos >= 0
+    post ret <= current_min
+= if pos >= len { current_min }
+  else {
+      let new_min = if arr[pos] < current_min { arr[pos] } else { current_min };
+      min_i64_from(arr, len, new_min, pos + 1)
+  };
+
+/// Find maximum value (requires non-empty)
+pub fn max_i64(arr: [i64; 8], len: i64) -> i64
+    pre len > 0 and len <= 8
+    post ret >= arr[0]
+= max_i64_from(arr, len, arr[0], 1);
+
+fn max_i64_from(arr: [i64; 8], len: i64, current_max: i64, pos: i64) -> i64
+    pre pos >= 0
+    post ret >= current_max
+= if pos >= len { current_max }
+  else {
+      let new_max = if arr[pos] > current_max { arr[pos] } else { current_max };
+      max_i64_from(arr, len, new_max, pos + 1)
+  };
+
+/// Calculate average (integer division)
+pub fn avg_i64(arr: [i64; 8], len: i64) -> i64
+    pre len > 0 and len <= 8
+    post ret == sum_i64(arr, len) / len
+= sum_i64(arr, len) / len;
+
+/// Product of all elements
+pub fn product_i64(arr: [i64; 8], len: i64) -> i64
+    pre len >= 0 and len <= 8
+    post (len == 0) implies ret == 1
+= product_i64_from(arr, len, 0);
+
+fn product_i64_from(arr: [i64; 8], len: i64, pos: i64) -> i64
+    pre pos >= 0
+    post (pos >= len) implies ret == 1
+= if pos >= len { 1 } else { arr[pos] * product_i64_from(arr, len, pos + 1) };
+
+// ============================================================
+// Array Predicates
+// ============================================================
+
+/// Check if all elements are positive
+pub fn all_positive(arr: [i64; 8], len: i64) -> bool
+    pre len >= 0 and len <= 8
+    post (len == 0) implies ret
+= all_positive_from(arr, len, 0);
+
+fn all_positive_from(arr: [i64; 8], len: i64, pos: i64) -> bool
+    pre pos >= 0
+    post (pos >= len) implies ret
+= if pos >= len { true }
+  else if arr[pos] <= 0 { false }
+  else { all_positive_from(arr, len, pos + 1) };
+
+/// Check if all elements are non-negative
+pub fn all_non_negative(arr: [i64; 8], len: i64) -> bool
+    pre len >= 0 and len <= 8
+    post (len == 0) implies ret
+= all_non_negative_from(arr, len, 0);
+
+fn all_non_negative_from(arr: [i64; 8], len: i64, pos: i64) -> bool
+    pre pos >= 0
+    post (pos >= len) implies ret
+= if pos >= len { true }
+  else if arr[pos] < 0 { false }
+  else { all_non_negative_from(arr, len, pos + 1) };
+
+/// Check if any element is positive
+pub fn any_positive(arr: [i64; 8], len: i64) -> bool
+    pre len >= 0 and len <= 8
+    post (len == 0) implies not ret
+= any_positive_from(arr, len, 0);
+
+fn any_positive_from(arr: [i64; 8], len: i64, pos: i64) -> bool
+    pre pos >= 0
+    post (pos >= len) implies not ret
+= if pos >= len { false }
+  else if arr[pos] > 0 { true }
+  else { any_positive_from(arr, len, pos + 1) };
+
+/// Check if any element is zero
+pub fn any_zero(arr: [i64; 8], len: i64) -> bool
+    pre len >= 0 and len <= 8
+    post (len == 0) implies not ret
+= contains_i64(arr, len, 0);
+
+/// Check if array is sorted ascending
+pub fn is_sorted_asc(arr: [i64; 8], len: i64) -> bool
+    pre len >= 0 and len <= 8
+    post (len <= 1) implies ret
+= if len <= 1 { true } else { is_sorted_asc_from(arr, len, 0) };
+
+fn is_sorted_asc_from(arr: [i64; 8], len: i64, pos: i64) -> bool
+    pre pos >= 0
+    post (pos >= len - 1) implies ret
+= if pos >= len - 1 { true }
+  else if arr[pos] > arr[pos + 1] { false }
+  else { is_sorted_asc_from(arr, len, pos + 1) };
+
+/// Check if array is sorted descending
+pub fn is_sorted_desc(arr: [i64; 8], len: i64) -> bool
+    pre len >= 0 and len <= 8
+    post (len <= 1) implies ret
+= if len <= 1 { true } else { is_sorted_desc_from(arr, len, 0) };
+
+fn is_sorted_desc_from(arr: [i64; 8], len: i64, pos: i64) -> bool
+    pre pos >= 0
+    post (pos >= len - 1) implies ret
+= if pos >= len - 1 { true }
+  else if arr[pos] < arr[pos + 1] { false }
+  else { is_sorted_desc_from(arr, len, pos + 1) };
+
+/// Check if all elements are equal
+pub fn all_equal(arr: [i64; 8], len: i64) -> bool
+    pre len >= 0 and len <= 8
+    post (len <= 1) implies ret
+= if len <= 1 { true } else { all_equal_from(arr, len, arr[0], 1) };
+
+fn all_equal_from(arr: [i64; 8], len: i64, val: i64, pos: i64) -> bool
+    pre pos >= 0
+    post (pos >= len) implies ret
+= if pos >= len { true }
+  else if arr[pos] != val { false }
+  else { all_equal_from(arr, len, val, pos + 1) };
+
+// ============================================================
+// Array Bounds
+// ============================================================
+
+/// Check if index is valid
+pub fn is_valid_index(len: i64, idx: i64) -> bool
+    post ret == (idx >= 0 and idx < len)
+= idx >= 0 and idx < len;
+
+/// Clamp index to valid range
+pub fn clamp_index(len: i64, idx: i64) -> i64
+    pre len > 0
+    post ret >= 0 and ret < len
+= if idx < 0 { 0 } else if idx >= len { len - 1 } else { idx };
+
+/// Wrap index (modulo behavior)
+pub fn wrap_index(len: i64, idx: i64) -> i64
+    pre len > 0
+    post ret >= 0 and ret < len
+= let m = idx - (idx / len) * len;
+  if m < 0 { m + len } else { m };
+
+// ============================================================
+// Range Operations
+// ============================================================
+
+/// Sum elements in range [start, end)
+pub fn sum_range(arr: [i64; 8], start: i64, end: i64) -> i64
+    pre start >= 0 and end <= 8 and start <= end
+    post (start == end) implies ret == 0
+= sum_range_from(arr, start, end);
+
+fn sum_range_from(arr: [i64; 8], pos: i64, end: i64) -> i64
+    pre pos >= 0
+    post (pos >= end) implies ret == 0
+= if pos >= end { 0 } else { arr[pos] + sum_range_from(arr, pos + 1, end) };
+
+/// Count elements in range [start, end) matching value
+pub fn count_range(arr: [i64; 8], start: i64, end: i64, val: i64) -> i64
+    pre start >= 0 and end <= 8 and start <= end
+    post ret >= 0 and ret <= end - start
+= count_range_from(arr, start, end, val);
+
+fn count_range_from(arr: [i64; 8], pos: i64, end: i64, val: i64) -> i64
+    pre pos >= 0
+    post ret >= 0 and ((pos >= end) implies ret == 0)
+= if pos >= end { 0 }
+  else {
+      let rest = count_range_from(arr, pos + 1, end, val);
+      if arr[pos] == val { 1 + rest } else { rest }
+  };

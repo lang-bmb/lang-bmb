@@ -1,8 +1,8 @@
 [package]
-name = "bmb-core"
+name = "bmb-array"
 version = "0.1.0"
 edition = "2026"
-description = "BMB core types and functions"
+description = "BMB fixed-size array utilities"
 license = "MIT"
 repository = "https://github.com/lang-bmb/bmb"
 

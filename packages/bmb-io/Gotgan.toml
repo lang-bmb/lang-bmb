@@ -1,4 +1,12 @@
 [package]
 name = "bmb-io"
 version = "0.1.0"
-description = "File and console I/O utilities for BMB"
+edition = "2026"
+description = "BMB file I/O operations"
+license = "MIT"
+repository = "https://github.com/lang-bmb/bmb"
+
+[lib]
+path = "src/lib.bmb"
+
+[dependencies]

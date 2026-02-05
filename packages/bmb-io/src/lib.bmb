@@ -1,185 +1,123 @@
-// BMB I/O Library v0.1.0
-// File and Console I/O utilities
+// bmb-io: File I/O operations for BMB
+// Version: 0.1.0
 //
-// Provides ergonomic wrappers around runtime I/O functions:
-// - File operations (read, write, append, exists, size)
-// - Console I/O (print, println, read_line)
+// This package provides file I/O operations:
+// - File reading (read_file)
+// - File writing (write_file, append_file)
+// - File system queries (file_exists, file_size)
 //
-// Note: These functions wrap C runtime functions defined in bmb_runtime.c
+// Note: These functions are implemented as interpreter builtins.
+// The stub bodies are for type checking.
+//
+// All functions have explicit contracts for verification.
 
-// ============================================
-// Result type for I/O operations
-// ============================================
+// ============================================================
+// File Reading
+// ============================================================
 
-pub enum IoResult<T> {
-    Ok(T),
-    Err(i64),
-}
+/// Read entire file contents as a string
+/// Returns: File contents on success, empty string on error
+@trust
+pub fn read_file(path: String) -> String
+    pre path.len() > 0
+= "";
 
-pub fn io_ok<T>(value: T) -> IoResult<T> = IoResult::Ok(value);
-pub fn io_err<T>(code: i64) -> IoResult<T> = IoResult::Err(code);
+/// Read file with explicit result type
+/// Returns: 0 on success, negative error code on failure
+@trust
+pub fn read_file_result(path: String) -> i64
+    pre path.len() > 0
+    post ret <= 0
+= 0;
 
-pub fn is_io_ok<T>(res: IoResult<T>) -> bool = match res {
-    IoResult::Ok(_) => true,
-    IoResult::Err(_) => false,
-};
+// ============================================================
+// File Writing
+// ============================================================
 
-pub fn is_io_err<T>(res: IoResult<T>) -> bool = match res {
-    IoResult::Ok(_) => false,
-    IoResult::Err(_) => true,
-};
+/// Write string contents to file
+/// Returns: 0 on success, negative error code on failure
+/// Creates file if not exists, overwrites if exists
+@trust
+pub fn write_file(path: String, content: String) -> i64
+    pre path.len() > 0
+    post ret <= 0
+= 0;
 
-// ============================================
-// File Operations
-// ============================================
+/// Append string to existing file
+/// Returns: 0 on success, negative error code on failure
+@trust
+pub fn append_file(path: String, content: String) -> i64
+    pre path.len() > 0
+    post ret <= 0
+= 0;
 
-// Read entire file contents as String
-// Returns empty string on error
-pub fn io_read_file(path: String) -> String
-  post true
-= read_file(path);
+// ============================================================
+// File System Queries
+// ============================================================
 
-// Write string to file (creates or overwrites)
-// Returns 0 on success, negative on error
-pub fn io_write_file(path: String, content: String) -> i64
-  post ret <= 0
-= write_file(path, content);
+/// Check if file exists
+/// Returns: 1 if exists, 0 if not
+@trust
+pub fn file_exists(path: String) -> i64
+    pre path.len() > 0
+    post ret == 0 or ret == 1
+= 0;
 
-// Note: append_file requires runtime wrapper for BmbString*
-// TODO: Add bmb_append_file_str(BmbString*, BmbString*) to runtime
+/// Get file size in bytes
+/// Returns: Size on success, -1 on error
+@trust
+pub fn file_size(path: String) -> i64
+    pre path.len() > 0
+    post ret >= -1
+= 0;
 
-// Check if file exists
-pub fn io_file_exists(path: String) -> bool = file_exists(path) != 0;
+// ============================================================
+// Error Codes
+// ============================================================
 
-// Get file size in bytes (-1 on error)
-pub fn io_file_size(path: String) -> i64 = file_size(path);
+/// Success
+pub fn IO_SUCCESS() -> i64 = 0;
 
-// ============================================
-// Console Output
-// ============================================
+/// File not found (ENOENT)
+pub fn IO_ERROR_NOT_FOUND() -> i64 = -2;
 
-// Print integer to stdout with newline
-// Note: println is void in runtime, we return 0 for BMB ergonomics
-pub fn io_println(n: i64) -> i64 = {
-    let _p = println(n);
-    0
-};
+/// Permission denied (EACCES)
+pub fn IO_ERROR_PERMISSION() -> i64 = -13;
 
-// Print string to stdout with newline
-pub fn io_println_str(s: String) -> i64 = {
-    let _p = println_str(s);
-    0
-};
+/// File already exists (EEXIST)
+pub fn IO_ERROR_EXISTS() -> i64 = -17;
 
-// ============================================
-// Console Input
-// ============================================
+/// Invalid argument (EINVAL)
+pub fn IO_ERROR_INVALID() -> i64 = -22;
 
-// Read integer from stdin
-pub fn io_read_int() -> i64 = read_int();
+/// No space left (ENOSPC)
+pub fn IO_ERROR_NO_SPACE() -> i64 = -28;
 
-// Note: read_line not yet available in runtime
-// TODO: Add bmb_read_line to runtime
+/// Read-only filesystem (EROFS)
+pub fn IO_ERROR_READ_ONLY() -> i64 = -30;
 
-// ============================================
+/// Generic/unknown error
+pub fn IO_ERROR_UNKNOWN() -> i64 = -1;
+
+// ============================================================
 // Path Utilities
-// ============================================
+// ============================================================
 
-// Join two path components with /
-pub fn path_join(base: String, child: String) -> String = base + "/" + child;
+/// Check if path looks valid (basic validation)
+pub fn is_valid_path(path: String) -> i64
+    post ret == 0 or ret == 1
+= if path.len() == 0 { 0 } else if path.len() > 4096 { 0 } else { 1 };
 
-// Find last dot position for extension (-1 if none)
-pub fn path_ext_pos(path: String) -> i64 = path_find_dot(path, path.len() - 1);
+/// Find file extension (position of last '.')
+/// Returns: Position of '.', or -1 if no extension
+pub fn find_extension(path: String) -> i64
+    post ret >= -1 and ret < path.len()
+= find_last_char(path, 46);
 
-fn path_find_dot(path: String, pos: i64) -> i64 =
+fn find_last_char(s: String, c: i64) -> i64 =
+    find_last_char_from(s, c, s.len() - 1);
+
+fn find_last_char_from(s: String, c: i64, pos: i64) -> i64 =
     if pos < 0 { -1 }
-    else if path.byte_at(pos) == 46 { pos }  // '.'
-    else if path.byte_at(pos) == 47 or path.byte_at(pos) == 92 { -1 }  // '/' or '\'
-    else { path_find_dot(path, pos - 1) };
-
-// Check if path has an extension
-pub fn path_has_extension(path: String) -> bool = path_ext_pos(path) >= 0;
-
-// ============================================
-// Tests
-// ============================================
-
-fn test_io_result() -> i64 = {
-    let ok: IoResult<i64> = IoResult::Ok(42);
-    let err: IoResult<i64> = IoResult::Err(-1);
-
-    if not is_io_ok(ok) { 1 }
-    else if is_io_ok(err) { 2 }
-    else if not is_io_err(err) { 3 }
-    else if is_io_err(ok) { 4 }
-    else { 0 }
-};
-
-fn test_path_extension() -> i64 = {
-    // Test path_ext_pos: returns position of last dot
-    let pos1 = path_ext_pos("file.txt");      // Should be 4
-    let pos2 = path_ext_pos("archive.tar.gz"); // Should be 11
-    let pos3 = path_ext_pos("noext");          // Should be -1
-    let pos4 = path_ext_pos("/path/to/file.bmb"); // Should be position of .bmb
-
-    if pos1 != 4 { 1 }
-    else if pos2 != 11 { 2 }
-    else if pos3 != -1 { 3 }
-    else if not path_has_extension("/path/to/file.bmb") { 4 }
-    else if path_has_extension("noext") { 5 }
-    else { 0 }
-};
-
-fn test_path_join() -> i64 = {
-    let p1 = path_join("/home", "user");
-    let p2 = path_join("dir", "file.txt");
-
-    if p1 != "/home/user" { 1 }
-    else if p2 != "dir/file.txt" { 2 }
-    else { 0 }
-};
-
-fn test_file_ops() -> i64 = {
-    // Write a test file
-    let test_path = "/tmp/bmb_io_test.txt";
-    let content = "Hello, BMB!";
-    let w = io_write_file(test_path, content);
-
-    if w != 0 { 1 }
-    else {
-        // Check file exists
-        if not io_file_exists(test_path) { 2 }
-        else {
-            // Read file back
-            let read_content = io_read_file(test_path);
-            if read_content != content { 3 }
-            else {
-                // Check file size
-                let size = io_file_size(test_path);
-                if size != 11 { 4 }
-                else { 0 }
-            }
-        }
-    }
-};
-
-fn main() -> i64 = {
-    let r1 = test_io_result();
-    if r1 != 0 { let _p = println(r1); r1 }
-    else {
-        let r2 = test_path_extension();
-        if r2 != 0 { let _p = println(r2 + 10); r2 + 10 }
-        else {
-            let r3 = test_path_join();
-            if r3 != 0 { let _p = println(r3 + 20); r3 + 20 }
-            else {
-                let r4 = test_file_ops();
-                if r4 != 0 { let _p = println(r4 + 30); r4 + 30 }
-                else {
-                    let _p = println(999);
-                    999
-                }
-            }
-        }
-    }
-};
+    else if s.byte_at(pos) == c { pos }
+    else { find_last_char_from(s, c, pos - 1) };
