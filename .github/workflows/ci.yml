@@ -88,15 +88,10 @@ jobs:
           fi
           echo "::notice::Gate #4.1 PASSED: ${ELAPSED}s < ${THRESHOLD}s"
 
-      - name: Run bootstrap tests
+      - name: Run bootstrap tests (bmb-test)
         run: |
-          echo "=== Bootstrap Test Suite ==="
-          echo "Running lexer tests..."
-          ./target/release/bmb run bootstrap/lexer.bmb | tail -3
-          echo "Running types tests..."
-          ./target/release/bmb run bootstrap/types.bmb | tail -3
-          echo "Running selfhost tests..."
-          ./target/release/bmb run bootstrap/selfhost_test.bmb | tail -3
+          echo "=== Bootstrap Test Suite (bmb-test) ==="
+          ./target/release/bmb run tools/bmb-test/main.bmb
 
   performance-regression:
     name: Performance Regression Check (2% threshold)
