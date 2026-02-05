@@ -9,6 +9,8 @@
 //   gotgan-bmb check          - Type check only
 //   gotgan-bmb add <pkg>      - Add dependency
 //   gotgan-bmb update         - Update dependencies
+//   gotgan-bmb publish         - Publish package to registry
+//   gotgan-bmb install         - Install dependencies
 //
 // Usage:
 //   bmb run tools/gotgan-bmb/main.bmb <command> [args]
@@ -358,6 +360,124 @@ fn cmd_update() -> i64 = {
 };
 
 // ============================================================
+// Command: publish
+// ============================================================
+
+fn REGISTRY_DIR() -> String = ".gotgan/registry";
+
+fn cmd_publish(dry_run: bool) -> i64 = {
+    if file_exists(PROJECT_FILE()) != 1 {
+        let p1 = println_str("Error: No " + PROJECT_FILE() + " found");
+        1
+    } else {
+        let toml = read_file(PROJECT_FILE());
+        let name = extract_name(toml);
+        let ver = extract_version(toml);
+
+        if dry_run {
+            let p1 = println_str("[dry-run] Would publish: " + name + " v" + ver);
+            0
+        } else {
+            do_publish(name, ver)
+        }
+    }
+};
+
+fn extract_name(toml: String) -> String =
+    extract_value(toml, "name = \"", 0);
+
+fn extract_version(toml: String) -> String =
+    extract_value(toml, "version = \"", 0);
+
+fn extract_value(s: String, key: String, pos: i64) -> String =
+    if pos >= s.len() { "" }
+    else if matches_at(s, key, pos) {
+        let start = pos + key.len();
+        let end = find_quote_end(s, start);
+        s.slice(start, end)
+    } else {
+        extract_value(s, key, pos + 1)
+    };
+
+fn find_quote_end(s: String, pos: i64) -> i64 =
+    if pos >= s.len() { s.len() }
+    else if s.byte_at(pos) == 34 { pos }
+    else { find_quote_end(s, pos + 1) };
+
+fn do_publish(name: String, ver: String) -> i64 = {
+    let p1 = println_str("Publishing " + name + " v" + ver + "...");
+
+    let pkg_dir = REGISTRY_DIR() + "/" + name + "/" + ver;
+    let d1 = exec_output("mkdir", "-p " + pkg_dir + "/src");
+    let c1 = exec_output("cp", "-r src/* " + pkg_dir + "/src/");
+    let c2 = exec_output("cp", PROJECT_FILE() + " " + pkg_dir + "/");
+
+    let p2 = println_str("Published to: " + pkg_dir);
+    0
+};
+
+// ============================================================
+// Command: install
+// ============================================================
+
+fn cmd_install() -> i64 = {
+    if file_exists(PROJECT_FILE()) != 1 {
+        let p1 = println_str("Error: No " + PROJECT_FILE() + " found");
+        1
+    } else {
+        let p1 = println_str("Installing dependencies...");
+
+        // Parse dependencies from gotgan.toml
+        let toml = read_file(PROJECT_FILE());
+        let deps = parse_deps(toml);
+
+        if deps.len() == 0 {
+            let p2 = println_str("No dependencies to install");
+            0
+        } else {
+            let p2 = println_str("Dependencies: " + deps);
+            // Generate lock file
+            let lock = generate_lock_content(deps);
+            let w1 = write_file(LOCK_FILE(), lock);
+            let p3 = println_str("Lock file generated: " + LOCK_FILE());
+            0
+        }
+    }
+};
+
+fn parse_deps(toml: String) -> String =
+    parse_deps_from(toml, find_deps_start(toml, 0), "");
+
+fn find_deps_start(s: String, pos: i64) -> i64 =
+    if pos >= s.len() { s.len() }
+    else if matches_at(s, "[dependencies]", pos) { pos + 14 }
+    else { find_deps_start(s, pos + 1) };
+
+fn parse_deps_from(toml: String, pos: i64, acc: String) -> String =
+    if pos >= toml.len() { acc }
+    else {
+        let c = toml.byte_at(pos);
+        if c == 91 { acc }  // '[' starts new section
+        else if c == 10 { parse_deps_from(toml, pos + 1, acc) }
+        else if c == 32 or c == 9 { parse_deps_from(toml, pos + 1, acc) }
+        else {
+            let line_end = find_newline(toml, pos);
+            let line = toml.slice(pos, line_end);
+            let new_acc = if acc.len() > 0 { acc + ";" + line } else { line };
+            parse_deps_from(toml, line_end + 1, new_acc)
+        }
+    };
+
+fn generate_lock_content(deps: String) -> String =
+    let sb = sb_new();
+    let h1 = sb_push(sb, "# gotgan.lock\n");
+    let h2 = sb_push(sb, "# Auto-generated - do not edit\n\n");
+    let h3 = sb_push(sb, "# Dependencies:\n");
+    let h4 = sb_push(sb, deps);
+    let h5 = sb_push(sb, "\n");
+    sb_build(sb);
+
+// ============================================================
 // Usage Help
 // ============================================================
 
@@ -375,8 +495,10 @@ fn print_usage() -> i64 = {
     let p11 = println_str("  check           Type check without building");
     let p12 = println_str("  add <pkg> <ver> Add a dependency");
     let p13 = println_str("  update          Update dependencies");
-    let p14 = println_str("");
-    let p15 = println_str("Options:");
+    let p14 = println_str("  publish         Publish to local registry");
+    let p15 = println_str("  install         Install dependencies");
+    let p16 = println_str("");
+    let p17 = println_str("Options:");
     let p16 = println_str("  --lib           Create library instead of binary (new/init)");
     let p17 = println_str("  --release       Build with optimizations");
     0
@@ -428,6 +550,11 @@ fn main() -> i64 = {
             }
         } else if string_eq(cmd, "update") {
             cmd_update()
+        } else if string_eq(cmd, "publish") {
+            let dry_run = argc > 2 and string_eq(get_arg(2), "--dry-run");
+            cmd_publish(dry_run)
+        } else if string_eq(cmd, "install") {
+            cmd_install()
         } else if string_eq(cmd, "help") or string_eq(cmd, "--help") or string_eq(cmd, "-h") {
             print_usage()
         } else {
