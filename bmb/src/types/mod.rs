@@ -2797,6 +2797,10 @@ impl TypeChecker {
                 let inner_ty = type_args.first().map(|t| t.as_ref().clone());
                 self.check_option_method(method, args, inner_ty, span)
             }
+            // v0.76: Nullable<T> (T?) methods - same as Option<T>
+            Type::Nullable(inner_ty) => {
+                self.check_option_method(method, args, Some(*inner_ty.clone()), span)
+            }
             // v0.18: Result<T, E> methods
             Type::Named(name) if name == "Result" => {
                 self.check_result_method(method, args, None, None, span)

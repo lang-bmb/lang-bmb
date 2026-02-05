@@ -3588,22 +3588,46 @@ impl<'ctx> LlvmContext<'ctx> {
             }
 
             MirInst::ChannelTryRecv { dest, receiver } => {
+                // v0.76: Proper non-blocking try_recv implementation
                 let receiver_val = self.gen_operand(receiver)?;
                 let receiver_i64 = receiver_val.into_int_value();
 
-                let channel_recv_fn = self.functions.get("bmb_channel_recv")
-                    .ok_or_else(|| CodeGenError::LlvmError("bmb_channel_recv not declared".to_string()))?;
+                let channel_try_recv_fn = self.functions.get("bmb_channel_try_recv")
+                    .ok_or_else(|| CodeGenError::LlvmError("bmb_channel_try_recv not declared".to_string()))?;
 
-                // For try_recv, we use regular recv for now (blocking semantics)
-                // TODO: Implement non-blocking try_recv in runtime
-                let value = self.builder
-                    .build_call(*channel_recv_fn, &[receiver_i64.into()], "try_recv_value")
+                let i64_type = self.context.i64_type();
+                let ptr_type = self.context.ptr_type(inkwell::AddressSpace::default());
+
+                // Allocate stack space for the output value
+                let value_alloc = self.builder
+                    .build_alloca(i64_type, "try_recv_value_alloc")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+
+                // Call bmb_channel_try_recv(receiver, &value_out) -> success (1 or 0)
+                let success = self.builder
+                    .build_call(*channel_try_recv_fn, &[receiver_i64.into(), value_alloc.into()], "try_recv_success")
                     .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
                     .try_as_basic_value()
                     .basic()
-                    .ok_or_else(|| CodeGenError::LlvmError("bmb_channel_recv returned void".to_string()))?;
+                    .ok_or_else(|| CodeGenError::LlvmError("bmb_channel_try_recv returned void".to_string()))?;
 
-                self.store_to_place(dest, value)?;
+                // Load the received value (valid only if success == 1)
+                let received_value = self.builder
+                    .build_load(i64_type, value_alloc, "try_recv_loaded")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+
+                // If success, return value; otherwise return -1 (sentinel for "empty")
+                let success_i64 = success.into_int_value();
+                let is_success = self.builder
+                    .build_int_compare(inkwell::IntPredicate::NE, success_i64, i64_type.const_zero(), "is_success")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+
+                let sentinel = i64_type.const_int((-1i64) as u64, true);
+                let result = self.builder
+                    .build_select(is_success, received_value, sentinel.into(), "try_recv_result")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+
+                self.store_to_place(dest, result)?;
             }
 
             MirInst::SenderClone { dest, sender } => {
@@ -3792,6 +3816,38 @@ impl<'ctx> LlvmContext<'ctx> {
                 self.builder
                     .build_call(*condvar_notify_all_fn, &[condvar_i64.into()], "")
                     .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+            }
+
+            // v0.76: Select instruction
+            MirInst::Select { dest, cond_op, cond_lhs, cond_rhs, true_val, false_val } => {
+                let lhs_val = self.gen_operand(cond_lhs)?;
+                let rhs_val = self.gen_operand(cond_rhs)?;
+                let true_val_gen = self.gen_operand(true_val)?;
+                let false_val_gen = self.gen_operand(false_val)?;
+
+                // Generate comparison
+                let lhs_int = lhs_val.into_int_value();
+                let rhs_int = rhs_val.into_int_value();
+
+                let cmp_pred = match cond_op {
+                    MirBinOp::Eq => inkwell::IntPredicate::EQ,
+                    MirBinOp::Ne => inkwell::IntPredicate::NE,
+                    MirBinOp::Lt => inkwell::IntPredicate::SLT,
+                    MirBinOp::Le => inkwell::IntPredicate::SLE,
+                    MirBinOp::Gt => inkwell::IntPredicate::SGT,
+                    MirBinOp::Ge => inkwell::IntPredicate::SGE,
+                    _ => return Err(CodeGenError::LlvmError(format!("Unsupported Select condition op: {:?}", cond_op))),
+                };
+
+                let cond = self.builder
+                    .build_int_compare(cmp_pred, lhs_int, rhs_int, "select_cond")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+
+                let result = self.builder
+                    .build_select(cond, true_val_gen, false_val_gen, "select_result")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+
+                self.store_to_place(dest, result)?;
             }
 
             // Other instructions not yet supported in inkwell codegen

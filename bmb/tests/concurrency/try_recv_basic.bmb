@@ -1,0 +1,23 @@
+// v0.76: Non-blocking try_recv test
+// Tests that try_recv returns None for empty channel, Some(value) otherwise
+
+fn main() -> i64 = {
+    // Create a bounded channel with capacity 10
+    let ch = channel<i64>(10);
+    let tx = ch.0;
+    let rx = ch.1;
+
+    // Try to receive from empty channel - should return None (unwrap_or gives -1)
+    let empty_result = rx.try_recv().unwrap_or(-1);
+    let check1 = if empty_result != -1 { 1 } else { 0 };
+
+    // Send a value
+    let ignored = tx.send(42);
+
+    // Try to receive - should return Some(42)
+    let value = rx.try_recv().unwrap_or(-999);
+    let check2 = if value == 42 { 0 } else { 2 };
+
+    // Return first failure or 0
+    if check1 != 0 { check1 } else { check2 }
+};

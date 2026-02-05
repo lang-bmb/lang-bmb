@@ -1836,6 +1836,52 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
                 return Operand::Constant(Constant::Unit);
             }
 
+            // v0.76: Nullable<T> methods
+            // is_some() - check if value is not None (not -1)
+            if method == "is_some" && args.is_empty() {
+                let dest = ctx.fresh_temp();
+                ctx.locals.insert(dest.name.clone(), MirType::Bool);
+                // Compare: value != -1
+                ctx.push_inst(MirInst::BinOp {
+                    dest: dest.clone(),
+                    op: MirBinOp::Ne,
+                    lhs: recv_op,
+                    rhs: Operand::Constant(Constant::Int(-1)),
+                });
+                return Operand::Place(dest);
+            }
+
+            // is_none() - check if value is None (-1)
+            if method == "is_none" && args.is_empty() {
+                let dest = ctx.fresh_temp();
+                ctx.locals.insert(dest.name.clone(), MirType::Bool);
+                // Compare: value == -1
+                ctx.push_inst(MirInst::BinOp {
+                    dest: dest.clone(),
+                    op: MirBinOp::Eq,
+                    lhs: recv_op,
+                    rhs: Operand::Constant(Constant::Int(-1)),
+                });
+                return Operand::Place(dest);
+            }
+
+            // unwrap_or(default) - return value if Some, default if None
+            if method == "unwrap_or" && args.len() == 1 {
+                let default_op = lower_expr(&args[0], ctx);
+                let dest = ctx.fresh_temp();
+                ctx.locals.insert(dest.name.clone(), MirType::I64);
+                // Select: if value != -1 { value } else { default }
+                ctx.push_inst(MirInst::Select {
+                    dest: dest.clone(),
+                    cond_op: MirBinOp::Ne,
+                    cond_lhs: recv_op.clone(),
+                    cond_rhs: Operand::Constant(Constant::Int(-1)),
+                    true_val: recv_op,
+                    false_val: default_op,
+                });
+                return Operand::Place(dest);
+            }
+
             // Build the argument list: receiver first, then the rest
             let mut call_args = vec![recv_op];
             for arg in args {

@@ -1134,6 +1134,33 @@ impl WasmCodeGen {
             MirInst::CondvarNotifyAll { .. } => {
                 writeln!(out, "    ;; ERROR: Condvar not supported in WASM")?;
             }
+
+            // v0.76: Select instruction
+            MirInst::Select { dest, cond_op, cond_lhs, cond_rhs, true_val, false_val } => {
+                // WASM select instruction: select(true_val, false_val, cond)
+                // Push true value
+                self.emit_operand(out, true_val)?;
+                // Push false value
+                self.emit_operand(out, false_val)?;
+                // Push condition operands and compare
+                self.emit_operand(out, cond_lhs)?;
+                self.emit_operand(out, cond_rhs)?;
+                // Emit comparison
+                let cmp_op = match cond_op {
+                    MirBinOp::Eq => "i64.eq",
+                    MirBinOp::Ne => "i64.ne",
+                    MirBinOp::Lt => "i64.lt_s",
+                    MirBinOp::Le => "i64.le_s",
+                    MirBinOp::Gt => "i64.gt_s",
+                    MirBinOp::Ge => "i64.ge_s",
+                    _ => "i64.eq",  // Fallback
+                };
+                writeln!(out, "    {}", cmp_op)?;
+                // Select based on condition
+                writeln!(out, "    select")?;
+                // Store result
+                writeln!(out, "    local.set ${}", dest.name)?;
+            }
         }
 
         Ok(())
@@ -1623,6 +1650,8 @@ impl WasmCodeGen {
             MirInst::CondvarWait { dest, .. } => Some((dest.name.clone(), MirType::I64)),
             MirInst::CondvarNotifyOne { .. } => None,
             MirInst::CondvarNotifyAll { .. } => None,
+            // v0.76: Select instruction
+            MirInst::Select { dest, .. } => Some((dest.name.clone(), MirType::I64)),
         }
     }
 

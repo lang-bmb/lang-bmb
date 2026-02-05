@@ -1097,6 +1097,13 @@ fn collect_used_in_instruction(inst: &MirInst, used: &mut HashSet<String>) {
         MirInst::CondvarNotifyAll { condvar } => {
             collect_used_in_operand(condvar, used);
         }
+        // v0.76: Select instruction
+        MirInst::Select { cond_lhs, cond_rhs, true_val, false_val, .. } => {
+            collect_used_in_operand(cond_lhs, used);
+            collect_used_in_operand(cond_rhs, used);
+            collect_used_in_operand(true_val, used);
+            collect_used_in_operand(false_val, used);
+        }
     }
 }
 
@@ -5518,7 +5525,9 @@ impl MemoryEffectAnalysis {
             | MirInst::Phi { .. }
             | MirInst::Cast { .. }
             // v0.60.19: Pointer offset is pure (just address arithmetic)
-            | MirInst::PtrOffset { .. } => false,
+            | MirInst::PtrOffset { .. }
+            // v0.76: Select is pure (conditional value selection)
+            | MirInst::Select { .. } => false,
             // v0.55: Tuple operations - TupleInit builds a value, TupleExtract reads from it
             // These are aggregate operations that may involve stack allocation
             MirInst::TupleInit { .. } | MirInst::TupleExtract { .. } => true,

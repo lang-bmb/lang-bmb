@@ -541,6 +541,17 @@ pub enum MirInst {
     CondvarNotifyAll {
         condvar: Operand,
     },
+
+    // v0.76: Select instruction (ternary)
+    /// Select based on comparison: %dest = select(%lhs op %rhs ? %true_val : %false_val)
+    Select {
+        dest: Place,
+        cond_op: MirBinOp,
+        cond_lhs: Operand,
+        cond_rhs: Operand,
+        true_val: Operand,
+        false_val: Operand,
+    },
 }
 
 /// Block terminator (control flow)
@@ -1243,6 +1254,16 @@ fn format_mir_inst(inst: &MirInst) -> String {
         }
         MirInst::CondvarNotifyAll { condvar } => {
             format!("condvar-notify-all {}", format_operand(condvar))
+        }
+        // v0.76: Select instruction
+        MirInst::Select { dest, cond_op, cond_lhs, cond_rhs, true_val, false_val } => {
+            format!("%{} = select {} {} {} ? {} : {}",
+                dest.name,
+                format_operand(cond_lhs),
+                format_binop(*cond_op),
+                format_operand(cond_rhs),
+                format_operand(true_val),
+                format_operand(false_val))
         }
     }
 }

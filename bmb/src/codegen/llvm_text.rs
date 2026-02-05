@@ -4448,6 +4448,30 @@ impl TextCodeGen {
                 let condvar_val = self.format_operand(condvar);
                 writeln!(out, "  call void @bmb_condvar_notify_all(i64 {})", condvar_val)?;
             }
+
+            // v0.76: Select instruction
+            MirInst::Select { dest, cond_op, cond_lhs, cond_rhs, true_val, false_val } => {
+                let lhs_val = self.format_operand(cond_lhs);
+                let rhs_val = self.format_operand(cond_rhs);
+                let true_val_str = self.format_operand(true_val);
+                let false_val_str = self.format_operand(false_val);
+
+                let cmp_pred = match cond_op {
+                    MirBinOp::Eq => "eq",
+                    MirBinOp::Ne => "ne",
+                    MirBinOp::Lt => "slt",
+                    MirBinOp::Le => "sle",
+                    MirBinOp::Gt => "sgt",
+                    MirBinOp::Ge => "sge",
+                    // Other comparison ops - use eq as fallback
+                    _ => "eq",
+                };
+
+                // Generate comparison
+                writeln!(out, "  %{}_cond = icmp {} i64 {}, {}", dest.name, cmp_pred, lhs_val, rhs_val)?;
+                // Generate select
+                writeln!(out, "  %{} = select i1 %{}_cond, i64 {}, i64 {}", dest.name, dest.name, true_val_str, false_val_str)?;
+            }
         }
 
         Ok(())
