@@ -1,0 +1,51 @@
+// N-Queens Benchmark (interpreter-friendly)
+// Count solutions to N-Queens problem
+
+fn abs(x: i64) -> i64 = if x < 0 { 0 - x } else { x };
+
+fn is_safe(queens: i64, row: i64, col: i64, n_queens: i64) -> bool =
+    check_safe_all(queens, row, col, 0, n_queens);
+
+fn check_safe_all(queens: i64, row: i64, col: i64, check_row: i64, n_queens: i64) -> bool =
+    if check_row >= row { true }
+    else {
+        let queen_col = get_queen(queens, check_row, n_queens);
+        if queen_col == col { false }
+        else if abs(queen_col - col) == row - check_row { false }
+        else { check_safe_all(queens, row, col, check_row + 1, n_queens) }
+    };
+
+// Queens stored as base-N number (each digit is column position)
+fn get_queen(queens: i64, row: i64, n: i64) -> i64 =
+    get_queen_helper(queens, row, n, 0);
+
+fn get_queen_helper(queens: i64, row: i64, n: i64, current_row: i64) -> i64 =
+    if current_row == row { queens - (queens / n) * n }
+    else { get_queen_helper(queens / n, row, n, current_row + 1) };
+
+fn set_queen(queens: i64, row: i64, col: i64, n: i64) -> i64 =
+    set_queen_helper(queens, row, col, n, 1);
+
+fn set_queen_helper(queens: i64, row: i64, col: i64, n: i64, mult: i64) -> i64 =
+    if row == 0 { queens + col * mult }
+    else { set_queen_helper(queens, row - 1, col, n, mult * n) };
+
+fn solve(queens: i64, row: i64, n: i64) -> i64 =
+    if row >= n { 1 }  // Found a solution
+    else { try_cols(queens, row, 0, n, 0) };
+
+fn try_cols(queens: i64, row: i64, col: i64, n: i64, solutions: i64) -> i64 =
+    if col >= n { solutions }
+    else if is_safe(queens, row, col, n) {
+        let new_queens = set_queen(queens, row, col, n);
+        let found = solve(new_queens, row + 1, n);
+        try_cols(queens, row, col + 1, n, solutions + found)
+    }
+    else { try_cols(queens, row, col + 1, n, solutions) };
+
+fn main() -> i64 = {
+    // 8-Queens problem (92 solutions)
+    let result = solve(0, 0, 8);
+    println(result);
+    0
+};

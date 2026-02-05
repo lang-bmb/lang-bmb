@@ -4,9 +4,15 @@
 # Benchmarks are run in interpreter mode with timing via time_ns()
 # These are lightweight benchmarks suitable for interpreter testing
 
-# Interpreter-friendly benchmarks
-fib_small|tools/bmb-bench/benches/fib_small.bmb|Fibonacci (small)
+# Core benchmarks
+fib_small|tools/bmb-bench/benches/fib_small.bmb|Fibonacci recursive (small)
 sum_squares|tools/bmb-bench/benches/sum_squares.bmb|Sum of squares
 string_concat|tools/bmb-bench/benches/string_concat.bmb|String concatenation
 prime_count|tools/bmb-bench/benches/prime_count.bmb|Prime counting
 ackermann|tools/bmb-bench/benches/ackermann.bmb|Ackermann function
+
+# Ported from benchmark-bmb (interpreter-friendly)
+collatz|tools/bmb-bench/benches/collatz.bmb|Collatz conjecture
+gcd|tools/bmb-bench/benches/gcd.bmb|GCD computation
+tak|tools/bmb-bench/benches/tak.bmb|Takeuchi function
+nqueen|tools/bmb-bench/benches/nqueen.bmb|N-Queens solver

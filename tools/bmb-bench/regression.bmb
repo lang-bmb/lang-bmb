@@ -1,0 +1,239 @@
+// BMB Benchmark Regression Detector
+// Phase v0.63.5: Regression detection
+//
+// Compares current benchmark results against a baseline
+// Warns if performance regresses beyond threshold
+
+// ============================================================
+// Configuration
+// ============================================================
+
+fn REGRESSION_THRESHOLD() -> i64 = 5;  // 5% threshold
+fn BASELINE_FILE() -> String = "tools/bmb-bench/baseline.txt";
+
+// ============================================================
+// String Utilities
+// ============================================================
+
+fn int_to_string(n: i64) -> String =
+    if n < 0 { "-" + int_to_string(0 - n) }
+    else if n < 10 { digit_char(n) }
+    else { int_to_string(n / 10) + digit_char(n - (n / 10) * 10) };
+
+fn digit_char(d: i64) -> String =
+    if d == 0 { "0" } else if d == 1 { "1" } else if d == 2 { "2" }
+    else if d == 3 { "3" } else if d == 4 { "4" } else if d == 5 { "5" }
+    else if d == 6 { "6" } else if d == 7 { "7" } else if d == 8 { "8" }
+    else { "9" };
+
+fn char_is_digit(c: i64) -> bool = c >= 48 and c <= 57;
+fn char_is_whitespace(c: i64) -> bool = c == 32 or c == 9 or c == 10 or c == 13;
+
+// ============================================================
+// Line Parsing
+// ============================================================
+
+fn find_newline(s: String, pos: i64) -> i64 =
+    if pos >= s.len() { s.len() }
+    else if s.byte_at(pos) == 10 { pos }
+    else { find_newline(s, pos + 1) };
+
+fn get_line_at(s: String, pos: i64) -> String =
+    let end = find_newline(s, pos);
+    s.slice(pos, end);
+
+fn next_line_pos(s: String, pos: i64) -> i64 =
+    let nl = find_newline(s, pos);
+    if nl >= s.len() { s.len() } else { nl + 1 };
+
+fn trim_line(s: String) -> String =
+    let start = skip_whitespace(s, 0);
+    let end = find_trim_end(s, s.len());
+    if start >= end { "" } else { s.slice(start, end) };
+
+fn skip_whitespace(s: String, pos: i64) -> i64 =
+    if pos >= s.len() { pos }
+    else if char_is_whitespace(s.byte_at(pos)) { skip_whitespace(s, pos + 1) }
+    else { pos };
+
+fn find_trim_end(s: String, pos: i64) -> i64 =
+    if pos <= 0 { 0 }
+    else if char_is_whitespace(s.byte_at(pos - 1)) { find_trim_end(s, pos - 1) }
+    else { pos };
+
+// ============================================================
+// Baseline Parsing
+// ============================================================
+
+// Baseline format: name|expected_median_ns
+fn find_pipe(s: String, pos: i64) -> i64 =
+    if pos >= s.len() { 0 - 1 }
+    else if s.byte_at(pos) == 124 { pos }
+    else { find_pipe(s, pos + 1) };
+
+fn parse_baseline_name(line: String) -> String =
+    let pipe = find_pipe(line, 0);
+    if pipe < 0 { line } else { line.slice(0, pipe) };
+
+fn parse_baseline_value(line: String) -> i64 =
+    let pipe = find_pipe(line, 0);
+    if pipe < 0 { 0 - 1 }
+    else { parse_int(line.slice(pipe + 1, line.len())) };
+
+fn parse_int(s: String) -> i64 =
+    parse_int_acc(s, 0, 0);
+
+fn parse_int_acc(s: String, pos: i64, acc: i64) -> i64 =
+    if pos >= s.len() { acc }
+    else {
+        let c = s.byte_at(pos);
+        if char_is_digit(c) { parse_int_acc(s, pos + 1, acc * 10 + (c - 48)) }
+        else { acc }
+    };
+
+// ============================================================
+// Regression Detection
+// ============================================================
+
+// Find baseline value for a benchmark name
+fn find_baseline(baseline: String, name: String, pos: i64) -> i64 =
+    if pos >= baseline.len() { 0 - 1 }
+    else {
+        let line = get_line_at(baseline, pos);
+        let trimmed = trim_line(line);
+        let next_pos = next_line_pos(baseline, pos);
+
+        if trimmed.len() == 0 or trimmed.byte_at(0) == 35 {
+            find_baseline(baseline, name, next_pos)
+        } else {
+            let bname = parse_baseline_name(trimmed);
+            if string_eq(bname, name) {
+                parse_baseline_value(trimmed)
+            } else {
+                find_baseline(baseline, name, next_pos)
+            }
+        }
+    };
+
+fn string_eq(a: String, b: String) -> bool =
+    a.len() == b.len() and string_eq_from(a, b, 0);
+
+fn string_eq_from(a: String, b: String, pos: i64) -> bool =
+    if pos >= a.len() { true }
+    else if a.byte_at(pos) != b.byte_at(pos) { false }
+    else { string_eq_from(a, b, pos + 1) };
+
+// Check if current value regresses from baseline
+// Returns: 0 = ok, 1 = regression, -1 = no baseline
+fn check_regression(baseline_ns: i64, current_ns: i64) -> i64 =
+    if baseline_ns <= 0 { 0 - 1 }  // No baseline
+    else {
+        // Calculate percentage difference
+        let diff = current_ns - baseline_ns;
+        let pct = (diff * 100) / baseline_ns;
+        if pct > REGRESSION_THRESHOLD() { 1 } else { 0 }
+    };
+
+// Calculate regression percentage
+fn calc_regression_pct(baseline_ns: i64, current_ns: i64) -> i64 =
+    if baseline_ns <= 0 { 0 }
+    else { ((current_ns - baseline_ns) * 100) / baseline_ns };
+
+// ============================================================
+// Results Comparison
+// ============================================================
+
+// Results format: "name:median:mean|name:median:mean|..."
+fn check_all_regressions(baseline: String, results: String) -> i64 =
+    let p0 = println_str("\n=== Regression Check ===");
+    let p1 = println_str("Threshold: " + int_to_string(REGRESSION_THRESHOLD()) + "%\n");
+    check_regressions_from(baseline, results, 0, 0);
+
+fn check_regressions_from(baseline: String, results: String, pos: i64, regressions: i64) -> i64 =
+    if pos >= results.len() {
+        if regressions > 0 {
+            let p1 = println_str("\n WARNING: " + int_to_string(regressions) + " regression(s) detected!");
+            regressions
+        } else {
+            let p2 = println_str("\n OK: No regressions detected");
+            0
+        }
+    } else {
+        let entry = get_result_entry(results, pos);
+        let name = get_entry_name(entry);
+        let current = get_entry_median(entry);
+        let next_pos = next_entry_pos(results, pos);
+
+        let baseline_val = find_baseline(baseline, name, 0);
+        let status = check_regression(baseline_val, current);
+
+        if status == 0 - 1 {
+            let p1 = println_str("  " + name + ": no baseline");
+            check_regressions_from(baseline, results, next_pos, regressions)
+        } else if status == 1 {
+            let pct = calc_regression_pct(baseline_val, current);
+            let p1 = println_str("  " + name + ": REGRESSION +" + int_to_string(pct) + "% (" + format_time_ms(baseline_val) + " -> " + format_time_ms(current) + ")");
+            check_regressions_from(baseline, results, next_pos, regressions + 1)
+        } else {
+            let pct = calc_regression_pct(baseline_val, current);
+            let sign = if pct < 0 { "" } else { "+" };
+            let p1 = println_str("  " + name + ": ok " + sign + int_to_string(pct) + "%");
+            check_regressions_from(baseline, results, next_pos, regressions)
+        }
+    };
+
+// Entry parsing (same as report.bmb)
+fn get_result_entry(results: String, pos: i64) -> String =
+    let end = find_pipe_result(results, pos);
+    if end < 0 { results.slice(pos, results.len()) }
+    else { results.slice(pos, end) };
+
+fn next_entry_pos(results: String, pos: i64) -> i64 =
+    let pipe = find_pipe_result(results, pos);
+    if pipe < 0 { results.len() }
+    else { pipe + 1 };
+
+fn find_pipe_result(s: String, pos: i64) -> i64 =
+    if pos >= s.len() { 0 - 1 }
+    else if s.byte_at(pos) == 124 { pos }
+    else { find_pipe_result(s, pos + 1) };
+
+fn find_colon(s: String, pos: i64) -> i64 =
+    if pos >= s.len() { 0 - 1 }
+    else if s.byte_at(pos) == 58 { pos }
+    else { find_colon(s, pos + 1) };
+
+fn get_entry_name(entry: String) -> String =
+    let colon = find_colon(entry, 0);
+    if colon < 0 { entry } else { entry.slice(0, colon) };
+
+fn get_entry_median(entry: String) -> i64 =
+    let c1 = find_colon(entry, 0);
+    if c1 < 0 { 0 }
+    else {
+        let c2 = find_colon(entry, c1 + 1);
+        if c2 < 0 { parse_int(entry.slice(c1 + 1, entry.len())) }
+        else { parse_int(entry.slice(c1 + 1, c2)) }
+    };
+
+fn format_time_ms(ns: i64) -> String =
+    let ms = ns / 1000000;
+    let frac = (ns / 10000) - (ms * 100);
+    int_to_string(ms) + "." + (if frac < 10 { "0" } else { "" }) + int_to_string(frac) + "ms";
+
+// ============================================================
+// Test Entry Point
+// ============================================================
+
+fn main() -> i64 =
+    let p0 = println(777);
+
+    // Test with sample data
+    let baseline = "fib|100000000\nsum|50000000\nprime|30000000";
+    let results = "fib:110000000:115000000|sum:48000000:50000000|prime:35000000:36000000";
+
+    let regressions = check_all_regressions(baseline, results);
+
+    let p1 = println(regressions);
+    let p2 = println(999);
+    0;

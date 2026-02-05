@@ -1,0 +1,194 @@
+// BMB Benchmark Report Generator
+// Phase v0.63.4: Report generation (JSON, Markdown)
+//
+// Generates benchmark reports in multiple formats
+
+// ============================================================
+// String Utilities
+// ============================================================
+
+fn int_to_string(n: i64) -> String =
+    if n < 0 { "-" + int_to_string(0 - n) }
+    else if n < 10 { digit_char(n) }
+    else { int_to_string(n / 10) + digit_char(n - (n / 10) * 10) };
+
+fn digit_char(d: i64) -> String =
+    if d == 0 { "0" } else if d == 1 { "1" } else if d == 2 { "2" }
+    else if d == 3 { "3" } else if d == 4 { "4" } else if d == 5 { "5" }
+    else if d == 6 { "6" } else if d == 7 { "7" } else if d == 8 { "8" }
+    else { "9" };
+
+// ============================================================
+// JSON Report Generator
+// ============================================================
+
+// Result format: "name1:median1:mean1|name2:median2:mean2|..."
+// Generates JSON from collected results
+
+fn generate_json_report(results: String, total_time: i64) -> String =
+    let sb = sb_new();
+    let s1 = sb_push(sb, "{\n");
+    let s2 = sb_push(sb, "  \"version\": \"0.63\",\n");
+    let s3 = sb_push(sb, "  \"total_time_ns\": ");
+    let s4 = sb_push(sb, int_to_string(total_time));
+    let s5 = sb_push(sb, ",\n");
+    let s6 = sb_push(sb, "  \"benchmarks\": [\n");
+    let s7 = generate_json_benchmarks(sb, results, 0);
+    let s8 = sb_push(sb, "  ]\n");
+    let s9 = sb_push(sb, "}\n");
+    sb_build(sb);
+
+fn generate_json_benchmarks(sb: i64, results: String, pos: i64) -> i64 =
+    if pos >= results.len() { 0 }
+    else {
+        let entry = get_result_entry(results, pos);
+        let name = get_entry_name(entry);
+        let median = get_entry_median(entry);
+        let mean = get_entry_mean(entry);
+        let next_pos = next_entry_pos(results, pos);
+
+        let is_last = next_pos >= results.len();
+
+        let s1 = sb_push(sb, "    {\"name\": \"");
+        let s2 = sb_push(sb, name);
+        let s3 = sb_push(sb, "\", \"median_ns\": ");
+        let s4 = sb_push(sb, int_to_string(median));
+        let s5 = sb_push(sb, ", \"mean_ns\": ");
+        let s6 = sb_push(sb, int_to_string(mean));
+        let s7 = sb_push(sb, "}");
+        let s8 = if is_last { sb_push(sb, "\n") } else { sb_push(sb, ",\n") };
+
+        generate_json_benchmarks(sb, results, next_pos)
+    };
+
+// ============================================================
+// Markdown Report Generator
+// ============================================================
+
+fn generate_markdown_report(results: String, total_time: i64) -> String =
+    let sb = sb_new();
+    let s1 = sb_push(sb, "# BMB Benchmark Report\n\n");
+    let s2 = sb_push(sb, "## Summary\n\n");
+    let s3 = sb_push(sb, "- **Total Time**: ");
+    let s4 = sb_push(sb, format_time_ms(total_time));
+    let s5 = sb_push(sb, "\n");
+    let s6 = sb_push(sb, "- **Benchmarks**: ");
+    let s7 = sb_push(sb, int_to_string(count_results(results, 0, 0)));
+    let s8 = sb_push(sb, "\n\n");
+    let s9 = sb_push(sb, "## Results\n\n");
+    let s10 = sb_push(sb, "| Benchmark | Median | Mean |\n");
+    let s11 = sb_push(sb, "|-----------|--------|------|\n");
+    let s12 = generate_md_rows(sb, results, 0);
+    sb_build(sb);
+
+fn generate_md_rows(sb: i64, results: String, pos: i64) -> i64 =
+    if pos >= results.len() { 0 }
+    else {
+        let entry = get_result_entry(results, pos);
+        let name = get_entry_name(entry);
+        let median = get_entry_median(entry);
+        let mean = get_entry_mean(entry);
+        let next_pos = next_entry_pos(results, pos);
+
+        let s1 = sb_push(sb, "| ");
+        let s2 = sb_push(sb, name);
+        let s3 = sb_push(sb, " | ");
+        let s4 = sb_push(sb, format_time_ms(median));
+        let s5 = sb_push(sb, " | ");
+        let s6 = sb_push(sb, format_time_ms(mean));
+        let s7 = sb_push(sb, " |\n");
+
+        generate_md_rows(sb, results, next_pos)
+    };
+
+// ============================================================
+// Result Entry Parsing
+// ============================================================
+
+// Entry format: "name:median:mean"
+fn get_result_entry(results: String, pos: i64) -> String =
+    let end = find_pipe_char(results, pos);
+    if end < 0 { results.slice(pos, results.len()) }
+    else { results.slice(pos, end) };
+
+fn next_entry_pos(results: String, pos: i64) -> i64 =
+    let pipe = find_pipe_char(results, pos);
+    if pipe < 0 { results.len() }
+    else { pipe + 1 };
+
+fn find_pipe_char(s: String, pos: i64) -> i64 =
+    if pos >= s.len() { 0 - 1 }
+    else if s.byte_at(pos) == 124 { pos }  // '|'
+    else { find_pipe_char(s, pos + 1) };
+
+fn find_colon(s: String, pos: i64) -> i64 =
+    if pos >= s.len() { 0 - 1 }
+    else if s.byte_at(pos) == 58 { pos }  // ':'
+    else { find_colon(s, pos + 1) };
+
+fn get_entry_name(entry: String) -> String =
+    let colon = find_colon(entry, 0);
+    if colon < 0 { entry } else { entry.slice(0, colon) };
+
+fn get_entry_median(entry: String) -> i64 =
+    let c1 = find_colon(entry, 0);
+    if c1 < 0 { 0 }
+    else {
+        let c2 = find_colon(entry, c1 + 1);
+        if c2 < 0 { parse_int(entry.slice(c1 + 1, entry.len())) }
+        else { parse_int(entry.slice(c1 + 1, c2)) }
+    };
+
+fn get_entry_mean(entry: String) -> i64 =
+    let c1 = find_colon(entry, 0);
+    if c1 < 0 { 0 }
+    else {
+        let c2 = find_colon(entry, c1 + 1);
+        if c2 < 0 { 0 }
+        else { parse_int(entry.slice(c2 + 1, entry.len())) }
+    };
+
+fn parse_int(s: String) -> i64 =
+    parse_int_acc(s, 0, 0);
+
+fn parse_int_acc(s: String, pos: i64, acc: i64) -> i64 =
+    if pos >= s.len() { acc }
+    else {
+        let c = s.byte_at(pos);
+        if c >= 48 and c <= 57 { parse_int_acc(s, pos + 1, acc * 10 + (c - 48)) }
+        else { acc }
+    };
+
+fn count_results(results: String, pos: i64, count: i64) -> i64 =
+    if pos >= results.len() { count }
+    else { count_results(results, next_entry_pos(results, pos), count + 1) };
+
+// ============================================================
+// Time Formatting
+// ============================================================
+
+fn format_time_ms(ns: i64) -> String =
+    let ms = ns / 1000000;
+    let frac = (ns / 10000) - (ms * 100);
+    int_to_string(ms) + "." + (if frac < 10 { "0" } else { "" }) + int_to_string(frac) + "ms";
+
+// ============================================================
+// Test Entry Point
+// ============================================================
+
+fn main() -> i64 =
+    let p0 = println(777);
+
+    // Test with sample data
+    let results = "fib:100000000:110000000|sum:50000000:55000000|prime:30000000:32000000";
+
+    let json = generate_json_report(results, 180000000);
+    let p1 = println_str("=== JSON Report ===");
+    let p2 = println_str(json);
+
+    let md = generate_markdown_report(results, 180000000);
+    let p3 = println_str("=== Markdown Report ===");
+    let p4 = println_str(md);
+
+    let p5 = println(999);
+    0;

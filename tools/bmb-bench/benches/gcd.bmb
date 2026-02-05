@@ -1,0 +1,20 @@
+// GCD (Greatest Common Divisor) Benchmark (interpreter-friendly)
+// Measures: recursion, integer modulo
+
+fn gcd(a: i64, b: i64) -> i64 =
+    if b == 0 { a }
+    else { gcd(b, a - (a / b) * b) };
+
+fn sum_gcds(n: i64, acc: i64) -> i64 =
+    if n <= 0 { acc }
+    else {
+        let g = gcd(n * 7 + 13, n * 11 + 17);
+        sum_gcds(n - 1, acc + g)
+    };
+
+fn main() -> i64 = {
+    // Compute sum of GCDs for 1..5000
+    let result = sum_gcds(5000, 0);
+    println(result);
+    0
+};

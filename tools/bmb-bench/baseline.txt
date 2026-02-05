@@ -1,0 +1,19 @@
+# BMB Benchmark Baseline
+# Format: name|expected_median_ns
+# Generated: 2026-02-05 (v0.63)
+#
+# These values are baseline measurements for regression detection.
+# Update after confirming intentional performance changes.
+
+# Core benchmarks (interpreter mode)
+fib_small|236000000
+sum_squares|66000000
+string_concat|7000000
+prime_count|25000000
+ackermann|424000000
+
+# Ported benchmarks
+collatz|163000000
+gcd|107000000
+tak|120000000
+nqueen|527000000
