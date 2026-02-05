@@ -1,176 +1,126 @@
-// BMB Result Library v0.17.0
-// 제네릭 Result<T, E> 타입 - 에러 처리
+// BMB Result Library v0.17.1
+// Result type for error handling - specialized versions
 //
 // AI-Native Design:
-// - 명시적 에러 처리 (예외 없음)
-// - 계약으로 에러 조건 명시
-// - ? 연산자와 try 블록 지원 (v0.13.2+)
-// - 제네릭으로 모든 타입 지원
-
-// v0.17: Import Option for Result-Option conversions
-use bmb_option::Option;
-
-// ============================================
-// Result<T, E> 제네릭 열거형
-// ============================================
-
-@derive(Debug, Clone, PartialEq)
-pub enum Result<T, E> {
-    Ok(T),
-    Err(E),
-}
+// - Explicit error handling (no exceptions)
+// - Contract-specified error conditions
+// - Type-specialized versions for bootstrap compatibility
+//
+// Note: Generic Result<T, E> requires advanced generics support.
+// This version provides specialized types using string encoding.
 
 // ============================================
-// 생성자 함수
+// Result Constants
 // ============================================
 
-pub fn ok<T, E>(value: T) -> Result<T, E> =
-    Result::Ok(value);
-
-pub fn err<T, E>(error: E) -> Result<T, E> =
-    Result::Err(error);
+fn RESULT_OK() -> i64 = 1;
+fn RESULT_ERR() -> i64 = 0;
 
 // ============================================
-// 상태 검사
+// i64 Result (most common: value or error code)
 // ============================================
 
-pub fn is_ok<T, E>(res: Result<T, E>) -> bool =
-    match res {
-        Result::Ok(v) => true,
-        Result::Err(e) => false,
-    };
+// Encoding: "ok|value" or "err|code"
 
-pub fn is_err<T, E>(res: Result<T, E>) -> bool =
-    match res {
-        Result::Ok(v) => false,
-        Result::Err(e) => true,
-    };
+/// Create Ok(value)
+pub fn ok_i64(value: i64) -> String =
+    "ok|" + int_to_string(value);
 
-// ============================================
-// 값 추출
-// ============================================
+/// Create Err(code)
+pub fn err_i64(code: i64) -> String
+    pre code != 0
+    post ret.len() > 4
+= "err|" + int_to_string(code);
 
-// 안전한 추출: 기본값 사용
-pub fn unwrap_or<T, E>(res: Result<T, E>, default: T) -> T =
-    match res {
-        Result::Ok(v) => v,
-        Result::Err(e) => default,
-    };
+/// Check if result is Ok
+pub fn is_ok_i64(res: String) -> bool
+    post ret == (res.len() >= 3 and res.byte_at(0) == 111 and res.byte_at(1) == 107)
+= res.len() >= 3 and res.byte_at(0) == 111 and res.byte_at(1) == 107;  // "ok"
 
-// Ok 값 추출 (precondition 필요)
-// Note: Err 케이스는 precondition에 의해 도달 불가
-pub fn unwrap<T, E>(res: Result<T, E>) -> T
-  pre is_ok(res)
-= match res {
-    Result::Ok(v) => v,
-    Result::Err(e) => unwrap(res),
-};
+/// Check if result is Err
+pub fn is_err_i64(res: String) -> bool
+    post ret == (res.len() >= 4 and res.byte_at(0) == 101)
+= res.len() >= 4 and res.byte_at(0) == 101;  // "err"
 
-// Err 값 추출 (precondition 필요)
-// Note: Ok 케이스는 precondition에 의해 도달 불가
-pub fn unwrap_err<T, E>(res: Result<T, E>) -> E
-  pre is_err(res)
-= match res {
-    Result::Ok(v) => unwrap_err(res),
-    Result::Err(e) => e,
-};
+/// Unwrap Ok value with default
+pub fn unwrap_or_i64(res: String, default: i64) -> i64 =
+    if is_ok_i64(res) { parse_result_value(res) }
+    else { default };
 
-// ============================================
-// Option 변환
-// ============================================
+/// Unsafe unwrap (precondition: must be Ok)
+pub fn unwrap_i64(res: String) -> i64
+    pre is_ok_i64(res)
+= parse_result_value(res);
 
-// Ok를 Some으로, Err를 None으로
-pub fn ok_option<T, E>(res: Result<T, E>) -> T? =
-    match res {
-        Result::Ok(v) => Option::Some(v),
-        Result::Err(e) => Option::None,
-    };
+/// Unwrap Err code (precondition: must be Err)
+pub fn unwrap_err_i64(res: String) -> i64
+    pre is_err_i64(res)
+= parse_err_code(res);
 
-// Err를 Some으로, Ok를 None으로
-pub fn err_option<T, E>(res: Result<T, E>) -> E? =
-    match res {
-        Result::Ok(v) => Option::None,
-        Result::Err(e) => Option::Some(e),
-    };
+/// Map Ok value: add n
+pub fn map_ok_add(res: String, n: i64) -> String =
+    if is_ok_i64(res) { ok_i64(parse_result_value(res) + n) }
+    else { res };
+
+/// Map Err code: add offset
+pub fn map_err_add(res: String, offset: i64) -> String =
+    if is_err_i64(res) { err_i64(parse_err_code(res) + offset) }
+    else { res };
+
+/// Combine: return first Ok, or last result
+pub fn or_i64(a: String, b: String) -> String =
+    if is_ok_i64(a) { a } else { b };
+
+/// Combine: return second if first Ok, else first
+pub fn and_i64(a: String, b: String) -> String =
+    if is_ok_i64(a) { b } else { a };
 
 // ============================================
-// 결합 연산
+// Safe Arithmetic Operations
 // ============================================
 
-// or: 첫 번째 Ok 또는 두 번째 반환
-pub fn result_or<T, E>(a: Result<T, E>, b: Result<T, E>) -> Result<T, E> =
-    match a {
-        Result::Ok(v) => a,
-        Result::Err(e) => b,
-    };
+/// Safe division with error on divide by zero
+pub fn safe_divide(a: i64, b: i64) -> String
+    post (b == 0 and is_err_i64(ret)) or (b != 0 and is_ok_i64(ret))
+= if b == 0 { err_i64(ERR_DIVIDE_BY_ZERO()) }
+  else { ok_i64(a / b) };
 
-// and: 첫 번째가 Ok이면 두 번째, 아니면 첫 번째 Err
-pub fn result_and<T, E>(a: Result<T, E>, b: Result<T, E>) -> Result<T, E> =
-    match a {
-        Result::Ok(v) => b,
-        Result::Err(e) => a,
-    };
+/// Safe modulo with error on divide by zero
+pub fn safe_mod(a: i64, b: i64) -> String
+    post (b == 0 and is_err_i64(ret)) or (b != 0 and is_ok_i64(ret))
+= if b == 0 { err_i64(ERR_DIVIDE_BY_ZERO()) }
+  else { ok_i64(a - (a / b) * b) };
 
-// ============================================
-// 에러 코드 타입 (표준)
-// ============================================
-
-@derive(Debug, Clone, PartialEq, Eq)
-pub enum ErrorCode {
-    InvalidInput,
-    OutOfRange,
-    DivideByZero,
-    Overflow,
-    NotFound,
-    PermissionDenied,
-    IoError,
-    ParseError,
-    Custom(i64),
-}
+/// Check for valid sqrt input
+pub fn safe_sqrt_check(x: i64) -> String
+    post (x < 0 and is_err_i64(ret)) or (x >= 0 and is_ok_i64(ret))
+= if x < 0 { err_i64(ERR_INVALID_INPUT()) }
+  else { ok_i64(x) };
 
 // ============================================
-// i64 에러 특화 (역호환성)
+// String Result
 // ============================================
 
-pub fn ok_i64(v: i64) -> Result<i64, i64> = Result::Ok(v);
+/// Create Ok(value) for String
+pub fn ok_string(value: String) -> String =
+    "ok|" + value;
 
-pub fn err_i64(code: i64) -> Result<i64, i64>
-  pre code != 0
-= Result::Err(code);
+/// Create Err(message) for String
+pub fn err_string(message: String) -> String
+    pre message.len() > 0
+= "err|" + message;
 
-pub fn unwrap_or_i64(res: Result<i64, i64>, default: i64) -> i64 =
-    unwrap_or(res, default);
+/// Check if result is Ok
+pub fn is_ok_string(res: String) -> bool =
+    res.len() >= 3 and res.byte_at(0) == 111 and res.byte_at(1) == 107;
 
-pub fn map_ok_add(res: Result<i64, i64>, n: i64) -> Result<i64, i64> =
-    match res {
-        Result::Ok(v) => Result::Ok(v + n),
-        Result::Err(e) => Result::Err(e),
-    };
-
-pub fn map_err_add(res: Result<i64, i64>, offset: i64) -> Result<i64, i64> =
-    match res {
-        Result::Ok(v) => Result::Ok(v),
-        Result::Err(e) => Result::Err(e + offset),
-    };
+/// Unwrap Ok value with default
+pub fn unwrap_or_string(res: String, default: String) -> String =
+    if is_ok_string(res) { res.slice(3, res.len()) }
+    else { default };
 
 // ============================================
-// 안전한 연산
-// ============================================
-
-pub fn safe_divide(a: i64, b: i64) -> Result<i64, i64>
-  post (b == 0 and is_err(ret)) or (b != 0 and is_ok(ret))
-= if b == 0 { Result::Err(100) } else { Result::Ok(a / b) };
-
-pub fn safe_mod(a: i64, b: i64) -> Result<i64, i64>
-  post (b == 0 and is_err(ret)) or (b != 0 and is_ok(ret))
-= if b == 0 { Result::Err(100) } else { Result::Ok(a - (a / b) * b) };
-
-pub fn safe_sqrt_check(x: i64) -> Result<i64, i64>
-  post (x < 0 and is_err(ret)) or (x >= 0 and is_ok(ret))
-= if x < 0 { Result::Err(1) } else { Result::Ok(x) };
-
-// ============================================
-// 에러 코드 상수
+// Error Code Constants
 // ============================================
 
 pub fn ERR_INVALID_INPUT() -> i64 = 1;
@@ -179,3 +129,37 @@ pub fn ERR_DIVIDE_BY_ZERO() -> i64 = 100;
 pub fn ERR_OVERFLOW() -> i64 = 101;
 pub fn ERR_NOT_FOUND() -> i64 = 200;
 pub fn ERR_PERMISSION_DENIED() -> i64 = 201;
+pub fn ERR_IO_ERROR() -> i64 = 300;
+pub fn ERR_PARSE_ERROR() -> i64 = 400;
+
+// ============================================
+// Internal Helpers
+// ============================================
+
+fn int_to_string(n: i64) -> String =
+    if n < 0 { "-" + int_to_string(0 - n) }
+    else if n < 10 { digit_char(n) }
+    else { int_to_string(n / 10) + digit_char(n - (n / 10) * 10) };
+
+fn digit_char(d: i64) -> String =
+    if d == 0 { "0" } else if d == 1 { "1" } else if d == 2 { "2" }
+    else if d == 3 { "3" } else if d == 4 { "4" } else if d == 5 { "5" }
+    else if d == 6 { "6" } else if d == 7 { "7" } else if d == 8 { "8" }
+    else { "9" };
+
+fn parse_result_value(res: String) -> i64 =
+    // "ok|value" - value starts at position 3
+    parse_int_from(res, 3, 0);
+
+fn parse_err_code(res: String) -> i64 =
+    // "err|code" - code starts at position 4
+    parse_int_from(res, 4, 0);
+
+fn parse_int_from(s: String, pos: i64, acc: i64) -> i64 =
+    if pos >= s.len() { acc }
+    else {
+        let c = s.byte_at(pos);
+        if c == 45 { 0 - parse_int_from(s, pos + 1, 0) }  // '-'
+        else if c >= 48 and c <= 57 { parse_int_from(s, pos + 1, acc * 10 + (c - 48)) }
+        else { acc }
+    };
