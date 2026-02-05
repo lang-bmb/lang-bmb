@@ -1,0 +1,439 @@
+// Gotgan-BMB - Package Manager (BMB Implementation)
+// Phase v0.65.1: Core package manager functionality
+//
+// Commands:
+//   gotgan-bmb new <name>     - Create new project
+//   gotgan-bmb init           - Initialize in current directory
+//   gotgan-bmb build          - Build the project
+//   gotgan-bmb run            - Build and run
+//   gotgan-bmb check          - Type check only
+//   gotgan-bmb add <pkg>      - Add dependency
+//   gotgan-bmb update         - Update dependencies
+//
+// Usage:
+//   bmb run tools/gotgan-bmb/main.bmb <command> [args]
+
+fn BMB_PATH() -> String = "./target/release/bmb";
+fn PROJECT_FILE() -> String = "gotgan.toml";
+fn LOCK_FILE() -> String = "gotgan.lock";
+fn SRC_DIR() -> String = "src";
+fn TARGET_DIR() -> String = "target";
+
+// ============================================================
+// String Utilities
+// ============================================================
+
+fn int_to_string(n: i64) -> String =
+    if n < 0 { "-" + int_to_string(0 - n) }
+    else if n < 10 { digit_char(n) }
+    else { int_to_string(n / 10) + digit_char(n - (n / 10) * 10) };
+
+fn digit_char(d: i64) -> String =
+    if d == 0 { "0" } else if d == 1 { "1" } else if d == 2 { "2" }
+    else if d == 3 { "3" } else if d == 4 { "4" } else if d == 5 { "5" }
+    else if d == 6 { "6" } else if d == 7 { "7" } else if d == 8 { "8" }
+    else { "9" };
+
+fn char_is_whitespace(c: i64) -> bool = c == 32 or c == 9;
+fn char_is_newline(c: i64) -> bool = c == 10 or c == 13;
+
+fn find_newline(s: String, pos: i64) -> i64 =
+    if pos >= s.len() { s.len() }
+    else if s.byte_at(pos) == 10 { pos }
+    else { find_newline(s, pos + 1) };
+
+fn get_line_at(s: String, pos: i64) -> String =
+    let end = find_newline(s, pos);
+    s.slice(pos, end);
+
+fn next_line_pos(s: String, pos: i64) -> i64 =
+    let nl = find_newline(s, pos);
+    if nl >= s.len() { s.len() } else { nl + 1 };
+
+fn trim_leading(s: String) -> String =
+    let start = count_spaces_from(s, 0);
+    s.slice(start, s.len());
+
+fn count_spaces_from(s: String, pos: i64) -> i64 =
+    if pos >= s.len() { pos }
+    else if char_is_whitespace(s.byte_at(pos)) { count_spaces_from(s, pos + 1) }
+    else { pos };
+
+fn trim_trailing(s: String) -> String =
+    let end = find_trim_end(s, s.len());
+    s.slice(0, end);
+
+fn find_trim_end(s: String, pos: i64) -> i64 =
+    if pos <= 0 { 0 }
+    else if char_is_whitespace(s.byte_at(pos - 1)) or char_is_newline(s.byte_at(pos - 1)) {
+        find_trim_end(s, pos - 1)
+    }
+    else { pos };
+
+// ============================================================
+// Pattern Matching
+// ============================================================
+
+fn starts_with(s: String, prefix: String) -> bool =
+    if prefix.len() > s.len() { false }
+    else { matches_at(s, prefix, 0) };
+
+fn matches_at(s: String, pattern: String, pos: i64) -> bool =
+    matches_at_inner(s, pattern, pos, 0);
+
+fn matches_at_inner(s: String, pattern: String, pos: i64, i: i64) -> bool =
+    if i >= pattern.len() { true }
+    else if pos + i >= s.len() { false }
+    else if s.byte_at(pos + i) != pattern.byte_at(i) { false }
+    else { matches_at_inner(s, pattern, pos, i + 1) };
+
+fn string_eq(a: String, b: String) -> bool =
+    a.len() == b.len() and matches_at(a, b, 0);
+
+fn contains(s: String, sub: String) -> bool =
+    contains_at(s, sub, 0);
+
+fn contains_at(s: String, sub: String, pos: i64) -> bool =
+    if pos + sub.len() > s.len() { false }
+    else if matches_at(s, sub, pos) { true }
+    else { contains_at(s, sub, pos + 1) };
+
+// ============================================================
+// Project Template Generation
+// ============================================================
+
+fn generate_gotgan_toml(name: String, is_lib: bool) -> String =
+    let sb = sb_new();
+    let s1 = sb_push(sb, "[package]\n");
+    let s2 = sb_push(sb, "name = \"");
+    let s3 = sb_push(sb, name);
+    let s4 = sb_push(sb, "\"\n");
+    let s5 = sb_push(sb, "version = \"0.1.0\"\n");
+    let s6 = sb_push(sb, "edition = \"2026\"\n");
+    let s7 = sb_push(sb, "\n");
+    let s8 = if is_lib {
+        sb_push(sb, "[lib]\n")
+    } else {
+        sb_push(sb, "[[bin]]\nname = \"")
+    };
+    let s9 = if not is_lib {
+        let x1 = sb_push(sb, name);
+        sb_push(sb, "\"\nmain = \"src/main.bmb\"\n")
+    } else { 0 };
+    let s10 = sb_push(sb, "\n[dependencies]\n");
+    sb_build(sb);
+
+fn generate_main_bmb(name: String) -> String =
+    let sb = sb_new();
+    let s1 = sb_push(sb, "// ");
+    let s2 = sb_push(sb, name);
+    let s3 = sb_push(sb, " - A BMB project\n\n");
+    let s4 = sb_push(sb, "fn main() -> i64 = {\n");
+    let s5 = sb_push(sb, "    let p = println_str(\"Hello from ");
+    let s6 = sb_push(sb, name);
+    let s7 = sb_push(sb, "!\");\n");
+    let s8 = sb_push(sb, "    0\n");
+    let s9 = sb_push(sb, "};\n");
+    sb_build(sb);
+
+fn generate_lib_bmb(name: String) -> String =
+    let sb = sb_new();
+    let s1 = sb_push(sb, "// ");
+    let s2 = sb_push(sb, name);
+    let s3 = sb_push(sb, " - A BMB library\n\n");
+    let s4 = sb_push(sb, "/// Add two numbers\n");
+    let s5 = sb_push(sb, "pub fn add(a: i64, b: i64) -> i64 = a + b;\n");
+    let s6 = sb_push(sb, "\n");
+    let s7 = sb_push(sb, "/// Multiply two numbers\n");
+    let s8 = sb_push(sb, "pub fn mul(a: i64, b: i64) -> i64 = a * b;\n");
+    sb_build(sb);
+
+fn generate_gitignore() -> String =
+    "/target/\n*.o\n*.exe\n*.ll\n";
+
+// ============================================================
+// Command: new
+// ============================================================
+
+fn cmd_new(name: String, is_lib: bool) -> i64 = {
+    let p1 = println_str("Creating new BMB project: " + name);
+
+    // Create directories
+    let dir_result = exec_output("mkdir", name);
+    let src_result = exec_output("mkdir", name + "/" + SRC_DIR());
+
+    // Generate project files
+    let toml_content = generate_gotgan_toml(name, is_lib);
+    let w1 = write_file(name + "/" + PROJECT_FILE(), toml_content);
+
+    let source_content = if is_lib { generate_lib_bmb(name) } else { generate_main_bmb(name) };
+    let source_file = if is_lib { name + "/src/lib.bmb" } else { name + "/src/main.bmb" };
+    let w2 = write_file(source_file, source_content);
+
+    let gitignore = generate_gitignore();
+    let w3 = write_file(name + "/.gitignore", gitignore);
+
+    let p2 = println_str("Created project in ./" + name);
+    let p3 = println_str("\nTo get started:");
+    let p4 = println_str("  cd " + name);
+    let p5 = println_str("  bmb run tools/gotgan-bmb/main.bmb build");
+    0
+};
+
+// ============================================================
+// Command: init
+// ============================================================
+
+fn cmd_init(name: String, is_lib: bool) -> i64 = {
+    // Check if gotgan.toml already exists
+    if file_exists(PROJECT_FILE()) == 1 {
+        let p1 = println_str("Error: " + PROJECT_FILE() + " already exists");
+        1
+    } else {
+        do_init(name, is_lib)
+    }
+};
+
+fn do_init(name: String, is_lib: bool) -> i64 = {
+    let p1 = println_str("Initializing BMB project: " + name);
+
+    // Create src directory if needed
+    let src_result = exec_output("mkdir", SRC_DIR());
+
+    // Generate project files
+    let toml_content = generate_gotgan_toml(name, is_lib);
+    let w1 = write_file(PROJECT_FILE(), toml_content);
+
+    let source_file = if is_lib { "src/lib.bmb" } else { "src/main.bmb" };
+    let s1 = init_source_file(source_file, name, is_lib);
+    let s2 = init_gitignore();
+
+    let p2 = println_str("Initialized project: " + name);
+    0
+};
+
+fn init_source_file(source_file: String, name: String, is_lib: bool) -> i64 =
+    if file_exists(source_file) != 1 {
+        let source_content = if is_lib { generate_lib_bmb(name) } else { generate_main_bmb(name) };
+        write_file(source_file, source_content)
+    } else { 0 };
+
+fn init_gitignore() -> i64 =
+    if file_exists(".gitignore") != 1 {
+        let gitignore = generate_gitignore();
+        write_file(".gitignore", gitignore)
+    } else { 0 };
+
+// ============================================================
+// Command: build
+// ============================================================
+
+fn cmd_build(release: bool) -> i64 = {
+    // Check for project file
+    if file_exists(PROJECT_FILE()) != 1 {
+        let p1 = println_str("Error: No " + PROJECT_FILE() + " found in current directory");
+        1
+    } else {
+        let p1 = println_str("Building project...");
+
+        // Find main source file
+        let main_file = "src/main.bmb";
+        if file_exists(main_file) != 1 {
+            let p2 = println_str("Error: No src/main.bmb found");
+            1
+        } else {
+            // Create target directory
+            let target_result = exec_output("mkdir", TARGET_DIR());
+
+            // Build the project
+            let output = TARGET_DIR() + "/main";
+            let build_cmd = "build " + main_file + " -o " + output;
+            let build_result = exec_output(BMB_PATH(), build_cmd);
+
+            if contains(build_result, "error") {
+                let p2 = println_str("Build failed:");
+                let p3 = println_str(build_result);
+                1
+            } else {
+                let p2 = println_str("Build successful: " + output);
+                0
+            }
+        }
+    }
+};
+
+// ============================================================
+// Command: run
+// ============================================================
+
+fn cmd_run(release: bool) -> i64 = {
+    // First build
+    let build_result = cmd_build(release);
+    if build_result != 0 { build_result }
+    else {
+        // Run the binary
+        let p1 = println_str("\nRunning...\n");
+        let output = exec_output(TARGET_DIR() + "/main", "");
+        let p2 = println_str(output);
+        0
+    }
+};
+
+// ============================================================
+// Command: check
+// ============================================================
+
+fn cmd_check() -> i64 = {
+    if file_exists(PROJECT_FILE()) != 1 {
+        let p1 = println_str("Error: No " + PROJECT_FILE() + " found");
+        1
+    } else {
+        let p1 = println_str("Type checking project...");
+
+        let main_file = "src/main.bmb";
+        if file_exists(main_file) == 1 {
+            let check_result = exec_output(BMB_PATH(), "check " + main_file);
+            let p2 = println_str(check_result);
+            if contains(check_result, "\"type\":\"error\"") { 1 } else { 0 }
+        } else {
+            let lib_file = "src/lib.bmb";
+            if file_exists(lib_file) == 1 {
+                let check_result = exec_output(BMB_PATH(), "check " + lib_file);
+                let p2 = println_str(check_result);
+                if contains(check_result, "\"type\":\"error\"") { 1 } else { 0 }
+            } else {
+                let p2 = println_str("Error: No source files found");
+                1
+            }
+        }
+    }
+};
+
+// ============================================================
+// Command: add
+// ============================================================
+
+fn cmd_add(pkg_name: String, ver: String) -> i64 = {
+    if file_exists(PROJECT_FILE()) != 1 {
+        let p1 = println_str("Error: No " + PROJECT_FILE() + " found");
+        1
+    } else {
+        let p1 = println_str("Adding dependency: " + pkg_name + " " + ver);
+
+        // Read current toml
+        let content = read_file(PROJECT_FILE());
+
+        // Append dependency
+        let sb = sb_new();
+        let s1 = sb_push(sb, content);
+        let s2 = sb_push(sb, pkg_name);
+        let s3 = sb_push(sb, " = \"");
+        let s4 = sb_push(sb, ver);
+        let s5 = sb_push(sb, "\"\n");
+        let new_content = sb_build(sb);
+
+        let w1 = write_file(PROJECT_FILE(), new_content);
+        let p2 = println_str("Added " + pkg_name + " to dependencies");
+        0
+    }
+};
+
+// ============================================================
+// Command: update
+// ============================================================
+
+fn cmd_update() -> i64 = {
+    if file_exists(PROJECT_FILE()) != 1 {
+        let p1 = println_str("Error: No " + PROJECT_FILE() + " found");
+        1
+    } else {
+        let p1 = println_str("Updating dependencies...");
+
+        // For now, just regenerate lock file
+        let lock_content = "# gotgan.lock - auto-generated\n# Do not edit manually\n\n";
+        let w1 = write_file(LOCK_FILE(), lock_content);
+        let p2 = println_str("Lock file updated");
+        0
+    }
+};
+
+// ============================================================
+// Usage Help
+// ============================================================
+
+fn print_usage() -> i64 = {
+    let p1 = println_str("Gotgan-BMB - BMB Package Manager");
+    let p2 = println_str("");
+    let p3 = println_str("Usage:");
+    let p4 = println_str("  bmb run tools/gotgan-bmb/main.bmb <command> [options]");
+    let p5 = println_str("");
+    let p6 = println_str("Commands:");
+    let p7 = println_str("  new <name>      Create a new BMB project");
+    let p8 = println_str("  init            Initialize project in current directory");
+    let p9 = println_str("  build           Build the project");
+    let p10 = println_str("  run             Build and run the project");
+    let p11 = println_str("  check           Type check without building");
+    let p12 = println_str("  add <pkg> <ver> Add a dependency");
+    let p13 = println_str("  update          Update dependencies");
+    let p14 = println_str("");
+    let p15 = println_str("Options:");
+    let p16 = println_str("  --lib           Create library instead of binary (new/init)");
+    let p17 = println_str("  --release       Build with optimizations");
+    0
+};
+
+// ============================================================
+// Main Entry Point
+// ============================================================
+
+fn main() -> i64 = {
+    let argc = arg_count();
+
+    if argc < 2 {
+        let p = print_usage();
+        1
+    } else {
+        let cmd = get_arg(1);
+
+        if string_eq(cmd, "new") {
+            if argc < 3 {
+                let p1 = println_str("Error: 'new' requires a project name");
+                1
+            } else {
+                let name = get_arg(2);
+                let is_lib = argc > 3 and string_eq(get_arg(3), "--lib");
+                cmd_new(name, is_lib)
+            }
+        } else if string_eq(cmd, "init") {
+            let name = if argc > 2 { get_arg(2) } else { "project" };
+            let is_lib = argc > 3 and string_eq(get_arg(3), "--lib");
+            cmd_init(name, is_lib)
+        } else if string_eq(cmd, "build") {
+            let release = argc > 2 and string_eq(get_arg(2), "--release");
+            cmd_build(release)
+        } else if string_eq(cmd, "run") {
+            let release = argc > 2 and string_eq(get_arg(2), "--release");
+            cmd_run(release)
+        } else if string_eq(cmd, "check") {
+            cmd_check()
+        } else if string_eq(cmd, "add") {
+            if argc < 4 {
+                let p1 = println_str("Error: 'add' requires package name and version");
+                let p2 = println_str("Usage: add <package> <version>");
+                1
+            } else {
+                let pkg_name = get_arg(2);
+                let ver = get_arg(3);
+                cmd_add(pkg_name, ver)
+            }
+        } else if string_eq(cmd, "update") {
+            cmd_update()
+        } else if string_eq(cmd, "help") or string_eq(cmd, "--help") or string_eq(cmd, "-h") {
+            print_usage()
+        } else {
+            let p1 = println_str("Unknown command: " + cmd);
+            let p2 = print_usage();
+            1
+        }
+    }
+};
