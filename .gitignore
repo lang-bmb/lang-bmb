@@ -28,6 +28,10 @@ Cargo.lock
 *.ll
 *.obj
 
+# Exception: Golden binaries (for BMB-only bootstrap)
+!golden/**/*.exe
+!golden/**/bmb
+
 # Auto-generated files
 .bmb/index/
 *.mir

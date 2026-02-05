@@ -1,86 +1,124 @@
 # Building BMB from Source
 
-**Version**: v0.46 Independence Phase
-**Date**: 2026-01-20
-**Status**: 3-Stage Bootstrap Verified (v0.50.56)
+**Version**: v0.60.251
+**Status**: 3-Stage Bootstrap Verified (Fixed Point Achieved)
 
-This document describes how to build the BMB compiler from source, including the 3-stage bootstrap verification process.
-
----
-
-## Overview
-
-BMB has two compiler implementations:
-
-1. **Rust Compiler** (`bmb/`) - Reference implementation written in Rust
-2. **Bootstrap Compiler** (`bootstrap/`) - Self-hosted compiler written in BMB (~32K LOC)
-
-The goal of v0.46 Independence is to enable building BMB without Rust, using only a previously built BMB binary (golden binary).
+This document describes how to build the BMB compiler from source.
 
 ---
 
 ## Quick Start
 
-### Option 1: Using Rust Compiler (Current)
+### Option 1: Using Golden Binary (Recommended - No Rust Required)
+
+```bash
+# Clone repository
+git clone https://github.com/lang-bmb/lang-bmb.git
+cd lang-bmb
+
+# Run golden bootstrap
+./scripts/golden-bootstrap.sh
+
+# Verify (optional)
+./scripts/golden-bootstrap.sh --verify
+```
+
+**Output**: `target/golden-bootstrap/bmb-stage1.exe` (Windows) or `bmb-stage1` (Linux/macOS)
+
+### Option 2: Using Rust Compiler
 
 ```bash
 # Prerequisites: Rust 1.75+, LLVM 21+
-cargo build --release --features llvm
+cargo build --release --features llvm --target x86_64-pc-windows-gnu
 
 # Verify
-./target/release/bmb --version
-
-# Run a BMB program
-./target/release/bmb run examples/hello.bmb
-
-# Compile to native
-./target/release/bmb build examples/hello.bmb -o hello
-./hello
+./target/x86_64-pc-windows-gnu/release/bmb --version
 ```
-
-### Option 2: Using Golden Binary (v0.46+)
-
-```bash
-# Download golden binary
-wget https://github.com/bmb-lang/bmb/releases/download/v0.46/bmb-golden-linux-x64
-chmod +x bmb-golden-linux-x64
-
-# Also download the runtime library
-wget https://github.com/bmb-lang/bmb/releases/download/v0.46/libruntime_linux.a
-
-# Build compiler from source
-./bmb-golden-linux-x64 build bootstrap/bmb_unified_cli.bmb -o bmb
-./bmb --version
-```
-
-**Note**: The golden binary generates LLVM IR. You need LLVM 21+ toolchain (llc, clang) for linking.
 
 ---
 
-## Build Requirements
+## Build Methods Comparison
 
-### For Rust Compiler Build
+| Method | Requirements | Build Time | Use Case |
+|--------|--------------|------------|----------|
+| **Golden Binary** | LLVM only | ~8s | Production, CI/CD |
+| **Rust Compiler** | Rust + LLVM | ~30s | Development |
+
+---
+
+## Option 1: Golden Binary Bootstrap (BMB-Only)
+
+### Requirements
+
+| Component | Version | Notes |
+|-----------|---------|-------|
+| LLVM | 21+ | `opt`, `clang` commands |
+| Golden Binary | v0.60.251 | Included in `golden/` |
+
+### Available Golden Binaries
+
+| Platform | Path | Status |
+|----------|------|--------|
+| Windows x64 | `golden/windows-x64/bmb.exe` | ✅ Available |
+| Linux x86_64 | `golden/linux-x86_64/bmb` | 📋 Planned |
+| Linux aarch64 | `golden/linux-aarch64/bmb` | 📋 Planned |
+| macOS Universal | `golden/darwin-universal/bmb` | 📋 Planned |
+
+### Build Steps
+
+```bash
+# 1. Clone repository
+git clone https://github.com/lang-bmb/lang-bmb.git
+cd lang-bmb
+
+# 2. Run bootstrap script
+./scripts/golden-bootstrap.sh
+
+# 3. (Optional) Verify with 3-stage check
+./scripts/golden-bootstrap.sh --verify
+
+# 4. Use the bootstrapped compiler
+export PATH="$(pwd)/target/golden-bootstrap:$PATH"
+bmb-stage1 --help
+```
+
+### Manual Build (Without Script)
+
+```bash
+# Step 1: Generate LLVM IR using golden binary
+./golden/windows-x64/bmb.exe bootstrap/compiler.bmb stage1.ll
+
+# Step 2: Optimize with LLVM opt
+opt -O3 stage1.ll -S -o stage1_opt.ll
+
+# Step 3: Compile and link
+clang -O3 stage1_opt.ll bmb/runtime/bmb_runtime.c -o bmb-stage1.exe -lm
+```
+
+---
+
+## Option 2: Rust Compiler Build
+
+### Requirements
 
 | Component | Version | Notes |
 |-----------|---------|-------|
 | Rust | 1.75+ | With cargo |
 | LLVM | 21+ | For native compilation |
-| clang | 21+ | For linking |
-| lld | 21+ | Optional, faster linking |
 
-### For BMB-Only Build (v0.46 Target)
+### Platform Setup
 
-| Component | Version | Notes |
-|-----------|---------|-------|
-| BMB Golden Binary | v0.46+ | Self-contained |
-| LLVM | 21+ | For native compilation |
-| clang | 21+ | For linking |
+#### Windows (MSYS2/MinGW)
 
----
+```bash
+# Install LLVM via MSYS2
+pacman -S mingw-w64-ucrt-x86_64-llvm mingw-w64-ucrt-x86_64-clang
 
-## Platform-Specific Setup
+# Build with MinGW target
+cargo build --release --features llvm --target x86_64-pc-windows-gnu
+```
 
-### Linux (Ubuntu/Debian)
+#### Linux (Ubuntu/Debian)
 
 ```bash
 # Install LLVM 21
@@ -88,207 +126,108 @@ wget https://apt.llvm.org/llvm.sh
 chmod +x llvm.sh
 sudo ./llvm.sh 21
 
-# Set environment
-export LLVM_SYS_210_PREFIX=/usr/lib/llvm-21
-export PATH="/usr/lib/llvm-21/bin:$PATH"
-
-# Verify
-llvm-config --version  # Should show 21.x.x
-```
-
-### WSL Ubuntu (Windows)
-
-```bash
-# Enter WSL
-wsl
-
-# Install LLVM
-sudo apt update
-sudo apt install -y llvm-21 llvm-21-dev clang-21 lld-21
-
-# Set environment
-export LLVM_SYS_211_PREFIX=/usr/lib/llvm-21
-export PATH="/usr/lib/llvm-21/bin:$PATH"
-
-# Build from Windows project directory
-cd /mnt/d/data/lang-bmb
+# Build
 cargo build --release --features llvm
 ```
 
-### macOS
+#### macOS
 
 ```bash
 # Install LLVM via Homebrew
 brew install llvm@21
+export LLVM_SYS_211_PREFIX=$(brew --prefix llvm@21)
 
-# Set environment
-export LLVM_SYS_210_PREFIX=$(brew --prefix llvm@21)
-export PATH="$(brew --prefix llvm@21)/bin:$PATH"
-```
-
-### Windows (Native)
-
-Native Windows builds are not currently supported due to LLVM toolchain limitations. Use WSL Ubuntu instead.
-
----
-
-## Build Steps
-
-### 1. Clone Repository
-
-```bash
-git clone https://github.com/bmb-lang/bmb.git
-cd bmb
-git submodule update --init --recursive
-```
-
-### 2. Build Rust Compiler
-
-```bash
-# Without LLVM (interpreter only)
-cargo build --release
-
-# With LLVM (native compilation)
+# Build
 cargo build --release --features llvm
 ```
 
-### 3. Run Tests
+### Build Commands
 
 ```bash
-# Rust tests
-cargo test
+# Clone
+git clone https://github.com/lang-bmb/lang-bmb.git
+cd lang-bmb
+git submodule update --init --recursive
 
-# Bootstrap tests
-./target/release/bmb run bootstrap/compiler.bmb
-# Expected output: 777...385...888...8...393...999
-```
+# Build (choose one)
+cargo build --release                           # Interpreter only
+cargo build --release --features llvm           # With native compilation
 
-### 4. Generate Golden Binary (v0.46)
-
-```bash
-# Compile bootstrap to native binary
-./target/release/bmb build bootstrap/compiler.bmb -o bmb-golden
-
-# Verify golden binary
-./bmb-golden  # Should output test markers
+# Test
+cargo test --release
 ```
 
 ---
 
 ## 3-Stage Bootstrap Verification
 
-The 3-stage bootstrap process ensures compiler correctness:
+### Overview
 
 ```
-Stage 1: Rust BMB → bmb-stage1 (trust Rust compiler)
-Stage 2: bmb-stage1 → bmb-stage2 (first self-compile)
-Stage 3: bmb-stage2 → bmb-stage3 (verification compile)
+Stage 0: Rust/Golden → Stage 1 Binary
+Stage 1: Stage 1    → Stage 2 LLVM IR
+Stage 2: Stage 2    → Stage 3 LLVM IR
 
-Success: diff bmb-stage2 bmb-stage3 == 0
+✅ Success: Stage 2 IR == Stage 3 IR (Fixed Point)
 ```
 
 ### Running Verification
 
 ```bash
-# Run automated verification script
-./scripts/bootstrap_3stage.sh
+# Using Rust compiler
+./scripts/bootstrap.sh --verbose
+
+# Using Golden binary
+./scripts/golden-bootstrap.sh --verify
 ```
 
-### Manual Verification
+### Current Status (v0.60.251)
 
-```bash
-# Stage 1: Rust compiles bootstrap
-./target/release/bmb build bootstrap/bmb_unified_cli.bmb -o bmbc_stage1
-
-# Stage 2: Stage 1 compiles bootstrap (generates IR)
-./bmbc_stage1 build bootstrap/bmb_unified_cli.bmb > stage2.ll
-
-# Compile Stage 2 to binary
-llc-21 -filetype=obj -O2 stage2.ll -o stage2.o
-clang-21 -o bmbc_stage2 stage2.o runtime/libruntime_linux.a -lm
-
-# Stage 3: Stage 2 compiles bootstrap
-./bmbc_stage2 build bootstrap/bmb_unified_cli.bmb > stage3.ll
-
-# Verify identical IR output
-diff stage2.ll stage3.ll  # Must be empty (0 differences)
 ```
-
-**Note**: We compare IR output (`.ll` files) rather than binaries because LLVM
-compilation is deterministic but binary layout may vary with toolchain versions.
-
-### Why 3-Stage Matters
-
-1. **Stage 1** ensures the Rust implementation is correct
-2. **Stage 2** ensures the BMB implementation matches Rust semantics
-3. **Stage 3** ensures the BMB compiler generates identical code when compiled by itself
-
-Reference: Ken Thompson, "Reflections on Trusting Trust" (1984)
+Stage 1 (Rust/Golden → BMB₁):  ✅ (1.5s)
+Stage 2 (BMB₁ → LLVM IR):      ✅ (1.2s, 29,925 lines)
+Stage 3 (BMB₂ → LLVM IR):      ✅ (3.5s, 29,925 lines)
+Fixed Point (S2 == S3):        ✅ VERIFIED
+```
 
 ---
 
-## Build Configuration
+## Environment Variables
 
-### Cargo Features
-
-| Feature | Description |
-|---------|-------------|
-| `llvm` | Enable LLVM backend for native compilation |
-| `wasm` | Enable WASM backend (experimental) |
-
-### Environment Variables
-
-| Variable | Description |
-|----------|-------------|
-| `LLVM_SYS_210_PREFIX` | LLVM installation prefix |
-| `LLVM_SYS_211_PREFIX` | Alternative for LLVM 21.1+ |
-| `BMB_DEBUG` | Enable debug output |
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `BMB_RUNTIME_PATH` | Path to BMB runtime | `d:/data/lang-bmb/bmb/runtime` |
+| `LLVM_SYS_211_PREFIX` | LLVM installation prefix | `/usr/lib/llvm-21` |
 
 ---
 
-## Current Status (v0.46 - v0.50.56)
-
-| Milestone | Status | Notes |
-|-----------|--------|-------|
-| Stage 1 (Rust → BMB) | ✅ Complete | 160KB golden binary generated |
-| Stage 2 (BMB → BMB) | ✅ Complete | 1,068,850 bytes IR output |
-| Stage 3 (Verification) | ✅ Complete | Stage 2 = Stage 3 identical |
-| Cargo.toml Removal | 🔄 In Progress | Documentation phase |
-
-### 3-Stage Bootstrap Verified
-
-The BMB compiler successfully compiles itself in a 3-stage bootstrap:
+## Directory Structure
 
 ```
-Stage 1 (Rust BMB):     bootstrap/bmb_unified_cli.bmb → bmbc_stage1 (160KB)
-Stage 2 (Stage 1):      bootstrap/bmb_unified_cli.bmb → stage2.ll (1,068,850 bytes)
-Stage 3 (Stage 2):      bootstrap/bmb_unified_cli.bmb → stage3.ll (1,068,850 bytes)
-
-✅ sha256(stage2.ll) == sha256(stage3.ll)
-```
-
-### Key Files for BMB-Only Build
-
-| File | Description |
-|------|-------------|
-| `bootstrap/bmb_unified_cli.bmb` | Full bootstrap compiler (143KB, 2895 lines) |
-| `runtime/libruntime_linux.a` | Linux runtime library |
-| `runtime/runtime.c` | Runtime source (for other platforms) |
-
-### Building from Golden Binary
-
-```bash
-# 1. Generate LLVM IR
-./bmb-golden build your_file.bmb --emit-ir -o output.ll
-
-# 2. Compile to object file
-llc-21 -filetype=obj -O2 output.ll -o output.o
-
-# 3. Link with runtime
-clang-21 -o output output.o libruntime_linux.a -lm
-
-# 4. Run
-./output
+lang-bmb/
+├── golden/                  # Golden binaries (BMB-only bootstrap)
+│   ├── windows-x64/bmb.exe
+│   ├── VERSION
+│   └── README.md
+├── bootstrap/               # Self-hosted compiler source (~32K LOC)
+│   ├── compiler.bmb         # Main entry point
+│   ├── lexer.bmb
+│   ├── parser.bmb
+│   ├── types.bmb
+│   ├── lowering.bmb
+│   ├── mir.bmb
+│   ├── optimize.bmb
+│   └── llvm_ir.bmb
+├── bmb/                     # Rust compiler and runtime
+│   ├── src/                 # Rust source
+│   └── runtime/             # C runtime
+│       └── bmb_runtime.c
+├── scripts/
+│   ├── bootstrap.sh         # 3-stage with Rust
+│   └── golden-bootstrap.sh  # 3-stage with Golden
+└── target/                  # Build output
+    ├── bootstrap/           # Rust bootstrap output
+    └── golden-bootstrap/    # Golden bootstrap output
 ```
 
 ---
@@ -301,59 +240,49 @@ clang-21 -o output output.o libruntime_linux.a -lm
 error: No suitable version of LLVM was found
 ```
 
-**Solution**: Set `LLVM_SYS_210_PREFIX` or `LLVM_SYS_211_PREFIX` to your LLVM installation.
-
-### Link Errors
-
-```
-error: linking with `cc` failed
-```
-
-**Solution**: Install clang and ensure it's in PATH:
+**Solution**: Set `LLVM_SYS_211_PREFIX`:
 ```bash
-sudo apt install clang-21
-export CC=clang-21
+export LLVM_SYS_211_PREFIX=/usr/lib/llvm-21  # Linux
+export LLVM_SYS_211_PREFIX=$(brew --prefix llvm@21)  # macOS
 ```
 
-### Bootstrap Test Failure
+### Golden Binary Not Found
 
 ```
-Expected 999, got different output
+Error: Golden binary not found at golden/linux-x86_64/bmb
 ```
 
-**Solution**: Check recent commits for bootstrap compiler fixes. Run `git pull` and rebuild.
+**Solution**: Build golden binary for your platform:
+```bash
+# Build with Rust first
+cargo build --release --features llvm
+./scripts/bootstrap.sh
 
----
+# Copy Stage 2 as golden binary
+mkdir -p golden/linux-x86_64
+cp target/bootstrap/bmb-stage2 golden/linux-x86_64/bmb
+```
 
-## Release Binaries
+### opt Command Not Found
 
-Pre-built binaries will be available starting from v0.46:
+```
+Error: LLVM opt not found
+```
 
-| Platform | Binary | Status |
-|----------|--------|--------|
-| Linux x64 | `bmb-golden-linux-x64` | Planned |
-| macOS x64 | `bmb-golden-macos-x64` | Planned |
-| macOS ARM | `bmb-golden-macos-arm64` | Planned |
-| Windows x64 | `bmb-golden-windows-x64.exe` | Planned (via WSL cross-compile) |
+**Solution**: Install LLVM and add to PATH:
+```bash
+# Ubuntu
+sudo apt install llvm-21
+export PATH="/usr/lib/llvm-21/bin:$PATH"
 
----
-
-## Contributing
-
-To contribute to BMB compiler development:
-
-1. Fork the repository
-2. Create a feature branch
-3. Make changes and test
-4. Run `cargo test` and `./scripts/bootstrap_3stage.sh`
-5. Submit a pull request
-
-See [CONTRIBUTING.md](../CONTRIBUTING.md) for detailed guidelines.
+# MSYS2
+pacman -S mingw-w64-ucrt-x86_64-llvm
+```
 
 ---
 
 ## References
 
-- [Bootstrapping (compilers) - Wikipedia](https://en.wikipedia.org/wiki/Bootstrapping_(compilers))
-- [Reproducible Builds](https://reproducible-builds.org/)
-- [Ken Thompson - Reflections on Trusting Trust](https://www.cs.cmu.edu/~rdriley/487/papers/Thompson_1984_ResearchStudy.pdf)
+- [BMB Specification](SPECIFICATION.md)
+- [Bootstrap + Benchmark Cycle](BOOTSTRAP_BENCHMARK.md)
+- [Ken Thompson - Reflections on Trusting Trust (1984)](https://www.cs.cmu.edu/~rdriley/487/papers/Thompson_1984_ResearchStudy.pdf)
