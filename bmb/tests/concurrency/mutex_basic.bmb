@@ -1,12 +1,27 @@
 // v0.71: Basic Mutex<T> test
-// Tests that Mutex provides thread-safe access
-// NOTE: Mutex creation syntax pending language extension
+// Tests that Mutex provides thread-safe access to shared data
 
 fn main() -> i64 = {
-    // For now, test that the type parses correctly
-    // Full Mutex API requires static method syntax (Type::new)
-    // which is not yet supported in BMB grammar
+    // Create a mutex wrapping an initial value of 42
+    let m = Mutex::new(42);
 
-    // Placeholder: return success
-    0
+    // Lock the mutex and get the value
+    let value = m.lock();
+
+    // Unlock with a new value
+    m.unlock(value + 1);
+
+    // Lock again to verify the value was updated
+    let new_value = m.lock();
+    m.unlock(new_value);
+
+    // Free the mutex
+    m.free();
+
+    // Check if the value was correctly incremented
+    if new_value == 43 {
+        0  // Success
+    } else {
+        1  // Failure
+    }
 };

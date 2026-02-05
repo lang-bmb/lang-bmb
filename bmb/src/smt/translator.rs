@@ -213,6 +213,10 @@ impl SmtTranslator {
             // Just return a placeholder integer (thread handle)
             Expr::Spawn { .. } => Ok("0".to_string()),
 
+            // v0.71: Mutex creation - not relevant for SMT verification
+            // Just return a placeholder integer (mutex handle)
+            Expr::MutexNew { .. } => Ok("0".to_string()),
+
             // v0.73: Channel creation - not relevant for SMT verification
             // Just return a placeholder tuple (sender, receiver handles)
             Expr::ChannelNew { .. } => Ok("(tuple 0 0)".to_string()),

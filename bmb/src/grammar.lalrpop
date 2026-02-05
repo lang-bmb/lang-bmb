@@ -80,6 +80,8 @@ extern {
         "todo" => Token::Todo,
         // v0.70: Concurrency primitives
         "spawn" => Token::Spawn,
+        // v0.71: Mutex type
+        "Mutex" => Token::MutexType,
         // v0.73: Channel types
         "channel" => Token::ChannelKw,
         "Sender" => Token::SenderType,
@@ -1054,6 +1056,8 @@ PlainType: Type = {
     "*" <t:Type> => Type::Ptr(Box::new(t)),
     // v0.5 Phase 6: Array types
     "[" <t:Type> ";" <n:"int"> "]" => Type::Array(Box::new(t), n as usize),
+    // v0.71: Mutex<T> type
+    "Mutex" "<" <inner:Type> ">" => Type::Mutex(Box::new(inner)),
     // v0.13.1: Generic type: Container<T>, Result<T, E>
     <name:RawIdent> "<" <args:TypeArgList> ">" => Type::Generic { name, type_args: args },
     // v0.37: Nullable type suffix: T? (per spec, this is the only nullable syntax)
@@ -1255,6 +1259,10 @@ Expr: Expr = {
             if let Some(e) = last { exprs.push(e); }
             Expr::Block(exprs)
         }, Span::new(l, r))),
+    },
+    // v0.71: Mutex creation - Mutex::new(value) -> Mutex<T>
+    <l:@L> "Mutex" "::" "new" "(" <value:SpannedExpr> ")" <r:@R> => Expr::MutexNew {
+        value: Box::new(value),
     },
     // v0.73: Channel creation - channel<T>(capacity) -> (Sender<T>, Receiver<T>)
     <l:@L> "channel" "<" <elem_ty:SpannedType> ">" "(" <cap:SpannedExpr> ")" <r:@R> => Expr::ChannelNew {

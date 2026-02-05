@@ -801,6 +801,15 @@ impl CirLowerer {
                 }
             }
 
+            // v0.71: Mutex creation expression
+            Expr::MutexNew { value } => {
+                let val = self.lower_expr(&value.node);
+                CirExpr::Call {
+                    func: "__mutex_new".to_string(),
+                    args: vec![val],
+                }
+            }
+
             // v0.73: Channel creation expression
             Expr::ChannelNew { capacity, .. } => {
                 let cap = self.lower_expr(&capacity.node);

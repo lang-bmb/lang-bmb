@@ -496,6 +496,26 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
             Operand::Place(dest)
         }
 
+        // v0.71: Mutex creation expression
+        Expr::MutexNew { value } => {
+            // Lower the initial value expression
+            let init_operand = lower_expr(value, ctx);
+
+            // Create destination for the mutex handle
+            let dest = ctx.fresh_temp();
+
+            // Emit MutexNew instruction
+            ctx.push_inst(MirInst::MutexNew {
+                dest: dest.clone(),
+                initial_value: init_operand,
+            });
+
+            // The mutex is represented as an i64 handle
+            ctx.locals.insert(dest.name.clone(), MirType::I64);
+
+            Operand::Place(dest)
+        }
+
         // v0.73: Channel creation expression
         Expr::ChannelNew { capacity, .. } => {
             // Lower the capacity expression
@@ -1496,6 +1516,45 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
                     handle: recv_op,
                 });
                 return Operand::Place(dest);
+            }
+
+            // v0.71: Special handling for Mutex methods
+            // lock() - acquires lock and returns current value
+            if method == "lock" && args.is_empty() {
+                let dest = ctx.fresh_temp();
+                ctx.locals.insert(dest.name.clone(), MirType::I64);
+                ctx.push_inst(MirInst::MutexLock {
+                    dest: dest.clone(),
+                    mutex: recv_op,
+                });
+                return Operand::Place(dest);
+            }
+
+            // unlock(value) - stores value and releases lock
+            if method == "unlock" && args.len() == 1 {
+                let value_op = lower_expr(&args[0], ctx);
+                ctx.push_inst(MirInst::MutexUnlock {
+                    mutex: recv_op,
+                    new_value: value_op,
+                });
+                return Operand::Constant(Constant::Unit);
+            }
+
+            // try_lock() - attempts to acquire lock, returns 1 if success, 0 if failed
+            if method == "try_lock" && args.is_empty() {
+                let dest = ctx.fresh_temp();
+                ctx.locals.insert(dest.name.clone(), MirType::I64);
+                ctx.push_inst(MirInst::MutexTryLock {
+                    dest: dest.clone(),
+                    mutex: recv_op,
+                });
+                return Operand::Place(dest);
+            }
+
+            // free() - deallocates the mutex
+            if method == "free" && args.is_empty() {
+                ctx.push_inst(MirInst::MutexFree { mutex: recv_op });
+                return Operand::Constant(Constant::Unit);
             }
 
             // Build the argument list: receiver first, then the rest

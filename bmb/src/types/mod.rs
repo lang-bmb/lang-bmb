@@ -1363,6 +1363,12 @@ impl TypeChecker {
                 Ok(Type::Thread(Box::new(body_type)))
             }
 
+            // v0.71: Mutex creation - returns Mutex<T> where T is inferred from value
+            Expr::MutexNew { value } => {
+                let value_ty = self.infer(&value.node, value.span)?;
+                Ok(Type::Mutex(Box::new(value_ty)))
+            }
+
             // v0.73: Channel creation - returns (Sender<T>, Receiver<T>)
             Expr::ChannelNew { elem_ty, capacity } => {
                 let cap_ty = self.infer(&capacity.node, capacity.span)?;
@@ -2764,6 +2770,36 @@ impl TypeChecker {
             // v0.71: Mutex<T> methods
             Type::Mutex(inner_ty) => {
                 match method {
+                    // lock() -> T - acquires lock and returns current value
+                    "lock" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("lock() takes no arguments", span));
+                        }
+                        Ok(*inner_ty.clone())
+                    }
+                    // unlock(value: T) -> () - stores value and releases lock
+                    "unlock" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("unlock() takes exactly one argument", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg_ty, inner_ty, args[0].span)?;
+                        Ok(Type::Unit)
+                    }
+                    // try_lock() -> i64 - non-blocking lock attempt (returns 1 if success, 0 if failed)
+                    "try_lock" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("try_lock() takes no arguments", span));
+                        }
+                        Ok(Type::I64)
+                    }
+                    // free() -> () - deallocates the mutex
+                    "free" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("free() takes no arguments", span));
+                        }
+                        Ok(Type::Unit)
+                    }
                     // with(fn(&mut T) -> R) -> R - RAII-based lock pattern
                     // Acquires lock, calls closure with mutable reference, releases lock
                     "with" => {
@@ -2783,13 +2819,6 @@ impl TypeChecker {
                                 span,
                             )),
                         }
-                    }
-                    // try_lock() -> Option<&mut T> - non-blocking lock attempt
-                    "try_lock" => {
-                        if !args.is_empty() {
-                            return Err(CompileError::type_error("try_lock() takes no arguments", span));
-                        }
-                        Ok(Type::Nullable(Box::new(Type::RefMut(inner_ty.clone()))))
                     }
                     _ => Err(CompileError::type_error(
                         format!("unknown method '{}' for Mutex<{}>", method, inner_ty),

@@ -976,6 +976,68 @@ impl<'ctx> LlvmContext<'ctx> {
         let join_type = i64_type.fn_type(&[i64_type.into()], false);
         let join_fn = self.module.add_function("bmb_join", join_type, None);
         self.functions.insert("bmb_join".to_string(), join_fn);
+
+        // v0.71: Mutex primitives
+        // bmb_mutex_new(initial_value: i64) -> i64 (mutex handle)
+        let mutex_new_type = i64_type.fn_type(&[i64_type.into()], false);
+        let mutex_new_fn = self.module.add_function("bmb_mutex_new", mutex_new_type, None);
+        self.functions.insert("bmb_mutex_new".to_string(), mutex_new_fn);
+
+        // bmb_mutex_lock(handle: i64) -> i64 (current value)
+        let mutex_lock_type = i64_type.fn_type(&[i64_type.into()], false);
+        let mutex_lock_fn = self.module.add_function("bmb_mutex_lock", mutex_lock_type, None);
+        self.functions.insert("bmb_mutex_lock".to_string(), mutex_lock_fn);
+
+        // bmb_mutex_unlock(handle: i64, new_value: i64) -> void
+        let mutex_unlock_type = void_type.fn_type(&[i64_type.into(), i64_type.into()], false);
+        let mutex_unlock_fn = self.module.add_function("bmb_mutex_unlock", mutex_unlock_type, None);
+        self.functions.insert("bmb_mutex_unlock".to_string(), mutex_unlock_fn);
+
+        // bmb_mutex_try_lock(handle: i64) -> i64 (value if locked, 0 if failed)
+        let mutex_try_lock_type = i64_type.fn_type(&[i64_type.into()], false);
+        let mutex_try_lock_fn = self.module.add_function("bmb_mutex_try_lock", mutex_try_lock_type, None);
+        self.functions.insert("bmb_mutex_try_lock".to_string(), mutex_try_lock_fn);
+
+        // bmb_mutex_free(handle: i64) -> void
+        let mutex_free_type = void_type.fn_type(&[i64_type.into()], false);
+        let mutex_free_fn = self.module.add_function("bmb_mutex_free", mutex_free_type, None);
+        self.functions.insert("bmb_mutex_free".to_string(), mutex_free_fn);
+
+        // v0.71: Channel primitives
+        // bmb_channel_new(capacity: i64, sender_out: ptr, receiver_out: ptr) -> void
+        let channel_new_type = void_type.fn_type(&[i64_type.into(), ptr_type.into(), ptr_type.into()], false);
+        let channel_new_fn = self.module.add_function("bmb_channel_new", channel_new_type, None);
+        self.functions.insert("bmb_channel_new".to_string(), channel_new_fn);
+
+        // bmb_channel_send(sender: i64, value: i64) -> void
+        let channel_send_type = void_type.fn_type(&[i64_type.into(), i64_type.into()], false);
+        let channel_send_fn = self.module.add_function("bmb_channel_send", channel_send_type, None);
+        self.functions.insert("bmb_channel_send".to_string(), channel_send_fn);
+
+        // bmb_channel_recv(receiver: i64) -> i64 (received value)
+        let channel_recv_type = i64_type.fn_type(&[i64_type.into()], false);
+        let channel_recv_fn = self.module.add_function("bmb_channel_recv", channel_recv_type, None);
+        self.functions.insert("bmb_channel_recv".to_string(), channel_recv_fn);
+
+        // bmb_channel_try_send(sender: i64, value: i64) -> i64 (1 if sent, 0 if full)
+        let channel_try_send_type = i64_type.fn_type(&[i64_type.into(), i64_type.into()], false);
+        let channel_try_send_fn = self.module.add_function("bmb_channel_try_send", channel_try_send_type, None);
+        self.functions.insert("bmb_channel_try_send".to_string(), channel_try_send_fn);
+
+        // bmb_channel_try_recv(receiver: i64, value_out: ptr) -> i64 (1 if received, 0 if empty)
+        let channel_try_recv_type = i64_type.fn_type(&[i64_type.into(), ptr_type.into()], false);
+        let channel_try_recv_fn = self.module.add_function("bmb_channel_try_recv", channel_try_recv_type, None);
+        self.functions.insert("bmb_channel_try_recv".to_string(), channel_try_recv_fn);
+
+        // bmb_sender_clone(sender: i64) -> i64 (cloned sender)
+        let sender_clone_type = i64_type.fn_type(&[i64_type.into()], false);
+        let sender_clone_fn = self.module.add_function("bmb_sender_clone", sender_clone_type, None);
+        self.functions.insert("bmb_sender_clone".to_string(), sender_clone_fn);
+
+        // bmb_channel_free(channel: i64) -> void
+        let channel_free_type = void_type.fn_type(&[i64_type.into()], false);
+        let channel_free_fn = self.module.add_function("bmb_channel_free", channel_free_type, None);
+        self.functions.insert("bmb_channel_free".to_string(), channel_free_fn);
     }
 
     /// Convert MIR type to LLVM type
@@ -3083,8 +3145,209 @@ impl<'ctx> LlvmContext<'ctx> {
                 }
             }
 
-            // v0.73+: Other concurrency instructions not yet supported in inkwell codegen
-            // These are handled by the text-based LLVM IR generator (llvm_text.rs)
+            // v0.71: Mutex operations
+            MirInst::MutexNew { dest, initial_value } => {
+                let i64_type = self.context.i64_type();
+                let value = self.gen_operand(initial_value)?;
+                let value_i64 = if value.is_int_value() {
+                    value.into_int_value()
+                } else {
+                    i64_type.const_int(0, false)
+                };
+
+                let mutex_new_fn = self.functions.get("bmb_mutex_new")
+                    .ok_or_else(|| CodeGenError::LlvmError("bmb_mutex_new not declared".to_string()))?;
+
+                let handle = self.builder
+                    .build_call(*mutex_new_fn, &[value_i64.into()], "mutex_handle")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                    .try_as_basic_value()
+                    .basic()
+                    .ok_or_else(|| CodeGenError::LlvmError("bmb_mutex_new returned void".to_string()))?;
+
+                self.store_to_place(dest, handle)?;
+            }
+
+            MirInst::MutexLock { dest, mutex } => {
+                let mutex_val = self.gen_operand(mutex)?;
+                let mutex_i64 = mutex_val.into_int_value();
+
+                let mutex_lock_fn = self.functions.get("bmb_mutex_lock")
+                    .ok_or_else(|| CodeGenError::LlvmError("bmb_mutex_lock not declared".to_string()))?;
+
+                let value = self.builder
+                    .build_call(*mutex_lock_fn, &[mutex_i64.into()], "mutex_value")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                    .try_as_basic_value()
+                    .basic()
+                    .ok_or_else(|| CodeGenError::LlvmError("bmb_mutex_lock returned void".to_string()))?;
+
+                self.store_to_place(dest, value)?;
+            }
+
+            MirInst::MutexUnlock { mutex, new_value } => {
+                let mutex_val = self.gen_operand(mutex)?;
+                let mutex_i64 = mutex_val.into_int_value();
+                let value = self.gen_operand(new_value)?;
+                let value_i64 = value.into_int_value();
+
+                let mutex_unlock_fn = self.functions.get("bmb_mutex_unlock")
+                    .ok_or_else(|| CodeGenError::LlvmError("bmb_mutex_unlock not declared".to_string()))?;
+
+                self.builder
+                    .build_call(*mutex_unlock_fn, &[mutex_i64.into(), value_i64.into()], "")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+            }
+
+            MirInst::MutexTryLock { dest, mutex } => {
+                let mutex_val = self.gen_operand(mutex)?;
+                let mutex_i64 = mutex_val.into_int_value();
+
+                let mutex_try_lock_fn = self.functions.get("bmb_mutex_try_lock")
+                    .ok_or_else(|| CodeGenError::LlvmError("bmb_mutex_try_lock not declared".to_string()))?;
+
+                let result = self.builder
+                    .build_call(*mutex_try_lock_fn, &[mutex_i64.into()], "try_lock_result")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                    .try_as_basic_value()
+                    .basic()
+                    .ok_or_else(|| CodeGenError::LlvmError("bmb_mutex_try_lock returned void".to_string()))?;
+
+                self.store_to_place(dest, result)?;
+            }
+
+            MirInst::MutexFree { mutex } => {
+                let mutex_val = self.gen_operand(mutex)?;
+                let mutex_i64 = mutex_val.into_int_value();
+
+                let mutex_free_fn = self.functions.get("bmb_mutex_free")
+                    .ok_or_else(|| CodeGenError::LlvmError("bmb_mutex_free not declared".to_string()))?;
+
+                self.builder
+                    .build_call(*mutex_free_fn, &[mutex_i64.into()], "")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+            }
+
+            // v0.71: Channel operations
+            MirInst::ChannelNew { sender_dest, receiver_dest, capacity } => {
+                let i64_type = self.context.i64_type();
+                let cap_val = self.gen_operand(capacity)?;
+                let cap_i64 = cap_val.into_int_value();
+
+                // Allocate space for sender and receiver handles
+                let sender_alloca = self.builder
+                    .build_alloca(i64_type, "sender_alloca")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                let receiver_alloca = self.builder
+                    .build_alloca(i64_type, "receiver_alloca")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+
+                let channel_new_fn = self.functions.get("bmb_channel_new")
+                    .ok_or_else(|| CodeGenError::LlvmError("bmb_channel_new not declared".to_string()))?;
+
+                self.builder
+                    .build_call(*channel_new_fn, &[cap_i64.into(), sender_alloca.into(), receiver_alloca.into()], "")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+
+                // Load sender and receiver handles
+                let sender = self.builder
+                    .build_load(i64_type, sender_alloca, "sender")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                let receiver = self.builder
+                    .build_load(i64_type, receiver_alloca, "receiver")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+
+                self.store_to_place(sender_dest, sender)?;
+                self.store_to_place(receiver_dest, receiver)?;
+            }
+
+            MirInst::ChannelSend { sender, value } => {
+                let sender_val = self.gen_operand(sender)?;
+                let sender_i64 = sender_val.into_int_value();
+                let val = self.gen_operand(value)?;
+                let val_i64 = val.into_int_value();
+
+                let channel_send_fn = self.functions.get("bmb_channel_send")
+                    .ok_or_else(|| CodeGenError::LlvmError("bmb_channel_send not declared".to_string()))?;
+
+                self.builder
+                    .build_call(*channel_send_fn, &[sender_i64.into(), val_i64.into()], "")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+            }
+
+            MirInst::ChannelRecv { dest, receiver } => {
+                let receiver_val = self.gen_operand(receiver)?;
+                let receiver_i64 = receiver_val.into_int_value();
+
+                let channel_recv_fn = self.functions.get("bmb_channel_recv")
+                    .ok_or_else(|| CodeGenError::LlvmError("bmb_channel_recv not declared".to_string()))?;
+
+                let value = self.builder
+                    .build_call(*channel_recv_fn, &[receiver_i64.into()], "recv_value")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                    .try_as_basic_value()
+                    .basic()
+                    .ok_or_else(|| CodeGenError::LlvmError("bmb_channel_recv returned void".to_string()))?;
+
+                self.store_to_place(dest, value)?;
+            }
+
+            MirInst::ChannelTrySend { dest, sender, value } => {
+                let sender_val = self.gen_operand(sender)?;
+                let sender_i64 = sender_val.into_int_value();
+                let val = self.gen_operand(value)?;
+                let val_i64 = val.into_int_value();
+
+                let channel_try_send_fn = self.functions.get("bmb_channel_try_send")
+                    .ok_or_else(|| CodeGenError::LlvmError("bmb_channel_try_send not declared".to_string()))?;
+
+                let success = self.builder
+                    .build_call(*channel_try_send_fn, &[sender_i64.into(), val_i64.into()], "try_send_result")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                    .try_as_basic_value()
+                    .basic()
+                    .ok_or_else(|| CodeGenError::LlvmError("bmb_channel_try_send returned void".to_string()))?;
+
+                self.store_to_place(dest, success)?;
+            }
+
+            MirInst::ChannelTryRecv { dest, receiver } => {
+                let receiver_val = self.gen_operand(receiver)?;
+                let receiver_i64 = receiver_val.into_int_value();
+
+                let channel_recv_fn = self.functions.get("bmb_channel_recv")
+                    .ok_or_else(|| CodeGenError::LlvmError("bmb_channel_recv not declared".to_string()))?;
+
+                // For try_recv, we use regular recv for now (blocking semantics)
+                // TODO: Implement non-blocking try_recv in runtime
+                let value = self.builder
+                    .build_call(*channel_recv_fn, &[receiver_i64.into()], "try_recv_value")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                    .try_as_basic_value()
+                    .basic()
+                    .ok_or_else(|| CodeGenError::LlvmError("bmb_channel_recv returned void".to_string()))?;
+
+                self.store_to_place(dest, value)?;
+            }
+
+            MirInst::SenderClone { dest, sender } => {
+                let sender_val = self.gen_operand(sender)?;
+                let sender_i64 = sender_val.into_int_value();
+
+                let sender_clone_fn = self.functions.get("bmb_sender_clone")
+                    .ok_or_else(|| CodeGenError::LlvmError("bmb_sender_clone not declared".to_string()))?;
+
+                let cloned = self.builder
+                    .build_call(*sender_clone_fn, &[sender_i64.into()], "cloned_sender")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                    .try_as_basic_value()
+                    .basic()
+                    .ok_or_else(|| CodeGenError::LlvmError("bmb_sender_clone returned void".to_string()))?;
+
+                self.store_to_place(dest, cloned)?;
+            }
+
+            // Other instructions not yet supported in inkwell codegen
             _ => {
                 return Err(CodeGenError::LlvmError(
                     "Instruction not yet supported in inkwell codegen - use text-based codegen".to_string(),

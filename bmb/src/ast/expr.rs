@@ -315,6 +315,16 @@ pub enum Expr {
         body: Box<Spanned<Expr>>,
     },
 
+    // v0.71: Mutex creation expression
+
+    /// Mutex creation: Mutex::new(value) -> Mutex<T>
+    /// Creates a new mutex wrapping the given value.
+    /// The type T is inferred from the value.
+    MutexNew {
+        /// The initial value to wrap in the mutex
+        value: Box<Spanned<Expr>>,
+    },
+
     // v0.73: Channel creation expression
 
     /// Channel creation: channel<T>(capacity) -> (Sender<T>, Receiver<T>)

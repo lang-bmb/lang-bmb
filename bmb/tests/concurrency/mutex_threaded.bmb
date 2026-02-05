@@ -1,0 +1,38 @@
+// v0.71: Mutex<T> multi-threaded test
+// Tests that Mutex correctly synchronizes access across threads
+
+// Worker function takes Mutex handle and increments the value
+fn increment_worker(m: Mutex<i64>) -> i64 = {
+    // Lock the mutex, increment value, unlock
+    let val = m.lock();
+    m.unlock(val + 1);
+    val + 1  // Return the incremented value
+};
+
+fn main() -> i64 = {
+    // Create a mutex with initial value 0
+    let m: Mutex<i64> = Mutex::new(0);
+
+    // Spawn threads that increment the counter
+    let t1 = spawn { increment_worker(m) };
+    let t2 = spawn { increment_worker(m) };
+
+    // Wait for threads to complete
+    let _r1 = t1.join();
+    let _r2 = t2.join();
+
+    // Lock to get final value
+    let final_val = m.lock();
+    m.unlock(final_val);
+
+    // Free the mutex
+    m.free();
+
+    // Final value should be 2 (both increments happened)
+    // With proper mutex synchronization, it should always be 2
+    if final_val == 2 {
+        0  // Success
+    } else {
+        1  // Failure - unexpected value
+    }
+};
