@@ -434,6 +434,8 @@ impl TextCodeGen {
         writeln!(out, "declare i64 @bmb_channel_recv(i64) nounwind")?;
         writeln!(out, "declare i64 @bmb_channel_try_send(i64, i64) nounwind")?;
         writeln!(out, "declare i64 @bmb_channel_try_recv(i64, ptr) nounwind")?;
+        // v0.77: recv_timeout
+        writeln!(out, "declare i64 @bmb_channel_recv_timeout(i64, i64, ptr) nounwind")?;
         writeln!(out, "declare i64 @bmb_sender_clone(i64) nounwind")?;
         writeln!(out)?;
 
@@ -4356,6 +4358,25 @@ impl TextCodeGen {
                     dest.name, receiver_val, dest.name)?;
                 // For now, just load the value (caller should check success)
                 writeln!(out, "  %{} = load i64, ptr %{}_alloc", dest.name, dest.name)?;
+                if local_names.contains(&dest.name) {
+                    writeln!(out, "  store i64 %{}, ptr %{}.addr", dest.name, dest.name)?;
+                }
+            }
+
+            // v0.77: Receive with timeout
+            MirInst::ChannelRecvTimeout { dest, receiver, timeout_ms } => {
+                let receiver_val = self.format_operand(receiver);
+                let timeout_val = self.format_operand(timeout_ms);
+                // Allocate output value on stack
+                writeln!(out, "  %{}_alloc = alloca i64, align 8", dest.name)?;
+                // Call recv_timeout(receiver, timeout_ms, &value_out) -> success
+                writeln!(out, "  %{}_success = call i64 @bmb_channel_recv_timeout(i64 {}, i64 {}, ptr %{}_alloc)",
+                    dest.name, receiver_val, timeout_val, dest.name)?;
+                // Load the value
+                writeln!(out, "  %{}_loaded = load i64, ptr %{}_alloc", dest.name, dest.name)?;
+                // Select based on success: if success != 0 { value } else { -1 }
+                writeln!(out, "  %{}_is_success = icmp ne i64 %{}_success, 0", dest.name, dest.name)?;
+                writeln!(out, "  %{} = select i1 %{}_is_success, i64 %{}_loaded, i64 -1", dest.name, dest.name, dest.name)?;
                 if local_names.contains(&dest.name) {
                     writeln!(out, "  store i64 %{}, ptr %{}.addr", dest.name, dest.name)?;
                 }

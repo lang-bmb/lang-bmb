@@ -467,6 +467,14 @@ pub enum MirInst {
         receiver: Operand,
     },
 
+    /// v0.77: Receive with timeout: %dest = channel-recv-timeout(%receiver, %timeout_ms)
+    /// Returns received value if successful within timeout, -1 if timeout
+    ChannelRecvTimeout {
+        dest: Place,
+        receiver: Operand,
+        timeout_ms: Operand,
+    },
+
     /// Clone a sender: %dest = sender-clone(sender)
     SenderClone {
         dest: Place,
@@ -1215,6 +1223,10 @@ fn format_mir_inst(inst: &MirInst) -> String {
         }
         MirInst::ChannelTryRecv { dest, receiver } => {
             format!("%{} = channel-try-recv {}", dest.name, format_operand(receiver))
+        }
+        // v0.77: Receive with timeout
+        MirInst::ChannelRecvTimeout { dest, receiver, timeout_ms } => {
+            format!("%{} = channel-recv-timeout {} {}", dest.name, format_operand(receiver), format_operand(timeout_ms))
         }
         MirInst::SenderClone { dest, sender } => {
             format!("%{} = sender-clone {}", dest.name, format_operand(sender))

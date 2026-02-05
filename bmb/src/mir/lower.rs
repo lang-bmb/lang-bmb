@@ -1683,6 +1683,19 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
                 return Operand::Place(dest);
             }
 
+            // v0.77: recv_timeout(ms) - receive with timeout, returns value or -1 if timeout
+            if method == "recv_timeout" && args.len() == 1 {
+                let timeout_op = lower_expr(&args[0], ctx);
+                let dest = ctx.fresh_temp();
+                ctx.locals.insert(dest.name.clone(), MirType::I64);
+                ctx.push_inst(MirInst::ChannelRecvTimeout {
+                    dest: dest.clone(),
+                    receiver: recv_op,
+                    timeout_ms: timeout_op,
+                });
+                return Operand::Place(dest);
+            }
+
             // v0.72: Atomic<T> methods
             // load() - atomically load current value
             if method == "load" && args.is_empty() {

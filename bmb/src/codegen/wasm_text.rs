@@ -1068,6 +1068,13 @@ impl WasmCodeGen {
                 writeln!(out, "    local.set ${}", dest.name)?;
             }
 
+            // v0.77: Receive with timeout (not supported in WASM)
+            MirInst::ChannelRecvTimeout { dest, .. } => {
+                writeln!(out, "    ;; ERROR: Channels not supported in WASM")?;
+                writeln!(out, "    i64.const 0")?;
+                writeln!(out, "    local.set ${}", dest.name)?;
+            }
+
             MirInst::SenderClone { dest, .. } => {
                 writeln!(out, "    ;; ERROR: Channels not supported in WASM")?;
                 writeln!(out, "    i64.const 0")?;
@@ -1635,6 +1642,8 @@ impl WasmCodeGen {
             MirInst::ChannelRecv { dest, .. } => Some((dest.name.clone(), MirType::I64)),
             MirInst::ChannelTrySend { dest, .. } => Some((dest.name.clone(), MirType::I64)),
             MirInst::ChannelTryRecv { dest, .. } => Some((dest.name.clone(), MirType::I64)),
+            // v0.77
+            MirInst::ChannelRecvTimeout { dest, .. } => Some((dest.name.clone(), MirType::I64)),
             MirInst::SenderClone { dest, .. } => Some((dest.name.clone(), MirType::I64)),
             // v0.74: RwLock operations
             MirInst::RwLockNew { dest, .. } => Some((dest.name.clone(), MirType::I64)),

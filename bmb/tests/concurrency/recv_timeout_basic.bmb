@@ -1,0 +1,19 @@
+// v0.77: Test recv_timeout for channels
+fn main() -> i64 = {
+    let ch = channel<i64>(10);
+    let tx = ch.0;
+    let rx = ch.1;
+
+    // Test 1: recv_timeout on empty channel should return -1 (timeout)
+    // Use short timeout (100ms) to keep test fast
+    let timeout_result = rx.recv_timeout(100).unwrap_or(-1);
+    let check1 = if timeout_result == -1 { 0 } else { 1 };  // expect -1 (timeout)
+
+    // Test 2: Send a value, then recv_timeout should get it
+    let ignored = tx.send(42);
+    let value = rx.recv_timeout(1000).unwrap_or(-999);
+    let check2 = if value == 42 { 0 } else { 2 };  // expect 42
+
+    // Return 0 if all checks pass
+    if check1 != 0 { check1 } else { check2 }
+};

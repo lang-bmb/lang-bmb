@@ -14,6 +14,8 @@
 #include <windows.h>
 #else
 #include <pthread.h>
+#include <errno.h>   // v0.77: For ETIMEDOUT
+#include <time.h>    // v0.77: For clock_gettime
 #endif
 
 // BMB Runtime Library
@@ -1453,6 +1455,74 @@ int64_t bmb_channel_try_recv(int64_t receiver_handle, int64_t* value_out) {
     EnterCriticalSection(&ch->lock);
 #else
     pthread_mutex_lock(&ch->lock);
+#endif
+
+    if (ch->count > 0) {
+        *value_out = ch->buffer[ch->tail];
+        ch->tail = (ch->tail + 1) % ch->capacity;
+        ch->count--;
+        success = 1;
+
+#ifdef _WIN32
+        WakeConditionVariable(&ch->not_full);
+#else
+        pthread_cond_signal(&ch->not_full);
+#endif
+    }
+
+#ifdef _WIN32
+    LeaveCriticalSection(&ch->lock);
+#else
+    pthread_mutex_unlock(&ch->lock);
+#endif
+
+    return success;
+}
+
+// v0.77: Receive with timeout (blocking up to timeout_ms milliseconds)
+// Returns 1 if value received, 0 if timeout or closed
+int64_t bmb_channel_recv_timeout(int64_t receiver_handle, int64_t timeout_ms, int64_t* value_out) {
+    BmbReceiver* receiver = (BmbReceiver*)receiver_handle;
+    BmbChannel* ch = receiver->channel;
+    int64_t success = 0;
+
+#ifdef _WIN32
+    EnterCriticalSection(&ch->lock);
+
+    // Wait with timeout
+    DWORD wait_ms = (timeout_ms < 0) ? INFINITE : (DWORD)timeout_ms;
+    while (ch->count == 0 && !ch->closed) {
+        if (!SleepConditionVariableCS(&ch->not_empty, &ch->lock, wait_ms)) {
+            // Timeout or error
+            break;
+        }
+        // If we have a finite timeout, don't loop (could refine with remaining time)
+        if (timeout_ms >= 0) break;
+    }
+#else
+    pthread_mutex_lock(&ch->lock);
+
+    if (timeout_ms < 0) {
+        // Infinite wait
+        while (ch->count == 0 && !ch->closed) {
+            pthread_cond_wait(&ch->not_empty, &ch->lock);
+        }
+    } else {
+        // Timed wait
+        struct timespec ts;
+        clock_gettime(CLOCK_REALTIME, &ts);
+        ts.tv_sec += timeout_ms / 1000;
+        ts.tv_nsec += (timeout_ms % 1000) * 1000000;
+        if (ts.tv_nsec >= 1000000000) {
+            ts.tv_sec++;
+            ts.tv_nsec -= 1000000000;
+        }
+
+        while (ch->count == 0 && !ch->closed) {
+            int rc = pthread_cond_timedwait(&ch->not_empty, &ch->lock, &ts);
+            if (rc == ETIMEDOUT) break;
+        }
+    }
 #endif
 
     if (ch->count > 0) {

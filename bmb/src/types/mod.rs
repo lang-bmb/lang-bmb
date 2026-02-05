@@ -3184,6 +3184,15 @@ impl TypeChecker {
                         }
                         Ok(Type::Nullable(inner_ty.clone()))
                     }
+                    // v0.77: recv_timeout(ms: i64) -> T? - receive with timeout
+                    "recv_timeout" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("recv_timeout() takes exactly one argument (timeout in ms)", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&Type::I64, &arg_ty, args[0].span)?;
+                        Ok(Type::Nullable(inner_ty.clone()))
+                    }
                     _ => Err(CompileError::type_error(
                         format!("unknown method '{}' for Receiver<{}>", method, inner_ty),
                         span,
@@ -3204,6 +3213,15 @@ impl TypeChecker {
                         if !args.is_empty() {
                             return Err(CompileError::type_error("try_recv() takes no arguments", span));
                         }
+                        Ok(Type::Nullable(Box::new(inner_ty.clone())))
+                    }
+                    // v0.77: recv_timeout(ms: i64) -> T? - receive with timeout
+                    "recv_timeout" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("recv_timeout() takes exactly one argument (timeout in ms)", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&Type::I64, &arg_ty, args[0].span)?;
                         Ok(Type::Nullable(Box::new(inner_ty)))
                     }
                     _ => Err(CompileError::type_error(

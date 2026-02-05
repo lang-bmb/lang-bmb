@@ -1060,6 +1060,11 @@ fn collect_used_in_instruction(inst: &MirInst, used: &mut HashSet<String>) {
         MirInst::ChannelTryRecv { receiver, .. } => {
             collect_used_in_operand(receiver, used);
         }
+        // v0.77: Receive with timeout
+        MirInst::ChannelRecvTimeout { receiver, timeout_ms, .. } => {
+            collect_used_in_operand(receiver, used);
+            collect_used_in_operand(timeout_ms, used);
+        }
         MirInst::SenderClone { sender, .. } => {
             collect_used_in_operand(sender, used);
         }
@@ -1171,6 +1176,7 @@ fn has_side_effects(inst: &MirInst) -> bool {
             | MirInst::ChannelRecv { .. }
             | MirInst::ChannelTrySend { .. }
             | MirInst::ChannelTryRecv { .. }
+            | MirInst::ChannelRecvTimeout { .. }  // v0.77
             | MirInst::SenderClone { .. }
             // v0.74: RwLock, Barrier, Condvar have side effects
             | MirInst::RwLockNew { .. }
@@ -5504,6 +5510,7 @@ impl MemoryEffectAnalysis {
             | MirInst::ChannelRecv { .. }
             | MirInst::ChannelTrySend { .. }
             | MirInst::ChannelTryRecv { .. }
+            | MirInst::ChannelRecvTimeout { .. }  // v0.77
             | MirInst::SenderClone { .. }
             // v0.74: RwLock, Barrier, Condvar access shared memory
             | MirInst::RwLockNew { .. }

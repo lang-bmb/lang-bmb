@@ -1029,6 +1029,11 @@ impl<'ctx> LlvmContext<'ctx> {
         let channel_try_recv_fn = self.module.add_function("bmb_channel_try_recv", channel_try_recv_type, None);
         self.functions.insert("bmb_channel_try_recv".to_string(), channel_try_recv_fn);
 
+        // v0.77: bmb_channel_recv_timeout(receiver: i64, timeout_ms: i64, value_out: ptr) -> i64 (1 if received, 0 if timeout)
+        let channel_recv_timeout_type = i64_type.fn_type(&[i64_type.into(), i64_type.into(), ptr_type.into()], false);
+        let channel_recv_timeout_fn = self.module.add_function("bmb_channel_recv_timeout", channel_recv_timeout_type, None);
+        self.functions.insert("bmb_channel_recv_timeout".to_string(), channel_recv_timeout_fn);
+
         // bmb_sender_clone(sender: i64) -> i64 (cloned sender)
         let sender_clone_type = i64_type.fn_type(&[i64_type.into()], false);
         let sender_clone_fn = self.module.add_function("bmb_sender_clone", sender_clone_type, None);
@@ -3625,6 +3630,50 @@ impl<'ctx> LlvmContext<'ctx> {
                 let sentinel = i64_type.const_int((-1i64) as u64, true);
                 let result = self.builder
                     .build_select(is_success, received_value, sentinel.into(), "try_recv_result")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+
+                self.store_to_place(dest, result)?;
+            }
+
+            // v0.77: Receive with timeout
+            MirInst::ChannelRecvTimeout { dest, receiver, timeout_ms } => {
+                let receiver_val = self.gen_operand(receiver)?;
+                let receiver_i64 = receiver_val.into_int_value();
+                let timeout_val = self.gen_operand(timeout_ms)?;
+                let timeout_i64 = timeout_val.into_int_value();
+
+                let channel_recv_timeout_fn = self.functions.get("bmb_channel_recv_timeout")
+                    .ok_or_else(|| CodeGenError::LlvmError("bmb_channel_recv_timeout not declared".to_string()))?;
+
+                let i64_type = self.context.i64_type();
+
+                // Allocate stack space for the output value
+                let value_alloc = self.builder
+                    .build_alloca(i64_type, "recv_timeout_value_alloc")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+
+                // Call bmb_channel_recv_timeout(receiver, timeout_ms, &value_out) -> success (1 or 0)
+                let success = self.builder
+                    .build_call(*channel_recv_timeout_fn, &[receiver_i64.into(), timeout_i64.into(), value_alloc.into()], "recv_timeout_success")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                    .try_as_basic_value()
+                    .basic()
+                    .ok_or_else(|| CodeGenError::LlvmError("bmb_channel_recv_timeout returned void".to_string()))?;
+
+                // Load the received value (valid only if success == 1)
+                let received_value = self.builder
+                    .build_load(i64_type, value_alloc, "recv_timeout_loaded")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+
+                // If success, return value; otherwise return -1 (sentinel for "timeout")
+                let success_i64 = success.into_int_value();
+                let is_success = self.builder
+                    .build_int_compare(inkwell::IntPredicate::NE, success_i64, i64_type.const_zero(), "is_timeout_success")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+
+                let sentinel = i64_type.const_int((-1i64) as u64, true);
+                let result = self.builder
+                    .build_select(is_success, received_value, sentinel.into(), "recv_timeout_result")
                     .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
 
                 self.store_to_place(dest, result)?;
