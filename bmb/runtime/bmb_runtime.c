@@ -984,6 +984,11 @@ typedef struct {
     int64_t (*func)(void*);  // Function pointer to execute
     void* captures;           // Captured variables (packed struct)
     int64_t result;           // Thread result value
+#ifdef _WIN32
+    HANDLE thread_handle;     // Windows thread handle
+#else
+    pthread_t thread_id;      // POSIX thread ID
+#endif
 } BmbThreadContext;
 
 #ifdef _WIN32
@@ -991,54 +996,54 @@ typedef struct {
 
 static DWORD WINAPI bmb_thread_entry_win32(LPVOID arg) {
     BmbThreadContext* ctx = (BmbThreadContext*)arg;
-    // For now, just set result to 0 (placeholder until full capture support)
-    // Full implementation will call ctx->func(ctx->captures)
-    ctx->result = 0;
+    // Call the wrapper function with captures
+    if (ctx->func) {
+        ctx->result = ctx->func(ctx->captures);
+    } else {
+        ctx->result = 0;
+    }
     return 0;
 }
 
 int64_t bmb_spawn(int64_t (*func)(void*), void* captures) {
     BmbThreadContext* ctx = (BmbThreadContext*)malloc(sizeof(BmbThreadContext));
     if (!ctx) return 0;
+
     ctx->func = func;
     ctx->captures = captures;
     ctx->result = 0;
+    ctx->thread_handle = NULL;
 
-    HANDLE* handle = (HANDLE*)malloc(sizeof(HANDLE));
-    if (!handle) {
+    ctx->thread_handle = CreateThread(NULL, 0, bmb_thread_entry_win32, ctx, 0, NULL);
+    if (ctx->thread_handle == NULL) {
         free(ctx);
         return 0;
     }
 
-    *handle = CreateThread(NULL, 0, bmb_thread_entry_win32, ctx, 0, NULL);
-    if (*handle == NULL) {
-        free(ctx);
-        free(handle);
-        return 0;
-    }
-
-    // Pack both handle and context into a single i64 by storing context ptr
-    // The context contains the handle implicitly via CreateThread
-    // For simplicity, we store context address which includes handle reference
-    return (int64_t)ctx | ((int64_t)(uintptr_t)handle << 48);
+    // Return context pointer as handle (context contains thread handle)
+    return (int64_t)(uintptr_t)ctx;
 }
 
 int64_t bmb_join(int64_t thread_handle) {
-    if (thread_handle == 0) return 0;
-
-    // Unpack: low bits are context ptr, high bits are handle ptr
-    BmbThreadContext* ctx = (BmbThreadContext*)(thread_handle & 0xFFFFFFFFFFFF);
-    HANDLE* handle = (HANDLE*)(uintptr_t)(thread_handle >> 48);
-
-    if (handle && *handle) {
-        WaitForSingleObject(*handle, INFINITE);
-        CloseHandle(*handle);
+    // Phase 1 fallback: if handle is a small value (not a valid pointer),
+    // it's the result itself from synchronous execution
+    // Pointers on x64 are typically > 0x10000, so we use that as threshold
+    if (thread_handle >= 0 && thread_handle < 0x10000) {
+        return thread_handle;  // Phase 1: handle IS the result
+    }
+    if (thread_handle < 0) {
+        return thread_handle;  // Also treat negative values as direct results
     }
 
-    int64_t result = ctx ? ctx->result : 0;
+    BmbThreadContext* ctx = (BmbThreadContext*)(uintptr_t)thread_handle;
 
-    if (ctx) free(ctx);
-    if (handle) free(handle);
+    if (ctx->thread_handle) {
+        WaitForSingleObject(ctx->thread_handle, INFINITE);
+        CloseHandle(ctx->thread_handle);
+    }
+
+    int64_t result = ctx->result;
+    free(ctx);
 
     return result;
 }
@@ -1048,9 +1053,12 @@ int64_t bmb_join(int64_t thread_handle) {
 
 static void* bmb_thread_entry_posix(void* arg) {
     BmbThreadContext* ctx = (BmbThreadContext*)arg;
-    // For now, just set result to 0 (placeholder until full capture support)
-    // Full implementation will call ctx->func(ctx->captures)
-    ctx->result = 0;
+    // Call the wrapper function with captures
+    if (ctx->func) {
+        ctx->result = ctx->func(ctx->captures);
+    } else {
+        ctx->result = 0;
+    }
     return &ctx->result;
 }
 
@@ -1061,59 +1069,33 @@ int64_t bmb_spawn(int64_t (*func)(void*), void* captures) {
     ctx->captures = captures;
     ctx->result = 0;
 
-    pthread_t* tid = (pthread_t*)malloc(sizeof(pthread_t));
-    if (!tid) {
+    if (pthread_create(&ctx->thread_id, NULL, bmb_thread_entry_posix, ctx) != 0) {
         free(ctx);
         return 0;
     }
 
-    if (pthread_create(tid, NULL, bmb_thread_entry_posix, ctx) != 0) {
-        free(ctx);
-        free(tid);
-        return 0;
-    }
-
-    // Pack handle: use two parts of the address
-    // Low 32 bits: context pointer (or part of it)
-    // Store both in a struct and return pointer to it
-    typedef struct {
-        pthread_t* thread;
-        BmbThreadContext* ctx;
-    } ThreadPack;
-
-    ThreadPack* pack = (ThreadPack*)malloc(sizeof(ThreadPack));
-    if (!pack) {
-        pthread_detach(*tid);
-        free(tid);
-        free(ctx);
-        return 0;
-    }
-    pack->thread = tid;
-    pack->ctx = ctx;
-
-    return (int64_t)pack;
+    // Return context pointer as handle (context contains thread ID)
+    return (int64_t)(uintptr_t)ctx;
 }
 
 int64_t bmb_join(int64_t thread_handle) {
-    if (thread_handle == 0) return 0;
-
-    typedef struct {
-        pthread_t* thread;
-        BmbThreadContext* ctx;
-    } ThreadPack;
-
-    ThreadPack* pack = (ThreadPack*)thread_handle;
-    void* retval = NULL;
-
-    if (pack->thread) {
-        pthread_join(*pack->thread, &retval);
-        free(pack->thread);
+    // Phase 1 fallback: if handle is a small value (not a valid pointer),
+    // it's the result itself from synchronous execution
+    // Pointers on x64 are typically > 0x10000, so we use that as threshold
+    if (thread_handle >= 0 && thread_handle < 0x10000) {
+        return thread_handle;  // Phase 1: handle IS the result
+    }
+    if (thread_handle < 0) {
+        return thread_handle;  // Also treat negative values as direct results
     }
 
-    int64_t result = pack->ctx ? pack->ctx->result : 0;
+    BmbThreadContext* ctx = (BmbThreadContext*)(uintptr_t)thread_handle;
+    void* retval = NULL;
 
-    if (pack->ctx) free(pack->ctx);
-    free(pack);
+    pthread_join(ctx->thread_id, &retval);
+
+    int64_t result = ctx->result;
+    free(ctx);
 
     return result;
 }

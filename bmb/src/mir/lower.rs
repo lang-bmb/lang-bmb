@@ -446,26 +446,49 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
         }
 
         // v0.70: Spawn expression - creates a new thread
-        // For Phase 1, we use a simplified approach where the body is lowered inline
-        // and we emit a ThreadSpawn instruction that the codegen will handle.
-        // Full capture analysis and synthetic function creation will be added in Phase 2.
+        // Phase 2: Detect simple function call patterns for real async threading.
+        // For `spawn { func(args) }`, we pass the function name and arguments
+        // so codegen can generate a wrapper and spawn a real thread.
         Expr::Spawn { body } => {
-            // Generate a unique name for the spawn function
-            let spawn_fn_name = format!("__spawn_fn_{}", ctx.spawn_counter);
-            ctx.spawn_counter += 1;
+            // Helper to extract Call from expression (handles Block wrapper)
+            fn extract_call(expr: &Spanned<Expr>) -> Option<(&String, &Vec<Spanned<Expr>>)> {
+                match &expr.node {
+                    // Direct call: spawn func(args)
+                    Expr::Call { func, args } => Some((func, args)),
+                    // Block with single expression: spawn { func(args) }
+                    Expr::Block(stmts) if stmts.len() == 1 => {
+                        if let Expr::Call { func, args } = &stmts[0].node {
+                            Some((func, args))
+                        } else {
+                            None
+                        }
+                    }
+                    _ => None,
+                }
+            }
 
-            // Lower the body expression to get its value
-            // Note: In a full implementation, we would extract this as a separate function
-            let body_operand = lower_expr(body, ctx);
+            // Check if body is a simple function call pattern
+            let (target_func, captures) = if let Some((func, args)) = extract_call(body) {
+                // Lower arguments to get their values (evaluated before spawning)
+                let arg_operands: Vec<Operand> = args
+                    .iter()
+                    .map(|arg| lower_expr(arg, ctx))
+                    .collect();
+                (func.clone(), arg_operands)
+            } else {
+                // Not a simple call pattern, fall back to Phase 1 (synchronous)
+                let body_operand = lower_expr(body, ctx);
+                (format!("__spawn_inline_{}", ctx.spawn_counter), vec![body_operand])
+            };
+
+            ctx.spawn_counter += 1;
 
             // Emit ThreadSpawn instruction
             let dest = ctx.fresh_temp();
             ctx.push_inst(MirInst::ThreadSpawn {
                 dest: dest.clone(),
-                func: spawn_fn_name,
-                // For now, pass the body result as the only "capture"
-                // This is a simplified model - the codegen will need to handle this specially
-                captures: vec![body_operand],
+                func: target_func,
+                captures,
             });
 
             // The result is a thread handle

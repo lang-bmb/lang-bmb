@@ -2875,56 +2875,211 @@ impl<'ctx> LlvmContext<'ctx> {
                 self.store_to_place(dest, enum_ptr.into())?;
             }
 
-            // v0.70: Thread spawn - Phase 1 simplified implementation
-            // In Phase 1, the spawn body is lowered inline and the result is passed as a capture.
-            // This means the body has already been executed synchronously.
-            // We use the first capture value as the "result" and store it with a fake handle.
-            // Real async threading will be implemented in Phase 2.
-            MirInst::ThreadSpawn { dest, func: _, captures } => {
+            // v0.70: Thread spawn - Phase 2 implementation with real async threading
+            // For simple function call patterns (spawn { func(args) }), we:
+            // 1. Generate a wrapper function that unpacks captures and calls the target
+            // 2. Package arguments into a captures struct
+            // 3. Call bmb_spawn with wrapper function pointer + captures
+            MirInst::ThreadSpawn { dest, func, captures } => {
                 let i64_type = self.context.i64_type();
+                let ptr_type = self.context.ptr_type(inkwell::AddressSpace::default());
 
-                // Phase 1: The first capture contains the result of the spawn body
-                // (which was executed synchronously during MIR lowering)
-                let result_val = if !captures.is_empty() {
-                    let cap_val = self.gen_operand(&captures[0])?;
-                    if cap_val.is_int_value() {
-                        let int_val = cap_val.into_int_value();
-                        if int_val.get_type().get_bit_width() < 64 {
+                // Check if this is a simple function call pattern (func is a real function name)
+                // vs fallback pattern (func starts with __spawn_inline_)
+                let is_simple_call = !func.starts_with("__spawn_inline_");
+
+                if is_simple_call {
+                    // Phase 2: Real async threading for simple function call patterns
+                    // Generate wrapper function name
+                    let wrapper_name = format!("__spawn_wrapper_{}", func);
+
+                    // Get or create the wrapper function
+                    let wrapper_fn = if let Some(existing) = self.module.get_function(&wrapper_name) {
+                        existing
+                    } else {
+                        // Create wrapper function: i64 (ptr captures)
+                        let wrapper_type = i64_type.fn_type(&[ptr_type.into()], false);
+                        let wrapper = self.module.add_function(&wrapper_name, wrapper_type, None);
+
+                        // Get the target function
+                        let target_fn = self.module.get_function(func)
+                            .or_else(|| self.functions.get(func).copied())
+                            .ok_or_else(|| CodeGenError::LlvmError(
+                                format!("Target function '{}' not found for spawn", func)
+                            ))?;
+
+                        // Build wrapper body
+                        let entry = self.context.append_basic_block(wrapper, "entry");
+                        let saved_block = self.builder.get_insert_block();
+                        self.builder.position_at_end(entry);
+
+                        // Get captures parameter
+                        let captures_param = wrapper.get_nth_param(0)
+                            .ok_or_else(|| CodeGenError::LlvmError("Wrapper missing captures param".to_string()))?
+                            .into_pointer_value();
+
+                        // Load arguments from captures array
+                        let captures_array_type = i64_type.array_type(captures.len().max(1) as u32);
+                        let mut args: Vec<inkwell::values::BasicMetadataValueEnum> = Vec::new();
+                        for i in 0..captures.len() {
+                            let arg_ptr = unsafe {
+                                self.builder
+                                    .build_in_bounds_gep(captures_array_type, captures_param, &[
+                                        i64_type.const_int(0, false),
+                                        i64_type.const_int(i as u64, false),
+                                    ], &format!("arg_{}_ptr", i))
+                                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                            };
+                            let arg_val = self.builder
+                                .build_load(i64_type, arg_ptr, &format!("arg_{}", i))
+                                .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                            args.push(arg_val.into());
+                        }
+
+                        // Call target function
+                        let call_result = self.builder
+                            .build_call(target_fn, &args, "spawn_call")
+                            .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+
+                        // Return result (or 0 if void)
+                        let ret_val = call_result.try_as_basic_value().basic()
+                            .map(|v| {
+                                if v.is_int_value() {
+                                    v.into_int_value()
+                                } else {
+                                    i64_type.const_int(0, false)
+                                }
+                            })
+                            .unwrap_or_else(|| i64_type.const_int(0, false));
+
+                        self.builder.build_return(Some(&ret_val))
+                            .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+
+                        // Restore builder position
+                        if let Some(block) = saved_block {
+                            self.builder.position_at_end(block);
+                        }
+
+                        wrapper
+                    };
+
+                    // Package arguments into captures array
+                    let captures_alloc = if !captures.is_empty() {
+                        let captures_array_type = i64_type.array_type(captures.len() as u32);
+                        let alloc = self.builder
+                            .build_alloca(captures_array_type, &format!("{}_captures", dest.name))
+                            .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+
+                        for (i, cap) in captures.iter().enumerate() {
+                            let cap_val = self.gen_operand(cap)?;
+                            let cap_i64 = if cap_val.is_int_value() {
+                                let int_val = cap_val.into_int_value();
+                                if int_val.get_type().get_bit_width() < 64 {
+                                    self.builder
+                                        .build_int_s_extend(int_val, i64_type, "cap_sext")
+                                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                                } else {
+                                    int_val
+                                }
+                            } else if cap_val.is_pointer_value() {
+                                self.builder
+                                    .build_ptr_to_int(cap_val.into_pointer_value(), i64_type, "cap_ptrtoint")
+                                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                            } else {
+                                i64_type.const_int(0, false)
+                            };
+
+                            let cap_ptr = unsafe {
+                                self.builder
+                                    .build_in_bounds_gep(captures_array_type, alloc, &[
+                                        i64_type.const_int(0, false),
+                                        i64_type.const_int(i as u64, false),
+                                    ], &format!("cap_{}_ptr", i))
+                                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                            };
+                            self.builder.build_store(cap_ptr, cap_i64)
+                                .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                        }
+                        alloc
+                    } else {
+                        ptr_type.const_null()
+                    };
+
+                    // Call bmb_spawn(wrapper_fn_ptr, captures_ptr)
+                    let spawn_fn = self.functions.get("bmb_spawn")
+                        .ok_or_else(|| CodeGenError::LlvmError("bmb_spawn not declared".to_string()))?;
+
+                    let wrapper_ptr = wrapper_fn.as_global_value().as_pointer_value();
+                    let handle = self.builder
+                        .build_call(*spawn_fn, &[wrapper_ptr.into(), captures_alloc.into()], &format!("{}_handle", dest.name))
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                        .try_as_basic_value()
+                        .basic()
+                        .ok_or_else(|| CodeGenError::LlvmError("bmb_spawn returned void".to_string()))?;
+
+                    self.store_to_place(dest, handle)?;
+                } else {
+                    // Fallback: Phase 1 synchronous execution for complex patterns
+                    // The first capture contains the already-computed result
+                    let result_val = if !captures.is_empty() {
+                        let cap_val = self.gen_operand(&captures[0])?;
+                        if cap_val.is_int_value() {
+                            let int_val = cap_val.into_int_value();
+                            if int_val.get_type().get_bit_width() < 64 {
+                                self.builder
+                                    .build_int_s_extend(int_val, i64_type, "spawn_result_sext")
+                                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                                    .into()
+                            } else {
+                                cap_val
+                            }
+                        } else if cap_val.is_pointer_value() {
                             self.builder
-                                .build_int_s_extend(int_val, i64_type, "spawn_result_sext")
+                                .build_ptr_to_int(cap_val.into_pointer_value(), i64_type, "spawn_result_ptrtoint")
                                 .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
                                 .into()
                         } else {
                             cap_val
                         }
-                    } else if cap_val.is_pointer_value() {
-                        self.builder
-                            .build_ptr_to_int(cap_val.into_pointer_value(), i64_type, "spawn_result_ptrtoint")
-                            .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
-                            .into()
                     } else {
-                        cap_val
-                    }
-                } else {
-                    // No captures means the spawn body returned unit
-                    i64_type.const_int(0, false).into()
-                };
+                        i64_type.const_int(0, false).into()
+                    };
 
-                // Store the result directly as the "handle"
-                // In Phase 1, the handle IS the result value (no actual threading)
-                self.store_to_place(dest, result_val)?;
+                    self.store_to_place(dest, result_val)?;
+                }
             }
 
-            // v0.70: Thread join - Phase 1 simplified implementation
-            // In Phase 1, the handle IS the result (from the synchronous execution above).
-            // We just return the handle value directly.
-            // Real thread waiting will be implemented in Phase 2.
+            // v0.70: Thread join - calls bmb_join for real threads, or returns value for fallback
             MirInst::ThreadJoin { dest, handle } => {
                 let handle_val = self.gen_operand(handle)?;
+                let i64_type = self.context.i64_type();
 
-                // Phase 1: The handle is the result, just return it
+                // Convert handle to i64 if needed
+                let handle_i64 = if handle_val.is_int_value() {
+                    handle_val.into_int_value()
+                } else if handle_val.is_pointer_value() {
+                    self.builder
+                        .build_ptr_to_int(handle_val.into_pointer_value(), i64_type, "handle_ptrtoint")
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                } else {
+                    return Err(CodeGenError::LlvmError(
+                        "ThreadJoin handle must be integer or pointer".to_string()
+                    ));
+                };
+
+                // Call bmb_join(handle) for real threading
+                let join_fn = self.functions.get("bmb_join")
+                    .ok_or_else(|| CodeGenError::LlvmError("bmb_join not declared".to_string()))?;
+
+                let result = self.builder
+                    .build_call(*join_fn, &[handle_i64.into()], "join_result")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                    .try_as_basic_value()
+                    .basic()
+                    .ok_or_else(|| CodeGenError::LlvmError("bmb_join returned void".to_string()))?;
+
                 if let Some(d) = dest {
-                    self.store_to_place(d, handle_val)?;
+                    self.store_to_place(d, result)?;
                 }
             }
 
