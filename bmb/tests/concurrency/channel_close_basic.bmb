@@ -1,0 +1,43 @@
+// v0.80: Test channel close operations
+fn main() -> i64 = {
+    // Create a bounded channel with capacity 2
+    let ch = channel<i64>(2);
+    let tx = ch.0;
+    let rx = ch.1;
+
+    // Test 1: Send two values before closing
+    tx.send(10);
+    tx.send(20);
+
+    // Test 2: Check is_closed before closing (should be false)
+    let closed_before = rx.is_closed();
+    let check1 = if closed_before { 1 } else { 0 };  // expect false (0)
+
+    // Test 3: Close the channel
+    tx.close();
+
+    // Test 4: Check is_closed after closing (should be true)
+    let closed_after = rx.is_closed();
+    let check2 = if closed_after { 0 } else { 2 };  // expect true (0)
+
+    // Test 5: recv_opt should still get buffered values
+    let val1_opt = rx.recv_opt();
+    let val1 = val1_opt.unwrap_or(-99);  // Use unwrap_or to handle nullable
+    let check3 = if val1 == 10 { 0 } else { 3 };  // expect 10
+
+    let val2_opt = rx.recv_opt();
+    let val2 = val2_opt.unwrap_or(-99);
+    let check4 = if val2 == 20 { 0 } else { 4 };  // expect 20
+
+    // Test 6: recv_opt on closed+empty channel should return None (-1)
+    let val3_opt = rx.recv_opt();
+    let is_none = val3_opt.is_none();
+    let check5 = if is_none { 0 } else { 5 };  // expect None
+
+    // Return 0 if all checks pass
+    if check1 != 0 { check1 }
+    else if check2 != 0 { check2 }
+    else if check3 != 0 { check3 }
+    else if check4 != 0 { check4 }
+    else { check5 }
+};

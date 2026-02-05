@@ -1044,6 +1044,21 @@ impl<'ctx> LlvmContext<'ctx> {
         let channel_send_timeout_fn = self.module.add_function("bmb_channel_send_timeout", channel_send_timeout_type, None);
         self.functions.insert("bmb_channel_send_timeout".to_string(), channel_send_timeout_fn);
 
+        // v0.80: bmb_channel_close(sender: i64) -> void
+        let channel_close_type = void_type.fn_type(&[i64_type.into()], false);
+        let channel_close_fn = self.module.add_function("bmb_channel_close", channel_close_type, None);
+        self.functions.insert("bmb_channel_close".to_string(), channel_close_fn);
+
+        // v0.80: bmb_channel_is_closed(receiver: i64) -> i64 (1 if closed, 0 otherwise)
+        let channel_is_closed_type = i64_type.fn_type(&[i64_type.into()], false);
+        let channel_is_closed_fn = self.module.add_function("bmb_channel_is_closed", channel_is_closed_type, None);
+        self.functions.insert("bmb_channel_is_closed".to_string(), channel_is_closed_fn);
+
+        // v0.80: bmb_channel_recv_opt(receiver: i64, value_out: *i64) -> i64 (1 if received, 0 if closed and empty)
+        let channel_recv_opt_type = i64_type.fn_type(&[i64_type.into(), ptr_type.into()], false);
+        let channel_recv_opt_fn = self.module.add_function("bmb_channel_recv_opt", channel_recv_opt_type, None);
+        self.functions.insert("bmb_channel_recv_opt".to_string(), channel_recv_opt_fn);
+
         // bmb_sender_clone(sender: i64) -> i64 (cloned sender)
         let sender_clone_type = i64_type.fn_type(&[i64_type.into()], false);
         let sender_clone_fn = self.module.add_function("bmb_sender_clone", sender_clone_type, None);
@@ -3725,6 +3740,76 @@ impl<'ctx> LlvmContext<'ctx> {
                     .try_as_basic_value()
                     .basic()
                     .ok_or_else(|| CodeGenError::LlvmError("bmb_channel_send_timeout returned void".to_string()))?;
+
+                self.store_to_place(dest, result)?;
+            }
+
+            // v0.80: Channel close operations
+            MirInst::ChannelClose { sender } => {
+                let sender_val = self.gen_operand(sender)?;
+                let sender_i64 = sender_val.into_int_value();
+
+                let channel_close_fn = self.functions.get("bmb_channel_close")
+                    .ok_or_else(|| CodeGenError::LlvmError("bmb_channel_close not declared".to_string()))?;
+
+                self.builder
+                    .build_call(*channel_close_fn, &[sender_i64.into()], "")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+            }
+
+            MirInst::ChannelIsClosed { dest, receiver } => {
+                let receiver_val = self.gen_operand(receiver)?;
+                let receiver_i64 = receiver_val.into_int_value();
+
+                let channel_is_closed_fn = self.functions.get("bmb_channel_is_closed")
+                    .ok_or_else(|| CodeGenError::LlvmError("bmb_channel_is_closed not declared".to_string()))?;
+
+                let result = self.builder
+                    .build_call(*channel_is_closed_fn, &[receiver_i64.into()], "is_closed_result")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                    .try_as_basic_value()
+                    .basic()
+                    .ok_or_else(|| CodeGenError::LlvmError("bmb_channel_is_closed returned void".to_string()))?;
+
+                self.store_to_place(dest, result)?;
+            }
+
+            MirInst::ChannelRecvOpt { dest, receiver } => {
+                let receiver_val = self.gen_operand(receiver)?;
+                let receiver_i64 = receiver_val.into_int_value();
+
+                // Allocate space for the output value
+                let i64_type = self.context.i64_type();
+                let value_ptr = self.builder
+                    .build_alloca(i64_type, "recv_opt_value")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+
+                let channel_recv_opt_fn = self.functions.get("bmb_channel_recv_opt")
+                    .ok_or_else(|| CodeGenError::LlvmError("bmb_channel_recv_opt not declared".to_string()))?;
+
+                let success = self.builder
+                    .build_call(*channel_recv_opt_fn, &[receiver_i64.into(), value_ptr.into()], "recv_opt_success")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                    .try_as_basic_value()
+                    .basic()
+                    .ok_or_else(|| CodeGenError::LlvmError("bmb_channel_recv_opt returned void".to_string()))?;
+
+                // Load the value from the pointer
+                let value = self.builder
+                    .build_load(i64_type, value_ptr, "recv_opt_loaded")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+
+                // If success == 1, use value; otherwise use -1 (None)
+                let success_i64 = success.into_int_value();
+                let one = i64_type.const_int(1, false);
+                let cond = self.builder
+                    .build_int_compare(inkwell::IntPredicate::EQ, success_i64, one, "recv_opt_cond")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+
+                let none_val = i64_type.const_int((-1i64) as u64, true);
+                let result = self.builder
+                    .build_select(cond, value, none_val.into(), "recv_opt_result")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
 
                 self.store_to_place(dest, result)?;
             }

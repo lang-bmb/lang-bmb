@@ -491,6 +491,24 @@ pub enum MirInst {
         timeout_ms: Operand,
     },
 
+    /// v0.80: Close a channel: channel-close(sender)
+    ChannelClose {
+        sender: Operand,
+    },
+
+    /// v0.80: Check if channel is closed: %dest = channel-is-closed(receiver)
+    ChannelIsClosed {
+        dest: Place,
+        receiver: Operand,
+    },
+
+    /// v0.80: Receive with closed awareness: %dest = channel-recv-opt(receiver)
+    /// Returns Some(value) if received, None if channel closed and empty
+    ChannelRecvOpt {
+        dest: Place,
+        receiver: Operand,
+    },
+
     /// Clone a sender: %dest = sender-clone(sender)
     SenderClone {
         dest: Place,
@@ -1251,6 +1269,16 @@ fn format_mir_inst(inst: &MirInst) -> String {
         // v0.79: Send with timeout
         MirInst::ChannelSendTimeout { dest, sender, value, timeout_ms } => {
             format!("%{} = channel-send-timeout {} {} {}", dest.name, format_operand(sender), format_operand(value), format_operand(timeout_ms))
+        }
+        // v0.80: Channel close operations
+        MirInst::ChannelClose { sender } => {
+            format!("channel-close {}", format_operand(sender))
+        }
+        MirInst::ChannelIsClosed { dest, receiver } => {
+            format!("%{} = channel-is-closed {}", dest.name, format_operand(receiver))
+        }
+        MirInst::ChannelRecvOpt { dest, receiver } => {
+            format!("%{} = channel-recv-opt {}", dest.name, format_operand(receiver))
         }
         MirInst::SenderClone { dest, sender } => {
             format!("%{} = sender-clone {}", dest.name, format_operand(sender))

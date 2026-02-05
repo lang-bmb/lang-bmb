@@ -441,6 +441,10 @@ impl TextCodeGen {
         writeln!(out, "declare i64 @bmb_block_on(i64) nounwind")?;
         // v0.79: send_timeout
         writeln!(out, "declare i64 @bmb_channel_send_timeout(i64, i64, i64) nounwind")?;
+        // v0.80: channel close operations
+        writeln!(out, "declare void @bmb_channel_close(i64) nounwind")?;
+        writeln!(out, "declare i64 @bmb_channel_is_closed(i64) nounwind")?;
+        writeln!(out, "declare i64 @bmb_channel_recv_opt(i64, ptr) nounwind")?;
         writeln!(out)?;
 
         // v0.74: RwLock runtime functions
@@ -4402,6 +4406,35 @@ impl TextCodeGen {
                 let timeout_val = self.format_operand(timeout_ms);
                 writeln!(out, "  %{} = call i64 @bmb_channel_send_timeout(i64 {}, i64 {}, i64 {})",
                     dest.name, sender_val, value_val, timeout_val)?;
+                if local_names.contains(&dest.name) {
+                    writeln!(out, "  store i64 %{}, ptr %{}.addr", dest.name, dest.name)?;
+                }
+            }
+
+            // v0.80: Channel close operations
+            MirInst::ChannelClose { sender } => {
+                let sender_val = self.format_operand(sender);
+                writeln!(out, "  call void @bmb_channel_close(i64 {})", sender_val)?;
+            }
+
+            MirInst::ChannelIsClosed { dest, receiver } => {
+                let receiver_val = self.format_operand(receiver);
+                writeln!(out, "  %{} = call i64 @bmb_channel_is_closed(i64 {})", dest.name, receiver_val)?;
+                if local_names.contains(&dest.name) {
+                    writeln!(out, "  store i64 %{}, ptr %{}.addr", dest.name, dest.name)?;
+                }
+            }
+
+            MirInst::ChannelRecvOpt { dest, receiver } => {
+                let receiver_val = self.format_operand(receiver);
+                // recv_opt uses a pointer to get the value
+                writeln!(out, "  %{}.ptr = alloca i64", dest.name)?;
+                writeln!(out, "  %{}.success = call i64 @bmb_channel_recv_opt(i64 {}, ptr %{}.ptr)", dest.name, receiver_val, dest.name)?;
+                // If success, load value; if not (closed), return -1 (None)
+                writeln!(out, "  %{}.tmp = load i64, ptr %{}.ptr", dest.name, dest.name)?;
+                // Use select to get -1 for closed channel
+                writeln!(out, "  %{}.cond = icmp eq i64 %{}.success, 1", dest.name, dest.name)?;
+                writeln!(out, "  %{} = select i1 %{}.cond, i64 %{}.tmp, i64 -1", dest.name, dest.name, dest.name)?;
                 if local_names.contains(&dest.name) {
                     writeln!(out, "  store i64 %{}, ptr %{}.addr", dest.name, dest.name)?;
                 }

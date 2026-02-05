@@ -1686,6 +1686,14 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
                 return Operand::Place(dest);
             }
 
+            // v0.80: close() - close the channel, no more sends allowed
+            if method == "close" && args.is_empty() {
+                ctx.push_inst(MirInst::ChannelClose {
+                    sender: recv_op,
+                });
+                return Operand::Constant(Constant::Unit);
+            }
+
             // v0.73: Receiver<T> methods
             // recv() - blocking receive
             if method == "recv" && args.is_empty() {
@@ -1718,6 +1726,28 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
                     dest: dest.clone(),
                     receiver: recv_op,
                     timeout_ms: timeout_op,
+                });
+                return Operand::Place(dest);
+            }
+
+            // v0.80: is_closed() - check if channel is closed
+            if method == "is_closed" && args.is_empty() {
+                let dest = ctx.fresh_temp();
+                ctx.locals.insert(dest.name.clone(), MirType::I64);
+                ctx.push_inst(MirInst::ChannelIsClosed {
+                    dest: dest.clone(),
+                    receiver: recv_op,
+                });
+                return Operand::Place(dest);
+            }
+
+            // v0.80: recv_opt() - receive with closed awareness
+            if method == "recv_opt" && args.is_empty() {
+                let dest = ctx.fresh_temp();
+                ctx.locals.insert(dest.name.clone(), MirType::I64);
+                ctx.push_inst(MirInst::ChannelRecvOpt {
+                    dest: dest.clone(),
+                    receiver: recv_op,
                 });
                 return Operand::Place(dest);
             }

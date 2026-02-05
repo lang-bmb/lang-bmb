@@ -3151,6 +3151,13 @@ impl TypeChecker {
                         }
                         Ok(Type::Sender(inner_ty.clone()))
                     }
+                    // v0.80: close() -> () - closes the channel, no more sends allowed
+                    "close" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("close() takes no arguments", span));
+                        }
+                        Ok(Type::Unit)
+                    }
                     _ => Err(CompileError::type_error(
                         format!("unknown method '{}' for Sender<{}>", method, inner_ty),
                         span,
@@ -3194,6 +3201,13 @@ impl TypeChecker {
                         }
                         Ok(Type::Generic { name: "Sender".to_string(), type_args: type_args.clone() })
                     }
+                    // v0.80: close() -> () - closes the channel, no more sends allowed
+                    "close" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("close() takes no arguments", span));
+                        }
+                        Ok(Type::Unit)
+                    }
                     _ => Err(CompileError::type_error(
                         format!("unknown method '{}' for Sender<{}>", method, inner_ty),
                         span,
@@ -3226,6 +3240,20 @@ impl TypeChecker {
                         self.unify(&Type::I64, &arg_ty, args[0].span)?;
                         Ok(Type::Nullable(inner_ty.clone()))
                     }
+                    // v0.80: is_closed() -> bool - check if channel is closed
+                    "is_closed" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("is_closed() takes no arguments", span));
+                        }
+                        Ok(Type::Bool)
+                    }
+                    // v0.80: recv_opt() -> T? - receive that distinguishes closed from empty
+                    "recv_opt" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("recv_opt() takes no arguments", span));
+                        }
+                        Ok(Type::Nullable(inner_ty.clone()))
+                    }
                     _ => Err(CompileError::type_error(
                         format!("unknown method '{}' for Receiver<{}>", method, inner_ty),
                         span,
@@ -3255,6 +3283,20 @@ impl TypeChecker {
                         }
                         let arg_ty = self.infer(&args[0].node, args[0].span)?;
                         self.unify(&Type::I64, &arg_ty, args[0].span)?;
+                        Ok(Type::Nullable(Box::new(inner_ty.clone())))
+                    }
+                    // v0.80: is_closed() -> bool - check if channel is closed
+                    "is_closed" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("is_closed() takes no arguments", span));
+                        }
+                        Ok(Type::Bool)
+                    }
+                    // v0.80: recv_opt() -> T? - receive that distinguishes closed from empty
+                    "recv_opt" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("recv_opt() takes no arguments", span));
+                        }
                         Ok(Type::Nullable(Box::new(inner_ty)))
                     }
                     _ => Err(CompileError::type_error(

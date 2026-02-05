@@ -1075,6 +1075,16 @@ fn collect_used_in_instruction(inst: &MirInst, used: &mut HashSet<String>) {
             collect_used_in_operand(value, used);
             collect_used_in_operand(timeout_ms, used);
         }
+        // v0.80: Channel close instructions
+        MirInst::ChannelClose { sender } => {
+            collect_used_in_operand(sender, used);
+        }
+        MirInst::ChannelIsClosed { receiver, .. } => {
+            collect_used_in_operand(receiver, used);
+        }
+        MirInst::ChannelRecvOpt { receiver, .. } => {
+            collect_used_in_operand(receiver, used);
+        }
         MirInst::SenderClone { sender, .. } => {
             collect_used_in_operand(sender, used);
         }
@@ -1189,6 +1199,9 @@ fn has_side_effects(inst: &MirInst) -> bool {
             | MirInst::ChannelRecvTimeout { .. }  // v0.77
             | MirInst::BlockOn { .. }  // v0.78
             | MirInst::ChannelSendTimeout { .. }  // v0.79
+            | MirInst::ChannelClose { .. }  // v0.80
+            | MirInst::ChannelIsClosed { .. }  // v0.80
+            | MirInst::ChannelRecvOpt { .. }  // v0.80
             | MirInst::SenderClone { .. }
             // v0.74: RwLock, Barrier, Condvar have side effects
             | MirInst::RwLockNew { .. }
@@ -5525,6 +5538,9 @@ impl MemoryEffectAnalysis {
             | MirInst::ChannelRecvTimeout { .. }  // v0.77
             | MirInst::BlockOn { .. }  // v0.78
             | MirInst::ChannelSendTimeout { .. }  // v0.79
+            | MirInst::ChannelClose { .. }  // v0.80
+            | MirInst::ChannelIsClosed { .. }  // v0.80
+            | MirInst::ChannelRecvOpt { .. }  // v0.80
             | MirInst::SenderClone { .. }
             // v0.74: RwLock, Barrier, Condvar access shared memory
             | MirInst::RwLockNew { .. }

@@ -1089,6 +1089,23 @@ impl WasmCodeGen {
                 writeln!(out, "    local.set ${}", dest.name)?;
             }
 
+            // v0.80: Channel close operations (not supported in WASM)
+            MirInst::ChannelClose { .. } => {
+                writeln!(out, "    ;; ERROR: Channels not supported in WASM")?;
+            }
+
+            MirInst::ChannelIsClosed { dest, .. } => {
+                writeln!(out, "    ;; ERROR: Channels not supported in WASM")?;
+                writeln!(out, "    i64.const 0")?;
+                writeln!(out, "    local.set ${}", dest.name)?;
+            }
+
+            MirInst::ChannelRecvOpt { dest, .. } => {
+                writeln!(out, "    ;; ERROR: Channels not supported in WASM")?;
+                writeln!(out, "    i64.const -1")?;
+                writeln!(out, "    local.set ${}", dest.name)?;
+            }
+
             MirInst::SenderClone { dest, .. } => {
                 writeln!(out, "    ;; ERROR: Channels not supported in WASM")?;
                 writeln!(out, "    i64.const 0")?;
@@ -1662,6 +1679,10 @@ impl WasmCodeGen {
             MirInst::BlockOn { dest, .. } => Some((dest.name.clone(), MirType::I64)),
             // v0.79
             MirInst::ChannelSendTimeout { dest, .. } => Some((dest.name.clone(), MirType::I64)),
+            // v0.80: Channel close operations
+            MirInst::ChannelClose { .. } => None,
+            MirInst::ChannelIsClosed { dest, .. } => Some((dest.name.clone(), MirType::I64)),
+            MirInst::ChannelRecvOpt { dest, .. } => Some((dest.name.clone(), MirType::I64)),
             MirInst::SenderClone { dest, .. } => Some((dest.name.clone(), MirType::I64)),
             // v0.74: RwLock operations
             MirInst::RwLockNew { dest, .. } => Some((dest.name.clone(), MirType::I64)),

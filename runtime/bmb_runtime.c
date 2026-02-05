@@ -1632,6 +1632,87 @@ int64_t bmb_sender_clone(int64_t sender_handle) {
     return (int64_t)new_sender;
 }
 
+// v0.80: Close a channel (signal no more values will be sent)
+void bmb_channel_close(int64_t sender_handle) {
+    BmbSender* sender = (BmbSender*)sender_handle;
+    BmbChannel* ch = sender->channel;
+
+#ifdef _WIN32
+    EnterCriticalSection(&ch->lock);
+    ch->closed = 1;
+    // Wake all waiting receivers
+    WakeAllConditionVariable(&ch->not_empty);
+    // Wake all waiting senders
+    WakeAllConditionVariable(&ch->not_full);
+    LeaveCriticalSection(&ch->lock);
+#else
+    pthread_mutex_lock(&ch->lock);
+    ch->closed = 1;
+    pthread_cond_broadcast(&ch->not_empty);
+    pthread_cond_broadcast(&ch->not_full);
+    pthread_mutex_unlock(&ch->lock);
+#endif
+}
+
+// v0.80: Check if channel is closed
+int64_t bmb_channel_is_closed(int64_t receiver_handle) {
+    BmbReceiver* receiver = (BmbReceiver*)receiver_handle;
+    BmbChannel* ch = receiver->channel;
+    int64_t closed;
+
+#ifdef _WIN32
+    EnterCriticalSection(&ch->lock);
+    closed = ch->closed;
+    LeaveCriticalSection(&ch->lock);
+#else
+    pthread_mutex_lock(&ch->lock);
+    closed = ch->closed;
+    pthread_mutex_unlock(&ch->lock);
+#endif
+
+    return closed;
+}
+
+// v0.80: Receive with closed awareness (returns 1 if value received, 0 if closed and empty)
+int64_t bmb_channel_recv_opt(int64_t receiver_handle, int64_t* value_out) {
+    BmbReceiver* receiver = (BmbReceiver*)receiver_handle;
+    BmbChannel* ch = receiver->channel;
+    int64_t success = 0;
+
+#ifdef _WIN32
+    EnterCriticalSection(&ch->lock);
+    while (ch->count == 0 && !ch->closed) {
+        SleepConditionVariableCS(&ch->not_empty, &ch->lock, INFINITE);
+    }
+#else
+    pthread_mutex_lock(&ch->lock);
+    while (ch->count == 0 && !ch->closed) {
+        pthread_cond_wait(&ch->not_empty, &ch->lock);
+    }
+#endif
+
+    if (ch->count > 0) {
+        *value_out = ch->buffer[ch->tail];
+        ch->tail = (ch->tail + 1) % ch->capacity;
+        ch->count--;
+        success = 1;
+
+#ifdef _WIN32
+        WakeConditionVariable(&ch->not_full);
+#else
+        pthread_cond_signal(&ch->not_full);
+#endif
+    }
+
+#ifdef _WIN32
+    LeaveCriticalSection(&ch->lock);
+#else
+    pthread_mutex_unlock(&ch->lock);
+#endif
+
+    return success;
+}
+
 // ============================================================================
 // v0.74: RwLock Support (Reader-Writer Lock)
 // ============================================================================
