@@ -1899,6 +1899,10 @@ fn format_type(ty: &bmb::ast::Type) -> String {
         // v0.73: Sender and Receiver types
         Type::Sender(inner) => format!("Sender<{}>", format_type(inner)),
         Type::Receiver(inner) => format!("Receiver<{}>", format_type(inner)),
+        // v0.74: RwLock, Barrier, Condvar
+        Type::RwLock(inner) => format!("RwLock<{}>", format_type(inner)),
+        Type::Barrier => "Barrier".to_string(),
+        Type::Condvar => "Condvar".to_string(),
     }
 }
 
@@ -1929,6 +1933,10 @@ fn format_expr(expr: &bmb::ast::Expr) -> String {
             format_type(&elem_ty.node),
             format_expr(&capacity.node)
         ),
+        // v0.74: RwLock, Barrier, Condvar creation expressions
+        Expr::RwLockNew { value } => format!("RwLock::new({})", format_expr(&value.node)),
+        Expr::BarrierNew { count } => format!("Barrier::new({})", format_expr(&count.node)),
+        Expr::CondvarNew => "Condvar::new()".to_string(),
         Expr::Var(name) => name.clone(),
         Expr::Ret => "ret".to_string(),
         Expr::It => "it".to_string(),

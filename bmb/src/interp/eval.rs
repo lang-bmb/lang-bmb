@@ -423,6 +423,17 @@ impl Interpreter {
                 Err(RuntimeError::todo("channel expressions require native compilation; use 'bmb build' instead of 'bmb run'"))
             }
 
+            // v0.74: RwLock, Barrier, Condvar - not supported in interpreter
+            Expr::RwLockNew { .. } => {
+                Err(RuntimeError::todo("RwLock expressions require native compilation; use 'bmb build' instead of 'bmb run'"))
+            }
+            Expr::BarrierNew { .. } => {
+                Err(RuntimeError::todo("Barrier expressions require native compilation; use 'bmb build' instead of 'bmb run'"))
+            }
+            Expr::CondvarNew => {
+                Err(RuntimeError::todo("Condvar expressions require native compilation; use 'bmb build' instead of 'bmb run'"))
+            }
+
             Expr::Var(name) => {
                 env.borrow()
                     .get(name)

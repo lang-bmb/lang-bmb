@@ -1,0 +1,17 @@
+// v0.74: Barrier basic test (simplified)
+// Tests barrier creation and single-thread wait
+
+fn main() -> i64 = {
+    // Create a barrier for 1 thread (simplest case)
+    let barrier = Barrier::new(1);
+
+    // Single thread should immediately pass
+    let is_leader = barrier.wait();
+
+    // The single thread should be the leader
+    if is_leader {
+        0  // Success
+    } else {
+        1  // Should have been leader
+    }
+};

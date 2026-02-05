@@ -1,0 +1,28 @@
+// v0.74: RwLock<T> basic test
+// Tests reader-writer lock functionality
+
+fn main() -> i64 = {
+    // Create RwLock with initial value 42
+    let rw = RwLock::new(42);
+
+    // Test read operation
+    let val = rw.read();
+    rw.read_unlock();
+
+    // Test write operation
+    let val2 = rw.write();
+    rw.write_unlock(100);
+
+    // Verify write took effect
+    let val3 = rw.read();
+    rw.read_unlock();
+
+    // Validate results
+    if val != 42 {
+        1  // read() returned wrong initial value
+    } else if val3 != 100 {
+        2  // write_unlock() did not update value
+    } else {
+        0  // Success
+    }
+};

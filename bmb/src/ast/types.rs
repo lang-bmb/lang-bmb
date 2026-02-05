@@ -147,6 +147,23 @@ pub enum Type {
     /// Use .recv() to receive messages (blocking when buffer is empty).
     /// There is only one receiver per channel (single-consumer).
     Receiver(Box<Type>),
+
+    // v0.74: Advanced synchronization primitives
+
+    /// RwLock type: RwLock<T>
+    /// Reader-writer lock for concurrent read access with exclusive write access.
+    /// Use .read() for shared read access, .write() for exclusive write access.
+    RwLock(Box<Type>),
+
+    /// Barrier type: Barrier
+    /// Synchronization point where threads wait until all arrive.
+    /// Use .wait() to block until all threads reach the barrier.
+    Barrier,
+
+    /// Condvar type: Condvar
+    /// Condition variable for thread signaling.
+    /// Use .wait(mutex) to wait, .notify_one() or .notify_all() to wake threads.
+    Condvar,
 }
 
 /// Manual PartialEq implementation for Type
@@ -218,6 +235,10 @@ impl PartialEq for Type {
             // v0.73: Sender and Receiver type equality
             (Type::Sender(a), Type::Sender(b)) => a == b,
             (Type::Receiver(a), Type::Receiver(b)) => a == b,
+            // v0.74: RwLock, Barrier, Condvar type equality
+            (Type::RwLock(a), Type::RwLock(b)) => a == b,
+            (Type::Barrier, Type::Barrier) => true,
+            (Type::Condvar, Type::Condvar) => true,
             _ => false,
         }
     }
@@ -335,6 +356,10 @@ impl std::fmt::Display for Type {
             // v0.73: Sender and Receiver type display
             Type::Sender(inner) => write!(f, "Sender<{inner}>"),
             Type::Receiver(inner) => write!(f, "Receiver<{inner}>"),
+            // v0.74: RwLock, Barrier, Condvar type display
+            Type::RwLock(inner) => write!(f, "RwLock<{inner}>"),
+            Type::Barrier => write!(f, "Barrier"),
+            Type::Condvar => write!(f, "Condvar"),
         }
     }
 }

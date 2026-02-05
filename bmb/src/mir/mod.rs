@@ -472,6 +472,75 @@ pub enum MirInst {
         dest: Place,
         sender: Operand,
     },
+
+    // v0.74: RwLock instructions
+
+    /// Create a new RwLock: %dest = rwlock-new(value)
+    RwLockNew {
+        dest: Place,
+        initial_value: Operand,
+    },
+
+    /// Acquire read lock: %dest = rwlock-read(rwlock)
+    RwLockRead {
+        dest: Place,
+        rwlock: Operand,
+    },
+
+    /// Release read lock: rwlock-read-unlock(rwlock)
+    RwLockReadUnlock {
+        rwlock: Operand,
+    },
+
+    /// Acquire write lock: %dest = rwlock-write(rwlock)
+    RwLockWrite {
+        dest: Place,
+        rwlock: Operand,
+    },
+
+    /// Release write lock: rwlock-write-unlock(rwlock, value)
+    RwLockWriteUnlock {
+        rwlock: Operand,
+        value: Operand,
+    },
+
+    // v0.74: Barrier instructions
+
+    /// Create a new Barrier: %dest = barrier-new(count)
+    BarrierNew {
+        dest: Place,
+        count: Operand,
+    },
+
+    /// Wait at barrier: %dest = barrier-wait(barrier)
+    BarrierWait {
+        dest: Place,
+        barrier: Operand,
+    },
+
+    // v0.74: Condvar instructions
+
+    /// Create a new Condvar: %dest = condvar-new()
+    CondvarNew {
+        dest: Place,
+    },
+
+    /// Wait on condvar: %dest = condvar-wait(condvar, mutex)
+    CondvarWait {
+        dest: Place,
+        condvar: Operand,
+        mutex: Operand,
+    },
+
+    /// Notify one thread: condvar-notify-one(condvar)
+    CondvarNotifyOne {
+        condvar: Operand,
+    },
+
+    /// Notify all threads: condvar-notify-all(condvar)
+    CondvarNotifyAll {
+        condvar: Operand,
+    },
 }
 
 /// Block terminator (control flow)
@@ -1138,6 +1207,42 @@ fn format_mir_inst(inst: &MirInst) -> String {
         }
         MirInst::SenderClone { dest, sender } => {
             format!("%{} = sender-clone {}", dest.name, format_operand(sender))
+        }
+        // v0.74: RwLock instructions
+        MirInst::RwLockNew { dest, initial_value } => {
+            format!("%{} = rwlock-new {}", dest.name, format_operand(initial_value))
+        }
+        MirInst::RwLockRead { dest, rwlock } => {
+            format!("%{} = rwlock-read {}", dest.name, format_operand(rwlock))
+        }
+        MirInst::RwLockReadUnlock { rwlock } => {
+            format!("rwlock-read-unlock {}", format_operand(rwlock))
+        }
+        MirInst::RwLockWrite { dest, rwlock } => {
+            format!("%{} = rwlock-write {}", dest.name, format_operand(rwlock))
+        }
+        MirInst::RwLockWriteUnlock { rwlock, value } => {
+            format!("rwlock-write-unlock {} {}", format_operand(rwlock), format_operand(value))
+        }
+        // v0.74: Barrier instructions
+        MirInst::BarrierNew { dest, count } => {
+            format!("%{} = barrier-new {}", dest.name, format_operand(count))
+        }
+        MirInst::BarrierWait { dest, barrier } => {
+            format!("%{} = barrier-wait {}", dest.name, format_operand(barrier))
+        }
+        // v0.74: Condvar instructions
+        MirInst::CondvarNew { dest } => {
+            format!("%{} = condvar-new", dest.name)
+        }
+        MirInst::CondvarWait { dest, condvar, mutex } => {
+            format!("%{} = condvar-wait {} {}", dest.name, format_operand(condvar), format_operand(mutex))
+        }
+        MirInst::CondvarNotifyOne { condvar } => {
+            format!("condvar-notify-one {}", format_operand(condvar))
+        }
+        MirInst::CondvarNotifyAll { condvar } => {
+            format!("condvar-notify-all {}", format_operand(condvar))
         }
     }
 }

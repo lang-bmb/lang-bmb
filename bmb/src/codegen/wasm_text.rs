@@ -1073,6 +1073,67 @@ impl WasmCodeGen {
                 writeln!(out, "    i64.const 0")?;
                 writeln!(out, "    local.set ${}", dest.name)?;
             }
+
+            // v0.74: RwLock instructions (not supported in WASM)
+            MirInst::RwLockNew { dest, .. } => {
+                writeln!(out, "    ;; ERROR: RwLock not supported in WASM")?;
+                writeln!(out, "    i64.const 0")?;
+                writeln!(out, "    local.set ${}", dest.name)?;
+            }
+
+            MirInst::RwLockRead { dest, .. } => {
+                writeln!(out, "    ;; ERROR: RwLock not supported in WASM")?;
+                writeln!(out, "    i64.const 0")?;
+                writeln!(out, "    local.set ${}", dest.name)?;
+            }
+
+            MirInst::RwLockReadUnlock { .. } => {
+                writeln!(out, "    ;; ERROR: RwLock not supported in WASM")?;
+            }
+
+            MirInst::RwLockWrite { dest, .. } => {
+                writeln!(out, "    ;; ERROR: RwLock not supported in WASM")?;
+                writeln!(out, "    i64.const 0")?;
+                writeln!(out, "    local.set ${}", dest.name)?;
+            }
+
+            MirInst::RwLockWriteUnlock { .. } => {
+                writeln!(out, "    ;; ERROR: RwLock not supported in WASM")?;
+            }
+
+            // v0.74: Barrier instructions (not supported in WASM)
+            MirInst::BarrierNew { dest, .. } => {
+                writeln!(out, "    ;; ERROR: Barrier not supported in WASM")?;
+                writeln!(out, "    i64.const 0")?;
+                writeln!(out, "    local.set ${}", dest.name)?;
+            }
+
+            MirInst::BarrierWait { dest, .. } => {
+                writeln!(out, "    ;; ERROR: Barrier not supported in WASM")?;
+                writeln!(out, "    i64.const 0")?;
+                writeln!(out, "    local.set ${}", dest.name)?;
+            }
+
+            // v0.74: Condvar instructions (not supported in WASM)
+            MirInst::CondvarNew { dest } => {
+                writeln!(out, "    ;; ERROR: Condvar not supported in WASM")?;
+                writeln!(out, "    i64.const 0")?;
+                writeln!(out, "    local.set ${}", dest.name)?;
+            }
+
+            MirInst::CondvarWait { dest, .. } => {
+                writeln!(out, "    ;; ERROR: Condvar not supported in WASM")?;
+                writeln!(out, "    i64.const 0")?;
+                writeln!(out, "    local.set ${}", dest.name)?;
+            }
+
+            MirInst::CondvarNotifyOne { .. } => {
+                writeln!(out, "    ;; ERROR: Condvar not supported in WASM")?;
+            }
+
+            MirInst::CondvarNotifyAll { .. } => {
+                writeln!(out, "    ;; ERROR: Condvar not supported in WASM")?;
+            }
         }
 
         Ok(())
@@ -1548,6 +1609,20 @@ impl WasmCodeGen {
             MirInst::ChannelTrySend { dest, .. } => Some((dest.name.clone(), MirType::I64)),
             MirInst::ChannelTryRecv { dest, .. } => Some((dest.name.clone(), MirType::I64)),
             MirInst::SenderClone { dest, .. } => Some((dest.name.clone(), MirType::I64)),
+            // v0.74: RwLock operations
+            MirInst::RwLockNew { dest, .. } => Some((dest.name.clone(), MirType::I64)),
+            MirInst::RwLockRead { dest, .. } => Some((dest.name.clone(), MirType::I64)),
+            MirInst::RwLockReadUnlock { .. } => None,
+            MirInst::RwLockWrite { dest, .. } => Some((dest.name.clone(), MirType::I64)),
+            MirInst::RwLockWriteUnlock { .. } => None,
+            // v0.74: Barrier operations
+            MirInst::BarrierNew { dest, .. } => Some((dest.name.clone(), MirType::I64)),
+            MirInst::BarrierWait { dest, .. } => Some((dest.name.clone(), MirType::I64)),
+            // v0.74: Condvar operations
+            MirInst::CondvarNew { dest } => Some((dest.name.clone(), MirType::I64)),
+            MirInst::CondvarWait { dest, .. } => Some((dest.name.clone(), MirType::I64)),
+            MirInst::CondvarNotifyOne { .. } => None,
+            MirInst::CondvarNotifyAll { .. } => None,
         }
     }
 

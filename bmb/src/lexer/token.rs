@@ -136,6 +136,14 @@ pub enum Token {
     #[token("Receiver")]
     ReceiverType,
 
+    // v0.74: Advanced synchronization primitives
+    #[token("RwLock")]
+    RwLockType,
+    #[token("Barrier")]
+    BarrierType,
+    #[token("Condvar")]
+    CondvarType,
+
     // v0.50.6: Type aliases and refinement types
     #[token("type")]
     Type,
@@ -488,6 +496,10 @@ impl std::fmt::Display for Token {
             Token::ChannelKw => write!(f, "channel"),
             Token::SenderType => write!(f, "Sender"),
             Token::ReceiverType => write!(f, "Receiver"),
+            // v0.74: Advanced synchronization primitives
+            Token::RwLockType => write!(f, "RwLock"),
+            Token::BarrierType => write!(f, "Barrier"),
+            Token::CondvarType => write!(f, "Condvar"),
             // v0.50.6: Type aliases
             Token::Type => write!(f, "type"),
             // v0.31: Module header tokens

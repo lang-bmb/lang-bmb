@@ -160,6 +160,10 @@ impl SmtTranslator {
             // v0.73: Sender and Receiver types - use Int for handle
             Type::Sender(_) => SmtSort::Int,
             Type::Receiver(_) => SmtSort::Int,
+            // v0.74: RwLock, Barrier, Condvar - use Int for handle
+            Type::RwLock(_) => SmtSort::Int,
+            Type::Barrier => SmtSort::Int,
+            Type::Condvar => SmtSort::Int,
         }
     }
 
@@ -224,6 +228,11 @@ impl SmtTranslator {
             // v0.73: Channel creation - not relevant for SMT verification
             // Just return a placeholder tuple (sender, receiver handles)
             Expr::ChannelNew { .. } => Ok("(tuple 0 0)".to_string()),
+
+            // v0.74: RwLock, Barrier, Condvar - not relevant for SMT verification
+            Expr::RwLockNew { .. } => Ok("0".to_string()),
+            Expr::BarrierNew { .. } => Ok("0".to_string()),
+            Expr::CondvarNew => Ok("0".to_string()),
 
             Expr::Var(name) => {
                 if self.var_types.contains_key(name) {

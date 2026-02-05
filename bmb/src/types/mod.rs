@@ -958,9 +958,12 @@ impl TypeChecker {
             // v0.71: Added Mutex to list of wrapper types
             // v0.72: Added Arc and Atomic to list of wrapper types
             // v0.73: Added Sender and Receiver to list of wrapper types
-            Type::Range(inner) | Type::Nullable(inner) | Type::Ptr(inner) | Type::Thread(inner) | Type::Mutex(inner) | Type::Arc(inner) | Type::Atomic(inner) | Type::Sender(inner) | Type::Receiver(inner) => {
+            // v0.74: Added RwLock to list of wrapper types (Barrier/Condvar are unit types)
+            Type::Range(inner) | Type::Nullable(inner) | Type::Ptr(inner) | Type::Thread(inner) | Type::Mutex(inner) | Type::Arc(inner) | Type::Atomic(inner) | Type::Sender(inner) | Type::Receiver(inner) | Type::RwLock(inner) => {
                 self.mark_type_names_used(inner);
             }
+            // v0.74: Barrier and Condvar are unit types - no inner type to mark
+            Type::Barrier | Type::Condvar => {}
             Type::Refined { base, .. } => {
                 self.mark_type_names_used(base);
             }
@@ -1384,6 +1387,22 @@ impl TypeChecker {
                     Box::new(Type::Receiver(Box::new(elem_ty.node.clone()))),
                 ]))
             }
+
+            // v0.74: RwLock creation - returns RwLock<T> where T is inferred from value
+            Expr::RwLockNew { value } => {
+                let value_ty = self.infer(&value.node, value.span)?;
+                Ok(Type::RwLock(Box::new(value_ty)))
+            }
+
+            // v0.74: Barrier creation - returns Barrier
+            Expr::BarrierNew { count } => {
+                let count_ty = self.infer(&count.node, count.span)?;
+                self.unify(&count_ty, &Type::I64, count.span)?;
+                Ok(Type::Barrier)
+            }
+
+            // v0.74: Condvar creation - returns Condvar
+            Expr::CondvarNew => Ok(Type::Condvar),
 
             Expr::Unit => Ok(Type::Unit),
 
@@ -3152,6 +3171,146 @@ impl TypeChecker {
                     )),
                 }
             }
+            // v0.74: RwLock<T> methods
+            Type::RwLock(inner_ty) => {
+                match method {
+                    // read() -> T - acquires read lock and returns current value
+                    "read" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("read() takes no arguments", span));
+                        }
+                        Ok(*inner_ty.clone())
+                    }
+                    // read_unlock() -> () - releases read lock
+                    "read_unlock" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("read_unlock() takes no arguments", span));
+                        }
+                        Ok(Type::Unit)
+                    }
+                    // write() -> T - acquires write lock and returns current value
+                    "write" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("write() takes no arguments", span));
+                        }
+                        Ok(*inner_ty.clone())
+                    }
+                    // write_unlock(value: T) -> () - stores value and releases write lock
+                    "write_unlock" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("write_unlock() takes exactly one argument", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg_ty, inner_ty, args[0].span)?;
+                        Ok(Type::Unit)
+                    }
+                    // free() -> () - deallocates the rwlock
+                    "free" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("free() takes no arguments", span));
+                        }
+                        Ok(Type::Unit)
+                    }
+                    _ => Err(CompileError::type_error(
+                        format!("unknown method '{}' for RwLock<{}>", method, inner_ty),
+                        span,
+                    )),
+                }
+            }
+            // v0.74: Handle RwLock<T> as Generic type
+            Type::Generic { name, type_args } if name == "RwLock" => {
+                let inner_ty = type_args.first().map(|t| t.as_ref().clone()).unwrap_or(Type::I64);
+                match method {
+                    "read" | "write" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error(format!("{}() takes no arguments", method), span));
+                        }
+                        Ok(inner_ty)
+                    }
+                    "read_unlock" | "free" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error(format!("{}() takes no arguments", method), span));
+                        }
+                        Ok(Type::Unit)
+                    }
+                    "write_unlock" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("write_unlock() takes exactly one argument", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg_ty, &inner_ty, args[0].span)?;
+                        Ok(Type::Unit)
+                    }
+                    _ => Err(CompileError::type_error(
+                        format!("unknown method '{}' for RwLock<{}>", method, inner_ty),
+                        span,
+                    )),
+                }
+            }
+            // v0.74: Barrier methods
+            Type::Barrier => {
+                match method {
+                    // wait() -> bool - wait at barrier, returns true for "leader" thread
+                    "wait" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("wait() takes no arguments", span));
+                        }
+                        Ok(Type::Bool)
+                    }
+                    // free() -> () - deallocates the barrier
+                    "free" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("free() takes no arguments", span));
+                        }
+                        Ok(Type::Unit)
+                    }
+                    _ => Err(CompileError::type_error(
+                        format!("unknown method '{}' for Barrier", method),
+                        span,
+                    )),
+                }
+            }
+            // v0.74: Condvar methods
+            Type::Condvar => {
+                match method {
+                    // wait(mutex: Mutex<T>) -> T - wait on condvar, returns mutex value after wakeup
+                    "wait" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("wait() takes exactly one mutex argument", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        match arg_ty {
+                            Type::Mutex(inner_ty) => Ok(*inner_ty),
+                            _ => Err(CompileError::type_error("wait() requires a Mutex argument", args[0].span)),
+                        }
+                    }
+                    // notify_one() -> () - wake one waiting thread
+                    "notify_one" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("notify_one() takes no arguments", span));
+                        }
+                        Ok(Type::Unit)
+                    }
+                    // notify_all() -> () - wake all waiting threads
+                    "notify_all" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("notify_all() takes no arguments", span));
+                        }
+                        Ok(Type::Unit)
+                    }
+                    // free() -> () - deallocates the condvar
+                    "free" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("free() takes no arguments", span));
+                        }
+                        Ok(Type::Unit)
+                    }
+                    _ => Err(CompileError::type_error(
+                        format!("unknown method '{}' for Condvar", method),
+                        span,
+                    )),
+                }
+            }
             // v0.20.1: For other types, look up trait methods
             _ => {
                 if let Some((param_types, ret_type)) = self.lookup_trait_method(receiver_ty, method) {
@@ -4294,6 +4453,10 @@ impl TypeChecker {
             // v0.73: Sender and Receiver types
             Type::Sender(inner) => format!("Sender<{}>", self.type_to_string(inner)),
             Type::Receiver(inner) => format!("Receiver<{}>", self.type_to_string(inner)),
+            // v0.74: RwLock, Barrier, Condvar
+            Type::RwLock(inner) => format!("RwLock<{}>", self.type_to_string(inner)),
+            Type::Barrier => "Barrier".to_string(),
+            Type::Condvar => "Condvar".to_string(),
         }
     }
 

@@ -466,6 +466,14 @@ impl ContractVerifier {
             Expr::ChannelNew { capacity, .. } => {
                 self.check_expr_for_conflicts(&capacity.node, function_index, report);
             }
+            // v0.74: RwLock, Barrier, Condvar creation
+            Expr::RwLockNew { value } => {
+                self.check_expr_for_conflicts(&value.node, function_index, report);
+            }
+            Expr::BarrierNew { count } => {
+                self.check_expr_for_conflicts(&count.node, function_index, report);
+            }
+            Expr::CondvarNew => {}
         }
     }
 

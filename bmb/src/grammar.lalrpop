@@ -88,6 +88,10 @@ extern {
         "channel" => Token::ChannelKw,
         "Sender" => Token::SenderType,
         "Receiver" => Token::ReceiverType,
+        // v0.74: Advanced synchronization primitives
+        "RwLock" => Token::RwLockType,
+        "Barrier" => Token::BarrierType,
+        "Condvar" => Token::CondvarType,
 
         // v0.31: Module header system (RFC-0002)
         "module" => Token::Module,
@@ -1065,6 +1069,10 @@ PlainType: Type = {
     // v0.73: Channel types - Sender<T> and Receiver<T>
     "Sender" "<" <inner:Type> ">" => Type::Sender(Box::new(inner)),
     "Receiver" "<" <inner:Type> ">" => Type::Receiver(Box::new(inner)),
+    // v0.74: RwLock<T>, Barrier, Condvar types
+    "RwLock" "<" <inner:Type> ">" => Type::RwLock(Box::new(inner)),
+    "Barrier" => Type::Barrier,
+    "Condvar" => Type::Condvar,
     // v0.13.1: Generic type: Container<T>, Result<T, E>
     <name:RawIdent> "<" <args:TypeArgList> ">" => Type::Generic { name, type_args: args },
     // v0.37: Nullable type suffix: T? (per spec, this is the only nullable syntax)
@@ -1280,6 +1288,16 @@ Expr: Expr = {
         elem_ty: Box::new(elem_ty),
         capacity: Box::new(cap),
     },
+    // v0.74: RwLock creation - RwLock::new(value) -> RwLock<T>
+    <l:@L> "RwLock" "::" "new" "(" <value:SpannedExpr> ")" <r:@R> => Expr::RwLockNew {
+        value: Box::new(value),
+    },
+    // v0.74: Barrier creation - Barrier::new(count) -> Barrier
+    <l:@L> "Barrier" "::" "new" "(" <count:SpannedExpr> ")" <r:@R> => Expr::BarrierNew {
+        count: Box::new(count),
+    },
+    // v0.74: Condvar creation - Condvar::new() -> Condvar
+    <l:@L> "Condvar" "::" "new" "(" ")" <r:@R> => Expr::CondvarNew,
     // Break: exits the innermost loop
     "break" => Expr::Break { value: None },
     // Continue to next iteration

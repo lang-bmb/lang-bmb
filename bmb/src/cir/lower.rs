@@ -828,6 +828,28 @@ impl CirLowerer {
                 }
             }
 
+            // v0.74: RwLock, Barrier, Condvar creation expressions
+            Expr::RwLockNew { value } => {
+                let val = self.lower_expr(&value.node);
+                CirExpr::Call {
+                    func: "__rwlock_new".to_string(),
+                    args: vec![val],
+                }
+            }
+            Expr::BarrierNew { count } => {
+                let cnt = self.lower_expr(&count.node);
+                CirExpr::Call {
+                    func: "__barrier_new".to_string(),
+                    args: vec![cnt],
+                }
+            }
+            Expr::CondvarNew => {
+                CirExpr::Call {
+                    func: "__condvar_new".to_string(),
+                    args: vec![],
+                }
+            }
+
             Expr::Forall { var, ty, body } => {
                 // Forall as boolean expression
                 let cir_body = self.lower_expr(&body.node);
@@ -934,6 +956,10 @@ impl CirLowerer {
             // v0.73: Sender and Receiver types - represented as i64 handle
             Type::Sender(_) => CirType::I64,
             Type::Receiver(_) => CirType::I64,
+            // v0.74: RwLock, Barrier, Condvar - represented as i64 handle
+            Type::RwLock(_) => CirType::I64,
+            Type::Barrier => CirType::I64,
+            Type::Condvar => CirType::I64,
             Type::Nullable(inner) => {
                 let cir_inner = self.lower_type(inner);
                 CirType::Option(Box::new(cir_inner))

@@ -573,6 +573,40 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
             Operand::Place(tuple_dest)
         }
 
+        // v0.74: RwLock creation
+        Expr::RwLockNew { value } => {
+            let init_operand = lower_expr(value, ctx);
+            let dest = ctx.fresh_temp();
+            ctx.push_inst(MirInst::RwLockNew {
+                dest: dest.clone(),
+                initial_value: init_operand,
+            });
+            ctx.locals.insert(dest.name.clone(), MirType::I64);
+            Operand::Place(dest)
+        }
+
+        // v0.74: Barrier creation
+        Expr::BarrierNew { count } => {
+            let count_operand = lower_expr(count, ctx);
+            let dest = ctx.fresh_temp();
+            ctx.push_inst(MirInst::BarrierNew {
+                dest: dest.clone(),
+                count: count_operand,
+            });
+            ctx.locals.insert(dest.name.clone(), MirType::I64);
+            Operand::Place(dest)
+        }
+
+        // v0.74: Condvar creation
+        Expr::CondvarNew => {
+            let dest = ctx.fresh_temp();
+            ctx.push_inst(MirInst::CondvarNew {
+                dest: dest.clone(),
+            });
+            ctx.locals.insert(dest.name.clone(), MirType::I64);
+            Operand::Place(dest)
+        }
+
         Expr::Var(name) => Operand::Place(Place::new(name.clone())),
 
         Expr::Binary { left, op, right } => {
@@ -1711,6 +1745,83 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
                 return Operand::Place(dest);
             }
 
+            // v0.74: RwLock<T> methods
+            // read() - acquires read lock and returns current value
+            if method == "read" && args.is_empty() {
+                let dest = ctx.fresh_temp();
+                ctx.locals.insert(dest.name.clone(), MirType::I64);
+                ctx.push_inst(MirInst::RwLockRead {
+                    dest: dest.clone(),
+                    rwlock: recv_op,
+                });
+                return Operand::Place(dest);
+            }
+
+            // read_unlock() - releases read lock
+            if method == "read_unlock" && args.is_empty() {
+                ctx.push_inst(MirInst::RwLockReadUnlock { rwlock: recv_op });
+                return Operand::Constant(Constant::Unit);
+            }
+
+            // write() - acquires write lock and returns current value
+            if method == "write" && args.is_empty() {
+                let dest = ctx.fresh_temp();
+                ctx.locals.insert(dest.name.clone(), MirType::I64);
+                ctx.push_inst(MirInst::RwLockWrite {
+                    dest: dest.clone(),
+                    rwlock: recv_op,
+                });
+                return Operand::Place(dest);
+            }
+
+            // write_unlock(value) - stores value and releases write lock
+            if method == "write_unlock" && args.len() == 1 {
+                let value_op = lower_expr(&args[0], ctx);
+                ctx.push_inst(MirInst::RwLockWriteUnlock {
+                    rwlock: recv_op,
+                    value: value_op,
+                });
+                return Operand::Constant(Constant::Unit);
+            }
+
+            // v0.74: Barrier methods
+            // wait() - wait at barrier, returns 1 if leader, 0 otherwise
+            if method == "wait" && args.is_empty() {
+                let dest = ctx.fresh_temp();
+                ctx.locals.insert(dest.name.clone(), MirType::I64);
+                ctx.push_inst(MirInst::BarrierWait {
+                    dest: dest.clone(),
+                    barrier: recv_op,
+                });
+                return Operand::Place(dest);
+            }
+
+            // v0.74: Condvar methods
+            // wait(mutex) - wait on condvar, returns mutex value after wakeup
+            if method == "wait" && args.len() == 1 {
+                let mutex_op = lower_expr(&args[0], ctx);
+                let dest = ctx.fresh_temp();
+                ctx.locals.insert(dest.name.clone(), MirType::I64);
+                ctx.push_inst(MirInst::CondvarWait {
+                    dest: dest.clone(),
+                    condvar: recv_op,
+                    mutex: mutex_op,
+                });
+                return Operand::Place(dest);
+            }
+
+            // notify_one() - wake one waiting thread
+            if method == "notify_one" && args.is_empty() {
+                ctx.push_inst(MirInst::CondvarNotifyOne { condvar: recv_op });
+                return Operand::Constant(Constant::Unit);
+            }
+
+            // notify_all() - wake all waiting threads
+            if method == "notify_all" && args.is_empty() {
+                ctx.push_inst(MirInst::CondvarNotifyAll { condvar: recv_op });
+                return Operand::Constant(Constant::Unit);
+            }
+
             // Build the argument list: receiver first, then the rest
             let mut call_args = vec![recv_op];
             for arg in args {
@@ -2056,6 +2167,10 @@ fn ast_type_to_mir(ty: &Type) -> MirType {
         // v0.73: Sender and Receiver types - represented as i64 handle
         Type::Sender(_) => MirType::I64,
         Type::Receiver(_) => MirType::I64,
+        // v0.74: RwLock, Barrier, Condvar - represented as i64 handle
+        Type::RwLock(_) => MirType::I64,
+        Type::Barrier => MirType::I64,
+        Type::Condvar => MirType::I64,
     }
 }
 
@@ -2299,6 +2414,10 @@ fn ast_type_to_mir_with_type_defs(
         // v0.73: Sender and Receiver types - represented as i64 handle
         Type::Sender(_) => MirType::I64,
         Type::Receiver(_) => MirType::I64,
+        // v0.74: RwLock, Barrier, Condvar - represented as i64 handle
+        Type::RwLock(_) => MirType::I64,
+        Type::Barrier => MirType::I64,
+        Type::Condvar => MirType::I64,
     }
 }
 
@@ -2394,6 +2513,10 @@ fn ast_type_to_mir_with_structs(
         // v0.73: Sender and Receiver types - represented as i64 handle
         Type::Sender(_) => MirType::I64,
         Type::Receiver(_) => MirType::I64,
+        // v0.74: RwLock, Barrier, Condvar - represented as i64 handle
+        Type::RwLock(_) => MirType::I64,
+        Type::Barrier => MirType::I64,
+        Type::Condvar => MirType::I64,
     }
 }
 

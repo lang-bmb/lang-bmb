@@ -1038,6 +1038,79 @@ impl<'ctx> LlvmContext<'ctx> {
         let channel_free_type = void_type.fn_type(&[i64_type.into()], false);
         let channel_free_fn = self.module.add_function("bmb_channel_free", channel_free_type, None);
         self.functions.insert("bmb_channel_free".to_string(), channel_free_fn);
+
+        // v0.74: RwLock primitives
+        // bmb_rwlock_new(initial_value: i64) -> i64 (rwlock handle)
+        let rwlock_new_type = i64_type.fn_type(&[i64_type.into()], false);
+        let rwlock_new_fn = self.module.add_function("bmb_rwlock_new", rwlock_new_type, None);
+        self.functions.insert("bmb_rwlock_new".to_string(), rwlock_new_fn);
+
+        // bmb_rwlock_read(handle: i64) -> i64 (current value)
+        let rwlock_read_type = i64_type.fn_type(&[i64_type.into()], false);
+        let rwlock_read_fn = self.module.add_function("bmb_rwlock_read", rwlock_read_type, None);
+        self.functions.insert("bmb_rwlock_read".to_string(), rwlock_read_fn);
+
+        // bmb_rwlock_read_unlock(handle: i64) -> void
+        let rwlock_read_unlock_type = void_type.fn_type(&[i64_type.into()], false);
+        let rwlock_read_unlock_fn = self.module.add_function("bmb_rwlock_read_unlock", rwlock_read_unlock_type, None);
+        self.functions.insert("bmb_rwlock_read_unlock".to_string(), rwlock_read_unlock_fn);
+
+        // bmb_rwlock_write(handle: i64) -> i64 (current value)
+        let rwlock_write_type = i64_type.fn_type(&[i64_type.into()], false);
+        let rwlock_write_fn = self.module.add_function("bmb_rwlock_write", rwlock_write_type, None);
+        self.functions.insert("bmb_rwlock_write".to_string(), rwlock_write_fn);
+
+        // bmb_rwlock_write_unlock(handle: i64, new_value: i64) -> void
+        let rwlock_write_unlock_type = void_type.fn_type(&[i64_type.into(), i64_type.into()], false);
+        let rwlock_write_unlock_fn = self.module.add_function("bmb_rwlock_write_unlock", rwlock_write_unlock_type, None);
+        self.functions.insert("bmb_rwlock_write_unlock".to_string(), rwlock_write_unlock_fn);
+
+        // bmb_rwlock_free(handle: i64) -> void
+        let rwlock_free_type = void_type.fn_type(&[i64_type.into()], false);
+        let rwlock_free_fn = self.module.add_function("bmb_rwlock_free", rwlock_free_type, None);
+        self.functions.insert("bmb_rwlock_free".to_string(), rwlock_free_fn);
+
+        // v0.74: Barrier primitives
+        // bmb_barrier_new(count: i64) -> i64 (barrier handle)
+        let barrier_new_type = i64_type.fn_type(&[i64_type.into()], false);
+        let barrier_new_fn = self.module.add_function("bmb_barrier_new", barrier_new_type, None);
+        self.functions.insert("bmb_barrier_new".to_string(), barrier_new_fn);
+
+        // bmb_barrier_wait(handle: i64) -> i64 (1 if leader, 0 otherwise)
+        let barrier_wait_type = i64_type.fn_type(&[i64_type.into()], false);
+        let barrier_wait_fn = self.module.add_function("bmb_barrier_wait", barrier_wait_type, None);
+        self.functions.insert("bmb_barrier_wait".to_string(), barrier_wait_fn);
+
+        // bmb_barrier_free(handle: i64) -> void
+        let barrier_free_type = void_type.fn_type(&[i64_type.into()], false);
+        let barrier_free_fn = self.module.add_function("bmb_barrier_free", barrier_free_type, None);
+        self.functions.insert("bmb_barrier_free".to_string(), barrier_free_fn);
+
+        // v0.74: Condvar primitives
+        // bmb_condvar_new() -> i64 (condvar handle)
+        let condvar_new_type = i64_type.fn_type(&[], false);
+        let condvar_new_fn = self.module.add_function("bmb_condvar_new", condvar_new_type, None);
+        self.functions.insert("bmb_condvar_new".to_string(), condvar_new_fn);
+
+        // bmb_condvar_wait(condvar: i64, mutex: i64) -> i64 (current mutex value after wakeup)
+        let condvar_wait_type = i64_type.fn_type(&[i64_type.into(), i64_type.into()], false);
+        let condvar_wait_fn = self.module.add_function("bmb_condvar_wait", condvar_wait_type, None);
+        self.functions.insert("bmb_condvar_wait".to_string(), condvar_wait_fn);
+
+        // bmb_condvar_notify_one(condvar: i64) -> void
+        let condvar_notify_one_type = void_type.fn_type(&[i64_type.into()], false);
+        let condvar_notify_one_fn = self.module.add_function("bmb_condvar_notify_one", condvar_notify_one_type, None);
+        self.functions.insert("bmb_condvar_notify_one".to_string(), condvar_notify_one_fn);
+
+        // bmb_condvar_notify_all(condvar: i64) -> void
+        let condvar_notify_all_type = void_type.fn_type(&[i64_type.into()], false);
+        let condvar_notify_all_fn = self.module.add_function("bmb_condvar_notify_all", condvar_notify_all_type, None);
+        self.functions.insert("bmb_condvar_notify_all".to_string(), condvar_notify_all_fn);
+
+        // bmb_condvar_free(condvar: i64) -> void
+        let condvar_free_type = void_type.fn_type(&[i64_type.into()], false);
+        let condvar_free_fn = self.module.add_function("bmb_condvar_free", condvar_free_type, None);
+        self.functions.insert("bmb_condvar_free".to_string(), condvar_free_fn);
     }
 
     /// Convert MIR type to LLVM type
@@ -3542,6 +3615,177 @@ impl<'ctx> LlvmContext<'ctx> {
                     .ok_or_else(|| CodeGenError::LlvmError("bmb_sender_clone returned void".to_string()))?;
 
                 self.store_to_place(dest, cloned)?;
+            }
+
+            // v0.74: RwLock instructions
+            MirInst::RwLockNew { dest, initial_value } => {
+                let init_val = self.gen_operand(initial_value)?;
+                let init_i64 = init_val.into_int_value();
+
+                let rwlock_new_fn = self.functions.get("bmb_rwlock_new")
+                    .ok_or_else(|| CodeGenError::LlvmError("bmb_rwlock_new not declared".to_string()))?;
+
+                let handle = self.builder
+                    .build_call(*rwlock_new_fn, &[init_i64.into()], "rwlock_handle")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                    .try_as_basic_value()
+                    .basic()
+                    .ok_or_else(|| CodeGenError::LlvmError("bmb_rwlock_new returned void".to_string()))?;
+
+                self.store_to_place(dest, handle)?;
+            }
+
+            MirInst::RwLockRead { dest, rwlock } => {
+                let rwlock_val = self.gen_operand(rwlock)?;
+                let rwlock_i64 = rwlock_val.into_int_value();
+
+                let rwlock_read_fn = self.functions.get("bmb_rwlock_read")
+                    .ok_or_else(|| CodeGenError::LlvmError("bmb_rwlock_read not declared".to_string()))?;
+
+                let value = self.builder
+                    .build_call(*rwlock_read_fn, &[rwlock_i64.into()], "rwlock_read_value")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                    .try_as_basic_value()
+                    .basic()
+                    .ok_or_else(|| CodeGenError::LlvmError("bmb_rwlock_read returned void".to_string()))?;
+
+                self.store_to_place(dest, value)?;
+            }
+
+            MirInst::RwLockReadUnlock { rwlock } => {
+                let rwlock_val = self.gen_operand(rwlock)?;
+                let rwlock_i64 = rwlock_val.into_int_value();
+
+                let rwlock_read_unlock_fn = self.functions.get("bmb_rwlock_read_unlock")
+                    .ok_or_else(|| CodeGenError::LlvmError("bmb_rwlock_read_unlock not declared".to_string()))?;
+
+                self.builder
+                    .build_call(*rwlock_read_unlock_fn, &[rwlock_i64.into()], "")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+            }
+
+            MirInst::RwLockWrite { dest, rwlock } => {
+                let rwlock_val = self.gen_operand(rwlock)?;
+                let rwlock_i64 = rwlock_val.into_int_value();
+
+                let rwlock_write_fn = self.functions.get("bmb_rwlock_write")
+                    .ok_or_else(|| CodeGenError::LlvmError("bmb_rwlock_write not declared".to_string()))?;
+
+                let value = self.builder
+                    .build_call(*rwlock_write_fn, &[rwlock_i64.into()], "rwlock_write_value")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                    .try_as_basic_value()
+                    .basic()
+                    .ok_or_else(|| CodeGenError::LlvmError("bmb_rwlock_write returned void".to_string()))?;
+
+                self.store_to_place(dest, value)?;
+            }
+
+            MirInst::RwLockWriteUnlock { rwlock, value } => {
+                let rwlock_val = self.gen_operand(rwlock)?;
+                let rwlock_i64 = rwlock_val.into_int_value();
+                let new_val = self.gen_operand(value)?;
+                let new_i64 = new_val.into_int_value();
+
+                let rwlock_write_unlock_fn = self.functions.get("bmb_rwlock_write_unlock")
+                    .ok_or_else(|| CodeGenError::LlvmError("bmb_rwlock_write_unlock not declared".to_string()))?;
+
+                self.builder
+                    .build_call(*rwlock_write_unlock_fn, &[rwlock_i64.into(), new_i64.into()], "")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+            }
+
+            // v0.74: Barrier instructions
+            MirInst::BarrierNew { dest, count } => {
+                let count_val = self.gen_operand(count)?;
+                let count_i64 = count_val.into_int_value();
+
+                let barrier_new_fn = self.functions.get("bmb_barrier_new")
+                    .ok_or_else(|| CodeGenError::LlvmError("bmb_barrier_new not declared".to_string()))?;
+
+                let handle = self.builder
+                    .build_call(*barrier_new_fn, &[count_i64.into()], "barrier_handle")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                    .try_as_basic_value()
+                    .basic()
+                    .ok_or_else(|| CodeGenError::LlvmError("bmb_barrier_new returned void".to_string()))?;
+
+                self.store_to_place(dest, handle)?;
+            }
+
+            MirInst::BarrierWait { dest, barrier } => {
+                let barrier_val = self.gen_operand(barrier)?;
+                let barrier_i64 = barrier_val.into_int_value();
+
+                let barrier_wait_fn = self.functions.get("bmb_barrier_wait")
+                    .ok_or_else(|| CodeGenError::LlvmError("bmb_barrier_wait not declared".to_string()))?;
+
+                let is_leader = self.builder
+                    .build_call(*barrier_wait_fn, &[barrier_i64.into()], "barrier_is_leader")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                    .try_as_basic_value()
+                    .basic()
+                    .ok_or_else(|| CodeGenError::LlvmError("bmb_barrier_wait returned void".to_string()))?;
+
+                self.store_to_place(dest, is_leader)?;
+            }
+
+            // v0.74: Condvar instructions
+            MirInst::CondvarNew { dest } => {
+                let condvar_new_fn = self.functions.get("bmb_condvar_new")
+                    .ok_or_else(|| CodeGenError::LlvmError("bmb_condvar_new not declared".to_string()))?;
+
+                let handle = self.builder
+                    .build_call(*condvar_new_fn, &[], "condvar_handle")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                    .try_as_basic_value()
+                    .basic()
+                    .ok_or_else(|| CodeGenError::LlvmError("bmb_condvar_new returned void".to_string()))?;
+
+                self.store_to_place(dest, handle)?;
+            }
+
+            MirInst::CondvarWait { dest, condvar, mutex } => {
+                let condvar_val = self.gen_operand(condvar)?;
+                let condvar_i64 = condvar_val.into_int_value();
+                let mutex_val = self.gen_operand(mutex)?;
+                let mutex_i64 = mutex_val.into_int_value();
+
+                let condvar_wait_fn = self.functions.get("bmb_condvar_wait")
+                    .ok_or_else(|| CodeGenError::LlvmError("bmb_condvar_wait not declared".to_string()))?;
+
+                let value = self.builder
+                    .build_call(*condvar_wait_fn, &[condvar_i64.into(), mutex_i64.into()], "condvar_wait_value")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                    .try_as_basic_value()
+                    .basic()
+                    .ok_or_else(|| CodeGenError::LlvmError("bmb_condvar_wait returned void".to_string()))?;
+
+                self.store_to_place(dest, value)?;
+            }
+
+            MirInst::CondvarNotifyOne { condvar } => {
+                let condvar_val = self.gen_operand(condvar)?;
+                let condvar_i64 = condvar_val.into_int_value();
+
+                let condvar_notify_one_fn = self.functions.get("bmb_condvar_notify_one")
+                    .ok_or_else(|| CodeGenError::LlvmError("bmb_condvar_notify_one not declared".to_string()))?;
+
+                self.builder
+                    .build_call(*condvar_notify_one_fn, &[condvar_i64.into()], "")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+            }
+
+            MirInst::CondvarNotifyAll { condvar } => {
+                let condvar_val = self.gen_operand(condvar)?;
+                let condvar_i64 = condvar_val.into_int_value();
+
+                let condvar_notify_all_fn = self.functions.get("bmb_condvar_notify_all")
+                    .ok_or_else(|| CodeGenError::LlvmError("bmb_condvar_notify_all not declared".to_string()))?;
+
+                self.builder
+                    .build_call(*condvar_notify_all_fn, &[condvar_i64.into()], "")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
             }
 
             // Other instructions not yet supported in inkwell codegen

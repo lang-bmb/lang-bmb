@@ -437,6 +437,32 @@ impl TextCodeGen {
         writeln!(out, "declare i64 @bmb_sender_clone(i64) nounwind")?;
         writeln!(out)?;
 
+        // v0.74: RwLock runtime functions
+        writeln!(out, "; Runtime declarations - RwLock (v0.74)")?;
+        writeln!(out, "declare i64 @bmb_rwlock_new(i64) nounwind")?;
+        writeln!(out, "declare i64 @bmb_rwlock_read(i64) nounwind")?;
+        writeln!(out, "declare void @bmb_rwlock_read_unlock(i64) nounwind")?;
+        writeln!(out, "declare i64 @bmb_rwlock_write(i64) nounwind")?;
+        writeln!(out, "declare void @bmb_rwlock_write_unlock(i64, i64) nounwind")?;
+        writeln!(out, "declare void @bmb_rwlock_free(i64) nounwind")?;
+        writeln!(out)?;
+
+        // v0.74: Barrier runtime functions
+        writeln!(out, "; Runtime declarations - Barrier (v0.74)")?;
+        writeln!(out, "declare i64 @bmb_barrier_new(i64) nounwind")?;
+        writeln!(out, "declare i64 @bmb_barrier_wait(i64) nounwind")?;
+        writeln!(out, "declare void @bmb_barrier_free(i64) nounwind")?;
+        writeln!(out)?;
+
+        // v0.74: Condvar runtime functions
+        writeln!(out, "; Runtime declarations - Condvar (v0.74)")?;
+        writeln!(out, "declare i64 @bmb_condvar_new() nounwind")?;
+        writeln!(out, "declare i64 @bmb_condvar_wait(i64, i64) nounwind")?;
+        writeln!(out, "declare void @bmb_condvar_notify_one(i64) nounwind")?;
+        writeln!(out, "declare void @bmb_condvar_notify_all(i64) nounwind")?;
+        writeln!(out, "declare void @bmb_condvar_free(i64) nounwind")?;
+        writeln!(out)?;
+
         // v0.31.23: Command-line argument builtins for Phase 32.3.G CLI Independence
         writeln!(out, "; Runtime declarations - CLI arguments")?;
         writeln!(out, "declare i64 @arg_count()")?;
@@ -4336,6 +4362,86 @@ impl TextCodeGen {
                 if local_names.contains(&dest.name) {
                     writeln!(out, "  store i64 %{}, ptr %{}.addr", dest.name, dest.name)?;
                 }
+            }
+
+            // v0.74: RwLock instructions
+            MirInst::RwLockNew { dest, initial_value } => {
+                let init_val = self.format_operand(initial_value);
+                writeln!(out, "  %{} = call i64 @bmb_rwlock_new(i64 {})", dest.name, init_val)?;
+                if local_names.contains(&dest.name) {
+                    writeln!(out, "  store i64 %{}, ptr %{}.addr", dest.name, dest.name)?;
+                }
+            }
+
+            MirInst::RwLockRead { dest, rwlock } => {
+                let rwlock_val = self.format_operand(rwlock);
+                writeln!(out, "  %{} = call i64 @bmb_rwlock_read(i64 {})", dest.name, rwlock_val)?;
+                if local_names.contains(&dest.name) {
+                    writeln!(out, "  store i64 %{}, ptr %{}.addr", dest.name, dest.name)?;
+                }
+            }
+
+            MirInst::RwLockReadUnlock { rwlock } => {
+                let rwlock_val = self.format_operand(rwlock);
+                writeln!(out, "  call void @bmb_rwlock_read_unlock(i64 {})", rwlock_val)?;
+            }
+
+            MirInst::RwLockWrite { dest, rwlock } => {
+                let rwlock_val = self.format_operand(rwlock);
+                writeln!(out, "  %{} = call i64 @bmb_rwlock_write(i64 {})", dest.name, rwlock_val)?;
+                if local_names.contains(&dest.name) {
+                    writeln!(out, "  store i64 %{}, ptr %{}.addr", dest.name, dest.name)?;
+                }
+            }
+
+            MirInst::RwLockWriteUnlock { rwlock, value } => {
+                let rwlock_val = self.format_operand(rwlock);
+                let new_val = self.format_operand(value);
+                writeln!(out, "  call void @bmb_rwlock_write_unlock(i64 {}, i64 {})", rwlock_val, new_val)?;
+            }
+
+            // v0.74: Barrier instructions
+            MirInst::BarrierNew { dest, count } => {
+                let count_val = self.format_operand(count);
+                writeln!(out, "  %{} = call i64 @bmb_barrier_new(i64 {})", dest.name, count_val)?;
+                if local_names.contains(&dest.name) {
+                    writeln!(out, "  store i64 %{}, ptr %{}.addr", dest.name, dest.name)?;
+                }
+            }
+
+            MirInst::BarrierWait { dest, barrier } => {
+                let barrier_val = self.format_operand(barrier);
+                writeln!(out, "  %{} = call i64 @bmb_barrier_wait(i64 {})", dest.name, barrier_val)?;
+                if local_names.contains(&dest.name) {
+                    writeln!(out, "  store i64 %{}, ptr %{}.addr", dest.name, dest.name)?;
+                }
+            }
+
+            // v0.74: Condvar instructions
+            MirInst::CondvarNew { dest } => {
+                writeln!(out, "  %{} = call i64 @bmb_condvar_new()", dest.name)?;
+                if local_names.contains(&dest.name) {
+                    writeln!(out, "  store i64 %{}, ptr %{}.addr", dest.name, dest.name)?;
+                }
+            }
+
+            MirInst::CondvarWait { dest, condvar, mutex } => {
+                let condvar_val = self.format_operand(condvar);
+                let mutex_val = self.format_operand(mutex);
+                writeln!(out, "  %{} = call i64 @bmb_condvar_wait(i64 {}, i64 {})", dest.name, condvar_val, mutex_val)?;
+                if local_names.contains(&dest.name) {
+                    writeln!(out, "  store i64 %{}, ptr %{}.addr", dest.name, dest.name)?;
+                }
+            }
+
+            MirInst::CondvarNotifyOne { condvar } => {
+                let condvar_val = self.format_operand(condvar);
+                writeln!(out, "  call void @bmb_condvar_notify_one(i64 {})", condvar_val)?;
+            }
+
+            MirInst::CondvarNotifyAll { condvar } => {
+                let condvar_val = self.format_operand(condvar);
+                writeln!(out, "  call void @bmb_condvar_notify_all(i64 {})", condvar_val)?;
             }
         }
 

@@ -345,6 +345,26 @@ pub enum Expr {
         /// Channel buffer capacity
         capacity: Box<Spanned<Expr>>,
     },
+
+    // v0.74: Advanced synchronization primitives
+
+    /// RwLock creation: RwLock::new(value) -> RwLock<T>
+    /// Creates a reader-writer lock with the given initial value.
+    RwLockNew {
+        /// The initial value to wrap in the RwLock
+        value: Box<Spanned<Expr>>,
+    },
+
+    /// Barrier creation: Barrier::new(count) -> Barrier
+    /// Creates a barrier for the specified number of threads.
+    BarrierNew {
+        /// Number of threads that must call wait() before all are released
+        count: Box<Spanned<Expr>>,
+    },
+
+    /// Condvar creation: Condvar::new() -> Condvar
+    /// Creates a new condition variable.
+    CondvarNew,
 }
 
 /// A single arm in a match expression

@@ -1063,6 +1063,40 @@ fn collect_used_in_instruction(inst: &MirInst, used: &mut HashSet<String>) {
         MirInst::SenderClone { sender, .. } => {
             collect_used_in_operand(sender, used);
         }
+        // v0.74: RwLock, Barrier, Condvar instructions
+        MirInst::RwLockNew { initial_value, .. } => {
+            collect_used_in_operand(initial_value, used);
+        }
+        MirInst::RwLockRead { rwlock, .. } => {
+            collect_used_in_operand(rwlock, used);
+        }
+        MirInst::RwLockReadUnlock { rwlock } => {
+            collect_used_in_operand(rwlock, used);
+        }
+        MirInst::RwLockWrite { rwlock, .. } => {
+            collect_used_in_operand(rwlock, used);
+        }
+        MirInst::RwLockWriteUnlock { rwlock, value } => {
+            collect_used_in_operand(rwlock, used);
+            collect_used_in_operand(value, used);
+        }
+        MirInst::BarrierNew { count, .. } => {
+            collect_used_in_operand(count, used);
+        }
+        MirInst::BarrierWait { barrier, .. } => {
+            collect_used_in_operand(barrier, used);
+        }
+        MirInst::CondvarNew { .. } => {}
+        MirInst::CondvarWait { condvar, mutex, .. } => {
+            collect_used_in_operand(condvar, used);
+            collect_used_in_operand(mutex, used);
+        }
+        MirInst::CondvarNotifyOne { condvar } => {
+            collect_used_in_operand(condvar, used);
+        }
+        MirInst::CondvarNotifyAll { condvar } => {
+            collect_used_in_operand(condvar, used);
+        }
     }
 }
 
@@ -1131,6 +1165,18 @@ fn has_side_effects(inst: &MirInst) -> bool {
             | MirInst::ChannelTrySend { .. }
             | MirInst::ChannelTryRecv { .. }
             | MirInst::SenderClone { .. }
+            // v0.74: RwLock, Barrier, Condvar have side effects
+            | MirInst::RwLockNew { .. }
+            | MirInst::RwLockRead { .. }
+            | MirInst::RwLockReadUnlock { .. }
+            | MirInst::RwLockWrite { .. }
+            | MirInst::RwLockWriteUnlock { .. }
+            | MirInst::BarrierNew { .. }
+            | MirInst::BarrierWait { .. }
+            | MirInst::CondvarNew { .. }
+            | MirInst::CondvarWait { .. }
+            | MirInst::CondvarNotifyOne { .. }
+            | MirInst::CondvarNotifyAll { .. }
     )
 }
 
@@ -5451,7 +5497,19 @@ impl MemoryEffectAnalysis {
             | MirInst::ChannelRecv { .. }
             | MirInst::ChannelTrySend { .. }
             | MirInst::ChannelTryRecv { .. }
-            | MirInst::SenderClone { .. } => true,
+            | MirInst::SenderClone { .. }
+            // v0.74: RwLock, Barrier, Condvar access shared memory
+            | MirInst::RwLockNew { .. }
+            | MirInst::RwLockRead { .. }
+            | MirInst::RwLockReadUnlock { .. }
+            | MirInst::RwLockWrite { .. }
+            | MirInst::RwLockWriteUnlock { .. }
+            | MirInst::BarrierNew { .. }
+            | MirInst::BarrierWait { .. }
+            | MirInst::CondvarNew { .. }
+            | MirInst::CondvarWait { .. }
+            | MirInst::CondvarNotifyOne { .. }
+            | MirInst::CondvarNotifyAll { .. } => true,
             // Pure operations don't access memory
             MirInst::BinOp { .. }
             | MirInst::UnaryOp { .. }

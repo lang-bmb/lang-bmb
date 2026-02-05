@@ -528,6 +528,10 @@ impl IndexGenerator {
             // v0.73: Sender and Receiver types
             Type::Sender(inner) => format!("Sender<{}>", self.format_type(inner)),
             Type::Receiver(inner) => format!("Receiver<{}>", self.format_type(inner)),
+            // v0.74: RwLock, Barrier, Condvar
+            Type::RwLock(inner) => format!("RwLock<{}>", self.format_type(inner)),
+            Type::Barrier => "Barrier".to_string(),
+            Type::Condvar => "Condvar".to_string(),
         }
     }
 

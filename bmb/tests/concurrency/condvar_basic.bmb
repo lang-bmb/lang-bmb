@@ -1,0 +1,50 @@
+// v0.74: Condvar basic test
+// Tests condition variable signaling
+
+fn main() -> i64 = {
+    // Shared state protected by mutex
+    let ready = Mutex::new(0);
+    let cv = Condvar::new();
+
+    // Producer thread - signals when ready
+    let producer = spawn {
+        // Simulate some work
+        let x = 0;
+        let i = 0;
+        while i < 1000 {
+            x = x + 1;
+            i = i + 1
+        };
+
+        // Set ready flag and notify
+        let r = ready.lock();
+        ready.unlock(1);
+        cv.notify_one();
+        1
+    };
+
+    // Consumer thread - waits for ready signal
+    let consumer = spawn {
+        let r = ready.lock();
+        // Wait until ready == 1
+        let r2 = if r == 0 {
+            cv.wait(ready)
+        } else {
+            r
+        };
+        ready.unlock(r2);
+        r2
+    };
+
+    // Wait for both threads
+    let p_result = producer.join();
+    let c_result = consumer.join();
+
+    if p_result != 1 {
+        1  // Producer did not complete
+    } else if c_result != 1 {
+        2  // Consumer did not receive signal
+    } else {
+        0  // Success
+    }
+};
