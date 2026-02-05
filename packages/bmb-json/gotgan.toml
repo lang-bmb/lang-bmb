@@ -1,0 +1,14 @@
+[package]
+name = "bmb-json"
+version = "0.1.0"
+edition = "2026"
+description = "JSON parser and serializer for BMB"
+license = "MIT"
+repository = "https://github.com/lang-bmb/bmb"
+keywords = ["json", "parser", "serializer", "data"]
+
+[lib]
+path = "src/lib.bmb"
+
+[dependencies]
+bmb-string = "0.1.0"

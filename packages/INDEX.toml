@@ -95,3 +95,13 @@ version = "0.1.0"
 path = "bmb-test"
 description = "BMB test assertion utilities"
 keywords = ["test", "assert", "unit-test"]
+
+# ==============================================================================
+# Data Packages
+# ==============================================================================
+
+[packages.bmb-json]
+version = "0.1.0"
+path = "bmb-json"
+description = "JSON parser and serializer for BMB"
+keywords = ["json", "parser", "serializer", "data"]
