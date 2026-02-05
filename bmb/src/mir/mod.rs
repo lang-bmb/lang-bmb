@@ -482,6 +482,15 @@ pub enum MirInst {
         future: Operand,
     },
 
+    /// v0.79: Send with timeout: %dest = channel-send-timeout(%sender, %value, %timeout_ms)
+    /// Returns 1 if sent, 0 if timeout
+    ChannelSendTimeout {
+        dest: Place,
+        sender: Operand,
+        value: Operand,
+        timeout_ms: Operand,
+    },
+
     /// Clone a sender: %dest = sender-clone(sender)
     SenderClone {
         dest: Place,
@@ -1238,6 +1247,10 @@ fn format_mir_inst(inst: &MirInst) -> String {
         // v0.78: Block on future
         MirInst::BlockOn { dest, future } => {
             format!("%{} = block-on {}", dest.name, format_operand(future))
+        }
+        // v0.79: Send with timeout
+        MirInst::ChannelSendTimeout { dest, sender, value, timeout_ms } => {
+            format!("%{} = channel-send-timeout {} {} {}", dest.name, format_operand(sender), format_operand(value), format_operand(timeout_ms))
         }
         MirInst::SenderClone { dest, sender } => {
             format!("%{} = sender-clone {}", dest.name, format_operand(sender))

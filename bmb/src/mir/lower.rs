@@ -1660,6 +1660,21 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
                 return Operand::Place(dest);
             }
 
+            // v0.79: send_timeout(value, ms) - send with timeout, returns 1 if success, 0 if timeout
+            if method == "send_timeout" && args.len() == 2 {
+                let value_op = lower_expr(&args[0], ctx);
+                let timeout_op = lower_expr(&args[1], ctx);
+                let dest = ctx.fresh_temp();
+                ctx.locals.insert(dest.name.clone(), MirType::I64);
+                ctx.push_inst(MirInst::ChannelSendTimeout {
+                    dest: dest.clone(),
+                    sender: recv_op,
+                    value: value_op,
+                    timeout_ms: timeout_op,
+                });
+                return Operand::Place(dest);
+            }
+
             // clone() - clone the sender for MPSC
             if method == "clone" && args.is_empty() {
                 let dest = ctx.fresh_temp();

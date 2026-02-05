@@ -1039,6 +1039,11 @@ impl<'ctx> LlvmContext<'ctx> {
         let block_on_fn = self.module.add_function("bmb_block_on", block_on_type, None);
         self.functions.insert("bmb_block_on".to_string(), block_on_fn);
 
+        // v0.79: bmb_channel_send_timeout(sender: i64, value: i64, timeout_ms: i64) -> i64 (1 if sent, 0 if timeout)
+        let channel_send_timeout_type = i64_type.fn_type(&[i64_type.into(), i64_type.into(), i64_type.into()], false);
+        let channel_send_timeout_fn = self.module.add_function("bmb_channel_send_timeout", channel_send_timeout_type, None);
+        self.functions.insert("bmb_channel_send_timeout".to_string(), channel_send_timeout_fn);
+
         // bmb_sender_clone(sender: i64) -> i64 (cloned sender)
         let sender_clone_type = i64_type.fn_type(&[i64_type.into()], false);
         let sender_clone_fn = self.module.add_function("bmb_sender_clone", sender_clone_type, None);
@@ -3698,6 +3703,28 @@ impl<'ctx> LlvmContext<'ctx> {
                     .try_as_basic_value()
                     .basic()
                     .ok_or_else(|| CodeGenError::LlvmError("bmb_block_on returned void".to_string()))?;
+
+                self.store_to_place(dest, result)?;
+            }
+
+            // v0.79: Send with timeout
+            MirInst::ChannelSendTimeout { dest, sender, value, timeout_ms } => {
+                let sender_val = self.gen_operand(sender)?;
+                let sender_i64 = sender_val.into_int_value();
+                let value_val = self.gen_operand(value)?;
+                let value_i64 = value_val.into_int_value();
+                let timeout_val = self.gen_operand(timeout_ms)?;
+                let timeout_i64 = timeout_val.into_int_value();
+
+                let channel_send_timeout_fn = self.functions.get("bmb_channel_send_timeout")
+                    .ok_or_else(|| CodeGenError::LlvmError("bmb_channel_send_timeout not declared".to_string()))?;
+
+                let result = self.builder
+                    .build_call(*channel_send_timeout_fn, &[sender_i64.into(), value_i64.into(), timeout_i64.into()], "send_timeout_result")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                    .try_as_basic_value()
+                    .basic()
+                    .ok_or_else(|| CodeGenError::LlvmError("bmb_channel_send_timeout returned void".to_string()))?;
 
                 self.store_to_place(dest, result)?;
             }

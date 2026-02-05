@@ -1547,6 +1547,75 @@ int64_t bmb_channel_recv_timeout(int64_t receiver_handle, int64_t timeout_ms, in
     return success;
 }
 
+// v0.79: Send with timeout (blocking up to timeout_ms milliseconds)
+// Returns 1 if value sent, 0 if timeout or closed
+int64_t bmb_channel_send_timeout(int64_t sender_handle, int64_t value, int64_t timeout_ms) {
+    BmbSender* sender = (BmbSender*)sender_handle;
+    BmbChannel* ch = sender->channel;
+    int64_t success = 0;
+
+#ifdef _WIN32
+    EnterCriticalSection(&ch->lock);
+
+    // Wait with timeout for space in buffer
+    DWORD wait_ms = (timeout_ms < 0) ? INFINITE : (DWORD)timeout_ms;
+    while (ch->count == ch->capacity && !ch->closed) {
+        if (!SleepConditionVariableCS(&ch->not_full, &ch->lock, wait_ms)) {
+            // Timeout or error
+            break;
+        }
+        // If we have a finite timeout, don't loop (could refine with remaining time)
+        if (timeout_ms >= 0) break;
+    }
+#else
+    pthread_mutex_lock(&ch->lock);
+
+    if (timeout_ms < 0) {
+        // Infinite wait
+        while (ch->count == ch->capacity && !ch->closed) {
+            pthread_cond_wait(&ch->not_full, &ch->lock);
+        }
+    } else {
+        // Timed wait
+        struct timespec ts;
+        clock_gettime(CLOCK_REALTIME, &ts);
+        ts.tv_sec += timeout_ms / 1000;
+        ts.tv_nsec += (timeout_ms % 1000) * 1000000;
+        if (ts.tv_nsec >= 1000000000) {
+            ts.tv_sec++;
+            ts.tv_nsec -= 1000000000;
+        }
+
+        while (ch->count == ch->capacity && !ch->closed) {
+            int rc = pthread_cond_timedwait(&ch->not_full, &ch->lock, &ts);
+            if (rc == ETIMEDOUT) break;
+        }
+    }
+#endif
+
+    // Try to send if there's space
+    if (ch->count < ch->capacity && !ch->closed) {
+        ch->buffer[ch->head] = value;
+        ch->head = (ch->head + 1) % ch->capacity;
+        ch->count++;
+        success = 1;
+
+#ifdef _WIN32
+        WakeConditionVariable(&ch->not_empty);
+#else
+        pthread_cond_signal(&ch->not_empty);
+#endif
+    }
+
+#ifdef _WIN32
+    LeaveCriticalSection(&ch->lock);
+#else
+    pthread_mutex_unlock(&ch->lock);
+#endif
+
+    return success;
+}
+
 // Clone a sender (increment sender count)
 int64_t bmb_sender_clone(int64_t sender_handle) {
     BmbSender* sender = (BmbSender*)sender_handle;

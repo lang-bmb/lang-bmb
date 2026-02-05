@@ -439,6 +439,8 @@ impl TextCodeGen {
         writeln!(out, "declare i64 @bmb_sender_clone(i64) nounwind")?;
         // v0.78: block_on
         writeln!(out, "declare i64 @bmb_block_on(i64) nounwind")?;
+        // v0.79: send_timeout
+        writeln!(out, "declare i64 @bmb_channel_send_timeout(i64, i64, i64) nounwind")?;
         writeln!(out)?;
 
         // v0.74: RwLock runtime functions
@@ -4388,6 +4390,18 @@ impl TextCodeGen {
             MirInst::BlockOn { dest, future } => {
                 let future_val = self.format_operand(future);
                 writeln!(out, "  %{} = call i64 @bmb_block_on(i64 {})", dest.name, future_val)?;
+                if local_names.contains(&dest.name) {
+                    writeln!(out, "  store i64 %{}, ptr %{}.addr", dest.name, dest.name)?;
+                }
+            }
+
+            // v0.79: Send with timeout
+            MirInst::ChannelSendTimeout { dest, sender, value, timeout_ms } => {
+                let sender_val = self.format_operand(sender);
+                let value_val = self.format_operand(value);
+                let timeout_val = self.format_operand(timeout_ms);
+                writeln!(out, "  %{} = call i64 @bmb_channel_send_timeout(i64 {}, i64 {}, i64 {})",
+                    dest.name, sender_val, value_val, timeout_val)?;
                 if local_names.contains(&dest.name) {
                     writeln!(out, "  store i64 %{}, ptr %{}.addr", dest.name, dest.name)?;
                 }

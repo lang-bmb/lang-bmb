@@ -1,0 +1,30 @@
+// v0.79: Test send_timeout for channels
+fn main() -> i64 = {
+    // Create a bounded channel with capacity 1
+    let ch = channel<i64>(1);
+    let tx = ch.0;
+    let rx = ch.1;
+
+    // Test 1: send_timeout on empty channel should succeed immediately
+    let send_result1 = tx.send_timeout(42, 1000);
+    let check1 = if send_result1 { 0 } else { 1 };  // expect true (success)
+
+    // Test 2: Channel is now full (capacity 1), send_timeout should timeout
+    // Use short timeout (100ms) to keep test fast
+    let send_result2 = tx.send_timeout(99, 100);
+    let check2 = if send_result2 { 2 } else { 0 };  // expect false (timeout)
+
+    // Test 3: Receive the first value to make room
+    let value = rx.recv();
+    let check3 = if value == 42 { 0 } else { 3 };  // expect 42
+
+    // Test 4: Now send_timeout should succeed again
+    let send_result3 = tx.send_timeout(100, 1000);
+    let check4 = if send_result3 { 0 } else { 4 };  // expect true (success)
+
+    // Return 0 if all checks pass
+    if check1 != 0 { check1 }
+    else if check2 != 0 { check2 }
+    else if check3 != 0 { check3 }
+    else { check4 }
+};

@@ -3133,6 +3133,17 @@ impl TypeChecker {
                         self.unify(&arg_ty, inner_ty, args[0].span)?;
                         Ok(Type::Bool)
                     }
+                    // v0.79: send_timeout(value: T, ms: i64) -> bool - send with timeout
+                    "send_timeout" => {
+                        if args.len() != 2 {
+                            return Err(CompileError::type_error("send_timeout() takes exactly two arguments (value, timeout_ms)", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg_ty, inner_ty, args[0].span)?;
+                        let timeout_ty = self.infer(&args[1].node, args[1].span)?;
+                        self.unify(&Type::I64, &timeout_ty, args[1].span)?;
+                        Ok(Type::Bool)
+                    }
                     // clone() -> Sender<T> - clone the sender for MPSC
                     "clone" => {
                         if !args.is_empty() {
@@ -3164,6 +3175,17 @@ impl TypeChecker {
                         }
                         let arg_ty = self.infer(&args[0].node, args[0].span)?;
                         self.unify(&arg_ty, &inner_ty, args[0].span)?;
+                        Ok(Type::Bool)
+                    }
+                    // v0.79: send_timeout(value: T, ms: i64) -> bool - send with timeout
+                    "send_timeout" => {
+                        if args.len() != 2 {
+                            return Err(CompileError::type_error("send_timeout() takes exactly two arguments (value, timeout_ms)", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg_ty, &inner_ty, args[0].span)?;
+                        let timeout_ty = self.infer(&args[1].node, args[1].span)?;
+                        self.unify(&Type::I64, &timeout_ty, args[1].span)?;
                         Ok(Type::Bool)
                     }
                     "clone" => {
