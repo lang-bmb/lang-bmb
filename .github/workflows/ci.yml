@@ -46,10 +46,50 @@ jobs:
       - name: Clippy
         run: cargo clippy --all-targets -- -D warnings
 
+  code-quality:
+    name: Code Quality (fmt + lint)
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-action@stable
+
+      - name: Build BMB compiler
+        run: cargo build --release
+
+      - name: Check formatting (bmb-fmt)
+        run: |
+          echo "=== Format Check (bmb-fmt) ==="
+          FAILED=0
+          for f in tools/bmb-test/*.bmb tools/bmb-bench/*.bmb tools/bmb-fmt/*.bmb tools/bmb-lint/*.bmb tools/bmb-doc/*.bmb tools/bmb-check/*.bmb; do
+            if [ -f "$f" ]; then
+              echo "Checking $f..."
+              if ! ./target/release/bmb run tools/bmb-fmt/main.bmb -- --check "$f" 2>/dev/null; then
+                echo "::warning file=$f::File needs formatting"
+                FAILED=$((FAILED + 1))
+              fi
+            fi
+          done
+          if [ $FAILED -gt 0 ]; then
+            echo "::warning::$FAILED file(s) need formatting"
+          fi
+
+      - name: Run linter (bmb-lint)
+        run: |
+          echo "=== Lint Check (bmb-lint) ==="
+          for f in tools/bmb-test/*.bmb tools/bmb-bench/*.bmb tools/bmb-fmt/*.bmb tools/bmb-lint/*.bmb tools/bmb-doc/*.bmb tools/bmb-check/*.bmb; do
+            if [ -f "$f" ]; then
+              echo "Checking $f..."
+              ./target/release/bmb run tools/bmb-lint/main.bmb "$f" 2>/dev/null || true
+            fi
+          done
+
   bootstrap-check:
     name: Bootstrap Self-Compile Check
     runs-on: ubuntu-latest
-    needs: build
+    needs: [build, code-quality]
     steps:
       - uses: actions/checkout@v4
 
