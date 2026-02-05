@@ -1901,6 +1901,208 @@ int64_t future_await(int64_t future_handle) {
 }
 
 // ============================================================================
+// v0.78: Async Executor
+// ============================================================================
+//
+// A minimal task-based executor for running async computations.
+// In the current synchronous model, tasks complete immediately.
+// This provides the API foundation for true async execution later.
+
+#define TASK_PENDING 0
+#define TASK_RUNNING 1
+#define TASK_COMPLETED 2
+
+typedef struct BmbTask {
+    int64_t result;         // The computed result
+    int32_t state;          // PENDING, RUNNING, COMPLETED
+    struct BmbTask* next;   // Next task in queue
+} BmbTask;
+
+typedef struct BmbExecutor {
+    BmbTask* queue_head;
+    BmbTask* queue_tail;
+    int64_t task_count;
+    int64_t completed_count;
+#ifdef _WIN32
+    CRITICAL_SECTION lock;
+#else
+    pthread_mutex_t lock;
+#endif
+} BmbExecutor;
+
+// Create a new executor
+int64_t bmb_executor_new(void) {
+    BmbExecutor* exec = (BmbExecutor*)malloc(sizeof(BmbExecutor));
+    if (!exec) return 0;
+
+    exec->queue_head = NULL;
+    exec->queue_tail = NULL;
+    exec->task_count = 0;
+    exec->completed_count = 0;
+
+#ifdef _WIN32
+    InitializeCriticalSection(&exec->lock);
+#else
+    pthread_mutex_init(&exec->lock, NULL);
+#endif
+
+    return (int64_t)exec;
+}
+
+// Create a new task from a future value
+int64_t bmb_task_new(int64_t future_value) {
+    BmbTask* task = (BmbTask*)malloc(sizeof(BmbTask));
+    if (!task) return 0;
+
+    // In synchronous mode, the future_value IS the result
+    task->result = future_value;
+    task->state = TASK_COMPLETED;  // Already complete in sync mode
+    task->next = NULL;
+
+    return (int64_t)task;
+}
+
+// Spawn a task onto the executor
+void bmb_executor_spawn(int64_t executor_handle, int64_t task_handle) {
+    BmbExecutor* exec = (BmbExecutor*)executor_handle;
+    BmbTask* task = (BmbTask*)task_handle;
+    if (!exec || !task) return;
+
+#ifdef _WIN32
+    EnterCriticalSection(&exec->lock);
+#else
+    pthread_mutex_lock(&exec->lock);
+#endif
+
+    // Add to queue tail
+    task->next = NULL;
+    if (exec->queue_tail) {
+        exec->queue_tail->next = task;
+    } else {
+        exec->queue_head = task;
+    }
+    exec->queue_tail = task;
+    exec->task_count++;
+
+    // In sync mode, tasks are already completed
+    if (task->state == TASK_COMPLETED) {
+        exec->completed_count++;
+    }
+
+#ifdef _WIN32
+    LeaveCriticalSection(&exec->lock);
+#else
+    pthread_mutex_unlock(&exec->lock);
+#endif
+}
+
+// Run executor until all tasks complete
+void bmb_executor_run(int64_t executor_handle) {
+    BmbExecutor* exec = (BmbExecutor*)executor_handle;
+    if (!exec) return;
+
+    // In synchronous mode, all tasks are already complete
+    // A real async executor would poll pending tasks here
+
+#ifdef _WIN32
+    EnterCriticalSection(&exec->lock);
+#else
+    pthread_mutex_lock(&exec->lock);
+#endif
+
+    // Mark all pending tasks as completed (sync mode: they already are)
+    BmbTask* task = exec->queue_head;
+    while (task) {
+        if (task->state == TASK_PENDING) {
+            task->state = TASK_COMPLETED;
+            exec->completed_count++;
+        }
+        task = task->next;
+    }
+
+#ifdef _WIN32
+    LeaveCriticalSection(&exec->lock);
+#else
+    pthread_mutex_unlock(&exec->lock);
+#endif
+}
+
+// Block on a specific future, return its result
+int64_t bmb_executor_block_on(int64_t executor_handle, int64_t future_value) {
+    BmbExecutor* exec = (BmbExecutor*)executor_handle;
+    if (!exec) return future_value;
+
+    // Create task for the future
+    int64_t task = bmb_task_new(future_value);
+    bmb_executor_spawn(executor_handle, task);
+
+    // Run executor
+    bmb_executor_run(executor_handle);
+
+    // Get result (in sync mode, future_value IS the result)
+    int64_t result = ((BmbTask*)task)->result;
+
+    return result;
+}
+
+// Get task result
+int64_t bmb_task_get_result(int64_t task_handle) {
+    BmbTask* task = (BmbTask*)task_handle;
+    if (!task) return 0;
+    return task->result;
+}
+
+// Check if task is completed (returns 1 if done, 0 if pending)
+int64_t bmb_task_is_completed(int64_t task_handle) {
+    BmbTask* task = (BmbTask*)task_handle;
+    if (!task) return 1;
+    return task->state == TASK_COMPLETED ? 1 : 0;
+}
+
+// Get number of completed tasks
+int64_t bmb_executor_completed_count(int64_t executor_handle) {
+    BmbExecutor* exec = (BmbExecutor*)executor_handle;
+    if (!exec) return 0;
+    return exec->completed_count;
+}
+
+// Free a task
+void bmb_task_free(int64_t task_handle) {
+    BmbTask* task = (BmbTask*)task_handle;
+    if (task) free(task);
+}
+
+// Free executor and all its tasks
+void bmb_executor_free(int64_t executor_handle) {
+    BmbExecutor* exec = (BmbExecutor*)executor_handle;
+    if (!exec) return;
+
+    // Free all tasks
+    BmbTask* task = exec->queue_head;
+    while (task) {
+        BmbTask* next = task->next;
+        free(task);
+        task = next;
+    }
+
+#ifdef _WIN32
+    DeleteCriticalSection(&exec->lock);
+#else
+    pthread_mutex_destroy(&exec->lock);
+#endif
+
+    free(exec);
+}
+
+// Convenience: Create executor, block_on future, return result, free executor
+int64_t bmb_block_on(int64_t future_value) {
+    int64_t exec = bmb_executor_new();
+    int64_t result = bmb_executor_block_on(exec, future_value);
+    bmb_executor_free(exec);
+    return result;
+}
+
+// ============================================================================
 // v0.60.246: String-key HashMap for O(1) lookups in bootstrap compiler
 // ============================================================================
 

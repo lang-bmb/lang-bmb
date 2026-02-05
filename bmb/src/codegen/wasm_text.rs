@@ -1075,6 +1075,13 @@ impl WasmCodeGen {
                 writeln!(out, "    local.set ${}", dest.name)?;
             }
 
+            // v0.78: Block on future (in sync mode, just return the value)
+            MirInst::BlockOn { dest, future } => {
+                writeln!(out, "    ;; block_on: in sync mode, future IS the result")?;
+                self.emit_operand(out, future)?;
+                writeln!(out, "    local.set ${}", dest.name)?;
+            }
+
             MirInst::SenderClone { dest, .. } => {
                 writeln!(out, "    ;; ERROR: Channels not supported in WASM")?;
                 writeln!(out, "    i64.const 0")?;
@@ -1644,6 +1651,8 @@ impl WasmCodeGen {
             MirInst::ChannelTryRecv { dest, .. } => Some((dest.name.clone(), MirType::I64)),
             // v0.77
             MirInst::ChannelRecvTimeout { dest, .. } => Some((dest.name.clone(), MirType::I64)),
+            // v0.78
+            MirInst::BlockOn { dest, .. } => Some((dest.name.clone(), MirType::I64)),
             MirInst::SenderClone { dest, .. } => Some((dest.name.clone(), MirType::I64)),
             // v0.74: RwLock operations
             MirInst::RwLockNew { dest, .. } => Some((dest.name.clone(), MirType::I64)),

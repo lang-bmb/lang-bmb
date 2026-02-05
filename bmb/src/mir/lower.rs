@@ -923,6 +923,17 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
             // Lower arguments
             let arg_ops: Vec<Operand> = args.iter().map(|arg| lower_expr(arg, ctx)).collect();
 
+            // v0.78: block_on(future) - runs executor until future completes
+            if func == "block_on" && arg_ops.len() == 1 {
+                let dest = ctx.fresh_temp();
+                ctx.locals.insert(dest.name.clone(), MirType::I64);
+                ctx.push_inst(MirInst::BlockOn {
+                    dest: dest.clone(),
+                    future: arg_ops.into_iter().next().unwrap(),
+                });
+                return Operand::Place(dest);
+            }
+
             // Check if this is a void function (runtime functions that return void)
             let is_void_func = matches!(func.as_str(), "println" | "print" | "assert");
 

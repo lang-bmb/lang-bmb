@@ -1,0 +1,20 @@
+// v0.78: Test async executor with block_on
+
+// Simple async function that returns a computed value
+async fn compute_value() -> i64 = 42;
+
+// Async function with computation
+async fn add_numbers(a: i64, b: i64) -> i64 = a + b;
+
+fn main() -> i64 = {
+    // Test 1: block_on simple async function
+    let result1 = block_on(compute_value());
+    let check1 = if result1 == 42 { 0 } else { 1 };
+
+    // Test 2: block_on with arguments (passed to async fn)
+    let result2 = block_on(add_numbers(10, 32));
+    let check2 = if result2 == 42 { 0 } else { 2 };
+
+    // Return 0 if all tests pass
+    if check1 != 0 { check1 } else { check2 }
+};

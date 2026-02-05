@@ -1034,6 +1034,11 @@ impl<'ctx> LlvmContext<'ctx> {
         let channel_recv_timeout_fn = self.module.add_function("bmb_channel_recv_timeout", channel_recv_timeout_type, None);
         self.functions.insert("bmb_channel_recv_timeout".to_string(), channel_recv_timeout_fn);
 
+        // v0.78: bmb_block_on(future_value: i64) -> i64 (runs executor, returns result)
+        let block_on_type = i64_type.fn_type(&[i64_type.into()], false);
+        let block_on_fn = self.module.add_function("bmb_block_on", block_on_type, None);
+        self.functions.insert("bmb_block_on".to_string(), block_on_fn);
+
         // bmb_sender_clone(sender: i64) -> i64 (cloned sender)
         let sender_clone_type = i64_type.fn_type(&[i64_type.into()], false);
         let sender_clone_fn = self.module.add_function("bmb_sender_clone", sender_clone_type, None);
@@ -3675,6 +3680,24 @@ impl<'ctx> LlvmContext<'ctx> {
                 let result = self.builder
                     .build_select(is_success, received_value, sentinel.into(), "recv_timeout_result")
                     .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+
+                self.store_to_place(dest, result)?;
+            }
+
+            // v0.78: Block on a future
+            MirInst::BlockOn { dest, future } => {
+                let future_val = self.gen_operand(future)?;
+                let future_i64 = future_val.into_int_value();
+
+                let block_on_fn = self.functions.get("bmb_block_on")
+                    .ok_or_else(|| CodeGenError::LlvmError("bmb_block_on not declared".to_string()))?;
+
+                let result = self.builder
+                    .build_call(*block_on_fn, &[future_i64.into()], "block_on_result")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                    .try_as_basic_value()
+                    .basic()
+                    .ok_or_else(|| CodeGenError::LlvmError("bmb_block_on returned void".to_string()))?;
 
                 self.store_to_place(dest, result)?;
             }

@@ -437,6 +437,8 @@ impl TextCodeGen {
         // v0.77: recv_timeout
         writeln!(out, "declare i64 @bmb_channel_recv_timeout(i64, i64, ptr) nounwind")?;
         writeln!(out, "declare i64 @bmb_sender_clone(i64) nounwind")?;
+        // v0.78: block_on
+        writeln!(out, "declare i64 @bmb_block_on(i64) nounwind")?;
         writeln!(out)?;
 
         // v0.74: RwLock runtime functions
@@ -4377,6 +4379,15 @@ impl TextCodeGen {
                 // Select based on success: if success != 0 { value } else { -1 }
                 writeln!(out, "  %{}_is_success = icmp ne i64 %{}_success, 0", dest.name, dest.name)?;
                 writeln!(out, "  %{} = select i1 %{}_is_success, i64 %{}_loaded, i64 -1", dest.name, dest.name, dest.name)?;
+                if local_names.contains(&dest.name) {
+                    writeln!(out, "  store i64 %{}, ptr %{}.addr", dest.name, dest.name)?;
+                }
+            }
+
+            // v0.78: Block on future
+            MirInst::BlockOn { dest, future } => {
+                let future_val = self.format_operand(future);
+                writeln!(out, "  %{} = call i64 @bmb_block_on(i64 {})", dest.name, future_val)?;
                 if local_names.contains(&dest.name) {
                     writeln!(out, "  store i64 %{}, ptr %{}.addr", dest.name, dest.name)?;
                 }

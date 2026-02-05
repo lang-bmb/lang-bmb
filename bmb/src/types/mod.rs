@@ -544,6 +544,17 @@ impl TypeChecker {
             ),
         );
 
+        // v0.78: block_on<T>(future: Future<T>) -> T
+        // Runs a future to completion and returns its result
+        generic_functions.insert(
+            "block_on".to_string(),
+            (
+                vec![TypeParam::new("T")],
+                vec![Type::Future(Box::new(Type::TypeVar("T".to_string())))],
+                Type::TypeVar("T".to_string()),
+            ),
+        );
+
         Self {
             env: HashMap::new(),
             functions,
@@ -4337,6 +4348,17 @@ impl TypeChecker {
                 } else {
                     Err(CompileError::type_error(
                         format!("expected function type, got {}", arg_ty),
+                        span,
+                    ))
+                }
+            }
+            // v0.78: Future<T> type
+            Type::Future(inner) => {
+                if let Type::Future(arg_inner) = arg_ty {
+                    self.infer_type_args(inner, arg_inner, type_subst, span)
+                } else {
+                    Err(CompileError::type_error(
+                        format!("expected Future type, got {}", arg_ty),
                         span,
                     ))
                 }
