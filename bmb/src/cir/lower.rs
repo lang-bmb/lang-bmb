@@ -850,6 +850,15 @@ impl CirLowerer {
                 }
             }
 
+            // v0.75: Await expression - lower as a call to __await
+            Expr::Await { future } => {
+                let f = self.lower_expr(&future.node);
+                CirExpr::Call {
+                    func: "__await".to_string(),
+                    args: vec![f],
+                }
+            }
+
             Expr::Forall { var, ty, body } => {
                 // Forall as boolean expression
                 let cir_body = self.lower_expr(&body.node);
@@ -960,6 +969,8 @@ impl CirLowerer {
             Type::RwLock(_) => CirType::I64,
             Type::Barrier => CirType::I64,
             Type::Condvar => CirType::I64,
+            // v0.75: Future type - use i64 for handle
+            Type::Future(_) => CirType::I64,
             Type::Nullable(inner) => {
                 let cir_inner = self.lower_type(inner);
                 CirType::Option(Box::new(cir_inner))

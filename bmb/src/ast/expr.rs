@@ -365,6 +365,15 @@ pub enum Expr {
     /// Condvar creation: Condvar::new() -> Condvar
     /// Creates a new condition variable.
     CondvarNew,
+
+    // v0.75: Async/await expressions
+
+    /// Await expression: expr.await
+    /// Suspends execution until the future completes and returns the result.
+    Await {
+        /// The future expression to await
+        future: Box<Spanned<Expr>>,
+    },
 }
 
 /// A single arm in a match expression

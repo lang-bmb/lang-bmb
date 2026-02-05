@@ -163,6 +163,7 @@ mod tests {
         FnDef {
             attributes: attrs,
             visibility: Visibility::Private,
+            is_async: false,
             name: Spanned::new(name.to_string(), Span::new(0, name.len())),
             type_params: vec![],
             params: vec![],

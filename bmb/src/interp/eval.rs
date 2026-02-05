@@ -434,6 +434,11 @@ impl Interpreter {
                 Err(RuntimeError::todo("Condvar expressions require native compilation; use 'bmb build' instead of 'bmb run'"))
             }
 
+            // v0.75: Await expression - not supported in interpreter
+            Expr::Await { .. } => {
+                Err(RuntimeError::todo("await expressions require native compilation; use 'bmb build' instead of 'bmb run'"))
+            }
+
             Expr::Var(name) => {
                 env.borrow()
                     .get(name)

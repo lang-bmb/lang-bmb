@@ -607,6 +607,20 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
             Operand::Place(dest)
         }
 
+        // v0.75: Await expression - lower as a call to __future_await
+        Expr::Await { future } => {
+            let future_operand = lower_expr(future, ctx);
+            let dest = ctx.fresh_temp();
+            ctx.push_inst(MirInst::Call {
+                dest: Some(dest.clone()),
+                func: "__future_await".to_string(),
+                args: vec![future_operand],
+                is_tail: false,
+            });
+            ctx.locals.insert(dest.name.clone(), MirType::I64);
+            Operand::Place(dest)
+        }
+
         Expr::Var(name) => Operand::Place(Place::new(name.clone())),
 
         Expr::Binary { left, op, right } => {
@@ -2171,6 +2185,8 @@ fn ast_type_to_mir(ty: &Type) -> MirType {
         Type::RwLock(_) => MirType::I64,
         Type::Barrier => MirType::I64,
         Type::Condvar => MirType::I64,
+        // v0.75: Future type - represented as i64 handle
+        Type::Future(_) => MirType::I64,
     }
 }
 
@@ -2418,6 +2434,8 @@ fn ast_type_to_mir_with_type_defs(
         Type::RwLock(_) => MirType::I64,
         Type::Barrier => MirType::I64,
         Type::Condvar => MirType::I64,
+        // v0.75: Future type - represented as i64 handle
+        Type::Future(_) => MirType::I64,
     }
 }
 
@@ -2517,6 +2535,8 @@ fn ast_type_to_mir_with_structs(
         Type::RwLock(_) => MirType::I64,
         Type::Barrier => MirType::I64,
         Type::Condvar => MirType::I64,
+        // v0.75: Future type - represented as i64 handle
+        Type::Future(_) => MirType::I64,
     }
 }
 
@@ -2805,6 +2825,7 @@ mod tests {
             items: vec![Item::FnDef(FnDef {
                 attributes: vec![],
                 visibility: Visibility::Private,
+                is_async: false,
                 name: spanned("add".to_string()),
                 type_params: vec![],
                 params: vec![
@@ -2853,6 +2874,7 @@ mod tests {
             items: vec![Item::FnDef(FnDef {
                 attributes: vec![],
                 visibility: Visibility::Private,
+                is_async: false,
                 name: spanned("max".to_string()),
                 type_params: vec![],
                 params: vec![
@@ -2903,6 +2925,7 @@ mod tests {
             items: vec![Item::FnDef(FnDef {
                 attributes: vec![],
                 visibility: Visibility::Private,
+                is_async: false,
                 name: spanned("test".to_string()),
                 type_params: vec![],
                 params: vec![],
@@ -2937,6 +2960,7 @@ mod tests {
             items: vec![Item::FnDef(FnDef {
                 attributes: vec![],
                 visibility: Visibility::Private,
+                is_async: false,
                 name: spanned("test".to_string()),
                 type_params: vec![],
                 params: vec![],
@@ -2970,6 +2994,7 @@ mod tests {
             items: vec![Item::FnDef(FnDef {
                 attributes: vec![],
                 visibility: Visibility::Private,
+                is_async: false,
                 name: spanned("test".to_string()),
                 type_params: vec![],
                 params: vec![],
@@ -3002,6 +3027,7 @@ mod tests {
             items: vec![Item::FnDef(FnDef {
                 attributes: vec![],
                 visibility: Visibility::Private,
+                is_async: false,
                 name: spanned("test".to_string()),
                 type_params: vec![],
                 params: vec![],
@@ -3037,6 +3063,7 @@ mod tests {
             items: vec![Item::FnDef(FnDef {
                 attributes: vec![],
                 visibility: Visibility::Private,
+                is_async: false,
                 name: spanned("test".to_string()),
                 type_params: vec![],
                 params: vec![Param {
@@ -3073,6 +3100,7 @@ mod tests {
             items: vec![Item::FnDef(FnDef {
                 attributes: vec![],
                 visibility: Visibility::Private,
+                is_async: false,
                 name: spanned("test".to_string()),
                 type_params: vec![],
                 params: vec![],
@@ -3107,6 +3135,7 @@ mod tests {
             items: vec![Item::FnDef(FnDef {
                 attributes: vec![],
                 visibility: Visibility::Private,
+                is_async: false,
                 name: spanned("test".to_string()),
                 type_params: vec![],
                 params: vec![],
@@ -3144,6 +3173,7 @@ mod tests {
             items: vec![Item::FnDef(FnDef {
                 attributes: vec![],
                 visibility: Visibility::Private,
+                is_async: false,
                 name: spanned("test".to_string()),
                 type_params: vec![],
                 params: vec![Param {
@@ -3204,6 +3234,7 @@ mod tests {
             items: vec![Item::FnDef(FnDef {
                 attributes: vec![],
                 visibility: Visibility::Private,
+                is_async: false,
                 name: spanned("test".to_string()),
                 type_params: vec![],
                 params: vec![Param {
@@ -3256,6 +3287,7 @@ mod tests {
             items: vec![Item::FnDef(FnDef {
                 attributes: vec![],
                 visibility: Visibility::Private,
+                is_async: false,
                 name: spanned("test".to_string()),
                 type_params: vec![],
                 params: vec![],
@@ -3289,6 +3321,7 @@ mod tests {
             items: vec![Item::FnDef(FnDef {
                 attributes: vec![],
                 visibility: Visibility::Private,
+                is_async: false,
                 name: spanned("test".to_string()),
                 type_params: vec![],
                 params: vec![Param {
@@ -3325,6 +3358,7 @@ mod tests {
             items: vec![Item::FnDef(FnDef {
                 attributes: vec![],
                 visibility: Visibility::Private,
+                is_async: false,
                 name: spanned("test".to_string()),
                 type_params: vec![],
                 params: vec![Param {

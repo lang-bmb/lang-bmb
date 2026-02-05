@@ -1,0 +1,15 @@
+// v0.75: Async function syntax test
+
+// Test async fn declaration - this function returns Future<i64>
+// but the body returns i64 (the inner type)
+async fn compute_async() -> i64 = 42;
+
+// Test calling async fn - the return type is Future<i64>
+// which can be awaited to get i64
+fn test_call_async() -> Future<i64> = compute_async();
+
+// Test awaiting an async fn result
+fn test_await_async() -> i64 = compute_async().await;
+
+// Main function
+fn main() -> i64 = test_await_async();

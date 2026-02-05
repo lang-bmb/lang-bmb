@@ -609,13 +609,25 @@ impl TypeChecker {
                 Item::FnDef(f) if f.visibility == Visibility::Public => {
                     if f.type_params.is_empty() {
                         let param_tys: Vec<_> = f.params.iter().map(|p| p.ty.node.clone()).collect();
-                        self.functions.insert(f.name.node.clone(), (param_tys, f.ret_ty.node.clone()));
+                        // v0.75: Async functions return Future<T> instead of T
+                        let ret_ty = if f.is_async {
+                            Type::Future(Box::new(f.ret_ty.node.clone()))
+                        } else {
+                            f.ret_ty.node.clone()
+                        };
+                        self.functions.insert(f.name.node.clone(), (param_tys, ret_ty));
                     } else {
                         let type_param_names: Vec<_> = f.type_params.iter().map(|tp| tp.name.as_str()).collect();
                         let param_tys: Vec<_> = f.params.iter()
                             .map(|p| self.resolve_type_vars(&p.ty.node, &type_param_names))
                             .collect();
                         let ret_ty = self.resolve_type_vars(&f.ret_ty.node, &type_param_names);
+                        // v0.75: Async functions return Future<T> instead of T
+                        let ret_ty = if f.is_async {
+                            Type::Future(Box::new(ret_ty))
+                        } else {
+                            ret_ty
+                        };
                         self.generic_functions.insert(
                             f.name.node.clone(),
                             (f.type_params.clone(), param_tys, ret_ty)
@@ -775,8 +787,14 @@ impl TypeChecker {
                     // v0.15: Handle generic functions separately
                     if f.type_params.is_empty() {
                         let param_tys: Vec<_> = f.params.iter().map(|p| p.ty.node.clone()).collect();
+                        // v0.75: Async functions return Future<T> instead of T
+                        let ret_ty = if f.is_async {
+                            Type::Future(Box::new(f.ret_ty.node.clone()))
+                        } else {
+                            f.ret_ty.node.clone()
+                        };
                         self.functions
-                            .insert(f.name.node.clone(), (param_tys, f.ret_ty.node.clone()));
+                            .insert(f.name.node.clone(), (param_tys, ret_ty));
                     } else {
                         // Convert Named types that match type params to TypeVar
                         let type_param_names: Vec<_> = f.type_params.iter().map(|tp| tp.name.as_str()).collect();
@@ -784,6 +802,12 @@ impl TypeChecker {
                             .map(|p| self.resolve_type_vars(&p.ty.node, &type_param_names))
                             .collect();
                         let ret_ty = self.resolve_type_vars(&f.ret_ty.node, &type_param_names);
+                        // v0.75: Async functions return Future<T> instead of T
+                        let ret_ty = if f.is_async {
+                            Type::Future(Box::new(ret_ty))
+                        } else {
+                            ret_ty
+                        };
                         self.generic_functions.insert(
                             f.name.node.clone(),
                             (f.type_params.clone(), param_tys, ret_ty)
@@ -959,7 +983,8 @@ impl TypeChecker {
             // v0.72: Added Arc and Atomic to list of wrapper types
             // v0.73: Added Sender and Receiver to list of wrapper types
             // v0.74: Added RwLock to list of wrapper types (Barrier/Condvar are unit types)
-            Type::Range(inner) | Type::Nullable(inner) | Type::Ptr(inner) | Type::Thread(inner) | Type::Mutex(inner) | Type::Arc(inner) | Type::Atomic(inner) | Type::Sender(inner) | Type::Receiver(inner) | Type::RwLock(inner) => {
+            // v0.75: Added Future to list of wrapper types
+            Type::Range(inner) | Type::Nullable(inner) | Type::Ptr(inner) | Type::Thread(inner) | Type::Mutex(inner) | Type::Arc(inner) | Type::Atomic(inner) | Type::Sender(inner) | Type::Receiver(inner) | Type::RwLock(inner) | Type::Future(inner) => {
                 self.mark_type_names_used(inner);
             }
             // v0.74: Barrier and Condvar are unit types - no inner type to mark
@@ -1403,6 +1428,18 @@ impl TypeChecker {
 
             // v0.74: Condvar creation - returns Condvar
             Expr::CondvarNew => Ok(Type::Condvar),
+
+            // v0.75: Await expression - unwraps Future<T> to T
+            Expr::Await { future } => {
+                let future_ty = self.infer(&future.node, future.span)?;
+                match future_ty {
+                    Type::Future(inner) => Ok(*inner),
+                    other => Err(CompileError::type_error(
+                        format!("cannot await non-future type '{}'", other),
+                        span,
+                    )),
+                }
+            }
 
             Expr::Unit => Ok(Type::Unit),
 
@@ -4457,6 +4494,8 @@ impl TypeChecker {
             Type::RwLock(inner) => format!("RwLock<{}>", self.type_to_string(inner)),
             Type::Barrier => "Barrier".to_string(),
             Type::Condvar => "Condvar".to_string(),
+            // v0.75: Future type
+            Type::Future(inner) => format!("Future<{}>", self.type_to_string(inner)),
         }
     }
 

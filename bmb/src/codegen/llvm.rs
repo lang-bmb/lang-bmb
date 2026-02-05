@@ -1111,6 +1111,12 @@ impl<'ctx> LlvmContext<'ctx> {
         let condvar_free_type = void_type.fn_type(&[i64_type.into()], false);
         let condvar_free_fn = self.module.add_function("bmb_condvar_free", condvar_free_type, None);
         self.functions.insert("bmb_condvar_free".to_string(), condvar_free_fn);
+
+        // v0.75: Async/Await Support (Futures)
+        // __future_await(future_handle: i64) -> i64 (blocks until future completes)
+        let future_await_type = i64_type.fn_type(&[i64_type.into()], false);
+        let future_await_fn = self.module.add_function("__future_await", future_await_type, None);
+        self.functions.insert("__future_await".to_string(), future_await_fn);
     }
 
     /// Convert MIR type to LLVM type

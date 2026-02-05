@@ -463,6 +463,11 @@ impl TextCodeGen {
         writeln!(out, "declare void @bmb_condvar_free(i64) nounwind")?;
         writeln!(out)?;
 
+        // v0.75: Async/await runtime functions
+        writeln!(out, "; Runtime declarations - Async/Await (v0.75)")?;
+        writeln!(out, "declare i64 @__future_await(i64) nounwind")?;
+        writeln!(out)?;
+
         // v0.31.23: Command-line argument builtins for Phase 32.3.G CLI Independence
         writeln!(out, "; Runtime declarations - CLI arguments")?;
         writeln!(out, "declare i64 @arg_count()")?;

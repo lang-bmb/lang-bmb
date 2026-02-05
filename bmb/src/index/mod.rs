@@ -532,6 +532,8 @@ impl IndexGenerator {
             Type::RwLock(inner) => format!("RwLock<{}>", self.format_type(inner)),
             Type::Barrier => "Barrier".to_string(),
             Type::Condvar => "Condvar".to_string(),
+            // v0.75: Future
+            Type::Future(inner) => format!("Future<{}>", self.format_type(inner)),
         }
     }
 

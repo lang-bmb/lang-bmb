@@ -1,0 +1,8 @@
+// v0.75: Basic Future<T> and .await syntax test
+// This tests the type system support for async/await
+
+// Test Future<T> as parameter type
+fn await_test(f: Future<i64>) -> i64 = f.await;
+
+// Main function
+fn main() -> i64 = 42;

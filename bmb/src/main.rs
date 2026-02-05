@@ -1903,6 +1903,8 @@ fn format_type(ty: &bmb::ast::Type) -> String {
         Type::RwLock(inner) => format!("RwLock<{}>", format_type(inner)),
         Type::Barrier => "Barrier".to_string(),
         Type::Condvar => "Condvar".to_string(),
+        // v0.75: Future type
+        Type::Future(inner) => format!("Future<{}>", format_type(inner)),
     }
 }
 
@@ -1937,6 +1939,8 @@ fn format_expr(expr: &bmb::ast::Expr) -> String {
         Expr::RwLockNew { value } => format!("RwLock::new({})", format_expr(&value.node)),
         Expr::BarrierNew { count } => format!("Barrier::new({})", format_expr(&count.node)),
         Expr::CondvarNew => "Condvar::new()".to_string(),
+        // v0.75: Await expression
+        Expr::Await { future } => format!("{}.await", format_expr(&future.node)),
         Expr::Var(name) => name.clone(),
         Expr::Ret => "ret".to_string(),
         Expr::It => "it".to_string(),

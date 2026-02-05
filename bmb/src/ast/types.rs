@@ -164,6 +164,13 @@ pub enum Type {
     /// Condition variable for thread signaling.
     /// Use .wait(mutex) to wait, .notify_one() or .notify_all() to wake threads.
     Condvar,
+
+    // v0.75: Async/await types
+
+    /// Future type: Future<T>
+    /// Represents an asynchronous computation that will eventually produce a value of type T.
+    /// Use .await to suspend execution until the future completes.
+    Future(Box<Type>),
 }
 
 /// Manual PartialEq implementation for Type
@@ -239,6 +246,8 @@ impl PartialEq for Type {
             (Type::RwLock(a), Type::RwLock(b)) => a == b,
             (Type::Barrier, Type::Barrier) => true,
             (Type::Condvar, Type::Condvar) => true,
+            // v0.75: Future type equality
+            (Type::Future(a), Type::Future(b)) => a == b,
             _ => false,
         }
     }
@@ -360,6 +369,8 @@ impl std::fmt::Display for Type {
             Type::RwLock(inner) => write!(f, "RwLock<{inner}>"),
             Type::Barrier => write!(f, "Barrier"),
             Type::Condvar => write!(f, "Condvar"),
+            // v0.75: Future type display
+            Type::Future(inner) => write!(f, "Future<{inner}>"),
         }
     }
 }

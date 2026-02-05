@@ -1806,6 +1806,31 @@ void bmb_condvar_free(int64_t handle) {
 }
 
 // ============================================================================
+// v0.75: Async/Await Support (Futures)
+// ============================================================================
+//
+// For Phase v0.75.2, we implement a simple synchronous execution model:
+// - Future<T> is represented as T at runtime (no wrapper needed)
+// - async fn just executes synchronously and returns its result
+// - .await is a no-op (identity function)
+//
+// This allows the type system's async/await to work while keeping
+// runtime simple. A full async executor can be added later.
+
+// __future_await: Block until future completes and return its value
+// In the synchronous model, futures are already complete, so this is identity
+int64_t __future_await(int64_t future_handle) {
+    // In synchronous mode, the future_handle IS the result
+    // A proper async runtime would poll the future here
+    return future_handle;
+}
+
+// Alias without underscore prefix for easier linking
+int64_t future_await(int64_t future_handle) {
+    return __future_await(future_handle);
+}
+
+// ============================================================================
 // v0.60.246: String-key HashMap for O(1) lookups in bootstrap compiler
 // ============================================================================
 

@@ -92,6 +92,10 @@ extern {
         "RwLock" => Token::RwLockType,
         "Barrier" => Token::BarrierType,
         "Condvar" => Token::CondvarType,
+        // v0.75: Async/await
+        "async" => Token::Async,
+        "await" => Token::Await,
+        "Future" => Token::FutureType,
 
         // v0.31: Module header system (RFC-0002)
         "module" => Token::Module,
@@ -614,6 +618,7 @@ ImplFnDef: FnDef = {
     <l:@L> "fn" <name:Ident> "(" <params:Params> ")" "->" <ret_ty:SpannedType> "=" <body:SpannedExpr> ";" <r:@R> => FnDef {
         attributes: vec![],
         visibility: Visibility::Private,
+        is_async: false,
         name,
         type_params: vec![],
         params,
@@ -838,6 +843,7 @@ FnDef: FnDef = {
     "=" <body:SpannedExpr> ";" <r:@R> => FnDef {
         attributes: attrs,
         visibility: vis,
+        is_async: false,
         name,
         type_params,
         params,
@@ -855,6 +861,7 @@ FnDef: FnDef = {
     "=" <body:SpannedExpr> ";" <r:@R> => FnDef {
         attributes: attrs,
         visibility: vis,
+        is_async: false,
         name,
         type_params,
         params,
@@ -872,6 +879,7 @@ FnDef: FnDef = {
     "=" <body:SpannedExpr> ";" <r:@R> => FnDef {
         attributes: vec![],
         visibility: vis,
+        is_async: false,
         name,
         type_params,
         params,
@@ -889,6 +897,43 @@ FnDef: FnDef = {
     "=" <body:SpannedExpr> ";" <r:@R> => FnDef {
         attributes: vec![],
         visibility: vis,
+        is_async: false,
+        name,
+        type_params,
+        params,
+        ret_name: None,
+        ret_ty,
+        pre: clause.0,
+        post: clause.1,
+        contracts: clause.2,
+        body,
+        span: Span::new(l, r),
+    },
+    // v0.75: async fn without attributes: async fn name<T>() -> Type
+    <l:@L> <vis:Visibility> "async" "fn" <name:Ident> <type_params:OptTypeParams> "(" <params:Params> ")" "->" <ret_ty:SpannedType>
+    <clause:ContractClause>
+    "=" <body:SpannedExpr> ";" <r:@R> => FnDef {
+        attributes: vec![],
+        visibility: vis,
+        is_async: true,
+        name,
+        type_params,
+        params,
+        ret_name: None,
+        ret_ty,
+        pre: clause.0,
+        post: clause.1,
+        contracts: clause.2,
+        body,
+        span: Span::new(l, r),
+    },
+    // v0.75: async fn with attributes: @attr async fn name<T>() -> Type
+    <l:@L> <attrs:Attr+> <vis:Visibility> "async" "fn" <name:Ident> <type_params:OptTypeParams> "(" <params:Params> ")" "->" <ret_ty:SpannedType>
+    <clause:ContractClause>
+    "=" <body:SpannedExpr> ";" <r:@R> => FnDef {
+        attributes: attrs,
+        visibility: vis,
+        is_async: true,
         name,
         type_params,
         params,
@@ -1073,6 +1118,8 @@ PlainType: Type = {
     "RwLock" "<" <inner:Type> ">" => Type::RwLock(Box::new(inner)),
     "Barrier" => Type::Barrier,
     "Condvar" => Type::Condvar,
+    // v0.75: Future<T> type for async/await
+    "Future" "<" <inner:Type> ">" => Type::Future(Box::new(inner)),
     // v0.13.1: Generic type: Container<T>, Result<T, E>
     <name:RawIdent> "<" <args:TypeArgList> ">" => Type::Generic { name, type_args: args },
     // v0.37: Nullable type suffix: T? (per spec, this is the only nullable syntax)
@@ -1759,6 +1806,10 @@ PostfixExpr: Expr = {
     <e:SpannedPostfixExpr> "." "post" => Expr::StateRef {
         expr: Box::new(e),
         state: StateKind::Post,
+    },
+    // v0.75: Await expression: expr.await
+    <e:SpannedPostfixExpr> "." "await" => Expr::Await {
+        future: Box::new(e),
     },
     // v0.5 Phase 8: Method call: expr.method(args) - must be before field access
     <e:SpannedPostfixExpr> "." <method:RawIdent> "(" <args:Args> ")" => Expr::MethodCall {

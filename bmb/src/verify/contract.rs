@@ -474,6 +474,10 @@ impl ContractVerifier {
                 self.check_expr_for_conflicts(&count.node, function_index, report);
             }
             Expr::CondvarNew => {}
+            // v0.75: Await expression
+            Expr::Await { future } => {
+                self.check_expr_for_conflicts(&future.node, function_index, report);
+            }
         }
     }
 
@@ -1076,6 +1080,7 @@ mod tests {
         let func = FnDef {
             attributes: vec![],
             visibility: Visibility::Private,
+            is_async: false,
             name: spanned("test".to_string()),
             type_params: vec![],
             params: vec![],
@@ -1110,6 +1115,7 @@ mod tests {
         let func = FnDef {
             attributes: vec![],
             visibility: Visibility::Private,
+            is_async: false,
             name: spanned("test_func".to_string()),
             type_params: vec![],
             params: vec![crate::ast::Param {
@@ -1160,6 +1166,7 @@ mod tests {
         let func = FnDef {
             attributes: vec![],
             visibility: Visibility::Private,
+            is_async: false,
             name: spanned("trivial_fn".to_string()),
             type_params: vec![],
             params: vec![crate::ast::Param {
@@ -1199,6 +1206,7 @@ mod tests {
         let func = FnDef {
             attributes: vec![],
             visibility: Visibility::Private,
+            is_async: false,
             name: spanned("trivial_pre".to_string()),
             type_params: vec![],
             params: vec![crate::ast::Param {
@@ -1234,6 +1242,7 @@ mod tests {
         let func = FnDef {
             attributes: vec![],
             visibility: Visibility::Private,
+            is_async: false,
             name: spanned("non_trivial_fn".to_string()),
             type_params: vec![],
             params: vec![crate::ast::Param {
@@ -1283,6 +1292,7 @@ mod tests {
         let func = FnDef {
             attributes: vec![],
             visibility: Visibility::Private,
+            is_async: false,
             name: spanned("impossible".to_string()),
             type_params: vec![],
             params: vec![crate::ast::Param {
@@ -1332,6 +1342,7 @@ mod tests {
         let func = FnDef {
             attributes: vec![],
             visibility: Visibility::Private,
+            is_async: false,
             name: spanned("possible".to_string()),
             type_params: vec![],
             params: vec![crate::ast::Param {

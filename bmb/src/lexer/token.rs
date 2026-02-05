@@ -144,6 +144,14 @@ pub enum Token {
     #[token("Condvar")]
     CondvarType,
 
+    // v0.75: Async/await keywords
+    #[token("async")]
+    Async,
+    #[token("await")]
+    Await,
+    #[token("Future")]
+    FutureType,
+
     // v0.50.6: Type aliases and refinement types
     #[token("type")]
     Type,
@@ -500,6 +508,10 @@ impl std::fmt::Display for Token {
             Token::RwLockType => write!(f, "RwLock"),
             Token::BarrierType => write!(f, "Barrier"),
             Token::CondvarType => write!(f, "Condvar"),
+            // v0.75: Async/await
+            Token::Async => write!(f, "async"),
+            Token::Await => write!(f, "await"),
+            Token::FutureType => write!(f, "Future"),
             // v0.50.6: Type aliases
             Token::Type => write!(f, "type"),
             // v0.31: Module header tokens

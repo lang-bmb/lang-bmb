@@ -281,6 +281,8 @@ pub struct FnDef {
     /// Attributes (v0.2): @inline, @pure, @decreases, etc.
     pub attributes: Vec<Attribute>,
     pub visibility: Visibility,
+    /// v0.75: Whether this is an async function
+    pub is_async: bool,
     pub name: Spanned<String>,
     /// Type parameters (v0.13.1): e.g., `<T>`, `<T: Ord, U>`
     pub type_params: Vec<TypeParam>,

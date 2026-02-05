@@ -164,6 +164,8 @@ impl SmtTranslator {
             Type::RwLock(_) => SmtSort::Int,
             Type::Barrier => SmtSort::Int,
             Type::Condvar => SmtSort::Int,
+            // v0.75: Future - use Int for handle
+            Type::Future(_) => SmtSort::Int,
         }
     }
 
@@ -233,6 +235,8 @@ impl SmtTranslator {
             Expr::RwLockNew { .. } => Ok("0".to_string()),
             Expr::BarrierNew { .. } => Ok("0".to_string()),
             Expr::CondvarNew => Ok("0".to_string()),
+            // v0.75: Await - not relevant for SMT verification
+            Expr::Await { future } => self.translate(future),
 
             Expr::Var(name) => {
                 if self.var_types.contains_key(name) {
