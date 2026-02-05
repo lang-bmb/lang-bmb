@@ -1,0 +1,3 @@
+// Codegen test: String length
+// Expected IR: call.*bmb_strlen or strlen
+fn main() -> i64 = "hello".len();

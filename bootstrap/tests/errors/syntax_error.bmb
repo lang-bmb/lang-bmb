@@ -1,0 +1,3 @@
+// Error test: Syntax error
+// Expected error: Parser error
+fn main() -> i64 = 1 +;

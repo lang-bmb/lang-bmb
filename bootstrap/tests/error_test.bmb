@@ -1,0 +1,211 @@
+// BMB Error Message Test Suite (v0.62.8)
+// Tests that error messages are correctly generated for invalid code
+//
+// Each test:
+// 1. Runs bmb check on an error test file
+// 2. Verifies the output contains expected error keywords
+//
+// Test protocol: 777 (start), tests, count, 999 (end)
+
+// ============================================================
+// Configuration
+// ============================================================
+
+fn BMB_PATH() -> String = "./target/release/bmb.exe";
+fn TEST_DIR() -> String = "bootstrap/tests/errors";
+
+// ============================================================
+// String utilities
+// ============================================================
+
+fn int_to_string(n: i64) -> String =
+    if n < 0 { "-" + int_to_string(0 - n) }
+    else if n < 10 { digit_char(n) }
+    else { int_to_string(n / 10) + digit_char(n - (n / 10) * 10) };
+
+fn digit_char(d: i64) -> String =
+    if d == 0 { "0" } else if d == 1 { "1" } else if d == 2 { "2" }
+    else if d == 3 { "3" } else if d == 4 { "4" } else if d == 5 { "5" }
+    else if d == 6 { "6" } else if d == 7 { "7" } else if d == 8 { "8" }
+    else { "9" };
+
+// Check if string contains a pattern (case-sensitive)
+fn contains(haystack: String, needle: String) -> bool =
+    contains_from(haystack, needle, 0);
+
+fn contains_from(haystack: String, needle: String, pos: i64) -> bool =
+    if pos + needle.len() > haystack.len() { false }
+    else if matches_at(haystack, needle, pos) { true }
+    else { contains_from(haystack, needle, pos + 1) };
+
+fn matches_at(haystack: String, needle: String, pos: i64) -> bool =
+    matches_at_inner(haystack, needle, pos, 0);
+
+fn matches_at_inner(haystack: String, needle: String, pos: i64, i: i64) -> bool =
+    if i >= needle.len() { true }
+    else if haystack.byte_at(pos + i) != needle.byte_at(i) { false }
+    else { matches_at_inner(haystack, needle, pos, i + 1) };
+
+// ============================================================
+// Error Check Helper
+// ============================================================
+
+// Run check on a file and return the output (including stderr)
+fn check_file(source_file: String) -> String =
+    exec_output(BMB_PATH(), "check " + source_file);
+
+// ============================================================
+// Test Cases
+// ============================================================
+
+// Test 1: Type mismatch error (return type)
+fn test_type_mismatch() -> i64 =
+    let output = check_file(TEST_DIR() + "/type_mismatch.bmb");
+    if contains(output, "Type error") and contains(output, "expected i64") {
+        let p1 = println_str("  PASS: type mismatch error");
+        1
+    } else {
+        let p2 = println_str("  FAIL: type mismatch error not detected");
+        let p3 = println_str("    got: " + output);
+        0
+    };
+
+// Test 2: Undefined variable error
+fn test_undefined_var() -> i64 =
+    let output = check_file(TEST_DIR() + "/undefined_var.bmb");
+    if contains(output, "undefined variable") {
+        let p1 = println_str("  PASS: undefined variable error");
+        1
+    } else {
+        let p2 = println_str("  FAIL: undefined variable error not detected");
+        let p3 = println_str("    got: " + output);
+        0
+    };
+
+// Test 3: Syntax error (parser error)
+fn test_syntax_error() -> i64 =
+    let output = check_file(TEST_DIR() + "/syntax_error.bmb");
+    if contains(output, "Parser error") {
+        let p1 = println_str("  PASS: syntax error");
+        1
+    } else {
+        let p2 = println_str("  FAIL: syntax error not detected");
+        let p3 = println_str("    got: " + output);
+        0
+    };
+
+// Test 4: Missing function body (parser error)
+fn test_missing_return() -> i64 =
+    let output = check_file(TEST_DIR() + "/missing_return.bmb");
+    if contains(output, "Parser error") and contains(output, "Expected") {
+        let p1 = println_str("  PASS: missing return error");
+        1
+    } else {
+        let p2 = println_str("  FAIL: missing return error not detected");
+        let p3 = println_str("    got: " + output);
+        0
+    };
+
+// Test 5: Wrong argument count
+fn test_wrong_arg_count() -> i64 =
+    let output = check_file(TEST_DIR() + "/wrong_arg_count.bmb");
+    if contains(output, "expected 2 arguments") {
+        let p1 = println_str("  PASS: wrong argument count error");
+        1
+    } else {
+        let p2 = println_str("  FAIL: wrong argument count error not detected");
+        let p3 = println_str("    got: " + output);
+        0
+    };
+
+// Test 6: Duplicate function (warning)
+fn test_duplicate_fn() -> i64 =
+    let output = check_file(TEST_DIR() + "/duplicate_fn.bmb");
+    if contains(output, "duplicate") or contains(output, "defined multiple times") {
+        let p1 = println_str("  PASS: duplicate function warning");
+        1
+    } else {
+        let p2 = println_str("  FAIL: duplicate function warning not detected");
+        let p3 = println_str("    got: " + output);
+        0
+    };
+
+// Test 7: Argument type mismatch
+fn test_arg_type_mismatch() -> i64 =
+    let output = check_file(TEST_DIR() + "/arg_type_mismatch.bmb");
+    if contains(output, "Type error") and contains(output, "expected i64") {
+        let p1 = println_str("  PASS: argument type mismatch error");
+        1
+    } else {
+        let p2 = println_str("  FAIL: argument type mismatch error not detected");
+        let p3 = println_str("    got: " + output);
+        0
+    };
+
+// Test 8: Error message contains span info
+fn test_error_span() -> i64 =
+    let output = check_file(TEST_DIR() + "/type_mismatch.bmb");
+    if contains(output, "Span") or contains(output, "start") {
+        let p1 = println_str("  PASS: error contains span info");
+        1
+    } else {
+        let p2 = println_str("  FAIL: error span info not found");
+        let p3 = println_str("    got: " + output);
+        0
+    };
+
+// Test 9: Error message is JSON formatted
+fn test_json_format() -> i64 =
+    let output = check_file(TEST_DIR() + "/type_mismatch.bmb");
+    if contains(output, "\"type\"") and contains(output, "\"message\"") {
+        let p1 = println_str("  PASS: error is JSON formatted");
+        1
+    } else {
+        let p2 = println_str("  FAIL: error not JSON formatted");
+        let p3 = println_str("    got: " + output);
+        0
+    };
+
+// Test 10: Type name in error (String vs i64)
+fn test_type_names() -> i64 =
+    let output = check_file(TEST_DIR() + "/type_mismatch.bmb");
+    if contains(output, "String") and contains(output, "i64") {
+        let p1 = println_str("  PASS: error contains type names");
+        1
+    } else {
+        let p2 = println_str("  FAIL: type names not in error");
+        let p3 = println_str("    got: " + output);
+        0
+    };
+
+// ============================================================
+// Test Runner
+// ============================================================
+
+fn run_all_tests() -> i64 =
+    let p0 = println_str("\n=== Error Message Tests ===\n");
+
+    let t1 = test_type_mismatch();
+    let t2 = test_undefined_var();
+    let t3 = test_syntax_error();
+    let t4 = test_missing_return();
+    let t5 = test_wrong_arg_count();
+    let t6 = test_duplicate_fn();
+    let t7 = test_arg_type_mismatch();
+    let t8 = test_error_span();
+    let t9 = test_json_format();
+    let t10 = test_type_names();
+
+    t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t9 + t10;
+
+// ============================================================
+// Main Entry Point
+// ============================================================
+
+fn main() -> i64 =
+    let m0 = println(777);
+    let passed = run_all_tests();
+    let p1 = println_str("\nPassed: " + int_to_string(passed) + "/10");
+    let p2 = println(passed);
+    let m1 = println(999);
+    passed;

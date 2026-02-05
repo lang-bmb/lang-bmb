@@ -1,0 +1,4 @@
+// Codegen test: Boolean AND (short-circuit)
+// Expected IR: br i1 (conditional branch for short-circuit)
+fn check(a: bool, b: bool) -> bool = a and b;
+fn main() -> i64 = if check(true, false) { 1 } else { 0 };

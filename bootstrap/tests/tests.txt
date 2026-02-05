@@ -15,3 +15,9 @@ selfhost_test.bmb|280
 
 # Lexer tests (v0.30.195 - 264 total)
 lexer_test.bmb|264
+
+# Codegen tests (v0.62.7 - LLVM IR verification)
+codegen_test.bmb|10
+
+# Error message tests (v0.62.8 - error message verification)
+error_test.bmb|10

@@ -1,0 +1,4 @@
+// Codegen test: Simple multiplication
+// Expected IR: mul nsw i64
+fn mul(a: i64, b: i64) -> i64 = a * b;
+fn main() -> i64 = mul(3, 4);

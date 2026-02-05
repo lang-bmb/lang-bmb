@@ -1,0 +1,4 @@
+// Codegen test: If expression
+// Expected IR: br i1, phi i64
+fn abs(x: i64) -> i64 = if x < 0 { 0 - x } else { x };
+fn main() -> i64 = abs(0 - 5);

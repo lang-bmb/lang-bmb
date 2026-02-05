@@ -1,0 +1,5 @@
+// Error test: Duplicate function
+// Expected error: duplicate or already defined
+fn foo() -> i64 = 1;
+fn foo() -> i64 = 2;
+fn main() -> i64 = foo();

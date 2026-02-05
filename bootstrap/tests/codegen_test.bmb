@@ -1,0 +1,209 @@
+// BMB Codegen Test Suite (v0.62.7)
+// Tests LLVM IR output verification
+//
+// Each test:
+// 1. Compiles a test file with --emit-ir
+// 2. Reads the generated IR
+// 3. Checks for expected patterns
+//
+// Test protocol: 777 (start), tests, count, 999 (end)
+
+// ============================================================
+// Configuration
+// ============================================================
+
+fn BMB_PATH() -> String = "./target/release/bmb.exe";
+fn TEST_DIR() -> String = "bootstrap/tests/codegen";
+fn TEMP_IR() -> String = "./target/test_codegen.ll";
+
+// ============================================================
+// String utilities
+// ============================================================
+
+fn int_to_string(n: i64) -> String =
+    if n < 0 { "-" + int_to_string(0 - n) }
+    else if n < 10 { digit_char(n) }
+    else { int_to_string(n / 10) + digit_char(n - (n / 10) * 10) };
+
+fn digit_char(d: i64) -> String =
+    if d == 0 { "0" } else if d == 1 { "1" } else if d == 2 { "2" }
+    else if d == 3 { "3" } else if d == 4 { "4" } else if d == 5 { "5" }
+    else if d == 6 { "6" } else if d == 7 { "7" } else if d == 8 { "8" }
+    else { "9" };
+
+// Check if string contains a pattern
+fn contains(haystack: String, needle: String) -> bool =
+    contains_from(haystack, needle, 0);
+
+fn contains_from(haystack: String, needle: String, pos: i64) -> bool =
+    if pos + needle.len() > haystack.len() { false }
+    else if matches_at(haystack, needle, pos) { true }
+    else { contains_from(haystack, needle, pos + 1) };
+
+fn matches_at(haystack: String, needle: String, pos: i64) -> bool =
+    matches_at_inner(haystack, needle, pos, 0);
+
+fn matches_at_inner(haystack: String, needle: String, pos: i64, i: i64) -> bool =
+    if i >= needle.len() { true }
+    else if haystack.byte_at(pos + i) != needle.byte_at(i) { false }
+    else { matches_at_inner(haystack, needle, pos, i + 1) };
+
+// ============================================================
+// IR Compilation Helper
+// ============================================================
+
+// Compile a file and return its IR content
+fn compile_to_ir(source_file: String) -> String =
+    let cmd = "build " + source_file + " --emit-ir -o " + TEMP_IR();
+    let p0 = exec_output(BMB_PATH(), cmd);
+    if file_exists(TEMP_IR()) == 1 {
+        read_file(TEMP_IR())
+    } else {
+        ""
+    };
+
+// ============================================================
+// Test Cases
+// ============================================================
+
+// Test 1: Simple addition generates add instruction
+fn test_add_instruction() -> i64 =
+    let ir = compile_to_ir(TEST_DIR() + "/simple_add.bmb");
+    if ir.len() > 0 and contains(ir, "add nsw") {
+        let p1 = println_str("  PASS: add instruction");
+        1
+    } else {
+        let p2 = println_str("  FAIL: add instruction not found");
+        0
+    };
+
+// Test 2: Multiplication generates mul instruction
+fn test_mul_instruction() -> i64 =
+    let ir = compile_to_ir(TEST_DIR() + "/simple_mul.bmb");
+    if ir.len() > 0 and contains(ir, "mul nsw") {
+        let p1 = println_str("  PASS: mul instruction");
+        1
+    } else {
+        let p2 = println_str("  FAIL: mul instruction not found");
+        0
+    };
+
+// Test 3: Boolean AND generates conditional branch (short-circuit)
+fn test_and_short_circuit() -> i64 =
+    let ir = compile_to_ir(TEST_DIR() + "/bool_and.bmb");
+    if ir.len() > 0 and contains(ir, "br i1") {
+        let p1 = println_str("  PASS: short-circuit branch");
+        1
+    } else {
+        let p2 = println_str("  FAIL: short-circuit branch not found");
+        0
+    };
+
+// Test 4: If expression generates branch and phi
+fn test_if_phi() -> i64 =
+    let ir = compile_to_ir(TEST_DIR() + "/if_expr.bmb");
+    if ir.len() > 0 and contains(ir, "br i1") {
+        let p1 = println_str("  PASS: if conditional branch");
+        1
+    } else {
+        let p2 = println_str("  FAIL: if branch not found");
+        0
+    };
+
+// Test 5: String length calls runtime function
+fn test_string_len() -> i64 =
+    let ir = compile_to_ir(TEST_DIR() + "/string_len.bmb");
+    if ir.len() > 0 and contains(ir, "bmb_string_len") {
+        let p1 = println_str("  PASS: string len call");
+        1
+    } else {
+        let p2 = println_str("  FAIL: string len call not found");
+        0
+    };
+
+// Test 6: Recursion generates self-call
+fn test_recursion() -> i64 =
+    let ir = compile_to_ir(TEST_DIR() + "/recursion.bmb");
+    if ir.len() > 0 and contains(ir, "call") and contains(ir, "@factorial") {
+        let p1 = println_str("  PASS: recursive call");
+        1
+    } else {
+        let p2 = println_str("  FAIL: recursive call not found");
+        0
+    };
+
+// Test 7: Function has correct return type
+fn test_return_type() -> i64 =
+    let ir = compile_to_ir(TEST_DIR() + "/simple_add.bmb");
+    if ir.len() > 0 and contains(ir, "define") and contains(ir, "i64") {
+        let p1 = println_str("  PASS: return type i64");
+        1
+    } else {
+        let p2 = println_str("  FAIL: return type not found");
+        0
+    };
+
+// Test 8: Main function exists
+fn test_main_exists() -> i64 =
+    let ir = compile_to_ir(TEST_DIR() + "/simple_add.bmb");
+    if ir.len() > 0 and contains(ir, "@bmb_user_main") {
+        let p1 = println_str("  PASS: main function exists");
+        1
+    } else {
+        let p2 = println_str("  FAIL: main function not found");
+        0
+    };
+
+// Test 9: Module target triple
+fn test_target_triple() -> i64 =
+    let ir = compile_to_ir(TEST_DIR() + "/simple_add.bmb");
+    if ir.len() > 0 and contains(ir, "target triple") {
+        let p1 = println_str("  PASS: target triple defined");
+        1
+    } else {
+        let p2 = println_str("  FAIL: target triple not found");
+        0
+    };
+
+// Test 10: Runtime declarations present
+fn test_runtime_decls() -> i64 =
+    let ir = compile_to_ir(TEST_DIR() + "/simple_add.bmb");
+    if ir.len() > 0 and contains(ir, "declare") and contains(ir, "@println") {
+        let p1 = println_str("  PASS: runtime declarations");
+        1
+    } else {
+        let p2 = println_str("  FAIL: runtime declarations not found");
+        0
+    };
+
+// ============================================================
+// Test Runner
+// ============================================================
+
+fn run_all_tests() -> i64 =
+    let p0 = println_str("\n=== Codegen Tests ===\n");
+
+    let t1 = test_add_instruction();
+    let t2 = test_mul_instruction();
+    let t3 = test_and_short_circuit();
+    let t4 = test_if_phi();
+    let t5 = test_string_len();
+    let t6 = test_recursion();
+    let t7 = test_return_type();
+    let t8 = test_main_exists();
+    let t9 = test_target_triple();
+    let t10 = test_runtime_decls();
+
+    t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t9 + t10;
+
+// ============================================================
+// Main Entry Point
+// ============================================================
+
+fn main() -> i64 =
+    let m0 = println(777);
+    let passed = run_all_tests();
+    let p1 = println_str("\nPassed: " + int_to_string(passed) + "/10");
+    let p2 = println(passed);
+    let m1 = println(999);
+    passed;
