@@ -4022,13 +4022,22 @@ impl TextCodeGen {
                 writeln!(out, "  store {} {}, ptr {}", elem_ty_str, val_str, ptr_val)?;
             }
 
-            // v0.70: Thread spawn - call runtime spawn function
-            MirInst::ThreadSpawn { dest, func, captures } => {
-                // For now, just call bmb_spawn with a placeholder
-                // Full implementation with captures will be in Phase 2
-                let _ = (func, captures); // Suppress unused warnings
-                writeln!(out, "  ; TODO: ThreadSpawn {} - full implementation in Phase 2", dest.name)?;
-                writeln!(out, "  %{} = call i64 @bmb_spawn(ptr null, ptr null)", dest.name)?;
+            // v0.70: Thread spawn - Phase 1 simplified implementation
+            // In Phase 1, the spawn body is lowered inline and the result is passed as a capture.
+            // We use the first capture value as the "result" directly.
+            // Real async threading will be implemented in Phase 2.
+            MirInst::ThreadSpawn { dest, func: _, captures } => {
+                writeln!(out, "  ; Phase 1: ThreadSpawn - body executed synchronously")?;
+
+                // The first capture contains the pre-computed result
+                let result_val = if !captures.is_empty() {
+                    self.format_operand(&captures[0])
+                } else {
+                    "0".to_string()
+                };
+
+                // Store the result directly as the "handle"
+                writeln!(out, "  %{} = add i64 {}, 0", dest.name, result_val)?;
 
                 // Store to alloca if dest is a local
                 if local_names.contains(&dest.name) {
@@ -4036,8 +4045,13 @@ impl TextCodeGen {
                 }
             }
 
-            // v0.70: Thread join - call runtime join function
+            // v0.70: Thread join - Phase 1 simplified implementation
+            // In Phase 1, the handle IS the result (from synchronous execution).
+            // We just return the handle value directly.
+            // Real thread waiting will be implemented in Phase 2.
             MirInst::ThreadJoin { dest, handle } => {
+                writeln!(out, "  ; Phase 1: ThreadJoin - handle is the result")?;
+
                 let handle_val = match handle {
                     Operand::Place(p) => {
                         if local_names.contains(&p.name) {
@@ -4052,14 +4066,13 @@ impl TextCodeGen {
                 };
 
                 if let Some(d) = dest {
-                    writeln!(out, "  %{} = call i64 @bmb_join(i64 {})", d.name, handle_val)?;
+                    // The handle value IS the result
+                    writeln!(out, "  %{} = add i64 {}, 0", d.name, handle_val)?;
 
                     // Store to alloca if dest is a local
                     if local_names.contains(&d.name) {
                         writeln!(out, "  store i64 %{}, ptr %{}.addr", d.name, d.name)?;
                     }
-                } else {
-                    writeln!(out, "  call i64 @bmb_join(i64 {})", handle_val)?;
                 }
             }
 

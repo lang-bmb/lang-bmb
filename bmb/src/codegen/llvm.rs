@@ -965,6 +965,17 @@ impl<'ctx> LlvmContext<'ctx> {
         let get_arg_fn = self.module.add_function("bmb_get_arg", get_arg_type, None);
         self.functions.insert("get_arg".to_string(), get_arg_fn);
         self.function_return_types.insert("get_arg".to_string(), MirType::String);
+
+        // v0.70: Threading primitives
+        // bmb_spawn(func_ptr: ptr, captures: ptr) -> i64 (thread handle)
+        let spawn_type = i64_type.fn_type(&[ptr_type.into(), ptr_type.into()], false);
+        let spawn_fn = self.module.add_function("bmb_spawn", spawn_type, None);
+        self.functions.insert("bmb_spawn".to_string(), spawn_fn);
+
+        // bmb_join(handle: i64) -> i64 (result)
+        let join_type = i64_type.fn_type(&[i64_type.into()], false);
+        let join_fn = self.module.add_function("bmb_join", join_type, None);
+        self.functions.insert("bmb_join".to_string(), join_fn);
     }
 
     /// Convert MIR type to LLVM type
@@ -2864,7 +2875,60 @@ impl<'ctx> LlvmContext<'ctx> {
                 self.store_to_place(dest, enum_ptr.into())?;
             }
 
-            // v0.73+: Concurrency and other new instructions not yet supported in inkwell codegen
+            // v0.70: Thread spawn - Phase 1 simplified implementation
+            // In Phase 1, the spawn body is lowered inline and the result is passed as a capture.
+            // This means the body has already been executed synchronously.
+            // We use the first capture value as the "result" and store it with a fake handle.
+            // Real async threading will be implemented in Phase 2.
+            MirInst::ThreadSpawn { dest, func: _, captures } => {
+                let i64_type = self.context.i64_type();
+
+                // Phase 1: The first capture contains the result of the spawn body
+                // (which was executed synchronously during MIR lowering)
+                let result_val = if !captures.is_empty() {
+                    let cap_val = self.gen_operand(&captures[0])?;
+                    if cap_val.is_int_value() {
+                        let int_val = cap_val.into_int_value();
+                        if int_val.get_type().get_bit_width() < 64 {
+                            self.builder
+                                .build_int_s_extend(int_val, i64_type, "spawn_result_sext")
+                                .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                                .into()
+                        } else {
+                            cap_val
+                        }
+                    } else if cap_val.is_pointer_value() {
+                        self.builder
+                            .build_ptr_to_int(cap_val.into_pointer_value(), i64_type, "spawn_result_ptrtoint")
+                            .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                            .into()
+                    } else {
+                        cap_val
+                    }
+                } else {
+                    // No captures means the spawn body returned unit
+                    i64_type.const_int(0, false).into()
+                };
+
+                // Store the result directly as the "handle"
+                // In Phase 1, the handle IS the result value (no actual threading)
+                self.store_to_place(dest, result_val)?;
+            }
+
+            // v0.70: Thread join - Phase 1 simplified implementation
+            // In Phase 1, the handle IS the result (from the synchronous execution above).
+            // We just return the handle value directly.
+            // Real thread waiting will be implemented in Phase 2.
+            MirInst::ThreadJoin { dest, handle } => {
+                let handle_val = self.gen_operand(handle)?;
+
+                // Phase 1: The handle is the result, just return it
+                if let Some(d) = dest {
+                    self.store_to_place(d, handle_val)?;
+                }
+            }
+
+            // v0.73+: Other concurrency instructions not yet supported in inkwell codegen
             // These are handled by the text-based LLVM IR generator (llvm_text.rs)
             _ => {
                 return Err(CodeGenError::LlvmError(
