@@ -1,0 +1,426 @@
+// BMB Runtime: Conversion Module
+// Self-hosted number ↔ string conversion functions
+//
+// BmbString layout: { data: *u8, len: i64, cap: i64 } (24 bytes)
+//
+// Note: Functions use rt_ prefix to avoid conflicts with C runtime during testing.
+
+// Note: malloc, free, load_i64, store_i64, load_u8, store_u8 are builtin runtime functions
+
+// ============================================================================
+// Helper Functions
+// ============================================================================
+
+@inline
+fn conv_load_i64(ptr: i64) -> i64 = load_i64(ptr);
+
+@inline
+fn conv_store_i64(ptr: i64, val: i64) -> i64 = {
+    store_i64(ptr, val);
+    0
+};
+
+@inline
+fn conv_store_u8(ptr: i64, val: i64) -> i64 = {
+    store_u8(ptr, val);
+    0
+};
+
+// ============================================================================
+// Integer to String Conversion
+// ============================================================================
+
+// Convert i64 to BmbString
+fn rt_i64_to_string(n: i64) -> i64 = {
+    // Handle special case: 0
+    if n == 0 {
+        rt_make_single_char_string(48)  // "0"
+    } else {
+        // Count digits and handle negative
+        let is_neg = n < 0;
+        let abs_n = if is_neg { 0 - n } else { n };
+        let digit_count = rt_count_digits(abs_n);
+        let total_len = if is_neg { digit_count + 1 } else { digit_count };
+
+        // Allocate string
+        let s = malloc(24);
+        let data = malloc(total_len + 1);
+
+        // Write digits in reverse order
+        let _w = rt_write_digits_reverse(data, abs_n, total_len - 1);
+
+        // Add minus sign if negative
+        let _m = if is_neg { conv_store_u8(data, 45) } else { 0 };  // '-'
+
+        // Null terminator
+        let _t = conv_store_u8(data + total_len, 0);
+
+        // Set string fields
+        let _s1 = conv_store_i64(s, data);
+        let _s2 = conv_store_i64(s + 8, total_len);
+        let _s3 = conv_store_i64(s + 16, total_len);
+
+        s
+    }
+};
+
+// Count decimal digits in a positive number
+fn rt_count_digits(n: i64) -> i64 =
+    if n < 10 { 1 }
+    else { 1 + rt_count_digits(n / 10) };
+
+// Write digits in reverse order (from position pos going backwards)
+fn rt_write_digits_reverse(data: i64, n: i64, pos: i64) -> i64 =
+    if n == 0 { 0 }
+    else {
+        let digit = n % 10;
+        let _w = conv_store_u8(data + pos, 48 + digit);  // '0' + digit
+        rt_write_digits_reverse(data, n / 10, pos - 1)
+    };
+
+// Create single character string
+fn rt_make_single_char_string(ch: i64) -> i64 = {
+    let s = malloc(24);
+    let data = malloc(2);
+    let _c = conv_store_u8(data, ch);
+    let _t = conv_store_u8(data + 1, 0);
+    let _s1 = conv_store_i64(s, data);
+    let _s2 = conv_store_i64(s + 8, 1);
+    let _s3 = conv_store_i64(s + 16, 1);
+    s
+};
+
+// ============================================================================
+// String to Integer Conversion
+// ============================================================================
+
+// Parse BmbString as i64
+// Returns 0 if string is null, empty, or not a valid integer
+fn rt_string_to_i64(s: i64) -> i64 = {
+    if s == 0 { 0 }
+    else {
+        let data = conv_load_i64(s);
+        let len = conv_load_i64(s + 8);
+
+        if data == 0 { 0 }
+        else if len == 0 { 0 }
+        else { rt_parse_int_at(data, 0, len) }
+    }
+};
+
+// Parse integer starting at position, handling optional sign and leading spaces
+fn rt_parse_int_at(data: i64, pos: i64, len: i64) -> i64 = {
+    // Skip leading whitespace
+    let start = rt_skip_whitespace(data, pos, len);
+
+    if start >= len { 0 }
+    else {
+        let first_char = load_u8(data + start);
+
+        // Check for sign
+        if first_char == 45 {  // '-'
+            0 - rt_parse_digits(data, start + 1, len, 0)
+        } else if first_char == 43 {  // '+'
+            rt_parse_digits(data, start + 1, len, 0)
+        } else {
+            rt_parse_digits(data, start, len, 0)
+        }
+    }
+};
+
+// Skip whitespace characters (space, tab, newline)
+fn rt_skip_whitespace(data: i64, pos: i64, len: i64) -> i64 =
+    if pos >= len { pos }
+    else {
+        let ch = load_u8(data + pos);
+        if ch == 32 { rt_skip_whitespace(data, pos + 1, len) }       // space
+        else if ch == 9 { rt_skip_whitespace(data, pos + 1, len) }   // tab
+        else if ch == 10 { rt_skip_whitespace(data, pos + 1, len) }  // newline
+        else if ch == 13 { rt_skip_whitespace(data, pos + 1, len) }  // carriage return
+        else { pos }
+    };
+
+// Parse decimal digits starting at position
+fn rt_parse_digits(data: i64, pos: i64, len: i64, acc: i64) -> i64 =
+    if pos >= len { acc }
+    else {
+        let ch = load_u8(data + pos);
+        if ch >= 48 {  // '0'
+            if ch <= 57 {  // '9'
+                let digit = ch - 48;
+                rt_parse_digits(data, pos + 1, len, acc * 10 + digit)
+            } else { acc }  // Non-digit, stop parsing
+        } else { acc }  // Non-digit, stop parsing
+    };
+
+// ============================================================================
+// Boolean Conversion
+// ============================================================================
+
+// Convert bool (0 or 1) to string "true" or "false"
+fn rt_bool_to_string(b: i64) -> i64 = {
+    if b == 0 {
+        rt_make_string_false()
+    } else {
+        rt_make_string_true()
+    }
+};
+
+fn rt_make_string_true() -> i64 = {
+    let s = malloc(24);
+    let data = malloc(5);
+    let _0 = conv_store_u8(data, 116);     // 't'
+    let _1 = conv_store_u8(data + 1, 114); // 'r'
+    let _2 = conv_store_u8(data + 2, 117); // 'u'
+    let _3 = conv_store_u8(data + 3, 101); // 'e'
+    let _4 = conv_store_u8(data + 4, 0);
+    let _s1 = conv_store_i64(s, data);
+    let _s2 = conv_store_i64(s + 8, 4);
+    let _s3 = conv_store_i64(s + 16, 4);
+    s
+};
+
+fn rt_make_string_false() -> i64 = {
+    let s = malloc(24);
+    let data = malloc(6);
+    let _0 = conv_store_u8(data, 102);     // 'f'
+    let _1 = conv_store_u8(data + 1, 97);  // 'a'
+    let _2 = conv_store_u8(data + 2, 108); // 'l'
+    let _3 = conv_store_u8(data + 3, 115); // 's'
+    let _4 = conv_store_u8(data + 4, 101); // 'e'
+    let _5 = conv_store_u8(data + 5, 0);
+    let _s1 = conv_store_i64(s, data);
+    let _s2 = conv_store_i64(s + 8, 5);
+    let _s3 = conv_store_i64(s + 16, 5);
+    s
+};
+
+// ============================================================================
+// Hex Conversion
+// ============================================================================
+
+// Convert i64 to hex string (lowercase, no prefix)
+fn rt_i64_to_hex(n: i64) -> i64 = {
+    if n == 0 {
+        rt_make_single_char_string(48)  // "0"
+    } else {
+        let is_neg = n < 0;
+        let abs_n = if is_neg { 0 - n } else { n };
+        let hex_len = rt_count_hex_digits(abs_n);
+        let total_len = if is_neg { hex_len + 1 } else { hex_len };
+
+        let s = malloc(24);
+        let data = malloc(total_len + 1);
+
+        let _w = rt_write_hex_reverse(data, abs_n, total_len - 1);
+        let _m = if is_neg { conv_store_u8(data, 45) } else { 0 };
+        let _t = conv_store_u8(data + total_len, 0);
+
+        let _s1 = conv_store_i64(s, data);
+        let _s2 = conv_store_i64(s + 8, total_len);
+        let _s3 = conv_store_i64(s + 16, total_len);
+        s
+    }
+};
+
+fn rt_count_hex_digits(n: i64) -> i64 =
+    if n < 16 { 1 }
+    else { 1 + rt_count_hex_digits(n / 16) };
+
+fn rt_write_hex_reverse(data: i64, n: i64, pos: i64) -> i64 =
+    if n == 0 { 0 }
+    else {
+        let digit = n % 16;
+        let ch = if digit < 10 { 48 + digit } else { 87 + digit };  // '0'-'9' or 'a'-'f'
+        let _w = conv_store_u8(data + pos, ch);
+        rt_write_hex_reverse(data, n / 16, pos - 1)
+    };
+
+// ============================================================================
+// String Utilities
+// ============================================================================
+
+// Get string length
+fn rt_strlen(s: i64) -> i64 = {
+    if s == 0 { 0 }
+    else { conv_load_i64(s + 8) }
+};
+
+// Free string
+fn rt_free_string(s: i64) -> i64 = {
+    if s == 0 { 0 }
+    else {
+        let data = conv_load_i64(s);
+        let _d = if data != 0 { let _f = free(data); 0 } else { 0 };
+        let _s = free(s);
+        0
+    }
+};
+
+// ============================================================================
+// Tests
+// ============================================================================
+
+fn test_i64_to_string() -> i64 = {
+    // Test positive number
+    let s1 = rt_i64_to_string(12345);
+    let len1 = rt_strlen(s1);
+
+    // Test zero
+    let s2 = rt_i64_to_string(0);
+    let len2 = rt_strlen(s2);
+
+    // Test negative number
+    let s3 = rt_i64_to_string(-42);
+    let len3 = rt_strlen(s3);
+
+    // Check lengths
+    if len1 != 5 { 1 }       // "12345"
+    else if len2 != 1 { 2 }  // "0"
+    else if len3 != 3 { 3 }  // "-42"
+    else {
+        // Check first char of each
+        let data1 = conv_load_i64(s1);
+        let data2 = conv_load_i64(s2);
+        let data3 = conv_load_i64(s3);
+
+        let ch1 = load_u8(data1);      // '1' = 49
+        let ch2 = load_u8(data2);      // '0' = 48
+        let ch3 = load_u8(data3);      // '-' = 45
+
+        if ch1 != 49 { 4 }
+        else if ch2 != 48 { 5 }
+        else if ch3 != 45 { 6 }
+        else {
+            let _f1 = rt_free_string(s1);
+            let _f2 = rt_free_string(s2);
+            let _f3 = rt_free_string(s3);
+            0  // Success
+        }
+    }
+};
+
+fn test_string_to_i64() -> i64 = {
+    // Create test strings
+    let s1 = rt_i64_to_string(12345);
+    let s2 = rt_i64_to_string(-999);
+    let s3 = rt_i64_to_string(0);
+
+    // Parse them back
+    let n1 = rt_string_to_i64(s1);
+    let n2 = rt_string_to_i64(s2);
+    let n3 = rt_string_to_i64(s3);
+
+    if n1 != 12345 { 10 }
+    else if n2 != -999 { 11 }
+    else if n3 != 0 { 12 }
+    else {
+        let _f1 = rt_free_string(s1);
+        let _f2 = rt_free_string(s2);
+        let _f3 = rt_free_string(s3);
+        0  // Success
+    }
+};
+
+fn test_roundtrip() -> i64 = {
+    // Test various numbers
+    let test1 = rt_roundtrip_test(0);
+    let test2 = rt_roundtrip_test(1);
+    let test3 = rt_roundtrip_test(-1);
+    let test4 = rt_roundtrip_test(1000000);
+    let test5 = rt_roundtrip_test(-9999999);
+
+    if test1 != 0 { 20 }
+    else if test2 != 0 { 21 }
+    else if test3 != 0 { 22 }
+    else if test4 != 0 { 23 }
+    else if test5 != 0 { 24 }
+    else { 0 }
+};
+
+fn rt_roundtrip_test(n: i64) -> i64 = {
+    let s = rt_i64_to_string(n);
+    let parsed = rt_string_to_i64(s);
+    let _f = rt_free_string(s);
+    if parsed == n { 0 } else { 1 }
+};
+
+fn test_bool_to_string() -> i64 = {
+    let s_true = rt_bool_to_string(1);
+    let s_false = rt_bool_to_string(0);
+
+    let len_true = rt_strlen(s_true);
+    let len_false = rt_strlen(s_false);
+
+    if len_true != 4 { 30 }   // "true"
+    else if len_false != 5 { 31 }  // "false"
+    else {
+        let _f1 = rt_free_string(s_true);
+        let _f2 = rt_free_string(s_false);
+        0
+    }
+};
+
+fn test_hex() -> i64 = {
+    let h1 = rt_i64_to_hex(255);   // "ff"
+    let h2 = rt_i64_to_hex(16);    // "10"
+    let h3 = rt_i64_to_hex(0);     // "0"
+
+    let len1 = rt_strlen(h1);
+    let len2 = rt_strlen(h2);
+    let len3 = rt_strlen(h3);
+
+    if len1 != 2 { 40 }
+    else if len2 != 2 { 41 }
+    else if len3 != 1 { 42 }
+    else {
+        // Check hex content of h1 = "ff"
+        let data1 = conv_load_i64(h1);
+        let c1 = load_u8(data1);      // 'f' = 102
+        let c2 = load_u8(data1 + 1);  // 'f' = 102
+
+        if c1 != 102 { 43 }
+        else if c2 != 102 { 44 }
+        else {
+            let _f1 = rt_free_string(h1);
+            let _f2 = rt_free_string(h2);
+            let _f3 = rt_free_string(h3);
+            0
+        }
+    }
+};
+
+fn main() -> i64 = {
+    let r1 = test_i64_to_string();
+    if r1 != 0 {
+        let _p = println(r1);
+        r1
+    } else {
+        let r2 = test_string_to_i64();
+        if r2 != 0 {
+            let _p = println(r2);
+            r2
+        } else {
+            let r3 = test_roundtrip();
+            if r3 != 0 {
+                let _p = println(r3);
+                r3
+            } else {
+                let r4 = test_bool_to_string();
+                if r4 != 0 {
+                    let _p = println(r4);
+                    r4
+                } else {
+                    let r5 = test_hex();
+                    if r5 != 0 {
+                        let _p = println(r5);
+                        r5
+                    } else {
+                        let _p = println(999);
+                        0  // Success
+                    }
+                }
+            }
+        }
+    }
+};
