@@ -19,11 +19,11 @@
 use std::collections::{HashMap, HashSet};
 
 use super::{
-    BasicBlock, CmpOp, Constant, ContractFact, MirBinOp, MirFunction,
-    MirInst, MirProgram, MirType, Operand, Place, Terminator,
+    CmpOp, Constant, ContractFact, MirBinOp, MirFunction,
+    MirInst, MirProgram, Operand, Terminator,
 };
 use super::OptimizationPass;
-use crate::pir::{ProvenFact, PirExpr, PirType};
+use crate::pir::ProvenFact;
 use crate::cir::Proposition;
 
 // ============================================================================

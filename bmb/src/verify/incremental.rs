@@ -5,7 +5,10 @@
 
 use std::collections::{HashMap, HashSet};
 
-use crate::cir::{CirProgram, CirFunction, CirVerifier, ProofWitness, ProofOutcome};
+use crate::cir::{CirProgram, CirVerifier, ProofWitness, ProofOutcome};
+
+#[cfg(test)]
+use crate::cir::CirFunction;
 use super::proof_db::{ProofDatabase, FunctionId, FunctionProofResult, VerificationStatus};
 use super::summary::{FunctionSummary, SummaryChange, extract_summaries, compare_summaries};
 

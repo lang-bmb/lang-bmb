@@ -5,10 +5,12 @@
 
 use crate::smt::{SmtSolver, SolverResult, Counterexample};
 use super::{
-    CirProgram, CirFunction, CirParam, CirType, CirExpr, Proposition,
-    NamedProposition, EffectSet, CompareOp,
+    CirProgram, CirFunction, Proposition,
     smt::{CirSmtGenerator, SmtError},
 };
+
+#[cfg(test)]
+use super::{CirParam, CirType, CirExpr, NamedProposition, EffectSet, CompareOp};
 
 /// Proof witness representing verification outcome
 #[derive(Debug, Clone)]

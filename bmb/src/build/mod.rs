@@ -37,7 +37,7 @@ use crate::types::TypeChecker;
 
 // v0.55: CIR/PIR pipeline imports
 use crate::mir::run_proof_guided_program;
-use crate::cir::{lower_to_cir, extract_all_facts, CirVerifier, CirVerificationReport, ProofOutcome};
+use crate::cir::{lower_to_cir, extract_all_facts, CirVerifier, ProofOutcome};
 use crate::pir::{propagate_proofs, extract_all_pir_facts};
 use crate::verify::ProofDatabase;
 

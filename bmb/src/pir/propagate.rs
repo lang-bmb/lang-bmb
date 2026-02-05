@@ -13,8 +13,11 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicU32, Ordering};
 
 use crate::cir::{
-    CirProgram, CirFunction, CirExpr, CirType, Proposition, BinOp, UnaryOp, CompareOp,
+    CirProgram, CirFunction, CirExpr, Proposition, BinOp, UnaryOp, CompareOp,
 };
+
+#[cfg(test)]
+use crate::cir::CirType;
 use crate::verify::ProofDatabase;
 
 use super::{
