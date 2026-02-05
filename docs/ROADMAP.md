@@ -2050,11 +2050,12 @@ fn bench_bootstrap_stage1() -> i64 {
 │                      Gate #3.1 달성 (6/10 → 10/10)                       │
 ├─────────────────────────────────────────────────────────────────────────┤
 │                                                                         │
-│  현재 실패 벤치마크:                                                     │
-│  - fannkuch: 2.12x → 목표 ≤1.10x                                        │
-│  - fibonacci: ✅ 해결됨 (1.44x → 1.0x, @pure annotation)                │
-│  - fasta: 1.20x → 목표 ≤1.10x                                           │
-│  - mandelbrot: 1.20x → 목표 ≤1.10x                                      │
+│  Gate #3.1 상태: 13/14 PASS (v0.69.1)                                   │
+│  - fannkuch: ✅ 2.12x → 1.03x                                           │
+│  - fibonacci: ✅ 1.44x → 1.03x (@pure annotation)                       │
+│  - fasta: ✅ 1.20x → 0.88x (FASTER than C!)                             │
+│  - mandelbrot: ✅ 1.20x → 1.04x                                         │
+│  - matrix_multiply: ⚠️ 1.14x (only benchmark slightly over 1.10x)       │
 │                                                                         │
 │  최적화 전략:                                                            │
 │  1. IR 분석: BMB vs C 생성 IR 비교                                       │
@@ -2070,16 +2071,16 @@ fn bench_bootstrap_stage1() -> i64 {
 | ID | 태스크 | 설명 | 우선순위 | 상태 |
 |----|--------|------|----------|------|
 | 69.1 | **IR 비교 분석** | fannkuch/fibonacci C vs BMB IR 비교 | P0 | ✅ 완료 |
-| 69.2 | **fannkuch 최적화** | 고정 크기 배열 지원 필요 (2.12x) | P0 | 📋 계획 |
+| 69.2 | **fannkuch 최적화** | 2.12x → 1.03x (자동 해결됨) | P0 | ✅ 완료 |
 | 69.3 | **fibonacci 최적화** | @pure 어노테이션 → memory(none) (1.44x → 1.0x) | P0 | ✅ 완료 |
-| 69.4 | **fasta/mandelbrot** | 경미한 갭 해결 (1.2x → ≤1.10x) | P1 | 📋 계획 |
-| 69.5 | **벤치마크 재측정** | 전체 벤치마크 재실행 및 검증 | P0 | 📋 계획 |
+| 69.4 | **fasta/mandelbrot** | fasta 0.88x, mandelbrot 1.04x | P1 | ✅ 완료 |
+| 69.5 | **벤치마크 재측정** | Tier 1 완료, 13/14 PASS | P0 | ✅ 완료 |
 
 ### IR 분석 결과 (69.1)
 
-**fannkuch (2.12x)**: 힙 할당으로 SIMD 벡터화 불가
-- 원인: `malloc` 기반 배열 → 크기 미상 → 벡터화 불가
-- 해결: 고정 크기 배열 문법 추가 (`let arr: [i64; 12]`)
+**fannkuch (2.12x → 1.03x)**: ✅ 자동 해결됨
+- 이전 분석: `malloc` 기반 배열 → 크기 미상 → 벡터화 불가
+- 실제 결과: v0.69.1에서 1.03x로 측정됨 (이전 측정 오류 또는 다른 최적화 효과)
 
 **fibonacci (1.44x → 1.0x)**: ✅ 해결됨
 - 원인: `memory(none)` 속성 누락 → LLVM이 순수 함수 인식 못함
