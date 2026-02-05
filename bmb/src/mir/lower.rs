@@ -285,7 +285,7 @@ fn lower_function(
         is_const,
         always_inline: explicit_always_inline || explicit_inline, // v0.59: Can be set by source attribute OR AggressiveInlining pass
         inline_hint: false, // v0.51.52: Set by AggressiveInlining pass for medium-sized functions
-        is_memory_free: false, // Set by MemoryEffectAnalysis pass
+        is_memory_free: is_pure, // v0.69: @pure implies memory(none) for LLVM optimization
     }
 }
 

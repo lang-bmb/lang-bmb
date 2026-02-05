@@ -1074,6 +1074,14 @@ impl<'ctx> LlvmContext<'ctx> {
             function.add_attribute(AttributeLoc::Function, self.context.create_enum_attribute(alwaysinline_id, 0));
         }
 
+        // v0.69: Add memory(none) for memory-free functions to enable LICM and constant folding
+        // Functions marked @pure or detected as memory-free can be hoisted out of loops
+        // and constant-folded by LLVM when called with constant arguments
+        if func.is_memory_free {
+            let memory_none_attr = self.context.create_string_attribute("memory", "none");
+            function.add_attribute(AttributeLoc::Function, memory_none_attr);
+        }
+
         // v0.60.56: Add fast-math attributes for FP-heavy workloads
         // These enable aggressive FP optimizations (FMA, reciprocal, reassociation)
         // WARNING: Not IEEE-754 compliant - results may differ slightly
