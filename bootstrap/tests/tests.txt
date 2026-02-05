@@ -1,0 +1,17 @@
+# BMB Test Manifest
+# Format: filename|expected_test_count
+#
+# Each test file should:
+# 1. Print 777 as start marker
+# 2. Run tests and print results
+# 3. Print total passed count
+# 4. Print 999 as end marker
+
+# Parser tests (v0.30.197 - 242 unit + 15 integration = 257 total)
+parser_test.bmb|257
+
+# Self-host tests (v0.30.191 - 272 unit + 8 integration = 280 total)
+selfhost_test.bmb|280
+
+# Lexer tests (v0.30.195 - 264 total)
+lexer_test.bmb|264

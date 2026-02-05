@@ -1,0 +1,274 @@
+// BMB Test Runner (bmb-test)
+// Phase v0.62: Dogfooding I - Test Framework
+//
+// A test runner written in BMB for BMB tests.
+// Discovers tests from manifest file, executes them, and reports results.
+//
+// Usage:
+//   bmb run tools/bmb-test/main.bmb
+//
+// Test files follow the convention: *_test.bmb
+// Each test file should output:
+//   777  (start marker)
+//   ...  (test output)
+//   999  (end marker)
+// The second-to-last line before 999 is the test result count.
+
+// ============================================================
+// Configuration
+// ============================================================
+
+fn BMB_PATH() -> String = "./target/release/bmb.exe";
+fn TEST_DIR() -> String = "bootstrap/tests";
+fn MANIFEST_FILE() -> String = "bootstrap/tests/tests.txt";
+
+// ============================================================
+// Character utilities (from stdlib/string)
+// ============================================================
+
+fn char_is_digit(c: i64) -> bool = c >= 48 and c <= 57;
+fn char_is_whitespace(c: i64) -> bool = c == 32 or c == 9 or c == 10 or c == 13;
+
+// ============================================================
+// String utilities (from stdlib/string)
+// ============================================================
+
+fn int_to_string(n: i64) -> String =
+    if n < 0 { "-" + int_to_string(0 - n) }
+    else if n < 10 { digit_char(n) }
+    else { int_to_string(n / 10) + digit_char(n - (n / 10) * 10) };
+
+fn digit_char(d: i64) -> String =
+    if d == 0 { "0" } else if d == 1 { "1" } else if d == 2 { "2" }
+    else if d == 3 { "3" } else if d == 4 { "4" } else if d == 5 { "5" }
+    else if d == 6 { "6" } else if d == 7 { "7" } else if d == 8 { "8" }
+    else { "9" };
+
+fn string_eq(a: String, b: String) -> bool =
+    a.len() == b.len() and string_eq_from(a, b, 0);
+
+fn string_eq_from(a: String, b: String, pos: i64) -> bool =
+    if pos >= a.len() { true }
+    else if a.byte_at(pos) != b.byte_at(pos) { false }
+    else { string_eq_from(a, b, pos + 1) };
+
+// ============================================================
+// Line Parsing Utilities
+// ============================================================
+
+// Find newline character (10) in string from position
+fn find_newline(s: String, pos: i64) -> i64 =
+    if pos >= s.len() { s.len() }
+    else if s.byte_at(pos) == 10 { pos }
+    else { find_newline(s, pos + 1) };
+
+// Get line at position (returns line content without newline)
+fn get_line_at(s: String, pos: i64) -> String =
+    let end = find_newline(s, pos);
+    s.slice(pos, end);
+
+// Skip to next line (position after newline)
+fn next_line_pos(s: String, pos: i64) -> i64 =
+    let nl = find_newline(s, pos);
+    if nl >= s.len() { s.len() } else { nl + 1 };
+
+// Count lines in string
+fn count_lines(s: String) -> i64 =
+    count_lines_from(s, 0, 0);
+
+fn count_lines_from(s: String, pos: i64, count: i64) -> i64 =
+    if pos >= s.len() { count }
+    else { count_lines_from(s, next_line_pos(s, pos), count + 1) };
+
+// Get Nth line (0-indexed)
+fn get_line_n(s: String, n: i64) -> String =
+    get_line_n_from(s, n, 0);
+
+fn get_line_n_from(s: String, n: i64, pos: i64) -> String =
+    if n == 0 { get_line_at(s, pos) }
+    else if pos >= s.len() { "" }
+    else { get_line_n_from(s, n - 1, next_line_pos(s, pos)) };
+
+// ============================================================
+// Manifest Parsing
+// ============================================================
+
+// Manifest format: filename|expected_value
+// Example: parser_test.bmb|257
+
+// Find pipe character in string
+fn find_pipe(s: String, pos: i64) -> i64 =
+    if pos >= s.len() { 0 - 1 }
+    else if s.byte_at(pos) == 124 { pos }  // 124 = '|'
+    else { find_pipe(s, pos + 1) };
+
+// Parse filename from manifest line
+fn parse_manifest_filename(line: String) -> String =
+    let pipe = find_pipe(line, 0);
+    if pipe < 0 { line } else { line.slice(0, pipe) };
+
+// Parse expected value from manifest line
+fn parse_manifest_expected(line: String) -> i64 =
+    let pipe = find_pipe(line, 0);
+    if pipe < 0 { 0 - 1 }
+    else { parse_int_simple(line.slice(pipe + 1, line.len())) };
+
+// Simple integer parser
+fn parse_int_simple(s: String) -> i64 =
+    parse_int_acc(s, 0, 0);
+
+fn parse_int_acc(s: String, pos: i64, acc: i64) -> i64 =
+    if pos >= s.len() { acc }
+    else {
+        let c = s.byte_at(pos);
+        if char_is_digit(c) { parse_int_acc(s, pos + 1, acc * 10 + (c - 48)) }
+        else { acc }
+    };
+
+// ============================================================
+// Test Result Tracking
+// ============================================================
+
+// Result constants
+fn RESULT_PASS() -> i64 = 1;
+fn RESULT_FAIL() -> i64 = 0;
+
+// ============================================================
+// Test Execution
+// ============================================================
+
+// Run a single test file and return pass/fail
+// Uses BMB interpreter mode (bmb run) to avoid native compilation issues
+fn run_single_test(test_dir: String, filename: String, expected: i64) -> i64 =
+    let full_path = test_dir + "/" + filename;
+    let p1 = println_str("Running: " + filename);
+
+    // Run the test in interpreter mode using exec_output builtin
+    let output = exec_output(BMB_PATH(), "run " + full_path);
+
+    // Parse the result from output
+    let actual = extract_test_result(output);
+
+    if actual == expected {
+        let p3 = println_str("  PASS: " + int_to_string(actual) + " tests passed");
+        RESULT_PASS()
+    } else {
+        let p4 = println_str("  FAIL: Expected " + int_to_string(expected) + ", got " + int_to_string(actual));
+        RESULT_FAIL()
+    };
+
+// Extract test result from output
+// Looks for the last number before "999" marker
+fn extract_test_result(output: String) -> i64 =
+    let lines = count_lines(output);
+    if lines < 3 { 0 - 1 }
+    else {
+        // Find the result line (second-to-last before 999)
+        find_result_line(output, lines - 1)
+    };
+
+fn find_result_line(output: String, n: i64) -> i64 =
+    if n < 0 { 0 - 1 }
+    else {
+        let line = get_line_n(output, n);
+        let trimmed = trim_line(line);
+        if string_eq(trimmed, "999") {
+            // Found end marker, get previous line
+            if n > 0 {
+                let result_line = get_line_n(output, n - 1);
+                parse_int_simple(trim_line(result_line))
+            } else { 0 - 1 }
+        } else {
+            find_result_line(output, n - 1)
+        }
+    };
+
+// Simple line trimmer (remove leading/trailing whitespace)
+fn trim_line(s: String) -> String =
+    let start = skip_whitespace(s, 0);
+    let end = find_trim_end(s, s.len());
+    if start >= end { "" } else { s.slice(start, end) };
+
+fn skip_whitespace(s: String, pos: i64) -> i64 =
+    if pos >= s.len() { pos }
+    else if char_is_whitespace(s.byte_at(pos)) { skip_whitespace(s, pos + 1) }
+    else { pos };
+
+fn find_trim_end(s: String, pos: i64) -> i64 =
+    if pos <= 0 { 0 }
+    else if char_is_whitespace(s.byte_at(pos - 1)) { find_trim_end(s, pos - 1) }
+    else { pos };
+
+// ============================================================
+// Test Suite Runner
+// ============================================================
+
+// Run all tests from manifest
+fn run_all_tests(manifest: String) -> i64 =
+    let p0 = println_str("\n=== BMB Test Runner ===\n");
+    run_tests_from(manifest, 0, 0, 0);
+
+fn run_tests_from(manifest: String, pos: i64, passed: i64, total: i64) -> i64 =
+    if pos >= manifest.len() {
+        // Report final results
+        let r1 = println_str("\n=== Results ===");
+        let r2 = println_str("Passed: " + int_to_string(passed) + "/" + int_to_string(total));
+        if passed == total {
+            let r3 = println_str("All tests passed!");
+            0  // Exit code 0 = success
+        } else {
+            let r4 = println_str("Some tests failed.");
+            1  // Exit code 1 = failure
+        }
+    } else {
+        let line = get_line_at(manifest, pos);
+        let next_pos = next_line_pos(manifest, pos);
+
+        // Skip empty lines (including lines with only CR) and comments
+        let trimmed_line = trim_line(line);
+        if trimmed_line.len() == 0 {
+            run_tests_from(manifest, next_pos, passed, total)
+        } else if trimmed_line.byte_at(0) == 35 {  // '#' = comment
+            run_tests_from(manifest, next_pos, passed, total)
+        } else {
+            // Parse and run test (use trimmed line to handle CRLF)
+            let filename = parse_manifest_filename(trimmed_line);
+            let expected = parse_manifest_expected(trimmed_line);
+
+            let result = run_single_test(TEST_DIR(), filename, expected);
+            let new_passed = if result == RESULT_PASS() { passed + 1 } else { passed };
+
+            run_tests_from(manifest, next_pos, new_passed, total + 1)
+        }
+    };
+
+// ============================================================
+// Main Entry Point
+// ============================================================
+
+fn main() -> i64 =
+    let m0 = println(777);  // Start marker
+
+    // Check if manifest exists
+    let manifest_exists = file_exists(MANIFEST_FILE());
+
+    if manifest_exists != 1 {
+        let e1 = println_str("Error: Manifest file not found: " + MANIFEST_FILE());
+        let e2 = println_str("Create a tests.txt file with format: filename|expected_count");
+        let e3 = println(999);
+        1
+    } else {
+        // Read manifest
+        let manifest = read_file(MANIFEST_FILE());
+
+        if manifest.len() == 0 {
+            let e4 = println_str("Error: Empty manifest file");
+            let e5 = println(999);
+            1
+        } else {
+            // Run tests
+            let exit_code = run_all_tests(manifest);
+            let m1 = println(999);  // End marker
+            exit_code
+        }
+    };
