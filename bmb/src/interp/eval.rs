@@ -163,6 +163,9 @@ impl Interpreter {
         self.builtins.insert("system".to_string(), builtin_system);
         self.builtins.insert("getenv".to_string(), builtin_getenv);
 
+        // v0.63: Timing builtin for bmb-bench
+        self.builtins.insert("time_ns".to_string(), builtin_time_ns);
+
         // v0.31.22: Command-line argument builtins for Phase 32.3.D CLI Independence
         self.builtins.insert("arg_count".to_string(), builtin_arg_count);
         self.builtins.insert("get_arg".to_string(), builtin_get_arg);
@@ -3291,6 +3294,20 @@ fn builtin_getenv(args: &[Value]) -> InterpResult<Value> {
         }
         None => Err(RuntimeError::type_error("string", args[0].type_name())),
     }
+}
+
+// v0.63: Timing builtin for bmb-bench benchmark framework
+/// time_ns() -> i64
+/// Returns nanoseconds since UNIX epoch (for benchmarking)
+fn builtin_time_ns(args: &[Value]) -> InterpResult<Value> {
+    if !args.is_empty() {
+        return Err(RuntimeError::arity_mismatch("time_ns", 0, args.len()));
+    }
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default();
+    Ok(Value::Int(now.as_nanos() as i64))
 }
 
 // ============ v0.31.22: Command-line Argument Builtins for Phase 32.3.D ============

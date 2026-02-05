@@ -1,0 +1,61 @@
+// Compile time benchmark
+// Measures time to compile bootstrap files
+
+fn BMB_PATH() -> String = "./target/release/bmb.exe";
+
+fn int_to_string(n: i64) -> String =
+    if n < 0 { "-" + int_to_string(0 - n) }
+    else if n < 10 { digit_char(n) }
+    else { int_to_string(n / 10) + digit_char(n - (n / 10) * 10) };
+
+fn digit_char(d: i64) -> String =
+    if d == 0 { "0" } else if d == 1 { "1" } else if d == 2 { "2" }
+    else if d == 3 { "3" } else if d == 4 { "4" } else if d == 5 { "5" }
+    else if d == 6 { "6" } else if d == 7 { "7" } else if d == 8 { "8" }
+    else { "9" };
+
+// Measure compile time for a single file
+fn measure_compile(file: String) -> i64 =
+    let start = time_ns();
+    let output = exec_output(BMB_PATH(), "check " + file);
+    let end = time_ns();
+    end - start;
+
+fn format_ms(ns: i64) -> String =
+    let ms = ns / 1000000;
+    int_to_string(ms) + "ms";
+
+fn main() -> i64 = {
+    let p0 = println_str("=== Compile Time Benchmark ===\n");
+
+    // Measure key bootstrap files
+    let t1 = measure_compile("bootstrap/lexer.bmb");
+    let p1 = println_str("lexer.bmb:      " + format_ms(t1));
+
+    let t2 = measure_compile("bootstrap/parser.bmb");
+    let p2 = println_str("parser.bmb:     " + format_ms(t2));
+
+    let t3 = measure_compile("bootstrap/parser_ast.bmb");
+    let p3 = println_str("parser_ast.bmb: " + format_ms(t3));
+
+    let t4 = measure_compile("bootstrap/types.bmb");
+    let p4 = println_str("types.bmb:      " + format_ms(t4));
+
+    let t5 = measure_compile("bootstrap/mir.bmb");
+    let p5 = println_str("mir.bmb:        " + format_ms(t5));
+
+    let t6 = measure_compile("bootstrap/lowering.bmb");
+    let p6 = println_str("lowering.bmb:   " + format_ms(t6));
+
+    let t7 = measure_compile("bootstrap/llvm_ir.bmb");
+    let p7 = println_str("llvm_ir.bmb:    " + format_ms(t7));
+
+    let t8 = measure_compile("bootstrap/compiler.bmb");
+    let p8 = println_str("compiler.bmb:   " + format_ms(t8));
+
+    let total = t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8;
+    let p9 = println_str("\nTotal: " + format_ms(total));
+
+    println(total / 1000000);  // Return total in ms
+    0
+};

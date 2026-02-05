@@ -394,6 +394,12 @@ impl TextCodeGen {
         writeln!(out, "declare ptr @bmb_getenv(ptr)")?;
         writeln!(out)?;
 
+        // v0.63: Timing functions for bmb-bench
+        writeln!(out, "; Runtime declarations - Timing (v0.63)")?;
+        writeln!(out, "declare i64 @bmb_time_ns() nounwind willreturn")?;
+        writeln!(out, "declare i64 @time_ns() nounwind willreturn")?;
+        writeln!(out)?;
+
         // v0.70: Threading runtime functions
         writeln!(out, "; Runtime declarations - Threading (v0.70)")?;
         writeln!(out, "declare i64 @bmb_spawn(ptr, ptr) nounwind")?;
@@ -4798,6 +4804,9 @@ impl TextCodeGen {
 
             // i64 return - Process
             "bmb_system" => "i64",
+
+            // i64 return - Timing (v0.63)
+            "bmb_time_ns" | "time_ns" => "i64",
 
             // ptr return - String operations (both full and wrapper names)
             "bmb_string_new" | "bmb_string_from_cstr" | "bmb_string_slice"

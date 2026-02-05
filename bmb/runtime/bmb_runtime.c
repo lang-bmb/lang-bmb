@@ -1688,6 +1688,35 @@ int64_t strmap_contains(int64_t handle, const BmbString* key) {
 int64_t strmap_size(int64_t handle) { return bmb_strmap_size(handle); }
 
 // ============================================================================
+// v0.63: Timing functions for bmb-bench
+// ============================================================================
+
+#ifdef _WIN32
+// Windows: Use QueryPerformanceCounter for high-resolution timing
+int64_t bmb_time_ns(void) {
+    static LARGE_INTEGER freq = {0};
+    if (freq.QuadPart == 0) {
+        QueryPerformanceFrequency(&freq);
+    }
+    LARGE_INTEGER counter;
+    QueryPerformanceCounter(&counter);
+    // Convert to nanoseconds
+    return (int64_t)((counter.QuadPart * 1000000000LL) / freq.QuadPart);
+}
+#else
+// Unix: Use clock_gettime for nanosecond precision
+#include <time.h>
+int64_t bmb_time_ns(void) {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (int64_t)(ts.tv_sec * 1000000000LL + ts.tv_nsec);
+}
+#endif
+
+// Alias for compatibility
+int64_t time_ns(void) { return bmb_time_ns(); }
+
+// ============================================================================
 // Entry point
 // ============================================================================
 

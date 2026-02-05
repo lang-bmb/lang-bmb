@@ -1,0 +1,12 @@
+// Sum of squares benchmark (interpreter-friendly)
+// Computes sum of squares from 1 to N
+
+fn sum_squares(n: i64, acc: i64) -> i64 =
+    if n <= 0 { acc }
+    else { sum_squares(n - 1, acc + n * n) };
+
+fn main() -> i64 = {
+    let result = sum_squares(10000, 0);
+    println(result);
+    0
+};

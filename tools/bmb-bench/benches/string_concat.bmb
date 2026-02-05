@@ -1,0 +1,12 @@
+// String concatenation benchmark
+// Tests string operations
+
+fn repeat_str(s: String, n: i64) -> String =
+    if n <= 0 { "" }
+    else { s + repeat_str(s, n - 1) };
+
+fn main() -> i64 = {
+    let result = repeat_str("x", 100);
+    println(result.len());
+    0
+};

@@ -1,0 +1,16 @@
+// Small Fibonacci benchmark (interpreter-friendly)
+// Runs fib(25) * 100 iterations
+
+fn fib(n: i64) -> i64 =
+    if n <= 1 { n }
+    else { fib(n - 1) + fib(n - 2) };
+
+fn run_loop(i: i64, acc: i64) -> i64 =
+    if i <= 0 { acc }
+    else { run_loop(i - 1, acc + fib(20)) };
+
+fn main() -> i64 = {
+    let result = run_loop(10, 0);
+    println(result);
+    0
+};

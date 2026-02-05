@@ -1,0 +1,24 @@
+// Prime counting benchmark
+// Count primes up to N
+
+fn is_prime_helper(n: i64, d: i64) -> bool =
+    if d * d > n { true }
+    else if n - (n / d) * d == 0 { false }
+    else { is_prime_helper(n, d + 1) };
+
+fn is_prime(n: i64) -> bool =
+    if n < 2 { false }
+    else { is_prime_helper(n, 2) };
+
+fn count_primes(n: i64, count: i64) -> i64 =
+    if n <= 1 { count }
+    else {
+        let delta = if is_prime(n) { 1 } else { 0 };
+        count_primes(n - 1, count + delta)
+    };
+
+fn main() -> i64 = {
+    let result = count_primes(1000, 0);
+    println(result);
+    0
+};

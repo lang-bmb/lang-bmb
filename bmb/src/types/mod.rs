@@ -352,6 +352,10 @@ impl TypeChecker {
         // getenv(name: String) -> String (env var value)
         functions.insert("getenv".to_string(), (vec![Type::String], Type::String));
 
+        // v0.63: Timing builtin for bmb-bench benchmark framework
+        // time_ns() -> i64 (nanoseconds since epoch)
+        functions.insert("time_ns".to_string(), (vec![], Type::I64));
+
         // v0.31.22: Command-line argument builtins for Phase 32.3.D CLI Independence
         // arg_count() -> i64 (number of arguments including program name)
         functions.insert("arg_count".to_string(), (vec![], Type::I64));
