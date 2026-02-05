@@ -1,0 +1,15 @@
+// Thread Test - Phase v0.70 Concurrency Verification
+// Tests basic spawn/join functionality
+
+fn worker(n: i64) -> i64 = n * 2;
+
+fn main() -> i64 = {
+    // Test 1: Basic spawn and join
+    let handle = spawn { worker(21) };
+    let result = handle.join();
+
+    // Expected: 42
+    let _p = println(result);
+
+    if result == 42 { 0 } else { 1 }
+};

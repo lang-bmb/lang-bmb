@@ -1463,6 +1463,18 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
             // Lower the receiver expression
             let recv_op = lower_expr(receiver, ctx);
 
+            // v0.70: Special handling for Thread.join() method
+            // Thread.join() is lowered to MirInst::ThreadJoin, not a regular call
+            if method == "join" && args.is_empty() {
+                let dest = ctx.fresh_temp();
+                ctx.locals.insert(dest.name.clone(), MirType::I64);
+                ctx.push_inst(MirInst::ThreadJoin {
+                    dest: Some(dest.clone()),
+                    handle: recv_op,
+                });
+                return Operand::Place(dest);
+            }
+
             // Build the argument list: receiver first, then the rest
             let mut call_args = vec![recv_op];
             for arg in args {
