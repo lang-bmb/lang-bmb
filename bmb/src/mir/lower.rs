@@ -1557,6 +1557,64 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
                 return Operand::Constant(Constant::Unit);
             }
 
+            // v0.73: Sender<T> methods
+            // send(value) - blocking send
+            if method == "send" && args.len() == 1 {
+                let value_op = lower_expr(&args[0], ctx);
+                ctx.push_inst(MirInst::ChannelSend {
+                    sender: recv_op,
+                    value: value_op,
+                });
+                return Operand::Constant(Constant::Unit);
+            }
+
+            // try_send(value) - non-blocking send, returns 1 if success, 0 if failed
+            if method == "try_send" && args.len() == 1 {
+                let value_op = lower_expr(&args[0], ctx);
+                let dest = ctx.fresh_temp();
+                ctx.locals.insert(dest.name.clone(), MirType::I64);
+                ctx.push_inst(MirInst::ChannelTrySend {
+                    dest: dest.clone(),
+                    sender: recv_op,
+                    value: value_op,
+                });
+                return Operand::Place(dest);
+            }
+
+            // clone() - clone the sender for MPSC
+            if method == "clone" && args.is_empty() {
+                let dest = ctx.fresh_temp();
+                ctx.locals.insert(dest.name.clone(), MirType::I64);
+                ctx.push_inst(MirInst::SenderClone {
+                    dest: dest.clone(),
+                    sender: recv_op,
+                });
+                return Operand::Place(dest);
+            }
+
+            // v0.73: Receiver<T> methods
+            // recv() - blocking receive
+            if method == "recv" && args.is_empty() {
+                let dest = ctx.fresh_temp();
+                ctx.locals.insert(dest.name.clone(), MirType::I64);
+                ctx.push_inst(MirInst::ChannelRecv {
+                    dest: dest.clone(),
+                    receiver: recv_op,
+                });
+                return Operand::Place(dest);
+            }
+
+            // try_recv() - non-blocking receive, returns value or -1 if empty
+            if method == "try_recv" && args.is_empty() {
+                let dest = ctx.fresh_temp();
+                ctx.locals.insert(dest.name.clone(), MirType::I64);
+                ctx.push_inst(MirInst::ChannelTryRecv {
+                    dest: dest.clone(),
+                    receiver: recv_op,
+                });
+                return Operand::Place(dest);
+            }
+
             // Build the argument list: receiver first, then the rest
             let mut call_args = vec![recv_op];
             for arg in args {

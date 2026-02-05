@@ -1058,6 +1058,9 @@ PlainType: Type = {
     "[" <t:Type> ";" <n:"int"> "]" => Type::Array(Box::new(t), n as usize),
     // v0.71: Mutex<T> type
     "Mutex" "<" <inner:Type> ">" => Type::Mutex(Box::new(inner)),
+    // v0.73: Channel types - Sender<T> and Receiver<T>
+    "Sender" "<" <inner:Type> ">" => Type::Sender(Box::new(inner)),
+    "Receiver" "<" <inner:Type> ">" => Type::Receiver(Box::new(inner)),
     // v0.13.1: Generic type: Container<T>, Result<T, E>
     <name:RawIdent> "<" <args:TypeArgList> ">" => Type::Generic { name, type_args: args },
     // v0.37: Nullable type suffix: T? (per spec, this is the only nullable syntax)
