@@ -1,0 +1,302 @@
+name: BMB Golden Binary Release
+
+# Build golden binaries for all platforms using BMB-only bootstrap
+# No Rust required - uses existing golden binary to bootstrap
+
+on:
+  push:
+    tags:
+      - 'v*-golden'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., v0.61.0)'
+        required: true
+
+env:
+  LLVM_VERSION: '21'
+
+jobs:
+  # Build golden binaries for each platform
+  build-linux-x64:
+    name: Build Linux x86_64
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install LLVM
+        run: |
+          wget https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh ${{ env.LLVM_VERSION }}
+          echo "/usr/lib/llvm-${{ env.LLVM_VERSION }}/bin" >> $GITHUB_PATH
+
+      - name: Verify LLVM
+        run: |
+          opt --version
+          clang --version
+
+      - name: Build with Rust (initial golden)
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+          source ~/.cargo/env
+          cargo build --release --features llvm
+          ./scripts/bootstrap.sh --verbose
+
+      - name: Create Golden Binary
+        run: |
+          mkdir -p golden/linux-x86_64
+          cp target/bootstrap/bmb-stage2 golden/linux-x86_64/bmb
+          chmod +x golden/linux-x86_64/bmb
+
+      - name: Verify Golden Binary
+        run: |
+          ./scripts/golden-bootstrap.sh --verify
+
+      - name: Package
+        run: |
+          VERSION="${{ github.event.inputs.version || github.ref_name }}"
+          VERSION="${VERSION#v}"
+          mkdir -p dist/bmb-${VERSION}-linux-x86_64
+          cp golden/linux-x86_64/bmb dist/bmb-${VERSION}-linux-x86_64/
+          cp -r bmb/runtime dist/bmb-${VERSION}-linux-x86_64/
+          cp -r bootstrap dist/bmb-${VERSION}-linux-x86_64/
+          cp -r stdlib dist/bmb-${VERSION}-linux-x86_64/
+          cp scripts/golden-bootstrap.sh dist/bmb-${VERSION}-linux-x86_64/
+          cp scripts/install.sh dist/bmb-${VERSION}-linux-x86_64/
+          cp golden/README.md dist/bmb-${VERSION}-linux-x86_64/
+          cp LICENSE README.md dist/bmb-${VERSION}-linux-x86_64/
+          cd dist && tar -czvf bmb-${VERSION}-linux-x86_64.tar.gz bmb-${VERSION}-linux-x86_64
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bmb-linux-x86_64
+          path: dist/*.tar.gz
+
+  build-linux-arm64:
+    name: Build Linux aarch64
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Build in ARM64 container
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: .github/Dockerfile.arm64
+          platforms: linux/arm64
+          push: false
+          tags: bmb-arm64:latest
+
+      - name: Extract binary
+        run: |
+          mkdir -p golden/linux-aarch64
+          docker create --name temp bmb-arm64:latest
+          docker cp temp:/bmb/golden/linux-aarch64/bmb golden/linux-aarch64/
+          docker rm temp
+
+      - name: Package
+        run: |
+          VERSION="${{ github.event.inputs.version || github.ref_name }}"
+          VERSION="${VERSION#v}"
+          mkdir -p dist/bmb-${VERSION}-linux-aarch64
+          cp golden/linux-aarch64/bmb dist/bmb-${VERSION}-linux-aarch64/
+          cp -r bmb/runtime dist/bmb-${VERSION}-linux-aarch64/
+          cp -r bootstrap dist/bmb-${VERSION}-linux-aarch64/
+          cp LICENSE README.md dist/bmb-${VERSION}-linux-aarch64/
+          cd dist && tar -czvf bmb-${VERSION}-linux-aarch64.tar.gz bmb-${VERSION}-linux-aarch64
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bmb-linux-aarch64
+          path: dist/*.tar.gz
+
+  build-macos:
+    name: Build macOS Universal
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install LLVM
+        run: |
+          brew install llvm@${{ env.LLVM_VERSION }}
+          echo "$(brew --prefix llvm@${{ env.LLVM_VERSION }})/bin" >> $GITHUB_PATH
+
+      - name: Build with Rust
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+          source ~/.cargo/env
+          export LLVM_SYS_211_PREFIX=$(brew --prefix llvm@${{ env.LLVM_VERSION }})
+          cargo build --release --features llvm
+          ./scripts/bootstrap.sh --verbose
+
+      - name: Create Golden Binary
+        run: |
+          mkdir -p golden/darwin-universal
+          cp target/bootstrap/bmb-stage2 golden/darwin-universal/bmb
+          chmod +x golden/darwin-universal/bmb
+
+      - name: Package
+        run: |
+          VERSION="${{ github.event.inputs.version || github.ref_name }}"
+          VERSION="${VERSION#v}"
+          mkdir -p dist/bmb-${VERSION}-darwin-universal
+          cp golden/darwin-universal/bmb dist/bmb-${VERSION}-darwin-universal/
+          cp -r bmb/runtime dist/bmb-${VERSION}-darwin-universal/
+          cp -r bootstrap dist/bmb-${VERSION}-darwin-universal/
+          cp LICENSE README.md dist/bmb-${VERSION}-darwin-universal/
+          cd dist && tar -czvf bmb-${VERSION}-darwin-universal.tar.gz bmb-${VERSION}-darwin-universal
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bmb-darwin-universal
+          path: dist/*.tar.gz
+
+  build-windows:
+    name: Build Windows x64
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            mingw-w64-ucrt-x86_64-llvm
+            mingw-w64-ucrt-x86_64-clang
+            mingw-w64-ucrt-x86_64-gcc
+            make
+            git
+
+      - name: Install Rust
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable-x86_64-pc-windows-gnu
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: Build
+        run: |
+          source ~/.cargo/env
+          cargo build --release --features llvm --target x86_64-pc-windows-gnu
+          ./scripts/bootstrap.sh --verbose
+
+      - name: Create Golden Binary
+        run: |
+          mkdir -p golden/windows-x64
+          cp target/bootstrap/bmb-stage2.exe golden/windows-x64/bmb.exe
+
+      - name: Package
+        shell: pwsh
+        run: |
+          $VERSION = "${{ github.event.inputs.version || github.ref_name }}"
+          $VERSION = $VERSION -replace '^v', ''
+          New-Item -ItemType Directory -Force -Path "dist/bmb-${VERSION}-windows-x64"
+          Copy-Item golden/windows-x64/bmb.exe "dist/bmb-${VERSION}-windows-x64/"
+          Copy-Item -Recurse bmb/runtime "dist/bmb-${VERSION}-windows-x64/"
+          Copy-Item -Recurse bootstrap "dist/bmb-${VERSION}-windows-x64/"
+          Copy-Item LICENSE, README.md "dist/bmb-${VERSION}-windows-x64/"
+          Compress-Archive -Path "dist/bmb-${VERSION}-windows-x64" -DestinationPath "dist/bmb-${VERSION}-windows-x64.zip"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bmb-windows-x64
+          path: dist/*.zip
+
+  # Create GitHub Release
+  release:
+    name: Create Release
+    needs: [build-linux-x64, build-macos, build-windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Get version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "version=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Generate Release Notes
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          cat > release_notes.md << 'EOF'
+          # BMB ${{ steps.version.outputs.version }}
+
+          ## Golden Binaries (No Rust Required)
+
+          Pre-built BMB compiler binaries for bootstrapping without Rust.
+
+          ### Download
+
+          | Platform | File |
+          |----------|------|
+          | Linux x86_64 | `bmb-*-linux-x86_64.tar.gz` |
+          | Linux aarch64 | `bmb-*-linux-aarch64.tar.gz` |
+          | macOS Universal | `bmb-*-darwin-universal.tar.gz` |
+          | Windows x64 | `bmb-*-windows-x64.zip` |
+
+          ### Quick Start
+
+          ```bash
+          # Extract
+          tar -xzf bmb-*-linux-x86_64.tar.gz
+          cd bmb-*-linux-x86_64
+
+          # Bootstrap (generates full compiler)
+          ./golden-bootstrap.sh
+
+          # Or install system-wide
+          ./install.sh
+          ```
+
+          ### Requirements
+
+          - LLVM 21+ (`opt`, `clang` commands)
+          - No Rust required!
+
+          ### Verification
+
+          All binaries passed 3-stage bootstrap verification:
+          - Stage 2 IR == Stage 3 IR (Fixed Point)
+
+          EOF
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.version.outputs.version }}
+          name: BMB ${{ steps.version.outputs.version }} (Golden)
+          body_path: release_notes.md
+          draft: true
+          prerelease: false
+          files: |
+            artifacts/**/*

@@ -1,0 +1,142 @@
+name: Golden Binary CI
+
+# Test that the golden binary bootstrap works correctly
+# This verifies BMB can be built without Rust
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'golden/**'
+      - 'bootstrap/**'
+      - 'bmb/runtime/**'
+      - 'scripts/golden-bootstrap.sh'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'golden/**'
+      - 'bootstrap/**'
+      - 'bmb/runtime/**'
+      - 'scripts/golden-bootstrap.sh'
+
+env:
+  LLVM_VERSION: '21'
+
+jobs:
+  test-golden-bootstrap:
+    name: Test Golden Bootstrap
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux-x86_64
+          - os: windows-latest
+            platform: windows-x64
+          - os: macos-latest
+            platform: darwin-universal
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      # Linux setup
+      - name: Install LLVM (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          wget https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh ${{ env.LLVM_VERSION }}
+          echo "/usr/lib/llvm-${{ env.LLVM_VERSION }}/bin" >> $GITHUB_PATH
+
+      # macOS setup
+      - name: Install LLVM (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install llvm@${{ env.LLVM_VERSION }}
+          echo "$(brew --prefix llvm@${{ env.LLVM_VERSION }})/bin" >> $GITHUB_PATH
+
+      # Windows setup
+      - name: Setup MSYS2 (Windows)
+        if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            mingw-w64-ucrt-x86_64-llvm
+            mingw-w64-ucrt-x86_64-clang
+            mingw-w64-ucrt-x86_64-gcc
+            make
+
+      # Verify LLVM
+      - name: Verify LLVM (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          opt --version
+          clang --version
+
+      - name: Verify LLVM (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          opt --version
+          clang --version
+
+      # Test golden bootstrap
+      - name: Test Golden Bootstrap (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          chmod +x scripts/golden-bootstrap.sh
+          ./scripts/golden-bootstrap.sh --verbose
+
+      - name: Test Golden Bootstrap (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          ./scripts/golden-bootstrap.sh --verbose
+
+      # Test compilation
+      - name: Test Compilation (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          echo 'fn main() -> i64 = 42;' > test.bmb
+          ./target/golden-bootstrap/bmb-stage1 test.bmb test.ll
+          cat test.ll | head -20
+
+      - name: Test Compilation (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          echo 'fn main() -> i64 = 42;' > test.bmb
+          ./target/golden-bootstrap/bmb-stage1.exe test.bmb test.ll
+          cat test.ll | head -20
+
+  verify-fixed-point:
+    name: Verify Fixed Point
+    runs-on: ubuntu-latest
+    needs: test-golden-bootstrap
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install LLVM
+        run: |
+          wget https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh ${{ env.LLVM_VERSION }}
+          echo "/usr/lib/llvm-${{ env.LLVM_VERSION }}/bin" >> $GITHUB_PATH
+
+      - name: Run 3-Stage Verification
+        run: |
+          chmod +x scripts/golden-bootstrap.sh
+          ./scripts/golden-bootstrap.sh --verify --verbose
+
+      - name: Report Success
+        run: |
+          echo "✅ 3-Stage Bootstrap Fixed Point Verified"
+          echo "Stage 2 IR == Stage 3 IR"

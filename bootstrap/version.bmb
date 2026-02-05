@@ -1,0 +1,9 @@
+// BMB Version Information
+// This file is automatically updated by build scripts
+
+fn bmb_version() -> String = "0.60.251";
+fn bmb_version_major() -> i64 = 0;
+fn bmb_version_minor() -> i64 = 60;
+fn bmb_version_patch() -> i64 = 251;
+
+fn bmb_build_date() -> String = "2026-02-05";

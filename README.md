@@ -140,6 +140,31 @@ bmb repl                          # interactive
 
 ---
 
+## Building BMB
+
+### Option 1: Golden Binary (No Rust Required)
+
+```bash
+git clone https://github.com/lang-bmb/lang-bmb.git
+cd lang-bmb
+./scripts/golden-bootstrap.sh        # builds bmb-stage1
+./scripts/install.sh --user          # install to ~/.local
+```
+
+**Requirements**: LLVM 21+ only (`opt`, `clang`)
+
+### Option 2: From Source with Rust
+
+```bash
+cargo build --release --features llvm --target x86_64-pc-windows-gnu
+```
+
+**Requirements**: Rust 1.75+, LLVM 21+
+
+See [Building from Source](docs/BUILD_FROM_SOURCE.md) for details.
+
+---
+
 ## Performance
 
 When the compiler knows your invariants, it knows what's safe to optimize.
