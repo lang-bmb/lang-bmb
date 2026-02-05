@@ -13,6 +13,8 @@ This directory contains auto-generated API documentation for BMB standard librar
 | [bmb-test](./bmb-test.md) | Test assertion utilities | [View](./bmb-test.md) |
 | [bmb-process](./bmb-process.md) | Process execution utilities | [View](./bmb-process.md) |
 | [bmb-json](./bmb-json.md) | JSON parser and serializer | [View](./bmb-json.md) |
+| [bmb-http](./bmb-http.md) | HTTP client using curl backend | [View](./bmb-http.md) |
+| [bmb-regex](./bmb-regex.md) | Simple regex engine for pattern matching | [View](./bmb-regex.md) |
 
 ## Generation
 

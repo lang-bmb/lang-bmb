@@ -217,45 +217,191 @@ bmb repl
 43
 ```
 
-## Using the Standard Library
+## Using Standard Library Packages
 
-BMB comes with a standard library of 231 symbols:
+BMB comes with official packages distributed via the `gotgan` package manager:
+
+### Core Packages
 
 ```bmb
--- Import specific functions
-use string::starts_with;
-use array::sum_i64;
-use core::num::abs;
+-- Basic types and math
+use bmb_core::abs;
+use bmb_core::min;
+use bmb_core::max;
 
--- Use in your code
-fn process(s: String) -> i64 =
-    if starts_with(s, "BMB") then 1 else 0;
+-- String utilities
+use bmb_string::starts_with;
+use bmb_string::trim;
+use bmb_string::split_lines;
+
+-- Array operations
+use bmb_array::sum_i64;
+use bmb_array::is_sorted_asc;
 ```
 
-Available modules:
-- `core::num` - Numeric operations (abs, min, max, clamp)
-- `core::bool` - Boolean operations (implies, xor)
-- `core::option` - Optional values (is_some, unwrap)
-- `core::result` - Error handling (is_ok, safe_divide)
-- `string` - String utilities (44 functions)
-- `array` - Array operations (35 functions)
-- `parse` - Parsing utilities (31 functions)
-- `test` - Test assertions (47 functions)
+### Data Packages
 
-See [stdlib/README.md](../stdlib/README.md) for complete API documentation.
+```bmb
+-- JSON parsing and serialization
+use bmb_json::parse_json;
+use bmb_json::to_json;
+use bmb_json::get_field;
+
+fn process_config(json_str: String) -> i64 =
+    let obj = parse_json(json_str);
+    let name = get_field(obj, "name");
+    if name.len() > 0 { 1 } else { 0 };
+```
+
+### Network Packages
+
+```bmb
+-- HTTP client (uses curl backend)
+use bmb_http::http_get;
+use bmb_http::http_post;
+use bmb_http::get_status_code;
+
+fn fetch_data(url: String) -> String =
+    let response = http_get(url);
+    let status = get_status_code(response);
+    if status == 200 { get_body(response) } else { "" };
+```
+
+### Pattern Matching Packages
+
+```bmb
+-- Regular expressions
+use bmb_regex::matches;
+use bmb_regex::search;
+use bmb_regex::find;
+
+fn validate_email(email: String) -> bool =
+    search("[a-zA-Z0-9]+@[a-zA-Z0-9]+\\.[a-z]+", email);
+```
+
+### Available Packages
+
+| Package | Description |
+|---------|-------------|
+| `bmb-core` | Core types and math functions |
+| `bmb-string` | String utilities |
+| `bmb-array` | Fixed-size array operations |
+| `bmb-io` | File I/O operations |
+| `bmb-process` | Process execution |
+| `bmb-test` | Test assertions |
+| `bmb-json` | JSON parser/serializer |
+| `bmb-http` | HTTP client |
+| `bmb-regex` | Regular expressions |
+
+See [API Documentation](../api/README.md) for complete reference.
+
+## Practical Example: Config Processor
+
+Here's a complete example combining multiple packages:
+
+```bmb
+-- config_processor.bmb
+-- A program that reads, validates, and processes a JSON config file
+
+use bmb_io::read_file;
+use bmb_io::file_exists;
+use bmb_json::parse_json;
+use bmb_json::get_field;
+use bmb_json::get_element;
+use bmb_json::array_length;
+use bmb_regex::matches;
+use bmb_string::int_to_string;
+
+-- Validate that a URL has correct format
+fn is_valid_url(url: String) -> bool =
+    matches("https?://[a-zA-Z0-9.-]+", url);
+
+-- Extract config value with validation
+fn get_config_url(config: String) -> String
+  post ret.len() == 0 or is_valid_url(ret)
+=
+    let url = get_field(config, "api_url");
+    if is_valid_url(url) { url } else { "" };
+
+-- Count enabled features in config
+fn count_features(config: String) -> i64
+  post ret >= 0
+=
+    let features = get_field(config, "features");
+    array_length(features);
+
+fn main() -> i64 =
+    let config_path = "config.json";
+
+    -- Check if config exists
+    if not file_exists(config_path) {
+        let _ = println("Error: config.json not found");
+        1
+    } else {
+        -- Read and parse config
+        let content = read_file(config_path);
+        let config = parse_json(content);
+
+        -- Extract and validate
+        let url = get_config_url(config);
+        let feature_count = count_features(config);
+
+        -- Report
+        let _ = println("API URL: " + url);
+        let _ = println("Features: " + int_to_string(feature_count));
+        0
+    };
+```
+
+Run it:
+
+```bash
+bmb build config_processor.bmb -o processor
+./processor
+```
+
+## Package Management with Gotgan
+
+BMB uses `gotgan` for package management:
+
+```bash
+# Initialize a new project
+gotgan init my-project
+
+# Add a dependency
+gotgan add bmb-json
+
+# Build the project
+gotgan build
+```
+
+Example `gotgan.toml`:
+
+```toml
+[package]
+name = "my-project"
+version = "0.1.0"
+edition = "2026"
+
+[dependencies]
+bmb-json = "0.1.0"
+bmb-http = "0.1.0"
+bmb-regex = "0.1.0"
+```
 
 ## Next Steps
 
 1. **[By Example](./BY_EXAMPLE.md)**: Learn BMB through practical examples
 2. **[Contract Programming](./CONTRACT_PROGRAMMING.md)**: Deep dive into verification
-3. **[From Rust](./FROM_RUST.md)**: Migration guide for Rust developers
-4. **[Language Reference](./LANGUAGE_REFERENCE.md)**: Complete syntax reference
+3. **[From Rust](../scenarios/FROM_RUST.md)**: Migration guide for Rust developers
+4. **[Language Reference](../LANGUAGE_REFERENCE.md)**: Complete syntax reference
+5. **[API Documentation](../api/README.md)**: Package API reference
 
 ## Getting Help
 
-- GitHub Issues: [github.com/iyulab/lang-bmb/issues](https://github.com/iyulab/lang-bmb/issues)
+- GitHub Issues: [github.com/lang-bmb/bmb/issues](https://github.com/lang-bmb/bmb/issues)
 - Documentation: [bmb.dev](https://bmb.dev) (coming soon)
 
 ---
 
-*BMB v0.33.1 - AI-Native Programming Language*
+*BMB v0.66 - AI-Native Programming Language*

@@ -105,3 +105,15 @@ version = "0.1.0"
 path = "bmb-json"
 description = "JSON parser and serializer for BMB"
 keywords = ["json", "parser", "serializer", "data"]
+
+[packages.bmb-http]
+version = "0.1.0"
+path = "bmb-http"
+description = "HTTP client for BMB using curl backend"
+keywords = ["http", "client", "web", "request"]
+
+[packages.bmb-regex]
+version = "0.1.0"
+path = "bmb-regex"
+description = "Simple regex engine for BMB"
+keywords = ["regex", "pattern", "matching", "search"]

@@ -1,0 +1,369 @@
+// bmb-http: HTTP client for BMB
+// Version: 0.1.0
+//
+// This package provides HTTP client functionality using curl as backend.
+// Since BMB doesn't have native socket support, we use exec_output
+// to invoke curl for actual network I/O.
+//
+// Supported features:
+// - GET, POST, PUT, DELETE requests
+// - Custom headers
+// - JSON request/response bodies
+// - URL encoding
+// - Response status parsing
+//
+// All functions have explicit contracts for verification.
+
+// ============================================================
+// HTTP Methods
+// ============================================================
+
+pub fn METHOD_GET() -> String = "GET";
+pub fn METHOD_POST() -> String = "POST";
+pub fn METHOD_PUT() -> String = "PUT";
+pub fn METHOD_DELETE() -> String = "DELETE";
+pub fn METHOD_PATCH() -> String = "PATCH";
+pub fn METHOD_HEAD() -> String = "HEAD";
+
+// ============================================================
+// HTTP Status Codes
+// ============================================================
+
+pub fn STATUS_OK() -> i64 = 200;
+pub fn STATUS_CREATED() -> i64 = 201;
+pub fn STATUS_NO_CONTENT() -> i64 = 204;
+pub fn STATUS_BAD_REQUEST() -> i64 = 400;
+pub fn STATUS_UNAUTHORIZED() -> i64 = 401;
+pub fn STATUS_FORBIDDEN() -> i64 = 403;
+pub fn STATUS_NOT_FOUND() -> i64 = 404;
+pub fn STATUS_SERVER_ERROR() -> i64 = 500;
+
+// ============================================================
+// String Utilities
+// ============================================================
+
+fn char_is_digit(c: i64) -> bool = c >= 48 and c <= 57;
+
+fn int_to_string(n: i64) -> String =
+    if n < 0 { "-" + int_to_string(0 - n) }
+    else if n < 10 { digit_char(n) }
+    else { int_to_string(n / 10) + digit_char(n - (n / 10) * 10) };
+
+fn digit_char(d: i64) -> String =
+    if d == 0 { "0" } else if d == 1 { "1" } else if d == 2 { "2" }
+    else if d == 3 { "3" } else if d == 4 { "4" } else if d == 5 { "5" }
+    else if d == 6 { "6" } else if d == 7 { "7" } else if d == 8 { "8" }
+    else { "9" };
+
+fn parse_int_simple(s: String) -> i64 =
+    parse_int_acc(s, 0, 0);
+
+fn parse_int_acc(s: String, pos: i64, acc: i64) -> i64 =
+    if pos >= s.len() { acc }
+    else {
+        let c = s.byte_at(pos);
+        if char_is_digit(c) { parse_int_acc(s, pos + 1, acc * 10 + (c - 48)) }
+        else { acc }
+    };
+
+fn string_eq(a: String, b: String) -> bool =
+    a.len() == b.len() and string_eq_from(a, b, 0);
+
+fn string_eq_from(a: String, b: String, pos: i64) -> bool =
+    if pos >= a.len() { true }
+    else if a.byte_at(pos) != b.byte_at(pos) { false }
+    else { string_eq_from(a, b, pos + 1) };
+
+fn starts_with(s: String, prefix: String) -> bool =
+    if prefix.len() > s.len() { false }
+    else { starts_with_check(s, prefix, 0) };
+
+fn starts_with_check(s: String, prefix: String, pos: i64) -> bool =
+    if pos >= prefix.len() { true }
+    else if s.byte_at(pos) != prefix.byte_at(pos) { false }
+    else { starts_with_check(s, prefix, pos + 1) };
+
+fn find_char(s: String, c: i64, pos: i64) -> i64 =
+    if pos >= s.len() { s.len() }
+    else if s.byte_at(pos) == c { pos }
+    else { find_char(s, c, pos + 1) };
+
+fn find_newline(s: String, pos: i64) -> i64 =
+    if pos >= s.len() { s.len() }
+    else if s.byte_at(pos) == 10 { pos }
+    else { find_newline(s, pos + 1) };
+
+fn get_line_at(s: String, pos: i64) -> String =
+    let end = find_newline(s, pos);
+    s.slice(pos, end);
+
+fn next_line_pos(s: String, pos: i64) -> i64 =
+    let nl = find_newline(s, pos);
+    if nl >= s.len() { s.len() } else { nl + 1 };
+
+fn trim_line(s: String) -> String =
+    let start = skip_whitespace(s, 0);
+    let end = find_trim_end(s, s.len());
+    if start >= end { "" } else { s.slice(start, end) };
+
+fn skip_whitespace(s: String, pos: i64) -> i64 =
+    if pos >= s.len() { pos }
+    else if s.byte_at(pos) == 32 or s.byte_at(pos) == 9 or
+            s.byte_at(pos) == 10 or s.byte_at(pos) == 13 {
+        skip_whitespace(s, pos + 1)
+    }
+    else { pos };
+
+fn find_trim_end(s: String, pos: i64) -> i64 =
+    if pos <= 0 { 0 }
+    else if s.byte_at(pos - 1) == 32 or s.byte_at(pos - 1) == 9 or
+            s.byte_at(pos - 1) == 10 or s.byte_at(pos - 1) == 13 {
+        find_trim_end(s, pos - 1)
+    }
+    else { pos };
+
+// ============================================================
+// URL Encoding
+// ============================================================
+
+/// Encode a string for use in URLs
+pub fn url_encode(s: String) -> String
+    post ret.len() >= s.len()
+= url_encode_acc(s, 0, "");
+
+fn url_encode_acc(s: String, pos: i64, acc: String) -> String =
+    if pos >= s.len() { acc }
+    else {
+        let c = s.byte_at(pos);
+        let encoded = if is_url_safe(c) { char_to_str(c) }
+                      else { "%" + hex_byte(c) };
+        url_encode_acc(s, pos + 1, acc + encoded)
+    };
+
+fn is_url_safe(c: i64) -> bool =
+    (c >= 65 and c <= 90) or   // A-Z
+    (c >= 97 and c <= 122) or  // a-z
+    (c >= 48 and c <= 57) or   // 0-9
+    c == 45 or c == 95 or c == 46 or c == 126; // - _ . ~
+
+fn hex_byte(b: i64) -> String =
+    hex_digit(b / 16) + hex_digit(b - (b / 16) * 16);
+
+fn hex_digit(d: i64) -> String =
+    if d < 10 { digit_char(d) }
+    else if d == 10 { "A" } else if d == 11 { "B" }
+    else if d == 12 { "C" } else if d == 13 { "D" }
+    else if d == 14 { "E" } else { "F" };
+
+fn char_to_str(c: i64) -> String =
+    if c >= 65 and c <= 90 { upper_char(c) }
+    else if c >= 97 and c <= 122 { lower_char(c) }
+    else if c >= 48 and c <= 57 { digit_char(c - 48) }
+    else if c == 45 { "-" } else if c == 95 { "_" }
+    else if c == 46 { "." } else { "~" };
+
+fn upper_char(c: i64) -> String =
+    if c == 65 { "A" } else if c == 66 { "B" } else if c == 67 { "C" }
+    else if c == 68 { "D" } else if c == 69 { "E" } else if c == 70 { "F" }
+    else if c == 71 { "G" } else if c == 72 { "H" } else if c == 73 { "I" }
+    else if c == 74 { "J" } else if c == 75 { "K" } else if c == 76 { "L" }
+    else if c == 77 { "M" } else if c == 78 { "N" } else if c == 79 { "O" }
+    else if c == 80 { "P" } else if c == 81 { "Q" } else if c == 82 { "R" }
+    else if c == 83 { "S" } else if c == 84 { "T" } else if c == 85 { "U" }
+    else if c == 86 { "V" } else if c == 87 { "W" } else if c == 88 { "X" }
+    else if c == 89 { "Y" } else { "Z" };
+
+fn lower_char(c: i64) -> String =
+    if c == 97 { "a" } else if c == 98 { "b" } else if c == 99 { "c" }
+    else if c == 100 { "d" } else if c == 101 { "e" } else if c == 102 { "f" }
+    else if c == 103 { "g" } else if c == 104 { "h" } else if c == 105 { "i" }
+    else if c == 106 { "j" } else if c == 107 { "k" } else if c == 108 { "l" }
+    else if c == 109 { "m" } else if c == 110 { "n" } else if c == 111 { "o" }
+    else if c == 112 { "p" } else if c == 113 { "q" } else if c == 114 { "r" }
+    else if c == 115 { "s" } else if c == 116 { "t" } else if c == 117 { "u" }
+    else if c == 118 { "v" } else if c == 119 { "w" } else if c == 120 { "x" }
+    else if c == 121 { "y" } else { "z" };
+
+// ============================================================
+// HTTP Requests (using curl)
+// ============================================================
+
+/// Perform a GET request
+/// Returns response body on success
+pub fn http_get(url: String) -> String
+    pre url.len() > 0
+= exec_output("curl", "-s " + url);
+
+/// Perform a GET request with custom headers
+/// headers format: "Header1: Value1\nHeader2: Value2"
+pub fn http_get_with_headers(url: String, headers: String) -> String
+    pre url.len() > 0
+= exec_output("curl", "-s " + build_header_args(headers) + " " + url);
+
+/// Perform a POST request with body
+pub fn http_post(url: String, body: String) -> String
+    pre url.len() > 0
+= exec_output("curl", "-s -X POST -d \"" + escape_shell(body) + "\" " + url);
+
+/// Perform a POST request with JSON body
+pub fn http_post_json(url: String, json_body: String) -> String
+    pre url.len() > 0
+= exec_output("curl", "-s -X POST -H \"Content-Type: application/json\" -d \"" +
+              escape_shell(json_body) + "\" " + url);
+
+/// Perform a PUT request with body
+pub fn http_put(url: String, body: String) -> String
+    pre url.len() > 0
+= exec_output("curl", "-s -X PUT -d \"" + escape_shell(body) + "\" " + url);
+
+/// Perform a DELETE request
+pub fn http_delete(url: String) -> String
+    pre url.len() > 0
+= exec_output("curl", "-s -X DELETE " + url);
+
+/// Perform a HEAD request (returns headers only)
+pub fn http_head(url: String) -> String
+    pre url.len() > 0
+= exec_output("curl", "-s -I " + url);
+
+/// Get HTTP response with status code
+/// Returns "status|body" format
+pub fn http_request(method: String, url: String, body: String) -> String
+    pre url.len() > 0
+= let body_arg = if body.len() > 0 { " -d \"" + escape_shell(body) + "\"" } else { "" };
+  let response = exec_output("curl", "-s -w \"\\n%{http_code}\" -X " + method + body_arg + " " + url);
+  response;
+
+// ============================================================
+// Response Parsing
+// ============================================================
+
+/// Parse HTTP status code from response (assumes "...\nSTATUS" format)
+pub fn parse_status(response: String) -> i64
+    post ret >= 0
+= let last_line = get_last_line(response);
+  parse_int_simple(trim_line(last_line));
+
+fn get_last_line(s: String) -> String =
+    get_last_line_from(s, 0, "");
+
+fn get_last_line_from(s: String, pos: i64, last: String) -> String =
+    if pos >= s.len() { last }
+    else {
+        let line = get_line_at(s, pos);
+        let next = next_line_pos(s, pos);
+        get_last_line_from(s, next, line)
+    };
+
+/// Parse response body (everything except last line with status)
+pub fn parse_body(response: String) -> String =
+    let last_newline = find_last_newline(response);
+    if last_newline <= 0 { response }
+    else { response.slice(0, last_newline) };
+
+fn find_last_newline(s: String) -> i64 =
+    find_last_newline_from(s, s.len() - 1);
+
+fn find_last_newline_from(s: String, pos: i64) -> i64 =
+    if pos < 0 { 0 }
+    else if s.byte_at(pos) == 10 { pos }
+    else { find_last_newline_from(s, pos - 1) };
+
+/// Parse a header value from response headers
+pub fn parse_header(headers: String, name: String) -> String =
+    parse_header_from(headers, name + ":", 0);
+
+fn parse_header_from(headers: String, prefix: String, pos: i64) -> String =
+    if pos >= headers.len() { "" }
+    else {
+        let line = get_line_at(headers, pos);
+        if starts_with(line, prefix) {
+            trim_line(line.slice(prefix.len(), line.len()))
+        } else {
+            parse_header_from(headers, prefix, next_line_pos(headers, pos))
+        }
+    };
+
+// ============================================================
+// Helper Functions
+// ============================================================
+
+fn build_header_args(headers: String) -> String =
+    build_header_args_from(headers, 0, "");
+
+fn build_header_args_from(headers: String, pos: i64, acc: String) -> String =
+    if pos >= headers.len() { acc }
+    else {
+        let line = get_line_at(headers, pos);
+        let trimmed = trim_line(line);
+        let new_acc = if trimmed.len() > 0 {
+            acc + " -H \"" + trimmed + "\""
+        } else { acc };
+        build_header_args_from(headers, next_line_pos(headers, pos), new_acc)
+    };
+
+fn escape_shell(s: String) -> String =
+    escape_shell_acc(s, 0, "");
+
+fn escape_shell_acc(s: String, pos: i64, acc: String) -> String =
+    if pos >= s.len() { acc }
+    else {
+        let c = s.byte_at(pos);
+        let escaped = if c == 34 { "\\\"" }      // "
+                      else if c == 92 { "\\\\" } // \
+                      else if c == 36 { "\\$" }  // $
+                      else if c == 96 { "\\`" }  // `
+                      else { char_to_str_safe(c) };
+        escape_shell_acc(s, pos + 1, acc + escaped)
+    };
+
+fn char_to_str_safe(c: i64) -> String =
+    if c >= 32 and c <= 126 { char_to_str_ascii(c) }
+    else if c == 10 { "\\n" }
+    else if c == 13 { "\\r" }
+    else if c == 9 { "\\t" }
+    else { "?" };
+
+fn char_to_str_ascii(c: i64) -> String =
+    if c == 32 { " " } else if c == 33 { "!" } else if c == 34 { "\"" }
+    else if c == 35 { "#" } else if c == 36 { "$" } else if c == 37 { "%" }
+    else if c == 38 { "&" } else if c == 39 { "'" } else if c == 40 { "(" }
+    else if c == 41 { ")" } else if c == 42 { "*" } else if c == 43 { "+" }
+    else if c == 44 { "," } else if c == 45 { "-" } else if c == 46 { "." }
+    else if c == 47 { "/" } else if c >= 48 and c <= 57 { digit_char(c - 48) }
+    else if c == 58 { ":" } else if c == 59 { ";" } else if c == 60 { "<" }
+    else if c == 61 { "=" } else if c == 62 { ">" } else if c == 63 { "?" }
+    else if c == 64 { "@" } else if c >= 65 and c <= 90 { upper_char(c) }
+    else if c == 91 { "[" } else if c == 92 { "\\" } else if c == 93 { "]" }
+    else if c == 94 { "^" } else if c == 95 { "_" } else if c == 96 { "`" }
+    else if c >= 97 and c <= 122 { lower_char(c) }
+    else if c == 123 { "{" } else if c == 124 { "|" } else if c == 125 { "}" }
+    else { "~" };
+
+// ============================================================
+// Convenience Functions
+// ============================================================
+
+/// Check if status code indicates success (2xx)
+pub fn is_success(status: i64) -> bool
+    post ret == (status >= 200 and status < 300)
+= status >= 200 and status < 300;
+
+/// Check if status code indicates client error (4xx)
+pub fn is_client_error(status: i64) -> bool
+    post ret == (status >= 400 and status < 500)
+= status >= 400 and status < 500;
+
+/// Check if status code indicates server error (5xx)
+pub fn is_server_error(status: i64) -> bool
+    post ret == (status >= 500 and status < 600)
+= status >= 500 and status < 600;
+
+/// Build a query string from key-value pairs
+/// Format: "key1=value1&key2=value2"
+pub fn build_query(key1: String, val1: String) -> String =
+    url_encode(key1) + "=" + url_encode(val1);
+
+/// Add a parameter to query string
+pub fn add_param(query: String, key: String, val: String) -> String =
+    query + "&" + url_encode(key) + "=" + url_encode(val);

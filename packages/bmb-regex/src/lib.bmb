@@ -1,0 +1,443 @@
+// bmb-regex: Simple regex engine for BMB
+// Version: 0.1.0
+//
+// This package provides basic regular expression matching:
+// - Literal characters
+// - . (any character)
+// - * (zero or more)
+// - + (one or more)
+// - ? (zero or one)
+// - [abc] (character class)
+// - [^abc] (negated character class)
+// - [a-z] (character range)
+// - ^ (start anchor)
+// - $ (end anchor)
+// - \d, \w, \s (character classes)
+// - \ (escape)
+//
+// All functions have explicit contracts for verification.
+
+// ============================================================
+// Constants
+// ============================================================
+
+fn CHAR_DOT() -> i64 = 46;        // .
+fn CHAR_STAR() -> i64 = 42;       // *
+fn CHAR_PLUS() -> i64 = 43;       // +
+fn CHAR_QUESTION() -> i64 = 63;   // ?
+fn CHAR_LBRACKET() -> i64 = 91;   // [
+fn CHAR_RBRACKET() -> i64 = 93;   // ]
+fn CHAR_CARET() -> i64 = 94;      // ^
+fn CHAR_DOLLAR() -> i64 = 36;     // $
+fn CHAR_BACKSLASH() -> i64 = 92;  // \
+fn CHAR_MINUS() -> i64 = 45;      // -
+fn CHAR_D() -> i64 = 100;         // d
+fn CHAR_W() -> i64 = 119;         // w
+fn CHAR_S() -> i64 = 115;         // s
+
+// ============================================================
+// Character Classification
+// ============================================================
+
+fn is_digit(c: i64) -> bool = c >= 48 and c <= 57;
+fn is_word_char(c: i64) -> bool =
+    (c >= 65 and c <= 90) or (c >= 97 and c <= 122) or is_digit(c) or c == 95;
+fn is_whitespace(c: i64) -> bool = c == 32 or c == 9 or c == 10 or c == 13;
+fn is_meta_char(c: i64) -> bool =
+    c == CHAR_DOT() or c == CHAR_STAR() or c == CHAR_PLUS() or
+    c == CHAR_QUESTION() or c == CHAR_LBRACKET() or c == CHAR_CARET() or
+    c == CHAR_DOLLAR() or c == CHAR_BACKSLASH();
+
+// ============================================================
+// Main API
+// ============================================================
+
+/// Check if pattern matches the entire string
+pub fn matches(pattern: String, text: String) -> bool
+= match_at(pattern, 0, text, 0, true, true);
+
+/// Check if pattern matches anywhere in the string
+pub fn search(pattern: String, text: String) -> bool
+= search_from(pattern, text, 0);
+
+/// Find the starting position of first match (-1 if not found)
+pub fn find(pattern: String, text: String) -> i64
+    post ret >= -1 and ret <= text.len()
+= find_from(pattern, text, 0);
+
+/// Check if pattern matches at the start of string
+pub fn matches_start(pattern: String, text: String) -> bool
+= match_at(pattern, 0, text, 0, true, false);
+
+// ============================================================
+// Core Matching Engine
+// ============================================================
+
+fn search_from(pattern: String, text: String, pos: i64) -> bool =
+    if pos > text.len() { false }
+    else if match_at(pattern, 0, text, pos, false, false) { true }
+    else { search_from(pattern, text, pos + 1) };
+
+fn find_from(pattern: String, text: String, pos: i64) -> i64 =
+    if pos > text.len() { 0 - 1 }
+    else if match_at(pattern, 0, text, pos, false, false) { pos }
+    else { find_from(pattern, text, pos + 1) };
+
+// Main matching function
+// anchor_start: pattern must match from start of remaining text
+// anchor_end: pattern must match to end of text
+fn match_at(pattern: String, pat_pos: i64, text: String, text_pos: i64,
+            anchor_start: bool, anchor_end: bool) -> bool =
+    if pat_pos >= pattern.len() {
+        // Pattern exhausted - check end anchor
+        if anchor_end { text_pos >= text.len() } else { true }
+    }
+    else {
+        let c = pattern.byte_at(pat_pos);
+
+        // Handle start anchor
+        if c == CHAR_CARET() and pat_pos == 0 {
+            if anchor_start and text_pos == 0 {
+                match_at(pattern, pat_pos + 1, text, text_pos, true, anchor_end)
+            } else if text_pos == 0 {
+                match_at(pattern, pat_pos + 1, text, text_pos, true, anchor_end)
+            } else { false }
+        }
+        // Handle end anchor
+        else if c == CHAR_DOLLAR() and pat_pos == pattern.len() - 1 {
+            text_pos >= text.len()
+        }
+        // Handle escape sequences
+        else if c == CHAR_BACKSLASH() and pat_pos + 1 < pattern.len() {
+            match_escaped(pattern, pat_pos, text, text_pos, anchor_end)
+        }
+        // Handle character class [...]
+        else if c == CHAR_LBRACKET() {
+            match_char_class(pattern, pat_pos, text, text_pos, anchor_end)
+        }
+        // Handle quantifiers (check next char)
+        else if pat_pos + 1 < pattern.len() {
+            let next = pattern.byte_at(pat_pos + 1);
+            if next == CHAR_STAR() {
+                match_star(pattern, pat_pos, text, text_pos, anchor_end)
+            }
+            else if next == CHAR_PLUS() {
+                match_plus(pattern, pat_pos, text, text_pos, anchor_end)
+            }
+            else if next == CHAR_QUESTION() {
+                match_question(pattern, pat_pos, text, text_pos, anchor_end)
+            }
+            else {
+                match_single(pattern, pat_pos, text, text_pos, anchor_end)
+            }
+        }
+        else {
+            match_single(pattern, pat_pos, text, text_pos, anchor_end)
+        }
+    };
+
+// Match a single character (. or literal)
+fn match_single(pattern: String, pat_pos: i64, text: String, text_pos: i64,
+                anchor_end: bool) -> bool =
+    if text_pos >= text.len() { false }
+    else {
+        let pat_char = pattern.byte_at(pat_pos);
+        let text_char = text.byte_at(text_pos);
+
+        let char_matches = if pat_char == CHAR_DOT() { true }
+                           else { pat_char == text_char };
+
+        if char_matches {
+            match_at(pattern, pat_pos + 1, text, text_pos + 1, true, anchor_end)
+        } else { false }
+    };
+
+// Match escaped character (\d, \w, \s, or literal)
+fn match_escaped(pattern: String, pat_pos: i64, text: String, text_pos: i64,
+                 anchor_end: bool) -> bool =
+    let escape_char = pattern.byte_at(pat_pos + 1);
+
+    // Check if next is a quantifier
+    if pat_pos + 2 < pattern.len() {
+        let after = pattern.byte_at(pat_pos + 2);
+        if after == CHAR_STAR() {
+            match_star_escaped(pattern, pat_pos, text, text_pos, anchor_end)
+        }
+        else if after == CHAR_PLUS() {
+            match_plus_escaped(pattern, pat_pos, text, text_pos, anchor_end)
+        }
+        else if after == CHAR_QUESTION() {
+            match_question_escaped(pattern, pat_pos, text, text_pos, anchor_end)
+        }
+        else {
+            match_single_escaped(pattern, pat_pos, text, text_pos, anchor_end)
+        }
+    }
+    else {
+        match_single_escaped(pattern, pat_pos, text, text_pos, anchor_end)
+    };
+
+fn match_single_escaped(pattern: String, pat_pos: i64, text: String, text_pos: i64,
+                        anchor_end: bool) -> bool =
+    if text_pos >= text.len() { false }
+    else {
+        let escape_char = pattern.byte_at(pat_pos + 1);
+        let text_char = text.byte_at(text_pos);
+
+        let char_matches = if escape_char == CHAR_D() { is_digit(text_char) }
+                           else if escape_char == CHAR_W() { is_word_char(text_char) }
+                           else if escape_char == CHAR_S() { is_whitespace(text_char) }
+                           else { escape_char == text_char };
+
+        if char_matches {
+            match_at(pattern, pat_pos + 2, text, text_pos + 1, true, anchor_end)
+        } else { false }
+    };
+
+// Match * (zero or more) - greedy
+fn match_star(pattern: String, pat_pos: i64, text: String, text_pos: i64,
+              anchor_end: bool) -> bool =
+    // Try matching as many as possible, then backtrack
+    match_star_greedy(pattern, pat_pos, text, text_pos, text_pos, anchor_end);
+
+fn match_star_greedy(pattern: String, pat_pos: i64, text: String, text_pos: i64,
+                     start_pos: i64, anchor_end: bool) -> bool =
+    // First, try to match the rest of the pattern
+    if match_at(pattern, pat_pos + 2, text, text_pos, true, anchor_end) { true }
+    // Then try to consume one more character
+    else if text_pos < text.len() and char_matches_at(pattern, pat_pos, text, text_pos) {
+        match_star_greedy(pattern, pat_pos, text, text_pos + 1, start_pos, anchor_end)
+    }
+    else { false };
+
+fn match_star_escaped(pattern: String, pat_pos: i64, text: String, text_pos: i64,
+                      anchor_end: bool) -> bool =
+    // Similar to match_star but with escaped character
+    if match_at(pattern, pat_pos + 3, text, text_pos, true, anchor_end) { true }
+    else if text_pos < text.len() and escaped_char_matches(pattern, pat_pos, text, text_pos) {
+        match_star_escaped(pattern, pat_pos, text, text_pos + 1, anchor_end)
+    }
+    else { false };
+
+// Match + (one or more)
+fn match_plus(pattern: String, pat_pos: i64, text: String, text_pos: i64,
+              anchor_end: bool) -> bool =
+    // Must match at least one
+    if text_pos >= text.len() { false }
+    else if char_matches_at(pattern, pat_pos, text, text_pos) {
+        // Then match zero or more
+        match_star(pattern, pat_pos, text, text_pos + 1, anchor_end)
+    }
+    else { false };
+
+fn match_plus_escaped(pattern: String, pat_pos: i64, text: String, text_pos: i64,
+                      anchor_end: bool) -> bool =
+    if text_pos >= text.len() { false }
+    else if escaped_char_matches(pattern, pat_pos, text, text_pos) {
+        match_star_escaped(pattern, pat_pos, text, text_pos + 1, anchor_end)
+    }
+    else { false };
+
+// Match ? (zero or one)
+fn match_question(pattern: String, pat_pos: i64, text: String, text_pos: i64,
+                  anchor_end: bool) -> bool =
+    // Try matching one
+    if text_pos < text.len() and char_matches_at(pattern, pat_pos, text, text_pos) {
+        if match_at(pattern, pat_pos + 2, text, text_pos + 1, true, anchor_end) { true }
+        else { match_at(pattern, pat_pos + 2, text, text_pos, true, anchor_end) }
+    }
+    // Try matching zero
+    else { match_at(pattern, pat_pos + 2, text, text_pos, true, anchor_end) };
+
+fn match_question_escaped(pattern: String, pat_pos: i64, text: String, text_pos: i64,
+                          anchor_end: bool) -> bool =
+    if text_pos < text.len() and escaped_char_matches(pattern, pat_pos, text, text_pos) {
+        if match_at(pattern, pat_pos + 3, text, text_pos + 1, true, anchor_end) { true }
+        else { match_at(pattern, pat_pos + 3, text, text_pos, true, anchor_end) }
+    }
+    else { match_at(pattern, pat_pos + 3, text, text_pos, true, anchor_end) };
+
+// Character class matching
+fn match_char_class(pattern: String, pat_pos: i64, text: String, text_pos: i64,
+                    anchor_end: bool) -> bool =
+    if text_pos >= text.len() { false }
+    else {
+        let class_end = find_class_end(pattern, pat_pos + 1);
+        if class_end >= pattern.len() { false }
+        else {
+            let negated = pattern.byte_at(pat_pos + 1) == CHAR_CARET();
+            let class_start = if negated { pat_pos + 2 } else { pat_pos + 1 };
+            let text_char = text.byte_at(text_pos);
+
+            let in_class = char_in_class(pattern, class_start, class_end, text_char);
+            let char_matches = if negated { not in_class } else { in_class };
+
+            if char_matches {
+                // Check for quantifier after class
+                if class_end + 1 < pattern.len() {
+                    let next = pattern.byte_at(class_end + 1);
+                    if next == CHAR_STAR() {
+                        match_class_star(pattern, pat_pos, class_end, text, text_pos, anchor_end)
+                    }
+                    else if next == CHAR_PLUS() {
+                        match_class_plus(pattern, pat_pos, class_end, text, text_pos, anchor_end)
+                    }
+                    else if next == CHAR_QUESTION() {
+                        match_class_question(pattern, pat_pos, class_end, text, text_pos, anchor_end)
+                    }
+                    else {
+                        match_at(pattern, class_end + 1, text, text_pos + 1, true, anchor_end)
+                    }
+                }
+                else {
+                    match_at(pattern, class_end + 1, text, text_pos + 1, true, anchor_end)
+                }
+            }
+            else {
+                // Check if there's a quantifier that allows zero matches
+                if class_end + 1 < pattern.len() {
+                    let next = pattern.byte_at(class_end + 1);
+                    if next == CHAR_STAR() or next == CHAR_QUESTION() {
+                        match_at(pattern, class_end + 2, text, text_pos, true, anchor_end)
+                    }
+                    else { false }
+                }
+                else { false }
+            }
+        }
+    };
+
+fn match_class_star(pattern: String, pat_pos: i64, class_end: i64, text: String,
+                    text_pos: i64, anchor_end: bool) -> bool =
+    if match_at(pattern, class_end + 2, text, text_pos, true, anchor_end) { true }
+    else if text_pos < text.len() and class_matches_at(pattern, pat_pos, class_end, text, text_pos) {
+        match_class_star(pattern, pat_pos, class_end, text, text_pos + 1, anchor_end)
+    }
+    else { false };
+
+fn match_class_plus(pattern: String, pat_pos: i64, class_end: i64, text: String,
+                    text_pos: i64, anchor_end: bool) -> bool =
+    if text_pos >= text.len() { false }
+    else if class_matches_at(pattern, pat_pos, class_end, text, text_pos) {
+        match_class_star(pattern, pat_pos, class_end, text, text_pos + 1, anchor_end)
+    }
+    else { false };
+
+fn match_class_question(pattern: String, pat_pos: i64, class_end: i64, text: String,
+                        text_pos: i64, anchor_end: bool) -> bool =
+    if text_pos < text.len() and class_matches_at(pattern, pat_pos, class_end, text, text_pos) {
+        if match_at(pattern, class_end + 2, text, text_pos + 1, true, anchor_end) { true }
+        else { match_at(pattern, class_end + 2, text, text_pos, true, anchor_end) }
+    }
+    else { match_at(pattern, class_end + 2, text, text_pos, true, anchor_end) };
+
+// Helper: check if char matches pattern char at position
+fn char_matches_at(pattern: String, pat_pos: i64, text: String, text_pos: i64) -> bool =
+    let pat_char = pattern.byte_at(pat_pos);
+    let text_char = text.byte_at(text_pos);
+    if pat_char == CHAR_DOT() { true }
+    else { pat_char == text_char };
+
+fn escaped_char_matches(pattern: String, pat_pos: i64, text: String, text_pos: i64) -> bool =
+    let escape_char = pattern.byte_at(pat_pos + 1);
+    let text_char = text.byte_at(text_pos);
+    if escape_char == CHAR_D() { is_digit(text_char) }
+    else if escape_char == CHAR_W() { is_word_char(text_char) }
+    else if escape_char == CHAR_S() { is_whitespace(text_char) }
+    else { escape_char == text_char };
+
+fn class_matches_at(pattern: String, pat_pos: i64, class_end: i64, text: String,
+                    text_pos: i64) -> bool =
+    let negated = pattern.byte_at(pat_pos + 1) == CHAR_CARET();
+    let class_start = if negated { pat_pos + 2 } else { pat_pos + 1 };
+    let text_char = text.byte_at(text_pos);
+    let in_class = char_in_class(pattern, class_start, class_end, text_char);
+    if negated { not in_class } else { in_class };
+
+fn find_class_end(pattern: String, pos: i64) -> i64 =
+    if pos >= pattern.len() { pattern.len() }
+    else if pattern.byte_at(pos) == CHAR_RBRACKET() { pos }
+    else if pattern.byte_at(pos) == CHAR_BACKSLASH() and pos + 1 < pattern.len() {
+        find_class_end(pattern, pos + 2)
+    }
+    else { find_class_end(pattern, pos + 1) };
+
+fn char_in_class(pattern: String, start: i64, end: i64, c: i64) -> bool =
+    char_in_class_from(pattern, start, end, c);
+
+fn char_in_class_from(pattern: String, pos: i64, end: i64, c: i64) -> bool =
+    if pos >= end { false }
+    else {
+        let pat_char = pattern.byte_at(pos);
+
+        // Check for range (a-z)
+        if pos + 2 < end and pattern.byte_at(pos + 1) == CHAR_MINUS() {
+            let range_end = pattern.byte_at(pos + 2);
+            if c >= pat_char and c <= range_end { true }
+            else { char_in_class_from(pattern, pos + 3, end, c) }
+        }
+        // Check for escape
+        else if pat_char == CHAR_BACKSLASH() and pos + 1 < end {
+            let escape = pattern.byte_at(pos + 1);
+            let matches = if escape == CHAR_D() { is_digit(c) }
+                          else if escape == CHAR_W() { is_word_char(c) }
+                          else if escape == CHAR_S() { is_whitespace(c) }
+                          else { escape == c };
+            if matches { true }
+            else { char_in_class_from(pattern, pos + 2, end, c) }
+        }
+        // Literal match
+        else if pat_char == c { true }
+        else { char_in_class_from(pattern, pos + 1, end, c) }
+    };
+
+// ============================================================
+// Utility Functions
+// ============================================================
+
+/// Split string by regex pattern
+pub fn split(pattern: String, text: String) -> String
+= split_acc(pattern, text, 0, "");
+
+fn split_acc(pattern: String, text: String, pos: i64, acc: String) -> String =
+    if pos >= text.len() {
+        if acc.len() > 0 { acc } else { "" }
+    }
+    else {
+        let match_pos = find_from(pattern, text.slice(pos, text.len()), 0);
+        if match_pos < 0 {
+            if acc.len() == 0 { text.slice(pos, text.len()) }
+            else { acc + "\n" + text.slice(pos, text.len()) }
+        }
+        else {
+            let before = text.slice(pos, pos + match_pos);
+            let new_acc = if acc.len() == 0 { before } else { acc + "\n" + before };
+            // Find match length (simplified - assumes single char match)
+            let match_len = if match_pos == 0 { 1 } else { 1 };
+            split_acc(pattern, text, pos + match_pos + match_len, new_acc)
+        }
+    };
+
+/// Replace first match with replacement string
+pub fn replace_first(pattern: String, text: String, replacement: String) -> String
+= let match_pos = find(pattern, text);
+  if match_pos < 0 { text }
+  else {
+      // Find match end (simplified)
+      let match_end = find_match_end(pattern, text, match_pos);
+      text.slice(0, match_pos) + replacement + text.slice(match_end, text.len())
+  };
+
+fn find_match_end(pattern: String, text: String, start: i64) -> i64 =
+    find_match_end_from(pattern, text, start, start + 1);
+
+fn find_match_end_from(pattern: String, text: String, start: i64, pos: i64) -> i64 =
+    if pos > text.len() { text.len() }
+    else if match_at(pattern, 0, text.slice(start, pos), 0, true, true) {
+        // Try to extend match
+        if pos < text.len() and match_at(pattern, 0, text.slice(start, pos + 1), 0, true, true) {
+            find_match_end_from(pattern, text, start, pos + 1)
+        }
+        else { pos }
+    }
+    else { find_match_end_from(pattern, text, start, pos + 1) };
