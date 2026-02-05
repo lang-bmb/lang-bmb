@@ -3145,6 +3145,203 @@ impl<'ctx> LlvmContext<'ctx> {
                 }
             }
 
+            // v0.72: Atomic operations - using LLVM atomic instructions
+            MirInst::AtomicNew { dest, value } => {
+                let i64_type = self.context.i64_type();
+                let ptr_type = self.context.ptr_type(inkwell::AddressSpace::default());
+
+                // Allocate 8 bytes for the atomic value
+                let malloc_fn = self.functions.get("malloc")
+                    .ok_or_else(|| CodeGenError::LlvmError("malloc not declared".to_string()))?;
+                let size = i64_type.const_int(8, false);
+                let ptr = self.builder
+                    .build_call(*malloc_fn, &[size.into()], "atomic_ptr")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                    .try_as_basic_value()
+                    .basic()
+                    .ok_or_else(|| CodeGenError::LlvmError("malloc returned void".to_string()))?
+                    .into_pointer_value();
+
+                // Store initial value atomically
+                let init_val = self.gen_operand(value)?;
+                let init_i64 = init_val.into_int_value();
+                let store_inst = self.builder
+                    .build_store(ptr, init_i64)
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                // v0.72: Set 8-byte alignment for lock-free i64 atomics
+                store_inst.set_alignment(8)
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                store_inst.set_atomic_ordering(inkwell::AtomicOrdering::SequentiallyConsistent)
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+
+                // Convert pointer to i64 handle
+                let handle = self.builder
+                    .build_ptr_to_int(ptr, i64_type, "atomic_handle")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+
+                self.store_to_place(dest, handle.into())?;
+            }
+
+            MirInst::AtomicLoad { dest, ptr } => {
+                let i64_type = self.context.i64_type();
+                let ptr_val = self.gen_operand(ptr)?;
+                let ptr_i64 = ptr_val.into_int_value();
+
+                // Convert i64 handle to pointer
+                let ptr_type = self.context.ptr_type(inkwell::AddressSpace::default());
+                let atomic_ptr = self.builder
+                    .build_int_to_ptr(ptr_i64, ptr_type, "atomic_ptr")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+
+                // Atomic load
+                let loaded = self.builder
+                    .build_load(i64_type, atomic_ptr, "atomic_load")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                let load_inst = loaded.as_instruction_value().unwrap();
+                // v0.72: Set 8-byte alignment for lock-free i64 atomics
+                load_inst.set_alignment(8)
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                load_inst.set_atomic_ordering(inkwell::AtomicOrdering::SequentiallyConsistent)
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+
+                self.store_to_place(dest, loaded)?;
+            }
+
+            MirInst::AtomicStore { ptr, value } => {
+                let ptr_val = self.gen_operand(ptr)?;
+                let ptr_i64 = ptr_val.into_int_value();
+                let store_val = self.gen_operand(value)?;
+                let store_i64 = store_val.into_int_value();
+
+                // Convert i64 handle to pointer
+                let ptr_type = self.context.ptr_type(inkwell::AddressSpace::default());
+                let atomic_ptr = self.builder
+                    .build_int_to_ptr(ptr_i64, ptr_type, "atomic_ptr")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+
+                // Atomic store
+                let store_inst = self.builder
+                    .build_store(atomic_ptr, store_i64)
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                // v0.72: Set 8-byte alignment for lock-free i64 atomics
+                store_inst.set_alignment(8)
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                store_inst.set_atomic_ordering(inkwell::AtomicOrdering::SequentiallyConsistent)
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+            }
+
+            MirInst::AtomicFetchAdd { dest, ptr, delta } => {
+                let i64_type = self.context.i64_type();
+                let ptr_val = self.gen_operand(ptr)?;
+                let ptr_i64 = ptr_val.into_int_value();
+                let delta_val = self.gen_operand(delta)?;
+                let delta_i64 = delta_val.into_int_value();
+
+                // Convert i64 handle to pointer
+                let ptr_type = self.context.ptr_type(inkwell::AddressSpace::default());
+                let atomic_ptr = self.builder
+                    .build_int_to_ptr(ptr_i64, ptr_type, "atomic_ptr")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+
+                // Atomic fetch-add
+                let old_val = self.builder
+                    .build_atomicrmw(
+                        inkwell::AtomicRMWBinOp::Add,
+                        atomic_ptr,
+                        delta_i64,
+                        inkwell::AtomicOrdering::SequentiallyConsistent,
+                    )
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+
+                self.store_to_place(dest, old_val.into())?;
+            }
+
+            MirInst::AtomicFetchSub { dest, ptr, delta } => {
+                let i64_type = self.context.i64_type();
+                let ptr_val = self.gen_operand(ptr)?;
+                let ptr_i64 = ptr_val.into_int_value();
+                let delta_val = self.gen_operand(delta)?;
+                let delta_i64 = delta_val.into_int_value();
+
+                // Convert i64 handle to pointer
+                let ptr_type = self.context.ptr_type(inkwell::AddressSpace::default());
+                let atomic_ptr = self.builder
+                    .build_int_to_ptr(ptr_i64, ptr_type, "atomic_ptr")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+
+                // Atomic fetch-sub
+                let old_val = self.builder
+                    .build_atomicrmw(
+                        inkwell::AtomicRMWBinOp::Sub,
+                        atomic_ptr,
+                        delta_i64,
+                        inkwell::AtomicOrdering::SequentiallyConsistent,
+                    )
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+
+                self.store_to_place(dest, old_val.into())?;
+            }
+
+            MirInst::AtomicSwap { dest, ptr, new_value } => {
+                let i64_type = self.context.i64_type();
+                let ptr_val = self.gen_operand(ptr)?;
+                let ptr_i64 = ptr_val.into_int_value();
+                let new_val = self.gen_operand(new_value)?;
+                let new_i64 = new_val.into_int_value();
+
+                // Convert i64 handle to pointer
+                let ptr_type = self.context.ptr_type(inkwell::AddressSpace::default());
+                let atomic_ptr = self.builder
+                    .build_int_to_ptr(ptr_i64, ptr_type, "atomic_ptr")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+
+                // Atomic swap (exchange)
+                let old_val = self.builder
+                    .build_atomicrmw(
+                        inkwell::AtomicRMWBinOp::Xchg,
+                        atomic_ptr,
+                        new_i64,
+                        inkwell::AtomicOrdering::SequentiallyConsistent,
+                    )
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+
+                self.store_to_place(dest, old_val.into())?;
+            }
+
+            MirInst::AtomicCompareExchange { dest, ptr, expected, new_value } => {
+                let i64_type = self.context.i64_type();
+                let ptr_val = self.gen_operand(ptr)?;
+                let ptr_i64 = ptr_val.into_int_value();
+                let expected_val = self.gen_operand(expected)?;
+                let expected_i64 = expected_val.into_int_value();
+                let new_val = self.gen_operand(new_value)?;
+                let new_i64 = new_val.into_int_value();
+
+                // Convert i64 handle to pointer
+                let ptr_type = self.context.ptr_type(inkwell::AddressSpace::default());
+                let atomic_ptr = self.builder
+                    .build_int_to_ptr(ptr_i64, ptr_type, "atomic_ptr")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+
+                // Atomic compare-exchange
+                let result = self.builder
+                    .build_cmpxchg(
+                        atomic_ptr,
+                        expected_i64,
+                        new_i64,
+                        inkwell::AtomicOrdering::SequentiallyConsistent,
+                        inkwell::AtomicOrdering::SequentiallyConsistent,
+                    )
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+
+                // Extract the old value (first element of the { i64, i1 } struct)
+                let old_val = self.builder
+                    .build_extract_value(result, 0, "cmpxchg_old")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+
+                self.store_to_place(dest, old_val)?;
+            }
+
             // v0.71: Mutex operations
             MirInst::MutexNew { dest, initial_value } => {
                 let i64_type = self.context.i64_type();

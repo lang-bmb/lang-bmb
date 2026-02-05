@@ -496,6 +496,26 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
             Operand::Place(dest)
         }
 
+        // v0.72: Atomic creation expression
+        Expr::AtomicNew { value } => {
+            // Lower the initial value expression
+            let init_operand = lower_expr(value, ctx);
+
+            // Create destination for the atomic handle
+            let dest = ctx.fresh_temp();
+
+            // Emit AtomicNew instruction
+            ctx.push_inst(MirInst::AtomicNew {
+                dest: dest.clone(),
+                value: init_operand,
+            });
+
+            // The atomic is represented as an i64 handle (pointer)
+            ctx.locals.insert(dest.name.clone(), MirType::I64);
+
+            Operand::Place(dest)
+        }
+
         // v0.71: Mutex creation expression
         Expr::MutexNew { value } => {
             // Lower the initial value expression
@@ -1611,6 +1631,82 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
                 ctx.push_inst(MirInst::ChannelTryRecv {
                     dest: dest.clone(),
                     receiver: recv_op,
+                });
+                return Operand::Place(dest);
+            }
+
+            // v0.72: Atomic<T> methods
+            // load() - atomically load current value
+            if method == "load" && args.is_empty() {
+                let dest = ctx.fresh_temp();
+                ctx.locals.insert(dest.name.clone(), MirType::I64);
+                ctx.push_inst(MirInst::AtomicLoad {
+                    dest: dest.clone(),
+                    ptr: recv_op,
+                });
+                return Operand::Place(dest);
+            }
+
+            // store(value) - atomically store a value
+            if method == "store" && args.len() == 1 {
+                let value_op = lower_expr(&args[0], ctx);
+                ctx.push_inst(MirInst::AtomicStore {
+                    ptr: recv_op,
+                    value: value_op,
+                });
+                return Operand::Constant(Constant::Unit);
+            }
+
+            // fetch_add(delta) - atomically add and return old value
+            if method == "fetch_add" && args.len() == 1 {
+                let delta_op = lower_expr(&args[0], ctx);
+                let dest = ctx.fresh_temp();
+                ctx.locals.insert(dest.name.clone(), MirType::I64);
+                ctx.push_inst(MirInst::AtomicFetchAdd {
+                    dest: dest.clone(),
+                    ptr: recv_op,
+                    delta: delta_op,
+                });
+                return Operand::Place(dest);
+            }
+
+            // fetch_sub(delta) - atomically subtract and return old value
+            if method == "fetch_sub" && args.len() == 1 {
+                let delta_op = lower_expr(&args[0], ctx);
+                let dest = ctx.fresh_temp();
+                ctx.locals.insert(dest.name.clone(), MirType::I64);
+                ctx.push_inst(MirInst::AtomicFetchSub {
+                    dest: dest.clone(),
+                    ptr: recv_op,
+                    delta: delta_op,
+                });
+                return Operand::Place(dest);
+            }
+
+            // swap(new_value) - atomically swap and return old value
+            if method == "swap" && args.len() == 1 {
+                let new_value_op = lower_expr(&args[0], ctx);
+                let dest = ctx.fresh_temp();
+                ctx.locals.insert(dest.name.clone(), MirType::I64);
+                ctx.push_inst(MirInst::AtomicSwap {
+                    dest: dest.clone(),
+                    ptr: recv_op,
+                    new_value: new_value_op,
+                });
+                return Operand::Place(dest);
+            }
+
+            // compare_exchange(expected, new) - CAS operation
+            if method == "compare_exchange" && args.len() == 2 {
+                let expected_op = lower_expr(&args[0], ctx);
+                let new_value_op = lower_expr(&args[1], ctx);
+                let dest = ctx.fresh_temp();
+                ctx.locals.insert(dest.name.clone(), MirType::I64);
+                ctx.push_inst(MirInst::AtomicCompareExchange {
+                    dest: dest.clone(),
+                    ptr: recv_op,
+                    expected: expected_op,
+                    new_value: new_value_op,
                 });
                 return Operand::Place(dest);
             }

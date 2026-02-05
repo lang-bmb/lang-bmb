@@ -454,6 +454,10 @@ impl ContractVerifier {
             Expr::Spawn { body } => {
                 self.check_expr_for_conflicts(&body.node, function_index, report);
             }
+            // v0.72: Atomic creation - check initial value expression
+            Expr::AtomicNew { value } => {
+                self.check_expr_for_conflicts(&value.node, function_index, report);
+            }
             // v0.71: Mutex creation - check initial value expression
             Expr::MutexNew { value } => {
                 self.check_expr_for_conflicts(&value.node, function_index, report);

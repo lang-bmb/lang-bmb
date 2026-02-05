@@ -1,12 +1,42 @@
-// v0.72: Basic Atomic<i64> test
-// Tests that Atomic provides lock-free operations
-// NOTE: Atomic creation syntax pending language extension
+// v0.72: Basic Atomic<T> test
+// Tests lock-free atomic operations
 
 fn main() -> i64 = {
-    // For now, test that the type parses correctly
-    // Full Atomic API requires static method syntax (Type::new)
-    // which is not yet supported in BMB grammar
+    // Create an atomic with initial value 0
+    let counter: Atomic<i64> = Atomic::new(0);
 
-    // Placeholder: return success
-    0
+    // Test load and store
+    let v1 = counter.load();  // Should be 0
+    counter.store(10);
+    let v2 = counter.load();  // Should be 10
+
+    // Test fetch_add
+    let old1 = counter.fetch_add(5);  // Returns 10, counter becomes 15
+    let v3 = counter.load();  // Should be 15
+
+    // Test fetch_sub
+    let old2 = counter.fetch_sub(3);  // Returns 15, counter becomes 12
+    let v4 = counter.load();  // Should be 12
+
+    // Test swap
+    let old3 = counter.swap(100);  // Returns 12, counter becomes 100
+    let v5 = counter.load();  // Should be 100
+
+    // Test compare_exchange
+    let old4 = counter.compare_exchange(100, 200);  // Expected matches, swap happens
+    let v6 = counter.load();  // Should be 200
+
+    let old5 = counter.compare_exchange(100, 300);  // Expected doesn't match, no swap
+    let v7 = counter.load();  // Should still be 200
+
+    // Verify all operations
+    if v1 == 0 && v2 == 10 && v3 == 15 && v4 == 12 && v5 == 100 && v6 == 200 && v7 == 200 {
+        if old1 == 10 && old2 == 15 && old3 == 12 && old4 == 100 && old5 == 200 {
+            0  // Success
+        } else {
+            2  // Old values incorrect
+        }
+    } else {
+        1  // Current values incorrect
+    }
 };

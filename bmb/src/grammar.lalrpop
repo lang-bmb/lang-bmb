@@ -82,6 +82,8 @@ extern {
         "spawn" => Token::Spawn,
         // v0.71: Mutex type
         "Mutex" => Token::MutexType,
+        // v0.72: Atomic type
+        "Atomic" => Token::AtomicType,
         // v0.73: Channel types
         "channel" => Token::ChannelKw,
         "Sender" => Token::SenderType,
@@ -1058,6 +1060,8 @@ PlainType: Type = {
     "[" <t:Type> ";" <n:"int"> "]" => Type::Array(Box::new(t), n as usize),
     // v0.71: Mutex<T> type
     "Mutex" "<" <inner:Type> ">" => Type::Mutex(Box::new(inner)),
+    // v0.72: Atomic<T> type
+    "Atomic" "<" <inner:Type> ">" => Type::Atomic(Box::new(inner)),
     // v0.73: Channel types - Sender<T> and Receiver<T>
     "Sender" "<" <inner:Type> ">" => Type::Sender(Box::new(inner)),
     "Receiver" "<" <inner:Type> ">" => Type::Receiver(Box::new(inner)),
@@ -1262,6 +1266,10 @@ Expr: Expr = {
             if let Some(e) = last { exprs.push(e); }
             Expr::Block(exprs)
         }, Span::new(l, r))),
+    },
+    // v0.72: Atomic creation - Atomic::new(value) -> Atomic<T>
+    <l:@L> "Atomic" "::" "new" "(" <value:SpannedExpr> ")" <r:@R> => Expr::AtomicNew {
+        value: Box::new(value),
     },
     // v0.71: Mutex creation - Mutex::new(value) -> Mutex<T>
     <l:@L> "Mutex" "::" "new" "(" <value:SpannedExpr> ")" <r:@R> => Expr::MutexNew {

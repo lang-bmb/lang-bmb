@@ -1363,6 +1363,12 @@ impl TypeChecker {
                 Ok(Type::Thread(Box::new(body_type)))
             }
 
+            // v0.72: Atomic creation - returns Atomic<T> where T is inferred from value
+            Expr::AtomicNew { value } => {
+                let value_ty = self.infer(&value.node, value.span)?;
+                Ok(Type::Atomic(Box::new(value_ty)))
+            }
+
             // v0.71: Mutex creation - returns Mutex<T> where T is inferred from value
             Expr::MutexNew { value } => {
                 let value_ty = self.infer(&value.node, value.span)?;

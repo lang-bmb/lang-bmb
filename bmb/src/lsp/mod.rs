@@ -1363,6 +1363,8 @@ fn format_expr(expr: &Expr) -> String {
         Expr::Sizeof { ty } => format!("sizeof<{}>()", format_type(&ty.node)),
         // v0.70: Spawn expression
         Expr::Spawn { body } => format!("spawn {{ {} }}", format_expr(&body.node)),
+        // v0.72: Atomic creation expression
+        Expr::AtomicNew { value } => format!("Atomic::new({})", format_expr(&value.node)),
         // v0.71: Mutex creation expression
         Expr::MutexNew { value } => format!("Mutex::new({})", format_expr(&value.node)),
         // v0.73: Channel creation expression

@@ -801,6 +801,15 @@ impl CirLowerer {
                 }
             }
 
+            // v0.72: Atomic creation expression
+            Expr::AtomicNew { value } => {
+                let val = self.lower_expr(&value.node);
+                CirExpr::Call {
+                    func: "__atomic_new".to_string(),
+                    args: vec![val],
+                }
+            }
+
             // v0.71: Mutex creation expression
             Expr::MutexNew { value } => {
                 let val = self.lower_expr(&value.node);

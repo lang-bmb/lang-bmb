@@ -408,6 +408,11 @@ impl Interpreter {
                 Err(RuntimeError::todo("spawn expressions require native compilation; use 'bmb build' instead of 'bmb run'"))
             }
 
+            // v0.72: Atomic creation - not supported in interpreter (requires native)
+            Expr::AtomicNew { .. } => {
+                Err(RuntimeError::todo("atomic expressions require native compilation; use 'bmb build' instead of 'bmb run'"))
+            }
+
             // v0.71: Mutex creation - not supported in interpreter (requires native threads)
             Expr::MutexNew { .. } => {
                 Err(RuntimeError::todo("mutex expressions require native compilation; use 'bmb build' instead of 'bmb run'"))

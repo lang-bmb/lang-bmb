@@ -315,6 +315,16 @@ pub enum Expr {
         body: Box<Spanned<Expr>>,
     },
 
+    // v0.72: Atomic creation expression
+
+    /// Atomic creation: Atomic::new(value) -> Atomic<T>
+    /// Creates a new atomic variable with the given initial value.
+    /// The type T is inferred from the value.
+    AtomicNew {
+        /// The initial value for the atomic
+        value: Box<Spanned<Expr>>,
+    },
+
     // v0.71: Mutex creation expression
 
     /// Mutex creation: Mutex::new(value) -> Mutex<T>
