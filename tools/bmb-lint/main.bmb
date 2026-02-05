@@ -1,0 +1,301 @@
+// BMB Code Linter (bmb-lint)
+// Phase v0.64.2: Static analysis tool
+//
+// A simple pattern-based linter for BMB source code.
+// Checks for common code quality issues.
+//
+// Usage:
+//   bmb run tools/bmb-lint/main.bmb <file.bmb>
+//   bmb run tools/bmb-lint/main.bmb --json <file.bmb>
+
+// ============================================================
+// Configuration
+// ============================================================
+
+fn MAX_LINE_LENGTH() -> i64 = 100;
+
+// ============================================================
+// String Utilities
+// ============================================================
+
+fn int_to_string(n: i64) -> String =
+    if n < 0 { "-" + int_to_string(0 - n) }
+    else if n < 10 { digit_char(n) }
+    else { int_to_string(n / 10) + digit_char(n - (n / 10) * 10) };
+
+fn digit_char(d: i64) -> String =
+    if d == 0 { "0" } else if d == 1 { "1" } else if d == 2 { "2" }
+    else if d == 3 { "3" } else if d == 4 { "4" } else if d == 5 { "5" }
+    else if d == 6 { "6" } else if d == 7 { "7" } else if d == 8 { "8" }
+    else { "9" };
+
+fn char_is_whitespace(c: i64) -> bool = c == 32 or c == 9;
+fn char_is_newline(c: i64) -> bool = c == 10 or c == 13;
+fn char_is_digit(c: i64) -> bool = c >= 48 and c <= 57;
+fn char_is_upper(c: i64) -> bool = c >= 65 and c <= 90;
+
+// ============================================================
+// Line Processing
+// ============================================================
+
+fn find_newline(s: String, pos: i64) -> i64 =
+    if pos >= s.len() { s.len() }
+    else if s.byte_at(pos) == 10 { pos }
+    else { find_newline(s, pos + 1) };
+
+fn get_line_at(s: String, pos: i64) -> String =
+    let end = find_newline(s, pos);
+    s.slice(pos, end);
+
+fn next_line_pos(s: String, pos: i64) -> i64 =
+    let nl = find_newline(s, pos);
+    if nl >= s.len() { s.len() } else { nl + 1 };
+
+fn count_leading_spaces(s: String) -> i64 =
+    count_spaces_from(s, 0);
+
+fn count_spaces_from(s: String, pos: i64) -> i64 =
+    if pos >= s.len() { pos }
+    else if s.byte_at(pos) == 32 { count_spaces_from(s, pos + 1) }
+    else if s.byte_at(pos) == 9 { count_spaces_from(s, pos + 4) }
+    else { pos };
+
+fn trim_leading(s: String) -> String =
+    let start = count_leading_spaces(s);
+    s.slice(start, s.len());
+
+// ============================================================
+// Pattern Matching
+// ============================================================
+
+fn starts_with(s: String, prefix: String) -> bool =
+    if prefix.len() > s.len() { false }
+    else { matches_at(s, prefix, 0) };
+
+fn matches_at(s: String, pattern: String, pos: i64) -> bool =
+    matches_at_inner(s, pattern, pos, 0);
+
+fn matches_at_inner(s: String, pattern: String, pos: i64, i: i64) -> bool =
+    if i >= pattern.len() { true }
+    else if pos + i >= s.len() { false }
+    else if s.byte_at(pos + i) != pattern.byte_at(i) { false }
+    else { matches_at_inner(s, pattern, pos, i + 1) };
+
+fn contains(s: String, sub: String) -> bool =
+    contains_at(s, sub, 0);
+
+fn contains_at(s: String, sub: String, pos: i64) -> bool =
+    if pos + sub.len() > s.len() { false }
+    else if matches_at(s, sub, pos) { true }
+    else { contains_at(s, sub, pos + 1) };
+
+fn string_eq(a: String, b: String) -> bool =
+    a.len() == b.len() and matches_at(a, b, 0);
+
+// ============================================================
+// Lint Rules
+// ============================================================
+
+// Rule: Line too long (>100 chars)
+fn check_line_length(line: String, line_num: i64) -> String =
+    if line.len() > MAX_LINE_LENGTH() {
+        "W001|" + int_to_string(line_num) + "|line too long (" + int_to_string(line.len()) + " > " + int_to_string(MAX_LINE_LENGTH()) + ")"
+    } else { "" };
+
+// Rule: Trailing whitespace
+fn has_trailing_whitespace(line: String) -> bool =
+    line.len() > 0 and char_is_whitespace(line.byte_at(line.len() - 1));
+
+fn check_trailing_whitespace(line: String, line_num: i64) -> String =
+    if has_trailing_whitespace(line) {
+        "W002|" + int_to_string(line_num) + "|trailing whitespace"
+    } else { "" };
+
+// Rule: TODO/FIXME comments
+fn check_todo_fixme(line: String, line_num: i64) -> String =
+    let trimmed = trim_leading(line);
+    if contains(trimmed, "TODO") {
+        "I001|" + int_to_string(line_num) + "|TODO comment found"
+    } else if contains(trimmed, "FIXME") {
+        "W003|" + int_to_string(line_num) + "|FIXME comment found"
+    } else if contains(trimmed, "XXX") {
+        "W004|" + int_to_string(line_num) + "|XXX comment found"
+    } else { "" };
+
+// Rule: Tabs instead of spaces
+fn check_tabs(line: String, line_num: i64) -> String =
+    if contains(line, "\t") {
+        "W005|" + int_to_string(line_num) + "|tab character found (use spaces)"
+    } else { "" };
+
+// Rule: Magic numbers (bare numeric literals > 10)
+fn check_magic_numbers(line: String, line_num: i64) -> String =
+    let trimmed = trim_leading(line);
+    // Skip if it's a constant definition (fn NAME() -> i64 = N)
+    if starts_with(trimmed, "fn ") and contains(line, "() ->") {
+        ""
+    // Skip comments
+    } else if starts_with(trimmed, "//") {
+        ""
+    } else {
+        check_magic_in_line(line, line_num, 0)
+    };
+
+fn check_magic_in_line(line: String, line_num: i64, pos: i64) -> String =
+    if pos >= line.len() { "" }
+    else {
+        let c = line.byte_at(pos);
+        // Look for numbers that are longer than 2 digits
+        if char_is_digit(c) {
+            let num_end = find_number_end(line, pos);
+            let num_len = num_end - pos;
+            // Skip small numbers (0-99) and allow common values
+            if num_len >= 3 {
+                "I002|" + int_to_string(line_num) + "|possible magic number"
+            } else {
+                check_magic_in_line(line, line_num, num_end)
+            }
+        } else {
+            check_magic_in_line(line, line_num, pos + 1)
+        }
+    };
+
+fn find_number_end(s: String, pos: i64) -> i64 =
+    if pos >= s.len() { pos }
+    else if char_is_digit(s.byte_at(pos)) { find_number_end(s, pos + 1) }
+    else { pos };
+
+// Rule: Long function (>50 lines)
+fn check_function_length(line: String, line_num: i64, fn_start: i64, in_fn: bool) -> i64 =
+    let trimmed = trim_leading(line);
+    if starts_with(trimmed, "fn ") and not in_fn {
+        line_num  // Start of new function
+    } else if in_fn and starts_with(trimmed, "fn ") {
+        // End of previous function, start of new
+        let fn_len = line_num - fn_start;
+        fn_len  // Return length for warning check
+    } else {
+        0  // Continue
+    };
+
+// ============================================================
+// Lint Engine
+// ============================================================
+
+fn lint_source(source: String, json_mode: bool) -> i64 =
+    let sb = sb_new();
+    if json_mode {
+        let h = sb_push(sb, "[");
+        lint_lines_json(sb, source, 0, 1, false)
+    } else {
+        lint_lines(sb, source, 0, 1)
+    };
+
+fn lint_lines(sb: i64, source: String, pos: i64, line_num: i64) -> i64 =
+    if pos >= source.len() {
+        let output = sb_build(sb);
+        if output.len() > 0 {
+            let p = print_str(output);
+            1  // Warnings found
+        } else {
+            let p = println_str("No lint issues found.");
+            0
+        }
+    } else {
+        let line = get_line_at(source, pos);
+        let next_pos = next_line_pos(source, pos);
+
+        // Run all checks
+        let w1 = check_line_length(line, line_num);
+        let w2 = check_trailing_whitespace(line, line_num);
+        let w3 = check_todo_fixme(line, line_num);
+        let w4 = check_tabs(line, line_num);
+
+        // Collect warnings
+        let s1 = if w1.len() > 0 { let p = sb_push(sb, w1); sb_push(sb, "\n") } else { 0 };
+        let s2 = if w2.len() > 0 { let p = sb_push(sb, w2); sb_push(sb, "\n") } else { 0 };
+        let s3 = if w3.len() > 0 { let p = sb_push(sb, w3); sb_push(sb, "\n") } else { 0 };
+        let s4 = if w4.len() > 0 { let p = sb_push(sb, w4); sb_push(sb, "\n") } else { 0 };
+
+        lint_lines(sb, source, next_pos, line_num + 1)
+    };
+
+fn lint_lines_json(sb: i64, source: String, pos: i64, line_num: i64, has_output: bool) -> i64 =
+    if pos >= source.len() {
+        let c = sb_push(sb, "]");
+        let output = sb_build(sb);
+        let p = println_str(output);
+        if has_output { 1 } else { 0 }
+    } else {
+        let line = get_line_at(source, pos);
+        let next_pos = next_line_pos(source, pos);
+
+        // Run checks and emit JSON
+        let new_has_output = emit_json_warnings(sb, line, line_num, has_output);
+
+        lint_lines_json(sb, source, next_pos, line_num + 1, new_has_output)
+    };
+
+fn emit_json_warnings(sb: i64, line: String, line_num: i64, has_output: bool) -> bool =
+    let w1 = check_line_length(line, line_num);
+    let w2 = check_trailing_whitespace(line, line_num);
+    let w3 = check_todo_fixme(line, line_num);
+    let w4 = check_tabs(line, line_num);
+
+    let h1 = emit_if_warning(sb, w1, has_output);
+    let h2 = emit_if_warning(sb, w2, h1);
+    let h3 = emit_if_warning(sb, w3, h2);
+    emit_if_warning(sb, w4, h3);
+
+fn emit_if_warning(sb: i64, warning: String, has_output: bool) -> bool =
+    if warning.len() == 0 { has_output }
+    else {
+        let comma = if has_output { sb_push(sb, ",") } else { 0 };
+        let o = sb_push(sb, "{\"warning\":\"");
+        let w = sb_push(sb, warning);
+        let c = sb_push(sb, "\"}");
+        true
+    };
+
+// ============================================================
+// Main Entry Point
+// ============================================================
+
+fn main() -> i64 = {
+    let argc = arg_count();
+
+    if argc < 2 {
+        let p1 = println_str("Usage: bmb run tools/bmb-lint/main.bmb <file.bmb>");
+        let p2 = println_str("       bmb run tools/bmb-lint/main.bmb --json <file.bmb>");
+        1
+    } else {
+        let arg1 = get_arg(1);
+
+        if string_eq(arg1, "--json") {
+            if argc < 3 {
+                let p1 = println_str("Error: --json requires a file argument");
+                1
+            } else {
+                let file = get_arg(2);
+                if file_exists(file) != 1 {
+                    let p1 = println_str("Error: File not found: " + file);
+                    1
+                } else {
+                    let source = read_file(file);
+                    let p1 = println_str("Linting: " + file + "\n");
+                    lint_source(source, true)
+                }
+            }
+        } else {
+            let file = arg1;
+            if file_exists(file) != 1 {
+                let p1 = println_str("Error: File not found: " + file);
+                1
+            } else {
+                let source = read_file(file);
+                let p1 = println_str("Linting: " + file + "\n");
+                lint_source(source, false)
+            }
+        }
+    }
+};
