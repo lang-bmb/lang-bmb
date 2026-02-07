@@ -56,6 +56,33 @@ fn skip_ws(s: String, pos: i64) -> i64 =
 fn is_error(s: String) -> bool = s.len() >= 3 and s.slice(0, 3) == "ERR";
 fn make_error(msg: String) -> String = "ERR:" + msg;
 
+// v0.88.8: Position-aware error with line:col info
+fn count_line_at(src: String, pos: i64, cur: i64, line: i64) -> i64 =
+    if cur >= pos or cur >= src.len() { line }
+    else if src.byte_at(cur) == 10 { count_line_at(src, pos, cur + 1, line + 1) }
+    else { count_line_at(src, pos, cur + 1, line) };
+
+fn count_col_at(src: String, pos: i64, cur: i64) -> i64 =
+    if cur >= pos or cur >= src.len() { pos - cur }
+    else if src.byte_at(cur) == 10 { count_col_at(src, pos, cur + 1) }
+    else { count_col_at(src, pos, cur) };
+
+fn find_line_start(src: String, pos: i64) -> i64 =
+    if pos <= 0 { 0 }
+    else if src.byte_at(pos - 1) == 10 { pos }
+    else { find_line_start(src, pos - 1) };
+
+fn find_line_end(src: String, pos: i64) -> i64 =
+    if pos >= src.len() { pos }
+    else if src.byte_at(pos) == 10 { pos }
+    else { find_line_end(src, pos + 1) };
+
+fn make_error_at(msg: String, src: String, pos: i64) -> String =
+    let line = count_line_at(src, pos, 0, 1);
+    let ls = find_line_start(src, pos);
+    let col = pos - ls + 1;
+    "ERR:" + msg + " at line " + int_to_string(line) + ":" + int_to_string(col);
+
 // Check if string starts with pattern
 fn starts_with(s: String, pat: String, pos: i64) -> bool =
     if pos + pat.len() > s.len() { false } else { s.slice(pos, pos + pat.len()) == pat };
@@ -508,7 +535,7 @@ fn parse_atom(src: String, pos: i64) -> String =
     else if kind == TK_MINUS() { parse_unary(src, tok, "-") }
     else if kind == TK_LPAREN() { parse_paren_expr(src, tok) }
     else if kind == TK_LBRACE() { parse_block_expr(src, tok_end(tok)) }
-    else { make_error("atom") };
+    else { make_error_at("unexpected token in expression", src, pos) };
 
 fn parse_args(src: String, pos: i64, acc: String) -> String =
     let tok = next_token_raw(src, pos);
@@ -767,12 +794,12 @@ fn parse_let_expr(src: String, pos: i64, start_pos: i64) -> String =
     if k1 == TK_MUT() {
         // let mut name = ...
         let t2 = next_token_raw(src, tok_end(t1));
-        if tok_kind(t2) != TK_IDENT() { make_error("let-mut-name") }
+        if tok_kind(t2) != TK_IDENT() { make_error_at("expected variable name after 'mut'", src, tok_end(t1)) }
         else { parse_let_name_mut(src, tok_end(t1), t2) }
     } else if k1 == TK_IDENT() {
         // let name = ...
         parse_let_name(src, pos, t1)
-    } else { make_error("let-name") };
+    } else { make_error_at("expected variable name after 'let'", src, pos) };
 
 fn parse_let_name(src: String, pos: i64, t1: i64) -> String =
     let name = get_ident_text(src, pos, t1);
@@ -918,11 +945,11 @@ fn parse_fn(src: String, pos: i64) -> String =
                             let t6 = next_token_raw(src, unpack_pos(rb));
                             if tok_kind(t6) == TK_SEMI() { pack_result(tok_end(t6), "(fn <" + name + ">" + unpack_ast(rp) + " " + ret_type + " " + unpack_ast(rb) + ")") } else { pack_result(unpack_pos(rb), "(fn <" + name + ">" + unpack_ast(rp) + " " + ret_type + " " + unpack_ast(rb) + ")") }
                         }
-                    } else { make_error("fn-eq") }
-                } else { make_error("fn-arrow") }
+                    } else { make_error_at("expected '=' after return type", src, tok_end(t4)) }
+                } else { make_error_at("expected '->' after parameters", src, unpack_pos(rp)) }
             }
-        } else { make_error("fn-lparen") }
-    } else { make_error("fn-name") };
+        } else { make_error_at("expected '(' after function name", src, tok_end(t1)) }
+    } else { make_error_at("expected function name after 'fn'", src, pos) };
 
 // v0.60.241: Refactored to use StringBuilder for O(1) amortized accumulation
 // Previously O(N²) due to fns + " " + unpack_ast(rf) pattern
@@ -939,7 +966,7 @@ fn parse_program_sb(src: String, pos: i64, sb: i64) -> String =
             let w2 = sb_push(sb, unpack_ast(rf));
             parse_program_sb(src, unpack_pos(rf), sb)
         }
-    } else { make_error("program") };
+    } else { make_error_at("expected 'fn' declaration", src, pos) };
 
 fn parse_source(src: String) -> String =
     let sb = sb_new();
@@ -3905,8 +3932,10 @@ fn emit_ir(input: String, output: String) -> i64 =
     } else {
         let llvm = compile_program(source);
         if is_compile_error(llvm) {
-            let err_detail = llvm.slice(4, if llvm.len() > 300 { 300 } else { llvm.len() });
-            { print_str("Compile error: "); println_str(err_detail); 1 }
+            // v0.88.8: Show full error detail with parse/lowering context
+            let end = if llvm.len() > 500 { 500 } else { llvm.len() };
+            let err_detail = llvm.slice(4, end);
+            { print_str("error["); print_str(input); print_str("]: "); println_str(err_detail); 1 }
         } else {
             let w1 = write_file_newlines(output, llvm);
             { print_str("Wrote: "); println_str(output); 0 }

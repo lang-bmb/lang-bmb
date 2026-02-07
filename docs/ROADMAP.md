@@ -8,14 +8,14 @@
 
 | 항목 | 상태 | 비고 |
 |------|------|------|
-| **버전** | v0.88.7 | Self-Hosting (Alpha) |
+| **버전** | v0.88.8 | Self-Hosting (Alpha) |
 | **단계** | Alpha | Concurrency 완료 → **Alpha (v0.88)** → Beta (v0.90) → RC (v0.98) |
 | **Bootstrap** | ✅ 3-Stage 완료 | Stage 1: ~0.55s (--fast-compile) |
 | **Benchmarks** | ✅ 18/30 BMB > C | 60% C보다 빠름 |
 | **Tests** | ✅ 334개 통과 | 243 + 68 + 23 (cargo) + BMB 테스트 5/5 |
 | **Stability** | ✅ STABILITY.md | 언어/API 동결 문서화 |
 | **동시성 지원** | ✅ 부트스트랩 확장 | 토큰/타입/MIR/코드젠 완료 |
-| **Golden Binary** | ✅ v0.88.7 | Rust 없이 부트스트랩 가능 |
+| **Golden Binary** | ✅ v0.88.8 | Rust 없이 부트스트랩 가능 |
 
 ---
 
@@ -174,6 +174,7 @@ select {
 | 컴파일러 메모리 최적화 | ✅ | v0.88.5: 코드젠 리턴 프로토콜 최적화 - mapping 미변경 시 zero-copy, ~2GB 절감 |
 | Arena Save/Restore | ✅ | v0.88.6: arena_save/restore로 함수별 메모리 회수 - 6.2GB→420MB (93% 절감), lowering.bmb 4GB 이내 컴파일 |
 | 토큰 인코딩 수정 | ✅ | v0.88.7: 토큰 kind base 10000→10000000 확장 - 정수 리터럴 10000-10999 파싱 충돌 해결, mir.bmb/types.bmb 컴파일 성공 |
+| 파서 에러 진단 | ✅ | v0.88.8: 파싱 에러에 line:col 위치 정보 추가, 사람이 읽기 쉬운 에러 메시지 |
 | 컴파일러 100% BMB 전환 | 📋 | Rust 의존성 제거 (현재: IR 생성만 BMB, native build는 스크립트 의존) |
 | 개발 도구 BMB 전환 | 📋 | gotgan, LSP, Formatter |
 
