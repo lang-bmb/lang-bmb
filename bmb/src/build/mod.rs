@@ -799,7 +799,7 @@ pub fn build(config: &BuildConfig) -> BuildResult<()> {
             OptLevel::Aggressive => "-O3",
         };
 
-        cmd.args([opt_flag, "-c", ir_path.to_str().unwrap(), "-o", obj_path.to_str().unwrap()]);
+        cmd.args([opt_flag, "-c", path_str(&ir_path)?, "-o", path_str(&obj_path)?]);
 
         let output_result = cmd.output()?;
         if !output_result.status.success() {
@@ -815,7 +815,7 @@ pub fn build(config: &BuildConfig) -> BuildResult<()> {
         // v0.51: Critical fix - runtime was compiled with -O0, causing 3x slowdown in FFI calls
         let runtime_obj = config.output.with_file_name("runtime").with_extension(if cfg!(windows) { "obj" } else { "o" });
         let mut cmd = Command::new(&clang);
-        cmd.args([opt_flag, "-c", runtime_path.to_str().unwrap(), "-o", runtime_obj.to_str().unwrap()]);
+        cmd.args([opt_flag, "-c", path_str(&runtime_path)?, "-o", path_str(&runtime_obj)?]);
 
         // Add Windows SDK include paths if on Windows
         #[cfg(target_os = "windows")]
@@ -838,9 +838,9 @@ pub fn build(config: &BuildConfig) -> BuildResult<()> {
         {
             let mut cmd = Command::new("lld-link");
             cmd.args([
-                obj_path.to_str().unwrap(),
-                runtime_obj.to_str().unwrap(),
-                &format!("/OUT:{}", config.output.to_str().unwrap()),
+                path_str(&obj_path)?,
+                path_str(&runtime_obj)?,
+                &format!("/OUT:{}", path_str(&config.output)?),
                 "/SUBSYSTEM:CONSOLE",
                 "/ENTRY:mainCRTStartup",
                 "/STACK:16777216",  // 16MB stack for deep recursion in bootstrap compiler
@@ -876,10 +876,10 @@ pub fn build(config: &BuildConfig) -> BuildResult<()> {
         {
             let mut cmd = Command::new(&clang);
             cmd.args([
-                obj_path.to_str().unwrap(),
-                runtime_obj.to_str().unwrap(),
+                path_str(&obj_path)?,
+                path_str(&runtime_obj)?,
                 "-o",
-                config.output.to_str().unwrap(),
+                path_str(&config.output)?,
             ]);
 
             let output_result = cmd.output()?;
@@ -900,6 +900,11 @@ pub fn build(config: &BuildConfig) -> BuildResult<()> {
 
         Ok(())
     }
+}
+
+/// Convert a path to a UTF-8 string, returning a BuildError on non-UTF-8 paths
+fn path_str(p: &std::path::Path) -> BuildResult<&str> {
+    p.to_str().ok_or_else(|| BuildError::Linker(format!("non-UTF-8 path: {}", p.display())))
 }
 
 /// Find clang compiler
@@ -989,13 +994,13 @@ fn link_executable(obj_path: &Path, output: &Path, verbose: bool) -> BuildResult
     let mut cmd = Command::new(&linker);
 
     // Add object file
-    cmd.arg(obj_path.to_str().unwrap());
+    cmd.arg(path_str(obj_path)?);
 
     // Add runtime library
-    cmd.arg(runtime_path.to_str().unwrap());
+    cmd.arg(path_str(&runtime_path)?);
 
     // Output file
-    cmd.args(["-o", output.to_str().unwrap()]);
+    cmd.args(["-o", path_str(output)?]);
 
     // Platform-specific linker flags
     #[cfg(target_os = "windows")]
@@ -1287,5 +1292,208 @@ fn find_windows_lib_paths() -> Option<Vec<String>> {
         None
     } else {
         Some(paths)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    // ================================================================
+    // BuildConfig Tests
+    // ================================================================
+
+    #[test]
+    fn test_build_config_defaults() {
+        let config = BuildConfig::new(PathBuf::from("test.bmb"));
+        assert_eq!(config.input, PathBuf::from("test.bmb"));
+        assert!(!config.emit_ir);
+        assert!(!config.verbose);
+        assert!(!config.fast_math);
+        assert!(!config.fast_compile);
+        assert!(config.proof_optimizations);
+        assert!(config.proof_cache);
+        assert_eq!(config.verification_timeout, 30);
+        assert!(config.include_paths.is_empty());
+        assert!(config.prelude_path.is_none());
+        assert!(!config.no_prelude);
+    }
+
+    #[test]
+    fn test_build_config_output_extension() {
+        let config = BuildConfig::new(PathBuf::from("hello.bmb"));
+        if cfg!(windows) {
+            assert_eq!(config.output, PathBuf::from("hello.exe"));
+        } else {
+            assert_eq!(config.output, PathBuf::from("hello"));
+        }
+    }
+
+    #[test]
+    fn test_build_config_builder_chain() {
+        let config = BuildConfig::new(PathBuf::from("test.bmb"))
+            .opt_level(OptLevel::Debug)
+            .emit_ir(true)
+            .verbose(true)
+            .fast_math(true)
+            .fast_compile(true)
+            .no_prelude(true)
+            .output(PathBuf::from("custom_output"));
+
+        assert!(matches!(config.opt_level, OptLevel::Debug));
+        assert!(config.emit_ir);
+        assert!(config.verbose);
+        assert!(config.fast_math);
+        assert!(config.fast_compile);
+        assert!(config.no_prelude);
+        assert_eq!(config.output, PathBuf::from("custom_output"));
+    }
+
+    #[test]
+    fn test_build_config_verification_mode() {
+        let config = BuildConfig::new(PathBuf::from("test.bmb"))
+            .verification_mode(VerificationMode::Trust)
+            .verification_timeout(60);
+        assert!(matches!(config.verification_mode, VerificationMode::Trust));
+        assert_eq!(config.verification_timeout, 60);
+    }
+
+    #[test]
+    fn test_build_config_target_triple() {
+        let config = BuildConfig::new(PathBuf::from("test.bmb"))
+            .target_triple("x86_64-unknown-linux-gnu".to_string());
+        assert_eq!(config.target_triple, Some("x86_64-unknown-linux-gnu".to_string()));
+    }
+
+    #[test]
+    fn test_build_config_include_paths() {
+        let paths = vec![PathBuf::from("/usr/lib"), PathBuf::from("/opt/lib")];
+        let config = BuildConfig::new(PathBuf::from("test.bmb"))
+            .include_paths(paths.clone());
+        assert_eq!(config.include_paths, paths);
+    }
+
+    #[test]
+    fn test_build_config_prelude_path() {
+        let config = BuildConfig::new(PathBuf::from("test.bmb"))
+            .prelude_path(PathBuf::from("/usr/share/bmb/packages"));
+        assert_eq!(config.prelude_path, Some(PathBuf::from("/usr/share/bmb/packages")));
+    }
+
+    // ================================================================
+    // OptLevel Tests
+    // ================================================================
+
+    #[test]
+    fn test_opt_level_default_is_release() {
+        let config = BuildConfig::new(PathBuf::from("test.bmb"));
+        assert!(matches!(config.opt_level, OptLevel::Release));
+    }
+
+    #[test]
+    fn test_opt_level_variants() {
+        let _ = BuildConfig::new(PathBuf::from("t.bmb")).opt_level(OptLevel::Debug);
+        let _ = BuildConfig::new(PathBuf::from("t.bmb")).opt_level(OptLevel::Release);
+        let _ = BuildConfig::new(PathBuf::from("t.bmb")).opt_level(OptLevel::Size);
+        let _ = BuildConfig::new(PathBuf::from("t.bmb")).opt_level(OptLevel::Aggressive);
+    }
+
+    // ================================================================
+    // VerificationMode Tests
+    // ================================================================
+
+    #[test]
+    fn test_verification_mode_default_is_check() {
+        let config = BuildConfig::new(PathBuf::from("test.bmb"));
+        assert!(matches!(config.verification_mode, VerificationMode::Check));
+    }
+
+    // ================================================================
+    // BuildError Tests
+    // ================================================================
+
+    #[test]
+    fn test_build_error_display_io() {
+        let err = BuildError::Io(std::io::Error::new(std::io::ErrorKind::NotFound, "file not found"));
+        let msg = format!("{}", err);
+        assert!(msg.contains("IO error"));
+    }
+
+    #[test]
+    fn test_build_error_display_parse() {
+        let err = BuildError::Parse("unexpected token".to_string());
+        assert_eq!(format!("{}", err), "Parse error: unexpected token");
+    }
+
+    #[test]
+    fn test_build_error_display_type() {
+        let err = BuildError::Type("type mismatch".to_string());
+        assert_eq!(format!("{}", err), "Type error: type mismatch");
+    }
+
+    #[test]
+    fn test_build_error_display_linker() {
+        let err = BuildError::Linker("ld: symbol not found".to_string());
+        assert_eq!(format!("{}", err), "Linker error: ld: symbol not found");
+    }
+
+    #[test]
+    fn test_build_error_display_verification() {
+        let err = BuildError::Verification("precondition failed".to_string());
+        let msg = format!("{}", err);
+        assert!(msg.contains("precondition failed"));
+    }
+
+    // ================================================================
+    // Build Pipeline Integration Tests
+    // ================================================================
+
+    #[test]
+    fn test_build_nonexistent_file() {
+        let config = BuildConfig::new(PathBuf::from("nonexistent_file_12345.bmb"));
+        let result = build(&config);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_build_parse_error() {
+        let dir = std::env::temp_dir().join("bmb_test_build_parse");
+        let _ = std::fs::create_dir_all(&dir);
+        let path = dir.join("bad_syntax.bmb");
+        std::fs::write(&path, "fn broken(").unwrap();
+
+        let config = BuildConfig::new(path.clone()).no_prelude(true);
+        let result = build(&config);
+        assert!(result.is_err(), "Should fail on parse error");
+
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_dir(&dir);
+    }
+
+    #[test]
+    fn test_build_type_error() {
+        let dir = std::env::temp_dir().join("bmb_test_build_type");
+        let _ = std::fs::create_dir_all(&dir);
+        let path = dir.join("type_err.bmb");
+        std::fs::write(&path, "fn main() -> i64 = \"not_an_int\";").unwrap();
+
+        let config = BuildConfig::new(path.clone()).no_prelude(true);
+        let result = build(&config);
+        assert!(result.is_err(), "Should fail on type error");
+
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_dir(&dir);
+    }
+
+    // ================================================================
+    // auto_detect_prelude_path Tests
+    // ================================================================
+
+    #[test]
+    fn test_auto_detect_prelude_path_returns_option() {
+        // The function may return Some or None depending on the environment.
+        // We just verify it doesn't panic.
+        let _result = auto_detect_prelude_path();
     }
 }
