@@ -1,13 +1,22 @@
-// v0.83.1: Test AsyncSocket basic types
+// v0.83.1: Test AsyncSocket type system and async network I/O
+// Verifies tcp_connect, block_on, and AsyncSocket method types
+
 fn main() -> i64 = {
-    // For this test, we'll just verify the types compile correctly
-    // A full network test would require an actual server
+    // Test tcp_connect returns Future<AsyncSocket>
+    let sock_future: Future<AsyncSocket> = tcp_connect("localhost", 8080);
 
-    // Test type annotations compile
-    let socket_type: AsyncSocket = todo;
-    let future_socket: Future<AsyncSocket> = todo;
+    // Test block_on resolves Future<AsyncSocket> to AsyncSocket
+    let sock: AsyncSocket = block_on(sock_future);
 
-    // If we get here, types are working
-    // Return 0 for success
+    // Test send() returns Future<()>
+    let send_future: Future<()> = sock.send("hello");
+
+    // Test recv() returns Future<String>
+    let recv_future: Future<String> = sock.recv();
+
+    // Test disconnect() returns Future<()>
+    let disc_future: Future<()> = sock.disconnect();
+
+    // All types check correctly
     0
 };

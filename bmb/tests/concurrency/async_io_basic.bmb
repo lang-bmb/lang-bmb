@@ -1,13 +1,22 @@
-// v0.83: Test AsyncFile basic operations
+// v0.83: Test AsyncFile type system and async I/O operations
+// Verifies async_open, block_on, and AsyncFile method types
+
 fn main() -> i64 = {
-    // For this test, we'll just verify the types compile correctly
-    // A full I/O test would require file system access
+    // Test async_open returns Future<AsyncFile>
+    let file_future: Future<AsyncFile> = async_open("test.txt");
 
-    // Test type annotations compile
-    let file_type: AsyncFile = todo;
-    let future_file: Future<AsyncFile> = todo;
+    // Test block_on resolves Future<AsyncFile> to AsyncFile
+    let file: AsyncFile = block_on(file_future);
 
-    // If we get here, types are working
-    // Return 0 for success
+    // Test read() returns Future<String>
+    let read_future: Future<String> = file.read();
+
+    // Test write() returns Future<()>
+    let write_future: Future<()> = file.write("hello");
+
+    // Test close() returns Future<()>
+    let close_future: Future<()> = file.close();
+
+    // All types check correctly
     0
 };

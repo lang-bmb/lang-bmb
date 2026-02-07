@@ -1,12 +1,21 @@
-// v0.84: Test ThreadPool basic types
+// v0.84: Test ThreadPool basic operations
+// Tests thread pool creation, task execution, and join
+
 fn main() -> i64 = {
-    // Test type annotations compile
-    let pool_type: ThreadPool = todo;
+    // Create a thread pool with 2 worker threads
+    let pool = thread_pool_new(2);
 
-    // Test thread_pool_new function type
-    // thread_pool_new(size: i64) -> ThreadPool
+    // Create shared state via atomic counter
+    let counter: Atomic<i64> = Atomic::new(0);
 
-    // If we get here, types are working
-    // Return 0 for success
-    0
+    // Execute tasks on the pool
+    pool.execute(fn || { counter.fetch_add(1); () });
+    pool.execute(fn || { counter.fetch_add(1); () });
+
+    // Wait for all tasks to complete
+    pool.join();
+
+    // Counter should be 2
+    let result = counter.load();
+    if result == 2 { 0 } else { 1 }
 };

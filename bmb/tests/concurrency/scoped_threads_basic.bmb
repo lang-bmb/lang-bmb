@@ -1,9 +1,15 @@
 // v0.85: Basic scoped threads test
-// Tests Scope type for structured concurrency
+// Tests Scope type creation and wait
+// Note: s.spawn() cannot be called because `spawn` is a keyword token.
+// This is a known parser limitation (I-01 from Cycle 21).
 
 fn main() -> i64 = {
-    // Type annotation test - verify Scope type is recognized
-    let scope_type: Scope = todo;
+    // Create a scope for structured thread management
+    let s: Scope = thread_scope();
 
+    // Wait for scope (no threads spawned, should return immediately)
+    s.wait();
+
+    // Scope type works correctly
     0
 };
