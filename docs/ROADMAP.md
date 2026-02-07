@@ -8,14 +8,14 @@
 
 | 항목 | 상태 | 비고 |
 |------|------|------|
-| **버전** | v0.88.9 | Self-Hosting (Alpha) |
+| **버전** | v0.88.10 | Self-Hosting (Alpha) |
 | **단계** | Alpha | Concurrency 완료 → **Alpha (v0.88)** → Beta (v0.90) → RC (v0.98) |
 | **Bootstrap** | ✅ 3-Stage 완료 | Stage 1: ~0.55s (--fast-compile) |
 | **Benchmarks** | ✅ 18/30 BMB > C | 60% C보다 빠름 |
 | **Tests** | ✅ 334개 통과 | 243 + 68 + 23 (cargo) + BMB 테스트 5/5 |
 | **Stability** | ✅ STABILITY.md | 언어/API 동결 문서화 |
-| **동시성 지원** | ✅ 부트스트랩 확장 | 토큰/타입/MIR/코드젠 완료 |
-| **Golden Binary** | ✅ v0.88.9 | Rust 없이 부트스트랩 가능 |
+| **동시성 지원** | ✅ 부트스트랩 완료 | 토큰/타입/MIR/코드젠/extern 선언 완료 |
+| **Golden Binary** | ✅ v0.88.10 | Rust 없이 부트스트랩 가능 |
 
 ---
 
@@ -176,6 +176,11 @@ select {
 | 토큰 인코딩 수정 | ✅ | v0.88.7: 토큰 kind base 10000→10000000 확장 - 정수 리터럴 10000-10999 파싱 충돌 해결, mir.bmb/types.bmb 컴파일 성공 |
 | 파서 에러 진단 | ✅ | v0.88.8: 파싱 에러에 line:col 위치 정보 추가, 사람이 읽기 쉬운 에러 메시지 |
 | 에러 진단 전면 적용 | ✅ | v0.88.9: 전체 40+ 파서 에러를 make_error_at으로 전환 - 100% 위치 정보 커버리지 |
+| 동시성 런타임 매핑 | ✅ | v0.88.10: 50+ 동시성 런타임 함수 매핑 (thread/mutex/channel/arc/rwlock/barrier/condvar/async/pool/scope) |
+| 동시성 extern 선언 | ✅ | v0.88.10: 40+ extern 선언 추가 + 4개 시그니처 불일치 수정 |
+| 동시성 타입 시그니처 | ✅ | v0.88.10: 50+ 동시성 내장 함수 타입 시그니처 추가 |
+| 동시성 MIR 코드젠 | ✅ | v0.88.10: 40+ 동시성 MIR 명령어 → LLVM IR 번역 (mutex-new, channel-send, thread-spawn 등) |
+| Golden Binary v0.88.10 | ✅ | 3-Stage 검증 후 golden binary 업데이트 |
 | 컴파일러 100% BMB 전환 | 📋 | Rust 의존성 제거 (현재: IR 생성만 BMB, native build는 스크립트 의존) |
 | 개발 도구 BMB 전환 | 📋 | gotgan, LSP, Formatter |
 
