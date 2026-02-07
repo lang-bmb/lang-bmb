@@ -3979,8 +3979,8 @@ mod tests {
         let mut interp = Interpreter::new();
         let env = interp.global_env.clone();
         assert_eq!(
-            interp.eval(&spanned(Expr::FloatLit(3.14)), &env).unwrap(),
-            Value::Float(3.14)
+            interp.eval(&spanned(Expr::FloatLit(1.234)), &env).unwrap(),
+            Value::Float(1.234)
         );
     }
 

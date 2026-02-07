@@ -624,3 +624,218 @@ pub fn report_warnings_machine(filename: &str, source: &str, warnings: &[Compile
         report_warning_machine(filename, source, warning);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ast::Span;
+
+    fn span() -> Span { Span::new(10, 20) }
+
+    // ================================================================
+    // CompileWarning Constructor Tests
+    // ================================================================
+
+    #[test]
+    fn test_warning_unused_binding() {
+        let w = CompileWarning::unused_binding("x", span());
+        assert_eq!(w.kind(), "unused_binding");
+        assert!(w.message().contains("`x`"));
+        assert_eq!(w.span(), Some(span()));
+    }
+
+    #[test]
+    fn test_warning_unreachable_pattern() {
+        let w = CompileWarning::unreachable_pattern("already matched", span(), 2);
+        assert_eq!(w.kind(), "unreachable_pattern");
+        assert!(w.message().contains("arm 3"));
+        assert!(w.message().contains("already matched"));
+    }
+
+    #[test]
+    fn test_warning_redundant_pattern() {
+        let w = CompileWarning::redundant_pattern("covered by wildcard", span());
+        assert_eq!(w.kind(), "redundant_pattern");
+        assert!(w.message().contains("covered by wildcard"));
+    }
+
+    #[test]
+    fn test_warning_integer_range_overflow() {
+        let w = CompileWarning::integer_range_overflow("i64 overflow", span());
+        assert_eq!(w.kind(), "integer_range_overflow");
+        assert!(w.message().contains("i64 overflow"));
+    }
+
+    #[test]
+    fn test_warning_guarded_non_exhaustive() {
+        let w = CompileWarning::guarded_non_exhaustive(span());
+        assert_eq!(w.kind(), "guarded_non_exhaustive");
+        assert!(w.message().contains("wildcard"));
+    }
+
+    #[test]
+    fn test_warning_unused_mut() {
+        let w = CompileWarning::unused_mut("counter", span());
+        assert_eq!(w.kind(), "unused_mut");
+        assert!(w.message().contains("`counter`"));
+        assert!(w.message().contains("let"));
+    }
+
+    #[test]
+    fn test_warning_unreachable_code() {
+        let w = CompileWarning::unreachable_code(span());
+        assert_eq!(w.kind(), "unreachable_code");
+        assert!(w.message().contains("never be executed"));
+    }
+
+    #[test]
+    fn test_warning_unused_import() {
+        let w = CompileWarning::unused_import("std::io", span());
+        assert_eq!(w.kind(), "unused_import");
+        assert!(w.message().contains("`std::io`"));
+    }
+
+    #[test]
+    fn test_warning_unused_function() {
+        let w = CompileWarning::unused_function("helper", span());
+        assert_eq!(w.kind(), "unused_function");
+        assert!(w.message().contains("`helper`"));
+    }
+
+    #[test]
+    fn test_warning_unused_type() {
+        let w = CompileWarning::unused_type("Config", span());
+        assert_eq!(w.kind(), "unused_type");
+        assert!(w.message().contains("`Config`"));
+    }
+
+    #[test]
+    fn test_warning_unused_enum() {
+        let w = CompileWarning::unused_enum("Color", span());
+        assert_eq!(w.kind(), "unused_enum");
+        assert!(w.message().contains("`Color`"));
+    }
+
+    #[test]
+    fn test_warning_shadow_binding() {
+        let orig = Span::new(0, 5);
+        let w = CompileWarning::shadow_binding("x", span(), orig);
+        assert_eq!(w.kind(), "shadow_binding");
+        assert!(w.message().contains("`x`"));
+        assert!(w.message().contains("shadows"));
+    }
+
+    #[test]
+    fn test_warning_unused_trait() {
+        let w = CompileWarning::unused_trait("Drawable", span());
+        assert_eq!(w.kind(), "unused_trait");
+        assert!(w.message().contains("`Drawable`"));
+    }
+
+    #[test]
+    fn test_warning_duplicate_function() {
+        let orig = Span::new(0, 5);
+        let w = CompileWarning::duplicate_function("main", span(), orig);
+        assert_eq!(w.kind(), "duplicate_function");
+        assert!(w.message().contains("`main`"));
+    }
+
+    #[test]
+    fn test_warning_missing_postcondition() {
+        let w = CompileWarning::missing_postcondition("compute", span());
+        assert_eq!(w.kind(), "missing_postcondition");
+        assert!(w.message().contains("`compute`"));
+    }
+
+    #[test]
+    fn test_warning_semantic_duplication() {
+        let w = CompileWarning::semantic_duplication("foo", "bar", span());
+        assert_eq!(w.kind(), "semantic_duplication");
+        assert!(w.message().contains("`foo`"));
+        assert!(w.message().contains("`bar`"));
+    }
+
+    #[test]
+    fn test_warning_trivial_contract() {
+        let w = CompileWarning::trivial_contract("f", "precondition", span());
+        assert_eq!(w.kind(), "trivial_contract");
+        assert!(w.message().contains("tautology"));
+    }
+
+    #[test]
+    fn test_warning_generic() {
+        let w = CompileWarning::generic("custom message", Some(span()));
+        assert_eq!(w.kind(), "warning");
+        assert_eq!(w.message(), "custom message");
+        assert_eq!(w.span(), Some(span()));
+    }
+
+    #[test]
+    fn test_warning_generic_no_span() {
+        let w = CompileWarning::generic("no span", None);
+        assert_eq!(w.span(), None);
+    }
+
+    #[test]
+    fn test_warning_display() {
+        let w = CompileWarning::unused_binding("x", span());
+        let display = format!("{}", w);
+        assert!(display.starts_with("warning[unused_binding]:"));
+        assert!(display.contains("`x`"));
+    }
+
+    // ================================================================
+    // CompileError Tests
+    // ================================================================
+
+    #[test]
+    fn test_error_lexer() {
+        let e = CompileError::lexer("unexpected char", span());
+        assert_eq!(e.message(), "unexpected char");
+        assert_eq!(e.span(), Some(span()));
+        let display = format!("{}", e);
+        assert!(display.contains("Lexer error"));
+    }
+
+    #[test]
+    fn test_error_parser() {
+        let e = CompileError::parser("expected ')'", span());
+        assert_eq!(e.message(), "expected ')'");
+        assert_eq!(e.span(), Some(span()));
+    }
+
+    #[test]
+    fn test_error_type() {
+        let e = CompileError::type_error("type mismatch", span());
+        assert_eq!(e.message(), "type mismatch");
+        assert_eq!(e.span(), Some(span()));
+    }
+
+    #[test]
+    fn test_error_io() {
+        let e = CompileError::io_error("file not found");
+        assert_eq!(e.message(), "file not found");
+        assert_eq!(e.span(), None);
+    }
+
+    #[test]
+    fn test_error_parse() {
+        let e = CompileError::parse_error("invalid syntax");
+        assert_eq!(e.message(), "invalid syntax");
+        assert_eq!(e.span(), None);
+    }
+
+    #[test]
+    fn test_error_resolve() {
+        let e = CompileError::resolve_error("module not found");
+        assert_eq!(e.message(), "module not found");
+        assert_eq!(e.span(), None);
+    }
+
+    #[test]
+    fn test_error_resolve_at() {
+        let e = CompileError::resolve_error_at("ambiguous import", span());
+        assert_eq!(e.message(), "ambiguous import");
+        assert_eq!(e.span(), Some(span()));
+    }
+}
