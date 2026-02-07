@@ -1535,23 +1535,102 @@ fn gen_extern_thread_spawn() -> String =
 fn gen_extern_thread_join() -> String =
     "declare i64 @bmb_thread_join(i64)";
 fn gen_extern_mutex_new() -> String =
-    "declare i64 @bmb_mutex_new()";
+    "declare i64 @bmb_mutex_new(i64)";
 fn gen_extern_mutex_lock() -> String =
-    "declare void @bmb_mutex_lock(i64)";
+    "declare i64 @bmb_mutex_lock(i64)";
 fn gen_extern_mutex_unlock() -> String =
-    "declare void @bmb_mutex_unlock(i64)";
+    "declare void @bmb_mutex_unlock(i64, i64)";
+fn gen_extern_mutex_try_lock() -> String =
+    "declare i64 @bmb_mutex_try_lock(i64)";
+fn gen_extern_mutex_free() -> String =
+    "declare void @bmb_mutex_free(i64)";
 fn gen_extern_channel_new() -> String =
-    "declare i64 @bmb_channel_new()";
+    "declare void @bmb_channel_new(i64, ptr, ptr)";
 fn gen_extern_channel_send() -> String =
     "declare void @bmb_channel_send(i64, i64)";
 fn gen_extern_channel_recv() -> String =
     "declare i64 @bmb_channel_recv(i64)";
+fn gen_extern_channel_try_send() -> String =
+    "declare i64 @bmb_channel_try_send(i64, i64)";
+fn gen_extern_channel_try_recv() -> String =
+    "declare i64 @bmb_channel_try_recv(i64, ptr)";
+fn gen_extern_channel_recv_timeout() -> String =
+    "declare i64 @bmb_channel_recv_timeout(i64, i64, ptr)";
+fn gen_extern_channel_send_timeout() -> String =
+    "declare i64 @bmb_channel_send_timeout(i64, i64, i64)";
+fn gen_extern_channel_close() -> String =
+    "declare void @bmb_channel_close(i64)";
+fn gen_extern_channel_is_closed() -> String =
+    "declare i64 @bmb_channel_is_closed(i64)";
+fn gen_extern_channel_recv_opt() -> String =
+    "declare i64 @bmb_channel_recv_opt(i64, ptr)";
+fn gen_extern_sender_clone() -> String =
+    "declare i64 @bmb_sender_clone(i64)";
 fn gen_extern_atomic_new() -> String =
     "declare i64 @bmb_atomic_new(i64)";
 fn gen_extern_atomic_load() -> String =
     "declare i64 @bmb_atomic_load(i64)";
 fn gen_extern_atomic_store() -> String =
     "declare void @bmb_atomic_store(i64, i64)";
+// v0.88.10: Arc runtime
+fn gen_extern_arc_new() -> String =
+    "declare i64 @bmb_arc_new(i64)";
+fn gen_extern_arc_clone() -> String =
+    "declare i64 @bmb_arc_clone(i64)";
+fn gen_extern_arc_get() -> String =
+    "declare i64 @bmb_arc_get(i64)";
+fn gen_extern_arc_drop() -> String =
+    "declare void @bmb_arc_drop(i64)";
+fn gen_extern_arc_strong_count() -> String =
+    "declare i64 @bmb_arc_strong_count(i64)";
+// v0.88.10: RwLock runtime
+fn gen_extern_rwlock_new() -> String =
+    "declare i64 @bmb_rwlock_new(i64)";
+fn gen_extern_rwlock_read() -> String =
+    "declare i64 @bmb_rwlock_read(i64)";
+fn gen_extern_rwlock_read_unlock() -> String =
+    "declare void @bmb_rwlock_read_unlock(i64)";
+fn gen_extern_rwlock_write() -> String =
+    "declare i64 @bmb_rwlock_write(i64)";
+fn gen_extern_rwlock_write_unlock() -> String =
+    "declare void @bmb_rwlock_write_unlock(i64, i64)";
+fn gen_extern_rwlock_free() -> String =
+    "declare void @bmb_rwlock_free(i64)";
+// v0.88.10: Barrier runtime
+fn gen_extern_barrier_new() -> String =
+    "declare i64 @bmb_barrier_new(i64)";
+fn gen_extern_barrier_wait() -> String =
+    "declare i64 @bmb_barrier_wait(i64)";
+fn gen_extern_barrier_free() -> String =
+    "declare void @bmb_barrier_free(i64)";
+// v0.88.10: Condvar runtime
+fn gen_extern_condvar_new() -> String =
+    "declare i64 @bmb_condvar_new()";
+fn gen_extern_condvar_wait() -> String =
+    "declare i64 @bmb_condvar_wait(i64, i64)";
+fn gen_extern_condvar_notify_one() -> String =
+    "declare void @bmb_condvar_notify_one(i64)";
+fn gen_extern_condvar_notify_all() -> String =
+    "declare void @bmb_condvar_notify_all(i64)";
+fn gen_extern_condvar_free() -> String =
+    "declare void @bmb_condvar_free(i64)";
+// v0.88.10: Async I/O runtime
+fn gen_extern_async_file_open() -> String =
+    "declare i64 @bmb_async_file_open(i64)";
+fn gen_extern_async_file_read() -> String =
+    "declare i64 @bmb_async_file_read(i64)";
+fn gen_extern_async_file_write() -> String =
+    "declare void @bmb_async_file_write(i64, i64)";
+fn gen_extern_async_file_close() -> String =
+    "declare void @bmb_async_file_close(i64)";
+fn gen_extern_async_socket_connect() -> String =
+    "declare i64 @bmb_async_socket_connect(i64, i64)";
+fn gen_extern_async_socket_read() -> String =
+    "declare i64 @bmb_async_socket_read(i64)";
+fn gen_extern_async_socket_write() -> String =
+    "declare void @bmb_async_socket_write(i64, i64)";
+fn gen_extern_async_socket_close() -> String =
+    "declare void @bmb_async_socket_close(i64)";
 fn gen_extern_future_await() -> String =
     "declare i64 @__future_await(i64)";
 fn gen_extern_scope_new() -> String =
@@ -1566,6 +1645,8 @@ fn gen_extern_pool_execute() -> String =
     "declare void @bmb_thread_pool_execute(i64, i64)";
 fn gen_extern_pool_join() -> String =
     "declare void @bmb_thread_pool_join(i64)";
+fn gen_extern_pool_shutdown() -> String =
+    "declare void @bmb_thread_pool_shutdown(i64)";
 fn gen_extern_block_on() -> String =
     "declare i64 @bmb_block_on(i64)";
 
@@ -1578,13 +1659,18 @@ fn gen_runtime_decls() -> String =
     let memory = gen_extern_alloc() + "|" + gen_extern_free();
     let safety = gen_extern_panic_bounds();  // v0.48.0
     let intrinsics = gen_intrinsic_expect();  // v0.52
-    // v0.88: Concurrency runtime
-    let concur1 = gen_extern_thread_spawn() + "|" + gen_extern_thread_join() + "|" + gen_extern_mutex_new() + "|" + gen_extern_mutex_lock() + "|" + gen_extern_mutex_unlock();
-    let concur2 = gen_extern_channel_new() + "|" + gen_extern_channel_send() + "|" + gen_extern_channel_recv();
-    let concur3 = gen_extern_atomic_new() + "|" + gen_extern_atomic_load() + "|" + gen_extern_atomic_store();
-    let concur4 = gen_extern_future_await() + "|" + gen_extern_scope_new() + "|" + gen_extern_scope_spawn() + "|" + gen_extern_scope_wait();
-    let concur5 = gen_extern_pool_new() + "|" + gen_extern_pool_execute() + "|" + gen_extern_pool_join() + "|" + gen_extern_block_on();
-    basic + "|" + string + "|" + array + "|" + array_mut + "|" + memory + "|" + safety + "|" + intrinsics + "|" + concur1 + "|" + concur2 + "|" + concur3 + "|" + concur4 + "|" + concur5;
+    // v0.88.10: Concurrency runtime - corrected signatures
+    let concur_thread = gen_extern_thread_spawn() + "|" + gen_extern_thread_join();
+    let concur_mutex = gen_extern_mutex_new() + "|" + gen_extern_mutex_lock() + "|" + gen_extern_mutex_unlock() + "|" + gen_extern_mutex_try_lock() + "|" + gen_extern_mutex_free();
+    let concur_chan1 = gen_extern_channel_new() + "|" + gen_extern_channel_send() + "|" + gen_extern_channel_recv() + "|" + gen_extern_channel_try_send() + "|" + gen_extern_channel_try_recv();
+    let concur_chan2 = gen_extern_channel_recv_timeout() + "|" + gen_extern_channel_send_timeout() + "|" + gen_extern_channel_close() + "|" + gen_extern_channel_is_closed() + "|" + gen_extern_channel_recv_opt() + "|" + gen_extern_sender_clone();
+    let concur_arc = gen_extern_arc_new() + "|" + gen_extern_arc_clone() + "|" + gen_extern_arc_get() + "|" + gen_extern_arc_drop() + "|" + gen_extern_arc_strong_count();
+    let concur_atomic = gen_extern_atomic_new() + "|" + gen_extern_atomic_load() + "|" + gen_extern_atomic_store();
+    let concur_rwlock = gen_extern_rwlock_new() + "|" + gen_extern_rwlock_read() + "|" + gen_extern_rwlock_read_unlock() + "|" + gen_extern_rwlock_write() + "|" + gen_extern_rwlock_write_unlock() + "|" + gen_extern_rwlock_free();
+    let concur_sync = gen_extern_barrier_new() + "|" + gen_extern_barrier_wait() + "|" + gen_extern_barrier_free() + "|" + gen_extern_condvar_new() + "|" + gen_extern_condvar_wait() + "|" + gen_extern_condvar_notify_one() + "|" + gen_extern_condvar_notify_all() + "|" + gen_extern_condvar_free();
+    let concur_async = gen_extern_async_file_open() + "|" + gen_extern_async_file_read() + "|" + gen_extern_async_file_write() + "|" + gen_extern_async_file_close() + "|" + gen_extern_async_socket_connect() + "|" + gen_extern_async_socket_read() + "|" + gen_extern_async_socket_write() + "|" + gen_extern_async_socket_close();
+    let concur_exec = gen_extern_future_await() + "|" + gen_extern_scope_new() + "|" + gen_extern_scope_spawn() + "|" + gen_extern_scope_wait() + "|" + gen_extern_pool_new() + "|" + gen_extern_pool_execute() + "|" + gen_extern_pool_join() + "|" + gen_extern_pool_shutdown() + "|" + gen_extern_block_on();
+    basic + "|" + string + "|" + array + "|" + array_mut + "|" + memory + "|" + safety + "|" + intrinsics + "|" + concur_thread + "|" + concur_mutex + "|" + concur_chan1 + "|" + concur_chan2 + "|" + concur_arc + "|" + concur_atomic + "|" + concur_rwlock + "|" + concur_sync + "|" + concur_async + "|" + concur_exec;
 
 // Example: Complete add function from MIR to LLVM IR
 // MIR input:
