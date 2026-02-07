@@ -1346,28 +1346,28 @@ Expr: Expr = {
         }, Span::new(l, r))),
     },
     // v0.72: Atomic creation - Atomic::new(value) -> Atomic<T>
-    <l:@L> "Atomic" "::" "new" "(" <value:SpannedExpr> ")" <r:@R> => Expr::AtomicNew {
+    "Atomic" "::" "new" "(" <value:SpannedExpr> ")" => Expr::AtomicNew {
         value: Box::new(value),
     },
     // v0.71: Mutex creation - Mutex::new(value) -> Mutex<T>
-    <l:@L> "Mutex" "::" "new" "(" <value:SpannedExpr> ")" <r:@R> => Expr::MutexNew {
+    "Mutex" "::" "new" "(" <value:SpannedExpr> ")" => Expr::MutexNew {
         value: Box::new(value),
     },
     // v0.73: Channel creation - channel<T>(capacity) -> (Sender<T>, Receiver<T>)
-    <l:@L> "channel" "<" <elem_ty:SpannedType> ">" "(" <cap:SpannedExpr> ")" <r:@R> => Expr::ChannelNew {
+    "channel" "<" <elem_ty:SpannedType> ">" "(" <cap:SpannedExpr> ")" => Expr::ChannelNew {
         elem_ty: Box::new(elem_ty),
         capacity: Box::new(cap),
     },
     // v0.74: RwLock creation - RwLock::new(value) -> RwLock<T>
-    <l:@L> "RwLock" "::" "new" "(" <value:SpannedExpr> ")" <r:@R> => Expr::RwLockNew {
+    "RwLock" "::" "new" "(" <value:SpannedExpr> ")" => Expr::RwLockNew {
         value: Box::new(value),
     },
     // v0.74: Barrier creation - Barrier::new(count) -> Barrier
-    <l:@L> "Barrier" "::" "new" "(" <count:SpannedExpr> ")" <r:@R> => Expr::BarrierNew {
+    "Barrier" "::" "new" "(" <count:SpannedExpr> ")" => Expr::BarrierNew {
         count: Box::new(count),
     },
     // v0.74: Condvar creation - Condvar::new() -> Condvar
-    <l:@L> "Condvar" "::" "new" "(" ")" <r:@R> => Expr::CondvarNew,
+    "Condvar" "::" "new" "(" ")" => Expr::CondvarNew,
     // Break: exits the innermost loop
     "break" => Expr::Break { value: None },
     // Continue to next iteration
