@@ -2539,6 +2539,14 @@ fn get_call_return_type(fn_name: String) -> String =
     if fn_name == "@println" or fn_name == "@print_str" or fn_name == "@println_str" or fn_name == "@bmb_panic" { "void" }
     // v0.88.10: Void concurrency functions
     else if fn_name == "@bmb_mutex_unlock" or fn_name == "@bmb_mutex_free" { "void" }
+    else if fn_name == "@bmb_channel_send" or fn_name == "@bmb_channel_close" { "void" }
+    else if fn_name == "@bmb_arc_drop" { "void" }
+    else if fn_name == "@bmb_rwlock_read_unlock" or fn_name == "@bmb_rwlock_write_unlock" or fn_name == "@bmb_rwlock_free" { "void" }
+    else if fn_name == "@bmb_barrier_free" or fn_name == "@bmb_condvar_notify_one" or fn_name == "@bmb_condvar_notify_all" or fn_name == "@bmb_condvar_free" { "void" }
+    else if fn_name == "@bmb_async_file_write" or fn_name == "@bmb_async_file_close" { "void" }
+    else if fn_name == "@bmb_async_socket_write" or fn_name == "@bmb_async_socket_close" { "void" }
+    else if fn_name == "@bmb_thread_pool_execute" or fn_name == "@bmb_thread_pool_join" or fn_name == "@bmb_thread_pool_shutdown" { "void" }
+    else if fn_name == "@bmb_scope_spawn" or fn_name == "@bmb_scope_wait" { "void" }
     // Pointer-returning functions (String type)
     else if fn_name == "@get_arg" or fn_name == "@bmb_read_file" or fn_name == "@bmb_getenv" or fn_name == "@bmb_system_capture" { "ptr" }
     else if fn_name == "@bmb_string_new" or fn_name == "@bmb_string_from_cstr" or fn_name == "@bmb_string_slice" { "ptr" }
@@ -2602,6 +2610,58 @@ fn map_runtime_fn(fn_name: String) -> String =
     else if fn_name == "@mutex_unlock" { "@bmb_mutex_unlock" }
     else if fn_name == "@mutex_try_lock" { "@bmb_mutex_try_lock" }
     else if fn_name == "@mutex_free" { "@bmb_mutex_free" }
+    // v0.88.10: Concurrency runtime - Channel
+    else if fn_name == "@channel_new" { "@bmb_channel_new" }
+    else if fn_name == "@channel_send" { "@bmb_channel_send" }
+    else if fn_name == "@channel_recv" { "@bmb_channel_recv" }
+    else if fn_name == "@channel_try_send" { "@bmb_channel_try_send" }
+    else if fn_name == "@channel_try_recv" { "@bmb_channel_try_recv" }
+    else if fn_name == "@channel_recv_timeout" { "@bmb_channel_recv_timeout" }
+    else if fn_name == "@channel_send_timeout" { "@bmb_channel_send_timeout" }
+    else if fn_name == "@channel_close" { "@bmb_channel_close" }
+    else if fn_name == "@channel_is_closed" { "@bmb_channel_is_closed" }
+    else if fn_name == "@channel_recv_opt" { "@bmb_channel_recv_opt" }
+    else if fn_name == "@sender_clone" { "@bmb_sender_clone" }
+    // v0.88.10: Concurrency runtime - Arc
+    else if fn_name == "@arc_new" { "@bmb_arc_new" }
+    else if fn_name == "@arc_clone" { "@bmb_arc_clone" }
+    else if fn_name == "@arc_get" { "@bmb_arc_get" }
+    else if fn_name == "@arc_drop" { "@bmb_arc_drop" }
+    else if fn_name == "@arc_strong_count" { "@bmb_arc_strong_count" }
+    // v0.88.10: Concurrency runtime - RwLock
+    else if fn_name == "@rwlock_new" { "@bmb_rwlock_new" }
+    else if fn_name == "@rwlock_read" { "@bmb_rwlock_read" }
+    else if fn_name == "@rwlock_read_unlock" { "@bmb_rwlock_read_unlock" }
+    else if fn_name == "@rwlock_write" { "@bmb_rwlock_write" }
+    else if fn_name == "@rwlock_write_unlock" { "@bmb_rwlock_write_unlock" }
+    else if fn_name == "@rwlock_free" { "@bmb_rwlock_free" }
+    // v0.88.10: Concurrency runtime - Barrier & Condvar
+    else if fn_name == "@barrier_new" { "@bmb_barrier_new" }
+    else if fn_name == "@barrier_wait" { "@bmb_barrier_wait" }
+    else if fn_name == "@barrier_free" { "@bmb_barrier_free" }
+    else if fn_name == "@condvar_new" { "@bmb_condvar_new" }
+    else if fn_name == "@condvar_wait" { "@bmb_condvar_wait" }
+    else if fn_name == "@condvar_notify_one" { "@bmb_condvar_notify_one" }
+    else if fn_name == "@condvar_notify_all" { "@bmb_condvar_notify_all" }
+    else if fn_name == "@condvar_free" { "@bmb_condvar_free" }
+    // v0.88.10: Concurrency runtime - Async I/O
+    else if fn_name == "@async_file_open" { "@bmb_async_file_open" }
+    else if fn_name == "@async_file_read" { "@bmb_async_file_read" }
+    else if fn_name == "@async_file_write" { "@bmb_async_file_write" }
+    else if fn_name == "@async_file_close" { "@bmb_async_file_close" }
+    else if fn_name == "@async_socket_connect" { "@bmb_async_socket_connect" }
+    else if fn_name == "@async_socket_read" { "@bmb_async_socket_read" }
+    else if fn_name == "@async_socket_write" { "@bmb_async_socket_write" }
+    else if fn_name == "@async_socket_close" { "@bmb_async_socket_close" }
+    // v0.88.10: Concurrency runtime - ThreadPool, Scope, BlockOn
+    else if fn_name == "@thread_pool_new" { "@bmb_thread_pool_new" }
+    else if fn_name == "@thread_pool_execute" { "@bmb_thread_pool_execute" }
+    else if fn_name == "@thread_pool_join" { "@bmb_thread_pool_join" }
+    else if fn_name == "@thread_pool_shutdown" { "@bmb_thread_pool_shutdown" }
+    else if fn_name == "@scope_new" { "@bmb_scope_new" }
+    else if fn_name == "@scope_spawn" { "@bmb_scope_spawn" }
+    else if fn_name == "@scope_wait" { "@bmb_scope_wait" }
+    else if fn_name == "@block_on" { "@bmb_block_on" }
     else { fn_name };
 
 // v0.32.1: Rename @main calls to @bmb_user_main for runtime compatibility
