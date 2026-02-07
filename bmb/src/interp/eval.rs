@@ -3869,4 +3869,285 @@ mod tests {
             Value::Bool(true)
         );
     }
+
+    // ================================================================
+    // Unary Operations Tests
+    // ================================================================
+
+    #[test]
+    fn test_unary_neg() {
+        let mut interp = Interpreter::new();
+        let env = interp.global_env.clone();
+        let expr = Expr::Unary {
+            op: UnOp::Neg,
+            expr: Box::new(spanned(Expr::IntLit(42))),
+        };
+        assert_eq!(interp.eval(&spanned(expr), &env).unwrap(), Value::Int(-42));
+    }
+
+    #[test]
+    fn test_unary_not() {
+        let mut interp = Interpreter::new();
+        let env = interp.global_env.clone();
+        let expr = Expr::Unary {
+            op: UnOp::Not,
+            expr: Box::new(spanned(Expr::BoolLit(true))),
+        };
+        assert_eq!(interp.eval(&spanned(expr), &env).unwrap(), Value::Bool(false));
+    }
+
+    // ================================================================
+    // Comparison & Arithmetic Tests
+    // ================================================================
+
+    #[test]
+    fn test_comparison_ops() {
+        let mut interp = Interpreter::new();
+        let env = interp.global_env.clone();
+
+        let lt = Expr::Binary {
+            left: Box::new(spanned(Expr::IntLit(3))),
+            op: BinOp::Lt,
+            right: Box::new(spanned(Expr::IntLit(5))),
+        };
+        assert_eq!(interp.eval(&spanned(lt), &env).unwrap(), Value::Bool(true));
+
+        let ge = Expr::Binary {
+            left: Box::new(spanned(Expr::IntLit(5))),
+            op: BinOp::Ge,
+            right: Box::new(spanned(Expr::IntLit(5))),
+        };
+        assert_eq!(interp.eval(&spanned(ge), &env).unwrap(), Value::Bool(true));
+
+        let eq = Expr::Binary {
+            left: Box::new(spanned(Expr::IntLit(5))),
+            op: BinOp::Eq,
+            right: Box::new(spanned(Expr::IntLit(5))),
+        };
+        assert_eq!(interp.eval(&spanned(eq), &env).unwrap(), Value::Bool(true));
+
+        let ne = Expr::Binary {
+            left: Box::new(spanned(Expr::IntLit(5))),
+            op: BinOp::Ne,
+            right: Box::new(spanned(Expr::IntLit(3))),
+        };
+        assert_eq!(interp.eval(&spanned(ne), &env).unwrap(), Value::Bool(true));
+    }
+
+    #[test]
+    fn test_modulo() {
+        let mut interp = Interpreter::new();
+        let env = interp.global_env.clone();
+        let expr = Expr::Binary {
+            left: Box::new(spanned(Expr::IntLit(10))),
+            op: BinOp::Mod,
+            right: Box::new(spanned(Expr::IntLit(3))),
+        };
+        assert_eq!(interp.eval(&spanned(expr), &env).unwrap(), Value::Int(1));
+    }
+
+    #[test]
+    fn test_multiply() {
+        let mut interp = Interpreter::new();
+        let env = interp.global_env.clone();
+        let expr = Expr::Binary {
+            left: Box::new(spanned(Expr::IntLit(7))),
+            op: BinOp::Mul,
+            right: Box::new(spanned(Expr::IntLit(6))),
+        };
+        assert_eq!(interp.eval(&spanned(expr), &env).unwrap(), Value::Int(42));
+    }
+
+    #[test]
+    fn test_subtract() {
+        let mut interp = Interpreter::new();
+        let env = interp.global_env.clone();
+        let expr = Expr::Binary {
+            left: Box::new(spanned(Expr::IntLit(10))),
+            op: BinOp::Sub,
+            right: Box::new(spanned(Expr::IntLit(3))),
+        };
+        assert_eq!(interp.eval(&spanned(expr), &env).unwrap(), Value::Int(7));
+    }
+
+    // ================================================================
+    // F64 Tests
+    // ================================================================
+
+    #[test]
+    fn test_f64_literal() {
+        let mut interp = Interpreter::new();
+        let env = interp.global_env.clone();
+        assert_eq!(
+            interp.eval(&spanned(Expr::FloatLit(3.14)), &env).unwrap(),
+            Value::Float(3.14)
+        );
+    }
+
+    #[test]
+    fn test_f64_arithmetic() {
+        let mut interp = Interpreter::new();
+        let env = interp.global_env.clone();
+        let expr = Expr::Binary {
+            left: Box::new(spanned(Expr::FloatLit(1.5))),
+            op: BinOp::Add,
+            right: Box::new(spanned(Expr::FloatLit(2.5))),
+        };
+        assert_eq!(interp.eval(&spanned(expr), &env).unwrap(), Value::Float(4.0));
+    }
+
+    // ================================================================
+    // If-Else Branch Tests
+    // ================================================================
+
+    #[test]
+    fn test_if_false_branch() {
+        let mut interp = Interpreter::new();
+        let env = interp.global_env.clone();
+        let if_expr = Expr::If {
+            cond: Box::new(spanned(Expr::BoolLit(false))),
+            then_branch: Box::new(spanned(Expr::IntLit(1))),
+            else_branch: Box::new(spanned(Expr::IntLit(2))),
+        };
+        assert_eq!(interp.eval(&spanned(if_expr), &env).unwrap(), Value::Int(2));
+    }
+
+    // ================================================================
+    // Nested Expression Tests
+    // ================================================================
+
+    #[test]
+    fn test_nested_let() {
+        let mut interp = Interpreter::new();
+        let env = interp.global_env.clone();
+        // let x = 5; let y = x * 2; y + 1 = 11
+        let expr = Expr::Let {
+            name: "x".to_string(),
+            mutable: false,
+            ty: None,
+            value: Box::new(spanned(Expr::IntLit(5))),
+            body: Box::new(spanned(Expr::Let {
+                name: "y".to_string(),
+                mutable: false,
+                ty: None,
+                value: Box::new(spanned(Expr::Binary {
+                    left: Box::new(spanned(Expr::Var("x".to_string()))),
+                    op: BinOp::Mul,
+                    right: Box::new(spanned(Expr::IntLit(2))),
+                })),
+                body: Box::new(spanned(Expr::Binary {
+                    left: Box::new(spanned(Expr::Var("y".to_string()))),
+                    op: BinOp::Add,
+                    right: Box::new(spanned(Expr::IntLit(1))),
+                })),
+            })),
+        };
+        assert_eq!(interp.eval(&spanned(expr), &env).unwrap(), Value::Int(11));
+    }
+
+    #[test]
+    fn test_nested_arithmetic() {
+        // (2 + 3) * (4 - 1) = 15
+        let mut interp = Interpreter::new();
+        let env = interp.global_env.clone();
+        let expr = Expr::Binary {
+            left: Box::new(spanned(Expr::Binary {
+                left: Box::new(spanned(Expr::IntLit(2))),
+                op: BinOp::Add,
+                right: Box::new(spanned(Expr::IntLit(3))),
+            })),
+            op: BinOp::Mul,
+            right: Box::new(spanned(Expr::Binary {
+                left: Box::new(spanned(Expr::IntLit(4))),
+                op: BinOp::Sub,
+                right: Box::new(spanned(Expr::IntLit(1))),
+            })),
+        };
+        assert_eq!(interp.eval(&spanned(expr), &env).unwrap(), Value::Int(15));
+    }
+
+    // ================================================================
+    // Full Program Interpretation Tests
+    // ================================================================
+
+    fn run_source(source: &str) -> InterpResult<Value> {
+        let tokens = crate::lexer::tokenize(source).expect("tokenize failed");
+        let program = crate::parser::parse("test.bmb", source, tokens).expect("parse failed");
+        let mut tc = crate::types::TypeChecker::new();
+        tc.check_program(&program).expect("type-check failed");
+        let mut interp = Interpreter::new();
+        interp.run(&program)
+    }
+
+    #[test]
+    fn test_run_simple_function() {
+        assert_eq!(run_source("fn main() -> i64 = 42;").unwrap(), Value::Int(42));
+    }
+
+    #[test]
+    fn test_run_function_with_params() {
+        let result = run_source("fn add(a: i64, b: i64) -> i64 = a + b; fn main() -> i64 = add(3, 4);");
+        assert_eq!(result.unwrap(), Value::Int(7));
+    }
+
+    #[test]
+    fn test_run_recursive_function() {
+        let result = run_source(
+            "fn fact(n: i64) -> i64 = if n <= 1 { 1 } else { n * fact(n - 1) }; fn main() -> i64 = fact(5);"
+        );
+        assert_eq!(result.unwrap(), Value::Int(120));
+    }
+
+    #[test]
+    fn test_run_if_else_expression() {
+        assert_eq!(
+            run_source("fn main() -> i64 = if 3 > 2 { 10 } else { 20 };").unwrap(),
+            Value::Int(10)
+        );
+    }
+
+    #[test]
+    fn test_run_string_operations() {
+        let result = run_source(r#"fn main() -> String = "hello" + " " + "world";"#);
+        assert_eq!(result.unwrap(), Value::Str(Rc::new("hello world".to_string())));
+    }
+
+    #[test]
+    fn test_run_bool_operations() {
+        assert_eq!(
+            run_source("fn main() -> bool = true and false or true;").unwrap(),
+            Value::Bool(true)
+        );
+    }
+
+    #[test]
+    fn test_run_nested_calls() {
+        let result = run_source(
+            "fn double(x: i64) -> i64 = x * 2; fn main() -> i64 = double(double(3));"
+        );
+        assert_eq!(result.unwrap(), Value::Int(12));
+    }
+
+    // ================================================================
+    // Error Handling Tests
+    // ================================================================
+
+    #[test]
+    fn test_modulo_by_zero() {
+        let mut interp = Interpreter::new();
+        let env = interp.global_env.clone();
+        let expr = Expr::Binary {
+            left: Box::new(spanned(Expr::IntLit(10))),
+            op: BinOp::Mod,
+            right: Box::new(spanned(Expr::IntLit(0))),
+        };
+        assert!(interp.eval(&spanned(expr), &env).is_err());
+    }
+
+    #[test]
+    fn test_undefined_variable() {
+        let mut interp = Interpreter::new();
+        let env = interp.global_env.clone();
+        assert!(interp.eval(&spanned(Expr::Var("undefined_var".to_string())), &env).is_err());
+    }
 }
