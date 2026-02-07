@@ -520,6 +520,7 @@ fn build_file(
     build_native(path, output, debug, release, aggressive, fast_compile, emit_ir, target, verbose, verify_mode, trust_contracts, verification_timeout, fast_math, include_paths, prelude_path, no_prelude)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn build_native(
     path: &Path,
     output: Option<PathBuf>,
@@ -1323,11 +1324,10 @@ fn verify_file(path: &PathBuf, z3_path: &str, timeout: u32) -> Result<(), Box<dy
 
     // Save proof index to .bmb/index/proofs.json
     let current_dir = std::env::current_dir()?;
-    if let Err(e) = write_proof_index(&proof_index, &current_dir) {
-        if is_human_output() {
+    if let Err(e) = write_proof_index(&proof_index, &current_dir)
+        && is_human_output() {
             eprintln!("Warning: Could not save proof index: {}", e);
         }
-    }
 
     // Print report
     if is_human_output() {
@@ -1968,7 +1968,7 @@ fn format_expr(expr: &bmb::ast::Expr) -> String {
             let arm_strs: Vec<String> = arms
                 .iter()
                 .map(|arm| {
-                    let binding = arm.binding.as_ref().map(|b| b.as_str()).unwrap_or("_");
+                    let binding = arm.binding.as_deref().unwrap_or("_");
                     format!("{} = {} => {{ ... }}", binding, format_expr(&arm.operation.node))
                 })
                 .collect();

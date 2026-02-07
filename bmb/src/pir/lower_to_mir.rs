@@ -295,6 +295,7 @@ impl ProofAnnotation {
 }
 
 /// Convert PIR expression to MIR statements (stub)
+#[allow(dead_code)]
 fn lower_pir_expr_to_mir(
     expr: &PirExpr,
     dest: u32,
@@ -406,6 +407,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(deprecated)]
     fn test_lower_pir_to_mir() {
         let pir = PirProgram::new();
         let mir = lower_pir_to_mir(&pir);

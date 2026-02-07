@@ -391,7 +391,7 @@ pub fn format_expr(expr: &Expr) -> String {
             let arm_strs: Vec<String> = arms
                 .iter()
                 .map(|arm| {
-                    let binding = arm.binding.as_ref().map(|b| b.as_str()).unwrap_or("_");
+                    let binding = arm.binding.as_deref().unwrap_or("_");
                     format!(
                         "{} = {} => {}",
                         binding,

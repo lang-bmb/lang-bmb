@@ -20,7 +20,7 @@ impl CirOutput {
         writeln!(output).unwrap();
 
         // Output struct definitions
-        for (_name, struct_def) in &program.structs {
+        for struct_def in program.structs.values() {
             Self::format_struct(&mut output, struct_def);
             writeln!(output).unwrap();
         }

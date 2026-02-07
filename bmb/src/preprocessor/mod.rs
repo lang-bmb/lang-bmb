@@ -80,10 +80,10 @@ impl Preprocessor {
 
         let source_dir = source_path.parent().unwrap_or(Path::new("."));
         let mut result = String::with_capacity(source.len());
-        let mut lines = source.lines().peekable();
+        let lines = source.lines().peekable();
         let mut line_num = 0;
 
-        while let Some(line) = lines.next() {
+        for line in lines {
             line_num += 1;
             let trimmed = line.trim();
 
@@ -115,12 +115,12 @@ impl Preprocessor {
         let rest = line.strip_prefix("@include").unwrap().trim();
 
         // Support both @include "path" and @include("path")
-        let path = if rest.starts_with('"') {
+        let path = if let Some(stripped) = rest.strip_prefix('"') {
             // @include "path"
-            let end = rest[1..].find('"').ok_or_else(|| {
+            let end = stripped.find('"').ok_or_else(|| {
                 PreprocessorError::InvalidSyntax("Missing closing quote".to_string())
             })?;
-            &rest[1..=end]
+            &stripped[..end]
         } else if rest.starts_with('(') {
             // @include("path")
             let inner = rest.strip_prefix('(').and_then(|s| s.strip_suffix(')'))

@@ -222,13 +222,11 @@ fn lower_function(
                 if ctx.struct_defs.contains_key(struct_name) {
                     ctx.var_struct_types.insert(p.name.node.clone(), struct_name.clone());
                 }
-            } else if let Type::Ptr(inner) = &p.ty.node {
-                if let Type::Named(struct_name) = inner.as_ref() {
-                    if ctx.struct_defs.contains_key(struct_name) {
+            } else if let Type::Ptr(inner) = &p.ty.node
+                && let Type::Named(struct_name) = inner.as_ref()
+                    && ctx.struct_defs.contains_key(struct_name) {
                         ctx.var_struct_types.insert(p.name.node.clone(), struct_name.clone());
                     }
-                }
-            }
             // v0.51.36: Track array element types for struct array parameters
             if let Type::Array(elem_ty, _) = &p.ty.node {
                 let elem_mir_ty = ast_type_to_mir_with_type_defs(elem_ty.as_ref(), type_defs);
@@ -1188,11 +1186,10 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
                 // v0.51.37: Also handle pointer return types (*Node)
                 if let MirType::Struct { name: struct_name, .. } = &ret_ty {
                     ctx.var_struct_types.insert(dest.name.clone(), struct_name.clone());
-                } else if let MirType::Ptr(inner) = &ret_ty {
-                    if let MirType::StructPtr(struct_name) = inner.as_ref() {
+                } else if let MirType::Ptr(inner) = &ret_ty
+                    && let MirType::StructPtr(struct_name) = inner.as_ref() {
                         ctx.var_struct_types.insert(dest.name.clone(), struct_name.clone());
                     }
-                }
                 ctx.locals.insert(dest.name.clone(), ret_ty);
 
                 ctx.push_inst(MirInst::Call {
@@ -2507,8 +2504,8 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
 
             // v0.60.23: Array to pointer cast - [T; N] -> *T
             // Arrays decay to pointers to their first element
-            if let MirType::Array { element_type, .. } = &from_ty {
-                if let MirType::Ptr(target_elem) = &to_ty {
+            if let MirType::Array { element_type, .. } = &from_ty
+                && let MirType::Ptr(target_elem) = &to_ty {
                     // Verify element types match
                     if element_type.as_ref() == target_elem.as_ref() {
                         // For arrays allocated on stack (alloca), the array variable
@@ -2526,7 +2523,6 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
                         return Operand::Place(dest);
                     }
                 }
-            }
 
             // v0.51.33: Check if source is a struct pointer
             // Struct pointer to i64 requires ptrtoint in LLVM IR
@@ -2938,6 +2934,7 @@ fn ast_type_to_mir_with_type_defs(
 
 /// v0.51.24: Convert AST type to MIR type with struct definition lookup
 /// This properly converts Type::Named to MirType::Struct when the name is a known struct
+#[allow(dead_code)]
 fn ast_type_to_mir_with_structs(
     ty: &Type,
     struct_type_defs: &std::collections::HashMap<String, Vec<(String, Type)>>,

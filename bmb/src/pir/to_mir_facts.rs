@@ -86,14 +86,13 @@ fn extract_facts_recursive(prop: &Proposition, facts: &mut Vec<ContractFact>) {
                 }
                 // var < len(arr)
                 (CirExpr::Var(var), CirExpr::Len(arr_expr)) => {
-                    if let CirExpr::Var(arr_var) = arr_expr.as_ref() {
-                        if matches!(mir_op, CmpOp::Lt) {
+                    if let CirExpr::Var(arr_var) = arr_expr.as_ref()
+                        && matches!(mir_op, CmpOp::Lt) {
                             facts.push(ContractFact::ArrayBounds {
                                 index: var.clone(),
                                 array: arr_var.clone(),
                             });
                         }
-                    }
                 }
                 _ => {}
             }

@@ -375,8 +375,8 @@ impl OptimizationPass for ConstantFolding {
                     // v0.51.2: Propagate constants to call arguments for FFI string optimization
                     MirInst::Call { dest, func: func_name, args, is_tail } => {
                         // First, try to fold builtin calls completely
-                        if let Some(d) = dest {
-                            if let Some(result) = fold_builtin_call(func_name, args, &constants) {
+                        if let Some(d) = dest
+                            && let Some(result) = fold_builtin_call(func_name, args, &constants) {
                                 constants.insert(d.name.clone(), result.clone());
                                 new_instructions.push(MirInst::Const {
                                     dest: d.clone(),
@@ -385,7 +385,6 @@ impl OptimizationPass for ConstantFolding {
                                 changed = true;
                                 continue;
                             }
-                        }
 
                         // v0.51.2: Propagate constants to call arguments
                         // This enables LLVM codegen to detect string literal arguments
@@ -393,11 +392,10 @@ impl OptimizationPass for ConstantFolding {
                             match arg {
                                 Operand::Place(p) => {
                                     // Don't propagate loop-modified variables
-                                    if !loop_modified.contains(&p.name) {
-                                        if let Some(c) = constants.get(&p.name) {
+                                    if !loop_modified.contains(&p.name)
+                                        && let Some(c) = constants.get(&p.name) {
                                             return Operand::Constant(c.clone());
                                         }
-                                    }
                                     arg.clone()
                                 }
                                 Operand::Constant(_) => arg.clone(),
@@ -471,7 +469,7 @@ fn fold_builtin_call(
         "chr" | "bmb_chr" if args.len() == 1 => {
             if let Some(Constant::Int(code)) = get_constant(&args[0], constants) {
                 // Valid ASCII range
-                if code >= 0 && code <= 127 {
+                if (0..=127).contains(&code) {
                     let ch = char::from_u32(code as u32)?;
                     return Some(Constant::String(ch.to_string()));
                 }
@@ -480,12 +478,11 @@ fn fold_builtin_call(
         }
         // ord("A") -> 65 (only for single-character string constants)
         "ord" | "bmb_ord" if args.len() == 1 => {
-            if let Some(Constant::String(s)) = get_constant(&args[0], constants) {
-                if s.len() == 1 {
+            if let Some(Constant::String(s)) = get_constant(&args[0], constants)
+                && s.len() == 1 {
                     let code = s.chars().next()? as i64;
                     return Some(Constant::Int(code));
                 }
-            }
             None
         }
         _ => None,
@@ -656,8 +653,8 @@ fn simplify_binop(dest: &Place, op: MirBinOp, lhs: &Operand, rhs: &Operand) -> O
             }
             // v0.60.53: Convert multiplication by power-of-2 to left shift
             // x * 2 → x << 1, x * 4 → x << 2, x * 8 → x << 3, etc.
-            if let Operand::Constant(Constant::Int(multiplier)) = rhs {
-                if *multiplier > 1 && (*multiplier & (*multiplier - 1)) == 0 {
+            if let Operand::Constant(Constant::Int(multiplier)) = rhs
+                && *multiplier > 1 && (*multiplier & (*multiplier - 1)) == 0 {
                     let shift_amount = (*multiplier as u64).trailing_zeros() as i64;
                     return Some(MirInst::BinOp {
                         dest: dest.clone(),
@@ -666,10 +663,9 @@ fn simplify_binop(dest: &Place, op: MirBinOp, lhs: &Operand, rhs: &Operand) -> O
                         rhs: Operand::Constant(Constant::Int(shift_amount)),
                     });
                 }
-            }
             // Handle commutative case: 2^n * x → x << n
-            if let Operand::Constant(Constant::Int(multiplier)) = lhs {
-                if *multiplier > 1 && (*multiplier & (*multiplier - 1)) == 0 {
+            if let Operand::Constant(Constant::Int(multiplier)) = lhs
+                && *multiplier > 1 && (*multiplier & (*multiplier - 1)) == 0 {
                     let shift_amount = (*multiplier as u64).trailing_zeros() as i64;
                     return Some(MirInst::BinOp {
                         dest: dest.clone(),
@@ -678,7 +674,6 @@ fn simplify_binop(dest: &Place, op: MirBinOp, lhs: &Operand, rhs: &Operand) -> O
                         rhs: Operand::Constant(Constant::Int(shift_amount)),
                     });
                 }
-            }
             None
         }
 
@@ -694,8 +689,8 @@ fn simplify_binop(dest: &Place, op: MirBinOp, lhs: &Operand, rhs: &Operand) -> O
             // Note: This is safe for unsigned division semantics
             // For signed division of negative numbers, behavior differs slightly
             // but LLVM's optimization passes handle this correctly
-            if let Operand::Constant(Constant::Int(divisor)) = rhs {
-                if *divisor > 1 && (*divisor & (*divisor - 1)) == 0 {
+            if let Operand::Constant(Constant::Int(divisor)) = rhs
+                && *divisor > 1 && (*divisor & (*divisor - 1)) == 0 {
                     // divisor is a power of 2
                     let shift_amount = (*divisor as u64).trailing_zeros() as i64;
                     return Some(MirInst::BinOp {
@@ -705,7 +700,6 @@ fn simplify_binop(dest: &Place, op: MirBinOp, lhs: &Operand, rhs: &Operand) -> O
                         rhs: Operand::Constant(Constant::Int(shift_amount)),
                     });
                 }
-            }
             None
         }
 
@@ -713,8 +707,8 @@ fn simplify_binop(dest: &Place, op: MirBinOp, lhs: &Operand, rhs: &Operand) -> O
         MirBinOp::Mod => {
             // v0.60.52: Convert modulo by power-of-2 to bitwise AND
             // This is a common optimization for hash table indexing: idx % size → idx & (size - 1)
-            if let Operand::Constant(Constant::Int(divisor)) = rhs {
-                if *divisor > 1 && (*divisor & (*divisor - 1)) == 0 {
+            if let Operand::Constant(Constant::Int(divisor)) = rhs
+                && *divisor > 1 && (*divisor & (*divisor - 1)) == 0 {
                     // divisor is a power of 2
                     let mask = *divisor - 1;
                     return Some(MirInst::BinOp {
@@ -724,7 +718,6 @@ fn simplify_binop(dest: &Place, op: MirBinOp, lhs: &Operand, rhs: &Operand) -> O
                         rhs: Operand::Constant(Constant::Int(mask)),
                     });
                 }
-            }
             None
         }
 
@@ -1532,22 +1525,21 @@ impl OptimizationPass for BlockMerging {
                     // Find target block
                     if let Some(j) = func.blocks.iter().position(|b| &b.label == target) {
                         // Check if target has only this block as predecessor
-                        if let Some(preds) = predecessors.get(target) {
-                            if preds.len() == 1 && preds[0] == block.label {
+                        if let Some(preds) = predecessors.get(target)
+                            && preds.len() == 1 && preds[0] == block.label {
                                 // Don't merge self-loops
                                 if i != j {
                                     merge_pair = Some((i, j));
                                     break;
                                 }
                             }
-                        }
                     }
                 }
             }
 
             if let Some((src_idx, dst_idx)) = merge_pair {
                 // Merge dst into src
-                let dst_block = func.blocks.remove(if dst_idx > src_idx { dst_idx } else { dst_idx });
+                let dst_block = func.blocks.remove(dst_idx);
                 let src_idx = if dst_idx < src_idx { src_idx - 1 } else { src_idx };
 
                 // Append dst instructions to src (skip phi nodes since single predecessor)
@@ -2708,12 +2700,11 @@ impl OptimizationPass for TailCallOptimization {
             }
 
             // Mark the tail call
-            if let Some(idx) = tail_call_idx {
-                if let MirInst::Call { is_tail, .. } = &mut block.instructions[idx] {
+            if let Some(idx) = tail_call_idx
+                && let MirInst::Call { is_tail, .. } = &mut block.instructions[idx] {
                     *is_tail = true;
                     changed = true;
                 }
-            }
         }
 
         // Phase 2: Phi-based tail calls (Call -> Goto -> Phi -> Return)
@@ -2820,8 +2811,8 @@ impl TailCallOptimization {
 
             // Find phi that produces return_var (should be only instruction or last before return)
             for inst in &block.instructions {
-                if let MirInst::Phi { dest, values } = inst {
-                    if dest.name == *return_var {
+                if let MirInst::Phi { dest, values } = inst
+                    && dest.name == *return_var {
                         // Collect incoming edges: (value_name, source_block)
                         let edges: Vec<(String, String)> = values.iter()
                             .filter_map(|(operand, label)| {
@@ -2842,7 +2833,6 @@ impl TailCallOptimization {
                         }
                         break;
                     }
-                }
             }
         }
 
@@ -2878,13 +2868,12 @@ impl TailCallOptimization {
 
                 // Convert terminator from Goto(merge) to Return(call_result)
                 // This allows LLVM to properly optimize the tail call to a loop
-                if let Some(dest) = call_dest {
-                    if matches!(block.terminator, Terminator::Goto(_)) {
+                if let Some(dest) = call_dest
+                    && matches!(block.terminator, Terminator::Goto(_)) {
                         block.terminator = Terminator::Return(Some(Operand::Place(dest)));
                         blocks_converted_to_return.push(block_label.clone());
                         changed = true;
                     }
-                }
             }
         }
 
@@ -3282,11 +3271,10 @@ impl OptimizationPass for TailRecursiveToLoop {
 
         for (block_idx, block) in func.blocks.iter().enumerate() {
             for (inst_idx, inst) in block.instructions.iter().enumerate() {
-                if let MirInst::Call { func: callee, args, is_tail: true, .. } = inst {
-                    if *callee == self_name {
+                if let MirInst::Call { func: callee, args, is_tail: true, .. } = inst
+                    && *callee == self_name {
                         tail_call_blocks.push((block_idx, inst_idx, args.clone()));
                     }
-                }
             }
         }
 
@@ -4167,18 +4155,16 @@ impl ConstantPropagationNarrowing {
                 }
 
                 // Check self-recursive calls
-                if let MirInst::Call { func: callee, args, .. } = inst {
-                    if callee == &func.name {
+                if let MirInst::Call { func: callee, args, .. } = inst
+                    && callee == &func.name {
                         has_self_recursion = true;
 
                         // Check if the argument at param_idx is decreasing
-                        if let Some(arg) = args.get(param_idx) {
-                            if !self.is_decreasing_operand(arg, param_name, &definitions) {
+                        if let Some(arg) = args.get(param_idx)
+                            && !self.is_decreasing_operand(arg, param_name, &definitions) {
                                 return false;
                             }
-                        }
                     }
-                }
             }
         }
 
@@ -4272,11 +4258,10 @@ impl ConstantPropagationNarrowing {
             .collect();
 
         for (func_name, param_idx) in narrowable {
-            if let Some(func) = program.functions.iter_mut().find(|f| f.name == func_name) {
-                if self.narrow_function(func, param_idx) {
+            if let Some(func) = program.functions.iter_mut().find(|f| f.name == func_name)
+                && self.narrow_function(func, param_idx) {
                     changed = true;
                 }
-            }
         }
 
         changed
@@ -4460,8 +4445,8 @@ impl LoopBoundedNarrowing {
                             _ => None,
                         };
 
-                        if let Some(v) = bound {
-                            if v >= 0 && v <= i32::MAX as i64 {
+                        if let Some(v) = bound
+                            && v >= 0 && v <= i32::MAX as i64 {
                                 param_bounds
                                     .entry(callee.clone())
                                     .or_default()
@@ -4469,7 +4454,6 @@ impl LoopBoundedNarrowing {
                                     .and_modify(|max| *max = (*max).max(v))
                                     .or_insert(v);
                             }
-                        }
                     }
                 }
             }
@@ -4511,8 +4495,8 @@ impl LoopBoundedNarrowing {
         }
 
         // Check if we have bounds for this parameter
-        if let Some(bounds) = self.param_bounds.get(&func.name) {
-            if let Some(&max_val) = bounds.get(&param_idx) {
+        if let Some(bounds) = self.param_bounds.get(&func.name)
+            && let Some(&max_val) = bounds.get(&param_idx) {
                 // v0.60.51: Check multiplication with large constants
                 // If parameter is multiplied by a large constant, the result can overflow i32
                 // Example: seed * 1103515245 where seed=42 → 46347640290 (overflows i32)
@@ -4534,13 +4518,12 @@ impl LoopBoundedNarrowing {
                     // For multiplication, require smaller bound to prevent overflow
                     // This allows spectral_norm (n=1000, so sum<=2000) to be narrowed
                     // but blocks mandelbrot (values can be 20000+)
-                    return max_val >= 0 && max_val <= SAFE_MUL_BOUND;
+                    return (0..=SAFE_MUL_BOUND).contains(&max_val);
                 }
 
                 // For non-multiplication cases, just check i32 fit
                 return max_val >= 0 && max_val <= i32::MAX as i64;
             }
-        }
 
         false
     }
@@ -4614,18 +4597,16 @@ impl LoopBoundedNarrowing {
 
                             // Check for multiplication with a constant
                             if matches!(op, MirBinOp::Mul) {
-                                if lhs_derived {
-                                    if let Operand::Constant(Constant::Int(c)) = rhs {
+                                if lhs_derived
+                                    && let Operand::Constant(Constant::Int(c)) = rhs {
                                         let abs_c = c.abs();
                                         max_constant = Some(max_constant.map_or(abs_c, |m| m.max(abs_c)));
                                     }
-                                }
-                                if rhs_derived {
-                                    if let Operand::Constant(Constant::Int(c)) = lhs {
+                                if rhs_derived
+                                    && let Operand::Constant(Constant::Int(c)) = lhs {
                                         let abs_c = c.abs();
                                         max_constant = Some(max_constant.map_or(abs_c, |m| m.max(abs_c)));
                                     }
-                                }
                             }
 
                             // Propagate derived status
@@ -4739,9 +4720,9 @@ impl LoopBoundedNarrowing {
         // Also check for self-recursive calls (in case loop conversion didn't happen)
         for block in &func.blocks {
             for inst in &block.instructions {
-                if let MirInst::Call { func: callee, args, .. } = inst {
-                    if callee == &func.name {
-                        if let Some(arg) = args.get(param_idx) {
+                if let MirInst::Call { func: callee, args, .. } = inst
+                    && callee == &func.name
+                        && let Some(arg) = args.get(param_idx) {
                             // Check if argument is increasing from parameter
                             if let Operand::Place(_) = arg {
                                 if Self::is_increasing_from_var(arg, param_name.as_str(), &definitions) {
@@ -4753,8 +4734,6 @@ impl LoopBoundedNarrowing {
                                 }
                             }
                         }
-                    }
-                }
             }
         }
 
@@ -4770,27 +4749,23 @@ impl LoopBoundedNarrowing {
         // Check if the phi has the parameter as one of its incoming values
         for block in &func.blocks {
             for inst in &block.instructions {
-                if let MirInst::Phi { dest, values } = inst {
-                    if dest.name == phi_name {
+                if let MirInst::Phi { dest, values } = inst
+                    && dest.name == phi_name {
                         for (operand, _) in values {
-                            if let Operand::Place(p) = operand {
-                                if p.name == param_name {
+                            if let Operand::Place(p) = operand
+                                && p.name == param_name {
                                     return true;
                                 }
-                            }
                         }
                     }
-                }
             }
         }
 
         // Heuristic: if phi_name ends with "_loop" and contains a substring of param_name
         // This handles cases like param "pos" → phi "pos_loop"
-        if phi_name.ends_with("_loop") {
-            let base_name = &phi_name[..phi_name.len() - 5];
-            if base_name == param_name {
-                return true;
-            }
+        if let Some(base_name) = phi_name.strip_suffix("_loop")
+            && base_name == param_name {
+            return true;
         }
 
         false
@@ -4802,28 +4777,20 @@ impl LoopBoundedNarrowing {
         var_name: &str,
         definitions: &HashMap<String, (&MirBinOp, &Operand, &Operand)>,
     ) -> bool {
-        if let Operand::Place(p) = operand {
-            if let Some((op, lhs, rhs)) = definitions.get(&p.name) {
-                match op {
-                    // var + positive_const is increasing
-                    MirBinOp::Add => {
-                        let lhs_is_var = matches!(lhs, Operand::Place(l) if l.name == var_name);
-                        let rhs_is_positive = matches!(rhs, Operand::Constant(Constant::Int(v)) if *v > 0);
-                        let rhs_is_var = matches!(rhs, Operand::Place(r) if r.name == var_name);
-                        let lhs_is_positive = matches!(lhs, Operand::Constant(Constant::Int(v)) if *v > 0);
-                        // Also check transitive: if lhs is derived from var with Add
-                        let lhs_increasing = Self::is_increasing_from_var(lhs, var_name, definitions);
-                        let rhs_increasing = Self::is_increasing_from_var(rhs, var_name, definitions);
-                        (lhs_is_var && rhs_is_positive) ||
-                        (rhs_is_var && lhs_is_positive) ||
-                        (lhs_increasing && rhs_is_positive) ||
-                        (rhs_increasing && lhs_is_positive)
-                    }
-                    _ => false,
-                }
-            } else {
-                false
-            }
+        if let Operand::Place(p) = operand
+            && let Some((MirBinOp::Add, lhs, rhs)) = definitions.get(&p.name)
+        {
+            let lhs_is_var = matches!(lhs, Operand::Place(l) if l.name == var_name);
+            let rhs_is_positive = matches!(rhs, Operand::Constant(Constant::Int(v)) if *v > 0);
+            let rhs_is_var = matches!(rhs, Operand::Place(r) if r.name == var_name);
+            let lhs_is_positive = matches!(lhs, Operand::Constant(Constant::Int(v)) if *v > 0);
+            // Also check transitive: if lhs is derived from var with Add
+            let lhs_increasing = Self::is_increasing_from_var(lhs, var_name, definitions);
+            let rhs_increasing = Self::is_increasing_from_var(rhs, var_name, definitions);
+            (lhs_is_var && rhs_is_positive) ||
+            (rhs_is_var && lhs_is_positive) ||
+            (lhs_increasing && rhs_is_positive) ||
+            (rhs_increasing && lhs_is_positive)
         } else {
             false
         }
@@ -4844,14 +4811,14 @@ impl LoopBoundedNarrowing {
                         let rhs_is_positive = matches!(rhs, Operand::Constant(Constant::Int(v)) if *v > 0);
                         // Also check transitive: if lhs is derived from var
                         let lhs_decreasing = Self::is_decreasing_from_var(lhs, var_name, definitions);
-                        (lhs_is_var && rhs_is_positive) || (lhs_decreasing && rhs_is_positive)
+                        (lhs_decreasing || lhs_is_var) && rhs_is_positive
                     }
                     // var / const > 1 is decreasing
                     MirBinOp::Div => {
                         let lhs_is_var = matches!(lhs, Operand::Place(l) if l.name == var_name);
                         let rhs_is_divisor = matches!(rhs, Operand::Constant(Constant::Int(v)) if *v > 1);
                         let lhs_decreasing = Self::is_decreasing_from_var(lhs, var_name, definitions);
-                        (lhs_is_var && rhs_is_divisor) || (lhs_decreasing && rhs_is_divisor)
+                        (lhs_decreasing || lhs_is_var) && rhs_is_divisor
                     }
                     _ => false,
                 }
@@ -5047,12 +5014,11 @@ impl LoopBoundedNarrowing {
 
     /// Narrow a function's parameter from I64 to I32
     fn narrow_param(func: &mut MirFunction, param_idx: usize) -> bool {
-        if let Some((_, ty)) = func.params.get_mut(param_idx) {
-            if *ty == MirType::I64 {
+        if let Some((_, ty)) = func.params.get_mut(param_idx)
+            && *ty == MirType::I64 {
                 *ty = MirType::I32;
                 return true;
             }
-        }
         false
     }
 
@@ -5089,11 +5055,10 @@ impl LoopBoundedNarrowing {
             .collect();
 
         for (func_name, param_idx) in &narrowable_params {
-            if let Some(func) = program.functions.iter_mut().find(|f| &f.name == func_name) {
-                if Self::narrow_param(func, *param_idx) {
+            if let Some(func) = program.functions.iter_mut().find(|f| &f.name == func_name)
+                && Self::narrow_param(func, *param_idx) {
                     changed = true;
                 }
-            }
         }
 
         // Phase 2: Narrow loop variables that are bounded by narrowed parameters
@@ -5105,11 +5070,10 @@ impl LoopBoundedNarrowing {
                 let param_narrowed = func.params.iter()
                     .any(|(name, ty)| name == &param_name && *ty == MirType::I32);
 
-                if param_narrowed {
-                    if Self::narrow_local(func, &var_name) {
+                if param_narrowed
+                    && Self::narrow_local(func, &var_name) {
                         changed = true;
                     }
-                }
             }
         }
 
@@ -5331,12 +5295,11 @@ impl LoopBoundedNarrowing {
                             continue; // Don't narrow this parameter
                         }
 
-                        if let Some((_, ty)) = func.params.get_mut(param_idx) {
-                            if *ty == MirType::I64 {
+                        if let Some((_, ty)) = func.params.get_mut(param_idx)
+                            && *ty == MirType::I64 {
                                 *ty = MirType::I32;
                                 changed = true;
                             }
-                        }
                     }
                 }
             }
@@ -5446,11 +5409,10 @@ impl AggressiveInlining {
     fn is_recursive(func: &MirFunction) -> bool {
         for block in &func.blocks {
             for inst in &block.instructions {
-                if let MirInst::Call { func: callee, .. } = inst {
-                    if callee == &func.name {
+                if let MirInst::Call { func: callee, .. } = inst
+                    && callee == &func.name {
                         return true;
                     }
-                }
             }
         }
         false
@@ -5770,13 +5732,12 @@ impl OptimizationPass for LoopInvariantCodeMotion {
             for inst in &block.instructions {
                 if let MirInst::Phi { values, .. } = inst {
                     for (_, label) in values {
-                        if let Some(&pred_idx) = block_map.get(label.as_str()) {
-                            if pred_idx > block_idx {
+                        if let Some(&pred_idx) = block_map.get(label.as_str())
+                            && pred_idx > block_idx {
                                 // This is a loop header with back edge from pred_idx
                                 loop_headers.push(block_idx);
                                 break;
                             }
-                        }
                     }
                 }
             }
@@ -5876,24 +5837,21 @@ impl OptimizationPass for LoopInvariantCodeMotion {
             for block in &mut func.blocks[header_idx..] {
                 for inst in &mut block.instructions {
                     // Skip the copy instructions we just created
-                    if let MirInst::Copy { dest, src } = inst {
-                        if hoisted_mapping.get(&dest.name) == Some(&src.name) {
+                    if let MirInst::Copy { dest, src } = inst
+                        && hoisted_mapping.get(&dest.name) == Some(&src.name) {
                             continue;
                         }
-                    }
 
                     // Replace references to original with hoisted
                     Self::substitute_hoisted_refs(inst, &hoisted_mapping);
                 }
 
                 // Also check terminator
-                if let Terminator::Branch { cond, .. } = &mut block.terminator {
-                    if let Operand::Place(p) = cond {
-                        if let Some(hoisted) = hoisted_mapping.get(&p.name) {
+                if let Terminator::Branch { cond, .. } = &mut block.terminator
+                    && let Operand::Place(p) = cond
+                        && let Some(hoisted) = hoisted_mapping.get(&p.name) {
                             *p = Place::new(hoisted.clone());
                         }
-                    }
-                }
             }
         }
 
@@ -5926,11 +5884,10 @@ impl LoopInvariantCodeMotion {
     }
 
     fn substitute_operand(op: &mut Operand, mapping: &HashMap<String, String>) {
-        if let Operand::Place(p) = op {
-            if let Some(hoisted) = mapping.get(&p.name) {
+        if let Operand::Place(p) = op
+            && let Some(hoisted) = mapping.get(&p.name) {
                 p.name = hoisted.clone();
             }
-        }
     }
 }
 
@@ -6032,9 +5989,9 @@ struct FibonacciPattern {
     /// The operator combining the two recursive results (Add for fibonacci)
     combine_op: MirBinOp,
     /// First recursive call decrement (1 for n-1)
-    first_decrement: i64,
+    _first_decrement: i64,
     /// Second recursive call decrement (2 for n-2)
-    second_decrement: i64,
+    _second_decrement: i64,
     /// Initial values for the recurrence (0, 1 for fibonacci)
     /// prev2_init is f(0), prev1_init is f(1)
     prev2_init: i64,
@@ -6062,8 +6019,8 @@ impl LinearRecurrenceToLoop {
         // Find the comparison instruction: %cond = param <= constant
         let mut base_threshold = None;
         for inst in &entry.instructions {
-            if let MirInst::BinOp { dest, op, lhs, rhs } = inst {
-                if dest.name == *cond_var {
+            if let MirInst::BinOp { dest, op, lhs, rhs } = inst
+                && dest.name == *cond_var {
                     // Check for: param <= constant or param < constant
                     match (op, lhs, rhs) {
                         (MirBinOp::Le, Operand::Place(p), Operand::Constant(Constant::Int(v)))
@@ -6078,7 +6035,6 @@ impl LinearRecurrenceToLoop {
                     }
                     break;
                 }
-            }
         }
 
         let threshold = base_threshold?;
@@ -6096,14 +6052,13 @@ impl LinearRecurrenceToLoop {
         let mut calls: Vec<(i64, String)> = Vec::new(); // (decrement, result_var)
 
         for inst in &recursive_block.instructions {
-            if let MirInst::Call { dest: Some(dest), func: callee, args, .. } = inst {
-                if callee == self_name && args.len() == 1 {
+            if let MirInst::Call { dest: Some(dest), func: callee, args, .. } = inst
+                && callee == self_name && args.len() == 1 {
                     // Check for param - constant pattern
                     if let Some(decrement) = self.extract_decrement(&args[0], param_name, &recursive_block.instructions) {
                         calls.push((decrement, dest.name.clone()));
                     }
                 }
-            }
         }
 
         // Need exactly 2 self-recursive calls with consecutive decrements
@@ -6154,8 +6109,8 @@ impl LinearRecurrenceToLoop {
         // Find merge block if present (block that both branches go to)
         let merge_label = func.blocks.iter().find_map(|b| {
             for inst in &b.instructions {
-                if let MirInst::Phi { values, .. } = inst {
-                    if values.len() >= 2 {
+                if let MirInst::Phi { values, .. } = inst
+                    && values.len() >= 2 {
                         let labels: Vec<_> = values.iter().map(|(_, l)| l.clone()).collect();
                         if labels.contains(&then_label) && (labels.contains(&else_label) || labels.iter().any(|l| {
                             // Check if any label is from a block that came from else branch
@@ -6164,7 +6119,6 @@ impl LinearRecurrenceToLoop {
                             return Some(b.label.clone());
                         }
                     }
-                }
             }
             None
         });
@@ -6177,8 +6131,8 @@ impl LinearRecurrenceToLoop {
             recursive_block_label: else_label,
             merge_block_label: merge_label,
             combine_op: MirBinOp::Add,
-            first_decrement: calls[0].0,
-            second_decrement: calls[1].0,
+            _first_decrement: calls[0].0,
+            _second_decrement: calls[1].0,
             prev2_init: 0, // f(0) = 0
             prev1_init: 1, // f(1) = 1
         })
@@ -6191,8 +6145,8 @@ impl LinearRecurrenceToLoop {
             Operand::Place(p) => {
                 // Look for: %p = Sub param, constant
                 for inst in instructions {
-                    if let MirInst::BinOp { dest, op: MirBinOp::Sub, lhs, rhs } = inst {
-                        if dest.name == p.name {
+                    if let MirInst::BinOp { dest, op: MirBinOp::Sub, lhs, rhs } = inst
+                        && dest.name == p.name {
                             let is_param = match lhs {
                                 Operand::Place(lp) => lp.name == param_name,
                                 _ => false,
@@ -6205,7 +6159,6 @@ impl LinearRecurrenceToLoop {
                                 return decrement;
                             }
                         }
-                    }
                 }
                 None
             }
@@ -6381,8 +6334,8 @@ impl LinearRecurrenceToLoop {
         for block in &mut func.blocks {
             if block.label == pattern.base_block_label {
                 // If it has a Goto to merge, change to Return
-                if let Terminator::Goto(target) = &block.terminator {
-                    if pattern.merge_block_label.as_ref() == Some(target) {
+                if let Terminator::Goto(target) = &block.terminator
+                    && pattern.merge_block_label.as_ref() == Some(target) {
                         // Find the value that was going to the phi
                         // Usually the last assignment before the goto
                         let return_val = block.instructions.last().and_then(|inst| {
@@ -6398,7 +6351,6 @@ impl LinearRecurrenceToLoop {
                         });
                         block.terminator = Terminator::Return(Some(return_val));
                     }
-                }
             }
         }
 

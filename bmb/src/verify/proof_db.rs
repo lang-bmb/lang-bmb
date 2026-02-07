@@ -4,7 +4,7 @@
 //! Enables incremental compilation and proof reuse.
 
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
@@ -243,7 +243,7 @@ impl ProofDatabase {
     }
 
     /// Invalidate proofs for a file (for incremental compilation)
-    pub fn invalidate_file(&mut self, path: &PathBuf) {
+    pub fn invalidate_file(&mut self, path: &Path) {
         let path_str = path.display().to_string();
         // Remove all functions from this file
         self.function_proofs.retain(|key, _| {
@@ -254,12 +254,12 @@ impl ProofDatabase {
     }
 
     /// Update file hash
-    pub fn update_file_hash(&mut self, path: &PathBuf, hash: u64) {
+    pub fn update_file_hash(&mut self, path: &Path, hash: u64) {
         self.file_hashes.insert(path.display().to_string(), hash);
     }
 
     /// Check if file hash matches (for incremental compilation)
-    pub fn file_hash_matches(&self, path: &PathBuf, hash: u64) -> bool {
+    pub fn file_hash_matches(&self, path: &Path, hash: u64) -> bool {
         self.file_hashes.get(&path.display().to_string()) == Some(&hash)
     }
 
@@ -298,7 +298,7 @@ impl ProofDatabase {
     /// Save database to a file
     pub fn save_to_file(&self, path: &std::path::Path) -> std::io::Result<()> {
         let json = self.to_json()
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+            .map_err(std::io::Error::other)?;
         std::fs::write(path, json)
     }
 
@@ -306,7 +306,7 @@ impl ProofDatabase {
     pub fn load_from_file(path: &std::path::Path) -> std::io::Result<Self> {
         let json = std::fs::read_to_string(path)?;
         Self::from_json(&json)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
+            .map_err(std::io::Error::other)
     }
 
     /// Get the default cache file path for a source file

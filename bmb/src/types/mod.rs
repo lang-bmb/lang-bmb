@@ -1810,8 +1810,8 @@ impl TypeChecker {
 
                 // v0.60.27: Try generic functions FIRST for pointer-accepting overloads
                 // This allows `free(ptr)` to match `free<T>(*T)` before `free(i64)` fails
-                if let Some((type_params, param_tys, ret_ty)) = self.generic_functions.get(func).cloned() {
-                    if args.len() == param_tys.len() {
+                if let Some((type_params, param_tys, ret_ty)) = self.generic_functions.get(func).cloned()
+                    && args.len() == param_tys.len() {
                         // Try to infer type arguments - if this fails, fall through to non-generic
                         let mut type_subst: HashMap<String, Type> = HashMap::new();
                         let mut generic_match = true;
@@ -1839,7 +1839,6 @@ impl TypeChecker {
                         }
                         // Fall through to try non-generic version
                     }
-                }
 
                 // v0.15: Try non-generic functions
                 if let Some((param_tys, ret_ty)) = self.functions.get(func).cloned() {

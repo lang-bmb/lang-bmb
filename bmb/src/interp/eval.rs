@@ -525,7 +525,7 @@ impl Interpreter {
                 let val = match &ty.node {
                     crate::ast::Type::Array(_, size) => {
                         // Create array filled with zeros
-                        Value::Array(vec![Value::Int(0); *size].into())
+                        Value::Array(vec![Value::Int(0); *size])
                     }
                     _ => Value::Unit, // Shouldn't happen - type checker ensures array type
                 };
@@ -1645,7 +1645,7 @@ impl Interpreter {
                 let val = match &ty.node {
                     crate::ast::Type::Array(_, size) => {
                         // Create array filled with zeros
-                        Value::Array(vec![Value::Int(0); *size].into())
+                        Value::Array(vec![Value::Int(0); *size])
                     }
                     _ => Value::Unit, // Shouldn't happen - type checker ensures array type
                 };
@@ -3427,8 +3427,7 @@ fn builtin_sb_with_capacity(args: &[Value]) -> InterpResult<Value> {
         // Pre-allocate with capacity hint (Vec::with_capacity approximation)
         // Note: The interpreter uses Vec<String> so capacity hint is ignored,
         // but the native runtime (bmb_runtime.c) does use real capacity.
-        let mut v = Vec::new();
-        v.reserve(capacity);
+        let v = Vec::with_capacity(capacity);
         builders.borrow_mut().insert(id, v);
     });
 

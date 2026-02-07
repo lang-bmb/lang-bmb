@@ -121,23 +121,21 @@ impl CirLowerer {
         let mut postconditions = Vec::new();
 
         // Legacy pre/post
-        if let Some(pre) = &fn_def.pre {
-            if let Some(prop) = self.expr_to_proposition(&pre.node) {
+        if let Some(pre) = &fn_def.pre
+            && let Some(prop) = self.expr_to_proposition(&pre.node) {
                 preconditions.push(NamedProposition {
                     name: None,
                     proposition: prop,
                 });
             }
-        }
 
-        if let Some(post) = &fn_def.post {
-            if let Some(prop) = self.expr_to_proposition(&post.node) {
+        if let Some(post) = &fn_def.post
+            && let Some(prop) = self.expr_to_proposition(&post.node) {
                 postconditions.push(NamedProposition {
                     name: None,
                     proposition: prop,
                 });
             }
-        }
 
         // Named contracts
         for contract in &fn_def.contracts {
@@ -381,14 +379,13 @@ impl CirLowerer {
                 self.loop_counter += 1;
 
                 // If there's an explicit invariant annotation
-                if let Some(inv_expr) = invariant {
-                    if let Some(prop) = self.expr_to_proposition(&inv_expr.node) {
+                if let Some(inv_expr) = invariant
+                    && let Some(prop) = self.expr_to_proposition(&inv_expr.node) {
                         invariants.push(LoopInvariant {
                             loop_id,
                             invariant: prop,
                         });
                     }
-                }
 
                 // The loop condition is also a (weak) invariant - it's true at loop entry
                 if let Some(cond_prop) = self.expr_to_proposition(&cond.node) {

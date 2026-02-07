@@ -137,11 +137,10 @@ impl TextCodeGen {
             .functions
             .iter()
             .filter_map(|f| {
-                if let MirType::Struct { fields, .. } = &f.ret_ty {
-                    if fields.len() > 2 {  // Only 3+ fields use sret
+                if let MirType::Struct { fields, .. } = &f.ret_ty
+                    && fields.len() > 2 {  // Only 3+ fields use sret
                         return Some((f.name.clone(), fields.len()));
                     }
-                }
                 None
             })
             .collect();
@@ -151,11 +150,10 @@ impl TextCodeGen {
             .functions
             .iter()
             .filter_map(|f| {
-                if let MirType::Struct { fields, .. } = &f.ret_ty {
-                    if !fields.is_empty() && fields.len() <= 2 {
+                if let MirType::Struct { fields, .. } = &f.ret_ty
+                    && !fields.is_empty() && fields.len() <= 2 {
                         return Some((f.name.clone(), fields.len()));
                     }
-                }
                 None
             })
             .collect();
@@ -672,22 +670,20 @@ impl TextCodeGen {
 
         for block in &func.blocks {
             // Check if returned
-            if let Terminator::Return(Some(Operand::Place(p))) = &block.terminator {
-                if p.name == struct_name {
+            if let Terminator::Return(Some(Operand::Place(p))) = &block.terminator
+                && p.name == struct_name {
                     return true;
                 }
-            }
 
             for inst in &block.instructions {
                 match inst {
                     // Passed to a call
                     MirInst::Call { args, .. } => {
                         for arg in args {
-                            if let Operand::Place(p) = arg {
-                                if p.name == struct_name {
+                            if let Operand::Place(p) = arg
+                                && p.name == struct_name {
                                     return true;
                                 }
-                            }
                         }
                     }
                     // Copied to another variable (conservative: treat as escape)
@@ -699,11 +695,10 @@ impl TextCodeGen {
                     // Used in phi node (may be returned through phi)
                     MirInst::Phi { values, .. } => {
                         for (val, _) in values {
-                            if let Operand::Place(p) = val {
-                                if p.name == struct_name {
+                            if let Operand::Place(p) = val
+                                && p.name == struct_name {
                                     return true;
                                 }
-                            }
                         }
                     }
                     _ => {}
@@ -736,11 +731,10 @@ impl TextCodeGen {
 
         for block in &func.blocks {
             // Check if directly returned
-            if let Terminator::Return(Some(Operand::Place(p))) = &block.terminator {
-                if p.name == struct_name {
+            if let Terminator::Return(Some(Operand::Place(p))) = &block.terminator
+                && p.name == struct_name {
                     return true;
                 }
-            }
 
             // Check if flows through phi to return
             for inst in &block.instructions {
@@ -748,11 +742,10 @@ impl TextCodeGen {
                     // If phi dest is returned and this struct is one of phi inputs
                     if self.is_struct_returned_inner(func, &dest.name, visited) {
                         for (val, _) in values {
-                            if let Operand::Place(p) = val {
-                                if p.name == struct_name {
+                            if let Operand::Place(p) = val
+                                && p.name == struct_name {
                                     return true;
                                 }
-                            }
                         }
                     }
                 }
@@ -785,11 +778,10 @@ impl TextCodeGen {
         // 3. Values copied to parameters that might escape
         for block in &func.blocks {
             // Check terminator for returns
-            if let Terminator::Return(Some(Operand::Place(p))) = &block.terminator {
-                if struct_vars.contains(&p.name) {
+            if let Terminator::Return(Some(Operand::Place(p))) = &block.terminator
+                && struct_vars.contains(&p.name) {
                     escaped.insert(p.name.clone());
                 }
-            }
 
             // Check instructions for call arguments and assignments
             for inst in &block.instructions {
@@ -797,11 +789,10 @@ impl TextCodeGen {
                     // Calls: any struct passed as argument escapes
                     MirInst::Call { args, .. } => {
                         for arg in args {
-                            if let Operand::Place(p) = arg {
-                                if struct_vars.contains(&p.name) {
+                            if let Operand::Place(p) = arg
+                                && struct_vars.contains(&p.name) {
                                     escaped.insert(p.name.clone());
                                 }
-                            }
                         }
                     }
                     // Copy: if source is struct and dest might escape, source escapes
@@ -818,22 +809,20 @@ impl TextCodeGen {
                     // Phi: if any incoming value is struct and phi result might escape
                     MirInst::Phi { dest, values } => {
                         for (val, _) in values {
-                            if let Operand::Place(p) = val {
-                                if struct_vars.contains(&p.name) {
+                            if let Operand::Place(p) = val
+                                && struct_vars.contains(&p.name) {
                                     // If this phi is returned, the struct escapes
                                     // Mark it conservatively
                                     escaped.insert(p.name.clone());
                                 }
-                            }
                         }
                         // If dest is escaped, mark all incoming struct values
                         if escaped.contains(&dest.name) {
                             for (val, _) in values {
-                                if let Operand::Place(p) = val {
-                                    if struct_vars.contains(&p.name) {
+                                if let Operand::Place(p) = val
+                                    && struct_vars.contains(&p.name) {
                                         escaped.insert(p.name.clone());
                                     }
-                                }
                             }
                         }
                     }
@@ -1035,6 +1024,7 @@ impl TextCodeGen {
     }
 
     /// Emit a function definition with string table support
+    #[allow(clippy::too_many_arguments)]
     fn emit_function_with_strings(
         &self,
         out: &mut String,
@@ -1078,11 +1068,10 @@ impl TextCodeGen {
         // First pass: collect direct tuple sources (calls, TupleInit)
         for block in &func.blocks {
             for inst in &block.instructions {
-                if let MirInst::Call { dest: Some(d), func: fn_name, .. } = inst {
-                    if let Some(tuple_type) = tuple_functions.get(fn_name) {
+                if let MirInst::Call { dest: Some(d), func: fn_name, .. } = inst
+                    && let Some(tuple_type) = tuple_functions.get(fn_name) {
                         tuple_var_types.insert(d.name.clone(), tuple_type.clone());
                     }
-                }
                 // Also track TupleInit instructions - these create tuple values directly
                 if let MirInst::TupleInit { dest, elements } = inst {
                     let elem_types: Vec<&str> = elements.iter()
@@ -1099,17 +1088,15 @@ impl TextCodeGen {
             for block in &func.blocks {
                 for inst in &block.instructions {
                     // Track Copy instructions that copy from a tuple variable
-                    if let MirInst::Copy { dest, src } = inst {
-                        if !tuple_var_types.contains_key(&dest.name) {
-                            if let Some(tuple_type) = tuple_var_types.get(&src.name) {
+                    if let MirInst::Copy { dest, src } = inst
+                        && !tuple_var_types.contains_key(&dest.name)
+                            && let Some(tuple_type) = tuple_var_types.get(&src.name) {
                                 tuple_var_types.insert(dest.name.clone(), tuple_type.clone());
                                 changed = true;
                             }
-                        }
-                    }
                     // Track Phi instructions where any input is a tuple
-                    if let MirInst::Phi { dest, values } = inst {
-                        if !tuple_var_types.contains_key(&dest.name) {
+                    if let MirInst::Phi { dest, values } = inst
+                        && !tuple_var_types.contains_key(&dest.name) {
                             let tuple_type = values.iter().find_map(|(val, _)| {
                                 if let Operand::Place(p) = val {
                                     tuple_var_types.get(&p.name).cloned()
@@ -1122,7 +1109,6 @@ impl TextCodeGen {
                                 changed = true;
                             }
                         }
-                    }
                 }
             }
             if !changed {
@@ -1180,7 +1166,7 @@ impl TextCodeGen {
 
         // v0.51.27: Add sret parameter for struct return functions
         if is_sret {
-            params.insert(0, format!("ptr noalias sret(i8) %_sret"));
+            params.insert(0, "ptr noalias sret(i8) %_sret".to_string());
         }
 
         // Mark parameters as defined
@@ -1326,20 +1312,15 @@ impl TextCodeGen {
                         };
 
                         // Check if this value needs coercion (narrower than phi type)
-                        let needs_coerce = match (val_ty, phi_ty) {
-                            ("i32", "i64") => true,
-                            ("i1", "i64") | ("i1", "i32") => true,
-                            _ => false,
-                        };
+                        let needs_coerce = matches!((val_ty, phi_ty), ("i32", "i64") | ("i1", "i64") | ("i1", "i32"));
 
-                        if needs_coerce {
-                            if let Operand::Place(p) = val {
+                        if needs_coerce
+                            && let Operand::Place(p) = val {
                                 let key = (block.label.clone(), p.name.clone(), pred_label.clone());
                                 let temp_name = format!("_phi_sext_{}", coerce_counter);
                                 coerce_counter += 1;
                                 phi_coerce_map.insert(key, (temp_name, val_ty, phi_ty));
                             }
-                        }
                     }
                 }
             }
@@ -3899,7 +3880,7 @@ impl TextCodeGen {
 
                 // Helper to format operand with local variable loading
                 // Returns (value_string, actual_type)
-                let format_element_val = |out: &mut String, expected_ty: &'static str, actual_ty: &'static str, op: &Operand, idx: usize, name_counts: &mut HashMap<String, u32>| -> TextCodeGenResult<String> {
+                let format_element_val = |out: &mut String, _expected_ty: &'static str, actual_ty: &'static str, op: &Operand, idx: usize, name_counts: &mut HashMap<String, u32>| -> TextCodeGenResult<String> {
                     match op {
                         Operand::Place(p) if local_names.contains(&p.name) => {
                             // Load from alloca for local variables
@@ -4684,6 +4665,7 @@ impl TextCodeGen {
     }
 
     /// Emit a terminator
+    #[allow(clippy::too_many_arguments)]
     fn emit_terminator(
         &self,
         out: &mut String,
@@ -4800,10 +4782,10 @@ impl TextCodeGen {
                         writeln!(out, "  ; sret return - copy {} fields from {} to %_sret", num_fields, src_ptr)?;
                         for i in 0..num_fields {
                             let field_load = format!("_sret_f{}.{}.load", i, block_label);
-                            writeln!(out, "  %{} = getelementptr i64, ptr {}, i32 {}", format!("_sret_gep_src.{}.{}", i, block_label), src_ptr, i)?;
-                            writeln!(out, "  %{} = load i64, ptr %{}", field_load, format!("_sret_gep_src.{}.{}", i, block_label))?;
-                            writeln!(out, "  %{} = getelementptr i64, ptr %_sret, i32 {}", format!("_sret_gep_dst.{}.{}", i, block_label), i)?;
-                            writeln!(out, "  store i64 %{}, ptr %{}", field_load, format!("_sret_gep_dst.{}.{}", i, block_label))?;
+                            writeln!(out, "  %_sret_gep_src.{i}.{block_label} = getelementptr i64, ptr {src_ptr}, i32 {i}")?;
+                            writeln!(out, "  %{field_load} = load i64, ptr %_sret_gep_src.{i}.{block_label}")?;
+                            writeln!(out, "  %_sret_gep_dst.{i}.{block_label} = getelementptr i64, ptr %_sret, i32 {i}")?;
+                            writeln!(out, "  store i64 %{field_load}, ptr %_sret_gep_dst.{i}.{block_label}")?;
                         }
                     } else {
                         writeln!(out, "  ; sret return - value already in %_sret")?;

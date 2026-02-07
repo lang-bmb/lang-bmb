@@ -89,7 +89,7 @@ impl IncrementalVerifier {
 
         // Determine which functions need re-verification
         let functions_to_verify = self.identify_changed_functions(
-            old_cir.map(|p| extract_summaries(p)),
+            old_cir.map(extract_summaries),
             &new_summaries,
         );
 

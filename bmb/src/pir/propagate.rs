@@ -65,11 +65,13 @@ struct PropagationContext {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 struct FunctionSignature {
     preconditions: Vec<Proposition>,
     postconditions: Vec<Proposition>,
 }
 
+#[allow(dead_code)]
 impl PropagationContext {
     fn new() -> Self {
         Self {
@@ -120,7 +122,7 @@ impl PropagationContext {
 }
 
 /// Convert CIR program to PIR with proof propagation
-pub fn propagate_proofs(cir: &CirProgram, db: &ProofDatabase) -> PirProgram {
+pub fn propagate_proofs(cir: &CirProgram, _db: &ProofDatabase) -> PirProgram {
     let mut pir = PirProgram::new();
 
     // Build function signature map
@@ -164,7 +166,7 @@ fn propagate_function(
     ctx.function_signatures = signatures.clone();
 
     // Add parameter facts
-    for (i, param) in func.params.iter().enumerate() {
+    for param in func.params.iter() {
         // Add any constraints from preconditions that mention this parameter
         for fact in &entry_facts {
             if mentions_var(&fact.proposition, &param.name) {
@@ -758,7 +760,7 @@ fn expr_mentions_var(expr: &CirExpr, var: &str) -> bool {
 }
 
 /// Find bounds proof for array access
-fn find_bounds_proof(facts: &[ProvenFact], index: &CirExpr, array: &CirExpr) -> Option<ProvenFact> {
+fn find_bounds_proof(facts: &[ProvenFact], _index: &CirExpr, _array: &CirExpr) -> Option<ProvenFact> {
     facts.iter().find(|f| {
         matches!(&f.proposition, Proposition::InBounds { .. }) ||
         // Also check for explicit comparison facts
@@ -767,14 +769,14 @@ fn find_bounds_proof(facts: &[ProvenFact], index: &CirExpr, array: &CirExpr) -> 
 }
 
 /// Find non-null proof for pointer access
-fn find_null_proof(facts: &[ProvenFact], expr: &CirExpr) -> Option<ProvenFact> {
+fn find_null_proof(facts: &[ProvenFact], _expr: &CirExpr) -> Option<ProvenFact> {
     facts.iter().find(|f| {
         matches!(&f.proposition, Proposition::NonNull(_))
     }).cloned()
 }
 
 /// Find non-zero proof for division
-fn find_nonzero_proof(facts: &[ProvenFact], divisor: &CirExpr) -> Option<ProvenFact> {
+fn find_nonzero_proof(facts: &[ProvenFact], _divisor: &CirExpr) -> Option<ProvenFact> {
     facts.iter().find(|f| {
         match &f.proposition {
             Proposition::Compare { op: CompareOp::Ne, rhs, .. } => {

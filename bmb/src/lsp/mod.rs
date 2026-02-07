@@ -850,8 +850,8 @@ impl LanguageServer for Backend {
 
         // Check definitions (functions, structs, enums, etc.) with type info
         for def in &doc.definitions {
-            if def.name == word {
-                if let Some(type_str) = &def.type_str {
+            if def.name == word
+                && let Some(type_str) = &def.type_str {
                     let kind_str = match def.kind {
                         SymbolKind::Function => "Function",
                         SymbolKind::Struct => "Struct",
@@ -869,7 +869,6 @@ impl LanguageServer for Backend {
                         range: None,
                     }));
                 }
-            }
         }
 
         // Fallback: Check AST for user-defined symbols (legacy, for items without type_str)
@@ -1680,7 +1679,7 @@ fn format_expr(expr: &Expr) -> String {
             let arm_strs: Vec<String> = arms
                 .iter()
                 .map(|arm| {
-                    let binding = arm.binding.as_ref().map(|b| b.as_str()).unwrap_or("_");
+                    let binding = arm.binding.as_deref().unwrap_or("_");
                     format!("{} = {} => {{ ... }}", binding, format_expr(&arm.operation.node))
                 })
                 .collect();

@@ -329,6 +329,7 @@ pub type BuildResult<T> = Result<T, BuildError>;
 /// 1. BMB_STDLIB_PATH environment variable
 /// 2. packages/ relative to compiler executable
 /// 3. packages/ relative to current working directory
+///
 /// v0.60.260: Auto-detect prelude path for consistent prelude loading across commands
 pub fn auto_detect_prelude_path() -> Option<PathBuf> {
     // 1. Check BMB_STDLIB_PATH environment variable
@@ -340,8 +341,8 @@ pub fn auto_detect_prelude_path() -> Option<PathBuf> {
     }
 
     // 2. Check relative to compiler executable
-    if let Ok(exe_path) = std::env::current_exe() {
-        if let Some(exe_dir) = exe_path.parent() {
+    if let Ok(exe_path) = std::env::current_exe()
+        && let Some(exe_dir) = exe_path.parent() {
             // Check sibling packages/ directory (e.g., target/release/packages/)
             let packages_dir = exe_dir.join("packages");
             let prelude = packages_dir.join("bmb-core/src/prelude.bmb");
@@ -350,16 +351,14 @@ pub fn auto_detect_prelude_path() -> Option<PathBuf> {
             }
 
             // Check parent/../packages/ (e.g., from target/release -> project root)
-            if let Some(parent) = exe_dir.parent() {
-                if let Some(grandparent) = parent.parent() {
+            if let Some(parent) = exe_dir.parent()
+                && let Some(grandparent) = parent.parent() {
                     let prelude = grandparent.join("packages/bmb-core/src/prelude.bmb");
                     if prelude.exists() {
                         return Some(prelude);
                     }
                 }
-            }
         }
-    }
 
     // 3. Check relative to current working directory
     if let Ok(cwd) = std::env::current_dir() {
@@ -627,13 +626,11 @@ pub fn build(config: &BuildConfig) -> BuildResult<()> {
         }
 
         // v0.55: Save proof cache for incremental compilation
-        if config.proof_cache {
-            if let Err(e) = proof_db.save_to_file(&cache_path) {
-                if config.verbose {
+        if config.proof_cache
+            && let Err(e) = proof_db.save_to_file(&cache_path)
+                && config.verbose {
                     println!("  Warning: Failed to save proof cache: {}", e);
                 }
-            }
-        }
 
         if config.verbose {
             let total = cir_augmented + pir_augmented;

@@ -81,22 +81,20 @@ impl BoundsCheckElimination {
 
         // Check for derived bounds: index < len(array)
         // This requires knowing the array length variable
-        if let Some(len_var) = facts.get_array_len(array_var) {
-            if facts.implies_lt(index_var, &len_var) {
+        if let Some(len_var) = facts.get_array_len(array_var)
+            && facts.implies_lt(index_var, &len_var) {
                 return true;
             }
-        }
 
         // Check for index >= 0 && index < constant_len
-        if facts.has_lower_bound(index_var, 0) {
-            if let Some(upper) = facts.get_upper_bound(index_var) {
+        if facts.has_lower_bound(index_var, 0)
+            && let Some(upper) = facts.get_upper_bound(index_var) {
                 // If we know the array has at least `upper + 1` elements, we're safe
                 // This is a conservative check
                 if upper >= 0 {
                     return true;
                 }
             }
-        }
 
         false
     }
@@ -122,7 +120,7 @@ impl OptimizationPass for BoundsCheckElimination {
         // Look for index operations and check if bounds are proven
         for block in &mut func.blocks {
             for inst in &mut block.instructions {
-                if let MirInst::IndexLoad { dest, array, index, element_type } = inst {
+                if let MirInst::IndexLoad { dest: _, array, index, element_type: _ } = inst {
                     // Extract variable names
                     let array_name = &array.name;
                     let index_name = if let Operand::Place(p) = index {
@@ -296,12 +294,11 @@ impl OptimizationPass for DivisionCheckElimination {
         // Look for division operations
         for block in &mut func.blocks {
             for inst in &mut block.instructions {
-                if let MirInst::BinOp { op: MirBinOp::Div | MirBinOp::Mod, rhs, .. } = inst {
-                    if self.is_proven_nonzero(rhs, &facts) {
+                if let MirInst::BinOp { op: MirBinOp::Div | MirBinOp::Mod, rhs, .. } = inst
+                    && self.is_proven_nonzero(rhs, &facts) {
                         // Division check can be eliminated
                         changed = true;
                     }
-                }
             }
         }
 
@@ -443,8 +440,8 @@ impl OptimizationPass for ProofUnreachableElimination {
             }
 
             // Try to simplify branch
-            if let Terminator::Branch { cond, then_label, else_label } = &block.terminator {
-                if let Some(always_true) = self.evaluate_condition(cond, &facts, &local_defs) {
+            if let Terminator::Branch { cond, then_label, else_label } = &block.terminator
+                && let Some(always_true) = self.evaluate_condition(cond, &facts, &local_defs) {
                     let target = if always_true {
                         then_label.clone()
                     } else {
@@ -453,7 +450,6 @@ impl OptimizationPass for ProofUnreachableElimination {
                     block.terminator = Terminator::Goto(target);
                     changed = true;
                 }
-            }
         }
 
         // Second pass: remove unreachable blocks
@@ -666,11 +662,9 @@ impl ProvenFactSet {
         // Transitive through bounds
         if let (Some((_, Some(upper))), Some((Some(lower), _))) =
             (self.var_bounds.get(lhs), self.var_bounds.get(rhs))
-        {
-            if *upper < *lower {
+            && *upper < *lower {
                 return true;
             }
-        }
 
         false
     }

@@ -91,9 +91,7 @@ pub fn extract_function_summary(func: &CirFunction) -> FunctionSummary {
 fn infer_termination(func: &CirFunction) -> TerminationStatus {
     // Simple heuristic: if function has no loops, it terminates
     // More sophisticated analysis would require loop variant analysis
-    if func.effects.diverges {
-        TerminationStatus::MayDiverge
-    } else if has_unbounded_loop(&func.body) {
+    if func.effects.diverges || has_unbounded_loop(&func.body) {
         TerminationStatus::MayDiverge
     } else {
         TerminationStatus::Terminating
