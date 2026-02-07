@@ -265,3 +265,62 @@ fn dirs_home() -> Option<PathBuf> {
         std::env::var("HOME").ok().map(PathBuf::from)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_repl_new() {
+        let repl = Repl::new();
+        assert!(repl.is_ok());
+    }
+
+    #[test]
+    fn test_handle_command_quit() {
+        let mut repl = Repl::new().unwrap();
+        assert!(repl.handle_command(":quit"));
+        assert!(repl.handle_command(":q"));
+        assert!(repl.handle_command(":exit"));
+    }
+
+    #[test]
+    fn test_handle_command_help() {
+        let mut repl = Repl::new().unwrap();
+        assert!(!repl.handle_command(":help"));
+        assert!(!repl.handle_command(":h"));
+        assert!(!repl.handle_command(":?"));
+    }
+
+    #[test]
+    fn test_handle_command_clear() {
+        let mut repl = Repl::new().unwrap();
+        assert!(!repl.handle_command(":clear"));
+    }
+
+    #[test]
+    fn test_handle_command_unknown() {
+        let mut repl = Repl::new().unwrap();
+        assert!(!repl.handle_command(":unknown"));
+    }
+
+    #[test]
+    fn test_dirs_home_returns_some() {
+        // On any real system, HOME or USERPROFILE should be set
+        let home = dirs_home();
+        assert!(home.is_some());
+    }
+
+    #[test]
+    fn test_repl_default() {
+        let repl = Repl::default();
+        // Just verify it doesn't panic
+        assert!(repl.history_path.is_some());
+    }
+
+    #[test]
+    fn test_constants() {
+        assert_eq!(PROMPT, "> ");
+        assert_eq!(HISTORY_FILE, ".bmb_history");
+    }
+}

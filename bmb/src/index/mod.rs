@@ -844,10 +844,337 @@ pub fn read_index(project_root: &Path) -> std::io::Result<ProjectIndex> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ast::Spanned;
+
+    fn sp<T>(node: T) -> Spanned<T> {
+        Spanned::new(node, crate::ast::Span::new(0, 0))
+    }
+
+    /// Parse BMB source to a Program AST
+    fn parse_source(source: &str) -> Program {
+        let tokens = crate::lexer::tokenize(source).expect("tokenize failed");
+        crate::parser::parse("<test>", source, tokens).expect("parse failed")
+    }
+
+    // --- IndexGenerator construction ---
 
     #[test]
-    fn test_index_generator() {
-        let generator = IndexGenerator::new("test-project");
-        assert_eq!(generator.files_indexed, 0);
+    fn test_index_generator_new() {
+        let ig = IndexGenerator::new("test-project");
+        assert_eq!(ig.project_name, "test-project");
+        assert_eq!(ig.files_indexed, 0);
+        assert!(ig.symbols.is_empty());
+        assert!(ig.functions.is_empty());
+        assert!(ig.types.is_empty());
+    }
+
+    // --- index_file: functions ---
+
+    #[test]
+    fn test_index_function() {
+        let program = parse_source("fn add(a: i64, b: i64) -> i64 = a + b;");
+        let mut ig = IndexGenerator::new("test");
+        ig.index_file("test.bmb", &program);
+
+        assert_eq!(ig.files_indexed, 1);
+        assert_eq!(ig.symbols.len(), 1);
+        assert_eq!(ig.symbols[0].name, "add");
+        assert_eq!(ig.symbols[0].kind, SymbolKind::Function);
+        assert!(!ig.symbols[0].is_pub);
+
+        assert_eq!(ig.functions.len(), 1);
+        assert_eq!(ig.functions[0].name, "add");
+        assert_eq!(ig.functions[0].signature.params.len(), 2);
+        assert_eq!(ig.functions[0].signature.params[0].name, "a");
+        assert_eq!(ig.functions[0].signature.params[0].ty, "i64");
+        assert_eq!(ig.functions[0].signature.return_type, "i64");
+    }
+
+    #[test]
+    fn test_index_pub_function() {
+        let program = parse_source("pub fn greet() -> () = println(42);");
+        let mut ig = IndexGenerator::new("test");
+        ig.index_file("test.bmb", &program);
+
+        assert!(ig.symbols[0].is_pub);
+        assert!(ig.functions[0].is_pub);
+    }
+
+    // --- index_file: structs ---
+
+    #[test]
+    fn test_index_struct() {
+        let program = parse_source("struct Point { x: i64, y: i64 }");
+        let mut ig = IndexGenerator::new("test");
+        ig.index_file("test.bmb", &program);
+
+        assert_eq!(ig.symbols.len(), 1);
+        assert_eq!(ig.symbols[0].name, "Point");
+        assert_eq!(ig.symbols[0].kind, SymbolKind::Struct);
+
+        assert_eq!(ig.types.len(), 1);
+        assert_eq!(ig.types[0].name, "Point");
+        assert_eq!(ig.types[0].kind, "struct");
+        assert_eq!(ig.types[0].fields.len(), 2);
+        assert_eq!(ig.types[0].fields[0].name, "x");
+        assert_eq!(ig.types[0].fields[0].ty, "i64");
+    }
+
+    // --- index_file: enums ---
+
+    #[test]
+    fn test_index_enum() {
+        let program = parse_source("enum Color { Red, Green, Blue }");
+        let mut ig = IndexGenerator::new("test");
+        ig.index_file("test.bmb", &program);
+
+        assert_eq!(ig.symbols[0].name, "Color");
+        assert_eq!(ig.symbols[0].kind, SymbolKind::Enum);
+        assert_eq!(ig.types[0].kind, "enum");
+        assert_eq!(ig.types[0].variants, vec!["Red", "Green", "Blue"]);
+    }
+
+    // --- index_file: multiple items ---
+
+    #[test]
+    fn test_index_multiple_items() {
+        let source = r#"
+            struct Point { x: i64, y: i64 }
+            fn dist(p: Point) -> i64 = p.x + p.y;
+            enum Dir { Up, Down }
+        "#;
+        let program = parse_source(source);
+        let mut ig = IndexGenerator::new("test");
+        ig.index_file("test.bmb", &program);
+
+        assert_eq!(ig.symbols.len(), 3);
+        assert_eq!(ig.functions.len(), 1);
+        assert_eq!(ig.types.len(), 2);
+    }
+
+    // --- body analysis ---
+
+    #[test]
+    fn test_body_analysis_recursive() {
+        let program = parse_source("fn fact(n: i64) -> i64 = if n == 0 { 1 } else { n * fact(n - 1) };");
+        let mut ig = IndexGenerator::new("test");
+        ig.index_file("test.bmb", &program);
+
+        let body_info = ig.functions[0].body_info.as_ref().unwrap();
+        assert!(body_info.recursive);
+        assert!(body_info.calls.contains(&"fact".to_string()));
+    }
+
+    #[test]
+    fn test_body_analysis_non_recursive() {
+        let program = parse_source("fn add(a: i64, b: i64) -> i64 = a + b;");
+        let mut ig = IndexGenerator::new("test");
+        ig.index_file("test.bmb", &program);
+
+        let body_info = ig.functions[0].body_info.as_ref().unwrap();
+        assert!(!body_info.recursive);
+        assert!(!body_info.has_loop);
+    }
+
+    #[test]
+    fn test_body_analysis_with_calls() {
+        let program = parse_source("fn main() -> i64 = let x = abs(5); min(x, 10);");
+        let mut ig = IndexGenerator::new("test");
+        ig.index_file("test.bmb", &program);
+
+        let body_info = ig.functions[0].body_info.as_ref().unwrap();
+        assert!(body_info.calls.contains(&"abs".to_string()));
+        assert!(body_info.calls.contains(&"min".to_string()));
+    }
+
+    // --- contains_loop ---
+
+    #[test]
+    fn test_contains_loop_while() {
+        let ig = IndexGenerator::new("test");
+        let expr = Expr::While {
+            cond: Box::new(sp(Expr::BoolLit(true))),
+            invariant: None,
+            body: Box::new(sp(Expr::Unit)),
+        };
+        assert!(ig.contains_loop(&expr));
+    }
+
+    #[test]
+    fn test_contains_loop_no_loop() {
+        let ig = IndexGenerator::new("test");
+        let expr = Expr::IntLit(42);
+        assert!(!ig.contains_loop(&expr));
+    }
+
+    // --- contains_ret ---
+
+    #[test]
+    fn test_contains_ret_direct() {
+        let ig = IndexGenerator::new("test");
+        assert!(ig.contains_ret(&Expr::Ret));
+    }
+
+    #[test]
+    fn test_contains_ret_nested() {
+        let ig = IndexGenerator::new("test");
+        let expr = Expr::Binary {
+            op: crate::ast::BinOp::Gt,
+            left: Box::new(sp(Expr::Ret)),
+            right: Box::new(sp(Expr::IntLit(0))),
+        };
+        assert!(ig.contains_ret(&expr));
+    }
+
+    #[test]
+    fn test_contains_ret_absent() {
+        let ig = IndexGenerator::new("test");
+        assert!(!ig.contains_ret(&Expr::IntLit(42)));
+    }
+
+    // --- format_type ---
+
+    #[test]
+    fn test_format_type_primitives() {
+        let ig = IndexGenerator::new("test");
+        assert_eq!(ig.format_type(&Type::I64), "i64");
+        assert_eq!(ig.format_type(&Type::Bool), "bool");
+        assert_eq!(ig.format_type(&Type::String), "String");
+        assert_eq!(ig.format_type(&Type::Unit), "()");
+        assert_eq!(ig.format_type(&Type::Never), "!");
+    }
+
+    #[test]
+    fn test_format_type_compound() {
+        let ig = IndexGenerator::new("test");
+        assert_eq!(ig.format_type(&Type::Array(Box::new(Type::I64), 5)), "[i64; 5]");
+        assert_eq!(ig.format_type(&Type::Ref(Box::new(Type::Bool))), "&bool");
+        assert_eq!(ig.format_type(&Type::Nullable(Box::new(Type::I64))), "i64?");
+        assert_eq!(ig.format_type(&Type::Ptr(Box::new(Type::I64))), "*i64");
+    }
+
+    // --- contracts ---
+
+    #[test]
+    fn test_extract_contracts_with_pre() {
+        let program = parse_source("fn safe_div(a: i64, b: i64) -> i64 pre b != 0 = a;");
+        let mut ig = IndexGenerator::new("test");
+        ig.index_file("test.bmb", &program);
+
+        let contracts = ig.functions[0].contracts.as_ref().unwrap();
+        assert!(contracts.pre.is_some());
+    }
+
+    #[test]
+    fn test_extract_contracts_none() {
+        let program = parse_source("fn add(a: i64, b: i64) -> i64 = a + b;");
+        let mut ig = IndexGenerator::new("test");
+        ig.index_file("test.bmb", &program);
+
+        assert!(ig.functions[0].contracts.is_none());
+    }
+
+    // --- generate ---
+
+    #[test]
+    fn test_generate_manifest() {
+        let program = parse_source(r#"
+            struct Point { x: i64, y: i64 }
+            fn add(a: i64, b: i64) -> i64 = a + b;
+            enum Color { Red, Green }
+        "#);
+        let mut ig = IndexGenerator::new("myproject");
+        ig.index_file("main.bmb", &program);
+        let index = ig.generate();
+
+        assert_eq!(index.manifest.project, "myproject");
+        assert_eq!(index.manifest.files, 1);
+        assert_eq!(index.manifest.functions, 1);
+        assert_eq!(index.manifest.structs, 1);
+        assert_eq!(index.manifest.enums, 1);
+        assert_eq!(index.manifest.types, 2);
+    }
+
+    // --- ProofIndex ---
+
+    #[test]
+    fn test_proof_index_new() {
+        let idx = ProofIndex::new(true, Some("4.12.0".to_string()));
+        assert!(idx.z3_available);
+        assert_eq!(idx.z3_version, Some("4.12.0".to_string()));
+        assert!(idx.proofs.is_empty());
+    }
+
+    #[test]
+    fn test_proof_index_add_proof() {
+        let mut idx = ProofIndex::new(true, None);
+        idx.add_proof(ProofEntry {
+            name: "safe_div".to_string(),
+            file: "test.bmb".to_string(),
+            line: 1,
+            pre_status: Some(ProofStatus::Verified),
+            post_status: None,
+            counterexample: None,
+            verify_time_ms: Some(42),
+            verified_at: None,
+        });
+        assert_eq!(idx.proofs.len(), 1);
+        assert_eq!(idx.proofs[0].pre_status, Some(ProofStatus::Verified));
+    }
+
+    #[test]
+    fn test_proof_index_update_existing() {
+        let mut idx = ProofIndex::new(true, None);
+        idx.add_proof(ProofEntry {
+            name: "f".to_string(),
+            file: "a.bmb".to_string(),
+            line: 1,
+            pre_status: Some(ProofStatus::Pending),
+            post_status: None,
+            counterexample: None,
+            verify_time_ms: None,
+            verified_at: None,
+        });
+        idx.add_proof(ProofEntry {
+            name: "f".to_string(),
+            file: "a.bmb".to_string(),
+            line: 1,
+            pre_status: Some(ProofStatus::Verified),
+            post_status: None,
+            counterexample: None,
+            verify_time_ms: Some(100),
+            verified_at: None,
+        });
+        // Should update, not duplicate
+        assert_eq!(idx.proofs.len(), 1);
+        assert_eq!(idx.proofs[0].pre_status, Some(ProofStatus::Verified));
+    }
+
+    // --- is_false helper ---
+
+    #[test]
+    fn test_is_false_helper() {
+        assert!(is_false(&false));
+        assert!(!is_false(&true));
+    }
+
+    // --- SymbolKind serde ---
+
+    #[test]
+    fn test_symbol_kind_serde() {
+        let json = serde_json::to_string(&SymbolKind::Function).unwrap();
+        assert_eq!(json, "\"function\"");
+        let parsed: SymbolKind = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed, SymbolKind::Function);
+    }
+
+    // --- ProofStatus serde ---
+
+    #[test]
+    fn test_proof_status_serde() {
+        let json = serde_json::to_string(&ProofStatus::Verified).unwrap();
+        assert_eq!(json, "\"verified\"");
+        let json2 = serde_json::to_string(&ProofStatus::Failed).unwrap();
+        assert_eq!(json2, "\"failed\"");
     }
 }
