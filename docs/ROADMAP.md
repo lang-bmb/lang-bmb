@@ -8,11 +8,11 @@
 
 | 항목 | 상태 | 비고 |
 |------|------|------|
-| **버전** | v0.88.10 | Self-Hosting (Alpha) |
-| **단계** | Alpha | Concurrency 완료 → **Alpha (v0.88)** → Beta (v0.90) → RC (v0.98) |
+| **버전** | v0.89.0 | Quality Gate (Alpha) |
+| **단계** | Alpha | Concurrency 완료 → **Alpha (v0.89)** → Beta (v0.90) → RC (v0.98) |
 | **Bootstrap** | ✅ 3-Stage 완료 | Stage 1: ~0.55s (--fast-compile) |
 | **Benchmarks** | ✅ 18/30 BMB > C | 60% C보다 빠름 |
-| **Tests** | ✅ 334개 통과 | 243 + 68 + 23 (cargo) + BMB 테스트 5/5 |
+| **Tests** | ✅ 413개 통과 | 260 + 130 + 23 (cargo) + BMB 테스트 5/5 |
 | **Stability** | ✅ STABILITY.md | 언어/API 동결 문서화 |
 | **동시성 지원** | ✅ 부트스트랩 완료 | 토큰/타입/MIR/코드젠/extern 선언 완료 |
 | **Golden Binary** | ✅ v0.88.10 | Rust 없이 부트스트랩 가능 |
@@ -184,13 +184,17 @@ select {
 | 컴파일러 100% BMB 전환 | 📋 | Rust 의존성 제거 (현재: IR 생성만 BMB, native build는 스크립트 의존) |
 | 개발 도구 BMB 전환 | 📋 | gotgan, LSP, Formatter |
 
-#### v0.89: 내부 품질 게이트
+#### v0.89: 내부 품질 게이트 📋 진행 중
 
-| 태스크 | 설명 |
-|--------|------|
-| 코드 커버리지 > 80% | 테스트 범위 확대 |
-| 퍼징 테스트 | libFuzzer 기반 입력 검증 |
-| 메모리 안전성 검증 | AddressSanitizer 통과 |
+| 태스크 | 상태 | 설명 |
+|--------|------|------|
+| 문법 키워드-메서드 수정 | ✅ | v0.89: `spawn` 등 키워드를 `.method()` 위치에서 사용 가능 (MethodName 프로덕션 추가) |
+| MIR 후조건 Ret 추출 | ✅ | v0.89: `post ret >= 0` 패턴에서 ContractFact::ReturnCmp/ReturnVarCmp 추출 |
+| MIR 최적화 테스트 | ✅ | v0.89: 6개 미테스트 패스 커버 (CopyProp, CSE, SimplifyBranches, UnreachableBlock, PhiSimpl, BlockMerging) — 43개 테스트 |
+| 코드젠 라운드트립 테스트 | ✅ | v0.89: 12개 LLVM IR 검증 테스트 (최적화 효과 포함: 상수 접기, TCO→루프, 계약 제거, DCE) |
+| 코드 커버리지 > 80% | 📋 | 테스트 범위 확대 |
+| 퍼징 테스트 | 📋 | libFuzzer 기반 입력 검증 |
+| 메모리 안전성 검증 | 📋 | AddressSanitizer 통과 |
 
 ---
 
