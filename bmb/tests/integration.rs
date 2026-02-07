@@ -686,3 +686,56 @@ fn test_modulo() {
 fn test_is_even() {
     assert!(type_checks("fn is_even_mod(n: i64) -> bool = n % 2 == 0;"));
 }
+
+// ============================================
+// Concurrency Type-Check Tests (v0.70-v0.85)
+// ============================================
+// These tests verify that all concurrency test files
+// in bmb/tests/concurrency/ parse and type-check correctly.
+
+/// Helper to type-check a BMB file from disk
+fn check_file(path: &str) -> bool {
+    let source = match std::fs::read_to_string(path) {
+        Ok(s) => s,
+        Err(_) => return false,
+    };
+    check_program(&source).is_ok()
+}
+
+macro_rules! concurrency_typecheck_test {
+    ($name:ident, $file:expr) => {
+        #[test]
+        fn $name() {
+            let path = concat!("tests/concurrency/", $file);
+            assert!(
+                check_file(path),
+                "Type-check failed for {}",
+                path
+            );
+        }
+    };
+}
+
+concurrency_typecheck_test!(test_concurrency_spawn_basic, "spawn_basic.bmb");
+concurrency_typecheck_test!(test_concurrency_mutex_basic, "mutex_basic.bmb");
+concurrency_typecheck_test!(test_concurrency_mutex_threaded, "mutex_threaded.bmb");
+concurrency_typecheck_test!(test_concurrency_atomic_basic, "atomic_basic.bmb");
+concurrency_typecheck_test!(test_concurrency_channel_basic, "channel_basic.bmb");
+concurrency_typecheck_test!(test_concurrency_channel_close_basic, "channel_close_basic.bmb");
+concurrency_typecheck_test!(test_concurrency_channel_iter_basic, "channel_iter_basic.bmb");
+concurrency_typecheck_test!(test_concurrency_rwlock_basic, "rwlock_basic.bmb");
+concurrency_typecheck_test!(test_concurrency_barrier_basic, "barrier_basic.bmb");
+concurrency_typecheck_test!(test_concurrency_condvar_basic, "condvar_basic.bmb");
+concurrency_typecheck_test!(test_concurrency_future_basic, "future_basic.bmb");
+concurrency_typecheck_test!(test_concurrency_async_fn_basic, "async_fn_basic.bmb");
+concurrency_typecheck_test!(test_concurrency_arc_basic, "arc_basic.bmb");
+concurrency_typecheck_test!(test_concurrency_try_recv_basic, "try_recv_basic.bmb");
+concurrency_typecheck_test!(test_concurrency_recv_timeout_basic, "recv_timeout_basic.bmb");
+concurrency_typecheck_test!(test_concurrency_send_timeout_basic, "send_timeout_basic.bmb");
+concurrency_typecheck_test!(test_concurrency_executor_basic, "executor_basic.bmb");
+concurrency_typecheck_test!(test_concurrency_select_basic, "select_basic.bmb");
+concurrency_typecheck_test!(test_concurrency_select_multi, "select_multi.bmb");
+concurrency_typecheck_test!(test_concurrency_async_io_basic, "async_io_basic.bmb");
+concurrency_typecheck_test!(test_concurrency_async_socket_basic, "async_socket_basic.bmb");
+concurrency_typecheck_test!(test_concurrency_thread_pool_basic, "thread_pool_basic.bmb");
+concurrency_typecheck_test!(test_concurrency_scoped_threads_basic, "scoped_threads_basic.bmb");
