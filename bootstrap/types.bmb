@@ -1759,6 +1759,64 @@ fn builtin_thread_scope_sig() -> i64 = 2 * 100 + 0;
 fn builtin_block_on_sig() -> i64 = 2 * 100 + 1;
 fn builtin_block_on_p1() -> i64 = type_i64();  // Future as i64 handle
 
+// v0.88.10: Complete concurrency builtins
+// Mutex operations
+fn builtin_mutex_lock_sig() -> i64 = 2 * 100 + 1;     // i64 mutex_lock(handle) -> locked_value
+fn builtin_mutex_unlock_sig() -> i64 = 6 * 100 + 2;   // void mutex_unlock(handle, new_value)
+fn builtin_mutex_try_lock_sig() -> i64 = 2 * 100 + 1;  // i64 mutex_try_lock(handle)
+fn builtin_mutex_free_sig() -> i64 = 6 * 100 + 1;     // void mutex_free(handle)
+// Channel operations
+fn builtin_channel_send_sig() -> i64 = 6 * 100 + 2;   // void channel_send(sender, value)
+fn builtin_channel_recv_sig() -> i64 = 2 * 100 + 1;   // i64 channel_recv(receiver)
+fn builtin_channel_try_send_sig() -> i64 = 2 * 100 + 2; // i64 channel_try_send(sender, value)
+fn builtin_channel_try_recv_sig() -> i64 = 2 * 100 + 1; // i64 channel_try_recv(receiver)
+fn builtin_channel_recv_timeout_sig() -> i64 = 2 * 100 + 2; // i64 channel_recv_timeout(recv, ms)
+fn builtin_channel_send_timeout_sig() -> i64 = 2 * 100 + 3; // i64 channel_send_timeout(send, val, ms)
+fn builtin_channel_close_sig() -> i64 = 6 * 100 + 1;  // void channel_close(sender)
+fn builtin_channel_is_closed_sig() -> i64 = 2 * 100 + 1; // i64 channel_is_closed(receiver)
+fn builtin_channel_recv_opt_sig() -> i64 = 2 * 100 + 1; // i64 channel_recv_opt(receiver)
+fn builtin_sender_clone_sig() -> i64 = 2 * 100 + 1;   // i64 sender_clone(sender)
+// Arc operations
+fn builtin_arc_new_sig() -> i64 = 2 * 100 + 1;
+fn builtin_arc_clone_sig() -> i64 = 2 * 100 + 1;
+fn builtin_arc_get_sig() -> i64 = 2 * 100 + 1;
+fn builtin_arc_drop_sig() -> i64 = 6 * 100 + 1;
+fn builtin_arc_strong_count_sig() -> i64 = 2 * 100 + 1;
+// RwLock operations
+fn builtin_rwlock_new_sig() -> i64 = 2 * 100 + 1;
+fn builtin_rwlock_read_sig() -> i64 = 2 * 100 + 1;
+fn builtin_rwlock_read_unlock_sig() -> i64 = 6 * 100 + 1;
+fn builtin_rwlock_write_sig() -> i64 = 2 * 100 + 1;
+fn builtin_rwlock_write_unlock_sig() -> i64 = 6 * 100 + 2;
+fn builtin_rwlock_free_sig() -> i64 = 6 * 100 + 1;
+// Barrier operations
+fn builtin_barrier_new_sig() -> i64 = 2 * 100 + 1;
+fn builtin_barrier_wait_sig() -> i64 = 2 * 100 + 1;
+fn builtin_barrier_free_sig() -> i64 = 6 * 100 + 1;
+// Condvar operations
+fn builtin_condvar_new_sig() -> i64 = 2 * 100 + 0;
+fn builtin_condvar_wait_sig() -> i64 = 2 * 100 + 2;
+fn builtin_condvar_notify_one_sig() -> i64 = 6 * 100 + 1;
+fn builtin_condvar_notify_all_sig() -> i64 = 6 * 100 + 1;
+fn builtin_condvar_free_sig() -> i64 = 6 * 100 + 1;
+// Scope operations
+fn builtin_scope_new_sig() -> i64 = 2 * 100 + 0;
+fn builtin_scope_spawn_sig() -> i64 = 6 * 100 + 2;
+fn builtin_scope_wait_sig() -> i64 = 6 * 100 + 1;
+// ThreadPool operations (pool_new already exists)
+fn builtin_thread_pool_execute_sig() -> i64 = 6 * 100 + 2;
+fn builtin_thread_pool_join_sig() -> i64 = 6 * 100 + 1;
+fn builtin_thread_pool_shutdown_sig() -> i64 = 6 * 100 + 1;
+// Async I/O operations
+fn builtin_async_file_open_sig() -> i64 = 2 * 100 + 1;
+fn builtin_async_file_read_sig() -> i64 = 2 * 100 + 1;
+fn builtin_async_file_write_sig() -> i64 = 6 * 100 + 2;
+fn builtin_async_file_close_sig() -> i64 = 6 * 100 + 1;
+fn builtin_async_socket_connect_sig() -> i64 = 2 * 100 + 2;
+fn builtin_async_socket_read_sig() -> i64 = 2 * 100 + 1;
+fn builtin_async_socket_write_sig() -> i64 = 6 * 100 + 2;
+fn builtin_async_socket_close_sig() -> i64 = 6 * 100 + 1;
+
 // Lookup builtin function by name, return signature or 0 if not found
 fn lookup_builtin(name: String) -> i64 =
     if name == "println" { builtin_println_sig() }
@@ -1776,6 +1834,54 @@ fn lookup_builtin(name: String) -> i64 =
     else if name == "thread_pool_new" { builtin_thread_pool_new_sig() }
     else if name == "thread_scope" { builtin_thread_scope_sig() }
     else if name == "block_on" { builtin_block_on_sig() }
+    // v0.88.10: Complete concurrency builtins
+    else if name == "mutex_lock" { builtin_mutex_lock_sig() }
+    else if name == "mutex_unlock" { builtin_mutex_unlock_sig() }
+    else if name == "mutex_try_lock" { builtin_mutex_try_lock_sig() }
+    else if name == "mutex_free" { builtin_mutex_free_sig() }
+    else if name == "channel_send" { builtin_channel_send_sig() }
+    else if name == "channel_recv" { builtin_channel_recv_sig() }
+    else if name == "channel_try_send" { builtin_channel_try_send_sig() }
+    else if name == "channel_try_recv" { builtin_channel_try_recv_sig() }
+    else if name == "channel_recv_timeout" { builtin_channel_recv_timeout_sig() }
+    else if name == "channel_send_timeout" { builtin_channel_send_timeout_sig() }
+    else if name == "channel_close" { builtin_channel_close_sig() }
+    else if name == "channel_is_closed" { builtin_channel_is_closed_sig() }
+    else if name == "channel_recv_opt" { builtin_channel_recv_opt_sig() }
+    else if name == "sender_clone" { builtin_sender_clone_sig() }
+    else if name == "arc_new" { builtin_arc_new_sig() }
+    else if name == "arc_clone" { builtin_arc_clone_sig() }
+    else if name == "arc_get" { builtin_arc_get_sig() }
+    else if name == "arc_drop" { builtin_arc_drop_sig() }
+    else if name == "arc_strong_count" { builtin_arc_strong_count_sig() }
+    else if name == "rwlock_new" { builtin_rwlock_new_sig() }
+    else if name == "rwlock_read" { builtin_rwlock_read_sig() }
+    else if name == "rwlock_read_unlock" { builtin_rwlock_read_unlock_sig() }
+    else if name == "rwlock_write" { builtin_rwlock_write_sig() }
+    else if name == "rwlock_write_unlock" { builtin_rwlock_write_unlock_sig() }
+    else if name == "rwlock_free" { builtin_rwlock_free_sig() }
+    else if name == "barrier_new" { builtin_barrier_new_sig() }
+    else if name == "barrier_wait" { builtin_barrier_wait_sig() }
+    else if name == "barrier_free" { builtin_barrier_free_sig() }
+    else if name == "condvar_new" { builtin_condvar_new_sig() }
+    else if name == "condvar_wait" { builtin_condvar_wait_sig() }
+    else if name == "condvar_notify_one" { builtin_condvar_notify_one_sig() }
+    else if name == "condvar_notify_all" { builtin_condvar_notify_all_sig() }
+    else if name == "condvar_free" { builtin_condvar_free_sig() }
+    else if name == "scope_new" { builtin_scope_new_sig() }
+    else if name == "scope_spawn" { builtin_scope_spawn_sig() }
+    else if name == "scope_wait" { builtin_scope_wait_sig() }
+    else if name == "thread_pool_execute" { builtin_thread_pool_execute_sig() }
+    else if name == "thread_pool_join" { builtin_thread_pool_join_sig() }
+    else if name == "thread_pool_shutdown" { builtin_thread_pool_shutdown_sig() }
+    else if name == "async_file_open" { builtin_async_file_open_sig() }
+    else if name == "async_file_read" { builtin_async_file_read_sig() }
+    else if name == "async_file_write" { builtin_async_file_write_sig() }
+    else if name == "async_file_close" { builtin_async_file_close_sig() }
+    else if name == "async_socket_connect" { builtin_async_socket_connect_sig() }
+    else if name == "async_socket_read" { builtin_async_socket_read_sig() }
+    else if name == "async_socket_write" { builtin_async_socket_write_sig() }
+    else if name == "async_socket_close" { builtin_async_socket_close_sig() }
     else { 0 };
 
 // Get return type from signature
@@ -1801,6 +1907,52 @@ fn builtin_param_type(name: String, idx: i64) -> i64 =
     else if name == "thread_join" and idx == 0 { builtin_thread_join_p1() }
     else if name == "thread_pool_new" and idx == 0 { builtin_thread_pool_new_p1() }
     else if name == "block_on" and idx == 0 { builtin_block_on_p1() }
+    // v0.88.10: All concurrency params are i64
+    else if name == "mutex_lock" and idx == 0 { type_i64() }
+    else if name == "mutex_unlock" and idx < 2 { type_i64() }
+    else if name == "mutex_try_lock" and idx == 0 { type_i64() }
+    else if name == "mutex_free" and idx == 0 { type_i64() }
+    else if name == "channel_send" and idx < 2 { type_i64() }
+    else if name == "channel_recv" and idx == 0 { type_i64() }
+    else if name == "channel_try_send" and idx < 2 { type_i64() }
+    else if name == "channel_try_recv" and idx == 0 { type_i64() }
+    else if name == "channel_recv_timeout" and idx < 2 { type_i64() }
+    else if name == "channel_send_timeout" and idx < 3 { type_i64() }
+    else if name == "channel_close" and idx == 0 { type_i64() }
+    else if name == "channel_is_closed" and idx == 0 { type_i64() }
+    else if name == "channel_recv_opt" and idx == 0 { type_i64() }
+    else if name == "sender_clone" and idx == 0 { type_i64() }
+    else if name == "arc_new" and idx == 0 { type_i64() }
+    else if name == "arc_clone" and idx == 0 { type_i64() }
+    else if name == "arc_get" and idx == 0 { type_i64() }
+    else if name == "arc_drop" and idx == 0 { type_i64() }
+    else if name == "arc_strong_count" and idx == 0 { type_i64() }
+    else if name == "rwlock_new" and idx == 0 { type_i64() }
+    else if name == "rwlock_read" and idx == 0 { type_i64() }
+    else if name == "rwlock_read_unlock" and idx == 0 { type_i64() }
+    else if name == "rwlock_write" and idx == 0 { type_i64() }
+    else if name == "rwlock_write_unlock" and idx < 2 { type_i64() }
+    else if name == "rwlock_free" and idx == 0 { type_i64() }
+    else if name == "barrier_new" and idx == 0 { type_i64() }
+    else if name == "barrier_wait" and idx == 0 { type_i64() }
+    else if name == "barrier_free" and idx == 0 { type_i64() }
+    else if name == "condvar_wait" and idx < 2 { type_i64() }
+    else if name == "condvar_notify_one" and idx == 0 { type_i64() }
+    else if name == "condvar_notify_all" and idx == 0 { type_i64() }
+    else if name == "condvar_free" and idx == 0 { type_i64() }
+    else if name == "scope_spawn" and idx < 2 { type_i64() }
+    else if name == "scope_wait" and idx == 0 { type_i64() }
+    else if name == "thread_pool_execute" and idx < 2 { type_i64() }
+    else if name == "thread_pool_join" and idx == 0 { type_i64() }
+    else if name == "thread_pool_shutdown" and idx == 0 { type_i64() }
+    else if name == "async_file_open" and idx == 0 { type_i64() }
+    else if name == "async_file_read" and idx == 0 { type_i64() }
+    else if name == "async_file_write" and idx < 2 { type_i64() }
+    else if name == "async_file_close" and idx == 0 { type_i64() }
+    else if name == "async_socket_connect" and idx < 2 { type_i64() }
+    else if name == "async_socket_read" and idx == 0 { type_i64() }
+    else if name == "async_socket_write" and idx < 2 { type_i64() }
+    else if name == "async_socket_close" and idx == 0 { type_i64() }
     else { type_error() };
 
 // ============================================================================
