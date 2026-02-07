@@ -4929,3 +4929,368 @@ impl Default for TypeChecker {
         Self::new()
     }
 }
+
+// ============================================================================
+// v0.89: Unit Tests
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ====================================================================
+    // Levenshtein Distance Tests
+    // ====================================================================
+
+    #[test]
+    fn test_levenshtein_identical() {
+        assert_eq!(levenshtein_distance("hello", "hello"), 0);
+    }
+
+    #[test]
+    fn test_levenshtein_empty_strings() {
+        assert_eq!(levenshtein_distance("", ""), 0);
+        assert_eq!(levenshtein_distance("abc", ""), 3);
+        assert_eq!(levenshtein_distance("", "xyz"), 3);
+    }
+
+    #[test]
+    fn test_levenshtein_single_edit() {
+        // Substitution
+        assert_eq!(levenshtein_distance("cat", "bat"), 1);
+        // Insertion
+        assert_eq!(levenshtein_distance("cat", "cats"), 1);
+        // Deletion
+        assert_eq!(levenshtein_distance("cats", "cat"), 1);
+    }
+
+    #[test]
+    fn test_levenshtein_multiple_edits() {
+        assert_eq!(levenshtein_distance("kitten", "sitting"), 3);
+        assert_eq!(levenshtein_distance("sunday", "saturday"), 3);
+    }
+
+    #[test]
+    fn test_levenshtein_completely_different() {
+        assert_eq!(levenshtein_distance("abc", "xyz"), 3);
+    }
+
+    // ====================================================================
+    // find_similar_name Tests
+    // ====================================================================
+
+    #[test]
+    fn test_find_similar_name_exact_match() {
+        let candidates = vec!["foo", "bar", "baz"];
+        // Distance 0 is within any threshold
+        assert_eq!(find_similar_name("foo", &candidates, 2), Some("foo"));
+    }
+
+    #[test]
+    fn test_find_similar_name_typo() {
+        let candidates = vec!["println", "print", "parse"];
+        assert_eq!(find_similar_name("printn", &candidates, 2), Some("println"));
+    }
+
+    #[test]
+    fn test_find_similar_name_no_match() {
+        let candidates = vec!["foo", "bar", "baz"];
+        assert_eq!(find_similar_name("xyz", &candidates, 1), None);
+    }
+
+    #[test]
+    fn test_find_similar_name_empty_candidates() {
+        let candidates: Vec<&str> = vec![];
+        assert_eq!(find_similar_name("foo", &candidates, 2), None);
+    }
+
+    #[test]
+    fn test_find_similar_name_picks_closest() {
+        let candidates = vec!["read_file", "read_line", "readline"];
+        // "read_lin" is distance 1 from "read_line", distance 2 from "readline"
+        assert_eq!(find_similar_name("read_lin", &candidates, 2), Some("read_line"));
+    }
+
+    // ====================================================================
+    // format_suggestion_hint Tests
+    // ====================================================================
+
+    #[test]
+    fn test_format_suggestion_hint_some() {
+        let hint = format_suggestion_hint(Some("println"));
+        assert!(hint.contains("did you mean"));
+        assert!(hint.contains("println"));
+    }
+
+    #[test]
+    fn test_format_suggestion_hint_none() {
+        let hint = format_suggestion_hint(None);
+        assert!(hint.is_empty());
+    }
+
+    // ====================================================================
+    // BindingTracker Tests
+    // ====================================================================
+
+    #[test]
+    fn test_binding_tracker_basic_bind_and_use() {
+        let mut tracker = BindingTracker::new();
+        let span = Span { start: 0, end: 1 };
+        tracker.bind("x".to_string(), span);
+        tracker.mark_used("x");
+        let (unused, _) = tracker.pop_scope();
+        assert!(unused.is_empty(), "Used binding should not appear in unused list");
+    }
+
+    #[test]
+    fn test_binding_tracker_unused_detection() {
+        let mut tracker = BindingTracker::new();
+        let span = Span { start: 0, end: 1 };
+        tracker.bind("x".to_string(), span);
+        // Don't mark as used
+        let (unused, _) = tracker.pop_scope();
+        assert_eq!(unused.len(), 1);
+        assert_eq!(unused[0].0, "x");
+    }
+
+    #[test]
+    fn test_binding_tracker_underscore_prefix_ignored() {
+        let mut tracker = BindingTracker::new();
+        let span = Span { start: 0, end: 1 };
+        tracker.bind("_unused".to_string(), span);
+        let (unused, _) = tracker.pop_scope();
+        assert!(unused.is_empty(), "Underscore-prefixed bindings should be ignored");
+    }
+
+    #[test]
+    fn test_binding_tracker_nested_scopes() {
+        let mut tracker = BindingTracker::new();
+        let span = Span { start: 0, end: 1 };
+
+        // Outer scope
+        tracker.bind("x".to_string(), span);
+
+        // Inner scope
+        tracker.push_scope();
+        tracker.bind("y".to_string(), span);
+        tracker.mark_used("y");
+        tracker.mark_used("x"); // Use outer variable from inner scope
+        let (inner_unused, _) = tracker.pop_scope();
+        assert!(inner_unused.is_empty());
+
+        // Outer scope: x was used from inner scope
+        let (outer_unused, _) = tracker.pop_scope();
+        assert!(outer_unused.is_empty(), "x was used from inner scope");
+    }
+
+    #[test]
+    fn test_binding_tracker_mutable_not_mutated() {
+        let mut tracker = BindingTracker::new();
+        let span = Span { start: 0, end: 1 };
+        tracker.bind_with_mutability("x".to_string(), span, true);
+        tracker.mark_used("x");
+        // Used but never mutated
+        let (unused, unused_mut) = tracker.pop_scope();
+        assert!(unused.is_empty());
+        assert_eq!(unused_mut.len(), 1, "Mutable but never mutated should be detected");
+        assert_eq!(unused_mut[0].0, "x");
+    }
+
+    #[test]
+    fn test_binding_tracker_mutable_and_mutated() {
+        let mut tracker = BindingTracker::new();
+        let span = Span { start: 0, end: 1 };
+        tracker.bind_with_mutability("x".to_string(), span, true);
+        tracker.mark_used("x");
+        tracker.mark_mutated("x");
+        let (_, unused_mut) = tracker.pop_scope();
+        assert!(unused_mut.is_empty(), "Mutated mutable should not appear in unused_mut");
+    }
+
+    #[test]
+    fn test_binding_tracker_shadow_detection() {
+        let mut tracker = BindingTracker::new();
+        let outer_span = Span { start: 0, end: 5 };
+        let inner_span = Span { start: 10, end: 15 };
+
+        tracker.bind("x".to_string(), outer_span);
+        tracker.push_scope();
+
+        // Before shadowing, find_shadow should find the outer binding
+        let shadow = tracker.find_shadow("x");
+        assert!(shadow.is_some(), "Should find outer binding");
+        assert_eq!(shadow.unwrap().start, 0);
+
+        tracker.bind("x".to_string(), inner_span); // Shadow
+        // Now find_shadow in a deeper scope would find the outer
+        tracker.push_scope();
+        let shadow2 = tracker.find_shadow("x");
+        assert!(shadow2.is_some(), "Should find shadowed binding");
+    }
+
+    #[test]
+    fn test_binding_tracker_underscore_shadow_ignored() {
+        let mut tracker = BindingTracker::new();
+        let span = Span { start: 0, end: 1 };
+        tracker.bind("_x".to_string(), span);
+        tracker.push_scope();
+        // Underscore-prefixed should be ignored
+        let shadow = tracker.find_shadow("_x");
+        assert!(shadow.is_none(), "Underscore-prefixed should not trigger shadow warning");
+    }
+
+    // ====================================================================
+    // TypeChecker Integration Tests (via check_program)
+    // ====================================================================
+
+    /// Helper to parse and type-check a source string
+    fn check(source: &str) -> Result<TypeChecker> {
+        let tokens = crate::lexer::tokenize(source).expect("tokenize failed");
+        let ast = crate::parser::parse("test.bmb", source, tokens).expect("parse failed");
+        let mut tc = TypeChecker::new();
+        tc.check_program(&ast)?;
+        Ok(tc)
+    }
+
+    /// Helper to check that source type-checks successfully
+    fn ok(source: &str) -> bool {
+        check(source).is_ok()
+    }
+
+    /// Helper to check that source fails type-checking
+    fn err(source: &str) -> bool {
+        check(source).is_err()
+    }
+
+    #[test]
+    fn test_tc_basic_int_function() {
+        assert!(ok("fn add(a: i64, b: i64) -> i64 = a + b;"));
+    }
+
+    #[test]
+    fn test_tc_type_mismatch() {
+        // Returning bool from i64 function
+        assert!(err("fn bad() -> i64 = true;"));
+    }
+
+    #[test]
+    fn test_tc_undefined_variable() {
+        assert!(err("fn bad() -> i64 = x;"));
+    }
+
+    #[test]
+    fn test_tc_undefined_function() {
+        assert!(err("fn bad() -> i64 = nonexistent(1);"));
+    }
+
+    #[test]
+    fn test_tc_recursive_function() {
+        assert!(ok(
+            "fn factorial(n: i64) -> i64 = if n <= 1 { 1 } else { n * factorial(n - 1) };"
+        ));
+    }
+
+    #[test]
+    fn test_tc_struct_definition() {
+        assert!(ok(
+            "struct Point { x: i64, y: i64 }
+             fn origin() -> Point = new Point { x: 0, y: 0 };"
+        ));
+    }
+
+    #[test]
+    fn test_tc_struct_field_access() {
+        assert!(ok(
+            "struct Point { x: i64, y: i64 }
+             fn get_x(p: Point) -> i64 = p.x;"
+        ));
+    }
+
+    #[test]
+    fn test_tc_enum_variant() {
+        assert!(ok(
+            "enum Color { Red, Green, Blue }
+             fn default_color() -> Color = Color::Red;"
+        ));
+    }
+
+    #[test]
+    fn test_tc_match_exhaustiveness() {
+        assert!(ok(
+            "enum Color { Red, Green, Blue }
+             fn to_int(c: Color) -> i64 = match c {
+                 Color::Red => 0,
+                 Color::Green => 1,
+                 Color::Blue => 2,
+             };"
+        ));
+    }
+
+    #[test]
+    fn test_tc_contract_precondition() {
+        assert!(ok(
+            "fn safe_div(a: i64, b: i64) -> i64
+               pre b != 0
+             = a / b;"
+        ));
+    }
+
+    #[test]
+    fn test_tc_contract_postcondition() {
+        assert!(ok(
+            "fn abs(x: i64) -> i64
+               post ret >= 0
+             = if x >= 0 { x } else { 0 - x };"
+        ));
+    }
+
+    #[test]
+    fn test_tc_unused_binding_warning() {
+        let tc = check(
+            "fn test() -> i64 = { let x: i64 = 42; 0 };"
+        ).expect("should type-check");
+        assert!(tc.warnings().iter().any(|w| w.kind() == "unused_binding"),
+            "Should warn about unused binding 'x'");
+    }
+
+    #[test]
+    fn test_tc_unused_binding_underscore_no_warning() {
+        let tc = check(
+            "fn test() -> i64 = { let _x: i64 = 42; 0 };"
+        ).expect("should type-check");
+        assert!(!tc.warnings().iter().any(|w|
+            w.kind() == "unused_binding" && format!("{:?}", w).contains("_x")),
+            "Underscore-prefixed should not warn");
+    }
+
+    #[test]
+    fn test_tc_f64_operations() {
+        assert!(ok("fn add_f(a: f64, b: f64) -> f64 = a + b;"));
+    }
+
+    #[test]
+    fn test_tc_bool_operations() {
+        assert!(ok("fn and_op(a: bool, b: bool) -> bool = a and b;"));
+    }
+
+    #[test]
+    fn test_tc_string_type() {
+        assert!(ok(r#"fn greet() -> String = "hello";"#));
+    }
+
+    #[test]
+    fn test_tc_if_else_type_consistency() {
+        // Both branches must have same type
+        assert!(err(
+            "fn bad(x: bool) -> i64 = if x { 1 } else { true };"
+        ));
+    }
+
+    #[test]
+    fn test_tc_builtin_functions() {
+        // println, print, etc. are registered as builtins
+        assert!(ok(
+            "fn test() -> () = { println(42); () };"
+        ));
+    }
+}
