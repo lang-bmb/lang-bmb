@@ -2537,6 +2537,8 @@ fn fix_phi_label(content: String) -> String =
 fn get_call_return_type(fn_name: String) -> String =
     // Void functions (no return value assignment)
     if fn_name == "@println" or fn_name == "@print_str" or fn_name == "@println_str" or fn_name == "@bmb_panic" { "void" }
+    // v0.88.10: Void concurrency functions
+    else if fn_name == "@bmb_mutex_unlock" or fn_name == "@bmb_mutex_free" { "void" }
     // Pointer-returning functions (String type)
     else if fn_name == "@get_arg" or fn_name == "@bmb_read_file" or fn_name == "@bmb_getenv" or fn_name == "@bmb_system_capture" { "ptr" }
     else if fn_name == "@bmb_string_new" or fn_name == "@bmb_string_from_cstr" or fn_name == "@bmb_string_slice" { "ptr" }
@@ -2591,6 +2593,15 @@ fn map_runtime_fn(fn_name: String) -> String =
     else if fn_name == "@arena_save" { "@bmb_arena_save" }
     else if fn_name == "@arena_restore" { "@bmb_arena_restore" }
     else if fn_name == "@arena_usage" { "@bmb_arena_usage" }
+    // v0.88.10: Concurrency runtime - Thread
+    else if fn_name == "@thread_spawn" { "@bmb_thread_spawn" }
+    else if fn_name == "@thread_join" { "@bmb_thread_join" }
+    // v0.88.10: Concurrency runtime - Mutex
+    else if fn_name == "@mutex_new" { "@bmb_mutex_new" }
+    else if fn_name == "@mutex_lock" { "@bmb_mutex_lock" }
+    else if fn_name == "@mutex_unlock" { "@bmb_mutex_unlock" }
+    else if fn_name == "@mutex_try_lock" { "@bmb_mutex_try_lock" }
+    else if fn_name == "@mutex_free" { "@bmb_mutex_free" }
     else { fn_name };
 
 // v0.32.1: Rename @main calls to @bmb_user_main for runtime compatibility
