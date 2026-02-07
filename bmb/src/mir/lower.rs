@@ -337,6 +337,34 @@ fn extract_facts_from_expr(expr: &Expr, facts: &mut Vec<ContractFact>) {
                         rhs: rhs_var.clone(),
                     });
                 }
+                // v0.89: Pattern: ret op constant (postcondition return value)
+                else if let (Expr::Ret, Expr::IntLit(val)) = (&left.node, &right.node) {
+                    facts.push(ContractFact::ReturnCmp {
+                        op: cmp_op,
+                        value: *val,
+                    });
+                }
+                // v0.89: Pattern: constant op ret (flip comparison)
+                else if let (Expr::IntLit(val), Expr::Ret) = (&left.node, &right.node) {
+                    facts.push(ContractFact::ReturnCmp {
+                        op: flip_cmp_op(cmp_op),
+                        value: *val,
+                    });
+                }
+                // v0.89: Pattern: ret op var
+                else if let (Expr::Ret, Expr::Var(var)) = (&left.node, &right.node) {
+                    facts.push(ContractFact::ReturnVarCmp {
+                        op: cmp_op,
+                        var: var.clone(),
+                    });
+                }
+                // v0.89: Pattern: var op ret (flip comparison)
+                else if let (Expr::Var(var), Expr::Ret) = (&left.node, &right.node) {
+                    facts.push(ContractFact::ReturnVarCmp {
+                        op: flip_cmp_op(cmp_op),
+                        var: var.clone(),
+                    });
+                }
             }
         }
         _ => {}

@@ -746,7 +746,7 @@ concurrency_typecheck_test!(test_concurrency_scoped_threads_basic, "scoped_threa
 // These tests verify that BMB source code is correctly lowered
 // to MIR instructions through the full parse → type-check → lower pipeline.
 
-use bmb::mir::{self, MirInst, Terminator, MirType, Constant, MirBinOp};
+use bmb::mir::{self, MirInst, Terminator, MirType, Constant, MirBinOp, ContractFact, CmpOp};
 
 /// Helper to parse, type-check, and lower a BMB program to MIR
 fn lower_to_mir(source: &str) -> mir::MirProgram {
@@ -957,8 +957,6 @@ fn test_mir_lower_precondition() {
 
 #[test]
 fn test_mir_lower_pre_and_post_contracts() {
-    // Note: postcondition `ret >= 0` uses Expr::Ret which isn't extracted as ContractFact yet.
-    // Test that the precondition with var op var pattern works.
     let mir = lower_to_mir(
         "fn clamp(x: i64, lo: i64, hi: i64) -> i64
            pre lo <= hi
@@ -966,6 +964,39 @@ fn test_mir_lower_pre_and_post_contracts() {
     );
     let func = find_mir_fn(&mir, "clamp");
     assert!(!func.preconditions.is_empty(), "should have preconditions from pre lo <= hi");
+}
+
+#[test]
+fn test_mir_lower_postcondition_ret_cmp() {
+    // v0.89: Postcondition with return value comparison should now extract facts
+    let mir = lower_to_mir(
+        "fn abs(x: i64) -> i64
+           post ret >= 0
+         = if x >= 0 { x } else { 0 - x };"
+    );
+    let func = find_mir_fn(&mir, "abs");
+    assert!(!func.postconditions.is_empty(), "should have postconditions from post ret >= 0");
+    assert!(func.postconditions.iter().any(|f| matches!(f,
+        ContractFact::ReturnCmp { op: CmpOp::Ge, value: 0 }
+    )), "should have ReturnCmp(Ge, 0)");
+}
+
+#[test]
+fn test_mir_lower_postcondition_ret_var_cmp() {
+    // v0.89: Postcondition with return value vs variable comparison
+    let mir = lower_to_mir(
+        "fn min(a: i64, b: i64) -> i64
+           post ret <= a and ret <= b
+         = if a <= b { a } else { b };"
+    );
+    let func = find_mir_fn(&mir, "min");
+    assert!(func.postconditions.len() >= 2, "should have at least 2 postconditions");
+    assert!(func.postconditions.iter().any(|f| matches!(f,
+        ContractFact::ReturnVarCmp { op: CmpOp::Le, var } if var == "a"
+    )), "should have ReturnVarCmp(Le, a)");
+    assert!(func.postconditions.iter().any(|f| matches!(f,
+        ContractFact::ReturnVarCmp { op: CmpOp::Le, var } if var == "b"
+    )), "should have ReturnVarCmp(Le, b)");
 }
 
 // --- Function attributes ---

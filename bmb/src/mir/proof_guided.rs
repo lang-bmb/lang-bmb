@@ -569,6 +569,8 @@ impl ProvenFactSet {
                 ContractFact::NonNull { var } => {
                     facts.non_null.insert(var.clone());
                 }
+                // v0.89: Return value facts are postconditions, not used in precondition analysis
+                ContractFact::ReturnCmp { .. } | ContractFact::ReturnVarCmp { .. } => {}
             }
         }
 

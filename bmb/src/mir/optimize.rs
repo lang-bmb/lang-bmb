@@ -2360,6 +2360,8 @@ impl ProvenFacts {
                     // but could be used for null check elimination
                     facts.bool_values.insert(format!("{}_is_null", var), false);
                 }
+                // v0.89: Return value facts are postconditions, used in inter-procedural analysis
+                ContractFact::ReturnCmp { .. } | ContractFact::ReturnVarCmp { .. } => {}
             }
         }
 

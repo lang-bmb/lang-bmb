@@ -120,6 +120,17 @@ pub enum ContractFact {
     NonNull {
         var: String,
     },
+    /// v0.89: Return value comparison: ret op constant (e.g., ret >= 0)
+    /// Used in postconditions to express guarantees about the return value
+    ReturnCmp {
+        op: CmpOp,
+        value: i64,
+    },
+    /// v0.89: Return value vs variable: ret op var (e.g., ret >= x)
+    ReturnVarCmp {
+        op: CmpOp,
+        var: String,
+    },
 }
 
 /// Comparison operator for contract facts
