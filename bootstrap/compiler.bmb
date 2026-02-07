@@ -4438,6 +4438,22 @@ fn emit_ir(input: String, output: String) -> i64 =
         }
     };
 
+// v0.88.10: Check command - type check without emitting IR
+fn check_file(input: String) -> i64 =
+    let source = read_file(input);
+    if source.len() == 0 {
+        { print_str("Error: Cannot read file: "); println_str(input); 1 }
+    } else {
+        let llvm = compile_program(source);
+        if is_compile_error(llvm) {
+            let end = if llvm.len() > 500 { 500 } else { llvm.len() };
+            let err_detail = llvm.slice(4, end);
+            { print_str("error["); print_str(input); print_str("]: "); println_str(err_detail); 1 }
+        } else {
+            { print_str("OK: "); println_str(input); 0 }
+        }
+    };
+
 // Bootstrap version - extended CLI
 fn main() -> i64 =
     let argc = arg_count();
@@ -4454,6 +4470,9 @@ fn main() -> i64 =
                 input.slice(0, input.len() - 4) + ".ll"
             } else { input + ".ll" };
             emit_ir(input, output)
+        } else if cmd == "check" and argc >= 3 {
+            // v0.88.10: Check command
+            check_file(get_arg(2))
         } else if argc >= 3 {
             // Legacy mode: compiler input.bmb output.ll
             compile_file_to(get_arg(1), get_arg(2))
@@ -4463,11 +4482,12 @@ fn main() -> i64 =
     };
 
 fn show_help() -> i64 =
-    let x1 = println_str("BMB Bootstrap Compiler v0.88");
+    let x1 = println_str("BMB Bootstrap Compiler v0.88.10");
     let x2 = println_str("");
     let x3 = println_str("Usage:");
     let x4 = println_str("  bmb emit-ir <input.bmb> [output.ll]  Emit LLVM IR");
-    let x5 = println_str("  bmb <input.bmb> <output.ll>          Emit LLVM IR (legacy)");
+    let x5 = println_str("  bmb check <input.bmb>                Type check only");
+    let x5b = println_str("  bmb <input.bmb> <output.ll>          Emit LLVM IR (legacy)");
     let x6 = println_str("");
     let x7 = println_str("For full native builds, use golden-bootstrap.sh:");
     let x8 = println_str("  bash scripts/golden-bootstrap.sh");
