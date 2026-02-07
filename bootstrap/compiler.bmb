@@ -421,7 +421,7 @@ fn parse_unary(src: String, tok: i64, op: String) -> String =
 fn parse_paren_expr(src: String, tok: i64) -> String =
     let re = parse_expr(src, tok_end(tok));
     let next = next_token_raw(src, unpack_pos(re));
-    if tok_kind(next) == TK_RPAREN() { pack_result(tok_end(next), unpack_ast(re)) } else { make_error("paren") };
+    if tok_kind(next) == TK_RPAREN() { pack_result(tok_end(next), unpack_ast(re)) } else { make_error_at("expected ')' after expression", src, unpack_pos(re)) };
 
 // v0.60.126: Block expression parser
 // Block syntax: { stmt; stmt; ... final_expr }
@@ -437,7 +437,7 @@ fn parse_block_expr(src: String, pos: i64) -> String =
         if is_error(rb) { rb } else {
             let t2 = next_token_raw(src, unpack_pos(rb));
             if tok_kind(t2) != TK_RBRACE() {
-                make_error("block-rbrace")
+                make_error_at("expected '}' to close block", src, unpack_pos(rb))
             } else {
                 pack_result(tok_end(t2), "(block " + unpack_ast(rb) + ")")
             }
@@ -472,23 +472,23 @@ fn parse_block_let(src: String, pos: i64) -> String =
                 if tok_kind(t3) == TK_SEMI() {
                     let rb = parse_block_stmts(src, tok_end(t3));
                     pack_result(unpack_pos(rb), "(let <" + name + "> " + unpack_ast(rv) + " " + unpack_ast(rb) + ")")
-                } else { make_error("block-let-semi") }
+                } else { make_error_at("expected ';' after let binding", src, unpack_pos(rv)) }
             }
-        } else { make_error("block-let-eq") }
-    } else { make_error("block-let-name") };
+        } else { make_error_at("expected '=' in let binding", src, tok_end(t1)) }
+    } else { make_error_at("expected variable name after 'let'", src, pos) };
 
 // Parse assignment inside block: { lhs = rhs }; rest
 fn parse_block_assign(src: String, pos: i64) -> String =
     let t1 = next_token_raw(src, pos);
-    if tok_kind(t1) != TK_LBRACE() { make_error("assign-lbrace") } else {
+    if tok_kind(t1) != TK_LBRACE() { make_error_at("expected '{' for assignment", src, pos) } else {
         let rl = parse_expr(src, tok_end(t1));
         if is_error(rl) { rl } else {
             let t2 = next_token_raw(src, unpack_pos(rl));
-            if tok_kind(t2) != TK_EQ() { make_error("assign-eq") } else {
+            if tok_kind(t2) != TK_EQ() { make_error_at("expected '=' in assignment", src, unpack_pos(rl)) } else {
                 let rr = parse_expr(src, tok_end(t2));
                 if is_error(rr) { rr } else {
                     let t3 = next_token_raw(src, unpack_pos(rr));
-                    if tok_kind(t3) != TK_RBRACE() { make_error("assign-rbrace") } else {
+                    if tok_kind(t3) != TK_RBRACE() { make_error_at("expected '}' to close assignment", src, unpack_pos(rr)) } else {
                         let assign_ast = "(assign " + unpack_ast(rl) + " " + unpack_ast(rr) + ")";
                         let after_assign = tok_end(t3);
                         // Check for semicolon (more statements follow)
@@ -544,7 +544,7 @@ fn parse_args(src: String, pos: i64, acc: String) -> String =
         if is_error(re) { re } else {
             let new_acc = acc + " " + unpack_ast(re);
             let next = next_token_raw(src, unpack_pos(re));
-            if tok_kind(next) == TK_COMMA() { parse_args(src, tok_end(next), new_acc) } else if tok_kind(next) == TK_RPAREN() { pack_result(tok_end(next), new_acc) } else { make_error("args") }
+            if tok_kind(next) == TK_COMMA() { parse_args(src, tok_end(next), new_acc) } else if tok_kind(next) == TK_RPAREN() { pack_result(tok_end(next), new_acc) } else { make_error_at("expected ',' or ')' in arguments", src, unpack_pos(re)) }
         }
     };
 
@@ -568,9 +568,9 @@ fn parse_postfix_rest(src: String, pos: i64, left: String) -> String =
             } else {
                 // Method call with no args: s.len()
                 // This shouldn't happen since len() has parens, but handle it
-                make_error("method_paren")
+                make_error_at("expected '(' after method name", src, tok_end(method_tok))
             }
-        } else { make_error("method_name") }
+        } else { make_error_at("expected method name after '.'", src, tok_end(tok)) }
     } else { pack_result(pos, left) };
 
 fn parse_mul(src: String, pos: i64) -> String =
@@ -668,7 +668,7 @@ fn parse_if_chain_iter(src: String, pos: i64, prefix: String, suffix: String) ->
 
 fn parse_if_chain_then(src: String, pos: i64, cond_ast: String, prefix: String, suffix: String) -> String =
     let t1 = next_token_raw(src, pos);
-    if tok_kind(t1) != TK_LBRACE() { make_error("chain-lbrace") }
+    if tok_kind(t1) != TK_LBRACE() { make_error_at("expected '{' after if condition", src, pos) }
     else {
         let rt = parse_expr(src, tok_end(t1));
         if is_error(rt) { rt }
@@ -677,7 +677,7 @@ fn parse_if_chain_then(src: String, pos: i64, cond_ast: String, prefix: String, 
 
 fn parse_if_chain_after_then(src: String, pos: i64, cond_ast: String, then_ast: String, prefix: String, suffix: String) -> String =
     let t2 = next_token_raw(src, pos);
-    if tok_kind(t2) != TK_RBRACE() { make_error("chain-rbrace1") }
+    if tok_kind(t2) != TK_RBRACE() { make_error_at("expected '}' after then branch", src, pos) }
     else {
         let new_prefix = prefix + "(if " + cond_ast + " " + then_ast + " ";
         let new_suffix = ")" + suffix;
@@ -686,13 +686,13 @@ fn parse_if_chain_after_then(src: String, pos: i64, cond_ast: String, then_ast: 
 
 fn parse_if_chain_else(src: String, pos: i64, new_prefix: String, new_suffix: String) -> String =
     let t3 = next_token_raw(src, pos);
-    if tok_kind(t3) != TK_ELSE() { make_error("chain-else") }
+    if tok_kind(t3) != TK_ELSE() { make_error_at("expected 'else' after '}'", src, pos) }
     else {
         let t4 = next_token_raw(src, tok_end(t3));
         let k4 = tok_kind(t4);
         if k4 == TK_IF() { parse_if_chain_iter(src, tok_end(t4), new_prefix, new_suffix) }
         else if k4 == TK_LBRACE() { parse_if_chain_final_else(src, tok_end(t4), new_prefix, new_suffix) }
-        else { make_error("chain-else2") }
+        else { make_error_at("expected 'if' or '{' after 'else'", src, tok_end(t3)) }
     };
 
 fn parse_if_chain_final_else(src: String, pos: i64, new_prefix: String, new_suffix: String) -> String =
@@ -702,7 +702,7 @@ fn parse_if_chain_final_else(src: String, pos: i64, new_prefix: String, new_suff
 
 fn parse_if_chain_finish(src: String, pos: i64, else_ast: String, new_prefix: String, new_suffix: String) -> String =
     let t5 = next_token_raw(src, pos);
-    if tok_kind(t5) != TK_RBRACE() { make_error("chain-rbrace2") }
+    if tok_kind(t5) != TK_RBRACE() { make_error_at("expected '}' after else branch", src, pos) }
     else {
         let middle = new_prefix + else_ast;
         let full = middle + new_suffix;
@@ -730,7 +730,7 @@ fn parse_if_after_cond(src: String, pos: i64, cond_ast: String) -> String =
     // v0.46: Support both 'then/else' (legacy) and '{ } else { }' (v0.32) syntax
     if k1 == TK_THEN() { parse_if_then_syntax(src, tok_end(t1), cond_ast) }
     else if k1 == TK_LBRACE() { parse_if_brace_syntax(src, tok_end(t1), cond_ast) }
-    else { make_error("if-then-or-brace") };
+    else { make_error_at("expected '{' or 'then' after if condition", src, pos) };
 
 fn parse_if_then_syntax(src: String, pos: i64, cond_ast: String) -> String =
     let rt = parse_expr(src, pos);
@@ -739,7 +739,7 @@ fn parse_if_then_syntax(src: String, pos: i64, cond_ast: String) -> String =
 
 fn parse_if_then_else(src: String, pos: i64, cond_ast: String, then_ast: String) -> String =
     let t2 = next_token_raw(src, pos);
-    if tok_kind(t2) != TK_ELSE() { make_error("if-else") }
+    if tok_kind(t2) != TK_ELSE() { make_error_at("expected 'else' after then expression", src, pos) }
     else {
         let re = parse_expr(src, tok_end(t2));
         make_if_ast(unpack_pos(re), cond_ast, then_ast, unpack_ast(re))
@@ -752,12 +752,12 @@ fn parse_if_brace_syntax(src: String, pos: i64, cond_ast: String) -> String =
 
 fn parse_if_brace_then(src: String, pos: i64, cond_ast: String, then_ast: String) -> String =
     let t2 = next_token_raw(src, pos);
-    if tok_kind(t2) != TK_RBRACE() { make_error("if-rbrace1") }
+    if tok_kind(t2) != TK_RBRACE() { make_error_at("expected '}' after if body", src, pos) }
     else { parse_if_brace_else(src, tok_end(t2), cond_ast, then_ast) };
 
 fn parse_if_brace_else(src: String, pos: i64, cond_ast: String, then_ast: String) -> String =
     let t3 = next_token_raw(src, pos);
-    if tok_kind(t3) != TK_ELSE() { make_error("if-else-kw") }
+    if tok_kind(t3) != TK_ELSE() { make_error_at("expected 'else' after '}'", src, pos) }
     else { parse_if_brace_else_body(src, tok_end(t3), cond_ast, then_ast) };
 
 fn parse_if_brace_else_body(src: String, pos: i64, cond_ast: String, then_ast: String) -> String =
@@ -769,7 +769,7 @@ fn parse_if_brace_else_body(src: String, pos: i64, cond_ast: String, then_ast: S
         let init_prefix = "(if " + cond_ast + " " + then_ast + " ";
         parse_if_chain_iter(src, tok_end(t4), init_prefix, ")")
     }
-    else { make_error("if-lbrace2") };
+    else { make_error_at("expected '{' or 'if' after 'else'", src, pos) };
 
 fn parse_if_brace_final(src: String, pos: i64, cond_ast: String, then_ast: String) -> String =
     let re = parse_expr(src, pos);
@@ -778,7 +778,7 @@ fn parse_if_brace_final(src: String, pos: i64, cond_ast: String, then_ast: Strin
 
 fn parse_if_brace_finish(src: String, pos: i64, cond_ast: String, then_ast: String, else_ast: String) -> String =
     let t5 = next_token_raw(src, pos);
-    if tok_kind(t5) != TK_RBRACE() { make_error("if-rbrace2") }
+    if tok_kind(t5) != TK_RBRACE() { make_error_at("expected '}' after else body", src, pos) }
     else { make_if_ast(tok_end(t5), cond_ast, then_ast, else_ast) };
 
 fn make_if_ast(pos: i64, cond_ast: String, then_ast: String, else_ast: String) -> String =
@@ -819,7 +819,7 @@ fn parse_let_after_name(src: String, pos: i64, name: String, is_mut: bool) -> St
     } else if k2 == TK_COLON() {
         // let name: type = value - skip type annotation
         parse_let_skip_type(src, tok_end(t2), name, is_mut)
-    } else { make_error("let-eq-or-colon") };
+    } else { make_error_at("expected '=' or ':' after let binding name", src, pos) };
 
 fn parse_let_skip_type(src: String, pos: i64, name: String, is_mut: bool) -> String =
     // Skip type token(s) until we find '='
@@ -830,7 +830,7 @@ fn parse_let_skip_type(src: String, pos: i64, name: String, is_mut: bool) -> Str
     } else if k == TK_IDENT() or k == TK_I64() or k == TK_I32() or k == TK_BOOL() or k == TK_STRING_TYPE() {
         // Skip the type and continue looking for '='
         parse_let_skip_type(src, tok_end(t), name, is_mut)
-    } else { make_error("let-skip-type") };
+    } else { make_error_at("expected '=' after type annotation in let binding", src, pos) };
 
 fn parse_let_value_mut(src: String, pos: i64, name: String, is_mut: bool) -> String =
     let rv = parse_expr(src, pos);
@@ -839,7 +839,7 @@ fn parse_let_value_mut(src: String, pos: i64, name: String, is_mut: bool) -> Str
 
 fn parse_let_body_mut(src: String, pos: i64, name: String, val_ast: String, is_mut: bool) -> String =
     let t3 = next_token_raw(src, pos);
-    if tok_kind(t3) != TK_SEMI() { make_error("let-semi") }
+    if tok_kind(t3) != TK_SEMI() { make_error_at("expected ';' after let binding value", src, pos) }
     else {
         let rb = parse_expr(src, tok_end(t3));
         if is_mut {
@@ -856,7 +856,7 @@ fn parse_let_value(src: String, pos: i64, name: String) -> String =
 
 fn parse_let_body(src: String, pos: i64, name: String, val_ast: String) -> String =
     let t3 = next_token_raw(src, pos);
-    if tok_kind(t3) != TK_SEMI() { make_error("let-semi") }
+    if tok_kind(t3) != TK_SEMI() { make_error_at("expected ';' after let binding value", src, pos) }
     else {
         let rb = parse_expr(src, tok_end(t3));
         make_let_ast(unpack_pos(rb), name, val_ast, unpack_ast(rb))
@@ -886,7 +886,7 @@ fn parse_while_expr(src: String, pos: i64) -> String =
 
 fn parse_while_body(src: String, pos: i64, cond_ast: String) -> String =
     let t1 = next_token_raw(src, pos);
-    if tok_kind(t1) != TK_LBRACE() { make_error("while-lbrace") }
+    if tok_kind(t1) != TK_LBRACE() { make_error_at("expected '{' after while condition", src, pos) }
     else { parse_while_body_inner(src, tok_end(t1), cond_ast) };
 
 fn parse_while_body_inner(src: String, pos: i64, cond_ast: String) -> String =
@@ -896,7 +896,7 @@ fn parse_while_body_inner(src: String, pos: i64, cond_ast: String) -> String =
 
 fn parse_while_finish(src: String, pos: i64, cond_ast: String, body_ast: String) -> String =
     let t2 = next_token_raw(src, pos);
-    if tok_kind(t2) != TK_RBRACE() { make_error("while-rbrace") }
+    if tok_kind(t2) != TK_RBRACE() { make_error_at("expected '}' after while body", src, pos) }
     else { pack_result(tok_end(t2), "(while " + cond_ast + " " + body_ast + ")") };
 
 // ============================================================================
@@ -911,9 +911,9 @@ fn parse_param(src: String, pos: i64) -> String =
         if tok_kind(t2) == TK_COLON() {
             let t3 = next_token_raw(src, tok_end(t2));
             let kind = tok_kind(t3);
-            if kind == TK_I32() { pack_result(tok_end(t3), "(param <" + name + "> i32)") } else if kind == TK_I64() { pack_result(tok_end(t3), "(param <" + name + "> i64)") } else if kind == TK_F64() { pack_result(tok_end(t3), "(param <" + name + "> f64)") } else if kind == TK_BOOL() { pack_result(tok_end(t3), "(param <" + name + "> bool)") } else if kind == TK_STRING_TYPE() { pack_result(tok_end(t3), "(param <" + name + "> String)") } else { make_error("param-type") }
-        } else { make_error("param-colon") }
-    } else { make_error("param-name") };
+            if kind == TK_I32() { pack_result(tok_end(t3), "(param <" + name + "> i32)") } else if kind == TK_I64() { pack_result(tok_end(t3), "(param <" + name + "> i64)") } else if kind == TK_F64() { pack_result(tok_end(t3), "(param <" + name + "> f64)") } else if kind == TK_BOOL() { pack_result(tok_end(t3), "(param <" + name + "> bool)") } else if kind == TK_STRING_TYPE() { pack_result(tok_end(t3), "(param <" + name + "> String)") } else { make_error_at("expected parameter type (i32, i64, f64, bool, String)", src, tok_end(t2)) }
+        } else { make_error_at("expected ':' after parameter name", src, tok_end(t1)) }
+    } else { make_error_at("expected parameter name", src, pos) };
 
 fn parse_params(src: String, pos: i64, acc: String) -> String =
     let tok = next_token_raw(src, pos);
@@ -922,7 +922,7 @@ fn parse_params(src: String, pos: i64, acc: String) -> String =
         if is_error(rp) { rp } else {
             let new_acc = acc + " " + unpack_ast(rp);
             let next = next_token_raw(src, unpack_pos(rp));
-            if tok_kind(next) == TK_COMMA() { parse_params(src, tok_end(next), new_acc) } else if tok_kind(next) == TK_RPAREN() { pack_result(tok_end(next), new_acc) } else { make_error("params") }
+            if tok_kind(next) == TK_COMMA() { parse_params(src, tok_end(next), new_acc) } else if tok_kind(next) == TK_RPAREN() { pack_result(tok_end(next), new_acc) } else { make_error_at("expected ',' or ')' in parameter list", src, unpack_pos(rp)) }
         }
     };
 
