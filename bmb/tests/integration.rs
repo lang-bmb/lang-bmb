@@ -739,3 +739,288 @@ concurrency_typecheck_test!(test_concurrency_async_io_basic, "async_io_basic.bmb
 concurrency_typecheck_test!(test_concurrency_async_socket_basic, "async_socket_basic.bmb");
 concurrency_typecheck_test!(test_concurrency_thread_pool_basic, "thread_pool_basic.bmb");
 concurrency_typecheck_test!(test_concurrency_scoped_threads_basic, "scoped_threads_basic.bmb");
+
+// ============================================
+// MIR Lowering Integration Tests (v0.88)
+// ============================================
+// These tests verify that BMB source code is correctly lowered
+// to MIR instructions through the full parse → type-check → lower pipeline.
+
+use bmb::mir::{self, MirInst, Terminator, MirType, Constant, MirBinOp};
+
+/// Helper to parse, type-check, and lower a BMB program to MIR
+fn lower_to_mir(source: &str) -> mir::MirProgram {
+    let tokens = tokenize(source).expect("tokenize failed");
+    let ast = parse("test.bmb", source, tokens).expect("parse failed");
+    let mut tc = TypeChecker::new();
+    tc.check_program(&ast).expect("type-check failed");
+    mir::lower_program(&ast)
+}
+
+/// Helper to find a function by name in MIR output
+fn find_mir_fn<'a>(program: &'a mir::MirProgram, name: &str) -> &'a mir::MirFunction {
+    program.functions.iter().find(|f| f.name == name)
+        .unwrap_or_else(|| panic!("MIR function '{}' not found", name))
+}
+
+/// Helper to check if any instruction in any block matches a predicate
+fn has_inst(func: &mir::MirFunction, pred: impl Fn(&MirInst) -> bool) -> bool {
+    func.blocks.iter().any(|b| b.instructions.iter().any(&pred))
+}
+
+// --- Basic lowering ---
+
+#[test]
+fn test_mir_lower_arithmetic() {
+    let mir = lower_to_mir("fn add(a: i64, b: i64) -> i64 = a + b;");
+    assert_eq!(mir.functions.len(), 1);
+    let func = &mir.functions[0];
+    assert_eq!(func.name, "add");
+    assert_eq!(func.params.len(), 2);
+    assert!(matches!(func.ret_ty, MirType::I64));
+    assert!(has_inst(func, |i| matches!(i, MirInst::BinOp { op: MirBinOp::Add, .. })));
+}
+
+#[test]
+fn test_mir_lower_float_arithmetic() {
+    let mir = lower_to_mir("fn mul(a: f64, b: f64) -> f64 = a * b;");
+    let func = find_mir_fn(&mir, "mul");
+    assert!(matches!(func.ret_ty, MirType::F64));
+    assert!(has_inst(func, |i| matches!(i, MirInst::BinOp { op: MirBinOp::FMul, .. })));
+}
+
+#[test]
+fn test_mir_lower_constant() {
+    let mir = lower_to_mir("fn answer() -> i64 = 42;");
+    let func = find_mir_fn(&mir, "answer");
+    // Constant may be inlined as Operand::Constant in Return terminator
+    let has_const = has_inst(func, |i| matches!(i, MirInst::Const { value: Constant::Int(42), .. }));
+    let has_return_const = func.blocks.iter().any(|b| matches!(&b.terminator,
+        Terminator::Return(Some(mir::Operand::Constant(Constant::Int(42))))));
+    assert!(has_const || has_return_const, "should have constant 42");
+}
+
+#[test]
+fn test_mir_lower_bool_constant() {
+    let mir = lower_to_mir("fn yes() -> bool = true;");
+    let func = find_mir_fn(&mir, "yes");
+    let has_const = has_inst(func, |i| matches!(i, MirInst::Const { value: Constant::Bool(true), .. }));
+    let has_return_const = func.blocks.iter().any(|b| matches!(&b.terminator,
+        Terminator::Return(Some(mir::Operand::Constant(Constant::Bool(true))))));
+    assert!(has_const || has_return_const, "should have constant true");
+}
+
+#[test]
+fn test_mir_lower_string_literal() {
+    let mir = lower_to_mir(r#"fn greet() -> String = "hello";"#);
+    let func = find_mir_fn(&mir, "greet");
+    assert!(matches!(func.ret_ty, MirType::String));
+    // String literal returns as Operand::Constant in Return terminator
+    let has_return_string = func.blocks.iter().any(|b| matches!(&b.terminator,
+        Terminator::Return(Some(mir::Operand::Constant(Constant::String(s)))) if s == "hello"));
+    assert!(has_return_string, "should return string 'hello'");
+}
+
+// --- Control flow ---
+
+#[test]
+fn test_mir_lower_if_expression() {
+    let mir = lower_to_mir("fn max(a: i64, b: i64) -> i64 = if a > b { a } else { b };");
+    let func = find_mir_fn(&mir, "max");
+    // If expression creates: entry, then, else, merge blocks
+    assert!(func.blocks.len() >= 4);
+    assert!(func.blocks.iter().any(|b| matches!(b.terminator, Terminator::Branch { .. })));
+}
+
+#[test]
+fn test_mir_lower_while_loop() {
+    let mir = lower_to_mir(
+        "fn count_to(n: i64) -> i64 = {
+           let mut i: i64 = 0;
+           while i < n { { i = i + 1; i } };
+           i
+         };"
+    );
+    let func = find_mir_fn(&mir, "count_to");
+    // While loop creates loop header with Branch and back-edge with Goto
+    assert!(func.blocks.iter().any(|b| matches!(b.terminator, Terminator::Branch { .. })));
+    assert!(func.blocks.iter().any(|b| matches!(b.terminator, Terminator::Goto(_))));
+}
+
+// --- Let bindings ---
+
+#[test]
+fn test_mir_lower_let_binding() {
+    let mir = lower_to_mir("fn f(x: i64) -> i64 = let y = x + 1; y;");
+    let func = find_mir_fn(&mir, "f");
+    assert!(has_inst(func, |i| matches!(i, MirInst::BinOp { op: MirBinOp::Add, .. })));
+    assert!(func.blocks.iter().any(|b| matches!(b.terminator, Terminator::Return(Some(_)))));
+}
+
+// --- Function calls ---
+
+#[test]
+fn test_mir_lower_function_call() {
+    let mir = lower_to_mir(r#"
+        fn double(x: i64) -> i64 = x * 2;
+        fn main() -> i64 = double(21);
+    "#);
+    let func = find_mir_fn(&mir, "main");
+    assert!(has_inst(func, |i| matches!(i, MirInst::Call { func, .. } if func == "double")));
+}
+
+// --- Structs ---
+
+#[test]
+fn test_mir_lower_struct_init() {
+    let mir = lower_to_mir("struct Point { x: i64, y: i64 } fn origin() -> Point = new Point { x: 0, y: 0 };");
+    let func = find_mir_fn(&mir, "origin");
+    assert!(has_inst(func, |i| matches!(i, MirInst::StructInit { struct_name, .. } if struct_name == "Point")));
+}
+
+#[test]
+fn test_mir_lower_field_access() {
+    let mir = lower_to_mir(r#"
+        struct Point { x: i64, y: i64 }
+        fn get_x(p: Point) -> i64 = p.x;
+    "#);
+    let func = find_mir_fn(&mir, "get_x");
+    assert!(has_inst(func, |i| matches!(i, MirInst::FieldAccess { field, struct_name, .. } if field == "x" && struct_name == "Point")));
+}
+
+// --- Arrays ---
+
+#[test]
+fn test_mir_lower_array_init() {
+    let mir = lower_to_mir("fn arr() -> [i64; 3] = [1, 2, 3];");
+    let func = find_mir_fn(&mir, "arr");
+    assert!(has_inst(func, |i| matches!(i, MirInst::ArrayInit { elements, .. } if elements.len() == 3)));
+}
+
+#[test]
+fn test_mir_lower_array_index() {
+    let mir = lower_to_mir(r#"
+        fn first(arr: [i64; 3]) -> i64 = arr[0];
+    "#);
+    let func = find_mir_fn(&mir, "first");
+    assert!(has_inst(func, |i| matches!(i, MirInst::IndexLoad { .. })));
+}
+
+// --- Concurrency ---
+
+#[test]
+fn test_mir_lower_mutex_new() {
+    let mir = lower_to_mir(r#"
+        fn make_mutex() -> Mutex<i64> = Mutex::new(0);
+    "#);
+    let func = find_mir_fn(&mir, "make_mutex");
+    assert!(has_inst(func, |i| matches!(i, MirInst::MutexNew { .. })));
+}
+
+#[test]
+fn test_mir_lower_atomic_new() {
+    let mir = lower_to_mir(r#"
+        fn make_atomic() -> Atomic<i64> = Atomic::new(0);
+    "#);
+    let func = find_mir_fn(&mir, "make_atomic");
+    assert!(has_inst(func, |i| matches!(i, MirInst::AtomicNew { .. })));
+}
+
+#[test]
+fn test_mir_lower_channel_new() {
+    let mir = lower_to_mir("fn make_channel() -> (Sender<i64>, Receiver<i64>) = channel<i64>(10);");
+    let func = find_mir_fn(&mir, "make_channel");
+    assert!(has_inst(func, |i| matches!(i, MirInst::ChannelNew { .. })));
+}
+
+#[test]
+fn test_mir_lower_rwlock_new() {
+    let mir = lower_to_mir(r#"
+        fn make_rwlock() -> RwLock<i64> = RwLock::new(0);
+    "#);
+    let func = find_mir_fn(&mir, "make_rwlock");
+    assert!(has_inst(func, |i| matches!(i, MirInst::RwLockNew { .. })));
+}
+
+// --- Contracts ---
+
+#[test]
+fn test_mir_lower_precondition() {
+    let mir = lower_to_mir(r#"
+        fn safe_div(a: i64, b: i64) -> i64
+            pre b != 0
+        = a / b;
+    "#);
+    let func = find_mir_fn(&mir, "safe_div");
+    assert!(!func.preconditions.is_empty(), "should have preconditions");
+}
+
+#[test]
+fn test_mir_lower_pre_and_post_contracts() {
+    // Note: postcondition `ret >= 0` uses Expr::Ret which isn't extracted as ContractFact yet.
+    // Test that the precondition with var op var pattern works.
+    let mir = lower_to_mir(
+        "fn clamp(x: i64, lo: i64, hi: i64) -> i64
+           pre lo <= hi
+         = if x < lo { lo } else if x > hi { hi } else { x };"
+    );
+    let func = find_mir_fn(&mir, "clamp");
+    assert!(!func.preconditions.is_empty(), "should have preconditions from pre lo <= hi");
+}
+
+// --- Function attributes ---
+
+#[test]
+fn test_mir_lower_pure_function() {
+    let mir = lower_to_mir(r#"
+        @pure
+        fn square(x: i64) -> i64 = x * x;
+    "#);
+    let func = find_mir_fn(&mir, "square");
+    assert!(func.is_pure, "should be marked pure");
+}
+
+#[test]
+fn test_mir_lower_const_function() {
+    let mir = lower_to_mir(r#"
+        @const
+        fn five() -> i64 = 5;
+    "#);
+    let func = find_mir_fn(&mir, "five");
+    assert!(func.is_const, "should be marked const");
+}
+
+// --- Multiple functions ---
+
+#[test]
+fn test_mir_lower_multiple_functions() {
+    let mir = lower_to_mir(r#"
+        fn add(a: i64, b: i64) -> i64 = a + b;
+        fn sub(a: i64, b: i64) -> i64 = a - b;
+        fn mul(a: i64, b: i64) -> i64 = a * b;
+    "#);
+    assert_eq!(mir.functions.len(), 3);
+    assert!(mir.functions.iter().any(|f| f.name == "add"));
+    assert!(mir.functions.iter().any(|f| f.name == "sub"));
+    assert!(mir.functions.iter().any(|f| f.name == "mul"));
+}
+
+// --- Return type lowering ---
+
+#[test]
+fn test_mir_lower_unit_return() {
+    let mir = lower_to_mir(r#"
+        fn noop() -> () = ();
+    "#);
+    let func = find_mir_fn(&mir, "noop");
+    assert!(matches!(func.ret_ty, MirType::Unit));
+}
+
+#[test]
+fn test_mir_lower_bool_return() {
+    let mir = lower_to_mir(r#"
+        fn is_positive(x: i64) -> bool = x > 0;
+    "#);
+    let func = find_mir_fn(&mir, "is_positive");
+    assert!(matches!(func.ret_ty, MirType::Bool));
+}
