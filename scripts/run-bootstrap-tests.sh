@@ -18,6 +18,12 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
+# Timeout (seconds) for each step
+COMPILE_TIMEOUT=60
+OPT_TIMEOUT=60
+LINK_TIMEOUT=60
+RUN_TIMEOUT=30
+
 # Detect platform
 detect_platform() {
     case "$(uname -s)" in
@@ -50,6 +56,7 @@ fi
 
 PASSED=0
 FAILED=0
+TOTAL=0
 
 echo ""
 echo "========================================"
@@ -70,70 +77,72 @@ while IFS= read -r line || [ -n "$line" ]; do
 
     TEST_FILE="${TESTS_DIR}/${FILENAME}"
     TEST_NAME=$(basename "$FILENAME" .bmb)
+    ((TOTAL++)) || true
 
     if [ ! -f "$TEST_FILE" ]; then
-        echo -e "${RED}✗ ${TEST_NAME}: File not found${NC}"
-        ((FAILED++))
+        echo -e "${RED}  FAIL ${TEST_NAME}: File not found${NC}"
+        ((FAILED++)) || true
         continue
     fi
 
-    echo -n "Running ${TEST_NAME}... "
+    echo -n "  ${TEST_NAME}... "
 
     # Compile test
     IR_FILE="${OUTPUT_DIR}/${TEST_NAME}.ll"
     OPT_FILE="${OUTPUT_DIR}/${TEST_NAME}_opt.ll"
     EXE_FILE="${OUTPUT_DIR}/${TEST_NAME}${EXE_EXT}"
+    OUT_FILE="${OUTPUT_DIR}/${TEST_NAME}_output.txt"
 
     # Step 1: Generate LLVM IR
-    if ! "$BMB" "$TEST_FILE" "$IR_FILE" 2>/dev/null; then
-        echo -e "${RED}✗ Compile failed${NC}"
-        ((FAILED++))
+    if ! timeout "$COMPILE_TIMEOUT" "$BMB" "$TEST_FILE" "$IR_FILE" >/dev/null 2>&1; then
+        echo -e "${RED}FAIL (compile)${NC}"
+        ((FAILED++)) || true
         continue
     fi
 
     # Step 2: Optimize
-    if ! opt -O2 -S "$IR_FILE" -o "$OPT_FILE" 2>/dev/null; then
-        echo -e "${RED}✗ opt failed${NC}"
-        ((FAILED++))
+    if ! timeout "$OPT_TIMEOUT" opt -O2 -S "$IR_FILE" -o "$OPT_FILE" 2>/dev/null; then
+        echo -e "${RED}FAIL (opt)${NC}"
+        ((FAILED++)) || true
         continue
     fi
 
     # Step 3: Link
-    if ! clang -O2 "$OPT_FILE" "${RUNTIME_DIR}/bmb_runtime.c" -o "$EXE_FILE" $LINK_LIBS 2>/dev/null; then
-        echo -e "${RED}✗ Link failed${NC}"
-        ((FAILED++))
+    if ! timeout "$LINK_TIMEOUT" clang -O2 "$OPT_FILE" "${RUNTIME_DIR}/bmb_runtime.c" -o "$EXE_FILE" $LINK_LIBS 2>/dev/null; then
+        echo -e "${RED}FAIL (link)${NC}"
+        ((FAILED++)) || true
         continue
     fi
 
-    # Step 4: Run and capture output
-    OUTPUT=$("$EXE_FILE" 2>&1)
+    # Step 4: Run and capture output to file (avoids MSYS2 $() hang)
+    timeout "$RUN_TIMEOUT" "$EXE_FILE" > "$OUT_FILE" 2>&1 || true
 
     # Parse output: look for 777 (start), count, 999 (end)
-    START_MARKER=$(echo "$OUTPUT" | grep -c "^777$" || true)
-    END_MARKER=$(echo "$OUTPUT" | grep -c "^999$" || true)
+    START_MARKER=$(grep -c "^777$" "$OUT_FILE" 2>/dev/null || echo "0")
+    END_MARKER=$(grep -c "^999$" "$OUT_FILE" 2>/dev/null || echo "0")
 
     if [ "$START_MARKER" -ne 1 ] || [ "$END_MARKER" -ne 1 ]; then
-        echo -e "${RED}✗ Invalid output format${NC}"
-        ((FAILED++))
+        echo -e "${RED}FAIL (invalid output)${NC}"
+        ((FAILED++)) || true
         continue
     fi
 
     # Extract test count (line before 999)
-    ACTUAL=$(echo "$OUTPUT" | grep -B1 "^999$" | head -1)
+    ACTUAL=$(grep -B1 "^999$" "$OUT_FILE" | head -1)
 
     if [ "$ACTUAL" == "$EXPECTED" ]; then
-        echo -e "${GREEN}✓ ${ACTUAL}/${EXPECTED} tests passed${NC}"
-        ((PASSED++))
+        echo -e "${GREEN}PASS ${ACTUAL}/${EXPECTED}${NC}"
+        ((PASSED++)) || true
     else
-        echo -e "${RED}✗ ${ACTUAL}/${EXPECTED} tests passed${NC}"
-        ((FAILED++))
+        echo -e "${RED}FAIL ${ACTUAL}/${EXPECTED}${NC}"
+        ((FAILED++)) || true
     fi
 
 done < "$MANIFEST"
 
 echo ""
 echo "========================================"
-echo "Results: ${PASSED} passed, ${FAILED} failed"
+echo "Results: ${PASSED}/${TOTAL} passed, ${FAILED} failed"
 echo "========================================"
 
 if [ "$FAILED" -gt 0 ]; then
