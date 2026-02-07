@@ -1024,3 +1024,17 @@ fn test_mir_lower_bool_return() {
     let func = find_mir_fn(&mir, "is_positive");
     assert!(matches!(func.ret_ty, MirType::Bool));
 }
+
+// --- Keyword-as-method-name (v0.89) ---
+
+#[test]
+fn test_keyword_spawn_as_method() {
+    // v0.89: `spawn` keyword should be usable as a method name after `.`
+    assert!(type_checks(
+        "fn test_scope() -> () = {
+           let s: Scope = thread_scope();
+           s.spawn(fn || { () });
+           s.wait();
+         };"
+    ));
+}

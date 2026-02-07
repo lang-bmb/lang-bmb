@@ -1,15 +1,21 @@
 // v0.85: Basic scoped threads test
-// Tests Scope type creation and wait
-// Note: s.spawn() cannot be called because `spawn` is a keyword token.
-// This is a known parser limitation (I-01 from Cycle 21).
+// Tests Scope type creation, spawn, and wait
 
 fn main() -> i64 = {
     // Create a scope for structured thread management
     let s: Scope = thread_scope();
 
-    // Wait for scope (no threads spawned, should return immediately)
+    // Create shared counter
+    let counter: Atomic<i64> = Atomic::new(0);
+
+    // Spawn scoped threads using .spawn() method
+    s.spawn(fn || { counter.fetch_add(10); () });
+    s.spawn(fn || { counter.fetch_add(20); () });
+
+    // Wait for all scoped threads to complete
     s.wait();
 
-    // Scope type works correctly
-    0
+    // Counter should be 30
+    let result = counter.load();
+    if result == 30 { 0 } else { 1 }
 };

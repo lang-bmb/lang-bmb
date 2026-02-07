@@ -1878,7 +1878,8 @@ PostfixExpr: Expr = {
         future: Box::new(e),
     },
     // v0.5 Phase 8: Method call: expr.method(args) - must be before field access
-    <e:SpannedPostfixExpr> "." <method:RawIdent> "(" <args:Args> ")" => Expr::MethodCall {
+    // v0.89: Uses MethodName instead of RawIdent to allow keywords as method names
+    <e:SpannedPostfixExpr> "." <method:MethodName> "(" <args:Args> ")" => Expr::MethodCall {
         receiver: Box::new(e),
         method,
         args,
@@ -2081,6 +2082,16 @@ Ident: Spanned<String> = {
 
 RawIdent: String = {
     "ident" => <>,
+};
+
+// v0.89: Method name allows keywords that are also valid method names
+// This fixes the grammar limitation where keywords like `spawn` couldn't be
+// used as method names (e.g., scope.spawn()), even though they're defined
+// in the type checker. Keywords with dedicated postfix syntax (.await, .post)
+// are handled by separate rules and excluded here.
+MethodName: String = {
+    "ident" => <>,
+    "spawn" => "spawn".to_string(),
 };
 
 // v0.31: Spanned string literal for @trust "reason"
