@@ -569,25 +569,367 @@ impl std::error::Error for TranslateError {}
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ast::Span;
+
+    fn span() -> Span { Span::new(0, 0) }
+    fn spanned(e: Expr) -> Spanned<Expr> { Spanned::new(e, span()) }
+
+    // ================================================================
+    // Literal Translation Tests
+    // ================================================================
 
     #[test]
     fn test_int_lit() {
         let trans = SmtTranslator::new();
-        let expr = Spanned::new(Expr::IntLit(42), crate::ast::Span::new(0, 0));
+        let expr = spanned(Expr::IntLit(42));
         assert_eq!(trans.translate(&expr).unwrap(), "42");
     }
 
     #[test]
     fn test_negative_int() {
         let trans = SmtTranslator::new();
-        let expr = Spanned::new(Expr::IntLit(-5), crate::ast::Span::new(0, 0));
+        let expr = spanned(Expr::IntLit(-5));
         assert_eq!(trans.translate(&expr).unwrap(), "(- 5)");
     }
 
     #[test]
-    fn test_bool_lit() {
+    fn test_int_zero() {
         let trans = SmtTranslator::new();
-        let expr = Spanned::new(Expr::BoolLit(true), crate::ast::Span::new(0, 0));
+        let expr = spanned(Expr::IntLit(0));
+        assert_eq!(trans.translate(&expr).unwrap(), "0");
+    }
+
+    #[test]
+    fn test_bool_lit_true() {
+        let trans = SmtTranslator::new();
+        let expr = spanned(Expr::BoolLit(true));
         assert_eq!(trans.translate(&expr).unwrap(), "true");
+    }
+
+    #[test]
+    fn test_bool_lit_false() {
+        let trans = SmtTranslator::new();
+        let expr = spanned(Expr::BoolLit(false));
+        assert_eq!(trans.translate(&expr).unwrap(), "false");
+    }
+
+    #[test]
+    fn test_unit_lit() {
+        let trans = SmtTranslator::new();
+        let expr = spanned(Expr::Unit);
+        assert_eq!(trans.translate(&expr).unwrap(), "true");
+    }
+
+    #[test]
+    fn test_string_lit() {
+        let trans = SmtTranslator::new();
+        let expr = spanned(Expr::StringLit("hello".to_string()));
+        assert_eq!(trans.translate(&expr).unwrap(), "0");
+    }
+
+    #[test]
+    fn test_char_lit() {
+        let trans = SmtTranslator::new();
+        let expr = spanned(Expr::CharLit('A'));
+        assert_eq!(trans.translate(&expr).unwrap(), "65");
+    }
+
+    #[test]
+    fn test_null_lit() {
+        let trans = SmtTranslator::new();
+        let expr = spanned(Expr::Null);
+        assert_eq!(trans.translate(&expr).unwrap(), "0");
+    }
+
+    // ================================================================
+    // Variable Translation Tests
+    // ================================================================
+
+    #[test]
+    fn test_var_known() {
+        let mut trans = SmtTranslator::new();
+        trans.var_types.insert("x".to_string(), SmtSort::Int);
+        let expr = spanned(Expr::Var("x".to_string()));
+        assert_eq!(trans.translate(&expr).unwrap(), "x");
+    }
+
+    #[test]
+    fn test_var_unknown() {
+        let trans = SmtTranslator::new();
+        let expr = spanned(Expr::Var("x".to_string()));
+        assert!(trans.translate(&expr).is_err());
+    }
+
+    #[test]
+    fn test_ret_with_ret_declared() {
+        let mut trans = SmtTranslator::new();
+        trans.var_types.insert("__ret__".to_string(), SmtSort::Int);
+        let expr = spanned(Expr::Ret);
+        assert_eq!(trans.translate(&expr).unwrap(), "__ret__");
+    }
+
+    #[test]
+    fn test_ret_without_ret_declared() {
+        let trans = SmtTranslator::new();
+        let expr = spanned(Expr::Ret);
+        assert!(trans.translate(&expr).is_err());
+    }
+
+    // ================================================================
+    // Binary Operation Translation Tests
+    // ================================================================
+
+    #[test]
+    fn test_binary_add() {
+        let mut trans = SmtTranslator::new();
+        trans.var_types.insert("a".to_string(), SmtSort::Int);
+        trans.var_types.insert("b".to_string(), SmtSort::Int);
+        let expr = spanned(Expr::Binary {
+            left: Box::new(spanned(Expr::Var("a".to_string()))),
+            op: BinOp::Add,
+            right: Box::new(spanned(Expr::Var("b".to_string()))),
+        });
+        assert_eq!(trans.translate(&expr).unwrap(), "(+ a b)");
+    }
+
+    #[test]
+    fn test_binary_sub() {
+        let trans = SmtTranslator::new();
+        let expr = spanned(Expr::Binary {
+            left: Box::new(spanned(Expr::IntLit(10))),
+            op: BinOp::Sub,
+            right: Box::new(spanned(Expr::IntLit(3))),
+        });
+        assert_eq!(trans.translate(&expr).unwrap(), "(- 10 3)");
+    }
+
+    #[test]
+    fn test_binary_mul() {
+        let trans = SmtTranslator::new();
+        let expr = spanned(Expr::Binary {
+            left: Box::new(spanned(Expr::IntLit(4))),
+            op: BinOp::Mul,
+            right: Box::new(spanned(Expr::IntLit(5))),
+        });
+        assert_eq!(trans.translate(&expr).unwrap(), "(* 4 5)");
+    }
+
+    #[test]
+    fn test_binary_div() {
+        let trans = SmtTranslator::new();
+        let expr = spanned(Expr::Binary {
+            left: Box::new(spanned(Expr::IntLit(10))),
+            op: BinOp::Div,
+            right: Box::new(spanned(Expr::IntLit(2))),
+        });
+        assert_eq!(trans.translate(&expr).unwrap(), "(div 10 2)");
+    }
+
+    #[test]
+    fn test_binary_mod() {
+        let trans = SmtTranslator::new();
+        let expr = spanned(Expr::Binary {
+            left: Box::new(spanned(Expr::IntLit(7))),
+            op: BinOp::Mod,
+            right: Box::new(spanned(Expr::IntLit(3))),
+        });
+        assert_eq!(trans.translate(&expr).unwrap(), "(mod 7 3)");
+    }
+
+    #[test]
+    fn test_binary_eq() {
+        let mut trans = SmtTranslator::new();
+        trans.var_types.insert("x".to_string(), SmtSort::Int);
+        let expr = spanned(Expr::Binary {
+            left: Box::new(spanned(Expr::Var("x".to_string()))),
+            op: BinOp::Eq,
+            right: Box::new(spanned(Expr::IntLit(0))),
+        });
+        assert_eq!(trans.translate(&expr).unwrap(), "(= x 0)");
+    }
+
+    #[test]
+    fn test_binary_ne() {
+        let mut trans = SmtTranslator::new();
+        trans.var_types.insert("x".to_string(), SmtSort::Int);
+        let expr = spanned(Expr::Binary {
+            left: Box::new(spanned(Expr::Var("x".to_string()))),
+            op: BinOp::Ne,
+            right: Box::new(spanned(Expr::IntLit(0))),
+        });
+        assert_eq!(trans.translate(&expr).unwrap(), "(not (= x 0))");
+    }
+
+    #[test]
+    fn test_binary_comparisons() {
+        let trans = SmtTranslator::new();
+
+        for (op, expected) in [
+            (BinOp::Lt, "(< 1 2)"),
+            (BinOp::Gt, "(> 1 2)"),
+            (BinOp::Le, "(<= 1 2)"),
+            (BinOp::Ge, "(>= 1 2)"),
+        ] {
+            let expr = spanned(Expr::Binary {
+                left: Box::new(spanned(Expr::IntLit(1))),
+                op,
+                right: Box::new(spanned(Expr::IntLit(2))),
+            });
+            assert_eq!(trans.translate(&expr).unwrap(), expected, "Failed for op {:?}", op);
+        }
+    }
+
+    #[test]
+    fn test_binary_logical() {
+        let trans = SmtTranslator::new();
+
+        let expr = spanned(Expr::Binary {
+            left: Box::new(spanned(Expr::BoolLit(true))),
+            op: BinOp::And,
+            right: Box::new(spanned(Expr::BoolLit(false))),
+        });
+        assert_eq!(trans.translate(&expr).unwrap(), "(and true false)");
+
+        let expr = spanned(Expr::Binary {
+            left: Box::new(spanned(Expr::BoolLit(true))),
+            op: BinOp::Or,
+            right: Box::new(spanned(Expr::BoolLit(false))),
+        });
+        assert_eq!(trans.translate(&expr).unwrap(), "(or true false)");
+    }
+
+    #[test]
+    fn test_binary_implies() {
+        let trans = SmtTranslator::new();
+        let expr = spanned(Expr::Binary {
+            left: Box::new(spanned(Expr::BoolLit(true))),
+            op: BinOp::Implies,
+            right: Box::new(spanned(Expr::BoolLit(false))),
+        });
+        assert_eq!(trans.translate(&expr).unwrap(), "(=> true false)");
+    }
+
+    #[test]
+    fn test_binary_shift_unsupported() {
+        let trans = SmtTranslator::new();
+        let expr = spanned(Expr::Binary {
+            left: Box::new(spanned(Expr::IntLit(1))),
+            op: BinOp::Shl,
+            right: Box::new(spanned(Expr::IntLit(2))),
+        });
+        assert!(trans.translate(&expr).is_err());
+    }
+
+    // ================================================================
+    // Unary Operation Translation Tests
+    // ================================================================
+
+    #[test]
+    fn test_unary_neg() {
+        let trans = SmtTranslator::new();
+        let expr = spanned(Expr::Unary {
+            op: UnOp::Neg,
+            expr: Box::new(spanned(Expr::IntLit(5))),
+        });
+        assert_eq!(trans.translate(&expr).unwrap(), "(- 5)");
+    }
+
+    #[test]
+    fn test_unary_not() {
+        let trans = SmtTranslator::new();
+        let expr = spanned(Expr::Unary {
+            op: UnOp::Not,
+            expr: Box::new(spanned(Expr::BoolLit(true))),
+        });
+        assert_eq!(trans.translate(&expr).unwrap(), "(not true)");
+    }
+
+    #[test]
+    fn test_unary_bnot_unsupported() {
+        let trans = SmtTranslator::new();
+        let expr = spanned(Expr::Unary {
+            op: UnOp::Bnot,
+            expr: Box::new(spanned(Expr::IntLit(5))),
+        });
+        assert!(trans.translate(&expr).is_err());
+    }
+
+    // ================================================================
+    // Compound Expression Tests
+    // ================================================================
+
+    #[test]
+    fn test_if_then_else() {
+        let trans = SmtTranslator::new();
+        let expr = spanned(Expr::If {
+            cond: Box::new(spanned(Expr::BoolLit(true))),
+            then_branch: Box::new(spanned(Expr::IntLit(1))),
+            else_branch: Box::new(spanned(Expr::IntLit(0))),
+        });
+        assert_eq!(trans.translate(&expr).unwrap(), "(ite true 1 0)");
+    }
+
+    #[test]
+    fn test_nested_binary() {
+        // (1 + 2) * 3
+        let trans = SmtTranslator::new();
+        let inner = spanned(Expr::Binary {
+            left: Box::new(spanned(Expr::IntLit(1))),
+            op: BinOp::Add,
+            right: Box::new(spanned(Expr::IntLit(2))),
+        });
+        let expr = spanned(Expr::Binary {
+            left: Box::new(inner),
+            op: BinOp::Mul,
+            right: Box::new(spanned(Expr::IntLit(3))),
+        });
+        assert_eq!(trans.translate(&expr).unwrap(), "(* (+ 1 2) 3)");
+    }
+
+    // ================================================================
+    // SmtLibGenerator Tests
+    // ================================================================
+
+    #[test]
+    fn test_generator_declare_and_assert() {
+        let mut generator = SmtLibGenerator::new();
+        generator.declare_var("x", SmtSort::Int);
+        generator.assert("(> x 0)");
+        let output = generator.generate();
+        assert!(output.contains("(declare-const x Int)"));
+        assert!(output.contains("(assert (> x 0))"));
+        assert!(output.contains("(check-sat)"));
+    }
+
+    #[test]
+    fn test_generator_clear() {
+        let mut generator = SmtLibGenerator::new();
+        generator.declare_var("x", SmtSort::Int);
+        generator.clear();
+        let output = generator.generate();
+        assert!(!output.contains("declare-const x"));
+    }
+
+    // ================================================================
+    // Type Sort Conversion Tests
+    // ================================================================
+
+    #[test]
+    fn test_type_to_sort_basic() {
+        assert_eq!(SmtTranslator::type_to_sort(&Type::I64), SmtSort::Int);
+        assert_eq!(SmtTranslator::type_to_sort(&Type::I32), SmtSort::Int);
+        assert_eq!(SmtTranslator::type_to_sort(&Type::Bool), SmtSort::Bool);
+        assert_eq!(SmtTranslator::type_to_sort(&Type::F64), SmtSort::Int);
+        assert_eq!(SmtTranslator::type_to_sort(&Type::Unit), SmtSort::Bool);
+    }
+
+    #[test]
+    fn test_type_to_sort_concurrency() {
+        assert_eq!(SmtTranslator::type_to_sort(&Type::Barrier), SmtSort::Int);
+        assert_eq!(SmtTranslator::type_to_sort(&Type::Condvar), SmtSort::Int);
+        assert_eq!(SmtTranslator::type_to_sort(&Type::ThreadPool), SmtSort::Int);
+        assert_eq!(SmtTranslator::type_to_sort(&Type::Scope), SmtSort::Int);
+        assert_eq!(SmtTranslator::type_to_sort(&Type::AsyncFile), SmtSort::Int);
+        assert_eq!(SmtTranslator::type_to_sort(&Type::AsyncSocket), SmtSort::Int);
     }
 }

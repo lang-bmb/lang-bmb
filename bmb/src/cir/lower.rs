@@ -1032,6 +1032,15 @@ impl CirLowerer {
 mod tests {
     use super::*;
 
+    /// Helper: parse + type-check + lower to CIR
+    fn source_to_cir(source: &str) -> CirProgram {
+        let tokens = crate::lexer::tokenize(source).expect("tokenize failed");
+        let ast = crate::parser::parse("test.bmb", source, tokens).expect("parse failed");
+        let mut tc = crate::types::TypeChecker::new();
+        tc.check_program(&ast).expect("type-check failed");
+        lower_to_cir(&ast)
+    }
+
     #[test]
     fn test_lower_empty_program() {
         let program = Program {
@@ -1040,5 +1049,99 @@ mod tests {
         };
         let cir = lower_to_cir(&program);
         assert!(cir.functions.is_empty());
+    }
+
+    #[test]
+    fn test_lower_simple_function() {
+        let cir = source_to_cir("fn add(a: i64, b: i64) -> i64 = a + b;");
+        assert_eq!(cir.functions.len(), 1);
+        let func = &cir.functions[0];
+        assert_eq!(func.name, "add");
+        assert_eq!(func.params.len(), 2);
+        assert_eq!(func.params[0].name, "a");
+        assert_eq!(func.params[1].name, "b");
+        assert_eq!(func.ret_ty, CirType::I64);
+    }
+
+    #[test]
+    fn test_lower_function_with_precondition() {
+        let cir = source_to_cir(
+            "fn safe_div(a: i64, b: i64) -> i64
+               pre b != 0
+             = a / b;"
+        );
+        let func = &cir.functions[0];
+        assert_eq!(func.name, "safe_div");
+        assert!(!func.preconditions.is_empty(), "Should have preconditions");
+    }
+
+    #[test]
+    fn test_lower_function_with_postcondition() {
+        let cir = source_to_cir(
+            "fn abs(x: i64) -> i64
+               post ret >= 0
+             = if x >= 0 { x } else { 0 - x };"
+        );
+        let func = &cir.functions[0];
+        assert_eq!(func.name, "abs");
+        assert!(!func.postconditions.is_empty(), "Should have postconditions");
+    }
+
+    #[test]
+    fn test_lower_multiple_functions() {
+        let cir = source_to_cir(
+            "fn foo(x: i64) -> i64 = x;
+             fn bar(y: i64) -> i64 = y + 1;"
+        );
+        assert_eq!(cir.functions.len(), 2);
+        assert_eq!(cir.functions[0].name, "foo");
+        assert_eq!(cir.functions[1].name, "bar");
+    }
+
+    #[test]
+    fn test_lower_bool_return_type() {
+        let cir = source_to_cir("fn is_zero(x: i64) -> bool = x == 0;");
+        let func = &cir.functions[0];
+        assert_eq!(func.ret_ty, CirType::Bool);
+    }
+
+    #[test]
+    fn test_lower_struct_definition() {
+        let cir = source_to_cir(
+            "struct Point { x: i64, y: i64 }
+             fn origin() -> Point = new Point { x: 0, y: 0 };"
+        );
+        assert!(cir.structs.contains_key("Point"), "Should contain Point struct");
+        let point = &cir.structs["Point"];
+        assert_eq!(point.fields.len(), 2);
+    }
+
+    #[test]
+    fn test_lower_extern_fn() {
+        let cir = source_to_cir(
+            "extern fn my_func(x: i64) -> i64;"
+        );
+        assert_eq!(cir.extern_fns.len(), 1);
+        assert_eq!(cir.extern_fns[0].name, "my_func");
+    }
+
+    #[test]
+    fn test_lower_pre_and_post() {
+        let cir = source_to_cir(
+            "fn bounded(x: i64) -> i64
+               pre x >= 0
+               post ret >= 0
+             = x;"
+        );
+        let func = &cir.functions[0];
+        assert!(!func.preconditions.is_empty(), "Should have pre");
+        assert!(!func.postconditions.is_empty(), "Should have post");
+    }
+
+    #[test]
+    fn test_lower_pure_function_effects() {
+        let cir = source_to_cir("@pure fn square(x: i64) -> i64 = x * x;");
+        let func = &cir.functions[0];
+        assert!(func.effects.is_pure, "Pure function should have pure effects");
     }
 }
