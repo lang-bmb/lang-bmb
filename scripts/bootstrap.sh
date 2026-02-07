@@ -198,9 +198,10 @@ STAGE1_BIN="${OUTPUT_DIR}/bmb-stage1"
 STAGE1_START=$(get_time_ms)
 
 log "${YELLOW}[1/4] Stage 1: Rust BMB → Stage 1 Binary${NC}"
-log_verbose "Command: $RUST_BMB build $BOOTSTRAP_SRC -o $STAGE1_BIN"
+# v0.87: Use --fast-compile for faster bootstrap (skips opt pass)
+log_verbose "Command: $RUST_BMB build $BOOTSTRAP_SRC -o $STAGE1_BIN --fast-compile"
 
-if $RUST_BMB build "$BOOTSTRAP_SRC" -o "$STAGE1_BIN" 2>&1; then
+if $RUST_BMB build "$BOOTSTRAP_SRC" -o "$STAGE1_BIN" --fast-compile 2>&1; then
     STAGE1_END=$(get_time_ms)
     RESULTS[stage1_time_ms]=$((STAGE1_END - STAGE1_START))
 
@@ -323,8 +324,15 @@ if command -v llc &> /dev/null; then
 
     if [ -f "$BMB_RUNTIME" ]; then
         # Link Stage 2 binary with runtime
+        # v0.87: Add platform-specific libraries (ws2_32 for Windows sockets)
         log_verbose "Linking Stage 2 binary with runtime..."
-        clang "$STAGE2_OBJ" "$BMB_RUNTIME" -o "$STAGE2_BIN" -lm -no-pie
+        if [[ "$OSTYPE" == "msys" ]] || [[ "$OSTYPE" == "cygwin" ]] || [[ "$OSTYPE" == "win32" ]]; then
+            # Windows: need winsock2 library for async socket functions
+            clang "$STAGE2_OBJ" "$BMB_RUNTIME" -o "$STAGE2_BIN" -lm -lws2_32 -no-pie
+        else
+            # Unix: pthread is typically needed
+            clang "$STAGE2_OBJ" "$BMB_RUNTIME" -o "$STAGE2_BIN" -lm -lpthread -no-pie
+        fi
 
         if [ -f "$STAGE2_BIN" ]; then
             log_verbose "${GREEN}Stage 2 binary created${NC}"

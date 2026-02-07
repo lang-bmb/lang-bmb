@@ -77,6 +77,8 @@ pub struct CodeGen {
     opt_level: OptLevel,
     /// v0.60.56: Enable fast-math optimizations for floating-point operations
     fast_math: bool,
+    /// v0.87: Skip expensive opt pass for faster compilation
+    fast_compile: bool,
 }
 
 impl CodeGen {
@@ -85,17 +87,23 @@ impl CodeGen {
         Self {
             opt_level: OptLevel::default(),
             fast_math: false,
+            fast_compile: false,
         }
     }
 
     /// Create a new code generator with optimization level
     pub fn with_opt_level(opt_level: OptLevel) -> Self {
-        Self { opt_level, fast_math: false }
+        Self { opt_level, fast_math: false, fast_compile: false }
     }
 
     /// Create a new code generator with optimization level and fast-math enabled
     pub fn with_fast_math(opt_level: OptLevel, fast_math: bool) -> Self {
-        Self { opt_level, fast_math }
+        Self { opt_level, fast_math, fast_compile: false }
+    }
+
+    /// Create a new code generator with all options (v0.87)
+    pub fn with_options(opt_level: OptLevel, fast_math: bool, fast_compile: bool) -> Self {
+        Self { opt_level, fast_math, fast_compile }
     }
 
     /// Compile MIR to object file
@@ -182,6 +190,59 @@ impl CodeGen {
         // Root cause: inkwell/LLVM 21.1.8 compatibility issue on MinGW
         // Workaround: Check target triple and skip passes for Windows targets
         let is_windows_target = target_triple.as_str().to_string_lossy().contains("windows");
+
+        // v0.87: Fast compile mode - skip opt pass for ~3x faster compilation
+        // Uses llc directly which provides good optimization for most code.
+        // The opt pass is expensive (adds ~1s for large programs) and the
+        // performance difference is typically <5% for most workloads.
+        if self.fast_compile && !matches!(self.opt_level, OptLevel::Debug) {
+            use std::process::Command;
+
+            // Write bitcode to temp file
+            let temp_bc = output.with_extension("unopt.bc");
+            module.write_bitcode_to_path(&temp_bc);
+
+            // Use llc directly for codegen-level optimization
+            let llc_opt = match self.opt_level {
+                OptLevel::Debug => "-O0",
+                OptLevel::Release => "-O2",  // O2 for balanced performance
+                OptLevel::Size => "-Os",
+                OptLevel::Aggressive => "-O3",
+            };
+
+            let obj_from_llc = output.with_extension("llc.o");
+            let llc_result = Command::new("llc")
+                .args([llc_opt, "-filetype=obj", "-o"])
+                .arg(&obj_from_llc)
+                .arg(&temp_bc)
+                .output();
+
+            match llc_result {
+                Ok(output_res) if output_res.status.success() => {
+                    eprintln!("Note: Fast compile mode - llc {} optimization", llc_opt);
+                    // Move llc output to final destination
+                    if let Err(e) = std::fs::rename(&obj_from_llc, output) {
+                        // If rename fails (cross-device), try copy
+                        if let Err(e2) = std::fs::copy(&obj_from_llc, output) {
+                            eprintln!("Warning: Could not move llc output: {}, {}", e, e2);
+                        }
+                        let _ = std::fs::remove_file(&obj_from_llc);
+                    }
+                    let _ = std::fs::remove_file(&temp_bc);
+                    return Ok(());
+                }
+                Ok(output_res) => {
+                    let stderr = String::from_utf8_lossy(&output_res.stderr);
+                    eprintln!("Warning: llc fast-compile failed (exit: {:?}): {}, falling back",
+                              output_res.status.code(), stderr);
+                }
+                Err(e) => {
+                    eprintln!("Warning: llc not found for fast-compile ({}), falling back", e);
+                }
+            }
+            let _ = std::fs::remove_file(&temp_bc);
+            // Fall through to normal compilation path
+        }
 
         if !matches!(self.opt_level, OptLevel::Debug) && !is_windows_target {
             let passes = match self.opt_level {
@@ -938,6 +999,31 @@ impl<'ctx> LlvmContext<'ctx> {
         let write_file_newlines_fn = self.module.add_function("write_file_newlines", write_file_type, None);
         self.functions.insert("write_file_newlines".to_string(), write_file_newlines_fn);
 
+        // v0.88.2: system_capture(cmd: ptr) -> ptr (executes command and captures stdout)
+        let system_capture_type = ptr_type.fn_type(&[ptr_type.into()], false);
+        let system_capture_fn = self.module.add_function("bmb_system_capture", system_capture_type, None);
+        self.functions.insert("system_capture".to_string(), system_capture_fn);
+        self.function_return_types.insert("system_capture".to_string(), MirType::String);
+
+        // v0.88.2: free_string(s: ptr) -> i64 (free a BmbString)
+        let free_string_type = i64_type.fn_type(&[ptr_type.into()], false);
+        let free_string_fn = self.module.add_function("bmb_string_free", free_string_type, None);
+        self.functions.insert("free_string".to_string(), free_string_fn);
+
+        // v0.88.2: arena_mode(enable: i64) -> i64
+        let arena_mode_type = i64_type.fn_type(&[i64_type.into()], false);
+        let arena_mode_fn = self.module.add_function("bmb_arena_mode", arena_mode_type, None);
+        self.functions.insert("arena_mode".to_string(), arena_mode_fn);
+
+        // v0.88.2: arena_reset() -> i64
+        let arena_reset_type = i64_type.fn_type(&[], false);
+        let arena_reset_fn = self.module.add_function("bmb_arena_reset", arena_reset_type, None);
+        self.functions.insert("arena_reset".to_string(), arena_reset_fn);
+
+        // v0.88.2: arena_usage() -> i64
+        let arena_usage_fn = self.module.add_function("bmb_arena_usage", arena_reset_type, None);
+        self.functions.insert("arena_usage".to_string(), arena_usage_fn);
+
         // file_exists(path: ptr) -> i64 (returns 1 if exists, 0 otherwise)
         let file_exists_type = i64_type.fn_type(&[ptr_type.into()], false);
         let file_exists_fn = self.module.add_function("file_exists", file_exists_type, None);
@@ -1147,6 +1233,85 @@ impl<'ctx> LlvmContext<'ctx> {
         let future_await_type = i64_type.fn_type(&[i64_type.into()], false);
         let future_await_fn = self.module.add_function("__future_await", future_await_type, None);
         self.functions.insert("__future_await".to_string(), future_await_fn);
+
+        // v0.83: AsyncFile I/O functions
+        // bmb_async_file_open(path: i64) -> i64
+        let async_file_open_type = i64_type.fn_type(&[i64_type.into()], false);
+        let async_file_open_fn = self.module.add_function("bmb_async_file_open", async_file_open_type, None);
+        self.functions.insert("bmb_async_file_open".to_string(), async_file_open_fn);
+
+        // bmb_async_file_read(file: i64) -> i64
+        let async_file_read_type = i64_type.fn_type(&[i64_type.into()], false);
+        let async_file_read_fn = self.module.add_function("bmb_async_file_read", async_file_read_type, None);
+        self.functions.insert("bmb_async_file_read".to_string(), async_file_read_fn);
+
+        // bmb_async_file_write(file: i64, content: i64) -> void
+        let async_file_write_type = void_type.fn_type(&[i64_type.into(), i64_type.into()], false);
+        let async_file_write_fn = self.module.add_function("bmb_async_file_write", async_file_write_type, None);
+        self.functions.insert("bmb_async_file_write".to_string(), async_file_write_fn);
+
+        // bmb_async_file_close(file: i64) -> void
+        let async_file_close_type = void_type.fn_type(&[i64_type.into()], false);
+        let async_file_close_fn = self.module.add_function("bmb_async_file_close", async_file_close_type, None);
+        self.functions.insert("bmb_async_file_close".to_string(), async_file_close_fn);
+
+        // v0.83.1: AsyncSocket I/O functions
+        // bmb_async_socket_connect(host: i64, port: i64) -> i64
+        let async_socket_connect_type = i64_type.fn_type(&[i64_type.into(), i64_type.into()], false);
+        let async_socket_connect_fn = self.module.add_function("bmb_async_socket_connect", async_socket_connect_type, None);
+        self.functions.insert("bmb_async_socket_connect".to_string(), async_socket_connect_fn);
+
+        // bmb_async_socket_read(socket: i64) -> i64
+        let async_socket_read_type = i64_type.fn_type(&[i64_type.into()], false);
+        let async_socket_read_fn = self.module.add_function("bmb_async_socket_read", async_socket_read_type, None);
+        self.functions.insert("bmb_async_socket_read".to_string(), async_socket_read_fn);
+
+        // bmb_async_socket_write(socket: i64, content: i64) -> void
+        let async_socket_write_type = void_type.fn_type(&[i64_type.into(), i64_type.into()], false);
+        let async_socket_write_fn = self.module.add_function("bmb_async_socket_write", async_socket_write_type, None);
+        self.functions.insert("bmb_async_socket_write".to_string(), async_socket_write_fn);
+
+        // bmb_async_socket_close(socket: i64) -> void
+        let async_socket_close_type = void_type.fn_type(&[i64_type.into()], false);
+        let async_socket_close_fn = self.module.add_function("bmb_async_socket_close", async_socket_close_type, None);
+        self.functions.insert("bmb_async_socket_close".to_string(), async_socket_close_fn);
+
+        // v0.84: ThreadPool runtime functions
+        // bmb_thread_pool_new(size: i64) -> i64
+        let thread_pool_new_type = i64_type.fn_type(&[i64_type.into()], false);
+        let thread_pool_new_fn = self.module.add_function("bmb_thread_pool_new", thread_pool_new_type, None);
+        self.functions.insert("bmb_thread_pool_new".to_string(), thread_pool_new_fn);
+
+        // bmb_thread_pool_execute(pool: i64, task: i64) -> void
+        let thread_pool_execute_type = void_type.fn_type(&[i64_type.into(), i64_type.into()], false);
+        let thread_pool_execute_fn = self.module.add_function("bmb_thread_pool_execute", thread_pool_execute_type, None);
+        self.functions.insert("bmb_thread_pool_execute".to_string(), thread_pool_execute_fn);
+
+        // bmb_thread_pool_join(pool: i64) -> void
+        let thread_pool_join_type = void_type.fn_type(&[i64_type.into()], false);
+        let thread_pool_join_fn = self.module.add_function("bmb_thread_pool_join", thread_pool_join_type, None);
+        self.functions.insert("bmb_thread_pool_join".to_string(), thread_pool_join_fn);
+
+        // bmb_thread_pool_shutdown(pool: i64) -> void
+        let thread_pool_shutdown_type = void_type.fn_type(&[i64_type.into()], false);
+        let thread_pool_shutdown_fn = self.module.add_function("bmb_thread_pool_shutdown", thread_pool_shutdown_type, None);
+        self.functions.insert("bmb_thread_pool_shutdown".to_string(), thread_pool_shutdown_fn);
+
+        // v0.85: Scope runtime functions (scoped threads for structured concurrency)
+        // bmb_scope_new() -> i64
+        let scope_new_type = i64_type.fn_type(&[], false);
+        let scope_new_fn = self.module.add_function("bmb_scope_new", scope_new_type, None);
+        self.functions.insert("bmb_scope_new".to_string(), scope_new_fn);
+
+        // bmb_scope_spawn(scope: i64, task: i64) -> void
+        let scope_spawn_type = void_type.fn_type(&[i64_type.into(), i64_type.into()], false);
+        let scope_spawn_fn = self.module.add_function("bmb_scope_spawn", scope_spawn_type, None);
+        self.functions.insert("bmb_scope_spawn".to_string(), scope_spawn_fn);
+
+        // bmb_scope_wait(scope: i64) -> void
+        let scope_wait_type = void_type.fn_type(&[i64_type.into()], false);
+        let scope_wait_fn = self.module.add_function("bmb_scope_wait", scope_wait_type, None);
+        self.functions.insert("bmb_scope_wait".to_string(), scope_wait_fn);
     }
 
     /// Convert MIR type to LLVM type
@@ -2360,7 +2525,7 @@ impl<'ctx> LlvmContext<'ctx> {
                                         let string_returning_funcs = [
                                             "sb_build", "chr", "slice", "char_to_string",
                                             "int_to_string", "string_from_cstr", "string_concat",
-                                            "read_file", "get_arg"
+                                            "read_file", "get_arg", "system_capture"
                                         ];
                                         if string_returning_funcs.contains(&func.as_str()) {
                                             // String-returning functions: keep ptr as ptr
@@ -2396,7 +2561,7 @@ impl<'ctx> LlvmContext<'ctx> {
                             let string_funcs = [
                                 "sb_build", "chr", "slice", "char_to_string",
                                 "int_to_string", "string_from_cstr", "string_concat",
-                                "read_file", "get_arg", "getenv", "bmb_chr",
+                                "read_file", "get_arg", "getenv", "bmb_chr", "system_capture",
                                 "bmb_string_slice", "bmb_string_concat", "bmb_read_file",
                                 "bmb_int_to_string", "bmb_string_from_cstr", "bmb_sb_build",
                                 "bmb_getenv"
@@ -3999,6 +4164,221 @@ impl<'ctx> LlvmContext<'ctx> {
 
                 self.builder
                     .build_call(*condvar_notify_all_fn, &[condvar_i64.into()], "")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+            }
+
+            // v0.83: AsyncFile instructions
+            MirInst::AsyncFileOpen { dest, path } => {
+                let path_val = self.gen_operand(path)?;
+                let path_i64 = path_val.into_int_value();
+
+                let async_file_open_fn = self.functions.get("bmb_async_file_open")
+                    .ok_or_else(|| CodeGenError::LlvmError("bmb_async_file_open not declared".to_string()))?;
+
+                let result = self.builder
+                    .build_call(*async_file_open_fn, &[path_i64.into()], &dest.name)
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+
+                let result_val = result.try_as_basic_value().basic()
+                    .ok_or_else(|| CodeGenError::LlvmError("async_file_open returned void".to_string()))?;
+                self.ssa_values.insert(dest.name.clone(), result_val);
+            }
+
+            MirInst::AsyncFileRead { dest, file } => {
+                let file_val = self.gen_operand(file)?;
+                let file_i64 = file_val.into_int_value();
+
+                let async_file_read_fn = self.functions.get("bmb_async_file_read")
+                    .ok_or_else(|| CodeGenError::LlvmError("bmb_async_file_read not declared".to_string()))?;
+
+                let result = self.builder
+                    .build_call(*async_file_read_fn, &[file_i64.into()], &dest.name)
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+
+                let result_val = result.try_as_basic_value().basic()
+                    .ok_or_else(|| CodeGenError::LlvmError("async_file_read returned void".to_string()))?;
+                self.ssa_values.insert(dest.name.clone(), result_val);
+            }
+
+            MirInst::AsyncFileWrite { file, content } => {
+                let file_val = self.gen_operand(file)?;
+                let file_i64 = file_val.into_int_value();
+                let content_val = self.gen_operand(content)?;
+                let content_i64 = content_val.into_int_value();
+
+                let async_file_write_fn = self.functions.get("bmb_async_file_write")
+                    .ok_or_else(|| CodeGenError::LlvmError("bmb_async_file_write not declared".to_string()))?;
+
+                self.builder
+                    .build_call(*async_file_write_fn, &[file_i64.into(), content_i64.into()], "")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+            }
+
+            MirInst::AsyncFileClose { file } => {
+                let file_val = self.gen_operand(file)?;
+                let file_i64 = file_val.into_int_value();
+
+                let async_file_close_fn = self.functions.get("bmb_async_file_close")
+                    .ok_or_else(|| CodeGenError::LlvmError("bmb_async_file_close not declared".to_string()))?;
+
+                self.builder
+                    .build_call(*async_file_close_fn, &[file_i64.into()], "")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+            }
+
+            // v0.83.1: AsyncSocket instructions
+            MirInst::AsyncSocketConnect { dest, host, port } => {
+                let host_val = self.gen_operand(host)?;
+                let host_i64 = host_val.into_int_value();
+                let port_val = self.gen_operand(port)?;
+                let port_i64 = port_val.into_int_value();
+
+                let async_socket_connect_fn = self.functions.get("bmb_async_socket_connect")
+                    .ok_or_else(|| CodeGenError::LlvmError("bmb_async_socket_connect not declared".to_string()))?;
+
+                let result = self.builder
+                    .build_call(*async_socket_connect_fn, &[host_i64.into(), port_i64.into()], &dest.name)
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+
+                let result_val = result.try_as_basic_value().basic()
+                    .ok_or_else(|| CodeGenError::LlvmError("async_socket_connect returned void".to_string()))?;
+                self.ssa_values.insert(dest.name.clone(), result_val);
+            }
+
+            MirInst::AsyncSocketRead { dest, socket } => {
+                let socket_val = self.gen_operand(socket)?;
+                let socket_i64 = socket_val.into_int_value();
+
+                let async_socket_read_fn = self.functions.get("bmb_async_socket_read")
+                    .ok_or_else(|| CodeGenError::LlvmError("bmb_async_socket_read not declared".to_string()))?;
+
+                let result = self.builder
+                    .build_call(*async_socket_read_fn, &[socket_i64.into()], &dest.name)
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+
+                let result_val = result.try_as_basic_value().basic()
+                    .ok_or_else(|| CodeGenError::LlvmError("async_socket_read returned void".to_string()))?;
+                self.ssa_values.insert(dest.name.clone(), result_val);
+            }
+
+            MirInst::AsyncSocketWrite { socket, content } => {
+                let socket_val = self.gen_operand(socket)?;
+                let socket_i64 = socket_val.into_int_value();
+                let content_val = self.gen_operand(content)?;
+                let content_i64 = content_val.into_int_value();
+
+                let async_socket_write_fn = self.functions.get("bmb_async_socket_write")
+                    .ok_or_else(|| CodeGenError::LlvmError("bmb_async_socket_write not declared".to_string()))?;
+
+                self.builder
+                    .build_call(*async_socket_write_fn, &[socket_i64.into(), content_i64.into()], "")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+            }
+
+            MirInst::AsyncSocketClose { socket } => {
+                let socket_val = self.gen_operand(socket)?;
+                let socket_i64 = socket_val.into_int_value();
+
+                let async_socket_close_fn = self.functions.get("bmb_async_socket_close")
+                    .ok_or_else(|| CodeGenError::LlvmError("bmb_async_socket_close not declared".to_string()))?;
+
+                self.builder
+                    .build_call(*async_socket_close_fn, &[socket_i64.into()], "")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+            }
+
+            // v0.84: ThreadPool instructions
+            MirInst::ThreadPoolNew { dest, size } => {
+                let size_val = self.gen_operand(size)?;
+                let size_i64 = size_val.into_int_value();
+
+                let thread_pool_new_fn = self.functions.get("bmb_thread_pool_new")
+                    .ok_or_else(|| CodeGenError::LlvmError("bmb_thread_pool_new not declared".to_string()))?;
+
+                let result = self.builder
+                    .build_call(*thread_pool_new_fn, &[size_i64.into()], &dest.name)
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+
+                let result_val = result.try_as_basic_value().basic()
+                    .ok_or_else(|| CodeGenError::LlvmError("thread_pool_new returned void".to_string()))?;
+                self.ssa_values.insert(dest.name.clone(), result_val);
+            }
+
+            MirInst::ThreadPoolExecute { pool, task } => {
+                let pool_val = self.gen_operand(pool)?;
+                let pool_i64 = pool_val.into_int_value();
+                let task_val = self.gen_operand(task)?;
+                let task_i64 = task_val.into_int_value();
+
+                let thread_pool_execute_fn = self.functions.get("bmb_thread_pool_execute")
+                    .ok_or_else(|| CodeGenError::LlvmError("bmb_thread_pool_execute not declared".to_string()))?;
+
+                self.builder
+                    .build_call(*thread_pool_execute_fn, &[pool_i64.into(), task_i64.into()], "")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+            }
+
+            MirInst::ThreadPoolJoin { pool } => {
+                let pool_val = self.gen_operand(pool)?;
+                let pool_i64 = pool_val.into_int_value();
+
+                let thread_pool_join_fn = self.functions.get("bmb_thread_pool_join")
+                    .ok_or_else(|| CodeGenError::LlvmError("bmb_thread_pool_join not declared".to_string()))?;
+
+                self.builder
+                    .build_call(*thread_pool_join_fn, &[pool_i64.into()], "")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+            }
+
+            MirInst::ThreadPoolShutdown { pool } => {
+                let pool_val = self.gen_operand(pool)?;
+                let pool_i64 = pool_val.into_int_value();
+
+                let thread_pool_shutdown_fn = self.functions.get("bmb_thread_pool_shutdown")
+                    .ok_or_else(|| CodeGenError::LlvmError("bmb_thread_pool_shutdown not declared".to_string()))?;
+
+                self.builder
+                    .build_call(*thread_pool_shutdown_fn, &[pool_i64.into()], "")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+            }
+
+            // v0.85: Scope instructions (scoped threads for structured concurrency)
+            MirInst::ScopeNew { dest } => {
+                let scope_new_fn = self.functions.get("bmb_scope_new")
+                    .ok_or_else(|| CodeGenError::LlvmError("bmb_scope_new not declared".to_string()))?;
+
+                let result = self.builder
+                    .build_call(*scope_new_fn, &[], &dest.name)
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+
+                let result_val = result.try_as_basic_value().basic()
+                    .ok_or_else(|| CodeGenError::LlvmError("scope_new returned void".to_string()))?;
+                self.ssa_values.insert(dest.name.clone(), result_val);
+            }
+
+            MirInst::ScopeSpawn { scope, task } => {
+                let scope_val = self.gen_operand(scope)?;
+                let scope_i64 = scope_val.into_int_value();
+                let task_val = self.gen_operand(task)?;
+                let task_i64 = task_val.into_int_value();
+
+                let scope_spawn_fn = self.functions.get("bmb_scope_spawn")
+                    .ok_or_else(|| CodeGenError::LlvmError("bmb_scope_spawn not declared".to_string()))?;
+
+                self.builder
+                    .build_call(*scope_spawn_fn, &[scope_i64.into(), task_i64.into()], "")
+                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+            }
+
+            MirInst::ScopeWait { scope } => {
+                let scope_val = self.gen_operand(scope)?;
+                let scope_i64 = scope_val.into_int_value();
+
+                let scope_wait_fn = self.functions.get("bmb_scope_wait")
+                    .ok_or_else(|| CodeGenError::LlvmError("bmb_scope_wait not declared".to_string()))?;
+
+                self.builder
+                    .build_call(*scope_wait_fn, &[scope_i64.into()], "")
                     .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
             }
 

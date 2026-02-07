@@ -343,6 +343,14 @@ pub fn format_type(ty: &Type) -> String {
         Type::Condvar => "Condvar".to_string(),
         // v0.75: Future
         Type::Future(inner) => format!("Future<{}>", format_type(inner)),
+        // v0.83: AsyncFile
+        Type::AsyncFile => "AsyncFile".to_string(),
+        // v0.83.1: AsyncSocket
+        Type::AsyncSocket => "AsyncSocket".to_string(),
+        // v0.84: ThreadPool
+        Type::ThreadPool => "ThreadPool".to_string(),
+        // v0.85: Scope
+        Type::Scope => "Scope".to_string(),
     }
 }
 
@@ -378,6 +386,22 @@ pub fn format_expr(expr: &Expr) -> String {
         Expr::CondvarNew => "Condvar::new()".to_string(),
         // v0.75: Await expression
         Expr::Await { future } => format!("({}.await)", format_expr(&future.node)),
+        // v0.82: Select expression
+        Expr::Select { arms } => {
+            let arm_strs: Vec<String> = arms
+                .iter()
+                .map(|arm| {
+                    let binding = arm.binding.as_ref().map(|b| b.as_str()).unwrap_or("_");
+                    format!(
+                        "{} = {} => {}",
+                        binding,
+                        format_expr(&arm.operation.node),
+                        format_expr(&arm.body.node)
+                    )
+                })
+                .collect();
+            format!("(select {})", arm_strs.join(" | "))
+        }
         Expr::Unit => "()".to_string(),
         Expr::Var(name) => name.clone(),
         Expr::Ret => "ret".to_string(),

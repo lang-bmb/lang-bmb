@@ -1,0 +1,12 @@
+// v0.84: Test ThreadPool basic types
+fn main() -> i64 = {
+    // Test type annotations compile
+    let pool_type: ThreadPool = todo;
+
+    // Test thread_pool_new function type
+    // thread_pool_new(size: i64) -> ThreadPool
+
+    // If we get here, types are working
+    // Return 0 for success
+    0
+};

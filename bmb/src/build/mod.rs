@@ -128,6 +128,14 @@ pub struct BuildConfig {
     /// Improves performance significantly for FP-heavy workloads (1.5-2x speedup).
     pub fast_math: bool,
 
+    // === v0.87: Fast Compile Mode ===
+
+    /// Enable fast compilation mode (skips LLVM opt pass)
+    /// Uses llc directly for ~3x faster compilation. Produces slightly larger
+    /// binaries but nearly identical performance. Recommended for development
+    /// and bootstrap compilation.
+    pub fast_compile: bool,
+
     // === v0.60.251: Include Path Options ===
 
     /// Include search paths for @include directives
@@ -168,6 +176,8 @@ impl BuildConfig {
             verification_timeout: 30, // 30 seconds default timeout
             // v0.60.56: Fast math defaults
             fast_math: false, // Strict IEEE-754 by default for correctness
+            // v0.87: Fast compile defaults
+            fast_compile: false, // Full opt+llc by default for best performance
             // v0.60.251: Include paths
             include_paths: Vec::new(),
             // v0.60.252: Prelude
@@ -228,6 +238,15 @@ impl BuildConfig {
     /// WARNING: Not IEEE-754 compliant. Use for performance-critical FP code.
     pub fn fast_math(mut self, enable: bool) -> Self {
         self.fast_math = enable;
+        self
+    }
+
+    /// Enable fast compilation mode (v0.87)
+    /// Skips LLVM opt pass for ~3x faster builds. Produces slightly larger
+    /// binaries but nearly identical runtime performance. Recommended for
+    /// development and bootstrap compilation.
+    pub fn fast_compile(mut self, enable: bool) -> Self {
+        self.fast_compile = enable;
         self
     }
 
@@ -701,7 +720,8 @@ pub fn build(config: &BuildConfig) -> BuildResult<()> {
         };
 
         // v0.60.56: Pass fast_math flag to codegen
-        let codegen = CodeGen::with_fast_math(codegen_opt, config.fast_math);
+        // v0.87: Pass fast_compile flag for faster bootstrap builds
+        let codegen = CodeGen::with_options(codegen_opt, config.fast_math, config.fast_compile);
 
         if config.emit_ir {
             // Emit LLVM IR
@@ -983,7 +1003,8 @@ fn link_executable(obj_path: &Path, output: &Path, verbose: bool) -> BuildResult
     // Platform-specific linker flags
     #[cfg(target_os = "windows")]
     {
-        cmd.args(["-lkernel32", "-lmsvcrt"]);
+        // v0.83.1: Added ws2_32 for AsyncSocket (WinSock) support
+        cmd.args(["-lkernel32", "-lmsvcrt", "-lws2_32"]);
     }
 
     #[cfg(target_os = "linux")]

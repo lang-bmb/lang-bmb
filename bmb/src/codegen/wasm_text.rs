@@ -1173,6 +1173,59 @@ impl WasmCodeGen {
                 writeln!(out, "    ;; ERROR: Condvar not supported in WASM")?;
             }
 
+            // v0.83: AsyncFile instructions (not supported in WASM yet)
+            MirInst::AsyncFileOpen { .. } => {
+                writeln!(out, "    ;; ERROR: AsyncFile not supported in WASM")?;
+            }
+            MirInst::AsyncFileRead { .. } => {
+                writeln!(out, "    ;; ERROR: AsyncFile not supported in WASM")?;
+            }
+            MirInst::AsyncFileWrite { .. } => {
+                writeln!(out, "    ;; ERROR: AsyncFile not supported in WASM")?;
+            }
+            MirInst::AsyncFileClose { .. } => {
+                writeln!(out, "    ;; ERROR: AsyncFile not supported in WASM")?;
+            }
+
+            // v0.83.1: AsyncSocket instructions (not supported in WASM yet)
+            MirInst::AsyncSocketConnect { .. } => {
+                writeln!(out, "    ;; ERROR: AsyncSocket not supported in WASM")?;
+            }
+            MirInst::AsyncSocketRead { .. } => {
+                writeln!(out, "    ;; ERROR: AsyncSocket not supported in WASM")?;
+            }
+            MirInst::AsyncSocketWrite { .. } => {
+                writeln!(out, "    ;; ERROR: AsyncSocket not supported in WASM")?;
+            }
+            MirInst::AsyncSocketClose { .. } => {
+                writeln!(out, "    ;; ERROR: AsyncSocket not supported in WASM")?;
+            }
+
+            // v0.84: ThreadPool instructions (not supported in WASM yet)
+            MirInst::ThreadPoolNew { .. } => {
+                writeln!(out, "    ;; ERROR: ThreadPool not supported in WASM")?;
+            }
+            MirInst::ThreadPoolExecute { .. } => {
+                writeln!(out, "    ;; ERROR: ThreadPool not supported in WASM")?;
+            }
+            MirInst::ThreadPoolJoin { .. } => {
+                writeln!(out, "    ;; ERROR: ThreadPool not supported in WASM")?;
+            }
+            MirInst::ThreadPoolShutdown { .. } => {
+                writeln!(out, "    ;; ERROR: ThreadPool not supported in WASM")?;
+            }
+
+            // v0.85: Scope instructions (not supported in WASM yet)
+            MirInst::ScopeNew { .. } => {
+                writeln!(out, "    ;; ERROR: Scope not supported in WASM")?;
+            }
+            MirInst::ScopeSpawn { .. } => {
+                writeln!(out, "    ;; ERROR: Scope not supported in WASM")?;
+            }
+            MirInst::ScopeWait { .. } => {
+                writeln!(out, "    ;; ERROR: Scope not supported in WASM")?;
+            }
+
             // v0.76: Select instruction
             MirInst::Select { dest, cond_op, cond_lhs, cond_rhs, true_val, false_val } => {
                 // WASM select instruction: select(true_val, false_val, cond)
@@ -1698,6 +1751,25 @@ impl WasmCodeGen {
             MirInst::CondvarWait { dest, .. } => Some((dest.name.clone(), MirType::I64)),
             MirInst::CondvarNotifyOne { .. } => None,
             MirInst::CondvarNotifyAll { .. } => None,
+            // v0.83: AsyncFile operations
+            MirInst::AsyncFileOpen { dest, .. } => Some((dest.name.clone(), MirType::I64)),
+            MirInst::AsyncFileRead { dest, .. } => Some((dest.name.clone(), MirType::I64)),
+            MirInst::AsyncFileWrite { .. } => None,
+            MirInst::AsyncFileClose { .. } => None,
+            // v0.83.1: AsyncSocket operations
+            MirInst::AsyncSocketConnect { dest, .. } => Some((dest.name.clone(), MirType::I64)),
+            MirInst::AsyncSocketRead { dest, .. } => Some((dest.name.clone(), MirType::I64)),
+            MirInst::AsyncSocketWrite { .. } => None,
+            MirInst::AsyncSocketClose { .. } => None,
+            // v0.84: ThreadPool operations
+            MirInst::ThreadPoolNew { dest, .. } => Some((dest.name.clone(), MirType::I64)),
+            MirInst::ThreadPoolExecute { .. } => None,
+            MirInst::ThreadPoolJoin { .. } => None,
+            MirInst::ThreadPoolShutdown { .. } => None,
+            // v0.85: Scope operations
+            MirInst::ScopeNew { dest, .. } => Some((dest.name.clone(), MirType::I64)),
+            MirInst::ScopeSpawn { .. } => None,
+            MirInst::ScopeWait { .. } => None,
             // v0.76: Select instruction
             MirInst::Select { dest, .. } => Some((dest.name.clone(), MirType::I64)),
         }

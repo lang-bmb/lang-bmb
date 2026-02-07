@@ -374,6 +374,16 @@ pub enum Expr {
         /// The future expression to await
         future: Box<Spanned<Expr>>,
     },
+
+    // v0.82: Select macro for multi-channel operations
+
+    /// Select expression: select { arm1, arm2, ... }
+    /// Waits on multiple channels/futures simultaneously.
+    /// Returns the result of the first arm that becomes ready.
+    Select {
+        /// The select arms to wait on
+        arms: Vec<SelectArm>,
+    },
 }
 
 /// A single arm in a match expression
@@ -382,6 +392,20 @@ pub struct MatchArm {
     pub pattern: Spanned<Pattern>,
     /// v0.40: Optional pattern guard (if condition)
     pub guard: Option<Spanned<Expr>>,
+    pub body: Spanned<Expr>,
+}
+
+/// A single arm in a select expression (v0.82)
+/// Example: `value = rx.recv() => { process(value) }`
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SelectArm {
+    /// Variable binding for the result (None for `_`)
+    pub binding: Option<String>,
+    /// The channel/future operation (e.g., rx.recv(), timeout(100))
+    pub operation: Spanned<Expr>,
+    /// Optional guard condition
+    pub guard: Option<Spanned<Expr>>,
+    /// Arm body expression
     pub body: Spanned<Expr>,
 }
 

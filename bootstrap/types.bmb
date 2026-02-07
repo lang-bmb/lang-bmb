@@ -120,6 +120,17 @@ fn type_option(inner_hash: i64) -> i64 = type_generic_app(name_hash_mod("Option"
 fn type_result(ok_hash: i64, err_hash: i64) -> i64 = type_generic_app(name_hash_mod("Result", 1000));
 fn type_map(key_hash: i64, val_hash: i64) -> i64 = type_generic_app(name_hash_mod("Map", 1000));
 
+// v0.88: Concurrency type constructors
+fn type_future(inner_hash: i64) -> i64 = type_generic_app(name_hash_mod("Future", 1000));
+fn type_mutex(inner_hash: i64) -> i64 = type_generic_app(name_hash_mod("Mutex", 1000));
+fn type_atomic(inner_hash: i64) -> i64 = type_generic_app(name_hash_mod("Atomic", 1000));
+fn type_channel(inner_hash: i64) -> i64 = type_generic_app(name_hash_mod("Channel", 1000));
+fn type_sender(inner_hash: i64) -> i64 = type_generic_app(name_hash_mod("Sender", 1000));
+fn type_receiver(inner_hash: i64) -> i64 = type_generic_app(name_hash_mod("Receiver", 1000));
+fn type_rwlock(inner_hash: i64) -> i64 = type_generic_app(name_hash_mod("RwLock", 1000));
+fn type_threadpool() -> i64 = type_generic_app(name_hash_mod("ThreadPool", 1000));
+fn type_scope() -> i64 = type_generic_app(name_hash_mod("Scope", 1000));
+
 // Mod-safe hash for base type names (fits in 0-999 range)
 fn name_hash_mod(name: String, modulo: i64) -> i64 =
     let h = name_hash_base(name);
@@ -1720,9 +1731,52 @@ fn builtin_max_sig() -> i64 = 2 * 100 + 2;
 fn builtin_max_p1() -> i64 = type_i64();
 fn builtin_max_p2() -> i64 = type_i64();
 
+// v0.88: Concurrency built-in functions
+// Note: Return types use i64 for handles (actual generics handled at MIR level)
+
+// Function: thread_spawn(fn) -> i64 (thread handle)
+fn builtin_thread_spawn_sig() -> i64 = 2 * 100 + 1;  // i64, 1 param
+fn builtin_thread_spawn_p1() -> i64 = type_i64();    // fn pointer as i64
+
+// Function: thread_join(i64) -> i64 (join result)
+fn builtin_thread_join_sig() -> i64 = 2 * 100 + 1;
+fn builtin_thread_join_p1() -> i64 = type_i64();
+
+// Function: mutex_new() -> i64 (mutex handle)
+fn builtin_mutex_new_sig() -> i64 = 2 * 100 + 0;
+
+// Function: channel_new() -> i64 (channel handle - returns pair)
+fn builtin_channel_new_sig() -> i64 = 2 * 100 + 0;
+
+// Function: thread_pool_new(i64) -> i64
+fn builtin_thread_pool_new_sig() -> i64 = 2 * 100 + 1;
+fn builtin_thread_pool_new_p1() -> i64 = type_i64();
+
+// Function: thread_scope() -> i64
+fn builtin_thread_scope_sig() -> i64 = 2 * 100 + 0;
+
+// Function: block_on(future) -> i64
+fn builtin_block_on_sig() -> i64 = 2 * 100 + 1;
+fn builtin_block_on_p1() -> i64 = type_i64();  // Future as i64 handle
+
 // Lookup builtin function by name, return signature or 0 if not found
 fn lookup_builtin(name: String) -> i64 =
-    if name == "println" { builtin_println_sig() } else if name == "print" { builtin_print_sig() } else if name == "assert" { builtin_assert_sig() } else if name == "read_int" { builtin_read_int_sig() } else if name == "abs" { builtin_abs_sig() } else if name == "min" { builtin_min_sig() } else if name == "max" { builtin_max_sig() } else { 0 };
+    if name == "println" { builtin_println_sig() }
+    else if name == "print" { builtin_print_sig() }
+    else if name == "assert" { builtin_assert_sig() }
+    else if name == "read_int" { builtin_read_int_sig() }
+    else if name == "abs" { builtin_abs_sig() }
+    else if name == "min" { builtin_min_sig() }
+    else if name == "max" { builtin_max_sig() }
+    // v0.88: Concurrency builtins
+    else if name == "thread_spawn" { builtin_thread_spawn_sig() }
+    else if name == "thread_join" { builtin_thread_join_sig() }
+    else if name == "mutex_new" { builtin_mutex_new_sig() }
+    else if name == "channel_new" { builtin_channel_new_sig() }
+    else if name == "thread_pool_new" { builtin_thread_pool_new_sig() }
+    else if name == "thread_scope" { builtin_thread_scope_sig() }
+    else if name == "block_on" { builtin_block_on_sig() }
+    else { 0 };
 
 // Get return type from signature
 fn sig_return_type(sig: i64) -> i64 =
@@ -1734,7 +1788,20 @@ fn sig_param_count(sig: i64) -> i64 = sig - (sig / 100) * 100;
 
 // Get builtin param type by name and index
 fn builtin_param_type(name: String, idx: i64) -> i64 =
-    if name == "println" and idx == 0 { builtin_println_p1() } else if name == "print" and idx == 0 { builtin_print_p1() } else if name == "assert" and idx == 0 { builtin_assert_p1() } else if name == "abs" and idx == 0 { builtin_abs_p1() } else if name == "min" and idx == 0 { builtin_min_p1() } else if name == "min" and idx == 1 { builtin_min_p2() } else if name == "max" and idx == 0 { builtin_max_p1() } else if name == "max" and idx == 1 { builtin_max_p2() } else { type_error() };
+    if name == "println" and idx == 0 { builtin_println_p1() }
+    else if name == "print" and idx == 0 { builtin_print_p1() }
+    else if name == "assert" and idx == 0 { builtin_assert_p1() }
+    else if name == "abs" and idx == 0 { builtin_abs_p1() }
+    else if name == "min" and idx == 0 { builtin_min_p1() }
+    else if name == "min" and idx == 1 { builtin_min_p2() }
+    else if name == "max" and idx == 0 { builtin_max_p1() }
+    else if name == "max" and idx == 1 { builtin_max_p2() }
+    // v0.88: Concurrency builtins
+    else if name == "thread_spawn" and idx == 0 { builtin_thread_spawn_p1() }
+    else if name == "thread_join" and idx == 0 { builtin_thread_join_p1() }
+    else if name == "thread_pool_new" and idx == 0 { builtin_thread_pool_new_p1() }
+    else if name == "block_on" and idx == 0 { builtin_block_on_p1() }
+    else { type_error() };
 
 // ============================================================================
 // v0.22.2: Struct/Enum Type Registry

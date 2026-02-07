@@ -1529,6 +1529,46 @@ fn gen_extern_panic_bounds() -> String =
 fn gen_intrinsic_expect() -> String =
     "declare i64 @llvm.expect.i64(i64, i64) nounwind readnone";
 
+// v0.88: Concurrency runtime declarations
+fn gen_extern_thread_spawn() -> String =
+    "declare i64 @bmb_thread_spawn(i64)";
+fn gen_extern_thread_join() -> String =
+    "declare i64 @bmb_thread_join(i64)";
+fn gen_extern_mutex_new() -> String =
+    "declare i64 @bmb_mutex_new()";
+fn gen_extern_mutex_lock() -> String =
+    "declare void @bmb_mutex_lock(i64)";
+fn gen_extern_mutex_unlock() -> String =
+    "declare void @bmb_mutex_unlock(i64)";
+fn gen_extern_channel_new() -> String =
+    "declare i64 @bmb_channel_new()";
+fn gen_extern_channel_send() -> String =
+    "declare void @bmb_channel_send(i64, i64)";
+fn gen_extern_channel_recv() -> String =
+    "declare i64 @bmb_channel_recv(i64)";
+fn gen_extern_atomic_new() -> String =
+    "declare i64 @bmb_atomic_new(i64)";
+fn gen_extern_atomic_load() -> String =
+    "declare i64 @bmb_atomic_load(i64)";
+fn gen_extern_atomic_store() -> String =
+    "declare void @bmb_atomic_store(i64, i64)";
+fn gen_extern_future_await() -> String =
+    "declare i64 @__future_await(i64)";
+fn gen_extern_scope_new() -> String =
+    "declare i64 @bmb_scope_new()";
+fn gen_extern_scope_spawn() -> String =
+    "declare void @bmb_scope_spawn(i64, i64)";
+fn gen_extern_scope_wait() -> String =
+    "declare void @bmb_scope_wait(i64)";
+fn gen_extern_pool_new() -> String =
+    "declare i64 @bmb_thread_pool_new(i64)";
+fn gen_extern_pool_execute() -> String =
+    "declare void @bmb_thread_pool_execute(i64, i64)";
+fn gen_extern_pool_join() -> String =
+    "declare void @bmb_thread_pool_join(i64)";
+fn gen_extern_block_on() -> String =
+    "declare i64 @bmb_block_on(i64)";
+
 // Generate all runtime declarations
 fn gen_runtime_decls() -> String =
     let basic = gen_extern_println() + "|" + gen_extern_abs() + "|" + gen_extern_min() + "|" + gen_extern_max();
@@ -1538,7 +1578,13 @@ fn gen_runtime_decls() -> String =
     let memory = gen_extern_alloc() + "|" + gen_extern_free();
     let safety = gen_extern_panic_bounds();  // v0.48.0
     let intrinsics = gen_intrinsic_expect();  // v0.52
-    basic + "|" + string + "|" + array + "|" + array_mut + "|" + memory + "|" + safety + "|" + intrinsics;
+    // v0.88: Concurrency runtime
+    let concur1 = gen_extern_thread_spawn() + "|" + gen_extern_thread_join() + "|" + gen_extern_mutex_new() + "|" + gen_extern_mutex_lock() + "|" + gen_extern_mutex_unlock();
+    let concur2 = gen_extern_channel_new() + "|" + gen_extern_channel_send() + "|" + gen_extern_channel_recv();
+    let concur3 = gen_extern_atomic_new() + "|" + gen_extern_atomic_load() + "|" + gen_extern_atomic_store();
+    let concur4 = gen_extern_future_await() + "|" + gen_extern_scope_new() + "|" + gen_extern_scope_spawn() + "|" + gen_extern_scope_wait();
+    let concur5 = gen_extern_pool_new() + "|" + gen_extern_pool_execute() + "|" + gen_extern_pool_join() + "|" + gen_extern_block_on();
+    basic + "|" + string + "|" + array + "|" + array_mut + "|" + memory + "|" + safety + "|" + intrinsics + "|" + concur1 + "|" + concur2 + "|" + concur3 + "|" + concur4 + "|" + concur5;
 
 // Example: Complete add function from MIR to LLVM IR
 // MIR input:

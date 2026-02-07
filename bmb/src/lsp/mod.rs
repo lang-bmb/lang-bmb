@@ -1349,6 +1349,14 @@ fn format_type(ty: &crate::ast::Type) -> String {
         Type::Condvar => "Condvar".to_string(),
         // v0.75: Future type
         Type::Future(inner) => format!("Future<{}>", format_type(inner)),
+        // v0.83: AsyncFile type
+        Type::AsyncFile => "AsyncFile".to_string(),
+        // v0.83.1: AsyncSocket type
+        Type::AsyncSocket => "AsyncSocket".to_string(),
+        // v0.84: ThreadPool type
+        Type::ThreadPool => "ThreadPool".to_string(),
+        // v0.85: Scope type
+        Type::Scope => "Scope".to_string(),
     }
 }
 
@@ -1667,6 +1675,17 @@ fn format_expr(expr: &Expr) -> String {
         Expr::CondvarNew => "Condvar::new()".to_string(),
         // v0.75: Await expression
         Expr::Await { future } => format!("{}.await", format_expr(&future.node)),
+        // v0.82: Select expression
+        Expr::Select { arms } => {
+            let arm_strs: Vec<String> = arms
+                .iter()
+                .map(|arm| {
+                    let binding = arm.binding.as_ref().map(|b| b.as_str()).unwrap_or("_");
+                    format!("{} = {} => {{ ... }}", binding, format_expr(&arm.operation.node))
+                })
+                .collect();
+            format!("select {{ {} }}", arm_strs.join(", "))
+        }
     }
 }
 

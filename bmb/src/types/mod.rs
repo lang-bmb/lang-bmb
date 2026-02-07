@@ -349,8 +349,17 @@ impl TypeChecker {
         functions.insert("exec_output".to_string(), (vec![Type::String, Type::String], Type::String));
         // system(command: String) -> i64 (exit code via shell)
         functions.insert("system".to_string(), (vec![Type::String], Type::I64));
+        // v0.88.2: system_capture(command: String) -> String (capture stdout)
+        functions.insert("system_capture".to_string(), (vec![Type::String], Type::String));
         // getenv(name: String) -> String (env var value)
         functions.insert("getenv".to_string(), (vec![Type::String], Type::String));
+
+        // v0.88.2: Memory management functions
+        functions.insert("free_string".to_string(), (vec![Type::String], Type::I64));
+        functions.insert("sb_free".to_string(), (vec![Type::I64], Type::I64));
+        functions.insert("arena_mode".to_string(), (vec![Type::I64], Type::I64));
+        functions.insert("arena_reset".to_string(), (vec![], Type::I64));
+        functions.insert("arena_usage".to_string(), (vec![], Type::I64));
 
         // v0.63: Timing builtin for bmb-bench benchmark framework
         // time_ns() -> i64 (nanoseconds since epoch)
@@ -553,6 +562,34 @@ impl TypeChecker {
                 vec![Type::Future(Box::new(Type::TypeVar("T".to_string())))],
                 Type::TypeVar("T".to_string()),
             ),
+        );
+
+        // v0.83: async_open(path: String) -> Future<AsyncFile>
+        // Opens a file asynchronously for reading/writing
+        functions.insert(
+            "async_open".to_string(),
+            (vec![Type::String], Type::Future(Box::new(Type::AsyncFile))),
+        );
+
+        // v0.83.1: tcp_connect(host: String, port: i64) -> Future<AsyncSocket>
+        // Connects to a TCP server asynchronously
+        functions.insert(
+            "tcp_connect".to_string(),
+            (vec![Type::String, Type::I64], Type::Future(Box::new(Type::AsyncSocket))),
+        );
+
+        // v0.84: thread_pool_new(size: i64) -> ThreadPool
+        // Creates a new thread pool with the specified number of worker threads
+        functions.insert(
+            "thread_pool_new".to_string(),
+            (vec![Type::I64], Type::ThreadPool),
+        );
+
+        // v0.85: thread_scope() -> Scope
+        // Creates a new scope for scoped threads (structured concurrency)
+        functions.insert(
+            "thread_scope".to_string(),
+            (vec![], Type::Scope),
         );
 
         Self {
@@ -999,7 +1036,10 @@ impl TypeChecker {
                 self.mark_type_names_used(inner);
             }
             // v0.74: Barrier and Condvar are unit types - no inner type to mark
-            Type::Barrier | Type::Condvar => {}
+            // v0.83: AsyncFile and AsyncSocket are unit types - no inner type to mark
+            // v0.84: ThreadPool is a unit type - no inner type to mark
+            // v0.85: Scope is a unit type - no inner type to mark
+            Type::Barrier | Type::Condvar | Type::AsyncFile | Type::AsyncSocket | Type::ThreadPool | Type::Scope => {}
             Type::Refined { base, .. } => {
                 self.mark_type_names_used(base);
             }
@@ -1450,6 +1490,69 @@ impl TypeChecker {
                         span,
                     )),
                 }
+            }
+
+            // v0.82: Select expression - all arms must have same result type
+            Expr::Select { arms } => {
+                if arms.is_empty() {
+                    return Err(CompileError::type_error(
+                        "select expression must have at least one arm",
+                        span,
+                    ));
+                }
+
+                let mut result_ty: Option<Type> = None;
+
+                for arm in arms {
+                    // Type-check the operation (e.g., rx.recv())
+                    let op_ty = self.infer(&arm.operation.node, arm.operation.span)?;
+
+                    // If there's a binding, add it to the environment for this arm
+                    if let Some(binding_name) = &arm.binding {
+                        self.env.insert(binding_name.clone(), op_ty.clone());
+                    }
+
+                    // Type-check guard if present
+                    if let Some(guard) = &arm.guard {
+                        let guard_ty = self.infer(&guard.node, guard.span)?;
+                        if guard_ty != Type::Bool {
+                            // Clean up binding before returning error
+                            if let Some(binding_name) = &arm.binding {
+                                self.env.remove(binding_name);
+                            }
+                            return Err(CompileError::type_error(
+                                format!("select guard must be bool, found '{}'", guard_ty),
+                                guard.span,
+                            ));
+                        }
+                    }
+
+                    // Type-check the arm body with the binding in scope
+                    let body_ty = self.infer(&arm.body.node, arm.body.span)?;
+
+                    // Clean up binding after type-checking this arm
+                    if let Some(binding_name) = &arm.binding {
+                        self.env.remove(binding_name);
+                    }
+
+                    // All arms must have the same result type
+                    match &result_ty {
+                        None => result_ty = Some(body_ty),
+                        Some(existing) => {
+                            if &body_ty != existing {
+                                return Err(CompileError::type_error(
+                                    format!(
+                                        "select arms have incompatible types: expected '{}', found '{}'",
+                                        existing, body_ty
+                                    ),
+                                    arm.body.span,
+                                ));
+                            }
+                        }
+                    }
+                }
+
+                Ok(result_ty.unwrap_or(Type::Unit))
             }
 
             Expr::Unit => Ok(Type::Unit),
@@ -3450,6 +3553,146 @@ impl TypeChecker {
                     )),
                 }
             }
+            // v0.83: AsyncFile methods for async I/O
+            Type::AsyncFile => {
+                match method {
+                    // read() -> Future<String> - async read file content
+                    "read" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("read() takes no arguments", span));
+                        }
+                        Ok(Type::Future(Box::new(Type::String)))
+                    }
+                    // write(content: String) -> Future<()> - async write content
+                    "write" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("write() takes exactly one argument", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&Type::String, &arg_ty, args[0].span)?;
+                        Ok(Type::Future(Box::new(Type::Unit)))
+                    }
+                    // close() -> Future<()> - async close file
+                    "close" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("close() takes no arguments", span));
+                        }
+                        Ok(Type::Future(Box::new(Type::Unit)))
+                    }
+                    _ => Err(CompileError::type_error(
+                        format!("unknown method '{}' for AsyncFile", method),
+                        span,
+                    )),
+                }
+            }
+            // v0.83.1: AsyncSocket methods for async network I/O
+            // Note: Uses recv/send instead of read/write to distinguish from AsyncFile
+            Type::AsyncSocket => {
+                match method {
+                    // recv() -> Future<String> - async receive from socket
+                    "recv" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("recv() takes no arguments", span));
+                        }
+                        Ok(Type::Future(Box::new(Type::String)))
+                    }
+                    // send(content: String) -> Future<()> - async send to socket
+                    "send" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("send() takes exactly one argument", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&Type::String, &arg_ty, args[0].span)?;
+                        Ok(Type::Future(Box::new(Type::Unit)))
+                    }
+                    // disconnect() -> Future<()> - async close socket
+                    "disconnect" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("disconnect() takes no arguments", span));
+                        }
+                        Ok(Type::Future(Box::new(Type::Unit)))
+                    }
+                    _ => Err(CompileError::type_error(
+                        format!("unknown method '{}' for AsyncSocket", method),
+                        span,
+                    )),
+                }
+            }
+            // v0.84: ThreadPool methods
+            Type::ThreadPool => {
+                match method {
+                    // execute(f: fn() -> ()) - execute a task on a worker thread
+                    "execute" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("execute() takes exactly one argument", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        // Check that argument is a function that takes no args and returns unit
+                        match &arg_ty {
+                            Type::Fn { params, ret } if params.is_empty() && **ret == Type::Unit => {}
+                            _ => {
+                                return Err(CompileError::type_error(
+                                    format!("execute() expects fn() -> (), got {}", arg_ty),
+                                    args[0].span,
+                                ));
+                            }
+                        }
+                        Ok(Type::Unit)
+                    }
+                    // join() - wait for all tasks to complete and shutdown
+                    "join" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("join() takes no arguments", span));
+                        }
+                        Ok(Type::Unit)
+                    }
+                    // shutdown() - request shutdown (tasks may still be running)
+                    "shutdown" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("shutdown() takes no arguments", span));
+                        }
+                        Ok(Type::Unit)
+                    }
+                    _ => Err(CompileError::type_error(
+                        format!("unknown method '{}' for ThreadPool", method),
+                        span,
+                    )),
+                }
+            }
+            // v0.85: Scope methods for scoped threads
+            Type::Scope => {
+                match method {
+                    // spawn(f: fn() -> ()) - spawn a scoped thread
+                    "spawn" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("spawn() takes exactly one argument", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        // Check that argument is a function that takes no args and returns unit
+                        match &arg_ty {
+                            Type::Fn { params, ret } if params.is_empty() && **ret == Type::Unit => {}
+                            _ => {
+                                return Err(CompileError::type_error(
+                                    format!("spawn() expects fn() -> (), got {}", arg_ty),
+                                    args[0].span,
+                                ));
+                            }
+                        }
+                        Ok(Type::Unit)
+                    }
+                    // wait() - wait for all spawned threads to complete
+                    "wait" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("wait() takes no arguments", span));
+                        }
+                        Ok(Type::Unit)
+                    }
+                    _ => Err(CompileError::type_error(
+                        format!("unknown method '{}' for Scope", method),
+                        span,
+                    )),
+                }
+            }
             // v0.20.1: For other types, look up trait methods
             _ => {
                 if let Some((param_types, ret_type)) = self.lookup_trait_method(receiver_ty, method) {
@@ -4609,6 +4852,14 @@ impl TypeChecker {
             Type::Condvar => "Condvar".to_string(),
             // v0.75: Future type
             Type::Future(inner) => format!("Future<{}>", self.type_to_string(inner)),
+            // v0.83: AsyncFile type
+            Type::AsyncFile => "AsyncFile".to_string(),
+            // v0.83.1: AsyncSocket type
+            Type::AsyncSocket => "AsyncSocket".to_string(),
+            // v0.84: ThreadPool type
+            Type::ThreadPool => "ThreadPool".to_string(),
+            // v0.85: Scope type
+            Type::Scope => "Scope".to_string(),
         }
     }
 

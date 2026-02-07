@@ -594,6 +594,97 @@ pub enum MirInst {
         true_val: Operand,
         false_val: Operand,
     },
+
+    // v0.83: AsyncFile operations
+    /// Open file asynchronously: %dest = async-file-open(path)
+    AsyncFileOpen {
+        dest: Place,
+        path: Operand,
+    },
+
+    /// Read file content: %dest = async-file-read(file)
+    AsyncFileRead {
+        dest: Place,
+        file: Operand,
+    },
+
+    /// Write content to file: async-file-write(file, content)
+    AsyncFileWrite {
+        file: Operand,
+        content: Operand,
+    },
+
+    /// Close file: async-file-close(file)
+    AsyncFileClose {
+        file: Operand,
+    },
+
+    // v0.83.1: AsyncSocket operations
+    /// Connect to TCP server: %dest = async-socket-connect(host, port)
+    AsyncSocketConnect {
+        dest: Place,
+        host: Operand,
+        port: Operand,
+    },
+
+    /// Read from socket: %dest = async-socket-read(socket)
+    AsyncSocketRead {
+        dest: Place,
+        socket: Operand,
+    },
+
+    /// Write to socket: async-socket-write(socket, content)
+    AsyncSocketWrite {
+        socket: Operand,
+        content: Operand,
+    },
+
+    /// Close socket: async-socket-close(socket)
+    AsyncSocketClose {
+        socket: Operand,
+    },
+
+    // v0.84: ThreadPool instructions
+
+    /// Create thread pool: thread-pool-new(size) -> pool
+    ThreadPoolNew {
+        dest: Place,
+        size: Operand,
+    },
+
+    /// Execute task on thread pool: thread-pool-execute(pool, task)
+    ThreadPoolExecute {
+        pool: Operand,
+        task: Operand,
+    },
+
+    /// Join thread pool (wait for all tasks and shutdown): thread-pool-join(pool)
+    ThreadPoolJoin {
+        pool: Operand,
+    },
+
+    /// Shutdown thread pool (request shutdown): thread-pool-shutdown(pool)
+    ThreadPoolShutdown {
+        pool: Operand,
+    },
+
+    // v0.85: Scope instructions for scoped threads
+
+    /// Create scope: scope-new() -> scope
+    ScopeNew {
+        dest: Place,
+    },
+
+    /// Spawn scoped thread: scope-spawn(scope, task)
+    ScopeSpawn {
+        scope: Operand,
+        task: Operand,
+    },
+
+    /// Wait for all spawned threads: scope-wait(scope)
+    ScopeWait {
+        scope: Operand,
+    },
 }
 
 /// Block terminator (control flow)
@@ -873,6 +964,9 @@ pub struct LoweringContext {
     pub loop_context_stack: Vec<(String, String)>,
     /// v0.70: Counter for generating unique spawn function names
     pub spawn_counter: usize,
+    /// v0.88.1: Maps original variable name -> unique SSA-compatible name
+    /// This ensures each let binding gets a unique definition (SSA form)
+    pub var_name_map: HashMap<String, String>,
 }
 
 impl LoweringContext {
@@ -910,6 +1004,7 @@ impl LoweringContext {
             array_element_types: HashMap::new(),
             loop_context_stack: Vec::new(),
             spawn_counter: 0,
+            var_name_map: HashMap::new(),
         }
     }
 
@@ -1328,6 +1423,55 @@ fn format_mir_inst(inst: &MirInst) -> String {
                 format_operand(cond_rhs),
                 format_operand(true_val),
                 format_operand(false_val))
+        }
+        // v0.83: AsyncFile instructions
+        MirInst::AsyncFileOpen { dest, path } => {
+            format!("%{} = async-file-open {}", dest.name, format_operand(path))
+        }
+        MirInst::AsyncFileRead { dest, file } => {
+            format!("%{} = async-file-read {}", dest.name, format_operand(file))
+        }
+        MirInst::AsyncFileWrite { file, content } => {
+            format!("async-file-write {} {}", format_operand(file), format_operand(content))
+        }
+        MirInst::AsyncFileClose { file } => {
+            format!("async-file-close {}", format_operand(file))
+        }
+        // v0.83.1: AsyncSocket instructions
+        MirInst::AsyncSocketConnect { dest, host, port } => {
+            format!("%{} = async-socket-connect {} {}", dest.name, format_operand(host), format_operand(port))
+        }
+        MirInst::AsyncSocketRead { dest, socket } => {
+            format!("%{} = async-socket-read {}", dest.name, format_operand(socket))
+        }
+        MirInst::AsyncSocketWrite { socket, content } => {
+            format!("async-socket-write {} {}", format_operand(socket), format_operand(content))
+        }
+        MirInst::AsyncSocketClose { socket } => {
+            format!("async-socket-close {}", format_operand(socket))
+        }
+        // v0.84: ThreadPool instructions
+        MirInst::ThreadPoolNew { dest, size } => {
+            format!("%{} = thread-pool-new {}", dest.name, format_operand(size))
+        }
+        MirInst::ThreadPoolExecute { pool, task } => {
+            format!("thread-pool-execute {} {}", format_operand(pool), format_operand(task))
+        }
+        MirInst::ThreadPoolJoin { pool } => {
+            format!("thread-pool-join {}", format_operand(pool))
+        }
+        MirInst::ThreadPoolShutdown { pool } => {
+            format!("thread-pool-shutdown {}", format_operand(pool))
+        }
+        // v0.85: Scope instructions
+        MirInst::ScopeNew { dest } => {
+            format!("%{} = scope-new", dest.name)
+        }
+        MirInst::ScopeSpawn { scope, task } => {
+            format!("scope-spawn {} {}", format_operand(scope), format_operand(task))
+        }
+        MirInst::ScopeWait { scope } => {
+            format!("scope-wait {}", format_operand(scope))
         }
     }
 }

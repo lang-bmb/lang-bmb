@@ -166,6 +166,14 @@ impl SmtTranslator {
             Type::Condvar => SmtSort::Int,
             // v0.75: Future - use Int for handle
             Type::Future(_) => SmtSort::Int,
+            // v0.83: AsyncFile - use Int for handle
+            Type::AsyncFile => SmtSort::Int,
+            // v0.83.1: AsyncSocket - use Int for handle
+            Type::AsyncSocket => SmtSort::Int,
+            // v0.84: ThreadPool - use Int for handle
+            Type::ThreadPool => SmtSort::Int,
+            // v0.85: Scope - use Int for handle
+            Type::Scope => SmtSort::Int,
         }
     }
 
@@ -237,6 +245,8 @@ impl SmtTranslator {
             Expr::CondvarNew => Ok("0".to_string()),
             // v0.75: Await - not relevant for SMT verification
             Expr::Await { future } => self.translate(future),
+            // v0.82: Select - not relevant for SMT verification (runtime construct)
+            Expr::Select { .. } => Ok("0".to_string()),
 
             Expr::Var(name) => {
                 if self.var_types.contains_key(name) {

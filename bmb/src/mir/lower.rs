@@ -621,7 +621,160 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
             Operand::Place(dest)
         }
 
-        Expr::Var(name) => Operand::Place(Place::new(name.clone())),
+        // v0.82: Select expression - poll multiple channels
+        // v0.82.1: True polling with try_recv
+        Expr::Select { arms } => {
+            if arms.is_empty() {
+                return Operand::Constant(Constant::Unit);
+            }
+
+            // Create labels
+            let poll_label = ctx.fresh_label("select_poll");
+            let merge_label = ctx.fresh_label("select_merge");
+            let arm_labels: Vec<String> = arms
+                .iter()
+                .enumerate()
+                .map(|(i, _)| ctx.fresh_label(&format!("select_arm_{}", i)))
+                .collect();
+            let try_labels: Vec<String> = arms
+                .iter()
+                .enumerate()
+                .map(|(i, _)| ctx.fresh_label(&format!("select_try_{}", i)))
+                .collect();
+
+            // Result place for PHI node
+            let result_place = ctx.fresh_temp();
+            let mut phi_values: Vec<(Operand, String)> = Vec::new();
+
+            // Store try_recv results for each arm (to pass to arm body)
+            let try_results: Vec<Place> = arms
+                .iter()
+                .enumerate()
+                .map(|(i, _)| {
+                    let p = Place::new(format!("_select_try_{}", i));
+                    ctx.locals.insert(p.name.clone(), MirType::I64);
+                    p
+                })
+                .collect();
+
+            // Jump to polling loop start
+            ctx.finish_block(Terminator::Goto(poll_label.clone()));
+            ctx.start_block(poll_label.clone());
+
+            // First try block starts immediately after poll_label
+            ctx.finish_block(Terminator::Goto(try_labels[0].clone()));
+
+            // Generate try blocks for each arm
+            for (i, arm) in arms.iter().enumerate() {
+                ctx.start_block(try_labels[i].clone());
+
+                // Extract receiver from the operation and call try_recv
+                // The operation should be rx.recv() - we convert it to try_recv
+                let try_result = match &arm.operation.node {
+                    Expr::MethodCall { receiver, method, args } if method == "recv" && args.is_empty() => {
+                        // Lower the receiver to get the channel
+                        let recv_op = lower_expr(receiver, ctx);
+                        // Generate try_recv instead of blocking recv
+                        ctx.push_inst(MirInst::ChannelTryRecv {
+                            dest: try_results[i].clone(),
+                            receiver: recv_op,
+                        });
+                        Operand::Place(try_results[i].clone())
+                    }
+                    _ => {
+                        // For other operations (e.g., timeout), just lower normally
+                        let result = lower_expr(&arm.operation, ctx);
+                        // Copy to try_result place
+                        let src = match &result {
+                            Operand::Place(p) => p.clone(),
+                            Operand::Constant(c) => {
+                                let temp = ctx.fresh_temp();
+                                ctx.push_inst(MirInst::Const {
+                                    dest: temp.clone(),
+                                    value: c.clone(),
+                                });
+                                temp
+                            }
+                        };
+                        ctx.push_inst(MirInst::Copy {
+                            dest: try_results[i].clone(),
+                            src,
+                        });
+                        Operand::Place(try_results[i].clone())
+                    }
+                };
+
+                // Check if try_recv succeeded (result != -1)
+                let cond_place = ctx.fresh_temp();
+                ctx.locals.insert(cond_place.name.clone(), MirType::I64);
+                ctx.push_inst(MirInst::BinOp {
+                    dest: cond_place.clone(),
+                    op: MirBinOp::Ne,
+                    lhs: try_result,
+                    rhs: Operand::Constant(Constant::Int(-1)),
+                });
+
+                // Branch: if success go to arm body, else try next or loop back
+                let next_label = if i + 1 < arms.len() {
+                    try_labels[i + 1].clone()
+                } else {
+                    poll_label.clone() // Loop back to start
+                };
+
+                ctx.finish_block(Terminator::Branch {
+                    cond: Operand::Place(cond_place),
+                    then_label: arm_labels[i].clone(),
+                    else_label: next_label,
+                });
+            }
+
+            // Generate arm body blocks
+            for (i, arm) in arms.iter().enumerate() {
+                ctx.start_block(arm_labels[i].clone());
+
+                // Bind the result variable if present
+                if let Some(binding_name) = &arm.binding {
+                    let binding_place = Place::new(binding_name.clone());
+                    ctx.locals.insert(binding_name.clone(), MirType::I64);
+                    ctx.push_inst(MirInst::Copy {
+                        dest: binding_place,
+                        src: try_results[i].clone(),
+                    });
+                }
+
+                // Evaluate arm body
+                let arm_result = lower_expr(&arm.body, ctx);
+
+                // Store result for PHI
+                let arm_end_label = ctx.current_block_label().to_string();
+                phi_values.push((arm_result, arm_end_label));
+
+                // Jump to merge block
+                ctx.finish_block(Terminator::Goto(merge_label.clone()));
+            }
+
+            // Generate merge block with PHI
+            ctx.start_block(merge_label);
+
+            // Register PHI result type
+            if let Some((first_result, _)) = phi_values.first() {
+                let phi_result_ty = ctx.operand_type(first_result);
+                ctx.locals.insert(result_place.name.clone(), phi_result_ty);
+            }
+
+            ctx.push_inst(MirInst::Phi {
+                dest: result_place.clone(),
+                values: phi_values,
+            });
+
+            Operand::Place(result_place)
+        }
+
+        Expr::Var(name) => {
+            // v0.88.1: Look up the unique SSA name for this variable
+            let actual_name = ctx.var_name_map.get(name).cloned().unwrap_or_else(|| name.clone());
+            Operand::Place(Place::new(actual_name))
+        }
 
         Expr::Binary { left, op, right } => {
             let lhs = lower_expr(left, ctx);
@@ -800,11 +953,20 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
                 ctx.operand_type(&value_op)
             };
 
-            // Register local
-            ctx.locals.insert(name.clone(), mir_ty);
+            // v0.88.1: Create unique SSA-compatible variable name
+            // This ensures each let binding gets a distinct definition (SSA form)
+            let unique_name = format!("{}_v{}", name, ctx.temp_counter);
+            ctx.temp_counter += 1;
 
-            // Assign to the variable
-            let var_place = Place::new(name.clone());
+            // Store mapping from original name to unique name (for variable lookups)
+            let old_mapping = ctx.var_name_map.get(name).cloned();
+            ctx.var_name_map.insert(name.clone(), unique_name.clone());
+
+            // Register local with unique name
+            ctx.locals.insert(unique_name.clone(), mir_ty);
+
+            // Assign to the variable using unique name
+            let var_place = Place::new(unique_name.clone());
             match value_op {
                 Operand::Constant(c) => {
                     ctx.push_inst(MirInst::Const {
@@ -815,11 +977,11 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
                 Operand::Place(src) => {
                     // v0.51.23: Propagate struct type info for field access tracking
                     if let Some(struct_name) = ctx.var_struct_types.get(&src.name).cloned() {
-                        ctx.var_struct_types.insert(name.clone(), struct_name);
+                        ctx.var_struct_types.insert(unique_name.clone(), struct_name);
                     }
                     // v0.51.35: Propagate array element types for struct array handling
                     if let Some(elem_ty) = ctx.array_element_types.get(&src.name).cloned() {
-                        ctx.array_element_types.insert(name.clone(), elem_ty);
+                        ctx.array_element_types.insert(unique_name.clone(), elem_ty);
                     }
                     ctx.push_inst(MirInst::Copy {
                         dest: var_place,
@@ -828,8 +990,17 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
                 }
             }
 
-            // Lower the body
-            lower_expr(body, ctx)
+            // Lower the body (uses the mapping to resolve variable references)
+            let result = lower_expr(body, ctx);
+
+            // v0.88.1: Restore old mapping after body (for proper scoping)
+            if let Some(old_name) = old_mapping {
+                ctx.var_name_map.insert(name.clone(), old_name);
+            } else {
+                ctx.var_name_map.remove(name);
+            }
+
+            result
         }
 
         // v0.60.21: Uninitialized let binding for stack arrays
@@ -934,6 +1105,49 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
                 return Operand::Place(dest);
             }
 
+            // v0.83: async_open(path) - opens file asynchronously, returns Future<AsyncFile>
+            if func == "async_open" && arg_ops.len() == 1 {
+                let dest = ctx.fresh_temp();
+                ctx.locals.insert(dest.name.clone(), MirType::I64);
+                ctx.push_inst(MirInst::AsyncFileOpen {
+                    dest: dest.clone(),
+                    path: arg_ops.into_iter().next().unwrap(),
+                });
+                return Operand::Place(dest);
+            }
+
+            // v0.83.1: tcp_connect(host, port) - connects to TCP server, returns Future<AsyncSocket>
+            if func == "tcp_connect" && arg_ops.len() == 2 {
+                let dest = ctx.fresh_temp();
+                ctx.locals.insert(dest.name.clone(), MirType::I64);
+                let mut args_iter = arg_ops.into_iter();
+                ctx.push_inst(MirInst::AsyncSocketConnect {
+                    dest: dest.clone(),
+                    host: args_iter.next().unwrap(),
+                    port: args_iter.next().unwrap(),
+                });
+                return Operand::Place(dest);
+            }
+
+            // v0.84: thread_pool_new(size) - creates thread pool, returns ThreadPool
+            if func == "thread_pool_new" && arg_ops.len() == 1 {
+                let dest = ctx.fresh_temp();
+                ctx.locals.insert(dest.name.clone(), MirType::I64);
+                ctx.push_inst(MirInst::ThreadPoolNew {
+                    dest: dest.clone(),
+                    size: arg_ops.into_iter().next().unwrap(),
+                });
+                return Operand::Place(dest);
+            }
+
+            // v0.85: thread_scope() - creates a scoped thread context, returns Scope
+            if func == "thread_scope" && arg_ops.is_empty() {
+                let dest = ctx.fresh_temp();
+                ctx.locals.insert(dest.name.clone(), MirType::I64);
+                ctx.push_inst(MirInst::ScopeNew { dest: dest.clone() });
+                return Operand::Place(dest);
+            }
+
             // Check if this is a void function (runtime functions that return void)
             let is_void_func = matches!(func.as_str(), "println" | "print" | "assert");
 
@@ -959,7 +1173,7 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
                         // v0.46: get_arg returns string (pointer to BmbString)
                         // v0.46: sb_build returns string (pointer to BmbString)
                         // v0.50.53: chr returns string (single-char BmbString)
-                        "int_to_string" | "read_file" | "slice" | "digit_char" | "get_arg" | "sb_build" | "chr" => MirType::String,
+                        "int_to_string" | "read_file" | "slice" | "digit_char" | "get_arg" | "sb_build" | "chr" | "system_capture" | "exec_output" => MirType::String,
                         // i64-returning runtime functions
                         // v0.46: arg_count returns i64
                         // v0.50.71: file_exists returns i64 (0 or 1), not bool - runtime uses int64_t
@@ -1961,6 +2175,102 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
                 return Operand::Constant(Constant::Unit);
             }
 
+            // v0.83: AsyncFile methods
+            // read() - async read file content, returns Future<String>
+            if method == "read" && args.is_empty() {
+                let dest = ctx.fresh_temp();
+                ctx.locals.insert(dest.name.clone(), MirType::I64);
+                ctx.push_inst(MirInst::AsyncFileRead {
+                    dest: dest.clone(),
+                    file: recv_op,
+                });
+                return Operand::Place(dest);
+            }
+
+            // write(content) - async write content to file
+            if method == "write" && args.len() == 1 {
+                let content_op = lower_expr(&args[0], ctx);
+                ctx.push_inst(MirInst::AsyncFileWrite {
+                    file: recv_op,
+                    content: content_op,
+                });
+                return Operand::Constant(Constant::Unit);
+            }
+
+            // close() - async close file
+            if method == "close" && args.is_empty() {
+                ctx.push_inst(MirInst::AsyncFileClose { file: recv_op });
+                return Operand::Constant(Constant::Unit);
+            }
+
+            // v0.83.1: AsyncSocket methods
+            // recv() - async receive from socket, returns Future<String>
+            if method == "recv" && args.is_empty() {
+                let dest = ctx.fresh_temp();
+                ctx.locals.insert(dest.name.clone(), MirType::I64);
+                ctx.push_inst(MirInst::AsyncSocketRead {
+                    dest: dest.clone(),
+                    socket: recv_op,
+                });
+                return Operand::Place(dest);
+            }
+
+            // send(content) - async send content to socket
+            if method == "send" && args.len() == 1 {
+                let content_op = lower_expr(&args[0], ctx);
+                ctx.push_inst(MirInst::AsyncSocketWrite {
+                    socket: recv_op,
+                    content: content_op,
+                });
+                return Operand::Constant(Constant::Unit);
+            }
+
+            // disconnect() - async close socket
+            if method == "disconnect" && args.is_empty() {
+                ctx.push_inst(MirInst::AsyncSocketClose { socket: recv_op });
+                return Operand::Constant(Constant::Unit);
+            }
+
+            // v0.84: ThreadPool methods
+            // execute(task) - execute a task on a worker thread
+            if method == "execute" && args.len() == 1 {
+                let task_op = lower_expr(&args[0], ctx);
+                ctx.push_inst(MirInst::ThreadPoolExecute {
+                    pool: recv_op,
+                    task: task_op,
+                });
+                return Operand::Constant(Constant::Unit);
+            }
+
+            // join() - wait for all tasks to complete and shutdown
+            if method == "join" && args.is_empty() {
+                ctx.push_inst(MirInst::ThreadPoolJoin { pool: recv_op });
+                return Operand::Constant(Constant::Unit);
+            }
+
+            // shutdown() - request shutdown (tasks may still be running)
+            if method == "shutdown" && args.is_empty() {
+                ctx.push_inst(MirInst::ThreadPoolShutdown { pool: recv_op });
+                return Operand::Constant(Constant::Unit);
+            }
+
+            // v0.85: Scope methods (scoped threads for structured concurrency)
+            // spawn(task) - spawn a scoped thread that borrows from parent
+            if method == "spawn" && args.len() == 1 {
+                let task_op = lower_expr(&args[0], ctx);
+                ctx.push_inst(MirInst::ScopeSpawn {
+                    scope: recv_op,
+                    task: task_op,
+                });
+                return Operand::Constant(Constant::Unit);
+            }
+
+            // wait() - wait for all spawned threads to complete
+            if method == "wait" && args.is_empty() {
+                ctx.push_inst(MirInst::ScopeWait { scope: recv_op });
+                return Operand::Constant(Constant::Unit);
+            }
+
             // v0.76: Nullable<T> methods
             // is_some() - check if value is not None (not -1)
             if method == "is_some" && args.is_empty() {
@@ -2358,6 +2668,14 @@ fn ast_type_to_mir(ty: &Type) -> MirType {
         Type::Condvar => MirType::I64,
         // v0.75: Future type - represented as i64 handle
         Type::Future(_) => MirType::I64,
+        // v0.83: AsyncFile type - represented as i64 handle
+        Type::AsyncFile => MirType::I64,
+        // v0.83.1: AsyncSocket type - represented as i64 handle
+        Type::AsyncSocket => MirType::I64,
+        // v0.84: ThreadPool type - represented as i64 handle
+        Type::ThreadPool => MirType::I64,
+        // v0.85: Scope type - represented as i64 handle
+        Type::Scope => MirType::I64,
     }
 }
 
@@ -2607,6 +2925,14 @@ fn ast_type_to_mir_with_type_defs(
         Type::Condvar => MirType::I64,
         // v0.75: Future type - represented as i64 handle
         Type::Future(_) => MirType::I64,
+        // v0.83: AsyncFile type - represented as i64 handle
+        Type::AsyncFile => MirType::I64,
+        // v0.83.1: AsyncSocket type - represented as i64 handle
+        Type::AsyncSocket => MirType::I64,
+        // v0.84: ThreadPool type - represented as i64 handle
+        Type::ThreadPool => MirType::I64,
+        // v0.85: Scope type - represented as i64 handle
+        Type::Scope => MirType::I64,
     }
 }
 
@@ -2708,6 +3034,14 @@ fn ast_type_to_mir_with_structs(
         Type::Condvar => MirType::I64,
         // v0.75: Future type - represented as i64 handle
         Type::Future(_) => MirType::I64,
+        // v0.83: AsyncFile type - represented as i64 handle
+        Type::AsyncFile => MirType::I64,
+        // v0.83.1: AsyncSocket type - represented as i64 handle
+        Type::AsyncSocket => MirType::I64,
+        // v0.84: ThreadPool type - represented as i64 handle
+        Type::ThreadPool => MirType::I64,
+        // v0.85: Scope type - represented as i64 handle
+        Type::Scope => MirType::I64,
     }
 }
 
@@ -3119,8 +3453,8 @@ mod tests {
         let mir = lower_program(&program);
         let func = &mir.functions[0];
 
-        // Should have the local 'x' registered
-        assert!(func.locals.iter().any(|(name, _)| name == "x"));
+        // v0.88.1: Should have the local 'x' registered with SSA-compatible name (x_vN)
+        assert!(func.locals.iter().any(|(name, _)| name.starts_with("x_v")));
     }
 
 
@@ -3154,8 +3488,8 @@ mod tests {
         let mir = lower_program(&program);
         let func = &mir.functions[0];
 
-        // Should have the local 's' registered with String type
-        assert!(func.locals.iter().any(|(name, ty)| name == "s" && *ty == MirType::String));
+        // v0.88.1: Should have the local 's' registered with String type and SSA-compatible name
+        assert!(func.locals.iter().any(|(name, ty)| name.starts_with("s_v") && *ty == MirType::String));
     }
 
     #[test]

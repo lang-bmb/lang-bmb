@@ -1,0 +1,13 @@
+// v0.83: Test AsyncFile basic operations
+fn main() -> i64 = {
+    // For this test, we'll just verify the types compile correctly
+    // A full I/O test would require file system access
+
+    // Test type annotations compile
+    let file_type: AsyncFile = todo;
+    let future_file: Future<AsyncFile> = todo;
+
+    // If we get here, types are working
+    // Return 0 for success
+    0
+};

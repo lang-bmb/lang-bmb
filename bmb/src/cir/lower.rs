@@ -859,6 +859,14 @@ impl CirLowerer {
                 }
             }
 
+            // v0.82: Select expression - not supported in CIR (use native compilation)
+            Expr::Select { .. } => {
+                CirExpr::Call {
+                    func: "__select_unsupported".to_string(),
+                    args: vec![],
+                }
+            }
+
             Expr::Forall { var, ty, body } => {
                 // Forall as boolean expression
                 let cir_body = self.lower_expr(&body.node);
@@ -971,6 +979,14 @@ impl CirLowerer {
             Type::Condvar => CirType::I64,
             // v0.75: Future type - use i64 for handle
             Type::Future(_) => CirType::I64,
+            // v0.83: AsyncFile - use i64 for file handle
+            Type::AsyncFile => CirType::I64,
+            // v0.83.1: AsyncSocket - use i64 for socket handle
+            Type::AsyncSocket => CirType::I64,
+            // v0.84: ThreadPool - use i64 for pool handle
+            Type::ThreadPool => CirType::I64,
+            // v0.85: Scope - use i64 for scope handle
+            Type::Scope => CirType::I64,
             Type::Nullable(inner) => {
                 let cir_inner = self.lower_type(inner);
                 CirType::Option(Box::new(cir_inner))

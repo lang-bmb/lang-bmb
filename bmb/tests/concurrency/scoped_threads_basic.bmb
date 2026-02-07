@@ -1,0 +1,9 @@
+// v0.85: Basic scoped threads test
+// Tests Scope type for structured concurrency
+
+fn main() -> i64 = {
+    // Type annotation test - verify Scope type is recognized
+    let scope_type: Scope = todo;
+
+    0
+};

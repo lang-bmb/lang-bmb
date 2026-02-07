@@ -11,6 +11,8 @@
 
 // v0.70: Threading support
 #ifdef _WIN32
+#include <winsock2.h>  // v0.88: Must be before windows.h
+#include <ws2tcpip.h>
 #include <windows.h>
 #else
 #include <pthread.h>
@@ -28,13 +30,17 @@ typedef struct {
     int64_t cap;     // capacity (excluding null terminator)
 } BmbString;
 
+// v0.88.2: Forward declarations for arena allocator
+static void* bmb_alloc(size_t size);
+static int g_arena_enabled;
+
 // Helper to create a new BmbString from raw char*
 static BmbString* bmb_string_wrap(char* data) {
     if (!data) {
-        data = (char*)malloc(1);
+        data = (char*)bmb_alloc(1);
         data[0] = '\0';
     }
-    BmbString* s = (BmbString*)malloc(sizeof(BmbString));
+    BmbString* s = (BmbString*)bmb_alloc(sizeof(BmbString));
     int64_t len = 0;
     while (data[len]) len++;
     s->data = data;
@@ -58,8 +64,9 @@ int64_t bmb_f64_to_i64(double f) { return (int64_t)f; }
 
 // v0.97: Character functions
 // v0.60.107: bmb_chr returns BmbString* to match string type system
+// v0.88.2: Uses arena-aware allocation
 BmbString* bmb_chr(int64_t n) {
-    char* data = (char*)malloc(2);
+    char* data = (char*)bmb_alloc(2);
     data[0] = (char)n;
     data[1] = '\0';
     return bmb_string_wrap(data);
@@ -154,8 +161,9 @@ void bmb_vec_clear(int64_t vec_ptr) {
 }
 
 // v0.99: String conversion functions
+// v0.88.2: Uses arena-aware allocation
 char* bmb_char_to_string(int32_t c) {
-    char* s = (char*)malloc(5);  // UTF-8 max 4 bytes + null
+    char* s = (char*)bmb_alloc(5);  // UTF-8 max 4 bytes + null
     if (c < 0x80) {
         s[0] = (char)c;
         s[1] = '\0';
@@ -178,16 +186,18 @@ char* bmb_char_to_string(int32_t c) {
     return s;
 }
 
+// v0.88.2: Uses arena-aware allocation
 char* bmb_int_to_string(int64_t n) {
-    char* s = (char*)malloc(21);  // Max i64 is 20 digits + sign
+    char* s = (char*)bmb_alloc(21);  // Max i64 is 20 digits + sign
     snprintf(s, 21, "%ld", (long)n);
     return s;
 }
 
 // v0.60.244: Fast integer-to-BmbString conversion for bootstrap compiler
 // Returns BmbString* which matches the bootstrap's String type
+// v0.88.2: Uses arena-aware allocation
 BmbString* bmb_fast_i2s(int64_t n) {
-    char* s = (char*)malloc(21);
+    char* s = (char*)bmb_alloc(21);
     snprintf(s, 21, "%" PRId64, n);
     return bmb_string_wrap(s);
 }
@@ -229,18 +239,19 @@ int64_t bmb_box_new_i64(int64_t value) {
 
 // v0.51.51: String concatenation - updated to work with BmbString structs
 // Parameters are BmbString* (from LLVM IR %BmbString structs)
+// v0.88.2: Uses arena-aware allocation
 BmbString* bmb_string_concat(const BmbString* a, const BmbString* b) {
     if (!a || !b || !a->data || !b->data) {
         return bmb_string_wrap(NULL);
     }
     int64_t len_a = a->len;
     int64_t len_b = b->len;
-    char* result = (char*)malloc(len_a + len_b + 1);
+    char* result = (char*)bmb_alloc(len_a + len_b + 1);
     for (int64_t i = 0; i < len_a; i++) result[i] = a->data[i];
     for (int64_t i = 0; i < len_b; i++) result[len_a + i] = b->data[i];
     result[len_a + len_b] = '\0';
 
-    BmbString* s = (BmbString*)malloc(sizeof(BmbString));
+    BmbString* s = (BmbString*)bmb_alloc(sizeof(BmbString));
     s->data = result;
     s->len = len_a + len_b;
     s->cap = len_a + len_b;
@@ -250,18 +261,20 @@ BmbString* bmb_string_concat(const BmbString* a, const BmbString* b) {
 // v0.51.51: String functions updated for BmbString structs
 
 // Convert C string to BmbString
+// v0.88.2: Uses arena-aware allocation
 BmbString* bmb_string_from_cstr(const char* s) {
     if (!s) return bmb_string_wrap(NULL);
     int64_t len = 0;
     while (s[len]) len++;
-    char* copy = (char*)malloc(len + 1);
+    char* copy = (char*)bmb_alloc(len + 1);
     for (int64_t i = 0; i <= len; i++) copy[i] = s[i];
     return bmb_string_wrap(copy);
 }
 
 // Create new string with given length (allocates copy)
+// v0.88.2: Uses arena-aware allocation
 BmbString* bmb_string_new(const char* s, int64_t len) {
-    char* result = (char*)malloc(len + 1);
+    char* result = (char*)bmb_alloc(len + 1);
     for (int64_t i = 0; i < len; i++) result[i] = s[i];
     result[len] = '\0';
     return bmb_string_wrap(result);
@@ -296,13 +309,14 @@ int64_t bmb_string_eq(const BmbString* a, const BmbString* b) {
 }
 
 // String slice (substring from start to end, exclusive) - returns BmbString*
+// v0.88.2: Uses arena-aware allocation
 BmbString* bmb_string_slice(const BmbString* s, int64_t start, int64_t end) {
     if (!s || !s->data || start < 0 || end < start || start > s->len) {
         return bmb_string_wrap(NULL);
     }
     if (end > s->len) end = s->len;
     int64_t len = end - start;
-    char* result = (char*)malloc(len + 1);
+    char* result = (char*)bmb_alloc(len + 1);
     for (int64_t i = 0; i < len; i++) {
         result[i] = s->data[start + i];
     }
@@ -325,16 +339,18 @@ int64_t len(const BmbString* s) {
 }
 
 // v0.51.51: chr returns BmbString*
+// v0.88.2: Uses arena-aware allocation
 BmbString* chr(int64_t n) {
-    char* data = (char*)malloc(2);
+    char* data = (char*)bmb_alloc(2);
     data[0] = (char)n;
     data[1] = '\0';
     return bmb_string_wrap(data);
 }
 
 // v0.51.51: char_to_string returns BmbString*
+// v0.88.2: Uses arena-aware allocation
 BmbString* char_to_string(int32_t c) {
-    char* data = (char*)malloc(2);
+    char* data = (char*)bmb_alloc(2);
     data[0] = (char)c;
     data[1] = '\0';
     return bmb_string_wrap(data);
@@ -524,13 +540,14 @@ int64_t bmb_sb_len(int64_t handle) {
 }
 
 // v0.51.51: sb_build returns BmbString*
+// v0.88.2: Uses arena-aware allocation
 BmbString* bmb_sb_build(int64_t handle) {
     if (!handle) {
         return bmb_string_wrap(NULL);
     }
     StringBuilder* sb = (StringBuilder*)handle;
     // Return copy of the built string
-    char* result = (char*)malloc(sb->len + 1);
+    char* result = (char*)bmb_alloc(sb->len + 1);
     for (int64_t i = 0; i <= sb->len; i++) {
         result[i] = sb->data[i];
     }
@@ -541,6 +558,32 @@ int64_t bmb_sb_clear(int64_t handle) {
     StringBuilder* sb = (StringBuilder*)handle;
     sb->len = 0;
     sb->data[0] = '\0';
+    return 0;
+}
+
+// v0.88.6: Search for a comma-separated entry in SB buffer (zero arena allocation)
+int64_t bmb_sb_contains(int64_t handle, const BmbString* marker) {
+    if (!handle || !marker || !marker->data) return 0;
+    StringBuilder* sb = (StringBuilder*)handle;
+    int64_t mlen = marker->len;
+    if (mlen == 0 || sb->len == 0) return 0;
+    int64_t pos = 0;
+    while (pos <= sb->len - mlen) {
+        // Check if entry at pos matches marker
+        int64_t match = 1;
+        for (int64_t i = 0; i < mlen; i++) {
+            if (sb->data[pos + i] != marker->data[i]) { match = 0; break; }
+        }
+        if (match) {
+            // Verify it's a complete entry (at start/after comma, at end/before comma)
+            int64_t at_start = (pos == 0) || (sb->data[pos - 1] == ',');
+            int64_t at_end = (pos + mlen >= sb->len) || (sb->data[pos + mlen] == ',');
+            if (at_start && at_end) return 1;
+        }
+        // Skip to next comma
+        while (pos < sb->len && sb->data[pos] != ',') pos++;
+        pos++; // skip comma
+    }
     return 0;
 }
 
@@ -563,6 +606,223 @@ int64_t bmb_puts_cstr(const char* s) {
         puts("");
     }
     return 0;
+}
+
+// v0.88.2: Memory management functions
+
+// Free a BmbString and its data
+// Note: In arena mode, individual frees are no-ops (arena handles bulk deallocation)
+int64_t bmb_string_free(const BmbString* s) {
+    if (!s) return 0;
+    if (g_arena_enabled) return 0;  // Arena handles deallocation
+    if (s->data) free(s->data);
+    free((void*)s);
+    return 0;
+}
+
+// Wrapper for BMB code
+int64_t free_string(const BmbString* s) { return bmb_string_free(s); }
+
+// Free a StringBuilder and its buffer
+int64_t bmb_sb_free(int64_t handle) {
+    if (handle) {
+        StringBuilder* sb = (StringBuilder*)handle;
+        if (sb->data) free(sb->data);
+        free(sb);
+    }
+    return 0;
+}
+
+int64_t sb_free(int64_t handle) { return bmb_sb_free(handle); }
+
+// v0.88.2: Arena allocator for bulk string allocation
+// Reduces malloc overhead and enables bulk deallocation
+// v0.88.4: BMB has no GC/destructors - arena is the ONLY memory management.
+//   Without arena, every string allocation leaks (malloc without free).
+//   Arena pools all allocations and frees at process exit.
+//   Limit default 4GB, configurable via BMB_ARENA_MAX_SIZE env var.
+//   When limit exceeded: EXIT with error (not BSOD from OOM).
+#define BMB_ARENA_BLOCK_SIZE (8 * 1024 * 1024)  // 8MB blocks
+#define BMB_ARENA_DEFAULT_MAX_SIZE ((size_t)4 * 1024 * 1024 * 1024)  // 4GB default
+static size_t g_arena_max_size = 0;  // 0 = not yet initialized
+static int g_arena_limit_warned = 0;
+
+typedef struct BmbArenaBlock {
+    char* data;
+    size_t used;
+    size_t capacity;
+    struct BmbArenaBlock* next;
+} BmbArenaBlock;
+
+static BmbArenaBlock* g_arena_head = NULL;
+static BmbArenaBlock* g_arena_current = NULL;
+// g_arena_enabled is forward-declared near top of file
+static size_t g_arena_total_allocated = 0;
+
+static BmbArenaBlock* bmb_arena_new_block(size_t min_size) {
+    size_t cap = min_size > BMB_ARENA_BLOCK_SIZE ? min_size + 64 : BMB_ARENA_BLOCK_SIZE;
+    BmbArenaBlock* block = (BmbArenaBlock*)malloc(sizeof(BmbArenaBlock));
+    if (!block) return NULL;
+    block->data = (char*)malloc(cap);
+    if (!block->data) { free(block); return NULL; }
+    block->used = 0;
+    block->capacity = cap;
+    block->next = NULL;
+    g_arena_total_allocated += cap;
+    return block;
+}
+
+// v0.88.4: Initialize arena max size from environment variable
+static void bmb_arena_init_limit(void) {
+    if (g_arena_max_size != 0) return;  // Already initialized
+    const char* env = getenv("BMB_ARENA_MAX_SIZE");
+    if (env) {
+        size_t val = 0;
+        for (int i = 0; env[i]; i++) {
+            if (env[i] >= '0' && env[i] <= '9') val = val * 10 + (env[i] - '0');
+        }
+        // Support M/G suffixes
+        if (env[0]) {
+            char last = env[0];
+            for (int i = 1; env[i]; i++) last = env[i];
+            if (last == 'G' || last == 'g') val *= (size_t)1024 * 1024 * 1024;
+            else if (last == 'M' || last == 'm') val *= (size_t)1024 * 1024;
+        }
+        g_arena_max_size = val > 0 ? val : BMB_ARENA_DEFAULT_MAX_SIZE;
+    } else {
+        g_arena_max_size = BMB_ARENA_DEFAULT_MAX_SIZE;
+    }
+}
+
+static void* bmb_arena_alloc(size_t size) {
+    // Align to 8 bytes
+    size = (size + 7) & ~((size_t)7);
+
+    // v0.88.4: Hard limit - EXIT instead of malloc fallback (prevents BSOD)
+    // BMB has no GC/destructors, so malloc fallback also leaks memory.
+    bmb_arena_init_limit();
+    if (g_arena_total_allocated + size > g_arena_max_size) {
+        fprintf(stderr, "[bmb] FATAL: arena memory limit exceeded (%zu MB / %zu MB max)\n",
+                g_arena_total_allocated / (1024 * 1024),
+                g_arena_max_size / (1024 * 1024));
+        fprintf(stderr, "[bmb] Set BMB_ARENA_MAX_SIZE environment variable to increase (e.g. 8G)\n");
+        exit(1);
+    }
+
+    if (!g_arena_current || g_arena_current->used + size > g_arena_current->capacity) {
+        BmbArenaBlock* block = bmb_arena_new_block(size);
+        if (!block) return malloc(size);  // fallback to malloc
+        if (g_arena_current) {
+            g_arena_current->next = block;
+        } else {
+            g_arena_head = block;
+        }
+        g_arena_current = block;
+    }
+
+    void* ptr = g_arena_current->data + g_arena_current->used;
+    g_arena_current->used += size;
+    return ptr;
+}
+
+// Enable/disable arena mode (1=enable, 0=disable)
+int64_t bmb_arena_mode(int64_t enable) {
+    g_arena_enabled = (int)enable;
+    if (enable && !g_arena_head) {
+        g_arena_head = bmb_arena_new_block(BMB_ARENA_BLOCK_SIZE);
+        g_arena_current = g_arena_head;
+    }
+    return 0;
+}
+
+// Reset arena (free all blocks except the first, reset the first)
+int64_t bmb_arena_reset(void) {
+    if (!g_arena_head) return 0;
+
+    // Free all blocks except the first
+    BmbArenaBlock* block = g_arena_head->next;
+    while (block) {
+        BmbArenaBlock* next = block->next;
+        g_arena_total_allocated -= block->capacity;
+        free(block->data);
+        free(block);
+        block = next;
+    }
+
+    // Reset the first block
+    g_arena_head->used = 0;
+    g_arena_head->next = NULL;
+    g_arena_current = g_arena_head;
+    return 0;
+}
+
+// v0.88.6: Arena save/restore for per-function memory reclamation
+// Save remembers current block + used position; restore frees everything after it.
+static BmbArenaBlock* g_arena_save_block = NULL;
+static size_t g_arena_save_used = 0;
+static size_t g_arena_save_total = 0;
+
+int64_t bmb_arena_save(void) {
+    g_arena_save_block = g_arena_current;
+    g_arena_save_used = g_arena_current ? g_arena_current->used : 0;
+    g_arena_save_total = g_arena_total_allocated;
+    return 0;
+}
+
+int64_t bmb_arena_restore(void) {
+    if (!g_arena_save_block) return 0;
+
+    // Free all blocks after the saved block
+    BmbArenaBlock* block = g_arena_save_block->next;
+    while (block) {
+        BmbArenaBlock* next = block->next;
+        free(block->data);
+        free(block);
+        block = next;
+    }
+
+    // Restore the saved block's state
+    g_arena_save_block->next = NULL;
+    g_arena_save_block->used = g_arena_save_used;
+    g_arena_current = g_arena_save_block;
+    g_arena_total_allocated = g_arena_save_total;
+    return 0;
+}
+
+// Get current arena memory usage
+int64_t bmb_arena_usage(void) {
+    return (int64_t)g_arena_total_allocated;
+}
+
+// Free all arena memory
+int64_t bmb_arena_destroy(void) {
+    BmbArenaBlock* block = g_arena_head;
+    while (block) {
+        BmbArenaBlock* next = block->next;
+        free(block->data);
+        free(block);
+        block = next;
+    }
+    g_arena_head = NULL;
+    g_arena_current = NULL;
+    g_arena_total_allocated = 0;
+    g_arena_enabled = 0;
+    g_arena_limit_warned = 0;
+    return 0;
+}
+
+// Wrappers for BMB code
+int64_t arena_mode(int64_t enable) { return bmb_arena_mode(enable); }
+int64_t arena_reset(void) { return bmb_arena_reset(); }
+int64_t arena_save(void) { return bmb_arena_save(); }
+int64_t arena_restore(void) { return bmb_arena_restore(); }
+int64_t arena_usage(void) { return bmb_arena_usage(); }
+int64_t arena_destroy(void) { return bmb_arena_destroy(); }
+
+// Arena-aware allocation helper (used internally)
+static void* bmb_alloc(size_t size) {
+    if (g_arena_enabled) return bmb_arena_alloc(size);
+    return malloc(size);
 }
 
 // v0.51.18: HashMap implementation (open addressing with linear probing)
@@ -737,6 +997,98 @@ int64_t bmb_append_file(const char* path, const char* content) {
 // v0.46: System functions
 int64_t bmb_system(const char* cmd) {
     return (int64_t)system(cmd);
+}
+
+// v0.88.2: Execute command and capture output (for test runner)
+BmbString* bmb_system_capture(const BmbString* cmd) {
+    if (!cmd || !cmd->data) return bmb_string_wrap(NULL);
+#ifdef _WIN32
+    FILE* fp = _popen(cmd->data, "r");
+#else
+    FILE* fp = popen(cmd->data, "r");
+#endif
+    if (!fp) return bmb_string_wrap(NULL);
+
+    // Read output into StringBuilder
+    size_t cap = 4096;
+    size_t len = 0;
+    char* buf = (char*)malloc(cap);
+    if (!buf) {
+#ifdef _WIN32
+        _pclose(fp);
+#else
+        pclose(fp);
+#endif
+        return bmb_string_wrap(NULL);
+    }
+
+    int ch;
+    while ((ch = fgetc(fp)) != EOF) {
+        if (len + 1 >= cap) {
+            cap *= 2;
+            char* newbuf = (char*)realloc(buf, cap);
+            if (!newbuf) break;
+            buf = newbuf;
+        }
+        buf[len++] = (char)ch;
+    }
+    buf[len] = '\0';
+
+#ifdef _WIN32
+    _pclose(fp);
+#else
+    pclose(fp);
+#endif
+
+    BmbString* s = (BmbString*)bmb_alloc(sizeof(BmbString));
+    // v0.88.3: Copy buf into arena-allocated memory and free the malloc'd buffer
+    if (g_arena_enabled) {
+        char* arena_buf = (char*)bmb_alloc(len + 1);
+        for (size_t i = 0; i <= len; i++) arena_buf[i] = buf[i];
+        free(buf);
+        s->data = arena_buf;
+    } else {
+        s->data = buf;
+    }
+    s->len = (int64_t)len;
+    s->cap = (int64_t)(g_arena_enabled ? len : cap);
+    return s;
+}
+
+// Wrapper for BMB code
+BmbString* system_capture(const BmbString* cmd) { return bmb_system_capture(cmd); }
+
+// v0.88.4: exec_output(command, args) -> String
+// Execute command with arguments, capture stdout+stderr
+BmbString* bmb_exec_output(const BmbString* command, const BmbString* args) {
+    if (!command || !command->data) return bmb_string_wrap(NULL);
+    // Build: "command args 2>&1"
+    size_t cmd_len = command->len;
+    size_t args_len = args && args->data ? args->len : 0;
+    size_t total = cmd_len + 1 + args_len + 6; // " " + " 2>&1" + null
+    char* full_cmd = (char*)malloc(total);
+    if (!full_cmd) return bmb_string_wrap(NULL);
+    memcpy(full_cmd, command->data, cmd_len);
+    size_t pos = cmd_len;
+    if (args_len > 0) {
+        full_cmd[pos++] = ' ';
+        memcpy(full_cmd + pos, args->data, args_len);
+        pos += args_len;
+    }
+    memcpy(full_cmd + pos, " 2>&1", 5);
+    pos += 5;
+    full_cmd[pos] = '\0';
+    // Create a temp BmbString for system_capture
+    BmbString temp;
+    temp.data = full_cmd;
+    temp.len = (int64_t)pos;
+    temp.cap = (int64_t)total;
+    BmbString* result = bmb_system_capture(&temp);
+    free(full_cmd);
+    return result;
+}
+BmbString* exec_output(const BmbString* command, const BmbString* args) {
+    return bmb_exec_output(command, args);
 }
 
 char* bmb_getenv(const char* name) {
@@ -925,6 +1277,10 @@ int64_t sb_len(int64_t handle) {
 
 int64_t sb_clear(int64_t handle) {
     return bmb_sb_clear(handle);
+}
+
+int64_t sb_contains(int64_t handle, const BmbString* marker) {
+    return bmb_sb_contains(handle, marker);
 }
 
 int64_t sb_println(int64_t handle) {
@@ -2458,6 +2814,899 @@ int64_t bmb_time_ns(void) {
 int64_t time_ns(void) { return bmb_time_ns(); }
 
 // ============================================================================
+// v0.83: AsyncFile - Asynchronous File I/O
+// ============================================================================
+//
+// For Phase v0.83, we implement a simple synchronous I/O model:
+// - AsyncFile is represented as a FILE* handle
+// - Operations complete synchronously (no async executor integration yet)
+// - Returns Future<T> where T is the result (already complete)
+//
+// A proper async I/O implementation would use:
+// - Windows: IOCP (I/O Completion Ports)
+// - Linux: io_uring or epoll + thread pool
+// - macOS: kqueue + thread pool
+
+typedef struct {
+    FILE* fp;
+    char* path;
+    int is_open;
+} BmbAsyncFile;
+
+// Open a file asynchronously (synchronous for now)
+// Returns a Future<AsyncFile> handle (the AsyncFile handle itself)
+int64_t bmb_async_file_open(int64_t path_handle) {
+    if (path_handle == 0) return 0;
+
+    const char* path = (const char*)path_handle;
+
+    BmbAsyncFile* af = (BmbAsyncFile*)malloc(sizeof(BmbAsyncFile));
+    if (!af) return 0;
+
+    af->fp = fopen(path, "r+");
+    if (!af->fp) {
+        // Try read-only
+        af->fp = fopen(path, "r");
+    }
+    if (!af->fp) {
+        // Try create new
+        af->fp = fopen(path, "w+");
+    }
+
+    if (!af->fp) {
+        free(af);
+        return 0;
+    }
+
+    af->path = strdup(path);
+    af->is_open = 1;
+
+    return (int64_t)af;
+}
+
+// Read file content asynchronously (synchronous for now)
+// Returns a Future<String> handle (the string handle itself)
+int64_t bmb_async_file_read(int64_t file_handle) {
+    if (file_handle == 0) return 0;
+
+    BmbAsyncFile* af = (BmbAsyncFile*)file_handle;
+    if (!af->is_open || !af->fp) return 0;
+
+    // Get file size
+    fseek(af->fp, 0, SEEK_END);
+    long size = ftell(af->fp);
+    fseek(af->fp, 0, SEEK_SET);
+
+    if (size < 0) return 0;
+
+    char* content = (char*)malloc(size + 1);
+    if (!content) return 0;
+
+    size_t read = fread(content, 1, size, af->fp);
+    content[read] = '\0';
+
+    return (int64_t)content;
+}
+
+// Write content to file asynchronously (synchronous for now)
+void bmb_async_file_write(int64_t file_handle, int64_t content_handle) {
+    if (file_handle == 0 || content_handle == 0) return;
+
+    BmbAsyncFile* af = (BmbAsyncFile*)file_handle;
+    if (!af->is_open || !af->fp) return;
+
+    const char* content = (const char*)content_handle;
+
+    // Truncate and write from beginning
+    fseek(af->fp, 0, SEEK_SET);
+    fwrite(content, 1, strlen(content), af->fp);
+    fflush(af->fp);
+}
+
+// Close file asynchronously (synchronous for now)
+void bmb_async_file_close(int64_t file_handle) {
+    if (file_handle == 0) return;
+
+    BmbAsyncFile* af = (BmbAsyncFile*)file_handle;
+
+    if (af->fp) {
+        fclose(af->fp);
+        af->fp = NULL;
+    }
+
+    if (af->path) {
+        free(af->path);
+        af->path = NULL;
+    }
+
+    af->is_open = 0;
+    free(af);
+}
+
+// ============================================================================
+// v0.83.1: AsyncSocket (TCP)
+// ============================================================================
+// Foundation for async network I/O.
+// Current implementation: synchronous blocking sockets.
+// Future: Platform-specific async I/O (IOCP on Windows, io_uring on Linux)
+
+#ifdef _WIN32
+// Windows uses WinSock (included at top before windows.h)
+#pragma comment(lib, "ws2_32.lib")
+
+typedef struct {
+    SOCKET sock;
+    char* host;
+    int port;
+    int is_connected;
+} BmbAsyncSocket;
+
+// Initialize Winsock once
+static int g_winsock_initialized = 0;
+static void ensure_winsock_init(void) {
+    if (!g_winsock_initialized) {
+        WSADATA wsa;
+        WSAStartup(MAKEWORD(2, 2), &wsa);
+        g_winsock_initialized = 1;
+    }
+}
+
+// Connect to a TCP server
+int64_t bmb_async_socket_connect(int64_t host_handle, int64_t port) {
+    ensure_winsock_init();
+
+    if (host_handle == 0) return 0;
+    const char* host = (const char*)host_handle;
+
+    BmbAsyncSocket* sock = (BmbAsyncSocket*)malloc(sizeof(BmbAsyncSocket));
+    if (!sock) return 0;
+
+    sock->sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (sock->sock == INVALID_SOCKET) {
+        free(sock);
+        return 0;
+    }
+
+    struct sockaddr_in server;
+    server.sin_family = AF_INET;
+    server.sin_port = htons((unsigned short)port);
+
+    // Try to parse as IP address first
+    if (inet_pton(AF_INET, host, &server.sin_addr) != 1) {
+        // If that fails, try DNS resolution
+        struct addrinfo hints = {0};
+        struct addrinfo* result = NULL;
+        hints.ai_family = AF_INET;
+        hints.ai_socktype = SOCK_STREAM;
+
+        if (getaddrinfo(host, NULL, &hints, &result) != 0 || !result) {
+            closesocket(sock->sock);
+            free(sock);
+            return 0;
+        }
+
+        struct sockaddr_in* addr = (struct sockaddr_in*)result->ai_addr;
+        server.sin_addr = addr->sin_addr;
+        freeaddrinfo(result);
+    }
+
+    if (connect(sock->sock, (struct sockaddr*)&server, sizeof(server)) == SOCKET_ERROR) {
+        closesocket(sock->sock);
+        free(sock);
+        return 0;
+    }
+
+    sock->host = strdup(host);
+    sock->port = (int)port;
+    sock->is_connected = 1;
+
+    return (int64_t)sock;
+}
+
+// Receive data from socket
+int64_t bmb_async_socket_read(int64_t socket_handle) {
+    if (socket_handle == 0) return 0;
+
+    BmbAsyncSocket* sock = (BmbAsyncSocket*)socket_handle;
+    if (!sock->is_connected) return 0;
+
+    // Read up to 4KB at a time
+    char* buffer = (char*)malloc(4096);
+    if (!buffer) return 0;
+
+    int received = recv(sock->sock, buffer, 4095, 0);
+    if (received <= 0) {
+        free(buffer);
+        return 0;
+    }
+
+    buffer[received] = '\0';
+    return (int64_t)buffer;
+}
+
+// Send data to socket
+void bmb_async_socket_write(int64_t socket_handle, int64_t content_handle) {
+    if (socket_handle == 0 || content_handle == 0) return;
+
+    BmbAsyncSocket* sock = (BmbAsyncSocket*)socket_handle;
+    if (!sock->is_connected) return;
+
+    const char* content = (const char*)content_handle;
+    send(sock->sock, content, (int)strlen(content), 0);
+}
+
+// Close socket
+void bmb_async_socket_close(int64_t socket_handle) {
+    if (socket_handle == 0) return;
+
+    BmbAsyncSocket* sock = (BmbAsyncSocket*)socket_handle;
+
+    if (sock->sock != INVALID_SOCKET) {
+        closesocket(sock->sock);
+        sock->sock = INVALID_SOCKET;
+    }
+
+    if (sock->host) {
+        free(sock->host);
+        sock->host = NULL;
+    }
+
+    sock->is_connected = 0;
+    free(sock);
+}
+
+#else
+// POSIX (Linux/macOS) uses Berkeley sockets
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <netdb.h>
+#include <unistd.h>
+
+typedef struct {
+    int sock;
+    char* host;
+    int port;
+    int is_connected;
+} BmbAsyncSocket;
+
+// Connect to a TCP server
+int64_t bmb_async_socket_connect(int64_t host_handle, int64_t port) {
+    if (host_handle == 0) return 0;
+    const char* host = (const char*)host_handle;
+
+    BmbAsyncSocket* sock = (BmbAsyncSocket*)malloc(sizeof(BmbAsyncSocket));
+    if (!sock) return 0;
+
+    sock->sock = socket(AF_INET, SOCK_STREAM, 0);
+    if (sock->sock < 0) {
+        free(sock);
+        return 0;
+    }
+
+    struct sockaddr_in server;
+    server.sin_family = AF_INET;
+    server.sin_port = htons((unsigned short)port);
+
+    // Try to parse as IP address first
+    if (inet_pton(AF_INET, host, &server.sin_addr) != 1) {
+        // If that fails, try DNS resolution
+        struct addrinfo hints = {0};
+        struct addrinfo* result = NULL;
+        hints.ai_family = AF_INET;
+        hints.ai_socktype = SOCK_STREAM;
+
+        if (getaddrinfo(host, NULL, &hints, &result) != 0 || !result) {
+            close(sock->sock);
+            free(sock);
+            return 0;
+        }
+
+        struct sockaddr_in* addr = (struct sockaddr_in*)result->ai_addr;
+        server.sin_addr = addr->sin_addr;
+        freeaddrinfo(result);
+    }
+
+    if (connect(sock->sock, (struct sockaddr*)&server, sizeof(server)) < 0) {
+        close(sock->sock);
+        free(sock);
+        return 0;
+    }
+
+    sock->host = strdup(host);
+    sock->port = (int)port;
+    sock->is_connected = 1;
+
+    return (int64_t)sock;
+}
+
+// Receive data from socket
+int64_t bmb_async_socket_read(int64_t socket_handle) {
+    if (socket_handle == 0) return 0;
+
+    BmbAsyncSocket* sock = (BmbAsyncSocket*)socket_handle;
+    if (!sock->is_connected) return 0;
+
+    // Read up to 4KB at a time
+    char* buffer = (char*)malloc(4096);
+    if (!buffer) return 0;
+
+    ssize_t received = recv(sock->sock, buffer, 4095, 0);
+    if (received <= 0) {
+        free(buffer);
+        return 0;
+    }
+
+    buffer[received] = '\0';
+    return (int64_t)buffer;
+}
+
+// Send data to socket
+void bmb_async_socket_write(int64_t socket_handle, int64_t content_handle) {
+    if (socket_handle == 0 || content_handle == 0) return;
+
+    BmbAsyncSocket* sock = (BmbAsyncSocket*)socket_handle;
+    if (!sock->is_connected) return;
+
+    const char* content = (const char*)content_handle;
+    send(sock->sock, content, strlen(content), 0);
+}
+
+// Close socket
+void bmb_async_socket_close(int64_t socket_handle) {
+    if (socket_handle == 0) return;
+
+    BmbAsyncSocket* sock = (BmbAsyncSocket*)socket_handle;
+
+    if (sock->sock >= 0) {
+        close(sock->sock);
+        sock->sock = -1;
+    }
+
+    if (sock->host) {
+        free(sock->host);
+        sock->host = NULL;
+    }
+
+    sock->is_connected = 0;
+    free(sock);
+}
+
+#endif
+
+// ============================================================================
+// ThreadPool (v0.84)
+// ============================================================================
+
+// Task in the work queue (renamed to avoid conflict with BmbTask in executor)
+typedef struct BmbPoolTask {
+    void (*func)(void);           // Function pointer (fn() -> ())
+    struct BmbPoolTask* next;     // Next task in queue
+} BmbPoolTask;
+
+#ifdef _WIN32
+// Windows ThreadPool implementation
+
+typedef struct BmbThreadPool {
+    HANDLE* workers;              // Worker thread handles
+    int num_workers;              // Number of workers
+
+    BmbPoolTask* task_head;       // Head of task queue
+    BmbPoolTask* task_tail;       // Tail of task queue
+
+    CRITICAL_SECTION lock;        // Queue lock
+    CONDITION_VARIABLE not_empty; // Condition: queue not empty
+
+    int shutdown;                 // Shutdown flag
+    int active_tasks;             // Number of tasks being executed
+} BmbThreadPool;
+
+// Worker thread function (Windows)
+static DWORD WINAPI bmb_thread_pool_worker_win(LPVOID arg) {
+    BmbThreadPool* pool = (BmbThreadPool*)arg;
+
+    while (1) {
+        EnterCriticalSection(&pool->lock);
+
+        // Wait for task or shutdown
+        while (pool->task_head == NULL && !pool->shutdown) {
+            SleepConditionVariableCS(&pool->not_empty, &pool->lock, INFINITE);
+        }
+
+        // Check if we should exit
+        if (pool->shutdown && pool->task_head == NULL) {
+            LeaveCriticalSection(&pool->lock);
+            break;
+        }
+
+        // Dequeue task
+        BmbPoolTask* task = pool->task_head;
+        if (task != NULL) {
+            pool->task_head = task->next;
+            if (pool->task_head == NULL) {
+                pool->task_tail = NULL;
+            }
+            pool->active_tasks++;
+        }
+
+        LeaveCriticalSection(&pool->lock);
+
+        // Execute task outside lock
+        if (task != NULL) {
+            task->func();
+            free(task);
+
+            EnterCriticalSection(&pool->lock);
+            pool->active_tasks--;
+            LeaveCriticalSection(&pool->lock);
+        }
+    }
+
+    return 0;
+}
+
+// Create a new thread pool with specified number of workers
+int64_t bmb_thread_pool_new(int64_t num_workers) {
+    if (num_workers <= 0) num_workers = 4;  // Default to 4 workers
+
+    BmbThreadPool* pool = (BmbThreadPool*)malloc(sizeof(BmbThreadPool));
+    if (!pool) return 0;
+
+    pool->workers = (HANDLE*)malloc(sizeof(HANDLE) * num_workers);
+    if (!pool->workers) {
+        free(pool);
+        return 0;
+    }
+
+    pool->num_workers = (int)num_workers;
+    pool->task_head = NULL;
+    pool->task_tail = NULL;
+    pool->shutdown = 0;
+    pool->active_tasks = 0;
+
+    InitializeCriticalSection(&pool->lock);
+    InitializeConditionVariable(&pool->not_empty);
+
+    // Start worker threads
+    for (int i = 0; i < num_workers; i++) {
+        pool->workers[i] = CreateThread(NULL, 0, bmb_thread_pool_worker_win, pool, 0, NULL);
+    }
+
+    return (int64_t)pool;
+}
+
+// Execute a task on the thread pool
+void bmb_thread_pool_execute(int64_t pool_handle, int64_t task_handle) {
+    if (pool_handle == 0 || task_handle == 0) return;
+
+    BmbThreadPool* pool = (BmbThreadPool*)pool_handle;
+    void (*func)(void) = (void (*)(void))task_handle;
+
+    // Create task
+    BmbPoolTask* task = (BmbPoolTask*)malloc(sizeof(BmbPoolTask));
+    if (!task) return;
+
+    task->func = func;
+    task->next = NULL;
+
+    // Enqueue task
+    EnterCriticalSection(&pool->lock);
+
+    if (pool->task_tail == NULL) {
+        pool->task_head = task;
+        pool->task_tail = task;
+    } else {
+        pool->task_tail->next = task;
+        pool->task_tail = task;
+    }
+
+    WakeConditionVariable(&pool->not_empty);
+    LeaveCriticalSection(&pool->lock);
+}
+
+// Wait for all tasks to complete and shutdown the pool
+void bmb_thread_pool_join(int64_t pool_handle) {
+    if (pool_handle == 0) return;
+
+    BmbThreadPool* pool = (BmbThreadPool*)pool_handle;
+
+    // Signal shutdown
+    EnterCriticalSection(&pool->lock);
+    pool->shutdown = 1;
+    WakeAllConditionVariable(&pool->not_empty);
+    LeaveCriticalSection(&pool->lock);
+
+    // Wait for all workers to finish
+    WaitForMultipleObjects(pool->num_workers, pool->workers, TRUE, INFINITE);
+
+    // Close thread handles
+    for (int i = 0; i < pool->num_workers; i++) {
+        CloseHandle(pool->workers[i]);
+    }
+
+    // Clean up remaining tasks (if any)
+    BmbPoolTask* task = pool->task_head;
+    while (task != NULL) {
+        BmbPoolTask* next = task->next;
+        free(task);
+        task = next;
+    }
+
+    DeleteCriticalSection(&pool->lock);
+    free(pool->workers);
+    free(pool);
+}
+
+// Request shutdown (may not wait for tasks)
+void bmb_thread_pool_shutdown(int64_t pool_handle) {
+    if (pool_handle == 0) return;
+
+    BmbThreadPool* pool = (BmbThreadPool*)pool_handle;
+
+    // Signal shutdown
+    EnterCriticalSection(&pool->lock);
+    pool->shutdown = 1;
+    WakeAllConditionVariable(&pool->not_empty);
+    LeaveCriticalSection(&pool->lock);
+}
+
+// ============================================================================
+// v0.85: Scoped Threads (Windows)
+// ============================================================================
+
+typedef struct BmbScopedThread {
+    HANDLE thread;
+    struct BmbScopedThread* next;
+} BmbScopedThread;
+
+typedef struct BmbScope {
+    BmbScopedThread* threads;     // Linked list of spawned threads
+    CRITICAL_SECTION lock;        // Protects thread list
+} BmbScope;
+
+// Create a new scope for structured concurrency
+int64_t bmb_scope_new(void) {
+    BmbScope* scope = (BmbScope*)malloc(sizeof(BmbScope));
+    if (!scope) return 0;
+
+    scope->threads = NULL;
+    InitializeCriticalSection(&scope->lock);
+
+    return (int64_t)scope;
+}
+
+// Thread wrapper for scoped spawn
+typedef struct {
+    void (*func)(void);
+} BmbScopeTask;
+
+static DWORD WINAPI bmb_scope_thread_func(LPVOID arg) {
+    BmbScopeTask* task = (BmbScopeTask*)arg;
+    task->func();
+    free(task);
+    return 0;
+}
+
+// Spawn a scoped thread
+void bmb_scope_spawn(int64_t scope_handle, int64_t task_handle) {
+    if (scope_handle == 0 || task_handle == 0) return;
+
+    BmbScope* scope = (BmbScope*)scope_handle;
+    void (*func)(void) = (void (*)(void))task_handle;
+
+    // Create task wrapper
+    BmbScopeTask* task = (BmbScopeTask*)malloc(sizeof(BmbScopeTask));
+    if (!task) return;
+    task->func = func;
+
+    // Create thread
+    HANDLE thread = CreateThread(NULL, 0, bmb_scope_thread_func, task, 0, NULL);
+    if (thread == NULL) {
+        free(task);
+        return;
+    }
+
+    // Add to thread list
+    BmbScopedThread* node = (BmbScopedThread*)malloc(sizeof(BmbScopedThread));
+    if (!node) {
+        TerminateThread(thread, 0);
+        CloseHandle(thread);
+        return;
+    }
+    node->thread = thread;
+
+    EnterCriticalSection(&scope->lock);
+    node->next = scope->threads;
+    scope->threads = node;
+    LeaveCriticalSection(&scope->lock);
+}
+
+// Wait for all scoped threads to complete
+void bmb_scope_wait(int64_t scope_handle) {
+    if (scope_handle == 0) return;
+
+    BmbScope* scope = (BmbScope*)scope_handle;
+
+    EnterCriticalSection(&scope->lock);
+    BmbScopedThread* thread = scope->threads;
+    scope->threads = NULL;
+    LeaveCriticalSection(&scope->lock);
+
+    // Wait for all threads
+    while (thread != NULL) {
+        WaitForSingleObject(thread->thread, INFINITE);
+        CloseHandle(thread->thread);
+        BmbScopedThread* next = thread->next;
+        free(thread);
+        thread = next;
+    }
+
+    // Clean up scope
+    DeleteCriticalSection(&scope->lock);
+    free(scope);
+}
+
+#else
+// POSIX (Linux/macOS) ThreadPool implementation
+
+typedef struct BmbThreadPool {
+    pthread_t* workers;           // Worker threads
+    int num_workers;              // Number of workers
+
+    BmbPoolTask* task_head;       // Head of task queue
+    BmbPoolTask* task_tail;       // Tail of task queue
+
+    pthread_mutex_t lock;         // Queue lock
+    pthread_cond_t not_empty;     // Condition: queue not empty
+
+    int shutdown;                 // Shutdown flag
+    int active_tasks;             // Number of tasks being executed
+} BmbThreadPool;
+
+// Worker thread function (POSIX)
+static void* bmb_thread_pool_worker(void* arg) {
+    BmbThreadPool* pool = (BmbThreadPool*)arg;
+
+    while (1) {
+        pthread_mutex_lock(&pool->lock);
+
+        // Wait for task or shutdown
+        while (pool->task_head == NULL && !pool->shutdown) {
+            pthread_cond_wait(&pool->not_empty, &pool->lock);
+        }
+
+        // Check if we should exit
+        if (pool->shutdown && pool->task_head == NULL) {
+            pthread_mutex_unlock(&pool->lock);
+            break;
+        }
+
+        // Dequeue task
+        BmbPoolTask* task = pool->task_head;
+        if (task != NULL) {
+            pool->task_head = task->next;
+            if (pool->task_head == NULL) {
+                pool->task_tail = NULL;
+            }
+            pool->active_tasks++;
+        }
+
+        pthread_mutex_unlock(&pool->lock);
+
+        // Execute task outside lock
+        if (task != NULL) {
+            task->func();
+            free(task);
+
+            pthread_mutex_lock(&pool->lock);
+            pool->active_tasks--;
+            pthread_mutex_unlock(&pool->lock);
+        }
+    }
+
+    return NULL;
+}
+
+// Create a new thread pool with specified number of workers
+int64_t bmb_thread_pool_new(int64_t num_workers) {
+    if (num_workers <= 0) num_workers = 4;  // Default to 4 workers
+
+    BmbThreadPool* pool = (BmbThreadPool*)malloc(sizeof(BmbThreadPool));
+    if (!pool) return 0;
+
+    pool->workers = (pthread_t*)malloc(sizeof(pthread_t) * num_workers);
+    if (!pool->workers) {
+        free(pool);
+        return 0;
+    }
+
+    pool->num_workers = (int)num_workers;
+    pool->task_head = NULL;
+    pool->task_tail = NULL;
+    pool->shutdown = 0;
+    pool->active_tasks = 0;
+
+    pthread_mutex_init(&pool->lock, NULL);
+    pthread_cond_init(&pool->not_empty, NULL);
+
+    // Start worker threads
+    for (int i = 0; i < num_workers; i++) {
+        pthread_create(&pool->workers[i], NULL, bmb_thread_pool_worker, pool);
+    }
+
+    return (int64_t)pool;
+}
+
+// Execute a task on the thread pool
+void bmb_thread_pool_execute(int64_t pool_handle, int64_t task_handle) {
+    if (pool_handle == 0 || task_handle == 0) return;
+
+    BmbThreadPool* pool = (BmbThreadPool*)pool_handle;
+    void (*func)(void) = (void (*)(void))task_handle;
+
+    // Create task
+    BmbPoolTask* task = (BmbPoolTask*)malloc(sizeof(BmbPoolTask));
+    if (!task) return;
+
+    task->func = func;
+    task->next = NULL;
+
+    // Enqueue task
+    pthread_mutex_lock(&pool->lock);
+
+    if (pool->task_tail == NULL) {
+        pool->task_head = task;
+        pool->task_tail = task;
+    } else {
+        pool->task_tail->next = task;
+        pool->task_tail = task;
+    }
+
+    pthread_cond_signal(&pool->not_empty);
+    pthread_mutex_unlock(&pool->lock);
+}
+
+// Wait for all tasks to complete and shutdown the pool
+void bmb_thread_pool_join(int64_t pool_handle) {
+    if (pool_handle == 0) return;
+
+    BmbThreadPool* pool = (BmbThreadPool*)pool_handle;
+
+    // Signal shutdown
+    pthread_mutex_lock(&pool->lock);
+    pool->shutdown = 1;
+    pthread_cond_broadcast(&pool->not_empty);
+    pthread_mutex_unlock(&pool->lock);
+
+    // Wait for all workers to finish
+    for (int i = 0; i < pool->num_workers; i++) {
+        pthread_join(pool->workers[i], NULL);
+    }
+
+    // Clean up remaining tasks (if any)
+    BmbPoolTask* task = pool->task_head;
+    while (task != NULL) {
+        BmbPoolTask* next = task->next;
+        free(task);
+        task = next;
+    }
+
+    pthread_mutex_destroy(&pool->lock);
+    pthread_cond_destroy(&pool->not_empty);
+    free(pool->workers);
+    free(pool);
+}
+
+// Request shutdown (may not wait for tasks)
+void bmb_thread_pool_shutdown(int64_t pool_handle) {
+    if (pool_handle == 0) return;
+
+    BmbThreadPool* pool = (BmbThreadPool*)pool_handle;
+
+    // Signal shutdown
+    pthread_mutex_lock(&pool->lock);
+    pool->shutdown = 1;
+    pthread_cond_broadcast(&pool->not_empty);
+    pthread_mutex_unlock(&pool->lock);
+}
+
+// ============================================================================
+// v0.85: Scoped Threads (POSIX)
+// ============================================================================
+
+typedef struct BmbScopedThread {
+    pthread_t thread;
+    struct BmbScopedThread* next;
+} BmbScopedThread;
+
+typedef struct BmbScope {
+    BmbScopedThread* threads;     // Linked list of spawned threads
+    pthread_mutex_t lock;         // Protects thread list
+} BmbScope;
+
+// Create a new scope for structured concurrency
+int64_t bmb_scope_new(void) {
+    BmbScope* scope = (BmbScope*)malloc(sizeof(BmbScope));
+    if (!scope) return 0;
+
+    scope->threads = NULL;
+    pthread_mutex_init(&scope->lock, NULL);
+
+    return (int64_t)scope;
+}
+
+// Thread wrapper for scoped spawn
+typedef struct {
+    void (*func)(void);
+} BmbScopeTask;
+
+static void* bmb_scope_thread_func(void* arg) {
+    BmbScopeTask* task = (BmbScopeTask*)arg;
+    task->func();
+    free(task);
+    return NULL;
+}
+
+// Spawn a scoped thread
+void bmb_scope_spawn(int64_t scope_handle, int64_t task_handle) {
+    if (scope_handle == 0 || task_handle == 0) return;
+
+    BmbScope* scope = (BmbScope*)scope_handle;
+    void (*func)(void) = (void (*)(void))task_handle;
+
+    // Create task wrapper
+    BmbScopeTask* task = (BmbScopeTask*)malloc(sizeof(BmbScopeTask));
+    if (!task) return;
+    task->func = func;
+
+    // Create thread node
+    BmbScopedThread* node = (BmbScopedThread*)malloc(sizeof(BmbScopedThread));
+    if (!node) {
+        free(task);
+        return;
+    }
+
+    // Create thread
+    if (pthread_create(&node->thread, NULL, bmb_scope_thread_func, task) != 0) {
+        free(task);
+        free(node);
+        return;
+    }
+
+    // Add to thread list
+    pthread_mutex_lock(&scope->lock);
+    node->next = scope->threads;
+    scope->threads = node;
+    pthread_mutex_unlock(&scope->lock);
+}
+
+// Wait for all scoped threads to complete
+void bmb_scope_wait(int64_t scope_handle) {
+    if (scope_handle == 0) return;
+
+    BmbScope* scope = (BmbScope*)scope_handle;
+
+    pthread_mutex_lock(&scope->lock);
+    BmbScopedThread* thread = scope->threads;
+    scope->threads = NULL;
+    pthread_mutex_unlock(&scope->lock);
+
+    // Wait for all threads
+    while (thread != NULL) {
+        pthread_join(thread->thread, NULL);
+        BmbScopedThread* next = thread->next;
+        free(thread);
+        thread = next;
+    }
+
+    // Clean up scope
+    pthread_mutex_destroy(&scope->lock);
+    free(scope);
+}
+
+#endif
+
+// ============================================================================
 // Entry point
 // ============================================================================
 
@@ -2465,5 +3714,14 @@ int64_t bmb_user_main(void);
 int main(int argc, char** argv) {
     g_argc = argc;
     g_argv = argv;
-    return (int)bmb_user_main();
+    // v0.88.4: Arena ENABLED by default.
+    // BMB has no GC or destructors - without arena, every string allocation
+    // leaks (malloc without free). Arena pools all allocations and frees
+    // everything at process exit via bmb_arena_destroy().
+    // Hard limit (default 4GB) prevents OOM/BSOD - process exits with error.
+    // Override limit via BMB_ARENA_MAX_SIZE env var (e.g. "8G", "512M").
+    bmb_arena_mode(1);
+    int result = (int)bmb_user_main();
+    bmb_arena_destroy();
+    return result;
 }

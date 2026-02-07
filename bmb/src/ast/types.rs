@@ -171,6 +171,28 @@ pub enum Type {
     /// Represents an asynchronous computation that will eventually produce a value of type T.
     /// Use .await to suspend execution until the future completes.
     Future(Box<Type>),
+
+    // v0.83: Async I/O types
+
+    /// AsyncFile type: represents an asynchronous file handle
+    /// Provides non-blocking file operations that return Future<T>
+    AsyncFile,
+
+    /// AsyncSocket type: represents an asynchronous network socket
+    /// Provides non-blocking TCP/UDP operations that return Future<T>
+    AsyncSocket,
+
+    // v0.84: Thread Pool type
+
+    /// ThreadPool type: represents a pool of worker threads for parallel task execution
+    /// Provides submit(), shutdown() methods for task management
+    ThreadPool,
+
+    // v0.85: Scoped Threads type
+
+    /// Scope type: represents a scoped thread context for structured concurrency
+    /// All threads spawned in a scope are joined when the scope exits
+    Scope,
 }
 
 /// Manual PartialEq implementation for Type
@@ -248,6 +270,14 @@ impl PartialEq for Type {
             (Type::Condvar, Type::Condvar) => true,
             // v0.75: Future type equality
             (Type::Future(a), Type::Future(b)) => a == b,
+            // v0.83: AsyncFile type equality
+            (Type::AsyncFile, Type::AsyncFile) => true,
+            // v0.83.1: AsyncSocket type equality
+            (Type::AsyncSocket, Type::AsyncSocket) => true,
+            // v0.84: ThreadPool type equality
+            (Type::ThreadPool, Type::ThreadPool) => true,
+            // v0.85: Scope type equality
+            (Type::Scope, Type::Scope) => true,
             _ => false,
         }
     }
@@ -371,6 +401,14 @@ impl std::fmt::Display for Type {
             Type::Condvar => write!(f, "Condvar"),
             // v0.75: Future type display
             Type::Future(inner) => write!(f, "Future<{inner}>"),
+            // v0.83: AsyncFile type display
+            Type::AsyncFile => write!(f, "AsyncFile"),
+            // v0.83.1: AsyncSocket type display
+            Type::AsyncSocket => write!(f, "AsyncSocket"),
+            // v0.84: ThreadPool type display
+            Type::ThreadPool => write!(f, "ThreadPool"),
+            // v0.85: Scope type display
+            Type::Scope => write!(f, "Scope"),
         }
     }
 }

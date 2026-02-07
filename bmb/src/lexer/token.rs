@@ -152,6 +152,24 @@ pub enum Token {
     #[token("Future")]
     FutureType,
 
+    // v0.82: Select macro for multi-channel operations
+    #[token("select")]
+    Select,
+
+    // v0.83: Async I/O types
+    #[token("AsyncFile")]
+    AsyncFileType,
+    #[token("AsyncSocket")]
+    AsyncSocketType,
+
+    // v0.84: Thread pool for parallel task execution
+    #[token("ThreadPool")]
+    ThreadPoolType,
+
+    // v0.85: Scoped threads for structured concurrency
+    #[token("Scope")]
+    ScopeType,
+
     // v0.50.6: Type aliases and refinement types
     #[token("type")]
     Type,
@@ -512,6 +530,15 @@ impl std::fmt::Display for Token {
             Token::Async => write!(f, "async"),
             Token::Await => write!(f, "await"),
             Token::FutureType => write!(f, "Future"),
+            // v0.82: Select macro
+            Token::Select => write!(f, "select"),
+            // v0.83: Async I/O types
+            Token::AsyncFileType => write!(f, "AsyncFile"),
+            Token::AsyncSocketType => write!(f, "AsyncSocket"),
+            // v0.84: ThreadPool type
+            Token::ThreadPoolType => write!(f, "ThreadPool"),
+            // v0.85: Scope type
+            Token::ScopeType => write!(f, "Scope"),
             // v0.50.6: Type aliases
             Token::Type => write!(f, "type"),
             // v0.31: Module header tokens

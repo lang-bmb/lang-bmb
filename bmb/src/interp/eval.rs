@@ -439,6 +439,11 @@ impl Interpreter {
                 Err(RuntimeError::todo("await expressions require native compilation; use 'bmb build' instead of 'bmb run'"))
             }
 
+            // v0.82: Select expression - not supported in interpreter
+            Expr::Select { .. } => {
+                Err(RuntimeError::todo("select expressions require native compilation; use 'bmb build' instead of 'bmb run'"))
+            }
+
             Expr::Var(name) => {
                 env.borrow()
                     .get(name)

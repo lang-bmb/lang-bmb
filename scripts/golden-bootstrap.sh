@@ -140,12 +140,20 @@ stage2() {
     log_verbose "Optimizing with opt -O3..."
     opt -O3 "$OUTPUT_DIR/stage1.ll" -S -o "$OUTPUT_DIR/stage1_opt.ll"
 
-    # Compile and link
+    # Compile and link with platform-specific libraries
     log_verbose "Compiling and linking with clang..."
-    clang -O3 "$OUTPUT_DIR/stage1_opt.ll" \
-        "$RUNTIME_DIR/bmb_runtime.c" \
-        -o "$OUTPUT_DIR/bmb-stage1${EXE_EXT}" \
-        -lm
+    # v0.88: Add platform-specific libraries (ws2_32 for Windows sockets)
+    if [[ "$OSTYPE" == "msys" ]] || [[ "$OSTYPE" == "cygwin" ]] || [[ "$OSTYPE" == "win32" ]]; then
+        clang -O3 "$OUTPUT_DIR/stage1_opt.ll" \
+            "$RUNTIME_DIR/bmb_runtime.c" \
+            -o "$OUTPUT_DIR/bmb-stage1${EXE_EXT}" \
+            -lm -lws2_32
+    else
+        clang -O3 "$OUTPUT_DIR/stage1_opt.ll" \
+            "$RUNTIME_DIR/bmb_runtime.c" \
+            -o "$OUTPUT_DIR/bmb-stage1${EXE_EXT}" \
+            -lm -lpthread
+    fi
 
     local end=$(date +%s%3N 2>/dev/null || python3 -c 'import time; print(int(time.time() * 1000))')
     local elapsed=$((end - start))
@@ -165,10 +173,18 @@ stage3_verify() {
     # Generate Stage 3 IR using Stage 2 binary (compiled from Stage 1)
     # First compile Stage 2 binary
     opt -O3 "$OUTPUT_DIR/stage2.ll" -S -o "$OUTPUT_DIR/stage2_opt.ll"
-    clang -O3 "$OUTPUT_DIR/stage2_opt.ll" \
-        "$RUNTIME_DIR/bmb_runtime.c" \
-        -o "$OUTPUT_DIR/bmb-stage2${EXE_EXT}" \
-        -lm
+    # v0.88: Add platform-specific libraries (ws2_32 for Windows sockets)
+    if [[ "$OSTYPE" == "msys" ]] || [[ "$OSTYPE" == "cygwin" ]] || [[ "$OSTYPE" == "win32" ]]; then
+        clang -O3 "$OUTPUT_DIR/stage2_opt.ll" \
+            "$RUNTIME_DIR/bmb_runtime.c" \
+            -o "$OUTPUT_DIR/bmb-stage2${EXE_EXT}" \
+            -lm -lws2_32
+    else
+        clang -O3 "$OUTPUT_DIR/stage2_opt.ll" \
+            "$RUNTIME_DIR/bmb_runtime.c" \
+            -o "$OUTPUT_DIR/bmb-stage2${EXE_EXT}" \
+            -lm -lpthread
+    fi
 
     # Generate Stage 3 IR
     "$OUTPUT_DIR/bmb-stage2${EXE_EXT}" "$BOOTSTRAP_SRC" "$OUTPUT_DIR/stage3.ll"

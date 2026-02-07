@@ -1129,6 +1129,58 @@ fn collect_used_in_instruction(inst: &MirInst, used: &mut HashSet<String>) {
             collect_used_in_operand(true_val, used);
             collect_used_in_operand(false_val, used);
         }
+        // v0.83: AsyncFile instructions
+        MirInst::AsyncFileOpen { path, .. } => {
+            collect_used_in_operand(path, used);
+        }
+        MirInst::AsyncFileRead { file, .. } => {
+            collect_used_in_operand(file, used);
+        }
+        MirInst::AsyncFileWrite { file, content } => {
+            collect_used_in_operand(file, used);
+            collect_used_in_operand(content, used);
+        }
+        MirInst::AsyncFileClose { file } => {
+            collect_used_in_operand(file, used);
+        }
+        // v0.83.1: AsyncSocket instructions
+        MirInst::AsyncSocketConnect { host, port, .. } => {
+            collect_used_in_operand(host, used);
+            collect_used_in_operand(port, used);
+        }
+        MirInst::AsyncSocketRead { socket, .. } => {
+            collect_used_in_operand(socket, used);
+        }
+        MirInst::AsyncSocketWrite { socket, content } => {
+            collect_used_in_operand(socket, used);
+            collect_used_in_operand(content, used);
+        }
+        MirInst::AsyncSocketClose { socket } => {
+            collect_used_in_operand(socket, used);
+        }
+        // v0.84: ThreadPool instructions
+        MirInst::ThreadPoolNew { size, .. } => {
+            collect_used_in_operand(size, used);
+        }
+        MirInst::ThreadPoolExecute { pool, task } => {
+            collect_used_in_operand(pool, used);
+            collect_used_in_operand(task, used);
+        }
+        MirInst::ThreadPoolJoin { pool } => {
+            collect_used_in_operand(pool, used);
+        }
+        MirInst::ThreadPoolShutdown { pool } => {
+            collect_used_in_operand(pool, used);
+        }
+        // v0.85: Scope instructions
+        MirInst::ScopeNew { .. } => {}
+        MirInst::ScopeSpawn { scope, task } => {
+            collect_used_in_operand(scope, used);
+            collect_used_in_operand(task, used);
+        }
+        MirInst::ScopeWait { scope } => {
+            collect_used_in_operand(scope, used);
+        }
     }
 }
 
@@ -1215,6 +1267,16 @@ fn has_side_effects(inst: &MirInst) -> bool {
             | MirInst::CondvarWait { .. }
             | MirInst::CondvarNotifyOne { .. }
             | MirInst::CondvarNotifyAll { .. }
+            // v0.83: AsyncFile instructions have I/O side effects
+            | MirInst::AsyncFileOpen { .. }
+            | MirInst::AsyncFileRead { .. }
+            | MirInst::AsyncFileWrite { .. }
+            | MirInst::AsyncFileClose { .. }
+            // v0.83.1: AsyncSocket instructions have I/O side effects
+            | MirInst::AsyncSocketConnect { .. }
+            | MirInst::AsyncSocketRead { .. }
+            | MirInst::AsyncSocketWrite { .. }
+            | MirInst::AsyncSocketClose { .. }
     )
 }
 
@@ -5553,7 +5615,26 @@ impl MemoryEffectAnalysis {
             | MirInst::CondvarNew { .. }
             | MirInst::CondvarWait { .. }
             | MirInst::CondvarNotifyOne { .. }
-            | MirInst::CondvarNotifyAll { .. } => true,
+            | MirInst::CondvarNotifyAll { .. }
+            // v0.83: AsyncFile instructions access I/O
+            | MirInst::AsyncFileOpen { .. }
+            | MirInst::AsyncFileRead { .. }
+            | MirInst::AsyncFileWrite { .. }
+            | MirInst::AsyncFileClose { .. }
+            // v0.83.1: AsyncSocket instructions access I/O
+            | MirInst::AsyncSocketConnect { .. }
+            | MirInst::AsyncSocketRead { .. }
+            | MirInst::AsyncSocketWrite { .. }
+            | MirInst::AsyncSocketClose { .. }
+            // v0.84: ThreadPool instructions access shared state
+            | MirInst::ThreadPoolNew { .. }
+            | MirInst::ThreadPoolExecute { .. }
+            | MirInst::ThreadPoolJoin { .. }
+            | MirInst::ThreadPoolShutdown { .. }
+            // v0.85: Scope instructions access shared state
+            | MirInst::ScopeNew { .. }
+            | MirInst::ScopeSpawn { .. }
+            | MirInst::ScopeWait { .. } => true,
             // Pure operations don't access memory
             MirInst::BinOp { .. }
             | MirInst::UnaryOp { .. }

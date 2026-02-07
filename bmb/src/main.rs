@@ -41,6 +41,12 @@ enum Command {
         /// Build with aggressive optimizations (-O3)
         #[arg(long)]
         aggressive: bool,
+        /// Fast compilation mode (v0.87) - skips expensive LLVM opt pass
+        /// Uses llc directly for ~3x faster compilation. Produces slightly
+        /// larger binaries but nearly identical performance for most code.
+        /// Recommended for development and bootstrap.
+        #[arg(long)]
+        fast_compile: bool,
         /// Emit LLVM IR instead of executable
         #[arg(long)]
         emit_ir: bool,
@@ -403,6 +409,7 @@ fn main() {
             debug,
             release,
             aggressive,
+            fast_compile,
             emit_ir,
             emit_mir,
             emit_cir,
@@ -418,7 +425,7 @@ fn main() {
             include_paths,
             prelude_path,
             no_prelude,
-        } => build_file(&file, output, debug, release, aggressive, emit_ir, emit_mir, emit_cir, emit_wasm, &wasm_target, all_targets, target.as_deref(), verbose, verify.as_deref(), trust_contracts, verification_timeout, fast_math, &include_paths, prelude_path.as_ref(), no_prelude),
+        } => build_file(&file, output, debug, release, aggressive, fast_compile, emit_ir, emit_mir, emit_cir, emit_wasm, &wasm_target, all_targets, target.as_deref(), verbose, verify.as_deref(), trust_contracts, verification_timeout, fast_math, &include_paths, prelude_path.as_ref(), no_prelude),
         Command::Run { file, args, human: _ } => run_file(&file, &args),
         Command::Repl => start_repl(),
         Command::Check { file, include_paths } => check_file_with_includes(&file, &include_paths),
@@ -453,6 +460,7 @@ fn build_file(
     debug: bool,
     release: bool,
     aggressive: bool,
+    fast_compile: bool,
     emit_ir: bool,
     emit_mir: bool,
     emit_cir: bool,
@@ -489,7 +497,7 @@ fn build_file(
         if verbose {
             println!("\n=== Native Build ===");
         }
-        build_native(path, output.clone(), debug, release, aggressive, emit_ir, target, verbose, verify_mode, trust_contracts, verification_timeout, fast_math, include_paths, prelude_path, no_prelude)?;
+        build_native(path, output.clone(), debug, release, aggressive, fast_compile, emit_ir, target, verbose, verify_mode, trust_contracts, verification_timeout, fast_math, include_paths, prelude_path, no_prelude)?;
 
         // Then build WASM
         if verbose {
@@ -509,7 +517,7 @@ fn build_file(
     }
 
     // Default: build native
-    build_native(path, output, debug, release, aggressive, emit_ir, target, verbose, verify_mode, trust_contracts, verification_timeout, fast_math, include_paths, prelude_path, no_prelude)
+    build_native(path, output, debug, release, aggressive, fast_compile, emit_ir, target, verbose, verify_mode, trust_contracts, verification_timeout, fast_math, include_paths, prelude_path, no_prelude)
 }
 
 fn build_native(
@@ -518,6 +526,7 @@ fn build_native(
     debug: bool,
     _release: bool,
     aggressive: bool,
+    fast_compile: bool,
     emit_ir: bool,
     target: Option<&str>,
     verbose: bool,
@@ -581,6 +590,11 @@ fn build_native(
         config = config.opt_level(OptLevel::Debug);
     }
     // else: default is Release (O2)
+
+    // v0.87: Fast compile mode - skip opt pass for faster builds
+    if fast_compile {
+        config = config.fast_compile(true);
+    }
 
     bmb::build::build(&config)?;
 
@@ -1905,6 +1919,14 @@ fn format_type(ty: &bmb::ast::Type) -> String {
         Type::Condvar => "Condvar".to_string(),
         // v0.75: Future type
         Type::Future(inner) => format!("Future<{}>", format_type(inner)),
+        // v0.83: AsyncFile type
+        Type::AsyncFile => "AsyncFile".to_string(),
+        // v0.83.1: AsyncSocket type
+        Type::AsyncSocket => "AsyncSocket".to_string(),
+        // v0.84: ThreadPool type
+        Type::ThreadPool => "ThreadPool".to_string(),
+        // v0.85: Scope type
+        Type::Scope => "Scope".to_string(),
     }
 }
 
@@ -1941,6 +1963,17 @@ fn format_expr(expr: &bmb::ast::Expr) -> String {
         Expr::CondvarNew => "Condvar::new()".to_string(),
         // v0.75: Await expression
         Expr::Await { future } => format!("{}.await", format_expr(&future.node)),
+        // v0.82: Select expression
+        Expr::Select { arms } => {
+            let arm_strs: Vec<String> = arms
+                .iter()
+                .map(|arm| {
+                    let binding = arm.binding.as_ref().map(|b| b.as_str()).unwrap_or("_");
+                    format!("{} = {} => {{ ... }}", binding, format_expr(&arm.operation.node))
+                })
+                .collect();
+            format!("select {{ {} }}", arm_strs.join(", "))
+        }
         Expr::Var(name) => name.clone(),
         Expr::Ret => "ret".to_string(),
         Expr::It => "it".to_string(),

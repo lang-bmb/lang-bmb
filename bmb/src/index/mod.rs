@@ -534,6 +534,14 @@ impl IndexGenerator {
             Type::Condvar => "Condvar".to_string(),
             // v0.75: Future
             Type::Future(inner) => format!("Future<{}>", self.format_type(inner)),
+            // v0.83: AsyncFile
+            Type::AsyncFile => "AsyncFile".to_string(),
+            // v0.83.1: AsyncSocket
+            Type::AsyncSocket => "AsyncSocket".to_string(),
+            // v0.84: ThreadPool
+            Type::ThreadPool => "ThreadPool".to_string(),
+            // v0.85: Scope
+            Type::Scope => "Scope".to_string(),
         }
     }
 

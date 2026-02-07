@@ -96,6 +96,16 @@ extern {
         "async" => Token::Async,
         "await" => Token::Await,
         "Future" => Token::FutureType,
+        // v0.82: Select macro
+        "select" => Token::Select,
+        // v0.83: AsyncFile type
+        "AsyncFile" => Token::AsyncFileType,
+        // v0.83.1: AsyncSocket type
+        "AsyncSocket" => Token::AsyncSocketType,
+        // v0.84: ThreadPool type
+        "ThreadPool" => Token::ThreadPoolType,
+        // v0.85: Scope type for scoped threads
+        "Scope" => Token::ScopeType,
 
         // v0.31: Module header system (RFC-0002)
         "module" => Token::Module,
@@ -1120,6 +1130,14 @@ PlainType: Type = {
     "Condvar" => Type::Condvar,
     // v0.75: Future<T> type for async/await
     "Future" "<" <inner:Type> ">" => Type::Future(Box::new(inner)),
+    // v0.83: AsyncFile type for async I/O
+    "AsyncFile" => Type::AsyncFile,
+    // v0.83.1: AsyncSocket type for async network I/O
+    "AsyncSocket" => Type::AsyncSocket,
+    // v0.84: ThreadPool type for parallel task execution
+    "ThreadPool" => Type::ThreadPool,
+    // v0.85: Scope type for scoped threads
+    "Scope" => Type::Scope,
     // v0.13.1: Generic type: Container<T>, Result<T, E>
     <name:RawIdent> "<" <args:TypeArgList> ">" => Type::Generic { name, type_args: args },
     // v0.37: Nullable type suffix: T? (per spec, this is the only nullable syntax)
@@ -1270,6 +1288,11 @@ Expr: Expr = {
         expr: Box::new(e),
         arms,
     },
+    // v0.82: Select expression - wait on multiple channels/futures
+    // select { value = rx.recv() => body, _ = timeout(100) => body }
+    "select" "{" <arms:SelectArms> "}" => Expr::Select {
+        arms,
+    },
     // While loop (v0.5 Phase 2, v0.37: optional invariant)
     // v0.51: Body now accepts BlockStmt sequence (let bindings + assignments)
     // Syntax: while cond invariant inv { stmts }
@@ -1388,6 +1411,49 @@ MatchArm: MatchArm = {
     // Pattern without guard: pattern => body
     <pattern:SpannedPattern> "=>" <body:SpannedExpr> => MatchArm {
         pattern,
+        guard: None,
+        body,
+    },
+};
+
+// v0.82: Select arms for channel/future waiting
+SelectArms: Vec<SelectArm> = {
+    <v:(<SelectArm> ",")*> <e:SelectArm?> => match e {
+        None => v,
+        Some(e) => {
+            let mut v = v;
+            v.push(e);
+            v
+        }
+    },
+};
+
+SelectArm: SelectArm = {
+    // Binding with guard: value = op if cond => body
+    <binding:RawIdent> "=" <op:SpannedExpr> "if" <guard:SpannedExpr> "=>" <body:SpannedExpr> => SelectArm {
+        binding: Some(binding),
+        operation: op,
+        guard: Some(guard),
+        body,
+    },
+    // Binding without guard: value = op => body
+    <binding:RawIdent> "=" <op:SpannedExpr> "=>" <body:SpannedExpr> => SelectArm {
+        binding: Some(binding),
+        operation: op,
+        guard: None,
+        body,
+    },
+    // Discard with guard: _ = op if cond => body
+    "_" "=" <op:SpannedExpr> "if" <guard:SpannedExpr> "=>" <body:SpannedExpr> => SelectArm {
+        binding: None,
+        operation: op,
+        guard: Some(guard),
+        body,
+    },
+    // Discard without guard: _ = op => body (for timeout, default case)
+    "_" "=" <op:SpannedExpr> "=>" <body:SpannedExpr> => SelectArm {
+        binding: None,
+        operation: op,
         guard: None,
         body,
     },

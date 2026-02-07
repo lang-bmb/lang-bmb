@@ -1,0 +1,24 @@
+// v0.82.1: Test select with multiple channels - picks the ready one
+fn main() -> i64 = {
+    // Create two channels
+    let ch1 = channel<i64>(3);
+    let tx1 = ch1.0;
+    let rx1 = ch1.1;
+
+    let ch2 = channel<i64>(3);
+    let tx2 = ch2.0;
+    let rx2 = ch2.1;
+
+    // Send a value ONLY on the second channel
+    // The first channel is empty
+    tx2.send(100);
+
+    // Select should poll and find rx2 has data
+    let result = select {
+        value = rx1.recv() => { value },      // Empty, will be skipped
+        value = rx2.recv() => { value + 5 },  // Has data, should be selected
+    };
+
+    // Should receive 100 + 5 = 105 from rx2
+    if result == 105 { 0 } else { result }
+};

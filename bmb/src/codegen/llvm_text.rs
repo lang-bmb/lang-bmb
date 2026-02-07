@@ -385,13 +385,34 @@ impl TextCodeGen {
         writeln!(out, "declare i64 @bmb_sb_len(i64)")?;
         writeln!(out, "declare ptr @bmb_sb_build(i64)")?;
         writeln!(out, "declare i64 @bmb_sb_clear(i64)")?;
+        writeln!(out, "declare i64 @bmb_sb_contains(i64, ptr)")?;
         writeln!(out, "declare i64 @bmb_sb_println(i64)")?;
         writeln!(out)?;
 
         // Phase 32.3: Process execution runtime functions
         writeln!(out, "; Runtime declarations - Process execution")?;
         writeln!(out, "declare i64 @bmb_system(ptr)")?;
+        writeln!(out, "declare ptr @bmb_system_capture(ptr)")?;
+        writeln!(out, "declare ptr @bmb_exec_output(ptr, ptr)")?;
         writeln!(out, "declare ptr @bmb_getenv(ptr)")?;
+        writeln!(out)?;
+
+        // v0.88.2: Memory management functions
+        writeln!(out, "; Runtime declarations - Memory management (v0.88.2)")?;
+        writeln!(out, "declare i64 @bmb_string_free(ptr)")?;
+        writeln!(out, "declare i64 @free_string(ptr)")?;
+        writeln!(out, "declare i64 @bmb_sb_free(i64)")?;
+        writeln!(out, "declare i64 @sb_free(i64)")?;
+        writeln!(out, "declare i64 @bmb_arena_mode(i64)")?;
+        writeln!(out, "declare i64 @arena_mode(i64)")?;
+        writeln!(out, "declare i64 @bmb_arena_reset()")?;
+        writeln!(out, "declare i64 @arena_reset()")?;
+        writeln!(out, "declare i64 @bmb_arena_save()")?;
+        writeln!(out, "declare i64 @arena_save()")?;
+        writeln!(out, "declare i64 @bmb_arena_restore()")?;
+        writeln!(out, "declare i64 @arena_restore()")?;
+        writeln!(out, "declare i64 @bmb_arena_usage()")?;
+        writeln!(out, "declare i64 @arena_usage()")?;
         writeln!(out)?;
 
         // v0.63: Timing functions for bmb-bench
@@ -478,6 +499,37 @@ impl TextCodeGen {
         writeln!(out, "declare i64 @__future_await(i64) nounwind")?;
         writeln!(out)?;
 
+        // v0.83: AsyncFile runtime functions
+        writeln!(out, "; Runtime declarations - AsyncFile (v0.83)")?;
+        writeln!(out, "declare i64 @bmb_async_file_open(i64) nounwind")?;
+        writeln!(out, "declare i64 @bmb_async_file_read(i64) nounwind")?;
+        writeln!(out, "declare void @bmb_async_file_write(i64, i64) nounwind")?;
+        writeln!(out, "declare void @bmb_async_file_close(i64) nounwind")?;
+        writeln!(out)?;
+
+        // v0.83.1: AsyncSocket runtime functions
+        writeln!(out, "; Runtime declarations - AsyncSocket (v0.83.1)")?;
+        writeln!(out, "declare i64 @bmb_async_socket_connect(i64, i64) nounwind")?;
+        writeln!(out, "declare i64 @bmb_async_socket_read(i64) nounwind")?;
+        writeln!(out, "declare void @bmb_async_socket_write(i64, i64) nounwind")?;
+        writeln!(out, "declare void @bmb_async_socket_close(i64) nounwind")?;
+        writeln!(out)?;
+
+        // v0.84: ThreadPool runtime functions
+        writeln!(out, "; Runtime declarations - ThreadPool (v0.84)")?;
+        writeln!(out, "declare i64 @bmb_thread_pool_new(i64) nounwind")?;
+        writeln!(out, "declare void @bmb_thread_pool_execute(i64, i64) nounwind")?;
+        writeln!(out, "declare void @bmb_thread_pool_join(i64) nounwind")?;
+        writeln!(out, "declare void @bmb_thread_pool_shutdown(i64) nounwind")?;
+        writeln!(out)?;
+
+        // v0.85: Scope runtime functions
+        writeln!(out, "; Runtime declarations - Scope (v0.85)")?;
+        writeln!(out, "declare i64 @bmb_scope_new() nounwind")?;
+        writeln!(out, "declare void @bmb_scope_spawn(i64, i64) nounwind")?;
+        writeln!(out, "declare void @bmb_scope_wait(i64) nounwind")?;
+        writeln!(out)?;
+
         // v0.31.23: Command-line argument builtins for Phase 32.3.G CLI Independence
         writeln!(out, "; Runtime declarations - CLI arguments")?;
         writeln!(out, "declare i64 @arg_count()")?;
@@ -524,6 +576,7 @@ impl TextCodeGen {
         writeln!(out, "declare i64 @sb_len(i64) nounwind willreturn")?;
         writeln!(out, "declare ptr @sb_build(i64) nounwind")?;
         writeln!(out, "declare i64 @sb_clear(i64) nounwind")?;
+        writeln!(out, "declare i64 @sb_contains(i64, ptr) nounwind")?;
         writeln!(out, "declare i64 @sb_println(i64) nounwind")?;
         writeln!(out, "declare i64 @puts_cstr(ptr) nounwind")?;
         writeln!(out)?;
@@ -3125,6 +3178,8 @@ impl TextCodeGen {
                 // v0.50.77: sb_push -> sb_push_cstr for string literals (zero allocation)
                 let runtime_fn_name = match fn_name.as_str() {
                     "system" => "bmb_system",
+                    "system_capture" => "bmb_system_capture",
+                    "exec_output" => "bmb_exec_output",
                     "file_exists" if all_string_args_are_literals => "file_exists_cstr",
                     "bmb_file_exists" if all_string_args_are_literals => "bmb_file_exists_cstr",
                     // v0.50.77: StringBuilder optimization - use cstr variant for string literals
@@ -4528,6 +4583,78 @@ impl TextCodeGen {
                 writeln!(out, "  call void @bmb_condvar_notify_all(i64 {})", condvar_val)?;
             }
 
+            // v0.83: AsyncFile instructions
+            MirInst::AsyncFileOpen { dest, path } => {
+                let path_val = self.format_operand(path);
+                writeln!(out, "  %{} = call i64 @bmb_async_file_open(i64 {})", dest.name, path_val)?;
+            }
+            MirInst::AsyncFileRead { dest, file } => {
+                let file_val = self.format_operand(file);
+                writeln!(out, "  %{} = call i64 @bmb_async_file_read(i64 {})", dest.name, file_val)?;
+            }
+            MirInst::AsyncFileWrite { file, content } => {
+                let file_val = self.format_operand(file);
+                let content_val = self.format_operand(content);
+                writeln!(out, "  call void @bmb_async_file_write(i64 {}, i64 {})", file_val, content_val)?;
+            }
+            MirInst::AsyncFileClose { file } => {
+                let file_val = self.format_operand(file);
+                writeln!(out, "  call void @bmb_async_file_close(i64 {})", file_val)?;
+            }
+
+            // v0.83.1: AsyncSocket instructions
+            MirInst::AsyncSocketConnect { dest, host, port } => {
+                let host_val = self.format_operand(host);
+                let port_val = self.format_operand(port);
+                writeln!(out, "  %{} = call i64 @bmb_async_socket_connect(i64 {}, i64 {})", dest.name, host_val, port_val)?;
+            }
+            MirInst::AsyncSocketRead { dest, socket } => {
+                let socket_val = self.format_operand(socket);
+                writeln!(out, "  %{} = call i64 @bmb_async_socket_read(i64 {})", dest.name, socket_val)?;
+            }
+            MirInst::AsyncSocketWrite { socket, content } => {
+                let socket_val = self.format_operand(socket);
+                let content_val = self.format_operand(content);
+                writeln!(out, "  call void @bmb_async_socket_write(i64 {}, i64 {})", socket_val, content_val)?;
+            }
+            MirInst::AsyncSocketClose { socket } => {
+                let socket_val = self.format_operand(socket);
+                writeln!(out, "  call void @bmb_async_socket_close(i64 {})", socket_val)?;
+            }
+
+            // v0.84: ThreadPool instructions
+            MirInst::ThreadPoolNew { dest, size } => {
+                let size_val = self.format_operand(size);
+                writeln!(out, "  %{} = call i64 @bmb_thread_pool_new(i64 {})", dest.name, size_val)?;
+            }
+            MirInst::ThreadPoolExecute { pool, task } => {
+                let pool_val = self.format_operand(pool);
+                let task_val = self.format_operand(task);
+                writeln!(out, "  call void @bmb_thread_pool_execute(i64 {}, i64 {})", pool_val, task_val)?;
+            }
+            MirInst::ThreadPoolJoin { pool } => {
+                let pool_val = self.format_operand(pool);
+                writeln!(out, "  call void @bmb_thread_pool_join(i64 {})", pool_val)?;
+            }
+            MirInst::ThreadPoolShutdown { pool } => {
+                let pool_val = self.format_operand(pool);
+                writeln!(out, "  call void @bmb_thread_pool_shutdown(i64 {})", pool_val)?;
+            }
+
+            // v0.85: Scope instructions
+            MirInst::ScopeNew { dest } => {
+                writeln!(out, "  %{} = call i64 @bmb_scope_new()", dest.name)?;
+            }
+            MirInst::ScopeSpawn { scope, task } => {
+                let scope_val = self.format_operand(scope);
+                let task_val = self.format_operand(task);
+                writeln!(out, "  call void @bmb_scope_spawn(i64 {}, i64 {})", scope_val, task_val)?;
+            }
+            MirInst::ScopeWait { scope } => {
+                let scope_val = self.format_operand(scope);
+                writeln!(out, "  call void @bmb_scope_wait(i64 {})", scope_val)?;
+            }
+
             // v0.76: Select instruction
             MirInst::Select { dest, cond_op, cond_lhs, cond_rhs, true_val, false_val } => {
                 let lhs_val = self.format_operand(cond_lhs);
@@ -5025,12 +5152,18 @@ impl TextCodeGen {
             | "file_exists" | "file_size" | "write_file" | "append_file" => "i64",
 
             // i64 return - StringBuilder (handle is i64)
-            "bmb_sb_new" | "bmb_sb_push" | "bmb_sb_push_cstr" | "bmb_sb_push_char" | "bmb_sb_push_int" | "bmb_sb_push_escaped" | "bmb_sb_len" | "bmb_sb_clear" | "bmb_sb_println"
-            | "sb_new" | "sb_with_capacity" | "sb_push" | "sb_push_cstr" | "sb_push_char" | "sb_push_int" | "sb_push_escaped" | "sb_len" | "sb_clear" | "sb_println"
+            "bmb_sb_new" | "bmb_sb_push" | "bmb_sb_push_cstr" | "bmb_sb_push_char" | "bmb_sb_push_int" | "bmb_sb_push_escaped" | "bmb_sb_len" | "bmb_sb_clear" | "bmb_sb_contains" | "bmb_sb_println"
+            | "sb_new" | "sb_with_capacity" | "sb_push" | "sb_push_cstr" | "sb_push_char" | "sb_push_int" | "sb_push_escaped" | "sb_len" | "sb_clear" | "sb_contains" | "sb_println"
             | "puts_cstr" | "bmb_puts_cstr" => "i64",
 
             // i64 return - Process
             "bmb_system" => "i64",
+
+            // v0.88.2: i64 return - Memory management
+            "bmb_string_free" | "free_string" | "bmb_sb_free" | "sb_free"
+            | "bmb_arena_mode" | "arena_mode" | "bmb_arena_reset" | "arena_reset"
+            | "bmb_arena_save" | "arena_save" | "bmb_arena_restore" | "arena_restore"
+            | "bmb_arena_usage" | "arena_usage" => "i64",
 
             // i64 return - Timing (v0.63)
             "bmb_time_ns" | "time_ns" => "i64",
@@ -5048,6 +5181,8 @@ impl TextCodeGen {
 
             // ptr return - Process
             "bmb_getenv" => "ptr",
+            "bmb_system_capture" | "system_capture" => "ptr",
+            "bmb_exec_output" | "exec_output" => "ptr",
 
             // v0.46: ptr return - CLI argument functions
             "get_arg" | "bmb_get_arg" => "ptr",

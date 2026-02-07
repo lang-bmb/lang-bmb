@@ -330,6 +330,55 @@ fn extract_var_name(s: String) -> String =
     let pos3 = skip_ws(content, pos2);
     extract_name(content.slice(pos3, content.len()));
 
+// v0.88.1: Rename variable references in AST
+// Finds all "(var <oldname>)" patterns and replaces with "(var <newname>)"
+// Used to avoid SSA conflicts when let-bound variables get unique names
+fn rename_var_in_ast(ast: String, oldname: String, newname: String) -> String =
+    rename_var_in_ast_at(ast, oldname, newname, 0, "");
+
+fn rename_var_in_ast_at(ast: String, oldname: String, newname: String, pos: i64, acc: String) -> String =
+    if pos >= ast.len() { acc } else {
+        let var_pos = find_var_pattern_from(ast, pos);
+        if var_pos < 0 {
+            // No more var patterns, append rest of string
+            acc + ast.slice(pos, ast.len())
+        } else {
+            // Found "(var <" pattern at var_pos
+            let name_start = var_pos + 6;  // skip "(var <"
+            let name_end = find_char_from(ast, 62, name_start);  // 62 = '>'
+            if name_end <= name_start {
+                // Invalid pattern, skip this char and continue
+                rename_var_in_ast_at(ast, oldname, newname, var_pos + 1, acc + ast.slice(pos, var_pos + 1))
+            } else {
+                let found_name = ast.slice(name_start, name_end);
+                if found_name == oldname {
+                    // Match! Replace with new name
+                    let before = ast.slice(pos, var_pos);
+                    let replaced = "(var <" + newname + ">";
+                    rename_var_in_ast_at(ast, oldname, newname, name_end + 1, acc + before + replaced)
+                } else {
+                    // Different variable, keep as-is and continue
+                    rename_var_in_ast_at(ast, oldname, newname, name_end + 1, acc + ast.slice(pos, name_end + 1))
+                }
+            }
+        }
+    };
+
+// Find "(var <" pattern starting from pos (returns -1 if not found)
+// '(' = 40, 'v' = 118, 'a' = 97, 'r' = 114, ' ' = 32, '<' = 60
+fn find_var_pattern_from(ast: String, pos: i64) -> i64 =
+    if pos + 5 >= ast.len() { 0 - 1 }
+    else if ast.byte_at(pos) == 40 and ast.byte_at(pos+1) == 118 and
+            ast.byte_at(pos+2) == 97 and ast.byte_at(pos+3) == 114 and
+            ast.byte_at(pos+4) == 32 and ast.byte_at(pos+5) == 60 { pos }
+    else { find_var_pattern_from(ast, pos + 1) };
+
+// Find character c starting from pos (returns -1 if not found)
+fn find_char_from(ast: String, c: i64, pos: i64) -> i64 =
+    if pos >= ast.len() { 0 - 1 }
+    else if ast.byte_at(pos) == c { pos }
+    else { find_char_from(ast, c, pos + 1) };
+
 // ============================================================================
 // S-Expression Child Extraction
 // ============================================================================
@@ -703,6 +752,8 @@ fn lower_not_sb(ast: String, temp: i64, block: i64, sb: i64) -> String =
     let w1 = sb_push_mir(sb, not_text);
     pack_result_sb(to + 1, bo, dest);
 
+// v0.88.1: Use unique variable names to avoid SSA conflicts in branches
+// Variables get unique names: %name_v{temp} to ensure each definition is unique
 fn lower_let_sb(ast: String, temp: i64, block: i64, sb: i64) -> String =
     let name = get_let_name(ast);
     let value_ast = get_let_value(ast);
@@ -711,9 +762,13 @@ fn lower_let_sb(ast: String, temp: i64, block: i64, sb: i64) -> String =
     let tv = unpack_temp(rv);
     let bv = unpack_block(rv);
     let pv = unpack_result_place(rv);
-    let assign_text = mir_text_copy(place_var(name), pv);
+    // v0.88.1: Create unique SSA name: %name_v{temp}
+    let unique_var = place_var(name + "_v" + int_to_string(tv));
+    let assign_text = mir_text_copy(unique_var, pv);
     let w1 = sb_push_mir(sb, assign_text);
-    lower_expr_sb(body_ast, tv, bv, sb);
+    // Substitute variable references in the body AST before lowering
+    let body_with_renamed = rename_var_in_ast(body_ast, name, name + "_v" + int_to_string(tv));
+    lower_expr_sb(body_with_renamed, tv, bv, sb);
 
 fn lower_if_sb(ast: String, temp: i64, block: i64, sb: i64) -> String =
     let cond_ast = get_if_cond(ast);

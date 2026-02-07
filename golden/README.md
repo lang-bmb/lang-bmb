@@ -13,7 +13,18 @@ Pre-built BMB compiler binaries for bootstrapping without Rust.
 
 ## Version
 
-See `VERSION` file for current golden binary version.
+Current version: **v0.88.2** (2026-02-06)
+
+See `VERSION` file for full version information.
+
+### Version History
+
+| Version | Date | Features |
+|---------|------|----------|
+| v0.88.2 | 2026-02-06 | Arena allocator for memory management, bmb_string_free/bmb_sb_free |
+| v0.88.1 | 2026-02-06 | SSA variable naming fix for if/else let bindings |
+| v0.88.0 | 2026-02-06 | Concurrency support, emit-ir CLI, platform-specific linking |
+| v0.69.1 | 2026-02-05 | Initial golden binary |
 
 ## Usage
 

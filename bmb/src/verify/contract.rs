@@ -478,6 +478,16 @@ impl ContractVerifier {
             Expr::Await { future } => {
                 self.check_expr_for_conflicts(&future.node, function_index, report);
             }
+            // v0.82: Select expression
+            Expr::Select { arms } => {
+                for arm in arms {
+                    self.check_expr_for_conflicts(&arm.operation.node, function_index, report);
+                    if let Some(guard) = &arm.guard {
+                        self.check_expr_for_conflicts(&guard.node, function_index, report);
+                    }
+                    self.check_expr_for_conflicts(&arm.body.node, function_index, report);
+                }
+            }
         }
     }
 

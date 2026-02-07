@@ -1,16 +1,105 @@
-# BMB Cross-Compilation Design
+# BMB Cross-Compilation Guide
 
-> 다중 플랫폼 지원을 위한 크로스 컴파일 설계 문서
+> v0.87 - 크로스 컴파일 실전 가이드 (Windows, Linux, macOS)
 
 ---
 
 ## Overview
 
-BMB는 v1.0.0-beta에서 다음 타겟을 지원해야 합니다:
-- Linux (x86_64)
-- Windows (x86_64)
-- macOS (x86_64, aarch64)
-- WebAssembly (wasm32)
+BMB v0.87은 다음 플랫폼에서 네이티브 빌드를 지원합니다:
+
+| 플랫폼 | 호스트 빌드 | 크로스 컴파일 |
+|--------|------------|---------------|
+| Windows x64 (MinGW) | ✅ 완전 지원 | → Linux, WASM |
+| Linux x86_64 | ✅ 완전 지원 | → Windows, macOS, WASM |
+| macOS (Intel/ARM) | ✅ 완전 지원 | → Linux, WASM |
+
+---
+
+## Quick Start: 현재 플랫폼에서 빌드
+
+### Windows (MSYS2/MinGW)
+
+```bash
+# 1. MSYS2 설치 후 UCRT64 환경에서
+pacman -S mingw-w64-ucrt-x86_64-llvm mingw-w64-ucrt-x86_64-clang mingw-w64-ucrt-x86_64-gcc
+
+# 2. Rust 컴파일러 빌드 (MinGW 타겟 필수)
+cargo build --release --features llvm --target x86_64-pc-windows-gnu
+
+# 3. BMB 런타임 빌드
+cd bmb/runtime
+gcc -c -O3 bmb_runtime.c -o bmb_runtime.o
+ar rcs libbmb_runtime.a bmb_runtime.o
+
+# 4. 테스트
+cargo test --release
+
+# 5. 부트스트랩 (빠른 모드)
+bash scripts/bootstrap.sh --stage1-only
+```
+
+### Linux (Ubuntu/Debian)
+
+```bash
+# 1. LLVM 설치
+wget https://apt.llvm.org/llvm.sh && chmod +x llvm.sh && sudo ./llvm.sh 21
+
+# 2. 빌드
+cargo build --release --features llvm
+
+# 3. 런타임 빌드
+cd bmb/runtime
+gcc -c -O3 bmb_runtime.c -o bmb_runtime.o
+ar rcs libbmb_runtime.a bmb_runtime.o
+
+# 4. 부트스트랩
+./scripts/bootstrap.sh
+```
+
+### macOS
+
+```bash
+# 1. LLVM 설치
+brew install llvm@21
+export LLVM_SYS_211_PREFIX=$(brew --prefix llvm@21)
+export PATH="$(brew --prefix llvm@21)/bin:$PATH"
+
+# 2. 빌드
+cargo build --release --features llvm
+
+# 3. 런타임 빌드
+cd bmb/runtime
+clang -c -O3 bmb_runtime.c -o bmb_runtime.o
+ar rcs libbmb_runtime.a bmb_runtime.o
+
+# 4. 부트스트랩
+./scripts/bootstrap.sh
+```
+
+---
+
+## v0.87 Fast-Compile Mode
+
+v0.87에서 추가된 `--fast-compile` 플래그는 LLVM opt 패스를 건너뛰어 컴파일 시간을 3배 단축합니다:
+
+```bash
+# 기본 빌드 (opt + llc) - ~1.7초
+bmb build program.bmb -o output
+
+# 빠른 빌드 (llc only) - ~0.5초
+bmb build program.bmb -o output --fast-compile
+```
+
+| 모드 | 컴파일 시간 | 바이너리 크기 | 런타임 성능 |
+|------|------------|---------------|-------------|
+| 기본 | ~1.7s | 작음 | 최적 |
+| --fast-compile | ~0.5s | 약간 큼 | 거의 동등 |
+
+**용도:**
+- 개발 중 빠른 반복
+- 부트스트랩 빌드
+- CI 테스트
 
 ---
 
@@ -20,11 +109,11 @@ BMB는 v1.0.0-beta에서 다음 타겟을 지원해야 합니다:
 
 | 타겟 | Triple | 상태 | 우선순위 |
 |------|--------|------|----------|
-| Linux x86_64 | `x86_64-unknown-linux-gnu` | 📋 계획 | P0 |
-| Windows x86_64 | `x86_64-pc-windows-msvc` | 📋 계획 | P0 |
-| macOS x86_64 | `x86_64-apple-darwin` | 📋 계획 | P1 |
-| macOS ARM64 | `aarch64-apple-darwin` | 📋 계획 | P1 |
-| WebAssembly | `wasm32-unknown-unknown` | 📋 계획 | P1 |
+| Windows x64 (MinGW) | `x86_64-pc-windows-gnu` | ✅ 완전 지원 | P0 |
+| Linux x86_64 | `x86_64-unknown-linux-gnu` | ✅ 완전 지원 | P0 |
+| macOS x86_64 | `x86_64-apple-darwin` | ✅ 완전 지원 | P1 |
+| macOS ARM64 | `aarch64-apple-darwin` | ✅ 완전 지원 | P1 |
+| WebAssembly | `wasm32-unknown-unknown` | ⚠️ 기본 지원 | P1 |
 | Linux ARM64 | `aarch64-unknown-linux-gnu` | 📋 계획 | P2 |
 
 ### 1.2 CLI 인터페이스
@@ -171,12 +260,14 @@ fn fetch_file(url: String) -> String = ...;
 
 ### 4.1 플랫폼별 링커
 
-| 타겟 | 링커 | 설명 |
-|------|------|------|
-| Linux | `ld` 또는 `lld` | ELF 바이너리 |
-| Windows | `link.exe` 또는 `lld-link` | PE/COFF 바이너리 |
-| macOS | `ld` 또는 `lld` | Mach-O 바이너리 |
-| WASM | `wasm-ld` | WASM 모듈 |
+| 타겟 | 링커 | 필수 라이브러리 | 설명 |
+|------|------|----------------|------|
+| Linux | `ld` 또는 `lld` | `-lm -lpthread` | ELF 바이너리 |
+| Windows | `gcc` (MinGW) | `-lm -lws2_32` | PE/COFF 바이너리 |
+| macOS | `ld` 또는 `lld` | `-lm -lpthread` | Mach-O 바이너리 |
+| WASM | `wasm-ld` | (없음) | WASM 모듈 |
+
+**v0.87 주의사항**: Windows에서 AsyncSocket 기능 사용 시 `ws2_32` (Winsock2) 라이브러리가 필수입니다.
 
 ### 4.2 링커 검색 순서
 
@@ -362,11 +453,103 @@ jobs:
 
 ---
 
-## 9. 참고 자료
+## 9. 플랫폼별 런타임 빌드
+
+### 9.1 런타임 빌드 (필수)
+
+BMB 컴파일러는 `libbmb_runtime.a` 정적 라이브러리가 필요합니다:
+
+```bash
+# 위치: bmb/runtime/ 또는 runtime/
+
+# Windows (MinGW)
+gcc -c -O3 bmb_runtime.c -o bmb_runtime.o
+ar rcs libbmb_runtime.a bmb_runtime.o
+
+# Linux/macOS
+gcc -c -O3 bmb_runtime.c -o bmb_runtime.o -fPIC
+ar rcs libbmb_runtime.a bmb_runtime.o
+```
+
+### 9.2 환경 변수
+
+```bash
+# 런타임 경로 (필수)
+export BMB_RUNTIME_PATH="/path/to/lang-bmb/bmb/runtime"
+
+# LLVM 경로 (필요시)
+export LLVM_SYS_211_PREFIX="/usr/lib/llvm-21"  # Linux
+export LLVM_SYS_211_PREFIX=$(brew --prefix llvm@21)  # macOS
+```
+
+---
+
+## 10. 부트스트랩 3-Stage 검증
+
+v0.87에서 부트스트랩 성능이 크게 개선되었습니다:
+
+```bash
+# 빠른 검증 (Stage 1만, < 1초)
+./scripts/bootstrap.sh --stage1-only
+
+# 완전 검증 (3-Stage, Fixed Point)
+./scripts/bootstrap.sh --verbose
+```
+
+### v0.87 성능
+
+| Stage | 기존 | v0.87 (--fast-compile) |
+|-------|------|------------------------|
+| Stage 1 | ~1.7s | ~0.54s |
+| 전체 | ~5.0s | ~4.8s |
+
+---
+
+## 11. 트러블슈팅
+
+### Windows: undefined reference to socket/connect
+
+```
+error: undefined reference to `__imp_socket'
+error: undefined reference to `__imp_connect'
+```
+
+**원인**: Winsock2 라이브러리 누락
+**해결**: 링크 시 `-lws2_32` 추가
+
+```bash
+clang program.o libbmb_runtime.a -o program.exe -lm -lws2_32
+```
+
+### macOS: LLVM not found
+
+```
+error: No suitable version of LLVM was found
+```
+
+**해결**:
+```bash
+brew install llvm@21
+export LLVM_SYS_211_PREFIX=$(brew --prefix llvm@21)
+cargo build --release --features llvm
+```
+
+### Linux: pthread not linked
+
+```
+error: undefined reference to `pthread_create'
+```
+
+**해결**: 링크 시 `-lpthread` 추가
+
+---
+
+## 12. 참고 자료
 
 - [LLVM Target Triple](https://llvm.org/docs/LangRef.html#target-triple)
 - [Rust Cross Compilation](https://rust-lang.github.io/rustup/cross-compilation.html)
 - [WASM Target Features](https://webassembly.org/features/)
+- [BMB Build Guide](BUILD_FROM_SOURCE.md)
 
 ---
 
@@ -374,5 +557,6 @@ jobs:
 
 | 날짜 | 버전 | 변경 |
 |------|------|------|
+| 2026-02-06 | 0.87 | v0.87 실전 가이드 추가, --fast-compile, 플랫폼별 라이브러리 |
 | 2026-01-14 | 0.1 | 설계 문서 초안 |
 

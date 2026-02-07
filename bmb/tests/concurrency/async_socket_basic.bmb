@@ -1,0 +1,13 @@
+// v0.83.1: Test AsyncSocket basic types
+fn main() -> i64 = {
+    // For this test, we'll just verify the types compile correctly
+    // A full network test would require an actual server
+
+    // Test type annotations compile
+    let socket_type: AsyncSocket = todo;
+    let future_socket: Future<AsyncSocket> = todo;
+
+    // If we get here, types are working
+    // Return 0 for success
+    0
+};

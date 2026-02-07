@@ -49,12 +49,36 @@ fn mir_binop() -> i64 = 3000;
 fn mir_unary() -> i64 = 4000;
 fn mir_call() -> i64 = 5000;
 
+// v0.88: Concurrency instruction kinds
+fn mir_thread_spawn() -> i64 = 20000;
+fn mir_thread_join() -> i64 = 21000;
+fn mir_mutex_new() -> i64 = 22000;
+fn mir_mutex_lock() -> i64 = 23000;
+fn mir_mutex_unlock() -> i64 = 24000;
+fn mir_channel_new() -> i64 = 25000;
+fn mir_channel_send() -> i64 = 26000;
+fn mir_channel_recv() -> i64 = 27000;
+fn mir_atomic_new() -> i64 = 28000;
+fn mir_atomic_load() -> i64 = 29000;
+fn mir_atomic_store() -> i64 = 30000;
+fn mir_future_await() -> i64 = 31000;
+fn mir_scope_new() -> i64 = 32000;
+fn mir_scope_spawn() -> i64 = 33000;
+fn mir_scope_wait() -> i64 = 34000;
+fn mir_pool_new() -> i64 = 35000;
+fn mir_pool_execute() -> i64 = 36000;
+fn mir_pool_join() -> i64 = 37000;
+fn mir_block_on() -> i64 = 38000;
+
 // Extract instruction kind
 fn mir_inst_kind(inst: i64) -> i64 = inst / 1000;
 
 // Instruction kind names (for debugging): 1=CONST 2=COPY 3=BINOP 4=UNARY 5=CALL 0=UNKNOWN
 fn mir_inst_name(kind: i64) -> i64 =
     if kind == 1 { 1 } else if kind == 2 { 2 } else if kind == 3 { 3 } else if kind == 4 { 4 } else if kind == 5 { 5 } else { 0 };
+
+// v0.88: Check if instruction is a concurrency instruction
+fn is_concurrency_inst(kind: i64) -> bool = kind >= 20 and kind <= 38;
 
 // ============================================================================
 // Terminator Encoding

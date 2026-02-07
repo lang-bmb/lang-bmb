@@ -1,0 +1,24 @@
+// v0.82: Test select expression for channel multiplexing
+fn main() -> i64 = {
+    // Create two channels
+    let ch1 = channel<i64>(3);
+    let tx1 = ch1.0;
+    let rx1 = ch1.1;
+
+    let ch2 = channel<i64>(3);
+    let tx2 = ch2.0;
+    let rx2 = ch2.1;
+
+    // Send a value on the first channel
+    tx1.send(42);
+
+    // Select: waits for the first ready channel
+    // For v0.82.0, only the first arm is executed (blocking mode)
+    let result = select {
+        value = rx1.recv() => { value },
+        value = rx2.recv() => { value + 100 },
+    };
+
+    // Should receive 42 from rx1
+    if result == 42 { 0 } else { result }
+};
