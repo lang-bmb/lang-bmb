@@ -1069,3 +1069,158 @@ fn test_keyword_spawn_as_method() {
          };"
     ));
 }
+
+// ============================================
+// Codegen Round-Trip Tests (v0.89)
+// ============================================
+// These tests verify that the full pipeline (parse → type-check → MIR → codegen)
+// produces correct LLVM IR text output.
+
+use bmb::codegen::TextCodeGen;
+use bmb::mir::{OptimizationPipeline, OptLevel};
+
+/// Helper: source → optimized MIR → LLVM IR text
+fn source_to_ir(source: &str) -> String {
+    let tokens = tokenize(source).expect("tokenize failed");
+    let ast = parse("test.bmb", source, tokens).expect("parse failed");
+    let mut tc = TypeChecker::new();
+    tc.check_program(&ast).expect("type-check failed");
+    let mut mir_prog = mir::lower_program(&ast);
+    let pipeline = OptimizationPipeline::for_level(OptLevel::Release);
+    pipeline.optimize(&mut mir_prog);
+    let codegen = TextCodeGen::new();
+    codegen.generate(&mir_prog).expect("codegen failed")
+}
+
+/// Helper: source → unoptimized MIR → LLVM IR text
+fn source_to_ir_unopt(source: &str) -> String {
+    let tokens = tokenize(source).expect("tokenize failed");
+    let ast = parse("test.bmb", source, tokens).expect("parse failed");
+    let mut tc = TypeChecker::new();
+    tc.check_program(&ast).expect("type-check failed");
+    let mir_prog = mir::lower_program(&ast);
+    let codegen = TextCodeGen::new();
+    codegen.generate(&mir_prog).expect("codegen failed")
+}
+
+#[test]
+fn test_codegen_simple_function_signature() {
+    let ir = source_to_ir("fn add(a: i64, b: i64) -> i64 = a + b;");
+    // Functions are defined as `define private` with attributes
+    assert!(ir.contains("@add(i64 %a, i64 %b)"),
+        "IR should contain add function signature");
+}
+
+#[test]
+fn test_codegen_bool_return_type() {
+    let ir = source_to_ir("fn is_zero(x: i64) -> bool = x == 0;");
+    assert!(ir.contains("i1 @is_zero(i64 %x)"),
+        "IR should define bool (i1) return type");
+}
+
+#[test]
+fn test_codegen_constant_folded() {
+    // After optimization, 2 + 3 should be folded to constant 5
+    let ir = source_to_ir("fn five() -> i64 = 2 + 3;");
+    // ConstantPropagationNarrowing narrows to i32, so look for store i32 5
+    assert!(ir.contains("i32 5") || ir.contains("i64 5"),
+        "Constant 2+3 should be folded to 5 in IR");
+}
+
+#[test]
+fn test_codegen_string_constant() {
+    let ir = source_to_ir_unopt(r#"fn greeting() -> String = "hello";"#);
+    // String constants appear as @.str.N globals
+    assert!(ir.contains("@.str."),
+        "IR should contain string constant global");
+    assert!(ir.contains("hello"),
+        "IR should contain string literal value");
+}
+
+#[test]
+fn test_codegen_branch_structure() {
+    let ir = source_to_ir_unopt(
+        "fn abs(x: i64) -> i64 = if x >= 0 { x } else { 0 - x };"
+    );
+    assert!(ir.contains("br i1"),
+        "IR should contain conditional branch");
+    assert!(ir.contains("icmp"),
+        "IR should contain integer comparison");
+}
+
+#[test]
+fn test_codegen_recursive_call() {
+    let ir = source_to_ir_unopt(
+        "fn factorial(n: i64) -> i64 = if n <= 1 { 1 } else { n * factorial(n - 1) };"
+    );
+    assert!(ir.contains("call i64 @factorial("),
+        "IR should contain recursive call to factorial");
+}
+
+#[test]
+fn test_codegen_tail_recursion_to_loop() {
+    let ir = source_to_ir(
+        "fn count_down(n: i64) -> i64 = if n <= 0 { 0 } else { count_down(n - 1) };"
+    );
+    // After TCO + TailRecursiveToLoop, the call is eliminated and replaced with a loop
+    assert!(!ir.contains("call i64 @count_down("),
+        "Tail call should be eliminated by loop transformation");
+    // Should have a loop backedge (br label %bb_loop_header)
+    assert!(ir.contains("loop_header"),
+        "Should have a loop header block from tail-to-loop conversion");
+}
+
+#[test]
+fn test_codegen_multiple_functions() {
+    let ir = source_to_ir(
+        "fn double(x: i64) -> i64 = x * 2;
+         fn triple(x: i64) -> i64 = x * 3;"
+    );
+    assert!(ir.contains("@double("),
+        "IR should contain double function");
+    assert!(ir.contains("@triple("),
+        "IR should contain triple function");
+}
+
+#[test]
+fn test_codegen_f64_operations() {
+    let ir = source_to_ir("fn add_f(a: f64, b: f64) -> f64 = a + b;");
+    assert!(ir.contains("double @add_f(double %a, double %b)"),
+        "IR should define f64 (double) function");
+    assert!(ir.contains("fadd"),
+        "IR should contain floating-point add");
+}
+
+#[test]
+fn test_codegen_contract_eliminates_check() {
+    // With precondition x >= 0, the check x >= 0 should be eliminated to true
+    let ir = source_to_ir(
+        "fn test_contract(x: i64) -> bool
+           pre x >= 0
+         = x >= 0;"
+    );
+    // Contract optimization stores constant true (i1 1)
+    assert!(ir.contains("store i1 1") || ir.contains("store i1 true"),
+        "Contract should eliminate redundant check to constant true");
+}
+
+#[test]
+fn test_codegen_dead_code_eliminated() {
+    let ir = source_to_ir(
+        "fn simple(x: i64) -> i64 = { let unused: i64 = x * 42; x };"
+    );
+    assert!(ir.contains("@simple("),
+        "IR should contain simple function");
+    // After DCE, the unused mul should be gone, function just returns x
+    assert!(ir.contains("ret i64 %x"),
+        "After DCE, should return x directly without unused computation");
+}
+
+#[test]
+fn test_codegen_module_header() {
+    let ir = source_to_ir("fn noop() -> i64 = 0;");
+    assert!(ir.contains("ModuleID"),
+        "IR should contain ModuleID header");
+    assert!(ir.contains("target triple"),
+        "IR should contain target triple");
+}
