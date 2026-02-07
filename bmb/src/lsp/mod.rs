@@ -45,7 +45,6 @@ const BMB_BUILTINS: &[(&str, &str)] = &[
 #[derive(Debug, Clone)]
 struct SymbolDef {
     name: String,
-    #[allow(dead_code)]
     kind: SymbolKind,
     span: Span,
     /// Type string for hover display (v0.50.25)
@@ -72,11 +71,11 @@ struct SymbolRef {
 
 /// Symbol kind for definition
 #[derive(Debug, Clone, Copy, PartialEq)]
-#[allow(dead_code)]
 enum SymbolKind {
     Function,
     Struct,
     Enum,
+    #[allow(dead_code)]
     Variable,
     Parameter,
     Trait,   // v0.20.1
@@ -1771,4 +1770,476 @@ pub async fn run_server() {
 
     let (service, socket) = LspService::new(Backend::new);
     Server::new(stdin, stdout, socket).serve(service).await;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ast::{Spanned, Type, BinOp, UnOp, LiteralPattern, Pattern, RangeKind};
+
+    fn sp<T>(node: T) -> Spanned<T> {
+        Spanned::new(node, Span::new(0, 0))
+    }
+
+    // --- is_ident_char ---
+
+    #[test]
+    fn test_is_ident_char_alpha() {
+        assert!(Backend::is_ident_char('a'));
+        assert!(Backend::is_ident_char('Z'));
+    }
+
+    #[test]
+    fn test_is_ident_char_digit() {
+        assert!(Backend::is_ident_char('0'));
+        assert!(Backend::is_ident_char('9'));
+    }
+
+    #[test]
+    fn test_is_ident_char_underscore() {
+        assert!(Backend::is_ident_char('_'));
+    }
+
+    #[test]
+    fn test_is_ident_char_non_ident() {
+        assert!(!Backend::is_ident_char(' '));
+        assert!(!Backend::is_ident_char('+'));
+        assert!(!Backend::is_ident_char('.'));
+        assert!(!Backend::is_ident_char('\n'));
+    }
+
+    // --- format_type ---
+
+    #[test]
+    fn test_format_type_primitives() {
+        assert_eq!(format_type(&Type::I32), "i32");
+        assert_eq!(format_type(&Type::I64), "i64");
+        assert_eq!(format_type(&Type::U32), "u32");
+        assert_eq!(format_type(&Type::U64), "u64");
+        assert_eq!(format_type(&Type::F64), "f64");
+        assert_eq!(format_type(&Type::Bool), "bool");
+        assert_eq!(format_type(&Type::String), "String");
+        assert_eq!(format_type(&Type::Char), "char");
+        assert_eq!(format_type(&Type::Unit), "()");
+        assert_eq!(format_type(&Type::Never), "!");
+    }
+
+    #[test]
+    fn test_format_type_named() {
+        assert_eq!(format_type(&Type::Named("Point".to_string())), "Point");
+    }
+
+    #[test]
+    fn test_format_type_array() {
+        assert_eq!(format_type(&Type::Array(Box::new(Type::I64), 10)), "[i64; 10]");
+    }
+
+    #[test]
+    fn test_format_type_ref() {
+        assert_eq!(format_type(&Type::Ref(Box::new(Type::I64))), "&i64");
+        assert_eq!(format_type(&Type::RefMut(Box::new(Type::I64))), "&mut i64");
+    }
+
+    #[test]
+    fn test_format_type_nullable() {
+        assert_eq!(format_type(&Type::Nullable(Box::new(Type::I64))), "i64?");
+    }
+
+    #[test]
+    fn test_format_type_tuple() {
+        assert_eq!(
+            format_type(&Type::Tuple(vec![Box::new(Type::I64), Box::new(Type::Bool)])),
+            "(i64, bool)"
+        );
+    }
+
+    #[test]
+    fn test_format_type_fn_type() {
+        assert_eq!(
+            format_type(&Type::Fn {
+                params: vec![Box::new(Type::I64), Box::new(Type::I64)],
+                ret: Box::new(Type::Bool),
+            }),
+            "fn(i64, i64) -> bool"
+        );
+    }
+
+    #[test]
+    fn test_format_type_generic() {
+        assert_eq!(
+            format_type(&Type::Generic {
+                name: "Vec".to_string(),
+                type_args: vec![Box::new(Type::I64)],
+            }),
+            "Vec<i64>"
+        );
+    }
+
+    #[test]
+    fn test_format_type_ptr() {
+        assert_eq!(format_type(&Type::Ptr(Box::new(Type::I64))), "*i64");
+    }
+
+    #[test]
+    fn test_format_type_concurrency() {
+        assert_eq!(format_type(&Type::Thread(Box::new(Type::I64))), "Thread<i64>");
+        assert_eq!(format_type(&Type::Mutex(Box::new(Type::I64))), "Mutex<i64>");
+        assert_eq!(format_type(&Type::Arc(Box::new(Type::I64))), "Arc<i64>");
+        assert_eq!(format_type(&Type::Atomic(Box::new(Type::I64))), "Atomic<i64>");
+        assert_eq!(format_type(&Type::Sender(Box::new(Type::I64))), "Sender<i64>");
+        assert_eq!(format_type(&Type::Receiver(Box::new(Type::I64))), "Receiver<i64>");
+        assert_eq!(format_type(&Type::Barrier), "Barrier");
+        assert_eq!(format_type(&Type::Condvar), "Condvar");
+    }
+
+    // --- format_expr ---
+
+    #[test]
+    fn test_format_expr_literals() {
+        assert_eq!(format_expr(&Expr::IntLit(42)), "42");
+        assert_eq!(format_expr(&Expr::FloatLit(1.5)), "1.5");
+        assert_eq!(format_expr(&Expr::BoolLit(true)), "true");
+        assert_eq!(format_expr(&Expr::StringLit("hello".to_string())), "\"hello\"");
+        assert_eq!(format_expr(&Expr::Unit), "()");
+        assert_eq!(format_expr(&Expr::Null), "null");
+    }
+
+    #[test]
+    fn test_format_expr_var() {
+        assert_eq!(format_expr(&Expr::Var("x".to_string())), "x");
+        assert_eq!(format_expr(&Expr::Ret), "ret");
+        assert_eq!(format_expr(&Expr::It), "it");
+    }
+
+    #[test]
+    fn test_format_expr_binary() {
+        let expr = Expr::Binary {
+            op: BinOp::Add,
+            left: Box::new(sp(Expr::IntLit(1))),
+            right: Box::new(sp(Expr::IntLit(2))),
+        };
+        assert_eq!(format_expr(&expr), "1 + 2");
+    }
+
+    #[test]
+    fn test_format_expr_unary() {
+        let expr = Expr::Unary {
+            op: UnOp::Neg,
+            expr: Box::new(sp(Expr::IntLit(5))),
+        };
+        assert_eq!(format_expr(&expr), "-5");
+
+        let not_expr = Expr::Unary {
+            op: UnOp::Not,
+            expr: Box::new(sp(Expr::BoolLit(true))),
+        };
+        assert_eq!(format_expr(&not_expr), "not true");
+    }
+
+    #[test]
+    fn test_format_expr_if() {
+        let expr = Expr::If {
+            cond: Box::new(sp(Expr::BoolLit(true))),
+            then_branch: Box::new(sp(Expr::IntLit(1))),
+            else_branch: Box::new(sp(Expr::IntLit(0))),
+        };
+        assert_eq!(format_expr(&expr), "if true then 1 else 0");
+    }
+
+    #[test]
+    fn test_format_expr_call() {
+        let expr = Expr::Call {
+            func: "add".to_string(),
+            args: vec![sp(Expr::IntLit(1)), sp(Expr::IntLit(2))],
+        };
+        assert_eq!(format_expr(&expr), "add(1, 2)");
+    }
+
+    #[test]
+    fn test_format_expr_array_lit() {
+        let expr = Expr::ArrayLit(vec![sp(Expr::IntLit(1)), sp(Expr::IntLit(2)), sp(Expr::IntLit(3))]);
+        assert_eq!(format_expr(&expr), "[1, 2, 3]");
+    }
+
+    #[test]
+    fn test_format_expr_index() {
+        let expr = Expr::Index {
+            expr: Box::new(sp(Expr::Var("arr".to_string()))),
+            index: Box::new(sp(Expr::IntLit(0))),
+        };
+        assert_eq!(format_expr(&expr), "arr[0]");
+    }
+
+    #[test]
+    fn test_format_expr_block_empty() {
+        assert_eq!(format_expr(&Expr::Block(vec![])), "{}");
+    }
+
+    #[test]
+    fn test_format_expr_range() {
+        let expr = Expr::Range {
+            start: Box::new(sp(Expr::IntLit(0))),
+            end: Box::new(sp(Expr::IntLit(10))),
+            kind: RangeKind::Exclusive,
+        };
+        assert_eq!(format_expr(&expr), "0..<10");
+    }
+
+    #[test]
+    fn test_format_expr_control_flow() {
+        assert_eq!(format_expr(&Expr::Continue), "continue");
+        assert_eq!(format_expr(&Expr::Break { value: None }), "break");
+        assert_eq!(format_expr(&Expr::Return { value: None }), "return");
+        assert_eq!(
+            format_expr(&Expr::Return { value: Some(Box::new(sp(Expr::IntLit(42)))) }),
+            "return 42"
+        );
+    }
+
+    #[test]
+    fn test_format_expr_todo() {
+        assert_eq!(format_expr(&Expr::Todo { message: None }), "todo");
+        assert_eq!(format_expr(&Expr::Todo { message: Some("fix".to_string()) }), "todo \"fix\"");
+    }
+
+    #[test]
+    fn test_format_expr_tuple() {
+        let single = Expr::Tuple(vec![sp(Expr::IntLit(1))]);
+        assert_eq!(format_expr(&single), "(1,)");
+        let pair = Expr::Tuple(vec![sp(Expr::IntLit(1)), sp(Expr::IntLit(2))]);
+        assert_eq!(format_expr(&pair), "(1, 2)");
+    }
+
+    #[test]
+    fn test_format_expr_field_access() {
+        let expr = Expr::FieldAccess {
+            expr: Box::new(sp(Expr::Var("p".to_string()))),
+            field: sp("x".to_string()),
+        };
+        assert_eq!(format_expr(&expr), "p.x");
+    }
+
+    #[test]
+    fn test_format_expr_enum_variant() {
+        let simple = Expr::EnumVariant {
+            enum_name: "Option".to_string(),
+            variant: "None".to_string(),
+            args: vec![],
+        };
+        assert_eq!(format_expr(&simple), "Option::None");
+        let with_args = Expr::EnumVariant {
+            enum_name: "Option".to_string(),
+            variant: "Some".to_string(),
+            args: vec![sp(Expr::IntLit(42))],
+        };
+        assert_eq!(format_expr(&with_args), "Option::Some(42)");
+    }
+
+    // --- format_pattern ---
+
+    #[test]
+    fn test_format_pattern_wildcard() {
+        assert_eq!(format_pattern(&Pattern::Wildcard), "_");
+    }
+
+    #[test]
+    fn test_format_pattern_var() {
+        assert_eq!(format_pattern(&Pattern::Var("x".to_string())), "x");
+    }
+
+    #[test]
+    fn test_format_pattern_literal() {
+        assert_eq!(
+            format_pattern(&Pattern::Literal(LiteralPattern::Int(42))),
+            "42"
+        );
+    }
+
+    #[test]
+    fn test_format_pattern_enum_variant() {
+        let simple = Pattern::EnumVariant {
+            enum_name: "Color".to_string(),
+            variant: "Red".to_string(),
+            bindings: vec![],
+        };
+        assert_eq!(format_pattern(&simple), "Color::Red");
+
+        let with_bindings = Pattern::EnumVariant {
+            enum_name: "Option".to_string(),
+            variant: "Some".to_string(),
+            bindings: vec![sp(Pattern::Var("x".to_string()))],
+        };
+        assert_eq!(format_pattern(&with_bindings), "Option::Some(x)");
+    }
+
+    #[test]
+    fn test_format_pattern_tuple() {
+        let pair = Pattern::Tuple(vec![
+            sp(Pattern::Var("a".to_string())),
+            sp(Pattern::Var("b".to_string())),
+        ]);
+        assert_eq!(format_pattern(&pair), "(a, b)");
+    }
+
+    #[test]
+    fn test_format_pattern_or() {
+        let or_pat = Pattern::Or(vec![
+            sp(Pattern::Literal(LiteralPattern::Int(1))),
+            sp(Pattern::Literal(LiteralPattern::Int(2))),
+        ]);
+        assert_eq!(format_pattern(&or_pat), "1 | 2");
+    }
+
+    #[test]
+    fn test_format_pattern_range() {
+        let range = Pattern::Range {
+            start: LiteralPattern::Int(0),
+            end: LiteralPattern::Int(9),
+            inclusive: true,
+        };
+        assert_eq!(format_pattern(&range), "0..=9");
+    }
+
+    #[test]
+    fn test_format_pattern_array() {
+        let arr = Pattern::Array(vec![
+            sp(Pattern::Var("a".to_string())),
+            sp(Pattern::Wildcard),
+        ]);
+        assert_eq!(format_pattern(&arr), "[a, _]");
+    }
+
+    #[test]
+    fn test_format_pattern_array_rest() {
+        let rest = Pattern::ArrayRest {
+            prefix: vec![sp(Pattern::Var("first".to_string()))],
+            suffix: vec![sp(Pattern::Var("last".to_string()))],
+        };
+        assert_eq!(format_pattern(&rest), "[first, .., last]");
+    }
+
+    // --- format_literal_pattern ---
+
+    #[test]
+    fn test_format_literal_pattern_all() {
+        assert_eq!(format_literal_pattern(&LiteralPattern::Int(42)), "42");
+        assert_eq!(format_literal_pattern(&LiteralPattern::Float(1.5)), "1.5");
+        assert_eq!(format_literal_pattern(&LiteralPattern::Bool(true)), "true");
+        assert_eq!(format_literal_pattern(&LiteralPattern::String("hi".to_string())), "\"hi\"");
+    }
+
+    // --- try_parse ---
+
+    #[test]
+    fn test_try_parse_valid() {
+        let (service, _) = LspService::new(Backend::new);
+        let backend = service.inner();
+        let result = backend.try_parse("fn main() -> i64 = 42;");
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn test_try_parse_invalid() {
+        let (service, _) = LspService::new(Backend::new);
+        let backend = service.inner();
+        let result = backend.try_parse("fn {{{ invalid");
+        assert!(result.is_none());
+    }
+
+    // --- coordinate conversion ---
+
+    #[test]
+    fn test_offset_to_position_start() {
+        let (service, _) = LspService::new(Backend::new);
+        let backend = service.inner();
+        let pos = backend.offset_to_position(0, "hello");
+        assert_eq!(pos.line, 0);
+        assert_eq!(pos.character, 0);
+    }
+
+    #[test]
+    fn test_offset_to_position_same_line() {
+        let (service, _) = LspService::new(Backend::new);
+        let backend = service.inner();
+        let pos = backend.offset_to_position(5, "hello world");
+        assert_eq!(pos.line, 0);
+        assert_eq!(pos.character, 5);
+    }
+
+    #[test]
+    fn test_offset_to_position_multiline() {
+        let (service, _) = LspService::new(Backend::new);
+        let backend = service.inner();
+        let content = "line1\nline2\nline3";
+        let pos = backend.offset_to_position(6, content); // start of "line2"
+        assert_eq!(pos.line, 1);
+        assert_eq!(pos.character, 0);
+    }
+
+    #[test]
+    fn test_position_to_offset_start() {
+        let (service, _) = LspService::new(Backend::new);
+        let backend = service.inner();
+        let offset = backend.position_to_offset(Position::new(0, 0), "hello");
+        assert_eq!(offset, 0);
+    }
+
+    #[test]
+    fn test_position_to_offset_multiline() {
+        let (service, _) = LspService::new(Backend::new);
+        let backend = service.inner();
+        let content = "line1\nline2\nline3";
+        let offset = backend.position_to_offset(Position::new(1, 0), content);
+        assert_eq!(offset, 6); // "line1\n" = 6 bytes
+    }
+
+    #[test]
+    fn test_offset_position_roundtrip() {
+        let (service, _) = LspService::new(Backend::new);
+        let backend = service.inner();
+        let content = "fn main() -> i64\n= 42;";
+        for i in 0..content.len() {
+            let pos = backend.offset_to_position(i, content);
+            let back = backend.position_to_offset(pos, content);
+            assert_eq!(back, i, "roundtrip failed for offset {}", i);
+        }
+    }
+
+    // --- get_word_at_position ---
+
+    #[test]
+    fn test_get_word_at_position_middle() {
+        let (service, _) = LspService::new(Backend::new);
+        let backend = service.inner();
+        let word = backend.get_word_at_position("fn main() -> i64", Position::new(0, 4));
+        assert_eq!(word, Some("main".to_string()));
+    }
+
+    #[test]
+    fn test_get_word_at_position_no_word() {
+        let (service, _) = LspService::new(Backend::new);
+        let backend = service.inner();
+        let word = backend.get_word_at_position("fn ()", Position::new(0, 3));
+        assert_eq!(word, None);
+    }
+
+    // --- get_diagnostics ---
+
+    #[test]
+    fn test_get_diagnostics_valid_code() {
+        let (service, _) = LspService::new(Backend::new);
+        let backend = service.inner();
+        let url = Url::parse("file:///test.bmb").unwrap();
+        let diags = backend.get_diagnostics(&url, "fn main() -> i64 = 42;");
+        assert!(diags.is_empty());
+    }
+
+    #[test]
+    fn test_get_diagnostics_syntax_error() {
+        let (service, _) = LspService::new(Backend::new);
+        let backend = service.inner();
+        let url = Url::parse("file:///test.bmb").unwrap();
+        let diags = backend.get_diagnostics(&url, "fn {{{ invalid");
+        assert!(!diags.is_empty());
+    }
 }
