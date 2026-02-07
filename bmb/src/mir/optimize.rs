@@ -8973,4 +8973,820 @@ mod tests {
         // "merge" has 2 predecessors, so it's not a merge candidate.
         assert!(!changed, "Should not merge blocks with multiple predecessors");
     }
+
+    // ================================================================
+    // GlobalFieldAccessCSE Tests
+    // ================================================================
+
+    #[test]
+    fn test_global_field_access_cse_eliminates_redundant() {
+        let mut func = MirFunction {
+            name: "test".to_string(),
+            params: vec![("p".to_string(), MirType::Struct { name: "Point".to_string(), fields: vec![] })],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![
+                BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![
+                        MirInst::FieldAccess {
+                            dest: Place::new("x1"),
+                            base: Place::new("p"),
+                            field: "x".to_string(),
+                            field_index: 0,
+                            struct_name: "Point".to_string(),
+                        },
+                    ],
+                    terminator: Terminator::Goto("next".to_string()),
+                },
+                BasicBlock {
+                    label: "next".to_string(),
+                    instructions: vec![
+                        MirInst::FieldAccess {
+                            dest: Place::new("x2"),
+                            base: Place::new("p"),
+                            field: "x".to_string(),
+                            field_index: 0,
+                            struct_name: "Point".to_string(),
+                        },
+                    ],
+                    terminator: Terminator::Return(Some(Operand::Place(Place::new("x2")))),
+                },
+            ],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let pass = GlobalFieldAccessCSE;
+        let changed = pass.run_on_function(&mut func);
+        assert!(changed, "Should eliminate redundant field access");
+
+        // Second block should now have a Copy instead of FieldAccess
+        assert!(matches!(
+            &func.blocks[1].instructions[0],
+            MirInst::Copy { dest, src } if dest.name == "x2" && src.name == "x1"
+        ));
+    }
+
+    #[test]
+    fn test_global_field_access_cse_different_fields_no_change() {
+        let mut func = MirFunction {
+            name: "test".to_string(),
+            params: vec![("p".to_string(), MirType::Struct { name: "Point".to_string(), fields: vec![] })],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![
+                BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![
+                        MirInst::FieldAccess {
+                            dest: Place::new("x1"),
+                            base: Place::new("p"),
+                            field: "x".to_string(),
+                            field_index: 0,
+                            struct_name: "Point".to_string(),
+                        },
+                    ],
+                    terminator: Terminator::Goto("next".to_string()),
+                },
+                BasicBlock {
+                    label: "next".to_string(),
+                    instructions: vec![
+                        MirInst::FieldAccess {
+                            dest: Place::new("y1"),
+                            base: Place::new("p"),
+                            field: "y".to_string(),
+                            field_index: 1,
+                            struct_name: "Point".to_string(),
+                        },
+                    ],
+                    terminator: Terminator::Return(Some(Operand::Place(Place::new("y1")))),
+                },
+            ],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let pass = GlobalFieldAccessCSE;
+        let changed = pass.run_on_function(&mut func);
+        assert!(!changed, "Different fields should not be CSE'd");
+    }
+
+    // ================================================================
+    // IfElseToSwitch Tests
+    // ================================================================
+
+    #[test]
+    fn test_if_else_to_switch_chain() {
+        // Create if-else chain: if x==0 ... elif x==1 ... elif x==2 ... else ...
+        let mut func = MirFunction {
+            name: "test".to_string(),
+            params: vec![("x".to_string(), MirType::I64)],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![
+                BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![
+                        MirInst::BinOp {
+                            dest: Place::new("cmp0"),
+                            op: MirBinOp::Eq,
+                            lhs: Operand::Place(Place::new("x")),
+                            rhs: Operand::Constant(Constant::Int(0)),
+                        },
+                    ],
+                    terminator: Terminator::Branch {
+                        cond: Operand::Place(Place::new("cmp0")),
+                        then_label: "case0".to_string(),
+                        else_label: "check1".to_string(),
+                    },
+                },
+                BasicBlock {
+                    label: "check1".to_string(),
+                    instructions: vec![
+                        MirInst::BinOp {
+                            dest: Place::new("cmp1"),
+                            op: MirBinOp::Eq,
+                            lhs: Operand::Place(Place::new("x")),
+                            rhs: Operand::Constant(Constant::Int(1)),
+                        },
+                    ],
+                    terminator: Terminator::Branch {
+                        cond: Operand::Place(Place::new("cmp1")),
+                        then_label: "case1".to_string(),
+                        else_label: "check2".to_string(),
+                    },
+                },
+                BasicBlock {
+                    label: "check2".to_string(),
+                    instructions: vec![
+                        MirInst::BinOp {
+                            dest: Place::new("cmp2"),
+                            op: MirBinOp::Eq,
+                            lhs: Operand::Place(Place::new("x")),
+                            rhs: Operand::Constant(Constant::Int(2)),
+                        },
+                    ],
+                    terminator: Terminator::Branch {
+                        cond: Operand::Place(Place::new("cmp2")),
+                        then_label: "case2".to_string(),
+                        else_label: "default".to_string(),
+                    },
+                },
+                BasicBlock {
+                    label: "case0".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(10)))),
+                },
+                BasicBlock {
+                    label: "case1".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(20)))),
+                },
+                BasicBlock {
+                    label: "case2".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(30)))),
+                },
+                BasicBlock {
+                    label: "default".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(0)))),
+                },
+            ],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let pass = IfElseToSwitch;
+        let changed = pass.run_on_function(&mut func);
+        assert!(changed, "Should convert if-else chain to switch");
+
+        // Entry block should now have Switch terminator
+        assert!(matches!(
+            &func.blocks[0].terminator,
+            Terminator::Switch { cases, default, .. }
+            if cases.len() >= 2 && !default.is_empty()
+        ));
+    }
+
+    #[test]
+    fn test_if_else_to_switch_too_few_cases() {
+        // Only 2 cases (below threshold of 3), should not convert
+        let mut func = MirFunction {
+            name: "test".to_string(),
+            params: vec![("x".to_string(), MirType::I64)],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![
+                BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![
+                        MirInst::BinOp {
+                            dest: Place::new("cmp0"),
+                            op: MirBinOp::Eq,
+                            lhs: Operand::Place(Place::new("x")),
+                            rhs: Operand::Constant(Constant::Int(0)),
+                        },
+                    ],
+                    terminator: Terminator::Branch {
+                        cond: Operand::Place(Place::new("cmp0")),
+                        then_label: "case0".to_string(),
+                        else_label: "default".to_string(),
+                    },
+                },
+                BasicBlock {
+                    label: "case0".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(10)))),
+                },
+                BasicBlock {
+                    label: "default".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(0)))),
+                },
+            ],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let pass = IfElseToSwitch;
+        let changed = pass.run_on_function(&mut func);
+        assert!(!changed, "Too few cases to convert to switch");
+    }
+
+    // ================================================================
+    // StringConcatOptimization Tests
+    // ================================================================
+
+    #[test]
+    fn test_string_concat_optimization_chain() {
+        // Create chain: s1 = "a" + "b"; s2 = s1 + "c"; s3 = s2 + "d"
+        let mut func = MirFunction {
+            name: "test".to_string(),
+            params: vec![],
+            ret_ty: MirType::String,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![
+                    MirInst::Const { dest: Place::new("str_a"), value: Constant::String("a".to_string()) },
+                    MirInst::Const { dest: Place::new("str_b"), value: Constant::String("b".to_string()) },
+                    MirInst::BinOp {
+                        dest: Place::new("s1"),
+                        op: MirBinOp::Add,
+                        lhs: Operand::Place(Place::new("str_a")),
+                        rhs: Operand::Place(Place::new("str_b")),
+                    },
+                    MirInst::Const { dest: Place::new("str_c"), value: Constant::String("c".to_string()) },
+                    MirInst::BinOp {
+                        dest: Place::new("s2"),
+                        op: MirBinOp::Add,
+                        lhs: Operand::Place(Place::new("s1")),
+                        rhs: Operand::Place(Place::new("str_c")),
+                    },
+                    MirInst::Const { dest: Place::new("str_d"), value: Constant::String("d".to_string()) },
+                    MirInst::BinOp {
+                        dest: Place::new("s3"),
+                        op: MirBinOp::Add,
+                        lhs: Operand::Place(Place::new("s2")),
+                        rhs: Operand::Place(Place::new("str_d")),
+                    },
+                ],
+                terminator: Terminator::Return(Some(Operand::Place(Place::new("s3")))),
+            }],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let pass = StringConcatOptimization;
+        let changed = pass.run_on_function(&mut func);
+        // Chain of 4 operands (>= MIN_CHAIN_LENGTH=3), should be optimized
+        assert!(changed, "Should optimize string concat chain");
+    }
+
+    #[test]
+    fn test_string_concat_no_optimization_short_chain() {
+        // Only 2 concats, below MIN_CHAIN_LENGTH=3
+        let mut func = MirFunction {
+            name: "test".to_string(),
+            params: vec![],
+            ret_ty: MirType::String,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![
+                    MirInst::Const { dest: Place::new("str_a"), value: Constant::String("a".to_string()) },
+                    MirInst::Const { dest: Place::new("str_b"), value: Constant::String("b".to_string()) },
+                    MirInst::BinOp {
+                        dest: Place::new("s1"),
+                        op: MirBinOp::Add,
+                        lhs: Operand::Place(Place::new("str_a")),
+                        rhs: Operand::Place(Place::new("str_b")),
+                    },
+                ],
+                terminator: Terminator::Return(Some(Operand::Place(Place::new("s1")))),
+            }],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let pass = StringConcatOptimization;
+        let changed = pass.run_on_function(&mut func);
+        assert!(!changed, "Short chain should not be optimized");
+    }
+
+    // ================================================================
+    // LoopInvariantCodeMotion (LICM) Tests
+    // ================================================================
+
+    #[test]
+    fn test_licm_hoists_pure_call() {
+        // Loop with invariant len() call:
+        // entry: goto loop_header
+        // loop_header: i = phi [0, entry], [i_next, loop_body]
+        //              l = call len(arr)
+        //              cmp = i < l
+        //              branch cmp, loop_body, exit
+        // loop_body:   i_next = i + 1; goto loop_header
+        // exit:        return i
+        let mut func = MirFunction {
+            name: "test".to_string(),
+            params: vec![("arr".to_string(), MirType::String)],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![
+                BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Goto("loop_header".to_string()),
+                },
+                BasicBlock {
+                    label: "loop_header".to_string(),
+                    instructions: vec![
+                        MirInst::Phi {
+                            dest: Place::new("i"),
+                            values: vec![
+                                (Operand::Constant(Constant::Int(0)), "entry".to_string()),
+                                (Operand::Place(Place::new("i_next")), "loop_body".to_string()),
+                            ],
+                        },
+                        MirInst::Call {
+                            dest: Some(Place::new("l")),
+                            func: "len".to_string(),
+                            args: vec![Operand::Place(Place::new("arr"))],
+                            is_tail: false,
+                        },
+                        MirInst::BinOp {
+                            dest: Place::new("cmp"),
+                            op: MirBinOp::Lt,
+                            lhs: Operand::Place(Place::new("i")),
+                            rhs: Operand::Place(Place::new("l")),
+                        },
+                    ],
+                    terminator: Terminator::Branch {
+                        cond: Operand::Place(Place::new("cmp")),
+                        then_label: "loop_body".to_string(),
+                        else_label: "exit".to_string(),
+                    },
+                },
+                BasicBlock {
+                    label: "loop_body".to_string(),
+                    instructions: vec![
+                        MirInst::BinOp {
+                            dest: Place::new("i_next"),
+                            op: MirBinOp::Add,
+                            lhs: Operand::Place(Place::new("i")),
+                            rhs: Operand::Constant(Constant::Int(1)),
+                        },
+                    ],
+                    terminator: Terminator::Goto("loop_header".to_string()),
+                },
+                BasicBlock {
+                    label: "exit".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Return(Some(Operand::Place(Place::new("i")))),
+                },
+            ],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let pass = LoopInvariantCodeMotion::new();
+        let changed = pass.run_on_function(&mut func);
+        assert!(changed, "Should hoist len() call out of loop");
+
+        // Entry block should now have the hoisted len call
+        let has_hoisted_call = func.blocks[0].instructions.iter().any(|inst| {
+            matches!(inst, MirInst::Call { func: f, .. } if f == "len")
+        });
+        assert!(has_hoisted_call, "len() call should be hoisted to entry block");
+    }
+
+    #[test]
+    fn test_licm_no_hoist_non_pure() {
+        // Loop with non-pure call (print) — should not be hoisted
+        let mut func = MirFunction {
+            name: "test".to_string(),
+            params: vec![],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![
+                BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Goto("loop_header".to_string()),
+                },
+                BasicBlock {
+                    label: "loop_header".to_string(),
+                    instructions: vec![
+                        MirInst::Phi {
+                            dest: Place::new("i"),
+                            values: vec![
+                                (Operand::Constant(Constant::Int(0)), "entry".to_string()),
+                                (Operand::Place(Place::new("i_next")), "loop_body".to_string()),
+                            ],
+                        },
+                        MirInst::Call {
+                            dest: None,
+                            func: "print".to_string(),
+                            args: vec![Operand::Constant(Constant::String("tick".to_string()))],
+                            is_tail: false,
+                        },
+                    ],
+                    terminator: Terminator::Branch {
+                        cond: Operand::Place(Place::new("i")),
+                        then_label: "loop_body".to_string(),
+                        else_label: "exit".to_string(),
+                    },
+                },
+                BasicBlock {
+                    label: "loop_body".to_string(),
+                    instructions: vec![
+                        MirInst::BinOp {
+                            dest: Place::new("i_next"),
+                            op: MirBinOp::Add,
+                            lhs: Operand::Place(Place::new("i")),
+                            rhs: Operand::Constant(Constant::Int(1)),
+                        },
+                    ],
+                    terminator: Terminator::Goto("loop_header".to_string()),
+                },
+                BasicBlock {
+                    label: "exit".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(0)))),
+                },
+            ],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let pass = LoopInvariantCodeMotion::new();
+        let changed = pass.run_on_function(&mut func);
+        assert!(!changed, "Non-pure function call should not be hoisted");
+    }
+
+    // ================================================================
+    // LinearRecurrenceToLoop Tests
+    // ================================================================
+
+    #[test]
+    fn test_linear_recurrence_fibonacci() {
+        // fn fib(n: i64) -> i64 =
+        //   if n <= 1 { n } else { fib(n-1) + fib(n-2) }
+        let mut func = MirFunction {
+            name: "fib".to_string(),
+            params: vec![("n".to_string(), MirType::I64)],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![
+                BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![
+                        MirInst::BinOp {
+                            dest: Place::new("cmp"),
+                            op: MirBinOp::Le,
+                            lhs: Operand::Place(Place::new("n")),
+                            rhs: Operand::Constant(Constant::Int(1)),
+                        },
+                    ],
+                    terminator: Terminator::Branch {
+                        cond: Operand::Place(Place::new("cmp")),
+                        then_label: "base".to_string(),
+                        else_label: "recurse".to_string(),
+                    },
+                },
+                BasicBlock {
+                    label: "base".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Return(Some(Operand::Place(Place::new("n")))),
+                },
+                BasicBlock {
+                    label: "recurse".to_string(),
+                    instructions: vec![
+                        MirInst::BinOp {
+                            dest: Place::new("n_minus_1"),
+                            op: MirBinOp::Sub,
+                            lhs: Operand::Place(Place::new("n")),
+                            rhs: Operand::Constant(Constant::Int(1)),
+                        },
+                        MirInst::Call {
+                            dest: Some(Place::new("r1")),
+                            func: "fib".to_string(),
+                            args: vec![Operand::Place(Place::new("n_minus_1"))],
+                            is_tail: false,
+                        },
+                        MirInst::BinOp {
+                            dest: Place::new("n_minus_2"),
+                            op: MirBinOp::Sub,
+                            lhs: Operand::Place(Place::new("n")),
+                            rhs: Operand::Constant(Constant::Int(2)),
+                        },
+                        MirInst::Call {
+                            dest: Some(Place::new("r2")),
+                            func: "fib".to_string(),
+                            args: vec![Operand::Place(Place::new("n_minus_2"))],
+                            is_tail: false,
+                        },
+                        MirInst::BinOp {
+                            dest: Place::new("result"),
+                            op: MirBinOp::Add,
+                            lhs: Operand::Place(Place::new("r1")),
+                            rhs: Operand::Place(Place::new("r2")),
+                        },
+                    ],
+                    terminator: Terminator::Return(Some(Operand::Place(Place::new("result")))),
+                },
+            ],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let pass = LinearRecurrenceToLoop;
+        let changed = pass.run_on_function(&mut func);
+        assert!(changed, "Should transform fibonacci to iterative loop");
+
+        // Verify no recursive calls remain
+        let has_recursive_call = func.blocks.iter().any(|block| {
+            block.instructions.iter().any(|inst| {
+                matches!(inst, MirInst::Call { func: f, .. } if f == "fib")
+            })
+        });
+        assert!(!has_recursive_call, "Recursive calls should be eliminated");
+    }
+
+    #[test]
+    fn test_linear_recurrence_non_fibonacci_no_change() {
+        // Non-fibonacci pattern: single recursion (factorial)
+        let mut func = MirFunction {
+            name: "fact".to_string(),
+            params: vec![("n".to_string(), MirType::I64)],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![
+                BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![
+                        MirInst::BinOp {
+                            dest: Place::new("cmp"),
+                            op: MirBinOp::Le,
+                            lhs: Operand::Place(Place::new("n")),
+                            rhs: Operand::Constant(Constant::Int(1)),
+                        },
+                    ],
+                    terminator: Terminator::Branch {
+                        cond: Operand::Place(Place::new("cmp")),
+                        then_label: "base".to_string(),
+                        else_label: "recurse".to_string(),
+                    },
+                },
+                BasicBlock {
+                    label: "base".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(1)))),
+                },
+                BasicBlock {
+                    label: "recurse".to_string(),
+                    instructions: vec![
+                        MirInst::BinOp {
+                            dest: Place::new("n_minus_1"),
+                            op: MirBinOp::Sub,
+                            lhs: Operand::Place(Place::new("n")),
+                            rhs: Operand::Constant(Constant::Int(1)),
+                        },
+                        MirInst::Call {
+                            dest: Some(Place::new("r")),
+                            func: "fact".to_string(),
+                            args: vec![Operand::Place(Place::new("n_minus_1"))],
+                            is_tail: false,
+                        },
+                        MirInst::BinOp {
+                            dest: Place::new("result"),
+                            op: MirBinOp::Mul,
+                            lhs: Operand::Place(Place::new("n")),
+                            rhs: Operand::Place(Place::new("r")),
+                        },
+                    ],
+                    terminator: Terminator::Return(Some(Operand::Place(Place::new("result")))),
+                },
+            ],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let pass = LinearRecurrenceToLoop;
+        let changed = pass.run_on_function(&mut func);
+        assert!(!changed, "Single recursion (factorial) should not be transformed");
+    }
+
+    // ================================================================
+    // ConditionalIncrementToSelect Tests
+    // ================================================================
+
+    #[test]
+    fn test_conditional_increment_to_select() {
+        // Pattern: if cond { x + 1 } else { x }
+        // cond_block:  branch %cond, then_block, else_block
+        // then_block:  %sum = add %x, 1; goto merge
+        // else_block:  goto merge
+        // merge:       %result = phi [%sum, then_block], [%x, else_block]
+        let mut func = MirFunction {
+            name: "test".to_string(),
+            params: vec![("x".to_string(), MirType::I64), ("cond".to_string(), MirType::Bool)],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![
+                BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Branch {
+                        cond: Operand::Place(Place::new("cond")),
+                        then_label: "then_block".to_string(),
+                        else_label: "else_block".to_string(),
+                    },
+                },
+                BasicBlock {
+                    label: "then_block".to_string(),
+                    instructions: vec![
+                        MirInst::BinOp {
+                            dest: Place::new("sum"),
+                            op: MirBinOp::Add,
+                            lhs: Operand::Place(Place::new("x")),
+                            rhs: Operand::Constant(Constant::Int(1)),
+                        },
+                    ],
+                    terminator: Terminator::Goto("merge".to_string()),
+                },
+                BasicBlock {
+                    label: "else_block".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Goto("merge".to_string()),
+                },
+                BasicBlock {
+                    label: "merge".to_string(),
+                    instructions: vec![
+                        MirInst::Phi {
+                            dest: Place::new("result"),
+                            values: vec![
+                                (Operand::Place(Place::new("sum")), "then_block".to_string()),
+                                (Operand::Place(Place::new("x")), "else_block".to_string()),
+                            ],
+                        },
+                    ],
+                    terminator: Terminator::Return(Some(Operand::Place(Place::new("result")))),
+                },
+            ],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let pass = ConditionalIncrementToSelect;
+        let changed = pass.run_on_function(&mut func);
+        assert!(changed, "Should convert conditional increment to branchless select");
+
+        // Entry block should now have a Cast and Add instead of Branch
+        let has_cast = func.blocks[0].instructions.iter().any(|inst| {
+            matches!(inst, MirInst::Cast { from_ty: MirType::Bool, to_ty: MirType::I64, .. })
+        });
+        assert!(has_cast, "Should have bool-to-i64 cast in entry block");
+    }
+
+    #[test]
+    fn test_conditional_increment_no_match_increment_by_2() {
+        // Similar to above but increment by 2, not 1 — should not match
+        let mut func = MirFunction {
+            name: "test".to_string(),
+            params: vec![("x".to_string(), MirType::I64), ("cond".to_string(), MirType::Bool)],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![
+                BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Branch {
+                        cond: Operand::Place(Place::new("cond")),
+                        then_label: "then_block".to_string(),
+                        else_label: "else_block".to_string(),
+                    },
+                },
+                BasicBlock {
+                    label: "then_block".to_string(),
+                    instructions: vec![
+                        MirInst::BinOp {
+                            dest: Place::new("sum"),
+                            op: MirBinOp::Add,
+                            lhs: Operand::Place(Place::new("x")),
+                            rhs: Operand::Constant(Constant::Int(2)),
+                        },
+                    ],
+                    terminator: Terminator::Goto("merge".to_string()),
+                },
+                BasicBlock {
+                    label: "else_block".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Goto("merge".to_string()),
+                },
+                BasicBlock {
+                    label: "merge".to_string(),
+                    instructions: vec![
+                        MirInst::Phi {
+                            dest: Place::new("result"),
+                            values: vec![
+                                (Operand::Place(Place::new("sum")), "then_block".to_string()),
+                                (Operand::Place(Place::new("x")), "else_block".to_string()),
+                            ],
+                        },
+                    ],
+                    terminator: Terminator::Return(Some(Operand::Place(Place::new("result")))),
+                },
+            ],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let pass = ConditionalIncrementToSelect;
+        let changed = pass.run_on_function(&mut func);
+        assert!(!changed, "Increment by 2 should not match conditional increment pattern");
+    }
 }
