@@ -8,11 +8,11 @@
 
 | 항목 | 상태 | 비고 |
 |------|------|------|
-| **버전** | v0.89.0 | Quality Gate (Alpha) |
+| **버전** | v0.89.1 | Quality Gate (Alpha) |
 | **단계** | Alpha | Concurrency 완료 → **Alpha (v0.89)** → Beta (v0.90) → RC (v0.98) |
 | **Bootstrap** | ✅ 3-Stage 완료 | Stage 1: ~0.55s (--fast-compile) |
 | **Benchmarks** | ✅ 18/30 BMB > C | 60% C보다 빠름 |
-| **Tests** | ✅ 413개 통과 | 260 + 130 + 23 (cargo) + BMB 테스트 5/5 |
+| **Tests** | ✅ 541개 통과 | 388 + 130 + 23 (cargo) + BMB 테스트 5/5 |
 | **Stability** | ✅ STABILITY.md | 언어/API 동결 문서화 |
 | **동시성 지원** | ✅ 부트스트랩 완료 | 토큰/타입/MIR/코드젠/extern 선언 완료 |
 | **Golden Binary** | ✅ v0.88.10 | Rust 없이 부트스트랩 가능 |
@@ -192,6 +192,11 @@ select {
 | MIR 후조건 Ret 추출 | ✅ | v0.89: `post ret >= 0` 패턴에서 ContractFact::ReturnCmp/ReturnVarCmp 추출 |
 | MIR 최적화 테스트 | ✅ | v0.89: 6개 미테스트 패스 커버 (CopyProp, CSE, SimplifyBranches, UnreachableBlock, PhiSimpl, BlockMerging) — 43개 테스트 |
 | 코드젠 라운드트립 테스트 | ✅ | v0.89: 12개 LLVM IR 검증 테스트 (최적화 효과 포함: 상수 접기, TCO→루프, 계약 제거, DCE) |
+| 타입체커 단위 테스트 | ✅ | v0.89.1: types/mod.rs 38개 테스트 (levenshtein, BindingTracker, TypeChecker 통합) |
+| SMT/CIR 단위 테스트 | ✅ | v0.89.1: SMT translator 30개 + CIR lower 9개 = 39개 테스트 |
+| 빌드 파이프라인 개선 | ✅ | v0.89.1: 11개 unwrap() 제거 + path_str() 에러 처리 + 19개 테스트 |
+| 복잡 최적화 패스 테스트 | ✅ | v0.89.1: 6개 복잡 패스 테스트 (GlobalFieldCSE, IfElseToSwitch, StringConcat, LICM, LinearRecurrence, ConditionalIncrement) — 12개 |
+| 인터프리터 테스트 확장 | ✅ | v0.89.1: 20개 추가 (단항연산, 비교, F64, 전체 프로그램 실행, 에러 경로) — 29개 총 |
 | 코드 커버리지 > 80% | 📋 | 테스트 범위 확대 |
 | 퍼징 테스트 | 📋 | libFuzzer 기반 입력 검증 |
 | 메모리 안전성 검증 | 📋 | AddressSanitizer 통과 |
