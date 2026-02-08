@@ -360,6 +360,13 @@ impl TypeChecker {
         functions.insert("arena_mode".to_string(), (vec![Type::I64], Type::I64));
         functions.insert("arena_reset".to_string(), (vec![], Type::I64));
         functions.insert("arena_usage".to_string(), (vec![], Type::I64));
+        functions.insert("arena_save".to_string(), (vec![], Type::I64));
+        functions.insert("arena_restore".to_string(), (vec![], Type::I64));
+        // bmb_ prefixed variants (used by bootstrap compiler.bmb)
+        functions.insert("bmb_arena_save".to_string(), (vec![], Type::I64));
+        functions.insert("bmb_arena_restore".to_string(), (vec![], Type::I64));
+        functions.insert("bmb_sb_contains".to_string(), (vec![Type::I64, Type::String], Type::I64));
+        functions.insert("sb_contains".to_string(), (vec![Type::I64, Type::String], Type::I64));
 
         // v0.63: Timing builtin for bmb-bench benchmark framework
         // time_ns() -> i64 (nanoseconds since epoch)
@@ -5456,6 +5463,214 @@ mod tests {
                  Shape::Circle(r) => r * r,
                  Shape::Rect(w, h) => w * h,
              };"
+        ));
+    }
+
+    // --- Cycle 89: Extended type checking tests ---
+
+    #[test]
+    fn test_tc_generic_function() {
+        assert!(ok(
+            "fn identity<T>(x: T) -> T = x;"
+        ));
+    }
+
+    #[test]
+    fn test_tc_generic_struct() {
+        assert!(ok(
+            "struct Pair<A, B> { first: A, second: B }
+             fn make_pair(a: i64, b: f64) -> Pair<i64, f64> = new Pair { first: a, second: b };"
+        ));
+    }
+
+    #[test]
+    fn test_tc_u32_type() {
+        assert!(ok("fn to_u32(x: u32) -> u32 = x;"));
+    }
+
+    #[test]
+    fn test_tc_u64_type() {
+        assert!(ok("fn to_u64(x: u64) -> u64 = x;"));
+    }
+
+    #[test]
+    fn test_tc_char_type() {
+        assert!(ok("fn get_char() -> char = 'a';"));
+    }
+
+    #[test]
+    fn test_tc_return_unit() {
+        assert!(ok("fn noop() -> () = ();"));
+    }
+
+    #[test]
+    fn test_tc_nested_match() {
+        assert!(ok(
+            "enum Option { Some(i64), None }
+             fn unwrap_or(opt: Option, default: i64) -> i64 = match opt {
+                 Option::Some(v) => v,
+                 Option::None => default,
+             };"
+        ));
+    }
+
+    #[test]
+    fn test_tc_while_with_mutation() {
+        assert!(ok(
+            "fn sum_to_ten() -> i64 = { let mut i: i64 = 0; let mut sum: i64 = 0; while i < 10 { i = i + 1; sum = sum + i }; sum };"
+        ));
+    }
+
+    #[test]
+    fn test_tc_for_range_extended() {
+        assert!(ok(
+            "fn sum_range() -> i64 = { let mut total: i64 = 0; for i in 0..10 { total = total + i }; total };"
+        ));
+    }
+
+    #[test]
+    fn test_tc_wrong_return_type() {
+        assert!(err(
+            "fn bad() -> i64 = true;"
+        ));
+    }
+
+    #[test]
+    fn test_tc_wrong_if_branch_types() {
+        assert!(err(
+            "fn bad(x: bool) -> i64 = if x { 1 } else { true };"
+        ));
+    }
+
+    #[test]
+    fn test_tc_struct_missing_field() {
+        assert!(err(
+            "struct Point { x: i64, y: i64 }
+             fn bad() -> Point = new Point { x: 1 };"
+        ));
+    }
+
+    #[test]
+    fn test_tc_struct_field_type_wrong() {
+        // Wrong type for a field
+        assert!(err(
+            "struct Pt { x: i64, y: i64 }
+             fn bad() -> Pt = new Pt { x: true, y: 2 };"
+        ));
+    }
+
+    #[test]
+    fn test_tc_bitwise_operators() {
+        assert!(ok(
+            "fn bits(a: i64, b: i64) -> i64 = (a band b) bor (a bxor b);"
+        ));
+    }
+
+    #[test]
+    fn test_tc_shift_operators() {
+        assert!(ok(
+            "fn shifts(x: i64) -> i64 = (x << 2) >> 1;"
+        ));
+    }
+
+    #[test]
+    fn test_tc_wrapping_arithmetic() {
+        assert!(ok(
+            "fn wrap(a: i64, b: i64) -> i64 = a +% b;"
+        ));
+    }
+
+    #[test]
+    fn test_tc_extern_function() {
+        assert!(ok(
+            "extern fn puts(s: i64) -> i64;"
+        ));
+    }
+
+    #[test]
+    fn test_tc_type_alias() {
+        assert!(ok(
+            "type Index = i64;
+             fn get_idx() -> Index = 0;"
+        ));
+    }
+
+    #[test]
+    fn test_tc_multiple_params_type_mismatch() {
+        assert!(err(
+            "fn add(a: i64, b: i64) -> i64 = a + b;
+             fn bad() -> i64 = add(1, true);"
+        ));
+    }
+
+    #[test]
+    fn test_tc_recursive_type_struct() {
+        assert!(ok(
+            "struct Node { value: i64 }
+             fn get_val(n: Node) -> i64 = n.value;"
+        ));
+    }
+
+    #[test]
+    fn test_tc_as_cast() {
+        assert!(ok(
+            "fn cast_to_f64(x: i64) -> f64 = x as f64;"
+        ));
+    }
+
+    #[test]
+    fn test_tc_nested_function_calls() {
+        assert!(ok(
+            "fn inc(x: i64) -> i64 = x + 1;
+             fn double(x: i64) -> i64 = x + x;
+             fn compose() -> i64 = double(inc(5));"
+        ));
+    }
+
+    #[test]
+    fn test_tc_pointer_index() {
+        assert!(ok(
+            "fn get(arr: *i64, i: i64) -> i64 = arr[i];"
+        ));
+    }
+
+    #[test]
+    fn test_tc_invariant() {
+        assert!(ok(
+            "fn checked(x: i64) -> i64
+                 pre x > 0
+                 post ret >= x
+             = x + 1;"
+        ));
+    }
+
+    #[test]
+    fn test_tc_logical_operators() {
+        assert!(ok(
+            "fn logic(a: bool, b: bool) -> bool = (a && b) || (not a);"
+        ));
+    }
+
+    #[test]
+    fn test_tc_cast_i32_to_i64() {
+        assert!(ok("fn widen(x: i32) -> i64 = x as i64;"));
+    }
+
+    #[test]
+    fn test_tc_block_with_let() {
+        assert!(ok("fn test() -> i64 = { let a: i64 = 10; let b: i64 = 20; a + b };"));
+    }
+
+    #[test]
+    fn test_tc_nested_blocks() {
+        assert!(ok("fn test() -> i64 = { let a: i64 = { let b: i64 = 5; b + 1 }; a };"));
+    }
+
+    #[test]
+    fn test_tc_enum_no_data() {
+        assert!(ok(
+            "enum Dir { N, S, E, W }
+             fn is_north(d: Dir) -> bool = match d { Dir::N => true, _ => false };"
         ));
     }
 }

@@ -935,6 +935,11 @@ impl<'ctx> LlvmContext<'ctx> {
         let sb_clear_fn = self.module.add_function("bmb_sb_clear", sb_clear_type, None);
         self.functions.insert("sb_clear".to_string(), sb_clear_fn);
 
+        // sb_free(handle: i64) -> i64
+        let sb_free_type = i64_type.fn_type(&[i64_type.into()], false);
+        let sb_free_fn = self.module.add_function("bmb_sb_free", sb_free_type, None);
+        self.functions.insert("sb_free".to_string(), sb_free_fn);
+
         // sb_println(handle: i64) -> i64 (v0.60.63: print without allocation)
         let sb_println_type = i64_type.fn_type(&[i64_type.into()], false);
         let sb_println_fn = self.module.add_function("bmb_sb_println", sb_println_type, None);
@@ -999,6 +1004,27 @@ impl<'ctx> LlvmContext<'ctx> {
         let write_file_newlines_fn = self.module.add_function("write_file_newlines", write_file_type, None);
         self.functions.insert("write_file_newlines".to_string(), write_file_newlines_fn);
 
+        // append_file(path: ptr, content: ptr) -> i64
+        let append_file_type = i64_type.fn_type(&[ptr_type.into(), ptr_type.into()], false);
+        let append_file_fn = self.module.add_function("bmb_append_file", append_file_type, None);
+        self.functions.insert("append_file".to_string(), append_file_fn);
+
+        // system(cmd: ptr) -> i64
+        let system_type = i64_type.fn_type(&[ptr_type.into()], false);
+        let system_fn = self.module.add_function("bmb_system", system_type, None);
+        self.functions.insert("system".to_string(), system_fn);
+
+        // getenv(name: ptr) -> ptr
+        let getenv_type = ptr_type.fn_type(&[ptr_type.into()], false);
+        let getenv_fn = self.module.add_function("bmb_getenv", getenv_type, None);
+        self.functions.insert("getenv".to_string(), getenv_fn);
+        self.function_return_types.insert("getenv".to_string(), MirType::String);
+
+        // time_ns() -> i64
+        let time_ns_type = i64_type.fn_type(&[], false);
+        let time_ns_fn = self.module.add_function("bmb_time_ns", time_ns_type, None);
+        self.functions.insert("time_ns".to_string(), time_ns_fn);
+
         // v0.88.2: system_capture(cmd: ptr) -> ptr (executes command and captures stdout)
         let system_capture_type = ptr_type.fn_type(&[ptr_type.into()], false);
         let system_capture_fn = self.module.add_function("bmb_system_capture", system_capture_type, None);
@@ -1023,6 +1049,20 @@ impl<'ctx> LlvmContext<'ctx> {
         // v0.88.2: arena_usage() -> i64
         let arena_usage_fn = self.module.add_function("bmb_arena_usage", arena_reset_type, None);
         self.functions.insert("arena_usage".to_string(), arena_usage_fn);
+
+        // arena_save() -> i64, arena_restore() -> i64
+        let arena_save_fn = self.module.add_function("bmb_arena_save", arena_reset_type, None);
+        self.functions.insert("arena_save".to_string(), arena_save_fn);
+        self.functions.insert("bmb_arena_save".to_string(), arena_save_fn);
+        let arena_restore_fn = self.module.add_function("bmb_arena_restore", arena_reset_type, None);
+        self.functions.insert("arena_restore".to_string(), arena_restore_fn);
+        self.functions.insert("bmb_arena_restore".to_string(), arena_restore_fn);
+
+        // sb_contains(handle: i64, marker: ptr) -> i64
+        let sb_contains_type = i64_type.fn_type(&[i64_type.into(), ptr_type.into()], false);
+        let sb_contains_fn = self.module.add_function("bmb_sb_contains", sb_contains_type, None);
+        self.functions.insert("sb_contains".to_string(), sb_contains_fn);
+        self.functions.insert("bmb_sb_contains".to_string(), sb_contains_fn);
 
         // file_exists(path: ptr) -> i64 (returns 1 if exists, 0 otherwise)
         let file_exists_type = i64_type.fn_type(&[ptr_type.into()], false);
