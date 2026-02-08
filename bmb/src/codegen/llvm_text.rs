@@ -5307,4 +5307,190 @@ mod tests {
         assert!(ir.contains("%_t0 = add nsw i64 %a, %b"));  // nsw for optimization
         assert!(ir.contains("ret i64 %_t0"));
     }
+
+    // --- Source-based round-trip tests ---
+
+    fn source_to_ir(source: &str) -> String {
+        let tokens = crate::lexer::tokenize(source).expect("tokenize failed");
+        let program = crate::parser::parse("<test>", source, tokens).expect("parse failed");
+        let mir = crate::mir::lower_program(&program);
+        let codegen = TextCodeGen::new();
+        codegen.generate(&mir).expect("codegen failed")
+    }
+
+    #[test]
+    fn test_rt_arithmetic_ops() {
+        let ir = source_to_ir("fn add(a: i64, b: i64) -> i64 = a + b;");
+        assert!(ir.contains("@add"), "function definition missing");
+        assert!(ir.contains("add nsw i64"), "add instruction missing");
+        assert!(ir.contains("ret i64"), "return missing");
+    }
+
+    #[test]
+    fn test_rt_subtraction() {
+        let ir = source_to_ir("fn sub(a: i64, b: i64) -> i64 = a - b;");
+        assert!(ir.contains("@sub"));
+        assert!(ir.contains("sub nsw i64"));
+    }
+
+    #[test]
+    fn test_rt_multiplication() {
+        let ir = source_to_ir("fn mul(a: i64, b: i64) -> i64 = a * b;");
+        assert!(ir.contains("@mul"));
+        assert!(ir.contains("mul nsw i64"));
+    }
+
+    #[test]
+    fn test_rt_division() {
+        let ir = source_to_ir("fn div(a: i64, b: i64) -> i64 = a / b;");
+        assert!(ir.contains("@div"));
+        assert!(ir.contains("sdiv i64"));
+    }
+
+    #[test]
+    fn test_rt_modulo() {
+        let ir = source_to_ir("fn rem(a: i64, b: i64) -> i64 = a % b;");
+        assert!(ir.contains("@rem"));
+        assert!(ir.contains("srem i64"));
+    }
+
+    #[test]
+    fn test_rt_comparison_eq() {
+        let ir = source_to_ir("fn eq(a: i64, b: i64) -> bool = a == b;");
+        assert!(ir.contains("@eq"));
+        assert!(ir.contains("icmp eq i64"));
+    }
+
+    #[test]
+    fn test_rt_comparison_lt() {
+        let ir = source_to_ir("fn lt(a: i64, b: i64) -> bool = a < b;");
+        assert!(ir.contains("icmp slt i64"));
+    }
+
+    #[test]
+    fn test_rt_comparison_gt() {
+        let ir = source_to_ir("fn gt(a: i64, b: i64) -> bool = a > b;");
+        assert!(ir.contains("icmp sgt i64"));
+    }
+
+    #[test]
+    fn test_rt_if_else_branches() {
+        let ir = source_to_ir("fn abs(x: i64) -> i64 = if x >= 0 { x } else { 0 - x };");
+        assert!(ir.contains("@abs"));
+        assert!(ir.contains("br i1"), "conditional branch missing");
+        assert!(ir.contains("br label"), "unconditional branch missing");
+    }
+
+    #[test]
+    fn test_rt_constant_return() {
+        let ir = source_to_ir("fn forty_two() -> i64 = 42;");
+        assert!(ir.contains("@forty_two"));
+        assert!(ir.contains("ret i64 42") || ir.contains("i64 42"), "constant 42 missing");
+    }
+
+    #[test]
+    fn test_rt_bool_return() {
+        let ir = source_to_ir("fn always_true() -> bool = true;");
+        assert!(ir.contains("@always_true"));
+        assert!(ir.contains("ret i1 1") || ir.contains("i1 1") || ir.contains("true"),
+                "boolean true missing");
+    }
+
+    #[test]
+    fn test_rt_function_call() {
+        let ir = source_to_ir("fn double(x: i64) -> i64 = x + x;\nfn quad(x: i64) -> i64 = double(double(x));");
+        assert!(ir.contains("@double"));
+        assert!(ir.contains("@quad"));
+        assert!(ir.contains("call i64 @double"), "function call missing");
+    }
+
+    #[test]
+    fn test_rt_while_loop() {
+        let ir = source_to_ir(
+            "fn sum_to(n: i64) -> i64 = { let mut i = 0; let mut s = 0; while i < n { s = s + i; i = i + 1; 0 }; s };"
+        );
+        assert!(ir.contains("@sum_to"));
+        // While loops generate multiple basic blocks with back-edges
+        let block_count = ir.matches(":\n").count();
+        assert!(block_count >= 3, "while loop should generate at least 3 blocks, found {}", block_count);
+    }
+
+    #[test]
+    fn test_rt_multiple_functions() {
+        let ir = source_to_ir("fn f1() -> i64 = 1;\nfn f2() -> i64 = 2;\nfn f3() -> i64 = 3;");
+        assert!(ir.contains("@f1"));
+        assert!(ir.contains("@f2"));
+        assert!(ir.contains("@f3"));
+        let define_count = ir.matches("define ").count();
+        assert_eq!(define_count, 3, "expected 3 function definitions");
+    }
+
+    #[test]
+    fn test_rt_float_operations() {
+        let ir = source_to_ir("fn fadd(a: f64, b: f64) -> f64 = a + b;");
+        assert!(ir.contains("@fadd"));
+        assert!(ir.contains("fadd") || ir.contains("double"), "float operation missing");
+    }
+
+    #[test]
+    fn test_rt_string_parameter() {
+        let ir = source_to_ir("fn slen(s: String) -> i64 = s.len();");
+        assert!(ir.contains("@slen"));
+    }
+
+    #[test]
+    fn test_rt_recursive_function() {
+        let ir = source_to_ir(
+            "fn fact(n: i64) -> i64 = if n <= 1 { 1 } else { n * fact(n - 1) };"
+        );
+        assert!(ir.contains("@fact"));
+        assert!(ir.contains("call i64 @fact"), "recursive call missing");
+    }
+
+    #[test]
+    fn test_rt_let_binding() {
+        let ir = source_to_ir("fn f(x: i64) -> i64 = { let y = x + 1; y * 2 };");
+        assert!(ir.contains("@f"));
+        assert!(ir.contains("add nsw i64"));
+        assert!(ir.contains("mul nsw i64"));
+    }
+
+    #[test]
+    fn test_rt_module_header() {
+        let ir = source_to_ir("fn f() -> i64 = 0;");
+        assert!(ir.contains("target triple"), "module header missing target triple");
+    }
+
+    #[test]
+    fn test_rt_extern_declarations() {
+        // println is a builtin that should generate an extern declaration
+        let ir = source_to_ir("fn f() -> i64 = { let _u = println(42); 0 };");
+        // The IR should have some declaration for print-related builtins
+        assert!(ir.contains("declare") || ir.contains("@print") || ir.contains("@bmb_"),
+                "builtin function declarations expected");
+    }
+
+    #[test]
+    fn test_rt_mutable_variable() {
+        let ir = source_to_ir("fn f() -> i64 = { let mut x = 0; x = 42; x };");
+        assert!(ir.contains("@f"));
+        assert!(ir.contains("ret i64"), "return missing");
+    }
+
+    #[test]
+    fn test_rt_nested_if() {
+        let ir = source_to_ir(
+            "fn clamp(x: i64, lo: i64, hi: i64) -> i64 = if x < lo { lo } else if x > hi { hi } else { x };"
+        );
+        assert!(ir.contains("@clamp"));
+        let branch_count = ir.matches("br i1").count();
+        assert!(branch_count >= 2, "nested if should have >= 2 conditional branches, found {}", branch_count);
+    }
+
+    #[test]
+    fn test_rt_negation() {
+        let ir = source_to_ir("fn neg(x: i64) -> i64 = 0 - x;");
+        assert!(ir.contains("@neg"));
+        assert!(ir.contains("sub nsw i64"));
+    }
 }

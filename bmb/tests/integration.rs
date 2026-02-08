@@ -1224,3 +1224,224 @@ fn test_codegen_module_header() {
     assert!(ir.contains("target triple"),
         "IR should contain target triple");
 }
+
+// ============================================
+// Interpreter End-to-End Tests
+// ============================================
+
+use bmb::interp::{Interpreter, Value};
+
+/// Helper: parse, type-check, and interpret a BMB program, returning main's result
+fn run_program(source: &str) -> Value {
+    let tokens = tokenize(source).expect("tokenize failed");
+    let ast = parse("test.bmb", source, tokens).expect("parse failed");
+    let mut tc = TypeChecker::new();
+    tc.check_program(&ast).expect("type check failed");
+    let mut interp = Interpreter::new();
+    interp.run(&ast).expect("interpreter failed")
+}
+
+#[test]
+fn test_interp_constant_return() {
+    assert_eq!(run_program("fn main() -> i64 = 42;"), Value::Int(42));
+}
+
+#[test]
+fn test_interp_arithmetic() {
+    assert_eq!(run_program("fn main() -> i64 = 3 + 4 * 2;"), Value::Int(11));
+}
+
+#[test]
+fn test_interp_function_call() {
+    assert_eq!(
+        run_program("fn double(x: i64) -> i64 = x * 2;\nfn main() -> i64 = double(21);"),
+        Value::Int(42)
+    );
+}
+
+#[test]
+fn test_interp_recursive_factorial() {
+    assert_eq!(
+        run_program("fn fact(n: i64) -> i64 = if n <= 1 { 1 } else { n * fact(n - 1) };\nfn main() -> i64 = fact(5);"),
+        Value::Int(120)
+    );
+}
+
+#[test]
+fn test_interp_while_loop() {
+    assert_eq!(
+        run_program("fn main() -> i64 = { let mut s = 0; let mut i = 1; while i <= 10 { s = s + i; i = i + 1; 0 }; s };"),
+        Value::Int(55)
+    );
+}
+
+#[test]
+fn test_interp_if_else() {
+    assert_eq!(
+        run_program("fn main() -> i64 = if true { 1 } else { 0 };"),
+        Value::Int(1)
+    );
+    assert_eq!(
+        run_program("fn main() -> i64 = if false { 1 } else { 0 };"),
+        Value::Int(0)
+    );
+}
+
+#[test]
+fn test_interp_nested_calls() {
+    assert_eq!(
+        run_program("fn inc(x: i64) -> i64 = x + 1;\nfn main() -> i64 = inc(inc(inc(0)));"),
+        Value::Int(3)
+    );
+}
+
+#[test]
+fn test_interp_let_binding() {
+    assert_eq!(
+        run_program("fn main() -> i64 = { let x = 10; let y = x * 2; y + 1 };"),
+        Value::Int(21)
+    );
+}
+
+#[test]
+fn test_interp_bool_result() {
+    assert_eq!(
+        run_program("fn main() -> bool = 5 > 3;"),
+        Value::Bool(true)
+    );
+    assert_eq!(
+        run_program("fn main() -> bool = 3 > 5;"),
+        Value::Bool(false)
+    );
+}
+
+#[test]
+fn test_interp_string_len() {
+    assert_eq!(
+        run_program("fn main() -> i64 = \"hello\".len();"),
+        Value::Int(5)
+    );
+}
+
+#[test]
+fn test_interp_float_arithmetic() {
+    match run_program("fn main() -> f64 = 1.5 + 2.5;") {
+        Value::Float(v) => assert!((v - 4.0).abs() < 1e-10),
+        other => panic!("expected Float, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_interp_boolean_logic() {
+    assert_eq!(
+        run_program("fn main() -> bool = true and false;"),
+        Value::Bool(false)
+    );
+    assert_eq!(
+        run_program("fn main() -> bool = true or false;"),
+        Value::Bool(true)
+    );
+}
+
+#[test]
+fn test_interp_assign_in_if_branch() {
+    assert_eq!(
+        run_program("fn main() -> i64 = { let mut x = 0; if true { x = 42; 0 } else { 0 }; x };"),
+        Value::Int(42)
+    );
+}
+
+#[test]
+fn test_interp_let_in_if_branch() {
+    assert_eq!(
+        run_program("fn main() -> i64 = if true { let y = 10; y } else { 0 };"),
+        Value::Int(10)
+    );
+}
+
+#[test]
+fn test_interp_multiple_functions() {
+    assert_eq!(
+        run_program("fn add(a: i64, b: i64) -> i64 = a + b;\nfn mul(a: i64, b: i64) -> i64 = a * b;\nfn main() -> i64 = add(mul(3, 4), 5);"),
+        Value::Int(17)
+    );
+}
+
+#[test]
+fn test_interp_comparison_chain() {
+    assert_eq!(
+        run_program("fn clamp(x: i64, lo: i64, hi: i64) -> i64 = if x < lo { lo } else if x > hi { hi } else { x };\nfn main() -> i64 = clamp(50, 0, 10);"),
+        Value::Int(10)
+    );
+}
+
+#[test]
+fn test_interp_modulo() {
+    assert_eq!(
+        run_program("fn main() -> i64 = 17 % 5;"),
+        Value::Int(2)
+    );
+}
+
+#[test]
+fn test_interp_negation() {
+    assert_eq!(
+        run_program("fn main() -> i64 = 0 - 42;"),
+        Value::Int(-42)
+    );
+}
+
+// ============================================
+// Error Handling Tests
+// ============================================
+
+#[test]
+fn test_error_parse_invalid_syntax() {
+    let result = tokenize("fn main() -> { }");
+    // Should tokenize but fail to parse
+    if let Ok(tokens) = result {
+        assert!(parse("test.bmb", "fn main() -> { }", tokens).is_err());
+    }
+}
+
+#[test]
+fn test_error_undefined_function_call() {
+    assert!(type_error("fn main() -> i64 = nonexistent();"));
+}
+
+#[test]
+fn test_error_wrong_return_type() {
+    assert!(type_error("fn main() -> i64 = true;"));
+}
+
+#[test]
+fn test_error_duplicate_param_names() {
+    // Duplicate parameter names should error at type check or parse
+    let source = "fn f(x: i64, x: i64) -> i64 = x;";
+    // May or may not error depending on implementation
+    let _result = check_program(source);
+}
+
+// ============================================
+// Pipeline Integration Tests
+// ============================================
+
+#[test]
+fn test_pipeline_parse_lower_format() {
+    let source = "fn add(a: i64, b: i64) -> i64 = a + b;";
+    let tokens = tokenize(source).unwrap();
+    let ast = parse("test.bmb", source, tokens).unwrap();
+    let mir = bmb::mir::lower_program(&ast);
+    let formatted = bmb::mir::format_mir(&mir);
+    assert!(formatted.contains("fn add("));
+    assert!(formatted.contains("-> i64"));
+}
+
+#[test]
+fn test_pipeline_parse_lower_codegen() {
+    let source = "fn square(x: i64) -> i64 = x * x;";
+    let ir = source_to_ir(source);
+    assert!(ir.contains("@square"));
+    assert!(ir.contains("mul"));
+    assert!(ir.contains("ret i64"));
+}

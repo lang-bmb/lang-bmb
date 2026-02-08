@@ -1625,3 +1625,283 @@ fn format_mir_type(ty: &MirType) -> String {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // --- MirType tests ---
+
+    #[test]
+    fn test_mir_type_is_integer() {
+        assert!(MirType::I32.is_integer());
+        assert!(MirType::I64.is_integer());
+        assert!(!MirType::F64.is_integer());
+        assert!(!MirType::Bool.is_integer());
+        assert!(!MirType::String.is_integer());
+        assert!(!MirType::Unit.is_integer());
+    }
+
+    #[test]
+    fn test_mir_type_is_float() {
+        assert!(MirType::F64.is_float());
+        assert!(!MirType::I64.is_float());
+        assert!(!MirType::Bool.is_float());
+    }
+
+    #[test]
+    fn test_mir_type_is_pointer_type() {
+        assert!(MirType::Ptr(Box::new(MirType::I64)).is_pointer_type());
+        assert!(MirType::StructPtr("Foo".to_string()).is_pointer_type());
+        assert!(MirType::String.is_pointer_type());
+        assert!(!MirType::I64.is_pointer_type());
+        assert!(!MirType::Bool.is_pointer_type());
+        assert!(!MirType::Unit.is_pointer_type());
+    }
+
+    #[test]
+    fn test_mir_type_pointer_element_type() {
+        let ptr_i64 = MirType::Ptr(Box::new(MirType::I64));
+        assert_eq!(ptr_i64.pointer_element_type(), Some(MirType::I64));
+
+        let struct_ptr = MirType::StructPtr("Point".to_string());
+        match struct_ptr.pointer_element_type() {
+            Some(MirType::Struct { name, .. }) => assert_eq!(name, "Point"),
+            other => panic!("expected Struct, got {:?}", other),
+        }
+
+        assert_eq!(MirType::I64.pointer_element_type(), None);
+        assert_eq!(MirType::Bool.pointer_element_type(), None);
+    }
+
+    // --- MirBinOp::result_type tests ---
+
+    #[test]
+    fn test_binop_arithmetic_returns_operand_type() {
+        let ops = [MirBinOp::Add, MirBinOp::Sub, MirBinOp::Mul, MirBinOp::Div, MirBinOp::Mod];
+        for op in &ops {
+            assert_eq!(op.result_type(&MirType::I64), MirType::I64);
+            assert_eq!(op.result_type(&MirType::I32), MirType::I32);
+        }
+    }
+
+    #[test]
+    fn test_binop_float_returns_f64() {
+        let ops = [MirBinOp::FAdd, MirBinOp::FSub, MirBinOp::FMul, MirBinOp::FDiv];
+        for op in &ops {
+            assert_eq!(op.result_type(&MirType::F64), MirType::F64);
+        }
+    }
+
+    #[test]
+    fn test_binop_comparisons_return_bool() {
+        let ops = [MirBinOp::Eq, MirBinOp::Ne, MirBinOp::Lt, MirBinOp::Gt, MirBinOp::Le, MirBinOp::Ge];
+        for op in &ops {
+            assert_eq!(op.result_type(&MirType::I64), MirType::Bool);
+        }
+    }
+
+    #[test]
+    fn test_binop_float_comparisons_return_bool() {
+        let ops = [MirBinOp::FEq, MirBinOp::FNe, MirBinOp::FLt, MirBinOp::FGt, MirBinOp::FLe, MirBinOp::FGe];
+        for op in &ops {
+            assert_eq!(op.result_type(&MirType::F64), MirType::Bool);
+        }
+    }
+
+    #[test]
+    fn test_binop_logical_returns_bool() {
+        assert_eq!(MirBinOp::And.result_type(&MirType::Bool), MirType::Bool);
+        assert_eq!(MirBinOp::Or.result_type(&MirType::Bool), MirType::Bool);
+        assert_eq!(MirBinOp::Implies.result_type(&MirType::Bool), MirType::Bool);
+    }
+
+    #[test]
+    fn test_binop_shift_returns_operand_type() {
+        assert_eq!(MirBinOp::Shl.result_type(&MirType::I64), MirType::I64);
+        assert_eq!(MirBinOp::Shr.result_type(&MirType::I32), MirType::I32);
+    }
+
+    #[test]
+    fn test_binop_bitwise_returns_operand_type() {
+        assert_eq!(MirBinOp::Band.result_type(&MirType::I64), MirType::I64);
+        assert_eq!(MirBinOp::Bor.result_type(&MirType::I32), MirType::I32);
+        assert_eq!(MirBinOp::Bxor.result_type(&MirType::I64), MirType::I64);
+    }
+
+    #[test]
+    fn test_binop_wrapping_returns_operand_type() {
+        let ops = [MirBinOp::AddWrap, MirBinOp::SubWrap, MirBinOp::MulWrap];
+        for op in &ops {
+            assert_eq!(op.result_type(&MirType::I64), MirType::I64);
+        }
+    }
+
+    #[test]
+    fn test_binop_saturating_returns_operand_type() {
+        let ops = [MirBinOp::AddSat, MirBinOp::SubSat, MirBinOp::MulSat];
+        for op in &ops {
+            assert_eq!(op.result_type(&MirType::I64), MirType::I64);
+        }
+    }
+
+    // --- MirUnaryOp::result_type tests ---
+
+    #[test]
+    fn test_unaryop_neg_returns_operand_type() {
+        assert_eq!(MirUnaryOp::Neg.result_type(&MirType::I64), MirType::I64);
+        assert_eq!(MirUnaryOp::Neg.result_type(&MirType::I32), MirType::I32);
+    }
+
+    #[test]
+    fn test_unaryop_fneg_returns_f64() {
+        assert_eq!(MirUnaryOp::FNeg.result_type(&MirType::F64), MirType::F64);
+    }
+
+    #[test]
+    fn test_unaryop_not_returns_bool() {
+        assert_eq!(MirUnaryOp::Not.result_type(&MirType::Bool), MirType::Bool);
+    }
+
+    #[test]
+    fn test_unaryop_bnot_returns_operand_type() {
+        assert_eq!(MirUnaryOp::Bnot.result_type(&MirType::I64), MirType::I64);
+    }
+
+    // --- LoweringContext tests ---
+
+    #[test]
+    fn test_fresh_temp_generates_unique_names() {
+        let mut ctx = LoweringContext::new();
+        let t0 = ctx.fresh_temp();
+        let t1 = ctx.fresh_temp();
+        let t2 = ctx.fresh_temp();
+        assert_eq!(t0.name, "_t0");
+        assert_eq!(t1.name, "_t1");
+        assert_eq!(t2.name, "_t2");
+    }
+
+    #[test]
+    fn test_fresh_label_generates_unique_labels() {
+        let mut ctx = LoweringContext::new();
+        let l0 = ctx.fresh_label("then");
+        let l1 = ctx.fresh_label("else");
+        let l2 = ctx.fresh_label("merge");
+        assert_eq!(l0, "then_0");
+        assert_eq!(l1, "else_1");
+        assert_eq!(l2, "merge_2");
+    }
+
+    #[test]
+    fn test_operand_type_constants() {
+        let ctx = LoweringContext::new();
+        assert_eq!(ctx.operand_type(&Operand::Constant(Constant::Int(42))), MirType::I64);
+        assert_eq!(ctx.operand_type(&Operand::Constant(Constant::Float(1.5))), MirType::F64);
+        assert_eq!(ctx.operand_type(&Operand::Constant(Constant::Bool(true))), MirType::Bool);
+        assert_eq!(ctx.operand_type(&Operand::Constant(Constant::String("hi".into()))), MirType::String);
+        assert_eq!(ctx.operand_type(&Operand::Constant(Constant::Unit)), MirType::Unit);
+    }
+
+    #[test]
+    fn test_operand_type_unknown_place_defaults_i64() {
+        let ctx = LoweringContext::new();
+        // Unknown place defaults to I64
+        assert_eq!(ctx.operand_type(&Operand::Place(Place::new("unknown"))), MirType::I64);
+    }
+
+    // --- format_mir tests ---
+
+    fn parse_and_lower(source: &str) -> MirProgram {
+        let tokens = crate::lexer::tokenize(source).expect("tokenize failed");
+        let program = crate::parser::parse("<test>", source, tokens).expect("parse failed");
+        lower_program(&program)
+    }
+
+    #[test]
+    fn test_format_mir_simple_function() {
+        let mir = parse_and_lower("fn f() -> i64 = 42;");
+        let text = format_mir(&mir);
+        assert!(text.contains("fn f()"), "function header missing");
+        assert!(text.contains("-> i64"), "return type missing");
+    }
+
+    #[test]
+    fn test_format_mir_with_params() {
+        let mir = parse_and_lower("fn add(a: i64, b: i64) -> i64 = a + b;");
+        let text = format_mir(&mir);
+        assert!(text.contains("fn add("), "function name missing");
+        assert!(text.contains("i64"), "parameter type missing");
+    }
+
+    #[test]
+    fn test_format_mir_multiple_functions() {
+        let mir = parse_and_lower("fn f1() -> i64 = 1;\nfn f2() -> i64 = 2;");
+        let text = format_mir(&mir);
+        assert!(text.contains("fn f1("), "f1 missing");
+        assert!(text.contains("fn f2("), "f2 missing");
+    }
+
+    #[test]
+    fn test_format_mir_type_i64() {
+        assert_eq!(format_mir_type(&MirType::I64), "i64");
+    }
+
+    #[test]
+    fn test_format_mir_type_f64() {
+        assert_eq!(format_mir_type(&MirType::F64), "f64");
+    }
+
+    #[test]
+    fn test_format_mir_type_bool() {
+        assert_eq!(format_mir_type(&MirType::Bool), "bool");
+    }
+
+    #[test]
+    fn test_format_mir_type_string() {
+        assert_eq!(format_mir_type(&MirType::String), "String");
+    }
+
+    #[test]
+    fn test_format_mir_type_unit() {
+        assert_eq!(format_mir_type(&MirType::Unit), "()");
+    }
+
+    #[test]
+    fn test_format_mir_type_ptr() {
+        assert_eq!(format_mir_type(&MirType::Ptr(Box::new(MirType::I64))), "*i64");
+    }
+
+    #[test]
+    fn test_format_mir_type_tuple() {
+        let tuple = MirType::Tuple(vec![Box::new(MirType::I64), Box::new(MirType::Bool)]);
+        assert_eq!(format_mir_type(&tuple), "(i64, bool)");
+    }
+
+    // --- Place tests ---
+
+    #[test]
+    fn test_place_new() {
+        let p = Place::new("x");
+        assert_eq!(p.name, "x");
+    }
+
+    // --- Constant operand tests ---
+
+    #[test]
+    fn test_operand_constant_int() {
+        let op = Operand::Constant(Constant::Int(42));
+        match op {
+            Operand::Constant(Constant::Int(v)) => assert_eq!(v, 42),
+            _ => panic!("expected Int constant"),
+        }
+    }
+
+    #[test]
+    fn test_operand_constant_bool() {
+        let op = Operand::Constant(Constant::Bool(true));
+        match op {
+            Operand::Constant(Constant::Bool(v)) => assert!(v),
+            _ => panic!("expected Bool constant"),
+        }
+    }
+}
