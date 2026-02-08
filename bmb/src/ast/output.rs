@@ -915,4 +915,145 @@ mod tests {
         let sexpr = parse_and_format(source);
         assert!(sexpr.contains("(.is_some x)"));
     }
+
+    // --- Cycle 64: Additional output tests ---
+
+    #[test]
+    fn test_format_type_primitives() {
+        use crate::ast::Type;
+
+        assert_eq!(format_type(&Type::I64), "i64");
+        assert_eq!(format_type(&Type::I32), "i32");
+        assert_eq!(format_type(&Type::U32), "u32");
+        assert_eq!(format_type(&Type::U64), "u64");
+        assert_eq!(format_type(&Type::F64), "f64");
+        assert_eq!(format_type(&Type::Bool), "bool");
+        assert_eq!(format_type(&Type::Unit), "()");
+        assert_eq!(format_type(&Type::String), "String");
+        assert_eq!(format_type(&Type::Char), "char");
+        assert_eq!(format_type(&Type::Never), "!");
+    }
+
+    #[test]
+    fn test_format_type_compound() {
+        use crate::ast::Type;
+
+        assert_eq!(format_type(&Type::Nullable(Box::new(Type::I64))), "i64?");
+        assert_eq!(format_type(&Type::Ptr(Box::new(Type::I64))), "*i64");
+        assert_eq!(format_type(&Type::Ref(Box::new(Type::I64))), "(&i64)");
+        assert_eq!(format_type(&Type::RefMut(Box::new(Type::I64))), "(&mut i64)");
+        assert_eq!(format_type(&Type::Array(Box::new(Type::I64), 5)), "[i64 5]");
+        assert_eq!(format_type(&Type::Range(Box::new(Type::I64))), "(Range i64)");
+    }
+
+    #[test]
+    fn test_format_type_concurrency() {
+        use crate::ast::Type;
+
+        assert_eq!(format_type(&Type::Thread(Box::new(Type::I64))), "Thread<i64>");
+        assert_eq!(format_type(&Type::Mutex(Box::new(Type::I64))), "Mutex<i64>");
+        assert_eq!(format_type(&Type::Arc(Box::new(Type::I64))), "Arc<i64>");
+        assert_eq!(format_type(&Type::Atomic(Box::new(Type::I64))), "Atomic<i64>");
+        assert_eq!(format_type(&Type::Future(Box::new(Type::I64))), "Future<i64>");
+        assert_eq!(format_type(&Type::Barrier), "Barrier");
+        assert_eq!(format_type(&Type::Condvar), "Condvar");
+        assert_eq!(format_type(&Type::AsyncFile), "AsyncFile");
+        assert_eq!(format_type(&Type::AsyncSocket), "AsyncSocket");
+        assert_eq!(format_type(&Type::ThreadPool), "ThreadPool");
+        assert_eq!(format_type(&Type::Scope), "Scope");
+    }
+
+    #[test]
+    fn test_format_type_generic() {
+        use crate::ast::Type;
+
+        let generic = Type::Generic {
+            name: "Vec".to_string(),
+            type_args: vec![Box::new(Type::I64)],
+        };
+        assert_eq!(format_type(&generic), "(Vec i64)");
+    }
+
+    #[test]
+    fn test_format_type_tuple() {
+        use crate::ast::Type;
+
+        let tuple = Type::Tuple(vec![Box::new(Type::I64), Box::new(Type::Bool)]);
+        assert_eq!(format_type(&tuple), "(i64, bool)");
+    }
+
+    #[test]
+    fn test_format_type_fn() {
+        use crate::ast::Type;
+
+        let fn_type = Type::Fn {
+            params: vec![Box::new(Type::I64), Box::new(Type::Bool)],
+            ret: Box::new(Type::String),
+        };
+        assert_eq!(format_type(&fn_type), "(fn (i64 bool) String)");
+    }
+
+    #[test]
+    fn test_format_expr_literals() {
+        use crate::ast::Expr;
+
+        assert_eq!(format_expr(&Expr::IntLit(42)), "42");
+        assert_eq!(format_expr(&Expr::BoolLit(true)), "true");
+        assert_eq!(format_expr(&Expr::BoolLit(false)), "false");
+        assert_eq!(format_expr(&Expr::Null), "null");
+        assert_eq!(format_expr(&Expr::Unit), "()");
+    }
+
+    #[test]
+    fn test_format_expr_var() {
+        use crate::ast::Expr;
+
+        assert_eq!(format_expr(&Expr::Var("x".to_string())), "x");
+    }
+
+    #[test]
+    fn test_sexpr_while_loop() {
+        let source = r#"
+            fn count() -> i64 = {
+                let mut i: i64 = 0;
+                while i < 10 {
+                    i = i + 1;
+                };
+                i
+            };
+        "#;
+        let sexpr = parse_and_format(source);
+        assert!(sexpr.contains("while"));
+    }
+
+    #[test]
+    fn test_sexpr_if_else() {
+        let source = "fn abs(x: i64) -> i64 = if x < 0 { 0 - x } else { x };";
+        let sexpr = parse_and_format(source);
+        assert!(sexpr.contains("if"));
+        assert!(sexpr.contains("(< x 0)"));
+    }
+
+    #[test]
+    fn test_sexpr_tuple() {
+        let source = "fn pair() -> (i64, bool) = (42, true);";
+        let sexpr = parse_and_format(source);
+        assert!(sexpr.contains("(tuple"));
+    }
+
+    #[test]
+    fn test_sexpr_let_binding() {
+        let source = "fn f() -> i64 = { let x: i64 = 10; x };";
+        let sexpr = parse_and_format(source);
+        assert!(sexpr.contains("let"));
+        assert!(sexpr.contains("x"));
+    }
+
+    #[test]
+    fn test_sexpr_extern_fn() {
+        let source = r#"extern "C" fn puts(s: *i64) -> i64;"#;
+        let sexpr = parse_and_format(source);
+        assert!(sexpr.contains("extern"));
+        assert!(sexpr.contains("puts"));
+    }
 }

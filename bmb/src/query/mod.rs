@@ -1522,4 +1522,169 @@ mod tests {
         assert_eq!(levenshtein("hello", "helo"), 1);
         assert_eq!(levenshtein("kitten", "sitting"), 3);
     }
+
+    // --- Cycle 65: Additional query tests ---
+
+    #[test]
+    fn test_levenshtein_empty_strings() {
+        assert_eq!(levenshtein("", ""), 0);
+        assert_eq!(levenshtein("abc", ""), 3);
+        assert_eq!(levenshtein("", "abc"), 3);
+    }
+
+    #[test]
+    fn test_levenshtein_single_char() {
+        assert_eq!(levenshtein("a", "b"), 1);
+        assert_eq!(levenshtein("a", "a"), 0);
+        assert_eq!(levenshtein("a", "ab"), 1);
+    }
+
+    #[test]
+    fn test_levenshtein_case_sensitive() {
+        assert_eq!(levenshtein("Hello", "hello"), 1);
+    }
+
+    #[test]
+    fn test_format_output_json() {
+        let data = QueryError {
+            code: "E001".to_string(),
+            message: "not found".to_string(),
+            suggestions: vec![],
+        };
+        let result = format_output(&data, "json").unwrap();
+        assert!(result.contains("E001"));
+        assert!(result.contains("not found"));
+        // Pretty-printed JSON has newlines
+        assert!(result.contains('\n'));
+    }
+
+    #[test]
+    fn test_format_output_compact() {
+        let data = QueryError {
+            code: "E002".to_string(),
+            message: "error".to_string(),
+            suggestions: vec![],
+        };
+        let result = format_output(&data, "compact").unwrap();
+        // Compact JSON is on one line
+        assert!(!result.contains('\n'));
+        assert!(result.contains("E002"));
+    }
+
+    #[test]
+    fn test_format_output_llm() {
+        let data = QueryError {
+            code: "E003".to_string(),
+            message: "test error".to_string(),
+            suggestions: vec!["try this".to_string()],
+        };
+        let result = format_output(&data, "llm").unwrap();
+        // LLM format uses uppercase keys
+        assert!(result.contains("CODE"));
+        assert!(result.contains("E003"));
+    }
+
+    #[test]
+    fn test_proof_summary_empty() {
+        let summary = ProofSummary::from_proofs(&[]);
+        assert_eq!(summary.total, 0);
+        assert_eq!(summary.verified, 0);
+        assert_eq!(summary.failed, 0);
+    }
+
+    #[test]
+    fn test_proof_summary_verified() {
+        let proofs = vec![ProofEntry {
+            name: "f".to_string(),
+            file: "test.bmb".to_string(),
+            line: 1,
+            pre_status: Some(ProofStatus::Verified),
+            post_status: Some(ProofStatus::Verified),
+            counterexample: None,
+            verify_time_ms: None,
+            verified_at: None,
+        }];
+        let summary = ProofSummary::from_proofs(&proofs);
+        assert_eq!(summary.total, 1);
+        assert_eq!(summary.verified, 2); // pre + post
+        assert_eq!(summary.failed, 0);
+    }
+
+    #[test]
+    fn test_proof_summary_mixed() {
+        let proofs = vec![
+            ProofEntry {
+                name: "ok_fn".to_string(),
+                file: "a.bmb".to_string(),
+                line: 1,
+                pre_status: Some(ProofStatus::Verified),
+                post_status: Some(ProofStatus::Verified),
+                counterexample: None,
+                verify_time_ms: None,
+                verified_at: None,
+            },
+            ProofEntry {
+                name: "bad_fn".to_string(),
+                file: "b.bmb".to_string(),
+                line: 10,
+                pre_status: Some(ProofStatus::Failed),
+                post_status: Some(ProofStatus::Timeout),
+                counterexample: None,
+                verify_time_ms: None,
+                verified_at: None,
+            },
+        ];
+        let summary = ProofSummary::from_proofs(&proofs);
+        assert_eq!(summary.total, 2);
+        assert_eq!(summary.verified, 2);
+        assert_eq!(summary.failed, 1);
+        assert_eq!(summary.timeout, 1);
+    }
+
+    #[test]
+    fn test_proof_summary_pending_and_unavailable() {
+        let proofs = vec![ProofEntry {
+            name: "pending_fn".to_string(),
+            file: "c.bmb".to_string(),
+            line: 1,
+            pre_status: Some(ProofStatus::Pending),
+            post_status: Some(ProofStatus::Unavailable),
+            counterexample: None,
+            verify_time_ms: None,
+            verified_at: None,
+        }];
+        let summary = ProofSummary::from_proofs(&proofs);
+        assert_eq!(summary.pending, 2); // Both Pending and Unavailable count as pending
+    }
+
+    #[test]
+    fn test_proof_summary_no_pre_or_post() {
+        let proofs = vec![ProofEntry {
+            name: "no_contracts".to_string(),
+            file: "d.bmb".to_string(),
+            line: 1,
+            pre_status: None,
+            post_status: None,
+            counterexample: None,
+            verify_time_ms: None,
+            verified_at: None,
+        }];
+        let summary = ProofSummary::from_proofs(&proofs);
+        assert_eq!(summary.total, 1);
+        assert_eq!(summary.verified, 0);
+        assert_eq!(summary.failed, 0);
+        assert_eq!(summary.pending, 0);
+    }
+
+    #[test]
+    fn test_query_error_serialization() {
+        let err = QueryError {
+            code: "NOT_FOUND".to_string(),
+            message: "Function 'foo' not found".to_string(),
+            suggestions: vec!["bar".to_string(), "baz".to_string()],
+        };
+        let json = serde_json::to_string(&err).unwrap();
+        assert!(json.contains("NOT_FOUND"));
+        assert!(json.contains("bar"));
+    }
 }

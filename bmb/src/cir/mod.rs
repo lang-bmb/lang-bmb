@@ -835,4 +835,229 @@ mod tests {
         assert!(!combined.is_pure);
         assert!(combined.writes);
     }
+
+    // --- Cycle 63: Additional CIR tests ---
+
+    #[test]
+    fn test_proposition_or_empty() {
+        let p = Proposition::or(vec![]);
+        assert!(matches!(p, Proposition::False));
+    }
+
+    #[test]
+    fn test_proposition_or_single() {
+        let p = Proposition::or(vec![Proposition::True]);
+        assert!(matches!(p, Proposition::True));
+    }
+
+    #[test]
+    fn test_proposition_or_multiple() {
+        let p = Proposition::or(vec![Proposition::True, Proposition::False]);
+        assert!(matches!(p, Proposition::Or(_)));
+    }
+
+    #[test]
+    fn test_proposition_and_multiple() {
+        let p = Proposition::and(vec![Proposition::True, Proposition::True]);
+        assert!(matches!(p, Proposition::And(_)));
+    }
+
+    #[test]
+    fn test_proposition_not_true_becomes_false() {
+        let p = Proposition::not(Proposition::True);
+        assert!(matches!(p, Proposition::False));
+    }
+
+    #[test]
+    fn test_proposition_not_false_becomes_true() {
+        let p = Proposition::not(Proposition::False);
+        assert!(matches!(p, Proposition::True));
+    }
+
+    #[test]
+    fn test_proposition_is_trivially_true() {
+        assert!(Proposition::True.is_trivially_true());
+        assert!(!Proposition::False.is_trivially_true());
+        assert!(!Proposition::Not(Box::new(Proposition::True)).is_trivially_true());
+    }
+
+    #[test]
+    fn test_proposition_is_trivially_false() {
+        assert!(Proposition::False.is_trivially_false());
+        assert!(!Proposition::True.is_trivially_false());
+        assert!(!Proposition::Not(Box::new(Proposition::False)).is_trivially_false());
+    }
+
+    #[test]
+    fn test_proposition_compare_constructor() {
+        let p = Proposition::compare(
+            CirExpr::var("x"),
+            CompareOp::Lt,
+            CirExpr::int(10),
+        );
+        match p {
+            Proposition::Compare { lhs, op, rhs } => {
+                assert_eq!(*lhs, CirExpr::Var("x".to_string()));
+                assert_eq!(op, CompareOp::Lt);
+                assert_eq!(*rhs, CirExpr::IntLit(10));
+            }
+            _ => panic!("Expected Compare"),
+        }
+    }
+
+    #[test]
+    fn test_compare_op_negate_all() {
+        assert_eq!(CompareOp::Lt.negate(), CompareOp::Ge);
+        assert_eq!(CompareOp::Le.negate(), CompareOp::Gt);
+        assert_eq!(CompareOp::Gt.negate(), CompareOp::Le);
+        assert_eq!(CompareOp::Ge.negate(), CompareOp::Lt);
+        assert_eq!(CompareOp::Eq.negate(), CompareOp::Ne);
+        assert_eq!(CompareOp::Ne.negate(), CompareOp::Eq);
+    }
+
+    #[test]
+    fn test_compare_op_flip_all() {
+        assert_eq!(CompareOp::Lt.flip(), CompareOp::Gt);
+        assert_eq!(CompareOp::Le.flip(), CompareOp::Ge);
+        assert_eq!(CompareOp::Gt.flip(), CompareOp::Lt);
+        assert_eq!(CompareOp::Ge.flip(), CompareOp::Le);
+        assert_eq!(CompareOp::Eq.flip(), CompareOp::Eq);
+        assert_eq!(CompareOp::Ne.flip(), CompareOp::Ne);
+    }
+
+    #[test]
+    fn test_compare_op_double_negate() {
+        for op in [CompareOp::Lt, CompareOp::Le, CompareOp::Gt, CompareOp::Ge, CompareOp::Eq, CompareOp::Ne] {
+            assert_eq!(op.negate().negate(), op);
+        }
+    }
+
+    #[test]
+    fn test_compare_op_display() {
+        assert_eq!(CompareOp::Lt.to_string(), "<");
+        assert_eq!(CompareOp::Le.to_string(), "<=");
+        assert_eq!(CompareOp::Gt.to_string(), ">");
+        assert_eq!(CompareOp::Ge.to_string(), ">=");
+        assert_eq!(CompareOp::Eq.to_string(), "==");
+        assert_eq!(CompareOp::Ne.to_string(), "!=");
+    }
+
+    #[test]
+    fn test_cir_type_display_numeric() {
+        assert_eq!(CirType::I8.to_string(), "i8");
+        assert_eq!(CirType::I16.to_string(), "i16");
+        assert_eq!(CirType::I32.to_string(), "i32");
+        assert_eq!(CirType::I128.to_string(), "i128");
+        assert_eq!(CirType::U8.to_string(), "u8");
+        assert_eq!(CirType::U16.to_string(), "u16");
+        assert_eq!(CirType::U32.to_string(), "u32");
+        assert_eq!(CirType::U64.to_string(), "u64");
+        assert_eq!(CirType::U128.to_string(), "u128");
+        assert_eq!(CirType::F32.to_string(), "f32");
+        assert_eq!(CirType::F64.to_string(), "f64");
+    }
+
+    #[test]
+    fn test_cir_type_display_complex() {
+        assert_eq!(CirType::Bool.to_string(), "bool");
+        assert_eq!(CirType::Unit.to_string(), "()");
+        assert_eq!(CirType::Char.to_string(), "char");
+        assert_eq!(CirType::String.to_string(), "String");
+        assert_eq!(CirType::Never.to_string(), "!");
+        assert_eq!(CirType::Infer.to_string(), "_");
+        assert_eq!(CirType::Ptr(Box::new(CirType::I64)).to_string(), "*i64");
+        assert_eq!(CirType::RefMut(Box::new(CirType::I64)).to_string(), "&mut i64");
+        assert_eq!(CirType::Slice(Box::new(CirType::U8)).to_string(), "[u8]");
+        assert_eq!(CirType::Array(Box::new(CirType::I32), 10).to_string(), "[i32; 10]");
+        assert_eq!(CirType::Range(Box::new(CirType::I64)).to_string(), "Range<i64>");
+    }
+
+    #[test]
+    fn test_cir_type_display_composite() {
+        assert_eq!(CirType::Struct("Point".to_string()).to_string(), "Point");
+        assert_eq!(CirType::Enum("Color".to_string()).to_string(), "Color");
+        assert_eq!(CirType::TypeParam("T".to_string()).to_string(), "T");
+
+        let tuple = CirType::Tuple(vec![CirType::I64, CirType::Bool]);
+        assert_eq!(tuple.to_string(), "(i64, bool)");
+
+        let generic = CirType::Generic("Vec".to_string(), vec![CirType::I64]);
+        assert_eq!(generic.to_string(), "Vec<i64>");
+
+        let fn_type = CirType::Fn {
+            params: vec![CirType::I64, CirType::Bool],
+            ret: Box::new(CirType::String),
+        };
+        assert_eq!(fn_type.to_string(), "(i64, bool) -> String");
+    }
+
+    #[test]
+    fn test_cir_expr_var_constructor() {
+        assert_eq!(CirExpr::var("x"), CirExpr::Var("x".to_string()));
+    }
+
+    #[test]
+    fn test_cir_expr_int_constructor() {
+        assert_eq!(CirExpr::int(42), CirExpr::IntLit(42));
+        assert_eq!(CirExpr::int(-1), CirExpr::IntLit(-1));
+    }
+
+    #[test]
+    fn test_cir_expr_binop_constructor() {
+        let expr = CirExpr::binop(BinOp::Add, CirExpr::int(1), CirExpr::int(2));
+        match expr {
+            CirExpr::BinOp { op, lhs, rhs } => {
+                assert_eq!(op, BinOp::Add);
+                assert_eq!(*lhs, CirExpr::IntLit(1));
+                assert_eq!(*rhs, CirExpr::IntLit(2));
+            }
+            _ => panic!("Expected BinOp"),
+        }
+    }
+
+    #[test]
+    fn test_effect_set_const() {
+        let effects = EffectSet::const_();
+        assert!(effects.is_pure);
+        assert!(effects.is_const);
+        assert!(!effects.writes);
+        assert!(!effects.io);
+    }
+
+    #[test]
+    fn test_effect_set_impure() {
+        let effects = EffectSet::impure();
+        assert!(!effects.is_pure);
+        assert!(!effects.is_const);
+    }
+
+    #[test]
+    fn test_effect_set_union_preserves_pure() {
+        let a = EffectSet::pure();
+        let b = EffectSet::pure();
+        let c = a.union(&b);
+        assert!(c.is_pure);
+        assert!(!c.writes);
+    }
+
+    #[test]
+    fn test_effect_set_union_const_with_impure() {
+        let a = EffectSet::const_();
+        let b = EffectSet { io: true, ..Default::default() };
+        let c = a.union(&b);
+        assert!(!c.is_pure);
+        assert!(!c.is_const);
+        assert!(c.io);
+    }
+
+    #[test]
+    fn test_effect_set_union_accumulates() {
+        let a = EffectSet { reads: true, ..Default::default() };
+        let b = EffectSet { writes: true, ..Default::default() };
+        let c = EffectSet { allocates: true, ..Default::default() };
+        let combined = a.union(&b).union(&c);
+        assert!(combined.reads);
+        assert!(combined.writes);
+        assert!(combined.allocates);
+    }
 }

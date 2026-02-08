@@ -546,4 +546,91 @@ mod tests {
         let unused = imports.get_unused();
         assert!(unused.is_empty());
     }
+
+    // --- Cycle 65: Additional resolver tests ---
+
+    #[test]
+    fn test_resolved_imports_empty() {
+        let imports = ResolvedImports::new();
+        assert!(imports.is_empty());
+        assert_eq!(imports.len(), 0);
+        assert!(!imports.is_imported("anything"));
+        assert!(imports.get_unused().is_empty());
+    }
+
+    #[test]
+    fn test_resolved_imports_multiple() {
+        let mut imports = ResolvedImports::new();
+        let span = Span { start: 0, end: 0 };
+
+        imports.add_import("A".to_string(), "mod_a".to_string(), ExportedItem::Struct("A".to_string()), span);
+        imports.add_import("B".to_string(), "mod_b".to_string(), ExportedItem::Struct("B".to_string()), span);
+        imports.add_import("C".to_string(), "mod_c".to_string(), ExportedItem::Struct("C".to_string()), span);
+
+        assert_eq!(imports.len(), 3);
+        assert!(!imports.is_empty());
+        assert!(imports.is_imported("A"));
+        assert!(imports.is_imported("B"));
+        assert!(imports.is_imported("C"));
+        assert!(!imports.is_imported("D"));
+    }
+
+    #[test]
+    fn test_resolved_imports_get_module() {
+        let mut imports = ResolvedImports::new();
+        let span = Span { start: 0, end: 0 };
+
+        imports.add_import("Token".to_string(), "lexer".to_string(), ExportedItem::Struct("Token".to_string()), span);
+
+        assert_eq!(imports.get_import_module("Token"), Some("lexer"));
+        assert_eq!(imports.get_import_module("NonExistent"), None);
+    }
+
+    #[test]
+    fn test_resolved_imports_mark_all_used() {
+        let mut imports = ResolvedImports::new();
+        let span = Span { start: 0, end: 0 };
+
+        imports.add_import("A".to_string(), "mod".to_string(), ExportedItem::Struct("A".to_string()), span);
+        imports.add_import("B".to_string(), "mod".to_string(), ExportedItem::Struct("B".to_string()), span);
+
+        imports.mark_used("A");
+        imports.mark_used("B");
+
+        assert!(imports.get_unused().is_empty());
+    }
+
+    #[test]
+    fn test_resolved_imports_all_iter() {
+        let mut imports = ResolvedImports::new();
+        let span = Span { start: 0, end: 0 };
+
+        imports.add_import("X".to_string(), "mx".to_string(), ExportedItem::Struct("X".to_string()), span);
+        imports.add_import("Y".to_string(), "my".to_string(), ExportedItem::Struct("Y".to_string()), span);
+
+        let all: Vec<_> = imports.all_imports().collect();
+        assert_eq!(all.len(), 2);
+    }
+
+    #[test]
+    fn test_resolver_base_dir() {
+        let resolver = Resolver::new("/some/path");
+        assert_eq!(resolver.base_dir(), Path::new("/some/path"));
+    }
+
+    #[test]
+    fn test_resolver_get_nonexistent_module() {
+        let resolver = Resolver::new(".");
+        assert!(resolver.get_module("nonexistent").is_none());
+    }
+
+    #[test]
+    fn test_exported_item_variants() {
+        let fn_item = ExportedItem::Function("add".to_string());
+        let struct_item = ExportedItem::Struct("Point".to_string());
+        let enum_item = ExportedItem::Enum("Color".to_string());
+        // Just verify they're constructable and distinguishable
+        assert_ne!(format!("{:?}", fn_item), format!("{:?}", struct_item));
+        assert_ne!(format!("{:?}", struct_item), format!("{:?}", enum_item));
+    }
 }

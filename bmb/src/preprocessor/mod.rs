@@ -237,4 +237,74 @@ fn main() -> i64 = 42;
         let result = expand_includes(source, Path::new("test.bmb"), &[]).unwrap();
         assert!(result.contains("fn main()"));
     }
+
+    // --- Cycle 64: Additional preprocessor tests ---
+
+    #[test]
+    fn test_parse_include_directive_with_spaces() {
+        let pp = Preprocessor::new(vec![]);
+        // Extra spaces should be handled
+        assert_eq!(
+            pp.parse_include_directive("@include  \"file.bmb\"").unwrap(),
+            "file.bmb"
+        );
+    }
+
+    #[test]
+    fn test_parse_include_directive_invalid_syntax() {
+        let pp = Preprocessor::new(vec![]);
+        // Missing quotes
+        let result = pp.parse_include_directive("@include file.bmb");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_include_directive_unclosed_quote() {
+        let pp = Preprocessor::new(vec![]);
+        let result = pp.parse_include_directive("@include \"file.bmb");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_preprocessor_error_display_file_not_found() {
+        let err = PreprocessorError::FileNotFound(
+            "missing.bmb".to_string(),
+            vec![PathBuf::from("/usr/include"), PathBuf::from("./lib")],
+        );
+        let msg = format!("{}", err);
+        assert!(msg.contains("missing.bmb"));
+        assert!(msg.contains("Searched in:"));
+    }
+
+    #[test]
+    fn test_preprocessor_error_display_circular() {
+        let err = PreprocessorError::CircularInclude(PathBuf::from("a.bmb"));
+        let msg = format!("{}", err);
+        assert!(msg.contains("Circular include"));
+        assert!(msg.contains("a.bmb"));
+    }
+
+    #[test]
+    fn test_preprocessor_error_display_invalid_syntax() {
+        let err = PreprocessorError::InvalidSyntax("bad directive".to_string());
+        let msg = format!("{}", err);
+        assert!(msg.contains("Invalid @include syntax"));
+        assert!(msg.contains("bad directive"));
+    }
+
+    #[test]
+    fn test_multiple_non_include_lines() {
+        let source = "fn a() -> i64 = 1;\nfn b() -> i64 = 2;\nfn c() -> i64 = 3;";
+        let result = expand_includes(source, Path::new("test.bmb"), &[]).unwrap();
+        assert!(result.contains("fn a()"));
+        assert!(result.contains("fn b()"));
+        assert!(result.contains("fn c()"));
+    }
+
+    #[test]
+    fn test_include_file_not_found() {
+        let source = "@include \"nonexistent_file_xyz.bmb\"";
+        let result = expand_includes(source, Path::new("test.bmb"), &[]);
+        assert!(result.is_err());
+    }
 }

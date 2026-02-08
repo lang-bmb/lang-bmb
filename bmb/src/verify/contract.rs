@@ -1381,4 +1381,192 @@ mod tests {
             "Satisfiable precondition should not be flagged as dead code"
         );
     }
+
+    // --- Cycle 63: Additional contract verification tests ---
+
+    #[test]
+    fn test_function_report_default_state() {
+        let report = FunctionReport::new("f".to_string());
+        assert_eq!(report.name, "f");
+        assert!(report.pre_result.is_none());
+        assert!(report.post_result.is_none());
+        assert!(report.contract_results.is_empty());
+        assert!(report.refinement_results.is_empty());
+        assert!(report.message.is_none());
+        assert!(!report.trusted);
+        assert!(report.warnings.is_empty());
+    }
+
+    #[test]
+    fn test_function_report_pre_only_verified() {
+        let mut report = FunctionReport::new("f".to_string());
+        report.pre_result = Some(VerifyResult::Verified);
+        report.post_result = Some(VerifyResult::Verified);
+        // No contracts, no refinements → verified
+        assert!(report.is_verified());
+    }
+
+    #[test]
+    fn test_function_report_pre_failure_is_not_verified() {
+        let mut report = FunctionReport::new("f".to_string());
+        report.pre_result = Some(VerifyResult::Failed(Counterexample { assignments: vec![] }));
+        report.post_result = Some(VerifyResult::Verified);
+        assert!(!report.is_verified());
+        assert!(report.has_failure());
+    }
+
+    #[test]
+    fn test_function_report_post_failure_is_not_verified() {
+        let mut report = FunctionReport::new("f".to_string());
+        report.pre_result = Some(VerifyResult::Verified);
+        report.post_result = Some(VerifyResult::Failed(Counterexample { assignments: vec![] }));
+        assert!(!report.is_verified());
+        assert!(report.has_failure());
+    }
+
+    #[test]
+    fn test_verification_report_empty() {
+        let report = VerificationReport::new();
+        assert!(report.all_verified());
+        assert_eq!(report.verified_count(), 0);
+        assert_eq!(report.failed_count(), 0);
+    }
+
+    #[test]
+    fn test_verification_report_all_verified() {
+        let mut report = VerificationReport::new();
+        let mut f1 = FunctionReport::new("a".to_string());
+        f1.pre_result = Some(VerifyResult::Verified);
+        f1.post_result = Some(VerifyResult::Verified);
+        let mut f2 = FunctionReport::new("b".to_string());
+        f2.pre_result = Some(VerifyResult::Verified);
+        f2.post_result = Some(VerifyResult::Verified);
+        report.functions.push(f1);
+        report.functions.push(f2);
+        assert!(report.all_verified());
+        assert_eq!(report.verified_count(), 2);
+        assert_eq!(report.failed_count(), 0);
+    }
+
+    #[test]
+    fn test_verification_report_display_all_verified() {
+        let mut report = VerificationReport::new();
+        let mut f1 = FunctionReport::new("add".to_string());
+        f1.pre_result = Some(VerifyResult::Verified);
+        f1.post_result = Some(VerifyResult::Verified);
+        report.functions.push(f1);
+        let display = format!("{}", report);
+        assert!(display.contains("All 1 function(s) verified successfully"));
+    }
+
+    #[test]
+    fn test_verification_report_display_with_failure() {
+        let mut report = VerificationReport::new();
+        let mut f1 = FunctionReport::new("ok_fn".to_string());
+        f1.pre_result = Some(VerifyResult::Verified);
+        f1.post_result = Some(VerifyResult::Verified);
+        let mut f2 = FunctionReport::new("bad_fn".to_string());
+        f2.pre_result = Some(VerifyResult::Verified);
+        f2.post_result = Some(VerifyResult::Failed(Counterexample { assignments: vec![] }));
+        report.functions.push(f1);
+        report.functions.push(f2);
+        let display = format!("{}", report);
+        assert!(display.contains("Verified: 1/2"));
+        assert!(display.contains("Failed: 1"));
+    }
+
+    #[test]
+    fn test_verify_trust_attribute() {
+        use crate::ast::Attribute;
+
+        let verifier = ContractVerifier::new();
+        let func = FnDef {
+            attributes: vec![Attribute::WithReason {
+                name: spanned("trust".to_string()),
+                reason: spanned("known correct".to_string()),
+                span: dummy_span(),
+            }],
+            visibility: Visibility::Private,
+            is_async: false,
+            name: spanned("trusted_fn".to_string()),
+            type_params: vec![],
+            params: vec![],
+            ret_name: None,
+            ret_ty: spanned(Type::I64),
+            pre: Some(spanned(Expr::Binary {
+                left: Box::new(spanned(Expr::Var("x".to_string()))),
+                op: crate::ast::BinOp::Gt,
+                right: Box::new(spanned(Expr::IntLit(0))),
+            })),
+            post: None,
+            contracts: vec![],
+            body: spanned(Expr::IntLit(42)),
+            span: dummy_span(),
+        };
+
+        let report = verifier.verify_function(&func);
+        assert!(report.is_verified());
+        assert!(report.trusted);
+        assert!(report.message.unwrap().contains("Trusted"));
+    }
+
+    #[test]
+    fn test_verifier_builder_pattern() {
+        let verifier = ContractVerifier::new()
+            .with_timeout(30);
+        // Builder should work without panicking
+        let _available = verifier.is_solver_available();
+    }
+
+    #[test]
+    fn test_no_duplicate_with_different_contracts() {
+        let verifier = ContractVerifier::new();
+
+        let cond1 = spanned(Expr::Binary {
+            left: Box::new(spanned(Expr::Var("x".to_string()))),
+            op: crate::ast::BinOp::Gt,
+            right: Box::new(spanned(Expr::IntLit(0))),
+        });
+        let cond2 = spanned(Expr::Binary {
+            left: Box::new(spanned(Expr::Var("x".to_string()))),
+            op: crate::ast::BinOp::Lt,
+            right: Box::new(spanned(Expr::IntLit(100))),
+        });
+
+        let func = FnDef {
+            attributes: vec![],
+            visibility: Visibility::Private,
+            is_async: false,
+            name: spanned("bounded".to_string()),
+            type_params: vec![],
+            params: vec![crate::ast::Param {
+                name: spanned("x".to_string()),
+                ty: spanned(Type::I64),
+            }],
+            ret_name: None,
+            ret_ty: spanned(Type::I64),
+            pre: None,
+            post: None,
+            contracts: vec![
+                NamedContract {
+                    name: Some(spanned("lower".to_string())),
+                    condition: cond1,
+                    span: dummy_span(),
+                },
+                NamedContract {
+                    name: Some(spanned("upper".to_string())),
+                    condition: cond2,
+                    span: dummy_span(),
+                },
+            ],
+            body: spanned(Expr::Var("x".to_string())),
+            span: dummy_span(),
+        };
+
+        let mut report = FunctionReport::new("bounded".to_string());
+        verifier.detect_duplicate_contracts(&func, &mut report);
+
+        // Different contracts → no duplicate warning
+        assert!(report.warnings.is_empty());
+    }
 }

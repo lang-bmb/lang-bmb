@@ -365,3 +365,85 @@ impl Attribute {
         self.name() == "trust"
     }
 }
+
+// --- Cycle 64: Tests ---
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn dummy_span() -> Span {
+        Span { start: 0, end: 0 }
+    }
+
+    fn spanned<T>(node: T) -> Spanned<T> {
+        Spanned { node, span: dummy_span() }
+    }
+
+    #[test]
+    fn test_attribute_simple_name() {
+        let attr = Attribute::Simple {
+            name: spanned("inline".to_string()),
+            span: dummy_span(),
+        };
+        assert_eq!(attr.name(), "inline");
+        assert!(!attr.is_trust());
+        assert!(attr.reason().is_none());
+    }
+
+    #[test]
+    fn test_attribute_with_args_name() {
+        let attr = Attribute::WithArgs {
+            name: spanned("decreases".to_string()),
+            args: vec![spanned(Expr::Var("n".to_string()))],
+            span: dummy_span(),
+        };
+        assert_eq!(attr.name(), "decreases");
+        assert!(!attr.is_trust());
+        assert!(attr.reason().is_none());
+    }
+
+    #[test]
+    fn test_attribute_trust_with_reason() {
+        let attr = Attribute::WithReason {
+            name: spanned("trust".to_string()),
+            reason: spanned("verified externally".to_string()),
+            span: dummy_span(),
+        };
+        assert_eq!(attr.name(), "trust");
+        assert!(attr.is_trust());
+        assert_eq!(attr.reason(), Some("verified externally"));
+    }
+
+    #[test]
+    fn test_attribute_with_reason_non_trust() {
+        let attr = Attribute::WithReason {
+            name: spanned("other".to_string()),
+            reason: spanned("some reason".to_string()),
+            span: dummy_span(),
+        };
+        assert_eq!(attr.name(), "other");
+        assert!(!attr.is_trust());
+        assert_eq!(attr.reason(), Some("some reason"));
+    }
+
+    #[test]
+    fn test_abi_display() {
+        assert_eq!(Abi::Bmb.to_string(), "bmb");
+        assert_eq!(Abi::C.to_string(), "C");
+        assert_eq!(Abi::System.to_string(), "system");
+    }
+
+    #[test]
+    fn test_abi_default() {
+        let abi = Abi::default();
+        assert_eq!(abi, Abi::Bmb);
+    }
+
+    #[test]
+    fn test_visibility_variants() {
+        let pub_vis = Visibility::Public;
+        let priv_vis = Visibility::Private;
+        assert_ne!(format!("{:?}", pub_vis), format!("{:?}", priv_vis));
+    }
+}
