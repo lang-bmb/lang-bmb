@@ -648,26 +648,32 @@ Visibility: Visibility = {
     => Visibility::Private,
 };
 
-// Attributes (v0.2, v0.31: @trust "reason")
+// Attributes (v0.2, v0.31: @trust "reason", v0.94: @invariant support)
 // Note: Attr+ requires at least one attribute, used to avoid LALRPOP shift/reduce conflicts
 Attr: Attribute = {
     // v0.31: Attribute with mandatory reason string: @trust "reason"
-    <l:@L> "@" <name:Ident> <reason:SpannedString> <r:@R> => Attribute::WithReason {
+    <l:@L> "@" <name:AttrIdent> <reason:SpannedString> <r:@R> => Attribute::WithReason {
         name,
         reason,
         span: Span::new(l, r),
     },
-    // Simple attribute: @name
-    <l:@L> "@" <name:Ident> <r:@R> => Attribute::Simple {
-        name,
-        span: Span::new(l, r),
-    },
     // Attribute with args: @name(arg1, arg2, ...)
-    <l:@L> "@" <name:Ident> "(" <args:Args> ")" <r:@R> => Attribute::WithArgs {
+    <l:@L> "@" <name:AttrIdent> "(" <args:Args> ")" <r:@R> => Attribute::WithArgs {
         name,
         args,
         span: Span::new(l, r),
     },
+    // Simple attribute: @name
+    <l:@L> "@" <name:AttrIdent> <r:@R> => Attribute::Simple {
+        name,
+        span: Span::new(l, r),
+    },
+};
+
+// v0.94: Attribute identifier - accepts keywords that can be used as attribute names
+AttrIdent: Spanned<String> = {
+    <l:@L> <s:RawIdent> <r:@R> => Spanned::new(s, Span::new(l, r)),
+    <l:@L> "invariant" <r:@R> => Spanned::new("invariant".to_string(), Span::new(l, r)),
 };
 
 // Use statement (v0.5 Phase 4)

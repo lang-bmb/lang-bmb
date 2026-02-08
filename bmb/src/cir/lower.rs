@@ -80,10 +80,20 @@ impl CirLowerer {
             .map(|f| (f.name.node.clone(), self.lower_type(&f.ty.node)))
             .collect();
 
+        // v0.94: Extract @invariant attributes as propositions
+        let mut invariants = Vec::new();
+        for attr in &struct_def.attributes {
+            if let ast::Attribute::WithArgs { name, args, .. } = attr
+                && name.node == "invariant"
+            {
+                invariants.extend(args.iter().filter_map(|arg| self.expr_to_proposition(&arg.node)));
+            }
+        }
+
         CirStruct {
             name: struct_def.name.node.clone(),
             fields,
-            invariants: Vec::new(), // TODO: Extract struct invariants from @invariant attributes
+            invariants,
         }
     }
 
@@ -652,16 +662,21 @@ impl CirLowerer {
             }
 
             Expr::Match { expr: scrutinee, arms } => {
-                // Lower match as the scrutinee for now
-                // Proper match lowering would need pattern matching
                 let scrutinee_expr = self.lower_expr(&scrutinee.node);
 
                 if arms.is_empty() {
                     return CirExpr::Unit;
                 }
 
-                // For now, just return the scrutinee - proper match lowering TODO
-                scrutinee_expr
+                // Lower match to nested If chains with a shared scrutinee binding
+                let scrutinee_name = "__match_scrutinee".to_string();
+                let body = self.lower_match_arms(&scrutinee_name, arms);
+                CirExpr::Let {
+                    name: scrutinee_name,
+                    ty: CirType::Infer,
+                    value: Box::new(scrutinee_expr),
+                    body: Box::new(body),
+                }
             }
 
             Expr::ArrayLit(elems) => {
@@ -886,6 +901,331 @@ impl CirLowerer {
 
             Expr::Todo { message } => {
                 CirExpr::Todo(message.clone())
+            }
+        }
+    }
+
+    /// Lower match arms to nested If/Let chains
+    fn lower_match_arms(&self, scrutinee_name: &str, arms: &[ast::MatchArm]) -> CirExpr {
+        if arms.is_empty() {
+            return CirExpr::Unit;
+        }
+
+        let arm = &arms[0];
+        let rest = &arms[1..];
+
+        // Check for wildcard or variable (terminal patterns)
+        match &arm.pattern.node {
+            ast::Pattern::Wildcard => {
+                // Wildcard matches everything - just return the body
+                // Apply guard if present
+                let body = self.lower_expr(&arm.body.node);
+                if let Some(guard) = &arm.guard {
+                    let guard_expr = self.lower_expr(&guard.node);
+                    let else_branch = self.lower_match_arms(scrutinee_name, rest);
+                    CirExpr::If {
+                        cond: Box::new(guard_expr),
+                        then_branch: Box::new(body),
+                        else_branch: Box::new(else_branch),
+                    }
+                } else {
+                    body
+                }
+            }
+            ast::Pattern::Var(var_name) => {
+                // Variable pattern: bind scrutinee to var_name, then evaluate body
+                let body = self.lower_expr(&arm.body.node);
+                let inner = if let Some(guard) = &arm.guard {
+                    let guard_expr = self.lower_expr(&guard.node);
+                    let else_branch = self.lower_match_arms(scrutinee_name, rest);
+                    CirExpr::If {
+                        cond: Box::new(guard_expr),
+                        then_branch: Box::new(body),
+                        else_branch: Box::new(else_branch),
+                    }
+                } else {
+                    body
+                };
+                CirExpr::Let {
+                    name: var_name.clone(),
+                    ty: CirType::Infer,
+                    value: Box::new(CirExpr::Var(scrutinee_name.to_string())),
+                    body: Box::new(inner),
+                }
+            }
+            _ => {
+                // Generate condition from pattern
+                let cond = self.pattern_to_condition(scrutinee_name, &arm.pattern.node);
+                let body = self.lower_expr(&arm.body.node);
+
+                // Wrap body with pattern bindings
+                let body_with_bindings = self.wrap_with_pattern_bindings(
+                    scrutinee_name, &arm.pattern.node, body
+                );
+
+                // Apply guard if present
+                let full_cond = if let Some(guard) = &arm.guard {
+                    let guard_expr = self.lower_expr(&guard.node);
+                    CirExpr::BinOp {
+                        op: BinOp::And,
+                        lhs: Box::new(cond),
+                        rhs: Box::new(guard_expr),
+                    }
+                } else {
+                    cond
+                };
+
+                let else_branch = self.lower_match_arms(scrutinee_name, rest);
+
+                CirExpr::If {
+                    cond: Box::new(full_cond),
+                    then_branch: Box::new(body_with_bindings),
+                    else_branch: Box::new(else_branch),
+                }
+            }
+        }
+    }
+
+    /// Convert a pattern to a CIR condition expression
+    fn pattern_to_condition(&self, scrutinee: &str, pattern: &ast::Pattern) -> CirExpr {
+        let scrut = CirExpr::Var(scrutinee.to_string());
+        match pattern {
+            ast::Pattern::Wildcard => CirExpr::BoolLit(true),
+            ast::Pattern::Var(_) => CirExpr::BoolLit(true),
+            ast::Pattern::Literal(lit) => {
+                let lit_expr = self.literal_pattern_to_expr(lit);
+                CirExpr::BinOp {
+                    op: BinOp::Eq,
+                    lhs: Box::new(scrut),
+                    rhs: Box::new(lit_expr),
+                }
+            }
+            ast::Pattern::EnumVariant { enum_name, variant, .. } => {
+                // Check variant tag equality
+                CirExpr::Call {
+                    func: format!("__is_{}_{}", enum_name, variant),
+                    args: vec![scrut],
+                }
+            }
+            ast::Pattern::Range { start, end, inclusive } => {
+                let start_expr = self.literal_pattern_to_expr(start);
+                let end_expr = self.literal_pattern_to_expr(end);
+                let ge = CirExpr::BinOp {
+                    op: BinOp::Ge,
+                    lhs: Box::new(scrut.clone()),
+                    rhs: Box::new(start_expr),
+                };
+                let upper = if *inclusive {
+                    CirExpr::BinOp {
+                        op: BinOp::Le,
+                        lhs: Box::new(scrut),
+                        rhs: Box::new(end_expr),
+                    }
+                } else {
+                    CirExpr::BinOp {
+                        op: BinOp::Lt,
+                        lhs: Box::new(scrut),
+                        rhs: Box::new(end_expr),
+                    }
+                };
+                CirExpr::BinOp {
+                    op: BinOp::And,
+                    lhs: Box::new(ge),
+                    rhs: Box::new(upper),
+                }
+            }
+            ast::Pattern::Or(alternatives) => {
+                // Or-pattern: any of the alternatives matches
+                let conditions: Vec<CirExpr> = alternatives
+                    .iter()
+                    .map(|alt| self.pattern_to_condition(scrutinee, &alt.node))
+                    .collect();
+                conditions.into_iter().reduce(|acc, c| {
+                    CirExpr::BinOp {
+                        op: BinOp::Or,
+                        lhs: Box::new(acc),
+                        rhs: Box::new(c),
+                    }
+                }).unwrap_or(CirExpr::BoolLit(false))
+            }
+            ast::Pattern::Binding { pattern: inner, .. } => {
+                // The condition comes from the inner pattern
+                self.pattern_to_condition(scrutinee, &inner.node)
+            }
+            ast::Pattern::Tuple(pats) => {
+                // All sub-patterns must match their respective fields
+                let conditions: Vec<CirExpr> = pats.iter().enumerate().map(|(i, p)| {
+                    let field_scrut = format!("{}_{}", scrutinee, i);
+                    self.pattern_to_condition(&field_scrut, &p.node)
+                }).collect();
+                conditions.into_iter().reduce(|acc, c| {
+                    CirExpr::BinOp {
+                        op: BinOp::And,
+                        lhs: Box::new(acc),
+                        rhs: Box::new(c),
+                    }
+                }).unwrap_or(CirExpr::BoolLit(true))
+            }
+            ast::Pattern::Struct { .. } => {
+                // Struct patterns always match the right type (type checker ensures this)
+                CirExpr::BoolLit(true)
+            }
+            ast::Pattern::Array(_) | ast::Pattern::ArrayRest { .. } => {
+                // Array patterns: type-checked for size already
+                CirExpr::BoolLit(true)
+            }
+        }
+    }
+
+    /// Convert a literal pattern to a CIR expression
+    fn literal_pattern_to_expr(&self, lit: &ast::LiteralPattern) -> CirExpr {
+        match lit {
+            ast::LiteralPattern::Int(n) => CirExpr::IntLit(*n),
+            ast::LiteralPattern::Float(f) => CirExpr::FloatLit(f.to_bits()),
+            ast::LiteralPattern::Bool(b) => CirExpr::BoolLit(*b),
+            ast::LiteralPattern::String(s) => CirExpr::StringLit(s.clone()),
+        }
+    }
+
+    /// Wrap an expression with Let bindings for pattern variables
+    fn wrap_with_pattern_bindings(&self, scrutinee: &str, pattern: &ast::Pattern, body: CirExpr) -> CirExpr {
+        match pattern {
+            ast::Pattern::Wildcard | ast::Pattern::Literal(_) | ast::Pattern::Range { .. } => body,
+            ast::Pattern::Var(name) => {
+                CirExpr::Let {
+                    name: name.clone(),
+                    ty: CirType::Infer,
+                    value: Box::new(CirExpr::Var(scrutinee.to_string())),
+                    body: Box::new(body),
+                }
+            }
+            ast::Pattern::Binding { name, pattern: inner } => {
+                let inner_body = self.wrap_with_pattern_bindings(scrutinee, &inner.node, body);
+                CirExpr::Let {
+                    name: name.clone(),
+                    ty: CirType::Infer,
+                    value: Box::new(CirExpr::Var(scrutinee.to_string())),
+                    body: Box::new(inner_body),
+                }
+            }
+            ast::Pattern::EnumVariant { bindings, .. } => {
+                // Bind each destructured field
+                let mut result = body;
+                for (i, binding) in bindings.iter().enumerate().rev() {
+                    let field_expr = CirExpr::Call {
+                        func: "__enum_field".to_string(),
+                        args: vec![CirExpr::Var(scrutinee.to_string()), CirExpr::IntLit(i as i64)],
+                    };
+                    result = self.wrap_with_pattern_bindings(
+                        &format!("__enum_field_{}_{}", scrutinee, i),
+                        &binding.node,
+                        result,
+                    );
+                    if let ast::Pattern::Var(var_name) = &binding.node {
+                        result = CirExpr::Let {
+                            name: var_name.clone(),
+                            ty: CirType::Infer,
+                            value: Box::new(field_expr),
+                            body: Box::new(result),
+                        };
+                    }
+                }
+                result
+            }
+            ast::Pattern::Struct { fields, .. } => {
+                let mut result = body;
+                for (field_name, field_pat) in fields.iter().rev() {
+                    let field_expr = CirExpr::Field {
+                        base: Box::new(CirExpr::Var(scrutinee.to_string())),
+                        field: field_name.node.clone(),
+                    };
+                    if let ast::Pattern::Var(var_name) = &field_pat.node {
+                        result = CirExpr::Let {
+                            name: var_name.clone(),
+                            ty: CirType::Infer,
+                            value: Box::new(field_expr),
+                            body: Box::new(result),
+                        };
+                    }
+                }
+                result
+            }
+            ast::Pattern::Or(_) => body, // Or-patterns don't introduce bindings at CIR level
+            ast::Pattern::Tuple(pats) => {
+                let mut result = body;
+                for (i, pat) in pats.iter().enumerate().rev() {
+                    if let ast::Pattern::Var(var_name) = &pat.node {
+                        let field_expr = CirExpr::Field {
+                            base: Box::new(CirExpr::Var(scrutinee.to_string())),
+                            field: i.to_string(),
+                        };
+                        result = CirExpr::Let {
+                            name: var_name.clone(),
+                            ty: CirType::Infer,
+                            value: Box::new(field_expr),
+                            body: Box::new(result),
+                        };
+                    }
+                }
+                result
+            }
+            ast::Pattern::Array(pats) => {
+                let mut result = body;
+                for (i, pat) in pats.iter().enumerate().rev() {
+                    if let ast::Pattern::Var(var_name) = &pat.node {
+                        let idx_expr = CirExpr::Index {
+                            base: Box::new(CirExpr::Var(scrutinee.to_string())),
+                            index: Box::new(CirExpr::IntLit(i as i64)),
+                        };
+                        result = CirExpr::Let {
+                            name: var_name.clone(),
+                            ty: CirType::Infer,
+                            value: Box::new(idx_expr),
+                            body: Box::new(result),
+                        };
+                    }
+                }
+                result
+            }
+            ast::Pattern::ArrayRest { prefix, suffix } => {
+                let mut result = body;
+                for (i, pat) in prefix.iter().enumerate().rev() {
+                    if let ast::Pattern::Var(var_name) = &pat.node {
+                        let idx_expr = CirExpr::Index {
+                            base: Box::new(CirExpr::Var(scrutinee.to_string())),
+                            index: Box::new(CirExpr::IntLit(i as i64)),
+                        };
+                        result = CirExpr::Let {
+                            name: var_name.clone(),
+                            ty: CirType::Infer,
+                            value: Box::new(idx_expr),
+                            body: Box::new(result),
+                        };
+                    }
+                }
+                // Suffix bindings use negative-offset-from-end semantics via Len
+                for (i, pat) in suffix.iter().enumerate().rev() {
+                    if let ast::Pattern::Var(var_name) = &pat.node {
+                        let len_expr = CirExpr::Len(Box::new(CirExpr::Var(scrutinee.to_string())));
+                        let offset = CirExpr::IntLit((suffix.len() - i) as i64);
+                        let idx = CirExpr::BinOp {
+                            op: BinOp::Sub,
+                            lhs: Box::new(len_expr),
+                            rhs: Box::new(offset),
+                        };
+                        let idx_expr = CirExpr::Index {
+                            base: Box::new(CirExpr::Var(scrutinee.to_string())),
+                            index: Box::new(idx),
+                        };
+                        result = CirExpr::Let {
+                            name: var_name.clone(),
+                            ty: CirType::Infer,
+                            value: Box::new(idx_expr),
+                            body: Box::new(result),
+                        };
+                    }
+                }
+                result
             }
         }
     }
@@ -1454,5 +1794,126 @@ mod tests {
         let lowerer = CirLowerer::new();
         let result = lowerer.lower_expr(&Expr::Block(vec![]));
         assert_eq!(result, CirExpr::Unit);
+    }
+
+    // ---- Cycle 92: CIR match lowering tests ----
+
+    #[test]
+    fn test_lower_match_literal_arms() {
+        let cir = source_to_cir(
+            "fn classify(x: i64) -> i64 = match x { 0 => 10, 1 => 20, _ => 30 };"
+        );
+        let func = &cir.functions[0];
+        // Should be a Let binding for __match_scrutinee wrapping nested If
+        match &func.body {
+            CirExpr::Let { name, .. } => {
+                assert_eq!(name, "__match_scrutinee");
+            }
+            other => panic!("Expected Let for match scrutinee, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_lower_match_wildcard_only() {
+        let cir = source_to_cir(
+            "fn identity(x: i64) -> i64 = match x { _ => x };"
+        );
+        let func = &cir.functions[0];
+        // Wildcard-only match should still wrap in Let
+        match &func.body {
+            CirExpr::Let { name, .. } => {
+                assert_eq!(name, "__match_scrutinee");
+            }
+            other => panic!("Expected Let for match scrutinee, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_lower_match_var_binding() {
+        let cir = source_to_cir(
+            "fn double(x: i64) -> i64 = match x { n => n + n };"
+        );
+        let func = &cir.functions[0];
+        match &func.body {
+            CirExpr::Let { name, body, .. } => {
+                assert_eq!(name, "__match_scrutinee");
+                // Body should be a Let binding for 'n'
+                match body.as_ref() {
+                    CirExpr::Let { name: inner_name, .. } => {
+                        assert_eq!(inner_name, "n");
+                    }
+                    other => panic!("Expected inner Let for var binding, got {:?}", other),
+                }
+            }
+            other => panic!("Expected Let, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_lower_match_bool_patterns() {
+        let cir = source_to_cir(
+            "fn to_int(b: bool) -> i64 = match b { true => 1, false => 0 };"
+        );
+        let func = &cir.functions[0];
+        match &func.body {
+            CirExpr::Let { name, .. } => {
+                assert_eq!(name, "__match_scrutinee");
+            }
+            other => panic!("Expected Let for match scrutinee, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_lower_match_empty_arms() {
+        // Empty match should produce Unit
+        let lowerer = CirLowerer::new();
+        let span = crate::ast::Span { start: 0, end: 1 };
+        let expr = Expr::Match {
+            expr: Box::new(crate::ast::Spanned { node: Expr::IntLit(0), span }),
+            arms: vec![],
+        };
+        let result = lowerer.lower_expr(&expr);
+        assert_eq!(result, CirExpr::Unit);
+    }
+
+    #[test]
+    fn test_lower_match_multiple_literals() {
+        let cir = source_to_cir(
+            "fn grade(x: i64) -> i64 = match x { 1 => 100, 2 => 90, 3 => 80, _ => 0 };"
+        );
+        let func = &cir.functions[0];
+        // Verify the structure has If chains
+        match &func.body {
+            CirExpr::Let { body, .. } => {
+                match body.as_ref() {
+                    CirExpr::If { .. } => {} // Should be nested Ifs
+                    other => panic!("Expected If chain, got {:?}", other),
+                }
+            }
+            other => panic!("Expected Let, got {:?}", other),
+        }
+    }
+
+    // ---- Cycle 94: Struct invariant tests ----
+
+    #[test]
+    fn test_lower_struct_with_invariant() {
+        let cir = source_to_cir(
+            "@invariant(self.min <= self.max)
+             struct Range { min: i64, max: i64 }
+             fn make(a: i64, b: i64) -> Range = new Range { min: a, max: b };"
+        );
+        let range_struct = &cir.structs["Range"];
+        assert!(!range_struct.invariants.is_empty(), "Should have extracted invariant");
+    }
+
+    #[test]
+    fn test_lower_struct_no_invariant() {
+        let cir = source_to_cir(
+            "struct Point { x: i64, y: i64 }
+             fn origin() -> Point = new Point { x: 0, y: 0 };"
+        );
+        let point = &cir.structs["Point"];
+        assert!(point.invariants.is_empty(), "No invariant declared");
     }
 }

@@ -1687,4 +1687,607 @@ mod tests {
         assert!(json.contains("NOT_FOUND"));
         assert!(json.contains("bar"));
     }
+
+    // --- Cycle 88: QueryEngine + format + proof query tests ---
+
+    use crate::index::{
+        BodyInfo, ContractExpr, ContractInfo, FieldInfo, FunctionSignature, Manifest,
+        ParamInfo,
+    };
+
+    fn make_test_index() -> ProjectIndex {
+        ProjectIndex {
+            manifest: Manifest {
+                version: "1.0".to_string(),
+                bmb_version: "0.89".to_string(),
+                project: "test".to_string(),
+                indexed_at: "2025-01-01".to_string(),
+                files: 2,
+                functions: 3,
+                types: 2,
+                structs: 1,
+                enums: 1,
+                contracts: 1,
+            },
+            symbols: vec![
+                SymbolEntry {
+                    kind: SymbolKind::Function,
+                    name: "add".to_string(),
+                    file: "math.bmb".to_string(),
+                    line: 1,
+                    is_pub: true,
+                    signature: Some("fn(a: i64, b: i64) -> i64".to_string()),
+                    doc: None,
+                },
+                SymbolEntry {
+                    kind: SymbolKind::Struct,
+                    name: "Point".to_string(),
+                    file: "geo.bmb".to_string(),
+                    line: 5,
+                    is_pub: true,
+                    signature: None,
+                    doc: None,
+                },
+                SymbolEntry {
+                    kind: SymbolKind::Function,
+                    name: "helper".to_string(),
+                    file: "util.bmb".to_string(),
+                    line: 10,
+                    is_pub: false,
+                    signature: None,
+                    doc: None,
+                },
+            ],
+            functions: vec![
+                FunctionEntry {
+                    name: "add".to_string(),
+                    file: "math.bmb".to_string(),
+                    line: 1,
+                    is_pub: true,
+                    signature: FunctionSignature {
+                        params: vec![
+                            ParamInfo { name: "a".to_string(), ty: "i64".to_string() },
+                            ParamInfo { name: "b".to_string(), ty: "i64".to_string() },
+                        ],
+                        return_type: "i64".to_string(),
+                    },
+                    contracts: Some(ContractInfo {
+                        pre: Some(vec![ContractExpr {
+                            expr: "a >= 0".to_string(),
+                            quantifiers: vec![],
+                            calls: vec![],
+                            uses_old: false,
+                            uses_ret: false,
+                        }]),
+                        post: Some(vec![ContractExpr {
+                            expr: "ret >= a".to_string(),
+                            quantifiers: vec![],
+                            calls: vec![],
+                            uses_old: false,
+                            uses_ret: true,
+                        }]),
+                    }),
+                    body_info: Some(BodyInfo {
+                        calls: vec!["helper".to_string()],
+                        recursive: false,
+                        has_loop: false,
+                    }),
+                },
+                FunctionEntry {
+                    name: "helper".to_string(),
+                    file: "util.bmb".to_string(),
+                    line: 10,
+                    is_pub: false,
+                    signature: FunctionSignature {
+                        params: vec![ParamInfo { name: "x".to_string(), ty: "Point".to_string() }],
+                        return_type: "i64".to_string(),
+                    },
+                    contracts: None,
+                    body_info: Some(BodyInfo {
+                        calls: vec![],
+                        recursive: false,
+                        has_loop: true,
+                    }),
+                },
+                FunctionEntry {
+                    name: "recursive_fn".to_string(),
+                    file: "math.bmb".to_string(),
+                    line: 20,
+                    is_pub: true,
+                    signature: FunctionSignature {
+                        params: vec![ParamInfo { name: "n".to_string(), ty: "i64".to_string() }],
+                        return_type: "i64".to_string(),
+                    },
+                    contracts: None,
+                    body_info: Some(BodyInfo {
+                        calls: vec!["recursive_fn".to_string(), "add".to_string()],
+                        recursive: true,
+                        has_loop: false,
+                    }),
+                },
+            ],
+            types: vec![
+                TypeEntry {
+                    name: "Point".to_string(),
+                    file: "geo.bmb".to_string(),
+                    line: 5,
+                    is_pub: true,
+                    kind: "struct".to_string(),
+                    fields: vec![
+                        FieldInfo { name: "x".to_string(), ty: "f64".to_string() },
+                        FieldInfo { name: "y".to_string(), ty: "f64".to_string() },
+                    ],
+                    variants: vec![],
+                    refinement: None,
+                },
+                TypeEntry {
+                    name: "Color".to_string(),
+                    file: "geo.bmb".to_string(),
+                    line: 15,
+                    is_pub: false,
+                    kind: "enum".to_string(),
+                    fields: vec![],
+                    variants: vec!["Red".to_string(), "Green".to_string(), "Blue".to_string()],
+                    refinement: None,
+                },
+            ],
+        }
+    }
+
+    #[test]
+    fn test_query_symbols_found() {
+        let engine = QueryEngine::new(make_test_index());
+        let result = engine.query_symbols("add", None, false);
+        assert!(result.error.is_none());
+        assert_eq!(result.matches.as_ref().unwrap().len(), 1);
+        assert_eq!(result.matches.unwrap()[0].name, "add");
+    }
+
+    #[test]
+    fn test_query_symbols_case_insensitive() {
+        let engine = QueryEngine::new(make_test_index());
+        let result = engine.query_symbols("ADD", None, false);
+        assert!(result.error.is_none());
+        assert_eq!(result.matches.unwrap().len(), 1);
+    }
+
+    #[test]
+    fn test_query_symbols_by_kind() {
+        let engine = QueryEngine::new(make_test_index());
+        let result = engine.query_symbols("", Some(SymbolKind::Struct), false);
+        assert!(result.error.is_none());
+        let matches = result.matches.unwrap();
+        assert!(matches.iter().all(|s| s.kind == SymbolKind::Struct));
+    }
+
+    #[test]
+    fn test_query_symbols_pub_only() {
+        let engine = QueryEngine::new(make_test_index());
+        let result = engine.query_symbols("", None, true);
+        assert!(result.error.is_none());
+        let matches = result.matches.unwrap();
+        assert!(matches.iter().all(|s| s.is_pub));
+    }
+
+    #[test]
+    fn test_query_symbols_not_found() {
+        let engine = QueryEngine::new(make_test_index());
+        let result = engine.query_symbols("zzzzz_nonexistent", None, false);
+        assert!(result.error.is_some());
+        assert_eq!(result.error.unwrap().code, "NOT_FOUND");
+    }
+
+    #[test]
+    fn test_query_function_found() {
+        let engine = QueryEngine::new(make_test_index());
+        let result = engine.query_function("add");
+        assert!(result.error.is_none());
+        let f = result.result.unwrap();
+        assert_eq!(f.name, "add");
+        assert!(f.contracts.is_some());
+    }
+
+    #[test]
+    fn test_query_function_not_found() {
+        let engine = QueryEngine::new(make_test_index());
+        let result = engine.query_function("nonexistent");
+        assert!(result.error.is_some());
+        assert_eq!(result.error.unwrap().code, "NOT_FOUND");
+    }
+
+    #[test]
+    fn test_query_functions_with_pre() {
+        let engine = QueryEngine::new(make_test_index());
+        let result = engine.query_functions(Some(true), None, None, false);
+        let matches = result.matches.unwrap();
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].name, "add");
+    }
+
+    #[test]
+    fn test_query_functions_recursive() {
+        let engine = QueryEngine::new(make_test_index());
+        let result = engine.query_functions(None, None, Some(true), false);
+        let matches = result.matches.unwrap();
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].name, "recursive_fn");
+    }
+
+    #[test]
+    fn test_query_type_found() {
+        let engine = QueryEngine::new(make_test_index());
+        let result = engine.query_type("Point");
+        assert!(result.error.is_none());
+        let t = result.result.unwrap();
+        assert_eq!(t.kind, "struct");
+        assert_eq!(t.fields.len(), 2);
+    }
+
+    #[test]
+    fn test_query_type_not_found() {
+        let engine = QueryEngine::new(make_test_index());
+        let result = engine.query_type("NonExistentType");
+        assert!(result.error.is_some());
+    }
+
+    #[test]
+    fn test_query_types_by_kind() {
+        let engine = QueryEngine::new(make_test_index());
+        let result = engine.query_types(Some("enum"), false);
+        let matches = result.matches.unwrap();
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].name, "Color");
+    }
+
+    #[test]
+    fn test_query_types_pub_only() {
+        let engine = QueryEngine::new(make_test_index());
+        let result = engine.query_types(None, true);
+        let matches = result.matches.unwrap();
+        assert!(matches.iter().all(|t| t.is_pub));
+        assert_eq!(matches.len(), 1); // only Point is pub
+    }
+
+    #[test]
+    fn test_query_metrics() {
+        let engine = QueryEngine::new(make_test_index());
+        let metrics = engine.query_metrics();
+        assert_eq!(metrics.project.functions, 3);
+        assert_eq!(metrics.project.types, 2);
+        assert_eq!(metrics.contract_usage.functions_with_pre, 1);
+        assert_eq!(metrics.contract_usage.functions_with_post, 1);
+        assert_eq!(metrics.contract_usage.functions_with_both, 1);
+        assert_eq!(metrics.body_analysis.recursive_functions, 1);
+    }
+
+    #[test]
+    fn test_query_deps_function() {
+        let engine = QueryEngine::new(make_test_index());
+        let result = engine.query_deps("fn:add", false, false);
+        assert!(result.error.is_none());
+        assert_eq!(result.calls.len(), 1);
+        assert_eq!(result.calls[0].name, "helper");
+    }
+
+    #[test]
+    fn test_query_deps_reverse() {
+        let engine = QueryEngine::new(make_test_index());
+        let result = engine.query_deps("fn:add", true, false);
+        assert!(result.error.is_none());
+        assert_eq!(result.called_by.len(), 1);
+        assert_eq!(result.called_by[0].name, "recursive_fn");
+    }
+
+    #[test]
+    fn test_query_deps_invalid_kind() {
+        let engine = QueryEngine::new(make_test_index());
+        let result = engine.query_deps("invalid:foo", false, false);
+        assert!(result.error.is_some());
+        assert_eq!(result.error.unwrap().code, "INVALID_TARGET");
+    }
+
+    #[test]
+    fn test_query_deps_type() {
+        let engine = QueryEngine::new(make_test_index());
+        let result = engine.query_deps("type:Point", true, false);
+        assert!(result.error.is_none());
+        // helper function accepts Point
+        assert!(!result.called_by.is_empty());
+    }
+
+    #[test]
+    fn test_query_contract() {
+        let engine = QueryEngine::new(make_test_index());
+        let result = engine.query_contract("add", false);
+        assert!(result.error.is_none());
+        assert!(result.pre.is_some());
+        assert!(result.post.is_some());
+        assert_eq!(result.pre.unwrap()[0].expr, "a >= 0");
+    }
+
+    #[test]
+    fn test_query_contract_not_found() {
+        let engine = QueryEngine::new(make_test_index());
+        let result = engine.query_contract("nonexistent", false);
+        assert!(result.error.is_some());
+    }
+
+    #[test]
+    fn test_query_context_function() {
+        let engine = QueryEngine::new(make_test_index());
+        let result = engine.query_context("fn:add", 1, false);
+        assert!(result.error.is_none());
+        assert_eq!(result.target.name, "add");
+        assert!(result.target.signature.is_some());
+    }
+
+    #[test]
+    fn test_query_context_invalid_kind() {
+        let engine = QueryEngine::new(make_test_index());
+        let result = engine.query_context("bad:foo", 1, false);
+        assert!(result.error.is_some());
+        assert_eq!(result.error.unwrap().code, "INVALID_TARGET");
+    }
+
+    #[test]
+    fn test_query_signature_by_returns() {
+        let engine = QueryEngine::new(make_test_index());
+        let result = engine.query_signature("", None, Some("i64"));
+        assert!(result.error.is_none());
+        assert!(!result.matches.is_empty());
+    }
+
+    #[test]
+    fn test_query_signature_by_accepts() {
+        let engine = QueryEngine::new(make_test_index());
+        let result = engine.query_signature("", Some("Point"), None);
+        assert!(result.error.is_none());
+        assert_eq!(result.matches.len(), 1);
+        assert_eq!(result.matches[0].name, "helper");
+    }
+
+    #[test]
+    fn test_query_impact_breaking_change() {
+        let engine = QueryEngine::new(make_test_index());
+        let result = engine.query_impact("fn:add", "add param z: i64");
+        assert!(result.error.is_none());
+        assert!(result.impact.breaking);
+        assert!(!result.impact.direct_callers.is_empty());
+    }
+
+    #[test]
+    fn test_query_impact_non_breaking() {
+        let engine = QueryEngine::new(make_test_index());
+        let result = engine.query_impact("fn:add", "optimize body");
+        assert!(result.error.is_none());
+        assert!(!result.impact.breaking);
+    }
+
+    #[test]
+    fn test_query_impact_unsupported_type() {
+        let engine = QueryEngine::new(make_test_index());
+        let result = engine.query_impact("type:Point", "add field");
+        assert!(result.error.is_some());
+        assert_eq!(result.error.unwrap().code, "UNSUPPORTED");
+    }
+
+    #[test]
+    fn test_format_llm_value_primitives() {
+        assert_eq!(format_llm_value(&serde_json::Value::Null, 0), "");
+        assert_eq!(format_llm_value(&serde_json::Value::Bool(true), 0), "true");
+        assert_eq!(format_llm_value(&serde_json::json!(42), 0), "42");
+        assert_eq!(format_llm_value(&serde_json::Value::String("hello".to_string()), 0), "hello");
+    }
+
+    #[test]
+    fn test_format_llm_value_array() {
+        let arr = serde_json::json!(["a", "b"]);
+        let result = format_llm_value(&arr, 0);
+        assert!(result.contains('a'));
+        assert!(result.contains('b'));
+    }
+
+    #[test]
+    fn test_query_proofs_all() {
+        let proof_index = ProofIndex {
+            version: "1.0".to_string(),
+            verified_at: "2025-01-01".to_string(),
+            z3_available: true,
+            z3_version: Some("4.12.0".to_string()),
+            proofs: vec![
+                ProofEntry {
+                    name: "add".to_string(),
+                    file: "math.bmb".to_string(),
+                    line: 1,
+                    pre_status: Some(ProofStatus::Verified),
+                    post_status: Some(ProofStatus::Verified),
+                    counterexample: None,
+                    verify_time_ms: Some(50),
+                    verified_at: None,
+                },
+            ],
+        };
+        let result = query_proofs(&proof_index, None, false, false, false);
+        assert_eq!(result.query, "proof:all");
+        assert!(result.z3_available);
+        assert_eq!(result.proofs.len(), 1);
+    }
+
+    #[test]
+    fn test_query_proofs_by_name() {
+        let proof_index = ProofIndex {
+            version: "1.0".to_string(),
+            verified_at: "2025-01-01".to_string(),
+            z3_available: true,
+            z3_version: None,
+            proofs: vec![
+                ProofEntry {
+                    name: "add".to_string(),
+                    file: "a.bmb".to_string(),
+                    line: 1,
+                    pre_status: Some(ProofStatus::Verified),
+                    post_status: None,
+                    counterexample: None,
+                    verify_time_ms: None,
+                    verified_at: None,
+                },
+                ProofEntry {
+                    name: "sub".to_string(),
+                    file: "a.bmb".to_string(),
+                    line: 5,
+                    pre_status: Some(ProofStatus::Failed),
+                    post_status: None,
+                    counterexample: None,
+                    verify_time_ms: None,
+                    verified_at: None,
+                },
+            ],
+        };
+        let result = query_proofs(&proof_index, Some("add"), false, false, false);
+        assert_eq!(result.proofs.len(), 1);
+        assert_eq!(result.proofs[0].name, "add");
+    }
+
+    #[test]
+    fn test_query_proofs_failed_filter() {
+        let proof_index = ProofIndex {
+            version: "1.0".to_string(),
+            verified_at: "2025-01-01".to_string(),
+            z3_available: true,
+            z3_version: None,
+            proofs: vec![
+                ProofEntry {
+                    name: "good".to_string(),
+                    file: "a.bmb".to_string(),
+                    line: 1,
+                    pre_status: Some(ProofStatus::Verified),
+                    post_status: Some(ProofStatus::Verified),
+                    counterexample: None,
+                    verify_time_ms: None,
+                    verified_at: None,
+                },
+                ProofEntry {
+                    name: "bad".to_string(),
+                    file: "a.bmb".to_string(),
+                    line: 5,
+                    pre_status: Some(ProofStatus::Failed),
+                    post_status: None,
+                    counterexample: None,
+                    verify_time_ms: None,
+                    verified_at: None,
+                },
+            ],
+        };
+        let result = query_proofs(&proof_index, None, false, true, false);
+        assert_eq!(result.proofs.len(), 1);
+        assert_eq!(result.proofs[0].name, "bad");
+        assert_eq!(result.query, "proof:--failed");
+    }
+
+    #[test]
+    fn test_query_proofs_timeout_filter() {
+        let proof_index = ProofIndex {
+            version: "1.0".to_string(),
+            verified_at: "2025-01-01".to_string(),
+            z3_available: true,
+            z3_version: None,
+            proofs: vec![
+                ProofEntry {
+                    name: "slow".to_string(),
+                    file: "a.bmb".to_string(),
+                    line: 1,
+                    pre_status: Some(ProofStatus::Timeout),
+                    post_status: None,
+                    counterexample: None,
+                    verify_time_ms: None,
+                    verified_at: None,
+                },
+            ],
+        };
+        let result = query_proofs(&proof_index, None, false, false, true);
+        assert_eq!(result.proofs.len(), 1);
+        assert_eq!(result.query, "proof:--timeout");
+    }
+
+    #[test]
+    fn test_query_proofs_unverified_filter() {
+        let proof_index = ProofIndex {
+            version: "1.0".to_string(),
+            verified_at: "2025-01-01".to_string(),
+            z3_available: false,
+            z3_version: None,
+            proofs: vec![
+                ProofEntry {
+                    name: "verified".to_string(),
+                    file: "a.bmb".to_string(),
+                    line: 1,
+                    pre_status: Some(ProofStatus::Verified),
+                    post_status: Some(ProofStatus::Verified),
+                    counterexample: None,
+                    verify_time_ms: None,
+                    verified_at: None,
+                },
+                ProofEntry {
+                    name: "pending".to_string(),
+                    file: "a.bmb".to_string(),
+                    line: 5,
+                    pre_status: Some(ProofStatus::Pending),
+                    post_status: None,
+                    counterexample: None,
+                    verify_time_ms: None,
+                    verified_at: None,
+                },
+            ],
+        };
+        let result = query_proofs(&proof_index, None, true, false, false);
+        assert_eq!(result.query, "proof:--unverified");
+        // "pending" has non-verified pre, "verified" has both verified
+        assert!(!result.proofs.is_empty());
+    }
+
+    #[test]
+    fn test_is_false_helper() {
+        assert!(is_false(&false));
+        assert!(!is_false(&true));
+    }
+
+    #[test]
+    fn test_query_result_serialization() {
+        let qr: QueryResult<String> = QueryResult {
+            query: "test".to_string(),
+            matches: Some(vec!["a".to_string()]),
+            result: None,
+            error: None,
+        };
+        let json = serde_json::to_string(&qr).unwrap();
+        assert!(json.contains("test"));
+        assert!(json.contains("matches"));
+        assert!(!json.contains("error"));  // None fields skipped
+    }
+
+    #[test]
+    fn test_query_context_type() {
+        let engine = QueryEngine::new(make_test_index());
+        let result = engine.query_context("type:Point", 1, false);
+        assert!(result.error.is_none());
+        assert_eq!(result.target.name, "Point");
+        // helper uses Point in its signature
+        assert!(!result.dependencies.functions.is_empty());
+    }
+
+    #[test]
+    fn test_query_deps_not_found() {
+        let engine = QueryEngine::new(make_test_index());
+        let result = engine.query_deps("fn:nonexistent", false, false);
+        assert!(result.error.is_some());
+        assert_eq!(result.error.unwrap().code, "NOT_FOUND");
+    }
+
+    #[test]
+    fn test_query_signature_all() {
+        let engine = QueryEngine::new(make_test_index());
+        let result = engine.query_signature("", None, None);
+        assert_eq!(result.query, "all");
+        assert_eq!(result.matches.len(), 3);
+    }
 }

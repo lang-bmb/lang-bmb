@@ -4289,4 +4289,218 @@ mod tests {
         );
         assert!(!mir.struct_defs.is_empty());
     }
+
+    // --- Cycle 91: Extended MIR lowering tests ---
+
+    #[test]
+    fn test_lower_wrapping_add() {
+        let mir = parse_and_lower("fn wrap(a: i64, b: i64) -> i64 = a +% b;");
+        let func = &mir.functions[0];
+        let has_wrap = func.blocks.iter().any(|b| {
+            b.instructions.iter().any(|inst| matches!(inst, MirInst::BinOp { op: MirBinOp::AddWrap, .. }))
+        });
+        assert!(has_wrap, "Expected WrappingAdd instruction");
+    }
+
+    #[test]
+    fn test_lower_wrapping_sub() {
+        let mir = parse_and_lower("fn wrap(a: i64, b: i64) -> i64 = a -% b;");
+        let func = &mir.functions[0];
+        let has_wrap = func.blocks.iter().any(|b| {
+            b.instructions.iter().any(|inst| matches!(inst, MirInst::BinOp { op: MirBinOp::SubWrap, .. }))
+        });
+        assert!(has_wrap, "Expected WrappingSub instruction");
+    }
+
+    #[test]
+    fn test_lower_wrapping_mul() {
+        let mir = parse_and_lower("fn wrap(a: i64, b: i64) -> i64 = a *% b;");
+        let func = &mir.functions[0];
+        let has_wrap = func.blocks.iter().any(|b| {
+            b.instructions.iter().any(|inst| matches!(inst, MirInst::BinOp { op: MirBinOp::MulWrap, .. }))
+        });
+        assert!(has_wrap, "Expected WrappingMul instruction");
+    }
+
+    #[test]
+    fn test_lower_band() {
+        let mir = parse_and_lower("fn band_fn(a: i64, b: i64) -> i64 = a band b;");
+        let func = &mir.functions[0];
+        let has_band = func.blocks.iter().any(|b| {
+            b.instructions.iter().any(|inst| matches!(inst, MirInst::BinOp { op: MirBinOp::Band, .. }))
+        });
+        assert!(has_band, "Expected Band instruction");
+    }
+
+    #[test]
+    fn test_lower_bor() {
+        let mir = parse_and_lower("fn bor_fn(a: i64, b: i64) -> i64 = a bor b;");
+        let func = &mir.functions[0];
+        let has_bor = func.blocks.iter().any(|b| {
+            b.instructions.iter().any(|inst| matches!(inst, MirInst::BinOp { op: MirBinOp::Bor, .. }))
+        });
+        assert!(has_bor, "Expected Bor instruction");
+    }
+
+    #[test]
+    fn test_lower_shr() {
+        let mir = parse_and_lower("fn shr_fn(a: i64, b: i64) -> i64 = a >> b;");
+        let func = &mir.functions[0];
+        let has_shr = func.blocks.iter().any(|b| {
+            b.instructions.iter().any(|inst| matches!(inst, MirInst::BinOp { op: MirBinOp::Shr, .. }))
+        });
+        assert!(has_shr, "Expected Shr instruction");
+    }
+
+    #[test]
+    fn test_lower_multiple_struct_defs() {
+        let mir = parse_and_lower(
+            "struct A { x: i64 }
+             struct B { y: f64, z: bool }
+             fn make_a() -> A = new A { x: 1 };
+             fn make_b() -> B = new B { y: 2.0, z: true };"
+        );
+        assert_eq!(mir.struct_defs.len(), 2);
+    }
+
+    #[test]
+    fn test_lower_enum_multiple_variants() {
+        let mir = parse_and_lower(
+            "enum Shape { Circle(f64), Rect(f64, f64), Point }
+             fn area(s: Shape) -> f64 = match s {
+                 Shape::Circle(r) => r * r,
+                 Shape::Rect(w, h) => w * h,
+                 Shape::Point => 0.0,
+             };"
+        );
+        // Should have at least the match function
+        assert!(!mir.functions.is_empty());
+    }
+
+    #[test]
+    fn test_lower_as_cast() {
+        let mir = parse_and_lower("fn cast(x: i64) -> f64 = x as f64;");
+        let func = &mir.functions[0];
+        let has_cast = func.blocks.iter().any(|b| {
+            b.instructions.iter().any(|inst| matches!(inst, MirInst::Cast { .. }))
+        });
+        assert!(has_cast, "Expected Cast instruction");
+    }
+
+    #[test]
+    fn test_lower_unary_not() {
+        let mir = parse_and_lower("fn flip(x: bool) -> bool = not x;");
+        let func = &mir.functions[0];
+        let has_not = func.blocks.iter().any(|b| {
+            b.instructions.iter().any(|inst| matches!(inst, MirInst::UnaryOp { op: MirUnaryOp::Not, .. }))
+        });
+        assert!(has_not, "Expected Not instruction");
+    }
+
+    #[test]
+    fn test_lower_equality() {
+        let mir = parse_and_lower("fn eq(a: i64, b: i64) -> bool = a == b;");
+        let func = &mir.functions[0];
+        let has_eq = func.blocks.iter().any(|b| {
+            b.instructions.iter().any(|inst| matches!(inst, MirInst::BinOp { op: MirBinOp::Eq, .. }))
+        });
+        assert!(has_eq, "Expected Eq instruction");
+    }
+
+    #[test]
+    fn test_lower_not_equal() {
+        let mir = parse_and_lower("fn neq(a: i64, b: i64) -> bool = a != b;");
+        let func = &mir.functions[0];
+        let has_ne = func.blocks.iter().any(|b| {
+            b.instructions.iter().any(|inst| matches!(inst, MirInst::BinOp { op: MirBinOp::Ne, .. }))
+        });
+        assert!(has_ne, "Expected Ne instruction");
+    }
+
+    #[test]
+    fn test_lower_ge_le() {
+        let mir = parse_and_lower("fn cmp(a: i64, b: i64) -> bool = a >= b;");
+        let func = &mir.functions[0];
+        let has_ge = func.blocks.iter().any(|b| {
+            b.instructions.iter().any(|inst| matches!(inst, MirInst::BinOp { op: MirBinOp::Ge, .. }))
+        });
+        assert!(has_ge, "Expected Ge instruction");
+    }
+
+    #[test]
+    fn test_lower_extern_fn() {
+        let mir = parse_and_lower("extern fn puts(s: i64) -> i64; fn main() -> i64 = 0;");
+        // Extern fns are stored separately in extern_fns
+        assert!(!mir.extern_fns.is_empty(), "Expected extern function");
+    }
+
+    #[test]
+    fn test_lower_generic_function() {
+        let mir = parse_and_lower("fn id<T>(x: T) -> T = x; fn main() -> i64 = id(42);");
+        assert!(!mir.functions.is_empty());
+    }
+
+    #[test]
+    fn test_lower_multiple_returns_paths() {
+        let mir = parse_and_lower(
+            "fn abs(x: i64) -> i64 = if x >= 0 { x } else { 0 - x };"
+        );
+        let func = &mir.functions[0];
+        // Should have at least 3 blocks: entry, then, else
+        assert!(func.blocks.len() >= 3, "Expected at least 3 blocks for if-else, got {}", func.blocks.len());
+    }
+
+    #[test]
+    fn test_lower_type_alias() {
+        let mir = parse_and_lower("type Num = i64; fn get() -> Num = 42;");
+        assert!(!mir.functions.is_empty());
+    }
+
+    #[test]
+    fn test_lower_function_count() {
+        let mir = parse_and_lower(
+            "fn a() -> i64 = 1;
+             fn b() -> i64 = 2;
+             fn c() -> i64 = 3;"
+        );
+        assert!(mir.functions.len() >= 3);
+    }
+
+    #[test]
+    fn test_lower_mod_operator() {
+        let mir = parse_and_lower("fn modulo(a: i64, b: i64) -> i64 = a % b;");
+        let func = &mir.functions[0];
+        let has_mod = func.blocks.iter().any(|b| {
+            b.instructions.iter().any(|inst| matches!(inst, MirInst::BinOp { op: MirBinOp::Mod, .. }))
+        });
+        assert!(has_mod, "Expected Rem instruction");
+    }
+
+    #[test]
+    fn test_lower_div_operator() {
+        let mir = parse_and_lower("fn divide(a: i64, b: i64) -> i64 = a / b;");
+        let func = &mir.functions[0];
+        let has_div = func.blocks.iter().any(|b| {
+            b.instructions.iter().any(|inst| matches!(inst, MirInst::BinOp { op: MirBinOp::Div, .. }))
+        });
+        assert!(has_div, "Expected Div instruction");
+    }
+
+    #[test]
+    fn test_lower_pre_contract() {
+        let mir = parse_and_lower(
+            "fn safe(x: i64) -> i64 pre x > 0 = x;"
+        );
+        let func = &mir.functions[0];
+        assert!(!func.preconditions.is_empty(), "Expected pre-conditions");
+    }
+
+    #[test]
+    fn test_lower_post_contract() {
+        let mir = parse_and_lower(
+            "fn safe(x: i64) -> i64 post ret >= 0 = x;"
+        );
+        let func = &mir.functions[0];
+        assert!(!func.postconditions.is_empty(), "Expected post-conditions");
+    }
 }

@@ -34,6 +34,12 @@ pub enum Value {
     Array(Vec<Value>),
     /// Tuple value (v0.42): heterogeneous fixed-size collection
     Tuple(Vec<Value>),
+    /// Closure value (v0.92): captures environment for deferred execution
+    Closure {
+        params: Vec<String>,
+        body: Box<crate::ast::Spanned<crate::ast::Expr>>,
+        env: super::env::EnvRef,
+    },
 }
 
 impl Value {
@@ -54,6 +60,7 @@ impl Value {
             Value::Ref(r) => r.borrow().is_truthy(),
             Value::Array(arr) => !arr.is_empty(),
             Value::Tuple(_) => true, // Tuples are always truthy
+            Value::Closure { .. } => true, // Closures are always truthy
         }
     }
 
@@ -74,6 +81,7 @@ impl Value {
             Value::Ref(_) => "&ref",
             Value::Array(_) => "array",
             Value::Tuple(_) => "tuple",
+            Value::Closure { .. } => "closure",
         }
     }
 
@@ -224,6 +232,10 @@ impl fmt::Display for Value {
                 }
                 write!(f, ")")
             }
+            // v0.92: Closure display
+            Value::Closure { params, .. } => {
+                write!(f, "<closure({})>", params.join(", "))
+            }
         }
     }
 }
@@ -266,6 +278,8 @@ impl PartialEq for Value {
             (Value::Array(a1), Value::Array(a2)) => a1 == a2,
             // v0.42: Tuple equality
             (Value::Tuple(t1), Value::Tuple(t2)) => t1 == t2,
+            // v0.92: Closures are never equal (identity semantics)
+            (Value::Closure { .. }, Value::Closure { .. }) => false,
             _ => false,
         }
     }

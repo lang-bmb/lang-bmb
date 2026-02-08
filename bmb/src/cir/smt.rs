@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use std::fmt::Write;
 
 use super::{
-    BinOp, CirExpr, CirFunction, CirType, CompareOp, Proposition, UnaryOp,
+    BinOp, CirExpr, CirFunction, CirProgram, CirType, CompareOp, Proposition, UnaryOp,
 };
 
 /// SMT-LIB2 sorts (types)
@@ -110,6 +110,15 @@ impl CirSmtGenerator {
     /// Generate verification query for a function
     /// Checks: preconditions => body_post => postconditions
     pub fn generate_verification_query(&mut self, func: &CirFunction) -> Result<String, SmtError> {
+        self.generate_verification_query_with_program(func, None)
+    }
+
+    /// Generate verification query with optional program context for struct invariants
+    pub fn generate_verification_query_with_program(
+        &mut self,
+        func: &CirFunction,
+        program: Option<&CirProgram>,
+    ) -> Result<String, SmtError> {
         // Declare parameters
         for param in &func.params {
             let sort = self.cir_type_to_sort(&param.ty);
@@ -120,11 +129,32 @@ impl CirSmtGenerator {
         let ret_sort = self.cir_type_to_sort(&func.ret_ty);
         self.declare_var(&func.ret_name, ret_sort);
 
-        // Build precondition conjunction
-        let pre_props: Vec<String> = func.preconditions
+        // v0.94: Collect struct invariant assumptions for struct-typed parameters
+        let mut struct_invariant_props: Vec<String> = Vec::new();
+        if let Some(prog) = program {
+            for param in &func.params {
+                if let CirType::Struct(struct_name) = &param.ty
+                    && let Some(cir_struct) = prog.structs.get(struct_name)
+                {
+                    for invariant in &cir_struct.invariants {
+                        // Substitute "self" with the parameter name in the invariant
+                        let substituted = self.substitute_self_in_proposition(
+                            invariant, &param.name
+                        );
+                        if let Ok(smt) = self.translate_proposition(&substituted) {
+                            struct_invariant_props.push(smt);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Build precondition conjunction (including struct invariants)
+        let mut pre_props: Vec<String> = func.preconditions
             .iter()
             .filter_map(|np| self.translate_proposition(&np.proposition).ok())
             .collect();
+        pre_props.extend(struct_invariant_props);
 
         let precond = if pre_props.is_empty() {
             "true".to_string()
@@ -153,6 +183,62 @@ impl CirSmtGenerator {
         self.assert(&format!("(and {} (not {}))", precond, postcond));
 
         Ok(self.generate())
+    }
+
+    /// v0.94: Substitute "self" references with a parameter name in a proposition
+    fn substitute_self_in_proposition(&self, prop: &Proposition, param_name: &str) -> Proposition {
+        match prop {
+            Proposition::Compare { lhs, op, rhs } => {
+                Proposition::Compare {
+                    lhs: Box::new(self.substitute_self_in_expr(lhs, param_name)),
+                    op: *op,
+                    rhs: Box::new(self.substitute_self_in_expr(rhs, param_name)),
+                }
+            }
+            Proposition::Not(inner) => {
+                Proposition::Not(Box::new(self.substitute_self_in_proposition(inner, param_name)))
+            }
+            Proposition::And(parts) => {
+                Proposition::And(parts.iter().map(|p| self.substitute_self_in_proposition(p, param_name)).collect())
+            }
+            Proposition::Or(parts) => {
+                Proposition::Or(parts.iter().map(|p| self.substitute_self_in_proposition(p, param_name)).collect())
+            }
+            Proposition::Implies(a, b) => {
+                Proposition::Implies(
+                    Box::new(self.substitute_self_in_proposition(a, param_name)),
+                    Box::new(self.substitute_self_in_proposition(b, param_name)),
+                )
+            }
+            _ => prop.clone(),
+        }
+    }
+
+    /// v0.94: Substitute "self" variable references with param_name in a CIR expression
+    fn substitute_self_in_expr(&self, expr: &CirExpr, param_name: &str) -> CirExpr {
+        match expr {
+            CirExpr::Var(name) if name == "self" => CirExpr::Var(param_name.to_string()),
+            CirExpr::Field { base, field } => {
+                CirExpr::Field {
+                    base: Box::new(self.substitute_self_in_expr(base, param_name)),
+                    field: field.clone(),
+                }
+            }
+            CirExpr::BinOp { op, lhs, rhs } => {
+                CirExpr::BinOp {
+                    op: *op,
+                    lhs: Box::new(self.substitute_self_in_expr(lhs, param_name)),
+                    rhs: Box::new(self.substitute_self_in_expr(rhs, param_name)),
+                }
+            }
+            CirExpr::UnaryOp { op, operand } => {
+                CirExpr::UnaryOp {
+                    op: *op,
+                    operand: Box::new(self.substitute_self_in_expr(operand, param_name)),
+                }
+            }
+            _ => expr.clone(),
+        }
     }
 
     /// Generate SMT-LIB2 script

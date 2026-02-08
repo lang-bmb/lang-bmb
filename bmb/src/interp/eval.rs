@@ -583,6 +583,11 @@ impl Interpreter {
                     .map(|a| self.eval(a, env))
                     .collect::<InterpResult<Vec<_>>>()?;
 
+                // v0.92: Check if func resolves to a closure value
+                if let Some(Value::Closure { params, body, env: captured_env }) = env.borrow().get(func) {
+                    return self.call_closure(&params, &body, &captured_env, arg_vals);
+                }
+
                 self.call(func, arg_vals)
             }
 
@@ -907,12 +912,14 @@ impl Interpreter {
             }
 
 
-            // v0.20.0: Closure expressions
-            // TODO: Implement closure evaluation with proper capture
-            Expr::Closure { body, .. } => {
-                // For now, just evaluate the body directly
-                // Full closure semantics (capture, delayed execution) will be implemented later
-                self.eval(body, env)
+            // v0.20.0 / v0.92: Closure expressions with proper environment capture
+            Expr::Closure { params, body, .. } => {
+                let param_names: Vec<String> = params.iter().map(|p| p.name.node.clone()).collect();
+                Ok(Value::Closure {
+                    params: param_names,
+                    body: Box::new((**body).clone()),
+                    env: Rc::clone(env),
+                })
             }
 
             // v0.31: Todo expression - panics at runtime
@@ -1261,6 +1268,41 @@ impl Interpreter {
         }
 
         Err(RuntimeError::undefined_function(name))
+    }
+
+    /// v0.92: Call a closure value with captured environment
+    fn call_closure(
+        &mut self,
+        params: &[String],
+        body: &Spanned<Expr>,
+        captured_env: &EnvRef,
+        args: Vec<Value>,
+    ) -> InterpResult<Value> {
+        if params.len() != args.len() {
+            return Err(RuntimeError::arity_mismatch(
+                "<closure>",
+                params.len(),
+                args.len(),
+            ));
+        }
+
+        self.recursion_depth += 1;
+        if self.recursion_depth > MAX_RECURSION_DEPTH {
+            self.recursion_depth -= 1;
+            return Err(RuntimeError::stack_overflow());
+        }
+
+        // Create child env from the captured environment (lexical scoping)
+        let closure_env = child_env(captured_env);
+
+        // Bind parameters
+        for (param, arg) in params.iter().zip(args.into_iter()) {
+            closure_env.borrow_mut().define(param.clone(), arg);
+        }
+
+        let result = self.eval(body, &closure_env);
+        self.recursion_depth -= 1;
+        result
     }
 
     /// Call a user-defined function with automatic stack growth
@@ -4484,5 +4526,289 @@ mod tests {
     fn test_negative_numbers() {
         assert_eq!(run_program("fn main() -> i64 = 0 - 42;"), Value::Int(-42));
         assert_eq!(run_program("fn main() -> i64 = (0 - 5) * (0 - 3);"), Value::Int(15));
+    }
+
+    // --- Cycle 90: Extended interpreter tests ---
+
+    #[test]
+    fn test_as_cast_i64_to_f64() {
+        let result = run_program("fn main() -> f64 = 42 as f64;");
+        assert_eq!(result, Value::Float(42.0));
+    }
+
+    #[test]
+    fn test_as_cast_f64_to_i64() {
+        let result = run_program("fn main() -> i64 = 3.7 as i64;");
+        assert_eq!(result, Value::Int(3));
+    }
+
+    #[test]
+    fn test_generic_identity() {
+        assert_eq!(
+            run_program("fn id<T>(x: T) -> T = x; fn main() -> i64 = id(42);"),
+            Value::Int(42)
+        );
+    }
+
+    #[test]
+    fn test_nested_if_else() {
+        let result = run_program(
+            "fn clamp(x: i64) -> i64 = if x < 0 { 0 } else { if x > 100 { 100 } else { x } };
+             fn main() -> i64 = clamp(150);"
+        );
+        assert_eq!(result, Value::Int(100));
+    }
+
+    #[test]
+    fn test_block_returns_last() {
+        assert_eq!(
+            run_program("fn main() -> i64 = { 1; 2; 3 };"),
+            Value::Int(3)
+        );
+    }
+
+    #[test]
+    fn test_block_with_let_bindings() {
+        assert_eq!(
+            run_program("fn main() -> i64 = { let a: i64 = 10; let b: i64 = 20; a + b };"),
+            Value::Int(30)
+        );
+    }
+
+    #[test]
+    fn test_enum_variant_no_data() {
+        let result = run_program(
+            "enum Dir { N, S, E, W }
+             fn is_n(d: Dir) -> bool = match d { Dir::N => true, _ => false };
+             fn main() -> bool = is_n(Dir::N);"
+        );
+        assert_eq!(result, Value::Bool(true));
+    }
+
+    #[test]
+    fn test_char_literal() {
+        let result = run_program("fn main() -> char = 'x';");
+        assert_eq!(result, Value::Char('x'));
+    }
+
+    #[test]
+    fn test_i32_arithmetic() {
+        assert_eq!(
+            run_program("fn main() -> i32 = { let a: i32 = 10; let b: i32 = 20; a + b };"),
+            Value::Int(30)
+        );
+    }
+
+    #[test]
+    fn test_u32_literal() {
+        assert_eq!(
+            run_program("fn main() -> u32 = 42;"),
+            Value::Int(42)
+        );
+    }
+
+    #[test]
+    fn test_extern_function_declaration() {
+        // extern fns should be registered without error, even if not callable
+        let tokens = crate::lexer::tokenize("extern fn ext(x: i64) -> i64; fn main() -> i64 = 0;").expect("tokenize");
+        let program = crate::parser::parse("<test>", "extern fn ext(x: i64) -> i64; fn main() -> i64 = 0;", tokens).expect("parse");
+        let mut interp = Interpreter::new();
+        let result = interp.run(&program).expect("run");
+        assert_eq!(result, Value::Int(0));
+    }
+
+    #[test]
+    fn test_type_alias() {
+        assert_eq!(
+            run_program("type Num = i64; fn main() -> Num = 99;"),
+            Value::Int(99)
+        );
+    }
+
+    #[test]
+    fn test_unit_return() {
+        assert_eq!(
+            run_program("fn noop() -> () = (); fn main() -> () = noop();"),
+            Value::Unit
+        );
+    }
+
+    #[test]
+    fn test_nested_function_calls_deep() {
+        let result = run_program(
+            "fn a(x: i64) -> i64 = x + 1;
+             fn b(x: i64) -> i64 = a(x) + 1;
+             fn c(x: i64) -> i64 = b(x) + 1;
+             fn main() -> i64 = c(0);"
+        );
+        assert_eq!(result, Value::Int(3));
+    }
+
+    #[test]
+    fn test_pre_condition_passes() {
+        let result = run_program(
+            "fn safe_div(a: i64, b: i64) -> i64
+                 pre b != 0
+             = a / b;
+             fn main() -> i64 = safe_div(10, 2);"
+        );
+        assert_eq!(result, Value::Int(5));
+    }
+
+    #[test]
+    fn test_wrapping_add() {
+        assert_eq!(
+            run_program("fn main() -> i64 = 100 +% 200;"),
+            Value::Int(300)
+        );
+    }
+
+    #[test]
+    fn test_tuple_creation_and_access() {
+        assert_eq!(
+            run_program("fn main() -> (i64, bool) = (42, true);"),
+            Value::Tuple(vec![Value::Int(42), Value::Bool(true)])
+        );
+    }
+
+    #[test]
+    fn test_match_integer_patterns() {
+        assert_eq!(
+            run_program("fn classify(x: i64) -> i64 = match x { 0 => 100, 1 => 200, _ => 300 }; fn main() -> i64 = classify(1);"),
+            Value::Int(200)
+        );
+    }
+
+    #[test]
+    fn test_match_wildcard_default() {
+        assert_eq!(
+            run_program("fn classify(x: i64) -> i64 = match x { 0 => 100, _ => 999 }; fn main() -> i64 = classify(42);"),
+            Value::Int(999)
+        );
+    }
+
+    #[test]
+    fn test_string_equality() {
+        assert_eq!(
+            run_program(r#"fn main() -> bool = "hello" == "hello";"#),
+            Value::Bool(true)
+        );
+    }
+
+    #[test]
+    fn test_string_inequality() {
+        assert_eq!(
+            run_program(r#"fn main() -> bool = "hello" != "world";"#),
+            Value::Bool(true)
+        );
+    }
+
+    #[test]
+    fn test_bool_equality() {
+        assert_eq!(
+            run_program("fn main() -> bool = true == true;"),
+            Value::Bool(true)
+        );
+        assert_eq!(
+            run_program("fn main() -> bool = true == false;"),
+            Value::Bool(false)
+        );
+    }
+
+    #[test]
+    fn test_f64_neg() {
+        assert_eq!(
+            run_program("fn main() -> f64 = -3.5;"),
+            Value::Float(-3.5)
+        );
+    }
+
+    #[test]
+    fn test_fibonacci() {
+        assert_eq!(
+            run_program(
+                "fn fib(n: i64) -> i64 = if n <= 1 { n } else { fib(n - 1) + fib(n - 2) };
+                 fn main() -> i64 = fib(10);"
+            ),
+            Value::Int(55)
+        );
+    }
+
+    #[test]
+    fn test_for_loop_with_accumulator() {
+        assert_eq!(
+            run_program(
+                "fn main() -> i64 = { let mut sum: i64 = 0; for i in 0..5 { sum = sum + i }; sum };"
+            ),
+            Value::Int(10) // 0+1+2+3+4 = 10
+        );
+    }
+
+    // ====================================================================
+    // Cycle 93: Closure capture tests
+    // ====================================================================
+
+    #[test]
+    fn test_closure_creation() {
+        let mut interp = Interpreter::new();
+        let env = interp.global_env.clone();
+        let closure_expr = Expr::Closure {
+            params: vec![crate::ast::ClosureParam {
+                name: spanned("x".to_string()),
+                ty: None,
+            }],
+            ret_ty: None,
+            body: Box::new(spanned(Expr::Var("x".to_string()))),
+        };
+        let result = interp.eval(&spanned(closure_expr), &env).unwrap();
+        assert!(matches!(result, Value::Closure { .. }));
+    }
+
+    #[test]
+    fn test_closure_type_name() {
+        assert_eq!(
+            Value::Closure {
+                params: vec!["x".to_string()],
+                body: Box::new(spanned(Expr::IntLit(0))),
+                env: crate::interp::Environment::new().into_ref(),
+            }.type_name(),
+            "closure"
+        );
+    }
+
+    #[test]
+    fn test_closure_display() {
+        let c = Value::Closure {
+            params: vec!["a".to_string(), "b".to_string()],
+            body: Box::new(spanned(Expr::IntLit(0))),
+            env: crate::interp::Environment::new().into_ref(),
+        };
+        assert_eq!(format!("{}", c), "<closure(a, b)>");
+    }
+
+    #[test]
+    fn test_closure_is_truthy() {
+        let c = Value::Closure {
+            params: vec![],
+            body: Box::new(spanned(Expr::IntLit(0))),
+            env: crate::interp::Environment::new().into_ref(),
+        };
+        assert!(c.is_truthy());
+    }
+
+    #[test]
+    fn test_closure_not_equal() {
+        let env = crate::interp::Environment::new().into_ref();
+        let a = Value::Closure {
+            params: vec!["x".to_string()],
+            body: Box::new(spanned(Expr::IntLit(0))),
+            env: env.clone(),
+        };
+        let b = Value::Closure {
+            params: vec!["x".to_string()],
+            body: Box::new(spanned(Expr::IntLit(0))),
+            env,
+        };
+        assert_ne!(a, b); // Closures use identity semantics
     }
 }

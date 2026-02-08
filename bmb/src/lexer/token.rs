@@ -567,3 +567,461 @@ impl std::fmt::Display for Token {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // === Display tests for all token categories ===
+
+    #[test]
+    fn test_display_keyword_control_flow() {
+        assert_eq!(format!("{}", Token::Fn), "fn");
+        assert_eq!(format!("{}", Token::Let), "let");
+        assert_eq!(format!("{}", Token::Var), "var");
+        assert_eq!(format!("{}", Token::If), "if");
+        assert_eq!(format!("{}", Token::Then), "then");
+        assert_eq!(format!("{}", Token::Else), "else");
+        assert_eq!(format!("{}", Token::Ret), "ret");
+        assert_eq!(format!("{}", Token::Return), "return");
+        assert_eq!(format!("{}", Token::While), "while");
+        assert_eq!(format!("{}", Token::For), "for");
+        assert_eq!(format!("{}", Token::In), "in");
+        assert_eq!(format!("{}", Token::Loop), "loop");
+        assert_eq!(format!("{}", Token::Break), "break");
+        assert_eq!(format!("{}", Token::Continue), "continue");
+        assert_eq!(format!("{}", Token::Match), "match");
+    }
+
+    #[test]
+    fn test_display_keyword_logic() {
+        assert_eq!(format!("{}", Token::And), "and");
+        assert_eq!(format!("{}", Token::Or), "or");
+        assert_eq!(format!("{}", Token::Not), "not");
+        assert_eq!(format!("{}", Token::True), "true");
+        assert_eq!(format!("{}", Token::False), "false");
+    }
+
+    #[test]
+    fn test_display_keyword_types_and_data() {
+        assert_eq!(format!("{}", Token::Struct), "struct");
+        assert_eq!(format!("{}", Token::Enum), "enum");
+        assert_eq!(format!("{}", Token::New), "new");
+        assert_eq!(format!("{}", Token::Mut), "mut");
+        assert_eq!(format!("{}", Token::Set), "set");
+        assert_eq!(format!("{}", Token::Type), "type");
+        assert_eq!(format!("{}", Token::Trait), "trait");
+        assert_eq!(format!("{}", Token::Impl), "impl");
+        assert_eq!(format!("{}", Token::As), "as");
+        assert_eq!(format!("{}", Token::Null), "null");
+        assert_eq!(format!("{}", Token::Sizeof), "sizeof");
+        assert_eq!(format!("{}", Token::Todo), "todo");
+    }
+
+    #[test]
+    fn test_display_keyword_module_system() {
+        assert_eq!(format!("{}", Token::Pub), "pub");
+        assert_eq!(format!("{}", Token::Use), "use");
+        assert_eq!(format!("{}", Token::Mod), "mod");
+        assert_eq!(format!("{}", Token::Extern), "extern");
+        assert_eq!(format!("{}", Token::Module), "module");
+        assert_eq!(format!("{}", Token::Version), "version");
+        assert_eq!(format!("{}", Token::Summary), "summary");
+        assert_eq!(format!("{}", Token::Exports), "exports");
+        assert_eq!(format!("{}", Token::Depends), "depends");
+        assert_eq!(format!("{}", Token::HeaderSep), "===");
+    }
+
+    #[test]
+    fn test_display_keyword_contracts() {
+        assert_eq!(format!("{}", Token::Pre), "pre");
+        assert_eq!(format!("{}", Token::Post), "post");
+        assert_eq!(format!("{}", Token::Where), "where");
+        assert_eq!(format!("{}", Token::It), "it");
+        assert_eq!(format!("{}", Token::Invariant), "invariant");
+        assert_eq!(format!("{}", Token::Implies), "implies");
+        assert_eq!(format!("{}", Token::Forall), "forall");
+        assert_eq!(format!("{}", Token::Exists), "exists");
+        assert_eq!(format!("{}", Token::Try), "try");
+    }
+
+    #[test]
+    fn test_display_keyword_concurrency() {
+        assert_eq!(format!("{}", Token::Spawn), "spawn");
+        assert_eq!(format!("{}", Token::MutexType), "Mutex");
+        assert_eq!(format!("{}", Token::ArcType), "Arc");
+        assert_eq!(format!("{}", Token::AtomicType), "Atomic");
+        assert_eq!(format!("{}", Token::ChannelKw), "channel");
+        assert_eq!(format!("{}", Token::SenderType), "Sender");
+        assert_eq!(format!("{}", Token::ReceiverType), "Receiver");
+        assert_eq!(format!("{}", Token::RwLockType), "RwLock");
+        assert_eq!(format!("{}", Token::BarrierType), "Barrier");
+        assert_eq!(format!("{}", Token::CondvarType), "Condvar");
+    }
+
+    #[test]
+    fn test_display_keyword_async() {
+        assert_eq!(format!("{}", Token::Async), "async");
+        assert_eq!(format!("{}", Token::Await), "await");
+        assert_eq!(format!("{}", Token::FutureType), "Future");
+        assert_eq!(format!("{}", Token::Select), "select");
+        assert_eq!(format!("{}", Token::AsyncFileType), "AsyncFile");
+        assert_eq!(format!("{}", Token::AsyncSocketType), "AsyncSocket");
+        assert_eq!(format!("{}", Token::ThreadPoolType), "ThreadPool");
+        assert_eq!(format!("{}", Token::ScopeType), "Scope");
+    }
+
+    #[test]
+    fn test_display_type_keywords() {
+        assert_eq!(format!("{}", Token::TyI32), "i32");
+        assert_eq!(format!("{}", Token::TyI64), "i64");
+        assert_eq!(format!("{}", Token::TyU32), "u32");
+        assert_eq!(format!("{}", Token::TyU64), "u64");
+        assert_eq!(format!("{}", Token::TyF64), "f64");
+        assert_eq!(format!("{}", Token::TyBool), "bool");
+        assert_eq!(format!("{}", Token::TyString), "String");
+        assert_eq!(format!("{}", Token::TyChar), "char");
+    }
+
+    #[test]
+    fn test_display_literals() {
+        assert_eq!(format!("{}", Token::IntLit(42)), "42");
+        assert_eq!(format!("{}", Token::IntLit(0)), "0");
+        assert_eq!(format!("{}", Token::IntLit(-1)), "-1");
+        assert_eq!(format!("{}", Token::FloatLit(1.5)), "1.5");
+        assert_eq!(format!("{}", Token::StringLit("hello".to_string())), "\"hello\"");
+        assert_eq!(format!("{}", Token::CharLit('a')), "'a'");
+        assert_eq!(format!("{}", Token::Ident("foo".to_string())), "foo");
+    }
+
+    #[test]
+    fn test_display_symbols() {
+        assert_eq!(format!("{}", Token::Colon), ":");
+        assert_eq!(format!("{}", Token::ColonEq), ":=");
+        assert_eq!(format!("{}", Token::ColonColon), "::");
+        assert_eq!(format!("{}", Token::Arrow), "->");
+        assert_eq!(format!("{}", Token::FatArrow), "=>");
+        assert_eq!(format!("{}", Token::Underscore), "_");
+        assert_eq!(format!("{}", Token::Dot), ".");
+        assert_eq!(format!("{}", Token::DotDot), "..");
+        assert_eq!(format!("{}", Token::DotDotLt), "..<");
+        assert_eq!(format!("{}", Token::DotDotEq), "..=");
+        assert_eq!(format!("{}", Token::Eq), "=");
+        assert_eq!(format!("{}", Token::Semi), ";");
+        assert_eq!(format!("{}", Token::Comma), ",");
+    }
+
+    #[test]
+    fn test_display_delimiters() {
+        assert_eq!(format!("{}", Token::LParen), "(");
+        assert_eq!(format!("{}", Token::RParen), ")");
+        assert_eq!(format!("{}", Token::LBrace), "{");
+        assert_eq!(format!("{}", Token::RBrace), "}");
+        assert_eq!(format!("{}", Token::LBracket), "[");
+        assert_eq!(format!("{}", Token::RBracket), "]");
+    }
+
+    #[test]
+    fn test_display_misc_symbols() {
+        assert_eq!(format!("{}", Token::Ampersand), "&");
+        assert_eq!(format!("{}", Token::At), "@");
+        assert_eq!(format!("{}", Token::Question), "?");
+        assert_eq!(format!("{}", Token::Pipe), "|");
+    }
+
+    #[test]
+    fn test_display_arithmetic_operators() {
+        assert_eq!(format!("{}", Token::Plus), "+");
+        assert_eq!(format!("{}", Token::Minus), "-");
+        assert_eq!(format!("{}", Token::Star), "*");
+        assert_eq!(format!("{}", Token::Slash), "/");
+        assert_eq!(format!("{}", Token::Percent), "%");
+    }
+
+    #[test]
+    fn test_display_comparison_operators() {
+        assert_eq!(format!("{}", Token::EqEq), "==");
+        assert_eq!(format!("{}", Token::NotEq), "!=");
+        assert_eq!(format!("{}", Token::Lt), "<");
+        assert_eq!(format!("{}", Token::Gt), ">");
+        assert_eq!(format!("{}", Token::LtEq), "<=");
+        assert_eq!(format!("{}", Token::GtEq), ">=");
+    }
+
+    #[test]
+    fn test_display_shift_operators() {
+        assert_eq!(format!("{}", Token::LtLt), "<<");
+        assert_eq!(format!("{}", Token::GtGt), ">>");
+    }
+
+    #[test]
+    fn test_display_bitwise_operators() {
+        assert_eq!(format!("{}", Token::Band), "band");
+        assert_eq!(format!("{}", Token::Bor), "bor");
+        assert_eq!(format!("{}", Token::Bxor), "bxor");
+        assert_eq!(format!("{}", Token::Bnot), "bnot");
+    }
+
+    #[test]
+    fn test_display_wrapping_operators() {
+        assert_eq!(format!("{}", Token::PlusPercent), "+%");
+        assert_eq!(format!("{}", Token::MinusPercent), "-%");
+        assert_eq!(format!("{}", Token::StarPercent), "*%");
+    }
+
+    #[test]
+    fn test_display_checked_operators() {
+        assert_eq!(format!("{}", Token::PlusQuestion), "+?");
+        assert_eq!(format!("{}", Token::MinusQuestion), "-?");
+        assert_eq!(format!("{}", Token::StarQuestion), "*?");
+    }
+
+    #[test]
+    fn test_display_saturating_operators() {
+        assert_eq!(format!("{}", Token::PlusPipe), "+|");
+        assert_eq!(format!("{}", Token::MinusPipe), "-|");
+        assert_eq!(format!("{}", Token::StarPipe), "*|");
+    }
+
+    #[test]
+    fn test_display_symbolic_logical_operators() {
+        assert_eq!(format!("{}", Token::AmpAmp), "&&");
+        assert_eq!(format!("{}", Token::PipePipe), "||");
+        assert_eq!(format!("{}", Token::Bang), "!");
+    }
+
+    // === PartialEq tests ===
+
+    #[test]
+    fn test_token_equality_keywords() {
+        assert_eq!(Token::Fn, Token::Fn);
+        assert_ne!(Token::Fn, Token::Let);
+        assert_ne!(Token::If, Token::Else);
+    }
+
+    #[test]
+    fn test_token_equality_literals() {
+        assert_eq!(Token::IntLit(42), Token::IntLit(42));
+        assert_ne!(Token::IntLit(42), Token::IntLit(43));
+        assert_eq!(Token::StringLit("a".to_string()), Token::StringLit("a".to_string()));
+        assert_ne!(Token::StringLit("a".to_string()), Token::StringLit("b".to_string()));
+        assert_eq!(Token::CharLit('x'), Token::CharLit('x'));
+        assert_ne!(Token::CharLit('x'), Token::CharLit('y'));
+    }
+
+    #[test]
+    fn test_token_equality_ident() {
+        assert_eq!(Token::Ident("foo".to_string()), Token::Ident("foo".to_string()));
+        assert_ne!(Token::Ident("foo".to_string()), Token::Ident("bar".to_string()));
+    }
+
+    // === Clone and Debug tests ===
+
+    #[test]
+    fn test_token_clone() {
+        let t = Token::IntLit(99);
+        let t2 = t.clone();
+        assert_eq!(t, t2);
+
+        let t3 = Token::StringLit("test".to_string());
+        let t4 = t3.clone();
+        assert_eq!(t3, t4);
+    }
+
+    #[test]
+    fn test_token_debug() {
+        let t = Token::Fn;
+        let dbg = format!("{:?}", t);
+        assert_eq!(dbg, "Fn");
+
+        let t2 = Token::IntLit(5);
+        let dbg2 = format!("{:?}", t2);
+        assert!(dbg2.contains("IntLit"));
+        assert!(dbg2.contains("5"));
+    }
+
+    // === Lexer tokenization integration tests for token.rs-specific features ===
+
+    #[test]
+    fn test_lex_scientific_notation() {
+        let mut lexer = Token::lexer("3.14e10");
+        let tok = lexer.next().unwrap().unwrap();
+        assert!(matches!(tok, Token::FloatLit(n) if (n - 3.14e10).abs() < 1e5));
+
+        let mut lexer = Token::lexer("1e5");
+        let tok = lexer.next().unwrap().unwrap();
+        assert!(matches!(tok, Token::FloatLit(n) if (n - 1e5).abs() < 1.0));
+
+        let mut lexer = Token::lexer("6.022E23");
+        let tok = lexer.next().unwrap().unwrap();
+        assert!(matches!(tok, Token::FloatLit(n) if n > 6e23));
+    }
+
+    #[test]
+    fn test_lex_string_escape_sequences() {
+        let mut lexer = Token::lexer(r#""\n\t\r\\\"" "#);
+        let tok = lexer.next().unwrap().unwrap();
+        match tok {
+            Token::StringLit(s) => {
+                assert_eq!(s, "\n\t\r\\\"");
+            }
+            _ => panic!("expected StringLit"),
+        }
+    }
+
+    #[test]
+    fn test_lex_string_null_escape() {
+        let mut lexer = Token::lexer(r#""\0""#);
+        let tok = lexer.next().unwrap().unwrap();
+        match tok {
+            Token::StringLit(s) => assert_eq!(s, "\0"),
+            _ => panic!("expected StringLit"),
+        }
+    }
+
+    #[test]
+    fn test_lex_char_literal() {
+        let mut lexer = Token::lexer("'a'");
+        let tok = lexer.next().unwrap().unwrap();
+        assert_eq!(tok, Token::CharLit('a'));
+    }
+
+    #[test]
+    fn test_lex_char_escape_sequences() {
+        let cases = [
+            (r"'\n'", '\n'),
+            (r"'\t'", '\t'),
+            (r"'\r'", '\r'),
+            (r"'\\'", '\\'),
+            (r"'\0'", '\0'),
+        ];
+        for (input, expected) in cases {
+            let mut lexer = Token::lexer(input);
+            let tok = lexer.next().unwrap().unwrap();
+            assert_eq!(tok, Token::CharLit(expected), "failed for input: {input}");
+        }
+    }
+
+    #[test]
+    fn test_lex_range_operators() {
+        let mut lexer = Token::lexer(".. ..< ..=");
+        assert_eq!(lexer.next().unwrap().unwrap(), Token::DotDot);
+        assert_eq!(lexer.next().unwrap().unwrap(), Token::DotDotLt);
+        assert_eq!(lexer.next().unwrap().unwrap(), Token::DotDotEq);
+    }
+
+    #[test]
+    fn test_lex_wrapping_operators() {
+        let mut lexer = Token::lexer("+% -% *%");
+        assert_eq!(lexer.next().unwrap().unwrap(), Token::PlusPercent);
+        assert_eq!(lexer.next().unwrap().unwrap(), Token::MinusPercent);
+        assert_eq!(lexer.next().unwrap().unwrap(), Token::StarPercent);
+    }
+
+    #[test]
+    fn test_lex_checked_operators() {
+        let mut lexer = Token::lexer("+? -? *?");
+        assert_eq!(lexer.next().unwrap().unwrap(), Token::PlusQuestion);
+        assert_eq!(lexer.next().unwrap().unwrap(), Token::MinusQuestion);
+        assert_eq!(lexer.next().unwrap().unwrap(), Token::StarQuestion);
+    }
+
+    #[test]
+    fn test_lex_saturating_operators() {
+        let mut lexer = Token::lexer("+| -| *|");
+        assert_eq!(lexer.next().unwrap().unwrap(), Token::PlusPipe);
+        assert_eq!(lexer.next().unwrap().unwrap(), Token::MinusPipe);
+        assert_eq!(lexer.next().unwrap().unwrap(), Token::StarPipe);
+    }
+
+    #[test]
+    fn test_lex_shift_operators() {
+        let mut lexer = Token::lexer("<< >>");
+        assert_eq!(lexer.next().unwrap().unwrap(), Token::LtLt);
+        assert_eq!(lexer.next().unwrap().unwrap(), Token::GtGt);
+    }
+
+    #[test]
+    fn test_lex_bitwise_keywords() {
+        let mut lexer = Token::lexer("band bor bxor bnot");
+        assert_eq!(lexer.next().unwrap().unwrap(), Token::Band);
+        assert_eq!(lexer.next().unwrap().unwrap(), Token::Bor);
+        assert_eq!(lexer.next().unwrap().unwrap(), Token::Bxor);
+        assert_eq!(lexer.next().unwrap().unwrap(), Token::Bnot);
+    }
+
+    #[test]
+    fn test_lex_concurrency_keywords() {
+        let mut lexer = Token::lexer("spawn Mutex Arc Atomic");
+        assert_eq!(lexer.next().unwrap().unwrap(), Token::Spawn);
+        assert_eq!(lexer.next().unwrap().unwrap(), Token::MutexType);
+        assert_eq!(lexer.next().unwrap().unwrap(), Token::ArcType);
+        assert_eq!(lexer.next().unwrap().unwrap(), Token::AtomicType);
+    }
+
+    #[test]
+    fn test_lex_channel_types() {
+        let mut lexer = Token::lexer("channel Sender Receiver");
+        assert_eq!(lexer.next().unwrap().unwrap(), Token::ChannelKw);
+        assert_eq!(lexer.next().unwrap().unwrap(), Token::SenderType);
+        assert_eq!(lexer.next().unwrap().unwrap(), Token::ReceiverType);
+    }
+
+    #[test]
+    fn test_lex_sync_primitives() {
+        let mut lexer = Token::lexer("RwLock Barrier Condvar");
+        assert_eq!(lexer.next().unwrap().unwrap(), Token::RwLockType);
+        assert_eq!(lexer.next().unwrap().unwrap(), Token::BarrierType);
+        assert_eq!(lexer.next().unwrap().unwrap(), Token::CondvarType);
+    }
+
+    #[test]
+    fn test_lex_async_keywords() {
+        let mut lexer = Token::lexer("async await Future select");
+        assert_eq!(lexer.next().unwrap().unwrap(), Token::Async);
+        assert_eq!(lexer.next().unwrap().unwrap(), Token::Await);
+        assert_eq!(lexer.next().unwrap().unwrap(), Token::FutureType);
+        assert_eq!(lexer.next().unwrap().unwrap(), Token::Select);
+    }
+
+    #[test]
+    fn test_lex_async_io_types() {
+        let mut lexer = Token::lexer("AsyncFile AsyncSocket ThreadPool Scope");
+        assert_eq!(lexer.next().unwrap().unwrap(), Token::AsyncFileType);
+        assert_eq!(lexer.next().unwrap().unwrap(), Token::AsyncSocketType);
+        assert_eq!(lexer.next().unwrap().unwrap(), Token::ThreadPoolType);
+        assert_eq!(lexer.next().unwrap().unwrap(), Token::ScopeType);
+    }
+
+    #[test]
+    fn test_lex_contract_keywords() {
+        let mut lexer = Token::lexer("pre post where it invariant implies forall exists");
+        assert_eq!(lexer.next().unwrap().unwrap(), Token::Pre);
+        assert_eq!(lexer.next().unwrap().unwrap(), Token::Post);
+        assert_eq!(lexer.next().unwrap().unwrap(), Token::Where);
+        assert_eq!(lexer.next().unwrap().unwrap(), Token::It);
+        assert_eq!(lexer.next().unwrap().unwrap(), Token::Invariant);
+        assert_eq!(lexer.next().unwrap().unwrap(), Token::Implies);
+        assert_eq!(lexer.next().unwrap().unwrap(), Token::Forall);
+        assert_eq!(lexer.next().unwrap().unwrap(), Token::Exists);
+    }
+
+    #[test]
+    fn test_lex_module_header() {
+        let mut lexer = Token::lexer("module version summary exports depends ===");
+        assert_eq!(lexer.next().unwrap().unwrap(), Token::Module);
+        assert_eq!(lexer.next().unwrap().unwrap(), Token::Version);
+        assert_eq!(lexer.next().unwrap().unwrap(), Token::Summary);
+        assert_eq!(lexer.next().unwrap().unwrap(), Token::Exports);
+        assert_eq!(lexer.next().unwrap().unwrap(), Token::Depends);
+        assert_eq!(lexer.next().unwrap().unwrap(), Token::HeaderSep);
+    }
+
+    #[test]
+    fn test_lex_symbolic_logical() {
+        let mut lexer = Token::lexer("&& || !");
+        assert_eq!(lexer.next().unwrap().unwrap(), Token::AmpAmp);
+        assert_eq!(lexer.next().unwrap().unwrap(), Token::PipePipe);
+        assert_eq!(lexer.next().unwrap().unwrap(), Token::Bang);
+    }
+}
