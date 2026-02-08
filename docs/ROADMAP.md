@@ -8,11 +8,11 @@
 
 | 항목 | 상태 | 비고 |
 |------|------|------|
-| **버전** | v0.89.4 | Quality Gate (Alpha) |
+| **버전** | v0.89.5 | Quality Gate (Alpha) |
 | **단계** | Alpha | Concurrency 완료 → **Alpha (v0.89)** → Beta (v0.90) → RC (v0.98) |
 | **Bootstrap** | ✅ 3-Stage 완료 | Stage 1: ~0.55s (--fast-compile) |
 | **Benchmarks** | ✅ 18/30 BMB > C | 60% C보다 빠름 |
-| **Tests** | ✅ 699개 통과 | 541 + 130 + 28 (cargo) + 219 BMB ecosystem tests |
+| **Tests** | ✅ 699개 통과 | 541 + 130 + 28 (cargo) + 213/215 BMB ecosystem tests |
 | **Stability** | ✅ STABILITY.md | 언어/API 동결 문서화 |
 | **동시성 지원** | ✅ 부트스트랩 완료 | 토큰/타입/MIR/코드젠/extern 선언 완료 |
 | **Golden Binary** | ✅ v0.88.10 | Rust 없이 부트스트랩 가능 |
@@ -206,6 +206,8 @@ select {
 | 컴파일러 버그 4건 수정 | ✅ | v0.89.4: float/int ==, free() 리턴 타입, let-in-block MIR 스코프, codegen %tmp (Cycle 42) |
 | 문법 let-in-while 수정 | ✅ | v0.89.4: BlockExpr 규칙 추가, desugar_block_lets — while/for/loop/spawn/closure에서 let 사용 가능 (Cycle 43) |
 | 생태계 재귀→루프 전환 | ✅ | v0.89.4: bmb-sha256 7개 + bmb-hashmap 10개 재귀 워크어라운드 함수를 while 루프로 변환 (Cycle 44) |
+| 생태계 재귀→루프 전환 (확장) | ✅ | v0.89.5: 15개 패키지, 92개 재귀 워크어라운드 → while 루프 변환 완료 (Cycles 44-50) |
+| 인터프리터 *i64 포인터 인덱싱 | ✅ | v0.89.5: ptr[i] / set ptr[i] = val 지원, bmb-ptr/bmb-sort 15개 테스트 복원 (Cycle 50) |
 | 코드 커버리지 > 80% | 📋 | 테스트 범위 확대 |
 | 퍼징 테스트 | 📋 | libFuzzer 기반 입력 검증 |
 | 메모리 안전성 검증 | 📋 | AddressSanitizer 통과 |
