@@ -1,5 +1,7 @@
 # Interpreter float/int `==` mismatch
 
+## Status: RESOLVED (v0.89.4, Cycle 42)
+
 ## Severity: HIGH
 
 ## Description

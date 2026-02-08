@@ -1,8 +1,9 @@
 # ISSUE: `let` bindings disallowed inside while-loop imperative blocks
 
+**Status**: PARTIALLY RESOLVED (v0.89.4, Cycle 42 - MIR scope fix; parser grammar still pending)
 **Date**: 2026-02-07
 **Severity**: HIGH
-**Component**: Parser / Grammar
+**Component**: Parser / Grammar + MIR Lowering
 **Found during**: Phase 1 Dogfooding (bmb-hashmap)
 
 ## Description

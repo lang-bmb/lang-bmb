@@ -1,5 +1,6 @@
 # ISSUE: `free()` returns unit instead of i64, causing confusing type errors
 
+**Status**: RESOLVED (v0.89.4, Cycle 42)
 **Date**: 2026-02-07
 **Severity**: MEDIUM
 **Component**: Interpreter / Builtins

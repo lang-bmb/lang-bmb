@@ -445,31 +445,28 @@ impl TypeChecker {
         // v0.34.2: Memory allocation builtins for Phase 34.2 Dynamic Collections
         // malloc(size: i64) -> i64 (pointer as integer)
         functions.insert("malloc".to_string(), (vec![Type::I64], Type::I64));
-        // free(ptr: i64) -> Unit
-        functions.insert("free".to_string(), (vec![Type::I64], Type::Unit));
+        // v0.89.4: free returns i64(0) so it can be used as expression without wrapper
+        functions.insert("free".to_string(), (vec![Type::I64], Type::I64));
         // realloc(ptr: i64, new_size: i64) -> i64 (new pointer)
         functions.insert("realloc".to_string(), (vec![Type::I64, Type::I64], Type::I64));
         // calloc(count: i64, size: i64) -> i64 (zeroed memory pointer)
         functions.insert("calloc".to_string(), (vec![Type::I64, Type::I64], Type::I64));
-        // store_i64(ptr: i64, value: i64) -> Unit (write to memory)
-        functions.insert("store_i64".to_string(), (vec![Type::I64, Type::I64], Type::Unit));
+        // v0.89.4: store builtins return i64(0) for expression use
+        functions.insert("store_i64".to_string(), (vec![Type::I64, Type::I64], Type::I64));
         // load_i64(ptr: i64) -> i64 (read from memory)
         functions.insert("load_i64".to_string(), (vec![Type::I64], Type::I64));
         // v0.51.5: f64 memory operations for numerical benchmarks
-        // store_f64(ptr: i64, value: f64) -> Unit (write f64 to memory)
-        functions.insert("store_f64".to_string(), (vec![Type::I64, Type::F64], Type::Unit));
+        functions.insert("store_f64".to_string(), (vec![Type::I64, Type::F64], Type::I64));
         // load_f64(ptr: i64) -> f64 (read f64 from memory)
         functions.insert("load_f64".to_string(), (vec![Type::I64], Type::F64));
         // v0.51.51: Byte-level memory access for high-performance string parsing
         // load_u8(ptr: i64) -> i64 (read single byte from memory)
         functions.insert("load_u8".to_string(), (vec![Type::I64], Type::I64));
-        // store_u8(ptr: i64, value: i64) -> Unit (write single byte to memory)
-        functions.insert("store_u8".to_string(), (vec![Type::I64, Type::I64], Type::Unit));
+        functions.insert("store_u8".to_string(), (vec![Type::I64, Type::I64], Type::I64));
         // v0.60.58: 32-bit integer intrinsics for efficient struct packing
         // load_i32(ptr: i64) -> i64 (read 32-bit signed integer, sign-extended to i64)
         functions.insert("load_i32".to_string(), (vec![Type::I64], Type::I64));
-        // store_i32(ptr: i64, value: i64) -> Unit (write lower 32 bits to memory)
-        functions.insert("store_i32".to_string(), (vec![Type::I64, Type::I64], Type::Unit));
+        functions.insert("store_i32".to_string(), (vec![Type::I64, Type::I64], Type::I64));
         // str_data(s: String) -> i64 (get raw pointer to string data)
         functions.insert("str_data".to_string(), (vec![Type::String], Type::I64));
         // Box convenience functions
@@ -477,10 +474,10 @@ impl TypeChecker {
         functions.insert("box_new_i64".to_string(), (vec![Type::I64], Type::I64));
         // box_get_i64(ptr: i64) -> i64 (alias for load_i64)
         functions.insert("box_get_i64".to_string(), (vec![Type::I64], Type::I64));
-        // box_set_i64(ptr: i64, value: i64) -> Unit (alias for store_i64)
-        functions.insert("box_set_i64".to_string(), (vec![Type::I64, Type::I64], Type::Unit));
-        // box_free_i64(ptr: i64) -> Unit (alias for free)
-        functions.insert("box_free_i64".to_string(), (vec![Type::I64], Type::Unit));
+        // box_set_i64(ptr: i64, value: i64) -> i64 (alias for store_i64)
+        functions.insert("box_set_i64".to_string(), (vec![Type::I64, Type::I64], Type::I64));
+        // box_free_i64(ptr: i64) -> i64 (alias for free)
+        functions.insert("box_free_i64".to_string(), (vec![Type::I64], Type::I64));
 
         // v0.34.2.3: Vec<i64> dynamic array builtins (RFC-0007)
         // vec_new() -> i64 (create empty vector, returns header pointer)
@@ -541,15 +538,16 @@ impl TypeChecker {
         // v0.60.27: Initialize generic builtin functions
         let mut generic_functions = HashMap::new();
 
-        // free<T>(ptr: *T) -> Unit
+        // free<T>(ptr: *T) -> i64
         // Allows calling free with typed pointers directly, avoiding unnecessary inttoptr/ptrtoint
         // The i64 version above is kept for backward compatibility with legacy pointer code
+        // v0.89.4: Generic free also returns i64(0) for consistency
         generic_functions.insert(
             "free".to_string(),
             (
                 vec![TypeParam::new("T")],
                 vec![Type::Ptr(Box::new(Type::TypeVar("T".to_string())))],
-                Type::Unit,
+                Type::I64,
             ),
         );
 

@@ -1019,6 +1019,10 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
             // Lower the body (uses the mapping to resolve variable references)
             let result = lower_expr(body, ctx);
 
+            // v0.89.4: Record binding for Block scope extension
+            // Block handler will re-insert this mapping for subsequent statements
+            ctx.last_let_binding = Some((name.clone(), unique_name.clone()));
+
             // v0.88.1: Restore old mapping after body (for proper scoping)
             if let Some(old_name) = old_mapping {
                 ctx.var_name_map.insert(name.clone(), old_name);
@@ -1057,8 +1061,9 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
             // Lower the value
             let value_op = lower_expr(value, ctx);
 
-            // Assign to the variable (must already exist)
-            let var_place = Place::new(name.clone());
+            // v0.89.4: Resolve through var_name_map to get the SSA-unique name
+            let actual_name = ctx.var_name_map.get(name).cloned().unwrap_or_else(|| name.clone());
+            let var_place = Place::new(actual_name.clone());
             match value_op {
                 Operand::Constant(c) => {
                     ctx.push_inst(MirInst::Const {
@@ -1075,7 +1080,7 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
             }
 
             // Assignment expression returns the assigned value
-            Operand::Place(Place::new(name.clone()))
+            Operand::Place(Place::new(actual_name))
         }
 
         // v0.37: Invariant is for SMT verification, MIR lowering ignores it
@@ -1235,11 +1240,36 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
                 return Operand::Constant(Constant::Unit);
             }
 
+            // v0.89.4: Track let bindings introduced in this block
+            // so they persist for subsequent statements (proper block scoping)
+            let mut block_bindings: Vec<(String, Option<String>)> = Vec::new();
+
             // Lower all expressions, return the last one
             let mut result = Operand::Constant(Constant::Unit);
             for expr in exprs {
+                ctx.last_let_binding = None;
                 result = lower_expr(expr, ctx);
+
+                // If the expression was a Let, re-establish its mapping
+                // so subsequent block statements can reference the variable
+                if let Some((orig_name, unique_name)) = ctx.last_let_binding.take() {
+                    // Save the pre-block mapping for restoration at block end
+                    let pre_block = ctx.var_name_map.get(&orig_name).cloned();
+                    block_bindings.push((orig_name.clone(), pre_block));
+                    // Re-insert the let binding for subsequent statements
+                    ctx.var_name_map.insert(orig_name, unique_name);
+                }
             }
+
+            // Restore pre-block mappings (proper scoping: bindings don't leak out)
+            for (orig_name, pre_block) in block_bindings.into_iter().rev() {
+                if let Some(old_name) = pre_block {
+                    ctx.var_name_map.insert(orig_name, old_name);
+                } else {
+                    ctx.var_name_map.remove(&orig_name);
+                }
+            }
+
             result
         }
 

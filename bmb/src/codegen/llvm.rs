@@ -2152,6 +2152,31 @@ impl<'ctx> LlvmContext<'ctx> {
                             }
                         }
                     }
+                } else if func == "free" && args.len() == 1 {
+                    // v0.89.4: free() is void in C but returns i64(0) in BMB
+                    // Call the void free(), then store i64 0 to dest
+                    let arg_val = self.gen_operand(&args[0])?;
+                    let function = *self
+                        .functions
+                        .get("free")
+                        .ok_or_else(|| CodeGenError::UnknownFunction("free".to_string()))?;
+                    let ptr_type = self.context.ptr_type(inkwell::AddressSpace::default());
+                    // Convert i64 to ptr for C free()
+                    let ptr_arg: BasicMetadataValueEnum = if arg_val.is_int_value() {
+                        self.builder
+                            .build_int_to_ptr(arg_val.into_int_value(), ptr_type, "inttoptr")
+                            .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                            .into()
+                    } else {
+                        arg_val.into()
+                    };
+                    self.builder
+                        .build_call(function, &[ptr_arg], "")
+                        .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                    if let Some(dest_place) = dest {
+                        let zero = self.context.i64_type().const_int(0, false);
+                        self.store_to_place(dest_place, zero.into())?;
+                    }
                 } else if func == "load_i64" && args.len() == 1 {
                     // v0.51.2: Inline load_i64 as direct LLVM load instruction
                     // This avoids function call overhead for pointer dereference
@@ -4955,6 +4980,16 @@ impl<'ctx> LlvmContext<'ctx> {
         // v0.50.52: First check if this is an SSA value (temporary)
         if let Some(value) = self.ssa_values.get(&place.name) {
             return Ok(*value);
+        }
+
+        // v0.89.4: Fallback - try _v* variants for let bindings in block scope
+        // This handles cases where MIR uses the unique name but codegen indexed the original
+        if !self.variables.contains_key(&place.name) {
+            for (key, value) in &self.ssa_values {
+                if key.starts_with(&place.name) && key[place.name.len()..].starts_with("_v") {
+                    return Ok(*value);
+                }
+            }
         }
 
         // Fall back to memory load for params/locals/PHI destinations

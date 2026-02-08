@@ -978,6 +978,9 @@ pub struct LoweringContext {
     /// v0.88.1: Maps original variable name -> unique SSA-compatible name
     /// This ensures each let binding gets a unique definition (SSA form)
     pub var_name_map: HashMap<String, String>,
+    /// v0.89.4: Tracks last let binding for Block scope extension
+    /// (original_name, unique_name) - set by Let, consumed by Block
+    pub last_let_binding: Option<(String, String)>,
 }
 
 impl LoweringContext {
@@ -1016,6 +1019,7 @@ impl LoweringContext {
             loop_context_stack: Vec::new(),
             spawn_counter: 0,
             var_name_map: HashMap::new(),
+            last_let_binding: None,
         }
     }
 

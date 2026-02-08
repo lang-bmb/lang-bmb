@@ -1465,8 +1465,22 @@ impl Interpreter {
             },
 
             // Comparison
-            BinOp::Eq => Ok(Value::Bool(left == right)),
-            BinOp::Ne => Ok(Value::Bool(left != right)),
+            // v0.89.4: Cross-type numeric coercion for Eq/Ne (matches Ge/Le/Lt/Gt behavior)
+            // sqrt(4) == 2 was returning false because Int(2) != Float(2.0)
+            BinOp::Eq => {
+                match (&left, &right) {
+                    (Value::Int(a), Value::Float(b)) => Ok(Value::Bool(*a as f64 == *b)),
+                    (Value::Float(a), Value::Int(b)) => Ok(Value::Bool(*a == *b as f64)),
+                    _ => Ok(Value::Bool(left == right)),
+                }
+            }
+            BinOp::Ne => {
+                match (&left, &right) {
+                    (Value::Int(a), Value::Float(b)) => Ok(Value::Bool(*a as f64 != *b)),
+                    (Value::Float(a), Value::Int(b)) => Ok(Value::Bool(*a != *b as f64)),
+                    _ => Ok(Value::Bool(left != right)),
+                }
+            }
             BinOp::Lt => self.compare_values(&left, &right, |a, b| a < b),
             BinOp::Gt => self.compare_values(&left, &right, |a, b| a > b),
             BinOp::Le => self.compare_values(&left, &right, |a, b| a <= b),
@@ -2184,8 +2198,9 @@ fn builtin_malloc(args: &[Value]) -> InterpResult<Value> {
     }
 }
 
-/// free(ptr: i64) -> unit
-/// Frees memory allocated by malloc.
+/// free(ptr: i64) -> i64
+/// Frees memory allocated by malloc. Returns 0.
+/// v0.89.4: Changed from Unit to i64(0) so free() can be used as expression
 /// Note: In the interpreter, we intentionally leak memory for safety.
 /// Native compilation uses real libc free.
 fn builtin_free(args: &[Value]) -> InterpResult<Value> {
@@ -2196,7 +2211,7 @@ fn builtin_free(args: &[Value]) -> InterpResult<Value> {
         Value::Int(_ptr) => {
             // Intentionally do nothing in interpreter for memory safety
             // Real free happens in native compiled code via libc
-            Ok(Value::Unit)
+            Ok(Value::Int(0))
         }
         _ => Err(RuntimeError::type_error("i64", args[0].type_name())),
     }
@@ -2253,8 +2268,9 @@ fn builtin_calloc(args: &[Value]) -> InterpResult<Value> {
     }
 }
 
-/// store_i64(ptr: i64, value: i64) -> ()
-/// Stores an i64 value at the given memory address.
+/// store_i64(ptr: i64, value: i64) -> i64
+/// Stores an i64 value at the given memory address. Returns 0.
+/// v0.89.4: Changed from Unit to i64(0) for expression use
 fn builtin_store_i64(args: &[Value]) -> InterpResult<Value> {
     if args.len() != 2 {
         return Err(RuntimeError::arity_mismatch("store_i64", 2, args.len()));
@@ -2268,7 +2284,7 @@ fn builtin_store_i64(args: &[Value]) -> InterpResult<Value> {
                 let p = *ptr as *mut i64;
                 *p = *value;
             }
-            Ok(Value::Unit)
+            Ok(Value::Int(0))
         }
         _ => Err(RuntimeError::type_error("i64, i64", "other")),
     }
@@ -2295,9 +2311,9 @@ fn builtin_load_i64(args: &[Value]) -> InterpResult<Value> {
     }
 }
 
-/// store_f64(ptr: i64, value: f64) -> ()
-/// Stores an f64 value at the given memory address.
-/// v0.51.5: Added for numerical benchmark fairness (n_body, spectral_norm)
+/// store_f64(ptr: i64, value: f64) -> i64
+/// Stores an f64 value at the given memory address. Returns 0.
+/// v0.89.4: Changed from Unit to i64(0) for expression use
 fn builtin_store_f64(args: &[Value]) -> InterpResult<Value> {
     if args.len() != 2 {
         return Err(RuntimeError::arity_mismatch("store_f64", 2, args.len()));
@@ -2311,7 +2327,7 @@ fn builtin_store_f64(args: &[Value]) -> InterpResult<Value> {
                 let p = *ptr as *mut f64;
                 *p = *value;
             }
-            Ok(Value::Unit)
+            Ok(Value::Int(0))
         }
         _ => Err(RuntimeError::type_error("i64, f64", "other")),
     }
