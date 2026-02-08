@@ -656,4 +656,544 @@ mod tests {
         assert!(script.contains("(assert (> x 0))"));
         assert!(script.contains("(check-sat)"));
     }
+
+    #[test]
+    fn test_proposition_true_false() {
+        let generator = CirSmtGenerator::new();
+        assert_eq!(generator.translate_proposition(&Proposition::True).unwrap(), "true");
+        assert_eq!(generator.translate_proposition(&Proposition::False).unwrap(), "false");
+    }
+
+    #[test]
+    fn test_proposition_not() {
+        let generator = CirSmtGenerator::new();
+        let prop = Proposition::Not(Box::new(Proposition::Compare {
+            lhs: Box::new(CirExpr::Var("x".to_string())),
+            op: CompareOp::Gt,
+            rhs: Box::new(CirExpr::IntLit(0)),
+        }));
+        let smt = generator.translate_proposition(&prop).unwrap();
+        assert_eq!(smt, "(not (> x 0))");
+    }
+
+    #[test]
+    fn test_proposition_or() {
+        let generator = CirSmtGenerator::new();
+        let prop = Proposition::Or(vec![
+            Proposition::Compare {
+                lhs: Box::new(CirExpr::Var("x".to_string())),
+                op: CompareOp::Lt,
+                rhs: Box::new(CirExpr::IntLit(0)),
+            },
+            Proposition::Compare {
+                lhs: Box::new(CirExpr::Var("x".to_string())),
+                op: CompareOp::Gt,
+                rhs: Box::new(CirExpr::IntLit(10)),
+            },
+        ]);
+        let smt = generator.translate_proposition(&prop).unwrap();
+        assert_eq!(smt, "(or (< x 0) (> x 10))");
+    }
+
+    #[test]
+    fn test_proposition_or_empty() {
+        let generator = CirSmtGenerator::new();
+        let prop = Proposition::Or(vec![]);
+        assert_eq!(generator.translate_proposition(&prop).unwrap(), "false");
+    }
+
+    #[test]
+    fn test_proposition_and_empty() {
+        let generator = CirSmtGenerator::new();
+        let prop = Proposition::And(vec![]);
+        assert_eq!(generator.translate_proposition(&prop).unwrap(), "true");
+    }
+
+    #[test]
+    fn test_proposition_and_single() {
+        let generator = CirSmtGenerator::new();
+        let prop = Proposition::And(vec![Proposition::True]);
+        assert_eq!(generator.translate_proposition(&prop).unwrap(), "true");
+    }
+
+    #[test]
+    fn test_proposition_or_single() {
+        let generator = CirSmtGenerator::new();
+        let prop = Proposition::Or(vec![Proposition::False]);
+        assert_eq!(generator.translate_proposition(&prop).unwrap(), "false");
+    }
+
+    #[test]
+    fn test_proposition_exists() {
+        let generator = CirSmtGenerator::new();
+        let prop = Proposition::Exists {
+            var: "i".to_string(),
+            ty: CirType::I64,
+            body: Box::new(Proposition::Compare {
+                lhs: Box::new(CirExpr::Var("i".to_string())),
+                op: CompareOp::Eq,
+                rhs: Box::new(CirExpr::IntLit(5)),
+            }),
+        };
+        let smt = generator.translate_proposition(&prop).unwrap();
+        assert_eq!(smt, "(exists ((i Int)) (= i 5))");
+    }
+
+    #[test]
+    fn test_proposition_non_null() {
+        let generator = CirSmtGenerator::new();
+        let prop = Proposition::NonNull(Box::new(CirExpr::Var("ptr".to_string())));
+        let smt = generator.translate_proposition(&prop).unwrap();
+        assert_eq!(smt, "(not (= ptr 0))");
+    }
+
+    #[test]
+    fn test_proposition_in_bounds() {
+        let generator = CirSmtGenerator::new();
+        let prop = Proposition::InBounds {
+            index: Box::new(CirExpr::Var("i".to_string())),
+            array: Box::new(CirExpr::Var("arr".to_string())),
+        };
+        let smt = generator.translate_proposition(&prop).unwrap();
+        assert_eq!(smt, "(and (>= i 0) (< i (len arr)))");
+    }
+
+    #[test]
+    fn test_proposition_predicate() {
+        let generator = CirSmtGenerator::new();
+        let prop = Proposition::Predicate {
+            name: "is_valid".to_string(),
+            args: vec![CirExpr::Var("x".to_string())],
+        };
+        let smt = generator.translate_proposition(&prop).unwrap();
+        assert_eq!(smt, "(is_valid x)");
+    }
+
+    #[test]
+    fn test_proposition_predicate_no_args() {
+        let generator = CirSmtGenerator::new();
+        let prop = Proposition::Predicate {
+            name: "invariant".to_string(),
+            args: vec![],
+        };
+        let smt = generator.translate_proposition(&prop).unwrap();
+        assert_eq!(smt, "invariant");
+    }
+
+    #[test]
+    fn test_proposition_old() {
+        let generator = CirSmtGenerator::new();
+        let prop = Proposition::Old(
+            Box::new(CirExpr::Var("x".to_string())),
+            Box::new(Proposition::Compare {
+                lhs: Box::new(CirExpr::Var("x".to_string())),
+                op: CompareOp::Gt,
+                rhs: Box::new(CirExpr::IntLit(0)),
+            }),
+        );
+        let smt = generator.translate_proposition(&prop).unwrap();
+        assert!(smt.contains("x_old"));
+    }
+
+    #[test]
+    fn test_expr_sub() {
+        let generator = CirSmtGenerator::new();
+        let expr = CirExpr::BinOp {
+            op: BinOp::Sub,
+            lhs: Box::new(CirExpr::Var("x".to_string())),
+            rhs: Box::new(CirExpr::IntLit(1)),
+        };
+        assert_eq!(generator.translate_expr(&expr).unwrap(), "(- x 1)");
+    }
+
+    #[test]
+    fn test_expr_mul() {
+        let generator = CirSmtGenerator::new();
+        let expr = CirExpr::BinOp {
+            op: BinOp::Mul,
+            lhs: Box::new(CirExpr::Var("x".to_string())),
+            rhs: Box::new(CirExpr::IntLit(2)),
+        };
+        assert_eq!(generator.translate_expr(&expr).unwrap(), "(* x 2)");
+    }
+
+    #[test]
+    fn test_expr_div() {
+        let generator = CirSmtGenerator::new();
+        let expr = CirExpr::BinOp {
+            op: BinOp::Div,
+            lhs: Box::new(CirExpr::Var("x".to_string())),
+            rhs: Box::new(CirExpr::IntLit(3)),
+        };
+        assert_eq!(generator.translate_expr(&expr).unwrap(), "(div x 3)");
+    }
+
+    #[test]
+    fn test_expr_mod() {
+        let generator = CirSmtGenerator::new();
+        let expr = CirExpr::BinOp {
+            op: BinOp::Mod,
+            lhs: Box::new(CirExpr::Var("x".to_string())),
+            rhs: Box::new(CirExpr::IntLit(5)),
+        };
+        assert_eq!(generator.translate_expr(&expr).unwrap(), "(mod x 5)");
+    }
+
+    #[test]
+    fn test_expr_negative_int() {
+        let generator = CirSmtGenerator::new();
+        let expr = CirExpr::IntLit(-42);
+        assert_eq!(generator.translate_expr(&expr).unwrap(), "(- 42)");
+    }
+
+    #[test]
+    fn test_expr_float_lit() {
+        let generator = CirSmtGenerator::new();
+        let bits = 3.0_f64.to_bits();
+        let expr = CirExpr::FloatLit(bits);
+        assert_eq!(generator.translate_expr(&expr).unwrap(), "3");
+    }
+
+    #[test]
+    fn test_expr_bool_lit() {
+        let generator = CirSmtGenerator::new();
+        assert_eq!(generator.translate_expr(&CirExpr::BoolLit(true)).unwrap(), "true");
+        assert_eq!(generator.translate_expr(&CirExpr::BoolLit(false)).unwrap(), "false");
+    }
+
+    #[test]
+    fn test_expr_string_lit() {
+        let generator = CirSmtGenerator::new();
+        let expr = CirExpr::StringLit("hello".to_string());
+        assert_eq!(generator.translate_expr(&expr).unwrap(), "0");
+    }
+
+    #[test]
+    fn test_expr_unit() {
+        let generator = CirSmtGenerator::new();
+        assert_eq!(generator.translate_expr(&CirExpr::Unit).unwrap(), "true");
+    }
+
+    #[test]
+    fn test_expr_call() {
+        let generator = CirSmtGenerator::new();
+        let expr = CirExpr::Call {
+            func: "foo".to_string(),
+            args: vec![CirExpr::Var("x".to_string()), CirExpr::IntLit(1)],
+        };
+        assert_eq!(generator.translate_expr(&expr).unwrap(), "(foo x 1)");
+    }
+
+    #[test]
+    fn test_expr_call_no_args() {
+        let generator = CirSmtGenerator::new();
+        let expr = CirExpr::Call {
+            func: "bar".to_string(),
+            args: vec![],
+        };
+        assert_eq!(generator.translate_expr(&expr).unwrap(), "bar");
+    }
+
+    #[test]
+    fn test_expr_index() {
+        let generator = CirSmtGenerator::new();
+        let expr = CirExpr::Index {
+            base: Box::new(CirExpr::Var("arr".to_string())),
+            index: Box::new(CirExpr::IntLit(0)),
+        };
+        assert_eq!(generator.translate_expr(&expr).unwrap(), "(select arr 0)");
+    }
+
+    #[test]
+    fn test_expr_if() {
+        let generator = CirSmtGenerator::new();
+        let expr = CirExpr::If {
+            cond: Box::new(CirExpr::BoolLit(true)),
+            then_branch: Box::new(CirExpr::IntLit(1)),
+            else_branch: Box::new(CirExpr::IntLit(0)),
+        };
+        assert_eq!(generator.translate_expr(&expr).unwrap(), "(ite true 1 0)");
+    }
+
+    #[test]
+    fn test_expr_let() {
+        let generator = CirSmtGenerator::new();
+        let expr = CirExpr::Let {
+            name: "x".to_string(),
+            ty: CirType::I64,
+            value: Box::new(CirExpr::IntLit(42)),
+            body: Box::new(CirExpr::Var("x".to_string())),
+        };
+        assert_eq!(generator.translate_expr(&expr).unwrap(), "(let ((x 42)) x)");
+    }
+
+    #[test]
+    fn test_expr_let_mut() {
+        let generator = CirSmtGenerator::new();
+        let expr = CirExpr::LetMut {
+            name: "y".to_string(),
+            ty: CirType::I64,
+            value: Box::new(CirExpr::IntLit(10)),
+            body: Box::new(CirExpr::Var("y".to_string())),
+        };
+        assert_eq!(generator.translate_expr(&expr).unwrap(), "(let ((y 10)) y)");
+    }
+
+    #[test]
+    fn test_expr_len() {
+        let generator = CirSmtGenerator::new();
+        let expr = CirExpr::Len(Box::new(CirExpr::Var("arr".to_string())));
+        assert_eq!(generator.translate_expr(&expr).unwrap(), "(len arr)");
+    }
+
+    #[test]
+    fn test_expr_old() {
+        let generator = CirSmtGenerator::new();
+        let expr = CirExpr::Old(Box::new(CirExpr::Var("x".to_string())));
+        assert_eq!(generator.translate_expr(&expr).unwrap(), "x_old");
+    }
+
+    #[test]
+    fn test_expr_unsupported() {
+        let generator = CirSmtGenerator::new();
+        let expr = CirExpr::Block(vec![]);
+        assert!(generator.translate_expr(&expr).is_err());
+    }
+
+    #[test]
+    fn test_binop_ne() {
+        let generator = CirSmtGenerator::new();
+        let expr = CirExpr::BinOp {
+            op: BinOp::Ne,
+            lhs: Box::new(CirExpr::Var("a".to_string())),
+            rhs: Box::new(CirExpr::Var("b".to_string())),
+        };
+        assert_eq!(generator.translate_expr(&expr).unwrap(), "(not (= a b))");
+    }
+
+    #[test]
+    fn test_binop_and_or_implies() {
+        let generator = CirSmtGenerator::new();
+
+        let and_expr = CirExpr::BinOp {
+            op: BinOp::And,
+            lhs: Box::new(CirExpr::Var("a".to_string())),
+            rhs: Box::new(CirExpr::Var("b".to_string())),
+        };
+        assert_eq!(generator.translate_expr(&and_expr).unwrap(), "(and a b)");
+
+        let or_expr = CirExpr::BinOp {
+            op: BinOp::Or,
+            lhs: Box::new(CirExpr::Var("a".to_string())),
+            rhs: Box::new(CirExpr::Var("b".to_string())),
+        };
+        assert_eq!(generator.translate_expr(&or_expr).unwrap(), "(or a b)");
+
+        let implies_expr = CirExpr::BinOp {
+            op: BinOp::Implies,
+            lhs: Box::new(CirExpr::Var("a".to_string())),
+            rhs: Box::new(CirExpr::Var("b".to_string())),
+        };
+        assert_eq!(generator.translate_expr(&implies_expr).unwrap(), "(=> a b)");
+    }
+
+    #[test]
+    fn test_binop_bitwise_unsupported() {
+        let generator = CirSmtGenerator::new();
+        let expr = CirExpr::BinOp {
+            op: BinOp::BitAnd,
+            lhs: Box::new(CirExpr::Var("a".to_string())),
+            rhs: Box::new(CirExpr::Var("b".to_string())),
+        };
+        assert!(generator.translate_expr(&expr).is_err());
+    }
+
+    #[test]
+    fn test_unaryop_neg() {
+        let generator = CirSmtGenerator::new();
+        let expr = CirExpr::UnaryOp {
+            op: UnaryOp::Neg,
+            operand: Box::new(CirExpr::Var("x".to_string())),
+        };
+        assert_eq!(generator.translate_expr(&expr).unwrap(), "(- x)");
+    }
+
+    #[test]
+    fn test_unaryop_not() {
+        let generator = CirSmtGenerator::new();
+        let expr = CirExpr::UnaryOp {
+            op: UnaryOp::Not,
+            operand: Box::new(CirExpr::Var("x".to_string())),
+        };
+        assert_eq!(generator.translate_expr(&expr).unwrap(), "(not x)");
+    }
+
+    #[test]
+    fn test_unaryop_bitnot_unsupported() {
+        let generator = CirSmtGenerator::new();
+        let expr = CirExpr::UnaryOp {
+            op: UnaryOp::BitNot,
+            operand: Box::new(CirExpr::Var("x".to_string())),
+        };
+        assert!(generator.translate_expr(&expr).is_err());
+    }
+
+    #[test]
+    fn test_smt_sort_to_smt() {
+        assert_eq!(SmtSort::Int.to_smt(), "Int");
+        assert_eq!(SmtSort::Real.to_smt(), "Real");
+        assert_eq!(SmtSort::Bool.to_smt(), "Bool");
+        assert_eq!(SmtSort::BitVec(32).to_smt(), "(_ BitVec 32)");
+        assert_eq!(
+            SmtSort::Array(Box::new(SmtSort::Int), Box::new(SmtSort::Bool)).to_smt(),
+            "(Array Int Bool)"
+        );
+    }
+
+    #[test]
+    fn test_cir_type_to_sort() {
+        let g = CirSmtGenerator::new();
+        assert_eq!(g.cir_type_to_sort(&CirType::Bool), SmtSort::Bool);
+        assert_eq!(g.cir_type_to_sort(&CirType::I64), SmtSort::Int);
+        assert_eq!(g.cir_type_to_sort(&CirType::U32), SmtSort::Int);
+        assert_eq!(g.cir_type_to_sort(&CirType::F64), SmtSort::Real);
+        assert_eq!(g.cir_type_to_sort(&CirType::String), SmtSort::Int);
+        assert_eq!(g.cir_type_to_sort(&CirType::Unit), SmtSort::Bool);
+        assert_eq!(g.cir_type_to_sort(&CirType::Never), SmtSort::Bool);
+        assert_eq!(g.cir_type_to_sort(&CirType::Char), SmtSort::Int);
+        assert_eq!(
+            g.cir_type_to_sort(&CirType::Array(Box::new(CirType::I64), 10)),
+            SmtSort::Array(Box::new(SmtSort::Int), Box::new(SmtSort::Int))
+        );
+        assert_eq!(
+            g.cir_type_to_sort(&CirType::Slice(Box::new(CirType::Bool))),
+            SmtSort::Array(Box::new(SmtSort::Int), Box::new(SmtSort::Bool))
+        );
+        assert_eq!(g.cir_type_to_sort(&CirType::Ref(Box::new(CirType::I64))), SmtSort::Int);
+        assert_eq!(g.cir_type_to_sort(&CirType::Struct("Foo".to_string())), SmtSort::Int);
+        assert_eq!(g.cir_type_to_sort(&CirType::Enum("Bar".to_string())), SmtSort::Int);
+    }
+
+    #[test]
+    fn test_set_logic() {
+        let mut g = CirSmtGenerator::new();
+        g.set_logic("QF_NIA");
+        let script = g.generate();
+        assert!(script.contains("(set-logic QF_NIA)"));
+    }
+
+    #[test]
+    fn test_use_array_logic() {
+        let mut g = CirSmtGenerator::new();
+        g.use_array_logic();
+        let script = g.generate();
+        assert!(script.contains("(set-logic AUFLIA)"));
+    }
+
+    #[test]
+    fn test_declare_fun() {
+        let mut g = CirSmtGenerator::new();
+        g.declare_fun("add", &[SmtSort::Int, SmtSort::Int], SmtSort::Int);
+        let script = g.generate();
+        assert!(script.contains("(declare-fun add (Int Int) Int)"));
+    }
+
+    #[test]
+    fn test_assert_proposition() {
+        let mut g = CirSmtGenerator::new();
+        let prop = Proposition::Compare {
+            lhs: Box::new(CirExpr::Var("x".to_string())),
+            op: CompareOp::Gt,
+            rhs: Box::new(CirExpr::IntLit(0)),
+        };
+        g.assert_proposition(&prop).unwrap();
+        let script = g.generate();
+        assert!(script.contains("(assert (> x 0))"));
+    }
+
+    #[test]
+    fn test_clear() {
+        let mut g = CirSmtGenerator::new();
+        g.declare_var("x", SmtSort::Int);
+        g.assert("(> x 0)");
+        g.clear();
+        let script = g.generate();
+        assert!(!script.contains("declare-const"));
+        assert!(!script.contains("(assert"));
+    }
+
+    #[test]
+    fn test_sanitize_name() {
+        // Basic alphanumeric
+        assert_eq!(sanitize_name("x"), "x");
+        assert_eq!(sanitize_name("my_var"), "my_var");
+        // Colon to underscore
+        assert_eq!(sanitize_name("std::math"), "std__math");
+        // Numeric start
+        assert_eq!(sanitize_name("123"), "_123");
+        // Empty
+        assert_eq!(sanitize_name(""), "_");
+    }
+
+    #[test]
+    fn test_smt_error_display() {
+        let e1 = SmtError::UnsupportedExpression("Block".to_string());
+        assert_eq!(format!("{}", e1), "unsupported expression: Block");
+
+        let e2 = SmtError::UnsupportedOperator("BitAnd".to_string());
+        assert_eq!(format!("{}", e2), "unsupported operator: BitAnd");
+
+        let e3 = SmtError::UnsupportedType("Complex".to_string());
+        assert_eq!(format!("{}", e3), "unsupported type: Complex");
+
+        let e4 = SmtError::VerificationFailed("unsat".to_string());
+        assert_eq!(format!("{}", e4), "verification failed: unsat");
+    }
+
+    #[test]
+    fn test_comparison_le_eq() {
+        let generator = CirSmtGenerator::new();
+        let le_prop = Proposition::Compare {
+            lhs: Box::new(CirExpr::Var("x".to_string())),
+            op: CompareOp::Le,
+            rhs: Box::new(CirExpr::IntLit(10)),
+        };
+        assert_eq!(generator.translate_proposition(&le_prop).unwrap(), "(<= x 10)");
+
+        let eq_prop = Proposition::Compare {
+            lhs: Box::new(CirExpr::Var("x".to_string())),
+            op: CompareOp::Eq,
+            rhs: Box::new(CirExpr::IntLit(5)),
+        };
+        assert_eq!(generator.translate_proposition(&eq_prop).unwrap(), "(= x 5)");
+    }
+
+    #[test]
+    fn test_binop_wrapping_variants() {
+        let generator = CirSmtGenerator::new();
+
+        // AddWrap maps to +
+        let expr = CirExpr::BinOp {
+            op: BinOp::AddWrap,
+            lhs: Box::new(CirExpr::Var("x".to_string())),
+            rhs: Box::new(CirExpr::IntLit(1)),
+        };
+        assert_eq!(generator.translate_expr(&expr).unwrap(), "(+ x 1)");
+
+        // SubWrap maps to -
+        let expr = CirExpr::BinOp {
+            op: BinOp::SubWrap,
+            lhs: Box::new(CirExpr::Var("x".to_string())),
+            rhs: Box::new(CirExpr::IntLit(1)),
+        };
+        assert_eq!(generator.translate_expr(&expr).unwrap(), "(- x 1)");
+
+        // MulWrap maps to *
+        let expr = CirExpr::BinOp {
+            op: BinOp::MulWrap,
+            lhs: Box::new(CirExpr::Var("x".to_string())),
+            rhs: Box::new(CirExpr::IntLit(2)),
+        };
+        assert_eq!(generator.translate_expr(&expr).unwrap(), "(* x 2)");
+    }
 }

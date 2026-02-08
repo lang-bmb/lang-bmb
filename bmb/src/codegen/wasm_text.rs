@@ -2442,4 +2442,288 @@ mod tests {
         let wat = WasmCodeGen::new().generate(&program).unwrap();
         assert!(wat.contains("f64.const 1.5"));
     }
+
+    // --- Additional coverage tests ---
+
+    #[test]
+    fn test_multiple_functions() {
+        let program = MirProgram {
+            functions: vec![
+                MirFunction {
+                    name: "first".to_string(),
+                    params: vec![],
+                    ret_ty: MirType::I64,
+                    locals: vec![],
+                    blocks: vec![BasicBlock {
+                        label: "entry".to_string(),
+                        instructions: vec![],
+                        terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(1)))),
+                    }],
+                    preconditions: vec![],
+                    postconditions: vec![],
+                    is_pure: false,
+                    is_const: false,
+                    always_inline: false,
+                    inline_hint: false,
+                    is_memory_free: false,
+                },
+                MirFunction {
+                    name: "second".to_string(),
+                    params: vec![],
+                    ret_ty: MirType::I64,
+                    locals: vec![],
+                    blocks: vec![BasicBlock {
+                        label: "entry".to_string(),
+                        instructions: vec![],
+                        terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(2)))),
+                    }],
+                    preconditions: vec![],
+                    postconditions: vec![],
+                    is_pure: false,
+                    is_const: false,
+                    always_inline: false,
+                    inline_hint: false,
+                    is_memory_free: false,
+                },
+            ],
+            extern_fns: vec![],
+            struct_defs: std::collections::HashMap::new(),
+        };
+
+        let wat = WasmCodeGen::new().generate(&program).unwrap();
+        assert!(wat.contains("(func $first"));
+        assert!(wat.contains("(func $second"));
+        assert!(wat.contains("(export \"first\""));
+        assert!(wat.contains("(export \"second\""));
+    }
+
+    #[test]
+    fn test_function_with_locals() {
+        let program = MirProgram {
+            functions: vec![MirFunction {
+                name: "with_locals".to_string(),
+                params: vec![("x".to_string(), MirType::I64)],
+                ret_ty: MirType::I64,
+                locals: vec![
+                    ("_t0".to_string(), MirType::I64),
+                    ("_t1".to_string(), MirType::Bool),
+                ],
+                blocks: vec![BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Return(Some(Operand::Place(Place::new("x")))),
+                }],
+                preconditions: vec![],
+                postconditions: vec![],
+                is_pure: false,
+                is_const: false,
+                always_inline: false,
+                inline_hint: false,
+                is_memory_free: false,
+            }],
+            extern_fns: vec![],
+            struct_defs: std::collections::HashMap::new(),
+        };
+
+        let wat = WasmCodeGen::new().generate(&program).unwrap();
+        assert!(wat.contains("(local $_t0 i64)"));
+        assert!(wat.contains("(local $_t1 i32)"));
+    }
+
+    #[test]
+    fn test_void_return() {
+        let program = MirProgram {
+            functions: vec![MirFunction {
+                name: "noop".to_string(),
+                params: vec![],
+                ret_ty: MirType::Unit,
+                locals: vec![],
+                blocks: vec![BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Return(None),
+                }],
+                preconditions: vec![],
+                postconditions: vec![],
+                is_pure: false,
+                is_const: false,
+                always_inline: false,
+                inline_hint: false,
+                is_memory_free: false,
+            }],
+            extern_fns: vec![],
+            struct_defs: std::collections::HashMap::new(),
+        };
+
+        let wat = WasmCodeGen::new().generate(&program).unwrap();
+        assert!(wat.contains("(func $noop"));
+        // No result for Unit
+        assert!(!wat.contains("(func $noop (result"));
+    }
+
+    #[test]
+    fn test_bool_return_type() {
+        let program = MirProgram {
+            functions: vec![MirFunction {
+                name: "is_true".to_string(),
+                params: vec![],
+                ret_ty: MirType::Bool,
+                locals: vec![],
+                blocks: vec![BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Return(Some(Operand::Constant(Constant::Bool(true)))),
+                }],
+                preconditions: vec![],
+                postconditions: vec![],
+                is_pure: false,
+                is_const: false,
+                always_inline: false,
+                inline_hint: false,
+                is_memory_free: false,
+            }],
+            extern_fns: vec![],
+            struct_defs: std::collections::HashMap::new(),
+        };
+
+        let wat = WasmCodeGen::new().generate(&program).unwrap();
+        assert!(wat.contains("(result i32)"));
+        assert!(wat.contains("i32.const 1"));
+    }
+
+    #[test]
+    fn test_assign_instruction() {
+        let program = MirProgram {
+            functions: vec![MirFunction {
+                name: "assign_test".to_string(),
+                params: vec![("x".to_string(), MirType::I64)],
+                ret_ty: MirType::I64,
+                locals: vec![("y".to_string(), MirType::I64)],
+                blocks: vec![BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![MirInst::Copy {
+                        dest: Place::new("y"),
+                        src: Place::new("x"),
+                    }],
+                    terminator: Terminator::Return(Some(Operand::Place(Place::new("y")))),
+                }],
+                preconditions: vec![],
+                postconditions: vec![],
+                is_pure: false,
+                is_const: false,
+                always_inline: false,
+                inline_hint: false,
+                is_memory_free: false,
+            }],
+            extern_fns: vec![],
+            struct_defs: std::collections::HashMap::new(),
+        };
+
+        let wat = WasmCodeGen::new().generate(&program).unwrap();
+        assert!(wat.contains("local.get $x"));
+        assert!(wat.contains("local.set $y"));
+    }
+
+    #[test]
+    fn test_constant_string() {
+        let program = MirProgram {
+            functions: vec![MirFunction {
+                name: "str_fn".to_string(),
+                params: vec![],
+                ret_ty: MirType::I64,
+                locals: vec![],
+                blocks: vec![BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(0)))),
+                }],
+                preconditions: vec![],
+                postconditions: vec![],
+                is_pure: false,
+                is_const: false,
+                always_inline: false,
+                inline_hint: false,
+                is_memory_free: false,
+            }],
+            extern_fns: vec![],
+            struct_defs: std::collections::HashMap::new(),
+        };
+
+        let wat = WasmCodeGen::new().generate(&program).unwrap();
+        assert!(wat.contains("i64.const 0"));
+    }
+
+    #[test]
+    fn test_f64_sub() {
+        let program = binop_program(MirBinOp::Sub, MirType::F64);
+        let wat = WasmCodeGen::new().generate(&program).unwrap();
+        assert!(wat.contains("f64.sub"));
+    }
+
+    #[test]
+    fn test_xor_operation() {
+        let program = binop_program(MirBinOp::Bxor, MirType::I64);
+        let wat = WasmCodeGen::new().generate(&program).unwrap();
+        assert!(wat.contains("i64.xor"));
+    }
+
+    #[test]
+    fn test_memory_custom_pages() {
+        let program = MirProgram {
+            functions: vec![],
+            extern_fns: vec![],
+            struct_defs: std::collections::HashMap::new(),
+        };
+
+        let wat = WasmCodeGen::new().with_memory(16).generate(&program).unwrap();
+        assert!(wat.contains("(memory"));
+    }
+
+    #[test]
+    fn test_wasm_codegen_error_display() {
+        let err = WasmCodeGenError::UnsupportedFeature("closures".to_string());
+        let display = format!("{}", err);
+        assert!(display.contains("closures"));
+    }
+
+    #[test]
+    fn test_empty_program() {
+        let program = MirProgram {
+            functions: vec![],
+            extern_fns: vec![],
+            struct_defs: std::collections::HashMap::new(),
+        };
+
+        let wat = WasmCodeGen::new().generate(&program).unwrap();
+        assert!(wat.contains("(module"));
+    }
+
+    #[test]
+    fn test_i32_return() {
+        let program = MirProgram {
+            functions: vec![MirFunction {
+                name: "get_i32".to_string(),
+                params: vec![],
+                ret_ty: MirType::I32,
+                locals: vec![],
+                blocks: vec![BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(99)))),
+                }],
+                preconditions: vec![],
+                postconditions: vec![],
+                is_pure: false,
+                is_const: false,
+                always_inline: false,
+                inline_hint: false,
+                is_memory_free: false,
+            }],
+            extern_fns: vec![],
+            struct_defs: std::collections::HashMap::new(),
+        };
+
+        let wat = WasmCodeGen::new().generate(&program).unwrap();
+        assert!(wat.contains("(result i32)"));
+    }
 }

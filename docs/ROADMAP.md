@@ -8,11 +8,11 @@
 
 | 항목 | 상태 | 비고 |
 |------|------|------|
-| **버전** | v0.89.9 | Quality Gate (Alpha) |
+| **버전** | v0.89.10 | Quality Gate (Alpha) |
 | **단계** | Alpha | Concurrency 완료 → **Alpha (v0.89)** → Beta (v0.90) → RC (v0.98) |
 | **Bootstrap** | ✅ 3-Stage 완료 | Stage 1: ~0.55s (--fast-compile) |
 | **Benchmarks** | ✅ 18/30 BMB > C | 60% C보다 빠름 |
-| **Tests** | ✅ 1183개 통과 | 1006 + 154 + 23 (cargo) + 17/17 BMB ecosystem packages |
+| **Tests** | ✅ 1472개 통과 | 1295 + 154 + 23 (cargo) + 17/17 BMB ecosystem packages |
 | **Stability** | ✅ STABILITY.md | 언어/API 동결 문서화 |
 | **동시성 지원** | ✅ 부트스트랩 완료 | 토큰/타입/MIR/코드젠/extern 선언 완료 |
 | **Golden Binary** | ✅ v0.88.10 | Rust 없이 부트스트랩 가능 |
@@ -228,7 +228,16 @@ select {
 | 검증 요약 + 증분 검증 테스트 | ✅ | v0.89.9: summary.rs 18개 + incremental.rs 17개 = 35개 테스트 (Cycle 73) |
 | SMT 번역기 + PIR→MIR 팩트 테스트 | ✅ | v0.89.9: translator.rs 21개 + to_mir_facts.rs 18개 = 39개 (Cycle 74) |
 | 인터프리터 에러 + 스코프 + MIR 증명 테스트 | ✅ | v0.89.9: error.rs 18개 + scope.rs 12개 + proof_guided.rs 16개 = 46개 (Cycle 75) |
-| 코드 커버리지 > 80% | 📋 | 테스트 범위 확대 (현재 1183개) |
+| MIR 최적화 패스 테스트 (파트1) | ✅ | v0.89.10: optimize.rs +37 테스트 (Pipeline/Stats/ConstFold/AggressiveInlining/MemoryEffect/LoopBounded) (Cycle 77) |
+| MIR 최적화 패스 테스트 (파트2) | ✅ | v0.89.10: optimize.rs +19 테스트 (AlgebraicSimpl/DCE/ConstPropNarrowing/LICM/simplify_binop) (Cycle 78) |
+| 타입체커 통합 테스트 확장 | ✅ | v0.89.10: types/mod.rs +23 테스트 (let/if/while/for/tuple/enum/match/arity/struct/contract) (Cycle 79) |
+| LLVM 텍스트 코드젠 테스트 | ✅ | v0.89.10: llvm_text.rs +23 테스트 (f64/bool/비교/for/struct/enum/match/contract/bitwise) (Cycle 80) |
+| MIR 로우어링 테스트 확장 | ✅ | v0.89.10: lower.rs +20 테스트 (단항/상수/struct/enum/비교/계약/while/if/tuple/bitwise) (Cycle 81) |
+| 인터프리터 E2E 테스트 확장 | ✅ | v0.89.10: eval.rs +18 테스트 (for/struct/enum/tuple/재귀/match/string/bitwise/shift) (Cycle 82) |
+| PIR + CIR SMT 테스트 | ✅ | v0.89.10: pir/mod.rs +14, cir/smt.rs +48 = 62개 테스트 (타입변환/증명/Proposition/SmtSort/binop) (Cycle 83) |
+| 계약 검증 + WASM 테스트 | ✅ | v0.89.10: contract.rs +23, wasm_text.rs +12 = 35개 테스트 (Display/Report/VerifyResult/다중함수/로컬) (Cycle 84) |
+| 소규모 모듈 커버리지 스위프 | ✅ | v0.89.10: ast/types.rs +22, env.rs +8, value.rs +12, cfg +5, derive +5 = 52개 테스트 (Cycle 85) |
+| 코드 커버리지 > 80% | 📋 | 테스트 범위 확대 (현재 1295개 단위 테스트) |
 | 퍼징 테스트 | 📋 | libFuzzer 기반 입력 검증 |
 | 메모리 안전성 검증 | 📋 | AddressSanitizer 통과 |
 

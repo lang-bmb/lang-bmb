@@ -4328,4 +4328,161 @@ mod tests {
         let result = run_program("fn main() -> i64 = \"hello\".len();");
         assert_eq!(result, Value::Int(5));
     }
+
+    // ================================================================
+    // Cycle 82: Extended interpreter tests
+    // ================================================================
+
+    #[test]
+    fn test_for_loop_sum() {
+        let result = run_program(
+            "fn main() -> i64 = { let mut sum = 0; for i in 0..5 { sum = sum + i }; sum };"
+        );
+        assert_eq!(result, Value::Int(10)); // 0+1+2+3+4 = 10
+    }
+
+    #[test]
+    fn test_struct_creation_and_access() {
+        let result = run_program(
+            "struct Point { x: i64, y: i64 }
+             fn main() -> i64 = { let p = new Point { x: 3, y: 4 }; p.x + p.y };"
+        );
+        assert_eq!(result, Value::Int(7));
+    }
+
+    #[test]
+    fn test_enum_match() {
+        let result = run_program(
+            "enum Color { Red, Green, Blue }
+             fn to_int(c: Color) -> i64 = match c { Color::Red => 1, Color::Green => 2, Color::Blue => 3 };
+             fn main() -> i64 = to_int(Color::Green);"
+        );
+        assert_eq!(result, Value::Int(2));
+    }
+
+    #[test]
+    fn test_tuple_creation() {
+        let result = run_program(
+            "fn first(t: (i64, i64)) -> i64 = t.0;
+             fn main() -> i64 = first((42, 99));"
+        );
+        assert_eq!(result, Value::Int(42));
+    }
+
+    #[test]
+    fn test_f64_comparison() {
+        assert_eq!(run_program("fn main() -> i64 = if 3.14 > 2.71 { 1 } else { 0 };"), Value::Int(1));
+        assert_eq!(run_program("fn main() -> i64 = if 1.0 < 2.0 { 1 } else { 0 };"), Value::Int(1));
+        assert_eq!(run_program("fn main() -> i64 = if 1.5 >= 1.5 { 1 } else { 0 };"), Value::Int(1));
+        assert_eq!(run_program("fn main() -> i64 = if 1.5 <= 1.5 { 1 } else { 0 };"), Value::Int(1));
+    }
+
+    #[test]
+    fn test_f64_arithmetic_full() {
+        let result = run_program("fn main() -> f64 = 10.0 / 3.0;");
+        if let Value::Float(f) = result {
+            assert!((f - 3.3333333333333335).abs() < 1e-10);
+        } else {
+            panic!("Expected float");
+        }
+    }
+
+    #[test]
+    fn test_mutual_recursion() {
+        let result = run_program(
+            "fn is_even(n: i64) -> bool = if n == 0 { true } else { is_odd(n - 1) };
+             fn is_odd(n: i64) -> bool = if n == 0 { false } else { is_even(n - 1) };
+             fn main() -> i64 = if is_even(4) { 1 } else { 0 };"
+        );
+        assert_eq!(result, Value::Int(1));
+    }
+
+    #[test]
+    fn test_match_wildcard() {
+        let result = run_program(
+            "fn classify(x: i64) -> i64 = match x { 0 => 100, 1 => 200, _ => 0 };
+             fn main() -> i64 = classify(5);"
+        );
+        assert_eq!(result, Value::Int(0));
+    }
+
+    #[test]
+    fn test_nested_struct_access() {
+        let result = run_program(
+            "struct Inner { val: i64 }
+             struct Outer { inner: Inner }
+             fn main() -> i64 = { let o = new Outer { inner: new Inner { val: 42 } }; o.inner.val };"
+        );
+        assert_eq!(result, Value::Int(42));
+    }
+
+    #[test]
+    fn test_while_with_break_condition() {
+        let result = run_program(
+            "fn main() -> i64 = { let mut i = 0; while i < 100 { i = i + 7; 0 }; i };"
+        );
+        // i goes 0,7,14,...,98,105 — stops when 105 >= 100
+        assert_eq!(result, Value::Int(105));
+    }
+
+    #[test]
+    fn test_string_concat_chain() {
+        let result = run_program(r#"fn main() -> String = "a" + "b" + "c";"#);
+        assert_eq!(result, Value::Str(Rc::new("abc".to_string())));
+    }
+
+    #[test]
+    fn test_comparison_chained() {
+        // Chaining via function calls
+        let result = run_program(
+            "fn max(a: i64, b: i64) -> i64 = if a > b { a } else { b };
+             fn main() -> i64 = max(max(3, 7), max(5, 2));"
+        );
+        assert_eq!(result, Value::Int(7));
+    }
+
+    #[test]
+    fn test_let_binding_shadowing() {
+        let result = run_program(
+            "fn main() -> i64 = { let x = 10; let x = x + 5; x };"
+        );
+        assert_eq!(result, Value::Int(15));
+    }
+
+    #[test]
+    fn test_complex_block_expression() {
+        let result = run_program(
+            "fn main() -> i64 = { let a = 1; let b = 2; let c = { let d = a + b; d * 2 }; c + 1 };"
+        );
+        assert_eq!(result, Value::Int(7)); // d = 3, c = 6, c + 1 = 7
+    }
+
+    #[test]
+    fn test_bitwise_operations() {
+        assert_eq!(run_program("fn main() -> i64 = 5 band 3;"), Value::Int(1));   // 101 & 011 = 001
+        assert_eq!(run_program("fn main() -> i64 = 5 bor 3;"), Value::Int(7));    // 101 | 011 = 111
+        assert_eq!(run_program("fn main() -> i64 = 5 bxor 3;"), Value::Int(6));   // 101 ^ 011 = 110
+    }
+
+    #[test]
+    fn test_shift_operations() {
+        assert_eq!(run_program("fn main() -> i64 = 1 << 4;"), Value::Int(16));
+        assert_eq!(run_program("fn main() -> i64 = 16 >> 2;"), Value::Int(4));
+    }
+
+    #[test]
+    fn test_multiple_function_calls() {
+        let result = run_program(
+            "fn sq(x: i64) -> i64 = x * x;
+             fn cube(x: i64) -> i64 = x * sq(x);
+             fn main() -> i64 = cube(3);"
+        );
+        assert_eq!(result, Value::Int(27));
+    }
+
+    #[test]
+    fn test_negative_numbers() {
+        assert_eq!(run_program("fn main() -> i64 = 0 - 42;"), Value::Int(-42));
+        assert_eq!(run_program("fn main() -> i64 = (0 - 5) * (0 - 3);"), Value::Int(15));
+    }
 }

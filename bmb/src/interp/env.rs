@@ -136,4 +136,87 @@ mod tests {
         // Parent still has original x
         assert_eq!(parent.borrow().get("x"), Some(Value::Int(1)));
     }
+
+    #[test]
+    fn test_default() {
+        let env = Environment::default();
+        assert!(env.bindings().is_empty());
+    }
+
+    #[test]
+    fn test_set_existing_variable() {
+        let mut env = Environment::new();
+        env.define("x".to_string(), Value::Int(1));
+        let updated = env.set("x", Value::Int(42));
+        assert!(updated);
+        assert_eq!(env.get("x"), Some(Value::Int(42)));
+    }
+
+    #[test]
+    fn test_set_nonexistent_variable() {
+        let mut env = Environment::new();
+        let updated = env.set("x", Value::Int(1));
+        assert!(!updated);
+    }
+
+    #[test]
+    fn test_set_in_parent_scope() {
+        let parent = Environment::new().into_ref();
+        parent.borrow_mut().define("x".to_string(), Value::Int(1));
+
+        let child = child_env(&parent);
+        let updated = child.borrow_mut().set("x", Value::Int(99));
+        assert!(updated);
+
+        // Parent's x should be updated
+        assert_eq!(parent.borrow().get("x"), Some(Value::Int(99)));
+    }
+
+    #[test]
+    fn test_contains() {
+        let mut env = Environment::new();
+        assert!(!env.contains("x"));
+        env.define("x".to_string(), Value::Int(1));
+        assert!(env.contains("x"));
+        assert!(!env.contains("y"));
+    }
+
+    #[test]
+    fn test_contains_parent_chain() {
+        let parent = Environment::new().into_ref();
+        parent.borrow_mut().define("x".to_string(), Value::Int(1));
+
+        let child = child_env(&parent);
+        assert!(child.borrow().contains("x"));
+        assert!(!child.borrow().contains("y"));
+    }
+
+    #[test]
+    fn test_bindings() {
+        let mut env = Environment::new();
+        env.define("a".to_string(), Value::Int(1));
+        env.define("b".to_string(), Value::Int(2));
+        assert_eq!(env.bindings().len(), 2);
+    }
+
+    #[test]
+    fn test_three_level_scope_chain() {
+        let grandparent = Environment::new().into_ref();
+        grandparent.borrow_mut().define("x".to_string(), Value::Int(1));
+
+        let parent = child_env(&grandparent);
+        parent.borrow_mut().define("y".to_string(), Value::Int(2));
+
+        let child = child_env(&parent);
+        child.borrow_mut().define("z".to_string(), Value::Int(3));
+
+        // Child sees all three
+        assert_eq!(child.borrow().get("x"), Some(Value::Int(1)));
+        assert_eq!(child.borrow().get("y"), Some(Value::Int(2)));
+        assert_eq!(child.borrow().get("z"), Some(Value::Int(3)));
+
+        // Grandparent sees only x
+        assert_eq!(grandparent.borrow().get("x"), Some(Value::Int(1)));
+        assert_eq!(grandparent.borrow().get("y"), None);
+    }
 }

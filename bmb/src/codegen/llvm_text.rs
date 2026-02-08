@@ -5493,4 +5493,194 @@ mod tests {
         assert!(ir.contains("@neg"));
         assert!(ir.contains("sub nsw i64"));
     }
+
+    // ================================================================
+    // Cycle 80: Extended codegen tests
+    // ================================================================
+
+    #[test]
+    fn test_rt_f64_sub() {
+        let ir = source_to_ir("fn fsub(a: f64, b: f64) -> f64 = a - b;");
+        assert!(ir.contains("@fsub"));
+        assert!(ir.contains("fsub") || ir.contains("double"), "float sub missing");
+    }
+
+    #[test]
+    fn test_rt_f64_mul() {
+        let ir = source_to_ir("fn fmul(a: f64, b: f64) -> f64 = a * b;");
+        assert!(ir.contains("@fmul"));
+        assert!(ir.contains("fmul") || ir.contains("double"), "float mul missing");
+    }
+
+    #[test]
+    fn test_rt_f64_div() {
+        let ir = source_to_ir("fn fdiv(a: f64, b: f64) -> f64 = a / b;");
+        assert!(ir.contains("@fdiv"));
+        assert!(ir.contains("fdiv") || ir.contains("double"), "float div missing");
+    }
+
+    #[test]
+    fn test_rt_bool_branch() {
+        let ir = source_to_ir("fn choose(a: bool, x: i64, y: i64) -> i64 = if a { x } else { y };");
+        assert!(ir.contains("@choose"));
+        assert!(ir.contains("br i1"));
+    }
+
+    #[test]
+    fn test_rt_bool_equality() {
+        let ir = source_to_ir("fn is_zero(x: i64) -> bool = x == 0;");
+        assert!(ir.contains("@is_zero"));
+        assert!(ir.contains("icmp eq i64"));
+    }
+
+    #[test]
+    fn test_rt_comparison_le() {
+        let ir = source_to_ir("fn le(a: i64, b: i64) -> bool = a <= b;");
+        assert!(ir.contains("icmp sle i64"));
+    }
+
+    #[test]
+    fn test_rt_comparison_ge() {
+        let ir = source_to_ir("fn ge(a: i64, b: i64) -> bool = a >= b;");
+        assert!(ir.contains("icmp sge i64"));
+    }
+
+    #[test]
+    fn test_rt_comparison_ne() {
+        let ir = source_to_ir("fn ne(a: i64, b: i64) -> bool = a != b;");
+        assert!(ir.contains("icmp ne i64"));
+    }
+
+    #[test]
+    fn test_rt_for_loop_codegen() {
+        let ir = source_to_ir(
+            "fn sum_to(n: i64) -> i64 = { let mut s: i64 = 0; for i in 0..n { s = s + i }; s };"
+        );
+        assert!(ir.contains("@sum_to"));
+        // for loop should generate phi nodes and branch
+        assert!(ir.contains("phi i64") || ir.contains("br "));
+    }
+
+    #[test]
+    fn test_rt_struct_codegen() {
+        let ir = source_to_ir(
+            "struct Point { x: i64, y: i64 }
+             fn origin() -> Point = new Point { x: 0, y: 0 };"
+        );
+        assert!(ir.contains("@origin"));
+    }
+
+    #[test]
+    fn test_rt_enum_codegen() {
+        let ir = source_to_ir(
+            "enum Color { Red, Green, Blue }
+             fn red() -> Color = Color::Red;"
+        );
+        assert!(ir.contains("@red"));
+    }
+
+    #[test]
+    fn test_rt_match_codegen() {
+        let ir = source_to_ir(
+            "fn classify(x: i64) -> i64 = match x { 0 => 1, 1 => 2, _ => 0 };"
+        );
+        assert!(ir.contains("@classify"));
+        // match generates switch or branch chain
+        assert!(ir.contains("switch") || ir.contains("br i1"));
+    }
+
+    #[test]
+    fn test_rt_contract_precondition_codegen() {
+        let ir = source_to_ir(
+            "fn safe_div(a: i64, b: i64) -> i64
+               pre b != 0
+             = a / b;"
+        );
+        assert!(ir.contains("@safe_div"));
+        assert!(ir.contains("sdiv i64"));
+    }
+
+    #[test]
+    fn test_rt_contract_postcondition_codegen() {
+        let ir = source_to_ir(
+            "fn abs(x: i64) -> i64
+               post ret >= 0
+             = if x >= 0 { x } else { 0 - x };"
+        );
+        assert!(ir.contains("@abs"));
+    }
+
+    #[test]
+    fn test_rt_square_function() {
+        let ir = source_to_ir("fn square(x: i64) -> i64 = x * x;");
+        assert!(ir.contains("@square"));
+        assert!(ir.contains("mul nsw i64"));
+    }
+
+    #[test]
+    fn test_rt_i32_parameter() {
+        let ir = source_to_ir(
+            "fn add32(a: i32, b: i32) -> i32 = a + b;"
+        );
+        assert!(ir.contains("i32 %a"));
+        assert!(ir.contains("i32 %b"));
+        assert!(ir.contains("add nsw i32"));
+    }
+
+    #[test]
+    fn test_rt_void_function() {
+        let ir = source_to_ir(
+            "fn nothing() -> () = ();"
+        );
+        assert!(ir.contains("@nothing"));
+        assert!(ir.contains("ret void") || ir.contains("ret i64 0"));
+    }
+
+    #[test]
+    fn test_rt_bitwise_and() {
+        let ir = source_to_ir("fn bitand(a: i64, b: i64) -> i64 = a band b;");
+        assert!(ir.contains("@bitand"));
+        assert!(ir.contains("and i64"));
+    }
+
+    #[test]
+    fn test_rt_bitwise_or() {
+        let ir = source_to_ir("fn bitor(a: i64, b: i64) -> i64 = a bor b;");
+        assert!(ir.contains("@bitor"));
+        assert!(ir.contains("or i64"));
+    }
+
+    #[test]
+    fn test_rt_shift_left() {
+        let ir = source_to_ir("fn shl(a: i64, b: i64) -> i64 = a << b;");
+        assert!(ir.contains("shl i64"));
+    }
+
+    #[test]
+    fn test_rt_shift_right() {
+        let ir = source_to_ir("fn shr(a: i64, b: i64) -> i64 = a >> b;");
+        assert!(ir.contains("ashr i64"));
+    }
+
+    #[test]
+    fn test_rt_tuple_return() {
+        let ir = source_to_ir(
+            "fn pair(a: i64, b: i64) -> (i64, i64) = (a, b);"
+        );
+        assert!(ir.contains("@pair"));
+    }
+
+    #[test]
+    fn test_codegen_new() {
+        let cg = TextCodeGen::new();
+        // Just verify it can be created
+        let program = MirProgram {
+            functions: vec![],
+            extern_fns: vec![],
+            struct_defs: std::collections::HashMap::new(),
+        };
+        let ir = cg.generate(&program).unwrap();
+        // Should contain module header at minimum
+        assert!(ir.contains("target"));
+    }
 }

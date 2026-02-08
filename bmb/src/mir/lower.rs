@@ -4081,4 +4081,212 @@ mod tests {
         // Match creates multiple blocks for each arm
         assert!(func.blocks.len() >= 3, "Match should create multiple blocks");
     }
+
+    // ================================================================
+    // Cycle 81: Extended MIR lowering tests
+    // ================================================================
+
+    #[test]
+    fn test_lower_unary_neg_from_source() {
+        let mir = parse_and_lower("fn neg(x: i64) -> i64 = 0 - x;");
+        let func = &mir.functions[0];
+        let has_sub = func.blocks.iter().any(|b| {
+            b.instructions.iter().any(|inst| matches!(inst, MirInst::BinOp { op: MirBinOp::Sub, .. }))
+        });
+        assert!(has_sub, "Expected subtraction in MIR");
+    }
+
+    #[test]
+    fn test_lower_constant_int_return() {
+        let mir = parse_and_lower("fn zero() -> i64 = 0;");
+        let func = &mir.functions[0];
+        assert!(matches!(func.blocks[0].terminator, Terminator::Return(Some(Operand::Constant(Constant::Int(0))))));
+    }
+
+    #[test]
+    fn test_lower_constant_bool_return() {
+        let mir = parse_and_lower("fn truth() -> bool = true;");
+        let func = &mir.functions[0];
+        assert!(matches!(func.blocks[0].terminator, Terminator::Return(Some(Operand::Constant(Constant::Bool(true))))));
+    }
+
+    #[test]
+    fn test_lower_constant_float_return() {
+        let mir = parse_and_lower("fn pi() -> f64 = 3.14;");
+        let func = &mir.functions[0];
+        assert!(matches!(func.blocks[0].terminator, Terminator::Return(Some(Operand::Constant(Constant::Float(_))))));
+    }
+
+    #[test]
+    fn test_lower_struct_definition_from_source() {
+        let mir = parse_and_lower(
+            "struct Point { x: i64, y: i64 }
+             fn origin() -> Point = new Point { x: 0, y: 0 };"
+        );
+        assert!(!mir.struct_defs.is_empty(), "struct_defs should contain Point");
+        let func = &mir.functions[0];
+        let has_struct_init = func.blocks.iter().any(|b| {
+            b.instructions.iter().any(|inst| matches!(inst, MirInst::StructInit { .. }))
+        });
+        assert!(has_struct_init, "Expected StructInit instruction");
+    }
+
+    #[test]
+    fn test_lower_field_access_from_source() {
+        let mir = parse_and_lower(
+            "struct Point { x: i64, y: i64 }
+             fn get_x(p: Point) -> i64 = p.x;"
+        );
+        let func = &mir.functions[0];
+        let has_field = func.blocks.iter().any(|b| {
+            b.instructions.iter().any(|inst| matches!(inst, MirInst::FieldAccess { .. }))
+        });
+        assert!(has_field, "Expected FieldAccess instruction");
+    }
+
+    #[test]
+    fn test_lower_enum_from_source() {
+        let mir = parse_and_lower(
+            "enum Color { Red, Green, Blue }
+             fn red() -> Color = Color::Red;"
+        );
+        let func = &mir.functions[0];
+        let has_enum = func.blocks.iter().any(|b| {
+            b.instructions.iter().any(|inst| matches!(inst, MirInst::EnumVariant { .. }))
+        });
+        assert!(has_enum, "Expected EnumVariant instruction");
+    }
+
+    #[test]
+    fn test_lower_comparison_operators() {
+        let mir = parse_and_lower("fn lt(a: i64, b: i64) -> bool = a < b;");
+        let func = &mir.functions[0];
+        let has_cmp = func.blocks.iter().any(|b| {
+            b.instructions.iter().any(|inst| matches!(inst, MirInst::BinOp { op: MirBinOp::Lt, .. }))
+        });
+        assert!(has_cmp, "Expected Lt comparison");
+    }
+
+    #[test]
+    fn test_lower_f64_arithmetic() {
+        let mir = parse_and_lower("fn fadd(a: f64, b: f64) -> f64 = a + b;");
+        let func = &mir.functions[0];
+        let has_fadd = func.blocks.iter().any(|b| {
+            b.instructions.iter().any(|inst| matches!(inst, MirInst::BinOp { op: MirBinOp::FAdd, .. }))
+        });
+        assert!(has_fadd, "Expected FAdd for f64 addition");
+    }
+
+    #[test]
+    fn test_lower_contract_precondition() {
+        let mir = parse_and_lower(
+            "fn safe_div(a: i64, b: i64) -> i64
+               pre b != 0
+             = a / b;"
+        );
+        let func = &mir.functions[0];
+        assert!(!func.preconditions.is_empty(), "Expected preconditions");
+    }
+
+    #[test]
+    fn test_lower_contract_postcondition() {
+        let mir = parse_and_lower(
+            "fn abs(x: i64) -> i64
+               post ret >= 0
+             = if x >= 0 { x } else { 0 - x };"
+        );
+        let func = &mir.functions[0];
+        assert!(!func.postconditions.is_empty(), "Expected postconditions");
+    }
+
+    #[test]
+    fn test_lower_while_generates_loop_blocks() {
+        let mir = parse_and_lower("fn count() -> i64 = { let mut i = 0; while i < 5 { i = i + 1; 0 }; i };");
+        let func = &mir.functions[0];
+        // While loop should produce at least entry, loop header, loop body, and exit blocks
+        assert!(func.blocks.len() >= 3, "While loop should create multiple blocks, found {}", func.blocks.len());
+        // Should have at least one conditional branch (loop condition check)
+        let has_branch = func.blocks.iter().any(|b| matches!(b.terminator, Terminator::Branch { .. }));
+        assert!(has_branch, "While loop should have conditional branch");
+    }
+
+    #[test]
+    fn test_lower_if_produces_phi() {
+        let mir = parse_and_lower("fn max(a: i64, b: i64) -> i64 = if a > b { a } else { b };");
+        let func = &mir.functions[0];
+        let has_phi = func.blocks.iter().any(|b| {
+            b.instructions.iter().any(|inst| matches!(inst, MirInst::Phi { .. }))
+        });
+        assert!(has_phi, "If-else should produce phi node for result");
+    }
+
+    #[test]
+    fn test_lower_function_call_args() {
+        let mir = parse_and_lower(
+            "fn add(a: i64, b: i64) -> i64 = a + b;
+             fn test() -> i64 = add(1, 2);"
+        );
+        let func = &mir.functions[1]; // test function
+        let has_call = func.blocks.iter().any(|b| {
+            b.instructions.iter().any(|inst| matches!(inst, MirInst::Call { func: f, args, .. } if f == "add" && args.len() == 2))
+        });
+        assert!(has_call, "Expected Call to 'add' with 2 arguments");
+    }
+
+    #[test]
+    fn test_lower_nested_if_else() {
+        let mir = parse_and_lower(
+            "fn clamp(x: i64) -> i64 = if x < 0 { 0 } else if x > 100 { 100 } else { x };"
+        );
+        let func = &mir.functions[0];
+        let branch_count = func.blocks.iter().filter(|b| matches!(b.terminator, Terminator::Branch { .. })).count();
+        assert!(branch_count >= 2, "Nested if-else should have >= 2 branches, found {}", branch_count);
+    }
+
+    #[test]
+    fn test_lower_block_multiple_statements() {
+        let mir = parse_and_lower("fn test() -> i64 = { let a = 1; let b = 2; let c = a + b; c };");
+        let func = &mir.functions[0];
+        // Should have instructions for all let bindings
+        assert!(func.blocks[0].instructions.len() >= 3, "Should have 3+ instructions for 3 let bindings");
+    }
+
+    #[test]
+    fn test_lower_tuple_from_source() {
+        let mir = parse_and_lower("fn pair() -> (i64, i64) = (1, 2);");
+        let func = &mir.functions[0];
+        let has_tuple = func.blocks.iter().any(|b| {
+            b.instructions.iter().any(|inst| matches!(inst, MirInst::TupleInit { .. }))
+        });
+        assert!(has_tuple, "Expected TupleInit instruction");
+    }
+
+    #[test]
+    fn test_lower_bitwise_ops() {
+        let mir = parse_and_lower("fn xor_fn(a: i64, b: i64) -> i64 = a bxor b;");
+        let func = &mir.functions[0];
+        let has_bxor = func.blocks.iter().any(|b| {
+            b.instructions.iter().any(|inst| matches!(inst, MirInst::BinOp { op: MirBinOp::Bxor, .. }))
+        });
+        assert!(has_bxor, "Expected Bxor instruction");
+    }
+
+    #[test]
+    fn test_lower_shift_ops() {
+        let mir = parse_and_lower("fn shl_fn(a: i64, b: i64) -> i64 = a << b;");
+        let func = &mir.functions[0];
+        let has_shl = func.blocks.iter().any(|b| {
+            b.instructions.iter().any(|inst| matches!(inst, MirInst::BinOp { op: MirBinOp::Shl, .. }))
+        });
+        assert!(has_shl, "Expected Shl instruction");
+    }
+
+    #[test]
+    fn test_lower_empty_struct() {
+        let mir = parse_and_lower(
+            "struct Empty {}
+             fn make() -> Empty = new Empty {};"
+        );
+        assert!(!mir.struct_defs.is_empty());
+    }
 }

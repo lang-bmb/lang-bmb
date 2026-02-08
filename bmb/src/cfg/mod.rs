@@ -254,4 +254,51 @@ mod tests {
         assert!(fn_names.contains(&"wasm_only"));
         assert!(!fn_names.contains(&"native_only"));
     }
+
+    #[test]
+    fn test_target_as_str() {
+        assert_eq!(Target::Native.as_str(), "native");
+        assert_eq!(Target::Wasm32.as_str(), "wasm32");
+        assert_eq!(Target::Wasm64.as_str(), "wasm64");
+    }
+
+    #[test]
+    fn test_target_default() {
+        assert_eq!(Target::default(), Target::Native);
+    }
+
+    #[test]
+    fn test_target_from_str_aliases() {
+        assert_eq!(Target::from_str("aarch64"), Some(Target::Native));
+        assert_eq!(Target::from_str("x86"), Some(Target::Native));
+        assert_eq!(Target::from_str("arm"), Some(Target::Native));
+        assert_eq!(Target::from_str("wasm32-wasi"), Some(Target::Wasm32));
+        assert_eq!(Target::from_str("wasm32-unknown"), Some(Target::Wasm32));
+        assert_eq!(Target::from_str("NATIVE"), Some(Target::Native)); // case-insensitive
+    }
+
+    #[test]
+    fn test_should_include_item_no_cfg() {
+        let eval = CfgEvaluator::new(Target::Native);
+        let item = Item::FnDef(make_fn("test", vec![]));
+        assert!(eval.should_include_item(&item));
+    }
+
+    #[test]
+    fn test_cfg_evaluator_wasm64() {
+        let eval = CfgEvaluator::new(Target::Wasm64);
+        let fn_wasm64 = make_fn("wasm64_only", vec![make_cfg_attr("wasm64")]);
+        assert!(eval.evaluate_attrs(&fn_wasm64.attributes));
+
+        let fn_native = make_fn("native_only", vec![make_cfg_attr("native")]);
+        assert!(!eval.evaluate_attrs(&fn_native.attributes));
+    }
+
+    #[test]
+    fn test_filter_program_empty() {
+        let eval = CfgEvaluator::new(Target::Native);
+        let program = Program { header: None, items: vec![] };
+        let filtered = eval.filter_program(&program);
+        assert!(filtered.items.is_empty());
+    }
 }

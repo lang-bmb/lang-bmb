@@ -9789,4 +9789,1435 @@ mod tests {
         let changed = pass.run_on_function(&mut func);
         assert!(!changed, "Increment by 2 should not match conditional increment pattern");
     }
+
+    // ================================================================
+    // Cycle 77: OptimizationPipeline tests
+    // ================================================================
+
+    #[test]
+    fn test_pipeline_debug_no_passes() {
+        let pipeline = OptimizationPipeline::for_level(OptLevel::Debug);
+        assert!(pipeline.passes.is_empty());
+    }
+
+    #[test]
+    fn test_pipeline_release_has_passes() {
+        let pipeline = OptimizationPipeline::for_level(OptLevel::Release);
+        assert!(!pipeline.passes.is_empty());
+        // Release should include constant folding
+        assert!(pipeline.passes.iter().any(|p| p.name() == "constant_folding"));
+    }
+
+    #[test]
+    fn test_pipeline_aggressive_has_cse() {
+        let pipeline = OptimizationPipeline::for_level(OptLevel::Aggressive);
+        // Aggressive should include CSE (not in Release)
+        assert!(pipeline.passes.iter().any(|p| p.name() == "common_subexpression_elimination"));
+    }
+
+    #[test]
+    fn test_pipeline_default_trait() {
+        let pipeline = OptimizationPipeline::default();
+        assert!(pipeline.passes.is_empty());
+        assert_eq!(pipeline.max_iterations, 10);
+    }
+
+    #[test]
+    fn test_pipeline_set_max_iterations() {
+        let mut pipeline = OptimizationPipeline::new();
+        pipeline.set_max_iterations(5);
+        assert_eq!(pipeline.max_iterations, 5);
+    }
+
+    // ================================================================
+    // Cycle 77: OptimizationStats tests
+    // ================================================================
+
+    #[test]
+    fn test_stats_new_empty() {
+        let stats = OptimizationStats::new();
+        assert_eq!(stats.iterations, 0);
+        assert!(stats.pass_counts.is_empty());
+    }
+
+    #[test]
+    fn test_stats_record_pass() {
+        let mut stats = OptimizationStats::new();
+        stats.record_pass("constant_folding");
+        stats.record_pass("constant_folding");
+        stats.record_pass("dce");
+        assert_eq!(stats.pass_counts["constant_folding"], 2);
+        assert_eq!(stats.pass_counts["dce"], 1);
+    }
+
+    #[test]
+    fn test_stats_merge() {
+        let mut stats1 = OptimizationStats::new();
+        stats1.record_pass("cf");
+        stats1.record_pass("cf");
+
+        let mut stats2 = OptimizationStats::new();
+        stats2.record_pass("cf");
+        stats2.record_pass("dce");
+
+        stats1.merge(&stats2);
+        assert_eq!(stats1.pass_counts["cf"], 3);
+        assert_eq!(stats1.pass_counts["dce"], 1);
+    }
+
+    // ================================================================
+    // Cycle 77: OptLevel tests
+    // ================================================================
+
+    #[test]
+    fn test_opt_level_default() {
+        let level = OptLevel::default();
+        assert!(matches!(level, OptLevel::Debug));
+    }
+
+    // ================================================================
+    // Cycle 77: ConstantFolding extended tests
+    // ================================================================
+
+    #[test]
+    fn test_constant_folding_float() {
+        let mut func = MirFunction {
+            name: "test".to_string(),
+            params: vec![],
+            ret_ty: MirType::F64,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![
+                    MirInst::Const { dest: Place::new("a"), value: Constant::Float(2.5) },
+                    MirInst::Const { dest: Place::new("b"), value: Constant::Float(1.5) },
+                    MirInst::BinOp {
+                        dest: Place::new("c"),
+                        op: MirBinOp::FAdd,
+                        lhs: Operand::Place(Place::new("a")),
+                        rhs: Operand::Place(Place::new("b")),
+                    },
+                ],
+                terminator: Terminator::Return(Some(Operand::Place(Place::new("c")))),
+            }],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let pass = ConstantFolding;
+        assert!(pass.run_on_function(&mut func));
+        assert!(matches!(&func.blocks[0].instructions[2],
+            MirInst::Const { value: Constant::Float(f), .. } if (*f - 4.0).abs() < 1e-10));
+    }
+
+    #[test]
+    fn test_constant_folding_string_concat() {
+        let mut func = MirFunction {
+            name: "test".to_string(),
+            params: vec![],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![
+                    MirInst::Const { dest: Place::new("a"), value: Constant::String("Hello".to_string()) },
+                    MirInst::Const { dest: Place::new("b"), value: Constant::String(" World".to_string()) },
+                    MirInst::BinOp {
+                        dest: Place::new("c"),
+                        op: MirBinOp::Add,
+                        lhs: Operand::Place(Place::new("a")),
+                        rhs: Operand::Place(Place::new("b")),
+                    },
+                ],
+                terminator: Terminator::Return(Some(Operand::Place(Place::new("c")))),
+            }],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let pass = ConstantFolding;
+        assert!(pass.run_on_function(&mut func));
+        assert!(matches!(&func.blocks[0].instructions[2],
+            MirInst::Const { value: Constant::String(s), .. } if s == "Hello World"));
+    }
+
+    #[test]
+    fn test_constant_folding_unary_neg() {
+        let mut func = MirFunction {
+            name: "test".to_string(),
+            params: vec![],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![
+                    MirInst::Const { dest: Place::new("a"), value: Constant::Int(42) },
+                    MirInst::UnaryOp {
+                        dest: Place::new("b"),
+                        op: MirUnaryOp::Neg,
+                        src: Operand::Place(Place::new("a")),
+                    },
+                ],
+                terminator: Terminator::Return(Some(Operand::Place(Place::new("b")))),
+            }],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let pass = ConstantFolding;
+        assert!(pass.run_on_function(&mut func));
+        assert!(matches!(&func.blocks[0].instructions[1],
+            MirInst::Const { value: Constant::Int(-42), .. }));
+    }
+
+    #[test]
+    fn test_constant_folding_unary_not() {
+        let mut func = MirFunction {
+            name: "test".to_string(),
+            params: vec![],
+            ret_ty: MirType::Bool,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![
+                    MirInst::Const { dest: Place::new("a"), value: Constant::Bool(true) },
+                    MirInst::UnaryOp {
+                        dest: Place::new("b"),
+                        op: MirUnaryOp::Not,
+                        src: Operand::Place(Place::new("a")),
+                    },
+                ],
+                terminator: Terminator::Return(Some(Operand::Place(Place::new("b")))),
+            }],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let pass = ConstantFolding;
+        assert!(pass.run_on_function(&mut func));
+        assert!(matches!(&func.blocks[0].instructions[1],
+            MirInst::Const { value: Constant::Bool(false), .. }));
+    }
+
+    #[test]
+    fn test_constant_folding_div_by_zero_no_fold() {
+        let mut func = MirFunction {
+            name: "test".to_string(),
+            params: vec![],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![
+                    MirInst::Const { dest: Place::new("a"), value: Constant::Int(10) },
+                    MirInst::Const { dest: Place::new("b"), value: Constant::Int(0) },
+                    MirInst::BinOp {
+                        dest: Place::new("c"),
+                        op: MirBinOp::Div,
+                        lhs: Operand::Place(Place::new("a")),
+                        rhs: Operand::Place(Place::new("b")),
+                    },
+                ],
+                terminator: Terminator::Return(Some(Operand::Place(Place::new("c")))),
+            }],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let pass = ConstantFolding;
+        // Should NOT fold div by zero
+        let _changed = pass.run_on_function(&mut func);
+        // The constants a and b are tracked but div by zero is not folded
+        assert!(matches!(&func.blocks[0].instructions[2], MirInst::BinOp { op: MirBinOp::Div, .. }));
+    }
+
+    #[test]
+    fn test_constant_folding_builtin_chr() {
+        let mut func = MirFunction {
+            name: "test".to_string(),
+            params: vec![],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![
+                    MirInst::Const { dest: Place::new("code"), value: Constant::Int(65) },
+                    MirInst::Call {
+                        dest: Some(Place::new("ch")),
+                        func: "chr".to_string(),
+                        args: vec![Operand::Place(Place::new("code"))],
+                        is_tail: false,
+                    },
+                ],
+                terminator: Terminator::Return(Some(Operand::Place(Place::new("ch")))),
+            }],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let pass = ConstantFolding;
+        assert!(pass.run_on_function(&mut func));
+        assert!(matches!(&func.blocks[0].instructions[1],
+            MirInst::Const { value: Constant::String(s), .. } if s == "A"));
+    }
+
+    #[test]
+    fn test_constant_folding_builtin_ord() {
+        let mut func = MirFunction {
+            name: "test".to_string(),
+            params: vec![],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![
+                    MirInst::Const { dest: Place::new("ch"), value: Constant::String("Z".to_string()) },
+                    MirInst::Call {
+                        dest: Some(Place::new("code")),
+                        func: "ord".to_string(),
+                        args: vec![Operand::Place(Place::new("ch"))],
+                        is_tail: false,
+                    },
+                ],
+                terminator: Terminator::Return(Some(Operand::Place(Place::new("code")))),
+            }],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let pass = ConstantFolding;
+        assert!(pass.run_on_function(&mut func));
+        assert!(matches!(&func.blocks[0].instructions[1],
+            MirInst::Const { value: Constant::Int(90), .. }));
+    }
+
+    #[test]
+    fn test_constant_folding_bool_and() {
+        let mut func = MirFunction {
+            name: "test".to_string(),
+            params: vec![],
+            ret_ty: MirType::Bool,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![
+                    MirInst::Const { dest: Place::new("a"), value: Constant::Bool(true) },
+                    MirInst::Const { dest: Place::new("b"), value: Constant::Bool(false) },
+                    MirInst::BinOp {
+                        dest: Place::new("c"),
+                        op: MirBinOp::And,
+                        lhs: Operand::Place(Place::new("a")),
+                        rhs: Operand::Place(Place::new("b")),
+                    },
+                ],
+                terminator: Terminator::Return(Some(Operand::Place(Place::new("c")))),
+            }],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let pass = ConstantFolding;
+        assert!(pass.run_on_function(&mut func));
+        assert!(matches!(&func.blocks[0].instructions[2],
+            MirInst::Const { value: Constant::Bool(false), .. }));
+    }
+
+    #[test]
+    fn test_constant_folding_copy_propagation() {
+        let mut func = MirFunction {
+            name: "test".to_string(),
+            params: vec![],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![
+                    MirInst::Const { dest: Place::new("a"), value: Constant::Int(10) },
+                    MirInst::Copy { dest: Place::new("b"), src: Place::new("a") },
+                    MirInst::BinOp {
+                        dest: Place::new("c"),
+                        op: MirBinOp::Add,
+                        lhs: Operand::Place(Place::new("b")),
+                        rhs: Operand::Constant(Constant::Int(5)),
+                    },
+                ],
+                terminator: Terminator::Return(Some(Operand::Place(Place::new("c")))),
+            }],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let pass = ConstantFolding;
+        assert!(pass.run_on_function(&mut func));
+        // b should have been tracked as constant 10, so 10 + 5 = 15
+        assert!(matches!(&func.blocks[0].instructions[2],
+            MirInst::Const { value: Constant::Int(15), .. }));
+    }
+
+    // ================================================================
+    // Cycle 77: AggressiveInlining tests
+    // ================================================================
+
+    #[test]
+    fn test_aggressive_inlining_small_function() {
+        let mut program = MirProgram {
+            functions: vec![MirFunction {
+                name: "add".to_string(),
+                params: vec![("x".to_string(), MirType::I64), ("y".to_string(), MirType::I64)],
+                ret_ty: MirType::I64,
+                locals: vec![],
+                blocks: vec![BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![
+                        MirInst::BinOp {
+                            dest: Place::new("r"),
+                            op: MirBinOp::Add,
+                            lhs: Operand::Place(Place::new("x")),
+                            rhs: Operand::Place(Place::new("y")),
+                        },
+                    ],
+                    terminator: Terminator::Return(Some(Operand::Place(Place::new("r")))),
+                }],
+                preconditions: vec![],
+                postconditions: vec![],
+                is_pure: false,
+                is_const: false,
+                always_inline: false,
+                inline_hint: false,
+                is_memory_free: false,
+            }],
+            extern_fns: vec![],
+            struct_defs: HashMap::new(),
+        };
+
+        let inlining = AggressiveInlining::new();
+        assert!(inlining.run_on_program(&mut program));
+        assert!(program.functions[0].always_inline);
+    }
+
+    #[test]
+    fn test_aggressive_inlining_main_not_inlined() {
+        let mut program = MirProgram {
+            functions: vec![MirFunction {
+                name: "main".to_string(),
+                params: vec![],
+                ret_ty: MirType::I64,
+                locals: vec![],
+                blocks: vec![BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![
+                        MirInst::Const { dest: Place::new("r"), value: Constant::Int(0) },
+                    ],
+                    terminator: Terminator::Return(Some(Operand::Place(Place::new("r")))),
+                }],
+                preconditions: vec![],
+                postconditions: vec![],
+                is_pure: false,
+                is_const: false,
+                always_inline: false,
+                inline_hint: false,
+                is_memory_free: false,
+            }],
+            extern_fns: vec![],
+            struct_defs: HashMap::new(),
+        };
+
+        let inlining = AggressiveInlining::new();
+        let _changed = inlining.run_on_program(&mut program);
+        assert!(!program.functions[0].always_inline);
+    }
+
+    #[test]
+    fn test_aggressive_inlining_recursive_not_inlined() {
+        let mut program = MirProgram {
+            functions: vec![MirFunction {
+                name: "fib".to_string(),
+                params: vec![("n".to_string(), MirType::I64)],
+                ret_ty: MirType::I64,
+                locals: vec![],
+                blocks: vec![BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![
+                        MirInst::Call {
+                            dest: Some(Place::new("r")),
+                            func: "fib".to_string(),
+                            args: vec![Operand::Place(Place::new("n"))],
+                            is_tail: true,
+                        },
+                    ],
+                    terminator: Terminator::Return(Some(Operand::Place(Place::new("r")))),
+                }],
+                preconditions: vec![],
+                postconditions: vec![],
+                is_pure: false,
+                is_const: false,
+                always_inline: false,
+                inline_hint: false,
+                is_memory_free: false,
+            }],
+            extern_fns: vec![],
+            struct_defs: HashMap::new(),
+        };
+
+        let inlining = AggressiveInlining::new();
+        inlining.run_on_program(&mut program);
+        assert!(!program.functions[0].always_inline);
+        assert!(!program.functions[0].inline_hint);
+    }
+
+    #[test]
+    fn test_aggressive_inlining_with_custom_thresholds() {
+        let inlining = AggressiveInlining::with_thresholds(5, 10);
+        assert_eq!(inlining.max_instructions, 5);
+        assert_eq!(inlining.max_pure_instructions, 10);
+    }
+
+    #[test]
+    fn test_aggressive_inlining_pure_higher_threshold() {
+        // Pure function with 18 instructions — within pure threshold (20) but above regular (15)
+        let mut instructions = Vec::new();
+        for i in 0..18 {
+            instructions.push(MirInst::Const {
+                dest: Place::new(format!("v{}", i)),
+                value: Constant::Int(i as i64),
+            });
+        }
+
+        let mut program = MirProgram {
+            functions: vec![MirFunction {
+                name: "pure_fn".to_string(),
+                params: vec![],
+                ret_ty: MirType::I64,
+                locals: vec![],
+                blocks: vec![BasicBlock {
+                    label: "entry".to_string(),
+                    instructions,
+                    terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(0)))),
+                }],
+                preconditions: vec![],
+                postconditions: vec![],
+                is_pure: true,
+                is_const: false,
+                always_inline: false,
+                inline_hint: false,
+                is_memory_free: false,
+            }],
+            extern_fns: vec![],
+            struct_defs: HashMap::new(),
+        };
+
+        let inlining = AggressiveInlining::new();
+        assert!(inlining.run_on_program(&mut program));
+        assert!(program.functions[0].always_inline);
+    }
+
+    #[test]
+    fn test_aggressive_inlining_hint_for_medium() {
+        // Medium function — too large for always_inline but within hint threshold
+        let mut instructions = Vec::new();
+        for i in 0..30 {
+            instructions.push(MirInst::Const {
+                dest: Place::new(format!("v{}", i)),
+                value: Constant::Int(i as i64),
+            });
+        }
+
+        let mut program = MirProgram {
+            functions: vec![MirFunction {
+                name: "medium_fn".to_string(),
+                params: vec![],
+                ret_ty: MirType::I64,
+                locals: vec![],
+                blocks: vec![BasicBlock {
+                    label: "entry".to_string(),
+                    instructions,
+                    terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(0)))),
+                }],
+                preconditions: vec![],
+                postconditions: vec![],
+                is_pure: false,
+                is_const: false,
+                always_inline: false,
+                inline_hint: false,
+                is_memory_free: false,
+            }],
+            extern_fns: vec![],
+            struct_defs: HashMap::new(),
+        };
+
+        let inlining = AggressiveInlining::new();
+        assert!(inlining.run_on_program(&mut program));
+        assert!(!program.functions[0].always_inline);
+        assert!(program.functions[0].inline_hint);
+    }
+
+    // ================================================================
+    // Cycle 77: MemoryEffectAnalysis tests
+    // ================================================================
+
+    #[test]
+    fn test_memory_effect_pure_arithmetic() {
+        let mut program = MirProgram {
+            functions: vec![MirFunction {
+                name: "square".to_string(),
+                params: vec![("x".to_string(), MirType::I64)],
+                ret_ty: MirType::I64,
+                locals: vec![],
+                blocks: vec![BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![
+                        MirInst::BinOp {
+                            dest: Place::new("r"),
+                            op: MirBinOp::Mul,
+                            lhs: Operand::Place(Place::new("x")),
+                            rhs: Operand::Place(Place::new("x")),
+                        },
+                    ],
+                    terminator: Terminator::Return(Some(Operand::Place(Place::new("r")))),
+                }],
+                preconditions: vec![],
+                postconditions: vec![],
+                is_pure: false,
+                is_const: false,
+                always_inline: false,
+                inline_hint: false,
+                is_memory_free: false,
+            }],
+            extern_fns: vec![],
+            struct_defs: HashMap::new(),
+        };
+
+        let analysis = MemoryEffectAnalysis::new();
+        assert!(analysis.run_on_program(&mut program));
+        assert!(program.functions[0].is_memory_free);
+    }
+
+    #[test]
+    fn test_memory_effect_call_not_free() {
+        let mut program = MirProgram {
+            functions: vec![MirFunction {
+                name: "caller".to_string(),
+                params: vec![],
+                ret_ty: MirType::I64,
+                locals: vec![],
+                blocks: vec![BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![
+                        MirInst::Call {
+                            dest: Some(Place::new("r")),
+                            func: "foo".to_string(),
+                            args: vec![],
+                            is_tail: false,
+                        },
+                    ],
+                    terminator: Terminator::Return(Some(Operand::Place(Place::new("r")))),
+                }],
+                preconditions: vec![],
+                postconditions: vec![],
+                is_pure: false,
+                is_const: false,
+                always_inline: false,
+                inline_hint: false,
+                is_memory_free: false,
+            }],
+            extern_fns: vec![],
+            struct_defs: HashMap::new(),
+        };
+
+        let analysis = MemoryEffectAnalysis::new();
+        let changed = analysis.run_on_program(&mut program);
+        assert!(!changed);
+        assert!(!program.functions[0].is_memory_free);
+    }
+
+    #[test]
+    fn test_memory_effect_main_skipped() {
+        let mut program = MirProgram {
+            functions: vec![MirFunction {
+                name: "main".to_string(),
+                params: vec![],
+                ret_ty: MirType::I64,
+                locals: vec![],
+                blocks: vec![BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![
+                        MirInst::Const { dest: Place::new("r"), value: Constant::Int(0) },
+                    ],
+                    terminator: Terminator::Return(Some(Operand::Place(Place::new("r")))),
+                }],
+                preconditions: vec![],
+                postconditions: vec![],
+                is_pure: false,
+                is_const: false,
+                always_inline: false,
+                inline_hint: false,
+                is_memory_free: false,
+            }],
+            extern_fns: vec![],
+            struct_defs: HashMap::new(),
+        };
+
+        let analysis = MemoryEffectAnalysis::new();
+        let changed = analysis.run_on_program(&mut program);
+        // main is always skipped
+        assert!(!changed);
+        assert!(!program.functions[0].is_memory_free);
+    }
+
+    #[test]
+    fn test_memory_effect_analysis_name() {
+        let analysis = MemoryEffectAnalysis::new();
+        assert_eq!(analysis.name(), "memory_effect_analysis");
+    }
+
+    // ================================================================
+    // Cycle 77: fold_binop / fold_unaryop edge cases
+    // ================================================================
+
+    #[test]
+    fn test_fold_binop_int_comparison() {
+        assert!(matches!(fold_binop(MirBinOp::Lt, &Constant::Int(3), &Constant::Int(5)), Some(Constant::Bool(true))));
+        assert!(matches!(fold_binop(MirBinOp::Gt, &Constant::Int(3), &Constant::Int(5)), Some(Constant::Bool(false))));
+        assert!(matches!(fold_binop(MirBinOp::Le, &Constant::Int(5), &Constant::Int(5)), Some(Constant::Bool(true))));
+        assert!(matches!(fold_binop(MirBinOp::Ge, &Constant::Int(5), &Constant::Int(5)), Some(Constant::Bool(true))));
+        assert!(matches!(fold_binop(MirBinOp::Eq, &Constant::Int(5), &Constant::Int(5)), Some(Constant::Bool(true))));
+        assert!(matches!(fold_binop(MirBinOp::Ne, &Constant::Int(5), &Constant::Int(3)), Some(Constant::Bool(true))));
+    }
+
+    #[test]
+    fn test_fold_binop_bool_ops() {
+        assert!(matches!(fold_binop(MirBinOp::And, &Constant::Bool(true), &Constant::Bool(true)), Some(Constant::Bool(true))));
+        assert!(matches!(fold_binop(MirBinOp::Or, &Constant::Bool(false), &Constant::Bool(true)), Some(Constant::Bool(true))));
+        assert!(matches!(fold_binop(MirBinOp::And, &Constant::Bool(true), &Constant::Bool(false)), Some(Constant::Bool(false))));
+        assert!(matches!(fold_binop(MirBinOp::Or, &Constant::Bool(false), &Constant::Bool(false)), Some(Constant::Bool(false))));
+    }
+
+    #[test]
+    fn test_fold_binop_float_ops() {
+        assert!(matches!(fold_binop(MirBinOp::FSub, &Constant::Float(5.0), &Constant::Float(3.0)), Some(Constant::Float(f)) if (f - 2.0).abs() < 1e-10));
+        assert!(matches!(fold_binop(MirBinOp::FMul, &Constant::Float(2.0), &Constant::Float(3.0)), Some(Constant::Float(f)) if (f - 6.0).abs() < 1e-10));
+        assert!(matches!(fold_binop(MirBinOp::FDiv, &Constant::Float(6.0), &Constant::Float(2.0)), Some(Constant::Float(f)) if (f - 3.0).abs() < 1e-10));
+        // Float div by zero not folded
+        assert!(fold_binop(MirBinOp::FDiv, &Constant::Float(6.0), &Constant::Float(0.0)).is_none());
+    }
+
+    #[test]
+    fn test_fold_binop_mod() {
+        assert!(matches!(fold_binop(MirBinOp::Mod, &Constant::Int(10), &Constant::Int(3)), Some(Constant::Int(1))));
+        // Mod by zero not folded
+        assert!(fold_binop(MirBinOp::Mod, &Constant::Int(10), &Constant::Int(0)).is_none());
+    }
+
+    #[test]
+    fn test_fold_binop_type_mismatch_returns_none() {
+        // Int + Bool should return None
+        assert!(fold_binop(MirBinOp::Add, &Constant::Int(1), &Constant::Bool(true)).is_none());
+    }
+
+    #[test]
+    fn test_fold_unaryop_fneg() {
+        let result = fold_unaryop(MirUnaryOp::FNeg, &Constant::Float(2.5));
+        assert!(matches!(result, Some(Constant::Float(r)) if (r + 2.5).abs() < 1e-10));
+    }
+
+    #[test]
+    fn test_fold_unaryop_type_mismatch() {
+        // Neg on bool should return None
+        assert!(fold_unaryop(MirUnaryOp::Neg, &Constant::Bool(true)).is_none());
+    }
+
+    // ================================================================
+    // Cycle 77: LoopBoundedNarrowing tests
+    // ================================================================
+
+    #[test]
+    fn test_loop_bounded_narrowing_is_builtin() {
+        assert!(LoopBoundedNarrowing::is_builtin("malloc"));
+        assert!(LoopBoundedNarrowing::is_builtin("free"));
+        assert!(LoopBoundedNarrowing::is_builtin("println"));
+        assert!(LoopBoundedNarrowing::is_builtin("sqrt"));
+        assert!(LoopBoundedNarrowing::is_builtin("len"));
+        assert!(!LoopBoundedNarrowing::is_builtin("my_function"));
+        assert!(!LoopBoundedNarrowing::is_builtin("fib"));
+    }
+
+    #[test]
+    fn test_loop_bounded_narrowing_has_direct_multiplication() {
+        let func_with_mul = MirFunction {
+            name: "mul_fn".to_string(),
+            params: vec![("x".to_string(), MirType::I64)],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![
+                    MirInst::BinOp {
+                        dest: Place::new("r"),
+                        op: MirBinOp::Mul,
+                        lhs: Operand::Place(Place::new("x")),
+                        rhs: Operand::Place(Place::new("x")),
+                    },
+                ],
+                terminator: Terminator::Return(Some(Operand::Place(Place::new("r")))),
+            }],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+        assert!(LoopBoundedNarrowing::has_direct_multiplication(&func_with_mul));
+
+        let func_no_mul = MirFunction {
+            name: "add_fn".to_string(),
+            params: vec![("x".to_string(), MirType::I64)],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![
+                    MirInst::BinOp {
+                        dest: Place::new("r"),
+                        op: MirBinOp::Add,
+                        lhs: Operand::Place(Place::new("x")),
+                        rhs: Operand::Constant(Constant::Int(1)),
+                    },
+                ],
+                terminator: Terminator::Return(Some(Operand::Place(Place::new("r")))),
+            }],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+        assert!(!LoopBoundedNarrowing::has_direct_multiplication(&func_no_mul));
+    }
+
+    // ================================================================
+    // Cycle 78: AlgebraicSimplification extended tests
+    // ================================================================
+
+    #[test]
+    fn test_algebraic_sub_zero() {
+        let mut func = MirFunction {
+            name: "test".to_string(),
+            params: vec![("x".to_string(), MirType::I64)],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![
+                    MirInst::BinOp {
+                        dest: Place::new("r"),
+                        op: MirBinOp::Sub,
+                        lhs: Operand::Place(Place::new("x")),
+                        rhs: Operand::Constant(Constant::Int(0)),
+                    },
+                ],
+                terminator: Terminator::Return(Some(Operand::Place(Place::new("r")))),
+            }],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let pass = AlgebraicSimplification;
+        assert!(pass.run_on_function(&mut func));
+        assert!(matches!(&func.blocks[0].instructions[0], MirInst::Copy { .. }));
+    }
+
+    #[test]
+    fn test_algebraic_div_by_one() {
+        let mut func = MirFunction {
+            name: "test".to_string(),
+            params: vec![("x".to_string(), MirType::I64)],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![
+                    MirInst::BinOp {
+                        dest: Place::new("r"),
+                        op: MirBinOp::Div,
+                        lhs: Operand::Place(Place::new("x")),
+                        rhs: Operand::Constant(Constant::Int(1)),
+                    },
+                ],
+                terminator: Terminator::Return(Some(Operand::Place(Place::new("r")))),
+            }],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let pass = AlgebraicSimplification;
+        assert!(pass.run_on_function(&mut func));
+        assert!(matches!(&func.blocks[0].instructions[0], MirInst::Copy { .. }));
+    }
+
+    #[test]
+    fn test_algebraic_div_power_of_2_to_shift() {
+        let mut func = MirFunction {
+            name: "test".to_string(),
+            params: vec![("x".to_string(), MirType::I64)],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![
+                    MirInst::BinOp {
+                        dest: Place::new("r"),
+                        op: MirBinOp::Div,
+                        lhs: Operand::Place(Place::new("x")),
+                        rhs: Operand::Constant(Constant::Int(8)),
+                    },
+                ],
+                terminator: Terminator::Return(Some(Operand::Place(Place::new("r")))),
+            }],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let pass = AlgebraicSimplification;
+        assert!(pass.run_on_function(&mut func));
+        // x / 8 → x >> 3
+        assert!(matches!(&func.blocks[0].instructions[0],
+            MirInst::BinOp { op: MirBinOp::Shr, rhs: Operand::Constant(Constant::Int(3)), .. }));
+    }
+
+    #[test]
+    fn test_algebraic_mod_power_of_2_to_bitand() {
+        let mut func = MirFunction {
+            name: "test".to_string(),
+            params: vec![("x".to_string(), MirType::I64)],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![
+                    MirInst::BinOp {
+                        dest: Place::new("r"),
+                        op: MirBinOp::Mod,
+                        lhs: Operand::Place(Place::new("x")),
+                        rhs: Operand::Constant(Constant::Int(16)),
+                    },
+                ],
+                terminator: Terminator::Return(Some(Operand::Place(Place::new("r")))),
+            }],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let pass = AlgebraicSimplification;
+        assert!(pass.run_on_function(&mut func));
+        // x % 16 → x & 15
+        assert!(matches!(&func.blocks[0].instructions[0],
+            MirInst::BinOp { op: MirBinOp::Band, rhs: Operand::Constant(Constant::Int(15)), .. }));
+    }
+
+    #[test]
+    fn test_algebraic_or_true() {
+        let mut func = MirFunction {
+            name: "test".to_string(),
+            params: vec![("x".to_string(), MirType::Bool)],
+            ret_ty: MirType::Bool,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![
+                    MirInst::BinOp {
+                        dest: Place::new("r"),
+                        op: MirBinOp::Or,
+                        lhs: Operand::Place(Place::new("x")),
+                        rhs: Operand::Constant(Constant::Bool(true)),
+                    },
+                ],
+                terminator: Terminator::Return(Some(Operand::Place(Place::new("r")))),
+            }],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let pass = AlgebraicSimplification;
+        assert!(pass.run_on_function(&mut func));
+        assert!(matches!(&func.blocks[0].instructions[0],
+            MirInst::Const { value: Constant::Bool(true), .. }));
+    }
+
+    #[test]
+    fn test_algebraic_and_false() {
+        let mut func = MirFunction {
+            name: "test".to_string(),
+            params: vec![("x".to_string(), MirType::Bool)],
+            ret_ty: MirType::Bool,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![
+                    MirInst::BinOp {
+                        dest: Place::new("r"),
+                        op: MirBinOp::And,
+                        lhs: Operand::Constant(Constant::Bool(false)),
+                        rhs: Operand::Place(Place::new("x")),
+                    },
+                ],
+                terminator: Terminator::Return(Some(Operand::Place(Place::new("r")))),
+            }],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let pass = AlgebraicSimplification;
+        assert!(pass.run_on_function(&mut func));
+        assert!(matches!(&func.blocks[0].instructions[0],
+            MirInst::Const { value: Constant::Bool(false), .. }));
+    }
+
+    #[test]
+    fn test_algebraic_fadd_zero() {
+        let mut func = MirFunction {
+            name: "test".to_string(),
+            params: vec![("x".to_string(), MirType::F64)],
+            ret_ty: MirType::F64,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![
+                    MirInst::BinOp {
+                        dest: Place::new("r"),
+                        op: MirBinOp::FAdd,
+                        lhs: Operand::Place(Place::new("x")),
+                        rhs: Operand::Constant(Constant::Float(0.0)),
+                    },
+                ],
+                terminator: Terminator::Return(Some(Operand::Place(Place::new("r")))),
+            }],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let pass = AlgebraicSimplification;
+        assert!(pass.run_on_function(&mut func));
+        assert!(matches!(&func.blocks[0].instructions[0], MirInst::Copy { .. }));
+    }
+
+    #[test]
+    fn test_algebraic_fmul_zero() {
+        let mut func = MirFunction {
+            name: "test".to_string(),
+            params: vec![("x".to_string(), MirType::F64)],
+            ret_ty: MirType::F64,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![
+                    MirInst::BinOp {
+                        dest: Place::new("r"),
+                        op: MirBinOp::FMul,
+                        lhs: Operand::Place(Place::new("x")),
+                        rhs: Operand::Constant(Constant::Float(0.0)),
+                    },
+                ],
+                terminator: Terminator::Return(Some(Operand::Place(Place::new("r")))),
+            }],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let pass = AlgebraicSimplification;
+        assert!(pass.run_on_function(&mut func));
+        assert!(matches!(&func.blocks[0].instructions[0],
+            MirInst::Const { value: Constant::Float(f), .. } if *f == 0.0));
+    }
+
+    #[test]
+    fn test_algebraic_fmul_one() {
+        let mut func = MirFunction {
+            name: "test".to_string(),
+            params: vec![("x".to_string(), MirType::F64)],
+            ret_ty: MirType::F64,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![
+                    MirInst::BinOp {
+                        dest: Place::new("r"),
+                        op: MirBinOp::FMul,
+                        lhs: Operand::Constant(Constant::Float(1.0)),
+                        rhs: Operand::Place(Place::new("x")),
+                    },
+                ],
+                terminator: Terminator::Return(Some(Operand::Place(Place::new("r")))),
+            }],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let pass = AlgebraicSimplification;
+        assert!(pass.run_on_function(&mut func));
+        assert!(matches!(&func.blocks[0].instructions[0], MirInst::Copy { .. }));
+    }
+
+    #[test]
+    fn test_algebraic_mul_commutative_power_of_2() {
+        // 4 * x → x << 2
+        let mut func = MirFunction {
+            name: "test".to_string(),
+            params: vec![("x".to_string(), MirType::I64)],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![
+                    MirInst::BinOp {
+                        dest: Place::new("r"),
+                        op: MirBinOp::Mul,
+                        lhs: Operand::Constant(Constant::Int(4)),
+                        rhs: Operand::Place(Place::new("x")),
+                    },
+                ],
+                terminator: Terminator::Return(Some(Operand::Place(Place::new("r")))),
+            }],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let pass = AlgebraicSimplification;
+        assert!(pass.run_on_function(&mut func));
+        assert!(matches!(&func.blocks[0].instructions[0],
+            MirInst::BinOp { op: MirBinOp::Shl, rhs: Operand::Constant(Constant::Int(2)), .. }));
+    }
+
+    // ================================================================
+    // Cycle 78: DCE extended tests
+    // ================================================================
+
+    #[test]
+    fn test_dce_preserves_used_in_terminator() {
+        let mut func = MirFunction {
+            name: "test".to_string(),
+            params: vec![("cond".to_string(), MirType::Bool)],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![
+                    MirInst::Const { dest: Place::new("unused"), value: Constant::Int(42) },
+                    MirInst::Const { dest: Place::new("used"), value: Constant::Int(1) },
+                ],
+                terminator: Terminator::Branch {
+                    cond: Operand::Place(Place::new("cond")),
+                    then_label: "t".to_string(),
+                    else_label: "e".to_string(),
+                },
+            },
+            BasicBlock {
+                label: "t".to_string(),
+                instructions: vec![],
+                terminator: Terminator::Return(Some(Operand::Place(Place::new("used")))),
+            },
+            BasicBlock {
+                label: "e".to_string(),
+                instructions: vec![],
+                terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(0)))),
+            }],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let pass = DeadCodeElimination;
+        let changed = pass.run_on_function(&mut func);
+        assert!(changed);
+        // "unused" should be removed but "used" should remain
+        assert_eq!(func.blocks[0].instructions.len(), 1);
+        assert!(matches!(&func.blocks[0].instructions[0],
+            MirInst::Const { dest, value: Constant::Int(1), .. } if dest.name == "used"));
+    }
+
+    #[test]
+    fn test_dce_preserves_calls() {
+        let mut func = MirFunction {
+            name: "test".to_string(),
+            params: vec![],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![
+                    MirInst::Call {
+                        dest: Some(Place::new("unused_result")),
+                        func: "side_effect".to_string(),
+                        args: vec![],
+                        is_tail: false,
+                    },
+                    MirInst::Const { dest: Place::new("r"), value: Constant::Int(0) },
+                ],
+                terminator: Terminator::Return(Some(Operand::Place(Place::new("r")))),
+            }],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let pass = DeadCodeElimination;
+        let _changed = pass.run_on_function(&mut func);
+        // Calls have side effects, should be preserved even if result is unused
+        assert!(func.blocks[0].instructions.iter().any(|i| matches!(i, MirInst::Call { .. })));
+    }
+
+    // ================================================================
+    // Cycle 78: ConstantPropagationNarrowing basic tests
+    // ================================================================
+
+    #[test]
+    fn test_constant_propagation_narrowing_name() {
+        let program = MirProgram {
+            functions: vec![],
+            extern_fns: vec![],
+            struct_defs: HashMap::new(),
+        };
+        let narrowing = ConstantPropagationNarrowing::from_program(&program);
+        assert_eq!(narrowing.name(), "constant_propagation_narrowing");
+    }
+
+    #[test]
+    fn test_constant_propagation_narrowing_empty_program() {
+        let mut program = MirProgram {
+            functions: vec![],
+            extern_fns: vec![],
+            struct_defs: HashMap::new(),
+        };
+        let narrowing = ConstantPropagationNarrowing::from_program(&program);
+        assert!(!narrowing.run_on_program(&mut program));
+    }
+
+    // ================================================================
+    // Cycle 78: LICM default trait test
+    // ================================================================
+
+    #[test]
+    fn test_licm_default() {
+        let licm = LoopInvariantCodeMotion::default();
+        assert_eq!(licm.name(), "loop_invariant_code_motion");
+    }
+
+    // ================================================================
+    // Cycle 78: Pipeline optimize with multiple functions
+    // ================================================================
+
+    #[test]
+    fn test_pipeline_optimize_multiple_functions() {
+        let mut program = MirProgram {
+            functions: vec![
+                MirFunction {
+                    name: "f1".to_string(),
+                    params: vec![],
+                    ret_ty: MirType::I64,
+                    locals: vec![],
+                    blocks: vec![BasicBlock {
+                        label: "entry".to_string(),
+                        instructions: vec![
+                            MirInst::Const { dest: Place::new("a"), value: Constant::Int(2) },
+                            MirInst::Const { dest: Place::new("b"), value: Constant::Int(3) },
+                            MirInst::BinOp {
+                                dest: Place::new("c"),
+                                op: MirBinOp::Add,
+                                lhs: Operand::Place(Place::new("a")),
+                                rhs: Operand::Place(Place::new("b")),
+                            },
+                        ],
+                        terminator: Terminator::Return(Some(Operand::Place(Place::new("c")))),
+                    }],
+                    preconditions: vec![],
+                    postconditions: vec![],
+                    is_pure: false,
+                    is_const: false,
+                    always_inline: false,
+                    inline_hint: false,
+                    is_memory_free: false,
+                },
+                MirFunction {
+                    name: "f2".to_string(),
+                    params: vec![],
+                    ret_ty: MirType::I64,
+                    locals: vec![],
+                    blocks: vec![BasicBlock {
+                        label: "entry".to_string(),
+                        instructions: vec![
+                            MirInst::Const { dest: Place::new("x"), value: Constant::Int(10) },
+                            MirInst::Const { dest: Place::new("y"), value: Constant::Int(0) },
+                            MirInst::BinOp {
+                                dest: Place::new("z"),
+                                op: MirBinOp::Add,
+                                lhs: Operand::Place(Place::new("x")),
+                                rhs: Operand::Place(Place::new("y")),
+                            },
+                        ],
+                        terminator: Terminator::Return(Some(Operand::Place(Place::new("z")))),
+                    }],
+                    preconditions: vec![],
+                    postconditions: vec![],
+                    is_pure: false,
+                    is_const: false,
+                    always_inline: false,
+                    inline_hint: false,
+                    is_memory_free: false,
+                },
+            ],
+            extern_fns: vec![],
+            struct_defs: HashMap::new(),
+        };
+
+        let pipeline = OptimizationPipeline::for_level(OptLevel::Release);
+        let stats = pipeline.optimize(&mut program);
+        // Both functions should have been optimized
+        assert!(stats.pass_counts.values().sum::<usize>() > 0);
+    }
+
+    // ================================================================
+    // Cycle 78: simplify_binop edge cases
+    // ================================================================
+
+    #[test]
+    fn test_simplify_or_false_left() {
+        // false || x → x
+        let result = simplify_binop(
+            &Place::new("r"),
+            MirBinOp::Or,
+            &Operand::Constant(Constant::Bool(false)),
+            &Operand::Place(Place::new("x")),
+        );
+        assert!(matches!(result, Some(MirInst::Copy { .. })));
+    }
+
+    #[test]
+    fn test_simplify_no_simplification() {
+        // x + y — no simplification possible
+        let result = simplify_binop(
+            &Place::new("r"),
+            MirBinOp::Add,
+            &Operand::Place(Place::new("x")),
+            &Operand::Place(Place::new("y")),
+        );
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_simplify_unsupported_op_returns_none() {
+        // Bitwise ops don't have algebraic simplification
+        let result = simplify_binop(
+            &Place::new("r"),
+            MirBinOp::Band,
+            &Operand::Place(Place::new("x")),
+            &Operand::Place(Place::new("y")),
+        );
+        assert!(result.is_none());
+    }
 }

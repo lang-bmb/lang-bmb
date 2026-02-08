@@ -5291,4 +5291,171 @@ mod tests {
             "fn test() -> () = { println(42); () };"
         ));
     }
+
+    // ====================================================================
+    // Cycle 79: Extended type checker tests
+    // ====================================================================
+
+    #[test]
+    fn test_tc_let_binding() {
+        assert!(ok("fn test() -> i64 = { let x: i64 = 10; x + 1 };"));
+    }
+
+    #[test]
+    fn test_tc_nested_if() {
+        assert!(ok(
+            "fn test(a: bool, b: bool) -> i64 = if a { if b { 1 } else { 2 } } else { 3 };"
+        ));
+    }
+
+    #[test]
+    fn test_tc_while_loop() {
+        assert!(ok(
+            "fn test() -> i64 = { let mut i: i64 = 0; while i < 10 { i = i + 1 }; i };"
+        ));
+    }
+
+    #[test]
+    fn test_tc_for_loop() {
+        assert!(ok(
+            "fn test() -> i64 = { let mut sum: i64 = 0; for i in 0..10 { sum = sum + i }; sum };"
+        ));
+    }
+
+    #[test]
+    fn test_tc_tuple_type() {
+        assert!(ok(
+            "fn test() -> (i64, bool) = (42, true);"
+        ));
+    }
+
+    #[test]
+    fn test_tc_index_access() {
+        assert!(ok(
+            "fn test(arr: *i64, i: i64) -> i64 = arr[i];"
+        ));
+    }
+
+    #[test]
+    fn test_tc_enum_with_data() {
+        assert!(ok(
+            "enum Option { Some(i64), None }
+             fn test() -> Option = Option::Some(42);"
+        ));
+    }
+
+    #[test]
+    fn test_tc_match_with_wildcard() {
+        assert!(ok(
+            "fn test(x: i64) -> i64 = match x { 0 => 1, _ => x };"
+        ));
+    }
+
+    #[test]
+    fn test_tc_arity_mismatch() {
+        // Calling with wrong number of arguments
+        assert!(err(
+            "fn add(a: i64, b: i64) -> i64 = a + b;
+             fn test() -> i64 = add(1);"
+        ));
+    }
+
+    #[test]
+    fn test_tc_arity_too_many() {
+        assert!(err(
+            "fn id(x: i64) -> i64 = x;
+             fn test() -> i64 = id(1, 2);"
+        ));
+    }
+
+    #[test]
+    fn test_tc_multiple_functions() {
+        assert!(ok(
+            "fn double(x: i64) -> i64 = x * 2;
+             fn test() -> i64 = double(21);"
+        ));
+    }
+
+    #[test]
+    fn test_tc_mutual_recursion() {
+        assert!(ok(
+            "fn is_even(n: i64) -> bool = if n == 0 { true } else { is_odd(n - 1) };
+             fn is_odd(n: i64) -> bool = if n == 0 { false } else { is_even(n - 1) };"
+        ));
+    }
+
+    #[test]
+    fn test_tc_struct_wrong_field_type() {
+        assert!(err(
+            "struct Point { x: i64, y: i64 }
+             fn bad() -> Point = new Point { x: true, y: 0 };"
+        ));
+    }
+
+    #[test]
+    fn test_tc_unary_neg() {
+        assert!(ok("fn neg(x: i64) -> i64 = -x;"));
+    }
+
+    #[test]
+    fn test_tc_unary_not() {
+        assert!(ok("fn flip(x: bool) -> bool = not x;"));
+    }
+
+    #[test]
+    fn test_tc_comparison_returns_bool() {
+        assert!(ok("fn gt(a: i64, b: i64) -> bool = a > b;"));
+    }
+
+    #[test]
+    fn test_tc_block_returns_last_expr() {
+        assert!(ok("fn test() -> i64 = { 1; 2; 3 };"));
+    }
+
+    #[test]
+    fn test_tc_i32_type() {
+        assert!(ok("fn test(x: i32) -> i32 = x;"));
+    }
+
+    #[test]
+    fn test_tc_pre_and_post() {
+        assert!(ok(
+            "fn safe_abs(x: i64) -> i64
+               pre x > -1000000
+               post ret >= 0
+             = if x >= 0 { x } else { 0 - x };"
+        ));
+    }
+
+    #[test]
+    fn test_tc_string_concat() {
+        assert!(ok(r#"fn greet(name: String) -> String = "Hello, " + name;"#));
+    }
+
+    #[test]
+    fn test_tc_mutable_binding() {
+        assert!(ok(
+            "fn test() -> i64 = { let mut x: i64 = 0; x = 42; x };"
+        ));
+    }
+
+    #[test]
+    fn test_tc_nested_struct_access() {
+        assert!(ok(
+            "struct Inner { val: i64 }
+             struct Outer { inner: Inner }
+             fn get(o: Outer) -> i64 = o.inner.val;"
+        ));
+    }
+
+    #[test]
+    fn test_tc_enum_match_all_variants() {
+        assert!(ok(
+            "enum Shape { Circle(f64), Rect(f64, f64) }
+             fn area(s: Shape) -> f64 = match s {
+                 Shape::Circle(r) => r * r,
+                 Shape::Rect(w, h) => w * h,
+             };"
+        ));
+    }
 }

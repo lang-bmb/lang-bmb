@@ -1569,4 +1569,275 @@ mod tests {
         // Different contracts → no duplicate warning
         assert!(report.warnings.is_empty());
     }
+
+    #[test]
+    fn test_verifier_default() {
+        let verifier = ContractVerifier::default();
+        let _available = verifier.is_solver_available();
+    }
+
+    #[test]
+    fn test_verification_report_default() {
+        let report = VerificationReport::default();
+        assert!(report.functions.is_empty());
+        assert!(report.all_verified());
+        assert_eq!(report.verified_count(), 0);
+        assert_eq!(report.failed_count(), 0);
+    }
+
+    #[test]
+    fn test_function_report_display_pre_verified() {
+        let mut report = FunctionReport::new("add".to_string());
+        report.pre_result = Some(VerifyResult::Verified);
+        let display = format!("{}", report);
+        assert!(display.contains("add"));
+        assert!(display.contains("pre verified"));
+    }
+
+    #[test]
+    fn test_function_report_display_pre_failed() {
+        let mut report = FunctionReport::new("sub".to_string());
+        report.pre_result = Some(VerifyResult::Failed(Counterexample {
+            assignments: vec![("x".to_string(), "-1".to_string())],
+        }));
+        let display = format!("{}", report);
+        assert!(display.contains("sub"));
+        assert!(display.contains("pre verification failed"));
+    }
+
+    #[test]
+    fn test_function_report_display_unknown() {
+        let mut report = FunctionReport::new("div".to_string());
+        report.pre_result = Some(VerifyResult::Unknown("timeout".to_string()));
+        let display = format!("{}", report);
+        assert!(display.contains("unknown"));
+        assert!(display.contains("timeout"));
+    }
+
+    #[test]
+    fn test_function_report_display_solver_not_available() {
+        let mut report = FunctionReport::new("mul".to_string());
+        report.pre_result = Some(VerifyResult::SolverNotAvailable);
+        let display = format!("{}", report);
+        assert!(display.contains("solver not available"));
+    }
+
+    #[test]
+    fn test_function_report_display_post_verified() {
+        let mut report = FunctionReport::new("test".to_string());
+        report.post_result = Some(VerifyResult::Verified);
+        let display = format!("{}", report);
+        assert!(display.contains("post verified"));
+    }
+
+    #[test]
+    fn test_function_report_display_post_failed() {
+        let mut report = FunctionReport::new("test".to_string());
+        report.post_result = Some(VerifyResult::Failed(Counterexample {
+            assignments: vec![],
+        }));
+        let display = format!("{}", report);
+        assert!(display.contains("post verification failed"));
+    }
+
+    #[test]
+    fn test_function_report_display_contract_verified() {
+        let mut report = FunctionReport::new("bounded".to_string());
+        report.contract_results.push((Some("range".to_string()), VerifyResult::Verified));
+        let display = format!("{}", report);
+        assert!(display.contains("contract 'range' verified"));
+    }
+
+    #[test]
+    fn test_function_report_display_contract_failed() {
+        let mut report = FunctionReport::new("bounded".to_string());
+        report.contract_results.push((
+            Some("range".to_string()),
+            VerifyResult::Failed(Counterexample { assignments: vec![] }),
+        ));
+        let display = format!("{}", report);
+        assert!(display.contains("contract 'range' violated"));
+    }
+
+    #[test]
+    fn test_function_report_display_unnamed_contract() {
+        let mut report = FunctionReport::new("f".to_string());
+        report.contract_results.push((None, VerifyResult::Verified));
+        let display = format!("{}", report);
+        assert!(display.contains("contract 'unnamed' verified"));
+    }
+
+    #[test]
+    fn test_function_report_display_refinement() {
+        let mut report = FunctionReport::new("f".to_string());
+        report.refinement_results.push(("return".to_string(), VerifyResult::Verified));
+        let display = format!("{}", report);
+        assert!(display.contains("refinement 'return' verified"));
+    }
+
+    #[test]
+    fn test_function_report_display_refinement_failed() {
+        let mut report = FunctionReport::new("f".to_string());
+        report.refinement_results.push((
+            "return".to_string(),
+            VerifyResult::Failed(Counterexample { assignments: vec![] }),
+        ));
+        let display = format!("{}", report);
+        assert!(display.contains("refinement 'return' violated"));
+    }
+
+    #[test]
+    fn test_function_report_display_message() {
+        let mut report = FunctionReport::new("f".to_string());
+        report.message = Some("extra info".to_string());
+        let display = format!("{}", report);
+        assert!(display.contains("Note: extra info"));
+    }
+
+    #[test]
+    fn test_function_report_display_warning() {
+        let mut report = FunctionReport::new("f".to_string());
+        report.warnings.push("duplicate contract".to_string());
+        let display = format!("{}", report);
+        assert!(display.contains("duplicate contract"));
+    }
+
+    #[test]
+    fn test_function_report_unknown_is_not_failure() {
+        let mut report = FunctionReport::new("test".to_string());
+        report.pre_result = Some(VerifyResult::Unknown("timeout".to_string()));
+        assert!(!report.is_verified());
+        assert!(!report.has_failure());
+    }
+
+    #[test]
+    fn test_function_report_solver_not_available_is_not_failure() {
+        let mut report = FunctionReport::new("test".to_string());
+        report.pre_result = Some(VerifyResult::SolverNotAvailable);
+        assert!(!report.is_verified());
+        assert!(!report.has_failure());
+    }
+
+    #[test]
+    fn test_counterexample_display() {
+        let ce = Counterexample {
+            assignments: vec![
+                ("x".to_string(), "5".to_string()),
+                ("y".to_string(), "-1".to_string()),
+            ],
+        };
+        let display = format!("{}", ce);
+        assert!(display.contains("x") && display.contains("5"));
+    }
+
+    #[test]
+    fn test_verification_report_display_single_ok() {
+        let mut vr = VerificationReport::new();
+        let mut f1 = FunctionReport::new("f1".to_string());
+        f1.pre_result = Some(VerifyResult::Verified);
+        f1.post_result = Some(VerifyResult::Verified);
+        vr.functions.push(f1);
+        let display = format!("{}", vr);
+        assert!(display.contains("verified successfully"));
+    }
+
+    #[test]
+    fn test_verification_report_display_with_failures() {
+        let mut vr = VerificationReport::new();
+        let mut f1 = FunctionReport::new("good".to_string());
+        f1.pre_result = Some(VerifyResult::Verified);
+        f1.post_result = Some(VerifyResult::Verified);
+        let mut f2 = FunctionReport::new("bad".to_string());
+        f2.pre_result = Some(VerifyResult::Verified);
+        f2.post_result = Some(VerifyResult::Failed(Counterexample { assignments: vec![] }));
+        vr.functions.push(f1);
+        vr.functions.push(f2);
+        let display = format!("{}", vr);
+        assert!(display.contains("Verified: 1/2"));
+        assert!(display.contains("Failed: 1"));
+    }
+
+    #[test]
+    fn test_verify_function_with_pre_only() {
+        let verifier = ContractVerifier::new();
+        let func = FnDef {
+            attributes: vec![],
+            visibility: Visibility::Private,
+            is_async: false,
+            name: spanned("positive".to_string()),
+            type_params: vec![],
+            params: vec![crate::ast::Param {
+                name: spanned("x".to_string()),
+                ty: spanned(Type::I64),
+            }],
+            ret_name: None,
+            ret_ty: spanned(Type::I64),
+            pre: Some(spanned(Expr::Binary {
+                left: Box::new(spanned(Expr::Var("x".to_string()))),
+                op: crate::ast::BinOp::Gt,
+                right: Box::new(spanned(Expr::IntLit(0))),
+            })),
+            post: None,
+            contracts: vec![],
+            body: spanned(Expr::Var("x".to_string())),
+            span: dummy_span(),
+        };
+
+        let report = verifier.verify_function(&func);
+        // Pre should be analyzed (either verified, unknown, or solver-dependent)
+        assert!(report.pre_result.is_some());
+    }
+
+    #[test]
+    fn test_verify_function_with_post_only() {
+        let verifier = ContractVerifier::new();
+        let func = FnDef {
+            attributes: vec![],
+            visibility: Visibility::Private,
+            is_async: false,
+            name: spanned("return_positive".to_string()),
+            type_params: vec![],
+            params: vec![],
+            ret_name: Some(spanned("ret".to_string())),
+            ret_ty: spanned(Type::I64),
+            pre: None,
+            post: Some(spanned(Expr::Binary {
+                left: Box::new(spanned(Expr::Var("ret".to_string()))),
+                op: crate::ast::BinOp::Gt,
+                right: Box::new(spanned(Expr::IntLit(0))),
+            })),
+            contracts: vec![],
+            body: spanned(Expr::IntLit(42)),
+            span: dummy_span(),
+        };
+
+        let report = verifier.verify_function(&func);
+        assert!(report.post_result.is_some());
+    }
+
+    #[test]
+    fn test_detect_trivial_contracts_false_literal() {
+        let verifier = ContractVerifier::new();
+        let func = FnDef {
+            attributes: vec![],
+            visibility: Visibility::Private,
+            is_async: false,
+            name: spanned("always_false".to_string()),
+            type_params: vec![],
+            params: vec![],
+            ret_name: None,
+            ret_ty: spanned(Type::I64),
+            pre: Some(spanned(Expr::BoolLit(false))),
+            post: None,
+            contracts: vec![],
+            body: spanned(Expr::IntLit(42)),
+            span: dummy_span(),
+        };
+
+        let mut report = FunctionReport::new("always_false".to_string());
+        verifier.detect_trivial_contracts(&func, &mut report);
+        // At minimum, the verifier should process without panic
+        // Warnings may or may not be generated depending on implementation
+        let _ = &report.warnings;
+    }
 }

@@ -412,3 +412,241 @@ impl std::fmt::Display for Type {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_type_param_new() {
+        let tp = TypeParam::new("T");
+        assert_eq!(tp.name, "T");
+        assert!(tp.bounds.is_empty());
+    }
+
+    #[test]
+    fn test_type_param_with_bounds() {
+        let tp = TypeParam::with_bounds("T", vec!["Ord".to_string(), "Clone".to_string()]);
+        assert_eq!(tp.name, "T");
+        assert_eq!(tp.bounds.len(), 2);
+        assert_eq!(tp.bounds[0], "Ord");
+    }
+
+    #[test]
+    fn test_type_equality_primitives() {
+        assert_eq!(Type::I32, Type::I32);
+        assert_eq!(Type::I64, Type::I64);
+        assert_eq!(Type::U32, Type::U32);
+        assert_eq!(Type::U64, Type::U64);
+        assert_eq!(Type::F64, Type::F64);
+        assert_eq!(Type::Bool, Type::Bool);
+        assert_eq!(Type::Unit, Type::Unit);
+        assert_eq!(Type::String, Type::String);
+        assert_eq!(Type::Char, Type::Char);
+        assert_eq!(Type::Never, Type::Never);
+        assert_eq!(Type::Barrier, Type::Barrier);
+        assert_eq!(Type::Condvar, Type::Condvar);
+        assert_eq!(Type::AsyncFile, Type::AsyncFile);
+        assert_eq!(Type::AsyncSocket, Type::AsyncSocket);
+        assert_eq!(Type::ThreadPool, Type::ThreadPool);
+        assert_eq!(Type::Scope, Type::Scope);
+    }
+
+    #[test]
+    fn test_type_inequality() {
+        assert_ne!(Type::I32, Type::I64);
+        assert_ne!(Type::Bool, Type::Unit);
+        assert_ne!(Type::F64, Type::I64);
+    }
+
+    #[test]
+    fn test_type_equality_never_is_bottom() {
+        // Never is compatible with any type
+        assert_eq!(Type::Never, Type::I64);
+        assert_eq!(Type::I64, Type::Never);
+        assert_eq!(Type::Never, Type::Bool);
+    }
+
+    #[test]
+    fn test_type_equality_compound() {
+        assert_eq!(Type::Range(Box::new(Type::I64)), Type::Range(Box::new(Type::I64)));
+        assert_ne!(Type::Range(Box::new(Type::I64)), Type::Range(Box::new(Type::I32)));
+
+        assert_eq!(Type::Ref(Box::new(Type::I64)), Type::Ref(Box::new(Type::I64)));
+        assert_eq!(Type::RefMut(Box::new(Type::Bool)), Type::RefMut(Box::new(Type::Bool)));
+        assert_eq!(Type::Ptr(Box::new(Type::I64)), Type::Ptr(Box::new(Type::I64)));
+        assert_eq!(Type::Nullable(Box::new(Type::I64)), Type::Nullable(Box::new(Type::I64)));
+
+        assert_eq!(
+            Type::Array(Box::new(Type::I64), 10),
+            Type::Array(Box::new(Type::I64), 10)
+        );
+        assert_ne!(
+            Type::Array(Box::new(Type::I64), 10),
+            Type::Array(Box::new(Type::I64), 20)
+        );
+
+        assert_eq!(
+            Type::Tuple(vec![Box::new(Type::I64), Box::new(Type::Bool)]),
+            Type::Tuple(vec![Box::new(Type::I64), Box::new(Type::Bool)])
+        );
+    }
+
+    #[test]
+    fn test_type_equality_named_and_typevar() {
+        assert_eq!(Type::Named("Foo".to_string()), Type::Named("Foo".to_string()));
+        assert_ne!(Type::Named("Foo".to_string()), Type::Named("Bar".to_string()));
+        assert_eq!(Type::TypeVar("T".to_string()), Type::TypeVar("T".to_string()));
+    }
+
+    #[test]
+    fn test_type_equality_generic() {
+        let g1 = Type::Generic {
+            name: "Vec".to_string(),
+            type_args: vec![Box::new(Type::I64)],
+        };
+        let g2 = Type::Generic {
+            name: "Vec".to_string(),
+            type_args: vec![Box::new(Type::I64)],
+        };
+        assert_eq!(g1, g2);
+    }
+
+    #[test]
+    fn test_type_equality_concurrency() {
+        assert_eq!(Type::Thread(Box::new(Type::I64)), Type::Thread(Box::new(Type::I64)));
+        assert_eq!(Type::Mutex(Box::new(Type::I64)), Type::Mutex(Box::new(Type::I64)));
+        assert_eq!(Type::Arc(Box::new(Type::I64)), Type::Arc(Box::new(Type::I64)));
+        assert_eq!(Type::Atomic(Box::new(Type::I64)), Type::Atomic(Box::new(Type::I64)));
+        assert_eq!(Type::Sender(Box::new(Type::I64)), Type::Sender(Box::new(Type::I64)));
+        assert_eq!(Type::Receiver(Box::new(Type::I64)), Type::Receiver(Box::new(Type::I64)));
+        assert_eq!(Type::RwLock(Box::new(Type::I64)), Type::RwLock(Box::new(Type::I64)));
+        assert_eq!(Type::Future(Box::new(Type::I64)), Type::Future(Box::new(Type::I64)));
+    }
+
+    #[test]
+    fn test_base_type() {
+        assert_eq!(Type::I64.base_type(), &Type::I64);
+
+        let refined = Type::Refined {
+            base: Box::new(Type::I64),
+            constraints: vec![],
+        };
+        assert_eq!(refined.base_type(), &Type::I64);
+    }
+
+    #[test]
+    fn test_is_numeric() {
+        assert!(Type::I32.is_numeric());
+        assert!(Type::I64.is_numeric());
+        assert!(Type::U32.is_numeric());
+        assert!(Type::U64.is_numeric());
+        assert!(Type::F64.is_numeric());
+        assert!(!Type::Bool.is_numeric());
+        assert!(!Type::String.is_numeric());
+        assert!(!Type::Unit.is_numeric());
+    }
+
+    #[test]
+    fn test_is_comparable() {
+        assert!(Type::I64.is_comparable());
+        assert!(Type::F64.is_comparable());
+        assert!(Type::Bool.is_comparable());
+        assert!(Type::String.is_comparable());
+        assert!(Type::Char.is_comparable());
+        assert!(!Type::Unit.is_comparable());
+        assert!(!Type::Barrier.is_comparable());
+    }
+
+    #[test]
+    fn test_display_primitives() {
+        assert_eq!(format!("{}", Type::I32), "i32");
+        assert_eq!(format!("{}", Type::I64), "i64");
+        assert_eq!(format!("{}", Type::U32), "u32");
+        assert_eq!(format!("{}", Type::U64), "u64");
+        assert_eq!(format!("{}", Type::F64), "f64");
+        assert_eq!(format!("{}", Type::Bool), "bool");
+        assert_eq!(format!("{}", Type::Unit), "()");
+        assert_eq!(format!("{}", Type::String), "String");
+        assert_eq!(format!("{}", Type::Char), "char");
+        assert_eq!(format!("{}", Type::Never), "!");
+    }
+
+    #[test]
+    fn test_display_compound() {
+        assert_eq!(format!("{}", Type::Ref(Box::new(Type::I64))), "&i64");
+        assert_eq!(format!("{}", Type::RefMut(Box::new(Type::I64))), "&mut i64");
+        assert_eq!(format!("{}", Type::Ptr(Box::new(Type::I64))), "*i64");
+        assert_eq!(format!("{}", Type::Nullable(Box::new(Type::I64))), "i64?");
+        assert_eq!(format!("{}", Type::Array(Box::new(Type::I64), 10)), "[i64; 10]");
+        assert_eq!(format!("{}", Type::Range(Box::new(Type::I64))), "Range<i64>");
+        assert_eq!(format!("{}", Type::Named("Foo".to_string())), "Foo");
+        assert_eq!(format!("{}", Type::TypeVar("T".to_string())), "T");
+    }
+
+    #[test]
+    fn test_display_tuple() {
+        let t = Type::Tuple(vec![Box::new(Type::I64), Box::new(Type::Bool)]);
+        assert_eq!(format!("{}", t), "(i64, bool)");
+    }
+
+    #[test]
+    fn test_display_generic() {
+        let g = Type::Generic {
+            name: "Vec".to_string(),
+            type_args: vec![Box::new(Type::I64)],
+        };
+        assert_eq!(format!("{}", g), "Vec<i64>");
+    }
+
+    #[test]
+    fn test_display_fn_type() {
+        let f = Type::Fn {
+            params: vec![Box::new(Type::I64), Box::new(Type::Bool)],
+            ret: Box::new(Type::String),
+        };
+        assert_eq!(format!("{}", f), "fn(i64, bool) -> String");
+    }
+
+    #[test]
+    fn test_display_concurrency() {
+        assert_eq!(format!("{}", Type::Thread(Box::new(Type::I64))), "Thread<i64>");
+        assert_eq!(format!("{}", Type::Mutex(Box::new(Type::I64))), "Mutex<i64>");
+        assert_eq!(format!("{}", Type::Arc(Box::new(Type::I64))), "Arc<i64>");
+        assert_eq!(format!("{}", Type::Atomic(Box::new(Type::I64))), "Atomic<i64>");
+        assert_eq!(format!("{}", Type::Sender(Box::new(Type::I64))), "Sender<i64>");
+        assert_eq!(format!("{}", Type::Receiver(Box::new(Type::I64))), "Receiver<i64>");
+        assert_eq!(format!("{}", Type::RwLock(Box::new(Type::I64))), "RwLock<i64>");
+        assert_eq!(format!("{}", Type::Barrier), "Barrier");
+        assert_eq!(format!("{}", Type::Condvar), "Condvar");
+        assert_eq!(format!("{}", Type::Future(Box::new(Type::I64))), "Future<i64>");
+        assert_eq!(format!("{}", Type::AsyncFile), "AsyncFile");
+        assert_eq!(format!("{}", Type::AsyncSocket), "AsyncSocket");
+        assert_eq!(format!("{}", Type::ThreadPool), "ThreadPool");
+        assert_eq!(format!("{}", Type::Scope), "Scope");
+    }
+
+    #[test]
+    fn test_refined_type_equality() {
+        // Refined types with same base are equal
+        let r1 = Type::Refined { base: Box::new(Type::I64), constraints: vec![] };
+        let r2 = Type::Refined { base: Box::new(Type::I64), constraints: vec![] };
+        assert_eq!(r1, r2);
+
+        // Refined type equals its base type
+        let base = Type::I64;
+        assert_eq!(r1, base);
+        assert_eq!(base, r1);
+    }
+
+    #[test]
+    fn test_nullable_option_equivalence() {
+        let nullable = Type::Nullable(Box::new(Type::I64));
+        let option_generic = Type::Generic {
+            name: "Option".to_string(),
+            type_args: vec![Box::new(Type::I64)],
+        };
+        assert_eq!(nullable, option_generic);
+        assert_eq!(option_generic, nullable);
+    }
+}

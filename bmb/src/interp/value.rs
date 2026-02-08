@@ -357,4 +357,99 @@ mod tests {
         assert!(materialized.starts_with("fragment0"));
         assert!(materialized.ends_with("fragment99"));
     }
+
+    #[test]
+    fn test_type_name() {
+        assert_eq!(Value::Int(0).type_name(), "int");
+        assert_eq!(Value::Float(0.0).type_name(), "float");
+        assert_eq!(Value::Bool(true).type_name(), "bool");
+        assert_eq!(Value::Str(Rc::new("s".to_string())).type_name(), "String");
+        assert_eq!(Value::Char('a').type_name(), "char");
+        assert_eq!(Value::Unit.type_name(), "()");
+        assert_eq!(Value::Range(0, 10).type_name(), "Range");
+        assert_eq!(Value::Array(vec![]).type_name(), "array");
+        assert_eq!(Value::Tuple(vec![]).type_name(), "tuple");
+    }
+
+    #[test]
+    fn test_value_display_char() {
+        assert_eq!(format!("{}", Value::Char('a')), "'a'");
+    }
+
+    #[test]
+    fn test_value_display_range() {
+        assert_eq!(format!("{}", Value::Range(0, 10)), "0..10");
+    }
+
+    #[test]
+    fn test_value_display_array() {
+        let arr = Value::Array(vec![Value::Int(1), Value::Int(2), Value::Int(3)]);
+        assert_eq!(format!("{}", arr), "[1, 2, 3]");
+    }
+
+    #[test]
+    fn test_value_display_tuple() {
+        let t = Value::Tuple(vec![Value::Int(1), Value::Bool(true)]);
+        assert_eq!(format!("{}", t), "(1, true)");
+    }
+
+    #[test]
+    fn test_truthy_additional() {
+        assert!(Value::Char('a').is_truthy());
+        assert!(!Value::Char('\0').is_truthy());
+        assert!(Value::Range(0, 10).is_truthy());
+        assert!(!Value::Range(5, 5).is_truthy());
+        assert!(Value::Array(vec![Value::Int(1)]).is_truthy());
+        assert!(!Value::Array(vec![]).is_truthy());
+        assert!(Value::Tuple(vec![]).is_truthy()); // Tuples always truthy
+        assert!(Value::Float(1.0).is_truthy());
+        assert!(!Value::Float(0.0).is_truthy());
+    }
+
+    #[test]
+    fn test_materialize_string_from_str() {
+        let s = Value::Str(Rc::new("hello".to_string()));
+        assert_eq!(s.materialize_string(), Some("hello".to_string()));
+    }
+
+    #[test]
+    fn test_materialize_string_non_string() {
+        assert_eq!(Value::Int(42).materialize_string(), None);
+        assert_eq!(Value::Bool(true).materialize_string(), None);
+    }
+
+    #[test]
+    fn test_concat_non_string_fails() {
+        let a = Value::Str(Rc::new("hello".to_string()));
+        let b = Value::Int(42);
+        assert!(Value::concat_strings(&a, &b).is_none());
+        assert!(Value::concat_strings(&b, &a).is_none());
+    }
+
+    #[test]
+    fn test_value_equality() {
+        assert_eq!(Value::Int(42), Value::Int(42));
+        assert_ne!(Value::Int(42), Value::Int(43));
+        assert_eq!(Value::Float(3.5), Value::Float(3.5));
+        assert_eq!(Value::Bool(true), Value::Bool(true));
+        assert_eq!(Value::Unit, Value::Unit);
+        assert_eq!(Value::Char('a'), Value::Char('a'));
+        assert_ne!(Value::Char('a'), Value::Char('b'));
+        assert_eq!(Value::Range(0, 10), Value::Range(0, 10));
+        assert_ne!(Value::Range(0, 10), Value::Range(0, 20));
+    }
+
+    #[test]
+    fn test_value_equality_arrays() {
+        let a = Value::Array(vec![Value::Int(1), Value::Int(2)]);
+        let b = Value::Array(vec![Value::Int(1), Value::Int(2)]);
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn test_value_equality_tuples() {
+        let a = Value::Tuple(vec![Value::Int(1), Value::Bool(true)]);
+        let b = Value::Tuple(vec![Value::Int(1), Value::Bool(true)]);
+        assert_eq!(a, b);
+    }
 }

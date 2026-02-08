@@ -525,4 +525,244 @@ mod tests {
             PirType::Array(Box::new(PirType::I64), Some(10))
         );
     }
+
+    #[test]
+    fn test_pir_program_default() {
+        let program = PirProgram::default();
+        assert!(program.functions.is_empty());
+        assert!(program.type_invariants.is_empty());
+    }
+
+    #[test]
+    fn test_pir_function_construction() {
+        let func = PirFunction {
+            name: "add".to_string(),
+            params: vec![
+                PirParam { name: "a".to_string(), ty: PirType::I64, constraints: vec![] },
+                PirParam { name: "b".to_string(), ty: PirType::I64, constraints: vec![] },
+            ],
+            ret_ty: PirType::I64,
+            body: PirExpr::new(PirExprKind::IntLit(0), PirType::I64),
+            entry_facts: vec![],
+            exit_facts: vec![],
+        };
+        assert_eq!(func.name, "add");
+        assert_eq!(func.params.len(), 2);
+        assert_eq!(func.params[0].name, "a");
+    }
+
+    #[test]
+    fn test_proven_fact_from_smt() {
+        let fact = ProvenFact::from_smt(Proposition::True, 12345, 1);
+        assert_eq!(fact.id, 1);
+        assert!(matches!(fact.evidence, crate::verify::ProofEvidence::SmtProof { query_hash: 12345, .. }));
+    }
+
+    #[test]
+    fn test_pir_param_with_constraints() {
+        let constraint = ProvenFact::from_precondition(
+            Proposition::Compare {
+                lhs: Box::new(CirExpr::Var("x".to_string())),
+                op: crate::cir::CompareOp::Ge,
+                rhs: Box::new(CirExpr::IntLit(0)),
+            },
+            1,
+        );
+        let param = PirParam {
+            name: "x".to_string(),
+            ty: PirType::I64,
+            constraints: vec![constraint],
+        };
+        assert_eq!(param.constraints.len(), 1);
+    }
+
+    #[test]
+    fn test_has_nonzero_proof() {
+        let nonzero_fact = ProvenFact::from_precondition(
+            Proposition::Compare {
+                lhs: Box::new(CirExpr::Var("d".to_string())),
+                op: crate::cir::CompareOp::Ne,
+                rhs: Box::new(CirExpr::IntLit(0)),
+            },
+            1,
+        );
+
+        let expr = PirExpr::new(
+            PirExprKind::Div {
+                lhs: Box::new(PirExpr::new(PirExprKind::Var("x".to_string()), PirType::I64)),
+                rhs: Box::new(PirExpr::new(PirExprKind::Var("d".to_string()), PirType::I64)),
+                nonzero_proof: Some(nonzero_fact.clone()),
+            },
+            PirType::I64,
+        ).with_proven(vec![nonzero_fact]);
+
+        assert!(expr.has_nonzero_proof());
+    }
+
+    #[test]
+    fn test_no_bounds_proof() {
+        let expr = PirExpr::new(PirExprKind::IntLit(42), PirType::I64);
+        assert!(!expr.has_bounds_proof());
+        assert!(!expr.has_null_proof());
+        assert!(!expr.has_nonzero_proof());
+    }
+
+    #[test]
+    fn test_pir_type_from_cir_extended() {
+        use crate::cir::CirType;
+
+        assert_eq!(PirType::from_cir(&CirType::F64), PirType::F64);
+        assert_eq!(PirType::from_cir(&CirType::F32), PirType::F32);
+        assert_eq!(PirType::from_cir(&CirType::Char), PirType::Char);
+        assert_eq!(PirType::from_cir(&CirType::String), PirType::String);
+        assert_eq!(PirType::from_cir(&CirType::Unit), PirType::Unit);
+        assert_eq!(PirType::from_cir(&CirType::I8), PirType::I8);
+        assert_eq!(PirType::from_cir(&CirType::I16), PirType::I16);
+        assert_eq!(PirType::from_cir(&CirType::I32), PirType::I32);
+        assert_eq!(PirType::from_cir(&CirType::I128), PirType::I128);
+        assert_eq!(PirType::from_cir(&CirType::U8), PirType::U8);
+        assert_eq!(PirType::from_cir(&CirType::U16), PirType::U16);
+        assert_eq!(PirType::from_cir(&CirType::U32), PirType::U32);
+        assert_eq!(PirType::from_cir(&CirType::U64), PirType::U64);
+        assert_eq!(PirType::from_cir(&CirType::U128), PirType::U128);
+        assert_eq!(PirType::from_cir(&CirType::Never), PirType::Never);
+        assert_eq!(PirType::from_cir(&CirType::Infer), PirType::Infer);
+    }
+
+    #[test]
+    fn test_pir_type_from_cir_compound() {
+        use crate::cir::CirType;
+
+        // Slice
+        let slice_ty = CirType::Slice(Box::new(CirType::I64));
+        assert_eq!(PirType::from_cir(&slice_ty), PirType::Slice(Box::new(PirType::I64)));
+
+        // Ref
+        let ref_ty = CirType::Ref(Box::new(CirType::Bool));
+        assert_eq!(PirType::from_cir(&ref_ty), PirType::Ref(Box::new(PirType::Bool)));
+
+        // RefMut
+        let refmut_ty = CirType::RefMut(Box::new(CirType::F64));
+        assert_eq!(PirType::from_cir(&refmut_ty), PirType::RefMut(Box::new(PirType::F64)));
+
+        // Option
+        let opt_ty = CirType::Option(Box::new(CirType::I64));
+        assert_eq!(PirType::from_cir(&opt_ty), PirType::Option(Box::new(PirType::I64)));
+
+        // Tuple
+        let tuple_ty = CirType::Tuple(vec![CirType::I64, CirType::Bool]);
+        assert_eq!(PirType::from_cir(&tuple_ty), PirType::Tuple(vec![PirType::I64, PirType::Bool]));
+
+        // Struct
+        let struct_ty = CirType::Struct("Point".to_string());
+        assert_eq!(PirType::from_cir(&struct_ty), PirType::Struct("Point".to_string()));
+
+        // Enum
+        let enum_ty = CirType::Enum("Color".to_string());
+        assert_eq!(PirType::from_cir(&enum_ty), PirType::Enum("Color".to_string()));
+
+        // Fn
+        let fn_ty = CirType::Fn { params: vec![CirType::I64], ret: Box::new(CirType::Bool) };
+        assert_eq!(PirType::from_cir(&fn_ty), PirType::Fn { params: vec![PirType::I64], ret: Box::new(PirType::Bool) });
+
+        // TypeParam -> Struct
+        let tp_ty = CirType::TypeParam("T".to_string());
+        assert_eq!(PirType::from_cir(&tp_ty), PirType::Struct("T".to_string()));
+
+        // Generic -> Struct
+        let gen_ty = CirType::Generic("Vec".to_string(), vec![CirType::I64]);
+        assert_eq!(PirType::from_cir(&gen_ty), PirType::Struct("Vec".to_string()));
+
+        // Ptr -> Ref
+        let ptr_ty = CirType::Ptr(Box::new(CirType::I64));
+        assert_eq!(PirType::from_cir(&ptr_ty), PirType::Ref(Box::new(PirType::I64)));
+
+        // Range -> Tuple of (inner, inner)
+        let range_ty = CirType::Range(Box::new(CirType::I64));
+        assert_eq!(PirType::from_cir(&range_ty), PirType::Tuple(vec![PirType::I64, PirType::I64]));
+    }
+
+    #[test]
+    fn test_pir_expr_field_access() {
+        let expr = PirExpr::new(
+            PirExprKind::Field {
+                base: Box::new(PirExpr::new(PirExprKind::Var("p".to_string()), PirType::Struct("Point".to_string()))),
+                field: "x".to_string(),
+                null_proof: None,
+            },
+            PirType::I64,
+        );
+        assert!(!expr.has_null_proof());
+    }
+
+    #[test]
+    fn test_pir_expr_if() {
+        let expr = PirExpr::new(
+            PirExprKind::If {
+                cond: Box::new(PirExpr::new(PirExprKind::BoolLit(true), PirType::Bool)),
+                then_branch: Box::new(PirExpr::new(PirExprKind::IntLit(1), PirType::I64)),
+                else_branch: Box::new(PirExpr::new(PirExprKind::IntLit(0), PirType::I64)),
+                then_facts: vec![],
+                else_facts: vec![],
+            },
+            PirType::I64,
+        );
+        assert!(matches!(expr.kind, PirExprKind::If { .. }));
+    }
+
+    #[test]
+    fn test_pir_expr_while_loop() {
+        let expr = PirExpr::new(
+            PirExprKind::While {
+                cond: Box::new(PirExpr::new(PirExprKind::BoolLit(true), PirType::Bool)),
+                body: Box::new(PirExpr::new(PirExprKind::Unit, PirType::Unit)),
+                invariant_facts: vec![],
+            },
+            PirType::Unit,
+        );
+        assert!(matches!(expr.kind, PirExprKind::While { .. }));
+    }
+
+    #[test]
+    fn test_pir_expr_let_binding() {
+        let expr = PirExpr::new(
+            PirExprKind::Let {
+                name: "x".to_string(),
+                ty: PirType::I64,
+                value: Box::new(PirExpr::new(PirExprKind::IntLit(42), PirType::I64)),
+                body: Box::new(PirExpr::new(PirExprKind::Var("x".to_string()), PirType::I64)),
+                value_facts: vec![],
+            },
+            PirType::I64,
+        );
+        assert!(matches!(expr.kind, PirExprKind::Let { .. }));
+    }
+
+    #[test]
+    fn test_pir_expr_call() {
+        let expr = PirExpr::new(
+            PirExprKind::Call {
+                func: "add".to_string(),
+                args: vec![
+                    PirExpr::new(PirExprKind::IntLit(1), PirType::I64),
+                    PirExpr::new(PirExprKind::IntLit(2), PirType::I64),
+                ],
+                postcondition_facts: vec![],
+            },
+            PirType::I64,
+        );
+        assert!(matches!(expr.kind, PirExprKind::Call { .. }));
+    }
+
+    #[test]
+    fn test_pir_expr_block() {
+        let expr = PirExpr::new(
+            PirExprKind::Block(vec![
+                PirExpr::new(PirExprKind::IntLit(1), PirType::I64),
+                PirExpr::new(PirExprKind::IntLit(2), PirType::I64),
+            ]),
+            PirType::I64,
+        );
+        assert!(matches!(expr.kind, PirExprKind::Block(_)));
+    }
 }

@@ -188,4 +188,83 @@ mod tests {
         assert!(ctx.has_trait(DeriveTrait::Clone));
         assert!(!ctx.has_trait(DeriveTrait::Eq));
     }
+
+    #[test]
+    fn test_derive_trait_as_str() {
+        assert_eq!(DeriveTrait::Debug.as_str(), "Debug");
+        assert_eq!(DeriveTrait::Clone.as_str(), "Clone");
+        assert_eq!(DeriveTrait::PartialEq.as_str(), "PartialEq");
+        assert_eq!(DeriveTrait::Eq.as_str(), "Eq");
+        assert_eq!(DeriveTrait::Default.as_str(), "Default");
+        assert_eq!(DeriveTrait::Hash.as_str(), "Hash");
+    }
+
+    #[test]
+    fn test_derive_trait_from_str_all() {
+        assert_eq!(DeriveTrait::from_str("Default"), Some(DeriveTrait::Default));
+        assert_eq!(DeriveTrait::from_str("Hash"), Some(DeriveTrait::Hash));
+        assert_eq!(DeriveTrait::from_str("Eq"), Some(DeriveTrait::Eq));
+        assert_eq!(DeriveTrait::from_str("Bogus"), None);
+    }
+
+    #[test]
+    fn test_has_derive_trait() {
+        use crate::ast::Visibility;
+
+        let def = StructDef {
+            attributes: vec![make_derive_attr(&["Debug", "Hash"])],
+            visibility: Visibility::Public,
+            name: Spanned::new("MyStruct".to_string(), Span::new(0, 8)),
+            type_params: vec![],
+            fields: vec![],
+            span: Span::new(0, 50),
+        };
+
+        assert!(has_derive_trait(&def, DeriveTrait::Debug));
+        assert!(has_derive_trait(&def, DeriveTrait::Hash));
+        assert!(!has_derive_trait(&def, DeriveTrait::Clone));
+    }
+
+    #[test]
+    fn test_has_derive_trait_enum() {
+        use crate::ast::EnumDef;
+
+        let def = EnumDef {
+            attributes: vec![make_derive_attr(&["PartialEq", "Eq"])],
+            visibility: crate::ast::Visibility::Private,
+            name: Spanned::new("Color".to_string(), Span::new(0, 5)),
+            type_params: vec![],
+            variants: vec![],
+            span: Span::new(0, 50),
+        };
+
+        assert!(has_derive_trait_enum(&def, DeriveTrait::PartialEq));
+        assert!(has_derive_trait_enum(&def, DeriveTrait::Eq));
+        assert!(!has_derive_trait_enum(&def, DeriveTrait::Debug));
+    }
+
+    #[test]
+    fn test_derive_context_from_enum() {
+        use crate::ast::EnumDef;
+
+        let def = EnumDef {
+            attributes: vec![make_derive_attr(&["Clone", "Default"])],
+            visibility: crate::ast::Visibility::Private,
+            name: Spanned::new("Shape".to_string(), Span::new(0, 5)),
+            type_params: vec![],
+            variants: vec![],
+            span: Span::new(0, 50),
+        };
+
+        let ctx = DeriveContext::from_enum(&def);
+        assert_eq!(ctx.name, "Shape");
+        assert!(ctx.has_trait(DeriveTrait::Clone));
+        assert!(ctx.has_trait(DeriveTrait::Default));
+    }
+
+    #[test]
+    fn test_extract_derive_empty() {
+        let traits = extract_derive_traits(&[]);
+        assert!(traits.is_empty());
+    }
 }
