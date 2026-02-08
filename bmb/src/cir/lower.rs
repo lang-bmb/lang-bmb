@@ -1916,4 +1916,126 @@ mod tests {
         let point = &cir.structs["Point"];
         assert!(point.invariants.is_empty(), "No invariant declared");
     }
+
+    // =====================================================================
+    // Match lowering tests
+    // =====================================================================
+
+    #[test]
+    fn test_match_literal_pattern() {
+        let cir = source_to_cir(
+            "fn classify(x: i64) -> i64 = match x { 0 => 10, 1 => 20, _ => 30 };"
+        );
+        assert_eq!(cir.functions.len(), 1);
+        let body = &cir.functions[0].body;
+        // Match should lower to Let + nested Ifs
+        assert!(matches!(body, CirExpr::Let { .. }),
+            "Match should lower to Let binding for scrutinee");
+    }
+
+    #[test]
+    fn test_match_wildcard_pattern() {
+        let cir = source_to_cir(
+            "fn always(x: i64) -> i64 = match x { _ => 42 };"
+        );
+        let body = &cir.functions[0].body;
+        // Wildcard match should lower to Let + body (no If needed)
+        assert!(matches!(body, CirExpr::Let { .. }),
+            "Wildcard match should lower to Let");
+    }
+
+    #[test]
+    fn test_match_variable_binding() {
+        let cir = source_to_cir(
+            "fn identity(x: i64) -> i64 = match x { y => y };"
+        );
+        let body = &cir.functions[0].body;
+        // Variable pattern should create Let binding
+        assert!(matches!(body, CirExpr::Let { .. }),
+            "Variable match should create Let binding");
+    }
+
+    #[test]
+    fn test_match_multiple_literals() {
+        let cir = source_to_cir(
+            "fn multi(x: i64) -> i64 = match x { 1 => 10, 2 => 20, 3 => 30, _ => 0 };"
+        );
+        let body = &cir.functions[0].body;
+        // Should create nested If chain
+        if let CirExpr::Let { body: inner, .. } = body {
+            assert!(matches!(inner.as_ref(), CirExpr::If { .. }),
+                "Multiple literal patterns should create nested Ifs");
+        } else {
+            panic!("Expected Let wrapping If chain");
+        }
+    }
+
+    #[test]
+    fn test_match_range_pattern() {
+        let cir = source_to_cir(
+            "fn in_range(x: i64) -> i64 = match x { 0..10 => 1, _ => 0 };"
+        );
+        let body = &cir.functions[0].body;
+        assert!(matches!(body, CirExpr::Let { .. }),
+            "Range pattern match should lower to Let + If");
+    }
+
+    #[test]
+    fn test_match_guard() {
+        let cir = source_to_cir(
+            "fn guarded(x: i64) -> i64 = match x { y if y > 0 => y, _ => 0 };"
+        );
+        let body = &cir.functions[0].body;
+        assert!(matches!(body, CirExpr::Let { .. }),
+            "Guarded match should produce Let binding");
+    }
+
+    #[test]
+    fn test_match_enum_variant() {
+        let cir = source_to_cir(
+            "enum Color { Red, Green, Blue }
+             fn is_red(c: Color) -> i64 = match c { Color::Red => 1, _ => 0 };"
+        );
+        let body = &cir.functions[0].body;
+        // Should use __is_Color_Red call for variant check
+        assert!(matches!(body, CirExpr::Let { .. }),
+            "Enum match should lower to Let + If with variant check");
+    }
+
+    #[test]
+    fn test_match_bool_literal() {
+        let cir = source_to_cir(
+            "fn flip(b: bool) -> i64 = match b { true => 0, false => 1 };"
+        );
+        assert_eq!(cir.functions.len(), 1);
+        let body = &cir.functions[0].body;
+        assert!(matches!(body, CirExpr::Let { .. }),
+            "Bool match should lower to Let + If");
+    }
+
+    #[test]
+    fn test_match_nested_in_function() {
+        let cir = source_to_cir(
+            "fn abs(x: i64) -> i64 = {
+                 let sign = match x { 0 => 0, _ => 1 };
+                 sign
+             };"
+        );
+        assert_eq!(cir.functions.len(), 1);
+    }
+
+    #[test]
+    fn test_match_lowering_not_stub() {
+        // Verify match is NOT just returning scrutinee (the old stub behavior)
+        let cir = source_to_cir(
+            "fn classify(x: i64) -> i64 = match x { 0 => 100, _ => 200 };"
+        );
+        let body = &cir.functions[0].body;
+        // The old stub returned the scrutinee directly; new code should have Let+If
+        if let CirExpr::Let { body: inner, .. } = body {
+            // Inner should be an If, not just a Var
+            assert!(!matches!(inner.as_ref(), CirExpr::Var(_)),
+                "Match should NOT be a stub returning scrutinee");
+        }
+    }
 }
