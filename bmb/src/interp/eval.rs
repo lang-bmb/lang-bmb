@@ -1070,6 +1070,25 @@ impl Interpreter {
                     _ => Err(RuntimeError::undefined_function(&format!("Result.{}", method))),
                 }
             }
+            // v0.89.17: Nullable<T> (T?) methods on integer values
+            // When T? is represented as Int, null = 0
+            Value::Int(n) => {
+                match method {
+                    "is_some" => Ok(Value::Bool(n != 0)),
+                    "is_none" => Ok(Value::Bool(n == 0)),
+                    "unwrap_or" => {
+                        if args.len() != 1 {
+                            return Err(RuntimeError::arity_mismatch("unwrap_or", 1, args.len()));
+                        }
+                        if n != 0 {
+                            Ok(Value::Int(n))
+                        } else {
+                            Ok(args.into_iter().next().unwrap())
+                        }
+                    }
+                    _ => Err(RuntimeError::type_error("object with methods", receiver.type_name())),
+                }
+            }
             _ => Err(RuntimeError::type_error("object with methods", receiver.type_name())),
         }
     }

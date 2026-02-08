@@ -2327,30 +2327,29 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
             }
 
             // v0.76: Nullable<T> methods
-            // is_some() - check if value is not None (not -1)
+            // v0.89.17: Fixed null sentinel to 0 (matching Expr::Null lowering)
+            // is_some() - check if value is not null (not 0)
             if method == "is_some" && args.is_empty() {
                 let dest = ctx.fresh_temp();
                 ctx.locals.insert(dest.name.clone(), MirType::Bool);
-                // Compare: value != -1
                 ctx.push_inst(MirInst::BinOp {
                     dest: dest.clone(),
                     op: MirBinOp::Ne,
                     lhs: recv_op,
-                    rhs: Operand::Constant(Constant::Int(-1)),
+                    rhs: Operand::Constant(Constant::Int(0)),
                 });
                 return Operand::Place(dest);
             }
 
-            // is_none() - check if value is None (-1)
+            // is_none() - check if value is null (0)
             if method == "is_none" && args.is_empty() {
                 let dest = ctx.fresh_temp();
                 ctx.locals.insert(dest.name.clone(), MirType::Bool);
-                // Compare: value == -1
                 ctx.push_inst(MirInst::BinOp {
                     dest: dest.clone(),
                     op: MirBinOp::Eq,
                     lhs: recv_op,
-                    rhs: Operand::Constant(Constant::Int(-1)),
+                    rhs: Operand::Constant(Constant::Int(0)),
                 });
                 return Operand::Place(dest);
             }
@@ -2360,12 +2359,12 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
                 let default_op = lower_expr(&args[0], ctx);
                 let dest = ctx.fresh_temp();
                 ctx.locals.insert(dest.name.clone(), MirType::I64);
-                // Select: if value != -1 { value } else { default }
+                // Select: if value != 0 { value } else { default }
                 ctx.push_inst(MirInst::Select {
                     dest: dest.clone(),
                     cond_op: MirBinOp::Ne,
                     cond_lhs: recv_op.clone(),
-                    cond_rhs: Operand::Constant(Constant::Int(-1)),
+                    cond_rhs: Operand::Constant(Constant::Int(0)),
                     true_val: recv_op,
                     false_val: default_op,
                 });

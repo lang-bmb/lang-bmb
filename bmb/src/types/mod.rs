@@ -1601,9 +1601,22 @@ impl TypeChecker {
 
                 let then_ty = self.infer(&then_branch.node, then_branch.span)?;
                 let else_ty = self.infer(&else_branch.node, else_branch.span)?;
-                self.unify(&then_ty, &else_ty, else_branch.span)?;
 
-                Ok(then_ty)
+                // v0.89.17: Nullable-aware branch unification
+                // When one branch is T and the other is null, result is T?
+                let is_then_null = matches!(&then_ty, Type::Ptr(inner) if matches!(inner.as_ref(), Type::TypeVar(n) if n == "_null"));
+                let is_else_null = matches!(&else_ty, Type::Ptr(inner) if matches!(inner.as_ref(), Type::TypeVar(n) if n == "_null"));
+
+                if is_else_null && !is_then_null {
+                    // then: T, else: null → T?
+                    Ok(Type::Nullable(Box::new(then_ty)))
+                } else if is_then_null && !is_else_null {
+                    // then: null, else: T → T?
+                    Ok(Type::Nullable(Box::new(else_ty)))
+                } else {
+                    self.unify(&then_ty, &else_ty, else_branch.span)?;
+                    Ok(then_ty)
+                }
             }
 
             Expr::Let {
@@ -4526,6 +4539,28 @@ impl TypeChecker {
             return self.unify(inner1, inner2, span);
         }
 
+        // v0.89.17: Handle Nullable types
+        // null (Ptr(TypeVar("_null"))) is compatible with Nullable(T)
+        if let Type::Nullable(_) = &expected {
+            if let Type::Ptr(inner) = &actual {
+                if let Type::TypeVar(name) = inner.as_ref() {
+                    if name == "_null" {
+                        return Ok(());
+                    }
+                }
+            }
+        }
+        // T is compatible with Nullable(T) — auto-wrap value into nullable
+        if let Type::Nullable(inner) = &expected {
+            if self.unify(inner, &actual, span).is_ok() {
+                return Ok(());
+            }
+        }
+        // Nullable(T) with Nullable(U) — recursively unify inner types
+        if let (Type::Nullable(inner1), Type::Nullable(inner2)) = (&expected, &actual) {
+            return self.unify(inner1, inner2, span);
+        }
+
         if expected == actual {
             Ok(())
         } else {
@@ -5915,5 +5950,49 @@ mod tests {
     fn test_tc_empty_block_returns_unit() {
         // An empty block or block ending in statement should return unit
         assert!(ok("fn test() -> () = { let _x: i64 = 1; () };"));
+    }
+
+    // v0.89.17: Nullable type checking tests
+
+    #[test]
+    fn test_tc_nullable_if_else_with_null() {
+        // if-else with T and null should produce T?
+        assert!(ok("fn maybe(x: i64) -> i64? = if x > 0 { x } else { null };"));
+    }
+
+    #[test]
+    fn test_tc_nullable_if_else_null_first() {
+        // null in then-branch, value in else-branch
+        assert!(ok("fn maybe(x: i64) -> i64? = if x <= 0 { null } else { x };"));
+    }
+
+    #[test]
+    fn test_tc_nullable_direct_value() {
+        // Non-null value assigned to nullable type
+        assert!(ok("fn get() -> i64? = 42;"));
+    }
+
+    #[test]
+    fn test_tc_nullable_direct_null() {
+        // null assigned to nullable type
+        assert!(ok("fn get() -> i64? = null;"));
+    }
+
+    #[test]
+    fn test_tc_nullable_string() {
+        // String? nullable
+        assert!(ok("fn find(s: String) -> String? = if s == \"\" { null } else { s };"));
+    }
+
+    #[test]
+    fn test_tc_nullable_f64() {
+        // f64? nullable
+        assert!(ok("fn safe_div(a: f64, b: f64) -> f64? = if b == 0.0 { null } else { a };"));
+    }
+
+    #[test]
+    fn test_tc_nullable_type_mismatch() {
+        // i64? should not accept bool
+        assert!(err("fn bad() -> i64? = true;"));
     }
 }
