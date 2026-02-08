@@ -1217,11 +1217,167 @@ SpannedIfExpr: Spanned<Expr> = {
 // Note: 'set' for index/field assignment is handled in Expr, accessible via SpannedExpr
 BlockStmt: Spanned<Expr> = {
     // Simple variable assignment: x = value (v0.5 Phase 2)
-    <l:@L> <n:RawIdent> "=" <v:SpannedExpr> <r:@R> => Spanned::new(Expr::Assign {
+    <l:@L> <n:RawIdent> "=" <v:SpannedBlockExpr> <r:@R> => Spanned::new(Expr::Assign {
         name: n,
         value: Box::new(v),
     }, Span::new(l, r)),
-    SpannedExpr,
+    // v0.89.4: Let binding in block context (Cycle 43)
+    // Parsed as Let with Unit body; desugar_block_lets nests them properly.
+    // Uses SpannedBlockExpr (not SpannedExpr) to avoid conflict with Expr's "let...;body" form.
+    <l:@L> "let" <m:"mut"?> <n:RawIdent> "=" <v:SpannedBlockExpr> <r:@R> => Spanned::new(Expr::Let {
+        name: n,
+        mutable: m.is_some(),
+        ty: None,
+        value: Box::new(v),
+        body: Box::new(Spanned::new(Expr::Unit, Span::new(r, r))),
+    }, Span::new(l, r)),
+    // v0.89.4: Typed let binding in block context
+    <l:@L> "let" <m:"mut"?> <n:RawIdent> ":" <ty:SpannedType> "=" <v:SpannedBlockExpr> <r:@R> => Spanned::new(Expr::Let {
+        name: n,
+        mutable: m.is_some(),
+        ty: Some(ty),
+        value: Box::new(v),
+        body: Box::new(Spanned::new(Expr::Unit, Span::new(r, r))),
+    }, Span::new(l, r)),
+    SpannedBlockExpr,
+};
+
+// v0.89.4: Expression subset for block statements - excludes let/LetUninit to avoid
+// shift/reduce conflicts with BlockStmt's statement-style let bindings.
+// All other Expr productions are included so while/for/loop/set/etc. work in blocks.
+SpannedBlockExpr: Spanned<Expr> = {
+    <l:@L> <e:BlockExpr> <r:@R> => Spanned::new(e, Span::new(l, r)),
+};
+
+BlockExpr: Expr = {
+    ImpliesExpr,
+    // set (store assignment)
+    "set" <lhs:SpannedUnaryExpr> "=" <rhs:SpannedExpr> => {
+        match lhs.node {
+            Expr::Index { expr, index } => Expr::IndexAssign {
+                array: expr,
+                index,
+                value: Box::new(rhs),
+            },
+            Expr::FieldAccess { expr, field } => Expr::FieldAssign {
+                object: expr,
+                field,
+                value: Box::new(rhs),
+            },
+            Expr::Deref(ptr) => Expr::DerefAssign {
+                ptr,
+                value: Box::new(rhs),
+            },
+            other => panic!("Expected index, field access, or dereference after 'set', got {:?}", other),
+        }
+    },
+    // if-else
+    "if" <c:SpannedExpr> "{" <t:SpannedExpr> "}" "else" "{" <e:SpannedExpr> "}" => Expr::If {
+        cond: Box::new(c),
+        then_branch: Box::new(t),
+        else_branch: Box::new(e),
+    },
+    "if" <c:SpannedExpr> "{" <t:SpannedExpr> "}" "else" <elif:SpannedIfExpr> => Expr::If {
+        cond: Box::new(c),
+        then_branch: Box::new(t),
+        else_branch: Box::new(elif),
+    },
+    // block
+    "{" <es:(<BlockStmt> ";")*> <last:BlockStmt?> "}" => {
+        let mut exprs = es;
+        if let Some(e) = last {
+            exprs.push(e);
+        }
+        desugar_block_lets(exprs)
+    },
+    // match
+    "match" <e:SpannedExpr> "{" <arms:MatchArms> "}" => Expr::Match {
+        expr: Box::new(e),
+        arms,
+    },
+    // select
+    "select" "{" <arms:SelectArms> "}" => Expr::Select {
+        arms,
+    },
+    // while (with invariant)
+    "while" <c:SpannedExpr> "invariant" <inv:SpannedExpr> <l:@L> "{" <es:(<BlockStmt> ";")*> <last:BlockStmt?> "}" <r:@R> => Expr::While {
+        cond: Box::new(c),
+        invariant: Some(Box::new(inv)),
+        body: Box::new(Spanned::new({
+            let mut exprs = es;
+            if let Some(e) = last { exprs.push(e); }
+            desugar_block_lets(exprs)
+        }, Span::new(l, r))),
+    },
+    // while (without invariant)
+    "while" <c:SpannedExpr> <l:@L> "{" <es:(<BlockStmt> ";")*> <last:BlockStmt?> "}" <r:@R> => Expr::While {
+        cond: Box::new(c),
+        invariant: None,
+        body: Box::new(Spanned::new({
+            let mut exprs = es;
+            if let Some(e) = last { exprs.push(e); }
+            desugar_block_lets(exprs)
+        }, Span::new(l, r))),
+    },
+    // for
+    "for" <var:RawIdent> "in" <iter:SpannedRangeExpr> <l:@L> "{" <es:(<BlockStmt> ";")*> <last:BlockStmt?> "}" <r:@R> => Expr::For {
+        var,
+        iter: Box::new(iter),
+        body: Box::new(Spanned::new({
+            let mut exprs = es;
+            if let Some(e) = last { exprs.push(e); }
+            desugar_block_lets(exprs)
+        }, Span::new(l, r))),
+    },
+    // loop
+    "loop" <l:@L> "{" <es:(<BlockStmt> ";")*> <last:BlockStmt?> "}" <r:@R> => Expr::Loop {
+        body: Box::new(Spanned::new({
+            let mut exprs = es;
+            if let Some(e) = last { exprs.push(e); }
+            desugar_block_lets(exprs)
+        }, Span::new(l, r))),
+    },
+    // spawn
+    "spawn" <l:@L> "{" <es:(<BlockStmt> ";")*> <last:BlockStmt?> "}" <r:@R> => Expr::Spawn {
+        body: Box::new(Spanned::new({
+            let mut exprs = es;
+            if let Some(e) = last { exprs.push(e); }
+            desugar_block_lets(exprs)
+        }, Span::new(l, r))),
+    },
+    // Concurrency constructors
+    "Atomic" "::" "new" "(" <value:SpannedExpr> ")" => Expr::AtomicNew {
+        value: Box::new(value),
+    },
+    "Mutex" "::" "new" "(" <value:SpannedExpr> ")" => Expr::MutexNew {
+        value: Box::new(value),
+    },
+    "channel" "<" <elem_ty:SpannedType> ">" "(" <cap:SpannedExpr> ")" => Expr::ChannelNew {
+        elem_ty: Box::new(elem_ty),
+        capacity: Box::new(cap),
+    },
+    "RwLock" "::" "new" "(" <value:SpannedExpr> ")" => Expr::RwLockNew {
+        value: Box::new(value),
+    },
+    "Barrier" "::" "new" "(" <count:SpannedExpr> ")" => Expr::BarrierNew {
+        count: Box::new(count),
+    },
+    "Condvar" "::" "new" "(" ")" => Expr::CondvarNew,
+    // Control flow
+    "break" => Expr::Break { value: None },
+    "continue" => Expr::Continue,
+    "return" => Expr::Return { value: None },
+    // Quantifiers
+    "forall" <l:@L> <var:RawIdent> <r:@R> ":" <ty:SpannedType> "," <body:SpannedImpliesExpr> => Expr::Forall {
+        var: Spanned::new(var, Span::new(l, r)),
+        ty,
+        body: Box::new(body),
+    },
+    "exists" <l:@L> <var:RawIdent> <r:@R> ":" <ty:SpannedType> "," <body:SpannedImpliesExpr> => Expr::Exists {
+        var: Spanned::new(var, Span::new(l, r)),
+        ty,
+        body: Box::new(body),
+    },
 };
 
 // Expressions (precedence from low to high)
@@ -1281,7 +1437,9 @@ Expr: Expr = {
         if let Some(e) = last {
             exprs.push(e);
         }
-        Expr::Block(exprs)
+        // v0.89.4: Desugar statement-style let bindings into nested Let expressions.
+        // { let x = 1; let y = 2; x + y } → Let(x, 1, Let(y, 2, Block([x + y])))
+        desugar_block_lets(exprs)
     },
     // Match expression
     "match" <e:SpannedExpr> "{" <arms:MatchArms> "}" => Expr::Match {
@@ -1296,44 +1454,39 @@ Expr: Expr = {
     // While loop (v0.5 Phase 2, v0.37: optional invariant)
     // v0.51: Body now accepts BlockStmt sequence (let bindings + assignments)
     // Syntax: while cond invariant inv { stmts }
+    // v0.89.4: All loop bodies use desugar_block_lets for let-in-loop support
     "while" <c:SpannedExpr> "invariant" <inv:SpannedExpr> <l:@L> "{" <es:(<BlockStmt> ";")*> <last:BlockStmt?> "}" <r:@R> => Expr::While {
         cond: Box::new(c),
         invariant: Some(Box::new(inv)),
         body: Box::new(Spanned::new({
             let mut exprs = es;
             if let Some(e) = last { exprs.push(e); }
-            Expr::Block(exprs)
+            desugar_block_lets(exprs)
         }, Span::new(l, r))),
     },
-    // While without invariant (backward compatible)
     "while" <c:SpannedExpr> <l:@L> "{" <es:(<BlockStmt> ";")*> <last:BlockStmt?> "}" <r:@R> => Expr::While {
         cond: Box::new(c),
         invariant: None,
         body: Box::new(Spanned::new({
             let mut exprs = es;
             if let Some(e) = last { exprs.push(e); }
-            Expr::Block(exprs)
+            desugar_block_lets(exprs)
         }, Span::new(l, r))),
     },
-    // For loop (v0.5 Phase 3)
-    // v0.51: Body now accepts BlockStmt sequence
     "for" <var:RawIdent> "in" <iter:SpannedRangeExpr> <l:@L> "{" <es:(<BlockStmt> ";")*> <last:BlockStmt?> "}" <r:@R> => Expr::For {
         var,
         iter: Box::new(iter),
         body: Box::new(Spanned::new({
             let mut exprs = es;
             if let Some(e) = last { exprs.push(e); }
-            Expr::Block(exprs)
+            desugar_block_lets(exprs)
         }, Span::new(l, r))),
     },
-    // v0.36: Additional control flow
-    // Infinite loop: loop { body }
-    // v0.51: Body now accepts BlockStmt sequence
     "loop" <l:@L> "{" <es:(<BlockStmt> ";")*> <last:BlockStmt?> "}" <r:@R> => Expr::Loop {
         body: Box::new(Spanned::new({
             let mut exprs = es;
             if let Some(e) = last { exprs.push(e); }
-            Expr::Block(exprs)
+            desugar_block_lets(exprs)
         }, Span::new(l, r))),
     },
     // v0.70: Spawn expression - creates a new thread
@@ -1342,7 +1495,7 @@ Expr: Expr = {
         body: Box::new(Spanned::new({
             let mut exprs = es;
             if let Some(e) = last { exprs.push(e); }
-            Expr::Block(exprs)
+            desugar_block_lets(exprs)
         }, Span::new(l, r))),
     },
     // v0.72: Atomic creation - Atomic::new(value) -> Atomic<T>
@@ -1983,6 +2136,7 @@ Primary: Expr = {
     // Body must be a block expression to avoid grammar conflicts
     // Empty closure: fn || { expr }
     // v0.32: "||" is now a single token, so accept both forms
+    // v0.89.4: Closure bodies use desugar_block_lets for let-in-block support
     "fn" "||" <l:@L> "{" <es:(<BlockStmt> ";")*> <last:BlockStmt?> "}" <r:@R> => Expr::Closure {
         params: vec![],
         ret_ty: None,
@@ -1991,7 +2145,7 @@ Primary: Expr = {
             if let Some(e) = last {
                 exprs.push(e);
             }
-            Spanned::new(Expr::Block(exprs), Span::new(l, r))
+            Spanned::new(desugar_block_lets(exprs), Span::new(l, r))
         }),
     },
     // Single param closure: fn |x| { expr }
@@ -2003,7 +2157,7 @@ Primary: Expr = {
             if let Some(e) = last {
                 exprs.push(e);
             }
-            Spanned::new(Expr::Block(exprs), Span::new(l, r))
+            Spanned::new(desugar_block_lets(exprs), Span::new(l, r))
         }),
     },
     // Multi param closure: fn |x, y| { expr }
@@ -2019,7 +2173,7 @@ Primary: Expr = {
             if let Some(e) = last {
                 exprs.push(e);
             }
-            Spanned::new(Expr::Block(exprs), Span::new(l, r))
+            Spanned::new(desugar_block_lets(exprs), Span::new(l, r))
         }),
     },
 };

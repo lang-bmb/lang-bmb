@@ -1,6 +1,6 @@
 //! Expression AST nodes
 
-use super::{Spanned, Type};
+use super::{Span, Spanned, Type};
 use serde::{Deserialize, Serialize};
 
 /// Expression
@@ -685,6 +685,89 @@ impl std::fmt::Display for RangeKind {
         match self {
             RangeKind::Exclusive => write!(f, "..<"),
             RangeKind::Inclusive => write!(f, "..="),
+        }
+    }
+}
+
+/// v0.89.4: Desugar statement-style let bindings in blocks into nested Let expressions.
+///
+/// Transforms: `{ let x = 1; let y = 2; x + y }` → `Let(x, 1, Let(y, 2, Block([x + y])))`
+///
+/// Let bindings with `Expr::Unit` body (from BlockStmt grammar) are "statement-style" lets.
+/// This function nests them so the type checker and MIR lowering handle scoping correctly.
+pub fn desugar_block_lets(stmts: Vec<Spanned<Expr>>) -> Expr {
+    if stmts.is_empty() {
+        return Expr::Block(stmts);
+    }
+
+    // Check if any statement is a statement-style Let (body is Unit)
+    let has_stmt_let = stmts.iter().any(|s| {
+        matches!(&s.node,
+            Expr::Let { body, .. } | Expr::LetUninit { body, .. }
+            if matches!(body.node, Expr::Unit))
+    });
+
+    if !has_stmt_let {
+        return Expr::Block(stmts);
+    }
+
+    // Build the expression from left to right, nesting Lets around remaining statements
+    desugar_stmts(stmts)
+}
+
+fn desugar_stmts(stmts: Vec<Spanned<Expr>>) -> Expr {
+    if stmts.is_empty() {
+        return Expr::Unit;
+    }
+    if stmts.len() == 1 {
+        return stmts.into_iter().next().unwrap().node;
+    }
+
+    let mut stmts = stmts;
+    let first = stmts.remove(0);
+    let first_span = first.span;
+
+    match first.node {
+        Expr::Let { name, mutable, ty, value, body } if matches!(body.node, Expr::Unit) => {
+            // Statement-style let: make remaining statements the body
+            let rest = desugar_stmts(stmts);
+            let rest_span = Span::new(first_span.end, first_span.end + 1);
+            Expr::Let {
+                name,
+                mutable,
+                ty,
+                value,
+                body: Box::new(Spanned::new(rest, rest_span)),
+            }
+        }
+        Expr::LetUninit { name, mutable, ty, body } if matches!(body.node, Expr::Unit) => {
+            let rest = desugar_stmts(stmts);
+            let rest_span = Span::new(first_span.end, first_span.end + 1);
+            Expr::LetUninit {
+                name,
+                mutable,
+                ty,
+                body: Box::new(Spanned::new(rest, rest_span)),
+            }
+        }
+        other => {
+            // Non-let statement: wrap in Block with remaining statements
+            let mut all = vec![Spanned::new(other, first_span)];
+            // Check if remaining has any statement-style lets
+            let rest_has_let = stmts.iter().any(|s| {
+                matches!(&s.node,
+                    Expr::Let { body, .. } | Expr::LetUninit { body, .. }
+                    if matches!(body.node, Expr::Unit))
+            });
+            if rest_has_let {
+                let rest = desugar_stmts(stmts);
+                let rest_span = Span::new(first_span.end, first_span.end + 1);
+                all.push(Spanned::new(rest, rest_span));
+                Expr::Block(all)
+            } else {
+                all.extend(stmts);
+                Expr::Block(all)
+            }
         }
     }
 }

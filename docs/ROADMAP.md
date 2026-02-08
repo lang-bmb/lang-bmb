@@ -4,15 +4,15 @@
 
 ---
 
-## 현재 상태 (2026-02-07)
+## 현재 상태 (2026-02-08)
 
 | 항목 | 상태 | 비고 |
 |------|------|------|
-| **버전** | v0.89.2 | Quality Gate (Alpha) |
+| **버전** | v0.89.4 | Quality Gate (Alpha) |
 | **단계** | Alpha | Concurrency 완료 → **Alpha (v0.89)** → Beta (v0.90) → RC (v0.98) |
 | **Bootstrap** | ✅ 3-Stage 완료 | Stage 1: ~0.55s (--fast-compile) |
 | **Benchmarks** | ✅ 18/30 BMB > C | 60% C보다 빠름 |
-| **Tests** | ✅ 694개 통과 | 541 + 130 + 23 (cargo) + 219 BMB ecosystem tests |
+| **Tests** | ✅ 699개 통과 | 541 + 130 + 28 (cargo) + 219 BMB ecosystem tests |
 | **Stability** | ✅ STABILITY.md | 언어/API 동결 문서화 |
 | **동시성 지원** | ✅ 부트스트랩 완료 | 토큰/타입/MIR/코드젠/extern 선언 완료 |
 | **Golden Binary** | ✅ v0.88.10 | Rust 없이 부트스트랩 가능 |
@@ -203,6 +203,9 @@ select {
 | WASM 코드젠 테스트 확장 | ✅ | v0.89.2: 25개 추가 (비교/비트연산/F64/I32/단항/상수/설정) — 34개 총 |
 | dead_code 어노테이션 정리 | ✅ | v0.89.2: LSP 모듈 오류 어노테이션 2개 제거 |
 | 생태계 패키지 테스트 | ✅ | v0.89.3: SHA-256 구현 + XorShift64* PRNG + 219개 BMB 생태계 테스트 (Cycles 37-41) |
+| 컴파일러 버그 4건 수정 | ✅ | v0.89.4: float/int ==, free() 리턴 타입, let-in-block MIR 스코프, codegen %tmp (Cycle 42) |
+| 문법 let-in-while 수정 | ✅ | v0.89.4: BlockExpr 규칙 추가, desugar_block_lets — while/for/loop/spawn/closure에서 let 사용 가능 (Cycle 43) |
+| 생태계 재귀→루프 전환 | ✅ | v0.89.4: bmb-sha256 7개 + bmb-hashmap 10개 재귀 워크어라운드 함수를 while 루프로 변환 (Cycle 44) |
 | 코드 커버리지 > 80% | 📋 | 테스트 범위 확대 |
 | 퍼징 테스트 | 📋 | libFuzzer 기반 입력 검증 |
 | 메모리 안전성 검증 | 📋 | AddressSanitizer 통과 |

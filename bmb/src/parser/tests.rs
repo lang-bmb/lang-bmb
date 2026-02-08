@@ -150,6 +150,37 @@ fn test_parse_while_loop() {
     parse_ok("fn test() -> i64 = { let mut x: i64 = 0; while x < 10 { { x = x + 1; x } }; x };");
 }
 
+// v0.89.4: Let bindings inside while/for/loop blocks (Cycle 43)
+#[test]
+fn test_parse_let_in_while() {
+    // let inside while body - previously caused parser error
+    parse_ok("fn test() -> i64 = { let mut i = 0; while i < 10 { let x = i * 2; i = i + 1; 0 }; 0 };");
+}
+
+#[test]
+fn test_parse_let_in_for() {
+    // let inside for body
+    parse_ok("fn test() -> i64 = { let mut sum = 0; for i in 0..10 { let x = i * 2; sum = sum + x; 0 }; sum };");
+}
+
+#[test]
+fn test_parse_let_in_loop() {
+    // let inside loop body
+    parse_ok("fn test() -> i64 = { let mut i = 0; loop { let x = i; i = i + 1; if i > 5 { break } else { 0 } }; i };");
+}
+
+#[test]
+fn test_parse_multiple_lets_in_while() {
+    // Multiple let bindings in a single while body
+    parse_ok("fn test() -> i64 = { let mut i = 0; while i < 5 { let a = i; let b = a + 1; i = i + 1; b }; 0 };");
+}
+
+#[test]
+fn test_parse_typed_let_in_while() {
+    // Typed let binding inside while body
+    parse_ok("fn test() -> i64 = { let mut i = 0; while i < 5 { let x: i64 = i * 2; i = i + 1; x }; 0 };");
+}
+
 // v0.37: Loop invariant syntax
 #[test]
 fn test_parse_while_loop_invariant() {
@@ -163,23 +194,22 @@ fn test_parse_while_loop_invariant() {
     "#;
     let prog = parse_ok(source);
 
-    // Navigate to the while loop through the nested let structure
-    // let x = 0; body is: while ...
+    // v0.89.4: desugar_block_lets transforms { let x = 0; while ...; () }
+    // into Let(x, 0, Block([while ..., ()]))
     if let Item::FnDef(f) = &prog.items[0] {
-        if let Expr::Block(stmts) = &f.body.node {
-            // stmts[0] is the let expression
-            if let Expr::Let { body, .. } = &stmts[0].node {
-                // body is directly the while expression
-                if let Expr::While { invariant, .. } = &body.node {
+        if let Expr::Let { body, .. } = &f.body.node {
+            // body is Block([while_expr, ()])
+            if let Expr::Block(stmts) = &body.node {
+                if let Expr::While { invariant, .. } = &stmts[0].node {
                     assert!(invariant.is_some(), "Expected invariant to be Some");
                 } else {
-                    panic!("Expected While expression, got {:?}", body.node);
+                    panic!("Expected While expression, got {:?}", stmts[0].node);
                 }
             } else {
-                panic!("Expected Let expression");
+                panic!("Expected Block expression in let body, got {:?}", body.node);
             }
         } else {
-            panic!("Expected Block expression");
+            panic!("Expected Let expression (from desugar_block_lets), got {:?}", f.body.node);
         }
     } else {
         panic!("Expected FnDef");
@@ -395,8 +425,9 @@ fn test_parse_spawn() {
     "#;
     let prog = parse_ok(source);
     if let Item::FnDef(f) = &prog.items[0] {
-        // The body should be a block containing spawn
-        assert!(matches!(f.body.node, Expr::Block(_)));
+        // v0.89.4: desugar_block_lets transforms { let t = spawn{42}; t.join() }
+        // into Let(t, spawn{42}, Block([t.join()]))
+        assert!(matches!(f.body.node, Expr::Let { .. }));
     }
 }
 
