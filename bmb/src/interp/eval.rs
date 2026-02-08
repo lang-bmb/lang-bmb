@@ -4830,4 +4830,90 @@ mod tests {
         };
         assert_ne!(a, b); // Closures use identity semantics
     }
+
+    // ====================================================================
+    // Cycle 105: Nullable type interpreter tests
+    // ====================================================================
+
+    #[test]
+    fn test_nullable_maybe_function() {
+        // Test: fn maybe(x: i64) -> i64? = if x > 0 { x } else { null };
+        let result_positive = run_program(
+            "fn maybe(x: i64) -> i64? = if x > 0 { x } else { null };
+             fn main() -> i64 = maybe(42);"
+        );
+        assert_eq!(result_positive, Value::Int(42));
+
+        let result_zero = run_program(
+            "fn maybe(x: i64) -> i64? = if x > 0 { x } else { null };
+             fn main() -> i64 = maybe(0);"
+        );
+        assert_eq!(result_zero, Value::Int(0)); // null is represented as 0
+    }
+
+    #[test]
+    fn test_nullable_unwrap_or() {
+        // Test nullable .unwrap_or() method
+        let result_some = run_program(
+            "fn get_or_default(x: i64) -> i64 = {
+               let val: i64? = if x > 0 { x } else { null };
+               val.unwrap_or(99)
+             };
+             fn main() -> i64 = get_or_default(42);"
+        );
+        assert_eq!(result_some, Value::Int(42));
+
+        let result_none = run_program(
+            "fn get_or_default(x: i64) -> i64 = {
+               let val: i64? = if x <= 0 { null } else { x };
+               val.unwrap_or(99)
+             };
+             fn main() -> i64 = get_or_default(0);"
+        );
+        assert_eq!(result_none, Value::Int(99));
+    }
+
+    #[test]
+    fn test_nullable_is_some() {
+        // Test nullable .is_some() method
+        let result_true = run_program(
+            "fn has_value(x: i64) -> bool = {
+               let val: i64? = if x > 0 { x } else { null };
+               val.is_some()
+             };
+             fn main() -> bool = has_value(42);"
+        );
+        assert_eq!(result_true, Value::Bool(true));
+
+        let result_false = run_program(
+            "fn has_value(x: i64) -> bool = {
+               let val: i64? = if x <= 0 { null } else { x };
+               val.is_some()
+             };
+             fn main() -> bool = has_value(0);"
+        );
+        assert_eq!(result_false, Value::Bool(false));
+    }
+
+    #[test]
+    fn test_nullable_is_none() {
+        // Test nullable .is_none() method
+        let result_false = run_program(
+            "fn is_missing(x: i64) -> bool = {
+               let val: i64? = if x > 0 { x } else { null };
+               val.is_none()
+             };
+             fn main() -> bool = is_missing(42);"
+        );
+        assert_eq!(result_false, Value::Bool(false));
+
+        let result_true = run_program(
+            "fn is_missing(x: i64) -> bool = {
+               let val: i64? = if x <= 0 { null } else { x };
+               val.is_none()
+             };
+             fn main() -> bool = is_missing(0);"
+        );
+        assert_eq!(result_true, Value::Bool(true));
+    }
 }

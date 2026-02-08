@@ -4717,4 +4717,85 @@ mod tests {
         }).count();
         assert!(const_count >= 4, "Expected at least 4 Const instructions (1 init + 3 assignments), got {}", const_count);
     }
+
+    // ================================================================
+    // Cycle 105: Nullable type MIR lowering tests
+    // ================================================================
+
+    #[test]
+    fn test_lower_null_literal_to_constant_int_zero() {
+        // Test that `null` literal lowers to `Constant::Int(0)`
+        let mir = parse_and_lower("fn get_null() -> i64? = null;");
+        let func = &mir.functions[0];
+        // Null literal should return directly as Constant::Int(0)
+        match &func.blocks[0].terminator {
+            Terminator::Return(Some(Operand::Constant(Constant::Int(0)))) => {
+                // Success: null is represented as constant 0
+            }
+            other => panic!("Expected Return(Constant::Int(0)) for null, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_lower_nullable_if_else_produces_phi() {
+        // Test that nullable if-else produces phi with 0 for null branch
+        let mir = parse_and_lower(
+            "fn maybe(x: i64) -> i64? = if x > 0 { x } else { null };"
+        );
+        let func = &mir.functions[0];
+        // Should have at least 4 blocks: entry, then, else, merge
+        assert!(func.blocks.len() >= 4, "If-else should create at least 4 blocks, got {}", func.blocks.len());
+        // Should have a Phi instruction in the merge block
+        let has_phi = func.blocks.iter().any(|b| {
+            b.instructions.iter().any(|inst| matches!(inst, MirInst::Phi { .. }))
+        });
+        assert!(has_phi, "If-else should produce Phi node for nullable result");
+        // One of the phi values should be 0 (representing null)
+        let has_zero_phi_input = func.blocks.iter().any(|b| {
+            b.instructions.iter().any(|inst| {
+                if let MirInst::Phi { values, .. } = inst {
+                    values.iter().any(|(operand, _)| {
+                        matches!(operand, Operand::Constant(Constant::Int(0)))
+                    })
+                } else {
+                    false
+                }
+            })
+        });
+        assert!(has_zero_phi_input, "Phi node should have value 0 (null)");
+    }
+
+    #[test]
+    fn test_lower_nullable_return_type() {
+        // Test that functions with i64? return type lower correctly
+        let mir = parse_and_lower("fn f() -> i64? = 42;");
+        let func = &mir.functions[0];
+        // Nullable types are represented as Option<T> in MIR
+        // The return type should be an Option-like generic or nullable type
+        // For now, just verify the function exists and has a return
+        assert_eq!(func.name, "f");
+        assert!(matches!(func.blocks.last().unwrap().terminator, Terminator::Return(_)));
+    }
+
+    #[test]
+    fn test_lower_nullable_with_struct() {
+        // Test nullable struct type lowering
+        let mir = parse_and_lower(
+            "struct Point { x: i64, y: i64 }
+             fn maybe_point(has_it: bool) -> Point? =
+               if has_it { new Point { x: 1, y: 2 } } else { null };"
+        );
+        let func = &mir.functions[0];
+        // Should have StructInit in one branch
+        let has_struct_init = func.blocks.iter().any(|b| {
+            b.instructions.iter().any(|inst| matches!(inst, MirInst::StructInit { .. }))
+        });
+        assert!(has_struct_init, "Expected StructInit instruction in then branch");
+        // Null will be in a phi node (merged from if-else branches), not necessarily as constant 0
+        // Just verify we have a phi node which would merge the struct and null values
+        let has_phi = func.blocks.iter().any(|b| {
+            b.instructions.iter().any(|inst| matches!(inst, MirInst::Phi { .. }))
+        });
+        assert!(has_phi, "Expected Phi node to merge nullable struct and null");
+    }
 }

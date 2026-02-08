@@ -1392,6 +1392,76 @@ fn test_interp_negation() {
 }
 
 // ============================================
+// Nullable Type Checking Tests (Cycle 105)
+// ============================================
+
+#[test]
+fn test_nullable_return_value() {
+    // Test that `fn f() -> i64? = 42;` type checks OK
+    assert!(type_checks("fn f() -> i64? = 42;"));
+}
+
+#[test]
+fn test_nullable_return_null() {
+    // Test that `fn f() -> i64? = null;` type checks OK
+    assert!(type_checks("fn f() -> i64? = null;"));
+}
+
+#[test]
+fn test_nullable_return_if_else() {
+    // Test that `fn f() -> i64? = if true { 1 } else { null };` type checks OK
+    assert!(type_checks("fn f() -> i64? = if true { 1 } else { null };"));
+}
+
+#[test]
+fn test_nullable_type_error() {
+    // Test that `fn f() -> i64? = true;` fails type check
+    assert!(type_error("fn f() -> i64? = true;"));
+}
+
+#[test]
+fn test_nullable_unwrap_or_type_check() {
+    // Test that nullable.unwrap_or(default) type checks correctly
+    assert!(type_checks(
+        "fn get_value(opt: i64?) -> i64 = opt.unwrap_or(0);"
+    ));
+}
+
+#[test]
+fn test_nullable_is_some_type_check() {
+    // Test that nullable.is_some() type checks correctly
+    assert!(type_checks(
+        "fn has_value(opt: i64?) -> bool = opt.is_some();"
+    ));
+}
+
+#[test]
+fn test_nullable_is_none_type_check() {
+    // Test that nullable.is_none() type checks correctly
+    assert!(type_checks(
+        "fn is_missing(opt: i64?) -> bool = opt.is_none();"
+    ));
+}
+
+#[test]
+fn test_nullable_string_type() {
+    // Test nullable with String type
+    assert!(type_checks(
+        "fn maybe_name(has_name: bool) -> String? = if has_name { \"Alice\" } else { null };"
+    ));
+}
+
+#[test]
+fn test_nullable_struct_type() {
+    // Test nullable with struct type
+    assert!(type_checks(
+        "struct Point { x: i64, y: i64 }
+         fn maybe_point(has_point: bool) -> Point? =
+           if has_point { new Point { x: 1, y: 2 } } else { null };"
+    ));
+}
+
+// ============================================
 // Error Handling Tests
 // ============================================
 
@@ -1444,4 +1514,288 @@ fn test_pipeline_parse_lower_codegen() {
     assert!(ir.contains("@square"));
     assert!(ir.contains("mul"));
     assert!(ir.contains("ret i64"));
+}
+
+// ============================================
+// Interpreter Execution Tests
+// ============================================
+// These tests run BMB programs through the full pipeline:
+// tokenize -> parse -> type check -> interpreter evaluate
+// and verify the actual computed results.
+
+/// Helper: run a program and extract the i64 result (panics if not Int)
+fn run_program_i64(source: &str) -> i64 {
+    match run_program(source) {
+        Value::Int(n) => n,
+        other => panic!("expected Int, got {:?}", other),
+    }
+}
+
+// --- Basic Arithmetic ---
+
+#[test]
+fn test_run_subtraction() {
+    assert_eq!(run_program_i64("fn main() -> i64 = 100 - 37;"), 63);
+}
+
+#[test]
+fn test_run_division() {
+    assert_eq!(run_program_i64("fn main() -> i64 = 84 / 4;"), 21);
+}
+
+#[test]
+fn test_run_mixed_arithmetic() {
+    // Verify operator precedence: 2 + 3 * 4 - 10 / 2 = 2 + 12 - 5 = 9
+    assert_eq!(
+        run_program_i64("fn main() -> i64 = 2 + 3 * 4 - 10 / 2;"),
+        9
+    );
+}
+
+#[test]
+fn test_run_modulo_chain() {
+    // 100 % 7 = 2, 2 * 3 = 6
+    assert_eq!(
+        run_program_i64("fn main() -> i64 = { let r = 100 % 7; r * 3 };"),
+        6
+    );
+}
+
+// --- Recursive Functions ---
+
+#[test]
+fn test_run_fibonacci() {
+    assert_eq!(
+        run_program_i64(
+            "fn fib(n: i64) -> i64 = if n <= 1 { n } else { fib(n - 1) + fib(n - 2) };
+             fn main() -> i64 = fib(10);"
+        ),
+        55
+    );
+}
+
+#[test]
+fn test_run_gcd() {
+    assert_eq!(
+        run_program_i64(
+            "fn gcd(a: i64, b: i64) -> i64 = if b == 0 { a } else { gcd(b, a % b) };
+             fn main() -> i64 = gcd(48, 18);"
+        ),
+        6
+    );
+}
+
+// --- If-Else Expressions ---
+
+#[test]
+fn test_run_nested_if_classify() {
+    // Classify: negative=-1, zero=0, positive=1
+    assert_eq!(
+        run_program_i64(
+            "fn classify(x: i64) -> i64 =
+               if x < 0 { 0 - 1 } else if x == 0 { 0 } else { 1 };
+             fn main() -> i64 = classify(0 - 5) + classify(0) + classify(7);"
+        ),
+        0  // -1 + 0 + 1
+    );
+}
+
+#[test]
+fn test_run_if_as_expression_value() {
+    // Use if-else result directly in arithmetic
+    assert_eq!(
+        run_program_i64(
+            "fn main() -> i64 = {
+               let x = 10;
+               let y = if x > 5 { x * 2 } else { x };
+               y + 1
+             };"
+        ),
+        21
+    );
+}
+
+// --- Match Expressions ---
+
+#[test]
+fn test_run_match_integer_literal() {
+    assert_eq!(
+        run_program_i64(
+            "fn describe(n: i64) -> i64 = match n {
+               0 => 100,
+               1 => 200,
+               _ => 300
+             };
+             fn main() -> i64 = describe(0) + describe(1) + describe(99);"
+        ),
+        600  // 100 + 200 + 300
+    );
+}
+
+#[test]
+fn test_run_match_enum_variant() {
+    assert_eq!(
+        run_program_i64(
+            "enum Option<T> { Some(T), None }
+             fn unwrap_or(opt: Option<i64>, default: i64) -> i64 =
+               match opt {
+                 Option::Some(x) => x,
+                 Option::None => default
+               };
+             fn main() -> i64 = {
+               let a = unwrap_or(Option::Some(42), 0);
+               let b = unwrap_or(Option::None, 99);
+               a + b
+             };"
+        ),
+        141  // 42 + 99
+    );
+}
+
+// --- While Loops with Mutable Variables ---
+
+#[test]
+fn test_run_while_power_of_two() {
+    // Compute 2^10 = 1024 via repeated multiplication
+    assert_eq!(
+        run_program_i64(
+            "fn main() -> i64 = {
+               let mut result: i64 = 1;
+               let mut i: i64 = 0;
+               while i < 10 { result = result * 2; i = i + 1; 0 };
+               result
+             };"
+        ),
+        1024
+    );
+}
+
+#[test]
+fn test_run_while_countdown() {
+    // Sum countdown: 5 + 4 + 3 + 2 + 1 = 15
+    assert_eq!(
+        run_program_i64(
+            "fn main() -> i64 = {
+               let mut n: i64 = 5;
+               let mut total: i64 = 0;
+               while n > 0 { total = total + n; n = n - 1; 0 };
+               total
+             };"
+        ),
+        15
+    );
+}
+
+// --- String Operations ---
+
+#[test]
+fn test_run_string_concat_len() {
+    // Concatenate two strings and check the length
+    assert_eq!(
+        run_program_i64(
+            r#"fn main() -> i64 = {
+               let s = "hello" + " world";
+               s.len()
+             };"#
+        ),
+        11
+    );
+}
+
+// --- Struct Creation and Field Access ---
+
+#[test]
+fn test_run_struct_field_access() {
+    assert_eq!(
+        run_program_i64(
+            "struct Point { x: i64, y: i64 }
+             fn main() -> i64 = {
+               let p = new Point { x: 3, y: 4 };
+               p.x + p.y
+             };"
+        ),
+        7
+    );
+}
+
+#[test]
+fn test_run_struct_pass_to_function() {
+    assert_eq!(
+        run_program_i64(
+            "struct Rect { w: i64, h: i64 }
+             fn area(r: Rect) -> i64 = r.w * r.h;
+             fn main() -> i64 = area(new Rect { w: 6, h: 7 });"
+        ),
+        42
+    );
+}
+
+// --- Nested Function Calls (deeper) ---
+
+#[test]
+fn test_run_deeply_nested_function_calls() {
+    // Chain of functions that compose a computation
+    assert_eq!(
+        run_program_i64(
+            "fn add1(x: i64) -> i64 = x + 1;
+             fn double(x: i64) -> i64 = x * 2;
+             fn square(x: i64) -> i64 = x * x;
+             fn main() -> i64 = square(double(add1(2)));"
+        ),
+        36  // add1(2)=3, double(3)=6, square(6)=36
+    );
+}
+
+// --- Boolean Logic ---
+
+#[test]
+fn test_run_boolean_not() {
+    assert_eq!(
+        run_program("fn main() -> bool = !true;"),
+        Value::Bool(false)
+    );
+    assert_eq!(
+        run_program("fn main() -> bool = !false;"),
+        Value::Bool(true)
+    );
+}
+
+#[test]
+fn test_run_boolean_short_circuit() {
+    // Test complex boolean expression
+    assert_eq!(
+        run_program(
+            "fn main() -> bool = (3 > 2) && (10 < 20) && !(5 == 6);"
+        ),
+        Value::Bool(true)
+    );
+}
+
+// --- Closure / Lambda ---
+
+#[test]
+fn test_run_closure_call() {
+    assert_eq!(
+        run_program_i64(
+            "fn main() -> i64 = {
+               let add_ten = fn |x: i64| { x + 10 };
+               add_ten(32)
+             };"
+        ),
+        42
+    );
+}
+
+// --- Shift Operators ---
+
+#[test]
+fn test_run_shift_operators() {
+    assert_eq!(
+        run_program_i64("fn main() -> i64 = 1 << 10;"),
+        1024
+    );
+    assert_eq!(
+        run_program_i64("fn main() -> i64 = 1024 >> 3;"),
+        128
+    );
 }

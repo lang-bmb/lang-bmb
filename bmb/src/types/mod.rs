@@ -5995,4 +5995,174 @@ mod tests {
         // i64? should not accept bool
         assert!(err("fn bad() -> i64? = true;"));
     }
+
+    // ============================================
+    // v0.89.18: Edge Case Tests (Cycle 106)
+    // ============================================
+
+    #[test]
+    fn test_tc_modulo_operator() {
+        assert!(ok("fn rem(a: i64, b: i64) -> i64 = a % b;"));
+    }
+
+    #[test]
+    fn test_tc_deep_nested_struct_access() {
+        assert!(ok(
+            "struct Inner { val: i64 }
+             struct Outer { inner: Inner }
+             fn get_val(o: Outer) -> i64 = o.inner.val;"
+        ));
+    }
+
+    #[test]
+    fn test_tc_multiple_params_same_type() {
+        assert!(ok("fn sum3(a: i64, b: i64, c: i64) -> i64 = a + b + c;"));
+    }
+
+    #[test]
+    fn test_tc_generic_with_two_type_params() {
+        assert!(ok(
+            "struct Pair<A, B> { first: A, second: B }
+             fn make_pair(x: i64, y: bool) -> Pair<i64, bool> = new Pair { first: x, second: y };"
+        ));
+    }
+
+    #[test]
+    fn test_tc_match_with_guard() {
+        assert!(ok(
+            "fn classify(x: i64) -> i64 = match x {
+                n if n > 100 => 3,
+                n if n > 10 => 2,
+                n if n > 0 => 1,
+                _ => 0
+             };"
+        ));
+    }
+
+    #[test]
+    fn test_tc_recursive_fibonacci() {
+        assert!(ok(
+            "fn fib(n: i64) -> i64 = if n <= 1 { n } else { fib(n - 1) + fib(n - 2) };"
+        ));
+    }
+
+    #[test]
+    fn test_tc_mutual_recursion_even_odd() {
+        assert!(ok(
+            "fn is_even(n: i64) -> bool = if n == 0 { true } else { is_odd(n - 1) };
+             fn is_odd(n: i64) -> bool = if n == 0 { false } else { is_even(n - 1) };"
+        ));
+    }
+
+    #[test]
+    fn test_tc_boolean_expressions() {
+        assert!(ok(
+            "fn complex_bool(a: bool, b: bool, c: bool) -> bool = (a and b) or (not c);"
+        ));
+    }
+
+    #[test]
+    fn test_tc_chained_comparison() {
+        assert!(ok(
+            "fn in_range(x: i64, lo: i64, hi: i64) -> bool = x >= lo and x <= hi;"
+        ));
+    }
+
+    #[test]
+    fn test_tc_nested_match_two_levels() {
+        assert!(ok(
+            "fn nested(x: i64, y: i64) -> i64 =
+                match x {
+                    0 => match y { 0 => 0, _ => 1 },
+                    _ => match y { 0 => 2, _ => 3 }
+                };"
+        ));
+    }
+
+    #[test]
+    fn test_tc_struct_with_multiple_fields() {
+        assert!(ok(
+            "struct Vec3 { x: f64, y: f64, z: f64 }
+             fn dot(a: Vec3, b: Vec3) -> f64 = a.x * b.x + a.y * b.y + a.z * b.z;"
+        ));
+    }
+
+    #[test]
+    fn test_tc_function_returning_struct() {
+        assert!(ok(
+            "struct Point { x: i64, y: i64 }
+             fn origin() -> Point = new Point { x: 0, y: 0 };"
+        ));
+    }
+
+    #[test]
+    fn test_tc_complex_expression_types() {
+        // Verify arithmetic with nested if produces correct type
+        assert!(ok(
+            "fn calc(x: i64) -> i64 = x * (if x > 0 { 2 } else { 3 }) + 1;"
+        ));
+    }
+
+    #[test]
+    fn test_tc_string_equality() {
+        assert!(ok(
+            "fn is_hello(s: String) -> bool = s == \"hello\";"
+        ));
+    }
+
+    #[test]
+    fn test_tc_wrong_arg_count() {
+        assert!(err("fn add(a: i64, b: i64) -> i64 = a + b; fn main() -> i64 = add(1);"));
+    }
+
+    #[test]
+    fn test_tc_wrong_arg_type() {
+        assert!(err("fn add(a: i64, b: i64) -> i64 = a + b; fn main() -> i64 = add(1, true);"));
+    }
+
+    #[test]
+    fn test_tc_pure_annotation() {
+        assert!(ok(
+            "@pure
+             fn square(x: i64) -> i64 = x * x;"
+        ));
+    }
+
+    #[test]
+    fn test_tc_contract_pre_post_combined() {
+        assert!(ok(
+            "fn abs(x: i64) -> i64
+                pre x > 0 - 1000000
+                post ret >= 0
+             = if x >= 0 { x } else { 0 - x };"
+        ));
+    }
+
+    #[test]
+    fn test_tc_nullable_method_is_some() {
+        assert!(ok("fn check(opt: i64?) -> bool = opt.is_some();"));
+    }
+
+    #[test]
+    fn test_tc_nullable_method_is_none() {
+        assert!(ok("fn check(opt: i64?) -> bool = opt.is_none();"));
+    }
+
+    #[test]
+    fn test_tc_nullable_method_unwrap_or() {
+        assert!(ok("fn safe_get(opt: i64?) -> i64 = opt.unwrap_or(0);"));
+    }
+
+    #[test]
+    fn test_tc_bitwise_operations() {
+        assert!(ok("fn mask(x: i64) -> i64 = x band 255;"));
+        assert!(ok("fn flags(a: i64, b: i64) -> i64 = a bor b;"));
+        assert!(ok("fn toggle(x: i64) -> i64 = x bxor 1;"));
+    }
+
+    #[test]
+    fn test_tc_shift_operations() {
+        assert!(ok("fn shl(x: i64) -> i64 = x << 3;"));
+        assert!(ok("fn shr(x: i64) -> i64 = x >> 1;"));
+    }
 }
