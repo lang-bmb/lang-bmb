@@ -142,6 +142,7 @@ fn TK_SCOPE() -> i64 = 9999999 + 1 + 163;
 fn TK_INT() -> i64 = 9999999 + 1 + 200;
 fn TK_IDENT() -> i64 = 9999999 + 1 + 201;
 fn TK_STRING_LIT() -> i64 = 9999999 + 1 + 202;
+fn TK_FLOAT_LIT() -> i64 = 9999999 + 1 + 203;  // v0.91: float literal 3.14
 
 fn TK_COLON() -> i64 = 9999999 + 1 + 300;
 fn TK_EQ() -> i64 = 9999999 + 1 + 302;
@@ -195,6 +196,21 @@ fn scan_int(s: String, pos: i64, acc: i64) -> i64 =
         let c = s.byte_at(pos);
         if is_digit(c) { scan_int(s, pos + 1, acc * 10 + (c - 48)) } else { acc * 1000000 + pos }
     };
+
+// v0.91: Scan number - detects float if '.' followed by digit
+// Returns packed int token OR TK_FLOAT_LIT token
+fn scan_number(s: String, pos: i64) -> i64 =
+    let int_result = scan_int(s, pos, 0);
+    let int_end = tok_end(int_result);
+    // Check for '.' followed by digit (float literal)
+    if int_end + 1 < s.len() and s.byte_at(int_end) == 46 and is_digit(s.byte_at(int_end + 1)) {
+        let frac_end = scan_digits_end(s, int_end + 1);
+        make_tok(TK_FLOAT_LIT(), frac_end)
+    } else { int_result };
+
+// v0.91: Scan digits to end (helper for float fractional part)
+fn scan_digits_end(s: String, pos: i64) -> i64 =
+    if pos >= s.len() { pos } else if is_digit(s.byte_at(pos)) { scan_digits_end(s, pos + 1) } else { pos };
 
 fn scan_ident_end(s: String, pos: i64) -> i64 =
     if pos >= s.len() { pos } else if is_alnum_or_underscore(s.byte_at(pos)) { scan_ident_end(s, pos + 1) } else { pos };
@@ -286,7 +302,7 @@ fn next_token_raw(s: String, pos: i64) -> i64 =
     let p = skip_ws_comments(s, pos);
     if p >= s.len() { make_tok(TK_EOF(), p) } else {
         let c = s.byte_at(p);
-        if is_digit(c) { scan_int(s, p, 0) } else if is_ident_start(c) {
+        if is_digit(c) { scan_number(s, p) } else if is_ident_start(c) {
             let ident_end = scan_ident_end(s, p + 1);
             keyword_or_ident(s, p, ident_end)
         } else if c == 34 {
@@ -307,6 +323,12 @@ fn get_string_text(s: String, pos: i64, tok: i64) -> String =
     let p = skip_ws_comments(s, pos);
     let endpos = tok_end(tok);
     s.slice(p + 1, endpos - 1);
+
+// v0.91: Extract float literal text from source (e.g., "3.14")
+fn get_float_text(s: String, pos: i64, tok: i64) -> String =
+    let p = skip_ws_comments(s, pos);
+    let endpos = tok_end(tok);
+    s.slice(p, endpos);
 
 // v0.60.120: Escape parens in string content for AST representation
 // This prevents unbalanced parens in strings from breaking AST parsing
@@ -396,6 +418,11 @@ fn is_int_literal(kind: i64) -> bool = kind < 9999999 + 1 or kind >= 9999999 + 1
 // v0.60.117: Parse integer literal
 fn parse_int_lit(tok: i64) -> String = pack_result(tok_end(tok), "(int " + int_to_string(tok_val(tok)) + ")");
 
+// v0.91: Parse float literal - extract text from source
+fn parse_float_lit(src: String, pos: i64, tok: i64) -> String =
+    let text = get_float_text(src, pos, tok);
+    pack_result(tok_end(tok), "(float " + text + ")");
+
 // v0.60.117: Parse boolean literal
 fn parse_bool_lit(tok: i64, kind: i64) -> String =
     if kind == TK_TRUE() { pack_result(tok_end(tok), "(bool true)") }
@@ -460,22 +487,57 @@ fn parse_block_stmts(src: String, pos: i64) -> String =
     };
 
 // Parse let binding inside block: let name = val; rest
+// v0.91: Support type annotations: let name: type = val; rest
 fn parse_block_let(src: String, pos: i64) -> String =
+    let t1 = next_token_raw(src, pos);
+    if tok_kind(t1) == TK_MUT() {
+        // v0.91: let mut name ...
+        parse_block_let_mut(src, tok_end(t1))
+    } else if tok_kind(t1) == TK_IDENT() {
+        let name = get_ident_text(src, pos, t1);
+        let t2 = next_token_raw(src, tok_end(t1));
+        if tok_kind(t2) == TK_EQ() {
+            parse_block_let_value(src, tok_end(t2), name, false)
+        } else if tok_kind(t2) == TK_COLON() {
+            // Skip type annotation until '='
+            parse_block_let_skip_type(src, tok_end(t2), name, false)
+        } else { make_error_at("expected '=' or ':' in let binding", src, tok_end(t1)) }
+    } else { make_error_at("expected variable name after 'let'", src, pos) };
+
+// v0.91: let mut name ...
+fn parse_block_let_mut(src: String, pos: i64) -> String =
     let t1 = next_token_raw(src, pos);
     if tok_kind(t1) == TK_IDENT() {
         let name = get_ident_text(src, pos, t1);
         let t2 = next_token_raw(src, tok_end(t1));
         if tok_kind(t2) == TK_EQ() {
-            let rv = parse_expr(src, tok_end(t2));
-            if is_error(rv) { rv } else {
-                let t3 = next_token_raw(src, unpack_pos(rv));
-                if tok_kind(t3) == TK_SEMI() {
-                    let rb = parse_block_stmts(src, tok_end(t3));
-                    pack_result(unpack_pos(rb), "(let <" + name + "> " + unpack_ast(rv) + " " + unpack_ast(rb) + ")")
-                } else { make_error_at("expected ';' after let binding", src, unpack_pos(rv)) }
-            }
-        } else { make_error_at("expected '=' in let binding", src, tok_end(t1)) }
-    } else { make_error_at("expected variable name after 'let'", src, pos) };
+            parse_block_let_value(src, tok_end(t2), name, true)
+        } else if tok_kind(t2) == TK_COLON() {
+            parse_block_let_skip_type(src, tok_end(t2), name, true)
+        } else { make_error_at("expected '=' or ':' in let mut binding", src, tok_end(t1)) }
+    } else { make_error_at("expected variable name after 'let mut'", src, pos) };
+
+// v0.91: Skip type tokens until '=' in block let binding
+fn parse_block_let_skip_type(src: String, pos: i64, name: String, is_mut: bool) -> String =
+    let t = next_token_raw(src, pos);
+    let k = tok_kind(t);
+    if k == TK_EQ() {
+        parse_block_let_value(src, tok_end(t), name, is_mut)
+    } else if k == TK_IDENT() or k == TK_I64() or k == TK_I32() or k == TK_F64() or k == TK_BOOL() or k == TK_STRING_TYPE() {
+        parse_block_let_skip_type(src, tok_end(t), name, is_mut)
+    } else { make_error_at("expected '=' after type in let binding", src, pos) };
+
+// v0.91: Parse value and body for block let
+fn parse_block_let_value(src: String, pos: i64, name: String, is_mut: bool) -> String =
+    let rv = parse_expr(src, pos);
+    if is_error(rv) { rv } else {
+        let t3 = next_token_raw(src, unpack_pos(rv));
+        if tok_kind(t3) == TK_SEMI() {
+            let rb = parse_block_stmts(src, tok_end(t3));
+            let tag = if is_mut { "let_mut" } else { "let" };
+            pack_result(unpack_pos(rb), "(" + tag + " <" + name + "> " + unpack_ast(rv) + " " + unpack_ast(rb) + ")")
+        } else { make_error_at("expected ';' after let binding", src, unpack_pos(rv)) }
+    };
 
 // Parse assignment inside block: { lhs = rhs }; rest
 fn parse_block_assign(src: String, pos: i64) -> String =
@@ -528,6 +590,7 @@ fn parse_atom(src: String, pos: i64) -> String =
     // v0.60.117: Refactored to use helper functions to reduce nesting depth
     // v0.60.126: Add block expression support
     if is_int_literal(kind) { parse_int_lit(tok) }
+    else if kind == TK_FLOAT_LIT() { parse_float_lit(src, pos, tok) }
     else if kind == TK_TRUE() or kind == TK_FALSE() { parse_bool_lit(tok, kind) }
     else if kind == TK_IDENT() { parse_ident_or_call(src, pos, tok) }
     else if kind == TK_STRING_LIT() { pack_result(tok_end(tok), "(string " + escape_parens_for_ast(get_string_text(src, pos, tok)) + ")") }
@@ -827,7 +890,7 @@ fn parse_let_skip_type(src: String, pos: i64, name: String, is_mut: bool) -> Str
     let k = tok_kind(t);
     if k == TK_EQ() {
         parse_let_value_mut(src, tok_end(t), name, is_mut)
-    } else if k == TK_IDENT() or k == TK_I64() or k == TK_I32() or k == TK_BOOL() or k == TK_STRING_TYPE() {
+    } else if k == TK_IDENT() or k == TK_I64() or k == TK_I32() or k == TK_F64() or k == TK_BOOL() or k == TK_STRING_TYPE() {
         // Skip the type and continue looking for '='
         parse_let_skip_type(src, tok_end(t), name, is_mut)
     } else { make_error_at("expected '=' after type annotation in let binding", src, pos) };
@@ -889,8 +952,9 @@ fn parse_while_body(src: String, pos: i64, cond_ast: String) -> String =
     if tok_kind(t1) != TK_LBRACE() { make_error_at("expected '{' after while condition", src, pos) }
     else { parse_while_body_inner(src, tok_end(t1), cond_ast) };
 
+// v0.91: While body uses parse_block_stmts for let/assign/expr support
 fn parse_while_body_inner(src: String, pos: i64, cond_ast: String) -> String =
-    let rb = parse_expr(src, pos);
+    let rb = parse_block_stmts(src, pos);
     if is_error(rb) { rb }
     else { parse_while_finish(src, unpack_pos(rb), cond_ast, unpack_ast(rb)) };
 
@@ -1073,7 +1137,11 @@ fn find_angle_end(s: String, pos: i64) -> i64 =
 
 fn find_number_end(s: String, pos: i64) -> i64 =
     let p = if pos < s.len() and s.byte_at(pos) == 45 { pos + 1 } else { pos };
-    find_digits_end(s, p);
+    let int_end = find_digits_end(s, p);
+    // v0.91: Check for '.' followed by digit (float literal)
+    if int_end + 1 < s.len() and s.byte_at(int_end) == 46 and is_digit(s.byte_at(int_end + 1)) {
+        find_digits_end(s, int_end + 1)
+    } else { int_end };
 
 fn find_digits_end(s: String, pos: i64) -> i64 =
     if pos >= s.len() { pos } else if is_digit(s.byte_at(pos)) { find_digits_end(s, pos + 1) } else { pos };
@@ -1136,6 +1204,14 @@ fn parse_int_from(s: String, pos: i64, acc: i64) -> i64 =
         let c = s.byte_at(pos);
         if is_digit(c) { parse_int_from(s, pos + 1, acc * 10 + (c - 48)) } else { acc }
     };
+
+// v0.91: Extract float value text from AST node "(float 3.14)" → "3.14"
+fn extract_float_value_text(ast: String) -> String =
+    let content = extract_paren_content(ast);
+    let pos = low_skip_ws(content, 0);
+    let end1 = low_find_ident_end(content, pos);
+    let val_start = low_skip_ws(content, end1);
+    content.slice(val_start, content.len());
 
 fn is_fn_node(ast: String) -> bool = get_node_type(ast) == "fn";
 
@@ -1421,6 +1497,7 @@ fn do_step(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, 
     let op = get_field(item, 0);
     if op == "EX" { step_expr(item, cur_temp, cur_block, cur_exit_label, sb) }
     else if op == "IN" { step_int(item, cur_temp, cur_block, cur_exit_label, sb) }
+    else if op == "FL" { step_float(item, cur_temp, cur_block, cur_exit_label, sb) }
     else if op == "BO" { step_bool(item, cur_temp, cur_block, cur_exit_label, sb) }
     else if op == "ST" { step_string(item, cur_temp, cur_block, cur_exit_label, sb) }
     else if op == "VA" { step_var(item, cur_temp, cur_block, cur_exit_label, sb) }
@@ -1454,6 +1531,7 @@ fn step_expr(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String
     let ast = get_field(item, 1);
     let ntype = get_node_type(ast);
     if ntype == "int" { make_step(cur_temp, cur_block, cur_exit_label, make_work3("IN", ast, "", "")) }
+    else if ntype == "float" { make_step(cur_temp, cur_block, cur_exit_label, make_work3("FL", ast, "", "")) }
     else if ntype == "bool" { make_step(cur_temp, cur_block, cur_exit_label, make_work3("BO", ast, "", "")) }
     else if ntype == "string" { make_step(cur_temp, cur_block, cur_exit_label, make_work3("ST", ast, "", "")) }
     else if ntype == "var" { make_step(cur_temp, cur_block, cur_exit_label, make_work3("VA", ast, "", "")) }
@@ -1530,6 +1608,14 @@ fn step_int(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String,
     let val = extract_int_value(ast);
     let tmp = "%_t" + i2s(cur_temp);
     let w1 = sb_push_mir(sb, "  " + tmp + " = const " + i2s(val));
+    make_step(cur_temp + 1, cur_block, cur_exit_label, "");
+
+// FL: Float literal - emit MIR const F:value, advance temp
+fn step_float(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String =
+    let ast = get_field(item, 1);
+    let text = extract_float_value_text(ast);
+    let tmp = "%_t" + i2s(cur_temp);
+    let w1 = sb_push_mir(sb, "  " + tmp + " = const F:" + text);
     make_step(cur_temp + 1, cur_block, cur_exit_label, "");
 
 // BO: Boolean literal
@@ -1846,12 +1932,19 @@ fn build_args_str_acc(cur: i64, end: i64, acc: String) -> String =
 // v0.60.126: Added block, unit, seq, assign support
 fn lower_expr_sb(ast: String, temp_id: i64, block_id: i64, sb: i64) -> i64 =
     let ntype = get_node_type(ast);
-    if ntype == "int" { lower_int_sb(ast, temp_id, block_id, sb) } else if ntype == "bool" { lower_bool_sb(ast, temp_id, block_id, sb) } else if ntype == "string" { lower_string_sb(ast, temp_id, block_id, sb) } else if ntype == "var" { lower_var_sb(ast, temp_id, block_id, sb) } else if ntype == "binop" { lower_binop_sb(ast, temp_id, block_id, sb) } else if ntype == "unary" { lower_unary_sb(ast, temp_id, block_id, sb) } else if ntype == "if" { lower_if_sb(ast, temp_id, block_id, sb) } else if ntype == "let" { lower_let_sb(ast, temp_id, block_id, sb) } else if ntype == "let_mut" { lower_let_sb(ast, temp_id, block_id, sb) } else if ntype == "call" { lower_call_sb(ast, temp_id, block_id, sb) } else if ntype == "method" { lower_method_sb(ast, temp_id, block_id, sb) } else if ntype == "block" { lower_block_sb(ast, temp_id, block_id, sb) } else if ntype == "unit" { lower_unit_sb(ast, temp_id, block_id, sb) } else if ntype == "seq" { lower_seq_sb(ast, temp_id, block_id, sb) } else if ntype == "assign" { lower_assign_sb(ast, temp_id, block_id, sb) } else if ntype == "while" { lower_while_sb(ast, temp_id, block_id, sb) } else { pack_ids(temp_id, block_id) };
+    if ntype == "int" { lower_int_sb(ast, temp_id, block_id, sb) } else if ntype == "float" { lower_float_sb(ast, temp_id, block_id, sb) } else if ntype == "bool" { lower_bool_sb(ast, temp_id, block_id, sb) } else if ntype == "string" { lower_string_sb(ast, temp_id, block_id, sb) } else if ntype == "var" { lower_var_sb(ast, temp_id, block_id, sb) } else if ntype == "binop" { lower_binop_sb(ast, temp_id, block_id, sb) } else if ntype == "unary" { lower_unary_sb(ast, temp_id, block_id, sb) } else if ntype == "if" { lower_if_sb(ast, temp_id, block_id, sb) } else if ntype == "let" { lower_let_sb(ast, temp_id, block_id, sb) } else if ntype == "let_mut" { lower_let_sb(ast, temp_id, block_id, sb) } else if ntype == "call" { lower_call_sb(ast, temp_id, block_id, sb) } else if ntype == "method" { lower_method_sb(ast, temp_id, block_id, sb) } else if ntype == "block" { lower_block_sb(ast, temp_id, block_id, sb) } else if ntype == "unit" { lower_unit_sb(ast, temp_id, block_id, sb) } else if ntype == "seq" { lower_seq_sb(ast, temp_id, block_id, sb) } else if ntype == "assign" { lower_assign_sb(ast, temp_id, block_id, sb) } else if ntype == "while" { lower_while_sb(ast, temp_id, block_id, sb) } else { pack_ids(temp_id, block_id) };
 
 fn lower_int_sb(ast: String, temp_id: i64, block_id: i64, sb: i64) -> i64 =
     let val = extract_int_value(ast);
     let tmp = "%_t" + int_to_string(temp_id);
     let w1 = sb_push_mir(sb, "  " + tmp + " = const " + int_to_string(val));
+    pack_ids(temp_id + 1, block_id);
+
+// v0.91: Lower float literal to MIR: (float 3.14) → %_t0 = const F:3.14
+fn lower_float_sb(ast: String, temp_id: i64, block_id: i64, sb: i64) -> i64 =
+    let text = extract_float_value_text(ast);
+    let tmp = "%_t" + int_to_string(temp_id);
+    let w1 = sb_push_mir(sb, "  " + tmp + " = const F:" + text);
     pack_ids(temp_id + 1, block_id);
 
 fn lower_bool_sb(ast: String, temp_id: i64, block_id: i64, sb: i64) -> i64 =
@@ -2205,12 +2298,18 @@ fn lower_program_inner_sb(ast: String, idx: i64, sb: i64) -> i64 =
 
 fn lower_expr(ast: String, temp_id: i64, block_id: i64) -> String =
     let ntype = get_node_type(ast);
-    if ntype == "int" { lower_int(ast, temp_id) } else if ntype == "bool" { lower_bool(ast, temp_id) } else if ntype == "var" { lower_var(ast, temp_id) } else if ntype == "binop" { lower_binop(ast, temp_id, block_id) } else if ntype == "unary" { lower_unary(ast, temp_id, block_id) } else if ntype == "if" { lower_if(ast, temp_id, block_id) } else if ntype == "let" { lower_let(ast, temp_id, block_id) } else if ntype == "call" { lower_call(ast, temp_id, block_id) } else { pack_lower_result("ERR:unknown-" + ntype, temp_id) };
+    if ntype == "int" { lower_int(ast, temp_id) } else if ntype == "float" { lower_float_expr(ast, temp_id) } else if ntype == "bool" { lower_bool(ast, temp_id) } else if ntype == "var" { lower_var(ast, temp_id) } else if ntype == "binop" { lower_binop(ast, temp_id, block_id) } else if ntype == "unary" { lower_unary(ast, temp_id, block_id) } else if ntype == "if" { lower_if(ast, temp_id, block_id) } else if ntype == "let" { lower_let(ast, temp_id, block_id) } else if ntype == "call" { lower_call(ast, temp_id, block_id) } else { pack_lower_result("ERR:unknown-" + ntype, temp_id) };
 
 fn lower_int(ast: String, temp_id: i64) -> String =
     let val = extract_int_value(ast);
     let tmp = "%_t" + int_to_string(temp_id);
     pack_lower_result("  " + tmp + " = const " + int_to_string(val), temp_id + 1);
+
+// v0.91: Float literal lowering
+fn lower_float_expr(ast: String, temp_id: i64) -> String =
+    let text = extract_float_value_text(ast);
+    let tmp = "%_t" + int_to_string(temp_id);
+    pack_lower_result("  " + tmp + " = const F:" + text, temp_id + 1);
 
 fn lower_bool(ast: String, temp_id: i64) -> String =
     let child = get_child(ast, 0);
@@ -2438,7 +2537,14 @@ fn llvm_gen_rhs_typed(line: String, pos: i64, dest: String, ret_type: String) ->
     if low_starts_with_at(line, pos, "const") {
         let val_start = low_skip_ws(line, pos + 5);
         let val = line.slice(val_start, line.len());
-        "  " + dest + " = add nsw i64 0, " + trim_end(val)
+        let trimmed_val = trim_end(val);
+        // v0.91: Float constant: const F:3.14 → fadd double 0.0, 3.14
+        if trimmed_val.len() >= 2 and trimmed_val.byte_at(0) == 70 and trimmed_val.byte_at(1) == 58 {
+            let float_val = trimmed_val.slice(2, trimmed_val.len());
+            "  " + dest + " = fadd double 0.0, " + float_val
+        } else {
+            "  " + dest + " = add nsw i64 0, " + trimmed_val
+        }
     } else if low_starts_with_at(line, pos, "copy") {
         let src_start = low_skip_ws(line, pos + 4);
         let src = line.slice(src_start, line.len());
@@ -2523,7 +2629,7 @@ fn llvm_gen_phi_typed(line: String, pos: i64, dest: String, ret_type: String) ->
     let second_content = line.slice(second_start + 1, second_end);
     let first_fixed = fix_phi_label(first_content);
     let second_fixed = fix_phi_label(second_content);
-    let llvm_type = if ret_type == "String" { "ptr" } else if ret_type == "bool" { "i1" } else { "i64" };
+    let llvm_type = if ret_type == "String" { "ptr" } else if ret_type == "bool" { "i1" } else if ret_type == "f64" { "double" } else { "i64" };
     "  " + dest + " = phi " + llvm_type + " [ " + first_fixed + " ], [ " + second_fixed + " ]";
 
 // v0.60.118: Add % prefix to phi label
@@ -2940,7 +3046,7 @@ fn llvm_gen_fn_header(line: String, pos: i64) -> String =
     // v0.46: Use trim to handle leading/trailing whitespace in return type
     let ret_type = trim(line.slice(arrow_pos + 2, brace_pos));
     // v0.60.225: Use i64 for all return types except bool (consistency with internal representation)
-    let llvm_ret = if ret_type == "bool" { "i1" } else { "i64" };
+    let llvm_ret = if ret_type == "bool" { "i1" } else if ret_type == "f64" { "double" } else { "i64" };
     let emitted_name = if fn_name == "main" { "bmb_user_main" } else { fn_name };
     let attrs = if fn_name == "main" { "" } else { " nounwind" };
     "define " + llvm_ret + " @" + emitted_name + "(" + formatted_params + ")" + attrs + " {";
@@ -2955,7 +3061,7 @@ fn format_fn_params(params: String, pos: i64, acc: String) -> String =
         let name = param.slice(0, colon_pos);
         let param_type = trim_end(param.slice(colon_pos + 1, param.len()));
         // v0.60.225: Use i64 for String params (consistency with internal representation)
-        let llvm_type = if param_type == "bool" { "i1" } else { "i64" };
+        let llvm_type = if param_type == "bool" { "i1" } else if param_type == "f64" { "double" } else { "i64" };
         let typed_param = llvm_type + " %" + name;
         let new_acc = if acc == "" { typed_param } else { acc + ", " + typed_param };
         if comma >= params.len() { new_acc } else { format_fn_params(params, comma + 1, new_acc) }
@@ -3471,7 +3577,14 @@ fn llvm_gen_rhs_with_strings_map_and_fns(line: String, pos: i64, dest: String, s
     if low_starts_with_at(line, pos, "const") {
         let val_start = low_skip_ws(line, pos + 5);
         let val = line.slice(val_start, line.len());
-        same_mapping("  " + dest + " = add nsw i64 0, " + trim_end(val))
+        let trimmed_val = trim_end(val);
+        // v0.91: Float constant: const F:3.14 → fadd double 0.0, 3.14
+        if trimmed_val.len() >= 2 and trimmed_val.byte_at(0) == 70 and trimmed_val.byte_at(1) == 58 {
+            let float_val = trimmed_val.slice(2, trimmed_val.len());
+            same_mapping("  " + dest + " = fadd double 0.0, " + float_val)
+        } else {
+            same_mapping("  " + dest + " = add nsw i64 0, " + trimmed_val)
+        }
     } else if low_starts_with_at(line, pos, "copy") {
         let src_start = low_skip_ws(line, pos + 4);
         let src = trim_end(line.slice(src_start, line.len()));

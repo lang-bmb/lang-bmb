@@ -5673,4 +5673,247 @@ mod tests {
              fn is_north(d: Dir) -> bool = match d { Dir::N => true, _ => false };"
         ));
     }
+
+    // ====================================================================
+    // Extended integration tests: float types, mixed numerics, method calls,
+    // generics, contracts, while loops, block expressions
+    // ====================================================================
+
+    // --- f64 float type inference ---
+
+    #[test]
+    fn test_tc_f64_let_binding() {
+        assert!(ok("fn test() -> f64 = { let x: f64 = 3.14; x };"));
+    }
+
+    #[test]
+    fn test_tc_f64_literal_return() {
+        assert!(ok("fn pi() -> f64 = 3.14159;"));
+    }
+
+    // --- Float arithmetic type checking ---
+
+    #[test]
+    fn test_tc_f64_add() {
+        assert!(ok("fn add_f(a: f64, b: f64) -> f64 = a + b;"));
+    }
+
+    #[test]
+    fn test_tc_f64_sub() {
+        assert!(ok("fn sub_f(a: f64, b: f64) -> f64 = a - b;"));
+    }
+
+    #[test]
+    fn test_tc_f64_mul() {
+        assert!(ok("fn mul_f(a: f64, b: f64) -> f64 = a * b;"));
+    }
+
+    #[test]
+    fn test_tc_f64_div() {
+        assert!(ok("fn div_f(a: f64, b: f64) -> f64 = a / b;"));
+    }
+
+    #[test]
+    fn test_tc_f64_negation() {
+        assert!(ok("fn neg_f(x: f64) -> f64 = -x;"));
+    }
+
+    // --- Float comparison type checking ---
+
+    #[test]
+    fn test_tc_f64_less_than() {
+        assert!(ok("fn lt_f(a: f64, b: f64) -> bool = a < b;"));
+    }
+
+    #[test]
+    fn test_tc_f64_greater_equal() {
+        assert!(ok("fn ge_f(a: f64, b: f64) -> bool = a >= b;"));
+    }
+
+    #[test]
+    fn test_tc_f64_equality() {
+        assert!(ok("fn eq_f(a: f64, b: f64) -> bool = a == b;"));
+    }
+
+    // --- Mixed numeric type errors ---
+
+    #[test]
+    fn test_tc_mixed_i64_f64_add_error() {
+        // i64 + f64 should be a type error (no implicit coercion)
+        assert!(err("fn bad(a: i64, b: f64) -> f64 = a + b;"));
+    }
+
+    #[test]
+    fn test_tc_mixed_f64_i64_sub_error() {
+        assert!(err("fn bad(a: f64, b: i64) -> f64 = a - b;"));
+    }
+
+    #[test]
+    fn test_tc_mixed_i64_f64_comparison_error() {
+        // Comparing i64 with f64 should be a type error
+        assert!(err("fn bad(a: i64, b: f64) -> bool = a < b;"));
+    }
+
+    // --- Option / Nullable types ---
+
+    #[test]
+    fn test_tc_option_enum_some() {
+        assert!(ok(
+            "enum Option { Some(i64), None }
+             fn wrap(x: i64) -> Option = Option::Some(x);"
+        ));
+    }
+
+    #[test]
+    fn test_tc_option_enum_none() {
+        assert!(ok(
+            "enum Option { Some(i64), None }
+             fn empty() -> Option = Option::None;"
+        ));
+    }
+
+    #[test]
+    fn test_tc_option_enum_match_unwrap() {
+        assert!(ok(
+            "enum Option { Some(i64), None }
+             fn unwrap(opt: Option) -> i64 = match opt {
+                 Option::Some(v) => v,
+                 Option::None => 0,
+             };"
+        ));
+    }
+
+    // --- Method call type checking for built-in types ---
+
+    #[test]
+    fn test_tc_string_len_returns_i64() {
+        assert!(ok(
+            r#"fn length(s: String) -> i64 = s.len();"#
+        ));
+    }
+
+    #[test]
+    fn test_tc_string_is_empty_returns_bool() {
+        assert!(ok(
+            r#"fn check(s: String) -> bool = s.is_empty();"#
+        ));
+    }
+
+    #[test]
+    fn test_tc_string_len_wrong_return_type() {
+        // String.len() returns i64, not bool
+        assert!(err(
+            r#"fn bad(s: String) -> bool = s.len();"#
+        ));
+    }
+
+    #[test]
+    fn test_tc_string_slice_returns_string() {
+        assert!(ok(
+            r#"fn take(s: String) -> String = s.slice(0, 5);"#
+        ));
+    }
+
+    // --- Generic function type inference ---
+
+    #[test]
+    fn test_tc_generic_identity_with_i64() {
+        assert!(ok(
+            "fn identity<T>(x: T) -> T = x;
+             fn test() -> i64 = identity(42);"
+        ));
+    }
+
+    #[test]
+    fn test_tc_generic_identity_with_bool() {
+        assert!(ok(
+            "fn identity<T>(x: T) -> T = x;
+             fn test() -> bool = identity(true);"
+        ));
+    }
+
+    #[test]
+    fn test_tc_generic_pair_struct() {
+        assert!(ok(
+            "struct Pair<A, B> { first: A, second: B }
+             fn swap<A, B>(p: Pair<A, B>) -> Pair<B, A> = new Pair { first: p.second, second: p.first };"
+        ));
+    }
+
+    // --- Contract pre/post condition type checking ---
+
+    #[test]
+    fn test_tc_contract_pre_must_be_bool() {
+        // pre condition uses boolean expression
+        assert!(ok(
+            "fn safe_sqrt(x: f64) -> f64
+               pre x >= 0.0
+             = x;"
+        ));
+    }
+
+    #[test]
+    fn test_tc_contract_post_with_ret() {
+        // post condition references 'ret' which should have the return type
+        assert!(ok(
+            "fn clamp(x: i64) -> i64
+               pre x >= 0
+               post ret >= 0
+             = if x > 100 { 100 } else { x };"
+        ));
+    }
+
+    #[test]
+    fn test_tc_contract_pre_and_post_combined() {
+        assert!(ok(
+            "fn bounded_add(a: i64, b: i64) -> i64
+               pre a >= 0 and b >= 0
+               post ret >= a
+             = a + b;"
+        ));
+    }
+
+    // --- While loop type (returns unit) ---
+
+    #[test]
+    fn test_tc_while_loop_unit_type() {
+        // while loop itself produces unit (); we use it in a block
+        assert!(ok(
+            "fn count() -> () = { let mut i: i64 = 0; while i < 5 { i = i + 1 }; () };"
+        ));
+    }
+
+    #[test]
+    fn test_tc_while_condition_must_be_bool() {
+        // The while condition must be bool -- using an integer should fail
+        assert!(err(
+            "fn bad() -> () = { let mut i: i64 = 10; while i { i = i - 1 }; () };"
+        ));
+    }
+
+    // --- Block expression type (returns last expression's type) ---
+
+    #[test]
+    fn test_tc_block_returns_last_expr_type() {
+        assert!(ok("fn test() -> bool = { let _x: i64 = 1; true };"));
+    }
+
+    #[test]
+    fn test_tc_block_nested_returns_inner_type() {
+        assert!(ok(
+            "fn test() -> i64 = { let a: i64 = { let b: i64 = 10; b * 2 }; a + 1 };"
+        ));
+    }
+
+    #[test]
+    fn test_tc_block_type_mismatch() {
+        // Block returns bool but function expects i64
+        assert!(err("fn bad() -> i64 = { true };"));
+    }
+
+    #[test]
+    fn test_tc_empty_block_returns_unit() {
+        // An empty block or block ending in statement should return unit
+        assert!(ok("fn test() -> () = { let _x: i64 = 1; () };"));
+    }
 }
