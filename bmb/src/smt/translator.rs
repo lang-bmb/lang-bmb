@@ -1143,4 +1143,154 @@ mod tests {
             assert!(trans.translate(&expr).is_err(), "Op {:?} should be unsupported", op);
         }
     }
+
+    // ================================================================
+    // Cycles 119-120: Additional SMT Translator Tests
+    // ================================================================
+
+    #[test]
+    fn test_checked_arithmetic_translates_as_regular() {
+        let trans = SmtTranslator::new();
+        for (op, expected_smt) in [
+            (BinOp::AddChecked, "+"),
+            (BinOp::SubChecked, "-"),
+            (BinOp::MulChecked, "*"),
+        ] {
+            let expr = spanned(Expr::Binary {
+                left: Box::new(spanned(Expr::IntLit(3))),
+                op,
+                right: Box::new(spanned(Expr::IntLit(4))),
+            });
+            let result = trans.translate(&expr).unwrap();
+            assert!(result.contains(expected_smt), "Checked op {:?} should use {}", op, expected_smt);
+        }
+    }
+
+    #[test]
+    fn test_saturating_arithmetic_translates_as_regular() {
+        let trans = SmtTranslator::new();
+        for (op, expected_smt) in [
+            (BinOp::AddSat, "+"),
+            (BinOp::SubSat, "-"),
+            (BinOp::MulSat, "*"),
+        ] {
+            let expr = spanned(Expr::Binary {
+                left: Box::new(spanned(Expr::IntLit(10))),
+                op,
+                right: Box::new(spanned(Expr::IntLit(20))),
+            });
+            let result = trans.translate(&expr).unwrap();
+            assert!(result.contains(expected_smt), "Saturating op {:?} should use {}", op, expected_smt);
+        }
+    }
+
+    #[test]
+    fn test_cast_translates_inner_expression() {
+        let trans = SmtTranslator::new();
+        let expr = spanned(Expr::Cast {
+            expr: Box::new(spanned(Expr::IntLit(42))),
+            ty: Spanned::new(Type::F64, span()),
+        });
+        assert_eq!(trans.translate(&expr).unwrap(), "42");
+    }
+
+    #[test]
+    fn test_spawn_translates_to_zero() {
+        let trans = SmtTranslator::new();
+        let expr = spanned(Expr::Spawn {
+            body: Box::new(spanned(Expr::IntLit(1))),
+        });
+        assert_eq!(trans.translate(&expr).unwrap(), "0");
+    }
+
+    #[test]
+    fn test_concurrency_creation_exprs_translate_to_zero() {
+        let trans = SmtTranslator::new();
+
+        let mutex = spanned(Expr::MutexNew { value: Box::new(spanned(Expr::IntLit(0))) });
+        assert_eq!(trans.translate(&mutex).unwrap(), "0");
+
+        let atomic = spanned(Expr::AtomicNew { value: Box::new(spanned(Expr::IntLit(0))) });
+        assert_eq!(trans.translate(&atomic).unwrap(), "0");
+
+        let rwlock = spanned(Expr::RwLockNew { value: Box::new(spanned(Expr::IntLit(0))) });
+        assert_eq!(trans.translate(&rwlock).unwrap(), "0");
+
+        let barrier = spanned(Expr::BarrierNew { count: Box::new(spanned(Expr::IntLit(4))) });
+        assert_eq!(trans.translate(&barrier).unwrap(), "0");
+
+        let condvar = spanned(Expr::CondvarNew);
+        assert_eq!(trans.translate(&condvar).unwrap(), "0");
+    }
+
+    #[test]
+    fn test_type_to_sort_generic_fn_typevar() {
+        assert_eq!(SmtTranslator::type_to_sort(&Type::TypeVar("T".to_string())), SmtSort::Int);
+        assert_eq!(SmtTranslator::type_to_sort(&Type::Generic {
+            name: "Vec".to_string(),
+            type_args: vec![Box::new(Type::I64)],
+        }), SmtSort::Int);
+        assert_eq!(SmtTranslator::type_to_sort(&Type::Fn {
+            params: vec![],
+            ret: Box::new(Type::I64),
+        }), SmtSort::Int);
+    }
+
+    #[test]
+    fn test_type_to_sort_channel_thread_types() {
+        assert_eq!(SmtTranslator::type_to_sort(&Type::Sender(Box::new(Type::I64))), SmtSort::Int);
+        assert_eq!(SmtTranslator::type_to_sort(&Type::Receiver(Box::new(Type::I64))), SmtSort::Int);
+        assert_eq!(SmtTranslator::type_to_sort(&Type::Thread(Box::new(Type::I64))), SmtSort::Int);
+        assert_eq!(SmtTranslator::type_to_sort(&Type::Future(Box::new(Type::I64))), SmtSort::Int);
+        assert_eq!(SmtTranslator::type_to_sort(&Type::Mutex(Box::new(Type::I64))), SmtSort::Int);
+        assert_eq!(SmtTranslator::type_to_sort(&Type::Arc(Box::new(Type::I64))), SmtSort::Int);
+        assert_eq!(SmtTranslator::type_to_sort(&Type::Atomic(Box::new(Type::I64))), SmtSort::Int);
+        assert_eq!(SmtTranslator::type_to_sort(&Type::RwLock(Box::new(Type::I64))), SmtSort::Int);
+    }
+
+    #[test]
+    fn test_type_to_smt_for_quantifiers() {
+        let trans = SmtTranslator::new();
+        assert_eq!(trans.type_to_smt(&Type::I64).unwrap(), "Int");
+        assert_eq!(trans.type_to_smt(&Type::I32).unwrap(), "Int");
+        assert_eq!(trans.type_to_smt(&Type::U32).unwrap(), "Int");
+        assert_eq!(trans.type_to_smt(&Type::U64).unwrap(), "Int");
+        assert_eq!(trans.type_to_smt(&Type::F64).unwrap(), "Real");
+        assert_eq!(trans.type_to_smt(&Type::Bool).unwrap(), "Bool");
+        // String and Unit should be unsupported in quantifiers
+        assert!(trans.type_to_smt(&Type::String).is_err());
+        assert!(trans.type_to_smt(&Type::Unit).is_err());
+    }
+
+    #[test]
+    fn test_nested_if_then_else() {
+        let trans = SmtTranslator::new();
+        let inner_if = spanned(Expr::If {
+            cond: Box::new(spanned(Expr::BoolLit(false))),
+            then_branch: Box::new(spanned(Expr::IntLit(2))),
+            else_branch: Box::new(spanned(Expr::IntLit(3))),
+        });
+        let outer = spanned(Expr::If {
+            cond: Box::new(spanned(Expr::BoolLit(true))),
+            then_branch: Box::new(spanned(Expr::IntLit(1))),
+            else_branch: Box::new(inner_if),
+        });
+        assert_eq!(trans.translate(&outer).unwrap(), "(ite true 1 (ite false 2 3))");
+    }
+
+    #[test]
+    fn test_generator_multiple_assertions() {
+        let mut generator = SmtLibGenerator::new();
+        generator.declare_var("x", SmtSort::Int);
+        generator.declare_var("y", SmtSort::Int);
+        generator.assert("(> x 0)");
+        generator.assert("(> y 0)");
+        generator.assert("(< (+ x y) 100)");
+        let output = generator.generate();
+        assert!(output.contains("(declare-const x Int)"));
+        assert!(output.contains("(declare-const y Int)"));
+        assert!(output.contains("(assert (> x 0))"));
+        assert!(output.contains("(assert (> y 0))"));
+        assert!(output.contains("(assert (< (+ x y) 100))"));
+    }
 }

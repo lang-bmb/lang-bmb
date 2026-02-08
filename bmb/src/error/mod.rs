@@ -838,4 +838,126 @@ mod tests {
         assert_eq!(e.message(), "ambiguous import");
         assert_eq!(e.span(), Some(span()));
     }
+
+    // ================================================================
+    // Cycles 119-120: Additional Error Module Tests
+    // ================================================================
+
+    #[test]
+    fn test_error_display_format_lexer() {
+        let e = CompileError::lexer("unexpected '$'", span());
+        let display = format!("{}", e);
+        assert!(display.contains("Lexer error"));
+        assert!(display.contains("unexpected '$'"));
+    }
+
+    #[test]
+    fn test_error_display_format_parser() {
+        let e = CompileError::parser("expected ';' after expression", span());
+        let display = format!("{}", e);
+        assert!(display.contains("Parser error"));
+        assert!(display.contains("expected ';'"));
+    }
+
+    #[test]
+    fn test_error_display_format_type() {
+        let e = CompileError::type_error("cannot unify i64 with bool", span());
+        let display = format!("{}", e);
+        assert!(display.contains("Type error"));
+        assert!(display.contains("cannot unify"));
+    }
+
+    #[test]
+    fn test_error_display_format_io() {
+        let e = CompileError::io_error("permission denied");
+        let display = format!("{}", e);
+        assert!(display.contains("IO error"));
+        assert!(display.contains("permission denied"));
+    }
+
+    #[test]
+    fn test_error_display_format_resolve_with_span() {
+        let e = CompileError::resolve_error_at("circular dependency", Span::new(5, 15));
+        let display = format!("{}", e);
+        assert!(display.contains("Resolution error"));
+        assert!(display.contains("circular dependency"));
+    }
+
+    #[test]
+    fn test_error_display_format_resolve_without_span() {
+        let e = CompileError::resolve_error("module 'math' not found");
+        let display = format!("{}", e);
+        assert!(display.contains("Resolution error"));
+        assert!(display.contains("module 'math' not found"));
+    }
+
+    #[test]
+    fn test_warning_display_format_all_kinds() {
+        // Verify that Display works correctly for each warning kind,
+        // specifically the "warning[kind]: message" format.
+        let cases: Vec<Box<dyn Fn() -> CompileWarning>> = vec![
+            Box::new(|| CompileWarning::unused_mut("counter", span())),
+            Box::new(|| CompileWarning::unreachable_code(span())),
+            Box::new(|| CompileWarning::unused_import("io", span())),
+            Box::new(|| CompileWarning::unused_function("helper", span())),
+            Box::new(|| CompileWarning::unused_type("Config", span())),
+            Box::new(|| CompileWarning::unused_enum("Color", span())),
+            Box::new(|| CompileWarning::unused_trait("Show", span())),
+            Box::new(|| CompileWarning::missing_postcondition("compute", span())),
+        ];
+        for factory in &cases {
+            let w = factory();
+            let display = format!("{}", w);
+            // All warnings should start with "warning[<kind>]:"
+            assert!(display.starts_with("warning["), "Display format wrong for kind: {}", w.kind());
+            assert!(display.contains("]:"), "Missing colon separator for kind: {}", w.kind());
+        }
+    }
+
+    #[test]
+    fn test_warning_semantic_duplication_display() {
+        let w = CompileWarning::semantic_duplication("add", "plus", span());
+        let display = format!("{}", w);
+        assert!(display.contains("warning[semantic_duplication]"));
+        assert!(display.contains("`add`"));
+        assert!(display.contains("`plus`"));
+        assert!(display.contains("consolidating"));
+    }
+
+    #[test]
+    fn test_warning_trivial_contract_display() {
+        let w = CompileWarning::trivial_contract("check", "postcondition", span());
+        let display = format!("{}", w);
+        assert!(display.contains("warning[trivial_contract]"));
+        assert!(display.contains("`check`"));
+        assert!(display.contains("tautology"));
+        assert!(display.contains("postcondition"));
+    }
+
+    #[test]
+    fn test_warning_duplicate_function_message_content() {
+        let w = CompileWarning::duplicate_function("init", span(), Span::new(0, 5));
+        let msg = w.message();
+        assert!(msg.contains("`init`"));
+        assert!(msg.contains("defined multiple times"));
+        assert!(msg.contains("overrides"));
+    }
+
+    #[test]
+    fn test_warning_shadow_binding_message_content() {
+        let w = CompileWarning::shadow_binding("result", span(), Span::new(0, 5));
+        let msg = w.message();
+        assert!(msg.contains("`result`"));
+        assert!(msg.contains("shadows"));
+        assert!(msg.contains("outer scope"));
+    }
+
+    #[test]
+    fn test_error_debug_format() {
+        // Verify that Debug trait is implemented and produces useful output
+        let e = CompileError::type_error("mismatch", span());
+        let dbg = format!("{:?}", e);
+        assert!(dbg.contains("Type"));
+        assert!(dbg.contains("mismatch"));
+    }
 }

@@ -2021,3 +2021,412 @@ fn test_ir_algebraic_identity() {
     assert!(simplified,
         "Optimizer should simplify x * 1 to just x (no mul or direct return), got:\n{}", ir_opt);
 }
+
+// ============================================
+// Cycles 115-116: Codegen Edge Cases & Runtime Behavior
+// ============================================
+// These tests cover deeply nested control flow, complex enum matching,
+// struct interactions, cast operations, array/tuple usage, and
+// negative type-checking scenarios.
+
+// --- Deeply Nested Match Expressions ---
+
+#[test]
+fn test_run_nested_match_inside_match() {
+    // Match inside match: outer match selects a category, inner match refines it
+    assert_eq!(
+        run_program_i64(
+            "fn classify(x: i64, y: i64) -> i64 =
+               match x {
+                 0 => match y {
+                   0 => 0,
+                   1 => 1,
+                   _ => 2
+                 },
+                 1 => match y {
+                   0 => 10,
+                   _ => 11
+                 },
+                 _ => 99
+               };
+             fn main() -> i64 = classify(0, 1) + classify(1, 0) + classify(5, 5);"
+        ),
+        110  // 1 + 10 + 99
+    );
+}
+
+#[test]
+fn test_run_match_with_computation_in_arms() {
+    // Each match arm performs non-trivial computation
+    assert_eq!(
+        run_program_i64(
+            "fn fib(n: i64) -> i64 = if n <= 1 { n } else { fib(n - 1) + fib(n - 2) };
+             fn compute(mode: i64) -> i64 =
+               match mode {
+                 0 => fib(8),
+                 1 => fib(6) * 2,
+                 _ => 0
+               };
+             fn main() -> i64 = compute(0) + compute(1);"
+        ),
+        37  // fib(8)=21, fib(6)*2=8*2=16, 21+16=37
+    );
+}
+
+// --- Complex Enum with Data and Pattern Matching ---
+
+#[test]
+fn test_run_enum_with_data_nested_unwrap() {
+    // Multiple levels of enum unwrapping
+    assert_eq!(
+        run_program_i64(
+            "enum Option<T> { Some(T), None }
+             fn add_options(a: Option<i64>, b: Option<i64>) -> i64 =
+               match a {
+                 Option::Some(x) => match b {
+                   Option::Some(y) => x + y,
+                   Option::None => x
+                 },
+                 Option::None => match b {
+                   Option::Some(y) => y,
+                   Option::None => 0
+                 }
+               };
+             fn main() -> i64 = {
+               let r1 = add_options(Option::Some(10), Option::Some(20));
+               let r2 = add_options(Option::Some(5), Option::None);
+               let r3 = add_options(Option::None, Option::Some(3));
+               let r4 = add_options(Option::None, Option::None);
+               r1 + r2 + r3 + r4
+             };"
+        ),
+        38  // 30 + 5 + 3 + 0
+    );
+}
+
+#[test]
+fn test_run_enum_result_like() {
+    // Model a Result-like enum with Ok(i64) and Err(i64)
+    assert_eq!(
+        run_program_i64(
+            "enum Result { Ok(i64), Err(i64) }
+             fn unwrap_or_error(r: Result) -> i64 =
+               match r {
+                 Result::Ok(v) => v,
+                 Result::Err(code) => 0 - code
+               };
+             fn main() -> i64 = {
+               let ok_val = unwrap_or_error(Result::Ok(42));
+               let err_val = unwrap_or_error(Result::Err(7));
+               ok_val + err_val
+             };"
+        ),
+        35  // 42 + (-7) = 35
+    );
+}
+
+// --- While Loop with Early Exit Condition ---
+
+#[test]
+fn test_run_while_loop_find_first_divisible() {
+    // Find the first number >= start that is divisible by d
+    assert_eq!(
+        run_program_i64(
+            "fn find_divisible(start: i64, d: i64) -> i64 = {
+               let mut n: i64 = start;
+               while n % d != 0 { n = n + 1; 0 };
+               n
+             };
+             fn main() -> i64 = find_divisible(10, 7);"
+        ),
+        14  // 14 is first number >= 10 divisible by 7
+    );
+}
+
+#[test]
+fn test_run_while_accumulate_digits() {
+    // Sum digits of a number: 1234 -> 1+2+3+4 = 10
+    assert_eq!(
+        run_program_i64(
+            "fn sum_digits(n: i64) -> i64 = {
+               let mut remaining: i64 = n;
+               let mut total: i64 = 0;
+               while remaining > 0 {
+                 total = total + remaining % 10;
+                 remaining = remaining / 10;
+                 0
+               };
+               total
+             };
+             fn main() -> i64 = sum_digits(1234);"
+        ),
+        10
+    );
+}
+
+// --- Recursive Data Processing ---
+
+#[test]
+fn test_run_recursive_sum_to_n() {
+    // Recursive sum: sum(n) = n + sum(n-1), base case sum(0) = 0
+    assert_eq!(
+        run_program_i64(
+            "fn sum_to(n: i64) -> i64 = if n <= 0 { 0 } else { n + sum_to(n - 1) };
+             fn main() -> i64 = sum_to(100);"
+        ),
+        5050
+    );
+}
+
+#[test]
+fn test_run_recursive_power() {
+    // Compute base^exp recursively
+    assert_eq!(
+        run_program_i64(
+            "fn power(base: i64, exp: i64) -> i64 =
+               if exp == 0 { 1 } else { base * power(base, exp - 1) };
+             fn main() -> i64 = power(3, 5);"
+        ),
+        243  // 3^5 = 243
+    );
+}
+
+// --- Multiple Structs Interacting ---
+
+#[test]
+fn test_run_point_and_rect_structs() {
+    // Point struct and a function computing Manhattan distance
+    assert_eq!(
+        run_program_i64(
+            "struct Point { x: i64, y: i64 }
+             struct Rect { origin: Point, w: i64, h: i64 }
+             fn abs(v: i64) -> i64 = if v < 0 { 0 - v } else { v };
+             fn rect_perimeter(r: Rect) -> i64 = 2 * (r.w + r.h);
+             fn main() -> i64 = {
+               let r = new Rect { origin: new Point { x: 1, y: 2 }, w: 10, h: 5 };
+               rect_perimeter(r)
+             };"
+        ),
+        30  // 2 * (10 + 5) = 30
+    );
+}
+
+#[test]
+fn test_run_struct_returned_from_function() {
+    // Function creates and returns a struct
+    assert_eq!(
+        run_program_i64(
+            "struct Vec2 { x: i64, y: i64 }
+             fn make_vec(a: i64, b: i64) -> Vec2 = new Vec2 { x: a, y: b };
+             fn dot(a: Vec2, b: Vec2) -> i64 = a.x * b.x + a.y * b.y;
+             fn main() -> i64 = {
+               let v1 = make_vec(3, 4);
+               let v2 = make_vec(2, 5);
+               dot(v1, v2)
+             };"
+        ),
+        26  // 3*2 + 4*5 = 6 + 20 = 26
+    );
+}
+
+// --- Mixed Arithmetic with Casts ---
+
+#[test]
+fn test_run_cast_i64_to_f64() {
+    // Cast an integer to float and do float arithmetic
+    match run_program("fn main() -> f64 = { let x: i64 = 7; let y = x as f64; y * 1.5 };") {
+        Value::Float(v) => assert!((v - 10.5).abs() < 1e-10, "expected 10.5, got {}", v),
+        other => panic!("expected Float, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_run_cast_f64_to_i64_truncation() {
+    // Cast float to integer (truncation)
+    assert_eq!(
+        run_program_i64("fn main() -> i64 = { let f: f64 = 9.7; f as i64 };"),
+        9  // truncation, not rounding
+    );
+}
+
+#[test]
+fn test_run_cast_bool_to_i64() {
+    // Cast booleans to integers: true=1, false=0
+    assert_eq!(
+        run_program_i64("fn main() -> i64 = { let t = true as i64; let f = false as i64; t + f };"),
+        1  // 1 + 0
+    );
+}
+
+// --- For Loop with Range ---
+
+#[test]
+fn test_run_for_loop_sum_range() {
+    // Sum integers in range 0..10 using for loop
+    assert_eq!(
+        run_program_i64(
+            "fn main() -> i64 = { let mut s: i64 = 0; for i in 0..10 { s = s + i }; s };"
+        ),
+        45  // 0+1+2+...+9
+    );
+}
+
+#[test]
+fn test_run_for_loop_nested() {
+    // Nested for loops to compute a small sum-of-sums
+    assert_eq!(
+        run_program_i64(
+            "fn main() -> i64 = {
+               let mut total: i64 = 0;
+               for i in 0..4 {
+                 for j in 0..3 {
+                   total = total + i * j
+                 }
+               };
+               total
+             };"
+        ),
+        18  // sum of i*j for i in 0..4, j in 0..3 = 0+0+0 + 0+1+2 + 0+2+4 + 0+3+6 = 18
+    );
+}
+
+// --- Array Operations ---
+
+#[test]
+fn test_run_array_create_and_index() {
+    // Create array, index into it, sum first and last elements
+    assert_eq!(
+        run_program_i64(
+            "fn main() -> i64 = {
+               let arr = [10, 20, 30, 40, 50];
+               arr[0] + arr[4]
+             };"
+        ),
+        60  // 10 + 50
+    );
+}
+
+#[test]
+fn test_run_array_length() {
+    // Test array .len() method
+    assert_eq!(
+        run_program_i64(
+            "fn main() -> i64 = {
+               let arr = [1, 2, 3, 4, 5, 6, 7];
+               arr.len()
+             };"
+        ),
+        7
+    );
+}
+
+// --- Tuple Creation and Field Access ---
+
+#[test]
+fn test_run_tuple_create_and_access() {
+    // Create a tuple and access its fields by index
+    assert_eq!(
+        run_program_i64(
+            "fn main() -> i64 = {
+               let t = (10, 20, 30);
+               t.0 + t.1 + t.2
+             };"
+        ),
+        60
+    );
+}
+
+#[test]
+fn test_run_tuple_from_function() {
+    // Function returning a tuple, caller accesses fields
+    assert_eq!(
+        run_program_i64(
+            "fn divmod(a: i64, b: i64) -> (i64, i64) = (a / b, a % b);
+             fn main() -> i64 = {
+               let result = divmod(17, 5);
+               result.0 * 10 + result.1
+             };"
+        ),
+        32  // (17/5)=3, (17%5)=2 -> 3*10 + 2 = 32
+    );
+}
+
+// --- Multi-Function Programs with Shared Structs ---
+
+#[test]
+fn test_run_multi_function_struct_pipeline() {
+    // Chain of functions transforming a struct
+    assert_eq!(
+        run_program_i64(
+            "struct Counter { value: i64 }
+             fn make_counter() -> Counter = new Counter { value: 0 };
+             fn get_value(c: Counter) -> i64 = c.value;
+             fn main() -> i64 = {
+               let c = make_counter();
+               get_value(c) + 100
+             };"
+        ),
+        100
+    );
+}
+
+// --- Complex Boolean and Bitwise Operations ---
+
+#[test]
+fn test_run_bitwise_operations() {
+    // Test band, bor, bxor
+    assert_eq!(
+        run_program_i64("fn main() -> i64 = (15 band 9) + (5 bor 3) + (12 bxor 10);"),
+        22  // (15 & 9)=9, (5 | 3)=7, (12 ^ 10)=6 -> 9+7+6=22
+    );
+}
+
+#[test]
+fn test_run_complex_boolean_expression() {
+    // Complex boolean logic with multiple operators
+    assert_eq!(
+        run_program(
+            "fn check(a: i64, b: i64, c: i64) -> bool =
+               (a > 0 and b > 0) or (c < 0 and not (a == b));
+             fn main() -> bool = check(1, 2, 3);"
+        ),
+        Value::Bool(true)  // (1>0 and 2>0) = true, short-circuits to true
+    );
+}
+
+// --- Negative / Error Tests (Type Checking Failures) ---
+
+#[test]
+fn test_type_error_return_struct_for_int() {
+    // Cannot return a struct where i64 is expected
+    assert!(type_error(
+        "struct Foo { x: i64 }
+         fn main() -> i64 = new Foo { x: 1 };"
+    ));
+}
+
+#[test]
+fn test_type_error_mismatched_if_branches() {
+    // If/else branches return different types
+    assert!(type_error(
+        r#"fn bad(x: bool) -> i64 = if x { 42 } else { "hello" };"#
+    ));
+}
+
+#[test]
+fn test_type_error_wrong_struct_field_type() {
+    // Struct field initialized with wrong type
+    assert!(type_error(
+        r#"struct Point { x: i64, y: i64 }
+         fn main() -> Point = new Point { x: "bad", y: 0 };"#
+    ));
+}
+
+#[test]
+fn test_type_error_enum_variant_wrong_data() {
+    // Enum variant constructed with wrong type
+    assert!(type_error(
+        "enum Option<T> { Some(T), None }
+         fn bad() -> Option<i64> = Option::Some(true);"
+    ));
+}

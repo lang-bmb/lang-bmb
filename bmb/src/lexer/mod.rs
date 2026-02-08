@@ -158,4 +158,188 @@ mod tests {
         assert_eq!(tokens[0].0, Token::Eq);
         assert_eq!(tokens[1].0, Token::ColonEq);
     }
+
+    // ================================================================
+    // Cycles 119-120: Additional Lexer Tokenization Tests
+    // ================================================================
+
+    #[test]
+    fn test_tokenize_whitespace_only() {
+        let tokens = tokenize("   \t\t\n\n\r\n   ").unwrap();
+        assert!(tokens.is_empty(), "whitespace-only source should produce no tokens");
+    }
+
+    #[test]
+    fn test_tokenize_unexpected_character_error() {
+        // The backtick is not a valid BMB token
+        let result = tokenize("`");
+        assert!(result.is_err(), "unexpected character should produce an error");
+        let err = result.unwrap_err();
+        assert!(err.message().contains("unexpected character"));
+    }
+
+    #[test]
+    fn test_tokenize_very_long_identifier() {
+        let long_name = "a".repeat(500);
+        let tokens = tokenize(&long_name).unwrap();
+        assert_eq!(tokens.len(), 1);
+        assert!(matches!(&tokens[0].0, Token::Ident(s) if s.len() == 500));
+    }
+
+    #[test]
+    fn test_tokenize_type_keywords() {
+        let tokens = tokenize("i32 i64 u32 u64 f64 bool String char").unwrap();
+        let kinds: Vec<_> = tokens.iter().map(|(t, _)| t.clone()).collect();
+        assert_eq!(kinds, vec![
+            Token::TyI32, Token::TyI64, Token::TyU32, Token::TyU64,
+            Token::TyF64, Token::TyBool, Token::TyString, Token::TyChar,
+        ]);
+    }
+
+    #[test]
+    fn test_tokenize_bitwise_operators() {
+        let tokens = tokenize("band bor bxor bnot").unwrap();
+        let kinds: Vec<_> = tokens.iter().map(|(t, _)| t.clone()).collect();
+        assert_eq!(kinds, vec![Token::Band, Token::Bor, Token::Bxor, Token::Bnot]);
+    }
+
+    #[test]
+    fn test_tokenize_shift_operators() {
+        let tokens = tokenize("<< >>").unwrap();
+        let kinds: Vec<_> = tokens.iter().map(|(t, _)| t.clone()).collect();
+        assert_eq!(kinds, vec![Token::LtLt, Token::GtGt]);
+    }
+
+    #[test]
+    fn test_tokenize_wrapping_checked_saturating_operators() {
+        let tokens = tokenize("+% -% *% +? -? *? +| -| *|").unwrap();
+        let kinds: Vec<_> = tokens.iter().map(|(t, _)| t.clone()).collect();
+        assert_eq!(kinds, vec![
+            Token::PlusPercent, Token::MinusPercent, Token::StarPercent,
+            Token::PlusQuestion, Token::MinusQuestion, Token::StarQuestion,
+            Token::PlusPipe, Token::MinusPipe, Token::StarPipe,
+        ]);
+    }
+
+    #[test]
+    fn test_tokenize_symbolic_logical_operators() {
+        let tokens = tokenize("&& || !").unwrap();
+        let kinds: Vec<_> = tokens.iter().map(|(t, _)| t.clone()).collect();
+        assert_eq!(kinds, vec![Token::AmpAmp, Token::PipePipe, Token::Bang]);
+    }
+
+    #[test]
+    fn test_tokenize_reference_and_special_symbols() {
+        let tokens = tokenize("& @ ? |").unwrap();
+        let kinds: Vec<_> = tokens.iter().map(|(t, _)| t.clone()).collect();
+        assert_eq!(kinds, vec![Token::Ampersand, Token::At, Token::Question, Token::Pipe]);
+    }
+
+    #[test]
+    fn test_tokenize_range_operators() {
+        let tokens = tokenize(".. ..< ..=").unwrap();
+        let kinds: Vec<_> = tokens.iter().map(|(t, _)| t.clone()).collect();
+        assert_eq!(kinds, vec![Token::DotDot, Token::DotDotLt, Token::DotDotEq]);
+    }
+
+    #[test]
+    fn test_tokenize_string_with_escapes() {
+        let tokens = tokenize(r#""\n\t\r\\\"\0""#).unwrap();
+        assert_eq!(tokens.len(), 1);
+        match &tokens[0].0 {
+            Token::StringLit(s) => {
+                assert_eq!(s, "\n\t\r\\\"\0");
+            }
+            other => panic!("expected StringLit, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_tokenize_char_literal() {
+        let tokens = tokenize("'x'").unwrap();
+        assert_eq!(tokens.len(), 1);
+        assert_eq!(tokens[0].0, Token::CharLit('x'));
+    }
+
+    #[test]
+    fn test_tokenize_scientific_notation_float() {
+        let tokens = tokenize("3.14e10 1e5 6.022E23").unwrap();
+        assert_eq!(tokens.len(), 3);
+        assert!(matches!(&tokens[0].0, Token::FloatLit(_)));
+        assert!(matches!(&tokens[1].0, Token::FloatLit(_)));
+        assert!(matches!(&tokens[2].0, Token::FloatLit(_)));
+    }
+
+    #[test]
+    fn test_tokenize_concurrency_keywords() {
+        let tokens = tokenize("spawn async await Future select").unwrap();
+        let kinds: Vec<_> = tokens.iter().map(|(t, _)| t.clone()).collect();
+        assert_eq!(kinds, vec![
+            Token::Spawn, Token::Async, Token::Await, Token::FutureType, Token::Select,
+        ]);
+    }
+
+    #[test]
+    fn test_tokenize_contract_keywords() {
+        let tokens = tokenize("pre post invariant implies forall exists where it").unwrap();
+        let kinds: Vec<_> = tokens.iter().map(|(t, _)| t.clone()).collect();
+        assert_eq!(kinds, vec![
+            Token::Pre, Token::Post, Token::Invariant, Token::Implies,
+            Token::Forall, Token::Exists, Token::Where, Token::It,
+        ]);
+    }
+
+    #[test]
+    fn test_tokenize_module_and_visibility_keywords() {
+        let tokens = tokenize("pub mod use extern module").unwrap();
+        let kinds: Vec<_> = tokens.iter().map(|(t, _)| t.clone()).collect();
+        assert_eq!(kinds, vec![
+            Token::Pub, Token::Mod, Token::Use, Token::Extern, Token::Module,
+        ]);
+    }
+
+    #[test]
+    fn test_tokenize_control_flow_keywords() {
+        let tokens = tokenize("while for in loop break continue return").unwrap();
+        let kinds: Vec<_> = tokens.iter().map(|(t, _)| t.clone()).collect();
+        assert_eq!(kinds, vec![
+            Token::While, Token::For, Token::In, Token::Loop,
+            Token::Break, Token::Continue, Token::Return,
+        ]);
+    }
+
+    #[test]
+    fn test_tokenize_header_separator() {
+        let tokens = tokenize("===").unwrap();
+        assert_eq!(tokens.len(), 1);
+        assert_eq!(tokens[0].0, Token::HeaderSep);
+    }
+
+    #[test]
+    fn test_tokenize_dash_comment_preserves_tokens() {
+        let tokens = tokenize("42 -- this is ignored\n99").unwrap();
+        assert_eq!(tokens.len(), 2);
+        assert!(matches!(&tokens[0].0, Token::IntLit(42)));
+        assert!(matches!(&tokens[1].0, Token::IntLit(99)));
+    }
+
+    #[test]
+    fn test_tokenize_adjacent_symbols_disambiguation() {
+        // Ensure multi-char operators are correctly distinguished from their prefixes
+        let tokens = tokenize(":: : := . .. ..< ..=").unwrap();
+        let kinds: Vec<_> = tokens.iter().map(|(t, _)| t.clone()).collect();
+        assert_eq!(kinds, vec![
+            Token::ColonColon, Token::Colon, Token::ColonEq,
+            Token::Dot, Token::DotDot, Token::DotDotLt, Token::DotDotEq,
+        ]);
+    }
+
+    #[test]
+    fn test_tokenize_negative_integer_as_minus_then_int() {
+        // Lexer should produce Minus + IntLit, not a negative IntLit
+        let tokens = tokenize("-42").unwrap();
+        assert_eq!(tokens.len(), 2);
+        assert_eq!(tokens[0].0, Token::Minus);
+        assert!(matches!(&tokens[1].0, Token::IntLit(42)));
+    }
 }
