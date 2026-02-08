@@ -1197,17 +1197,30 @@ SpannedExpr: Spanned<Expr> = {
 };
 
 // v0.32: If expression with span (for else-if chains)
+// v0.89.6: Accept BlockStmt sequences in if-branches (Cycle 52)
 SpannedIfExpr: Spanned<Expr> = {
-    <l:@L> "if" <c:SpannedExpr> "{" <t:SpannedExpr> "}" "else" "{" <e:SpannedExpr> "}" <r:@R> =>
+    <l:@L> "if" <c:SpannedExpr> <tl:@L> "{" <tes:(<BlockStmt> ";")*> <tlast:BlockStmt?> "}" <tr:@R> "else" <el:@L> "{" <ees:(<BlockStmt> ";")*> <elast:BlockStmt?> "}" <er:@R> <r:@R> =>
         Spanned::new(Expr::If {
             cond: Box::new(c),
-            then_branch: Box::new(t),
-            else_branch: Box::new(e),
+            then_branch: Box::new(Spanned::new({
+                let mut exprs = tes;
+                if let Some(e) = tlast { exprs.push(e); }
+                desugar_block_lets(exprs)
+            }, Span::new(tl, tr))),
+            else_branch: Box::new(Spanned::new({
+                let mut exprs = ees;
+                if let Some(e) = elast { exprs.push(e); }
+                desugar_block_lets(exprs)
+            }, Span::new(el, er))),
         }, Span::new(l, r)),
-    <l:@L> "if" <c:SpannedExpr> "{" <t:SpannedExpr> "}" "else" <elif:SpannedIfExpr> <r:@R> =>
+    <l:@L> "if" <c:SpannedExpr> <tl:@L> "{" <tes:(<BlockStmt> ";")*> <tlast:BlockStmt?> "}" <tr:@R> "else" <elif:SpannedIfExpr> <r:@R> =>
         Spanned::new(Expr::If {
             cond: Box::new(c),
-            then_branch: Box::new(t),
+            then_branch: Box::new(Spanned::new({
+                let mut exprs = tes;
+                if let Some(e) = tlast { exprs.push(e); }
+                desugar_block_lets(exprs)
+            }, Span::new(tl, tr))),
             else_branch: Box::new(elif),
         }, Span::new(l, r)),
 };
@@ -1271,15 +1284,27 @@ BlockExpr: Expr = {
             other => panic!("Expected index, field access, or dereference after 'set', got {:?}", other),
         }
     },
-    // if-else
-    "if" <c:SpannedExpr> "{" <t:SpannedExpr> "}" "else" "{" <e:SpannedExpr> "}" => Expr::If {
+    // if-else (v0.89.6: BlockStmt sequences in branches, Cycle 52)
+    "if" <c:SpannedExpr> <tl:@L> "{" <tes:(<BlockStmt> ";")*> <tlast:BlockStmt?> "}" <tr:@R> "else" <el:@L> "{" <ees:(<BlockStmt> ";")*> <elast:BlockStmt?> "}" <er:@R> => Expr::If {
         cond: Box::new(c),
-        then_branch: Box::new(t),
-        else_branch: Box::new(e),
+        then_branch: Box::new(Spanned::new({
+            let mut exprs = tes;
+            if let Some(e) = tlast { exprs.push(e); }
+            desugar_block_lets(exprs)
+        }, Span::new(tl, tr))),
+        else_branch: Box::new(Spanned::new({
+            let mut exprs = ees;
+            if let Some(e) = elast { exprs.push(e); }
+            desugar_block_lets(exprs)
+        }, Span::new(el, er))),
     },
-    "if" <c:SpannedExpr> "{" <t:SpannedExpr> "}" "else" <elif:SpannedIfExpr> => Expr::If {
+    "if" <c:SpannedExpr> <tl:@L> "{" <tes:(<BlockStmt> ";")*> <tlast:BlockStmt?> "}" <tr:@R> "else" <elif:SpannedIfExpr> => Expr::If {
         cond: Box::new(c),
-        then_branch: Box::new(t),
+        then_branch: Box::new(Spanned::new({
+            let mut exprs = tes;
+            if let Some(e) = tlast { exprs.push(e); }
+            desugar_block_lets(exprs)
+        }, Span::new(tl, tr))),
         else_branch: Box::new(elif),
     },
     // block
@@ -1407,15 +1432,29 @@ Expr: Expr = {
         }
     },
     // v0.32: Braced if-else syntax (Rust style)
-    "if" <c:SpannedExpr> "{" <t:SpannedExpr> "}" "else" "{" <e:SpannedExpr> "}" => Expr::If {
+    // v0.89.6: BlockStmt sequences in branches (Cycle 52)
+    "if" <c:SpannedExpr> <tl:@L> "{" <tes:(<BlockStmt> ";")*> <tlast:BlockStmt?> "}" <tr:@R> "else" <el:@L> "{" <ees:(<BlockStmt> ";")*> <elast:BlockStmt?> "}" <er:@R> => Expr::If {
         cond: Box::new(c),
-        then_branch: Box::new(t),
-        else_branch: Box::new(e),
+        then_branch: Box::new(Spanned::new({
+            let mut exprs = tes;
+            if let Some(e) = tlast { exprs.push(e); }
+            desugar_block_lets(exprs)
+        }, Span::new(tl, tr))),
+        else_branch: Box::new(Spanned::new({
+            let mut exprs = ees;
+            if let Some(e) = elast { exprs.push(e); }
+            desugar_block_lets(exprs)
+        }, Span::new(el, er))),
     },
     // v0.32: if-else if chain
-    "if" <c:SpannedExpr> "{" <t:SpannedExpr> "}" "else" <elif:SpannedIfExpr> => Expr::If {
+    // v0.89.6: BlockStmt sequences in branches (Cycle 52)
+    "if" <c:SpannedExpr> <tl:@L> "{" <tes:(<BlockStmt> ";")*> <tlast:BlockStmt?> "}" <tr:@R> "else" <elif:SpannedIfExpr> => Expr::If {
         cond: Box::new(c),
-        then_branch: Box::new(t),
+        then_branch: Box::new(Spanned::new({
+            let mut exprs = tes;
+            if let Some(e) = tlast { exprs.push(e); }
+            desugar_block_lets(exprs)
+        }, Span::new(tl, tr))),
         else_branch: Box::new(elif),
     },
     "let" <m:"mut"?> <n:RawIdent> <ty:(":" <SpannedType>)?> "=" <v:SpannedExpr> ";" <b:SpannedExpr> => Expr::Let {

@@ -3949,4 +3949,136 @@ mod tests {
         });
         assert!(has_call, "Expected Call instruction for method 'double' with 2 args");
     }
+
+    // ====================================================================
+    // Source-based MIR lowering tests (v0.89.6, Cycle 54)
+    // Parse BMB source → lower to MIR → verify structure
+    // ====================================================================
+
+    fn parse_and_lower(source: &str) -> MirProgram {
+        let tokens = crate::lexer::tokenize(source).expect("tokenize failed");
+        let program = crate::parser::parse("<test>", source, tokens).expect("parse failed");
+        lower_program(&program)
+    }
+
+    #[test]
+    fn test_lower_while_loop_from_source() {
+        let mir = parse_and_lower("fn count() -> i64 = { let mut i = 0; while i < 10 { i = i + 1; 0 }; i };");
+        assert_eq!(mir.functions.len(), 1);
+        let func = &mir.functions[0];
+        assert!(func.blocks.len() >= 3, "While loop should create at least 3 blocks (entry, loop, exit)");
+    }
+
+    #[test]
+    fn test_lower_let_binding_from_source() {
+        let mir = parse_and_lower("fn test() -> i64 = { let x = 42; let y = x + 1; y };");
+        let func = &mir.functions[0];
+        // Should have at least 2 instructions (one for each let binding computation)
+        assert!(func.blocks[0].instructions.len() >= 2);
+    }
+
+    #[test]
+    fn test_lower_if_else_from_source() {
+        let mir = parse_and_lower("fn max(a: i64, b: i64) -> i64 = if a > b { a } else { b };");
+        let func = &mir.functions[0];
+        // if-else should create multiple blocks for branching
+        assert!(func.blocks.len() >= 3, "If-else should create at least 3 blocks");
+        // Should have a conditional branch somewhere
+        let has_branch = func.blocks.iter().any(|b| matches!(b.terminator, Terminator::Branch { .. }));
+        assert!(has_branch, "Expected Branch terminator for if-else");
+    }
+
+    #[test]
+    fn test_lower_recursive_call_from_source() {
+        let mir = parse_and_lower("fn fact(n: i64) -> i64 = if n == 0 { 1 } else { n * fact(n - 1) };");
+        let func = &mir.functions[0];
+        // Should have a Call instruction to "fact"
+        let has_recursive_call = func.blocks.iter().any(|b| {
+            b.instructions.iter().any(|inst| matches!(inst, MirInst::Call { func: f, .. } if f == "fact"))
+        });
+        assert!(has_recursive_call, "Expected recursive Call to 'fact'");
+    }
+
+    #[test]
+    fn test_lower_mutable_variable_from_source() {
+        let mir = parse_and_lower("fn inc() -> i64 = { let mut x = 0; x = x + 1; x };");
+        let func = &mir.functions[0];
+        // Should have an Assign instruction for mutation
+        let has_assign = func.blocks.iter().any(|b| {
+            b.instructions.iter().any(|inst| matches!(inst, MirInst::Copy { .. }))
+        });
+        assert!(has_assign, "Expected Assign instruction for mutable variable");
+    }
+
+    // v0.89.6: Test that assignments in if-branches lower correctly (Cycle 52 fix)
+    #[test]
+    fn test_lower_assign_in_if_branch_from_source() {
+        let mir = parse_and_lower(
+            "fn test() -> i64 = { let mut x = 0; let _r = if true { x = 1; 0 } else { 0 }; x };"
+        );
+        let func = &mir.functions[0];
+        // Should have an Assign within the if-branch blocks
+        let has_assign = func.blocks.iter().any(|b| {
+            b.instructions.iter().any(|inst| matches!(inst, MirInst::Copy { .. }))
+        });
+        assert!(has_assign, "Expected Assign instruction in if-branch");
+    }
+
+    // v0.89.6: Test let bindings inside if-branches (Cycle 52 fix)
+    #[test]
+    fn test_lower_let_in_if_branch_from_source() {
+        let mir = parse_and_lower(
+            "fn test() -> i64 = if true { let x = 42; x } else { 0 };"
+        );
+        let func = &mir.functions[0];
+        assert!(func.blocks.len() >= 3, "If-else with let should create multiple blocks");
+    }
+
+    #[test]
+    fn test_lower_for_loop_from_source() {
+        let mir = parse_and_lower("fn sum() -> i64 = { let mut s = 0; for i in 0..10 { s = s + i; 0 }; s };");
+        let func = &mir.functions[0];
+        assert!(func.blocks.len() >= 3, "For loop should create at least 3 blocks");
+    }
+
+    #[test]
+    fn test_lower_nested_blocks_from_source() {
+        let mir = parse_and_lower("fn test() -> i64 = { let a = { let b = 1; b + 2 }; a };");
+        let func = &mir.functions[0];
+        // Should produce valid MIR (no panics)
+        assert!(!func.blocks.is_empty());
+    }
+
+    #[test]
+    fn test_lower_multiple_functions_from_source() {
+        let mir = parse_and_lower("fn add(a: i64, b: i64) -> i64 = a + b; fn main() -> i64 = add(1, 2);");
+        assert_eq!(mir.functions.len(), 2);
+        assert_eq!(mir.functions[0].name, "add");
+        assert_eq!(mir.functions[1].name, "main");
+    }
+
+    #[test]
+    fn test_lower_string_literal_from_source() {
+        let mir = parse_and_lower("fn hello() -> String = \"hello\";");
+        let func = &mir.functions[0];
+        // String literals produce valid MIR with return terminator
+        assert!(!func.blocks.is_empty());
+        assert!(matches!(func.blocks[0].terminator, Terminator::Return(_)));
+    }
+
+    #[test]
+    fn test_lower_bool_operations_from_source() {
+        let mir = parse_and_lower("fn both(a: bool, b: bool) -> bool = a and b;");
+        let func = &mir.functions[0];
+        // 'and' produces valid MIR (may use short-circuit branches or BinOp)
+        assert!(!func.blocks.is_empty(), "'and' should produce valid MIR");
+    }
+
+    #[test]
+    fn test_lower_match_expression_from_source() {
+        let mir = parse_and_lower("fn test(x: i64) -> i64 = match x { 0 => 1, 1 => 2, _ => 0 };");
+        let func = &mir.functions[0];
+        // Match creates multiple blocks for each arm
+        assert!(func.blocks.len() >= 3, "Match should create multiple blocks");
+    }
 }

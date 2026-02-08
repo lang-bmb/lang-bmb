@@ -788,6 +788,31 @@ fn test_parse_quantifiers() {
     }
 }
 
+// v0.89.6: Assignments and let bindings in if-branches (Cycle 52)
+#[test]
+fn test_parse_assign_in_if_branch() {
+    // Single block { assignment; value } in if-branch — previously required {{ }}
+    parse_ok("fn test() -> i64 = { let mut x = 0; let _r = if true { x = 1; 0 } else { 0 }; x };");
+    // Assignment in both branches
+    parse_ok("fn test() -> i64 = { let mut x = 0; let _r = if true { x = 1; 0 } else { x = 2; 0 }; x };");
+    // Assignment in else-if chain
+    parse_ok("fn test() -> i64 = { let mut x = 0; let _r = if true { x = 1; 0 } else if false { x = 2; 0 } else { x = 3; 0 }; x };");
+}
+
+#[test]
+fn test_parse_let_in_if_branch() {
+    // Let binding in if-branch
+    parse_ok("fn test() -> i64 = { let result = if true { let x = 42; x } else { 0 }; result };");
+    // Let bindings in both branches
+    parse_ok("fn test() -> i64 = if true { let a = 1; let b = 2; a + b } else { let c = 3; c };");
+}
+
+#[test]
+fn test_parse_multi_stmt_if_branch() {
+    // Multiple assignments in if-branch
+    parse_ok("fn test() -> i64 = { let mut a = 0; let mut b = 0; let _r = if true { a = 1; b = 2; 0 } else { 0 }; a + b };");
+}
+
 // ============================================
 // Negative Tests (Parser Errors)
 // ============================================

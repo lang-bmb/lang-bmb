@@ -720,6 +720,11 @@ impl IndexGenerator {
                 self.collect_calls(&value.node, calls);
                 self.collect_calls(&body.node, calls);
             }
+            Expr::Block(stmts) => {
+                for s in stmts {
+                    self.collect_calls(&s.node, calls);
+                }
+            }
             _ => {}
         }
     }

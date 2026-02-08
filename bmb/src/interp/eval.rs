@@ -4206,4 +4206,126 @@ mod tests {
         let env = interp.global_env.clone();
         assert!(interp.eval(&spanned(Expr::Var("undefined_var".to_string())), &env).is_err());
     }
+
+    // ====================================================================
+    // Source-based interpreter integration tests (v0.89.6, Cycle 55)
+    // ====================================================================
+
+    fn run_program(source: &str) -> Value {
+        let tokens = crate::lexer::tokenize(source).expect("tokenize failed");
+        let program = crate::parser::parse("<test>", source, tokens).expect("parse failed");
+        let mut interp = Interpreter::new();
+        interp.run(&program).expect("run failed")
+    }
+
+    // v0.89.5: Float/int equality coercion (Cycle 42 fix)
+    #[test]
+    fn test_float_int_equality() {
+        // sqrt(4) == 2 should be true (float/int cross-type comparison)
+        assert_eq!(run_program("fn main() -> i64 = if 4.0 == 4 { 1 } else { 0 };"), Value::Int(1));
+        assert_eq!(run_program("fn main() -> i64 = if 3.0 != 4 { 1 } else { 0 };"), Value::Int(1));
+        assert_eq!(run_program("fn main() -> i64 = if 2 == 2.0 { 1 } else { 0 };"), Value::Int(1));
+    }
+
+    // v0.89.5: free() returns i64 (Cycle 42 fix)
+    #[test]
+    fn test_free_returns_i64() {
+        let result = run_program("fn main() -> i64 = { let p = malloc(8); let r = free(p); r };");
+        assert_eq!(result, Value::Int(0));
+    }
+
+    // v0.89.6: Assignments in if-branches (Cycle 52 fix)
+    #[test]
+    fn test_assign_in_if_branch() {
+        let result = run_program(
+            "fn main() -> i64 = { let mut x = 0; let _r = if true { x = 42; 0 } else { 0 }; x };"
+        );
+        assert_eq!(result, Value::Int(42));
+    }
+
+    #[test]
+    fn test_assign_in_else_branch() {
+        let result = run_program(
+            "fn main() -> i64 = { let mut x = 0; let _r = if false { 0 } else { x = 99; 0 }; x };"
+        );
+        assert_eq!(result, Value::Int(99));
+    }
+
+    // v0.89.6: Let bindings in if-branches (Cycle 52 fix)
+    #[test]
+    fn test_let_in_if_branch() {
+        let result = run_program(
+            "fn main() -> i64 = if true { let x = 42; x } else { 0 };"
+        );
+        assert_eq!(result, Value::Int(42));
+    }
+
+    #[test]
+    fn test_let_in_else_branch() {
+        let result = run_program(
+            "fn main() -> i64 = if false { 0 } else { let y = 100; y };"
+        );
+        assert_eq!(result, Value::Int(100));
+    }
+
+    // While loop with mutable state
+    #[test]
+    fn test_while_loop_accumulator() {
+        let result = run_program(
+            "fn main() -> i64 = { let mut sum = 0; let mut i = 1; while i <= 10 { sum = sum + i; i = i + 1; 0 }; sum };"
+        );
+        assert_eq!(result, Value::Int(55)); // 1+2+...+10 = 55
+    }
+
+    // v0.89.6: Multiple assignments in if-branch
+    #[test]
+    fn test_multi_assign_in_if_branch() {
+        let result = run_program(
+            "fn main() -> i64 = { let mut a = 0; let mut b = 0; let _r = if true { a = 10; b = 20; 0 } else { 0 }; a + b };"
+        );
+        assert_eq!(result, Value::Int(30));
+    }
+
+    // If-else if chain with assignments
+    #[test]
+    fn test_elseif_chain_with_assigns() {
+        let result = run_program(
+            "fn main() -> i64 = { let mut x = 0; let v = 5; let _r = if v < 3 { x = 1; 0 } else if v < 7 { x = 2; 0 } else { x = 3; 0 }; x };"
+        );
+        assert_eq!(result, Value::Int(2)); // 5 < 7 so x = 2
+    }
+
+    // Recursive function
+    #[test]
+    fn test_recursive_factorial() {
+        let result = run_program(
+            "fn fact(n: i64) -> i64 = if n <= 1 { 1 } else { n * fact(n - 1) }; fn main() -> i64 = fact(5);"
+        );
+        assert_eq!(result, Value::Int(120));
+    }
+
+    // Nested function calls
+    #[test]
+    fn test_nested_calls() {
+        let result = run_program(
+            "fn double(x: i64) -> i64 = x * 2; fn add1(x: i64) -> i64 = x + 1; fn main() -> i64 = add1(double(5));"
+        );
+        assert_eq!(result, Value::Int(11));
+    }
+
+    // Boolean operations
+    #[test]
+    fn test_boolean_and_or() {
+        assert_eq!(run_program("fn main() -> i64 = if true and true { 1 } else { 0 };"), Value::Int(1));
+        assert_eq!(run_program("fn main() -> i64 = if true and false { 1 } else { 0 };"), Value::Int(0));
+        assert_eq!(run_program("fn main() -> i64 = if false or true { 1 } else { 0 };"), Value::Int(1));
+        assert_eq!(run_program("fn main() -> i64 = if false or false { 1 } else { 0 };"), Value::Int(0));
+    }
+
+    // String operations
+    #[test]
+    fn test_string_len() {
+        let result = run_program("fn main() -> i64 = \"hello\".len();");
+        assert_eq!(result, Value::Int(5));
+    }
 }
