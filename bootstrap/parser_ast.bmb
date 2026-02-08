@@ -63,6 +63,7 @@ fn TK_STRING_TYPE() -> i64 = 154;
 fn TK_INT() -> i64 = 200;
 fn TK_IDENT() -> i64 = 201;
 fn TK_STRING() -> i64 = 202;  // v0.30.32: string literal "..."
+fn TK_FLOAT() -> i64 = 203;   // v0.96: float literal 3.14
 
 fn TK_COLON() -> i64 = 300;
 fn TK_EQ() -> i64 = 302;
@@ -77,6 +78,7 @@ fn TK_PIPE() -> i64 = 309;    // v0.30.35: | for lambda params
 fn TK_LBRACKET() -> i64 = 313; // v0.30.60: [ for arrays
 fn TK_RBRACKET() -> i64 = 314; // v0.30.60: ] for arrays
 fn TK_AT() -> i64 = 315;       // v0.52: @ for attributes (@likely, @unlikely)
+fn TK_QUESTION() -> i64 = 316; // v0.97: ? for nullable types T?
 
 fn TK_ARROW() -> i64 = 321;
 fn TK_DOTDOT() -> i64 = 323;
@@ -137,9 +139,9 @@ fn find_string_end(s: String, pos: i64) -> i64 =
 fn lookup_keyword(w: String) -> i64 =
     if w == "fn" { 100 } else if w == "let" { 101 } else if w == "if" { 102 } else if w == "then" { 103 } else if w == "else" { 104 } else if w == "true" { 105 } else if w == "false" { 106 } else if w == "and" { 107 } else if w == "or" { 108 } else if w == "not" { 109 } else if w == "pre" { 110 } else if w == "post" { 111 } else if w == "mut" { 117 } else if w == "struct" { 118 } else if w == "new" { 119 } else if w == "enum" { 120 } else if w == "match" { 121 } else if w == "while" { 122 } else if w == "for" { 123 } else if w == "in" { 124 } else if w == "break" { 125 } else if w == "continue" { 126 } else if w == "trait" { 127 } else if w == "impl" { 128 } else if w == "null" { 129 } else if w == "sizeof" { 130 } else if w == "i32" { 150 } else if w == "i64" { 151 } else if w == "f64" { 152 } else if w == "bool" { 153 } else if w == "String" { 154 } else { 201 };
 
-// Symbol codes: | (124)=309 for lambda params (v0.30.35), [ (91)=313 and ] (93)=314 for arrays (v0.30.60), @ (64)=315 for attributes (v0.52)
+// Symbol codes: | (124)=309 for lambda params (v0.30.35), [ (91)=313 and ] (93)=314 for arrays (v0.30.60), @ (64)=315 for attributes (v0.52), ? (63)=316 for nullable types (v0.97)
 fn symbol_code(c: i64) -> i64 =
-    if c == 58 { 300 } else if c == 46 { 301 } else if c == 61 { 302 } else if c == 59 { 303 } else if c == 44 { 304 } else if c == 40 { 305 } else if c == 41 { 306 } else if c == 123 { 307 } else if c == 125 { 308 } else if c == 124 { 309 } else if c == 91 { 313 } else if c == 93 { 314 } else if c == 64 { 315 } else if c == 43 { 400 } else if c == 45 { 401 } else if c == 42 { 402 } else if c == 47 { 403 } else if c == 37 { 404 } else if c == 60 { 405 } else if c == 62 { 406 } else { 999 };
+    if c == 58 { 300 } else if c == 46 { 301 } else if c == 61 { 302 } else if c == 59 { 303 } else if c == 44 { 304 } else if c == 40 { 305 } else if c == 41 { 306 } else if c == 123 { 307 } else if c == 125 { 308 } else if c == 124 { 309 } else if c == 91 { 313 } else if c == 93 { 314 } else if c == 64 { 315 } else if c == 63 { 316 } else if c == 43 { 400 } else if c == 45 { 401 } else if c == 42 { 402 } else if c == 47 { 403 } else if c == 37 { 404 } else if c == 60 { 405 } else if c == 62 { 406 } else { 999 };
 
 fn check_two_char(s: String, pos: i64) -> i64 =
     if pos + 1 >= s.len() { 0 } else {
@@ -880,7 +882,7 @@ fn parse_primary(src: String, pos: i64) -> String =
     // v0.30.32: String literal - keep raw form with quotes
     // v0.30.37: while, v0.30.39: for, v0.30.42: break/continue
     // v0.22.0: struct init, v0.22.1: match expr, v0.30.35: lambda expr, v0.30.60: array literal
-    if kind == TK_INT() { pack_result(end, "(int " + text + ")") } else if kind == TK_TRUE() { pack_result(end, "(bool true)") } else if kind == TK_FALSE() { pack_result(end, "(bool false)") } else if kind == TK_STRING() { pack_result(end, text) } else if kind == TK_IDENT() { parse_call_or_var(src, end, text) } else if kind == TK_LPAREN() { parse_paren(src, end) } else if kind == TK_IF() { parse_if(src, end) } else if kind == TK_WHILE() { parse_while(src, end) } else if kind == TK_FOR() { parse_for(src, end) } else if kind == TK_BREAK() { parse_break(src, end) } else if kind == TK_CONTINUE() { parse_continue(src, end) } else if kind == TK_LET() { parse_let(src, end) } else if kind == TK_NOT() {
+    if kind == TK_INT() { pack_result(end, "(int " + text + ")") } else if kind == TK_FLOAT() { pack_result(end, "(float " + text + ")") } else if kind == TK_TRUE() { pack_result(end, "(bool true)") } else if kind == TK_FALSE() { pack_result(end, "(bool false)") } else if kind == TK_STRING() { pack_result(end, text) } else if kind == TK_IDENT() { parse_call_or_var(src, end, text) } else if kind == TK_LPAREN() { parse_paren(src, end) } else if kind == TK_IF() { parse_if(src, end) } else if kind == TK_WHILE() { parse_while(src, end) } else if kind == TK_FOR() { parse_for(src, end) } else if kind == TK_BREAK() { parse_break(src, end) } else if kind == TK_CONTINUE() { parse_continue(src, end) } else if kind == TK_LET() { parse_let(src, end) } else if kind == TK_NOT() {
         let r = parse_primary(src, end);
         if is_error(unpack_ast(r)) { r } else { pack_result(unpack_pos(r), "(not " + unpack_ast(r) + ")") }
     } else if kind == TK_MINUS() {
@@ -1298,7 +1300,15 @@ fn parse_binop(src: String, pos: i64, left: String) -> String =
 // v0.30.1: Extended to support generic type syntax
 // Supports: i64, String, Vec<i64>, Map<K, V>, Container<Vec<i64>>, [T]
 // v0.30.62: Delegate to parse_type_or_ident to include array type support
-fn parse_type(src: String, pos: i64) -> String = parse_type_or_ident(src, pos);
+// v0.97: Added T? nullable syntax (wraps base type in Option<T>)
+fn parse_type(src: String, pos: i64) -> String =
+    let base = parse_type_or_ident(src, pos);
+    if is_error(unpack_ast(base)) { base } else {
+        let next = next_token_raw(src, unpack_pos(base));
+        if tok_kind(next) == TK_QUESTION() {
+            pack_result(tok_end(next), "(type_app Option (" + unpack_ast(base) + "))")
+        } else { base }
+    };
 
 fn parse_params(src: String, pos: i64, ps: String) -> String =
     let tok = next_token_raw(src, pos);

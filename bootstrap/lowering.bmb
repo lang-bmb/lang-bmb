@@ -104,6 +104,15 @@ fn get_node_type(s: String) -> String =
 
 // Check AST node types
 fn is_int_node(s: String) -> bool = get_node_type(s) == "int";
+fn is_float_node(s: String) -> bool = get_node_type(s) == "float";
+
+// v0.89.11: Check if expression produces a float value (for binop type selection)
+// Detects float literals and operations on floats (recursive)
+fn is_float_expr(s: String) -> bool =
+    if is_float_node(s) { true }
+    else if is_neg_node(s) { is_float_expr(get_unary_operand(s)) }
+    else if is_op_node(s) { is_float_expr(get_op_left(s)) }
+    else { false };
 fn is_bool_node(s: String) -> bool = get_node_type(s) == "bool";
 fn is_var_node(s: String) -> bool = get_node_type(s) == "var";
 fn is_op_node(s: String) -> bool = get_node_type(s) == "op";
@@ -313,6 +322,15 @@ fn extract_int_value(s: String) -> i64 =
     let num_start = if is_neg { pos3 + 1 } else { pos3 };
     let value = parse_int_at(content, num_start, 0);
     if is_neg { 0 - value } else { value };
+
+// Extract float text from "(float 3.14)" -> "3.14"
+fn extract_float_text(s: String) -> String =
+    let content = extract_paren_content(s);
+    let pos = skip_ws(content, 0);
+    let pos2 = find_ident_end(content, pos);  // skip "float"
+    let pos3 = skip_ws(content, pos2);
+    // Return the rest as text (handles negative floats too)
+    content.slice(pos3, content.len());
 
 // Extract bool value from "(bool true)" -> true
 fn extract_bool_value(s: String) -> bool =
@@ -569,6 +587,13 @@ fn mir_text_copy(dest: String, src: String) -> String =
 
 fn mir_text_binop(dest: String, op: i64, lhs: String, rhs: String) -> String =
     "  " + dest + " = " + binop_symbol(op) + " " + lhs + ", " + rhs;
+
+// v0.89.11: Float-typed binop MIR with 'f' prefix (e.g., f+ f- f* f/)
+fn mir_text_binop_float(dest: String, op: i64, lhs: String, rhs: String) -> String =
+    "  " + dest + " = f" + binop_symbol(op) + " " + lhs + ", " + rhs;
+
+fn mir_text_unary_fneg(dest: String, src: String) -> String =
+    "  " + dest + " = fneg " + src;
 
 fn mir_text_unary_neg(dest: String, src: String) -> String =
     "  " + dest + " = neg " + src;
@@ -857,7 +882,7 @@ fn lower_expr_sb(ast: String, temp: i64, block: i64, sb: i64) -> String =
 // v0.52: Attribute expression support (@likely/@unlikely)
 // v0.51.43: Null and sizeof expression support
 fn lower_expr(ast: String, temp: i64, block: i64) -> String =
-    if is_int_node(ast) { lower_int(ast, temp, block) } else if is_bool_node(ast) { lower_bool(ast, temp, block) } else if is_string_node(ast) { lower_string(ast, temp, block) } else if is_var_node(ast) { lower_var(ast, temp, block) } else if is_op_node(ast) { lower_binop(ast, temp, block) } else if is_neg_node(ast) { lower_neg(ast, temp, block) } else if is_not_node(ast) { lower_not(ast, temp, block) } else if is_if_node(ast) { lower_if(ast, temp, block) } else if is_let_node(ast) or is_let_mut_node(ast) { lower_let(ast, temp, block) } else if is_call_node(ast) { lower_call(ast, temp, block) } else if is_new_node(ast) { lower_struct_init(ast, temp, block) } else if is_dot_node(ast) { lower_field_access(ast, temp, block) } else if is_enum_variant_node(ast) { lower_enum_variant(ast, temp, block) } else if is_match_node(ast) { lower_match(ast, temp, block) } else if is_lambda_node(ast) { lower_lambda(ast, temp, block) } else if is_block_node(ast) { lower_block(ast, temp, block) } else if is_unit_node(ast) { lower_unit(ast, temp, block) } else if is_seq_node(ast) { lower_seq(ast, temp, block) } else if is_assign_node(ast) { lower_assign(ast, temp, block) } else if is_while_node(ast) { lower_while(ast, temp, block) } else if is_for_node(ast) { lower_for(ast, temp, block) } else if is_break_node(ast) { lower_break(ast, temp, block) } else if is_continue_node(ast) { lower_continue(ast, temp, block) } else if is_array_node(ast) { lower_array(ast, temp, block) } else if is_index_node(ast) { lower_index(ast, temp, block) } else if is_method_call_node(ast) { lower_method_call(ast, temp, block) } else if is_attr_node(ast) { lower_attr(ast, temp, block) } else if is_null_node(ast) { lower_null(ast, temp, block) } else if is_sizeof_node(ast) { lower_sizeof(ast, temp, block) } else { pack_lower_result(temp, block, "%error", "  ; unknown: " + get_node_type(ast)) };
+    if is_int_node(ast) { lower_int(ast, temp, block) } else if is_float_node(ast) { lower_float(ast, temp, block) } else if is_bool_node(ast) { lower_bool(ast, temp, block) } else if is_string_node(ast) { lower_string(ast, temp, block) } else if is_var_node(ast) { lower_var(ast, temp, block) } else if is_op_node(ast) { lower_binop(ast, temp, block) } else if is_neg_node(ast) { lower_neg(ast, temp, block) } else if is_not_node(ast) { lower_not(ast, temp, block) } else if is_if_node(ast) { lower_if(ast, temp, block) } else if is_let_node(ast) or is_let_mut_node(ast) { lower_let(ast, temp, block) } else if is_call_node(ast) { lower_call(ast, temp, block) } else if is_new_node(ast) { lower_struct_init(ast, temp, block) } else if is_dot_node(ast) { lower_field_access(ast, temp, block) } else if is_enum_variant_node(ast) { lower_enum_variant(ast, temp, block) } else if is_match_node(ast) { lower_match(ast, temp, block) } else if is_lambda_node(ast) { lower_lambda(ast, temp, block) } else if is_block_node(ast) { lower_block(ast, temp, block) } else if is_unit_node(ast) { lower_unit(ast, temp, block) } else if is_seq_node(ast) { lower_seq(ast, temp, block) } else if is_assign_node(ast) { lower_assign(ast, temp, block) } else if is_while_node(ast) { lower_while(ast, temp, block) } else if is_for_node(ast) { lower_for(ast, temp, block) } else if is_break_node(ast) { lower_break(ast, temp, block) } else if is_continue_node(ast) { lower_continue(ast, temp, block) } else if is_array_node(ast) { lower_array(ast, temp, block) } else if is_index_node(ast) { lower_index(ast, temp, block) } else if is_method_call_node(ast) { lower_method_call(ast, temp, block) } else if is_attr_node(ast) { lower_attr(ast, temp, block) } else if is_null_node(ast) { lower_null(ast, temp, block) } else if is_sizeof_node(ast) { lower_sizeof(ast, temp, block) } else { pack_lower_result(temp, block, "%error", "  ; unknown: " + get_node_type(ast)) };
 
 // Lower integer literal: (int 42)
 fn lower_int(ast: String, temp: i64, block: i64) -> String =
@@ -881,6 +906,13 @@ fn lower_string(ast: String, temp: i64, block: i64) -> String =
     let dest = place_temp(temp);
     let text = mir_text_const(dest, "S:" + content);
     pack_lower_result(temp + 1, block, dest, text);
+
+// v0.89.11: Lower float literal: (float 3.14)
+fn lower_float(ast: String, temp: i64, block: i64) -> String =
+    let text = extract_float_text(ast);
+    let dest = place_temp(temp);
+    let mir = mir_text_const(dest, "F:" + text);
+    pack_lower_result(temp + 1, block, dest, mir);
 
 // v0.30.34: Lambda/closure lowering
 // Lambda format: (fn |params| body) or (fn |params| -> type body)
@@ -1444,21 +1476,122 @@ fn lower_while(ast: String, temp: i64, block: i64) -> String =
 
     pack_lower_result(tb + 1, bb + 1, result_place, full_text);
 
-// v0.30.40: Lower for expression: (for <var> iter body)
-// For MIR structure (simplified - placeholder for iterator support):
-//   <evaluate iterator>
-//   loop_start_N:
-//     ; let mut = current element (placeholder)
-//     <evaluate body>
-//     goto loop_start_N
-//   loop_end_N:
-//     %result = UNIT
+// v0.30.40 / v0.95: Lower for expression: (for <var> iter body)
+// v0.95: Proper range iteration for (for <var> (op .. start end) body):
+//   <evaluate start> -> %start
+//   <evaluate end> -> %end
+//   %var = copy %start
+//   goto for_start_N
+// for_start_N:
+//   %cond = < %var, %end
+//   branch %cond, for_body_N, for_end_N
+// for_body_N:
+//   <evaluate body>
+//   %inc = + %var, 1
+//   %var = copy %inc
+//   goto for_start_N
+// for_end_N:
+//   %result = UNIT
 fn lower_for(ast: String, temp: i64, block: i64) -> String =
     let var_raw = get_for_var(ast);
     let varname = extract_for_varname(var_raw);
     let iter_ast = get_for_iter(ast);
     let body_ast = get_for_body(ast);
 
+    // Check if iterator is a range expression (op .. start end) or (op ..= start end)
+    if is_op_node(iter_ast) {
+        let op_sym = get_op_symbol(iter_ast);
+        if op_sym == ".." or op_sym == "..=" {
+            lower_for_range(varname, iter_ast, body_ast, op_sym, temp, block)
+        } else {
+            lower_for_generic(varname, iter_ast, body_ast, temp, block)
+        }
+    } else {
+        lower_for_generic(varname, iter_ast, body_ast, temp, block)
+    };
+
+// v0.95: Lower for-loop with range iterator
+fn lower_for_range(varname: String, iter_ast: String, body_ast: String, op_sym: String, temp: i64, block: i64) -> String =
+    let start_ast = get_op_left(iter_ast);
+    let end_ast = get_op_right(iter_ast);
+    let is_inclusive = op_sym == "..=";
+
+    // Generate block labels
+    let loop_start_lbl = "for_start_" + int_to_string(block);
+    let body_lbl = "for_body_" + int_to_string(block);
+    let loop_end_lbl = "for_end_" + int_to_string(block);
+    let next_block = block + 1;
+
+    // Lower start expression
+    let rs = lower_expr(start_ast, temp, next_block);
+    let ts = unpack_temp(rs);
+    let bs = unpack_block(rs);
+    let ps = unpack_result_place(rs);
+    let texts = unpack_text(rs);
+
+    // Lower end expression
+    let re = lower_expr(end_ast, ts, bs);
+    let te = unpack_temp(re);
+    let be = unpack_block(re);
+    let pe = unpack_result_place(re);
+    let texte = unpack_text(re);
+
+    // Initialize loop variable: %var = copy %start
+    let var_place = place_var(varname);
+    let var_init = mir_text_copy(var_place, ps);
+
+    // Condition: %cond = < %var, %end (or <= for inclusive)
+    let cond_place = place_temp(te);
+    let cmp_op = if is_inclusive { 10 } else { 8 };
+    let cond_text = mir_text_binop(cond_place, cmp_op, var_place, pe);
+
+    // Branch: if cond goto body, else goto loop_end
+    let branch_text = mir_text_branch(cond_place, body_lbl, loop_end_lbl);
+
+    // Lower body
+    let rb = lower_expr(body_ast, te + 1, be);
+    let tb = unpack_temp(rb);
+    let bb = unpack_block(rb);
+    let textb = unpack_text(rb);
+
+    // Increment: %inc = + %var, 1; %var = copy %inc
+    let inc_place = place_temp(tb);
+    let one_place = place_temp(tb + 1);
+    let one_const = mir_text_const(one_place, "1");
+    let inc_text = mir_text_binop(inc_place, 1, var_place, one_place);
+    let var_update = mir_text_copy(var_place, inc_place);
+
+    // Result place
+    let result_place = place_temp(tb + 2);
+
+    // Build loop_start block (condition + branch)
+    let loop_start_block = mir_text_block_start(loop_start_lbl) + "|" +
+                           cond_text + "|" +
+                           branch_text;
+
+    // Build body block (body + increment + goto loop_start)
+    let body_block = mir_text_block_start(body_lbl) + "|" +
+                     (if textb.len() > 0 { textb + "|" } else { "" }) +
+                     one_const + "|" +
+                     inc_text + "|" +
+                     var_update + "|" +
+                     mir_text_goto(loop_start_lbl);
+
+    // Build loop_end block (result = unit)
+    let loop_end_block = mir_text_block_start(loop_end_lbl) + "|" +
+                         "  " + result_place + " = UNIT";
+
+    // Combine: start/end eval, var init, goto loop_start, then all blocks
+    let init_text = (if texts.len() > 0 { texts + "|" } else { "" }) +
+                    (if texte.len() > 0 { texte + "|" } else { "" }) +
+                    var_init + "|" +
+                    mir_text_goto(loop_start_lbl);
+    let full_text = init_text + "|" + loop_start_block + "|" + body_block + "|" + loop_end_block;
+
+    pack_lower_result(tb + 3, bb + 1, result_place, full_text);
+
+// v0.95: Fallback for non-range iterators (legacy behavior)
+fn lower_for_generic(varname: String, iter_ast: String, body_ast: String, temp: i64, block: i64) -> String =
     // Generate block labels
     let loop_start_lbl = "for_start_" + int_to_string(block);
     let body_lbl = "for_body_" + int_to_string(block);
@@ -1472,35 +1605,34 @@ fn lower_for(ast: String, temp: i64, block: i64) -> String =
     let pi = unpack_result_place(ri);
     let texti = unpack_text(ri);
 
-    // Create loop variable binding (let mut = iterator result for now)
+    // Create loop variable binding
     let var_place = place_var(varname);
     let var_init = "  " + var_place + " = " + pi;
 
-    // Lower body with variable in scope
+    // Lower body
     let rb = lower_expr(body_ast, ti, bi);
     let tb = unpack_temp(rb);
     let bb = unpack_block(rb);
     let textb = unpack_text(rb);
 
-    // Result place (for returns unit)
+    // Result place
     let result_place = place_temp(tb);
 
-    // Build loop_start block (just goto body for now - placeholder for iterator check)
+    // Build loop_start block
     let loop_start_block = mir_text_block_start(loop_start_lbl) + "|" +
                            mir_text_goto(body_lbl);
 
-    // Build body block (let mut init + body + goto loop_end for simple case)
-    // Note: Real iterator would goto loop_start, but without break we use loop_end
+    // Build body block (execute once, goto loop_end)
     let body_block = mir_text_block_start(body_lbl) + "|" +
                      var_init + "|" +
                      (if textb.len() > 0 { textb + "|" } else { "" }) +
                      mir_text_goto(loop_end_lbl);
 
-    // Build loop_end block (result = unit)
+    // Build loop_end block
     let loop_end_block = mir_text_block_start(loop_end_lbl) + "|" +
                          "  " + result_place + " = UNIT";
 
-    // Combine: iterator eval, goto loop_start, then all blocks
+    // Combine
     let entry_text = (if texti.len() > 0 { texti + "|" } else { "" }) +
                      mir_text_goto(loop_start_lbl);
     let full_text = entry_text + "|" + loop_start_block + "|" + body_block + "|" + loop_end_block;
@@ -1546,7 +1678,9 @@ fn lower_binop(ast: String, temp: i64, block: i64) -> String =
     let text2 = unpack_text(r2);
 
     let dest = place_temp(t2);
-    let op_text = mir_text_binop(dest, op, p1, p2);
+    // v0.89.11: Use float binop when operands are float expressions
+    let is_float = is_float_expr(left) or is_float_expr(right);
+    let op_text = if is_float { mir_text_binop_float(dest, op, p1, p2) } else { mir_text_binop(dest, op, p1, p2) };
     let combined = if text1.len() > 0 and text2.len() > 0 { text1 + "|" + text2 + "|" + op_text } else if text1.len() > 0 { text1 + "|" + op_text } else if text2.len() > 0 { text2 + "|" + op_text } else { op_text };
     pack_lower_result(t2 + 1, b2, dest, combined);
 
@@ -1560,7 +1694,9 @@ fn lower_neg(ast: String, temp: i64, block: i64) -> String =
     let text = unpack_text(r);
 
     let dest = place_temp(t);
-    let neg_text = mir_text_unary_neg(dest, p);
+    // v0.89.11: Use fneg for float operands
+    let is_float = is_float_expr(operand);
+    let neg_text = if is_float { mir_text_unary_fneg(dest, p) } else { mir_text_unary_neg(dest, p) };
     let combined = if text.len() > 0 { text + "|" + neg_text } else { neg_text };
     pack_lower_result(t + 1, b, dest, combined);
 

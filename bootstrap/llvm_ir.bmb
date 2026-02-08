@@ -111,10 +111,16 @@ fn gen_const_bool(dest: String, value: i64) -> String =
 fn gen_const_string(dest: String, content: String) -> String =
     "; string: " + content + "|" + dest + " = inttoptr i64 0 to i8*";
 
-// Parse constant value from MIR format: I:42 or B:1 or S:hello
-// 'I'=73=int, 'B'=66=bool, 'U'=85=unit, 'S'=83=string
+// v0.89.11: Generate LLVM IR for float constant
+// MIR: %_t0 = const F:3.14
+// LLVM: %_t0 = fadd double 0.0, 3.14
+fn gen_const_float(dest: String, text: String) -> String =
+    dest + " = fadd double 0.0, " + text;
+
+// Parse constant value from MIR format: I:42 or B:1 or S:hello or F:3.14
+// 'I'=73=int, 'B'=66=bool, 'U'=85=unit, 'S'=83=string, 'F'=70=float
 fn parse_const_type(val: String) -> String =
-    if val.len() < 2 { "unknown" } else if val.byte_at(0) == 73 { "int" } else if val.byte_at(0) == 66 { "bool" } else if val.byte_at(0) == 85 { "unit" } else if val.byte_at(0) == 83 { "string" } else { "unknown" };
+    if val.len() < 2 { "unknown" } else if val.byte_at(0) == 73 { "int" } else if val.byte_at(0) == 66 { "bool" } else if val.byte_at(0) == 85 { "unit" } else if val.byte_at(0) == 83 { "string" } else if val.byte_at(0) == 70 { "float" } else { "unknown" };
 
 fn parse_const_value(val: String) -> i64 =
     if val.len() < 3 { 0 } else { parse_int_from(val, 2, 0) };
@@ -149,6 +155,25 @@ fn gen_binop_arith(dest: String, op: String, lhs: String, rhs: String, ty: Strin
 fn mir_to_llvm_arith(op: String) -> String =
     if op == "+" { "add nsw" } else if op == "-" { "sub nsw" } else if op == "*" { "mul nsw" } else if op == "/" { "sdiv" } else if op == "%" { "srem" } else { "add nsw" };  // default
 
+// v0.89.11: Float arithmetic operations
+// MIR: %_t0 = f+ %a, %b  →  LLVM: %_t0 = fadd double %a, %b
+fn gen_binop_float_arith(dest: String, op: String, lhs: String, rhs: String) -> String =
+    let llvm_op = mir_to_llvm_float_arith(op);
+    dest + " = " + llvm_op + " double " + lhs + ", " + rhs;
+
+fn mir_to_llvm_float_arith(op: String) -> String =
+    if op == "f+" { "fadd" } else if op == "f-" { "fsub" } else if op == "f*" { "fmul" } else if op == "f/" { "fdiv" } else if op == "f%" { "frem" } else { "fadd" };
+
+// v0.89.11: Float comparison operations
+// MIR: %_t0 = f< %a, %b  →  LLVM: %_t0_cmp = fcmp olt double %a, %b; %_t0 = zext i1 %_t0_cmp to i64
+fn gen_binop_float_cmp(dest: String, op: String, lhs: String, rhs: String) -> String =
+    let llvm_cmp = mir_to_llvm_float_cmp(op);
+    let tmp = dest + "_cmp";
+    tmp + " = fcmp " + llvm_cmp + " double " + lhs + ", " + rhs + "|  " + dest + " = zext i1 " + tmp + " to i64";
+
+fn mir_to_llvm_float_cmp(op: String) -> String =
+    if op == "f==" { "oeq" } else if op == "f!=" { "one" } else if op == "f<" { "olt" } else if op == "f>" { "ogt" } else if op == "f<=" { "ole" } else if op == "f>=" { "oge" } else { "oeq" };
+
 // ============================================================================
 // SECTION 6: LLVM IR Comparison Operations
 // ============================================================================
@@ -175,6 +200,13 @@ fn mir_to_llvm_cmp(op: String) -> String =
 
 fn is_cmp_op(op: String) -> bool =
     op == "==" or op == "!=" or op == "<" or op == ">" or op == "<=" or op == ">=";
+
+// v0.89.11: Float operation detection
+fn is_float_arith_op(op: String) -> bool =
+    op == "f+" or op == "f-" or op == "f*" or op == "f/" or op == "f%";
+
+fn is_float_cmp_op(op: String) -> bool =
+    op == "f==" or op == "f!=" or op == "f<" or op == "f>" or op == "f<=" or op == "f>=";
 
 // ============================================================================
 // SECTION 7: LLVM IR Logical Operations
@@ -506,18 +538,23 @@ fn gen_instruction(line: String) -> String =
 // v0.48.0: Added IndexUnchecked for zero-cost bounds checking with Fin[N] types
 // v0.52: Added BranchHint for @likely/@unlikely branch prediction hints
 fn gen_instr_dispatch(dest: String, op: String, line: String, pos: i64) -> String =
-    if op == "const" { gen_instr_const(dest, line, pos) } else if op == "neg" { gen_instr_neg(dest, line, pos) } else if op == "not" { gen_instr_not(dest, line, pos) } else if op == "copy" { gen_instr_copy(dest, line, pos) } else if op == "UNIT" { gen_instr_unit(dest) } else if op == "BREAK" { gen_instr_break(dest) } else if op == "CONTINUE" { gen_instr_continue(dest) } else if is_closure_op(op) { gen_instr_closure(dest, parse_closure_id(op)) } else if op == "Array" { gen_instr_array(dest, line, pos) } else if op == "Index" { gen_instr_index(dest, line, pos) } else if op == "IndexUnchecked" { gen_instr_index_unchecked(dest, line, pos) } else if op == "BranchHint" { gen_instr_branch_hint(dest, line, pos) } else { gen_instr_binop(dest, op, line, pos) };
+    if op == "const" { gen_instr_const(dest, line, pos) } else if op == "neg" { gen_instr_neg(dest, line, pos) } else if op == "fneg" { gen_instr_fneg(dest, line, pos) } else if op == "not" { gen_instr_not(dest, line, pos) } else if op == "copy" { gen_instr_copy(dest, line, pos) } else if op == "UNIT" { gen_instr_unit(dest) } else if op == "BREAK" { gen_instr_break(dest) } else if op == "CONTINUE" { gen_instr_continue(dest) } else if is_closure_op(op) { gen_instr_closure(dest, parse_closure_id(op)) } else if op == "Array" { gen_instr_array(dest, line, pos) } else if op == "Index" { gen_instr_index(dest, line, pos) } else if op == "IndexUnchecked" { gen_instr_index_unchecked(dest, line, pos) } else if op == "BranchHint" { gen_instr_branch_hint(dest, line, pos) } else { gen_instr_binop(dest, op, line, pos) };
 
 // const I:42 or const B:1 or const S:hello (v0.30.51)
 fn gen_instr_const(dest: String, line: String, pos: i64) -> String =
     let val = read_until_ws(line, pos);
     let ctype = parse_const_type(val);
-    if ctype == "int" { gen_const_int(dest, parse_const_value(val)) } else if ctype == "bool" { gen_const_bool(dest, parse_const_value(val)) } else if ctype == "string" { gen_const_string(dest, parse_const_string(val)) } else { "; unknown const type" };
+    if ctype == "int" { gen_const_int(dest, parse_const_value(val)) } else if ctype == "bool" { gen_const_bool(dest, parse_const_value(val)) } else if ctype == "string" { gen_const_string(dest, parse_const_string(val)) } else if ctype == "float" { gen_const_float(dest, parse_const_string(val)) } else { "; unknown const type" };
 
 // neg %x
 fn gen_instr_neg(dest: String, line: String, pos: i64) -> String =
     let operand = read_until_ws(line, pos);
     gen_unary_neg(dest, operand, "i64");
+
+// v0.89.11: fneg %x - float negation
+fn gen_instr_fneg(dest: String, line: String, pos: i64) -> String =
+    let operand = read_until_ws(line, pos);
+    dest + " = fneg double " + operand;
 
 // not %b
 fn gen_instr_not(dest: String, line: String, pos: i64) -> String =
@@ -868,7 +905,7 @@ fn gen_instr_binop(dest: String, op: String, line: String, pos: i64) -> String =
     let pos3 = skip_ws(line, pos2 + 1);
     let rhs = read_until_ws(line, pos3);
     // v0.50.2: Changed logic ops from i1 to i64 since comparisons now zext to i64
-    if is_arith_op(op) { gen_binop_arith(dest, op, lhs, rhs, "i64") } else if is_cmp_op(op) { gen_binop_cmp(dest, op, lhs, rhs, "i64") } else if is_logic_op(op) { gen_binop_logic(dest, op, lhs, rhs, "i64") } else if is_range_op(op) { gen_binop_range(dest, op, lhs, rhs) } else { "; unknown op: " + op };
+    if is_float_arith_op(op) { gen_binop_float_arith(dest, op, lhs, rhs) } else if is_float_cmp_op(op) { gen_binop_float_cmp(dest, op, lhs, rhs) } else if is_arith_op(op) { gen_binop_arith(dest, op, lhs, rhs, "i64") } else if is_cmp_op(op) { gen_binop_cmp(dest, op, lhs, rhs, "i64") } else if is_logic_op(op) { gen_binop_logic(dest, op, lhs, rhs, "i64") } else if is_range_op(op) { gen_binop_range(dest, op, lhs, rhs) } else { "; unknown op: " + op };
 
 // ============================================================================
 // SECTION 10: LLVM IR Control Flow (v0.10.6)

@@ -5827,6 +5827,7 @@ fn EXPR_INDEX() -> i64 = 22;    // v0.30.67: Index expression (index ...)
 fn EXPR_METHOD_CALL() -> i64 = 23; // v0.30.68: Method call (method_call ...)
 fn EXPR_NULL() -> i64 = 24;        // v0.51.41: Null literal (null)
 fn EXPR_SIZEOF() -> i64 = 25;      // v0.51.41: Sizeof expression (sizeof type)
+fn EXPR_FLOAT() -> i64 = 26;       // v0.89.11: Float literal (float 3.14)
 fn EXPR_UNKNOWN() -> i64 = 0;
 
 // Detect expression kind from AST
@@ -5889,6 +5890,8 @@ fn expr_kind(ast: String) -> i64 =
         else if c1 == 110 and c2 == 117 and c3 == 108 { EXPR_NULL() }
         // v0.51.41: (sizeof ...) - 115='s', 105='i', 122='z'
         else if c1 == 115 and c2 == 105 and c3 == 122 { EXPR_SIZEOF() }
+        // v0.89.11: (float ...) - 102='f', 108='l', 111='o'
+        else if c1 == 102 and c2 == 108 and c3 == 111 { EXPR_FLOAT() }
         else { EXPR_UNKNOWN() }
     };
 
@@ -5986,7 +5989,7 @@ fn expr_op_arg2(ast: String) -> String =
 // Type check expression: returns type string or "ERR:message"
 fn type_of_expr(tenv: String, locals: String, ast: String) -> String =
     let kind = expr_kind(ast);
-    if kind == EXPR_INT() { "i64" } else if kind == EXPR_BOOL() { "bool" } else if kind == EXPR_STRING() { "String" } else if kind == EXPR_UNIT() { "()" } else if kind == EXPR_VAR() { type_of_var(tenv, locals, ast) } else if kind == EXPR_OP() { type_of_op(tenv, locals, ast) } else if kind == EXPR_IF() { type_of_if(tenv, locals, ast) } else if kind == EXPR_LET() { type_of_let(tenv, locals, ast) } else if kind == EXPR_CALL() { type_of_call(tenv, locals, ast) } else if kind == EXPR_NEW() { type_of_new(tenv, locals, ast) } else if kind == EXPR_FIELD() { type_of_field(tenv, locals, ast) } else if kind == EXPR_MATCH() { type_of_match(tenv, locals, ast) } else if kind == EXPR_LAMBDA() { type_of_lambda(tenv, locals, ast) } else if kind == EXPR_NOT() { type_of_not(tenv, locals, ast) } else if kind == EXPR_NEG() { type_of_neg(tenv, locals, ast) } else if kind == EXPR_BLOCK() { type_of_block(tenv, locals, ast) } else if kind == EXPR_WHILE() { type_of_while(tenv, locals, ast) } else if kind == EXPR_FOR() { type_of_for(tenv, locals, ast) } else if kind == EXPR_BREAK() { type_of_break(tenv, locals, ast) } else if kind == EXPR_CONTINUE() { type_of_continue(tenv, locals, ast) } else if kind == EXPR_ARRAY() { type_of_array(tenv, locals, ast) } else if kind == EXPR_INDEX() { type_of_index(tenv, locals, ast) } else if kind == EXPR_METHOD_CALL() { type_of_method_call(tenv, locals, ast) } else if kind == EXPR_NULL() { "*null" } else if kind == EXPR_SIZEOF() { "i64" } else { "ERR:unknown expression" };
+    if kind == EXPR_INT() { "i64" } else if kind == EXPR_FLOAT() { "f64" } else if kind == EXPR_BOOL() { "bool" } else if kind == EXPR_STRING() { "String" } else if kind == EXPR_UNIT() { "()" } else if kind == EXPR_VAR() { type_of_var(tenv, locals, ast) } else if kind == EXPR_OP() { type_of_op(tenv, locals, ast) } else if kind == EXPR_IF() { type_of_if(tenv, locals, ast) } else if kind == EXPR_LET() { type_of_let(tenv, locals, ast) } else if kind == EXPR_CALL() { type_of_call(tenv, locals, ast) } else if kind == EXPR_NEW() { type_of_new(tenv, locals, ast) } else if kind == EXPR_FIELD() { type_of_field(tenv, locals, ast) } else if kind == EXPR_MATCH() { type_of_match(tenv, locals, ast) } else if kind == EXPR_LAMBDA() { type_of_lambda(tenv, locals, ast) } else if kind == EXPR_NOT() { type_of_not(tenv, locals, ast) } else if kind == EXPR_NEG() { type_of_neg(tenv, locals, ast) } else if kind == EXPR_BLOCK() { type_of_block(tenv, locals, ast) } else if kind == EXPR_WHILE() { type_of_while(tenv, locals, ast) } else if kind == EXPR_FOR() { type_of_for(tenv, locals, ast) } else if kind == EXPR_BREAK() { type_of_break(tenv, locals, ast) } else if kind == EXPR_CONTINUE() { type_of_continue(tenv, locals, ast) } else if kind == EXPR_ARRAY() { type_of_array(tenv, locals, ast) } else if kind == EXPR_INDEX() { type_of_index(tenv, locals, ast) } else if kind == EXPR_METHOD_CALL() { type_of_method_call(tenv, locals, ast) } else if kind == EXPR_NULL() { "*null" } else if kind == EXPR_SIZEOF() { "i64" } else { "ERR:unknown expression" };
 
 // v0.30.25: Type of logical not (not expr)
 // Input: "(not expr)"
@@ -6011,7 +6014,7 @@ fn type_of_neg(tenv: String, locals: String, ast: String) -> String =
     let inner = neg_inner_expr(ast);
     if inner == "" { "ERR:neg missing operand" } else {
         let inner_t = type_of_expr(tenv, locals, inner);
-        if is_error_str(inner_t) { inner_t } else if inner_t == "i64" { "i64" } else { "ERR:negation requires i64, got " + inner_t }
+        if is_error_str(inner_t) { inner_t } else if inner_t == "i64" { "i64" } else if inner_t == "f64" { "f64" } else { "ERR:negation requires i64 or f64, got " + inner_t }
 
     };
 // Extract inner expression from (neg expr)
@@ -6219,13 +6222,13 @@ fn type_of_binop(tenv: String, locals: String, op: String, ast: String) -> Strin
 // v0.30.69: Range operators: .., ..=
 fn binop_result_type(op: String, t1: String, t2: String) -> String =
     if op == "+" {
-        if t1 == "i64" and t2 == "i64" { "i64" } else if t1 == "String" and t2 == "String" { "String" } else { "ERR:+ requires i64 or String" }
+        if t1 == "i64" and t2 == "i64" { "i64" } else if t1 == "f64" and t2 == "f64" { "f64" } else if t1 == "String" and t2 == "String" { "String" } else { "ERR:+ requires i64, f64, or String" }
     } else if op == "-" or op == "*" or op == "/" or op == "%" {
-        if t1 == "i64" and t2 == "i64" { "i64" } else { "ERR:arithmetic requires i64" }
+        if t1 == "i64" and t2 == "i64" { "i64" } else if t1 == "f64" and t2 == "f64" { "f64" } else { "ERR:arithmetic requires i64 or f64" }
     } else if op == "==" or op == "!=" {
         if t1 == t2 { "bool" } else { "ERR:comparison requires same types" }
     } else if op == "<" or op == ">" or op == "<=" or op == ">=" {
-        if t1 == "i64" and t2 == "i64" { "bool" } else { "ERR:ordering requires i64" }
+        if t1 == "i64" and t2 == "i64" { "bool" } else if t1 == "f64" and t2 == "f64" { "bool" } else { "ERR:ordering requires i64 or f64" }
     } else if op == "and" or op == "or" {
         if t1 == "bool" and t2 == "bool" { "bool" } else { "ERR:logical requires bool" }
     } else if op == ".." or op == "..=" {
