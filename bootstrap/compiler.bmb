@@ -118,6 +118,9 @@ fn TK_PRE() -> i64 = 9999999 + 1 + 110;
 fn TK_POST() -> i64 = 9999999 + 1 + 111;
 fn TK_MUT() -> i64 = 9999999 + 1 + 117;
 fn TK_WHILE() -> i64 = 9999999 + 1 + 118;  // v0.60.248: while loop support
+// v0.95: for-loop support
+fn TK_FOR() -> i64 = 9999999 + 1 + 125;
+fn TK_IN() -> i64 = 9999999 + 1 + 126;
 // v0.88: Concurrency keywords
 fn TK_ASYNC() -> i64 = 9999999 + 1 + 119;
 fn TK_AWAIT() -> i64 = 9999999 + 1 + 120;
@@ -246,6 +249,7 @@ fn keyword_len2(word: String, endpos: i64) -> i64 =
     if word == "fn" { make_tok(TK_FN(), endpos) }
     else if word == "if" { make_tok(TK_IF(), endpos) }
     else if word == "or" { make_tok(TK_OR(), endpos) }
+    else if word == "in" { make_tok(TK_IN(), endpos) }  // v0.95: for-loop
     else { make_tok(TK_IDENT(), endpos) };
 
 fn keyword_len3(word: String, endpos: i64) -> i64 =
@@ -254,6 +258,7 @@ fn keyword_len3(word: String, endpos: i64) -> i64 =
     else if word == "not" { make_tok(TK_NOT(), endpos) }
     else if word == "pre" { make_tok(TK_PRE(), endpos) }
     else if word == "mut" { make_tok(TK_MUT(), endpos) }
+    else if word == "for" { make_tok(TK_FOR(), endpos) }  // v0.95: for-loop
     else if word == "i32" { make_tok(TK_I32(), endpos) }
     else if word == "i64" { make_tok(TK_I64(), endpos) }
     else if word == "f64" { make_tok(TK_F64(), endpos) }
@@ -780,6 +785,7 @@ fn parse_expr(src: String, pos: i64) -> String =
     if kind == TK_IF() { parse_if_expr(src, tok_end(tok)) }
     else if kind == TK_LET() { parse_let_expr(src, tok_end(tok), pos) }
     else if kind == TK_WHILE() { parse_while_expr(src, tok_end(tok)) }  // v0.60.248
+    else if kind == TK_FOR() { parse_for_expr(src, tok_end(tok)) }  // v0.95: for-loop
     else { parse_or(src, pos) };
 
 fn parse_if_expr(src: String, pos: i64) -> String =
@@ -963,6 +969,49 @@ fn parse_while_finish(src: String, pos: i64, cond_ast: String, body_ast: String)
     if tok_kind(t2) != TK_RBRACE() { make_error_at("expected '}' after while body", src, pos) }
     else { pack_result(tok_end(t2), "(while " + cond_ast + " " + body_ast + ")") };
 
+// v0.95: for-loop parser
+// Syntax: for <ident> in <start> .. <end> { <body> }
+// Produces AST: (for <varname> start_ast end_ast body_ast)
+fn parse_for_expr(src: String, pos: i64) -> String =
+    let t1 = next_token_raw(src, pos);
+    if tok_kind(t1) != TK_IDENT() { make_error_at("expected variable name after 'for'", src, pos) }
+    else {
+        let varname = get_ident_text(src, pos, t1);
+        let t2 = next_token_raw(src, tok_end(t1));
+        if tok_kind(t2) != TK_IN() { make_error_at("expected 'in' after for variable", src, tok_end(t1)) }
+        else { parse_for_range(src, tok_end(t2), varname) }
+    };
+
+fn parse_for_range(src: String, pos: i64, varname: String) -> String =
+    let rs = parse_or(src, pos);
+    if is_error(rs) { rs }
+    else {
+        let start_ast = unpack_ast(rs);
+        let t3 = next_token_raw(src, unpack_pos(rs));
+        if tok_kind(t3) != TK_DOTDOT() { make_error_at("expected '..' in for range", src, unpack_pos(rs)) }
+        else { parse_for_end(src, tok_end(t3), varname, start_ast) }
+    };
+
+fn parse_for_end(src: String, pos: i64, varname: String, start_ast: String) -> String =
+    let re = parse_or(src, pos);
+    if is_error(re) { re }
+    else {
+        let end_ast = unpack_ast(re);
+        let t4 = next_token_raw(src, unpack_pos(re));
+        if tok_kind(t4) != TK_LBRACE() { make_error_at("expected '{' after for range", src, unpack_pos(re)) }
+        else { parse_for_body(src, tok_end(t4), varname, start_ast, end_ast) }
+    };
+
+fn parse_for_body(src: String, pos: i64, varname: String, start_ast: String, end_ast: String) -> String =
+    let rb = parse_block_stmts(src, pos);
+    if is_error(rb) { rb }
+    else {
+        let body_ast = unpack_ast(rb);
+        let t5 = next_token_raw(src, unpack_pos(rb));
+        if tok_kind(t5) != TK_RBRACE() { make_error_at("expected '}' after for body", src, unpack_pos(rb)) }
+        else { pack_result(tok_end(t5), "(for <" + varname + "> " + start_ast + " " + end_ast + " " + body_ast + ")") }
+    };
+
 // ============================================================================
 // SECTION 6: Function and Program Parser
 // ============================================================================
@@ -1090,6 +1139,15 @@ fn get_node_type(ast: String) -> String =
             } else { "" }
         }
     };
+
+// v0.92: Check if AST expression produces a float value
+// Detects float literals and binops on float operands (recursive)
+fn is_float_expr(ast: String) -> bool =
+    let ntype = get_node_type(ast);
+    if ntype == "float" { true }
+    else if ntype == "unary" { is_float_expr(get_child(ast, 1)) }
+    else if ntype == "binop" { is_float_expr(get_child(ast, 1)) }
+    else { false };
 
 fn get_child(ast: String, idx: i64) -> String =
     let content = extract_paren_content(ast);
@@ -1512,6 +1570,9 @@ fn do_step(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, 
     else if op == "IX" { step_if_final(item, cur_temp, cur_block, cur_exit_label, sb) }
     else if op == "LS" { step_let_start(item, cur_temp, cur_block, cur_exit_label, sb) }
     else if op == "LB" { step_let_body(item, cur_temp, cur_block, cur_exit_label, sb) }
+    // v0.92: Mutable variable (alloca/store/load)
+    else if op == "VM" { step_mut_start(item, cur_temp, cur_block, cur_exit_label, sb) }
+    else if op == "VB" { step_mut_body(item, cur_temp, cur_block, cur_exit_label, sb) }
     else if op == "CS" { step_call_start(item, cur_temp, cur_block, cur_exit_label, sb) }
     else if op == "CA" { step_call_arg(item, cur_temp, cur_block, cur_exit_label, sb) }
     else if op == "CF" { step_call_final(item, cur_temp, cur_block, cur_exit_label, sb) }
@@ -1539,7 +1600,9 @@ fn step_expr(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String
         let op = get_child(ast, 0);
         let left = get_child(ast, 1);
         let right = get_child(ast, 2);
-        make_step(cur_temp, cur_block, cur_exit_label, make_work4("BI", op, left, right, ""))
+        // v0.92: Float-aware binop - prefix op with "f" for float operands
+        let mir_op = if is_float_expr(left) { "f" + op } else { op };
+        make_step(cur_temp, cur_block, cur_exit_label, make_work4("BI", mir_op, left, right, ""))
     }
     else if ntype == "unary" {
         let op = get_child(ast, 0);
@@ -1558,12 +1621,12 @@ fn step_expr(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String
         let body = get_child(ast, 2);
         make_step(cur_temp, cur_block, cur_exit_label, make_work4("LS", name, value, body, ""))
     }
-    // v0.60.248: let_mut support - same lowering as let
+    // v0.92: let_mut uses alloca/store/load for correct loop behavior
     else if ntype == "let_mut" {
         let name = extract_name(ast);
         let value = get_child(ast, 1);
         let body = get_child(ast, 2);
-        make_step(cur_temp, cur_block, cur_exit_label, make_work4("LS", name, value, body, ""))
+        make_step(cur_temp, cur_block, cur_exit_label, make_work4("VM", name, value, body, ""))
     }
     else if ntype == "call" {
         let name = extract_name(ast);
@@ -1596,6 +1659,13 @@ fn step_expr(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String
     // v0.60.248: While loop support - use recursive lowering
     else if ntype == "while" {
         let result = lower_while_sb(ast, cur_temp, cur_block, sb);
+        let new_temp = unpack_temp(result);
+        let new_block = unpack_block(result);
+        make_step(new_temp, new_block, cur_exit_label, "")
+    }
+    // v0.95: For-loop support - use recursive lowering
+    else if ntype == "for" {
+        let result = lower_for_sb(ast, cur_temp, cur_block, sb);
         let new_temp = unpack_temp(result);
         let new_block = unpack_block(result);
         make_step(new_temp, new_block, cur_exit_label, "")
@@ -1786,6 +1856,31 @@ fn step_let_body(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: St
     let do_body = make_work3("EX", body, "", "");
     make_step(cur_temp, cur_block, cur_exit_label, do_body);
 
+// VM: Start mutable variable - push value, then VB
+// v0.92: Mutable variables use alloca/store/load for correct loop behavior
+fn step_mut_start(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String =
+    let name = get_field(item, 1);
+    let value = get_field(item, 2);
+    let body = get_field(item, 3);
+    // For mutable vars, keep original name (no SSA rename) - alloca handles redefinition
+    let body_renamed = body;
+    let cont = make_work4("VB", name, body_renamed, i2s(cur_temp), "");
+    let do_val = make_work3("EX", value, "", "");
+    make_step(cur_temp, cur_block, cur_exit_label, do_val + work_sep() + cont);
+
+// VB: Mutable variable body - value done, emit alloca + store, do body
+// v0.92: Uses alloca/store/load pattern instead of copy for correct SSA in loops
+fn step_mut_body(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String =
+    let name = get_field(item, 1);
+    let body = get_field(item, 2);
+    let val_id = cur_temp - 1;
+    // Emit alloca for the mutable variable
+    let w1 = sb_push_mir(sb, "  alloca %" + name);
+    // Emit store initial value
+    let w2 = sb_push_mir(sb, "  store %" + name + ", %_t" + i2s(val_id));
+    let do_body = make_work3("EX", body, "", "");
+    make_step(cur_temp, cur_block, cur_exit_label, do_body);
+
 // CS: Start call - begin processing args
 // v0.60.211: Fixed to track actual arg result temps, not a range
 fn step_call_start(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String =
@@ -1902,12 +1997,13 @@ fn step_assign_start(item: String, cur_temp: i64, cur_block: i64, cur_exit_label
     make_step(cur_temp, cur_block, cur_exit_label, eval + work_sep() + cont);
 
 // v0.60.126: Assignment final - store value and return unit
+// v0.92: Use store instead of copy for mutable variable assignments
 fn step_assign_final(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String =
     let lhs = get_field(item, 1);
     // RHS value is in %_t(cur_temp-1)
     let rhs_temp = cur_temp - 1;
     let name = extract_var_from_assign(lhs);
-    let w1 = sb_push_mir(sb, "  %" + name + " = copy %_t" + i2s(rhs_temp));
+    let w1 = sb_push_mir(sb, "  store %" + name + ", %_t" + i2s(rhs_temp));
     // Assignment returns unit
     let tmp = "%_t" + i2s(cur_temp);
     let w2 = sb_push_mir(sb, "  " + tmp + " = const 0");
@@ -1932,7 +2028,7 @@ fn build_args_str_acc(cur: i64, end: i64, acc: String) -> String =
 // v0.60.126: Added block, unit, seq, assign support
 fn lower_expr_sb(ast: String, temp_id: i64, block_id: i64, sb: i64) -> i64 =
     let ntype = get_node_type(ast);
-    if ntype == "int" { lower_int_sb(ast, temp_id, block_id, sb) } else if ntype == "float" { lower_float_sb(ast, temp_id, block_id, sb) } else if ntype == "bool" { lower_bool_sb(ast, temp_id, block_id, sb) } else if ntype == "string" { lower_string_sb(ast, temp_id, block_id, sb) } else if ntype == "var" { lower_var_sb(ast, temp_id, block_id, sb) } else if ntype == "binop" { lower_binop_sb(ast, temp_id, block_id, sb) } else if ntype == "unary" { lower_unary_sb(ast, temp_id, block_id, sb) } else if ntype == "if" { lower_if_sb(ast, temp_id, block_id, sb) } else if ntype == "let" { lower_let_sb(ast, temp_id, block_id, sb) } else if ntype == "let_mut" { lower_let_sb(ast, temp_id, block_id, sb) } else if ntype == "call" { lower_call_sb(ast, temp_id, block_id, sb) } else if ntype == "method" { lower_method_sb(ast, temp_id, block_id, sb) } else if ntype == "block" { lower_block_sb(ast, temp_id, block_id, sb) } else if ntype == "unit" { lower_unit_sb(ast, temp_id, block_id, sb) } else if ntype == "seq" { lower_seq_sb(ast, temp_id, block_id, sb) } else if ntype == "assign" { lower_assign_sb(ast, temp_id, block_id, sb) } else if ntype == "while" { lower_while_sb(ast, temp_id, block_id, sb) } else { pack_ids(temp_id, block_id) };
+    if ntype == "int" { lower_int_sb(ast, temp_id, block_id, sb) } else if ntype == "float" { lower_float_sb(ast, temp_id, block_id, sb) } else if ntype == "bool" { lower_bool_sb(ast, temp_id, block_id, sb) } else if ntype == "string" { lower_string_sb(ast, temp_id, block_id, sb) } else if ntype == "var" { lower_var_sb(ast, temp_id, block_id, sb) } else if ntype == "binop" { lower_binop_sb(ast, temp_id, block_id, sb) } else if ntype == "unary" { lower_unary_sb(ast, temp_id, block_id, sb) } else if ntype == "if" { lower_if_sb(ast, temp_id, block_id, sb) } else if ntype == "let" { lower_let_sb(ast, temp_id, block_id, sb) } else if ntype == "let_mut" { lower_let_mut_sb(ast, temp_id, block_id, sb) } else if ntype == "call" { lower_call_sb(ast, temp_id, block_id, sb) } else if ntype == "method" { lower_method_sb(ast, temp_id, block_id, sb) } else if ntype == "block" { lower_block_sb(ast, temp_id, block_id, sb) } else if ntype == "unit" { lower_unit_sb(ast, temp_id, block_id, sb) } else if ntype == "seq" { lower_seq_sb(ast, temp_id, block_id, sb) } else if ntype == "assign" { lower_assign_sb(ast, temp_id, block_id, sb) } else if ntype == "while" { lower_while_sb(ast, temp_id, block_id, sb) } else if ntype == "for" { lower_for_sb(ast, temp_id, block_id, sb) } else { pack_ids(temp_id, block_id) };
 
 fn lower_int_sb(ast: String, temp_id: i64, block_id: i64, sb: i64) -> i64 =
     let val = extract_int_value(ast);
@@ -1974,6 +2070,7 @@ fn lower_var_sb(ast: String, temp_id: i64, block_id: i64, sb: i64) -> i64 =
     let w1 = sb_push_mir(sb, "  " + tmp + " = copy %" + name);
     pack_ids(temp_id + 1, block_id);
 
+// v0.92: Float-aware binop lowering - detect float operands and use f+/f-/f*/f/ MIR operators
 fn lower_binop_sb(ast: String, temp_id: i64, block_id: i64, sb: i64) -> i64 =
     let op = get_child(ast, 0);
     let left_ast = get_child(ast, 1);
@@ -1987,7 +2084,9 @@ fn lower_binop_sb(ast: String, temp_id: i64, block_id: i64, sb: i64) -> i64 =
     let right_block = unpack_block(right_result);
     let right_id = right_temp - 1;
     let result_tmp = "%_t" + int_to_string(right_temp);
-    let w1 = sb_push_mir(sb, "  " + result_tmp + " = " + op + " %_t" + int_to_string(left_id) + ", %_t" + int_to_string(right_id));
+    // v0.92: Use float MIR operator (f+, f-, etc) when operands are float
+    let mir_op = if is_float_expr(left_ast) { "f" + op } else { op };
+    let w1 = sb_push_mir(sb, "  " + result_tmp + " = " + mir_op + " %_t" + int_to_string(left_id) + ", %_t" + int_to_string(right_id));
     pack_ids(right_temp + 1, right_block);
 
 fn lower_unary_sb(ast: String, temp_id: i64, block_id: i64, sb: i64) -> i64 =
@@ -2047,6 +2146,19 @@ fn lower_let_sb(ast: String, temp_id: i64, block_id: i64, sb: i64) -> i64 =
     let val_block = unpack_block(val_result);
     let val_id = val_temp - 1;
     let w1 = sb_push_mir(sb, "  %" + name + " = copy %_t" + int_to_string(val_id));
+    lower_expr_sb(body_ast, val_temp, val_block, sb);
+
+// v0.92: Mutable let - emit alloca + store instead of copy
+fn lower_let_mut_sb(ast: String, temp_id: i64, block_id: i64, sb: i64) -> i64 =
+    let name = extract_name(ast);
+    let value_ast = get_child(ast, 1);
+    let body_ast = get_child(ast, 2);
+    let val_result = lower_expr_sb(value_ast, temp_id, block_id, sb);
+    let val_temp = unpack_temp(val_result);
+    let val_block = unpack_block(val_result);
+    let val_id = val_temp - 1;
+    let w1 = sb_push_mir(sb, "  alloca %" + name);
+    let w2 = sb_push_mir(sb, "  store %" + name + ", %_t" + int_to_string(val_id));
     lower_expr_sb(body_ast, val_temp, val_block, sb);
 
 fn lower_call_sb(ast: String, temp_id: i64, block_id: i64, sb: i64) -> i64 =
@@ -2177,6 +2289,7 @@ fn find_rest_balanced(s: String, idx: i64, depth: i64) -> String =
 
 // v0.60.126: Assignment expression lowering
 // Assign format: (assign lhs rhs)
+// v0.92: Use store instead of copy for mutable variable assignments
 fn lower_assign_sb(ast: String, temp_id: i64, block_id: i64, sb: i64) -> i64 =
     let lhs = assign_lhs_expr(ast);
     let rhs = assign_rhs_expr(ast);
@@ -2187,7 +2300,7 @@ fn lower_assign_sb(ast: String, temp_id: i64, block_id: i64, sb: i64) -> i64 =
     let rhs_id = tr - 1;
     // Extract target name from lhs (var <name>)
     let name = extract_var_from_assign(lhs);
-    let w1 = sb_push_mir(sb, "  %" + name + " = copy %_t" + int_to_string(rhs_id));
+    let w1 = sb_push_mir(sb, "  store %" + name + ", %_t" + int_to_string(rhs_id));
     // Assignment returns unit
     let tmp = "%_t" + int_to_string(tr);
     let w2 = sb_push_mir(sb, "  " + tmp + " = const 0");
@@ -2236,6 +2349,97 @@ fn lower_while_sb(ast: String, temp_id: i64, block_id: i64, sb: i64) -> i64 =
     let w7 = sb_push_mir(sb, "  " + result_tmp + " = const 0");
     pack_ids(body_temp + 1, body_block);
 
+// ============================================================================
+// v0.95: For-Loop Range Lowering
+// ============================================================================
+// AST: (for <varname> start_ast end_ast body_ast)
+// MIR:
+//   alloca %varname
+//   <start code> → %_tS
+//   store %varname, %_tS
+//   <end code> → %_tE
+//   goto for_start_N
+// for_start_N:
+//   %_tL = load %varname → resolves via alloca/load in codegen
+//   %_tC = < %_tL, %_tE
+//   branch %_tC, for_body_N, for_end_N
+// for_body_N:
+//   <body code>
+//   %_tI = load %varname
+//   %_tI+1 = const 1
+//   %_tI+2 = + %_tI, %_tI+1
+//   store %varname, %_tI+2
+//   goto for_start_N
+// for_end_N:
+//   %_tR = const 0  ; for returns unit
+
+fn extract_for_varname_from_ast(ast: String) -> String =
+    let raw = get_child(ast, 0);
+    if raw.len() < 3 { "" } else if raw.byte_at(0) != 60 { raw } else { raw.slice(1, raw.len() - 1) };
+
+fn lower_for_sb(ast: String, temp_id: i64, block_id: i64, sb: i64) -> i64 =
+    let varname = extract_for_varname_from_ast(ast);
+    let start_ast = get_child(ast, 1);
+    let end_ast = get_child(ast, 2);
+    let body_ast = get_child(ast, 3);
+
+    let for_start_lbl = "for_start_" + int_to_string(block_id);
+    let for_body_lbl = "for_body_" + int_to_string(block_id);
+    let for_end_lbl = "for_end_" + int_to_string(block_id);
+
+    // alloca for loop variable
+    let w0 = sb_push_mir(sb, "  alloca %" + varname);
+
+    // Lower start expression and store into loop variable
+    let start_result = lower_expr_sb(start_ast, temp_id, block_id + 1, sb);
+    let start_temp = unpack_temp(start_result);
+    let start_block = unpack_block(start_result);
+    let start_id = start_temp - 1;
+    let w1 = sb_push_mir(sb, "  store %" + varname + ", %_t" + int_to_string(start_id));
+
+    // Lower end expression (evaluated once, before loop)
+    let end_result = lower_expr_sb(end_ast, start_temp, start_block, sb);
+    let end_temp = unpack_temp(end_result);
+    let end_block = unpack_block(end_result);
+    let end_id = end_temp - 1;
+
+    // Jump to loop header
+    let w2 = sb_push_mir(sb, "  goto " + for_start_lbl);
+    let w3 = sb_push_mir(sb, for_start_lbl + ":");
+
+    // Condition: load loop var, compare < end
+    let load_tmp = "%_t" + int_to_string(end_temp);
+    let w4 = sb_push_mir(sb, "  " + load_tmp + " = copy %" + varname);
+    let cmp_tmp = "%_t" + int_to_string(end_temp + 1);
+    let w5 = sb_push_mir(sb, "  " + cmp_tmp + " = < " + load_tmp + ", %_t" + int_to_string(end_id));
+    let w6 = sb_push_mir(sb, "  branch " + cmp_tmp + ", " + for_body_lbl + ", " + for_end_lbl);
+
+    // Body label
+    let w7 = sb_push_mir(sb, for_body_lbl + ":");
+
+    // Lower body
+    let body_result = lower_expr_sb(body_ast, end_temp + 2, end_block, sb);
+    let body_temp = unpack_temp(body_result);
+    let body_block = unpack_block(body_result);
+
+    // Increment: load var, add 1, store back
+    let inc_load_tmp = "%_t" + int_to_string(body_temp);
+    let w8 = sb_push_mir(sb, "  " + inc_load_tmp + " = copy %" + varname);
+    let one_tmp = "%_t" + int_to_string(body_temp + 1);
+    let w9 = sb_push_mir(sb, "  " + one_tmp + " = const 1");
+    let inc_tmp = "%_t" + int_to_string(body_temp + 2);
+    let w10 = sb_push_mir(sb, "  " + inc_tmp + " = + " + inc_load_tmp + ", " + one_tmp);
+    let w11 = sb_push_mir(sb, "  store %" + varname + ", " + inc_tmp);
+
+    // Jump back to loop start
+    let w12 = sb_push_mir(sb, "  goto " + for_start_lbl);
+
+    // End label + unit result
+    let w13 = sb_push_mir(sb, for_end_lbl + ":");
+    let result_tmp = "%_t" + int_to_string(body_temp + 3);
+    let w14 = sb_push_mir(sb, "  " + result_tmp + " = const 0");
+    pack_ids(body_temp + 4, body_block);
+
 // Extract lhs from (assign lhs rhs)
 fn assign_lhs_expr(ast: String) -> String =
     let len = ast.len();
@@ -2253,9 +2457,10 @@ fn assign_rhs_expr(ast: String) -> String =
     };
 
 // Extract variable name from (var <name>)
+// v0.92: Fixed guard from < 10 to < 9 to handle single-char variable names
 fn extract_var_from_assign(ast: String) -> String =
     let len = ast.len();
-    if len < 10 { "" } else {
+    if len < 9 { "" } else {
         // (var <name>) -> skip "(var <" = 6, remove ">)" = 2
         ast.slice(6, len - 2)
     };
@@ -2918,11 +3123,14 @@ fn llvm_gen_return(line: String, pos: i64) -> String =
 // v0.46: Return with proper type for String functions
 // v0.60.118: Add inttoptr conversion for String returns (values are i64 internally)
 // v0.60.225: Simplified - String returns i64 directly (no ptr conversion)
+// v0.92: Added f64/double return type support
 fn llvm_gen_return_typed(line: String, pos: i64, ret_type: String) -> String =
     let val_start = low_skip_ws(line, pos + 6);
     let val = trim_end(line.slice(val_start, line.len()));
     if ret_type == "bool" {
         "  " + val + "_ret = trunc i64 " + val + " to i1|  ret i1 " + val + "_ret"
+    } else if ret_type == "f64" {
+        "  ret double " + val
     } else {
         "  ret i64 " + val
     };
@@ -2943,6 +3151,45 @@ fn llvm_gen_goto(line: String, pos: i64) -> String =
     let label_start = low_skip_ws(line, pos + 4);
     let label = line.slice(label_start, line.len());
     "  br label %" + trim_end(label);
+
+// v0.92: Float binary operation
+// MIR: f+ %a, %b → LLVM: fadd double %a, %b
+fn llvm_gen_float_binop(op: String, line: String, pos: i64, dest: String) -> String =
+    let p1 = low_skip_ws(line, pos);
+    let comma = find_comma(line, p1);
+    let left = line.slice(p1, comma);
+    let p2 = low_skip_ws(line, comma + 1);
+    let right = line.slice(p2, line.len());
+    "  " + dest + " = " + op + " double " + trim_end(left) + ", " + trim_end(right);
+
+// v0.92: Float comparison operation
+// MIR: f< %a, %b → LLVM: fcmp olt double %a, %b + zext i1 to i64
+fn llvm_gen_float_cmp(pred: String, line: String, pos: i64, dest: String) -> String =
+    let p1 = low_skip_ws(line, pos);
+    let comma = find_comma(line, p1);
+    let left = line.slice(p1, comma);
+    let p2 = low_skip_ws(line, comma + 1);
+    let right = line.slice(p2, line.len());
+    "  " + dest + "_cmp = fcmp " + pred + " double " + trim_end(left) + ", " + trim_end(right) + "|  " + dest + " = zext i1 " + dest + "_cmp to i64";
+
+// v0.92: Alloca for mutable variables - emit LLVM alloca and mark in mapping
+// MIR: alloca %name → LLVM: %name = alloca i64 + mapping[%name] = ALLOCA
+fn llvm_gen_alloca(line: String, pos: i64, mapping: String) -> String =
+    let name_start = low_skip_ws(line, pos + 6);
+    let name = trim_end(line.slice(name_start, line.len()));
+    let new_mapping = add_mapping(mapping, name, "ALLOCA");
+    changed_mapping(new_mapping, "  " + name + " = alloca i64");
+
+// v0.92: Store for mutable variables
+// MIR: store %name, %_tN → LLVM: store i64 %resolved_src, ptr %name
+fn llvm_gen_store(line: String, pos: i64, mapping: String) -> String =
+    let after_store = low_skip_ws(line, pos + 5);
+    let comma_pos = find_comma(line, after_store);
+    let dest_name = trim_end(line.slice(after_store, comma_pos));
+    let src_start = low_skip_ws(line, comma_pos + 1);
+    let src = trim_end(line.slice(src_start, line.len()));
+    let resolved_src = resolve_variable(src, mapping);
+    same_mapping("  store i64 " + resolved_src + ", ptr " + dest_name);
 
 // v0.46: Updated to pass return type for proper LLVM IR generation
 fn gen_function(mir: String) -> String =
@@ -3538,6 +3785,9 @@ fn llvm_gen_line_with_strings_map_and_fns(line: String, ret_type: String, string
     else if low_starts_with_at(line, p, "return") { same_mapping(llvm_gen_return_typed(line, p, ret_type)) }
     else if low_starts_with_at(line, p, "branch") { same_mapping(llvm_gen_branch(line, p)) }
     else if low_starts_with_at(line, p, "goto") { same_mapping(llvm_gen_goto(line, p)) }
+    // v0.92: alloca/store for mutable variables
+    else if low_starts_with_at(line, p, "alloca") { llvm_gen_alloca(line, p, mapping) }
+    else if low_starts_with_at(line, p, "store") { llvm_gen_store(line, p, mapping) }
     // v0.88.10: Non-assignment concurrency instructions
     else if low_starts_with_at(line, p, "mutex-") { same_mapping(llvm_gen_conc_stmt(line, p)) }
     else if low_starts_with_at(line, p, "arc-") { same_mapping(llvm_gen_conc_stmt(line, p)) }
@@ -3597,18 +3847,36 @@ fn llvm_gen_rhs_with_strings_map_and_fns(line: String, pos: i64, dest: String, s
             let name_mapping = add_mapping(mapping, dest, resolved_src);
             changed_mapping_empty(name_mapping)
         } else {
-            // Propagate string marker if source is string
+            // v0.92: Check if source is an ALLOCA variable (mutable) - emit load instead of copy
             let resolved_src = resolve_variable(src, mapping);
-            let src_is_string = is_string_var_sb(src, str_sb);
-            let w = if src_is_string { push_string_marker(str_sb, dest) } else { 0 };
-            same_mapping("  " + dest + " = add nsw i64 0, " + resolved_src)
+            if resolved_src == "ALLOCA" {
+                // Mutable variable: emit load from alloca pointer
+                same_mapping("  " + dest + " = load i64, ptr " + src)
+            } else {
+                // Propagate string marker if source is string
+                let src_is_string = is_string_var_sb(src, str_sb);
+                let w = if src_is_string { push_string_marker(str_sb, dest) } else { 0 };
+                same_mapping("  " + dest + " = add nsw i64 0, " + resolved_src)
+            }
         }
     } else if low_starts_with_at(line, pos, "string") {
         let str_start = low_skip_ws(line, pos + 6);
         let str_content = line.slice(str_start + 1, line.len() - 1);
         let w = push_string_marker(str_sb, dest);
         same_mapping(llvm_gen_string_ref(dest, str_content, strings))
-    } else if low_starts_with_at(line, pos, "+") { llvm_gen_add_with_strings_sb(line, pos + 1, dest, mapping, str_sb) }
+    // v0.92: Float arithmetic and comparison operations (must check before integer ops)
+    } else if low_starts_with_at(line, pos, "f+") { same_mapping(llvm_gen_float_binop("fadd", line, pos + 2, dest)) }
+    else if low_starts_with_at(line, pos, "f-") { same_mapping(llvm_gen_float_binop("fsub", line, pos + 2, dest)) }
+    else if low_starts_with_at(line, pos, "f*") { same_mapping(llvm_gen_float_binop("fmul", line, pos + 2, dest)) }
+    else if low_starts_with_at(line, pos, "f/") { same_mapping(llvm_gen_float_binop("fdiv", line, pos + 2, dest)) }
+    else if low_starts_with_at(line, pos, "f<=") { same_mapping(llvm_gen_float_cmp("ole", line, pos + 3, dest)) }
+    else if low_starts_with_at(line, pos, "f>=") { same_mapping(llvm_gen_float_cmp("oge", line, pos + 3, dest)) }
+    else if low_starts_with_at(line, pos, "f<") { same_mapping(llvm_gen_float_cmp("olt", line, pos + 2, dest)) }
+    else if low_starts_with_at(line, pos, "f>") { same_mapping(llvm_gen_float_cmp("ogt", line, pos + 2, dest)) }
+    else if low_starts_with_at(line, pos, "f==") { same_mapping(llvm_gen_float_cmp("oeq", line, pos + 3, dest)) }
+    else if low_starts_with_at(line, pos, "f!=") { same_mapping(llvm_gen_float_cmp("one", line, pos + 3, dest)) }
+    // Integer arithmetic
+    else if low_starts_with_at(line, pos, "+") { llvm_gen_add_with_strings_sb(line, pos + 1, dest, mapping, str_sb) }
     else if low_starts_with_at(line, pos, "-") { same_mapping(llvm_gen_binop("sub", line, pos + 1, dest)) }
     else if low_starts_with_at(line, pos, "*") { same_mapping(llvm_gen_binop("mul", line, pos + 1, dest)) }
     else if low_starts_with_at(line, pos, "/") { same_mapping(llvm_gen_binop("sdiv", line, pos + 1, dest)) }
@@ -3959,12 +4227,14 @@ fn extract_call_fn_name(line: String, pos: i64) -> String =
     if paren_pos > at_pos { line.slice(at_pos, paren_pos) } else { "" };
 
 // Check if a variable name is a user variable (not %_t)
+// v0.92: Fixed to handle short names like %i (len=2) - they ARE user vars
 fn is_user_variable(name: String) -> bool =
-    if name.len() < 3 { false }
+    if name.len() < 2 { false }
+    else if name.len() == 2 { true }
     else {
         let after_pct = name.byte_at(1);
         // User vars don't start with _t after the %
-        not (after_pct == 95 and name.len() > 2 and name.byte_at(2) == 116)
+        not (after_pct == 95 and name.byte_at(2) == 116)
     };
 
 // Resolve a variable using the mapping

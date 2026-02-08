@@ -2051,10 +2051,12 @@ impl OptimizationPass for PureFunctionCSE {
 
     fn run_on_function(&self, func: &mut MirFunction) -> bool {
         let mut changed = false;
-        // Map from (func_name, args...) -> result place
-        let mut call_results: HashMap<String, Place> = HashMap::new();
 
         for block in &mut func.blocks {
+            // v0.89.15: Scope CSE map per block to avoid cross-block dominance violations
+            // Previously the map was shared across all blocks, causing "instruction does not
+            // dominate all uses" when sibling blocks (e.g. if/else branches) had identical calls.
+            let mut call_results: HashMap<String, Place> = HashMap::new();
             let mut new_instructions = Vec::new();
 
             for inst in &block.instructions {

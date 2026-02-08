@@ -294,8 +294,13 @@ impl CodeGen {
             };
 
             // v0.60.56: Build opt command with optional fast-math flags
+            // v0.89.15: Pass host CPU to opt for target-aware optimization
             let mut opt_cmd = Command::new("opt");
             opt_cmd.args(["--passes", passes_arg]);
+            let cpu_str = cpu.to_str().unwrap_or("x86-64");
+            if !cpu_str.is_empty() {
+                opt_cmd.arg(format!("--mcpu={}", cpu_str));
+            }
 
             // v0.60.56: Add fast-math flags when enabled
             // These enable aggressive FP optimizations (FMA, reciprocal, reassociation)
