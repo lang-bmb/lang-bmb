@@ -2,7 +2,7 @@
 //!
 //! Phase 13: Comprehensive parser testing
 
-use crate::ast::{Expr, Item, Visibility};
+use crate::ast::{Attribute, Expr, Item, Visibility};
 use crate::lexer::tokenize;
 use crate::parser::parse;
 
@@ -822,4 +822,435 @@ fn test_parse_invalid_syntax() {
     assert!(parse_fails("fn ()")); // Missing function name
     assert!(parse_fails("fn foo ->")); // Missing return type
     assert!(parse_fails("struct { }")); // Missing struct name
+}
+
+// ============================================
+// Edge Cases and Robustness (v0.89 Quality Gate)
+// ============================================
+
+/// Nested if-else inside another if-else
+#[test]
+fn test_parse_nested_if_else() {
+    let source = r#"
+        fn classify(x: i64) -> i64 =
+            if x > 0 {
+                if x > 100 { 2 } else { 1 }
+            } else {
+                if x < -100 { -2 } else { -1 }
+            };
+    "#;
+    let prog = parse_ok(source);
+    if let Item::FnDef(f) = &prog.items[0] {
+        // The outer expression should be an If
+        if let Expr::If { then_branch, else_branch, .. } = &f.body.node {
+            // then_branch is a Block containing a nested If
+            fn contains_if(e: &Expr) -> bool {
+                match e {
+                    Expr::If { .. } => true,
+                    Expr::Block(stmts) => stmts.iter().any(|s| contains_if(&s.node)),
+                    _ => false,
+                }
+            }
+            assert!(contains_if(&then_branch.node), "then_branch should contain nested If");
+            assert!(contains_if(&else_branch.node), "else_branch should contain nested If");
+        } else {
+            panic!("Expected outer If expression");
+        }
+    } else {
+        panic!("Expected FnDef");
+    }
+}
+
+/// Nested match expressions
+#[test]
+fn test_parse_nested_match() {
+    let source = r#"
+        enum Outer { A, B }
+        enum Inner { X, Y }
+        fn test(o: Outer, i: Inner) -> i64 = match o {
+            Outer::A => match i {
+                Inner::X => 1,
+                Inner::Y => 2,
+            },
+            Outer::B => 3,
+        };
+    "#;
+    let prog = parse_ok(source);
+    assert_eq!(prog.items.len(), 3);
+    if let Item::FnDef(f) = &prog.items[2] {
+        if let Expr::Match { arms, .. } = &f.body.node {
+            assert_eq!(arms.len(), 2);
+            // First arm body should itself be a Match
+            assert!(matches!(arms[0].body.node, Expr::Match { .. }));
+        } else {
+            panic!("Expected Match expression");
+        }
+    } else {
+        panic!("Expected FnDef");
+    }
+}
+
+/// Multi-line function body with multiple let bindings and blocks
+#[test]
+fn test_parse_multiline_block_body() {
+    let source = r#"
+        fn compute(a: i64, b: i64) -> i64 = {
+            let x: i64 = a + b;
+            let y: i64 = a * b;
+            let z: i64 = x + y;
+            z
+        };
+    "#;
+    let prog = parse_ok(source);
+    if let Item::FnDef(f) = &prog.items[0] {
+        // desugar_block_lets transforms into nested Let expressions
+        assert!(matches!(f.body.node, Expr::Let { .. }));
+    } else {
+        panic!("Expected FnDef");
+    }
+}
+
+/// Struct with many fields (5+)
+#[test]
+fn test_parse_struct_many_fields() {
+    let source = r#"
+        struct Record {
+            id: i64,
+            name: i64,
+            value: f64,
+            active: bool,
+            count: i64,
+            score: f64,
+        }
+    "#;
+    let prog = parse_ok(source);
+    if let Item::StructDef(s) = &prog.items[0] {
+        assert_eq!(s.name.node, "Record");
+        assert_eq!(s.fields.len(), 6);
+    } else {
+        panic!("Expected StructDef");
+    }
+}
+
+/// Enum with mixed variant types (unit, tuple, struct-like)
+#[test]
+fn test_parse_enum_mixed_variants() {
+    let source = r#"
+        enum Shape {
+            Circle(f64),
+            Rectangle(f64, f64),
+            Point,
+        }
+    "#;
+    let prog = parse_ok(source);
+    if let Item::EnumDef(e) = &prog.items[0] {
+        assert_eq!(e.name.node, "Shape");
+        assert_eq!(e.variants.len(), 3);
+    } else {
+        panic!("Expected EnumDef");
+    }
+}
+
+/// Chained method calls: x.foo().bar()
+#[test]
+fn test_parse_chained_method_calls() {
+    let source = r#"
+        fn test(x: i64) -> i64 = x.abs().abs();
+    "#;
+    let prog = parse_ok(source);
+    if let Item::FnDef(f) = &prog.items[0] {
+        // Outer: MethodCall { receiver: MethodCall { ... }, method: "abs" }
+        if let Expr::MethodCall { receiver, method, .. } = &f.body.node {
+            assert_eq!(method, "abs");
+            assert!(matches!(receiver.node, Expr::MethodCall { .. }));
+        } else {
+            panic!("Expected chained MethodCall");
+        }
+    } else {
+        panic!("Expected FnDef");
+    }
+}
+
+/// Array literal and index access
+#[test]
+fn test_parse_array_literal_and_index() {
+    let source = r#"
+        fn test() -> i64 = {
+            let arr: [i64; 3] = [10, 20, 30];
+            arr[1]
+        };
+    "#;
+    let prog = parse_ok(source);
+    if let Item::FnDef(f) = &prog.items[0] {
+        // After desugar: Let { value: ArrayLit, body: Block([Index]) }
+        if let Expr::Let { value, body, .. } = &f.body.node {
+            assert!(matches!(value.node, Expr::ArrayLit(_)));
+            if let Expr::Block(stmts) = &body.node {
+                assert!(matches!(stmts[0].node, Expr::Index { .. }));
+            } else {
+                // Could be Index directly
+                assert!(matches!(body.node, Expr::Index { .. }));
+            }
+        } else {
+            panic!("Expected Let expression");
+        }
+    } else {
+        panic!("Expected FnDef");
+    }
+}
+
+/// Tuple creation and tuple field access
+#[test]
+fn test_parse_tuple_and_field_access() {
+    let source = r#"
+        fn test() -> i64 = {
+            let t: (i64, bool) = (42, true);
+            t.0
+        };
+    "#;
+    let prog = parse_ok(source);
+    if let Item::FnDef(f) = &prog.items[0] {
+        if let Expr::Let { value, .. } = &f.body.node {
+            assert!(matches!(value.node, Expr::Tuple(_)));
+        } else {
+            panic!("Expected Let with Tuple value");
+        }
+    } else {
+        panic!("Expected FnDef");
+    }
+}
+
+/// While loop with mutation block inside
+#[test]
+fn test_parse_while_with_mutation_block() {
+    let source = r#"
+        fn sum_to(n: i64) -> i64 = {
+            let mut total: i64 = 0;
+            let mut i: i64 = 0;
+            while i < n {
+                total = total + i;
+                i = i + 1;
+                0
+            };
+            total
+        };
+    "#;
+    parse_ok(source);
+}
+
+/// For loop with range and mutation
+#[test]
+fn test_parse_for_range_mutation() {
+    let source = r#"
+        fn factorial(n: i64) -> i64 = {
+            let mut result: i64 = 1;
+            for i in 1..n {
+                result = result * i;
+                0
+            };
+            result
+        };
+    "#;
+    parse_ok(source);
+}
+
+/// Closure expression bound to let and invoked
+#[test]
+fn test_parse_closure_in_let_and_call() {
+    let source = r#"
+        fn test() -> i64 = {
+            let offset: i64 = 10;
+            let add_offset = fn |x: i64| { x + offset };
+            add_offset(32)
+        };
+    "#;
+    let prog = parse_ok(source);
+    // Body should start with a Let chain (desugar_block_lets)
+    if let Item::FnDef(f) = &prog.items[0] {
+        // First let: offset = 10
+        if let Expr::Let { name, body, .. } = &f.body.node {
+            assert_eq!(name, "offset");
+            // Second let: add_offset = fn |x| { ... }
+            if let Expr::Let { name: n2, value, .. } = &body.node {
+                assert_eq!(n2, "add_offset");
+                assert!(matches!(value.node, Expr::Closure { .. }), "Expected Closure, got {:?}", value.node);
+            } else {
+                panic!("Expected inner Let for add_offset");
+            }
+        } else {
+            panic!("Expected outer Let for offset");
+        }
+    } else {
+        panic!("Expected FnDef");
+    }
+}
+
+/// Multiple function definitions in one source file
+#[test]
+fn test_parse_multiple_functions() {
+    let source = r#"
+        fn add(a: i64, b: i64) -> i64 = a + b;
+        fn sub(a: i64, b: i64) -> i64 = a - b;
+        fn mul(a: i64, b: i64) -> i64 = a * b;
+        fn div(a: i64, b: i64) -> i64 = a / b;
+        fn negate(x: i64) -> i64 = 0 - x;
+    "#;
+    let prog = parse_ok(source);
+    assert_eq!(prog.items.len(), 5);
+    for item in &prog.items {
+        assert!(matches!(item, Item::FnDef(_)));
+    }
+}
+
+/// Deeply nested parenthesized expressions
+#[test]
+fn test_parse_deeply_nested_parens() {
+    let source = "fn test() -> i64 = ((((((1 + 2))))));";
+    let prog = parse_ok(source);
+    if let Item::FnDef(f) = &prog.items[0] {
+        // After unwrapping parens, should still be a Binary Add
+        fn unwrap_to_binary(e: &Expr) -> bool {
+            match e {
+                Expr::Binary { .. } => true,
+                Expr::Block(stmts) if stmts.len() == 1 => unwrap_to_binary(&stmts[0].node),
+                _ => false,
+            }
+        }
+        assert!(unwrap_to_binary(&f.body.node), "Expected Binary expression after paren unwrap, got {:?}", f.body.node);
+    } else {
+        panic!("Expected FnDef");
+    }
+}
+
+/// Operator precedence: arithmetic + comparison + logical
+#[test]
+fn test_parse_operator_precedence_mixed() {
+    // Should parse as: (a + b) > (c * d) and (e == f)
+    // i.e., `and` binds loosest, then comparison, then arithmetic
+    let source = "fn test(a: i64, b: i64, c: i64, d: i64, e: i64, f: i64) -> bool = a + b > c * d and e == f;";
+    let prog = parse_ok(source);
+    if let Item::FnDef(f) = &prog.items[0] {
+        // Top-level should be `and`
+        if let Expr::Binary { op, left, right } = &f.body.node {
+            assert!(matches!(op, crate::ast::BinOp::And), "Top-level should be And, got {:?}", op);
+            // Left of and: (a + b) > (c * d)
+            assert!(matches!(left.node, Expr::Binary { op: crate::ast::BinOp::Gt, .. }));
+            // Right of and: e == f
+            assert!(matches!(right.node, Expr::Binary { op: crate::ast::BinOp::Eq, .. }));
+        } else {
+            panic!("Expected Binary expression");
+        }
+    } else {
+        panic!("Expected FnDef");
+    }
+}
+
+/// @pure attribute on a function
+#[test]
+fn test_parse_pure_attribute() {
+    let source = r#"
+        @pure
+        fn square(x: i64) -> i64 = x * x;
+    "#;
+    let prog = parse_ok(source);
+    if let Item::FnDef(f) = &prog.items[0] {
+        assert!(!f.attributes.is_empty(), "Expected @pure attribute");
+        if let Attribute::Simple { name, .. } = &f.attributes[0] {
+            assert_eq!(name.node, "pure");
+        } else {
+            panic!("Expected Simple attribute");
+        }
+    } else {
+        panic!("Expected FnDef");
+    }
+}
+
+/// Trait definition with multiple methods
+#[test]
+fn test_parse_trait_def() {
+    let source = r#"
+        trait Printable {
+            fn to_string(self: Self) -> i64;
+            fn print(self: Self) -> ();
+        }
+    "#;
+    let prog = parse_ok(source);
+    assert_eq!(prog.items.len(), 1);
+    if let Item::TraitDef(t) = &prog.items[0] {
+        assert_eq!(t.name.node, "Printable");
+        assert_eq!(t.methods.len(), 2);
+    } else {
+        panic!("Expected TraitDef");
+    }
+}
+
+/// Impl block for a trait
+#[test]
+fn test_parse_impl_block() {
+    let source = r#"
+        struct Counter { value: i64 }
+        trait Countable {
+            fn count(self: Self) -> i64;
+        }
+        impl Countable for Counter {
+            fn count(self: Self) -> i64 = self.value;
+        }
+    "#;
+    let prog = parse_ok(source);
+    assert_eq!(prog.items.len(), 3);
+    assert!(matches!(prog.items[0], Item::StructDef(_)));
+    assert!(matches!(prog.items[1], Item::TraitDef(_)));
+    if let Item::ImplBlock(imp) = &prog.items[2] {
+        assert_eq!(imp.trait_name.node, "Countable");
+        assert_eq!(imp.methods.len(), 1);
+    } else {
+        panic!("Expected ImplBlock, got {:?}", prog.items[2]);
+    }
+}
+
+/// Cast expression (as) and shift operators
+#[test]
+fn test_parse_cast_and_shift() {
+    // Cast expression: expr as Type
+    let source = "fn to_float(x: i64) -> f64 = x as f64;";
+    let prog = parse_ok(source);
+    if let Item::FnDef(f) = &prog.items[0] {
+        assert!(matches!(f.body.node, Expr::Cast { .. }));
+    } else {
+        panic!("Expected FnDef");
+    }
+
+    // Shift operators
+    let source2 = "fn shl_test(x: i64) -> i64 = x << 2;";
+    let prog2 = parse_ok(source2);
+    if let Item::FnDef(f) = &prog2.items[0] {
+        if let Expr::Binary { op, .. } = &f.body.node {
+            assert!(matches!(op, crate::ast::BinOp::Shl));
+        } else {
+            panic!("Expected Binary Shl");
+        }
+    }
+
+    let source3 = "fn shr_test(x: i64) -> i64 = x >> 2;";
+    let prog3 = parse_ok(source3);
+    if let Item::FnDef(f) = &prog3.items[0] {
+        if let Expr::Binary { op, .. } = &f.body.node {
+            assert!(matches!(op, crate::ast::BinOp::Shr));
+        } else {
+            panic!("Expected Binary Shr");
+        }
+    }
+}
+
+/// Negative tests: additional invalid syntax cases
+#[test]
+fn test_parse_invalid_edge_cases() {
+    // Mismatched braces
+    assert!(parse_fails("fn test() -> i64 = { 42 ;"));
+    // Double semicolons at top level
+    assert!(parse_fails("fn test() -> i64 = 42;;"));
+    // Missing equals sign before body
+    assert!(parse_fails("fn test() -> i64 42;"));
+    // Missing closing paren in function params
+    assert!(parse_fails("fn test(x: i64 -> i64 = x;"));
 }

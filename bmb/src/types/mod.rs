@@ -6165,4 +6165,175 @@ mod tests {
         assert!(ok("fn shl(x: i64) -> i64 = x << 3;"));
         assert!(ok("fn shr(x: i64) -> i64 = x >> 1;"));
     }
+
+    // ============================================
+    // Error Handling Tests: Verifying the compiler
+    // rejects invalid programs and produces correct
+    // error diagnostics.
+    // ============================================
+
+    /// Helper: parse and type-check, returning the error message if it fails
+    fn err_msg(source: &str) -> String {
+        match check(source) {
+            Err(e) => e.message().to_string(),
+            Ok(_) => panic!("expected type error, but source type-checked successfully"),
+        }
+    }
+
+    #[test]
+    fn test_err_add_i64_and_bool() {
+        // i64 + bool should be a type error: operands must have the same numeric type
+        let msg = err_msg("fn bad(a: i64, b: bool) -> i64 = a + b;");
+        assert!(msg.contains("expected") || msg.contains("i64") || msg.contains("bool"),
+            "Error should mention type mismatch, got: {msg}");
+    }
+
+    #[test]
+    fn test_err_mul_bool_operands() {
+        // bool * bool is not a valid arithmetic operation
+        assert!(err("fn bad(a: bool, b: bool) -> bool = a * b;"));
+    }
+
+    #[test]
+    fn test_err_undefined_struct_in_constructor() {
+        // Using a struct name that was never defined
+        let msg = err_msg("fn bad() -> i64 = { let _p = new Nonexistent { x: 1 }; 0 };");
+        assert!(msg.contains("undefined struct") || msg.contains("Nonexistent"),
+            "Error should mention undefined struct, got: {msg}");
+    }
+
+    #[test]
+    fn test_err_undefined_enum_variant_access() {
+        // Referencing an enum that does not exist
+        let msg = err_msg("fn bad() -> i64 = { let _c = Ghost::Phantom; 0 };");
+        assert!(msg.contains("undefined enum") || msg.contains("Ghost"),
+            "Error should mention undefined enum, got: {msg}");
+    }
+
+    #[test]
+    fn test_err_unknown_variant_on_enum() {
+        // Referencing a variant that doesn't exist on a defined enum
+        let msg = err_msg(
+            "enum Color { Red, Green, Blue }
+             fn bad() -> Color = Color::Yellow;"
+        );
+        assert!(msg.contains("unknown variant") || msg.contains("Yellow"),
+            "Error should mention unknown variant, got: {msg}");
+    }
+
+    #[test]
+    fn test_err_unknown_field_on_struct() {
+        // Accessing a field that doesn't exist on the struct
+        let msg = err_msg(
+            "struct Point { x: i64, y: i64 }
+             fn bad(p: Point) -> i64 = p.z;"
+        );
+        assert!(msg.contains("unknown field") || msg.contains("z"),
+            "Error should mention unknown field, got: {msg}");
+    }
+
+    #[test]
+    fn test_err_negation_on_bool() {
+        // Unary minus on bool should fail (negation requires numeric type)
+        let msg = err_msg("fn bad(b: bool) -> bool = -b;");
+        assert!(msg.contains("negation") || msg.contains("numeric"),
+            "Error should mention negation requires numeric type, got: {msg}");
+    }
+
+    #[test]
+    fn test_err_not_on_i64() {
+        // Logical `not` on an integer should fail (requires bool)
+        let msg = err_msg("fn bad(x: i64) -> bool = not x;");
+        assert!(msg.contains("expected") || msg.contains("bool") || msg.contains("i64"),
+            "Error should mention type mismatch, got: {msg}");
+    }
+
+    #[test]
+    fn test_err_unknown_method_on_string() {
+        // Calling a method that doesn't exist on String
+        let msg = err_msg(r#"fn bad(s: String) -> i64 = s.nonexistent();"#);
+        assert!(msg.contains("unknown method") || msg.contains("nonexistent"),
+            "Error should mention unknown method, got: {msg}");
+    }
+
+    #[test]
+    fn test_err_method_call_on_integer() {
+        // Calling a method on i64 which has no methods
+        assert!(err("fn bad(x: i64) -> i64 = x.len();"));
+    }
+
+    #[test]
+    fn test_err_if_condition_not_bool() {
+        // Using an integer as if-condition should fail
+        let msg = err_msg("fn bad(x: i64) -> i64 = if x { 1 } else { 0 };");
+        assert!(msg.contains("expected") || msg.contains("bool"),
+            "Error should mention bool expected for condition, got: {msg}");
+    }
+
+    #[test]
+    fn test_err_enum_variant_too_many_args() {
+        // Providing more arguments than the variant expects
+        let msg = err_msg(
+            "enum Option { Some(i64), None }
+             fn bad() -> Option = Option::Some(1, 2);"
+        );
+        assert!(msg.contains("expected") || msg.contains("args") || msg.contains("argument"),
+            "Error should mention argument count mismatch, got: {msg}");
+    }
+
+    #[test]
+    fn test_err_enum_variant_too_few_args() {
+        // Providing fewer arguments than the variant expects
+        let msg = err_msg(
+            "enum Option { Some(i64), None }
+             fn bad() -> Option = Option::Some();"
+        );
+        assert!(msg.contains("expected") || msg.contains("args") || msg.contains("argument"),
+            "Error should mention argument count mismatch, got: {msg}");
+    }
+
+    #[test]
+    fn test_err_field_access_on_non_struct() {
+        // Accessing a field on a primitive type (i64)
+        let msg = err_msg("fn bad(x: i64) -> i64 = x.foo;");
+        assert!(msg.contains("non-struct") || msg.contains("field"),
+            "Error should mention field access on non-struct type, got: {msg}");
+    }
+
+    #[test]
+    fn test_err_index_non_array() {
+        // Indexing into a bool which is not an array or pointer
+        let msg = err_msg("fn bad(x: bool) -> bool = x[0];");
+        assert!(msg.contains("Cannot index") || msg.contains("index"),
+            "Error should mention indexing into wrong type, got: {msg}");
+    }
+
+    #[test]
+    fn test_err_let_binding_type_mismatch() {
+        // Let binding declares i64 but assigns bool
+        assert!(err("fn bad() -> i64 = { let x: i64 = true; x };"));
+    }
+
+    #[test]
+    fn test_err_match_arm_type_mismatch() {
+        // Match arms return different types (i64 vs bool)
+        assert!(err(
+            "fn bad(x: i64) -> i64 = match x { 0 => 1, _ => true };"
+        ));
+    }
+
+    #[test]
+    fn test_err_struct_extra_field_wrong_type() {
+        // Providing correct field names but wrong types for both fields
+        assert!(err(
+            "struct Pair { a: i64, b: bool }
+             fn bad() -> Pair = new Pair { a: true, b: 42 };"
+        ));
+    }
+
+    #[test]
+    fn test_err_bitwise_on_bool() {
+        // Bitwise operators require integer type, not bool
+        assert!(err("fn bad(a: bool, b: bool) -> bool = a band b;"));
+    }
 }

@@ -1799,3 +1799,225 @@ fn test_run_shift_operators() {
         128
     );
 }
+
+// ============================================
+// MIR Pipeline and LLVM IR Output Tests
+// ============================================
+// These tests verify MIR lowering correctness, LLVM IR quality,
+// and optimization effectiveness through the full compilation pipeline.
+
+// --- MIR Lowering Correctness ---
+
+#[test]
+fn test_mir_while_loop() {
+    // While loop should produce Goto (back-edge) and Branch (condition check) terminators
+    let mir = lower_to_mir(
+        "fn sum_to(n: i64) -> i64 = {
+           let mut total: i64 = 0;
+           let mut i: i64 = 1;
+           while i <= n { { total = total + i; i = i + 1; 0 } };
+           total
+         };"
+    );
+    let func = find_mir_fn(&mir, "sum_to");
+    // While loop creates a loop header with Branch terminator (condition)
+    assert!(func.blocks.iter().any(|b| matches!(b.terminator, Terminator::Branch { .. })),
+        "While loop should produce Branch terminator for condition check");
+    // While loop creates a back-edge with Goto terminator (loop back)
+    assert!(func.blocks.iter().any(|b| matches!(b.terminator, Terminator::Goto(_))),
+        "While loop should produce Goto terminator for back-edge");
+    // Should have multiple blocks: entry, loop header, loop body, loop exit
+    assert!(func.blocks.len() >= 3,
+        "While loop should create at least 3 blocks (header, body, exit)");
+}
+
+#[test]
+fn test_mir_match_expression() {
+    // Match expression should produce Switch terminator or branch chain
+    let mir = lower_to_mir(
+        "fn classify(x: i64) -> i64 = match x { 0 => 10, 1 => 20, _ => 30 };"
+    );
+    let func = find_mir_fn(&mir, "classify");
+    // Match creates either Switch terminator or Branch chain
+    let has_switch = func.blocks.iter().any(|b| matches!(b.terminator, Terminator::Switch { .. }));
+    let has_branch = func.blocks.iter().any(|b| matches!(b.terminator, Terminator::Branch { .. }));
+    assert!(has_switch || has_branch,
+        "Match expression should produce Switch or Branch terminator");
+    // Match creates merge block with multiple incoming paths
+    assert!(func.blocks.len() >= 3,
+        "Match should create multiple blocks (arms + merge)");
+}
+
+#[test]
+fn test_mir_struct_field_access() {
+    // Struct field access should produce FieldAccess MIR instruction
+    let mir = lower_to_mir(r#"
+        struct Pair { a: i64, b: i64 }
+        fn sum_pair(p: Pair) -> i64 = p.a + p.b;
+    "#);
+    let func = find_mir_fn(&mir, "sum_pair");
+    // Should have FieldAccess instructions for both p.a and p.b
+    assert!(has_inst(func, |i| matches!(i, MirInst::FieldAccess { field, struct_name, .. }
+        if field == "a" && struct_name == "Pair")),
+        "Should have FieldAccess for field 'a' on struct 'Pair'");
+    assert!(has_inst(func, |i| matches!(i, MirInst::FieldAccess { field, struct_name, .. }
+        if field == "b" && struct_name == "Pair")),
+        "Should have FieldAccess for field 'b' on struct 'Pair'");
+}
+
+#[test]
+fn test_mir_function_call() {
+    // Function call should produce Call MIR instruction
+    let mir = lower_to_mir(r#"
+        fn square(x: i64) -> i64 = x * x;
+        fn cube(x: i64) -> i64 = x * square(x);
+    "#);
+    let func = find_mir_fn(&mir, "cube");
+    assert!(has_inst(func, |i| matches!(i, MirInst::Call { func, .. } if func == "square")),
+        "cube() should contain a Call to square()");
+}
+
+// --- LLVM IR Quality ---
+
+#[test]
+fn test_ir_modulo_operator() {
+    // Modulo (%) should produce srem instruction in LLVM IR
+    let ir = source_to_ir("fn modulo(a: i64, b: i64) -> i64 = a % b;");
+    assert!(ir.contains("srem"),
+        "Modulo operator should produce srem instruction, got:\n{}", ir);
+}
+
+#[test]
+fn test_ir_comparison_operators() {
+    // Comparisons should produce icmp instructions
+    let ir = source_to_ir_unopt(
+        "fn less(a: i64, b: i64) -> bool = a < b;
+         fn equal(a: i64, b: i64) -> bool = a == b;
+         fn greater(a: i64, b: i64) -> bool = a > b;"
+    );
+    assert!(ir.contains("icmp slt"),
+        "Less-than should produce icmp slt, got:\n{}", ir);
+    assert!(ir.contains("icmp eq"),
+        "Equality should produce icmp eq, got:\n{}", ir);
+    assert!(ir.contains("icmp sgt"),
+        "Greater-than should produce icmp sgt, got:\n{}", ir);
+}
+
+#[test]
+fn test_ir_float_operations() {
+    // f64 operations should produce fadd/fsub/fmul/fdiv instructions
+    let ir = source_to_ir_unopt(
+        "fn f_add(a: f64, b: f64) -> f64 = a + b;
+         fn f_sub(a: f64, b: f64) -> f64 = a - b;
+         fn f_mul(a: f64, b: f64) -> f64 = a * b;
+         fn f_div(a: f64, b: f64) -> f64 = a / b;"
+    );
+    assert!(ir.contains("fadd"), "f64 addition should produce fadd, got:\n{}", ir);
+    assert!(ir.contains("fsub"), "f64 subtraction should produce fsub, got:\n{}", ir);
+    assert!(ir.contains("fmul"), "f64 multiplication should produce fmul, got:\n{}", ir);
+    assert!(ir.contains("fdiv"), "f64 division should produce fdiv, got:\n{}", ir);
+}
+
+#[test]
+fn test_ir_boolean_logic() {
+    // Boolean and/or/bxor should produce and/or/xor in LLVM IR
+    let ir = source_to_ir_unopt(
+        "fn bool_and(a: bool, b: bool) -> bool = a and b;
+         fn bool_or(a: bool, b: bool) -> bool = a or b;
+         fn int_xor(a: i64, b: i64) -> i64 = a bxor b;"
+    );
+    assert!(ir.contains(" and "),
+        "Boolean 'and' should produce LLVM 'and' instruction, got:\n{}", ir);
+    assert!(ir.contains(" or "),
+        "Boolean 'or' should produce LLVM 'or' instruction, got:\n{}", ir);
+    assert!(ir.contains(" xor "),
+        "Bitwise 'bxor' should produce LLVM 'xor' instruction, got:\n{}", ir);
+}
+
+#[test]
+fn test_ir_shift_operations() {
+    // Shift operators should produce shl/ashr instructions
+    let ir = source_to_ir(
+        "fn shift_left(x: i64, n: i64) -> i64 = x << n;
+         fn shift_right(x: i64, n: i64) -> i64 = x >> n;"
+    );
+    assert!(ir.contains("shl"),
+        "Left shift should produce shl instruction, got:\n{}", ir);
+    assert!(ir.contains("ashr"),
+        "Right shift should produce ashr (arithmetic shift right) instruction, got:\n{}", ir);
+}
+
+#[test]
+fn test_ir_pure_function_attribute() {
+    // @pure functions should get memory(none) attribute in LLVM IR
+    let ir = source_to_ir(r#"
+        @pure
+        fn pure_add(a: i64, b: i64) -> i64 = a + b;
+    "#);
+    assert!(ir.contains("memory(none)"),
+        "@pure function should have memory(none) attribute for LLVM optimization, got:\n{}", ir);
+}
+
+// --- Optimization Verification ---
+
+#[test]
+fn test_ir_constant_folding() {
+    // Constant expression 2 + 3 should be folded to 5 by optimizer
+    let ir = source_to_ir("fn five() -> i64 = 2 + 3;");
+    // After constant folding + narrowing, should contain literal 5
+    assert!(ir.contains("i64 5") || ir.contains("i32 5"),
+        "Constant 2+3 should be folded to 5, got:\n{}", ir);
+}
+
+#[test]
+fn test_ir_dead_code_eliminated() {
+    // Unreachable/unused computation should be removed by DCE
+    let ir = source_to_ir(
+        "fn identity(x: i64) -> i64 = { let unused: i64 = x * 42; x };"
+    );
+    // After DCE, the unused multiplication should be removed
+    // The function should just return x directly
+    assert!(ir.contains("ret i64 %x"),
+        "After DCE, unused multiplication should be removed and function returns x directly, got:\n{}", ir);
+}
+
+#[test]
+fn test_ir_tail_call_to_loop() {
+    // Tail-recursive function should be transformed to a loop (no call instruction)
+    let ir = source_to_ir(
+        "fn countdown(n: i64) -> i64 = if n <= 0 { 0 } else { countdown(n - 1) };"
+    );
+    // After TCO + TailRecursiveToLoop, the self-call should be eliminated
+    assert!(!ir.contains("call i64 @countdown"),
+        "Tail-recursive call should be eliminated and converted to loop, got:\n{}", ir);
+    // Should have a loop structure
+    assert!(ir.contains("loop_header"),
+        "Tail-to-loop conversion should produce loop_header block, got:\n{}", ir);
+}
+
+#[test]
+fn test_ir_contract_bounds_elimination() {
+    // Precondition should allow optimizer to eliminate redundant checks
+    let ir = source_to_ir(
+        "fn check_positive(x: i64) -> bool
+           pre x > 0
+         = x > 0;"
+    );
+    // Contract-based optimization should fold x > 0 to constant true
+    assert!(ir.contains("store i1 1") || ir.contains("store i1 true") || ir.contains("ret i1 1") || ir.contains("ret i1 true"),
+        "Precondition x > 0 should eliminate redundant check x > 0 to constant true, got:\n{}", ir);
+}
+
+#[test]
+fn test_ir_algebraic_identity() {
+    // x * 1 should be simplified to just x
+    let ir_opt = source_to_ir("fn times_one(x: i64) -> i64 = x * 1;");
+    let ir_unopt = source_to_ir_unopt("fn times_one(x: i64) -> i64 = x * 1;");
+    // Unoptimized should have the multiplication
+    assert!(ir_unopt.contains("mul"),
+        "Unoptimized IR should contain mul instruction, got:\n{}", ir_unopt);
+    // Optimized should simplify: either no mul, or direct return of x
+    let simplified = !ir_opt.contains("mul") || ir_opt.contains("ret i64 %x");
+    assert!(simplified,
+        "Optimizer should simplify x * 1 to just x (no mul or direct return), got:\n{}", ir_opt);
+}

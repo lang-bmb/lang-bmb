@@ -4916,4 +4916,259 @@ mod tests {
         );
         assert_eq!(result_true, Value::Bool(true));
     }
+
+    // ====================================================================
+    // Cycle 106: Extended interpreter edge-case tests
+    // ====================================================================
+
+    #[test]
+    fn test_deeply_nested_struct_field_access() {
+        // Three levels of struct nesting
+        let result = run_program(
+            "struct A { v: i64 }
+             struct B { a: A }
+             struct C { b: B }
+             fn main() -> i64 = {
+                 let c = new C { b: new B { a: new A { v: 777 } } };
+                 c.b.a.v
+             };"
+        );
+        assert_eq!(result, Value::Int(777));
+    }
+
+    #[test]
+    fn test_array_literal_and_indexing() {
+        // Create an array literal and index into it
+        let result = run_program(
+            "fn main() -> i64 = {
+                 let arr = [10, 20, 30, 40, 50];
+                 arr[2]
+             };"
+        );
+        assert_eq!(result, Value::Int(30));
+    }
+
+    #[test]
+    fn test_array_len_method() {
+        let result = run_program(
+            "fn main() -> i64 = {
+                 let arr = [1, 2, 3, 4];
+                 arr.len()
+             };"
+        );
+        assert_eq!(result, Value::Int(4));
+    }
+
+    #[test]
+    fn test_string_len_method() {
+        let result = run_program(
+            r#"fn main() -> i64 = "hello world".len();"#
+        );
+        assert_eq!(result, Value::Int(11));
+    }
+
+    #[test]
+    fn test_string_concat_operator() {
+        // BMB uses ++ for string concat, but + also works in the interpreter
+        let result = run_program(
+            r#"fn main() -> String = "foo" + "bar" + "baz";"#
+        );
+        assert_eq!(result, Value::Str(Rc::new("foobarbaz".to_string())));
+    }
+
+    #[test]
+    fn test_multiple_if_else_return_paths() {
+        // Four distinct return paths through nested if/else
+        let result = run_program(
+            "fn categorize(x: i64) -> i64 =
+                 if x < 0 { 1 }
+                 else { if x == 0 { 2 }
+                 else { if x < 100 { 3 }
+                 else { 4 } } };
+             fn main() -> i64 = categorize(0 - 5) + categorize(0) * 10 + categorize(50) * 100 + categorize(200) * 1000;"
+        );
+        // 1 + 20 + 300 + 4000 = 4321
+        assert_eq!(result, Value::Int(4321));
+    }
+
+    #[test]
+    fn test_mutual_recursion_is_odd() {
+        // Verify the odd path of mutual recursion
+        let result = run_program(
+            "fn is_even(n: i64) -> bool = if n == 0 { true } else { is_odd(n - 1) };
+             fn is_odd(n: i64) -> bool = if n == 0 { false } else { is_even(n - 1) };
+             fn main() -> i64 = if is_odd(7) { 1 } else { 0 };"
+        );
+        assert_eq!(result, Value::Int(1));
+    }
+
+    #[test]
+    fn test_negative_number_arithmetic() {
+        // Operations on negative numbers
+        let result = run_program(
+            "fn main() -> i64 = {
+                 let a = 0 - 10;
+                 let b = 0 - 3;
+                 a * b + a / b + a % b
+             };"
+        );
+        // (-10)*(-3) = 30, (-10)/(-3) = 3, (-10)%(-3) = -1
+        // 30 + 3 + (-1) = 32
+        assert_eq!(result, Value::Int(32));
+    }
+
+    #[test]
+    fn test_deeply_nested_function_calls() {
+        // f(g(h(x))) style triple nesting
+        let result = run_program(
+            "fn double(x: i64) -> i64 = x * 2;
+             fn add_one(x: i64) -> i64 = x + 1;
+             fn square(x: i64) -> i64 = x * x;
+             fn main() -> i64 = square(add_one(double(3)));"
+        );
+        // double(3) = 6, add_one(6) = 7, square(7) = 49
+        assert_eq!(result, Value::Int(49));
+    }
+
+    #[test]
+    fn test_match_multiple_literal_patterns() {
+        // Match with many integer arms
+        let result = run_program(
+            "fn day_type(d: i64) -> i64 = match d {
+                 1 => 10,
+                 2 => 20,
+                 3 => 30,
+                 4 => 40,
+                 5 => 50,
+                 6 => 60,
+                 7 => 70,
+                 _ => 0
+             };
+             fn main() -> i64 = day_type(4) + day_type(7) + day_type(99);"
+        );
+        // 40 + 70 + 0 = 110
+        assert_eq!(result, Value::Int(110));
+    }
+
+    #[test]
+    fn test_while_loop_countdown() {
+        // While loop that counts down from 10
+        let result = run_program(
+            "fn main() -> i64 = {
+                 let mut n = 10;
+                 let mut sum = 0;
+                 while n > 0 {
+                     sum = sum + n;
+                     n = n - 1;
+                     0
+                 };
+                 sum
+             };"
+        );
+        // 10+9+8+7+6+5+4+3+2+1 = 55
+        assert_eq!(result, Value::Int(55));
+    }
+
+    #[test]
+    fn test_for_loop_product() {
+        // For loop computing factorial(5) = 120
+        let result = run_program(
+            "fn main() -> i64 = {
+                 let mut product: i64 = 1;
+                 for i in 1..6 {
+                     product = product * i
+                 };
+                 product
+             };"
+        );
+        assert_eq!(result, Value::Int(120));
+    }
+
+    #[test]
+    fn test_multiple_let_bindings_chain() {
+        // Chain of let bindings each depending on the previous
+        let result = run_program(
+            "fn main() -> i64 = {
+                 let a = 1;
+                 let b = a + 2;
+                 let c = b * 3;
+                 let d = c - 1;
+                 let e = d / 2;
+                 e
+             };"
+        );
+        // a=1, b=3, c=9, d=8, e=4
+        assert_eq!(result, Value::Int(4));
+    }
+
+    #[test]
+    fn test_variable_shadowing_across_functions() {
+        // Variable shadowing: each function has its own scope
+        let result = run_program(
+            "fn compute(x: i64) -> i64 = { let x = x * 2; x + 1 };
+             fn main() -> i64 = {
+                 let x = 10;
+                 let y = compute(x);
+                 x + y
+             };"
+        );
+        // compute(10): x is shadowed to 20, returns 21
+        // main: x is still 10 => 10 + 21 = 31
+        assert_eq!(result, Value::Int(31));
+    }
+
+    #[test]
+    fn test_expression_block_as_function_arg() {
+        // A block expression used directly as a function argument
+        let result = run_program(
+            "fn add(a: i64, b: i64) -> i64 = a + b;
+             fn main() -> i64 = add({ let x = 3; x * x }, { let y = 4; y * y });"
+        );
+        // 9 + 16 = 25
+        assert_eq!(result, Value::Int(25));
+    }
+
+    #[test]
+    fn test_recursive_power() {
+        // Recursive exponentiation: power(2, 10) = 1024
+        let result = run_program(
+            "fn power(base: i64, exp: i64) -> i64 =
+                 if exp == 0 { 1 }
+                 else { base * power(base, exp - 1) };
+             fn main() -> i64 = power(2, 10);"
+        );
+        assert_eq!(result, Value::Int(1024));
+    }
+
+    #[test]
+    fn test_struct_passed_to_function() {
+        // Create struct, pass to function, access fields
+        let result = run_program(
+            "struct Rect { w: i64, h: i64 }
+             fn area(r: Rect) -> i64 = r.w * r.h;
+             fn perimeter(r: Rect) -> i64 = 2 * (r.w + r.h);
+             fn main() -> i64 = {
+                 let r = new Rect { w: 5, h: 3 };
+                 area(r) + perimeter(r)
+             };"
+        );
+        // area = 15, perimeter = 16 => 31
+        assert_eq!(result, Value::Int(31));
+    }
+
+    #[test]
+    fn test_bitwise_combined_operations() {
+        // Combined bitwise and shift operations
+        let result = run_program(
+            "fn main() -> i64 = {
+                 let a = 255;
+                 let b = a band 15;
+                 let c = b << 4;
+                 let d = c bor 5;
+                 d
+             };"
+        );
+        // a = 255, b = 15, c = 240, d = 240 | 5 = 245
+        assert_eq!(result, Value::Int(245));
+    }
 }
