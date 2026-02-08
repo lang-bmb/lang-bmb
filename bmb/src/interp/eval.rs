@@ -816,7 +816,19 @@ impl Interpreter {
                             Err(RuntimeError::index_out_of_bounds(idx as i64, s.len()))
                         }
                     }
-                    _ => Err(RuntimeError::type_error("array or string", derefed_val.type_name())),
+                    // v0.89.5: Typed pointer indexing (*i64) — ptr[i] does load_i64(ptr + i*8)
+                    Value::Int(ptr) => {
+                        if ptr == 0 {
+                            return Err(RuntimeError::io_error("index: null pointer dereference"));
+                        }
+                        let addr = ptr + (idx as i64) * 8;
+                        let value = unsafe {
+                            let p = addr as *const i64;
+                            *p
+                        };
+                        Ok(Value::Int(value))
+                    }
+                    _ => Err(RuntimeError::type_error("array, string, or pointer", derefed_val.type_name())),
                 }
             }
 
@@ -836,19 +848,35 @@ impl Interpreter {
                     _ => return Err(RuntimeError::type_error("integer", idx_val.type_name())),
                 };
 
-                // Get the array, modify it, and put it back
-                let mut arr = match env.borrow().get(&arr_name) {
-                    Some(Value::Array(a)) => a.clone(),
-                    Some(other) => return Err(RuntimeError::type_error("array", other.type_name())),
-                    None => return Err(RuntimeError::undefined_variable(&arr_name)),
-                };
-
-                if idx < arr.len() {
-                    arr[idx] = new_val;
-                    env.borrow_mut().set(&arr_name, Value::Array(arr));
-                    Ok(Value::Unit)
-                } else {
-                    Err(RuntimeError::index_out_of_bounds(idx as i64, arr.len()))
+                // v0.89.5: Check if this is a typed pointer (Value::Int) for ptr[i] = value
+                match env.borrow().get(&arr_name) {
+                    Some(Value::Int(ptr)) => {
+                        if ptr == 0 {
+                            return Err(RuntimeError::io_error("index assign: null pointer dereference"));
+                        }
+                        let write_val = match new_val {
+                            Value::Int(v) => v,
+                            _ => return Err(RuntimeError::type_error("i64", new_val.type_name())),
+                        };
+                        let addr = ptr + (idx as i64) * 8;
+                        unsafe {
+                            let p = addr as *mut i64;
+                            *p = write_val;
+                        }
+                        Ok(Value::Unit)
+                    }
+                    Some(Value::Array(a)) => {
+                        let mut arr = a.clone();
+                        if idx < arr.len() {
+                            arr[idx] = new_val;
+                            env.borrow_mut().set(&arr_name, Value::Array(arr));
+                            Ok(Value::Unit)
+                        } else {
+                            Err(RuntimeError::index_out_of_bounds(idx as i64, arr.len()))
+                        }
+                    }
+                    Some(other) => Err(RuntimeError::type_error("array or pointer", other.type_name())),
+                    None => Err(RuntimeError::undefined_variable(&arr_name)),
                 }
             }
 
@@ -1888,7 +1916,19 @@ impl Interpreter {
                             Err(RuntimeError::index_out_of_bounds(idx as i64, s.len()))
                         }
                     }
-                    _ => Err(RuntimeError::type_error("array or string", derefed_val.type_name())),
+                    // v0.89.5: Typed pointer indexing (*i64) — ptr[i] does load_i64(ptr + i*8)
+                    Value::Int(ptr) => {
+                        if ptr == 0 {
+                            return Err(RuntimeError::io_error("index: null pointer dereference"));
+                        }
+                        let addr = ptr + (idx as i64) * 8;
+                        let value = unsafe {
+                            let p = addr as *const i64;
+                            *p
+                        };
+                        Ok(Value::Int(value))
+                    }
+                    _ => Err(RuntimeError::type_error("array, string, or pointer", derefed_val.type_name())),
                 }
             }
 
