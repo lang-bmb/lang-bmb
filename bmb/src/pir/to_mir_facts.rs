@@ -427,4 +427,282 @@ mod tests {
         let facts = extract_function_facts(&func);
         assert!(!facts.preconditions.is_empty());
     }
+
+    // ---- Cycle 74: Additional to_mir_facts tests ----
+
+    #[test]
+    fn test_cir_op_to_mir_op_all() {
+        assert!(matches!(cir_op_to_mir_op(CompareOp::Lt), CmpOp::Lt));
+        assert!(matches!(cir_op_to_mir_op(CompareOp::Le), CmpOp::Le));
+        assert!(matches!(cir_op_to_mir_op(CompareOp::Gt), CmpOp::Gt));
+        assert!(matches!(cir_op_to_mir_op(CompareOp::Ge), CmpOp::Ge));
+        assert!(matches!(cir_op_to_mir_op(CompareOp::Eq), CmpOp::Eq));
+        assert!(matches!(cir_op_to_mir_op(CompareOp::Ne), CmpOp::Ne));
+    }
+
+    #[test]
+    fn test_flip_cmp_op_all() {
+        assert!(matches!(flip_cmp_op(CmpOp::Lt), CmpOp::Gt));
+        assert!(matches!(flip_cmp_op(CmpOp::Le), CmpOp::Ge));
+        assert!(matches!(flip_cmp_op(CmpOp::Gt), CmpOp::Lt));
+        assert!(matches!(flip_cmp_op(CmpOp::Ge), CmpOp::Le));
+        assert!(matches!(flip_cmp_op(CmpOp::Eq), CmpOp::Eq));
+        assert!(matches!(flip_cmp_op(CmpOp::Ne), CmpOp::Ne));
+    }
+
+    #[test]
+    fn test_proposition_true_false_no_facts() {
+        let facts = proposition_to_facts(&Proposition::True);
+        assert!(facts.is_empty());
+        let facts = proposition_to_facts(&Proposition::False);
+        assert!(facts.is_empty());
+    }
+
+    #[test]
+    fn test_constant_op_var_flips() {
+        // constant < var  =>  var > constant
+        let prop = Proposition::Compare {
+            lhs: Box::new(CirExpr::IntLit(5)),
+            op: CompareOp::Lt,
+            rhs: Box::new(CirExpr::Var("x".to_string())),
+        };
+        let facts = proposition_to_facts(&prop);
+        assert_eq!(facts.len(), 1);
+        assert!(matches!(
+            &facts[0],
+            ContractFact::VarCmp { var, op: CmpOp::Gt, value: 5 } if var == "x"
+        ));
+    }
+
+    #[test]
+    fn test_var_var_cmp() {
+        let prop = Proposition::Compare {
+            lhs: Box::new(CirExpr::Var("a".to_string())),
+            op: CompareOp::Le,
+            rhs: Box::new(CirExpr::Var("b".to_string())),
+        };
+        let facts = proposition_to_facts(&prop);
+        assert_eq!(facts.len(), 1);
+        assert!(matches!(
+            &facts[0],
+            ContractFact::VarVarCmp { lhs, op: CmpOp::Le, rhs }
+            if lhs == "a" && rhs == "b"
+        ));
+    }
+
+    #[test]
+    fn test_var_lt_len_array_bounds() {
+        let prop = Proposition::Compare {
+            lhs: Box::new(CirExpr::Var("i".to_string())),
+            op: CompareOp::Lt,
+            rhs: Box::new(CirExpr::Len(Box::new(CirExpr::Var("arr".to_string())))),
+        };
+        let facts = proposition_to_facts(&prop);
+        assert_eq!(facts.len(), 1);
+        assert!(matches!(
+            &facts[0],
+            ContractFact::ArrayBounds { index, array }
+            if index == "i" && array == "arr"
+        ));
+    }
+
+    #[test]
+    fn test_var_ge_len_no_array_bounds() {
+        // Only var < len produces ArrayBounds, not var >= len
+        let prop = Proposition::Compare {
+            lhs: Box::new(CirExpr::Var("i".to_string())),
+            op: CompareOp::Ge,
+            rhs: Box::new(CirExpr::Len(Box::new(CirExpr::Var("arr".to_string())))),
+        };
+        let facts = proposition_to_facts(&prop);
+        assert!(facts.is_empty());
+    }
+
+    #[test]
+    fn test_non_null_extraction() {
+        let prop = Proposition::NonNull(Box::new(CirExpr::Var("ptr".to_string())));
+        let facts = proposition_to_facts(&prop);
+        assert_eq!(facts.len(), 1);
+        assert!(matches!(
+            &facts[0],
+            ContractFact::NonNull { var } if var == "ptr"
+        ));
+    }
+
+    #[test]
+    fn test_non_null_non_var_no_fact() {
+        // NonNull on non-Var produces no fact
+        let prop = Proposition::NonNull(Box::new(CirExpr::IntLit(42)));
+        let facts = proposition_to_facts(&prop);
+        assert!(facts.is_empty());
+    }
+
+    #[test]
+    fn test_and_extracts_from_all() {
+        let prop = Proposition::And(vec![
+            Proposition::Compare {
+                lhs: Box::new(CirExpr::Var("x".to_string())),
+                op: CompareOp::Ge,
+                rhs: Box::new(CirExpr::IntLit(0)),
+            },
+            Proposition::Compare {
+                lhs: Box::new(CirExpr::Var("y".to_string())),
+                op: CompareOp::Lt,
+                rhs: Box::new(CirExpr::IntLit(10)),
+            },
+        ]);
+        let facts = proposition_to_facts(&prop);
+        assert_eq!(facts.len(), 2);
+    }
+
+    #[test]
+    fn test_or_extracts_nothing() {
+        let prop = Proposition::Or(vec![
+            Proposition::Compare {
+                lhs: Box::new(CirExpr::Var("x".to_string())),
+                op: CompareOp::Ge,
+                rhs: Box::new(CirExpr::IntLit(0)),
+            },
+        ]);
+        let facts = proposition_to_facts(&prop);
+        assert!(facts.is_empty());
+    }
+
+    #[test]
+    fn test_not_compare_negates() {
+        // not (x < 5) => x >= 5
+        let prop = Proposition::Not(Box::new(Proposition::Compare {
+            lhs: Box::new(CirExpr::Var("x".to_string())),
+            op: CompareOp::Lt,
+            rhs: Box::new(CirExpr::IntLit(5)),
+        }));
+        let facts = proposition_to_facts(&prop);
+        assert_eq!(facts.len(), 1);
+        assert!(matches!(
+            &facts[0],
+            ContractFact::VarCmp { var, op: CmpOp::Ge, value: 5 } if var == "x"
+        ));
+    }
+
+    #[test]
+    fn test_forall_extracts_body() {
+        use crate::cir::CirType;
+        let prop = Proposition::Forall {
+            var: "i".to_string(),
+            ty: CirType::I64,
+            body: Box::new(Proposition::Compare {
+                lhs: Box::new(CirExpr::Var("i".to_string())),
+                op: CompareOp::Ge,
+                rhs: Box::new(CirExpr::IntLit(0)),
+            }),
+        };
+        let facts = proposition_to_facts(&prop);
+        assert_eq!(facts.len(), 1);
+    }
+
+    #[test]
+    fn test_exists_extracts_nothing() {
+        use crate::cir::CirType;
+        let prop = Proposition::Exists {
+            var: "i".to_string(),
+            ty: CirType::I64,
+            body: Box::new(Proposition::Compare {
+                lhs: Box::new(CirExpr::Var("i".to_string())),
+                op: CompareOp::Ge,
+                rhs: Box::new(CirExpr::IntLit(0)),
+            }),
+        };
+        let facts = proposition_to_facts(&prop);
+        assert!(facts.is_empty());
+    }
+
+    #[test]
+    fn test_implies_extracts_nothing() {
+        let prop = Proposition::Implies(
+            Box::new(Proposition::True),
+            Box::new(Proposition::Compare {
+                lhs: Box::new(CirExpr::Var("x".to_string())),
+                op: CompareOp::Gt,
+                rhs: Box::new(CirExpr::IntLit(0)),
+            }),
+        );
+        let facts = proposition_to_facts(&prop);
+        assert!(facts.is_empty());
+    }
+
+    #[test]
+    fn test_predicate_old_no_facts() {
+        let prop = Proposition::Predicate {
+            name: "is_sorted".to_string(),
+            args: vec![CirExpr::Var("arr".to_string())],
+        };
+        let facts = proposition_to_facts(&prop);
+        assert!(facts.is_empty());
+
+        let prop = Proposition::Old(
+            Box::new(CirExpr::Var("x".to_string())),
+            Box::new(Proposition::True),
+        );
+        let facts = proposition_to_facts(&prop);
+        assert!(facts.is_empty());
+    }
+
+    #[test]
+    fn test_extract_all_pir_facts_multiple_functions() {
+        let func1 = PirFunction {
+            name: "f1".to_string(),
+            params: vec![],
+            ret_ty: PirType::I64,
+            body: PirExpr::new(PirExprKind::IntLit(0), PirType::I64),
+            entry_facts: vec![make_proven_fact(Proposition::Compare {
+                lhs: Box::new(CirExpr::Var("x".to_string())),
+                op: CompareOp::Ge,
+                rhs: Box::new(CirExpr::IntLit(0)),
+            })],
+            exit_facts: vec![],
+        };
+        let func2 = PirFunction {
+            name: "f2".to_string(),
+            params: vec![],
+            ret_ty: PirType::I64,
+            body: PirExpr::new(PirExprKind::IntLit(1), PirType::I64),
+            entry_facts: vec![],
+            exit_facts: vec![make_proven_fact(Proposition::NonNull(
+                Box::new(CirExpr::Var("p".to_string())),
+            ))],
+        };
+
+        let program = PirProgram {
+            functions: vec![func1, func2],
+            proof_db: crate::verify::proof_db::ProofDatabase::new(),
+            type_invariants: HashMap::new(),
+        };
+
+        let all_facts = extract_all_pir_facts(&program);
+        assert_eq!(all_facts.len(), 2);
+        assert!(all_facts.contains_key("f1"));
+        assert!(all_facts.contains_key("f2"));
+        assert!(!all_facts["f1"].preconditions.is_empty());
+        assert!(!all_facts["f2"].postconditions.is_empty());
+    }
+
+    #[test]
+    fn test_function_facts_with_exit_facts() {
+        let func = PirFunction {
+            name: "test".to_string(),
+            params: vec![],
+            ret_ty: PirType::I64,
+            body: PirExpr::new(PirExprKind::IntLit(0), PirType::I64),
+            entry_facts: vec![],
+            exit_facts: vec![make_proven_fact(Proposition::Compare {
+                lhs: Box::new(CirExpr::Var("result".to_string())),
+                op: CompareOp::Ge,
+                rhs: Box::new(CirExpr::IntLit(0)),
+            })],
+        };
+
+        let facts = extract_function_facts(&func);
+        assert!(facts.preconditions.is_empty());
+        assert!(!facts.postconditions.is_empty());
+    }
 }

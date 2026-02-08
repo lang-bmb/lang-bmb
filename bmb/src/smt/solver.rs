@@ -320,4 +320,120 @@ mod tests {
         assert_eq!(solver.z3_path, "/usr/bin/z3");
         assert_eq!(solver.timeout, 30);
     }
+
+    // ---- Cycle 70: Additional SMT solver tests ----
+
+    #[test]
+    fn test_solver_default() {
+        let solver = SmtSolver::default();
+        assert_eq!(solver.z3_path, "z3");
+        assert_eq!(solver.timeout, 10);
+    }
+
+    #[test]
+    fn test_parse_result_unsat() {
+        let solver = SmtSolver::new();
+        let result = solver.parse_result("unsat\n").unwrap();
+        assert!(matches!(result, SolverResult::Unsat));
+    }
+
+    #[test]
+    fn test_parse_result_unknown() {
+        let solver = SmtSolver::new();
+        let result = solver.parse_result("unknown\n").unwrap();
+        assert!(matches!(result, SolverResult::Unknown));
+    }
+
+    #[test]
+    fn test_parse_result_timeout() {
+        let solver = SmtSolver::new();
+        let result = solver.parse_result("timeout\n").unwrap();
+        assert!(matches!(result, SolverResult::Timeout));
+    }
+
+    #[test]
+    fn test_parse_result_sat_with_model() {
+        let solver = SmtSolver::new();
+        let output = "sat\n(define-fun x () Int 5)\n(define-fun y () Bool true)\n";
+        let result = solver.parse_result(output).unwrap();
+        match result {
+            SolverResult::Sat(model) => {
+                assert_eq!(model.get("x"), Some(&"5".to_string()));
+                assert_eq!(model.get("y"), Some(&"true".to_string()));
+            }
+            _ => panic!("Expected Sat"),
+        }
+    }
+
+    #[test]
+    fn test_parse_result_empty_output() {
+        let solver = SmtSolver::new();
+        let result = solver.parse_result("");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_result_unexpected() {
+        let solver = SmtSolver::new();
+        let result = solver.parse_result("garbage\n");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_define_fun() {
+        let solver = SmtSolver::new();
+        let result = solver.parse_define_fun("(define-fun x () Int 42)");
+        assert_eq!(result, Some(("x".to_string(), "42".to_string())));
+    }
+
+    #[test]
+    fn test_parse_define_fun_too_short() {
+        let solver = SmtSolver::new();
+        let result = solver.parse_define_fun("(define-fun x)");
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_solver_error_display() {
+        let e1 = SolverError::ProcessError("failed".to_string());
+        assert_eq!(format!("{}", e1), "process error: failed");
+
+        let e2 = SolverError::Z3Error("bad input".to_string());
+        assert_eq!(format!("{}", e2), "Z3 error: bad input");
+
+        let e3 = SolverError::ParseError("syntax".to_string());
+        assert_eq!(format!("{}", e3), "parse error: syntax");
+    }
+
+    #[test]
+    fn test_counterexample_from_model() {
+        let mut model = HashMap::new();
+        model.insert("b".to_string(), "false".to_string());
+        model.insert("a".to_string(), "42".to_string());
+
+        let ce = Counterexample::from_model(model);
+        // Should be sorted by name
+        assert_eq!(ce.assignments[0].0, "a");
+        assert_eq!(ce.assignments[1].0, "b");
+    }
+
+    #[test]
+    fn test_counterexample_display() {
+        let ce = Counterexample {
+            assignments: vec![
+                ("x".to_string(), "5".to_string()),
+                ("__ret__".to_string(), "10".to_string()),
+            ],
+        };
+        let display = format!("{}", ce);
+        assert!(display.contains("x = 5"));
+        assert!(display.contains("ret = 10"));
+    }
+
+    #[test]
+    fn test_counterexample_display_empty() {
+        let ce = Counterexample { assignments: vec![] };
+        let display = format!("{}", ce);
+        assert!(display.contains("Counterexample:"));
+    }
 }

@@ -953,4 +953,191 @@ mod tests {
         assert_eq!(stats1.bounds_checks_eliminated, 5);
         assert_eq!(stats1.null_checks_eliminated, 1);
     }
+
+    // ---- Cycle 75: Additional proof-guided tests ----
+
+    #[test]
+    fn test_proven_fact_set_new_empty() {
+        let facts = ProvenFactSet::new();
+        assert!(!facts.has_non_null("x"));
+        assert!(!facts.has_nonzero("x"));
+        assert!(!facts.has_array_bounds("i", "arr"));
+        assert!(!facts.has_lower_bound("x", 0));
+        assert_eq!(facts.get_upper_bound("x"), None);
+        assert_eq!(facts.get_bool_value("x"), None);
+        assert_eq!(facts.get_array_len("arr"), None);
+    }
+
+    #[test]
+    fn test_proven_fact_set_default() {
+        let facts = ProvenFactSet::default();
+        assert!(!facts.has_non_null("x"));
+    }
+
+    #[test]
+    fn test_add_non_null() {
+        let mut facts = ProvenFactSet::new();
+        facts.add_non_null("ptr");
+        assert!(facts.has_non_null("ptr"));
+    }
+
+    #[test]
+    fn test_add_nonzero() {
+        let mut facts = ProvenFactSet::new();
+        facts.add_nonzero("divisor");
+        assert!(facts.has_nonzero("divisor"));
+    }
+
+    #[test]
+    fn test_add_array_bounds() {
+        let mut facts = ProvenFactSet::new();
+        facts.add_array_bounds("i", "arr");
+        assert!(facts.has_array_bounds("i", "arr"));
+        assert!(!facts.has_array_bounds("j", "arr"));
+    }
+
+    #[test]
+    fn test_var_gt_bound() {
+        let preconditions = vec![
+            ContractFact::VarCmp {
+                var: "x".to_string(),
+                op: CmpOp::Gt,
+                value: 0,
+            },
+        ];
+        let facts = ProvenFactSet::from_mir_preconditions(&preconditions);
+        // x > 0 means lower bound is 1
+        assert!(facts.has_lower_bound("x", 1));
+        assert!(facts.has_lower_bound("x", 0)); // 1 >= 0
+    }
+
+    #[test]
+    fn test_var_le_bound() {
+        let preconditions = vec![
+            ContractFact::VarCmp {
+                var: "x".to_string(),
+                op: CmpOp::Le,
+                value: 50,
+            },
+        ];
+        let facts = ProvenFactSet::from_mir_preconditions(&preconditions);
+        assert_eq!(facts.get_upper_bound("x"), Some(50));
+    }
+
+    #[test]
+    fn test_var_eq_sets_both_bounds() {
+        let preconditions = vec![
+            ContractFact::VarCmp {
+                var: "x".to_string(),
+                op: CmpOp::Eq,
+                value: 42,
+            },
+        ];
+        let facts = ProvenFactSet::from_mir_preconditions(&preconditions);
+        assert!(facts.has_lower_bound("x", 42));
+        assert_eq!(facts.get_upper_bound("x"), Some(42));
+    }
+
+    #[test]
+    fn test_var_var_cmp_recorded() {
+        let preconditions = vec![
+            ContractFact::VarVarCmp {
+                lhs: "x".to_string(),
+                op: CmpOp::Lt,
+                rhs: "y".to_string(),
+            },
+        ];
+        let facts = ProvenFactSet::from_mir_preconditions(&preconditions);
+        assert!(facts.implies_lt("x", "y"));
+        assert!(!facts.implies_lt("y", "x"));
+    }
+
+    #[test]
+    fn test_implies_lt_transitive() {
+        // x <= 5 and y >= 10 => x < y through bound comparison
+        let preconditions = vec![
+            ContractFact::VarCmp {
+                var: "x".to_string(),
+                op: CmpOp::Le,
+                value: 5,
+            },
+            ContractFact::VarCmp {
+                var: "y".to_string(),
+                op: CmpOp::Ge,
+                value: 10,
+            },
+        ];
+        let facts = ProvenFactSet::from_mir_preconditions(&preconditions);
+        assert!(facts.implies_lt("x", "y")); // 5 < 10
+    }
+
+    #[test]
+    fn test_proven_fact_set_merge() {
+        let mut facts1 = ProvenFactSet::new();
+        facts1.add_non_null("a");
+        facts1.add_nonzero("b");
+
+        let mut facts2 = ProvenFactSet::new();
+        facts2.add_non_null("c");
+        facts2.add_array_bounds("i", "arr");
+
+        facts1.merge(&facts2);
+        assert!(facts1.has_non_null("a"));
+        assert!(facts1.has_non_null("c"));
+        assert!(facts1.has_nonzero("b"));
+        assert!(facts1.has_array_bounds("i", "arr"));
+    }
+
+    #[test]
+    fn test_stats_new_zeros() {
+        let stats = ProofOptimizationStats::new();
+        assert_eq!(stats.total(), 0);
+        assert_eq!(stats.bounds_checks_eliminated, 0);
+        assert_eq!(stats.null_checks_eliminated, 0);
+        assert_eq!(stats.division_checks_eliminated, 0);
+        assert_eq!(stats.unreachable_blocks_eliminated, 0);
+    }
+
+    #[test]
+    fn test_bce_eliminated_count() {
+        let bce = BoundsCheckElimination::new();
+        assert_eq!(bce.eliminated_count(), 0);
+    }
+
+    #[test]
+    fn test_bce_default() {
+        let bce = BoundsCheckElimination::default();
+        assert_eq!(bce.name(), "bounds_check_elimination");
+    }
+
+    #[test]
+    fn test_nce_default() {
+        let nce = NullCheckElimination::default();
+        assert_eq!(nce.name(), "null_check_elimination");
+    }
+
+    #[test]
+    fn test_dce_default() {
+        let dce = DivisionCheckElimination::default();
+        assert_eq!(dce.name(), "division_check_elimination");
+    }
+
+    #[test]
+    fn test_pue_default() {
+        let pue = ProofUnreachableElimination::default();
+        assert_eq!(pue.name(), "proof_unreachable_elimination");
+    }
+
+    #[test]
+    fn test_return_cmp_ignored_in_preconditions() {
+        let preconditions = vec![
+            ContractFact::ReturnCmp {
+                op: CmpOp::Ge,
+                value: 0,
+            },
+        ];
+        let facts = ProvenFactSet::from_mir_preconditions(&preconditions);
+        // ReturnCmp should be ignored in precondition analysis
+        assert!(!facts.has_lower_bound("__ret__", 0));
+    }
 }

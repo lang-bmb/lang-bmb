@@ -932,4 +932,215 @@ mod tests {
         assert_eq!(SmtTranslator::type_to_sort(&Type::AsyncFile), SmtSort::Int);
         assert_eq!(SmtTranslator::type_to_sort(&Type::AsyncSocket), SmtSort::Int);
     }
+
+    // ---- Cycle 74: Additional SMT translator tests ----
+
+    #[test]
+    fn test_type_to_sort_ptr_ref() {
+        assert_eq!(SmtTranslator::type_to_sort(&Type::Ptr(Box::new(Type::I64))), SmtSort::Int);
+        assert_eq!(SmtTranslator::type_to_sort(&Type::Ref(Box::new(Type::I64))), SmtSort::Int);
+        assert_eq!(SmtTranslator::type_to_sort(&Type::RefMut(Box::new(Type::I64))), SmtSort::Int);
+    }
+
+    #[test]
+    fn test_type_to_sort_array_tuple() {
+        assert_eq!(SmtTranslator::type_to_sort(&Type::Array(Box::new(Type::I64), 10)), SmtSort::Int);
+        assert_eq!(SmtTranslator::type_to_sort(&Type::Tuple(vec![Box::new(Type::I64)])), SmtSort::Int);
+    }
+
+    #[test]
+    fn test_type_to_sort_nullable() {
+        assert_eq!(SmtTranslator::type_to_sort(&Type::Nullable(Box::new(Type::I64))), SmtSort::Int);
+        assert_eq!(SmtTranslator::type_to_sort(&Type::Nullable(Box::new(Type::Bool))), SmtSort::Bool);
+    }
+
+    #[test]
+    fn test_type_to_sort_refined() {
+        let refined = Type::Refined {
+            base: Box::new(Type::I64),
+            constraints: vec![Spanned::new(Expr::BoolLit(true), span())],
+        };
+        assert_eq!(SmtTranslator::type_to_sort(&refined), SmtSort::Int);
+    }
+
+    #[test]
+    fn test_type_to_sort_never() {
+        assert_eq!(SmtTranslator::type_to_sort(&Type::Never), SmtSort::Bool);
+    }
+
+    #[test]
+    fn test_type_to_sort_string_named() {
+        assert_eq!(SmtTranslator::type_to_sort(&Type::String), SmtSort::Int);
+        assert_eq!(SmtTranslator::type_to_sort(&Type::Named("Foo".to_string())), SmtSort::Int);
+    }
+
+    #[test]
+    fn test_float_lit_positive() {
+        let trans = SmtTranslator::new();
+        let expr = spanned(Expr::FloatLit(3.7));
+        assert_eq!(trans.translate(&expr).unwrap(), "3");
+    }
+
+    #[test]
+    fn test_float_lit_negative() {
+        let trans = SmtTranslator::new();
+        let expr = spanned(Expr::FloatLit(-2.5));
+        assert_eq!(trans.translate(&expr).unwrap(), "(- 2)");
+    }
+
+    #[test]
+    fn test_todo_expr() {
+        let trans = SmtTranslator::new();
+        let expr = spanned(Expr::Todo { message: None });
+        assert_eq!(trans.translate(&expr).unwrap(), "false");
+    }
+
+    #[test]
+    fn test_break_continue_return() {
+        let trans = SmtTranslator::new();
+        assert_eq!(trans.translate(&spanned(Expr::Break { value: None })).unwrap(), "false");
+        assert_eq!(trans.translate(&spanned(Expr::Continue)).unwrap(), "false");
+        assert_eq!(trans.translate(&spanned(Expr::Return { value: None })).unwrap(), "false");
+    }
+
+    #[test]
+    fn test_it_expr() {
+        let trans = SmtTranslator::new();
+        let expr = spanned(Expr::It);
+        assert_eq!(trans.translate(&expr).unwrap(), "__it__");
+    }
+
+    #[test]
+    fn test_sizeof_expr() {
+        let trans = SmtTranslator::new();
+        let expr = spanned(Expr::Sizeof { ty: Spanned::new(Type::I64, span()) });
+        assert_eq!(trans.translate(&expr).unwrap(), "8");
+    }
+
+    #[test]
+    fn test_block_expr_empty() {
+        let trans = SmtTranslator::new();
+        let expr = spanned(Expr::Block(vec![]));
+        assert_eq!(trans.translate(&expr).unwrap(), "true");
+    }
+
+    #[test]
+    fn test_block_expr_last() {
+        let trans = SmtTranslator::new();
+        let expr = spanned(Expr::Block(vec![
+            spanned(Expr::IntLit(1)),
+            spanned(Expr::IntLit(2)),
+            spanned(Expr::IntLit(42)),
+        ]));
+        assert_eq!(trans.translate(&expr).unwrap(), "42");
+    }
+
+    #[test]
+    fn test_let_expr() {
+        let trans = SmtTranslator::new();
+        let expr = spanned(Expr::Let {
+            name: "x".to_string(),
+            mutable: false,
+            ty: Some(Spanned::new(Type::I64, span())),
+            value: Box::new(spanned(Expr::IntLit(5))),
+            body: Box::new(spanned(Expr::IntLit(10))),
+        });
+        assert_eq!(trans.translate(&expr).unwrap(), "(let ((x 5)) 10)");
+    }
+
+    #[test]
+    fn test_wrapping_arithmetic() {
+        let trans = SmtTranslator::new();
+        for (op, expected_smt) in [
+            (BinOp::AddWrap, "+"),
+            (BinOp::SubWrap, "-"),
+            (BinOp::MulWrap, "*"),
+        ] {
+            let expr = spanned(Expr::Binary {
+                left: Box::new(spanned(Expr::IntLit(1))),
+                op,
+                right: Box::new(spanned(Expr::IntLit(2))),
+            });
+            let result = trans.translate(&expr).unwrap();
+            assert!(result.contains(expected_smt), "Op {:?} should use {}", op, expected_smt);
+        }
+    }
+
+    #[test]
+    fn test_translate_error_display() {
+        let e1 = TranslateError::UndefinedVariable("x".to_string());
+        assert_eq!(format!("{}", e1), "undefined variable: x");
+
+        let e2 = TranslateError::TypeMismatch("int vs bool".to_string());
+        assert_eq!(format!("{}", e2), "type mismatch: int vs bool");
+
+        let e3 = TranslateError::UnsupportedFeature("loops".to_string());
+        assert_eq!(format!("{}", e3), "unsupported: loops");
+
+        let e4 = TranslateError::RetNotDefined;
+        assert_eq!(format!("{}", e4), "'ret' not defined");
+    }
+
+    #[test]
+    fn test_unsupported_features() {
+        let trans = SmtTranslator::new();
+
+        assert!(trans.translate(&spanned(Expr::While {
+            cond: Box::new(spanned(Expr::BoolLit(true))),
+            invariant: None,
+            body: Box::new(spanned(Expr::Unit)),
+        })).is_err());
+
+        assert!(trans.translate(&spanned(Expr::ArrayLit(vec![]))).is_err());
+        assert!(trans.translate(&spanned(Expr::Tuple(vec![]))).is_err());
+
+        assert!(trans.translate(&spanned(Expr::Match {
+            expr: Box::new(spanned(Expr::IntLit(0))),
+            arms: vec![],
+        })).is_err());
+    }
+
+    #[test]
+    fn test_generator_header_and_footer() {
+        let generator = SmtLibGenerator::new();
+        let output = generator.generate();
+        assert!(output.contains("; Generated by BMB compiler"));
+        assert!(output.contains("(set-logic QF_LIA)"));
+        assert!(output.contains("(check-sat)"));
+        assert!(output.contains("(get-model)"));
+    }
+
+    #[test]
+    fn test_generator_bool_sort() {
+        let mut generator = SmtLibGenerator::new();
+        generator.declare_var("flag", SmtSort::Bool);
+        let output = generator.generate();
+        assert!(output.contains("(declare-const flag Bool)"));
+    }
+
+    #[test]
+    fn test_translator_default() {
+        let trans = SmtTranslator::default();
+        assert!(trans.var_types().is_empty());
+    }
+
+    #[test]
+    fn test_smt_sort_eq() {
+        assert_eq!(SmtSort::Int, SmtSort::Int);
+        assert_eq!(SmtSort::Bool, SmtSort::Bool);
+        assert_ne!(SmtSort::Int, SmtSort::Bool);
+    }
+
+    #[test]
+    fn test_bitwise_ops_unsupported() {
+        let trans = SmtTranslator::new();
+        for op in [BinOp::Band, BinOp::Bor, BinOp::Bxor, BinOp::Shr] {
+            let expr = spanned(Expr::Binary {
+                left: Box::new(spanned(Expr::IntLit(1))),
+                op,
+                right: Box::new(spanned(Expr::IntLit(2))),
+            });
+            assert!(trans.translate(&expr).is_err(), "Op {:?} should be unsupported", op);
+        }
+    }
 }

@@ -420,4 +420,116 @@ mod tests {
         assert!(VerificationStatus::Failed("error".to_string()).is_failed());
         assert!(!VerificationStatus::Verified.is_failed());
     }
+
+    // ---- Cycle 69: Additional proof DB tests ----
+
+    #[test]
+    fn test_function_id_key_format() {
+        let id = FunctionId::new("mymod", "myfn", 42);
+        assert_eq!(id.key(), "mymod::myfn");
+    }
+
+    #[test]
+    fn test_function_id_simple_defaults() {
+        let id = FunctionId::simple("test_fn");
+        assert_eq!(id.module, "main");
+        assert_eq!(id.name, "test_fn");
+        assert_eq!(id.signature_hash, 0);
+    }
+
+    #[test]
+    fn test_proof_database_empty() {
+        let db = ProofDatabase::new();
+        assert!(db.is_empty());
+        assert_eq!(db.len(), 0);
+    }
+
+    #[test]
+    fn test_proof_database_clear() {
+        let mut db = ProofDatabase::new();
+        let id = FunctionId::simple("foo");
+        db.store_function_proof(&id, FunctionProofResult::default());
+        assert_eq!(db.len(), 1);
+
+        db.clear();
+        assert!(db.is_empty());
+        assert_eq!(db.stats().functions_stored, 0);
+    }
+
+    #[test]
+    fn test_proof_database_get_proven_facts_empty() {
+        let db = ProofDatabase::new();
+        let id = FunctionId::simple("missing");
+        assert!(db.get_proven_facts(&id).is_empty());
+    }
+
+    #[test]
+    fn test_proof_database_cache_miss() {
+        let mut db = ProofDatabase::new();
+        let id = FunctionId::simple("not_stored");
+        assert!(db.get_function_proof(&id).is_none());
+        assert_eq!(db.stats().cache_misses, 1);
+    }
+
+    #[test]
+    fn test_proof_database_multiple_functions() {
+        let mut db = ProofDatabase::new();
+
+        for name in ["f1", "f2", "f3"] {
+            let id = FunctionId::simple(name);
+            db.store_function_proof(&id, FunctionProofResult {
+                status: VerificationStatus::Verified,
+                ..FunctionProofResult::default()
+            });
+        }
+
+        assert_eq!(db.len(), 3);
+        assert!(db.is_verified(&FunctionId::simple("f1")));
+        assert!(db.is_verified(&FunctionId::simple("f2")));
+        assert!(db.is_verified(&FunctionId::simple("f3")));
+    }
+
+    #[test]
+    fn test_proof_database_overwrite() {
+        let mut db = ProofDatabase::new();
+        let id = FunctionId::simple("foo");
+
+        db.store_function_proof(&id, FunctionProofResult {
+            status: VerificationStatus::Failed("old".to_string()),
+            ..FunctionProofResult::default()
+        });
+        assert!(!db.is_verified(&id));
+
+        db.store_function_proof(&id, FunctionProofResult {
+            status: VerificationStatus::Verified,
+            ..FunctionProofResult::default()
+        });
+        assert!(db.is_verified(&id));
+        assert_eq!(db.len(), 1);
+    }
+
+    #[test]
+    fn test_cache_path_for() {
+        let path = PathBuf::from("src/main.bmb");
+        let cache = ProofDatabase::cache_path_for(&path);
+        assert_eq!(cache, PathBuf::from("src/main.bmb.proofcache"));
+    }
+
+    #[test]
+    fn test_verification_status_eq() {
+        assert_eq!(VerificationStatus::Verified, VerificationStatus::Verified);
+        assert_eq!(VerificationStatus::Skipped, VerificationStatus::Skipped);
+        assert_eq!(VerificationStatus::Timeout, VerificationStatus::Timeout);
+        assert_eq!(VerificationStatus::Unknown, VerificationStatus::Unknown);
+        assert_ne!(VerificationStatus::Verified, VerificationStatus::Skipped);
+    }
+
+    #[test]
+    fn test_function_proof_result_default() {
+        let result = FunctionProofResult::default();
+        assert_eq!(result.status, VerificationStatus::Unknown);
+        assert!(result.proven_facts.is_empty());
+        assert_eq!(result.smt_queries, 0);
+        assert_eq!(result.verified_at, 0);
+    }
 }

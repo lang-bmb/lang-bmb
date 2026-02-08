@@ -495,4 +495,187 @@ mod tests {
         });
         assert!(verifier.needs_quantifiers(&func));
     }
+
+    // ---- Cycle 69: Additional CIR verify tests ----
+
+    #[test]
+    fn test_proof_witness_error() {
+        let w = ProofWitness::error("broken".to_string(), "solver crash".to_string());
+        assert!(!w.is_verified());
+        assert!(!w.is_failed());
+        assert!(matches!(w.outcome, ProofOutcome::Error(_)));
+        assert_eq!(w.verification_time_ms, 0);
+    }
+
+    #[test]
+    fn test_proof_witness_skipped_time_zero() {
+        let w = ProofWitness::skipped("noop".to_string());
+        assert_eq!(w.verification_time_ms, 0);
+        assert!(w.smt_script.is_none());
+        assert!(w.counterexample.is_none());
+    }
+
+    #[test]
+    fn test_proof_witness_verified_with_smt_script() {
+        let w = ProofWitness::verified(
+            "foo".to_string(),
+            Some("(check-sat)".to_string()),
+            42,
+        );
+        assert!(w.is_verified());
+        assert_eq!(w.smt_script, Some("(check-sat)".to_string()));
+        assert_eq!(w.verification_time_ms, 42);
+    }
+
+    #[test]
+    fn test_proof_outcome_eq() {
+        assert_eq!(ProofOutcome::Verified, ProofOutcome::Verified);
+        assert_eq!(ProofOutcome::Skipped, ProofOutcome::Skipped);
+        assert_ne!(ProofOutcome::Verified, ProofOutcome::Skipped);
+        assert_eq!(
+            ProofOutcome::Failed("x".to_string()),
+            ProofOutcome::Failed("x".to_string()),
+        );
+        assert_ne!(
+            ProofOutcome::Failed("x".to_string()),
+            ProofOutcome::Failed("y".to_string()),
+        );
+    }
+
+    #[test]
+    fn test_verification_report_all_verified() {
+        let mut report = CirVerificationReport::new();
+        report.witnesses.push(ProofWitness::verified("f1".to_string(), None, 10));
+        report.witnesses.push(ProofWitness::verified("f2".to_string(), None, 20));
+        report.witnesses.push(ProofWitness::skipped("f3".to_string()));
+        report.compute_summary();
+
+        assert!(report.all_verified());
+        assert!(!report.has_failures());
+        assert!(!report.has_errors());
+        assert_eq!(report.verified_count, 2);
+        assert_eq!(report.skipped_count, 1);
+    }
+
+    #[test]
+    fn test_verification_report_has_errors() {
+        let mut report = CirVerificationReport::new();
+        report.witnesses.push(ProofWitness::error("f1".to_string(), "crash".to_string()));
+        report.compute_summary();
+
+        assert!(report.has_errors());
+        assert!(!report.all_verified());
+        assert_eq!(report.error_count, 1);
+    }
+
+    #[test]
+    fn test_verification_report_summary_format() {
+        let mut report = CirVerificationReport::new();
+        report.witnesses.push(ProofWitness::verified("f1".to_string(), None, 10));
+        report.compute_summary();
+
+        let summary = report.summary();
+        assert!(summary.contains("Verified: 1"));
+        assert!(summary.contains("Failed: 0"));
+        assert!(summary.contains("10ms"));
+    }
+
+    #[test]
+    fn test_verification_report_default() {
+        let report = CirVerificationReport::default();
+        assert!(report.witnesses.is_empty());
+        assert_eq!(report.total_functions, 0);
+    }
+
+    #[test]
+    fn test_verifier_default() {
+        let verifier = CirVerifier::default();
+        assert!(!verifier.verbose);
+        assert!(!verifier.keep_smt_scripts);
+    }
+
+    #[test]
+    fn test_needs_quantifiers_in_postcondition() {
+        let verifier = CirVerifier::new();
+        let mut func = make_test_function();
+        func.postconditions.push(NamedProposition {
+            name: None,
+            proposition: Proposition::Exists {
+                var: "y".to_string(),
+                ty: CirType::I64,
+                body: Box::new(Proposition::True),
+            },
+        });
+        assert!(verifier.needs_quantifiers(&func));
+    }
+
+    #[test]
+    fn test_needs_quantifiers_nested_in_and() {
+        let verifier = CirVerifier::new();
+        let mut func = make_test_function();
+        func.preconditions = vec![NamedProposition {
+            name: None,
+            proposition: Proposition::And(vec![
+                Proposition::True,
+                Proposition::Forall {
+                    var: "i".to_string(),
+                    ty: CirType::I64,
+                    body: Box::new(Proposition::True),
+                },
+            ]),
+        }];
+        assert!(verifier.needs_quantifiers(&func));
+    }
+
+    #[test]
+    fn test_needs_quantifiers_in_implies() {
+        let verifier = CirVerifier::new();
+        let mut func = make_test_function();
+        func.preconditions = vec![NamedProposition {
+            name: None,
+            proposition: Proposition::Implies(
+                Box::new(Proposition::True),
+                Box::new(Proposition::Forall {
+                    var: "x".to_string(),
+                    ty: CirType::I64,
+                    body: Box::new(Proposition::True),
+                }),
+            ),
+        }];
+        assert!(verifier.needs_quantifiers(&func));
+    }
+
+    #[test]
+    fn test_verify_function_no_contracts_skipped() {
+        let verifier = CirVerifier::new();
+        let func = CirFunction {
+            name: "no_contracts".to_string(),
+            type_params: vec![],
+            params: vec![],
+            ret_name: "ret".to_string(),
+            ret_ty: CirType::I64,
+            preconditions: vec![],
+            postconditions: vec![],
+            loop_invariants: vec![],
+            effects: EffectSet::pure(),
+            body: CirExpr::IntLit(0),
+        };
+        let witness = verifier.verify_function(&func);
+        assert!(matches!(witness.outcome, ProofOutcome::Skipped));
+    }
+
+    #[test]
+    fn test_verification_report_unknown_count() {
+        let mut report = CirVerificationReport::new();
+        report.witnesses.push(ProofWitness {
+            function: "f1".to_string(),
+            outcome: ProofOutcome::Unknown("timeout".to_string()),
+            smt_script: None,
+            counterexample: None,
+            verification_time_ms: 5000,
+        });
+        report.compute_summary();
+        assert_eq!(report.unknown_count, 1);
+        assert_eq!(report.total_time_ms, 5000);
+    }
 }

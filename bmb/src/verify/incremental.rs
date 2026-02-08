@@ -492,4 +492,230 @@ mod tests {
             result2.failed_functions.iter().any(|(name, _)| name == "foo")
         );
     }
+
+    // ---- Cycle 73: Additional incremental verification tests ----
+
+    #[test]
+    fn test_incremental_verifier_default() {
+        let verifier = IncrementalVerifier::default();
+        assert!(verifier.summaries().is_empty());
+        assert!(verifier.database().is_empty());
+    }
+
+    #[test]
+    fn test_incremental_verifier_clear() {
+        let mut verifier = IncrementalVerifier::new();
+        let program = make_test_program(vec![make_test_function("foo")]);
+
+        // Populate with a verification
+        let _result = verifier.verify_incremental(None, &program);
+        assert!(!verifier.summaries().is_empty());
+
+        verifier.clear();
+        assert!(verifier.summaries().is_empty());
+        assert!(verifier.database().is_empty());
+    }
+
+    #[test]
+    fn test_incremental_verifier_with_timeout() {
+        let verifier = IncrementalVerifier::new().with_timeout(30);
+        assert!(verifier.summaries().is_empty());
+    }
+
+    #[test]
+    fn test_extract_callees_empty_body() {
+        let callees = extract_callees(&CirExpr::IntLit(42));
+        assert!(callees.is_empty());
+    }
+
+    #[test]
+    fn test_extract_callees_nested_in_if() {
+        let body = CirExpr::If {
+            cond: Box::new(CirExpr::BoolLit(true)),
+            then_branch: Box::new(CirExpr::Call {
+                func: "then_fn".to_string(),
+                args: vec![],
+            }),
+            else_branch: Box::new(CirExpr::Call {
+                func: "else_fn".to_string(),
+                args: vec![],
+            }),
+        };
+
+        let callees = extract_callees(&body);
+        assert!(callees.contains("then_fn"));
+        assert!(callees.contains("else_fn"));
+    }
+
+    #[test]
+    fn test_extract_callees_nested_in_let() {
+        let body = CirExpr::Let {
+            name: "x".to_string(),
+            ty: CirType::I64,
+            value: Box::new(CirExpr::Call {
+                func: "init".to_string(),
+                args: vec![],
+            }),
+            body: Box::new(CirExpr::Call {
+                func: "use_x".to_string(),
+                args: vec![],
+            }),
+        };
+
+        let callees = extract_callees(&body);
+        assert!(callees.contains("init"));
+        assert!(callees.contains("use_x"));
+    }
+
+    #[test]
+    fn test_extract_callees_in_block() {
+        let body = CirExpr::Block(vec![
+            CirExpr::Call { func: "a".to_string(), args: vec![] },
+            CirExpr::Call { func: "b".to_string(), args: vec![] },
+            CirExpr::Call { func: "c".to_string(), args: vec![] },
+        ]);
+
+        let callees = extract_callees(&body);
+        assert_eq!(callees.len(), 3);
+        assert!(callees.contains("a"));
+        assert!(callees.contains("b"));
+        assert!(callees.contains("c"));
+    }
+
+    #[test]
+    fn test_extract_callees_in_while() {
+        let body = CirExpr::While {
+            cond: Box::new(CirExpr::Call {
+                func: "check".to_string(),
+                args: vec![],
+            }),
+            body: Box::new(CirExpr::Call {
+                func: "step".to_string(),
+                args: vec![],
+            }),
+            invariant: None,
+        };
+
+        let callees = extract_callees(&body);
+        assert!(callees.contains("check"));
+        assert!(callees.contains("step"));
+    }
+
+    #[test]
+    fn test_extract_callees_in_loop() {
+        let body = CirExpr::Loop {
+            body: Box::new(CirExpr::Call {
+                func: "loop_body".to_string(),
+                args: vec![],
+            }),
+        };
+
+        let callees = extract_callees(&body);
+        assert!(callees.contains("loop_body"));
+    }
+
+    #[test]
+    fn test_extract_callees_dedup() {
+        // Same function called multiple times
+        let body = CirExpr::Block(vec![
+            CirExpr::Call { func: "helper".to_string(), args: vec![] },
+            CirExpr::Call { func: "helper".to_string(), args: vec![] },
+            CirExpr::Call { func: "helper".to_string(), args: vec![] },
+        ]);
+
+        let callees = extract_callees(&body);
+        assert_eq!(callees.len(), 1);  // HashSet deduplicates
+        assert!(callees.contains("helper"));
+    }
+
+    #[test]
+    fn test_witness_to_proof_result_verified() {
+        let witness = ProofWitness {
+            function: "foo".to_string(),
+            outcome: ProofOutcome::Verified,
+            verification_time_ms: 100,
+            smt_script: None,
+            counterexample: None,
+        };
+
+        let result = witness_to_proof_result(&witness);
+        assert_eq!(result.status, VerificationStatus::Verified);
+    }
+
+    #[test]
+    fn test_witness_to_proof_result_failed() {
+        let witness = ProofWitness {
+            function: "foo".to_string(),
+            outcome: ProofOutcome::Failed("precondition violation".to_string()),
+            verification_time_ms: 50,
+            smt_script: None,
+            counterexample: None,
+        };
+
+        let result = witness_to_proof_result(&witness);
+        assert!(matches!(result.status, VerificationStatus::Failed(_)));
+    }
+
+    #[test]
+    fn test_witness_to_proof_result_skipped() {
+        let witness = ProofWitness {
+            function: "foo".to_string(),
+            outcome: ProofOutcome::Skipped,
+            verification_time_ms: 0,
+            smt_script: None,
+            counterexample: None,
+        };
+
+        let result = witness_to_proof_result(&witness);
+        assert_eq!(result.status, VerificationStatus::Skipped);
+    }
+
+    #[test]
+    fn test_witness_to_proof_result_unknown() {
+        let witness = ProofWitness {
+            function: "foo".to_string(),
+            outcome: ProofOutcome::Unknown("timeout".to_string()),
+            verification_time_ms: 10000,
+            smt_script: None,
+            counterexample: None,
+        };
+
+        let result = witness_to_proof_result(&witness);
+        assert_eq!(result.status, VerificationStatus::Unknown);
+    }
+
+    #[test]
+    fn test_new_function_verified_on_add() {
+        let mut verifier = IncrementalVerifier::new();
+
+        let program1 = make_test_program(vec![make_test_function("foo")]);
+        let _result1 = verifier.verify_incremental(None, &program1);
+
+        // Add a new function
+        let program2 = make_test_program(vec![
+            make_test_function("foo"),
+            make_test_function("bar"),
+        ]);
+        let result2 = verifier.verify_incremental(Some(&program1), &program2);
+
+        // bar should be verified (new), foo should be skipped
+        let all_processed: Vec<String> = result2.verified_functions.iter()
+            .chain(result2.failed_functions.iter().map(|(n, _)| n))
+            .cloned()
+            .collect();
+        assert!(all_processed.contains(&"bar".to_string()));
+    }
+
+    #[test]
+    fn test_database_accessor() {
+        let verifier = IncrementalVerifier::new();
+        assert!(verifier.database().is_empty());
+    }
+
+    #[test]
+    fn test_database_mut_accessor() {
+        let mut verifier = IncrementalVerifier::new();
+        verifier.database_mut().clear();
+        assert!(verifier.database().is_empty());
+    }
 }

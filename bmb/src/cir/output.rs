@@ -294,4 +294,202 @@ mod tests {
         let effects = EffectSet::const_();
         assert_eq!(CirOutput::format_effects(&effects), "const");
     }
+
+    // ---- Cycle 67: Additional output tests ----
+
+    #[test]
+    fn test_format_proposition_true_false() {
+        assert_eq!(CirOutput::format_proposition(&Proposition::True), "true");
+        assert_eq!(CirOutput::format_proposition(&Proposition::False), "false");
+    }
+
+    #[test]
+    fn test_format_proposition_not() {
+        let prop = Proposition::Not(Box::new(Proposition::True));
+        assert_eq!(CirOutput::format_proposition(&prop), "!true");
+    }
+
+    #[test]
+    fn test_format_proposition_or() {
+        let prop = Proposition::Or(vec![
+            Proposition::True,
+            Proposition::False,
+        ]);
+        assert_eq!(CirOutput::format_proposition(&prop), "(true || false)");
+    }
+
+    #[test]
+    fn test_format_proposition_implies() {
+        let prop = Proposition::Implies(
+            Box::new(Proposition::True),
+            Box::new(Proposition::False),
+        );
+        assert_eq!(CirOutput::format_proposition(&prop), "(true => false)");
+    }
+
+    #[test]
+    fn test_format_proposition_forall() {
+        let prop = Proposition::Forall {
+            var: "i".to_string(),
+            ty: CirType::I64,
+            body: Box::new(Proposition::True),
+        };
+        assert_eq!(CirOutput::format_proposition(&prop), "forall i: i64. true");
+    }
+
+    #[test]
+    fn test_format_proposition_exists() {
+        let prop = Proposition::Exists {
+            var: "x".to_string(),
+            ty: CirType::Bool,
+            body: Box::new(Proposition::False),
+        };
+        assert_eq!(CirOutput::format_proposition(&prop), "exists x: bool. false");
+    }
+
+    #[test]
+    fn test_format_proposition_predicate() {
+        let prop = Proposition::Predicate {
+            name: "is_sorted".to_string(),
+            args: vec![CirExpr::Var("arr".to_string())],
+        };
+        assert_eq!(CirOutput::format_proposition(&prop), "is_sorted(arr)");
+    }
+
+    #[test]
+    fn test_format_proposition_in_bounds() {
+        let prop = Proposition::InBounds {
+            index: Box::new(CirExpr::Var("i".to_string())),
+            array: Box::new(CirExpr::Var("arr".to_string())),
+        };
+        assert_eq!(CirOutput::format_proposition(&prop), "in_bounds(i, arr)");
+    }
+
+    #[test]
+    fn test_format_proposition_non_null() {
+        let prop = Proposition::NonNull(Box::new(CirExpr::Var("ptr".to_string())));
+        assert_eq!(CirOutput::format_proposition(&prop), "non_null(ptr)");
+    }
+
+    #[test]
+    fn test_format_proposition_old() {
+        let prop = Proposition::Old(
+            Box::new(CirExpr::Var("x".to_string())),
+            Box::new(Proposition::True),
+        );
+        assert_eq!(CirOutput::format_proposition(&prop), "old(x) : true");
+    }
+
+    #[test]
+    fn test_format_expr_literals() {
+        assert_eq!(CirOutput::format_expr(&CirExpr::IntLit(42)), "42");
+        assert_eq!(CirOutput::format_expr(&CirExpr::BoolLit(true)), "true");
+        assert_eq!(CirOutput::format_expr(&CirExpr::StringLit("hello".to_string())), "\"hello\"");
+        assert_eq!(CirOutput::format_expr(&CirExpr::Unit), "()");
+    }
+
+    #[test]
+    fn test_format_expr_float() {
+        let bits = 1.5_f64.to_bits();
+        let result = CirOutput::format_expr(&CirExpr::FloatLit(bits));
+        assert!(result.starts_with("1.5"), "Expected 1.5..., got {}", result);
+    }
+
+    #[test]
+    fn test_format_expr_call() {
+        let expr = CirExpr::Call {
+            func: "add".to_string(),
+            args: vec![CirExpr::IntLit(1), CirExpr::IntLit(2)],
+        };
+        assert_eq!(CirOutput::format_expr(&expr), "add(1, 2)");
+    }
+
+    #[test]
+    fn test_format_expr_index() {
+        let expr = CirExpr::Index {
+            base: Box::new(CirExpr::Var("arr".to_string())),
+            index: Box::new(CirExpr::IntLit(0)),
+        };
+        assert_eq!(CirOutput::format_expr(&expr), "arr[0]");
+    }
+
+    #[test]
+    fn test_format_expr_field() {
+        let expr = CirExpr::Field {
+            base: Box::new(CirExpr::Var("point".to_string())),
+            field: "x".to_string(),
+        };
+        assert_eq!(CirOutput::format_expr(&expr), "point.x");
+    }
+
+    #[test]
+    fn test_format_expr_len() {
+        let expr = CirExpr::Len(Box::new(CirExpr::Var("arr".to_string())));
+        assert_eq!(CirOutput::format_expr(&expr), "len(arr)");
+    }
+
+    #[test]
+    fn test_format_effects_impure() {
+        let effects = EffectSet::impure();
+        assert_eq!(CirOutput::format_effects(&effects), "impure");
+    }
+
+    #[test]
+    fn test_format_effects_with_io() {
+        let mut effects = EffectSet::pure();
+        effects.io = true;
+        assert_eq!(CirOutput::format_effects(&effects), "pure, io");
+    }
+
+    #[test]
+    fn test_format_effects_reads_writes() {
+        let mut effects = EffectSet::impure();
+        effects.reads = true;
+        effects.writes = true;
+        assert_eq!(CirOutput::format_effects(&effects), "reads, writes");
+    }
+
+    #[test]
+    fn test_format_text_empty_program() {
+        let program = CirProgram {
+            functions: vec![],
+            extern_fns: vec![],
+            structs: std::collections::HashMap::new(),
+            type_invariants: std::collections::HashMap::new(),
+        };
+        let text = CirOutput::format_text(&program);
+        assert!(text.contains("// CIR Output"));
+        assert!(text.contains("Functions: 0"));
+        assert!(text.contains("Extern Functions: 0"));
+        assert!(text.contains("Structs: 0"));
+    }
+
+    #[test]
+    fn test_format_json_empty_program() {
+        let program = CirProgram {
+            functions: vec![],
+            extern_fns: vec![],
+            structs: std::collections::HashMap::new(),
+            type_invariants: std::collections::HashMap::new(),
+        };
+        let json = CirOutput::format_json(&program).unwrap();
+        assert!(json.contains("functions"));
+        assert!(json.contains("extern_fns"));
+    }
+
+    #[test]
+    fn test_proposition_display_trait() {
+        let prop = Proposition::Compare {
+            lhs: Box::new(CirExpr::Var("x".to_string())),
+            op: CompareOp::Eq,
+            rhs: Box::new(CirExpr::IntLit(0)),
+        };
+        assert_eq!(format!("{}", prop), "x == 0");
+    }
+
+    #[test]
+    fn test_cir_expr_display_trait() {
+        let expr = CirExpr::Var("hello".to_string());
+        assert_eq!(format!("{}", expr), "hello");
+    }
 }

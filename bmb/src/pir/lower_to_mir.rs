@@ -414,4 +414,114 @@ mod tests {
 
         assert!(mir.functions.is_empty());
     }
+
+    // ---- Cycle 70: Additional PIR lowering tests ----
+
+    #[test]
+    fn test_proof_annotation_null_check() {
+        let ann = ProofAnnotation::null_check(Proposition::True, 2);
+        assert!(matches!(ann.kind, ProofAnnotationKind::NullCheckEliminated));
+        assert_eq!(ann.id, 2);
+    }
+
+    #[test]
+    fn test_proof_annotation_div_zero() {
+        let ann = ProofAnnotation::div_zero(Proposition::False, 3);
+        assert!(matches!(ann.kind, ProofAnnotationKind::DivZeroCheckEliminated));
+        assert_eq!(ann.id, 3);
+    }
+
+    #[test]
+    fn test_proof_annotation_unreachable() {
+        let ann = ProofAnnotation::unreachable(Proposition::True, 4);
+        assert!(matches!(ann.kind, ProofAnnotationKind::Unreachable));
+    }
+
+    #[test]
+    fn test_proof_annotation_fact() {
+        let ann = ProofAnnotation::fact(Proposition::True, 5);
+        assert!(matches!(ann.kind, ProofAnnotationKind::Fact));
+    }
+
+    #[test]
+    fn test_mir_stmt_kind_nop() {
+        let stmt = MirStmtWithProofs {
+            kind: MirStmtKind::Nop,
+            available_proofs: vec![],
+        };
+        assert!(matches!(stmt.kind, MirStmtKind::Nop));
+    }
+
+    #[test]
+    fn test_mir_stmt_kind_assign() {
+        let stmt = MirStmtWithProofs {
+            kind: MirStmtKind::Assign(0, MirRvalue::Constant(MirConstant::Int(42))),
+            available_proofs: vec![],
+        };
+        match &stmt.kind {
+            MirStmtKind::Assign(dest, MirRvalue::Constant(MirConstant::Int(v))) => {
+                assert_eq!(*dest, 0);
+                assert_eq!(*v, 42);
+            }
+            _ => panic!("Expected Assign with Int constant"),
+        }
+    }
+
+    #[test]
+    fn test_mir_constant_variants() {
+        let _int = MirConstant::Int(0);
+        let _float = MirConstant::Float(1.0);
+        let _bool = MirConstant::Bool(true);
+        let _string = MirConstant::String("hello".to_string());
+        let _unit = MirConstant::Unit;
+    }
+
+    #[test]
+    fn test_mir_terminator_variants() {
+        let _ret = MirTerminator::Return(0);
+        let _goto = MirTerminator::Goto(1);
+        let _unreachable = MirTerminator::Unreachable;
+        let _switch = MirTerminator::SwitchInt {
+            discr: 0,
+            targets: vec![(0, 1), (1, 2)],
+            default: 3,
+        };
+    }
+
+    #[test]
+    fn test_mir_block_with_proofs() {
+        let block = MirBlockWithProofs {
+            id: 0,
+            statements: vec![],
+            terminator: MirTerminator::Return(0),
+            entry_proofs: vec![
+                ProofAnnotation::fact(Proposition::True, 1),
+            ],
+        };
+        assert_eq!(block.id, 0);
+        assert!(block.statements.is_empty());
+        assert_eq!(block.entry_proofs.len(), 1);
+    }
+
+    #[test]
+    fn test_mir_function_with_proofs() {
+        let func = MirFunctionWithProofs {
+            name: "test".to_string(),
+            blocks: vec![],
+            entry_proofs: vec![],
+            exit_proofs: vec![],
+        };
+        assert_eq!(func.name, "test");
+        assert!(func.blocks.is_empty());
+    }
+
+    #[test]
+    fn test_mir_rvalue_variants() {
+        let _use = MirRvalue::Use(0);
+        let _binop = MirRvalue::BinaryOp(MirBinOp::Add, 0, 1);
+        let _unaryop = MirRvalue::UnaryOp(MirUnaryOp::Neg, 0);
+        let _index = MirRvalue::Index(0, 1);
+        let _field = MirRvalue::Field(0, "x".to_string());
+        let _len = MirRvalue::Len(0);
+    }
 }

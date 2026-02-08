@@ -1144,4 +1144,315 @@ mod tests {
         let func = &cir.functions[0];
         assert!(func.effects.is_pure, "Pure function should have pure effects");
     }
+
+    // ---- Cycle 67: expr_to_proposition tests ----
+
+    #[test]
+    fn test_expr_to_proposition_bool_literals() {
+        let lowerer = CirLowerer::new();
+        assert_eq!(lowerer.expr_to_proposition(&Expr::BoolLit(true)), Some(Proposition::True));
+        assert_eq!(lowerer.expr_to_proposition(&Expr::BoolLit(false)), Some(Proposition::False));
+    }
+
+    #[test]
+    fn test_expr_to_proposition_comparison_operators() {
+        let cir = source_to_cir("fn f(a: i64, b: i64) -> i64 pre a < b = a;");
+        let func = &cir.functions[0];
+        assert_eq!(func.preconditions.len(), 1);
+        // The proposition should be a Compare with Lt
+        match &func.preconditions[0].proposition {
+            Proposition::Compare { op, .. } => assert_eq!(*op, CompareOp::Lt),
+            other => panic!("Expected Compare, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_expr_to_proposition_logical_and() {
+        let cir = source_to_cir("fn f(x: i64) -> i64 pre x > 0 && x < 100 = x;");
+        let func = &cir.functions[0];
+        match &func.preconditions[0].proposition {
+            Proposition::And(parts) => assert_eq!(parts.len(), 2),
+            other => panic!("Expected And, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_expr_to_proposition_logical_or() {
+        let cir = source_to_cir("fn f(x: i64) -> i64 pre x == 0 || x == 1 = x;");
+        let func = &cir.functions[0];
+        match &func.preconditions[0].proposition {
+            Proposition::Or(parts) => assert_eq!(parts.len(), 2),
+            other => panic!("Expected Or, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_expr_to_proposition_not() {
+        let cir = source_to_cir("fn f(x: i64) -> i64 pre !(x == 0) = x;");
+        let func = &cir.functions[0];
+        match &func.preconditions[0].proposition {
+            Proposition::Not(_) => {}
+            other => panic!("Expected Not, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_expr_to_proposition_var_as_boolean() {
+        let lowerer = CirLowerer::new();
+        let prop = lowerer.expr_to_proposition(&Expr::Var("flag".to_string()));
+        // Variable treated as boolean: flag != 0
+        match prop {
+            Some(Proposition::Compare { op: CompareOp::Ne, .. }) => {}
+            other => panic!("Expected Compare(Ne), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_expr_to_proposition_arithmetic_returns_none() {
+        let lowerer = CirLowerer::new();
+        use crate::ast::Spanned;
+        let span = crate::ast::Span { start: 0, end: 1 };
+        let expr = Expr::Binary {
+            op: AstBinOp::Add,
+            left: Box::new(Spanned { node: Expr::IntLit(1), span }),
+            right: Box::new(Spanned { node: Expr::IntLit(2), span }),
+        };
+        assert!(lowerer.expr_to_proposition(&expr).is_none());
+    }
+
+    // ---- lower_expr edge cases ----
+
+    #[test]
+    fn test_lower_expr_char_lit() {
+        let lowerer = CirLowerer::new();
+        let result = lowerer.lower_expr(&Expr::CharLit('A'));
+        assert_eq!(result, CirExpr::IntLit(65));
+    }
+
+    #[test]
+    fn test_lower_expr_null() {
+        let lowerer = CirLowerer::new();
+        let result = lowerer.lower_expr(&Expr::Null);
+        assert_eq!(result, CirExpr::IntLit(0));
+    }
+
+    #[test]
+    fn test_lower_expr_unit() {
+        let lowerer = CirLowerer::new();
+        let result = lowerer.lower_expr(&Expr::Unit);
+        assert_eq!(result, CirExpr::Unit);
+    }
+
+    #[test]
+    fn test_lower_expr_ret() {
+        let lowerer = CirLowerer::new();
+        let result = lowerer.lower_expr(&Expr::Ret);
+        assert_eq!(result, CirExpr::Var("ret".to_string()));
+    }
+
+    #[test]
+    fn test_lower_expr_it() {
+        let lowerer = CirLowerer::new();
+        let result = lowerer.lower_expr(&Expr::It);
+        assert_eq!(result, CirExpr::Var("it".to_string()));
+    }
+
+    #[test]
+    fn test_lower_expr_continue() {
+        let lowerer = CirLowerer::new();
+        let result = lowerer.lower_expr(&Expr::Continue);
+        assert_eq!(result, CirExpr::Continue);
+    }
+
+    #[test]
+    fn test_lower_expr_todo_with_message() {
+        let lowerer = CirLowerer::new();
+        let result = lowerer.lower_expr(&Expr::Todo { message: Some("later".to_string()) });
+        assert_eq!(result, CirExpr::Todo(Some("later".to_string())));
+    }
+
+    // ---- lower_type tests ----
+
+    #[test]
+    fn test_lower_type_primitives() {
+        let lowerer = CirLowerer::new();
+        assert_eq!(lowerer.lower_type(&Type::Unit), CirType::Unit);
+        assert_eq!(lowerer.lower_type(&Type::Bool), CirType::Bool);
+        assert_eq!(lowerer.lower_type(&Type::I32), CirType::I32);
+        assert_eq!(lowerer.lower_type(&Type::I64), CirType::I64);
+        assert_eq!(lowerer.lower_type(&Type::U32), CirType::U32);
+        assert_eq!(lowerer.lower_type(&Type::U64), CirType::U64);
+        assert_eq!(lowerer.lower_type(&Type::F64), CirType::F64);
+        assert_eq!(lowerer.lower_type(&Type::Char), CirType::Char);
+        assert_eq!(lowerer.lower_type(&Type::String), CirType::String);
+    }
+
+    #[test]
+    fn test_lower_type_array() {
+        let lowerer = CirLowerer::new();
+        let ty = Type::Array(Box::new(Type::I64), 10);
+        let expected = CirType::Array(Box::new(CirType::I64), 10);
+        assert_eq!(lowerer.lower_type(&ty), expected);
+    }
+
+    #[test]
+    fn test_lower_type_ref_and_ptr() {
+        let lowerer = CirLowerer::new();
+        assert_eq!(
+            lowerer.lower_type(&Type::Ref(Box::new(Type::I64))),
+            CirType::Ref(Box::new(CirType::I64))
+        );
+        assert_eq!(
+            lowerer.lower_type(&Type::RefMut(Box::new(Type::I64))),
+            CirType::RefMut(Box::new(CirType::I64))
+        );
+        assert_eq!(
+            lowerer.lower_type(&Type::Ptr(Box::new(Type::I64))),
+            CirType::Ptr(Box::new(CirType::I64))
+        );
+    }
+
+    #[test]
+    fn test_lower_type_concurrency() {
+        let lowerer = CirLowerer::new();
+        // All concurrency types map to I64
+        assert_eq!(lowerer.lower_type(&Type::Thread(Box::new(Type::Unit))), CirType::I64);
+        assert_eq!(lowerer.lower_type(&Type::Mutex(Box::new(Type::I64))), CirType::I64);
+        assert_eq!(lowerer.lower_type(&Type::Arc(Box::new(Type::I64))), CirType::I64);
+        assert_eq!(lowerer.lower_type(&Type::Atomic(Box::new(Type::I64))), CirType::I64);
+        assert_eq!(lowerer.lower_type(&Type::Future(Box::new(Type::I64))), CirType::I64);
+        assert_eq!(lowerer.lower_type(&Type::Barrier), CirType::I64);
+        assert_eq!(lowerer.lower_type(&Type::Condvar), CirType::I64);
+        assert_eq!(lowerer.lower_type(&Type::AsyncFile), CirType::I64);
+        assert_eq!(lowerer.lower_type(&Type::ThreadPool), CirType::I64);
+        assert_eq!(lowerer.lower_type(&Type::Scope), CirType::I64);
+    }
+
+    #[test]
+    fn test_lower_type_nullable() {
+        let lowerer = CirLowerer::new();
+        let ty = Type::Nullable(Box::new(Type::I64));
+        assert_eq!(lowerer.lower_type(&ty), CirType::Option(Box::new(CirType::I64)));
+    }
+
+    #[test]
+    fn test_lower_type_tuple() {
+        let lowerer = CirLowerer::new();
+        let ty = Type::Tuple(vec![Box::new(Type::I64), Box::new(Type::Bool)]);
+        assert_eq!(lowerer.lower_type(&ty), CirType::Tuple(vec![CirType::I64, CirType::Bool]));
+    }
+
+    #[test]
+    fn test_lower_type_never() {
+        let lowerer = CirLowerer::new();
+        assert_eq!(lowerer.lower_type(&Type::Never), CirType::Never);
+    }
+
+    // ---- references_return_value tests ----
+
+    #[test]
+    fn test_references_return_value_var() {
+        let lowerer = CirLowerer::new();
+        assert!(lowerer.references_return_value(&Expr::Var("ret".to_string()), "ret"));
+        assert!(lowerer.references_return_value(&Expr::Var("result".to_string()), "result"));
+        assert!(!lowerer.references_return_value(&Expr::Var("x".to_string()), "ret"));
+    }
+
+    #[test]
+    fn test_references_return_value_ret_expr() {
+        let lowerer = CirLowerer::new();
+        assert!(lowerer.references_return_value(&Expr::Ret, "anything"));
+    }
+
+    #[test]
+    fn test_references_return_value_nested() {
+        let lowerer = CirLowerer::new();
+        let span = crate::ast::Span { start: 0, end: 1 };
+        let expr = Expr::Binary {
+            op: AstBinOp::Gt,
+            left: Box::new(crate::ast::Spanned { node: Expr::Var("ret".to_string()), span }),
+            right: Box::new(crate::ast::Spanned { node: Expr::IntLit(0), span }),
+        };
+        assert!(lowerer.references_return_value(&expr, "ret"));
+    }
+
+    // ---- Integration: lowering with contracts ----
+
+    #[test]
+    fn test_lower_const_function_effects() {
+        let cir = source_to_cir("@const fn zero() -> i64 = 0;");
+        let func = &cir.functions[0];
+        assert!(func.effects.is_const, "Should have const effect");
+        assert!(func.effects.is_pure, "Const implies pure");
+    }
+
+    #[test]
+    fn test_lower_function_ret_name_default() {
+        let cir = source_to_cir("fn id(x: i64) -> i64 = x;");
+        assert_eq!(cir.functions[0].ret_name, "ret");
+    }
+
+    #[test]
+    fn test_lower_function_with_postcondition_uses_ret() {
+        let cir = source_to_cir("fn abs(x: i64) -> i64 post ret >= 0 = if x >= 0 { x } else { 0 - x };");
+        let func = &cir.functions[0];
+        assert_eq!(func.ret_name, "ret");
+        assert!(!func.postconditions.is_empty());
+    }
+
+    // ---- binop/unaryop lowering ----
+
+    #[test]
+    fn test_lower_all_binops() {
+        let lowerer = CirLowerer::new();
+        assert_eq!(lowerer.lower_binop(AstBinOp::Add), BinOp::Add);
+        assert_eq!(lowerer.lower_binop(AstBinOp::Sub), BinOp::Sub);
+        assert_eq!(lowerer.lower_binop(AstBinOp::Mul), BinOp::Mul);
+        assert_eq!(lowerer.lower_binop(AstBinOp::Div), BinOp::Div);
+        assert_eq!(lowerer.lower_binop(AstBinOp::Mod), BinOp::Mod);
+        assert_eq!(lowerer.lower_binop(AstBinOp::Lt), BinOp::Lt);
+        assert_eq!(lowerer.lower_binop(AstBinOp::Le), BinOp::Le);
+        assert_eq!(lowerer.lower_binop(AstBinOp::Gt), BinOp::Gt);
+        assert_eq!(lowerer.lower_binop(AstBinOp::Ge), BinOp::Ge);
+        assert_eq!(lowerer.lower_binop(AstBinOp::Eq), BinOp::Eq);
+        assert_eq!(lowerer.lower_binop(AstBinOp::Ne), BinOp::Ne);
+        assert_eq!(lowerer.lower_binop(AstBinOp::And), BinOp::And);
+        assert_eq!(lowerer.lower_binop(AstBinOp::Or), BinOp::Or);
+        assert_eq!(lowerer.lower_binop(AstBinOp::Band), BinOp::BitAnd);
+        assert_eq!(lowerer.lower_binop(AstBinOp::Bor), BinOp::BitOr);
+        assert_eq!(lowerer.lower_binop(AstBinOp::Bxor), BinOp::BitXor);
+        assert_eq!(lowerer.lower_binop(AstBinOp::Shl), BinOp::Shl);
+        assert_eq!(lowerer.lower_binop(AstBinOp::Shr), BinOp::Shr);
+        assert_eq!(lowerer.lower_binop(AstBinOp::Implies), BinOp::Implies);
+    }
+
+    #[test]
+    fn test_lower_all_unaryops() {
+        let lowerer = CirLowerer::new();
+        assert_eq!(lowerer.lower_unaryop(AstUnOp::Neg), UnaryOp::Neg);
+        assert_eq!(lowerer.lower_unaryop(AstUnOp::Not), UnaryOp::Not);
+        assert_eq!(lowerer.lower_unaryop(AstUnOp::Bnot), UnaryOp::BitNot);
+    }
+
+    // ---- Integration: struct fields ----
+
+    #[test]
+    fn test_lower_struct_fields_types() {
+        let cir = source_to_cir(
+            "struct Pair { a: i64, b: bool }
+             fn make() -> Pair = new Pair { a: 1, b: true };"
+        );
+        let pair = &cir.structs["Pair"];
+        assert_eq!(pair.fields[0], ("a".to_string(), CirType::I64));
+        assert_eq!(pair.fields[1], ("b".to_string(), CirType::Bool));
+    }
+
+    // ---- Block lowering ----
+
+    #[test]
+    fn test_lower_empty_block() {
+        let lowerer = CirLowerer::new();
+        let result = lowerer.lower_expr(&Expr::Block(vec![]));
+        assert_eq!(result, CirExpr::Unit);
+    }
 }

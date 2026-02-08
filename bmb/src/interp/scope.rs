@@ -205,4 +205,116 @@ mod tests {
             panic!("Expected string value");
         }
     }
+
+    // ---- Cycle 75: Additional scope tests ----
+
+    #[test]
+    fn test_default() {
+        let stack = ScopeStack::default();
+        assert_eq!(stack.depth(), 1);
+    }
+
+    #[test]
+    fn test_contains() {
+        let mut stack = ScopeStack::new();
+        assert!(!stack.contains("x"));
+        stack.define("x".to_string(), Value::Int(1));
+        assert!(stack.contains("x"));
+    }
+
+    #[test]
+    fn test_contains_in_parent() {
+        let mut stack = ScopeStack::new();
+        stack.define("x".to_string(), Value::Int(1));
+        stack.push_scope();
+        assert!(stack.contains("x")); // visible from child scope
+    }
+
+    #[test]
+    fn test_set_returns_false_for_missing() {
+        let mut stack = ScopeStack::new();
+        assert!(!stack.set("x", Value::Int(42)));
+    }
+
+    #[test]
+    fn test_set_updates_current_scope() {
+        let mut stack = ScopeStack::new();
+        stack.define("x".to_string(), Value::Int(1));
+        assert!(stack.set("x", Value::Int(99)));
+        assert_eq!(stack.get("x"), Some(Value::Int(99)));
+    }
+
+    #[test]
+    fn test_current_bindings() {
+        let mut stack = ScopeStack::new();
+        stack.define("a".to_string(), Value::Int(1));
+        stack.define("b".to_string(), Value::Int(2));
+
+        let bindings = stack.current_bindings().unwrap();
+        assert_eq!(bindings.len(), 2);
+        assert_eq!(bindings.get("a"), Some(&Value::Int(1)));
+    }
+
+    #[test]
+    fn test_reset() {
+        let mut stack = ScopeStack::new();
+        stack.define("x".to_string(), Value::Int(1));
+        stack.push_scope();
+        stack.define("y".to_string(), Value::Int(2));
+        stack.push_scope();
+
+        stack.reset();
+        assert_eq!(stack.depth(), 1);
+        assert!(!stack.contains("x"));
+        assert!(!stack.contains("y"));
+    }
+
+    #[test]
+    fn test_push_scope_returns_depth() {
+        let mut stack = ScopeStack::new();
+        let d1 = stack.push_scope();
+        let d2 = stack.push_scope();
+        assert_eq!(d1, 1);
+        assert_eq!(d2, 2);
+    }
+
+    #[test]
+    #[should_panic(expected = "Cannot pop global scope")]
+    fn test_pop_global_panics() {
+        let mut stack = ScopeStack::new();
+        stack.pop_scope(); // Should panic
+    }
+
+    #[test]
+    fn test_multiple_values_same_scope() {
+        let mut stack = ScopeStack::new();
+        stack.define("a".to_string(), Value::Int(1));
+        stack.define("b".to_string(), Value::Bool(true));
+        stack.define("c".to_string(), Value::Float(1.5));
+
+        assert_eq!(stack.get("a"), Some(Value::Int(1)));
+        assert_eq!(stack.get("b"), Some(Value::Bool(true)));
+        assert_eq!(stack.get("c"), Some(Value::Float(1.5)));
+    }
+
+    #[test]
+    fn test_set_in_deeply_nested_scope() {
+        let mut stack = ScopeStack::new();
+        stack.define("x".to_string(), Value::Int(0));
+
+        for _ in 0..10 {
+            stack.push_scope();
+        }
+
+        assert!(stack.set("x", Value::Int(42)));
+        assert_eq!(stack.get("x"), Some(Value::Int(42)));
+
+        // Pop all child scopes
+        for _ in 0..10 {
+            stack.pop_scope();
+        }
+
+        // Change should persist
+        assert_eq!(stack.get("x"), Some(Value::Int(42)));
+    }
 }

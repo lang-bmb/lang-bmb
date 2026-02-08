@@ -316,4 +316,224 @@ mod tests {
 
         assert_eq!(hash1, hash2, "Same functions should have same hash");
     }
+
+    // ---- Cycle 73: Additional summary tests ----
+
+    #[test]
+    fn test_summary_change_eq() {
+        assert_eq!(SummaryChange::Unchanged, SummaryChange::Unchanged);
+        assert_eq!(SummaryChange::ContractChanged, SummaryChange::ContractChanged);
+        assert_eq!(SummaryChange::ImplementationChanged, SummaryChange::ImplementationChanged);
+        assert_eq!(SummaryChange::Added, SummaryChange::Added);
+        assert_eq!(SummaryChange::Removed, SummaryChange::Removed);
+        assert_ne!(SummaryChange::Unchanged, SummaryChange::Added);
+    }
+
+    #[test]
+    fn test_termination_status_all_variants() {
+        assert_eq!(TerminationStatus::Terminating, TerminationStatus::Terminating);
+        assert_eq!(TerminationStatus::MayDiverge, TerminationStatus::MayDiverge);
+        assert_eq!(TerminationStatus::NonTerminating, TerminationStatus::NonTerminating);
+        assert_eq!(TerminationStatus::Unknown, TerminationStatus::Unknown);
+        assert_ne!(TerminationStatus::Terminating, TerminationStatus::MayDiverge);
+    }
+
+    #[test]
+    fn test_function_summary_default() {
+        let summary = FunctionSummary::default();
+        assert!(summary.requires.is_empty());
+        assert!(summary.ensures.is_empty());
+        assert!(!summary.effects.is_pure);  // impure by default
+        assert_eq!(summary.termination, TerminationStatus::Unknown);
+        assert!(!summary.verified);
+        assert_eq!(summary.body_hash, 0);
+    }
+
+    #[test]
+    fn test_extract_summaries_multiple_functions() {
+        let program = CirProgram {
+            functions: vec![
+                make_test_function("alpha"),
+                make_test_function("beta"),
+                make_test_function("gamma"),
+            ],
+            extern_fns: vec![],
+            structs: std::collections::HashMap::new(),
+            type_invariants: std::collections::HashMap::new(),
+        };
+
+        let summaries = extract_summaries(&program);
+        assert_eq!(summaries.len(), 3);
+
+        // Check all functions have summaries
+        let names: Vec<String> = summaries.keys().map(|id| id.name.clone()).collect();
+        assert!(names.contains(&"alpha".to_string()));
+        assert!(names.contains(&"beta".to_string()));
+        assert!(names.contains(&"gamma".to_string()));
+    }
+
+    #[test]
+    fn test_extract_summaries_empty_program() {
+        let program = CirProgram {
+            functions: vec![],
+            extern_fns: vec![],
+            structs: std::collections::HashMap::new(),
+            type_invariants: std::collections::HashMap::new(),
+        };
+
+        let summaries = extract_summaries(&program);
+        assert!(summaries.is_empty());
+    }
+
+    #[test]
+    fn test_compare_summaries_none_none() {
+        assert_eq!(compare_summaries(None, None), SummaryChange::Unchanged);
+    }
+
+    #[test]
+    fn test_compare_summaries_contract_changed() {
+        let func1 = make_test_function("foo");
+        let summary1 = extract_function_summary(&func1);
+
+        // Remove preconditions to change contract
+        let mut func2 = make_test_function("foo");
+        func2.preconditions = vec![];
+        let summary2 = extract_function_summary(&func2);
+
+        assert_eq!(
+            compare_summaries(Some(&summary1), Some(&summary2)),
+            SummaryChange::ContractChanged
+        );
+    }
+
+    #[test]
+    fn test_compare_summaries_effects_changed() {
+        let func1 = make_test_function("foo");
+        let summary1 = extract_function_summary(&func1);
+
+        let mut func2 = make_test_function("foo");
+        func2.effects = EffectSet::impure();
+        let summary2 = extract_function_summary(&func2);
+
+        assert_eq!(
+            compare_summaries(Some(&summary1), Some(&summary2)),
+            SummaryChange::ContractChanged
+        );
+    }
+
+    #[test]
+    fn test_has_unbounded_loop_while() {
+        let expr = CirExpr::While {
+            cond: Box::new(CirExpr::BoolLit(true)),
+            body: Box::new(CirExpr::Unit),
+            invariant: None,
+        };
+        assert!(has_unbounded_loop(&expr));
+    }
+
+    #[test]
+    fn test_has_unbounded_loop_for_is_bounded() {
+        let expr = CirExpr::For {
+            var: "i".to_string(),
+            iter: Box::new(CirExpr::IntLit(10)),
+            body: Box::new(CirExpr::Unit),
+        };
+        assert!(!has_unbounded_loop(&expr));
+    }
+
+    #[test]
+    fn test_has_unbounded_loop_nested_in_if() {
+        let expr = CirExpr::If {
+            cond: Box::new(CirExpr::BoolLit(true)),
+            then_branch: Box::new(CirExpr::Loop {
+                body: Box::new(CirExpr::Break(Box::new(CirExpr::Unit))),
+            }),
+            else_branch: Box::new(CirExpr::Unit),
+        };
+        assert!(has_unbounded_loop(&expr));
+    }
+
+    #[test]
+    fn test_has_unbounded_loop_nested_in_let() {
+        let expr = CirExpr::Let {
+            name: "x".to_string(),
+            ty: CirType::I64,
+            value: Box::new(CirExpr::IntLit(1)),
+            body: Box::new(CirExpr::While {
+                cond: Box::new(CirExpr::BoolLit(true)),
+                body: Box::new(CirExpr::Unit),
+                invariant: None,
+            }),
+        };
+        assert!(has_unbounded_loop(&expr));
+    }
+
+    #[test]
+    fn test_has_unbounded_loop_nested_in_block() {
+        let expr = CirExpr::Block(vec![
+            CirExpr::IntLit(1),
+            CirExpr::Loop {
+                body: Box::new(CirExpr::Break(Box::new(CirExpr::Unit))),
+            },
+        ]);
+        assert!(has_unbounded_loop(&expr));
+    }
+
+    #[test]
+    fn test_has_unbounded_loop_simple_expr() {
+        assert!(!has_unbounded_loop(&CirExpr::IntLit(42)));
+        assert!(!has_unbounded_loop(&CirExpr::BoolLit(true)));
+        assert!(!has_unbounded_loop(&CirExpr::Var("x".to_string())));
+        assert!(!has_unbounded_loop(&CirExpr::Unit));
+    }
+
+    #[test]
+    fn test_body_hash_different_functions() {
+        let func1 = make_test_function("foo");
+        let func2 = make_test_function("bar");
+
+        let hash1 = compute_body_hash(&func1);
+        let hash2 = compute_body_hash(&func2);
+
+        assert_ne!(hash1, hash2, "Different function names should produce different hashes");
+    }
+
+    #[test]
+    fn test_body_hash_different_body() {
+        let func1 = make_test_function("foo");
+        let mut func2 = make_test_function("foo");
+        func2.body = CirExpr::IntLit(99);
+
+        let hash1 = compute_body_hash(&func1);
+        let hash2 = compute_body_hash(&func2);
+
+        assert_ne!(hash1, hash2, "Different bodies should produce different hashes");
+    }
+
+    #[test]
+    fn test_infer_termination_diverges_flag() {
+        let mut func = make_test_function("diverge_fn");
+        func.effects.diverges = true;
+        assert_eq!(infer_termination(&func), TerminationStatus::MayDiverge);
+    }
+
+    #[test]
+    fn test_extract_function_summary_preserves_effects() {
+        let mut func = make_test_function("io_fn");
+        func.effects = EffectSet {
+            is_pure: false,
+            is_const: false,
+            reads: true,
+            writes: true,
+            allocates: false,
+            diverges: false,
+            io: true,
+        };
+
+        let summary = extract_function_summary(&func);
+        assert!(!summary.effects.is_pure);
+        assert!(summary.effects.io);
+        assert!(summary.effects.reads);
+        assert!(summary.effects.writes);
+    }
 }

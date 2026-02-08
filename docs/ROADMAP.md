@@ -8,11 +8,11 @@
 
 | 항목 | 상태 | 비고 |
 |------|------|------|
-| **버전** | v0.89.8 | Quality Gate (Alpha) |
+| **버전** | v0.89.9 | Quality Gate (Alpha) |
 | **단계** | Alpha | Concurrency 완료 → **Alpha (v0.89)** → Beta (v0.90) → RC (v0.98) |
 | **Bootstrap** | ✅ 3-Stage 완료 | Stage 1: ~0.55s (--fast-compile) |
 | **Benchmarks** | ✅ 18/30 BMB > C | 60% C보다 빠름 |
-| **Tests** | ✅ 914개 통과 | 737 + 154 + 23 (cargo) + 17/17 BMB ecosystem packages |
+| **Tests** | ✅ 1183개 통과 | 1006 + 154 + 23 (cargo) + 17/17 BMB ecosystem packages |
 | **Stability** | ✅ STABILITY.md | 언어/API 동결 문서화 |
 | **동시성 지원** | ✅ 부트스트랩 완료 | 토큰/타입/MIR/코드젠/extern 선언 완료 |
 | **Golden Binary** | ✅ v0.88.10 | Rust 없이 부트스트랩 가능 |
@@ -219,7 +219,16 @@ select {
 | CIR + 계약 검증 테스트 | ✅ | v0.89.8: cir/mod.rs 24개 + contract.rs 11개 = 35개 테스트 (Cycle 63) |
 | AST + 전처리기 테스트 | ✅ | v0.89.8: output.rs 14개 + preprocessor 7개 + ast/mod.rs 7개 = 28개 테스트 (Cycle 64) |
 | 쿼리 + 리졸버 테스트 | ✅ | v0.89.8: query 12개 + resolver 8개 = 20개 테스트 (Cycle 65) |
-| 코드 커버리지 > 80% | 📋 | 테스트 범위 확대 (현재 914개) |
+| CIR 로우어링 + 출력 테스트 | ✅ | v0.89.9: lower.rs 31개 + output.rs 23개 = 54개 테스트 (Cycle 67) |
+| 빌드 파이프라인 테스트 확장 | ✅ | v0.89.9: build/mod.rs 15개 테스트 (VerificationMode, BuildConfig, OutputType) (Cycle 68) |
+| CIR 검증 + ProofDB 테스트 | ✅ | v0.89.9: verify.rs 14개 + proof_db.rs 11개 = 25개 테스트 (Cycle 69) |
+| SMT 솔버 + PIR 로우어링 테스트 | ✅ | v0.89.9: solver.rs 14개 + lower_to_mir.rs 10개 = 24개 테스트 (Cycle 70) |
+| PIR 전파 테스트 | ✅ | v0.89.9: propagate.rs 16개 테스트 (PropagationRule, expr_to_proposition, mentions_var) (Cycle 71) |
+| AST 표현식 테스트 | ✅ | v0.89.9: expr.rs 13개 테스트 (BinOp/UnOp/RangeKind/StateKind Display) (Cycle 72) |
+| 검증 요약 + 증분 검증 테스트 | ✅ | v0.89.9: summary.rs 18개 + incremental.rs 17개 = 35개 테스트 (Cycle 73) |
+| SMT 번역기 + PIR→MIR 팩트 테스트 | ✅ | v0.89.9: translator.rs 21개 + to_mir_facts.rs 18개 = 39개 (Cycle 74) |
+| 인터프리터 에러 + 스코프 + MIR 증명 테스트 | ✅ | v0.89.9: error.rs 18개 + scope.rs 12개 + proof_guided.rs 16개 = 46개 (Cycle 75) |
+| 코드 커버리지 > 80% | 📋 | 테스트 범위 확대 (현재 1183개) |
 | 퍼징 테스트 | 📋 | libFuzzer 기반 입력 검증 |
 | 메모리 안전성 검증 | 📋 | AddressSanitizer 통과 |
 

@@ -931,4 +931,226 @@ mod tests {
             panic!("Expected If expression");
         }
     }
+
+    // ---- Cycle 71: Additional propagation tests ----
+
+    #[test]
+    fn test_propagation_rule_eq() {
+        assert_eq!(PropagationRule::PreconditionToFact, PropagationRule::PreconditionToFact);
+        assert_ne!(PropagationRule::BranchCondition, PropagationRule::LoopCondition);
+    }
+
+    #[test]
+    fn test_propagation_rule_all_variants() {
+        let rules = [
+            PropagationRule::PreconditionToFact,
+            PropagationRule::BranchCondition,
+            PropagationRule::LoopCondition,
+            PropagationRule::LetBinding,
+            PropagationRule::PostconditionAfterCall,
+        ];
+        // All 5 variants are distinct
+        for (i, r1) in rules.iter().enumerate() {
+            for (j, r2) in rules.iter().enumerate() {
+                assert_eq!(i == j, r1 == r2);
+            }
+        }
+    }
+
+    #[test]
+    fn test_expr_to_proposition_bool_true() {
+        let prop = expr_to_proposition(&CirExpr::BoolLit(true));
+        assert_eq!(prop, Proposition::True);
+    }
+
+    #[test]
+    fn test_expr_to_proposition_bool_false() {
+        let prop = expr_to_proposition(&CirExpr::BoolLit(false));
+        assert_eq!(prop, Proposition::False);
+    }
+
+    #[test]
+    fn test_expr_to_proposition_all_comparisons() {
+        for (op, expected_op) in [
+            (BinOp::Lt, CompareOp::Lt),
+            (BinOp::Le, CompareOp::Le),
+            (BinOp::Gt, CompareOp::Gt),
+            (BinOp::Ge, CompareOp::Ge),
+            (BinOp::Eq, CompareOp::Eq),
+            (BinOp::Ne, CompareOp::Ne),
+        ] {
+            let expr = CirExpr::BinOp {
+                op,
+                lhs: Box::new(CirExpr::Var("x".to_string())),
+                rhs: Box::new(CirExpr::IntLit(0)),
+            };
+            let prop = expr_to_proposition(&expr);
+            match prop {
+                Proposition::Compare { op: actual_op, .. } => assert_eq!(actual_op, expected_op),
+                _ => panic!("Expected Compare for {:?}", op),
+            }
+        }
+    }
+
+    #[test]
+    fn test_expr_to_proposition_and() {
+        let expr = CirExpr::BinOp {
+            op: BinOp::And,
+            lhs: Box::new(CirExpr::BoolLit(true)),
+            rhs: Box::new(CirExpr::BoolLit(false)),
+        };
+        let prop = expr_to_proposition(&expr);
+        match prop {
+            Proposition::And(parts) => {
+                assert_eq!(parts.len(), 2);
+                assert_eq!(parts[0], Proposition::True);
+                assert_eq!(parts[1], Proposition::False);
+            }
+            _ => panic!("Expected And"),
+        }
+    }
+
+    #[test]
+    fn test_expr_to_proposition_or() {
+        let expr = CirExpr::BinOp {
+            op: BinOp::Or,
+            lhs: Box::new(CirExpr::BoolLit(true)),
+            rhs: Box::new(CirExpr::BoolLit(false)),
+        };
+        match expr_to_proposition(&expr) {
+            Proposition::Or(parts) => assert_eq!(parts.len(), 2),
+            _ => panic!("Expected Or"),
+        }
+    }
+
+    #[test]
+    fn test_expr_to_proposition_not() {
+        let expr = CirExpr::UnaryOp {
+            op: UnaryOp::Not,
+            operand: Box::new(CirExpr::BoolLit(true)),
+        };
+        match expr_to_proposition(&expr) {
+            Proposition::Not(inner) => assert_eq!(*inner, Proposition::True),
+            _ => panic!("Expected Not"),
+        }
+    }
+
+    #[test]
+    fn test_expr_to_proposition_non_boolean_defaults() {
+        // Arithmetic operations default to True
+        let expr = CirExpr::BinOp {
+            op: BinOp::Add,
+            lhs: Box::new(CirExpr::IntLit(1)),
+            rhs: Box::new(CirExpr::IntLit(2)),
+        };
+        assert_eq!(expr_to_proposition(&expr), Proposition::True);
+
+        // Var defaults to True
+        assert_eq!(expr_to_proposition(&CirExpr::Var("x".to_string())), Proposition::True);
+    }
+
+    #[test]
+    fn test_mentions_var_in_not() {
+        let prop = Proposition::Not(Box::new(Proposition::Compare {
+            lhs: Box::new(CirExpr::Var("x".to_string())),
+            op: CompareOp::Eq,
+            rhs: Box::new(CirExpr::IntLit(0)),
+        }));
+        assert!(mentions_var(&prop, "x"));
+        assert!(!mentions_var(&prop, "y"));
+    }
+
+    #[test]
+    fn test_mentions_var_in_and_or() {
+        let prop = Proposition::And(vec![
+            Proposition::Compare {
+                lhs: Box::new(CirExpr::Var("a".to_string())),
+                op: CompareOp::Gt,
+                rhs: Box::new(CirExpr::IntLit(0)),
+            },
+            Proposition::Compare {
+                lhs: Box::new(CirExpr::Var("b".to_string())),
+                op: CompareOp::Lt,
+                rhs: Box::new(CirExpr::IntLit(10)),
+            },
+        ]);
+        assert!(mentions_var(&prop, "a"));
+        assert!(mentions_var(&prop, "b"));
+        assert!(!mentions_var(&prop, "c"));
+    }
+
+    #[test]
+    fn test_mentions_var_in_implies() {
+        let prop = Proposition::Implies(
+            Box::new(Proposition::Compare {
+                lhs: Box::new(CirExpr::Var("p".to_string())),
+                op: CompareOp::Gt,
+                rhs: Box::new(CirExpr::IntLit(0)),
+            }),
+            Box::new(Proposition::True),
+        );
+        assert!(mentions_var(&prop, "p"));
+    }
+
+    #[test]
+    fn test_mentions_var_true_false() {
+        assert!(!mentions_var(&Proposition::True, "x"));
+        assert!(!mentions_var(&Proposition::False, "x"));
+    }
+
+    #[test]
+    fn test_propagate_empty_program() {
+        let cir = CirProgram {
+            functions: vec![],
+            extern_fns: vec![],
+            structs: HashMap::new(),
+            type_invariants: HashMap::new(),
+        };
+        let db = ProofDatabase::new();
+        let pir = propagate_proofs(&cir, &db);
+        assert!(pir.functions.is_empty());
+    }
+
+    #[test]
+    fn test_propagate_multiple_functions() {
+        let mut func1 = make_test_function();
+        func1.name = "f1".to_string();
+        let mut func2 = make_test_function();
+        func2.name = "f2".to_string();
+
+        let cir = CirProgram {
+            functions: vec![func1, func2],
+            extern_fns: vec![],
+            structs: HashMap::new(),
+            type_invariants: HashMap::new(),
+        };
+        let db = ProofDatabase::new();
+        let pir = propagate_proofs(&cir, &db);
+        assert_eq!(pir.functions.len(), 2);
+        assert_eq!(pir.functions[0].name, "f1");
+        assert_eq!(pir.functions[1].name, "f2");
+    }
+
+    #[test]
+    fn test_propagate_postconditions_as_exit_facts() {
+        let mut func = make_test_function();
+        func.postconditions.push(NamedProposition {
+            name: Some("positive".to_string()),
+            proposition: Proposition::Compare {
+                lhs: Box::new(CirExpr::Var("result".to_string())),
+                op: CompareOp::Gt,
+                rhs: Box::new(CirExpr::IntLit(0)),
+            },
+        });
+
+        let cir = CirProgram {
+            functions: vec![func],
+            extern_fns: vec![],
+            structs: HashMap::new(),
+            type_invariants: HashMap::new(),
+        };
+        let db = ProofDatabase::new();
+        let pir = propagate_proofs(&cir, &db);
+        assert_eq!(pir.functions[0].exit_facts.len(), 1);
+    }
 }

@@ -771,3 +771,113 @@ fn desugar_stmts(stmts: Vec<Spanned<Expr>>) -> Expr {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ---- Cycle 72: BinOp Display tests ----
+
+    #[test]
+    fn test_binop_display_arithmetic() {
+        assert_eq!(format!("{}", BinOp::Add), "+");
+        assert_eq!(format!("{}", BinOp::Sub), "-");
+        assert_eq!(format!("{}", BinOp::Mul), "*");
+        assert_eq!(format!("{}", BinOp::Div), "/");
+        assert_eq!(format!("{}", BinOp::Mod), "%");
+    }
+
+    #[test]
+    fn test_binop_display_wrapping() {
+        assert_eq!(format!("{}", BinOp::AddWrap), "+%");
+        assert_eq!(format!("{}", BinOp::SubWrap), "-%");
+        assert_eq!(format!("{}", BinOp::MulWrap), "*%");
+    }
+
+    #[test]
+    fn test_binop_display_checked() {
+        assert_eq!(format!("{}", BinOp::AddChecked), "+?");
+        assert_eq!(format!("{}", BinOp::SubChecked), "-?");
+        assert_eq!(format!("{}", BinOp::MulChecked), "*?");
+    }
+
+    #[test]
+    fn test_binop_display_saturating() {
+        assert_eq!(format!("{}", BinOp::AddSat), "+|");
+        assert_eq!(format!("{}", BinOp::SubSat), "-|");
+        assert_eq!(format!("{}", BinOp::MulSat), "*|");
+    }
+
+    #[test]
+    fn test_binop_display_comparison() {
+        assert_eq!(format!("{}", BinOp::Eq), "==");
+        assert_eq!(format!("{}", BinOp::Ne), "!=");
+        assert_eq!(format!("{}", BinOp::Lt), "<");
+        assert_eq!(format!("{}", BinOp::Gt), ">");
+        assert_eq!(format!("{}", BinOp::Le), "<=");
+        assert_eq!(format!("{}", BinOp::Ge), ">=");
+    }
+
+    #[test]
+    fn test_binop_display_logical() {
+        assert_eq!(format!("{}", BinOp::And), "and");
+        assert_eq!(format!("{}", BinOp::Or), "or");
+        assert_eq!(format!("{}", BinOp::Implies), "implies");
+    }
+
+    #[test]
+    fn test_binop_display_bitwise() {
+        assert_eq!(format!("{}", BinOp::Band), "band");
+        assert_eq!(format!("{}", BinOp::Bor), "bor");
+        assert_eq!(format!("{}", BinOp::Bxor), "bxor");
+        assert_eq!(format!("{}", BinOp::Shl), "<<");
+        assert_eq!(format!("{}", BinOp::Shr), ">>");
+    }
+
+    // ---- UnOp Display tests ----
+
+    #[test]
+    fn test_unop_display() {
+        assert_eq!(format!("{}", UnOp::Neg), "-");
+        assert_eq!(format!("{}", UnOp::Not), "not");
+        assert_eq!(format!("{}", UnOp::Bnot), "bnot");
+    }
+
+    // ---- RangeKind Display tests ----
+
+    #[test]
+    fn test_range_kind_display() {
+        assert_eq!(format!("{}", RangeKind::Exclusive), "..<");
+        assert_eq!(format!("{}", RangeKind::Inclusive), "..=");
+    }
+
+    #[test]
+    fn test_range_kind_eq() {
+        assert_eq!(RangeKind::Exclusive, RangeKind::Exclusive);
+        assert_eq!(RangeKind::Inclusive, RangeKind::Inclusive);
+        assert_ne!(RangeKind::Exclusive, RangeKind::Inclusive);
+    }
+
+    // ---- StateKind Display tests ----
+
+    #[test]
+    fn test_state_kind_display() {
+        assert_eq!(format!("{}", StateKind::Pre), ".pre");
+        assert_eq!(format!("{}", StateKind::Post), ".post");
+    }
+
+    #[test]
+    fn test_state_kind_eq() {
+        assert_eq!(StateKind::Pre, StateKind::Pre);
+        assert_ne!(StateKind::Pre, StateKind::Post);
+    }
+
+    // ---- BinOp Copy/Clone tests ----
+
+    #[test]
+    fn test_binop_copy() {
+        let op = BinOp::Add;
+        let op2 = op; // Copy
+        assert_eq!(format!("{}", op), format!("{}", op2));
+    }
+}

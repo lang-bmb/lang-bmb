@@ -1496,4 +1496,126 @@ mod tests {
         // We just verify it doesn't panic.
         let _result = auto_detect_prelude_path();
     }
+
+    // ================================================================
+    // Cycle 68: Additional Build Pipeline Tests
+    // ================================================================
+
+    #[test]
+    fn test_verification_mode_eq() {
+        assert_eq!(VerificationMode::None, VerificationMode::None);
+        assert_eq!(VerificationMode::Check, VerificationMode::Check);
+        assert_eq!(VerificationMode::Warn, VerificationMode::Warn);
+        assert_eq!(VerificationMode::Trust, VerificationMode::Trust);
+        assert_ne!(VerificationMode::None, VerificationMode::Check);
+        assert_ne!(VerificationMode::Warn, VerificationMode::Trust);
+    }
+
+    #[test]
+    fn test_verification_mode_default_trait() {
+        let mode: VerificationMode = Default::default();
+        assert_eq!(mode, VerificationMode::Check);
+    }
+
+    #[test]
+    fn test_verification_mode_debug_format() {
+        let fmt = format!("{:?}", VerificationMode::Trust);
+        assert_eq!(fmt, "Trust");
+    }
+
+    #[test]
+    fn test_build_config_target_native_default() {
+        let config = BuildConfig::new(PathBuf::from("test.bmb"));
+        assert!(matches!(config.target, Target::Native));
+    }
+
+    #[test]
+    fn test_build_config_target_setter() {
+        let config = BuildConfig::new(PathBuf::from("test.bmb"))
+            .target(Target::Wasm32);
+        assert!(matches!(config.target, Target::Wasm32));
+    }
+
+    #[test]
+    fn test_build_config_emit_cir_pir_defaults() {
+        let config = BuildConfig::new(PathBuf::from("test.bmb"));
+        assert!(!config.emit_cir);
+        assert!(!config.emit_pir);
+        assert!(!config.show_proofs);
+        assert!(!config.opt_report);
+    }
+
+    #[test]
+    fn test_build_error_io_from_trait() {
+        let io_err = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "denied");
+        let build_err: BuildError = BuildError::from(io_err);
+        let msg = format!("{}", build_err);
+        assert!(msg.contains("denied"));
+    }
+
+    #[test]
+    fn test_output_type_default_is_executable() {
+        let ot: OutputType = Default::default();
+        assert!(matches!(ot, OutputType::Executable));
+    }
+
+    #[test]
+    fn test_output_type_debug_format() {
+        assert_eq!(format!("{:?}", OutputType::Executable), "Executable");
+        assert_eq!(format!("{:?}", OutputType::Object), "Object");
+        assert_eq!(format!("{:?}", OutputType::LlvmIr), "LlvmIr");
+    }
+
+    #[test]
+    fn test_opt_level_debug_format() {
+        assert_eq!(format!("{:?}", OptLevel::Debug), "Debug");
+        assert_eq!(format!("{:?}", OptLevel::Release), "Release");
+        assert_eq!(format!("{:?}", OptLevel::Size), "Size");
+        assert_eq!(format!("{:?}", OptLevel::Aggressive), "Aggressive");
+    }
+
+    #[test]
+    fn test_build_config_clone() {
+        let config = BuildConfig::new(PathBuf::from("test.bmb"))
+            .verbose(true)
+            .fast_math(true);
+        let cloned = config.clone();
+        assert_eq!(cloned.input, config.input);
+        assert_eq!(cloned.verbose, config.verbose);
+        assert_eq!(cloned.fast_math, config.fast_math);
+    }
+
+    #[test]
+    fn test_path_str_valid_utf8() {
+        let p = std::path::Path::new("/some/valid/path.bmb");
+        let result = path_str(p);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "/some/valid/path.bmb");
+    }
+
+    #[test]
+    fn test_build_error_debug_format() {
+        let err = BuildError::Parse("test".to_string());
+        let debug = format!("{:?}", err);
+        assert!(debug.contains("Parse"));
+    }
+
+    #[test]
+    fn test_build_config_multiple_verification_modes() {
+        // Verify each mode can be set via builder
+        for mode in [VerificationMode::None, VerificationMode::Check, VerificationMode::Warn, VerificationMode::Trust] {
+            let config = BuildConfig::new(PathBuf::from("t.bmb")).verification_mode(mode);
+            assert_eq!(config.verification_mode, mode);
+        }
+    }
+
+    #[test]
+    fn test_build_config_output_preserves_dir() {
+        let config = BuildConfig::new(PathBuf::from("/usr/src/app.bmb"));
+        if cfg!(windows) {
+            assert_eq!(config.output, PathBuf::from("/usr/src/app.exe"));
+        } else {
+            assert_eq!(config.output, PathBuf::from("/usr/src/app"));
+        }
+    }
 }
