@@ -299,7 +299,7 @@ if command -v llc &> /dev/null; then
     STAGE2_BC="${OUTPUT_DIR}/bmb-stage2.bc"
     if command -v opt &> /dev/null; then
         log_verbose "Optimizing Stage 2 IR with opt..."
-        opt -passes='default<O3>,scalarizer' "$STAGE2_LL" -o "$STAGE2_BC"
+        opt -passes='function(instcombine),default<O3>,scalarizer' "$STAGE2_LL" -o "$STAGE2_BC"
         llc -filetype=obj -O3 "$STAGE2_BC" -o "$STAGE2_OBJ"
     else
         llc -filetype=obj -O2 "$STAGE2_LL" -o "$STAGE2_OBJ"

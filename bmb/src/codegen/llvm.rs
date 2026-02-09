@@ -286,11 +286,14 @@ impl CodeGen {
             // can hurt performance for integer-heavy loops (e.g., mandelbrot).
             // The scalarizer undoes vector operations, returning to efficient scalar code.
             // Use new pass manager syntax: -passes='default<O3>,scalarizer'
+            // v0.90.19: Early instcombine cleans up bootstrap IR noise (identity copies,
+            // constant-via-add) before the main pipeline, enabling SimplifyCFG to convert
+            // nested if/else chains to select instructions (branch→select conversion).
             let passes_arg = match self.opt_level {
                 OptLevel::Debug => "default<O0>",
-                OptLevel::Release => "default<O3>,scalarizer",  // v0.60.47: Add scalarizer
+                OptLevel::Release => "function(instcombine),default<O3>,scalarizer",
                 OptLevel::Size => "default<Os>",
-                OptLevel::Aggressive => "default<O3>",  // Keep vectorization for aggressive
+                OptLevel::Aggressive => "function(instcombine),default<O3>",
             };
 
             // v0.60.56: Build opt command with optional fast-math flags
