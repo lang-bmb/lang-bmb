@@ -13,7 +13,7 @@ Pre-built BMB compiler binaries for bootstrapping without Rust.
 
 ## Version
 
-Current version: **v0.88.2** (2026-02-06)
+Current version: **v0.89.20** (2026-02-09)
 
 See `VERSION` file for full version information.
 
@@ -21,9 +21,9 @@ See `VERSION` file for full version information.
 
 | Version | Date | Features |
 |---------|------|----------|
-| v0.88.2 | 2026-02-06 | Arena allocator for memory management, bmb_string_free/bmb_sb_free |
-| v0.88.1 | 2026-02-06 | SSA variable naming fix for if/else let bindings |
-| v0.88.0 | 2026-02-06 | Concurrency support, emit-ir CLI, platform-specific linking |
+| v0.89.20 | 2026-02-09 | 3-stage fixed point verified, 40612 lines LLVM IR |
+| v0.88.2 | 2026-02-06 | Arena allocator for memory management |
+| v0.88.0 | 2026-02-06 | Concurrency support, emit-ir CLI |
 | v0.69.1 | 2026-02-05 | Initial golden binary |
 
 ## Usage
@@ -31,15 +31,18 @@ See `VERSION` file for full version information.
 ### Bootstrap without Rust
 
 ```bash
-# Windows
-./golden/windows-x64/bmb.exe bootstrap/compiler.bmb stage1.ll
-opt -O3 stage1.ll -o stage1_opt.ll
-clang stage1_opt.ll bmb/runtime/*.c -o bmb-stage1.exe
+# Full automated bootstrap (recommended)
+./scripts/golden-bootstrap.sh --verify
 
-# Linux/macOS (when available)
+# Manual steps (Windows)
+./golden/windows-x64/bmb.exe bootstrap/compiler.bmb stage1.ll
+opt -O3 stage1.ll -S -o stage1_opt.ll
+clang -O3 stage1_opt.ll bmb/runtime/libbmb_runtime.a -o bmb-stage1.exe -lm -lws2_32
+
+# Manual steps (Linux/macOS)
 ./golden/linux-x86_64/bmb bootstrap/compiler.bmb stage1.ll
-opt -O3 stage1.ll -o stage1_opt.ll
-clang stage1_opt.ll bmb/runtime/*.c -o bmb-stage1
+opt -O3 stage1.ll -S -o stage1_opt.ll
+clang -O3 stage1_opt.ll bmb/runtime/libbmb_runtime.a -o bmb-stage1 -lm -lpthread
 ```
 
 ### Full 3-Stage Bootstrap

@@ -377,6 +377,39 @@ void store_u8(int64_t ptr, int64_t value) {
     bmb_store_u8(ptr, value);
 }
 
+// v0.90.3: Unprefixed aliases for bootstrap compatibility
+void store_i64(int64_t ptr, int64_t value) {
+    bmb_store_i64(ptr, value);
+}
+
+int64_t load_i64(int64_t ptr) {
+    return bmb_load_i64(ptr);
+}
+
+int64_t vec_new(void) {
+    return bmb_vec_new();
+}
+
+void vec_push(int64_t vec_ptr, int64_t value) {
+    bmb_vec_push(vec_ptr, value);
+}
+
+int64_t vec_get(int64_t vec_ptr, int64_t index) {
+    return bmb_vec_get(vec_ptr, index);
+}
+
+void vec_set(int64_t vec_ptr, int64_t index, int64_t value) {
+    bmb_vec_set(vec_ptr, index, value);
+}
+
+int64_t vec_len(int64_t vec_ptr) {
+    return bmb_vec_len(vec_ptr);
+}
+
+void vec_free(int64_t vec_ptr) {
+    bmb_vec_free(vec_ptr);
+}
+
 // v0.51.51: str_data takes BmbString*, returns pointer to data
 int64_t str_data(const BmbString* s) {
     if (!s || !s->data) return 0;
@@ -996,8 +1029,10 @@ int64_t bmb_append_file(const char* path, const char* content) {
 }
 
 // v0.46: System functions
-int64_t bmb_system(const char* cmd) {
-    return (int64_t)system(cmd);
+// v0.90: Updated to accept BmbString* for bootstrap compatibility
+int64_t bmb_system(const BmbString* cmd) {
+    if (!cmd || !cmd->data) return -1;
+    return (int64_t)system(cmd->data);
 }
 
 // v0.88.2: Execute command and capture output (for test runner)
@@ -1092,19 +1127,21 @@ BmbString* exec_output(const BmbString* command, const BmbString* args) {
     return bmb_exec_output(command, args);
 }
 
-char* bmb_getenv(const char* name) {
-    const char* val = getenv(name);
+// v0.90: Updated to accept/return BmbString* for bootstrap compatibility
+BmbString* bmb_getenv(const BmbString* name) {
+    const char* cname = name ? name->data : "";
+    const char* val = getenv(cname);
     if (!val) {
-        char* empty = (char*)malloc(1);
+        char* empty = (char*)bmb_alloc(1);
         empty[0] = '\0';
-        return empty;
+        return bmb_string_wrap(empty);
     }
-    // Return copy
+    // Return copy as BmbString
     size_t len = 0;
     while (val[len]) len++;
-    char* result = (char*)malloc(len + 1);
+    char* result = (char*)bmb_alloc(len + 1);
     for (size_t i = 0; i <= len; i++) result[i] = val[i];
-    return result;
+    return bmb_string_wrap(result);
 }
 
 // v0.46: File I/O support for CLI Independence
@@ -1162,9 +1199,11 @@ int64_t bmb_write_file_newlines(const BmbString* path, const BmbString* content)
     return (written == content->len) ? 0 : -1;
 }
 
-int64_t bmb_file_exists(const char* path) {
+// v0.90: Updated to accept BmbString* for bootstrap compatibility
+int64_t bmb_file_exists(const BmbString* path) {
+    if (!path || !path->data) return 0;
     struct stat st;
-    return (stat(path, &st) == 0) ? 1 : 0;
+    return (stat(path->data, &st) == 0) ? 1 : 0;
 }
 
 // v0.51.18: _cstr variants for string literal optimization (zero overhead)

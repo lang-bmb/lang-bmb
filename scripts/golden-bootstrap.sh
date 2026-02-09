@@ -112,53 +112,42 @@ check_prerequisites() {
     log "${GREEN}Prerequisites OK${NC}"
 }
 
-# Stage 1: Golden BMB → LLVM IR
+# Stage 1: Golden BMB → Native Binary (using build command)
 stage1() {
-    log "${YELLOW}[1/3] Stage 1: Golden BMB → LLVM IR${NC}"
+    log "${YELLOW}[1/3] Stage 1: Golden BMB → Stage 1 Binary${NC}"
 
     mkdir -p "$OUTPUT_DIR"
 
-    local start=$(date +%s%3N 2>/dev/null || python3 -c 'import time; print(int(time.time() * 1000))')
-
-    log_verbose "Command: $GOLDEN_BMB $BOOTSTRAP_SRC $OUTPUT_DIR/stage1.ll"
-    "$GOLDEN_BMB" "$BOOTSTRAP_SRC" "$OUTPUT_DIR/stage1.ll"
-
-    local end=$(date +%s%3N 2>/dev/null || python3 -c 'import time; print(int(time.time() * 1000))')
-    local elapsed=$((end - start))
-
-    local lines=$(wc -l < "$OUTPUT_DIR/stage1.ll")
-    log "${GREEN}Stage 1 OK (${elapsed}ms, ${lines} lines)${NC}"
-}
-
-# Stage 2: Compile to native binary
-stage2() {
-    log "${YELLOW}[2/3] Stage 2: LLVM IR → Native Binary${NC}"
-
-    local start=$(date +%s%3N 2>/dev/null || python3 -c 'import time; print(int(time.time() * 1000))')
-
-    # Optimize
-    log_verbose "Optimizing with opt -O3..."
-    opt -O3 "$OUTPUT_DIR/stage1.ll" -S -o "$OUTPUT_DIR/stage1_opt.ll"
-
-    # Compile and link with platform-specific libraries
-    log_verbose "Compiling and linking with clang..."
-    # v0.88: Add platform-specific libraries (ws2_32 for Windows sockets)
-    if [[ "$OSTYPE" == "msys" ]] || [[ "$OSTYPE" == "cygwin" ]] || [[ "$OSTYPE" == "win32" ]]; then
-        clang -O3 "$OUTPUT_DIR/stage1_opt.ll" \
-            "$RUNTIME_DIR/bmb_runtime.c" \
-            -o "$OUTPUT_DIR/bmb-stage1${EXE_EXT}" \
-            -lm -lws2_32
-    else
-        clang -O3 "$OUTPUT_DIR/stage1_opt.ll" \
-            "$RUNTIME_DIR/bmb_runtime.c" \
-            -o "$OUTPUT_DIR/bmb-stage1${EXE_EXT}" \
-            -lm -lpthread
+    # Build runtime library if needed
+    BMB_RUNTIME="$RUNTIME_DIR/libbmb_runtime.a"
+    if [ ! -f "$BMB_RUNTIME" ]; then
+        log_verbose "Building BMB runtime library..."
+        (cd "$RUNTIME_DIR" && \
+            clang -c -O3 bmb_runtime.c -o bmb_runtime.o && \
+            clang -c -O3 bmb_event_loop.c -o bmb_event_loop.o && \
+            ar rcs libbmb_runtime.a bmb_runtime.o bmb_event_loop.o)
     fi
 
+    local start=$(date +%s%3N 2>/dev/null || python3 -c 'import time; print(int(time.time() * 1000))')
+
+    # v0.90: Use build command directly (no manual opt/clang steps)
+    log_verbose "Command: $GOLDEN_BMB build $BOOTSTRAP_SRC -o $OUTPUT_DIR/bmb-stage1 --runtime $RUNTIME_DIR"
+    "$GOLDEN_BMB" build "$BOOTSTRAP_SRC" -o "$OUTPUT_DIR/bmb-stage1${EXE_EXT}" --runtime "$RUNTIME_DIR" 2>&1
+
     local end=$(date +%s%3N 2>/dev/null || python3 -c 'import time; print(int(time.time() * 1000))')
     local elapsed=$((end - start))
 
-    log "${GREEN}Stage 2 OK (${elapsed}ms)${NC}"
+    if [ -f "$OUTPUT_DIR/bmb-stage1${EXE_EXT}" ]; then
+        log "${GREEN}Stage 1 OK (${elapsed}ms)${NC}"
+    else
+        log "${RED}Stage 1 FAILED: Binary not created${NC}"
+        exit 1
+    fi
+}
+
+# Stage 2 is no longer needed as a separate step (build command handles everything)
+stage2() {
+    log "${GREEN}Stage 2 merged into Stage 1 (build command handles opt+link)${NC}"
 }
 
 # Stage 3: Verify (optional)
@@ -167,26 +156,14 @@ stage3_verify() {
 
     local start=$(date +%s%3N 2>/dev/null || python3 -c 'import time; print(int(time.time() * 1000))')
 
-    # Generate Stage 2 IR using Stage 1 binary
+    # v0.90: Use build command for self-hosting chain
+    # Stage 1 binary builds itself (Stage 2)
     "$OUTPUT_DIR/bmb-stage1${EXE_EXT}" "$BOOTSTRAP_SRC" "$OUTPUT_DIR/stage2.ll"
 
-    # Generate Stage 3 IR using Stage 2 binary (compiled from Stage 1)
-    # First compile Stage 2 binary
-    opt -O3 "$OUTPUT_DIR/stage2.ll" -S -o "$OUTPUT_DIR/stage2_opt.ll"
-    # v0.88: Add platform-specific libraries (ws2_32 for Windows sockets)
-    if [[ "$OSTYPE" == "msys" ]] || [[ "$OSTYPE" == "cygwin" ]] || [[ "$OSTYPE" == "win32" ]]; then
-        clang -O3 "$OUTPUT_DIR/stage2_opt.ll" \
-            "$RUNTIME_DIR/bmb_runtime.c" \
-            -o "$OUTPUT_DIR/bmb-stage2${EXE_EXT}" \
-            -lm -lws2_32
-    else
-        clang -O3 "$OUTPUT_DIR/stage2_opt.ll" \
-            "$RUNTIME_DIR/bmb_runtime.c" \
-            -o "$OUTPUT_DIR/bmb-stage2${EXE_EXT}" \
-            -lm -lpthread
-    fi
+    # Build Stage 2 binary using Stage 1's build command
+    "$OUTPUT_DIR/bmb-stage1${EXE_EXT}" build "$BOOTSTRAP_SRC" -o "$OUTPUT_DIR/bmb-stage2${EXE_EXT}" --runtime "$RUNTIME_DIR" 2>&1
 
-    # Generate Stage 3 IR
+    # Stage 2 binary generates Stage 3 IR
     "$OUTPUT_DIR/bmb-stage2${EXE_EXT}" "$BOOTSTRAP_SRC" "$OUTPUT_DIR/stage3.ll"
 
     local end=$(date +%s%3N 2>/dev/null || python3 -c 'import time; print(int(time.time() * 1000))')
