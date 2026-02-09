@@ -2145,6 +2145,21 @@ impl ConstFunctionEval {
 
         let block = &func.blocks[0];
 
+        // v0.90.14: Reject functions with side-effectful instructions.
+        // A function like `fn run_tests_once() -> i64 = { print(...); 0 }`
+        // returns a constant but has side effects that must not be removed.
+        for inst in &block.instructions {
+            match inst {
+                MirInst::Call { .. }
+                | MirInst::FieldStore { .. }
+                | MirInst::IndexStore { .. }
+                | MirInst::PtrStore { .. } => {
+                    return None;
+                }
+                _ => {}
+            }
+        }
+
         // Check if it's a direct return of a constant
         if let Terminator::Return(Some(Operand::Constant(c))) = &block.terminator {
             return Some(c.clone());
