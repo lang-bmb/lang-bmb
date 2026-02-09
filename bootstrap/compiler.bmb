@@ -98,102 +98,103 @@ fn has_pattern(s: String, pat: String, pos: i64) -> bool =
 // SECTION 2: Token Constants (from pipeline.bmb)
 // ============================================================================
 
-// v0.60.116: Token constants in 1000-1999 range (reserved for tokens)
-// Integer literals: 0-999 and 2000+ are parsed as integers
-// Token constants: 1000-1999 are reserved for token types
-// IMPORTANT: Token values use (9999999 + 1 + N) = 10000000 + N to avoid collision with integer literals
-// v0.88.7: Token constants in 10000000-10000999 range (integers 0-9999999 and 10001000+ work)
-// (v0.60.118 used 10000-10999 but integers 10000-10999 collided with token kinds)
-fn TK_FN() -> i64 = 9999999 + 1 + 100;
-fn TK_LET() -> i64 = 9999999 + 1 + 101;
-fn TK_IF() -> i64 = 9999999 + 1 + 102;
-fn TK_THEN() -> i64 = 9999999 + 1 + 103;
-fn TK_ELSE() -> i64 = 9999999 + 1 + 104;
-fn TK_TRUE() -> i64 = 9999999 + 1 + 105;
-fn TK_FALSE() -> i64 = 9999999 + 1 + 106;
-fn TK_AND() -> i64 = 9999999 + 1 + 107;
-fn TK_OR() -> i64 = 9999999 + 1 + 108;
-fn TK_NOT() -> i64 = 9999999 + 1 + 109;
-fn TK_PRE() -> i64 = 9999999 + 1 + 110;
-fn TK_POST() -> i64 = 9999999 + 1 + 111;
-fn TK_MUT() -> i64 = 9999999 + 1 + 117;
-fn TK_WHILE() -> i64 = 9999999 + 1 + 118;  // v0.60.248: while loop support
-fn TK_BREAK() -> i64 = 9999999 + 1 + 127;  // v0.90.8: break statement
-// v0.95: for-loop support
-fn TK_FOR() -> i64 = 9999999 + 1 + 125;
-fn TK_IN() -> i64 = 9999999 + 1 + 126;
-// v0.88: Concurrency keywords
-fn TK_ASYNC() -> i64 = 9999999 + 1 + 119;
-fn TK_AWAIT() -> i64 = 9999999 + 1 + 120;
-fn TK_SELECT() -> i64 = 9999999 + 1 + 121;
+// v0.90.11: Token constants in 2000000000-2000000999 range
+// Moved from 10000000 range to avoid collision with integer literal 10000000
+// Token packing: kind * 1000000 + pos, so token kind must not collide with any i64 literal value
+// 2 billion is safely above all realistic integer literal values used in BMB programs
+fn TK_BASE() -> i64 = 2000000000;
+fn TK_FN() -> i64 = 2000000000 + 100;
+fn TK_LET() -> i64 = 2000000000 + 101;
+fn TK_IF() -> i64 = 2000000000 + 102;
+fn TK_THEN() -> i64 = 2000000000 + 103;
+fn TK_ELSE() -> i64 = 2000000000 + 104;
+fn TK_TRUE() -> i64 = 2000000000 + 105;
+fn TK_FALSE() -> i64 = 2000000000 + 106;
+fn TK_AND() -> i64 = 2000000000 + 107;
+fn TK_OR() -> i64 = 2000000000 + 108;
+fn TK_NOT() -> i64 = 2000000000 + 109;
+fn TK_PRE() -> i64 = 2000000000 + 110;
+fn TK_POST() -> i64 = 2000000000 + 111;
+fn TK_MUT() -> i64 = 2000000000 + 117;
+fn TK_WHILE() -> i64 = 2000000000 + 118;
+fn TK_BREAK() -> i64 = 2000000000 + 127;
+fn TK_FOR() -> i64 = 2000000000 + 125;
+fn TK_IN() -> i64 = 2000000000 + 126;
+fn TK_ASYNC() -> i64 = 2000000000 + 119;
+fn TK_AWAIT() -> i64 = 2000000000 + 120;
+fn TK_SELECT() -> i64 = 2000000000 + 121;
 
-fn TK_I32() -> i64 = 9999999 + 1 + 150;
-fn TK_I64() -> i64 = 9999999 + 1 + 151;
-fn TK_F64() -> i64 = 9999999 + 1 + 152;
-fn TK_BOOL() -> i64 = 9999999 + 1 + 153;
-fn TK_STRING_TYPE() -> i64 = 9999999 + 1 + 154;
-// v0.88: Concurrency type tokens
-fn TK_FUTURE() -> i64 = 9999999 + 1 + 155;
-fn TK_MUTEX() -> i64 = 9999999 + 1 + 156;
-fn TK_ATOMIC() -> i64 = 9999999 + 1 + 157;
-fn TK_CHANNEL() -> i64 = 9999999 + 1 + 158;
-fn TK_SENDER() -> i64 = 9999999 + 1 + 159;
-fn TK_RECEIVER() -> i64 = 9999999 + 1 + 160;
-fn TK_RWLOCK() -> i64 = 9999999 + 1 + 161;
-fn TK_THREADPOOL() -> i64 = 9999999 + 1 + 162;
-fn TK_SCOPE() -> i64 = 9999999 + 1 + 163;
+fn TK_I32() -> i64 = 2000000000 + 150;
+fn TK_I64() -> i64 = 2000000000 + 151;
+fn TK_F64() -> i64 = 2000000000 + 152;
+fn TK_BOOL() -> i64 = 2000000000 + 153;
+fn TK_STRING_TYPE() -> i64 = 2000000000 + 154;
+fn TK_FUTURE() -> i64 = 2000000000 + 155;
+fn TK_MUTEX() -> i64 = 2000000000 + 156;
+fn TK_ATOMIC() -> i64 = 2000000000 + 157;
+fn TK_CHANNEL() -> i64 = 2000000000 + 158;
+fn TK_SENDER() -> i64 = 2000000000 + 159;
+fn TK_RECEIVER() -> i64 = 2000000000 + 160;
+fn TK_RWLOCK() -> i64 = 2000000000 + 161;
+fn TK_THREADPOOL() -> i64 = 2000000000 + 162;
+fn TK_SCOPE() -> i64 = 2000000000 + 163;
 
-fn TK_INT() -> i64 = 9999999 + 1 + 200;
-fn TK_IDENT() -> i64 = 9999999 + 1 + 201;
-fn TK_STRING_LIT() -> i64 = 9999999 + 1 + 202;
-fn TK_FLOAT_LIT() -> i64 = 9999999 + 1 + 203;  // v0.91: float literal 3.14
+fn TK_INT() -> i64 = 2000000000 + 200;
+fn TK_IDENT() -> i64 = 2000000000 + 201;
+fn TK_STRING_LIT() -> i64 = 2000000000 + 202;
+fn TK_FLOAT_LIT() -> i64 = 2000000000 + 203;
 
-fn TK_COLON() -> i64 = 9999999 + 1 + 300;
-fn TK_EQ() -> i64 = 9999999 + 1 + 302;
-fn TK_SEMI() -> i64 = 9999999 + 1 + 303;
-fn TK_COMMA() -> i64 = 9999999 + 1 + 304;
-fn TK_LPAREN() -> i64 = 9999999 + 1 + 305;
-fn TK_RPAREN() -> i64 = 9999999 + 1 + 306;
+fn TK_COLON() -> i64 = 2000000000 + 300;
+fn TK_EQ() -> i64 = 2000000000 + 302;
+fn TK_SEMI() -> i64 = 2000000000 + 303;
+fn TK_COMMA() -> i64 = 2000000000 + 304;
+fn TK_LPAREN() -> i64 = 2000000000 + 305;
+fn TK_RPAREN() -> i64 = 2000000000 + 306;
 // v0.46: Brace tokens for v0.32 braced if-else syntax
-fn TK_LBRACE() -> i64 = 9999999 + 1 + 307;
-fn TK_RBRACE() -> i64 = 9999999 + 1 + 308;
+fn TK_LBRACE() -> i64 = 2000000000 + 307;
+fn TK_RBRACE() -> i64 = 2000000000 + 308;
 
 // v0.90.2: Bracket tokens for array indexing
-fn TK_LBRACKET() -> i64 = 9999999 + 1 + 309;
-fn TK_RBRACKET() -> i64 = 9999999 + 1 + 310;
+fn TK_LBRACKET() -> i64 = 2000000000 + 309;
+fn TK_RBRACKET() -> i64 = 2000000000 + 310;
 // v0.90.2: set keyword for assignment expressions
-fn TK_SET() -> i64 = 9999999 + 1 + 164;
+fn TK_SET() -> i64 = 2000000000 + 164;
 // v0.90.2: struct and null keywords
-fn TK_STRUCT() -> i64 = 9999999 + 1 + 165;
-fn TK_NULL() -> i64 = 9999999 + 1 + 166;
+fn TK_STRUCT() -> i64 = 2000000000 + 165;
+fn TK_NULL() -> i64 = 2000000000 + 166;
 
-fn TK_ARROW() -> i64 = 9999999 + 1 + 321;
-fn TK_DOT() -> i64 = 9999999 + 1 + 322;
-fn TK_DOTDOT() -> i64 = 9999999 + 1 + 323;
+fn TK_ARROW() -> i64 = 2000000000 + 321;
+fn TK_DOT() -> i64 = 2000000000 + 322;
+fn TK_DOTDOT() -> i64 = 2000000000 + 323;
 
-fn TK_PLUS() -> i64 = 9999999 + 1 + 400;
-fn TK_MINUS() -> i64 = 9999999 + 1 + 401;
-fn TK_STAR() -> i64 = 9999999 + 1 + 402;
-fn TK_SLASH() -> i64 = 9999999 + 1 + 403;
-fn TK_PERCENT() -> i64 = 9999999 + 1 + 404;
-fn TK_LT() -> i64 = 9999999 + 1 + 405;
-fn TK_GT() -> i64 = 9999999 + 1 + 406;
+fn TK_PLUS() -> i64 = 2000000000 + 400;
+fn TK_MINUS() -> i64 = 2000000000 + 401;
+fn TK_STAR() -> i64 = 2000000000 + 402;
+fn TK_SLASH() -> i64 = 2000000000 + 403;
+fn TK_PERCENT() -> i64 = 2000000000 + 404;
+fn TK_LT() -> i64 = 2000000000 + 405;
+fn TK_GT() -> i64 = 2000000000 + 406;
 
-fn TK_EQEQ() -> i64 = 9999999 + 1 + 410;
-fn TK_NEQ() -> i64 = 9999999 + 1 + 411;
-fn TK_LTEQ() -> i64 = 9999999 + 1 + 412;
-fn TK_GTEQ() -> i64 = 9999999 + 1 + 413;
+fn TK_EQEQ() -> i64 = 2000000000 + 410;
+fn TK_NEQ() -> i64 = 2000000000 + 411;
+fn TK_LTEQ() -> i64 = 2000000000 + 412;
+fn TK_GTEQ() -> i64 = 2000000000 + 413;
 
 // v0.90.1: Cast and bitwise operator tokens
-fn TK_AS() -> i64 = 9999999 + 1 + 127;
-fn TK_BAND() -> i64 = 9999999 + 1 + 128;
-fn TK_BOR() -> i64 = 9999999 + 1 + 129;
-fn TK_BNOT() -> i64 = 9999999 + 1 + 130;
-fn TK_BXOR() -> i64 = 9999999 + 1 + 131;  // v0.90.2: bitwise xor
-fn TK_SHL() -> i64 = 9999999 + 1 + 431;
-fn TK_SHR() -> i64 = 9999999 + 1 + 432;
+fn TK_AS() -> i64 = 2000000000 + 127;
+fn TK_BAND() -> i64 = 2000000000 + 128;
+fn TK_BOR() -> i64 = 2000000000 + 129;
+fn TK_BNOT() -> i64 = 2000000000 + 130;
+fn TK_BXOR() -> i64 = 2000000000 + 131;  // v0.90.2: bitwise xor
+fn TK_SHL() -> i64 = 2000000000 + 431;
+fn TK_SHR() -> i64 = 2000000000 + 432;
 
-fn TK_EOF() -> i64 = 9999999 + 1 + 900;
+// v0.90.11: Ampersand token for reference types
+fn TK_AMP() -> i64 = 2000000000 + 433;
+// v0.90.11: extern keyword for FFI declarations
+fn TK_EXTERN() -> i64 = 2000000000 + 167;
+
+fn TK_EOF() -> i64 = 2000000000 + 900;
 
 // ============================================================================
 // SECTION 3: Lexer (from pipeline.bmb)
@@ -265,9 +266,11 @@ fn scan_ident_end(s: String, pos: i64) -> i64 =
     if pos >= s.len() { pos } else if is_alnum_or_underscore(s.byte_at(pos)) { scan_ident_end(s, pos + 1) } else { pos };
 
 // v0.60.109: Scan string literal - find closing quote
+// v0.90.11: Handle escape sequences (\" doesn't end the string)
 // Returns position after closing quote, or s.len() if not found
 fn scan_string_end(s: String, pos: i64) -> i64 =
     if pos >= s.len() { s.len() }
+    else if s.byte_at(pos) == 92 and pos + 1 < s.len() { scan_string_end(s, pos + 2) }
     else if s.byte_at(pos) == 34 { pos + 1 }
     else { scan_string_end(s, pos + 1) };
 
@@ -343,6 +346,7 @@ fn keyword_len6(word: String, endpos: i64) -> i64 =
     else if word == "Sender" { make_tok(TK_SENDER(), endpos) }  // v0.88
     else if word == "RwLock" { make_tok(TK_RWLOCK(), endpos) }  // v0.88
     else if word == "struct" { make_tok(TK_STRUCT(), endpos) }  // v0.90.2: struct declaration
+    else if word == "extern" { make_tok(TK_EXTERN(), endpos) }  // v0.90.11: extern fn
     else { make_tok(TK_IDENT(), endpos) };
 
 // v0.88: Concurrency type keywords
@@ -369,7 +373,7 @@ fn next_token_raw(s: String, pos: i64) -> i64 =
             // v0.60.109: String literal - scan to closing quote
             let str_end = scan_string_end(s, p + 1);
             make_tok(TK_STRING_LIT(), str_end)
-        } else if c == 58 { make_tok(TK_COLON(), p + 1) } else if c == 61 { if p + 1 < s.len() and s.byte_at(p + 1) == 61 { make_tok(TK_EQEQ(), p + 2) } else { make_tok(TK_EQ(), p + 1) } } else if c == 59 { make_tok(TK_SEMI(), p + 1) } else if c == 44 { make_tok(TK_COMMA(), p + 1) } else if c == 40 { make_tok(TK_LPAREN(), p + 1) } else if c == 41 { make_tok(TK_RPAREN(), p + 1) } else if c == 43 { make_tok(TK_PLUS(), p + 1) } else if c == 45 { if p + 1 < s.len() and s.byte_at(p + 1) == 62 { make_tok(TK_ARROW(), p + 2) } else { make_tok(TK_MINUS(), p + 1) } } else if c == 42 { make_tok(TK_STAR(), p + 1) } else if c == 47 { make_tok(TK_SLASH(), p + 1) } else if c == 37 { make_tok(TK_PERCENT(), p + 1) } else if c == 60 { if p + 1 < s.len() and s.byte_at(p + 1) == 61 { make_tok(TK_LTEQ(), p + 2) } else if p + 1 < s.len() and s.byte_at(p + 1) == 60 { make_tok(TK_SHL(), p + 2) } else { make_tok(TK_LT(), p + 1) } } else if c == 62 { if p + 1 < s.len() and s.byte_at(p + 1) == 61 { make_tok(TK_GTEQ(), p + 2) } else if p + 1 < s.len() and s.byte_at(p + 1) == 62 { make_tok(TK_SHR(), p + 2) } else { make_tok(TK_GT(), p + 1) } } else if c == 33 { if p + 1 < s.len() and s.byte_at(p + 1) == 61 { make_tok(TK_NEQ(), p + 2) } else { make_tok(TK_EOF(), p) } } else if c == 46 { if p + 1 < s.len() and s.byte_at(p + 1) == 46 { make_tok(TK_DOTDOT(), p + 2) } else { make_tok(TK_DOT(), p + 1) } } else if c == 91 { make_tok(TK_LBRACKET(), p + 1) } else if c == 93 { make_tok(TK_RBRACKET(), p + 1) } else if c == 123 { make_tok(TK_LBRACE(), p + 1) } else if c == 125 { make_tok(TK_RBRACE(), p + 1) } else { make_tok(TK_EOF(), p) }
+        } else if c == 58 { make_tok(TK_COLON(), p + 1) } else if c == 61 { if p + 1 < s.len() and s.byte_at(p + 1) == 61 { make_tok(TK_EQEQ(), p + 2) } else { make_tok(TK_EQ(), p + 1) } } else if c == 59 { make_tok(TK_SEMI(), p + 1) } else if c == 44 { make_tok(TK_COMMA(), p + 1) } else if c == 40 { make_tok(TK_LPAREN(), p + 1) } else if c == 41 { make_tok(TK_RPAREN(), p + 1) } else if c == 43 { make_tok(TK_PLUS(), p + 1) } else if c == 45 { if p + 1 < s.len() and s.byte_at(p + 1) == 62 { make_tok(TK_ARROW(), p + 2) } else { make_tok(TK_MINUS(), p + 1) } } else if c == 42 { make_tok(TK_STAR(), p + 1) } else if c == 47 { make_tok(TK_SLASH(), p + 1) } else if c == 37 { make_tok(TK_PERCENT(), p + 1) } else if c == 60 { if p + 1 < s.len() and s.byte_at(p + 1) == 61 { make_tok(TK_LTEQ(), p + 2) } else if p + 1 < s.len() and s.byte_at(p + 1) == 60 { make_tok(TK_SHL(), p + 2) } else { make_tok(TK_LT(), p + 1) } } else if c == 62 { if p + 1 < s.len() and s.byte_at(p + 1) == 61 { make_tok(TK_GTEQ(), p + 2) } else if p + 1 < s.len() and s.byte_at(p + 1) == 62 { make_tok(TK_SHR(), p + 2) } else { make_tok(TK_GT(), p + 1) } } else if c == 33 { if p + 1 < s.len() and s.byte_at(p + 1) == 61 { make_tok(TK_NEQ(), p + 2) } else { make_tok(TK_EOF(), p) } } else if c == 46 { if p + 1 < s.len() and s.byte_at(p + 1) == 46 { make_tok(TK_DOTDOT(), p + 2) } else { make_tok(TK_DOT(), p + 1) } } else if c == 91 { make_tok(TK_LBRACKET(), p + 1) } else if c == 93 { make_tok(TK_RBRACKET(), p + 1) } else if c == 123 { make_tok(TK_LBRACE(), p + 1) } else if c == 125 { make_tok(TK_RBRACE(), p + 1) } else if c == 38 { make_tok(TK_AMP(), p + 1) } else { make_tok(TK_EOF(), p) }
     };
 
 fn get_ident_text(s: String, pos: i64, tok: i64) -> String =
@@ -377,6 +381,12 @@ fn get_ident_text(s: String, pos: i64, tok: i64) -> String =
     let p = skip_ws_comments(s, pos);
     let endp = scan_ident_end(s, p + 1);
     s.slice(p, endp);
+
+// v0.90.11: Extract integer text from source (for tuple field access .0, .1)
+fn get_int_text(s: String, pos: i64, tok: i64) -> String =
+    let p = skip_ws_comments(s, pos);
+    let endpos = tok_end(tok);
+    s.slice(p, endpos);
 
 // v0.60.109: Extract string literal content (without quotes)
 fn get_string_text(s: String, pos: i64, tok: i64) -> String =
@@ -471,9 +481,10 @@ fn find_colon(s: String, pos: i64) -> i64 =
 // SECTION 5: Expression Parser (recursive descent)
 // ============================================================================
 
-// v0.60.118: Helper to check if token kind is an integer literal
-// Token constants use 10000-10999 range, so integers are < 10000 OR >= 11000
-fn is_int_literal(kind: i64) -> bool = kind < 9999999 + 1 or kind >= 9999999 + 1 + 999 + 1;
+// v0.90.11: Helper to check if token kind is an integer literal
+// Token constants use 2000000100-2000000999 range (offset 100-999 from base)
+// So integers are < 2000000100 OR >= 2000001000
+fn is_int_literal(kind: i64) -> bool = kind < 2000000000 + 100 or kind >= 2000000000 + 1000;
 
 // v0.60.117: Parse integer literal
 // v0.90.2: Use source text for int literals to avoid overflow in token packing
@@ -512,8 +523,26 @@ fn parse_unary(src: String, tok: i64, op: String) -> String =
 // v0.60.117: Parse parenthesized expression
 fn parse_paren_expr(src: String, tok: i64) -> String =
     let re = parse_expr(src, tok_end(tok));
-    let next = next_token_raw(src, unpack_pos(re));
-    if tok_kind(next) == TK_RPAREN() { pack_result(tok_end(next), unpack_ast(re)) } else { make_error_at("expected ')' after expression", src, unpack_pos(re)) };
+    if is_error(re) { re } else {
+        let next = next_token_raw(src, unpack_pos(re));
+        if tok_kind(next) == TK_RPAREN() { pack_result(tok_end(next), unpack_ast(re)) }
+        else if tok_kind(next) == TK_COMMA() {
+            // v0.90.11: Tuple expression (e1, e2, ...) → (tuple e1 e2 ...)
+            parse_tuple_rest(src, tok_end(next), unpack_ast(re))
+        }
+        else { make_error_at("expected ')' or ',' after expression", src, unpack_pos(re)) }
+    };
+
+// v0.90.11: Parse remaining tuple elements after first comma
+fn parse_tuple_rest(src: String, pos: i64, acc: String) -> String =
+    let re = parse_expr(src, pos);
+    if is_error(re) { re } else {
+        let new_acc = acc + " " + unpack_ast(re);
+        let next = next_token_raw(src, unpack_pos(re));
+        if tok_kind(next) == TK_RPAREN() { pack_result(tok_end(next), "(tuple " + new_acc + ")") }
+        else if tok_kind(next) == TK_COMMA() { parse_tuple_rest(src, tok_end(next), new_acc) }
+        else { make_error_at("expected ')' or ',' in tuple", src, unpack_pos(re)) }
+    };
 
 // v0.90.2: Parse set expression: set target = value
 // target can be: arr[i] or obj.field
@@ -639,12 +668,21 @@ fn parse_block_let_skip_type(src: String, pos: i64, name: String, is_mut: bool) 
     let k = tok_kind(t);
     if k == TK_EQ() {
         parse_block_let_value(src, tok_end(t), name, is_mut)
-    } else if k == TK_IDENT() or k == TK_I64() or k == TK_I32() or k == TK_F64() or k == TK_BOOL() or k == TK_STRING_TYPE() or k == TK_STAR() {
+    } else if k == TK_IDENT() or k == TK_I64() or k == TK_I32() or k == TK_F64() or k == TK_BOOL() or k == TK_STRING_TYPE() or k == TK_STAR() or k == TK_AMP() or k == TK_MUT() {
         parse_block_let_skip_type(src, tok_end(t), name, is_mut)
     } else if k == TK_LBRACKET() {
         // v0.90.9: Skip array type [T; N]
         parse_block_let_skip_array_type(src, tok_end(t), name, is_mut)
+    } else if k == TK_LPAREN() {
+        // v0.90.11: Skip tuple type (T, T, ...)
+        parse_block_let_skip_tuple_type(src, tok_end(t), name, is_mut)
     } else { make_error_at("expected '=' after type in let binding", src, pos) };
+
+// v0.90.11: Skip tokens inside tuple type until ')', then continue skip_type
+fn parse_block_let_skip_tuple_type(src: String, pos: i64, name: String, is_mut: bool) -> String =
+    let t = next_token_raw(src, pos);
+    if tok_kind(t) == TK_RPAREN() { parse_block_let_skip_type(src, tok_end(t), name, is_mut) }
+    else { parse_block_let_skip_tuple_type(src, tok_end(t), name, is_mut) };
 
 // v0.90.9: Skip tokens inside array type until ']', then continue skip_type
 fn parse_block_let_skip_array_type(src: String, pos: i64, name: String, is_mut: bool) -> String =
@@ -795,6 +833,17 @@ fn parse_atom(src: String, pos: i64) -> String =
     else if kind == TK_NULL() { pack_result(tok_end(tok), "(int 0)") }  // v0.90.2: null = 0
     // v0.90.9: Array repeat literal [val; count]
     else if kind == TK_LBRACKET() { parse_array_or_repeat(src, tok_end(tok)) }
+    // v0.90.11: &expr — address-of/reference. Since arrays are already pointers,
+    // &x just evaluates to x. Parse the inner atom and pass through.
+    else if kind == TK_AMP() {
+        let peek = next_token_raw(src, tok_end(tok));
+        if tok_kind(peek) == TK_MUT() {
+            // &mut x — skip mut, parse atom
+            parse_atom(src, tok_end(peek))
+        } else {
+            parse_atom(src, tok_end(tok))
+        }
+    }
     else { make_error_at("unexpected token in expression", src, pos) };
 
 // v0.90.10: Parse array literal or array repeat
@@ -878,6 +927,11 @@ fn parse_postfix_rest(src: String, pos: i64, left: String) -> String =
                 let ast = "(field " + left + " " + method_name + ")";
                 parse_postfix_rest(src, tok_end(method_tok), ast)
             }
+        } else if is_int_literal(tok_kind(method_tok)) {
+            // v0.90.11: Tuple field access: result.0, result.1
+            let field_text = get_int_text(src, tok_end(tok), method_tok);
+            let ast = "(field " + left + " " + field_text + ")";
+            parse_postfix_rest(src, tok_end(method_tok), ast)
         } else { make_error_at("expected method name after '.'", src, tok_end(tok)) }
     } else if tok_kind(tok) == TK_LBRACKET() {
         // v0.90.2: Array indexing: arr[i]
@@ -1076,13 +1130,15 @@ fn parse_if_chain_after_then(src: String, pos: i64, cond_ast: String, then_ast: 
 
 fn parse_if_chain_else(src: String, pos: i64, new_prefix: String, new_suffix: String) -> String =
     let t3 = next_token_raw(src, pos);
-    if tok_kind(t3) != TK_ELSE() { make_error_at("expected 'else' after '}'", src, pos) }
-    else {
+    if tok_kind(t3) == TK_ELSE() {
         let t4 = next_token_raw(src, tok_end(t3));
         let k4 = tok_kind(t4);
         if k4 == TK_IF() { parse_if_chain_iter(src, tok_end(t4), new_prefix, new_suffix) }
         else if k4 == TK_LBRACE() { parse_if_chain_final_else(src, tok_end(t4), new_prefix, new_suffix) }
         else { make_error_at("expected 'if' or '{' after 'else'", src, tok_end(t3)) }
+    } else {
+        // v0.90.12: if-else chain without final else: default to (int 0)
+        pack_result(pos, new_prefix + "(int 0)" + new_suffix)
     };
 
 fn parse_if_chain_final_else(src: String, pos: i64, new_prefix: String, new_suffix: String) -> String =
@@ -1151,8 +1207,11 @@ fn parse_if_brace_then(src: String, pos: i64, cond_ast: String, then_ast: String
 
 fn parse_if_brace_else(src: String, pos: i64, cond_ast: String, then_ast: String) -> String =
     let t3 = next_token_raw(src, pos);
-    if tok_kind(t3) != TK_ELSE() { make_error_at("expected 'else' after '}'", src, pos) }
-    else { parse_if_brace_else_body(src, tok_end(t3), cond_ast, then_ast) };
+    if tok_kind(t3) == TK_ELSE() { parse_if_brace_else_body(src, tok_end(t3), cond_ast, then_ast) }
+    else {
+        // v0.90.12: if-without-else: default else to (int 0)
+        make_if_ast(pos, cond_ast, then_ast, "(int 0)")
+    };
 
 fn parse_if_brace_else_body(src: String, pos: i64, cond_ast: String, then_ast: String) -> String =
     let t4 = next_token_raw(src, pos);
@@ -1222,13 +1281,22 @@ fn parse_let_skip_type(src: String, pos: i64, name: String, is_mut: bool) -> Str
     let k = tok_kind(t);
     if k == TK_EQ() {
         parse_let_value_mut(src, tok_end(t), name, is_mut)
-    } else if k == TK_IDENT() or k == TK_I64() or k == TK_I32() or k == TK_F64() or k == TK_BOOL() or k == TK_STRING_TYPE() or k == TK_STAR() {
+    } else if k == TK_IDENT() or k == TK_I64() or k == TK_I32() or k == TK_F64() or k == TK_BOOL() or k == TK_STRING_TYPE() or k == TK_STAR() or k == TK_AMP() or k == TK_MUT() {
         // Skip the type and continue looking for '='
         parse_let_skip_type(src, tok_end(t), name, is_mut)
     } else if k == TK_LBRACKET() {
         // v0.90.9: Skip array type [T; N] - skip until matching ']'
         parse_let_skip_array_type(src, tok_end(t), name, is_mut)
+    } else if k == TK_LPAREN() {
+        // v0.90.11: Skip tuple type (T, T, ...)
+        parse_let_skip_tuple_type(src, tok_end(t), name, is_mut)
     } else { make_error_at("expected '=' after type in let binding", src, pos) };
+
+// v0.90.11: Skip tokens inside tuple type until ')', then continue skip_type
+fn parse_let_skip_tuple_type(src: String, pos: i64, name: String, is_mut: bool) -> String =
+    let t = next_token_raw(src, pos);
+    if tok_kind(t) == TK_RPAREN() { parse_let_skip_type(src, tok_end(t), name, is_mut) }
+    else { parse_let_skip_tuple_type(src, tok_end(t), name, is_mut) };
 
 // v0.90.9: Skip tokens inside array type until ']', then continue skip_type
 fn parse_let_skip_array_type(src: String, pos: i64, name: String, is_mut: bool) -> String =
@@ -1366,7 +1434,7 @@ fn parse_param(src: String, pos: i64) -> String =
             let kind = tok_kind(t3);
             // v0.90.2: Support typed pointers *T
             // v0.90.7: Preserve struct name for ptr arithmetic scaling
-            if kind == TK_I32() { pack_result(tok_end(t3), "(param <" + name + "> i32)") } else if kind == TK_I64() { pack_result(tok_end(t3), "(param <" + name + "> i64)") } else if kind == TK_F64() { pack_result(tok_end(t3), "(param <" + name + "> f64)") } else if kind == TK_BOOL() { pack_result(tok_end(t3), "(param <" + name + "> bool)") } else if kind == TK_STRING_TYPE() { pack_result(tok_end(t3), "(param <" + name + "> String)") } else if kind == TK_STAR() { let t4 = next_token_raw(src, tok_end(t3)); let struct_name = get_ident_text(src, tok_end(t3), t4); pack_result(tok_end(t4), "(param <" + name + "> *" + struct_name + ")") } else if kind == TK_LBRACKET() { parse_param_array_type(src, tok_end(t3), name) } else { make_error_at("expected parameter type (i32, i64, f64, bool, String, *T, [T;N])", src, tok_end(t2)) }
+            if kind == TK_I32() { pack_result(tok_end(t3), "(param <" + name + "> i32)") } else if kind == TK_I64() { pack_result(tok_end(t3), "(param <" + name + "> i64)") } else if kind == TK_F64() { pack_result(tok_end(t3), "(param <" + name + "> f64)") } else if kind == TK_BOOL() { pack_result(tok_end(t3), "(param <" + name + "> bool)") } else if kind == TK_STRING_TYPE() { pack_result(tok_end(t3), "(param <" + name + "> String)") } else if kind == TK_STAR() { let t4 = next_token_raw(src, tok_end(t3)); let struct_name = get_ident_text(src, tok_end(t3), t4); pack_result(tok_end(t4), "(param <" + name + "> *" + struct_name + ")") } else if kind == TK_LBRACKET() { parse_param_array_type(src, tok_end(t3), name) } else if kind == TK_AMP() { parse_param_ref_type(src, tok_end(t3), name) } else { make_error_at("expected parameter type (i32, i64, f64, bool, String, *T, [T;N], &T, &[T;N])", src, tok_end(t2)) }
         } else { make_error_at("expected ':' after parameter name", src, tok_end(t1)) }
     } else { make_error_at("expected parameter name", src, pos) };
 
@@ -1379,6 +1447,25 @@ fn parse_param_array_type(src: String, pos: i64, name: String) -> String =
         pack_result(tok_end(t), "(param <" + name + "> i64)")
     } else {
         parse_param_array_type(src, tok_end(t), name)
+    };
+
+// v0.90.11: Parse reference type &T or &[T; N] or &mut T in function parameter position
+// All reference types treated as i64 (pointer) at MIR/codegen level
+fn parse_param_ref_type(src: String, pos: i64, name: String) -> String =
+    let t = next_token_raw(src, pos);
+    let k = tok_kind(t);
+    if k == TK_MUT() {
+        // &mut T — skip 'mut', then parse the base type as i64
+        let t2 = next_token_raw(src, tok_end(t));
+        let k2 = tok_kind(t2);
+        if k2 == TK_LBRACKET() { parse_param_array_type(src, tok_end(t2), name) }
+        else { pack_result(tok_end(t2), "(param <" + name + "> i64)") }
+    } else if k == TK_LBRACKET() {
+        // &[T; N] — delegate to array type parser
+        parse_param_array_type(src, tok_end(t), name)
+    } else {
+        // &T — just consume the type name and emit i64
+        pack_result(tok_end(t), "(param <" + name + "> i64)")
     };
 
 fn parse_params(src: String, pos: i64, acc: String) -> String =
@@ -1419,6 +1506,12 @@ fn parse_fn(src: String, pos: i64) -> String =
         } else { make_error_at("expected '(' after function name", src, tok_end(t1)) }
     } else { make_error_at("expected function name after 'fn'", src, pos) };
 
+// v0.90.10: Skip tokens inside [T; N] array type, return pack_result with given type
+fn skip_array_type_tokens(src: String, pos: i64, type_str: String) -> String =
+    let t = next_token_raw(src, pos);
+    if tok_kind(t) == TK_RBRACKET() { pack_result(tok_end(t), type_str) }
+    else { skip_array_type_tokens(src, tok_end(t), type_str) };
+
 // v0.90.10: Skip pre/post contract clauses until '=' is found
 // Returns position after the '=' token
 fn skip_contracts(src: String, pos: i64) -> i64 =
@@ -1447,7 +1540,33 @@ fn parse_return_type(src: String, pos: i64) -> String =
         let sname = get_ident_text(src, tok_end(t4), t5);
         pack_result(tok_end(t5), "*" + sname)
     }
+    // v0.90.10: Array return type [T; N] → treat as i64 (pointer)
+    else if tok_kind(t4) == TK_LBRACKET() {
+        skip_array_type_tokens(src, tok_end(t4), "i64")
+    }
+    // v0.90.11: Reference return type &T, &[T; N] → treat as i64 (pointer)
+    else if tok_kind(t4) == TK_AMP() {
+        let t5 = next_token_raw(src, tok_end(t4));
+        if tok_kind(t5) == TK_LBRACKET() { skip_array_type_tokens(src, tok_end(t5), "i64") }
+        else if tok_kind(t5) == TK_MUT() {
+            let t6 = next_token_raw(src, tok_end(t5));
+            if tok_kind(t6) == TK_LBRACKET() { skip_array_type_tokens(src, tok_end(t6), "i64") }
+            else { pack_result(tok_end(t6), "i64") }
+        }
+        else { pack_result(tok_end(t5), "i64") }
+    }
+    // v0.90.11: Tuple return type (T1, T2, ...) → treat as i64
+    else if tok_kind(t4) == TK_LPAREN() {
+        skip_tuple_type_tokens(src, tok_end(t4), "i64")
+    }
     else { pack_result(tok_end(t4), "i64") };
+
+// v0.90.11: Skip tokens inside tuple type until matching ')'
+fn skip_tuple_type_tokens(src: String, pos: i64, type_str: String) -> String =
+    let t = next_token_raw(src, pos);
+    if tok_kind(t) == TK_RPAREN() { pack_result(tok_end(t), type_str) }
+    else if tok_kind(t) == TK_EOF() { pack_result(pos, type_str) }
+    else { skip_tuple_type_tokens(src, tok_end(t), type_str) };
 
 // v0.90.1: Parse function with annotation (@pure, @const, @inline)
 // Emits (fn-pure <name> ...) or (fn-inline <name> ...) etc.
@@ -1514,8 +1633,20 @@ fn parse_program_sb(src: String, pos: i64, sb: i64) -> String =
             // v0.90.2: Skip struct declarations (not needed for bootstrap codegen)
             let end_pos = skip_struct_decl(src, tok_end(tok));
             parse_program_sb(src, end_pos, sb)
+        } else if kind == TK_EXTERN() {
+            // v0.90.11: Skip extern fn declarations (runtime provides these)
+            let end_pos = skip_extern_fn(src, tok_end(tok));
+            parse_program_sb(src, end_pos, sb)
         } else { make_error_at("expected 'fn' declaration", src, pos) }
     };
+
+// v0.90.11: Skip extern fn declaration: extern fn name(params) -> Type;
+fn skip_extern_fn(src: String, pos: i64) -> i64 =
+    let t = next_token_raw(src, pos);
+    let k = tok_kind(t);
+    if k == TK_SEMI() { tok_end(t) }
+    else if k == TK_EOF() { pos }
+    else { skip_extern_fn(src, tok_end(t)) };
 
 // v0.90.2: Skip struct declaration: struct Name { field: Type, ... }
 fn skip_struct_decl(src: String, pos: i64) -> i64 =
@@ -1910,8 +2041,30 @@ fn get_exit_label(ast: String, entry_label: String, block_id: i64) -> String =
     } else if ntype == "let" {
         let body = get_child(ast, 2);
         get_exit_label(body, entry_label, block_id)
+    // v0.90.12: Compound nodes that lower children in order
+    } else if ntype == "tuple" or ntype == "array" or ntype == "call" or ntype == "method" {
+        scan_exit_children(ast, 0, count_children(ast), entry_label, block_id)
+    } else if ntype == "binop" {
+        // Left then right operand
+        let left_exit = get_exit_label(get_child(ast, 1), entry_label, block_id);
+        if left_exit == entry_label { get_exit_label(get_child(ast, 2), entry_label, block_id) }
+        else { left_exit }
+    } else if ntype == "unary" {
+        get_exit_label(get_child(ast, 1), entry_label, block_id)
+    } else if ntype == "assign" {
+        get_exit_label(get_child(ast, 1), entry_label, block_id)
     } else {
         entry_label
+    };
+
+// v0.90.12: Scan children of compound node for block-creating expressions
+fn scan_exit_children(ast: String, idx: i64, count: i64, entry_label: String, block_id: i64) -> String =
+    if idx >= count { entry_label }
+    else {
+        let child = get_child(ast, idx);
+        let child_exit = get_exit_label(child, entry_label, block_id);
+        if child_exit == entry_label { scan_exit_children(ast, idx + 1, count, entry_label, block_id) }
+        else { child_exit }
     };
 
 fn sb_push_mir(sb: i64, text: String) -> i64 =
@@ -2210,6 +2363,7 @@ fn do_step(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, 
     else if op == "AR" { step_array_repeat(item, cur_temp, cur_block, cur_exit_label, sb) }
     // v0.90.10: Array literal [e1, e2, ...] → calloc + store
     else if op == "AL" { step_array_literal(item, cur_temp, cur_block, cur_exit_label, sb) }
+    else if op == "TU" { step_tuple(item, cur_temp, cur_block, cur_exit_label, sb) }
     else { make_step(cur_temp, cur_block, cur_exit_label, "") };
 
 // EX: Dispatch based on node type - expand to specific handler
@@ -2339,6 +2493,10 @@ fn step_expr(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String
     // v0.90.10: Array literal [expr1, expr2, ...] - emit calloc + store
     else if ntype == "array" {
         make_step(cur_temp, cur_block, cur_exit_label, make_work3("AL", ast, "", ""))
+    }
+    // v0.90.11: Tuple expression (tuple e1 e2 ...) - same as array literal
+    else if ntype == "tuple" {
+        make_step(cur_temp, cur_block, cur_exit_label, make_work3("TU", ast, "", ""))
     }
     else { make_step(cur_temp, cur_block, cur_exit_label, "") };
 
@@ -2848,6 +3006,18 @@ fn lower_array_elements_sb(ast: String, idx: i64, count: i64, arr_tmp: String, t
         lower_array_elements_sb(ast, idx + 1, count, arr_tmp, new_temp + 2, new_block, sb, loop_exit)
     };
 
+// v0.90.11: Tuple expression (tuple e1 e2 ...) → calloc + store elements
+// Same structure as array literal but semantically a tuple
+fn lower_tuple_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64 =
+    let count = count_children(ast);
+    let tup_tmp = "%_t" + int_to_string(temp_id);
+    let w1 = sb_push_mir(sb, "  " + tup_tmp + " = call @calloc(" + int_to_string(count) + ", 8)");
+    let ids = lower_array_elements_sb(ast, 0, count, tup_tmp, temp_id + 1, block_id, sb, loop_exit);
+    let result_temp = unpack_temp(ids);
+    let result_tmp = "%_t" + int_to_string(result_temp);
+    let w2 = sb_push_mir(sb, "  " + result_tmp + " = copy " + tup_tmp);
+    pack_ids(result_temp + 1, unpack_block(ids));
+
 // Count children in AST node (array, call, etc.)
 fn count_children(ast: String) -> i64 =
     count_children_at(ast, 0, 0);
@@ -2872,10 +3042,22 @@ fn step_cast_ptr_f64_finish(item: String, cur_temp: i64, cur_block: i64, cur_exi
     make_step(cur_temp, cur_block, cur_exit_label, "");
 
 // v0.90.10: Array literal - delegate to recursive lowerer
+// v0.90.12: Update exit_label if array elements created blocks
 fn step_array_literal(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String =
     let ast = get_field(item, 1);
     let ids = lower_array_literal_sb(ast, cur_temp, cur_block, sb, cur_exit_label);
-    make_step(unpack_temp(ids), unpack_block(ids), cur_exit_label, "");
+    let new_block = unpack_block(ids);
+    let new_exit = if new_block > cur_block { get_exit_label(ast, cur_exit_label, cur_block) } else { cur_exit_label };
+    make_step(unpack_temp(ids), new_block, new_exit, "");
+
+// v0.90.11: Tuple expression - delegate to tuple lowerer (same as array literal)
+// v0.90.12: Update exit_label if tuple elements created blocks (e.g. nested if-else)
+fn step_tuple(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String =
+    let ast = get_field(item, 1);
+    let ids = lower_tuple_sb(ast, cur_temp, cur_block, sb, cur_exit_label);
+    let new_block = unpack_block(ids);
+    let new_exit = if new_block > cur_block { get_exit_label(ast, cur_exit_label, cur_block) } else { cur_exit_label };
+    make_step(unpack_temp(ids), new_block, new_exit, "");
 
 // v0.90.9: Array repeat [val; count] → calloc(count, elem_size)
 // For now: always zero-init via calloc (all benchmarks use [0.0; N] or [0; N])
@@ -2909,7 +3091,7 @@ fn build_args_str_acc(cur: i64, end: i64, acc: String) -> String =
 // v0.90.8: Added loop_exit parameter for break statement support
 fn lower_expr_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64 =
     let ntype = get_node_type(ast);
-    if ntype == "int" { lower_int_sb(ast, temp_id, block_id, sb) } else if ntype == "float" { lower_float_sb(ast, temp_id, block_id, sb) } else if ntype == "bool" { lower_bool_sb(ast, temp_id, block_id, sb) } else if ntype == "string" { lower_string_sb(ast, temp_id, block_id, sb) } else if ntype == "var" { lower_var_sb(ast, temp_id, block_id, sb) } else if ntype == "binop" { lower_binop_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "unary" { lower_unary_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "if" { lower_if_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "let" { lower_let_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "let_mut" { lower_let_mut_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "call" { lower_call_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "method" { lower_method_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "block" { lower_block_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "unit" { lower_unit_sb(ast, temp_id, block_id, sb) } else if ntype == "seq" { lower_seq_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "assign" { lower_assign_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "while" { lower_while_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "for" { lower_for_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "field" { lower_field_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "set_field" { lower_set_field_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "index" { lower_index_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "set_index" { lower_set_index_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "break" { lower_break_sb(loop_exit, temp_id, block_id, sb) } else if ntype == "cast_ptr_f64" { lower_cast_ptr_f64_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "array_repeat" { lower_array_repeat_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "array" { lower_array_literal_sb(ast, temp_id, block_id, sb, loop_exit) } else { pack_ids(temp_id, block_id) };
+    if ntype == "int" { lower_int_sb(ast, temp_id, block_id, sb) } else if ntype == "float" { lower_float_sb(ast, temp_id, block_id, sb) } else if ntype == "bool" { lower_bool_sb(ast, temp_id, block_id, sb) } else if ntype == "string" { lower_string_sb(ast, temp_id, block_id, sb) } else if ntype == "var" { lower_var_sb(ast, temp_id, block_id, sb) } else if ntype == "binop" { lower_binop_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "unary" { lower_unary_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "if" { lower_if_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "let" { lower_let_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "let_mut" { lower_let_mut_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "call" { lower_call_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "method" { lower_method_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "block" { lower_block_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "unit" { lower_unit_sb(ast, temp_id, block_id, sb) } else if ntype == "seq" { lower_seq_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "assign" { lower_assign_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "while" { lower_while_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "for" { lower_for_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "field" { lower_field_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "set_field" { lower_set_field_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "index" { lower_index_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "set_index" { lower_set_index_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "break" { lower_break_sb(loop_exit, temp_id, block_id, sb) } else if ntype == "cast_ptr_f64" { lower_cast_ptr_f64_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "array_repeat" { lower_array_repeat_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "array" { lower_array_literal_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "tuple" { lower_tuple_sb(ast, temp_id, block_id, sb, loop_exit) } else { pack_ids(temp_id, block_id) };
 
 fn lower_int_sb(ast: String, temp_id: i64, block_id: i64, sb: i64) -> i64 =
     let val = extract_int_value(ast);
@@ -3974,6 +4156,9 @@ fn map_runtime_fn(fn_name: String) -> String =
     else if fn_name == "@file_exists" { "@bmb_file_exists" }
     else if fn_name == "@sb_new" { "@bmb_sb_new" }
     else if fn_name == "@sb_push" { "@bmb_sb_push" }
+    else if fn_name == "@sb_push_int" { "@bmb_sb_push_int" }
+    else if fn_name == "@sb_push_char" { "@bmb_sb_push_char" }
+    else if fn_name == "@sb_push_escaped" { "@sb_push_escaped" }
     else if fn_name == "@sb_len" { "@bmb_sb_len" }
     else if fn_name == "@sb_build" { "@bmb_sb_build" }
     else if fn_name == "@sb_clear" { "@bmb_sb_clear" }
@@ -4767,6 +4952,7 @@ fn gen_extern_sb_new() -> String = "declare i64 @bmb_sb_new()";
 fn gen_extern_sb_push() -> String = "declare i64 @bmb_sb_push(i64, ptr)";
 fn gen_extern_sb_push_int() -> String = "declare i64 @bmb_sb_push_int(i64, i64)";
 fn gen_extern_sb_push_char() -> String = "declare i64 @bmb_sb_push_char(i64, i64)";
+fn gen_extern_sb_push_escaped() -> String = "declare i64 @sb_push_escaped(i64, ptr)";
 fn gen_extern_sb_len() -> String = "declare i64 @bmb_sb_len(i64)";
 fn gen_extern_sb_build() -> String = "declare ptr @bmb_sb_build(i64)";
 fn gen_extern_sb_clear() -> String = "declare i64 @bmb_sb_clear(i64)";
@@ -4846,7 +5032,7 @@ fn gen_runtime_decls_file() -> String =
 // v0.60.244: Added sb_push_int and sb_push_char for faster int-to-string conversion
 fn gen_runtime_decls_rest() -> String =
     gen_extern_sb_new() + "|" + gen_extern_sb_push() + "|" +
-    gen_extern_sb_push_int() + "|" + gen_extern_sb_push_char() + "|" +
+    gen_extern_sb_push_int() + "|" + gen_extern_sb_push_char() + "|" + gen_extern_sb_push_escaped() + "|" +
     gen_extern_sb_len() + "|" +
     gen_extern_sb_build() + "|" + gen_extern_sb_clear() + "|" + gen_extern_sb_contains() + "|" +
     gen_extern_system() + "|" + gen_extern_getenv() + "|" +
@@ -5982,8 +6168,8 @@ fn llvm_gen_field_access(line: String, pos: i64, dest: String, struct_reg: Strin
     let dot_pos = find_char(line, p1, 46);
     let base = trim_end(line.slice(p1, dot_pos));
     let field = trim_end(line.slice(dot_pos + 1, line.len()));
-    // Look up field index from struct registry
-    let field_idx = lookup_field_by_name(struct_reg, field);
+    // v0.90.11: Check if field is a numeric index (tuple access .0, .1, etc.)
+    let field_idx = if field.len() > 0 and is_digit(field.byte_at(0)) { parse_int_simple(field, 0, 0) } else { lookup_field_by_name(struct_reg, field) };
     // v0.90.6: Check if field type is f64
     let field_is_dbl = is_field_f64(struct_reg, field);
     let load_type = if field_is_dbl == 1 { "double" } else { "i64" };
