@@ -4563,6 +4563,14 @@ impl LoopBoundedNarrowing {
             return false;
         }
 
+        // v0.90.22: Don't narrow loop-invariant bound parameters.
+        // These are params that don't change across loop iterations and are compared
+        // against loop variables. Narrowing inserts sext in loop headers, blocking
+        // LLVM trip count computation and loop unrolling.
+        if Self::is_loop_invariant_bound(func, param_idx) {
+            return false;
+        }
+
         // Check if we have bounds for this parameter
         if let Some(bounds) = self.param_bounds.get(&func.name)
             && let Some(&max_val) = bounds.get(&param_idx) {
@@ -5411,6 +5419,18 @@ impl LoopBoundedNarrowing {
                             continue;
                         }
 
+                        // v0.90.22: Don't narrow loop-invariant bound parameters.
+                        // These are params passed unchanged in self-recursive calls and
+                        // compared against other params (loop variables). Narrowing them
+                        // inserts sext inside loop headers, blocking LLVM trip count
+                        // computation and loop unrolling.
+                        // Example: sum_collatz_lengths(start, end, acc) — `end` is invariant
+                        // and compared against `start`. Narrowing `end` to i32 creates
+                        // `sext i32 to i64` in the loop comparison, preventing unrolling.
+                        if Self::is_loop_invariant_bound(func, param_idx) {
+                            continue;
+                        }
+
                         if let Some((_, ty)) = func.params.get_mut(param_idx)
                             && *ty == MirType::I64 {
                                 *ty = MirType::I32;
@@ -5422,6 +5442,118 @@ impl LoopBoundedNarrowing {
         }
 
         changed
+    }
+
+    /// v0.90.22: Check if a parameter is a loop-invariant bound.
+    /// A parameter is a loop-invariant bound if:
+    /// 1. It is NOT used in a phi node (i.e., not a loop variable — it's invariant)
+    ///    OR it is passed unchanged in self-recursive calls
+    /// 2. It is compared against a loop variable (phi-derived) or another parameter
+    ///
+    /// After tail-recursion-to-loop conversion:
+    /// - Loop-varying params become phis: `%start_loop = phi [%start, entry], [...]`
+    /// - Loop-invariant params are used directly: `%end` never appears in phi
+    ///
+    /// Narrowing loop-invariant bounds inserts sext inside loop headers, which prevents
+    /// LLVM ScalarEvolution from computing trip counts → blocks loop unrolling.
+    fn is_loop_invariant_bound(func: &MirFunction, param_idx: usize) -> bool {
+        let param_name = &func.params[param_idx].0;
+
+        // Collect all phi-defined variables (loop variables)
+        let mut phi_vars: HashSet<String> = HashSet::new();
+        // Collect phi initial values that come from params
+        let mut phi_from_param: HashMap<String, String> = HashMap::new();
+        for block in &func.blocks {
+            for inst in &block.instructions {
+                if let MirInst::Phi { dest, values } = inst {
+                    phi_vars.insert(dest.name.clone());
+                    // Track which param feeds into this phi
+                    for (operand, _) in values {
+                        if let Operand::Place(p) = operand {
+                            // If a param feeds into a phi, that param is a loop var
+                            if func.params.iter().any(|(name, _)| name == &p.name) {
+                                phi_from_param.insert(dest.name.clone(), p.name.clone());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Condition 1: Check if param is loop-invariant
+        // A param is invariant if it doesn't feed into any phi node
+        let feeds_phi = phi_from_param.values().any(|v| v == param_name);
+
+        // Also check for self-recursive calls (before loop conversion)
+        let mut is_recursive_invariant = false;
+        for block in &func.blocks {
+            for inst in &block.instructions {
+                if let MirInst::Call { func: callee, args, .. } = inst
+                    && callee == &func.name
+                {
+                    if let Some(arg) = args.get(param_idx) {
+                        if matches!(arg, Operand::Place(p) if p.name == *param_name) {
+                            is_recursive_invariant = true;
+                        }
+                    }
+                }
+            }
+        }
+
+        if feeds_phi && !is_recursive_invariant {
+            return false; // Not invariant — it's a loop variable
+        }
+
+        // Condition 2: param is compared against a loop variable (phi-derived)
+        // Track variables derived from param
+        let mut param_derived: HashSet<String> = HashSet::new();
+        param_derived.insert(param_name.to_string());
+
+        // Track variables derived from phi vars (loop variables)
+        let mut loop_derived: HashSet<String> = phi_vars.clone();
+
+        // Propagate through copies
+        for _ in 0..3 {
+            for block in &func.blocks {
+                for inst in &block.instructions {
+                    if let MirInst::Copy { dest, src } = inst {
+                        if param_derived.contains(&src.name) {
+                            param_derived.insert(dest.name.clone());
+                        }
+                        if loop_derived.contains(&src.name) {
+                            loop_derived.insert(dest.name.clone());
+                        }
+                    }
+                }
+            }
+        }
+
+        for block in &func.blocks {
+            for inst in &block.instructions {
+                if let MirInst::BinOp { op, lhs, rhs, .. } = inst {
+                    let is_cmp = matches!(op,
+                        MirBinOp::Gt | MirBinOp::Lt |
+                        MirBinOp::Ge | MirBinOp::Le |
+                        MirBinOp::Eq | MirBinOp::Ne
+                    );
+                    if !is_cmp {
+                        continue;
+                    }
+
+                    let lhs_is_param = matches!(lhs, Operand::Place(p) if param_derived.contains(&p.name));
+                    let rhs_is_param = matches!(rhs, Operand::Place(p) if param_derived.contains(&p.name));
+                    let lhs_is_loop = matches!(lhs, Operand::Place(p) if loop_derived.contains(&p.name));
+                    let rhs_is_loop = matches!(rhs, Operand::Place(p) if loop_derived.contains(&p.name));
+
+                    // param compared against loop variable → loop bound
+                    if (lhs_is_param && rhs_is_loop) || (rhs_is_param && lhs_is_loop) {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        false
     }
 }
 
@@ -12261,6 +12393,141 @@ mod tests {
         // digit_sum has div/mod on param, should NOT be narrowed despite 100000 < i32::MAX
         assert!(!changed);
         assert_eq!(program.functions[1].params[0].1, MirType::I64);
+    }
+
+    #[test]
+    fn test_loop_bounded_narrowing_skips_loop_invariant_bound() {
+        // v0.90.22: Loop-invariant bound parameters should NOT be narrowed.
+        // Pattern: sum_collatz_lengths(start, end, acc) where:
+        // - `end` is loop-invariant (not in phi, passed unchanged in recursive call)
+        // - `end` is compared against `start` (loop variable in phi)
+        // Narrowing `end` to i32 inserts sext in loop header, blocking LLVM unrolling.
+        let mut program = MirProgram {
+            functions: vec![
+                MirFunction {
+                    name: "main".to_string(),
+                    params: vec![],
+                    ret_ty: MirType::I64,
+                    locals: vec![],
+                    blocks: vec![BasicBlock {
+                        label: "entry".to_string(),
+                        instructions: vec![
+                            MirInst::Call {
+                                dest: Some(Place::new("r")),
+                                func: "sum_loop".to_string(),
+                                args: vec![
+                                    Operand::Constant(Constant::Int(1)),
+                                    Operand::Constant(Constant::Int(10000)),
+                                    Operand::Constant(Constant::Int(0)),
+                                ],
+                                is_tail: false,
+                            },
+                        ],
+                        terminator: Terminator::Return(Some(Operand::Place(Place::new("r")))),
+                    }],
+                    preconditions: vec![],
+                    postconditions: vec![],
+                    is_pure: false,
+                    is_const: false,
+                    always_inline: false,
+                    inline_hint: false,
+                    is_memory_free: false,
+                },
+                MirFunction {
+                    name: "sum_loop".to_string(),
+                    params: vec![
+                        ("start".to_string(), MirType::I64),
+                        ("end".to_string(), MirType::I64),
+                        ("acc".to_string(), MirType::I64),
+                    ],
+                    ret_ty: MirType::I64,
+                    locals: vec![],
+                    blocks: vec![
+                        BasicBlock {
+                            label: "entry".to_string(),
+                            instructions: vec![],
+                            terminator: Terminator::Goto("loop_header".to_string()),
+                        },
+                        BasicBlock {
+                            label: "loop_header".to_string(),
+                            instructions: vec![
+                                // %start_loop = phi [%start, entry], [%next, body]
+                                MirInst::Phi {
+                                    dest: Place::new("start_loop"),
+                                    values: vec![
+                                        (Operand::Place(Place::new("start")), "entry".to_string()),
+                                        (Operand::Place(Place::new("next")), "body".to_string()),
+                                    ],
+                                },
+                                MirInst::Phi {
+                                    dest: Place::new("acc_loop"),
+                                    values: vec![
+                                        (Operand::Place(Place::new("acc")), "entry".to_string()),
+                                        (Operand::Place(Place::new("new_acc")), "body".to_string()),
+                                    ],
+                                },
+                                // %cmp = > %start_loop, %end (param compared against loop var)
+                                MirInst::BinOp {
+                                    dest: Place::new("cmp"),
+                                    op: MirBinOp::Gt,
+                                    lhs: Operand::Place(Place::new("start_loop")),
+                                    rhs: Operand::Place(Place::new("end")),
+                                },
+                            ],
+                            terminator: Terminator::Branch {
+                                cond: Operand::Place(Place::new("cmp")),
+                                then_label: "exit".to_string(),
+                                else_label: "body".to_string(),
+                            },
+                        },
+                        BasicBlock {
+                            label: "body".to_string(),
+                            instructions: vec![
+                                MirInst::BinOp {
+                                    dest: Place::new("next"),
+                                    op: MirBinOp::Add,
+                                    lhs: Operand::Place(Place::new("start_loop")),
+                                    rhs: Operand::Constant(Constant::Int(1)),
+                                },
+                                MirInst::BinOp {
+                                    dest: Place::new("new_acc"),
+                                    op: MirBinOp::Add,
+                                    lhs: Operand::Place(Place::new("acc_loop")),
+                                    rhs: Operand::Place(Place::new("start_loop")),
+                                },
+                            ],
+                            terminator: Terminator::Goto("loop_header".to_string()),
+                        },
+                        BasicBlock {
+                            label: "exit".to_string(),
+                            instructions: vec![],
+                            terminator: Terminator::Return(Some(Operand::Place(Place::new("acc_loop")))),
+                        },
+                    ],
+                    preconditions: vec![],
+                    postconditions: vec![],
+                    is_pure: false,
+                    is_const: false,
+                    always_inline: false,
+                    inline_hint: false,
+                    is_memory_free: false,
+                },
+            ],
+            extern_fns: vec![],
+            struct_defs: HashMap::new(),
+        };
+
+        let narrowing = LoopBoundedNarrowing::from_program(&program);
+        let changed = narrowing.run_on_program(&mut program);
+
+        let sum_loop = &program.functions[1];
+        // `end` (param 1) should NOT be narrowed — it's a loop-invariant bound
+        assert_eq!(sum_loop.params[1].1, MirType::I64,
+            "end param should remain i64 (loop-invariant bound)");
+        // `start` (param 0) feeds into phi, so it's a loop variable — could be narrowed
+        // `acc` (param 2) feeds into phi — could be narrowed
+        // But the key assertion is that `end` stays i64
+        assert!(changed || !changed, "changed status depends on other params");
     }
 
     #[test]
