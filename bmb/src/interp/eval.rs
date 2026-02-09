@@ -574,7 +574,12 @@ impl Interpreter {
                         let child = child_env(env);
                         for i in start..end {
                             child.borrow_mut().define(var.clone(), Value::Int(i));
-                            self.eval(body, &child)?;
+                            match self.eval(body, &child) {
+                                Ok(_) => {},
+                                Err(e) if matches!(e.kind, ErrorKind::Continue) => continue,
+                                Err(e) if matches!(e.kind, ErrorKind::Break(_)) => break,
+                                Err(e) => return Err(e),
+                            }
                         }
                         Ok(Value::Unit)
                     }

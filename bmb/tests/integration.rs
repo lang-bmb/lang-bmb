@@ -2808,6 +2808,93 @@ fn test_for_loop_with_break() {
 }
 
 #[test]
+fn test_for_loop_with_break_runs() {
+    assert_eq!(
+        run_program_i64(
+            "fn main() -> i64 = {
+               let mut found: i64 = -1;
+               for i in 0..100 {
+                 if i * i > 50 { found = i; break } else { () }
+               };
+               found
+             };"
+        ),
+        8 // 8*8=64 > 50
+    );
+}
+
+#[test]
+fn test_for_loop_with_continue_runs() {
+    // Sum of odd numbers 1..10 using continue
+    assert_eq!(
+        run_program_i64(
+            "fn main() -> i64 = {
+               let mut s: i64 = 0;
+               for i in 0..10 {
+                 if i % 2 == 0 { continue } else { () };
+                 { s = s + i }
+               };
+               s
+             };"
+        ),
+        25 // 1+3+5+7+9 = 25
+    );
+}
+
+#[test]
+fn test_for_loop_with_return_runs() {
+    assert_eq!(
+        run_program_i64(
+            "fn find_square(target: i64) -> i64 = {
+               for i in 0..100 {
+                 if i * i >= target { return i } else { () }
+               };
+               -1
+             };
+             fn main() -> i64 = find_square(50);"
+        ),
+        8 // 8*8=64 >= 50
+    );
+}
+
+#[test]
+fn test_while_with_break_runs() {
+    assert_eq!(
+        run_program_i64(
+            "fn main() -> i64 = {
+               let mut i: i64 = 0;
+               while i < 100 {
+                 if i > 5 { break } else { () };
+                 { i = i + 1 }
+               };
+               i
+             };"
+        ),
+        6
+    );
+}
+
+#[test]
+fn test_while_with_continue_runs() {
+    // Count even numbers from 0..10
+    assert_eq!(
+        run_program_i64(
+            "fn main() -> i64 = {
+               let mut i: i64 = 0;
+               let mut count: i64 = 0;
+               while i < 10 {
+                 { i = i + 1 };
+                 if i % 2 != 0 { continue } else { () };
+                 { count = count + 1 }
+               };
+               count
+             };"
+        ),
+        5 // 2,4,6,8,10
+    );
+}
+
+#[test]
 fn test_loop_infinite_guard() {
     // Test that loop without break causes infinite loop (we can't run this,
     // but we can at least type-check it)
@@ -2815,4 +2902,146 @@ fn test_loop_infinite_guard() {
         "fn diverge() -> i64 = loop { () };
          fn main() -> i64 = 0;"
     ));
+}
+
+#[test]
+fn test_loop_accumulator_runs() {
+    // Fibonacci using loop
+    assert_eq!(
+        run_program_i64(
+            "fn fib_loop(n: i64) -> i64 = {
+               let mut a: i64 = 0;
+               let mut b: i64 = 1;
+               let mut i: i64 = 0;
+               loop {
+                 if i >= n { break } else { () };
+                 let temp: i64 = b;
+                 { b = a + b };
+                 { a = temp };
+                 { i = i + 1 }
+               };
+               a
+             };
+             fn main() -> i64 = fib_loop(10);"
+        ),
+        55 // fib(10) = 55
+    );
+}
+
+#[test]
+fn test_interp_is_prime() {
+    assert_eq!(
+        run_program_i64(
+            "fn is_prime(n: i64) -> bool = {
+               if n < 2 { return false } else { () };
+               let mut i: i64 = 2;
+               while i * i <= n {
+                 if n % i == 0 { return false } else { () };
+                 { i = i + 1 }
+               };
+               true
+             };
+             fn main() -> i64 = is_prime(17) as i64;"
+        ),
+        1
+    );
+}
+
+#[test]
+fn test_interp_is_not_prime() {
+    assert_eq!(
+        run_program_i64(
+            "fn is_prime(n: i64) -> bool = {
+               if n < 2 { return false } else { () };
+               let mut i: i64 = 2;
+               while i * i <= n {
+                 if n % i == 0 { return false } else { () };
+                 { i = i + 1 }
+               };
+               true
+             };
+             fn main() -> i64 = is_prime(15) as i64;"
+        ),
+        0
+    );
+}
+
+#[test]
+fn test_interp_count_divisors() {
+    assert_eq!(
+        run_program_i64(
+            "fn count_div(n: i64) -> i64 = {
+               let mut count: i64 = 0;
+               let mut i: i64 = 1;
+               loop {
+                 if i > n { break } else { () };
+                 if n % i == 0 { count = count + 1 } else { () };
+                 { i = i + 1 }
+               };
+               count
+             };
+             fn main() -> i64 = count_div(12);"
+        ),
+        6 // 1,2,3,4,6,12
+    );
+}
+
+#[test]
+fn test_interp_gcd_loop() {
+    assert_eq!(
+        run_program_i64(
+            "fn gcd(a: i64, b: i64) -> i64 = {
+               let mut x: i64 = a;
+               let mut y: i64 = b;
+               loop {
+                 if y == 0 { return x } else { () };
+                 let r: i64 = x % y;
+                 { x = y };
+                 { y = r }
+               };
+               x
+             };
+             fn main() -> i64 = gcd(48, 18);"
+        ),
+        6
+    );
+}
+
+#[test]
+fn test_interp_power_loop() {
+    assert_eq!(
+        run_program_i64(
+            "fn power(base: i64, exp: i64) -> i64 = {
+               let mut result: i64 = 1;
+               let mut i: i64 = 0;
+               while i < exp {
+                 { result = result * base };
+                 { i = i + 1 }
+               };
+               result
+             };
+             fn main() -> i64 = power(2, 10);"
+        ),
+        1024
+    );
+}
+
+#[test]
+fn test_interp_collatz_steps() {
+    assert_eq!(
+        run_program_i64(
+            "fn collatz(n: i64) -> i64 = {
+               let mut x: i64 = n;
+               let mut steps: i64 = 0;
+               loop {
+                 if x == 1 { break } else { () };
+                 if x % 2 == 0 { x = x / 2 } else { x = 3 * x + 1 };
+                 { steps = steps + 1 }
+               };
+               steps
+             };
+             fn main() -> i64 = collatz(27);"
+        ),
+        111 // collatz(27) takes 111 steps
+    );
 }
