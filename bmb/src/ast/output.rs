@@ -1056,4 +1056,150 @@ mod tests {
         assert!(sexpr.contains("extern"));
         assert!(sexpr.contains("puts"));
     }
+
+    // --- Cycle 115: Formatter and AST output tests ---
+
+    #[test]
+    fn test_sexpr_for_loop() {
+        let source = r#"
+            fn sum() -> i64 = {
+                let mut total: i64 = 0;
+                for i in 0..<10 {
+                    total = total + i;
+                };
+                total
+            };
+        "#;
+        let sexpr = parse_and_format(source);
+        assert!(sexpr.contains("(for i"));
+        assert!(sexpr.contains("(range.."));
+    }
+
+    #[test]
+    fn test_sexpr_struct_init() {
+        let source = r#"
+            struct Point { x: i64, y: i64 }
+            fn origin() -> Point = new Point { x: 0, y: 0 };
+        "#;
+        let sexpr = parse_and_format(source);
+        assert!(sexpr.contains("(new Point"));
+        assert!(sexpr.contains("(x 0)"));
+        assert!(sexpr.contains("(y 0)"));
+    }
+
+    #[test]
+    fn test_sexpr_block_empty() {
+        let source = "fn noop() -> () = {};";
+        let sexpr = parse_and_format(source);
+        assert!(sexpr.contains("(block)"));
+    }
+
+    #[test]
+    fn test_sexpr_closure() {
+        let source = "fn apply() -> i64 = fn |x: i64| { x + 1 };";
+        let sexpr = parse_and_format(source);
+        assert!(sexpr.contains("(fn |"), "Expected closure in sexpr output, got: {}", sexpr);
+    }
+
+    #[test]
+    fn test_sexpr_use_statement() {
+        let source = r#"
+            use std::io;
+            fn main() -> () = ();
+        "#;
+        let sexpr = parse_and_format(source);
+        assert!(sexpr.contains("(use std::io)"));
+    }
+
+    #[test]
+    fn test_sexpr_trait_def() {
+        let source = r#"
+            trait Addable {
+                fn add(self: i64, other: i64) -> i64;
+            }
+            fn main() -> () = ();
+        "#;
+        let sexpr = parse_and_format(source);
+        assert!(sexpr.contains("(trait Addable"));
+        assert!(sexpr.contains("(fn add"));
+    }
+
+    #[test]
+    fn test_sexpr_pre_post_contracts() {
+        let source = r#"
+            fn safe_div(a: i64, b: i64) -> i64
+              pre b != 0
+              post ret >= 0
+            = a / b;
+        "#;
+        let sexpr = parse_and_format(source);
+        assert!(sexpr.contains(":pre"));
+        assert!(sexpr.contains("(!= b 0)"));
+        assert!(sexpr.contains(":post"));
+        assert!(sexpr.contains("(>= ret 0)"));
+    }
+
+    #[test]
+    fn test_sexpr_type_alias() {
+        let source = r#"
+            type IntPair = (i64, i64);
+            fn main() -> () = ();
+        "#;
+        let sexpr = parse_and_format(source);
+        assert!(sexpr.contains("(type IntPair"));
+    }
+
+    #[test]
+    fn test_format_expr_control_flow() {
+        use crate::ast::Expr;
+
+        assert_eq!(format_expr(&Expr::Continue), "(continue)");
+        assert_eq!(format_expr(&Expr::Break { value: None }), "(break)");
+        assert_eq!(format_expr(&Expr::Return { value: None }), "(return)");
+        assert_eq!(format_expr(&Expr::Todo { message: None }), "(todo)");
+        assert_eq!(
+            format_expr(&Expr::Todo { message: Some("not yet".to_string()) }),
+            "(todo \"not yet\")"
+        );
+    }
+
+    #[test]
+    fn test_format_expr_string_and_char_lit() {
+        use crate::ast::Expr;
+
+        assert_eq!(format_expr(&Expr::StringLit("hello".to_string())), "\"hello\"");
+        assert_eq!(format_expr(&Expr::CharLit('A')), "'A'");
+        assert_eq!(format_expr(&Expr::FloatLit(3.14)), "3.14");
+    }
+
+    #[test]
+    fn test_sexpr_deeply_nested_if() {
+        let source = r#"
+            fn nested(x: i64) -> i64 =
+                if x > 0 {
+                    if x > 10 {
+                        if x > 100 { 3 } else { 2 }
+                    } else { 1 }
+                } else { 0 };
+        "#;
+        let sexpr = parse_and_format(source);
+        // Should contain nested if expressions
+        let if_count = sexpr.matches("(if ").count();
+        assert!(if_count >= 3, "Expected at least 3 nested if expressions, got {}", if_count);
+    }
+
+    #[test]
+    fn test_sexpr_multiple_items_program() {
+        let source = r#"
+            struct Pair { a: i64, b: i64 }
+            enum Dir { Up, Down }
+            fn make() -> Pair = new Pair { a: 1, b: 2 };
+        "#;
+        let sexpr = parse_and_format(source);
+        assert!(sexpr.starts_with("(program\n"));
+        assert!(sexpr.ends_with(')'));
+        assert!(sexpr.contains("(struct Pair"));
+        assert!(sexpr.contains("(enum Dir"));
+        assert!(sexpr.contains("(fn make"));
+    }
 }

@@ -1840,4 +1840,508 @@ mod tests {
         // Warnings may or may not be generated depending on implementation
         let _ = &report.warnings;
     }
+
+    // --- Cycle 115: Additional contract verification tests ---
+
+    #[test]
+    fn test_verify_program_no_functions() {
+        let verifier = ContractVerifier::new();
+        let program = Program {
+            header: None,
+            items: vec![],
+        };
+        let report = verifier.verify_program(&program);
+        assert!(report.all_verified());
+        assert_eq!(report.verified_count(), 0);
+        assert_eq!(report.failed_count(), 0);
+        assert!(report.functions.is_empty());
+    }
+
+    #[test]
+    fn test_verify_program_multiple_functions() {
+        let verifier = ContractVerifier::new();
+
+        let f1 = Item::FnDef(FnDef {
+            attributes: vec![],
+            visibility: Visibility::Private,
+            is_async: false,
+            name: spanned("add".to_string()),
+            type_params: vec![],
+            params: vec![
+                crate::ast::Param { name: spanned("a".to_string()), ty: spanned(Type::I64) },
+                crate::ast::Param { name: spanned("b".to_string()), ty: spanned(Type::I64) },
+            ],
+            ret_name: None,
+            ret_ty: spanned(Type::I64),
+            pre: None,
+            post: None,
+            contracts: vec![],
+            body: spanned(Expr::Binary {
+                left: Box::new(spanned(Expr::Var("a".to_string()))),
+                op: crate::ast::BinOp::Add,
+                right: Box::new(spanned(Expr::Var("b".to_string()))),
+            }),
+            span: dummy_span(),
+        });
+
+        let f2 = Item::FnDef(FnDef {
+            attributes: vec![],
+            visibility: Visibility::Private,
+            is_async: false,
+            name: spanned("id".to_string()),
+            type_params: vec![],
+            params: vec![
+                crate::ast::Param { name: spanned("x".to_string()), ty: spanned(Type::I64) },
+            ],
+            ret_name: None,
+            ret_ty: spanned(Type::I64),
+            pre: None,
+            post: None,
+            contracts: vec![],
+            body: spanned(Expr::Var("x".to_string())),
+            span: dummy_span(),
+        });
+
+        let program = Program {
+            header: None,
+            items: vec![f1, f2],
+        };
+        let report = verifier.verify_program(&program);
+        assert_eq!(report.functions.len(), 2);
+        assert!(report.all_verified());
+        assert_eq!(report.verified_count(), 2);
+    }
+
+    #[test]
+    fn test_verify_function_with_pre_and_post() {
+        // Function with both pre and post contracts should have both results set
+        let verifier = ContractVerifier::new();
+        let func = FnDef {
+            attributes: vec![],
+            visibility: Visibility::Private,
+            is_async: false,
+            name: spanned("bounded_inc".to_string()),
+            type_params: vec![],
+            params: vec![crate::ast::Param {
+                name: spanned("x".to_string()),
+                ty: spanned(Type::I64),
+            }],
+            ret_name: None,
+            ret_ty: spanned(Type::I64),
+            pre: Some(spanned(Expr::Binary {
+                left: Box::new(spanned(Expr::Var("x".to_string()))),
+                op: crate::ast::BinOp::Ge,
+                right: Box::new(spanned(Expr::IntLit(0))),
+            })),
+            post: Some(spanned(Expr::Binary {
+                left: Box::new(spanned(Expr::Var("ret".to_string()))),
+                op: crate::ast::BinOp::Gt,
+                right: Box::new(spanned(Expr::IntLit(0))),
+            })),
+            contracts: vec![],
+            body: spanned(Expr::Binary {
+                left: Box::new(spanned(Expr::Var("x".to_string()))),
+                op: crate::ast::BinOp::Add,
+                right: Box::new(spanned(Expr::IntLit(1))),
+            }),
+            span: dummy_span(),
+        };
+
+        let report = verifier.verify_function(&func);
+        // Both pre and post results should be populated
+        assert!(report.pre_result.is_some());
+        assert!(report.post_result.is_some());
+    }
+
+    #[test]
+    fn test_verify_function_with_named_contracts() {
+        // Named contracts should appear in contract_results
+        let verifier = ContractVerifier::new();
+        let func = FnDef {
+            attributes: vec![],
+            visibility: Visibility::Private,
+            is_async: false,
+            name: spanned("checked_fn".to_string()),
+            type_params: vec![],
+            params: vec![crate::ast::Param {
+                name: spanned("x".to_string()),
+                ty: spanned(Type::I64),
+            }],
+            ret_name: None,
+            ret_ty: spanned(Type::I64),
+            pre: None,
+            post: None,
+            contracts: vec![
+                NamedContract {
+                    name: Some(spanned("non_negative".to_string())),
+                    condition: spanned(Expr::Binary {
+                        left: Box::new(spanned(Expr::Var("x".to_string()))),
+                        op: crate::ast::BinOp::Ge,
+                        right: Box::new(spanned(Expr::IntLit(0))),
+                    }),
+                    span: dummy_span(),
+                },
+            ],
+            body: spanned(Expr::Var("x".to_string())),
+            span: dummy_span(),
+        };
+
+        let report = verifier.verify_function(&func);
+        // Should have one contract result
+        assert_eq!(report.contract_results.len(), 1);
+        assert_eq!(report.contract_results[0].0.as_deref(), Some("non_negative"));
+    }
+
+    #[test]
+    fn test_verify_function_with_return_refinement() {
+        // Function with refined return type should produce refinement_results
+        let verifier = ContractVerifier::new();
+        let func = FnDef {
+            attributes: vec![],
+            visibility: Visibility::Private,
+            is_async: false,
+            name: spanned("positive_ret".to_string()),
+            type_params: vec![],
+            params: vec![],
+            ret_name: None,
+            ret_ty: spanned(Type::Refined {
+                base: Box::new(Type::I64),
+                constraints: vec![spanned(Expr::Binary {
+                    left: Box::new(spanned(Expr::It)),
+                    op: crate::ast::BinOp::Gt,
+                    right: Box::new(spanned(Expr::IntLit(0))),
+                })],
+            }),
+            pre: None,
+            post: None,
+            contracts: vec![],
+            body: spanned(Expr::IntLit(42)),
+            span: dummy_span(),
+        };
+
+        let report = verifier.verify_function(&func);
+        // Should have one refinement result for "return"
+        assert_eq!(report.refinement_results.len(), 1);
+        assert_eq!(report.refinement_results[0].0, "return");
+    }
+
+    #[test]
+    fn test_function_report_multiple_contract_results_mixed() {
+        // Multiple contracts: some verified, some failed
+        let mut report = FunctionReport::new("multi".to_string());
+        report.pre_result = Some(VerifyResult::Verified);
+        report.post_result = Some(VerifyResult::Verified);
+        report.contract_results.push((
+            Some("c1".to_string()),
+            VerifyResult::Verified,
+        ));
+        report.contract_results.push((
+            Some("c2".to_string()),
+            VerifyResult::Failed(Counterexample { assignments: vec![] }),
+        ));
+        report.contract_results.push((
+            Some("c3".to_string()),
+            VerifyResult::Verified,
+        ));
+
+        // has_failure should be true because c2 failed
+        assert!(report.has_failure());
+        // is_verified should be false
+        assert!(!report.is_verified());
+    }
+
+    #[test]
+    fn test_function_report_mixed_refinement_results() {
+        // Refinement results: some verified, some unknown
+        let mut report = FunctionReport::new("refine".to_string());
+        report.pre_result = Some(VerifyResult::Verified);
+        report.post_result = Some(VerifyResult::Verified);
+        report.refinement_results.push((
+            "return".to_string(),
+            VerifyResult::Verified,
+        ));
+        report.refinement_results.push((
+            "return".to_string(),
+            VerifyResult::Unknown("timeout".to_string()),
+        ));
+
+        // Unknown is not a failure but prevents is_verified
+        assert!(!report.is_verified());
+        assert!(!report.has_failure());
+    }
+
+    #[test]
+    fn test_counterexample_from_model_sorts_keys() {
+        use std::collections::HashMap;
+        let mut model = HashMap::new();
+        model.insert("z".to_string(), "3".to_string());
+        model.insert("a".to_string(), "1".to_string());
+        model.insert("m".to_string(), "2".to_string());
+
+        let ce = Counterexample::from_model(model);
+        assert_eq!(ce.assignments.len(), 3);
+        assert_eq!(ce.assignments[0].0, "a");
+        assert_eq!(ce.assignments[1].0, "m");
+        assert_eq!(ce.assignments[2].0, "z");
+    }
+
+    #[test]
+    fn test_counterexample_empty_assignments_display() {
+        let ce = Counterexample { assignments: vec![] };
+        let display = format!("{}", ce);
+        // Should still contain "Counterexample:" header
+        assert!(display.contains("Counterexample:"));
+    }
+
+    #[test]
+    fn test_verification_report_mixed_unknown_and_verified() {
+        // Unknown results: function is neither verified nor failed
+        let mut report = VerificationReport::new();
+
+        let mut f1 = FunctionReport::new("ok".to_string());
+        f1.pre_result = Some(VerifyResult::Verified);
+        f1.post_result = Some(VerifyResult::Verified);
+
+        let mut f2 = FunctionReport::new("unknown".to_string());
+        f2.pre_result = Some(VerifyResult::Unknown("timeout".to_string()));
+        f2.post_result = Some(VerifyResult::Verified);
+
+        report.functions.push(f1);
+        report.functions.push(f2);
+
+        // f2 is not verified (unknown pre), but also not failed
+        assert_eq!(report.verified_count(), 1);
+        assert_eq!(report.failed_count(), 0);
+        assert!(!report.all_verified());
+    }
+
+    #[test]
+    fn test_duplicate_contract_unnamed_detection() {
+        // Duplicate detection should work with unnamed contracts too
+        let verifier = ContractVerifier::new();
+
+        let condition = spanned(Expr::Binary {
+            left: Box::new(spanned(Expr::Var("x".to_string()))),
+            op: crate::ast::BinOp::Lt,
+            right: Box::new(spanned(Expr::IntLit(10))),
+        });
+
+        let func = FnDef {
+            attributes: vec![],
+            visibility: Visibility::Private,
+            is_async: false,
+            name: spanned("dup_unnamed".to_string()),
+            type_params: vec![],
+            params: vec![crate::ast::Param {
+                name: spanned("x".to_string()),
+                ty: spanned(Type::I64),
+            }],
+            ret_name: None,
+            ret_ty: spanned(Type::I64),
+            pre: None,
+            post: None,
+            contracts: vec![
+                NamedContract {
+                    name: None,
+                    condition: condition.clone(),
+                    span: dummy_span(),
+                },
+                NamedContract {
+                    name: None,
+                    condition: condition.clone(),
+                    span: dummy_span(),
+                },
+            ],
+            body: spanned(Expr::Var("x".to_string())),
+            span: dummy_span(),
+        };
+
+        let mut report = FunctionReport::new("dup_unnamed".to_string());
+        verifier.detect_duplicate_contracts(&func, &mut report);
+        assert_eq!(report.warnings.len(), 1);
+        assert!(report.warnings[0].contains("Duplicate contract"));
+    }
+
+    #[test]
+    fn test_hash_expr_different_ops_produce_different_hashes() {
+        let verifier = ContractVerifier::new();
+
+        let expr_gt = Expr::Binary {
+            left: Box::new(spanned(Expr::Var("x".to_string()))),
+            op: crate::ast::BinOp::Gt,
+            right: Box::new(spanned(Expr::IntLit(0))),
+        };
+        let expr_lt = Expr::Binary {
+            left: Box::new(spanned(Expr::Var("x".to_string()))),
+            op: crate::ast::BinOp::Lt,
+            right: Box::new(spanned(Expr::IntLit(0))),
+        };
+        let expr_eq = Expr::Binary {
+            left: Box::new(spanned(Expr::Var("x".to_string()))),
+            op: crate::ast::BinOp::Eq,
+            right: Box::new(spanned(Expr::IntLit(0))),
+        };
+
+        let h1 = verifier.hash_expr(&expr_gt);
+        let h2 = verifier.hash_expr(&expr_lt);
+        let h3 = verifier.hash_expr(&expr_eq);
+
+        // Different expressions should produce different hashes
+        assert_ne!(h1, h2);
+        assert_ne!(h1, h3);
+        assert_ne!(h2, h3);
+
+        // Same expression should produce the same hash
+        let h1_again = verifier.hash_expr(&expr_gt);
+        assert_eq!(h1, h1_again);
+    }
+
+    #[test]
+    fn test_verify_function_with_implies_contract() {
+        // Function with a logical implication contract (x > 0 implies ret > 0)
+        let verifier = ContractVerifier::new();
+        let func = FnDef {
+            attributes: vec![],
+            visibility: Visibility::Private,
+            is_async: false,
+            name: spanned("implies_fn".to_string()),
+            type_params: vec![],
+            params: vec![crate::ast::Param {
+                name: spanned("x".to_string()),
+                ty: spanned(Type::I64),
+            }],
+            ret_name: None,
+            ret_ty: spanned(Type::I64),
+            pre: None,
+            post: Some(spanned(Expr::Binary {
+                left: Box::new(spanned(Expr::Binary {
+                    left: Box::new(spanned(Expr::Var("x".to_string()))),
+                    op: crate::ast::BinOp::Gt,
+                    right: Box::new(spanned(Expr::IntLit(0))),
+                })),
+                op: crate::ast::BinOp::Implies,
+                right: Box::new(spanned(Expr::Binary {
+                    left: Box::new(spanned(Expr::Var("ret".to_string()))),
+                    op: crate::ast::BinOp::Gt,
+                    right: Box::new(spanned(Expr::IntLit(0))),
+                })),
+            })),
+            contracts: vec![],
+            body: spanned(Expr::Var("x".to_string())),
+            span: dummy_span(),
+        };
+
+        let report = verifier.verify_function(&func);
+        // Should have a post result (verified, unknown, or solver-dependent)
+        assert!(report.post_result.is_some());
+    }
+
+    #[test]
+    fn test_function_report_display_multiple_warnings() {
+        let mut report = FunctionReport::new("warn_fn".to_string());
+        report.warnings.push("Duplicate contract: 'c2' has the same condition as 'c1'".to_string());
+        report.warnings.push("Trivial contract: precondition is always true (tautology)".to_string());
+        let display = format!("{}", report);
+        assert!(display.contains("Duplicate contract"));
+        assert!(display.contains("Trivial contract"));
+        // Both warnings should appear on separate lines
+        let warning_lines: Vec<&str> = display.lines()
+            .filter(|l| l.contains("warn_fn"))
+            .collect();
+        assert!(warning_lines.len() >= 2);
+    }
+
+    #[test]
+    fn test_verify_function_bool_return_with_eq_contract() {
+        // Function returning bool with postcondition ret == true
+        let verifier = ContractVerifier::new();
+        let func = FnDef {
+            attributes: vec![],
+            visibility: Visibility::Private,
+            is_async: false,
+            name: spanned("always_true".to_string()),
+            type_params: vec![],
+            params: vec![],
+            ret_name: None,
+            ret_ty: spanned(Type::Bool),
+            pre: None,
+            post: Some(spanned(Expr::Binary {
+                left: Box::new(spanned(Expr::Var("ret".to_string()))),
+                op: crate::ast::BinOp::Eq,
+                right: Box::new(spanned(Expr::BoolLit(true))),
+            })),
+            contracts: vec![],
+            body: spanned(Expr::BoolLit(true)),
+            span: dummy_span(),
+        };
+
+        let report = verifier.verify_function(&func);
+        assert!(report.post_result.is_some());
+    }
+
+    #[test]
+    fn test_verify_program_skips_non_function_items() {
+        use crate::ast::{StructDef, StructField};
+
+        let verifier = ContractVerifier::new();
+
+        // Create a program with a struct and a function
+        let struct_item = Item::StructDef(StructDef {
+            attributes: vec![],
+            visibility: Visibility::Private,
+            name: spanned("Point".to_string()),
+            type_params: vec![],
+            fields: vec![
+                StructField {
+                    name: spanned("x".to_string()),
+                    ty: spanned(Type::I64),
+                },
+                StructField {
+                    name: spanned("y".to_string()),
+                    ty: spanned(Type::I64),
+                },
+            ],
+            span: dummy_span(),
+        });
+
+        let fn_item = Item::FnDef(FnDef {
+            attributes: vec![],
+            visibility: Visibility::Private,
+            is_async: false,
+            name: spanned("get_x".to_string()),
+            type_params: vec![],
+            params: vec![],
+            ret_name: None,
+            ret_ty: spanned(Type::I64),
+            pre: None,
+            post: None,
+            contracts: vec![],
+            body: spanned(Expr::IntLit(0)),
+            span: dummy_span(),
+        });
+
+        let program = Program {
+            header: None,
+            items: vec![struct_item, fn_item],
+        };
+
+        let report = verifier.verify_program(&program);
+        // Only the function should appear in the report, not the struct
+        assert_eq!(report.functions.len(), 1);
+        assert_eq!(report.functions[0].name, "get_x");
+    }
+
+    #[test]
+    fn test_counterexample_display_ret_variable() {
+        // Counterexample display should show "ret = value" for __ret__
+        let ce = Counterexample {
+            assignments: vec![
+                ("__ret__".to_string(), "42".to_string()),
+                ("x".to_string(), "10".to_string()),
+            ],
+        };
+        let display = format!("{}", ce);
+        assert!(display.contains("ret = 42"));
+        assert!(display.contains("x = 10"));
+    }
 }

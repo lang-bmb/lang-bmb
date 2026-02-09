@@ -3102,3 +3102,139 @@ fn extract_function_signature(ir: &str) -> Vec<String> {
         .map(|l| l.to_string())
         .collect()
 }
+
+// --- Cycle 115: Formatter tests ---
+#[cfg(test)]
+mod formatter_tests {
+    use super::*;
+
+    /// Helper: parse source and format it back via the formatter pipeline
+    fn format_source(source: &str) -> String {
+        let comments = extract_comments(source);
+        let tokens = bmb::lexer::tokenize(source).expect("tokenize failed");
+        let ast = bmb::parser::parse("test.bmb", source, tokens).expect("parse failed");
+        format_program_with_comments(&ast, source, &comments)
+    }
+
+    #[test]
+    fn test_fmt_simple_fn() {
+        let source = "fn add(a: i64, b: i64) -> i64\n= a + b;\n";
+        let formatted = format_source(source);
+        assert!(formatted.contains("fn add(a: i64, b: i64) -> i64"));
+        assert!(formatted.contains("= a + b;"));
+    }
+
+    #[test]
+    fn test_fmt_struct_def() {
+        let source = "struct Point {\n    x: i64,\n    y: i64,\n}\n";
+        let formatted = format_source(source);
+        assert!(formatted.contains("struct Point {"));
+        assert!(formatted.contains("    x: i64,"));
+        assert!(formatted.contains("    y: i64,"));
+        assert!(formatted.contains("}"));
+    }
+
+    #[test]
+    fn test_fmt_enum_def() {
+        let source = "enum Color {\n    Red,\n    Blue,\n}\n";
+        let formatted = format_source(source);
+        assert!(formatted.contains("enum Color {"));
+        assert!(formatted.contains("    Red,"));
+        assert!(formatted.contains("    Blue,"));
+    }
+
+    #[test]
+    fn test_fmt_pre_post_conditions() {
+        let source = "fn safe_div(a: i64, b: i64) -> i64\n  pre b != 0\n  post ret >= 0\n= a / b;\n";
+        let formatted = format_source(source);
+        assert!(formatted.contains("pre b != 0"));
+        assert!(formatted.contains("post ret >= 0"));
+    }
+
+    #[test]
+    fn test_fmt_round_trip_stability() {
+        // Format once, then format again -- output should be identical (idempotent)
+        let source = "fn id(x: i64) -> i64\n= x;\n";
+        let first = format_source(source);
+        let second = format_source(&first);
+        assert_eq!(first, second, "Formatter should be idempotent");
+    }
+
+    #[test]
+    fn test_fmt_comment_preservation() {
+        let source = "// This is a top-level comment\nfn foo() -> i64\n= 42;\n";
+        let formatted = format_source(source);
+        assert!(formatted.contains("// This is a top-level comment"),
+            "Top-level comments should be preserved. Got: {}", formatted);
+    }
+
+    #[test]
+    fn test_fmt_extern_fn() {
+        let source = "extern \"C\" fn puts(s: *i64) -> i64;\n";
+        let formatted = format_source(source);
+        assert!(formatted.contains("extern fn puts(s: *i64) -> i64;"));
+    }
+
+    #[test]
+    fn test_fmt_use_statement() {
+        let source = "use std::io;\nfn main() -> () = ();\n";
+        let formatted = format_source(source);
+        assert!(formatted.contains("use std::io;"));
+    }
+
+    #[test]
+    fn test_fmt_pub_visibility() {
+        let source = "pub fn add(a: i64, b: i64) -> i64\n= a + b;\n";
+        let formatted = format_source(source);
+        assert!(formatted.contains("pub fn add("));
+    }
+
+    #[test]
+    fn test_fmt_type_alias() {
+        let source = "type Num = i64;\nfn main() -> () = ();\n";
+        let formatted = format_source(source);
+        assert!(formatted.contains("type Num = i64;"));
+    }
+
+    #[test]
+    fn test_fmt_block_body_with_let() {
+        let source = "fn foo() -> i64\n= {\n    let x = 1;\n    x + 1\n};\n";
+        let formatted = format_source(source);
+        assert!(formatted.contains("let x = 1;"));
+        assert!(formatted.contains("x + 1"));
+    }
+
+    #[test]
+    fn test_fmt_multiple_items_separated() {
+        let source = "fn a() -> i64\n= 1;\n\nfn b() -> i64\n= 2;\n";
+        let formatted = format_source(source);
+        // Both functions should appear in the output
+        assert!(formatted.contains("fn a("));
+        assert!(formatted.contains("fn b("));
+    }
+
+    #[test]
+    fn test_extract_comments_basic() {
+        let comments = extract_comments("// line one\nlet x = 1;\n// line three\n");
+        assert_eq!(comments.len(), 2);
+        assert_eq!(comments[0].0, 0); // line 0
+        assert_eq!(comments[0].1, "// line one");
+        assert_eq!(comments[1].0, 2); // line 2
+        assert_eq!(comments[1].1, "// line three");
+    }
+
+    #[test]
+    fn test_extract_comments_legacy_dash() {
+        let comments = extract_comments("-- legacy comment\nfn foo() -> i64 = 1;\n");
+        assert_eq!(comments.len(), 1);
+        assert_eq!(comments[0].1, "-- legacy comment");
+    }
+
+    #[test]
+    fn test_line_number_at_offset_basic() {
+        let source = "abc\ndef\nghi";
+        assert_eq!(line_number_at_offset(source, 0), 0); // start of line 0
+        assert_eq!(line_number_at_offset(source, 4), 1); // start of line 1
+        assert_eq!(line_number_at_offset(source, 8), 2); // start of line 2
+    }
+}
