@@ -163,8 +163,8 @@ build_with_bootstrap() {
         fi
     fi
 
-    # Step 3: Compile to object file
-    if ! llc -O3 -filetype=obj -o "$obj_file" "$bc_file" > /dev/null 2>&1; then
+    # Step 3: Compile to object file (--mcpu=native for target-specific optimizations)
+    if ! llc -O3 --mcpu=native -filetype=obj -o "$obj_file" "$bc_file" > /dev/null 2>&1; then
         echo "FAIL"
         return 1
     fi
