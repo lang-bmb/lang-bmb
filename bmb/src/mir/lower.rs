@@ -2461,12 +2461,19 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
             Operand::Constant(crate::mir::Constant::Unit)
         }
 
-        // Return - placeholder, full implementation requires control flow
+        // Return - emit Terminator::Return and start unreachable block
         Expr::Return { value } => {
-            match value {
-                Some(v) => lower_expr(v, ctx),
-                None => Operand::Constant(crate::mir::Constant::Unit),
-            }
+            let ret_val = match value {
+                Some(v) => Some(lower_expr(v, ctx)),
+                None => None,
+            };
+            // Finish current block with return terminator
+            ctx.finish_block(Terminator::Return(ret_val));
+            // Start a new unreachable block for code after return
+            let unreachable_label = ctx.fresh_label("after_return");
+            ctx.start_block(unreachable_label);
+            // Return unit (return is a divergent expression)
+            Operand::Constant(crate::mir::Constant::Unit)
         }
 
         // v0.37: Quantifiers - these are for SMT verification only
@@ -5082,6 +5089,31 @@ mod tests {
         // Early return creates a Return terminator in the then-branch
         let return_count = func.blocks.iter().filter(|b| matches!(b.terminator, Terminator::Return(_))).count();
         assert!(return_count >= 1, "Expected at least 1 Return terminator for early return, got {}", return_count);
+    }
+
+    #[test]
+    fn test_lower_early_return_value() {
+        let mir = parse_and_lower(
+            "fn early_val(x: i64) -> i64 = { if x > 10 { return 99 } else { 0 }; 42 };"
+        );
+        let func = &mir.functions[0];
+        // Early return with value creates a Return terminator
+        let return_count = func.blocks.iter().filter(|b| matches!(b.terminator, Terminator::Return(_))).count();
+        assert!(return_count >= 2, "Expected at least 2 Return terminators (early + final), got {}", return_count);
+    }
+
+    #[test]
+    fn test_lower_return_from_loop() {
+        let mir = parse_and_lower(
+            "fn find(n: i64) -> i64 = { let mut i: i64 = 0; while i < n { if i == 5 { return i } else { 0 }; { i = i + 1 } }; -1 };"
+        );
+        let func = &mir.functions[0];
+        // Return from inside loop creates Return terminator + after_return block
+        let return_count = func.blocks.iter().filter(|b| matches!(b.terminator, Terminator::Return(_))).count();
+        assert!(return_count >= 2, "Expected at least 2 Return terminators (loop return + final), got {}", return_count);
+        // Should have an after_return block
+        let has_after_return = func.blocks.iter().any(|b| b.label.contains("after_return"));
+        assert!(has_after_return, "Expected after_return block for return inside loop");
     }
 
     // --- Boolean 'or' operator ---

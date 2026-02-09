@@ -282,20 +282,24 @@ select {
 | 부트스트랩 i32 지원 | 📋 | compiler.bmb에 i32 코드젠 |
 | 벤치마크 검증 | 📋 | collatz/sieve ≤1.02x 달성 확인 |
 
-#### v0.92: 부트스트랩 자체 컴파일 (4-Stage) 📋
+#### v0.92: 부트스트랩 기능 확장 📋
 
-> **목표**: compiler.bmb가 자기 자신을 컴파일 (Rust 의존성 제거 경로)
+> **목표**: 부트스트랩 컴파일러가 임의의 BMB 프로그램 컴파일 가능
+>
+> **참고**: 3-Stage Fixed Point = 사실상 4-Stage 자체 컴파일 달성.
+> compiler.bmb는 순수 함수형 스타일(early return/mutation/deref 미사용)이므로
+> 3-Stage에서 이미 자기 자신을 정확히 컴파일함. 아래 기능은 임의의 BMB 프로그램
+> 컴파일을 위해 필요.
 
 | 태스크 | 상태 | 설명 |
 |--------|------|------|
-| Return expression 로워링 | 📋 | BLOCKER: 조기 반환 지원 |
-| Reference `&T`/`*T` 로워링 | 📋 | BLOCKER: 참조/포인터 연산 |
+| Return expression 로워링 | 📋 | 임의 프로그램의 조기 반환 지원 |
+| Reference `&T`/`*T` 로워링 | 📋 | 참조/포인터 연산 |
 | Field assignment 로워링 | 📋 | 구조체 필드 대입 |
 | `loop {}` 무한 루프 | 📋 | break 기반 무한 루프 |
 | Type cast (`as`) 로워링 | 📋 | 명시적 타입 변환 |
 | Nullable `T?` 로워링 | 📋 | 널러블 타입 지원 |
 | Closure capture 완성 | 📋 | 자유 변수 캡처 분석 |
-| 4-Stage Fixed Point 검증 | 📋 | compiler.bmb → compiler.bmb 자체 컴파일 |
 
 #### v0.93: 부트스트랩 코드젠 최적화 📋
 

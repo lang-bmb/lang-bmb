@@ -229,6 +229,20 @@ fn is_for_node(s: String) -> bool =
         c0 == 40 and c1 == 102 and c2 == 111 and c3 == 114 and c4 == 32
     };
 
+// v0.90.22: Return expression support
+// Return format: "(return)" or "(return expr)"
+// '(' = 40, 'r' = 114, 'e' = 101, 't' = 116, 'u' = 117, 'n' = 110
+fn is_return_node(s: String) -> bool =
+    if s.len() < 8 { false } else {
+        s.byte_at(0) == 40 and   // '('
+        s.byte_at(1) == 114 and  // 'r'
+        s.byte_at(2) == 101 and  // 'e'
+        s.byte_at(3) == 116 and  // 't'
+        s.byte_at(4) == 117 and  // 'u'
+        s.byte_at(5) == 114 and  // 'r'
+        s.byte_at(6) == 110      // 'n'
+    };
+
 // v0.30.43: Break expression support
 // Break format: exactly "(break)"
 fn is_break_node(s: String) -> bool =
@@ -882,7 +896,7 @@ fn lower_expr_sb(ast: String, temp: i64, block: i64, sb: i64) -> String =
 // v0.52: Attribute expression support (@likely/@unlikely)
 // v0.51.43: Null and sizeof expression support
 fn lower_expr(ast: String, temp: i64, block: i64) -> String =
-    if is_int_node(ast) { lower_int(ast, temp, block) } else if is_float_node(ast) { lower_float(ast, temp, block) } else if is_bool_node(ast) { lower_bool(ast, temp, block) } else if is_string_node(ast) { lower_string(ast, temp, block) } else if is_var_node(ast) { lower_var(ast, temp, block) } else if is_op_node(ast) { lower_binop(ast, temp, block) } else if is_neg_node(ast) { lower_neg(ast, temp, block) } else if is_not_node(ast) { lower_not(ast, temp, block) } else if is_if_node(ast) { lower_if(ast, temp, block) } else if is_let_node(ast) or is_let_mut_node(ast) { lower_let(ast, temp, block) } else if is_call_node(ast) { lower_call(ast, temp, block) } else if is_new_node(ast) { lower_struct_init(ast, temp, block) } else if is_dot_node(ast) { lower_field_access(ast, temp, block) } else if is_enum_variant_node(ast) { lower_enum_variant(ast, temp, block) } else if is_match_node(ast) { lower_match(ast, temp, block) } else if is_lambda_node(ast) { lower_lambda(ast, temp, block) } else if is_block_node(ast) { lower_block(ast, temp, block) } else if is_unit_node(ast) { lower_unit(ast, temp, block) } else if is_seq_node(ast) { lower_seq(ast, temp, block) } else if is_assign_node(ast) { lower_assign(ast, temp, block) } else if is_while_node(ast) { lower_while(ast, temp, block) } else if is_for_node(ast) { lower_for(ast, temp, block) } else if is_break_node(ast) { lower_break(ast, temp, block) } else if is_continue_node(ast) { lower_continue(ast, temp, block) } else if is_array_node(ast) { lower_array(ast, temp, block) } else if is_index_node(ast) { lower_index(ast, temp, block) } else if is_method_call_node(ast) { lower_method_call(ast, temp, block) } else if is_attr_node(ast) { lower_attr(ast, temp, block) } else if is_null_node(ast) { lower_null(ast, temp, block) } else if is_sizeof_node(ast) { lower_sizeof(ast, temp, block) } else { pack_lower_result(temp, block, "%error", "  ; unknown: " + get_node_type(ast)) };
+    if is_int_node(ast) { lower_int(ast, temp, block) } else if is_float_node(ast) { lower_float(ast, temp, block) } else if is_bool_node(ast) { lower_bool(ast, temp, block) } else if is_string_node(ast) { lower_string(ast, temp, block) } else if is_var_node(ast) { lower_var(ast, temp, block) } else if is_op_node(ast) { lower_binop(ast, temp, block) } else if is_neg_node(ast) { lower_neg(ast, temp, block) } else if is_not_node(ast) { lower_not(ast, temp, block) } else if is_if_node(ast) { lower_if(ast, temp, block) } else if is_let_node(ast) or is_let_mut_node(ast) { lower_let(ast, temp, block) } else if is_call_node(ast) { lower_call(ast, temp, block) } else if is_new_node(ast) { lower_struct_init(ast, temp, block) } else if is_dot_node(ast) { lower_field_access(ast, temp, block) } else if is_enum_variant_node(ast) { lower_enum_variant(ast, temp, block) } else if is_match_node(ast) { lower_match(ast, temp, block) } else if is_lambda_node(ast) { lower_lambda(ast, temp, block) } else if is_block_node(ast) { lower_block(ast, temp, block) } else if is_unit_node(ast) { lower_unit(ast, temp, block) } else if is_seq_node(ast) { lower_seq(ast, temp, block) } else if is_assign_node(ast) { lower_assign(ast, temp, block) } else if is_while_node(ast) { lower_while(ast, temp, block) } else if is_for_node(ast) { lower_for(ast, temp, block) } else if is_return_node(ast) { lower_return(ast, temp, block) } else if is_break_node(ast) { lower_break(ast, temp, block) } else if is_continue_node(ast) { lower_continue(ast, temp, block) } else if is_array_node(ast) { lower_array(ast, temp, block) } else if is_index_node(ast) { lower_index(ast, temp, block) } else if is_method_call_node(ast) { lower_method_call(ast, temp, block) } else if is_attr_node(ast) { lower_attr(ast, temp, block) } else if is_null_node(ast) { lower_null(ast, temp, block) } else if is_sizeof_node(ast) { lower_sizeof(ast, temp, block) } else { pack_lower_result(temp, block, "%error", "  ; unknown: " + get_node_type(ast)) };
 
 // Lower integer literal: (int 42)
 fn lower_int(ast: String, temp: i64, block: i64) -> String =
@@ -1652,6 +1666,25 @@ fn lower_continue(ast: String, temp: i64, block: i64) -> String =
     let dest = place_temp(temp);
     let text = "  " + dest + " = CONTINUE";
     pack_lower_result(temp + 1, block, dest, text);
+
+// v0.90.22: Lower return expression: (return) or (return expr)
+// Generates: return or return %val
+fn lower_return(ast: String, temp: i64, block: i64) -> String =
+    if ast.len() == 8 {
+        // (return) - void return
+        let text = mir_text_ret("");
+        pack_lower_result(temp, block, "%unit", text)
+    } else {
+        // (return expr) - return with value
+        let inner = ast.slice(8, ast.len() - 1);  // skip "(return " and trailing ")"
+        let r = lower_expr(inner, temp, block);
+        let t2 = unpack_temp(r);
+        let b2 = unpack_block(r);
+        let place = unpack_place(r);
+        let prev = unpack_mir(r);
+        let text = prev + "|" + mir_text_ret(place);
+        pack_lower_result(t2, b2, "%unit", text)
+    };
 
 // Lower variable reference: (let mut <name>)
 fn lower_var(ast: String, temp: i64, block: i64) -> String =
@@ -2757,7 +2790,20 @@ fn main() -> i64 =
     let break_continue_lower_tests = bcl1 + bcl2;
     let u38 = println(break_continue_lower_tests);  // Should be 2
 
-    // Test 36: v0.30.44 Range operator encoding (2 tests)
+    // Test 36: v0.90.22 Return node detection (3 tests)
+    let rn1 = if is_return_node("(return)") { 1 } else { 0 };
+    let rn2 = if is_return_node("(return (int 42))") { 1 } else { 0 };
+    let rn3 = if is_return_node("(break)") { 0 } else { 1 };  // break is not return
+    let return_node_tests = rn1 + rn2 + rn3;
+    let u39a = println(return_node_tests);  // Should be 3
+
+    // Test 37: v0.90.22 Return lowering (2 tests)
+    let rl1 = test_lower_contains("(return)", "return");
+    let rl2 = test_lower_contains("(return (int 42))", "return");
+    let return_lower_tests = rl1 + rl2;
+    let u39b = println(return_lower_tests);  // Should be 2
+
+    // Test 38: v0.30.44 Range operator encoding (2 tests)
     let rge1 = if binop_from_symbol("..") == 14 { 1 } else { 0 };
     let rge2 = if binop_from_symbol("..=") == 15 { 1 } else { 0 };
     let range_encode_tests = rge1 + rge2;

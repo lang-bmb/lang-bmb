@@ -1270,6 +1270,8 @@ SpannedBlockExpr: Spanned<Expr> = {
 
 BlockExpr: Expr = {
     ImpliesExpr,
+    // v0.90.22: Early return with value
+    "return" <e:SpannedImpliesExpr> => Expr::Return { value: Some(Box::new(e)) },
     // set (store assignment)
     "set" <lhs:SpannedUnaryExpr> "=" <rhs:SpannedExpr> => {
         match lhs.node {
@@ -1414,6 +1416,8 @@ BlockExpr: Expr = {
 // Expressions (precedence from low to high)
 Expr: Expr = {
     ImpliesExpr,
+    // v0.90.22: Early return with value (uses ImpliesExpr to avoid recursive return)
+    "return" <e:SpannedImpliesExpr> => Expr::Return { value: Some(Box::new(e)) },
     // v0.51.23: Store assignment expression using 'set' keyword
     // Allows set to appear in any expression context (e.g., after let body)
     // v0.60.21: Changed to SpannedUnaryExpr to support dereference: set *p = value
