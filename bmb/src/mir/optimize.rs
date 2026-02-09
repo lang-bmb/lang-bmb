@@ -4060,6 +4060,41 @@ impl ConstantPropagationNarrowing {
         false
     }
 
+    /// v0.90.22: Check if a parameter flows into Div or Mod operations.
+    fn param_flows_to_div_mod(func: &MirFunction, param_name: &str) -> bool {
+        let mut derived: HashSet<String> = HashSet::new();
+        derived.insert(param_name.to_string());
+        for _ in 0..5 {
+            for block in &func.blocks {
+                for inst in &block.instructions {
+                    match inst {
+                        MirInst::Copy { dest, src } if derived.contains(&src.name) => {
+                            derived.insert(dest.name.clone());
+                        }
+                        MirInst::BinOp { dest, lhs, rhs, .. } => {
+                            let lhs_d = matches!(lhs, Operand::Place(p) if derived.contains(&p.name));
+                            let rhs_d = matches!(rhs, Operand::Place(p) if derived.contains(&p.name));
+                            if lhs_d || rhs_d {
+                                derived.insert(dest.name.clone());
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+        for block in &func.blocks {
+            for inst in &block.instructions {
+                if let MirInst::BinOp { op: MirBinOp::Div | MirBinOp::Mod, lhs, .. } = inst {
+                    if matches!(lhs, Operand::Place(p) if derived.contains(&p.name)) {
+                        return true;
+                    }
+                }
+            }
+        }
+        false
+    }
+
     /// v0.60.35: Check if parameter flows to multiplication
     fn is_used_in_multiplication(&self, func: &MirFunction, param_name: &str) -> bool {
         let mut derived: HashSet<String> = HashSet::new();
@@ -4127,6 +4162,12 @@ impl ConstantPropagationNarrowing {
         // Multiplication can easily overflow i32 even with small inputs (e.g., 50000 * 50000)
         let param_name = &func.params[param_idx].0;
         if self.is_used_in_multiplication(func, param_name) {
+            return false;
+        }
+
+        // v0.90.22: Don't narrow params that flow into div/mod operations.
+        // Narrowing creates sext/trunc overhead without benefit.
+        if Self::param_flows_to_div_mod(func, param_name) {
             return false;
         }
 
@@ -4510,6 +4551,15 @@ impl LoopBoundedNarrowing {
         // for this parameter, we cannot narrow it (e.g., collect_mir_strings_acc
         // calls itself with str_end + 1 which can grow to arbitrary size)
         if Self::has_unbounded_recursive_arg(func, param_idx) {
+            return false;
+        }
+
+        // v0.90.22: Don't narrow params that flow into division/modulo operations.
+        // Narrowing i64→i32 creates sext/trunc overhead (shl 32 + ashr 32 + freeze)
+        // inside hot loops. LLVM uses the same magic-number multiplication trick for
+        // both i32 and i64 division by constant, so narrowing provides no benefit but
+        // adds conversion cost. Root cause of digital_root 1.26x regression.
+        if Self::param_flows_to_div_mod(func, param_name) {
             return false;
         }
 
@@ -4908,6 +4958,47 @@ impl LoopBoundedNarrowing {
             }
             _ => false,
         }
+    }
+
+    /// v0.90.22: Check if a parameter flows into Div or Mod operations.
+    /// Narrowing params that flow to div/mod creates sext/trunc overhead without benefit,
+    /// since LLVM uses the same magic-number multiplication for i32 and i64 constant division.
+    fn param_flows_to_div_mod(func: &MirFunction, param_name: &str) -> bool {
+        let mut derived: HashSet<String> = HashSet::new();
+        derived.insert(param_name.to_string());
+
+        // Propagate derived status through copies and arithmetic
+        for _ in 0..5 {
+            for block in &func.blocks {
+                for inst in &block.instructions {
+                    match inst {
+                        MirInst::Copy { dest, src } if derived.contains(&src.name) => {
+                            derived.insert(dest.name.clone());
+                        }
+                        MirInst::BinOp { dest, lhs, rhs, .. } => {
+                            let lhs_derived = matches!(lhs, Operand::Place(p) if derived.contains(&p.name));
+                            let rhs_derived = matches!(rhs, Operand::Place(p) if derived.contains(&p.name));
+                            if lhs_derived || rhs_derived {
+                                derived.insert(dest.name.clone());
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+
+        // Check if any derived variable is used in Div or Mod
+        for block in &func.blocks {
+            for inst in &block.instructions {
+                if let MirInst::BinOp { op: MirBinOp::Div | MirBinOp::Mod, lhs, .. } = inst {
+                    if matches!(lhs, Operand::Place(p) if derived.contains(&p.name)) {
+                        return true;
+                    }
+                }
+            }
+        }
+        false
     }
 
     /// v0.60.14: Check if a parameter is used in multiplication
@@ -5312,6 +5403,12 @@ impl LoopBoundedNarrowing {
                         // can grow the value beyond i32 (e.g., collect_mir_strings_acc pos)
                         if Self::has_unbounded_recursive_arg(func, param_idx) {
                             continue; // Don't narrow this parameter
+                        }
+
+                        // v0.90.22: Don't narrow params that flow into div/mod operations.
+                        // Narrowing creates sext/trunc overhead without benefit.
+                        if Self::param_flows_to_div_mod(func, param_name) {
+                            continue;
                         }
 
                         if let Some((_, ty)) = func.params.get_mut(param_idx)
@@ -12087,6 +12184,83 @@ mod tests {
         // main calls compute(100) where 100 fits in i32, so param should be narrowed
         assert!(changed);
         assert_eq!(program.functions[1].params[0].1, MirType::I32);
+    }
+
+    #[test]
+    fn test_loop_bounded_narrowing_skips_div_mod() {
+        // v0.90.22: Parameters flowing into div/mod should NOT be narrowed.
+        // Narrowing creates sext/trunc overhead (shl 32 + ashr 32 + freeze)
+        // without any benefit — LLVM uses same magic-number trick for i32/i64.
+        let mut program = MirProgram {
+            functions: vec![
+                MirFunction {
+                    name: "main".to_string(),
+                    params: vec![],
+                    ret_ty: MirType::I64,
+                    locals: vec![],
+                    blocks: vec![BasicBlock {
+                        label: "entry".to_string(),
+                        instructions: vec![
+                            MirInst::Call {
+                                dest: Some(Place::new("r")),
+                                func: "digit_sum".to_string(),
+                                args: vec![Operand::Constant(Constant::Int(100000))],
+                                is_tail: false,
+                            },
+                        ],
+                        terminator: Terminator::Return(Some(Operand::Place(Place::new("r")))),
+                    }],
+                    preconditions: vec![],
+                    postconditions: vec![],
+                    is_pure: false,
+                    is_const: false,
+                    always_inline: false,
+                    inline_hint: false,
+                    is_memory_free: false,
+                },
+                MirFunction {
+                    name: "digit_sum".to_string(),
+                    params: vec![("n".to_string(), MirType::I64)],
+                    ret_ty: MirType::I64,
+                    locals: vec![],
+                    blocks: vec![BasicBlock {
+                        label: "entry".to_string(),
+                        instructions: vec![
+                            // n % 10 — div/mod operation
+                            MirInst::BinOp {
+                                dest: Place::new("d"),
+                                op: MirBinOp::Mod,
+                                lhs: Operand::Place(Place::new("n")),
+                                rhs: Operand::Constant(Constant::Int(10)),
+                            },
+                            // n / 10 — div operation
+                            MirInst::BinOp {
+                                dest: Place::new("q"),
+                                op: MirBinOp::Div,
+                                lhs: Operand::Place(Place::new("n")),
+                                rhs: Operand::Constant(Constant::Int(10)),
+                            },
+                        ],
+                        terminator: Terminator::Return(Some(Operand::Place(Place::new("d")))),
+                    }],
+                    preconditions: vec![],
+                    postconditions: vec![],
+                    is_pure: false,
+                    is_const: false,
+                    always_inline: false,
+                    inline_hint: false,
+                    is_memory_free: false,
+                },
+            ],
+            extern_fns: vec![],
+            struct_defs: HashMap::new(),
+        };
+
+        let narrowing = LoopBoundedNarrowing::from_program(&program);
+        let changed = narrowing.run_on_program(&mut program);
+        // digit_sum has div/mod on param, should NOT be narrowed despite 100000 < i32::MAX
+        assert!(!changed);
+        assert_eq!(program.functions[1].params[0].1, MirType::I64);
     }
 
     #[test]
