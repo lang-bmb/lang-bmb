@@ -168,14 +168,23 @@ build_with_bootstrap() {
         return 1
     fi
 
-    # Step 4: Link with runtime
+    # Step 4: Link with runtime (needs both bmb_runtime.o and bmb_event_loop.o)
     local runtime_obj="${RUNTIME_PATH}/bmb_runtime.o"
+    local event_loop_obj="${RUNTIME_PATH}/bmb_event_loop.o"
     if [ ! -f "$runtime_obj" ]; then
-        # Build runtime if not exists
         gcc -c -O2 -o "$runtime_obj" "${RUNTIME_PATH}/bmb_runtime.c" > /dev/null 2>&1 || true
     fi
+    if [ ! -f "$event_loop_obj" ]; then
+        gcc -c -O2 -o "$event_loop_obj" "${RUNTIME_PATH}/bmb_event_loop.c" > /dev/null 2>&1 || true
+    fi
 
-    if ! gcc -o "$exe_file" "$obj_file" "$runtime_obj" -lm > /dev/null 2>&1; then
+    # Windows requires -lws2_32 for socket functions in event loop
+    local link_flags="-lm"
+    if [[ "$OSTYPE" == "msys" ]] || [[ "$OSTYPE" == "mingw"* ]] || [[ "$(uname -s)" == *MINGW* ]] || [[ "$(uname -s)" == *MSYS* ]]; then
+        link_flags="-lm -lws2_32"
+    fi
+
+    if ! gcc -o "$exe_file" "$obj_file" "$runtime_obj" "$event_loop_obj" $link_flags > /dev/null 2>&1; then
         echo "FAIL"
         return 1
     fi
