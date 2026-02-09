@@ -5010,7 +5010,8 @@ fn llvm_gen_fn_header(line: String, pos: i64) -> String =
     let llvm_ret = if ret_type == "f64" { "double" } else { "i64" };
     let emitted_name = if fn_name == "main" { "bmb_user_main" } else { fn_name };
     // v0.90.1: Build attributes based on annotation
-    let base_attrs = if fn_name == "main" { "" } else { " nounwind" };
+    // v0.90.17: Add mustprogress to all functions (enables LLVM loop optimizations)
+    let base_attrs = if fn_name == "main" { " mustprogress" } else { " mustprogress nounwind" };
     let pure_attrs = if ann == "pure" or ann == "const" { " willreturn memory(none)" } else { "" };
     let inline_attrs = if ann == "inline" { " alwaysinline" } else { "" };
     let attrs = base_attrs + pure_attrs + inline_attrs;
