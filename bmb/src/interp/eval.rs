@@ -1,7 +1,7 @@
 //! Expression evaluator
 
 use super::env::{child_env, EnvRef, Environment};
-use super::error::{InterpResult, RuntimeError};
+use super::error::{ErrorKind, InterpResult, RuntimeError};
 use super::scope::ScopeStack;
 use super::value::Value;
 use crate::ast::{BinOp, EnumDef, Expr, FnDef, LiteralPattern, Pattern, Program, Spanned, StructDef, Type, UnOp};
@@ -536,7 +536,12 @@ impl Interpreter {
             // v0.37: Invariant is for SMT verification, not runtime
             Expr::While { cond, invariant: _, body } => {
                 while self.eval(cond, env)?.is_truthy() {
-                    self.eval(body, env)?;
+                    match self.eval(body, env) {
+                        Ok(_) => {},
+                        Err(e) if matches!(e.kind, ErrorKind::Continue) => continue,
+                        Err(e) if matches!(e.kind, ErrorKind::Break(_)) => break,
+                        Err(e) => return Err(e),
+                    }
                 }
                 Ok(Value::Unit)
             }
@@ -934,27 +939,36 @@ impl Interpreter {
                 loop {
                     match self.eval(body, env) {
                         Ok(_) => continue,
+                        Err(e) if matches!(e.kind, ErrorKind::Continue) => continue,
+                        Err(e) if matches!(e.kind, ErrorKind::Break(_)) => {
+                            if let ErrorKind::Break(val) = e.kind {
+                                return Ok(val.map(|v| *v).unwrap_or(Value::Unit));
+                            }
+                            return Ok(Value::Unit);
+                        }
                         Err(e) => return Err(e),
                     }
                 }
             }
 
-            // Break - not yet fully implemented (needs loop context)
-            Expr::Break { .. } => {
-                Err(RuntimeError::type_error("loop context", "break outside loop"))
+            Expr::Break { value } => {
+                let val = match value {
+                    Some(v) => Some(Box::new(self.eval(v, env)?)),
+                    None => None,
+                };
+                Err(RuntimeError { kind: ErrorKind::Break(val), message: "break".to_string() })
             }
 
-            // Continue - not yet fully implemented (needs loop context)
             Expr::Continue => {
-                Err(RuntimeError::type_error("loop context", "continue outside loop"))
+                Err(RuntimeError { kind: ErrorKind::Continue, message: "continue".to_string() })
             }
 
-            // Return - early return from function
             Expr::Return { value } => {
-                match value {
-                    Some(v) => self.eval(v, env),
-                    None => Ok(Value::Unit),
-                }
+                let val = match value {
+                    Some(v) => self.eval(v, env)?,
+                    None => Value::Unit,
+                };
+                Err(RuntimeError { kind: ErrorKind::Return(Box::new(val)), message: "return".to_string() })
             }
 
             // v0.37: Quantifiers (verification-only, cannot be executed at runtime)
@@ -1368,8 +1382,18 @@ impl Interpreter {
             }
         }
 
-        // Evaluate body
-        let result = self.eval(&fn_def.body, &func_env);
+        // Evaluate body — catch Return control flow
+        let result = match self.eval(&fn_def.body, &func_env) {
+            Ok(v) => Ok(v),
+            Err(e) if matches!(e.kind, ErrorKind::Return(_)) => {
+                if let ErrorKind::Return(val) = e.kind {
+                    Ok(*val)
+                } else {
+                    unreachable!()
+                }
+            }
+            Err(e) => Err(e),
+        };
         self.recursion_depth -= 1;
         result
     }
@@ -1797,7 +1821,12 @@ impl Interpreter {
             // v0.37: Invariant is for SMT verification, not runtime
             Expr::While { cond, invariant: _, body } => {
                 while self.eval_fast(cond)?.is_truthy() {
-                    self.eval_fast(body)?;
+                    match self.eval_fast(body) {
+                        Ok(_) => {},
+                        Err(e) if matches!(e.kind, ErrorKind::Continue) => continue,
+                        Err(e) if matches!(e.kind, ErrorKind::Break(_)) => break,
+                        Err(e) => return Err(e),
+                    }
                 }
                 Ok(Value::Unit)
             }
@@ -1993,6 +2022,42 @@ impl Interpreter {
                 }
             }
 
+            Expr::Loop { body } => {
+                loop {
+                    match self.eval_fast(body) {
+                        Ok(_) => continue,
+                        Err(e) if matches!(e.kind, ErrorKind::Continue) => continue,
+                        Err(e) if matches!(e.kind, ErrorKind::Break(_)) => {
+                            if let ErrorKind::Break(val) = e.kind {
+                                return Ok(val.map(|v| *v).unwrap_or(Value::Unit));
+                            }
+                            return Ok(Value::Unit);
+                        }
+                        Err(e) => return Err(e),
+                    }
+                }
+            }
+
+            Expr::Break { value } => {
+                let val = match value {
+                    Some(v) => Some(Box::new(self.eval_fast(v)?)),
+                    None => None,
+                };
+                Err(RuntimeError { kind: ErrorKind::Break(val), message: "break".to_string() })
+            }
+
+            Expr::Continue => {
+                Err(RuntimeError { kind: ErrorKind::Continue, message: "continue".to_string() })
+            }
+
+            Expr::Return { value } => {
+                let val = match value {
+                    Some(v) => self.eval_fast(v)?,
+                    None => Value::Unit,
+                };
+                Err(RuntimeError { kind: ErrorKind::Return(Box::new(val)), message: "return".to_string() })
+            }
+
             // For unsupported expressions, return error (force explicit handling)
             _ => Err(RuntimeError::type_error(
                 "supported expression in fast path",
@@ -2033,7 +2098,18 @@ impl Interpreter {
             self.scope_stack.define(param.name.node.clone(), arg.clone());
         }
 
-        let result = self.eval_fast(&fn_def.body);
+        // Catch Return control flow
+        let result = match self.eval_fast(&fn_def.body) {
+            Ok(v) => Ok(v),
+            Err(e) if matches!(e.kind, ErrorKind::Return(_)) => {
+                if let ErrorKind::Return(val) = e.kind {
+                    Ok(*val)
+                } else {
+                    unreachable!()
+                }
+            }
+            Err(e) => Err(e),
+        };
         self.scope_stack.pop_scope();
         self.recursion_depth -= 1;
         result

@@ -10,7 +10,7 @@ pub struct RuntimeError {
 }
 
 /// Kinds of runtime errors
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub enum ErrorKind {
     /// Undefined variable
     UndefinedVariable,
@@ -34,6 +34,20 @@ pub enum ErrorKind {
     IndexOutOfBounds,
     /// v0.31: Todo placeholder reached at runtime
     TodoNotImplemented,
+    /// Control flow: break from loop (with optional value)
+    Break(Option<Box<super::Value>>),
+    /// Control flow: continue to next loop iteration
+    Continue,
+    /// Control flow: early return from function (with value)
+    Return(Box<super::Value>),
+}
+
+impl PartialEq for ErrorKind {
+    fn eq(&self, other: &Self) -> bool {
+        // Compare discriminants only — Break/Continue/Return are control flow,
+        // not real errors, so exact value comparison isn't needed
+        std::mem::discriminant(self) == std::mem::discriminant(other)
+    }
 }
 
 impl RuntimeError {

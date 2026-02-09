@@ -2621,3 +2621,198 @@ fn test_error_struct_unknown_field() {
          fn main() -> i64 = { let p = new Point { x: 1, z: 2 }; p.x };"
     ));
 }
+
+// ============================================
+// Loop Expression Tests (Cycles 184-185)
+// ============================================
+
+#[test]
+fn test_loop_with_break_type_checks() {
+    assert!(type_checks(
+        "fn count(n: i64) -> i64 = {
+           let mut i: i64 = 0;
+           loop { if i >= n { break } else { () }; { i = i + 1 } };
+           i
+         };
+         fn main() -> i64 = count(5);"
+    ));
+}
+
+#[test]
+fn test_loop_with_break_runs() {
+    assert_eq!(
+        run_program_i64(
+            "fn count(n: i64) -> i64 = {
+               let mut i: i64 = 0;
+               loop { if i >= n { break } else { () }; { i = i + 1 } };
+               i
+             };
+             fn main() -> i64 = count(5);"
+        ),
+        5
+    );
+}
+
+#[test]
+fn test_loop_with_continue_runs() {
+    // Sum of odd numbers from 1 to 9 using continue to skip even
+    assert_eq!(
+        run_program_i64(
+            "fn sum_odd(n: i64) -> i64 = {
+               let mut i: i64 = 0;
+               let mut s: i64 = 0;
+               loop {
+                 if i >= n { break } else { () };
+                 { i = i + 1 };
+                 if i % 2 == 0 { continue } else { () };
+                 { s = s + i }
+               };
+               s
+             };
+             fn main() -> i64 = sum_odd(10);"
+        ),
+        25 // 1+3+5+7+9 = 25
+    );
+}
+
+#[test]
+fn test_loop_with_return_runs() {
+    assert_eq!(
+        run_program_i64(
+            "fn find(target: i64) -> i64 = {
+               let mut i: i64 = 0;
+               loop {
+                 if i == target { return i * 10 } else { () };
+                 { i = i + 1 }
+               };
+               -1
+             };
+             fn main() -> i64 = find(7);"
+        ),
+        70
+    );
+}
+
+#[test]
+fn test_nested_loop_runs() {
+    // Count how many pairs (i,j) where i*j == 6, i,j in 1..5
+    assert_eq!(
+        run_program_i64(
+            "fn count_products(target: i64) -> i64 = {
+               let mut count: i64 = 0;
+               let mut i: i64 = 1;
+               loop {
+                 if i > 5 { break } else { () };
+                 let mut j: i64 = 1;
+                 loop {
+                   if j > 5 { break } else { () };
+                   if i * j == target { count = count + 1 } else { () };
+                   { j = j + 1 }
+                 };
+                 { i = i + 1 }
+               };
+               count
+             };
+             fn main() -> i64 = count_products(6);"
+        ),
+        2 // i,j in 1..5: (2,3) and (3,2) give product 6
+    );
+}
+
+#[test]
+fn test_return_expression_type_checks() {
+    assert!(type_checks(
+        "fn early(x: i64) -> i64 = {
+           if x > 10 { return 100 } else { () };
+           x * 2
+         };
+         fn main() -> i64 = early(5);"
+    ));
+}
+
+#[test]
+fn test_return_expression_runs() {
+    assert_eq!(
+        run_program_i64(
+            "fn early(x: i64) -> i64 = {
+               if x > 10 { return 100 } else { () };
+               x * 2
+             };
+             fn main() -> i64 = early(5);"
+        ),
+        10
+    );
+}
+
+#[test]
+fn test_return_expression_early_exit() {
+    assert_eq!(
+        run_program_i64(
+            "fn early(x: i64) -> i64 = {
+               if x > 10 { return 100 } else { () };
+               x * 2
+             };
+             fn main() -> i64 = early(20);"
+        ),
+        100
+    );
+}
+
+#[test]
+fn test_return_from_nested_if() {
+    assert_eq!(
+        run_program_i64(
+            "fn classify(x: i64) -> i64 = {
+               if x > 0 {
+                 if x > 100 { return 3 } else { () };
+                 return 2
+               } else { () };
+               if x < 0 { return 1 } else { () };
+               0
+             };
+             fn main() -> i64 = classify(50);"
+        ),
+        2
+    );
+}
+
+#[test]
+fn test_while_with_early_return() {
+    assert_eq!(
+        run_program_i64(
+            "fn find_first(n: i64) -> i64 = {
+               let mut i: i64 = 0;
+               while i < n {
+                 if i * i > 10 { return i } else { () };
+                 { i = i + 1 }
+               };
+               -1
+             };
+             fn main() -> i64 = find_first(100);"
+        ),
+        4 // 4*4=16 > 10
+    );
+}
+
+#[test]
+fn test_for_loop_with_break() {
+    assert!(type_checks(
+        "fn main() -> i64 = {
+           let mut found: i64 = -1;
+           for i in 0..100 {
+             if i * i > 50 { found = i; break } else { () }
+           };
+           found
+         };"
+    ));
+}
+
+#[test]
+fn test_loop_infinite_guard() {
+    // Test that loop without break causes infinite loop (we can't run this,
+    // but we can at least type-check it)
+    assert!(type_checks(
+        "fn diverge() -> i64 = loop { () };
+         fn main() -> i64 = 0;"
+    ));
+}
