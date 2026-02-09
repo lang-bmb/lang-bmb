@@ -4247,7 +4247,11 @@ fn llvm_gen_call(line: String, pos: i64, dest: String) -> String =
     let close_pos = find_char(line, paren_pos, 41);
     let fn_name = line.slice(at_pos, paren_pos);
     // v0.90.9: Intercept i64_to_f64/f64_to_i64 intrinsics - emit sitofp/fptosi
-    if fn_name == "@i64_to_f64" {
+    // v0.90.14: ord() is identity - char_at/byte_at already return byte values
+    if fn_name == "@ord" {
+        let arg = trim_end(line.slice(paren_pos + 1, close_pos));
+        "  " + dest + " = add nsw i64 0, " + arg
+    } else if fn_name == "@i64_to_f64" {
         let arg = trim_end(line.slice(paren_pos + 1, close_pos));
         "  " + dest + " = sitofp i64 " + arg + " to double"
     } else if fn_name == "@f64_to_i64" {
@@ -4279,7 +4283,11 @@ fn llvm_gen_call_reg(line: String, pos: i64, dest: String, registry: String) -> 
     let close_pos = find_char(line, paren_pos, 41);
     let fn_name = line.slice(at_pos, paren_pos);
     // v0.90.9: Intercept i64_to_f64/f64_to_i64 intrinsics
-    if fn_name == "@i64_to_f64" {
+    // v0.90.14: ord() is identity - char_at/byte_at already return byte values
+    if fn_name == "@ord" {
+        let arg = trim_end(line.slice(paren_pos + 1, close_pos));
+        "  " + dest + " = add nsw i64 0, " + arg
+    } else if fn_name == "@i64_to_f64" {
         let arg = trim_end(line.slice(paren_pos + 1, close_pos));
         "  " + dest + " = sitofp i64 " + arg + " to double"
     } else if fn_name == "@f64_to_i64" {
@@ -4321,6 +4329,8 @@ fn get_call_arg_types(fn_name: String) -> String =
     else if fn_name == "@bmb_string_new" { "pi" }
     else if fn_name == "@bmb_string_from_cstr" { "p" }
     else if fn_name == "@bmb_string_eq" { "pp" }
+    else if fn_name == "@bmb_ord" { "p" }
+    else if fn_name == "@bmb_sb_contains" { "ip" }
     else if fn_name == "@bmb_string_len" { "p" }
     else if fn_name == "@bmb_string_char_at" { "pi" }
     else if fn_name == "@bmb_read_file" { "p" }
