@@ -2430,3 +2430,194 @@ fn test_type_error_enum_variant_wrong_data() {
          fn bad() -> Option<i64> = Option::Some(true);"
     ));
 }
+
+// ===== Cycles 125-126: Positive pipeline tests =====
+
+#[test]
+fn test_nested_match_enum() {
+    assert!(type_checks(
+        "enum Color { Red, Green, Blue }
+         fn to_code(c: Color) -> i64 =
+           match c {
+             Color::Red => 1,
+             Color::Green => 2,
+             Color::Blue => 3,
+           };
+         fn main() -> i64 = to_code(Color::Green);"
+    ));
+}
+
+#[test]
+fn test_struct_method_style() {
+    assert!(type_checks(
+        "struct Vec2 { x: i64, y: i64 }
+         fn dot(a: Vec2, b: Vec2) -> i64 = a.x * b.x + a.y * b.y;
+         fn main() -> i64 = dot(new Vec2 { x: 3, y: 4 }, new Vec2 { x: 1, y: 2 });"
+    ));
+}
+
+#[test]
+fn test_generic_enum_option() {
+    assert!(type_checks(
+        "enum MyOpt<T> { Some(T), None }
+         fn unwrap_or(opt: MyOpt<i64>, default: i64) -> i64 =
+           match opt {
+             MyOpt::Some(v) => v,
+             MyOpt::None => default,
+           };
+         fn main() -> i64 = unwrap_or(MyOpt::Some(42), 0);"
+    ));
+}
+
+#[test]
+fn test_for_loop_sum() {
+    assert!(type_checks(
+        "fn sum(n: i64) -> i64 = { let mut total = 0; for i in 0..n { total = total + i }; total };
+         fn main() -> i64 = sum(10);"
+    ));
+}
+
+#[test]
+fn test_while_loop_countdown() {
+    assert!(type_checks(
+        "fn countdown(n: i64) -> i64 = { let mut x = n; while x > 0 { x = x - 1; 0 }; x };
+         fn main() -> i64 = countdown(5);"
+    ));
+}
+
+#[test]
+fn test_contracts_postcondition() {
+    assert!(type_checks(
+        "fn abs(x: i64) -> i64 post ret >= 0 = if x >= 0 { x } else { 0 - x };
+         fn main() -> i64 = abs(-5);"
+    ));
+}
+
+#[test]
+fn test_recursive_factorial() {
+    assert!(type_checks(
+        "fn fact(n: i64) -> i64
+           pre n >= 0
+         = if n <= 1 { 1 } else { n * fact(n - 1) };
+         fn main() -> i64 = fact(5);"
+    ));
+}
+
+#[test]
+fn test_mutual_recursion_even_odd() {
+    assert!(type_checks(
+        "fn is_even(n: i64) -> bool = if n == 0 { true } else { is_odd(n - 1) };
+         fn is_odd(n: i64) -> bool = if n == 0 { false } else { is_even(n - 1) };
+         fn main() -> bool = is_even(4);"
+    ));
+}
+
+#[test]
+fn test_nullable_pipeline() {
+    assert!(type_checks(
+        "fn safe_div(a: i64, b: i64) -> i64? =
+           if b == 0 { null } else { a / b };
+         fn main() -> i64 = { let r = safe_div(10, 2); r.unwrap_or(0) };"
+    ));
+}
+
+#[test]
+fn test_string_concat_pipeline() {
+    assert!(type_checks(
+        r#"fn greet(name: String) -> String = "Hello, " + name;
+         fn main() -> String = greet("world");"#
+    ));
+}
+
+#[test]
+fn test_bitwise_operations() {
+    assert!(type_checks(
+        "fn mask(x: i64, m: i64) -> i64 = x band m;
+         fn main() -> i64 = mask(255, 15);"
+    ));
+}
+
+#[test]
+fn test_complex_struct_nesting() {
+    assert!(type_checks(
+        "struct Inner { val: i64 }
+         struct Outer { a: Inner, b: Inner }
+         fn sum_outer(o: Outer) -> i64 = o.a.val + o.b.val;
+         fn main() -> i64 = sum_outer(new Outer { a: new Inner { val: 3 }, b: new Inner { val: 7 } });"
+    ));
+}
+
+#[test]
+fn test_type_alias_usage() {
+    assert!(type_checks(
+        "type Distance = i64;
+         fn add_dist(a: Distance, b: Distance) -> Distance = a + b;
+         fn main() -> i64 = add_dist(10, 20);"
+    ));
+}
+
+#[test]
+fn test_enum_with_multiple_data() {
+    assert!(type_checks(
+        "enum Shape { Circle(f64), Rect(f64, f64) }
+         fn describe(s: Shape) -> f64 =
+           match s {
+             Shape::Circle(r) => r,
+             Shape::Rect(w, h) => w + h,
+           };
+         fn main() -> f64 = describe(Shape::Circle(3.14));"
+    ));
+}
+
+// ===== Cycles 125-126: Error integration tests =====
+
+#[test]
+fn test_error_while_non_bool_condition() {
+    assert!(type_error(
+        "fn bad() -> i64 = { while 42 { 0 }; 0 };"
+    ));
+}
+
+#[test]
+fn test_error_for_non_integer_range() {
+    assert!(type_error(
+        r#"fn bad() -> i64 = { for i in "a".."z" { 0 }; 0 };"#
+    ));
+}
+
+#[test]
+fn test_error_if_non_bool_condition() {
+    assert!(type_error(
+        "fn bad() -> i64 = if 42 { 1 } else { 0 };"
+    ));
+}
+
+#[test]
+fn test_error_binary_op_type_mismatch() {
+    // Cannot add i64 and bool
+    assert!(type_error(
+        "fn bad() -> i64 = 42 + true;"
+    ));
+}
+
+#[test]
+fn test_error_return_str_for_i64() {
+    assert!(type_error(
+        r#"fn bad() -> i64 = "not a number";"#
+    ));
+}
+
+#[test]
+fn test_error_unknown_function_call() {
+    assert!(type_error(
+        "fn main() -> i64 = nonexistent(42);"
+    ));
+}
+
+#[test]
+fn test_error_struct_unknown_field() {
+    assert!(type_error(
+        "struct Point { x: i64, y: i64 }
+         fn main() -> i64 = { let p = new Point { x: 1, z: 2 }; p.x };"
+    ));
+}

@@ -2726,4 +2726,834 @@ mod tests {
         let wat = WasmCodeGen::new().generate(&program).unwrap();
         assert!(wat.contains("(result i32)"));
     }
+
+    // =====================================================================
+    // New tests: struct, enum, array, control flow, casts, calls, etc.
+    // =====================================================================
+
+    /// Helper: create a simple single-function program with given instructions and terminator
+    fn single_fn_program(
+        name: &str,
+        params: Vec<(&str, MirType)>,
+        ret_ty: MirType,
+        locals: Vec<(&str, MirType)>,
+        instructions: Vec<MirInst>,
+        terminator: Terminator,
+    ) -> MirProgram {
+        MirProgram {
+            functions: vec![MirFunction {
+                name: name.to_string(),
+                params: params.into_iter().map(|(n, t)| (n.to_string(), t)).collect(),
+                ret_ty,
+                locals: locals.into_iter().map(|(n, t)| (n.to_string(), t)).collect(),
+                blocks: vec![BasicBlock {
+                    label: "entry".to_string(),
+                    instructions,
+                    terminator,
+                }],
+                preconditions: vec![],
+                postconditions: vec![],
+                is_pure: false,
+                is_const: false,
+                always_inline: false,
+                inline_hint: false,
+                is_memory_free: false,
+            }],
+            extern_fns: vec![],
+            struct_defs: std::collections::HashMap::new(),
+        }
+    }
+
+    /// Helper: create a multi-block function program
+    fn multi_block_program(
+        name: &str,
+        params: Vec<(&str, MirType)>,
+        ret_ty: MirType,
+        locals: Vec<(&str, MirType)>,
+        blocks: Vec<BasicBlock>,
+    ) -> MirProgram {
+        MirProgram {
+            functions: vec![MirFunction {
+                name: name.to_string(),
+                params: params.into_iter().map(|(n, t)| (n.to_string(), t)).collect(),
+                ret_ty,
+                locals: locals.into_iter().map(|(n, t)| (n.to_string(), t)).collect(),
+                blocks,
+                preconditions: vec![],
+                postconditions: vec![],
+                is_pure: false,
+                is_const: false,
+                always_inline: false,
+                inline_hint: false,
+                is_memory_free: false,
+            }],
+            extern_fns: vec![],
+            struct_defs: std::collections::HashMap::new(),
+        }
+    }
+
+    // --- Struct operations ---
+
+    #[test]
+    fn test_struct_init() {
+        let program = single_fn_program(
+            "make_point",
+            vec![],
+            MirType::Struct {
+                name: "Point".to_string(),
+                fields: vec![
+                    ("x".to_string(), Box::new(MirType::I64)),
+                    ("y".to_string(), Box::new(MirType::I64)),
+                ],
+            },
+            vec![("_t0", MirType::Struct {
+                name: "Point".to_string(),
+                fields: vec![
+                    ("x".to_string(), Box::new(MirType::I64)),
+                    ("y".to_string(), Box::new(MirType::I64)),
+                ],
+            })],
+            vec![MirInst::StructInit {
+                dest: Place::new("_t0"),
+                struct_name: "Point".to_string(),
+                fields: vec![
+                    ("x".to_string(), Operand::Constant(Constant::Int(10))),
+                    ("y".to_string(), Operand::Constant(Constant::Int(20))),
+                ],
+            }],
+            Terminator::Return(Some(Operand::Place(Place::new("_t0")))),
+        );
+
+        let wat = WasmCodeGen::new().generate(&program).unwrap();
+        assert!(wat.contains("struct Point init with 2 fields"), "struct init comment");
+        assert!(wat.contains("field x at offset 0"), "field x comment");
+        assert!(wat.contains("field y at offset 8"), "field y comment");
+        assert!(wat.contains("i64.store"), "stores field values");
+    }
+
+    #[test]
+    fn test_field_access() {
+        let program = single_fn_program(
+            "get_x",
+            vec![("p", MirType::Struct {
+                name: "Point".to_string(),
+                fields: vec![
+                    ("x".to_string(), Box::new(MirType::I64)),
+                    ("y".to_string(), Box::new(MirType::I64)),
+                ],
+            })],
+            MirType::I64,
+            vec![("_t0", MirType::I64)],
+            vec![MirInst::FieldAccess {
+                dest: Place::new("_t0"),
+                base: Place::new("p"),
+                field: "x".to_string(),
+                field_index: 0,
+                struct_name: "Point".to_string(),
+            }],
+            Terminator::Return(Some(Operand::Place(Place::new("_t0")))),
+        );
+
+        let wat = WasmCodeGen::new().generate(&program).unwrap();
+        assert!(wat.contains("field access .x[0]"), "field access comment");
+        assert!(wat.contains("local.get $p"), "loads base pointer");
+        assert!(wat.contains("i64.load"), "loads field value");
+    }
+
+    #[test]
+    fn test_field_store() {
+        let program = single_fn_program(
+            "set_y",
+            vec![("p", MirType::Struct {
+                name: "Point".to_string(),
+                fields: vec![
+                    ("x".to_string(), Box::new(MirType::I64)),
+                    ("y".to_string(), Box::new(MirType::I64)),
+                ],
+            })],
+            MirType::Unit,
+            vec![],
+            vec![MirInst::FieldStore {
+                base: Place::new("p"),
+                field: "y".to_string(),
+                field_index: 1,
+                struct_name: "Point".to_string(),
+                value: Operand::Constant(Constant::Int(42)),
+            }],
+            Terminator::Return(None),
+        );
+
+        let wat = WasmCodeGen::new().generate(&program).unwrap();
+        assert!(wat.contains("field store .y[1]"), "field store comment");
+        assert!(wat.contains("i32.const 8"), "offset for field index 1");
+        assert!(wat.contains("i64.store"), "stores value");
+    }
+
+    // --- Enum operations ---
+
+    #[test]
+    fn test_enum_variant() {
+        let program = single_fn_program(
+            "make_some",
+            vec![],
+            MirType::Enum {
+                name: "Option".to_string(),
+                variants: vec![("Some".to_string(), vec![Box::new(MirType::I64)])],
+            },
+            vec![("_t0", MirType::Enum {
+                name: "Option".to_string(),
+                variants: vec![],
+            })],
+            vec![MirInst::EnumVariant {
+                dest: Place::new("_t0"),
+                enum_name: "Option".to_string(),
+                variant: "Some".to_string(),
+                args: vec![Operand::Constant(Constant::Int(99))],
+            }],
+            Terminator::Return(Some(Operand::Place(Place::new("_t0")))),
+        );
+
+        let wat = WasmCodeGen::new().generate(&program).unwrap();
+        assert!(wat.contains("enum Option::Some with 1 args"), "enum variant comment");
+        assert!(wat.contains("i64.store"), "stores discriminant and args");
+    }
+
+    // --- Array operations ---
+
+    #[test]
+    fn test_array_init() {
+        let program = single_fn_program(
+            "make_arr",
+            vec![],
+            MirType::Array { element_type: Box::new(MirType::I64), size: Some(3) },
+            vec![("_t0", MirType::Array { element_type: Box::new(MirType::I64), size: Some(3) })],
+            vec![MirInst::ArrayInit {
+                dest: Place::new("_t0"),
+                element_type: MirType::I64,
+                elements: vec![
+                    Operand::Constant(Constant::Int(1)),
+                    Operand::Constant(Constant::Int(2)),
+                    Operand::Constant(Constant::Int(3)),
+                ],
+            }],
+            Terminator::Return(Some(Operand::Place(Place::new("_t0")))),
+        );
+
+        let wat = WasmCodeGen::new().generate(&program).unwrap();
+        assert!(wat.contains("array init with 3 elements"), "array init comment");
+        assert!(wat.contains("i64.const 1"), "first element");
+        assert!(wat.contains("i64.const 2"), "second element");
+        assert!(wat.contains("i64.const 3"), "third element");
+    }
+
+    #[test]
+    fn test_index_load() {
+        let program = single_fn_program(
+            "get_elem",
+            vec![("arr", MirType::Array { element_type: Box::new(MirType::I64), size: Some(3) })],
+            MirType::I64,
+            vec![("_t0", MirType::I64)],
+            vec![MirInst::IndexLoad {
+                dest: Place::new("_t0"),
+                array: Place::new("arr"),
+                index: Operand::Constant(Constant::Int(1)),
+                element_type: MirType::I64,
+            }],
+            Terminator::Return(Some(Operand::Place(Place::new("_t0")))),
+        );
+
+        let wat = WasmCodeGen::new().generate(&program).unwrap();
+        assert!(wat.contains("index load"), "index load comment");
+        assert!(wat.contains("i32.wrap_i64"), "converts i64 index to i32");
+        assert!(wat.contains("i32.const 8"), "element size multiplier");
+        assert!(wat.contains("i64.load"), "loads the value");
+    }
+
+    #[test]
+    fn test_index_store() {
+        let program = single_fn_program(
+            "set_elem",
+            vec![("arr", MirType::Array { element_type: Box::new(MirType::I64), size: Some(3) })],
+            MirType::Unit,
+            vec![],
+            vec![MirInst::IndexStore {
+                array: Place::new("arr"),
+                index: Operand::Constant(Constant::Int(0)),
+                value: Operand::Constant(Constant::Int(42)),
+                element_type: MirType::I64,
+            }],
+            Terminator::Return(None),
+        );
+
+        let wat = WasmCodeGen::new().generate(&program).unwrap();
+        assert!(wat.contains("index store"), "index store comment");
+        assert!(wat.contains("i64.const 42"), "value to store");
+        assert!(wat.contains("i64.store"), "stores the value");
+    }
+
+    // --- Cast operations ---
+
+    #[test]
+    fn test_cast_i32_to_i64() {
+        let program = single_fn_program(
+            "widen",
+            vec![("x", MirType::I32)],
+            MirType::I64,
+            vec![("_t0", MirType::I64)],
+            vec![MirInst::Cast {
+                dest: Place::new("_t0"),
+                src: Operand::Place(Place::new("x")),
+                from_ty: MirType::I32,
+                to_ty: MirType::I64,
+            }],
+            Terminator::Return(Some(Operand::Place(Place::new("_t0")))),
+        );
+
+        let wat = WasmCodeGen::new().generate(&program).unwrap();
+        assert!(wat.contains("cast i32 -> i64"), "cast comment");
+        assert!(wat.contains("i64.extend_i32_s"), "sign-extend i32 to i64");
+    }
+
+    #[test]
+    fn test_cast_i64_to_f64() {
+        let program = single_fn_program(
+            "to_float",
+            vec![("x", MirType::I64)],
+            MirType::F64,
+            vec![("_t0", MirType::F64)],
+            vec![MirInst::Cast {
+                dest: Place::new("_t0"),
+                src: Operand::Place(Place::new("x")),
+                from_ty: MirType::I64,
+                to_ty: MirType::F64,
+            }],
+            Terminator::Return(Some(Operand::Place(Place::new("_t0")))),
+        );
+
+        let wat = WasmCodeGen::new().generate(&program).unwrap();
+        assert!(wat.contains("cast i64 -> f64"), "cast comment");
+        assert!(wat.contains("f64.convert_i64_s"), "convert i64 to f64");
+    }
+
+    #[test]
+    fn test_cast_f64_to_i64() {
+        let program = single_fn_program(
+            "to_int",
+            vec![("x", MirType::F64)],
+            MirType::I64,
+            vec![("_t0", MirType::I64)],
+            vec![MirInst::Cast {
+                dest: Place::new("_t0"),
+                src: Operand::Place(Place::new("x")),
+                from_ty: MirType::F64,
+                to_ty: MirType::I64,
+            }],
+            Terminator::Return(Some(Operand::Place(Place::new("_t0")))),
+        );
+
+        let wat = WasmCodeGen::new().generate(&program).unwrap();
+        assert!(wat.contains("i64.trunc_f64_s"), "truncate f64 to i64");
+    }
+
+    // --- Tuple operations ---
+
+    #[test]
+    fn test_tuple_init() {
+        let program = single_fn_program(
+            "make_tuple",
+            vec![],
+            MirType::Tuple(vec![Box::new(MirType::I64), Box::new(MirType::I64)]),
+            vec![("_t0", MirType::Tuple(vec![Box::new(MirType::I64), Box::new(MirType::I64)]))],
+            vec![MirInst::TupleInit {
+                dest: Place::new("_t0"),
+                elements: vec![
+                    (MirType::I64, Operand::Constant(Constant::Int(10))),
+                    (MirType::I64, Operand::Constant(Constant::Int(20))),
+                ],
+            }],
+            Terminator::Return(Some(Operand::Place(Place::new("_t0")))),
+        );
+
+        let wat = WasmCodeGen::new().generate(&program).unwrap();
+        assert!(wat.contains("tuple init with 2 elements"), "tuple init comment");
+        assert!(wat.contains("global.get $heap_ptr"), "allocates from heap");
+        assert!(wat.contains("global.set $heap_ptr"), "bumps heap pointer");
+    }
+
+    #[test]
+    fn test_tuple_extract() {
+        let program = single_fn_program(
+            "get_second",
+            vec![("tup", MirType::Tuple(vec![Box::new(MirType::I64), Box::new(MirType::I64)]))],
+            MirType::I64,
+            vec![("_t0", MirType::I64)],
+            vec![MirInst::TupleExtract {
+                dest: Place::new("_t0"),
+                tuple: Place::new("tup"),
+                index: 1,
+                element_type: MirType::I64,
+            }],
+            Terminator::Return(Some(Operand::Place(Place::new("_t0")))),
+        );
+
+        let wat = WasmCodeGen::new().generate(&program).unwrap();
+        assert!(wat.contains("tuple extract index 1"), "tuple extract comment");
+        assert!(wat.contains("i32.const 8"), "offset = index * 8");
+        assert!(wat.contains("i64.load"), "loads element from memory");
+    }
+
+    // --- Control flow ---
+
+    #[test]
+    fn test_multi_block_control_flow() {
+        let program = multi_block_program(
+            "branch_fn",
+            vec![("x", MirType::I64)],
+            MirType::I64,
+            vec![("_t0", MirType::Bool), ("_t1", MirType::I64)],
+            vec![
+                BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![MirInst::BinOp {
+                        dest: Place::new("_t0"),
+                        op: MirBinOp::Gt,
+                        lhs: Operand::Place(Place::new("x")),
+                        rhs: Operand::Constant(Constant::Int(0)),
+                    }],
+                    terminator: Terminator::Branch {
+                        cond: Operand::Place(Place::new("_t0")),
+                        then_label: "then".to_string(),
+                        else_label: "else_".to_string(),
+                    },
+                },
+                BasicBlock {
+                    label: "then".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(1)))),
+                },
+                BasicBlock {
+                    label: "else_".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(0)))),
+                },
+            ],
+        );
+
+        let wat = WasmCodeGen::new().generate(&program).unwrap();
+        assert!(wat.contains("(block $entry"), "entry block structure");
+        assert!(wat.contains("(block $then"), "then block structure");
+        assert!(wat.contains("(block $else_"), "else block structure");
+        assert!(wat.contains("Control flow (CFG to structured)"), "control flow comment");
+    }
+
+    #[test]
+    fn test_goto_terminator() {
+        let program = multi_block_program(
+            "goto_fn",
+            vec![],
+            MirType::I64,
+            vec![],
+            vec![
+                BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Goto("exit".to_string()),
+                },
+                BasicBlock {
+                    label: "exit".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(42)))),
+                },
+            ],
+        );
+
+        let wat = WasmCodeGen::new().generate(&program).unwrap();
+        assert!(wat.contains("br $exit"), "goto emits br instruction");
+    }
+
+    #[test]
+    fn test_unreachable_terminator() {
+        let program = single_fn_program(
+            "unreachable_fn",
+            vec![],
+            MirType::Unit,
+            vec![],
+            vec![],
+            Terminator::Unreachable,
+        );
+
+        let wat = WasmCodeGen::new().generate(&program).unwrap();
+        assert!(wat.contains("unreachable"), "unreachable instruction emitted");
+    }
+
+    #[test]
+    fn test_switch_terminator() {
+        let program = multi_block_program(
+            "switch_fn",
+            vec![("x", MirType::I64)],
+            MirType::I64,
+            vec![],
+            vec![
+                BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Switch {
+                        discriminant: Operand::Place(Place::new("x")),
+                        cases: vec![
+                            (0, "case_zero".to_string()),
+                            (1, "case_one".to_string()),
+                        ],
+                        default: "default_case".to_string(),
+                    },
+                },
+                BasicBlock {
+                    label: "case_zero".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(100)))),
+                },
+                BasicBlock {
+                    label: "case_one".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(200)))),
+                },
+                BasicBlock {
+                    label: "default_case".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(0)))),
+                },
+            ],
+        );
+
+        let wat = WasmCodeGen::new().generate(&program).unwrap();
+        assert!(wat.contains("i64.const 0"), "case value 0");
+        assert!(wat.contains("i64.const 1"), "case value 1");
+        assert!(wat.contains("i64.eq"), "equality comparison for case matching");
+        assert!(wat.contains("br_if $case_zero"), "branch to case_zero");
+        assert!(wat.contains("br_if $case_one"), "branch to case_one");
+        assert!(wat.contains("br $default_case"), "branch to default");
+    }
+
+    // --- Function call ---
+
+    #[test]
+    fn test_function_call() {
+        let program = MirProgram {
+            functions: vec![
+                MirFunction {
+                    name: "helper".to_string(),
+                    params: vec![("x".to_string(), MirType::I64)],
+                    ret_ty: MirType::I64,
+                    locals: vec![],
+                    blocks: vec![BasicBlock {
+                        label: "entry".to_string(),
+                        instructions: vec![],
+                        terminator: Terminator::Return(Some(Operand::Place(Place::new("x")))),
+                    }],
+                    preconditions: vec![],
+                    postconditions: vec![],
+                    is_pure: false,
+                    is_const: false,
+                    always_inline: false,
+                    inline_hint: false,
+                    is_memory_free: false,
+                },
+                MirFunction {
+                    name: "caller".to_string(),
+                    params: vec![],
+                    ret_ty: MirType::I64,
+                    locals: vec![("_t0".to_string(), MirType::I64)],
+                    blocks: vec![BasicBlock {
+                        label: "entry".to_string(),
+                        instructions: vec![MirInst::Call {
+                            dest: Some(Place::new("_t0")),
+                            func: "helper".to_string(),
+                            args: vec![Operand::Constant(Constant::Int(5))],
+                            is_tail: false,
+                        }],
+                        terminator: Terminator::Return(Some(Operand::Place(Place::new("_t0")))),
+                    }],
+                    preconditions: vec![],
+                    postconditions: vec![],
+                    is_pure: false,
+                    is_const: false,
+                    always_inline: false,
+                    inline_hint: false,
+                    is_memory_free: false,
+                },
+            ],
+            extern_fns: vec![],
+            struct_defs: std::collections::HashMap::new(),
+        };
+
+        let wat = WasmCodeGen::new().generate(&program).unwrap();
+        assert!(wat.contains("call $helper"), "calls the helper function");
+        assert!(wat.contains("i64.const 5"), "pushes argument");
+        assert!(wat.contains("local.set $_t0"), "stores call result");
+    }
+
+    // --- Implies binary operation (special path) ---
+
+    #[test]
+    fn test_implies_operation() {
+        let program = single_fn_program(
+            "implies_fn",
+            vec![("a", MirType::Bool), ("b", MirType::Bool)],
+            MirType::Bool,
+            vec![("_t0", MirType::Bool)],
+            vec![MirInst::BinOp {
+                dest: Place::new("_t0"),
+                op: MirBinOp::Implies,
+                lhs: Operand::Place(Place::new("a")),
+                rhs: Operand::Place(Place::new("b")),
+            }],
+            Terminator::Return(Some(Operand::Place(Place::new("_t0")))),
+        );
+
+        let wat = WasmCodeGen::new().generate(&program).unwrap();
+        // Implies uses !P || Q pattern: xor with 1 (negate), then or
+        assert!(wat.contains("i32.xor"), "negation via xor");
+        assert!(wat.contains("i32.or"), "logical or");
+    }
+
+    // --- Unary operations: FNeg and Bnot ---
+
+    #[test]
+    fn test_unary_fneg() {
+        let program = single_fn_program(
+            "fneg",
+            vec![("x", MirType::F64)],
+            MirType::F64,
+            vec![("_t0", MirType::F64)],
+            vec![MirInst::UnaryOp {
+                dest: Place::new("_t0"),
+                op: MirUnaryOp::FNeg,
+                src: Operand::Place(Place::new("x")),
+            }],
+            Terminator::Return(Some(Operand::Place(Place::new("_t0")))),
+        );
+
+        let wat = WasmCodeGen::new().generate(&program).unwrap();
+        assert!(wat.contains("f64.const 0"), "zero for subtraction");
+        assert!(wat.contains("f64.sub"), "0.0 - x pattern for fneg");
+    }
+
+    #[test]
+    fn test_unary_bnot() {
+        let program = single_fn_program(
+            "bnot",
+            vec![("x", MirType::I64)],
+            MirType::I64,
+            vec![("_t0", MirType::I64)],
+            vec![MirInst::UnaryOp {
+                dest: Place::new("_t0"),
+                op: MirUnaryOp::Bnot,
+                src: Operand::Place(Place::new("x")),
+            }],
+            Terminator::Return(Some(Operand::Place(Place::new("_t0")))),
+        );
+
+        let wat = WasmCodeGen::new().generate(&program).unwrap();
+        assert!(wat.contains("i64.const -1"), "all-ones mask for bitwise not");
+        assert!(wat.contains("i64.xor"), "xor with -1 for bnot");
+    }
+
+    // --- Constant values: char, bool false, unit ---
+
+    #[test]
+    fn test_constant_char() {
+        let program = single_fn_program(
+            "get_char",
+            vec![],
+            MirType::Char,
+            vec![("_t0", MirType::Char)],
+            vec![MirInst::Const {
+                dest: Place::new("_t0"),
+                value: Constant::Char('A'),
+            }],
+            Terminator::Return(Some(Operand::Place(Place::new("_t0")))),
+        );
+
+        let wat = WasmCodeGen::new().generate(&program).unwrap();
+        assert!(wat.contains("i32.const 65"), "char 'A' = Unicode codepoint 65");
+    }
+
+    #[test]
+    fn test_constant_bool_false() {
+        let program = single_fn_program(
+            "get_false",
+            vec![],
+            MirType::Bool,
+            vec![],
+            vec![],
+            Terminator::Return(Some(Operand::Constant(Constant::Bool(false)))),
+        );
+
+        let wat = WasmCodeGen::new().generate(&program).unwrap();
+        assert!(wat.contains("i32.const 0"), "false = i32.const 0");
+    }
+
+    #[test]
+    fn test_constant_unit() {
+        let program = single_fn_program(
+            "unit_fn",
+            vec![],
+            MirType::Unit,
+            vec![("_t0", MirType::Unit)],
+            vec![MirInst::Const {
+                dest: Place::new("_t0"),
+                value: Constant::Unit,
+            }],
+            Terminator::Return(None),
+        );
+
+        let wat = WasmCodeGen::new().generate(&program).unwrap();
+        assert!(wat.contains("unit (no value)"), "unit constant comment");
+    }
+
+    // --- F64 comparison operators ---
+
+    #[test]
+    fn test_f64_comparison_lt() {
+        let program = binop_program(MirBinOp::FLt, MirType::F64);
+        let wat = WasmCodeGen::new().generate(&program).unwrap();
+        assert!(wat.contains("f64.lt"), "f64.lt for FLt comparison");
+    }
+
+    #[test]
+    fn test_f64_comparison_ge() {
+        let program = binop_program(MirBinOp::FGe, MirType::F64);
+        let wat = WasmCodeGen::new().generate(&program).unwrap();
+        assert!(wat.contains("f64.ge"), "f64.ge for FGe comparison");
+    }
+
+    // --- Logical And/Or ---
+
+    #[test]
+    fn test_logical_and() {
+        let program = single_fn_program(
+            "and_fn",
+            vec![("a", MirType::Bool), ("b", MirType::Bool)],
+            MirType::Bool,
+            vec![("_t0", MirType::Bool)],
+            vec![MirInst::BinOp {
+                dest: Place::new("_t0"),
+                op: MirBinOp::And,
+                lhs: Operand::Place(Place::new("a")),
+                rhs: Operand::Place(Place::new("b")),
+            }],
+            Terminator::Return(Some(Operand::Place(Place::new("_t0")))),
+        );
+
+        let wat = WasmCodeGen::new().generate(&program).unwrap();
+        assert!(wat.contains("i32.and"), "logical and uses i32.and");
+    }
+
+    #[test]
+    fn test_logical_or() {
+        let program = single_fn_program(
+            "or_fn",
+            vec![("a", MirType::Bool), ("b", MirType::Bool)],
+            MirType::Bool,
+            vec![("_t0", MirType::Bool)],
+            vec![MirInst::BinOp {
+                dest: Place::new("_t0"),
+                op: MirBinOp::Or,
+                lhs: Operand::Place(Place::new("a")),
+                rhs: Operand::Place(Place::new("b")),
+            }],
+            Terminator::Return(Some(Operand::Place(Place::new("_t0")))),
+        );
+
+        let wat = WasmCodeGen::new().generate(&program).unwrap();
+        assert!(wat.contains("i32.or"), "logical or uses i32.or");
+    }
+
+    // --- Select instruction ---
+
+    #[test]
+    fn test_select_instruction() {
+        let program = single_fn_program(
+            "select_fn",
+            vec![("x", MirType::I64)],
+            MirType::I64,
+            vec![("_t0", MirType::I64)],
+            vec![MirInst::Select {
+                dest: Place::new("_t0"),
+                cond_op: MirBinOp::Gt,
+                cond_lhs: Operand::Place(Place::new("x")),
+                cond_rhs: Operand::Constant(Constant::Int(0)),
+                true_val: Operand::Constant(Constant::Int(1)),
+                false_val: Operand::Constant(Constant::Int(-1)),
+            }],
+            Terminator::Return(Some(Operand::Place(Place::new("_t0")))),
+        );
+
+        let wat = WasmCodeGen::new().generate(&program).unwrap();
+        assert!(wat.contains("i64.gt_s"), "condition comparison");
+        assert!(wat.contains("select"), "WASM select instruction");
+    }
+
+    // --- Extern fn with void return ---
+
+    #[test]
+    fn test_extern_fn_void_return() {
+        use crate::mir::MirExternFn;
+
+        let program = MirProgram {
+            functions: vec![],
+            extern_fns: vec![MirExternFn {
+                module: "env".to_string(),
+                name: "log_value".to_string(),
+                params: vec![MirType::I64],
+                ret_ty: MirType::Unit,
+            }],
+            struct_defs: std::collections::HashMap::new(),
+        };
+
+        let codegen = WasmCodeGen::with_target(WasmTarget::Wasi);
+        let wat = codegen.generate(&program).unwrap();
+
+        assert!(wat.contains("(import \"env\" \"log_value\""), "extern fn import");
+        assert!(wat.contains("(func $log_value"), "extern fn name");
+        assert!(wat.contains("(param i64)"), "extern fn param");
+        // Unit return should not have a result clause
+        assert!(!wat.contains("(func $log_value (param i64) (result"), "no result for Unit return");
+    }
+
+    // --- Error variants ---
+
+    #[test]
+    fn test_error_variants_display() {
+        let err1 = WasmCodeGenError::UnknownVariable("my_var".to_string());
+        assert!(format!("{}", err1).contains("my_var"), "UnknownVariable displays name");
+
+        let err2 = WasmCodeGenError::StackError("overflow".to_string());
+        assert!(format!("{}", err2).contains("overflow"), "StackError displays message");
+    }
+
+    // --- Type mappings ---
+
+    #[test]
+    fn test_type_mappings_in_params() {
+        // Test that various MIR types map to correct WASM types in function params
+        let program = single_fn_program(
+            "type_test",
+            vec![
+                ("a", MirType::I64),
+                ("b", MirType::F64),
+                ("c", MirType::Bool),
+                ("d", MirType::Char),
+            ],
+            MirType::I64,
+            vec![],
+            vec![],
+            Terminator::Return(Some(Operand::Place(Place::new("a")))),
+        );
+
+        let wat = WasmCodeGen::new().generate(&program).unwrap();
+        assert!(wat.contains("(param $a i64)"), "i64 maps to i64");
+        assert!(wat.contains("(param $b f64)"), "f64 maps to f64");
+        assert!(wat.contains("(param $c i32)"), "bool maps to i32");
+        assert!(wat.contains("(param $d i32)"), "char maps to i32");
+    }
 }

@@ -2038,4 +2038,296 @@ mod tests {
                 "Match should NOT be a stub returning scrutinee");
         }
     }
+
+    // =====================================================================
+    // Cycle 115: Additional CIR lowering tests
+    // =====================================================================
+
+    #[test]
+    fn test_lower_if_expression() {
+        let cir = source_to_cir(
+            "fn max(a: i64, b: i64) -> i64 = if a > b { a } else { b };"
+        );
+        let func = &cir.functions[0];
+        match &func.body {
+            CirExpr::If { cond, then_branch, else_branch } => {
+                // cond should be a BinOp with Gt
+                assert!(matches!(cond.as_ref(), CirExpr::BinOp { op: BinOp::Gt, .. }));
+                // branches should be Var references
+                assert!(matches!(then_branch.as_ref(), CirExpr::Var(name) if name == "a"));
+                assert!(matches!(else_branch.as_ref(), CirExpr::Var(name) if name == "b"));
+            }
+            other => panic!("Expected If expression, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_lower_let_binding_immutable() {
+        let cir = source_to_cir(
+            "fn f() -> i64 = { let x: i64 = 10; x + 1 };"
+        );
+        let func = &cir.functions[0];
+        match &func.body {
+            CirExpr::Let { name, ty, value, .. } => {
+                assert_eq!(name, "x");
+                assert_eq!(*ty, CirType::I64);
+                assert_eq!(value.as_ref(), &CirExpr::IntLit(10));
+            }
+            other => panic!("Expected Let binding, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_lower_let_binding_mutable() {
+        let cir = source_to_cir(
+            "fn f() -> i64 = { let mut x: i64 = 0; x = 5; x };"
+        );
+        let func = &cir.functions[0];
+        match &func.body {
+            CirExpr::LetMut { name, ty, value, .. } => {
+                assert_eq!(name, "x");
+                assert_eq!(*ty, CirType::I64);
+                assert_eq!(value.as_ref(), &CirExpr::IntLit(0));
+            }
+            other => panic!("Expected LetMut binding, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_lower_array_literal() {
+        let cir = source_to_cir(
+            "fn arr() -> [i64; 3] = [1, 2, 3];"
+        );
+        let func = &cir.functions[0];
+        match &func.body {
+            CirExpr::Array(elems) => {
+                assert_eq!(elems.len(), 3);
+                assert_eq!(elems[0], CirExpr::IntLit(1));
+                assert_eq!(elems[1], CirExpr::IntLit(2));
+                assert_eq!(elems[2], CirExpr::IntLit(3));
+            }
+            other => panic!("Expected Array literal, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_lower_tuple_expression() {
+        let cir = source_to_cir(
+            "fn pair() -> (i64, bool) = (42, true);"
+        );
+        let func = &cir.functions[0];
+        match &func.body {
+            CirExpr::Tuple(elems) => {
+                assert_eq!(elems.len(), 2);
+                assert_eq!(elems[0], CirExpr::IntLit(42));
+                assert_eq!(elems[1], CirExpr::BoolLit(true));
+            }
+            other => panic!("Expected Tuple expression, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_lower_struct_init_expression() {
+        let cir = source_to_cir(
+            "struct Point { x: i64, y: i64 }
+             fn origin() -> Point = new Point { x: 0, y: 0 };"
+        );
+        let func = &cir.functions[0];
+        match &func.body {
+            CirExpr::Struct { name, fields } => {
+                assert_eq!(name, "Point");
+                assert_eq!(fields.len(), 2);
+                assert_eq!(fields[0].0, "x");
+                assert_eq!(fields[0].1, CirExpr::IntLit(0));
+                assert_eq!(fields[1].0, "y");
+                assert_eq!(fields[1].1, CirExpr::IntLit(0));
+            }
+            other => panic!("Expected Struct init, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_lower_enum_variant_in_match() {
+        let cir = source_to_cir(
+            "enum Dir { Up, Down }
+             fn is_up(d: Dir) -> bool = match d { Dir::Up => true, _ => false };"
+        );
+        let func = &cir.functions[0];
+        // Should produce Let + If with enum variant check
+        match &func.body {
+            CirExpr::Let { name, body, .. } => {
+                assert_eq!(name, "__match_scrutinee");
+                match body.as_ref() {
+                    CirExpr::If { cond, .. } => {
+                        // cond should call __is_Dir_Up
+                        match cond.as_ref() {
+                            CirExpr::Call { func, .. } => {
+                                assert_eq!(func, "__is_Dir_Up");
+                            }
+                            other => panic!("Expected Call for variant check, got {:?}", other),
+                        }
+                    }
+                    other => panic!("Expected If chain, got {:?}", other),
+                }
+            }
+            other => panic!("Expected Let for match, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_lower_field_access_expression() {
+        let cir = source_to_cir(
+            "struct Pair { a: i64, b: i64 }
+             fn get_a(p: Pair) -> i64 = p.a;"
+        );
+        let func = &cir.functions[0];
+        match &func.body {
+            CirExpr::Field { base, field } => {
+                assert!(matches!(base.as_ref(), CirExpr::Var(name) if name == "p"));
+                assert_eq!(field, "a");
+            }
+            other => panic!("Expected Field access, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_lower_function_with_type_params() {
+        let cir = source_to_cir(
+            "fn identity<T>(x: T) -> T = x;"
+        );
+        let func = &cir.functions[0];
+        assert_eq!(func.name, "identity");
+        assert_eq!(func.type_params, vec!["T".to_string()]);
+        // After type-checking, Named("T") is used for generic params (not TypeVar)
+        // The CIR lowerer maps Named to Struct
+        assert_eq!(func.params[0].ty, CirType::Struct("T".to_string()));
+        assert_eq!(func.ret_ty, CirType::Struct("T".to_string()));
+    }
+
+    #[test]
+    fn test_lower_wrapping_binops() {
+        let lowerer = CirLowerer::new();
+        assert_eq!(lowerer.lower_binop(AstBinOp::AddWrap), BinOp::AddWrap);
+        assert_eq!(lowerer.lower_binop(AstBinOp::SubWrap), BinOp::SubWrap);
+        assert_eq!(lowerer.lower_binop(AstBinOp::MulWrap), BinOp::MulWrap);
+        assert_eq!(lowerer.lower_binop(AstBinOp::AddChecked), BinOp::AddChecked);
+        assert_eq!(lowerer.lower_binop(AstBinOp::SubChecked), BinOp::SubChecked);
+        assert_eq!(lowerer.lower_binop(AstBinOp::MulChecked), BinOp::MulChecked);
+        assert_eq!(lowerer.lower_binop(AstBinOp::AddSat), BinOp::AddSat);
+        assert_eq!(lowerer.lower_binop(AstBinOp::SubSat), BinOp::SubSat);
+        assert_eq!(lowerer.lower_binop(AstBinOp::MulSat), BinOp::MulSat);
+    }
+
+    #[test]
+    fn test_lower_extern_fn_effects_are_impure() {
+        let cir = source_to_cir(
+            "extern fn puts(s: i64) -> i64;"
+        );
+        let ext = &cir.extern_fns[0];
+        assert!(!ext.effects.is_pure, "Extern functions should default to impure");
+        assert_eq!(ext.ret_ty, CirType::I64);
+    }
+
+    #[test]
+    fn test_lower_type_fn_pointer() {
+        let lowerer = CirLowerer::new();
+        let ty = Type::Fn {
+            params: vec![Box::new(Type::I64)],
+            ret: Box::new(Type::Bool),
+        };
+        let cir_ty = lowerer.lower_type(&ty);
+        match cir_ty {
+            CirType::Fn { params, ret } => {
+                assert_eq!(params, vec![CirType::I64]);
+                assert_eq!(*ret, CirType::Bool);
+            }
+            other => panic!("Expected Fn type, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_lower_type_generic() {
+        let lowerer = CirLowerer::new();
+        let ty = Type::Generic {
+            name: "Vec".to_string(),
+            type_args: vec![Box::new(Type::I64)],
+        };
+        let cir_ty = lowerer.lower_type(&ty);
+        match cir_ty {
+            CirType::Generic(name, args) => {
+                assert_eq!(name, "Vec");
+                assert_eq!(args, vec![CirType::I64]);
+            }
+            other => panic!("Expected Generic type, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_lower_type_range() {
+        let lowerer = CirLowerer::new();
+        let ty = Type::Range(Box::new(Type::I64));
+        assert_eq!(lowerer.lower_type(&ty), CirType::Range(Box::new(CirType::I64)));
+    }
+
+    #[test]
+    fn test_lower_type_enum() {
+        let lowerer = CirLowerer::new();
+        let ty = Type::Enum {
+            name: "Color".to_string(),
+            variants: vec![],
+        };
+        assert_eq!(lowerer.lower_type(&ty), CirType::Enum("Color".to_string()));
+    }
+
+    #[test]
+    fn test_lower_type_struct_named() {
+        let lowerer = CirLowerer::new();
+        let ty = Type::Struct {
+            name: "Point".to_string(),
+            fields: vec![],
+        };
+        assert_eq!(lowerer.lower_type(&ty), CirType::Struct("Point".to_string()));
+    }
+
+    #[test]
+    fn test_lower_expr_string_lit() {
+        let lowerer = CirLowerer::new();
+        let result = lowerer.lower_expr(&Expr::StringLit("hello".to_string()));
+        assert_eq!(result, CirExpr::StringLit("hello".to_string()));
+    }
+
+    #[test]
+    fn test_lower_expr_bool_lit() {
+        let lowerer = CirLowerer::new();
+        assert_eq!(lowerer.lower_expr(&Expr::BoolLit(true)), CirExpr::BoolLit(true));
+        assert_eq!(lowerer.lower_expr(&Expr::BoolLit(false)), CirExpr::BoolLit(false));
+    }
+
+    #[test]
+    fn test_lower_expr_int_lit() {
+        let lowerer = CirLowerer::new();
+        assert_eq!(lowerer.lower_expr(&Expr::IntLit(0)), CirExpr::IntLit(0));
+        assert_eq!(lowerer.lower_expr(&Expr::IntLit(-42)), CirExpr::IntLit(-42));
+        assert_eq!(lowerer.lower_expr(&Expr::IntLit(i64::MAX)), CirExpr::IntLit(i64::MAX));
+    }
+
+    #[test]
+    fn test_lower_expr_condvar_new() {
+        let lowerer = CirLowerer::new();
+        let result = lowerer.lower_expr(&Expr::CondvarNew);
+        match result {
+            CirExpr::Call { func, args } => {
+                assert_eq!(func, "__condvar_new");
+                assert!(args.is_empty());
+            }
+            other => panic!("Expected Call to __condvar_new, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_lower_expr_todo_no_message() {
+        let lowerer = CirLowerer::new();
+        let result = lowerer.lower_expr(&Expr::Todo { message: None });
+        assert_eq!(result, CirExpr::Todo(None));
+    }
 }
