@@ -4248,7 +4248,26 @@ fn llvm_gen_call(line: String, pos: i64, dest: String) -> String =
     let fn_name = line.slice(at_pos, paren_pos);
     // v0.90.9: Intercept i64_to_f64/f64_to_i64 intrinsics - emit sitofp/fptosi
     // v0.90.14: ord() is identity - char_at/byte_at already return byte values
-    if fn_name == "@ord" {
+    // v0.90.15: Native LLVM store/load for store_u8/load_u8/store_i64/load_i64
+    if fn_name == "@store_u8" {
+        let args = line.slice(paren_pos + 1, close_pos);
+        let comma = find_char(args, 0, 44);
+        let addr = trim_end(args.slice(0, comma));
+        let value = trim(args.slice(comma + 1, args.len()));
+        "  " + dest + "_p = inttoptr i64 " + addr + " to ptr|  " + dest + "_v = trunc i64 " + value + " to i8|  store i8 " + dest + "_v, ptr " + dest + "_p, align 1|  " + dest + " = add nsw i64 0, 0"
+    } else if fn_name == "@load_u8" {
+        let addr = trim_end(line.slice(paren_pos + 1, close_pos));
+        "  " + dest + "_p = inttoptr i64 " + addr + " to ptr|  " + dest + "_b = load i8, ptr " + dest + "_p, align 1|  " + dest + " = zext i8 " + dest + "_b to i64"
+    } else if fn_name == "@store_i64" {
+        let args = line.slice(paren_pos + 1, close_pos);
+        let comma = find_char(args, 0, 44);
+        let addr = trim_end(args.slice(0, comma));
+        let value = trim(args.slice(comma + 1, args.len()));
+        "  " + dest + "_p = inttoptr i64 " + addr + " to ptr|  store i64 " + value + ", ptr " + dest + "_p, align 8|  " + dest + " = add nsw i64 0, 0"
+    } else if fn_name == "@load_i64" {
+        let addr = trim_end(line.slice(paren_pos + 1, close_pos));
+        "  " + dest + "_p = inttoptr i64 " + addr + " to ptr|  " + dest + " = load i64, ptr " + dest + "_p, align 8"
+    } else if fn_name == "@ord" {
         let arg = trim_end(line.slice(paren_pos + 1, close_pos));
         "  " + dest + " = add nsw i64 0, " + arg
     } else if fn_name == "@i64_to_f64" {
@@ -4284,7 +4303,26 @@ fn llvm_gen_call_reg(line: String, pos: i64, dest: String, registry: String) -> 
     let fn_name = line.slice(at_pos, paren_pos);
     // v0.90.9: Intercept i64_to_f64/f64_to_i64 intrinsics
     // v0.90.14: ord() is identity - char_at/byte_at already return byte values
-    if fn_name == "@ord" {
+    // v0.90.15: Native LLVM store/load for store_u8/load_u8/store_i64/load_i64
+    if fn_name == "@store_u8" {
+        let args = line.slice(paren_pos + 1, close_pos);
+        let comma = find_char(args, 0, 44);
+        let addr = trim_end(args.slice(0, comma));
+        let value = trim(args.slice(comma + 1, args.len()));
+        "  " + dest + "_p = inttoptr i64 " + addr + " to ptr|  " + dest + "_v = trunc i64 " + value + " to i8|  store i8 " + dest + "_v, ptr " + dest + "_p, align 1|  " + dest + " = add nsw i64 0, 0"
+    } else if fn_name == "@load_u8" {
+        let addr = trim_end(line.slice(paren_pos + 1, close_pos));
+        "  " + dest + "_p = inttoptr i64 " + addr + " to ptr|  " + dest + "_b = load i8, ptr " + dest + "_p, align 1|  " + dest + " = zext i8 " + dest + "_b to i64"
+    } else if fn_name == "@store_i64" {
+        let args = line.slice(paren_pos + 1, close_pos);
+        let comma = find_char(args, 0, 44);
+        let addr = trim_end(args.slice(0, comma));
+        let value = trim(args.slice(comma + 1, args.len()));
+        "  " + dest + "_p = inttoptr i64 " + addr + " to ptr|  store i64 " + value + ", ptr " + dest + "_p, align 8|  " + dest + " = add nsw i64 0, 0"
+    } else if fn_name == "@load_i64" {
+        let addr = trim_end(line.slice(paren_pos + 1, close_pos));
+        "  " + dest + "_p = inttoptr i64 " + addr + " to ptr|  " + dest + " = load i64, ptr " + dest + "_p, align 8"
+    } else if fn_name == "@ord" {
         let arg = trim_end(line.slice(paren_pos + 1, close_pos));
         "  " + dest + " = add nsw i64 0, " + arg
     } else if fn_name == "@i64_to_f64" {
