@@ -1902,15 +1902,21 @@ impl<'ctx> LlvmContext<'ctx> {
                 }
             };
 
-            // Track the largest integer type
-            if let BasicTypeEnum::IntType(int_ty) = ty {
-                let bit_width = int_ty.get_bit_width();
-                if bit_width > max_bit_width {
-                    max_bit_width = bit_width;
-                    result_type = Some(ty);
+            // v0.90: Pointer type takes priority (strings, struct pointers)
+            // If any operand is a pointer, phi must be pointer type
+            if let BasicTypeEnum::PointerType(_) = ty {
+                result_type = Some(ty);
+            } else if let BasicTypeEnum::IntType(int_ty) = ty {
+                // Only use integer type if no pointer type found yet
+                if !matches!(result_type, Some(BasicTypeEnum::PointerType(_))) {
+                    let bit_width = int_ty.get_bit_width();
+                    if bit_width > max_bit_width {
+                        max_bit_width = bit_width;
+                        result_type = Some(ty);
+                    }
                 }
             } else {
-                // For non-integer types, use the first one found
+                // For other non-integer types, use the first one found
                 if result_type.is_none() {
                     result_type = Some(ty);
                 }
