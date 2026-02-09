@@ -4685,6 +4685,113 @@ fn register_fn_type(fn_mir: String, rsb: i64) -> i64 =
         0
     } else { 0 };
 
+// ============================================================================
+// v0.90.17: ConstFunctionEval - replace @const 0-arg functions at compile time
+// Scans MIR for functions with @const annotation, 0 params, returning a constant.
+// Replaces all call @name() with const <value> in the MIR.
+// ============================================================================
+
+// Main entry point: optimize MIR by inlining const functions
+fn optimize_const_inlining(mir: String) -> String =
+    let const_map = build_const_map(mir);
+    if const_map == "" { mir }
+    else { apply_const_map_to_mir(mir, const_map, 0) };
+
+// Build map of const function name -> value from MIR
+// Format: "@name=value,@name2=value2,"
+fn build_const_map(mir: String) -> String =
+    let sb = sb_new();
+    let w1 = build_const_map_acc(mir, 0, sb);
+    let result = sb_build(sb);
+    let _f = sb_free(sb);
+    result;
+
+fn build_const_map_acc(mir: String, pos: i64, sb: i64) -> i64 =
+    if pos >= mir.len() { 0 } else {
+        let fn_end = find_double_pipe(mir, pos);
+        let fn_mir = mir.slice(pos, fn_end);
+        let w1 = try_register_const_fn(fn_mir, sb);
+        if fn_end + 2 >= mir.len() { 0 } else { build_const_map_acc(mir, fn_end + 2, sb) }
+    };
+
+// Check if a function MIR is a 0-arg @const returning a constant
+fn try_register_const_fn(fn_mir: String, sb: i64) -> i64 =
+    let first_pipe = find_char(fn_mir, 0, 124);
+    let header = if first_pipe >= fn_mir.len() { fn_mir } else { fn_mir.slice(0, first_pipe) };
+    let has_const = find_pattern_at(header, "@const", 0);
+    if has_const < 0 { 0 }
+    else {
+        let paren_pos = find_char(header, 3, 40);
+        let fn_name = header.slice(3, paren_pos);
+        let close_pos = find_char(header, paren_pos, 41);
+        let params = trim(header.slice(paren_pos + 1, close_pos));
+        if params.len() > 0 { 0 }
+        else {
+            let const_pos = find_pattern_at(fn_mir, "= const ", first_pipe);
+            if const_pos < 0 { 0 }
+            else {
+                let value_start = const_pos + 8;
+                let line_end = find_char(fn_mir, value_start, 124);
+                let value = trim(fn_mir.slice(value_start, line_end));
+                if value.len() == 0 { 0 }
+                else {
+                    let first_ch = value.byte_at(0);
+                    let is_num = if first_ch >= 48 and first_ch <= 57 { true }
+                        else if first_ch == 45 and value.len() > 1 and value.byte_at(1) >= 48 and value.byte_at(1) <= 57 { true }
+                        else { false };
+                    if is_num {
+                        let w1 = sb_push(sb, "@");
+                        let w2 = sb_push(sb, fn_name);
+                        let w3 = sb_push(sb, "=");
+                        let w4 = sb_push(sb, value);
+                        let w5 = sb_push(sb, ",");
+                        0
+                    } else { 0 }
+                }
+            }
+        }
+    };
+
+// Apply all const map entries to MIR
+fn apply_const_map_to_mir(mir: String, const_map: String, pos: i64) -> String =
+    if pos >= const_map.len() { mir }
+    else {
+        let at_pos = find_char(const_map, pos, 64);
+        if at_pos >= const_map.len() { mir }
+        else {
+            let eq_pos = find_char(const_map, at_pos, 61);
+            let comma_pos = find_char(const_map, eq_pos, 44);
+            let fn_name = const_map.slice(at_pos + 1, eq_pos);
+            let value = const_map.slice(eq_pos + 1, comma_pos);
+            let pattern = "call @" + fn_name + "()";
+            let replacement = "const " + value;
+            let new_mir = replace_all_in_mir(mir, pattern, replacement);
+            apply_const_map_to_mir(new_mir, const_map, comma_pos + 1)
+        }
+    };
+
+// Replace all occurrences of pattern in string with replacement
+fn replace_all_in_mir(s: String, pattern: String, replacement: String) -> String =
+    let first = find_pattern_at(s, pattern, 0);
+    if first < 0 { s }
+    else {
+        let sb = sb_new();
+        let w1 = replace_all_in_mir_acc(s, 0, pattern, replacement, sb);
+        let result = sb_build(sb);
+        let _f = sb_free(sb);
+        result
+    };
+
+fn replace_all_in_mir_acc(s: String, pos: i64, pattern: String, replacement: String, sb: i64) -> i64 =
+    let found = find_pattern_at(s, pattern, pos);
+    if found < 0 {
+        sb_push(sb, s.slice(pos, s.len()))
+    } else {
+        let w1 = sb_push(sb, s.slice(pos, found));
+        let w2 = sb_push(sb, replacement);
+        replace_all_in_mir_acc(s, found + pattern.len(), pattern, replacement, sb)
+    };
+
 fn build_param_sig(params: String, pos: i64, acc: String) -> String =
     let p = low_skip_ws(params, pos);
     if p >= params.len() { acc } else {
@@ -7355,8 +7462,10 @@ fn compile_program(source: String) -> String =
     if is_error(ast) { "ERR:PARSE:" + ast } else {
         // v0.90.5: Build struct registry from source for field access codegen
         let struct_reg = build_struct_registry(source);
-        let mir = lower_program_sb(ast);
-        if mir == "" { "ERR:LOWERING:empty" } else {
+        let mir_raw = lower_program_sb(ast);
+        if mir_raw == "" { "ERR:LOWERING:empty" } else {
+            // v0.90.17: ConstFunctionEval - inline @const 0-arg functions
+            let mir = optimize_const_inlining(mir_raw);
             let header = gen_module_header();
             let decls = gen_runtime_decls();
             // v0.60.109: Collect string literals and generate globals
