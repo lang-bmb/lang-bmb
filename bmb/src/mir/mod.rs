@@ -1904,4 +1904,599 @@ mod tests {
             _ => panic!("expected Bool constant"),
         }
     }
+
+    // --- MirProgram construction tests ---
+
+    #[test]
+    fn test_mir_program_construction_empty() {
+        let prog = MirProgram {
+            functions: vec![],
+            extern_fns: vec![],
+            struct_defs: HashMap::new(),
+        };
+        assert!(prog.functions.is_empty());
+        assert!(prog.extern_fns.is_empty());
+        assert!(prog.struct_defs.is_empty());
+    }
+
+    #[test]
+    fn test_mir_program_with_struct_defs() {
+        let mut struct_defs = HashMap::new();
+        struct_defs.insert("Point".to_string(), vec![
+            ("x".to_string(), MirType::F64),
+            ("y".to_string(), MirType::F64),
+        ]);
+        let prog = MirProgram {
+            functions: vec![],
+            extern_fns: vec![],
+            struct_defs,
+        };
+        let fields = prog.struct_defs.get("Point").unwrap();
+        assert_eq!(fields.len(), 2);
+        assert_eq!(fields[0].0, "x");
+        assert_eq!(fields[0].1, MirType::F64);
+        assert_eq!(fields[1].0, "y");
+        assert_eq!(fields[1].1, MirType::F64);
+    }
+
+    #[test]
+    fn test_mir_extern_fn_construction() {
+        let ext = MirExternFn {
+            module: "wasi_snapshot_preview1".to_string(),
+            name: "fd_write".to_string(),
+            params: vec![MirType::I32, MirType::I32, MirType::I32, MirType::I32],
+            ret_ty: MirType::I32,
+        };
+        assert_eq!(ext.module, "wasi_snapshot_preview1");
+        assert_eq!(ext.name, "fd_write");
+        assert_eq!(ext.params.len(), 4);
+        assert_eq!(ext.ret_ty, MirType::I32);
+    }
+
+    // --- MirFunction construction and attribute tests ---
+
+    #[test]
+    fn test_mir_function_construction_with_attributes() {
+        let func = MirFunction {
+            name: "square".to_string(),
+            params: vec![("x".to_string(), MirType::I64)],
+            ret_ty: MirType::I64,
+            locals: vec![("tmp".to_string(), MirType::I64)],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![],
+                terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(0)))),
+            }],
+            preconditions: vec![ContractFact::VarCmp {
+                var: "x".to_string(),
+                op: CmpOp::Ge,
+                value: 0,
+            }],
+            postconditions: vec![ContractFact::ReturnCmp {
+                op: CmpOp::Ge,
+                value: 0,
+            }],
+            is_pure: true,
+            is_const: false,
+            always_inline: false,
+            inline_hint: true,
+            is_memory_free: true,
+        };
+        assert_eq!(func.name, "square");
+        assert_eq!(func.params.len(), 1);
+        assert_eq!(func.locals.len(), 1);
+        assert_eq!(func.blocks.len(), 1);
+        assert!(func.is_pure);
+        assert!(!func.is_const);
+        assert!(!func.always_inline);
+        assert!(func.inline_hint);
+        assert!(func.is_memory_free);
+        assert_eq!(func.preconditions.len(), 1);
+        assert_eq!(func.postconditions.len(), 1);
+    }
+
+    // --- BasicBlock and Terminator tests ---
+
+    #[test]
+    fn test_basic_block_with_instructions_and_return() {
+        let block = BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::Const {
+                    dest: Place::new("x"),
+                    value: Constant::Int(10),
+                },
+                MirInst::Const {
+                    dest: Place::new("y"),
+                    value: Constant::Int(20),
+                },
+                MirInst::BinOp {
+                    dest: Place::new("result"),
+                    op: MirBinOp::Add,
+                    lhs: Operand::Place(Place::new("x")),
+                    rhs: Operand::Place(Place::new("y")),
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Place(Place::new("result")))),
+        };
+        assert_eq!(block.label, "entry");
+        assert_eq!(block.instructions.len(), 3);
+        match &block.terminator {
+            Terminator::Return(Some(Operand::Place(p))) => assert_eq!(p.name, "result"),
+            _ => panic!("expected Return with Place operand"),
+        }
+    }
+
+    #[test]
+    fn test_terminator_goto() {
+        let term = Terminator::Goto("loop_header".to_string());
+        match &term {
+            Terminator::Goto(label) => assert_eq!(label, "loop_header"),
+            _ => panic!("expected Goto"),
+        }
+    }
+
+    #[test]
+    fn test_terminator_branch() {
+        let term = Terminator::Branch {
+            cond: Operand::Place(Place::new("cond")),
+            then_label: "then_bb".to_string(),
+            else_label: "else_bb".to_string(),
+        };
+        match &term {
+            Terminator::Branch { cond, then_label, else_label } => {
+                match cond {
+                    Operand::Place(p) => assert_eq!(p.name, "cond"),
+                    _ => panic!("expected Place operand"),
+                }
+                assert_eq!(then_label, "then_bb");
+                assert_eq!(else_label, "else_bb");
+            }
+            _ => panic!("expected Branch"),
+        }
+    }
+
+    #[test]
+    fn test_terminator_switch() {
+        let term = Terminator::Switch {
+            discriminant: Operand::Place(Place::new("disc")),
+            cases: vec![(0, "case_0".to_string()), (1, "case_1".to_string()), (2, "case_2".to_string())],
+            default: "default_bb".to_string(),
+        };
+        match &term {
+            Terminator::Switch { discriminant: _, cases, default } => {
+                assert_eq!(cases.len(), 3);
+                assert_eq!(cases[0], (0, "case_0".to_string()));
+                assert_eq!(cases[1], (1, "case_1".to_string()));
+                assert_eq!(cases[2], (2, "case_2".to_string()));
+                assert_eq!(default, "default_bb");
+            }
+            _ => panic!("expected Switch"),
+        }
+    }
+
+    // --- LoweringContext block management tests ---
+
+    #[test]
+    fn test_lowering_context_push_inst_and_finish_block() {
+        let mut ctx = LoweringContext::new();
+        ctx.push_inst(MirInst::Const {
+            dest: Place::new("a"),
+            value: Constant::Int(1),
+        });
+        ctx.emit(MirInst::Const {
+            dest: Place::new("b"),
+            value: Constant::Int(2),
+        });
+        ctx.finish_block(Terminator::Return(None));
+
+        assert_eq!(ctx.blocks.len(), 1);
+        assert_eq!(ctx.blocks[0].label, "entry");
+        assert_eq!(ctx.blocks[0].instructions.len(), 2);
+        match &ctx.blocks[0].terminator {
+            Terminator::Return(None) => {}
+            _ => panic!("expected Return(None)"),
+        }
+    }
+
+    #[test]
+    fn test_lowering_context_start_block_and_label() {
+        let mut ctx = LoweringContext::new();
+        assert_eq!(ctx.current_block_label(), "entry");
+
+        ctx.finish_block(Terminator::Goto("next".to_string()));
+        ctx.start_block("next".to_string());
+        assert_eq!(ctx.current_block_label(), "next");
+
+        ctx.push_inst(MirInst::Const {
+            dest: Place::new("x"),
+            value: Constant::Bool(true),
+        });
+        ctx.finish_block(Terminator::Return(None));
+
+        assert_eq!(ctx.blocks.len(), 2);
+        assert_eq!(ctx.blocks[0].label, "entry");
+        assert_eq!(ctx.blocks[1].label, "next");
+        assert_eq!(ctx.blocks[1].instructions.len(), 1);
+    }
+
+    #[test]
+    fn test_lowering_context_field_index_lookup() {
+        let mut ctx = LoweringContext::new();
+        ctx.struct_defs.insert("Point".to_string(), vec![
+            "x".to_string(), "y".to_string(), "z".to_string(),
+        ]);
+        assert_eq!(ctx.field_index("Point", "x"), 0);
+        assert_eq!(ctx.field_index("Point", "y"), 1);
+        assert_eq!(ctx.field_index("Point", "z"), 2);
+        // Unknown field returns 0
+        assert_eq!(ctx.field_index("Point", "w"), 0);
+        // Unknown struct returns 0
+        assert_eq!(ctx.field_index("Unknown", "x"), 0);
+    }
+
+    #[test]
+    fn test_lowering_context_field_type_lookup() {
+        let mut ctx = LoweringContext::new();
+        ctx.struct_type_defs.insert("Rect".to_string(), vec![
+            ("width".to_string(), MirType::F64),
+            ("height".to_string(), MirType::F64),
+            ("visible".to_string(), MirType::Bool),
+        ]);
+        assert_eq!(ctx.field_type("Rect", "width"), MirType::F64);
+        assert_eq!(ctx.field_type("Rect", "height"), MirType::F64);
+        assert_eq!(ctx.field_type("Rect", "visible"), MirType::Bool);
+        // Unknown field returns I64 (default)
+        assert_eq!(ctx.field_type("Rect", "missing"), MirType::I64);
+        // Unknown struct returns I64
+        assert_eq!(ctx.field_type("Unknown", "x"), MirType::I64);
+    }
+
+    #[test]
+    fn test_lowering_context_operand_type_from_locals_and_params() {
+        let mut ctx = LoweringContext::new();
+        ctx.locals.insert("local_var".to_string(), MirType::Bool);
+        ctx.params.insert("param_var".to_string(), MirType::F64);
+        ctx.temp_types.insert("_t5".to_string(), MirType::String);
+
+        assert_eq!(
+            ctx.operand_type(&Operand::Place(Place::new("local_var"))),
+            MirType::Bool
+        );
+        assert_eq!(
+            ctx.operand_type(&Operand::Place(Place::new("param_var"))),
+            MirType::F64
+        );
+        assert_eq!(
+            ctx.operand_type(&Operand::Place(Place::new("_t5"))),
+            MirType::String
+        );
+        // Char constant type
+        assert_eq!(
+            ctx.operand_type(&Operand::Constant(Constant::Char('A'))),
+            MirType::Char
+        );
+    }
+
+    #[test]
+    fn test_lowering_context_place_struct_type() {
+        let mut ctx = LoweringContext::new();
+        ctx.var_struct_types.insert("p".to_string(), "Point".to_string());
+
+        assert_eq!(ctx.place_struct_type(&Place::new("p")), Some("Point".to_string()));
+        assert_eq!(ctx.place_struct_type(&Place::new("q")), None);
+    }
+
+    // --- ContractFact and CmpOp tests ---
+
+    #[test]
+    fn test_contract_fact_variants() {
+        let var_cmp = ContractFact::VarCmp {
+            var: "x".to_string(),
+            op: CmpOp::Ge,
+            value: 0,
+        };
+        let var_var_cmp = ContractFact::VarVarCmp {
+            lhs: "start".to_string(),
+            op: CmpOp::Le,
+            rhs: "end".to_string(),
+        };
+        let array_bounds = ContractFact::ArrayBounds {
+            index: "i".to_string(),
+            array: "arr".to_string(),
+        };
+        let non_null = ContractFact::NonNull {
+            var: "ptr".to_string(),
+        };
+        let ret_cmp = ContractFact::ReturnCmp {
+            op: CmpOp::Gt,
+            value: -1,
+        };
+        let ret_var_cmp = ContractFact::ReturnVarCmp {
+            op: CmpOp::Ge,
+            var: "input".to_string(),
+        };
+
+        // Verify equality works (derives PartialEq)
+        assert_eq!(var_cmp, ContractFact::VarCmp {
+            var: "x".to_string(),
+            op: CmpOp::Ge,
+            value: 0,
+        });
+        assert_ne!(var_cmp, ContractFact::VarCmp {
+            var: "y".to_string(),
+            op: CmpOp::Ge,
+            value: 0,
+        });
+
+        // Verify all CmpOp variants exist and are distinguishable
+        assert_ne!(CmpOp::Lt, CmpOp::Le);
+        assert_ne!(CmpOp::Gt, CmpOp::Ge);
+        assert_ne!(CmpOp::Eq, CmpOp::Ne);
+
+        // Verify each ContractFact variant is distinct
+        let facts: Vec<ContractFact> = vec![var_cmp, var_var_cmp, array_bounds, non_null, ret_cmp, ret_var_cmp];
+        for i in 0..facts.len() {
+            for j in (i + 1)..facts.len() {
+                assert_ne!(facts[i], facts[j], "facts[{}] and facts[{}] should differ", i, j);
+            }
+        }
+    }
+
+    // --- format_mir_type additional coverage ---
+
+    #[test]
+    fn test_format_mir_type_i32_u32_u64_char() {
+        assert_eq!(format_mir_type(&MirType::I32), "i32");
+        assert_eq!(format_mir_type(&MirType::U32), "u32");
+        assert_eq!(format_mir_type(&MirType::U64), "u64");
+        assert_eq!(format_mir_type(&MirType::Char), "char");
+    }
+
+    #[test]
+    fn test_format_mir_type_struct_and_struct_ptr() {
+        let struct_ty = MirType::Struct {
+            name: "Vec3".to_string(),
+            fields: vec![
+                ("x".to_string(), Box::new(MirType::F64)),
+                ("y".to_string(), Box::new(MirType::F64)),
+                ("z".to_string(), Box::new(MirType::F64)),
+            ],
+        };
+        assert_eq!(format_mir_type(&struct_ty), "Vec3");
+        assert_eq!(format_mir_type(&MirType::StructPtr("Vec3".to_string())), "&Vec3");
+    }
+
+    #[test]
+    fn test_format_mir_type_enum() {
+        let enum_ty = MirType::Enum {
+            name: "Option".to_string(),
+            variants: vec![
+                ("Some".to_string(), vec![Box::new(MirType::I64)]),
+                ("None".to_string(), vec![]),
+            ],
+        };
+        assert_eq!(format_mir_type(&enum_ty), "Option");
+    }
+
+    #[test]
+    fn test_format_mir_type_array_fixed_and_dynamic() {
+        let fixed = MirType::Array {
+            element_type: Box::new(MirType::I64),
+            size: Some(10),
+        };
+        assert_eq!(format_mir_type(&fixed), "[i64; 10]");
+
+        let dynamic = MirType::Array {
+            element_type: Box::new(MirType::Bool),
+            size: None,
+        };
+        assert_eq!(format_mir_type(&dynamic), "[bool]");
+    }
+
+    // --- Instruction and terminator formatting tests ---
+
+    #[test]
+    fn test_format_const_instruction() {
+        let inst = MirInst::Const {
+            dest: Place::new("x"),
+            value: Constant::Int(42),
+        };
+        let text = format_mir_inst(&inst);
+        assert_eq!(text, "%x = const I:42");
+    }
+
+    #[test]
+    fn test_format_copy_instruction() {
+        let inst = MirInst::Copy {
+            dest: Place::new("dst"),
+            src: Place::new("src"),
+        };
+        assert_eq!(format_mir_inst(&inst), "%dst = copy %src");
+    }
+
+    #[test]
+    fn test_format_binop_instruction() {
+        let inst = MirInst::BinOp {
+            dest: Place::new("sum"),
+            op: MirBinOp::Add,
+            lhs: Operand::Place(Place::new("a")),
+            rhs: Operand::Constant(Constant::Int(1)),
+        };
+        assert_eq!(format_mir_inst(&inst), "%sum = + %a, I:1");
+    }
+
+    #[test]
+    fn test_format_unaryop_instruction() {
+        let inst = MirInst::UnaryOp {
+            dest: Place::new("neg_x"),
+            op: MirUnaryOp::Neg,
+            src: Operand::Place(Place::new("x")),
+        };
+        assert_eq!(format_mir_inst(&inst), "%neg_x = neg %x");
+    }
+
+    #[test]
+    fn test_format_call_instruction_with_and_without_dest() {
+        let call_with_dest = MirInst::Call {
+            dest: Some(Place::new("result")),
+            func: "compute".to_string(),
+            args: vec![
+                Operand::Place(Place::new("a")),
+                Operand::Constant(Constant::Int(5)),
+            ],
+            is_tail: false,
+        };
+        assert_eq!(format_mir_inst(&call_with_dest), "%result = call compute(%a, I:5)");
+
+        let call_no_dest = MirInst::Call {
+            dest: None,
+            func: "println".to_string(),
+            args: vec![Operand::Constant(Constant::String("hello".to_string()))],
+            is_tail: false,
+        };
+        assert_eq!(format_mir_inst(&call_no_dest), "call println(S:\"hello\")");
+
+        let tail_call = MirInst::Call {
+            dest: Some(Place::new("r")),
+            func: "recurse".to_string(),
+            args: vec![Operand::Place(Place::new("n"))],
+            is_tail: true,
+        };
+        assert_eq!(format_mir_inst(&tail_call), "%r = tail call recurse(%n)");
+    }
+
+    #[test]
+    fn test_format_phi_instruction() {
+        let inst = MirInst::Phi {
+            dest: Place::new("merged"),
+            values: vec![
+                (Operand::Constant(Constant::Int(1)), "then_bb".to_string()),
+                (Operand::Constant(Constant::Int(2)), "else_bb".to_string()),
+            ],
+        };
+        assert_eq!(format_mir_inst(&inst), "%merged = phi [I:1, then_bb], [I:2, else_bb]");
+    }
+
+    #[test]
+    fn test_format_terminator_return_none_and_some() {
+        assert_eq!(format_terminator(&Terminator::Return(None)), "return");
+        assert_eq!(
+            format_terminator(&Terminator::Return(Some(Operand::Constant(Constant::Int(0))))),
+            "return I:0"
+        );
+        assert_eq!(
+            format_terminator(&Terminator::Return(Some(Operand::Place(Place::new("res"))))),
+            "return %res"
+        );
+    }
+
+    #[test]
+    fn test_format_terminator_goto() {
+        assert_eq!(
+            format_terminator(&Terminator::Goto("loop_body".to_string())),
+            "goto loop_body"
+        );
+    }
+
+    #[test]
+    fn test_format_terminator_branch() {
+        let term = Terminator::Branch {
+            cond: Operand::Place(Place::new("flag")),
+            then_label: "bb_true".to_string(),
+            else_label: "bb_false".to_string(),
+        };
+        assert_eq!(format_terminator(&term), "branch %flag, bb_true, bb_false");
+    }
+
+    #[test]
+    fn test_format_terminator_unreachable() {
+        assert_eq!(format_terminator(&Terminator::Unreachable), "unreachable");
+    }
+
+    #[test]
+    fn test_format_terminator_switch() {
+        let term = Terminator::Switch {
+            discriminant: Operand::Place(Place::new("tag")),
+            cases: vec![(0, "case_a".to_string()), (1, "case_b".to_string())],
+            default: "default_bb".to_string(),
+        };
+        assert_eq!(
+            format_terminator(&term),
+            "switch %tag, [0 -> case_a, 1 -> case_b], default_bb"
+        );
+    }
+
+    // --- Constant formatting tests ---
+
+    #[test]
+    fn test_format_constant_all_types() {
+        assert_eq!(format_constant(&Constant::Int(99)), "I:99");
+        assert_eq!(format_constant(&Constant::Int(-5)), "I:-5");
+        assert_eq!(format_constant(&Constant::Float(3.14)), "F:3.14");
+        assert_eq!(format_constant(&Constant::Bool(true)), "B:1");
+        assert_eq!(format_constant(&Constant::Bool(false)), "B:0");
+        assert_eq!(format_constant(&Constant::String("test".to_string())), "S:\"test\"");
+        assert_eq!(format_constant(&Constant::Char('Z')), "C:'Z'");
+        assert_eq!(format_constant(&Constant::Unit), "U");
+    }
+
+    // --- format_mir function attributes test ---
+
+    #[test]
+    fn test_format_mir_function_with_attributes() {
+        let func = MirFunction {
+            name: "pure_fn".to_string(),
+            params: vec![("n".to_string(), MirType::I64)],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![],
+                terminator: Terminator::Return(Some(Operand::Place(Place::new("n")))),
+            }],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: true,
+            is_const: true,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: true,
+        };
+        let prog = MirProgram {
+            functions: vec![func],
+            extern_fns: vec![],
+            struct_defs: HashMap::new(),
+        };
+        let text = format_mir(&prog);
+        assert!(text.contains("@pure"), "expected @pure attribute, got: {}", text);
+        assert!(text.contains("@const"), "expected @const attribute, got: {}", text);
+        assert!(text.contains("@memory(none)"), "expected @memory(none) attribute, got: {}", text);
+        assert!(!text.contains("@alwaysinline"), "should not have @alwaysinline");
+        assert!(!text.contains("@inlinehint"), "should not have @inlinehint");
+        assert!(text.contains("fn pure_fn(n: i64) -> i64"), "function header missing");
+        assert!(text.contains("return %n"), "return missing");
+    }
+
+    // --- Checked arithmetic result type test ---
+
+    #[test]
+    fn test_binop_checked_returns_operand_type() {
+        let ops = [MirBinOp::AddChecked, MirBinOp::SubChecked, MirBinOp::MulChecked];
+        for op in &ops {
+            assert_eq!(op.result_type(&MirType::I64), MirType::I64);
+            assert_eq!(op.result_type(&MirType::I32), MirType::I32);
+        }
+    }
+
+    // --- MirType unsigned integer tests ---
+
+    #[test]
+    fn test_mir_type_unsigned_not_integer() {
+        // U32 and U64 are NOT classified as integer by is_integer() (only I32/I64 are)
+        assert!(!MirType::U32.is_integer());
+        assert!(!MirType::U64.is_integer());
+        assert!(!MirType::U32.is_float());
+        assert!(!MirType::U64.is_float());
+    }
 }

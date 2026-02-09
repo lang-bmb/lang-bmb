@@ -2138,4 +2138,600 @@ mod tests {
         assert!(result.is_exhaustive);
         assert_eq!(result.unreachable_arms, vec![1]);
     }
+
+    // =========================================================================
+    // New tests: edge cases and uncovered paths
+    // =========================================================================
+
+    #[test]
+    fn test_float_literal_non_exhaustive() {
+        // Float literals are infinite; cannot be exhaustive without wildcard
+        let ctx = ExhaustivenessContext::new();
+        let ty = Type::F64;
+
+        let arms = vec![
+            (
+                Spanned::new(
+                    Pattern::Literal(LiteralPattern::Float(1.0)),
+                    Span::new(0, 0),
+                ),
+                None,
+            ),
+            (
+                Spanned::new(
+                    Pattern::Literal(LiteralPattern::Float(2.0)),
+                    Span::new(0, 0),
+                ),
+                None,
+            ),
+        ];
+        let result = check_exhaustiveness(&ty, &arms, &ctx);
+        assert!(!result.is_exhaustive);
+        assert!(result.missing_patterns.contains(&"_".to_string()));
+    }
+
+    #[test]
+    fn test_unit_type_always_exhaustive() {
+        // Unit type is exhaustive even with empty matrix (handled by _ => branch)
+        let ctx = ExhaustivenessContext::new();
+        let ty = Type::Unit;
+
+        // A single wildcard arm
+        let arms = vec![(
+            Spanned::new(Pattern::Wildcard, Span::new(0, 0)),
+            None,
+        )];
+        let result = check_exhaustiveness(&ty, &arms, &ctx);
+        assert!(result.is_exhaustive);
+    }
+
+    #[test]
+    fn test_tuple_bool_bool_all_combinations_exhaustive() {
+        // Cover all 4 combinations of (bool, bool) without wildcard
+        let ctx = ExhaustivenessContext::new();
+        let ty = Type::Tuple(vec![Box::new(Type::Bool), Box::new(Type::Bool)]);
+
+        let arms = vec![
+            (
+                Spanned::new(
+                    Pattern::Tuple(vec![
+                        Spanned::new(Pattern::Literal(LiteralPattern::Bool(true)), Span::new(0, 0)),
+                        Spanned::new(Pattern::Literal(LiteralPattern::Bool(true)), Span::new(0, 0)),
+                    ]),
+                    Span::new(0, 0),
+                ),
+                None,
+            ),
+            (
+                Spanned::new(
+                    Pattern::Tuple(vec![
+                        Spanned::new(Pattern::Literal(LiteralPattern::Bool(true)), Span::new(0, 0)),
+                        Spanned::new(Pattern::Literal(LiteralPattern::Bool(false)), Span::new(0, 0)),
+                    ]),
+                    Span::new(0, 0),
+                ),
+                None,
+            ),
+            (
+                Spanned::new(
+                    Pattern::Tuple(vec![
+                        Spanned::new(Pattern::Literal(LiteralPattern::Bool(false)), Span::new(0, 0)),
+                        Spanned::new(Pattern::Literal(LiteralPattern::Bool(true)), Span::new(0, 0)),
+                    ]),
+                    Span::new(0, 0),
+                ),
+                None,
+            ),
+            (
+                Spanned::new(
+                    Pattern::Tuple(vec![
+                        Spanned::new(Pattern::Literal(LiteralPattern::Bool(false)), Span::new(0, 0)),
+                        Spanned::new(Pattern::Literal(LiteralPattern::Bool(false)), Span::new(0, 0)),
+                    ]),
+                    Span::new(0, 0),
+                ),
+                None,
+            ),
+        ];
+        let result = check_exhaustiveness(&ty, &arms, &ctx);
+        assert!(result.is_exhaustive);
+        assert!(result.missing_patterns.is_empty());
+    }
+
+    #[test]
+    fn test_tuple_bool_bool_missing_combination() {
+        // Cover 3 of 4 combinations of (bool, bool) - missing (false, false)
+        let ctx = ExhaustivenessContext::new();
+        let ty = Type::Tuple(vec![Box::new(Type::Bool), Box::new(Type::Bool)]);
+
+        let arms = vec![
+            (
+                Spanned::new(
+                    Pattern::Tuple(vec![
+                        Spanned::new(Pattern::Literal(LiteralPattern::Bool(true)), Span::new(0, 0)),
+                        Spanned::new(Pattern::Literal(LiteralPattern::Bool(true)), Span::new(0, 0)),
+                    ]),
+                    Span::new(0, 0),
+                ),
+                None,
+            ),
+            (
+                Spanned::new(
+                    Pattern::Tuple(vec![
+                        Spanned::new(Pattern::Literal(LiteralPattern::Bool(true)), Span::new(0, 0)),
+                        Spanned::new(Pattern::Literal(LiteralPattern::Bool(false)), Span::new(0, 0)),
+                    ]),
+                    Span::new(0, 0),
+                ),
+                None,
+            ),
+            (
+                Spanned::new(
+                    Pattern::Tuple(vec![
+                        Spanned::new(Pattern::Literal(LiteralPattern::Bool(false)), Span::new(0, 0)),
+                        Spanned::new(Pattern::Literal(LiteralPattern::Bool(true)), Span::new(0, 0)),
+                    ]),
+                    Span::new(0, 0),
+                ),
+                None,
+            ),
+        ];
+        let result = check_exhaustiveness(&ty, &arms, &ctx);
+        assert!(!result.is_exhaustive);
+        assert!(result.missing_patterns.iter().any(|p| p.contains("false") && p.contains("false")));
+    }
+
+    #[test]
+    fn test_tuple_mixed_finite_infinite_exhaustive() {
+        // Tuple (bool, i64): finite bool position fully covered, infinite position has wildcards
+        let ctx = ExhaustivenessContext::new();
+        let ty = Type::Tuple(vec![Box::new(Type::Bool), Box::new(Type::I64)]);
+
+        let arms = vec![
+            (
+                Spanned::new(
+                    Pattern::Tuple(vec![
+                        Spanned::new(Pattern::Literal(LiteralPattern::Bool(true)), Span::new(0, 0)),
+                        Spanned::new(Pattern::Wildcard, Span::new(0, 0)),
+                    ]),
+                    Span::new(0, 0),
+                ),
+                None,
+            ),
+            (
+                Spanned::new(
+                    Pattern::Tuple(vec![
+                        Spanned::new(Pattern::Literal(LiteralPattern::Bool(false)), Span::new(0, 0)),
+                        Spanned::new(Pattern::Wildcard, Span::new(0, 0)),
+                    ]),
+                    Span::new(0, 0),
+                ),
+                None,
+            ),
+        ];
+        let result = check_exhaustiveness(&ty, &arms, &ctx);
+        assert!(result.is_exhaustive);
+    }
+
+    #[test]
+    fn test_tuple_mixed_finite_infinite_non_exhaustive() {
+        // Tuple (bool, i64): only true covered at finite position, missing false
+        let ctx = ExhaustivenessContext::new();
+        let ty = Type::Tuple(vec![Box::new(Type::Bool), Box::new(Type::I64)]);
+
+        let arms = vec![(
+            Spanned::new(
+                Pattern::Tuple(vec![
+                    Spanned::new(Pattern::Literal(LiteralPattern::Bool(true)), Span::new(0, 0)),
+                    Spanned::new(Pattern::Wildcard, Span::new(0, 0)),
+                ]),
+                Span::new(0, 0),
+            ),
+            None,
+        )];
+        let result = check_exhaustiveness(&ty, &arms, &ctx);
+        assert!(!result.is_exhaustive);
+    }
+
+    #[test]
+    fn test_array_pattern_empty_non_exhaustive() {
+        // Fixed-size array with no patterns is not exhaustive
+        let ctx = ExhaustivenessContext::new();
+        let ty = Type::Array(Box::new(Type::I64), 3);
+
+        let arms: Vec<(Spanned<Pattern>, Option<Spanned<crate::ast::Expr>>)> = vec![];
+        let result = check_exhaustiveness(&ty, &arms, &ctx);
+        assert!(!result.is_exhaustive);
+        // Should suggest a pattern like [_, _, _]
+        assert!(!result.missing_patterns.is_empty());
+    }
+
+    #[test]
+    fn test_array_pattern_with_wildcard_exhaustive() {
+        // A wildcard covering an array type is exhaustive
+        let ctx = ExhaustivenessContext::new();
+        let ty = Type::Array(Box::new(Type::I64), 2);
+
+        let arms = vec![(
+            Spanned::new(Pattern::Wildcard, Span::new(0, 0)),
+            None,
+        )];
+        let result = check_exhaustiveness(&ty, &arms, &ctx);
+        assert!(result.is_exhaustive);
+    }
+
+    #[test]
+    fn test_enum_variant_with_bool_payload_exhaustive() {
+        // Enum variant with bool payload: need to cover both true and false inside
+        let mut ctx = ExhaustivenessContext::new();
+        ctx.add_enum(
+            "Wrapper",
+            vec![
+                ("Val".to_string(), vec![Type::Bool]),
+                ("Empty".to_string(), vec![]),
+            ],
+        );
+
+        let ty = Type::Named("Wrapper".to_string());
+
+        let arms = vec![
+            (
+                Spanned::new(
+                    Pattern::EnumVariant {
+                        enum_name: "Wrapper".to_string(),
+                        variant: "Val".to_string(),
+                        bindings: vec![Spanned::new(
+                            Pattern::Literal(LiteralPattern::Bool(true)),
+                            Span::new(0, 0),
+                        )],
+                    },
+                    Span::new(0, 0),
+                ),
+                None,
+            ),
+            (
+                Spanned::new(
+                    Pattern::EnumVariant {
+                        enum_name: "Wrapper".to_string(),
+                        variant: "Val".to_string(),
+                        bindings: vec![Spanned::new(
+                            Pattern::Literal(LiteralPattern::Bool(false)),
+                            Span::new(0, 0),
+                        )],
+                    },
+                    Span::new(0, 0),
+                ),
+                None,
+            ),
+            (
+                Spanned::new(
+                    Pattern::EnumVariant {
+                        enum_name: "Wrapper".to_string(),
+                        variant: "Empty".to_string(),
+                        bindings: vec![],
+                    },
+                    Span::new(0, 0),
+                ),
+                None,
+            ),
+        ];
+        let result = check_exhaustiveness(&ty, &arms, &ctx);
+        assert!(result.is_exhaustive);
+    }
+
+    #[test]
+    fn test_enum_variant_with_bool_payload_non_exhaustive() {
+        // Enum variant with bool payload: only true covered inside Val
+        let mut ctx = ExhaustivenessContext::new();
+        ctx.add_enum(
+            "Wrapper",
+            vec![
+                ("Val".to_string(), vec![Type::Bool]),
+                ("Empty".to_string(), vec![]),
+            ],
+        );
+
+        let ty = Type::Named("Wrapper".to_string());
+
+        let arms = vec![
+            (
+                Spanned::new(
+                    Pattern::EnumVariant {
+                        enum_name: "Wrapper".to_string(),
+                        variant: "Val".to_string(),
+                        bindings: vec![Spanned::new(
+                            Pattern::Literal(LiteralPattern::Bool(true)),
+                            Span::new(0, 0),
+                        )],
+                    },
+                    Span::new(0, 0),
+                ),
+                None,
+            ),
+            (
+                Spanned::new(
+                    Pattern::EnumVariant {
+                        enum_name: "Wrapper".to_string(),
+                        variant: "Empty".to_string(),
+                        bindings: vec![],
+                    },
+                    Span::new(0, 0),
+                ),
+                None,
+            ),
+        ];
+        let result = check_exhaustiveness(&ty, &arms, &ctx);
+        assert!(!result.is_exhaustive);
+        // Should report Wrapper::Val(false) as missing
+        assert!(result.missing_patterns.iter().any(|p| p.contains("Val") && p.contains("false")));
+    }
+
+    #[test]
+    fn test_or_pattern_with_wildcard_is_exhaustive() {
+        // An Or-pattern containing a wildcard should be treated as exhaustive
+        let ctx = ExhaustivenessContext::new();
+        let ty = Type::I64;
+
+        let arms = vec![(
+            Spanned::new(
+                Pattern::Or(vec![
+                    Spanned::new(Pattern::Literal(LiteralPattern::Int(42)), Span::new(0, 0)),
+                    Spanned::new(Pattern::Wildcard, Span::new(0, 0)),
+                ]),
+                Span::new(0, 0),
+            ),
+            None,
+        )];
+        let result = check_exhaustiveness(&ty, &arms, &ctx);
+        assert!(result.is_exhaustive);
+    }
+
+    #[test]
+    fn test_struct_with_bool_fields_exhaustive() {
+        // Struct with all-bool fields: cartesian product path
+        let mut ctx = ExhaustivenessContext::new();
+        ctx.add_struct(
+            "Flags",
+            vec![
+                ("a".to_string(), Type::Bool),
+                ("b".to_string(), Type::Bool),
+            ],
+        );
+
+        let ty = Type::Named("Flags".to_string());
+
+        // Cover all 4 combinations
+        let make_struct_arm = |a: bool, b: bool| -> (Spanned<Pattern>, Option<Spanned<crate::ast::Expr>>) {
+            (
+                Spanned::new(
+                    Pattern::Struct {
+                        name: "Flags".to_string(),
+                        fields: vec![
+                            (
+                                Spanned::new("a".to_string(), Span::new(0, 0)),
+                                Spanned::new(Pattern::Literal(LiteralPattern::Bool(a)), Span::new(0, 0)),
+                            ),
+                            (
+                                Spanned::new("b".to_string(), Span::new(0, 0)),
+                                Spanned::new(Pattern::Literal(LiteralPattern::Bool(b)), Span::new(0, 0)),
+                            ),
+                        ],
+                    },
+                    Span::new(0, 0),
+                ),
+                None,
+            )
+        };
+
+        let arms = vec![
+            make_struct_arm(true, true),
+            make_struct_arm(true, false),
+            make_struct_arm(false, true),
+            make_struct_arm(false, false),
+        ];
+        let result = check_exhaustiveness(&ty, &arms, &ctx);
+        assert!(result.is_exhaustive);
+    }
+
+    #[test]
+    fn test_struct_with_bool_fields_non_exhaustive() {
+        // Struct with all-bool fields: missing one combination
+        let mut ctx = ExhaustivenessContext::new();
+        ctx.add_struct(
+            "Flags",
+            vec![
+                ("a".to_string(), Type::Bool),
+                ("b".to_string(), Type::Bool),
+            ],
+        );
+
+        let ty = Type::Named("Flags".to_string());
+
+        let make_struct_arm = |a: bool, b: bool| -> (Spanned<Pattern>, Option<Spanned<crate::ast::Expr>>) {
+            (
+                Spanned::new(
+                    Pattern::Struct {
+                        name: "Flags".to_string(),
+                        fields: vec![
+                            (
+                                Spanned::new("a".to_string(), Span::new(0, 0)),
+                                Spanned::new(Pattern::Literal(LiteralPattern::Bool(a)), Span::new(0, 0)),
+                            ),
+                            (
+                                Spanned::new("b".to_string(), Span::new(0, 0)),
+                                Spanned::new(Pattern::Literal(LiteralPattern::Bool(b)), Span::new(0, 0)),
+                            ),
+                        ],
+                    },
+                    Span::new(0, 0),
+                ),
+                None,
+            )
+        };
+
+        let arms = vec![
+            make_struct_arm(true, true),
+            make_struct_arm(true, false),
+            make_struct_arm(false, true),
+            // missing (false, false)
+        ];
+        let result = check_exhaustiveness(&ty, &arms, &ctx);
+        assert!(!result.is_exhaustive);
+        assert!(result.missing_patterns.iter().any(|p| p.contains("Flags")));
+    }
+
+    #[test]
+    fn test_generic_enum_exhaustiveness() {
+        // Generic enum like Option<bool> with substituted payloads
+        let mut ctx = ExhaustivenessContext::new();
+        ctx.add_enum(
+            "Option",
+            vec![
+                ("Some".to_string(), vec![Type::TypeVar("T".to_string())]),
+                ("None".to_string(), vec![]),
+            ],
+        );
+        ctx.add_generic_enum_params("Option", vec!["T".to_string()]);
+
+        // Match on Option<bool>
+        let ty = Type::Generic {
+            name: "Option".to_string(),
+            type_args: vec![Box::new(Type::Bool)],
+        };
+
+        // Cover Some(true), Some(false), None
+        let arms = vec![
+            (
+                Spanned::new(
+                    Pattern::EnumVariant {
+                        enum_name: "Option".to_string(),
+                        variant: "Some".to_string(),
+                        bindings: vec![Spanned::new(
+                            Pattern::Literal(LiteralPattern::Bool(true)),
+                            Span::new(0, 0),
+                        )],
+                    },
+                    Span::new(0, 0),
+                ),
+                None,
+            ),
+            (
+                Spanned::new(
+                    Pattern::EnumVariant {
+                        enum_name: "Option".to_string(),
+                        variant: "Some".to_string(),
+                        bindings: vec![Spanned::new(
+                            Pattern::Literal(LiteralPattern::Bool(false)),
+                            Span::new(0, 0),
+                        )],
+                    },
+                    Span::new(0, 0),
+                ),
+                None,
+            ),
+            (
+                Spanned::new(
+                    Pattern::EnumVariant {
+                        enum_name: "Option".to_string(),
+                        variant: "None".to_string(),
+                        bindings: vec![],
+                    },
+                    Span::new(0, 0),
+                ),
+                None,
+            ),
+        ];
+        let result = check_exhaustiveness(&ty, &arms, &ctx);
+        assert!(result.is_exhaustive);
+    }
+
+    #[test]
+    fn test_generic_enum_missing_variant() {
+        // Generic enum Option<i64> with None missing
+        let mut ctx = ExhaustivenessContext::new();
+        ctx.add_enum(
+            "Option",
+            vec![
+                ("Some".to_string(), vec![Type::TypeVar("T".to_string())]),
+                ("None".to_string(), vec![]),
+            ],
+        );
+        ctx.add_generic_enum_params("Option", vec!["T".to_string()]);
+
+        let ty = Type::Generic {
+            name: "Option".to_string(),
+            type_args: vec![Box::new(Type::I64)],
+        };
+
+        // Only Some covered
+        let arms = vec![(
+            Spanned::new(
+                Pattern::EnumVariant {
+                    enum_name: "Option".to_string(),
+                    variant: "Some".to_string(),
+                    bindings: vec![Spanned::new(Pattern::Wildcard, Span::new(0, 0))],
+                },
+                Span::new(0, 0),
+            ),
+            None,
+        )];
+        let result = check_exhaustiveness(&ty, &arms, &ctx);
+        assert!(!result.is_exhaustive);
+        assert!(result.missing_patterns.iter().any(|p| p.contains("None")));
+    }
+
+    #[test]
+    fn test_generate_tuple_combinations() {
+        // Direct unit test for generate_tuple_combinations
+        let values = vec![
+            vec!["a".to_string(), "b".to_string()],
+            vec!["1".to_string(), "2".to_string()],
+        ];
+        let combos = generate_tuple_combinations(&values);
+        assert_eq!(combos.len(), 4);
+        assert!(combos.contains(&vec!["a".to_string(), "1".to_string()]));
+        assert!(combos.contains(&vec!["a".to_string(), "2".to_string()]));
+        assert!(combos.contains(&vec!["b".to_string(), "1".to_string()]));
+        assert!(combos.contains(&vec!["b".to_string(), "2".to_string()]));
+    }
+
+    #[test]
+    fn test_generate_tuple_combinations_empty() {
+        // Empty input produces a single empty combination
+        let combos = generate_tuple_combinations(&[]);
+        assert_eq!(combos, vec![vec![] as Vec<String>]);
+    }
+
+    #[test]
+    fn test_tuple_with_wildcard_in_one_position() {
+        // Tuple (bool, bool) with wildcard in second position:
+        // (true, _) and (false, _) should be exhaustive
+        let ctx = ExhaustivenessContext::new();
+        let ty = Type::Tuple(vec![Box::new(Type::Bool), Box::new(Type::Bool)]);
+
+        let arms = vec![
+            (
+                Spanned::new(
+                    Pattern::Tuple(vec![
+                        Spanned::new(Pattern::Literal(LiteralPattern::Bool(true)), Span::new(0, 0)),
+                        Spanned::new(Pattern::Wildcard, Span::new(0, 0)),
+                    ]),
+                    Span::new(0, 0),
+                ),
+                None,
+            ),
+            (
+                Spanned::new(
+                    Pattern::Tuple(vec![
+                        Spanned::new(Pattern::Literal(LiteralPattern::Bool(false)), Span::new(0, 0)),
+                        Spanned::new(Pattern::Wildcard, Span::new(0, 0)),
+                    ]),
+                    Span::new(0, 0),
+                ),
+                None,
+            ),
+        ];
+        let result = check_exhaustiveness(&ty, &arms, &ctx);
+        assert!(result.is_exhaustive);
+    }
 }

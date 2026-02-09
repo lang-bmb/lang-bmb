@@ -3045,3 +3045,365 @@ fn test_interp_collatz_steps() {
         111 // collatz(27) takes 111 steps
     );
 }
+
+// ============================================
+// Cycle 189: Tuple Tests
+// ============================================
+
+#[test]
+fn test_tuple_type_check() {
+    assert!(type_checks(
+        "fn pair() -> (i64, bool) = (42, true);
+         fn main() -> i64 = 0;"
+    ));
+}
+
+#[test]
+fn test_tuple_field_access_type_check() {
+    assert!(type_checks(
+        "fn first(p: (i64, bool)) -> i64 = p.0;
+         fn main() -> i64 = 0;"
+    ));
+}
+
+#[test]
+fn test_interp_tuple_creation() {
+    assert_eq!(
+        run_program_i64(
+            "fn main() -> i64 = {
+               let t: (i64, i64) = (10, 20);
+               t.0 + t.1
+             };"
+        ),
+        30
+    );
+}
+
+#[test]
+fn test_interp_tuple_three_elements() {
+    assert_eq!(
+        run_program_i64(
+            "fn main() -> i64 = {
+               let t: (i64, i64, i64) = (1, 2, 3);
+               t.0 + t.1 + t.2
+             };"
+        ),
+        6
+    );
+}
+
+// ============================================
+// Cycle 189: Cast Expression Tests
+// ============================================
+
+#[test]
+fn test_cast_bool_to_i64() {
+    assert_eq!(
+        run_program_i64("fn main() -> i64 = true as i64;"),
+        1
+    );
+}
+
+#[test]
+fn test_cast_false_to_i64() {
+    assert_eq!(
+        run_program_i64("fn main() -> i64 = false as i64;"),
+        0
+    );
+}
+
+#[test]
+fn test_cast_in_expression() {
+    assert_eq!(
+        run_program_i64(
+            "fn main() -> i64 = {
+               let b: bool = 5 > 3;
+               let v: i64 = b as i64;
+               v * 10
+             };"
+        ),
+        10
+    );
+}
+
+// ============================================
+// Cycle 189: Array Repeat Tests
+// ============================================
+
+#[test]
+fn test_array_repeat_type_check() {
+    assert!(type_checks(
+        "fn main() -> i64 = {
+           let a: [i64; 5] = [0; 5];
+           a[0]
+         };"
+    ));
+}
+
+#[test]
+fn test_interp_array_repeat() {
+    assert_eq!(
+        run_program_i64(
+            "fn main() -> i64 = {
+               let a: [i64; 3] = [7; 3];
+               a[0] + a[1] + a[2]
+             };"
+        ),
+        21
+    );
+}
+
+// ============================================
+// Cycle 189: Struct Field Mutation Tests
+// ============================================
+
+#[test]
+fn test_struct_field_assign_type_check() {
+    assert!(type_checks(
+        "struct Point { x: i64, y: i64 }
+         fn main() -> i64 = {
+           let mut p: Point = new Point { x: 1, y: 2 };
+           set p.x = 10;
+           p.x
+         };"
+    ));
+}
+
+#[test]
+fn test_interp_struct_field_assign() {
+    assert_eq!(
+        run_program_i64(
+            "struct Point { x: i64, y: i64 }
+             fn main() -> i64 = {
+               let mut p: Point = new Point { x: 1, y: 2 };
+               set p.x = 10;
+               set p.y = 20;
+               p.x + p.y
+             };"
+        ),
+        30
+    );
+}
+
+// ============================================
+// Cycle 189: Index Assignment Tests
+// ============================================
+
+#[test]
+fn test_array_index_assign_type_check() {
+    assert!(type_checks(
+        "fn main() -> i64 = {
+           let mut a: [i64; 3] = [1, 2, 3];
+           set a[0] = 10;
+           a[0]
+         };"
+    ));
+}
+
+#[test]
+fn test_array_index_assign_multitype() {
+    // Index assignment type-checks with different array element types
+    assert!(type_checks(
+        "fn main() -> i64 = {
+           let mut a: [bool; 2] = [true, false];
+           set a[0] = false;
+           0
+         };"
+    ));
+}
+
+// ============================================
+// Cycle 189: Closure Tests (extended)
+// ============================================
+
+#[test]
+fn test_closure_capture() {
+    assert_eq!(
+        run_program_i64(
+            "fn main() -> i64 = {
+               let x: i64 = 10;
+               let add_x = fn |y: i64| { x + y };
+               add_x(5)
+             };"
+        ),
+        15
+    );
+}
+
+#[test]
+fn test_closure_nested() {
+    assert_eq!(
+        run_program_i64(
+            "fn main() -> i64 = {
+               let a: i64 = 5;
+               let f = fn |x: i64| { a + x };
+               let g = fn |y: i64| { f(y) * 2 };
+               g(3)
+             };"
+        ),
+        16 // (5+3)*2 = 16
+    );
+}
+
+// ============================================
+// Cycle 189: Todo Expression Tests
+// ============================================
+
+#[test]
+fn test_todo_type_checks() {
+    // todo should type-check as any type
+    assert!(type_checks(
+        "fn unimplemented() -> i64 = todo \"not done yet\";
+         fn main() -> i64 = 0;"
+    ));
+}
+
+#[test]
+fn test_todo_in_branch() {
+    // todo in one branch, concrete in the other — should type-check
+    assert!(type_checks(
+        "fn maybe(x: i64) -> i64 = if x > 0 { x } else { todo \"negative case\" };
+         fn main() -> i64 = 0;"
+    ));
+}
+
+// ============================================
+// Cycle 189: Advanced Pattern Matching Tests
+// ============================================
+
+#[test]
+fn test_match_with_wildcard() {
+    assert!(type_checks(
+        "enum Color { Red, Green, Blue }
+         fn to_int(c: Color) -> i64 = match c {
+           Color::Red => 0,
+           Color::Green => 1,
+           _ => 2
+         };
+         fn main() -> i64 = 0;"
+    ));
+}
+
+#[test]
+fn test_match_enum_with_data() {
+    assert!(type_checks(
+        "enum Shape { Circle(f64), Rect(f64, f64) }
+         fn area(s: Shape) -> f64 = match s {
+           Shape::Circle(r) => 3.14159 * r * r,
+           Shape::Rect(w, h) => w * h
+         };
+         fn main() -> i64 = 0;"
+    ));
+}
+
+// ============================================
+// Cycle 189: Nested Control Flow Tests
+// ============================================
+
+#[test]
+fn test_interp_nested_loop_break() {
+    // Outer loop counts, inner loop finds first divisor > 1
+    assert_eq!(
+        run_program_i64(
+            "fn smallest_factor(n: i64) -> i64 = {
+               let mut i: i64 = 2;
+               loop {
+                 if i > n { break } else { () };
+                 if n % i == 0 { return i } else { () };
+                 { i = i + 1 }
+               };
+               n
+             };
+             fn main() -> i64 = smallest_factor(15);"
+        ),
+        3
+    );
+}
+
+#[test]
+fn test_interp_while_with_early_return() {
+    assert_eq!(
+        run_program_i64(
+            "fn find_threshold(limit: i64) -> i64 = {
+               let mut sum: i64 = 0;
+               let mut i: i64 = 1;
+               while i <= 100 {
+                 { sum = sum + i };
+                 if sum > limit { return i } else { () };
+                 { i = i + 1 }
+               };
+               0
+             };
+             fn main() -> i64 = find_threshold(50);"
+        ),
+        10 // 1+2+3+4+5+6+7+8+9+10=55 > 50
+    );
+}
+
+#[test]
+fn test_interp_for_sum_with_break() {
+    assert_eq!(
+        run_program_i64(
+            "fn sum_until(limit: i64) -> i64 = {
+               let mut sum: i64 = 0;
+               for i in 1..=100 {
+                 { sum = sum + i };
+                 if sum >= limit { break } else { () }
+               };
+               sum
+             };
+             fn main() -> i64 = sum_until(20);"
+        ),
+        21 // 1+2+3+4+5+6=21 >= 20
+    );
+}
+
+// ============================================
+// Cycle 189: Recursive Data Structure Tests
+// ============================================
+
+#[test]
+fn test_mutual_recursion_type_check() {
+    assert!(type_checks(
+        "fn is_even(n: i64) -> bool = if n == 0 { true } else { is_odd(n - 1) };
+         fn is_odd(n: i64) -> bool = if n == 0 { false } else { is_even(n - 1) };
+         fn main() -> i64 = 0;"
+    ));
+}
+
+#[test]
+fn test_interp_mutual_recursion() {
+    assert_eq!(
+        run_program_i64(
+            "fn is_even(n: i64) -> bool = if n == 0 { true } else { is_odd(n - 1) };
+             fn is_odd(n: i64) -> bool = if n == 0 { false } else { is_even(n - 1) };
+             fn main() -> i64 = is_even(10) as i64 + is_odd(7) as i64;"
+        ),
+        2 // is_even(10)=true(1) + is_odd(7)=true(1) = 2
+    );
+}
+
+// ============================================
+// Cycle 189: Floating Point Interpreter Tests
+// ============================================
+
+#[test]
+fn test_interp_f64_operations() {
+    let result = run_program(
+        "fn main() -> f64 = 3.14 * 2.0;"
+    );
+    match result {
+        Value::Float(f) => assert!((f - 6.28).abs() < 0.001),
+        other => panic!("expected Float, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_interp_f64_comparison() {
+    assert_eq!(
+        run_program_i64(
+            "fn main() -> i64 = if 3.14 > 2.71 { 1 } else { 0 };"
+        ),
+        1
+    );
+}
