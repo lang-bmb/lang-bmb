@@ -1010,11 +1010,14 @@ fn gen_label_line(line: String) -> String =
 // ============================================================================
 
 // Generate function header
-// define i64 @add(i64 %a, i64 %b) nounwind {
+// define i64 @add(i64 %a, i64 %b) nounwind mustprogress willreturn {
 // v0.31.19: Added nounwind attribute for non-main functions
+// v0.90.22: Added mustprogress + willreturn for LLVM loop optimization
 // BMB has no exceptions, so nounwind is always safe and enables better codegen
+// mustprogress: all functions make forward progress (no infinite loops without side effects)
+// willreturn: all functions eventually return (enables dead code after call elimination)
 fn gen_fn_header(name: String, ret_type: String, params: String) -> String =
-    let attrs = if name == "main" { "" } else { " nounwind" };
+    let attrs = if name == "main" { "" } else { " nounwind mustprogress willreturn" };
     "define " + llvm_type(ret_type) + " @" + name + "(" + params + ")" + attrs + " {";
 
 // Generate function footer
