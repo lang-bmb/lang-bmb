@@ -5024,7 +5024,10 @@ fn llvm_gen_fn_header(line: String, pos: i64) -> String =
     let pure_attrs = if ann == "pure" or ann == "const" { " willreturn memory(none)" } else { "" };
     let inline_attrs = if ann == "inline" { " alwaysinline" } else { "" };
     let attrs = base_attrs + pure_attrs + inline_attrs;
-    "define " + llvm_ret + " @" + emitted_name + "(" + formatted_params + ")" + attrs + " {";
+    // v0.90.18: private linkage for @inline functions (matches Rust compiler behavior)
+    // Prevents symbol collision and enables better optimization for inlined functions
+    let linkage = if ann == "inline" and fn_name != "main" { "define private " } else { "define " };
+    linkage + llvm_ret + " @" + emitted_name + "(" + formatted_params + ")" + attrs + " {";
 
 // v0.46: Added String parameter type support
 fn format_fn_params(params: String, pos: i64, acc: String) -> String =
