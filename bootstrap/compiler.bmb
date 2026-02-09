@@ -4158,7 +4158,7 @@ fn map_runtime_fn(fn_name: String) -> String =
     else if fn_name == "@sb_push" { "@bmb_sb_push" }
     else if fn_name == "@sb_push_int" { "@bmb_sb_push_int" }
     else if fn_name == "@sb_push_char" { "@bmb_sb_push_char" }
-    else if fn_name == "@sb_push_escaped" { "@sb_push_escaped" }
+    else if fn_name == "@sb_push_escaped" { "@bmb_sb_push_escaped" }
     else if fn_name == "@sb_len" { "@bmb_sb_len" }
     else if fn_name == "@sb_build" { "@bmb_sb_build" }
     else if fn_name == "@sb_clear" { "@bmb_sb_clear" }
@@ -4346,6 +4346,7 @@ fn get_call_arg_types(fn_name: String) -> String =
     else if fn_name == "@bmb_sb_free" { "i" }
     else if fn_name == "@bmb_arena_mode" { "i" }
     else if fn_name == "@bmb_sb_push" { "ip" }
+    else if fn_name == "@bmb_sb_push_escaped" { "ip" }
     else if fn_name == "@print_str" { "p" }
     else if fn_name == "@println_str" { "p" }
     else if fn_name == "@bmb_panic" { "p" }
@@ -4962,7 +4963,7 @@ fn gen_extern_sb_new() -> String = "declare i64 @bmb_sb_new()";
 fn gen_extern_sb_push() -> String = "declare i64 @bmb_sb_push(i64, ptr)";
 fn gen_extern_sb_push_int() -> String = "declare i64 @bmb_sb_push_int(i64, i64)";
 fn gen_extern_sb_push_char() -> String = "declare i64 @bmb_sb_push_char(i64, i64)";
-fn gen_extern_sb_push_escaped() -> String = "declare i64 @sb_push_escaped(i64, ptr)";
+fn gen_extern_sb_push_escaped() -> String = "declare i64 @bmb_sb_push_escaped(i64, ptr)";
 fn gen_extern_sb_len() -> String = "declare i64 @bmb_sb_len(i64)";
 fn gen_extern_sb_build() -> String = "declare ptr @bmb_sb_build(i64)";
 fn gen_extern_sb_clear() -> String = "declare i64 @bmb_sb_clear(i64)";
