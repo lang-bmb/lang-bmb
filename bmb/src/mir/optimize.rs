@@ -4171,6 +4171,16 @@ impl ConstantPropagationNarrowing {
             return false;
         }
 
+        // v0.90.22: Don't narrow params of functions that still have self-recursive calls
+        // (not converted to loops). After TCO, remaining recursive calls create
+        // sext/trunc overhead per call frame. For fully loop-converted functions
+        // (like fibonacci), there are no remaining Call instructions to self.
+        // For partially converted functions (like ackermann), narrowing creates
+        // i32→i64 sext at entry + i64→i32 trunc at each recursive call site.
+        if Self::has_remaining_self_recursive_calls(func) {
+            return false;
+        }
+
         let func_name = &func.name;
         let Some(consts) = self.call_site_constants.get(func_name) else {
             return false;
@@ -4194,6 +4204,23 @@ impl ConstantPropagationNarrowing {
 
         // Check if function is self-recursive with decreasing arguments
         self.is_decreasing_recursive(func, param_idx)
+    }
+
+    /// v0.90.22: Check if a function still has self-recursive Call instructions.
+    /// After tail-call-to-loop conversion, fully optimized functions have no
+    /// remaining self-recursive calls (all converted to phi+goto loops).
+    /// Partially converted functions (like ackermann) still have some recursive calls.
+    fn has_remaining_self_recursive_calls(func: &MirFunction) -> bool {
+        for block in &func.blocks {
+            for inst in &block.instructions {
+                if let MirInst::Call { func: callee, .. } = inst {
+                    if callee == &func.name {
+                        return true;
+                    }
+                }
+            }
+        }
+        false
     }
 
     /// Check if the parameter decreases (or stays same) in all recursive calls
@@ -4568,6 +4595,14 @@ impl LoopBoundedNarrowing {
         // against loop variables. Narrowing inserts sext in loop headers, blocking
         // LLVM trip count computation and loop unrolling.
         if Self::is_loop_invariant_bound(func, param_idx) {
+            return false;
+        }
+
+        // v0.90.22: Don't narrow params of functions with remaining self-recursive calls.
+        // After TCO, fully converted functions have no recursive calls (all become loops).
+        // Partially converted functions (like ackermann) still have recursive calls where
+        // narrowing creates sext/trunc overhead per call frame.
+        if Self::has_remaining_self_recursive_calls(func) {
             return false;
         }
 
@@ -5424,10 +5459,13 @@ impl LoopBoundedNarrowing {
                         // compared against other params (loop variables). Narrowing them
                         // inserts sext inside loop headers, blocking LLVM trip count
                         // computation and loop unrolling.
-                        // Example: sum_collatz_lengths(start, end, acc) — `end` is invariant
-                        // and compared against `start`. Narrowing `end` to i32 creates
-                        // `sext i32 to i64` in the loop comparison, preventing unrolling.
                         if Self::is_loop_invariant_bound(func, param_idx) {
+                            continue;
+                        }
+
+                        // v0.90.22: Don't narrow params of functions with remaining
+                        // self-recursive calls. Narrowing creates sext/trunc per call.
+                        if Self::has_remaining_self_recursive_calls(func) {
                             continue;
                         }
 
@@ -5442,6 +5480,23 @@ impl LoopBoundedNarrowing {
         }
 
         changed
+    }
+
+    /// v0.90.22: Check if a function still has self-recursive Call instructions.
+    /// After tail-call-to-loop conversion, fully optimized functions have no
+    /// remaining self-recursive calls (all converted to phi+goto loops).
+    /// Partially converted functions (like ackermann) still have some recursive calls.
+    fn has_remaining_self_recursive_calls(func: &MirFunction) -> bool {
+        for block in &func.blocks {
+            for inst in &block.instructions {
+                if let MirInst::Call { func: callee, .. } = inst {
+                    if callee == &func.name {
+                        return true;
+                    }
+                }
+            }
+        }
+        false
     }
 
     /// v0.90.22: Check if a parameter is a loop-invariant bound.
@@ -7824,16 +7879,15 @@ mod tests {
 
     #[test]
     fn test_constant_propagation_narrowing() {
-        // Test: fibonacci-like pattern should narrow i64 parameter to i32
+        // v0.90.22: Test that ConstantPropagationNarrowing does NOT narrow
+        // functions with remaining self-recursive calls.
         //
-        // fibonacci(n: i64) called with fibonacci(35) from main
-        // Recursive calls: fibonacci(n-1), fibonacci(n-2)
-        // Since n starts at 35 and only decreases, all values fit in i32
-        //
-        // This optimization produces 32-bit x86 instructions instead of 64-bit,
-        // closing the 8% performance gap vs C.
+        // fibonacci(n) has recursive calls: fibonacci(n-1), fibonacci(n-2)
+        // Even though n starts at 35 and decreases, narrowing creates sext/trunc
+        // overhead per recursive call frame. The LoopBoundedNarrowing pass handles
+        // loop-converted versions instead.
 
-        // Create fibonacci function (simplified)
+        // Create fibonacci function (simplified, still has recursive calls)
         let fib_func = MirFunction {
             name: "fibonacci".to_string(),
             params: vec![("n".to_string(), MirType::I64)],
@@ -7896,7 +7950,7 @@ mod tests {
                 instructions: vec![MirInst::Call {
                     dest: Some(Place::new("result")),
                     func: "fibonacci".to_string(),
-                    args: vec![Operand::Constant(Constant::Int(35))],  // Constant arg that fits in i32
+                    args: vec![Operand::Constant(Constant::Int(35))],
                     is_tail: false,
                 }],
                 terminator: Terminator::Return(Some(Operand::Place(Place::new("result")))),
@@ -7921,24 +7975,16 @@ mod tests {
         let narrowing = ConstantPropagationNarrowing::from_program(&program);
         let changed = narrowing.run_on_program(&mut program);
 
-        // v0.51.18: Narrowing is enabled with proper i32 propagation
-        assert!(changed, "Narrowing pass should have made changes");
+        // v0.90.22: Functions with remaining self-recursive calls should NOT be narrowed.
+        // The sext/trunc overhead per call frame outweighs any i32 benefit.
+        assert!(!changed, "Narrowing pass should NOT narrow recursive functions");
 
         let fib = program.functions.iter().find(|f| f.name == "fibonacci").unwrap();
         assert_eq!(
             fib.params[0].1,
-            MirType::I32,
-            "fibonacci's n parameter should be narrowed to i32"
+            MirType::I64,
+            "fibonacci's n parameter should remain i64 (has recursive calls)"
         );
-
-        // main's parameter to fibonacci call is still a constant, unchanged
-        let main = program.functions.iter().find(|f| f.name == "main").unwrap();
-        if let MirInst::Call { args, .. } = &main.blocks[0].instructions[0] {
-            assert!(
-                matches!(args[0], Operand::Constant(Constant::Int(35))),
-                "main's call should still have constant 35"
-            );
-        }
     }
 
     #[test]
