@@ -289,11 +289,14 @@ impl CodeGen {
             // v0.90.19: Early instcombine cleans up bootstrap IR noise (identity copies,
             // constant-via-add) before the main pipeline, enabling SimplifyCFG to convert
             // nested if/else chains to select instructions (branch→select conversion).
+            // v0.90.20: Use no-verify-fixpoint to avoid LLVM instcombine fixpoint errors
+            // that cause fallback to llc-only (missing full opt pipeline). LLVM bug causes
+            // fixpoint failure on some patterns (e.g., is_prime in primes_count).
             let passes_arg = match self.opt_level {
                 OptLevel::Debug => "default<O0>",
-                OptLevel::Release => "function(instcombine),default<O3>,scalarizer",
+                OptLevel::Release => "function(instcombine<no-verify-fixpoint>),default<O3>,scalarizer",
                 OptLevel::Size => "default<Os>",
-                OptLevel::Aggressive => "function(instcombine),default<O3>",
+                OptLevel::Aggressive => "function(instcombine<no-verify-fixpoint>),default<O3>",
             };
 
             // v0.60.56: Build opt command with optional fast-math flags
@@ -371,6 +374,60 @@ impl CodeGen {
 
             // Cleanup temp files
             let _ = std::fs::remove_file(&opt_bc);
+
+            // v0.90.20: When instcombine pre-pass fails (e.g., fixpoint error on some
+            // functions), retry with plain O3 before falling back to llc-only.
+            // This ensures the full opt pipeline is used even when instcombine has issues.
+            if !opt_success && passes_arg.contains("instcombine") {
+                let fallback_passes = match self.opt_level {
+                    OptLevel::Release => "default<O3>,scalarizer",
+                    OptLevel::Aggressive => "default<O3>",
+                    _ => "default<O2>",
+                };
+                let opt_bc_retry = output.with_extension("opt2.bc");
+                let mut retry_cmd = Command::new("opt");
+                retry_cmd.args(["--passes", fallback_passes]);
+                if !cpu_str.is_empty() {
+                    retry_cmd.arg(format!("--mcpu={}", cpu_str));
+                }
+                if self.fast_math {
+                    retry_cmd.args([
+                        "--enable-unsafe-fp-math",
+                        "--enable-no-nans-fp-math",
+                        "--enable-no-infs-fp-math",
+                        "--enable-no-signed-zeros-fp-math",
+                        "--fp-contract=fast",
+                    ]);
+                }
+                retry_cmd.arg("-o").arg(&opt_bc_retry).arg(&temp_bc);
+                if let Ok(output_res) = retry_cmd.output() {
+                    if output_res.status.success() {
+                        eprintln!("Note: Fallback opt --passes={} completed successfully", fallback_passes);
+                        let opt_context = Context::create();
+                        if let Ok(opt_module) = inkwell::module::Module::parse_bitcode_from_path(&opt_bc_retry, &opt_context) {
+                            let opt_target_machine = Target::from_triple(&target_triple)
+                                .map_err(|e| CodeGenError::LlvmError(e.to_string()))?
+                                .create_target_machine(
+                                    &target_triple,
+                                    cpu.to_str().unwrap_or("generic"),
+                                    features.to_str().unwrap_or(""),
+                                    self.opt_level.into(),
+                                    RelocMode::Default,
+                                    CodeModel::Default,
+                                )
+                                .ok_or(CodeGenError::TargetMachineError)?;
+                            eprintln!("Note: Writing optimized object file");
+                            let result = opt_target_machine
+                                .write_to_file(&opt_module, FileType::Object, output)
+                                .map_err(|e| CodeGenError::ObjectFileError(e.to_string()));
+                            let _ = std::fs::remove_file(&temp_bc);
+                            let _ = std::fs::remove_file(&opt_bc_retry);
+                            return result;
+                        }
+                    }
+                }
+                let _ = std::fs::remove_file(&opt_bc_retry);
+            }
 
             // v0.60.42: Try llc -O3 as fallback when opt is unavailable
             // llc performs codegen-level optimizations which are often sufficient

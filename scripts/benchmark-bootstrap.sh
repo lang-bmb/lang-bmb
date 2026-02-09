@@ -156,7 +156,8 @@ build_with_bootstrap() {
     # Step 2: Optimize with opt (use default<O3> + scalarizer to match Rust compiler)
     # The scalarizer undoes inefficient auto-vectorization (e.g., <2 x i64> udiv)
     # v0.90.19: Early instcombine cleans identity copies before SimplifyCFG (branch→select)
-    if ! opt "--passes=function(instcombine),default<O3>,scalarizer" -o "$bc_file" "$ll_file" > /dev/null 2>&1; then
+    # v0.90.20: Use no-verify-fixpoint to avoid LLVM instcombine fixpoint false failures
+    if ! opt "--passes=function(instcombine<no-verify-fixpoint>),default<O3>,scalarizer" -o "$bc_file" "$ll_file" > /dev/null 2>&1; then
         # Fallback: try plain -O3
         if ! opt -O3 -o "$bc_file" "$ll_file" > /dev/null 2>&1; then
             echo "FAIL"
