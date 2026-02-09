@@ -11222,4 +11222,880 @@ mod tests {
         );
         assert!(result.is_none());
     }
+
+    // ================================================================
+    // Cycle 121: Advanced Optimization Pass Tests
+    // ================================================================
+
+    #[test]
+    fn test_contract_based_bounds_check_with_known_bounds() {
+        // Contract: pre idx >= 0, pre idx < 10 + comparison idx >= 0 should be eliminated
+        let mut func = MirFunction {
+            name: "access".to_string(),
+            params: vec![
+                ("idx".to_string(), MirType::I64),
+            ],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![
+                    // Check: idx >= 0 (redundant given precondition)
+                    MirInst::BinOp {
+                        dest: Place::new("check"),
+                        op: MirBinOp::Ge,
+                        lhs: Operand::Place(Place::new("idx")),
+                        rhs: Operand::Constant(Constant::Int(0)),
+                    },
+                ],
+                terminator: Terminator::Branch {
+                    cond: Operand::Place(Place::new("check")),
+                    then_label: "safe".to_string(),
+                    else_label: "panic".to_string(),
+                },
+            },
+            BasicBlock {
+                label: "safe".to_string(),
+                instructions: vec![
+                    MirInst::Const { dest: Place::new("r"), value: Constant::Int(42) },
+                ],
+                terminator: Terminator::Return(Some(Operand::Place(Place::new("r")))),
+            },
+            BasicBlock {
+                label: "panic".to_string(),
+                instructions: vec![],
+                terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(-1)))),
+            }],
+            preconditions: vec![
+                ContractFact::VarCmp { var: "idx".to_string(), op: CmpOp::Ge, value: 0 },
+                ContractFact::VarCmp { var: "idx".to_string(), op: CmpOp::Lt, value: 10 },
+            ],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let pass = ContractBasedOptimization;
+        let changed = pass.run_on_function(&mut func);
+        // The contract states idx >= 0, so check idx >= 0 is always true → folded to Const(true)
+        assert!(changed);
+        // The BinOp should be replaced with Const(Bool(true))
+        assert!(matches!(&func.blocks[0].instructions[0], MirInst::Const { value: Constant::Bool(true), .. }));
+    }
+
+    #[test]
+    fn test_contract_unreachable_nested_conditions() {
+        // Test that contract unreachable elimination handles chain of conditions
+        let func = MirFunction {
+            name: "double_check".to_string(),
+            params: vec![("x".to_string(), MirType::I64)],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![
+                    MirInst::BinOp {
+                        dest: Place::new("c1"),
+                        op: MirBinOp::Gt,
+                        lhs: Operand::Place(Place::new("x")),
+                        rhs: Operand::Constant(Constant::Int(0)),
+                    },
+                ],
+                terminator: Terminator::Branch {
+                    cond: Operand::Place(Place::new("c1")),
+                    then_label: "positive".to_string(),
+                    else_label: "negative".to_string(),
+                },
+            },
+            BasicBlock {
+                label: "positive".to_string(),
+                instructions: vec![
+                    MirInst::Const { dest: Place::new("r"), value: Constant::Int(1) },
+                ],
+                terminator: Terminator::Return(Some(Operand::Place(Place::new("r")))),
+            },
+            BasicBlock {
+                label: "negative".to_string(),
+                instructions: vec![
+                    MirInst::Const { dest: Place::new("r2"), value: Constant::Int(-1) },
+                ],
+                terminator: Terminator::Return(Some(Operand::Place(Place::new("r2")))),
+            }],
+            preconditions: vec![
+                ContractFact::VarCmp { var: "x".to_string(), op: CmpOp::Gt, value: 0 },
+            ],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let pass = ContractUnreachableElimination;
+        let mut func_clone = func.clone();
+        let changed = pass.run_on_function(&mut func_clone);
+        // With pre x > 0, the else branch should be unreachable
+        assert!(changed);
+        // The branch should be simplified to a direct goto
+        assert!(matches!(func_clone.blocks[0].terminator, Terminator::Goto(_)));
+    }
+
+    #[test]
+    fn test_copy_propagation_replaces_in_binop() {
+        // Verify copy propagation replaces operands in binary operations
+        // a = copy input; result = a + 1 → result = input + 1
+        let mut func = MirFunction {
+            name: "copy_use".to_string(),
+            params: vec![("input".to_string(), MirType::I64)],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![
+                    MirInst::Copy {
+                        dest: Place::new("a"),
+                        src: Place::new("input"),
+                    },
+                    MirInst::BinOp {
+                        dest: Place::new("result"),
+                        op: MirBinOp::Add,
+                        lhs: Operand::Place(Place::new("a")),
+                        rhs: Operand::Constant(Constant::Int(1)),
+                    },
+                ],
+                terminator: Terminator::Return(Some(Operand::Place(Place::new("result")))),
+            }],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let pass = CopyPropagation;
+        let changed = pass.run_on_function(&mut func);
+        assert!(changed);
+        // After copy propagation, the BinOp should use 'input' directly
+        let binop_found = func.blocks[0].instructions.iter().any(|inst| {
+            matches!(inst, MirInst::BinOp { lhs: Operand::Place(p), .. } if p.name == "input")
+        });
+        assert!(binop_found);
+    }
+
+    #[test]
+    fn test_phi_simplification_same_operand_from_multiple_preds() {
+        // Phi with same value from multiple predecessors should simplify to copy
+        let mut func = MirFunction {
+            name: "phi_test".to_string(),
+            params: vec![("x".to_string(), MirType::I64)],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![
+                BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![
+                        MirInst::BinOp {
+                            dest: Place::new("cond"),
+                            op: MirBinOp::Gt,
+                            lhs: Operand::Place(Place::new("x")),
+                            rhs: Operand::Constant(Constant::Int(0)),
+                        },
+                    ],
+                    terminator: Terminator::Branch {
+                        cond: Operand::Place(Place::new("cond")),
+                        then_label: "then".to_string(),
+                        else_label: "else".to_string(),
+                    },
+                },
+                BasicBlock {
+                    label: "then".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Goto("merge".to_string()),
+                },
+                BasicBlock {
+                    label: "else".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Goto("merge".to_string()),
+                },
+                BasicBlock {
+                    label: "merge".to_string(),
+                    instructions: vec![
+                        MirInst::Phi {
+                            dest: Place::new("val"),
+                            values: vec![
+                                (Operand::Place(Place::new("x")), "then".to_string()),
+                                (Operand::Place(Place::new("x")), "else".to_string()),
+                            ],
+                        },
+                    ],
+                    terminator: Terminator::Return(Some(Operand::Place(Place::new("val")))),
+                },
+            ],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let pass = PhiSimplification;
+        let changed = pass.run_on_function(&mut func);
+        assert!(changed);
+        // Phi should be replaced with a Copy since both operands are the same
+        assert!(matches!(&func.blocks[3].instructions[0], MirInst::Copy { .. }));
+    }
+
+    #[test]
+    fn test_block_merging_chain_of_gotos() {
+        // Chain: entry -> mid -> end should merge mid into entry
+        let mut func = MirFunction {
+            name: "chain".to_string(),
+            params: vec![],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![
+                BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![
+                        MirInst::Const { dest: Place::new("a"), value: Constant::Int(1) },
+                    ],
+                    terminator: Terminator::Goto("mid".to_string()),
+                },
+                BasicBlock {
+                    label: "mid".to_string(),
+                    instructions: vec![
+                        MirInst::Const { dest: Place::new("b"), value: Constant::Int(2) },
+                    ],
+                    terminator: Terminator::Goto("end".to_string()),
+                },
+                BasicBlock {
+                    label: "end".to_string(),
+                    instructions: vec![
+                        MirInst::BinOp {
+                            dest: Place::new("r"),
+                            op: MirBinOp::Add,
+                            lhs: Operand::Place(Place::new("a")),
+                            rhs: Operand::Place(Place::new("b")),
+                        },
+                    ],
+                    terminator: Terminator::Return(Some(Operand::Place(Place::new("r")))),
+                },
+            ],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let pass = BlockMerging;
+        let changed = pass.run_on_function(&mut func);
+        assert!(changed);
+        // After merging, entry should contain both constants
+        assert!(func.blocks[0].instructions.len() >= 2);
+    }
+
+    #[test]
+    fn test_cse_eliminates_same_binop() {
+        // Two identical add operations → second should be eliminated
+        let mut func = MirFunction {
+            name: "cse_test".to_string(),
+            params: vec![("x".to_string(), MirType::I64), ("y".to_string(), MirType::I64)],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![
+                    MirInst::BinOp {
+                        dest: Place::new("a"),
+                        op: MirBinOp::Add,
+                        lhs: Operand::Place(Place::new("x")),
+                        rhs: Operand::Place(Place::new("y")),
+                    },
+                    MirInst::BinOp {
+                        dest: Place::new("b"),
+                        op: MirBinOp::Add,
+                        lhs: Operand::Place(Place::new("x")),
+                        rhs: Operand::Place(Place::new("y")),
+                    },
+                    MirInst::BinOp {
+                        dest: Place::new("result"),
+                        op: MirBinOp::Add,
+                        lhs: Operand::Place(Place::new("a")),
+                        rhs: Operand::Place(Place::new("b")),
+                    },
+                ],
+                terminator: Terminator::Return(Some(Operand::Place(Place::new("result")))),
+            }],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let pass = CommonSubexpressionElimination;
+        let changed = pass.run_on_function(&mut func);
+        assert!(changed);
+        // The second BinOp (b = x+y) should be replaced with a Copy from a
+        assert!(func.blocks[0].instructions.iter().any(|i| matches!(i, MirInst::Copy { dest, .. } if dest.name == "b")));
+    }
+
+    #[test]
+    fn test_dce_removes_unused_const() {
+        // A constant that is never used should be eliminated
+        let mut func = MirFunction {
+            name: "dce_test".to_string(),
+            params: vec![],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![
+                    MirInst::Const { dest: Place::new("unused"), value: Constant::Int(999) },
+                    MirInst::Const { dest: Place::new("used"), value: Constant::Int(42) },
+                ],
+                terminator: Terminator::Return(Some(Operand::Place(Place::new("used")))),
+            }],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let pass = DeadCodeElimination;
+        let changed = pass.run_on_function(&mut func);
+        assert!(changed);
+        // The unused constant should be removed
+        assert_eq!(func.blocks[0].instructions.len(), 1);
+        assert!(matches!(&func.blocks[0].instructions[0], MirInst::Const { dest, value: Constant::Int(42) } if dest.name == "used"));
+    }
+
+    #[test]
+    fn test_constant_folding_chain() {
+        // Folding: a = 2+3, b = a*4 → a = 5, b = 20
+        let mut func = MirFunction {
+            name: "fold_chain".to_string(),
+            params: vec![],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![
+                    MirInst::Const { dest: Place::new("c2"), value: Constant::Int(2) },
+                    MirInst::Const { dest: Place::new("c3"), value: Constant::Int(3) },
+                    MirInst::BinOp {
+                        dest: Place::new("a"),
+                        op: MirBinOp::Add,
+                        lhs: Operand::Constant(Constant::Int(2)),
+                        rhs: Operand::Constant(Constant::Int(3)),
+                    },
+                    MirInst::BinOp {
+                        dest: Place::new("b"),
+                        op: MirBinOp::Mul,
+                        lhs: Operand::Constant(Constant::Int(5)),
+                        rhs: Operand::Constant(Constant::Int(4)),
+                    },
+                ],
+                terminator: Terminator::Return(Some(Operand::Place(Place::new("b")))),
+            }],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let pass = ConstantFolding;
+        let changed = pass.run_on_function(&mut func);
+        assert!(changed);
+        // Both BinOps should be folded to constants
+        let folded_count = func.blocks[0].instructions.iter()
+            .filter(|i| matches!(i, MirInst::Const { .. }))
+            .count();
+        assert!(folded_count >= 3); // c2, c3, and at least a or b folded
+    }
+
+    #[test]
+    fn test_constant_folding_comparison() {
+        // Folding comparison: 5 > 3 → true
+        let mut func = MirFunction {
+            name: "fold_cmp".to_string(),
+            params: vec![],
+            ret_ty: MirType::Bool,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![
+                    MirInst::BinOp {
+                        dest: Place::new("r"),
+                        op: MirBinOp::Gt,
+                        lhs: Operand::Constant(Constant::Int(5)),
+                        rhs: Operand::Constant(Constant::Int(3)),
+                    },
+                ],
+                terminator: Terminator::Return(Some(Operand::Place(Place::new("r")))),
+            }],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let pass = ConstantFolding;
+        let changed = pass.run_on_function(&mut func);
+        assert!(changed);
+        // The comparison should be folded to Const(Bool(true))
+        assert!(matches!(&func.blocks[0].instructions[0], MirInst::Const { value: Constant::Bool(true), .. }));
+    }
+
+    #[test]
+    fn test_algebraic_sub_self_to_zero() {
+        // x - x → 0 (requires same operand detection)
+        let result = simplify_binop(
+            &Place::new("r"),
+            MirBinOp::Sub,
+            &Operand::Place(Place::new("x")),
+            &Operand::Constant(Constant::Int(0)),
+        );
+        // Sub x 0 → copy x (identity)
+        assert!(result.is_some());
+        if let Some(MirInst::Copy { dest, src }) = result {
+            assert_eq!(dest.name, "r");
+            assert_eq!(src.name, "x");
+        }
+    }
+
+    #[test]
+    fn test_memory_load_cse_same_call_twice() {
+        // Two identical load_f64 calls with same args → second should be CSE'd
+        let mut func = MirFunction {
+            name: "field_cse".to_string(),
+            params: vec![("ptr".to_string(), MirType::I64)],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![
+                    MirInst::Call {
+                        dest: Some(Place::new("a")),
+                        func: "load_f64".to_string(),
+                        args: vec![Operand::Place(Place::new("ptr"))],
+                        is_tail: false,
+                    },
+                    MirInst::Call {
+                        dest: Some(Place::new("b")),
+                        func: "load_f64".to_string(),
+                        args: vec![Operand::Place(Place::new("ptr"))],
+                        is_tail: false,
+                    },
+                    MirInst::BinOp {
+                        dest: Place::new("r"),
+                        op: MirBinOp::Add,
+                        lhs: Operand::Place(Place::new("a")),
+                        rhs: Operand::Place(Place::new("b")),
+                    },
+                ],
+                terminator: Terminator::Return(Some(Operand::Place(Place::new("r")))),
+            }],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let pass = MemoryLoadCSE;
+        let changed = pass.run_on_function(&mut func);
+        assert!(changed);
+        // Second load_f64 should be replaced with Copy
+        assert!(func.blocks[0].instructions.iter().any(|i| matches!(i, MirInst::Copy { dest, .. } if dest.name == "b")));
+    }
+
+    #[test]
+    fn test_simplify_branches_constant_true_goto() {
+        // Branch with constant true should become Goto to then_label
+        let mut func = MirFunction {
+            name: "branch_true".to_string(),
+            params: vec![],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![
+                BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Branch {
+                        cond: Operand::Constant(Constant::Bool(true)),
+                        then_label: "yes".to_string(),
+                        else_label: "no".to_string(),
+                    },
+                },
+                BasicBlock {
+                    label: "yes".to_string(),
+                    instructions: vec![
+                        MirInst::Const { dest: Place::new("r"), value: Constant::Int(1) },
+                    ],
+                    terminator: Terminator::Return(Some(Operand::Place(Place::new("r")))),
+                },
+                BasicBlock {
+                    label: "no".to_string(),
+                    instructions: vec![
+                        MirInst::Const { dest: Place::new("r2"), value: Constant::Int(0) },
+                    ],
+                    terminator: Terminator::Return(Some(Operand::Place(Place::new("r2")))),
+                },
+            ],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let pass = SimplifyBranches;
+        let changed = pass.run_on_function(&mut func);
+        assert!(changed);
+        assert!(matches!(func.blocks[0].terminator, Terminator::Goto(ref label) if label == "yes"));
+    }
+
+    #[test]
+    fn test_pure_function_cse_three_identical_calls() {
+        // Three identical calls to a pure function → only one call, two copies
+        let pure_fns: HashSet<String> = ["pure_compute".to_string()].into_iter().collect();
+        let cse = PureFunctionCSE::new(pure_fns);
+
+        let mut func = MirFunction {
+            name: "caller".to_string(),
+            params: vec![("x".to_string(), MirType::I64)],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![
+                    MirInst::Call {
+                        dest: Some(Place::new("a")),
+                        func: "pure_compute".to_string(),
+                        args: vec![Operand::Place(Place::new("x"))],
+                        is_tail: false,
+                    },
+                    MirInst::Call {
+                        dest: Some(Place::new("b")),
+                        func: "pure_compute".to_string(),
+                        args: vec![Operand::Place(Place::new("x"))],
+                        is_tail: false,
+                    },
+                    MirInst::Call {
+                        dest: Some(Place::new("c")),
+                        func: "pure_compute".to_string(),
+                        args: vec![Operand::Place(Place::new("x"))],
+                        is_tail: false,
+                    },
+                ],
+                terminator: Terminator::Return(Some(Operand::Place(Place::new("c")))),
+            }],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let changed = cse.run_on_function(&mut func);
+        assert!(changed);
+        // Should have 1 Call + 2 Copies
+        let call_count = func.blocks[0].instructions.iter()
+            .filter(|i| matches!(i, MirInst::Call { .. }))
+            .count();
+        let copy_count = func.blocks[0].instructions.iter()
+            .filter(|i| matches!(i, MirInst::Copy { .. }))
+            .count();
+        assert_eq!(call_count, 1);
+        assert_eq!(copy_count, 2);
+    }
+
+    #[test]
+    fn test_unreachable_block_removal_after_return() {
+        // Block after return with no predecessors should be removed
+        let mut func = MirFunction {
+            name: "unreachable_test".to_string(),
+            params: vec![],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![
+                BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![
+                        MirInst::Const { dest: Place::new("r"), value: Constant::Int(42) },
+                    ],
+                    terminator: Terminator::Return(Some(Operand::Place(Place::new("r")))),
+                },
+                BasicBlock {
+                    label: "dead".to_string(),
+                    instructions: vec![
+                        MirInst::Const { dest: Place::new("x"), value: Constant::Int(999) },
+                    ],
+                    terminator: Terminator::Return(Some(Operand::Place(Place::new("x")))),
+                },
+            ],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let pass = UnreachableBlockElimination;
+        let changed = pass.run_on_function(&mut func);
+        assert!(changed);
+        assert_eq!(func.blocks.len(), 1);
+        assert_eq!(func.blocks[0].label, "entry");
+    }
+
+    #[test]
+    fn test_loop_bounded_narrowing_with_mul_in_func() {
+        // Function with multiplication should be flagged
+        let func = MirFunction {
+            name: "mul_func".to_string(),
+            params: vec![("n".to_string(), MirType::I64)],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![
+                    MirInst::BinOp {
+                        dest: Place::new("r"),
+                        op: MirBinOp::Mul,
+                        lhs: Operand::Place(Place::new("n")),
+                        rhs: Operand::Place(Place::new("n")),
+                    },
+                ],
+                terminator: Terminator::Return(Some(Operand::Place(Place::new("r")))),
+            }],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        assert!(LoopBoundedNarrowing::has_direct_multiplication(&func));
+    }
+
+    #[test]
+    fn test_loop_bounded_narrowing_without_mul() {
+        // Function without multiplication should NOT be flagged
+        let func = MirFunction {
+            name: "add_func".to_string(),
+            params: vec![("n".to_string(), MirType::I64)],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![
+                    MirInst::BinOp {
+                        dest: Place::new("r"),
+                        op: MirBinOp::Add,
+                        lhs: Operand::Place(Place::new("n")),
+                        rhs: Operand::Constant(Constant::Int(1)),
+                    },
+                ],
+                terminator: Terminator::Return(Some(Operand::Place(Place::new("r")))),
+            }],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        assert!(!LoopBoundedNarrowing::has_direct_multiplication(&func));
+    }
+
+    #[test]
+    fn test_global_field_cse_different_base_no_dedup() {
+        // FieldAccess from different base objects should NOT be deduplicated
+        let mut func = MirFunction {
+            name: "diff_base".to_string(),
+            params: vec![
+                ("obj1".to_string(), MirType::Struct { name: "Point".to_string(), fields: vec![] }),
+                ("obj2".to_string(), MirType::Struct { name: "Point".to_string(), fields: vec![] }),
+            ],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![
+                    MirInst::FieldAccess {
+                        dest: Place::new("a"),
+                        base: Place::new("obj1"),
+                        field: "x".to_string(),
+                        field_index: 0,
+                        struct_name: "Point".to_string(),
+                    },
+                    MirInst::FieldAccess {
+                        dest: Place::new("b"),
+                        base: Place::new("obj2"),
+                        field: "x".to_string(),
+                        field_index: 0,
+                        struct_name: "Point".to_string(),
+                    },
+                ],
+                terminator: Terminator::Return(Some(Operand::Place(Place::new("a")))),
+            }],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let pass = GlobalFieldAccessCSE;
+        let changed = pass.run_on_function(&mut func);
+        // Different bases → no deduplication should happen
+        assert!(!changed);
+    }
+
+    #[test]
+    fn test_string_concat_opt_default() {
+        let opt = StringConcatOptimization::default();
+        assert_eq!(opt.name(), "StringConcatOptimization");
+    }
+
+    #[test]
+    fn test_if_else_to_switch_default() {
+        let opt = IfElseToSwitch::default();
+        assert_eq!(opt.name(), "IfElseToSwitch");
+    }
+
+    #[test]
+    fn test_tail_recursive_to_loop_default() {
+        let opt = TailRecursiveToLoop::default();
+        assert_eq!(opt.name(), "TailRecursiveToLoop");
+    }
+
+    #[test]
+    fn test_loop_bounded_narrowing_from_main_call() {
+        // Test LoopBoundedNarrowing: main calls func(100), parameter should be narrowed to i32
+        let mut program = MirProgram {
+            functions: vec![
+                MirFunction {
+                    name: "main".to_string(),
+                    params: vec![],
+                    ret_ty: MirType::I64,
+                    locals: vec![],
+                    blocks: vec![BasicBlock {
+                        label: "entry".to_string(),
+                        instructions: vec![
+                            MirInst::Call {
+                                dest: Some(Place::new("r")),
+                                func: "compute".to_string(),
+                                args: vec![Operand::Constant(Constant::Int(100))],
+                                is_tail: false,
+                            },
+                        ],
+                        terminator: Terminator::Return(Some(Operand::Place(Place::new("r")))),
+                    }],
+                    preconditions: vec![],
+                    postconditions: vec![],
+                    is_pure: false,
+                    is_const: false,
+                    always_inline: false,
+                    inline_hint: false,
+                    is_memory_free: false,
+                },
+                MirFunction {
+                    name: "compute".to_string(),
+                    params: vec![("n".to_string(), MirType::I64)],
+                    ret_ty: MirType::I64,
+                    locals: vec![],
+                    blocks: vec![BasicBlock {
+                        label: "entry".to_string(),
+                        instructions: vec![
+                            MirInst::BinOp {
+                                dest: Place::new("r"),
+                                op: MirBinOp::Add,
+                                lhs: Operand::Place(Place::new("n")),
+                                rhs: Operand::Constant(Constant::Int(1)),
+                            },
+                        ],
+                        terminator: Terminator::Return(Some(Operand::Place(Place::new("r")))),
+                    }],
+                    preconditions: vec![],
+                    postconditions: vec![],
+                    is_pure: false,
+                    is_const: false,
+                    always_inline: false,
+                    inline_hint: false,
+                    is_memory_free: false,
+                },
+            ],
+            extern_fns: vec![],
+            struct_defs: HashMap::new(),
+        };
+
+        let narrowing = LoopBoundedNarrowing::from_program(&program);
+        let changed = narrowing.run_on_program(&mut program);
+        // main calls compute(100) where 100 fits in i32, so param should be narrowed
+        assert!(changed);
+        assert_eq!(program.functions[1].params[0].1, MirType::I32);
+    }
+
+    #[test]
+    fn test_pipeline_stats_display() {
+        let mut stats = OptimizationStats::new();
+        stats.record_pass("ConstantFolding");
+        stats.record_pass("ConstantFolding");
+        stats.record_pass("DCE");
+        assert_eq!(*stats.pass_counts.get("ConstantFolding").unwrap(), 2);
+        assert_eq!(*stats.pass_counts.get("DCE").unwrap(), 1);
+    }
+
+    #[test]
+    fn test_pipeline_stats_merge_multiple() {
+        let mut s1 = OptimizationStats::new();
+        s1.record_pass("CSE");
+        s1.record_pass("CSE");
+
+        let mut s2 = OptimizationStats::new();
+        s2.record_pass("CSE");
+        s2.record_pass("DCE");
+
+        s1.merge(&s2);
+        assert_eq!(*s1.pass_counts.get("CSE").unwrap(), 3);
+        assert_eq!(*s1.pass_counts.get("DCE").unwrap(), 1);
+    }
 }

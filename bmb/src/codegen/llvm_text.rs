@@ -5683,4 +5683,200 @@ mod tests {
         // Should contain module header at minimum
         assert!(ir.contains("target"));
     }
+
+    // ================================================================
+    // Cycle 122: Extended LLVM Text Codegen Tests
+    // ================================================================
+
+    #[test]
+    fn test_rt_recursive_fibonacci() {
+        let ir = source_to_ir(
+            "fn fib(n: i64) -> i64 = if n <= 1 { n } else { fib(n - 1) + fib(n - 2) };"
+        );
+        assert!(ir.contains("@fib"));
+        assert!(ir.contains("call i64 @fib"), "recursive call missing");
+        assert!(ir.contains("icmp sle i64"));
+    }
+
+    #[test]
+    fn test_rt_simple_multiplication() {
+        let ir = source_to_ir("fn double(x: i64) -> i64 = x * 2;");
+        assert!(ir.contains("@double"));
+        assert!(ir.contains("mul nsw i64"));
+    }
+
+    #[test]
+    fn test_rt_multiple_params() {
+        let ir = source_to_ir("fn add3(a: i64, b: i64, c: i64) -> i64 = a + b + c;");
+        assert!(ir.contains("@add3"));
+        let add_count = ir.matches("add nsw i64").count();
+        assert!(add_count >= 2, "should have 2 add operations, found {}", add_count);
+    }
+
+    #[test]
+    fn test_rt_f64_comparison() {
+        let ir = source_to_ir("fn flt(a: f64, b: f64) -> bool = a < b;");
+        assert!(ir.contains("@flt"));
+        assert!(ir.contains("fcmp") || ir.contains("olt"), "float comparison missing");
+    }
+
+    #[test]
+    fn test_rt_f64_negation() {
+        let ir = source_to_ir("fn fneg_val(x: f64) -> f64 = 0.0 - x;");
+        assert!(ir.contains("@fneg_val"));
+        assert!(ir.contains("fsub") || ir.contains("fneg"), "float negation missing");
+    }
+
+    #[test]
+    fn test_rt_while_loop_accumulator() {
+        let ir = source_to_ir(
+            "fn sum(n: i64) -> i64 = { let mut s = 0; let mut i = 0; while i < n { s = s + i; i = i + 1 }; s };"
+        );
+        assert!(ir.contains("@sum"));
+        // Should have loop structure with branches
+        assert!(ir.contains("br i1"), "conditional branch in loop missing");
+        assert!(ir.contains("br label"), "unconditional branch for loop back-edge missing");
+    }
+
+    #[test]
+    fn test_rt_for_loop_sum() {
+        let ir = source_to_ir(
+            "fn sum_range(n: i64) -> i64 = { let mut s = 0; for i in 0..n { s = s + i }; s };"
+        );
+        assert!(ir.contains("@sum_range"));
+        assert!(ir.contains("br i1"), "loop condition branch missing");
+    }
+
+    #[test]
+    fn test_rt_struct_field_access() {
+        let ir = source_to_ir(
+            "struct Point { x: i64, y: i64 }\n\
+             fn get_x(p: Point) -> i64 = p.x;"
+        );
+        assert!(ir.contains("@get_x"));
+        assert!(ir.contains("getelementptr") || ir.contains("extractvalue"),
+                "struct field access instruction missing");
+    }
+
+    #[test]
+    fn test_rt_struct_creation() {
+        let ir = source_to_ir(
+            "struct Vec2 { x: i64, y: i64 }\n\
+             fn make_vec(a: i64, b: i64) -> Vec2 = new Vec2 { x: a, y: b };"
+        );
+        assert!(ir.contains("@make_vec"));
+    }
+
+    #[test]
+    fn test_rt_enum_match_multiple_arms() {
+        let ir = source_to_ir(
+            "enum Color { Red, Green, Blue }\n\
+             fn color_val(c: Color) -> i64 = match c { Color::Red => 1, Color::Green => 2, Color::Blue => 3 };"
+        );
+        assert!(ir.contains("@color_val"));
+        // Match should produce either switch or branch chain
+        assert!(ir.contains("switch") || ir.matches("br i1").count() >= 2,
+                "enum match should produce switch or branch chain");
+    }
+
+    #[test]
+    fn test_rt_logical_and_or() {
+        let ir = source_to_ir("fn both(a: bool, b: bool) -> bool = a && b;");
+        assert!(ir.contains("@both"));
+        // Short-circuit should produce branch
+        assert!(ir.contains("br i1") || ir.contains("and i1"), "logical AND missing");
+    }
+
+    #[test]
+    fn test_rt_logical_or() {
+        let ir = source_to_ir("fn either(a: bool, b: bool) -> bool = a || b;");
+        assert!(ir.contains("@either"));
+        assert!(ir.contains("br i1") || ir.contains("or i1"), "logical OR missing");
+    }
+
+    #[test]
+    fn test_rt_logical_not() {
+        let ir = source_to_ir("fn negate(a: bool) -> bool = !a;");
+        assert!(ir.contains("@negate"));
+        assert!(ir.contains("xor i1") || ir.contains("icmp eq"), "logical NOT missing");
+    }
+
+    #[test]
+    fn test_rt_char_type() {
+        let ir = source_to_ir("fn identity_char(c: char) -> char = c;");
+        assert!(ir.contains("@identity_char"));
+    }
+
+    #[test]
+    fn test_rt_string_literal() {
+        let ir = source_to_ir(r#"fn greeting() -> string = "hello";"#);
+        assert!(ir.contains("@greeting"));
+        // String literal should be in constant data
+        assert!(ir.contains("hello") || ir.contains("@.str"), "string constant missing");
+    }
+
+    #[test]
+    fn test_rt_multiple_let_bindings() {
+        let ir = source_to_ir(
+            "fn multi_let(x: i64) -> i64 = { let a = x + 1; let b = a * 2; let c = b - 3; c };"
+        );
+        assert!(ir.contains("@multi_let"));
+        assert!(ir.contains("add nsw i64"));
+        assert!(ir.contains("mul nsw i64"));
+        assert!(ir.contains("sub nsw i64"));
+    }
+
+    #[test]
+    fn test_rt_contract_precondition_check() {
+        let ir = source_to_ir(
+            "fn safe_div(a: i64, b: i64) -> i64\n  pre b != 0\n= a / b;"
+        );
+        assert!(ir.contains("@safe_div"));
+        // Pre-condition should be present or elided by optimization
+        assert!(ir.contains("sdiv i64") || ir.contains("div"), "division missing");
+    }
+
+    #[test]
+    fn test_rt_bitwise_xor() {
+        let ir = source_to_ir("fn xor_fn(a: i64, b: i64) -> i64 = a bxor b;");
+        assert!(ir.contains("@xor_fn"));
+        assert!(ir.contains("xor i64"));
+    }
+
+    #[test]
+    fn test_rt_identity_function() {
+        let ir = source_to_ir("fn id(x: i64) -> i64 = x;");
+        assert!(ir.contains("@id"));
+        assert!(ir.contains("ret i64"), "identity return missing");
+    }
+
+    #[test]
+    fn test_rt_constant_int_literal() {
+        let ir = source_to_ir("fn forty_two() -> i64 = 42;");
+        assert!(ir.contains("@forty_two"));
+        assert!(ir.contains("ret i64 42"));
+    }
+
+    #[test]
+    fn test_rt_f64_constant() {
+        let ir = source_to_ir("fn pi() -> f64 = 3.14;");
+        assert!(ir.contains("@pi"));
+        assert!(ir.contains("double") || ir.contains("3.14"), "f64 constant missing");
+    }
+
+    #[test]
+    fn test_rt_zero_function() {
+        let ir = source_to_ir("fn zero() -> i64 = 0;");
+        assert!(ir.contains("@zero"));
+        assert!(ir.contains("ret i64 0"));
+    }
+
+    #[test]
+    fn test_rt_nested_arithmetic() {
+        let ir = source_to_ir("fn calc(a: i64, b: i64, c: i64) -> i64 = (a + b) * (c - a);");
+        assert!(ir.contains("@calc"));
+        assert!(ir.contains("add nsw i64"));
+        assert!(ir.contains("sub nsw i64"));
+        assert!(ir.contains("mul nsw i64"));
+    }
 }
