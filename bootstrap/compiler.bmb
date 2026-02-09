@@ -5098,8 +5098,10 @@ fn matches_string_pattern(s: String, pos: i64) -> bool =
     s.byte_at(pos + 4) == 110 and s.byte_at(pos + 5) == 103 and
     s.byte_at(pos + 6) == 32 and s.byte_at(pos + 7) == 34;
 
+// v0.90.12: Handle escape sequences when scanning for closing quote in MIR strings
 fn find_quote_in_mir(s: String, pos: i64) -> i64 =
     if pos >= s.len() { s.len() }
+    else if s.byte_at(pos) == 92 and pos + 1 < s.len() { find_quote_in_mir(s, pos + 2) }
     else if s.byte_at(pos) == 34 { pos }
     else { find_quote_in_mir(s, pos + 1) };
 
@@ -5222,15 +5224,39 @@ fn gen_string_globals(strings: String) -> String =
 fn escape_llvm_string(s: String) -> String =
     escape_llvm_string_acc(s, 0, "");
 
+// v0.90.12: Handle escape sequences: \n→\0A, \t→\09, \r→\0D, \0→\00, \\→\5C, \"→\22
 fn escape_llvm_string_acc(s: String, pos: i64, acc: String) -> String =
     if pos >= s.len() { acc }
     else {
         let ch = s.byte_at(pos);
-        let escaped = if ch == 124 { chr(92) + "7C" }
-                      else if ch == 92 { chr(92) + "5C" }
-                      else if ch == 34 { chr(92) + "22" }
-                      else { chr(ch) };
-        escape_llvm_string_acc(s, pos + 1, acc + escaped)
+        if ch == 92 and pos + 1 < s.len() {
+            let next = s.byte_at(pos + 1);
+            if next == 110 { escape_llvm_string_acc(s, pos + 2, acc + chr(92) + "0A") }
+            else if next == 116 { escape_llvm_string_acc(s, pos + 2, acc + chr(92) + "09") }
+            else if next == 114 { escape_llvm_string_acc(s, pos + 2, acc + chr(92) + "0D") }
+            else if next == 48 { escape_llvm_string_acc(s, pos + 2, acc + chr(92) + "00") }
+            else if next == 92 { escape_llvm_string_acc(s, pos + 2, acc + chr(92) + "5C") }
+            else if next == 34 { escape_llvm_string_acc(s, pos + 2, acc + chr(92) + "22") }
+            else { escape_llvm_string_acc(s, pos + 1, acc + chr(92) + "5C") }
+        } else if ch == 124 { escape_llvm_string_acc(s, pos + 1, acc + chr(92) + "7C") }
+        else if ch == 34 { escape_llvm_string_acc(s, pos + 1, acc + chr(92) + "22") }
+        else { escape_llvm_string_acc(s, pos + 1, acc + chr(ch)) }
+    };
+
+// v0.90.12: Count actual bytes after escape sequence processing
+fn count_string_bytes(s: String) -> i64 =
+    count_string_bytes_acc(s, 0, 0);
+
+fn count_string_bytes_acc(s: String, pos: i64, count: i64) -> i64 =
+    if pos >= s.len() { count }
+    else {
+        let ch = s.byte_at(pos);
+        if ch == 92 and pos + 1 < s.len() {
+            let next = s.byte_at(pos + 1);
+            if next == 110 or next == 116 or next == 114 or next == 48 or next == 92 or next == 34 {
+                count_string_bytes_acc(s, pos + 2, count + 1)
+            } else { count_string_bytes_acc(s, pos + 1, count + 1) }
+        } else { count_string_bytes_acc(s, pos + 1, count + 1) }
     };
 
 fn gen_string_globals_acc(strings: String, pos: i64, idx: i64, sb: i64) -> i64 =
@@ -5239,7 +5265,7 @@ fn gen_string_globals_acc(strings: String, pos: i64, idx: i64, sb: i64) -> i64 =
         let end = if pipe >= strings.len() { strings.len() } else { pipe };
         let str_content = strings.slice(pos, end);
         let escaped_content = escape_llvm_string(str_content);
-        let str_len = str_content.len() + 1;
+        let str_len = count_string_bytes(str_content) + 1;
         let global = "@str_data_" + int_to_string(idx) + " = private unnamed_addr constant [" +
             int_to_string(str_len) + " x i8] c" + chr(34) + escaped_content + chr(92) + "00" + chr(34);
         let len = sb_len(sb);
@@ -7255,9 +7281,10 @@ fn llvm_gen_rhs_with_strings(line: String, pos: i64, dest: String, strings: Stri
     if r.len() > 0 and r.byte_at(0) == 33 { extract_new_llvm_line(r) } else { r };
 
 // Generate reference to string global
+// v0.90.12: Use count_string_bytes for correct byte length (escape sequences = 1 byte)
 fn llvm_gen_string_ref(dest: String, str_content: String, strings: String) -> String =
     let idx = find_string_index(strings, str_content);
-    let str_len = str_content.len() + 1;
+    let str_len = count_string_bytes(str_content) + 1;
     let global_name = "@str_data_" + int_to_string(idx);
     let gep_dest = dest + "_gep";
     let call_dest = dest + "_call";
