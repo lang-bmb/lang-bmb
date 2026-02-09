@@ -6336,4 +6336,190 @@ mod tests {
         // Bitwise operators require integer type, not bool
         assert!(err("fn bad(a: bool, b: bool) -> bool = a band b;"));
     }
+
+    // ================================================================
+    // Cycle 123: Extended Type Checker Tests
+    // ================================================================
+
+    #[test]
+    fn test_tc_nullable_is_some_branch() {
+        assert!(ok(
+            "fn safe_get(opt: i64?) -> i64 = if opt.is_some() { opt.unwrap_or(0) } else { 0 };"
+        ));
+    }
+
+    #[test]
+    fn test_tc_nullable_assignment_null() {
+        assert!(ok("fn make_none() -> i64? = null;"));
+    }
+
+    #[test]
+    fn test_tc_generic_pair() {
+        assert!(ok(
+            "struct Pair<T, U> { first: T, second: U }
+             fn make_pair(a: i64, b: bool) -> Pair<i64, bool> = new Pair { first: a, second: b };"
+        ));
+    }
+
+    #[test]
+    fn test_tc_generic_function_identity() {
+        assert!(ok("fn identity<T>(x: T) -> T = x;"));
+    }
+
+    #[test]
+    fn test_tc_type_alias_basic() {
+        assert!(ok("type Int = i64; fn add(a: Int, b: Int) -> Int = a + b;"));
+    }
+
+    #[test]
+    fn test_tc_enum_with_data_types() {
+        assert!(ok(
+            "enum Shape { Circle(f64), Rectangle(f64, f64), Point }
+             fn area(s: Shape) -> f64 = match s {
+                 Shape::Circle(r) => r * r * 3.14,
+                 Shape::Rectangle(w, h) => w * h,
+                 Shape::Point => 0.0,
+             };"
+        ));
+    }
+
+    #[test]
+    fn test_tc_recursive_struct() {
+        // Self-referential struct via pointer
+        assert!(ok(
+            "struct Node { value: i64, next: Node? }
+             fn get_value(n: Node) -> i64 = n.value;"
+        ));
+    }
+
+    #[test]
+    fn test_tc_multiple_return_paths_same_type() {
+        assert!(ok(
+            "fn classify(x: i64) -> i64 = if x > 100 { 3 } else if x > 10 { 2 } else if x > 0 { 1 } else { 0 };"
+        ));
+    }
+
+    #[test]
+    fn test_tc_nested_struct_field_access() {
+        assert!(ok(
+            "struct Inner { value: i64 }
+             struct Outer { inner: Inner }
+             fn get_inner_value(o: Outer) -> i64 = o.inner.value;"
+        ));
+    }
+
+    #[test]
+    fn test_tc_for_loop_type_inference() {
+        assert!(ok(
+            "fn sum_range(n: i64) -> i64 = { let mut s = 0; for i in 0..n { s = s + i }; s };"
+        ));
+    }
+
+    #[test]
+    fn test_tc_while_loop_with_mutation() {
+        assert!(ok(
+            "fn count_down(n: i64) -> i64 = { let mut x = n; while x > 0 { x = x - 1 }; x };"
+        ));
+    }
+
+    #[test]
+    fn test_tc_contract_with_combined_pre() {
+        assert!(ok(
+            "fn safe_sub(a: i64, b: i64) -> i64
+                pre a >= 0 and b >= 0 and a >= b
+             = a - b;"
+        ));
+    }
+
+    #[test]
+    fn test_tc_contract_with_post_ret() {
+        assert!(ok(
+            "fn positive(x: i64) -> i64
+                post ret > 0
+             = if x > 0 { x } else { 1 };"
+        ));
+    }
+
+    #[test]
+    fn test_err_nullable_method_on_non_nullable() {
+        // is_some() should not be callable on non-nullable i64
+        assert!(err("fn bad(x: i64) -> bool = x.is_some();"));
+    }
+
+    #[test]
+    fn test_err_return_nullable_for_non_nullable() {
+        // Returning i64? where i64 is expected
+        assert!(err(
+            "fn bad(opt: i64?) -> i64 = opt;"
+        ));
+    }
+
+    #[test]
+    fn test_err_assign_wrong_type_to_mut() {
+        // Assigning bool to a mut i64 variable
+        assert!(err(
+            "fn bad() -> i64 = { let mut x = 42; x = true; x };"
+        ));
+    }
+
+    #[test]
+    fn test_err_struct_missing_field() {
+        // Struct constructor missing a required field
+        assert!(err(
+            "struct Point { x: i64, y: i64 }
+             fn bad() -> Point = new Point { x: 1 };"
+        ));
+    }
+
+    #[test]
+    fn test_err_call_with_too_many_args() {
+        // Calling a function with more args than it accepts
+        assert!(err(
+            "fn single(x: i64) -> i64 = x;
+             fn main() -> i64 = single(1, 2, 3);"
+        ));
+    }
+
+    #[test]
+    fn test_err_recursive_return_type_mismatch() {
+        // Recursive function where base case returns wrong type
+        assert!(err(
+            "fn bad(n: i64) -> i64 = if n <= 0 { true } else { bad(n - 1) };"
+        ));
+    }
+
+    #[test]
+    fn test_tc_array_literal_type() {
+        assert!(ok("fn first() -> i64 = { let arr = [1, 2, 3]; arr[0] };"));
+    }
+
+    #[test]
+    fn test_tc_string_methods() {
+        assert!(ok("fn slen(s: String) -> i64 = s.len();"));
+    }
+
+    #[test]
+    fn test_tc_tuple_types() {
+        assert!(ok("fn swap(t: (i64, bool)) -> (bool, i64) = (t.1, t.0);"));
+    }
+
+    #[test]
+    fn test_err_tuple_index_out_of_bounds() {
+        assert!(err("fn bad(t: (i64, bool)) -> i64 = t.5;"));
+    }
+
+    #[test]
+    fn test_tc_deeply_nested_if_else() {
+        // Deeply nested if-else with consistent return types
+        assert!(ok(
+            "fn deep(x: i64, y: i64) -> i64 =
+                 if x > 10 {
+                     if y > 5 { x + y }
+                     else { x - y }
+                 } else {
+                     if y > 5 { y - x }
+                     else { 0 }
+                 };"
+        ));
+    }
 }

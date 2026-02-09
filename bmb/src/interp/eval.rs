@@ -5171,4 +5171,211 @@ mod tests {
         // a = 255, b = 15, c = 240, d = 240 | 5 = 245
         assert_eq!(result, Value::Int(245));
     }
+
+    // ================================================================
+    // Cycle 124: Extended Interpreter Tests
+    // ================================================================
+
+    #[test]
+    fn test_nested_function_calls_arithmetic() {
+        // f(g(h(1))) where each function doubles
+        let result = run_program(
+            "fn h(x: i64) -> i64 = x * 2;
+             fn g(x: i64) -> i64 = x * 2;
+             fn f(x: i64) -> i64 = x * 2;
+             fn main() -> i64 = f(g(h(1)));"
+        );
+        assert_eq!(result, Value::Int(8));
+    }
+
+    #[test]
+    fn test_fibonacci_15() {
+        let result = run_program(
+            "fn fib(n: i64) -> i64 = if n <= 1 { n } else { fib(n - 1) + fib(n - 2) };
+             fn main() -> i64 = fib(15);"
+        );
+        assert_eq!(result, Value::Int(610));
+    }
+
+    #[test]
+    fn test_gcd_euclidean() {
+        let result = run_program(
+            "fn gcd(a: i64, b: i64) -> i64 = if b == 0 { a } else { gcd(b, a % b) };
+             fn main() -> i64 = gcd(48, 18);"
+        );
+        assert_eq!(result, Value::Int(6));
+    }
+
+    #[test]
+    fn test_enum_match_with_data() {
+        let result = run_program(
+            "enum Op { Add(i64), Mul(i64), Nop }
+             fn apply(x: i64, op: Op) -> i64 = match op {
+                 Op::Add(n) => x + n,
+                 Op::Mul(n) => x * n,
+                 Op::Nop => x,
+             };
+             fn main() -> i64 = {
+                 let r1 = apply(10, Op::Add(5));
+                 let r2 = apply(r1, Op::Mul(2));
+                 apply(r2, Op::Nop)
+             };"
+        );
+        // 10+5=15, 15*2=30, 30
+        assert_eq!(result, Value::Int(30));
+    }
+
+    #[test]
+    fn test_ackermann_function() {
+        // Ackermann function: deeply recursive
+        let result = run_program(
+            "fn ack(m: i64, n: i64) -> i64 =
+                 if m == 0 { n + 1 }
+                 else if n == 0 { ack(m - 1, 1) }
+                 else { ack(m - 1, ack(m, n - 1)) };
+             fn main() -> i64 = ack(2, 3);"
+        );
+        // ack(2, 3) = 9
+        assert_eq!(result, Value::Int(9));
+    }
+
+    #[test]
+    fn test_while_loop_sum_1_to_100() {
+        let result = run_program(
+            "fn main() -> i64 = {
+                 let mut s = 0;
+                 let mut i = 1;
+                 while i <= 100 {
+                     s = s + i;
+                     i = i + 1
+                 };
+                 s
+             };"
+        );
+        assert_eq!(result, Value::Int(5050));
+    }
+
+    #[test]
+    fn test_for_loop_factorial() {
+        let result = run_program(
+            "fn main() -> i64 = {
+                 let mut result = 1;
+                 for i in 1..11 {
+                     result = result * i
+                 };
+                 result
+             };"
+        );
+        // 10! = 3628800
+        assert_eq!(result, Value::Int(3628800));
+    }
+
+    #[test]
+    fn test_nested_structs_with_methods() {
+        let result = run_program(
+            "struct Vec2 { x: i64, y: i64 }
+             fn dot(a: Vec2, b: Vec2) -> i64 = a.x * b.x + a.y * b.y;
+             fn main() -> i64 = {
+                 let v1 = new Vec2 { x: 3, y: 4 };
+                 let v2 = new Vec2 { x: 5, y: 6 };
+                 dot(v1, v2)
+             };"
+        );
+        // 3*5 + 4*6 = 15 + 24 = 39
+        assert_eq!(result, Value::Int(39));
+    }
+
+    #[test]
+    fn test_string_concatenation_chain() {
+        let result = run_program(
+            r#"fn main() -> i64 = {
+                 let s = "a" + "b" + "c" + "d";
+                 s.len()
+             };"#
+        );
+        assert_eq!(result, Value::Int(4));
+    }
+
+    #[test]
+    fn test_boolean_short_circuit_and() {
+        // a && b: if a is false, b should not be evaluated
+        let result = run_program(
+            "fn main() -> i64 = {
+                 let x = false && true;
+                 if x { 1 } else { 0 }
+             };"
+        );
+        assert_eq!(result, Value::Int(0));
+    }
+
+    #[test]
+    fn test_boolean_short_circuit_or() {
+        let result = run_program(
+            "fn main() -> i64 = {
+                 let x = true || false;
+                 if x { 1 } else { 0 }
+             };"
+        );
+        assert_eq!(result, Value::Int(1));
+    }
+
+    #[test]
+    fn test_nested_if_else_chain() {
+        let result = run_program(
+            "fn classify(x: i64) -> i64 =
+                 if x > 100 { 4 }
+                 else if x > 50 { 3 }
+                 else if x > 10 { 2 }
+                 else if x > 0 { 1 }
+                 else { 0 };
+             fn main() -> i64 = classify(75);"
+        );
+        assert_eq!(result, Value::Int(3));
+    }
+
+    #[test]
+    fn test_modulo_operations() {
+        let result = run_program(
+            "fn main() -> i64 = {
+                 let a = 17 % 5;
+                 let b = 100 % 7;
+                 a + b
+             };"
+        );
+        // 17 % 5 = 2, 100 % 7 = 2 => 4
+        assert_eq!(result, Value::Int(4));
+    }
+
+    #[test]
+    fn test_complex_expression_evaluation() {
+        let result = run_program(
+            "fn main() -> i64 = (3 + 4) * (10 - 2) / 2;"
+        );
+        // (7) * (8) / 2 = 56 / 2 = 28
+        assert_eq!(result, Value::Int(28));
+    }
+
+    #[test]
+    fn test_power_of_two_check() {
+        let result = run_program(
+            "fn is_pow2(n: i64) -> i64 =
+                 if n <= 0 { 0 }
+                 else if n band (n - 1) == 0 { 1 }
+                 else { 0 };
+             fn main() -> i64 = is_pow2(16) + is_pow2(15) + is_pow2(8);"
+        );
+        // 16 is pow2(1), 15 is not(0), 8 is pow2(1) => 2
+        assert_eq!(result, Value::Int(2));
+    }
+
+    #[test]
+    fn test_tuple_three_element_sum() {
+        let result = run_program(
+            "fn main() -> i64 = {
+                 let t = (10, 20, 30);
+                 t.0 + t.1 + t.2
+             };"
+        );
+        assert_eq!(result, Value::Int(60));
+    }
 }
