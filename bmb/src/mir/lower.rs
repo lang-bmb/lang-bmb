@@ -2425,7 +2425,29 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
         // v0.36: Additional control flow
         // Loop - lower body, infinite loop handled at codegen
         Expr::Loop { body } => {
-            lower_expr(body, ctx)
+            // Create labels for loop structure
+            let loop_label = ctx.fresh_label("loop_body");
+            let exit_label = ctx.fresh_label("loop_exit");
+
+            // Jump to loop body
+            ctx.finish_block(Terminator::Goto(loop_label.clone()));
+
+            // Push loop context for break/continue
+            ctx.loop_context_stack.push((loop_label.clone(), exit_label.clone()));
+
+            // Body block
+            ctx.start_block(loop_label.clone());
+            let _ = lower_expr(body, ctx);
+            ctx.finish_block(Terminator::Goto(loop_label));
+
+            // Pop loop context
+            ctx.loop_context_stack.pop();
+
+            // Exit block (reached by break)
+            ctx.start_block(exit_label);
+
+            // Loop returns unit
+            Operand::Constant(Constant::Unit)
         }
 
         // v0.60.16: Break - jump to loop exit
@@ -5183,5 +5205,259 @@ mod tests {
         );
         let func = &mir.functions[0];
         assert!(func.is_pure, "Expected is_pure to be true for @pure function");
+    }
+
+    // --- Break/Continue control flow (Cycle 182) ---
+
+    #[test]
+    fn test_lower_break_creates_goto() {
+        let mir = parse_and_lower(
+            "fn f() -> () = { while true { break }; () };"
+        );
+        let func = &mir.functions[0];
+        // Break should create a Goto to loop exit and an after_break block
+        let has_after_break = func.blocks.iter().any(|b| b.label.contains("after_break"));
+        assert!(has_after_break, "Expected after_break block from break statement");
+    }
+
+    #[test]
+    fn test_lower_continue_creates_goto() {
+        let mir = parse_and_lower(
+            "fn f(n: i64) -> () = { let mut i: i64 = 0; while i < n { { i = i + 1 }; continue }; () };"
+        );
+        let func = &mir.functions[0];
+        // Continue should create a Goto to loop condition and an after_continue block
+        let has_after_continue = func.blocks.iter().any(|b| b.label.contains("after_continue"));
+        assert!(has_after_continue, "Expected after_continue block from continue statement");
+    }
+
+    #[test]
+    fn test_lower_break_in_if_inside_loop() {
+        let mir = parse_and_lower(
+            "fn f(n: i64) -> () = { let mut i: i64 = 0; while i < 100 { if i == n { break } else { () }; { i = i + 1 } }; () };"
+        );
+        let func = &mir.functions[0];
+        // Should have while blocks and break goto
+        let has_while = func.blocks.iter().any(|b| b.label.contains("while"));
+        let has_after_break = func.blocks.iter().any(|b| b.label.contains("after_break"));
+        assert!(has_while, "Expected while blocks");
+        assert!(has_after_break, "Expected after_break block");
+    }
+
+    // --- Return in complex contexts (Cycle 182) ---
+
+    #[test]
+    fn test_lower_return_in_nested_if() {
+        let mir = parse_and_lower(
+            "fn classify(x: i64) -> i64 = { if x > 0 { if x > 100 { return 2 } else { return 1 } } else { return 0 }; -1 };"
+        );
+        let func = &mir.functions[0];
+        // Should have at least 3 Return terminators (one per branch) + final
+        let return_count = func.blocks.iter().filter(|b| matches!(b.terminator, Terminator::Return(_))).count();
+        assert!(return_count >= 3, "Expected at least 3 Return terminators for nested if-return, got {}", return_count);
+    }
+
+    #[test]
+    fn test_lower_return_with_expression() {
+        let mir = parse_and_lower(
+            "fn f(x: i64, y: i64) -> i64 = { if x > y { return x * y } else { 0 }; x + y };"
+        );
+        let func = &mir.functions[0];
+        // Return with expression should lower the expression then create Return terminator
+        let return_count = func.blocks.iter().filter(|b| matches!(b.terminator, Terminator::Return(_))).count();
+        assert!(return_count >= 2, "Expected at least 2 Return terminators, got {}", return_count);
+        // Should have a multiply instruction (x * y in the return)
+        let has_mul = func.blocks.iter().any(|b| {
+            b.instructions.iter().any(|inst| matches!(inst, MirInst::BinOp { op: MirBinOp::Mul, .. }))
+        });
+        assert!(has_mul, "Expected Mul instruction in return expression");
+    }
+
+    #[test]
+    fn test_lower_multiple_returns_in_match() {
+        let mir = parse_and_lower(
+            "fn f(x: i64) -> i64 = match x { 0 => return -1, 1 => return 100, _ => x * x };"
+        );
+        let func = &mir.functions[0];
+        let return_count = func.blocks.iter().filter(|b| matches!(b.terminator, Terminator::Return(_))).count();
+        assert!(return_count >= 2, "Expected at least 2 Return terminators from match arms, got {}", return_count);
+    }
+
+    // --- Loop expression (Cycle 182) ---
+
+    #[test]
+    fn test_lower_loop_with_break() {
+        let mir = parse_and_lower(
+            "fn f() -> () = { loop { break }; () };"
+        );
+        let func = &mir.functions[0];
+        // Print all block labels for debugging
+        let labels: Vec<&str> = func.blocks.iter().map(|b| b.label.as_str()).collect();
+        // Loop should create loop_body and loop_exit blocks
+        let has_loop_body = func.blocks.iter().any(|b| b.label.contains("loop_body"));
+        let has_loop_exit = func.blocks.iter().any(|b| b.label.contains("loop_exit"));
+        assert!(has_loop_body, "Expected loop_body block, found: {:?}", labels);
+        assert!(has_loop_exit, "Expected loop_exit block, found: {:?}", labels);
+        // Break should create after_break and goto to loop_exit
+        let has_after_break = func.blocks.iter().any(|b| b.label.contains("after_break"));
+        assert!(has_after_break, "Expected after_break block from break in loop");
+    }
+
+    #[test]
+    fn test_lower_loop_count_to() {
+        let mir = parse_and_lower(
+            "fn count_to(n: i64) -> i64 = { let mut i: i64 = 0; loop { if i >= n { break } else { () }; { i = i + 1 } }; i };"
+        );
+        let func = &mir.functions[0];
+        // Print block structure for debugging
+        for b in &func.blocks {
+            eprintln!("BLOCK {}: {} insts, terminator: {:?}", b.label, b.instructions.len(), b.terminator);
+        }
+        // Should have loop_body with back-edge
+        let has_loop_body = func.blocks.iter().any(|b| b.label.contains("loop_body"));
+        assert!(has_loop_body, "Expected loop_body block, found: {:?}", func.blocks.iter().map(|b| &b.label).collect::<Vec<_>>());
+        // Should have a back-edge from some block to loop_body
+        let has_back_edge = func.blocks.iter().any(|b| {
+            matches!(&b.terminator, Terminator::Goto(target) if target.contains("loop_body"))
+        });
+        assert!(has_back_edge, "Expected back-edge Goto to loop_body, blocks: {:?}", func.blocks.iter().map(|b| format!("{}: {:?}", b.label, b.terminator)).collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn test_lower_loop_with_return() {
+        let mir = parse_and_lower(
+            "fn f(n: i64) -> i64 = { let mut i: i64 = 0; loop { if i == n { return i } else { () }; { i = i + 1 } }; 0 };"
+        );
+        let func = &mir.functions[0];
+        // Should have return terminator from inside the loop
+        let return_count = func.blocks.iter().filter(|b| matches!(b.terminator, Terminator::Return(_))).count();
+        assert!(return_count >= 1, "Expected Return terminator from inside loop");
+        let has_after_return = func.blocks.iter().any(|b| b.label.contains("after_return"));
+        assert!(has_after_return, "Expected after_return block inside loop");
+        // Should also have loop structure
+        let has_loop_body = func.blocks.iter().any(|b| b.label.contains("loop_body"));
+        assert!(has_loop_body, "Expected loop_body block");
+    }
+
+    // --- While loop variations (Cycle 182) ---
+
+    #[test]
+    fn test_lower_while_with_mutation() {
+        let mir = parse_and_lower(
+            "fn sum(n: i64) -> i64 = { let mut s: i64 = 0; let mut i: i64 = 0; while i < n { { s = s + i }; { i = i + 1 } }; s };"
+        );
+        let func = &mir.functions[0];
+        // Should have while blocks with condition check
+        let has_while = func.blocks.iter().any(|b| b.label.contains("while"));
+        assert!(has_while, "Expected while blocks");
+        // Should have copy instructions for mutable variable updates
+        let has_copy = func.blocks.iter().any(|b| {
+            b.instructions.iter().any(|inst| matches!(inst, MirInst::Copy { .. }))
+        });
+        assert!(has_copy, "Expected Copy instructions for mutable variable updates");
+    }
+
+    #[test]
+    fn test_lower_nested_while_loops() {
+        let mir = parse_and_lower(
+            "fn f(n: i64) -> i64 = { let mut s: i64 = 0; let mut i: i64 = 0; while i < n { let mut j: i64 = 0; while j < n { { s = s + 1 }; { j = j + 1 } }; { i = i + 1 } }; s };"
+        );
+        let func = &mir.functions[0];
+        // Should have multiple while block sets
+        let while_blocks = func.blocks.iter().filter(|b| b.label.contains("while")).count();
+        assert!(while_blocks >= 4, "Expected at least 4 while blocks for nested loops (2 loops x cond+body), got {}", while_blocks);
+    }
+
+    // --- For loop variations (Cycle 182) ---
+
+    #[test]
+    fn test_lower_for_loop_basic() {
+        let mir = parse_and_lower(
+            "fn sum_to(n: i64) -> i64 = { let mut s: i64 = 0; for i in 0..n { s = s + i }; s };"
+        );
+        let func = &mir.functions[0];
+        // For loop should produce for blocks
+        let has_for = func.blocks.iter().any(|b| b.label.contains("for"));
+        assert!(has_for, "Expected for blocks from for-loop");
+    }
+
+    // --- Nullable type operations (Cycle 183) ---
+
+    #[test]
+    fn test_lower_nullable_null_check() {
+        let mir = parse_and_lower(
+            "fn is_some(x: i64?) -> bool = x != null;"
+        );
+        let func = &mir.functions[0];
+        assert!(!func.blocks.is_empty(), "Expected valid MIR for nullable null check");
+    }
+
+    #[test]
+    fn test_lower_nullable_if_pattern() {
+        let mir = parse_and_lower(
+            "fn safe_double(x: i64?) -> i64 = if x != null { x * 2 } else { 0 };"
+        );
+        let func = &mir.functions[0];
+        // Should have branching for the null check
+        let has_branch = func.blocks.iter().any(|b| matches!(b.terminator, Terminator::Branch { .. }));
+        assert!(has_branch, "Expected Branch terminator for nullable if check");
+    }
+
+    // --- Type inference edge cases (Cycle 183) ---
+
+    #[test]
+    fn test_lower_recursive_function() {
+        let mir = parse_and_lower(
+            "fn factorial(n: i64) -> i64 = if n <= 1 { 1 } else { n * factorial(n - 1) };"
+        );
+        let func = &mir.functions[0];
+        // Should have a Call instruction for the recursive call
+        let has_call = func.blocks.iter().any(|b| {
+            b.instructions.iter().any(|inst| matches!(inst, MirInst::Call { func, .. } if func == "factorial"))
+        });
+        assert!(has_call, "Expected recursive Call to factorial");
+    }
+
+    #[test]
+    fn test_lower_multiple_parameters() {
+        let mir = parse_and_lower(
+            "fn add3(a: i64, b: i64, c: i64) -> i64 = a + b + c;"
+        );
+        let func = &mir.functions[0];
+        assert_eq!(func.params.len(), 3, "Expected 3 parameters");
+        // Should have Add instructions
+        let add_count = func.blocks.iter().flat_map(|b| b.instructions.iter())
+            .filter(|inst| matches!(inst, MirInst::BinOp { op: MirBinOp::Add, .. }))
+            .count();
+        assert_eq!(add_count, 2, "Expected 2 Add instructions for a + b + c");
+    }
+
+    // --- String operations (Cycle 183) ---
+
+    #[test]
+    fn test_lower_string_return() {
+        let mir = parse_and_lower(
+            r#"fn greet() -> String = "hello";"#
+        );
+        let func = &mir.functions[0];
+        // String literals are returned directly as Constant::String operands in terminators
+        let has_string_return = func.blocks.iter().any(|b| {
+            matches!(&b.terminator, Terminator::Return(Some(Operand::Constant(Constant::String(_)))))
+        });
+        assert!(has_string_return, "Expected Return with string constant");
+    }
+
+    // --- Method call lowering (Cycle 183) ---
+
+    #[test]
+    fn test_lower_method_call_len() {
+        let mir = parse_and_lower(
+            r#"fn f(s: String) -> i64 = s.len();"#
+        );
+        let func = &mir.functions[0];
+        let has_method_call = func.blocks.iter().any(|b| {
+            b.instructions.iter().any(|inst| matches!(inst, MirInst::Call { .. }))
+        });
+        assert!(has_method_call, "Expected Call instruction for .len() method");
     }
 }
