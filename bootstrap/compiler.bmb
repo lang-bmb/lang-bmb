@@ -3900,7 +3900,7 @@ fn llvm_gen_rhs_typed(line: String, pos: i64, dest: String, ret_type: String) ->
         // v0.91: Float constant: const F:3.14 → fadd double 0.0, 3.14
         if trimmed_val.len() >= 2 and trimmed_val.byte_at(0) == 70 and trimmed_val.byte_at(1) == 58 {
             let float_val = trimmed_val.slice(2, trimmed_val.len());
-            "  " + dest + " = fadd double 0.0, " + float_val
+            "  " + dest + " = fadd nsz double 0.0, " + float_val
         } else {
             "  " + dest + " = add nsw i64 0, " + trimmed_val
         }
@@ -4715,6 +4715,8 @@ fn build_const_map_acc(mir: String, pos: i64, sb: i64) -> i64 =
     };
 
 // Check if a function MIR is a 0-arg @const returning a constant
+// Must have ONLY: entry: | %_tN = const <value> | return %_tN | }
+// Reject functions with calls, arithmetic, etc.
 fn try_register_const_fn(fn_mir: String, sb: i64) -> i64 =
     let first_pipe = find_char(fn_mir, 0, 124);
     let header = if first_pipe >= fn_mir.len() { fn_mir } else { fn_mir.slice(0, first_pipe) };
@@ -4727,26 +4729,33 @@ fn try_register_const_fn(fn_mir: String, sb: i64) -> i64 =
         let params = trim(header.slice(paren_pos + 1, close_pos));
         if params.len() > 0 { 0 }
         else {
-            let const_pos = find_pattern_at(fn_mir, "= const ", first_pipe);
-            if const_pos < 0 { 0 }
+            // Verify body has no calls or complex instructions
+            let has_call = find_pattern_at(fn_mir, "= call ", first_pipe);
+            if has_call >= 0 { 0 }
             else {
-                let value_start = const_pos + 8;
-                let line_end = find_char(fn_mir, value_start, 124);
-                let value = trim(fn_mir.slice(value_start, line_end));
-                if value.len() == 0 { 0 }
+                let const_pos = find_pattern_at(fn_mir, "= const ", first_pipe);
+                if const_pos < 0 { 0 }
                 else {
-                    let first_ch = value.byte_at(0);
-                    let is_num = if first_ch >= 48 and first_ch <= 57 { true }
-                        else if first_ch == 45 and value.len() > 1 and value.byte_at(1) >= 48 and value.byte_at(1) <= 57 { true }
-                        else { false };
-                    if is_num {
-                        let w1 = sb_push(sb, "@");
-                        let w2 = sb_push(sb, fn_name);
-                        let w3 = sb_push(sb, "=");
-                        let w4 = sb_push(sb, value);
-                        let w5 = sb_push(sb, ",");
-                        0
-                    } else { 0 }
+                    let value_start = const_pos + 8;
+                    let line_end = find_char(fn_mir, value_start, 124);
+                    let value = trim(fn_mir.slice(value_start, line_end));
+                    if value.len() == 0 { 0 }
+                    else {
+                        let first_ch = value.byte_at(0);
+                        // Support both integer (123) and float (F:3.14) constants
+                        let is_num = if first_ch >= 48 and first_ch <= 57 { true }
+                            else if first_ch == 45 and value.len() > 1 and value.byte_at(1) >= 48 and value.byte_at(1) <= 57 { true }
+                            else if first_ch == 70 and value.len() > 2 and value.byte_at(1) == 58 { true }
+                            else { false };
+                        if is_num {
+                            let w1 = sb_push(sb, "@");
+                            let w2 = sb_push(sb, fn_name);
+                            let w3 = sb_push(sb, "=");
+                            let w4 = sb_push(sb, value);
+                            let w5 = sb_push(sb, ",");
+                            0
+                        } else { 0 }
+                    }
                 }
             }
         }
@@ -4924,7 +4933,7 @@ fn llvm_gen_rhs_typed_reg(line: String, pos: i64, dest: String, ret_type: String
         let trimmed_val = trim_end(val);
         if trimmed_val.len() >= 2 and trimmed_val.byte_at(0) == 70 and trimmed_val.byte_at(1) == 58 {
             let float_val = trimmed_val.slice(2, trimmed_val.len());
-            "  " + dest + " = fadd double 0.0, " + float_val
+            "  " + dest + " = fadd nsz double 0.0, " + float_val
         } else {
             "  " + dest + " = add nsw i64 0, " + trimmed_val
         }
@@ -5976,7 +5985,7 @@ fn llvm_gen_rhs_with_strings_map_and_fns_reg(line: String, pos: i64, dest: Strin
             let float_val = trimmed_val.slice(2, trimmed_val.len());
             // v0.90.4: Mark dest as double for type propagation
             let w = push_double_marker(str_sb, dest);
-            same_mapping("  " + dest + " = fadd double 0.0, " + float_val)
+            same_mapping("  " + dest + " = fadd nsz double 0.0, " + float_val)
         } else {
             same_mapping("  " + dest + " = add nsw i64 0, " + trimmed_val)
         }
@@ -6010,7 +6019,7 @@ fn llvm_gen_rhs_with_strings_map_and_fns_reg(line: String, pos: i64, dest: Strin
                 let src_is_f64_ptr = is_f64_ptr_sb(src, str_sb);
                 let w = if src_is_string { push_string_marker(str_sb, dest) } else if src_is_double { push_double_marker(str_sb, dest) } else if src_is_f64_ptr { push_f64_ptr_marker(str_sb, dest) } else { 0 };
                 if src_is_double {
-                    same_mapping("  " + dest + " = fadd double 0.0, " + resolved_src)
+                    same_mapping("  " + dest + " = fadd nsz double 0.0, " + resolved_src)
                 } else {
                     same_mapping("  " + dest + " = add nsw i64 0, " + resolved_src)
                 }
@@ -6146,7 +6155,7 @@ fn llvm_gen_rhs_with_strings_map_and_fns(line: String, pos: i64, dest: String, s
             let float_val = trimmed_val.slice(2, trimmed_val.len());
             // v0.90.4: Mark dest as double for type propagation
             let w = push_double_marker(str_sb, dest);
-            same_mapping("  " + dest + " = fadd double 0.0, " + float_val)
+            same_mapping("  " + dest + " = fadd nsz double 0.0, " + float_val)
         } else {
             same_mapping("  " + dest + " = add nsw i64 0, " + trimmed_val)
         }
@@ -6183,7 +6192,7 @@ fn llvm_gen_rhs_with_strings_map_and_fns(line: String, pos: i64, dest: String, s
                 let src_is_f64_ptr_2 = is_f64_ptr_sb(src, str_sb);
                 let w = if src_is_string { push_string_marker(str_sb, dest) } else if src_is_double_2 { push_double_marker(str_sb, dest) } else if src_is_f64_ptr_2 { push_f64_ptr_marker(str_sb, dest) } else { 0 };
                 if src_is_double_2 {
-                    same_mapping("  " + dest + " = fadd double 0.0, " + resolved_src)
+                    same_mapping("  " + dest + " = fadd nsz double 0.0, " + resolved_src)
                 } else {
                     same_mapping("  " + dest + " = add nsw i64 0, " + resolved_src)
                 }
