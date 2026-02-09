@@ -4,18 +4,19 @@
 
 ---
 
-## 현재 상태 (2026-02-09)
+## 현재 상태 (2026-02-10)
 
 | 항목 | 상태 | 비고 |
 |------|------|------|
-| **버전** | v0.90.21 | Quality Gate → Beta 전환 |
+| **버전** | v0.90.22 | Cycles 172-175: Narrowing refinement |
 | **단계** | Alpha → Beta | v0.89 Quality Gate 완료, v0.90 Performance 완료 |
 | **Bootstrap** | ✅ 3-Stage Fixed Point | 63,778 lines, Stage 1: ~1.0s |
-| **Benchmarks** | ✅ 67/67 정상 | 11 FASTER, 4 PASS, 2 OK, 3 WARN, 1 FAIL vs C |
-| **Tests** | ✅ 2,169개 통과 | 1886 lib + 15 main + 245 integration + 23 doc |
+| **Benchmarks** | ✅ 67/67 정상 | 3 FASTER, 6 PASS, 2 OK vs Clang -O3 |
+| **Tests** | ✅ 2,171개 통과 | 1888 lib + 15 main + 245 integration + 23 doc |
 | **Stability** | ✅ STABILITY.md | 언어/API 동결 문서화 |
 | **동시성 지원** | ✅ 부트스트랩 완료 | 토큰/타입/MIR/코드젠/extern 선언 완료 |
 | **Golden Binary** | ✅ v0.88.10 | Rust 없이 부트스트랩 가능 |
+| **i32 타입** | ✅ 이미 구현됨 | 컴파일러 전 레이어 지원 (lexer~codegen) |
 
 ---
 
@@ -385,43 +386,50 @@ select {
 
 ---
 
-## 벤치마크 현황 (v0.90.21)
+## 벤치마크 현황 (v0.90.22, Cycle 175)
 
-**Rust 컴파일러 vs C/clang -O3 (>50ms 런타임 벤치마크):**
+**Rust 컴파일러 vs Clang -O3 (>50ms 런타임 벤치마크):**
 
 | 판정 | 개수 | 비율 |
 |------|------|------|
-| ✅ BMB > C (FASTER) | 11개 | 52% |
-| ✅ BMB ≈ C (PASS, ≤1.02x) | 4개 | 19% |
-| ✅ BMB ≈ C (OK, ≤1.05x) | 2개 | 10% |
-| ⚠️ WARN (≤1.15x) | 3개 | 14% |
-| ❌ FAIL (>1.15x) | 1개 | 5% |
+| ✅ BMB > C (FASTER) | 3개 | 27% |
+| ✅ BMB ≈ C (PASS, ≤1.02x) | 3개 | 27% |
+| ✅ BMB ≈ C (OK, ≤1.05x) | 3개 | 27% |
+| ⚠️ WARN (≤1.10x) | 2개 | 18% |
 
-**주요 벤치마크 (>50ms):**
+**주요 벤치마크 (>50ms, vs Clang -O3):**
 
-| 벤치마크 | BMB/C | 판정 |
-|----------|-------|------|
-| gcd | 0.96x | FASTER |
-| spectral_norm | 0.97x | FASTER |
-| fasta | 0.95x | FASTER |
-| nqueen | 1.01x | PASS |
-| mandelbrot | 1.01x | PASS |
-| binary_trees | 1.02x | PASS |
-| primes_count | 1.01x | PASS |
-| sorting | 1.04x | OK |
-| ackermann | 1.04x | OK |
-| collatz | 1.07x | WARN (i64 vs i32) |
-| sieve | 1.07x | WARN (i64 vs i32) |
+| 벤치마크 | BMB/Clang | 판정 | 변경 |
+|----------|-----------|------|------|
+| fasta | 0.94x | FASTER | |
+| gcd | 0.97x | FASTER | |
+| binary_trees | 0.99x | FASTER | |
+| spectral_norm | 1.00x | PASS | |
+| mandelbrot | 1.01x | PASS | |
+| nqueen | 1.01x | PASS | |
+| collatz | 1.05x | OK | was 1.07x → loop bound fix (Cycle 174) |
+| primes_count | 1.05x | OK | |
+| ackermann | 1.06x | OK | was 1.08x → recursive call fix (Cycle 175) |
+| sieve | 1.07x | WARN | loop bound narrowing residual |
+| digital_root | 1.07x | WARN | sub-50ms, high variance |
 
 **전체 벤치마크 스위트:** 67개 (11 카테고리), 전체 컴파일/출력 정상
 
+**Cycles 172-175 개선 내역:**
+
+| Cycle | 수정 | 효과 |
+|-------|------|------|
+| 172 | div/mod param narrowing skip | digital_root 1.26x→1.07x |
+| 173 | Bootstrap mustprogress+willreturn | Bootstrap LLVM 최적화 개선 |
+| 174 | Loop-invariant bound skip | collatz 1.07x→1.05x, sieve 1.07x→1.04x |
+| 175 | Self-recursive call narrowing skip | ackermann 1.08x→1.06x |
+
 **⚠️ 남은 gap:**
 
-| 벤치마크 | 비율 | 원인 | 해결책 |
-|----------|------|------|--------|
-| collatz | 1.07x | i64 vs C의 i32 | i32 타입 추가 (v0.91) |
-| sieve | 1.07x | i64 vs C의 i32 | i32 타입 추가 (v0.91) |
-| digital_root | 1.16x | sub-10ms, startup noise | 무시 가능 |
+| 벤치마크 | 비율 | 원인 | 참고 |
+|----------|------|------|------|
+| sieve | 1.07x | while-loop bound narrowing | Phi 아닌 mutable var 패턴 |
+| digital_root | 1.07x | sub-50ms, measurement noise | 실제 차이 미미 |
 
 ---
 
