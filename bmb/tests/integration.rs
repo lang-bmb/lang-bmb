@@ -4879,3 +4879,344 @@ fn test_interp_string_byte_comparison() {
         4 // 'E'(69) - 'A'(65) = 4
     );
 }
+
+// ============================================
+// Cycle 211: Advanced Language Feature Integration Tests
+// ============================================
+
+// --- Recursive Data Structures (3 tests) ---
+
+#[test]
+fn test_interp_recursive_linked_list_sum() {
+    // Simulate a linked list using enum: each node carries a value and a "next tag"
+    // We encode a linked list as nested function calls that accumulate a sum
+    assert_eq!(
+        run_program_i64(
+            "fn list_sum(n: i64) -> i64 =
+               if n <= 0 { 0 } else { n + list_sum(n - 1) };
+             fn main() -> i64 = list_sum(10);"
+        ),
+        55 // 10+9+8+...+1 = 55
+    );
+}
+
+#[test]
+fn test_interp_recursive_binary_tree_node_count() {
+    // Simulate a full binary tree: count nodes at depth d = 2^d - 1
+    assert_eq!(
+        run_program_i64(
+            "fn power_of_two(n: i64) -> i64 =
+               if n <= 0 { 1 } else { 2 * power_of_two(n - 1) };
+             fn tree_nodes(depth: i64) -> i64 =
+               if depth <= 0 { 1 }
+               else { 1 + tree_nodes(depth - 1) + tree_nodes(depth - 1) };
+             fn main() -> i64 = tree_nodes(4);"
+        ),
+        31 // 2^5 - 1 = 31
+    );
+}
+
+#[test]
+fn test_interp_recursive_ackermann_small() {
+    // Ackermann function for small inputs: A(2, 3) = 9
+    assert_eq!(
+        run_program_i64(
+            "fn ack(m: i64, n: i64) -> i64 =
+               if m == 0 { n + 1 }
+               else { if n == 0 { ack(m - 1, 1) }
+               else { ack(m - 1, ack(m, n - 1)) } };
+             fn main() -> i64 = ack(2, 3);"
+        ),
+        9 // A(2,3) = 9
+    );
+}
+
+// --- Higher-Order Functions / Closures as Arguments (3 tests) ---
+
+#[test]
+fn test_interp_closure_as_transformer() {
+    // Store different closures in variables and apply them
+    assert_eq!(
+        run_program_i64(
+            "fn main() -> i64 = {
+               let double = fn |x: i64| { x * 2 };
+               let square = fn |x: i64| { x * x };
+               let a = double(5);
+               let b = square(4);
+               a + b
+             };"
+        ),
+        26 // 10 + 16 = 26
+    );
+}
+
+#[test]
+fn test_interp_closure_capturing_and_composing() {
+    // Build closures that capture outer variables and compose their results
+    assert_eq!(
+        run_program_i64(
+            "fn main() -> i64 = {
+               let base: i64 = 100;
+               let offset: i64 = 7;
+               let add_base = fn |x: i64| { x + base };
+               let add_offset = fn |x: i64| { x + offset };
+               let step1 = add_base(20);
+               let step2 = add_offset(step1);
+               step2
+             };"
+        ),
+        127 // 20 + 100 = 120, 120 + 7 = 127
+    );
+}
+
+#[test]
+fn test_interp_closure_selection_via_flag() {
+    // Select between closures based on runtime condition, then apply
+    assert_eq!(
+        run_program_i64(
+            "fn main() -> i64 = {
+               let mut total: i64 = 0;
+               let mut i: i64 = 1;
+               while i <= 5 {
+                 let op = if i % 2 == 0 {
+                   fn |x: i64| { x * 3 }
+                 } else {
+                   fn |x: i64| { x * 2 }
+                 };
+                 total = total + op(i);
+                 { i = i + 1 }
+               };
+               total
+             };"
+        ),
+        36 // i=1(odd):1*2=2, i=2(even):2*3=6, i=3(odd):3*2=6, i=4(even):4*3=12, i=5(odd):5*2=10
+        // 2+6+6+12+10 = 36
+    );
+}
+
+// --- Enum with Data (3 tests) ---
+
+#[test]
+fn test_interp_enum_command_dispatch() {
+    // Enum with multiple data variants used as a command dispatcher
+    assert_eq!(
+        run_program_i64(
+            "enum Cmd { Inc(i64), Dec(i64), Set(i64), Nop }
+             fn execute(state: i64, cmd: Cmd) -> i64 =
+               match cmd {
+                 Cmd::Inc(v) => state + v,
+                 Cmd::Dec(v) => state - v,
+                 Cmd::Set(v) => v,
+                 Cmd::Nop => state
+               };
+             fn main() -> i64 = {
+               let mut s: i64 = 0;
+               s = execute(s, Cmd::Set(50));
+               s = execute(s, Cmd::Inc(25));
+               s = execute(s, Cmd::Dec(10));
+               s = execute(s, Cmd::Nop);
+               s
+             };"
+        ),
+        65 // 0 -> Set(50)=50 -> Inc(25)=75 -> Dec(10)=65 -> Nop=65
+    );
+}
+
+#[test]
+fn test_interp_enum_two_field_variant_extraction() {
+    // Enum variant with two data fields, extracted in match
+    assert_eq!(
+        run_program_i64(
+            "enum Rect { Empty, Sized(i64, i64) }
+             fn rect_area(r: Rect) -> i64 =
+               match r {
+                 Rect::Empty => 0,
+                 Rect::Sized(w, h) => w * h
+               };
+             fn main() -> i64 = {
+               let a = rect_area(Rect::Empty);
+               let b = rect_area(Rect::Sized(6, 9));
+               let c = rect_area(Rect::Sized(3, 4));
+               a + b + c
+             };"
+        ),
+        66 // 0 + 54 + 12 = 66
+    );
+}
+
+#[test]
+fn test_interp_enum_recursive_eval_chain() {
+    // Chain multiple enum operations, matching and accumulating
+    assert_eq!(
+        run_program_i64(
+            "enum Op { Add(i64), Mul(i64), Neg }
+             fn apply_op(val: i64, op: Op) -> i64 =
+               match op {
+                 Op::Add(n) => val + n,
+                 Op::Mul(n) => val * n,
+                 Op::Neg => 0 - val
+               };
+             fn main() -> i64 = {
+               let mut v: i64 = 3;
+               v = apply_op(v, Op::Add(7));
+               v = apply_op(v, Op::Mul(2));
+               v = apply_op(v, Op::Neg);
+               v = apply_op(v, Op::Add(100));
+               v
+             };"
+        ),
+        80 // 3+7=10, 10*2=20, -20, -20+100=80
+    );
+}
+
+// --- Mixed Control Flow (3 tests) ---
+
+#[test]
+fn test_interp_loop_with_match_and_early_return() {
+    // Combine loop, match on computed value, and early return
+    assert_eq!(
+        run_program_i64(
+            "fn find_special(limit: i64) -> i64 = {
+               let mut i: i64 = 1;
+               let mut sum: i64 = 0;
+               while i <= limit {
+                 let category = match i % 3 {
+                   0 => 10,
+                   1 => 1,
+                   _ => 5
+                 };
+                 sum = sum + category;
+                 if sum > 30 { return sum } else { () };
+                 { i = i + 1 }
+               };
+               sum
+             };
+             fn main() -> i64 = find_special(20);"
+        ),
+        32 // i=1:1%3=1->1, i=2:2%3=2->5, i=3:0->10, i=4:1->1, i=5:2->5, i=6:0->10
+        // cumulative: 1,6,16,17,22,32 -> 32 > 30, return 32
+    );
+}
+
+#[test]
+fn test_interp_nested_loops_with_break() {
+    // Nested while loops: outer counts rows, inner counts columns
+    // Accumulate a grid-based sum and break inner loop early
+    assert_eq!(
+        run_program_i64(
+            "fn grid_sum(rows: i64, cols: i64, max_col: i64) -> i64 = {
+               let mut total: i64 = 0;
+               let mut r: i64 = 0;
+               while r < rows {
+                 let mut c: i64 = 0;
+                 while c < cols {
+                   if c >= max_col { break } else { () };
+                   total = total + r * cols + c;
+                   { c = c + 1 }
+                 };
+                 { r = r + 1 }
+               };
+               total
+             };
+             fn main() -> i64 = grid_sum(3, 4, 2);"
+        ),
+        27 // r=0: (0+0)+(0+1)=1, r=1: (4+0)+(4+1)=9, r=2: (8+0)+(8+1)=17 -> 1+9+17=27
+    );
+}
+
+#[test]
+fn test_interp_for_loop_with_nested_conditionals() {
+    // For loop computing collatz-like steps for multiple starting values
+    assert_eq!(
+        run_program_i64(
+            "fn collatz_steps(start: i64) -> i64 = {
+               let mut n: i64 = start;
+               let mut steps: i64 = 0;
+               while n != 1 {
+                 if n % 2 == 0 { n = n / 2 }
+                 else { n = 3 * n + 1 };
+                 { steps = steps + 1 }
+               };
+               steps
+             };
+             fn main() -> i64 = {
+               let mut total: i64 = 0;
+               for i in 2..=6 {
+                 total = total + collatz_steps(i)
+               };
+               total
+             };"
+        ),
+        23 // 2->1 (1 step), 3->10->5->16->8->4->2->1 (7 steps),
+        // 4->2->1 (2 steps), 5->16->8->4->2->1 (5 steps),
+        // 6->3->10->5->16->8->4->2->1 (8 steps) -> 1+7+2+5+8=23
+    );
+}
+
+// --- Edge Cases (3 tests) ---
+
+#[test]
+fn test_interp_deeply_nested_if_else() {
+    // 8-level deep if-else chain testing deep nesting
+    assert_eq!(
+        run_program_i64(
+            "fn deep_classify(x: i64) -> i64 =
+               if x >= 128 { 8 }
+               else { if x >= 64 { 7 }
+               else { if x >= 32 { 6 }
+               else { if x >= 16 { 5 }
+               else { if x >= 8 { 4 }
+               else { if x >= 4 { 3 }
+               else { if x >= 2 { 2 }
+               else { if x >= 1 { 1 }
+               else { 0 } } } } } } } };
+             fn main() -> i64 = {
+               let mut sum: i64 = 0;
+               sum = sum + deep_classify(0);
+               sum = sum + deep_classify(1);
+               sum = sum + deep_classify(3);
+               sum = sum + deep_classify(7);
+               sum = sum + deep_classify(15);
+               sum = sum + deep_classify(31);
+               sum = sum + deep_classify(63);
+               sum = sum + deep_classify(127);
+               sum = sum + deep_classify(255);
+               sum
+             };"
+        ),
+        36 // 0+1+2+3+4+5+6+7+8 = 36
+    );
+}
+
+#[test]
+fn test_interp_large_integer_arithmetic() {
+    // Test large i64 values near the upper range
+    assert_eq!(
+        run_program_i64(
+            "fn main() -> i64 = {
+               let big_a: i64 = 1000000000;
+               let big_b: i64 = 2000000000;
+               let product = big_a * 3;
+               let sum = product + big_b;
+               sum / 1000000
+             };"
+        ),
+        5000 // (1000000000 * 3 + 2000000000) / 1000000 = 5000000000 / 1000000 = 5000
+    );
+}
+
+#[test]
+fn test_interp_array_single_element_operations() {
+    // Single-element array: test boundary behavior
+    assert_eq!(
+        run_program_i64(
+            "fn main() -> i64 = {
+               let a: [i64; 1] = [42];
+               let mut b: [i64; 1] = [0];
+               set b[0] = a[0] * 2;
+               a[0] + b[0] + a.len() + b.len()
+             };"
+        ),
+        128 // 42 + 84 + 1 + 1 = 128
+    );
+}

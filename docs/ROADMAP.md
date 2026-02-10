@@ -8,11 +8,11 @@
 
 | 항목 | 상태 | 비고 |
 |------|------|------|
-| **버전** | v0.90.29 | Cycles 200-208: IfElseToSelect + 106 tests |
+| **버전** | v0.90.30 | Cycles 200-211: IfElseToSelect + 158 tests |
 | **단계** | Alpha → Beta | v0.89 Quality Gate 완료, v0.90 Performance 완료 |
 | **Bootstrap** | ✅ 3-Stage Fixed Point | 63,778 lines, Stage 1: ~1.1s |
 | **Benchmarks** | ✅ 67/67 정상 | 5 FASTER, 5 PASS, 0 OK, 0 WARN vs Clang -O3 (100% parity+) |
-| **Tests** | ✅ 2,502개 통과 | 2071 lib + 15 main + 393 integration + 23 doc |
+| **Tests** | ✅ 2,554개 통과 | 2108 lib + 15 main + 408 integration + 23 doc |
 | **Stability** | ✅ STABILITY.md | 언어/API 동결 문서화 |
 | **동시성 지원** | ✅ 부트스트랩 완료 | 토큰/타입/MIR/코드젠/extern 선언 완료 |
 | **Golden Binary** | ✅ v0.88.10 | Rust 없이 부트스트랩 가능 |

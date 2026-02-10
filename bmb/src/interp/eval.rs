@@ -5511,4 +5511,245 @@ mod tests {
         );
         assert_eq!(result, Value::Int(60));
     }
+
+    // ================================================================
+    // Cycle 210: Extended edge-case interpreter tests
+    // ================================================================
+
+    #[test]
+    fn test_loop_break_exits() {
+        // loop with break should terminate and yield Unit
+        let result = run_program(
+            "fn main() -> i64 = {
+                 let mut count = 0;
+                 loop {
+                     count = count + 1;
+                     if count == 5 { break } else { () };
+                     0
+                 };
+                 count
+             };"
+        );
+        assert_eq!(result, Value::Int(5));
+    }
+
+    #[test]
+    fn test_while_continue_skips_iteration() {
+        // continue in while loop should skip the rest of the body
+        let result = run_program(
+            "fn main() -> i64 = {
+                 let mut sum = 0;
+                 let mut i = 0;
+                 while i < 10 {
+                     { i = i + 1 };
+                     if i % 2 == 0 { continue } else { () };
+                     { sum = sum + i }
+                 };
+                 sum
+             };"
+        );
+        // odd numbers 1..=9: 1+3+5+7+9 = 25
+        assert_eq!(result, Value::Int(25));
+    }
+
+    #[test]
+    fn test_return_from_function_body() {
+        // Early return should short-circuit the rest of the function
+        let result = run_program(
+            "fn early(x: i64) -> i64 = {
+                 if x > 10 { return 999 } else { () };
+                 x + 1
+             };
+             fn main() -> i64 = early(50) + early(5);"
+        );
+        // early(50) returns 999, early(5) returns 6 => 1005
+        assert_eq!(result, Value::Int(1005));
+    }
+
+    #[test]
+    fn test_array_index_out_of_bounds() {
+        // Accessing beyond array length should produce an error
+        let result = run_source(
+            "fn main() -> i64 = {
+                 let arr = [10, 20, 30];
+                 arr[5]
+             };"
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_array_index_assign() {
+        // Mutable array element assignment via set a[i] = val
+        let result = run_program(
+            "fn main() -> i64 = {
+                 let mut arr = [1, 2, 3, 4, 5];
+                 set arr[2] = 99;
+                 arr[2]
+             };"
+        );
+        assert_eq!(result, Value::Int(99));
+    }
+
+    #[test]
+    fn test_array_repeat_syntax() {
+        // [val; N] should create N-element array filled with val
+        let result = run_program(
+            "fn main() -> i64 = {
+                 let arr = [0; 5];
+                 arr.len()
+             };"
+        );
+        assert_eq!(result, Value::Int(5));
+    }
+
+    #[test]
+    fn test_string_slice_method() {
+        let result = run_program(
+            r#"fn main() -> String = "hello world".slice(0, 5);"#
+        );
+        assert_eq!(result, Value::Str(Rc::new("hello".to_string())));
+    }
+
+    #[test]
+    fn test_string_is_empty_method() {
+        assert_eq!(
+            run_program(r#"fn main() -> bool = "".is_empty();"#),
+            Value::Bool(true)
+        );
+        assert_eq!(
+            run_program(r#"fn main() -> bool = "abc".is_empty();"#),
+            Value::Bool(false)
+        );
+    }
+
+    #[test]
+    fn test_pre_condition_failure() {
+        // Calling a function that violates its pre-condition should error
+        let result = run_source(
+            "fn safe_div(a: i64, b: i64) -> i64
+                 pre b != 0
+             = a / b;
+             fn main() -> i64 = safe_div(10, 0);"
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_wrapping_sub_and_mul() {
+        // Wrapping subtraction and multiplication should work normally
+        assert_eq!(
+            run_program("fn main() -> i64 = 10 -% 3;"),
+            Value::Int(7)
+        );
+        assert_eq!(
+            run_program("fn main() -> i64 = 6 *% 7;"),
+            Value::Int(42)
+        );
+    }
+
+    #[test]
+    fn test_saturating_arithmetic() {
+        // Saturating add/sub should clamp at i64 boundaries
+        assert_eq!(
+            run_program("fn main() -> i64 = 100 +| 200;"),
+            Value::Int(300)
+        );
+        assert_eq!(
+            run_program("fn main() -> i64 = 5 -| 10;"),
+            Value::Int(-5)
+        );
+        assert_eq!(
+            run_program("fn main() -> i64 = 3 *| 4;"),
+            Value::Int(12)
+        );
+    }
+
+    #[test]
+    fn test_cast_bool_to_i64() {
+        assert_eq!(
+            run_program("fn main() -> i64 = true as i64;"),
+            Value::Int(1)
+        );
+        assert_eq!(
+            run_program("fn main() -> i64 = false as i64;"),
+            Value::Int(0)
+        );
+    }
+
+    #[test]
+    fn test_cast_i64_to_bool() {
+        assert_eq!(
+            run_program("fn main() -> bool = 42 as bool;"),
+            Value::Bool(true)
+        );
+        assert_eq!(
+            run_program("fn main() -> bool = 0 as bool;"),
+            Value::Bool(false)
+        );
+    }
+
+    #[test]
+    fn test_cast_f64_to_bool() {
+        assert_eq!(
+            run_program("fn main() -> bool = 1.5 as bool;"),
+            Value::Bool(true)
+        );
+        assert_eq!(
+            run_program("fn main() -> bool = 0.0 as bool;"),
+            Value::Bool(false)
+        );
+    }
+
+    #[test]
+    fn test_f64_subtraction_and_multiplication() {
+        let result = run_program("fn main() -> f64 = (10.5 - 3.5) * 2.0;");
+        assert_eq!(result, Value::Float(14.0));
+    }
+
+    #[test]
+    fn test_for_loop_inclusive_range() {
+        // ..= inclusive range should include the end value
+        let result = run_program(
+            "fn main() -> i64 = {
+                 let mut sum = 0;
+                 for i in 1..=5 { sum = sum + i };
+                 sum
+             };"
+        );
+        // 1+2+3+4+5 = 15
+        assert_eq!(result, Value::Int(15));
+    }
+
+    #[test]
+    fn test_struct_field_assign() {
+        // Mutable struct field assignment via set obj.field = val
+        let result = run_program(
+            "struct Point { x: i64, y: i64 }
+             fn main() -> i64 = {
+                 let mut p = new Point { x: 1, y: 2 };
+                 set p.x = 10;
+                 set p.y = 20;
+                 p.x + p.y
+             };"
+        );
+        assert_eq!(result, Value::Int(30));
+    }
+
+    #[test]
+    fn test_for_loop_continue() {
+        // continue inside for loop should skip to next iteration
+        let result = run_program(
+            "fn main() -> i64 = {
+                 let mut sum = 0;
+                 for i in 0..10 {
+                     if i % 3 == 0 { continue } else { () };
+                     { sum = sum + i }
+                 };
+                 sum
+             };"
+        );
+        // Skip 0,3,6,9 => sum = 1+2+4+5+7+8 = 27
+        assert_eq!(result, Value::Int(27));
+    }
 }

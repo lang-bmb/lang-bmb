@@ -5879,4 +5879,374 @@ mod tests {
         assert!(ir.contains("sub nsw i64"));
         assert!(ir.contains("mul nsw i64"));
     }
+
+    // ================================================================
+    // Cycle 209: Additional unit tests for untested codegen paths
+    // ================================================================
+
+    #[test]
+    fn test_with_target_custom_triple() {
+        let cg = TextCodeGen::with_target("aarch64-unknown-linux-gnu");
+        let program = MirProgram {
+            functions: vec![MirFunction {
+                name: "noop".to_string(),
+                params: vec![],
+                ret_ty: MirType::Unit,
+                locals: vec![],
+                blocks: vec![BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Return(None),
+                }],
+                preconditions: vec![],
+                postconditions: vec![],
+                is_pure: false,
+                is_const: false,
+                always_inline: false,
+                inline_hint: false,
+                is_memory_free: false,
+            }],
+            extern_fns: vec![],
+            struct_defs: std::collections::HashMap::new(),
+        };
+        let ir = cg.generate(&program).unwrap();
+        assert!(ir.contains("target triple = \"aarch64-unknown-linux-gnu\""),
+                "custom target triple missing");
+    }
+
+    #[test]
+    fn test_default_trait_implementation() {
+        let cg = TextCodeGen::default();
+        let program = MirProgram {
+            functions: vec![],
+            extern_fns: vec![],
+            struct_defs: std::collections::HashMap::new(),
+        };
+        let ir = cg.generate(&program).unwrap();
+        assert!(ir.contains("target triple"), "default codegen should emit target triple");
+    }
+
+    #[test]
+    fn test_escape_string_special_chars() {
+        let cg = TextCodeGen::new();
+        // Backslash
+        assert_eq!(cg.escape_string_for_llvm("a\\b"), "a\\5Cb");
+        // Double-quote
+        assert_eq!(cg.escape_string_for_llvm("say \"hi\""), "say \\22hi\\22");
+        // Newline
+        assert_eq!(cg.escape_string_for_llvm("line1\nline2"), "line1\\0Aline2");
+        // Carriage return
+        assert_eq!(cg.escape_string_for_llvm("cr\rhere"), "cr\\0Dhere");
+        // Tab
+        assert_eq!(cg.escape_string_for_llvm("col1\tcol2"), "col1\\09col2");
+        // Plain ASCII passthrough
+        assert_eq!(cg.escape_string_for_llvm("hello"), "hello");
+    }
+
+    #[test]
+    fn test_mir_type_to_llvm_all_variants() {
+        let cg = TextCodeGen::new();
+        assert_eq!(cg.mir_type_to_llvm(&MirType::I32), "i32");
+        assert_eq!(cg.mir_type_to_llvm(&MirType::I64), "i64");
+        assert_eq!(cg.mir_type_to_llvm(&MirType::U32), "i32");
+        assert_eq!(cg.mir_type_to_llvm(&MirType::U64), "i64");
+        assert_eq!(cg.mir_type_to_llvm(&MirType::F64), "double");
+        assert_eq!(cg.mir_type_to_llvm(&MirType::Bool), "i1");
+        assert_eq!(cg.mir_type_to_llvm(&MirType::String), "ptr");
+        assert_eq!(cg.mir_type_to_llvm(&MirType::Unit), "void");
+        assert_eq!(cg.mir_type_to_llvm(&MirType::Char), "i32");
+        assert_eq!(cg.mir_type_to_llvm(&MirType::StructPtr("Foo".to_string())), "ptr");
+        assert_eq!(cg.mir_type_to_llvm(&MirType::Ptr(Box::new(MirType::I64))), "ptr");
+        assert_eq!(cg.mir_type_to_llvm(&MirType::Tuple(vec![Box::new(MirType::I64)])), "ptr");
+        assert_eq!(cg.mir_type_to_llvm(&MirType::Array {
+            element_type: Box::new(MirType::I64),
+            size: Some(10),
+        }), "ptr");
+        assert_eq!(cg.mir_type_to_llvm(&MirType::Enum {
+            name: "Color".to_string(),
+            variants: vec![],
+        }), "ptr");
+        assert_eq!(cg.mir_type_to_llvm(&MirType::Struct {
+            name: "Point".to_string(),
+            fields: vec![],
+        }), "ptr");
+    }
+
+    #[test]
+    fn test_constant_type_all_variants() {
+        let cg = TextCodeGen::new();
+        assert_eq!(cg.constant_type(&Constant::Int(42)), "i64");
+        assert_eq!(cg.constant_type(&Constant::Float(3.14)), "double");
+        assert_eq!(cg.constant_type(&Constant::Bool(true)), "i1");
+        assert_eq!(cg.constant_type(&Constant::String("hi".to_string())), "ptr");
+        assert_eq!(cg.constant_type(&Constant::Char('A')), "i32");
+        assert_eq!(cg.constant_type(&Constant::Unit), "i8");
+    }
+
+    #[test]
+    fn test_format_constant_special_floats() {
+        let cg = TextCodeGen::new();
+        // NaN
+        assert_eq!(cg.format_constant(&Constant::Float(f64::NAN)), "0x7FF8000000000000");
+        // Positive infinity
+        assert_eq!(cg.format_constant(&Constant::Float(f64::INFINITY)), "0x7FF0000000000000");
+        // Negative infinity
+        assert_eq!(cg.format_constant(&Constant::Float(f64::NEG_INFINITY)), "0xFFF0000000000000");
+        // Normal float
+        assert_eq!(cg.format_constant(&Constant::Float(4.0)), "4.000000e0");
+        // Bool
+        assert_eq!(cg.format_constant(&Constant::Bool(true)), "1");
+        assert_eq!(cg.format_constant(&Constant::Bool(false)), "0");
+        // Unit
+        assert_eq!(cg.format_constant(&Constant::Unit), "0");
+        // Char
+        assert_eq!(cg.format_constant(&Constant::Char('A')), "65");
+    }
+
+    #[test]
+    fn test_get_cast_instruction_integer_widening() {
+        let cg = TextCodeGen::new();
+        // Signed widening
+        assert_eq!(cg.get_cast_instruction(&MirType::I32, &MirType::I64), "sext");
+        assert_eq!(cg.get_cast_instruction(&MirType::Char, &MirType::I64), "sext");
+        // Unsigned widening
+        assert_eq!(cg.get_cast_instruction(&MirType::U32, &MirType::I64), "zext");
+        assert_eq!(cg.get_cast_instruction(&MirType::Bool, &MirType::I64), "zext");
+        assert_eq!(cg.get_cast_instruction(&MirType::Bool, &MirType::I32), "zext");
+    }
+
+    #[test]
+    fn test_get_cast_instruction_integer_narrowing() {
+        let cg = TextCodeGen::new();
+        assert_eq!(cg.get_cast_instruction(&MirType::I64, &MirType::I32), "trunc");
+        assert_eq!(cg.get_cast_instruction(&MirType::U64, &MirType::I32), "trunc");
+        assert_eq!(cg.get_cast_instruction(&MirType::I64, &MirType::Char), "trunc");
+        assert_eq!(cg.get_cast_instruction(&MirType::I32, &MirType::Char), "trunc");
+    }
+
+    #[test]
+    fn test_get_cast_instruction_float_conversions() {
+        let cg = TextCodeGen::new();
+        // Integer to float
+        assert_eq!(cg.get_cast_instruction(&MirType::I64, &MirType::F64), "sitofp");
+        assert_eq!(cg.get_cast_instruction(&MirType::I32, &MirType::F64), "sitofp");
+        assert_eq!(cg.get_cast_instruction(&MirType::U64, &MirType::F64), "uitofp");
+        // Float to integer
+        assert_eq!(cg.get_cast_instruction(&MirType::F64, &MirType::I64), "fptosi");
+        assert_eq!(cg.get_cast_instruction(&MirType::F64, &MirType::I32), "fptosi");
+        assert_eq!(cg.get_cast_instruction(&MirType::F64, &MirType::U64), "fptoui");
+    }
+
+    #[test]
+    fn test_get_cast_instruction_same_size_signedness() {
+        let cg = TextCodeGen::new();
+        assert_eq!(cg.get_cast_instruction(&MirType::I32, &MirType::U32), "bitcast");
+        assert_eq!(cg.get_cast_instruction(&MirType::U32, &MirType::I32), "bitcast");
+        assert_eq!(cg.get_cast_instruction(&MirType::I64, &MirType::U64), "bitcast");
+        assert_eq!(cg.get_cast_instruction(&MirType::U64, &MirType::I64), "bitcast");
+    }
+
+    #[test]
+    fn test_get_cast_instruction_pointer_conversions() {
+        let cg = TextCodeGen::new();
+        assert_eq!(cg.get_cast_instruction(&MirType::StructPtr("Foo".to_string()), &MirType::I64), "ptrtoint");
+        assert_eq!(cg.get_cast_instruction(&MirType::I64, &MirType::StructPtr("Bar".to_string())), "inttoptr");
+        assert_eq!(cg.get_cast_instruction(&MirType::Ptr(Box::new(MirType::I64)), &MirType::I64), "ptrtoint");
+        assert_eq!(cg.get_cast_instruction(&MirType::I64, &MirType::Ptr(Box::new(MirType::I64))), "inttoptr");
+    }
+
+    #[test]
+    fn test_binop_to_llvm_wrapping_arithmetic() {
+        let cg = TextCodeGen::new();
+        // Wrapping ops should NOT have nsw flag
+        let (inst, preserves) = cg.binop_to_llvm(MirBinOp::AddWrap);
+        assert_eq!(inst, "add");
+        assert!(preserves);
+        let (inst, _) = cg.binop_to_llvm(MirBinOp::SubWrap);
+        assert_eq!(inst, "sub");
+        let (inst, _) = cg.binop_to_llvm(MirBinOp::MulWrap);
+        assert_eq!(inst, "mul");
+    }
+
+    #[test]
+    fn test_binop_to_llvm_float_fast_math() {
+        let cg = TextCodeGen::new();
+        let (inst, preserves) = cg.binop_to_llvm(MirBinOp::FAdd);
+        assert_eq!(inst, "fadd fast");
+        assert!(preserves);
+        let (inst, _) = cg.binop_to_llvm(MirBinOp::FSub);
+        assert_eq!(inst, "fsub fast");
+        let (inst, _) = cg.binop_to_llvm(MirBinOp::FMul);
+        assert_eq!(inst, "fmul fast");
+        let (inst, _) = cg.binop_to_llvm(MirBinOp::FDiv);
+        assert_eq!(inst, "fdiv fast");
+    }
+
+    #[test]
+    fn test_binop_to_llvm_comparisons_return_i1() {
+        let cg = TextCodeGen::new();
+        // All comparisons should NOT preserve operand type (they return i1)
+        for op in [MirBinOp::Eq, MirBinOp::Ne, MirBinOp::Lt, MirBinOp::Gt,
+                   MirBinOp::Le, MirBinOp::Ge] {
+            let (_, preserves) = cg.binop_to_llvm(op);
+            assert!(!preserves, "{:?} should return i1 (preserves_operand_type=false)", op);
+        }
+        // Float comparisons
+        for op in [MirBinOp::FEq, MirBinOp::FNe, MirBinOp::FLt, MirBinOp::FGt,
+                   MirBinOp::FLe, MirBinOp::FGe] {
+            let (_, preserves) = cg.binop_to_llvm(op);
+            assert!(!preserves, "{:?} should return i1 (preserves_operand_type=false)", op);
+        }
+    }
+
+    #[test]
+    fn test_infer_call_return_type_builtins() {
+        let cg = TextCodeGen::new();
+        let dummy_func = MirFunction {
+            name: "test".to_string(),
+            params: vec![],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+        // Void returns
+        assert_eq!(cg.infer_call_return_type("println", &dummy_func), "void");
+        assert_eq!(cg.infer_call_return_type("print", &dummy_func), "void");
+        assert_eq!(cg.infer_call_return_type("assert", &dummy_func), "void");
+        // i64 returns
+        assert_eq!(cg.infer_call_return_type("read_int", &dummy_func), "i64");
+        assert_eq!(cg.infer_call_return_type("len", &dummy_func), "i64");
+        assert_eq!(cg.infer_call_return_type("bmb_time_ns", &dummy_func), "i64");
+        // double returns
+        assert_eq!(cg.infer_call_return_type("sqrt", &dummy_func), "double");
+        assert_eq!(cg.infer_call_return_type("i64_to_f64", &dummy_func), "double");
+        // ptr returns
+        assert_eq!(cg.infer_call_return_type("bmb_read_file", &dummy_func), "ptr");
+        assert_eq!(cg.infer_call_return_type("sb_build", &dummy_func), "ptr");
+        assert_eq!(cg.infer_call_return_type("chr", &dummy_func), "ptr");
+        // Unknown function defaults to i64
+        assert_eq!(cg.infer_call_return_type("unknown_fn", &dummy_func), "i64");
+    }
+
+    #[test]
+    fn test_always_inline_function_attributes() {
+        let program = MirProgram {
+            functions: vec![MirFunction {
+                name: "tiny".to_string(),
+                params: vec![("x".to_string(), MirType::I64)],
+                ret_ty: MirType::I64,
+                locals: vec![],
+                blocks: vec![BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Return(Some(Operand::Place(Place::new("x")))),
+                }],
+                preconditions: vec![],
+                postconditions: vec![],
+                is_pure: false,
+                is_const: false,
+                always_inline: true,
+                inline_hint: false,
+                is_memory_free: false,
+            }],
+            extern_fns: vec![],
+            struct_defs: std::collections::HashMap::new(),
+        };
+        let cg = TextCodeGen::new();
+        let ir = cg.generate(&program).unwrap();
+        assert!(ir.contains("alwaysinline"), "always_inline function should have alwaysinline attribute");
+        assert!(ir.contains("private "), "always_inline function should have private linkage");
+    }
+
+    #[test]
+    fn test_memory_free_function_attributes() {
+        let program = MirProgram {
+            functions: vec![MirFunction {
+                name: "pure_add".to_string(),
+                params: vec![
+                    ("a".to_string(), MirType::I64),
+                    ("b".to_string(), MirType::I64),
+                ],
+                ret_ty: MirType::I64,
+                locals: vec![],
+                blocks: vec![BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![MirInst::BinOp {
+                        dest: Place::new("_t0"),
+                        op: MirBinOp::Add,
+                        lhs: Operand::Place(Place::new("a")),
+                        rhs: Operand::Place(Place::new("b")),
+                    }],
+                    terminator: Terminator::Return(Some(Operand::Place(Place::new("_t0")))),
+                }],
+                preconditions: vec![],
+                postconditions: vec![],
+                is_pure: false,
+                is_const: false,
+                always_inline: false,
+                inline_hint: false,
+                is_memory_free: true,
+            }],
+            extern_fns: vec![],
+            struct_defs: std::collections::HashMap::new(),
+        };
+        let cg = TextCodeGen::new();
+        let ir = cg.generate(&program).unwrap();
+        assert!(ir.contains("memory(none)"), "memory-free function should have memory(none) attribute");
+    }
+
+    #[test]
+    fn test_struct_type_definitions_emitted() {
+        let mut struct_defs = std::collections::HashMap::new();
+        struct_defs.insert("Point".to_string(), vec![
+            ("x".to_string(), MirType::I64),
+            ("y".to_string(), MirType::I64),
+        ]);
+        let program = MirProgram {
+            functions: vec![],
+            extern_fns: vec![],
+            struct_defs,
+        };
+        let cg = TextCodeGen::new();
+        let ir = cg.generate(&program).unwrap();
+        assert!(ir.contains("%struct.Point = type { i64, i64 }"),
+                "struct type definition should be emitted, got:\n{}", ir);
+    }
+
+    #[test]
+    fn test_main_function_renamed_to_bmb_user_main() {
+        let program = MirProgram {
+            functions: vec![MirFunction {
+                name: "main".to_string(),
+                params: vec![],
+                ret_ty: MirType::I64,
+                locals: vec![],
+                blocks: vec![BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(0)))),
+                }],
+                preconditions: vec![],
+                postconditions: vec![],
+                is_pure: false,
+                is_const: false,
+                always_inline: false,
+                inline_hint: false,
+                is_memory_free: false,
+            }],
+            extern_fns: vec![],
+            struct_defs: std::collections::HashMap::new(),
+        };
+        let cg = TextCodeGen::new();
+        let ir = cg.generate(&program).unwrap();
+        assert!(ir.contains("@bmb_user_main"), "main should be renamed to bmb_user_main");
+        assert!(!ir.contains("@main("), "should not emit @main( directly");
+    }
 }
