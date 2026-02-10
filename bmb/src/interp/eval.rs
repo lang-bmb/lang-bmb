@@ -864,7 +864,12 @@ impl Interpreter {
                 };
 
                 // v0.89.5: Check if this is a typed pointer (Value::Int) for ptr[i] = value
-                match env.borrow().get(&arr_name) {
+                // v0.90.24: Fix RefCell borrow conflict — bind lookup result so the
+                // Ref<Env> temporary is dropped before entering the match body.
+                // Previously, `match env.borrow().get(...)` kept the Ref alive for the
+                // entire match, conflicting with `env.borrow_mut()` in the Array arm.
+                let lookup = env.borrow().get(&arr_name);
+                match lookup {
                     Some(Value::Int(ptr)) => {
                         if ptr == 0 {
                             return Err(RuntimeError::io_error("index assign: null pointer dereference"));
@@ -881,7 +886,7 @@ impl Interpreter {
                         Ok(Value::Unit)
                     }
                     Some(Value::Array(a)) => {
-                        let mut arr = a.clone();
+                        let mut arr = a;
                         if idx < arr.len() {
                             arr[idx] = new_val;
                             env.borrow_mut().set(&arr_name, Value::Array(arr));
@@ -2024,6 +2029,53 @@ impl Interpreter {
                         Ok(Value::Int(value))
                     }
                     _ => Err(RuntimeError::type_error("array, string, or pointer", derefed_val.type_name())),
+                }
+            }
+
+            // v0.90.24: IndexAssign in eval_fast (scope-stack path)
+            Expr::IndexAssign { array, index, value } => {
+                let arr_name = match &array.node {
+                    Expr::Var(name) => name.clone(),
+                    _ => return Err(RuntimeError::type_error("variable", "complex expression")),
+                };
+
+                let idx_val = self.eval_fast(index)?;
+                let new_val = self.eval_fast(value)?;
+
+                let idx = match idx_val {
+                    Value::Int(n) => n as usize,
+                    _ => return Err(RuntimeError::type_error("integer", idx_val.type_name())),
+                };
+
+                let lookup = self.scope_stack.get(&arr_name);
+                match lookup {
+                    Some(Value::Int(ptr)) => {
+                        if ptr == 0 {
+                            return Err(RuntimeError::io_error("index assign: null pointer dereference"));
+                        }
+                        let write_val = match new_val {
+                            Value::Int(v) => v,
+                            _ => return Err(RuntimeError::type_error("i64", new_val.type_name())),
+                        };
+                        let addr = ptr + (idx as i64) * 8;
+                        unsafe {
+                            let p = addr as *mut i64;
+                            *p = write_val;
+                        }
+                        Ok(Value::Unit)
+                    }
+                    Some(Value::Array(a)) => {
+                        let mut arr = a;
+                        if idx < arr.len() {
+                            arr[idx] = new_val;
+                            self.scope_stack.set(&arr_name, Value::Array(arr));
+                            Ok(Value::Unit)
+                        } else {
+                            Err(RuntimeError::index_out_of_bounds(idx as i64, arr.len()))
+                        }
+                    }
+                    Some(other) => Err(RuntimeError::type_error("array or pointer", other.type_name())),
+                    None => Err(RuntimeError::undefined_variable(&arr_name)),
                 }
             }
 

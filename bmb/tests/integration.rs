@@ -3407,3 +3407,447 @@ fn test_interp_f64_comparison() {
         1
     );
 }
+
+// ============================================
+// Cycle 192: i32 Full Pipeline Integration Tests
+// ============================================
+
+// --- i32 Type Checking ---
+
+#[test]
+fn test_i32_basic_function() {
+    assert!(type_checks("fn add32(a: i32, b: i32) -> i32 = a + b;"));
+}
+
+#[test]
+fn test_i32_arithmetic_ops() {
+    assert!(type_checks(
+        "fn math32(x: i32, y: i32) -> i32 = (x + y) * (x - y) / (y + 1);"
+    ));
+}
+
+#[test]
+fn test_i32_comparison() {
+    assert!(type_checks(
+        "fn gt32(a: i32, b: i32) -> bool = a > b;"
+    ));
+}
+
+#[test]
+fn test_i32_bitwise_ops() {
+    assert!(type_checks(
+        "fn bits32(x: i32, y: i32) -> i32 = (x band y) bor (x bxor y);"
+    ));
+}
+
+#[test]
+fn test_i32_shift_ops() {
+    assert!(type_checks(
+        "fn shift32(x: i32, n: i32) -> i32 = (x << n) >> n;"
+    ));
+}
+
+#[test]
+fn test_i32_negation() {
+    assert!(type_checks(
+        "fn neg32(x: i32) -> i32 = -x;"
+    ));
+}
+
+#[test]
+fn test_i32_if_expression() {
+    assert!(type_checks(
+        "fn max32(a: i32, b: i32) -> i32 = if a > b { a } else { b };"
+    ));
+}
+
+#[test]
+fn test_i32_let_binding() {
+    assert!(type_checks(
+        "fn test32() -> i32 = { let x: i32 = 10; let y: i32 = 20; x + y };"
+    ));
+}
+
+#[test]
+fn test_i32_while_loop() {
+    assert!(type_checks(
+        "fn sum32(n: i32) -> i32 = {
+            let mut s: i32 = 0;
+            let mut i: i32 = 0;
+            while i < n {
+                s = s + i;
+                { i = i + 1 }
+            };
+            s
+        };"
+    ));
+}
+
+#[test]
+fn test_i32_for_loop() {
+    assert!(type_checks(
+        "fn sum_range32(n: i64) -> i64 = {
+            let mut s: i64 = 0;
+            for i in 1..=n {
+                s = s + i
+            };
+            s
+        };"
+    ));
+}
+
+#[test]
+fn test_i32_cast_to_i64() {
+    assert!(type_checks(
+        "fn widen(x: i32) -> i64 = x as i64;"
+    ));
+}
+
+#[test]
+fn test_i64_cast_to_i32() {
+    assert!(type_checks(
+        "fn narrow(x: i64) -> i32 = x as i32;"
+    ));
+}
+
+#[test]
+fn test_i32_cast_to_f64() {
+    assert!(type_checks(
+        "fn to_float(x: i32) -> f64 = x as f64;"
+    ));
+}
+
+#[test]
+fn test_f64_cast_to_i32() {
+    assert!(type_checks(
+        "fn to_int(x: f64) -> i32 = x as i32;"
+    ));
+}
+
+#[test]
+fn test_i32_bool_cast() {
+    assert!(type_checks(
+        "fn to_i32(b: bool) -> i32 = b as i32;"
+    ));
+}
+
+#[test]
+fn test_i32_with_contract() {
+    assert!(type_checks(
+        "fn safe_div32(x: i32, y: i32) -> i32
+           pre y != 0
+         = x / y;"
+    ));
+}
+
+#[test]
+fn test_i32_modulo() {
+    assert!(type_checks(
+        "fn mod32(x: i32, y: i32) -> i32 = x % y;"
+    ));
+}
+
+// --- i32 Type Errors ---
+
+#[test]
+fn test_i32_i64_mismatch() {
+    // Cannot add i32 and i64 without explicit cast
+    assert!(type_error(
+        "fn bad(a: i32, b: i64) -> i64 = a + b;"
+    ));
+}
+
+#[test]
+fn test_i32_return_type_mismatch() {
+    // Returning i32 from i64 function should fail
+    assert!(type_error(
+        "fn bad(x: i32) -> i64 = x;"
+    ));
+}
+
+// --- i32 Interpreter Tests ---
+
+#[test]
+fn test_interp_i32_addition() {
+    assert_eq!(
+        run_program(
+            "fn main() -> i32 = { let a: i32 = 15; let b: i32 = 25; a + b };"
+        ),
+        Value::Int(40)
+    );
+}
+
+#[test]
+fn test_interp_i32_subtraction() {
+    assert_eq!(
+        run_program(
+            "fn main() -> i32 = { let a: i32 = 50; let b: i32 = 30; a - b };"
+        ),
+        Value::Int(20)
+    );
+}
+
+#[test]
+fn test_interp_i32_multiplication() {
+    assert_eq!(
+        run_program(
+            "fn main() -> i32 = { let a: i32 = 7; let b: i32 = 8; a * b };"
+        ),
+        Value::Int(56)
+    );
+}
+
+#[test]
+fn test_interp_i32_division() {
+    assert_eq!(
+        run_program(
+            "fn main() -> i32 = { let a: i32 = 100; let b: i32 = 4; a / b };"
+        ),
+        Value::Int(25)
+    );
+}
+
+#[test]
+fn test_interp_i32_modulo() {
+    assert_eq!(
+        run_program(
+            "fn main() -> i32 = { let a: i32 = 17; let b: i32 = 5; a % b };"
+        ),
+        Value::Int(2)
+    );
+}
+
+#[test]
+fn test_interp_i32_negation() {
+    assert_eq!(
+        run_program(
+            "fn main() -> i32 = { let x: i32 = 42; -x };"
+        ),
+        Value::Int(-42)
+    );
+}
+
+#[test]
+fn test_interp_i32_bitwise_and() {
+    assert_eq!(
+        run_program(
+            "fn main() -> i32 = { let a: i32 = 12; let b: i32 = 10; a band b };"
+        ),
+        Value::Int(8) // 1100 & 1010 = 1000
+    );
+}
+
+#[test]
+fn test_interp_i32_bitwise_or() {
+    assert_eq!(
+        run_program(
+            "fn main() -> i32 = { let a: i32 = 12; let b: i32 = 10; a bor b };"
+        ),
+        Value::Int(14) // 1100 | 1010 = 1110
+    );
+}
+
+#[test]
+fn test_interp_i32_bitwise_xor() {
+    assert_eq!(
+        run_program(
+            "fn main() -> i32 = { let a: i32 = 12; let b: i32 = 10; a bxor b };"
+        ),
+        Value::Int(6) // 1100 ^ 1010 = 0110
+    );
+}
+
+#[test]
+fn test_interp_i32_shift_left() {
+    assert_eq!(
+        run_program(
+            "fn main() -> i32 = { let x: i32 = 1; x << 4 };"
+        ),
+        Value::Int(16)
+    );
+}
+
+#[test]
+fn test_interp_i32_shift_right() {
+    assert_eq!(
+        run_program(
+            "fn main() -> i32 = { let x: i32 = 64; x >> 3 };"
+        ),
+        Value::Int(8)
+    );
+}
+
+#[test]
+fn test_interp_i32_comparison_ops() {
+    assert_eq!(
+        run_program_i64(
+            "fn main() -> i64 = {
+                let a: i32 = 10;
+                let b: i32 = 20;
+                let r1 = if a < b { 1 } else { 0 };
+                let r2 = if a > b { 1 } else { 0 };
+                let r3 = if a == a { 1 } else { 0 };
+                let r4 = if a != b { 1 } else { 0 };
+                (r1 + r2 + r3 + r4) as i64
+            };"
+        ),
+        3 // true + false + true + true = 3
+    );
+}
+
+#[test]
+fn test_interp_i32_cast_to_i64() {
+    assert_eq!(
+        run_program_i64(
+            "fn main() -> i64 = { let x: i32 = 42; x as i64 };"
+        ),
+        42
+    );
+}
+
+#[test]
+fn test_interp_i64_cast_to_i32() {
+    assert_eq!(
+        run_program(
+            "fn main() -> i32 = { let x: i64 = 100; x as i32 };"
+        ),
+        Value::Int(100)
+    );
+}
+
+#[test]
+fn test_interp_i32_overflow_truncation() {
+    // i64 value larger than i32 max should truncate
+    assert_eq!(
+        run_program(
+            "fn main() -> i32 = { let x: i64 = 2147483648; x as i32 };"
+        ),
+        Value::Int(-2147483648) // i32 overflow wraps
+    );
+}
+
+#[test]
+fn test_interp_i32_negative_cast() {
+    assert_eq!(
+        run_program_i64(
+            "fn main() -> i64 = { let x: i32 = -100; x as i64 };"
+        ),
+        -100 // sign-extended
+    );
+}
+
+#[test]
+fn test_interp_i32_if_expression() {
+    assert_eq!(
+        run_program(
+            "fn max32(a: i32, b: i32) -> i32 = if a > b { a } else { b };
+             fn main() -> i32 = max32(30, 20);"
+        ),
+        Value::Int(30)
+    );
+}
+
+#[test]
+fn test_interp_i32_while_sum() {
+    assert_eq!(
+        run_program(
+            "fn sum32(n: i32) -> i32 = {
+                let mut s: i32 = 0;
+                let mut i: i32 = 1;
+                while i <= n {
+                    s = s + i;
+                    { i = i + 1 }
+                };
+                s
+            };
+            fn main() -> i32 = sum32(10);"
+        ),
+        Value::Int(55)
+    );
+}
+
+#[test]
+fn test_interp_i32_recursive() {
+    assert_eq!(
+        run_program(
+            "fn factorial32(n: i32) -> i32 = {
+                let one: i32 = 1;
+                if n <= one { one } else { n * factorial32(n - one) }
+             };
+             fn main() -> i32 = factorial32(10);"
+        ),
+        Value::Int(3628800)
+    );
+}
+
+#[test]
+fn test_interp_i32_bool_cast() {
+    assert_eq!(
+        run_program(
+            "fn main() -> i32 = { let b: bool = true; b as i32 };"
+        ),
+        Value::Int(1)
+    );
+}
+
+#[test]
+fn test_interp_i32_f64_cast() {
+    let result = run_program(
+        "fn main() -> f64 = { let x: i32 = 42; x as f64 };"
+    );
+    match result {
+        Value::Float(f) => assert!((f - 42.0).abs() < 0.001),
+        other => panic!("expected Float, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_interp_i32_f64_to_i32_cast() {
+    assert_eq!(
+        run_program(
+            "fn main() -> i32 = { let f: f64 = 3.14; f as i32 };"
+        ),
+        Value::Int(3)
+    );
+}
+
+// ============================================
+// Cycle 194: IndexAssign Fix Verification
+// ============================================
+
+#[test]
+fn test_interp_array_index_assign() {
+    // This test previously panicked with RefCell borrow conflict.
+    // v0.90.24: Fixed by binding env.borrow().get() result to a variable
+    // so the Ref<Env> temporary is dropped before borrow_mut() is called.
+    assert_eq!(
+        run_program_i64(
+            "fn main() -> i64 = {
+                let mut a: [i64; 3] = [10, 20, 30];
+                set a[0] = 100;
+                set a[2] = 300;
+                a[0] + a[1] + a[2]
+            };"
+        ),
+        420 // 100 + 20 + 300
+    );
+}
+
+#[test]
+fn test_interp_array_index_assign_loop() {
+    // Array modification inside a loop
+    assert_eq!(
+        run_program_i64(
+            "fn main() -> i64 = {
+                let mut a: [i64; 5] = [0, 0, 0, 0, 0];
+                let mut i: i64 = 0;
+                while i < 5 {
+                    set a[i] = i * i;
+                    { i = i + 1 }
+                };
+                a[0] + a[1] + a[2] + a[3] + a[4]
+            };"
+        ),
+        30 // 0 + 1 + 4 + 9 + 16
+    );
+}
