@@ -1263,7 +1263,7 @@ mod tests {
     }
 
     #[test]
-    fn test_nested_if_then_else() {
+    fn test_nested_if_then_else_legacy() {
         let trans = SmtTranslator::new();
         let inner_if = spanned(Expr::If {
             cond: Box::new(spanned(Expr::BoolLit(false))),
@@ -1292,5 +1292,471 @@ mod tests {
         assert!(output.contains("(assert (> x 0))"));
         assert!(output.contains("(assert (> y 0))"));
         assert!(output.contains("(assert (< (+ x y) 100))"));
+    }
+
+    // ================================================================
+    // Cycle 206: Edge Case Tests for SMT Translator
+    // ================================================================
+
+    // ---- Complex contract expressions (3 tests) ----
+
+    /// Nested pre/post conditions: (x > 0 && y > 0) => (x + y > 0)
+    /// Exercises deeply nested binary ops with implication.
+    #[test]
+    fn test_complex_nested_precondition_with_implication() {
+        let mut trans = SmtTranslator::new();
+        trans.var_types.insert("x".to_string(), SmtSort::Int);
+        trans.var_types.insert("y".to_string(), SmtSort::Int);
+
+        // Build: (x > 0 && y > 0) => (x + y > 0)
+        let x_gt_0 = spanned(Expr::Binary {
+            left: Box::new(spanned(Expr::Var("x".to_string()))),
+            op: BinOp::Gt,
+            right: Box::new(spanned(Expr::IntLit(0))),
+        });
+        let y_gt_0 = spanned(Expr::Binary {
+            left: Box::new(spanned(Expr::Var("y".to_string()))),
+            op: BinOp::Gt,
+            right: Box::new(spanned(Expr::IntLit(0))),
+        });
+        let lhs = spanned(Expr::Binary {
+            left: Box::new(x_gt_0),
+            op: BinOp::And,
+            right: Box::new(y_gt_0),
+        });
+        let sum = spanned(Expr::Binary {
+            left: Box::new(spanned(Expr::Var("x".to_string()))),
+            op: BinOp::Add,
+            right: Box::new(spanned(Expr::Var("y".to_string()))),
+        });
+        let rhs = spanned(Expr::Binary {
+            left: Box::new(sum),
+            op: BinOp::Gt,
+            right: Box::new(spanned(Expr::IntLit(0))),
+        });
+        let implies = spanned(Expr::Binary {
+            left: Box::new(lhs),
+            op: BinOp::Implies,
+            right: Box::new(rhs),
+        });
+
+        assert_eq!(
+            trans.translate(&implies).unwrap(),
+            "(=> (and (> x 0) (> y 0)) (> (+ x y) 0))"
+        );
+    }
+
+    /// Multiple clauses in a post-condition: ret >= 0 && ret <= x && ret == x mod y
+    /// Tests chaining of three clauses with logical AND.
+    #[test]
+    fn test_complex_multi_clause_postcondition() {
+        let mut trans = SmtTranslator::new();
+        trans.var_types.insert("__ret__".to_string(), SmtSort::Int);
+        trans.var_types.insert("x".to_string(), SmtSort::Int);
+        trans.var_types.insert("y".to_string(), SmtSort::Int);
+
+        // ret >= 0
+        let clause1 = spanned(Expr::Binary {
+            left: Box::new(spanned(Expr::Ret)),
+            op: BinOp::Ge,
+            right: Box::new(spanned(Expr::IntLit(0))),
+        });
+        // ret <= x
+        let clause2 = spanned(Expr::Binary {
+            left: Box::new(spanned(Expr::Ret)),
+            op: BinOp::Le,
+            right: Box::new(spanned(Expr::Var("x".to_string()))),
+        });
+        // ret == x mod y
+        let x_mod_y = spanned(Expr::Binary {
+            left: Box::new(spanned(Expr::Var("x".to_string()))),
+            op: BinOp::Mod,
+            right: Box::new(spanned(Expr::Var("y".to_string()))),
+        });
+        let clause3 = spanned(Expr::Binary {
+            left: Box::new(spanned(Expr::Ret)),
+            op: BinOp::Eq,
+            right: Box::new(x_mod_y),
+        });
+        // clause1 && clause2 && clause3
+        let c1_and_c2 = spanned(Expr::Binary {
+            left: Box::new(clause1),
+            op: BinOp::And,
+            right: Box::new(clause2),
+        });
+        let all = spanned(Expr::Binary {
+            left: Box::new(c1_and_c2),
+            op: BinOp::And,
+            right: Box::new(clause3),
+        });
+
+        assert_eq!(
+            trans.translate(&all).unwrap(),
+            "(and (and (>= __ret__ 0) (<= __ret__ x)) (= __ret__ (mod x y)))"
+        );
+    }
+
+    /// Nested let + if contract: let tmp = x + 1 in (ite (> 99 0) 99 0)
+    /// Tests let-binding inside an if-expression for complex contract shapes.
+    #[test]
+    fn test_complex_let_inside_if_contract() {
+        let mut trans = SmtTranslator::new();
+        trans.var_types.insert("x".to_string(), SmtSort::Int);
+
+        let x_plus_1 = spanned(Expr::Binary {
+            left: Box::new(spanned(Expr::Var("x".to_string()))),
+            op: BinOp::Add,
+            right: Box::new(spanned(Expr::IntLit(1))),
+        });
+        let inner_if = spanned(Expr::If {
+            cond: Box::new(spanned(Expr::Binary {
+                left: Box::new(spanned(Expr::IntLit(99))),
+                op: BinOp::Gt,
+                right: Box::new(spanned(Expr::IntLit(0))),
+            })),
+            then_branch: Box::new(spanned(Expr::IntLit(99))),
+            else_branch: Box::new(spanned(Expr::IntLit(0))),
+        });
+        let let_expr = spanned(Expr::Let {
+            name: "tmp".to_string(),
+            mutable: false,
+            ty: Some(Spanned::new(Type::I64, span())),
+            value: Box::new(x_plus_1),
+            body: Box::new(inner_if),
+        });
+
+        assert_eq!(
+            trans.translate(&let_expr).unwrap(),
+            "(let ((tmp (+ x 1))) (ite (> 99 0) 99 0))"
+        );
+    }
+
+    // ---- Array contract expressions (2 tests) ----
+
+    /// Array literal returns UnsupportedFeature, confirming array-related
+    /// contract expressions are correctly rejected with descriptive message.
+    #[test]
+    fn test_array_literal_in_contract_rejected() {
+        let trans = SmtTranslator::new();
+        let arr = spanned(Expr::ArrayLit(vec![
+            spanned(Expr::IntLit(1)),
+            spanned(Expr::IntLit(2)),
+            spanned(Expr::IntLit(3)),
+        ]));
+        let err = trans.translate(&arr).unwrap_err();
+        match err {
+            TranslateError::UnsupportedFeature(msg) => {
+                assert!(msg.contains("array"), "Expected 'array' in error: {}", msg);
+            }
+            other => panic!("Expected UnsupportedFeature, got: {:?}", other),
+        }
+    }
+
+    /// Index expression and index assignment are both rejected, testing both
+    /// array access patterns that could appear in contracts.
+    #[test]
+    fn test_array_index_and_index_assign_rejected() {
+        let mut trans = SmtTranslator::new();
+        trans.var_types.insert("arr".to_string(), SmtSort::Int);
+
+        // arr[0]
+        let index_expr = spanned(Expr::Index {
+            expr: Box::new(spanned(Expr::Var("arr".to_string()))),
+            index: Box::new(spanned(Expr::IntLit(0))),
+        });
+        let err1 = trans.translate(&index_expr).unwrap_err();
+        match &err1 {
+            TranslateError::UnsupportedFeature(msg) => {
+                assert!(msg.contains("array index"), "Expected 'array index' in error: {}", msg);
+            }
+            other => panic!("Expected UnsupportedFeature, got: {:?}", other),
+        }
+
+        // arr[0] = 42
+        let index_assign = spanned(Expr::IndexAssign {
+            array: Box::new(spanned(Expr::Var("arr".to_string()))),
+            index: Box::new(spanned(Expr::IntLit(0))),
+            value: Box::new(spanned(Expr::IntLit(42))),
+        });
+        let err2 = trans.translate(&index_assign).unwrap_err();
+        match &err2 {
+            TranslateError::UnsupportedFeature(msg) => {
+                assert!(msg.contains("array index"), "Expected 'array index' in error: {}", msg);
+            }
+            other => panic!("Expected UnsupportedFeature, got: {:?}", other),
+        }
+    }
+
+    // ---- Nullable contract expressions (2 tests) ----
+
+    /// Nullable type T? maps to the same sort as T.
+    /// Test nested nullable (T??) and confirm sort resolution.
+    #[test]
+    fn test_nullable_type_sort_nested() {
+        // i64? -> Int
+        assert_eq!(SmtTranslator::type_to_sort(&Type::Nullable(Box::new(Type::I64))), SmtSort::Int);
+        // Bool? -> Bool
+        assert_eq!(SmtTranslator::type_to_sort(&Type::Nullable(Box::new(Type::Bool))), SmtSort::Bool);
+        // i64?? (double-nullable) -> Int (unwraps recursively)
+        let double_nullable = Type::Nullable(Box::new(Type::Nullable(Box::new(Type::I64))));
+        assert_eq!(SmtTranslator::type_to_sort(&double_nullable), SmtSort::Int);
+    }
+
+    /// Null literal (Expr::Null) translates to "0", and comparing a variable
+    /// with null produces proper SMT not-equal / equal expressions.
+    #[test]
+    fn test_nullable_null_check_contract() {
+        let mut trans = SmtTranslator::new();
+        trans.var_types.insert("ptr".to_string(), SmtSort::Int);
+
+        // ptr != null  =>  (not (= ptr 0))
+        let ne_null = spanned(Expr::Binary {
+            left: Box::new(spanned(Expr::Var("ptr".to_string()))),
+            op: BinOp::Ne,
+            right: Box::new(spanned(Expr::Null)),
+        });
+        assert_eq!(trans.translate(&ne_null).unwrap(), "(not (= ptr 0))");
+
+        // ptr == null  =>  (= ptr 0)
+        let eq_null = spanned(Expr::Binary {
+            left: Box::new(spanned(Expr::Var("ptr".to_string()))),
+            op: BinOp::Eq,
+            right: Box::new(spanned(Expr::Null)),
+        });
+        assert_eq!(trans.translate(&eq_null).unwrap(), "(= ptr 0)");
+    }
+
+    // ---- Error handling (3 tests) ----
+
+    /// Undefined variable in a nested expression should propagate the error
+    /// through the entire expression tree.
+    #[test]
+    fn test_error_propagation_in_nested_expr() {
+        let trans = SmtTranslator::new();
+
+        // (1 + unknown_var) * 2 -- `unknown_var` is not declared
+        let inner = spanned(Expr::Binary {
+            left: Box::new(spanned(Expr::IntLit(1))),
+            op: BinOp::Add,
+            right: Box::new(spanned(Expr::Var("unknown_var".to_string()))),
+        });
+        let outer = spanned(Expr::Binary {
+            left: Box::new(inner),
+            op: BinOp::Mul,
+            right: Box::new(spanned(Expr::IntLit(2))),
+        });
+        let err = trans.translate(&outer).unwrap_err();
+        match err {
+            TranslateError::UndefinedVariable(name) => {
+                assert_eq!(name, "unknown_var");
+            }
+            other => panic!("Expected UndefinedVariable, got: {:?}", other),
+        }
+    }
+
+    /// Closure expressions are explicitly unsupported in contracts.
+    /// Verify the error message is descriptive.
+    #[test]
+    fn test_error_closure_in_contract() {
+        let trans = SmtTranslator::new();
+        let closure = spanned(Expr::Closure {
+            params: vec![],
+            ret_ty: None,
+            body: Box::new(spanned(Expr::IntLit(0))),
+        });
+        let err = trans.translate(&closure).unwrap_err();
+        match err {
+            TranslateError::UnsupportedFeature(msg) => {
+                assert!(msg.contains("closure"), "Expected 'closure' in msg: {}", msg);
+            }
+            other => panic!("Expected UnsupportedFeature, got: {:?}", other),
+        }
+    }
+
+    /// Multiple different unsupported expression types each produce
+    /// distinct error messages (struct init, field access, method call).
+    #[test]
+    fn test_error_distinct_unsupported_messages() {
+        let trans = SmtTranslator::new();
+
+        // StructInit
+        let si = spanned(Expr::StructInit {
+            name: "Point".to_string(),
+            fields: vec![],
+        });
+        match trans.translate(&si).unwrap_err() {
+            TranslateError::UnsupportedFeature(msg) => {
+                assert!(msg.contains("struct init"), "Got: {}", msg);
+                assert!(msg.contains("Point"), "Expected struct name in msg: {}", msg);
+            }
+            other => panic!("Expected UnsupportedFeature, got: {:?}", other),
+        }
+
+        // FieldAccess
+        let fa = spanned(Expr::FieldAccess {
+            expr: Box::new(spanned(Expr::IntLit(0))),
+            field: Spanned::new("x".to_string(), span()),
+        });
+        match trans.translate(&fa).unwrap_err() {
+            TranslateError::UnsupportedFeature(msg) => {
+                assert!(msg.contains("field access"), "Got: {}", msg);
+                assert!(msg.contains("x"), "Expected field name in msg: {}", msg);
+            }
+            other => panic!("Expected UnsupportedFeature, got: {:?}", other),
+        }
+
+        // MethodCall
+        let mc = spanned(Expr::MethodCall {
+            receiver: Box::new(spanned(Expr::IntLit(0))),
+            method: "len".to_string(),
+            args: vec![],
+        });
+        match trans.translate(&mc).unwrap_err() {
+            TranslateError::UnsupportedFeature(msg) => {
+                assert!(msg.contains("method call"), "Got: {}", msg);
+            }
+            other => panic!("Expected UnsupportedFeature, got: {:?}", other),
+        }
+    }
+
+    // ---- SMT output format (2 tests) ----
+
+    /// Verify correct SMT-LIB2 output structure: header, declarations,
+    /// assertions, check-sat, get-model in proper order.
+    #[test]
+    fn test_smt_output_format_ordering() {
+        let mut generator = SmtLibGenerator::new();
+        generator.declare_var("a", SmtSort::Int);
+        generator.declare_var("b", SmtSort::Bool);
+        generator.assert("(> a 0)");
+        generator.assert("(= b true)");
+        let output = generator.generate();
+
+        // Verify ordering: header before declarations before assertions before check-sat
+        let header_pos = output.find("; Generated by BMB compiler").unwrap();
+        let logic_pos = output.find("(set-logic QF_LIA)").unwrap();
+        let decl_a_pos = output.find("(declare-const a Int)").unwrap();
+        let decl_b_pos = output.find("(declare-const b Bool)").unwrap();
+        let assert1_pos = output.find("(assert (> a 0))").unwrap();
+        let assert2_pos = output.find("(assert (= b true))").unwrap();
+        let check_pos = output.find("(check-sat)").unwrap();
+        let model_pos = output.find("(get-model)").unwrap();
+
+        assert!(header_pos < logic_pos, "Header should precede logic declaration");
+        assert!(logic_pos < decl_a_pos, "Logic should precede declarations");
+        assert!(decl_a_pos < decl_b_pos, "Declarations in insertion order");
+        assert!(decl_b_pos < assert1_pos, "Declarations precede assertions");
+        assert!(assert1_pos < assert2_pos, "Assertions in insertion order");
+        assert!(assert2_pos < check_pos, "Assertions precede check-sat");
+        assert!(check_pos < model_pos, "check-sat precedes get-model");
+    }
+
+    /// Verify setup_function correctly declares function parameters and
+    /// return value including named return bindings.
+    #[test]
+    fn test_smt_setup_function_with_named_return() {
+        use crate::ast::{FnDef, Param, Visibility};
+
+        let mut trans = SmtTranslator::new();
+        let mut generator = SmtLibGenerator::new();
+
+        // fn clamp(x: i64, lo: i64, hi: i64) -> result: i64
+        let func = FnDef {
+            attributes: vec![],
+            visibility: Visibility::Private,
+            is_async: false,
+            name: Spanned::new("clamp".to_string(), span()),
+            type_params: vec![],
+            params: vec![
+                Param {
+                    name: Spanned::new("x".to_string(), span()),
+                    ty: Spanned::new(Type::I64, span()),
+                },
+                Param {
+                    name: Spanned::new("lo".to_string(), span()),
+                    ty: Spanned::new(Type::I64, span()),
+                },
+                Param {
+                    name: Spanned::new("hi".to_string(), span()),
+                    ty: Spanned::new(Type::I64, span()),
+                },
+            ],
+            ret_name: Some(Spanned::new("result".to_string(), span())),
+            ret_ty: Spanned::new(Type::I64, span()),
+            pre: None,
+            post: None,
+            contracts: vec![],
+            body: Spanned::new(Expr::IntLit(0), span()),
+            span: span(),
+        };
+
+        trans.setup_function(&func, &mut generator);
+
+        // Verify all parameters and return value are declared
+        let output = generator.generate();
+        assert!(output.contains("(declare-const x Int)"), "param x declared");
+        assert!(output.contains("(declare-const lo Int)"), "param lo declared");
+        assert!(output.contains("(declare-const hi Int)"), "param hi declared");
+        assert!(output.contains("(declare-const __ret__ Int)"), "__ret__ declared");
+        assert!(output.contains("(declare-const result Int)"), "named return 'result' declared");
+
+        // Verify translator's var_types are populated
+        assert_eq!(trans.var_types().get("x"), Some(&SmtSort::Int));
+        assert_eq!(trans.var_types().get("lo"), Some(&SmtSort::Int));
+        assert_eq!(trans.var_types().get("hi"), Some(&SmtSort::Int));
+        assert_eq!(trans.var_types().get("__ret__"), Some(&SmtSort::Int));
+        assert_eq!(trans.var_types().get("result"), Some(&SmtSort::Int));
+    }
+
+    /// Forall quantifier with nested implication body.
+    #[test]
+    fn test_forall_nested_implication_body() {
+        let trans = SmtTranslator::new();
+
+        let premise = spanned(Expr::Binary {
+            left: Box::new(spanned(Expr::IntLit(0))),
+            op: BinOp::Ge,
+            right: Box::new(spanned(Expr::IntLit(0))),
+        });
+        let conclusion = spanned(Expr::Binary {
+            left: Box::new(spanned(Expr::IntLit(1))),
+            op: BinOp::Ge,
+            right: Box::new(spanned(Expr::IntLit(0))),
+        });
+        let body = spanned(Expr::Binary {
+            left: Box::new(premise),
+            op: BinOp::Implies,
+            right: Box::new(conclusion),
+        });
+
+        let forall = spanned(Expr::Forall {
+            var: Spanned::new("i".to_string(), span()),
+            ty: Spanned::new(Type::I64, span()),
+            body: Box::new(body),
+        });
+
+        assert_eq!(
+            trans.translate(&forall).unwrap(),
+            "(forall ((i Int)) (=> (>= 0 0) (>= 1 0)))"
+        );
+    }
+
+    /// StateRef (pre/post) translation generates correct variable suffixes.
+    #[test]
+    fn test_state_ref_pre_post_suffixes() {
+        let mut trans = SmtTranslator::new();
+        trans.var_types.insert("x".to_string(), SmtSort::Int);
+
+        let pre_ref = spanned(Expr::StateRef {
+            expr: Box::new(spanned(Expr::Var("x".to_string()))),
+            state: crate::ast::StateKind::Pre,
+        });
+        assert_eq!(trans.translate(&pre_ref).unwrap(), "x_pre");
+
+        let post_ref = spanned(Expr::StateRef {
+            expr: Box::new(spanned(Expr::Var("x".to_string()))),
+            state: crate::ast::StateKind::Post,
+        });
+        assert_eq!(trans.translate(&post_ref).unwrap(), "x_post");
     }
 }

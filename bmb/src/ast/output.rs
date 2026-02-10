@@ -1202,4 +1202,119 @@ mod tests {
         assert!(sexpr.contains("(enum Dir"));
         assert!(sexpr.contains("(fn make"));
     }
+
+    // --- Cycle 207: AST output edge case tests ---
+
+    // Ownership syntax: &T reference parameter
+    #[test]
+    fn test_sexpr_ref_param() {
+        let source = "fn read(x: &i64) -> i64 = *x;";
+        let sexpr = parse_and_format(source);
+        assert!(sexpr.contains("(x (&i64))"), "Expected ref param type (&i64), got: {}", sexpr);
+        assert!(sexpr.contains("(* x)"), "Expected deref expression (* x), got: {}", sexpr);
+    }
+
+    // Ownership syntax: &mut T mutable reference parameter
+    #[test]
+    fn test_sexpr_ref_mut_param() {
+        let source = "fn modify(x: &mut i64) -> () = ();";
+        let sexpr = parse_and_format(source);
+        assert!(sexpr.contains("(x (&mut i64))"), "Expected ref mut param type (&mut i64), got: {}", sexpr);
+    }
+
+    // Generic function signature with type parameter
+    #[test]
+    fn test_sexpr_generic_fn() {
+        let source = "fn identity<T>(x: T) -> T = x;";
+        let sexpr = parse_and_format(source);
+        assert!(sexpr.contains("<T>"), "Expected type param <T>, got: {}", sexpr);
+        assert!(sexpr.contains("(x T)"), "Expected param (x T), got: {}", sexpr);
+    }
+
+    // Generic struct with multiple type parameters
+    #[test]
+    fn test_sexpr_generic_struct_multi_params() {
+        let source = "struct Pair<A, B> { first: A, second: B }";
+        let sexpr = parse_and_format(source);
+        assert!(sexpr.contains("<A B>"), "Expected type params <A B>, got: {}", sexpr);
+        assert!(sexpr.contains("(first A)"), "Expected field (first A), got: {}", sexpr);
+        assert!(sexpr.contains("(second B)"), "Expected field (second B), got: {}", sexpr);
+    }
+
+    // Nested function calls: f(g(x))
+    #[test]
+    fn test_sexpr_nested_calls() {
+        let source = r#"
+            fn double(x: i64) -> i64 = x + x;
+            fn quad(x: i64) -> i64 = double(double(x));
+        "#;
+        let sexpr = parse_and_format(source);
+        // Nested call: (double (double x))
+        assert!(sexpr.contains("(double (double x))"), "Expected nested call, got: {}", sexpr);
+    }
+
+    // Method call with arguments
+    #[test]
+    fn test_sexpr_method_call_with_args() {
+        let source = "fn test(arr: i64) -> i64 = arr.get(0);";
+        let sexpr = parse_and_format(source);
+        assert!(sexpr.contains("(.get arr 0)"), "Expected method call with arg (.get arr 0), got: {}", sexpr);
+    }
+
+    // Single expression function body (no block)
+    #[test]
+    fn test_sexpr_single_expr_fn() {
+        let source = "fn constant() -> i64 = 42;";
+        let sexpr = parse_and_format(source);
+        assert!(sexpr.contains("(fn constant"));
+        assert!(sexpr.contains("42)"), "Expected literal 42 as body, got: {}", sexpr);
+    }
+
+    // Multiline block with multiple let bindings and expressions
+    #[test]
+    fn test_sexpr_multiline_block() {
+        let source = r#"
+            fn compute(a: i64, b: i64) -> i64 = {
+                let x: i64 = a + b;
+                let y: i64 = a * b;
+                x + y
+            };
+        "#;
+        let sexpr = parse_and_format(source);
+        // Should have nested let bindings
+        assert!(sexpr.contains("(let x"), "Expected let x, got: {}", sexpr);
+        assert!(sexpr.contains("(let y"), "Expected let y, got: {}", sexpr);
+        assert!(sexpr.contains("(+ x y)"), "Expected final (+ x y), got: {}", sexpr);
+    }
+
+    // Todo with message parsed from source
+    #[test]
+    fn test_sexpr_todo_with_message() {
+        let source = r#"fn wip() -> i64 = todo "not implemented";"#;
+        let sexpr = parse_and_format(source);
+        assert!(sexpr.contains("(todo"), "Expected todo expression, got: {}", sexpr);
+        assert!(sexpr.contains("not implemented"), "Expected todo message, got: {}", sexpr);
+    }
+
+    // Cast expression: expr as Type
+    #[test]
+    fn test_sexpr_cast_expr() {
+        let source = "fn to_f64(x: i64) -> f64 = x as f64;";
+        let sexpr = parse_and_format(source);
+        assert!(sexpr.contains("(x as f64)"), "Expected cast (x as f64), got: {}", sexpr);
+    }
+
+    // Loop with break value
+    #[test]
+    fn test_sexpr_loop_break_value() {
+        let source = r#"
+            fn find(n: i64) -> i64 =
+                loop {
+                    if n > 10 { break } else { break };
+                };
+        "#;
+        let sexpr = parse_and_format(source);
+        assert!(sexpr.contains("(loop"), "Expected loop expression, got: {}", sexpr);
+        assert!(sexpr.contains("(break)"), "Expected break, got: {}", sexpr);
+    }
 }

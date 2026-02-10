@@ -2330,4 +2330,289 @@ mod tests {
         let result = lowerer.lower_expr(&Expr::Todo { message: None });
         assert_eq!(result, CirExpr::Todo(None));
     }
+
+    // =====================================================================
+    // Cycle 208: Additional CIR lowering edge-case tests
+    // =====================================================================
+
+    // ---- Complex struct lowering ----
+
+    #[test]
+    fn test_lower_struct_multiple_mixed_fields() {
+        // Struct with 4 fields of different types: i64, bool, f64, String
+        let cir = source_to_cir(
+            "struct Record { id: i64, active: bool, score: f64, name: String }
+             fn make() -> Record = new Record { id: 1, active: true, score: 3.14, name: \"hello\" };"
+        );
+        let record = &cir.structs["Record"];
+        assert_eq!(record.fields.len(), 4);
+        assert_eq!(record.fields[0], ("id".to_string(), CirType::I64));
+        assert_eq!(record.fields[1], ("active".to_string(), CirType::Bool));
+        assert_eq!(record.fields[2], ("score".to_string(), CirType::F64));
+        assert_eq!(record.fields[3], ("name".to_string(), CirType::String));
+        // Verify the struct init body has all 4 fields
+        let func = &cir.functions[0];
+        match &func.body {
+            CirExpr::Struct { name, fields } => {
+                assert_eq!(name, "Record");
+                assert_eq!(fields.len(), 4);
+            }
+            other => panic!("Expected Struct init, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_lower_nested_struct_field_access() {
+        // Struct containing another struct type, with chained field access
+        let cir = source_to_cir(
+            "struct Point { x: i64, y: i64 }
+             struct Line { start: Point, end: Point }
+             fn get_start_x(l: Line) -> i64 = l.start.x;"
+        );
+        assert!(cir.structs.contains_key("Point"));
+        assert!(cir.structs.contains_key("Line"));
+        let line = &cir.structs["Line"];
+        // Line fields should reference Point as a CirType::Struct
+        assert_eq!(line.fields[0], ("start".to_string(), CirType::Struct("Point".to_string())));
+        assert_eq!(line.fields[1], ("end".to_string(), CirType::Struct("Point".to_string())));
+        // Body should be nested Field access: (l.start).x
+        let func = &cir.functions[0];
+        match &func.body {
+            CirExpr::Field { base, field } => {
+                assert_eq!(field, "x");
+                match base.as_ref() {
+                    CirExpr::Field { base: inner_base, field: inner_field } => {
+                        assert_eq!(inner_field, "start");
+                        assert!(matches!(inner_base.as_ref(), CirExpr::Var(name) if name == "l"));
+                    }
+                    other => panic!("Expected inner Field access, got {:?}", other),
+                }
+            }
+            other => panic!("Expected Field access, got {:?}", other),
+        }
+    }
+
+    // ---- Enum variant lowering ----
+
+    #[test]
+    fn test_lower_enum_variant_with_data() {
+        // Enum with data variants and construction
+        let cir = source_to_cir(
+            "enum Shape { Circle(f64), Rect(f64, f64) }
+             fn unit_circle() -> Shape = Shape::Circle(1.0);"
+        );
+        let func = &cir.functions[0];
+        match &func.body {
+            CirExpr::EnumVariant { enum_name, variant, args } => {
+                assert_eq!(enum_name, "Shape");
+                assert_eq!(variant, "Circle");
+                assert_eq!(args.len(), 1);
+                // 1.0f64 encoded as bits
+                match &args[0] {
+                    CirExpr::FloatLit(bits) => {
+                        assert_eq!(*bits, 1.0f64.to_bits());
+                    }
+                    other => panic!("Expected FloatLit, got {:?}", other),
+                }
+            }
+            other => panic!("Expected EnumVariant, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_lower_match_enum_with_data_destructuring() {
+        // Match on enum variant that carries data, with destructuring
+        let cir = source_to_cir(
+            "enum Option { Some(i64), None }
+             fn unwrap_or(opt: Option, default: i64) -> i64 = match opt {
+                 Option::Some(v) => v,
+                 Option::None => default
+             };"
+        );
+        let func = &cir.functions[0];
+        // Should produce Let for scrutinee + If chain with __is_Option_Some call
+        match &func.body {
+            CirExpr::Let { name, body, .. } => {
+                assert_eq!(name, "__match_scrutinee");
+                // First arm is If with enum variant check
+                match body.as_ref() {
+                    CirExpr::If { cond, .. } => {
+                        match cond.as_ref() {
+                            CirExpr::Call { func: fname, args } => {
+                                assert_eq!(fname, "__is_Option_Some");
+                                assert_eq!(args.len(), 1);
+                            }
+                            other => panic!("Expected __is_Option_Some call, got {:?}", other),
+                        }
+                    }
+                    other => panic!("Expected If chain, got {:?}", other),
+                }
+            }
+            other => panic!("Expected Let for match scrutinee, got {:?}", other),
+        }
+    }
+
+    // ---- Contract lowering ----
+
+    #[test]
+    fn test_lower_implies_contract() {
+        // Precondition using logical implication (BMB keyword: `implies`)
+        let cir = source_to_cir(
+            "fn f(x: i64, y: i64) -> i64 pre (x > 0) implies (y > 0) = x + y;"
+        );
+        let func = &cir.functions[0];
+        assert_eq!(func.preconditions.len(), 1);
+        match &func.preconditions[0].proposition {
+            Proposition::Implies(lhs, rhs) => {
+                // LHS: x > 0
+                match lhs.as_ref() {
+                    Proposition::Compare { op: CompareOp::Gt, .. } => {}
+                    other => panic!("Expected Compare(Gt) in LHS, got {:?}", other),
+                }
+                // RHS: y > 0
+                match rhs.as_ref() {
+                    Proposition::Compare { op: CompareOp::Gt, .. } => {}
+                    other => panic!("Expected Compare(Gt) in RHS, got {:?}", other),
+                }
+            }
+            other => panic!("Expected Implies proposition, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_lower_forall_proposition_in_contract() {
+        // Precondition with forall quantifier (BMB syntax: `forall x: T, body`)
+        let cir = source_to_cir(
+            "fn f(n: i64) -> i64 pre forall i: i64, i >= 0 = n;"
+        );
+        let func = &cir.functions[0];
+        assert_eq!(func.preconditions.len(), 1);
+        match &func.preconditions[0].proposition {
+            Proposition::Forall { var, ty, body } => {
+                assert_eq!(var, "i");
+                assert_eq!(*ty, CirType::I64);
+                match body.as_ref() {
+                    Proposition::Compare { op: CompareOp::Ge, .. } => {}
+                    other => panic!("Expected Compare(Ge) in forall body, got {:?}", other),
+                }
+            }
+            other => panic!("Expected Forall proposition, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_lower_pre_and_post_both_complex() {
+        // Function with both pre and post using compound logical expressions
+        let cir = source_to_cir(
+            "fn clamp(x: i64, lo: i64, hi: i64) -> i64
+                pre lo <= hi
+                post ret >= lo && ret <= hi
+             = if x < lo { lo } else { if x > hi { hi } else { x } };"
+        );
+        let func = &cir.functions[0];
+        // Precondition: lo <= hi
+        assert_eq!(func.preconditions.len(), 1);
+        match &func.preconditions[0].proposition {
+            Proposition::Compare { op: CompareOp::Le, .. } => {}
+            other => panic!("Expected Compare(Le) pre, got {:?}", other),
+        }
+        // Postcondition: ret >= lo && ret <= hi (And of two comparisons)
+        assert_eq!(func.postconditions.len(), 1);
+        match &func.postconditions[0].proposition {
+            Proposition::And(parts) => {
+                assert_eq!(parts.len(), 2);
+            }
+            other => panic!("Expected And postcondition, got {:?}", other),
+        }
+    }
+
+    // ---- Method call lowering ----
+
+    #[test]
+    fn test_lower_method_call_to_function_call() {
+        // Method call should be lowered to a regular call with receiver as first arg
+        let lowerer = CirLowerer::new();
+        let span = crate::ast::Span { start: 0, end: 1 };
+        let expr = Expr::MethodCall {
+            receiver: Box::new(crate::ast::Spanned {
+                node: Expr::Var("arr".to_string()),
+                span,
+            }),
+            method: "len".to_string(),
+            args: vec![],
+        };
+        let result = lowerer.lower_expr(&expr);
+        match result {
+            CirExpr::Call { func, args } => {
+                assert_eq!(func, "len");
+                assert_eq!(args.len(), 1);
+                assert_eq!(args[0], CirExpr::Var("arr".to_string()));
+            }
+            other => panic!("Expected Call for method, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_lower_method_call_with_args() {
+        // Method call with arguments: receiver.push(42) => push(receiver, 42)
+        let lowerer = CirLowerer::new();
+        let span = crate::ast::Span { start: 0, end: 1 };
+        let expr = Expr::MethodCall {
+            receiver: Box::new(crate::ast::Spanned {
+                node: Expr::Var("vec".to_string()),
+                span,
+            }),
+            method: "push".to_string(),
+            args: vec![crate::ast::Spanned {
+                node: Expr::IntLit(42),
+                span,
+            }],
+        };
+        let result = lowerer.lower_expr(&expr);
+        match result {
+            CirExpr::Call { func, args } => {
+                assert_eq!(func, "push");
+                // receiver is first arg, then the explicit arg
+                assert_eq!(args.len(), 2);
+                assert_eq!(args[0], CirExpr::Var("vec".to_string()));
+                assert_eq!(args[1], CirExpr::IntLit(42));
+            }
+            other => panic!("Expected Call for method with args, got {:?}", other),
+        }
+    }
+
+    // ---- Edge cases ----
+
+    #[test]
+    fn test_lower_unit_return_function() {
+        // Function that returns unit (empty body expression)
+        let cir = source_to_cir("fn noop() -> () = ();");
+        let func = &cir.functions[0];
+        assert_eq!(func.name, "noop");
+        assert_eq!(func.ret_ty, CirType::Unit);
+        assert_eq!(func.body, CirExpr::Unit);
+        assert!(func.preconditions.is_empty());
+        assert!(func.postconditions.is_empty());
+        assert!(func.loop_invariants.is_empty());
+    }
+
+    #[test]
+    fn test_lower_refined_type_strips_constraints() {
+        // Refined types should be stripped down to their base type in CIR
+        let lowerer = CirLowerer::new();
+        let span = crate::ast::Span { start: 0, end: 1 };
+        let ty = Type::Refined {
+            base: Box::new(Type::I64),
+            constraints: vec![crate::ast::Spanned {
+                node: Expr::Binary {
+                    op: AstBinOp::Gt,
+                    left: Box::new(crate::ast::Spanned { node: Expr::It, span }),
+                    right: Box::new(crate::ast::Spanned { node: Expr::IntLit(0), span }),
+                },
+                span,
+            }],
+        };
+        // Refined { base: i64, constraints: [it > 0] } should lower to just I64
+        assert_eq!(lowerer.lower_type(&ty), CirType::I64);
+    }
 }
