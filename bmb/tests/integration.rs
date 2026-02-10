@@ -4529,3 +4529,353 @@ fn test_interp_string_is_empty() {
         10 // a.is_empty()=true(1), b.is_empty()=false(0) -> 1*10+0=10
     );
 }
+
+// ============================================
+// Cycle 205: Integration Tests for Undercovered Features
+// ============================================
+
+// --- Nullable Types (3 tests) ---
+
+#[test]
+fn test_interp_nullable_unwrap_or_value() {
+    // Nullable i64? with a non-null value, unwrap_or returns the value
+    assert_eq!(
+        run_program_i64(
+            "fn safe_div(a: i64, b: i64) -> i64? =
+               if b == 0 { null } else { a / b };
+             fn main() -> i64 = {
+               let r: i64? = safe_div(100, 4);
+               r.unwrap_or(-1)
+             };"
+        ),
+        25 // 100 / 4 = 25
+    );
+}
+
+#[test]
+fn test_interp_nullable_unwrap_or_null() {
+    // Nullable i64? with null, unwrap_or returns the default
+    assert_eq!(
+        run_program_i64(
+            "fn safe_div(a: i64, b: i64) -> i64? =
+               if b == 0 { null } else { a / b };
+             fn main() -> i64 = {
+               let r: i64? = safe_div(100, 0);
+               r.unwrap_or(-1)
+             };"
+        ),
+        -1 // division by zero -> null -> unwrap_or returns -1
+    );
+}
+
+#[test]
+fn test_interp_nullable_is_some_is_none() {
+    // Test is_some and is_none on nullable values encoded as i64
+    assert_eq!(
+        run_program_i64(
+            "fn maybe(x: i64) -> i64? = if x > 0 { x } else { null };
+             fn main() -> i64 = {
+               let a: i64? = maybe(5);
+               let b: i64? = maybe(0);
+               let a_some = a.is_some() as i64;
+               let a_none = a.is_none() as i64;
+               let b_some = b.is_some() as i64;
+               let b_none = b.is_none() as i64;
+               a_some * 1000 + a_none * 100 + b_some * 10 + b_none
+             };"
+        ),
+        1001 // a: is_some=1, is_none=0; b: is_some=0, is_none=1 -> 1000+0+0+1
+    );
+}
+
+// --- Pattern Matching (3 tests) ---
+
+#[test]
+fn test_interp_match_enum_with_data_extraction() {
+    // Match on enum variants that carry data, extract and compute
+    assert_eq!(
+        run_program_i64(
+            "enum Expr { Lit(i64), Neg(i64), Add(i64) }
+             fn eval_expr(e: Expr, acc: i64) -> i64 =
+               match e {
+                 Expr::Lit(v) => v,
+                 Expr::Neg(v) => 0 - v,
+                 Expr::Add(v) => acc + v
+               };
+             fn main() -> i64 = {
+               let a = eval_expr(Expr::Lit(10), 0);
+               let b = eval_expr(Expr::Neg(3), 0);
+               let c = eval_expr(Expr::Add(7), a);
+               a + b + c
+             };"
+        ),
+        24 // a=10, b=-3, c=10+7=17, sum=10+(-3)+17=24
+    );
+}
+
+#[test]
+fn test_interp_nested_match_two_levels() {
+    // Nested match: outer on first arg, inner on second
+    assert_eq!(
+        run_program_i64(
+            "fn grid(row: i64, col: i64) -> i64 =
+               match row {
+                 0 => match col {
+                   0 => 1,
+                   1 => 2,
+                   _ => 3
+                 },
+                 1 => match col {
+                   0 => 4,
+                   1 => 5,
+                   _ => 6
+                 },
+                 _ => 0
+               };
+             fn main() -> i64 =
+               grid(0, 0) + grid(0, 1) + grid(0, 2) + grid(1, 0) + grid(1, 1) + grid(1, 2) + grid(2, 0);"
+        ),
+        21 // 1+2+3+4+5+6+0 = 21
+    );
+}
+
+#[test]
+fn test_interp_match_wildcard_fallthrough() {
+    // Wildcard matches everything not explicitly handled
+    assert_eq!(
+        run_program_i64(
+            "fn classify(x: i64) -> i64 =
+               match x {
+                 1 => 100,
+                 2 => 200,
+                 3 => 300,
+                 _ => -1
+               };
+             fn main() -> i64 = {
+               let mut sum: i64 = 0;
+               for i in 1..=5 {
+                 sum = sum + classify(i)
+               };
+               sum
+             };"
+        ),
+        598 // 100+200+300+(-1)+(-1) = 598
+    );
+}
+
+// --- Array Operations (3 tests) ---
+
+#[test]
+fn test_interp_array_sum_with_loop() {
+    // Sum array elements using index-based for loop
+    assert_eq!(
+        run_program_i64(
+            "fn main() -> i64 = {
+               let arr = [3, 7, 11, 13, 17];
+               let mut sum: i64 = 0;
+               let mut i: i64 = 0;
+               while i < arr.len() {
+                 sum = sum + arr[i];
+                 { i = i + 1 }
+               };
+               sum
+             };"
+        ),
+        51 // 3+7+11+13+17 = 51
+    );
+}
+
+#[test]
+fn test_interp_array_transform_in_place() {
+    // Modify array elements in-place: double each value
+    assert_eq!(
+        run_program_i64(
+            "fn main() -> i64 = {
+               let mut a: [i64; 4] = [2, 5, 8, 11];
+               let mut i: i64 = 0;
+               while i < 4 {
+                 set a[i] = a[i] * 2;
+                 { i = i + 1 }
+               };
+               a[0] + a[1] + a[2] + a[3]
+             };"
+        ),
+        52 // 4+10+16+22 = 52
+    );
+}
+
+#[test]
+fn test_interp_array_2d_simulation() {
+    // Simulate a 2D grid as flat array: 3x3 grid, sum diagonal elements
+    assert_eq!(
+        run_program_i64(
+            "fn main() -> i64 = {
+               let mut grid: [i64; 9] = [0; 9];
+               let mut i: i64 = 0;
+               while i < 3 {
+                 let mut j: i64 = 0;
+                 while j < 3 {
+                   set grid[i * 3 + j] = i * 3 + j + 1;
+                   { j = j + 1 }
+                 };
+                 { i = i + 1 }
+               };
+               grid[0] + grid[4] + grid[8]
+             };"
+        ),
+        15 // grid[0]=1, grid[4]=5, grid[8]=9 -> 1+5+9=15
+    );
+}
+
+// --- Generic Functions (3 tests) ---
+
+#[test]
+fn test_interp_generic_identity() {
+    // Generic identity function instantiated with i64
+    assert_eq!(
+        run_program_i64(
+            "fn identity<T>(x: T) -> T = x;
+             fn main() -> i64 = identity(42) + identity(8);"
+        ),
+        50 // 42 + 8
+    );
+}
+
+#[test]
+fn test_interp_generic_pair_choose() {
+    // Generic function that chooses between two values
+    assert_eq!(
+        run_program_i64(
+            "fn choose<T>(a: T, b: T, pick_first: bool) -> T =
+               if pick_first { a } else { b };
+             fn main() -> i64 = {
+               let x = choose(10, 20, true);
+               let y = choose(30, 40, false);
+               x + y
+             };"
+        ),
+        50 // 10 + 40
+    );
+}
+
+#[test]
+fn test_interp_generic_apply_twice() {
+    // Generic higher-order-like pattern: apply a transformation via helper
+    assert_eq!(
+        run_program_i64(
+            "fn double(x: i64) -> i64 = x * 2;
+             fn apply_double(x: i64) -> i64 = double(double(x));
+             fn id<T>(x: T) -> T = x;
+             fn main() -> i64 = {
+               let a = apply_double(3);
+               let b = id(a);
+               b
+             };"
+        ),
+        12 // double(double(3)) = double(6) = 12
+    );
+}
+
+// --- Complex Control Flow (3 tests) ---
+
+#[test]
+fn test_interp_loop_break_with_early_return() {
+    // Loop with break and mutable result capture
+    assert_eq!(
+        run_program_i64(
+            "fn find_first_square_above(threshold: i64) -> i64 = {
+               let mut i: i64 = 1;
+               loop {
+                 if i * i > threshold { return i } else { () };
+                 { i = i + 1 }
+               };
+               0
+             };
+             fn main() -> i64 = find_first_square_above(50);"
+        ),
+        8 // 8*8=64 > 50, so return 8
+    );
+}
+
+#[test]
+fn test_interp_early_return_from_function() {
+    // Early return from within a loop inside a function
+    assert_eq!(
+        run_program_i64(
+            "fn find_divisor(n: i64) -> i64 = {
+               let mut d: i64 = 2;
+               while d * d <= n {
+                 if n % d == 0 { return d } else { () };
+                 { d = d + 1 }
+               };
+               n
+             };
+             fn main() -> i64 = {
+               let a = find_divisor(35);
+               let b = find_divisor(13);
+               a * 100 + b
+             };"
+        ),
+        513 // smallest divisor of 35 is 5, 13 is prime -> 5*100+13=513
+    );
+}
+
+#[test]
+fn test_interp_multi_arm_if_else_chain() {
+    // Multi-arm if-else chain mapping ranges to categories
+    assert_eq!(
+        run_program_i64(
+            "fn score_to_grade(s: i64) -> i64 =
+               if s >= 90 { 4 }
+               else { if s >= 80 { 3 }
+               else { if s >= 70 { 2 }
+               else { if s >= 60 { 1 }
+               else { 0 } } } };
+             fn main() -> i64 = {
+               let mut total: i64 = 0;
+               total = total + score_to_grade(95);
+               total = total + score_to_grade(85);
+               total = total + score_to_grade(75);
+               total = total + score_to_grade(65);
+               total = total + score_to_grade(55);
+               total
+             };"
+        ),
+        10 // 4+3+2+1+0 = 10
+    );
+}
+
+// --- String Operations (2 tests) ---
+
+#[test]
+fn test_interp_string_length_accumulation() {
+    // Compute lengths of multiple strings and sum them
+    assert_eq!(
+        run_program_i64(
+            r#"fn main() -> i64 = {
+               let a = "hello";
+               let b = "world!";
+               let c = "BMB";
+               let d = "test string";
+               a.len() + b.len() + c.len() + d.len()
+             };"#
+        ),
+        25 // 5 + 6 + 3 + 11 = 25
+    );
+}
+
+#[test]
+fn test_interp_string_byte_comparison() {
+    // Compare bytes at specific positions in a string
+    assert_eq!(
+        run_program_i64(
+            r#"fn main() -> i64 = {
+               let s = "ABCDE";
+               let a_byte = s.byte_at(0);
+               let e_byte = s.byte_at(4);
+               e_byte - a_byte
+             };"#
+        ),
+        4 // 'E'(69) - 'A'(65) = 4
+    );
+}

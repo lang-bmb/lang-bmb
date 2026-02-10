@@ -14171,4 +14171,842 @@ mod tests {
         assert!(matches!(&func.blocks[0].instructions[2],
             MirInst::Const { value: Constant::Int(2), .. }));
     }
+
+    // ================================================================
+    // Cycle 204: IfElseToSelect tests
+    // ================================================================
+
+    /// Helper: build a standard if-else-merge MIR pattern for IfElseToSelect tests.
+    ///
+    /// cond_block: %cmp = Lt %x, %y; branch %cmp, then_block, else_block
+    /// then_block: %then_val = Add %x, 1; goto merge
+    /// else_block: %else_val = Sub %y, 1; goto merge
+    /// merge: %result = phi [(%then_val, then_block), (%else_val, else_block)]; ret %result
+    fn make_if_else_select_function() -> MirFunction {
+        MirFunction {
+            name: "test_select".to_string(),
+            params: vec![("x".to_string(), MirType::I64), ("y".to_string(), MirType::I64)],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![
+                BasicBlock {
+                    label: "cond_block".to_string(),
+                    instructions: vec![
+                        MirInst::BinOp {
+                            dest: Place::new("cmp"),
+                            op: MirBinOp::Lt,
+                            lhs: Operand::Place(Place::new("x")),
+                            rhs: Operand::Place(Place::new("y")),
+                        },
+                    ],
+                    terminator: Terminator::Branch {
+                        cond: Operand::Place(Place::new("cmp")),
+                        then_label: "then_block".to_string(),
+                        else_label: "else_block".to_string(),
+                    },
+                },
+                BasicBlock {
+                    label: "then_block".to_string(),
+                    instructions: vec![
+                        MirInst::BinOp {
+                            dest: Place::new("then_val"),
+                            op: MirBinOp::Add,
+                            lhs: Operand::Place(Place::new("x")),
+                            rhs: Operand::Constant(Constant::Int(1)),
+                        },
+                    ],
+                    terminator: Terminator::Goto("merge".to_string()),
+                },
+                BasicBlock {
+                    label: "else_block".to_string(),
+                    instructions: vec![
+                        MirInst::BinOp {
+                            dest: Place::new("else_val"),
+                            op: MirBinOp::Sub,
+                            lhs: Operand::Place(Place::new("y")),
+                            rhs: Operand::Constant(Constant::Int(1)),
+                        },
+                    ],
+                    terminator: Terminator::Goto("merge".to_string()),
+                },
+                BasicBlock {
+                    label: "merge".to_string(),
+                    instructions: vec![
+                        MirInst::Phi {
+                            dest: Place::new("result"),
+                            values: vec![
+                                (Operand::Place(Place::new("then_val")), "then_block".to_string()),
+                                (Operand::Place(Place::new("else_val")), "else_block".to_string()),
+                            ],
+                        },
+                    ],
+                    terminator: Terminator::Return(Some(Operand::Place(Place::new("result")))),
+                },
+            ],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        }
+    }
+
+    // --- Basic pattern match tests (3 tests) ---
+
+    #[test]
+    fn test_if_else_to_select_basic() {
+        // Standard if-else diamond: both arms produce a value, merged by phi.
+        // Should be converted to a select instruction.
+        let mut func = make_if_else_select_function();
+        let pass = IfElseToSelect;
+        let changed = pass.run_on_function(&mut func);
+        assert!(changed, "Should convert basic if-else pattern to select");
+
+        // The cond_block should now have a Select instruction
+        let has_select = func.blocks[0].instructions.iter().any(|inst| {
+            matches!(inst, MirInst::Select { .. })
+        });
+        assert!(has_select, "Cond block should contain a Select instruction after transformation");
+
+        // The cond_block terminator should be Goto(merge), not Branch
+        assert!(
+            matches!(&func.blocks[0].terminator, Terminator::Goto(label) if label == "merge"),
+            "Cond block terminator should be Goto(merge) after transformation"
+        );
+    }
+
+    #[test]
+    fn test_if_else_to_select_select_operands() {
+        // Verify the Select instruction has the correct comparison operator and operands.
+        let mut func = make_if_else_select_function();
+        let pass = IfElseToSelect;
+        pass.run_on_function(&mut func);
+
+        let select_inst = func.blocks[0].instructions.iter().find(|inst| {
+            matches!(inst, MirInst::Select { .. })
+        });
+        assert!(select_inst.is_some(), "Should have a Select instruction");
+
+        if let Some(MirInst::Select { dest, cond_op, cond_lhs, cond_rhs, true_val, false_val }) = select_inst {
+            // The condition should be Lt %x %y (from the original comparison)
+            assert!(matches!(cond_op, MirBinOp::Lt), "Select cond_op should be Lt");
+            assert!(matches!(cond_lhs, Operand::Place(p) if p.name == "x"), "Select cond_lhs should be %x");
+            assert!(matches!(cond_rhs, Operand::Place(p) if p.name == "y"), "Select cond_rhs should be %y");
+            // true_val should reference then_val, false_val should reference else_val
+            assert!(matches!(true_val, Operand::Place(p) if p.name == "then_val"), "Select true_val should be %then_val");
+            assert!(matches!(false_val, Operand::Place(p) if p.name == "else_val"), "Select false_val should be %else_val");
+            // Dest should use the unique _sel_ prefix
+            assert!(dest.name.starts_with("_sel_result_"), "Select dest should have _sel_result_ prefix, got: {}", dest.name);
+        }
+    }
+
+    #[test]
+    fn test_if_else_to_select_hoisted_instructions() {
+        // Both then and else block instructions should be hoisted into the cond_block.
+        let mut func = make_if_else_select_function();
+        let pass = IfElseToSelect;
+        pass.run_on_function(&mut func);
+
+        // The cond block should have: then_inst (Add), else_inst (Sub), Select
+        // The original comparison (Lt) is removed and embedded in Select.
+        let cond_insts = &func.blocks[0].instructions;
+        assert!(cond_insts.len() >= 3,
+            "Cond block should have at least 3 instructions (then_inst + else_inst + select), got {}",
+            cond_insts.len());
+
+        // Check that the Add instruction from then_block was hoisted
+        let has_add = cond_insts.iter().any(|inst| {
+            matches!(inst, MirInst::BinOp { dest, op: MirBinOp::Add, .. } if dest.name == "then_val")
+        });
+        assert!(has_add, "Add instruction from then_block should be hoisted to cond_block");
+
+        // Check that the Sub instruction from else_block was hoisted
+        let has_sub = cond_insts.iter().any(|inst| {
+            matches!(inst, MirInst::BinOp { dest, op: MirBinOp::Sub, .. } if dest.name == "else_val")
+        });
+        assert!(has_sub, "Sub instruction from else_block should be hoisted to cond_block");
+    }
+
+    // --- Name test (1 test) ---
+
+    #[test]
+    fn test_if_else_to_select_name() {
+        let pass = IfElseToSelect;
+        assert_eq!(pass.name(), "if_else_to_select");
+    }
+
+    // --- No-match cases (4 tests) ---
+
+    #[test]
+    fn test_if_else_to_select_no_match_empty_function() {
+        // A function with no blocks should not be transformed.
+        let mut func = MirFunction {
+            name: "empty".to_string(),
+            params: vec![],
+            ret_ty: MirType::Unit,
+            locals: vec![],
+            blocks: vec![],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let pass = IfElseToSelect;
+        let changed = pass.run_on_function(&mut func);
+        assert!(!changed, "Empty function should not be transformed");
+    }
+
+    #[test]
+    fn test_if_else_to_select_no_match_goto_terminator() {
+        // A block with Goto terminator (no branch) should not match.
+        let mut func = MirFunction {
+            name: "test".to_string(),
+            params: vec![("x".to_string(), MirType::I64)],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![
+                BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![
+                        MirInst::Const {
+                            dest: Place::new("val"),
+                            value: Constant::Int(42),
+                        },
+                    ],
+                    terminator: Terminator::Goto("exit".to_string()),
+                },
+                BasicBlock {
+                    label: "exit".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Return(Some(Operand::Place(Place::new("val")))),
+                },
+            ],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let pass = IfElseToSelect;
+        let changed = pass.run_on_function(&mut func);
+        assert!(!changed, "Function with only Goto terminators should not be transformed");
+    }
+
+    #[test]
+    fn test_if_else_to_select_no_match_too_many_instructions() {
+        // Then block has >3 instructions, should be rejected.
+        let mut func = MirFunction {
+            name: "test".to_string(),
+            params: vec![("x".to_string(), MirType::I64), ("y".to_string(), MirType::I64)],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![
+                BasicBlock {
+                    label: "cond_block".to_string(),
+                    instructions: vec![
+                        MirInst::BinOp {
+                            dest: Place::new("cmp"),
+                            op: MirBinOp::Lt,
+                            lhs: Operand::Place(Place::new("x")),
+                            rhs: Operand::Place(Place::new("y")),
+                        },
+                    ],
+                    terminator: Terminator::Branch {
+                        cond: Operand::Place(Place::new("cmp")),
+                        then_label: "then_block".to_string(),
+                        else_label: "else_block".to_string(),
+                    },
+                },
+                BasicBlock {
+                    label: "then_block".to_string(),
+                    instructions: vec![
+                        // 4 instructions — exceeds the 3-instruction limit
+                        MirInst::BinOp {
+                            dest: Place::new("t1"),
+                            op: MirBinOp::Add,
+                            lhs: Operand::Place(Place::new("x")),
+                            rhs: Operand::Constant(Constant::Int(1)),
+                        },
+                        MirInst::BinOp {
+                            dest: Place::new("t2"),
+                            op: MirBinOp::Add,
+                            lhs: Operand::Place(Place::new("t1")),
+                            rhs: Operand::Constant(Constant::Int(2)),
+                        },
+                        MirInst::BinOp {
+                            dest: Place::new("t3"),
+                            op: MirBinOp::Add,
+                            lhs: Operand::Place(Place::new("t2")),
+                            rhs: Operand::Constant(Constant::Int(3)),
+                        },
+                        MirInst::BinOp {
+                            dest: Place::new("then_val"),
+                            op: MirBinOp::Add,
+                            lhs: Operand::Place(Place::new("t3")),
+                            rhs: Operand::Constant(Constant::Int(4)),
+                        },
+                    ],
+                    terminator: Terminator::Goto("merge".to_string()),
+                },
+                BasicBlock {
+                    label: "else_block".to_string(),
+                    instructions: vec![
+                        MirInst::BinOp {
+                            dest: Place::new("else_val"),
+                            op: MirBinOp::Sub,
+                            lhs: Operand::Place(Place::new("y")),
+                            rhs: Operand::Constant(Constant::Int(1)),
+                        },
+                    ],
+                    terminator: Terminator::Goto("merge".to_string()),
+                },
+                BasicBlock {
+                    label: "merge".to_string(),
+                    instructions: vec![
+                        MirInst::Phi {
+                            dest: Place::new("result"),
+                            values: vec![
+                                (Operand::Place(Place::new("then_val")), "then_block".to_string()),
+                                (Operand::Place(Place::new("else_val")), "else_block".to_string()),
+                            ],
+                        },
+                    ],
+                    terminator: Terminator::Return(Some(Operand::Place(Place::new("result")))),
+                },
+            ],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let pass = IfElseToSelect;
+        let changed = pass.run_on_function(&mut func);
+        assert!(!changed, "Then block with >3 instructions should not match");
+    }
+
+    #[test]
+    fn test_if_else_to_select_no_match_call_instruction() {
+        // Then block contains a Call instruction (not hoistable), should be rejected.
+        let mut func = MirFunction {
+            name: "test".to_string(),
+            params: vec![("x".to_string(), MirType::I64), ("y".to_string(), MirType::I64)],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![
+                BasicBlock {
+                    label: "cond_block".to_string(),
+                    instructions: vec![
+                        MirInst::BinOp {
+                            dest: Place::new("cmp"),
+                            op: MirBinOp::Lt,
+                            lhs: Operand::Place(Place::new("x")),
+                            rhs: Operand::Place(Place::new("y")),
+                        },
+                    ],
+                    terminator: Terminator::Branch {
+                        cond: Operand::Place(Place::new("cmp")),
+                        then_label: "then_block".to_string(),
+                        else_label: "else_block".to_string(),
+                    },
+                },
+                BasicBlock {
+                    label: "then_block".to_string(),
+                    instructions: vec![
+                        MirInst::Call {
+                            dest: Some(Place::new("then_val")),
+                            func: "side_effect_fn".to_string(),
+                            args: vec![Operand::Place(Place::new("x"))],
+                            is_tail: false,
+                        },
+                    ],
+                    terminator: Terminator::Goto("merge".to_string()),
+                },
+                BasicBlock {
+                    label: "else_block".to_string(),
+                    instructions: vec![
+                        MirInst::BinOp {
+                            dest: Place::new("else_val"),
+                            op: MirBinOp::Sub,
+                            lhs: Operand::Place(Place::new("y")),
+                            rhs: Operand::Constant(Constant::Int(1)),
+                        },
+                    ],
+                    terminator: Terminator::Goto("merge".to_string()),
+                },
+                BasicBlock {
+                    label: "merge".to_string(),
+                    instructions: vec![
+                        MirInst::Phi {
+                            dest: Place::new("result"),
+                            values: vec![
+                                (Operand::Place(Place::new("then_val")), "then_block".to_string()),
+                                (Operand::Place(Place::new("else_val")), "else_block".to_string()),
+                            ],
+                        },
+                    ],
+                    terminator: Terminator::Return(Some(Operand::Place(Place::new("result")))),
+                },
+            ],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let pass = IfElseToSelect;
+        let changed = pass.run_on_function(&mut func);
+        assert!(!changed, "Block with Call instruction should not be hoistable");
+    }
+
+    // --- Multi-phi pattern (2 tests) ---
+
+    #[test]
+    fn test_if_else_to_select_multi_phi_tco_pattern() {
+        // Pattern with >2 phi incoming values (e.g., TCO loop pattern with an
+        // additional predecessor block). The phi has 3 entries but only 2 come from
+        // the then/else blocks. The pass should still transform the then/else pair.
+        let mut func = MirFunction {
+            name: "test_multi_phi".to_string(),
+            params: vec![("x".to_string(), MirType::I64), ("y".to_string(), MirType::I64)],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![
+                // Block 0: initial entry that jumps to loop header
+                BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![
+                        MirInst::Const {
+                            dest: Place::new("init"),
+                            value: Constant::Int(0),
+                        },
+                    ],
+                    terminator: Terminator::Goto("merge".to_string()),
+                },
+                // Block 1: cond block with comparison and branch
+                BasicBlock {
+                    label: "cond_block".to_string(),
+                    instructions: vec![
+                        MirInst::BinOp {
+                            dest: Place::new("cmp"),
+                            op: MirBinOp::Gt,
+                            lhs: Operand::Place(Place::new("x")),
+                            rhs: Operand::Place(Place::new("y")),
+                        },
+                    ],
+                    terminator: Terminator::Branch {
+                        cond: Operand::Place(Place::new("cmp")),
+                        then_label: "then_block".to_string(),
+                        else_label: "else_block".to_string(),
+                    },
+                },
+                // Block 2: then arm
+                BasicBlock {
+                    label: "then_block".to_string(),
+                    instructions: vec![
+                        MirInst::BinOp {
+                            dest: Place::new("then_val"),
+                            op: MirBinOp::Mul,
+                            lhs: Operand::Place(Place::new("x")),
+                            rhs: Operand::Constant(Constant::Int(2)),
+                        },
+                    ],
+                    terminator: Terminator::Goto("merge".to_string()),
+                },
+                // Block 3: else arm
+                BasicBlock {
+                    label: "else_block".to_string(),
+                    instructions: vec![
+                        MirInst::BinOp {
+                            dest: Place::new("else_val"),
+                            op: MirBinOp::Add,
+                            lhs: Operand::Place(Place::new("y")),
+                            rhs: Operand::Constant(Constant::Int(3)),
+                        },
+                    ],
+                    terminator: Terminator::Goto("merge".to_string()),
+                },
+                // Block 4: merge block with 3-entry phi (entry + then + else)
+                BasicBlock {
+                    label: "merge".to_string(),
+                    instructions: vec![
+                        MirInst::Phi {
+                            dest: Place::new("result"),
+                            values: vec![
+                                (Operand::Place(Place::new("init")), "entry".to_string()),
+                                (Operand::Place(Place::new("then_val")), "then_block".to_string()),
+                                (Operand::Place(Place::new("else_val")), "else_block".to_string()),
+                            ],
+                        },
+                    ],
+                    terminator: Terminator::Return(Some(Operand::Place(Place::new("result")))),
+                },
+            ],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let pass = IfElseToSelect;
+        let changed = pass.run_on_function(&mut func);
+        assert!(changed, "Should transform if-else into select even with 3-entry phi");
+
+        // After transformation, the merge phi should still have entries but the
+        // then/else entries should be replaced by the cond_block select entry.
+        let merge_block = func.blocks.iter().find(|b| b.label == "merge").unwrap();
+        let phi = merge_block.instructions.iter().find(|inst| {
+            matches!(inst, MirInst::Phi { .. })
+        });
+        assert!(phi.is_some(), "Merge block should still have a phi");
+
+        if let Some(MirInst::Phi { values, .. }) = phi {
+            // Should have 2 entries: (init, entry) and (_sel_..., cond_block)
+            assert_eq!(values.len(), 2,
+                "Phi should have 2 entries after transformation (entry + cond_block), got {}",
+                values.len());
+            // The entry predecessor should still be there
+            assert!(values.iter().any(|(_, label)| label == "entry"),
+                "Phi should still have the entry predecessor");
+            // The cond_block select entry should be there
+            assert!(values.iter().any(|(_, label)| label == "cond_block"),
+                "Phi should have a cond_block entry from the select");
+        }
+    }
+
+    #[test]
+    fn test_if_else_to_select_multi_phi_preserves_other_entries() {
+        // Verify that a phi with 3+ entries preserves the non-then/else entry
+        // values correctly after transformation.
+        let mut func = MirFunction {
+            name: "test".to_string(),
+            params: vec![("x".to_string(), MirType::I64), ("y".to_string(), MirType::I64)],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![
+                BasicBlock {
+                    label: "prelude".to_string(),
+                    instructions: vec![
+                        MirInst::Const {
+                            dest: Place::new("default"),
+                            value: Constant::Int(99),
+                        },
+                    ],
+                    terminator: Terminator::Goto("merge".to_string()),
+                },
+                BasicBlock {
+                    label: "cond_block".to_string(),
+                    instructions: vec![
+                        MirInst::BinOp {
+                            dest: Place::new("cmp"),
+                            op: MirBinOp::Eq,
+                            lhs: Operand::Place(Place::new("x")),
+                            rhs: Operand::Constant(Constant::Int(0)),
+                        },
+                    ],
+                    terminator: Terminator::Branch {
+                        cond: Operand::Place(Place::new("cmp")),
+                        then_label: "then_block".to_string(),
+                        else_label: "else_block".to_string(),
+                    },
+                },
+                BasicBlock {
+                    label: "then_block".to_string(),
+                    instructions: vec![
+                        MirInst::Const {
+                            dest: Place::new("then_val"),
+                            value: Constant::Int(1),
+                        },
+                    ],
+                    terminator: Terminator::Goto("merge".to_string()),
+                },
+                BasicBlock {
+                    label: "else_block".to_string(),
+                    instructions: vec![
+                        MirInst::Const {
+                            dest: Place::new("else_val"),
+                            value: Constant::Int(2),
+                        },
+                    ],
+                    terminator: Terminator::Goto("merge".to_string()),
+                },
+                BasicBlock {
+                    label: "merge".to_string(),
+                    instructions: vec![
+                        MirInst::Phi {
+                            dest: Place::new("result"),
+                            values: vec![
+                                (Operand::Place(Place::new("default")), "prelude".to_string()),
+                                (Operand::Place(Place::new("then_val")), "then_block".to_string()),
+                                (Operand::Place(Place::new("else_val")), "else_block".to_string()),
+                            ],
+                        },
+                    ],
+                    terminator: Terminator::Return(Some(Operand::Place(Place::new("result")))),
+                },
+            ],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let pass = IfElseToSelect;
+        let changed = pass.run_on_function(&mut func);
+        assert!(changed, "Should transform with 3-entry phi");
+
+        let merge_block = func.blocks.iter().find(|b| b.label == "merge").unwrap();
+        if let Some(MirInst::Phi { values, .. }) = merge_block.instructions.iter().find(|i| matches!(i, MirInst::Phi { .. })) {
+            // The prelude entry should be preserved exactly as-is
+            let prelude_entry = values.iter().find(|(_, label)| label == "prelude");
+            assert!(prelude_entry.is_some(), "Prelude entry should be preserved");
+            if let Some((Operand::Place(p), _)) = prelude_entry {
+                assert_eq!(p.name, "default", "Prelude phi value should still be %default");
+            }
+        }
+    }
+
+    // --- Cross-dependency rejection (1 test) ---
+
+    #[test]
+    fn test_if_else_to_select_cross_dependency_rejected() {
+        // Then block references a destination defined in else block.
+        // This creates a cross-dependency that prevents safe hoisting.
+        let mut func = MirFunction {
+            name: "test".to_string(),
+            params: vec![("x".to_string(), MirType::I64), ("y".to_string(), MirType::I64)],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![
+                BasicBlock {
+                    label: "cond_block".to_string(),
+                    instructions: vec![
+                        MirInst::BinOp {
+                            dest: Place::new("cmp"),
+                            op: MirBinOp::Lt,
+                            lhs: Operand::Place(Place::new("x")),
+                            rhs: Operand::Place(Place::new("y")),
+                        },
+                    ],
+                    terminator: Terminator::Branch {
+                        cond: Operand::Place(Place::new("cmp")),
+                        then_label: "then_block".to_string(),
+                        else_label: "else_block".to_string(),
+                    },
+                },
+                BasicBlock {
+                    label: "then_block".to_string(),
+                    instructions: vec![
+                        // References %else_val which is defined in the else block
+                        MirInst::BinOp {
+                            dest: Place::new("then_val"),
+                            op: MirBinOp::Add,
+                            lhs: Operand::Place(Place::new("else_val")),
+                            rhs: Operand::Constant(Constant::Int(1)),
+                        },
+                    ],
+                    terminator: Terminator::Goto("merge".to_string()),
+                },
+                BasicBlock {
+                    label: "else_block".to_string(),
+                    instructions: vec![
+                        MirInst::BinOp {
+                            dest: Place::new("else_val"),
+                            op: MirBinOp::Sub,
+                            lhs: Operand::Place(Place::new("y")),
+                            rhs: Operand::Constant(Constant::Int(1)),
+                        },
+                    ],
+                    terminator: Terminator::Goto("merge".to_string()),
+                },
+                BasicBlock {
+                    label: "merge".to_string(),
+                    instructions: vec![
+                        MirInst::Phi {
+                            dest: Place::new("result"),
+                            values: vec![
+                                (Operand::Place(Place::new("then_val")), "then_block".to_string()),
+                                (Operand::Place(Place::new("else_val")), "else_block".to_string()),
+                            ],
+                        },
+                    ],
+                    terminator: Terminator::Return(Some(Operand::Place(Place::new("result")))),
+                },
+            ],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let pass = IfElseToSelect;
+        let changed = pass.run_on_function(&mut func);
+        assert!(!changed, "Cross-dependency between then and else blocks should prevent transformation");
+    }
+
+    // --- Multiple patterns in function (1 test) ---
+
+    #[test]
+    fn test_if_else_to_select_multiple_patterns() {
+        // Two independent if-else diamond patterns in the same function.
+        // Both should be transformed to selects.
+        let mut func = MirFunction {
+            name: "test_two_diamonds".to_string(),
+            params: vec![
+                ("x".to_string(), MirType::I64),
+                ("y".to_string(), MirType::I64),
+            ],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![
+                // Diamond 1: cond1 -> then1/else1 -> merge1
+                BasicBlock {
+                    label: "cond1".to_string(),
+                    instructions: vec![
+                        MirInst::BinOp {
+                            dest: Place::new("cmp1"),
+                            op: MirBinOp::Lt,
+                            lhs: Operand::Place(Place::new("x")),
+                            rhs: Operand::Place(Place::new("y")),
+                        },
+                    ],
+                    terminator: Terminator::Branch {
+                        cond: Operand::Place(Place::new("cmp1")),
+                        then_label: "then1".to_string(),
+                        else_label: "else1".to_string(),
+                    },
+                },
+                BasicBlock {
+                    label: "then1".to_string(),
+                    instructions: vec![
+                        MirInst::BinOp {
+                            dest: Place::new("then_val1"),
+                            op: MirBinOp::Add,
+                            lhs: Operand::Place(Place::new("x")),
+                            rhs: Operand::Constant(Constant::Int(10)),
+                        },
+                    ],
+                    terminator: Terminator::Goto("merge1".to_string()),
+                },
+                BasicBlock {
+                    label: "else1".to_string(),
+                    instructions: vec![
+                        MirInst::BinOp {
+                            dest: Place::new("else_val1"),
+                            op: MirBinOp::Sub,
+                            lhs: Operand::Place(Place::new("y")),
+                            rhs: Operand::Constant(Constant::Int(10)),
+                        },
+                    ],
+                    terminator: Terminator::Goto("merge1".to_string()),
+                },
+                BasicBlock {
+                    label: "merge1".to_string(),
+                    instructions: vec![
+                        MirInst::Phi {
+                            dest: Place::new("result1"),
+                            values: vec![
+                                (Operand::Place(Place::new("then_val1")), "then1".to_string()),
+                                (Operand::Place(Place::new("else_val1")), "else1".to_string()),
+                            ],
+                        },
+                        // Second comparison based on result of first
+                        MirInst::BinOp {
+                            dest: Place::new("cmp2"),
+                            op: MirBinOp::Gt,
+                            lhs: Operand::Place(Place::new("result1")),
+                            rhs: Operand::Constant(Constant::Int(0)),
+                        },
+                    ],
+                    terminator: Terminator::Branch {
+                        cond: Operand::Place(Place::new("cmp2")),
+                        then_label: "then2".to_string(),
+                        else_label: "else2".to_string(),
+                    },
+                },
+                // Diamond 2: merge1 -> then2/else2 -> merge2
+                BasicBlock {
+                    label: "then2".to_string(),
+                    instructions: vec![
+                        MirInst::BinOp {
+                            dest: Place::new("then_val2"),
+                            op: MirBinOp::Mul,
+                            lhs: Operand::Place(Place::new("result1")),
+                            rhs: Operand::Constant(Constant::Int(2)),
+                        },
+                    ],
+                    terminator: Terminator::Goto("merge2".to_string()),
+                },
+                BasicBlock {
+                    label: "else2".to_string(),
+                    instructions: vec![
+                        MirInst::BinOp {
+                            dest: Place::new("else_val2"),
+                            op: MirBinOp::Add,
+                            lhs: Operand::Place(Place::new("result1")),
+                            rhs: Operand::Constant(Constant::Int(5)),
+                        },
+                    ],
+                    terminator: Terminator::Goto("merge2".to_string()),
+                },
+                BasicBlock {
+                    label: "merge2".to_string(),
+                    instructions: vec![
+                        MirInst::Phi {
+                            dest: Place::new("result2"),
+                            values: vec![
+                                (Operand::Place(Place::new("then_val2")), "then2".to_string()),
+                                (Operand::Place(Place::new("else_val2")), "else2".to_string()),
+                            ],
+                        },
+                    ],
+                    terminator: Terminator::Return(Some(Operand::Place(Place::new("result2")))),
+                },
+            ],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let pass = IfElseToSelect;
+        let changed = pass.run_on_function(&mut func);
+        assert!(changed, "Should transform at least one if-else diamond to select");
+
+        // Count total Select instructions across all blocks
+        let select_count: usize = func.blocks.iter()
+            .flat_map(|b| b.instructions.iter())
+            .filter(|inst| matches!(inst, MirInst::Select { .. }))
+            .count();
+        assert!(select_count >= 2,
+            "Should have at least 2 Select instructions for 2 diamond patterns, got {}",
+            select_count);
+    }
 }
