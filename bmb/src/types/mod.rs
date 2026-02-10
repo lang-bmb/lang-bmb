@@ -6522,4 +6522,129 @@ mod tests {
                  };"
         ));
     }
+
+    // ================================================================
+    // Extended Edge Case Tests
+    // ================================================================
+
+    #[test]
+    fn test_err_cast_string_to_i64() {
+        // Casting String to i64 is not a valid numeric cast
+        assert!(err(r#"fn bad(s: String) -> i64 = s as i64;"#));
+    }
+
+    #[test]
+    fn test_err_cast_unit_to_i64() {
+        // Casting unit () to i64 is not a valid cast
+        assert!(err("fn bad() -> i64 = () as i64;"));
+    }
+
+    #[test]
+    fn test_tc_cast_u32_to_u64() {
+        // Unsigned integer widening cast should succeed
+        assert!(ok("fn widen(x: u32) -> u64 = x as u64;"));
+    }
+
+    #[test]
+    fn test_tc_cast_f64_to_i64() {
+        // Float to integer truncation cast should succeed
+        assert!(ok("fn trunc(x: f64) -> i64 = x as i64;"));
+    }
+
+    #[test]
+    fn test_err_u32_arithmetic_with_i64() {
+        // Mixing u32 and i64 in arithmetic should be a type error (no implicit coercion)
+        assert!(err("fn bad(a: u32, b: i64) -> i64 = a + b;"));
+    }
+
+    #[test]
+    fn test_tc_u64_arithmetic() {
+        // Pure u64 arithmetic should type check
+        assert!(ok("fn add_u(a: u64, b: u64) -> u64 = a + b;"));
+    }
+
+    #[test]
+    fn test_tc_u32_comparison_returns_bool() {
+        // Comparison of unsigned integers should return bool
+        assert!(ok("fn gt_u(a: u32, b: u32) -> bool = a > b;"));
+    }
+
+    #[test]
+    fn test_tc_char_literal_in_function() {
+        // char type should work as parameter and return type
+        assert!(ok("fn echo_char(c: char) -> char = c;"));
+    }
+
+    #[test]
+    fn test_err_char_arithmetic() {
+        // Arithmetic on char should fail (char is not a numeric type)
+        assert!(err("fn bad(c: char) -> char = c + c;"));
+    }
+
+    #[test]
+    fn test_err_range_with_float_bounds() {
+        // Range requires integer types, float should be rejected
+        assert!(err(
+            "fn bad() -> () = { for _x in 0.0..10.0 { () }; () };"
+        ));
+    }
+
+    #[test]
+    fn test_err_for_loop_non_range_iterator() {
+        // For loop requires Range or Receiver type, not an integer
+        assert!(err(
+            "fn bad(n: i64) -> () = { for _x in n { () }; () };"
+        ));
+    }
+
+    #[test]
+    fn test_err_array_elements_mixed_types() {
+        // Array literal with mixed element types should fail
+        assert!(err("fn bad() -> i64 = { let arr = [1, true, 3]; arr[0] };"));
+    }
+
+    #[test]
+    fn test_tc_array_repeat_syntax() {
+        // Array repeat [val; N] syntax should type check
+        assert!(ok("fn zeroes() -> i64 = { let arr = [0; 5]; arr[0] };"));
+    }
+
+    #[test]
+    fn test_err_index_with_bool() {
+        // Array index must be an integer, not bool
+        assert!(err("fn bad(arr: *i64, b: bool) -> i64 = arr[b];"));
+    }
+
+    #[test]
+    fn test_err_nullable_unwrap_or_wrong_type() {
+        // unwrap_or(default) default must match the inner type
+        let msg = err_msg("fn bad(opt: i64?) -> i64 = opt.unwrap_or(true);");
+        assert!(msg.contains("expected") || msg.contains("i64") || msg.contains("bool"),
+            "Error should mention type mismatch in unwrap_or default, got: {msg}");
+    }
+
+    #[test]
+    fn test_tc_nullable_struct() {
+        // Nullable should work with user-defined struct types
+        assert!(ok(
+            "struct Point { x: i64, y: i64 }
+             fn maybe_point(flag: bool) -> Point? = if flag { new Point { x: 1, y: 2 } } else { null };"
+        ));
+    }
+
+    #[test]
+    fn test_err_string_byte_at_wrong_arg_type() {
+        // byte_at requires integer argument, not bool
+        let msg = err_msg(r#"fn bad(s: String) -> i64 = s.byte_at(true);"#);
+        assert!(msg.contains("integer") || msg.contains("byte_at"),
+            "Error should mention byte_at requires integer, got: {msg}");
+    }
+
+    #[test]
+    fn test_err_string_slice_wrong_arg_count() {
+        // slice() takes exactly 2 arguments
+        let msg = err_msg(r#"fn bad(s: String) -> String = s.slice(0);"#);
+        assert!(msg.contains("2 arguments") || msg.contains("slice"),
+            "Error should mention slice takes 2 arguments, got: {msg}");
+    }
 }

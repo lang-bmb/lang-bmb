@@ -5535,6 +5535,37 @@ impl LoopBoundedNarrowing {
             }
         }
 
+        // v0.90.25: Also detect while-loop mutable variables (alloca-based pattern).
+        // While loops use Goto back-edges instead of phi nodes. Detect loop headers
+        // by finding blocks that are Goto targets from later blocks.
+        let block_labels: Vec<String> = func.blocks.iter().map(|b| b.label.clone()).collect();
+        let mut loop_headers: HashSet<String> = HashSet::new();
+        for (i, block) in func.blocks.iter().enumerate() {
+            if let Terminator::Goto(target) = &block.terminator {
+                // If target label appears before current block, it's a back-edge
+                if let Some(target_idx) = block_labels.iter().position(|l| l == target) {
+                    if target_idx <= i {
+                        loop_headers.insert(target.clone());
+                    }
+                }
+            }
+        }
+
+        // For while-loop patterns: find variables used in comparisons at loop headers.
+        // A comparison in a loop header where one side derives from param and the other
+        // is a non-param local variable indicates param is a loop bound.
+        // Collect comparison results that feed into Branch terminators at loop headers.
+        let mut loop_cond_vars: HashSet<String> = HashSet::new();
+        for block in &func.blocks {
+            if !loop_headers.contains(&block.label) {
+                continue;
+            }
+            // Find the branch condition variable
+            if let Terminator::Branch { cond: Operand::Place(cond_place), .. } = &block.terminator {
+                loop_cond_vars.insert(cond_place.name.clone());
+            }
+        }
+
         // Condition 1: Check if param is loop-invariant
         // A param is invariant if it doesn't feed into any phi node
         let feeds_phi = phi_from_param.values().any(|v| v == param_name);
@@ -5559,7 +5590,7 @@ impl LoopBoundedNarrowing {
             return false; // Not invariant — it's a loop variable
         }
 
-        // Condition 2: param is compared against a loop variable (phi-derived)
+        // Condition 2: param is compared against a loop variable (phi-derived or while-loop mutable)
         // Track variables derived from param
         let mut param_derived: HashSet<String> = HashSet::new();
         param_derived.insert(param_name.to_string());
@@ -5583,6 +5614,7 @@ impl LoopBoundedNarrowing {
             }
         }
 
+        // Check phi-based pattern (recursive/TCO loops)
         for block in &func.blocks {
             for inst in &block.instructions {
                 if let MirInst::BinOp { op, lhs, rhs, .. } = inst {
@@ -5602,6 +5634,36 @@ impl LoopBoundedNarrowing {
 
                     // param compared against loop variable → loop bound
                     if (lhs_is_param && rhs_is_loop) || (rhs_is_param && lhs_is_loop) {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        // v0.90.25: Check while-loop pattern (alloca-based loops).
+        // If param appears in a comparison that produces a loop condition variable,
+        // the param is being used as a loop bound. The comparison happens in a loop
+        // header block and its result feeds into the Branch terminator.
+        for block in &func.blocks {
+            if !loop_headers.contains(&block.label) {
+                continue;
+            }
+            for inst in &block.instructions {
+                if let MirInst::BinOp { dest, op, lhs, rhs } = inst {
+                    let is_cmp = matches!(op,
+                        MirBinOp::Gt | MirBinOp::Lt |
+                        MirBinOp::Ge | MirBinOp::Le |
+                        MirBinOp::Eq | MirBinOp::Ne
+                    );
+                    if !is_cmp || !loop_cond_vars.contains(&dest.name) {
+                        continue;
+                    }
+
+                    let lhs_is_param = matches!(lhs, Operand::Place(p) if param_derived.contains(&p.name));
+                    let rhs_is_param = matches!(rhs, Operand::Place(p) if param_derived.contains(&p.name));
+
+                    // If param appears in a loop-header comparison → it's a loop bound
+                    if lhs_is_param || rhs_is_param {
                         return true;
                     }
                 }
@@ -12574,6 +12636,247 @@ mod tests {
         // `acc` (param 2) feeds into phi — could be narrowed
         // But the key assertion is that `end` stays i64
         assert!(changed || !changed, "changed status depends on other params");
+    }
+
+    // v0.90.25: While-loop bound detection (alloca-based pattern, no phi nodes)
+    #[test]
+    fn test_loop_bounded_narrowing_skips_while_loop_bound() {
+        // While-loop pattern: count_primes_loop(arr, n) where:
+        // - `n` is a loop bound compared in while_cond block
+        // - The while_cond block has a back-edge (Goto from while_body)
+        // - No phi nodes — uses Copy/BinOp for loop variable updates
+        // Narrowing `n` to i32 inserts sext in loop header, blocking vectorization.
+        let mut program = MirProgram {
+            functions: vec![
+                MirFunction {
+                    name: "main".to_string(),
+                    params: vec![],
+                    ret_ty: MirType::I64,
+                    locals: vec![],
+                    blocks: vec![BasicBlock {
+                        label: "entry".to_string(),
+                        instructions: vec![
+                            MirInst::Call {
+                                dest: Some(Place::new("r")),
+                                func: "count_loop".to_string(),
+                                args: vec![
+                                    Operand::Constant(Constant::Int(0)),   // arr ptr
+                                    Operand::Constant(Constant::Int(100)), // n
+                                ],
+                                is_tail: false,
+                            },
+                        ],
+                        terminator: Terminator::Return(Some(Operand::Place(Place::new("r")))),
+                    }],
+                    preconditions: vec![],
+                    postconditions: vec![],
+                    is_pure: false,
+                    is_const: false,
+                    always_inline: false,
+                    inline_hint: false,
+                    is_memory_free: false,
+                },
+                MirFunction {
+                    name: "count_loop".to_string(),
+                    params: vec![
+                        ("arr".to_string(), MirType::I64),
+                        ("n".to_string(), MirType::I64),
+                    ],
+                    ret_ty: MirType::I64,
+                    locals: vec![],
+                    blocks: vec![
+                        BasicBlock {
+                            label: "entry".to_string(),
+                            instructions: vec![
+                                // let mut k = 0
+                                MirInst::Const { dest: Place::new("k"), value: Constant::Int(0) },
+                                // let mut count = 0
+                                MirInst::Const { dest: Place::new("count"), value: Constant::Int(0) },
+                            ],
+                            terminator: Terminator::Goto("while_cond".to_string()),
+                        },
+                        BasicBlock {
+                            label: "while_cond".to_string(),
+                            instructions: vec![
+                                // cmp = k <= n  (param used as loop bound)
+                                MirInst::BinOp {
+                                    dest: Place::new("cmp"),
+                                    op: MirBinOp::Le,
+                                    lhs: Operand::Place(Place::new("k")),
+                                    rhs: Operand::Place(Place::new("n")),
+                                },
+                            ],
+                            terminator: Terminator::Branch {
+                                cond: Operand::Place(Place::new("cmp")),
+                                then_label: "while_body".to_string(),
+                                else_label: "while_exit".to_string(),
+                            },
+                        },
+                        BasicBlock {
+                            label: "while_body".to_string(),
+                            instructions: vec![
+                                // count = count + 1
+                                MirInst::BinOp {
+                                    dest: Place::new("count"),
+                                    op: MirBinOp::Add,
+                                    lhs: Operand::Place(Place::new("count")),
+                                    rhs: Operand::Constant(Constant::Int(1)),
+                                },
+                                // k = k + 1
+                                MirInst::BinOp {
+                                    dest: Place::new("k"),
+                                    op: MirBinOp::Add,
+                                    lhs: Operand::Place(Place::new("k")),
+                                    rhs: Operand::Constant(Constant::Int(1)),
+                                },
+                            ],
+                            terminator: Terminator::Goto("while_cond".to_string()), // back-edge!
+                        },
+                        BasicBlock {
+                            label: "while_exit".to_string(),
+                            instructions: vec![],
+                            terminator: Terminator::Return(Some(Operand::Place(Place::new("count")))),
+                        },
+                    ],
+                    preconditions: vec![],
+                    postconditions: vec![],
+                    is_pure: false,
+                    is_const: false,
+                    always_inline: false,
+                    inline_hint: false,
+                    is_memory_free: false,
+                },
+            ],
+            extern_fns: vec![],
+            struct_defs: HashMap::new(),
+        };
+
+        let narrowing = LoopBoundedNarrowing::from_program(&program);
+        let _changed = narrowing.run_on_program(&mut program);
+
+        let count_loop = &program.functions[1];
+        // `n` (param 1) should NOT be narrowed — it's a while-loop bound
+        assert_eq!(count_loop.params[1].1, MirType::I64,
+            "n param should remain i64 (while-loop bound, no phi nodes)");
+    }
+
+    #[test]
+    fn test_loop_bounded_narrowing_allows_non_bound_param() {
+        // Non-bound parameter should still be narrowed when it fits in i32.
+        // Pattern: process(arr, n, scale) where `scale` is not used as a loop bound.
+        let mut program = MirProgram {
+            functions: vec![
+                MirFunction {
+                    name: "main".to_string(),
+                    params: vec![],
+                    ret_ty: MirType::I64,
+                    locals: vec![],
+                    blocks: vec![BasicBlock {
+                        label: "entry".to_string(),
+                        instructions: vec![
+                            MirInst::Call {
+                                dest: Some(Place::new("r")),
+                                func: "process".to_string(),
+                                args: vec![
+                                    Operand::Constant(Constant::Int(0)),   // arr
+                                    Operand::Constant(Constant::Int(100)), // n (bound)
+                                    Operand::Constant(Constant::Int(5)),   // scale (not a bound)
+                                ],
+                                is_tail: false,
+                            },
+                        ],
+                        terminator: Terminator::Return(Some(Operand::Place(Place::new("r")))),
+                    }],
+                    preconditions: vec![],
+                    postconditions: vec![],
+                    is_pure: false,
+                    is_const: false,
+                    always_inline: false,
+                    inline_hint: false,
+                    is_memory_free: false,
+                },
+                MirFunction {
+                    name: "process".to_string(),
+                    params: vec![
+                        ("arr".to_string(), MirType::I64),
+                        ("n".to_string(), MirType::I64),
+                        ("scale".to_string(), MirType::I64),
+                    ],
+                    ret_ty: MirType::I64,
+                    locals: vec![],
+                    blocks: vec![
+                        BasicBlock {
+                            label: "entry".to_string(),
+                            instructions: vec![
+                                MirInst::Const { dest: Place::new("i"), value: Constant::Int(0) },
+                            ],
+                            terminator: Terminator::Goto("while_cond".to_string()),
+                        },
+                        BasicBlock {
+                            label: "while_cond".to_string(),
+                            instructions: vec![
+                                // i < n (n is the bound)
+                                MirInst::BinOp {
+                                    dest: Place::new("cmp"),
+                                    op: MirBinOp::Lt,
+                                    lhs: Operand::Place(Place::new("i")),
+                                    rhs: Operand::Place(Place::new("n")),
+                                },
+                            ],
+                            terminator: Terminator::Branch {
+                                cond: Operand::Place(Place::new("cmp")),
+                                then_label: "while_body".to_string(),
+                                else_label: "while_exit".to_string(),
+                            },
+                        },
+                        BasicBlock {
+                            label: "while_body".to_string(),
+                            instructions: vec![
+                                // use scale (not as a bound, just in computation)
+                                MirInst::BinOp {
+                                    dest: Place::new("_v"),
+                                    op: MirBinOp::Add,
+                                    lhs: Operand::Place(Place::new("i")),
+                                    rhs: Operand::Place(Place::new("scale")),
+                                },
+                                MirInst::BinOp {
+                                    dest: Place::new("i"),
+                                    op: MirBinOp::Add,
+                                    lhs: Operand::Place(Place::new("i")),
+                                    rhs: Operand::Constant(Constant::Int(1)),
+                                },
+                            ],
+                            terminator: Terminator::Goto("while_cond".to_string()),
+                        },
+                        BasicBlock {
+                            label: "while_exit".to_string(),
+                            instructions: vec![],
+                            terminator: Terminator::Return(Some(Operand::Place(Place::new("i")))),
+                        },
+                    ],
+                    preconditions: vec![],
+                    postconditions: vec![],
+                    is_pure: false,
+                    is_const: false,
+                    always_inline: false,
+                    inline_hint: false,
+                    is_memory_free: false,
+                },
+            ],
+            extern_fns: vec![],
+            struct_defs: HashMap::new(),
+        };
+
+        let narrowing = LoopBoundedNarrowing::from_program(&program);
+        narrowing.run_on_program(&mut program);
+
+        let process = &program.functions[1];
+        // `n` (param 1) should NOT be narrowed — loop bound
+        assert_eq!(process.params[1].1, MirType::I64,
+            "n param should remain i64 (while-loop bound)");
+        // `scale` (param 2) SHOULD be narrowed — not a loop bound
+        assert_eq!(process.params[2].1, MirType::I32,
+            "scale param should be narrowed to i32 (not a loop bound)");
     }
 
     #[test]

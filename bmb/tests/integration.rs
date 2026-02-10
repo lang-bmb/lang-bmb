@@ -3851,3 +3851,307 @@ fn test_interp_array_index_assign_loop() {
         30 // 0 + 1 + 4 + 9 + 16
     );
 }
+
+// ============================================
+// Cycle 195: Parser/Type-Checking Edge Cases
+// ============================================
+
+// --- Nested function calls as arguments ---
+
+#[test]
+fn test_nested_fn_call_as_arg() {
+    // Function call result used directly as argument to another function call,
+    // three levels deep with different arities
+    assert_eq!(
+        run_program_i64(
+            "fn add(a: i64, b: i64) -> i64 = a + b;
+             fn mul(a: i64, b: i64) -> i64 = a * b;
+             fn neg(x: i64) -> i64 = 0 - x;
+             fn main() -> i64 = add(mul(neg(3), 4), mul(5, neg(2)));"
+        ),
+        -22 // neg(3)=-3, mul(-3,4)=-12, neg(2)=-2, mul(5,-2)=-10, add(-12,-10)=-22
+    );
+}
+
+// --- Multiple return paths combining return with match ---
+
+#[test]
+fn test_multiple_return_paths_match_and_early_return() {
+    // Early return from within a match arm, plus normal match return
+    assert_eq!(
+        run_program_i64(
+            "fn process(mode: i64, x: i64) -> i64 = {
+               if x < 0 { return -1 } else { () };
+               match mode {
+                 0 => x * 2,
+                 1 => { if x > 100 { return 999 } else { () }; x + 10 },
+                 _ => 0
+               }
+             };
+             fn main() -> i64 = process(1, -5) + process(0, 7) + process(1, 200) + process(1, 50);"
+        ),
+        // process(1, -5) = -1 (early return x<0)
+        // process(0, 7) = 14 (match 0 => 7*2)
+        // process(1, 200) = 999 (match 1 => x>100 early return)
+        // process(1, 50) = 60 (match 1 => 50+10)
+        // -1 + 14 + 999 + 60 = 1072
+        1072
+    );
+}
+
+// --- Unit type from empty-ish blocks ---
+
+#[test]
+fn test_unit_type_empty_function() {
+    // Function returning unit with side-effect-like structure
+    assert!(type_checks(
+        "fn do_nothing() -> () = ();
+         fn also_nothing() -> () = { let x: i64 = 42; () };
+         fn main() -> i64 = { do_nothing(); also_nothing(); 0 };"
+    ));
+}
+
+// --- Struct containing array field ---
+
+#[test]
+fn test_struct_with_array_field() {
+    assert_eq!(
+        run_program_i64(
+            "struct Matrix { data: [i64; 4], rows: i64, cols: i64 }
+             fn trace(m: Matrix) -> i64 = m.data[0] + m.data[3];
+             fn main() -> i64 = {
+               let m = new Matrix { data: [1, 2, 3, 4], rows: 2, cols: 2 };
+               trace(m)
+             };"
+        ),
+        5 // data[0]=1, data[3]=4 -> 1+4=5
+    );
+}
+
+// --- Array of booleans with index assignment ---
+
+#[test]
+fn test_array_bool_index_assign_and_read() {
+    assert_eq!(
+        run_program_i64(
+            "fn main() -> i64 = {
+               let mut flags: [bool; 4] = [false, false, false, false];
+               set flags[0] = true;
+               set flags[2] = true;
+               let mut count: i64 = 0;
+               if flags[0] { count = count + 1 } else { () };
+               if flags[1] { count = count + 1 } else { () };
+               if flags[2] { count = count + 1 } else { () };
+               if flags[3] { count = count + 1 } else { () };
+               count
+             };"
+        ),
+        2 // only flags[0] and flags[2] are true
+    );
+}
+
+// --- Forward reference: calling a function defined after the caller ---
+
+#[test]
+fn test_forward_reference_function_call() {
+    // main calls helper which is defined after main
+    assert_eq!(
+        run_program_i64(
+            "fn main() -> i64 = compute(5, 3);
+             fn compute(a: i64, b: i64) -> i64 = a * a + b * b;"
+        ),
+        34 // 25 + 9
+    );
+}
+
+// --- Char type operations ---
+
+#[test]
+fn test_char_literal_type_checks() {
+    assert!(type_checks(
+        "fn first_char() -> char = 'A';
+         fn main() -> i64 = 0;"
+    ));
+}
+
+#[test]
+fn test_char_ord_builtin() {
+    // ord() converts char to i64
+    assert_eq!(
+        run_program_i64(
+            "fn main() -> i64 = ord('A');"
+        ),
+        65
+    );
+}
+
+// --- Deeply nested if-else chain returning different values ---
+
+#[test]
+fn test_deeply_nested_if_else_chain() {
+    assert_eq!(
+        run_program_i64(
+            "fn bucket(x: i64) -> i64 =
+               if x < 10 { 1 }
+               else if x < 20 { 2 }
+               else if x < 30 { 3 }
+               else if x < 40 { 4 }
+               else if x < 50 { 5 }
+               else { 6 };
+             fn main() -> i64 = bucket(5) + bucket(15) + bucket(25) + bucket(35) + bucket(45) + bucket(99);"
+        ),
+        21 // 1+2+3+4+5+6
+    );
+}
+
+// --- Closure with multiple captured variables ---
+
+#[test]
+fn test_closure_captures_multiple_vars() {
+    assert_eq!(
+        run_program_i64(
+            "fn main() -> i64 = {
+               let a: i64 = 10;
+               let b: i64 = 20;
+               let c: i64 = 30;
+               let f = fn |x: i64| { a + b + c + x };
+               f(40)
+             };"
+        ),
+        100 // 10+20+30+40
+    );
+}
+
+// --- Nullable struct field access with unwrap_or ---
+
+#[test]
+fn test_nullable_with_struct_field_access() {
+    assert!(type_checks(
+        "struct Point { x: i64, y: i64 }
+         fn maybe_origin(flag: bool) -> Point? =
+           if flag { new Point { x: 0, y: 0 } } else { null };
+         fn get_x_or_default(flag: bool) -> i64 = {
+           let p: Point? = maybe_origin(flag);
+           let val: Point = p.unwrap_or(new Point { x: -1, y: -1 });
+           val.x
+         };
+         fn main() -> i64 = 0;"
+    ));
+}
+
+// --- Wrapping arithmetic interpreter execution ---
+
+#[test]
+fn test_interp_wrapping_add() {
+    assert_eq!(
+        run_program_i64(
+            "fn main() -> i64 = {
+               let a: i64 = 9223372036854775807;
+               let b: i64 = 1;
+               a +% b
+             };"
+        ),
+        -9223372036854775808 // i64::MAX wrapping_add 1 = i64::MIN
+    );
+}
+
+// --- Type error: struct field assign with wrong type ---
+
+#[test]
+fn test_error_struct_field_assign_type_mismatch() {
+    assert!(type_error(
+        "struct Point { x: i64, y: i64 }
+         fn main() -> i64 = {
+           let mut p: Point = new Point { x: 1, y: 2 };
+           set p.x = true;
+           p.x
+         };"
+    ));
+}
+
+// --- Type error: array index assign with wrong element type ---
+
+#[test]
+fn test_error_array_index_assign_type_mismatch() {
+    assert!(type_error(
+        "fn main() -> i64 = {
+           let mut a: [i64; 3] = [1, 2, 3];
+           set a[0] = true;
+           a[0]
+         };"
+    ));
+}
+
+// --- Type error: match arms returning different types ---
+
+#[test]
+fn test_error_match_arms_type_mismatch() {
+    assert!(type_error(
+        r#"fn bad(x: i64) -> i64 = match x {
+             0 => 42,
+             1 => "hello",
+             _ => 0
+           };"#
+    ));
+}
+
+// --- For-loop with inclusive range ---
+
+#[test]
+fn test_interp_for_inclusive_range_sum() {
+    assert_eq!(
+        run_program_i64(
+            "fn main() -> i64 = {
+               let mut s: i64 = 0;
+               for i in 1..=10 { s = s + i };
+               s
+             };"
+        ),
+        55 // 1+2+...+10
+    );
+}
+
+// --- Tuple in function param and return with field arithmetic ---
+
+#[test]
+fn test_interp_tuple_swap_and_compute() {
+    assert_eq!(
+        run_program_i64(
+            "fn swap(t: (i64, i64)) -> (i64, i64) = (t.1, t.0);
+             fn main() -> i64 = {
+               let original = (3, 7);
+               let swapped = swap(original);
+               swapped.0 * 10 + swapped.1
+             };"
+        ),
+        73 // swapped = (7,3) -> 7*10 + 3 = 73
+    );
+}
+
+// --- Nested struct field access through function return ---
+
+#[test]
+fn test_nested_struct_field_through_fn_return() {
+    assert_eq!(
+        run_program_i64(
+            "struct Inner { val: i64 }
+             struct Outer { a: Inner, b: Inner }
+             fn make_outer(x: i64, y: i64) -> Outer =
+               new Outer { a: new Inner { val: x }, b: new Inner { val: y } };
+             fn main() -> i64 = {
+               let o = make_outer(11, 22);
+               o.a.val + o.b.val
+             };"
+        ),
+        33
+    );
+}
+
+// --- Type error: cannot use non-bool in logical and/or ---
+
+#[test]
+fn test_error_logical_and_non_bool_operand() {
+    assert!(type_error(
+        "fn bad() -> bool = 42 and true;"
+    ));
+}
