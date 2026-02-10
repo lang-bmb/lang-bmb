@@ -4469,23 +4469,22 @@ impl<'ctx> LlvmContext<'ctx> {
                 let true_val_gen = self.gen_operand(true_val)?;
                 let false_val_gen = self.gen_operand(false_val)?;
 
-                // Generate comparison
-                let lhs_int = lhs_val.into_int_value();
-                let rhs_int = rhs_val.into_int_value();
-
-                let cmp_pred = match cond_op {
-                    MirBinOp::Eq => inkwell::IntPredicate::EQ,
-                    MirBinOp::Ne => inkwell::IntPredicate::NE,
-                    MirBinOp::Lt => inkwell::IntPredicate::SLT,
-                    MirBinOp::Le => inkwell::IntPredicate::SLE,
-                    MirBinOp::Gt => inkwell::IntPredicate::SGT,
-                    MirBinOp::Ge => inkwell::IntPredicate::SGE,
-                    _ => return Err(CodeGenError::LlvmError(format!("Unsupported Select condition op: {:?}", cond_op))),
+                // v0.90.27: Use gen_binop to handle comparison correctly (string, pointer, int)
+                let lhs_is_string = match cond_lhs {
+                    Operand::Constant(Constant::String(_)) => true,
+                    Operand::Place(p) => self.string_variables.contains(&p.name),
+                    _ => false,
                 };
+                let rhs_is_string = match cond_rhs {
+                    Operand::Constant(Constant::String(_)) => true,
+                    Operand::Place(p) => self.string_variables.contains(&p.name),
+                    _ => false,
+                };
+                let is_string = lhs_is_string || rhs_is_string;
+                let cmp_result = self.gen_binop_with_string_hint(cond_op.clone(), lhs_val, rhs_val, is_string)?;
 
-                let cond = self.builder
-                    .build_int_compare(cmp_pred, lhs_int, rhs_int, "select_cond")
-                    .map_err(|e| CodeGenError::LlvmError(e.to_string()))?;
+                // The comparison result is i1 (bool) for comparisons
+                let cond = cmp_result.into_int_value();
 
                 let result = self.builder
                     .build_select(cond, true_val_gen, false_val_gen, "select_result")

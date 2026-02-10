@@ -87,6 +87,8 @@ impl OptimizationPipeline {
                 pipeline.add_pass(Box::new(TailRecursiveToLoop));
                 // v0.60.55: Convert conditional increment to branchless add
                 pipeline.add_pass(Box::new(ConditionalIncrementToSelect));
+                // v0.90.27: Convert simple if-else branches to select (branchless)
+                pipeline.add_pass(Box::new(IfElseToSelect));
                 // v0.60.11: Convert fibonacci-like double recursion to O(n) loops
                 pipeline.add_pass(Box::new(LinearRecurrenceToLoop));
                 // v0.51.16: Loop invariant code motion - hoist len() calls out of loops
@@ -123,6 +125,8 @@ impl OptimizationPipeline {
                 pipeline.add_pass(Box::new(TailRecursiveToLoop));
                 // v0.60.55: Convert conditional increment to branchless add
                 pipeline.add_pass(Box::new(ConditionalIncrementToSelect));
+                // v0.90.27: Convert simple if-else branches to select (branchless)
+                pipeline.add_pass(Box::new(IfElseToSelect));
                 // v0.60.11: Convert fibonacci-like double recursion to O(n) loops
                 pipeline.add_pass(Box::new(LinearRecurrenceToLoop));
                 // v0.51.16: Loop invariant code motion - hoist len() calls out of loops
@@ -6982,6 +6986,419 @@ impl ConditionalIncrementToSelect {
         // Actually, they become unreachable because no one jumps to them anymore
         // UnreachableBlockElimination will clean them up
 
+        true
+    }
+}
+
+// ============================================================================
+// v0.90.27: IfElseToSelect - Convert simple if-else branches to select
+// ============================================================================
+
+/// Convert simple if-else branch patterns into select instructions.
+///
+/// Detects pattern:
+///   header: %cond = cmp ...; branch %cond, then_block, else_block
+///   then_block: <1-3 simple instructions> ; goto merge
+///   else_block: <1-3 simple instructions> ; goto merge
+///   merge: %result = phi [(then_val, then_block), (else_val, else_block)]
+///
+/// Transforms to:
+///   header: <then instructions>; <else instructions>; %result = select(...)
+///   goto merge
+///
+/// This eliminates branch misprediction in tight loops (e.g., collatz).
+pub struct IfElseToSelect;
+
+impl OptimizationPass for IfElseToSelect {
+    fn name(&self) -> &'static str {
+        "if_else_to_select"
+    }
+
+    fn run_on_function(&self, func: &mut MirFunction) -> bool {
+        let mut changed = false;
+        // Re-find patterns after each transformation since block indices change
+        loop {
+            let patterns = self.find_patterns(func);
+            if patterns.is_empty() {
+                break;
+            }
+            // Apply only the first pattern, then re-scan
+            if self.apply_transformation(func, &patterns[0]) {
+                changed = true;
+            } else {
+                break;
+            }
+        }
+        changed
+    }
+}
+
+/// Information about an if-else-to-select pattern
+#[allow(dead_code)]
+struct IfElseSelectPattern {
+    /// Block index with the conditional branch
+    cond_block_idx: usize,
+    /// The comparison operator that produced the condition
+    cond_op: MirBinOp,
+    /// LHS of the comparison
+    cond_lhs: Operand,
+    /// RHS of the comparison
+    cond_rhs: Operand,
+    /// Index of the comparison instruction in cond block (to remove)
+    cond_inst_idx: usize,
+    /// Then block index
+    then_block_idx: usize,
+    /// Else block index
+    else_block_idx: usize,
+    /// Then block label
+    then_label: String,
+    /// Else block label
+    else_label: String,
+    /// Merge block label
+    merge_label: String,
+    /// Instructions from then block to hoist
+    then_insts: Vec<MirInst>,
+    /// Instructions from else block to hoist
+    else_insts: Vec<MirInst>,
+    /// Phi nodes to convert: (phi_dest, phi_inst_idx, then_val, else_val)
+    phis: Vec<(Place, usize, Operand, Operand)>,
+}
+
+impl IfElseToSelect {
+    fn find_patterns(&self, func: &MirFunction) -> Vec<IfElseSelectPattern> {
+        let mut patterns = Vec::new();
+
+        let block_map: HashMap<String, usize> = func.blocks.iter()
+            .enumerate()
+            .map(|(i, b)| (b.label.clone(), i))
+            .collect();
+
+        for (cond_idx, cond_block) in func.blocks.iter().enumerate() {
+            // Look for branch terminators
+            let (cond_place, then_label, else_label) = match &cond_block.terminator {
+                Terminator::Branch { cond: Operand::Place(p), then_label, else_label } => {
+                    (p.clone(), then_label.clone(), else_label.clone())
+                }
+                _ => continue,
+            };
+
+            // Find the comparison instruction that produces the condition
+            let cond_info = self.find_comparison(cond_block, &cond_place);
+            let (cond_op, cond_lhs, cond_rhs, cond_inst_idx) = match cond_info {
+                Some(info) => info,
+                None => continue,
+            };
+
+            // Get then and else blocks
+            let then_idx = match block_map.get(&then_label) {
+                Some(&idx) => idx,
+                None => continue,
+            };
+            let else_idx = match block_map.get(&else_label) {
+                Some(&idx) => idx,
+                None => continue,
+            };
+
+            let then_block = &func.blocks[then_idx];
+            let else_block = &func.blocks[else_idx];
+
+            // Both blocks must Goto the same merge block
+            let then_target = match &then_block.terminator {
+                Terminator::Goto(target) => target.clone(),
+                _ => continue,
+            };
+            let else_target = match &else_block.terminator {
+                Terminator::Goto(target) => target.clone(),
+                _ => continue,
+            };
+
+            if then_target != else_target {
+                continue;
+            }
+            let merge_label = then_target;
+
+            // Both blocks must be simple (≤3 instructions each)
+            if then_block.instructions.len() > 3 || else_block.instructions.len() > 3 {
+                continue;
+            }
+
+            // Both blocks must have at least 1 instruction (producing a value)
+            if then_block.instructions.is_empty() || else_block.instructions.is_empty() {
+                continue;
+            }
+
+            // Check that instructions are safe to hoist (no side effects, no calls)
+            if !self.is_hoistable(&then_block.instructions) || !self.is_hoistable(&else_block.instructions) {
+                continue;
+            }
+
+            // Find merge block and look for matching phi
+            let merge_idx = match block_map.get(&merge_label) {
+                Some(&idx) => idx,
+                None => continue,
+            };
+            let merge_block = &func.blocks[merge_idx];
+
+            // Find phis that merge values from then and else blocks
+            let phis = self.find_matching_phis(
+                merge_block, &then_label, &else_label,
+                &then_block.instructions, &else_block.instructions,
+            );
+            if phis.is_empty() {
+                continue;
+            }
+
+            // Don't transform if the then/else instructions reference each other's
+            // destinations (dependency issue when hoisted to same block)
+            if self.has_cross_dependency(&then_block.instructions, &else_block.instructions) {
+                continue;
+            }
+
+            patterns.push(IfElseSelectPattern {
+                cond_block_idx: cond_idx,
+                cond_op,
+                cond_lhs,
+                cond_rhs,
+                cond_inst_idx,
+                then_block_idx: then_idx,
+                else_block_idx: else_idx,
+                then_label,
+                else_label,
+                merge_label,
+                then_insts: then_block.instructions.clone(),
+                else_insts: else_block.instructions.clone(),
+                phis,
+            });
+        }
+
+        patterns
+    }
+
+    /// Find the comparison instruction that defines `cond_place`
+    fn find_comparison(&self, block: &BasicBlock, cond_place: &Place) -> Option<(MirBinOp, Operand, Operand, usize)> {
+        for (idx, inst) in block.instructions.iter().enumerate().rev() {
+            if let MirInst::BinOp { dest, op, lhs, rhs } = inst {
+                if dest.name == cond_place.name {
+                    let is_cmp = matches!(op,
+                        MirBinOp::Eq | MirBinOp::Ne |
+                        MirBinOp::Lt | MirBinOp::Le |
+                        MirBinOp::Gt | MirBinOp::Ge
+                    );
+                    if is_cmp {
+                        return Some((op.clone(), lhs.clone(), rhs.clone(), idx));
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    /// Check if all instructions are safe to hoist (no side effects)
+    fn is_hoistable(&self, insts: &[MirInst]) -> bool {
+        for inst in insts {
+            match inst {
+                MirInst::BinOp { .. } |
+                MirInst::UnaryOp { .. } |
+                MirInst::Const { .. } |
+                MirInst::Copy { .. } |
+                MirInst::Cast { .. } => {}
+                _ => return false, // Calls, stores, etc. not safe to hoist
+            }
+        }
+        true
+    }
+
+    /// Find phis in the merge block that receive values from then/else blocks
+    fn find_matching_phis(
+        &self,
+        merge_block: &BasicBlock,
+        then_label: &str,
+        else_label: &str,
+        then_insts: &[MirInst],
+        else_insts: &[MirInst],
+    ) -> Vec<(Place, usize, Operand, Operand)> {
+        let mut results = Vec::new();
+        // Get destinations from each block
+        let then_dests: HashSet<String> = then_insts.iter().filter_map(|i| match i {
+            MirInst::BinOp { dest, .. } | MirInst::UnaryOp { dest, .. } |
+            MirInst::Const { dest, .. } | MirInst::Copy { dest, .. } |
+            MirInst::Cast { dest, .. } => Some(dest.name.clone()),
+            _ => None,
+        }).collect();
+        let else_dests: HashSet<String> = else_insts.iter().filter_map(|i| match i {
+            MirInst::BinOp { dest, .. } | MirInst::UnaryOp { dest, .. } |
+            MirInst::Const { dest, .. } | MirInst::Copy { dest, .. } |
+            MirInst::Cast { dest, .. } => Some(dest.name.clone()),
+            _ => None,
+        }).collect();
+
+        for (inst_idx, inst) in merge_block.instructions.iter().enumerate() {
+            if let MirInst::Phi { dest, values } = inst {
+                // Must have at least 2 values and include both then/else labels
+                if values.len() < 2 {
+                    continue;
+                }
+
+                let mut then_val = None;
+                let mut else_val = None;
+
+                for (val, label) in values {
+                    if label == then_label {
+                        // Check if val references a dest from then block
+                        if let Operand::Place(p) = val {
+                            if then_dests.contains(&p.name) {
+                                then_val = Some(val.clone());
+                            }
+                        }
+                    } else if label == else_label {
+                        if let Operand::Place(p) = val {
+                            if else_dests.contains(&p.name) {
+                                else_val = Some(val.clone());
+                            }
+                        }
+                    }
+                }
+
+                if let (Some(tv), Some(ev)) = (then_val, else_val) {
+                    results.push((dest.clone(), inst_idx, tv, ev));
+                }
+            }
+        }
+        results
+    }
+
+    /// Check if instructions from one block reference destinations of the other
+    fn has_cross_dependency(&self, a_insts: &[MirInst], b_insts: &[MirInst]) -> bool {
+        let a_dests: HashSet<String> = a_insts.iter().filter_map(|inst| match inst {
+            MirInst::BinOp { dest, .. } |
+            MirInst::UnaryOp { dest, .. } |
+            MirInst::Const { dest, .. } |
+            MirInst::Copy { dest, .. } |
+            MirInst::Cast { dest, .. } => Some(dest.name.clone()),
+            _ => None,
+        }).collect();
+
+        let b_dests: HashSet<String> = b_insts.iter().filter_map(|inst| match inst {
+            MirInst::BinOp { dest, .. } |
+            MirInst::UnaryOp { dest, .. } |
+            MirInst::Const { dest, .. } |
+            MirInst::Copy { dest, .. } |
+            MirInst::Cast { dest, .. } => Some(dest.name.clone()),
+            _ => None,
+        }).collect();
+
+        // Check if any operand in a references a dest in b, or vice versa
+        for inst in a_insts {
+            for name in self.operand_names(inst) {
+                if b_dests.contains(&name) {
+                    return true;
+                }
+            }
+        }
+        for inst in b_insts {
+            for name in self.operand_names(inst) {
+                if a_dests.contains(&name) {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    fn operand_names(&self, inst: &MirInst) -> Vec<String> {
+        let mut names = Vec::new();
+        match inst {
+            MirInst::BinOp { lhs, rhs, .. } => {
+                if let Operand::Place(p) = lhs { names.push(p.name.clone()); }
+                if let Operand::Place(p) = rhs { names.push(p.name.clone()); }
+            }
+            MirInst::UnaryOp { src, .. } | MirInst::Cast { src, .. } => {
+                if let Operand::Place(p) = src { names.push(p.name.clone()); }
+            }
+            MirInst::Copy { src, .. } => {
+                names.push(src.name.clone());
+            }
+            _ => {}
+        }
+        names
+    }
+
+    fn apply_transformation(&self, func: &mut MirFunction, pattern: &IfElseSelectPattern) -> bool {
+        // 1. Hoist then_insts and else_insts into cond_block (before the comparison)
+        let cond_block = &mut func.blocks[pattern.cond_block_idx];
+
+        // Remove the comparison instruction (it will be embedded in Select)
+        cond_block.instructions.remove(pattern.cond_inst_idx);
+
+        // Insert then and else instructions at the position where comparison was
+        let insert_pos = pattern.cond_inst_idx;
+        for (i, inst) in pattern.then_insts.iter().enumerate() {
+            cond_block.instructions.insert(insert_pos + i, inst.clone());
+        }
+        let else_insert_pos = insert_pos + pattern.then_insts.len();
+        for (i, inst) in pattern.else_insts.iter().enumerate() {
+            cond_block.instructions.insert(else_insert_pos + i, inst.clone());
+        }
+
+        // 2. Add Select instructions for each phi (use unique dest names to avoid SSA collision)
+        let mut select_names: Vec<(String, String)> = Vec::new(); // (select_dest, phi_dest)
+        for (idx, (phi_dest, _, then_val, else_val)) in pattern.phis.iter().enumerate() {
+            let select_dest_name = format!("_sel_{}_{}", phi_dest.name, idx);
+            let select_inst = MirInst::Select {
+                dest: Place::new(&select_dest_name),
+                cond_op: pattern.cond_op.clone(),
+                cond_lhs: pattern.cond_lhs.clone(),
+                cond_rhs: pattern.cond_rhs.clone(),
+                true_val: then_val.clone(),
+                false_val: else_val.clone(),
+            };
+            cond_block.instructions.push(select_inst);
+            select_names.push((select_dest_name, phi_dest.name.clone()));
+        }
+
+        // 3. Change terminator from Branch to Goto(merge_label)
+        cond_block.terminator = Terminator::Goto(pattern.merge_label.clone());
+
+        // 4. Update phis in merge block: remove then/else entries, add cond_block entry
+        let cond_block_label = func.blocks[pattern.cond_block_idx].label.clone();
+        let merge_block = func.blocks.iter_mut()
+            .find(|b| b.label == pattern.merge_label)
+            .expect("merge block should exist");
+
+        // For each phi that we converted to select, update remaining phi entries
+        // Build map: phi_dest_name -> select_dest_name
+        let select_name_map: HashMap<String, String> = select_names.into_iter()
+            .map(|(sel, phi)| (phi, sel))
+            .collect();
+
+        // Collect indices of phis to update
+        let mut to_update: Vec<(usize, String, String)> = Vec::new(); // (inst_idx, phi_dest, select_dest)
+        for (inst_idx, inst) in merge_block.instructions.iter().enumerate() {
+            if let MirInst::Phi { dest, .. } = inst {
+                if let Some(sel_name) = select_name_map.get(&dest.name) {
+                    to_update.push((inst_idx, dest.name.clone(), sel_name.clone()));
+                }
+            }
+        }
+
+        // Update each phi: remove then/else entries, add cond_block entry with select result
+        for (inst_idx, _phi_dest, select_dest) in &to_update {
+            if let MirInst::Phi { dest: _, values } = &mut merge_block.instructions[*inst_idx] {
+                // Remove then and else entries
+                values.retain(|(_, label)| {
+                    label != &pattern.then_label && label != &pattern.else_label
+                });
+                // Add entry from cond_block with select's unique dest name
+                values.push((
+                    Operand::Place(Place::new(select_dest)),
+                    cond_block_label.clone(),
+                ));
+
+                // If phi now has only one value, it can be simplified later by PhiSimplification
+            }
+        }
+
+        // Then and else blocks become unreachable (cleaned up by UnreachableBlockElimination)
         true
     }
 }
