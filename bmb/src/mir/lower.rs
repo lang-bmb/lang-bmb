@@ -5460,4 +5460,348 @@ mod tests {
         });
         assert!(has_method_call, "Expected Call instruction for .len() method");
     }
+
+    // ================================================================
+    // Cycle 200: Weakly covered expression lowering tests
+    // Covers: FieldStore, IndexAssign, Return, Loop, Break/Continue,
+    //         For-loop, Cast
+    // ================================================================
+
+    // --- FieldStore lowering ---
+
+    #[test]
+    fn test_lower_field_store_multiple_fields() {
+        let mir = parse_and_lower(
+            "struct Point { x: i64, y: i64 }
+             fn set_both(p: Point) -> Point = { set p.x = 10; set p.y = 20; p };"
+        );
+        let func = &mir.functions[0];
+        let field_store_count = func.blocks.iter().flat_map(|b| b.instructions.iter()).filter(|inst| {
+            matches!(inst, MirInst::FieldStore { .. })
+        }).count();
+        assert_eq!(field_store_count, 2, "Expected 2 FieldStore instructions for set p.x and set p.y, got {}", field_store_count);
+    }
+
+    #[test]
+    fn test_lower_field_store_with_expression_value() {
+        let mir = parse_and_lower(
+            "struct Counter { val: i64 }
+             fn double_val(c: Counter) -> Counter = { set c.val = c.val * 2; c };"
+        );
+        let func = &mir.functions[0];
+        // Should have a FieldAccess for reading c.val, a Mul, and a FieldStore
+        let has_field_access = func.blocks.iter().any(|b| {
+            b.instructions.iter().any(|inst| matches!(inst, MirInst::FieldAccess { field, .. } if field == "val"))
+        });
+        let has_mul = func.blocks.iter().any(|b| {
+            b.instructions.iter().any(|inst| matches!(inst, MirInst::BinOp { op: MirBinOp::Mul, .. }))
+        });
+        let has_field_store = func.blocks.iter().any(|b| {
+            b.instructions.iter().any(|inst| matches!(inst, MirInst::FieldStore { field, .. } if field == "val"))
+        });
+        assert!(has_field_access, "Expected FieldAccess for reading c.val");
+        assert!(has_mul, "Expected Mul for c.val * 2");
+        assert!(has_field_store, "Expected FieldStore for set c.val = ...");
+    }
+
+    #[test]
+    fn test_lower_field_store_preserves_struct_name() {
+        let mir = parse_and_lower(
+            "struct Rect { w: i64, h: i64 }
+             fn widen(r: Rect) -> Rect = { set r.w = r.w + 10; r };"
+        );
+        let func = &mir.functions[0];
+        let has_correct_store = func.blocks.iter().any(|b| {
+            b.instructions.iter().any(|inst| {
+                matches!(inst, MirInst::FieldStore { field, struct_name, .. }
+                    if field == "w" && !struct_name.is_empty())
+            })
+        });
+        assert!(has_correct_store, "Expected FieldStore with field 'w' and non-empty struct_name");
+    }
+
+    // --- IndexAssign lowering ---
+
+    #[test]
+    fn test_lower_index_assign_with_variable_index() {
+        let mir = parse_and_lower(
+            "fn set_at(arr: [i64; 5], idx: i64) -> [i64; 5] = { set arr[idx] = 42; arr };"
+        );
+        let func = &mir.functions[0];
+        let has_index_store = func.blocks.iter().any(|b| {
+            b.instructions.iter().any(|inst| matches!(inst, MirInst::IndexStore { .. }))
+        });
+        assert!(has_index_store, "Expected IndexStore for set arr[idx] = 42");
+    }
+
+    #[test]
+    fn test_lower_index_assign_with_expression_value() {
+        let mir = parse_and_lower(
+            "fn set_sum(arr: [i64; 3], a: i64, b: i64) -> [i64; 3] = { set arr[0] = a + b; arr };"
+        );
+        let func = &mir.functions[0];
+        let has_add = func.blocks.iter().any(|b| {
+            b.instructions.iter().any(|inst| matches!(inst, MirInst::BinOp { op: MirBinOp::Add, .. }))
+        });
+        let has_index_store = func.blocks.iter().any(|b| {
+            b.instructions.iter().any(|inst| matches!(inst, MirInst::IndexStore { .. }))
+        });
+        assert!(has_add, "Expected Add for a + b in index assignment value");
+        assert!(has_index_store, "Expected IndexStore for set arr[0] = a + b");
+    }
+
+    #[test]
+    fn test_lower_index_assign_multiple() {
+        let mir = parse_and_lower(
+            "fn fill(arr: [i64; 3]) -> [i64; 3] = { set arr[0] = 10; set arr[1] = 20; set arr[2] = 30; arr };"
+        );
+        let func = &mir.functions[0];
+        let store_count = func.blocks.iter().flat_map(|b| b.instructions.iter()).filter(|inst| {
+            matches!(inst, MirInst::IndexStore { .. })
+        }).count();
+        assert_eq!(store_count, 3, "Expected 3 IndexStore instructions, got {}", store_count);
+    }
+
+    // --- Return expression lowering ---
+
+    #[test]
+    fn test_lower_return_none_unit() {
+        let mir = parse_and_lower(
+            "fn noop(x: i64) -> () = { if x > 0 { return } else { () }; () };"
+        );
+        let func = &mir.functions[0];
+        // Return with no value should produce Return(None) or Return(Some(Unit))
+        let return_count = func.blocks.iter().filter(|b| matches!(b.terminator, Terminator::Return(_))).count();
+        assert!(return_count >= 1, "Expected at least 1 Return terminator for bare return, got {}", return_count);
+        let has_after_return = func.blocks.iter().any(|b| b.label.contains("after_return"));
+        assert!(has_after_return, "Expected after_return unreachable block after return");
+    }
+
+    #[test]
+    fn test_lower_return_complex_expression() {
+        let mir = parse_and_lower(
+            "fn f(a: i64, b: i64) -> i64 = { if a > 0 { return a + b * 2 } else { 0 }; a };"
+        );
+        let func = &mir.functions[0];
+        // Should have both Mul and Add for the return expression
+        let has_mul = func.blocks.iter().any(|b| {
+            b.instructions.iter().any(|inst| matches!(inst, MirInst::BinOp { op: MirBinOp::Mul, .. }))
+        });
+        let has_add = func.blocks.iter().any(|b| {
+            b.instructions.iter().any(|inst| matches!(inst, MirInst::BinOp { op: MirBinOp::Add, .. }))
+        });
+        assert!(has_mul, "Expected Mul in return expression");
+        assert!(has_add, "Expected Add in return expression");
+        let return_count = func.blocks.iter().filter(|b| matches!(b.terminator, Terminator::Return(_))).count();
+        assert!(return_count >= 2, "Expected at least 2 Return terminators (early + final), got {}", return_count);
+    }
+
+    #[test]
+    fn test_lower_return_creates_after_return_block() {
+        let mir = parse_and_lower(
+            "fn f(x: i64) -> i64 = { if x == 0 { return 0 } else { 0 }; x + 1 };"
+        );
+        let func = &mir.functions[0];
+        let after_return_count = func.blocks.iter().filter(|b| b.label.contains("after_return")).count();
+        assert!(after_return_count >= 1, "Expected at least 1 after_return block, got {}", after_return_count);
+    }
+
+    // --- Loop expression lowering ---
+
+    #[test]
+    fn test_lower_loop_creates_back_edge() {
+        let mir = parse_and_lower(
+            "fn f() -> () = { let mut i: i64 = 0; loop { if i >= 10 { break } else { () }; { i = i + 1 } }; () };"
+        );
+        let func = &mir.functions[0];
+        // The loop body block should have a Goto back to loop_body (back-edge)
+        let has_back_edge = func.blocks.iter().any(|b| {
+            matches!(&b.terminator, Terminator::Goto(target) if target.contains("loop_body"))
+        });
+        assert!(has_back_edge, "Expected back-edge Goto to loop_body");
+    }
+
+    #[test]
+    fn test_lower_loop_exit_block_exists() {
+        let mir = parse_and_lower(
+            "fn f() -> i64 = { let mut x: i64 = 0; loop { x = x + 1; if x > 5 { break } else { () } }; x };"
+        );
+        let func = &mir.functions[0];
+        let has_loop_exit = func.blocks.iter().any(|b| b.label.contains("loop_exit"));
+        assert!(has_loop_exit, "Expected loop_exit block");
+        // Code after loop (returning x) should be reachable from loop_exit
+        let return_count = func.blocks.iter().filter(|b| matches!(b.terminator, Terminator::Return(_))).count();
+        assert!(return_count >= 1, "Expected Return terminator after loop");
+    }
+
+    #[test]
+    fn test_lower_loop_with_continue_and_break() {
+        let mir = parse_and_lower(
+            "fn f(n: i64) -> i64 = { let mut i: i64 = 0; let mut s: i64 = 0; loop { if i >= n { break } else { () }; { i = i + 1 }; if i == 3 { continue } else { () }; { s = s + i } }; s };"
+        );
+        let func = &mir.functions[0];
+        let has_after_break = func.blocks.iter().any(|b| b.label.contains("after_break"));
+        let has_after_continue = func.blocks.iter().any(|b| b.label.contains("after_continue"));
+        assert!(has_after_break, "Expected after_break block");
+        assert!(has_after_continue, "Expected after_continue block");
+    }
+
+    // --- Break/Continue lowering ---
+
+    #[test]
+    fn test_lower_break_goto_targets_loop_exit() {
+        let mir = parse_and_lower(
+            "fn f() -> () = { loop { break }; () };"
+        );
+        let func = &mir.functions[0];
+        // Find the block that contains break: it should Goto a label containing "loop_exit"
+        let break_goes_to_exit = func.blocks.iter().any(|b| {
+            matches!(&b.terminator, Terminator::Goto(target) if target.contains("loop_exit"))
+        });
+        assert!(break_goes_to_exit, "Break should generate Goto to loop_exit");
+    }
+
+    #[test]
+    fn test_lower_continue_goto_targets_loop_body() {
+        let mir = parse_and_lower(
+            "fn f() -> () = { let mut i: i64 = 0; loop { { i = i + 1 }; if i >= 10 { break } else { () }; continue }; () };"
+        );
+        let func = &mir.functions[0];
+        // Continue should Goto the loop_body label
+        let continue_goes_to_body = func.blocks.iter().any(|b| {
+            matches!(&b.terminator, Terminator::Goto(target) if target.contains("loop_body"))
+        });
+        assert!(continue_goes_to_body, "Continue should generate Goto to loop_body");
+        let has_after_continue = func.blocks.iter().any(|b| b.label.contains("after_continue"));
+        assert!(has_after_continue, "Continue should create after_continue unreachable block");
+    }
+
+    #[test]
+    fn test_lower_break_in_nested_loops() {
+        let mir = parse_and_lower(
+            "fn f() -> () = { loop { loop { break }; break }; () };"
+        );
+        let func = &mir.functions[0];
+        // Should have at least 2 loop_body and 2 loop_exit blocks
+        let loop_body_count = func.blocks.iter().filter(|b| b.label.contains("loop_body")).count();
+        let loop_exit_count = func.blocks.iter().filter(|b| b.label.contains("loop_exit")).count();
+        assert!(loop_body_count >= 2, "Expected at least 2 loop_body blocks for nested loops, got {}", loop_body_count);
+        assert!(loop_exit_count >= 2, "Expected at least 2 loop_exit blocks for nested loops, got {}", loop_exit_count);
+    }
+
+    #[test]
+    fn test_lower_continue_in_while_loop() {
+        let mir = parse_and_lower(
+            "fn f(n: i64) -> i64 = { let mut i: i64 = 0; let mut s: i64 = 0; while i < n { { i = i + 1 }; if i == 5 { continue } else { () }; { s = s + i } }; s };"
+        );
+        let func = &mir.functions[0];
+        let has_after_continue = func.blocks.iter().any(|b| b.label.contains("after_continue"));
+        assert!(has_after_continue, "Continue inside while should create after_continue block");
+        let has_while = func.blocks.iter().any(|b| b.label.contains("while"));
+        assert!(has_while, "Expected while blocks");
+    }
+
+    // --- For-loop lowering ---
+
+    #[test]
+    fn test_lower_for_loop_creates_cond_body_exit_blocks() {
+        let mir = parse_and_lower(
+            "fn f() -> () = { for i in 0..10 { 0 }; () };"
+        );
+        let func = &mir.functions[0];
+        let has_for_cond = func.blocks.iter().any(|b| b.label.contains("for_cond"));
+        let has_for_body = func.blocks.iter().any(|b| b.label.contains("for_body"));
+        let has_for_exit = func.blocks.iter().any(|b| b.label.contains("for_exit"));
+        assert!(has_for_cond, "For loop should create for_cond block");
+        assert!(has_for_body, "For loop should create for_body block");
+        assert!(has_for_exit, "For loop should create for_exit block");
+    }
+
+    #[test]
+    fn test_lower_for_loop_increments_variable() {
+        let mir = parse_and_lower(
+            "fn f() -> () = { for i in 0..5 { 0 }; () };"
+        );
+        let func = &mir.functions[0];
+        // For loop should have i + 1 increment: BinOp Add with Constant(1)
+        let has_inc = func.blocks.iter().any(|b| {
+            b.instructions.iter().any(|inst| {
+                matches!(inst, MirInst::BinOp { op: MirBinOp::Add, rhs: Operand::Constant(Constant::Int(1)), .. })
+            })
+        });
+        assert!(has_inc, "For loop should increment loop variable by 1");
+    }
+
+    #[test]
+    fn test_lower_for_loop_condition_uses_lt() {
+        let mir = parse_and_lower(
+            "fn f(n: i64) -> () = { for i in 0..n { 0 }; () };"
+        );
+        let func = &mir.functions[0];
+        // For loop condition should use Lt comparison: i < n
+        let has_lt = func.blocks.iter().any(|b| {
+            b.instructions.iter().any(|inst| matches!(inst, MirInst::BinOp { op: MirBinOp::Lt, .. }))
+        });
+        assert!(has_lt, "For loop should use Lt comparison for bound check");
+    }
+
+    #[test]
+    fn test_lower_for_loop_with_body_mutation() {
+        let mir = parse_and_lower(
+            "fn sum_squares(n: i64) -> i64 = { let mut acc: i64 = 0; for i in 0..n { acc = acc + i * i }; acc };"
+        );
+        let func = &mir.functions[0];
+        let has_mul = func.blocks.iter().any(|b| {
+            b.instructions.iter().any(|inst| matches!(inst, MirInst::BinOp { op: MirBinOp::Mul, .. }))
+        });
+        let has_add = func.blocks.iter().any(|b| {
+            b.instructions.iter().any(|inst| matches!(inst, MirInst::BinOp { op: MirBinOp::Add, .. }))
+        });
+        assert!(has_mul, "Expected Mul for i * i in for-loop body");
+        assert!(has_add, "Expected Add for acc + ... in for-loop body");
+    }
+
+    // --- Cast expression lowering ---
+
+    #[test]
+    fn test_lower_cast_i64_to_f64() {
+        let mir = parse_and_lower("fn to_float(x: i64) -> f64 = x as f64;");
+        let func = &mir.functions[0];
+        let has_cast = func.blocks.iter().any(|b| {
+            b.instructions.iter().any(|inst| {
+                matches!(inst, MirInst::Cast { from_ty: MirType::I64, to_ty: MirType::F64, .. })
+            })
+        });
+        assert!(has_cast, "Expected Cast from I64 to F64");
+    }
+
+    #[test]
+    fn test_lower_cast_bool_to_i64() {
+        let mir = parse_and_lower("fn bool_to_int(b: bool) -> i64 = b as i64;");
+        let func = &mir.functions[0];
+        let has_cast = func.blocks.iter().any(|b| {
+            b.instructions.iter().any(|inst| {
+                matches!(inst, MirInst::Cast { to_ty: MirType::I64, .. })
+            })
+        });
+        assert!(has_cast, "Expected Cast to I64 for bool as i64");
+    }
+
+    #[test]
+    fn test_lower_cast_in_arithmetic() {
+        let mir = parse_and_lower(
+            "fn mixed(a: i64, b: f64) -> f64 = (a as f64) + b;"
+        );
+        let func = &mir.functions[0];
+        let has_cast = func.blocks.iter().any(|b| {
+            b.instructions.iter().any(|inst| {
+                matches!(inst, MirInst::Cast { from_ty: MirType::I64, to_ty: MirType::F64, .. })
+            })
+        });
+        let has_fadd = func.blocks.iter().any(|b| {
+            b.instructions.iter().any(|inst| matches!(inst, MirInst::BinOp { op: MirBinOp::FAdd, .. }))
+        });
+        assert!(has_cast, "Expected Cast from I64 to F64 for (a as f64)");
+        assert!(has_fadd, "Expected FAdd for float addition after cast");
+    }
 }

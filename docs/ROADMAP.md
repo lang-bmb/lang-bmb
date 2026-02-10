@@ -8,11 +8,11 @@
 
 | 항목 | 상태 | 비고 |
 |------|------|------|
-| **버전** | v0.90.23 | Cycles 180-191: Loop/return control flow + tests |
+| **버전** | v0.90.25 | Cycles 192-199: Sieve perf fix + 102 tests |
 | **단계** | Alpha → Beta | v0.89 Quality Gate 완료, v0.90 Performance 완료 |
 | **Bootstrap** | ✅ 3-Stage Fixed Point | 63,778 lines, Stage 1: ~1.0s |
-| **Benchmarks** | ✅ 67/67 정상 | 3 FASTER, 6 PASS, 2 OK vs Clang -O3 |
-| **Tests** | ✅ 2,293개 통과 | 1960 lib + 15 main + 295 integration + 23 doc |
+| **Benchmarks** | ✅ 67/67 정상 | 4 FASTER, 3 PASS, 2 OK, 1 WARN vs Clang -O3 (90% parity+) |
+| **Tests** | ✅ 2,395개 통과 | 2000 lib + 15 main + 357 integration + 23 doc |
 | **Stability** | ✅ STABILITY.md | 언어/API 동결 문서화 |
 | **동시성 지원** | ✅ 부트스트랩 완료 | 토큰/타입/MIR/코드젠/extern 선언 완료 |
 | **Golden Binary** | ✅ v0.88.10 | Rust 없이 부트스트랩 가능 |

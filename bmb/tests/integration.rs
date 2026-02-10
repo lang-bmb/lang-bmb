@@ -4155,3 +4155,377 @@ fn test_error_logical_and_non_bool_operand() {
         "fn bad() -> bool = 42 and true;"
     ));
 }
+
+// ============================================
+// Cycle 201: Extended Interpreter Coverage Tests
+// ============================================
+
+// --- Struct passed to function and returned (method-style call chain) ---
+
+#[test]
+fn test_interp_struct_returned_from_function() {
+    assert_eq!(
+        run_program_i64(
+            "struct Vec2 { x: i64, y: i64 }
+             fn add_vec(a: Vec2, b: Vec2) -> Vec2 =
+               new Vec2 { x: a.x + b.x, y: a.y + b.y };
+             fn dot(a: Vec2, b: Vec2) -> i64 = a.x * b.x + a.y * b.y;
+             fn main() -> i64 = {
+               let v1 = new Vec2 { x: 3, y: 4 };
+               let v2 = new Vec2 { x: 1, y: 2 };
+               let v3 = add_vec(v1, v2);
+               dot(v3, new Vec2 { x: 2, y: 3 })
+             };"
+        ),
+        26 // v3 = (4,6), dot = 4*2 + 6*3 = 8+18 = 26
+    );
+}
+
+// --- Enum pattern matching with data extraction ---
+
+#[test]
+fn test_interp_enum_tree_depth() {
+    // Binary tree-like enum: compute value based on pattern matching
+    assert_eq!(
+        run_program_i64(
+            "enum Tree { Leaf(i64), Node(i64, i64) }
+             fn tree_sum(t: Tree) -> i64 =
+               match t {
+                 Tree::Leaf(v) => v,
+                 Tree::Node(l, r) => l + r
+               };
+             fn main() -> i64 = {
+               let a = tree_sum(Tree::Leaf(10));
+               let b = tree_sum(Tree::Node(20, 30));
+               a + b
+             };"
+        ),
+        60 // 10 + (20+30) = 60
+    );
+}
+
+// --- Enum with multiple variant data extraction ---
+
+#[test]
+fn test_interp_enum_shape_area() {
+    assert_eq!(
+        run_program_i64(
+            "enum Shape { Square(i64), Rect(i64, i64) }
+             fn area(s: Shape) -> i64 =
+               match s {
+                 Shape::Square(side) => side * side,
+                 Shape::Rect(w, h) => w * h
+               };
+             fn main() -> i64 = {
+               let s1 = area(Shape::Square(5));
+               let s2 = area(Shape::Rect(3, 7));
+               s1 + s2
+             };"
+        ),
+        46 // 25 + 21 = 46
+    );
+}
+
+// --- Nested closures with capture chaining ---
+
+#[test]
+fn test_interp_nested_closure_three_levels() {
+    assert_eq!(
+        run_program_i64(
+            "fn main() -> i64 = {
+               let x: i64 = 2;
+               let f = fn |a: i64| {
+                 let g = fn |b: i64| {
+                   let h = fn |c: i64| { x + a + b + c };
+                   h(4)
+                 };
+                 g(3)
+               };
+               f(1)
+             };"
+        ),
+        10 // 2 + 1 + 3 + 4 = 10
+    );
+}
+
+// --- Closure returned from if expression ---
+
+#[test]
+fn test_interp_closure_from_branch() {
+    assert_eq!(
+        run_program_i64(
+            "fn main() -> i64 = {
+               let flag: bool = true;
+               let f = if flag { fn |x: i64| { x * 2 } } else { fn |x: i64| { x * 3 } };
+               f(10)
+             };"
+        ),
+        20 // flag=true, so f = x*2, f(10)=20
+    );
+}
+
+// --- While-loop: count digits ---
+
+#[test]
+fn test_interp_while_count_digits() {
+    assert_eq!(
+        run_program_i64(
+            "fn count_digits(n: i64) -> i64 = {
+               let mut num: i64 = n;
+               let mut count: i64 = 0;
+               while num > 0 {
+                 count = count + 1;
+                 num = num / 10;
+                 0
+               };
+               count
+             };
+             fn main() -> i64 = count_digits(123456);"
+        ),
+        6
+    );
+}
+
+// --- While-loop: integer power computation ---
+
+#[test]
+fn test_interp_while_power() {
+    assert_eq!(
+        run_program_i64(
+            "fn power(base: i64, exp: i64) -> i64 = {
+               let mut result: i64 = 1;
+               let mut i: i64 = 0;
+               while i < exp {
+                 result = result * base;
+                 i = i + 1;
+                 0
+               };
+               result
+             };
+             fn main() -> i64 = power(3, 5);"
+        ),
+        243 // 3^5 = 243
+    );
+}
+
+// --- While-loop: reverse digits accumulator ---
+
+#[test]
+fn test_interp_while_reverse_digits() {
+    assert_eq!(
+        run_program_i64(
+            "fn reverse_digits(n: i64) -> i64 = {
+               let mut num: i64 = n;
+               let mut rev: i64 = 0;
+               while num > 0 {
+                 rev = rev * 10 + num % 10;
+                 num = num / 10;
+                 0
+               };
+               rev
+             };
+             fn main() -> i64 = reverse_digits(12345);"
+        ),
+        54321
+    );
+}
+
+// --- String operations: byte_at ---
+
+#[test]
+fn test_interp_string_byte_at() {
+    assert_eq!(
+        run_program_i64(
+            r#"fn main() -> i64 = {
+               let s = "ABCDE";
+               s.byte_at(0)
+             };"#
+        ),
+        65 // 'A' = 65
+    );
+}
+
+// --- String operations: slice and len ---
+
+#[test]
+fn test_interp_string_slice_len() {
+    assert_eq!(
+        run_program_i64(
+            r#"fn main() -> i64 = {
+               let s = "Hello, World!";
+               let sub = s.slice(0, 5);
+               sub.len()
+             };"#
+        ),
+        5 // "Hello".len() = 5
+    );
+}
+
+// --- String operations: concat + byte_at combined ---
+
+#[test]
+fn test_interp_string_concat_byte_at() {
+    assert_eq!(
+        run_program_i64(
+            r#"fn main() -> i64 = {
+               let a = "AB";
+               let b = "CD";
+               let c = a + b;
+               c.byte_at(2)
+             };"#
+        ),
+        67 // "ABCD".byte_at(2) = 'C' = 67
+    );
+}
+
+// --- Mutual recursion: Collatz-like ping-pong ---
+
+#[test]
+fn test_interp_mutual_recursion_ping_pong() {
+    // ping decrements odd numbers, pong decrements even
+    assert_eq!(
+        run_program_i64(
+            "fn ping(n: i64) -> i64 =
+               if n <= 0 { 0 } else { 1 + pong(n - 1) };
+             fn pong(n: i64) -> i64 =
+               if n <= 0 { 0 } else { 1 + ping(n - 1) };
+             fn main() -> i64 = ping(10);"
+        ),
+        10 // alternates ping/pong 10 times
+    );
+}
+
+// --- Complex arithmetic chains ---
+
+#[test]
+fn test_interp_complex_arithmetic_chain() {
+    assert_eq!(
+        run_program_i64(
+            "fn main() -> i64 = {
+               let a: i64 = 7;
+               let b: i64 = 3;
+               let c: i64 = 5;
+               let d: i64 = 2;
+               (a * b + c) * d - (a + b * c) / d
+             };"
+        ),
+        41 // (7*3+5)*2 - (7+3*5)/2 = 26*2 - 22/2 = 52 - 11 = 41
+    );
+}
+
+// --- Complex arithmetic: nested function composition ---
+
+#[test]
+fn test_interp_arithmetic_function_composition() {
+    assert_eq!(
+        run_program_i64(
+            "fn f(x: i64) -> i64 = x * x + 1;
+             fn g(x: i64) -> i64 = 2 * x - 3;
+             fn h(x: i64) -> i64 = f(g(x)) + g(f(x));
+             fn main() -> i64 = h(4);"
+        ),
+        57 // g(4)=5, f(5)=26; f(4)=17, g(17)=31; 26+31=57
+    );
+}
+
+// --- Nested struct field access and assignment ---
+
+#[test]
+fn test_interp_nested_struct_field_access() {
+    assert_eq!(
+        run_program_i64(
+            "struct Inner { val: i64 }
+             struct Middle { inner: Inner, extra: i64 }
+             struct Outer { mid: Middle, flag: i64 }
+             fn main() -> i64 = {
+               let o = new Outer {
+                 mid: new Middle {
+                   inner: new Inner { val: 100 },
+                   extra: 20
+                 },
+                 flag: 3
+               };
+               o.mid.inner.val + o.mid.extra + o.flag
+             };"
+        ),
+        123 // 100 + 20 + 3
+    );
+}
+
+// --- Nested struct field assignment ---
+
+#[test]
+fn test_interp_struct_field_assign_and_read() {
+    assert_eq!(
+        run_program_i64(
+            "struct Point { x: i64, y: i64 }
+             fn main() -> i64 = {
+               let mut p: Point = new Point { x: 0, y: 0 };
+               set p.x = 5;
+               set p.y = p.x * 2;
+               p.x + p.y
+             };"
+        ),
+        15 // x=5, y=10, 5+10=15
+    );
+}
+
+// --- For-loop with mutable accumulator: factorial ---
+
+#[test]
+fn test_interp_for_loop_factorial() {
+    assert_eq!(
+        run_program_i64(
+            "fn factorial(n: i64) -> i64 = {
+               let mut result: i64 = 1;
+               for i in 1..=n { result = result * i };
+               result
+             };
+             fn main() -> i64 = factorial(10);"
+        ),
+        3628800 // 10!
+    );
+}
+
+// --- Enum matching with wildcard and data ---
+
+#[test]
+fn test_interp_enum_match_wildcard_with_data() {
+    assert_eq!(
+        run_program_i64(
+            "enum Action { Add(i64), Mul(i64), Reset }
+             fn apply(acc: i64, a: Action) -> i64 =
+               match a {
+                 Action::Add(v) => acc + v,
+                 Action::Mul(v) => acc * v,
+                 Action::Reset => 0
+               };
+             fn main() -> i64 = {
+               let mut val: i64 = 1;
+               val = apply(val, Action::Add(9));
+               val = apply(val, Action::Mul(5));
+               val = apply(val, Action::Add(7));
+               val
+             };"
+        ),
+        57 // 1+9=10, 10*5=50, 50+7=57
+    );
+}
+
+// --- String is_empty method ---
+
+#[test]
+fn test_interp_string_is_empty() {
+    assert_eq!(
+        run_program_i64(
+            r#"fn main() -> i64 = {
+               let a = "";
+               let b = "hello";
+               let empty_flag = a.is_empty() as i64;
+               let nonempty_flag = b.is_empty() as i64;
+               empty_flag * 10 + nonempty_flag
+             };"#
+        ),
+        10 // a.is_empty()=true(1), b.is_empty()=false(0) -> 1*10+0=10
+    );
+}
