@@ -2888,6 +2888,58 @@ impl TypeChecker {
     /// Check method call types (v0.5 Phase 8)
     fn check_method_call(&mut self, receiver_ty: &Type, method: &str, args: &[Spanned<Expr>], span: Span) -> Result<Type> {
         match receiver_ty {
+            // v0.90.35: Integer methods
+            Type::I64 | Type::I32 | Type::U32 | Type::U64 => {
+                match method {
+                    "abs" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("abs() takes no arguments", span));
+                        }
+                        Ok(receiver_ty.clone())
+                    }
+                    "min" | "max" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error(
+                                format!("{}() takes 1 argument", method), span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg_ty, receiver_ty, args[0].span)?;
+                        Ok(receiver_ty.clone())
+                    }
+                    "clamp" => {
+                        if args.len() != 2 {
+                            return Err(CompileError::type_error("clamp() takes 2 arguments", span));
+                        }
+                        for arg in args {
+                            let arg_ty = self.infer(&arg.node, arg.span)?;
+                            self.unify(&arg_ty, receiver_ty, arg.span)?;
+                        }
+                        Ok(receiver_ty.clone())
+                    }
+                    "pow" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("pow() takes 1 argument", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg_ty, receiver_ty, args[0].span)?;
+                        Ok(receiver_ty.clone())
+                    }
+                    "to_float" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("to_float() takes no arguments", span));
+                        }
+                        Ok(Type::F64)
+                    }
+                    "to_string" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("to_string() takes no arguments", span));
+                        }
+                        Ok(Type::String)
+                    }
+                    _ => Err(CompileError::type_error(
+                        format!("unknown method '{}' for {}", method, receiver_ty), span)),
+                }
+            }
             // v0.90.34: Float methods
             Type::F64 => {
                 match method {

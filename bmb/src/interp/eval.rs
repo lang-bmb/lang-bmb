@@ -1281,8 +1281,7 @@ impl Interpreter {
                     _ => Err(RuntimeError::undefined_function(&format!("Result.{}", method))),
                 }
             }
-            // v0.89.17: Nullable<T> (T?) methods on integer values
-            // When T? is represented as Int, null = 0
+            // v0.89.17: Nullable<T> (T?) methods on integer values + v0.90.35: Integer methods
             Value::Int(n) => {
                 match method {
                     "is_some" => Ok(Value::Bool(n != 0)),
@@ -1297,6 +1296,54 @@ impl Interpreter {
                             Ok(args.into_iter().next().unwrap())
                         }
                     }
+                    // v0.90.35: Integer methods
+                    "abs" => Ok(Value::Int(n.abs())),
+                    "min" => {
+                        if args.len() != 1 {
+                            return Err(RuntimeError::arity_mismatch("min", 1, args.len()));
+                        }
+                        let other = match &args[0] {
+                            Value::Int(m) => *m,
+                            _ => return Err(RuntimeError::type_error("integer", args[0].type_name())),
+                        };
+                        Ok(Value::Int(n.min(other)))
+                    }
+                    "max" => {
+                        if args.len() != 1 {
+                            return Err(RuntimeError::arity_mismatch("max", 1, args.len()));
+                        }
+                        let other = match &args[0] {
+                            Value::Int(m) => *m,
+                            _ => return Err(RuntimeError::type_error("integer", args[0].type_name())),
+                        };
+                        Ok(Value::Int(n.max(other)))
+                    }
+                    "clamp" => {
+                        if args.len() != 2 {
+                            return Err(RuntimeError::arity_mismatch("clamp", 2, args.len()));
+                        }
+                        let lo = match &args[0] {
+                            Value::Int(m) => *m,
+                            _ => return Err(RuntimeError::type_error("integer", args[0].type_name())),
+                        };
+                        let hi = match &args[1] {
+                            Value::Int(m) => *m,
+                            _ => return Err(RuntimeError::type_error("integer", args[1].type_name())),
+                        };
+                        Ok(Value::Int(n.clamp(lo, hi)))
+                    }
+                    "pow" => {
+                        if args.len() != 1 {
+                            return Err(RuntimeError::arity_mismatch("pow", 1, args.len()));
+                        }
+                        let exp = match &args[0] {
+                            Value::Int(m) => *m as u32,
+                            _ => return Err(RuntimeError::type_error("integer", args[0].type_name())),
+                        };
+                        Ok(Value::Int(n.pow(exp)))
+                    }
+                    "to_float" => Ok(Value::Float(n as f64)),
+                    "to_string" => Ok(Value::Str(Rc::new(n.to_string()))),
                     _ => Err(RuntimeError::type_error("object with methods", receiver.type_name())),
                 }
             }

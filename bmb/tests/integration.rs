@@ -13745,3 +13745,71 @@ fn test_float_unknown_method_rejected() {
     let source = "fn main() -> f64 = 2.5.nonexistent();";
     assert!(type_error(source));
 }
+
+// --- Cycle 269: Integer method support ---
+
+#[test]
+fn test_int_abs() {
+    let source = "fn main() -> i64 = (-5).abs();";
+    assert_eq!(run_program_i64(source), 5);
+}
+
+#[test]
+fn test_int_abs_positive() {
+    let source = "fn main() -> i64 = 5.abs();";
+    assert_eq!(run_program_i64(source), 5);
+}
+
+#[test]
+fn test_int_min() {
+    let source = "fn main() -> i64 = 3.min(7);";
+    assert_eq!(run_program_i64(source), 3);
+}
+
+#[test]
+fn test_int_max() {
+    let source = "fn main() -> i64 = 3.max(7);";
+    assert_eq!(run_program_i64(source), 7);
+}
+
+#[test]
+fn test_int_clamp() {
+    let source = "fn main() -> i64 = 15.clamp(0, 10);";
+    assert_eq!(run_program_i64(source), 10);
+}
+
+#[test]
+fn test_int_clamp_within() {
+    let source = "fn main() -> i64 = 5.clamp(0, 10);";
+    assert_eq!(run_program_i64(source), 5);
+}
+
+#[test]
+fn test_int_pow() {
+    let source = "fn main() -> i64 = 2.pow(10);";
+    assert_eq!(run_program_i64(source), 1024);
+}
+
+#[test]
+fn test_int_to_float() {
+    let source = "fn main() -> f64 = 42.to_float();";
+    assert!((run_program_f64(source) - 42.0).abs() < 1e-10);
+}
+
+#[test]
+fn test_int_to_string() {
+    let source = r#"fn main() -> String = 42.to_string();"#;
+    assert_eq!(run_program_str(source), "42");
+}
+
+#[test]
+fn test_int_method_chaining() {
+    let source = "fn main() -> i64 = (-8).abs().min(5);";
+    assert_eq!(run_program_i64(source), 5);
+}
+
+#[test]
+fn test_int_unknown_method_rejected() {
+    let source = "fn main() -> i64 = 42.nonexistent();";
+    assert!(type_error(source));
+}
