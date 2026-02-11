@@ -9758,3 +9758,283 @@ fn test_codegen_wasm_multiple_functions() {
     let result = codegen.generate(&program);
     assert!(result.is_ok());
 }
+
+// ============================================================
+// Interpreter Advanced Feature Integration Tests (Cycle 243)
+// ============================================================
+
+// --- Character Literals ---
+
+#[test]
+fn test_interp_char_literal() {
+    let result = run_program("fn main() -> bool = { let c: char = 'A'; c == 'A' };");
+    assert_eq!(result, Value::Bool(true));
+}
+
+#[test]
+fn test_interp_char_comparison() {
+    let result = run_program("fn main() -> bool = { let a: char = 'a'; let b: char = 'z'; a < b };");
+    assert_eq!(result, Value::Bool(true));
+}
+
+#[test]
+fn test_interp_char_equality() {
+    let result = run_program("fn main() -> bool = { let x: char = 'X'; x == 'X' };");
+    assert_eq!(result, Value::Bool(true));
+}
+
+// --- Reference Operations ---
+
+#[test]
+fn test_interp_reference_creation_and_deref() {
+    let result = run_program("fn main() -> i64 = { let x: i64 = 42; let r: &i64 = &x; *r };");
+    assert_eq!(result, Value::Int(42));
+}
+
+#[test]
+fn test_interp_mutable_reference() {
+    // &mut reference creation and deref read
+    let result = run_program(
+        "fn main() -> i64 = { let mut x: i64 = 10; let r: &mut i64 = &mut x; *r };",
+    );
+    assert_eq!(result, Value::Int(10));
+}
+
+// --- Higher-Order Functions ---
+
+#[test]
+fn test_interp_closure_applied_to_values() {
+    // Apply closure stored in a variable to different values
+    let result = run_program(
+        "fn main() -> i64 = { let double = fn |x: i64| { x * 2 }; let a = double(5); let b = double(3); a + b };",
+    );
+    assert_eq!(result, Value::Int(16)); // 10 + 6
+}
+
+#[test]
+fn test_interp_closure_captures_environment() {
+    let result = run_program(
+        "fn main() -> i64 = { let offset: i64 = 100; let add_offset = fn |x: i64| { x + offset }; add_offset(42) };",
+    );
+    assert_eq!(result, Value::Int(142));
+}
+
+#[test]
+fn test_interp_closure_multi_param() {
+    let result = run_program(
+        "fn main() -> i64 = { let add = fn |a: i64, b: i64| { a + b }; add(3, 7) };",
+    );
+    assert_eq!(result, Value::Int(10));
+}
+
+// --- For Loop Patterns ---
+
+#[test]
+fn test_interp_for_loop_range_sum() {
+    let result = run_program(
+        "fn main() -> i64 = { let mut sum: i64 = 0; for i in 0..5 { sum = sum + i; 0 }; sum };",
+    );
+    assert_eq!(result, Value::Int(10)); // 0+1+2+3+4
+}
+
+#[test]
+fn test_interp_for_loop_nested() {
+    let result = run_program(
+        "fn main() -> i64 = { let mut count: i64 = 0; for i in 0..3 { for j in 0..4 { count = count + 1; 0 }; 0 }; count };",
+    );
+    assert_eq!(result, Value::Int(12)); // 3*4
+}
+
+#[test]
+fn test_interp_for_loop_with_break() {
+    let result = run_program(
+        "fn main() -> i64 = { let mut last: i64 = 0; for i in 0..10 { if i == 5 { break } else { last = i; 0 }; 0 }; last };",
+    );
+    assert_eq!(result, Value::Int(4));
+}
+
+#[test]
+fn test_interp_for_loop_with_continue() {
+    let result = run_program(
+        "fn main() -> i64 = { let mut sum: i64 = 0; for i in 0..6 { if i % 2 == 0 { continue } else { sum = sum + i; 0 }; 0 }; sum };",
+    );
+    assert_eq!(result, Value::Int(9)); // 1+3+5
+}
+
+// --- Float Operations ---
+
+#[test]
+fn test_interp_float_multiply_precision() {
+    let result = run_program("fn main() -> f64 = { let x: f64 = 2.5; let y: f64 = 4.0; x * y };");
+    assert_eq!(result, Value::Float(10.0));
+}
+
+#[test]
+fn test_interp_float_compare_less() {
+    let result = run_program("fn main() -> bool = { let x: f64 = 1.5; let y: f64 = 2.5; x < y };");
+    assert_eq!(result, Value::Bool(true));
+}
+
+#[test]
+fn test_interp_int_to_float_cast() {
+    let result = run_program("fn main() -> f64 = { let x: i64 = 42; x as f64 };");
+    assert_eq!(result, Value::Float(42.0));
+}
+
+#[test]
+fn test_interp_float_to_int_cast() {
+    let result = run_program("fn main() -> i64 = { let x: f64 = 3.7; x as i64 };");
+    assert_eq!(result, Value::Int(3));
+}
+
+// --- Deep Recursion ---
+
+#[test]
+fn test_interp_deep_recursion_fibonacci() {
+    let result = run_program(
+        "fn fib(n: i64) -> i64 = if n <= 1 { n } else { fib(n - 1) + fib(n - 2) };\nfn main() -> i64 = fib(15);",
+    );
+    assert_eq!(result, Value::Int(610));
+}
+
+#[test]
+fn test_interp_mutual_recursion_interpreter() {
+    let result = run_program(
+        "fn is_even(n: i64) -> bool = if n == 0 { true } else { is_odd(n - 1) };\nfn is_odd(n: i64) -> bool = if n == 0 { false } else { is_even(n - 1) };\nfn main() -> bool = is_even(20);",
+    );
+    assert_eq!(result, Value::Bool(true));
+}
+
+// --- Complex Match Patterns ---
+
+#[test]
+fn test_interp_match_enum_dispatch() {
+    let result = run_program(
+        "enum Color { Red, Green, Blue }\nfn color_val(c: Color) -> i64 = match c { Color::Red => 1, Color::Green => 2, Color::Blue => 3 };\nfn main() -> i64 = color_val(Color::Green);",
+    );
+    assert_eq!(result, Value::Int(2));
+}
+
+#[test]
+fn test_interp_match_with_guard() {
+    let result = run_program(
+        "fn classify(x: i64) -> i64 = match x { n if n < 0 => 0 - 1, 0 => 0, n if n > 100 => 2, _ => 1 };\nfn main() -> i64 = classify(50);",
+    );
+    assert_eq!(result, Value::Int(1));
+}
+
+#[test]
+fn test_interp_match_wildcard_default() {
+    let result = run_program(
+        "fn main() -> i64 = match 42 { 0 => 0, 1 => 1, _ => 99 };",
+    );
+    assert_eq!(result, Value::Int(99));
+}
+
+// --- Struct Operations ---
+
+#[test]
+fn test_interp_struct_nested_field_access() {
+    let result = run_program(
+        "struct Inner { val: i64 }\nstruct Outer { inner: Inner }\nfn main() -> i64 = { let o = new Outer { inner: new Inner { val: 77 } }; o.inner.val };",
+    );
+    assert_eq!(result, Value::Int(77));
+}
+
+#[test]
+fn test_interp_struct_field_mutation() {
+    let result = run_program(
+        "struct Point { x: i64, y: i64 }\nfn main() -> i64 = { let mut p = new Point { x: 1, y: 2 }; set p.x = 10; p.x + p.y };",
+    );
+    assert_eq!(result, Value::Int(12));
+}
+
+// --- Array Operations ---
+
+#[test]
+fn test_interp_array_repeat_syntax() {
+    let result = run_program(
+        "fn main() -> i64 = { let arr = [0; 5]; arr[0] + arr[4] };",
+    );
+    assert_eq!(result, Value::Int(0));
+}
+
+#[test]
+fn test_interp_array_index_mutation() {
+    let result = run_program(
+        "fn main() -> i64 = { let mut arr = [1, 2, 3]; set arr[1] = 20; arr[0] + arr[1] + arr[2] };",
+    );
+    assert_eq!(result, Value::Int(24)); // 1+20+3
+}
+
+// --- Tuple Operations ---
+
+#[test]
+fn test_interp_tuple_field_access() {
+    let result = run_program(
+        "fn main() -> i64 = { let t = (10, 20, 30); t.0 + t.2 };",
+    );
+    assert_eq!(result, Value::Int(40));
+}
+
+#[test]
+fn test_interp_tuple_in_function_return() {
+    let result = run_program(
+        "fn swap(a: i64, b: i64) -> (i64, i64) = (b, a);\nfn main() -> i64 = { let t = swap(1, 2); t.0 };",
+    );
+    assert_eq!(result, Value::Int(2));
+}
+
+// --- Loop with complex control flow ---
+
+#[test]
+fn test_interp_loop_break_control() {
+    let result = run_program(
+        "fn main() -> i64 = { let mut i: i64 = 0; loop { i = i + 1; if i >= 10 { break } else { 0 }; 0 }; i };",
+    );
+    assert_eq!(result, Value::Int(10));
+}
+
+#[test]
+fn test_interp_while_with_mutable_state() {
+    let result = run_program(
+        "fn main() -> i64 = { let mut x: i64 = 1; let mut n: i64 = 0; while x < 100 { x = x * 2; n = n + 1; 0 }; n };",
+    );
+    assert_eq!(result, Value::Int(7)); // 2^7=128>=100
+}
+
+// --- String Operations ---
+
+#[test]
+fn test_interp_string_len_method() {
+    let result = run_program(
+        "fn main() -> i64 = { let s: String = \"hello\"; s.len() };",
+    );
+    assert_eq!(result, Value::Int(5));
+}
+
+#[test]
+fn test_interp_string_concatenation() {
+    let result = run_program(
+        "fn main() -> i64 = { let a: String = \"ab\"; let b: String = \"cd\"; let c: String = a + b; c.len() };",
+    );
+    assert_eq!(result, Value::Int(4));
+}
+
+// --- Enum with Data ---
+
+#[test]
+fn test_interp_enum_with_data_extraction() {
+    let result = run_program(
+        "enum Shape { Circle(i64), Rect(i64, i64) }\nfn area(s: Shape) -> i64 = match s { Shape::Circle(r) => r * r * 3, Shape::Rect(w, h) => w * h };\nfn main() -> i64 = area(Shape::Rect(4, 5));",
+    );
+    assert_eq!(result, Value::Int(20));
+}
+
+#[test]
+fn test_interp_enum_variant_no_data() {
+    let result = run_program(
+        "enum Dir { North, South, East, West }\nfn is_vertical(d: Dir) -> bool = match d { Dir::North => true, Dir::South => true, _ => false };\nfn main() -> bool = is_vertical(Dir::North);",
+    );
+    assert_eq!(result, Value::Bool(true));
+}
