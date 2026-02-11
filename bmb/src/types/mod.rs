@@ -7,68 +7,7 @@ use std::collections::HashMap;
 use crate::ast::*;
 use crate::error::{CompileError, CompileWarning, Result};
 use crate::resolver::{Module, ResolvedImports};
-
-// ============================================================================
-// v0.60: Levenshtein Distance for Typo Suggestions
-// ============================================================================
-
-/// Calculate Levenshtein edit distance between two strings
-/// Used for suggesting similar names when a typo is detected
-fn levenshtein_distance(a: &str, b: &str) -> usize {
-    let a_chars: Vec<char> = a.chars().collect();
-    let b_chars: Vec<char> = b.chars().collect();
-    let m = a_chars.len();
-    let n = b_chars.len();
-
-    if m == 0 {
-        return n;
-    }
-    if n == 0 {
-        return m;
-    }
-
-    // Use two rows instead of full matrix for O(min(m,n)) space
-    let mut prev: Vec<usize> = (0..=n).collect();
-    let mut curr: Vec<usize> = vec![0; n + 1];
-
-    for i in 1..=m {
-        curr[0] = i;
-        for j in 1..=n {
-            let cost = if a_chars[i - 1] == b_chars[j - 1] { 0 } else { 1 };
-            curr[j] = (prev[j] + 1) // deletion
-                .min(curr[j - 1] + 1) // insertion
-                .min(prev[j - 1] + cost); // substitution
-        }
-        std::mem::swap(&mut prev, &mut curr);
-    }
-
-    prev[n]
-}
-
-/// Find the most similar name from a list of candidates
-/// Returns Some(suggestion) if a close match is found (distance <= threshold)
-fn find_similar_name<'a>(name: &str, candidates: &[&'a str], threshold: usize) -> Option<&'a str> {
-    let mut best_match: Option<&str> = None;
-    let mut best_distance = usize::MAX;
-
-    for &candidate in candidates {
-        let distance = levenshtein_distance(name, candidate);
-        if distance < best_distance && distance <= threshold {
-            best_distance = distance;
-            best_match = Some(candidate);
-        }
-    }
-
-    best_match
-}
-
-/// Format a suggestion hint for an unknown name
-fn format_suggestion_hint(suggestion: Option<&str>) -> String {
-    match suggestion {
-        Some(name) => format!("\n  hint: did you mean `{}`?", name),
-        None => String::new(),
-    }
-}
+use crate::util::{find_similar_name, format_suggestion_hint};
 
 /// Trait method signature info (v0.20.1)
 #[derive(Debug, Clone)]
@@ -5071,8 +5010,10 @@ mod tests {
     use super::*;
 
     // ====================================================================
-    // Levenshtein Distance Tests
+    // Levenshtein Distance Tests (v0.90.43: delegated to crate::util)
     // ====================================================================
+
+    use crate::util::levenshtein_distance;
 
     #[test]
     fn test_levenshtein_identical() {

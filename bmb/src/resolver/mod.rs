@@ -8,66 +8,7 @@ use std::path::{Path, PathBuf};
 
 use crate::ast::{Item, Program, Span, UseStmt, Visibility};
 use crate::error::{CompileError, Result};
-
-// ============================================================================
-// v0.68: Levenshtein Distance for Module/Item Suggestions
-// ============================================================================
-
-/// Calculate Levenshtein edit distance between two strings
-fn levenshtein_distance(a: &str, b: &str) -> usize {
-    let a_chars: Vec<char> = a.chars().collect();
-    let b_chars: Vec<char> = b.chars().collect();
-    let m = a_chars.len();
-    let n = b_chars.len();
-
-    if m == 0 {
-        return n;
-    }
-    if n == 0 {
-        return m;
-    }
-
-    let mut prev: Vec<usize> = (0..=n).collect();
-    let mut curr: Vec<usize> = vec![0; n + 1];
-
-    for i in 1..=m {
-        curr[0] = i;
-        for j in 1..=n {
-            let cost = if a_chars[i - 1] == b_chars[j - 1] { 0 } else { 1 };
-            curr[j] = (prev[j] + 1)
-                .min(curr[j - 1] + 1)
-                .min(prev[j - 1] + cost);
-        }
-        std::mem::swap(&mut prev, &mut curr);
-    }
-
-    prev[n]
-}
-
-/// Find the most similar name from a list of candidates (threshold = 2)
-fn find_similar_name<'a>(name: &str, candidates: &[&'a str]) -> Option<&'a str> {
-    let threshold = 2;
-    let mut best_match: Option<&str> = None;
-    let mut best_distance = usize::MAX;
-
-    for &candidate in candidates {
-        let distance = levenshtein_distance(name, candidate);
-        if distance < best_distance && distance <= threshold {
-            best_distance = distance;
-            best_match = Some(candidate);
-        }
-    }
-
-    best_match
-}
-
-/// Format a suggestion hint
-fn format_suggestion_hint(suggestion: Option<&str>) -> String {
-    match suggestion {
-        Some(name) => format!("\n  hint: did you mean `{}`?", name),
-        None => String::new(),
-    }
-}
+use crate::util::{find_similar_name, format_suggestion_hint};
 
 /// A resolved module containing its path and parsed content
 #[derive(Debug, Clone)]
@@ -279,7 +220,7 @@ impl Resolver {
 
         // Find similar name using levenshtein distance
         let candidates: Vec<&str> = available_modules.iter().map(|s| s.as_str()).collect();
-        find_similar_name(module_name, &candidates).map(|s| s.to_string())
+        find_similar_name(module_name, &candidates, 2).map(|s| s.to_string())
     }
 
     /// Extract exported (pub) items from a program
@@ -362,7 +303,7 @@ impl Resolver {
                 // v0.68: Suggest similar export names
                 // v0.70: Include span for error localization
                 let export_names: Vec<&str> = module.exports.keys().map(|s| s.as_str()).collect();
-                let suggestion = find_similar_name(item_name, &export_names);
+                let suggestion = find_similar_name(item_name, &export_names, 2);
                 let hint = format_suggestion_hint(suggestion);
 
                 return Err(CompileError::resolve_error_at(

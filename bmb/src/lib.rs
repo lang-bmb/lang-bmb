@@ -53,6 +53,7 @@ pub mod repl;
 pub mod resolver;
 pub mod smt;
 pub mod types;
+pub mod util;
 pub mod verify;
 
 pub use ast::Span;
