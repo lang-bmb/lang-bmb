@@ -117,7 +117,8 @@ fn TK_PRE() -> i64 = 2000000000 + 110;
 fn TK_POST() -> i64 = 2000000000 + 111;
 fn TK_MUT() -> i64 = 2000000000 + 117;
 fn TK_WHILE() -> i64 = 2000000000 + 118;
-fn TK_LOOP() -> i64 = 2000000000 + 131;   // v0.90.31: loop keyword
+fn TK_LOOP() -> i64 = 2000000000 + 131;      // v0.90.31: loop keyword
+fn TK_CONTINUE() -> i64 = 2000000000 + 132;  // v0.90.31: continue keyword
 fn TK_BREAK() -> i64 = 2000000000 + 127;
 fn TK_FOR() -> i64 = 2000000000 + 125;
 fn TK_IN() -> i64 = 2000000000 + 126;
@@ -357,7 +358,8 @@ fn keyword_len7(word: String, endpos: i64) -> i64 =
     else { make_tok(TK_IDENT(), endpos) };
 
 fn keyword_len8(word: String, endpos: i64) -> i64 =
-    if word == "Receiver" { make_tok(TK_RECEIVER(), endpos) }
+    if word == "continue" { make_tok(TK_CONTINUE(), endpos) }  // v0.90.31
+    else if word == "Receiver" { make_tok(TK_RECEIVER(), endpos) }
     else { make_tok(TK_IDENT(), endpos) };
 
 fn keyword_len10(word: String, endpos: i64) -> i64 =
@@ -1169,6 +1171,7 @@ fn parse_expr(src: String, pos: i64) -> String =
     else if kind == TK_LOOP() { parse_loop_expr(src, tok_end(tok)) }   // v0.90.31: loop
     else if kind == TK_FOR() { parse_for_expr(src, tok_end(tok)) }  // v0.95: for-loop
     else if kind == TK_BREAK() { pack_result(tok_end(tok), "(break)") }  // v0.90.8: break
+    else if kind == TK_CONTINUE() { pack_result(tok_end(tok), "(continue)") }  // v0.90.31: continue
     else { parse_or(src, pos) };
 
 fn parse_if_expr(src: String, pos: i64) -> String =
@@ -2043,6 +2046,8 @@ fn get_exit_label(ast: String, entry_label: String, block_id: i64) -> String =
     // v0.90.8: break creates an after_break_N block that becomes the actual predecessor
     } else if ntype == "break" {
         "after_break_" + int_to_string(block_id)
+    } else if ntype == "continue" {
+        "after_continue_" + int_to_string(block_id)
     } else if ntype == "block" {
         let inner = block_inner(ast);
         get_exit_label(inner, entry_label, block_id)
@@ -2050,7 +2055,7 @@ fn get_exit_label(ast: String, entry_label: String, block_id: i64) -> String =
         // Check last expr first; if it doesn't create blocks, check first expr
         let last = seq_second(ast);
         let last_type = get_node_type(last);
-        if last_type == "if" or last_type == "while" or last_type == "loop" or last_type == "for" or last_type == "block" or last_type == "seq" or last_type == "let" or last_type == "let_mut" or last_type == "break" {
+        if last_type == "if" or last_type == "while" or last_type == "loop" or last_type == "for" or last_type == "block" or last_type == "seq" or last_type == "let" or last_type == "let_mut" or last_type == "break" or last_type == "continue" {
             get_exit_label(last, entry_label, block_id)
         } else {
             // Last expr is simple (unit, int, var, etc.) — exit comes from first
@@ -2378,6 +2383,7 @@ fn do_step(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, 
     else if op == "G3" { step_set_field_final(item, cur_temp, cur_block, cur_exit_label, sb) }
     // v0.90.8: Break statement
     else if op == "BK" { step_break(item, cur_temp, cur_block, cur_exit_label, sb) }
+    else if op == "CN" { step_continue(item, cur_temp, cur_block, cur_exit_label, sb) }
     // v0.90.9: *f64 pointer cast - eval inner then mark
     else if op == "FP" { step_cast_ptr_f64_start(item, cur_temp, cur_block, cur_exit_label, sb) }
     else if op == "FQ" { step_cast_ptr_f64_finish(item, cur_temp, cur_block, cur_exit_label, sb) }
@@ -2510,6 +2516,10 @@ fn step_expr(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String
     // v0.90.8: Break statement - emit goto to exit label
     else if ntype == "break" {
         make_step(cur_temp, cur_block, cur_exit_label, make_work3("BK", "", "", ""))
+    }
+    // v0.90.31: Continue statement - emit goto to loop header
+    else if ntype == "continue" {
+        make_step(cur_temp, cur_block, cur_exit_label, make_work3("CN", "", "", ""))
     }
     // v0.90.9: *f64 pointer cast - evaluate inner expr and mark as f64 ptr
     else if ntype == "cast_ptr_f64" {
@@ -2988,6 +2998,26 @@ fn step_break(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: Strin
     let w3 = sb_push_mir(sb, "  " + tmp + " = const 0");
     make_step(cur_temp + 1, cur_block, cur_exit_label, "");
 
+// v0.90.31: Continue statement - jump to loop header
+// Derive loop header from exit label:
+//   "exit_N" → "loop_N" (while/loop)
+//   "for_end_N" → "for_start_N" (for)
+fn derive_loop_start(exit_label: String) -> String =
+    if exit_label.len() >= 8 and exit_label.slice(0, 8) == "for_end_" {
+        "for_start_" + exit_label.slice(8, exit_label.len())
+    } else {
+        "loop_" + exit_label.slice(5, exit_label.len())
+    };
+
+fn step_continue(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String =
+    let loop_label = derive_loop_start(cur_exit_label);
+    let w1 = sb_push_mir(sb, "  goto " + loop_label);
+    let after_label = "after_continue_" + i2s(cur_block);
+    let w2 = sb_push_mir(sb, after_label + ":");
+    let tmp = "%_t" + i2s(cur_temp);
+    let w3 = sb_push_mir(sb, "  " + tmp + " = const 0");
+    make_step(cur_temp + 1, cur_block, cur_exit_label, "");
+
 // v0.90.9: Recursive: cast_ptr_f64 - evaluate inner and emit marker
 fn lower_cast_ptr_f64_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64 =
     let inner = get_child(ast, 0);
@@ -3121,7 +3151,7 @@ fn build_args_str_acc(cur: i64, end: i64, acc: String) -> String =
 // v0.90.8: Added loop_exit parameter for break statement support
 fn lower_expr_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64 =
     let ntype = get_node_type(ast);
-    if ntype == "int" { lower_int_sb(ast, temp_id, block_id, sb) } else if ntype == "float" { lower_float_sb(ast, temp_id, block_id, sb) } else if ntype == "bool" { lower_bool_sb(ast, temp_id, block_id, sb) } else if ntype == "string" { lower_string_sb(ast, temp_id, block_id, sb) } else if ntype == "var" { lower_var_sb(ast, temp_id, block_id, sb) } else if ntype == "binop" { lower_binop_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "unary" { lower_unary_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "if" { lower_if_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "let" { lower_let_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "let_mut" { lower_let_mut_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "call" { lower_call_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "method" { lower_method_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "block" { lower_block_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "unit" { lower_unit_sb(ast, temp_id, block_id, sb) } else if ntype == "seq" { lower_seq_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "assign" { lower_assign_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "while" { lower_while_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "loop" { lower_loop_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "for" { lower_for_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "field" { lower_field_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "set_field" { lower_set_field_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "index" { lower_index_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "set_index" { lower_set_index_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "break" { lower_break_sb(loop_exit, temp_id, block_id, sb) } else if ntype == "cast_ptr_f64" { lower_cast_ptr_f64_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "array_repeat" { lower_array_repeat_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "array" { lower_array_literal_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "tuple" { lower_tuple_sb(ast, temp_id, block_id, sb, loop_exit) } else { pack_ids(temp_id, block_id) };
+    if ntype == "int" { lower_int_sb(ast, temp_id, block_id, sb) } else if ntype == "float" { lower_float_sb(ast, temp_id, block_id, sb) } else if ntype == "bool" { lower_bool_sb(ast, temp_id, block_id, sb) } else if ntype == "string" { lower_string_sb(ast, temp_id, block_id, sb) } else if ntype == "var" { lower_var_sb(ast, temp_id, block_id, sb) } else if ntype == "binop" { lower_binop_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "unary" { lower_unary_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "if" { lower_if_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "let" { lower_let_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "let_mut" { lower_let_mut_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "call" { lower_call_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "method" { lower_method_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "block" { lower_block_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "unit" { lower_unit_sb(ast, temp_id, block_id, sb) } else if ntype == "seq" { lower_seq_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "assign" { lower_assign_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "while" { lower_while_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "loop" { lower_loop_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "for" { lower_for_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "field" { lower_field_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "set_field" { lower_set_field_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "index" { lower_index_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "set_index" { lower_set_index_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "break" { lower_break_sb(loop_exit, temp_id, block_id, sb) } else if ntype == "continue" { lower_continue_sb(loop_exit, temp_id, block_id, sb) } else if ntype == "cast_ptr_f64" { lower_cast_ptr_f64_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "array_repeat" { lower_array_repeat_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "array" { lower_array_literal_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "tuple" { lower_tuple_sb(ast, temp_id, block_id, sb, loop_exit) } else { pack_ids(temp_id, block_id) };
 
 fn lower_int_sb(ast: String, temp_id: i64, block_id: i64, sb: i64) -> i64 =
     let val = extract_int_value(ast);
@@ -3465,6 +3495,20 @@ fn lower_break_sb(loop_exit: String, temp_id: i64, block_id: i64, sb: i64) -> i6
     let w1 = sb_push_mir(sb, "  goto " + loop_exit);
     // Start unreachable block for code after break (required for LLVM IR validity)
     let after_label = "after_break_" + int_to_string(block_id);
+    let w2 = sb_push_mir(sb, after_label + ":");
+    // Return unit value in unreachable block
+    let tmp = "%_t" + int_to_string(temp_id);
+    let w3 = sb_push_mir(sb, "  " + tmp + " = const 0");
+    pack_ids(temp_id + 1, block_id);
+
+// v0.90.31: Continue statement - jump to loop header
+// Derive loop header from exit label using derive_loop_start
+// AST: (continue) → MIR: goto <loop_label> + unreachable block
+fn lower_continue_sb(loop_exit: String, temp_id: i64, block_id: i64, sb: i64) -> i64 =
+    let loop_label = derive_loop_start(loop_exit);
+    let w1 = sb_push_mir(sb, "  goto " + loop_label);
+    // Start unreachable block for code after continue
+    let after_label = "after_continue_" + int_to_string(block_id);
     let w2 = sb_push_mir(sb, after_label + ":");
     // Return unit value in unreachable block
     let tmp = "%_t" + int_to_string(temp_id);
