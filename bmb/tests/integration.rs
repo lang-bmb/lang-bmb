@@ -1539,6 +1539,13 @@ fn run_program_i64(source: &str) -> i64 {
     }
 }
 
+fn run_program_str(source: &str) -> String {
+    match run_program(source) {
+        Value::Str(s) => s.to_string(),
+        other => panic!("expected Str, got {:?}", other),
+    }
+}
+
 // --- Basic Arithmetic ---
 
 #[test]
@@ -13444,4 +13451,99 @@ fn test_array_reverse() {
         };
     "#;
     assert_eq!(run_program_i64(source), 3);
+}
+
+// --- Cycle 266: String method completeness ---
+
+#[test]
+fn test_string_to_upper() {
+    let source = r#"fn main() -> String = "hello".to_upper();"#;
+    assert_eq!(run_program_str(source), "HELLO");
+}
+
+#[test]
+fn test_string_to_lower() {
+    let source = r#"fn main() -> String = "HELLO".to_lower();"#;
+    assert_eq!(run_program_str(source), "hello");
+}
+
+#[test]
+fn test_string_trim() {
+    let source = r#"fn main() -> String = "  hello  ".trim();"#;
+    assert_eq!(run_program_str(source), "hello");
+}
+
+#[test]
+fn test_string_contains() {
+    let source = r#"fn main() -> i64 = if "hello world".contains("world") { 1 } else { 0 };"#;
+    assert_eq!(run_program_i64(source), 1);
+}
+
+#[test]
+fn test_string_contains_false() {
+    let source = r#"fn main() -> i64 = if "hello".contains("xyz") { 1 } else { 0 };"#;
+    assert_eq!(run_program_i64(source), 0);
+}
+
+#[test]
+fn test_string_starts_with() {
+    let source = r#"fn main() -> i64 = if "hello world".starts_with("hello") { 1 } else { 0 };"#;
+    assert_eq!(run_program_i64(source), 1);
+}
+
+#[test]
+fn test_string_ends_with() {
+    let source = r#"fn main() -> i64 = if "hello world".ends_with("world") { 1 } else { 0 };"#;
+    assert_eq!(run_program_i64(source), 1);
+}
+
+#[test]
+fn test_string_replace() {
+    let source = r#"fn main() -> String = "hello world".replace("world", "bmb");"#;
+    assert_eq!(run_program_str(source), "hello bmb");
+}
+
+#[test]
+fn test_string_repeat() {
+    let source = r#"fn main() -> String = "ab".repeat(3);"#;
+    assert_eq!(run_program_str(source), "ababab");
+}
+
+#[test]
+fn test_string_split() {
+    let source = r#"
+        fn main() -> i64 = {
+            let parts = "a,b,c".split(",");
+            parts.len()
+        };
+    "#;
+    assert_eq!(run_program_i64(source), 3);
+}
+
+#[test]
+fn test_string_index_of_found() {
+    let source = r#"
+        fn main() -> i64 = "hello".index_of("ll").unwrap_or(-1);
+    "#;
+    assert_eq!(run_program_i64(source), 2);
+}
+
+#[test]
+fn test_string_index_of_not_found() {
+    let source = r#"
+        fn main() -> i64 = "hello".index_of("xyz").unwrap_or(-1);
+    "#;
+    assert_eq!(run_program_i64(source), -1);
+}
+
+#[test]
+fn test_string_method_chaining() {
+    let source = r#"fn main() -> String = "  Hello World  ".trim().to_lower();"#;
+    assert_eq!(run_program_str(source), "hello world");
+}
+
+#[test]
+fn test_string_unknown_method_rejected() {
+    let source = r#"fn main() -> String = "hello".nonexistent();"#;
+    assert!(type_error(source));
 }

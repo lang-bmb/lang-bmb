@@ -1065,6 +1065,90 @@ impl Interpreter {
                         Ok(Value::Str(Rc::new(s[start..end].to_string())))
                     }
                     "is_empty" => Ok(Value::Bool(s.is_empty())),
+                    // v0.90.32: String methods
+                    "to_upper" => Ok(Value::Str(Rc::new(s.to_uppercase()))),
+                    "to_lower" => Ok(Value::Str(Rc::new(s.to_lowercase()))),
+                    "trim" => Ok(Value::Str(Rc::new(s.trim().to_string()))),
+                    "contains" => {
+                        if args.len() != 1 {
+                            return Err(RuntimeError::arity_mismatch("contains", 1, args.len()));
+                        }
+                        let substr = match &args[0] {
+                            Value::Str(s) => s.as_str().to_string(),
+                            _ => return Err(RuntimeError::type_error("string", args[0].type_name())),
+                        };
+                        Ok(Value::Bool(s.contains(&substr)))
+                    }
+                    "starts_with" => {
+                        if args.len() != 1 {
+                            return Err(RuntimeError::arity_mismatch("starts_with", 1, args.len()));
+                        }
+                        let prefix = match &args[0] {
+                            Value::Str(s) => s.as_str().to_string(),
+                            _ => return Err(RuntimeError::type_error("string", args[0].type_name())),
+                        };
+                        Ok(Value::Bool(s.starts_with(&prefix)))
+                    }
+                    "ends_with" => {
+                        if args.len() != 1 {
+                            return Err(RuntimeError::arity_mismatch("ends_with", 1, args.len()));
+                        }
+                        let suffix = match &args[0] {
+                            Value::Str(s) => s.as_str().to_string(),
+                            _ => return Err(RuntimeError::type_error("string", args[0].type_name())),
+                        };
+                        Ok(Value::Bool(s.ends_with(&suffix)))
+                    }
+                    "replace" => {
+                        if args.len() != 2 {
+                            return Err(RuntimeError::arity_mismatch("replace", 2, args.len()));
+                        }
+                        let from = match &args[0] {
+                            Value::Str(s) => s.as_str().to_string(),
+                            _ => return Err(RuntimeError::type_error("string", args[0].type_name())),
+                        };
+                        let to = match &args[1] {
+                            Value::Str(s) => s.as_str().to_string(),
+                            _ => return Err(RuntimeError::type_error("string", args[1].type_name())),
+                        };
+                        Ok(Value::Str(Rc::new(s.replace(&from, &to))))
+                    }
+                    "repeat" => {
+                        if args.len() != 1 {
+                            return Err(RuntimeError::arity_mismatch("repeat", 1, args.len()));
+                        }
+                        let count = match &args[0] {
+                            Value::Int(n) => *n as usize,
+                            _ => return Err(RuntimeError::type_error("integer", args[0].type_name())),
+                        };
+                        Ok(Value::Str(Rc::new(s.repeat(count))))
+                    }
+                    "split" => {
+                        if args.len() != 1 {
+                            return Err(RuntimeError::arity_mismatch("split", 1, args.len()));
+                        }
+                        let delimiter = match &args[0] {
+                            Value::Str(s) => s.as_str().to_string(),
+                            _ => return Err(RuntimeError::type_error("string", args[0].type_name())),
+                        };
+                        let parts: Vec<Value> = s.split(&delimiter)
+                            .map(|part| Value::Str(Rc::new(part.to_string())))
+                            .collect();
+                        Ok(Value::Array(parts))
+                    }
+                    "index_of" => {
+                        if args.len() != 1 {
+                            return Err(RuntimeError::arity_mismatch("index_of", 1, args.len()));
+                        }
+                        let substr = match &args[0] {
+                            Value::Str(s) => s.as_str().to_string(),
+                            _ => return Err(RuntimeError::type_error("string", args[0].type_name())),
+                        };
+                        match s.find(&substr) {
+                            Some(idx) => Ok(Value::Enum("Option".to_string(), "Some".to_string(), vec![Value::Int(idx as i64)])),
+                            None => Ok(Value::Enum("Option".to_string(), "None".to_string(), vec![])),
+                        }
+                    }
                     _ => Err(RuntimeError::undefined_function(&format!("String.{}", method))),
                 }
             }

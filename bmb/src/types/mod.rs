@@ -2937,6 +2937,98 @@ impl TypeChecker {
                         }
                         Ok(Type::Bool)
                     }
+                    // v0.90.32: to_upper() -> String
+                    "to_upper" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("to_upper() takes no arguments", span));
+                        }
+                        Ok(Type::String)
+                    }
+                    // v0.90.32: to_lower() -> String
+                    "to_lower" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("to_lower() takes no arguments", span));
+                        }
+                        Ok(Type::String)
+                    }
+                    // v0.90.32: trim() -> String
+                    "trim" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("trim() takes no arguments", span));
+                        }
+                        Ok(Type::String)
+                    }
+                    // v0.90.32: contains(String) -> bool
+                    "contains" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("contains() takes 1 argument", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg_ty, &Type::String, args[0].span)?;
+                        Ok(Type::Bool)
+                    }
+                    // v0.90.32: starts_with(String) -> bool
+                    "starts_with" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("starts_with() takes 1 argument", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg_ty, &Type::String, args[0].span)?;
+                        Ok(Type::Bool)
+                    }
+                    // v0.90.32: ends_with(String) -> bool
+                    "ends_with" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("ends_with() takes 1 argument", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg_ty, &Type::String, args[0].span)?;
+                        Ok(Type::Bool)
+                    }
+                    // v0.90.32: replace(String, String) -> String
+                    "replace" => {
+                        if args.len() != 2 {
+                            return Err(CompileError::type_error("replace() takes 2 arguments", span));
+                        }
+                        for arg in args {
+                            let arg_ty = self.infer(&arg.node, arg.span)?;
+                            self.unify(&arg_ty, &Type::String, arg.span)?;
+                        }
+                        Ok(Type::String)
+                    }
+                    // v0.90.32: repeat(i64) -> String
+                    "repeat" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("repeat() takes 1 argument", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        match arg_ty {
+                            Type::I32 | Type::I64 | Type::U32 | Type::U64 => {}
+                            _ => return Err(CompileError::type_error(
+                                format!("repeat() requires integer argument, got {}", arg_ty),
+                                args[0].span,
+                            )),
+                        }
+                        Ok(Type::String)
+                    }
+                    // v0.90.32: split(String) -> [String]
+                    "split" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("split() takes 1 argument", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg_ty, &Type::String, args[0].span)?;
+                        Ok(Type::Array(Box::new(Type::String), 0))
+                    }
+                    // v0.90.32: index_of(String) -> i64?
+                    "index_of" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("index_of() takes 1 argument", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg_ty, &Type::String, args[0].span)?;
+                        Ok(Type::Nullable(Box::new(Type::I64)))
+                    }
                     _ => Err(CompileError::type_error(
                         format!("unknown method '{}' for String", method),
                         span,
