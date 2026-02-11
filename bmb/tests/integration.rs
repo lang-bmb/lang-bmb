@@ -7578,3 +7578,159 @@ fn test_pir_extract_function_facts_with_contract() {
     // all_facts should include at least the preconditions
     assert!(func_facts.all_facts.len() >= func_facts.preconditions.len());
 }
+
+// ============================================================================
+// CFG (Conditional Compilation) Integration Tests (Cycle 233)
+// ============================================================================
+
+#[test]
+fn test_cfg_target_from_str_native() {
+    use bmb::cfg::Target;
+    assert_eq!(Target::from_str("native"), Some(Target::Native));
+    assert_eq!(Target::from_str("x86_64"), Some(Target::Native));
+    assert_eq!(Target::from_str("aarch64"), Some(Target::Native));
+}
+
+#[test]
+fn test_cfg_target_from_str_wasm() {
+    use bmb::cfg::Target;
+    assert_eq!(Target::from_str("wasm32"), Some(Target::Wasm32));
+    assert_eq!(Target::from_str("wasm"), Some(Target::Wasm32));
+    assert_eq!(Target::from_str("wasm64"), Some(Target::Wasm64));
+}
+
+#[test]
+fn test_cfg_target_from_str_unknown() {
+    use bmb::cfg::Target;
+    assert_eq!(Target::from_str("unknown_target"), None);
+    assert_eq!(Target::from_str(""), None);
+}
+
+#[test]
+fn test_cfg_target_as_str() {
+    use bmb::cfg::Target;
+    assert_eq!(Target::Native.as_str(), "native");
+    assert_eq!(Target::Wasm32.as_str(), "wasm32");
+    assert_eq!(Target::Wasm64.as_str(), "wasm64");
+}
+
+#[test]
+fn test_cfg_target_default_is_native() {
+    use bmb::cfg::Target;
+    assert_eq!(Target::default(), Target::Native);
+}
+
+#[test]
+fn test_cfg_filter_program_no_attributes() {
+    use bmb::cfg::{CfgEvaluator, Target};
+    let source = "fn a() -> i64 = 1; fn b() -> i64 = 2; fn c() -> i64 = 3;";
+    let tokens = tokenize(source).expect("tokenize");
+    let ast = parse("test.bmb", source, tokens).expect("parse");
+    let eval = CfgEvaluator::new(Target::Native);
+    let filtered = eval.filter_program(&ast);
+    assert_eq!(filtered.items.len(), 3, "all functions should be included without @cfg");
+}
+
+#[test]
+fn test_cfg_filter_program_with_cfg_native() {
+    use bmb::cfg::{CfgEvaluator, Target};
+    let source = r#"@cfg(target == "native")
+fn native_fn() -> i64 = 1;
+fn always_fn() -> i64 = 2;"#;
+    let tokens = tokenize(source).expect("tokenize");
+    let ast = parse("test.bmb", source, tokens).expect("parse");
+
+    let eval_native = CfgEvaluator::new(Target::Native);
+    let filtered = eval_native.filter_program(&ast);
+    assert_eq!(filtered.items.len(), 2);
+
+    let eval_wasm = CfgEvaluator::new(Target::Wasm32);
+    let filtered = eval_wasm.filter_program(&ast);
+    assert_eq!(filtered.items.len(), 1);
+}
+
+#[test]
+fn test_cfg_filter_program_with_cfg_wasm32() {
+    use bmb::cfg::{CfgEvaluator, Target};
+    let source = r#"@cfg(target == "wasm32")
+fn wasm_fn() -> i64 = 1;
+fn common_fn() -> i64 = 2;"#;
+    let tokens = tokenize(source).expect("tokenize");
+    let ast = parse("test.bmb", source, tokens).expect("parse");
+
+    let eval_wasm = CfgEvaluator::new(Target::Wasm32);
+    let filtered = eval_wasm.filter_program(&ast);
+    assert_eq!(filtered.items.len(), 2);
+
+    let eval_native = CfgEvaluator::new(Target::Native);
+    let filtered = eval_native.filter_program(&ast);
+    assert_eq!(filtered.items.len(), 1);
+}
+
+#[test]
+fn test_cfg_filter_preserves_non_cfg_functions() {
+    use bmb::cfg::{CfgEvaluator, Target};
+    let source = r#"fn always_a() -> i64 = 1;
+@cfg(target == "wasm64")
+fn wasm64_only() -> i64 = 2;
+fn always_b() -> i64 = 3;"#;
+    let tokens = tokenize(source).expect("tokenize");
+    let ast = parse("test.bmb", source, tokens).expect("parse");
+
+    let eval = CfgEvaluator::new(Target::Native);
+    let filtered = eval.filter_program(&ast);
+    assert_eq!(filtered.items.len(), 2, "wasm64_only should be filtered out");
+}
+
+#[test]
+fn test_cfg_filter_empty_program() {
+    use bmb::cfg::{CfgEvaluator, Target};
+    use bmb::ast::Program;
+    let program = Program { header: None, items: vec![] };
+    let eval = CfgEvaluator::new(Target::Native);
+    let filtered = eval.filter_program(&program);
+    assert!(filtered.items.is_empty());
+}
+
+#[test]
+fn test_cfg_should_include_item_struct() {
+    use bmb::cfg::{CfgEvaluator, Target};
+    let source = r#"@cfg(target == "wasm32")
+struct WasmStruct { x: i64 }
+struct AlwaysStruct { y: i64 }"#;
+    let tokens = tokenize(source).expect("tokenize");
+    let ast = parse("test.bmb", source, tokens).expect("parse");
+    let eval = CfgEvaluator::new(Target::Native);
+    let filtered = eval.filter_program(&ast);
+    assert_eq!(filtered.items.len(), 1, "WasmStruct should be excluded on native");
+}
+
+#[test]
+fn test_cfg_should_include_item_enum() {
+    use bmb::cfg::{CfgEvaluator, Target};
+    let source = r#"@cfg(target == "native")
+enum NativeError { Io, Memory }
+enum CommonError { NotFound, Timeout }"#;
+    let tokens = tokenize(source).expect("tokenize");
+    let ast = parse("test.bmb", source, tokens).expect("parse");
+    let eval = CfgEvaluator::new(Target::Wasm32);
+    let filtered = eval.filter_program(&ast);
+    assert_eq!(filtered.items.len(), 1, "NativeError should be excluded on wasm32");
+}
+
+#[test]
+fn test_cfg_target_case_insensitive() {
+    use bmb::cfg::Target;
+    assert_eq!(Target::from_str("NATIVE"), Some(Target::Native));
+    assert_eq!(Target::from_str("Wasm32"), Some(Target::Wasm32));
+    assert_eq!(Target::from_str("WASM64"), Some(Target::Wasm64));
+}
+
+#[test]
+fn test_cfg_target_wasm_aliases() {
+    use bmb::cfg::Target;
+    assert_eq!(Target::from_str("wasm32-wasi"), Some(Target::Wasm32));
+    assert_eq!(Target::from_str("wasm32-unknown"), Some(Target::Wasm32));
+    assert_eq!(Target::from_str("x86"), Some(Target::Native));
+    assert_eq!(Target::from_str("arm"), Some(Target::Native));
+}
