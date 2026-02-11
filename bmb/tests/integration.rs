@@ -8188,3 +8188,359 @@ fn test_query_engine_functions_with_contracts() {
     let matches = result.matches.unwrap();
     assert!(matches.iter().any(|f| f.name == "guarded"));
 }
+
+// ============================================================
+// CIR (Contract IR) Integration Tests
+// ============================================================
+
+/// Helper: parse, type-check, and lower to CIR
+fn source_to_cir(source: &str) -> bmb::cir::CirProgram {
+    let tokens = tokenize(source).expect("tokenize failed");
+    let ast = parse("test.bmb", source, tokens).expect("parse failed");
+    let mut tc = TypeChecker::new();
+    tc.check_program(&ast).expect("type check failed");
+    bmb::cir::lower_to_cir(&ast)
+}
+
+// --- CIR Lowering Tests ---
+
+#[test]
+fn test_cir_lower_simple_function() {
+    let cir = source_to_cir("fn add(a: i64, b: i64) -> i64 = a + b;");
+    assert_eq!(cir.functions.len(), 1);
+    assert_eq!(cir.functions[0].name, "add");
+    assert_eq!(cir.functions[0].params.len(), 2);
+    assert_eq!(cir.functions[0].params[0].name, "a");
+    assert_eq!(cir.functions[0].params[1].name, "b");
+}
+
+#[test]
+fn test_cir_lower_multiple_functions() {
+    let cir = source_to_cir("fn foo() -> i64 = 1; fn bar() -> i64 = 2; fn baz() -> i64 = 3;");
+    assert_eq!(cir.functions.len(), 3);
+    let names: Vec<&str> = cir.functions.iter().map(|f| f.name.as_str()).collect();
+    assert!(names.contains(&"foo"));
+    assert!(names.contains(&"bar"));
+    assert!(names.contains(&"baz"));
+}
+
+#[test]
+fn test_cir_lower_precondition() {
+    let cir = source_to_cir("fn safe_div(a: i64, b: i64) -> i64 pre b > 0 = a / b;");
+    assert_eq!(cir.functions.len(), 1);
+    assert!(!cir.functions[0].preconditions.is_empty(), "preconditions should be non-empty");
+}
+
+#[test]
+fn test_cir_lower_postcondition() {
+    let cir = source_to_cir("fn positive() -> i64 post ret > 0 = 42;");
+    assert_eq!(cir.functions.len(), 1);
+    assert!(!cir.functions[0].postconditions.is_empty(), "postconditions should be non-empty");
+}
+
+#[test]
+fn test_cir_lower_pre_and_post() {
+    let cir = source_to_cir("fn clamp(x: i64) -> i64 pre x >= 0 post ret >= 0 = x;");
+    let func = &cir.functions[0];
+    assert!(!func.preconditions.is_empty());
+    assert!(!func.postconditions.is_empty());
+}
+
+#[test]
+fn test_cir_lower_struct() {
+    let cir = source_to_cir("struct Point { x: i64, y: i64 }");
+    assert!(cir.structs.contains_key("Point"));
+    let s = &cir.structs["Point"];
+    assert_eq!(s.fields.len(), 2);
+}
+
+#[test]
+fn test_cir_lower_return_type() {
+    let cir = source_to_cir("fn flag() -> bool = true;");
+    let func = &cir.functions[0];
+    assert_eq!(format!("{}", func.ret_ty), "bool");
+}
+
+// --- CIR Proposition Tests ---
+
+#[test]
+fn test_cir_proposition_trivially_true() {
+    let prop = bmb::cir::Proposition::True;
+    assert!(prop.is_trivially_true());
+    assert!(!prop.is_trivially_false());
+}
+
+#[test]
+fn test_cir_proposition_trivially_false() {
+    let prop = bmb::cir::Proposition::False;
+    assert!(prop.is_trivially_false());
+    assert!(!prop.is_trivially_true());
+}
+
+#[test]
+fn test_cir_proposition_compare() {
+    let prop = bmb::cir::Proposition::compare(
+        bmb::cir::CirExpr::var("x"),
+        bmb::cir::CompareOp::Ge,
+        bmb::cir::CirExpr::int(0),
+    );
+    assert!(!prop.is_trivially_true());
+    assert!(!prop.is_trivially_false());
+}
+
+#[test]
+fn test_cir_proposition_and_or_not() {
+    let p1 = bmb::cir::Proposition::True;
+    let p2 = bmb::cir::Proposition::True;
+    let and = bmb::cir::Proposition::and(vec![p1, p2]);
+    // And of two trues — implementation may or may not simplify
+    assert!(!and.is_trivially_false());
+
+    let neg = bmb::cir::Proposition::not(bmb::cir::Proposition::False);
+    assert!(!neg.is_trivially_false());
+}
+
+// --- CIR EffectSet Tests ---
+
+#[test]
+fn test_cir_effect_set_pure() {
+    let e = bmb::cir::EffectSet::pure();
+    assert!(e.is_pure);
+    assert!(!e.writes);
+    assert!(!e.io);
+    assert!(!e.allocates);
+}
+
+#[test]
+fn test_cir_effect_set_impure() {
+    let e = bmb::cir::EffectSet::impure();
+    assert!(!e.is_pure);
+}
+
+#[test]
+fn test_cir_effect_set_union() {
+    let pure = bmb::cir::EffectSet::pure();
+    let impure = bmb::cir::EffectSet::impure();
+    let combined = pure.union(&impure);
+    assert!(!combined.is_pure, "union with impure should not be pure");
+}
+
+// --- CIR Output Formatting Tests ---
+
+#[test]
+fn test_cir_output_format_text() {
+    let cir = source_to_cir("fn id(x: i64) -> i64 = x;");
+    let text = bmb::cir::CirOutput::format_text(&cir);
+    assert!(text.contains("id"), "text output should contain function name");
+}
+
+#[test]
+fn test_cir_output_format_text_with_contract() {
+    let cir = source_to_cir("fn pos(x: i64) -> i64 pre x > 0 post ret > 0 = x;");
+    let text = bmb::cir::CirOutput::format_text(&cir);
+    assert!(text.contains("pos"));
+    // Should mention pre/postconditions in some form
+    assert!(!text.is_empty());
+}
+
+#[test]
+fn test_cir_output_format_json() {
+    let cir = source_to_cir("fn id(x: i64) -> i64 = x;");
+    let json = bmb::cir::CirOutput::format_json(&cir).expect("json format should succeed");
+    assert!(json.contains("id"));
+    // Should be valid JSON (starts with { or [)
+    let first = json.trim().chars().next().unwrap();
+    assert!(first == '{' || first == '[', "json should start with {{ or [");
+}
+
+// --- CIR Fact Extraction Tests ---
+
+#[test]
+fn test_cir_extract_precondition_facts() {
+    let cir = source_to_cir("fn safe(x: i64) -> i64 pre x >= 0 = x;");
+    let facts = bmb::cir::extract_precondition_facts(&cir.functions[0]);
+    assert!(!facts.is_empty(), "precondition facts should be non-empty for pre x >= 0");
+}
+
+#[test]
+fn test_cir_extract_postcondition_facts() {
+    let cir = source_to_cir("fn positive() -> i64 post ret > 0 = 42;");
+    let facts = bmb::cir::extract_postcondition_facts(&cir.functions[0]);
+    assert!(!facts.is_empty(), "postcondition facts should be non-empty for post ret > 0");
+}
+
+#[test]
+fn test_cir_extract_all_facts() {
+    let cir = source_to_cir("fn guarded(x: i64) -> i64 pre x >= 0 post ret >= 0 = x;");
+    let facts_map = bmb::cir::extract_all_facts(&cir);
+    assert!(facts_map.contains_key("guarded"), "should have facts for guarded function");
+    let (pre, post) = &facts_map["guarded"];
+    assert!(!pre.is_empty(), "precondition facts should be non-empty");
+    assert!(!post.is_empty(), "postcondition facts should be non-empty");
+}
+
+#[test]
+fn test_cir_extract_verified_facts() {
+    let cir = source_to_cir("fn a(x: i64) -> i64 pre x > 0 = x; fn b() -> i64 = 1;");
+    let mut verified = std::collections::HashSet::new();
+    verified.insert("a".to_string());
+    let facts = bmb::cir::extract_verified_facts(&cir, &verified);
+    assert!(facts.contains_key("a"), "verified function should have facts");
+}
+
+#[test]
+fn test_cir_extract_facts_no_contracts() {
+    let cir = source_to_cir("fn plain(x: i64) -> i64 = x;");
+    let pre_facts = bmb::cir::extract_precondition_facts(&cir.functions[0]);
+    let post_facts = bmb::cir::extract_postcondition_facts(&cir.functions[0]);
+    assert!(pre_facts.is_empty());
+    assert!(post_facts.is_empty());
+}
+
+// --- CIR SMT Generator Tests ---
+
+#[test]
+fn test_cir_smt_generator_creation() {
+    let smt = bmb::cir::CirSmtGenerator::new();
+    let output = smt.generate();
+    // Fresh generator should produce minimal output
+    assert!(output.contains("check-sat"), "SMT output should contain check-sat");
+}
+
+#[test]
+fn test_cir_smt_generator_declare_var() {
+    let mut smt = bmb::cir::CirSmtGenerator::new();
+    smt.declare_var("x", bmb::cir::SmtSort::Int);
+    let output = smt.generate();
+    assert!(output.contains("x"), "output should declare variable x");
+}
+
+#[test]
+fn test_cir_smt_generator_translate_proposition() {
+    let smt = bmb::cir::CirSmtGenerator::new();
+    let prop = bmb::cir::Proposition::compare(
+        bmb::cir::CirExpr::var("x"),
+        bmb::cir::CompareOp::Ge,
+        bmb::cir::CirExpr::int(0),
+    );
+    let result = smt.translate_proposition(&prop);
+    assert!(result.is_ok(), "translate simple comparison should succeed");
+    let smt_str = result.unwrap();
+    assert!(smt_str.contains(">=") || smt_str.contains("ge"), "should contain comparison operator");
+}
+
+#[test]
+fn test_cir_smt_generator_translate_expr() {
+    let smt = bmb::cir::CirSmtGenerator::new();
+    let expr = bmb::cir::CirExpr::int(42);
+    let result = smt.translate_expr(&expr);
+    assert!(result.is_ok());
+    assert!(result.unwrap().contains("42"));
+}
+
+#[test]
+fn test_cir_smt_sort_to_smt() {
+    assert_eq!(bmb::cir::SmtSort::Int.to_smt(), "Int");
+    assert_eq!(bmb::cir::SmtSort::Bool.to_smt(), "Bool");
+    assert_eq!(bmb::cir::SmtSort::Real.to_smt(), "Real");
+}
+
+#[test]
+fn test_cir_smt_generator_type_to_sort() {
+    let smt = bmb::cir::CirSmtGenerator::new();
+    let sort = smt.cir_type_to_sort(&bmb::cir::CirType::I64);
+    // I64 should map to Int sort
+    assert_eq!(sort.to_smt(), "Int");
+}
+
+// --- CIR Verifier Tests ---
+
+#[test]
+fn test_cir_verifier_creation() {
+    let verifier = bmb::cir::CirVerifier::new();
+    // Verifier created successfully — solver availability depends on Z3 installation
+    let _available = verifier.is_solver_available();
+}
+
+#[test]
+fn test_cir_verification_report_empty() {
+    let report = bmb::cir::CirVerificationReport::new();
+    assert_eq!(report.total_functions, 0);
+    assert_eq!(report.verified_count, 0);
+    assert_eq!(report.failed_count, 0);
+    assert!(report.all_verified()); // empty report => all verified
+    assert!(!report.has_failures());
+    assert!(!report.has_errors());
+}
+
+#[test]
+fn test_cir_proof_witness_verified() {
+    let w = bmb::cir::ProofWitness::verified("test_fn".to_string(), None, 100);
+    assert!(w.is_verified());
+    assert!(!w.is_failed());
+    assert_eq!(w.function, "test_fn");
+    assert_eq!(w.verification_time_ms, 100);
+    assert!(matches!(w.outcome, bmb::cir::ProofOutcome::Verified));
+}
+
+#[test]
+fn test_cir_proof_witness_failed() {
+    let w = bmb::cir::ProofWitness::failed("bad_fn".to_string(), "division by zero".to_string(), None, 50);
+    assert!(w.is_failed());
+    assert!(!w.is_verified());
+    assert!(matches!(w.outcome, bmb::cir::ProofOutcome::Failed(_)));
+}
+
+#[test]
+fn test_cir_proof_witness_skipped() {
+    let w = bmb::cir::ProofWitness::skipped("no_contract".to_string());
+    assert!(!w.is_verified());
+    assert!(!w.is_failed());
+    assert!(matches!(w.outcome, bmb::cir::ProofOutcome::Skipped));
+}
+
+#[test]
+fn test_cir_proof_witness_error() {
+    let w = bmb::cir::ProofWitness::error("err_fn".to_string(), "solver crashed".to_string());
+    assert!(!w.is_verified());
+    assert!(!w.is_failed());
+    assert!(matches!(w.outcome, bmb::cir::ProofOutcome::Error(_)));
+}
+
+#[test]
+fn test_cir_proof_outcome_variants() {
+    let v = bmb::cir::ProofOutcome::Verified;
+    let f = bmb::cir::ProofOutcome::Failed("reason".to_string());
+    let u = bmb::cir::ProofOutcome::Unknown("timeout".to_string());
+    let s = bmb::cir::ProofOutcome::Skipped;
+    let e = bmb::cir::ProofOutcome::Error("crash".to_string());
+    // Verify Debug formatting works
+    assert!(!format!("{:?}", v).is_empty());
+    assert!(!format!("{:?}", f).is_empty());
+    assert!(!format!("{:?}", u).is_empty());
+    assert!(!format!("{:?}", s).is_empty());
+    assert!(!format!("{:?}", e).is_empty());
+}
+
+#[test]
+fn test_cir_verification_report_summary() {
+    let report = bmb::cir::CirVerificationReport::new();
+    let summary = report.summary();
+    assert!(!summary.is_empty(), "summary should not be empty");
+}
+
+#[test]
+fn test_cir_compare_op_negate() {
+    assert_eq!(bmb::cir::CompareOp::Lt.negate(), bmb::cir::CompareOp::Ge);
+    assert_eq!(bmb::cir::CompareOp::Ge.negate(), bmb::cir::CompareOp::Lt);
+    assert_eq!(bmb::cir::CompareOp::Eq.negate(), bmb::cir::CompareOp::Ne);
+    assert_eq!(bmb::cir::CompareOp::Ne.negate(), bmb::cir::CompareOp::Eq);
+}
+
+#[test]
+fn test_cir_compare_op_flip() {
+    assert_eq!(bmb::cir::CompareOp::Lt.flip(), bmb::cir::CompareOp::Gt);
+    assert_eq!(bmb::cir::CompareOp::Le.flip(), bmb::cir::CompareOp::Ge);
+    assert_eq!(bmb::cir::CompareOp::Gt.flip(), bmb::cir::CompareOp::Lt);
+    assert_eq!(bmb::cir::CompareOp::Ge.flip(), bmb::cir::CompareOp::Le);
+}
