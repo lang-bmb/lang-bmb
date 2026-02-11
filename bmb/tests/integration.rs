@@ -9551,3 +9551,210 @@ fn test_type_multiple_generic_params() {
          fn make_pair() -> Pair<i64, bool> = new Pair { first: 42, second: true };"
     );
 }
+
+// ============================================================
+// Error Module Integration Tests
+// ============================================================
+
+#[test]
+fn test_error_compile_warning_constructors() {
+    use bmb::ast::Span;
+    let w = bmb::error::CompileWarning::unused_binding("x".to_string(), Span::new(0, 1));
+    assert!(w.message().contains("x"));
+    assert_eq!(w.kind(), "unused_binding");
+    assert!(w.span().is_some());
+}
+
+#[test]
+fn test_error_compile_warning_kinds() {
+    use bmb::ast::Span;
+    let span = Span::new(0, 1);
+    let warnings = vec![
+        bmb::error::CompileWarning::unused_function("f".to_string(), span),
+        bmb::error::CompileWarning::unused_type("T".to_string(), span),
+        bmb::error::CompileWarning::unused_enum("E".to_string(), span),
+        bmb::error::CompileWarning::shadow_binding("x".to_string(), span, span),
+    ];
+    for w in &warnings {
+        assert!(!w.kind().is_empty());
+        assert!(!w.message().is_empty());
+    }
+}
+
+#[test]
+fn test_error_compile_error_constructors() {
+    use bmb::ast::Span;
+    let span = Span::new(0, 10);
+    let e1 = bmb::error::CompileError::type_error("mismatched types".to_string(), span);
+    assert!(e1.message().contains("mismatched"));
+    assert!(e1.span().is_some());
+
+    let e2 = bmb::error::CompileError::parse_error("unexpected token".to_string());
+    assert!(e2.message().contains("unexpected"));
+}
+
+#[test]
+fn test_error_compile_warning_display() {
+    use bmb::ast::Span;
+    let w = bmb::error::CompileWarning::trivial_contract("test_fn".to_string(), "pre".to_string(), Span::new(0, 5));
+    let display = format!("{}", w);
+    assert!(!display.is_empty());
+}
+
+#[test]
+fn test_error_compile_error_display() {
+    use bmb::ast::Span;
+    let e = bmb::error::CompileError::lexer("unexpected character".to_string(), Span::new(0, 1));
+    let display = format!("{}", e);
+    assert!(!display.is_empty());
+}
+
+// ============================================================
+// Verify Module (ProofDatabase) Integration Tests
+// ============================================================
+
+#[test]
+fn test_verify_proof_database_creation() {
+    let db = bmb::verify::ProofDatabase::new();
+    assert!(db.is_empty());
+    assert_eq!(db.len(), 0);
+}
+
+#[test]
+fn test_verify_function_id_simple() {
+    let id = bmb::verify::FunctionId::simple("add");
+    assert_eq!(id.key(), "main::add");
+}
+
+#[test]
+fn test_verify_function_id_with_module() {
+    let id = bmb::verify::FunctionId::new("math", "add", 12345);
+    let key = id.key();
+    assert!(key.contains("math"));
+    assert!(key.contains("add"));
+}
+
+#[test]
+fn test_verify_proof_database_store_and_get() {
+    let mut db = bmb::verify::ProofDatabase::new();
+    let id = bmb::verify::FunctionId::simple("test_fn");
+    let result = bmb::verify::FunctionProofResult {
+        status: bmb::verify::VerificationStatus::Verified,
+        proven_facts: vec![],
+        verification_time: std::time::Duration::from_millis(100),
+        smt_queries: 1,
+        verified_at: 0,
+    };
+    db.store_function_proof(&id, result);
+    assert_eq!(db.len(), 1);
+    assert!(!db.is_empty());
+    assert!(db.is_verified(&id));
+}
+
+#[test]
+fn test_verify_proof_database_json_roundtrip() {
+    let mut db = bmb::verify::ProofDatabase::new();
+    let id = bmb::verify::FunctionId::simple("roundtrip_fn");
+    let result = bmb::verify::FunctionProofResult {
+        status: bmb::verify::VerificationStatus::Verified,
+        proven_facts: vec![],
+        verification_time: std::time::Duration::from_millis(50),
+        smt_queries: 1,
+        verified_at: 0,
+    };
+    db.store_function_proof(&id, result);
+    let json = db.to_json().expect("to_json should succeed");
+    let db2 = bmb::verify::ProofDatabase::from_json(&json).expect("from_json should succeed");
+    assert_eq!(db2.len(), 1);
+}
+
+#[test]
+fn test_verify_proof_database_clear() {
+    let mut db = bmb::verify::ProofDatabase::new();
+    let id = bmb::verify::FunctionId::simple("fn1");
+    let result = bmb::verify::FunctionProofResult {
+        status: bmb::verify::VerificationStatus::Skipped,
+        proven_facts: vec![],
+        verification_time: std::time::Duration::ZERO,
+        smt_queries: 0,
+        verified_at: 0,
+    };
+    db.store_function_proof(&id, result);
+    assert_eq!(db.len(), 1);
+    db.clear();
+    assert!(db.is_empty());
+}
+
+#[test]
+fn test_verify_verification_status_variants() {
+    assert!(bmb::verify::VerificationStatus::Verified.is_verified());
+    assert!(!bmb::verify::VerificationStatus::Verified.is_failed());
+    assert!(!bmb::verify::VerificationStatus::Failed("err".to_string()).is_verified());
+    assert!(bmb::verify::VerificationStatus::Failed("err".to_string()).is_failed());
+    assert!(!bmb::verify::VerificationStatus::Skipped.is_verified());
+    assert!(!bmb::verify::VerificationStatus::Timeout.is_verified());
+}
+
+#[test]
+fn test_verify_proof_database_stats() {
+    let db = bmb::verify::ProofDatabase::new();
+    let stats = db.stats();
+    assert_eq!(stats.functions_stored, 0);
+}
+
+// ============================================================
+// Codegen Integration Tests (TextCodeGen + WasmCodeGen)
+// ============================================================
+
+#[test]
+fn test_codegen_text_simple_function() {
+    let program = lower_to_mir("fn add(a: i64, b: i64) -> i64 = a + b;");
+    let codegen = bmb::codegen::TextCodeGen::new();
+    let result = codegen.generate(&program);
+    assert!(result.is_ok(), "text codegen should succeed");
+    let ir = result.unwrap();
+    assert!(ir.contains("add"), "IR should contain function name");
+}
+
+#[test]
+fn test_codegen_text_multiple_functions() {
+    let program = lower_to_mir("fn foo() -> i64 = 1; fn bar() -> i64 = 2;");
+    let codegen = bmb::codegen::TextCodeGen::new();
+    let ir = codegen.generate(&program).unwrap();
+    assert!(ir.contains("foo"));
+    assert!(ir.contains("bar"));
+}
+
+#[test]
+fn test_codegen_text_with_contract() {
+    let program = lower_to_mir("fn safe(x: i64) -> i64 pre x >= 0 = x;");
+    let codegen = bmb::codegen::TextCodeGen::new();
+    let result = codegen.generate(&program);
+    assert!(result.is_ok());
+}
+
+#[test]
+fn test_codegen_wasm_simple_function() {
+    let program = lower_to_mir("fn add(a: i64, b: i64) -> i64 = a + b;");
+    let codegen = bmb::codegen::WasmCodeGen::new();
+    let result = codegen.generate(&program);
+    assert!(result.is_ok(), "wasm codegen should succeed");
+    let wat = result.unwrap();
+    assert!(wat.contains("module") || wat.contains("func"), "WASM should contain module/func");
+}
+
+#[test]
+fn test_codegen_wasm_with_target() {
+    let program = lower_to_mir("fn id(x: i64) -> i64 = x;");
+    let codegen = bmb::codegen::WasmCodeGen::with_target(bmb::codegen::WasmTarget::Wasi);
+    let result = codegen.generate(&program);
+    assert!(result.is_ok());
+}
+
+#[test]
+fn test_codegen_wasm_multiple_functions() {
+    let program = lower_to_mir("fn a() -> i64 = 1; fn b() -> i64 = 2;");
+    let codegen = bmb::codegen::WasmCodeGen::new();
+    let result = codegen.generate(&program);
+    assert!(result.is_ok());
+}
