@@ -1261,10 +1261,10 @@ fn test_parse_invalid_edge_cases() {
 
 #[test]
 fn test_parse_float_literal() {
-    let prog = parse_ok("fn pi() -> f64 = 3.14;");
+    let prog = parse_ok("fn pi() -> f64 = 1.23;");
     if let Item::FnDef(f) = &prog.items[0] {
         if let Expr::FloatLit(v) = &f.body.node {
-            assert!((*v - 3.14).abs() < 1e-10);
+            assert!((*v - 1.23).abs() < 1e-10);
         } else {
             panic!("Expected FloatLit, got {:?}", f.body.node);
         }

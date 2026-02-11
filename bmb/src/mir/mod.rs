@@ -2433,7 +2433,7 @@ mod tests {
     fn test_format_constant_all_types() {
         assert_eq!(format_constant(&Constant::Int(99)), "I:99");
         assert_eq!(format_constant(&Constant::Int(-5)), "I:-5");
-        assert_eq!(format_constant(&Constant::Float(3.14)), "F:3.14");
+        assert_eq!(format_constant(&Constant::Float(1.23)), "F:1.23");
         assert_eq!(format_constant(&Constant::Bool(true)), "B:1");
         assert_eq!(format_constant(&Constant::Bool(false)), "B:0");
         assert_eq!(format_constant(&Constant::String("test".to_string())), "S:\"test\"");

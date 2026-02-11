@@ -1169,7 +1169,7 @@ mod tests {
 
         assert_eq!(format_expr(&Expr::StringLit("hello".to_string())), "\"hello\"");
         assert_eq!(format_expr(&Expr::CharLit('A')), "'A'");
-        assert_eq!(format_expr(&Expr::FloatLit(3.14)), "3.14");
+        assert_eq!(format_expr(&Expr::FloatLit(1.23)), "1.23");
     }
 
     #[test]

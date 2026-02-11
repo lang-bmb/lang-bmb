@@ -12755,19 +12755,19 @@ mod tests {
 
     #[test]
     fn test_string_concat_opt_default() {
-        let opt = StringConcatOptimization::default();
+        let opt = StringConcatOptimization;
         assert_eq!(opt.name(), "StringConcatOptimization");
     }
 
     #[test]
     fn test_if_else_to_switch_default() {
-        let opt = IfElseToSwitch::default();
+        let opt = IfElseToSwitch;
         assert_eq!(opt.name(), "IfElseToSwitch");
     }
 
     #[test]
     fn test_tail_recursive_to_loop_default() {
-        let opt = TailRecursiveToLoop::default();
+        let opt = TailRecursiveToLoop;
         assert_eq!(opt.name(), "TailRecursiveToLoop");
     }
 
@@ -13047,7 +13047,8 @@ mod tests {
         // `start` (param 0) feeds into phi, so it's a loop variable — could be narrowed
         // `acc` (param 2) feeds into phi — could be narrowed
         // But the key assertion is that `end` stays i64
-        assert!(changed || !changed, "changed status depends on other params");
+        // `end` (param 1) should remain i64 regardless of changed status
+        let _ = changed;
     }
 
     // v0.90.25: While-loop bound detection (alloca-based pattern, no phi nodes)
@@ -13984,7 +13985,8 @@ mod tests {
         let pass = PhiSimplification;
         let changed = pass.run_on_function(&mut func);
         // Empty phi is a degenerate case — pass should handle gracefully
-        assert!(!changed || changed, "empty phi should not crash");
+        // Empty phi is a degenerate case — pass should handle gracefully without crashing
+        let _ = changed;
     }
 
     #[test]

@@ -5976,7 +5976,7 @@ mod tests {
     fn test_constant_type_all_variants() {
         let cg = TextCodeGen::new();
         assert_eq!(cg.constant_type(&Constant::Int(42)), "i64");
-        assert_eq!(cg.constant_type(&Constant::Float(3.14)), "double");
+        assert_eq!(cg.constant_type(&Constant::Float(1.23)), "double");
         assert_eq!(cg.constant_type(&Constant::Bool(true)), "i1");
         assert_eq!(cg.constant_type(&Constant::String("hi".to_string())), "ptr");
         assert_eq!(cg.constant_type(&Constant::Char('A')), "i32");

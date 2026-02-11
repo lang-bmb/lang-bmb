@@ -3390,10 +3390,10 @@ fn test_interp_mutual_recursion() {
 #[test]
 fn test_interp_f64_operations() {
     let result = run_program(
-        "fn main() -> f64 = 3.14 * 2.0;"
+        "fn main() -> f64 = 1.5 * 2.0;"
     );
     match result {
-        Value::Float(f) => assert!((f - 6.28).abs() < 0.001),
+        Value::Float(f) => assert!((f - 3.0).abs() < 0.001),
         other => panic!("expected Float, got {:?}", other),
     }
 }
