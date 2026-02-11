@@ -5803,3 +5803,185 @@ fn test_type_generic_with_bool_typechecks() {
          fn main() -> bool = first(true, false);"
     ));
 }
+
+// ========================================================================
+// Cycle 224: Error Detection Coverage Tests
+// ========================================================================
+
+/// Helper: check that a program fails to parse
+fn parse_error(source: &str) -> bool {
+    let tokens = match tokenize(source) {
+        Ok(t) => t,
+        Err(_) => return true, // Lexer error counts as parse error
+    };
+    parse("test.bmb", source, tokens).is_err()
+}
+
+// --- Argument Count Mismatch ---
+
+#[test]
+fn test_error_too_few_args() {
+    assert!(type_error(
+        "fn add(a: i64, b: i64) -> i64 = a + b;
+         fn main() -> i64 = add(1);"
+    ));
+}
+
+#[test]
+fn test_error_too_many_args() {
+    assert!(type_error(
+        "fn add(a: i64, b: i64) -> i64 = a + b;
+         fn main() -> i64 = add(1, 2, 3);"
+    ));
+}
+
+// --- Type Mismatch Errors ---
+
+#[test]
+fn test_error_bool_where_int_expected() {
+    assert!(type_error(
+        "fn main() -> i64 = true;"
+    ));
+}
+
+#[test]
+fn test_error_int_where_bool_expected() {
+    assert!(type_error(
+        "fn main() -> bool = 42;"
+    ));
+}
+
+#[test]
+fn test_error_string_where_int_expected() {
+    assert!(type_error(
+        r#"fn main() -> i64 = "hello";"#
+    ));
+}
+
+#[test]
+fn test_error_arithmetic_on_bool() {
+    assert!(type_error(
+        "fn main() -> i64 = true + false;"
+    ));
+}
+
+#[test]
+fn test_error_comparison_mixed_types() {
+    assert!(type_error(
+        r#"fn main() -> bool = 42 == "hello";"#
+    ));
+}
+
+// --- Undefined References ---
+
+#[test]
+fn test_error_undefined_function() {
+    assert!(type_error(
+        "fn main() -> i64 = nonexistent(42);"
+    ));
+}
+
+#[test]
+fn test_error_undefined_variable() {
+    assert!(type_error(
+        "fn main() -> i64 = x + 1;"
+    ));
+}
+
+#[test]
+fn test_error_undefined_struct() {
+    assert!(type_error(
+        "fn main() -> i64 = { let p = new Missing { x: 1 }; 0 };"
+    ));
+}
+
+// --- Struct Errors ---
+
+#[test]
+fn test_error_missing_struct_field() {
+    assert!(type_error(
+        "struct Point { x: i64, y: i64 }
+         fn main() -> Point = new Point { x: 1 };"
+    ));
+}
+
+#[test]
+fn test_error_field_access_on_non_struct() {
+    // Cannot access .field on an integer
+    assert!(type_error(
+        "fn main() -> i64 = { let x: i64 = 42; x.field };"
+    ));
+}
+
+#[test]
+fn test_error_wrong_field_type_in_struct() {
+    assert!(type_error(
+        r#"struct Pair { a: i64, b: i64 }
+         fn main() -> Pair = new Pair { a: "bad", b: 0 };"#
+    ));
+}
+
+// --- Enum Errors ---
+
+#[test]
+fn test_error_unknown_enum_variant() {
+    assert!(type_error(
+        "enum Color { Red, Green, Blue }
+         fn main() -> Color = Color::Yellow;"
+    ));
+}
+
+// --- Return Type Mismatch ---
+
+#[test]
+fn test_error_void_function_returning_value() {
+    assert!(type_error(
+        "fn bad() -> () = 42;"
+    ));
+}
+
+#[test]
+fn test_error_non_void_function_returning_unit() {
+    assert!(type_error(
+        "fn bad() -> i64 = ();"
+    ));
+}
+
+// --- Control Flow Type Errors ---
+
+#[test]
+fn test_error_if_condition_not_bool() {
+    assert!(type_error(
+        "fn main() -> i64 = if 42 { 1 } else { 0 };"
+    ));
+}
+
+#[test]
+fn test_error_while_condition_not_bool() {
+    assert!(type_error(
+        "fn main() -> i64 = { while 1 { 0 }; 0 };"
+    ));
+}
+
+// --- Parse Errors ---
+
+#[test]
+fn test_parse_error_unclosed_brace() {
+    assert!(parse_error(
+        "fn main() -> i64 = { 42"
+    ));
+}
+
+#[test]
+fn test_parse_error_missing_return_type() {
+    assert!(parse_error(
+        "fn main() = 42;"
+    ));
+}
+
+#[test]
+fn test_parse_error_missing_semicolon() {
+    assert!(parse_error(
+        "fn main() -> i64 = 42"
+    ));
+}
