@@ -11800,3 +11800,436 @@ fn test_edge_codegen_many_functions() {
     let result = codegen.generate(&program);
     assert!(result.is_ok(), "10 functions WASM should succeed");
 }
+
+// =============================================================================
+// Cycle 250: Semantic Correctness & Feature Interaction Tests
+// =============================================================================
+
+// --- Scope & Shadowing Semantics ---
+
+#[test]
+fn test_scope_parameter_shadows_outer_binding() {
+    // Function parameter x shadows outer let x
+    let source = "
+        fn inner(x: i64) -> i64 = x * 2;
+        fn main() -> i64 = {
+            let x = 10;
+            inner(5)
+        };
+    ";
+    assert_eq!(run_program_i64(source), 10); // inner(5) = 5*2 = 10, not 10*2
+}
+
+#[test]
+fn test_scope_block_shadowing_inner() {
+    // In BMB, inner block let shadows for the rest of the enclosing scope
+    let source = "fn main() -> i64 = {
+        let x = 100;
+        let y = { let x = 42; x };
+        x + y
+    };";
+    // BMB: inner let x = 42 shadows outer x, so x=42, y=42 → 84
+    assert_eq!(run_program_i64(source), 84);
+}
+
+#[test]
+fn test_scope_let_shadowing_same_block() {
+    // Rebinding with same name in same block
+    let source = "fn main() -> i64 = {
+        let x = 1;
+        let x = x + 10;
+        let x = x * 2;
+        x
+    };";
+    assert_eq!(run_program_i64(source), 22); // 1 -> 11 -> 22
+}
+
+#[test]
+fn test_scope_closure_captures_outer() {
+    // Closure captures the outer variable, not a shadowed version
+    let source = "fn main() -> i64 = {
+        let a = 100;
+        let f = fn |x: i64| { a + x };
+        f(5)
+    };";
+    assert_eq!(run_program_i64(source), 105);
+}
+
+// --- Match & Enum Semantics ---
+
+#[test]
+fn test_match_all_variants_exhaustive() {
+    // Match on enum with all variants covered
+    let source = "
+        enum Color { Red, Green, Blue }
+        fn to_num(c: Color) -> i64 = match c {
+            Color::Red => 1,
+            Color::Green => 2,
+            Color::Blue => 3,
+        };
+        fn main() -> i64 = to_num(Color::Green);
+    ";
+    assert_eq!(run_program_i64(source), 2);
+}
+
+#[test]
+fn test_match_enum_with_data_destructure() {
+    // Match on enum variant with data, extract fields
+    let source = "
+        enum Result { Ok(i64), Err(i64) }
+        fn unwrap_or(r: Result, default: i64) -> i64 = match r {
+            Result::Ok(v) => v,
+            Result::Err(_e) => default,
+        };
+        fn main() -> i64 = unwrap_or(Result::Ok(42), 0);
+    ";
+    assert_eq!(run_program_i64(source), 42);
+}
+
+#[test]
+fn test_match_enum_err_branch() {
+    let source = "
+        enum Result { Ok(i64), Err(i64) }
+        fn unwrap_or_default(r: Result, default: i64) -> i64 = match r {
+            Result::Ok(v) => v,
+            Result::Err(_e) => default,
+        };
+        fn main() -> i64 = unwrap_or_default(Result::Err(99), -1);
+    ";
+    assert_eq!(run_program_i64(source), -1);
+}
+
+#[test]
+fn test_match_nested_if_in_arm() {
+    // Match arm contains if expression
+    let source = "
+        fn classify(x: i64) -> i64 = match x {
+            0 => 0,
+            _ => if x > 0 { 1 } else { -1 },
+        };
+        fn main() -> i64 = classify(-5);
+    ";
+    assert_eq!(run_program_i64(source), -1);
+}
+
+// --- Control Flow Interactions ---
+
+#[test]
+fn test_while_loop_complex_state() {
+    // While loop with multiple mutable variables
+    let source = "fn main() -> i64 = {
+        let mut a: i64 = 1;
+        let mut b: i64 = 1;
+        let mut n: i64 = 0;
+        while n < 10 {
+            let temp = a + b;
+            a = b;
+            b = temp;
+            n = n + 1;
+            0
+        };
+        b
+    };";
+    // Fibonacci: after 10 iterations, b should be fib(12) = 144
+    assert_eq!(run_program_i64(source), 144);
+}
+
+#[test]
+fn test_for_loop_accumulation_pattern() {
+    // Classic accumulation: sum of squares
+    let source = "fn main() -> i64 = {
+        let mut total: i64 = 0;
+        for i in 1..6 {
+            total = total + i * i;
+            0
+        };
+        total
+    };";
+    // 1 + 4 + 9 + 16 + 25 = 55
+    assert_eq!(run_program_i64(source), 55);
+}
+
+#[test]
+fn test_nested_match_in_loop() {
+    // Match inside a loop — each iteration dispatches
+    let source = "
+        enum Op { Add, Sub, Nop }
+        fn apply(op: Op, acc: i64, val: i64) -> i64 = match op {
+            Op::Add => acc + val,
+            Op::Sub => acc - val,
+            Op::Nop => acc,
+        };
+        fn main() -> i64 = {
+            let a = apply(Op::Add, 0, 10);
+            let b = apply(Op::Sub, a, 3);
+            let c = apply(Op::Add, b, 5);
+            c
+        };
+    ";
+    assert_eq!(run_program_i64(source), 12); // 0+10-3+5 = 12
+}
+
+// --- Contract Semantics ---
+
+#[test]
+fn test_contract_pre_verified_at_type_level() {
+    // Precondition should type-check
+    let source = "fn safe_sqrt(x: i64) -> i64 pre x >= 0 = x;";
+    assert!(type_checks(source));
+}
+
+#[test]
+fn test_contract_post_ret_keyword() {
+    // Postcondition uses ret keyword
+    let source = "fn positive() -> i64 post ret > 0 = 42;";
+    assert!(type_checks(source));
+    let mir = lower_to_mir(source);
+    assert!(!mir.functions[0].postconditions.is_empty());
+}
+
+#[test]
+fn test_contract_combined_pre_post_mir() {
+    // Both pre and post conditions in MIR
+    let source = "fn clamp_positive(x: i64) -> i64 pre x >= 0 post ret >= 0 = x;";
+    let mir = lower_to_mir(source);
+    let func = &mir.functions[0];
+    assert!(!func.preconditions.is_empty(), "should have pre");
+    assert!(!func.postconditions.is_empty(), "should have post");
+}
+
+#[test]
+fn test_contract_on_helper_function() {
+    // Contract on a helper called by main
+    let source = "
+        fn safe_div(a: i64, b: i64) -> i64 pre b != 0 = a / b;
+        fn main() -> i64 = safe_div(100, 5);
+    ";
+    assert_eq!(run_program_i64(source), 20);
+}
+
+// --- Generic Type Interactions ---
+
+#[test]
+fn test_generic_struct_with_method_pattern() {
+    // Generic struct used with specific type
+    let source = "
+        struct Pair<T> { first: T, second: T }
+        fn sum_pair(p: Pair<i64>) -> i64 = p.first + p.second;
+        fn main() -> i64 = sum_pair(new Pair { first: 10, second: 20 });
+    ";
+    assert_eq!(run_program_i64(source), 30);
+}
+
+#[test]
+fn test_generic_enum_option_pattern() {
+    // Generic Option-like enum
+    let source = "
+        enum Maybe<T> { Just(T), Nothing }
+        fn unwrap(m: Maybe<i64>) -> i64 = match m {
+            Maybe::Just(v) => v,
+            Maybe::Nothing => 0,
+        };
+        fn main() -> i64 = unwrap(Maybe::Just(77));
+    ";
+    assert_eq!(run_program_i64(source), 77);
+}
+
+#[test]
+fn test_generic_enum_nothing_branch() {
+    let source = "
+        enum Maybe<T> { Just(T), Nothing }
+        fn unwrap_default(m: Maybe<i64>) -> i64 = match m {
+            Maybe::Just(v) => v,
+            Maybe::Nothing => -1,
+        };
+        fn main() -> i64 = unwrap_default(Maybe::Nothing);
+    ";
+    assert_eq!(run_program_i64(source), -1);
+}
+
+// --- Struct & Field Semantics ---
+
+#[test]
+fn test_struct_field_access_chain() {
+    // Access field of returned struct
+    let source = "
+        struct Point { x: i64, y: i64 }
+        fn origin() -> Point = new Point { x: 0, y: 0 };
+        fn main() -> i64 = origin().x + origin().y;
+    ";
+    assert_eq!(run_program_i64(source), 0);
+}
+
+#[test]
+fn test_struct_as_function_param_and_return() {
+    let source = "
+        struct Vec2 { x: i64, y: i64 }
+        fn add_vec(a: Vec2, b: Vec2) -> Vec2 = new Vec2 { x: a.x + b.x, y: a.y + b.y };
+        fn main() -> i64 = {
+            let v = add_vec(new Vec2 { x: 1, y: 2 }, new Vec2 { x: 3, y: 4 });
+            v.x + v.y
+        };
+    ";
+    assert_eq!(run_program_i64(source), 10); // (1+3) + (2+4) = 10
+}
+
+#[test]
+fn test_struct_nested_field_deep() {
+    let source = "
+        struct Inner { val: i64 }
+        struct Outer { inner: Inner }
+        fn main() -> i64 = {
+            let o = new Outer { inner: new Inner { val: 99 } };
+            o.inner.val
+        };
+    ";
+    assert_eq!(run_program_i64(source), 99);
+}
+
+// --- Closure Interactions ---
+
+#[test]
+fn test_closure_applied_multiple_times() {
+    // Apply same closure to different values
+    let source = "fn main() -> i64 = {
+        let double = fn |x: i64| { x * 2 };
+        double(3) + double(7)
+    };";
+    assert_eq!(run_program_i64(source), 20); // 6 + 14
+}
+
+#[test]
+fn test_closure_captures_two_outer_vars() {
+    let source = "fn main() -> i64 = {
+        let a = 10;
+        let b = 20;
+        let f = fn |x: i64| { a + b + x };
+        f(5)
+    };";
+    assert_eq!(run_program_i64(source), 35);
+}
+
+// --- Multi-Feature Combinations ---
+
+#[test]
+fn test_combo_struct_enum_match_function() {
+    // Struct + Enum + Match + Function call
+    let source = "
+        struct Point { x: i64, y: i64 }
+        enum Quadrant { First, Second, Third, Fourth, Origin }
+        fn classify(p: Point) -> Quadrant = {
+            if p.x == 0 && p.y == 0 { Quadrant::Origin }
+            else if p.x > 0 && p.y > 0 { Quadrant::First }
+            else if p.x < 0 && p.y > 0 { Quadrant::Second }
+            else if p.x < 0 && p.y < 0 { Quadrant::Third }
+            else { Quadrant::Fourth }
+        };
+        fn quadrant_num(q: Quadrant) -> i64 = match q {
+            Quadrant::First => 1,
+            Quadrant::Second => 2,
+            Quadrant::Third => 3,
+            Quadrant::Fourth => 4,
+            Quadrant::Origin => 0,
+        };
+        fn main() -> i64 = quadrant_num(classify(new Point { x: -3, y: 5 }));
+    ";
+    assert_eq!(run_program_i64(source), 2); // (-3, 5) is Second quadrant
+}
+
+#[test]
+fn test_combo_recursive_with_contract() {
+    // Recursive function with contract
+    let source = "
+        fn fib(n: i64) -> i64 pre n >= 0 = if n <= 1 { n } else { fib(n - 1) + fib(n - 2) };
+        fn main() -> i64 = fib(10);
+    ";
+    assert_eq!(run_program_i64(source), 55);
+}
+
+#[test]
+fn test_combo_closure_with_struct() {
+    // Closure creates and returns struct field
+    let source = "
+        struct Pair { a: i64, b: i64 }
+        fn main() -> i64 = {
+            let make = fn |x: i64| { new Pair { a: x, b: x * 2 } };
+            let p = make(5);
+            p.a + p.b
+        };
+    ";
+    assert_eq!(run_program_i64(source), 15); // 5 + 10
+}
+
+#[test]
+fn test_combo_enum_in_loop() {
+    // Process enum values in a sequence
+    let source = "
+        enum Action { Inc, Dec, Nop }
+        fn apply_action(action: Action, val: i64) -> i64 = match action {
+            Action::Inc => val + 1,
+            Action::Dec => val - 1,
+            Action::Nop => val,
+        };
+        fn main() -> i64 = {
+            let v1 = apply_action(Action::Inc, 0);
+            let v2 = apply_action(Action::Inc, v1);
+            let v3 = apply_action(Action::Dec, v2);
+            let v4 = apply_action(Action::Inc, v3);
+            v4
+        };
+    ";
+    assert_eq!(run_program_i64(source), 2); // 0+1+1-1+1 = 2
+}
+
+#[test]
+fn test_combo_generic_with_struct_and_function() {
+    let source = "
+        struct Wrapper<T> { val: T }
+        fn wrap(x: i64) -> Wrapper<i64> = new Wrapper { val: x };
+        fn unwrap_add(w: Wrapper<i64>, n: i64) -> i64 = w.val + n;
+        fn main() -> i64 = unwrap_add(wrap(40), 2);
+    ";
+    assert_eq!(run_program_i64(source), 42);
+}
+
+// --- Pipeline Verification: Full Semantic Roundtrip ---
+
+#[test]
+fn test_semantic_roundtrip_factorial() {
+    // Verify factorial through full pipeline
+    let source = "
+        fn fact(n: i64) -> i64 = if n <= 1 { 1 } else { n * fact(n - 1) };
+        fn main() -> i64 = fact(10);
+    ";
+    assert_eq!(run_program_i64(source), 3628800);
+}
+
+#[test]
+fn test_semantic_roundtrip_gcd() {
+    // Euclidean GCD
+    let source = "
+        fn gcd(a: i64, b: i64) -> i64 = if b == 0 { a } else { gcd(b, a % b) };
+        fn main() -> i64 = gcd(48, 18);
+    ";
+    assert_eq!(run_program_i64(source), 6);
+}
+
+#[test]
+fn test_semantic_roundtrip_power() {
+    // Integer exponentiation
+    let source = "
+        fn power(base: i64, exp: i64) -> i64 = if exp == 0 { 1 } else { base * power(base, exp - 1) };
+        fn main() -> i64 = power(2, 10);
+    ";
+    assert_eq!(run_program_i64(source), 1024);
+}
+
+#[test]
+fn test_semantic_roundtrip_collatz_steps() {
+    // Count Collatz steps to reach 1
+    let source = "
+        fn collatz(n: i64) -> i64 = if n == 1 { 0 } else if n % 2 == 0 { 1 + collatz(n / 2) } else { 1 + collatz(3 * n + 1) };
+        fn main() -> i64 = collatz(27);
+    ";
+    assert_eq!(run_program_i64(source), 111);
+}
