@@ -6249,4 +6249,188 @@ mod tests {
         assert!(ir.contains("@bmb_user_main"), "main should be renamed to bmb_user_main");
         assert!(!ir.contains("@main("), "should not emit @main( directly");
     }
+
+    // ========================================================================
+    // Cycle 222: Loop/Break/Continue/Return codegen tests
+    // ========================================================================
+
+    #[test]
+    fn test_rt_loop_break_codegen() {
+        // loop {} with break should produce loop header, body, and exit blocks
+        let ir = source_to_ir(
+            "fn count() -> i64 = {
+               let mut x = 0;
+               loop {
+                 x = x + 1;
+                 if x >= 5 { break } else { () }
+               };
+               x
+             };"
+        );
+        assert!(ir.contains("@count"), "function definition missing");
+        // Loop should have a back edge (br to loop header)
+        assert!(ir.contains("br label"), "loop should have unconditional branch (back edge)");
+        assert!(ir.contains("ret i64"), "return missing");
+    }
+
+    #[test]
+    fn test_rt_loop_accumulator_codegen() {
+        // Iterative sum using loop with phi nodes
+        let ir = source_to_ir(
+            "fn sum_to(n: i64) -> i64 = {
+               let mut s = 0;
+               let mut i = 1;
+               loop {
+                 s = s + i;
+                 i = i + 1;
+                 if i > n { break } else { () }
+               };
+               s
+             };"
+        );
+        assert!(ir.contains("@sum_to"), "function definition missing");
+        // Text codegen uses alloca+store+load for mutable loop vars
+        assert!(ir.contains("alloca i64"), "loop vars should be stack-allocated");
+        assert!(ir.contains("add nsw i64"), "accumulator should use add");
+        assert!(ir.contains("br label %bb_loop_body"), "should have loop back-edge");
+    }
+
+    #[test]
+    fn test_rt_continue_codegen() {
+        // continue should generate branch back to loop header
+        let ir = source_to_ir(
+            "fn sum_odd(n: i64) -> i64 = {
+               let mut sum = 0;
+               let mut i = 0;
+               loop {
+                 i = i + 1;
+                 if i > n { break } else { () };
+                 if i % 2 == 0 { continue } else { () };
+                 sum = sum + i
+               };
+               sum
+             };"
+        );
+        assert!(ir.contains("@sum_odd"), "function definition missing");
+        assert!(ir.contains("alloca i64"), "loop vars should be stack-allocated");
+        assert!(ir.contains("srem i64"), "modulo should use srem");
+    }
+
+    #[test]
+    fn test_rt_return_expression_codegen() {
+        // Early return should produce ret instruction in middle of function
+        let ir = source_to_ir(
+            "fn early(n: i64) -> i64 = {
+               if n <= 0 { return 0 } else { () };
+               n * 2
+             };"
+        );
+        assert!(ir.contains("@early"), "function definition missing");
+        // Should have multiple ret instructions (one for early return, one for normal)
+        let ret_count = ir.matches("ret i64").count();
+        assert!(ret_count >= 2, "should have at least 2 ret instructions (early + normal), got {}", ret_count);
+    }
+
+    #[test]
+    fn test_rt_return_in_loop_codegen() {
+        // Return from inside loop should produce ret
+        let ir = source_to_ir(
+            "fn find_sqrt(n: i64) -> i64 = {
+               let mut i = 0;
+               loop {
+                 i = i + 1;
+                 if i * i >= n { return i } else { () }
+               };
+               0
+             };"
+        );
+        assert!(ir.contains("@find_sqrt"), "function definition missing");
+        assert!(ir.contains("mul nsw i64"), "i*i should use mul");
+    }
+
+    #[test]
+    fn test_rt_nested_loops_codegen() {
+        // Nested loops should produce distinct loop structures
+        let ir = source_to_ir(
+            "fn nested() -> i64 = {
+               let mut total = 0;
+               let mut i = 0;
+               loop {
+                 let mut j = 0;
+                 loop {
+                   total = total + 1;
+                   j = j + 1;
+                   if j >= 3 { break } else { () }
+                 };
+                 i = i + 1;
+                 if i >= 2 { break } else { () }
+               };
+               total
+             };"
+        );
+        assert!(ir.contains("@nested"), "function definition missing");
+        // Nested loops: multiple alloca vars and multiple loop body blocks
+        let alloca_count = ir.matches("alloca i64").count();
+        assert!(alloca_count >= 3, "nested loops should have multiple alloca vars, got {}", alloca_count);
+        // Should have at least 2 loop back-edges
+        let back_edge_count = ir.matches("br label %bb_loop_body").count();
+        assert!(back_edge_count >= 2, "nested loops should have at least 2 back-edges, got {}", back_edge_count);
+    }
+
+    #[test]
+    fn test_rt_recursive_call_codegen() {
+        // Recursive function should produce self-referential call
+        let ir = source_to_ir(
+            "fn count_down(n: i64) -> i64 =
+               if n <= 0 { 0 } else { count_down(n - 1) };"
+        );
+        assert!(ir.contains("@count_down"), "function definition missing");
+        // Should have recursive call to self (source_to_ir doesn't run optimization passes,
+        // so tail call annotation won't be present — test verifies recursive call structure)
+        assert!(ir.contains("call i64 @count_down"), "should have recursive call to self");
+        assert!(ir.contains("icmp sle i64"), "should have base case comparison");
+    }
+
+    #[test]
+    fn test_rt_for_loop_with_break_codegen() {
+        // For loop with break should still produce loop structure
+        let ir = source_to_ir(
+            "fn find_first(n: i64) -> i64 = {
+               let mut result = 0;
+               for i in 1..n {
+                 if i * i > 100 {
+                   result = i;
+                   break
+                 } else { () }
+               };
+               result
+             };"
+        );
+        assert!(ir.contains("@find_first"), "function definition missing");
+        // For loop uses alloca for loop variable and result
+        assert!(ir.contains("alloca i64"), "for loop should have stack-allocated vars");
+        assert!(ir.contains("mul nsw i64"), "i*i should use mul");
+    }
+
+    #[test]
+    fn test_rt_void_return_codegen() {
+        // Unit return type should produce void function
+        let ir = source_to_ir(
+            "fn do_nothing() -> () = ();"
+        );
+        assert!(ir.contains("@do_nothing"), "function definition missing");
+        assert!(ir.contains("ret void"), "unit return should produce ret void");
+    }
+
+    #[test]
+    fn test_rt_select_pattern_codegen() {
+        // Simple if-else expression should produce select or branch+phi
+        let ir = source_to_ir(
+            "fn abs_val(x: i64) -> i64 = if x >= 0 { x } else { 0 - x };"
+        );
+        assert!(ir.contains("@abs_val"), "function definition missing");
+        // Should have either select instruction or branch+phi pattern
+        let has_conditional = ir.contains("select i1") || ir.contains("br i1");
+        assert!(has_conditional, "if-else should produce select or branch, got:\n{}", &ir[..500.min(ir.len())]);
+    }
 }
