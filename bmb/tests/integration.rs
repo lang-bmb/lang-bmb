@@ -12989,3 +12989,138 @@ fn test_trait_complete_impl_at_runtime() {
     ";
     assert_eq!(run_program_i64(source), 15 + 20);
 }
+
+// ===== v0.90.42: WASM Text Codegen — String Constants =====
+
+fn compile_to_wat(source: &str) -> String {
+    let tokens = bmb::lexer::tokenize(source).expect("tokenize failed");
+    let ast = bmb::parser::parse("<test>", source, tokens).expect("parse failed");
+    let mut tc = bmb::types::TypeChecker::new();
+    tc.check_program(&ast).expect("type check failed");
+    let mir = bmb::mir::lower_program(&ast);
+    let codegen = bmb::codegen::WasmCodeGen::new();
+    codegen.generate(&mir).expect("wasm codegen failed")
+}
+
+fn compile_to_wat_with_target(source: &str, target: bmb::codegen::WasmTarget) -> String {
+    let tokens = bmb::lexer::tokenize(source).expect("tokenize failed");
+    let ast = bmb::parser::parse("<test>", source, tokens).expect("parse failed");
+    let mut tc = bmb::types::TypeChecker::new();
+    tc.check_program(&ast).expect("type check failed");
+    let mir = bmb::mir::lower_program(&ast);
+    let codegen = bmb::codegen::WasmCodeGen::with_target(target);
+    codegen.generate(&mir).expect("wasm codegen failed")
+}
+
+#[test]
+fn test_wasm_string_constant_data_section() {
+    let source = r#"
+        fn greet() -> String = "hello";
+        fn main() -> i64 = 0;
+    "#;
+    let wat = compile_to_wat(source);
+    assert!(wat.contains("(data (i32.const"), "WAT should contain data section for string constants");
+    assert!(wat.contains("hello"), "WAT data section should contain the string bytes");
+}
+
+#[test]
+fn test_wasm_string_constant_offset() {
+    let source = r#"
+        fn greet() -> String = "hello";
+        fn main() -> i64 = 0;
+    "#;
+    let wat = compile_to_wat(source);
+    // String should get offset 2048 (start of data area)
+    assert!(wat.contains("i32.const 2048"), "String constant should use interned offset 2048");
+}
+
+#[test]
+fn test_wasm_multiple_string_constants() {
+    let source = r#"
+        fn a() -> String = "alpha";
+        fn b() -> String = "beta";
+        fn main() -> i64 = 0;
+    "#;
+    let wat = compile_to_wat(source);
+    // Two different strings should have two data segments
+    let data_count = wat.matches("(data (i32.const").count();
+    assert!(data_count >= 2, "Should have at least 2 data segments, got {}", data_count);
+}
+
+#[test]
+fn test_wasm_string_deduplication() {
+    let source = r#"
+        fn a() -> String = "same";
+        fn b() -> String = "same";
+        fn main() -> i64 = 0;
+    "#;
+    let wat = compile_to_wat(source);
+    // Same string used twice should be deduplicated to one data segment
+    let data_count = wat.matches("(data (i32.const").count();
+    assert_eq!(data_count, 1, "Duplicate strings should be deduplicated to 1 data segment, got {}", data_count);
+}
+
+#[test]
+fn test_wasm_no_string_no_data_section() {
+    let source = r#"
+        fn main() -> i64 = 42;
+    "#;
+    let wat = compile_to_wat(source);
+    assert!(!wat.contains("(data (i32.const"), "WAT without strings should have no data section");
+}
+
+#[test]
+fn test_wasm_string_constant_no_todo() {
+    let source = r#"
+        fn greet() -> String = "hello";
+        fn main() -> i64 = 0;
+    "#;
+    let wat = compile_to_wat(source);
+    assert!(!wat.contains("TODO: string constant"), "TODO comment should be replaced with actual string handling");
+}
+
+#[test]
+fn test_wasm_browser_target_string_constant() {
+    let source = r#"
+        fn greet() -> String = "hello";
+        fn main() -> i64 = 0;
+    "#;
+    let wat = compile_to_wat_with_target(source, bmb::codegen::WasmTarget::Browser);
+    assert!(wat.contains("(data (i32.const"), "Browser target should also have string data section");
+}
+
+#[test]
+fn test_wasm_standalone_target_string_constant() {
+    let source = r#"
+        fn greet() -> String = "hello";
+        fn main() -> i64 = 0;
+    "#;
+    let wat = compile_to_wat_with_target(source, bmb::codegen::WasmTarget::Standalone);
+    assert!(wat.contains("(data (i32.const"), "Standalone target should also have string data section");
+}
+
+#[test]
+fn test_wasm_string_data_section_comment() {
+    let source = r#"
+        fn greet() -> String = "hello";
+        fn main() -> i64 = 0;
+    "#;
+    let wat = compile_to_wat(source);
+    assert!(wat.contains(";; Data section: string constants"), "Data section should have descriptive comment");
+}
+
+#[test]
+fn test_wasm_module_structure_valid() {
+    let source = r#"
+        fn greet() -> String = "world";
+        fn main() -> i64 = 0;
+    "#;
+    let wat = compile_to_wat(source);
+    // Module should start with (module and end with )
+    assert!(wat.starts_with("(module"), "WAT should start with (module");
+    assert!(wat.trim().ends_with(')'), "WAT should end with )");
+    // Data section should appear before closing paren
+    let data_pos = wat.find("(data (i32.const").unwrap();
+    let close_pos = wat.rfind(')').unwrap();
+    assert!(data_pos < close_pos, "Data section should be inside module");
+}

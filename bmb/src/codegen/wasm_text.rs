@@ -61,6 +61,10 @@ pub struct WasmCodeGen {
     target: WasmTarget,
     /// Memory pages (64KB each)
     memory_pages: u32,
+    /// v0.90.42: String constant table: string -> (offset, length)
+    string_data: std::cell::RefCell<Vec<(String, u32)>>,
+    /// v0.90.42: Next available data offset (starts after globals/IO buffer area)
+    next_data_offset: std::cell::RefCell<u32>,
 }
 
 impl WasmCodeGen {
@@ -69,6 +73,8 @@ impl WasmCodeGen {
         Self {
             target: WasmTarget::default(),
             memory_pages: 1,
+            string_data: std::cell::RefCell::new(Vec::new()),
+            next_data_offset: std::cell::RefCell::new(2048), // Start after reserved area
         }
     }
 
@@ -77,6 +83,8 @@ impl WasmCodeGen {
         Self {
             target,
             memory_pages: 1,
+            string_data: std::cell::RefCell::new(Vec::new()),
+            next_data_offset: std::cell::RefCell::new(2048),
         }
     }
 
@@ -84,6 +92,42 @@ impl WasmCodeGen {
     pub fn with_memory(mut self, pages: u32) -> Self {
         self.memory_pages = pages;
         self
+    }
+
+    /// v0.90.42: Intern a string constant and return its (offset, length)
+    fn intern_string(&self, s: &str) -> (u32, u32) {
+        // Check if already interned
+        let data = self.string_data.borrow();
+        for (existing, offset) in data.iter() {
+            if existing == s {
+                return (*offset, s.len() as u32);
+            }
+        }
+        drop(data);
+        // Add new string
+        let offset = *self.next_data_offset.borrow();
+        let len = s.len() as u32;
+        self.string_data.borrow_mut().push((s.to_string(), offset));
+        *self.next_data_offset.borrow_mut() = offset + len;
+        (offset, len)
+    }
+
+    /// v0.90.42: Emit data section with collected string constants
+    fn emit_data_section(&self, out: &mut String) -> WasmCodeGenResult<()> {
+        let data = self.string_data.borrow();
+        if data.is_empty() {
+            return Ok(());
+        }
+        writeln!(out, "  ;; Data section: string constants")?;
+        for (s, offset) in data.iter() {
+            // Escape string for WAT data segment
+            let escaped = s.bytes()
+                .map(|b| format!("\\{:02x}", b))
+                .collect::<String>();
+            writeln!(out, "  (data (i32.const {}) \"{}\")", offset, escaped)?;
+        }
+        writeln!(out)?;
+        Ok(())
     }
 
     /// Generate complete WASM module as text (.wat format)
@@ -117,6 +161,9 @@ impl WasmCodeGen {
 
         // Export main function if exists
         self.emit_exports(&mut output, program)?;
+
+        // v0.90.42: Emit string constant data section
+        self.emit_data_section(&mut output)?;
 
         writeln!(output, ")")?;
 
@@ -1264,10 +1311,11 @@ impl WasmCodeGen {
             Constant::Float(f) => writeln!(out, "    f64.const {}", f)?,
             Constant::Bool(b) => writeln!(out, "    i32.const {}", if *b { 1 } else { 0 })?,
             Constant::Unit => writeln!(out, "    ;; unit (no value)")?,
-            Constant::String(_s) => {
-                // String constants require memory management
-                writeln!(out, "    ;; TODO: string constant")?;
-                writeln!(out, "    i32.const 0")?;
+            Constant::String(s) => {
+                // v0.90.42: String constants stored in data section
+                let (offset, _len) = self.intern_string(s);
+                writeln!(out, "    i32.const {}  ;; string \"{}\"", offset,
+                    if s.len() > 20 { &s[..20] } else { s })?;
             }
             // v0.64: Character constant (Unicode codepoint as i32)
             Constant::Char(c) => writeln!(out, "    i32.const {}", *c as u32)?,
