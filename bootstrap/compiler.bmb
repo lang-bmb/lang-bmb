@@ -117,6 +117,7 @@ fn TK_PRE() -> i64 = 2000000000 + 110;
 fn TK_POST() -> i64 = 2000000000 + 111;
 fn TK_MUT() -> i64 = 2000000000 + 117;
 fn TK_WHILE() -> i64 = 2000000000 + 118;
+fn TK_LOOP() -> i64 = 2000000000 + 131;   // v0.90.31: loop keyword
 fn TK_BREAK() -> i64 = 2000000000 + 127;
 fn TK_FOR() -> i64 = 2000000000 + 125;
 fn TK_IN() -> i64 = 2000000000 + 126;
@@ -326,6 +327,7 @@ fn keyword_len4(word: String, endpos: i64) -> i64 =
     else if word == "bnot" { make_tok(TK_BNOT(), endpos) }  // v0.90.1: bitwise not
     else if word == "null" { make_tok(TK_NULL(), endpos) }  // v0.90.2: null literal
     else if word == "bxor" { make_tok(TK_BXOR(), endpos) }  // v0.90.2: bitwise xor
+    else if word == "loop" { make_tok(TK_LOOP(), endpos) }  // v0.90.31: infinite loop
     else { make_tok(TK_IDENT(), endpos) };
 
 fn keyword_len5(word: String, endpos: i64) -> i64 =
@@ -1164,6 +1166,7 @@ fn parse_expr(src: String, pos: i64) -> String =
     if kind == TK_IF() { parse_if_expr(src, tok_end(tok)) }
     else if kind == TK_LET() { parse_let_expr(src, tok_end(tok), pos) }
     else if kind == TK_WHILE() { parse_while_expr(src, tok_end(tok)) }  // v0.60.248
+    else if kind == TK_LOOP() { parse_loop_expr(src, tok_end(tok)) }   // v0.90.31: loop
     else if kind == TK_FOR() { parse_for_expr(src, tok_end(tok)) }  // v0.95: for-loop
     else if kind == TK_BREAK() { pack_result(tok_end(tok), "(break)") }  // v0.90.8: break
     else { parse_or(src, pos) };
@@ -1376,6 +1379,23 @@ fn parse_while_finish(src: String, pos: i64, cond_ast: String, body_ast: String)
     let t2 = next_token_raw(src, pos);
     if tok_kind(t2) != TK_RBRACE() { make_error_at("expected '}' after while body", src, pos) }
     else { pack_result(tok_end(t2), "(while " + cond_ast + " " + body_ast + ")") };
+
+// v0.90.31: Parse loop expression: loop { body }
+// AST format: (loop body)
+fn parse_loop_expr(src: String, pos: i64) -> String =
+    let t1 = next_token_raw(src, pos);
+    if tok_kind(t1) != TK_LBRACE() { make_error_at("expected '{' after loop", src, pos) }
+    else { parse_loop_body(src, tok_end(t1)) };
+
+fn parse_loop_body(src: String, pos: i64) -> String =
+    let rb = parse_block_stmts(src, pos);
+    if is_error(rb) { rb }
+    else { parse_loop_finish(src, unpack_pos(rb), unpack_ast(rb)) };
+
+fn parse_loop_finish(src: String, pos: i64, body_ast: String) -> String =
+    let t2 = next_token_raw(src, pos);
+    if tok_kind(t2) != TK_RBRACE() { make_error_at("expected '}' after loop body", src, pos) }
+    else { pack_result(tok_end(t2), "(loop " + body_ast + ")") };
 
 // v0.95: for-loop parser
 // Syntax: for <ident> in <start> .. <end> { <body> }
@@ -2016,6 +2036,8 @@ fn get_exit_label(ast: String, entry_label: String, block_id: i64) -> String =
         "merge_" + int_to_string(block_id)
     } else if ntype == "while" {
         "exit_" + int_to_string(block_id)
+    } else if ntype == "loop" {
+        "exit_" + int_to_string(block_id)
     } else if ntype == "for" {
         "for_end_" + int_to_string(block_id)
     // v0.90.8: break creates an after_break_N block that becomes the actual predecessor
@@ -2028,7 +2050,7 @@ fn get_exit_label(ast: String, entry_label: String, block_id: i64) -> String =
         // Check last expr first; if it doesn't create blocks, check first expr
         let last = seq_second(ast);
         let last_type = get_node_type(last);
-        if last_type == "if" or last_type == "while" or last_type == "for" or last_type == "block" or last_type == "seq" or last_type == "let" or last_type == "let_mut" or last_type == "break" {
+        if last_type == "if" or last_type == "while" or last_type == "loop" or last_type == "for" or last_type == "block" or last_type == "seq" or last_type == "let" or last_type == "let_mut" or last_type == "break" {
             get_exit_label(last, entry_label, block_id)
         } else {
             // Last expr is simple (unit, int, var, etc.) — exit comes from first
@@ -2443,6 +2465,14 @@ fn step_expr(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String
         let new_temp = unpack_temp(result);
         let new_block = unpack_block(result);
         make_step(new_temp, new_block, while_exit, "")
+    }
+    // v0.90.31: Loop support - infinite loop
+    else if ntype == "loop" {
+        let loop_exit = "exit_" + i2s(cur_block);
+        let result = lower_loop_sb(ast, cur_temp, cur_block, sb, "");
+        let new_temp = unpack_temp(result);
+        let new_block = unpack_block(result);
+        make_step(new_temp, new_block, loop_exit, "")
     }
     // v0.95: For-loop support - use recursive lowering
     // v0.90.3: Propagate for_end_N as the exit label for correct PHI predecessors
@@ -3091,7 +3121,7 @@ fn build_args_str_acc(cur: i64, end: i64, acc: String) -> String =
 // v0.90.8: Added loop_exit parameter for break statement support
 fn lower_expr_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64 =
     let ntype = get_node_type(ast);
-    if ntype == "int" { lower_int_sb(ast, temp_id, block_id, sb) } else if ntype == "float" { lower_float_sb(ast, temp_id, block_id, sb) } else if ntype == "bool" { lower_bool_sb(ast, temp_id, block_id, sb) } else if ntype == "string" { lower_string_sb(ast, temp_id, block_id, sb) } else if ntype == "var" { lower_var_sb(ast, temp_id, block_id, sb) } else if ntype == "binop" { lower_binop_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "unary" { lower_unary_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "if" { lower_if_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "let" { lower_let_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "let_mut" { lower_let_mut_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "call" { lower_call_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "method" { lower_method_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "block" { lower_block_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "unit" { lower_unit_sb(ast, temp_id, block_id, sb) } else if ntype == "seq" { lower_seq_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "assign" { lower_assign_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "while" { lower_while_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "for" { lower_for_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "field" { lower_field_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "set_field" { lower_set_field_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "index" { lower_index_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "set_index" { lower_set_index_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "break" { lower_break_sb(loop_exit, temp_id, block_id, sb) } else if ntype == "cast_ptr_f64" { lower_cast_ptr_f64_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "array_repeat" { lower_array_repeat_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "array" { lower_array_literal_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "tuple" { lower_tuple_sb(ast, temp_id, block_id, sb, loop_exit) } else { pack_ids(temp_id, block_id) };
+    if ntype == "int" { lower_int_sb(ast, temp_id, block_id, sb) } else if ntype == "float" { lower_float_sb(ast, temp_id, block_id, sb) } else if ntype == "bool" { lower_bool_sb(ast, temp_id, block_id, sb) } else if ntype == "string" { lower_string_sb(ast, temp_id, block_id, sb) } else if ntype == "var" { lower_var_sb(ast, temp_id, block_id, sb) } else if ntype == "binop" { lower_binop_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "unary" { lower_unary_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "if" { lower_if_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "let" { lower_let_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "let_mut" { lower_let_mut_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "call" { lower_call_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "method" { lower_method_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "block" { lower_block_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "unit" { lower_unit_sb(ast, temp_id, block_id, sb) } else if ntype == "seq" { lower_seq_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "assign" { lower_assign_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "while" { lower_while_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "loop" { lower_loop_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "for" { lower_for_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "field" { lower_field_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "set_field" { lower_set_field_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "index" { lower_index_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "set_index" { lower_set_index_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "break" { lower_break_sb(loop_exit, temp_id, block_id, sb) } else if ntype == "cast_ptr_f64" { lower_cast_ptr_f64_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "array_repeat" { lower_array_repeat_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "array" { lower_array_literal_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "tuple" { lower_tuple_sb(ast, temp_id, block_id, sb, loop_exit) } else { pack_ids(temp_id, block_id) };
 
 fn lower_int_sb(ast: String, temp_id: i64, block_id: i64, sb: i64) -> i64 =
     let val = extract_int_value(ast);
@@ -3400,6 +3430,33 @@ fn lower_while_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: 
     // While returns unit
     let result_tmp = "%_t" + int_to_string(body_temp);
     let w7 = sb_push_mir(sb, "  " + result_tmp + " = const 0");
+    pack_ids(body_temp + 1, body_block);
+
+// v0.90.31: Loop expression - infinite loop with break support
+// AST: (loop body) → MIR:
+//   goto loop_N
+//   loop_N:
+//     <body code>
+//     goto loop_N
+//   exit_N:
+//     %result = const 0   ; loop returns unit
+fn lower_loop_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64 =
+    let body_ast = get_child(ast, 0);
+    let loop_label = "loop_" + int_to_string(block_id);
+    let exit_label = "exit_" + int_to_string(block_id);
+    // Jump to loop header
+    let w1 = sb_push_mir(sb, "  goto " + loop_label);
+    let w2 = sb_push_mir(sb, loop_label + ":");
+    // Lower body - pass exit_label so break can jump to it
+    let body_result = lower_expr_sb(body_ast, temp_id, block_id + 1, sb, exit_label);
+    let body_temp = unpack_temp(body_result);
+    let body_block = unpack_block(body_result);
+    // Jump back to loop header (unconditional)
+    let w3 = sb_push_mir(sb, "  goto " + loop_label);
+    let w4 = sb_push_mir(sb, exit_label + ":");
+    // Loop returns unit
+    let result_tmp = "%_t" + int_to_string(body_temp);
+    let w5 = sb_push_mir(sb, "  " + result_tmp + " = const 0");
     pack_ids(body_temp + 1, body_block);
 
 // v0.90.8: Break statement - jump to loop exit label

@@ -53,6 +53,7 @@ fn TK_TRAIT() -> i64 = 127;   // v0.30.57: trait keyword
 fn TK_IMPL() -> i64 = 128;    // v0.30.57: impl keyword
 fn TK_NULL() -> i64 = 129;    // v0.51.41: null keyword
 fn TK_SIZEOF() -> i64 = 130;  // v0.51.41: sizeof keyword
+fn TK_LOOP() -> i64 = 131;    // v0.90.31: loop keyword
 
 fn TK_I32() -> i64 = 150;
 fn TK_I64() -> i64 = 151;
@@ -137,7 +138,7 @@ fn find_string_end(s: String, pos: i64) -> i64 =
 
 // Keyword lookup table: struct/new=v0.22.0, enum/match=v0.22.1, while=v0.30.37, for/in=v0.30.39, break/continue=v0.30.42, trait/impl=v0.30.57, null/sizeof=v0.51.41
 fn lookup_keyword(w: String) -> i64 =
-    if w == "fn" { 100 } else if w == "let" { 101 } else if w == "if" { 102 } else if w == "then" { 103 } else if w == "else" { 104 } else if w == "true" { 105 } else if w == "false" { 106 } else if w == "and" { 107 } else if w == "or" { 108 } else if w == "not" { 109 } else if w == "pre" { 110 } else if w == "post" { 111 } else if w == "mut" { 117 } else if w == "struct" { 118 } else if w == "new" { 119 } else if w == "enum" { 120 } else if w == "match" { 121 } else if w == "while" { 122 } else if w == "for" { 123 } else if w == "in" { 124 } else if w == "break" { 125 } else if w == "continue" { 126 } else if w == "trait" { 127 } else if w == "impl" { 128 } else if w == "null" { 129 } else if w == "sizeof" { 130 } else if w == "i32" { 150 } else if w == "i64" { 151 } else if w == "f64" { 152 } else if w == "bool" { 153 } else if w == "String" { 154 } else { 201 };
+    if w == "fn" { 100 } else if w == "let" { 101 } else if w == "if" { 102 } else if w == "then" { 103 } else if w == "else" { 104 } else if w == "true" { 105 } else if w == "false" { 106 } else if w == "and" { 107 } else if w == "or" { 108 } else if w == "not" { 109 } else if w == "pre" { 110 } else if w == "post" { 111 } else if w == "mut" { 117 } else if w == "struct" { 118 } else if w == "new" { 119 } else if w == "enum" { 120 } else if w == "match" { 121 } else if w == "while" { 122 } else if w == "for" { 123 } else if w == "in" { 124 } else if w == "break" { 125 } else if w == "continue" { 126 } else if w == "trait" { 127 } else if w == "impl" { 128 } else if w == "null" { 129 } else if w == "sizeof" { 130 } else if w == "loop" { 131 } else if w == "i32" { 150 } else if w == "i64" { 151 } else if w == "f64" { 152 } else if w == "bool" { 153 } else if w == "String" { 154 } else { 201 };
 
 // Symbol codes: | (124)=309 for lambda params (v0.30.35), [ (91)=313 and ] (93)=314 for arrays (v0.30.60), @ (64)=315 for attributes (v0.52), ? (63)=316 for nullable types (v0.97)
 fn symbol_code(c: i64) -> i64 =
@@ -882,7 +883,7 @@ fn parse_primary(src: String, pos: i64) -> String =
     // v0.30.32: String literal - keep raw form with quotes
     // v0.30.37: while, v0.30.39: for, v0.30.42: break/continue
     // v0.22.0: struct init, v0.22.1: match expr, v0.30.35: lambda expr, v0.30.60: array literal
-    if kind == TK_INT() { pack_result(end, "(int " + text + ")") } else if kind == TK_FLOAT() { pack_result(end, "(float " + text + ")") } else if kind == TK_TRUE() { pack_result(end, "(bool true)") } else if kind == TK_FALSE() { pack_result(end, "(bool false)") } else if kind == TK_STRING() { pack_result(end, text) } else if kind == TK_IDENT() { parse_call_or_var(src, end, text) } else if kind == TK_LPAREN() { parse_paren(src, end) } else if kind == TK_IF() { parse_if(src, end) } else if kind == TK_WHILE() { parse_while(src, end) } else if kind == TK_FOR() { parse_for(src, end) } else if kind == TK_BREAK() { parse_break(src, end) } else if kind == TK_CONTINUE() { parse_continue(src, end) } else if kind == TK_LET() { parse_let(src, end) } else if kind == TK_NOT() {
+    if kind == TK_INT() { pack_result(end, "(int " + text + ")") } else if kind == TK_FLOAT() { pack_result(end, "(float " + text + ")") } else if kind == TK_TRUE() { pack_result(end, "(bool true)") } else if kind == TK_FALSE() { pack_result(end, "(bool false)") } else if kind == TK_STRING() { pack_result(end, text) } else if kind == TK_IDENT() { parse_call_or_var(src, end, text) } else if kind == TK_LPAREN() { parse_paren(src, end) } else if kind == TK_IF() { parse_if(src, end) } else if kind == TK_WHILE() { parse_while(src, end) } else if kind == TK_LOOP() { parse_loop(src, end) } else if kind == TK_FOR() { parse_for(src, end) } else if kind == TK_BREAK() { parse_break(src, end) } else if kind == TK_CONTINUE() { parse_continue(src, end) } else if kind == TK_LET() { parse_let(src, end) } else if kind == TK_NOT() {
         let r = parse_primary(src, end);
         if is_error(unpack_ast(r)) { r } else { pack_result(unpack_pos(r), "(not " + unpack_ast(r) + ")") }
     } else if kind == TK_MINUS() {
@@ -1164,6 +1165,25 @@ fn parse_while(src: String, pos: i64) -> String =
             if is_error(unpack_ast(rb)) { rb } else {
                 let t2 = next_token_raw(src, unpack_pos(rb));
                 if tok_kind(t2) != TK_RBRACE() { pack_result(unpack_pos(rb), make_error("while-rbrace")) } else { pack_result(tok_end(t2), "(while " + unpack_ast(rc) + " " + unpack_ast(rb) + ")") }
+            }
+        }
+    };
+
+// ============================================================
+// v0.90.31: Loop Expression Parser (infinite loop)
+// ============================================================
+
+// Parse loop expression: loop { body }
+// AST format: (loop body)
+fn parse_loop(src: String, pos: i64) -> String =
+    // pos is after 'loop', expect '{'
+    let t1 = next_token_raw(src, pos);
+    if tok_kind(t1) != TK_LBRACE() { pack_result(pos, make_error("loop-lbrace")) } else {
+        let rb = parse_block_stmts(src, tok_end(t1));
+        if is_error(unpack_ast(rb)) { rb } else {
+            let t2 = next_token_raw(src, unpack_pos(rb));
+            if tok_kind(t2) != TK_RBRACE() { pack_result(unpack_pos(rb), make_error("loop-rbrace")) } else {
+                pack_result(tok_end(t2), "(loop " + unpack_ast(rb) + ")")
             }
         }
     };

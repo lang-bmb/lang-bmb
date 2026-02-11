@@ -216,6 +216,20 @@ fn is_while_node(s: String) -> bool =
         c0 == 40 and c1 == 119 and c2 == 104 and c3 == 105 and c4 == 108 and c5 == 101 and c6 == 32
     };
 
+// v0.90.31: Loop expression support (infinite loop)
+// Loop format: (loop body)
+// '(' = 40, 'l' = 108, 'o' = 111, 'o' = 111, 'p' = 112, ' ' = 32
+fn is_loop_node(s: String) -> bool =
+    if s.len() < 8 { false } else {
+        let c0 = s.byte_at(0);
+        let c1 = s.byte_at(1);
+        let c2 = s.byte_at(2);
+        let c3 = s.byte_at(3);
+        let c4 = s.byte_at(4);
+        let c5 = s.byte_at(5);
+        c0 == 40 and c1 == 108 and c2 == 111 and c3 == 111 and c4 == 112 and c5 == 32
+    };
+
 // v0.30.40: For expression support
 // For format: (for <var> iter body)
 // '(' = 40, 'f' = 102, 'o' = 111, 'r' = 114, ' ' = 32
@@ -464,6 +478,9 @@ fn get_if_else(s: String) -> String = get_child(s, 2);
 // v0.30.38: Get while condition/body
 fn get_while_cond(s: String) -> String = get_child(s, 0);
 fn get_while_body(s: String) -> String = get_child(s, 1);
+
+// v0.90.31: Get loop body (loop has single child)
+fn get_loop_body(s: String) -> String = get_child(s, 0);
 
 // v0.30.40: Get for var/iter/body
 fn get_for_var(s: String) -> String = get_child(s, 0);  // Returns "<varname>"
@@ -896,7 +913,7 @@ fn lower_expr_sb(ast: String, temp: i64, block: i64, sb: i64) -> String =
 // v0.52: Attribute expression support (@likely/@unlikely)
 // v0.51.43: Null and sizeof expression support
 fn lower_expr(ast: String, temp: i64, block: i64) -> String =
-    if is_int_node(ast) { lower_int(ast, temp, block) } else if is_float_node(ast) { lower_float(ast, temp, block) } else if is_bool_node(ast) { lower_bool(ast, temp, block) } else if is_string_node(ast) { lower_string(ast, temp, block) } else if is_var_node(ast) { lower_var(ast, temp, block) } else if is_op_node(ast) { lower_binop(ast, temp, block) } else if is_neg_node(ast) { lower_neg(ast, temp, block) } else if is_not_node(ast) { lower_not(ast, temp, block) } else if is_if_node(ast) { lower_if(ast, temp, block) } else if is_let_node(ast) or is_let_mut_node(ast) { lower_let(ast, temp, block) } else if is_call_node(ast) { lower_call(ast, temp, block) } else if is_new_node(ast) { lower_struct_init(ast, temp, block) } else if is_dot_node(ast) { lower_field_access(ast, temp, block) } else if is_enum_variant_node(ast) { lower_enum_variant(ast, temp, block) } else if is_match_node(ast) { lower_match(ast, temp, block) } else if is_lambda_node(ast) { lower_lambda(ast, temp, block) } else if is_block_node(ast) { lower_block(ast, temp, block) } else if is_unit_node(ast) { lower_unit(ast, temp, block) } else if is_seq_node(ast) { lower_seq(ast, temp, block) } else if is_assign_node(ast) { lower_assign(ast, temp, block) } else if is_while_node(ast) { lower_while(ast, temp, block) } else if is_for_node(ast) { lower_for(ast, temp, block) } else if is_return_node(ast) { lower_return(ast, temp, block) } else if is_break_node(ast) { lower_break(ast, temp, block) } else if is_continue_node(ast) { lower_continue(ast, temp, block) } else if is_array_node(ast) { lower_array(ast, temp, block) } else if is_index_node(ast) { lower_index(ast, temp, block) } else if is_method_call_node(ast) { lower_method_call(ast, temp, block) } else if is_attr_node(ast) { lower_attr(ast, temp, block) } else if is_null_node(ast) { lower_null(ast, temp, block) } else if is_sizeof_node(ast) { lower_sizeof(ast, temp, block) } else { pack_lower_result(temp, block, "%error", "  ; unknown: " + get_node_type(ast)) };
+    if is_int_node(ast) { lower_int(ast, temp, block) } else if is_float_node(ast) { lower_float(ast, temp, block) } else if is_bool_node(ast) { lower_bool(ast, temp, block) } else if is_string_node(ast) { lower_string(ast, temp, block) } else if is_var_node(ast) { lower_var(ast, temp, block) } else if is_op_node(ast) { lower_binop(ast, temp, block) } else if is_neg_node(ast) { lower_neg(ast, temp, block) } else if is_not_node(ast) { lower_not(ast, temp, block) } else if is_if_node(ast) { lower_if(ast, temp, block) } else if is_let_node(ast) or is_let_mut_node(ast) { lower_let(ast, temp, block) } else if is_call_node(ast) { lower_call(ast, temp, block) } else if is_new_node(ast) { lower_struct_init(ast, temp, block) } else if is_dot_node(ast) { lower_field_access(ast, temp, block) } else if is_enum_variant_node(ast) { lower_enum_variant(ast, temp, block) } else if is_match_node(ast) { lower_match(ast, temp, block) } else if is_lambda_node(ast) { lower_lambda(ast, temp, block) } else if is_block_node(ast) { lower_block(ast, temp, block) } else if is_unit_node(ast) { lower_unit(ast, temp, block) } else if is_seq_node(ast) { lower_seq(ast, temp, block) } else if is_assign_node(ast) { lower_assign(ast, temp, block) } else if is_while_node(ast) { lower_while(ast, temp, block) } else if is_loop_node(ast) { lower_loop(ast, temp, block) } else if is_for_node(ast) { lower_for(ast, temp, block) } else if is_return_node(ast) { lower_return(ast, temp, block) } else if is_break_node(ast) { lower_break(ast, temp, block) } else if is_continue_node(ast) { lower_continue(ast, temp, block) } else if is_array_node(ast) { lower_array(ast, temp, block) } else if is_index_node(ast) { lower_index(ast, temp, block) } else if is_method_call_node(ast) { lower_method_call(ast, temp, block) } else if is_attr_node(ast) { lower_attr(ast, temp, block) } else if is_null_node(ast) { lower_null(ast, temp, block) } else if is_sizeof_node(ast) { lower_sizeof(ast, temp, block) } else { pack_lower_result(temp, block, "%error", "  ; unknown: " + get_node_type(ast)) };
 
 // Lower integer literal: (int 42)
 fn lower_int(ast: String, temp: i64, block: i64) -> String =
@@ -1487,6 +1504,46 @@ fn lower_while(ast: String, temp: i64, block: i64) -> String =
     // Combine: goto loop_start, then all blocks
     let entry_text = mir_text_goto(loop_start_lbl);
     let full_text = entry_text + "|" + loop_start_block + "|" + body_block + "|" + loop_end_block;
+
+    pack_lower_result(tb + 1, bb + 1, result_place, full_text);
+
+// v0.90.31: Lower loop expression (infinite loop): (loop body)
+// Generates:
+//   goto loop_start_N
+//   loop_start_N:
+//     <evaluate body>
+//     goto loop_start_N
+//   loop_end_N:
+//     %result = UNIT
+fn lower_loop(ast: String, temp: i64, block: i64) -> String =
+    let body_ast = get_loop_body(ast);
+
+    // Generate block labels
+    let loop_start_lbl = "loop_start_" + int_to_string(block);
+    let loop_end_lbl = "loop_end_" + int_to_string(block);
+    let next_block = block + 1;
+
+    // Lower body
+    let rb = lower_expr(body_ast, temp, next_block);
+    let tb = unpack_temp(rb);
+    let bb = unpack_block(rb);
+    let textb = unpack_text(rb);
+
+    // Result place (loop returns unit)
+    let result_place = place_temp(tb);
+
+    // Build loop_start block (body + unconditional goto back)
+    let loop_start_block = mir_text_block_start(loop_start_lbl) + "|" +
+                           (if textb.len() > 0 { textb + "|" } else { "" }) +
+                           mir_text_goto(loop_start_lbl);
+
+    // Build loop_end block (result = unit, reached via break)
+    let loop_end_block = mir_text_block_start(loop_end_lbl) + "|" +
+                         "  " + result_place + " = UNIT";
+
+    // Combine: goto loop_start, then blocks
+    let entry_text = mir_text_goto(loop_start_lbl);
+    let full_text = entry_text + "|" + loop_start_block + "|" + loop_end_block;
 
     pack_lower_result(tb + 1, bb + 1, result_place, full_text);
 
