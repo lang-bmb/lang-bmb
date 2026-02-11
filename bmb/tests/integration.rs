@@ -7351,3 +7351,230 @@ fn test_e2e_power_all_stages() {
     assert!(type_checks(source));
     assert_eq!(run_program_i64(source), 1024);
 }
+
+// ============================================================================
+// PIR (Proof-Indexed IR) Integration Tests (Cycle 232)
+// ============================================================================
+
+/// Helper: parse, type-check, lower to CIR, propagate proofs → PIR
+fn source_to_pir(source: &str) -> bmb::pir::PirProgram {
+    let tokens = tokenize(source).expect("tokenize failed");
+    let ast = parse("test.bmb", source, tokens).expect("parse failed");
+    let mut tc = TypeChecker::new();
+    tc.check_program(&ast).expect("type check failed");
+    let cir = bmb::cir::lower_to_cir(&ast);
+    let proof_db = bmb::verify::ProofDatabase::new();
+    bmb::pir::propagate_proofs(&cir, &proof_db)
+}
+
+/// Helper: source → PIR → extract all facts
+fn source_to_pir_facts(source: &str) -> std::collections::HashMap<String, bmb::pir::FunctionFacts> {
+    let pir = source_to_pir(source);
+    bmb::pir::extract_all_pir_facts(&pir)
+}
+
+#[test]
+fn test_pir_simple_function_propagation() {
+    let pir = source_to_pir("fn add(a: i64, b: i64) -> i64 = a + b;");
+    assert_eq!(pir.functions.len(), 1);
+    assert_eq!(pir.functions[0].name, "add");
+    assert_eq!(pir.functions[0].params.len(), 2);
+}
+
+#[test]
+fn test_pir_multiple_functions() {
+    let source = "fn double(x: i64) -> i64 = x * 2;
+                  fn triple(x: i64) -> i64 = x * 3;
+                  fn main() -> i64 = double(3) + triple(2);";
+    let pir = source_to_pir(source);
+    assert_eq!(pir.functions.len(), 3);
+    let names: Vec<&str> = pir.functions.iter().map(|f| f.name.as_str()).collect();
+    assert!(names.contains(&"double"));
+    assert!(names.contains(&"triple"));
+    assert!(names.contains(&"main"));
+}
+
+#[test]
+fn test_pir_precondition_becomes_entry_fact() {
+    let source = "fn safe_div(a: i64, b: i64) -> i64
+                    pre b > 0
+                  = a / b;";
+    let pir = source_to_pir(source);
+    let func = &pir.functions[0];
+    assert!(!func.entry_facts.is_empty(), "precondition should produce entry facts");
+}
+
+#[test]
+fn test_pir_postcondition_becomes_exit_fact() {
+    let source = "fn abs_val(x: i64) -> i64
+                    post ret >= 0
+                  = if x >= 0 { x } else { 0 - x };";
+    let pir = source_to_pir(source);
+    let func = &pir.functions[0];
+    assert!(!func.exit_facts.is_empty(), "postcondition should produce exit facts");
+}
+
+#[test]
+fn test_pir_function_return_type() {
+    let source = "fn is_positive(x: i64) -> bool = x > 0;";
+    let pir = source_to_pir(source);
+    assert_eq!(pir.functions[0].ret_ty, bmb::pir::PirType::Bool);
+}
+
+#[test]
+fn test_pir_function_i64_return_type() {
+    let source = "fn square(x: i64) -> i64 = x * x;";
+    let pir = source_to_pir(source);
+    assert_eq!(pir.functions[0].ret_ty, bmb::pir::PirType::I64);
+}
+
+#[test]
+fn test_pir_empty_program() {
+    let pir = source_to_pir("fn noop() -> i64 = 0;");
+    assert_eq!(pir.functions.len(), 1);
+    assert!(pir.functions[0].entry_facts.is_empty());
+    assert!(pir.functions[0].exit_facts.is_empty());
+}
+
+#[test]
+fn test_pir_extract_facts_simple_function() {
+    let facts = source_to_pir_facts("fn id(x: i64) -> i64 = x;");
+    assert_eq!(facts.len(), 1);
+    assert!(facts.contains_key("id"));
+}
+
+#[test]
+fn test_pir_extract_facts_precondition() {
+    let source = "fn bounded(x: i64) -> i64
+                    pre x >= 0
+                  = x + 1;";
+    let facts = source_to_pir_facts(source);
+    let func_facts = &facts["bounded"];
+    assert!(!func_facts.preconditions.is_empty(), "precondition should be extracted as fact");
+    assert!(!func_facts.all_facts.is_empty());
+}
+
+#[test]
+fn test_pir_extract_facts_postcondition() {
+    let source = "fn positive_result(x: i64) -> i64
+                    post ret > 0
+                  = if x > 0 { x } else { 1 };";
+    let facts = source_to_pir_facts(source);
+    let func_facts = &facts["positive_result"];
+    assert!(!func_facts.postconditions.is_empty(), "postcondition should be extracted");
+}
+
+#[test]
+fn test_pir_extract_facts_multiple_functions() {
+    let source = "fn a(x: i64) -> i64 pre x > 0 = x;
+                  fn b(x: i64) -> i64 post ret >= 0 = if x >= 0 { x } else { 0 };";
+    let facts = source_to_pir_facts(source);
+    assert_eq!(facts.len(), 2);
+    assert!(facts.contains_key("a"));
+    assert!(facts.contains_key("b"));
+    assert!(!facts["a"].preconditions.is_empty());
+    assert!(!facts["b"].postconditions.is_empty());
+}
+
+#[test]
+fn test_pir_propagation_rule_enum() {
+    // Test that PropagationRule variants exist and are distinct
+    let rules = [
+        bmb::pir::PropagationRule::PreconditionToFact,
+        bmb::pir::PropagationRule::BranchCondition,
+        bmb::pir::PropagationRule::LoopCondition,
+        bmb::pir::PropagationRule::LetBinding,
+        bmb::pir::PropagationRule::PostconditionAfterCall,
+    ];
+    assert_eq!(rules.len(), 5);
+    assert_ne!(rules[0], rules[1]);
+}
+
+#[test]
+fn test_pir_proven_fact_constructors() {
+    use bmb::cir::Proposition;
+    use bmb::pir::ProvenFact;
+
+    let pre = ProvenFact::from_precondition(Proposition::True, 1);
+    assert_eq!(pre.id, 1);
+
+    let cf = ProvenFact::from_control_flow(Proposition::True, 2);
+    assert_eq!(cf.id, 2);
+
+    let smt = ProvenFact::from_smt(Proposition::True, 999, 3);
+    assert_eq!(smt.id, 3);
+}
+
+#[test]
+fn test_pir_proven_fact_to_contract_facts_var_cmp() {
+    use bmb::cir::{CirExpr, CompareOp, Proposition};
+    use bmb::pir::ProvenFact;
+
+    let fact = ProvenFact::from_precondition(
+        Proposition::Compare {
+            lhs: Box::new(CirExpr::Var("x".to_string())),
+            op: CompareOp::Ge,
+            rhs: Box::new(CirExpr::IntLit(0)),
+        },
+        1,
+    );
+    let contract_facts = bmb::pir::proven_fact_to_contract_facts(&fact);
+    assert_eq!(contract_facts.len(), 1);
+    assert!(matches!(
+        &contract_facts[0],
+        bmb::mir::ContractFact::VarCmp { var, op: bmb::mir::CmpOp::Ge, value: 0 } if var == "x"
+    ));
+}
+
+#[test]
+fn test_pir_proven_fact_to_contract_facts_non_null() {
+    use bmb::cir::{CirExpr, Proposition};
+    use bmb::pir::ProvenFact;
+
+    let fact = ProvenFact::from_precondition(
+        Proposition::NonNull(Box::new(CirExpr::Var("ptr".to_string()))),
+        1,
+    );
+    let contract_facts = bmb::pir::proven_fact_to_contract_facts(&fact);
+    assert_eq!(contract_facts.len(), 1);
+    assert!(matches!(
+        &contract_facts[0],
+        bmb::mir::ContractFact::NonNull { var } if var == "ptr"
+    ));
+}
+
+#[test]
+fn test_pir_proven_fact_to_contract_facts_in_bounds() {
+    use bmb::cir::{CirExpr, Proposition};
+    use bmb::pir::ProvenFact;
+
+    let fact = ProvenFact::from_precondition(
+        Proposition::InBounds {
+            index: Box::new(CirExpr::Var("i".to_string())),
+            array: Box::new(CirExpr::Var("arr".to_string())),
+        },
+        1,
+    );
+    let contract_facts = bmb::pir::proven_fact_to_contract_facts(&fact);
+    assert_eq!(contract_facts.len(), 1);
+    assert!(matches!(
+        &contract_facts[0],
+        bmb::mir::ContractFact::ArrayBounds { index, array }
+        if index == "i" && array == "arr"
+    ));
+}
+
+#[test]
+fn test_pir_extract_function_facts_with_contract() {
+    let source = "fn clamp(x: i64) -> i64
+                    pre x >= 0
+                    post ret >= 0
+                  = if x > 100 { 100 } else { x };";
+    let facts = source_to_pir_facts(source);
+    let func_facts = &facts["clamp"];
+    assert!(!func_facts.preconditions.is_empty());
+    assert!(!func_facts.postconditions.is_empty());
+    assert!(!func_facts.all_facts.is_empty());
+    // all_facts should include at least the preconditions
+    assert!(func_facts.all_facts.len() >= func_facts.preconditions.len());
+}
