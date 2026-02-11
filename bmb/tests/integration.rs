@@ -11881,10 +11881,9 @@ fn test_trait_multiple_impls_different_structs() {
 }
 
 #[test]
-fn test_trait_impl_wrong_return_type_allowed() {
-    // BMB currently allows impl methods with different return types from trait declaration
-    // This documents current behavior (may change in future)
-    assert!(type_checks(
+fn test_trait_impl_wrong_return_type_rejected() {
+    // v0.90.39: Trait impl with mismatched return type is now rejected
+    assert!(type_error(
         "trait GetVal { fn get(self: Self) -> i64; }
          struct S { v: bool }
          impl GetVal for S { fn get(self: Self) -> bool = self.v; }"
@@ -12702,4 +12701,91 @@ fn test_binary_literal_with_underscore() {
     // Underscore separator in binary literal
     let source = "fn main() -> i64 = 0b1111_0000;";
     assert_eq!(run_program_i64(source), 240);
+}
+
+// ============================================================
+// Cycle 254: Trait Impl Return Type Validation
+// ============================================================
+
+#[test]
+fn test_trait_impl_correct_return_type_ok() {
+    // Matching return type should pass
+    assert!(type_checks(
+        "trait HasValue { fn value(self: Self) -> i64; }
+         struct Counter { count: i64 }
+         impl HasValue for Counter { fn value(self: Self) -> i64 = self.count; }"
+    ));
+}
+
+#[test]
+fn test_trait_impl_wrong_return_type_error_message() {
+    // Error message should mention the mismatch
+    assert!(type_error_contains(
+        "trait GetVal { fn get(self: Self) -> i64; }
+         struct S { v: bool }
+         impl GetVal for S { fn get(self: Self) -> bool = self.v; }",
+        "returns 'bool', but trait declares 'i64'"
+    ));
+}
+
+#[test]
+fn test_trait_impl_wrong_param_count() {
+    // Impl method has different parameter count than trait
+    assert!(type_error(
+        "trait DoSomething { fn do_it(self: Self, x: i64) -> i64; }
+         struct S { v: i64 }
+         impl DoSomething for S { fn do_it(self: Self) -> i64 = self.v; }"
+    ));
+}
+
+#[test]
+fn test_trait_impl_wrong_param_type() {
+    // Impl method has different parameter types than trait
+    assert!(type_error(
+        "trait Transform { fn apply(self: Self, x: i64) -> i64; }
+         struct S { v: i64 }
+         impl Transform for S { fn apply(self: Self, x: bool) -> i64 = 0; }"
+    ));
+}
+
+#[test]
+fn test_trait_impl_multiple_methods_one_wrong() {
+    // Multiple methods, one has wrong return type
+    assert!(type_error(
+        "trait Math { fn add(self: Self, x: i64) -> i64; fn name(self: Self) -> bool; }
+         struct Calc { v: i64 }
+         impl Math for Calc { fn add(self: Self, x: i64) -> i64 = self.v + x; fn name(self: Self) -> i64 = 0; }"
+    ));
+}
+
+#[test]
+fn test_trait_impl_unit_return_matches() {
+    // Unit return type () should match
+    assert!(type_checks(
+        "trait Action { fn run(self: Self) -> (); }
+         struct Runner { id: i64 }
+         impl Action for Runner { fn run(self: Self) -> () = (); }"
+    ));
+}
+
+#[test]
+fn test_trait_impl_f64_return_mismatch() {
+    // f64 vs i64 return type mismatch
+    assert!(type_error(
+        "trait Measure { fn size(self: Self) -> f64; }
+         struct Box { w: i64 }
+         impl Measure for Box { fn size(self: Self) -> i64 = self.w; }"
+    ));
+}
+
+#[test]
+fn test_trait_impl_two_impls_both_correct() {
+    // Two different impls of same trait, both correct
+    assert!(type_checks(
+        "trait HasValue { fn value(self: Self) -> i64; }
+         struct A { x: i64 }
+         struct B { y: i64 }
+         impl HasValue for A { fn value(self: Self) -> i64 = self.x; }
+         impl HasValue for B { fn value(self: Self) -> i64 = self.y; }"
+    ));
 }

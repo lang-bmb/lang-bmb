@@ -928,6 +928,60 @@ impl TypeChecker {
                         methods.insert(method.name.node.clone(), (param_types, ret_type));
                     }
 
+                    // v0.90.39: Validate impl methods match trait declaration
+                    if let Some(trait_info) = self.traits.get(&trait_name) {
+                        for method in &i.methods {
+                            let method_name = &method.name.node;
+                            if let Some(trait_method) = trait_info.methods.iter().find(|m| &m.name == method_name) {
+                                // Check return type matches (substitute Self in both sides)
+                                let impl_ret = self.substitute_self(&method.ret_ty.node, &i.target_type.node);
+                                let trait_ret = self.substitute_self(&trait_method.ret_type, &i.target_type.node);
+                                let trait_ret_str = self.type_to_string(&trait_ret);
+                                let impl_ret_str = self.type_to_string(&impl_ret);
+                                if trait_ret_str != impl_ret_str {
+                                    return Err(CompileError::type_error(
+                                        format!(
+                                            "method '{}' in impl {} for {} returns '{}', but trait declares '{}'",
+                                            method_name, trait_name, self.type_to_string(&i.target_type.node),
+                                            impl_ret_str, trait_ret_str,
+                                        ),
+                                        method.ret_ty.span,
+                                    ));
+                                }
+                                // Check parameter count matches (excluding self)
+                                let impl_params: Vec<_> = method.params.iter()
+                                    .filter(|p| p.name.node != "self")
+                                    .collect();
+                                if impl_params.len() != trait_method.param_types.len() {
+                                    return Err(CompileError::type_error(
+                                        format!(
+                                            "method '{}' in impl {} for {} has {} parameters, but trait declares {}",
+                                            method_name, trait_name, self.type_to_string(&i.target_type.node),
+                                            impl_params.len(), trait_method.param_types.len(),
+                                        ),
+                                        method.name.span,
+                                    ));
+                                }
+                                // Check parameter types match (substitute Self in trait param types)
+                                for (idx, (impl_param, trait_param_ty)) in impl_params.iter().zip(trait_method.param_types.iter()).enumerate() {
+                                    let impl_ty = self.substitute_self(&impl_param.ty.node, &i.target_type.node);
+                                    let trait_ty = self.substitute_self(trait_param_ty, &i.target_type.node);
+                                    let impl_ty_str = self.type_to_string(&impl_ty);
+                                    let trait_ty_str = self.type_to_string(&trait_ty);
+                                    if impl_ty_str != trait_ty_str {
+                                        return Err(CompileError::type_error(
+                                            format!(
+                                                "method '{}' parameter {} type is '{}', but trait declares '{}'",
+                                                method_name, idx + 1, impl_ty_str, trait_ty_str,
+                                            ),
+                                            impl_param.ty.span,
+                                        ));
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     // v0.80: Track that this trait is implemented
                     self.implemented_traits.insert(trait_name.clone());
 
