@@ -5603,3 +5603,602 @@ impl<'ctx> LlvmContext<'ctx> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mir::{BasicBlock, Constant, MirBinOp, MirFunction, MirInst, MirProgram, MirType, Operand, Place, Terminator};
+
+    // === CodeGen Factory Method Tests ===
+
+    #[test]
+    fn test_codegen_new_default() {
+        let cg = CodeGen::new();
+        assert!(!cg.fast_math);
+        assert!(!cg.fast_compile);
+        assert!(matches!(cg.opt_level, OptLevel::Release));
+    }
+
+    #[test]
+    fn test_codegen_with_opt_level_debug() {
+        let cg = CodeGen::with_opt_level(OptLevel::Debug);
+        assert!(matches!(cg.opt_level, OptLevel::Debug));
+        assert!(!cg.fast_math);
+    }
+
+    #[test]
+    fn test_codegen_with_opt_level_aggressive() {
+        let cg = CodeGen::with_opt_level(OptLevel::Aggressive);
+        assert!(matches!(cg.opt_level, OptLevel::Aggressive));
+    }
+
+    #[test]
+    fn test_codegen_with_fast_math() {
+        let cg = CodeGen::with_fast_math(OptLevel::Release, true);
+        assert!(cg.fast_math);
+        assert!(!cg.fast_compile);
+    }
+
+    #[test]
+    fn test_codegen_with_options_all() {
+        let cg = CodeGen::with_options(OptLevel::Size, true, true);
+        assert!(matches!(cg.opt_level, OptLevel::Size));
+        assert!(cg.fast_math);
+        assert!(cg.fast_compile);
+    }
+
+    // === OptLevel Conversion Tests ===
+
+    #[test]
+    fn test_opt_level_default_is_release() {
+        let level = OptLevel::default();
+        assert!(matches!(level, OptLevel::Release));
+    }
+
+    #[test]
+    fn test_opt_level_to_llvm_debug() {
+        let llvm_level: OptimizationLevel = OptLevel::Debug.into();
+        assert_eq!(llvm_level, OptimizationLevel::None);
+    }
+
+    #[test]
+    fn test_opt_level_to_llvm_release() {
+        let llvm_level: OptimizationLevel = OptLevel::Release.into();
+        assert_eq!(llvm_level, OptimizationLevel::Default);
+    }
+
+    #[test]
+    fn test_opt_level_to_llvm_size() {
+        let llvm_level: OptimizationLevel = OptLevel::Size.into();
+        assert_eq!(llvm_level, OptimizationLevel::Less);
+    }
+
+    #[test]
+    fn test_opt_level_to_llvm_aggressive() {
+        let llvm_level: OptimizationLevel = OptLevel::Aggressive.into();
+        assert_eq!(llvm_level, OptimizationLevel::Aggressive);
+    }
+
+    // === Helper: create minimal LlvmContext for testing ===
+
+    fn make_test_context(context: &Context) -> LlvmContext<'_> {
+        LlvmContext::new(context)
+    }
+
+    fn make_place(name: &str) -> Place {
+        Place::new(name)
+    }
+
+    fn make_empty_func(name: &str) -> MirFunction {
+        MirFunction {
+            name: name.to_string(),
+            params: vec![],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        }
+    }
+
+    fn make_func(name: &str, params: Vec<(&str, MirType)>, blocks: Vec<BasicBlock>) -> MirFunction {
+        MirFunction {
+            name: name.to_string(),
+            params: params.into_iter().map(|(n, t)| (n.to_string(), t)).collect(),
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks,
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        }
+    }
+
+    fn make_func_with_locals(name: &str, locals: Vec<(&str, MirType)>, blocks: Vec<BasicBlock>) -> MirFunction {
+        MirFunction {
+            name: name.to_string(),
+            params: vec![],
+            ret_ty: MirType::I64,
+            locals: locals.into_iter().map(|(n, t)| (n.to_string(), t)).collect(),
+            blocks,
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        }
+    }
+
+    fn make_program(functions: Vec<MirFunction>) -> MirProgram {
+        MirProgram {
+            functions,
+            extern_fns: vec![],
+            struct_defs: HashMap::new(),
+        }
+    }
+
+    // === collect_phi_destinations Tests ===
+
+    #[test]
+    fn test_collect_phi_destinations_empty_func() {
+        let context = Context::create();
+        let ctx = make_test_context(&context);
+        let func = make_empty_func("test");
+        let result = ctx.collect_phi_destinations(&func);
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_collect_phi_destinations_with_phis() {
+        let context = Context::create();
+        let ctx = make_test_context(&context);
+        let func = make_func("test", vec![], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::Phi {
+                    dest: make_place("x"),
+                    values: vec![
+                        (Operand::Constant(Constant::Int(1)), "a".to_string()),
+                        (Operand::Constant(Constant::Int(2)), "b".to_string()),
+                    ],
+                },
+                MirInst::Phi {
+                    dest: make_place("y"),
+                    values: vec![
+                        (Operand::Constant(Constant::Int(3)), "a".to_string()),
+                    ],
+                },
+                MirInst::Const { dest: make_place("z"), value: Constant::Int(5) },
+            ],
+            terminator: Terminator::Return(None),
+        }]);
+        let result = ctx.collect_phi_destinations(&func);
+        assert_eq!(result.len(), 2);
+        assert!(result.contains("x"));
+        assert!(result.contains("y"));
+        assert!(!result.contains("z"));
+    }
+
+    #[test]
+    fn test_collect_phi_destinations_no_phis() {
+        let context = Context::create();
+        let ctx = make_test_context(&context);
+        let func = make_func("test", vec![], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::Const { dest: make_place("a"), value: Constant::Int(1) },
+                MirInst::Const { dest: make_place("b"), value: Constant::Int(2) },
+            ],
+            terminator: Terminator::Return(None),
+        }]);
+        let result = ctx.collect_phi_destinations(&func);
+        assert!(result.is_empty());
+    }
+
+    // === collect_written_places Tests ===
+
+    #[test]
+    fn test_collect_written_places_empty() {
+        let context = Context::create();
+        let ctx = make_test_context(&context);
+        let func = make_empty_func("test");
+        let result = ctx.collect_written_places(&func);
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_collect_written_places_various_instructions() {
+        let context = Context::create();
+        let ctx = make_test_context(&context);
+        let func = make_func("test", vec![], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::Const { dest: make_place("a"), value: Constant::Int(1) },
+                MirInst::Copy { dest: make_place("b"), src: make_place("a") },
+                MirInst::BinOp {
+                    dest: make_place("c"),
+                    op: MirBinOp::Add,
+                    lhs: Operand::Place(make_place("a")),
+                    rhs: Operand::Place(make_place("b")),
+                },
+                MirInst::Cast {
+                    dest: make_place("d"),
+                    src: Operand::Place(make_place("c")),
+                    from_ty: MirType::I64,
+                    to_ty: MirType::I32,
+                },
+            ],
+            terminator: Terminator::Return(None),
+        }]);
+        let result = ctx.collect_written_places(&func);
+        assert_eq!(result.len(), 4);
+        assert!(result.contains("a"));
+        assert!(result.contains("b"));
+        assert!(result.contains("c"));
+        assert!(result.contains("d"));
+    }
+
+    #[test]
+    fn test_collect_written_places_excludes_stores() {
+        let context = Context::create();
+        let ctx = make_test_context(&context);
+        let func = make_func("test", vec![], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::FieldStore {
+                    base: make_place("obj"),
+                    field: "x".to_string(),
+                    field_index: 0,
+                    struct_name: "Obj".to_string(),
+                    value: Operand::Constant(Constant::Int(5)),
+                },
+                MirInst::IndexStore {
+                    array: make_place("arr"),
+                    index: Operand::Constant(Constant::Int(0)),
+                    value: Operand::Constant(Constant::Int(42)),
+                    element_type: MirType::I64,
+                },
+                MirInst::PtrStore {
+                    ptr: Operand::Place(make_place("ptr")),
+                    value: Operand::Constant(Constant::Int(99)),
+                    element_type: MirType::I64,
+                },
+            ],
+            terminator: Terminator::Return(None),
+        }]);
+        let result = ctx.collect_written_places(&func);
+        assert!(result.is_empty(), "Stores should not be counted as written places");
+    }
+
+    // === collect_ssa_eligible_locals Tests ===
+
+    #[test]
+    fn test_ssa_eligible_single_write() {
+        let context = Context::create();
+        let ctx = make_test_context(&context);
+        let func = make_func_with_locals("test", vec![("x", MirType::I64)], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::Const { dest: make_place("x"), value: Constant::Int(42) },
+            ],
+            terminator: Terminator::Return(None),
+        }]);
+        let phi_dests = HashSet::new();
+        let result = ctx.collect_ssa_eligible_locals(&func, &phi_dests);
+        assert!(result.contains("x"), "Single-write local should be SSA eligible");
+    }
+
+    #[test]
+    fn test_ssa_eligible_excludes_phi_dests() {
+        let context = Context::create();
+        let ctx = make_test_context(&context);
+        let func = make_func_with_locals("test", vec![("x", MirType::I64)], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::Const { dest: make_place("x"), value: Constant::Int(1) },
+            ],
+            terminator: Terminator::Return(None),
+        }]);
+        let mut phi_dests = HashSet::new();
+        phi_dests.insert("x".to_string());
+        let result = ctx.collect_ssa_eligible_locals(&func, &phi_dests);
+        assert!(!result.contains("x"), "PHI destination should not be SSA eligible");
+    }
+
+    #[test]
+    fn test_ssa_eligible_excludes_temporaries() {
+        let context = Context::create();
+        let ctx = make_test_context(&context);
+        let func = make_func("test", vec![], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::Const { dest: make_place("_t0"), value: Constant::Int(1) },
+            ],
+            terminator: Terminator::Return(None),
+        }]);
+        let phi_dests = HashSet::new();
+        let result = ctx.collect_ssa_eligible_locals(&func, &phi_dests);
+        assert!(!result.contains("_t0"), "Temporaries should not be SSA eligible");
+    }
+
+    #[test]
+    fn test_ssa_eligible_excludes_multi_write() {
+        let context = Context::create();
+        let ctx = make_test_context(&context);
+        let func = make_func_with_locals("test", vec![("x", MirType::I64)], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::Const { dest: make_place("x"), value: Constant::Int(1) },
+                MirInst::Const { dest: make_place("x"), value: Constant::Int(2) },
+            ],
+            terminator: Terminator::Return(None),
+        }]);
+        let phi_dests = HashSet::new();
+        let result = ctx.collect_ssa_eligible_locals(&func, &phi_dests);
+        assert!(!result.contains("x"), "Multi-write local should not be SSA eligible");
+    }
+
+    #[test]
+    fn test_ssa_eligible_dead_locals() {
+        let context = Context::create();
+        let ctx = make_test_context(&context);
+        let func = make_func_with_locals("test", vec![("dead", MirType::I64), ("live", MirType::I64)], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::Const { dest: make_place("live"), value: Constant::Int(1) },
+            ],
+            terminator: Terminator::Return(None),
+        }]);
+        let phi_dests = HashSet::new();
+        let result = ctx.collect_ssa_eligible_locals(&func, &phi_dests);
+        assert!(result.contains("dead"), "Dead local (zero writes) should be SSA eligible");
+        assert!(result.contains("live"), "Single-write local should be SSA eligible");
+    }
+
+    // === find_place_type_from_instructions Tests ===
+
+    #[test]
+    fn test_find_place_type_const_int() {
+        let context = Context::create();
+        let ctx = make_test_context(&context);
+        let func = make_func("test", vec![], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::Const { dest: make_place("x"), value: Constant::Int(42) },
+            ],
+            terminator: Terminator::Return(None),
+        }]);
+        let result = ctx.find_place_type_from_instructions("x", &func);
+        assert_eq!(result, Some(MirType::I64));
+    }
+
+    #[test]
+    fn test_find_place_type_const_float() {
+        let context = Context::create();
+        let ctx = make_test_context(&context);
+        let func = make_func("test", vec![], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::Const { dest: make_place("f"), value: Constant::Float(1.5) },
+            ],
+            terminator: Terminator::Return(None),
+        }]);
+        let result = ctx.find_place_type_from_instructions("f", &func);
+        assert_eq!(result, Some(MirType::F64));
+    }
+
+    #[test]
+    fn test_find_place_type_not_found() {
+        let context = Context::create();
+        let ctx = make_test_context(&context);
+        let func = make_empty_func("test");
+        let result = ctx.find_place_type_from_instructions("nonexistent", &func);
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_find_place_type_cast_instruction() {
+        let context = Context::create();
+        let ctx = make_test_context(&context);
+        let func = make_func("test", vec![], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::Cast {
+                    dest: make_place("y"),
+                    src: Operand::Place(make_place("x")),
+                    from_ty: MirType::I64,
+                    to_ty: MirType::I32,
+                },
+            ],
+            terminator: Terminator::Return(None),
+        }]);
+        let result = ctx.find_place_type_from_instructions("y", &func);
+        assert_eq!(result, Some(MirType::I32));
+    }
+
+    // === mir_type_to_llvm Tests ===
+
+    #[test]
+    fn test_mir_type_to_llvm_i32() {
+        let context = Context::create();
+        let ctx = make_test_context(&context);
+        let ty = ctx.mir_type_to_llvm(&MirType::I32);
+        assert!(ty.is_int_type());
+        assert_eq!(ty.into_int_type().get_bit_width(), 32);
+    }
+
+    #[test]
+    fn test_mir_type_to_llvm_i64() {
+        let context = Context::create();
+        let ctx = make_test_context(&context);
+        let ty = ctx.mir_type_to_llvm(&MirType::I64);
+        assert!(ty.is_int_type());
+        assert_eq!(ty.into_int_type().get_bit_width(), 64);
+    }
+
+    #[test]
+    fn test_mir_type_to_llvm_f64() {
+        let context = Context::create();
+        let ctx = make_test_context(&context);
+        let ty = ctx.mir_type_to_llvm(&MirType::F64);
+        assert!(ty.is_float_type());
+    }
+
+    #[test]
+    fn test_mir_type_to_llvm_bool() {
+        let context = Context::create();
+        let ctx = make_test_context(&context);
+        let ty = ctx.mir_type_to_llvm(&MirType::Bool);
+        assert!(ty.is_int_type());
+        assert_eq!(ty.into_int_type().get_bit_width(), 1);
+    }
+
+    #[test]
+    fn test_mir_type_to_llvm_char() {
+        let context = Context::create();
+        let ctx = make_test_context(&context);
+        let ty = ctx.mir_type_to_llvm(&MirType::Char);
+        assert!(ty.is_int_type());
+        assert_eq!(ty.into_int_type().get_bit_width(), 32);
+    }
+
+    #[test]
+    fn test_mir_type_to_llvm_unit() {
+        let context = Context::create();
+        let ctx = make_test_context(&context);
+        let ty = ctx.mir_type_to_llvm(&MirType::Unit);
+        assert!(ty.is_int_type());
+        assert_eq!(ty.into_int_type().get_bit_width(), 8);
+    }
+
+    #[test]
+    fn test_mir_type_to_llvm_string_is_ptr() {
+        let context = Context::create();
+        let ctx = make_test_context(&context);
+        let ty = ctx.mir_type_to_llvm(&MirType::String);
+        assert!(ty.is_pointer_type());
+    }
+
+    #[test]
+    fn test_mir_type_to_llvm_tuple() {
+        let context = Context::create();
+        let ctx = make_test_context(&context);
+        let ty = ctx.mir_type_to_llvm(&MirType::Tuple(vec![Box::new(MirType::I64), Box::new(MirType::F64)]));
+        assert!(ty.is_struct_type());
+        let struct_ty = ty.into_struct_type();
+        assert_eq!(struct_ty.count_fields(), 2);
+    }
+
+    // === constant_type Tests ===
+
+    #[test]
+    fn test_constant_type_int() {
+        let context = Context::create();
+        let ctx = make_test_context(&context);
+        let ty = ctx.constant_type(&Constant::Int(42));
+        assert!(ty.is_int_type());
+        assert_eq!(ty.into_int_type().get_bit_width(), 64);
+    }
+
+    #[test]
+    fn test_constant_type_float() {
+        let context = Context::create();
+        let ctx = make_test_context(&context);
+        let ty = ctx.constant_type(&Constant::Float(1.5));
+        assert!(ty.is_float_type());
+    }
+
+    #[test]
+    fn test_constant_type_bool() {
+        let context = Context::create();
+        let ctx = make_test_context(&context);
+        let ty = ctx.constant_type(&Constant::Bool(true));
+        assert!(ty.is_int_type());
+        assert_eq!(ty.into_int_type().get_bit_width(), 1);
+    }
+
+    #[test]
+    fn test_constant_type_string() {
+        let context = Context::create();
+        let ctx = make_test_context(&context);
+        let ty = ctx.constant_type(&Constant::String("hello".to_string()));
+        assert!(ty.is_pointer_type());
+    }
+
+    #[test]
+    fn test_constant_type_unit() {
+        let context = Context::create();
+        let ctx = make_test_context(&context);
+        let ty = ctx.constant_type(&Constant::Unit);
+        assert!(ty.is_int_type());
+        assert_eq!(ty.into_int_type().get_bit_width(), 8);
+    }
+
+    #[test]
+    fn test_constant_type_char() {
+        let context = Context::create();
+        let ctx = make_test_context(&context);
+        let ty = ctx.constant_type(&Constant::Char('A'));
+        assert!(ty.is_int_type());
+        assert_eq!(ty.into_int_type().get_bit_width(), 32);
+    }
+
+    // === generate_ir Integration Tests ===
+
+    #[test]
+    fn test_generate_ir_empty_program() {
+        let cg = CodeGen::new();
+        let program = make_program(vec![]);
+        let result = cg.generate_ir(&program);
+        assert!(result.is_ok());
+        let ir = result.unwrap();
+        assert!(ir.contains("ModuleID"));
+    }
+
+    #[test]
+    fn test_generate_ir_simple_function() {
+        let cg = CodeGen::new();
+        let program = make_program(vec![make_func("add", vec![("a", MirType::I64), ("b", MirType::I64)], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::BinOp {
+                    dest: make_place("_t0"),
+                    op: MirBinOp::Add,
+                    lhs: Operand::Place(make_place("a")),
+                    rhs: Operand::Place(make_place("b")),
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Place(make_place("_t0")))),
+        }])]);
+        let result = cg.generate_ir(&program);
+        assert!(result.is_ok());
+        let ir = result.unwrap();
+        assert!(ir.contains("define"), "IR should contain function definition");
+        assert!(ir.contains("add"), "IR should contain function name");
+    }
+
+    #[test]
+    fn test_generate_ir_constant_return() {
+        let cg = CodeGen::new();
+        let program = make_program(vec![make_func("answer", vec![], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![],
+            terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(42)))),
+        }])]);
+        let result = cg.generate_ir(&program);
+        assert!(result.is_ok());
+        let ir = result.unwrap();
+        assert!(ir.contains("ret i64 42"), "IR should contain 'ret i64 42'");
+    }
+}
