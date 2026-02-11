@@ -11155,3 +11155,314 @@ fn test_opt_pipeline_for_level_release() {
     pipeline.optimize(&mut mir);
     assert!(!mir.functions.is_empty());
 }
+
+// =============================================================================
+// Cycle 248: WASM Codegen Advanced & Proof-Guided Optimization Tests
+// =============================================================================
+
+// --- WASM: Target Variants ---
+
+#[test]
+fn test_codegen_wasm_browser_target() {
+    let program = lower_to_mir("fn add(a: i64, b: i64) -> i64 = a + b;");
+    let codegen = bmb::codegen::WasmCodeGen::with_target(bmb::codegen::WasmTarget::Browser);
+    let result = codegen.generate(&program);
+    assert!(result.is_ok(), "browser target should succeed: {:?}", result.err());
+}
+
+#[test]
+fn test_codegen_wasm_standalone_target() {
+    let program = lower_to_mir("fn add(a: i64, b: i64) -> i64 = a + b;");
+    let codegen = bmb::codegen::WasmCodeGen::with_target(bmb::codegen::WasmTarget::Standalone);
+    let result = codegen.generate(&program);
+    assert!(result.is_ok(), "standalone target should succeed: {:?}", result.err());
+}
+
+#[test]
+fn test_codegen_wasm_with_memory_pages() {
+    let program = lower_to_mir("fn id(x: i64) -> i64 = x;");
+    let codegen = bmb::codegen::WasmCodeGen::new().with_memory(4);
+    let result = codegen.generate(&program);
+    assert!(result.is_ok(), "custom memory pages should succeed");
+    let wat = result.unwrap();
+    assert!(wat.contains("memory"), "should declare memory: {}", wat);
+}
+
+// --- WASM: Complex Programs ---
+
+#[test]
+fn test_codegen_wasm_if_else() {
+    let program = lower_to_mir("fn abs(x: i64) -> i64 = if x < 0 { 0 - x } else { x };");
+    let codegen = bmb::codegen::WasmCodeGen::new();
+    let result = codegen.generate(&program);
+    assert!(result.is_ok(), "if/else wasm codegen should succeed");
+    let wat = result.unwrap();
+    assert!(wat.contains("if") || wat.contains("br_if") || wat.contains("select"),
+        "should contain control flow: {}", wat);
+}
+
+#[test]
+fn test_codegen_wasm_recursive_function() {
+    let program = lower_to_mir(
+        "fn fib(n: i64) -> i64 = if n <= 1 { n } else { fib(n - 1) + fib(n - 2) };"
+    );
+    let codegen = bmb::codegen::WasmCodeGen::new();
+    let result = codegen.generate(&program);
+    assert!(result.is_ok(), "recursive wasm codegen should succeed");
+    let wat = result.unwrap();
+    assert!(wat.contains("call"), "recursive function should have call instruction");
+}
+
+#[test]
+fn test_codegen_wasm_while_loop() {
+    let source = "fn countdown(n: i64) -> i64 = { let mut x = n; while x > 0 { x = x - 1; 0 }; x };";
+    let program = lower_to_mir(source);
+    let codegen = bmb::codegen::WasmCodeGen::new();
+    let result = codegen.generate(&program);
+    assert!(result.is_ok(), "while loop wasm codegen should succeed");
+    let wat = result.unwrap();
+    assert!(wat.contains("loop") || wat.contains("br"), "should contain loop construct");
+}
+
+#[test]
+fn test_codegen_wasm_float_arithmetic() {
+    let program = lower_to_mir("fn area(r: f64) -> f64 = r * r * 3.14;");
+    let codegen = bmb::codegen::WasmCodeGen::new();
+    let result = codegen.generate(&program);
+    assert!(result.is_ok(), "float wasm codegen should succeed");
+    let wat = result.unwrap();
+    assert!(wat.contains("f64.mul") || wat.contains("f64"), "should use f64 operations");
+}
+
+#[test]
+fn test_codegen_wasm_bool_operations() {
+    let program = lower_to_mir("fn both(a: bool, b: bool) -> bool = a && b;");
+    let codegen = bmb::codegen::WasmCodeGen::new();
+    let result = codegen.generate(&program);
+    assert!(result.is_ok(), "bool wasm codegen should succeed");
+}
+
+#[test]
+fn test_codegen_wasm_multiple_params() {
+    let program = lower_to_mir("fn sum4(a: i64, b: i64, c: i64, d: i64) -> i64 = a + b + c + d;");
+    let codegen = bmb::codegen::WasmCodeGen::new();
+    let result = codegen.generate(&program);
+    assert!(result.is_ok());
+    let wat = result.unwrap();
+    assert!(wat.contains("param"), "should declare parameters");
+}
+
+// --- WASM: All targets produce valid output ---
+
+#[test]
+fn test_codegen_wasm_all_targets_consistent() {
+    let program = lower_to_mir("fn double(x: i64) -> i64 = x * 2;");
+    let targets = [
+        bmb::codegen::WasmTarget::Wasi,
+        bmb::codegen::WasmTarget::Browser,
+        bmb::codegen::WasmTarget::Standalone,
+    ];
+    for target in &targets {
+        let codegen = bmb::codegen::WasmCodeGen::with_target(*target);
+        let result = codegen.generate(&program);
+        assert!(result.is_ok(), "target {:?} should succeed", target);
+        let wat = result.unwrap();
+        assert!(wat.contains("func"), "all targets should produce functions");
+    }
+}
+
+// --- TextCodeGen Advanced ---
+
+#[test]
+fn test_codegen_text_with_custom_target() {
+    let program = lower_to_mir("fn id(x: i64) -> i64 = x;");
+    let codegen = bmb::codegen::TextCodeGen::with_target("x86_64-unknown-linux-gnu");
+    let result = codegen.generate(&program);
+    assert!(result.is_ok(), "custom target text codegen should succeed");
+    let ir = result.unwrap();
+    assert!(ir.contains("x86_64-unknown-linux-gnu") || ir.contains("target"),
+        "IR should reference target triple");
+}
+
+#[test]
+fn test_codegen_text_contract_metadata() {
+    let program = lower_to_mir("fn safe(x: i64) -> i64 pre x >= 0 = x;");
+    let codegen = bmb::codegen::TextCodeGen::new();
+    let result = codegen.generate(&program);
+    assert!(result.is_ok());
+    let ir = result.unwrap();
+    assert!(ir.contains("safe"), "IR should contain function name");
+}
+
+#[test]
+fn test_codegen_text_pure_function() {
+    let program = lower_to_mir("@pure\nfn sq(x: i64) -> i64 = x * x;");
+    let codegen = bmb::codegen::TextCodeGen::new();
+    let result = codegen.generate(&program);
+    assert!(result.is_ok());
+    let ir = result.unwrap();
+    assert!(ir.contains("sq"), "should have function name");
+}
+
+// --- Proof-Guided: Individual Pass Tests ---
+
+#[test]
+fn test_proof_bounds_check_elimination_pass() {
+    let source = "fn safe_access(idx: i64) -> i64 pre idx >= 0 = idx;";
+    let mut program = lower_to_mir(source);
+    let pass = bmb::mir::BoundsCheckElimination::new();
+    let mut pipeline = bmb::mir::OptimizationPipeline::new();
+    pipeline.add_pass(Box::new(pass));
+    pipeline.optimize(&mut program);
+    assert!(!program.functions.is_empty());
+}
+
+#[test]
+fn test_proof_null_check_elimination_pass() {
+    let source = "fn safe_deref(x: i64) -> i64 pre x > 0 = x;";
+    let mut program = lower_to_mir(source);
+    let pass = bmb::mir::NullCheckElimination::new();
+    let mut pipeline = bmb::mir::OptimizationPipeline::new();
+    pipeline.add_pass(Box::new(pass));
+    pipeline.optimize(&mut program);
+    assert!(!program.functions.is_empty());
+}
+
+#[test]
+fn test_proof_division_check_elimination_pass() {
+    let source = "fn safe_div(a: i64, b: i64) -> i64 pre b != 0 = a / b;";
+    let mut program = lower_to_mir(source);
+    let pass = bmb::mir::DivisionCheckElimination::new();
+    let mut pipeline = bmb::mir::OptimizationPipeline::new();
+    pipeline.add_pass(Box::new(pass));
+    pipeline.optimize(&mut program);
+    assert!(!program.functions.is_empty());
+}
+
+#[test]
+fn test_proof_unreachable_elimination_pass() {
+    let source = "fn bounded(x: i64) -> i64 pre x > 0 = if x > 0 { x } else { 0 };";
+    let mut program = lower_to_mir(source);
+    let pass = bmb::mir::ProofUnreachableElimination::new();
+    let mut pipeline = bmb::mir::OptimizationPipeline::new();
+    pipeline.add_pass(Box::new(pass));
+    pipeline.optimize(&mut program);
+    assert!(!program.functions.is_empty());
+}
+
+// --- Proof-Guided: ProvenFactSet Query API ---
+
+#[test]
+fn test_proven_fact_set_lower_bound() {
+    let program = lower_to_mir("fn f(x: i64) -> i64 pre x >= 0 = x;");
+    let func = &program.functions[0];
+    let facts = bmb::mir::ProvenFactSet::from_mir_preconditions(&func.preconditions);
+    assert!(facts.has_lower_bound("x", 0), "x >= 0 should set lower bound to 0");
+}
+
+#[test]
+fn test_proven_fact_set_nonzero() {
+    let program = lower_to_mir("fn f(d: i64) -> i64 pre d != 0 = d;");
+    let func = &program.functions[0];
+    let facts = bmb::mir::ProvenFactSet::from_mir_preconditions(&func.preconditions);
+    assert!(facts.has_nonzero("d"), "d != 0 should mark d as nonzero");
+}
+
+#[test]
+fn test_proven_fact_set_empty() {
+    let program = lower_to_mir("fn f(x: i64) -> i64 = x;");
+    let func = &program.functions[0];
+    let facts = bmb::mir::ProvenFactSet::from_mir_preconditions(&func.preconditions);
+    assert!(!facts.has_nonzero("x"), "no contract should mean no facts");
+    assert!(!facts.has_lower_bound("x", 0), "no contract should mean no lower bound");
+}
+
+#[test]
+fn test_proven_fact_set_positive_implies_lower_bound() {
+    let program = lower_to_mir("fn f(x: i64) -> i64 pre x > 0 = x;");
+    let func = &program.functions[0];
+    let facts = bmb::mir::ProvenFactSet::from_mir_preconditions(&func.preconditions);
+    assert!(facts.has_lower_bound("x", 1), "x > 0 should set lower bound to 1");
+}
+
+// --- ProofOptimizationStats API ---
+
+#[test]
+fn test_proof_opt_stats_new() {
+    let stats = bmb::mir::ProofOptimizationStats::new();
+    assert_eq!(stats.total(), 0);
+    assert_eq!(stats.bounds_checks_eliminated, 0);
+    assert_eq!(stats.null_checks_eliminated, 0);
+    assert_eq!(stats.division_checks_eliminated, 0);
+    assert_eq!(stats.unreachable_blocks_eliminated, 0);
+}
+
+#[test]
+fn test_proof_opt_stats_merge() {
+    let mut stats1 = bmb::mir::ProofOptimizationStats::new();
+    let mut stats2 = bmb::mir::ProofOptimizationStats::new();
+    stats2.bounds_checks_eliminated = 3;
+    stats2.division_checks_eliminated = 1;
+    stats1.merge(&stats2);
+    assert_eq!(stats1.bounds_checks_eliminated, 3);
+    assert_eq!(stats1.division_checks_eliminated, 1);
+    assert_eq!(stats1.total(), 4);
+}
+
+#[test]
+fn test_proof_opt_stats_from_simple_program() {
+    let mut program = lower_to_mir("fn f(x: i64) -> i64 = x + 1;");
+    let stats = bmb::mir::run_proof_guided_program(&mut program);
+    assert_eq!(stats.total(), 0);
+}
+
+#[test]
+fn test_proof_opt_stats_from_contract_program() {
+    let mut program = lower_to_mir("fn f(x: i64) -> i64 pre x > 0 = x;");
+    let stats = bmb::mir::run_proof_guided_program(&mut program);
+    let _total = stats.total();
+}
+
+// --- Proof-Guided: run_proof_guided_optimizations on function ---
+
+#[test]
+fn test_proof_guided_optimizations_on_function() {
+    let mut program = lower_to_mir("fn safe(a: i64, b: i64) -> i64 pre b != 0 = a / b;");
+    let stats = bmb::mir::run_proof_guided_optimizations(&mut program.functions[0]);
+    let _total = stats.total();
+}
+
+#[test]
+fn test_proof_guided_multiple_contracts() {
+    let source = "fn bounded_div(a: i64, b: i64) -> i64 pre a >= 0 && b > 0 = a / b;";
+    let mut program = lower_to_mir(source);
+    let stats = bmb::mir::run_proof_guided_program(&mut program);
+    let _total = stats.total();
+}
+
+// --- Combined: WASM + Optimization Pipeline ---
+
+#[test]
+fn test_pipeline_optimized_to_wasm() {
+    let source = "fn main() -> i64 = 3 + 4;";
+    let tokens = tokenize(source).expect("tokenize failed");
+    let ast = parse("test.bmb", source, tokens).expect("parse failed");
+    let mut tc = TypeChecker::new();
+    tc.check_program(&ast).expect("type check failed");
+    let mut mir = bmb::mir::lower_program(&ast);
+    let pipeline = bmb::mir::OptimizationPipeline::for_level(bmb::mir::OptLevel::Release);
+    pipeline.optimize(&mut mir);
+    let codegen = bmb::codegen::WasmCodeGen::new();
+    let result = codegen.generate(&mir);
+    assert!(result.is_ok(), "optimized MIR to WASM should succeed");
+}
+
+#[test]
+fn test_pipeline_proof_guided_then_wasm() {
+    let source = "fn safe_add(a: i64, b: i64) -> i64 pre a >= 0 && b >= 0 = a + b;";
+    let mut program = lower_to_mir(source);
+    bmb::mir::run_proof_guided_program(&mut program);
+    let codegen = bmb::codegen::WasmCodeGen::with_target(bmb::codegen::WasmTarget::Standalone);
+    let result = codegen.generate(&program);
+    assert!(result.is_ok(), "proof-guided optimized MIR to WASM should succeed");
+}
