@@ -5985,3 +5985,302 @@ fn test_parse_error_missing_semicolon() {
         "fn main() -> i64 = 42"
     ));
 }
+
+// ========================================================================
+// Cycle 225: Interpreter Edge Case & Boundary Tests
+// ========================================================================
+
+// --- Arithmetic Edge Cases ---
+
+#[test]
+fn test_interp_negative_numbers() {
+    assert_eq!(
+        run_program_i64("fn main() -> i64 = -42;"),
+        -42
+    );
+}
+
+#[test]
+fn test_interp_negative_arithmetic() {
+    assert_eq!(
+        run_program_i64("fn main() -> i64 = -10 + 3;"),
+        -7
+    );
+}
+
+#[test]
+fn test_interp_modulo_positive() {
+    assert_eq!(
+        run_program_i64("fn main() -> i64 = 17 % 5;"),
+        2
+    );
+}
+
+#[test]
+fn test_interp_modulo_negative_dividend() {
+    // In most languages, -7 % 3 = -1 (truncated toward zero)
+    assert_eq!(
+        run_program_i64("fn main() -> i64 = -7 % 3;"),
+        -1
+    );
+}
+
+#[test]
+fn test_interp_integer_division_truncates_toward_zero() {
+    assert_eq!(
+        run_program_i64("fn main() -> i64 = 7 / 2;"),
+        3
+    );
+}
+
+#[test]
+fn test_interp_negative_division_truncates_toward_zero() {
+    assert_eq!(
+        run_program_i64("fn main() -> i64 = -7 / 2;"),
+        -3
+    );
+}
+
+#[test]
+fn test_interp_large_multiplication() {
+    // 1000000 * 1000000 = 1_000_000_000_000 (fits in i64)
+    assert_eq!(
+        run_program_i64("fn main() -> i64 = 1000000 * 1000000;"),
+        1_000_000_000_000
+    );
+}
+
+// --- Boolean Edge Cases ---
+
+#[test]
+fn test_interp_bool_not_operator() {
+    assert_eq!(
+        run_program("fn main() -> bool = !true;"),
+        Value::Bool(false)
+    );
+}
+
+#[test]
+fn test_interp_bool_not_false() {
+    assert_eq!(
+        run_program("fn main() -> bool = !false;"),
+        Value::Bool(true)
+    );
+}
+
+#[test]
+fn test_interp_chained_comparison() {
+    // a < b && b < c pattern
+    assert_eq!(
+        run_program_i64(
+            "fn main() -> i64 = {
+               let a = 1;
+               let b = 2;
+               let c = 3;
+               if a < b && b < c { 1 } else { 0 }
+             };"
+        ),
+        1
+    );
+}
+
+// --- Recursive Edge Cases ---
+
+#[test]
+fn test_interp_recursive_base_case_zero() {
+    // Recursive function that should immediately return at base case
+    assert_eq!(
+        run_program_i64(
+            "fn fact(n: i64) -> i64 = if n <= 1 { 1 } else { n * fact(n - 1) };
+             fn main() -> i64 = fact(0);"
+        ),
+        1
+    );
+}
+
+#[test]
+fn test_interp_mutual_recursion_even_odd() {
+    // Even/odd mutual recursion
+    assert_eq!(
+        run_program_i64(
+            "fn is_even(n: i64) -> i64 = if n == 0 { 1 } else { is_odd(n - 1) };
+             fn is_odd(n: i64) -> i64 = if n == 0 { 0 } else { is_even(n - 1) };
+             fn main() -> i64 = is_even(10) + is_odd(7);"
+        ),
+        2 // is_even(10)=1, is_odd(7)=1, 1+1=2
+    );
+}
+
+// --- Loop Edge Cases ---
+
+#[test]
+fn test_interp_loop_zero_iterations() {
+    // While loop that never executes
+    assert_eq!(
+        run_program_i64(
+            "fn main() -> i64 = {
+               let mut x = 42;
+               while false { { x = 0 } };
+               x
+             };"
+        ),
+        42
+    );
+}
+
+#[test]
+fn test_interp_for_empty_range() {
+    // For loop with empty range (start >= end)
+    assert_eq!(
+        run_program_i64(
+            "fn main() -> i64 = {
+               let mut sum = 0;
+               for i in 5..5 { sum = sum + i };
+               sum
+             };"
+        ),
+        0 // empty range, loop body never executes
+    );
+}
+
+#[test]
+fn test_interp_nested_break_only_inner() {
+    // Break in inner loop should not affect outer loop
+    assert_eq!(
+        run_program_i64(
+            "fn main() -> i64 = {
+               let mut outer_count = 0;
+               let mut i = 0;
+               while i < 3 {
+                 let mut j = 0;
+                 loop {
+                   j = j + 1;
+                   if j >= 2 { break } else { () }
+                 };
+                 outer_count = outer_count + j;
+                 { i = i + 1 }
+               };
+               outer_count
+             };"
+        ),
+        6 // 3 iterations of outer, each inner runs j to 2, total = 2+2+2 = 6
+    );
+}
+
+// --- String Edge Cases ---
+
+#[test]
+fn test_interp_empty_string_concat() {
+    // Empty string concatenation should produce the other string
+    assert_eq!(
+        run_program_i64(
+            r#"fn main() -> i64 = if "" == "" { 1 } else { 0 };"#
+        ),
+        1
+    );
+}
+
+#[test]
+fn test_interp_string_equality() {
+    assert_eq!(
+        run_program_i64(
+            r#"fn main() -> i64 = if "hello" == "hello" { 1 } else { 0 };"#
+        ),
+        1
+    );
+}
+
+#[test]
+fn test_interp_string_inequality() {
+    assert_eq!(
+        run_program_i64(
+            r#"fn main() -> i64 = if "hello" == "world" { 1 } else { 0 };"#
+        ),
+        0
+    );
+}
+
+// --- Variable Shadowing ---
+
+#[test]
+fn test_interp_variable_shadowing() {
+    assert_eq!(
+        run_program_i64(
+            "fn main() -> i64 = {
+               let x = 10;
+               let x = x + 20;
+               x
+             };"
+        ),
+        30
+    );
+}
+
+#[test]
+fn test_interp_shadowing_overwrites_in_scope() {
+    // In BMB, let in a block overwrites the outer binding (flat scope)
+    assert_eq!(
+        run_program_i64(
+            "fn main() -> i64 = {
+               let x = 1;
+               let y = {
+                 let x = 100;
+                 x + 5
+               };
+               x + y
+             };"
+        ),
+        205 // x becomes 100 (overwritten), y=105, x+y = 100+105=205
+    );
+}
+
+// --- Complex Expression Evaluation ---
+
+#[test]
+fn test_interp_nested_if_expressions() {
+    assert_eq!(
+        run_program_i64(
+            "fn main() -> i64 = {
+               let a = 3;
+               let b = 7;
+               if a > b {
+                 if a > 10 { 100 } else { 50 }
+               } else {
+                 if b > 10 { 200 } else { 25 }
+               }
+             };"
+        ),
+        25 // a=3 < b=7, b=7 <= 10, so 25
+    );
+}
+
+#[test]
+fn test_interp_expression_as_function_arg() {
+    assert_eq!(
+        run_program_i64(
+            "fn add(a: i64, b: i64) -> i64 = a + b;
+             fn main() -> i64 = add(2 + 3, 4 * 5);"
+        ),
+        25 // add(5, 20) = 25
+    );
+}
+
+// --- Type Checking Edge Cases ---
+
+#[test]
+fn test_type_nested_generic_instantiation() {
+    assert!(type_checks(
+        "fn id<T>(x: T) -> T = x;
+         fn main() -> i64 = id(id(42));"
+    ));
+}
+
+#[test]
+fn test_type_if_else_both_return_same_type() {
+    assert!(type_checks(
+        "fn main() -> i64 = {
+           let x = 5;
+           if x > 0 { x * 2 } else { 0 - x }
+         };"
+    ));
+}
