@@ -11802,6 +11802,245 @@ fn test_edge_codegen_many_functions() {
 }
 
 // =============================================================================
+// Cycle 251 (FINAL): Coverage Gaps & Remaining Tests
+// =============================================================================
+
+// --- Cast Operations ---
+
+#[test]
+fn test_cast_chain_i64_f64_i64() {
+    // Chained cast: i64 -> f64 -> i64
+    let source = "fn main() -> i64 = { let x: i64 = 42; let f = x as f64; f as i64 };";
+    assert_eq!(run_program_i64(source), 42);
+}
+
+#[test]
+fn test_cast_bool_to_i64_true() {
+    let source = "fn main() -> i64 = true as i64;";
+    assert_eq!(run_program_i64(source), 1);
+}
+
+#[test]
+fn test_cast_bool_to_i64_false() {
+    let source = "fn main() -> i64 = false as i64;";
+    assert_eq!(run_program_i64(source), 0);
+}
+
+// --- Bitwise Operation Combinations ---
+
+#[test]
+fn test_bitwise_mask_pattern() {
+    // Common bitwise pattern: and + or
+    let source = "fn main() -> i64 = (255 band 15) bor (240 band 255);";
+    assert_eq!(run_program_i64(source), 15 | 240); // 255
+}
+
+#[test]
+fn test_bitwise_xor_self_is_zero() {
+    let source = "fn main() -> i64 = 42 bxor 42;";
+    assert_eq!(run_program_i64(source), 0);
+}
+
+#[test]
+fn test_bitwise_shift_multiply() {
+    // Shift left by 3 = multiply by 8
+    let source = "fn main() -> i64 = 5 << 3;";
+    assert_eq!(run_program_i64(source), 40);
+}
+
+// --- Trait Type-Checking (runtime not supported) ---
+
+#[test]
+fn test_trait_with_default_style_method() {
+    // Trait with method taking self: Self
+    assert!(type_checks(
+        "trait Sizeable { fn size(self: Self) -> i64; }
+         struct Box { w: i64, h: i64 }
+         impl Sizeable for Box { fn size(self: Self) -> i64 = self.w * self.h; }"
+    ));
+}
+
+#[test]
+fn test_trait_multiple_impls_different_structs() {
+    // Same trait implemented by two different structs
+    assert!(type_checks(
+        "trait Area { fn area(self: Self) -> i64; }
+         struct Rect { w: i64, h: i64 }
+         struct Circle { r: i64 }
+         impl Area for Rect { fn area(self: Self) -> i64 = self.w * self.h; }
+         impl Area for Circle { fn area(self: Self) -> i64 = self.r * self.r * 3; }"
+    ));
+}
+
+#[test]
+fn test_trait_impl_wrong_return_type_allowed() {
+    // BMB currently allows impl methods with different return types from trait declaration
+    // This documents current behavior (may change in future)
+    assert!(type_checks(
+        "trait GetVal { fn get(self: Self) -> i64; }
+         struct S { v: bool }
+         impl GetVal for S { fn get(self: Self) -> bool = self.v; }"
+    ));
+}
+
+// --- Error Recovery ---
+
+#[test]
+fn test_error_multiple_undefined_references() {
+    // Multiple undefined references in one program
+    assert!(type_error("fn f() -> i64 = x + y + z;"));
+}
+
+#[test]
+fn test_error_type_mismatch_in_if_branches() {
+    // If branches return different types
+    assert!(type_error("fn f(b: bool) -> i64 = if b { 42 } else { true };"));
+}
+
+#[test]
+fn test_error_recursive_without_base_case_types() {
+    // Infinite recursion type-checks (no termination check)
+    assert!(type_checks("fn loop_forever(x: i64) -> i64 = loop_forever(x);"));
+}
+
+// --- Array Advanced ---
+
+#[test]
+fn test_array_sum_via_for_loop() {
+    let source = "fn main() -> i64 = {
+        let arr = [10, 20, 30, 40, 50];
+        let mut total: i64 = 0;
+        for i in 0..5 {
+            total = total + arr[i];
+            0
+        };
+        total
+    };";
+    assert_eq!(run_program_i64(source), 150);
+}
+
+#[test]
+fn test_array_repeat_and_modify() {
+    let source = "fn main() -> i64 = {
+        let mut arr = [0; 5];
+        set arr[0] = 1;
+        set arr[1] = 2;
+        set arr[2] = 3;
+        arr[0] + arr[1] + arr[2]
+    };";
+    assert_eq!(run_program_i64(source), 6);
+}
+
+// --- String Advanced ---
+
+#[test]
+fn test_string_is_empty_true() {
+    let source = "fn main() -> bool = \"\".is_empty();";
+    assert!(type_checks(source));
+}
+
+#[test]
+fn test_string_len_nonempty() {
+    let source = "fn main() -> i64 = \"hello\".len();";
+    assert_eq!(run_program_i64(source), 5);
+}
+
+// --- Additional Semantic Tests ---
+
+#[test]
+fn test_semantic_fibonacci_iterative() {
+    // Iterative fibonacci via while loop
+    let source = "fn main() -> i64 = {
+        let mut a: i64 = 0;
+        let mut b: i64 = 1;
+        let mut n: i64 = 0;
+        while n < 20 {
+            let temp = a + b;
+            a = b;
+            b = temp;
+            n = n + 1;
+            0
+        };
+        a
+    };";
+    // fib(20) = 6765
+    assert_eq!(run_program_i64(source), 6765);
+}
+
+#[test]
+fn test_semantic_is_prime_recursive() {
+    let source = "
+        fn check_div(n: i64, d: i64) -> bool = {
+            if d * d > n { true }
+            else if n % d == 0 { false }
+            else { check_div(n, d + 1) }
+        };
+        fn is_prime(n: i64) -> bool = if n < 2 { false } else { check_div(n, 2) };
+        fn main() -> i64 = if is_prime(97) { 1 } else { 0 };
+    ";
+    assert_eq!(run_program_i64(source), 1); // 97 is prime
+}
+
+#[test]
+fn test_semantic_binary_search_pattern() {
+    // Binary search simulation with known values
+    let source = "
+        fn bsearch(target: i64, lo: i64, hi: i64) -> i64 = {
+            if lo > hi { -1 }
+            else {
+                let mid = (lo + hi) / 2;
+                if mid == target { mid }
+                else if mid < target { bsearch(target, mid + 1, hi) }
+                else { bsearch(target, lo, mid - 1) }
+            }
+        };
+        fn main() -> i64 = bsearch(7, 0, 15);
+    ";
+    assert_eq!(run_program_i64(source), 7);
+}
+
+#[test]
+fn test_semantic_mutual_recursion_even_odd() {
+    let source = "
+        fn is_even(n: i64) -> bool = if n == 0 { true } else { is_odd(n - 1) };
+        fn is_odd(n: i64) -> bool = if n == 0 { false } else { is_even(n - 1) };
+        fn main() -> i64 = if is_even(10) { 1 } else { 0 };
+    ";
+    assert_eq!(run_program_i64(source), 1);
+}
+
+// --- MIR/Codegen Coverage ---
+
+#[test]
+fn test_mir_format_roundtrip() {
+    // Format MIR and verify it's non-empty
+    let mir = lower_to_mir("fn add(a: i64, b: i64) -> i64 = a + b;");
+    let text = bmb::mir::format_mir(&mir);
+    assert!(text.contains("add"), "formatted MIR should contain function name");
+    assert!(text.contains("+") || text.contains("Add"), "should contain add operation");
+}
+
+#[test]
+fn test_codegen_text_multiple_functions_ir() {
+    let source = "fn inc(x: i64) -> i64 = x + 1;\nfn dec(x: i64) -> i64 = x - 1;";
+    let program = lower_to_mir(source);
+    let codegen = bmb::codegen::TextCodeGen::new();
+    let result = codegen.generate(&program);
+    assert!(result.is_ok());
+    let ir = result.unwrap();
+    assert!(ir.contains("inc") && ir.contains("dec"), "IR should contain both functions");
+}
+
+#[test]
+fn test_codegen_wasm_contract_function() {
+    let source = "fn safe(x: i64) -> i64 pre x >= 0 post ret >= 0 = x;";
+    let program = lower_to_mir(source);
+    let codegen = bmb::codegen::WasmCodeGen::with_target(bmb::codegen::WasmTarget::Standalone);
+    let result = codegen.generate(&program);
+    assert!(result.is_ok(), "contract function should generate WASM");
+}
+
+// =============================================================================
 // Cycle 250: Semantic Correctness & Feature Interaction Tests
 // =============================================================================
 
