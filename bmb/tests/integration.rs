@@ -13547,3 +13547,108 @@ fn test_string_unknown_method_rejected() {
     let source = r#"fn main() -> String = "hello".nonexistent();"#;
     assert!(type_error(source));
 }
+
+// --- Cycle 267: For-in array iteration ---
+
+#[test]
+fn test_for_in_array_sum() {
+    let source = r#"
+        fn main() -> i64 = {
+            let arr = [10, 20, 30];
+            let sum = 0;
+            for x in arr {
+                sum = sum + x;
+            };
+            sum
+        };
+    "#;
+    assert_eq!(run_program_i64(source), 60);
+}
+
+#[test]
+fn test_for_in_array_count() {
+    let source = r#"
+        fn main() -> i64 = {
+            let arr = [1, 2, 3, 4, 5];
+            let count = 0;
+            for x in arr {
+                count = count + 1;
+            };
+            count
+        };
+    "#;
+    assert_eq!(run_program_i64(source), 5);
+}
+
+#[test]
+fn test_for_in_array_single() {
+    let source = r#"
+        fn main() -> i64 = {
+            let sum = 0;
+            for x in [42] {
+                sum = sum + x;
+            };
+            sum
+        };
+    "#;
+    assert_eq!(run_program_i64(source), 42);
+}
+
+#[test]
+fn test_for_in_array_string() {
+    let source = r#"
+        fn main() -> i64 = {
+            let arr = ["hello", "world"];
+            let total_len = 0;
+            for s in arr {
+                total_len = total_len + s.len();
+            };
+            total_len
+        };
+    "#;
+    assert_eq!(run_program_i64(source), 10);
+}
+
+#[test]
+fn test_for_in_array_nested() {
+    let source = r#"
+        fn main() -> i64 = {
+            let result = 0;
+            for x in [1, 2, 3] {
+                for y in [10, 20] {
+                    result = result + x * y;
+                };
+            };
+            result
+        };
+    "#;
+    // (1*10 + 1*20) + (2*10 + 2*20) + (3*10 + 3*20) = 30 + 60 + 90 = 180
+    assert_eq!(run_program_i64(source), 180);
+}
+
+#[test]
+fn test_for_in_array_break() {
+    let source = r#"
+        fn main() -> i64 = {
+            let sum = 0;
+            for x in [1, 2, 3, 4, 5] {
+                if x > 3 { break } else { sum = sum + x };
+            };
+            sum
+        };
+    "#;
+    assert_eq!(run_program_i64(source), 6);
+}
+
+#[test]
+fn test_for_in_array_type_error() {
+    let source = r#"
+        fn main() -> i64 = {
+            for x in 42 {
+                x
+            };
+            0
+        };
+    "#;
+    assert!(type_error(source));
+}

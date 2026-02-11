@@ -1802,9 +1802,11 @@ impl TypeChecker {
             Expr::For { var, iter, body } => {
                 let iter_ty = self.infer(&iter.node, iter.span)?;
 
-                // Iterator must be a Range type or Receiver<T> (v0.81)
+                // Iterator must be a Range, Array, or Receiver<T> type
                 let elem_ty = match &iter_ty {
                     Type::Range(elem) => (**elem).clone(),
+                    // v0.90.33: Array iteration
+                    Type::Array(elem, _) => (**elem).clone(),
                     // v0.81: Receiver<T> can be iterated (calls recv_opt until closed)
                     Type::Receiver(inner) => (**inner).clone(),
                     Type::Generic { name, type_args } if name == "Receiver" => {
@@ -1812,7 +1814,7 @@ impl TypeChecker {
                     }
                     _ => {
                         return Err(CompileError::type_error(
-                            format!("for loop requires Range or Receiver type, got {iter_ty}"),
+                            format!("for loop requires Range, Array, or Receiver type, got {iter_ty}"),
                             iter.span,
                         ));
                     }

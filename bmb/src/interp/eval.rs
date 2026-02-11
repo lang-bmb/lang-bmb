@@ -599,7 +599,21 @@ impl Interpreter {
                         }
                         Ok(Value::Unit)
                     }
-                    _ => Err(RuntimeError::type_error("Range", iter_val.type_name())),
+                    // v0.90.33: Array iteration
+                    Value::Array(elements) => {
+                        let child = child_env(env);
+                        for elem in elements {
+                            child.borrow_mut().define(var.clone(), elem);
+                            match self.eval(body, &child) {
+                                Ok(_) => {},
+                                Err(e) if matches!(e.kind, ErrorKind::Continue) => continue,
+                                Err(e) if matches!(e.kind, ErrorKind::Break(_)) => break,
+                                Err(e) => return Err(e),
+                            }
+                        }
+                        Ok(Value::Unit)
+                    }
+                    _ => Err(RuntimeError::type_error("Range or Array", iter_val.type_name())),
                 }
             }
 
