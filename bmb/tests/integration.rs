@@ -11466,3 +11466,337 @@ fn test_pipeline_proof_guided_then_wasm() {
     let result = codegen.generate(&program);
     assert!(result.is_ok(), "proof-guided optimized MIR to WASM should succeed");
 }
+
+// =============================================================================
+// Cycle 249: Edge Case & Stress Integration Tests
+// =============================================================================
+
+/// Helper: try to run a program through interpreter, returning Result
+fn try_run_program(source: &str) -> Result<bmb::interp::Value, String> {
+    let tokens = tokenize(source).map_err(|e| format!("{e}"))?;
+    let ast = parse("test.bmb", source, tokens).map_err(|e| format!("{e}"))?;
+    let mut tc = TypeChecker::new();
+    tc.check_program(&ast).map_err(|e| format!("{e}"))?;
+    let mut interp = bmb::interp::Interpreter::new();
+    interp.run(&ast).map_err(|e| format!("{e}"))
+}
+
+// --- Parser Edge Cases ---
+
+#[test]
+fn test_edge_empty_struct_definition() {
+    // Empty struct should parse and type-check
+    assert!(type_checks("struct Empty {}\nfn main() -> i64 = 0;"));
+}
+
+#[test]
+fn test_edge_empty_struct_instantiation() {
+    assert!(type_checks("struct S {}\nfn f() -> S = new S {};"));
+}
+
+#[test]
+fn test_edge_single_field_struct() {
+    assert_eq!(run_program_i64("struct W { val: i64 }\nfn main() -> i64 = { let w = new W { val: 99 }; w.val };"), 99);
+}
+
+#[test]
+fn test_edge_long_identifier() {
+    // Very long identifier name should work
+    let long_name = "a".repeat(200);
+    let source = format!("fn {}() -> i64 = 42;\nfn main() -> i64 = {}();", long_name, long_name);
+    assert_eq!(run_program_i64(&source), 42);
+}
+
+#[test]
+fn test_edge_deeply_nested_arithmetic() {
+    // Deeply nested expression: ((((1+1)+1)+1)...+1) = 20
+    let mut expr = "1".to_string();
+    for _ in 0..19 {
+        expr = format!("({} + 1)", expr);
+    }
+    let source = format!("fn main() -> i64 = {};", expr);
+    assert_eq!(run_program_i64(&source), 20);
+}
+
+#[test]
+fn test_edge_deeply_nested_if_else() {
+    // 10 levels of nested if/else
+    let source = "fn main() -> i64 = if true { if true { if true { if true { if true { if true { if true { if true { if true { if true { 42 } else { 0 } } else { 0 } } else { 0 } } else { 0 } } else { 0 } } else { 0 } } else { 0 } } else { 0 } } else { 0 } } else { 0 };";
+    assert_eq!(run_program_i64(source), 42);
+}
+
+#[test]
+fn test_edge_string_escape_newline() {
+    // String with newline escape
+    assert!(type_checks("fn main() -> String = \"hello\\nworld\";"));
+}
+
+#[test]
+fn test_edge_string_escape_tab() {
+    assert!(type_checks("fn main() -> String = \"col1\\tcol2\";"));
+}
+
+#[test]
+fn test_edge_string_empty() {
+    assert!(type_checks("fn main() -> String = \"\";"));
+}
+
+#[test]
+fn test_edge_operator_precedence_mul_add() {
+    // 2 + 3 * 4 should be 14 (not 20)
+    assert_eq!(run_program_i64("fn main() -> i64 = 2 + 3 * 4;"), 14);
+}
+
+#[test]
+fn test_edge_operator_precedence_comparison_and_logic() {
+    // 3 > 2 && 1 < 5 should be true
+    let source = "fn main() -> bool = 3 > 2 && 1 < 5;";
+    assert!(type_checks(source));
+}
+
+#[test]
+fn test_edge_unary_negation() {
+    assert_eq!(run_program_i64("fn main() -> i64 = -42;"), -42);
+}
+
+#[test]
+fn test_edge_double_negation() {
+    assert_eq!(run_program_i64("fn main() -> i64 = -(-42);"), 42);
+}
+
+// --- Type System Edge Cases ---
+
+#[test]
+fn test_edge_unit_return_type() {
+    assert!(type_checks("fn side_effect() -> () = ();"));
+}
+
+#[test]
+fn test_edge_function_returning_bool() {
+    assert!(type_checks("fn is_positive(x: i64) -> bool = x > 0;"));
+}
+
+#[test]
+fn test_edge_recursive_function_type_checks() {
+    assert!(type_checks("fn inf(n: i64) -> i64 = inf(n);"));
+}
+
+#[test]
+fn test_edge_type_error_wrong_return_type() {
+    assert!(type_error("fn f() -> i64 = true;"));
+}
+
+#[test]
+fn test_edge_type_error_bool_arithmetic() {
+    // Cannot add booleans
+    assert!(type_error("fn f() -> bool = true + false;"));
+}
+
+#[test]
+fn test_edge_type_error_string_int_add() {
+    assert!(type_error("fn f() -> i64 = 1 + \"hello\";"));
+}
+
+#[test]
+fn test_edge_generic_identity_chain() {
+    // Chain of generic identity calls
+    assert!(type_checks(
+        "fn id<T>(x: T) -> T = x;\nfn main() -> i64 = id(id(id(42)));"
+    ));
+}
+
+// --- Interpreter Edge Cases ---
+
+#[test]
+fn test_edge_interp_division_by_zero() {
+    // Division by zero should error, not crash
+    let result = try_run_program("fn main() -> i64 = 1 / 0;");
+    assert!(result.is_err(), "division by zero should produce an error");
+}
+
+#[test]
+fn test_edge_interp_modulo_by_zero() {
+    let result = try_run_program("fn main() -> i64 = 10 % 0;");
+    assert!(result.is_err(), "modulo by zero should produce an error");
+}
+
+#[test]
+fn test_edge_interp_negative_modulo() {
+    // -7 % 3 behavior
+    let result = run_program_i64("fn main() -> i64 = -7 % 3;");
+    // Rust semantics: -7 % 3 == -1
+    assert_eq!(result, -1);
+}
+
+#[test]
+fn test_edge_interp_zero_iteration_while() {
+    // While that never executes body
+    assert_eq!(run_program_i64("fn main() -> i64 = { let mut x = 0; while false { x = 1; 0 }; x };"), 0);
+}
+
+#[test]
+fn test_edge_interp_zero_iteration_for() {
+    // For loop with empty range
+    assert_eq!(run_program_i64("fn main() -> i64 = { let mut s: i64 = 0; for i in 0..0 { s = s + 1; 0 }; s };"), 0);
+}
+
+#[test]
+fn test_edge_interp_single_iteration_for() {
+    assert_eq!(run_program_i64("fn main() -> i64 = { let mut s: i64 = 0; for i in 0..1 { s = s + i; 0 }; s };"), 0);
+}
+
+#[test]
+fn test_edge_interp_empty_array() {
+    // Empty array creation (if supported)
+    assert!(type_checks("fn main() -> [i64; 0] = [];"));
+}
+
+#[test]
+fn test_edge_interp_nested_function_calls() {
+    // Deep call chain: f1 -> f2 -> f3 -> f4 -> f5
+    let source = "
+        fn f5(x: i64) -> i64 = x + 1;
+        fn f4(x: i64) -> i64 = f5(x) + 1;
+        fn f3(x: i64) -> i64 = f4(x) + 1;
+        fn f2(x: i64) -> i64 = f3(x) + 1;
+        fn f1(x: i64) -> i64 = f2(x) + 1;
+        fn main() -> i64 = f1(0);
+    ";
+    assert_eq!(run_program_i64(source), 5);
+}
+
+#[test]
+fn test_edge_interp_many_local_variables() {
+    // Function with many locals
+    let source = "fn main() -> i64 = {
+        let a = 1; let b = 2; let c = 3; let d = 4; let e = 5;
+        let f = 6; let g = 7; let h = 8; let i = 9; let j = 10;
+        let k = 11; let l = 12; let m = 13; let n = 14; let o = 15;
+        let p = 16; let q = 17; let r = 18; let s = 19; let t = 20;
+        a + b + c + d + e + f + g + h + i + j + k + l + m + n + o + p + q + r + s + t
+    };";
+    assert_eq!(run_program_i64(source), 210); // sum 1..20
+}
+
+// --- MIR Edge Cases ---
+
+#[test]
+fn test_edge_mir_identity_function() {
+    // Simplest possible MIR: just return param
+    let mir = lower_to_mir("fn id(x: i64) -> i64 = x;");
+    assert_eq!(mir.functions.len(), 1);
+    assert_eq!(mir.functions[0].params.len(), 1);
+}
+
+#[test]
+fn test_edge_mir_no_params_constant() {
+    let mir = lower_to_mir("fn answer() -> i64 = 42;");
+    assert_eq!(mir.functions[0].params.len(), 0);
+}
+
+#[test]
+fn test_edge_mir_function_with_contract_facts() {
+    let mir = lower_to_mir("fn safe(x: i64) -> i64 pre x > 0 post ret >= 0 = x;");
+    let func = &mir.functions[0];
+    assert!(!func.preconditions.is_empty(), "should have preconditions");
+    assert!(!func.postconditions.is_empty(), "should have postconditions");
+}
+
+#[test]
+fn test_edge_mir_pure_function_flag() {
+    let mir = lower_to_mir("@pure\nfn sq(x: i64) -> i64 = x * x;");
+    let func = &mir.functions[0];
+    assert!(func.is_pure, "should be marked pure");
+}
+
+#[test]
+fn test_edge_mir_const_function_flag() {
+    let mir = lower_to_mir("@const\nfn magic() -> i64 = 42;");
+    let func = &mir.functions[0];
+    assert!(func.is_const, "should be marked const");
+}
+
+// --- Error Handling Edge Cases ---
+
+#[test]
+fn test_edge_error_undefined_variable() {
+    assert!(type_error("fn f() -> i64 = x;"));
+}
+
+#[test]
+fn test_edge_error_undefined_function_call() {
+    assert!(type_error("fn f() -> i64 = nonexistent();"));
+}
+
+#[test]
+fn test_edge_error_wrong_arg_count() {
+    assert!(type_error("fn add(a: i64, b: i64) -> i64 = a + b;\nfn main() -> i64 = add(1);"));
+}
+
+#[test]
+fn test_edge_error_parse_unclosed_brace() {
+    assert!(parse_error("fn f() -> i64 = {"));
+}
+
+#[test]
+fn test_edge_error_parse_missing_semicolon() {
+    assert!(parse_error("fn f() -> i64 = 42\nfn g() -> i64 = 1;"));
+}
+
+#[test]
+fn test_edge_error_parse_invalid_token() {
+    assert!(parse_error("fn f() -> i64 = @@@;"));
+}
+
+// --- Contract Edge Cases ---
+
+#[test]
+fn test_edge_contract_postcondition_only() {
+    assert!(type_checks("fn positive() -> i64 post ret > 0 = 42;"));
+}
+
+#[test]
+fn test_edge_contract_zero_param_function() {
+    // Contract on function with no params but postcondition
+    let mir = lower_to_mir("fn always_one() -> i64 post ret == 1 = 1;");
+    assert!(!mir.functions[0].postconditions.is_empty());
+}
+
+#[test]
+fn test_edge_contract_combined_pre_post() {
+    assert!(type_checks(
+        "fn clamp(x: i64, lo: i64, hi: i64) -> i64 pre lo <= hi post ret >= lo = if x < lo { lo } else if x > hi { hi } else { x };"
+    ));
+}
+
+// --- Codegen Edge Cases ---
+
+#[test]
+fn test_edge_codegen_unit_function_wasm() {
+    let program = lower_to_mir("fn noop() -> () = ();");
+    let codegen = bmb::codegen::WasmCodeGen::new();
+    let result = codegen.generate(&program);
+    assert!(result.is_ok(), "unit function WASM should succeed");
+}
+
+#[test]
+fn test_edge_codegen_unit_function_text() {
+    let program = lower_to_mir("fn noop() -> () = ();");
+    let codegen = bmb::codegen::TextCodeGen::new();
+    let result = codegen.generate(&program);
+    assert!(result.is_ok(), "unit function text codegen should succeed");
+}
+
+#[test]
+fn test_edge_codegen_many_functions() {
+    // Program with 10 functions
+    let mut source = String::new();
+    for i in 0..10 {
+        source.push_str(&format!("fn f{}(x: i64) -> i64 = x + {};\n", i, i));
+    }
+    let program = lower_to_mir(&source);
+    assert_eq!(program.functions.len(), 10);
+    let codegen = bmb::codegen::WasmCodeGen::new();
+    let result = codegen.generate(&program);
+    assert!(result.is_ok(), "10 functions WASM should succeed");
+}
