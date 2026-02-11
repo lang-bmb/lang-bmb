@@ -75,6 +75,8 @@ pub struct Interpreter {
     /// v0.51.41: Heap storage for typed pointer support
     /// Maps pointer address to struct values for field access through pointers
     heap: RefCell<HashMap<i64, Value>>,
+    /// v0.90.40: Trait impl methods: (type_name, method_name) -> FnDef
+    impl_methods: HashMap<(String, String), FnDef>,
 }
 
 impl Interpreter {
@@ -91,6 +93,7 @@ impl Interpreter {
             use_scope_stack: false,
             string_intern: HashMap::new(),
             heap: RefCell::new(HashMap::new()),
+            impl_methods: HashMap::new(),
         };
         interp.register_builtins();
         interp
@@ -294,9 +297,22 @@ impl Interpreter {
                 crate::ast::Item::Use(_) => {}
                 // v0.13.0: Extern functions are handled at compile time (FFI)
                 crate::ast::Item::ExternFn(_) => {}
-                // v0.20.1: Trait system not yet supported in interpreter
+                // v0.20.1: Trait definitions (signatures only)
                 crate::ast::Item::TraitDef(_) => {}
-                crate::ast::Item::ImplBlock(_) => {}
+                // v0.90.40: Register impl block methods for trait dispatch
+                crate::ast::Item::ImplBlock(impl_block) => {
+                    let type_name = match &impl_block.target_type.node {
+                        crate::ast::Type::Named(name) => name.clone(),
+                        crate::ast::Type::Generic { name, .. } => name.clone(),
+                        other => format!("{:?}", other),
+                    };
+                    for method in &impl_block.methods {
+                        self.impl_methods.insert(
+                            (type_name.clone(), method.name.node.clone()),
+                            method.clone(),
+                        );
+                    }
+                }
                 // v0.50.6: Type aliases are resolved at compile time
                 crate::ast::Item::TypeAlias(_) => {}
             }
@@ -1003,8 +1019,8 @@ impl Interpreter {
         }
     }
 
-    /// Evaluate method call (v0.5 Phase 8, v0.30.283: StringRope support)
-    fn eval_method_call(&self, receiver: Value, method: &str, args: Vec<Value>) -> InterpResult<Value> {
+    /// Evaluate method call (v0.5 Phase 8, v0.30.283: StringRope support, v0.90.40: trait dispatch)
+    fn eval_method_call(&mut self, receiver: Value, method: &str, args: Vec<Value>) -> InterpResult<Value> {
         match receiver {
             // v0.30.283: Handle StringRope by materializing
             Value::StringRope(_) => {
@@ -1111,6 +1127,18 @@ impl Interpreter {
                         }
                     }
                     _ => Err(RuntimeError::type_error("object with methods", receiver.type_name())),
+                }
+            }
+            // v0.90.40: Trait method dispatch for struct instances
+            Value::Struct(ref type_name, _) => {
+                let key = (type_name.clone(), method.to_string());
+                if let Some(fn_def) = self.impl_methods.get(&key).cloned() {
+                    // Prepend receiver as 'self' parameter
+                    let mut all_args = vec![receiver];
+                    all_args.extend(args);
+                    self.call_function(&fn_def, &all_args)
+                } else {
+                    Err(RuntimeError::undefined_function(&format!("{}.{}", type_name, method)))
                 }
             }
             _ => Err(RuntimeError::type_error("object with methods", receiver.type_name())),

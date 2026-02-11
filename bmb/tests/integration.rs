@@ -12789,3 +12789,126 @@ fn test_trait_impl_two_impls_both_correct() {
          impl HasValue for B { fn value(self: Self) -> i64 = self.y; }"
     ));
 }
+
+// ============================================================
+// Cycle 255: Trait Method Dispatch in Interpreter
+// ============================================================
+
+#[test]
+fn test_trait_method_dispatch_basic() {
+    // Basic trait method call at runtime
+    let source = "
+        trait HasValue { fn value(self: Self) -> i64; }
+        struct Counter { count: i64 }
+        impl HasValue for Counter { fn value(self: Self) -> i64 = self.count; }
+        fn main() -> i64 = {
+            let c = new Counter { count: 42 };
+            c.value()
+        };
+    ";
+    assert_eq!(run_program_i64(source), 42);
+}
+
+#[test]
+fn test_trait_method_dispatch_with_args() {
+    // Trait method with additional arguments
+    let source = "
+        trait Addable { fn add(self: Self, n: i64) -> i64; }
+        struct Num { v: i64 }
+        impl Addable for Num { fn add(self: Self, n: i64) -> i64 = self.v + n; }
+        fn main() -> i64 = {
+            let x = new Num { v: 10 };
+            x.add(32)
+        };
+    ";
+    assert_eq!(run_program_i64(source), 42);
+}
+
+#[test]
+fn test_trait_method_dispatch_two_structs() {
+    // Same trait implemented on two different structs
+    let source = "
+        trait GetVal { fn get(self: Self) -> i64; }
+        struct A { x: i64 }
+        struct B { y: i64 }
+        impl GetVal for A { fn get(self: Self) -> i64 = self.x; }
+        impl GetVal for B { fn get(self: Self) -> i64 = self.y * 2; }
+        fn main() -> i64 = {
+            let a = new A { x: 10 };
+            let b = new B { y: 16 };
+            a.get() + b.get()
+        };
+    ";
+    assert_eq!(run_program_i64(source), 42);
+}
+
+#[test]
+fn test_trait_method_dispatch_multiple_methods() {
+    // Trait with multiple methods
+    let source = "
+        trait Shape { fn area(self: Self) -> i64; fn perimeter(self: Self) -> i64; }
+        struct Rect { w: i64, h: i64 }
+        impl Shape for Rect {
+            fn area(self: Self) -> i64 = self.w * self.h;
+            fn perimeter(self: Self) -> i64 = 2 * (self.w + self.h);
+        }
+        fn main() -> i64 = {
+            let r = new Rect { w: 3, h: 4 };
+            r.area() + r.perimeter()
+        };
+    ";
+    assert_eq!(run_program_i64(source), 12 + 14);
+}
+
+#[test]
+fn test_trait_method_dispatch_in_function() {
+    // Trait method called inside a function
+    let source = "
+        trait HasLen { fn len(self: Self) -> i64; }
+        struct List { size: i64 }
+        impl HasLen for List { fn len(self: Self) -> i64 = self.size; }
+        fn get_length(l: List) -> i64 = l.len();
+        fn main() -> i64 = get_length(new List { size: 7 });
+    ";
+    assert_eq!(run_program_i64(source), 7);
+}
+
+#[test]
+fn test_trait_method_dispatch_chain() {
+    // Chain trait method calls via intermediate results
+    let source = "
+        trait GetVal { fn get(self: Self) -> i64; }
+        struct Wrapper { inner: i64 }
+        impl GetVal for Wrapper { fn get(self: Self) -> i64 = self.inner; }
+        fn double_get(w: Wrapper) -> i64 = w.get() * 2;
+        fn main() -> i64 = double_get(new Wrapper { inner: 21 });
+    ";
+    assert_eq!(run_program_i64(source), 42);
+}
+
+#[test]
+fn test_trait_method_dispatch_undefined_method_error() {
+    // Calling a method not in the impl should error
+    let result = try_run_program(
+        "trait HasValue { fn value(self: Self) -> i64; }
+         struct S { v: i64 }
+         impl HasValue for S { fn value(self: Self) -> i64 = self.v; }
+         fn main() -> i64 = {
+             let s = new S { v: 1 };
+             s.nonexistent()
+         };"
+    );
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_trait_method_dispatch_bool_return() {
+    // Trait method returning bool
+    let source = "
+        trait Check { fn is_positive(self: Self) -> bool; }
+        struct Val { n: i64 }
+        impl Check for Val { fn is_positive(self: Self) -> bool = self.n > 0; }
+        fn main() -> i64 = if (new Val { n: 5 }).is_positive() { 1 } else { 0 };
+    ";
+    assert_eq!(run_program_i64(source), 1);
+}
