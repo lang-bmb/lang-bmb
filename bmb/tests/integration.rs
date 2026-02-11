@@ -6428,3 +6428,183 @@ fn test_program_with_multiple_warning_kinds() {
     assert!(warning_kinds.contains(&"unused_type"), "should warn about unused struct");
     assert!(warning_kinds.contains(&"unused_function"), "should warn about unused function");
 }
+
+// ========================================================================
+// Cycle 227: Full Pipeline Verification Tests
+// ========================================================================
+
+/// Helper: full pipeline — parse, type-check, lower to MIR, format MIR text
+fn full_pipeline_mir(source: &str) -> (String, bmb::mir::MirProgram) {
+    let tokens = tokenize(source).expect("tokenize failed");
+    let ast = parse("test.bmb", source, tokens).expect("parse failed");
+    let mut tc = TypeChecker::new();
+    tc.check_program(&ast).expect("type check failed");
+    let mir = bmb::mir::lower_program(&ast);
+    let text = bmb::mir::format_mir(&mir);
+    (text, mir)
+}
+
+// --- Pipeline: Recursive Fibonacci ---
+
+#[test]
+fn test_pipeline_fibonacci_full() {
+    // Verify fibonacci goes through the full pipeline correctly
+    let source = "fn fib(n: i64) -> i64 = if n <= 1 { n } else { fib(n - 1) + fib(n - 2) };";
+
+    // Stage 1: Parse succeeds
+    let tokens = tokenize(source).unwrap();
+    let ast = parse("test.bmb", source, tokens).unwrap();
+
+    // Stage 2: Type check succeeds
+    let mut tc = TypeChecker::new();
+    tc.check_program(&ast).unwrap();
+
+    // Stage 3: MIR lowering produces recursive call
+    let mir = bmb::mir::lower_program(&ast);
+    assert_eq!(mir.functions.len(), 1);
+    let func = &mir.functions[0];
+    assert_eq!(func.name, "fib");
+    let has_call = func.blocks.iter().any(|b|
+        b.instructions.iter().any(|i| matches!(i, bmb::mir::MirInst::Call { func, .. } if func == "fib"))
+    );
+    assert!(has_call, "should have recursive call to fib");
+
+    // Stage 4: Codegen produces valid IR
+    let codegen = TextCodeGen::new();
+    let ir = codegen.generate(&mir).unwrap();
+    assert!(ir.contains("@fib"));
+    assert!(ir.contains("call i64 @fib"));
+    assert!(ir.contains("ret i64"));
+}
+
+// --- Pipeline: Struct operations ---
+
+#[test]
+fn test_pipeline_struct_operations() {
+    let source = "struct Point { x: i64, y: i64 }
+                   fn dist_sq(p: Point) -> i64 = p.x * p.x + p.y * p.y;";
+    let (text, mir) = full_pipeline_mir(source);
+    // MIR should have struct definition
+    assert!(mir.struct_defs.contains_key("Point"), "struct Point should be in MIR");
+    // MIR text should reference the function
+    assert!(text.contains("dist_sq"));
+    assert!(text.contains("*"), "MIR should contain multiplication op");
+}
+
+// --- Pipeline: Enum with match ---
+
+#[test]
+fn test_pipeline_enum_match() {
+    let source = "enum Direction { North, South, East, West }
+                   fn to_dx(d: Direction) -> i64 = match d {
+                     Direction::East => 1,
+                     Direction::West => -1,
+                     _ => 0
+                   };";
+    let (text, mir) = full_pipeline_mir(source);
+    assert!(!mir.functions.is_empty());
+    assert!(text.contains("to_dx"), "MIR should contain to_dx function");
+    assert!(text.contains("return"), "MIR should have return terminator");
+}
+
+// --- Pipeline: Loop with accumulator ---
+
+#[test]
+fn test_pipeline_loop_accumulator() {
+    let source = "fn sum_to(n: i64) -> i64 = {
+                     let mut total = 0;
+                     let mut i = 1;
+                     while i <= n { total = total + i; { i = i + 1 } };
+                     total
+                   };";
+    let (ir, mir) = full_pipeline_mir(source);
+    let func = &mir.functions[0];
+    // Should have multiple blocks for loop structure
+    assert!(func.blocks.len() >= 3, "loop should create multiple blocks");
+    // IR should have loop back-edge
+    assert!(ir.contains("sum_to"), "MIR should contain sum_to function");
+    assert!(ir.contains("goto"), "MIR should have goto for loop back-edge");
+}
+
+// --- Pipeline: Closure ---
+
+#[test]
+fn test_pipeline_closure() {
+    let source = "fn main() -> i64 = {
+                     let f = fn |x: i64| { x * 2 };
+                     f(21)
+                   };";
+    // Parse, type check, and interpret
+    assert_eq!(run_program_i64(source), 42);
+}
+
+// --- Pipeline: Generic function ---
+
+#[test]
+fn test_pipeline_generic_function() {
+    let source = "fn id<T>(x: T) -> T = x;
+                   fn main() -> i64 = id(42);";
+    assert_eq!(run_program_i64(source), 42);
+    // Also verify it type-checks
+    assert!(type_checks(source));
+}
+
+// --- Pipeline: Contract verification ---
+
+#[test]
+fn test_pipeline_contract_precondition() {
+    // Program with precondition should type-check and run correctly
+    let source = "fn safe_div(a: i64, b: i64) -> i64
+                     pre b != 0
+                   = a / b;
+                   fn main() -> i64 = safe_div(10, 2);";
+    assert_eq!(run_program_i64(source), 5);
+}
+
+// --- Pipeline: For loop with range ---
+
+#[test]
+fn test_pipeline_for_range() {
+    let source = "fn sum_range() -> i64 = {
+                     let mut total = 0;
+                     for i in 0..5 { total = total + i };
+                     total
+                   };";
+    let (ir, _mir) = full_pipeline_mir(source);
+    assert!(ir.contains("sum_range"), "MIR should contain sum_range function");
+    // Verify interpreter produces correct result
+    assert_eq!(run_program_i64(
+        "fn sum_range() -> i64 = { let mut total = 0; for i in 0..5 { total = total + i }; total };
+         fn main() -> i64 = sum_range();"
+    ), 10); // 0+1+2+3+4=10
+}
+
+// --- Pipeline: Multi-function program ---
+
+#[test]
+fn test_pipeline_multi_function() {
+    let source = "fn square(x: i64) -> i64 = x * x;
+                   fn cube(x: i64) -> i64 = x * square(x);
+                   fn main() -> i64 = square(3) + cube(2);";
+    assert_eq!(run_program_i64(source), 17); // 9 + 8 = 17
+    let (ir, mir) = full_pipeline_mir(source);
+    assert!(mir.functions.len() >= 2); // at least square and cube
+    assert!(ir.contains("square"), "MIR should contain square function");
+    assert!(ir.contains("cube"), "MIR should contain cube function");
+}
+
+// --- Pipeline: Complex match with return ---
+
+#[test]
+fn test_pipeline_match_with_early_return() {
+    let source = "fn classify(n: i64) -> i64 = {
+                     if n < 0 { return -1 } else { () };
+                     match n % 3 {
+                       0 => 100,
+                       1 => 200,
+                       _ => 300
+                     }
+                   };
+                   fn main() -> i64 = classify(-5) + classify(3) + classify(4) + classify(5);";
+    assert_eq!(run_program_i64(source), -1 + 100 + 200 + 300); // 599
+}
