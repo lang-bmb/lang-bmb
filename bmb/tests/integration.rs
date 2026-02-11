@@ -7978,3 +7978,213 @@ fn test_exported_item_variants() {
     assert!(format!("{:?}", struct_item).contains("Struct"));
     assert!(format!("{:?}", enum_item).contains("Enum"));
 }
+
+// ============================================================================
+// Query System & Index Integration Tests (Cycle 235)
+// ============================================================================
+
+/// Helper: parse source and generate a ProjectIndex
+fn source_to_index(source: &str) -> bmb::index::ProjectIndex {
+    let tokens = tokenize(source).expect("tokenize failed");
+    let ast = parse("test.bmb", source, tokens).expect("parse failed");
+    let mut indexer = bmb::index::IndexGenerator::new("test-project");
+    indexer.index_file("test.bmb", &ast);
+    indexer.generate()
+}
+
+#[test]
+fn test_index_generator_simple_function() {
+    let index = source_to_index("fn add(a: i64, b: i64) -> i64 = a + b;");
+    assert_eq!(index.functions.len(), 1);
+    assert_eq!(index.functions[0].name, "add");
+    assert_eq!(index.functions[0].signature.params.len(), 2);
+    assert_eq!(index.functions[0].signature.return_type, "i64");
+}
+
+#[test]
+fn test_index_generator_multiple_functions() {
+    let source = "fn double(x: i64) -> i64 = x * 2;
+                  fn triple(x: i64) -> i64 = x * 3;";
+    let index = source_to_index(source);
+    assert_eq!(index.functions.len(), 2);
+    let names: Vec<&str> = index.functions.iter().map(|f| f.name.as_str()).collect();
+    assert!(names.contains(&"double"));
+    assert!(names.contains(&"triple"));
+}
+
+#[test]
+fn test_index_generator_struct() {
+    let index = source_to_index("struct Point { x: i64, y: i64 }");
+    assert_eq!(index.types.len(), 1);
+    assert_eq!(index.types[0].name, "Point");
+    assert_eq!(index.types[0].kind, "struct");
+}
+
+#[test]
+fn test_index_generator_enum() {
+    let index = source_to_index("enum Color { Red, Green, Blue }");
+    assert_eq!(index.types.len(), 1);
+    assert_eq!(index.types[0].name, "Color");
+    assert_eq!(index.types[0].kind, "enum");
+}
+
+#[test]
+fn test_index_generator_with_contract() {
+    let source = "fn safe_div(a: i64, b: i64) -> i64 pre b > 0 = a / b;";
+    let index = source_to_index(source);
+    assert_eq!(index.functions.len(), 1);
+    let func = &index.functions[0];
+    assert!(func.contracts.is_some(), "contract should be indexed");
+    let contracts = func.contracts.as_ref().unwrap();
+    assert!(contracts.pre.is_some(), "precondition should be present");
+}
+
+#[test]
+fn test_index_manifest_counts() {
+    let source = "fn a() -> i64 = 1;
+                  fn b() -> i64 = 2;
+                  struct S { x: i64 }";
+    let index = source_to_index(source);
+    assert_eq!(index.manifest.functions, 2);
+    assert_eq!(index.manifest.types, 1);
+}
+
+#[test]
+fn test_index_symbol_entries() {
+    let source = "fn public_fn() -> i64 = 1;
+                  struct MyStruct { val: i64 }";
+    let index = source_to_index(source);
+    assert!(!index.symbols.is_empty());
+    let fn_symbols: Vec<_> = index.symbols.iter()
+        .filter(|s| s.kind == bmb::index::SymbolKind::Function)
+        .collect();
+    assert!(!fn_symbols.is_empty());
+}
+
+#[test]
+fn test_index_write_and_read() {
+    let source = "fn test_fn(x: i64) -> i64 = x + 1;
+                  struct TestStruct { field: i64 }";
+    let index = source_to_index(source);
+
+    let dir = std::env::temp_dir().join("bmb_test_index_rw");
+    let _ = std::fs::create_dir_all(&dir);
+
+    bmb::index::write_index(&index, &dir).unwrap();
+    let loaded = bmb::index::read_index(&dir).unwrap();
+
+    assert_eq!(loaded.manifest.project, "test-project");
+    assert_eq!(loaded.functions.len(), 1);
+    assert_eq!(loaded.types.len(), 1);
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn test_index_proof_index_creation() {
+    let mut proof_idx = bmb::index::ProofIndex::new(false, None);
+    proof_idx.add_proof(bmb::index::ProofEntry {
+        name: "test_fn".to_string(),
+        file: "test.bmb".to_string(),
+        line: 1,
+        pre_status: Some(bmb::index::ProofStatus::Verified),
+        post_status: Some(bmb::index::ProofStatus::Unknown),
+        counterexample: None,
+        verify_time_ms: Some(10),
+        verified_at: None,
+    });
+    assert_eq!(proof_idx.proofs.len(), 1);
+}
+
+#[test]
+fn test_index_proof_status_variants() {
+    use bmb::index::ProofStatus;
+    let statuses = [
+        ProofStatus::Verified, ProofStatus::Failed, ProofStatus::Timeout,
+        ProofStatus::Unknown, ProofStatus::Pending, ProofStatus::Unavailable,
+    ];
+    assert_eq!(statuses.len(), 6);
+    // Verify Debug display
+    for s in &statuses {
+        let debug = format!("{:?}", s);
+        assert!(!debug.is_empty());
+    }
+}
+
+// --- Query Engine Tests ---
+
+#[test]
+fn test_query_engine_symbols() {
+    let index = source_to_index("fn add(a: i64, b: i64) -> i64 = a + b;
+                                 fn subtract(a: i64, b: i64) -> i64 = a - b;");
+    let engine = bmb::query::QueryEngine::new(index);
+    let result = engine.query_symbols("add", None, false);
+    assert!(result.error.is_none());
+    assert!(result.matches.is_some());
+    let matches = result.matches.unwrap();
+    assert!(!matches.is_empty());
+    assert!(matches.iter().any(|s| s.name == "add"));
+}
+
+#[test]
+fn test_query_engine_symbols_not_found() {
+    let index = source_to_index("fn hello() -> i64 = 1;");
+    let engine = bmb::query::QueryEngine::new(index);
+    let result = engine.query_symbols("nonexistent_xyz", None, false);
+    assert!(result.error.is_some() || result.matches.as_ref().is_none_or(|m| m.is_empty()));
+}
+
+#[test]
+fn test_query_engine_function() {
+    let source = "fn factorial(n: i64) -> i64 = if n <= 1 { 1 } else { n * factorial(n - 1) };";
+    let index = source_to_index(source);
+    let engine = bmb::query::QueryEngine::new(index);
+    let result = engine.query_function("factorial");
+    assert!(result.error.is_none());
+    assert!(result.result.is_some());
+    let func = result.result.unwrap();
+    assert_eq!(func.name, "factorial");
+}
+
+#[test]
+fn test_query_engine_function_not_found() {
+    let index = source_to_index("fn hello() -> i64 = 1;");
+    let engine = bmb::query::QueryEngine::new(index);
+    let result = engine.query_function("missing_fn");
+    assert!(result.error.is_some());
+}
+
+#[test]
+fn test_query_engine_type() {
+    let index = source_to_index("struct Point { x: i64, y: i64 }");
+    let engine = bmb::query::QueryEngine::new(index);
+    let result = engine.query_type("Point");
+    assert!(result.error.is_none());
+    assert!(result.result.is_some());
+    let ty = result.result.unwrap();
+    assert_eq!(ty.name, "Point");
+}
+
+#[test]
+fn test_query_engine_metrics() {
+    let source = "fn a(x: i64) -> i64 pre x > 0 = x;
+                  fn b() -> i64 = 1;
+                  struct S { val: i64 }";
+    let index = source_to_index(source);
+    let engine = bmb::query::QueryEngine::new(index);
+    let metrics = engine.query_metrics();
+    assert_eq!(metrics.project.functions, 2);
+    assert_eq!(metrics.project.types, 1);
+}
+
+#[test]
+fn test_query_engine_functions_with_contracts() {
+    let source = "fn guarded(x: i64) -> i64 pre x >= 0 post ret >= 0 = x;
+                  fn unguarded() -> i64 = 42;";
+    let index = source_to_index(source);
+    let engine = bmb::query::QueryEngine::new(index);
+    let result = engine.query_functions(Some(true), None, None, false);
+    assert!(result.error.is_none());
+    let matches = result.matches.unwrap();
+    assert!(matches.iter().any(|f| f.name == "guarded"));
+}
