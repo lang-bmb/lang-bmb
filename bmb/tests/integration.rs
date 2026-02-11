@@ -12912,3 +12912,80 @@ fn test_trait_method_dispatch_bool_return() {
     ";
     assert_eq!(run_program_i64(source), 1);
 }
+
+// ============================================================
+// Cycle 256: Trait Completeness & Missing Method Detection
+// ============================================================
+
+#[test]
+fn test_trait_missing_method_rejected() {
+    // Impl missing a required method should be an error
+    assert!(type_error(
+        "trait Shape { fn area(self: Self) -> i64; fn perimeter(self: Self) -> i64; }
+         struct Rect { w: i64, h: i64 }
+         impl Shape for Rect { fn area(self: Self) -> i64 = self.w * self.h; }"
+    ));
+}
+
+#[test]
+fn test_trait_missing_method_error_message() {
+    // Error should name the missing method
+    assert!(type_error_contains(
+        "trait Shape { fn area(self: Self) -> i64; fn perimeter(self: Self) -> i64; }
+         struct Rect { w: i64, h: i64 }
+         impl Shape for Rect { fn area(self: Self) -> i64 = self.w * self.h; }",
+        "missing method 'perimeter'"
+    ));
+}
+
+#[test]
+fn test_trait_all_methods_provided_ok() {
+    // All methods provided should pass
+    assert!(type_checks(
+        "trait Shape { fn area(self: Self) -> i64; fn perimeter(self: Self) -> i64; }
+         struct Rect { w: i64, h: i64 }
+         impl Shape for Rect {
+             fn area(self: Self) -> i64 = self.w * self.h;
+             fn perimeter(self: Self) -> i64 = 2 * (self.w + self.h);
+         }"
+    ));
+}
+
+#[test]
+fn test_trait_single_method_missing() {
+    // Single method trait with missing impl
+    assert!(type_error(
+        "trait HasName { fn name(self: Self) -> i64; }
+         struct S { v: i64 }
+         impl HasName for S { }"
+    ));
+}
+
+#[test]
+fn test_trait_empty_impl_with_methods_error() {
+    // Empty impl for trait that requires methods
+    assert!(type_error_contains(
+        "trait Action { fn run(self: Self) -> i64; }
+         struct Bot { id: i64 }
+         impl Action for Bot { }",
+        "missing method 'run'"
+    ));
+}
+
+#[test]
+fn test_trait_complete_impl_at_runtime() {
+    // Full trait impl works end-to-end at runtime
+    let source = "
+        trait Math { fn add(self: Self, x: i64) -> i64; fn double(self: Self) -> i64; }
+        struct Num { v: i64 }
+        impl Math for Num {
+            fn add(self: Self, x: i64) -> i64 = self.v + x;
+            fn double(self: Self) -> i64 = self.v * 2;
+        }
+        fn main() -> i64 = {
+            let n = new Num { v: 10 };
+            n.add(5) + n.double()
+        };
+    ";
+    assert_eq!(run_program_i64(source), 15 + 20);
+}

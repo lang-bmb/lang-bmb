@@ -980,6 +980,22 @@ impl TypeChecker {
                                 }
                             }
                         }
+                        // v0.90.41: Check all trait methods are implemented
+                        let impl_method_names: std::collections::HashSet<_> = i.methods.iter()
+                            .map(|m| m.name.node.as_str())
+                            .collect();
+                        for trait_method in &trait_info.methods {
+                            if !impl_method_names.contains(trait_method.name.as_str()) {
+                                return Err(CompileError::type_error(
+                                    format!(
+                                        "impl {} for {} is missing method '{}'",
+                                        trait_name, self.type_to_string(&i.target_type.node),
+                                        trait_method.name,
+                                    ),
+                                    i.span,
+                                ));
+                            }
+                        }
                     }
 
                     // v0.80: Track that this trait is implemented
