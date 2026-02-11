@@ -1075,6 +1075,7 @@ impl Interpreter {
                         Ok(Value::Float(f.max(other)))
                     }
                     "to_int" => Ok(Value::Int(f as i64)),
+                    "to_string" => Ok(Value::Str(Rc::new(f.to_string()))),
                     _ => Err(RuntimeError::undefined_function(&format!("f64.{}", method))),
                 }
             }
@@ -1198,6 +1199,28 @@ impl Interpreter {
                             None => Ok(Value::Enum("Option".to_string(), "None".to_string(), vec![])),
                         }
                     }
+                    // v0.90.36: String parsing and utility methods
+                    "to_int" => {
+                        match s.parse::<i64>() {
+                            Ok(n) => Ok(Value::Enum("Option".to_string(), "Some".to_string(), vec![Value::Int(n)])),
+                            Err(_) => Ok(Value::Enum("Option".to_string(), "None".to_string(), vec![])),
+                        }
+                    }
+                    "to_float" => {
+                        match s.parse::<f64>() {
+                            Ok(f) => Ok(Value::Enum("Option".to_string(), "Some".to_string(), vec![Value::Float(f)])),
+                            Err(_) => Ok(Value::Enum("Option".to_string(), "None".to_string(), vec![])),
+                        }
+                    }
+                    "chars" => {
+                        let chars: Vec<Value> = s.chars()
+                            .map(|c| Value::Str(Rc::new(c.to_string())))
+                            .collect();
+                        Ok(Value::Array(chars))
+                    }
+                    "reverse" => {
+                        Ok(Value::Str(Rc::new(s.chars().rev().collect::<String>())))
+                    }
                     _ => Err(RuntimeError::undefined_function(&format!("String.{}", method))),
                 }
             }
@@ -1279,6 +1302,13 @@ impl Interpreter {
                         }
                     }
                     _ => Err(RuntimeError::undefined_function(&format!("Result.{}", method))),
+                }
+            }
+            // v0.90.36: Bool methods
+            Value::Bool(b) => {
+                match method {
+                    "to_string" => Ok(Value::Str(Rc::new(if b { "true" } else { "false" }.to_string()))),
+                    _ => Err(RuntimeError::undefined_function(&format!("bool.{}", method))),
                 }
             }
             // v0.89.17: Nullable<T> (T?) methods on integer values + v0.90.35: Integer methods

@@ -13813,3 +13813,67 @@ fn test_int_unknown_method_rejected() {
     let source = "fn main() -> i64 = 42.nonexistent();";
     assert!(type_error(source));
 }
+
+// --- Cycle 270: String parsing + type conversion methods ---
+
+#[test]
+fn test_string_to_int_valid() {
+    let source = r#"fn main() -> i64 = "42".to_int().unwrap_or(0);"#;
+    assert_eq!(run_program_i64(source), 42);
+}
+
+#[test]
+fn test_string_to_int_invalid() {
+    let source = r#"fn main() -> i64 = "hello".to_int().unwrap_or(-1);"#;
+    assert_eq!(run_program_i64(source), -1);
+}
+
+#[test]
+fn test_string_to_float_valid() {
+    let source = r#"fn main() -> f64 = "2.5".to_float().unwrap_or(0.0);"#;
+    assert!((run_program_f64(source) - 2.5).abs() < 1e-10);
+}
+
+#[test]
+fn test_string_to_float_invalid() {
+    let source = r#"fn main() -> f64 = "abc".to_float().unwrap_or(-1.0);"#;
+    assert!((run_program_f64(source) - (-1.0)).abs() < 1e-10);
+}
+
+#[test]
+fn test_string_chars() {
+    let source = r#"
+        fn main() -> i64 = "abc".chars().len();
+    "#;
+    assert_eq!(run_program_i64(source), 3);
+}
+
+#[test]
+fn test_string_reverse() {
+    let source = r#"fn main() -> String = "hello".reverse();"#;
+    assert_eq!(run_program_str(source), "olleh");
+}
+
+#[test]
+fn test_float_to_string() {
+    let source = r#"fn main() -> i64 = 2.5.to_string().len();"#;
+    assert!(run_program_i64(source) > 0);
+}
+
+#[test]
+fn test_bool_to_string_true() {
+    let source = r#"fn main() -> String = true.to_string();"#;
+    assert_eq!(run_program_str(source), "true");
+}
+
+#[test]
+fn test_bool_to_string_false() {
+    let source = r#"fn main() -> String = false.to_string();"#;
+    assert_eq!(run_program_str(source), "false");
+}
+
+#[test]
+fn test_string_roundtrip() {
+    let source = r#"fn main() -> i64 = 123.to_string().to_int().unwrap_or(0);"#;
+    assert_eq!(run_program_i64(source), 123);
+}

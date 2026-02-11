@@ -2888,6 +2888,19 @@ impl TypeChecker {
     /// Check method call types (v0.5 Phase 8)
     fn check_method_call(&mut self, receiver_ty: &Type, method: &str, args: &[Spanned<Expr>], span: Span) -> Result<Type> {
         match receiver_ty {
+            // v0.90.36: Bool methods
+            Type::Bool => {
+                match method {
+                    "to_string" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("to_string() takes no arguments", span));
+                        }
+                        Ok(Type::String)
+                    }
+                    _ => Err(CompileError::type_error(
+                        format!("unknown method '{}' for bool", method), span)),
+                }
+            }
             // v0.90.35: Integer methods
             Type::I64 | Type::I32 | Type::U32 | Type::U64 => {
                 match method {
@@ -2971,6 +2984,13 @@ impl TypeChecker {
                             return Err(CompileError::type_error("to_int() takes no arguments", span));
                         }
                         Ok(Type::I64)
+                    }
+                    // v0.90.36: to_string() -> String
+                    "to_string" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("to_string() takes no arguments", span));
+                        }
+                        Ok(Type::String)
                     }
                     _ => Err(CompileError::type_error(
                         format!("unknown method '{}' for f64", method), span)),
@@ -3118,6 +3138,34 @@ impl TypeChecker {
                         let arg_ty = self.infer(&args[0].node, args[0].span)?;
                         self.unify(&arg_ty, &Type::String, args[0].span)?;
                         Ok(Type::Nullable(Box::new(Type::I64)))
+                    }
+                    // v0.90.36: to_int() -> i64?
+                    "to_int" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("to_int() takes no arguments", span));
+                        }
+                        Ok(Type::Nullable(Box::new(Type::I64)))
+                    }
+                    // v0.90.36: to_float() -> f64?
+                    "to_float" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("to_float() takes no arguments", span));
+                        }
+                        Ok(Type::Nullable(Box::new(Type::F64)))
+                    }
+                    // v0.90.36: chars() -> [String]
+                    "chars" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("chars() takes no arguments", span));
+                        }
+                        Ok(Type::Array(Box::new(Type::String), 0))
+                    }
+                    // v0.90.36: reverse() -> String
+                    "reverse" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("reverse() takes no arguments", span));
+                        }
+                        Ok(Type::String)
                     }
                     _ => Err(CompileError::type_error(
                         format!("unknown method '{}' for String", method),
