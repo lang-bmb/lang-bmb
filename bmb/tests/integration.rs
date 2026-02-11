@@ -13248,3 +13248,109 @@ fn test_wasm_bump_alloc_all_targets() {
         assert!(wat.contains("func $bump_alloc"), "All targets should have $bump_alloc");
     }
 }
+
+// ===== v0.90.47: Enum Method Dispatch in Interpreter =====
+
+#[test]
+fn test_enum_method_dispatch_basic() {
+    let source = r#"
+        enum Shape { Circle, Square }
+        trait Area { fn area(self: Self) -> i64; }
+        impl Area for Shape {
+            fn area(self: Self) -> i64 = 42;
+        }
+        fn main() -> i64 = {
+            let s = Shape::Circle;
+            s.area()
+        };
+    "#;
+    assert_eq!(run_program_i64(source), 42);
+}
+
+#[test]
+fn test_enum_method_dispatch_with_args() {
+    let source = r#"
+        enum Op { Add, Mul }
+        trait Apply { fn apply(self: Self, a: i64, b: i64) -> i64; }
+        impl Apply for Op {
+            fn apply(self: Self, a: i64, b: i64) -> i64 = a + b;
+        }
+        fn main() -> i64 = {
+            let op = Op::Add;
+            op.apply(10, 20)
+        };
+    "#;
+    assert_eq!(run_program_i64(source), 30);
+}
+
+#[test]
+fn test_enum_method_dispatch_multiple_methods() {
+    let source = r#"
+        enum Color { Red, Green, Blue }
+        trait ColorInfo {
+            fn code(self: Self) -> i64;
+            fn bright(self: Self) -> bool;
+        }
+        impl ColorInfo for Color {
+            fn code(self: Self) -> i64 = 255;
+            fn bright(self: Self) -> bool = true;
+        }
+        fn main() -> i64 = {
+            let c = Color::Red;
+            if c.bright() { c.code() } else { 0 }
+        };
+    "#;
+    assert_eq!(run_program_i64(source), 255);
+}
+
+#[test]
+fn test_enum_method_dispatch_undefined_error() {
+    let source = r#"
+        enum Foo { A }
+        fn main() -> i64 = {
+            let f = Foo::A;
+            f.nonexistent()
+        };
+    "#;
+    // Type checker should catch undefined method or runtime will error
+    let result = check_program(source);
+    assert!(result.is_err(), "Calling undefined method on enum should fail");
+}
+
+#[test]
+fn test_enum_and_struct_both_impl_same_trait() {
+    let source = r#"
+        trait Describe { fn id(self: Self) -> i64; }
+        struct Point { x: i64 }
+        enum Dir { Up, Down }
+        impl Describe for Point {
+            fn id(self: Self) -> i64 = self.x;
+        }
+        impl Describe for Dir {
+            fn id(self: Self) -> i64 = 99;
+        }
+        fn main() -> i64 = {
+            let p = new Point { x: 42 };
+            let d = Dir::Up;
+            p.id() + d.id()
+        };
+    "#;
+    assert_eq!(run_program_i64(source), 42 + 99);
+}
+
+#[test]
+fn test_enum_method_in_function() {
+    let source = r#"
+        enum Status { Ok, Err }
+        trait Check { fn is_ok(self: Self) -> i64; }
+        impl Check for Status {
+            fn is_ok(self: Self) -> i64 = 1;
+        }
+        fn check_status(s: Status) -> i64 = s.is_ok();
+        fn main() -> i64 = {
+            let s = Status::Ok;
+            check_status(s)
+        };
+    "#;
+    assert_eq!(run_program_i64(source), 1);
+}

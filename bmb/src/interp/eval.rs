@@ -1141,6 +1141,17 @@ impl Interpreter {
                     Err(RuntimeError::undefined_function(&format!("{}.{}", type_name, method)))
                 }
             }
+            // v0.90.47: Trait method dispatch for enum instances
+            Value::Enum(ref enum_name, _, _) => {
+                let key = (enum_name.clone(), method.to_string());
+                if let Some(fn_def) = self.impl_methods.get(&key).cloned() {
+                    let mut all_args = vec![receiver];
+                    all_args.extend(args);
+                    self.call_function(&fn_def, &all_args)
+                } else {
+                    Err(RuntimeError::undefined_function(&format!("{}.{}", enum_name, method)))
+                }
+            }
             _ => Err(RuntimeError::type_error("object with methods", receiver.type_name())),
         }
     }
