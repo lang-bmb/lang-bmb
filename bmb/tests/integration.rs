@@ -7734,3 +7734,247 @@ fn test_cfg_target_wasm_aliases() {
     assert_eq!(Target::from_str("x86"), Some(Target::Native));
     assert_eq!(Target::from_str("arm"), Some(Target::Native));
 }
+
+// ============================================================================
+// Preprocessor & Resolver Integration Tests (Cycle 234)
+// ============================================================================
+
+#[test]
+fn test_preprocessor_no_includes_passthrough() {
+    use bmb::preprocessor::expand_includes;
+    use std::path::Path;
+    let source = "fn main() -> i64 = 42;";
+    let result = expand_includes(source, Path::new("test.bmb"), &[]).unwrap();
+    assert!(result.contains("fn main()"));
+    assert!(result.contains("42"));
+}
+
+#[test]
+fn test_preprocessor_multi_line_passthrough() {
+    use bmb::preprocessor::expand_includes;
+    use std::path::Path;
+    let source = "fn a() -> i64 = 1;\nfn b() -> i64 = 2;\nfn c() -> i64 = 3;";
+    let result = expand_includes(source, Path::new("test.bmb"), &[]).unwrap();
+    assert!(result.contains("fn a()"));
+    assert!(result.contains("fn b()"));
+    assert!(result.contains("fn c()"));
+}
+
+#[test]
+fn test_preprocessor_include_real_file() {
+    use bmb::preprocessor::expand_includes;
+
+    let dir = std::env::temp_dir().join("bmb_test_pp_include");
+    let _ = std::fs::create_dir_all(&dir);
+    std::fs::write(dir.join("helper.bmb"), "fn helper() -> i64 = 99;\n").unwrap();
+
+    let source = "@include \"helper.bmb\"\nfn main() -> i64 = helper();";
+    let main_file = dir.join("main.bmb");
+    std::fs::write(&main_file, source).unwrap();
+
+    let result = expand_includes(source, &main_file, &[]).unwrap();
+    assert!(result.contains("fn helper()"), "included content should appear");
+    assert!(result.contains("fn main()"), "original content preserved");
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn test_preprocessor_include_not_found() {
+    use bmb::preprocessor::expand_includes;
+    use std::path::Path;
+    let source = "@include \"nonexistent_xyz.bmb\"";
+    let result = expand_includes(source, Path::new("test.bmb"), &[]);
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_preprocessor_circular_include_detected() {
+    use bmb::preprocessor::expand_includes;
+
+    let dir = std::env::temp_dir().join("bmb_test_pp_circular");
+    let _ = std::fs::create_dir_all(&dir);
+
+    // a.bmb includes b.bmb, b.bmb includes a.bmb
+    std::fs::write(dir.join("a.bmb"), "@include \"b.bmb\"\nfn a() -> i64 = 1;").unwrap();
+    std::fs::write(dir.join("b.bmb"), "@include \"a.bmb\"\nfn b() -> i64 = 2;").unwrap();
+
+    let source = std::fs::read_to_string(dir.join("a.bmb")).unwrap();
+    let result = expand_includes(&source, &dir.join("a.bmb"), &[]);
+    assert!(result.is_err(), "circular include should be detected");
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn test_preprocessor_expand_with_prelude_no_prelude() {
+    use bmb::preprocessor::expand_with_prelude;
+    use std::path::Path;
+    let source = "fn main() -> i64 = 1;";
+    let result = expand_with_prelude(source, Path::new("test.bmb"), &[], None).unwrap();
+    assert!(result.contains("fn main()"));
+}
+
+#[test]
+fn test_preprocessor_error_display_formats() {
+    use bmb::preprocessor::PreprocessorError;
+    use std::path::PathBuf;
+
+    let err = PreprocessorError::FileNotFound(
+        "missing.bmb".to_string(),
+        vec![PathBuf::from("./src")],
+    );
+    let msg = format!("{}", err);
+    assert!(msg.contains("missing.bmb"));
+
+    let err = PreprocessorError::CircularInclude(PathBuf::from("loop.bmb"));
+    let msg = format!("{}", err);
+    assert!(msg.contains("Circular"));
+
+    let err = PreprocessorError::InvalidSyntax("bad".to_string());
+    let msg = format!("{}", err);
+    assert!(msg.contains("Invalid"));
+}
+
+#[test]
+fn test_preprocessor_new_with_search_paths() {
+    use bmb::preprocessor::Preprocessor;
+    use std::path::PathBuf;
+    let mut pp = Preprocessor::new(vec![PathBuf::from("/usr/lib/bmb"), PathBuf::from("./lib")]);
+    // Verify construction doesn't panic and can expand
+    let source = "fn test() -> i64 = 0;";
+    let result = pp.expand(source, std::path::Path::new("test.bmb")).unwrap();
+    assert!(result.contains("fn test()"));
+}
+
+// --- Resolver Integration Tests ---
+
+#[test]
+fn test_resolver_creation_and_base_dir() {
+    use bmb::resolver::Resolver;
+    use std::path::Path;
+    let resolver = Resolver::new(".");
+    assert_eq!(resolver.base_dir(), Path::new("."));
+    assert_eq!(resolver.module_count(), 0);
+}
+
+#[test]
+fn test_resolver_nonexistent_module() {
+    use bmb::resolver::Resolver;
+    let resolver = Resolver::new(".");
+    assert!(resolver.get_module("nonexistent").is_none());
+}
+
+#[test]
+fn test_resolver_load_module_from_file() {
+    use bmb::resolver::Resolver;
+
+    let dir = std::env::temp_dir().join("bmb_test_resolver_load");
+    let _ = std::fs::create_dir_all(&dir);
+    std::fs::write(dir.join("mymod.bmb"), "pub fn add(a: i64, b: i64) -> i64 = a + b;\n").unwrap();
+
+    let mut resolver = Resolver::new(&dir);
+    let module = resolver.load_module("mymod");
+    assert!(module.is_ok(), "should load module from file");
+    let module = module.unwrap();
+    assert_eq!(module.name, "mymod");
+    assert!(!module.exports.is_empty(), "pub fn should be exported");
+    assert!(module.exports.contains_key("add"));
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn test_resolver_load_module_not_found() {
+    use bmb::resolver::Resolver;
+
+    let dir = std::env::temp_dir().join("bmb_test_resolver_missing");
+    let _ = std::fs::create_dir_all(&dir);
+
+    let mut resolver = Resolver::new(&dir);
+    let result = resolver.load_module("nonexistent_module");
+    assert!(result.is_err());
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn test_resolver_module_count_after_load() {
+    use bmb::resolver::Resolver;
+
+    let dir = std::env::temp_dir().join("bmb_test_resolver_count");
+    let _ = std::fs::create_dir_all(&dir);
+    std::fs::write(dir.join("mod_a.bmb"), "pub fn a() -> i64 = 1;\n").unwrap();
+    std::fs::write(dir.join("mod_b.bmb"), "pub fn b() -> i64 = 2;\n").unwrap();
+
+    let mut resolver = Resolver::new(&dir);
+    resolver.load_module("mod_a").unwrap();
+    assert_eq!(resolver.module_count(), 1);
+    resolver.load_module("mod_b").unwrap();
+    assert_eq!(resolver.module_count(), 2);
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn test_resolved_imports_api() {
+    use bmb::resolver::{ResolvedImports, ExportedItem};
+    use bmb::ast::Span;
+
+    let mut imports = ResolvedImports::new();
+    assert!(imports.is_empty());
+
+    let span = Span::new(0, 10);
+    imports.add_import("Token".to_string(), "lexer".to_string(),
+        ExportedItem::Struct("Token".to_string()), span);
+
+    assert_eq!(imports.len(), 1);
+    assert!(!imports.is_empty());
+    assert!(imports.is_imported("Token"));
+    assert!(!imports.is_imported("Other"));
+    assert_eq!(imports.get_import_module("Token"), Some("lexer"));
+}
+
+#[test]
+fn test_resolved_imports_unused_tracking() {
+    use bmb::resolver::{ResolvedImports, ExportedItem};
+    use bmb::ast::Span;
+
+    let mut imports = ResolvedImports::new();
+    let span = Span::new(0, 10);
+    imports.add_import("Used".to_string(), "mod".to_string(),
+        ExportedItem::Function("Used".to_string()), span);
+    imports.add_import("Unused".to_string(), "mod".to_string(),
+        ExportedItem::Function("Unused".to_string()), span);
+
+    imports.mark_used("Used");
+    let unused = imports.get_unused();
+    assert_eq!(unused.len(), 1);
+    assert_eq!(unused[0].0, "Unused");
+}
+
+#[test]
+fn test_resolved_imports_underscore_not_reported() {
+    use bmb::resolver::{ResolvedImports, ExportedItem};
+    use bmb::ast::Span;
+
+    let mut imports = ResolvedImports::new();
+    let span = Span::new(0, 5);
+    imports.add_import("_internal".to_string(), "mod".to_string(),
+        ExportedItem::Function("_internal".to_string()), span);
+
+    let unused = imports.get_unused();
+    assert!(unused.is_empty(), "underscore-prefixed imports not reported");
+}
+
+#[test]
+fn test_exported_item_variants() {
+    use bmb::resolver::ExportedItem;
+    let fn_item = ExportedItem::Function("add".to_string());
+    let struct_item = ExportedItem::Struct("Point".to_string());
+    let enum_item = ExportedItem::Enum("Color".to_string());
+    // Verify Debug display distinguishes them
+    assert!(format!("{:?}", fn_item).contains("Function"));
+    assert!(format!("{:?}", struct_item).contains("Struct"));
+    assert!(format!("{:?}", enum_item).contains("Enum"));
+}
