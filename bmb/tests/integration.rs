@@ -7174,3 +7174,180 @@ fn test_format_type_nullable() {
     assert!(output.contains("?") || output.contains("nullable") || output.contains("Option"),
             "nullable type should be formatted, got: {}", output);
 }
+
+// ========================================================================
+// Cycle 231: Verification & Proof Infrastructure Integration Tests
+// ========================================================================
+
+// --- Contract Verifier Report Tests ---
+
+#[test]
+fn test_verify_report_empty_program() {
+    // Empty program should have empty report
+    let tokens = tokenize("").expect("tokenize");
+    let ast = parse("test.bmb", "", tokens).expect("parse");
+    let verifier = bmb::verify::ContractVerifier::new();
+    let report = verifier.verify_program(&ast);
+    assert_eq!(report.verified_count(), 0);
+    assert_eq!(report.failed_count(), 0);
+    assert!(report.all_verified());
+}
+
+#[test]
+fn test_verify_report_function_without_contract() {
+    // Function without contracts should still be in report
+    let source = "fn f(x: i64) -> i64 = x + 1;";
+    let tokens = tokenize(source).expect("tokenize");
+    let ast = parse("test.bmb", source, tokens).expect("parse");
+    let verifier = bmb::verify::ContractVerifier::new();
+    let report = verifier.verify_program(&ast);
+    // No contracts means nothing to verify, all verified
+    assert!(report.all_verified());
+}
+
+#[test]
+fn test_verify_report_with_precondition() {
+    // Function with precondition should be in report
+    let source = "fn safe_div(a: i64, b: i64) -> i64 pre b != 0 = a / b;";
+    let tokens = tokenize(source).expect("tokenize");
+    let ast = parse("test.bmb", source, tokens).expect("parse");
+    let verifier = bmb::verify::ContractVerifier::new();
+    let _report = verifier.verify_program(&ast);
+    // Report should not crash (Z3 may or may not be available)
+}
+
+// --- Proof Database Tests ---
+
+#[test]
+fn test_proof_db_store_and_retrieve() {
+    use bmb::verify::proof_db::*;
+    let mut db = ProofDatabase::new();
+    let id = FunctionId::simple("test_fn");
+    let result = FunctionProofResult {
+        status: VerificationStatus::Verified,
+        proven_facts: vec![],
+        verification_time: std::time::Duration::from_secs(0),
+        smt_queries: 0,
+        verified_at: 0,
+    };
+    db.store_function_proof(&id, result);
+    assert!(db.is_verified(&id));
+}
+
+#[test]
+fn test_proof_db_unknown_function() {
+    use bmb::verify::proof_db::*;
+    let db = ProofDatabase::new();
+    let id = FunctionId::simple("nonexistent");
+    assert!(!db.is_verified(&id));
+}
+
+#[test]
+fn test_proof_db_function_id_key() {
+    let id = bmb::verify::FunctionId::simple("my_func");
+    let key = id.key();
+    assert!(key.contains("my_func"), "key should contain function name");
+}
+
+#[test]
+fn test_proof_db_stats_default() {
+    let stats = bmb::verify::ProofDbStats::default();
+    assert_eq!(stats.functions_stored, 0);
+    assert_eq!(stats.cache_hits, 0);
+}
+
+// --- Function Summary Tests ---
+
+#[test]
+fn test_summary_extract_from_program() {
+    let source = "fn add(a: i64, b: i64) -> i64 = a + b;
+                   fn sub(a: i64, b: i64) -> i64 = a - b;";
+    let tokens = tokenize(source).expect("tokenize");
+    let ast = parse("test.bmb", source, tokens).expect("parse");
+    let mut tc = TypeChecker::new();
+    tc.check_program(&ast).expect("type check");
+    let cir = bmb::cir::lower_to_cir(&ast);
+    let summaries = bmb::verify::extract_summaries(&cir);
+    assert!(summaries.len() >= 2, "should have at least 2 function summaries");
+}
+
+#[test]
+fn test_summary_function_with_contract() {
+    let source = "fn safe_div(a: i64, b: i64) -> i64 pre b != 0 = a / b;";
+    let tokens = tokenize(source).expect("tokenize");
+    let ast = parse("test.bmb", source, tokens).expect("parse");
+    let cir = bmb::cir::lower_to_cir(&ast);
+    let summaries = bmb::verify::extract_summaries(&cir);
+    assert!(!summaries.is_empty(), "should have function summary");
+}
+
+#[test]
+fn test_summary_compare_same_program() {
+    let source = "fn f(x: i64) -> i64 = x + 1;";
+    let tokens = tokenize(source).expect("tokenize");
+    let ast = parse("test.bmb", source, tokens).expect("parse");
+    let cir = bmb::cir::lower_to_cir(&ast);
+    let summaries = bmb::verify::extract_summaries(&cir);
+    // Compare first function summary with itself
+    let first_id = summaries.keys().next().expect("should have at least one function");
+    let first_summary = &summaries[first_id];
+    let change = bmb::verify::compare_summaries(Some(first_summary), Some(first_summary));
+    // Same summary should indicate no change (Unchanged variant)
+    assert!(matches!(change, bmb::verify::SummaryChange::Unchanged), "same summary should be unchanged");
+}
+
+// --- Incremental Verification Tests ---
+
+#[test]
+fn test_incremental_verifier_new() {
+    let verifier = bmb::verify::IncrementalVerifier::new();
+    // Should create without crashing
+    let _ = verifier;
+}
+
+// --- End-to-End Quality Tests ---
+
+#[test]
+fn test_e2e_fibonacci_all_stages() {
+    // Fibonacci through all stages
+    let source = "fn fib(n: i64) -> i64 = if n <= 1 { n } else { fib(n - 1) + fib(n - 2) };
+                   fn main() -> i64 = fib(10);";
+    // Type check
+    assert!(type_checks(source));
+    // Interpret
+    assert_eq!(run_program_i64(source), 55);
+    // MIR lower
+    let (_text, mir) = full_pipeline_mir(source);
+    assert!(!mir.functions.is_empty());
+}
+
+#[test]
+fn test_e2e_factorial_all_stages() {
+    let source = "fn fact(n: i64) -> i64 = if n <= 1 { 1 } else { n * fact(n - 1) };
+                   fn main() -> i64 = fact(10);";
+    assert!(type_checks(source));
+    assert_eq!(run_program_i64(source), 3628800);
+    let (_text, mir) = full_pipeline_mir(source);
+    assert!(!mir.functions.is_empty());
+}
+
+#[test]
+fn test_e2e_gcd_all_stages() {
+    let source = "fn gcd(a: i64, b: i64) -> i64 =
+                     if b == 0 { a } else { gcd(b, a % b) };
+                   fn main() -> i64 = gcd(48, 18);";
+    assert!(type_checks(source));
+    assert_eq!(run_program_i64(source), 6);
+    let (_text, mir) = full_pipeline_mir(source);
+    assert!(!mir.functions.is_empty());
+}
+
+#[test]
+fn test_e2e_power_all_stages() {
+    let source = "fn pow(base: i64, exp: i64) -> i64 =
+                     if exp == 0 { 1 }
+                     else { base * pow(base, exp - 1) };
+                   fn main() -> i64 = pow(2, 10);";
+    assert!(type_checks(source));
+    assert_eq!(run_program_i64(source), 1024);
+}
