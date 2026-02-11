@@ -1,0 +1,151 @@
+// ============================================================================
+// Bootstrap Compiler Loop Feature Tests
+// Version: v0.90.31
+//
+// Tests loop {}, continue, return, and break features added in Cycles 215-217
+// ============================================================================
+
+// ============================================================================
+// CATEGORY 1: Basic loop {} with break
+// ============================================================================
+
+// Test: Simple loop counting to 5
+fn test_loop_count() -> i64 = {
+    let mut x = 0;
+    loop {
+        x = x + 1;
+        if x >= 5 { break } else { () }
+    };
+    x
+};
+
+// Test: Loop with accumulator (1+2+...+10 = 55)
+fn test_loop_sum() -> i64 = {
+    let mut sum = 0;
+    let mut i = 1;
+    loop {
+        sum = sum + i;
+        i = i + 1;
+        if i > 10 { break } else { () }
+    };
+    sum
+};
+
+// Test: Nested loops (4 outer * 3 inner = 12)
+fn test_nested_loop() -> i64 = {
+    let mut total = 0;
+    let mut i = 0;
+    loop {
+        let mut j = 0;
+        loop {
+            total = total + 1;
+            j = j + 1;
+            if j >= 3 { break } else { () }
+        };
+        i = i + 1;
+        if i >= 4 { break } else { () }
+    };
+    total
+};
+
+fn run_loop_tests() -> i64 =
+    let t1 = if test_loop_count() == 5 { 1 } else { 0 };
+    let t2 = if test_loop_sum() == 55 { 1 } else { 0 };
+    let t3 = if test_nested_loop() == 12 { 1 } else { 0 };
+    t1 + t2 + t3;
+
+// ============================================================================
+// CATEGORY 2: continue statement
+// ============================================================================
+
+// Test: continue skips even numbers, sums odd numbers 1..9
+// 1 + 3 + 5 + 7 + 9 = 25
+fn test_continue_odd_sum() -> i64 = {
+    let mut sum = 0;
+    let mut i = 0;
+    loop {
+        i = i + 1;
+        if i > 9 { break } else { () };
+        if i % 2 == 0 { continue } else { () };
+        sum = sum + i
+    };
+    sum
+};
+
+// Test: continue in nested loop - inner loop skips multiples of 3
+// 5 outer * (6 - 2 skipped) = 5 * 4 = 20
+fn test_continue_nested() -> i64 = {
+    let mut count = 0;
+    let mut i = 0;
+    loop {
+        i = i + 1;
+        if i > 5 { break } else { () };
+        let mut j = 0;
+        loop {
+            j = j + 1;
+            if j > 6 { break } else { () };
+            if j % 3 == 0 { continue } else { () };
+            count = count + 1
+        }
+    };
+    count
+};
+
+fn run_continue_tests() -> i64 =
+    let t1 = if test_continue_odd_sum() == 25 { 1 } else { 0 };
+    let t2 = if test_continue_nested() == 20 { 1 } else { 0 };
+    t1 + t2;
+
+// ============================================================================
+// CATEGORY 3: return expression
+// ============================================================================
+
+// Test: early return from function
+fn test_early_return(n: i64) -> i64 = {
+    if n <= 0 { return 0 } else { () };
+    n * 2
+};
+
+// Test: return in loop (find integer square root)
+fn test_return_in_loop(n: i64) -> i64 = {
+    let mut i = 0;
+    loop {
+        i = i + 1;
+        if i * i >= n { return i } else { () }
+    };
+    0
+};
+
+// Test: return with expression
+fn test_return_expr() -> i64 = {
+    return 42
+};
+
+fn run_return_tests() -> i64 =
+    let t1 = if test_early_return(5) == 10 { 1 } else { 0 };
+    let t2 = if test_early_return(0) == 0 { 1 } else { 0 };
+    let t3 = if test_return_in_loop(10) == 4 { 1 } else { 0 };
+    let t4 = if test_return_expr() == 42 { 1 } else { 0 };
+    t1 + t2 + t3 + t4;
+
+// ============================================================================
+// MAIN: Run all tests
+// ============================================================================
+
+fn main() -> i64 =
+    let start = println(777);
+
+    let loop_tests = run_loop_tests();
+    let s1 = println(loop_tests);
+
+    let continue_tests = run_continue_tests();
+    let s2 = println(continue_tests);
+
+    let return_tests = run_return_tests();
+    let s3 = println(return_tests);
+
+    let total = loop_tests + continue_tests + return_tests;
+    let s4 = println(total);
+
+    let end = println(999);
+    total;

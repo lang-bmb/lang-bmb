@@ -293,11 +293,12 @@ select {
 
 | 태스크 | 상태 | 설명 |
 |--------|------|------|
-| Return expression 로워링 | 📋 | 임의 프로그램의 조기 반환 지원 |
-| Reference `&T`/`*T` 로워링 | 📋 | 참조/포인터 연산 |
-| Field assignment 로워링 | 📋 | 구조체 필드 대입 |
-| `loop {}` 무한 루프 | 📋 | break 기반 무한 루프 |
-| Type cast (`as`) 로워링 | 📋 | 명시적 타입 변환 |
+| Return expression 로워링 | ✅ | 임의 프로그램의 조기 반환 지원 (v0.90.31) |
+| Reference `&T`/`*T` 로워링 | ✅ | 참조/포인터 연산 (v0.90.11) |
+| Field assignment 로워링 | ✅ | 구조체 필드 대입 (v0.90.5) |
+| `loop {}` 무한 루프 | ✅ | break 기반 무한 루프 (v0.90.31) |
+| `continue` 문 | ✅ | 루프 반복 건너뛰기 (v0.90.31) |
+| Type cast (`as`) 로워링 | ✅ | 명시적 타입 변환 (v0.90.1, no-op for same-width) |
 | Nullable `T?` 로워링 | 📋 | 널러블 타입 지원 |
 | Closure capture 완성 | 📋 | 자유 변수 캡처 분석 |
 

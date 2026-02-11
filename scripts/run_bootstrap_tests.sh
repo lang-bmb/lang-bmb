@@ -39,6 +39,7 @@ run_test() {
 # Run tests
 run_test "$TEST_DIR/phi_patterns_test.bmb" "39"
 run_test "$TEST_DIR/compiler_fixes_test.bmb" "17"
+run_test "$TEST_DIR/loop_features_test.bmb" "9"
 
 # Also run the selfhost_test from bootstrap directory
 if [ -f "bootstrap/selfhost_test.bmb" ]; then
