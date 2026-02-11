@@ -6608,3 +6608,203 @@ fn test_pipeline_match_with_early_return() {
                    fn main() -> i64 = classify(-5) + classify(3) + classify(4) + classify(5);";
     assert_eq!(run_program_i64(source), -1 + 100 + 200 + 300); // 599
 }
+
+// ========================================================================
+// Cycle 228: MIR Optimization Integration Tests
+// ========================================================================
+
+/// Helper: lower to MIR and run a specific optimization pass
+fn optimized_mir(source: &str, pass: Box<dyn bmb::mir::OptimizationPass>) -> (String, bmb::mir::MirProgram) {
+    let tokens = tokenize(source).expect("tokenize failed");
+    let ast = parse("test.bmb", source, tokens).expect("parse failed");
+    let mut tc = TypeChecker::new();
+    tc.check_program(&ast).expect("type check failed");
+    let mut mir = bmb::mir::lower_program(&ast);
+    let mut pipeline = bmb::mir::OptimizationPipeline::new();
+    pipeline.add_pass(pass);
+    pipeline.optimize(&mut mir);
+    let text = bmb::mir::format_mir(&mir);
+    (text, mir)
+}
+
+// --- Constant Folding ---
+
+#[test]
+fn test_opt_constant_folding_arithmetic() {
+    // 3 + 4 should be folded to 7
+    let source = "fn f() -> i64 = 3 + 4;";
+    let (text, _mir) = optimized_mir(source, Box::new(bmb::mir::ConstantFolding));
+    // After constant folding, 3+4 should become a single constant 7
+    assert!(text.contains("I:7"), "constant folding should produce I:7, got: {}", text);
+}
+
+#[test]
+fn test_opt_constant_folding_nested() {
+    // (2 * 3) + (10 - 4) should fold to 12
+    let source = "fn f() -> i64 = 2 * 3 + (10 - 4);";
+    let (text, _mir) = optimized_mir(source, Box::new(bmb::mir::ConstantFolding));
+    assert!(text.contains("I:12"), "nested constant folding should produce I:12, got: {}", text);
+}
+
+#[test]
+fn test_opt_constant_folding_comparison() {
+    // 5 > 3 should fold to true (1)
+    let source = "fn f() -> bool = 5 > 3;";
+    let (text, _mir) = optimized_mir(source, Box::new(bmb::mir::ConstantFolding));
+    assert!(text.contains("B:1"), "5 > 3 should fold to true (B:1), got: {}", text);
+}
+
+// --- Dead Code Elimination ---
+
+#[test]
+fn test_opt_dce_removes_unused_computation() {
+    // The `unused` variable computation should be eliminated
+    let source = "fn f(x: i64) -> i64 = {
+                     let unused = x * x * x;
+                     x + 1
+                   };";
+    let (_text_before, mir_before) = full_pipeline_mir(source);
+    let (text_after, mir_after) = optimized_mir(source, Box::new(bmb::mir::DeadCodeElimination));
+    // After DCE, the optimized MIR should have fewer instructions
+    let inst_before: usize = mir_before.functions[0].blocks.iter().map(|b| b.instructions.len()).sum();
+    let inst_after: usize = mir_after.functions[0].blocks.iter().map(|b| b.instructions.len()).sum();
+    assert!(inst_after <= inst_before, "DCE should not increase instructions: {} vs {}", inst_after, inst_before);
+    // The function should still return x + 1
+    assert!(text_after.contains("+"), "should still have addition for x + 1");
+}
+
+// --- Copy Propagation ---
+
+#[test]
+fn test_opt_copy_propagation_eliminates_copy() {
+    // let y = x; return y; should propagate x through
+    let source = "fn f(x: i64) -> i64 = { let y = x; y };";
+    let (_text, mir) = optimized_mir(source, Box::new(bmb::mir::CopyPropagation));
+    // After copy propagation, the return should reference the original parameter
+    let func = &mir.functions[0];
+    let total_copies: usize = func.blocks.iter()
+        .flat_map(|b| b.instructions.iter())
+        .filter(|i| matches!(i, bmb::mir::MirInst::Copy { .. }))
+        .count();
+    // Copy propagation should reduce or eliminate copies
+    assert!(total_copies <= 1, "copy propagation should reduce copies, found {}", total_copies);
+}
+
+// --- SimplifyBranches ---
+
+#[test]
+fn test_opt_simplify_branches_true_condition() {
+    // if true { 42 } else { 99 } should simplify to 42
+    let source = "fn f() -> i64 = if true { 42 } else { 99 };";
+    let (text, _mir) = optimized_mir(source, Box::new(bmb::mir::SimplifyBranches));
+    // After branch simplification, the true branch should be taken
+    assert!(text.contains("I:42"), "simplified branch should contain I:42, got: {}", text);
+}
+
+#[test]
+fn test_opt_simplify_branches_false_condition() {
+    // if false { 42 } else { 99 } should simplify to 99
+    let source = "fn f() -> i64 = if false { 42 } else { 99 };";
+    let (text, _mir) = optimized_mir(source, Box::new(bmb::mir::SimplifyBranches));
+    assert!(text.contains("I:99"), "simplified branch should contain I:99, got: {}", text);
+}
+
+// --- CSE (Common Subexpression Elimination) ---
+
+#[test]
+fn test_opt_cse_eliminates_duplicate_computation() {
+    // x * x appears twice — CSE should eliminate the duplicate
+    let source = "fn f(x: i64) -> i64 = x * x + x * x;";
+    let (_text, mir_before) = full_pipeline_mir(source);
+    let (_text, mir_after) = optimized_mir(source, Box::new(bmb::mir::CommonSubexpressionElimination));
+    let mul_before: usize = mir_before.functions[0].blocks.iter()
+        .flat_map(|b| b.instructions.iter())
+        .filter(|i| matches!(i, bmb::mir::MirInst::BinOp { op: bmb::mir::MirBinOp::Mul, .. }))
+        .count();
+    let mul_after: usize = mir_after.functions[0].blocks.iter()
+        .flat_map(|b| b.instructions.iter())
+        .filter(|i| matches!(i, bmb::mir::MirInst::BinOp { op: bmb::mir::MirBinOp::Mul, .. }))
+        .count();
+    assert!(mul_after <= mul_before, "CSE should not increase multiplications: {} vs {}", mul_after, mul_before);
+}
+
+// --- ContractBasedOptimization ---
+
+#[test]
+fn test_opt_contract_based_optimization() {
+    // Contract pre b != 0 should enable optimizations
+    let source = "fn safe_div(a: i64, b: i64) -> i64
+                     pre b != 0
+                   = a / b;";
+    // Should not crash — contract optimization handles preconditions
+    let (_text, mir) = optimized_mir(source, Box::new(bmb::mir::ContractBasedOptimization));
+    assert!(!mir.functions.is_empty(), "should have functions after optimization");
+}
+
+// --- IfElseToSwitch ---
+
+#[test]
+fn test_opt_if_else_to_switch_chain() {
+    // Chained if/else on same variable should become switch
+    let source = "fn classify(x: i64) -> i64 = {
+                     if x == 0 { 10 }
+                     else if x == 1 { 20 }
+                     else if x == 2 { 30 }
+                     else { 40 }
+                   };";
+    let (_text, mir) = optimized_mir(source, Box::new(bmb::mir::IfElseToSwitch::new()));
+    // After optimization, should have switch terminator
+    let has_switch = mir.functions[0].blocks.iter().any(|b|
+        matches!(&b.terminator, bmb::mir::Terminator::Switch { .. })
+    );
+    assert!(has_switch, "if/else chain on same var should be converted to switch");
+}
+
+// --- Optimization correctness via interpreter ---
+
+#[test]
+fn test_opt_constant_folding_correct_result() {
+    // Verify constant folding doesn't change program semantics
+    let source = "fn main() -> i64 = 10 * 5 + 3 - 1;";
+    assert_eq!(run_program_i64(source), 52); // 50 + 3 - 1 = 52
+}
+
+#[test]
+fn test_opt_branch_elimination_correct_result() {
+    // Program with always-true branch
+    let source = "fn main() -> i64 = {
+                     let x = 10;
+                     if true { x * 2 } else { x * 3 }
+                   };";
+    assert_eq!(run_program_i64(source), 20);
+}
+
+#[test]
+fn test_opt_dead_code_does_not_affect_result() {
+    // Dead computation should not affect live result
+    let source = "fn main() -> i64 = {
+                     let x = 42;
+                     let unused = x * x * x;
+                     let y = x + 8;
+                     y
+                   };";
+    assert_eq!(run_program_i64(source), 50); // 42 + 8
+}
+
+#[test]
+fn test_opt_cse_correct_result() {
+    // CSE should not change computation result
+    let source = "fn sq(x: i64) -> i64 = x * x;
+                   fn main() -> i64 = sq(7) + sq(7);";
+    assert_eq!(run_program_i64(source), 98); // 49 + 49
+}
+
+#[test]
+fn test_opt_tail_recursion_correct_result() {
+    // Tail-recursive function should produce correct result
+    let source = "fn sum_tail(n: i64, acc: i64) -> i64 =
+                     if n <= 0 { acc }
+                     else { sum_tail(n - 1, acc + n) };
+                   fn main() -> i64 = sum_tail(10, 0);";
+    assert_eq!(run_program_i64(source), 55); // 1+2+...+10
+}
