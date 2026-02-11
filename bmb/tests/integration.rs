@@ -5493,3 +5493,313 @@ fn test_type_loop_break_continue_typechecks() {
         "fn main() -> i64 = { let mut x = 0; loop { x = x + 1; if x > 5 { break } else { continue } }; x };"
     ));
 }
+
+// ========================================================================
+// Cycle 223: Closure + Control Flow Integration Tests
+// ========================================================================
+
+#[test]
+fn test_interp_closure_with_loop_accumulator() {
+    // Closure that uses a loop internally to compute sum
+    assert_eq!(
+        run_program_i64(
+            "fn main() -> i64 = {
+               let sum_to = fn |n: i64| {
+                 let mut acc = 0;
+                 let mut i = 1;
+                 while i <= n {
+                   acc = acc + i;
+                   { i = i + 1 }
+                 };
+                 acc
+               };
+               sum_to(10)
+             };"
+        ),
+        55 // 1+2+...+10 = 55
+    );
+}
+
+#[test]
+fn test_interp_closure_capturing_with_control_flow() {
+    // Closure captures outer variable and uses if/else internally
+    assert_eq!(
+        run_program_i64(
+            "fn main() -> i64 = {
+               let threshold: i64 = 50;
+               let clamp = fn |x: i64| {
+                 if x > threshold { threshold } else { x }
+               };
+               clamp(30) + clamp(100)
+             };"
+        ),
+        80 // clamp(30)=30, clamp(100)=50, 30+50=80
+    );
+}
+
+#[test]
+fn test_interp_closure_returning_from_loop() {
+    // Closure with early exit from loop via break
+    assert_eq!(
+        run_program_i64(
+            "fn main() -> i64 = {
+               let find_first_square = fn |limit: i64| {
+                 let mut i = 1;
+                 let mut result = 0;
+                 loop {
+                   if i * i > limit {
+                     result = i;
+                     break
+                   } else { () };
+                   { i = i + 1 }
+                 };
+                 result
+               };
+               find_first_square(100)
+             };"
+        ),
+        11 // 11*11=121 > 100, first i where i*i > 100
+    );
+}
+
+// ========================================================================
+// Cycle 223: Generic Function + Control Flow Tests
+// ========================================================================
+
+#[test]
+fn test_interp_generic_with_branching() {
+    // Generic function that branches based on a bool parameter
+    assert_eq!(
+        run_program_i64(
+            "fn pick_or_default<T>(val: T, default_val: T, use_val: bool) -> T =
+               if use_val { val } else { default_val };
+             fn main() -> i64 = {
+               let a = pick_or_default(42, 0, true);
+               let b = pick_or_default(99, 7, false);
+               a + b
+             };"
+        ),
+        49 // 42 + 7 = 49
+    );
+}
+
+#[test]
+fn test_interp_generic_nested_calls() {
+    // Nested generic function calls
+    assert_eq!(
+        run_program_i64(
+            "fn wrap<T>(x: T) -> T = x;
+             fn double_wrap<T>(x: T) -> T = wrap(wrap(x));
+             fn main() -> i64 = double_wrap(42);"
+        ),
+        42
+    );
+}
+
+// ========================================================================
+// Cycle 223: Struct + Control Flow Integration Tests
+// ========================================================================
+
+#[test]
+fn test_interp_struct_conditional_field_assignment() {
+    // Struct with conditional field updates
+    assert_eq!(
+        run_program_i64(
+            "struct Counter { val: i64, limit: i64 }
+             fn main() -> i64 = {
+               let mut c: Counter = new Counter { val: 0, limit: 5 };
+               let mut i = 0;
+               while i < 10 {
+                 if c.val < c.limit {
+                   set c.val = c.val + 1
+                 } else { () };
+                 { i = i + 1 }
+               };
+               c.val
+             };"
+        ),
+        5 // clamped at limit=5
+    );
+}
+
+#[test]
+fn test_interp_struct_in_loop_accumulation() {
+    // Pass struct to function, accumulate in loop
+    assert_eq!(
+        run_program_i64(
+            "struct Pair { a: i64, b: i64 }
+             fn sum_pair(p: Pair) -> i64 = p.a + p.b;
+             fn main() -> i64 = {
+               let mut total = 0;
+               let mut i = 1;
+               while i <= 3 {
+                 let p = new Pair { a: i, b: i * 2 };
+                 total = total + sum_pair(p);
+                 { i = i + 1 }
+               };
+               total
+             };"
+        ),
+        18 // i=1: 1+2=3, i=2: 2+4=6, i=3: 3+6=9, total=3+6+9=18
+    );
+}
+
+#[test]
+fn test_interp_struct_computed_field() {
+    // Struct with fields derived from computation
+    assert_eq!(
+        run_program_i64(
+            "struct Point { x: i64, y: i64 }
+             fn scale(p: Point, s: i64) -> Point =
+               new Point { x: p.x * s, y: p.y * s };
+             fn main() -> i64 = {
+               let p = new Point { x: 3, y: 4 };
+               let p2 = scale(p, 5);
+               p2.x + p2.y
+             };"
+        ),
+        35 // 3*5 + 4*5 = 15 + 20 = 35
+    );
+}
+
+// ========================================================================
+// Cycle 223: Match Expression + Feature Combination Tests
+// ========================================================================
+
+#[test]
+fn test_interp_match_with_accumulator() {
+    // Match inside a loop to categorize and accumulate
+    assert_eq!(
+        run_program_i64(
+            "fn categorize(x: i64) -> i64 =
+               match x % 3 {
+                 0 => 10,
+                 1 => 20,
+                 _ => 30
+               };
+             fn main() -> i64 = {
+               let mut total = 0;
+               let mut i = 0;
+               while i < 6 {
+                 total = total + categorize(i);
+                 { i = i + 1 }
+               };
+               total
+             };"
+        ),
+        120 // i=0:10, i=1:20, i=2:30, i=3:10, i=4:20, i=5:30, total=120
+    );
+}
+
+#[test]
+fn test_interp_match_enum_with_computation() {
+    // Match on enum, compute different results per variant
+    assert_eq!(
+        run_program_i64(
+            "enum Op { Add(i64, i64), Mul(i64, i64), Neg(i64) }
+             fn compute(op: Op) -> i64 =
+               match op {
+                 Op::Add(a, b) => a + b,
+                 Op::Mul(a, b) => a * b,
+                 Op::Neg(x) => 0 - x
+               };
+             fn main() -> i64 = {
+               let r1 = compute(Op::Add(10, 20));
+               let r2 = compute(Op::Mul(3, 4));
+               let r3 = compute(Op::Neg(5));
+               r1 + r2 + r3
+             };"
+        ),
+        37 // 30 + 12 + (-5) = 37
+    );
+}
+
+// ========================================================================
+// Cycle 223: Multi-Feature Combination Tests
+// ========================================================================
+
+#[test]
+fn test_interp_closure_over_struct() {
+    // Closure that operates on struct fields
+    assert_eq!(
+        run_program_i64(
+            "struct Rect { w: i64, h: i64 }
+             fn main() -> i64 = {
+               let area = fn |r: Rect| { r.w * r.h };
+               let r1 = new Rect { w: 3, h: 4 };
+               let r2 = new Rect { w: 5, h: 6 };
+               area(r1) + area(r2)
+             };"
+        ),
+        42 // 12 + 30 = 42
+    );
+}
+
+#[test]
+fn test_interp_recursive_with_match() {
+    // Recursive function using match for base case
+    assert_eq!(
+        run_program_i64(
+            "fn fib(n: i64) -> i64 =
+               match n {
+                 0 => 0,
+                 1 => 1,
+                 _ => fib(n - 1) + fib(n - 2)
+               };
+             fn main() -> i64 = fib(10);"
+        ),
+        55 // fib(10) = 55
+    );
+}
+
+#[test]
+fn test_interp_generic_function_with_struct() {
+    // Generic function operating on struct
+    assert_eq!(
+        run_program_i64(
+            "fn id<T>(x: T) -> T = x;
+             struct Box2 { val: i64 }
+             fn main() -> i64 = {
+               let b = new Box2 { val: 42 };
+               let b2 = id(b);
+               b2.val
+             };"
+        ),
+        42
+    );
+}
+
+// ========================================================================
+// Cycle 223: Type Checking Feature Combinations
+// ========================================================================
+
+#[test]
+fn test_type_closure_with_loop_typechecks() {
+    assert!(type_checks(
+        "fn main() -> i64 = {
+           let f = fn |n: i64| {
+             let mut i = 0;
+             while i < n { { i = i + 1 } };
+             i
+           };
+           f(5)
+         };"
+    ));
+}
+
+#[test]
+fn test_type_struct_in_match_typechecks() {
+    assert!(type_checks(
+        "struct Val { x: i64 }
+         fn check(v: Val) -> i64 = match v.x { 0 => 1, _ => v.x };
+         fn main() -> i64 = check(new Val { x: 5 });"
+    ));
+}
+
+#[test]
+fn test_type_generic_with_bool_typechecks() {
+    assert!(type_checks(
+        "fn first<T>(a: T, b: T) -> T = a;
+         fn main() -> bool = first(true, false);"
+    ));
+}
