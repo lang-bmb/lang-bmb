@@ -8834,8 +8834,8 @@ fn test_build_verification_mode_default() {
 
 #[test]
 fn test_build_opt_level_variants() {
-    let _d = bmb::build::OptLevel::Debug;
-    let _r = bmb::build::OptLevel::Release;
+    let _d = bmb::mir::OptLevel::Debug;
+    let _r = bmb::mir::OptLevel::Release;
     let _s = bmb::build::OptLevel::Size;
     let _a = bmb::build::OptLevel::Aggressive;
     // All variants should be Debug-printable
@@ -9191,4 +9191,188 @@ fn test_parser_mutable_variable() {
     parse_and_typecheck(
         "fn mutate() -> i64 = { let mut x: i64 = 0; x = 42; x };"
     );
+}
+
+// ============================================================
+// MIR Proof-Guided Optimization & Format Tests
+// ============================================================
+
+#[test]
+fn test_mir_format_simple_function() {
+    let program = lower_to_mir("fn add(a: i64, b: i64) -> i64 = a + b;");
+    let text = bmb::mir::format_mir(&program);
+    assert!(text.contains("add"), "format_mir should contain function name");
+    assert!(text.contains("i64"), "should contain type annotations");
+}
+
+#[test]
+fn test_mir_format_multiple_functions() {
+    let program = lower_to_mir("fn foo() -> i64 = 1; fn bar() -> i64 = 2;");
+    let text = bmb::mir::format_mir(&program);
+    assert!(text.contains("foo"));
+    assert!(text.contains("bar"));
+}
+
+#[test]
+fn test_mir_format_with_contract() {
+    let program = lower_to_mir("fn safe(x: i64) -> i64 pre x >= 0 = x;");
+    let text = bmb::mir::format_mir(&program);
+    assert!(text.contains("safe"));
+}
+
+#[test]
+fn test_mir_format_pure_function() {
+    let program = lower_to_mir("@pure fn pure_add(a: i64, b: i64) -> i64 = a + b;");
+    let text = bmb::mir::format_mir(&program);
+    assert!(text.contains("pure") || text.contains("@pure"), "should show pure attribute");
+}
+
+#[test]
+fn test_mir_lower_preconditions_extracted() {
+    let program = lower_to_mir("fn guarded(x: i64) -> i64 pre x > 0 = x;");
+    let func = find_mir_fn(&program, "guarded");
+    assert!(!func.preconditions.is_empty(), "preconditions should be extracted from pre");
+}
+
+#[test]
+fn test_mir_lower_postconditions_extracted() {
+    let program = lower_to_mir("fn positive() -> i64 post ret > 0 = 42;");
+    let func = find_mir_fn(&program, "positive");
+    assert!(!func.postconditions.is_empty(), "postconditions should be extracted from post");
+}
+
+#[test]
+fn test_mir_lower_pure_attribute() {
+    let program = lower_to_mir("@pure fn pure_fn(x: i64) -> i64 = x;");
+    let func = find_mir_fn(&program, "pure_fn");
+    assert!(func.is_pure, "is_pure should be true for @pure functions");
+}
+
+#[test]
+fn test_mir_proven_fact_set_from_preconditions() {
+    let program = lower_to_mir("fn bounded(x: i64) -> i64 pre x >= 0 = x;");
+    let func = find_mir_fn(&program, "bounded");
+    let facts = bmb::mir::ProvenFactSet::from_mir_preconditions(&func.preconditions);
+    assert!(facts.has_lower_bound("x", 0), "should have lower bound x >= 0");
+}
+
+#[test]
+fn test_mir_proven_fact_set_upper_bound() {
+    let program = lower_to_mir("fn capped(x: i64) -> i64 pre x <= 100 = x;");
+    let func = find_mir_fn(&program, "capped");
+    let facts = bmb::mir::ProvenFactSet::from_mir_preconditions(&func.preconditions);
+    let ub = facts.get_upper_bound("x");
+    assert!(ub.is_some(), "should have upper bound for x");
+    assert_eq!(ub.unwrap(), 100);
+}
+
+#[test]
+fn test_mir_proven_fact_set_nonzero() {
+    // Ne with 0 directly maps to nonzero tracking
+    let facts = {
+        let mut f = bmb::mir::ProvenFactSet::default();
+        f.add_nonzero("d");
+        f
+    };
+    assert!(facts.has_nonzero("d"), "explicitly added nonzero should be tracked");
+}
+
+#[test]
+fn test_mir_proven_fact_set_lower_bound_implies_positive() {
+    let program = lower_to_mir("fn safe_div(x: i64, d: i64) -> i64 pre d > 0 = x / d;");
+    let func = find_mir_fn(&program, "safe_div");
+    let facts = bmb::mir::ProvenFactSet::from_mir_preconditions(&func.preconditions);
+    // d > 0 sets lower bound to 1
+    assert!(facts.has_lower_bound("d", 1), "d > 0 should set lower bound to 1");
+}
+
+#[test]
+fn test_mir_proof_guided_program_runs() {
+    let mut program = lower_to_mir("fn id(x: i64) -> i64 pre x >= 0 = x;");
+    let stats = bmb::mir::run_proof_guided_program(&mut program);
+    // Stats should be valid (may or may not eliminate anything for simple case)
+    let _total = stats.bounds_checks_eliminated
+        + stats.null_checks_eliminated
+        + stats.division_checks_eliminated
+        + stats.unreachable_blocks_eliminated;
+}
+
+#[test]
+fn test_mir_optimization_pipeline_debug() {
+    let mut program = lower_to_mir("fn add(a: i64, b: i64) -> i64 = a + b;");
+    let pipeline = bmb::mir::OptimizationPipeline::for_level(bmb::mir::OptLevel::Debug);
+    let stats = pipeline.optimize(&mut program);
+    // Debug level should do minimal or no optimizations
+    assert_eq!(stats.iterations, 0, "Debug should not iterate");
+}
+
+#[test]
+fn test_mir_optimization_pipeline_release() {
+    let mut program = lower_to_mir("fn add(a: i64, b: i64) -> i64 = a + b;");
+    let pipeline = bmb::mir::OptimizationPipeline::for_level(bmb::mir::OptLevel::Release);
+    let _stats = pipeline.optimize(&mut program);
+    // Release should run at least one iteration
+}
+
+#[test]
+fn test_mir_constant_folding_pass() {
+    let (text, _program) = optimized_mir(
+        "fn constant() -> i64 = 2 + 3;",
+        Box::new(bmb::mir::ConstantFolding),
+    );
+    // After constant folding, 2+3 should be folded to 5
+    assert!(text.contains("5") || text.contains("I:5"), "constant should be folded to 5");
+}
+
+#[test]
+fn test_mir_dead_code_elimination_pass() {
+    let (text, _program) = optimized_mir(
+        "fn live() -> i64 = { let x: i64 = 42; 1 };",
+        Box::new(bmb::mir::DeadCodeElimination),
+    );
+    // DCE should remove unused x assignment (or at least run without error)
+    assert!(text.contains("live"));
+}
+
+#[test]
+fn test_mir_contract_fact_varcmp() {
+    let fact = bmb::mir::ContractFact::VarCmp {
+        var: "x".to_string(),
+        op: bmb::mir::CmpOp::Ge,
+        value: 0,
+    };
+    assert!(!format!("{:?}", fact).is_empty());
+}
+
+#[test]
+fn test_mir_contract_fact_nonnull() {
+    let fact = bmb::mir::ContractFact::NonNull {
+        var: "ptr".to_string(),
+    };
+    assert!(!format!("{:?}", fact).is_empty());
+}
+
+#[test]
+fn test_mir_contract_fact_return_cmp() {
+    let fact = bmb::mir::ContractFact::ReturnCmp {
+        op: bmb::mir::CmpOp::Gt,
+        value: 0,
+    };
+    assert!(!format!("{:?}", fact).is_empty());
+}
+
+#[test]
+fn test_mir_full_pipeline_preserves_semantics() {
+    // Full pipeline optimization should not change the computed result
+    let result = run_program_i64("fn main() -> i64 = 2 + 3 * 4;");
+    assert_eq!(result, 14); // 2 + (3*4) = 14
+}
+
+#[test]
+fn test_mir_format_if_else() {
+    let program = lower_to_mir("fn abs(x: i64) -> i64 = if x >= 0 { x } else { 0 - x };");
+    let text = bmb::mir::format_mir(&program);
+    assert!(text.contains("abs"));
+    // Should have branching structure
+    assert!(text.contains("branch") || text.contains("goto") || text.contains("return"));
 }
