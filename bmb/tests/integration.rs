@@ -8544,3 +8544,173 @@ fn test_cir_compare_op_flip() {
     assert_eq!(bmb::cir::CompareOp::Gt.flip(), bmb::cir::CompareOp::Lt);
     assert_eq!(bmb::cir::CompareOp::Ge.flip(), bmb::cir::CompareOp::Le);
 }
+
+// ============================================================
+// Derive Module Integration Tests
+// ============================================================
+
+/// Helper: parse source and return the AST Program
+fn source_to_ast(source: &str) -> bmb::ast::Program {
+    let tokens = tokenize(source).expect("tokenize failed");
+    parse("test.bmb", source, tokens).expect("parse failed")
+}
+
+/// Helper: find a StructDef by name in AST items
+fn find_struct<'a>(ast: &'a bmb::ast::Program, name: &str) -> &'a bmb::ast::StructDef {
+    ast.items.iter().find_map(|item| {
+        if let bmb::ast::Item::StructDef(s) = item && s.name.node == name {
+            return Some(s);
+        }
+        None
+    }).unwrap_or_else(|| panic!("struct {} not found", name))
+}
+
+/// Helper: find an EnumDef by name in AST items
+fn find_enum<'a>(ast: &'a bmb::ast::Program, name: &str) -> &'a bmb::ast::EnumDef {
+    ast.items.iter().find_map(|item| {
+        if let bmb::ast::Item::EnumDef(e) = item && e.name.node == name {
+            return Some(e);
+        }
+        None
+    }).unwrap_or_else(|| panic!("enum {} not found", name))
+}
+
+#[test]
+fn test_derive_trait_from_str_all_variants() {
+    assert!(matches!(bmb::derive::DeriveTrait::from_str("Debug"), Some(bmb::derive::DeriveTrait::Debug)));
+    assert!(matches!(bmb::derive::DeriveTrait::from_str("Clone"), Some(bmb::derive::DeriveTrait::Clone)));
+    assert!(matches!(bmb::derive::DeriveTrait::from_str("PartialEq"), Some(bmb::derive::DeriveTrait::PartialEq)));
+    assert!(matches!(bmb::derive::DeriveTrait::from_str("Eq"), Some(bmb::derive::DeriveTrait::Eq)));
+    assert!(matches!(bmb::derive::DeriveTrait::from_str("Default"), Some(bmb::derive::DeriveTrait::Default)));
+    assert!(matches!(bmb::derive::DeriveTrait::from_str("Hash"), Some(bmb::derive::DeriveTrait::Hash)));
+}
+
+#[test]
+fn test_derive_trait_from_str_unknown() {
+    assert!(bmb::derive::DeriveTrait::from_str("Serialize").is_none());
+    assert!(bmb::derive::DeriveTrait::from_str("").is_none());
+    assert!(bmb::derive::DeriveTrait::from_str("debug").is_none()); // case-sensitive
+}
+
+#[test]
+fn test_derive_trait_as_str_roundtrip() {
+    let traits = [
+        bmb::derive::DeriveTrait::Debug,
+        bmb::derive::DeriveTrait::Clone,
+        bmb::derive::DeriveTrait::PartialEq,
+        bmb::derive::DeriveTrait::Eq,
+        bmb::derive::DeriveTrait::Default,
+        bmb::derive::DeriveTrait::Hash,
+    ];
+    for t in &traits {
+        let s = t.as_str();
+        let parsed = bmb::derive::DeriveTrait::from_str(s).unwrap();
+        assert_eq!(&parsed, t, "roundtrip failed for {:?}", t);
+    }
+}
+
+#[test]
+fn test_derive_extract_from_parsed_struct() {
+    let ast = source_to_ast("@derive(Debug, Clone) struct Point { x: i64, y: i64 }");
+    // Find the struct definition
+    let struct_def = find_struct(&ast, "Point");
+    let traits = bmb::derive::extract_derive_traits(&struct_def.attributes);
+    assert_eq!(traits.len(), 2);
+    assert!(traits.contains(&bmb::derive::DeriveTrait::Debug));
+    assert!(traits.contains(&bmb::derive::DeriveTrait::Clone));
+}
+
+#[test]
+fn test_derive_extract_four_traits() {
+    let ast = source_to_ast("@derive(Debug, Clone, PartialEq, Eq) struct Color { r: i64, g: i64, b: i64 }");
+    let struct_def = find_struct(&ast, "Color");
+    let traits = bmb::derive::extract_derive_traits(&struct_def.attributes);
+    assert_eq!(traits.len(), 4);
+    assert!(traits.contains(&bmb::derive::DeriveTrait::Debug));
+    assert!(traits.contains(&bmb::derive::DeriveTrait::Clone));
+    assert!(traits.contains(&bmb::derive::DeriveTrait::PartialEq));
+    assert!(traits.contains(&bmb::derive::DeriveTrait::Eq));
+}
+
+#[test]
+fn test_derive_extract_from_parsed_enum() {
+    let ast = source_to_ast("@derive(Debug, Clone, PartialEq) enum Status { Active, Inactive, Pending }");
+    let enum_def = find_enum(&ast, "Status");
+    let traits = bmb::derive::extract_derive_traits(&enum_def.attributes);
+    assert_eq!(traits.len(), 3);
+    assert!(traits.contains(&bmb::derive::DeriveTrait::Debug));
+    assert!(traits.contains(&bmb::derive::DeriveTrait::PartialEq));
+}
+
+#[test]
+fn test_derive_no_attributes() {
+    let ast = source_to_ast("struct Plain { val: i64 }");
+    let struct_def = find_struct(&ast, "Plain");
+    let traits = bmb::derive::extract_derive_traits(&struct_def.attributes);
+    assert!(traits.is_empty());
+}
+
+#[test]
+fn test_derive_has_derive_trait_struct() {
+    let ast = source_to_ast("@derive(Debug) struct S { val: i64 }");
+    let struct_def = find_struct(&ast, "S");
+    assert!(bmb::derive::has_derive_trait(struct_def, bmb::derive::DeriveTrait::Debug));
+    assert!(!bmb::derive::has_derive_trait(struct_def, bmb::derive::DeriveTrait::Clone));
+}
+
+#[test]
+fn test_derive_has_derive_trait_enum() {
+    let ast = source_to_ast("@derive(Clone, Hash) enum Dir { Up, Down }");
+    let enum_def = find_enum(&ast, "Dir");
+    assert!(bmb::derive::has_derive_trait_enum(enum_def, bmb::derive::DeriveTrait::Clone));
+    assert!(bmb::derive::has_derive_trait_enum(enum_def, bmb::derive::DeriveTrait::Hash));
+    assert!(!bmb::derive::has_derive_trait_enum(enum_def, bmb::derive::DeriveTrait::Debug));
+}
+
+#[test]
+fn test_derive_context_from_struct() {
+    let ast = source_to_ast("@derive(Debug, Default) struct Config { width: i64, height: i64 }");
+    let struct_def = find_struct(&ast, "Config");
+    let ctx = bmb::derive::DeriveContext::from_struct(struct_def);
+    assert_eq!(ctx.name, "Config");
+    assert!(ctx.has_trait(bmb::derive::DeriveTrait::Debug));
+    assert!(ctx.has_trait(bmb::derive::DeriveTrait::Default));
+    assert!(!ctx.has_trait(bmb::derive::DeriveTrait::Clone));
+}
+
+#[test]
+fn test_derive_context_from_enum() {
+    let ast = source_to_ast("@derive(Debug, Clone, PartialEq) enum Shape { Circle, Square, Triangle }");
+    let enum_def = find_enum(&ast, "Shape");
+    let ctx = bmb::derive::DeriveContext::from_enum(enum_def);
+    assert_eq!(ctx.name, "Shape");
+    assert!(ctx.has_trait(bmb::derive::DeriveTrait::Debug));
+    assert!(ctx.has_trait(bmb::derive::DeriveTrait::Clone));
+    assert!(ctx.has_trait(bmb::derive::DeriveTrait::PartialEq));
+}
+
+#[test]
+fn test_derive_multiple_structs_in_program() {
+    let source = "@derive(Debug) struct A { x: i64 }
+                   @derive(Clone) struct B { y: i64 }
+                   struct C { z: i64 }";
+    let ast = source_to_ast(source);
+    let a = find_struct(&ast, "A");
+    let b = find_struct(&ast, "B");
+    let c = find_struct(&ast, "C");
+    assert!(bmb::derive::has_derive_trait(a, bmb::derive::DeriveTrait::Debug));
+    assert!(!bmb::derive::has_derive_trait(a, bmb::derive::DeriveTrait::Clone));
+    assert!(bmb::derive::has_derive_trait(b, bmb::derive::DeriveTrait::Clone));
+    assert!(!bmb::derive::has_derive_trait(b, bmb::derive::DeriveTrait::Debug));
+    assert!(!bmb::derive::has_derive_trait(c, bmb::derive::DeriveTrait::Debug));
+    assert!(!bmb::derive::has_derive_trait(c, bmb::derive::DeriveTrait::Clone));
+}
+
+#[test]
+fn test_derive_default_single_trait() {
+    let ast = source_to_ast("@derive(Default) struct Zeroed { val: i64 }");
+    let struct_def = find_struct(&ast, "Zeroed");
+    let traits = bmb::derive::extract_derive_traits(&struct_def.attributes);
+    assert_eq!(traits.len(), 1);
+    assert_eq!(traits[0], bmb::derive::DeriveTrait::Default);
+}
