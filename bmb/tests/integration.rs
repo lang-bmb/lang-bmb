@@ -1546,6 +1546,13 @@ fn run_program_str(source: &str) -> String {
     }
 }
 
+fn run_program_f64(source: &str) -> f64 {
+    match run_program(source) {
+        Value::Float(f) => f,
+        other => panic!("expected Float, got {:?}", other),
+    }
+}
+
 // --- Basic Arithmetic ---
 
 #[test]
@@ -13650,5 +13657,91 @@ fn test_for_in_array_type_error() {
             0
         };
     "#;
+    assert!(type_error(source));
+}
+
+// --- Cycle 268: Float method support ---
+
+#[test]
+fn test_float_abs() {
+    let source = "fn main() -> f64 = (-2.5).abs();";
+    assert!((run_program_f64(source) - 2.5).abs() < 1e-10);
+}
+
+#[test]
+fn test_float_floor() {
+    let source = "fn main() -> f64 = 3.7.floor();";
+    assert!((run_program_f64(source) - 3.0).abs() < 1e-10);
+}
+
+#[test]
+fn test_float_ceil() {
+    let source = "fn main() -> f64 = 3.2.ceil();";
+    assert!((run_program_f64(source) - 4.0).abs() < 1e-10);
+}
+
+#[test]
+fn test_float_round() {
+    let source = "fn main() -> f64 = 3.5.round();";
+    assert!((run_program_f64(source) - 4.0).abs() < 1e-10);
+}
+
+#[test]
+fn test_float_sqrt() {
+    let source = "fn main() -> f64 = 16.0.sqrt();";
+    assert!((run_program_f64(source) - 4.0).abs() < 1e-10);
+}
+
+#[test]
+fn test_float_is_nan() {
+    let source = "fn main() -> i64 = if (0.0 / 0.0).is_nan() { 1 } else { 0 };";
+    assert_eq!(run_program_i64(source), 1);
+}
+
+#[test]
+fn test_float_is_not_nan() {
+    let source = "fn main() -> i64 = if 2.5.is_nan() { 1 } else { 0 };";
+    assert_eq!(run_program_i64(source), 0);
+}
+
+#[test]
+fn test_float_is_infinite() {
+    let source = "fn main() -> i64 = if (1.0 / 0.0).is_infinite() { 1 } else { 0 };";
+    assert_eq!(run_program_i64(source), 1);
+}
+
+#[test]
+fn test_float_is_finite() {
+    let source = "fn main() -> i64 = if 2.5.is_finite() { 1 } else { 0 };";
+    assert_eq!(run_program_i64(source), 1);
+}
+
+#[test]
+fn test_float_min() {
+    let source = "fn main() -> f64 = 3.0.min(5.0);";
+    assert!((run_program_f64(source) - 3.0).abs() < 1e-10);
+}
+
+#[test]
+fn test_float_max() {
+    let source = "fn main() -> f64 = 3.0.max(5.0);";
+    assert!((run_program_f64(source) - 5.0).abs() < 1e-10);
+}
+
+#[test]
+fn test_float_to_int() {
+    let source = "fn main() -> i64 = 3.7.to_int();";
+    assert_eq!(run_program_i64(source), 3);
+}
+
+#[test]
+fn test_float_method_chaining() {
+    let source = "fn main() -> f64 = (-2.7).abs().ceil();";
+    assert!((run_program_f64(source) - 3.0).abs() < 1e-10);
+}
+
+#[test]
+fn test_float_unknown_method_rejected() {
+    let source = "fn main() -> f64 = 2.5.nonexistent();";
     assert!(type_error(source));
 }

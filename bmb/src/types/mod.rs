@@ -2888,6 +2888,42 @@ impl TypeChecker {
     /// Check method call types (v0.5 Phase 8)
     fn check_method_call(&mut self, receiver_ty: &Type, method: &str, args: &[Spanned<Expr>], span: Span) -> Result<Type> {
         match receiver_ty {
+            // v0.90.34: Float methods
+            Type::F64 => {
+                match method {
+                    "abs" | "floor" | "ceil" | "round" | "sqrt" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error(
+                                format!("{}() takes no arguments", method), span));
+                        }
+                        Ok(Type::F64)
+                    }
+                    "is_nan" | "is_infinite" | "is_finite" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error(
+                                format!("{}() takes no arguments", method), span));
+                        }
+                        Ok(Type::Bool)
+                    }
+                    "min" | "max" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error(
+                                format!("{}() takes 1 argument", method), span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg_ty, &Type::F64, args[0].span)?;
+                        Ok(Type::F64)
+                    }
+                    "to_int" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("to_int() takes no arguments", span));
+                        }
+                        Ok(Type::I64)
+                    }
+                    _ => Err(CompileError::type_error(
+                        format!("unknown method '{}' for f64", method), span)),
+                }
+            }
             Type::String => {
                 match method {
                     // len() -> i64

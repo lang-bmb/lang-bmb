@@ -1043,6 +1043,41 @@ impl Interpreter {
                 let s = Rc::new(materialized);
                 self.eval_method_call(Value::Str(s), method, args)
             }
+            // v0.90.34: Float methods
+            Value::Float(f) => {
+                match method {
+                    "abs" => Ok(Value::Float(f.abs())),
+                    "floor" => Ok(Value::Float(f.floor())),
+                    "ceil" => Ok(Value::Float(f.ceil())),
+                    "round" => Ok(Value::Float(f.round())),
+                    "sqrt" => Ok(Value::Float(f.sqrt())),
+                    "is_nan" => Ok(Value::Bool(f.is_nan())),
+                    "is_infinite" => Ok(Value::Bool(f.is_infinite())),
+                    "is_finite" => Ok(Value::Bool(f.is_finite())),
+                    "min" => {
+                        if args.len() != 1 {
+                            return Err(RuntimeError::arity_mismatch("min", 1, args.len()));
+                        }
+                        let other = match &args[0] {
+                            Value::Float(n) => *n,
+                            _ => return Err(RuntimeError::type_error("f64", args[0].type_name())),
+                        };
+                        Ok(Value::Float(f.min(other)))
+                    }
+                    "max" => {
+                        if args.len() != 1 {
+                            return Err(RuntimeError::arity_mismatch("max", 1, args.len()));
+                        }
+                        let other = match &args[0] {
+                            Value::Float(n) => *n,
+                            _ => return Err(RuntimeError::type_error("f64", args[0].type_name())),
+                        };
+                        Ok(Value::Float(f.max(other)))
+                    }
+                    "to_int" => Ok(Value::Int(f as i64)),
+                    _ => Err(RuntimeError::undefined_function(&format!("f64.{}", method))),
+                }
+            }
             Value::Str(s) => {
                 match method {
                     "len" => Ok(Value::Int(s.len() as i64)),
