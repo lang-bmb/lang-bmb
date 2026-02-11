@@ -8924,3 +8924,271 @@ fn test_ast_output_sexpr_empty_program() {
     let sexpr = bmb::ast::output::to_sexpr(&ast);
     assert!(sexpr.starts_with("(program"));
 }
+
+// ============================================================
+// Parser Edge Case Integration Tests
+// ============================================================
+
+/// Helper: verify source parses and type-checks successfully
+fn parse_and_typecheck(source: &str) {
+    let tokens = tokenize(source).expect("tokenize failed");
+    let ast = parse("test.bmb", source, tokens).expect("parse failed");
+    let mut tc = TypeChecker::new();
+    tc.check_program(&ast).expect("type check failed");
+}
+
+// --- Complex Expression Parsing ---
+
+#[test]
+fn test_parser_nested_if_else() {
+    parse_and_typecheck(
+        "fn nested(x: i64) -> i64 = if x > 0 { if x > 10 { 100 } else { x } } else { 0 };"
+    );
+}
+
+#[test]
+fn test_parser_block_with_let_bindings() {
+    parse_and_typecheck(
+        "fn block_let() -> i64 = { let x: i64 = 5; let y: i64 = x + 1; y };"
+    );
+}
+
+#[test]
+fn test_parser_while_loop() {
+    parse_and_typecheck(
+        "fn countdown(n: i64) -> i64 = { let mut x: i64 = n; while x > 0 { x = x - 1; }; x };"
+    );
+}
+
+#[test]
+fn test_parser_match_expression() {
+    parse_and_typecheck(
+        "enum Dir { Up, Down, Left, Right }
+         fn to_num(d: Dir) -> i64 = match d {
+             Dir::Up => 1,
+             Dir::Down => 2,
+             Dir::Left => 3,
+             Dir::Right => 4,
+         };"
+    );
+}
+
+#[test]
+fn test_parser_match_with_wildcard() {
+    parse_and_typecheck(
+        "fn classify(x: i64) -> i64 = match x {
+             0 => 0,
+             1 => 1,
+             _ => 2,
+         };"
+    );
+}
+
+#[test]
+fn test_parser_tuple_expression() {
+    let ast = source_to_ast("fn pair(a: i64, b: i64) -> (i64, i64) = (a, b);");
+    assert_eq!(ast.items.len(), 1);
+}
+
+#[test]
+fn test_parser_array_literal() {
+    let ast = source_to_ast("fn make_arr() -> [i64; 3] = [1, 2, 3];");
+    assert_eq!(ast.items.len(), 1);
+}
+
+// --- Visibility & Module Syntax ---
+
+#[test]
+fn test_parser_pub_function() {
+    let ast = source_to_ast("pub fn public_fn() -> i64 = 42;");
+    if let bmb::ast::Item::FnDef(f) = &ast.items[0] {
+        assert!(matches!(f.visibility, bmb::ast::Visibility::Public));
+    } else {
+        panic!("expected FnDef");
+    }
+}
+
+#[test]
+fn test_parser_pub_struct() {
+    let ast = source_to_ast("pub struct PubPoint { x: i64, y: i64 }");
+    let s = find_struct(&ast, "PubPoint");
+    assert!(matches!(s.visibility, bmb::ast::Visibility::Public));
+}
+
+#[test]
+fn test_parser_pub_enum() {
+    let ast = source_to_ast("pub enum PubDir { North, South }");
+    let e = find_enum(&ast, "PubDir");
+    assert!(matches!(e.visibility, bmb::ast::Visibility::Public));
+}
+
+// --- Type Syntax ---
+
+#[test]
+fn test_parser_generic_function() {
+    let ast = source_to_ast("fn identity<T>(x: T) -> T = x;");
+    if let bmb::ast::Item::FnDef(f) = &ast.items[0] {
+        assert!(!f.type_params.is_empty(), "should have type params");
+    } else {
+        panic!("expected FnDef");
+    }
+}
+
+#[test]
+fn test_parser_generic_struct() {
+    let ast = source_to_ast("struct Wrapper<T> { value: T }");
+    let s = find_struct(&ast, "Wrapper");
+    assert!(!s.type_params.is_empty());
+}
+
+#[test]
+fn test_parser_option_type() {
+    // Option type syntax: T?
+    let ast = source_to_ast("fn maybe(x: i64) -> i64? = if x > 0 { x } else { nil };");
+    assert_eq!(ast.items.len(), 1);
+}
+
+#[test]
+fn test_parser_reference_types() {
+    let ast = source_to_ast("fn borrow(x: &i64) -> i64 = *x;");
+    assert_eq!(ast.items.len(), 1);
+}
+
+// --- Trait & Impl Syntax ---
+
+#[test]
+fn test_parser_trait_definition() {
+    let ast = source_to_ast(
+        "trait Printable { fn display(self: &Self) -> i64; }"
+    );
+    let has_trait = ast.items.iter().any(|i| matches!(i, bmb::ast::Item::TraitDef(_)));
+    assert!(has_trait, "should have a trait definition");
+}
+
+#[test]
+fn test_parser_impl_block() {
+    let ast = source_to_ast(
+        "struct Counter { val: i64 }
+         trait HasVal { fn get(self: Self) -> i64; }
+         impl HasVal for Counter { fn get(self: Self) -> i64 = self.val; }"
+    );
+    let has_impl = ast.items.iter().any(|i| matches!(i, bmb::ast::Item::ImplBlock(_)));
+    assert!(has_impl, "should have an impl block");
+}
+
+// --- Type Alias ---
+
+#[test]
+fn test_parser_type_alias() {
+    let ast = source_to_ast("type Number = i64;");
+    let has_alias = ast.items.iter().any(|i| matches!(i, bmb::ast::Item::TypeAlias(_)));
+    assert!(has_alias, "should have a type alias");
+}
+
+// --- Extern Functions ---
+
+#[test]
+fn test_parser_extern_fn() {
+    let ast = source_to_ast("extern fn puts(s: &i64) -> i64;");
+    let has_extern = ast.items.iter().any(|i| matches!(i, bmb::ast::Item::ExternFn(_)));
+    assert!(has_extern, "should have an extern fn");
+}
+
+// --- Attribute Syntax ---
+
+#[test]
+fn test_parser_inline_attribute() {
+    let ast = source_to_ast("@inline fn fast() -> i64 = 42;");
+    if let bmb::ast::Item::FnDef(f) = &ast.items[0] {
+        assert!(!f.attributes.is_empty(), "should have attributes");
+    } else {
+        panic!("expected FnDef");
+    }
+}
+
+#[test]
+fn test_parser_pure_attribute() {
+    let ast = source_to_ast("@pure fn add(a: i64, b: i64) -> i64 = a + b;");
+    if let bmb::ast::Item::FnDef(f) = &ast.items[0] {
+        assert!(!f.attributes.is_empty());
+    } else {
+        panic!("expected FnDef");
+    }
+}
+
+// --- Contract Syntax Edge Cases ---
+
+#[test]
+fn test_parser_combined_preconditions() {
+    parse_and_typecheck(
+        "fn bounded(x: i64, y: i64) -> i64 pre x >= 0 && y > 0 = x + y;"
+    );
+}
+
+#[test]
+fn test_parser_pre_and_post() {
+    parse_and_typecheck(
+        "fn clamp(x: i64, lo: i64, hi: i64) -> i64
+            pre lo <= hi
+            post ret >= lo
+         = if x < lo { lo } else { if x > hi { hi } else { x } };"
+    );
+}
+
+// --- Operator Precedence ---
+
+#[test]
+fn test_parser_arithmetic_precedence() {
+    // a + b * c should parse as a + (b * c)
+    let ast = source_to_ast("fn prec(a: i64, b: i64, c: i64) -> i64 = a + b * c;");
+    assert_eq!(ast.items.len(), 1);
+}
+
+#[test]
+fn test_parser_comparison_chain() {
+    parse_and_typecheck(
+        "fn both_positive(a: i64, b: i64) -> bool = a > 0 && b > 0;"
+    );
+}
+
+#[test]
+fn test_parser_bitwise_operators() {
+    parse_and_typecheck(
+        "fn bits(a: i64, b: i64) -> i64 = (a band b) bor (a bxor b);"
+    );
+}
+
+// --- Complex Programs ---
+
+#[test]
+fn test_parser_multi_item_program() {
+    let ast = source_to_ast(
+        "struct Point { x: i64, y: i64 }
+         enum Color { Red, Green, Blue }
+         fn origin() -> Point = new Point { x: 0, y: 0 };
+         fn is_red(c: Color) -> bool = match c { Color::Red => true, _ => false };"
+    );
+    assert!(ast.items.len() >= 4, "should have at least 4 items");
+}
+
+#[test]
+fn test_parser_lambda_expression() {
+    // BMB closure syntax: fn |params| { body }
+    let ast = source_to_ast(
+        "fn test_closure() -> i64 = { let f = fn |x: i64| { x * 2 }; 42 };"
+    );
+    assert_eq!(ast.items.len(), 1);
+}
+
+#[test]
+fn test_parser_string_literal() {
+    let ast = source_to_ast(r#"fn greeting() -> String = "hello world";"#);
+    assert_eq!(ast.items.len(), 1);
+}
+
+#[test]
+fn test_parser_mutable_variable() {
+    parse_and_typecheck(
+        "fn mutate() -> i64 = { let mut x: i64 = 0; x = 42; x };"
+    );
+}
