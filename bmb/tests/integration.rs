@@ -13877,3 +13877,103 @@ fn test_string_roundtrip() {
     let source = r#"fn main() -> i64 = 123.to_string().to_int().unwrap_or(0);"#;
     assert_eq!(run_program_i64(source), 123);
 }
+
+// --- Cycle 271: Array functional methods ---
+
+#[test]
+fn test_array_push() {
+    let source = r#"
+        fn main() -> i64 = {
+            let arr = [1, 2, 3].push(4);
+            arr.len()
+        };
+    "#;
+    assert_eq!(run_program_i64(source), 4);
+}
+
+#[test]
+fn test_array_push_value() {
+    let source = r#"
+        fn main() -> i64 = {
+            let arr = [10, 20].push(30);
+            arr[2]
+        };
+    "#;
+    assert_eq!(run_program_i64(source), 30);
+}
+
+#[test]
+fn test_array_pop() {
+    let source = r#"
+        fn main() -> i64 = {
+            let arr = [1, 2, 3].pop();
+            arr.len()
+        };
+    "#;
+    assert_eq!(run_program_i64(source), 2);
+}
+
+#[test]
+fn test_array_concat() {
+    let source = r#"
+        fn main() -> i64 = {
+            let arr = [1, 2].concat([3, 4]);
+            arr.len()
+        };
+    "#;
+    assert_eq!(run_program_i64(source), 4);
+}
+
+#[test]
+fn test_array_concat_values() {
+    let source = r#"
+        fn main() -> i64 = {
+            let arr = [1, 2].concat([3, 4]);
+            arr[3]
+        };
+    "#;
+    assert_eq!(run_program_i64(source), 4);
+}
+
+#[test]
+fn test_array_slice() {
+    let source = r#"
+        fn main() -> i64 = {
+            let arr = [10, 20, 30, 40, 50].slice(1, 4);
+            arr[0]
+        };
+    "#;
+    assert_eq!(run_program_i64(source), 20);
+}
+
+#[test]
+fn test_array_slice_len() {
+    let source = r#"
+        fn main() -> i64 = [10, 20, 30, 40, 50].slice(1, 4).len();
+    "#;
+    assert_eq!(run_program_i64(source), 3);
+}
+
+#[test]
+fn test_array_join() {
+    let source = r#"
+        fn main() -> String = [1, 2, 3].join(", ");
+    "#;
+    assert_eq!(run_program_str(source), "1, 2, 3");
+}
+
+#[test]
+fn test_array_join_strings() {
+    let source = r#"
+        fn main() -> String = ["a", "b", "c"].join("-");
+    "#;
+    assert_eq!(run_program_str(source), "a-b-c");
+}
+
+#[test]
+fn test_array_method_chain() {
+    let source = r#"
+        fn main() -> i64 = [1, 2, 3].push(4).push(5).len();
+    "#;
+    assert_eq!(run_program_i64(source), 5);
+}

@@ -1265,6 +1265,69 @@ impl Interpreter {
                         reversed.reverse();
                         Ok(Value::Array(reversed))
                     }
+                    // v0.90.37: Array functional methods
+                    "push" => {
+                        if args.len() != 1 {
+                            return Err(RuntimeError::arity_mismatch("push", 1, args.len()));
+                        }
+                        let mut new_arr = arr;
+                        new_arr.push(args.into_iter().next().unwrap());
+                        Ok(Value::Array(new_arr))
+                    }
+                    "pop" => {
+                        if !args.is_empty() {
+                            return Err(RuntimeError::arity_mismatch("pop", 0, args.len()));
+                        }
+                        let mut new_arr = arr;
+                        new_arr.pop();
+                        Ok(Value::Array(new_arr))
+                    }
+                    "concat" => {
+                        if args.len() != 1 {
+                            return Err(RuntimeError::arity_mismatch("concat", 1, args.len()));
+                        }
+                        let other = match args.into_iter().next().unwrap() {
+                            Value::Array(a) => a,
+                            other => return Err(RuntimeError::type_error("Array", other.type_name())),
+                        };
+                        let mut new_arr = arr;
+                        new_arr.extend(other);
+                        Ok(Value::Array(new_arr))
+                    }
+                    "slice" => {
+                        if args.len() != 2 {
+                            return Err(RuntimeError::arity_mismatch("slice", 2, args.len()));
+                        }
+                        let start = match &args[0] {
+                            Value::Int(n) => *n as usize,
+                            _ => return Err(RuntimeError::type_error("integer", args[0].type_name())),
+                        };
+                        let end = match &args[1] {
+                            Value::Int(n) => *n as usize,
+                            _ => return Err(RuntimeError::type_error("integer", args[1].type_name())),
+                        };
+                        if start > arr.len() || end > arr.len() || start > end {
+                            return Err(RuntimeError::index_out_of_bounds(end as i64, arr.len()));
+                        }
+                        Ok(Value::Array(arr[start..end].to_vec()))
+                    }
+                    "join" => {
+                        if args.len() != 1 {
+                            return Err(RuntimeError::arity_mismatch("join", 1, args.len()));
+                        }
+                        let sep = match &args[0] {
+                            Value::Str(s) => s.as_str().to_string(),
+                            _ => return Err(RuntimeError::type_error("string", args[0].type_name())),
+                        };
+                        let parts: Vec<String> = arr.iter().map(|v| match v {
+                            Value::Str(s) => s.to_string(),
+                            Value::Int(n) => n.to_string(),
+                            Value::Float(f) => f.to_string(),
+                            Value::Bool(b) => b.to_string(),
+                            other => format!("{:?}", other),
+                        }).collect();
+                        Ok(Value::Str(Rc::new(parts.join(&sep))))
+                    }
                     _ => Err(RuntimeError::undefined_function(&format!("Array.{}", method))),
                 }
             }

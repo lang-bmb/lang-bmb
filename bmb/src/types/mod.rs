@@ -3234,6 +3234,57 @@ impl TypeChecker {
                         }
                         Ok(Type::Array(elem_ty.clone(), 0))
                     }
+                    // v0.90.37: push(T) -> [T]
+                    "push" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("push() takes 1 argument", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg_ty, elem_ty, args[0].span)?;
+                        Ok(Type::Array(elem_ty.clone(), 0))
+                    }
+                    // v0.90.37: pop() -> [T]
+                    "pop" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("pop() takes no arguments", span));
+                        }
+                        Ok(Type::Array(elem_ty.clone(), 0))
+                    }
+                    // v0.90.37: concat([T]) -> [T]
+                    "concat" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("concat() takes 1 argument", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg_ty, receiver_ty, args[0].span)?;
+                        Ok(Type::Array(elem_ty.clone(), 0))
+                    }
+                    // v0.90.37: slice(i64, i64) -> [T]
+                    "slice" => {
+                        if args.len() != 2 {
+                            return Err(CompileError::type_error("slice() takes 2 arguments", span));
+                        }
+                        for arg in args {
+                            let arg_ty = self.infer(&arg.node, arg.span)?;
+                            match arg_ty {
+                                Type::I32 | Type::I64 | Type::U32 | Type::U64 => {}
+                                _ => return Err(CompileError::type_error(
+                                    format!("slice() requires integer arguments, got {}", arg_ty),
+                                    arg.span,
+                                )),
+                            }
+                        }
+                        Ok(Type::Array(elem_ty.clone(), 0))
+                    }
+                    // v0.90.37: join(String) -> String
+                    "join" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("join() takes 1 argument", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg_ty, &Type::String, args[0].span)?;
+                        Ok(Type::String)
+                    }
                     _ => Err(CompileError::type_error(
                         format!("unknown method '{}' for Array", method),
                         span,
