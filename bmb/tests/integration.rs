@@ -9376,3 +9376,178 @@ fn test_mir_format_if_else() {
     // Should have branching structure
     assert!(text.contains("branch") || text.contains("goto") || text.contains("return"));
 }
+
+// ============================================================
+// Type System Advanced Integration Tests
+// ============================================================
+
+// --- Trait Type Checking ---
+
+#[test]
+fn test_type_trait_definition_and_impl() {
+    parse_and_typecheck(
+        "trait Greetable { fn greet(self: Self) -> i64; }
+         struct Person { age: i64 }
+         impl Greetable for Person { fn greet(self: Self) -> i64 = self.age; }"
+    );
+}
+
+#[test]
+fn test_type_trait_multiple_methods() {
+    parse_and_typecheck(
+        "trait Math {
+             fn add(self: Self, other: Self) -> Self;
+             fn zero() -> Self;
+         }
+         struct Num { val: i64 }
+         impl Math for Num {
+             fn add(self: Self, other: Self) -> Self = new Num { val: self.val + other.val };
+             fn zero() -> Self = new Num { val: 0 };
+         }"
+    );
+}
+
+#[test]
+fn test_type_generic_function_inference() {
+    parse_and_typecheck(
+        "fn identity<T>(x: T) -> T = x;
+         fn use_id() -> i64 = identity(42);"
+    );
+}
+
+#[test]
+fn test_type_generic_struct_instantiation() {
+    parse_and_typecheck(
+        "struct Box<T> { value: T }
+         fn make_box() -> Box<i64> = new Box { value: 42 };"
+    );
+}
+
+#[test]
+fn test_type_generic_enum_defined() {
+    // Test generic enum definition and construction
+    parse_and_typecheck(
+        "enum Result<T, E> { Ok(T), Err(E) }
+         fn make_ok() -> Result<i64, bool> = Result::Ok(42);"
+    );
+}
+
+// --- Type Error Detection ---
+
+#[test]
+fn test_type_error_mismatched_return() {
+    assert!(type_error("fn bad() -> i64 = true;"));
+}
+
+#[test]
+fn test_type_error_mismatched_args() {
+    assert!(type_error("fn takes_int(x: i64) -> i64 = x; fn bad() -> i64 = takes_int(true);"));
+}
+
+#[test]
+fn test_type_error_undefined_variable() {
+    assert!(type_error("fn bad() -> i64 = undefined_var;"));
+}
+
+#[test]
+fn test_type_error_undefined_function() {
+    assert!(type_error("fn bad() -> i64 = nonexistent();"));
+}
+
+// --- Type Checking Warnings ---
+
+#[test]
+fn test_type_checker_warnings_api() {
+    let mut tc = TypeChecker::new();
+    assert!(!tc.has_warnings());
+    assert!(tc.warnings().is_empty());
+    let warnings = tc.take_warnings();
+    assert!(warnings.is_empty());
+}
+
+// --- Type Alias ---
+
+#[test]
+fn test_type_alias_used_as_param_and_return() {
+    parse_and_typecheck(
+        "type Int = i64;
+         fn add_ints(a: Int, b: Int) -> Int = a + b;"
+    );
+}
+
+// --- Tuple Types ---
+
+#[test]
+fn test_type_tuple_creation_and_access() {
+    parse_and_typecheck(
+        "fn swap(a: i64, b: i64) -> (i64, i64) = (b, a);"
+    );
+}
+
+// --- Complex Type Scenarios ---
+
+#[test]
+fn test_type_struct_field_access() {
+    parse_and_typecheck(
+        "struct Point { x: i64, y: i64 }
+         fn get_x(p: Point) -> i64 = p.x;"
+    );
+}
+
+#[test]
+fn test_type_enum_match_all_variants() {
+    parse_and_typecheck(
+        "enum Dir { Up, Down }
+         fn to_int(d: Dir) -> i64 = match d { Dir::Up => 1, Dir::Down => 2 };"
+    );
+}
+
+#[test]
+fn test_type_recursive_factorial() {
+    parse_and_typecheck(
+        "fn factorial(n: i64) -> i64 = if n <= 1 { 1 } else { n * factorial(n - 1) };"
+    );
+}
+
+#[test]
+fn test_type_mutual_recursion_even_odd() {
+    parse_and_typecheck(
+        "fn is_even(n: i64) -> bool = if n == 0 { true } else { is_odd(n - 1) };
+         fn is_odd(n: i64) -> bool = if n == 0 { false } else { is_even(n - 1) };"
+    );
+}
+
+#[test]
+fn test_type_contract_combined_conditions() {
+    parse_and_typecheck(
+        "fn safe_access(arr_len: i64, idx: i64) -> i64 pre idx >= 0 && idx < arr_len = idx;"
+    );
+}
+
+#[test]
+fn test_type_nested_struct_field_chain() {
+    parse_and_typecheck(
+        "struct Inner { val: i64 }
+         struct Outer { inner: Inner }
+         fn get_val(o: Outer) -> i64 = o.inner.val;"
+    );
+}
+
+#[test]
+fn test_type_enum_with_data() {
+    parse_and_typecheck(
+        "enum Shape { Circle(i64), Rect(i64, i64) }
+         fn area(s: Shape) -> i64 = match s {
+             Shape::Circle(r) => r * r,
+             Shape::Rect(w, h) => w * h,
+         };"
+    );
+}
+
+#[test]
+fn test_type_multiple_generic_params() {
+    parse_and_typecheck(
+        "struct Pair<A, B> { first: A, second: B }
+         fn make_pair() -> Pair<i64, bool> = new Pair { first: 42, second: true };"
+    );
+}
