@@ -471,12 +471,10 @@ pub fn build(config: &BuildConfig) -> BuildResult<()> {
                     .with_timeout(config.verification_timeout);
 
                 if !verifier.is_solver_available() {
-                    if config.verbose {
-                        println!("  Warning: Z3 solver not available, skipping verification");
-                        println!("  Falling back to Trust mode (using contracts without verification)");
-                    }
-                    // Fallback to trust mode if solver unavailable
-                    cir.functions.iter().map(|f| f.name.clone()).collect()
+                    // v0.90.45: Sound fallback — no proof-guided optimizations without solver
+                    eprintln!("Warning: Z3 solver not available, contract verification skipped");
+                    eprintln!("  Proof-guided optimizations disabled (no verified functions)");
+                    HashSet::new()
                 } else {
                     let report = verifier.verify_program(&cir);
 
@@ -494,7 +492,7 @@ pub fn build(config: &BuildConfig) -> BuildResult<()> {
                                     witness.function, reason
                                 ));
                                 if let Some(ce) = &witness.counterexample {
-                                    errors.push_str(&format!("    Counterexample: {:?}\n", ce));
+                                    errors.push_str(&format!("    Counterexample: {}\n", ce));
                                 }
                             }
                         }
@@ -1407,6 +1405,35 @@ mod tests {
     fn test_verification_mode_default_is_check() {
         let config = BuildConfig::new(PathBuf::from("test.bmb"));
         assert!(matches!(config.verification_mode, VerificationMode::Check));
+    }
+
+    #[test]
+    fn test_verification_mode_none_skips_optimizations() {
+        // None mode should not enable proof-guided optimizations
+        assert!(!matches!(VerificationMode::None, VerificationMode::Check | VerificationMode::Trust));
+    }
+
+    #[test]
+    fn test_verification_mode_check_is_not_trust() {
+        // v0.90.45: Check mode must NOT behave like Trust when solver unavailable
+        // The code path for Check with unavailable solver should return empty HashSet,
+        // not the full set of functions (which would be Trust behavior)
+        assert_ne!(VerificationMode::Check, VerificationMode::Trust);
+    }
+
+    #[test]
+    fn test_verification_mode_builder() {
+        let config = BuildConfig::new(PathBuf::from("test.bmb"))
+            .verification_mode(VerificationMode::None);
+        assert!(matches!(config.verification_mode, VerificationMode::None));
+
+        let config = BuildConfig::new(PathBuf::from("test.bmb"))
+            .verification_mode(VerificationMode::Warn);
+        assert!(matches!(config.verification_mode, VerificationMode::Warn));
+
+        let config = BuildConfig::new(PathBuf::from("test.bmb"))
+            .verification_mode(VerificationMode::Trust);
+        assert!(matches!(config.verification_mode, VerificationMode::Trust));
     }
 
     // ================================================================
