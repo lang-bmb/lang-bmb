@@ -8714,3 +8714,213 @@ fn test_derive_default_single_trait() {
     assert_eq!(traits.len(), 1);
     assert_eq!(traits[0], bmb::derive::DeriveTrait::Default);
 }
+
+// ============================================================
+// Build Module Integration Tests
+// ============================================================
+
+#[test]
+fn test_build_config_defaults() {
+    let config = bmb::build::BuildConfig::new(std::path::PathBuf::from("test.bmb"));
+    assert_eq!(config.input, std::path::PathBuf::from("test.bmb"));
+    assert!(!config.emit_ir);
+    assert!(!config.verbose);
+    assert!(!config.emit_cir);
+    assert!(!config.emit_pir);
+    assert!(config.proof_optimizations); // enabled by default
+    assert!(config.proof_cache); // enabled by default
+    assert!(!config.fast_math); // disabled by default
+    assert!(!config.fast_compile); // disabled by default
+    assert!(!config.no_prelude);
+    assert!(config.include_paths.is_empty());
+    assert!(config.prelude_path.is_none());
+    assert!(config.target_triple.is_none());
+    assert_eq!(config.verification_timeout, 30);
+}
+
+#[test]
+fn test_build_config_default_output_extension() {
+    let config = bmb::build::BuildConfig::new(std::path::PathBuf::from("hello.bmb"));
+    // On Windows, output should be hello.exe
+    if cfg!(windows) {
+        assert_eq!(config.output, std::path::PathBuf::from("hello.exe"));
+    } else {
+        assert_eq!(config.output, std::path::PathBuf::from("hello"));
+    }
+}
+
+#[test]
+fn test_build_config_builder_chain() {
+    let config = bmb::build::BuildConfig::new(std::path::PathBuf::from("test.bmb"))
+        .opt_level(bmb::build::OptLevel::Aggressive)
+        .emit_ir(true)
+        .verbose(true)
+        .fast_math(true)
+        .fast_compile(true)
+        .no_prelude(true)
+        .verification_timeout(60);
+    assert!(config.emit_ir);
+    assert!(config.verbose);
+    assert!(config.fast_math);
+    assert!(config.fast_compile);
+    assert!(config.no_prelude);
+    assert_eq!(config.verification_timeout, 60);
+}
+
+#[test]
+fn test_build_config_verification_modes() {
+    let none = bmb::build::BuildConfig::new(std::path::PathBuf::from("t.bmb"))
+        .verification_mode(bmb::build::VerificationMode::None);
+    assert_eq!(none.verification_mode, bmb::build::VerificationMode::None);
+
+    let check = bmb::build::BuildConfig::new(std::path::PathBuf::from("t.bmb"))
+        .verification_mode(bmb::build::VerificationMode::Check);
+    assert_eq!(check.verification_mode, bmb::build::VerificationMode::Check);
+
+    let warn = bmb::build::BuildConfig::new(std::path::PathBuf::from("t.bmb"))
+        .verification_mode(bmb::build::VerificationMode::Warn);
+    assert_eq!(warn.verification_mode, bmb::build::VerificationMode::Warn);
+
+    let trust = bmb::build::BuildConfig::new(std::path::PathBuf::from("t.bmb"))
+        .verification_mode(bmb::build::VerificationMode::Trust);
+    assert_eq!(trust.verification_mode, bmb::build::VerificationMode::Trust);
+}
+
+#[test]
+fn test_build_config_target() {
+    use bmb::cfg::Target;
+    let config = bmb::build::BuildConfig::new(std::path::PathBuf::from("t.bmb"))
+        .target(Target::Wasm32);
+    assert!(matches!(config.target, Target::Wasm32));
+}
+
+#[test]
+fn test_build_config_target_triple() {
+    let config = bmb::build::BuildConfig::new(std::path::PathBuf::from("t.bmb"))
+        .target_triple("x86_64-unknown-linux-gnu".to_string());
+    assert_eq!(config.target_triple.as_deref(), Some("x86_64-unknown-linux-gnu"));
+}
+
+#[test]
+fn test_build_config_output_path() {
+    let config = bmb::build::BuildConfig::new(std::path::PathBuf::from("t.bmb"))
+        .output(std::path::PathBuf::from("custom_output"));
+    assert_eq!(config.output, std::path::PathBuf::from("custom_output"));
+}
+
+#[test]
+fn test_build_config_include_paths() {
+    let paths = vec![
+        std::path::PathBuf::from("/usr/include/bmb"),
+        std::path::PathBuf::from("/home/lib"),
+    ];
+    let config = bmb::build::BuildConfig::new(std::path::PathBuf::from("t.bmb"))
+        .include_paths(paths.clone());
+    assert_eq!(config.include_paths.len(), 2);
+}
+
+#[test]
+fn test_build_config_prelude_path() {
+    let config = bmb::build::BuildConfig::new(std::path::PathBuf::from("t.bmb"))
+        .prelude_path(std::path::PathBuf::from("/stdlib"));
+    assert_eq!(config.prelude_path.as_deref(), Some(std::path::Path::new("/stdlib")));
+}
+
+#[test]
+fn test_build_verification_mode_default() {
+    let mode = bmb::build::VerificationMode::default();
+    assert_eq!(mode, bmb::build::VerificationMode::Check);
+}
+
+#[test]
+fn test_build_opt_level_variants() {
+    let _d = bmb::build::OptLevel::Debug;
+    let _r = bmb::build::OptLevel::Release;
+    let _s = bmb::build::OptLevel::Size;
+    let _a = bmb::build::OptLevel::Aggressive;
+    // All variants should be Debug-printable
+    assert!(!format!("{:?}", _d).is_empty());
+    assert!(!format!("{:?}", _r).is_empty());
+    assert!(!format!("{:?}", _s).is_empty());
+    assert!(!format!("{:?}", _a).is_empty());
+}
+
+#[test]
+fn test_build_output_type_variants() {
+    let _e = bmb::build::OutputType::Executable;
+    let _o = bmb::build::OutputType::Object;
+    let _l = bmb::build::OutputType::LlvmIr;
+    assert!(!format!("{:?}", _e).is_empty());
+    assert!(!format!("{:?}", _o).is_empty());
+    assert!(!format!("{:?}", _l).is_empty());
+}
+
+#[test]
+fn test_build_error_display() {
+    let e = bmb::build::BuildError::Parse("unexpected token".to_string());
+    assert!(format!("{}", e).contains("unexpected token"));
+    let e2 = bmb::build::BuildError::Type("mismatched types".to_string());
+    assert!(format!("{}", e2).contains("mismatched types"));
+    let e3 = bmb::build::BuildError::Linker("cannot find -lm".to_string());
+    assert!(format!("{}", e3).contains("cannot find"));
+}
+
+// ============================================================
+// AST Output Integration Tests
+// ============================================================
+
+#[test]
+fn test_ast_output_sexpr_simple_function() {
+    let ast = source_to_ast("fn add(a: i64, b: i64) -> i64 = a + b;");
+    let sexpr = bmb::ast::output::to_sexpr(&ast);
+    assert!(sexpr.contains("program"));
+    assert!(sexpr.contains("add"));
+}
+
+#[test]
+fn test_ast_output_sexpr_struct() {
+    let ast = source_to_ast("struct Point { x: i64, y: i64 }");
+    let sexpr = bmb::ast::output::to_sexpr(&ast);
+    assert!(sexpr.contains("Point"));
+}
+
+#[test]
+fn test_ast_output_sexpr_enum() {
+    let ast = source_to_ast("enum Color { Red, Green, Blue }");
+    let sexpr = bmb::ast::output::to_sexpr(&ast);
+    assert!(sexpr.contains("Color"));
+}
+
+#[test]
+fn test_ast_output_format_type_primitives() {
+    use bmb::ast::Type;
+    assert_eq!(bmb::ast::output::format_type(&Type::I64), "i64");
+    assert_eq!(bmb::ast::output::format_type(&Type::Bool), "bool");
+    assert_eq!(bmb::ast::output::format_type(&Type::F64), "f64");
+    assert_eq!(bmb::ast::output::format_type(&Type::Unit), "()");
+    assert_eq!(bmb::ast::output::format_type(&Type::String), "String");
+}
+
+#[test]
+fn test_ast_output_format_expr_literals() {
+    use bmb::ast::Expr;
+    assert_eq!(bmb::ast::output::format_expr(&Expr::IntLit(42)), "42");
+    assert_eq!(bmb::ast::output::format_expr(&Expr::BoolLit(true)), "true");
+    assert_eq!(bmb::ast::output::format_expr(&Expr::BoolLit(false)), "false");
+}
+
+#[test]
+fn test_ast_output_sexpr_with_contracts() {
+    let ast = source_to_ast("fn abs(x: i64) -> i64 post ret >= 0 = if x >= 0 { x } else { 0 - x };");
+    let sexpr = bmb::ast::output::to_sexpr(&ast);
+    assert!(sexpr.contains("abs"));
+    assert!(!sexpr.is_empty());
+}
+
+#[test]
+fn test_ast_output_sexpr_empty_program() {
+    // Empty source may or may not parse — test with minimal valid program
+    let ast = source_to_ast("fn noop() -> () = ();");
+    let sexpr = bmb::ast::output::to_sexpr(&ast);
+    assert!(sexpr.starts_with("(program"));
+}
