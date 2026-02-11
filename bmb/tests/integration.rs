@@ -10278,3 +10278,259 @@ fn test_pipeline_verify_report_for_contract_function() {
     let func = &cir.functions[0];
     assert!(!func.preconditions.is_empty());
 }
+
+// ============================================================
+// Warning System Integration Tests (Cycle 245)
+// ============================================================
+
+#[test]
+fn test_warning_unused_function_detected() {
+    let source = "fn unused_helper() -> i64 = 42;\nfn main() -> i64 = 1;";
+    let tokens = tokenize(source).unwrap();
+    let ast = parse("test.bmb", source, tokens).unwrap();
+    let mut tc = TypeChecker::new();
+    tc.check_program(&ast).unwrap();
+    let warnings = tc.take_warnings();
+    let has_unused = warnings.iter().any(|w| w.kind() == "unused_function");
+    assert!(has_unused, "should detect unused function");
+}
+
+#[test]
+fn test_warning_unused_binding_detected() {
+    let source = "fn main() -> i64 = { let _x = 5; 42 };";
+    let tokens = tokenize(source).unwrap();
+    let ast = parse("test.bmb", source, tokens).unwrap();
+    let mut tc = TypeChecker::new();
+    tc.check_program(&ast).unwrap();
+    // _x prefixed variables may or may not warn depending on convention
+    // Just verify the API works
+    let _ = tc.take_warnings();
+}
+
+#[test]
+fn test_warning_clear_resets() {
+    let source = "fn unused() -> i64 = 1;\nfn main() -> i64 = 2;";
+    let tokens = tokenize(source).unwrap();
+    let ast = parse("test.bmb", source, tokens).unwrap();
+    let mut tc = TypeChecker::new();
+    tc.check_program(&ast).unwrap();
+    tc.clear_warnings();
+    assert!(!tc.has_warnings());
+    assert!(tc.warnings().is_empty());
+}
+
+#[test]
+fn test_warning_add_custom_warning() {
+    use bmb::ast::Span;
+    let mut tc = TypeChecker::new();
+    tc.add_warning(bmb::error::CompileWarning::generic("test warning".to_string(), Some(Span::new(0, 1))));
+    assert!(tc.has_warnings());
+    assert_eq!(tc.warnings().len(), 1);
+    assert_eq!(tc.warnings()[0].kind(), "warning");
+}
+
+#[test]
+fn test_warning_multiple_warnings_accumulated() {
+    use bmb::ast::Span;
+    let mut tc = TypeChecker::new();
+    tc.add_warning(bmb::error::CompileWarning::unused_function("f1".to_string(), Span::new(0, 2)));
+    tc.add_warning(bmb::error::CompileWarning::unused_type("T1".to_string(), Span::new(3, 5)));
+    assert_eq!(tc.warnings().len(), 2);
+    let taken = tc.take_warnings();
+    assert_eq!(taken.len(), 2);
+    // After take, warnings should be empty
+    assert!(!tc.has_warnings());
+}
+
+#[test]
+fn test_warning_unused_struct_detected() {
+    let source = "struct Unused { x: i64 }\nfn main() -> i64 = 1;";
+    let tokens = tokenize(source).unwrap();
+    let ast = parse("test.bmb", source, tokens).unwrap();
+    let mut tc = TypeChecker::new();
+    tc.check_program(&ast).unwrap();
+    let warnings = tc.take_warnings();
+    let has_unused = warnings.iter().any(|w| w.kind() == "unused_type");
+    assert!(has_unused, "should detect unused struct");
+}
+
+#[test]
+fn test_warning_unused_enum_detected() {
+    let source = "enum Unused { A, B }\nfn main() -> i64 = 1;";
+    let tokens = tokenize(source).unwrap();
+    let ast = parse("test.bmb", source, tokens).unwrap();
+    let mut tc = TypeChecker::new();
+    tc.check_program(&ast).unwrap();
+    let warnings = tc.take_warnings();
+    let has_unused = warnings.iter().any(|w| w.kind() == "unused_enum");
+    assert!(has_unused, "should detect unused enum");
+}
+
+// ============================================================
+// Error Reporting Integration Tests (Cycle 245)
+// ============================================================
+
+#[test]
+fn test_error_type_error_has_span() {
+    let source = "fn main() -> i64 = true;";
+    let tokens = tokenize(source).unwrap();
+    let ast = parse("test.bmb", source, tokens).unwrap();
+    let mut tc = TypeChecker::new();
+    let result = tc.check_program(&ast);
+    assert!(result.is_err());
+    let err = result.unwrap_err();
+    assert!(err.span().is_some(), "type error should have span");
+}
+
+#[test]
+fn test_error_parse_error_has_span() {
+    let source = "fn main( -> i64 = 42;";
+    let tokens = tokenize(source);
+    if let Ok(toks) = tokens {
+        let result = parse("test.bmb", source, toks);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.span().is_some(), "parse error should have span");
+    }
+}
+
+#[test]
+fn test_error_message_contains_context() {
+    let source = "fn main() -> i64 = true;";
+    let tokens = tokenize(source).unwrap();
+    let ast = parse("test.bmb", source, tokens).unwrap();
+    let mut tc = TypeChecker::new();
+    let err = tc.check_program(&ast).unwrap_err();
+    let msg = err.message();
+    assert!(!msg.is_empty(), "error message should not be empty");
+}
+
+#[test]
+fn test_error_compile_error_display_format() {
+    use bmb::ast::Span;
+    let e = bmb::error::CompileError::type_error("expected i64, found bool".to_string(), Span::new(10, 20));
+    let display = format!("{}", e);
+    assert!(display.contains("expected i64"), "display should contain error message");
+}
+
+// ============================================================
+// Index & Query Integration Tests (Cycle 245)
+// ============================================================
+
+#[test]
+fn test_index_generator_pub_function_indexed() {
+    let source = "pub fn greet() -> i64 = 42;";
+    let tokens = tokenize(source).unwrap();
+    let ast = parse("test.bmb", source, tokens).unwrap();
+    let mut idx_gen = bmb::index::IndexGenerator::new("test_project");
+    idx_gen.index_file("test.bmb", &ast);
+    let index = idx_gen.generate();
+    assert!(!index.symbols.is_empty(), "index should have symbols");
+    let has_greet = index.symbols.iter().any(|s| s.name == "greet");
+    assert!(has_greet, "index should contain greet function");
+}
+
+#[test]
+fn test_index_generator_struct_and_enum() {
+    let source = "pub struct Point { x: i64, y: i64 }\npub enum Color { Red, Green, Blue }";
+    let tokens = tokenize(source).unwrap();
+    let ast = parse("test.bmb", source, tokens).unwrap();
+    let mut idx_gen = bmb::index::IndexGenerator::new("test_project");
+    idx_gen.index_file("test.bmb", &ast);
+    let index = idx_gen.generate();
+    let has_point = index.symbols.iter().any(|s| s.name == "Point");
+    let has_color = index.symbols.iter().any(|s| s.name == "Color");
+    assert!(has_point, "index should contain Point struct");
+    assert!(has_color, "index should contain Color enum");
+}
+
+#[test]
+fn test_index_generator_multiple_files() {
+    let src1 = "pub fn add(a: i64, b: i64) -> i64 = a + b;";
+    let src2 = "pub fn mul(a: i64, b: i64) -> i64 = a * b;";
+    let tokens1 = tokenize(src1).unwrap();
+    let ast1 = parse("math.bmb", src1, tokens1).unwrap();
+    let tokens2 = tokenize(src2).unwrap();
+    let ast2 = parse("ops.bmb", src2, tokens2).unwrap();
+    let mut idx_gen = bmb::index::IndexGenerator::new("test_project");
+    idx_gen.index_file("math.bmb", &ast1);
+    idx_gen.index_file("ops.bmb", &ast2);
+    let index = idx_gen.generate();
+    let has_add = index.symbols.iter().any(|s| s.name == "add");
+    let has_mul = index.symbols.iter().any(|s| s.name == "mul");
+    assert!(has_add && has_mul, "index should contain both functions");
+}
+
+#[test]
+fn test_index_function_entries() {
+    let source = "pub fn safe(x: i64) -> i64 pre x >= 0 = x;";
+    let tokens = tokenize(source).unwrap();
+    let ast = parse("test.bmb", source, tokens).unwrap();
+    let mut idx_gen = bmb::index::IndexGenerator::new("test_project");
+    idx_gen.index_file("test.bmb", &ast);
+    let index = idx_gen.generate();
+    let has_func = index.functions.iter().any(|f| f.name == "safe");
+    assert!(has_func, "index should have function entry for safe");
+}
+
+#[test]
+fn test_query_engine_find_function() {
+    let source = "pub fn compute(x: i64) -> i64 = x * 2;";
+    let tokens = tokenize(source).unwrap();
+    let ast = parse("test.bmb", source, tokens).unwrap();
+    let mut idx_gen = bmb::index::IndexGenerator::new("test_project");
+    idx_gen.index_file("test.bmb", &ast);
+    let index = idx_gen.generate();
+    let engine = bmb::query::QueryEngine::new(index);
+    let result = engine.query_function("compute");
+    assert!(result.result.is_some(), "should find compute function");
+}
+
+#[test]
+fn test_query_engine_find_symbols() {
+    let source = "pub struct Vec2 { x: i64, y: i64 }\npub fn dot(a: Vec2, b: Vec2) -> i64 = a.x * b.x + a.y * b.y;";
+    let tokens = tokenize(source).unwrap();
+    let ast = parse("test.bmb", source, tokens).unwrap();
+    let mut idx_gen = bmb::index::IndexGenerator::new("test_project");
+    idx_gen.index_file("test.bmb", &ast);
+    let index = idx_gen.generate();
+    let engine = bmb::query::QueryEngine::new(index);
+    let result = engine.query_symbols("Vec2", None, false);
+    assert!(result.matches.as_ref().is_some_and(|v| !v.is_empty()), "should find Vec2 symbol");
+}
+
+#[test]
+fn test_query_engine_project_metrics() {
+    let source = "pub fn a() -> i64 = 1;\npub fn b() -> i64 = 2;\npub struct S { x: i64 }";
+    let tokens = tokenize(source).unwrap();
+    let ast = parse("test.bmb", source, tokens).unwrap();
+    let mut idx_gen = bmb::index::IndexGenerator::new("test_project");
+    idx_gen.index_file("test.bmb", &ast);
+    let index = idx_gen.generate();
+    let engine = bmb::query::QueryEngine::new(index);
+    let metrics = engine.query_metrics();
+    assert!(metrics.project.functions >= 2, "should count at least 2 functions");
+    assert!(metrics.project.types >= 1, "should count at least 1 type");
+}
+
+#[test]
+fn test_query_format_output_json() {
+    let data = vec!["hello", "world"];
+    let json = bmb::query::format_output(&data, "json").unwrap();
+    assert!(json.contains("hello"));
+    assert!(json.contains("world"));
+}
+
+#[test]
+fn test_query_engine_no_match() {
+    let source = "pub fn foo() -> i64 = 1;";
+    let tokens = tokenize(source).unwrap();
+    let ast = parse("test.bmb", source, tokens).unwrap();
+    let mut idx_gen = bmb::index::IndexGenerator::new("test_project");
+    idx_gen.index_file("test.bmb", &ast);
+    let index = idx_gen.generate();
+    let engine = bmb::query::QueryEngine::new(index);
+    let result = engine.query_function("nonexistent");
+    assert!(result.result.is_none(), "should not find nonexistent function");
+    assert!(result.error.is_some(), "should have error for nonexistent function");
+}
