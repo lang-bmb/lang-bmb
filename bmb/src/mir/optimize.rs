@@ -15964,4 +15964,589 @@ mod tests {
         let changed = pass.run_on_function(&mut func);
         assert!(!changed, "Single recursive call (factorial) should not trigger fibonacci transform");
     }
+
+    // ========================================================================
+    // Cycle 220: ContractBasedOptimization additional tests
+    // ========================================================================
+
+    #[test]
+    fn test_contract_no_preconditions_no_change() {
+        // No preconditions → no optimization possible
+        let mut func = MirFunction {
+            name: "test".to_string(),
+            params: vec![("x".to_string(), MirType::I64)],
+            ret_ty: MirType::Bool,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![
+                    MirInst::BinOp {
+                        dest: Place::new("cmp"),
+                        op: MirBinOp::Ge,
+                        lhs: Operand::Place(Place::new("x")),
+                        rhs: Operand::Constant(Constant::Int(0)),
+                    },
+                ],
+                terminator: Terminator::Return(Some(Operand::Place(Place::new("cmp")))),
+            }],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let pass = ContractBasedOptimization;
+        let changed = pass.run_on_function(&mut func);
+        assert!(!changed, "No preconditions should mean no optimization");
+        // Instruction should remain a BinOp
+        assert!(matches!(&func.blocks[0].instructions[0], MirInst::BinOp { .. }));
+    }
+
+    #[test]
+    fn test_contract_lt_comparison_elimination() {
+        // pre x < 10 → check x < 20 should be true
+        let mut func = MirFunction {
+            name: "test".to_string(),
+            params: vec![("x".to_string(), MirType::I64)],
+            ret_ty: MirType::Bool,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![
+                    MirInst::BinOp {
+                        dest: Place::new("cmp"),
+                        op: MirBinOp::Lt,
+                        lhs: Operand::Place(Place::new("x")),
+                        rhs: Operand::Constant(Constant::Int(20)),
+                    },
+                ],
+                terminator: Terminator::Return(Some(Operand::Place(Place::new("cmp")))),
+            }],
+            preconditions: vec![
+                ContractFact::VarCmp {
+                    var: "x".to_string(),
+                    op: CmpOp::Lt,
+                    value: 10,
+                },
+            ],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let pass = ContractBasedOptimization;
+        let changed = pass.run_on_function(&mut func);
+        assert!(changed, "x < 10 implies x < 20");
+        assert!(matches!(&func.blocks[0].instructions[0],
+            MirInst::Const { value: Constant::Bool(true), .. }));
+    }
+
+    #[test]
+    fn test_contract_branch_simplification_to_goto() {
+        // pre x >= 0 → branch on (x >= 0) should be simplified to Goto(then)
+        let mut func = MirFunction {
+            name: "test".to_string(),
+            params: vec![("x".to_string(), MirType::I64)],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![
+                BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![
+                        MirInst::BinOp {
+                            dest: Place::new("cmp"),
+                            op: MirBinOp::Ge,
+                            lhs: Operand::Place(Place::new("x")),
+                            rhs: Operand::Constant(Constant::Int(0)),
+                        },
+                    ],
+                    terminator: Terminator::Branch {
+                        cond: Operand::Place(Place::new("cmp")),
+                        then_label: "safe".to_string(),
+                        else_label: "panic".to_string(),
+                    },
+                },
+                BasicBlock {
+                    label: "safe".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Return(Some(Operand::Place(Place::new("x")))),
+                },
+                BasicBlock {
+                    label: "panic".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(-1)))),
+                },
+            ],
+            preconditions: vec![
+                ContractFact::VarCmp {
+                    var: "x".to_string(),
+                    op: CmpOp::Ge,
+                    value: 0,
+                },
+            ],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let pass = ContractBasedOptimization;
+        let changed = pass.run_on_function(&mut func);
+        assert!(changed, "Contract should simplify branch");
+
+        // After optimization, the comparison is folded to true.
+        // The branch simplification may convert Branch{cond=true} to Goto
+        // depending on implementation. The comparison should at least be a Const.
+        assert!(matches!(&func.blocks[0].instructions[0],
+            MirInst::Const { value: Constant::Bool(true), .. }),
+            "Comparison should be eliminated to true");
+    }
+
+    #[test]
+    fn test_contract_le_not_provable() {
+        // pre x >= 5 → check x <= 3 cannot be proven (it's actually false)
+        let mut func = MirFunction {
+            name: "test".to_string(),
+            params: vec![("x".to_string(), MirType::I64)],
+            ret_ty: MirType::Bool,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![
+                    MirInst::BinOp {
+                        dest: Place::new("cmp"),
+                        op: MirBinOp::Le,
+                        lhs: Operand::Place(Place::new("x")),
+                        rhs: Operand::Constant(Constant::Int(3)),
+                    },
+                ],
+                terminator: Terminator::Return(Some(Operand::Place(Place::new("cmp")))),
+            }],
+            preconditions: vec![
+                ContractFact::VarCmp {
+                    var: "x".to_string(),
+                    op: CmpOp::Ge,
+                    value: 5,
+                },
+            ],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let pass = ContractBasedOptimization;
+        let changed = pass.run_on_function(&mut func);
+        // x >= 5 means x <= 3 is always FALSE
+        assert!(changed, "x >= 5 implies x <= 3 is false");
+        assert!(matches!(&func.blocks[0].instructions[0],
+            MirInst::Const { value: Constant::Bool(false), .. }),
+            "x <= 3 should be optimized to false when x >= 5");
+    }
+
+    // ========================================================================
+    // Cycle 220: LoopInvariantCodeMotion additional tests
+    // ========================================================================
+
+    #[test]
+    fn test_licm_no_loop_no_change() {
+        // Function without loops → no change
+        let mut func = MirFunction {
+            name: "test".to_string(),
+            params: vec![("x".to_string(), MirType::I64)],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![
+                    MirInst::BinOp {
+                        dest: Place::new("r"),
+                        op: MirBinOp::Add,
+                        lhs: Operand::Place(Place::new("x")),
+                        rhs: Operand::Constant(Constant::Int(1)),
+                    },
+                ],
+                terminator: Terminator::Return(Some(Operand::Place(Place::new("r")))),
+            }],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let pass = LoopInvariantCodeMotion::new();
+        let changed = pass.run_on_function(&mut func);
+        assert!(!changed, "No loops means nothing to hoist");
+    }
+
+    #[test]
+    fn test_licm_hoists_byte_at_pure_call() {
+        // byte_at is a pure function → should be hoisted out of loop
+        // entry: goto loop_header
+        // loop_header: i = phi [...]; b = byte_at(s, 0); cmp = i < b; branch ...
+        // loop_body: i_next = i + 1; goto loop_header
+        // exit: return i
+        let mut func = MirFunction {
+            name: "test".to_string(),
+            params: vec![("s".to_string(), MirType::String)],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![
+                BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Goto("loop_header".to_string()),
+                },
+                BasicBlock {
+                    label: "loop_header".to_string(),
+                    instructions: vec![
+                        MirInst::Phi {
+                            dest: Place::new("i"),
+                            values: vec![
+                                (Operand::Constant(Constant::Int(0)), "entry".to_string()),
+                                (Operand::Place(Place::new("i_next")), "loop_body".to_string()),
+                            ],
+                        },
+                        MirInst::Call {
+                            dest: Some(Place::new("b")),
+                            func: "byte_at".to_string(),
+                            args: vec![
+                                Operand::Place(Place::new("s")),
+                                Operand::Constant(Constant::Int(0)),
+                            ],
+                            is_tail: false,
+                        },
+                        MirInst::BinOp {
+                            dest: Place::new("cmp"),
+                            op: MirBinOp::Lt,
+                            lhs: Operand::Place(Place::new("i")),
+                            rhs: Operand::Place(Place::new("b")),
+                        },
+                    ],
+                    terminator: Terminator::Branch {
+                        cond: Operand::Place(Place::new("cmp")),
+                        then_label: "loop_body".to_string(),
+                        else_label: "exit".to_string(),
+                    },
+                },
+                BasicBlock {
+                    label: "loop_body".to_string(),
+                    instructions: vec![
+                        MirInst::BinOp {
+                            dest: Place::new("i_next"),
+                            op: MirBinOp::Add,
+                            lhs: Operand::Place(Place::new("i")),
+                            rhs: Operand::Constant(Constant::Int(1)),
+                        },
+                    ],
+                    terminator: Terminator::Goto("loop_header".to_string()),
+                },
+                BasicBlock {
+                    label: "exit".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Return(Some(Operand::Place(Place::new("i")))),
+                },
+            ],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let pass = LoopInvariantCodeMotion::new();
+        let changed = pass.run_on_function(&mut func);
+        assert!(changed, "Should hoist byte_at() call out of loop");
+
+        // Entry block should now have the hoisted call
+        let has_hoisted = func.blocks[0].instructions.iter().any(|inst| {
+            matches!(inst, MirInst::Call { func: f, .. } if f == "byte_at")
+        });
+        assert!(has_hoisted, "byte_at() should be hoisted to entry block");
+    }
+
+    #[test]
+    fn test_licm_phi_dependent_call_not_hoisted() {
+        // Call with arg that depends on phi (loop-variant) → should NOT be hoisted
+        // loop_header: i = phi [...]; v = char_at(s, i); ...
+        let mut func = MirFunction {
+            name: "test".to_string(),
+            params: vec![("s".to_string(), MirType::String)],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![
+                BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Goto("loop_header".to_string()),
+                },
+                BasicBlock {
+                    label: "loop_header".to_string(),
+                    instructions: vec![
+                        MirInst::Phi {
+                            dest: Place::new("i"),
+                            values: vec![
+                                (Operand::Constant(Constant::Int(0)), "entry".to_string()),
+                                (Operand::Place(Place::new("i_next")), "loop_body".to_string()),
+                            ],
+                        },
+                        MirInst::Call {
+                            dest: Some(Place::new("ch")),
+                            func: "char_at".to_string(),
+                            args: vec![
+                                Operand::Place(Place::new("s")),
+                                Operand::Place(Place::new("i")), // Depends on phi!
+                            ],
+                            is_tail: false,
+                        },
+                        MirInst::BinOp {
+                            dest: Place::new("cmp"),
+                            op: MirBinOp::Lt,
+                            lhs: Operand::Place(Place::new("i")),
+                            rhs: Operand::Constant(Constant::Int(10)),
+                        },
+                    ],
+                    terminator: Terminator::Branch {
+                        cond: Operand::Place(Place::new("cmp")),
+                        then_label: "loop_body".to_string(),
+                        else_label: "exit".to_string(),
+                    },
+                },
+                BasicBlock {
+                    label: "loop_body".to_string(),
+                    instructions: vec![
+                        MirInst::BinOp {
+                            dest: Place::new("i_next"),
+                            op: MirBinOp::Add,
+                            lhs: Operand::Place(Place::new("i")),
+                            rhs: Operand::Constant(Constant::Int(1)),
+                        },
+                    ],
+                    terminator: Terminator::Goto("loop_header".to_string()),
+                },
+                BasicBlock {
+                    label: "exit".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Return(Some(Operand::Place(Place::new("i")))),
+                },
+            ],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let pass = LoopInvariantCodeMotion::new();
+        let changed = pass.run_on_function(&mut func);
+        assert!(!changed, "char_at(s, i) depends on loop variable i, should not be hoisted");
+    }
+
+    // ========================================================================
+    // Cycle 220: ConstantPropagationNarrowing additional tests
+    // ========================================================================
+
+    #[test]
+    fn test_cpn_no_narrow_with_multiplication() {
+        // Function with Mul operation should NOT be narrowed
+        // (multiplication can overflow i32)
+        let compute_fn = MirFunction {
+            name: "compute".to_string(),
+            params: vec![("n".to_string(), MirType::I64)],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![
+                    MirInst::BinOp {
+                        dest: Place::new("r"),
+                        op: MirBinOp::Mul,
+                        lhs: Operand::Place(Place::new("n")),
+                        rhs: Operand::Place(Place::new("n")),
+                    },
+                    // Recursive call (needed for narrowing to even consider)
+                    MirInst::BinOp {
+                        dest: Place::new("n1"),
+                        op: MirBinOp::Sub,
+                        lhs: Operand::Place(Place::new("n")),
+                        rhs: Operand::Constant(Constant::Int(1)),
+                    },
+                    MirInst::Call {
+                        dest: Some(Place::new("r2")),
+                        func: "compute".to_string(),
+                        args: vec![Operand::Place(Place::new("n1"))],
+                        is_tail: false,
+                    },
+                ],
+                terminator: Terminator::Return(Some(Operand::Place(Place::new("r")))),
+            }],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let main_fn = MirFunction {
+            name: "main".to_string(),
+            params: vec![],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![
+                    MirInst::Call {
+                        dest: Some(Place::new("r")),
+                        func: "compute".to_string(),
+                        args: vec![Operand::Constant(Constant::Int(50))],
+                        is_tail: false,
+                    },
+                ],
+                terminator: Terminator::Return(Some(Operand::Place(Place::new("r")))),
+            }],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let mut program = MirProgram {
+            functions: vec![compute_fn, main_fn],
+            extern_fns: vec![],
+            struct_defs: std::collections::HashMap::new(),
+        };
+
+        let pass = ConstantPropagationNarrowing::from_program(&program);
+        let changed = pass.run_on_program(&mut program);
+
+        assert!(!changed, "Function with multiplication should NOT be narrowed");
+        let compute = program.functions.iter().find(|f| f.name == "compute").unwrap();
+        assert_eq!(compute.params[0].1, MirType::I64);
+    }
+
+    #[test]
+    fn test_cpn_no_narrow_non_decreasing_recursion() {
+        // Function with non-decreasing recursion (passes constant, not n-1)
+        // should NOT be narrowed
+        let func = MirFunction {
+            name: "weird".to_string(),
+            params: vec![("n".to_string(), MirType::I64)],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![
+                    // Recursive call with constant arg (not decreasing)
+                    MirInst::Call {
+                        dest: Some(Place::new("r")),
+                        func: "weird".to_string(),
+                        args: vec![Operand::Place(Place::new("n"))], // Same value!
+                        is_tail: false,
+                    },
+                ],
+                terminator: Terminator::Return(Some(Operand::Place(Place::new("r")))),
+            }],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let main_fn = MirFunction {
+            name: "main".to_string(),
+            params: vec![],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![
+                    MirInst::Call {
+                        dest: Some(Place::new("r")),
+                        func: "weird".to_string(),
+                        args: vec![Operand::Constant(Constant::Int(10))],
+                        is_tail: false,
+                    },
+                ],
+                terminator: Terminator::Return(Some(Operand::Place(Place::new("r")))),
+            }],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let mut program = MirProgram {
+            functions: vec![func, main_fn],
+            extern_fns: vec![],
+            struct_defs: std::collections::HashMap::new(),
+        };
+
+        let pass = ConstantPropagationNarrowing::from_program(&program);
+        let changed = pass.run_on_program(&mut program);
+
+        // The function has remaining self-recursive calls, so it should NOT be narrowed
+        assert!(!changed, "Function with remaining recursive calls should not be narrowed");
+    }
+
+    #[test]
+    fn test_cpn_no_call_sites_no_narrow() {
+        // Function never called with constants → no narrowing
+        let func = MirFunction {
+            name: "never_called".to_string(),
+            params: vec![("n".to_string(), MirType::I64)],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![],
+                terminator: Terminator::Return(Some(Operand::Place(Place::new("n")))),
+            }],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let mut program = MirProgram {
+            functions: vec![func],
+            extern_fns: vec![],
+            struct_defs: std::collections::HashMap::new(),
+        };
+
+        let pass = ConstantPropagationNarrowing::from_program(&program);
+        let changed = pass.run_on_program(&mut program);
+
+        assert!(!changed, "Function without constant call sites should not be narrowed");
+    }
 }
