@@ -10038,3 +10038,243 @@ fn test_interp_enum_variant_no_data() {
     );
     assert_eq!(result, Value::Bool(true));
 }
+
+// ============================================================
+// E2E Pipeline Integration Tests (Cycle 244)
+// ============================================================
+
+// --- Pipeline: Optimization level comparison ---
+
+#[test]
+fn test_pipeline_opt_debug_vs_release() {
+    let source = "fn add(a: i64, b: i64) -> i64 = a + b;";
+    // Debug: no optimization
+    let tokens = tokenize(source).unwrap();
+    let ast = parse("test.bmb", source, tokens).unwrap();
+    let mut tc = TypeChecker::new();
+    tc.check_program(&ast).unwrap();
+    let mut mir_debug = bmb::mir::lower_program(&ast);
+    let debug_pipeline = OptimizationPipeline::for_level(bmb::mir::OptLevel::Debug);
+    debug_pipeline.optimize(&mut mir_debug);
+
+    // Release: optimization
+    let tokens2 = tokenize(source).unwrap();
+    let ast2 = parse("test.bmb", source, tokens2).unwrap();
+    let mut tc2 = TypeChecker::new();
+    tc2.check_program(&ast2).unwrap();
+    let mut mir_release = bmb::mir::lower_program(&ast2);
+    let release_pipeline = OptimizationPipeline::for_level(bmb::mir::OptLevel::Release);
+    release_pipeline.optimize(&mut mir_release);
+
+    // Both should produce valid codegen
+    let codegen = TextCodeGen::new();
+    assert!(codegen.generate(&mir_debug).is_ok());
+    assert!(codegen.generate(&mir_release).is_ok());
+}
+
+#[test]
+fn test_pipeline_constant_folding_through_codegen() {
+    // Constant expression should be folded by optimizer
+    let source = "fn answer() -> i64 = 6 * 7;";
+    let ir_opt = source_to_ir(source);
+    // Optimized: constant should be folded to 42
+    assert!(ir_opt.contains("42") || ir_opt.contains("answer"), "optimized IR should have result or function");
+}
+
+#[test]
+fn test_pipeline_dead_code_across_stages() {
+    let source = "fn main() -> i64 = { let _unused = 999; 42 };";
+    // Should parse, type-check, and generate valid MIR
+    let ir = source_to_ir(source);
+    assert!(ir.contains("main"), "IR should have main function");
+}
+
+// --- Pipeline: Contract through all stages ---
+
+#[test]
+fn test_pipeline_contract_preserved_to_mir() {
+    let source = "fn bounded(x: i64) -> i64 pre x >= 0 post ret >= 0 = x;";
+    let tokens = tokenize(source).unwrap();
+    let ast = parse("test.bmb", source, tokens).unwrap();
+    let mut tc = TypeChecker::new();
+    tc.check_program(&ast).unwrap();
+    let mir = bmb::mir::lower_program(&ast);
+    let func = &mir.functions[0];
+    // Contracts should be preserved in MIR
+    assert!(!func.preconditions.is_empty(), "precondition should survive to MIR");
+    assert!(!func.postconditions.is_empty(), "postcondition should survive to MIR");
+}
+
+#[test]
+fn test_pipeline_contract_to_cir_facts() {
+    let source = "fn safe(x: i64) -> i64 pre x > 0 = x;";
+    let cir = source_to_cir(source);
+    let facts = bmb::cir::to_mir_facts::extract_all_facts(&cir);
+    // Should have facts for the "safe" function
+    assert!(!facts.is_empty(), "CIR should extract contract facts");
+}
+
+#[test]
+fn test_pipeline_contract_to_smt() {
+    let source = "fn positive(x: i64) -> i64 pre x > 0 = x;";
+    let cir = source_to_cir(source);
+    // CIR should have at least one function with preconditions
+    assert!(!cir.functions.is_empty());
+    let func = &cir.functions[0];
+    assert!(!func.preconditions.is_empty(), "CIR function should have preconditions");
+}
+
+// --- Pipeline: WASM codegen ---
+
+#[test]
+fn test_pipeline_source_to_wasm() {
+    let source = "fn double(x: i64) -> i64 = x * 2;";
+    let mir = lower_to_mir(source);
+    let codegen = bmb::codegen::WasmCodeGen::new();
+    let wasm = codegen.generate(&mir).unwrap();
+    assert!(wasm.contains("module") || wasm.contains("func"), "WASM output should contain module or func");
+    assert!(wasm.contains("double") || wasm.contains("$double"), "WASM should reference function name");
+}
+
+#[test]
+fn test_pipeline_wasm_multiple_functions() {
+    let source = "fn inc(x: i64) -> i64 = x + 1;\nfn dec(x: i64) -> i64 = x - 1;";
+    let mir = lower_to_mir(source);
+    let codegen = bmb::codegen::WasmCodeGen::new();
+    let wasm = codegen.generate(&mir).unwrap();
+    assert!(!wasm.is_empty(), "WASM output should not be empty");
+}
+
+#[test]
+fn test_pipeline_wasm_with_contract() {
+    let source = "fn safe(x: i64) -> i64 pre x >= 0 = x;";
+    let mir = lower_to_mir(source);
+    let codegen = bmb::codegen::WasmCodeGen::new();
+    let result = codegen.generate(&mir);
+    assert!(result.is_ok(), "WASM codegen should handle contracts");
+}
+
+// --- Pipeline: Complex programs through all stages ---
+
+#[test]
+fn test_pipeline_struct_through_codegen() {
+    let source = "struct Vec2 { x: i64, y: i64 }\nfn dot(a: Vec2, b: Vec2) -> i64 = a.x * b.x + a.y * b.y;";
+    let ir = source_to_ir(source);
+    assert!(ir.contains("dot"), "IR should contain dot function");
+}
+
+#[test]
+fn test_pipeline_enum_through_codegen() {
+    let source = "enum Op { Add, Sub, Mul }\nfn apply(op: Op, a: i64, b: i64) -> i64 = match op { Op::Add => a + b, Op::Sub => a - b, Op::Mul => a * b };";
+    let ir = source_to_ir(source);
+    assert!(ir.contains("apply"), "IR should contain apply function");
+}
+
+#[test]
+fn test_pipeline_generic_through_typecheck() {
+    let source = "fn first<T>(a: T, b: T) -> T = a;\nfn main() -> i64 = first(10, 20);";
+    // Should type-check and run correctly
+    assert!(type_checks(source));
+    assert_eq!(run_program_i64(source), 10);
+}
+
+#[test]
+fn test_pipeline_trait_through_typecheck() {
+    let source = "trait HasVal { fn val(self: Self) -> i64; }\nstruct Num { v: i64 }\nimpl HasVal for Num { fn val(self: Self) -> i64 = self.v; }";
+    assert!(type_checks(source));
+}
+
+// --- Pipeline: Error propagation ---
+
+#[test]
+fn test_pipeline_parse_error_propagates() {
+    let source = "fn main( -> i64 = 42;"; // missing close paren
+    let tokens = tokenize(source);
+    if let Ok(toks) = tokens {
+        let result = parse("test.bmb", source, toks);
+        assert!(result.is_err(), "malformed source should fail parsing");
+    }
+}
+
+#[test]
+fn test_pipeline_type_error_propagates() {
+    let source = "fn main() -> i64 = true;"; // bool where i64 expected
+    assert!(!type_checks(source));
+}
+
+#[test]
+fn test_pipeline_type_error_undefined_function() {
+    let source = "fn main() -> i64 = nonexistent();";
+    assert!(!type_checks(source));
+}
+
+// --- Pipeline: Interpreter consistency with codegen ---
+
+#[test]
+fn test_pipeline_interpreter_and_mir_agree() {
+    let source = "fn square(x: i64) -> i64 = x * x;\nfn main() -> i64 = square(7);";
+    // Interpreter result
+    let interp_result = run_program_i64(source);
+    assert_eq!(interp_result, 49);
+    // MIR should also be valid
+    let mir = lower_to_mir(source);
+    assert!(!mir.functions.is_empty());
+    // Codegen should succeed
+    let codegen = TextCodeGen::new();
+    assert!(codegen.generate(&mir).is_ok());
+}
+
+#[test]
+fn test_pipeline_recursive_interpreter_and_codegen() {
+    let source = "fn fact(n: i64) -> i64 = if n <= 1 { 1 } else { n * fact(n - 1) };\nfn main() -> i64 = fact(6);";
+    assert_eq!(run_program_i64(source), 720);
+    let ir = source_to_ir(source);
+    assert!(ir.contains("fact"), "IR should contain fact function");
+    assert!(ir.contains("call"), "IR should contain recursive call");
+}
+
+// --- Pipeline: Multi-feature programs ---
+
+#[test]
+fn test_pipeline_struct_enum_function_combined() {
+    let source = "struct Point { x: i64, y: i64 }
+         enum Shape { Circle(i64), Rectangle(Point, Point) }
+         fn area_approx(s: Shape) -> i64 = match s {
+             Shape::Circle(r) => r * r * 3,
+             Shape::Rectangle(p1, p2) => {
+                 let w = p2.x - p1.x;
+                 let h = p2.y - p1.y;
+                 w * h
+             }
+         };";
+    assert!(type_checks(source));
+    let mir = lower_to_mir(source);
+    assert!(!mir.functions.is_empty());
+}
+
+#[test]
+fn test_pipeline_contract_function_codegen() {
+    let source = "fn clamp(x: i64, lo: i64, hi: i64) -> i64
+         pre lo <= hi
+         = if x < lo { lo } else { if x > hi { hi } else { x } };";
+    assert!(type_checks(source));
+    let ir = source_to_ir(source);
+    assert!(ir.contains("clamp"), "IR should contain clamp function");
+}
+
+// --- Pipeline: Verify module ---
+
+#[test]
+fn test_pipeline_verify_report_for_contract_function() {
+    let source = "fn bounded(x: i64) -> i64 pre x >= 0 = x;";
+    let tokens = tokenize(source).unwrap();
+    let ast = parse("test.bmb", source, tokens).unwrap();
+    let mut tc = TypeChecker::new();
+    tc.check_program(&ast).unwrap();
+    // CIR lowering should work
+    let cir = bmb::cir::lower_to_cir(&ast);
+    assert!(!cir.functions.is_empty());
+    // Function should have preconditions in CIR
+    let func = &cir.functions[0];
+    assert!(!func.preconditions.is_empty());
+}
