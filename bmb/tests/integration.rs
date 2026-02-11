@@ -5220,3 +5220,276 @@ fn test_interp_array_single_element_operations() {
         128 // 42 + 84 + 1 + 1 = 128
     );
 }
+
+// ============================================
+// Cycle 221: Feature Combination Integration Tests
+// ============================================
+
+// --- Nested Loop with Break/Continue ---
+
+#[test]
+fn test_interp_nested_loop_outer_break() {
+    // Nested loops: outer loop breaks after inner loop runs 3 times
+    assert_eq!(
+        run_program_i64(
+            "fn main() -> i64 = {
+               let mut total = 0;
+               let mut i = 0;
+               loop {
+                 let mut j = 0;
+                 loop {
+                   total = total + 1;
+                   j = j + 1;
+                   if j >= 3 { break } else { () }
+                 };
+                 i = i + 1;
+                 if i >= 4 { break } else { () }
+               };
+               total
+             };"
+        ),
+        12 // 4 outer * 3 inner = 12
+    );
+}
+
+#[test]
+fn test_interp_continue_skip_even() {
+    // Continue to skip even iterations, sum only odds
+    assert_eq!(
+        run_program_i64(
+            "fn main() -> i64 = {
+               let mut sum = 0;
+               let mut i = 0;
+               loop {
+                 i = i + 1;
+                 if i > 10 { break } else { () };
+                 if i % 2 == 0 { continue } else { () };
+                 sum = sum + i
+               };
+               sum
+             };"
+        ),
+        25 // 1+3+5+7+9 = 25
+    );
+}
+
+#[test]
+fn test_interp_nested_continue_inner() {
+    // Continue inside inner loop only affects inner
+    assert_eq!(
+        run_program_i64(
+            "fn main() -> i64 = {
+               let mut count = 0;
+               let mut i = 0;
+               loop {
+                 i = i + 1;
+                 if i > 3 { break } else { () };
+                 let mut j = 0;
+                 loop {
+                   j = j + 1;
+                   if j > 5 { break } else { () };
+                   if j % 2 == 0 { continue } else { () };
+                   count = count + 1
+                 }
+               };
+               count
+             };"
+        ),
+        9 // 3 outer * 3 odd j values (1,3,5) = 9
+    );
+}
+
+// --- Return from Nested Structures ---
+
+#[test]
+fn test_interp_return_from_nested_if() {
+    // Early return from inside nested if-else
+    assert_eq!(
+        run_program_i64(
+            "fn find_threshold(n: i64) -> i64 = {
+               if n > 100 {
+                 return 100
+               } else { () };
+               if n > 50 {
+                 return 50
+               } else { () };
+               n
+             };
+             fn main() -> i64 = find_threshold(75) + find_threshold(200) + find_threshold(30);"
+        ),
+        180 // 50 + 100 + 30 = 180
+    );
+}
+
+#[test]
+fn test_interp_return_from_loop() {
+    // Return exits the function from inside a loop
+    assert_eq!(
+        run_program_i64(
+            "fn find_first_divisible(n: i64, d: i64) -> i64 = {
+               let mut i = 1;
+               loop {
+                 if i * d >= n { return i } else { () };
+                 i = i + 1
+               };
+               0
+             };
+             fn main() -> i64 = find_first_divisible(20, 7);"
+        ),
+        3 // 3*7=21 >= 20
+    );
+}
+
+// --- While Loop with Complex Control Flow ---
+
+#[test]
+fn test_interp_while_with_multiple_breaks() {
+    // Simulate while with loop+break, two possible exit points
+    assert_eq!(
+        run_program_i64(
+            "fn main() -> i64 = {
+               let mut i = 0;
+               let mut found = 0;
+               loop {
+                 i = i + 1;
+                 if i > 100 { break } else { () };
+                 if i * i > 50 {
+                   found = i;
+                   break
+                 } else { () }
+               };
+               found
+             };"
+        ),
+        8 // 8*8=64 > 50
+    );
+}
+
+// --- Function Composition with Control Flow ---
+
+#[test]
+fn test_interp_recursive_with_loop_helper() {
+    // Recursive function calling loop-based helper
+    assert_eq!(
+        run_program_i64(
+            "fn sum_to(n: i64) -> i64 = {
+               let mut s = 0;
+               let mut i = 1;
+               loop {
+                 if i > n { break } else { () };
+                 s = s + i;
+                 i = i + 1
+               };
+               s
+             };
+             fn triangle(n: i64) -> i64 =
+               if n <= 0 { 0 }
+               else { sum_to(n) + triangle(n - 1) };
+             fn main() -> i64 = triangle(4);"
+        ),
+        20 // sum_to(4)+sum_to(3)+sum_to(2)+sum_to(1) = 10+6+3+1 = 20
+    );
+}
+
+// --- Loop with Accumulator Pattern ---
+
+#[test]
+fn test_interp_loop_fibonacci_iterative() {
+    // Iterative fibonacci using loop
+    assert_eq!(
+        run_program_i64(
+            "fn fib(n: i64) -> i64 = {
+               if n <= 1 { return n } else { () };
+               let mut a = 0;
+               let mut b = 1;
+               let mut i = 2;
+               loop {
+                 let c = a + b;
+                 a = b;
+                 b = c;
+                 i = i + 1;
+                 if i > n { break } else { () }
+               };
+               b
+             };
+             fn main() -> i64 = fib(10);"
+        ),
+        55
+    );
+}
+
+#[test]
+fn test_interp_loop_power() {
+    // Iterative power using loop with accumulator
+    assert_eq!(
+        run_program_i64(
+            "fn power(base: i64, exp: i64) -> i64 = {
+               let mut result = 1;
+               let mut i = 0;
+               loop {
+                 if i >= exp { break } else { () };
+                 result = result * base;
+                 i = i + 1
+               };
+               result
+             };
+             fn main() -> i64 = power(2, 10);"
+        ),
+        1024
+    );
+}
+
+// --- For Loop with Break/Continue ---
+
+#[test]
+fn test_interp_for_with_continue() {
+    // For loop with continue to skip specific values
+    assert_eq!(
+        run_program_i64(
+            "fn main() -> i64 = {
+               let mut sum = 0;
+               for i in 1..11 {
+                 if i == 5 { continue } else { () };
+                 if i == 8 { continue } else { () };
+                 sum = sum + i
+               };
+               sum
+             };"
+        ),
+        42 // 1+2+3+4+6+7+9+10 = 42
+    );
+}
+
+#[test]
+fn test_interp_for_with_early_break() {
+    // For loop with break before reaching end
+    assert_eq!(
+        run_program_i64(
+            "fn main() -> i64 = {
+               let mut last = 0;
+               for i in 1..100 {
+                 if i * i > 200 { break } else { () };
+                 last = i
+               };
+               last
+             };"
+        ),
+        14 // 14*14=196 <= 200, 15*15=225 > 200
+    );
+}
+
+// --- Type Checking: Feature Combinations ---
+
+#[test]
+fn test_type_return_inside_block_typechecks() {
+    assert!(type_checks(
+        "fn f(x: i64) -> i64 = { if x > 0 { return x } else { () }; 0 };\nfn main() -> i64 = f(5);"
+    ));
+}
+
+#[test]
+fn test_type_loop_break_continue_typechecks() {
+    assert!(type_checks(
+        "fn main() -> i64 = { let mut x = 0; loop { x = x + 1; if x > 5 { break } else { continue } }; x };"
+    ));
+}
