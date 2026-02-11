@@ -225,6 +225,18 @@ pub enum Token {
     #[regex(r"[0-9]+\.[0-9]+([eE][+-]?[0-9]+)?|[0-9]+[eE][+-]?[0-9]+", |lex| lex.slice().parse::<f64>().ok(), priority = 3)]
     FloatLit(f64),
 
+    #[regex(r"0[xX][0-9a-fA-F][0-9a-fA-F_]*", |lex| {
+        let s = lex.slice();
+        i64::from_str_radix(&s[2..].replace('_', ""), 16).ok()
+    }, priority = 3)]
+    #[regex(r"0[oO][0-7][0-7_]*", |lex| {
+        let s = lex.slice();
+        i64::from_str_radix(&s[2..].replace('_', ""), 8).ok()
+    }, priority = 3)]
+    #[regex(r"0[bB][01][01_]*", |lex| {
+        let s = lex.slice();
+        i64::from_str_radix(&s[2..].replace('_', ""), 2).ok()
+    }, priority = 3)]
     #[regex(r"[0-9]+", |lex| lex.slice().parse::<i64>().ok(), priority = 2)]
     IntLit(i64),
 

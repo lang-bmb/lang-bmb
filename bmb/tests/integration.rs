@@ -12562,3 +12562,144 @@ fn test_generic_enum_duplicate_variant_rejected() {
     // Generic enum with duplicate variants should also be rejected
     assert!(type_error("enum Result<T, E> { Ok(T), Err(E), Ok(T) }"));
 }
+
+// ============================================================
+// Cycle 253: Hex/Octal/Binary Literal Parsing
+// ============================================================
+
+#[test]
+fn test_hex_literal_basic() {
+    // 0xFF = 255
+    let source = "fn main() -> i64 = 0xFF;";
+    assert_eq!(run_program_i64(source), 255);
+}
+
+#[test]
+fn test_hex_literal_lowercase() {
+    // 0xff = 255
+    let source = "fn main() -> i64 = 0xff;";
+    assert_eq!(run_program_i64(source), 255);
+}
+
+#[test]
+fn test_hex_literal_uppercase_prefix() {
+    // 0XFF = 255
+    let source = "fn main() -> i64 = 0XFF;";
+    assert_eq!(run_program_i64(source), 255);
+}
+
+#[test]
+fn test_hex_literal_in_arithmetic() {
+    // 0x10 + 0x20 = 16 + 32 = 48
+    let source = "fn main() -> i64 = 0x10 + 0x20;";
+    assert_eq!(run_program_i64(source), 48);
+}
+
+#[test]
+fn test_hex_literal_with_bitwise() {
+    // 0xFF band 0x0F = 15
+    let source = "fn main() -> i64 = 0xFF band 0x0F;";
+    assert_eq!(run_program_i64(source), 15);
+}
+
+#[test]
+fn test_hex_literal_zero() {
+    let source = "fn main() -> i64 = 0x0;";
+    assert_eq!(run_program_i64(source), 0);
+}
+
+#[test]
+fn test_hex_literal_large() {
+    // 0xDEAD = 57005
+    let source = "fn main() -> i64 = 0xDEAD;";
+    assert_eq!(run_program_i64(source), 57005);
+}
+
+#[test]
+fn test_octal_literal_basic() {
+    // 0o77 = 63
+    let source = "fn main() -> i64 = 0o77;";
+    assert_eq!(run_program_i64(source), 63);
+}
+
+#[test]
+fn test_octal_literal_uppercase_prefix() {
+    // 0O10 = 8
+    let source = "fn main() -> i64 = 0O10;";
+    assert_eq!(run_program_i64(source), 8);
+}
+
+#[test]
+fn test_binary_literal_basic() {
+    // 0b1010 = 10
+    let source = "fn main() -> i64 = 0b1010;";
+    assert_eq!(run_program_i64(source), 10);
+}
+
+#[test]
+fn test_binary_literal_uppercase_prefix() {
+    // 0B11111111 = 255
+    let source = "fn main() -> i64 = 0B11111111;";
+    assert_eq!(run_program_i64(source), 255);
+}
+
+#[test]
+fn test_binary_literal_single_bit() {
+    let source = "fn main() -> i64 = 0b1;";
+    assert_eq!(run_program_i64(source), 1);
+}
+
+#[test]
+fn test_hex_literal_in_function_param() {
+    // Hex literal as function argument
+    let source = "
+        fn double(x: i64) -> i64 = x * 2;
+        fn main() -> i64 = double(0x10);
+    ";
+    assert_eq!(run_program_i64(source), 32);
+}
+
+#[test]
+fn test_hex_literal_in_let_binding() {
+    // Hex literal in let binding
+    let source = "
+        fn main() -> i64 = {
+            let mask = 0xFF;
+            255 band mask
+        };
+    ";
+    assert_eq!(run_program_i64(source), 255);
+}
+
+#[test]
+fn test_hex_literal_in_comparison() {
+    // Hex literal in comparison
+    let source = "fn main() -> i64 = if 0xFF > 0xFE { 1 } else { 0 };";
+    assert_eq!(run_program_i64(source), 1);
+}
+
+#[test]
+fn test_hex_literal_in_array_index() {
+    // Hex literal as array size/value
+    let source = "
+        fn main() -> i64 = {
+            let arr = [0; 0x10];
+            0x10
+        };
+    ";
+    assert_eq!(run_program_i64(source), 16);
+}
+
+#[test]
+fn test_hex_literal_with_underscore() {
+    // Underscore separator in hex literal
+    let source = "fn main() -> i64 = 0xFF_FF;";
+    assert_eq!(run_program_i64(source), 65535);
+}
+
+#[test]
+fn test_binary_literal_with_underscore() {
+    // Underscore separator in binary literal
+    let source = "fn main() -> i64 = 0b1111_0000;";
+    assert_eq!(run_program_i64(source), 240);
+}
