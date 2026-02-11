@@ -29,6 +29,14 @@ fn type_error(source: &str) -> bool {
     check_program(source).is_err()
 }
 
+/// Helper to check if a program produces a type error containing a specific message
+fn type_error_contains(source: &str, expected: &str) -> bool {
+    match check_program(source) {
+        Err(e) => format!("{e}").contains(expected),
+        Ok(_) => false,
+    }
+}
+
 /// Helper to check if a program produces a specific warning kind
 fn has_warning_kind(source: &str, warning_kind: &str) -> bool {
     let tokens = match tokenize(source) {
@@ -12471,4 +12479,86 @@ fn test_semantic_roundtrip_collatz_steps() {
         fn main() -> i64 = collatz(27);
     ";
     assert_eq!(run_program_i64(source), 111);
+}
+
+// ============================================================
+// Cycle 252: Struct Duplicate Field Detection
+// ============================================================
+
+#[test]
+fn test_struct_duplicate_field_rejected() {
+    // Struct with duplicate field names should be a type error
+    assert!(type_error("struct Bad { x: i64, x: bool }"));
+}
+
+#[test]
+fn test_struct_duplicate_field_error_message() {
+    // Error message should mention the duplicate field name
+    assert!(type_error_contains(
+        "struct Bad { x: i64, x: bool }",
+        "duplicate field 'x'"
+    ));
+}
+
+#[test]
+fn test_struct_duplicate_field_three_fields() {
+    // Duplicate among three fields
+    assert!(type_error("struct S { a: i64, b: bool, a: f64 }"));
+}
+
+#[test]
+fn test_struct_duplicate_field_same_type() {
+    // Even same type should be rejected
+    assert!(type_error("struct S { x: i64, x: i64 }"));
+}
+
+#[test]
+fn test_struct_no_duplicate_fields_ok() {
+    // Distinct field names should type-check fine
+    assert!(type_checks("struct Point { x: i64, y: i64 }"));
+}
+
+#[test]
+fn test_struct_single_field_ok() {
+    // Single field should always be fine
+    assert!(type_checks("struct Wrapper { value: i64 }"));
+}
+
+#[test]
+fn test_enum_duplicate_variant_rejected() {
+    // Enum with duplicate variant names should be a type error
+    assert!(type_error("enum Bad { A, B, A }"));
+}
+
+#[test]
+fn test_enum_duplicate_variant_error_message() {
+    // Error message should mention the duplicate variant name
+    assert!(type_error_contains(
+        "enum Bad { A, B, A }",
+        "duplicate variant 'A'"
+    ));
+}
+
+#[test]
+fn test_enum_duplicate_variant_with_data() {
+    // Duplicate variant with different data should still be rejected
+    assert!(type_error("enum Bad { Ok(i64), Err(bool), Ok(f64) }"));
+}
+
+#[test]
+fn test_enum_no_duplicate_variants_ok() {
+    // Distinct variant names should type-check fine
+    assert!(type_checks("enum Color { Red, Green, Blue }"));
+}
+
+#[test]
+fn test_generic_struct_duplicate_field_rejected() {
+    // Generic struct with duplicate fields should also be rejected
+    assert!(type_error("struct Pair<T> { first: T, first: T }"));
+}
+
+#[test]
+fn test_generic_enum_duplicate_variant_rejected() {
+    // Generic enum with duplicate variants should also be rejected
+    assert!(type_error("enum Result<T, E> { Ok(T), Err(E), Ok(T) }"));
 }

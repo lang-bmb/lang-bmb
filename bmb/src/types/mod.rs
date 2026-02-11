@@ -732,6 +732,18 @@ impl TypeChecker {
         for item in &program.items {
             match item {
                 Item::StructDef(s) => {
+                    // v0.90.37: Check for duplicate field names
+                    {
+                        let mut seen_fields = std::collections::HashSet::new();
+                        for f in &s.fields {
+                            if !seen_fields.insert(&f.name.node) {
+                                return Err(CompileError::type_error(
+                                    format!("duplicate field '{}' in struct '{}'", f.name.node, s.name.node),
+                                    f.name.span,
+                                ));
+                            }
+                        }
+                    }
                     let fields: Vec<_> = s.fields.iter()
                         .map(|f| (f.name.node.clone(), f.ty.node.clone()))
                         .collect();
@@ -750,6 +762,18 @@ impl TypeChecker {
                     }
                 }
                 Item::EnumDef(e) => {
+                    // v0.90.37: Check for duplicate variant names
+                    {
+                        let mut seen_variants = std::collections::HashSet::new();
+                        for v in &e.variants {
+                            if !seen_variants.insert(&v.name.node) {
+                                return Err(CompileError::type_error(
+                                    format!("duplicate variant '{}' in enum '{}'", v.name.node, e.name.node),
+                                    v.name.span,
+                                ));
+                            }
+                        }
+                    }
                     let variants: Vec<_> = e.variants.iter()
                         .map(|v| (v.name.node.clone(), v.fields.iter().map(|f| f.node.clone()).collect()))
                         .collect();
