@@ -310,7 +310,37 @@ impl WasmCodeGen {
             }
         }
 
+        // v0.90.44: Bump allocator (all targets)
+        self.emit_bump_allocator(out)?;
+
         writeln!(out)?;
+        Ok(())
+    }
+
+    /// v0.90.44: Emit bump allocator function
+    /// $bump_alloc(size: i32) -> i32 (pointer)
+    /// Uses $heap_ptr global, advances by size, returns old pointer.
+    fn emit_bump_allocator(&self, out: &mut String) -> WasmCodeGenResult<()> {
+        writeln!(out)?;
+        writeln!(out, "  ;; $bump_alloc: Bump allocator — allocate 'size' bytes from linear memory")?;
+        writeln!(out, "  ;; Returns: pointer to allocated region (old heap_ptr)")?;
+        writeln!(out, "  (func $bump_alloc (param $size i32) (result i32)")?;
+        writeln!(out, "    (local $ptr i32)")?;
+        writeln!(out, "    ;; Save current heap pointer")?;
+        writeln!(out, "    (local.set $ptr (global.get $heap_ptr))")?;
+        writeln!(out, "    ;; Advance heap pointer by size (8-byte aligned)")?;
+        writeln!(out, "    (global.set $heap_ptr")?;
+        writeln!(out, "      (i32.add")?;
+        writeln!(out, "        (global.get $heap_ptr)")?;
+        writeln!(out, "        (i32.and")?;
+        writeln!(out, "          (i32.add (local.get $size) (i32.const 7))")?;
+        writeln!(out, "          (i32.const -8)")?;
+        writeln!(out, "        )")?;
+        writeln!(out, "      )")?;
+        writeln!(out, "    )")?;
+        writeln!(out, "    ;; Return old pointer")?;
+        writeln!(out, "    (local.get $ptr)")?;
+        writeln!(out, "  )")?;
         Ok(())
     }
 
@@ -693,8 +723,9 @@ impl WasmCodeGen {
                 // In WASM, structs are stored in linear memory
                 // For now, allocate space on the stack and store field values
                 writeln!(out, "    ;; struct {} init with {} fields", struct_name, fields.len())?;
-                // Allocate memory (simplified: just store pointer in local)
-                writeln!(out, "    i32.const 0  ;; TODO: proper memory allocation")?;
+                // v0.90.44: Bump-allocate struct (8 bytes per field)
+                writeln!(out, "    i32.const {}", fields.len() * 8)?;
+                writeln!(out, "    call $bump_alloc")?;
                 writeln!(out, "    local.set ${}", dest.name)?;
                 for (i, (field_name, value)) in fields.iter().enumerate() {
                     writeln!(out, "    ;; field {} at offset {}", field_name, i * 8)?;
@@ -742,8 +773,9 @@ impl WasmCodeGen {
                 writeln!(out, "    ;; enum {}::{} with {} args", enum_name, variant, args.len())?;
                 // Calculate discriminant (simplified: hash of variant name)
                 let discriminant: i64 = variant.bytes().fold(0i64, |acc, b| acc.wrapping_mul(31).wrapping_add(b as i64));
-                // Allocate memory (simplified: just use a constant address)
-                writeln!(out, "    i32.const 0  ;; TODO: proper memory allocation")?;
+                // v0.90.44: Bump-allocate enum (discriminant + args, 8 bytes each)
+                writeln!(out, "    i32.const {}", (args.len() + 1) * 8)?;
+                writeln!(out, "    call $bump_alloc")?;
                 writeln!(out, "    local.set ${}", dest.name)?;
                 // Store discriminant at offset 0
                 writeln!(out, "    local.get ${}", dest.name)?;
@@ -762,9 +794,10 @@ impl WasmCodeGen {
             // v0.19.3: Array operations
             MirInst::ArrayInit { dest, element_type: _, elements } => {
                 writeln!(out, "    ;; array init with {} elements", elements.len())?;
-                // Allocate memory for array (simplified: use constant address)
-                let size = elements.len() * 8; // 8 bytes per element
-                writeln!(out, "    i32.const 0  ;; TODO: proper memory allocation for {} bytes", size)?;
+                // v0.90.44: Bump-allocate array (8 bytes per element)
+                let size = elements.len() * 8;
+                writeln!(out, "    i32.const {}", size)?;
+                writeln!(out, "    call $bump_alloc")?;
                 writeln!(out, "    local.set ${}", dest.name)?;
                 // Store each element
                 for (i, elem) in elements.iter().enumerate() {

@@ -13124,3 +13124,127 @@ fn test_wasm_module_structure_valid() {
     let close_pos = wat.rfind(')').unwrap();
     assert!(data_pos < close_pos, "Data section should be inside module");
 }
+
+// ===== v0.90.44: WASM Bump Allocator =====
+
+#[test]
+fn test_wasm_bump_alloc_function_present() {
+    let source = r#"
+        fn main() -> i64 = 0;
+    "#;
+    let wat = compile_to_wat(source);
+    assert!(wat.contains("(func $bump_alloc (param $size i32) (result i32)"),
+        "WAT should contain $bump_alloc function");
+}
+
+#[test]
+fn test_wasm_bump_alloc_uses_heap_ptr() {
+    let source = r#"
+        fn main() -> i64 = 0;
+    "#;
+    let wat = compile_to_wat(source);
+    assert!(wat.contains("global.get $heap_ptr"), "bump_alloc should use $heap_ptr global");
+    assert!(wat.contains("global.set $heap_ptr"), "bump_alloc should advance $heap_ptr");
+}
+
+#[test]
+fn test_wasm_struct_uses_bump_alloc() {
+    let source = r#"
+        struct Point { x: i64, y: i64 }
+        fn main() -> i64 = {
+            let p = new Point { x: 1, y: 2 };
+            p.x
+        };
+    "#;
+    let wat = compile_to_wat(source);
+    assert!(wat.contains("call $bump_alloc"), "Struct init should call $bump_alloc");
+    assert!(!wat.contains("TODO: proper memory allocation"), "TODO placeholder should be removed");
+}
+
+#[test]
+fn test_wasm_struct_alloc_size() {
+    let source = r#"
+        struct Triple { a: i64, b: i64, c: i64 }
+        fn main() -> i64 = {
+            let t = new Triple { a: 1, b: 2, c: 3 };
+            t.a
+        };
+    "#;
+    let wat = compile_to_wat(source);
+    // 3 fields * 8 bytes = 24
+    assert!(wat.contains("i32.const 24"), "3-field struct should allocate 24 bytes");
+}
+
+#[test]
+fn test_wasm_array_uses_bump_alloc() {
+    let source = r#"
+        fn main() -> i64 = {
+            let arr = [10, 20, 30];
+            arr[0]
+        };
+    "#;
+    let wat = compile_to_wat(source);
+    assert!(wat.contains("call $bump_alloc"), "Array init should call $bump_alloc");
+}
+
+#[test]
+fn test_wasm_array_alloc_size() {
+    let source = r#"
+        fn main() -> i64 = {
+            let arr = [1, 2, 3, 4];
+            arr[0]
+        };
+    "#;
+    let wat = compile_to_wat(source);
+    // 4 elements * 8 bytes = 32
+    assert!(wat.contains("i32.const 32"), "4-element array should allocate 32 bytes");
+}
+
+#[test]
+fn test_wasm_enum_uses_bump_alloc() {
+    let source = r#"
+        enum Color { Red, Green, Blue }
+        fn main() -> i64 = {
+            let c = Color::Red;
+            0
+        };
+    "#;
+    let wat = compile_to_wat(source);
+    assert!(wat.contains("call $bump_alloc"), "Enum variant should call $bump_alloc");
+}
+
+#[test]
+fn test_wasm_bump_alloc_8byte_alignment() {
+    let source = r#"
+        fn main() -> i64 = 0;
+    "#;
+    let wat = compile_to_wat(source);
+    // Alignment: (size + 7) & -8
+    assert!(wat.contains("i32.const 7"), "Bump alloc should round up to 8-byte boundary");
+    assert!(wat.contains("i32.const -8"), "Bump alloc should mask to 8-byte boundary");
+}
+
+#[test]
+fn test_wasm_no_todo_memory_allocation() {
+    let source = r#"
+        struct Point { x: i64, y: i64 }
+        enum Color { Red, Green, Blue }
+        fn main() -> i64 = {
+            let p = new Point { x: 1, y: 2 };
+            let c = Color::Red;
+            let arr = [1, 2, 3];
+            p.x
+        };
+    "#;
+    let wat = compile_to_wat(source);
+    assert!(!wat.contains("TODO: proper memory allocation"), "All memory TODOs should be replaced");
+}
+
+#[test]
+fn test_wasm_bump_alloc_all_targets() {
+    let source = r#"fn main() -> i64 = 0;"#;
+    for target in [bmb::codegen::WasmTarget::Wasi, bmb::codegen::WasmTarget::Browser, bmb::codegen::WasmTarget::Standalone] {
+        let wat = compile_to_wat_with_target(source, target);
+        assert!(wat.contains("func $bump_alloc"), "All targets should have $bump_alloc");
+    }
+}
