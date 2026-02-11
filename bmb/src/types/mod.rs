@@ -2943,7 +2943,7 @@ impl TypeChecker {
                     )),
                 }
             }
-            Type::Array(_, _) => {
+            Type::Array(elem_ty, _) => {
                 match method {
                     // len() -> i64
                     "len" => {
@@ -2951,6 +2951,58 @@ impl TypeChecker {
                             return Err(CompileError::type_error("len() takes no arguments", span));
                         }
                         Ok(Type::I64)
+                    }
+                    // v0.90.31: is_empty() -> bool
+                    "is_empty" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("is_empty() takes no arguments", span));
+                        }
+                        Ok(Type::Bool)
+                    }
+                    // v0.90.31: first() -> T
+                    "first" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("first() takes no arguments", span));
+                        }
+                        Ok(*elem_ty.clone())
+                    }
+                    // v0.90.31: last() -> T
+                    "last" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("last() takes no arguments", span));
+                        }
+                        Ok(*elem_ty.clone())
+                    }
+                    // v0.90.31: contains(T) -> bool
+                    "contains" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("contains() takes 1 argument", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg_ty, elem_ty, args[0].span)?;
+                        Ok(Type::Bool)
+                    }
+                    // v0.90.31: get(i64) -> T?
+                    "get" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("get() takes 1 argument", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        match arg_ty {
+                            Type::I32 | Type::I64 | Type::U32 | Type::U64 => {}
+                            _ => return Err(CompileError::type_error(
+                                format!("get() requires integer argument, got {}", arg_ty),
+                                args[0].span,
+                            )),
+                        }
+                        Ok(Type::Nullable(elem_ty.clone()))
+                    }
+                    // v0.90.31: reverse() -> [T]
+                    "reverse" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("reverse() takes no arguments", span));
+                        }
+                        Ok(Type::Array(elem_ty.clone(), 0))
                     }
                     _ => Err(CompileError::type_error(
                         format!("unknown method '{}' for Array", method),

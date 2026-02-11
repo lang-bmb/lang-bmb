@@ -13396,3 +13396,52 @@ fn test_wasm_all_allocs_use_bump() {
     let alloc_count = wat.matches("call $bump_alloc").count();
     assert!(alloc_count >= 4, "Expected >= 4 bump_alloc calls, got {}", alloc_count);
 }
+
+// ===== v0.90.49: Array Method Completeness =====
+
+#[test]
+fn test_array_len() {
+    let source = "fn main() -> i64 = [10, 20, 30].len();";
+    assert_eq!(run_program_i64(source), 3);
+}
+
+#[test]
+fn test_array_is_empty_false() {
+    let source = "fn main() -> i64 = if [1].is_empty() { 1 } else { 0 };";
+    assert_eq!(run_program_i64(source), 0);
+}
+
+#[test]
+fn test_array_first() {
+    let source = "fn main() -> i64 = [42, 1, 2].first();";
+    assert_eq!(run_program_i64(source), 42);
+}
+
+#[test]
+fn test_array_last() {
+    let source = "fn main() -> i64 = [1, 2, 99].last();";
+    assert_eq!(run_program_i64(source), 99);
+}
+
+#[test]
+fn test_array_contains_true() {
+    let source = "fn main() -> i64 = if [10, 20, 30].contains(20) { 1 } else { 0 };";
+    assert_eq!(run_program_i64(source), 1);
+}
+
+#[test]
+fn test_array_contains_false() {
+    let source = "fn main() -> i64 = if [10, 20, 30].contains(99) { 1 } else { 0 };";
+    assert_eq!(run_program_i64(source), 0);
+}
+
+#[test]
+fn test_array_reverse() {
+    let source = r#"
+        fn main() -> i64 = {
+            let arr = [1, 2, 3].reverse();
+            arr[0]
+        };
+    "#;
+    assert_eq!(run_program_i64(source), 3);
+}

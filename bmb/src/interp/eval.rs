@@ -1071,6 +1071,44 @@ impl Interpreter {
             Value::Array(arr) => {
                 match method {
                     "len" => Ok(Value::Int(arr.len() as i64)),
+                    // v0.90.49: Array methods
+                    "is_empty" => Ok(Value::Bool(arr.is_empty())),
+                    "first" => {
+                        match arr.first() {
+                            Some(v) => Ok(v.clone()),
+                            None => Err(RuntimeError::index_out_of_bounds(0, 0)),
+                        }
+                    }
+                    "last" => {
+                        match arr.last() {
+                            Some(v) => Ok(v.clone()),
+                            None => Err(RuntimeError::index_out_of_bounds(0, 0)),
+                        }
+                    }
+                    "contains" => {
+                        if args.len() != 1 {
+                            return Err(RuntimeError::arity_mismatch("contains", 1, args.len()));
+                        }
+                        Ok(Value::Bool(arr.contains(&args[0])))
+                    }
+                    "get" => {
+                        if args.len() != 1 {
+                            return Err(RuntimeError::arity_mismatch("get", 1, args.len()));
+                        }
+                        let idx = match &args[0] {
+                            Value::Int(n) => *n as usize,
+                            _ => return Err(RuntimeError::type_error("integer", args[0].type_name())),
+                        };
+                        match arr.get(idx) {
+                            Some(v) => Ok(Value::Enum("Option".to_string(), "Some".to_string(), vec![v.clone()])),
+                            None => Ok(Value::Enum("Option".to_string(), "None".to_string(), vec![])),
+                        }
+                    }
+                    "reverse" => {
+                        let mut reversed = arr;
+                        reversed.reverse();
+                        Ok(Value::Array(reversed))
+                    }
                     _ => Err(RuntimeError::undefined_function(&format!("Array.{}", method))),
                 }
             }
