@@ -13354,3 +13354,45 @@ fn test_enum_method_in_function() {
     "#;
     assert_eq!(run_program_i64(source), 1);
 }
+
+// ===== v0.90.48: WASM Allocation Consistency =====
+
+#[test]
+fn test_wasm_tuple_uses_bump_alloc() {
+    let source = r#"
+        fn main() -> i64 = {
+            let t = (1, 2);
+            0
+        };
+    "#;
+    let wat = compile_to_wat(source);
+    assert!(wat.contains("call $bump_alloc"), "Tuple init should use $bump_alloc");
+}
+
+#[test]
+fn test_wasm_no_stack_pointer_global() {
+    let source = r#"
+        fn main() -> i64 = 0;
+    "#;
+    let wat = compile_to_wat(source);
+    assert!(!wat.contains("__stack_pointer"), "Should not reference nonexistent __stack_pointer global");
+}
+
+#[test]
+fn test_wasm_all_allocs_use_bump() {
+    let source = r#"
+        struct Point { x: i64, y: i64 }
+        enum Dir { Up, Down }
+        fn main() -> i64 = {
+            let p = new Point { x: 1, y: 2 };
+            let d = Dir::Up;
+            let arr = [1, 2, 3];
+            let t = (10, 20);
+            p.x
+        };
+    "#;
+    let wat = compile_to_wat(source);
+    // Count $bump_alloc calls — should have at least 4 (struct, enum, array, tuple)
+    let alloc_count = wat.matches("call $bump_alloc").count();
+    assert!(alloc_count >= 4, "Expected >= 4 bump_alloc calls, got {}", alloc_count);
+}

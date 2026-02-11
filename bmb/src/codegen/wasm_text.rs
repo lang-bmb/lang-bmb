@@ -848,10 +848,11 @@ impl WasmCodeGen {
             // v0.55: Tuple initialization - store elements in linear memory
             MirInst::TupleInit { dest, elements } => {
                 writeln!(out, "    ;; tuple init with {} elements", elements.len())?;
-                // Allocate space on the heap (simplified: 8 bytes per element)
+                // v0.90.48: Use bump allocator (8 bytes per element)
                 let size = elements.len() * 8;
-                writeln!(out, "    global.get $heap_ptr")?;
-                writeln!(out, "    local.tee ${}", dest.name)?;
+                writeln!(out, "    i32.const {}", size)?;
+                writeln!(out, "    call $bump_alloc")?;
+                writeln!(out, "    local.set ${}", dest.name)?;
                 // Store each element
                 for (i, (_, op)) in elements.iter().enumerate() {
                     writeln!(out, "    local.get ${}", dest.name)?;
@@ -860,11 +861,6 @@ impl WasmCodeGen {
                     self.emit_operand(out, op)?;
                     writeln!(out, "    i64.store")?;
                 }
-                // Bump heap pointer
-                writeln!(out, "    global.get $heap_ptr")?;
-                writeln!(out, "    i32.const {}", size)?;
-                writeln!(out, "    i32.add")?;
-                writeln!(out, "    global.set $heap_ptr")?;
             }
 
             // v0.55: Tuple field extraction - load element from memory
@@ -908,13 +904,9 @@ impl WasmCodeGen {
                 };
                 let total_size = elem_size * size;
                 writeln!(out, "    ;; array alloc [{} x {} bytes]", size, elem_size)?;
-                // Simple bump allocation from a hypothetical stack pointer global
-                // In a real implementation, this would use proper stack management
-                writeln!(out, "    global.get $__stack_pointer")?;
-                writeln!(out, "    global.get $__stack_pointer")?;
+                // v0.90.48: Use bump allocator
                 writeln!(out, "    i32.const {}", total_size)?;
-                writeln!(out, "    i32.sub")?;
-                writeln!(out, "    global.set $__stack_pointer")?;
+                writeln!(out, "    call $bump_alloc")?;
                 writeln!(out, "    i64.extend_i32_u")?; // Convert to i64 for pointer
                 writeln!(out, "    local.set ${}", dest.name)?;
             }
@@ -3157,8 +3149,7 @@ mod tests {
 
         let wat = WasmCodeGen::new().generate(&program).unwrap();
         assert!(wat.contains("tuple init with 2 elements"), "tuple init comment");
-        assert!(wat.contains("global.get $heap_ptr"), "allocates from heap");
-        assert!(wat.contains("global.set $heap_ptr"), "bumps heap pointer");
+        assert!(wat.contains("call $bump_alloc"), "uses bump allocator");
     }
 
     #[test]
