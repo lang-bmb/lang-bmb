@@ -6808,3 +6808,217 @@ fn test_opt_tail_recursion_correct_result() {
                    fn main() -> i64 = sum_tail(10, 0);";
     assert_eq!(run_program_i64(source), 55); // 1+2+...+10
 }
+
+// ========================================================================
+// Cycle 229: Type System Edge Case Tests
+// ========================================================================
+
+// --- Generic Type Inference ---
+
+#[test]
+fn test_type_generic_identity_i64() {
+    assert!(type_checks("fn id<T>(x: T) -> T = x;
+                          fn main() -> i64 = id(42);"));
+}
+
+#[test]
+fn test_type_generic_identity_bool() {
+    assert!(type_checks("fn id<T>(x: T) -> T = x;
+                          fn main() -> bool = id(true);"));
+}
+
+#[test]
+fn test_type_generic_identity_string() {
+    assert!(type_checks("fn id<T>(x: T) -> T = x;
+                          fn main() -> String = id(\"hello\");"));
+}
+
+#[test]
+fn test_type_generic_two_params() {
+    assert!(type_checks("fn first<A, B>(a: A, b: B) -> A = a;
+                          fn main() -> i64 = first(42, true);"));
+}
+
+#[test]
+fn test_type_generic_return_type_mismatch() {
+    // Calling generic with wrong return type
+    assert!(type_error("fn id<T>(x: T) -> T = x;
+                         fn main() -> bool = id(42);"));
+}
+
+// --- Struct Type Checking ---
+
+#[test]
+fn test_type_struct_field_types_match() {
+    assert!(type_checks("struct Point { x: i64, y: i64 }
+                          fn make() -> Point = new Point { x: 1, y: 2 };"));
+}
+
+#[test]
+fn test_type_struct_field_wrong_type() {
+    assert!(type_error("struct Point { x: i64, y: i64 }
+                         fn make() -> Point = new Point { x: true, y: 2 };"));
+}
+
+#[test]
+fn test_type_struct_return_type_mismatch() {
+    assert!(type_error("struct Point { x: i64, y: i64 }
+                         fn make() -> i64 = new Point { x: 1, y: 2 };"));
+}
+
+#[test]
+fn test_type_nested_struct() {
+    assert!(type_checks("struct Inner { val: i64 }
+                          struct Outer { inner: Inner, tag: i64 }
+                          fn make() -> Outer = new Outer { inner: new Inner { val: 1 }, tag: 2 };"));
+}
+
+// --- Enum Type Checking ---
+
+#[test]
+fn test_type_enum_variant_data_type() {
+    assert!(type_checks("enum Result { Ok(i64), Err(String) }
+                          fn make() -> Result = Result::Ok(42);"));
+}
+
+#[test]
+fn test_type_enum_variant_wrong_data_type() {
+    assert!(type_error("enum Result { Ok(i64), Err(String) }
+                         fn make() -> Result = Result::Ok(\"wrong\");"));
+}
+
+#[test]
+fn test_type_enum_match_exhaustive() {
+    assert!(type_checks("enum Color { Red, Green, Blue }
+                          fn to_num(c: Color) -> i64 = match c {
+                            Color::Red => 1,
+                            Color::Green => 2,
+                            Color::Blue => 3
+                          };"));
+}
+
+// --- Nullable Type Checking ---
+
+#[test]
+fn test_type_nullable_return_value() {
+    assert!(type_checks("fn maybe(x: i64) -> i64? = if x > 0 { x } else { null };"));
+}
+
+#[test]
+fn test_type_nullable_cannot_assign_null_to_non_nullable() {
+    assert!(type_error("fn bad() -> i64 = null;"));
+}
+
+#[test]
+fn test_type_nullable_unwrap_or_returns_base_type() {
+    assert!(type_checks("fn get(x: i64?) -> i64 = x.unwrap_or(0);"));
+}
+
+// --- Function Type Checking ---
+
+#[test]
+fn test_type_function_wrong_return_type() {
+    assert!(type_error("fn f() -> i64 = true;"));
+}
+
+#[test]
+fn test_type_recursive_function_return() {
+    assert!(type_checks("fn fact(n: i64) -> i64 = if n <= 1 { 1 } else { n * fact(n - 1) };"));
+}
+
+#[test]
+fn test_type_mutual_recursion() {
+    assert!(type_checks("fn is_even(n: i64) -> bool = if n == 0 { true } else { is_odd(n - 1) };
+                          fn is_odd(n: i64) -> bool = if n == 0 { false } else { is_even(n - 1) };"));
+}
+
+// --- Expression Type Checking ---
+
+#[test]
+fn test_type_if_branches_same_type() {
+    assert!(type_checks("fn f(x: bool) -> i64 = if x { 1 } else { 2 };"));
+}
+
+#[test]
+fn test_type_if_branches_different_types_error() {
+    assert!(type_error("fn f(x: bool) -> i64 = if x { 1 } else { true };"));
+}
+
+#[test]
+fn test_type_match_branches_consistent() {
+    assert!(type_checks("fn f(x: i64) -> i64 = match x { 0 => 10, 1 => 20, _ => 30 };"));
+}
+
+#[test]
+fn test_type_match_branches_inconsistent_error() {
+    assert!(type_error("fn f(x: i64) -> String = match x { 0 => 10, _ => 20 };"));
+}
+
+// --- Contract Type Checking ---
+
+#[test]
+fn test_type_contract_pre_uses_params() {
+    assert!(type_checks("fn div(a: i64, b: i64) -> i64 pre b != 0 = a / b;"));
+}
+
+#[test]
+fn test_type_contract_post_uses_ret() {
+    assert!(type_checks("fn abs(x: i64) -> i64 post ret >= 0 = if x < 0 { 0 - x } else { x };"));
+}
+
+// --- Closure Type Checking ---
+
+#[test]
+fn test_type_closure_inferred_param_types() {
+    assert!(type_checks("fn main() -> i64 = {
+                            let f = fn |x: i64| { x + 1 };
+                            f(41)
+                          };"));
+}
+
+#[test]
+fn test_type_closure_captures_outer_var() {
+    assert!(type_checks("fn main() -> i64 = {
+                            let base = 10;
+                            let f = fn |x: i64| { x + base };
+                            f(32)
+                          };"));
+}
+
+// --- Array Type Checking ---
+
+#[test]
+fn test_type_array_elements_same_type() {
+    assert!(type_checks("fn f() -> [i64; 3] = [1, 2, 3];"));
+}
+
+#[test]
+fn test_type_array_index_returns_element_type() {
+    assert!(type_checks("fn f(arr: [i64; 3]) -> i64 = arr[0];"));
+}
+
+// --- Complex Type Expressions ---
+
+#[test]
+fn test_type_function_taking_struct_returning_field() {
+    // Note: BMB uses `new` for struct construction, but field access doesn't need it
+    assert!(type_checks("struct Pair { a: i64, b: i64 }
+                          fn sum(p: Pair) -> i64 = p.a + p.b;"));
+}
+
+#[test]
+fn test_type_generic_with_struct() {
+    assert!(type_checks("struct Wrapper { val: i64 }
+                          fn id<T>(x: T) -> T = x;
+                          fn main() -> Wrapper = id(new Wrapper { val: 42 });"));
+}
+
+#[test]
+fn test_type_complex_expression_inference() {
+    // Multiple operations should infer correctly
+    assert!(type_checks("fn f(a: i64, b: i64, c: bool) -> i64 = {
+                            let x = a + b;
+                            let y = x * 2;
+                            if c { y } else { x }
+                          };"));
+}
