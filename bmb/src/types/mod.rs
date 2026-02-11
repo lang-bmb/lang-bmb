@@ -2873,7 +2873,7 @@ impl TypeChecker {
 
                 if !valid_cast {
                     return Err(CompileError::type_error(
-                        format!("cannot cast {:?} to {:?}: only numeric types and struct pointers are supported", src_ty, target_ty),
+                        format!("cannot cast {} to {}: only numeric types and struct pointers are supported", src_ty, target_ty),
                         span,
                     ));
                 }

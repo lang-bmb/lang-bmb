@@ -432,7 +432,7 @@ pub enum CompileError {
 
     /// Module resolution error (v0.5 Phase 7)
     /// v0.70: Added optional span for better error localization
-    #[error("Resolution error{}: {message}", span.map(|s| format!(" at {:?}", s)).unwrap_or_default())]
+    #[error("Resolution error{}: {message}", span.map(|s| format!(" at {}", s)).unwrap_or_default())]
     Resolve { message: String, span: Option<Span> },
 }
 

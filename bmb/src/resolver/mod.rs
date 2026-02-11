@@ -183,8 +183,8 @@ impl Resolver {
         let hint = format_suggestion_hint(suggestion.as_deref());
 
         Err(CompileError::resolve_error_at(
-            format!("Module '{}' not found in {:?}{}",
-                module_name, self.base_dir, hint),
+            format!("Module '{}' not found in {}{}",
+                module_name, self.base_dir.display(), hint),
             span,
         ))
     }

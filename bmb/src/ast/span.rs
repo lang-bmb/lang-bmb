@@ -22,6 +22,13 @@ impl Span {
     }
 }
 
+// v0.90.46: Display for human-readable span output
+impl std::fmt::Display for Span {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}..{}", self.start, self.end)
+    }
+}
+
 impl From<Span> for std::ops::Range<usize> {
     fn from(span: Span) -> Self {
         span.start..span.end

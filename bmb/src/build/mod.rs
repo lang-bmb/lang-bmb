@@ -422,7 +422,7 @@ pub fn build(config: &BuildConfig) -> BuildResult<()> {
     let mut type_checker = TypeChecker::new();
     type_checker
         .check_program(&program)
-        .map_err(|e| BuildError::Type(format!("{:?}", e)))?;
+        .map_err(|e| BuildError::Type(format!("{}", e)))?;
 
     if config.verbose {
         println!("  Type check passed");

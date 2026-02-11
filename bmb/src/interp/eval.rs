@@ -304,7 +304,7 @@ impl Interpreter {
                     let type_name = match &impl_block.target_type.node {
                         crate::ast::Type::Named(name) => name.clone(),
                         crate::ast::Type::Generic { name, .. } => name.clone(),
-                        other => format!("{:?}", other),
+                        other => format!("{}", other),
                     };
                     for method in &impl_block.methods {
                         self.impl_methods.insert(
@@ -1464,8 +1464,8 @@ impl Interpreter {
             // i64 -> *T (malloc result to typed pointer)
             (Value::Int(n), Type::Ptr(_)) => Ok(Value::Int(*n)),
             _ => Err(RuntimeError::type_error(
-                &format!("{:?}", target_ty),
-                &format!("cannot cast {} to {:?}", val.type_name(), target_ty),
+                &format!("{}", target_ty),
+                &format!("cannot cast {} to {}", val.type_name(), target_ty),
             )),
         }
     }

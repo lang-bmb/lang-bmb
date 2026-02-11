@@ -3048,7 +3048,7 @@ fn generate_bootstrap_ir(source: &str) -> Result<String, Box<dyn std::error::Err
                     result.materialize_string()
                         .ok_or_else(|| "Failed to materialize StringRope".to_string())
                 }
-                other => Err(format!("Expected string from compile_program, got: {:?}", other.type_name())),
+                other => Err(format!("Expected string from compile_program, got: {}", other.type_name())),
             }
         })?;
 
