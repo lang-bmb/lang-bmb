@@ -15006,4 +15006,962 @@ mod tests {
             "Should have at least 2 Select instructions for 2 diamond patterns, got {}",
             select_count);
     }
+
+    // ========================================================================
+    // Cycle 219: Additional DCE tests
+    // ========================================================================
+
+    #[test]
+    fn test_dce_preserves_side_effects() {
+        // Call instructions have side effects and should NOT be removed
+        // even if their result is unused
+        let mut func = MirFunction {
+            name: "test".to_string(),
+            params: vec![],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![
+                    MirInst::Call {
+                        dest: Some(Place::new("unused_result")),
+                        func: "print".to_string(),
+                        args: vec![Operand::Constant(Constant::Int(42))],
+                        is_tail: false,
+                    },
+                    MirInst::Const {
+                        dest: Place::new("result"),
+                        value: Constant::Int(0),
+                    },
+                ],
+                terminator: Terminator::Return(Some(Operand::Place(Place::new("result")))),
+            }],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let pass = DeadCodeElimination;
+        let changed = pass.run_on_function(&mut func);
+
+        // Call should be preserved (side effects), nothing should change
+        assert!(!changed, "DCE should not remove call with side effects");
+        assert_eq!(func.blocks[0].instructions.len(), 2);
+    }
+
+    #[test]
+    fn test_dce_chain_dependency() {
+        // a = 5, b = a + 1, c = b * 2, return c
+        // All live because c depends on b depends on a
+        let mut func = MirFunction {
+            name: "test".to_string(),
+            params: vec![],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![
+                    MirInst::Const {
+                        dest: Place::new("a"),
+                        value: Constant::Int(5),
+                    },
+                    MirInst::BinOp {
+                        dest: Place::new("b"),
+                        op: MirBinOp::Add,
+                        lhs: Operand::Place(Place::new("a")),
+                        rhs: Operand::Constant(Constant::Int(1)),
+                    },
+                    MirInst::BinOp {
+                        dest: Place::new("c"),
+                        op: MirBinOp::Mul,
+                        lhs: Operand::Place(Place::new("b")),
+                        rhs: Operand::Constant(Constant::Int(2)),
+                    },
+                ],
+                terminator: Terminator::Return(Some(Operand::Place(Place::new("c")))),
+            }],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let pass = DeadCodeElimination;
+        let changed = pass.run_on_function(&mut func);
+
+        // All instructions should be kept (all are live)
+        assert!(!changed, "DCE should not remove any live instructions");
+        assert_eq!(func.blocks[0].instructions.len(), 3);
+    }
+
+    #[test]
+    fn test_dce_multiple_independent_dead() {
+        // dead1 and dead2 are independent and unused, live is used
+        // Single-pass DCE should remove both dead constants
+        let mut func = MirFunction {
+            name: "test".to_string(),
+            params: vec![],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![
+                    MirInst::Const {
+                        dest: Place::new("dead1"),
+                        value: Constant::Int(10),
+                    },
+                    MirInst::Const {
+                        dest: Place::new("dead2"),
+                        value: Constant::Int(20),
+                    },
+                    MirInst::Const {
+                        dest: Place::new("live"),
+                        value: Constant::Int(42),
+                    },
+                ],
+                terminator: Terminator::Return(Some(Operand::Place(Place::new("live")))),
+            }],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let pass = DeadCodeElimination;
+        let changed = pass.run_on_function(&mut func);
+
+        assert!(changed, "DCE should remove dead instructions");
+        assert_eq!(func.blocks[0].instructions.len(), 1, "Only live const should remain");
+        assert!(matches!(&func.blocks[0].instructions[0],
+            MirInst::Const { dest, value: Constant::Int(42) } if dest.name == "live"));
+    }
+
+    #[test]
+    fn test_dce_branch_condition_kept() {
+        // cond used in Branch terminator should be kept
+        let mut func = MirFunction {
+            name: "test".to_string(),
+            params: vec![("x".to_string(), MirType::I64)],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![
+                BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![
+                        MirInst::BinOp {
+                            dest: Place::new("cond"),
+                            op: MirBinOp::Le,
+                            lhs: Operand::Place(Place::new("x")),
+                            rhs: Operand::Constant(Constant::Int(0)),
+                        },
+                        MirInst::Const {
+                            dest: Place::new("dead"),
+                            value: Constant::Int(99),
+                        },
+                    ],
+                    terminator: Terminator::Branch {
+                        cond: Operand::Place(Place::new("cond")),
+                        then_label: "then".to_string(),
+                        else_label: "else".to_string(),
+                    },
+                },
+                BasicBlock {
+                    label: "then".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(0)))),
+                },
+                BasicBlock {
+                    label: "else".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Return(Some(Operand::Place(Place::new("x")))),
+                },
+            ],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let pass = DeadCodeElimination;
+        let changed = pass.run_on_function(&mut func);
+
+        assert!(changed, "DCE should remove dead const");
+        // cond should be kept (used in branch), dead should be removed
+        assert_eq!(func.blocks[0].instructions.len(), 1);
+        assert!(matches!(&func.blocks[0].instructions[0],
+            MirInst::BinOp { dest, .. } if dest.name == "cond"));
+    }
+
+    // ========================================================================
+    // Cycle 219: Additional ConstFunctionEval tests
+    // ========================================================================
+
+    #[test]
+    fn test_const_function_eval_side_effects_not_inlined() {
+        // Function with Call inside should NOT be treated as const
+        // fn impure() -> i64 = { print(42); 0 }
+        let impure_fn = MirFunction {
+            name: "impure".to_string(),
+            params: vec![],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![
+                    MirInst::Call {
+                        dest: Some(Place::new("_")),
+                        func: "print".to_string(),
+                        args: vec![Operand::Constant(Constant::Int(42))],
+                        is_tail: false,
+                    },
+                ],
+                terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(0)))),
+            }],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let mut caller_fn = MirFunction {
+            name: "test_caller".to_string(),
+            params: vec![],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![
+                    MirInst::Call {
+                        dest: Some(Place::new("r")),
+                        func: "impure".to_string(),
+                        args: vec![],
+                        is_tail: false,
+                    },
+                ],
+                terminator: Terminator::Return(Some(Operand::Place(Place::new("r")))),
+            }],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let program = MirProgram {
+            functions: vec![impure_fn, caller_fn.clone()],
+            extern_fns: vec![],
+            struct_defs: std::collections::HashMap::new(),
+        };
+
+        let pass = ConstFunctionEval::from_program(&program);
+        let changed = pass.run_on_function(&mut caller_fn);
+
+        assert!(!changed, "Impure function call should NOT be inlined");
+        assert!(matches!(&caller_fn.blocks[0].instructions[0], MirInst::Call { .. }));
+    }
+
+    #[test]
+    fn test_const_function_eval_variable_return() {
+        // fn get_val() -> i64 = { let x = 99; x }
+        // Should be inlined since x is a const assigned to place then returned
+        let const_fn = MirFunction {
+            name: "get_val".to_string(),
+            params: vec![],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![
+                    MirInst::Const {
+                        dest: Place::new("x"),
+                        value: Constant::Int(99),
+                    },
+                ],
+                terminator: Terminator::Return(Some(Operand::Place(Place::new("x")))),
+            }],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: true,
+            is_const: true,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let mut caller_fn = MirFunction {
+            name: "caller".to_string(),
+            params: vec![],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![
+                    MirInst::Call {
+                        dest: Some(Place::new("r")),
+                        func: "get_val".to_string(),
+                        args: vec![],
+                        is_tail: false,
+                    },
+                ],
+                terminator: Terminator::Return(Some(Operand::Place(Place::new("r")))),
+            }],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let program = MirProgram {
+            functions: vec![const_fn, caller_fn.clone()],
+            extern_fns: vec![],
+            struct_defs: std::collections::HashMap::new(),
+        };
+
+        let pass = ConstFunctionEval::from_program(&program);
+        let changed = pass.run_on_function(&mut caller_fn);
+
+        assert!(changed, "Variable-return const function should be inlined");
+        assert!(matches!(&caller_fn.blocks[0].instructions[0],
+            MirInst::Const { dest, value: Constant::Int(99) } if dest.name == "r"));
+    }
+
+    #[test]
+    fn test_const_function_eval_multi_block_not_inlined() {
+        // Multi-block function should NOT be inlined (extract_constant_return requires 1 block)
+        let multi_fn = MirFunction {
+            name: "multi".to_string(),
+            params: vec![],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![
+                BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Goto("exit".to_string()),
+                },
+                BasicBlock {
+                    label: "exit".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(7)))),
+                },
+            ],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: true,
+            is_const: true,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let mut caller_fn = MirFunction {
+            name: "caller".to_string(),
+            params: vec![],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![
+                    MirInst::Call {
+                        dest: Some(Place::new("r")),
+                        func: "multi".to_string(),
+                        args: vec![],
+                        is_tail: false,
+                    },
+                ],
+                terminator: Terminator::Return(Some(Operand::Place(Place::new("r")))),
+            }],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let program = MirProgram {
+            functions: vec![multi_fn, caller_fn.clone()],
+            extern_fns: vec![],
+            struct_defs: std::collections::HashMap::new(),
+        };
+
+        let pass = ConstFunctionEval::from_program(&program);
+        let changed = pass.run_on_function(&mut caller_fn);
+
+        assert!(!changed, "Multi-block function should NOT be inlined");
+    }
+
+    // ========================================================================
+    // Cycle 219: Additional TailCallOptimization tests
+    // ========================================================================
+
+    #[test]
+    fn test_tco_direct_tail_call() {
+        // Phase 1: Direct tail call in same block
+        // fn f(n) { ... ; result = call g(n); return result }
+        let mut func = MirFunction {
+            name: "f".to_string(),
+            params: vec![("n".to_string(), MirType::I64)],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![
+                    MirInst::BinOp {
+                        dest: Place::new("arg"),
+                        op: MirBinOp::Add,
+                        lhs: Operand::Place(Place::new("n")),
+                        rhs: Operand::Constant(Constant::Int(1)),
+                    },
+                    MirInst::Call {
+                        dest: Some(Place::new("result")),
+                        func: "g".to_string(),
+                        args: vec![Operand::Place(Place::new("arg"))],
+                        is_tail: false,
+                    },
+                ],
+                terminator: Terminator::Return(Some(Operand::Place(Place::new("result")))),
+            }],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let pass = TailCallOptimization::new();
+        let changed = pass.run_on_function(&mut func);
+
+        assert!(changed, "Direct tail call should be detected");
+        let call = &func.blocks[0].instructions[1];
+        assert!(matches!(call, MirInst::Call { is_tail: true, .. }),
+            "Call should be marked as tail call");
+    }
+
+    #[test]
+    fn test_tco_non_tail_call_not_marked() {
+        // Call result is used after the call = NOT a tail call
+        // fn f(n) { result = call g(n); final = result + 1; return final }
+        let mut func = MirFunction {
+            name: "f".to_string(),
+            params: vec![("n".to_string(), MirType::I64)],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![
+                    MirInst::Call {
+                        dest: Some(Place::new("result")),
+                        func: "g".to_string(),
+                        args: vec![Operand::Place(Place::new("n"))],
+                        is_tail: false,
+                    },
+                    MirInst::BinOp {
+                        dest: Place::new("final_val"),
+                        op: MirBinOp::Add,
+                        lhs: Operand::Place(Place::new("result")),
+                        rhs: Operand::Constant(Constant::Int(1)),
+                    },
+                ],
+                terminator: Terminator::Return(Some(Operand::Place(Place::new("final_val")))),
+            }],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let pass = TailCallOptimization::new();
+        let changed = pass.run_on_function(&mut func);
+
+        assert!(!changed, "Non-tail call should NOT be marked");
+        let call = &func.blocks[0].instructions[0];
+        assert!(matches!(call, MirInst::Call { is_tail: false, .. }),
+            "Call should remain non-tail");
+    }
+
+    #[test]
+    fn test_tco_void_return_no_change() {
+        // Return(None) = no place to match against, should not affect anything
+        let mut func = MirFunction {
+            name: "f".to_string(),
+            params: vec![],
+            ret_ty: MirType::Unit,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![
+                    MirInst::Call {
+                        dest: Some(Place::new("_")),
+                        func: "side_effect".to_string(),
+                        args: vec![],
+                        is_tail: false,
+                    },
+                ],
+                terminator: Terminator::Return(None),
+            }],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let pass = TailCallOptimization::new();
+        let changed = pass.run_on_function(&mut func);
+
+        assert!(!changed, "Void return should not trigger TCO");
+    }
+
+    // ========================================================================
+    // Cycle 219: Additional TailRecursiveToLoop tests
+    // ========================================================================
+
+    #[test]
+    fn test_tail_recursive_gcd() {
+        // fn gcd(a, b) = if b <= 0 { a } else { gcd(b, a % b) }
+        // Both parameters change - more complex than sum
+        let mut func = MirFunction {
+            name: "gcd".to_string(),
+            params: vec![
+                ("a".to_string(), MirType::I64),
+                ("b".to_string(), MirType::I64),
+            ],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![
+                BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![
+                        MirInst::BinOp {
+                            dest: Place::new("cmp"),
+                            op: MirBinOp::Le,
+                            lhs: Operand::Place(Place::new("b")),
+                            rhs: Operand::Constant(Constant::Int(0)),
+                        },
+                    ],
+                    terminator: Terminator::Branch {
+                        cond: Operand::Place(Place::new("cmp")),
+                        then_label: "base".to_string(),
+                        else_label: "recurse".to_string(),
+                    },
+                },
+                BasicBlock {
+                    label: "base".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Return(Some(Operand::Place(Place::new("a")))),
+                },
+                BasicBlock {
+                    label: "recurse".to_string(),
+                    instructions: vec![
+                        MirInst::BinOp {
+                            dest: Place::new("a_mod_b"),
+                            op: MirBinOp::Mod,
+                            lhs: Operand::Place(Place::new("a")),
+                            rhs: Operand::Place(Place::new("b")),
+                        },
+                        MirInst::Call {
+                            dest: Some(Place::new("result")),
+                            func: "gcd".to_string(),
+                            args: vec![
+                                Operand::Place(Place::new("b")),
+                                Operand::Place(Place::new("a_mod_b")),
+                            ],
+                            is_tail: true,
+                        },
+                    ],
+                    terminator: Terminator::Return(Some(Operand::Place(Place::new("result")))),
+                },
+            ],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: true,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let pass = TailRecursiveToLoop::new();
+        let changed = pass.run_on_function(&mut func);
+
+        assert!(changed, "GCD should be transformed to loop");
+
+        // Entry should jump to loop_header
+        assert!(matches!(&func.blocks[0].terminator, Terminator::Goto(_)));
+
+        // Loop header should have phi nodes for both a and b
+        let loop_header = &func.blocks[1];
+        let phi_count = loop_header.instructions.iter()
+            .filter(|i| matches!(i, MirInst::Phi { .. }))
+            .count();
+        assert_eq!(phi_count, 2, "Should have phi nodes for both a and b");
+
+        // No recursive calls should remain
+        let has_call = func.blocks.iter().any(|b| {
+            b.instructions.iter().any(|i| matches!(i, MirInst::Call { func: f, .. } if f == "gcd"))
+        });
+        assert!(!has_call, "Recursive call should be eliminated");
+    }
+
+    #[test]
+    fn test_tail_recursive_non_self_call_no_change() {
+        // Tail call to a DIFFERENT function should NOT be transformed
+        let mut func = MirFunction {
+            name: "wrapper".to_string(),
+            params: vec![("n".to_string(), MirType::I64)],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![
+                    MirInst::Call {
+                        dest: Some(Place::new("result")),
+                        func: "other_func".to_string(),
+                        args: vec![Operand::Place(Place::new("n"))],
+                        is_tail: true,
+                    },
+                ],
+                terminator: Terminator::Return(Some(Operand::Place(Place::new("result")))),
+            }],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let pass = TailRecursiveToLoop::new();
+        let changed = pass.run_on_function(&mut func);
+
+        assert!(!changed, "Non-self-recursive call should not be transformed");
+    }
+
+    #[test]
+    fn test_tail_recursive_all_invariant_no_change() {
+        // All params passed unchanged = infinite loop, skip transform
+        let mut func = MirFunction {
+            name: "infinite".to_string(),
+            params: vec![("x".to_string(), MirType::I64)],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![
+                BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![
+                        MirInst::BinOp {
+                            dest: Place::new("cmp"),
+                            op: MirBinOp::Le,
+                            lhs: Operand::Place(Place::new("x")),
+                            rhs: Operand::Constant(Constant::Int(0)),
+                        },
+                    ],
+                    terminator: Terminator::Branch {
+                        cond: Operand::Place(Place::new("cmp")),
+                        then_label: "base".to_string(),
+                        else_label: "recurse".to_string(),
+                    },
+                },
+                BasicBlock {
+                    label: "base".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Return(Some(Operand::Place(Place::new("x")))),
+                },
+                BasicBlock {
+                    label: "recurse".to_string(),
+                    instructions: vec![
+                        MirInst::Call {
+                            dest: Some(Place::new("result")),
+                            func: "infinite".to_string(),
+                            args: vec![Operand::Place(Place::new("x"))], // Same param!
+                            is_tail: true,
+                        },
+                    ],
+                    terminator: Terminator::Return(Some(Operand::Place(Place::new("result")))),
+                },
+            ],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let pass = TailRecursiveToLoop::new();
+        let changed = pass.run_on_function(&mut func);
+
+        assert!(!changed, "All-invariant params should not be transformed (infinite loop)");
+    }
+
+    // ========================================================================
+    // Cycle 219: Additional LinearRecurrenceToLoop tests
+    // ========================================================================
+
+    #[test]
+    fn test_linear_recurrence_multi_param_no_change() {
+        // LinearRecurrenceToLoop only handles single-param functions
+        let mut func = MirFunction {
+            name: "f".to_string(),
+            params: vec![
+                ("a".to_string(), MirType::I64),
+                ("b".to_string(), MirType::I64),
+            ],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![],
+                terminator: Terminator::Return(Some(Operand::Place(Place::new("a")))),
+            }],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let pass = LinearRecurrenceToLoop;
+        let changed = pass.run_on_function(&mut func);
+        assert!(!changed, "Multi-param function should not be transformed");
+    }
+
+    #[test]
+    fn test_linear_recurrence_non_integer_param_no_change() {
+        // LinearRecurrenceToLoop only handles integer params
+        let mut func = MirFunction {
+            name: "f".to_string(),
+            params: vec![("x".to_string(), MirType::F64)],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![],
+                terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(0)))),
+            }],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let pass = LinearRecurrenceToLoop;
+        let changed = pass.run_on_function(&mut func);
+        assert!(!changed, "Non-integer param should not be transformed");
+    }
+
+    #[test]
+    fn test_linear_recurrence_fibonacci_loop_structure() {
+        // Verify detailed loop structure after fibonacci transformation
+        let mut func = MirFunction {
+            name: "fib".to_string(),
+            params: vec![("n".to_string(), MirType::I64)],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![
+                BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![
+                        MirInst::BinOp {
+                            dest: Place::new("cmp"),
+                            op: MirBinOp::Le,
+                            lhs: Operand::Place(Place::new("n")),
+                            rhs: Operand::Constant(Constant::Int(1)),
+                        },
+                    ],
+                    terminator: Terminator::Branch {
+                        cond: Operand::Place(Place::new("cmp")),
+                        then_label: "base".to_string(),
+                        else_label: "recurse".to_string(),
+                    },
+                },
+                BasicBlock {
+                    label: "base".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Return(Some(Operand::Place(Place::new("n")))),
+                },
+                BasicBlock {
+                    label: "recurse".to_string(),
+                    instructions: vec![
+                        MirInst::BinOp {
+                            dest: Place::new("n1"),
+                            op: MirBinOp::Sub,
+                            lhs: Operand::Place(Place::new("n")),
+                            rhs: Operand::Constant(Constant::Int(1)),
+                        },
+                        MirInst::Call {
+                            dest: Some(Place::new("r1")),
+                            func: "fib".to_string(),
+                            args: vec![Operand::Place(Place::new("n1"))],
+                            is_tail: false,
+                        },
+                        MirInst::BinOp {
+                            dest: Place::new("n2"),
+                            op: MirBinOp::Sub,
+                            lhs: Operand::Place(Place::new("n")),
+                            rhs: Operand::Constant(Constant::Int(2)),
+                        },
+                        MirInst::Call {
+                            dest: Some(Place::new("r2")),
+                            func: "fib".to_string(),
+                            args: vec![Operand::Place(Place::new("n2"))],
+                            is_tail: false,
+                        },
+                        MirInst::BinOp {
+                            dest: Place::new("result"),
+                            op: MirBinOp::Add,
+                            lhs: Operand::Place(Place::new("r1")),
+                            rhs: Operand::Place(Place::new("r2")),
+                        },
+                    ],
+                    terminator: Terminator::Return(Some(Operand::Place(Place::new("result")))),
+                },
+            ],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let pass = LinearRecurrenceToLoop;
+        let changed = pass.run_on_function(&mut func);
+        assert!(changed, "Fibonacci should be transformed");
+
+        // Verify loop structure exists
+        let has_loop_setup = func.blocks.iter().any(|b| b.label == "loop_setup");
+        let has_loop_header = func.blocks.iter().any(|b| b.label == "loop_header");
+        let has_loop_body = func.blocks.iter().any(|b| b.label == "loop_body");
+        let has_loop_exit = func.blocks.iter().any(|b| b.label == "loop_exit");
+        assert!(has_loop_setup, "Should have loop_setup block");
+        assert!(has_loop_header, "Should have loop_header block");
+        assert!(has_loop_body, "Should have loop_body block");
+        assert!(has_loop_exit, "Should have loop_exit block");
+
+        // Verify loop_header has phi nodes
+        let header = func.blocks.iter().find(|b| b.label == "loop_header").unwrap();
+        let phi_count = header.instructions.iter()
+            .filter(|i| matches!(i, MirInst::Phi { .. }))
+            .count();
+        assert!(phi_count >= 3, "Loop header should have phi nodes for prev2, prev1, i");
+
+        // Verify loop_body has the Add operation
+        let body = func.blocks.iter().find(|b| b.label == "loop_body").unwrap();
+        let has_add = body.instructions.iter().any(|i| {
+            matches!(i, MirInst::BinOp { op: MirBinOp::Add, .. })
+        });
+        assert!(has_add, "Loop body should have Add operation for fibonacci recurrence");
+
+        // Verify recurse block is removed
+        let has_recurse = func.blocks.iter().any(|b| b.label == "recurse");
+        assert!(!has_recurse, "Original recursive block should be removed");
+    }
+
+    #[test]
+    fn test_linear_recurrence_single_recursive_call_no_change() {
+        // Only 1 recursive call (factorial pattern) - needs 2 for fibonacci
+        let mut func = MirFunction {
+            name: "fact".to_string(),
+            params: vec![("n".to_string(), MirType::I64)],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![
+                BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![
+                        MirInst::BinOp {
+                            dest: Place::new("cmp"),
+                            op: MirBinOp::Le,
+                            lhs: Operand::Place(Place::new("n")),
+                            rhs: Operand::Constant(Constant::Int(1)),
+                        },
+                    ],
+                    terminator: Terminator::Branch {
+                        cond: Operand::Place(Place::new("cmp")),
+                        then_label: "base".to_string(),
+                        else_label: "recurse".to_string(),
+                    },
+                },
+                BasicBlock {
+                    label: "base".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(1)))),
+                },
+                BasicBlock {
+                    label: "recurse".to_string(),
+                    instructions: vec![
+                        MirInst::BinOp {
+                            dest: Place::new("n1"),
+                            op: MirBinOp::Sub,
+                            lhs: Operand::Place(Place::new("n")),
+                            rhs: Operand::Constant(Constant::Int(1)),
+                        },
+                        MirInst::Call {
+                            dest: Some(Place::new("r")),
+                            func: "fact".to_string(),
+                            args: vec![Operand::Place(Place::new("n1"))],
+                            is_tail: false,
+                        },
+                        MirInst::BinOp {
+                            dest: Place::new("result"),
+                            op: MirBinOp::Mul,
+                            lhs: Operand::Place(Place::new("n")),
+                            rhs: Operand::Place(Place::new("r")),
+                        },
+                    ],
+                    terminator: Terminator::Return(Some(Operand::Place(Place::new("result")))),
+                },
+            ],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+
+        let pass = LinearRecurrenceToLoop;
+        let changed = pass.run_on_function(&mut func);
+        assert!(!changed, "Single recursive call (factorial) should not trigger fibonacci transform");
+    }
 }
