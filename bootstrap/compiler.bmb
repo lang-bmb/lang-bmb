@@ -119,6 +119,7 @@ fn TK_MUT() -> i64 = 2000000000 + 117;
 fn TK_WHILE() -> i64 = 2000000000 + 118;
 fn TK_LOOP() -> i64 = 2000000000 + 131;      // v0.90.31: loop keyword
 fn TK_CONTINUE() -> i64 = 2000000000 + 132;  // v0.90.31: continue keyword
+fn TK_RETURN() -> i64 = 2000000000 + 133;    // v0.90.31: return keyword
 fn TK_BREAK() -> i64 = 2000000000 + 127;
 fn TK_FOR() -> i64 = 2000000000 + 125;
 fn TK_IN() -> i64 = 2000000000 + 126;
@@ -350,6 +351,7 @@ fn keyword_len6(word: String, endpos: i64) -> i64 =
     else if word == "RwLock" { make_tok(TK_RWLOCK(), endpos) }  // v0.88
     else if word == "struct" { make_tok(TK_STRUCT(), endpos) }  // v0.90.2: struct declaration
     else if word == "extern" { make_tok(TK_EXTERN(), endpos) }  // v0.90.11: extern fn
+    else if word == "return" { make_tok(TK_RETURN(), endpos) }  // v0.90.31: return expression
     else { make_tok(TK_IDENT(), endpos) };
 
 // v0.88: Concurrency type keywords
@@ -1172,6 +1174,7 @@ fn parse_expr(src: String, pos: i64) -> String =
     else if kind == TK_FOR() { parse_for_expr(src, tok_end(tok)) }  // v0.95: for-loop
     else if kind == TK_BREAK() { pack_result(tok_end(tok), "(break)") }  // v0.90.8: break
     else if kind == TK_CONTINUE() { pack_result(tok_end(tok), "(continue)") }  // v0.90.31: continue
+    else if kind == TK_RETURN() { parse_return_expr(src, tok_end(tok)) }       // v0.90.31: return
     else { parse_or(src, pos) };
 
 fn parse_if_expr(src: String, pos: i64) -> String =
@@ -1382,6 +1385,20 @@ fn parse_while_finish(src: String, pos: i64, cond_ast: String, body_ast: String)
     let t2 = next_token_raw(src, pos);
     if tok_kind(t2) != TK_RBRACE() { make_error_at("expected '}' after while body", src, pos) }
     else { pack_result(tok_end(t2), "(while " + cond_ast + " " + body_ast + ")") };
+
+// v0.90.31: Parse return expression: return or return expr
+// AST format: (return) or (return expr)
+// Bare return when next token is '}' or ';' or EOF
+fn parse_return_expr(src: String, pos: i64) -> String =
+    let tok = next_token_raw(src, pos);
+    let kind = tok_kind(tok);
+    if kind == TK_RBRACE() or kind == TK_SEMI() or kind == TK_EOF() {
+        pack_result(pos, "(return)")
+    } else {
+        let r = parse_expr(src, pos);
+        if is_error(r) { r }
+        else { pack_result(unpack_pos(r), "(return " + unpack_ast(r) + ")") }
+    };
 
 // v0.90.31: Parse loop expression: loop { body }
 // AST format: (loop body)
@@ -2048,6 +2065,8 @@ fn get_exit_label(ast: String, entry_label: String, block_id: i64) -> String =
         "after_break_" + int_to_string(block_id)
     } else if ntype == "continue" {
         "after_continue_" + int_to_string(block_id)
+    } else if ntype == "return" {
+        "after_return_" + int_to_string(block_id)
     } else if ntype == "block" {
         let inner = block_inner(ast);
         get_exit_label(inner, entry_label, block_id)
@@ -2055,7 +2074,7 @@ fn get_exit_label(ast: String, entry_label: String, block_id: i64) -> String =
         // Check last expr first; if it doesn't create blocks, check first expr
         let last = seq_second(ast);
         let last_type = get_node_type(last);
-        if last_type == "if" or last_type == "while" or last_type == "loop" or last_type == "for" or last_type == "block" or last_type == "seq" or last_type == "let" or last_type == "let_mut" or last_type == "break" or last_type == "continue" {
+        if last_type == "if" or last_type == "while" or last_type == "loop" or last_type == "for" or last_type == "block" or last_type == "seq" or last_type == "let" or last_type == "let_mut" or last_type == "break" or last_type == "continue" or last_type == "return" {
             get_exit_label(last, entry_label, block_id)
         } else {
             // Last expr is simple (unit, int, var, etc.) — exit comes from first
@@ -2384,6 +2403,8 @@ fn do_step(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, 
     // v0.90.8: Break statement
     else if op == "BK" { step_break(item, cur_temp, cur_block, cur_exit_label, sb) }
     else if op == "CN" { step_continue(item, cur_temp, cur_block, cur_exit_label, sb) }
+    else if op == "RT" { step_return(item, cur_temp, cur_block, cur_exit_label, sb) }
+    else if op == "RV" { step_return_value(item, cur_temp, cur_block, cur_exit_label, sb) }
     // v0.90.9: *f64 pointer cast - eval inner then mark
     else if op == "FP" { step_cast_ptr_f64_start(item, cur_temp, cur_block, cur_exit_label, sb) }
     else if op == "FQ" { step_cast_ptr_f64_finish(item, cur_temp, cur_block, cur_exit_label, sb) }
@@ -2520,6 +2541,11 @@ fn step_expr(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String
     // v0.90.31: Continue statement - emit goto to loop header
     else if ntype == "continue" {
         make_step(cur_temp, cur_block, cur_exit_label, make_work3("CN", "", "", ""))
+    }
+    // v0.90.31: Return expression
+    else if ntype == "return" {
+        let has_value = if ast.len() > 8 { get_child(ast, 0) } else { "" };
+        make_step(cur_temp, cur_block, cur_exit_label, make_work3("RT", has_value, "", ""))
     }
     // v0.90.9: *f64 pointer cast - evaluate inner expr and mark as f64 ptr
     else if ntype == "cast_ptr_f64" {
@@ -3018,6 +3044,35 @@ fn step_continue(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: St
     let w3 = sb_push_mir(sb, "  " + tmp + " = const 0");
     make_step(cur_temp + 1, cur_block, cur_exit_label, "");
 
+// v0.90.31: Return expression - work-list handler
+// Work item: RT~value_ast~~~
+fn step_return(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String =
+    let value_ast = work3_get1(item);
+    if value_ast.len() == 0 {
+        // Bare return
+        let w1 = sb_push_mir(sb, "  return");
+        let after_label = "after_return_" + i2s(cur_block);
+        let w2 = sb_push_mir(sb, after_label + ":");
+        let tmp = "%_t" + i2s(cur_temp);
+        let w3 = sb_push_mir(sb, "  " + tmp + " = const 0");
+        make_step(cur_temp + 1, cur_block, cur_exit_label, "")
+    } else {
+        // Return with value - lower the value first (EX), then emit return (RV)
+        let cont = make_work3("RV", "", "", "");
+        let do_expr = make_work3("EX", value_ast, "", "");
+        make_step(cur_temp, cur_block, cur_exit_label, do_expr + work_sep() + cont)
+    };
+
+// v0.90.31: Return value continuation - after lowering the value expression
+fn step_return_value(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String =
+    let result_id = cur_temp - 1;
+    let w1 = sb_push_mir(sb, "  return %_t" + i2s(result_id));
+    let after_label = "after_return_" + i2s(cur_block);
+    let w2 = sb_push_mir(sb, after_label + ":");
+    let tmp = "%_t" + i2s(cur_temp);
+    let w3 = sb_push_mir(sb, "  " + tmp + " = const 0");
+    make_step(cur_temp + 1, cur_block, cur_exit_label, "");
+
 // v0.90.9: Recursive: cast_ptr_f64 - evaluate inner and emit marker
 fn lower_cast_ptr_f64_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64 =
     let inner = get_child(ast, 0);
@@ -3151,7 +3206,7 @@ fn build_args_str_acc(cur: i64, end: i64, acc: String) -> String =
 // v0.90.8: Added loop_exit parameter for break statement support
 fn lower_expr_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64 =
     let ntype = get_node_type(ast);
-    if ntype == "int" { lower_int_sb(ast, temp_id, block_id, sb) } else if ntype == "float" { lower_float_sb(ast, temp_id, block_id, sb) } else if ntype == "bool" { lower_bool_sb(ast, temp_id, block_id, sb) } else if ntype == "string" { lower_string_sb(ast, temp_id, block_id, sb) } else if ntype == "var" { lower_var_sb(ast, temp_id, block_id, sb) } else if ntype == "binop" { lower_binop_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "unary" { lower_unary_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "if" { lower_if_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "let" { lower_let_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "let_mut" { lower_let_mut_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "call" { lower_call_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "method" { lower_method_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "block" { lower_block_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "unit" { lower_unit_sb(ast, temp_id, block_id, sb) } else if ntype == "seq" { lower_seq_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "assign" { lower_assign_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "while" { lower_while_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "loop" { lower_loop_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "for" { lower_for_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "field" { lower_field_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "set_field" { lower_set_field_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "index" { lower_index_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "set_index" { lower_set_index_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "break" { lower_break_sb(loop_exit, temp_id, block_id, sb) } else if ntype == "continue" { lower_continue_sb(loop_exit, temp_id, block_id, sb) } else if ntype == "cast_ptr_f64" { lower_cast_ptr_f64_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "array_repeat" { lower_array_repeat_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "array" { lower_array_literal_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "tuple" { lower_tuple_sb(ast, temp_id, block_id, sb, loop_exit) } else { pack_ids(temp_id, block_id) };
+    if ntype == "int" { lower_int_sb(ast, temp_id, block_id, sb) } else if ntype == "float" { lower_float_sb(ast, temp_id, block_id, sb) } else if ntype == "bool" { lower_bool_sb(ast, temp_id, block_id, sb) } else if ntype == "string" { lower_string_sb(ast, temp_id, block_id, sb) } else if ntype == "var" { lower_var_sb(ast, temp_id, block_id, sb) } else if ntype == "binop" { lower_binop_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "unary" { lower_unary_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "if" { lower_if_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "let" { lower_let_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "let_mut" { lower_let_mut_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "call" { lower_call_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "method" { lower_method_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "block" { lower_block_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "unit" { lower_unit_sb(ast, temp_id, block_id, sb) } else if ntype == "seq" { lower_seq_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "assign" { lower_assign_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "while" { lower_while_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "loop" { lower_loop_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "for" { lower_for_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "field" { lower_field_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "set_field" { lower_set_field_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "index" { lower_index_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "set_index" { lower_set_index_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "break" { lower_break_sb(loop_exit, temp_id, block_id, sb) } else if ntype == "continue" { lower_continue_sb(loop_exit, temp_id, block_id, sb) } else if ntype == "return" { lower_return_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "cast_ptr_f64" { lower_cast_ptr_f64_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "array_repeat" { lower_array_repeat_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "array" { lower_array_literal_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "tuple" { lower_tuple_sb(ast, temp_id, block_id, sb, loop_exit) } else { pack_ids(temp_id, block_id) };
 
 fn lower_int_sb(ast: String, temp_id: i64, block_id: i64, sb: i64) -> i64 =
     let val = extract_int_value(ast);
@@ -3514,6 +3569,32 @@ fn lower_continue_sb(loop_exit: String, temp_id: i64, block_id: i64, sb: i64) ->
     let tmp = "%_t" + int_to_string(temp_id);
     let w3 = sb_push_mir(sb, "  " + tmp + " = const 0");
     pack_ids(temp_id + 1, block_id);
+
+// v0.90.31: Return expression - recursive lowering path
+// AST: (return) or (return expr) → MIR: return or return %val + unreachable block
+fn lower_return_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64 =
+    if ast.len() == 8 {
+        // Bare return: (return)
+        let w1 = sb_push_mir(sb, "  return");
+        let after_label = "after_return_" + int_to_string(block_id);
+        let w2 = sb_push_mir(sb, after_label + ":");
+        let tmp = "%_t" + int_to_string(temp_id);
+        let w3 = sb_push_mir(sb, "  " + tmp + " = const 0");
+        pack_ids(temp_id + 1, block_id)
+    } else {
+        // Return with value: (return expr)
+        let inner = get_child(ast, 0);
+        let result = lower_expr_sb(inner, temp_id, block_id, sb, loop_exit);
+        let val_temp = unpack_temp(result);
+        let val_block = unpack_block(result);
+        let val_id = val_temp - 1;
+        let w1 = sb_push_mir(sb, "  return %_t" + int_to_string(val_id));
+        let after_label = "after_return_" + int_to_string(val_block);
+        let w2 = sb_push_mir(sb, after_label + ":");
+        let tmp = "%_t" + int_to_string(val_temp);
+        let w3 = sb_push_mir(sb, "  " + tmp + " = const 0");
+        pack_ids(val_temp + 1, val_block)
+    };
 
 // v0.90.7: Field access lowering for SB path (used inside while/for loops)
 // AST: (field base_expr field_name) → MIR: %dest = field-access %base.field_name
