@@ -4089,10 +4089,10 @@ impl ConstantPropagationNarrowing {
         }
         for block in &func.blocks {
             for inst in &block.instructions {
-                if let MirInst::BinOp { op: MirBinOp::Div | MirBinOp::Mod, lhs, .. } = inst {
-                    if matches!(lhs, Operand::Place(p) if derived.contains(&p.name)) {
-                        return true;
-                    }
+                if let MirInst::BinOp { op: MirBinOp::Div | MirBinOp::Mod, lhs, .. } = inst
+                    && matches!(lhs, Operand::Place(p) if derived.contains(&p.name))
+                {
+                    return true;
                 }
             }
         }
@@ -4217,10 +4217,10 @@ impl ConstantPropagationNarrowing {
     fn has_remaining_self_recursive_calls(func: &MirFunction) -> bool {
         for block in &func.blocks {
             for inst in &block.instructions {
-                if let MirInst::Call { func: callee, .. } = inst {
-                    if callee == &func.name {
-                        return true;
-                    }
+                if let MirInst::Call { func: callee, .. } = inst
+                    && callee == &func.name
+                {
+                    return true;
                 }
             }
         }
@@ -5038,10 +5038,10 @@ impl LoopBoundedNarrowing {
         // Check if any derived variable is used in Div or Mod
         for block in &func.blocks {
             for inst in &block.instructions {
-                if let MirInst::BinOp { op: MirBinOp::Div | MirBinOp::Mod, lhs, .. } = inst {
-                    if matches!(lhs, Operand::Place(p) if derived.contains(&p.name)) {
-                        return true;
-                    }
+                if let MirInst::BinOp { op: MirBinOp::Div | MirBinOp::Mod, lhs, .. } = inst
+                    && matches!(lhs, Operand::Place(p) if derived.contains(&p.name))
+                {
+                    return true;
                 }
             }
         }
@@ -5493,10 +5493,10 @@ impl LoopBoundedNarrowing {
     fn has_remaining_self_recursive_calls(func: &MirFunction) -> bool {
         for block in &func.blocks {
             for inst in &block.instructions {
-                if let MirInst::Call { func: callee, .. } = inst {
-                    if callee == &func.name {
-                        return true;
-                    }
+                if let MirInst::Call { func: callee, .. } = inst
+                    && callee == &func.name
+                {
+                    return true;
                 }
             }
         }
@@ -5547,10 +5547,10 @@ impl LoopBoundedNarrowing {
         for (i, block) in func.blocks.iter().enumerate() {
             if let Terminator::Goto(target) = &block.terminator {
                 // If target label appears before current block, it's a back-edge
-                if let Some(target_idx) = block_labels.iter().position(|l| l == target) {
-                    if target_idx <= i {
-                        loop_headers.insert(target.clone());
-                    }
+                if let Some(target_idx) = block_labels.iter().position(|l| l == target)
+                    && target_idx <= i
+                {
+                    loop_headers.insert(target.clone());
                 }
             }
         }
@@ -5580,12 +5580,10 @@ impl LoopBoundedNarrowing {
             for inst in &block.instructions {
                 if let MirInst::Call { func: callee, args, .. } = inst
                     && callee == &func.name
+                    && let Some(arg) = args.get(param_idx)
+                    && matches!(arg, Operand::Place(p) if p.name == *param_name)
                 {
-                    if let Some(arg) = args.get(param_idx) {
-                        if matches!(arg, Operand::Place(p) if p.name == *param_name) {
-                            is_recursive_invariant = true;
-                        }
-                    }
+                    is_recursive_invariant = true;
                 }
             }
         }
@@ -7177,17 +7175,15 @@ impl IfElseToSelect {
     /// Find the comparison instruction that defines `cond_place`
     fn find_comparison(&self, block: &BasicBlock, cond_place: &Place) -> Option<(MirBinOp, Operand, Operand, usize)> {
         for (idx, inst) in block.instructions.iter().enumerate().rev() {
-            if let MirInst::BinOp { dest, op, lhs, rhs } = inst {
-                if dest.name == cond_place.name {
-                    let is_cmp = matches!(op,
-                        MirBinOp::Eq | MirBinOp::Ne |
-                        MirBinOp::Lt | MirBinOp::Le |
-                        MirBinOp::Gt | MirBinOp::Ge
-                    );
-                    if is_cmp {
-                        return Some((op.clone(), lhs.clone(), rhs.clone(), idx));
-                    }
-                }
+            if let MirInst::BinOp { dest, op, lhs, rhs } = inst
+                && dest.name == cond_place.name
+                && matches!(op,
+                    MirBinOp::Eq | MirBinOp::Ne |
+                    MirBinOp::Lt | MirBinOp::Le |
+                    MirBinOp::Gt | MirBinOp::Ge
+                )
+            {
+                return Some((*op, lhs.clone(), rhs.clone(), idx));
             }
         }
         None
@@ -7245,17 +7241,16 @@ impl IfElseToSelect {
                 for (val, label) in values {
                     if label == then_label {
                         // Check if val references a dest from then block
-                        if let Operand::Place(p) = val {
-                            if then_dests.contains(&p.name) {
-                                then_val = Some(val.clone());
-                            }
+                        if let Operand::Place(p) = val
+                            && then_dests.contains(&p.name)
+                        {
+                            then_val = Some(val.clone());
                         }
-                    } else if label == else_label {
-                        if let Operand::Place(p) = val {
-                            if else_dests.contains(&p.name) {
-                                else_val = Some(val.clone());
-                            }
-                        }
+                    } else if label == else_label
+                        && let Operand::Place(p) = val
+                        && else_dests.contains(&p.name)
+                    {
+                        else_val = Some(val.clone());
                     }
                 }
 
@@ -7346,7 +7341,7 @@ impl IfElseToSelect {
             let select_dest_name = format!("_sel_{}_{}", phi_dest.name, idx);
             let select_inst = MirInst::Select {
                 dest: Place::new(&select_dest_name),
-                cond_op: pattern.cond_op.clone(),
+                cond_op: pattern.cond_op,
                 cond_lhs: pattern.cond_lhs.clone(),
                 cond_rhs: pattern.cond_rhs.clone(),
                 true_val: then_val.clone(),
@@ -7374,10 +7369,10 @@ impl IfElseToSelect {
         // Collect indices of phis to update
         let mut to_update: Vec<(usize, String, String)> = Vec::new(); // (inst_idx, phi_dest, select_dest)
         for (inst_idx, inst) in merge_block.instructions.iter().enumerate() {
-            if let MirInst::Phi { dest, .. } = inst {
-                if let Some(sel_name) = select_name_map.get(&dest.name) {
-                    to_update.push((inst_idx, dest.name.clone(), sel_name.clone()));
-                }
+            if let MirInst::Phi { dest, .. } = inst
+                && let Some(sel_name) = select_name_map.get(&dest.name)
+            {
+                to_update.push((inst_idx, dest.name.clone(), sel_name.clone()));
             }
         }
 

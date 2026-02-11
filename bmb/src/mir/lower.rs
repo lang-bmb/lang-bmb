@@ -2485,10 +2485,7 @@ fn lower_expr(expr: &Spanned<Expr>, ctx: &mut LoweringContext) -> Operand {
 
         // Return - emit Terminator::Return and start unreachable block
         Expr::Return { value } => {
-            let ret_val = match value {
-                Some(v) => Some(lower_expr(v, ctx)),
-                None => None,
-            };
+            let ret_val = value.as_ref().map(|v| lower_expr(v, ctx));
             // Finish current block with return terminator
             ctx.finish_block(Terminator::Return(ret_val));
             // Start a new unreachable block for code after return

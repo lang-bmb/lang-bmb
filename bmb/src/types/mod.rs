@@ -4541,20 +4541,18 @@ impl TypeChecker {
 
         // v0.89.17: Handle Nullable types
         // null (Ptr(TypeVar("_null"))) is compatible with Nullable(T)
-        if let Type::Nullable(_) = &expected {
-            if let Type::Ptr(inner) = &actual {
-                if let Type::TypeVar(name) = inner.as_ref() {
-                    if name == "_null" {
-                        return Ok(());
-                    }
-                }
-            }
+        if let Type::Nullable(_) = &expected
+            && let Type::Ptr(inner) = &actual
+            && let Type::TypeVar(name) = inner.as_ref()
+            && name == "_null"
+        {
+            return Ok(());
         }
         // T is compatible with Nullable(T) — auto-wrap value into nullable
-        if let Type::Nullable(inner) = &expected {
-            if self.unify(inner, &actual, span).is_ok() {
-                return Ok(());
-            }
+        if let Type::Nullable(inner) = &expected
+            && self.unify(inner, &actual, span).is_ok()
+        {
+            return Ok(());
         }
         // Nullable(T) with Nullable(U) — recursively unify inner types
         if let (Type::Nullable(inner1), Type::Nullable(inner2)) = (&expected, &actual) {
