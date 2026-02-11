@@ -7022,3 +7022,155 @@ fn test_type_complex_expression_inference() {
                             if c { y } else { x }
                           };"));
 }
+
+// ========================================================================
+// Cycle 230: AST Output & SMT Translation Integration Tests
+// ========================================================================
+
+/// Helper: parse program and return AST S-expression
+fn ast_sexpr(source: &str) -> String {
+    let tokens = tokenize(source).expect("tokenize failed");
+    let ast = parse("test.bmb", source, tokens).expect("parse failed");
+    bmb::ast::output::to_sexpr(&ast)
+}
+
+// --- AST S-Expression Output Tests ---
+
+#[test]
+fn test_sexpr_simple_function() {
+    let sexpr = ast_sexpr("fn f() -> i64 = 42;");
+    assert!(sexpr.contains("(program"), "should start with (program, got: {}", sexpr);
+    assert!(sexpr.contains("(fn "), "should contain (fn, got: {}", sexpr);
+    assert!(sexpr.contains("f"), "should contain function name f");
+}
+
+#[test]
+fn test_sexpr_function_with_params() {
+    let sexpr = ast_sexpr("fn add(a: i64, b: i64) -> i64 = a + b;");
+    assert!(sexpr.contains("add"), "should contain function name add");
+    assert!(sexpr.contains("i64"), "should contain type i64");
+}
+
+#[test]
+fn test_sexpr_struct_definition() {
+    let sexpr = ast_sexpr("struct Point { x: i64, y: i64 }");
+    assert!(sexpr.contains("(struct "), "should contain (struct, got: {}", sexpr);
+    assert!(sexpr.contains("Point"), "should contain struct name Point");
+}
+
+#[test]
+fn test_sexpr_enum_definition() {
+    let sexpr = ast_sexpr("enum Color { Red, Green, Blue }");
+    assert!(sexpr.contains("(enum "), "should contain (enum, got: {}", sexpr);
+    assert!(sexpr.contains("Color"), "should contain enum name Color");
+}
+
+#[test]
+fn test_sexpr_if_expression() {
+    let sexpr = ast_sexpr("fn f(x: bool) -> i64 = if x { 1 } else { 2 };");
+    assert!(sexpr.contains("if"), "should contain if expression");
+}
+
+#[test]
+fn test_sexpr_match_expression() {
+    let sexpr = ast_sexpr("fn f(x: i64) -> i64 = match x { 0 => 1, _ => 2 };");
+    assert!(sexpr.contains("match"), "should contain match expression");
+}
+
+#[test]
+fn test_sexpr_while_loop() {
+    let sexpr = ast_sexpr("fn f() -> i64 = { let mut x = 0; while x < 10 { x = x + 1 }; x };");
+    assert!(sexpr.contains("while"), "should contain while loop");
+}
+
+#[test]
+fn test_sexpr_contract() {
+    let sexpr = ast_sexpr("fn div(a: i64, b: i64) -> i64 pre b != 0 = a / b;");
+    assert!(sexpr.contains("pre"), "should contain precondition");
+}
+
+#[test]
+fn test_sexpr_closure() {
+    let sexpr = ast_sexpr("fn f() -> i64 = { let g = fn |x: i64| { x * 2 }; g(21) };");
+    assert!(sexpr.contains("closure") || sexpr.contains("lambda") || sexpr.contains("fn"),
+            "should contain closure/lambda notation");
+}
+
+#[test]
+fn test_sexpr_generic_function() {
+    let sexpr = ast_sexpr("fn id<T>(x: T) -> T = x;");
+    assert!(sexpr.contains("id"), "should contain function name id");
+    assert!(sexpr.contains("T"), "should contain type parameter T");
+}
+
+// --- SMT-LIB2 Output Tests ---
+
+#[test]
+fn test_smt_generator_basic() {
+    let mut smt = bmb::smt::SmtLibGenerator::new();
+    smt.declare_var("x", bmb::smt::SmtSort::Int);
+    smt.assert("(> x 0)");
+    let output = smt.generate();
+    assert!(output.contains("declare-const") || output.contains("declare-fun"),
+            "SMT should declare variables, got: {}", output);
+    assert!(output.contains("(> x 0)"), "SMT should contain assertion");
+    assert!(output.contains("check-sat"), "SMT should contain check-sat");
+}
+
+#[test]
+fn test_smt_generator_bool_var() {
+    let mut smt = bmb::smt::SmtLibGenerator::new();
+    smt.declare_var("b", bmb::smt::SmtSort::Bool);
+    smt.assert("b");
+    let output = smt.generate();
+    assert!(output.contains("Bool"), "SMT should declare Bool sort");
+}
+
+#[test]
+fn test_smt_generator_multiple_vars() {
+    let mut smt = bmb::smt::SmtLibGenerator::new();
+    smt.declare_var("x", bmb::smt::SmtSort::Int);
+    smt.declare_var("y", bmb::smt::SmtSort::Int);
+    smt.assert("(< x y)");
+    smt.assert("(> x 0)");
+    let output = smt.generate();
+    // Should have both declarations and both assertions
+    assert!(output.contains("x"), "should declare x");
+    assert!(output.contains("y"), "should declare y");
+    assert!(output.contains("(< x y)"), "should have < assertion");
+    assert!(output.contains("(> x 0)"), "should have > assertion");
+}
+
+#[test]
+fn test_smt_generator_clear() {
+    let mut smt = bmb::smt::SmtLibGenerator::new();
+    smt.declare_var("x", bmb::smt::SmtSort::Int);
+    smt.assert("(> x 0)");
+    smt.clear();
+    let output = smt.generate();
+    // After clear, should not have the old declaration
+    assert!(!output.contains("(> x 0)"), "cleared generator should not have old assertions");
+}
+
+// --- AST format_type Tests ---
+
+#[test]
+fn test_format_type_i64() {
+    let output = bmb::ast::output::format_type(&bmb::ast::Type::Named("i64".to_string()));
+    assert_eq!(output, "i64");
+}
+
+#[test]
+fn test_format_type_bool() {
+    let output = bmb::ast::output::format_type(&bmb::ast::Type::Named("bool".to_string()));
+    assert_eq!(output, "bool");
+}
+
+#[test]
+fn test_format_type_nullable() {
+    let output = bmb::ast::output::format_type(&bmb::ast::Type::Nullable(
+        Box::new(bmb::ast::Type::Named("i64".to_string()))
+    ));
+    assert!(output.contains("?") || output.contains("nullable") || output.contains("Option"),
+            "nullable type should be formatted, got: {}", output);
+}

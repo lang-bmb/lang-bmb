@@ -6,5 +6,5 @@
 mod translator;
 mod solver;
 
-pub use translator::{SmtTranslator, SmtLibGenerator, TranslateError};
+pub use translator::{SmtTranslator, SmtLibGenerator, SmtSort, TranslateError};
 pub use solver::{SmtSolver, SolverResult, VerifyResult, Counterexample};
