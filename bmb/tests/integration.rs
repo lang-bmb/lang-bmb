@@ -6284,3 +6284,147 @@ fn test_type_if_else_both_return_same_type() {
          };"
     ));
 }
+
+// ========================================================================
+// Cycle 226: Warning Detection Tests
+// ========================================================================
+
+// --- Unused Function Warnings ---
+
+#[test]
+fn test_warning_unused_function() {
+    // A function defined but never called should produce a warning
+    assert!(has_warning_kind(
+        "fn helper() -> i64 = 42;
+         fn main() -> i64 = 0;",
+        "unused_function"
+    ));
+}
+
+#[test]
+fn test_no_warning_used_function() {
+    // A function that is called should NOT produce unused warning
+    assert!(!has_warning_kind(
+        "fn helper() -> i64 = 42;
+         fn main() -> i64 = helper();",
+        "unused_function"
+    ));
+}
+
+// --- Unused Type/Struct Warnings ---
+
+#[test]
+fn test_warning_unused_type() {
+    assert!(has_warning_kind(
+        "struct Unused { x: i64 }
+         fn main() -> i64 = 0;",
+        "unused_type"
+    ));
+}
+
+#[test]
+fn test_no_warning_used_struct() {
+    assert!(!has_warning_kind(
+        "struct Point { x: i64, y: i64 }
+         fn main() -> i64 = { let p = new Point { x: 1, y: 2 }; p.x };",
+        "unused_type"
+    ));
+}
+
+// --- Unused Enum Warnings ---
+
+#[test]
+fn test_warning_unused_enum() {
+    assert!(has_warning_kind(
+        "enum Color { Red, Green, Blue }
+         fn main() -> i64 = 0;",
+        "unused_enum"
+    ));
+}
+
+#[test]
+fn test_no_warning_used_enum() {
+    assert!(!has_warning_kind(
+        "enum Choice { A, B }
+         fn pick(c: Choice) -> i64 = match c { Choice::A => 1, Choice::B => 2 };
+         fn main() -> i64 = pick(Choice::A);",
+        "unused_enum"
+    ));
+}
+
+// --- Duplicate Function Warnings ---
+
+#[test]
+fn test_warning_duplicate_function_three() {
+    // Three definitions of same name
+    assert!(has_warning_kind(
+        "fn f() -> i64 = 1;
+         fn f() -> i64 = 2;
+         fn f() -> i64 = 3;
+         fn main() -> i64 = f();",
+        "duplicate_function"
+    ));
+}
+
+// --- Unreachable Pattern Warnings ---
+
+#[test]
+fn test_warning_unreachable_pattern() {
+    assert!(has_warning_kind(
+        "fn f(x: bool) -> i64 = match x {
+           _ => 1,
+           true => 2,
+           false => 3
+         };
+         fn main() -> i64 = f(true);",
+        "unreachable_pattern"
+    ));
+}
+
+#[test]
+fn test_no_warning_all_patterns_reachable() {
+    assert!(!has_warning_kind(
+        "fn f(x: bool) -> i64 = match x {
+           true => 1,
+           false => 2
+         };
+         fn main() -> i64 = f(true);",
+        "unreachable_pattern"
+    ));
+}
+
+// --- Warning Absence Tests ---
+
+#[test]
+fn test_no_error_warnings_clean_program() {
+    // A well-formed program should NOT produce error-level warnings
+    // (missing_postcondition is expected for functions without contracts)
+    let source = "fn add(a: i64, b: i64) -> i64 = a + b;
+                   fn main() -> i64 = add(1, 2);";
+    let tokens = tokenize(source).unwrap();
+    let ast = parse("test.bmb", source, tokens).unwrap();
+    let mut tc = TypeChecker::new();
+    tc.check_program(&ast).unwrap();
+    let unexpected: Vec<&str> = tc.warnings().iter()
+        .map(|w| w.kind())
+        .filter(|k| *k != "missing_postcondition") // expected for no-contract fns
+        .collect();
+    assert!(unexpected.is_empty(), "unexpected warnings: {:?}", unexpected);
+}
+
+// --- Multiple Warning Types ---
+
+#[test]
+fn test_program_with_multiple_warning_kinds() {
+    // A program that triggers multiple different warning kinds
+    let source = "struct Unused { x: i64 }
+                   fn helper() -> i64 = 42;
+                   fn main() -> i64 = 0;";
+    let tokens = tokenize(source).unwrap();
+    let ast = parse("test.bmb", source, tokens).unwrap();
+    let mut tc = TypeChecker::new();
+    tc.check_program(&ast).unwrap();
+    let warning_kinds: Vec<&str> = tc.warnings().iter().map(|w| w.kind()).collect();
+    assert!(warning_kinds.contains(&"unused_type"), "should warn about unused struct");
+    assert!(warning_kinds.contains(&"unused_function"), "should warn about unused function");
+}
