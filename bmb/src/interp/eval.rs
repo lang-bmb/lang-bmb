@@ -2987,6 +2987,58 @@ impl Interpreter {
                         }
                         Ok(Value::Array(result))
                     }
+                    // v0.90.70: transpose, associate, frequencies
+                    "transpose" => {
+                        // Transpose a 2D array: [[1,2],[3,4]] -> [[1,3],[2,4]]
+                        if arr.is_empty() {
+                            return Ok(Value::Array(vec![]));
+                        }
+                        let first_row = match &arr[0] {
+                            Value::Array(row) => row.clone(),
+                            _ => return Err(RuntimeError::type_error("array", arr[0].type_name())),
+                        };
+                        let cols = first_row.len();
+                        let mut result: Vec<Vec<Value>> = (0..cols).map(|_| Vec::new()).collect();
+                        for row_val in arr.iter() {
+                            match row_val {
+                                Value::Array(row) => {
+                                    for (j, val) in row.iter().enumerate() {
+                                        if j < cols {
+                                            result[j].push(val.clone());
+                                        }
+                                    }
+                                }
+                                _ => return Err(RuntimeError::type_error("array", row_val.type_name())),
+                            }
+                        }
+                        Ok(Value::Array(result.into_iter().map(Value::Array).collect()))
+                    }
+                    "associate" => {
+                        let (params, body, closure_env) = match &args[0] {
+                            Value::Closure { params, body, env } => (params, body, env),
+                            _ => return Err(RuntimeError::type_error("closure", args[0].type_name())),
+                        };
+                        let mut result = Vec::new();
+                        for item in arr.iter() {
+                            let value = self.call_closure(params, body, closure_env, vec![item.clone()])?;
+                            result.push(Value::Array(vec![item.clone(), value]));
+                        }
+                        Ok(Value::Array(result))
+                    }
+                    "frequencies" => {
+                        // Returns counts in order of first appearance
+                        let mut unique_vals: Vec<Value> = Vec::new();
+                        let mut counts: Vec<i64> = Vec::new();
+                        for item in arr.iter() {
+                            if let Some(pos) = unique_vals.iter().position(|v| v == item) {
+                                counts[pos] += 1;
+                            } else {
+                                unique_vals.push(item.clone());
+                                counts.push(1);
+                            }
+                        }
+                        Ok(Value::Array(counts.into_iter().map(Value::Int).collect()))
+                    }
                     _ => Err(RuntimeError::undefined_function(&format!("Array.{}", method))),
                 }
             }

@@ -4984,6 +4984,40 @@ impl TypeChecker {
                             _ => Err(CompileError::type_error("uniq_by() requires a closure argument", args[0].span)),
                         }
                     }
+                    // v0.90.70: transpose, associate, frequencies
+                    "transpose" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("transpose() takes no arguments", span));
+                        }
+                        match elem_ty.as_ref() {
+                            Type::Array(inner, _) => {
+                                Ok(Type::Array(Box::new(Type::Array(inner.clone(), 0)), 0))
+                            }
+                            _ => Err(CompileError::type_error("transpose() requires a 2D array ([[T]])", span)),
+                        }
+                    }
+                    "associate" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("associate() takes 1 argument (value function)", span));
+                        }
+                        let fn_ty = self.infer(&args[0].node, args[0].span)?;
+                        match fn_ty {
+                            Type::Fn { params, ret } => {
+                                if params.len() != 1 {
+                                    return Err(CompileError::type_error("associate() function must take 1 argument", args[0].span));
+                                }
+                                self.unify(&params[0], elem_ty, args[0].span)?;
+                                Ok(Type::Array(Box::new(Type::Array(ret.into(), 0)), 0))
+                            }
+                            _ => Err(CompileError::type_error("associate() requires a closure argument", args[0].span)),
+                        }
+                    }
+                    "frequencies" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("frequencies() takes no arguments", span));
+                        }
+                        Ok(Type::Array(Box::new(Type::I64), 0))
+                    }
                     _ => Err(CompileError::type_error(
                         format!("unknown method '{}' for Array", method),
                         span,

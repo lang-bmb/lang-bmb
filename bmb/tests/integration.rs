@@ -17221,3 +17221,100 @@ fn test_array_pairwise_split_chain() {
     "#;
     assert_eq!(run_program_i64(source), 3);
 }
+
+// ============================================================================
+// Cycle 304: Array transpose, associate, frequencies
+// ============================================================================
+
+#[test]
+fn test_array_transpose() {
+    let source = r#"
+        fn main() -> i64 = {
+            let m = [[1, 2], [3, 4]].transpose();
+            m[0][0] + m[0][1] * 10 + m[1][0] * 100 + m[1][1] * 1000
+        };
+    "#;
+    // transposed: [[1,3],[2,4]]
+    // 1 + 3*10 + 2*100 + 4*1000 = 1+30+200+4000 = 4231
+    assert_eq!(run_program_i64(source), 4231);
+}
+
+#[test]
+fn test_array_transpose_rect() {
+    let source = r#"
+        fn main() -> i64 = {
+            let m = [[1, 2, 3], [4, 5, 6]].transpose();
+            m.len() * 10 + m[0].len()
+        };
+    "#;
+    // 2x3 -> 3x2: len=3, inner len=2 -> 32
+    assert_eq!(run_program_i64(source), 32);
+}
+
+#[test]
+fn test_array_transpose_empty() {
+    let source = r#"
+        fn main() -> i64 = {
+            [[1, 2]].pop().transpose().len()
+        };
+    "#;
+    assert_eq!(run_program_i64(source), 0);
+}
+
+#[test]
+fn test_array_associate() {
+    let source = r#"
+        fn main() -> i64 = {
+            let pairs = [1, 2, 3].associate(fn |x: i64| { x * x });
+            pairs[0][1] + pairs[1][1] + pairs[2][1]
+        };
+    "#;
+    // [[1,1],[2,4],[3,9]] -> 1+4+9 = 14
+    assert_eq!(run_program_i64(source), 14);
+}
+
+#[test]
+fn test_array_associate_keys() {
+    let source = r#"
+        fn main() -> i64 = {
+            let pairs = [10, 20].associate(fn |x: i64| { x + 1 });
+            pairs[0][0] + pairs[1][0]
+        };
+    "#;
+    // keys are original elements: 10+20=30
+    assert_eq!(run_program_i64(source), 30);
+}
+
+#[test]
+fn test_array_frequencies() {
+    let source = r#"
+        fn main() -> i64 = {
+            let freq = [1, 2, 1, 3, 2, 1].frequencies();
+            freq[0] * 100 + freq[1] * 10 + freq[2]
+        };
+    "#;
+    // 1 appears 3x, 2 appears 2x, 3 appears 1x -> 321
+    assert_eq!(run_program_i64(source), 321);
+}
+
+#[test]
+fn test_array_frequencies_unique() {
+    let source = r#"
+        fn main() -> i64 = {
+            [10, 20, 30].frequencies().len()
+        };
+    "#;
+    // All unique -> 3 counts of 1
+    assert_eq!(run_program_i64(source), 3);
+}
+
+#[test]
+fn test_array_transpose_associate_chain() {
+    let source = r#"
+        fn main() -> i64 = {
+            let data = [1, 2, 3].associate(fn |x: i64| { x * 2 });
+            data.len()
+        };
+    "#;
+    assert_eq!(run_program_i64(source), 3);
+}
