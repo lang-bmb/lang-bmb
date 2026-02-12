@@ -5711,6 +5711,49 @@ impl TypeChecker {
                     _ => Err(CompileError::type_error("unwrap_or_else() requires a closure argument", args[0].span)),
                 }
             }
+            // v0.90.62: zip(U?) -> (T, U)?
+            "zip" => {
+                if args.len() != 1 {
+                    return Err(CompileError::type_error("zip() takes 1 argument", span));
+                }
+                let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                let other_inner = match &arg_ty {
+                    Type::Nullable(inner) => *inner.clone(),
+                    _ => arg_ty.clone(),
+                };
+                let pair_ty = Type::Tuple(vec![
+                    Box::new(inner_ty.unwrap_or(Type::I64)),
+                    Box::new(other_inner),
+                ]);
+                Ok(Type::Nullable(Box::new(pair_ty)))
+            }
+            // v0.90.62: flatten() -> T? (for T?? -> T?)
+            "flatten" => {
+                if !args.is_empty() {
+                    return Err(CompileError::type_error("flatten() takes no arguments", span));
+                }
+                match inner_ty {
+                    Some(ty) => Ok(ty),
+                    None => Ok(Type::Nullable(Box::new(Type::I64))),
+                }
+            }
+            // v0.90.62: or_val(T?) -> T? (named or_val because 'or' is a keyword)
+            "or_val" => {
+                if args.len() != 1 {
+                    return Err(CompileError::type_error("or() takes 1 argument", span));
+                }
+                let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                if let Some(ref expected) = inner_ty {
+                    match &arg_ty {
+                        Type::Nullable(inner) => { self.unify(expected, inner, args[0].span)?; }
+                        _ => { self.unify(expected, &arg_ty, args[0].span)?; }
+                    }
+                }
+                match inner_ty {
+                    Some(ty) => Ok(Type::Nullable(Box::new(ty))),
+                    None => Ok(arg_ty),
+                }
+            }
             _ => Err(CompileError::type_error(
                 format!("unknown method '{}' for Option", method),
                 span,

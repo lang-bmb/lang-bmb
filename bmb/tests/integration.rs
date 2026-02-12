@@ -16501,3 +16501,111 @@ fn test_nullable_methods_comprehensive() {
     "#;
     assert_eq!(run_program_i64(source), 20);
 }
+
+// ============================================================================
+// Cycle 296: Nullable zip, flatten, or + integration tests
+// ============================================================================
+
+#[test]
+fn test_nullable_or_some() {
+    let source = r#"
+        fn main() -> i64 = {
+            let x: i64? = 5;
+            x.or_val(10).unwrap_or(0)
+        };
+    "#;
+    assert_eq!(run_program_i64(source), 5);
+}
+
+#[test]
+fn test_nullable_or_none() {
+    let source = r#"
+        fn main() -> i64 = {
+            let arr = [1].pop();
+            let x: i64? = arr.get(99);
+            x.or_val(42).unwrap_or(0)
+        };
+    "#;
+    assert_eq!(run_program_i64(source), 42);
+}
+
+#[test]
+fn test_nullable_flatten() {
+    // flatten on a simple nullable just returns the value
+    let source = r#"
+        fn main() -> i64 = {
+            let x: i64? = 7;
+            x.flatten()
+        };
+    "#;
+    assert_eq!(run_program_i64(source), 7);
+}
+
+#[test]
+fn test_nullable_flatten_some() {
+    // flatten on present nullable returns the value
+    let source = r#"
+        fn main() -> i64 = {
+            let x: i64? = 7;
+            x.flatten()
+        };
+    "#;
+    assert_eq!(run_program_i64(source), 7);
+}
+
+#[test]
+fn test_nullable_or_chain() {
+    // or chain: None.or(None).or(42)
+    let source = r#"
+        fn main() -> i64 = {
+            let arr = [1].pop();
+            let a: i64? = arr.get(99);
+            let b: i64? = arr.get(99);
+            a.or_val(b).or_val(42).unwrap_or(0)
+        };
+    "#;
+    assert_eq!(run_program_i64(source), 42);
+}
+
+#[test]
+fn test_nullable_comprehensive_chain() {
+    // Complex chain: map -> filter -> unwrap_or_else
+    let source = r#"
+        fn main() -> i64 = {
+            let arr = [10, 20, 30];
+            let val: i64? = arr.get(1);
+            let result = val
+                .map(fn |x: i64| { x + 5 })
+                .filter(fn |x: i64| { x > 30 })
+                .unwrap_or_else(fn || { 99 });
+            result
+        };
+    "#;
+    // arr.get(1) = 20, map => 25, filter(>30) => null, unwrap_or_else => 99
+    assert_eq!(run_program_i64(source), 99);
+}
+
+#[test]
+fn test_nullable_expect_or_chain() {
+    let source = r#"
+        fn main() -> i64 = {
+            let arr = [1, 2, 3];
+            let val: i64? = arr.get(0);
+            val.or_val(0).expect("should have a value")
+        };
+    "#;
+    assert_eq!(run_program_i64(source), 1);
+}
+
+#[test]
+fn test_nullable_map_unwrap_or_else() {
+    let source = r#"
+        fn main() -> i64 = {
+            let arr = [5, 10, 15];
+            let val: i64? = arr.get(2);
+            val.map(fn |x: i64| { x * 3 }).unwrap_or_else(fn || { 0 })
+        };
+    "#;
+    // get(2) = 15, map => 45
+    assert_eq!(run_program_i64(source), 45);
+}

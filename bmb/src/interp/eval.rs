@@ -2788,6 +2788,49 @@ impl Interpreter {
                             _ => Err(RuntimeError::type_error("Option variant", &variant)),
                         }
                     }
+                    // v0.90.62: zip(other) -> (T, U)?
+                    "zip" => {
+                        match variant.as_str() {
+                            "Some" => {
+                                let val = values.into_iter().next().unwrap_or(Value::Unit);
+                                let other = args.into_iter().next().unwrap();
+                                // Check if other is None/null
+                                let other_is_some = match &other {
+                                    Value::Enum(n, v, _) if n == "Option" => v == "Some",
+                                    Value::Int(0) => false,
+                                    _ => true,
+                                };
+                                if other_is_some {
+                                    let other_val = match other {
+                                        Value::Enum(_, _, vals) => vals.into_iter().next().unwrap_or(Value::Unit),
+                                        v => v,
+                                    };
+                                    Ok(Value::Enum("Option".to_string(), "Some".to_string(),
+                                        vec![Value::Tuple(vec![val, other_val])]))
+                                } else {
+                                    Ok(Value::Enum("Option".to_string(), "None".to_string(), vec![]))
+                                }
+                            }
+                            "None" => Ok(Value::Enum("Option".to_string(), "None".to_string(), vec![])),
+                            _ => Err(RuntimeError::type_error("Option variant", &variant)),
+                        }
+                    }
+                    // v0.90.62: flatten() -> T? (for Option<Option<T>>)
+                    "flatten" => {
+                        match variant.as_str() {
+                            "Some" => Ok(values.into_iter().next().unwrap_or(Value::Unit)),
+                            "None" => Ok(Value::Enum("Option".to_string(), "None".to_string(), vec![])),
+                            _ => Err(RuntimeError::type_error("Option variant", &variant)),
+                        }
+                    }
+                    // v0.90.62: or_val(other) -> T? (named or_val because 'or' is keyword)
+                    "or_val" => {
+                        match variant.as_str() {
+                            "Some" => Ok(Value::Enum(enum_name, variant, values)),
+                            "None" => Ok(args.into_iter().next().unwrap()),
+                            _ => Err(RuntimeError::type_error("Option variant", &variant)),
+                        }
+                    }
                     _ => Err(RuntimeError::undefined_function(&format!("Option.{}", method))),
                 }
             }
@@ -2983,6 +3026,41 @@ impl Interpreter {
                                 }
                                 _ => Err(RuntimeError::type_error("closure", "non-closure")),
                             }
+                        }
+                    }
+                    // v0.90.62: zip(other) -> (T, U)?
+                    "zip" => {
+                        let other = args.into_iter().next().unwrap();
+                        if n != 0 {
+                            let other_is_some = match &other {
+                                Value::Int(0) => false,
+                                Value::Enum(name, variant, _) if name == "Option" => variant == "Some",
+                                _ => true,
+                            };
+                            if other_is_some {
+                                let other_val = match other {
+                                    Value::Enum(_, _, vals) => vals.into_iter().next().unwrap_or(Value::Unit),
+                                    v => v,
+                                };
+                                Ok(Value::Tuple(vec![Value::Int(n), other_val]))
+                            } else {
+                                Ok(Value::Int(0))
+                            }
+                        } else {
+                            Ok(Value::Int(0))
+                        }
+                    }
+                    // v0.90.62: flatten() -> T?
+                    "flatten" => {
+                        // For nullable i64, flatten just returns the value
+                        Ok(Value::Int(n))
+                    }
+                    // v0.90.62: or_val(other) -> T? (named or_val because 'or' is keyword)
+                    "or_val" => {
+                        if n != 0 {
+                            Ok(Value::Int(n))
+                        } else {
+                            Ok(args.into_iter().next().unwrap())
                         }
                     }
                     // v0.90.42: sign() -> i64 (-1, 0, or 1)
