@@ -5658,6 +5658,59 @@ impl TypeChecker {
                     None => Ok(Type::I64),
                 }
             }
+            // v0.90.61: or_else(fn() -> T?) -> T?
+            "or_else" => {
+                if args.len() != 1 {
+                    return Err(CompileError::type_error("or_else() takes 1 argument (a closure)", span));
+                }
+                let fn_ty = self.infer(&args[0].node, args[0].span)?;
+                match fn_ty {
+                    Type::Fn { params, ret } => {
+                        if !params.is_empty() {
+                            return Err(CompileError::type_error(
+                                format!("or_else() closure must take 0 parameters, got {}", params.len()),
+                                args[0].span,
+                            ));
+                        }
+                        Ok(*ret)
+                    }
+                    _ => Err(CompileError::type_error("or_else() requires a closure argument", args[0].span)),
+                }
+            }
+            // v0.90.61: expect(msg: String) -> T (panics with message if None)
+            "expect" => {
+                if args.len() != 1 {
+                    return Err(CompileError::type_error("expect() takes 1 argument (error message)", span));
+                }
+                let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                self.unify(&arg_ty, &Type::String, args[0].span)?;
+                match inner_ty {
+                    Some(ty) => Ok(ty),
+                    None => Ok(Type::I64),
+                }
+            }
+            // v0.90.61: unwrap_or_else(fn() -> T) -> T
+            "unwrap_or_else" => {
+                if args.len() != 1 {
+                    return Err(CompileError::type_error("unwrap_or_else() takes 1 argument (a closure)", span));
+                }
+                let fn_ty = self.infer(&args[0].node, args[0].span)?;
+                match fn_ty {
+                    Type::Fn { params, ret } => {
+                        if !params.is_empty() {
+                            return Err(CompileError::type_error(
+                                format!("unwrap_or_else() closure must take 0 parameters, got {}", params.len()),
+                                args[0].span,
+                            ));
+                        }
+                        if let Some(ref expected) = inner_ty {
+                            self.unify(expected, &ret, args[0].span)?;
+                        }
+                        Ok(*ret)
+                    }
+                    _ => Err(CompileError::type_error("unwrap_or_else() requires a closure argument", args[0].span)),
+                }
+            }
             _ => Err(CompileError::type_error(
                 format!("unknown method '{}' for Option", method),
                 span,

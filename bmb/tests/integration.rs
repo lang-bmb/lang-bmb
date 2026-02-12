@@ -16397,3 +16397,107 @@ fn test_int_math_comprehensive() {
     "#;
     assert_eq!(run_program_i64(source), 40);
 }
+
+// ============================================================================
+// Cycle 295: Nullable methods — or_else, expect, unwrap_or_else
+// ============================================================================
+
+#[test]
+fn test_nullable_or_else_some() {
+    // or_else on Some returns the original value
+    let source = r#"
+        fn main() -> i64 = {
+            let x: i64? = 5;
+            x.or_else(fn || { 10 })
+        };
+    "#;
+    assert_eq!(run_program_i64(source), 5);
+}
+
+#[test]
+fn test_nullable_or_else_none() {
+    // or_else on None calls the closure
+    let source = r#"
+        fn main() -> i64 = {
+            let arr = [1].pop();
+            let x: i64? = arr.get(99);
+            x.or_else(fn || { 42 })
+        };
+    "#;
+    assert_eq!(run_program_i64(source), 42);
+}
+
+#[test]
+fn test_nullable_unwrap_or_else_some() {
+    let source = r#"
+        fn main() -> i64 = {
+            let x: i64? = 7;
+            x.unwrap_or_else(fn || { 99 })
+        };
+    "#;
+    assert_eq!(run_program_i64(source), 7);
+}
+
+#[test]
+fn test_nullable_unwrap_or_else_none() {
+    let source = r#"
+        fn main() -> i64 = {
+            let arr = [1].pop();
+            let x: i64? = arr.get(99);
+            x.unwrap_or_else(fn || { 42 })
+        };
+    "#;
+    assert_eq!(run_program_i64(source), 42);
+}
+
+#[test]
+fn test_nullable_expect_some() {
+    let source = r#"
+        fn main() -> i64 = {
+            let x: i64? = 3;
+            x.expect("should not fail")
+        };
+    "#;
+    assert_eq!(run_program_i64(source), 3);
+}
+
+#[test]
+fn test_nullable_or_else_chain() {
+    // Chain: get(99).or_else(|| get(0)).unwrap_or(0)
+    let source = r#"
+        fn main() -> i64 = {
+            let arr = [10, 20, 30];
+            let result: i64? = arr.get(99);
+            result.or_else(fn || { arr.get(0) }).unwrap_or(0)
+        };
+    "#;
+    assert_eq!(run_program_i64(source), 10);
+}
+
+#[test]
+fn test_nullable_unwrap_or_else_computed() {
+    // unwrap_or_else with a computed default
+    let source = r#"
+        fn main() -> i64 = {
+            let arr = [1, 2, 3];
+            let missing: i64? = arr.get(99);
+            missing.unwrap_or_else(fn || { arr.len() * 10 })
+        };
+    "#;
+    assert_eq!(run_program_i64(source), 30);
+}
+
+#[test]
+fn test_nullable_methods_comprehensive() {
+    // Test map + or_else + unwrap_or_else chain
+    let source = r#"
+        fn main() -> i64 = {
+            let arr = [5, 10, 15];
+            let found: i64? = arr.get(1);
+            let mapped = found.map(fn |x: i64| { x * 2 });
+            let result = mapped.unwrap_or_else(fn || { 0 });
+            result
+        };
+    "#;
+    assert_eq!(run_program_i64(source), 20);
+}

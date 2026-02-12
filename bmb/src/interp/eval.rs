@@ -2744,6 +2744,50 @@ impl Interpreter {
                             _ => Err(RuntimeError::type_error("Option variant", &variant)),
                         }
                     }
+                    // v0.90.61: or_else(fn() -> T?) -> T?
+                    "or_else" => {
+                        match variant.as_str() {
+                            "Some" => Ok(Value::Enum(enum_name, variant, values)),
+                            "None" => {
+                                match args.into_iter().next().unwrap() {
+                                    Value::Closure { params, body, env: closure_env } => {
+                                        self.call_closure(&params, &body, &closure_env, vec![])
+                                    }
+                                    _ => Err(RuntimeError::type_error("closure", "non-closure")),
+                                }
+                            }
+                            _ => Err(RuntimeError::type_error("Option variant", &variant)),
+                        }
+                    }
+                    // v0.90.61: expect(msg) -> T
+                    "expect" => {
+                        match variant.as_str() {
+                            "Some" => Ok(values.into_iter().next().unwrap_or(Value::Unit)),
+                            "None" => {
+                                let msg = match &args[0] {
+                                    Value::Str(s) => s.to_string(),
+                                    _ => "expect failed".to_string(),
+                                };
+                                Err(RuntimeError::type_error("Some", &format!("None ({})", msg)))
+                            }
+                            _ => Err(RuntimeError::type_error("Option variant", &variant)),
+                        }
+                    }
+                    // v0.90.61: unwrap_or_else(fn() -> T) -> T
+                    "unwrap_or_else" => {
+                        match variant.as_str() {
+                            "Some" => Ok(values.into_iter().next().unwrap_or(Value::Unit)),
+                            "None" => {
+                                match args.into_iter().next().unwrap() {
+                                    Value::Closure { params, body, env: closure_env } => {
+                                        self.call_closure(&params, &body, &closure_env, vec![])
+                                    }
+                                    _ => Err(RuntimeError::type_error("closure", "non-closure")),
+                                }
+                            }
+                            _ => Err(RuntimeError::type_error("Option variant", &variant)),
+                        }
+                    }
                     _ => Err(RuntimeError::undefined_function(&format!("Option.{}", method))),
                 }
             }
@@ -2901,6 +2945,44 @@ impl Interpreter {
                             Ok(Value::Int(n))
                         } else {
                             Err(RuntimeError::type_error("non-null", "null (unwrap on null)"))
+                        }
+                    }
+                    // v0.90.61: or_else(fn() -> T?) -> T?
+                    "or_else" => {
+                        if n != 0 {
+                            Ok(Value::Int(n))
+                        } else {
+                            match args.into_iter().next().unwrap() {
+                                Value::Closure { params, body, env: closure_env } => {
+                                    self.call_closure(&params, &body, &closure_env, vec![])
+                                }
+                                _ => Err(RuntimeError::type_error("closure", "non-closure")),
+                            }
+                        }
+                    }
+                    // v0.90.61: expect(msg) -> T
+                    "expect" => {
+                        if n != 0 {
+                            Ok(Value::Int(n))
+                        } else {
+                            let msg = match &args[0] {
+                                Value::Str(s) => s.to_string(),
+                                _ => "expect failed".to_string(),
+                            };
+                            Err(RuntimeError::type_error("non-null", &format!("null ({})", msg)))
+                        }
+                    }
+                    // v0.90.61: unwrap_or_else(fn() -> T) -> T
+                    "unwrap_or_else" => {
+                        if n != 0 {
+                            Ok(Value::Int(n))
+                        } else {
+                            match args.into_iter().next().unwrap() {
+                                Value::Closure { params, body, env: closure_env } => {
+                                    self.call_closure(&params, &body, &closure_env, vec![])
+                                }
+                                _ => Err(RuntimeError::type_error("closure", "non-closure")),
+                            }
                         }
                     }
                     // v0.90.42: sign() -> i64 (-1, 0, or 1)
