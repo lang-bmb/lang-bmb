@@ -5040,6 +5040,65 @@ impl TypeChecker {
                         }
                         Ok(Type::Array(Box::new(Type::I64), 0))
                     }
+                    // v0.90.73: fold_right, reduce_right, zip_longest
+                    "fold_right" => {
+                        if args.len() != 2 {
+                            return Err(CompileError::type_error("fold_right() takes 2 arguments (initial value and closure)", span));
+                        }
+                        let init_ty = self.infer(&args[0].node, args[0].span)?;
+                        let fn_ty = self.infer(&args[1].node, args[1].span)?;
+                        match fn_ty {
+                            Type::Fn { params, ret } => {
+                                if params.len() != 2 {
+                                    return Err(CompileError::type_error(
+                                        format!("fold_right() closure must take 2 parameters, got {}", params.len()),
+                                        args[1].span,
+                                    ));
+                                }
+                                self.unify(&params[0], elem_ty, args[1].span)?;
+                                self.unify(&params[1], &init_ty, args[1].span)?;
+                                self.unify(&ret, &init_ty, args[1].span)?;
+                                Ok(init_ty)
+                            }
+                            _ => Err(CompileError::type_error("fold_right() requires a closure as second argument", args[1].span)),
+                        }
+                    }
+                    "reduce_right" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("reduce_right() takes 1 argument (a closure)", span));
+                        }
+                        let fn_ty = self.infer(&args[0].node, args[0].span)?;
+                        match fn_ty {
+                            Type::Fn { params, ret } => {
+                                if params.len() != 2 {
+                                    return Err(CompileError::type_error(
+                                        format!("reduce_right() closure must take 2 parameters, got {}", params.len()),
+                                        args[0].span,
+                                    ));
+                                }
+                                self.unify(&params[0], elem_ty, args[0].span)?;
+                                self.unify(&params[1], elem_ty, args[0].span)?;
+                                self.unify(&ret, elem_ty, args[0].span)?;
+                                Ok(Type::Nullable(elem_ty.clone()))
+                            }
+                            _ => Err(CompileError::type_error("reduce_right() requires a closure argument", args[0].span)),
+                        }
+                    }
+                    "zip_longest" => {
+                        if args.len() != 2 {
+                            return Err(CompileError::type_error("zip_longest() takes 2 arguments (other array, default value)", span));
+                        }
+                        let other_ty = self.infer(&args[0].node, args[0].span)?;
+                        match &other_ty {
+                            Type::Array(other_elem, _) => {
+                                self.unify(other_elem, elem_ty, args[0].span)?;
+                            }
+                            _ => return Err(CompileError::type_error("zip_longest() first argument must be an array", args[0].span)),
+                        }
+                        let default_ty = self.infer(&args[1].node, args[1].span)?;
+                        self.unify(&default_ty, elem_ty, args[1].span)?;
+                        Ok(Type::Array(Box::new(Type::Array(elem_ty.clone().into(), 0)), 0))
+                    }
                     _ => Err(CompileError::type_error(
                         format!("unknown method '{}' for Array", method),
                         span,

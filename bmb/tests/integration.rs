@@ -17471,3 +17471,98 @@ fn test_string_case_chain() {
     "#;
     assert_eq!(run_program_str(source), "helloWorld");
 }
+
+// ============================================================================
+// Cycle 307: Array fold_right, reduce_right, zip_longest
+// ============================================================================
+
+#[test]
+fn test_array_fold_right() {
+    let source = r#"
+        fn main() -> i64 = {
+            [1, 2, 3].fold_right(0, fn |x: i64, acc: i64| { x + acc })
+        };
+    "#;
+    // 1+(2+(3+0)) = 6
+    assert_eq!(run_program_i64(source), 6);
+}
+
+#[test]
+fn test_array_fold_right_subtraction() {
+    let source = r#"
+        fn main() -> i64 = {
+            [1, 2, 3].fold_right(0, fn |x: i64, acc: i64| { x - acc })
+        };
+    "#;
+    // fold_right: 1 - (2 - (3 - 0)) = 1 - (2 - 3) = 1 - (-1) = 2
+    assert_eq!(run_program_i64(source), 2);
+}
+
+#[test]
+fn test_array_reduce_right() {
+    let source = r#"
+        fn main() -> i64 = {
+            [1, 2, 3].reduce_right(fn |x: i64, acc: i64| { x - acc }).unwrap_or(0)
+        };
+    "#;
+    // reduce_right: 1 - (2 - 3) = 1 - (-1) = 2
+    assert_eq!(run_program_i64(source), 2);
+}
+
+#[test]
+fn test_array_reduce_right_empty() {
+    let source = r#"
+        fn main() -> i64 = {
+            [1].pop().reduce_right(fn |x: i64, acc: i64| { x + acc }).unwrap_or(99)
+        };
+    "#;
+    assert_eq!(run_program_i64(source), 99);
+}
+
+#[test]
+fn test_array_zip_longest() {
+    let source = r#"
+        fn main() -> i64 = {
+            let result = [1, 2, 3].zip_longest([10, 20], 0);
+            result.len()
+        };
+    "#;
+    // max(3, 2) = 3 pairs
+    assert_eq!(run_program_i64(source), 3);
+}
+
+#[test]
+fn test_array_zip_longest_values() {
+    let source = r#"
+        fn main() -> i64 = {
+            let result = [1, 2, 3].zip_longest([10, 20], 0);
+            result[2][0] * 10 + result[2][1]
+        };
+    "#;
+    // Third pair: [3, 0] -> 3*10+0 = 30
+    assert_eq!(run_program_i64(source), 30);
+}
+
+#[test]
+fn test_array_zip_longest_shorter_first() {
+    let source = r#"
+        fn main() -> i64 = {
+            let result = [1].zip_longest([10, 20, 30], 0);
+            result[1][0] + result[2][0]
+        };
+    "#;
+    // [1,[10]] [0,[20]] [0,[30]] -> 0+0 = 0
+    assert_eq!(run_program_i64(source), 0);
+}
+
+#[test]
+fn test_array_fold_right_reduce_right_chain() {
+    let source = r#"
+        fn main() -> i64 = {
+            let sum = [1, 2, 3, 4].fold_right(0, fn |x: i64, acc: i64| { x + acc });
+            sum
+        };
+    "#;
+    // 1+2+3+4 = 10 (commutative, same as fold_left)
+    assert_eq!(run_program_i64(source), 10);
+}

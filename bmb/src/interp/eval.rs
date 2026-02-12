@@ -3111,6 +3111,53 @@ impl Interpreter {
                         }
                         Ok(Value::Array(counts.into_iter().map(Value::Int).collect()))
                     }
+                    // v0.90.73: fold_right, reduce_right, zip_longest
+                    "fold_right" => {
+                        let mut args_iter = args.into_iter();
+                        let init = args_iter.next().unwrap();
+                        match args_iter.next().unwrap() {
+                            Value::Closure { params, body, env: closure_env } => {
+                                let mut acc = init;
+                                for elem in arr.into_iter().rev() {
+                                    acc = self.call_closure(&params, &body, &closure_env, vec![elem, acc])?;
+                                }
+                                Ok(acc)
+                            }
+                            _ => Err(RuntimeError::type_error("closure", "non-closure")),
+                        }
+                    }
+                    "reduce_right" => {
+                        match args.into_iter().next().unwrap() {
+                            Value::Closure { params, body, env: closure_env } => {
+                                if arr.is_empty() {
+                                    return Ok(Value::Enum("Option".to_string(), "None".to_string(), vec![]));
+                                }
+                                let mut iter = arr.into_iter().rev();
+                                let mut acc = iter.next().unwrap();
+                                for elem in iter {
+                                    acc = self.call_closure(&params, &body, &closure_env, vec![elem, acc])?;
+                                }
+                                Ok(Value::Enum("Option".to_string(), "Some".to_string(), vec![acc]))
+                            }
+                            _ => Err(RuntimeError::type_error("closure", "non-closure")),
+                        }
+                    }
+                    "zip_longest" => {
+                        let mut args_iter = args.into_iter();
+                        let other = match args_iter.next().unwrap() {
+                            Value::Array(a) => a,
+                            _ => return Err(RuntimeError::type_error("array", "non-array")),
+                        };
+                        let default = args_iter.next().unwrap();
+                        let max_len = arr.len().max(other.len());
+                        let mut result = Vec::new();
+                        for i in 0..max_len {
+                            let a = arr.get(i).cloned().unwrap_or_else(|| default.clone());
+                            let b = other.get(i).cloned().unwrap_or_else(|| default.clone());
+                            result.push(Value::Array(vec![a, b]));
+                        }
+                        Ok(Value::Array(result))
+                    }
                     _ => Err(RuntimeError::undefined_function(&format!("Array.{}", method))),
                 }
             }
