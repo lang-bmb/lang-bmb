@@ -18535,3 +18535,43 @@ fn test_string_edit_distance_single_char() {
 fn test_string_starts_ends_combined() {
     assert_eq!(run_program_i64(r#"fn main() -> i64 = if "foobar".starts_with_any(["foo"]) { if "foobar".ends_with_any(["bar"]) { 1 } else { 0 } } else { 0 };"#), 1);
 }
+
+// --- Cycle 323: Integer is_power_of_two, next_power_of_two, is_prime, reverse_bits ---
+
+#[test]
+fn test_int_is_power_of_two() {
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = if 8.is_power_of_two() { 1 } else { 0 };"#), 1);
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = if 7.is_power_of_two() { 1 } else { 0 };"#), 0);
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = if 1.is_power_of_two() { 1 } else { 0 };"#), 1);
+}
+
+#[test]
+fn test_int_next_power_of_two() {
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = 5.next_power_of_two();"#), 8);
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = 8.next_power_of_two();"#), 8);
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = 1.next_power_of_two();"#), 1);
+}
+
+#[test]
+fn test_int_is_prime() {
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = if 7.is_prime() { 1 } else { 0 };"#), 1);
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = if 4.is_prime() { 1 } else { 0 };"#), 0);
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = if 2.is_prime() { 1 } else { 0 };"#), 1);
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = if 1.is_prime() { 1 } else { 0 };"#), 0);
+}
+
+#[test]
+fn test_int_is_prime_large() {
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = if 97.is_prime() { 1 } else { 0 };"#), 1);
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = if 100.is_prime() { 1 } else { 0 };"#), 0);
+}
+
+#[test]
+fn test_int_reverse_bits() {
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = if 0.reverse_bits() == 0 { 1 } else { 0 };"#), 1);
+}
+
+#[test]
+fn test_int_power_prime_chain() {
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = if 5.next_power_of_two().is_power_of_two() { 1 } else { 0 };"#), 1);
+}

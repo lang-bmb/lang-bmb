@@ -3195,6 +3195,19 @@ impl TypeChecker {
                         self.unify(&arg_ty, &receiver_ty, args[0].span)?;
                         Ok(receiver_ty.clone())
                     }
+                    // v0.90.89: is_power_of_two, next_power_of_two, is_prime, reverse_bits
+                    "is_power_of_two" | "is_prime" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error(&format!("{}() takes no arguments", method), span));
+                        }
+                        Ok(Type::Bool)
+                    }
+                    "next_power_of_two" | "reverse_bits" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error(&format!("{}() takes no arguments", method), span));
+                        }
+                        Ok(receiver_ty.clone())
+                    }
                     _ => Err(CompileError::type_error(
                         format!("unknown method '{}' for {}", method, receiver_ty), span)),
                 }

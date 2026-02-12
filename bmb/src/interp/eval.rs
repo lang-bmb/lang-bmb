@@ -4359,6 +4359,41 @@ impl Interpreter {
                         };
                         Ok(Value::Int(n >> (other as u32)))
                     }
+                    // v0.90.89: is_power_of_two, next_power_of_two, is_prime, reverse_bits
+                    "is_power_of_two" => {
+                        Ok(Value::Bool(n > 0 && (n & (n - 1)) == 0))
+                    }
+                    "next_power_of_two" => {
+                        if n <= 0 {
+                            Ok(Value::Int(1))
+                        } else {
+                            Ok(Value::Int((n as u64).next_power_of_two() as i64))
+                        }
+                    }
+                    "is_prime" => {
+                        let result = if n < 2 {
+                            false
+                        } else if n < 4 {
+                            true
+                        } else if n % 2 == 0 || n % 3 == 0 {
+                            false
+                        } else {
+                            let mut i = 5i64;
+                            let mut prime = true;
+                            while i * i <= n {
+                                if n % i == 0 || n % (i + 2) == 0 {
+                                    prime = false;
+                                    break;
+                                }
+                                i += 6;
+                            }
+                            prime
+                        };
+                        Ok(Value::Bool(result))
+                    }
+                    "reverse_bits" => {
+                        Ok(Value::Int(n.reverse_bits()))
+                    }
                     _ => Err(RuntimeError::type_error("object with methods", receiver.type_name())),
                 }
             }
