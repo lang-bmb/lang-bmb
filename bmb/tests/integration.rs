@@ -16296,3 +16296,104 @@ fn test_float_math_chain() {
     "#;
     assert_eq!(run_program_i64(source), 1);
 }
+
+// ============================================================================
+// Cycle 294: Integer math — lcm, factorial, bit_count, wrapping operations
+// ============================================================================
+
+#[test]
+fn test_int_lcm() {
+    let source = r#"
+        fn main() -> i64 = 12.lcm(8);
+    "#;
+    assert_eq!(run_program_i64(source), 24);
+}
+
+#[test]
+fn test_int_lcm_coprime() {
+    let source = r#"
+        fn main() -> i64 = 7.lcm(13);
+    "#;
+    assert_eq!(run_program_i64(source), 91);
+}
+
+#[test]
+fn test_int_lcm_zero() {
+    let source = r#"
+        fn main() -> i64 = 0.lcm(5);
+    "#;
+    assert_eq!(run_program_i64(source), 0);
+}
+
+#[test]
+fn test_int_factorial() {
+    let source = r#"
+        fn main() -> i64 = 5.factorial();
+    "#;
+    assert_eq!(run_program_i64(source), 120);
+}
+
+#[test]
+fn test_int_factorial_zero() {
+    let source = r#"
+        fn main() -> i64 = 0.factorial();
+    "#;
+    assert_eq!(run_program_i64(source), 1);
+}
+
+#[test]
+fn test_int_factorial_10() {
+    let source = r#"
+        fn main() -> i64 = 10.factorial();
+    "#;
+    assert_eq!(run_program_i64(source), 3628800);
+}
+
+#[test]
+fn test_int_bit_count() {
+    let source = r#"
+        fn main() -> i64 = 255.bit_count();
+    "#;
+    assert_eq!(run_program_i64(source), 8);
+}
+
+#[test]
+fn test_int_bit_count_power_of_two() {
+    let source = r#"
+        fn main() -> i64 = 1024.bit_count();
+    "#;
+    assert_eq!(run_program_i64(source), 1);
+}
+
+#[test]
+fn test_int_wrapping_add() {
+    let source = r#"
+        fn main() -> i64 = 9223372036854775807.wrapping_add(1);
+    "#;
+    // i64::MAX + 1 wraps to i64::MIN
+    assert_eq!(run_program_i64(source), i64::MIN);
+}
+
+#[test]
+fn test_int_wrapping_mul() {
+    let source = r#"
+        fn main() -> i64 = 9223372036854775807.wrapping_mul(2);
+    "#;
+    // wrapping multiplication
+    assert_eq!(run_program_i64(source), i64::MAX.wrapping_mul(2));
+}
+
+#[test]
+fn test_int_math_comprehensive() {
+    // 6.lcm(4) = 12, 4.factorial() = 24, 15.bit_count() = 4
+    // 12 + 24 + 4 = 40
+    let source = r#"
+        fn main() -> i64 = {
+            let a = 6.lcm(4);
+            let b = 4.factorial();
+            let c = 15.bit_count();
+            a + b + c
+        };
+    "#;
+    assert_eq!(run_program_i64(source), 40);
+}

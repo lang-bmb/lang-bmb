@@ -2965,6 +2965,60 @@ impl Interpreter {
                     "is_odd" => Ok(Value::Bool(n % 2 != 0)),
                     // v0.90.55: to_bool() -> bool (non-zero = true)
                     "to_bool" => Ok(Value::Bool(n != 0)),
+                    // v0.90.60: lcm, factorial, bit_count, wrapping operations
+                    "lcm" => {
+                        let other = match &args[0] {
+                            Value::Int(m) => *m,
+                            _ => return Err(RuntimeError::type_error("integer", args[0].type_name())),
+                        };
+                        if n == 0 && other == 0 {
+                            Ok(Value::Int(0))
+                        } else {
+                            // lcm(a, b) = |a * b| / gcd(a, b)
+                            let mut a = n.abs();
+                            let mut b = other.abs();
+                            let product = n.abs() as i128 * other.abs() as i128;
+                            // gcd
+                            while b != 0 {
+                                let t = b;
+                                b = a % b;
+                                a = t;
+                            }
+                            Ok(Value::Int((product / a as i128) as i64))
+                        }
+                    }
+                    "factorial" => {
+                        if n < 0 {
+                            return Err(RuntimeError::type_error("non-negative integer", "negative"));
+                        }
+                        let mut result: i64 = 1;
+                        for i in 2..=n {
+                            result = result.wrapping_mul(i);
+                        }
+                        Ok(Value::Int(result))
+                    }
+                    "bit_count" => Ok(Value::Int(n.count_ones() as i64)),
+                    "wrapping_add" => {
+                        let other = match &args[0] {
+                            Value::Int(m) => *m,
+                            _ => return Err(RuntimeError::type_error("integer", args[0].type_name())),
+                        };
+                        Ok(Value::Int(n.wrapping_add(other)))
+                    }
+                    "wrapping_sub" => {
+                        let other = match &args[0] {
+                            Value::Int(m) => *m,
+                            _ => return Err(RuntimeError::type_error("integer", args[0].type_name())),
+                        };
+                        Ok(Value::Int(n.wrapping_sub(other)))
+                    }
+                    "wrapping_mul" => {
+                        let other = match &args[0] {
+                            Value::Int(m) => *m,
+                            _ => return Err(RuntimeError::type_error("integer", args[0].type_name())),
+                        };
+                        Ok(Value::Int(n.wrapping_mul(other)))
+                    }
                     _ => Err(RuntimeError::type_error("object with methods", receiver.type_name())),
                 }
             }
