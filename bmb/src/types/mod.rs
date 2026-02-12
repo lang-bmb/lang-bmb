@@ -2945,7 +2945,7 @@ impl TypeChecker {
                     // v0.90.95: and_bool, or_bool, xor_bool, implies
                     "and_bool" | "or_bool" | "xor_bool" | "implication" => {
                         if args.len() != 1 {
-                            return Err(CompileError::type_error(&format!("{}() takes 1 argument", method), span));
+                            return Err(CompileError::type_error(format!("{}() takes 1 argument", method), span));
                         }
                         let arg_ty = self.infer(&args[0].node, args[0].span)?;
                         self.unify(&arg_ty, &Type::Bool, args[0].span)?;
@@ -2954,7 +2954,7 @@ impl TypeChecker {
                     // v0.90.95: nand, nor
                     "nand" | "nor" => {
                         if args.len() != 1 {
-                            return Err(CompileError::type_error(&format!("{}() takes 1 argument", method), span));
+                            return Err(CompileError::type_error(format!("{}() takes 1 argument", method), span));
                         }
                         let arg_ty = self.infer(&args[0].node, args[0].span)?;
                         self.unify(&arg_ty, &Type::Bool, args[0].span)?;
@@ -3185,7 +3185,7 @@ impl TypeChecker {
                             return Err(CompileError::type_error("range_to() takes 1 argument (end)", span));
                         }
                         let end_ty = self.infer(&args[0].node, args[0].span)?;
-                        self.unify(&end_ty, &receiver_ty, args[0].span)?;
+                        self.unify(&end_ty, receiver_ty, args[0].span)?;
                         Ok(Type::Array(Box::new(Type::I64), 0))
                     }
                     // v0.90.54: is_even() -> bool
@@ -3245,35 +3245,35 @@ impl TypeChecker {
                     // v0.90.75: leading_zeros, trailing_zeros, bit_and, bit_or, bit_xor, bit_not, bit_shift_left, bit_shift_right
                     "leading_zeros" | "trailing_zeros" | "bit_not" => {
                         if !args.is_empty() {
-                            return Err(CompileError::type_error(&format!("{}() takes no arguments", method), span));
+                            return Err(CompileError::type_error(format!("{}() takes no arguments", method), span));
                         }
                         Ok(Type::I64)
                     }
                     "bit_and" | "bit_or" | "bit_xor" | "bit_shift_left" | "bit_shift_right" => {
                         if args.len() != 1 {
-                            return Err(CompileError::type_error(&format!("{}() takes 1 argument", method), span));
+                            return Err(CompileError::type_error(format!("{}() takes 1 argument", method), span));
                         }
                         let arg_ty = self.infer(&args[0].node, args[0].span)?;
-                        self.unify(&arg_ty, &receiver_ty, args[0].span)?;
+                        self.unify(&arg_ty, receiver_ty, args[0].span)?;
                         Ok(receiver_ty.clone())
                     }
                     // v0.90.89: is_power_of_two, next_power_of_two, is_prime, reverse_bits
                     "is_power_of_two" | "is_prime" => {
                         if !args.is_empty() {
-                            return Err(CompileError::type_error(&format!("{}() takes no arguments", method), span));
+                            return Err(CompileError::type_error(format!("{}() takes no arguments", method), span));
                         }
                         Ok(Type::Bool)
                     }
                     "next_power_of_two" | "reverse_bits" => {
                         if !args.is_empty() {
-                            return Err(CompileError::type_error(&format!("{}() takes no arguments", method), span));
+                            return Err(CompileError::type_error(format!("{}() takes no arguments", method), span));
                         }
                         Ok(receiver_ty.clone())
                     }
                     // v0.90.90: saturating_add/sub/mul(i64) -> i64
                     "saturating_add" | "saturating_sub" | "saturating_mul" => {
                         if args.len() != 1 {
-                            return Err(CompileError::type_error(&format!("{}() takes 1 argument", method), span));
+                            return Err(CompileError::type_error(format!("{}() takes 1 argument", method), span));
                         }
                         let arg_ty = self.infer(&args[0].node, args[0].span)?;
                         self.unify(&arg_ty, receiver_ty, args[0].span)?;
@@ -3282,7 +3282,7 @@ impl TypeChecker {
                     // v0.90.90: checked_add/sub/mul(i64) -> i64?
                     "checked_add" | "checked_sub" | "checked_mul" => {
                         if args.len() != 1 {
-                            return Err(CompileError::type_error(&format!("{}() takes 1 argument", method), span));
+                            return Err(CompileError::type_error(format!("{}() takes 1 argument", method), span));
                         }
                         let arg_ty = self.infer(&args[0].node, args[0].span)?;
                         self.unify(&arg_ty, receiver_ty, args[0].span)?;
@@ -3504,7 +3504,7 @@ impl TypeChecker {
                     // v0.90.71: to_radians, to_degrees, format_fixed, signum, recip
                     "to_radians" | "to_degrees" | "signum" | "recip" => {
                         if !args.is_empty() {
-                            return Err(CompileError::type_error(&format!("{}() takes no arguments", method), span));
+                            return Err(CompileError::type_error(format!("{}() takes no arguments", method), span));
                         }
                         Ok(Type::F64)
                     }
@@ -4162,7 +4162,7 @@ impl TypeChecker {
                     }
                     "remove_prefix" | "remove_suffix" => {
                         if args.len() != 1 {
-                            return Err(CompileError::type_error(&format!("{}() takes 1 argument", method), span));
+                            return Err(CompileError::type_error(format!("{}() takes 1 argument", method), span));
                         }
                         let arg_ty = self.infer(&args[0].node, args[0].span)?;
                         self.unify(&arg_ty, &Type::String, args[0].span)?;
@@ -4204,14 +4204,14 @@ impl TypeChecker {
                     "swapcase" | "title_case" | "snake_case" | "camel_case"
                     | "kebab_case" | "pascal_case" | "screaming_snake_case" => {
                         if !args.is_empty() {
-                            return Err(CompileError::type_error(&format!("{}() takes no arguments", method), span));
+                            return Err(CompileError::type_error(format!("{}() takes no arguments", method), span));
                         }
                         Ok(Type::String)
                     }
                     // v0.90.76: pad_start, pad_end, char_code_at, from_char_code
                     "pad_start" | "pad_end" => {
                         if args.len() != 2 {
-                            return Err(CompileError::type_error(&format!("{}() takes 2 arguments (width, pad_char)", method), span));
+                            return Err(CompileError::type_error(format!("{}() takes 2 arguments (width, pad_char)", method), span));
                         }
                         let width_ty = self.infer(&args[0].node, args[0].span)?;
                         self.unify(&width_ty, &Type::I64, args[0].span)?;
@@ -5217,7 +5217,7 @@ impl TypeChecker {
                         }
                         let n_ty = self.infer(&args[0].node, args[0].span)?;
                         self.unify(&n_ty, &Type::I64, args[0].span)?;
-                        Ok(Type::Array(Box::new(Type::Array(elem_ty.clone().into(), 0)), 0))
+                        Ok(Type::Array(Box::new(Type::Array(elem_ty.clone(), 0)), 0))
                     }
                     // v0.90.51: step_by(n) -> [T] (every nth element)
                     "step_by" => {
@@ -5226,7 +5226,7 @@ impl TypeChecker {
                         }
                         let n_ty = self.infer(&args[0].node, args[0].span)?;
                         self.unify(&n_ty, &Type::I64, args[0].span)?;
-                        Ok(Type::Array(elem_ty.clone().into(), 0))
+                        Ok(Type::Array(elem_ty.clone(), 0))
                     }
                     // v0.90.52: interleave(other) -> [T] (alternate elements)
                     "interleave" => {
@@ -5240,7 +5240,7 @@ impl TypeChecker {
                             }
                             _ => return Err(CompileError::type_error("interleave() requires an array argument", args[0].span)),
                         }
-                        Ok(Type::Array(elem_ty.clone().into(), 0))
+                        Ok(Type::Array(elem_ty.clone(), 0))
                     }
                     // v0.90.52: find_map(fn(T) -> U?) -> U? (find + map in one)
                     "find_map" => {
@@ -5303,7 +5303,7 @@ impl TypeChecker {
                                     ));
                                 }
                                 self.unify(&params[0], elem_ty, args[0].span)?;
-                                Ok(Type::Nullable(elem_ty.clone().into()))
+                                Ok(Type::Nullable(elem_ty.clone()))
                             }
                             _ => Err(CompileError::type_error("min_by() requires a closure argument", args[0].span)),
                         }
@@ -5323,7 +5323,7 @@ impl TypeChecker {
                                     ));
                                 }
                                 self.unify(&params[0], elem_ty, args[0].span)?;
-                                Ok(Type::Nullable(elem_ty.clone().into()))
+                                Ok(Type::Nullable(elem_ty.clone()))
                             }
                             _ => Err(CompileError::type_error("max_by() requires a closure argument", args[0].span)),
                         }
@@ -5345,7 +5345,7 @@ impl TypeChecker {
                                 }
                                 self.unify(&params[0], elem_ty, args[0].span)?;
                                 self.unify(&ret, &Type::Bool, args[0].span)?;
-                                Ok(Type::Array(elem_ty.clone().into(), 0))
+                                Ok(Type::Array(elem_ty.clone(), 0))
                             }
                             _ => Err(CompileError::type_error("reject() requires a closure argument", args[0].span)),
                         }
@@ -5365,7 +5365,7 @@ impl TypeChecker {
                                     ));
                                 }
                                 self.unify(&params[0], elem_ty, args[0].span)?;
-                                Ok(Type::Array(elem_ty.clone().into(), 0))
+                                Ok(Type::Array(elem_ty.clone(), 0))
                             }
                             _ => Err(CompileError::type_error("tap() requires a closure argument", args[0].span)),
                         }
@@ -5404,7 +5404,7 @@ impl TypeChecker {
                                     ));
                                 }
                                 self.unify(&params[0], elem_ty, args[0].span)?;
-                                Ok(Type::Array(Box::new(Type::Array(elem_ty.clone().into(), 0)), 0))
+                                Ok(Type::Array(Box::new(Type::Array(elem_ty.clone(), 0)), 0))
                             }
                             _ => Err(CompileError::type_error("chunk_by() requires a closure argument", args[0].span)),
                         }
@@ -5424,7 +5424,7 @@ impl TypeChecker {
                                     ));
                                 }
                                 self.unify(&params[0], elem_ty, args[0].span)?;
-                                Ok(Type::Array(elem_ty.clone().into(), 0))
+                                Ok(Type::Array(elem_ty.clone(), 0))
                             }
                             _ => Err(CompileError::type_error("sorted_by_key() requires a closure argument", args[0].span)),
                         }
@@ -5446,7 +5446,7 @@ impl TypeChecker {
                                 self.unify(&params[0], elem_ty, args[0].span)?;
                                 self.unify(&params[1], elem_ty, args[0].span)?;
                                 self.unify(&ret, &Type::Bool, args[0].span)?;
-                                Ok(Type::Array(elem_ty.clone().into(), 0))
+                                Ok(Type::Array(elem_ty.clone(), 0))
                             }
                             _ => Err(CompileError::type_error("dedup_by() requires a closure argument", args[0].span)),
                         }
@@ -5509,7 +5509,7 @@ impl TypeChecker {
                                 }
                                 self.unify(&params[0], elem_ty, args[0].span)?;
                                 self.unify(&ret, &Type::Bool, args[0].span)?;
-                                Ok(Type::Nullable(elem_ty.clone().into()))
+                                Ok(Type::Nullable(elem_ty.clone()))
                             }
                             _ => Err(CompileError::type_error("find_last() requires a closure argument", args[0].span)),
                         }
@@ -5521,7 +5521,7 @@ impl TypeChecker {
                         }
                         let arg_ty = self.infer(&args[0].node, args[0].span)?;
                         self.unify(&arg_ty, &Type::I64, args[0].span)?;
-                        Ok(Type::Array(elem_ty.clone().into(), 0))
+                        Ok(Type::Array(elem_ty.clone(), 0))
                     }
                     // v0.90.63: drop_last(n: i64) -> [T]
                     "drop_last" => {
@@ -5530,7 +5530,7 @@ impl TypeChecker {
                         }
                         let arg_ty = self.infer(&args[0].node, args[0].span)?;
                         self.unify(&arg_ty, &Type::I64, args[0].span)?;
-                        Ok(Type::Array(elem_ty.clone().into(), 0))
+                        Ok(Type::Array(elem_ty.clone(), 0))
                     }
                     // v0.90.63: first_or(T) -> T
                     "first_or" => {
@@ -5566,7 +5566,7 @@ impl TypeChecker {
                                 }
                                 self.unify(&params[0], elem_ty, args[0].span)?;
                                 // Returns [[T]]
-                                Ok(Type::Array(Box::new(Type::Array(elem_ty.clone().into(), 0)), 0))
+                                Ok(Type::Array(Box::new(Type::Array(elem_ty.clone(), 0)), 0))
                             }
                             _ => Err(CompileError::type_error("group_by() requires a closure argument", args[0].span)),
                         }
@@ -5578,21 +5578,21 @@ impl TypeChecker {
                         }
                         let arg_ty = self.infer(&args[0].node, args[0].span)?;
                         self.unify(&arg_ty, elem_ty, args[0].span)?;
-                        Ok(Type::Array(elem_ty.clone().into(), 0))
+                        Ok(Type::Array(elem_ty.clone(), 0))
                     }
                     // v0.90.64: compact() -> [T] (remove zero/null elements)
                     "compact" => {
                         if !args.is_empty() {
                             return Err(CompileError::type_error("compact() takes no arguments", span));
                         }
-                        Ok(Type::Array(elem_ty.clone().into(), 0))
+                        Ok(Type::Array(elem_ty.clone(), 0))
                     }
                     // v0.90.69: pairwise, split_at, uniq_by
                     "pairwise" => {
                         if !args.is_empty() {
                             return Err(CompileError::type_error("pairwise() takes no arguments", span));
                         }
-                        Ok(Type::Array(Box::new(Type::Array(elem_ty.clone().into(), 0)), 0))
+                        Ok(Type::Array(Box::new(Type::Array(elem_ty.clone(), 0)), 0))
                     }
                     "split_at" => {
                         if args.len() != 1 {
@@ -5600,7 +5600,7 @@ impl TypeChecker {
                         }
                         let idx_ty = self.infer(&args[0].node, args[0].span)?;
                         self.unify(&idx_ty, &Type::I64, args[0].span)?;
-                        Ok(Type::Array(Box::new(Type::Array(elem_ty.clone().into(), 0)), 0))
+                        Ok(Type::Array(Box::new(Type::Array(elem_ty.clone(), 0)), 0))
                     }
                     "uniq_by" => {
                         if args.len() != 1 {
@@ -5613,7 +5613,7 @@ impl TypeChecker {
                                     return Err(CompileError::type_error("uniq_by() key function must take 1 argument", args[0].span));
                                 }
                                 self.unify(&params[0], elem_ty, args[0].span)?;
-                                Ok(Type::Array(elem_ty.clone().into(), 0))
+                                Ok(Type::Array(elem_ty.clone(), 0))
                             }
                             _ => Err(CompileError::type_error("uniq_by() requires a closure argument", args[0].span)),
                         }
@@ -5641,7 +5641,7 @@ impl TypeChecker {
                                     return Err(CompileError::type_error("associate() function must take 1 argument", args[0].span));
                                 }
                                 self.unify(&params[0], elem_ty, args[0].span)?;
-                                Ok(Type::Array(Box::new(Type::Array(ret.into(), 0)), 0))
+                                Ok(Type::Array(Box::new(Type::Array(ret, 0)), 0))
                             }
                             _ => Err(CompileError::type_error("associate() requires a closure argument", args[0].span)),
                         }
@@ -5709,7 +5709,7 @@ impl TypeChecker {
                         }
                         let default_ty = self.infer(&args[1].node, args[1].span)?;
                         self.unify(&default_ty, elem_ty, args[1].span)?;
-                        Ok(Type::Array(Box::new(Type::Array(elem_ty.clone().into(), 0)), 0))
+                        Ok(Type::Array(Box::new(Type::Array(elem_ty.clone(), 0)), 0))
                     }
                     // v0.90.84: each_slice(i64) -> [[T]]
                     "each_slice" => {
@@ -5722,7 +5722,7 @@ impl TypeChecker {
                             _ => return Err(CompileError::type_error(
                                 format!("each_slice() requires integer argument, got {}", arg_ty), args[0].span)),
                         }
-                        Ok(Type::Array(Box::new(Type::Array(elem_ty.clone().into(), 0)), 0))
+                        Ok(Type::Array(Box::new(Type::Array(elem_ty.clone(), 0)), 0))
                     }
                     // v0.90.84: tally() -> [[i64]] (count occurrences of each element)
                     "tally" => {
@@ -5768,7 +5768,7 @@ impl TypeChecker {
                                 self.unify(&params[0], elem_ty, args[0].span)?;
                                 self.unify(&params[1], elem_ty, args[0].span)?;
                                 self.unify(&ret, &Type::Bool, args[0].span)?;
-                                Ok(Type::Array(Box::new(Type::Array(elem_ty.clone().into(), 0)), 0))
+                                Ok(Type::Array(Box::new(Type::Array(elem_ty.clone(), 0)), 0))
                             }
                             _ => Err(CompileError::type_error("group_consecutive() requires a closure argument", args[0].span)),
                         }

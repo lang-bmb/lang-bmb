@@ -16086,7 +16086,7 @@ fn test_float_asin() {
     "#;
     // asin(1.0) = pi/2 ≈ 1.5707963...
     let result = run_program_f64(source);
-    assert!((result - 1.5707963267948966).abs() < 1e-10);
+    assert!((result - std::f64::consts::FRAC_PI_2).abs() < 1e-10);
 }
 
 #[test]
@@ -16096,7 +16096,7 @@ fn test_float_acos() {
     "#;
     // acos(0.0) = pi/2 ≈ 1.5707963...
     let result = run_program_f64(source);
-    assert!((result - 1.5707963267948966).abs() < 1e-10);
+    assert!((result - std::f64::consts::FRAC_PI_2).abs() < 1e-10);
 }
 
 #[test]
@@ -16106,7 +16106,7 @@ fn test_float_atan() {
     "#;
     // atan(1.0) = pi/4 ≈ 0.7853981...
     let result = run_program_f64(source);
-    assert!((result - 0.7853981633974483).abs() < 1e-10);
+    assert!((result - std::f64::consts::FRAC_PI_4).abs() < 1e-10);
 }
 
 #[test]
@@ -16116,7 +16116,7 @@ fn test_float_atan2() {
     "#;
     // atan2(1.0, 1.0) = pi/4 ≈ 0.7853981...
     let result = run_program_f64(source);
-    assert!((result - 0.7853981633974483).abs() < 1e-10);
+    assert!((result - std::f64::consts::FRAC_PI_4).abs() < 1e-10);
 }
 
 #[test]
@@ -18968,6 +18968,7 @@ fn test_string_parse_radix_type_checks() {
 // --- Cycle 333: Float round_to, floor_to, ceil_to ---
 
 #[test]
+#[allow(clippy::approx_constant)]
 fn test_float_round_to() {
     assert_eq!(run_program_f64("fn main() -> f64 = 3.14159.round_to(2);"), 3.14);
     assert_eq!(run_program_f64("fn main() -> f64 = 3.14159.round_to(3);"), 3.142);
@@ -18975,6 +18976,7 @@ fn test_float_round_to() {
 }
 
 #[test]
+#[allow(clippy::approx_constant)]
 fn test_float_floor_to() {
     assert_eq!(run_program_f64("fn main() -> f64 = 3.14159.floor_to(2);"), 3.14);
     assert_eq!(run_program_f64("fn main() -> f64 = 3.999.floor_to(1);"), 3.9);
@@ -19570,6 +19572,7 @@ fn test_edge_empty_string_methods() {
 
 // Edge cases: float precision rounding
 #[test]
+#[allow(clippy::approx_constant)]
 fn test_edge_float_precision() {
     assert_eq!(run_program_f64("fn main() -> f64 = 3.14159.round_to(2);"), 3.14);
     assert_eq!(run_program_f64("fn main() -> f64 = 3.14159.floor_to(2);"), 3.14);
@@ -19764,4 +19767,182 @@ fn test_350_type_checks() {
     assert!(type_checks("fn main() -> i64 = [1, 2, 3].ewma(0.5).len();"));
     assert!(type_checks("fn main() -> f64 = [1, 2].weighted_sum([0.5, 0.5]);"));
     assert!(type_checks("fn main() -> i64 = [1, 2, 3].diff().len();"));
+}
+
+// --- Cycle 351: Final quality sweep + comprehensive tests ---
+
+// Test: ewma + diff chaining
+#[test]
+fn test_array_ewma_diff_chain() {
+    assert_eq!(run_program_i64(r#"
+        fn main() -> i64 = [10, 20, 30, 40, 50].ewma(0.5).diff().len();
+    "#), 4);
+}
+
+// Test: weighted_sum with normalized weights
+#[test]
+fn test_array_weighted_sum_normalized() {
+    assert_eq!(run_program_i64(r#"
+        fn main() -> i64 = [100, 200, 300].weighted_sum([0.2, 0.3, 0.5]).approx_eq(230.0, 0.001) as i64;
+    "#), 1);
+}
+
+// Test: case conversion roundtrip
+#[test]
+fn test_string_case_roundtrip() {
+    assert_eq!(run_program_str(r#"
+        fn main() -> String = "hello_world".pascal_case().snake_case();
+    "#), "hello_world");
+}
+
+// Test: kebab_case to screaming_snake_case
+#[test]
+fn test_string_kebab_to_screaming() {
+    assert_eq!(run_program_str(r#"
+        fn main() -> String = "foo-bar-baz".screaming_snake_case();
+    "#), "FOO_BAR_BAZ");
+}
+
+// Test: correlation + covariance chain
+#[test]
+fn test_array_correlation_perfect() {
+    assert_eq!(run_program_i64(r#"
+        fn main() -> i64 = [1, 2, 3, 4, 5].correlation([2, 4, 6, 8, 10]).approx_eq(1.0, 0.001) as i64;
+    "#), 1);
+}
+
+// Test: histogram with uniform data
+#[test]
+fn test_array_histogram_uniform() {
+    assert_eq!(run_program_i64(r#"
+        fn main() -> i64 = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].histogram(5).len();
+    "#), 5);
+}
+
+// Test: mode chaining
+#[test]
+fn test_array_mode_chain() {
+    assert_eq!(run_program_i64(r#"
+        fn main() -> i64 = [1, 2, 2, 3, 3, 3].mode().unwrap_or(0);
+    "#), 3);
+}
+
+// Test: encode_uri -> decode_uri roundtrip
+#[test]
+fn test_string_encode_decode_roundtrip() {
+    assert_eq!(run_program_str(r#"
+        fn main() -> String = "hello world!".encode_uri().decode_uri();
+    "#), "hello world!");
+}
+
+// Test: levenshtein chain with to_lower
+#[test]
+fn test_string_levenshtein_case_insensitive() {
+    assert_eq!(run_program_i64(r#"
+        fn main() -> i64 = "Hello".to_lower().levenshtein("hello");
+    "#), 0);
+}
+
+// Test: format_number with large value
+#[test]
+fn test_string_format_number_large() {
+    assert_eq!(run_program_str(r#"
+        fn main() -> String = 1234567890.to_string().format_number();
+    "#), "1,234,567,890");
+}
+
+// Test: diff -> stddev chain (constant diff = zero stddev)
+#[test]
+fn test_array_diff_statistics_chain() {
+    assert_eq!(run_program_i64(r#"
+        fn main() -> i64 = [10, 20, 30, 40, 50].diff().stddev().approx_eq(0.0, 0.001) as i64;
+    "#), 1);
+}
+
+// Test: partition_point on sorted array
+#[test]
+fn test_array_partition_point_sorted() {
+    assert_eq!(run_program_i64("fn main() -> i64 = [1, 3, 5, 7, 9].partition_point(fn |x: i64| { x < 6 });"), 3);
+}
+
+// Test: cross_product -> flatten -> sum
+#[test]
+fn test_array_cross_product_sum() {
+    assert_eq!(run_program_i64(r#"
+        fn main() -> i64 = [1, 2].cross_product([10, 20]).flatten().sum();
+    "#), 66);
+}
+
+// Test: hash_code deterministic (same string => same hash)
+#[test]
+fn test_string_hash_deterministic() {
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = ("test".hash_code() == "test".hash_code()) as i64;"#), 1);
+}
+
+// Test: chunk_string -> len
+#[test]
+fn test_string_chunk_len() {
+    assert_eq!(run_program_i64(r#"
+        fn main() -> i64 = "abcdefgh".chunk_string(3).len();
+    "#), 3);
+}
+
+// Test: similarity score
+#[test]
+fn test_string_similarity_identical() {
+    assert_eq!(run_program_i64(r#"
+        fn main() -> i64 = "hello".similarity("hello").approx_eq(1.0, 0.001) as i64;
+    "#), 1);
+}
+
+// Test: to_radix -> parse_hex roundtrip
+#[test]
+fn test_int_radix_roundtrip() {
+    assert_eq!(run_program_i64(r#"
+        fn main() -> i64 = 255.to_radix(16).parse_hex().unwrap_or(0);
+    "#), 255);
+}
+
+// Test: ilog2 chain
+#[test]
+fn test_int_ilog_chain() {
+    assert_eq!(run_program_i64(r#"
+        fn main() -> i64 = 1024.ilog2();
+    "#), 10);
+}
+
+// Test: is_coprime check
+#[test]
+fn test_int_coprime_verify() {
+    assert_eq!(run_program_i64(r#"
+        fn main() -> i64 = 15.is_coprime(28) as i64;
+    "#), 1);
+}
+
+// Test: deep chain - split -> filter -> join
+#[test]
+fn test_deep_string_chain() {
+    assert_eq!(run_program_str("fn main() -> String = \"hello world foo bar\".split_whitespace().filter(fn |s: String| { s.len() > 3 }).join(\" \");"), "hello world");
+}
+
+// Test: cumsum -> ewma -> diff -> len (triple chain)
+#[test]
+fn test_array_triple_chain() {
+    assert_eq!(run_program_i64(r#"
+        fn main() -> i64 = [1, 2, 3, 4, 5].cumsum().ewma(0.3).diff().len();
+    "#), 4);
+}
+
+// Test: Char is_emoji
+#[test]
+fn test_char_is_emoji_check() {
+    assert_eq!(run_program_i64(r#"
+        fn main() -> i64 = 'A'.is_emoji() as i64;
+    "#), 0);
+}
+
+// Test: Float classify
+#[test]
+fn test_float_classify_chain() {
+    assert_eq!(run_program_str("fn main() -> String = 42.0.classify();"), "Normal");
 }

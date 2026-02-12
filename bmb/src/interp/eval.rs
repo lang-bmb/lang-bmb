@@ -1449,7 +1449,7 @@ impl Interpreter {
                         if current_len >= width {
                             Ok(Value::Str(Rc::new(s.to_string())))
                         } else {
-                            let padding: String = std::iter::repeat(pad_char).take(width - current_len).collect();
+                            let padding: String = std::iter::repeat_n(pad_char, width - current_len).collect();
                             Ok(Value::Str(Rc::new(format!("{}{}", padding, s))))
                         }
                     }
@@ -1471,7 +1471,7 @@ impl Interpreter {
                         if current_len >= width {
                             Ok(Value::Str(Rc::new(s.to_string())))
                         } else {
-                            let padding: String = std::iter::repeat(pad_char).take(width - current_len).collect();
+                            let padding: String = std::iter::repeat_n(pad_char, width - current_len).collect();
                             Ok(Value::Str(Rc::new(format!("{}{}", s, padding))))
                         }
                     }
@@ -1712,7 +1712,7 @@ impl Interpreter {
                         if char_count >= width {
                             Ok(Value::Str(s.clone()))
                         } else {
-                            let padding: String = std::iter::repeat(pad).take(width - char_count).collect();
+                            let padding: String = std::iter::repeat_n(pad, width - char_count).collect();
                             Ok(Value::Str(Rc::new(format!("{}{}", s, padding))))
                         }
                     }
@@ -1729,7 +1729,7 @@ impl Interpreter {
                         if char_count >= width {
                             Ok(Value::Str(s.clone()))
                         } else {
-                            let padding: String = std::iter::repeat(pad).take(width - char_count).collect();
+                            let padding: String = std::iter::repeat_n(pad, width - char_count).collect();
                             Ok(Value::Str(Rc::new(format!("{}{}", padding, s))))
                         }
                     }
@@ -1742,7 +1742,7 @@ impl Interpreter {
                         if char_count >= width {
                             Ok(Value::Str(s.clone()))
                         } else {
-                            let zeros: String = std::iter::repeat('0').take(width - char_count).collect();
+                            let zeros: String = std::iter::repeat_n('0', width - char_count).collect();
                             Ok(Value::Str(Rc::new(format!("{}{}", zeros, s))))
                         }
                     }
@@ -2016,7 +2016,7 @@ impl Interpreter {
                         if char_count >= width {
                             Ok(Value::Str(Rc::new(s.to_string())))
                         } else {
-                            let padding: String = std::iter::repeat(pad).take(width - char_count).collect();
+                            let padding: String = std::iter::repeat_n(pad, width - char_count).collect();
                             Ok(Value::Str(Rc::new(format!("{}{}", padding, s))))
                         }
                     }
@@ -2033,7 +2033,7 @@ impl Interpreter {
                         if char_count >= width {
                             Ok(Value::Str(Rc::new(s.to_string())))
                         } else {
-                            let padding: String = std::iter::repeat(pad).take(width - char_count).collect();
+                            let padding: String = std::iter::repeat_n(pad, width - char_count).collect();
                             Ok(Value::Str(Rc::new(format!("{}{}", s, padding))))
                         }
                     }
@@ -2168,8 +2168,8 @@ impl Interpreter {
                         let m = a.len();
                         let n = b.len();
                         let mut dp = vec![vec![0usize; n + 1]; m + 1];
-                        for i in 0..=m { dp[i][0] = i; }
-                        for j in 0..=n { dp[0][j] = j; }
+                        for (i, row) in dp.iter_mut().enumerate().take(m + 1) { row[0] = i; }
+                        for (j, val) in dp[0].iter_mut().enumerate().take(n + 1) { *val = j; }
                         for i in 1..=m {
                             for j in 1..=n {
                                 let cost = if a[i - 1] == b[j - 1] { 0 } else { 1 };
@@ -2372,8 +2372,8 @@ impl Interpreter {
                         let m = a.len();
                         let n = b.len();
                         let mut dp = vec![vec![0usize; n + 1]; m + 1];
-                        for i in 0..=m { dp[i][0] = i; }
-                        for j in 0..=n { dp[0][j] = j; }
+                        for (i, row) in dp.iter_mut().enumerate().take(m + 1) { row[0] = i; }
+                        for (j, val) in dp[0].iter_mut().enumerate().take(n + 1) { *val = j; }
                         for i in 1..=m {
                             for j in 1..=n {
                                 let cost = if a[i-1] == b[j-1] { 0 } else { 1 };
@@ -2413,8 +2413,8 @@ impl Interpreter {
                         let n = b.len();
                         if m == 0 && n == 0 { return Ok(Value::Float(1.0)); }
                         let mut dp = vec![vec![0usize; n + 1]; m + 1];
-                        for i in 0..=m { dp[i][0] = i; }
-                        for j in 0..=n { dp[0][j] = j; }
+                        for (i, row) in dp.iter_mut().enumerate().take(m + 1) { row[0] = i; }
+                        for (j, val) in dp[0].iter_mut().enumerate().take(n + 1) { *val = j; }
                         for i in 1..=m {
                             for j in 1..=n {
                                 let cost = if a[i-1] == b[j-1] { 0 } else { 1 };
@@ -3481,11 +3481,11 @@ impl Interpreter {
                                     return Ok(Value::Array(Vec::new()));
                                 }
                                 let mut result = vec![arr[0].clone()];
-                                for i in 1..arr.len() {
+                                for item in &arr[1..] {
                                     let last = result.last().unwrap().clone();
-                                    let is_dup = self.call_closure(&params, &body, &closure_env, vec![last, arr[i].clone()])?;
+                                    let is_dup = self.call_closure(&params, &body, &closure_env, vec![last, item.clone()])?;
                                     if !is_dup.is_truthy() {
-                                        result.push(arr[i].clone());
+                                        result.push(item.clone());
                                     }
                                 }
                                 Ok(Value::Array(result))
@@ -3546,7 +3546,7 @@ impl Interpreter {
                             _ => return Err(RuntimeError::type_error("integer", args[0].type_name())),
                         };
                         let len = arr.len();
-                        let start = if n >= len { 0 } else { len - n };
+                        let start = len.saturating_sub(n);
                         Ok(Value::Array(arr[start..].to_vec()))
                     }
                     "drop_last" => {
@@ -3555,7 +3555,7 @@ impl Interpreter {
                             _ => return Err(RuntimeError::type_error("integer", args[0].type_name())),
                         };
                         let len = arr.len();
-                        let end = if n >= len { 0 } else { len - n };
+                        let end = len.saturating_sub(n);
                         Ok(Value::Array(arr[..end].to_vec()))
                     }
                     "first_or" => {
@@ -3606,10 +3606,7 @@ impl Interpreter {
                     }
                     "compact" => {
                         let result: Vec<Value> = arr.into_iter().filter(|v| {
-                            match v {
-                                Value::Int(0) => false,
-                                _ => true,
-                            }
+                            !matches!(v, Value::Int(0))
                         }).collect();
                         Ok(Value::Array(result))
                     }
@@ -3813,7 +3810,7 @@ impl Interpreter {
                         }
                         nums.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
                         let mid = nums.len() / 2;
-                        if nums.len() % 2 == 0 {
+                        if nums.len().is_multiple_of(2) {
                             Ok(Value::Float((nums[mid - 1] + nums[mid]) / 2.0))
                         } else {
                             Ok(Value::Float(nums[mid]))
@@ -4038,7 +4035,7 @@ impl Interpreter {
                         let mut result = Vec::with_capacity(arr.len());
                         let mut sum = 0i64;
                         let mut sum_f = 0.0f64;
-                        let is_float = arr.first().map_or(false, |v| matches!(v, Value::Float(_)));
+                        let is_float = arr.first().is_some_and(|v| matches!(v, Value::Float(_)));
                         for v in arr.iter() {
                             if is_float {
                                 let f = match v { Value::Float(f) => *f, Value::Int(n) => *n as f64, _ => 0.0 };
@@ -4057,7 +4054,7 @@ impl Interpreter {
                         let mut result = Vec::with_capacity(arr.len());
                         let mut min_val = i64::MAX;
                         let mut min_f = f64::INFINITY;
-                        let is_float = arr.first().map_or(false, |v| matches!(v, Value::Float(_)));
+                        let is_float = arr.first().is_some_and(|v| matches!(v, Value::Float(_)));
                         for v in arr.iter() {
                             if is_float {
                                 let f = match v { Value::Float(f) => *f, Value::Int(n) => *n as f64, _ => 0.0 };
@@ -4076,7 +4073,7 @@ impl Interpreter {
                         let mut result = Vec::with_capacity(arr.len());
                         let mut max_val = i64::MIN;
                         let mut max_f = f64::NEG_INFINITY;
-                        let is_float = arr.first().map_or(false, |v| matches!(v, Value::Float(_)));
+                        let is_float = arr.first().is_some_and(|v| matches!(v, Value::Float(_)));
                         for v in arr.iter() {
                             if is_float {
                                 let f = match v { Value::Float(f) => *f, Value::Int(n) => *n as f64, _ => 0.0 };
@@ -4288,7 +4285,7 @@ impl Interpreter {
                         if arr.len() < 2 {
                             return Ok(Value::Array(vec![]));
                         }
-                        let is_float = arr.first().map_or(false, |v| matches!(v, Value::Float(_)));
+                        let is_float = arr.first().is_some_and(|v| matches!(v, Value::Float(_)));
                         let mut result = Vec::with_capacity(arr.len() - 1);
                         for i in 1..arr.len() {
                             if is_float {
@@ -4814,7 +4811,7 @@ impl Interpreter {
                             Value::Int(n) => *n as usize,
                             _ => return Err(RuntimeError::type_error("integer", args[0].type_name())),
                         };
-                        Ok(Value::Str(Rc::new(std::iter::repeat(c).take(count).collect::<String>())))
+                        Ok(Value::Str(Rc::new(std::iter::repeat_n(c, count).collect::<String>())))
                     }
                     // v0.90.97: to_digit(radix) -> i64?
                     "to_digit" => {
