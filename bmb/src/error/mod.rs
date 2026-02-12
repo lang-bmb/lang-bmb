@@ -144,6 +144,13 @@ pub enum CompileWarning {
         span: Span,
     },
 
+    /// v0.90.127: Constant condition — if/while with literal true/false
+    ConstantCondition {
+        value: bool,
+        context: String, // "if" or "while"
+        span: Span,
+    },
+
     /// v0.90.121: Non-snake_case function name
     /// Function names should use snake_case
     NonSnakeCaseFunction {
@@ -330,6 +337,11 @@ impl CompileWarning {
         Self::RedundantCast { ty: ty.into(), span }
     }
 
+    /// v0.90.127: Create a constant condition warning
+    pub fn constant_condition(value: bool, context: impl Into<String>, span: Span) -> Self {
+        Self::ConstantCondition { value, context: context.into(), span }
+    }
+
     /// v0.90.121: Create a non-snake_case function warning
     pub fn non_snake_case_function(
         name: impl Into<String>,
@@ -380,6 +392,7 @@ impl CompileWarning {
             Self::TrivialContract { span, .. } => Some(*span),
             Self::SingleArmMatch { span } => Some(*span),
             Self::RedundantCast { span, .. } => Some(*span),
+            Self::ConstantCondition { span, .. } => Some(*span),
             Self::NonSnakeCaseFunction { span, .. } => Some(*span),
             Self::NonPascalCaseType { span, .. } => Some(*span),
             Self::Generic { span, .. } => *span,
@@ -458,6 +471,9 @@ impl CompileWarning {
             Self::RedundantCast { ty, .. } => {
                 format!("redundant cast: expression is already of type `{}`", ty)
             }
+            Self::ConstantCondition { value, context, .. } => {
+                format!("`{}` condition is always `{}`", context, value)
+            }
             Self::Generic { message, .. } => message.clone(),
         }
     }
@@ -486,6 +502,7 @@ impl CompileWarning {
             Self::NonPascalCaseType { .. } => "non_pascal_case",
             Self::SingleArmMatch { .. } => "single_arm_match",
             Self::RedundantCast { .. } => "redundant_cast",
+            Self::ConstantCondition { .. } => "constant_condition",
             Self::Generic { .. } => "warning",
         }
     }

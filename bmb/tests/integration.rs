@@ -21066,3 +21066,47 @@ fn test_stress_missing_field() {
         "missing"
     );
 }
+
+// ============ Constant Condition Lint Tests (v0.90.127) ============
+
+#[test]
+fn test_lint_constant_condition_if_true() {
+    has_warning_kind(
+        "fn f() -> i64 = if true { 1 } else { 0 };",
+        "constant_condition"
+    );
+}
+
+#[test]
+fn test_lint_constant_condition_if_false() {
+    has_warning_kind(
+        "fn f() -> i64 = if false { 1 } else { 0 };",
+        "constant_condition"
+    );
+}
+
+#[test]
+fn test_lint_constant_condition_while_false() {
+    has_warning_kind(
+        "fn f() -> i64 = { while false { }; 0 };",
+        "constant_condition"
+    );
+}
+
+#[test]
+fn test_lint_no_constant_condition_variable() {
+    // Variable conditions should NOT trigger the warning
+    assert!(!has_warning_kind(
+        "fn f(x: bool) -> i64 = if x { 1 } else { 0 };",
+        "constant_condition"
+    ));
+}
+
+#[test]
+fn test_lint_no_constant_condition_while_true() {
+    // while true is intentional loop pattern — should NOT warn
+    assert!(!has_warning_kind(
+        "fn f() -> i64 = { while true { }; 0 };",
+        "constant_condition"
+    ));
+}

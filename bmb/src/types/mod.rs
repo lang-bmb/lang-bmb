@@ -1668,6 +1668,11 @@ impl TypeChecker {
                 then_branch,
                 else_branch,
             } => {
+                // v0.90.127: Warn on constant condition
+                if let Expr::BoolLit(val) = &cond.node {
+                    self.add_warning(CompileWarning::constant_condition(*val, "if", cond.span));
+                }
+
                 let cond_ty = self.infer(&cond.node, cond.span)?;
                 self.unify(&Type::Bool, &cond_ty, cond.span)?;
 
@@ -1803,6 +1808,11 @@ impl TypeChecker {
 
             // v0.37: Include invariant type checking
             Expr::While { cond, invariant, body } => {
+                // v0.90.127: Warn on constant condition (skip `while true` which is intentional loop)
+                if let Expr::BoolLit(false) = &cond.node {
+                    self.add_warning(CompileWarning::constant_condition(false, "while", cond.span));
+                }
+
                 // Condition must be bool
                 let cond_ty = self.infer(&cond.node, cond.span)?;
                 self.unify(&Type::Bool, &cond_ty, cond.span)?;
