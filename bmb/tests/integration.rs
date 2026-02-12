@@ -18964,3 +18964,43 @@ fn test_string_parse_radix_type_checks() {
     assert!(type_checks(r#"fn main() -> i64 = "FF".parse_hex().unwrap_or(0);"#));
     assert!(type_checks(r#"fn main() -> i64 = "10".parse_radix(16).unwrap_or(0);"#));
 }
+
+// --- Cycle 333: Float round_to, floor_to, ceil_to ---
+
+#[test]
+fn test_float_round_to() {
+    assert_eq!(run_program_f64("fn main() -> f64 = 3.14159.round_to(2);"), 3.14);
+    assert_eq!(run_program_f64("fn main() -> f64 = 3.14159.round_to(3);"), 3.142);
+    assert_eq!(run_program_f64("fn main() -> f64 = 3.14159.round_to(0);"), 3.0);
+}
+
+#[test]
+fn test_float_floor_to() {
+    assert_eq!(run_program_f64("fn main() -> f64 = 3.14159.floor_to(2);"), 3.14);
+    assert_eq!(run_program_f64("fn main() -> f64 = 3.999.floor_to(1);"), 3.9);
+}
+
+#[test]
+fn test_float_ceil_to() {
+    assert_eq!(run_program_f64("fn main() -> f64 = 3.14159.ceil_to(2);"), 3.15);
+    assert_eq!(run_program_f64("fn main() -> f64 = 3.001.ceil_to(1);"), 3.1);
+}
+
+#[test]
+fn test_float_round_to_negative_places() {
+    // Negative places round to tens, hundreds, etc.
+    assert_eq!(run_program_f64("fn main() -> f64 = 1234.5.round_to(-2);"), 1200.0);
+}
+
+#[test]
+fn test_float_precision_rounding_chain() {
+    // Chain: compute then round
+    assert_eq!(run_program_f64("fn main() -> f64 = (1.0 / 3.0).round_to(4);"), 0.3333);
+}
+
+#[test]
+fn test_float_precision_rounding_type_checks() {
+    assert!(type_checks("fn main() -> f64 = 3.14.round_to(2);"));
+    assert!(type_checks("fn main() -> f64 = 3.14.floor_to(1);"));
+    assert!(type_checks("fn main() -> f64 = 3.14.ceil_to(0);"));
+}

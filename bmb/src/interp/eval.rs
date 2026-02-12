@@ -1199,6 +1199,24 @@ impl Interpreter {
                         let epsilon = match &args[1] { Value::Float(e) => *e, _ => return Err(RuntimeError::type_error("f64", args[1].type_name())) };
                         Ok(Value::Bool((f - other).abs() <= epsilon))
                     }
+                    // v0.90.99: round_to(places) -> f64
+                    "round_to" => {
+                        let places = match &args[0] { Value::Int(n) => *n, _ => return Err(RuntimeError::type_error("integer", args[0].type_name())) };
+                        let factor = 10f64.powi(places as i32);
+                        Ok(Value::Float((f * factor).round() / factor))
+                    }
+                    // v0.90.99: floor_to(places) -> f64
+                    "floor_to" => {
+                        let places = match &args[0] { Value::Int(n) => *n, _ => return Err(RuntimeError::type_error("integer", args[0].type_name())) };
+                        let factor = 10f64.powi(places as i32);
+                        Ok(Value::Float((f * factor).floor() / factor))
+                    }
+                    // v0.90.99: ceil_to(places) -> f64
+                    "ceil_to" => {
+                        let places = match &args[0] { Value::Int(n) => *n, _ => return Err(RuntimeError::type_error("integer", args[0].type_name())) };
+                        let factor = 10f64.powi(places as i32);
+                        Ok(Value::Float((f * factor).ceil() / factor))
+                    }
                     _ => Err(RuntimeError::undefined_function(&format!("f64.{}", method))),
                 }
             }

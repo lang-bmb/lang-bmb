@@ -3478,6 +3478,16 @@ impl TypeChecker {
                         self.unify(&arg1_ty, &Type::F64, args[1].span)?;
                         Ok(Type::Bool)
                     }
+                    // v0.90.99: round_to/floor_to/ceil_to(i64) -> f64 (precision rounding)
+                    "round_to" | "floor_to" | "ceil_to" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error(
+                                format!("{}() takes 1 argument (decimal places)", method), span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg_ty, &Type::I64, args[0].span)?;
+                        Ok(Type::F64)
+                    }
                     _ => Err(CompileError::type_error(
                         format!("unknown method '{}' for f64", method), span)),
                 }
