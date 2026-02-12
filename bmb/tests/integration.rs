@@ -19480,3 +19480,42 @@ fn test_345_type_checks() {
     assert!(type_checks(r#"fn main() -> i64 = "abc".hamming_distance("def");"#));
     assert!(type_checks(r#"fn main() -> f64 = "abc".similarity("def");"#));
 }
+
+// --- Cycle 346: Array histogram, covariance, correlation ---
+
+#[test]
+fn test_array_histogram() {
+    // [1,2,3,4,5] in 5 bins => each bin has 1
+    assert_eq!(run_program_i64("fn main() -> i64 = [1, 2, 3, 4, 5].histogram(5).len();"), 5);
+    // All same values in 3 bins => first bin has all
+    assert_eq!(run_program_i64("fn main() -> i64 = [5, 5, 5].histogram(3).get(0).unwrap_or(0);"), 3);
+}
+
+#[test]
+fn test_array_covariance() {
+    // cov([1,2,3],[2,4,6]) = 4/3
+    assert_eq!(run_program_i64("fn main() -> i64 = if [1, 2, 3].covariance([2, 4, 6]).approx_eq(1.333333, 0.001) { 1 } else { 0 };"), 1);
+    // Same array covariance = variance
+    assert_eq!(run_program_i64("fn main() -> i64 = if [1, 2, 3].covariance([1, 2, 3]).approx_eq([1, 2, 3].variance(), 0.001) { 1 } else { 0 };"), 1);
+}
+
+#[test]
+fn test_array_correlation() {
+    // Perfect positive correlation
+    assert_eq!(run_program_f64("fn main() -> f64 = [1, 2, 3].correlation([2, 4, 6]);"), 1.0);
+    // Perfect negative correlation
+    assert_eq!(run_program_f64("fn main() -> f64 = [1, 2, 3].correlation([6, 4, 2]);"), -1.0);
+}
+
+#[test]
+fn test_array_stats_chain() {
+    // correlation of array with itself is 1.0
+    assert_eq!(run_program_f64("fn main() -> f64 = [10, 20, 30].correlation([10, 20, 30]);"), 1.0);
+}
+
+#[test]
+fn test_346_type_checks() {
+    assert!(type_checks("fn main() -> i64 = [1, 2, 3].histogram(3).len();"));
+    assert!(type_checks("fn main() -> f64 = [1, 2].covariance([3, 4]);"));
+    assert!(type_checks("fn main() -> f64 = [1, 2].correlation([3, 4]);"));
+}

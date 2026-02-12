@@ -5943,6 +5943,39 @@ impl TypeChecker {
                         }
                         Ok(Type::Nullable(elem_ty.clone()))
                     }
+                    // v0.90.112: histogram(i64) -> [i64] (frequency counts in N bins)
+                    "histogram" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("histogram() takes 1 argument (number of bins)", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg_ty, &Type::I64, args[0].span)?;
+                        Ok(Type::Array(Box::new(Type::I64), 0))
+                    }
+                    // v0.90.112: covariance([T]) -> f64 (population covariance)
+                    "covariance" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("covariance() takes 1 argument (another array)", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        match &arg_ty {
+                            Type::Array(_, _) => {}
+                            _ => return Err(CompileError::type_error("covariance() requires an array argument", args[0].span)),
+                        }
+                        Ok(Type::F64)
+                    }
+                    // v0.90.112: correlation([T]) -> f64 (Pearson correlation coefficient)
+                    "correlation" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("correlation() takes 1 argument (another array)", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        match &arg_ty {
+                            Type::Array(_, _) => {}
+                            _ => return Err(CompileError::type_error("correlation() requires an array argument", args[0].span)),
+                        }
+                        Ok(Type::F64)
+                    }
                     _ => Err(CompileError::type_error(
                         format!("unknown method '{}' for Array", method),
                         span,

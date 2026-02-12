@@ -4131,6 +4131,70 @@ impl Interpreter {
                         }
                         Ok(Value::Enum("Option".to_string(), "None".to_string(), vec![]))
                     }
+                    // v0.90.112: histogram(i64) -> [i64]
+                    "histogram" => {
+                        let bins = match &args[0] {
+                            Value::Int(n) => *n as usize,
+                            _ => return Err(RuntimeError::type_error("integer", args[0].type_name())),
+                        };
+                        if bins == 0 || arr.is_empty() {
+                            return Ok(Value::Array(vec![]));
+                        }
+                        let vals: Vec<f64> = arr.iter().map(|v| match v {
+                            Value::Int(n) => *n as f64,
+                            Value::Float(f) => *f,
+                            _ => 0.0,
+                        }).collect();
+                        let min_val = vals.iter().cloned().fold(f64::INFINITY, f64::min);
+                        let max_val = vals.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+                        let range = max_val - min_val;
+                        let mut counts = vec![0i64; bins];
+                        if range == 0.0 {
+                            counts[0] = vals.len() as i64;
+                        } else {
+                            for v in &vals {
+                                let idx = (((v - min_val) / range) * (bins as f64 - 1.0)).round() as usize;
+                                counts[idx.min(bins - 1)] += 1;
+                            }
+                        }
+                        Ok(Value::Array(counts.into_iter().map(Value::Int).collect()))
+                    }
+                    // v0.90.112: covariance([T]) -> f64
+                    "covariance" => {
+                        let other = match &args[0] {
+                            Value::Array(a) => a,
+                            _ => return Err(RuntimeError::type_error("array", args[0].type_name())),
+                        };
+                        let len = arr.len().min(other.len());
+                        if len == 0 { return Ok(Value::Float(0.0)); }
+                        let x: Vec<f64> = arr[..len].iter().map(|v| match v { Value::Int(n) => *n as f64, Value::Float(f) => *f, _ => 0.0 }).collect();
+                        let y: Vec<f64> = other[..len].iter().map(|v| match v { Value::Int(n) => *n as f64, Value::Float(f) => *f, _ => 0.0 }).collect();
+                        let mean_x = x.iter().sum::<f64>() / len as f64;
+                        let mean_y = y.iter().sum::<f64>() / len as f64;
+                        let cov = x.iter().zip(y.iter()).map(|(a, b)| (a - mean_x) * (b - mean_y)).sum::<f64>() / len as f64;
+                        Ok(Value::Float(cov))
+                    }
+                    // v0.90.112: correlation([T]) -> f64 (Pearson)
+                    "correlation" => {
+                        let other = match &args[0] {
+                            Value::Array(a) => a,
+                            _ => return Err(RuntimeError::type_error("array", args[0].type_name())),
+                        };
+                        let len = arr.len().min(other.len());
+                        if len == 0 { return Ok(Value::Float(0.0)); }
+                        let x: Vec<f64> = arr[..len].iter().map(|v| match v { Value::Int(n) => *n as f64, Value::Float(f) => *f, _ => 0.0 }).collect();
+                        let y: Vec<f64> = other[..len].iter().map(|v| match v { Value::Int(n) => *n as f64, Value::Float(f) => *f, _ => 0.0 }).collect();
+                        let mean_x = x.iter().sum::<f64>() / len as f64;
+                        let mean_y = y.iter().sum::<f64>() / len as f64;
+                        let cov = x.iter().zip(y.iter()).map(|(a, b)| (a - mean_x) * (b - mean_y)).sum::<f64>() / len as f64;
+                        let std_x = (x.iter().map(|a| (a - mean_x).powi(2)).sum::<f64>() / len as f64).sqrt();
+                        let std_y = (y.iter().map(|b| (b - mean_y).powi(2)).sum::<f64>() / len as f64).sqrt();
+                        if std_x == 0.0 || std_y == 0.0 {
+                            Ok(Value::Float(0.0))
+                        } else {
+                            Ok(Value::Float(cov / (std_x * std_y)))
+                        }
+                    }
                     _ => Err(RuntimeError::undefined_function(&format!("Array.{}", method))),
                 }
             }
