@@ -158,6 +158,12 @@ pub enum CompileWarning {
         span: Span,
     },
 
+    /// v0.90.129: Redundant boolean comparison — `x == true` or `x == false`
+    RedundantBoolComparison {
+        value: bool,
+        span: Span,
+    },
+
     /// v0.90.121: Non-snake_case function name
     /// Function names should use snake_case
     NonSnakeCaseFunction {
@@ -354,6 +360,11 @@ impl CompileWarning {
         Self::SelfComparison { name: name.into(), op: op.into(), span }
     }
 
+    /// v0.90.129: Create a redundant boolean comparison warning
+    pub fn redundant_bool_comparison(value: bool, span: Span) -> Self {
+        Self::RedundantBoolComparison { value, span }
+    }
+
     /// v0.90.121: Create a non-snake_case function warning
     pub fn non_snake_case_function(
         name: impl Into<String>,
@@ -406,6 +417,7 @@ impl CompileWarning {
             Self::RedundantCast { span, .. } => Some(*span),
             Self::ConstantCondition { span, .. } => Some(*span),
             Self::SelfComparison { span, .. } => Some(*span),
+            Self::RedundantBoolComparison { span, .. } => Some(*span),
             Self::NonSnakeCaseFunction { span, .. } => Some(*span),
             Self::NonPascalCaseType { span, .. } => Some(*span),
             Self::Generic { span, .. } => *span,
@@ -490,6 +502,9 @@ impl CompileWarning {
             Self::SelfComparison { name, op, .. } => {
                 format!("comparing `{}` {} `{}` is always the same result", name, op, name)
             }
+            Self::RedundantBoolComparison { value, .. } => {
+                format!("redundant boolean comparison: comparing to `{}` is unnecessary", value)
+            }
             Self::Generic { message, .. } => message.clone(),
         }
     }
@@ -520,6 +535,7 @@ impl CompileWarning {
             Self::RedundantCast { .. } => "redundant_cast",
             Self::ConstantCondition { .. } => "constant_condition",
             Self::SelfComparison { .. } => "self_comparison",
+            Self::RedundantBoolComparison { .. } => "redundant_bool_comparison",
             Self::Generic { .. } => "warning",
         }
     }

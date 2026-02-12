@@ -1663,6 +1663,17 @@ impl TypeChecker {
                     ));
                 }
 
+                // v0.90.129: Detect redundant boolean comparison (x == true, x != false, etc.)
+                if matches!(op, BinOp::Eq | BinOp::Ne) {
+                    let bool_val = match (&left.node, &right.node) {
+                        (Expr::BoolLit(v), _) | (_, Expr::BoolLit(v)) => Some(*v),
+                        _ => None,
+                    };
+                    if let Some(value) = bool_val {
+                        self.add_warning(CompileWarning::redundant_bool_comparison(value, span));
+                    }
+                }
+
                 let left_ty = self.infer(&left.node, left.span)?;
                 let right_ty = self.infer(&right.node, right.span)?;
                 self.check_binary_op(*op, &left_ty, &right_ty, span)

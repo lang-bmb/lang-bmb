@@ -21153,3 +21153,50 @@ fn test_lint_no_self_comparison_arithmetic() {
         "self_comparison"
     ));
 }
+
+// ===== Cycle 374: Redundant boolean comparison detection =====
+
+#[test]
+fn test_lint_redundant_bool_comparison_eq_true() {
+    // x == true is redundant — should warn
+    assert!(has_warning_kind(
+        "fn f(x: bool) -> bool = x == true;",
+        "redundant_bool_comparison"
+    ));
+}
+
+#[test]
+fn test_lint_redundant_bool_comparison_eq_false() {
+    // x == false is redundant — should warn
+    assert!(has_warning_kind(
+        "fn f(x: bool) -> bool = x == false;",
+        "redundant_bool_comparison"
+    ));
+}
+
+#[test]
+fn test_lint_redundant_bool_comparison_ne_true() {
+    // x != true is redundant — should warn
+    assert!(has_warning_kind(
+        "fn f(x: bool) -> bool = x != true;",
+        "redundant_bool_comparison"
+    ));
+}
+
+#[test]
+fn test_lint_no_redundant_bool_comparison_int() {
+    // x == 5 is not a boolean comparison — should NOT warn
+    assert!(!has_warning_kind(
+        "fn f(x: i64) -> bool = x == 5;",
+        "redundant_bool_comparison"
+    ));
+}
+
+#[test]
+fn test_lint_no_redundant_bool_comparison_vars() {
+    // x == y with two bool variables is not redundant — should NOT warn
+    assert!(!has_warning_kind(
+        "fn f(x: bool, y: bool) -> bool = x == y;",
+        "redundant_bool_comparison"
+    ));
+}
