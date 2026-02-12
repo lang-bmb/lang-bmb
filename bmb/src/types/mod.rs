@@ -3932,6 +3932,61 @@ impl TypeChecker {
                             _ => Err(CompileError::type_error("flat_map() requires a closure argument", args[0].span)),
                         }
                     }
+                    // v0.90.46: swap(i, j) -> [T]
+                    "swap" => {
+                        if args.len() != 2 {
+                            return Err(CompileError::type_error("swap() takes 2 arguments (index1, index2)", span));
+                        }
+                        let i_ty = self.infer(&args[0].node, args[0].span)?;
+                        let j_ty = self.infer(&args[1].node, args[1].span)?;
+                        match i_ty { Type::I32 | Type::I64 | Type::U32 | Type::U64 => {} _ =>
+                            return Err(CompileError::type_error(format!("swap() arguments must be integers, got {}", i_ty), args[0].span)),
+                        }
+                        match j_ty { Type::I32 | Type::I64 | Type::U32 | Type::U64 => {} _ =>
+                            return Err(CompileError::type_error(format!("swap() arguments must be integers, got {}", j_ty), args[1].span)),
+                        }
+                        Ok(Type::Array(elem_ty.clone(), 0))
+                    }
+                    // v0.90.46: rotate_left(n) -> [T]
+                    "rotate_left" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("rotate_left() takes 1 argument", span));
+                        }
+                        let n_ty = self.infer(&args[0].node, args[0].span)?;
+                        match n_ty { Type::I32 | Type::I64 | Type::U32 | Type::U64 => {} _ =>
+                            return Err(CompileError::type_error(format!("rotate_left() argument must be integer, got {}", n_ty), args[0].span)),
+                        }
+                        Ok(Type::Array(elem_ty.clone(), 0))
+                    }
+                    // v0.90.46: rotate_right(n) -> [T]
+                    "rotate_right" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("rotate_right() takes 1 argument", span));
+                        }
+                        let n_ty = self.infer(&args[0].node, args[0].span)?;
+                        match n_ty { Type::I32 | Type::I64 | Type::U32 | Type::U64 => {} _ =>
+                            return Err(CompileError::type_error(format!("rotate_right() argument must be integer, got {}", n_ty), args[0].span)),
+                        }
+                        Ok(Type::Array(elem_ty.clone(), 0))
+                    }
+                    // v0.90.46: fill(value) -> [T]
+                    "fill" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("fill() takes 1 argument (value)", span));
+                        }
+                        let val_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&val_ty, elem_ty, args[0].span)?;
+                        Ok(Type::Array(elem_ty.clone(), 0))
+                    }
+                    // v0.90.46: index_of(value) -> i64? (first index of element)
+                    "index_of" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("index_of() takes 1 argument", span));
+                        }
+                        let val_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&val_ty, elem_ty, args[0].span)?;
+                        Ok(Type::Nullable(Box::new(Type::I64)))
+                    }
                     _ => Err(CompileError::type_error(
                         format!("unknown method '{}' for Array", method),
                         span,

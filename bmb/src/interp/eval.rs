@@ -1943,6 +1943,77 @@ impl Interpreter {
                             _ => Err(RuntimeError::type_error("closure", "non-closure")),
                         }
                     }
+                    // v0.90.46: swap(i, j) -> [T]
+                    "swap" => {
+                        if args.len() != 2 {
+                            return Err(RuntimeError::arity_mismatch("swap", 2, args.len()));
+                        }
+                        let i = match &args[0] {
+                            Value::Int(n) => *n as usize,
+                            _ => return Err(RuntimeError::type_error("integer", args[0].type_name())),
+                        };
+                        let j = match &args[1] {
+                            Value::Int(n) => *n as usize,
+                            _ => return Err(RuntimeError::type_error("integer", args[1].type_name())),
+                        };
+                        let mut result = arr;
+                        if i < result.len() && j < result.len() {
+                            result.swap(i, j);
+                        }
+                        Ok(Value::Array(result))
+                    }
+                    // v0.90.46: rotate_left(n) -> [T]
+                    "rotate_left" => {
+                        if args.len() != 1 {
+                            return Err(RuntimeError::arity_mismatch("rotate_left", 1, args.len()));
+                        }
+                        let n = match &args[0] {
+                            Value::Int(n) => *n as usize,
+                            _ => return Err(RuntimeError::type_error("integer", args[0].type_name())),
+                        };
+                        let mut result = arr;
+                        if !result.is_empty() {
+                            let n = n % result.len();
+                            result.rotate_left(n);
+                        }
+                        Ok(Value::Array(result))
+                    }
+                    // v0.90.46: rotate_right(n) -> [T]
+                    "rotate_right" => {
+                        if args.len() != 1 {
+                            return Err(RuntimeError::arity_mismatch("rotate_right", 1, args.len()));
+                        }
+                        let n = match &args[0] {
+                            Value::Int(n) => *n as usize,
+                            _ => return Err(RuntimeError::type_error("integer", args[0].type_name())),
+                        };
+                        let mut result = arr;
+                        if !result.is_empty() {
+                            let n = n % result.len();
+                            result.rotate_right(n);
+                        }
+                        Ok(Value::Array(result))
+                    }
+                    // v0.90.46: fill(value) -> [T]
+                    "fill" => {
+                        if args.len() != 1 {
+                            return Err(RuntimeError::arity_mismatch("fill", 1, args.len()));
+                        }
+                        let val = args.into_iter().next().unwrap();
+                        let result = vec![val; arr.len()];
+                        Ok(Value::Array(result))
+                    }
+                    // v0.90.46: index_of(value) -> i64?
+                    "index_of" => {
+                        if args.len() != 1 {
+                            return Err(RuntimeError::arity_mismatch("index_of", 1, args.len()));
+                        }
+                        let target = &args[0];
+                        match arr.iter().position(|x| x == target) {
+                            Some(idx) => Ok(Value::Int(idx as i64)),
+                            None => Ok(Value::Int(0)), // null
+                        }
+                    }
                     _ => Err(RuntimeError::undefined_function(&format!("Array.{}", method))),
                 }
             }

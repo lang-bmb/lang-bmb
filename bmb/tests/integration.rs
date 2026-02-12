@@ -14662,6 +14662,70 @@ fn test_nullable_unwrap_value() {
 // ============================================
 
 // ============================================
+// Cycle 280: Array Swap, Rotate, Fill, Index_of
+// ============================================
+
+#[test]
+fn test_array_swap() {
+    let source = "fn main() -> i64 = [10, 20, 30].swap(0, 2).first();";
+    assert_eq!(run_program_i64(source), 30);
+}
+
+#[test]
+fn test_array_swap_last() {
+    let source = "fn main() -> i64 = [10, 20, 30].swap(0, 2).last();";
+    assert_eq!(run_program_i64(source), 10);
+}
+
+#[test]
+fn test_array_rotate_left() {
+    let source = "fn main() -> i64 = [1, 2, 3, 4, 5].rotate_left(2).first();";
+    assert_eq!(run_program_i64(source), 3);
+}
+
+#[test]
+fn test_array_rotate_right() {
+    let source = "fn main() -> i64 = [1, 2, 3, 4, 5].rotate_right(2).first();";
+    assert_eq!(run_program_i64(source), 4);
+}
+
+#[test]
+fn test_array_fill() {
+    let source = "fn main() -> i64 = [1, 2, 3].fill(0).sum();";
+    assert_eq!(run_program_i64(source), 0);
+}
+
+#[test]
+fn test_array_fill_preserves_len() {
+    let source = "fn main() -> i64 = [1, 2, 3, 4, 5].fill(7).len();";
+    assert_eq!(run_program_i64(source), 5);
+}
+
+#[test]
+fn test_array_index_of_found() {
+    let source = "fn main() -> i64 = [10, 20, 30, 40].index_of(30).unwrap_or(-1);";
+    assert_eq!(run_program_i64(source), 2);
+}
+
+#[test]
+fn test_array_index_of_not_found() {
+    let source = "fn main() -> i64 = [10, 20, 30].index_of(99).unwrap_or(-1);";
+    assert_eq!(run_program_i64(source), -1);
+}
+
+#[test]
+fn test_array_rotate_left_full() {
+    let source = "fn main() -> i64 = [1, 2, 3].rotate_left(3).first();";
+    assert_eq!(run_program_i64(source), 1);
+}
+
+#[test]
+fn test_array_fill_single() {
+    let source = "fn main() -> i64 = [1, 2, 3].fill(42).first();";
+    assert_eq!(run_program_i64(source), 42);
+}
+
+// ============================================
 // Cycle 279: Array Windows, Chunks, Count, Unique
 // ============================================
 
