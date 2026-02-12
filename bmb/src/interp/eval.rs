@@ -1228,6 +1228,36 @@ impl Interpreter {
                         };
                         Ok(Value::Str(Rc::new(class.to_string())))
                     }
+                    // v0.90.126: to_exponential(precision) -> String
+                    "to_exponential" => {
+                        let prec = match &args[0] {
+                            Value::Int(n) => *n as usize,
+                            _ => return Err(RuntimeError::type_error("integer", args[0].type_name())),
+                        };
+                        Ok(Value::Str(Rc::new(format!("{:.prec$e}", f, prec = prec))))
+                    }
+                    // v0.90.126: to_precision(significant_digits) -> String
+                    "to_precision" => {
+                        let sig = match &args[0] {
+                            Value::Int(n) => *n as usize,
+                            _ => return Err(RuntimeError::type_error("integer", args[0].type_name())),
+                        };
+                        if sig == 0 {
+                            Ok(Value::Str(Rc::new("0".to_string())))
+                        } else {
+                            // Format with significant digits using scientific notation then parse back
+                            let s = format!("{:.prec$e}", f, prec = sig.saturating_sub(1));
+                            // Parse and reformat to remove scientific notation
+                            if let Ok(v) = s.parse::<f64>() {
+                                // Determine decimal places needed
+                                let log = if v.abs() > 0.0 { v.abs().log10().floor() as i64 } else { 0 };
+                                let decimal_places = if sig as i64 > log + 1 { (sig as i64 - log - 1) as usize } else { 0 };
+                                Ok(Value::Str(Rc::new(format!("{:.prec$}", v, prec = decimal_places))))
+                            } else {
+                                Ok(Value::Str(Rc::new(s)))
+                            }
+                        }
+                    }
                     _ => Err(RuntimeError::undefined_function(&format!("f64.{}", method))),
                 }
             }

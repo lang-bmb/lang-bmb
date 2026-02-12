@@ -3653,13 +3653,31 @@ impl TypeChecker {
                         }
                         Ok(Type::String)
                     }
+                    // v0.90.126: to_exponential(precision: i64) -> String
+                    "to_exponential" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("to_exponential() takes 1 argument (precision: i64)", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg_ty, &Type::I64, args[0].span)?;
+                        Ok(Type::String)
+                    }
+                    // v0.90.126: to_precision(significant_digits: i64) -> String
+                    "to_precision" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("to_precision() takes 1 argument (significant_digits: i64)", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg_ty, &Type::I64, args[0].span)?;
+                        Ok(Type::String)
+                    }
                     _ => {
                         let methods: &[&str] = &[
                             "abs", "floor", "ceil", "round", "sqrt", "cbrt", "is_nan", "is_infinite", "is_finite", "is_zero", "is_positive", "is_negative",
                             "min", "max", "clamp", "to_int", "to_string", "trunc", "fract", "signum", "sign", "recip",
                             "powf", "powi", "log_base", "hypot", "copysign", "fma", "lerp", "map_range", "approx_eq",
                             "round_to", "floor_to", "ceil_to", "format_fixed", "to_degrees", "to_radians", "classify",
-                            "atan2",
+                            "atan2", "to_exponential", "to_precision",
                         ];
                         let suggestion = find_similar_name(method, methods, 2);
                         Err(CompileError::type_error(

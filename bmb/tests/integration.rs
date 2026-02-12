@@ -20640,3 +20640,33 @@ fn test_string_glob_match_no_match() {
 fn test_string_glob_match_complex() {
     assert_eq!(run_program_i64(r#"fn main() -> i64 = if "foo.bar.baz".glob_match("foo.*.baz") { 1 } else { 0 };"#), 1);
 }
+
+// ============================================================================
+// v0.90.126: Float formatting methods
+// ============================================================================
+
+#[test]
+fn test_float_to_exponential_type_checks() {
+    assert!(type_checks("fn f(x: f64) -> String = x.to_exponential(3);"));
+}
+
+#[test]
+fn test_float_to_precision_type_checks() {
+    assert!(type_checks("fn f(x: f64) -> String = x.to_precision(4);"));
+}
+
+#[test]
+fn test_float_to_exponential_wrong_arg_type() {
+    type_error_contains(
+        r#"fn f(x: f64) -> String = x.to_exponential("3");"#,
+        "expected i64"
+    );
+}
+
+#[test]
+fn test_float_to_precision_wrong_arg_type() {
+    type_error_contains(
+        r#"fn f(x: f64) -> String = x.to_precision("4");"#,
+        "expected i64"
+    );
+}
