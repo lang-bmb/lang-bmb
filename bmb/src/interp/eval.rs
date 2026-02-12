@@ -1755,6 +1755,73 @@ impl Interpreter {
                             None => Ok(Value::Str(Rc::new(s.to_string()))),
                         }
                     }
+                    // v0.90.68: insert_at, delete_range, overwrite
+                    "insert_at" => {
+                        let idx = match &args[0] {
+                            Value::Int(n) => *n as usize,
+                            _ => return Err(RuntimeError::type_error("integer", args[0].type_name())),
+                        };
+                        let text = match &args[1] {
+                            Value::Str(s) => s.as_str().to_string(),
+                            _ => return Err(RuntimeError::type_error("string", args[1].type_name())),
+                        };
+                        let chars: Vec<char> = s.chars().collect();
+                        let idx = idx.min(chars.len());
+                        let mut result = String::new();
+                        for (i, c) in chars.iter().enumerate() {
+                            if i == idx {
+                                result.push_str(&text);
+                            }
+                            result.push(*c);
+                        }
+                        if idx >= chars.len() {
+                            result.push_str(&text);
+                        }
+                        Ok(Value::Str(Rc::new(result)))
+                    }
+                    "delete_range" => {
+                        let start = match &args[0] {
+                            Value::Int(n) => (*n).max(0) as usize,
+                            _ => return Err(RuntimeError::type_error("integer", args[0].type_name())),
+                        };
+                        let end = match &args[1] {
+                            Value::Int(n) => (*n).max(0) as usize,
+                            _ => return Err(RuntimeError::type_error("integer", args[1].type_name())),
+                        };
+                        let chars: Vec<char> = s.chars().collect();
+                        let start = start.min(chars.len());
+                        let end = end.min(chars.len());
+                        let mut result = String::new();
+                        for (i, c) in chars.iter().enumerate() {
+                            if i < start || i >= end {
+                                result.push(*c);
+                            }
+                        }
+                        Ok(Value::Str(Rc::new(result)))
+                    }
+                    "overwrite" => {
+                        let idx = match &args[0] {
+                            Value::Int(n) => (*n).max(0) as usize,
+                            _ => return Err(RuntimeError::type_error("integer", args[0].type_name())),
+                        };
+                        let text = match &args[1] {
+                            Value::Str(s) => s.as_str().to_string(),
+                            _ => return Err(RuntimeError::type_error("string", args[1].type_name())),
+                        };
+                        let chars: Vec<char> = s.chars().collect();
+                        let idx = idx.min(chars.len());
+                        let text_chars: Vec<char> = text.chars().collect();
+                        let mut result: Vec<char> = chars.clone();
+                        for (i, tc) in text_chars.iter().enumerate() {
+                            let pos = idx + i;
+                            if pos < result.len() {
+                                result[pos] = *tc;
+                            } else {
+                                result.push(*tc);
+                            }
+                        }
+                        Ok(Value::Str(Rc::new(result.into_iter().collect())))
+                    }
                     _ => Err(RuntimeError::undefined_function(&format!("String.{}", method))),
                 }
             }

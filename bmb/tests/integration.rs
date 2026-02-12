@@ -17062,3 +17062,71 @@ fn test_string_remove_prefix_suffix_chain() {
     "#;
     assert_eq!(run_program_str(source), "hello");
 }
+
+// ============================================================================
+// Cycle 302: String insert_at, delete_range, overwrite
+// ============================================================================
+
+#[test]
+fn test_string_insert_at() {
+    let source = r#"
+        fn main() -> String = "helo".insert_at(3, "l");
+    "#;
+    assert_eq!(run_program_str(source), "hello");
+}
+
+#[test]
+fn test_string_insert_at_beginning() {
+    let source = r#"
+        fn main() -> String = "world".insert_at(0, "hello ");
+    "#;
+    assert_eq!(run_program_str(source), "hello world");
+}
+
+#[test]
+fn test_string_insert_at_end() {
+    let source = r#"
+        fn main() -> String = "hello".insert_at(5, " world");
+    "#;
+    assert_eq!(run_program_str(source), "hello world");
+}
+
+#[test]
+fn test_string_delete_range() {
+    let source = r#"
+        fn main() -> String = "hello world".delete_range(5, 11);
+    "#;
+    assert_eq!(run_program_str(source), "hello");
+}
+
+#[test]
+fn test_string_delete_range_middle() {
+    let source = r#"
+        fn main() -> String = "abcdef".delete_range(2, 4);
+    "#;
+    assert_eq!(run_program_str(source), "abef");
+}
+
+#[test]
+fn test_string_overwrite() {
+    let source = r#"
+        fn main() -> String = "hello".overwrite(0, "HE");
+    "#;
+    assert_eq!(run_program_str(source), "HEllo");
+}
+
+#[test]
+fn test_string_overwrite_end() {
+    let source = r#"
+        fn main() -> String = "hello".overwrite(3, "LO");
+    "#;
+    assert_eq!(run_program_str(source), "helLO");
+}
+
+#[test]
+fn test_string_insert_delete_chain() {
+    let source = r#"
+        fn main() -> String = "hello world".delete_range(5, 6).insert_at(5, "_");
+    "#;
+    assert_eq!(run_program_str(source), "hello_world");
+}
