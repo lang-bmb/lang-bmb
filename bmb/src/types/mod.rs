@@ -5525,6 +5525,37 @@ impl TypeChecker {
                         self.unify(&arg_ty, &Type::I64, args[0].span)?;
                         Ok(Type::Array(elem_ty.clone(), 0))
                     }
+                    // v0.90.93: insert_at(i64, T) -> [T]
+                    "insert_at" => {
+                        if args.len() != 2 {
+                            return Err(CompileError::type_error("insert_at() takes 2 arguments (index, element)", span));
+                        }
+                        let idx_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&idx_ty, &Type::I64, args[0].span)?;
+                        let val_ty = self.infer(&args[1].node, args[1].span)?;
+                        self.unify(&val_ty, elem_ty, args[1].span)?;
+                        Ok(Type::Array(elem_ty.clone(), 0))
+                    }
+                    // v0.90.93: remove_at(i64) -> [T]
+                    "remove_at" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("remove_at() takes 1 argument (index)", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg_ty, &Type::I64, args[0].span)?;
+                        Ok(Type::Array(elem_ty.clone(), 0))
+                    }
+                    // v0.90.93: resize(i64, T) -> [T]
+                    "resize" => {
+                        if args.len() != 2 {
+                            return Err(CompileError::type_error("resize() takes 2 arguments (new_size, fill_value)", span));
+                        }
+                        let size_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&size_ty, &Type::I64, args[0].span)?;
+                        let val_ty = self.infer(&args[1].node, args[1].span)?;
+                        self.unify(&val_ty, elem_ty, args[1].span)?;
+                        Ok(Type::Array(elem_ty.clone(), 0))
+                    }
                     _ => Err(CompileError::type_error(
                         format!("unknown method '{}' for Array", method),
                         span,

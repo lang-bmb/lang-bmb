@@ -18687,3 +18687,38 @@ fn test_array_repeat() {
 fn test_array_repeat_unique_chain() {
     assert_eq!(run_program_i64(r#"fn main() -> i64 = if [1, 2].repeat(2).all_unique() { 1 } else { 0 };"#), 0);
 }
+
+// --- Cycle 327: Array insert_at, remove_at, resize ---
+
+#[test]
+fn test_array_insert_at() {
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = [1, 3, 4].insert_at(1, 2).len();"#), 4);
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = [1, 3, 4].insert_at(1, 2).sum();"#), 10);
+}
+
+#[test]
+fn test_array_insert_at_start() {
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = [2, 3].insert_at(0, 1).first();"#), 1);
+}
+
+#[test]
+fn test_array_remove_at() {
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = [1, 2, 3].remove_at(1).len();"#), 2);
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = [1, 2, 3].remove_at(1).sum();"#), 4);
+}
+
+#[test]
+fn test_array_resize_grow() {
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = [1, 2].resize(5, 0).len();"#), 5);
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = [1, 2].resize(5, 0).sum();"#), 3);
+}
+
+#[test]
+fn test_array_resize_shrink() {
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = [1, 2, 3, 4, 5].resize(2, 0).len();"#), 2);
+}
+
+#[test]
+fn test_array_insert_remove_chain() {
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = [1, 2, 3].insert_at(1, 10).remove_at(0).first();"#), 10);
+}

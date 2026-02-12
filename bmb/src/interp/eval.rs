@@ -3586,6 +3586,39 @@ impl Interpreter {
                         }
                         Ok(Value::Array(result))
                     }
+                    // v0.90.93: insert_at, remove_at, resize
+                    "insert_at" => {
+                        let idx = match &args[0] {
+                            Value::Int(n) => *n as usize,
+                            _ => return Err(RuntimeError::type_error("integer", args[0].type_name())),
+                        };
+                        let val = args[1].clone();
+                        let mut result = arr.to_vec();
+                        let idx = idx.min(result.len());
+                        result.insert(idx, val);
+                        Ok(Value::Array(result))
+                    }
+                    "remove_at" => {
+                        let idx = match &args[0] {
+                            Value::Int(n) => *n as usize,
+                            _ => return Err(RuntimeError::type_error("integer", args[0].type_name())),
+                        };
+                        let mut result = arr.to_vec();
+                        if idx < result.len() {
+                            result.remove(idx);
+                        }
+                        Ok(Value::Array(result))
+                    }
+                    "resize" => {
+                        let new_size = match &args[0] {
+                            Value::Int(n) => *n as usize,
+                            _ => return Err(RuntimeError::type_error("integer", args[0].type_name())),
+                        };
+                        let fill = args[1].clone();
+                        let mut result = arr.to_vec();
+                        result.resize(new_size, fill);
+                        Ok(Value::Array(result))
+                    }
                     _ => Err(RuntimeError::undefined_function(&format!("Array.{}", method))),
                 }
             }
