@@ -20384,3 +20384,175 @@ fn test_no_warn_valid_cast_f64_to_i64() {
         "redundant_cast"
     ));
 }
+
+// ============================================================================
+// Cycle 361: Comprehensive Linter Test Suite
+// ============================================================================
+
+// --- unused_binding ---
+
+#[test]
+fn test_lint_unused_binding() {
+    assert!(has_warning_kind(
+        "fn f() -> i64 = { let unused = 42; 0 };",
+        "unused_binding"
+    ));
+}
+
+#[test]
+fn test_lint_no_unused_binding_when_used() {
+    assert!(!has_warning_kind(
+        "fn f() -> i64 = { let x = 42; x };",
+        "unused_binding"
+    ));
+}
+
+// --- unused_mut ---
+
+#[test]
+fn test_lint_unused_mut() {
+    assert!(has_warning_kind(
+        "fn f() -> i64 = { let mut x = 42; x };",
+        "unused_mut"
+    ));
+}
+
+#[test]
+fn test_lint_no_unused_mut_when_mutated() {
+    assert!(!has_warning_kind(
+        "fn f() -> i64 = { let mut x = 42; x = 100; x };",
+        "unused_mut"
+    ));
+}
+
+// --- shadow_binding ---
+
+#[test]
+fn test_lint_shadow_binding() {
+    assert!(has_warning_kind(
+        "fn f() -> i64 = { let x = 1; let x = 2; x };",
+        "shadow_binding"
+    ));
+}
+
+#[test]
+fn test_lint_no_shadow_different_names() {
+    assert!(!has_warning_kind(
+        "fn f() -> i64 = { let x = 1; let y = 2; x + y };",
+        "shadow_binding"
+    ));
+}
+
+// --- unused_trait ---
+
+#[test]
+fn test_lint_unused_trait() {
+    assert!(has_warning_kind(
+        "trait Drawable { fn draw(self: Self) -> i64; }
+         fn main() -> i64 = 0;",
+        "unused_trait"
+    ));
+}
+
+// --- guarded_non_exhaustive ---
+
+#[test]
+fn test_lint_guarded_non_exhaustive() {
+    assert!(has_warning_kind(
+        "fn f(x: i64) -> i64 = match x {
+           n if n > 0 => 1,
+           n if n < 0 => -1
+         };
+         fn main() -> i64 = f(1);",
+        "guarded_non_exhaustive"
+    ));
+}
+
+#[test]
+fn test_lint_no_guarded_non_exhaustive_with_fallback() {
+    assert!(!has_warning_kind(
+        "fn f(x: i64) -> i64 = match x {
+           n if n > 0 => 1,
+           _ => 0
+         };
+         fn main() -> i64 = f(1);",
+        "guarded_non_exhaustive"
+    ));
+}
+
+// --- missing_postcondition ---
+
+#[test]
+fn test_lint_missing_postcondition() {
+    assert!(has_warning_kind(
+        "fn compute(x: i64) -> i64 = x * 2;",
+        "missing_postcondition"
+    ));
+}
+
+#[test]
+fn test_lint_no_missing_postcondition_with_post() {
+    assert!(!has_warning_kind(
+        "fn compute(x: i64) -> i64
+            post ret == x * 2
+         = x * 2;",
+        "missing_postcondition"
+    ));
+}
+
+#[test]
+fn test_lint_no_missing_postcondition_main() {
+    // main is exempted from postcondition requirement
+    assert!(!has_warning_kind(
+        "fn main() -> i64 = 42;",
+        "missing_postcondition"
+    ));
+}
+
+// --- semantic_duplication ---
+
+#[test]
+fn test_lint_semantic_duplication() {
+    assert!(has_warning_kind(
+        "fn add(a: i64, b: i64) -> i64
+            post ret == a + b
+         = a + b;
+         fn plus(a: i64, b: i64) -> i64
+            post ret == a + b
+         = a + b;
+         fn main() -> i64 = add(1, 2);",
+        "semantic_duplication"
+    ));
+}
+
+#[test]
+fn test_lint_no_semantic_duplication_different_contracts() {
+    assert!(!has_warning_kind(
+        "fn add(a: i64, b: i64) -> i64
+            post ret == a + b
+         = a + b;
+         fn sub(a: i64, b: i64) -> i64
+            post ret == a - b
+         = a - b;
+         fn main() -> i64 = add(1, 2) + sub(3, 1);",
+        "semantic_duplication"
+    ));
+}
+
+// --- unreachable_code ---
+
+#[test]
+fn test_lint_unreachable_code() {
+    assert!(has_warning_kind(
+        "fn f() -> i64 = { return 1; 2 };",
+        "unreachable_code"
+    ));
+}
+
+#[test]
+fn test_lint_no_unreachable_code() {
+    assert!(!has_warning_kind(
+        "fn f() -> i64 = { let x = 1; x + 2 };",
+        "unreachable_code"
+    ));
+}
