@@ -14096,3 +14096,126 @@ fn test_array_for_each() {
     "#;
     assert_eq!(run_program_i64(source), 3);
 }
+
+// --- Cycle 273: Array fold, reduce, find, position, enumerate ---
+
+#[test]
+fn test_array_fold_sum() {
+    let source = r#"
+        fn main() -> i64 = [1, 2, 3, 4, 5].fold(0, fn |acc: i64, x: i64| { acc + x });
+    "#;
+    assert_eq!(run_program_i64(source), 15);
+}
+
+#[test]
+fn test_array_fold_product() {
+    let source = r#"
+        fn main() -> i64 = [1, 2, 3, 4].fold(1, fn |acc: i64, x: i64| { acc * x });
+    "#;
+    assert_eq!(run_program_i64(source), 24);
+}
+
+#[test]
+fn test_array_fold_empty() {
+    let source = r#"
+        fn main() -> i64 = {
+            let arr = [1].pop();
+            arr.fold(42, fn |acc: i64, x: i64| { acc + x })
+        };
+    "#;
+    assert_eq!(run_program_i64(source), 42);
+}
+
+#[test]
+fn test_array_reduce() {
+    let source = r#"
+        fn main() -> i64 = [1, 2, 3, 4].reduce(fn |a: i64, b: i64| { a + b }).unwrap_or(0);
+    "#;
+    assert_eq!(run_program_i64(source), 10);
+}
+
+#[test]
+fn test_array_reduce_empty() {
+    let source = r#"
+        fn main() -> i64 = {
+            let arr = [1].pop();
+            arr.reduce(fn |a: i64, b: i64| { a + b }).unwrap_or(99)
+        };
+    "#;
+    assert_eq!(run_program_i64(source), 99);
+}
+
+#[test]
+fn test_array_find_exists() {
+    let source = r#"
+        fn main() -> i64 = [10, 20, 30, 40].find(fn |x: i64| { x > 25 }).unwrap_or(0);
+    "#;
+    assert_eq!(run_program_i64(source), 30);
+}
+
+#[test]
+fn test_array_find_not_exists() {
+    let source = r#"
+        fn main() -> i64 = [1, 2, 3].find(fn |x: i64| { x > 100 }).unwrap_or(-1);
+    "#;
+    assert_eq!(run_program_i64(source), -1);
+}
+
+#[test]
+fn test_array_position_exists() {
+    let source = r#"
+        fn main() -> i64 = [10, 20, 30, 40].position(fn |x: i64| { x > 25 }).unwrap_or(-1);
+    "#;
+    assert_eq!(run_program_i64(source), 2);
+}
+
+#[test]
+fn test_array_position_not_exists() {
+    let source = r#"
+        fn main() -> i64 = [1, 2, 3].position(fn |x: i64| { x > 100 }).unwrap_or(-1);
+    "#;
+    assert_eq!(run_program_i64(source), -1);
+}
+
+#[test]
+fn test_array_enumerate() {
+    let source = r#"
+        fn main() -> i64 = {
+            let pairs = [10, 20, 30].enumerate();
+            pairs.len()
+        };
+    "#;
+    assert_eq!(run_program_i64(source), 3);
+}
+
+#[test]
+fn test_array_enumerate_index() {
+    let source = r#"
+        fn main() -> i64 = {
+            let pairs = [10, 20, 30].enumerate();
+            pairs[1].0
+        };
+    "#;
+    assert_eq!(run_program_i64(source), 1);
+}
+
+#[test]
+fn test_array_enumerate_value() {
+    let source = r#"
+        fn main() -> i64 = {
+            let pairs = [10, 20, 30].enumerate();
+            pairs[2].1
+        };
+    "#;
+    assert_eq!(run_program_i64(source), 30);
+}
+
+#[test]
+fn test_array_map_fold_chain() {
+    let source = r#"
+        fn main() -> i64 = [1, 2, 3, 4]
+            .map(fn |x: i64| { x * x })
+            .fold(0, fn |acc: i64, x: i64| { acc + x });
+    "#;
+    assert_eq!(run_program_i64(source), 30);
+}

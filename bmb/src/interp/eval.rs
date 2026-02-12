@@ -1415,6 +1415,90 @@ impl Interpreter {
                             _ => Err(RuntimeError::type_error("closure", "non-closure")),
                         }
                     }
+                    // v0.90.39: fold(init, fn(acc, elem) -> acc) -> acc
+                    "fold" => {
+                        if args.len() != 2 {
+                            return Err(RuntimeError::arity_mismatch("fold", 2, args.len()));
+                        }
+                        let mut args_iter = args.into_iter();
+                        let init = args_iter.next().unwrap();
+                        match args_iter.next().unwrap() {
+                            Value::Closure { params, body, env: closure_env } => {
+                                let mut acc = init;
+                                for elem in arr {
+                                    acc = self.call_closure(&params, &body, &closure_env, vec![acc, elem])?;
+                                }
+                                Ok(acc)
+                            }
+                            _ => Err(RuntimeError::type_error("closure", "non-closure")),
+                        }
+                    }
+                    // v0.90.39: reduce(fn(acc, elem) -> acc) -> T?
+                    "reduce" => {
+                        if args.len() != 1 {
+                            return Err(RuntimeError::arity_mismatch("reduce", 1, args.len()));
+                        }
+                        match args.into_iter().next().unwrap() {
+                            Value::Closure { params, body, env: closure_env } => {
+                                if arr.is_empty() {
+                                    return Ok(Value::Enum("Option".to_string(), "None".to_string(), vec![]));
+                                }
+                                let mut iter = arr.into_iter();
+                                let mut acc = iter.next().unwrap();
+                                for elem in iter {
+                                    acc = self.call_closure(&params, &body, &closure_env, vec![acc, elem])?;
+                                }
+                                Ok(Value::Enum("Option".to_string(), "Some".to_string(), vec![acc]))
+                            }
+                            _ => Err(RuntimeError::type_error("closure", "non-closure")),
+                        }
+                    }
+                    // v0.90.39: find(fn(T) -> bool) -> T?
+                    "find" => {
+                        if args.len() != 1 {
+                            return Err(RuntimeError::arity_mismatch("find", 1, args.len()));
+                        }
+                        match args.into_iter().next().unwrap() {
+                            Value::Closure { params, body, env: closure_env } => {
+                                for elem in arr {
+                                    let pred = self.call_closure(&params, &body, &closure_env, vec![elem.clone()])?;
+                                    if pred.is_truthy() {
+                                        return Ok(Value::Enum("Option".to_string(), "Some".to_string(), vec![elem]));
+                                    }
+                                }
+                                Ok(Value::Enum("Option".to_string(), "None".to_string(), vec![]))
+                            }
+                            _ => Err(RuntimeError::type_error("closure", "non-closure")),
+                        }
+                    }
+                    // v0.90.39: position(fn(T) -> bool) -> i64?
+                    "position" => {
+                        if args.len() != 1 {
+                            return Err(RuntimeError::arity_mismatch("position", 1, args.len()));
+                        }
+                        match args.into_iter().next().unwrap() {
+                            Value::Closure { params, body, env: closure_env } => {
+                                for (i, elem) in arr.into_iter().enumerate() {
+                                    let pred = self.call_closure(&params, &body, &closure_env, vec![elem])?;
+                                    if pred.is_truthy() {
+                                        return Ok(Value::Enum("Option".to_string(), "Some".to_string(), vec![Value::Int(i as i64)]));
+                                    }
+                                }
+                                Ok(Value::Enum("Option".to_string(), "None".to_string(), vec![]))
+                            }
+                            _ => Err(RuntimeError::type_error("closure", "non-closure")),
+                        }
+                    }
+                    // v0.90.39: enumerate() -> [(i64, T)]
+                    "enumerate" => {
+                        if !args.is_empty() {
+                            return Err(RuntimeError::arity_mismatch("enumerate", 0, args.len()));
+                        }
+                        let result: Vec<Value> = arr.into_iter().enumerate()
+                            .map(|(i, v)| Value::Tuple(vec![Value::Int(i as i64), v]))
+                            .collect();
+                        Ok(Value::Array(result))
+                    }
                     _ => Err(RuntimeError::undefined_function(&format!("Array.{}", method))),
                 }
             }

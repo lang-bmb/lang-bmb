@@ -3403,6 +3403,115 @@ impl TypeChecker {
                             )),
                         }
                     }
+                    // v0.90.39: fold(init, fn(acc, T) -> acc) -> acc
+                    "fold" => {
+                        if args.len() != 2 {
+                            return Err(CompileError::type_error("fold() takes 2 arguments (initial value and closure)", span));
+                        }
+                        let init_ty = self.infer(&args[0].node, args[0].span)?;
+                        let fn_ty = self.infer(&args[1].node, args[1].span)?;
+                        match fn_ty {
+                            Type::Fn { params, ret } => {
+                                if params.len() != 2 {
+                                    return Err(CompileError::type_error(
+                                        format!("fold() closure must take 2 parameters (accumulator, element), got {}", params.len()),
+                                        args[1].span,
+                                    ));
+                                }
+                                self.unify(&params[0], &init_ty, args[1].span)?;
+                                self.unify(&params[1], elem_ty, args[1].span)?;
+                                self.unify(&ret, &init_ty, args[1].span)?;
+                                Ok(init_ty)
+                            }
+                            _ => Err(CompileError::type_error(
+                                "fold() requires a closure as second argument",
+                                args[1].span,
+                            )),
+                        }
+                    }
+                    // v0.90.39: reduce(fn(T, T) -> T) -> T?
+                    "reduce" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("reduce() takes 1 argument (a closure)", span));
+                        }
+                        let fn_ty = self.infer(&args[0].node, args[0].span)?;
+                        match fn_ty {
+                            Type::Fn { params, ret } => {
+                                if params.len() != 2 {
+                                    return Err(CompileError::type_error(
+                                        format!("reduce() closure must take 2 parameters, got {}", params.len()),
+                                        args[0].span,
+                                    ));
+                                }
+                                self.unify(&params[0], elem_ty, args[0].span)?;
+                                self.unify(&params[1], elem_ty, args[0].span)?;
+                                self.unify(&ret, elem_ty, args[0].span)?;
+                                Ok(Type::Nullable(elem_ty.clone()))
+                            }
+                            _ => Err(CompileError::type_error(
+                                "reduce() requires a closure argument",
+                                args[0].span,
+                            )),
+                        }
+                    }
+                    // v0.90.39: find(fn(T) -> bool) -> T?
+                    "find" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("find() takes 1 argument (a closure)", span));
+                        }
+                        let fn_ty = self.infer(&args[0].node, args[0].span)?;
+                        match fn_ty {
+                            Type::Fn { params, ret } => {
+                                if params.len() != 1 {
+                                    return Err(CompileError::type_error(
+                                        format!("find() closure must take 1 parameter, got {}", params.len()),
+                                        args[0].span,
+                                    ));
+                                }
+                                self.unify(&params[0], elem_ty, args[0].span)?;
+                                self.unify(&ret, &Type::Bool, args[0].span)?;
+                                Ok(Type::Nullable(elem_ty.clone()))
+                            }
+                            _ => Err(CompileError::type_error(
+                                "find() requires a closure argument",
+                                args[0].span,
+                            )),
+                        }
+                    }
+                    // v0.90.39: position(fn(T) -> bool) -> i64?
+                    "position" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("position() takes 1 argument (a closure)", span));
+                        }
+                        let fn_ty = self.infer(&args[0].node, args[0].span)?;
+                        match fn_ty {
+                            Type::Fn { params, ret } => {
+                                if params.len() != 1 {
+                                    return Err(CompileError::type_error(
+                                        format!("position() closure must take 1 parameter, got {}", params.len()),
+                                        args[0].span,
+                                    ));
+                                }
+                                self.unify(&params[0], elem_ty, args[0].span)?;
+                                self.unify(&ret, &Type::Bool, args[0].span)?;
+                                Ok(Type::Nullable(Box::new(Type::I64)))
+                            }
+                            _ => Err(CompileError::type_error(
+                                "position() requires a closure argument",
+                                args[0].span,
+                            )),
+                        }
+                    }
+                    // v0.90.39: enumerate() -> [(i64, T)]
+                    "enumerate" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("enumerate() takes no arguments", span));
+                        }
+                        Ok(Type::Array(Box::new(Type::Tuple(vec![
+                            Box::new(Type::I64),
+                            elem_ty.clone(),
+                        ])), 0))
+                    }
                     _ => Err(CompileError::type_error(
                         format!("unknown method '{}' for Array", method),
                         span,
