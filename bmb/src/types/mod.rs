@@ -5978,6 +5978,34 @@ impl TypeChecker {
                         }
                         Ok(Type::F64)
                     }
+                    // v0.90.114: ewma(f64) -> [f64] (exponentially weighted moving average)
+                    "ewma" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("ewma() takes 1 argument (alpha 0.0-1.0)", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg_ty, &Type::F64, args[0].span)?;
+                        Ok(Type::Array(Box::new(Type::F64), 0))
+                    }
+                    // v0.90.114: weighted_sum([f64]) -> f64 (weighted sum with weight array)
+                    "weighted_sum" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("weighted_sum() takes 1 argument (weights array)", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        match &arg_ty {
+                            Type::Array(_, _) => {}
+                            _ => return Err(CompileError::type_error("weighted_sum() requires an array of weights", args[0].span)),
+                        }
+                        Ok(Type::F64)
+                    }
+                    // v0.90.114: diff() -> [T] (consecutive differences)
+                    "diff" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("diff() takes no arguments", span));
+                        }
+                        Ok(Type::Array(elem_ty.clone(), 0))
+                    }
                     _ => Err(CompileError::type_error(
                         format!("unknown method '{}' for Array", method),
                         span,

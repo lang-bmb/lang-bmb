@@ -19727,3 +19727,41 @@ fn test_349_type_checks() {
     assert!(type_checks(r#"fn main() -> String = "test".pascal_case();"#));
     assert!(type_checks(r#"fn main() -> String = "test".screaming_snake_case();"#));
 }
+
+// --- Cycle 350: Array ewma, weighted_sum, diff ---
+
+#[test]
+fn test_array_ewma() {
+    // ewma with alpha=1.0 should return original values
+    assert_eq!(run_program_f64("fn main() -> f64 = [1.0, 2.0, 3.0].ewma(1.0).get(2).unwrap_or(0.0);"), 3.0);
+    assert_eq!(run_program_i64("fn main() -> i64 = [10, 20, 30].ewma(0.5).len();"), 3);
+    // First element is always the original
+    assert_eq!(run_program_f64("fn main() -> f64 = [10.0, 20.0].ewma(0.5).get(0).unwrap_or(0.0);"), 10.0);
+}
+
+#[test]
+fn test_array_weighted_sum() {
+    assert_eq!(run_program_i64("fn main() -> i64 = if [1, 2, 3].weighted_sum([0.5, 0.3, 0.2]).approx_eq(1.7, 0.001) { 1 } else { 0 };"), 1);
+    assert_eq!(run_program_f64("fn main() -> f64 = [10, 20].weighted_sum([1.0, 0.0]);"), 10.0);
+}
+
+#[test]
+fn test_array_diff() {
+    assert_eq!(run_program_i64("fn main() -> i64 = [1, 3, 6, 10].diff().get(0).unwrap_or(0);"), 2);
+    assert_eq!(run_program_i64("fn main() -> i64 = [1, 3, 6, 10].diff().get(2).unwrap_or(0);"), 4);
+    assert_eq!(run_program_i64("fn main() -> i64 = [1, 3, 6, 10].diff().len();"), 3);
+    assert_eq!(run_program_i64("fn main() -> i64 = [5].diff().len();"), 0);
+}
+
+#[test]
+fn test_array_diff_cumsum_inverse() {
+    // diff of cumsum should approximate original (shifted)
+    assert_eq!(run_program_i64("fn main() -> i64 = [1, 2, 3, 4].cumsum().diff().get(0).unwrap_or(0);"), 2);
+}
+
+#[test]
+fn test_350_type_checks() {
+    assert!(type_checks("fn main() -> i64 = [1, 2, 3].ewma(0.5).len();"));
+    assert!(type_checks("fn main() -> f64 = [1, 2].weighted_sum([0.5, 0.5]);"));
+    assert!(type_checks("fn main() -> i64 = [1, 2, 3].diff().len();"));
+}

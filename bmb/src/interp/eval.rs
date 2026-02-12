@@ -4249,6 +4249,60 @@ impl Interpreter {
                             Ok(Value::Float(cov / (std_x * std_y)))
                         }
                     }
+                    // v0.90.114: ewma(f64) -> [f64]
+                    "ewma" => {
+                        let alpha = match &args[0] {
+                            Value::Float(f) => *f,
+                            _ => return Err(RuntimeError::type_error("f64", args[0].type_name())),
+                        };
+                        let mut result = Vec::with_capacity(arr.len());
+                        let mut prev = 0.0f64;
+                        for (i, v) in arr.iter().enumerate() {
+                            let x = match v { Value::Int(n) => *n as f64, Value::Float(f) => *f, _ => 0.0 };
+                            if i == 0 {
+                                prev = x;
+                            } else {
+                                prev = alpha * x + (1.0 - alpha) * prev;
+                            }
+                            result.push(Value::Float(prev));
+                        }
+                        Ok(Value::Array(result))
+                    }
+                    // v0.90.114: weighted_sum([f64]) -> f64
+                    "weighted_sum" => {
+                        let weights = match &args[0] {
+                            Value::Array(a) => a,
+                            _ => return Err(RuntimeError::type_error("array", args[0].type_name())),
+                        };
+                        let len = arr.len().min(weights.len());
+                        let mut sum = 0.0f64;
+                        for i in 0..len {
+                            let v = match &arr[i] { Value::Int(n) => *n as f64, Value::Float(f) => *f, _ => 0.0 };
+                            let w = match &weights[i] { Value::Int(n) => *n as f64, Value::Float(f) => *f, _ => 0.0 };
+                            sum += v * w;
+                        }
+                        Ok(Value::Float(sum))
+                    }
+                    // v0.90.114: diff() -> [T] (consecutive differences)
+                    "diff" => {
+                        if arr.len() < 2 {
+                            return Ok(Value::Array(vec![]));
+                        }
+                        let is_float = arr.first().map_or(false, |v| matches!(v, Value::Float(_)));
+                        let mut result = Vec::with_capacity(arr.len() - 1);
+                        for i in 1..arr.len() {
+                            if is_float {
+                                let a = match &arr[i-1] { Value::Float(f) => *f, Value::Int(n) => *n as f64, _ => 0.0 };
+                                let b = match &arr[i] { Value::Float(f) => *f, Value::Int(n) => *n as f64, _ => 0.0 };
+                                result.push(Value::Float(b - a));
+                            } else {
+                                let a = match &arr[i-1] { Value::Int(n) => *n, _ => 0 };
+                                let b = match &arr[i] { Value::Int(n) => *n, _ => 0 };
+                                result.push(Value::Int(b - a));
+                            }
+                        }
+                        Ok(Value::Array(result))
+                    }
                     _ => Err(RuntimeError::undefined_function(&format!("Array.{}", method))),
                 }
             }
