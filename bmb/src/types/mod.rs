@@ -2946,6 +2946,32 @@ impl TypeChecker {
                         format!("unknown method '{}' for bool", method), span)),
                 }
             }
+            // v0.90.78: Char methods
+            Type::Char => {
+                match method {
+                    "is_alphabetic" | "is_numeric" | "is_whitespace" | "is_uppercase" | "is_lowercase" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error(
+                                format!("{}() takes no arguments", method), span));
+                        }
+                        Ok(Type::Bool)
+                    }
+                    "to_int" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("to_int() takes no arguments", span));
+                        }
+                        Ok(Type::I64)
+                    }
+                    "to_string" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("to_string() takes no arguments", span));
+                        }
+                        Ok(Type::String)
+                    }
+                    _ => Err(CompileError::type_error(
+                        format!("unknown method '{}' for char", method), span)),
+                }
+            }
             // v0.90.35: Integer methods
             Type::I64 | Type::I32 | Type::U32 | Type::U64 => {
                 match method {

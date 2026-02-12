@@ -17945,3 +17945,53 @@ fn test_comprehensive_math_pipeline() {
     // sin²(60°) + cos²(60°) = 1
     assert_eq!(run_program_i64(source), 1);
 }
+
+// --- Cycle 312: Char classification methods ---
+
+#[test]
+fn test_char_is_alphabetic() {
+    assert_eq!(run_program_i64("fn main() -> i64 = if 'A'.is_alphabetic() { 1 } else { 0 };"), 1);
+    assert_eq!(run_program_i64("fn main() -> i64 = if '3'.is_alphabetic() { 1 } else { 0 };"), 0);
+}
+
+#[test]
+fn test_char_is_numeric() {
+    assert_eq!(run_program_i64("fn main() -> i64 = if '7'.is_numeric() { 1 } else { 0 };"), 1);
+    assert_eq!(run_program_i64("fn main() -> i64 = if 'x'.is_numeric() { 1 } else { 0 };"), 0);
+}
+
+#[test]
+fn test_char_is_whitespace() {
+    assert_eq!(run_program_i64("fn main() -> i64 = if ' '.is_whitespace() { 1 } else { 0 };"), 1);
+    assert_eq!(run_program_i64("fn main() -> i64 = if 'a'.is_whitespace() { 1 } else { 0 };"), 0);
+}
+
+#[test]
+fn test_char_is_uppercase() {
+    assert_eq!(run_program_i64("fn main() -> i64 = if 'Z'.is_uppercase() { 1 } else { 0 };"), 1);
+    assert_eq!(run_program_i64("fn main() -> i64 = if 'z'.is_uppercase() { 1 } else { 0 };"), 0);
+}
+
+#[test]
+fn test_char_is_lowercase() {
+    assert_eq!(run_program_i64("fn main() -> i64 = if 'a'.is_lowercase() { 1 } else { 0 };"), 1);
+    assert_eq!(run_program_i64("fn main() -> i64 = if 'A'.is_lowercase() { 1 } else { 0 };"), 0);
+}
+
+#[test]
+fn test_char_to_int() {
+    assert_eq!(run_program_i64("fn main() -> i64 = 'A'.to_int();"), 65);
+    assert_eq!(run_program_i64("fn main() -> i64 = '0'.to_int();"), 48);
+}
+
+#[test]
+fn test_char_to_string() {
+    assert_eq!(run_program_str("fn main() -> String = 'x'.to_string();"), "x");
+}
+
+#[test]
+fn test_char_method_chaining() {
+    // standalone char_at() returns a char, then we can call methods on it
+    assert_eq!(run_program_i64("fn main() -> i64 = if char_at(\"Hello\", 0).is_uppercase() { 1 } else { 0 };"), 1);
+    assert_eq!(run_program_i64("fn main() -> i64 = char_at(\"A\", 0).to_int();"), 65);
+}

@@ -3459,6 +3459,19 @@ impl Interpreter {
                     _ => Err(RuntimeError::undefined_function(&format!("bool.{}", method))),
                 }
             }
+            // v0.90.78: Char methods
+            Value::Char(c) => {
+                match method {
+                    "is_alphabetic" => Ok(Value::Bool(c.is_alphabetic())),
+                    "is_numeric" => Ok(Value::Bool(c.is_numeric())),
+                    "is_whitespace" => Ok(Value::Bool(c.is_whitespace())),
+                    "is_uppercase" => Ok(Value::Bool(c.is_uppercase())),
+                    "is_lowercase" => Ok(Value::Bool(c.is_lowercase())),
+                    "to_int" => Ok(Value::Int(c as u32 as i64)),
+                    "to_string" => Ok(Value::Str(Rc::new(c.to_string()))),
+                    _ => Err(RuntimeError::undefined_function(&format!("char.{}", method))),
+                }
+            }
             // v0.89.17: Nullable<T> (T?) methods on integer values + v0.90.35: Integer methods
             Value::Int(n) => {
                 match method {
