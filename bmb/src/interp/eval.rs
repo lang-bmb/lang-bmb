@@ -1088,6 +1088,29 @@ impl Interpreter {
                     "is_positive" => Ok(Value::Bool(f > 0.0)),
                     "is_negative" => Ok(Value::Bool(f < 0.0)),
                     "is_zero" => Ok(Value::Bool(f == 0.0)),
+                    // v0.90.47: trunc, fract, powi, powf
+                    "trunc" => Ok(Value::Float(f.trunc())),
+                    "fract" => Ok(Value::Float(f.fract())),
+                    "powi" => {
+                        if args.len() != 1 {
+                            return Err(RuntimeError::arity_mismatch("powi", 1, args.len()));
+                        }
+                        let exp = match &args[0] {
+                            Value::Int(n) => *n as i32,
+                            _ => return Err(RuntimeError::type_error("integer", args[0].type_name())),
+                        };
+                        Ok(Value::Float(f.powi(exp)))
+                    }
+                    "powf" => {
+                        if args.len() != 1 {
+                            return Err(RuntimeError::arity_mismatch("powf", 1, args.len()));
+                        }
+                        let exp = match &args[0] {
+                            Value::Float(e) => *e,
+                            _ => return Err(RuntimeError::type_error("f64", args[0].type_name())),
+                        };
+                        Ok(Value::Float(f.powf(exp)))
+                    }
                     _ => Err(RuntimeError::undefined_function(&format!("f64.{}", method))),
                 }
             }
@@ -2282,6 +2305,27 @@ impl Interpreter {
                             a = t;
                         }
                         Ok(Value::Int(a))
+                    }
+                    // v0.90.47: to_hex() -> String
+                    "to_hex" => Ok(Value::Str(Rc::new(format!("{:x}", n)))),
+                    // v0.90.47: to_binary() -> String
+                    "to_binary" => Ok(Value::Str(Rc::new(format!("{:b}", n)))),
+                    // v0.90.47: to_octal() -> String
+                    "to_octal" => Ok(Value::Str(Rc::new(format!("{:o}", n)))),
+                    // v0.90.47: digits() -> [i64]
+                    "digits" => {
+                        let mut digits = Vec::new();
+                        let mut num = n.abs();
+                        if num == 0 {
+                            digits.push(Value::Int(0));
+                        } else {
+                            while num > 0 {
+                                digits.push(Value::Int(num % 10));
+                                num /= 10;
+                            }
+                            digits.reverse();
+                        }
+                        Ok(Value::Array(digits))
                     }
                     _ => Err(RuntimeError::type_error("object with methods", receiver.type_name())),
                 }

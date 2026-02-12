@@ -14662,6 +14662,76 @@ fn test_nullable_unwrap_value() {
 // ============================================
 
 // ============================================
+// Cycle 281: Integer Formatting + Float Math Extensions
+// ============================================
+
+#[test]
+fn test_int_to_hex() {
+    let source = r#"fn main() -> String = 255.to_hex();"#;
+    assert_eq!(run_program_str(source), "ff");
+}
+
+#[test]
+fn test_int_to_binary() {
+    let source = r#"fn main() -> String = 10.to_binary();"#;
+    assert_eq!(run_program_str(source), "1010");
+}
+
+#[test]
+fn test_int_to_octal() {
+    let source = r#"fn main() -> String = 8.to_octal();"#;
+    assert_eq!(run_program_str(source), "10");
+}
+
+#[test]
+fn test_int_digits() {
+    let source = "fn main() -> i64 = 12345.digits().len();";
+    assert_eq!(run_program_i64(source), 5);
+}
+
+#[test]
+fn test_int_digits_first() {
+    let source = "fn main() -> i64 = 12345.digits().first();";
+    assert_eq!(run_program_i64(source), 1);
+}
+
+#[test]
+fn test_int_digits_last() {
+    let source = "fn main() -> i64 = 12345.digits().last();";
+    assert_eq!(run_program_i64(source), 5);
+}
+
+#[test]
+fn test_int_digits_zero() {
+    let source = "fn main() -> i64 = 0.digits().len();";
+    assert_eq!(run_program_i64(source), 1);
+}
+
+#[test]
+fn test_float_trunc() {
+    let source = "fn main() -> f64 = 3.7.trunc();";
+    assert!((run_program_f64(source) - 3.0).abs() < 1e-10);
+}
+
+#[test]
+fn test_float_fract() {
+    let source = "fn main() -> f64 = 3.7.fract();";
+    assert!((run_program_f64(source) - 0.7).abs() < 1e-10);
+}
+
+#[test]
+fn test_float_powi() {
+    let source = "fn main() -> f64 = 2.0.powi(10);";
+    assert!((run_program_f64(source) - 1024.0).abs() < 1e-10);
+}
+
+#[test]
+fn test_float_powf() {
+    let source = "fn main() -> f64 = 4.0.powf(0.5);";
+    assert!((run_program_f64(source) - 2.0).abs() < 1e-10);
+}
+
+// ============================================
 // Cycle 280: Array Swap, Rotate, Fill, Index_of
 // ============================================
 

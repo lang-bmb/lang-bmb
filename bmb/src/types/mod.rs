@@ -2973,6 +2973,34 @@ impl TypeChecker {
                         self.unify(&arg_ty, receiver_ty, args[0].span)?;
                         Ok(receiver_ty.clone())
                     }
+                    // v0.90.47: to_hex() -> String
+                    "to_hex" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("to_hex() takes no arguments", span));
+                        }
+                        Ok(Type::String)
+                    }
+                    // v0.90.47: to_binary() -> String
+                    "to_binary" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("to_binary() takes no arguments", span));
+                        }
+                        Ok(Type::String)
+                    }
+                    // v0.90.47: to_octal() -> String
+                    "to_octal" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("to_octal() takes no arguments", span));
+                        }
+                        Ok(Type::String)
+                    }
+                    // v0.90.47: digits() -> [i64]
+                    "digits" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("digits() takes no arguments", span));
+                        }
+                        Ok(Type::Array(Box::new(Type::I64), 0))
+                    }
                     _ => Err(CompileError::type_error(
                         format!("unknown method '{}' for {}", method, receiver_ty), span)),
                 }
@@ -3038,6 +3066,42 @@ impl TypeChecker {
                                 format!("{}() takes no arguments", method), span));
                         }
                         Ok(Type::Bool)
+                    }
+                    // v0.90.47: trunc() -> f64 (truncate toward zero)
+                    "trunc" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("trunc() takes no arguments", span));
+                        }
+                        Ok(Type::F64)
+                    }
+                    // v0.90.47: fract() -> f64 (fractional part)
+                    "fract" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("fract() takes no arguments", span));
+                        }
+                        Ok(Type::F64)
+                    }
+                    // v0.90.47: powi(i64) -> f64 (integer power)
+                    "powi" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("powi() takes 1 argument", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        match arg_ty {
+                            Type::I32 | Type::I64 | Type::U32 | Type::U64 => {}
+                            _ => return Err(CompileError::type_error(
+                                format!("powi() argument must be integer, got {}", arg_ty), args[0].span)),
+                        }
+                        Ok(Type::F64)
+                    }
+                    // v0.90.47: powf(f64) -> f64 (float power)
+                    "powf" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("powf() takes 1 argument", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg_ty, &Type::F64, args[0].span)?;
+                        Ok(Type::F64)
                     }
                     _ => Err(CompileError::type_error(
                         format!("unknown method '{}' for f64", method), span)),
