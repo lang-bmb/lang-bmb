@@ -1426,6 +1426,81 @@ impl Interpreter {
                         let result: String = chars[..start].iter().chain(chars[end..].iter()).collect();
                         Ok(Value::Str(Rc::new(result)))
                     }
+                    // v0.90.50: map_chars(fn(String) -> String) -> String
+                    "map_chars" => {
+                        if args.len() != 1 {
+                            return Err(RuntimeError::arity_mismatch("map_chars", 1, args.len()));
+                        }
+                        match args.into_iter().next().unwrap() {
+                            Value::Closure { params, body, env: closure_env } => {
+                                let mut result = String::new();
+                                for c in s.chars() {
+                                    let mapped = self.call_closure(&params, &body, &closure_env, vec![Value::Str(Rc::new(c.to_string()))])?;
+                                    match mapped {
+                                        Value::Str(s) => result.push_str(&s),
+                                        _ => return Err(RuntimeError::type_error("String", mapped.type_name())),
+                                    }
+                                }
+                                Ok(Value::Str(Rc::new(result)))
+                            }
+                            _ => Err(RuntimeError::type_error("closure", "non-closure")),
+                        }
+                    }
+                    // v0.90.50: filter_chars(fn(String) -> bool) -> String
+                    "filter_chars" => {
+                        if args.len() != 1 {
+                            return Err(RuntimeError::arity_mismatch("filter_chars", 1, args.len()));
+                        }
+                        match args.into_iter().next().unwrap() {
+                            Value::Closure { params, body, env: closure_env } => {
+                                let mut result = String::new();
+                                for c in s.chars() {
+                                    let pred = self.call_closure(&params, &body, &closure_env, vec![Value::Str(Rc::new(c.to_string()))])?;
+                                    if pred.is_truthy() {
+                                        result.push(c);
+                                    }
+                                }
+                                Ok(Value::Str(Rc::new(result)))
+                            }
+                            _ => Err(RuntimeError::type_error("closure", "non-closure")),
+                        }
+                    }
+                    // v0.90.50: any_char(fn(String) -> bool) -> bool
+                    "any_char" => {
+                        if args.len() != 1 {
+                            return Err(RuntimeError::arity_mismatch("any_char", 1, args.len()));
+                        }
+                        match args.into_iter().next().unwrap() {
+                            Value::Closure { params, body, env: closure_env } => {
+                                for c in s.chars() {
+                                    let pred = self.call_closure(&params, &body, &closure_env, vec![Value::Str(Rc::new(c.to_string()))])?;
+                                    if pred.is_truthy() {
+                                        return Ok(Value::Bool(true));
+                                    }
+                                }
+                                Ok(Value::Bool(false))
+                            }
+                            _ => Err(RuntimeError::type_error("closure", "non-closure")),
+                        }
+                    }
+                    // v0.90.50: all_chars(fn(String) -> bool) -> bool
+                    "all_chars" => {
+                        if args.len() != 1 {
+                            return Err(RuntimeError::arity_mismatch("all_chars", 1, args.len()));
+                        }
+                        match args.into_iter().next().unwrap() {
+                            Value::Closure { params, body, env: closure_env } => {
+                                for c in s.chars() {
+                                    let pred = self.call_closure(&params, &body, &closure_env, vec![Value::Str(Rc::new(c.to_string()))])?;
+                                    if !pred.is_truthy() {
+                                        return Ok(Value::Bool(false));
+                                    }
+                                }
+                                Ok(Value::Bool(true))
+                            }
+                            _ => Err(RuntimeError::type_error("closure", "non-closure")),
+                        }
+                    }
                     _ => Err(RuntimeError::undefined_function(&format!("String.{}", method))),
                 }
             }

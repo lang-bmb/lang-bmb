@@ -14662,6 +14662,75 @@ fn test_nullable_unwrap_value() {
 // ============================================
 
 // ============================================
+// Cycle 284: String Closure Methods
+// ============================================
+
+#[test]
+fn test_string_map_chars() {
+    let source = r#"
+        fn main() -> String = "abc".map_chars(fn |c: String| { c.to_upper() });
+    "#;
+    assert_eq!(run_program_str(source), "ABC");
+}
+
+#[test]
+fn test_string_filter_chars() {
+    let source = r#"
+        fn main() -> String = "h3ll0 w0rld".filter_chars(fn |c: String| { c != "0" });
+    "#;
+    assert_eq!(run_program_str(source), "h3ll wrld");
+}
+
+#[test]
+fn test_string_any_char_true() {
+    let source = r#"
+        fn main() -> i64 = if "hello123".any_char(fn |c: String| { c == "1" }) { 1 } else { 0 };
+    "#;
+    assert_eq!(run_program_i64(source), 1);
+}
+
+#[test]
+fn test_string_any_char_false() {
+    let source = r#"
+        fn main() -> i64 = if "hello".any_char(fn |c: String| { c == "z" }) { 1 } else { 0 };
+    "#;
+    assert_eq!(run_program_i64(source), 0);
+}
+
+#[test]
+fn test_string_all_chars_true() {
+    let source = r#"
+        fn main() -> i64 = if "aaa".all_chars(fn |c: String| { c == "a" }) { 1 } else { 0 };
+    "#;
+    assert_eq!(run_program_i64(source), 1);
+}
+
+#[test]
+fn test_string_all_chars_false() {
+    let source = r#"
+        fn main() -> i64 = if "abc".all_chars(fn |c: String| { c == "a" }) { 1 } else { 0 };
+    "#;
+    assert_eq!(run_program_i64(source), 0);
+}
+
+#[test]
+fn test_string_filter_chars_digits() {
+    // Filter to keep only non-space characters
+    let source = r#"
+        fn main() -> String = "h e l l o".filter_chars(fn |c: String| { c != " " });
+    "#;
+    assert_eq!(run_program_str(source), "hello");
+}
+
+#[test]
+fn test_string_map_filter_chain() {
+    let source = r#"
+        fn main() -> String = "Hello World".map_chars(fn |c: String| { c.to_lower() }).filter_chars(fn |c: String| { c != " " });
+    "#;
+    assert_eq!(run_program_str(source), "helloworld");
+}
+
+// ============================================
 // Cycle 283: Scan, Partition, Skip_while, Take_while
 // ============================================
 
