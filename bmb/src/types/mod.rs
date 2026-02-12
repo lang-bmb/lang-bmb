@@ -3512,6 +3512,93 @@ impl TypeChecker {
                             elem_ty.clone(),
                         ])), 0))
                     }
+                    // v0.90.40: take(n) -> [T]
+                    "take" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("take() takes 1 argument", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        match arg_ty {
+                            Type::I32 | Type::I64 | Type::U32 | Type::U64 => {}
+                            _ => return Err(CompileError::type_error(
+                                format!("take() requires integer argument, got {}", arg_ty),
+                                args[0].span,
+                            )),
+                        }
+                        Ok(Type::Array(elem_ty.clone(), 0))
+                    }
+                    // v0.90.40: drop(n) -> [T]
+                    "drop" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("drop() takes 1 argument", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        match arg_ty {
+                            Type::I32 | Type::I64 | Type::U32 | Type::U64 => {}
+                            _ => return Err(CompileError::type_error(
+                                format!("drop() requires integer argument, got {}", arg_ty),
+                                args[0].span,
+                            )),
+                        }
+                        Ok(Type::Array(elem_ty.clone(), 0))
+                    }
+                    // v0.90.40: zip([U]) -> [(T, U)]
+                    "zip" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("zip() takes 1 argument", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        match arg_ty {
+                            Type::Array(other_elem, _) => {
+                                Ok(Type::Array(Box::new(Type::Tuple(vec![
+                                    elem_ty.clone(),
+                                    other_elem,
+                                ])), 0))
+                            }
+                            _ => Err(CompileError::type_error(
+                                format!("zip() requires array argument, got {}", arg_ty),
+                                args[0].span,
+                            )),
+                        }
+                    }
+                    // v0.90.40: flatten() -> [T] (for [[T]])
+                    "flatten" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("flatten() takes no arguments", span));
+                        }
+                        match elem_ty.as_ref() {
+                            Type::Array(inner, _) => Ok(Type::Array(inner.clone(), 0)),
+                            _ => Err(CompileError::type_error(
+                                format!("flatten() requires nested array [[T]], got [{}]", elem_ty),
+                                span,
+                            )),
+                        }
+                    }
+                    // v0.90.40: sort_by(fn(T, T) -> i64) -> [T]
+                    "sort_by" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("sort_by() takes 1 argument (a comparator closure)", span));
+                        }
+                        let fn_ty = self.infer(&args[0].node, args[0].span)?;
+                        match fn_ty {
+                            Type::Fn { params, ret } => {
+                                if params.len() != 2 {
+                                    return Err(CompileError::type_error(
+                                        format!("sort_by() closure must take 2 parameters, got {}", params.len()),
+                                        args[0].span,
+                                    ));
+                                }
+                                self.unify(&params[0], elem_ty, args[0].span)?;
+                                self.unify(&params[1], elem_ty, args[0].span)?;
+                                self.unify(&ret, &Type::I64, args[0].span)?;
+                                Ok(Type::Array(elem_ty.clone(), 0))
+                            }
+                            _ => Err(CompileError::type_error(
+                                "sort_by() requires a closure argument",
+                                args[0].span,
+                            )),
+                        }
+                    }
                     _ => Err(CompileError::type_error(
                         format!("unknown method '{}' for Array", method),
                         span,

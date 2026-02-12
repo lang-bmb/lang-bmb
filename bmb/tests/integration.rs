@@ -14219,3 +14219,122 @@ fn test_array_map_fold_chain() {
     "#;
     assert_eq!(run_program_i64(source), 30);
 }
+
+// --- Cycle 274: Array take, drop, zip, flatten, sort_by ---
+
+#[test]
+fn test_array_take() {
+    let source = r#"
+        fn main() -> i64 = [10, 20, 30, 40, 50].take(3).len();
+    "#;
+    assert_eq!(run_program_i64(source), 3);
+}
+
+#[test]
+fn test_array_take_values() {
+    let source = r#"
+        fn main() -> i64 = {
+            let arr = [10, 20, 30, 40, 50].take(2);
+            arr[0] + arr[1]
+        };
+    "#;
+    assert_eq!(run_program_i64(source), 30);
+}
+
+#[test]
+fn test_array_drop() {
+    let source = r#"
+        fn main() -> i64 = [10, 20, 30, 40, 50].drop(2).len();
+    "#;
+    assert_eq!(run_program_i64(source), 3);
+}
+
+#[test]
+fn test_array_drop_values() {
+    let source = r#"
+        fn main() -> i64 = [10, 20, 30, 40, 50].drop(3)[0];
+    "#;
+    assert_eq!(run_program_i64(source), 40);
+}
+
+#[test]
+fn test_array_zip() {
+    let source = r#"
+        fn main() -> i64 = {
+            let pairs = [1, 2, 3].zip([10, 20, 30]);
+            pairs.len()
+        };
+    "#;
+    assert_eq!(run_program_i64(source), 3);
+}
+
+#[test]
+fn test_array_zip_values() {
+    let source = r#"
+        fn main() -> i64 = {
+            let pairs = [1, 2, 3].zip([10, 20, 30]);
+            pairs[1].0 + pairs[1].1
+        };
+    "#;
+    assert_eq!(run_program_i64(source), 22);
+}
+
+#[test]
+fn test_array_zip_different_lengths() {
+    let source = r#"
+        fn main() -> i64 = [1, 2, 3, 4].zip([10, 20]).len();
+    "#;
+    assert_eq!(run_program_i64(source), 2);
+}
+
+#[test]
+fn test_array_flatten() {
+    let source = r#"
+        fn main() -> i64 = [[1, 2], [3, 4], [5, 6]].flatten().len();
+    "#;
+    assert_eq!(run_program_i64(source), 6);
+}
+
+#[test]
+fn test_array_flatten_values() {
+    let source = r#"
+        fn main() -> i64 = {
+            let flat = [[10, 20], [30, 40]].flatten();
+            flat[0] + flat[1] + flat[2] + flat[3]
+        };
+    "#;
+    assert_eq!(run_program_i64(source), 100);
+}
+
+#[test]
+fn test_array_sort_by_asc() {
+    let source = r#"
+        fn main() -> i64 = {
+            let sorted = [3, 1, 4, 1, 5].sort_by(fn |a: i64, b: i64| { a - b });
+            sorted[0] * 10000 + sorted[1] * 1000 + sorted[2] * 100 + sorted[3] * 10 + sorted[4]
+        };
+    "#;
+    assert_eq!(run_program_i64(source), 11345);
+}
+
+#[test]
+fn test_array_sort_by_desc() {
+    let source = r#"
+        fn main() -> i64 = {
+            let sorted = [3, 1, 4].sort_by(fn |a: i64, b: i64| { b - a });
+            sorted[0]
+        };
+    "#;
+    assert_eq!(run_program_i64(source), 4);
+}
+
+#[test]
+fn test_array_filter_take_chain() {
+    let source = r#"
+        fn main() -> i64 = [1, 2, 3, 4, 5, 6, 7, 8]
+            .filter(fn |x: i64| { x > 3 })
+            .take(2)
+            .fold(0, fn |acc: i64, x: i64| { acc + x });
+    "#;
+    assert_eq!(run_program_i64(source), 9);
+}

@@ -1499,6 +1499,87 @@ impl Interpreter {
                             .collect();
                         Ok(Value::Array(result))
                     }
+                    // v0.90.40: take(n) -> [T]
+                    "take" => {
+                        if args.len() != 1 {
+                            return Err(RuntimeError::arity_mismatch("take", 1, args.len()));
+                        }
+                        let n = match &args[0] {
+                            Value::Int(n) => (*n).max(0) as usize,
+                            _ => return Err(RuntimeError::type_error("integer", args[0].type_name())),
+                        };
+                        Ok(Value::Array(arr.into_iter().take(n).collect()))
+                    }
+                    // v0.90.40: drop(n) -> [T]
+                    "drop" => {
+                        if args.len() != 1 {
+                            return Err(RuntimeError::arity_mismatch("drop", 1, args.len()));
+                        }
+                        let n = match &args[0] {
+                            Value::Int(n) => (*n).max(0) as usize,
+                            _ => return Err(RuntimeError::type_error("integer", args[0].type_name())),
+                        };
+                        Ok(Value::Array(arr.into_iter().skip(n).collect()))
+                    }
+                    // v0.90.40: zip([U]) -> [(T, U)]
+                    "zip" => {
+                        if args.len() != 1 {
+                            return Err(RuntimeError::arity_mismatch("zip", 1, args.len()));
+                        }
+                        let other = match args.into_iter().next().unwrap() {
+                            Value::Array(a) => a,
+                            other => return Err(RuntimeError::type_error("Array", other.type_name())),
+                        };
+                        let result: Vec<Value> = arr.into_iter().zip(other)
+                            .map(|(a, b)| Value::Tuple(vec![a, b]))
+                            .collect();
+                        Ok(Value::Array(result))
+                    }
+                    // v0.90.40: flatten() -> [T]
+                    "flatten" => {
+                        if !args.is_empty() {
+                            return Err(RuntimeError::arity_mismatch("flatten", 0, args.len()));
+                        }
+                        let mut result = Vec::new();
+                        for elem in arr {
+                            match elem {
+                                Value::Array(inner) => result.extend(inner),
+                                _ => return Err(RuntimeError::type_error("Array", elem.type_name())),
+                            }
+                        }
+                        Ok(Value::Array(result))
+                    }
+                    // v0.90.40: sort_by(fn(T, T) -> i64) -> [T]
+                    "sort_by" => {
+                        if args.len() != 1 {
+                            return Err(RuntimeError::arity_mismatch("sort_by", 1, args.len()));
+                        }
+                        match args.into_iter().next().unwrap() {
+                            Value::Closure { params, body, env: closure_env } => {
+                                let mut result = arr;
+                                let mut error = None;
+                                result.sort_by(|a, b| {
+                                    if error.is_some() {
+                                        return std::cmp::Ordering::Equal;
+                                    }
+                                    match self.call_closure(&params, &body, &closure_env, vec![a.clone(), b.clone()]) {
+                                        Ok(Value::Int(n)) => {
+                                            if n < 0 { std::cmp::Ordering::Less }
+                                            else if n > 0 { std::cmp::Ordering::Greater }
+                                            else { std::cmp::Ordering::Equal }
+                                        }
+                                        Ok(_) => { error = Some(RuntimeError::type_error("integer", "non-integer")); std::cmp::Ordering::Equal }
+                                        Err(e) => { error = Some(e); std::cmp::Ordering::Equal }
+                                    }
+                                });
+                                if let Some(e) = error {
+                                    return Err(e);
+                                }
+                                Ok(Value::Array(result))
+                            }
+                            _ => Err(RuntimeError::type_error("closure", "non-closure")),
+                        }
+                    }
                     _ => Err(RuntimeError::undefined_function(&format!("Array.{}", method))),
                 }
             }
