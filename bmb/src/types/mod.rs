@@ -5659,6 +5659,29 @@ impl TypeChecker {
                         self.unify(&val_ty, elem_ty, args[1].span)?;
                         Ok(Type::Array(elem_ty.clone(), 0))
                     }
+                    // v0.90.100: variance() -> f64 (population variance)
+                    "variance" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("variance() takes no arguments", span));
+                        }
+                        Ok(Type::F64)
+                    }
+                    // v0.90.100: stddev() -> f64 (population standard deviation)
+                    "stddev" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("stddev() takes no arguments", span));
+                        }
+                        Ok(Type::F64)
+                    }
+                    // v0.90.100: percentile(f64) -> f64 (Nth percentile, 0.0-100.0)
+                    "percentile" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("percentile() takes 1 argument (0.0-100.0)", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg_ty, &Type::F64, args[0].span)?;
+                        Ok(Type::F64)
+                    }
                     _ => Err(CompileError::type_error(
                         format!("unknown method '{}' for Array", method),
                         span,

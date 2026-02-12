@@ -3720,6 +3720,59 @@ impl Interpreter {
                         result.resize(new_size, fill);
                         Ok(Value::Array(result))
                     }
+                    // v0.90.100: variance() -> f64 (population variance)
+                    "variance" => {
+                        if arr.is_empty() {
+                            return Ok(Value::Float(0.0));
+                        }
+                        let vals: Vec<f64> = arr.iter().map(|v| match v {
+                            Value::Int(n) => *n as f64,
+                            Value::Float(f) => *f,
+                            _ => 0.0,
+                        }).collect();
+                        let mean = vals.iter().sum::<f64>() / vals.len() as f64;
+                        let var = vals.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / vals.len() as f64;
+                        Ok(Value::Float(var))
+                    }
+                    // v0.90.100: stddev() -> f64 (population standard deviation)
+                    "stddev" => {
+                        if arr.is_empty() {
+                            return Ok(Value::Float(0.0));
+                        }
+                        let vals: Vec<f64> = arr.iter().map(|v| match v {
+                            Value::Int(n) => *n as f64,
+                            Value::Float(f) => *f,
+                            _ => 0.0,
+                        }).collect();
+                        let mean = vals.iter().sum::<f64>() / vals.len() as f64;
+                        let var = vals.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / vals.len() as f64;
+                        Ok(Value::Float(var.sqrt()))
+                    }
+                    // v0.90.100: percentile(f64) -> f64
+                    "percentile" => {
+                        let p = match &args[0] {
+                            Value::Float(f) => *f,
+                            _ => return Err(RuntimeError::type_error("f64", args[0].type_name())),
+                        };
+                        if arr.is_empty() {
+                            return Ok(Value::Float(0.0));
+                        }
+                        let mut vals: Vec<f64> = arr.iter().map(|v| match v {
+                            Value::Int(n) => *n as f64,
+                            Value::Float(f) => *f,
+                            _ => 0.0,
+                        }).collect();
+                        vals.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+                        let rank = (p / 100.0) * (vals.len() - 1) as f64;
+                        let lower = rank.floor() as usize;
+                        let upper = rank.ceil() as usize;
+                        if lower == upper || upper >= vals.len() {
+                            Ok(Value::Float(vals[lower.min(vals.len() - 1)]))
+                        } else {
+                            let frac = rank - lower as f64;
+                            Ok(Value::Float(vals[lower] + frac * (vals[upper] - vals[lower])))
+                        }
+                    }
                     _ => Err(RuntimeError::undefined_function(&format!("Array.{}", method))),
                 }
             }

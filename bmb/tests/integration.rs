@@ -19004,3 +19004,56 @@ fn test_float_precision_rounding_type_checks() {
     assert!(type_checks("fn main() -> f64 = 3.14.floor_to(1);"));
     assert!(type_checks("fn main() -> f64 = 3.14.ceil_to(0);"));
 }
+
+// --- Cycle 334: Array variance, stddev, percentile ---
+
+#[test]
+fn test_array_variance() {
+    // variance of [2, 4, 4, 4, 5, 5, 7, 9] = 4.0
+    let result = run_program_f64("fn main() -> f64 = [2, 4, 4, 4, 5, 5, 7, 9].variance();");
+    assert!((result - 4.0).abs() < 1e-10);
+}
+
+#[test]
+fn test_array_stddev() {
+    // stddev of [2, 4, 4, 4, 5, 5, 7, 9] = 2.0
+    let result = run_program_f64("fn main() -> f64 = [2, 4, 4, 4, 5, 5, 7, 9].stddev();");
+    assert!((result - 2.0).abs() < 1e-10);
+}
+
+#[test]
+fn test_array_variance_uniform() {
+    // All same values -> variance = 0
+    let result = run_program_f64("fn main() -> f64 = [5, 5, 5, 5].variance();");
+    assert!((result - 0.0).abs() < 1e-10);
+}
+
+#[test]
+fn test_array_percentile() {
+    // 50th percentile of [1, 2, 3, 4, 5] = 3.0 (median)
+    let result = run_program_f64("fn main() -> f64 = [1, 2, 3, 4, 5].percentile(50.0);");
+    assert!((result - 3.0).abs() < 1e-10);
+}
+
+#[test]
+fn test_array_percentile_extremes() {
+    // 0th percentile = min, 100th = max
+    let result = run_program_f64("fn main() -> f64 = [10, 20, 30, 40, 50].percentile(0.0);");
+    assert!((result - 10.0).abs() < 1e-10);
+    let result = run_program_f64("fn main() -> f64 = [10, 20, 30, 40, 50].percentile(100.0);");
+    assert!((result - 50.0).abs() < 1e-10);
+}
+
+#[test]
+fn test_array_statistical_chain() {
+    // Compute stddev and round to 2 decimal places
+    let result = run_program_f64("fn main() -> f64 = [1, 2, 3, 4, 5].stddev().round_to(2);");
+    assert!((result - 1.41).abs() < 0.01);
+}
+
+#[test]
+fn test_array_statistical_type_checks() {
+    assert!(type_checks("fn main() -> f64 = [1, 2, 3].variance();"));
+    assert!(type_checks("fn main() -> f64 = [1, 2, 3].stddev();"));
+    assert!(type_checks("fn main() -> f64 = [1, 2, 3].percentile(50.0);"));
+}
