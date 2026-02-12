@@ -1217,6 +1217,17 @@ impl Interpreter {
                         let factor = 10f64.powi(places as i32);
                         Ok(Value::Float((f * factor).ceil() / factor))
                     }
+                    // v0.90.110: classify() -> String
+                    "classify" => {
+                        let class = match f.classify() {
+                            std::num::FpCategory::Nan => "NaN",
+                            std::num::FpCategory::Infinite => "Infinite",
+                            std::num::FpCategory::Zero => "Zero",
+                            std::num::FpCategory::Subnormal => "Subnormal",
+                            std::num::FpCategory::Normal => "Normal",
+                        };
+                        Ok(Value::Str(Rc::new(class.to_string())))
+                    }
                     _ => Err(RuntimeError::undefined_function(&format!("f64.{}", method))),
                 }
             }
@@ -4623,6 +4634,21 @@ impl Interpreter {
                             None => Ok(Value::Enum("Option".to_string(), "None".to_string(), vec![])),
                         }
                     }
+                    // v0.90.110: is_emoji() -> bool
+                    "is_emoji" => {
+                        let cp = c as u32;
+                        let is_emoji = matches!(cp,
+                            0x1F600..=0x1F64F | 0x1F300..=0x1F5FF | 0x1F680..=0x1F6FF |
+                            0x1F1E0..=0x1F1FF | 0x2600..=0x26FF | 0x2700..=0x27BF |
+                            0xFE00..=0xFE0F | 0x1F900..=0x1F9FF | 0x1FA00..=0x1FA6F |
+                            0x1FA70..=0x1FAFF | 0x231A..=0x231B | 0x23E9..=0x23F3 |
+                            0x23F8..=0x23FA | 0x25AA..=0x25AB | 0x25B6 | 0x25C0 |
+                            0x25FB..=0x25FE | 0x2934..=0x2935 | 0x2B05..=0x2B07 |
+                            0x2B1B..=0x2B1C | 0x2B50 | 0x2B55 | 0x3030 | 0x303D |
+                            0x3297 | 0x3299
+                        );
+                        Ok(Value::Bool(is_emoji))
+                    }
                     _ => Err(RuntimeError::undefined_function(&format!("char.{}", method))),
                 }
             }
@@ -5118,6 +5144,28 @@ impl Interpreter {
                         } else {
                             Ok(Value::Int((n as u64).ilog10() as i64))
                         }
+                    }
+                    // v0.90.110: to_radix(i64) -> String
+                    "to_radix" => {
+                        let radix = match &args[0] { Value::Int(r) => *r, _ => return Err(RuntimeError::type_error("integer", args[0].type_name())) };
+                        if !(2..=36).contains(&radix) {
+                            return Ok(Value::Str(Rc::new(String::new())));
+                        }
+                        let negative = n < 0;
+                        let mut num = n.unsigned_abs();
+                        let radix_u = radix as u64;
+                        if num == 0 {
+                            return Ok(Value::Str(Rc::new("0".to_string())));
+                        }
+                        let mut digits = Vec::new();
+                        while num > 0 {
+                            let d = (num % radix_u) as u8;
+                            digits.push(if d < 10 { b'0' + d } else { b'a' + d - 10 });
+                            num /= radix_u;
+                        }
+                        digits.reverse();
+                        let s = String::from_utf8(digits).unwrap_or_default();
+                        Ok(Value::Str(Rc::new(if negative { format!("-{}", s) } else { s })))
                     }
                     _ => Err(RuntimeError::type_error("object with methods", receiver.type_name())),
                 }

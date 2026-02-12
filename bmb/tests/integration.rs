@@ -19415,3 +19415,32 @@ fn test_string_343_type_checks() {
     assert!(type_checks(r#"fn main() -> String = "test".decode_uri();"#));
     assert!(type_checks(r#"fn main() -> String = "test".escape_html();"#));
 }
+
+// --- Cycle 344: Integer to_radix, Char is_emoji, Float classify ---
+
+#[test]
+fn test_int_to_radix() {
+    assert_eq!(run_program_str("fn main() -> String = 255.to_radix(16);"), "ff");
+    assert_eq!(run_program_str("fn main() -> String = 10.to_radix(2);"), "1010");
+    assert_eq!(run_program_str("fn main() -> String = 0.to_radix(8);"), "0");
+    assert_eq!(run_program_str("fn main() -> String = 35.to_radix(36);"), "z");
+}
+
+#[test]
+fn test_char_is_emoji() {
+    assert_eq!(run_program_i64("fn main() -> i64 = if 'A'.is_emoji() { 1 } else { 0 };"), 0);
+    assert_eq!(run_program_i64("fn main() -> i64 = if '5'.is_emoji() { 1 } else { 0 };"), 0);
+}
+
+#[test]
+fn test_float_classify() {
+    assert_eq!(run_program_str("fn main() -> String = 1.0.classify();"), "Normal");
+    assert_eq!(run_program_str("fn main() -> String = 0.0.classify();"), "Zero");
+}
+
+#[test]
+fn test_344_type_checks() {
+    assert!(type_checks("fn main() -> String = 255.to_radix(16);"));
+    assert!(type_checks("fn main() -> i64 = if 'A'.is_emoji() { 1 } else { 0 };"));
+    assert!(type_checks("fn main() -> String = 1.0.classify();"));
+}

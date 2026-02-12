@@ -3068,6 +3068,13 @@ impl TypeChecker {
                         self.unify(&arg1_ty, &Type::I64, args[1].span)?;
                         Ok(Type::Nullable(Box::new(Type::Char)))
                     }
+                    // v0.90.110: is_emoji() -> bool (check if char is in emoji ranges)
+                    "is_emoji" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("is_emoji() takes no arguments", span));
+                        }
+                        Ok(Type::Bool)
+                    }
                     _ => Err(CompileError::type_error(
                         format!("unknown method '{}' for char", method), span)),
                 }
@@ -3328,6 +3335,15 @@ impl TypeChecker {
                         }
                         Ok(receiver_ty.clone())
                     }
+                    // v0.90.110: to_radix(i64) -> String (convert to string in given base)
+                    "to_radix" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("to_radix() takes 1 argument (base 2-36)", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg_ty, receiver_ty, args[0].span)?;
+                        Ok(Type::String)
+                    }
                     _ => Err(CompileError::type_error(
                         format!("unknown method '{}' for {}", method, receiver_ty), span)),
                 }
@@ -3553,6 +3569,13 @@ impl TypeChecker {
                         let arg_ty = self.infer(&args[0].node, args[0].span)?;
                         self.unify(&arg_ty, &Type::I64, args[0].span)?;
                         Ok(Type::F64)
+                    }
+                    // v0.90.110: classify() -> String (NaN, Infinite, Zero, Subnormal, Normal)
+                    "classify" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("classify() takes no arguments", span));
+                        }
+                        Ok(Type::String)
                     }
                     _ => Err(CompileError::type_error(
                         format!("unknown method '{}' for f64", method), span)),
