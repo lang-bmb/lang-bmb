@@ -19519,3 +19519,88 @@ fn test_346_type_checks() {
     assert!(type_checks("fn main() -> f64 = [1, 2].covariance([3, 4]);"));
     assert!(type_checks("fn main() -> f64 = [1, 2].correlation([3, 4]);"));
 }
+
+// --- Cycle 347: Edge case tests for cycles 332-346 ---
+
+// Edge cases: parse methods with invalid input
+#[test]
+fn test_edge_parse_invalid() {
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = "zzz".parse_hex().unwrap_or(-1);"#), -1);
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = "222".parse_binary().unwrap_or(-1);"#), -1);
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = "89".parse_octal().unwrap_or(-1);"#), -1);
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = "xyz".parse_radix(10).unwrap_or(-1);"#), -1);
+}
+
+// Edge cases: empty arrays
+#[test]
+fn test_edge_empty_array_stats() {
+    assert_eq!(run_program_f64("fn main() -> f64 = [].variance();"), 0.0);
+    assert_eq!(run_program_f64("fn main() -> f64 = [].stddev();"), 0.0);
+    assert_eq!(run_program_f64("fn main() -> f64 = [].magnitude();"), 0.0);
+    assert_eq!(run_program_i64("fn main() -> i64 = [].cumsum().len();"), 0);
+}
+
+// Edge cases: single element arrays
+#[test]
+fn test_edge_single_element_stats() {
+    assert_eq!(run_program_f64("fn main() -> f64 = [42].variance();"), 0.0);
+    assert_eq!(run_program_f64("fn main() -> f64 = [42].stddev();"), 0.0);
+    assert_eq!(run_program_f64("fn main() -> f64 = [5].magnitude();"), 5.0);
+    assert_eq!(run_program_i64("fn main() -> i64 = [7].mode().unwrap_or(0);"), 7);
+}
+
+// Edge cases: negative numbers in integer methods
+#[test]
+fn test_edge_negative_int_methods() {
+    assert_eq!(run_program_i64("fn main() -> i64 = (-123).digit_sum();"), 6);
+    assert_eq!(run_program_i64("fn main() -> i64 = (-12321).reverse_digits();"), -12321);
+    assert_eq!(run_program_i64("fn main() -> i64 = if (-121).is_palindrome_int() { 1 } else { 0 };"), 0);
+    assert_eq!(run_program_i64("fn main() -> i64 = (-8).ilog2();"), 0);
+}
+
+// Edge cases: empty string methods
+#[test]
+fn test_edge_empty_string_methods() {
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = "".chunk_string(3).len();"#), 0);
+    assert_eq!(run_program_str(r#"fn main() -> String = "".format_number();"#), "");
+    assert_eq!(run_program_str(r#"fn main() -> String = "".encode_uri();"#), "");
+    assert_eq!(run_program_str(r#"fn main() -> String = "".escape_html();"#), "");
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = "".levenshtein("");"#), 0);
+}
+
+// Edge cases: float precision rounding
+#[test]
+fn test_edge_float_precision() {
+    assert_eq!(run_program_f64("fn main() -> f64 = 3.14159.round_to(2);"), 3.14);
+    assert_eq!(run_program_f64("fn main() -> f64 = 3.14159.floor_to(2);"), 3.14);
+    assert_eq!(run_program_f64("fn main() -> f64 = 3.14159.ceil_to(2);"), 3.15);
+    assert_eq!(run_program_f64("fn main() -> f64 = 3.14159.round_to(0);"), 3.0);
+}
+
+// Edge cases: dot product with different lengths
+#[test]
+fn test_edge_dot_product_lengths() {
+    assert_eq!(run_program_f64("fn main() -> f64 = [1, 2, 3].dot_product([4, 5]);"), 14.0);
+    assert_eq!(run_program_f64("fn main() -> f64 = [1].dot_product([2, 3, 4]);"), 2.0);
+}
+
+// Edge cases: normalize zero vector
+#[test]
+fn test_edge_normalize_zero() {
+    assert_eq!(run_program_f64("fn main() -> f64 = [0, 0, 0].normalize().magnitude();"), 0.0);
+}
+
+// Edge cases: cross product with empty arrays
+#[test]
+fn test_edge_cross_product_empty() {
+    assert_eq!(run_program_i64("fn main() -> i64 = [1, 2].cross_product([]).len();"), 0);
+    assert_eq!(run_program_i64("fn main() -> i64 = [].cross_product([1, 2]).len();"), 0);
+}
+
+// Edge cases: to_radix edge cases
+#[test]
+fn test_edge_to_radix() {
+    assert_eq!(run_program_str("fn main() -> String = (-255).to_radix(16);"), "-ff");
+    assert_eq!(run_program_str("fn main() -> String = 0.to_radix(2);"), "0");
+    assert_eq!(run_program_str("fn main() -> String = 1.to_radix(2);"), "1");
+}
