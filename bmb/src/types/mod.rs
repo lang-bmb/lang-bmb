@@ -3398,6 +3398,39 @@ impl TypeChecker {
                         self.unify(&arg_ty, &Type::I64, args[0].span)?;
                         Ok(Type::String)
                     }
+                    // v0.90.91: lerp(target, t) -> f64
+                    "lerp" => {
+                        if args.len() != 2 {
+                            return Err(CompileError::type_error("lerp() takes 2 arguments (target, t)", span));
+                        }
+                        let arg0_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg0_ty, &Type::F64, args[0].span)?;
+                        let arg1_ty = self.infer(&args[1].node, args[1].span)?;
+                        self.unify(&arg1_ty, &Type::F64, args[1].span)?;
+                        Ok(Type::F64)
+                    }
+                    // v0.90.91: map_range(from_min, from_max, to_min, to_max) -> f64
+                    "map_range" => {
+                        if args.len() != 4 {
+                            return Err(CompileError::type_error("map_range() takes 4 arguments (from_min, from_max, to_min, to_max)", span));
+                        }
+                        for arg in args {
+                            let arg_ty = self.infer(&arg.node, arg.span)?;
+                            self.unify(&arg_ty, &Type::F64, arg.span)?;
+                        }
+                        Ok(Type::F64)
+                    }
+                    // v0.90.91: fma(mul, add) -> f64 (fused multiply-add)
+                    "fma" => {
+                        if args.len() != 2 {
+                            return Err(CompileError::type_error("fma() takes 2 arguments (multiplier, addend)", span));
+                        }
+                        let arg0_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg0_ty, &Type::F64, args[0].span)?;
+                        let arg1_ty = self.infer(&args[1].node, args[1].span)?;
+                        self.unify(&arg1_ty, &Type::F64, args[1].span)?;
+                        Ok(Type::F64)
+                    }
                     _ => Err(CompileError::type_error(
                         format!("unknown method '{}' for f64", method), span)),
                 }

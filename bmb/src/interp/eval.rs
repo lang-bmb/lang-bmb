@@ -1174,6 +1174,25 @@ impl Interpreter {
                         };
                         Ok(Value::Str(Rc::new(format!("{:.prec$}", f, prec = places))))
                     }
+                    // v0.90.91: lerp, map_range, fma
+                    "lerp" => {
+                        let target = match &args[0] { Value::Float(t) => *t, _ => return Err(RuntimeError::type_error("f64", args[0].type_name())) };
+                        let t = match &args[1] { Value::Float(t) => *t, _ => return Err(RuntimeError::type_error("f64", args[1].type_name())) };
+                        Ok(Value::Float(f + (target - f) * t))
+                    }
+                    "map_range" => {
+                        let from_min = match &args[0] { Value::Float(v) => *v, _ => return Err(RuntimeError::type_error("f64", args[0].type_name())) };
+                        let from_max = match &args[1] { Value::Float(v) => *v, _ => return Err(RuntimeError::type_error("f64", args[1].type_name())) };
+                        let to_min = match &args[2] { Value::Float(v) => *v, _ => return Err(RuntimeError::type_error("f64", args[2].type_name())) };
+                        let to_max = match &args[3] { Value::Float(v) => *v, _ => return Err(RuntimeError::type_error("f64", args[3].type_name())) };
+                        let normalized = (f - from_min) / (from_max - from_min);
+                        Ok(Value::Float(to_min + normalized * (to_max - to_min)))
+                    }
+                    "fma" => {
+                        let mul = match &args[0] { Value::Float(m) => *m, _ => return Err(RuntimeError::type_error("f64", args[0].type_name())) };
+                        let add = match &args[1] { Value::Float(a) => *a, _ => return Err(RuntimeError::type_error("f64", args[1].type_name())) };
+                        Ok(Value::Float(f.mul_add(mul, add)))
+                    }
                     _ => Err(RuntimeError::undefined_function(&format!("f64.{}", method))),
                 }
             }

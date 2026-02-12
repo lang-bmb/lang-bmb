@@ -18612,3 +18612,43 @@ fn test_int_checked_mul() {
 fn test_int_saturating_chain() {
     assert_eq!(run_program_i64(r#"fn main() -> i64 = 100.saturating_add(50).saturating_sub(30);"#), 120);
 }
+
+// --- Cycle 325: Float lerp, map_range, fma ---
+
+#[test]
+fn test_float_lerp() {
+    let result = run_program_f64(r#"fn main() -> f64 = 0.0.lerp(10.0, 0.5);"#);
+    assert!((result - 5.0).abs() < 1e-10);
+}
+
+#[test]
+fn test_float_lerp_endpoints() {
+    let r0 = run_program_f64(r#"fn main() -> f64 = 2.0.lerp(8.0, 0.0);"#);
+    assert!((r0 - 2.0).abs() < 1e-10);
+    let r1 = run_program_f64(r#"fn main() -> f64 = 2.0.lerp(8.0, 1.0);"#);
+    assert!((r1 - 8.0).abs() < 1e-10);
+}
+
+#[test]
+fn test_float_map_range() {
+    let result = run_program_f64(r#"fn main() -> f64 = 5.0.map_range(0.0, 10.0, 0.0, 100.0);"#);
+    assert!((result - 50.0).abs() < 1e-10);
+}
+
+#[test]
+fn test_float_map_range_offset() {
+    let result = run_program_f64(r#"fn main() -> f64 = 15.0.map_range(10.0, 20.0, 100.0, 200.0);"#);
+    assert!((result - 150.0).abs() < 1e-10);
+}
+
+#[test]
+fn test_float_fma() {
+    let result = run_program_f64(r#"fn main() -> f64 = 3.0.fma(4.0, 5.0);"#);
+    assert!((result - 17.0).abs() < 1e-10);
+}
+
+#[test]
+fn test_float_lerp_fma_chain() {
+    let result = run_program_f64(r#"fn main() -> f64 = 0.0.lerp(10.0, 0.5).fma(2.0, 1.0);"#);
+    assert!((result - 11.0).abs() < 1e-10);
+}
