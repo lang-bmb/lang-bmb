@@ -4200,7 +4200,9 @@ impl TypeChecker {
                         Ok(Type::String)
                     }
                     // v0.90.72: swapcase, title_case, snake_case, camel_case
-                    "swapcase" | "title_case" | "snake_case" | "camel_case" => {
+                    // v0.90.113: + kebab_case, pascal_case, screaming_snake_case
+                    "swapcase" | "title_case" | "snake_case" | "camel_case"
+                    | "kebab_case" | "pascal_case" | "screaming_snake_case" => {
                         if !args.is_empty() {
                             return Err(CompileError::type_error(&format!("{}() takes no arguments", method), span));
                         }

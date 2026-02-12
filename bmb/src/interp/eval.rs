@@ -1948,6 +1948,60 @@ impl Interpreter {
                         }
                         Ok(Value::Str(Rc::new(result)))
                     }
+                    // v0.90.113: kebab_case() -> String
+                    "kebab_case" => {
+                        let mut result = String::new();
+                        for (i, c) in s.chars().enumerate() {
+                            if c.is_uppercase() {
+                                if i > 0 && !result.ends_with('-') {
+                                    result.push('-');
+                                }
+                                result.extend(c.to_lowercase());
+                            } else if c == '_' || c == ' ' {
+                                if !result.ends_with('-') {
+                                    result.push('-');
+                                }
+                            } else {
+                                result.push(c);
+                            }
+                        }
+                        Ok(Value::Str(Rc::new(result)))
+                    }
+                    // v0.90.113: pascal_case() -> String
+                    "pascal_case" => {
+                        let mut result = String::new();
+                        let mut capitalize_next = true;
+                        for c in s.chars() {
+                            if c == '_' || c == '-' || c == ' ' {
+                                capitalize_next = true;
+                            } else if capitalize_next {
+                                result.extend(c.to_uppercase());
+                                capitalize_next = false;
+                            } else {
+                                result.push(c);
+                            }
+                        }
+                        Ok(Value::Str(Rc::new(result)))
+                    }
+                    // v0.90.113: screaming_snake_case() -> String
+                    "screaming_snake_case" => {
+                        let mut result = String::new();
+                        for (i, c) in s.chars().enumerate() {
+                            if c.is_uppercase() {
+                                if i > 0 && !result.ends_with('_') {
+                                    result.push('_');
+                                }
+                                result.push(c);
+                            } else if c == ' ' || c == '-' {
+                                if !result.ends_with('_') {
+                                    result.push('_');
+                                }
+                            } else {
+                                result.extend(c.to_uppercase());
+                            }
+                        }
+                        Ok(Value::Str(Rc::new(result)))
+                    }
                     // v0.90.76: pad_start, pad_end, char_code_at, from_char_code
                     "pad_start" => {
                         let width = match &args[0] {

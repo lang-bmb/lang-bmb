@@ -19690,3 +19690,40 @@ fn test_chain_deep() {
     // String: to_lower -> encode_uri -> decode_uri -> len
     assert_eq!(run_program_i64(r#"fn main() -> i64 = "Hello World".to_lower().encode_uri().decode_uri().len();"#), 11);
 }
+
+// --- Cycle 349: String kebab_case, pascal_case, screaming_snake_case ---
+
+#[test]
+fn test_string_kebab_case() {
+    assert_eq!(run_program_str(r#"fn main() -> String = "helloWorld".kebab_case();"#), "hello-world");
+    assert_eq!(run_program_str(r#"fn main() -> String = "hello_world".kebab_case();"#), "hello-world");
+    assert_eq!(run_program_str(r#"fn main() -> String = "HelloWorld".kebab_case();"#), "hello-world");
+}
+
+#[test]
+fn test_string_pascal_case() {
+    assert_eq!(run_program_str(r#"fn main() -> String = "hello_world".pascal_case();"#), "HelloWorld");
+    assert_eq!(run_program_str(r#"fn main() -> String = "hello-world".pascal_case();"#), "HelloWorld");
+    assert_eq!(run_program_str(r#"fn main() -> String = "hello world".pascal_case();"#), "HelloWorld");
+}
+
+#[test]
+fn test_string_screaming_snake_case() {
+    assert_eq!(run_program_str(r#"fn main() -> String = "helloWorld".screaming_snake_case();"#), "HELLO_WORLD");
+    assert_eq!(run_program_str(r#"fn main() -> String = "hello-world".screaming_snake_case();"#), "HELLO_WORLD");
+}
+
+#[test]
+fn test_string_case_conversion_chain() {
+    // snake_case -> camel_case roundtrip
+    assert_eq!(run_program_str(r#"fn main() -> String = "helloWorld".snake_case().camel_case();"#), "helloWorld");
+    // kebab -> pascal
+    assert_eq!(run_program_str(r#"fn main() -> String = "hello-world".pascal_case();"#), "HelloWorld");
+}
+
+#[test]
+fn test_349_type_checks() {
+    assert!(type_checks(r#"fn main() -> String = "test".kebab_case();"#));
+    assert!(type_checks(r#"fn main() -> String = "test".pascal_case();"#));
+    assert!(type_checks(r#"fn main() -> String = "test".screaming_snake_case();"#));
+}
