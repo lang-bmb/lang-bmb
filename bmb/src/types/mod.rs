@@ -3727,6 +3727,74 @@ impl TypeChecker {
                             )),
                         }
                     }
+                    // v0.90.43: sort() -> [T] (natural ordering, requires comparable type)
+                    "sort" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("sort() takes no arguments", span));
+                        }
+                        Ok(Type::Array(elem_ty.clone(), 0))
+                    }
+                    // v0.90.43: dedup() -> [T] (remove consecutive duplicates)
+                    "dedup" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("dedup() takes no arguments", span));
+                        }
+                        Ok(Type::Array(elem_ty.clone(), 0))
+                    }
+                    // v0.90.43: sum() -> T (sum of numeric array)
+                    "sum" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("sum() takes no arguments", span));
+                        }
+                        Ok(*elem_ty.clone())
+                    }
+                    // v0.90.43: product() -> T (product of numeric array)
+                    "product" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("product() takes no arguments", span));
+                        }
+                        Ok(*elem_ty.clone())
+                    }
+                    // v0.90.43: min() -> T? (minimum element)
+                    "min" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("array min() takes no arguments", span));
+                        }
+                        Ok(Type::Nullable(elem_ty.clone()))
+                    }
+                    // v0.90.43: max() -> T? (maximum element)
+                    "max" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("array max() takes no arguments", span));
+                        }
+                        Ok(Type::Nullable(elem_ty.clone()))
+                    }
+                    // v0.90.43: flat_map(fn(T) -> [U]) -> [U]
+                    "flat_map" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("flat_map() takes 1 argument (a closure)", span));
+                        }
+                        let fn_ty = self.infer(&args[0].node, args[0].span)?;
+                        match fn_ty {
+                            Type::Fn { params, ret } => {
+                                if params.len() != 1 {
+                                    return Err(CompileError::type_error(
+                                        format!("flat_map() closure must take 1 parameter, got {}", params.len()),
+                                        args[0].span,
+                                    ));
+                                }
+                                self.unify(&params[0], elem_ty, args[0].span)?;
+                                match *ret {
+                                    Type::Array(inner, _) => Ok(Type::Array(inner, 0)),
+                                    _ => Err(CompileError::type_error(
+                                        "flat_map() closure must return an array",
+                                        args[0].span,
+                                    )),
+                                }
+                            }
+                            _ => Err(CompileError::type_error("flat_map() requires a closure argument", args[0].span)),
+                        }
+                    }
                     _ => Err(CompileError::type_error(
                         format!("unknown method '{}' for Array", method),
                         span,

@@ -14661,6 +14661,86 @@ fn test_nullable_unwrap_value() {
 // Cycle 276: Result unwrap (type check)
 // ============================================
 
+// ============================================
+// Cycle 277: Array Aggregation & Utility Methods
+// ============================================
+
+#[test]
+fn test_array_sort_int() {
+    let source = "fn main() -> i64 = [3, 1, 4, 1, 5].sort().first();";
+    assert_eq!(run_program_i64(source), 1);
+}
+
+#[test]
+fn test_array_sort_int_last() {
+    let source = "fn main() -> i64 = [3, 1, 4, 1, 5].sort().last();";
+    assert_eq!(run_program_i64(source), 5);
+}
+
+#[test]
+fn test_array_dedup() {
+    let source = "fn main() -> i64 = [1, 1, 2, 2, 3, 3, 3].dedup().len();";
+    assert_eq!(run_program_i64(source), 3);
+}
+
+#[test]
+fn test_array_dedup_values() {
+    let source = "fn main() -> i64 = [1, 1, 2, 3, 3].dedup().last();";
+    assert_eq!(run_program_i64(source), 3);
+}
+
+#[test]
+fn test_array_sort_dedup_chain() {
+    let source = "fn main() -> i64 = [3, 1, 2, 1, 3].sort().dedup().len();";
+    assert_eq!(run_program_i64(source), 3);
+}
+
+#[test]
+fn test_array_sum() {
+    let source = "fn main() -> i64 = [1, 2, 3, 4, 5].sum();";
+    assert_eq!(run_program_i64(source), 15);
+}
+
+#[test]
+fn test_array_sum_float() {
+    let source = "fn main() -> f64 = [1.0, 2.0, 3.0].sum();";
+    assert!((run_program_f64(source) - 6.0).abs() < 1e-10);
+}
+
+#[test]
+fn test_array_product() {
+    let source = "fn main() -> i64 = [1, 2, 3, 4].product();";
+    assert_eq!(run_program_i64(source), 24);
+}
+
+#[test]
+fn test_array_min() {
+    let source = "fn main() -> i64 = [5, 3, 8, 1, 4].min().unwrap_or(0);";
+    assert_eq!(run_program_i64(source), 1);
+}
+
+#[test]
+fn test_array_max() {
+    let source = "fn main() -> i64 = [5, 3, 8, 1, 4].max().unwrap_or(0);";
+    assert_eq!(run_program_i64(source), 8);
+}
+
+#[test]
+fn test_array_flat_map() {
+    let source = r#"
+        fn main() -> i64 = [1, 2, 3].flat_map(fn |x: i64| { [x, x * 10] }).len();
+    "#;
+    assert_eq!(run_program_i64(source), 6);
+}
+
+#[test]
+fn test_array_flat_map_values() {
+    let source = r#"
+        fn main() -> i64 = [1, 2, 3].flat_map(fn |x: i64| { [x, x * 10] }).sum();
+    "#;
+    assert_eq!(run_program_i64(source), 66);
+}
+
 #[test]
 fn test_result_unwrap_ok() {
     assert!(type_checks(

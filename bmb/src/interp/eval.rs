@@ -1694,6 +1694,124 @@ impl Interpreter {
                             _ => Err(RuntimeError::type_error("closure", "non-closure")),
                         }
                     }
+                    // v0.90.43: sort() -> [T] (natural ordering)
+                    "sort" => {
+                        let mut result = arr;
+                        result.sort_by(|a, b| {
+                            match (a, b) {
+                                (Value::Int(x), Value::Int(y)) => x.cmp(y),
+                                (Value::Float(x), Value::Float(y)) => x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal),
+                                (Value::Str(x), Value::Str(y)) => x.cmp(y),
+                                _ => std::cmp::Ordering::Equal,
+                            }
+                        });
+                        Ok(Value::Array(result))
+                    }
+                    // v0.90.43: dedup() -> [T] (remove consecutive duplicates)
+                    "dedup" => {
+                        if arr.is_empty() {
+                            return Ok(Value::Array(arr));
+                        }
+                        let mut result = vec![arr[0].clone()];
+                        for elem in arr.iter().skip(1) {
+                            if result.last() != Some(elem) {
+                                result.push(elem.clone());
+                            }
+                        }
+                        Ok(Value::Array(result))
+                    }
+                    // v0.90.43: sum() -> T
+                    "sum" => {
+                        if arr.is_empty() {
+                            return Ok(Value::Int(0));
+                        }
+                        match &arr[0] {
+                            Value::Int(_) => {
+                                let total: i64 = arr.iter().map(|v| match v { Value::Int(n) => *n, _ => 0 }).sum();
+                                Ok(Value::Int(total))
+                            }
+                            Value::Float(_) => {
+                                let total: f64 = arr.iter().map(|v| match v { Value::Float(f) => *f, _ => 0.0 }).sum();
+                                Ok(Value::Float(total))
+                            }
+                            _ => Err(RuntimeError::type_error("numeric array", "non-numeric array")),
+                        }
+                    }
+                    // v0.90.43: product() -> T
+                    "product" => {
+                        if arr.is_empty() {
+                            return Ok(Value::Int(1));
+                        }
+                        match &arr[0] {
+                            Value::Int(_) => {
+                                let total: i64 = arr.iter().map(|v| match v { Value::Int(n) => *n, _ => 1 }).product();
+                                Ok(Value::Int(total))
+                            }
+                            Value::Float(_) => {
+                                let total: f64 = arr.iter().map(|v| match v { Value::Float(f) => *f, _ => 1.0 }).product();
+                                Ok(Value::Float(total))
+                            }
+                            _ => Err(RuntimeError::type_error("numeric array", "non-numeric array")),
+                        }
+                    }
+                    // v0.90.43: min() -> T? (minimum element)
+                    "min" => {
+                        if arr.is_empty() {
+                            return Ok(Value::Int(0)); // null for i64?
+                        }
+                        let mut min_val = arr[0].clone();
+                        for elem in arr.iter().skip(1) {
+                            let is_less = match (&min_val, elem) {
+                                (Value::Int(a), Value::Int(b)) => b < a,
+                                (Value::Float(a), Value::Float(b)) => b < a,
+                                (Value::Str(a), Value::Str(b)) => b < a,
+                                _ => false,
+                            };
+                            if is_less {
+                                min_val = elem.clone();
+                            }
+                        }
+                        Ok(min_val)
+                    }
+                    // v0.90.43: max() -> T? (maximum element)
+                    "max" => {
+                        if arr.is_empty() {
+                            return Ok(Value::Int(0)); // null for i64?
+                        }
+                        let mut max_val = arr[0].clone();
+                        for elem in arr.iter().skip(1) {
+                            let is_greater = match (&max_val, elem) {
+                                (Value::Int(a), Value::Int(b)) => b > a,
+                                (Value::Float(a), Value::Float(b)) => b > a,
+                                (Value::Str(a), Value::Str(b)) => b > a,
+                                _ => false,
+                            };
+                            if is_greater {
+                                max_val = elem.clone();
+                            }
+                        }
+                        Ok(max_val)
+                    }
+                    // v0.90.43: flat_map(fn(T) -> [U]) -> [U]
+                    "flat_map" => {
+                        if args.len() != 1 {
+                            return Err(RuntimeError::arity_mismatch("flat_map", 1, args.len()));
+                        }
+                        match args.into_iter().next().unwrap() {
+                            Value::Closure { params, body, env: closure_env } => {
+                                let mut result = Vec::new();
+                                for elem in arr {
+                                    let val = self.call_closure(&params, &body, &closure_env, vec![elem])?;
+                                    match val {
+                                        Value::Array(inner) => result.extend(inner),
+                                        _ => return Err(RuntimeError::type_error("array", val.type_name())),
+                                    }
+                                }
+                                Ok(Value::Array(result))
+                            }
+                            _ => Err(RuntimeError::type_error("closure", "non-closure")),
+                        }
+                    }
                     _ => Err(RuntimeError::undefined_function(&format!("Array.{}", method))),
                 }
             }
