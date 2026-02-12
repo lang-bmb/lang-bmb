@@ -151,6 +151,13 @@ pub enum CompileWarning {
         span: Span,
     },
 
+    /// v0.90.128: Self-comparison — comparing a variable to itself
+    SelfComparison {
+        name: String,
+        op: String,
+        span: Span,
+    },
+
     /// v0.90.121: Non-snake_case function name
     /// Function names should use snake_case
     NonSnakeCaseFunction {
@@ -342,6 +349,11 @@ impl CompileWarning {
         Self::ConstantCondition { value, context: context.into(), span }
     }
 
+    /// v0.90.128: Create a self-comparison warning
+    pub fn self_comparison(name: impl Into<String>, op: impl Into<String>, span: Span) -> Self {
+        Self::SelfComparison { name: name.into(), op: op.into(), span }
+    }
+
     /// v0.90.121: Create a non-snake_case function warning
     pub fn non_snake_case_function(
         name: impl Into<String>,
@@ -393,6 +405,7 @@ impl CompileWarning {
             Self::SingleArmMatch { span } => Some(*span),
             Self::RedundantCast { span, .. } => Some(*span),
             Self::ConstantCondition { span, .. } => Some(*span),
+            Self::SelfComparison { span, .. } => Some(*span),
             Self::NonSnakeCaseFunction { span, .. } => Some(*span),
             Self::NonPascalCaseType { span, .. } => Some(*span),
             Self::Generic { span, .. } => *span,
@@ -474,6 +487,9 @@ impl CompileWarning {
             Self::ConstantCondition { value, context, .. } => {
                 format!("`{}` condition is always `{}`", context, value)
             }
+            Self::SelfComparison { name, op, .. } => {
+                format!("comparing `{}` {} `{}` is always the same result", name, op, name)
+            }
             Self::Generic { message, .. } => message.clone(),
         }
     }
@@ -503,6 +519,7 @@ impl CompileWarning {
             Self::SingleArmMatch { .. } => "single_arm_match",
             Self::RedundantCast { .. } => "redundant_cast",
             Self::ConstantCondition { .. } => "constant_condition",
+            Self::SelfComparison { .. } => "self_comparison",
             Self::Generic { .. } => "warning",
         }
     }

@@ -21110,3 +21110,46 @@ fn test_lint_no_constant_condition_while_true() {
         "constant_condition"
     ));
 }
+
+// ============ Self-Comparison Lint Tests (v0.90.128) ============
+
+#[test]
+fn test_lint_self_comparison_eq() {
+    has_warning_kind(
+        "fn f(x: i64) -> bool = x == x;",
+        "self_comparison"
+    );
+}
+
+#[test]
+fn test_lint_self_comparison_ne() {
+    has_warning_kind(
+        "fn f(x: i64) -> bool = x != x;",
+        "self_comparison"
+    );
+}
+
+#[test]
+fn test_lint_self_comparison_lt() {
+    has_warning_kind(
+        "fn f(x: i64) -> bool = x < x;",
+        "self_comparison"
+    );
+}
+
+#[test]
+fn test_lint_no_self_comparison_different_vars() {
+    assert!(!has_warning_kind(
+        "fn f(x: i64, y: i64) -> bool = x == y;",
+        "self_comparison"
+    ));
+}
+
+#[test]
+fn test_lint_no_self_comparison_arithmetic() {
+    // x + x is not a comparison — should NOT warn
+    assert!(!has_warning_kind(
+        "fn f(x: i64) -> i64 = x + x;",
+        "self_comparison"
+    ));
+}

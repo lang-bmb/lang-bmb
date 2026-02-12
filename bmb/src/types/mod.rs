@@ -1653,6 +1653,16 @@ impl TypeChecker {
             }
 
             Expr::Binary { left, op, right } => {
+                // v0.90.128: Detect self-comparison (x == x, x != x, x < x, etc.)
+                if let (Expr::Var(lname), Expr::Var(rname)) = (&left.node, &right.node)
+                    && lname == rname
+                    && matches!(op, BinOp::Eq | BinOp::Ne | BinOp::Lt | BinOp::Gt | BinOp::Le | BinOp::Ge)
+                {
+                    self.add_warning(CompileWarning::self_comparison(
+                        lname.clone(), format!("{op}"), span,
+                    ));
+                }
+
                 let left_ty = self.infer(&left.node, left.span)?;
                 let right_ty = self.infer(&right.node, right.span)?;
                 self.check_binary_op(*op, &left_ty, &right_ty, span)
