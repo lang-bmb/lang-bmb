@@ -20670,3 +20670,100 @@ fn test_float_to_precision_wrong_arg_type() {
         "expected i64"
     );
 }
+
+// ============================================================================
+// Cycle 367: Cross-type method chaining tests
+// ============================================================================
+
+#[test]
+fn test_chain_int_to_string_len() {
+    // i64 -> String -> i64
+    assert_eq!(run_program_i64("fn main() -> i64 = 12345.to_string().len();"), 5);
+}
+
+#[test]
+fn test_chain_int_to_float_floor() {
+    // i64 -> f64 -> f64 (but we test type check)
+    assert!(type_checks("fn f(x: i64) -> f64 = x.to_float().floor();"));
+}
+
+#[test]
+fn test_chain_string_len_abs() {
+    // String -> i64 -> i64
+    assert!(type_checks(r#"fn f(s: String) -> i64 = s.len().abs();"#));
+}
+
+#[test]
+fn test_chain_array_len_to_string() {
+    // [T; N] -> i64 -> String
+    assert!(type_checks("fn f(a: [i64; 3]) -> String = a.len().to_string();"));
+}
+
+#[test]
+fn test_chain_bool_to_string_len() {
+    // bool -> String -> i64
+    assert_eq!(run_program_i64("fn main() -> i64 = true.to_string().len();"), 4);
+}
+
+#[test]
+fn test_chain_float_to_string_contains() {
+    // f64 -> String -> bool
+    assert!(type_checks(r#"fn f(x: f64) -> bool = x.to_string().contains(".");"#));
+}
+
+#[test]
+fn test_chain_string_split_len() {
+    // String -> [String] -> i64
+    assert!(type_checks(r#"fn f(s: String) -> i64 = s.split(",").len();"#));
+}
+
+#[test]
+fn test_chain_array_first_abs() {
+    // [i64; N] -> i64 -> i64
+    assert!(type_checks("fn f(a: [i64; 3]) -> i64 = a.first().abs();"));
+}
+
+#[test]
+fn test_chain_tuple_first_to_string() {
+    // (i64, i64) -> i64 -> String
+    assert!(type_checks("fn f(t: (i64, i64)) -> String = t.first().to_string();"));
+}
+
+#[test]
+fn test_chain_tuple_len_to_float() {
+    // tuple -> i64 -> f64
+    assert!(type_checks("fn f(t: (i64, i64, i64)) -> f64 = t.len().to_float();"));
+}
+
+#[test]
+fn test_chain_string_trim_to_lower() {
+    // String -> String -> String
+    assert!(type_checks(r#"fn f(s: String) -> String = s.trim().to_lower();"#));
+}
+
+#[test]
+fn test_chain_int_abs_pow() {
+    // i64 -> i64 -> i64
+    assert_eq!(run_program_i64("fn main() -> i64 = { let x = -2; x.abs().pow(3) };"), 8);
+}
+
+#[test]
+fn test_chain_float_abs_round_to_int() {
+    // f64 -> f64 -> f64 -> i64 (type check only)
+    assert!(type_checks("fn f(x: f64) -> i64 = x.abs().round().to_int();"));
+}
+
+#[test]
+fn test_chain_string_reverse_len() {
+    // String -> String -> i64
+    assert!(type_checks(r#"fn f(s: String) -> i64 = s.reverse().len();"#));
+}
+
+#[test]
+fn test_chain_error_type_mismatch() {
+    // Chaining should produce correct type error at the right point
+    type_error_contains(
+        "fn f(x: i64) -> String = x.abs().floor();",
+        "unknown method"
+    );
+}
