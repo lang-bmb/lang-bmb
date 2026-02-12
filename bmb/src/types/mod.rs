@@ -2960,8 +2960,12 @@ impl TypeChecker {
                         self.unify(&arg_ty, &Type::Bool, args[0].span)?;
                         Ok(Type::Bool)
                     }
-                    _ => Err(CompileError::type_error(
-                        format!("unknown method '{}' for bool", method), span)),
+                    _ => {
+                        let methods: &[&str] = &["to_string", "to_int", "toggle", "then_val", "then_fn", "choose", "and_bool", "or_bool", "xor_bool", "implication", "nand", "nor"];
+                        let suggestion = find_similar_name(method, methods, 2);
+                        Err(CompileError::type_error(
+                            format!("unknown method '{}' for bool{}", method, format_suggestion_hint(suggestion)), span))
+                    }
                 }
             }
             // v0.90.78: Char methods
@@ -3075,8 +3079,12 @@ impl TypeChecker {
                         }
                         Ok(Type::Bool)
                     }
-                    _ => Err(CompileError::type_error(
-                        format!("unknown method '{}' for char", method), span)),
+                    _ => {
+                        let methods: &[&str] = &["to_string", "to_int", "to_digit", "to_lowercase", "to_uppercase", "is_digit", "is_emoji", "eq_ignore_case", "repeat", "successor", "predecessor", "from_int", "from_digit"];
+                        let suggestion = find_similar_name(method, methods, 2);
+                        Err(CompileError::type_error(
+                            format!("unknown method '{}' for char{}", method, format_suggestion_hint(suggestion)), span))
+                    }
                 }
             }
             // v0.90.35: Integer methods
@@ -3344,8 +3352,20 @@ impl TypeChecker {
                         self.unify(&arg_ty, receiver_ty, args[0].span)?;
                         Ok(Type::String)
                     }
-                    _ => Err(CompileError::type_error(
-                        format!("unknown method '{}' for {}", method, receiver_ty), span)),
+                    _ => {
+                        let methods: &[&str] = &[
+                            "abs", "clamp", "min", "max", "pow", "to_float", "to_string", "to_bool", "to_hex", "to_octal", "to_binary", "to_radix", "to_char",
+                            "sign", "is_even", "is_odd", "is_zero", "is_positive", "is_negative", "is_prime", "is_power_of_two", "is_coprime", "is_palindrome_int",
+                            "gcd", "lcm", "factorial", "digits", "digit_sum", "reverse_digits", "divmod", "range_to",
+                            "ilog2", "ilog10", "next_power_of_two", "reverse_bits", "bit_count", "leading_zeros", "trailing_zeros",
+                            "bit_and", "bit_or", "bit_xor", "bit_not", "bit_shift_left", "bit_shift_right",
+                            "saturating_add", "saturating_sub", "saturating_mul", "wrapping_add", "wrapping_sub", "wrapping_mul",
+                            "checked_add", "checked_sub", "checked_mul",
+                        ];
+                        let suggestion = find_similar_name(method, methods, 2);
+                        Err(CompileError::type_error(
+                            format!("unknown method '{}' for {}{}", method, receiver_ty, format_suggestion_hint(suggestion)), span))
+                    }
                 }
             }
             // v0.90.34: Float methods
@@ -3577,8 +3597,18 @@ impl TypeChecker {
                         }
                         Ok(Type::String)
                     }
-                    _ => Err(CompileError::type_error(
-                        format!("unknown method '{}' for f64", method), span)),
+                    _ => {
+                        let methods: &[&str] = &[
+                            "abs", "floor", "ceil", "round", "sqrt", "cbrt", "is_nan", "is_infinite", "is_finite", "is_zero", "is_positive", "is_negative",
+                            "min", "max", "clamp", "to_int", "to_string", "trunc", "fract", "signum", "sign", "recip",
+                            "powf", "powi", "log_base", "hypot", "copysign", "fma", "lerp", "map_range", "approx_eq",
+                            "round_to", "floor_to", "ceil_to", "format_fixed", "to_degrees", "to_radians", "classify",
+                            "atan2",
+                        ];
+                        let suggestion = find_similar_name(method, methods, 2);
+                        Err(CompileError::type_error(
+                            format!("unknown method '{}' for f64{}", method, format_suggestion_hint(suggestion)), span))
+                    }
                 }
             }
             Type::String => {
@@ -4484,10 +4514,32 @@ impl TypeChecker {
                         }
                         Ok(Type::String)
                     }
-                    _ => Err(CompileError::type_error(
-                        format!("unknown method '{}' for String", method),
-                        span,
-                    )),
+                    _ => {
+                        let methods: &[&str] = &[
+                            "len", "is_empty", "contains", "starts_with", "ends_with", "index_of", "last_index_of",
+                            "to_lower", "to_upper", "trim", "trim_start", "trim_end", "capitalize",
+                            "split", "split_once", "split_n", "split_at", "split_whitespace", "rsplit", "lines",
+                            "replace", "replace_first", "replace_n", "remove", "remove_prefix", "remove_suffix",
+                            "slice", "substr", "char_at", "chars", "bytes", "byte_at", "char_count",
+                            "repeat", "reverse", "pad_start", "pad_end", "pad_left", "pad_right", "ljust", "rjust", "center", "zfill",
+                            "to_int", "to_float", "to_bool",
+                            "count", "count_matches", "find_all", "match_indices", "contains_any", "starts_with_any", "ends_with_any",
+                            "is_alpha", "is_numeric", "is_alphanumeric", "is_upper", "is_lower", "is_whitespace", "is_palindrome",
+                            "insert", "insert_at", "delete_range", "overwrite",
+                            "strip_prefix", "strip_suffix", "squeeze", "dedent", "indent", "truncate", "word_count",
+                            "common_prefix", "common_suffix", "filter_chars", "map_chars", "all_chars", "any_char",
+                            "edit_distance", "levenshtein", "hamming_distance", "similarity",
+                            "encode_uri", "decode_uri", "escape_html", "hash_code", "chunk_string", "format_number",
+                            "parse_hex", "parse_binary", "parse_octal", "parse_radix", "char_code_at", "from_char_code",
+                            "snake_case", "camel_case", "kebab_case", "pascal_case", "screaming_snake_case", "swapcase", "title_case",
+                            "glob_match", "repeat_str",
+                        ];
+                        let suggestion = find_similar_name(method, methods, 2);
+                        Err(CompileError::type_error(
+                            format!("unknown method '{}' for String{}", method, format_suggestion_hint(suggestion)),
+                            span,
+                        ))
+                    }
                 }
             }
             Type::Array(elem_ty, _) => {
@@ -6006,10 +6058,31 @@ impl TypeChecker {
                         }
                         Ok(Type::Array(elem_ty.clone(), 0))
                     }
-                    _ => Err(CompileError::type_error(
-                        format!("unknown method '{}' for Array", method),
-                        span,
-                    )),
+                    _ => {
+                        let methods: &[&str] = &[
+                            "len", "is_empty", "get", "first", "last", "contains", "push", "pop", "concat", "slice", "join",
+                            "map", "filter", "reduce", "fold", "for_each", "any", "all", "find", "find_last", "find_map", "position", "index_of",
+                            "sort", "sort_by", "sorted_by_key", "reverse", "unique", "dedup", "dedup_by", "flatten", "flat_map",
+                            "zip", "zip_with", "zip_longest", "enumerate", "chunks", "windows", "split_at", "take", "take_last", "take_while",
+                            "drop", "drop_last", "skip_while", "step_by", "each_cons", "each_slice", "pairwise",
+                            "sum", "product", "average", "min", "max", "min_by", "max_by", "min_index", "max_index", "median",
+                            "count", "count_by", "tally", "frequencies", "group_by", "group_consecutive", "partition", "partition_point",
+                            "fill", "repeat", "resize", "insert_at", "remove_at", "swap", "rotate_left", "rotate_right",
+                            "inspect", "tap", "scan", "fold_right", "reduce_right", "reject", "compact",
+                            "interleave", "intersperse", "uniq_by", "chunk_by", "first_or", "last_or",
+                            "sum_by", "product_by", "all_unique", "map_with_index", "each_with_index",
+                            "binary_search", "clone",
+                            "variance", "stddev", "percentile", "cumsum", "running_min", "running_max",
+                            "dot_product", "magnitude", "normalize", "cross_product", "mode",
+                            "histogram", "covariance", "correlation", "ewma", "weighted_sum", "diff",
+                            "transpose", "associate",
+                        ];
+                        let suggestion = find_similar_name(method, methods, 2);
+                        Err(CompileError::type_error(
+                            format!("unknown method '{}' for Array{}", method, format_suggestion_hint(suggestion)),
+                            span,
+                        ))
+                    }
                 }
             }
             // v0.18: Option<T> methods

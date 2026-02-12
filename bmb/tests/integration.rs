@@ -19946,3 +19946,47 @@ fn test_char_is_emoji_check() {
 fn test_float_classify_chain() {
     assert_eq!(run_program_str("fn main() -> String = 42.0.classify();"), "Normal");
 }
+
+// --- Cycle 352: Method-not-found "did you mean?" suggestions ---
+
+#[test]
+fn test_suggestion_bool_method() {
+    // "togle" is close to "toggle"
+    assert!(type_error_contains("fn main() -> bool = true.togle();", "did you mean `toggle`"));
+}
+
+#[test]
+fn test_suggestion_char_method() {
+    // "repat" is close to "repeat" (1 edit)
+    assert!(type_error_contains("fn main() -> String = 'a'.repat(3);", "did you mean `repeat`"));
+}
+
+#[test]
+fn test_suggestion_int_method() {
+    // "to_flot" is close to "to_float" (1 edit)
+    assert!(type_error_contains("fn main() -> f64 = 42.to_flot();", "did you mean `to_float`"));
+}
+
+#[test]
+fn test_suggestion_float_method() {
+    // "sqr" is close to "sqrt" (1 edit)
+    assert!(type_error_contains("fn main() -> f64 = 4.0.sqr();", "did you mean `sqrt`"));
+}
+
+#[test]
+fn test_suggestion_string_method() {
+    // "trin" is close to "trim" (1 edit)
+    assert!(type_error_contains(r#"fn main() -> String = "hello".trin();"#, "did you mean `trim`"));
+}
+
+#[test]
+fn test_suggestion_array_method() {
+    // "fiter" is close to "filter" (1 edit)
+    assert!(type_error_contains("fn main() -> i64 = [1, 2, 3].fiilter(fn |x: i64| { x > 1 }).len();", "did you mean `filter`"));
+}
+
+#[test]
+fn test_no_suggestion_for_unrelated_method() {
+    // "zzzzz" is not close to any method
+    assert!(!type_error_contains("fn main() -> i64 = 42.zzzzz();", "did you mean"));
+}
