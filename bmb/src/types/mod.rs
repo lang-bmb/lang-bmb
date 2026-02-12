@@ -3290,6 +3290,20 @@ impl TypeChecker {
                         self.unify(&arg_ty, receiver_ty, args[0].span)?;
                         Ok(Type::Tuple(vec![Box::new(receiver_ty.clone()), Box::new(receiver_ty.clone())]))
                     }
+                    // v0.90.104: digit_sum, reverse_digits, is_palindrome_int
+                    "digit_sum" | "reverse_digits" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error(
+                                format!("{}() takes no arguments", method), span));
+                        }
+                        Ok(receiver_ty.clone())
+                    }
+                    "is_palindrome_int" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("is_palindrome_int() takes no arguments", span));
+                        }
+                        Ok(Type::Bool)
+                    }
                     _ => Err(CompileError::type_error(
                         format!("unknown method '{}' for {}", method, receiver_ty), span)),
                 }

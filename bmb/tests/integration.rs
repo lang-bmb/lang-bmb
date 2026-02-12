@@ -19189,3 +19189,38 @@ fn test_string_matching_type_checks() {
     assert!(type_checks(r#"fn main() -> i64 = "hi".match_indices("h").len();"#));
     assert!(type_checks(r#"fn main() -> i64 = "hi there".split_whitespace().len();"#));
 }
+
+// --- Cycle 338: Integer digit_sum, reverse_digits, is_palindrome_int ---
+
+#[test]
+fn test_int_digit_sum() {
+    assert_eq!(run_program_i64("fn main() -> i64 = 12345.digit_sum();"), 15);
+    assert_eq!(run_program_i64("fn main() -> i64 = 0.digit_sum();"), 0);
+    assert_eq!(run_program_i64("fn main() -> i64 = 999.digit_sum();"), 27);
+}
+
+#[test]
+fn test_int_reverse_digits() {
+    assert_eq!(run_program_i64("fn main() -> i64 = 12345.reverse_digits();"), 54321);
+    assert_eq!(run_program_i64("fn main() -> i64 = 100.reverse_digits();"), 1);
+}
+
+#[test]
+fn test_int_is_palindrome_int() {
+    assert_eq!(run_program_i64("fn main() -> i64 = if 12321.is_palindrome_int() { 1 } else { 0 };"), 1);
+    assert_eq!(run_program_i64("fn main() -> i64 = if 12345.is_palindrome_int() { 1 } else { 0 };"), 0);
+    assert_eq!(run_program_i64("fn main() -> i64 = if 0.is_palindrome_int() { 1 } else { 0 };"), 1);
+}
+
+#[test]
+fn test_int_digit_chain() {
+    // digit_sum of reverse should equal digit_sum
+    assert_eq!(run_program_i64("fn main() -> i64 = 12345.reverse_digits().digit_sum();"), 15);
+}
+
+#[test]
+fn test_int_digit_methods_type_checks() {
+    assert!(type_checks("fn main() -> i64 = 123.digit_sum();"));
+    assert!(type_checks("fn main() -> i64 = 123.reverse_digits();"));
+    assert!(type_checks("fn main() -> i64 = if 121.is_palindrome_int() { 1 } else { 0 };"));
+}

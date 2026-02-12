@@ -4857,6 +4857,34 @@ impl Interpreter {
                         }
                         Ok(Value::Tuple(vec![Value::Int(n / other), Value::Int(n % other)]))
                     }
+                    // v0.90.104: digit_sum() -> i64
+                    "digit_sum" => {
+                        let mut sum = 0i64;
+                        let mut num = n.abs();
+                        if num == 0 { return Ok(Value::Int(0)); }
+                        while num > 0 {
+                            sum += num % 10;
+                            num /= 10;
+                        }
+                        Ok(Value::Int(sum))
+                    }
+                    // v0.90.104: reverse_digits() -> i64
+                    "reverse_digits" => {
+                        let negative = n < 0;
+                        let mut num = n.abs();
+                        let mut reversed = 0i64;
+                        while num > 0 {
+                            reversed = reversed * 10 + num % 10;
+                            num /= 10;
+                        }
+                        Ok(Value::Int(if negative { -reversed } else { reversed }))
+                    }
+                    // v0.90.104: is_palindrome_int() -> bool
+                    "is_palindrome_int" => {
+                        if n < 0 { return Ok(Value::Bool(false)); }
+                        let s = n.to_string();
+                        Ok(Value::Bool(s == s.chars().rev().collect::<String>()))
+                    }
                     _ => Err(RuntimeError::type_error("object with methods", receiver.type_name())),
                 }
             }
