@@ -3538,6 +3538,54 @@ impl Interpreter {
                             _ => Err(RuntimeError::type_error("closure", "non-closure")),
                         }
                     }
+                    // v0.90.92: all_unique, binary_search, repeat
+                    "all_unique" => {
+                        let mut seen = std::collections::HashSet::new();
+                        let mut all = true;
+                        for item in &arr {
+                            let key = format!("{:?}", item);
+                            if !seen.insert(key) {
+                                all = false;
+                                break;
+                            }
+                        }
+                        Ok(Value::Bool(all))
+                    }
+                    "binary_search" => {
+                        let target = &args[0];
+                        let mut lo = 0usize;
+                        let mut hi = arr.len();
+                        let mut found = None;
+                        while lo < hi {
+                            let mid = lo + (hi - lo) / 2;
+                            let cmp = match (&arr[mid], target) {
+                                (Value::Int(a), Value::Int(b)) => a.cmp(b),
+                                (Value::Float(a), Value::Float(b)) => a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal),
+                                (Value::Str(a), Value::Str(b)) => a.cmp(b),
+                                _ => std::cmp::Ordering::Equal,
+                            };
+                            match cmp {
+                                std::cmp::Ordering::Equal => { found = Some(mid); break; }
+                                std::cmp::Ordering::Less => lo = mid + 1,
+                                std::cmp::Ordering::Greater => hi = mid,
+                            }
+                        }
+                        match found {
+                            Some(idx) => Ok(Value::Enum("Option".to_string(), "Some".to_string(), vec![Value::Int(idx as i64)])),
+                            None => Ok(Value::Enum("Option".to_string(), "None".to_string(), vec![])),
+                        }
+                    }
+                    "repeat" => {
+                        let n = match &args[0] {
+                            Value::Int(n) => *n as usize,
+                            _ => return Err(RuntimeError::type_error("integer", args[0].type_name())),
+                        };
+                        let mut result = Vec::with_capacity(arr.len() * n);
+                        for _ in 0..n {
+                            result.extend(arr.iter().cloned());
+                        }
+                        Ok(Value::Array(result))
+                    }
                     _ => Err(RuntimeError::undefined_function(&format!("Array.{}", method))),
                 }
             }

@@ -18652,3 +18652,38 @@ fn test_float_lerp_fma_chain() {
     let result = run_program_f64(r#"fn main() -> f64 = 0.0.lerp(10.0, 0.5).fma(2.0, 1.0);"#);
     assert!((result - 11.0).abs() < 1e-10);
 }
+
+// --- Cycle 326: Array all_unique, binary_search, repeat ---
+
+#[test]
+fn test_array_all_unique() {
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = if [1, 2, 3].all_unique() { 1 } else { 0 };"#), 1);
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = if [1, 2, 2].all_unique() { 1 } else { 0 };"#), 0);
+}
+
+#[test]
+fn test_array_all_unique_single() {
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = if [42].all_unique() { 1 } else { 0 };"#), 1);
+}
+
+#[test]
+fn test_array_binary_search() {
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = [1, 3, 5, 7, 9].binary_search(5).unwrap_or(-1);"#), 2);
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = [1, 3, 5, 7, 9].binary_search(4).unwrap_or(-1);"#), -1);
+}
+
+#[test]
+fn test_array_binary_search_first() {
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = [10, 20, 30].binary_search(10).unwrap_or(-1);"#), 0);
+}
+
+#[test]
+fn test_array_repeat() {
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = [1, 2].repeat(3).len();"#), 6);
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = [1, 2].repeat(3).sum();"#), 9);
+}
+
+#[test]
+fn test_array_repeat_unique_chain() {
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = if [1, 2].repeat(2).all_unique() { 1 } else { 0 };"#), 0);
+}

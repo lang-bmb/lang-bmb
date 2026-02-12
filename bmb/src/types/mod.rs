@@ -5500,6 +5500,31 @@ impl TypeChecker {
                         }
                         Ok(Type::F64)
                     }
+                    // v0.90.92: all_unique() -> bool
+                    "all_unique" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("all_unique() takes no arguments", span));
+                        }
+                        Ok(Type::Bool)
+                    }
+                    // v0.90.92: binary_search(T) -> i64? (index or null if not found)
+                    "binary_search" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("binary_search() takes 1 argument", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg_ty, elem_ty, args[0].span)?;
+                        Ok(Type::Nullable(Box::new(Type::I64)))
+                    }
+                    // v0.90.92: repeat(i64) -> [T] (repeat array n times)
+                    "repeat" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("repeat() takes 1 argument", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg_ty, &Type::I64, args[0].span)?;
+                        Ok(Type::Array(elem_ty.clone(), 0))
+                    }
                     _ => Err(CompileError::type_error(
                         format!("unknown method '{}' for Array", method),
                         span,
