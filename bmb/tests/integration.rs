@@ -14428,3 +14428,245 @@ fn test_string_pad_left_no_pad_needed() {
     "#;
     assert_eq!(run_program_str(source), "hello");
 }
+
+// ============================================
+// Cycle 276: Float Math Methods
+// ============================================
+
+#[test]
+fn test_float_sin() {
+    let source = "fn main() -> f64 = 0.0.sin();";
+    assert!((run_program_f64(source) - 0.0).abs() < 1e-10);
+}
+
+#[test]
+fn test_float_cos() {
+    let source = "fn main() -> f64 = 0.0.cos();";
+    assert!((run_program_f64(source) - 1.0).abs() < 1e-10);
+}
+
+#[test]
+fn test_float_tan() {
+    let source = "fn main() -> f64 = 0.0.tan();";
+    assert!((run_program_f64(source) - 0.0).abs() < 1e-10);
+}
+
+#[test]
+fn test_float_log() {
+    let source = "fn main() -> f64 = 1.0.log();";
+    assert!((run_program_f64(source) - 0.0).abs() < 1e-10);
+}
+
+#[test]
+fn test_float_log2() {
+    let source = "fn main() -> f64 = 8.0.log2();";
+    assert!((run_program_f64(source) - 3.0).abs() < 1e-10);
+}
+
+#[test]
+fn test_float_log10() {
+    let source = "fn main() -> f64 = 100.0.log10();";
+    assert!((run_program_f64(source) - 2.0).abs() < 1e-10);
+}
+
+#[test]
+fn test_float_exp() {
+    let source = "fn main() -> f64 = 0.0.exp();";
+    assert!((run_program_f64(source) - 1.0).abs() < 1e-10);
+}
+
+#[test]
+fn test_float_sign_positive() {
+    let source = "fn main() -> f64 = 5.5.sign();";
+    assert!((run_program_f64(source) - 1.0).abs() < 1e-10);
+}
+
+#[test]
+fn test_float_sign_negative() {
+    let source = "fn main() -> f64 = (-3.2).sign();";
+    assert!((run_program_f64(source) - (-1.0)).abs() < 1e-10);
+}
+
+#[test]
+fn test_float_sign_zero() {
+    let source = "fn main() -> f64 = 0.0.sign();";
+    assert!((run_program_f64(source) - 0.0).abs() < 1e-10);
+}
+
+#[test]
+fn test_float_is_positive() {
+    let source = "fn main() -> i64 = if 3.14.is_positive() { 1 } else { 0 };";
+    assert_eq!(run_program_i64(source), 1);
+}
+
+#[test]
+fn test_float_is_negative() {
+    let source = "fn main() -> i64 = if (-2.5).is_negative() { 1 } else { 0 };";
+    assert_eq!(run_program_i64(source), 1);
+}
+
+#[test]
+fn test_float_is_zero() {
+    let source = "fn main() -> i64 = if 0.0.is_zero() { 1 } else { 0 };";
+    assert_eq!(run_program_i64(source), 1);
+}
+
+// ============================================
+// Cycle 276: Integer Sign/Predicate Methods
+// ============================================
+
+#[test]
+fn test_int_sign_positive() {
+    let source = "fn main() -> i64 = 42.sign();";
+    assert_eq!(run_program_i64(source), 1);
+}
+
+#[test]
+fn test_int_sign_negative() {
+    let source = "fn main() -> i64 = (-7).sign();";
+    assert_eq!(run_program_i64(source), -1);
+}
+
+#[test]
+fn test_int_sign_zero() {
+    let source = "fn main() -> i64 = 0.sign();";
+    assert_eq!(run_program_i64(source), 0);
+}
+
+#[test]
+fn test_int_is_positive() {
+    let source = "fn main() -> i64 = if 5.is_positive() { 1 } else { 0 };";
+    assert_eq!(run_program_i64(source), 1);
+}
+
+#[test]
+fn test_int_is_negative() {
+    let source = "fn main() -> i64 = if (-3).is_negative() { 1 } else { 0 };";
+    assert_eq!(run_program_i64(source), 1);
+}
+
+#[test]
+fn test_int_is_zero() {
+    let source = "fn main() -> i64 = if 0.is_zero() { 1 } else { 0 };";
+    assert_eq!(run_program_i64(source), 1);
+}
+
+#[test]
+fn test_int_gcd() {
+    let source = "fn main() -> i64 = 12.gcd(8);";
+    assert_eq!(run_program_i64(source), 4);
+}
+
+#[test]
+fn test_int_gcd_coprime() {
+    let source = "fn main() -> i64 = 7.gcd(13);";
+    assert_eq!(run_program_i64(source), 1);
+}
+
+// ============================================
+// Cycle 276: Nullable map/and_then/filter/unwrap
+// ============================================
+
+#[test]
+fn test_nullable_map_some() {
+    let source = r#"
+        fn main() -> i64 = {
+            let val: i64? = 5;
+            val.map(fn |x: i64| { x * 2 }).unwrap_or(0)
+        };
+    "#;
+    assert_eq!(run_program_i64(source), 10);
+}
+
+#[test]
+fn test_nullable_map_none() {
+    let source = r#"
+        fn main() -> i64 = {
+            let val: i64? = null;
+            val.map(fn |x: i64| { x * 2 }).unwrap_or(-1)
+        };
+    "#;
+    assert_eq!(run_program_i64(source), -1);
+}
+
+#[test]
+fn test_nullable_and_then_some() {
+    let source = r#"
+        fn safe_half(x: i64) -> i64? = if x % 2 == 0 { x / 2 } else { null };
+        fn main() -> i64 = {
+            let val: i64? = 10;
+            val.and_then(fn |x: i64| { safe_half(x) }).unwrap_or(0)
+        };
+    "#;
+    assert_eq!(run_program_i64(source), 5);
+}
+
+#[test]
+fn test_nullable_and_then_none() {
+    let source = r#"
+        fn safe_half(x: i64) -> i64? = if x % 2 == 0 { x / 2 } else { null };
+        fn main() -> i64 = {
+            let val: i64? = null;
+            val.and_then(fn |x: i64| { safe_half(x) }).unwrap_or(-1)
+        };
+    "#;
+    assert_eq!(run_program_i64(source), -1);
+}
+
+#[test]
+fn test_nullable_filter_pass() {
+    let source = r#"
+        fn main() -> i64 = {
+            let val: i64? = 10;
+            val.filter(fn |x: i64| { x > 5 }).unwrap_or(0)
+        };
+    "#;
+    assert_eq!(run_program_i64(source), 10);
+}
+
+#[test]
+fn test_nullable_filter_reject() {
+    let source = r#"
+        fn main() -> i64 = {
+            let val: i64? = 3;
+            val.filter(fn |x: i64| { x > 5 }).unwrap_or(-1)
+        };
+    "#;
+    assert_eq!(run_program_i64(source), -1);
+}
+
+#[test]
+fn test_nullable_filter_none() {
+    let source = r#"
+        fn main() -> i64 = {
+            let val: i64? = null;
+            val.filter(fn |x: i64| { x > 0 }).unwrap_or(-1)
+        };
+    "#;
+    assert_eq!(run_program_i64(source), -1);
+}
+
+#[test]
+fn test_nullable_unwrap_value() {
+    let source = r#"
+        fn main() -> i64 = {
+            let val: i64? = 42;
+            val.unwrap()
+        };
+    "#;
+    assert_eq!(run_program_i64(source), 42);
+}
+
+// ============================================
+// Cycle 276: Result unwrap (type check)
+// ============================================
+
+#[test]
+fn test_result_unwrap_ok() {
+    assert!(type_checks(
+        "enum Result<T, E> { Ok(T), Err(E) }
+         fn divide(a: i64, b: i64) -> Result<i64, String> =
+           if b == 0 { Result::Err(\"division by zero\") } else { Result::Ok(a / b) };
+         fn main() -> i64 = divide(10, 2).unwrap();"
+    ));
+}

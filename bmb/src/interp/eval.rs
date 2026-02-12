@@ -1076,6 +1076,18 @@ impl Interpreter {
                     }
                     "to_int" => Ok(Value::Int(f as i64)),
                     "to_string" => Ok(Value::Str(Rc::new(f.to_string()))),
+                    // v0.90.42: Math functions
+                    "sin" => Ok(Value::Float(f.sin())),
+                    "cos" => Ok(Value::Float(f.cos())),
+                    "tan" => Ok(Value::Float(f.tan())),
+                    "log" => Ok(Value::Float(f.ln())),
+                    "log2" => Ok(Value::Float(f.log2())),
+                    "log10" => Ok(Value::Float(f.log10())),
+                    "exp" => Ok(Value::Float(f.exp())),
+                    "sign" => Ok(Value::Float(if f > 0.0 { 1.0 } else if f < 0.0 { -1.0 } else { 0.0 })),
+                    "is_positive" => Ok(Value::Bool(f > 0.0)),
+                    "is_negative" => Ok(Value::Bool(f < 0.0)),
+                    "is_zero" => Ok(Value::Bool(f == 0.0)),
                     _ => Err(RuntimeError::undefined_function(&format!("f64.{}", method))),
                 }
             }
@@ -1700,6 +1712,77 @@ impl Interpreter {
                             _ => Err(RuntimeError::type_error("Option variant", &variant)),
                         }
                     }
+                    // v0.90.42: map(fn(T) -> U) -> U?
+                    "map" => {
+                        if args.len() != 1 {
+                            return Err(RuntimeError::arity_mismatch("map", 1, args.len()));
+                        }
+                        match variant.as_str() {
+                            "Some" => {
+                                let inner = values.into_iter().next().unwrap_or(Value::Unit);
+                                match args.into_iter().next().unwrap() {
+                                    Value::Closure { params, body, env: closure_env } => {
+                                        let result = self.call_closure(&params, &body, &closure_env, vec![inner])?;
+                                        Ok(Value::Enum("Option".to_string(), "Some".to_string(), vec![result]))
+                                    }
+                                    _ => Err(RuntimeError::type_error("closure", "non-closure")),
+                                }
+                            }
+                            "None" => Ok(Value::Enum("Option".to_string(), "None".to_string(), vec![])),
+                            _ => Err(RuntimeError::type_error("Option variant", &variant)),
+                        }
+                    }
+                    // v0.90.42: and_then(fn(T) -> U?) -> U?
+                    "and_then" => {
+                        if args.len() != 1 {
+                            return Err(RuntimeError::arity_mismatch("and_then", 1, args.len()));
+                        }
+                        match variant.as_str() {
+                            "Some" => {
+                                let inner = values.into_iter().next().unwrap_or(Value::Unit);
+                                match args.into_iter().next().unwrap() {
+                                    Value::Closure { params, body, env: closure_env } => {
+                                        self.call_closure(&params, &body, &closure_env, vec![inner])
+                                    }
+                                    _ => Err(RuntimeError::type_error("closure", "non-closure")),
+                                }
+                            }
+                            "None" => Ok(Value::Enum("Option".to_string(), "None".to_string(), vec![])),
+                            _ => Err(RuntimeError::type_error("Option variant", &variant)),
+                        }
+                    }
+                    // v0.90.42: filter(fn(T) -> bool) -> T?
+                    "filter" => {
+                        if args.len() != 1 {
+                            return Err(RuntimeError::arity_mismatch("filter", 1, args.len()));
+                        }
+                        match variant.as_str() {
+                            "Some" => {
+                                let inner = values.first().cloned().unwrap_or(Value::Unit);
+                                match args.into_iter().next().unwrap() {
+                                    Value::Closure { params, body, env: closure_env } => {
+                                        let pred = self.call_closure(&params, &body, &closure_env, vec![inner.clone()])?;
+                                        if pred.is_truthy() {
+                                            Ok(Value::Enum("Option".to_string(), "Some".to_string(), vec![inner]))
+                                        } else {
+                                            Ok(Value::Enum("Option".to_string(), "None".to_string(), vec![]))
+                                        }
+                                    }
+                                    _ => Err(RuntimeError::type_error("closure", "non-closure")),
+                                }
+                            }
+                            "None" => Ok(Value::Enum("Option".to_string(), "None".to_string(), vec![])),
+                            _ => Err(RuntimeError::type_error("Option variant", &variant)),
+                        }
+                    }
+                    // v0.90.42: unwrap() -> T (panics if None)
+                    "unwrap" => {
+                        match variant.as_str() {
+                            "Some" => Ok(values.into_iter().next().unwrap_or(Value::Unit)),
+                            "None" => Err(RuntimeError::type_error("Some", "None (unwrap on None)")),
+                            _ => Err(RuntimeError::type_error("Option variant", &variant)),
+                        }
+                    }
                     _ => Err(RuntimeError::undefined_function(&format!("Option.{}", method))),
                 }
             }
@@ -1715,6 +1798,14 @@ impl Interpreter {
                         match variant.as_str() {
                             "Ok" => Ok(values.first().cloned().unwrap_or(Value::Unit)),
                             "Err" => Ok(args.into_iter().next().unwrap()),
+                            _ => Err(RuntimeError::type_error("Result variant", &variant)),
+                        }
+                    }
+                    // v0.90.42: unwrap() -> T (panics if Err)
+                    "unwrap" => {
+                        match variant.as_str() {
+                            "Ok" => Ok(values.into_iter().next().unwrap_or(Value::Unit)),
+                            "Err" => Err(RuntimeError::type_error("Ok", "Err (unwrap on Err)")),
                             _ => Err(RuntimeError::type_error("Result variant", &variant)),
                         }
                     }
@@ -1791,6 +1882,87 @@ impl Interpreter {
                     }
                     "to_float" => Ok(Value::Float(n as f64)),
                     "to_string" => Ok(Value::Str(Rc::new(n.to_string()))),
+                    // v0.90.42: map(fn(T) -> U) -> U? — nullable closure methods
+                    "map" => {
+                        if args.len() != 1 {
+                            return Err(RuntimeError::arity_mismatch("map", 1, args.len()));
+                        }
+                        if n != 0 {
+                            match args.into_iter().next().unwrap() {
+                                Value::Closure { params, body, env: closure_env } => {
+                                    self.call_closure(&params, &body, &closure_env, vec![Value::Int(n)])
+                                }
+                                _ => Err(RuntimeError::type_error("closure", "non-closure")),
+                            }
+                        } else {
+                            Ok(Value::Int(0))
+                        }
+                    }
+                    "and_then" => {
+                        if args.len() != 1 {
+                            return Err(RuntimeError::arity_mismatch("and_then", 1, args.len()));
+                        }
+                        if n != 0 {
+                            match args.into_iter().next().unwrap() {
+                                Value::Closure { params, body, env: closure_env } => {
+                                    self.call_closure(&params, &body, &closure_env, vec![Value::Int(n)])
+                                }
+                                _ => Err(RuntimeError::type_error("closure", "non-closure")),
+                            }
+                        } else {
+                            Ok(Value::Int(0))
+                        }
+                    }
+                    "filter" => {
+                        if args.len() != 1 {
+                            return Err(RuntimeError::arity_mismatch("filter", 1, args.len()));
+                        }
+                        if n != 0 {
+                            match args.into_iter().next().unwrap() {
+                                Value::Closure { params, body, env: closure_env } => {
+                                    let pred = self.call_closure(&params, &body, &closure_env, vec![Value::Int(n)])?;
+                                    if pred.is_truthy() {
+                                        Ok(Value::Int(n))
+                                    } else {
+                                        Ok(Value::Int(0))
+                                    }
+                                }
+                                _ => Err(RuntimeError::type_error("closure", "non-closure")),
+                            }
+                        } else {
+                            Ok(Value::Int(0))
+                        }
+                    }
+                    "unwrap" => {
+                        if n != 0 {
+                            Ok(Value::Int(n))
+                        } else {
+                            Err(RuntimeError::type_error("non-null", "null (unwrap on null)"))
+                        }
+                    }
+                    // v0.90.42: sign() -> i64 (-1, 0, or 1)
+                    "sign" => Ok(Value::Int(if n > 0 { 1 } else if n < 0 { -1 } else { 0 })),
+                    "is_positive" => Ok(Value::Bool(n > 0)),
+                    "is_negative" => Ok(Value::Bool(n < 0)),
+                    "is_zero" => Ok(Value::Bool(n == 0)),
+                    // v0.90.42: gcd(other) -> i64
+                    "gcd" => {
+                        if args.len() != 1 {
+                            return Err(RuntimeError::arity_mismatch("gcd", 1, args.len()));
+                        }
+                        let other = match &args[0] {
+                            Value::Int(m) => *m,
+                            _ => return Err(RuntimeError::type_error("integer", args[0].type_name())),
+                        };
+                        let mut a = n.abs();
+                        let mut b = other.abs();
+                        while b != 0 {
+                            let t = b;
+                            b = a % b;
+                            a = t;
+                        }
+                        Ok(Value::Int(a))
+                    }
                     _ => Err(RuntimeError::type_error("object with methods", receiver.type_name())),
                 }
             }

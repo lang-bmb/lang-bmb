@@ -2949,6 +2949,30 @@ impl TypeChecker {
                         }
                         Ok(Type::String)
                     }
+                    // v0.90.42: sign() -> i64 (-1, 0, or 1)
+                    "sign" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("sign() takes no arguments", span));
+                        }
+                        Ok(receiver_ty.clone())
+                    }
+                    // v0.90.42: is_positive/is_negative/is_zero
+                    "is_positive" | "is_negative" | "is_zero" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error(
+                                format!("{}() takes no arguments", method), span));
+                        }
+                        Ok(Type::Bool)
+                    }
+                    // v0.90.42: gcd(other) -> i64
+                    "gcd" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("gcd() takes 1 argument", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg_ty, receiver_ty, args[0].span)?;
+                        Ok(receiver_ty.clone())
+                    }
                     _ => Err(CompileError::type_error(
                         format!("unknown method '{}' for {}", method, receiver_ty), span)),
                 }
@@ -2991,6 +3015,29 @@ impl TypeChecker {
                             return Err(CompileError::type_error("to_string() takes no arguments", span));
                         }
                         Ok(Type::String)
+                    }
+                    // v0.90.42: Math functions — sin, cos, tan, log, log2, log10, exp
+                    "sin" | "cos" | "tan" | "log" | "log2" | "log10" | "exp" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error(
+                                format!("{}() takes no arguments", method), span));
+                        }
+                        Ok(Type::F64)
+                    }
+                    // v0.90.42: sign() -> f64
+                    "sign" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("sign() takes no arguments", span));
+                        }
+                        Ok(Type::F64)
+                    }
+                    // v0.90.42: is_positive/is_negative/is_zero
+                    "is_positive" | "is_negative" | "is_zero" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error(
+                                format!("{}() takes no arguments", method), span));
+                        }
+                        Ok(Type::Bool)
                     }
                     _ => Err(CompileError::type_error(
                         format!("unknown method '{}' for f64", method), span)),
@@ -4531,6 +4578,86 @@ impl TypeChecker {
                     None => Ok(arg_ty),
                 }
             }
+            // v0.90.42: map(fn(T) -> U) -> U?
+            "map" => {
+                if args.len() != 1 {
+                    return Err(CompileError::type_error("map() takes 1 argument (a closure)", span));
+                }
+                let fn_ty = self.infer(&args[0].node, args[0].span)?;
+                match fn_ty {
+                    Type::Fn { params, ret } => {
+                        if params.len() != 1 {
+                            return Err(CompileError::type_error(
+                                format!("map() closure must take 1 parameter, got {}", params.len()),
+                                args[0].span,
+                            ));
+                        }
+                        if let Some(ref expected) = inner_ty {
+                            self.unify(&params[0], expected, args[0].span)?;
+                        }
+                        Ok(Type::Nullable(ret))
+                    }
+                    _ => Err(CompileError::type_error("map() requires a closure argument", args[0].span)),
+                }
+            }
+            // v0.90.42: and_then(fn(T) -> U?) -> U?
+            "and_then" => {
+                if args.len() != 1 {
+                    return Err(CompileError::type_error("and_then() takes 1 argument (a closure)", span));
+                }
+                let fn_ty = self.infer(&args[0].node, args[0].span)?;
+                match fn_ty {
+                    Type::Fn { params, ret } => {
+                        if params.len() != 1 {
+                            return Err(CompileError::type_error(
+                                format!("and_then() closure must take 1 parameter, got {}", params.len()),
+                                args[0].span,
+                            ));
+                        }
+                        if let Some(ref expected) = inner_ty {
+                            self.unify(&params[0], expected, args[0].span)?;
+                        }
+                        Ok(*ret)
+                    }
+                    _ => Err(CompileError::type_error("and_then() requires a closure argument", args[0].span)),
+                }
+            }
+            // v0.90.42: filter(fn(T) -> bool) -> T?
+            "filter" => {
+                if args.len() != 1 {
+                    return Err(CompileError::type_error("filter() takes 1 argument (a closure)", span));
+                }
+                let fn_ty = self.infer(&args[0].node, args[0].span)?;
+                match fn_ty {
+                    Type::Fn { params, ret } => {
+                        if params.len() != 1 {
+                            return Err(CompileError::type_error(
+                                format!("filter() closure must take 1 parameter, got {}", params.len()),
+                                args[0].span,
+                            ));
+                        }
+                        if let Some(ref expected) = inner_ty {
+                            self.unify(&params[0], expected, args[0].span)?;
+                        }
+                        self.unify(&ret, &Type::Bool, args[0].span)?;
+                        match inner_ty {
+                            Some(ty) => Ok(Type::Nullable(Box::new(ty))),
+                            None => Ok(Type::Nullable(Box::new(Type::I64))),
+                        }
+                    }
+                    _ => Err(CompileError::type_error("filter() requires a closure argument", args[0].span)),
+                }
+            }
+            // v0.90.42: unwrap() -> T (panics if None)
+            "unwrap" => {
+                if !args.is_empty() {
+                    return Err(CompileError::type_error("unwrap() takes no arguments", span));
+                }
+                match inner_ty {
+                    Some(ty) => Ok(ty),
+                    None => Ok(Type::I64),
+                }
+            }
             _ => Err(CompileError::type_error(
                 format!("unknown method '{}' for Option", method),
                 span,
@@ -4570,6 +4697,16 @@ impl TypeChecker {
                     Some(Type::TypeVar(_)) => Ok(arg_ty),
                     Some(ty) => Ok(ty.clone()),
                     None => Ok(arg_ty),
+                }
+            }
+            // v0.90.42: unwrap() -> T (panics if Err)
+            "unwrap" => {
+                if !args.is_empty() {
+                    return Err(CompileError::type_error("unwrap() takes no arguments", span));
+                }
+                match ok_ty {
+                    Some(ty) => Ok(ty),
+                    None => Ok(Type::I64),
                 }
             }
             _ => Err(CompileError::type_error(
