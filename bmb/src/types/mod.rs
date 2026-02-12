@@ -2942,6 +2942,24 @@ impl TypeChecker {
                         self.unify(&true_ty, &false_ty, args[1].span)?;
                         Ok(true_ty)
                     }
+                    // v0.90.95: and_bool, or_bool, xor_bool, implies
+                    "and_bool" | "or_bool" | "xor_bool" | "implication" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error(&format!("{}() takes 1 argument", method), span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg_ty, &Type::Bool, args[0].span)?;
+                        Ok(Type::Bool)
+                    }
+                    // v0.90.95: nand, nor
+                    "nand" | "nor" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error(&format!("{}() takes 1 argument", method), span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg_ty, &Type::Bool, args[0].span)?;
+                        Ok(Type::Bool)
+                    }
                     _ => Err(CompileError::type_error(
                         format!("unknown method '{}' for bool", method), span)),
                 }

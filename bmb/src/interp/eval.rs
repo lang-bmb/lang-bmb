@@ -4104,6 +4104,31 @@ impl Interpreter {
                         let false_val = args_iter.next().unwrap();
                         Ok(if b { true_val } else { false_val })
                     }
+                    // v0.90.95: and_bool, or_bool, xor_bool, implies, nand, nor
+                    "and_bool" => {
+                        let other = match &args[0] { Value::Bool(o) => *o, _ => return Err(RuntimeError::type_error("bool", args[0].type_name())) };
+                        Ok(Value::Bool(b && other))
+                    }
+                    "or_bool" => {
+                        let other = match &args[0] { Value::Bool(o) => *o, _ => return Err(RuntimeError::type_error("bool", args[0].type_name())) };
+                        Ok(Value::Bool(b || other))
+                    }
+                    "xor_bool" => {
+                        let other = match &args[0] { Value::Bool(o) => *o, _ => return Err(RuntimeError::type_error("bool", args[0].type_name())) };
+                        Ok(Value::Bool(b ^ other))
+                    }
+                    "implication" => {
+                        let other = match &args[0] { Value::Bool(o) => *o, _ => return Err(RuntimeError::type_error("bool", args[0].type_name())) };
+                        Ok(Value::Bool(!b || other))
+                    }
+                    "nand" => {
+                        let other = match &args[0] { Value::Bool(o) => *o, _ => return Err(RuntimeError::type_error("bool", args[0].type_name())) };
+                        Ok(Value::Bool(!(b && other)))
+                    }
+                    "nor" => {
+                        let other = match &args[0] { Value::Bool(o) => *o, _ => return Err(RuntimeError::type_error("bool", args[0].type_name())) };
+                        Ok(Value::Bool(!(b || other)))
+                    }
                     _ => Err(RuntimeError::undefined_function(&format!("bool.{}", method))),
                 }
             }

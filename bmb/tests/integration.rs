@@ -18759,3 +18759,46 @@ fn test_string_squeeze_tabs() {
 fn test_string_squeeze_replace_chain() {
     assert_eq!(run_program_str(r#"fn main() -> String = "a  b  b  c".squeeze().replace_n("b", "x", 1);"#), "a x b c");
 }
+
+// --- Cycle 329: Bool and_bool, or_bool, xor_bool, implies, nand, nor ---
+
+#[test]
+fn test_bool_and_bool() {
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = if true.and_bool(true) { 1 } else { 0 };"#), 1);
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = if true.and_bool(false) { 1 } else { 0 };"#), 0);
+}
+
+#[test]
+fn test_bool_or_bool() {
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = if false.or_bool(true) { 1 } else { 0 };"#), 1);
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = if false.or_bool(false) { 1 } else { 0 };"#), 0);
+}
+
+#[test]
+fn test_bool_xor_bool() {
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = if true.xor_bool(false) { 1 } else { 0 };"#), 1);
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = if true.xor_bool(true) { 1 } else { 0 };"#), 0);
+}
+
+#[test]
+fn test_bool_implies() {
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = if true.implication(false) { 1 } else { 0 };"#), 0);
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = if false.implication(false) { 1 } else { 0 };"#), 1);
+}
+
+#[test]
+fn test_bool_nand() {
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = if true.nand(true) { 1 } else { 0 };"#), 0);
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = if true.nand(false) { 1 } else { 0 };"#), 1);
+}
+
+#[test]
+fn test_bool_nor() {
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = if false.nor(false) { 1 } else { 0 };"#), 1);
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = if false.nor(true) { 1 } else { 0 };"#), 0);
+}
+
+#[test]
+fn test_bool_logic_chain() {
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = if true.and_bool(true).xor_bool(false) { 1 } else { 0 };"#), 1);
+}
