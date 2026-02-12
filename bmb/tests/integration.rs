@@ -15713,3 +15713,100 @@ fn test_bool_to_string_chain() {
     // "true".len() = 4
     assert_eq!(run_program_i64(source), 4);
 }
+
+// ============================================
+// Cycle 289: Cross-type conversions + reject, tap, count_by
+// ============================================
+
+#[test]
+fn test_int_to_bool_true() {
+    let source = r#"
+        fn main() -> i64 = if 42.to_bool() { 1 } else { 0 };
+    "#;
+    assert_eq!(run_program_i64(source), 1);
+}
+
+#[test]
+fn test_int_to_bool_false() {
+    let source = r#"
+        fn main() -> i64 = if 0.to_bool() { 1 } else { 0 };
+    "#;
+    assert_eq!(run_program_i64(source), 0);
+}
+
+#[test]
+fn test_string_to_bool_true() {
+    let source = r#"
+        fn main() -> i64 = if "true".to_bool() { 1 } else { 0 };
+    "#;
+    assert_eq!(run_program_i64(source), 1);
+}
+
+#[test]
+fn test_string_to_bool_false() {
+    let source = r#"
+        fn main() -> i64 = if "false".to_bool() { 1 } else { 0 };
+    "#;
+    assert_eq!(run_program_i64(source), 0);
+}
+
+#[test]
+fn test_array_reject() {
+    let source = r#"
+        fn main() -> i64 = [1, 2, 3, 4, 5].reject(fn |x: i64| { x > 3 }).sum();
+    "#;
+    // reject > 3: [1, 2, 3].sum() = 6
+    assert_eq!(run_program_i64(source), 6);
+}
+
+#[test]
+fn test_array_reject_even() {
+    let source = r#"
+        fn main() -> i64 = [1, 2, 3, 4, 5].reject(fn |x: i64| { x.is_even() }).sum();
+    "#;
+    // reject evens: [1, 3, 5].sum() = 9
+    assert_eq!(run_program_i64(source), 9);
+}
+
+#[test]
+fn test_array_tap() {
+    let source = r#"
+        fn noop(x: i64) -> i64 = x;
+        fn main() -> i64 = [1, 2, 3].tap(fn |x: i64| { noop(x) }).sum();
+    "#;
+    // tap doesn't change array, sum = 6
+    assert_eq!(run_program_i64(source), 6);
+}
+
+#[test]
+fn test_array_count_by() {
+    let source = r#"
+        fn parity(x: i64) -> i64 = x % 2;
+        fn main() -> i64 = [1, 2, 3, 4, 5].count_by(fn |x: i64| { parity(x) });
+    "#;
+    // 2 distinct keys: 0 (even) and 1 (odd)
+    assert_eq!(run_program_i64(source), 2);
+}
+
+#[test]
+fn test_array_count_by_identity() {
+    let source = r#"
+        fn main() -> i64 = [1, 1, 2, 2, 3].count_by(fn |x: i64| { x });
+    "#;
+    // 3 distinct values
+    assert_eq!(run_program_i64(source), 3);
+}
+
+#[test]
+fn test_filter_reject_complement() {
+    let source = r#"
+        fn main() -> i64 = {
+            let arr = [1, 2, 3, 4, 5];
+            let kept = arr.filter(fn |x: i64| { x > 3 }).len();
+            let rejected = arr.reject(fn |x: i64| { x > 3 }).len();
+            kept + rejected
+        };
+    "#;
+    // filter + reject = total: 2 + 3 = 5
+    assert_eq!(run_program_i64(source), 5);
+}

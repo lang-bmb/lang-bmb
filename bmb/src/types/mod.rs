@@ -3031,6 +3031,13 @@ impl TypeChecker {
                         }
                         Ok(Type::Bool)
                     }
+                    // v0.90.55: to_bool() -> bool (non-zero = true)
+                    "to_bool" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("to_bool() takes no arguments", span));
+                        }
+                        Ok(Type::Bool)
+                    }
                     _ => Err(CompileError::type_error(
                         format!("unknown method '{}' for {}", method, receiver_ty), span)),
                 }
@@ -3615,6 +3622,13 @@ impl TypeChecker {
                         let pad_ty = self.infer(&args[1].node, args[1].span)?;
                         self.unify(&pad_ty, &Type::String, args[1].span)?;
                         Ok(Type::String)
+                    }
+                    // v0.90.55: to_bool() -> bool ("true" = true, else false)
+                    "to_bool" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("to_bool() takes no arguments", span));
+                        }
+                        Ok(Type::Bool)
                     }
                     _ => Err(CompileError::type_error(
                         format!("unknown method '{}' for String", method),
@@ -4461,6 +4475,67 @@ impl TypeChecker {
                         }
                     }
                     // v0.90.51: chunk_by(fn(T) -> K) -> [[T]] (group consecutive elements by key)
+                    // v0.90.55: reject(fn(T) -> bool) -> [T] (inverse of filter)
+                    "reject" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("reject() takes 1 argument (a closure)", span));
+                        }
+                        let fn_ty = self.infer(&args[0].node, args[0].span)?;
+                        match fn_ty {
+                            Type::Fn { params, ret } => {
+                                if params.len() != 1 {
+                                    return Err(CompileError::type_error(
+                                        format!("reject() closure must take 1 parameter, got {}", params.len()),
+                                        args[0].span,
+                                    ));
+                                }
+                                self.unify(&params[0], elem_ty, args[0].span)?;
+                                self.unify(&ret, &Type::Bool, args[0].span)?;
+                                Ok(Type::Array(elem_ty.clone().into(), 0))
+                            }
+                            _ => Err(CompileError::type_error("reject() requires a closure argument", args[0].span)),
+                        }
+                    }
+                    // v0.90.55: tap(fn(T) -> ()) -> [T] (side-effect, returns original array)
+                    "tap" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("tap() takes 1 argument (a closure)", span));
+                        }
+                        let fn_ty = self.infer(&args[0].node, args[0].span)?;
+                        match fn_ty {
+                            Type::Fn { params, .. } => {
+                                if params.len() != 1 {
+                                    return Err(CompileError::type_error(
+                                        format!("tap() closure must take 1 parameter, got {}", params.len()),
+                                        args[0].span,
+                                    ));
+                                }
+                                self.unify(&params[0], elem_ty, args[0].span)?;
+                                Ok(Type::Array(elem_ty.clone().into(), 0))
+                            }
+                            _ => Err(CompileError::type_error("tap() requires a closure argument", args[0].span)),
+                        }
+                    }
+                    // v0.90.55: count_by(fn(T) -> K) -> i64 (count distinct keys)
+                    "count_by" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("count_by() takes 1 argument (a closure)", span));
+                        }
+                        let fn_ty = self.infer(&args[0].node, args[0].span)?;
+                        match fn_ty {
+                            Type::Fn { params, .. } => {
+                                if params.len() != 1 {
+                                    return Err(CompileError::type_error(
+                                        format!("count_by() closure must take 1 parameter, got {}", params.len()),
+                                        args[0].span,
+                                    ));
+                                }
+                                self.unify(&params[0], elem_ty, args[0].span)?;
+                                Ok(Type::I64)
+                            }
+                            _ => Err(CompileError::type_error("count_by() requires a closure argument", args[0].span)),
+                        }
+                    }
                     "chunk_by" => {
                         if args.len() != 1 {
                             return Err(CompileError::type_error("chunk_by() takes 1 argument (a closure)", span));

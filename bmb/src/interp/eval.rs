@@ -1559,6 +1559,8 @@ impl Interpreter {
                             Ok(Value::Str(Rc::new(result)))
                         }
                     }
+                    // v0.90.55: to_bool() -> bool ("true" = true, else false)
+                    "to_bool" => Ok(Value::Bool(s.as_ref() == "true")),
                     _ => Err(RuntimeError::undefined_function(&format!("String.{}", method))),
                 }
             }
@@ -2438,6 +2440,59 @@ impl Interpreter {
                             _ => Err(RuntimeError::type_error("closure", "non-closure")),
                         }
                     }
+                    // v0.90.55: reject(fn(T) -> bool) -> [T]
+                    "reject" => {
+                        if args.len() != 1 {
+                            return Err(RuntimeError::arity_mismatch("reject", 1, args.len()));
+                        }
+                        match args.into_iter().next().unwrap() {
+                            Value::Closure { params, body, env: closure_env } => {
+                                let mut result = Vec::new();
+                                for elem in arr {
+                                    let pred = self.call_closure(&params, &body, &closure_env, vec![elem.clone()])?;
+                                    if !pred.is_truthy() {
+                                        result.push(elem);
+                                    }
+                                }
+                                Ok(Value::Array(result))
+                            }
+                            _ => Err(RuntimeError::type_error("closure", "non-closure")),
+                        }
+                    }
+                    // v0.90.55: tap(fn(T) -> ()) -> [T]
+                    "tap" => {
+                        if args.len() != 1 {
+                            return Err(RuntimeError::arity_mismatch("tap", 1, args.len()));
+                        }
+                        match args.into_iter().next().unwrap() {
+                            Value::Closure { params, body, env: closure_env } => {
+                                for elem in &arr {
+                                    self.call_closure(&params, &body, &closure_env, vec![elem.clone()])?;
+                                }
+                                Ok(Value::Array(arr))
+                            }
+                            _ => Err(RuntimeError::type_error("closure", "non-closure")),
+                        }
+                    }
+                    // v0.90.55: count_by(fn(T) -> K) -> i64
+                    "count_by" => {
+                        if args.len() != 1 {
+                            return Err(RuntimeError::arity_mismatch("count_by", 1, args.len()));
+                        }
+                        match args.into_iter().next().unwrap() {
+                            Value::Closure { params, body, env: closure_env } => {
+                                let mut seen = Vec::new();
+                                for elem in &arr {
+                                    let key = self.call_closure(&params, &body, &closure_env, vec![elem.clone()])?;
+                                    if !seen.contains(&key) {
+                                        seen.push(key);
+                                    }
+                                }
+                                Ok(Value::Int(seen.len() as i64))
+                            }
+                            _ => Err(RuntimeError::type_error("closure", "non-closure")),
+                        }
+                    }
                     // v0.90.51: chunk_by(fn(T) -> K) -> [[T]]
                     "chunk_by" => {
                         if args.len() != 1 {
@@ -2775,6 +2830,8 @@ impl Interpreter {
                     "is_even" => Ok(Value::Bool(n % 2 == 0)),
                     // v0.90.54: is_odd() -> bool
                     "is_odd" => Ok(Value::Bool(n % 2 != 0)),
+                    // v0.90.55: to_bool() -> bool (non-zero = true)
+                    "to_bool" => Ok(Value::Bool(n != 0)),
                     _ => Err(RuntimeError::type_error("object with methods", receiver.type_name())),
                 }
             }
