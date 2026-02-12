@@ -3767,6 +3767,33 @@ impl TypeChecker {
                         self.unify(&arg_ty, &Type::I64, args[0].span)?;
                         Ok(Type::String)
                     }
+                    // v0.90.66: find_all, replace_first, split_once
+                    "find_all" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("find_all() takes 1 argument", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg_ty, &Type::String, args[0].span)?;
+                        Ok(Type::Array(Box::new(Type::I64), 0))
+                    }
+                    "replace_first" => {
+                        if args.len() != 2 {
+                            return Err(CompileError::type_error("replace_first() takes 2 arguments", span));
+                        }
+                        let from_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&from_ty, &Type::String, args[0].span)?;
+                        let to_ty = self.infer(&args[1].node, args[1].span)?;
+                        self.unify(&to_ty, &Type::String, args[1].span)?;
+                        Ok(Type::String)
+                    }
+                    "split_once" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("split_once() takes 1 argument", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg_ty, &Type::String, args[0].span)?;
+                        Ok(Type::Array(Box::new(Type::String), 0))
+                    }
                     _ => Err(CompileError::type_error(
                         format!("unknown method '{}' for String", method),
                         span,

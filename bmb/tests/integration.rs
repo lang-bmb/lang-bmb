@@ -16918,3 +16918,79 @@ fn test_string_truncate_zfill_chain() {
     // "ab" -> "000ab"
     assert_eq!(run_program_str(source), "000ab");
 }
+
+// ============================================================================
+// Cycle 300: String find_all, replace_first, split_once
+// ============================================================================
+
+#[test]
+fn test_string_find_all() {
+    let source = r#"
+        fn main() -> i64 = "abcabc".find_all("bc").len();
+    "#;
+    assert_eq!(run_program_i64(source), 2);
+}
+
+#[test]
+fn test_string_find_all_indices() {
+    let source = r#"
+        fn main() -> i64 = {
+            let indices = "abcabc".find_all("bc");
+            indices[0] + indices[1] * 100
+        };
+    "#;
+    // indices are 1 and 4 -> 1 + 400 = 401
+    assert_eq!(run_program_i64(source), 401);
+}
+
+#[test]
+fn test_string_find_all_no_match() {
+    let source = r#"
+        fn main() -> i64 = "hello".find_all("xyz").len();
+    "#;
+    assert_eq!(run_program_i64(source), 0);
+}
+
+#[test]
+fn test_string_replace_first() {
+    let source = r#"
+        fn main() -> String = "aabaa".replace_first("a", "x");
+    "#;
+    assert_eq!(run_program_str(source), "xabaa");
+}
+
+#[test]
+fn test_string_replace_first_no_match() {
+    let source = r#"
+        fn main() -> String = "hello".replace_first("xyz", "!");
+    "#;
+    assert_eq!(run_program_str(source), "hello");
+}
+
+#[test]
+fn test_string_split_once() {
+    let source = r#"
+        fn main() -> String = "key=value".split_once("=")[1];
+    "#;
+    assert_eq!(run_program_str(source), "value");
+}
+
+#[test]
+fn test_string_split_once_no_delim() {
+    let source = r#"
+        fn main() -> i64 = "hello".split_once("=").len();
+    "#;
+    // No delimiter found -> single-element array
+    assert_eq!(run_program_i64(source), 1);
+}
+
+#[test]
+fn test_string_find_all_replace_chain() {
+    let source = r#"
+        fn main() -> String = {
+            let s = "hello world hello";
+            s.replace_first("hello", "hi")
+        };
+    "#;
+    assert_eq!(run_program_str(source), "hi world hello");
+}

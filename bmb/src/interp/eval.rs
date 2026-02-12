@@ -1680,6 +1680,46 @@ impl Interpreter {
                             Ok(Value::Str(Rc::new(format!("{}{}", zeros, s))))
                         }
                     }
+                    // v0.90.66: find_all, replace_first, split_once
+                    "find_all" => {
+                        let needle = match &args[0] {
+                            Value::Str(s) => s.as_str().to_string(),
+                            _ => return Err(RuntimeError::type_error("string", args[0].type_name())),
+                        };
+                        let mut indices = Vec::new();
+                        let mut start = 0;
+                        while let Some(pos) = s[start..].find(&needle) {
+                            indices.push(Value::Int((start + pos) as i64));
+                            start += pos + needle.len();
+                        }
+                        Ok(Value::Array(indices))
+                    }
+                    "replace_first" => {
+                        let from = match &args[0] {
+                            Value::Str(s) => s.as_str().to_string(),
+                            _ => return Err(RuntimeError::type_error("string", args[0].type_name())),
+                        };
+                        let to = match &args[1] {
+                            Value::Str(s) => s.as_str().to_string(),
+                            _ => return Err(RuntimeError::type_error("string", args[1].type_name())),
+                        };
+                        Ok(Value::Str(Rc::new(s.replacen(&from, &to, 1))))
+                    }
+                    "split_once" => {
+                        let delim = match &args[0] {
+                            Value::Str(s) => s.as_str().to_string(),
+                            _ => return Err(RuntimeError::type_error("string", args[0].type_name())),
+                        };
+                        match s.split_once(&delim) {
+                            Some((left, right)) => Ok(Value::Array(vec![
+                                Value::Str(Rc::new(left.to_string())),
+                                Value::Str(Rc::new(right.to_string())),
+                            ])),
+                            None => Ok(Value::Array(vec![
+                                Value::Str(Rc::new(s.to_string())),
+                            ])),
+                        }
+                    }
                     _ => Err(RuntimeError::undefined_function(&format!("String.{}", method))),
                 }
             }
