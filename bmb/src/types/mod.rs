@@ -3806,6 +3806,64 @@ impl TypeChecker {
                             )),
                         }
                     }
+                    // v0.90.45: windows(size) -> [[T]]
+                    "windows" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("windows() takes 1 argument (window size)", span));
+                        }
+                        let size_ty = self.infer(&args[0].node, args[0].span)?;
+                        match size_ty {
+                            Type::I32 | Type::I64 | Type::U32 | Type::U64 => {}
+                            _ => return Err(CompileError::type_error(
+                                format!("windows() argument must be integer, got {}", size_ty),
+                                args[0].span,
+                            )),
+                        }
+                        Ok(Type::Array(Box::new(Type::Array(elem_ty.clone(), 0)), 0))
+                    }
+                    // v0.90.45: chunks(size) -> [[T]]
+                    "chunks" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("chunks() takes 1 argument (chunk size)", span));
+                        }
+                        let size_ty = self.infer(&args[0].node, args[0].span)?;
+                        match size_ty {
+                            Type::I32 | Type::I64 | Type::U32 | Type::U64 => {}
+                            _ => return Err(CompileError::type_error(
+                                format!("chunks() argument must be integer, got {}", size_ty),
+                                args[0].span,
+                            )),
+                        }
+                        Ok(Type::Array(Box::new(Type::Array(elem_ty.clone(), 0)), 0))
+                    }
+                    // v0.90.45: count(fn(T) -> bool) -> i64 (count matching elements)
+                    "count" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("count() takes 1 argument (a predicate closure)", span));
+                        }
+                        let fn_ty = self.infer(&args[0].node, args[0].span)?;
+                        match fn_ty {
+                            Type::Fn { params, ret } => {
+                                if params.len() != 1 {
+                                    return Err(CompileError::type_error(
+                                        format!("count() closure must take 1 parameter, got {}", params.len()),
+                                        args[0].span,
+                                    ));
+                                }
+                                self.unify(&params[0], elem_ty, args[0].span)?;
+                                self.unify(&ret, &Type::Bool, args[0].span)?;
+                                Ok(Type::I64)
+                            }
+                            _ => Err(CompileError::type_error("count() requires a closure argument", args[0].span)),
+                        }
+                    }
+                    // v0.90.45: unique() -> [T] (remove all duplicates, preserves first occurrence order)
+                    "unique" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("unique() takes no arguments", span));
+                        }
+                        Ok(Type::Array(elem_ty.clone(), 0))
+                    }
                     // v0.90.43: sort() -> [T] (natural ordering, requires comparable type)
                     "sort" => {
                         if !args.is_empty() {

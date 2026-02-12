@@ -1762,6 +1762,69 @@ impl Interpreter {
                             _ => Err(RuntimeError::type_error("closure", "non-closure")),
                         }
                     }
+                    // v0.90.45: windows(size) -> [[T]]
+                    "windows" => {
+                        if args.len() != 1 {
+                            return Err(RuntimeError::arity_mismatch("windows", 1, args.len()));
+                        }
+                        let size = match &args[0] {
+                            Value::Int(n) => *n as usize,
+                            _ => return Err(RuntimeError::type_error("integer", args[0].type_name())),
+                        };
+                        if size == 0 || size > arr.len() {
+                            return Ok(Value::Array(vec![]));
+                        }
+                        let windows: Vec<Value> = arr.windows(size)
+                            .map(|w| Value::Array(w.to_vec()))
+                            .collect();
+                        Ok(Value::Array(windows))
+                    }
+                    // v0.90.45: chunks(size) -> [[T]]
+                    "chunks" => {
+                        if args.len() != 1 {
+                            return Err(RuntimeError::arity_mismatch("chunks", 1, args.len()));
+                        }
+                        let size = match &args[0] {
+                            Value::Int(n) => *n as usize,
+                            _ => return Err(RuntimeError::type_error("integer", args[0].type_name())),
+                        };
+                        if size == 0 {
+                            return Ok(Value::Array(vec![]));
+                        }
+                        let chunks: Vec<Value> = arr.chunks(size)
+                            .map(|c| Value::Array(c.to_vec()))
+                            .collect();
+                        Ok(Value::Array(chunks))
+                    }
+                    // v0.90.45: count(fn(T) -> bool) -> i64
+                    "count" => {
+                        if args.len() != 1 {
+                            return Err(RuntimeError::arity_mismatch("count", 1, args.len()));
+                        }
+                        match args.into_iter().next().unwrap() {
+                            Value::Closure { params, body, env: closure_env } => {
+                                let mut n = 0i64;
+                                for elem in arr {
+                                    let val = self.call_closure(&params, &body, &closure_env, vec![elem])?;
+                                    if val.is_truthy() {
+                                        n += 1;
+                                    }
+                                }
+                                Ok(Value::Int(n))
+                            }
+                            _ => Err(RuntimeError::type_error("closure", "non-closure")),
+                        }
+                    }
+                    // v0.90.45: unique() -> [T]
+                    "unique" => {
+                        let mut result = Vec::new();
+                        for elem in &arr {
+                            if !result.contains(elem) {
+                                result.push(elem.clone());
+                            }
+                        }
+                        Ok(Value::Array(result))
+                    }
                     // v0.90.43: sort() -> [T] (natural ordering)
                     "sort" => {
                         let mut result = arr;

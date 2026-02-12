@@ -14662,6 +14662,74 @@ fn test_nullable_unwrap_value() {
 // ============================================
 
 // ============================================
+// Cycle 279: Array Windows, Chunks, Count, Unique
+// ============================================
+
+#[test]
+fn test_array_windows() {
+    let source = "fn main() -> i64 = [1, 2, 3, 4, 5].windows(3).len();";
+    assert_eq!(run_program_i64(source), 3);
+}
+
+#[test]
+fn test_array_windows_sum_first() {
+    let source = "fn main() -> i64 = [1, 2, 3, 4].windows(2).first().sum();";
+    assert_eq!(run_program_i64(source), 3);
+}
+
+#[test]
+fn test_array_chunks() {
+    let source = "fn main() -> i64 = [1, 2, 3, 4, 5].chunks(2).len();";
+    assert_eq!(run_program_i64(source), 3);
+}
+
+#[test]
+fn test_array_chunks_last_partial() {
+    let source = "fn main() -> i64 = [1, 2, 3, 4, 5].chunks(2).last().len();";
+    assert_eq!(run_program_i64(source), 1);
+}
+
+#[test]
+fn test_array_count_predicate() {
+    let source = r#"
+        fn main() -> i64 = [1, 2, 3, 4, 5, 6].count(fn |x: i64| { x > 3 });
+    "#;
+    assert_eq!(run_program_i64(source), 3);
+}
+
+#[test]
+fn test_array_count_none() {
+    let source = r#"
+        fn main() -> i64 = [1, 2, 3].count(fn |x: i64| { x > 10 });
+    "#;
+    assert_eq!(run_program_i64(source), 0);
+}
+
+#[test]
+fn test_array_unique() {
+    let source = "fn main() -> i64 = [1, 2, 3, 2, 1, 4].unique().len();";
+    assert_eq!(run_program_i64(source), 4);
+}
+
+#[test]
+fn test_array_unique_preserves_order() {
+    let source = "fn main() -> i64 = [3, 1, 2, 1, 3].unique().first();";
+    assert_eq!(run_program_i64(source), 3);
+}
+
+#[test]
+fn test_array_unique_last() {
+    let source = "fn main() -> i64 = [3, 1, 2, 1, 3].unique().last();";
+    assert_eq!(run_program_i64(source), 2);
+}
+
+#[test]
+fn test_array_windows_empty() {
+    let source = "fn main() -> i64 = [1, 2].windows(5).len();";
+    assert_eq!(run_program_i64(source), 0);
+}
+
+// ============================================
 // Cycle 278: String Utility Methods
 // ============================================
 
