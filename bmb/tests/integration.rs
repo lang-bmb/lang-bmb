@@ -19604,3 +19604,89 @@ fn test_edge_to_radix() {
     assert_eq!(run_program_str("fn main() -> String = 0.to_radix(2);"), "0");
     assert_eq!(run_program_str("fn main() -> String = 1.to_radix(2);"), "1");
 }
+
+// --- Cycle 348: Cross-type method chaining tests ---
+
+// Integer -> String -> Integer chains
+#[test]
+fn test_chain_int_str_int() {
+    // to_radix then parse back
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = 255.to_radix(16).parse_hex().unwrap_or(0);"#), 255);
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = 10.to_radix(2).parse_binary().unwrap_or(0);"#), 10);
+    // to_string then len
+    assert_eq!(run_program_i64("fn main() -> i64 = 12345.to_string().len();"), 5);
+    // to_string then hash
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = if 42.to_string().hash_code() == "42".hash_code() { 1 } else { 0 };"#), 1);
+}
+
+// Float -> String -> Float chains
+#[test]
+fn test_chain_float_str_float() {
+    assert_eq!(run_program_str("fn main() -> String = 3.14.format_fixed(1);"), "3.1");
+    assert_eq!(run_program_str("fn main() -> String = 1.0.classify();"), "Normal");
+}
+
+// Array -> Array chains
+#[test]
+fn test_chain_array_array() {
+    // sort then cumsum
+    assert_eq!(run_program_i64("fn main() -> i64 = [3, 1, 2].sort().cumsum().get(2).unwrap_or(0);"), 6);
+    // filter then variance
+    assert_eq!(run_program_f64("fn main() -> f64 = [1, 2, 3, 4, 5].filter(fn |x: i64| { x > 2 }).variance();"), run_program_f64("fn main() -> f64 = [3, 4, 5].variance();"));
+    // map then magnitude
+    assert_eq!(run_program_f64("fn main() -> f64 = [3, 4].map(fn |x: i64| { x.to_float() }).magnitude();"), 5.0);
+}
+
+// String -> Array -> String chains
+#[test]
+fn test_chain_str_arr_str() {
+    // split then join
+    assert_eq!(run_program_str(r#"fn main() -> String = "hello world foo".split_whitespace().reverse().join(" ");"#), "foo world hello");
+    // chunk then join
+    assert_eq!(run_program_str(r#"fn main() -> String = "abcdef".chunk_string(2).join("-");"#), "ab-cd-ef");
+}
+
+// Integer math chains
+#[test]
+fn test_chain_int_math() {
+    // digit_sum of reversed is same
+    assert_eq!(run_program_i64("fn main() -> i64 = 12345.reverse_digits().digit_sum();"), 15);
+    // gcd chain
+    assert_eq!(run_program_i64("fn main() -> i64 = 12.gcd(8).gcd(6);"), 2);
+    // abs then ilog2
+    assert_eq!(run_program_i64("fn main() -> i64 = (-16).abs().ilog2();"), 4);
+}
+
+// Array vector math chains
+#[test]
+fn test_chain_vector_math() {
+    // normalize then dot_product with self = 1.0
+    assert_eq!(run_program_i64("fn main() -> i64 = if [3.0, 4.0].normalize().dot_product([3.0, 4.0].normalize()).approx_eq(1.0, 0.0001) { 1 } else { 0 };"), 1);
+}
+
+// String distance chains
+#[test]
+fn test_chain_string_distance() {
+    // levenshtein of identical strings after to_lower
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = "HELLO".to_lower().levenshtein("hello");"#), 0);
+    // escape then len
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = "<b>".escape_html().len();"#), 9);
+}
+
+// Nullable chains
+#[test]
+fn test_chain_nullable() {
+    // parse then map
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = "FF".parse_hex().map(fn |n: i64| { n * 2 }).unwrap_or(0);"#), 510);
+    // to_char then unwrap_or
+    assert_eq!(run_program_i64("fn main() -> i64 = 65.to_char().unwrap_or('?').to_int();"), 65);
+}
+
+// Deeply chained operations
+#[test]
+fn test_chain_deep() {
+    // Array: filter -> sort -> cumsum -> len
+    assert_eq!(run_program_i64("fn main() -> i64 = [5, 3, 1, 4, 2].filter(fn |x: i64| { x > 2 }).sort().cumsum().len();"), 3);
+    // String: to_lower -> encode_uri -> decode_uri -> len
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = "Hello World".to_lower().encode_uri().decode_uri().len();"#), 11);
+}
