@@ -20016,3 +20016,41 @@ fn test_suggestion_result_no_match() {
         "did you mean"
     ));
 }
+
+// --- Cycle 354: Argument count mismatch improvements ---
+
+#[test]
+fn test_arg_count_shows_function_name() {
+    // Function call with wrong number of args should show function name
+    assert!(type_error_contains(
+        "fn add(a: i64, b: i64) -> i64 = a + b; fn main() -> i64 = add(1);",
+        "'add' expects 2 arguments"
+    ));
+}
+
+#[test]
+fn test_arg_count_shows_param_types() {
+    // Function call with wrong number of args should show parameter types
+    assert!(type_error_contains(
+        "fn add(a: i64, b: i64) -> i64 = a + b; fn main() -> i64 = add(1);",
+        "i64, i64"
+    ));
+}
+
+#[test]
+fn test_arg_count_shows_got_count() {
+    // Should show how many args were actually provided
+    assert!(type_error_contains(
+        "fn add(a: i64, b: i64) -> i64 = a + b; fn main() -> i64 = add(1, 2, 3);",
+        "got 3"
+    ));
+}
+
+#[test]
+fn test_arg_count_zero_args_provided() {
+    // Should work when 0 args provided
+    assert!(type_error_contains(
+        "fn inc(x: i64) -> i64 = x + 1; fn main() -> i64 = inc();",
+        "'inc' expects 1 arguments (i64), got 0"
+    ));
+}

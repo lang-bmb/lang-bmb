@@ -1843,11 +1843,11 @@ impl TypeChecker {
                     && let Type::Fn { params: param_tys, ret: ret_ty } = var_ty
                 {
                     if args.len() != param_tys.len() {
+                        let sig: Vec<String> = param_tys.iter().map(|t| format!("{}", t)).collect();
                         return Err(CompileError::type_error(
                             format!(
-                                "closure expects {} arguments, got {}",
-                                param_tys.len(),
-                                args.len()
+                                "'{}' expects {} arguments ({}), got {}",
+                                func, param_tys.len(), sig.join(", "), args.len()
                             ),
                             span,
                         ));
@@ -1896,11 +1896,11 @@ impl TypeChecker {
                 // v0.15: Try non-generic functions
                 if let Some((param_tys, ret_ty)) = self.functions.get(func).cloned() {
                     if args.len() != param_tys.len() {
+                        let sig: Vec<String> = param_tys.iter().map(|t| format!("{}", t)).collect();
                         return Err(CompileError::type_error(
                             format!(
-                                "expected {} arguments, got {}",
-                                param_tys.len(),
-                                args.len()
+                                "'{}' expects {} arguments ({}), got {}",
+                                func, param_tys.len(), sig.join(", "), args.len()
                             ),
                             span,
                         ));
@@ -1917,11 +1917,11 @@ impl TypeChecker {
                 // v0.15: Try generic functions (original position - for functions only in generic_functions)
                 if let Some((type_params, param_tys, ret_ty)) = self.generic_functions.get(func).cloned() {
                     if args.len() != param_tys.len() {
+                        let sig: Vec<String> = param_tys.iter().map(|t| format!("{}", t)).collect();
                         return Err(CompileError::type_error(
                             format!(
-                                "expected {} arguments, got {}",
-                                param_tys.len(),
-                                args.len()
+                                "'{}' expects {} arguments ({}), got {}",
+                                func, param_tys.len(), sig.join(", "), args.len()
                             ),
                             span,
                         ));
@@ -6951,8 +6951,9 @@ impl TypeChecker {
                 if let Some((param_types, ret_type)) = self.lookup_trait_method(receiver_ty, method) {
                     // Check argument count (excluding self)
                     if args.len() != param_types.len() {
+                        let sig: Vec<String> = param_types.iter().map(|t| format!("{}", t)).collect();
                         return Err(CompileError::type_error(
-                            format!("method '{}' expects {} arguments, got {}", method, param_types.len(), args.len()),
+                            format!("method '{}' expects {} arguments ({}), got {}", method, param_types.len(), sig.join(", "), args.len()),
                             span,
                         ));
                     }
