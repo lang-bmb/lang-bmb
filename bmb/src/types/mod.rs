@@ -4388,6 +4388,29 @@ impl TypeChecker {
                         }
                         Ok(Type::Array(Box::new(Type::String), 0))
                     }
+                    // v0.90.107: chunk_string(i64) -> [String] (split into fixed-size chunks)
+                    "chunk_string" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("chunk_string() takes 1 argument (chunk size)", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg_ty, &Type::I64, args[0].span)?;
+                        Ok(Type::Array(Box::new(Type::String), 0))
+                    }
+                    // v0.90.107: format_number(i64) -> String (format with thousand separators)
+                    "format_number" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("format_number() takes no arguments", span));
+                        }
+                        Ok(Type::String)
+                    }
+                    // v0.90.107: hash_code() -> i64 (simple hash of string)
+                    "hash_code" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("hash_code() takes no arguments", span));
+                        }
+                        Ok(Type::I64)
+                    }
                     _ => Err(CompileError::type_error(
                         format!("unknown method '{}' for String", method),
                         span,

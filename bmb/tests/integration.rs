@@ -19307,3 +19307,40 @@ fn test_int_new_methods_type_checks() {
     assert!(type_checks("fn main() -> i64 = 8.ilog2();"));
     assert!(type_checks("fn main() -> i64 = 100.ilog10();"));
 }
+
+// --- Cycle 341: String chunk_string, format_number, hash_code ---
+
+#[test]
+fn test_string_chunk_string() {
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = "abcdef".chunk_string(2).len();"#), 3);
+    assert_eq!(run_program_str(r#"fn main() -> String = "abcdef".chunk_string(2).get(0).unwrap_or("");"#), "ab");
+    assert_eq!(run_program_str(r#"fn main() -> String = "abcdef".chunk_string(2).get(2).unwrap_or("");"#), "ef");
+    assert_eq!(run_program_str(r#"fn main() -> String = "abcde".chunk_string(2).get(2).unwrap_or("");"#), "e");
+}
+
+#[test]
+fn test_string_format_number() {
+    assert_eq!(run_program_str(r#"fn main() -> String = "1234567".format_number();"#), "1,234,567");
+    assert_eq!(run_program_str(r#"fn main() -> String = "42".format_number();"#), "42");
+    assert_eq!(run_program_str(r#"fn main() -> String = "-1000".format_number();"#), "-1,000");
+}
+
+#[test]
+fn test_string_hash_code() {
+    // hash_code should return consistent non-zero values
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = if "hello".hash_code() == "hello".hash_code() { 1 } else { 0 };"#), 1);
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = if "hello".hash_code() == "world".hash_code() { 1 } else { 0 };"#), 0);
+}
+
+#[test]
+fn test_string_chunk_chain() {
+    // chunk then join should reconstruct
+    assert_eq!(run_program_str(r#"fn main() -> String = "abcdef".chunk_string(3).join("");"#), "abcdef");
+}
+
+#[test]
+fn test_string_new_methods_type_checks() {
+    assert!(type_checks(r#"fn main() -> i64 = "abc".chunk_string(2).len();"#));
+    assert!(type_checks(r#"fn main() -> String = "1234".format_number();"#));
+    assert!(type_checks(r#"fn main() -> i64 = "test".hash_code();"#));
+}

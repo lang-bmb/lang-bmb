@@ -2252,6 +2252,50 @@ impl Interpreter {
                             .collect();
                         Ok(Value::Array(parts))
                     }
+                    // v0.90.107: chunk_string(i64) -> [String]
+                    "chunk_string" => {
+                        let size = match &args[0] {
+                            Value::Int(n) => *n as usize,
+                            _ => return Err(RuntimeError::type_error("integer", args[0].type_name())),
+                        };
+                        if size == 0 {
+                            return Ok(Value::Array(vec![]));
+                        }
+                        let chars: Vec<char> = s.chars().collect();
+                        let chunks: Vec<Value> = chars.chunks(size)
+                            .map(|chunk| Value::Str(Rc::new(chunk.iter().collect::<String>())))
+                            .collect();
+                        Ok(Value::Array(chunks))
+                    }
+                    // v0.90.107: format_number() -> String (thousand separators)
+                    "format_number" => {
+                        // Parse the string as a number and format with commas
+                        let trimmed = s.trim();
+                        if let Ok(n) = trimmed.parse::<i64>() {
+                            let neg = n < 0;
+                            let abs_str = n.abs().to_string();
+                            let mut result = String::new();
+                            for (i, c) in abs_str.chars().rev().enumerate() {
+                                if i > 0 && i % 3 == 0 {
+                                    result.push(',');
+                                }
+                                result.push(c);
+                            }
+                            let formatted: String = result.chars().rev().collect();
+                            Ok(Value::Str(Rc::new(if neg { format!("-{}", formatted) } else { formatted })))
+                        } else {
+                            Ok(Value::Str(Rc::new(s.to_string())))
+                        }
+                    }
+                    // v0.90.107: hash_code() -> i64 (FNV-1a hash)
+                    "hash_code" => {
+                        let mut hash: u64 = 0xcbf29ce484222325;
+                        for byte in s.bytes() {
+                            hash ^= byte as u64;
+                            hash = hash.wrapping_mul(0x100000001b3);
+                        }
+                        Ok(Value::Int(hash as i64))
+                    }
                     _ => Err(RuntimeError::undefined_function(&format!("String.{}", method))),
                 }
             }
