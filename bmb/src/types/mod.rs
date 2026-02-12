@@ -2429,6 +2429,18 @@ impl TypeChecker {
                     self.add_warning(CompileWarning::guarded_non_exhaustive(span));
                 }
 
+                // v0.90.122: Warn if match has exactly 2 arms with one wildcard/var catch-all
+                // Suggest if-let as a simpler alternative
+                if arms.len() == 2 && !arms.iter().any(|a| a.guard.is_some()) {
+                    let is_catchall = |p: &Pattern| matches!(p, Pattern::Wildcard | Pattern::Var(_));
+                    let first_catchall = is_catchall(&arms[0].pattern.node);
+                    let second_catchall = is_catchall(&arms[1].pattern.node);
+                    // Exactly one arm is a catch-all, the other is specific
+                    if first_catchall != second_catchall {
+                        self.add_warning(CompileWarning::single_arm_match(span));
+                    }
+                }
+
                 // Error if not exhaustive (unless there's a guard, which makes analysis harder)
                 let has_guards = arms.iter().any(|a| a.guard.is_some());
                 if !exhaustiveness_result.is_exhaustive && !has_guards {

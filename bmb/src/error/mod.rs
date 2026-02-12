@@ -132,6 +132,12 @@ pub enum CompileWarning {
         span: Span,
     },
 
+    /// v0.90.122: Single-arm match — suggest if-let
+    /// Match with one specific arm and one wildcard could be simplified
+    SingleArmMatch {
+        span: Span,
+    },
+
     /// v0.90.121: Non-snake_case function name
     /// Function names should use snake_case
     NonSnakeCaseFunction {
@@ -308,6 +314,11 @@ impl CompileWarning {
         }
     }
 
+    /// v0.90.122: Create a single-arm match warning
+    pub fn single_arm_match(span: Span) -> Self {
+        Self::SingleArmMatch { span }
+    }
+
     /// v0.90.121: Create a non-snake_case function warning
     pub fn non_snake_case_function(
         name: impl Into<String>,
@@ -356,6 +367,7 @@ impl CompileWarning {
             Self::MissingPostcondition { span, .. } => Some(*span),
             Self::SemanticDuplication { span, .. } => Some(*span),
             Self::TrivialContract { span, .. } => Some(*span),
+            Self::SingleArmMatch { span } => Some(*span),
             Self::NonSnakeCaseFunction { span, .. } => Some(*span),
             Self::NonPascalCaseType { span, .. } => Some(*span),
             Self::Generic { span, .. } => *span,
@@ -428,6 +440,9 @@ impl CompileWarning {
             Self::NonPascalCaseType { name, suggestion, kind, .. } => {
                 format!("{} `{}` should have a PascalCase name; consider renaming to `{}`", kind, name, suggestion)
             }
+            Self::SingleArmMatch { .. } => {
+                "match with a single arm could be simplified to `if let`".to_string()
+            }
             Self::Generic { message, .. } => message.clone(),
         }
     }
@@ -454,6 +469,7 @@ impl CompileWarning {
             Self::TrivialContract { .. } => "trivial_contract",
             Self::NonSnakeCaseFunction { .. } => "non_snake_case",
             Self::NonPascalCaseType { .. } => "non_pascal_case",
+            Self::SingleArmMatch { .. } => "single_arm_match",
             Self::Generic { .. } => "warning",
         }
     }

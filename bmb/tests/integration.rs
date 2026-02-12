@@ -20286,3 +20286,52 @@ fn test_lint_main_exempted() {
         "non_snake_case"
     ));
 }
+
+// ============================================================================
+// v0.90.122: Single-arm match detection
+// ============================================================================
+
+#[test]
+fn test_single_arm_match_enum_with_wildcard() {
+    // match with one enum variant + wildcard should warn
+    assert!(has_warning_kind(
+        "enum Color { Red, Green, Blue } fn f(c: Color) -> i64 = match c { Color::Red => 1, _ => 0 };",
+        "single_arm_match"
+    ));
+}
+
+#[test]
+fn test_single_arm_match_literal_with_wildcard() {
+    // match with one literal + wildcard should warn
+    assert!(has_warning_kind(
+        "fn f(x: i64) -> i64 = match x { 1 => 10, _ => 0 };",
+        "single_arm_match"
+    ));
+}
+
+#[test]
+fn test_single_arm_match_no_warn_multi_arms() {
+    // match with 3+ arms should not warn
+    assert!(!has_warning_kind(
+        "enum Color { Red, Green, Blue } fn f(c: Color) -> i64 = match c { Color::Red => 1, Color::Green => 2, Color::Blue => 3 };",
+        "single_arm_match"
+    ));
+}
+
+#[test]
+fn test_single_arm_match_no_warn_two_specific() {
+    // match with two specific patterns (no wildcard) should not warn
+    assert!(!has_warning_kind(
+        "fn f(x: bool) -> i64 = match x { true => 1, false => 0 };",
+        "single_arm_match"
+    ));
+}
+
+#[test]
+fn test_single_arm_match_var_catchall() {
+    // match with one specific + variable catch-all should warn
+    assert!(has_warning_kind(
+        "fn f(x: i64) -> i64 = match x { 1 => 10, _other => 0 };",
+        "single_arm_match"
+    ));
+}
