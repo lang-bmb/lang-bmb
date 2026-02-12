@@ -699,6 +699,15 @@ impl TypeChecker {
                     if s.visibility != Visibility::Public && !s.name.node.starts_with('_') {
                         self.private_structs.insert(s.name.node.clone(), s.name.span);
                     }
+                    // v0.90.121: Naming convention check - structs should be PascalCase
+                    if !crate::util::is_pascal_case(&s.name.node) {
+                        self.add_warning(CompileWarning::non_pascal_case_type(
+                            &s.name.node,
+                            crate::util::to_pascal_case(&s.name.node),
+                            "struct",
+                            s.name.span,
+                        ));
+                    }
                 }
                 Item::EnumDef(e) => {
                     // v0.90.37: Check for duplicate variant names
@@ -729,6 +738,15 @@ impl TypeChecker {
                     if e.visibility != Visibility::Public && !e.name.node.starts_with('_') {
                         self.private_enums.insert(e.name.node.clone(), e.name.span);
                     }
+                    // v0.90.121: Naming convention check - enums should be PascalCase
+                    if !crate::util::is_pascal_case(&e.name.node) {
+                        self.add_warning(CompileWarning::non_pascal_case_type(
+                            &e.name.node,
+                            crate::util::to_pascal_case(&e.name.node),
+                            "enum",
+                            e.name.span,
+                        ));
+                    }
                 }
                 Item::FnDef(_) | Item::ExternFn(_) => {}
                 // v0.5 Phase 4: Use statements are processed at module resolution time
@@ -757,6 +775,15 @@ impl TypeChecker {
                     // v0.80: Track private traits for unused trait detection
                     if t.visibility != Visibility::Public && !t.name.node.starts_with('_') {
                         self.private_traits.insert(t.name.node.clone(), t.name.span);
+                    }
+                    // v0.90.121: Naming convention check - traits should be PascalCase
+                    if !crate::util::is_pascal_case(&t.name.node) {
+                        self.add_warning(CompileWarning::non_pascal_case_type(
+                            &t.name.node,
+                            crate::util::to_pascal_case(&t.name.node),
+                            "trait",
+                            t.name.span,
+                        ));
                     }
                 }
                 // v0.20.1: ImplBlocks are processed in a later pass
@@ -787,6 +814,18 @@ impl TypeChecker {
                         && !f.name.node.starts_with('_')
                     {
                         self.private_functions.insert(f.name.node.clone(), f.name.span);
+                    }
+
+                    // v0.90.121: Naming convention check - functions should be snake_case
+                    // Skip: main, underscore-prefixed, operator-like names
+                    if f.name.node != "main" && !f.name.node.starts_with('_')
+                        && !crate::util::is_snake_case(&f.name.node)
+                    {
+                        self.add_warning(CompileWarning::non_snake_case_function(
+                            &f.name.node,
+                            crate::util::to_snake_case(&f.name.node),
+                            f.name.span,
+                        ));
                     }
 
                     // v0.50.11: Check for duplicate function definitions

@@ -20221,3 +20221,68 @@ fn test_no_suggestion_for_char_unrelated() {
 fn test_no_suggestion_for_bool_unrelated() {
     assert!(!type_error_contains("fn main() -> bool = true.zzzzz();", "did you mean"));
 }
+
+// --- Cycle 357: Naming convention lint rules ---
+
+#[test]
+fn test_lint_snake_case_function() {
+    // camelCase function name should trigger warning
+    assert!(has_warning_kind(
+        "fn myFunction() -> i64 = 42; fn main() -> i64 = myFunction();",
+        "non_snake_case"
+    ));
+}
+
+#[test]
+fn test_lint_snake_case_function_ok() {
+    // snake_case function name should NOT trigger warning
+    assert!(!has_warning_kind(
+        "fn my_function() -> i64 = 42; fn main() -> i64 = my_function();",
+        "non_snake_case"
+    ));
+}
+
+#[test]
+fn test_lint_pascal_case_struct() {
+    // snake_case struct name should trigger warning
+    assert!(has_warning_kind(
+        "struct my_point { x: i64, y: i64 } fn main() -> i64 = 0;",
+        "non_pascal_case"
+    ));
+}
+
+#[test]
+fn test_lint_pascal_case_struct_ok() {
+    // PascalCase struct name should NOT trigger warning
+    assert!(!has_warning_kind(
+        "struct MyPoint { x: i64, y: i64 } fn main() -> i64 = 0;",
+        "non_pascal_case"
+    ));
+}
+
+#[test]
+fn test_lint_pascal_case_enum() {
+    // snake_case enum name should trigger warning
+    assert!(has_warning_kind(
+        "enum my_color { Red, Green, Blue } fn main() -> i64 = 0;",
+        "non_pascal_case"
+    ));
+}
+
+#[test]
+fn test_lint_pascal_case_enum_ok() {
+    // PascalCase enum name should NOT trigger warning
+    assert!(!has_warning_kind(
+        "enum MyColor { Red, Green, Blue } fn main() -> i64 = 0;",
+        "non_pascal_case"
+    ));
+}
+
+#[test]
+fn test_lint_main_exempted() {
+    // main function should be exempted from snake_case check
+    assert!(!has_warning_kind(
+        "fn main() -> i64 = 42;",
+        "non_snake_case"
+    ));
+}

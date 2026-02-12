@@ -63,6 +63,83 @@ pub fn format_suggestion_hint(suggestion: Option<&str>) -> String {
     }
 }
 
+// ============================================================================
+// v0.90.121: Naming Convention Checks
+// ============================================================================
+
+/// Check if a name is snake_case.
+/// Valid: `foo`, `foo_bar`, `_foo`, `foo123`, `_`
+/// Invalid: `fooBar`, `FooBar`, `FOO_BAR` (unless all-caps which we allow)
+pub fn is_snake_case(name: &str) -> bool {
+    if name.is_empty() || name == "_" {
+        return true;
+    }
+    // Allow names starting with underscore (private convention)
+    let check = name.strip_prefix('_').unwrap_or(name);
+    if check.is_empty() {
+        return true;
+    }
+    // All lowercase letters, digits, and underscores
+    check.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
+}
+
+/// Convert a name to snake_case.
+/// `fooBar` → `foo_bar`, `FooBar` → `foo_bar`, `HTMLParser` → `html_parser`
+pub fn to_snake_case(name: &str) -> String {
+    let mut result = String::new();
+    let prefix = if name.starts_with('_') { "_" } else { "" };
+    let check = name.strip_prefix('_').unwrap_or(name);
+
+    for (i, c) in check.chars().enumerate() {
+        if c.is_ascii_uppercase() {
+            if i > 0 {
+                result.push('_');
+            }
+            result.push(c.to_ascii_lowercase());
+        } else {
+            result.push(c);
+        }
+    }
+
+    format!("{}{}", prefix, result)
+}
+
+/// Check if a name is PascalCase.
+/// Valid: `Foo`, `FooBar`, `MyType`, `F`, `F64`
+/// Invalid: `foo`, `foo_bar`, `fooBar`
+pub fn is_pascal_case(name: &str) -> bool {
+    if name.is_empty() {
+        return true;
+    }
+    // Must start with uppercase letter
+    let first = name.chars().next().unwrap();
+    if !first.is_ascii_uppercase() {
+        return false;
+    }
+    // Must not contain underscores
+    !name.contains('_')
+}
+
+/// Convert a name to PascalCase.
+/// `foo_bar` → `FooBar`, `fooBar` → `FooBar`
+pub fn to_pascal_case(name: &str) -> String {
+    let mut result = String::new();
+    let mut capitalize_next = true;
+
+    for c in name.chars() {
+        if c == '_' {
+            capitalize_next = true;
+        } else if capitalize_next {
+            result.push(c.to_ascii_uppercase());
+            capitalize_next = false;
+        } else {
+            result.push(c);
+        }
+    }
+
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -125,5 +202,45 @@ mod tests {
     #[test]
     fn test_format_suggestion_hint_none() {
         assert_eq!(format_suggestion_hint(None), "");
+    }
+
+    // v0.90.121: Naming convention tests
+    #[test]
+    fn test_is_snake_case() {
+        assert!(is_snake_case("foo"));
+        assert!(is_snake_case("foo_bar"));
+        assert!(is_snake_case("_foo"));
+        assert!(is_snake_case("foo123"));
+        assert!(is_snake_case("_"));
+        assert!(is_snake_case(""));
+        assert!(!is_snake_case("fooBar"));
+        assert!(!is_snake_case("FooBar"));
+        assert!(!is_snake_case("FOO_BAR"));
+    }
+
+    #[test]
+    fn test_to_snake_case() {
+        assert_eq!(to_snake_case("fooBar"), "foo_bar");
+        assert_eq!(to_snake_case("FooBar"), "foo_bar");
+        assert_eq!(to_snake_case("foo"), "foo");
+        assert_eq!(to_snake_case("_fooBar"), "_foo_bar");
+    }
+
+    #[test]
+    fn test_is_pascal_case() {
+        assert!(is_pascal_case("Foo"));
+        assert!(is_pascal_case("FooBar"));
+        assert!(is_pascal_case("F"));
+        assert!(is_pascal_case(""));
+        assert!(!is_pascal_case("foo"));
+        assert!(!is_pascal_case("foo_bar"));
+        assert!(!is_pascal_case("Foo_Bar"));
+    }
+
+    #[test]
+    fn test_to_pascal_case() {
+        assert_eq!(to_pascal_case("foo_bar"), "FooBar");
+        assert_eq!(to_pascal_case("foo"), "Foo");
+        assert_eq!(to_pascal_case("my_type"), "MyType");
     }
 }

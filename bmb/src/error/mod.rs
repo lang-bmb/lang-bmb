@@ -132,6 +132,23 @@ pub enum CompileWarning {
         span: Span,
     },
 
+    /// v0.90.121: Non-snake_case function name
+    /// Function names should use snake_case
+    NonSnakeCaseFunction {
+        name: String,
+        suggestion: String,
+        span: Span,
+    },
+
+    /// v0.90.121: Non-PascalCase type name
+    /// Struct, enum, and trait names should use PascalCase
+    NonPascalCaseType {
+        name: String,
+        suggestion: String,
+        kind: String, // "struct", "enum", or "trait"
+        span: Span,
+    },
+
     /// Generic warning with span
     Generic {
         message: String,
@@ -291,6 +308,34 @@ impl CompileWarning {
         }
     }
 
+    /// v0.90.121: Create a non-snake_case function warning
+    pub fn non_snake_case_function(
+        name: impl Into<String>,
+        suggestion: impl Into<String>,
+        span: Span,
+    ) -> Self {
+        Self::NonSnakeCaseFunction {
+            name: name.into(),
+            suggestion: suggestion.into(),
+            span,
+        }
+    }
+
+    /// v0.90.121: Create a non-PascalCase type warning
+    pub fn non_pascal_case_type(
+        name: impl Into<String>,
+        suggestion: impl Into<String>,
+        kind: impl Into<String>,
+        span: Span,
+    ) -> Self {
+        Self::NonPascalCaseType {
+            name: name.into(),
+            suggestion: suggestion.into(),
+            kind: kind.into(),
+            span,
+        }
+    }
+
     /// Get the span of this warning, if any
     pub fn span(&self) -> Option<Span> {
         match self {
@@ -311,6 +356,8 @@ impl CompileWarning {
             Self::MissingPostcondition { span, .. } => Some(*span),
             Self::SemanticDuplication { span, .. } => Some(*span),
             Self::TrivialContract { span, .. } => Some(*span),
+            Self::NonSnakeCaseFunction { span, .. } => Some(*span),
+            Self::NonPascalCaseType { span, .. } => Some(*span),
             Self::Generic { span, .. } => *span,
         }
     }
@@ -375,6 +422,12 @@ impl CompileWarning {
                     name, contract_kind
                 )
             }
+            Self::NonSnakeCaseFunction { name, suggestion, .. } => {
+                format!("function `{}` should have a snake_case name; consider renaming to `{}`", name, suggestion)
+            }
+            Self::NonPascalCaseType { name, suggestion, kind, .. } => {
+                format!("{} `{}` should have a PascalCase name; consider renaming to `{}`", kind, name, suggestion)
+            }
             Self::Generic { message, .. } => message.clone(),
         }
     }
@@ -399,6 +452,8 @@ impl CompileWarning {
             Self::MissingPostcondition { .. } => "missing_postcondition",
             Self::SemanticDuplication { .. } => "semantic_duplication",
             Self::TrivialContract { .. } => "trivial_contract",
+            Self::NonSnakeCaseFunction { .. } => "non_snake_case",
+            Self::NonPascalCaseType { .. } => "non_pascal_case",
             Self::Generic { .. } => "warning",
         }
     }
