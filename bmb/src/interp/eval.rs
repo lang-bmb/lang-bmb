@@ -3393,6 +3393,74 @@ impl Interpreter {
                             _ => Err(RuntimeError::type_error("Option variant", &variant)),
                         }
                     }
+                    // v0.90.83: map_or(default, fn(T) -> U) -> U
+                    "map_or" => {
+                        match variant.as_str() {
+                            "Some" => {
+                                let val = values.into_iter().next().unwrap_or(Value::Unit);
+                                match args.into_iter().nth(1).unwrap() {
+                                    Value::Closure { params, body, env: closure_env } => {
+                                        self.call_closure(&params, &body, &closure_env, vec![val])
+                                    }
+                                    _ => Err(RuntimeError::type_error("closure", "non-closure")),
+                                }
+                            }
+                            "None" => Ok(args.into_iter().next().unwrap()),
+                            _ => Err(RuntimeError::type_error("Option variant", &variant)),
+                        }
+                    }
+                    // v0.90.83: map_or_else(fn() -> U, fn(T) -> U) -> U
+                    "map_or_else" => {
+                        match variant.as_str() {
+                            "Some" => {
+                                let val = values.into_iter().next().unwrap_or(Value::Unit);
+                                match args.into_iter().nth(1).unwrap() {
+                                    Value::Closure { params, body, env: closure_env } => {
+                                        self.call_closure(&params, &body, &closure_env, vec![val])
+                                    }
+                                    _ => Err(RuntimeError::type_error("closure", "non-closure")),
+                                }
+                            }
+                            "None" => {
+                                match args.into_iter().next().unwrap() {
+                                    Value::Closure { params, body, env: closure_env } => {
+                                        self.call_closure(&params, &body, &closure_env, vec![])
+                                    }
+                                    _ => Err(RuntimeError::type_error("closure", "non-closure")),
+                                }
+                            }
+                            _ => Err(RuntimeError::type_error("Option variant", &variant)),
+                        }
+                    }
+                    // v0.90.83: contains(T) -> bool
+                    "contains" => {
+                        match variant.as_str() {
+                            "Some" => {
+                                let val = values.first().cloned().unwrap_or(Value::Unit);
+                                let target = args.into_iter().next().unwrap();
+                                Ok(Value::Bool(val == target))
+                            }
+                            "None" => Ok(Value::Bool(false)),
+                            _ => Err(RuntimeError::type_error("Option variant", &variant)),
+                        }
+                    }
+                    // v0.90.83: inspect(fn(T) -> ()) -> T?
+                    "inspect" => {
+                        match variant.as_str() {
+                            "Some" => {
+                                let val = values.first().cloned().unwrap_or(Value::Unit);
+                                match args.into_iter().next().unwrap() {
+                                    Value::Closure { params, body, env: closure_env } => {
+                                        self.call_closure(&params, &body, &closure_env, vec![val.clone()])?;
+                                        Ok(Value::Enum(enum_name, variant, values))
+                                    }
+                                    _ => Err(RuntimeError::type_error("closure", "non-closure")),
+                                }
+                            }
+                            "None" => Ok(Value::Enum(enum_name, variant, values)),
+                            _ => Err(RuntimeError::type_error("Option variant", &variant)),
+                        }
+                    }
                     _ => Err(RuntimeError::undefined_function(&format!("Option.{}", method))),
                 }
             }

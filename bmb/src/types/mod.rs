@@ -6277,6 +6277,93 @@ impl TypeChecker {
                     None => Ok(arg_ty),
                 }
             }
+            // v0.90.83: map_or(default, fn(T) -> U) -> U
+            "map_or" => {
+                if args.len() != 2 {
+                    return Err(CompileError::type_error("map_or() takes 2 arguments (default, closure)", span));
+                }
+                let default_ty = self.infer(&args[0].node, args[0].span)?;
+                let fn_ty = self.infer(&args[1].node, args[1].span)?;
+                match fn_ty {
+                    Type::Fn { params, ret } => {
+                        if params.len() != 1 {
+                            return Err(CompileError::type_error(
+                                format!("map_or() closure must take 1 parameter, got {}", params.len()),
+                                args[1].span,
+                            ));
+                        }
+                        if let Some(ref expected) = inner_ty {
+                            self.unify(&params[0], expected, args[1].span)?;
+                        }
+                        self.unify(&default_ty, &ret, args[0].span)?;
+                        Ok(*ret)
+                    }
+                    _ => Err(CompileError::type_error("map_or() second argument must be a closure", args[1].span)),
+                }
+            }
+            // v0.90.83: map_or_else(fn() -> U, fn(T) -> U) -> U
+            "map_or_else" => {
+                if args.len() != 2 {
+                    return Err(CompileError::type_error("map_or_else() takes 2 arguments (default_fn, map_fn)", span));
+                }
+                let default_fn_ty = self.infer(&args[0].node, args[0].span)?;
+                let map_fn_ty = self.infer(&args[1].node, args[1].span)?;
+                match (&default_fn_ty, &map_fn_ty) {
+                    (Type::Fn { params: dp, ret: dr }, Type::Fn { params: mp, ret: mr }) => {
+                        if !dp.is_empty() {
+                            return Err(CompileError::type_error("map_or_else() default closure must take 0 parameters", args[0].span));
+                        }
+                        if mp.len() != 1 {
+                            return Err(CompileError::type_error(
+                                format!("map_or_else() map closure must take 1 parameter, got {}", mp.len()),
+                                args[1].span,
+                            ));
+                        }
+                        if let Some(ref expected) = inner_ty {
+                            self.unify(&mp[0], expected, args[1].span)?;
+                        }
+                        self.unify(dr, mr, args[1].span)?;
+                        Ok(*mr.clone())
+                    }
+                    _ => Err(CompileError::type_error("map_or_else() requires two closure arguments", span)),
+                }
+            }
+            // v0.90.83: contains(T) -> bool
+            "contains" => {
+                if args.len() != 1 {
+                    return Err(CompileError::type_error("contains() takes 1 argument", span));
+                }
+                let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                if let Some(ref expected) = inner_ty {
+                    self.unify(expected, &arg_ty, args[0].span)?;
+                }
+                Ok(Type::Bool)
+            }
+            // v0.90.83: inspect(fn(T) -> ()) -> T?
+            "inspect" => {
+                if args.len() != 1 {
+                    return Err(CompileError::type_error("inspect() takes 1 argument (a closure)", span));
+                }
+                let fn_ty = self.infer(&args[0].node, args[0].span)?;
+                match fn_ty {
+                    Type::Fn { params, ret: _ } => {
+                        if params.len() != 1 {
+                            return Err(CompileError::type_error(
+                                format!("inspect() closure must take 1 parameter, got {}", params.len()),
+                                args[0].span,
+                            ));
+                        }
+                        if let Some(ref expected) = inner_ty {
+                            self.unify(&params[0], expected, args[0].span)?;
+                        }
+                        match inner_ty {
+                            Some(ty) => Ok(Type::Nullable(Box::new(ty))),
+                            None => Ok(Type::Nullable(Box::new(Type::I64))),
+                        }
+                    }
+                    _ => Err(CompileError::type_error("inspect() requires a closure argument", args[0].span)),
+                }
+            }
             _ => Err(CompileError::type_error(
                 format!("unknown method '{}' for Option", method),
                 span,

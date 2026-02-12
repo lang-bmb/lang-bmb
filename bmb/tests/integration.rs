@@ -18222,3 +18222,70 @@ fn test_result_is_err_and_on_ok() {
     "#;
     assert_eq!(run_program_i64(source), 0);
 }
+
+// --- Cycle 317: Option map_or, map_or_else, contains, inspect ---
+
+#[test]
+fn test_option_map_or_some() {
+    let source = r#"
+        fn main() -> i64 = [1, 2, 3].find(fn |x: i64| { x > 1 }).map_or(0, fn |x: i64| { x * 10 });
+    "#;
+    assert_eq!(run_program_i64(source), 20);
+}
+
+#[test]
+fn test_option_map_or_none() {
+    let source = r#"
+        fn main() -> i64 = [1, 2, 3].find(fn |x: i64| { x > 10 }).map_or(99, fn |x: i64| { x * 10 });
+    "#;
+    assert_eq!(run_program_i64(source), 99);
+}
+
+#[test]
+fn test_option_map_or_else_some() {
+    let source = r#"
+        fn main() -> i64 = [5, 10, 15].find(fn |x: i64| { x > 8 }).map_or_else(fn || { 0 - 1 }, fn |x: i64| { x + 100 });
+    "#;
+    assert_eq!(run_program_i64(source), 110);
+}
+
+#[test]
+fn test_option_map_or_else_none() {
+    let source = r#"
+        fn main() -> i64 = [5, 10, 15].find(fn |x: i64| { x > 100 }).map_or_else(fn || { 0 - 1 }, fn |x: i64| { x + 100 });
+    "#;
+    assert_eq!(run_program_i64(source), -1);
+}
+
+#[test]
+fn test_option_contains_some() {
+    let source = r#"
+        fn main() -> i64 = if [1, 2, 3].find(fn |x: i64| { x == 2 }).contains(2) { 1 } else { 0 };
+    "#;
+    assert_eq!(run_program_i64(source), 1);
+}
+
+#[test]
+fn test_option_contains_none() {
+    let source = r#"
+        fn main() -> i64 = if [1, 2, 3].find(fn |x: i64| { x > 10 }).contains(5) { 1 } else { 0 };
+    "#;
+    assert_eq!(run_program_i64(source), 0);
+}
+
+#[test]
+fn test_option_inspect_some() {
+    // inspect calls the closure but returns the original option
+    let source = r#"
+        fn main() -> i64 = [10, 20, 30].find(fn |x: i64| { x > 15 }).inspect(fn |x: i64| { x + 1 }).unwrap_or(0);
+    "#;
+    assert_eq!(run_program_i64(source), 20);
+}
+
+#[test]
+fn test_option_inspect_none() {
+    let source = r#"
+        fn main() -> i64 = [1, 2, 3].find(fn |x: i64| { x > 10 }).inspect(fn |x: i64| { x + 1 }).unwrap_or(0);
+    "#;
+    assert_eq!(run_program_i64(source), 0);
+}
