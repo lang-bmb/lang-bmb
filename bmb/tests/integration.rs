@@ -15420,3 +15420,114 @@ fn test_array_zip_with_step_by_chain() {
     // step_by(2): [1, 3, 5], zip_with [10,20,30]: [11, 23, 35].sum() = 69
     assert_eq!(run_program_i64(source), 69);
 }
+
+// ============================================
+// Cycle 286: Array interleave, find_map, sum_by, min_by, max_by
+// ============================================
+
+#[test]
+fn test_array_interleave() {
+    let source = r#"
+        fn main() -> i64 = [1, 3, 5].interleave([2, 4, 6]).sum();
+    "#;
+    // [1, 2, 3, 4, 5, 6].sum() = 21
+    assert_eq!(run_program_i64(source), 21);
+}
+
+#[test]
+fn test_array_interleave_unequal() {
+    let source = r#"
+        fn main() -> i64 = [1, 2].interleave([10, 20, 30]).len();
+    "#;
+    // [1, 10, 2, 20, 30] = 5 elements
+    assert_eq!(run_program_i64(source), 5);
+}
+
+#[test]
+fn test_array_find_map() {
+    let source = r#"
+        fn main() -> i64 = {
+            let result: i64? = [1, 3, 4, 5].find_map(fn |x: i64| { [x].get(if x % 2 == 0 { 0 } else { 99 }) });
+            result.unwrap_or(0)
+        };
+    "#;
+    // get(0) returns Some for evens, get(99) returns None for odds; first even = 4
+    assert_eq!(run_program_i64(source), 4);
+}
+
+#[test]
+fn test_array_find_map_none() {
+    let source = r#"
+        fn main() -> i64 = {
+            let result: i64? = [1, 2, 3].find_map(fn |x: i64| { [x].get(99) });
+            result.unwrap_or(-1)
+        };
+    "#;
+    // get(99) always returns None, so result is null => -1
+    assert_eq!(run_program_i64(source), -1);
+}
+
+#[test]
+fn test_array_sum_by() {
+    let source = r#"
+        fn main() -> i64 = [1, 2, 3, 4].sum_by(fn |x: i64| { x * x });
+    "#;
+    // 1 + 4 + 9 + 16 = 30
+    assert_eq!(run_program_i64(source), 30);
+}
+
+#[test]
+fn test_array_min_by() {
+    let source = r#"
+        fn abs_val(x: i64) -> i64 = if x < 0 { 0 - x } else { x };
+        fn main() -> i64 = {
+            let result: i64? = [3, -1, 4, -2, 2].min_by(fn |x: i64| { abs_val(x) });
+            result.unwrap_or(-999)
+        };
+    "#;
+    // closest to 0 by absolute value: -1 (abs=1)
+    assert_eq!(run_program_i64(source), -1);
+}
+
+#[test]
+fn test_array_max_by() {
+    let source = r#"
+        fn main() -> i64 = {
+            let result: i64? = [3, 1, 4, 1, 5].max_by(fn |x: i64| { x });
+            result.unwrap_or(0)
+        };
+    "#;
+    // max = 5
+    assert_eq!(run_program_i64(source), 5);
+}
+
+#[test]
+fn test_array_max_by_negative() {
+    let source = r#"
+        fn neg(x: i64) -> i64 = 0 - x;
+        fn main() -> i64 = {
+            let result: i64? = [3, 1, 4, 1, 5].max_by(fn |x: i64| { neg(x) });
+            result.unwrap_or(0)
+        };
+    "#;
+    // max by negative = element with smallest value = 1
+    assert_eq!(run_program_i64(source), 1);
+}
+
+#[test]
+fn test_array_sum_by_filter_chain() {
+    let source = r#"
+        fn main() -> i64 = [1, 2, 3, 4, 5].filter(fn |x: i64| { x > 2 }).sum_by(fn |x: i64| { x * 10 });
+    "#;
+    // filter > 2: [3,4,5], sum_by x*10: 30+40+50 = 120
+    assert_eq!(run_program_i64(source), 120);
+}
+
+#[test]
+fn test_array_interleave_take() {
+    let source = r#"
+        fn main() -> i64 = [1, 3, 5].interleave([2, 4, 6]).take(4).sum();
+    "#;
+    // [1, 2, 3, 4].sum() = 10
+    assert_eq!(run_program_i64(source), 10);
+}

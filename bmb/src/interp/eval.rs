@@ -2253,6 +2253,133 @@ impl Interpreter {
                         let result: Vec<Value> = arr.iter().step_by(n).cloned().collect();
                         Ok(Value::Array(result))
                     }
+                    // v0.90.52: interleave(other) -> [T]
+                    "interleave" => {
+                        if args.len() != 1 {
+                            return Err(RuntimeError::arity_mismatch("interleave", 1, args.len()));
+                        }
+                        match args.into_iter().next().unwrap() {
+                            Value::Array(other_arr) => {
+                                let mut result = Vec::new();
+                                let max_len = arr.len().max(other_arr.len());
+                                for i in 0..max_len {
+                                    if i < arr.len() {
+                                        result.push(arr[i].clone());
+                                    }
+                                    if i < other_arr.len() {
+                                        result.push(other_arr[i].clone());
+                                    }
+                                }
+                                Ok(Value::Array(result))
+                            }
+                            _ => Err(RuntimeError::type_error("array", "non-array")),
+                        }
+                    }
+                    // v0.90.52: find_map(fn(T) -> U?) -> U?
+                    "find_map" => {
+                        if args.len() != 1 {
+                            return Err(RuntimeError::arity_mismatch("find_map", 1, args.len()));
+                        }
+                        match args.into_iter().next().unwrap() {
+                            Value::Closure { params, body, env: closure_env } => {
+                                for item in arr.iter() {
+                                    let result = self.call_closure(&params, &body, &closure_env, vec![item.clone()])?;
+                                    match &result {
+                                        Value::Int(n) if *n != 0 => return Ok(result),
+                                        Value::Enum(name, variant, _) if name == "Option" && variant == "Some" => return Ok(result),
+                                        _ => continue,
+                                    }
+                                }
+                                Ok(Value::Int(0)) // null
+                            }
+                            _ => Err(RuntimeError::type_error("closure", "non-closure")),
+                        }
+                    }
+                    // v0.90.52: sum_by(fn(T) -> numeric) -> numeric
+                    "sum_by" => {
+                        if args.len() != 1 {
+                            return Err(RuntimeError::arity_mismatch("sum_by", 1, args.len()));
+                        }
+                        match args.into_iter().next().unwrap() {
+                            Value::Closure { params, body, env: closure_env } => {
+                                let mut sum_int: i64 = 0;
+                                let mut is_float = false;
+                                let mut sum_float: f64 = 0.0;
+                                for item in arr.iter() {
+                                    let val = self.call_closure(&params, &body, &closure_env, vec![item.clone()])?;
+                                    match val {
+                                        Value::Int(n) => sum_int += n,
+                                        Value::Float(f) => { is_float = true; sum_float += f; }
+                                        _ => return Err(RuntimeError::type_error("numeric", val.type_name())),
+                                    }
+                                }
+                                if is_float {
+                                    Ok(Value::Float(sum_float + sum_int as f64))
+                                } else {
+                                    Ok(Value::Int(sum_int))
+                                }
+                            }
+                            _ => Err(RuntimeError::type_error("closure", "non-closure")),
+                        }
+                    }
+                    // v0.90.52: min_by(fn(T) -> comparable) -> T?
+                    "min_by" => {
+                        if args.len() != 1 {
+                            return Err(RuntimeError::arity_mismatch("min_by", 1, args.len()));
+                        }
+                        match args.into_iter().next().unwrap() {
+                            Value::Closure { params, body, env: closure_env } => {
+                                if arr.is_empty() {
+                                    return Ok(Value::Int(0)); // null
+                                }
+                                let mut best_item = arr[0].clone();
+                                let mut best_key = self.call_closure(&params, &body, &closure_env, vec![arr[0].clone()])?;
+                                for item in arr.iter().skip(1) {
+                                    let key = self.call_closure(&params, &body, &closure_env, vec![item.clone()])?;
+                                    let is_less = match (&key, &best_key) {
+                                        (Value::Int(a), Value::Int(b)) => a < b,
+                                        (Value::Float(a), Value::Float(b)) => a < b,
+                                        _ => false,
+                                    };
+                                    if is_less {
+                                        best_item = item.clone();
+                                        best_key = key;
+                                    }
+                                }
+                                Ok(best_item)
+                            }
+                            _ => Err(RuntimeError::type_error("closure", "non-closure")),
+                        }
+                    }
+                    // v0.90.52: max_by(fn(T) -> comparable) -> T?
+                    "max_by" => {
+                        if args.len() != 1 {
+                            return Err(RuntimeError::arity_mismatch("max_by", 1, args.len()));
+                        }
+                        match args.into_iter().next().unwrap() {
+                            Value::Closure { params, body, env: closure_env } => {
+                                if arr.is_empty() {
+                                    return Ok(Value::Int(0)); // null
+                                }
+                                let mut best_item = arr[0].clone();
+                                let mut best_key = self.call_closure(&params, &body, &closure_env, vec![arr[0].clone()])?;
+                                for item in arr.iter().skip(1) {
+                                    let key = self.call_closure(&params, &body, &closure_env, vec![item.clone()])?;
+                                    let is_greater = match (&key, &best_key) {
+                                        (Value::Int(a), Value::Int(b)) => a > b,
+                                        (Value::Float(a), Value::Float(b)) => a > b,
+                                        _ => false,
+                                    };
+                                    if is_greater {
+                                        best_item = item.clone();
+                                        best_key = key;
+                                    }
+                                }
+                                Ok(best_item)
+                            }
+                            _ => Err(RuntimeError::type_error("closure", "non-closure")),
+                        }
+                    }
                     // v0.90.51: chunk_by(fn(T) -> K) -> [[T]]
                     "chunk_by" => {
                         if args.len() != 1 {

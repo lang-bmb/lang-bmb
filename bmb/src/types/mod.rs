@@ -4266,6 +4266,106 @@ impl TypeChecker {
                         self.unify(&n_ty, &Type::I64, args[0].span)?;
                         Ok(Type::Array(elem_ty.clone().into(), 0))
                     }
+                    // v0.90.52: interleave(other) -> [T] (alternate elements)
+                    "interleave" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("interleave() takes 1 argument (array)", span));
+                        }
+                        let other_ty = self.infer(&args[0].node, args[0].span)?;
+                        match &other_ty {
+                            Type::Array(other_elem, _) => {
+                                self.unify(other_elem, elem_ty, args[0].span)?;
+                            }
+                            _ => return Err(CompileError::type_error("interleave() requires an array argument", args[0].span)),
+                        }
+                        Ok(Type::Array(elem_ty.clone().into(), 0))
+                    }
+                    // v0.90.52: find_map(fn(T) -> U?) -> U? (find + map in one)
+                    "find_map" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("find_map() takes 1 argument (a closure)", span));
+                        }
+                        let fn_ty = self.infer(&args[0].node, args[0].span)?;
+                        match fn_ty {
+                            Type::Fn { params, ret } => {
+                                if params.len() != 1 {
+                                    return Err(CompileError::type_error(
+                                        format!("find_map() closure must take 1 parameter, got {}", params.len()),
+                                        args[0].span,
+                                    ));
+                                }
+                                self.unify(&params[0], elem_ty, args[0].span)?;
+                                match *ret {
+                                    Type::Nullable(_) => Ok(*ret),
+                                    _ => Err(CompileError::type_error(
+                                        "find_map() closure must return a nullable type (T?)",
+                                        args[0].span,
+                                    )),
+                                }
+                            }
+                            _ => Err(CompileError::type_error("find_map() requires a closure argument", args[0].span)),
+                        }
+                    }
+                    // v0.90.52: sum_by(fn(T) -> i64) -> i64 (sum with extractor)
+                    "sum_by" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("sum_by() takes 1 argument (a closure)", span));
+                        }
+                        let fn_ty = self.infer(&args[0].node, args[0].span)?;
+                        match fn_ty {
+                            Type::Fn { params, ret } => {
+                                if params.len() != 1 {
+                                    return Err(CompileError::type_error(
+                                        format!("sum_by() closure must take 1 parameter, got {}", params.len()),
+                                        args[0].span,
+                                    ));
+                                }
+                                self.unify(&params[0], elem_ty, args[0].span)?;
+                                Ok(*ret)
+                            }
+                            _ => Err(CompileError::type_error("sum_by() requires a closure argument", args[0].span)),
+                        }
+                    }
+                    // v0.90.52: min_by(fn(T) -> i64) -> T? (minimum by key)
+                    "min_by" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("min_by() takes 1 argument (a closure)", span));
+                        }
+                        let fn_ty = self.infer(&args[0].node, args[0].span)?;
+                        match fn_ty {
+                            Type::Fn { params, .. } => {
+                                if params.len() != 1 {
+                                    return Err(CompileError::type_error(
+                                        format!("min_by() closure must take 1 parameter, got {}", params.len()),
+                                        args[0].span,
+                                    ));
+                                }
+                                self.unify(&params[0], elem_ty, args[0].span)?;
+                                Ok(Type::Nullable(elem_ty.clone().into()))
+                            }
+                            _ => Err(CompileError::type_error("min_by() requires a closure argument", args[0].span)),
+                        }
+                    }
+                    // v0.90.52: max_by(fn(T) -> i64) -> T? (maximum by key)
+                    "max_by" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("max_by() takes 1 argument (a closure)", span));
+                        }
+                        let fn_ty = self.infer(&args[0].node, args[0].span)?;
+                        match fn_ty {
+                            Type::Fn { params, .. } => {
+                                if params.len() != 1 {
+                                    return Err(CompileError::type_error(
+                                        format!("max_by() closure must take 1 parameter, got {}", params.len()),
+                                        args[0].span,
+                                    ));
+                                }
+                                self.unify(&params[0], elem_ty, args[0].span)?;
+                                Ok(Type::Nullable(elem_ty.clone().into()))
+                            }
+                            _ => Err(CompileError::type_error("max_by() requires a closure argument", args[0].span)),
+                        }
+                    }
                     // v0.90.51: chunk_by(fn(T) -> K) -> [[T]] (group consecutive elements by key)
                     "chunk_by" => {
                         if args.len() != 1 {
