@@ -17789,3 +17789,159 @@ fn test_string_pad_char_code_chain() {
     // '*' = 42
     assert_eq!(run_program_i64(source), 42);
 }
+
+// ============================================================================
+// Cycle 311: Comprehensive integration tests — multi-method chaining
+// ============================================================================
+
+#[test]
+fn test_comprehensive_array_pipeline() {
+    // Data processing pipeline: filter, map, fold
+    let source = r#"
+        fn main() -> i64 = {
+            [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+                .filter(fn |x: i64| { x % 2 == 0 })
+                .map(fn |x: i64| { x * x })
+                .fold(0, fn |acc: i64, x: i64| { acc + x })
+        };
+    "#;
+    // evens: [2,4,6,8,10] -> squared: [4,16,36,64,100] -> sum: 220
+    assert_eq!(run_program_i64(source), 220);
+}
+
+#[test]
+fn test_comprehensive_string_transform() {
+    // Chain multiple string transformations
+    let source = r#"
+        fn main() -> String = {
+            "  Hello, World!  "
+                .trim()
+                .to_lower()
+                .replace("world", "bmb")
+                .title_case()
+        };
+    "#;
+    assert_eq!(run_program_str(source), "Hello, Bmb!");
+}
+
+#[test]
+fn test_comprehensive_array_grouping() {
+    // Group, then count groups
+    let source = r#"
+        fn main() -> i64 = {
+            [1, 2, 3, 4, 5, 6]
+                .group_by(fn |x: i64| { x % 3 })
+                .len()
+        };
+    "#;
+    // Groups by remainder: {0:[3,6], 1:[1,4], 2:[2,5]} -> 3 groups
+    assert_eq!(run_program_i64(source), 3);
+}
+
+#[test]
+fn test_comprehensive_number_formatting() {
+    // Float computation with formatting
+    let source = r#"
+        fn main() -> String = {
+            let pi = 3.14159265358979;
+            let area = pi * 5.0 * 5.0;
+            area.format_fixed(2)
+        };
+    "#;
+    assert_eq!(run_program_str(source), "78.54");
+}
+
+#[test]
+fn test_comprehensive_array_unique_sort() {
+    // Unique + sort pipeline
+    let source = r#"
+        fn main() -> i64 = {
+            [3, 1, 4, 1, 5, 9, 2, 6, 5, 3]
+                .unique()
+                .sort()
+                .take(3)
+                .fold(0, fn |acc: i64, x: i64| { acc * 10 + x })
+        };
+    "#;
+    // unique: [3,1,4,5,9,2,6] -> sort: [1,2,3,4,5,6,9] -> take(3): [1,2,3] -> fold: 123
+    assert_eq!(run_program_i64(source), 123);
+}
+
+#[test]
+fn test_comprehensive_string_split_rejoin() {
+    // Split, process, rejoin
+    let source = r#"
+        fn main() -> String = {
+            "hello-world-test"
+                .split("-")
+                .map(fn |s: String| { s.to_upper() })
+                .join("_")
+        };
+    "#;
+    assert_eq!(run_program_str(source), "HELLO_WORLD_TEST");
+}
+
+#[test]
+fn test_comprehensive_bool_conditional_pipeline() {
+    // Bool-driven computation
+    let source = r#"
+        fn main() -> i64 = {
+            let values = [10, 20, 30, 40, 50];
+            let has_big = values.any(fn |x: i64| { x > 25 });
+            has_big.choose(
+                values.filter(fn |x: i64| { x > 25 }).sum(),
+                0
+            )
+        };
+    "#;
+    // has_big = true, sum of [30,40,50] = 120
+    assert_eq!(run_program_i64(source), 120);
+}
+
+#[test]
+fn test_comprehensive_nullable_chain() {
+    // Nullable method chaining
+    let source = r#"
+        fn main() -> i64 = {
+            let arr = [10, 20, 30, 40, 50];
+            arr.find(fn |x: i64| { x > 25 })
+               .map(fn |x: i64| { x * 2 })
+               .unwrap_or(0)
+        };
+    "#;
+    // find first > 25: Some(30) -> map *2: Some(60) -> unwrap: 60
+    assert_eq!(run_program_i64(source), 60);
+}
+
+#[test]
+fn test_comprehensive_bit_manipulation() {
+    // Bit manipulation pipeline
+    let source = r#"
+        fn main() -> i64 = {
+            let flags = 0;
+            let flags = flags.bit_or(1);
+            let flags = flags.bit_or(4);
+            let flags = flags.bit_or(16);
+            flags.bit_count()
+        };
+    "#;
+    // 0b10101 has 3 bits set
+    assert_eq!(run_program_i64(source), 3);
+}
+
+#[test]
+fn test_comprehensive_math_pipeline() {
+    // Math computation pipeline
+    let source = r#"
+        fn main() -> i64 = {
+            let angle_deg = 60.0;
+            let rad = angle_deg.to_radians();
+            let sin_val = rad.sin();
+            let cos_val = rad.cos();
+            let identity = sin_val * sin_val + cos_val * cos_val;
+            identity.round().to_int()
+        };
+    "#;
+    // sin²(60°) + cos²(60°) = 1
+    assert_eq!(run_program_i64(source), 1);
+}
