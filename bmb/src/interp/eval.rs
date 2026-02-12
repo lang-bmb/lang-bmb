@@ -3860,6 +3860,48 @@ impl Interpreter {
                         }
                         Ok(Value::Array(result))
                     }
+                    // v0.90.105: dot_product([T]) -> f64 (vector dot product)
+                    "dot_product" => {
+                        let other = match &args[0] {
+                            Value::Array(a) => a,
+                            _ => return Err(RuntimeError::type_error("array", args[0].type_name())),
+                        };
+                        let len = arr.len().min(other.len());
+                        let mut sum = 0.0f64;
+                        for i in 0..len {
+                            let a = match &arr[i] { Value::Int(n) => *n as f64, Value::Float(f) => *f, _ => 0.0 };
+                            let b = match &other[i] { Value::Int(n) => *n as f64, Value::Float(f) => *f, _ => 0.0 };
+                            sum += a * b;
+                        }
+                        Ok(Value::Float(sum))
+                    }
+                    // v0.90.105: magnitude() -> f64 (Euclidean L2 norm)
+                    "magnitude" => {
+                        let mut sum = 0.0f64;
+                        for v in arr.iter() {
+                            let x = match v { Value::Int(n) => *n as f64, Value::Float(f) => *f, _ => 0.0 };
+                            sum += x * x;
+                        }
+                        Ok(Value::Float(sum.sqrt()))
+                    }
+                    // v0.90.105: normalize() -> [f64] (unit vector)
+                    "normalize" => {
+                        let mut sum = 0.0f64;
+                        for v in arr.iter() {
+                            let x = match v { Value::Int(n) => *n as f64, Value::Float(f) => *f, _ => 0.0 };
+                            sum += x * x;
+                        }
+                        let mag = sum.sqrt();
+                        if mag == 0.0 {
+                            Ok(Value::Array(arr.iter().map(|_| Value::Float(0.0)).collect()))
+                        } else {
+                            let result: Vec<Value> = arr.iter().map(|v| {
+                                let x = match v { Value::Int(n) => *n as f64, Value::Float(f) => *f, _ => 0.0 };
+                                Value::Float(x / mag)
+                            }).collect();
+                            Ok(Value::Array(result))
+                        }
+                    }
                     _ => Err(RuntimeError::undefined_function(&format!("Array.{}", method))),
                 }
             }

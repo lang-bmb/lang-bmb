@@ -19224,3 +19224,41 @@ fn test_int_digit_methods_type_checks() {
     assert!(type_checks("fn main() -> i64 = 123.reverse_digits();"));
     assert!(type_checks("fn main() -> i64 = if 121.is_palindrome_int() { 1 } else { 0 };"));
 }
+
+// --- Cycle 339: Array dot_product, normalize, magnitude ---
+
+#[test]
+fn test_array_dot_product() {
+    assert_eq!(run_program_f64("fn main() -> f64 = [1, 2, 3].dot_product([4, 5, 6]);"), 32.0);
+    assert_eq!(run_program_f64("fn main() -> f64 = [1.0, 0.0, 0.0].dot_product([0.0, 1.0, 0.0]);"), 0.0);
+    assert_eq!(run_program_f64("fn main() -> f64 = [2, 3].dot_product([4, 5]);"), 23.0);
+}
+
+#[test]
+fn test_array_magnitude() {
+    assert_eq!(run_program_f64("fn main() -> f64 = [3, 4].magnitude();"), 5.0);
+    assert_eq!(run_program_f64("fn main() -> f64 = [0, 0, 0].magnitude();"), 0.0);
+    assert_eq!(run_program_f64("fn main() -> f64 = [1.0, 0.0].magnitude();"), 1.0);
+}
+
+#[test]
+fn test_array_normalize() {
+    // [3, 4] normalized = [0.6, 0.8], check first element
+    assert_eq!(run_program_f64("fn main() -> f64 = [3.0, 4.0].normalize().get(0).unwrap_or(0.0);"), 0.6);
+    assert_eq!(run_program_f64("fn main() -> f64 = [3.0, 4.0].normalize().get(1).unwrap_or(0.0);"), 0.8);
+    // zero vector stays zero
+    assert_eq!(run_program_f64("fn main() -> f64 = [0.0, 0.0].normalize().get(0).unwrap_or(-1.0);"), 0.0);
+}
+
+#[test]
+fn test_array_vector_chain() {
+    // magnitude of normalized vector should be ~1.0
+    assert_eq!(run_program_f64("fn main() -> f64 = [3.0, 4.0].normalize().magnitude();"), 1.0);
+}
+
+#[test]
+fn test_array_vector_type_checks() {
+    assert!(type_checks("fn main() -> f64 = [1, 2].dot_product([3, 4]);"));
+    assert!(type_checks("fn main() -> f64 = [1, 2].magnitude();"));
+    assert!(type_checks("fn main() -> f64 = [1.0, 2.0].normalize().get(0).unwrap_or(0.0);"));
+}

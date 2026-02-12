@@ -5762,6 +5762,32 @@ impl TypeChecker {
                         }
                         Ok(Type::Array(elem_ty.clone(), 0))
                     }
+                    // v0.90.105: dot_product([T]) -> f64 (vector dot product)
+                    "dot_product" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("dot_product() takes 1 argument (another array)", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        match &arg_ty {
+                            Type::Array(_, _) => {}
+                            _ => return Err(CompileError::type_error("dot_product() requires an array argument", args[0].span)),
+                        }
+                        Ok(Type::F64)
+                    }
+                    // v0.90.105: magnitude() -> f64 (Euclidean L2 norm)
+                    "magnitude" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("magnitude() takes no arguments", span));
+                        }
+                        Ok(Type::F64)
+                    }
+                    // v0.90.105: normalize() -> [f64] (unit vector)
+                    "normalize" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("normalize() takes no arguments", span));
+                        }
+                        Ok(Type::Array(Box::new(Type::F64), 0))
+                    }
                     _ => Err(CompileError::type_error(
                         format!("unknown method '{}' for Array", method),
                         span,
