@@ -3040,6 +3040,34 @@ impl TypeChecker {
                         self.unify(&arg_ty, &Type::I64, args[0].span)?;
                         Ok(Type::Nullable(Box::new(Type::I64)))
                     }
+                    // v0.90.102: successor/predecessor() -> char? (next/prev Unicode char)
+                    "successor" | "predecessor" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error(
+                                format!("{}() takes no arguments", method), span));
+                        }
+                        Ok(Type::Nullable(Box::new(Type::Char)))
+                    }
+                    // v0.90.102: from_int(i64) -> char? (static-like: 'a'.from_int(65) = 'A')
+                    "from_int" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("from_int() takes 1 argument", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg_ty, &Type::I64, args[0].span)?;
+                        Ok(Type::Nullable(Box::new(Type::Char)))
+                    }
+                    // v0.90.102: from_digit(i64, i64) -> char? (digit value + radix to char)
+                    "from_digit" => {
+                        if args.len() != 2 {
+                            return Err(CompileError::type_error("from_digit() takes 2 arguments (digit, radix)", span));
+                        }
+                        let arg0_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg0_ty, &Type::I64, args[0].span)?;
+                        let arg1_ty = self.infer(&args[1].node, args[1].span)?;
+                        self.unify(&arg1_ty, &Type::I64, args[1].span)?;
+                        Ok(Type::Nullable(Box::new(Type::Char)))
+                    }
                     _ => Err(CompileError::type_error(
                         format!("unknown method '{}' for char", method), span)),
                 }

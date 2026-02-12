@@ -19101,3 +19101,51 @@ fn test_array_accumulation_type_checks() {
     assert!(type_checks("fn main() -> i64 = [1, 2, 3].running_min().len();"));
     assert!(type_checks("fn main() -> i64 = [1, 2, 3].running_max().len();"));
 }
+
+// --- Cycle 336: Char successor, predecessor, from_int, from_digit ---
+
+#[test]
+fn test_char_successor() {
+    // 'a' successor is 'b' (98)
+    assert_eq!(run_program_i64("fn main() -> i64 = 'a'.successor().unwrap_or('?').to_int();"), 98);
+    // 'A' successor is 'B' (66)
+    assert_eq!(run_program_i64("fn main() -> i64 = 'A'.successor().unwrap_or('?').to_int();"), 66);
+}
+
+#[test]
+fn test_char_predecessor() {
+    // 'b' predecessor is 'a' (97)
+    assert_eq!(run_program_i64("fn main() -> i64 = 'b'.predecessor().unwrap_or('?').to_int();"), 97);
+    // '0' predecessor is '/' (47)
+    assert_eq!(run_program_i64("fn main() -> i64 = '0'.predecessor().unwrap_or('?').to_int();"), 47);
+}
+
+#[test]
+fn test_char_from_int() {
+    // from_int(65) = 'A'
+    assert_eq!(run_program_i64("fn main() -> i64 = 'x'.from_int(65).unwrap_or('?').to_int();"), 65);
+    // from_int(48) = '0'
+    assert_eq!(run_program_i64("fn main() -> i64 = 'x'.from_int(48).unwrap_or('?').to_int();"), 48);
+}
+
+#[test]
+fn test_char_from_digit() {
+    // from_digit(10, 16) = 'a' (hex digit 10 = 'a')
+    assert_eq!(run_program_i64("fn main() -> i64 = 'x'.from_digit(10, 16).unwrap_or('?').to_int();"), 97);
+    // from_digit(5, 10) = '5'
+    assert_eq!(run_program_i64("fn main() -> i64 = 'x'.from_digit(5, 10).unwrap_or('?').to_int();"), 53);
+}
+
+#[test]
+fn test_char_successor_predecessor_roundtrip() {
+    // 'a'.successor().unwrap_or('?').predecessor() should give back 'a'
+    assert_eq!(run_program_i64("fn main() -> i64 = 'a'.successor().unwrap_or('?').predecessor().unwrap_or('?').to_int();"), 97);
+}
+
+#[test]
+fn test_char_navigation_type_checks() {
+    assert!(type_checks("fn main() -> i64 = 'a'.successor().unwrap_or('?').to_int();"));
+    assert!(type_checks("fn main() -> i64 = 'a'.predecessor().unwrap_or('?').to_int();"));
+    assert!(type_checks("fn main() -> i64 = 'a'.from_int(65).unwrap_or('?').to_int();"));
+    assert!(type_checks("fn main() -> i64 = 'a'.from_digit(5, 10).unwrap_or('?').to_int();"));
+}

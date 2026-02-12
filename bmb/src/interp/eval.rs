@@ -4354,6 +4354,50 @@ impl Interpreter {
                             None => Ok(Value::Enum("Option".to_string(), "None".to_string(), vec![])),
                         }
                     }
+                    // v0.90.102: successor() -> char?
+                    "successor" => {
+                        match char::from_u32(c as u32 + 1) {
+                            Some(next) => Ok(Value::Enum("Option".to_string(), "Some".to_string(), vec![Value::Char(next)])),
+                            None => Ok(Value::Enum("Option".to_string(), "None".to_string(), vec![])),
+                        }
+                    }
+                    // v0.90.102: predecessor() -> char?
+                    "predecessor" => {
+                        if c as u32 == 0 {
+                            Ok(Value::Enum("Option".to_string(), "None".to_string(), vec![]))
+                        } else {
+                            match char::from_u32(c as u32 - 1) {
+                                Some(prev) => Ok(Value::Enum("Option".to_string(), "Some".to_string(), vec![Value::Char(prev)])),
+                                None => Ok(Value::Enum("Option".to_string(), "None".to_string(), vec![])),
+                            }
+                        }
+                    }
+                    // v0.90.102: from_int(i64) -> char?
+                    "from_int" => {
+                        let code = match &args[0] {
+                            Value::Int(n) => *n as u32,
+                            _ => return Err(RuntimeError::type_error("integer", args[0].type_name())),
+                        };
+                        match char::from_u32(code) {
+                            Some(ch) => Ok(Value::Enum("Option".to_string(), "Some".to_string(), vec![Value::Char(ch)])),
+                            None => Ok(Value::Enum("Option".to_string(), "None".to_string(), vec![])),
+                        }
+                    }
+                    // v0.90.102: from_digit(digit, radix) -> char?
+                    "from_digit" => {
+                        let digit = match &args[0] {
+                            Value::Int(n) => *n as u32,
+                            _ => return Err(RuntimeError::type_error("integer", args[0].type_name())),
+                        };
+                        let radix = match &args[1] {
+                            Value::Int(n) => *n as u32,
+                            _ => return Err(RuntimeError::type_error("integer", args[1].type_name())),
+                        };
+                        match char::from_digit(digit, radix) {
+                            Some(ch) => Ok(Value::Enum("Option".to_string(), "Some".to_string(), vec![Value::Char(ch)])),
+                            None => Ok(Value::Enum("Option".to_string(), "None".to_string(), vec![])),
+                        }
+                    }
                     _ => Err(RuntimeError::undefined_function(&format!("char.{}", method))),
                 }
             }
