@@ -19344,3 +19344,40 @@ fn test_string_new_methods_type_checks() {
     assert!(type_checks(r#"fn main() -> String = "1234".format_number();"#));
     assert!(type_checks(r#"fn main() -> i64 = "test".hash_code();"#));
 }
+
+// --- Cycle 342: Array partition_point, cross_product, mode ---
+
+#[test]
+fn test_array_partition_point() {
+    // sorted array [1,2,3,4,5], partition_point where x < 3 gives index 2
+    assert_eq!(run_program_i64("fn main() -> i64 = [1, 2, 3, 4, 5].partition_point(fn |x: i64| { x < 3 });"), 2);
+    assert_eq!(run_program_i64("fn main() -> i64 = [1, 2, 3, 4, 5].partition_point(fn |x: i64| { x < 6 });"), 5);
+    assert_eq!(run_program_i64("fn main() -> i64 = [1, 2, 3, 4, 5].partition_point(fn |x: i64| { x < 1 });"), 0);
+}
+
+#[test]
+fn test_array_cross_product() {
+    assert_eq!(run_program_i64("fn main() -> i64 = [1, 2].cross_product([3, 4]).len();"), 4);
+    // empty cross product
+    assert_eq!(run_program_i64("fn main() -> i64 = [1, 2].cross_product([10, 20]).flatten().len();"), 8);
+}
+
+#[test]
+fn test_array_mode() {
+    assert_eq!(run_program_i64("fn main() -> i64 = [1, 2, 2, 3, 3, 3].mode().unwrap_or(0);"), 3);
+    assert_eq!(run_program_i64("fn main() -> i64 = [5, 5, 1, 1, 5].mode().unwrap_or(0);"), 5);
+    assert_eq!(run_program_i64("fn main() -> i64 = [1].mode().unwrap_or(0);"), 1);
+}
+
+#[test]
+fn test_array_partition_cross_chain() {
+    // cross product of [1,2] x [1,2] has 4 elements
+    assert_eq!(run_program_i64("fn main() -> i64 = [1, 2].cross_product([1, 2]).len();"), 4);
+}
+
+#[test]
+fn test_array_342_type_checks() {
+    assert!(type_checks("fn main() -> i64 = [1, 2, 3].partition_point(fn |x: i64| { x < 2 });"));
+    assert!(type_checks("fn main() -> i64 = [1, 2].cross_product([3, 4]).len();"));
+    assert!(type_checks("fn main() -> i64 = [1, 2, 2].mode().unwrap_or(0);"));
+}

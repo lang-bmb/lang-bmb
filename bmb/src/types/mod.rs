@@ -5835,6 +5835,43 @@ impl TypeChecker {
                         }
                         Ok(Type::Array(Box::new(Type::F64), 0))
                     }
+                    // v0.90.108: partition_point(fn(T) -> bool) -> i64
+                    "partition_point" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("partition_point() takes 1 argument (predicate)", span));
+                        }
+                        let fn_ty = self.infer(&args[0].node, args[0].span)?;
+                        match fn_ty {
+                            Type::Fn { params, ret } => {
+                                if params.len() != 1 {
+                                    return Err(CompileError::type_error("partition_point() predicate must take 1 parameter", args[0].span));
+                                }
+                                self.unify(&params[0], elem_ty, args[0].span)?;
+                                self.unify(&ret, &Type::Bool, args[0].span)?;
+                            }
+                            _ => return Err(CompileError::type_error("partition_point() requires a closure", args[0].span)),
+                        }
+                        Ok(Type::I64)
+                    }
+                    // v0.90.108: cross_product([T]) -> [[T]] (Cartesian product)
+                    "cross_product" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("cross_product() takes 1 argument (another array)", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        match &arg_ty {
+                            Type::Array(_, _) => {}
+                            _ => return Err(CompileError::type_error("cross_product() requires an array argument", args[0].span)),
+                        }
+                        Ok(Type::Array(Box::new(Type::Array(elem_ty.clone(), 0)), 0))
+                    }
+                    // v0.90.108: mode() -> T? (most frequent element)
+                    "mode" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("mode() takes no arguments", span));
+                        }
+                        Ok(Type::Nullable(elem_ty.clone()))
+                    }
                     _ => Err(CompileError::type_error(
                         format!("unknown method '{}' for Array", method),
                         span,

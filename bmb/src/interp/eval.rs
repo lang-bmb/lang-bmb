@@ -3946,6 +3946,59 @@ impl Interpreter {
                             Ok(Value::Array(result))
                         }
                     }
+                    // v0.90.108: partition_point(fn(T) -> bool) -> i64
+                    "partition_point" => {
+                        let closure = match args.into_iter().next().unwrap() {
+                            Value::Closure { params, body, env: closure_env } => (params, body, closure_env),
+                            _ => return Err(RuntimeError::type_error("closure", "non-closure")),
+                        };
+                        let mut lo = 0usize;
+                        let mut hi = arr.len();
+                        while lo < hi {
+                            let mid = lo + (hi - lo) / 2;
+                            let result = self.call_closure(&closure.0, &closure.1, &closure.2, vec![arr[mid].clone()])?;
+                            match result {
+                                Value::Bool(true) => lo = mid + 1,
+                                _ => hi = mid,
+                            }
+                        }
+                        Ok(Value::Int(lo as i64))
+                    }
+                    // v0.90.108: cross_product([T]) -> [[T]] (Cartesian product)
+                    "cross_product" => {
+                        let other = match &args[0] {
+                            Value::Array(a) => a.clone(),
+                            _ => return Err(RuntimeError::type_error("array", args[0].type_name())),
+                        };
+                        let mut result = Vec::new();
+                        for a in arr.iter() {
+                            for b in other.iter() {
+                                result.push(Value::Array(vec![a.clone(), b.clone()]));
+                            }
+                        }
+                        Ok(Value::Array(result))
+                    }
+                    // v0.90.108: mode() -> T? (most frequent element)
+                    "mode" => {
+                        if arr.is_empty() {
+                            return Ok(Value::Enum("Option".to_string(), "None".to_string(), vec![]));
+                        }
+                        // Use string representation for counting
+                        let mut counts = std::collections::HashMap::new();
+                        for v in arr.iter() {
+                            let key = format!("{:?}", v);
+                            *counts.entry(key).or_insert(0usize) += 1;
+                        }
+                        let max_count = counts.values().max().copied().unwrap_or(0);
+                        // Find first element with max count
+                        for v in arr.iter() {
+                            let key = format!("{:?}", v);
+                            if counts[&key] == max_count {
+                                return Ok(Value::Enum("Option".to_string(), "Some".to_string(), vec![v.clone()]));
+                            }
+                        }
+                        Ok(Value::Enum("Option".to_string(), "None".to_string(), vec![]))
+                    }
                     _ => Err(RuntimeError::undefined_function(&format!("Array.{}", method))),
                 }
             }
