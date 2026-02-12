@@ -3479,6 +3479,28 @@ impl Interpreter {
                     "to_lowercase" => Ok(Value::Char(c.to_lowercase().next().unwrap_or(c))),
                     "to_int" => Ok(Value::Int(c as u32 as i64)),
                     "to_string" => Ok(Value::Str(Rc::new(c.to_string()))),
+                    // v0.90.80: is_digit(radix), eq_ignore_case, repeat
+                    "is_digit" => {
+                        let radix = match &args[0] {
+                            Value::Int(n) => *n as u32,
+                            _ => return Err(RuntimeError::type_error("integer", args[0].type_name())),
+                        };
+                        Ok(Value::Bool(c.is_digit(radix)))
+                    }
+                    "eq_ignore_case" => {
+                        let other = match &args[0] {
+                            Value::Char(ch) => *ch,
+                            _ => return Err(RuntimeError::type_error("char", args[0].type_name())),
+                        };
+                        Ok(Value::Bool(c.to_lowercase().eq(other.to_lowercase())))
+                    }
+                    "repeat" => {
+                        let count = match &args[0] {
+                            Value::Int(n) => *n as usize,
+                            _ => return Err(RuntimeError::type_error("integer", args[0].type_name())),
+                        };
+                        Ok(Value::Str(Rc::new(std::iter::repeat(c).take(count).collect::<String>())))
+                    }
                     _ => Err(RuntimeError::undefined_function(&format!("char.{}", method))),
                 }
             }

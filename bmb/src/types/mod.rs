@@ -2966,6 +2966,41 @@ impl TypeChecker {
                         }
                         Ok(Type::Char)
                     }
+                    // v0.90.80: is_digit(radix: i64) -> bool
+                    "is_digit" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("is_digit() takes 1 argument (radix)", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        match arg_ty {
+                            Type::I32 | Type::I64 | Type::U32 | Type::U64 => {}
+                            _ => return Err(CompileError::type_error(
+                                format!("is_digit() requires integer argument, got {}", arg_ty), args[0].span)),
+                        }
+                        Ok(Type::Bool)
+                    }
+                    // v0.90.80: eq_ignore_case(char) -> bool
+                    "eq_ignore_case" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("eq_ignore_case() takes 1 argument", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg_ty, &Type::Char, args[0].span)?;
+                        Ok(Type::Bool)
+                    }
+                    // v0.90.80: repeat(i64) -> String
+                    "repeat" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("repeat() takes 1 argument", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        match arg_ty {
+                            Type::I32 | Type::I64 | Type::U32 | Type::U64 => {}
+                            _ => return Err(CompileError::type_error(
+                                format!("repeat() requires integer argument, got {}", arg_ty), args[0].span)),
+                        }
+                        Ok(Type::String)
+                    }
                     "to_int" => {
                         if !args.is_empty() {
                             return Err(CompileError::type_error("to_int() takes no arguments", span));

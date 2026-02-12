@@ -18042,3 +18042,32 @@ fn test_char_to_uppercase() {
 fn test_char_to_lowercase() {
     assert_eq!(run_program_i64("fn main() -> i64 = 'Z'.to_lowercase().to_int();"), 122);
 }
+
+// --- Cycle 314: Char utilities — is_digit, eq_ignore_case, repeat ---
+
+#[test]
+fn test_char_is_digit() {
+    assert_eq!(run_program_i64("fn main() -> i64 = if '9'.is_digit(10) { 1 } else { 0 };"), 1);
+    assert_eq!(run_program_i64("fn main() -> i64 = if 'a'.is_digit(16) { 1 } else { 0 };"), 1);
+    assert_eq!(run_program_i64("fn main() -> i64 = if 'g'.is_digit(16) { 1 } else { 0 };"), 0);
+}
+
+#[test]
+fn test_char_eq_ignore_case() {
+    assert_eq!(run_program_i64("fn main() -> i64 = if 'A'.eq_ignore_case('a') { 1 } else { 0 };"), 1);
+    assert_eq!(run_program_i64("fn main() -> i64 = if 'x'.eq_ignore_case('X') { 1 } else { 0 };"), 1);
+    assert_eq!(run_program_i64("fn main() -> i64 = if 'a'.eq_ignore_case('b') { 1 } else { 0 };"), 0);
+}
+
+#[test]
+fn test_char_repeat() {
+    assert_eq!(run_program_str("fn main() -> String = 'x'.repeat(5);"), "xxxxx");
+    assert_eq!(run_program_str("fn main() -> String = '*'.repeat(3);"), "***");
+}
+
+#[test]
+fn test_char_combined() {
+    // Chain: get char, check if hex digit, convert case
+    assert_eq!(run_program_i64("fn main() -> i64 = if 'F'.to_lowercase().is_digit(16) { 1 } else { 0 };"), 1);
+    assert_eq!(run_program_str("fn main() -> String = 'a'.to_uppercase().to_string();"), "A");
+}
