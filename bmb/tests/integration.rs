@@ -15960,3 +15960,117 @@ fn test_program_type_conversions() {
     // "42".len()=2, "3.14".len()=4, true.to_int()=1 = 7
     assert_eq!(run_program_i64(source), 7);
 }
+
+// ============================================
+// Cycle 291: Final Polish — sorted_by_key, dedup_by, map_with_index, each_with_index
+// ============================================
+
+#[test]
+fn test_array_sorted_by_key() {
+    let source = r#"
+        fn neg(x: i64) -> i64 = 0 - x;
+        fn main() -> i64 = [3, 1, 4, 1, 5].sorted_by_key(fn |x: i64| { neg(x) }).first();
+    "#;
+    // sorted by -x (descending): [5, 4, 3, 1, 1], first = 5
+    assert_eq!(run_program_i64(source), 5);
+}
+
+#[test]
+fn test_array_sorted_by_key_asc() {
+    let source = r#"
+        fn main() -> i64 = [5, 2, 8, 1, 9].sorted_by_key(fn |x: i64| { x }).first();
+    "#;
+    // ascending sort, first = 1
+    assert_eq!(run_program_i64(source), 1);
+}
+
+#[test]
+fn test_array_sorted_by_key_abs() {
+    let source = r#"
+        fn abs_val(x: i64) -> i64 = if x < 0 { 0 - x } else { x };
+        fn main() -> i64 = [-3, 1, -5, 2].sorted_by_key(fn |x: i64| { abs_val(x) }).last();
+    "#;
+    // sorted by abs: [1, 2, -3, -5], last = -5
+    assert_eq!(run_program_i64(source), -5);
+}
+
+#[test]
+fn test_array_dedup_by() {
+    let source = r#"
+        fn same_sign(a: i64, b: i64) -> bool = (a > 0) == (b > 0);
+        fn main() -> i64 = [1, 2, -1, -2, 3, 4].dedup_by(fn |a: i64, b: i64| { same_sign(a, b) }).len();
+    "#;
+    // groups: [1,2], [-1,-2], [3,4] -> dedup keeps [1, -1, 3] = 3
+    assert_eq!(run_program_i64(source), 3);
+}
+
+#[test]
+fn test_array_dedup_by_equal() {
+    let source = r#"
+        fn main() -> i64 = [1, 1, 2, 2, 3, 3].dedup_by(fn |a: i64, b: i64| { a == b }).len();
+    "#;
+    // same as dedup: [1, 2, 3] = 3
+    assert_eq!(run_program_i64(source), 3);
+}
+
+#[test]
+fn test_array_map_with_index() {
+    let source = r#"
+        fn main() -> i64 = [10, 20, 30].map_with_index(fn |i: i64, x: i64| { i + x }).sum();
+    "#;
+    // [0+10, 1+20, 2+30] = [10, 21, 32].sum() = 63
+    assert_eq!(run_program_i64(source), 63);
+}
+
+#[test]
+fn test_array_map_with_index_squares() {
+    let source = r#"
+        fn main() -> i64 = [1, 1, 1, 1, 1].map_with_index(fn |i: i64, x: i64| { i * i }).sum();
+    "#;
+    // [0, 1, 4, 9, 16].sum() = 30
+    assert_eq!(run_program_i64(source), 30);
+}
+
+#[test]
+fn test_array_sorted_filter_chain() {
+    let source = r#"
+        fn main() -> i64 = [5, 3, 8, 1, 9, 2]
+            .sorted_by_key(fn |x: i64| { x })
+            .take(3)
+            .sum();
+    "#;
+    // sorted: [1,2,3,5,8,9], take 3: [1,2,3].sum() = 6
+    assert_eq!(run_program_i64(source), 6);
+}
+
+#[test]
+fn test_array_map_with_index_filter() {
+    let source = r#"
+        fn main() -> i64 = [10, 20, 30, 40, 50]
+            .map_with_index(fn |i: i64, x: i64| { i * x })
+            .filter(fn |x: i64| { x > 0 })
+            .sum();
+    "#;
+    // [0*10, 1*20, 2*30, 3*40, 4*50] = [0, 20, 60, 120, 200]
+    // filter > 0: [20, 60, 120, 200].sum() = 400
+    assert_eq!(run_program_i64(source), 400);
+}
+
+#[test]
+fn test_final_comprehensive_program() {
+    let source = r#"
+        fn main() -> i64 = {
+            let nums = 1.range_to(11);
+            let evens = nums.filter(fn |x: i64| { x.is_even() });
+            let odds = nums.reject(fn |x: i64| { x.is_even() });
+            let even_sum = evens.sum();
+            let odd_sum = odds.sum();
+            let distinct = nums.count_by(fn |x: i64| { x % 3 });
+            even_sum + odd_sum + distinct
+        };
+    "#;
+    // evens: [2,4,6,8,10].sum()=30, odds: [1,3,5,7,9].sum()=25
+    // distinct mod 3: {0,1,2} = 3
+    // 30 + 25 + 3 = 58
+    assert_eq!(run_program_i64(source), 58);
+}

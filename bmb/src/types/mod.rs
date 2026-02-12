@@ -4555,6 +4555,90 @@ impl TypeChecker {
                             _ => Err(CompileError::type_error("chunk_by() requires a closure argument", args[0].span)),
                         }
                     }
+                    // v0.90.57: sorted_by_key(fn(T) -> K) -> [T]
+                    "sorted_by_key" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("sorted_by_key() takes 1 argument (a closure)", span));
+                        }
+                        let fn_ty = self.infer(&args[0].node, args[0].span)?;
+                        match fn_ty {
+                            Type::Fn { params, .. } => {
+                                if params.len() != 1 {
+                                    return Err(CompileError::type_error(
+                                        format!("sorted_by_key() closure must take 1 parameter, got {}", params.len()),
+                                        args[0].span,
+                                    ));
+                                }
+                                self.unify(&params[0], elem_ty, args[0].span)?;
+                                Ok(Type::Array(elem_ty.clone().into(), 0))
+                            }
+                            _ => Err(CompileError::type_error("sorted_by_key() requires a closure argument", args[0].span)),
+                        }
+                    }
+                    // v0.90.57: dedup_by(fn(T, T) -> bool) -> [T]
+                    "dedup_by" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("dedup_by() takes 1 argument (a closure)", span));
+                        }
+                        let fn_ty = self.infer(&args[0].node, args[0].span)?;
+                        match fn_ty {
+                            Type::Fn { params, ret } => {
+                                if params.len() != 2 {
+                                    return Err(CompileError::type_error(
+                                        format!("dedup_by() closure must take 2 parameters, got {}", params.len()),
+                                        args[0].span,
+                                    ));
+                                }
+                                self.unify(&params[0], elem_ty, args[0].span)?;
+                                self.unify(&params[1], elem_ty, args[0].span)?;
+                                self.unify(&ret, &Type::Bool, args[0].span)?;
+                                Ok(Type::Array(elem_ty.clone().into(), 0))
+                            }
+                            _ => Err(CompileError::type_error("dedup_by() requires a closure argument", args[0].span)),
+                        }
+                    }
+                    // v0.90.57: map_with_index(fn(i64, T) -> U) -> [U]
+                    "map_with_index" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("map_with_index() takes 1 argument (a closure)", span));
+                        }
+                        let fn_ty = self.infer(&args[0].node, args[0].span)?;
+                        match fn_ty {
+                            Type::Fn { params, ret } => {
+                                if params.len() != 2 {
+                                    return Err(CompileError::type_error(
+                                        format!("map_with_index() closure must take 2 parameters (index, element), got {}", params.len()),
+                                        args[0].span,
+                                    ));
+                                }
+                                self.unify(&params[0], &Type::I64, args[0].span)?;
+                                self.unify(&params[1], elem_ty, args[0].span)?;
+                                Ok(Type::Array(ret, 0))
+                            }
+                            _ => Err(CompileError::type_error("map_with_index() requires a closure argument", args[0].span)),
+                        }
+                    }
+                    // v0.90.57: each_with_index(fn(i64, T) -> ()) -> () (for_each with index)
+                    "each_with_index" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("each_with_index() takes 1 argument (a closure)", span));
+                        }
+                        let fn_ty = self.infer(&args[0].node, args[0].span)?;
+                        match fn_ty {
+                            Type::Fn { params, .. } => {
+                                if params.len() != 2 {
+                                    return Err(CompileError::type_error(
+                                        format!("each_with_index() closure must take 2 parameters (index, element), got {}", params.len()),
+                                        args[0].span,
+                                    ));
+                                }
+                                self.unify(&params[0], &Type::I64, args[0].span)?;
+                                self.unify(&params[1], elem_ty, args[0].span)?;
+                                Ok(Type::Unit)
+                            }
+                            _ => Err(CompileError::type_error("each_with_index() requires a closure argument", args[0].span)),
+                        }
+                    }
                     _ => Err(CompileError::type_error(
                         format!("unknown method '{}' for Array", method),
                         span,

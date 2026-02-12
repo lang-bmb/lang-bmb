@@ -2522,6 +2522,88 @@ impl Interpreter {
                             _ => Err(RuntimeError::type_error("closure", "non-closure")),
                         }
                     }
+                    // v0.90.57: sorted_by_key(fn(T) -> K) -> [T]
+                    "sorted_by_key" => {
+                        if args.len() != 1 {
+                            return Err(RuntimeError::arity_mismatch("sorted_by_key", 1, args.len()));
+                        }
+                        match args.into_iter().next().unwrap() {
+                            Value::Closure { params, body, env: closure_env } => {
+                                // compute keys first
+                                let mut indexed: Vec<(Value, Value)> = Vec::new();
+                                for elem in &arr {
+                                    let key = self.call_closure(&params, &body, &closure_env, vec![elem.clone()])?;
+                                    indexed.push((key, elem.clone()));
+                                }
+                                indexed.sort_by(|(a, _), (b, _)| {
+                                    match (a, b) {
+                                        (Value::Int(a), Value::Int(b)) => a.cmp(b),
+                                        (Value::Float(a), Value::Float(b)) => a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal),
+                                        (Value::Str(a), Value::Str(b)) => a.cmp(b),
+                                        _ => std::cmp::Ordering::Equal,
+                                    }
+                                });
+                                let result: Vec<Value> = indexed.into_iter().map(|(_, v)| v).collect();
+                                Ok(Value::Array(result))
+                            }
+                            _ => Err(RuntimeError::type_error("closure", "non-closure")),
+                        }
+                    }
+                    // v0.90.57: dedup_by(fn(T, T) -> bool) -> [T]
+                    "dedup_by" => {
+                        if args.len() != 1 {
+                            return Err(RuntimeError::arity_mismatch("dedup_by", 1, args.len()));
+                        }
+                        match args.into_iter().next().unwrap() {
+                            Value::Closure { params, body, env: closure_env } => {
+                                if arr.is_empty() {
+                                    return Ok(Value::Array(Vec::new()));
+                                }
+                                let mut result = vec![arr[0].clone()];
+                                for i in 1..arr.len() {
+                                    let last = result.last().unwrap().clone();
+                                    let is_dup = self.call_closure(&params, &body, &closure_env, vec![last, arr[i].clone()])?;
+                                    if !is_dup.is_truthy() {
+                                        result.push(arr[i].clone());
+                                    }
+                                }
+                                Ok(Value::Array(result))
+                            }
+                            _ => Err(RuntimeError::type_error("closure", "non-closure")),
+                        }
+                    }
+                    // v0.90.57: map_with_index(fn(i64, T) -> U) -> [U]
+                    "map_with_index" => {
+                        if args.len() != 1 {
+                            return Err(RuntimeError::arity_mismatch("map_with_index", 1, args.len()));
+                        }
+                        match args.into_iter().next().unwrap() {
+                            Value::Closure { params, body, env: closure_env } => {
+                                let mut result = Vec::with_capacity(arr.len());
+                                for (i, elem) in arr.into_iter().enumerate() {
+                                    let val = self.call_closure(&params, &body, &closure_env, vec![Value::Int(i as i64), elem])?;
+                                    result.push(val);
+                                }
+                                Ok(Value::Array(result))
+                            }
+                            _ => Err(RuntimeError::type_error("closure", "non-closure")),
+                        }
+                    }
+                    // v0.90.57: each_with_index(fn(i64, T) -> ()) -> ()
+                    "each_with_index" => {
+                        if args.len() != 1 {
+                            return Err(RuntimeError::arity_mismatch("each_with_index", 1, args.len()));
+                        }
+                        match args.into_iter().next().unwrap() {
+                            Value::Closure { params, body, env: closure_env } => {
+                                for (i, elem) in arr.into_iter().enumerate() {
+                                    self.call_closure(&params, &body, &closure_env, vec![Value::Int(i as i64), elem])?;
+                                }
+                                Ok(Value::Unit)
+                            }
+                            _ => Err(RuntimeError::type_error("closure", "non-closure")),
+                        }
+                    }
                     _ => Err(RuntimeError::undefined_function(&format!("Array.{}", method))),
                 }
             }
