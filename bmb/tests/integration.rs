@@ -17318,3 +17318,88 @@ fn test_array_transpose_associate_chain() {
     "#;
     assert_eq!(run_program_i64(source), 3);
 }
+
+// ============================================================================
+// Cycle 305: Float to_radians, to_degrees, format_fixed, signum, recip
+// ============================================================================
+
+#[test]
+fn test_float_to_radians() {
+    let source = r#"
+        fn main() -> f64 = 180.0.to_radians();
+    "#;
+    let result = run_program_f64(source);
+    assert!((result - std::f64::consts::PI).abs() < 1e-10);
+}
+
+#[test]
+fn test_float_to_degrees() {
+    let source = r#"
+        fn main() -> f64 = 3.14159265358979.to_degrees();
+    "#;
+    let result = run_program_f64(source);
+    assert!((result - 180.0).abs() < 1e-6);
+}
+
+#[test]
+fn test_float_radians_degrees_roundtrip() {
+    let source = r#"
+        fn main() -> f64 = 45.0.to_radians().to_degrees();
+    "#;
+    let result = run_program_f64(source);
+    assert!((result - 45.0).abs() < 1e-10);
+}
+
+#[test]
+fn test_float_signum_positive() {
+    let source = r#"
+        fn main() -> f64 = 42.0.signum();
+    "#;
+    let result = run_program_f64(source);
+    assert!((result - 1.0).abs() < 1e-10);
+}
+
+#[test]
+fn test_float_signum_negative() {
+    let source = r#"
+        fn main() -> f64 = {
+            let x = 0.0 - 3.14;
+            x.signum()
+        };
+    "#;
+    let result = run_program_f64(source);
+    assert!((result - (-1.0)).abs() < 1e-10);
+}
+
+#[test]
+fn test_float_recip() {
+    let source = r#"
+        fn main() -> f64 = 4.0.recip();
+    "#;
+    let result = run_program_f64(source);
+    assert!((result - 0.25).abs() < 1e-10);
+}
+
+#[test]
+fn test_float_format_fixed() {
+    let source = r#"
+        fn main() -> String = 3.14159.format_fixed(2);
+    "#;
+    assert_eq!(run_program_str(source), "3.14");
+}
+
+#[test]
+fn test_float_format_fixed_zero() {
+    let source = r#"
+        fn main() -> String = 3.14159.format_fixed(0);
+    "#;
+    assert_eq!(run_program_str(source), "3");
+}
+
+#[test]
+fn test_float_format_fixed_many() {
+    let source = r#"
+        fn main() -> String = 1.0.format_fixed(4);
+    "#;
+    assert_eq!(run_program_str(source), "1.0000");
+}

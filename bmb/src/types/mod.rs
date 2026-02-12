@@ -3228,6 +3228,21 @@ impl TypeChecker {
                         self.unify(&arg_ty, &Type::F64, args[0].span)?;
                         Ok(Type::F64)
                     }
+                    // v0.90.71: to_radians, to_degrees, format_fixed, signum, recip
+                    "to_radians" | "to_degrees" | "signum" | "recip" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error(&format!("{}() takes no arguments", method), span));
+                        }
+                        Ok(Type::F64)
+                    }
+                    "format_fixed" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("format_fixed() takes 1 argument (decimal places)", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg_ty, &Type::I64, args[0].span)?;
+                        Ok(Type::String)
+                    }
                     _ => Err(CompileError::type_error(
                         format!("unknown method '{}' for f64", method), span)),
                 }

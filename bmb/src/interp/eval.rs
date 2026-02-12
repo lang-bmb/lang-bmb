@@ -1162,6 +1162,18 @@ impl Interpreter {
                         };
                         Ok(Value::Float(f.log(base)))
                     }
+                    // v0.90.71: to_radians, to_degrees, format_fixed, signum, recip
+                    "to_radians" => Ok(Value::Float(f.to_radians())),
+                    "to_degrees" => Ok(Value::Float(f.to_degrees())),
+                    "signum" => Ok(Value::Float(f.signum())),
+                    "recip" => Ok(Value::Float(f.recip())),
+                    "format_fixed" => {
+                        let places = match &args[0] {
+                            Value::Int(n) => *n as usize,
+                            _ => return Err(RuntimeError::type_error("integer", args[0].type_name())),
+                        };
+                        Ok(Value::Str(Rc::new(format!("{:.prec$}", f, prec = places))))
+                    }
                     _ => Err(RuntimeError::undefined_function(&format!("f64.{}", method))),
                 }
             }
