@@ -6123,10 +6123,14 @@ impl TypeChecker {
                         }
                         Ok(Type::Bool)
                     }
-                    _ => Err(CompileError::type_error(
-                        format!("unknown method '{}' for Thread<{}>", method, inner_ty),
-                        span,
-                    )),
+                    _ => {
+                        let methods: &[&str] = &["join", "is_alive"];
+                        let suggestion = find_similar_name(method, methods, 2);
+                        Err(CompileError::type_error(
+                            format!("unknown method '{}' for Thread{}", method, format_suggestion_hint(suggestion)),
+                            span,
+                        ))
+                    }
                 }
             }
             // v0.71: Mutex<T> methods
@@ -6182,10 +6186,14 @@ impl TypeChecker {
                             )),
                         }
                     }
-                    _ => Err(CompileError::type_error(
-                        format!("unknown method '{}' for Mutex<{}>", method, inner_ty),
-                        span,
-                    )),
+                    _ => {
+                        let methods: &[&str] = &["lock", "unlock", "try_lock", "free", "with"];
+                        let suggestion = find_similar_name(method, methods, 2);
+                        Err(CompileError::type_error(
+                            format!("unknown method '{}' for Mutex{}", method, format_suggestion_hint(suggestion)),
+                            span,
+                        ))
+                    }
                 }
             }
             // v0.71: Handle Mutex<T> as Generic type (parsed as Generic { name: "Mutex", ... })
@@ -6214,10 +6222,14 @@ impl TypeChecker {
                         }
                         Ok(Type::Nullable(Box::new(Type::RefMut(Box::new(inner_ty)))))
                     }
-                    _ => Err(CompileError::type_error(
-                        format!("unknown method '{}' for Mutex<{}>", method, inner_ty),
-                        span,
-                    )),
+                    _ => {
+                        let methods: &[&str] = &["with", "try_lock"];
+                        let suggestion = find_similar_name(method, methods, 2);
+                        Err(CompileError::type_error(
+                            format!("unknown method '{}' for Mutex{}", method, format_suggestion_hint(suggestion)),
+                            span,
+                        ))
+                    }
                 }
             }
             // v0.72: Arc<T> methods
@@ -6251,10 +6263,14 @@ impl TypeChecker {
                         }
                         Ok(Type::I64)
                     }
-                    _ => Err(CompileError::type_error(
-                        format!("unknown method '{}' for Arc<{}>", method, inner_ty),
-                        span,
-                    )),
+                    _ => {
+                        let methods: &[&str] = &["clone", "get", "get_ref", "strong_count"];
+                        let suggestion = find_similar_name(method, methods, 2);
+                        Err(CompileError::type_error(
+                            format!("unknown method '{}' for Arc{}", method, format_suggestion_hint(suggestion)),
+                            span,
+                        ))
+                    }
                 }
             }
             // v0.72: Handle Arc<T> as Generic type
@@ -6285,10 +6301,14 @@ impl TypeChecker {
                         }
                         Ok(Type::I64)
                     }
-                    _ => Err(CompileError::type_error(
-                        format!("unknown method '{}' for Arc<{}>", method, inner_ty),
-                        span,
-                    )),
+                    _ => {
+                        let methods: &[&str] = &["clone", "get", "get_ref", "strong_count"];
+                        let suggestion = find_similar_name(method, methods, 2);
+                        Err(CompileError::type_error(
+                            format!("unknown method '{}' for Arc{}", method, format_suggestion_hint(suggestion)),
+                            span,
+                        ))
+                    }
                 }
             }
             // v0.72: Atomic<i64> methods
@@ -6349,10 +6369,14 @@ impl TypeChecker {
                         self.unify(&new_ty, inner_ty, args[1].span)?;
                         Ok(*inner_ty.clone())
                     }
-                    _ => Err(CompileError::type_error(
-                        format!("unknown method '{}' for Atomic<{}>", method, inner_ty),
-                        span,
-                    )),
+                    _ => {
+                        let methods: &[&str] = &["load", "store", "fetch_add", "fetch_sub", "swap", "compare_exchange"];
+                        let suggestion = find_similar_name(method, methods, 2);
+                        Err(CompileError::type_error(
+                            format!("unknown method '{}' for Atomic{}", method, format_suggestion_hint(suggestion)),
+                            span,
+                        ))
+                    }
                 }
             }
             // v0.72: Handle Atomic<T> as Generic type
@@ -6391,10 +6415,14 @@ impl TypeChecker {
                         self.unify(&new_ty, &inner_ty, args[1].span)?;
                         Ok(inner_ty)
                     }
-                    _ => Err(CompileError::type_error(
-                        format!("unknown method '{}' for Atomic<{}>", method, inner_ty),
-                        span,
-                    )),
+                    _ => {
+                        let methods: &[&str] = &["load", "store", "fetch_add", "fetch_sub", "swap", "compare_exchange"];
+                        let suggestion = find_similar_name(method, methods, 2);
+                        Err(CompileError::type_error(
+                            format!("unknown method '{}' for Atomic{}", method, format_suggestion_hint(suggestion)),
+                            span,
+                        ))
+                    }
                 }
             }
             // v0.73: Sender<T> methods
@@ -6443,10 +6471,14 @@ impl TypeChecker {
                         }
                         Ok(Type::Unit)
                     }
-                    _ => Err(CompileError::type_error(
-                        format!("unknown method '{}' for Sender<{}>", method, inner_ty),
-                        span,
-                    )),
+                    _ => {
+                        let methods: &[&str] = &["send", "try_send", "send_timeout", "clone", "close"];
+                        let suggestion = find_similar_name(method, methods, 2);
+                        Err(CompileError::type_error(
+                            format!("unknown method '{}' for Sender{}", method, format_suggestion_hint(suggestion)),
+                            span,
+                        ))
+                    }
                 }
             }
             // v0.73: Handle Sender<T> as Generic type
@@ -6493,10 +6525,14 @@ impl TypeChecker {
                         }
                         Ok(Type::Unit)
                     }
-                    _ => Err(CompileError::type_error(
-                        format!("unknown method '{}' for Sender<{}>", method, inner_ty),
-                        span,
-                    )),
+                    _ => {
+                        let methods: &[&str] = &["send", "try_send", "send_timeout", "clone", "close"];
+                        let suggestion = find_similar_name(method, methods, 2);
+                        Err(CompileError::type_error(
+                            format!("unknown method '{}' for Sender{}", method, format_suggestion_hint(suggestion)),
+                            span,
+                        ))
+                    }
                 }
             }
             // v0.73: Receiver<T> methods
@@ -6539,10 +6575,14 @@ impl TypeChecker {
                         }
                         Ok(Type::Nullable(inner_ty.clone()))
                     }
-                    _ => Err(CompileError::type_error(
-                        format!("unknown method '{}' for Receiver<{}>", method, inner_ty),
-                        span,
-                    )),
+                    _ => {
+                        let methods: &[&str] = &["recv", "try_recv", "recv_timeout", "is_closed", "recv_opt"];
+                        let suggestion = find_similar_name(method, methods, 2);
+                        Err(CompileError::type_error(
+                            format!("unknown method '{}' for Receiver{}", method, format_suggestion_hint(suggestion)),
+                            span,
+                        ))
+                    }
                 }
             }
             // v0.73: Handle Receiver<T> as Generic type
@@ -6584,10 +6624,14 @@ impl TypeChecker {
                         }
                         Ok(Type::Nullable(Box::new(inner_ty)))
                     }
-                    _ => Err(CompileError::type_error(
-                        format!("unknown method '{}' for Receiver<{}>", method, inner_ty),
-                        span,
-                    )),
+                    _ => {
+                        let methods: &[&str] = &["recv", "try_recv", "recv_timeout", "is_closed", "recv_opt"];
+                        let suggestion = find_similar_name(method, methods, 2);
+                        Err(CompileError::type_error(
+                            format!("unknown method '{}' for Receiver{}", method, format_suggestion_hint(suggestion)),
+                            span,
+                        ))
+                    }
                 }
             }
             // v0.74: RwLock<T> methods
@@ -6630,10 +6674,14 @@ impl TypeChecker {
                         }
                         Ok(Type::Unit)
                     }
-                    _ => Err(CompileError::type_error(
-                        format!("unknown method '{}' for RwLock<{}>", method, inner_ty),
-                        span,
-                    )),
+                    _ => {
+                        let methods: &[&str] = &["read", "write", "write_unlock", "free"];
+                        let suggestion = find_similar_name(method, methods, 2);
+                        Err(CompileError::type_error(
+                            format!("unknown method '{}' for RwLock{}", method, format_suggestion_hint(suggestion)),
+                            span,
+                        ))
+                    }
                 }
             }
             // v0.74: Handle RwLock<T> as Generic type
@@ -6660,10 +6708,14 @@ impl TypeChecker {
                         self.unify(&arg_ty, &inner_ty, args[0].span)?;
                         Ok(Type::Unit)
                     }
-                    _ => Err(CompileError::type_error(
-                        format!("unknown method '{}' for RwLock<{}>", method, inner_ty),
-                        span,
-                    )),
+                    _ => {
+                        let methods: &[&str] = &["read", "write", "read_unlock", "write_unlock", "free"];
+                        let suggestion = find_similar_name(method, methods, 2);
+                        Err(CompileError::type_error(
+                            format!("unknown method '{}' for RwLock{}", method, format_suggestion_hint(suggestion)),
+                            span,
+                        ))
+                    }
                 }
             }
             // v0.74: Barrier methods
@@ -6683,10 +6735,14 @@ impl TypeChecker {
                         }
                         Ok(Type::Unit)
                     }
-                    _ => Err(CompileError::type_error(
-                        format!("unknown method '{}' for Barrier", method),
-                        span,
-                    )),
+                    _ => {
+                        let methods: &[&str] = &["wait", "free"];
+                        let suggestion = find_similar_name(method, methods, 2);
+                        Err(CompileError::type_error(
+                            format!("unknown method '{}' for Barrier{}", method, format_suggestion_hint(suggestion)),
+                            span,
+                        ))
+                    }
                 }
             }
             // v0.74: Condvar methods
@@ -6724,10 +6780,14 @@ impl TypeChecker {
                         }
                         Ok(Type::Unit)
                     }
-                    _ => Err(CompileError::type_error(
-                        format!("unknown method '{}' for Condvar", method),
-                        span,
-                    )),
+                    _ => {
+                        let methods: &[&str] = &["wait", "notify_one", "notify_all", "free"];
+                        let suggestion = find_similar_name(method, methods, 2);
+                        Err(CompileError::type_error(
+                            format!("unknown method '{}' for Condvar{}", method, format_suggestion_hint(suggestion)),
+                            span,
+                        ))
+                    }
                 }
             }
             // v0.83: AsyncFile methods for async I/O
@@ -6756,10 +6816,14 @@ impl TypeChecker {
                         }
                         Ok(Type::Future(Box::new(Type::Unit)))
                     }
-                    _ => Err(CompileError::type_error(
-                        format!("unknown method '{}' for AsyncFile", method),
-                        span,
-                    )),
+                    _ => {
+                        let methods: &[&str] = &["read", "write", "close"];
+                        let suggestion = find_similar_name(method, methods, 2);
+                        Err(CompileError::type_error(
+                            format!("unknown method '{}' for AsyncFile{}", method, format_suggestion_hint(suggestion)),
+                            span,
+                        ))
+                    }
                 }
             }
             // v0.83.1: AsyncSocket methods for async network I/O
@@ -6789,10 +6853,14 @@ impl TypeChecker {
                         }
                         Ok(Type::Future(Box::new(Type::Unit)))
                     }
-                    _ => Err(CompileError::type_error(
-                        format!("unknown method '{}' for AsyncSocket", method),
-                        span,
-                    )),
+                    _ => {
+                        let methods: &[&str] = &["recv", "send", "disconnect"];
+                        let suggestion = find_similar_name(method, methods, 2);
+                        Err(CompileError::type_error(
+                            format!("unknown method '{}' for AsyncSocket{}", method, format_suggestion_hint(suggestion)),
+                            span,
+                        ))
+                    }
                 }
             }
             // v0.84: ThreadPool methods
@@ -6830,10 +6898,14 @@ impl TypeChecker {
                         }
                         Ok(Type::Unit)
                     }
-                    _ => Err(CompileError::type_error(
-                        format!("unknown method '{}' for ThreadPool", method),
-                        span,
-                    )),
+                    _ => {
+                        let methods: &[&str] = &["execute", "join", "shutdown"];
+                        let suggestion = find_similar_name(method, methods, 2);
+                        Err(CompileError::type_error(
+                            format!("unknown method '{}' for ThreadPool{}", method, format_suggestion_hint(suggestion)),
+                            span,
+                        ))
+                    }
                 }
             }
             // v0.85: Scope methods for scoped threads
@@ -6864,10 +6936,14 @@ impl TypeChecker {
                         }
                         Ok(Type::Unit)
                     }
-                    _ => Err(CompileError::type_error(
-                        format!("unknown method '{}' for Scope", method),
-                        span,
-                    )),
+                    _ => {
+                        let methods: &[&str] = &["spawn", "wait"];
+                        let suggestion = find_similar_name(method, methods, 2);
+                        Err(CompileError::type_error(
+                            format!("unknown method '{}' for Scope{}", method, format_suggestion_hint(suggestion)),
+                            span,
+                        ))
+                    }
                 }
             }
             // v0.20.1: For other types, look up trait methods
@@ -7193,10 +7269,18 @@ impl TypeChecker {
                     _ => Err(CompileError::type_error("inspect() requires a closure argument", args[0].span)),
                 }
             }
-            _ => Err(CompileError::type_error(
-                format!("unknown method '{}' for Option", method),
-                span,
-            )),
+            _ => {
+                let methods: &[&str] = &[
+                    "is_some", "is_none", "unwrap", "unwrap_or", "unwrap_or_else", "expect",
+                    "map", "map_or", "map_or_else", "and_then", "or_val", "or_else",
+                    "filter", "flatten", "zip", "inspect", "is_some_and",
+                ];
+                let suggestion = find_similar_name(method, methods, 2);
+                Err(CompileError::type_error(
+                    format!("unknown method '{}' for Option{}", method, format_suggestion_hint(suggestion)),
+                    span,
+                ))
+            }
         }
     }
 
@@ -7431,10 +7515,17 @@ impl TypeChecker {
                     _ => Err(CompileError::type_error("is_err_and() requires a closure argument", args[0].span)),
                 }
             }
-            _ => Err(CompileError::type_error(
-                format!("unknown method '{}' for Result", method),
-                span,
-            )),
+            _ => {
+                let methods: &[&str] = &[
+                    "is_ok", "is_err", "unwrap", "unwrap_or", "unwrap_err", "unwrap_or_else",
+                    "expect", "map", "map_err", "and_then", "or_else", "is_ok_and", "is_err_and",
+                ];
+                let suggestion = find_similar_name(method, methods, 2);
+                Err(CompileError::type_error(
+                    format!("unknown method '{}' for Result{}", method, format_suggestion_hint(suggestion)),
+                    span,
+                ))
+            }
         }
     }
 

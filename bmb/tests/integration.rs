@@ -19990,3 +19990,29 @@ fn test_no_suggestion_for_unrelated_method() {
     // "zzzzz" is not close to any method
     assert!(!type_error_contains("fn main() -> i64 = 42.zzzzz();", "did you mean"));
 }
+
+// --- Cycle 353: Extended method-not-found suggestions for Option/Result/concurrency types ---
+
+#[test]
+fn test_suggestion_option_method() {
+    // "unwap" is close to "unwrap" (1 edit)
+    assert!(type_error_contains("fn f(x: i64?) -> i64 = x.unwap();", "did you mean `unwrap`"));
+}
+
+#[test]
+fn test_suggestion_result_method() {
+    // "is_er" is close to "is_err" (1 edit)
+    assert!(type_error_contains(
+        "fn f(r: Result<i64, String>) -> bool = r.is_er();",
+        "did you mean `is_err`"
+    ));
+}
+
+#[test]
+fn test_suggestion_result_no_match() {
+    // "zzzzz" should not produce a suggestion for Result either
+    assert!(!type_error_contains(
+        "fn f(r: Result<i64, String>) -> bool = r.zzzzz();",
+        "did you mean"
+    ));
+}
