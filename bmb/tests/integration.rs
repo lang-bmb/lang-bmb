@@ -20054,3 +20054,42 @@ fn test_arg_count_zero_args_provided() {
         "'inc' expects 1 arguments (i64), got 0"
     ));
 }
+
+// --- Cycle 355: Chained method error context ---
+
+#[test]
+fn test_chain_error_shows_array_elem_type() {
+    // Array error should show element type [i64] not just Array
+    assert!(type_error_contains(
+        "fn main() -> i64 = [1, 2, 3].foobar();",
+        "for [i64]"
+    ));
+}
+
+#[test]
+fn test_chain_error_shows_option_inner_type() {
+    // Option error should show inner type Option<i64>
+    assert!(type_error_contains(
+        "fn f(x: i64?) -> i64 = x.foobar();",
+        "Option<i64>"
+    ));
+}
+
+#[test]
+fn test_chain_method_result_type_context() {
+    // Chained method error should show the type returned by previous method
+    // "hello".len() returns i64, then .trin() should error on i64
+    assert!(type_error_contains(
+        r#"fn main() -> i64 = "hello".len().abz();"#,
+        "for i64"
+    ));
+}
+
+#[test]
+fn test_chain_method_string_to_array() {
+    // "hello".chars() returns [String], then .foobar() should error on [String]
+    assert!(type_error_contains(
+        r#"fn main() -> i64 = "hello".chars().foobar();"#,
+        "for [String]"
+    ));
+}

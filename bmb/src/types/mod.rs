@@ -6079,7 +6079,7 @@ impl TypeChecker {
                         ];
                         let suggestion = find_similar_name(method, methods, 2);
                         Err(CompileError::type_error(
-                            format!("unknown method '{}' for Array{}", method, format_suggestion_hint(suggestion)),
+                            format!("unknown method '{}' for [{}]{}", method, elem_ty, format_suggestion_hint(suggestion)),
                             span,
                         ))
                     }
@@ -6127,7 +6127,7 @@ impl TypeChecker {
                         let methods: &[&str] = &["join", "is_alive"];
                         let suggestion = find_similar_name(method, methods, 2);
                         Err(CompileError::type_error(
-                            format!("unknown method '{}' for Thread{}", method, format_suggestion_hint(suggestion)),
+                            format!("unknown method '{}' for Thread<{}>{}", method, inner_ty, format_suggestion_hint(suggestion)),
                             span,
                         ))
                     }
@@ -6190,7 +6190,7 @@ impl TypeChecker {
                         let methods: &[&str] = &["lock", "unlock", "try_lock", "free", "with"];
                         let suggestion = find_similar_name(method, methods, 2);
                         Err(CompileError::type_error(
-                            format!("unknown method '{}' for Mutex{}", method, format_suggestion_hint(suggestion)),
+                            format!("unknown method '{}' for Mutex<{}>{}", method, inner_ty, format_suggestion_hint(suggestion)),
                             span,
                         ))
                     }
@@ -6226,7 +6226,7 @@ impl TypeChecker {
                         let methods: &[&str] = &["with", "try_lock"];
                         let suggestion = find_similar_name(method, methods, 2);
                         Err(CompileError::type_error(
-                            format!("unknown method '{}' for Mutex{}", method, format_suggestion_hint(suggestion)),
+                            format!("unknown method '{}' for Mutex<{}>{}", method, inner_ty, format_suggestion_hint(suggestion)),
                             span,
                         ))
                     }
@@ -6267,7 +6267,7 @@ impl TypeChecker {
                         let methods: &[&str] = &["clone", "get", "get_ref", "strong_count"];
                         let suggestion = find_similar_name(method, methods, 2);
                         Err(CompileError::type_error(
-                            format!("unknown method '{}' for Arc{}", method, format_suggestion_hint(suggestion)),
+                            format!("unknown method '{}' for Arc<{}>{}", method, inner_ty, format_suggestion_hint(suggestion)),
                             span,
                         ))
                     }
@@ -6305,7 +6305,7 @@ impl TypeChecker {
                         let methods: &[&str] = &["clone", "get", "get_ref", "strong_count"];
                         let suggestion = find_similar_name(method, methods, 2);
                         Err(CompileError::type_error(
-                            format!("unknown method '{}' for Arc{}", method, format_suggestion_hint(suggestion)),
+                            format!("unknown method '{}' for Arc<{}>{}", method, inner_ty, format_suggestion_hint(suggestion)),
                             span,
                         ))
                     }
@@ -6373,7 +6373,7 @@ impl TypeChecker {
                         let methods: &[&str] = &["load", "store", "fetch_add", "fetch_sub", "swap", "compare_exchange"];
                         let suggestion = find_similar_name(method, methods, 2);
                         Err(CompileError::type_error(
-                            format!("unknown method '{}' for Atomic{}", method, format_suggestion_hint(suggestion)),
+                            format!("unknown method '{}' for Atomic<{}>{}", method, inner_ty, format_suggestion_hint(suggestion)),
                             span,
                         ))
                     }
@@ -6419,7 +6419,7 @@ impl TypeChecker {
                         let methods: &[&str] = &["load", "store", "fetch_add", "fetch_sub", "swap", "compare_exchange"];
                         let suggestion = find_similar_name(method, methods, 2);
                         Err(CompileError::type_error(
-                            format!("unknown method '{}' for Atomic{}", method, format_suggestion_hint(suggestion)),
+                            format!("unknown method '{}' for Atomic<{}>{}", method, inner_ty, format_suggestion_hint(suggestion)),
                             span,
                         ))
                     }
@@ -6475,7 +6475,7 @@ impl TypeChecker {
                         let methods: &[&str] = &["send", "try_send", "send_timeout", "clone", "close"];
                         let suggestion = find_similar_name(method, methods, 2);
                         Err(CompileError::type_error(
-                            format!("unknown method '{}' for Sender{}", method, format_suggestion_hint(suggestion)),
+                            format!("unknown method '{}' for Sender<{}>{}", method, inner_ty, format_suggestion_hint(suggestion)),
                             span,
                         ))
                     }
@@ -6529,7 +6529,7 @@ impl TypeChecker {
                         let methods: &[&str] = &["send", "try_send", "send_timeout", "clone", "close"];
                         let suggestion = find_similar_name(method, methods, 2);
                         Err(CompileError::type_error(
-                            format!("unknown method '{}' for Sender{}", method, format_suggestion_hint(suggestion)),
+                            format!("unknown method '{}' for Sender<{}>{}", method, inner_ty, format_suggestion_hint(suggestion)),
                             span,
                         ))
                     }
@@ -6579,7 +6579,7 @@ impl TypeChecker {
                         let methods: &[&str] = &["recv", "try_recv", "recv_timeout", "is_closed", "recv_opt"];
                         let suggestion = find_similar_name(method, methods, 2);
                         Err(CompileError::type_error(
-                            format!("unknown method '{}' for Receiver{}", method, format_suggestion_hint(suggestion)),
+                            format!("unknown method '{}' for Receiver<{}>{}", method, inner_ty, format_suggestion_hint(suggestion)),
                             span,
                         ))
                     }
@@ -6628,7 +6628,7 @@ impl TypeChecker {
                         let methods: &[&str] = &["recv", "try_recv", "recv_timeout", "is_closed", "recv_opt"];
                         let suggestion = find_similar_name(method, methods, 2);
                         Err(CompileError::type_error(
-                            format!("unknown method '{}' for Receiver{}", method, format_suggestion_hint(suggestion)),
+                            format!("unknown method '{}' for Receiver<{}>{}", method, inner_ty, format_suggestion_hint(suggestion)),
                             span,
                         ))
                     }
@@ -6678,7 +6678,7 @@ impl TypeChecker {
                         let methods: &[&str] = &["read", "write", "write_unlock", "free"];
                         let suggestion = find_similar_name(method, methods, 2);
                         Err(CompileError::type_error(
-                            format!("unknown method '{}' for RwLock{}", method, format_suggestion_hint(suggestion)),
+                            format!("unknown method '{}' for RwLock<{}>{}", method, inner_ty, format_suggestion_hint(suggestion)),
                             span,
                         ))
                     }
@@ -6712,7 +6712,7 @@ impl TypeChecker {
                         let methods: &[&str] = &["read", "write", "read_unlock", "write_unlock", "free"];
                         let suggestion = find_similar_name(method, methods, 2);
                         Err(CompileError::type_error(
-                            format!("unknown method '{}' for RwLock{}", method, format_suggestion_hint(suggestion)),
+                            format!("unknown method '{}' for RwLock<{}>{}", method, inner_ty, format_suggestion_hint(suggestion)),
                             span,
                         ))
                     }
@@ -7278,7 +7278,12 @@ impl TypeChecker {
                 ];
                 let suggestion = find_similar_name(method, methods, 2);
                 Err(CompileError::type_error(
-                    format!("unknown method '{}' for Option{}", method, format_suggestion_hint(suggestion)),
+                    format!("unknown method '{}' for {}{}", method,
+                        match &inner_ty {
+                            Some(ty) => format!("Option<{}>", ty),
+                            None => "Option".to_string(),
+                        },
+                        format_suggestion_hint(suggestion)),
                     span,
                 ))
             }
@@ -7523,7 +7528,13 @@ impl TypeChecker {
                 ];
                 let suggestion = find_similar_name(method, methods, 2);
                 Err(CompileError::type_error(
-                    format!("unknown method '{}' for Result{}", method, format_suggestion_hint(suggestion)),
+                    format!("unknown method '{}' for {}{}", method,
+                        match (&ok_ty, &_err_ty) {
+                            (Some(ok), Some(err)) => format!("Result<{}, {}>", ok, err),
+                            (Some(ok), None) => format!("Result<{}>", ok),
+                            _ => "Result".to_string(),
+                        },
+                        format_suggestion_hint(suggestion)),
                     span,
                 ))
             }
