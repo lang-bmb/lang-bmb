@@ -4189,6 +4189,35 @@ impl TypeChecker {
                         }
                         Ok(Type::Bool)
                     }
+                    // v0.90.94: rsplit(String) -> [String]
+                    "rsplit" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("rsplit() takes 1 argument", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg_ty, &Type::String, args[0].span)?;
+                        Ok(Type::Array(Box::new(Type::String), 0))
+                    }
+                    // v0.90.94: replace_n(String, String, i64) -> String
+                    "replace_n" => {
+                        if args.len() != 3 {
+                            return Err(CompileError::type_error("replace_n() takes 3 arguments (from, to, max_replacements)", span));
+                        }
+                        let arg0_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg0_ty, &Type::String, args[0].span)?;
+                        let arg1_ty = self.infer(&args[1].node, args[1].span)?;
+                        self.unify(&arg1_ty, &Type::String, args[1].span)?;
+                        let arg2_ty = self.infer(&args[2].node, args[2].span)?;
+                        self.unify(&arg2_ty, &Type::I64, args[2].span)?;
+                        Ok(Type::String)
+                    }
+                    // v0.90.94: squeeze() -> String (collapse repeated whitespace)
+                    "squeeze" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("squeeze() takes no arguments", span));
+                        }
+                        Ok(Type::String)
+                    }
                     _ => Err(CompileError::type_error(
                         format!("unknown method '{}' for String", method),
                         span,

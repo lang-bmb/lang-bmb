@@ -18722,3 +18722,40 @@ fn test_array_resize_shrink() {
 fn test_array_insert_remove_chain() {
     assert_eq!(run_program_i64(r#"fn main() -> i64 = [1, 2, 3].insert_at(1, 10).remove_at(0).first();"#), 10);
 }
+
+// --- Cycle 328: String rsplit, replace_n, squeeze ---
+
+#[test]
+fn test_string_rsplit() {
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = "a,b,c".rsplit(",").len();"#), 3);
+}
+
+#[test]
+fn test_string_rsplit_order() {
+    assert_eq!(run_program_str(r#"fn main() -> String = "a,b,c".rsplit(",").join("-");"#), "c-b-a");
+}
+
+#[test]
+fn test_string_replace_n() {
+    assert_eq!(run_program_str(r#"fn main() -> String = "aaa".replace_n("a", "b", 2);"#), "bba");
+}
+
+#[test]
+fn test_string_replace_n_all() {
+    assert_eq!(run_program_str(r#"fn main() -> String = "hello hello hello".replace_n("hello", "hi", 2);"#), "hi hi hello");
+}
+
+#[test]
+fn test_string_squeeze() {
+    assert_eq!(run_program_str(r#"fn main() -> String = "hello   world".squeeze();"#), "hello world");
+}
+
+#[test]
+fn test_string_squeeze_tabs() {
+    assert_eq!(run_program_str(r#"fn main() -> String = "a  b  c".squeeze();"#), "a b c");
+}
+
+#[test]
+fn test_string_squeeze_replace_chain() {
+    assert_eq!(run_program_str(r#"fn main() -> String = "a  b  b  c".squeeze().replace_n("b", "x", 1);"#), "a x b c");
+}

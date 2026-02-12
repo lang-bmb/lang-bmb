@@ -2121,6 +2121,48 @@ impl Interpreter {
                         });
                         Ok(Value::Bool(result))
                     }
+                    // v0.90.94: rsplit, replace_n, squeeze
+                    "rsplit" => {
+                        let delimiter = match &args[0] {
+                            Value::Str(d) => d.as_str().to_string(),
+                            _ => return Err(RuntimeError::type_error("string", args[0].type_name())),
+                        };
+                        let parts: Vec<Value> = s.rsplit(&delimiter)
+                            .map(|p| Value::Str(Rc::new(p.to_string())))
+                            .collect();
+                        Ok(Value::Array(parts))
+                    }
+                    "replace_n" => {
+                        let from = match &args[0] {
+                            Value::Str(f) => f.as_str().to_string(),
+                            _ => return Err(RuntimeError::type_error("string", args[0].type_name())),
+                        };
+                        let to = match &args[1] {
+                            Value::Str(t) => t.as_str().to_string(),
+                            _ => return Err(RuntimeError::type_error("string", args[1].type_name())),
+                        };
+                        let max_n = match &args[2] {
+                            Value::Int(n) => *n as usize,
+                            _ => return Err(RuntimeError::type_error("integer", args[2].type_name())),
+                        };
+                        Ok(Value::Str(Rc::new(s.replacen(&from, &to, max_n))))
+                    }
+                    "squeeze" => {
+                        let mut result = String::new();
+                        let mut prev_ws = false;
+                        for ch in s.chars() {
+                            if ch.is_whitespace() {
+                                if !prev_ws {
+                                    result.push(' ');
+                                    prev_ws = true;
+                                }
+                            } else {
+                                result.push(ch);
+                                prev_ws = false;
+                            }
+                        }
+                        Ok(Value::Str(Rc::new(result)))
+                    }
                     _ => Err(RuntimeError::undefined_function(&format!("String.{}", method))),
                 }
             }
