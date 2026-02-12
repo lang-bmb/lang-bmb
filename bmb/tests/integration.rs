@@ -14662,6 +14662,124 @@ fn test_nullable_unwrap_value() {
 // ============================================
 
 // ============================================
+// Cycle 282: Complex Method Chaining
+// ============================================
+
+#[test]
+fn test_chain_map_filter_sum() {
+    let source = r#"
+        fn main() -> i64 = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+            .map(fn |x: i64| { x * x })
+            .filter(fn |x: i64| { x > 10 })
+            .sum();
+    "#;
+    // squares: 1,4,9,16,25,36,49,64,81,100; > 10: 16+25+36+49+64+81+100 = 371
+    assert_eq!(run_program_i64(source), 371);
+}
+
+#[test]
+fn test_chain_sort_dedup_len() {
+    let source = "fn main() -> i64 = [3, 1, 4, 1, 5, 9, 2, 6, 5, 3, 5].sort().dedup().len();";
+    // unique: 1,2,3,4,5,6,9 = 7
+    assert_eq!(run_program_i64(source), 7);
+}
+
+#[test]
+fn test_chain_flat_map_unique() {
+    let source = r#"
+        fn main() -> i64 = [1, 2, 3].flat_map(fn |x: i64| { [x, x + 1] }).unique().len();
+    "#;
+    // flat_map: [1,2,2,3,3,4], unique: [1,2,3,4] = 4
+    assert_eq!(run_program_i64(source), 4);
+}
+
+#[test]
+fn test_chain_enumerate_filter() {
+    let source = r#"
+        fn main() -> i64 = [10, 20, 30, 40, 50]
+            .filter(fn |x: i64| { x > 25 })
+            .len();
+    "#;
+    assert_eq!(run_program_i64(source), 3);
+}
+
+#[test]
+fn test_chain_take_map_sum() {
+    let source = r#"
+        fn main() -> i64 = [1, 2, 3, 4, 5]
+            .take(3)
+            .map(fn |x: i64| { x * 10 })
+            .sum();
+    "#;
+    assert_eq!(run_program_i64(source), 60);
+}
+
+#[test]
+fn test_chain_string_methods() {
+    let source = r#"
+        fn main() -> String = "  Hello, World!  ".trim().to_lower().replace("world", "bmb");
+    "#;
+    assert_eq!(run_program_str(source), "hello, bmb!");
+}
+
+#[test]
+fn test_chain_string_split_map_join() {
+    let source = r#"
+        fn main() -> String = "a,b,c".split(",").map(fn |s: String| { s.to_upper() }).join("-");
+    "#;
+    assert_eq!(run_program_str(source), "A-B-C");
+}
+
+#[test]
+fn test_chain_count_filter_any() {
+    let source = r#"
+        fn main() -> i64 = {
+            let nums = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+            let evens = nums.filter(fn |x: i64| { x % 2 == 0 });
+            let has_big = evens.any(fn |x: i64| { x > 8 });
+            if has_big { evens.sum() } else { 0 }
+        };
+    "#;
+    // evens: [2,4,6,8,10], has 10 > 8, sum = 30
+    assert_eq!(run_program_i64(source), 30);
+}
+
+#[test]
+fn test_chain_zip_map_sum() {
+    let source = r#"
+        fn main() -> i64 = [1, 2, 3].map(fn |x: i64| { x * x }).sum();
+    "#;
+    assert_eq!(run_program_i64(source), 14);
+}
+
+#[test]
+fn test_chain_windows_count() {
+    let source = r#"
+        fn main() -> i64 = [1, 2, 3, 4, 5].windows(3).len();
+    "#;
+    // windows of size 3: [1,2,3], [2,3,4], [3,4,5] = 3 windows
+    assert_eq!(run_program_i64(source), 3);
+}
+
+#[test]
+fn test_chain_digits_sum() {
+    let source = "fn main() -> i64 = 12345.digits().sum();";
+    // 1+2+3+4+5 = 15
+    assert_eq!(run_program_i64(source), 15);
+}
+
+#[test]
+fn test_nullable_map_chain() {
+    let source = r#"
+        fn main() -> i64 = {
+            let val: i64? = 5;
+            val.map(fn |x: i64| { x * 3 }).map(fn |x: i64| { x + 1 }).unwrap_or(0)
+        };
+    "#;
+    assert_eq!(run_program_i64(source), 16);
+}
+
+// ============================================
 // Cycle 281: Integer Formatting + Float Math Extensions
 // ============================================
 
