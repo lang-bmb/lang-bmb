@@ -17403,3 +17403,71 @@ fn test_float_format_fixed_many() {
     "#;
     assert_eq!(run_program_str(source), "1.0000");
 }
+
+// ============================================================================
+// Cycle 306: String swapcase, title_case, snake_case, camel_case
+// ============================================================================
+
+#[test]
+fn test_string_swapcase() {
+    let source = r#"
+        fn main() -> String = "Hello World".swapcase();
+    "#;
+    assert_eq!(run_program_str(source), "hELLO wORLD");
+}
+
+#[test]
+fn test_string_swapcase_mixed() {
+    let source = r#"
+        fn main() -> String = "aBcDeF".swapcase();
+    "#;
+    assert_eq!(run_program_str(source), "AbCdEf");
+}
+
+#[test]
+fn test_string_title_case() {
+    let source = r#"
+        fn main() -> String = "hello world".title_case();
+    "#;
+    assert_eq!(run_program_str(source), "Hello World");
+}
+
+#[test]
+fn test_string_title_case_underscores() {
+    let source = r#"
+        fn main() -> String = "hello_world_test".title_case();
+    "#;
+    assert_eq!(run_program_str(source), "Hello_World_Test");
+}
+
+#[test]
+fn test_string_snake_case() {
+    let source = r#"
+        fn main() -> String = "helloWorld".snake_case();
+    "#;
+    assert_eq!(run_program_str(source), "hello_world");
+}
+
+#[test]
+fn test_string_snake_case_spaces() {
+    let source = r#"
+        fn main() -> String = "Hello World".snake_case();
+    "#;
+    assert_eq!(run_program_str(source), "hello_world");
+}
+
+#[test]
+fn test_string_camel_case() {
+    let source = r#"
+        fn main() -> String = "hello_world".camel_case();
+    "#;
+    assert_eq!(run_program_str(source), "helloWorld");
+}
+
+#[test]
+fn test_string_case_chain() {
+    let source = r#"
+        fn main() -> String = "HelloWorld".snake_case().camel_case();
+    "#;
+    assert_eq!(run_program_str(source), "helloWorld");
+}

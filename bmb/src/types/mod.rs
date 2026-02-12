@@ -3865,6 +3865,13 @@ impl TypeChecker {
                         self.unify(&text_ty, &Type::String, args[1].span)?;
                         Ok(Type::String)
                     }
+                    // v0.90.72: swapcase, title_case, snake_case, camel_case
+                    "swapcase" | "title_case" | "snake_case" | "camel_case" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error(&format!("{}() takes no arguments", method), span));
+                        }
+                        Ok(Type::String)
+                    }
                     _ => Err(CompileError::type_error(
                         format!("unknown method '{}' for String", method),
                         span,

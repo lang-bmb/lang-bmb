@@ -1834,6 +1834,66 @@ impl Interpreter {
                         }
                         Ok(Value::Str(Rc::new(result.into_iter().collect())))
                     }
+                    // v0.90.72: swapcase, title_case, snake_case, camel_case
+                    "swapcase" => {
+                        let result: String = s.chars().map(|c| {
+                            if c.is_uppercase() { c.to_lowercase().next().unwrap_or(c) }
+                            else if c.is_lowercase() { c.to_uppercase().next().unwrap_or(c) }
+                            else { c }
+                        }).collect();
+                        Ok(Value::Str(Rc::new(result)))
+                    }
+                    "title_case" => {
+                        let mut result = String::new();
+                        let mut capitalize_next = true;
+                        for c in s.chars() {
+                            if c.is_whitespace() || c == '_' || c == '-' {
+                                result.push(c);
+                                capitalize_next = true;
+                            } else if capitalize_next {
+                                result.extend(c.to_uppercase());
+                                capitalize_next = false;
+                            } else {
+                                result.extend(c.to_lowercase());
+                            }
+                        }
+                        Ok(Value::Str(Rc::new(result)))
+                    }
+                    "snake_case" => {
+                        let mut result = String::new();
+                        for (i, c) in s.chars().enumerate() {
+                            if c.is_uppercase() {
+                                if i > 0 && !result.ends_with('_') {
+                                    result.push('_');
+                                }
+                                result.extend(c.to_lowercase());
+                            } else if c == ' ' || c == '-' {
+                                if !result.ends_with('_') {
+                                    result.push('_');
+                                }
+                            } else {
+                                result.push(c);
+                            }
+                        }
+                        Ok(Value::Str(Rc::new(result)))
+                    }
+                    "camel_case" => {
+                        let mut result = String::new();
+                        let mut capitalize_next = false;
+                        for (i, c) in s.chars().enumerate() {
+                            if c == '_' || c == '-' || c == ' ' {
+                                capitalize_next = true;
+                            } else if capitalize_next {
+                                result.extend(c.to_uppercase());
+                                capitalize_next = false;
+                            } else if i == 0 {
+                                result.extend(c.to_lowercase());
+                            } else {
+                                result.push(c);
+                            }
+                        }
+                        Ok(Value::Str(Rc::new(result)))
+                    }
                     _ => Err(RuntimeError::undefined_function(&format!("String.{}", method))),
                 }
             }
