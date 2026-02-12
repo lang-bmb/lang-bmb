@@ -3710,6 +3710,45 @@ impl Interpreter {
                         };
                         Ok(Value::Int(n.wrapping_mul(other)))
                     }
+                    // v0.90.75: leading_zeros, trailing_zeros, bit_and, bit_or, bit_xor, bit_not, bit_shift_left, bit_shift_right
+                    "leading_zeros" => Ok(Value::Int(n.leading_zeros() as i64)),
+                    "trailing_zeros" => Ok(Value::Int(n.trailing_zeros() as i64)),
+                    "bit_not" => Ok(Value::Int(!n)),
+                    "bit_and" => {
+                        let other = match &args[0] {
+                            Value::Int(m) => *m,
+                            _ => return Err(RuntimeError::type_error("integer", args[0].type_name())),
+                        };
+                        Ok(Value::Int(n & other))
+                    }
+                    "bit_or" => {
+                        let other = match &args[0] {
+                            Value::Int(m) => *m,
+                            _ => return Err(RuntimeError::type_error("integer", args[0].type_name())),
+                        };
+                        Ok(Value::Int(n | other))
+                    }
+                    "bit_xor" => {
+                        let other = match &args[0] {
+                            Value::Int(m) => *m,
+                            _ => return Err(RuntimeError::type_error("integer", args[0].type_name())),
+                        };
+                        Ok(Value::Int(n ^ other))
+                    }
+                    "bit_shift_left" => {
+                        let other = match &args[0] {
+                            Value::Int(m) => *m,
+                            _ => return Err(RuntimeError::type_error("integer", args[0].type_name())),
+                        };
+                        Ok(Value::Int(n << (other as u32)))
+                    }
+                    "bit_shift_right" => {
+                        let other = match &args[0] {
+                            Value::Int(m) => *m,
+                            _ => return Err(RuntimeError::type_error("integer", args[0].type_name())),
+                        };
+                        Ok(Value::Int(n >> (other as u32)))
+                    }
                     _ => Err(RuntimeError::type_error("object with methods", receiver.type_name())),
                 }
             }

@@ -17638,3 +17638,79 @@ fn test_bool_choose_chain() {
     "#;
     assert_eq!(run_program_i64(source), 20);
 }
+
+// ============================================================================
+// Cycle 309: Integer bit manipulation
+// ============================================================================
+
+#[test]
+fn test_int_leading_zeros() {
+    let source = r#"
+        fn main() -> i64 = 1.leading_zeros();
+    "#;
+    // i64: 64-bit, 1 has 63 leading zeros
+    assert_eq!(run_program_i64(source), 63);
+}
+
+#[test]
+fn test_int_trailing_zeros() {
+    let source = r#"
+        fn main() -> i64 = 8.trailing_zeros();
+    "#;
+    // 8 = 0b1000, 3 trailing zeros
+    assert_eq!(run_program_i64(source), 3);
+}
+
+#[test]
+fn test_int_bit_not() {
+    let source = r#"
+        fn main() -> i64 = 0.bit_not();
+    "#;
+    // !0 = -1 in two's complement
+    assert_eq!(run_program_i64(source), -1);
+}
+
+#[test]
+fn test_int_bit_and() {
+    let source = r#"
+        fn main() -> i64 = 12.bit_and(10);
+    "#;
+    // 1100 & 1010 = 1000 = 8
+    assert_eq!(run_program_i64(source), 8);
+}
+
+#[test]
+fn test_int_bit_or() {
+    let source = r#"
+        fn main() -> i64 = 12.bit_or(10);
+    "#;
+    // 1100 | 1010 = 1110 = 14
+    assert_eq!(run_program_i64(source), 14);
+}
+
+#[test]
+fn test_int_bit_xor() {
+    let source = r#"
+        fn main() -> i64 = 12.bit_xor(10);
+    "#;
+    // 1100 ^ 1010 = 0110 = 6
+    assert_eq!(run_program_i64(source), 6);
+}
+
+#[test]
+fn test_int_bit_shift_left() {
+    let source = r#"
+        fn main() -> i64 = 1.bit_shift_left(4);
+    "#;
+    // 1 << 4 = 16
+    assert_eq!(run_program_i64(source), 16);
+}
+
+#[test]
+fn test_int_bit_shift_right() {
+    let source = r#"
+        fn main() -> i64 = 16.bit_shift_right(2);
+    "#;
+    // 16 >> 2 = 4
+    assert_eq!(run_program_i64(source), 4);
+}
