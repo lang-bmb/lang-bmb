@@ -15325,3 +15325,98 @@ fn test_result_unwrap_ok() {
          fn main() -> i64 = divide(10, 2).unwrap();"
     ));
 }
+
+// ============================================
+// Cycle 285: Array zip_with, each_cons, step_by, chunk_by
+// ============================================
+
+#[test]
+fn test_array_zip_with() {
+    let source = r#"
+        fn main() -> i64 = [1, 2, 3].zip_with([10, 20, 30], fn |a: i64, b: i64| { a + b }).sum();
+    "#;
+    // [11, 22, 33].sum() = 66
+    assert_eq!(run_program_i64(source), 66);
+}
+
+#[test]
+fn test_array_zip_with_multiply() {
+    let source = r#"
+        fn main() -> i64 = [2, 3, 4].zip_with([5, 6, 7], fn |a: i64, b: i64| { a * b }).sum();
+    "#;
+    // [10, 18, 28].sum() = 56
+    assert_eq!(run_program_i64(source), 56);
+}
+
+#[test]
+fn test_array_zip_with_unequal() {
+    let source = r#"
+        fn main() -> i64 = [1, 2, 3, 4].zip_with([10, 20], fn |a: i64, b: i64| { a + b }).len();
+    "#;
+    // min length = 2
+    assert_eq!(run_program_i64(source), 2);
+}
+
+#[test]
+fn test_array_each_cons() {
+    let source = r#"
+        fn main() -> i64 = [1, 2, 3, 4, 5].each_cons(3).len();
+    "#;
+    // windows of 3: [1,2,3], [2,3,4], [3,4,5] = 3 windows
+    assert_eq!(run_program_i64(source), 3);
+}
+
+#[test]
+fn test_array_each_cons_large_window() {
+    let source = r#"
+        fn main() -> i64 = [10, 20, 30, 40, 50].each_cons(4).len();
+    "#;
+    // windows of 4: [10,20,30,40], [20,30,40,50] = 2 windows
+    assert_eq!(run_program_i64(source), 2);
+}
+
+#[test]
+fn test_array_step_by() {
+    let source = r#"
+        fn main() -> i64 = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].step_by(3).sum();
+    "#;
+    // elements at index 0,3,6,9: [1, 4, 7, 10].sum() = 22
+    assert_eq!(run_program_i64(source), 22);
+}
+
+#[test]
+fn test_array_step_by_2() {
+    let source = r#"
+        fn main() -> i64 = [10, 20, 30, 40, 50].step_by(2).len();
+    "#;
+    // indices 0, 2, 4: [10, 30, 50] = 3 elements
+    assert_eq!(run_program_i64(source), 3);
+}
+
+#[test]
+fn test_array_chunk_by() {
+    let source = r#"
+        fn is_positive(x: i64) -> i64 = if x > 0 { 1 } else { 0 };
+        fn main() -> i64 = [1, 2, -1, -2, 3].chunk_by(fn |x: i64| { is_positive(x) }).len();
+    "#;
+    // groups: [1,2], [-1,-2], [3] = 3 chunks
+    assert_eq!(run_program_i64(source), 3);
+}
+
+#[test]
+fn test_array_chunk_by_same() {
+    let source = r#"
+        fn main() -> i64 = [1, 1, 1, 2, 2, 3].chunk_by(fn |x: i64| { x }).len();
+    "#;
+    // groups: [1,1,1], [2,2], [3] = 3 chunks
+    assert_eq!(run_program_i64(source), 3);
+}
+
+#[test]
+fn test_array_zip_with_step_by_chain() {
+    let source = r#"
+        fn main() -> i64 = [1, 2, 3, 4, 5, 6].step_by(2).zip_with([10, 20, 30], fn |a: i64, b: i64| { a + b }).sum();
+    "#;
+    // step_by(2): [1, 3, 5], zip_with [10,20,30]: [11, 23, 35].sum() = 69
+    assert_eq!(run_program_i64(source), 69);
+}

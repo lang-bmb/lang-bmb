@@ -2197,6 +2197,91 @@ impl Interpreter {
                             None => Ok(Value::Int(0)), // null
                         }
                     }
+                    // v0.90.51: zip_with(other, fn(T, U) -> V) -> [V]
+                    "zip_with" => {
+                        if args.len() != 2 {
+                            return Err(RuntimeError::arity_mismatch("zip_with", 2, args.len()));
+                        }
+                        let mut args_iter = args.into_iter();
+                        let other = args_iter.next().unwrap();
+                        let closure = args_iter.next().unwrap();
+                        match (other, closure) {
+                            (Value::Array(other_arr), Value::Closure { params, body, env: closure_env }) => {
+                                let mut result = Vec::new();
+                                let len = arr.len().min(other_arr.len());
+                                for i in 0..len {
+                                    let a = arr[i].clone();
+                                    let b = other_arr[i].clone();
+                                    let val = self.call_closure(&params, &body, &closure_env, vec![a, b])?;
+                                    result.push(val);
+                                }
+                                Ok(Value::Array(result))
+                            }
+                            _ => Err(RuntimeError::type_error("array and closure", "other")),
+                        }
+                    }
+                    // v0.90.51: each_cons(n) -> [[T]]
+                    "each_cons" => {
+                        if args.len() != 1 {
+                            return Err(RuntimeError::arity_mismatch("each_cons", 1, args.len()));
+                        }
+                        let n = match &args[0] {
+                            Value::Int(n) => *n as usize,
+                            _ => return Err(RuntimeError::type_error("integer", args[0].type_name())),
+                        };
+                        if n == 0 || n > arr.len() {
+                            return Ok(Value::Array(Vec::new()));
+                        }
+                        let mut result = Vec::new();
+                        for i in 0..=(arr.len() - n) {
+                            result.push(Value::Array(arr[i..i + n].to_vec()));
+                        }
+                        Ok(Value::Array(result))
+                    }
+                    // v0.90.51: step_by(n) -> [T]
+                    "step_by" => {
+                        if args.len() != 1 {
+                            return Err(RuntimeError::arity_mismatch("step_by", 1, args.len()));
+                        }
+                        let n = match &args[0] {
+                            Value::Int(n) => *n as usize,
+                            _ => return Err(RuntimeError::type_error("integer", args[0].type_name())),
+                        };
+                        if n == 0 {
+                            return Err(RuntimeError::type_error("positive integer", "zero"));
+                        }
+                        let result: Vec<Value> = arr.iter().step_by(n).cloned().collect();
+                        Ok(Value::Array(result))
+                    }
+                    // v0.90.51: chunk_by(fn(T) -> K) -> [[T]]
+                    "chunk_by" => {
+                        if args.len() != 1 {
+                            return Err(RuntimeError::arity_mismatch("chunk_by", 1, args.len()));
+                        }
+                        match args.into_iter().next().unwrap() {
+                            Value::Closure { params, body, env: closure_env } => {
+                                let mut result: Vec<Value> = Vec::new();
+                                if arr.is_empty() {
+                                    return Ok(Value::Array(result));
+                                }
+                                let mut current_chunk = vec![arr[0].clone()];
+                                let mut current_key = self.call_closure(&params, &body, &closure_env, vec![arr[0].clone()])?;
+                                for item in arr.iter().skip(1) {
+                                    let key = self.call_closure(&params, &body, &closure_env, vec![item.clone()])?;
+                                    if key == current_key {
+                                        current_chunk.push(item.clone());
+                                    } else {
+                                        result.push(Value::Array(current_chunk));
+                                        current_chunk = vec![item.clone()];
+                                        current_key = key;
+                                    }
+                                }
+                                result.push(Value::Array(current_chunk));
+                                Ok(Value::Array(result))
+                            }
+                            _ => Err(RuntimeError::type_error("closure", "non-closure")),
+                        }
+                    }
                     _ => Err(RuntimeError::undefined_function(&format!("Array.{}", method))),
                 }
             }

@@ -4222,6 +4222,70 @@ impl TypeChecker {
                         self.unify(&val_ty, elem_ty, args[0].span)?;
                         Ok(Type::Nullable(Box::new(Type::I64)))
                     }
+                    // v0.90.51: zip_with(other, fn(T, U) -> V) -> [V]
+                    "zip_with" => {
+                        if args.len() != 2 {
+                            return Err(CompileError::type_error("zip_with() takes 2 arguments (array, closure)", span));
+                        }
+                        let other_ty = self.infer(&args[0].node, args[0].span)?;
+                        let other_elem = match &other_ty {
+                            Type::Array(inner, _) => inner.as_ref().clone(),
+                            _ => return Err(CompileError::type_error("zip_with() first argument must be an array", args[0].span)),
+                        };
+                        let fn_ty = self.infer(&args[1].node, args[1].span)?;
+                        match fn_ty {
+                            Type::Fn { params, ret } => {
+                                if params.len() != 2 {
+                                    return Err(CompileError::type_error(
+                                        format!("zip_with() closure must take 2 parameters, got {}", params.len()),
+                                        args[1].span,
+                                    ));
+                                }
+                                self.unify(&params[0], elem_ty, args[1].span)?;
+                                self.unify(&params[1], &other_elem, args[1].span)?;
+                                Ok(Type::Array(ret, 0))
+                            }
+                            _ => Err(CompileError::type_error("zip_with() requires a closure as second argument", args[1].span)),
+                        }
+                    }
+                    // v0.90.51: each_cons(n) -> [[T]] (sliding windows of size n, alias for windows)
+                    "each_cons" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("each_cons() takes 1 argument (window size)", span));
+                        }
+                        let n_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&n_ty, &Type::I64, args[0].span)?;
+                        Ok(Type::Array(Box::new(Type::Array(elem_ty.clone().into(), 0)), 0))
+                    }
+                    // v0.90.51: step_by(n) -> [T] (every nth element)
+                    "step_by" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("step_by() takes 1 argument (step size)", span));
+                        }
+                        let n_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&n_ty, &Type::I64, args[0].span)?;
+                        Ok(Type::Array(elem_ty.clone().into(), 0))
+                    }
+                    // v0.90.51: chunk_by(fn(T) -> K) -> [[T]] (group consecutive elements by key)
+                    "chunk_by" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("chunk_by() takes 1 argument (a closure)", span));
+                        }
+                        let fn_ty = self.infer(&args[0].node, args[0].span)?;
+                        match fn_ty {
+                            Type::Fn { params, .. } => {
+                                if params.len() != 1 {
+                                    return Err(CompileError::type_error(
+                                        format!("chunk_by() closure must take 1 parameter, got {}", params.len()),
+                                        args[0].span,
+                                    ));
+                                }
+                                self.unify(&params[0], elem_ty, args[0].span)?;
+                                Ok(Type::Array(Box::new(Type::Array(elem_ty.clone().into(), 0)), 0))
+                            }
+                            _ => Err(CompileError::type_error("chunk_by() requires a closure argument", args[0].span)),
+                        }
+                    }
                     _ => Err(CompileError::type_error(
                         format!("unknown method '{}' for Array", method),
                         span,
