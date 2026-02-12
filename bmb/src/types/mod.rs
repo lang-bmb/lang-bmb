@@ -3304,6 +3304,30 @@ impl TypeChecker {
                         }
                         Ok(Type::Bool)
                     }
+                    // v0.90.106: is_coprime(i64) -> bool
+                    "is_coprime" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("is_coprime() takes 1 argument", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg_ty, receiver_ty, args[0].span)?;
+                        Ok(Type::Bool)
+                    }
+                    // v0.90.106: to_char() -> char? (code point to character)
+                    "to_char" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("to_char() takes no arguments", span));
+                        }
+                        Ok(Type::Nullable(Box::new(Type::Char)))
+                    }
+                    // v0.90.106: ilog2() -> i64, ilog10() -> i64 (integer logarithms)
+                    "ilog2" | "ilog10" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error(
+                                format!("{}() takes no arguments", method), span));
+                        }
+                        Ok(receiver_ty.clone())
+                    }
                     _ => Err(CompileError::type_error(
                         format!("unknown method '{}' for {}", method, receiver_ty), span)),
                 }

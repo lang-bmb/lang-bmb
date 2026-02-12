@@ -4927,6 +4927,45 @@ impl Interpreter {
                         let s = n.to_string();
                         Ok(Value::Bool(s == s.chars().rev().collect::<String>()))
                     }
+                    // v0.90.106: is_coprime(i64) -> bool
+                    "is_coprime" => {
+                        let other = match &args[0] { Value::Int(m) => *m, _ => return Err(RuntimeError::type_error("integer", args[0].type_name())) };
+                        let mut a = n.abs();
+                        let mut b = other.abs();
+                        while b != 0 {
+                            let t = b;
+                            b = a % b;
+                            a = t;
+                        }
+                        Ok(Value::Bool(a == 1))
+                    }
+                    // v0.90.106: to_char() -> char?
+                    "to_char" => {
+                        if n >= 0 {
+                            match char::from_u32(n as u32) {
+                                Some(c) => Ok(Value::Enum("Option".to_string(), "Some".to_string(), vec![Value::Char(c)])),
+                                None => Ok(Value::Enum("Option".to_string(), "None".to_string(), vec![])),
+                            }
+                        } else {
+                            Ok(Value::Enum("Option".to_string(), "None".to_string(), vec![]))
+                        }
+                    }
+                    // v0.90.106: ilog2() -> i64
+                    "ilog2" => {
+                        if n <= 0 {
+                            Ok(Value::Int(0))
+                        } else {
+                            Ok(Value::Int((n as u64).ilog2() as i64))
+                        }
+                    }
+                    // v0.90.106: ilog10() -> i64
+                    "ilog10" => {
+                        if n <= 0 {
+                            Ok(Value::Int(0))
+                        } else {
+                            Ok(Value::Int((n as u64).ilog10() as i64))
+                        }
+                    }
                     _ => Err(RuntimeError::type_error("object with methods", receiver.type_name())),
                 }
             }

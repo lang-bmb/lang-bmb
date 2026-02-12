@@ -19262,3 +19262,48 @@ fn test_array_vector_type_checks() {
     assert!(type_checks("fn main() -> f64 = [1, 2].magnitude();"));
     assert!(type_checks("fn main() -> f64 = [1.0, 2.0].normalize().get(0).unwrap_or(0.0);"));
 }
+
+// --- Cycle 340: Integer is_coprime, to_char, ilog2, ilog10 ---
+
+#[test]
+fn test_int_is_coprime() {
+    assert_eq!(run_program_i64("fn main() -> i64 = if 12.is_coprime(35) { 1 } else { 0 };"), 1);
+    assert_eq!(run_program_i64("fn main() -> i64 = if 12.is_coprime(8) { 1 } else { 0 };"), 0);
+    assert_eq!(run_program_i64("fn main() -> i64 = if 7.is_coprime(13) { 1 } else { 0 };"), 1);
+}
+
+#[test]
+fn test_int_to_char() {
+    assert_eq!(run_program_i64("fn main() -> i64 = 65.to_char().unwrap_or('?').to_int();"), 65);
+    assert_eq!(run_program_i64("fn main() -> i64 = 48.to_char().unwrap_or('?').to_int();"), 48);
+    // Negative returns None
+    assert_eq!(run_program_str(r#"fn main() -> String = (-1).to_char().unwrap_or('X').to_string();"#), "X");
+}
+
+#[test]
+fn test_int_ilog2() {
+    assert_eq!(run_program_i64("fn main() -> i64 = 8.ilog2();"), 3);
+    assert_eq!(run_program_i64("fn main() -> i64 = 1.ilog2();"), 0);
+    assert_eq!(run_program_i64("fn main() -> i64 = 1024.ilog2();"), 10);
+}
+
+#[test]
+fn test_int_ilog10() {
+    assert_eq!(run_program_i64("fn main() -> i64 = 100.ilog10();"), 2);
+    assert_eq!(run_program_i64("fn main() -> i64 = 1.ilog10();"), 0);
+    assert_eq!(run_program_i64("fn main() -> i64 = 9999.ilog10();"), 3);
+}
+
+#[test]
+fn test_int_coprime_chain() {
+    // gcd of coprimes is 1
+    assert_eq!(run_program_i64("fn main() -> i64 = 7.gcd(13);"), 1);
+}
+
+#[test]
+fn test_int_new_methods_type_checks() {
+    assert!(type_checks("fn main() -> i64 = if 7.is_coprime(13) { 1 } else { 0 };"));
+    assert!(type_checks("fn main() -> i64 = 65.to_char().unwrap_or('A').to_int();"));
+    assert!(type_checks("fn main() -> i64 = 8.ilog2();"));
+    assert!(type_checks("fn main() -> i64 = 100.ilog10();"));
+}
