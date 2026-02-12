@@ -1501,6 +1501,64 @@ impl Interpreter {
                             _ => Err(RuntimeError::type_error("closure", "non-closure")),
                         }
                     }
+                    // v0.90.53: is_numeric() -> bool
+                    "is_numeric" => Ok(Value::Bool(!s.is_empty() && s.chars().all(|c| c.is_ascii_digit()))),
+                    // v0.90.53: is_alpha() -> bool
+                    "is_alpha" => Ok(Value::Bool(!s.is_empty() && s.chars().all(|c| c.is_alphabetic()))),
+                    // v0.90.53: is_alphanumeric() -> bool
+                    "is_alphanumeric" => Ok(Value::Bool(!s.is_empty() && s.chars().all(|c| c.is_alphanumeric()))),
+                    // v0.90.53: is_whitespace() -> bool
+                    "is_whitespace" => Ok(Value::Bool(!s.is_empty() && s.chars().all(|c| c.is_whitespace()))),
+                    // v0.90.53: is_upper() -> bool
+                    "is_upper" => Ok(Value::Bool(!s.is_empty() && s.chars().all(|c| !c.is_alphabetic() || c.is_uppercase()))),
+                    // v0.90.53: is_lower() -> bool
+                    "is_lower" => Ok(Value::Bool(!s.is_empty() && s.chars().all(|c| !c.is_alphabetic() || c.is_lowercase()))),
+                    // v0.90.53: substr(start, len) -> String
+                    "substr" => {
+                        if args.len() != 2 {
+                            return Err(RuntimeError::arity_mismatch("substr", 2, args.len()));
+                        }
+                        let start = match &args[0] {
+                            Value::Int(n) => *n as usize,
+                            _ => return Err(RuntimeError::type_error("integer", args[0].type_name())),
+                        };
+                        let len = match &args[1] {
+                            Value::Int(n) => *n as usize,
+                            _ => return Err(RuntimeError::type_error("integer", args[1].type_name())),
+                        };
+                        let chars: Vec<char> = s.chars().collect();
+                        let end = (start + len).min(chars.len());
+                        let start = start.min(chars.len());
+                        let result: String = chars[start..end].iter().collect();
+                        Ok(Value::Str(Rc::new(result)))
+                    }
+                    // v0.90.53: center(width, pad) -> String
+                    "center" => {
+                        if args.len() != 2 {
+                            return Err(RuntimeError::arity_mismatch("center", 2, args.len()));
+                        }
+                        let width = match &args[0] {
+                            Value::Int(n) => *n as usize,
+                            _ => return Err(RuntimeError::type_error("integer", args[0].type_name())),
+                        };
+                        let pad = match &args[1] {
+                            Value::Str(p) => p.chars().next().unwrap_or(' '),
+                            _ => return Err(RuntimeError::type_error("String", args[1].type_name())),
+                        };
+                        let char_count = s.chars().count();
+                        if char_count >= width {
+                            Ok(Value::Str(Rc::new(s.to_string())))
+                        } else {
+                            let total_pad = width - char_count;
+                            let left_pad = total_pad / 2;
+                            let right_pad = total_pad - left_pad;
+                            let mut result = String::new();
+                            for _ in 0..left_pad { result.push(pad); }
+                            result.push_str(&s);
+                            for _ in 0..right_pad { result.push(pad); }
+                            Ok(Value::Str(Rc::new(result)))
+                        }
+                    }
                     _ => Err(RuntimeError::undefined_function(&format!("String.{}", method))),
                 }
             }

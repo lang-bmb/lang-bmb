@@ -3522,6 +3522,70 @@ impl TypeChecker {
                             _ => Err(CompileError::type_error("all_chars() requires a closure argument", args[0].span)),
                         }
                     }
+                    // v0.90.53: is_numeric() -> bool
+                    "is_numeric" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("is_numeric() takes no arguments", span));
+                        }
+                        Ok(Type::Bool)
+                    }
+                    // v0.90.53: is_alpha() -> bool
+                    "is_alpha" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("is_alpha() takes no arguments", span));
+                        }
+                        Ok(Type::Bool)
+                    }
+                    // v0.90.53: is_alphanumeric() -> bool
+                    "is_alphanumeric" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("is_alphanumeric() takes no arguments", span));
+                        }
+                        Ok(Type::Bool)
+                    }
+                    // v0.90.53: is_whitespace() -> bool
+                    "is_whitespace" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("is_whitespace() takes no arguments", span));
+                        }
+                        Ok(Type::Bool)
+                    }
+                    // v0.90.53: is_upper() -> bool
+                    "is_upper" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("is_upper() takes no arguments", span));
+                        }
+                        Ok(Type::Bool)
+                    }
+                    // v0.90.53: is_lower() -> bool
+                    "is_lower" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("is_lower() takes no arguments", span));
+                        }
+                        Ok(Type::Bool)
+                    }
+                    // v0.90.53: substr(start, len) -> String
+                    "substr" => {
+                        if args.len() != 2 {
+                            return Err(CompileError::type_error("substr() takes 2 arguments (start, length)", span));
+                        }
+                        let start_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&start_ty, &Type::I64, args[0].span)?;
+                        let len_ty = self.infer(&args[1].node, args[1].span)?;
+                        self.unify(&len_ty, &Type::I64, args[1].span)?;
+                        Ok(Type::String)
+                    }
+                    // v0.90.53: center(width, pad) -> String
+                    "center" => {
+                        if args.len() != 2 {
+                            return Err(CompileError::type_error("center() takes 2 arguments (width, padding)", span));
+                        }
+                        let width_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&width_ty, &Type::I64, args[0].span)?;
+                        let pad_ty = self.infer(&args[1].node, args[1].span)?;
+                        self.unify(&pad_ty, &Type::String, args[1].span)?;
+                        Ok(Type::String)
+                    }
                     _ => Err(CompileError::type_error(
                         format!("unknown method '{}' for String", method),
                         span,

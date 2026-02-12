@@ -15531,3 +15531,104 @@ fn test_array_interleave_take() {
     // [1, 2, 3, 4].sum() = 10
     assert_eq!(run_program_i64(source), 10);
 }
+
+// ============================================
+// Cycle 287: String Predicates + Utility
+// ============================================
+
+#[test]
+fn test_string_is_numeric_true() {
+    let source = r#"
+        fn main() -> i64 = if "12345".is_numeric() { 1 } else { 0 };
+    "#;
+    assert_eq!(run_program_i64(source), 1);
+}
+
+#[test]
+fn test_string_is_numeric_false() {
+    let source = r#"
+        fn main() -> i64 = if "12a45".is_numeric() { 1 } else { 0 };
+    "#;
+    assert_eq!(run_program_i64(source), 0);
+}
+
+#[test]
+fn test_string_is_alpha_true() {
+    let source = r#"
+        fn main() -> i64 = if "hello".is_alpha() { 1 } else { 0 };
+    "#;
+    assert_eq!(run_program_i64(source), 1);
+}
+
+#[test]
+fn test_string_is_alpha_false() {
+    let source = r#"
+        fn main() -> i64 = if "hello123".is_alpha() { 1 } else { 0 };
+    "#;
+    assert_eq!(run_program_i64(source), 0);
+}
+
+#[test]
+fn test_string_is_alphanumeric() {
+    let source = r#"
+        fn main() -> i64 = if "hello123".is_alphanumeric() { 1 } else { 0 };
+    "#;
+    assert_eq!(run_program_i64(source), 1);
+}
+
+#[test]
+fn test_string_is_whitespace() {
+    let source = r#"
+        fn main() -> i64 = if "   ".is_whitespace() { 1 } else { 0 };
+    "#;
+    assert_eq!(run_program_i64(source), 1);
+}
+
+#[test]
+fn test_string_is_upper() {
+    let source = r#"
+        fn main() -> i64 = if "HELLO".is_upper() { 1 } else { 0 };
+    "#;
+    assert_eq!(run_program_i64(source), 1);
+}
+
+#[test]
+fn test_string_is_lower() {
+    let source = r#"
+        fn main() -> i64 = if "hello".is_lower() { 1 } else { 0 };
+    "#;
+    assert_eq!(run_program_i64(source), 1);
+}
+
+#[test]
+fn test_string_substr() {
+    let source = r#"
+        fn main() -> String = "hello world".substr(6, 5);
+    "#;
+    assert_eq!(run_program_str(source), "world");
+}
+
+#[test]
+fn test_string_center() {
+    let source = r#"
+        fn main() -> String = "hi".center(6, "*");
+    "#;
+    assert_eq!(run_program_str(source), "**hi**");
+}
+
+#[test]
+fn test_string_is_numeric_empty() {
+    let source = r#"
+        fn main() -> i64 = if "".is_numeric() { 1 } else { 0 };
+    "#;
+    // empty string is not numeric
+    assert_eq!(run_program_i64(source), 0);
+}
+
+#[test]
+fn test_string_predicate_chain() {
+    let source = r#"
+        fn main() -> i64 = if "HELLO".is_upper() { "HELLO".len() } else { 0 };
+    "#;
+    assert_eq!(run_program_i64(source), 5);
+}
