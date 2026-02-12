@@ -3217,6 +3217,79 @@ impl Interpreter {
                         }
                         Ok(Value::Array(result))
                     }
+                    // v0.90.85: min_index() -> i64
+                    "min_index" => {
+                        if arr.is_empty() {
+                            return Err(RuntimeError::index_out_of_bounds(0, 0));
+                        }
+                        let mut min_idx = 0;
+                        for (i, item) in arr.iter().enumerate() {
+                            if i > 0 {
+                                let is_less = match (&arr[min_idx], item) {
+                                    (Value::Int(a), Value::Int(b)) => b < a,
+                                    (Value::Float(a), Value::Float(b)) => b < a,
+                                    _ => false,
+                                };
+                                if is_less { min_idx = i; }
+                            }
+                        }
+                        Ok(Value::Int(min_idx as i64))
+                    }
+                    // v0.90.85: max_index() -> i64
+                    "max_index" => {
+                        if arr.is_empty() {
+                            return Err(RuntimeError::index_out_of_bounds(0, 0));
+                        }
+                        let mut max_idx = 0;
+                        for (i, item) in arr.iter().enumerate() {
+                            if i > 0 {
+                                let is_greater = match (&arr[max_idx], item) {
+                                    (Value::Int(a), Value::Int(b)) => b > a,
+                                    (Value::Float(a), Value::Float(b)) => b > a,
+                                    _ => false,
+                                };
+                                if is_greater { max_idx = i; }
+                            }
+                        }
+                        Ok(Value::Int(max_idx as i64))
+                    }
+                    // v0.90.85: average() -> f64
+                    "average" => {
+                        if arr.is_empty() {
+                            return Ok(Value::Float(0.0));
+                        }
+                        let mut sum = 0.0;
+                        let len = arr.len() as f64;
+                        for item in &arr {
+                            match item {
+                                Value::Int(n) => sum += *n as f64,
+                                Value::Float(f) => sum += f,
+                                _ => return Err(RuntimeError::type_error("numeric", item.type_name())),
+                            }
+                        }
+                        Ok(Value::Float(sum / len))
+                    }
+                    // v0.90.85: median() -> f64
+                    "median" => {
+                        if arr.is_empty() {
+                            return Ok(Value::Float(0.0));
+                        }
+                        let mut nums: Vec<f64> = Vec::new();
+                        for item in &arr {
+                            match item {
+                                Value::Int(n) => nums.push(*n as f64),
+                                Value::Float(f) => nums.push(*f),
+                                _ => return Err(RuntimeError::type_error("numeric", item.type_name())),
+                            }
+                        }
+                        nums.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+                        let mid = nums.len() / 2;
+                        if nums.len() % 2 == 0 {
+                            Ok(Value::Float((nums[mid - 1] + nums[mid]) / 2.0))
+                        } else {
+                            Ok(Value::Float(nums[mid]))
+                        }
+                    }
                     // v0.90.84: each_slice(n) -> [[T]]
                     "each_slice" => {
                         let size = match &args[0] {

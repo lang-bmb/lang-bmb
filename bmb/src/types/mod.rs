@@ -5312,6 +5312,28 @@ impl TypeChecker {
                             _ => Err(CompileError::type_error("group_consecutive() requires a closure argument", args[0].span)),
                         }
                     }
+                    // v0.90.85: min_index() -> i64
+                    "min_index" | "max_index" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error(
+                                format!("{}() takes no arguments", method), span));
+                        }
+                        Ok(Type::I64)
+                    }
+                    // v0.90.85: average() -> f64
+                    "average" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("average() takes no arguments", span));
+                        }
+                        Ok(Type::F64)
+                    }
+                    // v0.90.85: median() -> f64
+                    "median" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("median() takes no arguments", span));
+                        }
+                        Ok(Type::F64)
+                    }
                     _ => Err(CompileError::type_error(
                         format!("unknown method '{}' for Array", method),
                         span,

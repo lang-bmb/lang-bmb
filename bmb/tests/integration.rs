@@ -18363,3 +18363,68 @@ fn test_array_group_consecutive_first_group() {
     // first group [1,1] -> len = 2
     assert_eq!(run_program_i64(source), 2);
 }
+
+// --- Cycle 319: Array statistical methods ---
+
+#[test]
+fn test_array_min_index() {
+    assert_eq!(run_program_i64("fn main() -> i64 = [5, 3, 8, 1, 9].min_index();"), 3);
+}
+
+#[test]
+fn test_array_max_index() {
+    assert_eq!(run_program_i64("fn main() -> i64 = [5, 3, 8, 1, 9].max_index();"), 4);
+}
+
+#[test]
+fn test_array_average() {
+    let source = r#"
+        fn main() -> f64 = [10, 20, 30].average();
+    "#;
+    assert!((run_program_f64(source) - 20.0).abs() < 1e-10);
+}
+
+#[test]
+fn test_array_average_float() {
+    let source = r#"
+        fn main() -> f64 = [1.0, 2.0, 3.0, 4.0].average();
+    "#;
+    assert!((run_program_f64(source) - 2.5).abs() < 1e-10);
+}
+
+#[test]
+fn test_array_median_odd() {
+    let source = r#"
+        fn main() -> f64 = [3, 1, 2].median();
+    "#;
+    assert!((run_program_f64(source) - 2.0).abs() < 1e-10);
+}
+
+#[test]
+fn test_array_median_even() {
+    let source = r#"
+        fn main() -> f64 = [4, 1, 3, 2].median();
+    "#;
+    assert!((run_program_f64(source) - 2.5).abs() < 1e-10);
+}
+
+#[test]
+fn test_array_min_max_index_same() {
+    assert_eq!(run_program_i64("fn main() -> i64 = [7].min_index();"), 0);
+    assert_eq!(run_program_i64("fn main() -> i64 = [7].max_index();"), 0);
+}
+
+#[test]
+fn test_array_statistics_combined() {
+    // average of [10,20,30] > median
+    let source = r#"
+        fn main() -> i64 = {
+            let arr = [1, 2, 3, 4, 100];
+            let avg = arr.average();
+            let med = arr.median();
+            if avg > med { 1 } else { 0 }
+        };
+    "#;
+    // avg = 22.0, median = 3.0 -> avg > med -> 1
+    assert_eq!(run_program_i64(source), 1);
+}
