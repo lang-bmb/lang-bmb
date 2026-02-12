@@ -2589,6 +2589,8 @@ impl Interpreter {
             Value::Bool(b) => {
                 match method {
                     "to_string" => Ok(Value::Str(Rc::new(if b { "true" } else { "false" }.to_string()))),
+                    // v0.90.54: to_int() -> i64
+                    "to_int" => Ok(Value::Int(if b { 1 } else { 0 })),
                     _ => Err(RuntimeError::undefined_function(&format!("bool.{}", method))),
                 }
             }
@@ -2757,6 +2759,22 @@ impl Interpreter {
                         }
                         Ok(Value::Array(digits))
                     }
+                    // v0.90.54: range_to(end) -> [i64] (exclusive)
+                    "range_to" => {
+                        if args.len() != 1 {
+                            return Err(RuntimeError::arity_mismatch("range_to", 1, args.len()));
+                        }
+                        let end = match &args[0] {
+                            Value::Int(e) => *e,
+                            _ => return Err(RuntimeError::type_error("integer", args[0].type_name())),
+                        };
+                        let result: Vec<Value> = (n..end).map(Value::Int).collect();
+                        Ok(Value::Array(result))
+                    }
+                    // v0.90.54: is_even() -> bool
+                    "is_even" => Ok(Value::Bool(n % 2 == 0)),
+                    // v0.90.54: is_odd() -> bool
+                    "is_odd" => Ok(Value::Bool(n % 2 != 0)),
                     _ => Err(RuntimeError::type_error("object with methods", receiver.type_name())),
                 }
             }

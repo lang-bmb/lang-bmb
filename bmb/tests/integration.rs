@@ -15632,3 +15632,84 @@ fn test_string_predicate_chain() {
     "#;
     assert_eq!(run_program_i64(source), 5);
 }
+
+// ============================================
+// Cycle 288: Bool Methods + Integer range_to, is_even, is_odd
+// ============================================
+
+#[test]
+fn test_bool_to_int_true() {
+    let source = r#"
+        fn main() -> i64 = true.to_int();
+    "#;
+    assert_eq!(run_program_i64(source), 1);
+}
+
+#[test]
+fn test_bool_to_int_false() {
+    let source = r#"
+        fn main() -> i64 = false.to_int();
+    "#;
+    assert_eq!(run_program_i64(source), 0);
+}
+
+#[test]
+fn test_bool_to_int_sum() {
+    let source = r#"
+        fn main() -> i64 = true.to_int() + false.to_int() + true.to_int();
+    "#;
+    // 1 + 0 + 1 = 2
+    assert_eq!(run_program_i64(source), 2);
+}
+
+#[test]
+fn test_int_range_to() {
+    let source = r#"
+        fn main() -> i64 = 1.range_to(6).sum();
+    "#;
+    // [1, 2, 3, 4, 5].sum() = 15
+    assert_eq!(run_program_i64(source), 15);
+}
+
+#[test]
+fn test_int_range_to_map() {
+    let source = r#"
+        fn main() -> i64 = 0.range_to(5).map(fn |x: i64| { x * x }).sum();
+    "#;
+    // [0, 1, 4, 9, 16].sum() = 30
+    assert_eq!(run_program_i64(source), 30);
+}
+
+#[test]
+fn test_int_is_even() {
+    let source = r#"
+        fn main() -> i64 = if 4.is_even() { 1 } else { 0 };
+    "#;
+    assert_eq!(run_program_i64(source), 1);
+}
+
+#[test]
+fn test_int_is_odd() {
+    let source = r#"
+        fn main() -> i64 = if 3.is_odd() { 1 } else { 0 };
+    "#;
+    assert_eq!(run_program_i64(source), 1);
+}
+
+#[test]
+fn test_int_range_filter_even() {
+    let source = r#"
+        fn main() -> i64 = 1.range_to(11).filter(fn |x: i64| { x.is_even() }).sum();
+    "#;
+    // even numbers 2+4+6+8+10 = 30
+    assert_eq!(run_program_i64(source), 30);
+}
+
+#[test]
+fn test_bool_to_string_chain() {
+    let source = r#"
+        fn main() -> i64 = true.to_string().len();
+    "#;
+    // "true".len() = 4
+    assert_eq!(run_program_i64(source), 4);
+}

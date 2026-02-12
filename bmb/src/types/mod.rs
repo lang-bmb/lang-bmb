@@ -2897,6 +2897,13 @@ impl TypeChecker {
                         }
                         Ok(Type::String)
                     }
+                    // v0.90.54: to_int() -> i64
+                    "to_int" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("to_int() takes no arguments", span));
+                        }
+                        Ok(Type::I64)
+                    }
                     _ => Err(CompileError::type_error(
                         format!("unknown method '{}' for bool", method), span)),
                 }
@@ -3000,6 +3007,29 @@ impl TypeChecker {
                             return Err(CompileError::type_error("digits() takes no arguments", span));
                         }
                         Ok(Type::Array(Box::new(Type::I64), 0))
+                    }
+                    // v0.90.54: range_to(end) -> [i64] (exclusive)
+                    "range_to" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("range_to() takes 1 argument (end)", span));
+                        }
+                        let end_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&end_ty, &receiver_ty, args[0].span)?;
+                        Ok(Type::Array(Box::new(Type::I64), 0))
+                    }
+                    // v0.90.54: is_even() -> bool
+                    "is_even" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("is_even() takes no arguments", span));
+                        }
+                        Ok(Type::Bool)
+                    }
+                    // v0.90.54: is_odd() -> bool
+                    "is_odd" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("is_odd() takes no arguments", span));
+                        }
+                        Ok(Type::Bool)
                     }
                     _ => Err(CompileError::type_error(
                         format!("unknown method '{}' for {}", method, receiver_ty), span)),
