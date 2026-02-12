@@ -4023,6 +4023,35 @@ impl TypeChecker {
                         self.unify(&code_ty, &Type::I64, args[0].span)?;
                         Ok(Type::String)
                     }
+                    // v0.90.86: word_count, is_palindrome, common_prefix, common_suffix
+                    "word_count" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("word_count() takes no arguments", span));
+                        }
+                        Ok(Type::I64)
+                    }
+                    "is_palindrome" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("is_palindrome() takes no arguments", span));
+                        }
+                        Ok(Type::Bool)
+                    }
+                    "common_prefix" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("common_prefix() takes 1 argument", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg_ty, &Type::String, args[0].span)?;
+                        Ok(Type::String)
+                    }
+                    "common_suffix" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("common_suffix() takes 1 argument", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg_ty, &Type::String, args[0].span)?;
+                        Ok(Type::String)
+                    }
                     _ => Err(CompileError::type_error(
                         format!("unknown method '{}' for String", method),
                         span,

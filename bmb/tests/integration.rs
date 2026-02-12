@@ -18428,3 +18428,36 @@ fn test_array_statistics_combined() {
     // avg = 22.0, median = 3.0 -> avg > med -> 1
     assert_eq!(run_program_i64(source), 1);
 }
+
+// --- Cycle 320: String word_count, is_palindrome, common_prefix, common_suffix ---
+
+#[test]
+fn test_string_word_count() {
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = "hello world foo".word_count();"#), 3);
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = "".word_count();"#), 0);
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = "single".word_count();"#), 1);
+}
+
+#[test]
+fn test_string_is_palindrome() {
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = if "racecar".is_palindrome() { 1 } else { 0 };"#), 1);
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = if "hello".is_palindrome() { 1 } else { 0 };"#), 0);
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = if "aba".is_palindrome() { 1 } else { 0 };"#), 1);
+}
+
+#[test]
+fn test_string_common_prefix() {
+    assert_eq!(run_program_str(r#"fn main() -> String = "abcdef".common_prefix("abcxyz");"#), "abc");
+    assert_eq!(run_program_str(r#"fn main() -> String = "hello".common_prefix("world");"#), "");
+}
+
+#[test]
+fn test_string_common_suffix() {
+    assert_eq!(run_program_str(r#"fn main() -> String = "testing".common_suffix("running");"#), "ing");
+    assert_eq!(run_program_str(r#"fn main() -> String = "abc".common_suffix("xyz");"#), "");
+}
+
+#[test]
+fn test_string_word_palindrome_combined() {
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = if "abba".is_palindrome() { "abba".word_count() } else { 0 };"#), 1);
+}

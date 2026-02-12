@@ -1953,6 +1953,36 @@ impl Interpreter {
                             None => Err(RuntimeError::type_error("valid unicode code point", &code.to_string())),
                         }
                     }
+                    // v0.90.86: word_count, is_palindrome, common_prefix, common_suffix
+                    "word_count" => Ok(Value::Int(s.split_whitespace().count() as i64)),
+                    "is_palindrome" => {
+                        let chars: Vec<char> = s.chars().collect();
+                        let reversed: Vec<char> = chars.iter().rev().cloned().collect();
+                        Ok(Value::Bool(chars == reversed))
+                    }
+                    "common_prefix" => {
+                        let other = match &args[0] {
+                            Value::Str(o) => o.as_str().to_string(),
+                            _ => return Err(RuntimeError::type_error("string", args[0].type_name())),
+                        };
+                        let prefix: String = s.chars().zip(other.chars())
+                            .take_while(|(a, b)| a == b)
+                            .map(|(a, _)| a)
+                            .collect();
+                        Ok(Value::Str(Rc::new(prefix)))
+                    }
+                    "common_suffix" => {
+                        let other = match &args[0] {
+                            Value::Str(o) => o.as_str().to_string(),
+                            _ => return Err(RuntimeError::type_error("string", args[0].type_name())),
+                        };
+                        let suffix: String = s.chars().rev().zip(other.chars().rev())
+                            .take_while(|(a, b)| a == b)
+                            .map(|(a, _)| a)
+                            .collect::<Vec<char>>()
+                            .into_iter().rev().collect();
+                        Ok(Value::Str(Rc::new(suffix)))
+                    }
                     _ => Err(RuntimeError::undefined_function(&format!("String.{}", method))),
                 }
             }
