@@ -138,6 +138,12 @@ pub enum CompileWarning {
         span: Span,
     },
 
+    /// v0.90.123: Redundant type cast — casting a value to its own type
+    RedundantCast {
+        ty: String,
+        span: Span,
+    },
+
     /// v0.90.121: Non-snake_case function name
     /// Function names should use snake_case
     NonSnakeCaseFunction {
@@ -319,6 +325,11 @@ impl CompileWarning {
         Self::SingleArmMatch { span }
     }
 
+    /// v0.90.123: Create a redundant cast warning
+    pub fn redundant_cast(ty: impl Into<String>, span: Span) -> Self {
+        Self::RedundantCast { ty: ty.into(), span }
+    }
+
     /// v0.90.121: Create a non-snake_case function warning
     pub fn non_snake_case_function(
         name: impl Into<String>,
@@ -368,6 +379,7 @@ impl CompileWarning {
             Self::SemanticDuplication { span, .. } => Some(*span),
             Self::TrivialContract { span, .. } => Some(*span),
             Self::SingleArmMatch { span } => Some(*span),
+            Self::RedundantCast { span, .. } => Some(*span),
             Self::NonSnakeCaseFunction { span, .. } => Some(*span),
             Self::NonPascalCaseType { span, .. } => Some(*span),
             Self::Generic { span, .. } => *span,
@@ -443,6 +455,9 @@ impl CompileWarning {
             Self::SingleArmMatch { .. } => {
                 "match with a single arm could be simplified to `if let`".to_string()
             }
+            Self::RedundantCast { ty, .. } => {
+                format!("redundant cast: expression is already of type `{}`", ty)
+            }
             Self::Generic { message, .. } => message.clone(),
         }
     }
@@ -470,6 +485,7 @@ impl CompileWarning {
             Self::NonSnakeCaseFunction { .. } => "non_snake_case",
             Self::NonPascalCaseType { .. } => "non_pascal_case",
             Self::SingleArmMatch { .. } => "single_arm_match",
+            Self::RedundantCast { .. } => "redundant_cast",
             Self::Generic { .. } => "warning",
         }
     }

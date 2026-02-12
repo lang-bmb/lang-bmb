@@ -20335,3 +20335,52 @@ fn test_single_arm_match_var_catchall() {
         "single_arm_match"
     ));
 }
+
+// ============================================================================
+// v0.90.123: Redundant type cast detection
+// ============================================================================
+
+#[test]
+fn test_redundant_cast_i64_to_i64() {
+    // Casting i64 to i64 is redundant
+    assert!(has_warning_kind(
+        "fn f(x: i64) -> i64 = x as i64;",
+        "redundant_cast"
+    ));
+}
+
+#[test]
+fn test_redundant_cast_f64_to_f64() {
+    // Casting f64 to f64 is redundant
+    assert!(has_warning_kind(
+        "fn f(x: f64) -> f64 = x as f64;",
+        "redundant_cast"
+    ));
+}
+
+#[test]
+fn test_redundant_cast_bool_to_bool() {
+    // Casting bool to bool is redundant
+    assert!(has_warning_kind(
+        "fn f(x: bool) -> bool = x as bool;",
+        "redundant_cast"
+    ));
+}
+
+#[test]
+fn test_no_warn_valid_cast_i64_to_f64() {
+    // Casting i64 to f64 is a valid conversion, no warning
+    assert!(!has_warning_kind(
+        "fn f(x: i64) -> f64 = x as f64;",
+        "redundant_cast"
+    ));
+}
+
+#[test]
+fn test_no_warn_valid_cast_f64_to_i64() {
+    // Casting f64 to i64 is a valid truncation, no warning
+    assert!(!has_warning_kind(
+        "fn f(x: f64) -> i64 = x as i64;",
+        "redundant_cast"
+    ));
+}

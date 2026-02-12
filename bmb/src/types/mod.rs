@@ -2894,6 +2894,11 @@ impl TypeChecker {
                 let src_ty = self.infer(&expr.node, expr.span)?;
                 let target_ty = ty.node.clone();
 
+                // v0.90.123: Warn if casting to the same type
+                if src_ty == target_ty {
+                    self.add_warning(CompileWarning::redundant_cast(format!("{}", src_ty), span));
+                }
+
                 // Validate cast is allowed
                 let src_numeric = matches!(&src_ty, Type::I32 | Type::I64 | Type::U32 | Type::U64 | Type::F64 | Type::Bool);
                 let tgt_numeric = matches!(&target_ty, Type::I32 | Type::I64 | Type::U32 | Type::U64 | Type::F64 | Type::Bool);
