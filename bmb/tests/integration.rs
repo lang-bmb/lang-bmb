@@ -20928,3 +20928,141 @@ fn test_edge_naming_single_char_type() {
         "non_pascal_case"
     ));
 }
+
+// ============================================================================
+// Cycle 369: Error recovery stress tests
+// ============================================================================
+
+// --- Type mismatch errors produce clear messages ---
+
+#[test]
+fn test_stress_return_type_mismatch() {
+    type_error_contains(
+        "fn f() -> i64 = true;",
+        "expected i64"
+    );
+}
+
+#[test]
+fn test_stress_binary_op_mismatch() {
+    type_error_contains(
+        r#"fn f() -> i64 = 1 + "hello";"#,
+        "expected"
+    );
+}
+
+#[test]
+fn test_stress_if_branch_mismatch() {
+    type_error_contains(
+        r#"fn f(b: bool) -> i64 = if b { 1 } else { "no" };"#,
+        "expected"
+    );
+}
+
+// --- Undefined name errors ---
+
+#[test]
+fn test_stress_undefined_var() {
+    type_error_contains(
+        "fn f() -> i64 = unknown_var;",
+        "undefined"
+    );
+}
+
+#[test]
+fn test_stress_undefined_fn() {
+    type_error_contains(
+        "fn f() -> i64 = unknown_fn();",
+        "undefined"
+    );
+}
+
+#[test]
+fn test_stress_undefined_type() {
+    type_error_contains(
+        "fn f(x: UnknownType) -> i64 = 0;",
+        "undefined"
+    );
+}
+
+// --- Method errors on wrong types ---
+
+#[test]
+fn test_stress_method_on_int() {
+    type_error_contains(
+        "fn f(x: i64) -> String = x.trim();",
+        "unknown method"
+    );
+}
+
+#[test]
+fn test_stress_method_on_bool() {
+    type_error_contains(
+        "fn f(x: bool) -> i64 = x.abs();",
+        "unknown method"
+    );
+}
+
+#[test]
+fn test_stress_method_on_string() {
+    type_error_contains(
+        r#"fn f(s: String) -> f64 = s.sqrt();"#,
+        "unknown method"
+    );
+}
+
+// --- Argument count errors ---
+
+#[test]
+fn test_stress_too_many_args() {
+    type_error_contains(
+        "fn add(a: i64, b: i64) -> i64 = a + b; fn main() -> i64 = add(1, 2, 3);",
+        "expects 2 arguments"
+    );
+}
+
+#[test]
+fn test_stress_too_few_args() {
+    type_error_contains(
+        "fn add(a: i64, b: i64) -> i64 = a + b; fn main() -> i64 = add(1);",
+        "expects 2 arguments"
+    );
+}
+
+// --- Cast errors ---
+
+#[test]
+fn test_stress_invalid_cast() {
+    type_error_contains(
+        r#"fn f(s: String) -> i64 = s as i64;"#,
+        "cannot cast"
+    );
+}
+
+// --- Pattern errors ---
+
+#[test]
+fn test_stress_non_exhaustive() {
+    type_error_contains(
+        "enum AB { A, B } fn f(x: AB) -> i64 = match x { AB::A => 1 };",
+        "non-exhaustive"
+    );
+}
+
+// --- Struct errors ---
+
+#[test]
+fn test_stress_unknown_field() {
+    type_error_contains(
+        "struct Point { x: i64, y: i64 } fn f() -> i64 = { let p = new Point { x: 1, y: 2 }; p.z };",
+        "no field"
+    );
+}
+
+#[test]
+fn test_stress_missing_field() {
+    type_error_contains(
+        "struct Point { x: i64, y: i64 } fn f() -> i64 = { let p = new Point { x: 1 }; p.x };",
+        "missing"
+    );
+}
