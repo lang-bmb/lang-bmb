@@ -3295,6 +3295,85 @@ impl TypeChecker {
                         self.unify(&pad_ty, &Type::String, args[1].span)?;
                         Ok(Type::String)
                     }
+                    // v0.90.44: trim_start() -> String
+                    "trim_start" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("trim_start() takes no arguments", span));
+                        }
+                        Ok(Type::String)
+                    }
+                    // v0.90.44: trim_end() -> String
+                    "trim_end" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("trim_end() takes no arguments", span));
+                        }
+                        Ok(Type::String)
+                    }
+                    // v0.90.44: char_count() -> i64 (Unicode-aware character count)
+                    "char_count" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("char_count() takes no arguments", span));
+                        }
+                        Ok(Type::I64)
+                    }
+                    // v0.90.44: count(substring) -> i64 (occurrences)
+                    "count" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("count() takes 1 argument (substring)", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg_ty, &Type::String, args[0].span)?;
+                        Ok(Type::I64)
+                    }
+                    // v0.90.44: last_index_of(substring) -> i64? (last occurrence)
+                    "last_index_of" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("last_index_of() takes 1 argument (substring)", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg_ty, &Type::String, args[0].span)?;
+                        Ok(Type::Nullable(Box::new(Type::I64)))
+                    }
+                    // v0.90.44: insert(index, substring) -> String
+                    "insert" => {
+                        if args.len() != 2 {
+                            return Err(CompileError::type_error("insert() takes 2 arguments (index, substring)", span));
+                        }
+                        let idx_ty = self.infer(&args[0].node, args[0].span)?;
+                        match idx_ty {
+                            Type::I32 | Type::I64 | Type::U32 | Type::U64 => {}
+                            _ => return Err(CompileError::type_error(
+                                format!("insert() first argument must be integer, got {}", idx_ty),
+                                args[0].span,
+                            )),
+                        }
+                        let sub_ty = self.infer(&args[1].node, args[1].span)?;
+                        self.unify(&sub_ty, &Type::String, args[1].span)?;
+                        Ok(Type::String)
+                    }
+                    // v0.90.44: remove(start, end) -> String
+                    "remove" => {
+                        if args.len() != 2 {
+                            return Err(CompileError::type_error("remove() takes 2 arguments (start, end)", span));
+                        }
+                        let start_ty = self.infer(&args[0].node, args[0].span)?;
+                        match start_ty {
+                            Type::I32 | Type::I64 | Type::U32 | Type::U64 => {}
+                            _ => return Err(CompileError::type_error(
+                                format!("remove() first argument must be integer, got {}", start_ty),
+                                args[0].span,
+                            )),
+                        }
+                        let end_ty = self.infer(&args[1].node, args[1].span)?;
+                        match end_ty {
+                            Type::I32 | Type::I64 | Type::U32 | Type::U64 => {}
+                            _ => return Err(CompileError::type_error(
+                                format!("remove() second argument must be integer, got {}", end_ty),
+                                args[1].span,
+                            )),
+                        }
+                        Ok(Type::String)
+                    }
                     _ => Err(CompileError::type_error(
                         format!("unknown method '{}' for String", method),
                         span,

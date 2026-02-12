@@ -1335,6 +1335,74 @@ impl Interpreter {
                             Ok(Value::Str(Rc::new(format!("{}{}", s, padding))))
                         }
                     }
+                    // v0.90.44: trim_start() -> String
+                    "trim_start" => Ok(Value::Str(Rc::new(s.trim_start().to_string()))),
+                    // v0.90.44: trim_end() -> String
+                    "trim_end" => Ok(Value::Str(Rc::new(s.trim_end().to_string()))),
+                    // v0.90.44: char_count() -> i64
+                    "char_count" => Ok(Value::Int(s.chars().count() as i64)),
+                    // v0.90.44: count(substring) -> i64
+                    "count" => {
+                        if args.len() != 1 {
+                            return Err(RuntimeError::arity_mismatch("count", 1, args.len()));
+                        }
+                        let needle = match &args[0] {
+                            Value::Str(n) => n.as_str().to_string(),
+                            _ => return Err(RuntimeError::type_error("String", args[0].type_name())),
+                        };
+                        Ok(Value::Int(s.matches(&needle).count() as i64))
+                    }
+                    // v0.90.44: last_index_of(substring) -> i64?
+                    "last_index_of" => {
+                        if args.len() != 1 {
+                            return Err(RuntimeError::arity_mismatch("last_index_of", 1, args.len()));
+                        }
+                        let needle = match &args[0] {
+                            Value::Str(n) => n.as_str().to_string(),
+                            _ => return Err(RuntimeError::type_error("String", args[0].type_name())),
+                        };
+                        match s.rfind(&needle) {
+                            Some(idx) => Ok(Value::Int(idx as i64)),
+                            None => Ok(Value::Int(0)), // null
+                        }
+                    }
+                    // v0.90.44: insert(index, substring) -> String
+                    "insert" => {
+                        if args.len() != 2 {
+                            return Err(RuntimeError::arity_mismatch("insert", 2, args.len()));
+                        }
+                        let idx = match &args[0] {
+                            Value::Int(n) => *n as usize,
+                            _ => return Err(RuntimeError::type_error("integer", args[0].type_name())),
+                        };
+                        let sub = match &args[1] {
+                            Value::Str(s) => s.as_str().to_string(),
+                            _ => return Err(RuntimeError::type_error("String", args[1].type_name())),
+                        };
+                        let mut result = s.to_string();
+                        let byte_idx = s.char_indices().nth(idx).map(|(i, _)| i).unwrap_or(s.len());
+                        result.insert_str(byte_idx, &sub);
+                        Ok(Value::Str(Rc::new(result)))
+                    }
+                    // v0.90.44: remove(start, end) -> String
+                    "remove" => {
+                        if args.len() != 2 {
+                            return Err(RuntimeError::arity_mismatch("remove", 2, args.len()));
+                        }
+                        let start = match &args[0] {
+                            Value::Int(n) => *n as usize,
+                            _ => return Err(RuntimeError::type_error("integer", args[0].type_name())),
+                        };
+                        let end = match &args[1] {
+                            Value::Int(n) => *n as usize,
+                            _ => return Err(RuntimeError::type_error("integer", args[1].type_name())),
+                        };
+                        let chars: Vec<char> = s.chars().collect();
+                        let start = start.min(chars.len());
+                        let end = end.min(chars.len());
+                        let result: String = chars[..start].iter().chain(chars[end..].iter()).collect();
+                        Ok(Value::Str(Rc::new(result)))
+                    }
                     _ => Err(RuntimeError::undefined_function(&format!("String.{}", method))),
                 }
             }

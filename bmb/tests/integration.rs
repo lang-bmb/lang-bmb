@@ -14662,6 +14662,98 @@ fn test_nullable_unwrap_value() {
 // ============================================
 
 // ============================================
+// Cycle 278: String Utility Methods
+// ============================================
+
+#[test]
+fn test_string_trim_start() {
+    let source = r#"
+        fn main() -> String = "  hello  ".trim_start();
+    "#;
+    assert_eq!(run_program_str(source), "hello  ");
+}
+
+#[test]
+fn test_string_trim_end() {
+    let source = r#"
+        fn main() -> String = "  hello  ".trim_end();
+    "#;
+    assert_eq!(run_program_str(source), "  hello");
+}
+
+#[test]
+fn test_string_char_count() {
+    let source = r#"
+        fn main() -> i64 = "hello".char_count();
+    "#;
+    assert_eq!(run_program_i64(source), 5);
+}
+
+#[test]
+fn test_string_count_occurrences() {
+    let source = r#"
+        fn main() -> i64 = "abcabc".count("abc");
+    "#;
+    assert_eq!(run_program_i64(source), 2);
+}
+
+#[test]
+fn test_string_count_no_match() {
+    let source = r#"
+        fn main() -> i64 = "hello".count("xyz");
+    "#;
+    assert_eq!(run_program_i64(source), 0);
+}
+
+#[test]
+fn test_string_last_index_of() {
+    let source = r#"
+        fn main() -> i64 = "hello world hello".last_index_of("hello").unwrap_or(-1);
+    "#;
+    assert_eq!(run_program_i64(source), 12);
+}
+
+#[test]
+fn test_string_last_index_of_not_found() {
+    let source = r#"
+        fn main() -> i64 = "hello".last_index_of("xyz").unwrap_or(-1);
+    "#;
+    assert_eq!(run_program_i64(source), -1);
+}
+
+#[test]
+fn test_string_insert() {
+    let source = r#"
+        fn main() -> String = "helo".insert(3, "l");
+    "#;
+    assert_eq!(run_program_str(source), "hello");
+}
+
+#[test]
+fn test_string_insert_at_start() {
+    let source = r#"
+        fn main() -> String = "world".insert(0, "hello ");
+    "#;
+    assert_eq!(run_program_str(source), "hello world");
+}
+
+#[test]
+fn test_string_remove() {
+    let source = r#"
+        fn main() -> String = "hello world".remove(5, 6);
+    "#;
+    assert_eq!(run_program_str(source), "helloworld");
+}
+
+#[test]
+fn test_string_remove_range() {
+    let source = r#"
+        fn main() -> String = "abcdef".remove(1, 4);
+    "#;
+    assert_eq!(run_program_str(source), "aef");
+}
+
+// ============================================
 // Cycle 277: Array Aggregation & Utility Methods
 // ============================================
 
