@@ -18575,3 +18575,40 @@ fn test_int_reverse_bits() {
 fn test_int_power_prime_chain() {
     assert_eq!(run_program_i64(r#"fn main() -> i64 = if 5.next_power_of_two().is_power_of_two() { 1 } else { 0 };"#), 1);
 }
+
+// --- Cycle 324: Integer saturating_add/sub/mul, checked_add/sub/mul ---
+
+#[test]
+fn test_int_saturating_add() {
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = 100.saturating_add(200);"#), 300);
+}
+
+#[test]
+fn test_int_saturating_sub() {
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = 10.saturating_sub(3);"#), 7);
+}
+
+#[test]
+fn test_int_saturating_mul() {
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = 5.saturating_mul(6);"#), 30);
+}
+
+#[test]
+fn test_int_checked_add() {
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = 10.checked_add(20).unwrap_or(0);"#), 30);
+}
+
+#[test]
+fn test_int_checked_sub() {
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = 50.checked_sub(20).unwrap_or(0);"#), 30);
+}
+
+#[test]
+fn test_int_checked_mul() {
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = 6.checked_mul(7).unwrap_or(0);"#), 42);
+}
+
+#[test]
+fn test_int_saturating_chain() {
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = 100.saturating_add(50).saturating_sub(30);"#), 120);
+}

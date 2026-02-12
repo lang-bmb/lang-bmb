@@ -4394,6 +4394,40 @@ impl Interpreter {
                     "reverse_bits" => {
                         Ok(Value::Int(n.reverse_bits()))
                     }
+                    // v0.90.90: saturating_add/sub/mul, checked_add/sub/mul
+                    "saturating_add" => {
+                        let other = match &args[0] { Value::Int(m) => *m, _ => return Err(RuntimeError::type_error("integer", args[0].type_name())) };
+                        Ok(Value::Int(n.saturating_add(other)))
+                    }
+                    "saturating_sub" => {
+                        let other = match &args[0] { Value::Int(m) => *m, _ => return Err(RuntimeError::type_error("integer", args[0].type_name())) };
+                        Ok(Value::Int(n.saturating_sub(other)))
+                    }
+                    "saturating_mul" => {
+                        let other = match &args[0] { Value::Int(m) => *m, _ => return Err(RuntimeError::type_error("integer", args[0].type_name())) };
+                        Ok(Value::Int(n.saturating_mul(other)))
+                    }
+                    "checked_add" => {
+                        let other = match &args[0] { Value::Int(m) => *m, _ => return Err(RuntimeError::type_error("integer", args[0].type_name())) };
+                        match n.checked_add(other) {
+                            Some(v) => Ok(Value::Int(v)),
+                            None => Ok(Value::Int(0)),
+                        }
+                    }
+                    "checked_sub" => {
+                        let other = match &args[0] { Value::Int(m) => *m, _ => return Err(RuntimeError::type_error("integer", args[0].type_name())) };
+                        match n.checked_sub(other) {
+                            Some(v) => Ok(Value::Int(v)),
+                            None => Ok(Value::Int(0)),
+                        }
+                    }
+                    "checked_mul" => {
+                        let other = match &args[0] { Value::Int(m) => *m, _ => return Err(RuntimeError::type_error("integer", args[0].type_name())) };
+                        match n.checked_mul(other) {
+                            Some(v) => Ok(Value::Int(v)),
+                            None => Ok(Value::Int(0)),
+                        }
+                    }
                     _ => Err(RuntimeError::type_error("object with methods", receiver.type_name())),
                 }
             }

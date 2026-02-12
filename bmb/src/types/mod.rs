@@ -3208,6 +3208,24 @@ impl TypeChecker {
                         }
                         Ok(receiver_ty.clone())
                     }
+                    // v0.90.90: saturating_add/sub/mul(i64) -> i64
+                    "saturating_add" | "saturating_sub" | "saturating_mul" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error(&format!("{}() takes 1 argument", method), span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg_ty, receiver_ty, args[0].span)?;
+                        Ok(receiver_ty.clone())
+                    }
+                    // v0.90.90: checked_add/sub/mul(i64) -> i64?
+                    "checked_add" | "checked_sub" | "checked_mul" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error(&format!("{}() takes 1 argument", method), span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg_ty, receiver_ty, args[0].span)?;
+                        Ok(Type::Nullable(Box::new(receiver_ty.clone())))
+                    }
                     _ => Err(CompileError::type_error(
                         format!("unknown method '{}' for {}", method, receiver_ty), span)),
                 }
