@@ -14338,3 +14338,93 @@ fn test_array_filter_take_chain() {
     "#;
     assert_eq!(run_program_i64(source), 9);
 }
+
+// --- Cycle 275: String lines, bytes, char_at, strip_prefix/suffix, pad_left/right ---
+
+#[test]
+fn test_string_lines() {
+    let source = r#"
+        fn main() -> i64 = "hello\nworld\nfoo".lines().len();
+    "#;
+    assert_eq!(run_program_i64(source), 3);
+}
+
+#[test]
+fn test_string_bytes() {
+    let source = r#"
+        fn main() -> i64 = "ABC".bytes()[0];
+    "#;
+    assert_eq!(run_program_i64(source), 65);
+}
+
+#[test]
+fn test_string_bytes_len() {
+    let source = r#"
+        fn main() -> i64 = "hello".bytes().len();
+    "#;
+    assert_eq!(run_program_i64(source), 5);
+}
+
+#[test]
+fn test_string_char_at() {
+    let source = r#"
+        fn main() -> String = "hello".char_at(1);
+    "#;
+    assert_eq!(run_program_str(source), "e");
+}
+
+#[test]
+fn test_string_strip_prefix_match() {
+    let source = r#"
+        fn main() -> String = "hello world".strip_prefix("hello ").unwrap_or("fail");
+    "#;
+    assert_eq!(run_program_str(source), "world");
+}
+
+#[test]
+fn test_string_strip_prefix_no_match() {
+    let source = r#"
+        fn main() -> String = "hello".strip_prefix("xyz").unwrap_or("none");
+    "#;
+    assert_eq!(run_program_str(source), "none");
+}
+
+#[test]
+fn test_string_strip_suffix_match() {
+    let source = r#"
+        fn main() -> String = "hello.bmb".strip_suffix(".bmb").unwrap_or("fail");
+    "#;
+    assert_eq!(run_program_str(source), "hello");
+}
+
+#[test]
+fn test_string_strip_suffix_no_match() {
+    let source = r#"
+        fn main() -> String = "hello".strip_suffix(".rs").unwrap_or("none");
+    "#;
+    assert_eq!(run_program_str(source), "none");
+}
+
+#[test]
+fn test_string_pad_left() {
+    let source = r#"
+        fn main() -> String = "42".pad_left(5, "0");
+    "#;
+    assert_eq!(run_program_str(source), "00042");
+}
+
+#[test]
+fn test_string_pad_right() {
+    let source = r#"
+        fn main() -> String = "hi".pad_right(5, ".");
+    "#;
+    assert_eq!(run_program_str(source), "hi...");
+}
+
+#[test]
+fn test_string_pad_left_no_pad_needed() {
+    let source = r#"
+        fn main() -> String = "hello".pad_left(3, " ");
+    "#;
+    assert_eq!(run_program_str(source), "hello");
+}

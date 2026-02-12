@@ -1221,6 +1221,108 @@ impl Interpreter {
                     "reverse" => {
                         Ok(Value::Str(Rc::new(s.chars().rev().collect::<String>())))
                     }
+                    // v0.90.41: lines() -> [String]
+                    "lines" => {
+                        let lines: Vec<Value> = s.lines()
+                            .map(|l| Value::Str(Rc::new(l.to_string())))
+                            .collect();
+                        Ok(Value::Array(lines))
+                    }
+                    // v0.90.41: bytes() -> [i64]
+                    "bytes" => {
+                        let bytes: Vec<Value> = s.bytes()
+                            .map(|b| Value::Int(b as i64))
+                            .collect();
+                        Ok(Value::Array(bytes))
+                    }
+                    // v0.90.41: char_at(i64) -> String
+                    "char_at" => {
+                        if args.len() != 1 {
+                            return Err(RuntimeError::arity_mismatch("char_at", 1, args.len()));
+                        }
+                        let idx = match &args[0] {
+                            Value::Int(n) => *n as usize,
+                            _ => return Err(RuntimeError::type_error("integer", args[0].type_name())),
+                        };
+                        match s.chars().nth(idx) {
+                            Some(c) => Ok(Value::Str(Rc::new(c.to_string()))),
+                            None => Err(RuntimeError::index_out_of_bounds(idx as i64, s.len())),
+                        }
+                    }
+                    // v0.90.41: strip_prefix(String) -> String?
+                    "strip_prefix" => {
+                        if args.len() != 1 {
+                            return Err(RuntimeError::arity_mismatch("strip_prefix", 1, args.len()));
+                        }
+                        let prefix = match &args[0] {
+                            Value::Str(p) => p.as_str().to_string(),
+                            _ => return Err(RuntimeError::type_error("String", args[0].type_name())),
+                        };
+                        match s.strip_prefix(prefix.as_str()) {
+                            Some(rest) => Ok(Value::Enum("Option".to_string(), "Some".to_string(),
+                                vec![Value::Str(Rc::new(rest.to_string()))])),
+                            None => Ok(Value::Enum("Option".to_string(), "None".to_string(), vec![])),
+                        }
+                    }
+                    // v0.90.41: strip_suffix(String) -> String?
+                    "strip_suffix" => {
+                        if args.len() != 1 {
+                            return Err(RuntimeError::arity_mismatch("strip_suffix", 1, args.len()));
+                        }
+                        let suffix = match &args[0] {
+                            Value::Str(p) => p.as_str().to_string(),
+                            _ => return Err(RuntimeError::type_error("String", args[0].type_name())),
+                        };
+                        match s.strip_suffix(suffix.as_str()) {
+                            Some(rest) => Ok(Value::Enum("Option".to_string(), "Some".to_string(),
+                                vec![Value::Str(Rc::new(rest.to_string()))])),
+                            None => Ok(Value::Enum("Option".to_string(), "None".to_string(), vec![])),
+                        }
+                    }
+                    // v0.90.41: pad_left(width, padding) -> String
+                    "pad_left" => {
+                        if args.len() != 2 {
+                            return Err(RuntimeError::arity_mismatch("pad_left", 2, args.len()));
+                        }
+                        let width = match &args[0] {
+                            Value::Int(n) => *n as usize,
+                            _ => return Err(RuntimeError::type_error("integer", args[0].type_name())),
+                        };
+                        let pad = match &args[1] {
+                            Value::Str(p) => p.as_str().to_string(),
+                            _ => return Err(RuntimeError::type_error("String", args[1].type_name())),
+                        };
+                        let pad_char = pad.chars().next().unwrap_or(' ');
+                        let current_len = s.chars().count();
+                        if current_len >= width {
+                            Ok(Value::Str(Rc::new(s.to_string())))
+                        } else {
+                            let padding: String = std::iter::repeat(pad_char).take(width - current_len).collect();
+                            Ok(Value::Str(Rc::new(format!("{}{}", padding, s))))
+                        }
+                    }
+                    // v0.90.41: pad_right(width, padding) -> String
+                    "pad_right" => {
+                        if args.len() != 2 {
+                            return Err(RuntimeError::arity_mismatch("pad_right", 2, args.len()));
+                        }
+                        let width = match &args[0] {
+                            Value::Int(n) => *n as usize,
+                            _ => return Err(RuntimeError::type_error("integer", args[0].type_name())),
+                        };
+                        let pad = match &args[1] {
+                            Value::Str(p) => p.as_str().to_string(),
+                            _ => return Err(RuntimeError::type_error("String", args[1].type_name())),
+                        };
+                        let pad_char = pad.chars().next().unwrap_or(' ');
+                        let current_len = s.chars().count();
+                        if current_len >= width {
+                            Ok(Value::Str(Rc::new(s.to_string())))
+                        } else {
+                            let padding: String = std::iter::repeat(pad_char).take(width - current_len).collect();
+                            Ok(Value::Str(Rc::new(format!("{}{}", s, padding))))
+                        }
+                    }
                     _ => Err(RuntimeError::undefined_function(&format!("String.{}", method))),
                 }
             }

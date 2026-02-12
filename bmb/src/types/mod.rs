@@ -3167,6 +3167,87 @@ impl TypeChecker {
                         }
                         Ok(Type::String)
                     }
+                    // v0.90.41: lines() -> [String]
+                    "lines" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("lines() takes no arguments", span));
+                        }
+                        Ok(Type::Array(Box::new(Type::String), 0))
+                    }
+                    // v0.90.41: bytes() -> [i64]
+                    "bytes" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("bytes() takes no arguments", span));
+                        }
+                        Ok(Type::Array(Box::new(Type::I64), 0))
+                    }
+                    // v0.90.41: char_at(i64) -> String
+                    "char_at" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("char_at() takes 1 argument", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        match arg_ty {
+                            Type::I32 | Type::I64 | Type::U32 | Type::U64 => {}
+                            _ => return Err(CompileError::type_error(
+                                format!("char_at() requires integer argument, got {}", arg_ty),
+                                args[0].span,
+                            )),
+                        }
+                        Ok(Type::String)
+                    }
+                    // v0.90.41: strip_prefix(String) -> String?
+                    "strip_prefix" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("strip_prefix() takes 1 argument", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg_ty, &Type::String, args[0].span)?;
+                        Ok(Type::Nullable(Box::new(Type::String)))
+                    }
+                    // v0.90.41: strip_suffix(String) -> String?
+                    "strip_suffix" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("strip_suffix() takes 1 argument", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg_ty, &Type::String, args[0].span)?;
+                        Ok(Type::Nullable(Box::new(Type::String)))
+                    }
+                    // v0.90.41: pad_left(i64, String) -> String
+                    "pad_left" => {
+                        if args.len() != 2 {
+                            return Err(CompileError::type_error("pad_left() takes 2 arguments (width, padding)", span));
+                        }
+                        let width_ty = self.infer(&args[0].node, args[0].span)?;
+                        match width_ty {
+                            Type::I32 | Type::I64 | Type::U32 | Type::U64 => {}
+                            _ => return Err(CompileError::type_error(
+                                format!("pad_left() first argument must be integer, got {}", width_ty),
+                                args[0].span,
+                            )),
+                        }
+                        let pad_ty = self.infer(&args[1].node, args[1].span)?;
+                        self.unify(&pad_ty, &Type::String, args[1].span)?;
+                        Ok(Type::String)
+                    }
+                    // v0.90.41: pad_right(i64, String) -> String
+                    "pad_right" => {
+                        if args.len() != 2 {
+                            return Err(CompileError::type_error("pad_right() takes 2 arguments (width, padding)", span));
+                        }
+                        let width_ty = self.infer(&args[0].node, args[0].span)?;
+                        match width_ty {
+                            Type::I32 | Type::I64 | Type::U32 | Type::U64 => {}
+                            _ => return Err(CompileError::type_error(
+                                format!("pad_right() first argument must be integer, got {}", width_ty),
+                                args[0].span,
+                            )),
+                        }
+                        let pad_ty = self.infer(&args[1].node, args[1].span)?;
+                        self.unify(&pad_ty, &Type::String, args[1].span)?;
+                        Ok(Type::String)
+                    }
                     _ => Err(CompileError::type_error(
                         format!("unknown method '{}' for String", method),
                         span,
