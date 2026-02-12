@@ -18802,3 +18802,79 @@ fn test_bool_nor() {
 fn test_bool_logic_chain() {
     assert_eq!(run_program_i64(r#"fn main() -> i64 = if true.and_bool(true).xor_bool(false) { 1 } else { 0 };"#), 1);
 }
+
+// --- Cycle 330: Cross-type integration tests ---
+
+#[test]
+fn test_cross_string_to_array_methods() {
+    // Split string, map lengths, sum
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = "hello world foo".split(" ").map(fn |s: String| { s.len() }).sum();"#), 13);
+}
+
+#[test]
+fn test_cross_array_to_string_methods() {
+    // Join array, then string ops
+    assert_eq!(run_program_str(r#"fn main() -> String = ["hello", "world"].join(" ").capitalize();"#), "Hello world");
+}
+
+#[test]
+fn test_cross_int_to_string_to_array() {
+    // Integer digits, map to strings, join
+    assert_eq!(run_program_str(r#"fn main() -> String = 12345.digits().map(fn |d: i64| { d.to_string() }).join("-");"#), "1-2-3-4-5");
+}
+
+#[test]
+fn test_cross_array_filter_count() {
+    // Filter primes from array, count
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = [2, 3, 4, 5, 6, 7, 8, 9, 10].filter(fn |n: i64| { n.is_prime() }).len();"#), 4);
+}
+
+#[test]
+fn test_cross_string_edit_distance_comparison() {
+    // Use edit_distance to find closest match
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = "cat".edit_distance("bat");"#), 1);
+}
+
+#[test]
+fn test_cross_float_chain() {
+    // Float lerp then map_range
+    let result = run_program_f64(r#"fn main() -> f64 = 0.0.lerp(100.0, 0.5).map_range(0.0, 100.0, 0.0, 1.0);"#);
+    assert!((result - 0.5).abs() < 1e-10);
+}
+
+#[test]
+fn test_cross_array_statistical() {
+    // Get average of filtered array
+    let result = run_program_f64(r#"fn main() -> f64 = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].filter(fn |n: i64| { n.is_even() }).average();"#);
+    assert!((result - 6.0).abs() < 1e-10);
+}
+
+#[test]
+fn test_cross_char_string() {
+    // Char classification on string chars
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = "Hello World 123".split("").filter(fn |s: String| { s.is_numeric() }).len();"#), 3);
+}
+
+#[test]
+fn test_cross_array_sort_binary_search() {
+    // Sort then binary search
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = [5, 3, 1, 4, 2].sort().binary_search(3).unwrap_or(-1);"#), 2);
+}
+
+#[test]
+fn test_cross_bool_choose_with_methods() {
+    // Bool choose selects value, then use methods
+    assert_eq!(run_program_str(r#"fn main() -> String = true.choose("hello", "world").capitalize();"#), "Hello");
+}
+
+#[test]
+fn test_cross_int_checked_unwrap() {
+    // Checked arithmetic with unwrap_or
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = 10.checked_add(20).unwrap_or(0).saturating_mul(2);"#), 60);
+}
+
+#[test]
+fn test_cross_array_unique_sort() {
+    // Check uniqueness after dedup
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = if [3, 1, 2, 1, 3].unique().all_unique() { 1 } else { 0 };"#), 1);
+}
