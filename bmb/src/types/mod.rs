@@ -3285,6 +3285,124 @@ impl TypeChecker {
                         self.unify(&arg_ty, &Type::String, args[0].span)?;
                         Ok(Type::String)
                     }
+                    // v0.90.38: map(fn(T) -> U) -> [U]
+                    "map" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("map() takes 1 argument (a closure)", span));
+                        }
+                        let fn_ty = self.infer(&args[0].node, args[0].span)?;
+                        match fn_ty {
+                            Type::Fn { params, ret } => {
+                                if params.len() != 1 {
+                                    return Err(CompileError::type_error(
+                                        format!("map() closure must take 1 parameter, got {}", params.len()),
+                                        args[0].span,
+                                    ));
+                                }
+                                self.unify(&params[0], elem_ty, args[0].span)?;
+                                Ok(Type::Array(ret, 0))
+                            }
+                            _ => Err(CompileError::type_error(
+                                "map() requires a closure argument",
+                                args[0].span,
+                            )),
+                        }
+                    }
+                    // v0.90.38: filter(fn(T) -> bool) -> [T]
+                    "filter" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("filter() takes 1 argument (a closure)", span));
+                        }
+                        let fn_ty = self.infer(&args[0].node, args[0].span)?;
+                        match fn_ty {
+                            Type::Fn { params, ret } => {
+                                if params.len() != 1 {
+                                    return Err(CompileError::type_error(
+                                        format!("filter() closure must take 1 parameter, got {}", params.len()),
+                                        args[0].span,
+                                    ));
+                                }
+                                self.unify(&params[0], elem_ty, args[0].span)?;
+                                self.unify(&ret, &Type::Bool, args[0].span)?;
+                                Ok(Type::Array(elem_ty.clone(), 0))
+                            }
+                            _ => Err(CompileError::type_error(
+                                "filter() requires a closure argument",
+                                args[0].span,
+                            )),
+                        }
+                    }
+                    // v0.90.38: any(fn(T) -> bool) -> bool
+                    "any" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("any() takes 1 argument (a closure)", span));
+                        }
+                        let fn_ty = self.infer(&args[0].node, args[0].span)?;
+                        match fn_ty {
+                            Type::Fn { params, ret } => {
+                                if params.len() != 1 {
+                                    return Err(CompileError::type_error(
+                                        format!("any() closure must take 1 parameter, got {}", params.len()),
+                                        args[0].span,
+                                    ));
+                                }
+                                self.unify(&params[0], elem_ty, args[0].span)?;
+                                self.unify(&ret, &Type::Bool, args[0].span)?;
+                                Ok(Type::Bool)
+                            }
+                            _ => Err(CompileError::type_error(
+                                "any() requires a closure argument",
+                                args[0].span,
+                            )),
+                        }
+                    }
+                    // v0.90.38: all(fn(T) -> bool) -> bool
+                    "all" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("all() takes 1 argument (a closure)", span));
+                        }
+                        let fn_ty = self.infer(&args[0].node, args[0].span)?;
+                        match fn_ty {
+                            Type::Fn { params, ret } => {
+                                if params.len() != 1 {
+                                    return Err(CompileError::type_error(
+                                        format!("all() closure must take 1 parameter, got {}", params.len()),
+                                        args[0].span,
+                                    ));
+                                }
+                                self.unify(&params[0], elem_ty, args[0].span)?;
+                                self.unify(&ret, &Type::Bool, args[0].span)?;
+                                Ok(Type::Bool)
+                            }
+                            _ => Err(CompileError::type_error(
+                                "all() requires a closure argument",
+                                args[0].span,
+                            )),
+                        }
+                    }
+                    // v0.90.38: for_each(fn(T) -> ()) -> ()
+                    "for_each" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("for_each() takes 1 argument (a closure)", span));
+                        }
+                        let fn_ty = self.infer(&args[0].node, args[0].span)?;
+                        match fn_ty {
+                            Type::Fn { params, .. } => {
+                                if params.len() != 1 {
+                                    return Err(CompileError::type_error(
+                                        format!("for_each() closure must take 1 parameter, got {}", params.len()),
+                                        args[0].span,
+                                    ));
+                                }
+                                self.unify(&params[0], elem_ty, args[0].span)?;
+                                Ok(Type::Unit)
+                            }
+                            _ => Err(CompileError::type_error(
+                                "for_each() requires a closure argument",
+                                args[0].span,
+                            )),
+                        }
+                    }
                     _ => Err(CompileError::type_error(
                         format!("unknown method '{}' for Array", method),
                         span,

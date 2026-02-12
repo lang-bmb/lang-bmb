@@ -13977,3 +13977,122 @@ fn test_array_method_chain() {
     "#;
     assert_eq!(run_program_i64(source), 5);
 }
+
+// --- Cycle 272: Array closure methods (map, filter, any, all, for_each) ---
+
+#[test]
+fn test_array_map() {
+    let source = r#"
+        fn main() -> i64 = {
+            let arr = [1, 2, 3].map(fn |x: i64| { x * 2 });
+            arr[1]
+        };
+    "#;
+    assert_eq!(run_program_i64(source), 4);
+}
+
+#[test]
+fn test_array_map_len() {
+    let source = r#"
+        fn main() -> i64 = [10, 20, 30, 40].map(fn |x: i64| { x + 1 }).len();
+    "#;
+    assert_eq!(run_program_i64(source), 4);
+}
+
+#[test]
+fn test_array_map_sum() {
+    let source = r#"
+        fn main() -> i64 = {
+            let arr = [1, 2, 3].map(fn |x: i64| { x * x });
+            arr[0] + arr[1] + arr[2]
+        };
+    "#;
+    assert_eq!(run_program_i64(source), 14);
+}
+
+#[test]
+fn test_array_filter() {
+    let source = r#"
+        fn main() -> i64 = {
+            let arr = [1, 2, 3, 4, 5, 6].filter(fn |x: i64| { x > 3 });
+            arr.len()
+        };
+    "#;
+    assert_eq!(run_program_i64(source), 3);
+}
+
+#[test]
+fn test_array_filter_values() {
+    let source = r#"
+        fn main() -> i64 = {
+            let arr = [10, 3, 7, 1, 9].filter(fn |x: i64| { x > 5 });
+            arr[0] + arr[1] + arr[2]
+        };
+    "#;
+    assert_eq!(run_program_i64(source), 26);
+}
+
+#[test]
+fn test_array_filter_empty() {
+    let source = r#"
+        fn main() -> i64 = [1, 2, 3].filter(fn |x: i64| { x > 100 }).len();
+    "#;
+    assert_eq!(run_program_i64(source), 0);
+}
+
+#[test]
+fn test_array_any_true() {
+    let source = r#"
+        fn main() -> i64 = if [1, 2, 3, 4].any(fn |x: i64| { x > 3 }) { 1 } else { 0 };
+    "#;
+    assert_eq!(run_program_i64(source), 1);
+}
+
+#[test]
+fn test_array_any_false() {
+    let source = r#"
+        fn main() -> i64 = if [1, 2, 3].any(fn |x: i64| { x > 10 }) { 1 } else { 0 };
+    "#;
+    assert_eq!(run_program_i64(source), 0);
+}
+
+#[test]
+fn test_array_all_true() {
+    let source = r#"
+        fn main() -> i64 = if [2, 4, 6].all(fn |x: i64| { x > 0 }) { 1 } else { 0 };
+    "#;
+    assert_eq!(run_program_i64(source), 1);
+}
+
+#[test]
+fn test_array_all_false() {
+    let source = r#"
+        fn main() -> i64 = if [1, 2, 3].all(fn |x: i64| { x > 2 }) { 1 } else { 0 };
+    "#;
+    assert_eq!(run_program_i64(source), 0);
+}
+
+#[test]
+fn test_array_map_filter_chain() {
+    let source = r#"
+        fn main() -> i64 = {
+            let arr = [1, 2, 3, 4, 5]
+                .map(fn |x: i64| { x * 2 })
+                .filter(fn |x: i64| { x > 5 });
+            arr.len()
+        };
+    "#;
+    assert_eq!(run_program_i64(source), 3);
+}
+
+#[test]
+fn test_array_for_each() {
+    let source = r#"
+        fn main() -> i64 = {
+            let arr = [1, 2, 3];
+            arr.for_each(fn |x: i64| { x });
+            arr.len()
+        };
+    "#;
+    assert_eq!(run_program_i64(source), 3);
+}

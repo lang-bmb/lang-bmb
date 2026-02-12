@@ -1328,6 +1328,93 @@ impl Interpreter {
                         }).collect();
                         Ok(Value::Str(Rc::new(parts.join(&sep))))
                     }
+                    // v0.90.38: map(fn(T) -> U) -> [U]
+                    "map" => {
+                        if args.len() != 1 {
+                            return Err(RuntimeError::arity_mismatch("map", 1, args.len()));
+                        }
+                        match args.into_iter().next().unwrap() {
+                            Value::Closure { params, body, env: closure_env } => {
+                                let mut result = Vec::with_capacity(arr.len());
+                                for elem in arr {
+                                    let val = self.call_closure(&params, &body, &closure_env, vec![elem])?;
+                                    result.push(val);
+                                }
+                                Ok(Value::Array(result))
+                            }
+                            _ => Err(RuntimeError::type_error("closure", "non-closure")),
+                        }
+                    }
+                    // v0.90.38: filter(fn(T) -> bool) -> [T]
+                    "filter" => {
+                        if args.len() != 1 {
+                            return Err(RuntimeError::arity_mismatch("filter", 1, args.len()));
+                        }
+                        match args.into_iter().next().unwrap() {
+                            Value::Closure { params, body, env: closure_env } => {
+                                let mut result = Vec::new();
+                                for elem in arr {
+                                    let pred = self.call_closure(&params, &body, &closure_env, vec![elem.clone()])?;
+                                    if pred.is_truthy() {
+                                        result.push(elem);
+                                    }
+                                }
+                                Ok(Value::Array(result))
+                            }
+                            _ => Err(RuntimeError::type_error("closure", "non-closure")),
+                        }
+                    }
+                    // v0.90.38: any(fn(T) -> bool) -> bool
+                    "any" => {
+                        if args.len() != 1 {
+                            return Err(RuntimeError::arity_mismatch("any", 1, args.len()));
+                        }
+                        match args.into_iter().next().unwrap() {
+                            Value::Closure { params, body, env: closure_env } => {
+                                for elem in arr {
+                                    let pred = self.call_closure(&params, &body, &closure_env, vec![elem])?;
+                                    if pred.is_truthy() {
+                                        return Ok(Value::Bool(true));
+                                    }
+                                }
+                                Ok(Value::Bool(false))
+                            }
+                            _ => Err(RuntimeError::type_error("closure", "non-closure")),
+                        }
+                    }
+                    // v0.90.38: all(fn(T) -> bool) -> bool
+                    "all" => {
+                        if args.len() != 1 {
+                            return Err(RuntimeError::arity_mismatch("all", 1, args.len()));
+                        }
+                        match args.into_iter().next().unwrap() {
+                            Value::Closure { params, body, env: closure_env } => {
+                                for elem in arr {
+                                    let pred = self.call_closure(&params, &body, &closure_env, vec![elem])?;
+                                    if !pred.is_truthy() {
+                                        return Ok(Value::Bool(false));
+                                    }
+                                }
+                                Ok(Value::Bool(true))
+                            }
+                            _ => Err(RuntimeError::type_error("closure", "non-closure")),
+                        }
+                    }
+                    // v0.90.38: for_each(fn(T) -> ()) -> ()
+                    "for_each" => {
+                        if args.len() != 1 {
+                            return Err(RuntimeError::arity_mismatch("for_each", 1, args.len()));
+                        }
+                        match args.into_iter().next().unwrap() {
+                            Value::Closure { params, body, env: closure_env } => {
+                                for elem in arr {
+                                    self.call_closure(&params, &body, &closure_env, vec![elem])?;
+                                }
+                                Ok(Value::Unit)
+                            }
+                            _ => Err(RuntimeError::type_error("closure", "non-closure")),
+                        }
+                    }
                     _ => Err(RuntimeError::undefined_function(&format!("Array.{}", method))),
                 }
             }
