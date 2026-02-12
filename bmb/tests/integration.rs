@@ -20767,3 +20767,164 @@ fn test_chain_error_type_mismatch() {
         "unknown method"
     );
 }
+
+// ============================================================================
+// Cycle 368: Comprehensive edge case tests
+// ============================================================================
+
+// --- Integer edge cases ---
+
+#[test]
+fn test_edge_int_zero_abs() {
+    assert_eq!(run_program_i64("fn main() -> i64 = 0.abs();"), 0);
+}
+
+#[test]
+fn test_edge_int_negative_to_string() {
+    assert!(type_checks("fn f(x: i64) -> String = (-42).to_string();"));
+}
+
+#[test]
+fn test_edge_int_min_clamp() {
+    assert_eq!(run_program_i64("fn main() -> i64 = 5.clamp(10, 20);"), 10);
+}
+
+#[test]
+fn test_edge_int_max_clamp() {
+    assert_eq!(run_program_i64("fn main() -> i64 = 25.clamp(10, 20);"), 20);
+}
+
+#[test]
+fn test_edge_int_pow_zero() {
+    assert_eq!(run_program_i64("fn main() -> i64 = 42.pow(0);"), 1);
+}
+
+// --- Float edge cases ---
+
+#[test]
+fn test_edge_float_zero_sign() {
+    assert!(type_checks("fn f() -> f64 = 0.0.signum();"));
+}
+
+#[test]
+fn test_edge_float_neg_sqrt() {
+    assert!(type_checks("fn f() -> f64 = (-1.0).sqrt();"));
+}
+
+// --- String edge cases ---
+
+#[test]
+fn test_edge_string_empty_len() {
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = "".len();"#), 0);
+}
+
+#[test]
+fn test_edge_string_empty_trim() {
+    assert!(type_checks(r#"fn f() -> String = "".trim();"#));
+}
+
+#[test]
+fn test_edge_string_empty_split() {
+    assert!(type_checks(r#"fn f() -> i64 = "".split(",").len();"#));
+}
+
+#[test]
+fn test_edge_string_empty_contains() {
+    assert!(type_checks(r#"fn f() -> bool = "".contains("");"#));
+}
+
+#[test]
+fn test_edge_string_glob_empty_pattern() {
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = if "".glob_match("") { 1 } else { 0 };"#), 1);
+}
+
+#[test]
+fn test_edge_string_glob_star_only() {
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = if "anything".glob_match("*") { 1 } else { 0 };"#), 1);
+}
+
+// --- Array edge cases ---
+
+#[test]
+fn test_edge_array_single_element() {
+    assert_eq!(run_program_i64("fn main() -> i64 = [42].first();"), 42);
+}
+
+#[test]
+fn test_edge_array_single_len() {
+    assert_eq!(run_program_i64("fn main() -> i64 = [42].len();"), 1);
+}
+
+// --- Tuple edge cases ---
+
+#[test]
+fn test_edge_tuple_single_first() {
+    assert!(type_checks("fn f() -> i64 = (42,).first();"));
+}
+
+#[test]
+fn test_edge_tuple_swap_same_types() {
+    assert!(type_checks("fn f() -> (i64, i64) = (1, 2).swap();"));
+}
+
+#[test]
+fn test_edge_tuple_swap_different_types() {
+    // swap on (i64, bool) should return (bool, i64)
+    assert!(type_checks("fn f() -> (bool, i64) = (1, true).swap();"));
+}
+
+// --- Match edge cases ---
+
+#[test]
+fn test_edge_match_nested_pattern() {
+    assert!(type_checks(
+        "enum Opt { Some(i64), None }
+         fn f(x: Opt) -> i64 = match x { Opt::Some(n) => n, Opt::None => 0 };"
+    ));
+}
+
+#[test]
+fn test_edge_match_bool_exhaustive() {
+    assert_eq!(run_program_i64("fn main() -> i64 = match true { true => 1, false => 0 };"), 1);
+}
+
+// --- Cast edge cases ---
+
+#[test]
+fn test_edge_cast_bool_to_i64() {
+    assert_eq!(run_program_i64("fn main() -> i64 = true as i64;"), 1);
+}
+
+#[test]
+fn test_edge_cast_false_to_i64() {
+    assert_eq!(run_program_i64("fn main() -> i64 = false as i64;"), 0);
+}
+
+// --- Naming convention edge cases ---
+
+#[test]
+fn test_edge_naming_underscore_prefix_ok() {
+    // _prefixed functions should be exempt from snake_case
+    assert!(!has_warning_kind(
+        "fn _helper() -> i64 = 42; fn main() -> i64 = _helper();",
+        "non_snake_case"
+    ));
+}
+
+#[test]
+fn test_edge_naming_single_char_fn() {
+    // Single char function name is valid snake_case
+    assert!(!has_warning_kind(
+        "fn f() -> i64 = 42; fn main() -> i64 = f();",
+        "non_snake_case"
+    ));
+}
+
+#[test]
+fn test_edge_naming_single_char_type() {
+    // Single uppercase char type name is valid PascalCase
+    assert!(!has_warning_kind(
+        "struct T { x: i64 } fn main() -> i64 = { let t = new T { x: 1 }; t.x };",
+        "non_pascal_case"
+    ));
+}
