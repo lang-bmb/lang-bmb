@@ -1894,6 +1894,65 @@ impl Interpreter {
                         }
                         Ok(Value::Str(Rc::new(result)))
                     }
+                    // v0.90.76: pad_start, pad_end, char_code_at, from_char_code
+                    "pad_start" => {
+                        let width = match &args[0] {
+                            Value::Int(n) => *n as usize,
+                            _ => return Err(RuntimeError::type_error("integer", args[0].type_name())),
+                        };
+                        let pad = match &args[1] {
+                            Value::Str(s) => s.chars().next().unwrap_or(' '),
+                            _ => return Err(RuntimeError::type_error("string", args[1].type_name())),
+                        };
+                        let char_count = s.chars().count();
+                        if char_count >= width {
+                            Ok(Value::Str(Rc::new(s.to_string())))
+                        } else {
+                            let padding: String = std::iter::repeat(pad).take(width - char_count).collect();
+                            Ok(Value::Str(Rc::new(format!("{}{}", padding, s))))
+                        }
+                    }
+                    "pad_end" => {
+                        let width = match &args[0] {
+                            Value::Int(n) => *n as usize,
+                            _ => return Err(RuntimeError::type_error("integer", args[0].type_name())),
+                        };
+                        let pad = match &args[1] {
+                            Value::Str(s) => s.chars().next().unwrap_or(' '),
+                            _ => return Err(RuntimeError::type_error("string", args[1].type_name())),
+                        };
+                        let char_count = s.chars().count();
+                        if char_count >= width {
+                            Ok(Value::Str(Rc::new(s.to_string())))
+                        } else {
+                            let padding: String = std::iter::repeat(pad).take(width - char_count).collect();
+                            Ok(Value::Str(Rc::new(format!("{}{}", s, padding))))
+                        }
+                    }
+                    "char_code_at" => {
+                        let idx = match &args[0] {
+                            Value::Int(n) => *n as usize,
+                            _ => return Err(RuntimeError::type_error("integer", args[0].type_name())),
+                        };
+                        match s.chars().nth(idx) {
+                            Some(c) => Ok(Value::Int(c as i64)),
+                            None => Err(RuntimeError::index_out_of_bounds(idx as i64, s.chars().count())),
+                        }
+                    }
+                    "from_char_code" => {
+                        let code = match &args[0] {
+                            Value::Int(n) => *n as u32,
+                            _ => return Err(RuntimeError::type_error("integer", args[0].type_name())),
+                        };
+                        match char::from_u32(code) {
+                            Some(c) => {
+                                let mut result = s.to_string();
+                                result.push(c);
+                                Ok(Value::Str(Rc::new(result)))
+                            }
+                            None => Err(RuntimeError::type_error("valid unicode code point", &code.to_string())),
+                        }
+                    }
                     _ => Err(RuntimeError::undefined_function(&format!("String.{}", method))),
                 }
             }

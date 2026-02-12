@@ -3925,6 +3925,33 @@ impl TypeChecker {
                         }
                         Ok(Type::String)
                     }
+                    // v0.90.76: pad_start, pad_end, char_code_at, from_char_code
+                    "pad_start" | "pad_end" => {
+                        if args.len() != 2 {
+                            return Err(CompileError::type_error(&format!("{}() takes 2 arguments (width, pad_char)", method), span));
+                        }
+                        let width_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&width_ty, &Type::I64, args[0].span)?;
+                        let pad_ty = self.infer(&args[1].node, args[1].span)?;
+                        self.unify(&pad_ty, &Type::String, args[1].span)?;
+                        Ok(Type::String)
+                    }
+                    "char_code_at" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("char_code_at() takes 1 argument (index)", span));
+                        }
+                        let idx_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&idx_ty, &Type::I64, args[0].span)?;
+                        Ok(Type::I64)
+                    }
+                    "from_char_code" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("from_char_code() takes 1 argument (char code)", span));
+                        }
+                        let code_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&code_ty, &Type::I64, args[0].span)?;
+                        Ok(Type::String)
+                    }
                     _ => Err(CompileError::type_error(
                         format!("unknown method '{}' for String", method),
                         span,

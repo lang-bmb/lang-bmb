@@ -17714,3 +17714,78 @@ fn test_int_bit_shift_right() {
     // 16 >> 2 = 4
     assert_eq!(run_program_i64(source), 4);
 }
+
+// ============================================================================
+// Cycle 310: String pad_start, pad_end, char_code_at, from_char_code
+// ============================================================================
+
+#[test]
+fn test_string_pad_start() {
+    let source = r#"
+        fn main() -> String = "42".pad_start(5, "0");
+    "#;
+    assert_eq!(run_program_str(source), "00042");
+}
+
+#[test]
+fn test_string_pad_start_already_wide() {
+    let source = r#"
+        fn main() -> String = "hello".pad_start(3, " ");
+    "#;
+    assert_eq!(run_program_str(source), "hello");
+}
+
+#[test]
+fn test_string_pad_end() {
+    let source = r#"
+        fn main() -> String = "hi".pad_end(5, ".");
+    "#;
+    assert_eq!(run_program_str(source), "hi...");
+}
+
+#[test]
+fn test_string_pad_end_space() {
+    let source = r#"
+        fn main() -> i64 = "hi".pad_end(5, " ").len();
+    "#;
+    assert_eq!(run_program_i64(source), 5);
+}
+
+#[test]
+fn test_string_char_code_at() {
+    let source = r#"
+        fn main() -> i64 = "A".char_code_at(0);
+    "#;
+    // 'A' = 65
+    assert_eq!(run_program_i64(source), 65);
+}
+
+#[test]
+fn test_string_char_code_at_lowercase() {
+    let source = r#"
+        fn main() -> i64 = "a".char_code_at(0);
+    "#;
+    // 'a' = 97
+    assert_eq!(run_program_i64(source), 97);
+}
+
+#[test]
+fn test_string_from_char_code() {
+    let source = r#"
+        fn main() -> String = "".from_char_code(65);
+    "#;
+    // Appends 'A' (65) to empty string
+    assert_eq!(run_program_str(source), "A");
+}
+
+#[test]
+fn test_string_pad_char_code_chain() {
+    let source = r#"
+        fn main() -> i64 = {
+            let s = "hello".pad_start(10, "*");
+            s.char_code_at(0)
+        };
+    "#;
+    // '*' = 42
+    assert_eq!(run_program_i64(source), 42);
+}
