@@ -3419,6 +3419,78 @@ impl Interpreter {
                             _ => Err(RuntimeError::type_error("Result variant", &variant)),
                         }
                     }
+                    // v0.90.81: map(fn(T) -> U) -> Result<U, E>
+                    "map" => {
+                        match variant.as_str() {
+                            "Ok" => {
+                                let val = values.into_iter().next().unwrap_or(Value::Unit);
+                                match args.into_iter().next().unwrap() {
+                                    Value::Closure { params, body, env: closure_env } => {
+                                        let result = self.call_closure(&params, &body, &closure_env, vec![val])?;
+                                        Ok(Value::Enum("Result".to_string(), "Ok".to_string(), vec![result]))
+                                    }
+                                    _ => Err(RuntimeError::type_error("closure", "non-closure")),
+                                }
+                            }
+                            "Err" => Ok(Value::Enum("Result".to_string(), "Err".to_string(), values)),
+                            _ => Err(RuntimeError::type_error("Result variant", &variant)),
+                        }
+                    }
+                    // v0.90.81: map_err(fn(E) -> F) -> Result<T, F>
+                    "map_err" => {
+                        match variant.as_str() {
+                            "Ok" => Ok(Value::Enum("Result".to_string(), "Ok".to_string(), values)),
+                            "Err" => {
+                                let val = values.into_iter().next().unwrap_or(Value::Unit);
+                                match args.into_iter().next().unwrap() {
+                                    Value::Closure { params, body, env: closure_env } => {
+                                        let result = self.call_closure(&params, &body, &closure_env, vec![val])?;
+                                        Ok(Value::Enum("Result".to_string(), "Err".to_string(), vec![result]))
+                                    }
+                                    _ => Err(RuntimeError::type_error("closure", "non-closure")),
+                                }
+                            }
+                            _ => Err(RuntimeError::type_error("Result variant", &variant)),
+                        }
+                    }
+                    // v0.90.81: and_then(fn(T) -> Result<U, E>) -> Result<U, E>
+                    "and_then" => {
+                        match variant.as_str() {
+                            "Ok" => {
+                                let val = values.into_iter().next().unwrap_or(Value::Unit);
+                                match args.into_iter().next().unwrap() {
+                                    Value::Closure { params, body, env: closure_env } => {
+                                        self.call_closure(&params, &body, &closure_env, vec![val])
+                                    }
+                                    _ => Err(RuntimeError::type_error("closure", "non-closure")),
+                                }
+                            }
+                            "Err" => Ok(Value::Enum("Result".to_string(), "Err".to_string(), values)),
+                            _ => Err(RuntimeError::type_error("Result variant", &variant)),
+                        }
+                    }
+                    // v0.90.81: unwrap_err() -> E (panics if Ok)
+                    "unwrap_err" => {
+                        match variant.as_str() {
+                            "Err" => Ok(values.into_iter().next().unwrap_or(Value::Unit)),
+                            "Ok" => Err(RuntimeError::type_error("Err", "Ok (unwrap_err on Ok)")),
+                            _ => Err(RuntimeError::type_error("Result variant", &variant)),
+                        }
+                    }
+                    // v0.90.81: expect(msg: String) -> T
+                    "expect" => {
+                        match variant.as_str() {
+                            "Ok" => Ok(values.into_iter().next().unwrap_or(Value::Unit)),
+                            "Err" => {
+                                let msg = match &args[0] {
+                                    Value::Str(s) => s.to_string(),
+                                    _ => "expect failed".to_string(),
+                                };
+                                Err(RuntimeError::type_error("Ok", &format!("Err: {}", msg)))
+                            }
+                            _ => Err(RuntimeError::type_error("Result variant", &variant)),
+                        }
+                    }
                     _ => Err(RuntimeError::undefined_function(&format!("Result.{}", method))),
                 }
             }

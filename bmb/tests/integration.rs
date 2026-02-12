@@ -18071,3 +18071,80 @@ fn test_char_combined() {
     assert_eq!(run_program_i64("fn main() -> i64 = if 'F'.to_lowercase().is_digit(16) { 1 } else { 0 };"), 1);
     assert_eq!(run_program_str("fn main() -> String = 'a'.to_uppercase().to_string();"), "A");
 }
+
+// --- Cycle 315: Result map, map_err, and_then, unwrap_err, expect ---
+
+#[test]
+fn test_result_map() {
+    let source = r#"
+        enum Result<T, E> { Ok(T), Err(E) }
+        fn main() -> i64 = Result::Ok(5).map(fn |x: i64| { x * 2 }).unwrap();
+    "#;
+    assert_eq!(run_program_i64(source), 10);
+}
+
+#[test]
+fn test_result_map_on_err() {
+    let source = r#"
+        enum Result<T, E> { Ok(T), Err(E) }
+        fn main() -> i64 = Result::Err("bad").map(fn |x: i64| { x * 2 }).unwrap_or(0);
+    "#;
+    assert_eq!(run_program_i64(source), 0);
+}
+
+#[test]
+fn test_result_map_err() {
+    let source = r#"
+        enum Result<T, E> { Ok(T), Err(E) }
+        fn main() -> i64 = Result::Ok(42).map_err(fn |e: String| { "new error" }).unwrap();
+    "#;
+    assert_eq!(run_program_i64(source), 42);
+}
+
+#[test]
+fn test_result_and_then() {
+    let source = r#"
+        enum Result<T, E> { Ok(T), Err(E) }
+        fn main() -> i64 = Result::Ok(5).and_then(fn |x: i64| { Result::Ok(x + 10) }).unwrap();
+    "#;
+    assert_eq!(run_program_i64(source), 15);
+}
+
+#[test]
+fn test_result_and_then_err() {
+    let source = r#"
+        enum Result<T, E> { Ok(T), Err(E) }
+        fn main() -> i64 = Result::Err("fail").and_then(fn |x: i64| { Result::Ok(x + 10) }).unwrap_or(-1);
+    "#;
+    assert_eq!(run_program_i64(source), -1);
+}
+
+#[test]
+fn test_result_unwrap_err() {
+    let source = r#"
+        enum Result<T, E> { Ok(T), Err(E) }
+        fn main() -> String = Result::Err("oops").unwrap_err();
+    "#;
+    assert_eq!(run_program_str(source), "oops");
+}
+
+#[test]
+fn test_result_expect() {
+    let source = r#"
+        enum Result<T, E> { Ok(T), Err(E) }
+        fn main() -> i64 = Result::Ok(42).expect("should work");
+    "#;
+    assert_eq!(run_program_i64(source), 42);
+}
+
+#[test]
+fn test_result_chaining() {
+    let source = r#"
+        enum Result<T, E> { Ok(T), Err(E) }
+        fn main() -> i64 = Result::Ok(3)
+            .map(fn |x: i64| { x * 10 })
+            .and_then(fn |x: i64| { Result::Ok(x + 5) })
+            .unwrap_or(0);
+    "#;
+    assert_eq!(run_program_i64(source), 35);
+}

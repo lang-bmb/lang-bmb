@@ -6328,6 +6328,100 @@ impl TypeChecker {
                     None => Ok(Type::I64),
                 }
             }
+            // v0.90.81: map(fn(T) -> U) -> Result<U, E>
+            "map" => {
+                if args.len() != 1 {
+                    return Err(CompileError::type_error("map() takes 1 argument (a closure)", span));
+                }
+                let fn_ty = self.infer(&args[0].node, args[0].span)?;
+                match fn_ty {
+                    Type::Fn { params, ret } => {
+                        if params.len() != 1 {
+                            return Err(CompileError::type_error(
+                                format!("map() closure must take 1 parameter, got {}", params.len()),
+                                args[0].span,
+                            ));
+                        }
+                        if let Some(ref expected) = ok_ty {
+                            self.unify(&params[0], expected, args[0].span)?;
+                        }
+                        Ok(Type::Generic {
+                            name: "Result".to_string(),
+                            type_args: vec![ret, Box::new(_err_ty.unwrap_or(Type::String))],
+                        })
+                    }
+                    _ => Err(CompileError::type_error("map() requires a closure argument", args[0].span)),
+                }
+            }
+            // v0.90.81: map_err(fn(E) -> F) -> Result<T, F>
+            "map_err" => {
+                if args.len() != 1 {
+                    return Err(CompileError::type_error("map_err() takes 1 argument (a closure)", span));
+                }
+                let fn_ty = self.infer(&args[0].node, args[0].span)?;
+                match fn_ty {
+                    Type::Fn { params, ret } => {
+                        if params.len() != 1 {
+                            return Err(CompileError::type_error(
+                                format!("map_err() closure must take 1 parameter, got {}", params.len()),
+                                args[0].span,
+                            ));
+                        }
+                        if let Some(ref expected) = _err_ty {
+                            self.unify(&params[0], expected, args[0].span)?;
+                        }
+                        Ok(Type::Generic {
+                            name: "Result".to_string(),
+                            type_args: vec![Box::new(ok_ty.unwrap_or(Type::I64)), ret],
+                        })
+                    }
+                    _ => Err(CompileError::type_error("map_err() requires a closure argument", args[0].span)),
+                }
+            }
+            // v0.90.81: and_then(fn(T) -> Result<U, E>) -> Result<U, E>
+            "and_then" => {
+                if args.len() != 1 {
+                    return Err(CompileError::type_error("and_then() takes 1 argument (a closure)", span));
+                }
+                let fn_ty = self.infer(&args[0].node, args[0].span)?;
+                match fn_ty {
+                    Type::Fn { params, ret } => {
+                        if params.len() != 1 {
+                            return Err(CompileError::type_error(
+                                format!("and_then() closure must take 1 parameter, got {}", params.len()),
+                                args[0].span,
+                            ));
+                        }
+                        if let Some(ref expected) = ok_ty {
+                            self.unify(&params[0], expected, args[0].span)?;
+                        }
+                        Ok(*ret)
+                    }
+                    _ => Err(CompileError::type_error("and_then() requires a closure argument", args[0].span)),
+                }
+            }
+            // v0.90.81: unwrap_err() -> E (panics if Ok)
+            "unwrap_err" => {
+                if !args.is_empty() {
+                    return Err(CompileError::type_error("unwrap_err() takes no arguments", span));
+                }
+                match _err_ty {
+                    Some(ty) => Ok(ty),
+                    None => Ok(Type::String),
+                }
+            }
+            // v0.90.81: expect(msg: String) -> T (panics with message if Err)
+            "expect" => {
+                if args.len() != 1 {
+                    return Err(CompileError::type_error("expect() takes 1 argument (error message)", span));
+                }
+                let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                self.unify(&arg_ty, &Type::String, args[0].span)?;
+                match ok_ty {
+                    Some(ty) => Ok(ty),
+                    None => Ok(Type::I64),
+                }
+            }
             _ => Err(CompileError::type_error(
                 format!("unknown method '{}' for Result", method),
                 span,
