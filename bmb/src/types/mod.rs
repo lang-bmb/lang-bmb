@@ -3718,6 +3718,55 @@ impl TypeChecker {
                         }
                         Ok(Type::Bool)
                     }
+                    // v0.90.65: split_at(i64) -> (String, String)
+                    "split_at" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("split_at() takes 1 argument", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg_ty, &Type::I64, args[0].span)?;
+                        Ok(Type::Tuple(vec![Box::new(Type::String), Box::new(Type::String)]))
+                    }
+                    // v0.90.65: truncate(i64) -> String
+                    "truncate" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("truncate() takes 1 argument", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg_ty, &Type::I64, args[0].span)?;
+                        Ok(Type::String)
+                    }
+                    // v0.90.65: ljust(width, pad) -> String
+                    "ljust" => {
+                        if args.len() != 2 {
+                            return Err(CompileError::type_error("ljust() takes 2 arguments", span));
+                        }
+                        let w = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&w, &Type::I64, args[0].span)?;
+                        let p = self.infer(&args[1].node, args[1].span)?;
+                        self.unify(&p, &Type::String, args[1].span)?;
+                        Ok(Type::String)
+                    }
+                    // v0.90.65: rjust(width, pad) -> String
+                    "rjust" => {
+                        if args.len() != 2 {
+                            return Err(CompileError::type_error("rjust() takes 2 arguments", span));
+                        }
+                        let w = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&w, &Type::I64, args[0].span)?;
+                        let p = self.infer(&args[1].node, args[1].span)?;
+                        self.unify(&p, &Type::String, args[1].span)?;
+                        Ok(Type::String)
+                    }
+                    // v0.90.65: zfill(width) -> String (zero-fill)
+                    "zfill" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("zfill() takes 1 argument", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg_ty, &Type::I64, args[0].span)?;
+                        Ok(Type::String)
+                    }
                     _ => Err(CompileError::type_error(
                         format!("unknown method '{}' for String", method),
                         span,

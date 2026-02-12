@@ -16844,3 +16844,77 @@ fn test_array_group_by_intersperse_chain() {
     // 2 groups + 8 elements = 10
     assert_eq!(run_program_i64(source), 10);
 }
+
+// ============================================================================
+// Cycle 299: String split_at, truncate, ljust, rjust, zfill
+// ============================================================================
+
+#[test]
+fn test_string_truncate() {
+    let source = r#"
+        fn main() -> String = "hello world".truncate(5);
+    "#;
+    assert_eq!(run_program_str(source), "hello");
+}
+
+#[test]
+fn test_string_truncate_longer() {
+    let source = r#"
+        fn main() -> String = "hi".truncate(10);
+    "#;
+    assert_eq!(run_program_str(source), "hi");
+}
+
+#[test]
+fn test_string_ljust() {
+    let source = r#"
+        fn main() -> String = "hi".ljust(5, ".");
+    "#;
+    assert_eq!(run_program_str(source), "hi...");
+}
+
+#[test]
+fn test_string_rjust() {
+    let source = r#"
+        fn main() -> String = "hi".rjust(5, ".");
+    "#;
+    assert_eq!(run_program_str(source), "...hi");
+}
+
+#[test]
+fn test_string_zfill() {
+    let source = r#"
+        fn main() -> String = "42".zfill(5);
+    "#;
+    assert_eq!(run_program_str(source), "00042");
+}
+
+#[test]
+fn test_string_zfill_already_wide() {
+    let source = r#"
+        fn main() -> String = "12345".zfill(3);
+    "#;
+    assert_eq!(run_program_str(source), "12345");
+}
+
+#[test]
+fn test_string_ljust_rjust_chain() {
+    // Format: "   hi   " (center-like via ljust then nothing)
+    let source = r#"
+        fn main() -> i64 = {
+            let s = "hi".ljust(5, " ").rjust(8, " ");
+            s.len()
+        };
+    "#;
+    // "hi   " (5) -> "   hi   " (8)
+    assert_eq!(run_program_i64(source), 8);
+}
+
+#[test]
+fn test_string_truncate_zfill_chain() {
+    let source = r#"
+        fn main() -> String = "abc".truncate(2).zfill(5);
+    "#;
+    // "ab" -> "000ab"
+    assert_eq!(run_program_str(source), "000ab");
+}

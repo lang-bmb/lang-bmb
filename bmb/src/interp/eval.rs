@@ -1612,6 +1612,74 @@ impl Interpreter {
                     }
                     // v0.90.55: to_bool() -> bool ("true" = true, else false)
                     "to_bool" => Ok(Value::Bool(s.as_ref() == "true")),
+                    // v0.90.65: split_at, truncate, ljust, rjust, zfill
+                    "split_at" => {
+                        let idx = match &args[0] {
+                            Value::Int(n) => *n as usize,
+                            _ => return Err(RuntimeError::type_error("integer", args[0].type_name())),
+                        };
+                        let chars: Vec<char> = s.chars().collect();
+                        let idx = idx.min(chars.len());
+                        let left: String = chars[..idx].iter().collect();
+                        let right: String = chars[idx..].iter().collect();
+                        Ok(Value::Tuple(vec![Value::Str(Rc::new(left)), Value::Str(Rc::new(right))]))
+                    }
+                    "truncate" => {
+                        let max_len = match &args[0] {
+                            Value::Int(n) => *n as usize,
+                            _ => return Err(RuntimeError::type_error("integer", args[0].type_name())),
+                        };
+                        let chars: Vec<char> = s.chars().collect();
+                        let truncated: String = chars.into_iter().take(max_len).collect();
+                        Ok(Value::Str(Rc::new(truncated)))
+                    }
+                    "ljust" => {
+                        let width = match &args[0] {
+                            Value::Int(n) => *n as usize,
+                            _ => return Err(RuntimeError::type_error("integer", args[0].type_name())),
+                        };
+                        let pad = match &args[1] {
+                            Value::Str(p) => p.chars().next().unwrap_or(' '),
+                            _ => return Err(RuntimeError::type_error("string", args[1].type_name())),
+                        };
+                        let char_count = s.chars().count();
+                        if char_count >= width {
+                            Ok(Value::Str(s.clone()))
+                        } else {
+                            let padding: String = std::iter::repeat(pad).take(width - char_count).collect();
+                            Ok(Value::Str(Rc::new(format!("{}{}", s, padding))))
+                        }
+                    }
+                    "rjust" => {
+                        let width = match &args[0] {
+                            Value::Int(n) => *n as usize,
+                            _ => return Err(RuntimeError::type_error("integer", args[0].type_name())),
+                        };
+                        let pad = match &args[1] {
+                            Value::Str(p) => p.chars().next().unwrap_or(' '),
+                            _ => return Err(RuntimeError::type_error("string", args[1].type_name())),
+                        };
+                        let char_count = s.chars().count();
+                        if char_count >= width {
+                            Ok(Value::Str(s.clone()))
+                        } else {
+                            let padding: String = std::iter::repeat(pad).take(width - char_count).collect();
+                            Ok(Value::Str(Rc::new(format!("{}{}", padding, s))))
+                        }
+                    }
+                    "zfill" => {
+                        let width = match &args[0] {
+                            Value::Int(n) => *n as usize,
+                            _ => return Err(RuntimeError::type_error("integer", args[0].type_name())),
+                        };
+                        let char_count = s.chars().count();
+                        if char_count >= width {
+                            Ok(Value::Str(s.clone()))
+                        } else {
+                            let zeros: String = std::iter::repeat('0').take(width - char_count).collect();
+                            Ok(Value::Str(Rc::new(format!("{}{}", zeros, s))))
+                        }
+                    }
                     _ => Err(RuntimeError::undefined_function(&format!("String.{}", method))),
                 }
             }
