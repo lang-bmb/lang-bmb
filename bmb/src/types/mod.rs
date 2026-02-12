@@ -4784,6 +4784,43 @@ impl TypeChecker {
                         self.unify(&arg_ty, elem_ty, args[0].span)?;
                         Ok(*elem_ty.clone())
                     }
+                    // v0.90.64: group_by(fn(T) -> K) -> [[T]] (groups by key, returns array of groups)
+                    "group_by" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("group_by() takes 1 argument (a closure)", span));
+                        }
+                        let fn_ty = self.infer(&args[0].node, args[0].span)?;
+                        match fn_ty {
+                            Type::Fn { params, .. } => {
+                                if params.len() != 1 {
+                                    return Err(CompileError::type_error(
+                                        format!("group_by() closure must take 1 parameter, got {}", params.len()),
+                                        args[0].span,
+                                    ));
+                                }
+                                self.unify(&params[0], elem_ty, args[0].span)?;
+                                // Returns [[T]]
+                                Ok(Type::Array(Box::new(Type::Array(elem_ty.clone().into(), 0)), 0))
+                            }
+                            _ => Err(CompileError::type_error("group_by() requires a closure argument", args[0].span)),
+                        }
+                    }
+                    // v0.90.64: intersperse(T) -> [T] (insert separator between elements)
+                    "intersperse" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("intersperse() takes 1 argument", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg_ty, elem_ty, args[0].span)?;
+                        Ok(Type::Array(elem_ty.clone().into(), 0))
+                    }
+                    // v0.90.64: compact() -> [T] (remove zero/null elements)
+                    "compact" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("compact() takes no arguments", span));
+                        }
+                        Ok(Type::Array(elem_ty.clone().into(), 0))
+                    }
                     _ => Err(CompileError::type_error(
                         format!("unknown method '{}' for Array", method),
                         span,

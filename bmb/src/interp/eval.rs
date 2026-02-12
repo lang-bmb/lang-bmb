@@ -2696,6 +2696,53 @@ impl Interpreter {
                         let default = args.into_iter().next().unwrap();
                         Ok(arr.into_iter().last().unwrap_or(default))
                     }
+                    // v0.90.64: group_by, intersperse, compact
+                    "group_by" => {
+                        match args.into_iter().next().unwrap() {
+                            Value::Closure { params, body, env: closure_env } => {
+                                let mut groups: Vec<(Value, Vec<Value>)> = Vec::new();
+                                for elem in arr {
+                                    let key = self.call_closure(&params, &body, &closure_env, vec![elem.clone()])?;
+                                    let found = groups.iter().position(|(k, _)| k == &key);
+                                    if let Some(idx) = found {
+                                        groups[idx].1.push(elem);
+                                    } else {
+                                        groups.push((key, vec![elem]));
+                                    }
+                                }
+                                let result: Vec<Value> = groups.into_iter()
+                                    .map(|(_, group)| Value::Array(group))
+                                    .collect();
+                                Ok(Value::Array(result))
+                            }
+                            _ => Err(RuntimeError::type_error("closure", "non-closure")),
+                        }
+                    }
+                    "intersperse" => {
+                        let sep = args.into_iter().next().unwrap();
+                        let len = arr.len();
+                        if len <= 1 {
+                            Ok(Value::Array(arr))
+                        } else {
+                            let mut result = Vec::with_capacity(2 * len - 1);
+                            for (i, elem) in arr.into_iter().enumerate() {
+                                if i > 0 {
+                                    result.push(sep.clone());
+                                }
+                                result.push(elem);
+                            }
+                            Ok(Value::Array(result))
+                        }
+                    }
+                    "compact" => {
+                        let result: Vec<Value> = arr.into_iter().filter(|v| {
+                            match v {
+                                Value::Int(0) => false,
+                                _ => true,
+                            }
+                        }).collect();
+                        Ok(Value::Array(result))
+                    }
                     _ => Err(RuntimeError::undefined_function(&format!("Array.{}", method))),
                 }
             }

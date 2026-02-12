@@ -16739,3 +16739,108 @@ fn test_array_take_drop_last_chain() {
     // take_last(4) = [3,4,5,6], drop_last(1) = [3,4,5], sum = 12
     assert_eq!(run_program_i64(source), 12);
 }
+
+// ============================================================================
+// Cycle 298: Array group_by, intersperse, compact
+// ============================================================================
+
+#[test]
+fn test_array_group_by() {
+    // Group by even/odd — count groups
+    let source = r#"
+        fn main() -> i64 = {
+            let arr = [1, 2, 3, 4, 5, 6];
+            let groups = arr.group_by(fn |x: i64| { x % 2 });
+            groups.len()
+        };
+    "#;
+    // Two groups: odds and evens
+    assert_eq!(run_program_i64(source), 2);
+}
+
+#[test]
+fn test_array_group_by_lengths() {
+    // Group [1,2,3,4,5,6] by mod 3 -> 3 groups of 2 each
+    let source = r#"
+        fn main() -> i64 = {
+            let arr = [1, 2, 3, 4, 5, 6];
+            let groups = arr.group_by(fn |x: i64| { x % 3 });
+            groups.len()
+        };
+    "#;
+    assert_eq!(run_program_i64(source), 3);
+}
+
+#[test]
+fn test_array_intersperse() {
+    let source = r#"
+        fn main() -> i64 = {
+            let arr = [1, 2, 3];
+            arr.intersperse(0).sum()
+        };
+    "#;
+    // [1, 0, 2, 0, 3].sum() = 6
+    assert_eq!(run_program_i64(source), 6);
+}
+
+#[test]
+fn test_array_intersperse_len() {
+    let source = r#"
+        fn main() -> i64 = {
+            let arr = [10, 20, 30, 40];
+            arr.intersperse(0).len()
+        };
+    "#;
+    // [10, 0, 20, 0, 30, 0, 40].len() = 7
+    assert_eq!(run_program_i64(source), 7);
+}
+
+#[test]
+fn test_array_intersperse_single() {
+    let source = r#"
+        fn main() -> i64 = {
+            let arr = [42];
+            arr.intersperse(0).len()
+        };
+    "#;
+    assert_eq!(run_program_i64(source), 1);
+}
+
+#[test]
+fn test_array_compact() {
+    let source = r#"
+        fn main() -> i64 = {
+            let arr = [1, 0, 2, 0, 3, 0, 4];
+            arr.compact().sum()
+        };
+    "#;
+    // Removes zeros: [1, 2, 3, 4].sum() = 10
+    assert_eq!(run_program_i64(source), 10);
+}
+
+#[test]
+fn test_array_compact_len() {
+    let source = r#"
+        fn main() -> i64 = {
+            let arr = [0, 0, 1, 0, 2, 0];
+            arr.compact().len()
+        };
+    "#;
+    assert_eq!(run_program_i64(source), 2);
+}
+
+#[test]
+fn test_array_group_by_intersperse_chain() {
+    // Group by mod2, then count total groups interspersed with separator length
+    let source = r#"
+        fn main() -> i64 = {
+            let arr = [1, 2, 3, 4, 5, 6, 7, 8];
+            let groups = arr.group_by(fn |x: i64| { x % 2 });
+            let num_groups = groups.len();
+            let total_elements = arr.len();
+            num_groups + total_elements
+        };
+    "#;
+    // 2 groups + 8 elements = 10
+    assert_eq!(run_program_i64(source), 10);
+}
