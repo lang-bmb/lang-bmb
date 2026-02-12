@@ -20093,3 +20093,131 @@ fn test_chain_method_string_to_array() {
         "for [String]"
     ));
 }
+
+// --- Cycle 356: Comprehensive error message quality tests ---
+
+// "did you mean?" suggestion quality tests
+#[test]
+fn test_suggestion_quality_one_edit() {
+    // Single character substitution: "trm" → "trim" (1 insertion)
+    assert!(type_error_contains(r#"fn main() -> String = "hi".trm();"#, "did you mean `trim`"));
+}
+
+#[test]
+fn test_suggestion_quality_two_edits() {
+    // Two character edit: "sqt" → "sqrt" (1 transposition)
+    assert!(type_error_contains("fn main() -> f64 = 4.0.sqt();", "did you mean `sqrt`"));
+}
+
+#[test]
+fn test_suggestion_quality_case_sensitive() {
+    // Case matters: "ABS" won't match "abs" (3 edits)
+    assert!(!type_error_contains("fn main() -> i64 = 42.ABS();", "did you mean"));
+}
+
+#[test]
+fn test_suggestion_quality_exact_match_no_suggestion() {
+    // Exact method name should not produce an error at all (it should work)
+    assert!(type_checks("fn main() -> i64 = 42.abs();"));
+}
+
+// Method-not-found for various types with suggestions
+#[test]
+fn test_suggestion_float_ceil_typo() {
+    // "cel" is close to "ceil" (1 edit)
+    assert!(type_error_contains("fn main() -> f64 = 3.14.cel();", "did you mean `ceil`"));
+}
+
+#[test]
+fn test_suggestion_string_trim_end_typo() {
+    // "trim_en" is close to "trim_end" (1 deletion)
+    assert!(type_error_contains(r#"fn main() -> String = "hi ".trim_en();"#, "did you mean `trim_end`"));
+}
+
+#[test]
+fn test_suggestion_array_sort_typo() {
+    // "sorte" is close to "sort" (1 edit)
+    assert!(type_error_contains("fn main() -> i64 = [3, 1, 2].sorte();", "did you mean `sort`"));
+}
+
+// Argument count error quality tests
+#[test]
+fn test_arg_count_too_many_args() {
+    // Calling with too many args shows function name, expected types, and got count
+    assert!(type_error_contains(
+        "fn greet(name: String) -> String = name; fn main() -> String = greet(\"hi\", \"bye\");",
+        "'greet' expects 1 arguments (String), got 2"
+    ));
+}
+
+#[test]
+fn test_arg_count_multi_param_types() {
+    // Multiple different parameter types shown
+    assert!(type_error_contains(
+        r#"fn format_pair(n: i64, s: String) -> String = s; fn main() -> String = format_pair(1);"#,
+        "i64, String"
+    ));
+}
+
+// Chained error context quality tests
+#[test]
+fn test_chain_error_array_map_result() {
+    // [1, 2, 3].reverse() returns [i64], then .foobar() shows [i64]
+    assert!(type_error_contains(
+        "fn main() -> i64 = [1, 2, 3].reverse().foobar();",
+        "for [i64]"
+    ));
+}
+
+#[test]
+fn test_chain_error_string_method_chain() {
+    // "hello".trim() returns String, then .foobar() shows String
+    assert!(type_error_contains(
+        r#"fn main() -> String = "hello".trim().foobar();"#,
+        "for String"
+    ));
+}
+
+#[test]
+fn test_chain_error_int_conversion_chain() {
+    // 42.to_float() returns f64, then .foobar() shows f64
+    assert!(type_error_contains(
+        "fn main() -> f64 = 42.to_float().foobar();",
+        "for f64"
+    ));
+}
+
+#[test]
+fn test_chain_error_float_to_int_chain() {
+    // 3.14.to_int() returns i64, then .foobar() shows i64
+    assert!(type_error_contains(
+        "fn main() -> i64 = 3.14.to_int().foobar();",
+        "for i64"
+    ));
+}
+
+// Negative tests: ensure no false suggestions
+#[test]
+fn test_no_suggestion_for_string_unrelated() {
+    assert!(!type_error_contains(r#"fn main() -> String = "hi".zzzzz();"#, "did you mean"));
+}
+
+#[test]
+fn test_no_suggestion_for_float_unrelated() {
+    assert!(!type_error_contains("fn main() -> f64 = 3.14.zzzzz();", "did you mean"));
+}
+
+#[test]
+fn test_no_suggestion_for_array_unrelated() {
+    assert!(!type_error_contains("fn main() -> i64 = [1, 2].zzzzz();", "did you mean"));
+}
+
+#[test]
+fn test_no_suggestion_for_char_unrelated() {
+    assert!(!type_error_contains("fn main() -> char = 'a'.zzzzz();", "did you mean"));
+}
+
+#[test]
+fn test_no_suggestion_for_bool_unrelated() {
+    assert!(!type_error_contains("fn main() -> bool = true.zzzzz();", "did you mean"));
+}
