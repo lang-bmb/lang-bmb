@@ -3369,6 +3369,34 @@ impl Interpreter {
                     "to_string" => Ok(Value::Str(Rc::new(if b { "true" } else { "false" }.to_string()))),
                     // v0.90.54: to_int() -> i64
                     "to_int" => Ok(Value::Int(if b { 1 } else { 0 })),
+                    // v0.90.74: toggle, then_val, then_fn, select
+                    "toggle" => Ok(Value::Bool(!b)),
+                    "then_val" => {
+                        if b {
+                            Ok(Value::Enum("Option".to_string(), "Some".to_string(), vec![args.into_iter().next().unwrap()]))
+                        } else {
+                            Ok(Value::Enum("Option".to_string(), "None".to_string(), vec![]))
+                        }
+                    }
+                    "then_fn" => {
+                        if b {
+                            match args.into_iter().next().unwrap() {
+                                Value::Closure { params, body, env: closure_env } => {
+                                    let result = self.call_closure(&params, &body, &closure_env, vec![])?;
+                                    Ok(Value::Enum("Option".to_string(), "Some".to_string(), vec![result]))
+                                }
+                                _ => Err(RuntimeError::type_error("closure", "non-closure")),
+                            }
+                        } else {
+                            Ok(Value::Enum("Option".to_string(), "None".to_string(), vec![]))
+                        }
+                    }
+                    "choose" => {
+                        let mut args_iter = args.into_iter();
+                        let true_val = args_iter.next().unwrap();
+                        let false_val = args_iter.next().unwrap();
+                        Ok(if b { true_val } else { false_val })
+                    }
                     _ => Err(RuntimeError::undefined_function(&format!("bool.{}", method))),
                 }
             }

@@ -17566,3 +17566,75 @@ fn test_array_fold_right_reduce_right_chain() {
     // 1+2+3+4 = 10 (commutative, same as fold_left)
     assert_eq!(run_program_i64(source), 10);
 }
+
+// ============================================================================
+// Cycle 308: Bool toggle, then_val, then_fn, select
+// ============================================================================
+
+#[test]
+fn test_bool_toggle_true() {
+    let source = r#"
+        fn main() -> i64 = if true.toggle() { 1 } else { 0 };
+    "#;
+    assert_eq!(run_program_i64(source), 0);
+}
+
+#[test]
+fn test_bool_toggle_false() {
+    let source = r#"
+        fn main() -> i64 = if false.toggle() { 1 } else { 0 };
+    "#;
+    assert_eq!(run_program_i64(source), 1);
+}
+
+#[test]
+fn test_bool_choose_true() {
+    let source = r#"
+        fn main() -> i64 = true.choose(42, 0);
+    "#;
+    assert_eq!(run_program_i64(source), 42);
+}
+
+#[test]
+fn test_bool_choose_false() {
+    let source = r#"
+        fn main() -> i64 = false.choose(42, 0);
+    "#;
+    assert_eq!(run_program_i64(source), 0);
+}
+
+#[test]
+fn test_bool_choose_string() {
+    let source = r#"
+        fn main() -> String = true.choose("yes", "no");
+    "#;
+    assert_eq!(run_program_str(source), "yes");
+}
+
+#[test]
+fn test_bool_then_val_true() {
+    let source = r#"
+        fn main() -> i64 = true.then_val(42).unwrap_or(0);
+    "#;
+    assert_eq!(run_program_i64(source), 42);
+}
+
+#[test]
+fn test_bool_then_val_false() {
+    let source = r#"
+        fn main() -> i64 = false.then_val(42).unwrap_or(0);
+    "#;
+    assert_eq!(run_program_i64(source), 0);
+}
+
+#[test]
+fn test_bool_choose_chain() {
+    let source = r#"
+        fn main() -> i64 = {
+            let x = 10;
+            let is_big = x > 5;
+            is_big.choose(x * 2, x)
+        };
+    "#;
+    assert_eq!(run_program_i64(source), 20);
+}

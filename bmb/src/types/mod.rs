@@ -2904,6 +2904,44 @@ impl TypeChecker {
                         }
                         Ok(Type::I64)
                     }
+                    // v0.90.74: toggle, then_val, then_fn, select
+                    "toggle" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("toggle() takes no arguments", span));
+                        }
+                        Ok(Type::Bool)
+                    }
+                    "then_val" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("then_val() takes 1 argument", span));
+                        }
+                        let val_ty = self.infer(&args[0].node, args[0].span)?;
+                        Ok(Type::Nullable(Box::new(val_ty)))
+                    }
+                    "then_fn" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("then_fn() takes 1 argument (closure)", span));
+                        }
+                        let fn_ty = self.infer(&args[0].node, args[0].span)?;
+                        match fn_ty {
+                            Type::Fn { params, ret } => {
+                                if !params.is_empty() {
+                                    return Err(CompileError::type_error("then_fn() closure must take 0 arguments", args[0].span));
+                                }
+                                Ok(Type::Nullable(ret))
+                            }
+                            _ => Err(CompileError::type_error("then_fn() requires a closure argument", args[0].span)),
+                        }
+                    }
+                    "choose" => {
+                        if args.len() != 2 {
+                            return Err(CompileError::type_error("choose() takes 2 arguments (true_val, false_val)", span));
+                        }
+                        let true_ty = self.infer(&args[0].node, args[0].span)?;
+                        let false_ty = self.infer(&args[1].node, args[1].span)?;
+                        self.unify(&true_ty, &false_ty, args[1].span)?;
+                        Ok(true_ty)
+                    }
                     _ => Err(CompileError::type_error(
                         format!("unknown method '{}' for bool", method), span)),
                 }
