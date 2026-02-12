@@ -5427,6 +5427,30 @@ impl Interpreter {
                     Err(RuntimeError::undefined_function(&format!("{}.{}", enum_name, method)))
                 }
             }
+            // v0.90.124: Tuple methods
+            Value::Tuple(ref elems) => {
+                match method {
+                    "len" => Ok(Value::Int(elems.len() as i64)),
+                    "first" => Ok(elems.first().cloned().unwrap_or(Value::Unit)),
+                    "last" => Ok(elems.last().cloned().unwrap_or(Value::Unit)),
+                    "swap" => {
+                        if elems.len() == 2 {
+                            Ok(Value::Tuple(vec![elems[1].clone(), elems[0].clone()]))
+                        } else {
+                            Err(RuntimeError::type_error("2-element tuple", "tuple"))
+                        }
+                    }
+                    "to_array" => Ok(Value::Array(elems.clone())),
+                    "contains" => {
+                        if args.len() == 1 {
+                            Ok(Value::Bool(elems.contains(&args[0])))
+                        } else {
+                            Err(RuntimeError::arity_mismatch("contains", 1, args.len()))
+                        }
+                    }
+                    _ => Err(RuntimeError::type_error("object with methods", receiver.type_name())),
+                }
+            }
             _ => Err(RuntimeError::type_error("object with methods", receiver.type_name())),
         }
     }

@@ -6141,6 +6141,97 @@ impl TypeChecker {
                     }
                 }
             }
+            // v0.90.124: Tuple methods
+            Type::Tuple(elem_types) => {
+                match method {
+                    // len() -> i64: number of elements
+                    "len" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("len() takes no arguments", span));
+                        }
+                        Ok(Type::I64)
+                    }
+                    // first() -> T0: first element
+                    "first" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("first() takes no arguments", span));
+                        }
+                        if elem_types.is_empty() {
+                            return Err(CompileError::type_error("first() cannot be called on empty tuple", span));
+                        }
+                        Ok(*elem_types[0].clone())
+                    }
+                    // last() -> Tn: last element
+                    "last" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("last() takes no arguments", span));
+                        }
+                        if elem_types.is_empty() {
+                            return Err(CompileError::type_error("last() cannot be called on empty tuple", span));
+                        }
+                        Ok(*elem_types.last().unwrap().clone())
+                    }
+                    // swap() -> (T1, T0): swap 2-element tuple
+                    "swap" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("swap() takes no arguments", span));
+                        }
+                        if elem_types.len() != 2 {
+                            return Err(CompileError::type_error("swap() requires a 2-element tuple", span));
+                        }
+                        Ok(Type::Tuple(vec![elem_types[1].clone(), elem_types[0].clone()]))
+                    }
+                    // to_array() -> [T]: convert to array (all elements must be same type)
+                    "to_array" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("to_array() takes no arguments", span));
+                        }
+                        if elem_types.is_empty() {
+                            return Err(CompileError::type_error("to_array() cannot be called on empty tuple", span));
+                        }
+                        let first_ty = &elem_types[0];
+                        for (i, ty) in elem_types.iter().enumerate().skip(1) {
+                            if ty != first_ty {
+                                return Err(CompileError::type_error(
+                                    format!("to_array() requires all tuple elements to be the same type; element 0 is {} but element {} is {}", first_ty, i, ty),
+                                    span,
+                                ));
+                            }
+                        }
+                        Ok(Type::Array(first_ty.clone(), elem_types.len()))
+                    }
+                    // contains(val: T) -> bool: check if tuple contains value (all elements same type)
+                    "contains" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("contains() takes 1 argument", span));
+                        }
+                        if elem_types.is_empty() {
+                            return Err(CompileError::type_error("contains() cannot be called on empty tuple", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        let first_ty = &elem_types[0];
+                        for (i, ty) in elem_types.iter().enumerate().skip(1) {
+                            if ty != first_ty {
+                                return Err(CompileError::type_error(
+                                    format!("contains() requires all tuple elements to be the same type; element 0 is {} but element {} is {}", first_ty, i, ty),
+                                    span,
+                                ));
+                            }
+                        }
+                        self.unify(first_ty, &arg_ty, args[0].span)?;
+                        Ok(Type::Bool)
+                    }
+                    _ => {
+                        let methods: &[&str] = &["len", "first", "last", "swap", "to_array", "contains"];
+                        let suggestion = find_similar_name(method, methods, 2);
+                        let tuple_display: Vec<String> = elem_types.iter().map(|t| format!("{}", t)).collect();
+                        Err(CompileError::type_error(
+                            format!("unknown method '{}' for ({}){}", method, tuple_display.join(", "), format_suggestion_hint(suggestion)),
+                            span,
+                        ))
+                    }
+                }
+            }
             // v0.18: Option<T> methods
             Type::Named(name) if name == "Option" => {
                 self.check_option_method(method, args, None, span)

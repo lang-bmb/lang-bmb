@@ -20556,3 +20556,53 @@ fn test_lint_no_unreachable_code() {
         "unreachable_code"
     ));
 }
+
+// ============================================================================
+// v0.90.124: Tuple methods
+// ============================================================================
+
+#[test]
+fn test_tuple_len() {
+    assert_eq!(run_program_i64("fn main() -> i64 = (1, 2, 3).len();"), 3);
+}
+
+#[test]
+fn test_tuple_first() {
+    assert_eq!(run_program_i64("fn main() -> i64 = (10, 20, 30).first();"), 10);
+}
+
+#[test]
+fn test_tuple_last() {
+    assert_eq!(run_program_i64("fn main() -> i64 = (10, 20, 30).last();"), 30);
+}
+
+#[test]
+fn test_tuple_swap() {
+    assert_eq!(run_program_i64("fn main() -> i64 = (1, 2).swap().first();"), 2);
+}
+
+#[test]
+fn test_tuple_contains() {
+    assert!(type_checks("fn f() -> bool = (1, 2, 3).contains(2);"));
+}
+
+#[test]
+fn test_tuple_to_array_type_checks() {
+    assert!(type_checks("fn f(t: (i64, i64, i64)) -> [i64; 3] = t.to_array();"));
+}
+
+#[test]
+fn test_tuple_to_array_mixed_types_error() {
+    type_error_contains(
+        "fn f() -> [i64; 2] = (1, true).to_array();",
+        "same type"
+    );
+}
+
+#[test]
+fn test_tuple_unknown_method() {
+    type_error_contains(
+        "fn f() -> i64 = (1, 2).unknown_method();",
+        "unknown method"
+    );
+}
