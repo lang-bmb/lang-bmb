@@ -19381,3 +19381,37 @@ fn test_array_342_type_checks() {
     assert!(type_checks("fn main() -> i64 = [1, 2].cross_product([3, 4]).len();"));
     assert!(type_checks("fn main() -> i64 = [1, 2, 2].mode().unwrap_or(0);"));
 }
+
+// --- Cycle 343: String encode_uri, decode_uri, escape_html ---
+
+#[test]
+fn test_string_encode_uri() {
+    assert_eq!(run_program_str(r#"fn main() -> String = "hello world".encode_uri();"#), "hello%20world");
+    assert_eq!(run_program_str(r#"fn main() -> String = "a+b=c".encode_uri();"#), "a+b=c");
+    assert_eq!(run_program_str(r#"fn main() -> String = "foo bar&baz".encode_uri();"#), "foo%20bar&baz");
+}
+
+#[test]
+fn test_string_decode_uri() {
+    assert_eq!(run_program_str(r#"fn main() -> String = "hello%20world".decode_uri();"#), "hello world");
+    assert_eq!(run_program_str(r#"fn main() -> String = "a%2Bb%3Dc".decode_uri();"#), "a+b=c");
+}
+
+#[test]
+fn test_string_escape_html() {
+    assert_eq!(run_program_str(r#"fn main() -> String = "<b>bold</b>".escape_html();"#), "&lt;b&gt;bold&lt;/b&gt;");
+    assert_eq!(run_program_str(r#"fn main() -> String = "a & b".escape_html();"#), "a &amp; b");
+    assert_eq!(run_program_str(r#"fn main() -> String = "hello".escape_html();"#), "hello");
+}
+
+#[test]
+fn test_string_uri_roundtrip() {
+    assert_eq!(run_program_str(r#"fn main() -> String = "hello world".encode_uri().decode_uri();"#), "hello world");
+}
+
+#[test]
+fn test_string_343_type_checks() {
+    assert!(type_checks(r#"fn main() -> String = "test".encode_uri();"#));
+    assert!(type_checks(r#"fn main() -> String = "test".decode_uri();"#));
+    assert!(type_checks(r#"fn main() -> String = "test".escape_html();"#));
+}

@@ -2296,6 +2296,62 @@ impl Interpreter {
                         }
                         Ok(Value::Int(hash as i64))
                     }
+                    // v0.90.109: encode_uri() -> String
+                    "encode_uri" => {
+                        let mut encoded = String::new();
+                        for byte in s.bytes() {
+                            match byte {
+                                b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9'
+                                | b'-' | b'_' | b'.' | b'~' | b'/' | b':' | b'?' | b'#'
+                                | b'[' | b']' | b'@' | b'!' | b'$' | b'&' | b'\'' | b'('
+                                | b')' | b'*' | b'+' | b',' | b';' | b'=' => {
+                                    encoded.push(byte as char);
+                                }
+                                _ => {
+                                    encoded.push_str(&format!("%{:02X}", byte));
+                                }
+                            }
+                        }
+                        Ok(Value::Str(Rc::new(encoded)))
+                    }
+                    // v0.90.109: decode_uri() -> String
+                    "decode_uri" => {
+                        let mut decoded = Vec::new();
+                        let bytes = s.as_bytes();
+                        let mut i = 0;
+                        while i < bytes.len() {
+                            if bytes[i] == b'%' && i + 2 < bytes.len() {
+                                if let Ok(byte) = u8::from_str_radix(
+                                    &s[i+1..i+3], 16
+                                ) {
+                                    decoded.push(byte);
+                                    i += 3;
+                                } else {
+                                    decoded.push(bytes[i]);
+                                    i += 1;
+                                }
+                            } else {
+                                decoded.push(bytes[i]);
+                                i += 1;
+                            }
+                        }
+                        Ok(Value::Str(Rc::new(String::from_utf8_lossy(&decoded).to_string())))
+                    }
+                    // v0.90.109: escape_html() -> String
+                    "escape_html" => {
+                        let mut escaped = String::with_capacity(s.len());
+                        for c in s.chars() {
+                            match c {
+                                '&' => escaped.push_str("&amp;"),
+                                '<' => escaped.push_str("&lt;"),
+                                '>' => escaped.push_str("&gt;"),
+                                '"' => escaped.push_str("&quot;"),
+                                '\'' => escaped.push_str("&#x27;"),
+                                _ => escaped.push(c),
+                            }
+                        }
+                        Ok(Value::Str(Rc::new(escaped)))
+                    }
                     _ => Err(RuntimeError::undefined_function(&format!("String.{}", method))),
                 }
             }

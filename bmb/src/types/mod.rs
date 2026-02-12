@@ -4411,6 +4411,27 @@ impl TypeChecker {
                         }
                         Ok(Type::I64)
                     }
+                    // v0.90.109: encode_uri() -> String (percent-encode URI)
+                    "encode_uri" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("encode_uri() takes no arguments", span));
+                        }
+                        Ok(Type::String)
+                    }
+                    // v0.90.109: decode_uri() -> String (percent-decode URI)
+                    "decode_uri" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("decode_uri() takes no arguments", span));
+                        }
+                        Ok(Type::String)
+                    }
+                    // v0.90.109: escape_html() -> String (HTML entity encode)
+                    "escape_html" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("escape_html() takes no arguments", span));
+                        }
+                        Ok(Type::String)
+                    }
                     _ => Err(CompileError::type_error(
                         format!("unknown method '{}' for String", method),
                         span,
