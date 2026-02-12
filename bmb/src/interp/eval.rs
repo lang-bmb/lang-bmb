@@ -3773,6 +3773,63 @@ impl Interpreter {
                             Ok(Value::Float(vals[lower] + frac * (vals[upper] - vals[lower])))
                         }
                     }
+                    // v0.90.101: cumsum() -> [T] (prefix sums)
+                    "cumsum" => {
+                        let mut result = Vec::with_capacity(arr.len());
+                        let mut sum = 0i64;
+                        let mut sum_f = 0.0f64;
+                        let is_float = arr.first().map_or(false, |v| matches!(v, Value::Float(_)));
+                        for v in arr.iter() {
+                            if is_float {
+                                let f = match v { Value::Float(f) => *f, Value::Int(n) => *n as f64, _ => 0.0 };
+                                sum_f += f;
+                                result.push(Value::Float(sum_f));
+                            } else {
+                                let n = match v { Value::Int(n) => *n, _ => 0 };
+                                sum += n;
+                                result.push(Value::Int(sum));
+                            }
+                        }
+                        Ok(Value::Array(result))
+                    }
+                    // v0.90.101: running_min() -> [T]
+                    "running_min" => {
+                        let mut result = Vec::with_capacity(arr.len());
+                        let mut min_val = i64::MAX;
+                        let mut min_f = f64::INFINITY;
+                        let is_float = arr.first().map_or(false, |v| matches!(v, Value::Float(_)));
+                        for v in arr.iter() {
+                            if is_float {
+                                let f = match v { Value::Float(f) => *f, Value::Int(n) => *n as f64, _ => 0.0 };
+                                if f < min_f { min_f = f; }
+                                result.push(Value::Float(min_f));
+                            } else {
+                                let n = match v { Value::Int(n) => *n, _ => 0 };
+                                if n < min_val { min_val = n; }
+                                result.push(Value::Int(min_val));
+                            }
+                        }
+                        Ok(Value::Array(result))
+                    }
+                    // v0.90.101: running_max() -> [T]
+                    "running_max" => {
+                        let mut result = Vec::with_capacity(arr.len());
+                        let mut max_val = i64::MIN;
+                        let mut max_f = f64::NEG_INFINITY;
+                        let is_float = arr.first().map_or(false, |v| matches!(v, Value::Float(_)));
+                        for v in arr.iter() {
+                            if is_float {
+                                let f = match v { Value::Float(f) => *f, Value::Int(n) => *n as f64, _ => 0.0 };
+                                if f > max_f { max_f = f; }
+                                result.push(Value::Float(max_f));
+                            } else {
+                                let n = match v { Value::Int(n) => *n, _ => 0 };
+                                if n > max_val { max_val = n; }
+                                result.push(Value::Int(max_val));
+                            }
+                        }
+                        Ok(Value::Array(result))
+                    }
                     _ => Err(RuntimeError::undefined_function(&format!("Array.{}", method))),
                 }
             }

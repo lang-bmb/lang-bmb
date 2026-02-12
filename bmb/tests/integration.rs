@@ -19057,3 +19057,47 @@ fn test_array_statistical_type_checks() {
     assert!(type_checks("fn main() -> f64 = [1, 2, 3].stddev();"));
     assert!(type_checks("fn main() -> f64 = [1, 2, 3].percentile(50.0);"));
 }
+
+// --- Cycle 335: Array cumsum, running_min, running_max ---
+
+#[test]
+fn test_array_cumsum() {
+    assert_eq!(run_program_i64("fn main() -> i64 = [1, 2, 3, 4, 5].cumsum().last();"), 15);
+    assert_eq!(run_program_i64("fn main() -> i64 = [1, 2, 3, 4, 5].cumsum().first();"), 1);
+    // [1, 3, 6, 10, 15] - third element is 6
+    assert_eq!(run_program_i64("fn main() -> i64 = [1, 2, 3, 4, 5].cumsum().get(2).unwrap_or(0);"), 6);
+}
+
+#[test]
+fn test_array_running_min() {
+    assert_eq!(run_program_i64("fn main() -> i64 = [5, 3, 7, 1, 4].running_min().last();"), 1);
+    // [5, 3, 3, 1, 1]
+    assert_eq!(run_program_i64("fn main() -> i64 = [5, 3, 7, 1, 4].running_min().get(2).unwrap_or(0);"), 3);
+}
+
+#[test]
+fn test_array_running_max() {
+    assert_eq!(run_program_i64("fn main() -> i64 = [1, 5, 3, 7, 2].running_max().last();"), 7);
+    // [1, 5, 5, 7, 7]
+    assert_eq!(run_program_i64("fn main() -> i64 = [1, 5, 3, 7, 2].running_max().get(1).unwrap_or(0);"), 5);
+}
+
+#[test]
+fn test_array_cumsum_chain() {
+    // cumsum then sum should give a specific value
+    assert_eq!(run_program_i64("fn main() -> i64 = [1, 1, 1, 1].cumsum().sum();"), 10);
+}
+
+#[test]
+fn test_array_running_min_max_same() {
+    // Sorted array: running_min is the array itself, running_max grows
+    assert_eq!(run_program_i64("fn main() -> i64 = [1, 2, 3].running_min().last();"), 1);
+    assert_eq!(run_program_i64("fn main() -> i64 = [1, 2, 3].running_max().last();"), 3);
+}
+
+#[test]
+fn test_array_accumulation_type_checks() {
+    assert!(type_checks("fn main() -> i64 = [1, 2, 3].cumsum().len();"));
+    assert!(type_checks("fn main() -> i64 = [1, 2, 3].running_min().len();"));
+    assert!(type_checks("fn main() -> i64 = [1, 2, 3].running_max().len();"));
+}

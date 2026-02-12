@@ -5682,6 +5682,14 @@ impl TypeChecker {
                         self.unify(&arg_ty, &Type::F64, args[0].span)?;
                         Ok(Type::F64)
                     }
+                    // v0.90.101: cumsum() -> [T] (cumulative sum / prefix sums)
+                    "cumsum" | "running_min" | "running_max" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error(
+                                format!("{}() takes no arguments", method), span));
+                        }
+                        Ok(Type::Array(elem_ty.clone(), 0))
+                    }
                     _ => Err(CompileError::type_error(
                         format!("unknown method '{}' for Array", method),
                         span,
