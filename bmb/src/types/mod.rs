@@ -4265,6 +4265,23 @@ impl TypeChecker {
                         }
                         Ok(Type::String)
                     }
+                    // v0.90.98: parse_hex/parse_binary/parse_octal() -> i64?
+                    "parse_hex" | "parse_binary" | "parse_octal" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error(
+                                format!("{}() takes no arguments", method), span));
+                        }
+                        Ok(Type::Nullable(Box::new(Type::I64)))
+                    }
+                    // v0.90.98: parse_radix(i64) -> i64? (parse in arbitrary radix)
+                    "parse_radix" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("parse_radix() takes 1 argument", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg_ty, &Type::I64, args[0].span)?;
+                        Ok(Type::Nullable(Box::new(Type::I64)))
+                    }
                     _ => Err(CompileError::type_error(
                         format!("unknown method '{}' for String", method),
                         span,

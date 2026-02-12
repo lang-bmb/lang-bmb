@@ -18919,3 +18919,48 @@ fn test_final_comprehensive_chain() {
     // Complex chain: generate digits, filter primes, count, check if power of 2
     assert_eq!(run_program_i64(r#"fn main() -> i64 = if [2, 3, 4, 5, 6, 7].filter(fn |n: i64| { n.is_prime() }).len().is_power_of_two() { 1 } else { 0 };"#), 1);
 }
+
+// --- Cycle 332: String parse_hex, parse_binary, parse_octal, parse_radix ---
+
+#[test]
+fn test_string_parse_hex() {
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = "FF".parse_hex().unwrap_or(-1);"#), 255);
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = "0xff".parse_hex().unwrap_or(-1);"#), 255);
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = "not_hex".parse_hex().unwrap_or(-1);"#), -1);
+}
+
+#[test]
+fn test_string_parse_binary() {
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = "1010".parse_binary().unwrap_or(-1);"#), 10);
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = "0b11111111".parse_binary().unwrap_or(-1);"#), 255);
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = "xyz".parse_binary().unwrap_or(-1);"#), -1);
+}
+
+#[test]
+fn test_string_parse_octal() {
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = "17".parse_octal().unwrap_or(-1);"#), 15);
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = "0o77".parse_octal().unwrap_or(-1);"#), 63);
+}
+
+#[test]
+fn test_string_parse_radix() {
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = "FF".parse_radix(16).unwrap_or(-1);"#), 255);
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = "1010".parse_radix(2).unwrap_or(-1);"#), 10);
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = "ZZ".parse_radix(36).unwrap_or(-1);"#), 1295);
+}
+
+#[test]
+fn test_string_parse_hex_to_hex_roundtrip() {
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = 42.to_hex().parse_hex().unwrap_or(-1);"#), 42);
+}
+
+#[test]
+fn test_string_parse_binary_roundtrip() {
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = 255.to_binary().parse_binary().unwrap_or(-1);"#), 255);
+}
+
+#[test]
+fn test_string_parse_radix_type_checks() {
+    assert!(type_checks(r#"fn main() -> i64 = "FF".parse_hex().unwrap_or(0);"#));
+    assert!(type_checks(r#"fn main() -> i64 = "10".parse_radix(16).unwrap_or(0);"#));
+}

@@ -2169,6 +2169,41 @@ impl Interpreter {
                         }
                         Ok(Value::Str(Rc::new(result)))
                     }
+                    // v0.90.98: parse_hex() -> i64?
+                    "parse_hex" => {
+                        let cleaned = s.trim().trim_start_matches("0x").trim_start_matches("0X");
+                        match i64::from_str_radix(cleaned, 16) {
+                            Ok(n) => Ok(Value::Enum("Option".to_string(), "Some".to_string(), vec![Value::Int(n)])),
+                            Err(_) => Ok(Value::Enum("Option".to_string(), "None".to_string(), vec![])),
+                        }
+                    }
+                    // v0.90.98: parse_binary() -> i64?
+                    "parse_binary" => {
+                        let cleaned = s.trim().trim_start_matches("0b").trim_start_matches("0B");
+                        match i64::from_str_radix(cleaned, 2) {
+                            Ok(n) => Ok(Value::Enum("Option".to_string(), "Some".to_string(), vec![Value::Int(n)])),
+                            Err(_) => Ok(Value::Enum("Option".to_string(), "None".to_string(), vec![])),
+                        }
+                    }
+                    // v0.90.98: parse_octal() -> i64?
+                    "parse_octal" => {
+                        let cleaned = s.trim().trim_start_matches("0o").trim_start_matches("0O");
+                        match i64::from_str_radix(cleaned, 8) {
+                            Ok(n) => Ok(Value::Enum("Option".to_string(), "Some".to_string(), vec![Value::Int(n)])),
+                            Err(_) => Ok(Value::Enum("Option".to_string(), "None".to_string(), vec![])),
+                        }
+                    }
+                    // v0.90.98: parse_radix(i64) -> i64?
+                    "parse_radix" => {
+                        let radix = match &args[0] {
+                            Value::Int(n) => *n as u32,
+                            _ => return Err(RuntimeError::type_error("integer", args[0].type_name())),
+                        };
+                        match i64::from_str_radix(s.trim(), radix) {
+                            Ok(n) => Ok(Value::Enum("Option".to_string(), "Some".to_string(), vec![Value::Int(n)])),
+                            Err(_) => Ok(Value::Enum("Option".to_string(), "None".to_string(), vec![])),
+                        }
+                    }
                     _ => Err(RuntimeError::undefined_function(&format!("String.{}", method))),
                 }
             }
