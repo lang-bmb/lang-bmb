@@ -2222,6 +2222,36 @@ impl Interpreter {
                             Err(_) => Ok(Value::Enum("Option".to_string(), "None".to_string(), vec![])),
                         }
                     }
+                    // v0.90.103: contains_any([String]) -> bool
+                    "contains_any" => {
+                        match &args[0] {
+                            Value::Array(patterns) => {
+                                let result = patterns.iter().any(|p| {
+                                    if let Value::Str(pat) = p { s.contains(pat.as_str()) } else { false }
+                                });
+                                Ok(Value::Bool(result))
+                            }
+                            _ => Err(RuntimeError::type_error("array", args[0].type_name())),
+                        }
+                    }
+                    // v0.90.103: match_indices(String) -> [i64]
+                    "match_indices" => {
+                        let pattern = match &args[0] {
+                            Value::Str(p) => p.as_str().to_string(),
+                            _ => return Err(RuntimeError::type_error("string", args[0].type_name())),
+                        };
+                        let indices: Vec<Value> = s.match_indices(&pattern)
+                            .map(|(idx, _)| Value::Int(idx as i64))
+                            .collect();
+                        Ok(Value::Array(indices))
+                    }
+                    // v0.90.103: split_whitespace() -> [String]
+                    "split_whitespace" => {
+                        let parts: Vec<Value> = s.split_whitespace()
+                            .map(|p| Value::Str(Rc::new(p.to_string())))
+                            .collect();
+                        Ok(Value::Array(parts))
+                    }
                     _ => Err(RuntimeError::undefined_function(&format!("String.{}", method))),
                 }
             }

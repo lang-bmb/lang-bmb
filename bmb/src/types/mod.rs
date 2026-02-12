@@ -4320,6 +4320,36 @@ impl TypeChecker {
                         self.unify(&arg_ty, &Type::I64, args[0].span)?;
                         Ok(Type::Nullable(Box::new(Type::I64)))
                     }
+                    // v0.90.103: contains_any([String]) -> bool
+                    "contains_any" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("contains_any() takes 1 argument (array of strings)", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        match &arg_ty {
+                            Type::Array(elem, _) => {
+                                self.unify(elem, &Type::String, args[0].span)?;
+                            }
+                            _ => return Err(CompileError::type_error("requires an array of strings", args[0].span)),
+                        }
+                        Ok(Type::Bool)
+                    }
+                    // v0.90.103: match_indices(String) -> [i64] (all start indices of pattern)
+                    "match_indices" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("match_indices() takes 1 argument", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg_ty, &Type::String, args[0].span)?;
+                        Ok(Type::Array(Box::new(Type::I64), 0))
+                    }
+                    // v0.90.103: split_whitespace() -> [String]
+                    "split_whitespace" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("split_whitespace() takes no arguments", span));
+                        }
+                        Ok(Type::Array(Box::new(Type::String), 0))
+                    }
                     _ => Err(CompileError::type_error(
                         format!("unknown method '{}' for String", method),
                         span,

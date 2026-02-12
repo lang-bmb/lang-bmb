@@ -19149,3 +19149,43 @@ fn test_char_navigation_type_checks() {
     assert!(type_checks("fn main() -> i64 = 'a'.from_int(65).unwrap_or('?').to_int();"));
     assert!(type_checks("fn main() -> i64 = 'a'.from_digit(5, 10).unwrap_or('?').to_int();"));
 }
+
+// --- Cycle 337: String contains_any, match_indices, split_whitespace ---
+
+#[test]
+fn test_string_contains_any() {
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = if "hello world".contains_any(["hello", "foo"]) { 1 } else { 0 };"#), 1);
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = if "hello world".contains_any(["foo", "bar"]) { 1 } else { 0 };"#), 0);
+}
+
+#[test]
+fn test_string_match_indices() {
+    // "ababab".match_indices("ab") = [0, 2, 4]
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = "ababab".match_indices("ab").len();"#), 3);
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = "ababab".match_indices("ab").first();"#), 0);
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = "ababab".match_indices("ab").last();"#), 4);
+}
+
+#[test]
+fn test_string_match_indices_no_match() {
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = "hello".match_indices("xyz").len();"#), 0);
+}
+
+#[test]
+fn test_string_split_whitespace() {
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = "hello world  foo".split_whitespace().len();"#), 3);
+    assert_eq!(run_program_str(r#"fn main() -> String = "  hello  world  ".split_whitespace().first();"#), "hello");
+}
+
+#[test]
+fn test_string_split_whitespace_chain() {
+    // Split then join should normalize whitespace
+    assert_eq!(run_program_str(r#"fn main() -> String = "  hello   world  ".split_whitespace().join(" ");"#), "hello world");
+}
+
+#[test]
+fn test_string_matching_type_checks() {
+    assert!(type_checks(r#"fn main() -> i64 = if "hi".contains_any(["a", "b"]) { 1 } else { 0 };"#));
+    assert!(type_checks(r#"fn main() -> i64 = "hi".match_indices("h").len();"#));
+    assert!(type_checks(r#"fn main() -> i64 = "hi there".split_whitespace().len();"#));
+}
