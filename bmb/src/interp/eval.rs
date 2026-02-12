@@ -3217,6 +3217,86 @@ impl Interpreter {
                         }
                         Ok(Value::Array(result))
                     }
+                    // v0.90.84: each_slice(n) -> [[T]]
+                    "each_slice" => {
+                        let size = match &args[0] {
+                            Value::Int(n) => *n as usize,
+                            _ => return Err(RuntimeError::type_error("integer", args[0].type_name())),
+                        };
+                        if size == 0 {
+                            return Err(RuntimeError::type_error("positive integer", "0"));
+                        }
+                        let mut result = Vec::new();
+                        for chunk in arr.chunks(size) {
+                            result.push(Value::Array(chunk.to_vec()));
+                        }
+                        Ok(Value::Array(result))
+                    }
+                    // v0.90.84: tally() -> [i64]
+                    "tally" => {
+                        let mut counts: std::collections::HashMap<String, i64> = std::collections::HashMap::new();
+                        let mut order: Vec<String> = Vec::new();
+                        for elem in &arr {
+                            let key = format!("{}", elem);
+                            let k = key.clone();
+                            let entry = counts.entry(key).or_insert_with(|| {
+                                order.push(k);
+                                0
+                            });
+                            *entry += 1;
+                        }
+                        let result: Vec<Value> = order.iter().map(|k| Value::Int(counts[k.as_str()])).collect();
+                        Ok(Value::Array(result))
+                    }
+                    // v0.90.84: product_by(fn(T) -> i64) -> i64
+                    "product_by" => {
+                        match args.into_iter().next().unwrap() {
+                            Value::Closure { params, body, env: closure_env } => {
+                                let mut product = Value::Int(1);
+                                for item in arr {
+                                    let val = self.call_closure(&params, &body, &closure_env, vec![item.clone()])?;
+                                    product = match (&product, &val) {
+                                        (Value::Int(a), Value::Int(b)) => Value::Int(a * b),
+                                        (Value::Float(a), Value::Float(b)) => Value::Float(a * b),
+                                        (Value::Int(a), Value::Float(b)) => Value::Float(*a as f64 * b),
+                                        (Value::Float(a), Value::Int(b)) => Value::Float(a * *b as f64),
+                                        _ => return Err(RuntimeError::type_error("numeric", val.type_name())),
+                                    };
+                                }
+                                Ok(product)
+                            }
+                            _ => Err(RuntimeError::type_error("closure", "non-closure")),
+                        }
+                    }
+                    // v0.90.84: group_consecutive(fn(T, T) -> bool) -> [[T]]
+                    "group_consecutive" => {
+                        match args.into_iter().next().unwrap() {
+                            Value::Closure { params, body, env: closure_env } => {
+                                let mut result: Vec<Value> = Vec::new();
+                                let mut current_group: Vec<Value> = Vec::new();
+                                for item in arr {
+                                    if current_group.is_empty() {
+                                        current_group.push(item.clone());
+                                    } else {
+                                        let last = current_group.last().unwrap().clone();
+                                        let should_group = self.call_closure(&params, &body, &closure_env, vec![last, item.clone()])?;
+                                        match should_group {
+                                            Value::Bool(true) => current_group.push(item.clone()),
+                                            _ => {
+                                                result.push(Value::Array(std::mem::take(&mut current_group)));
+                                                current_group.push(item.clone());
+                                            }
+                                        }
+                                    }
+                                }
+                                if !current_group.is_empty() {
+                                    result.push(Value::Array(current_group));
+                                }
+                                Ok(Value::Array(result))
+                            }
+                            _ => Err(RuntimeError::type_error("closure", "non-closure")),
+                        }
+                    }
                     _ => Err(RuntimeError::undefined_function(&format!("Array.{}", method))),
                 }
             }

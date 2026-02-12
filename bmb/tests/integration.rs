@@ -18289,3 +18289,77 @@ fn test_option_inspect_none() {
     "#;
     assert_eq!(run_program_i64(source), 0);
 }
+
+// --- Cycle 318: Array each_slice, tally, product_by, group_consecutive ---
+
+#[test]
+fn test_array_each_slice() {
+    let source = r#"
+        fn main() -> i64 = [1, 2, 3, 4, 5].each_slice(2).len();
+    "#;
+    // [[1,2], [3,4], [5]] -> 3 slices
+    assert_eq!(run_program_i64(source), 3);
+}
+
+#[test]
+fn test_array_each_slice_exact() {
+    let source = r#"
+        fn main() -> i64 = [10, 20, 30, 40].each_slice(4).len();
+    "#;
+    // [[10,20,30,40]] -> 1 slice
+    assert_eq!(run_program_i64(source), 1);
+}
+
+#[test]
+fn test_array_tally() {
+    let source = r#"
+        fn main() -> i64 = [1, 2, 2, 3, 3, 3].tally().len();
+    "#;
+    // unique elements: 1, 2, 3 -> counts: [1, 2, 3] -> len = 3
+    assert_eq!(run_program_i64(source), 3);
+}
+
+#[test]
+fn test_array_tally_values() {
+    let source = r#"
+        fn main() -> i64 = [1, 2, 2, 3, 3, 3].tally().last();
+    "#;
+    // last count is for 3, which appears 3 times
+    assert_eq!(run_program_i64(source), 3);
+}
+
+#[test]
+fn test_array_product_by() {
+    let source = r#"
+        fn main() -> i64 = [1, 2, 3, 4].product_by(fn |x: i64| { x });
+    "#;
+    // 1 * 2 * 3 * 4 = 24
+    assert_eq!(run_program_i64(source), 24);
+}
+
+#[test]
+fn test_array_product_by_transform() {
+    let source = r#"
+        fn main() -> i64 = [2, 3, 5].product_by(fn |x: i64| { x + 1 });
+    "#;
+    // (2+1) * (3+1) * (5+1) = 3 * 4 * 6 = 72
+    assert_eq!(run_program_i64(source), 72);
+}
+
+#[test]
+fn test_array_group_consecutive() {
+    let source = r#"
+        fn main() -> i64 = [1, 1, 2, 2, 2, 3].group_consecutive(fn |a: i64, b: i64| { a == b }).len();
+    "#;
+    // [[1,1], [2,2,2], [3]] -> 3 groups
+    assert_eq!(run_program_i64(source), 3);
+}
+
+#[test]
+fn test_array_group_consecutive_first_group() {
+    let source = r#"
+        fn main() -> i64 = [1, 1, 2, 2, 2, 3].group_consecutive(fn |a: i64, b: i64| { a == b }).first().len();
+    "#;
+    // first group [1,1] -> len = 2
+    assert_eq!(run_program_i64(source), 2);
+}

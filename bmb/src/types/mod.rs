@@ -5250,6 +5250,68 @@ impl TypeChecker {
                         self.unify(&default_ty, elem_ty, args[1].span)?;
                         Ok(Type::Array(Box::new(Type::Array(elem_ty.clone().into(), 0)), 0))
                     }
+                    // v0.90.84: each_slice(i64) -> [[T]]
+                    "each_slice" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("each_slice() takes 1 argument (size)", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        match arg_ty {
+                            Type::I32 | Type::I64 | Type::U32 | Type::U64 => {}
+                            _ => return Err(CompileError::type_error(
+                                format!("each_slice() requires integer argument, got {}", arg_ty), args[0].span)),
+                        }
+                        Ok(Type::Array(Box::new(Type::Array(elem_ty.clone().into(), 0)), 0))
+                    }
+                    // v0.90.84: tally() -> [[i64]] (count occurrences of each element)
+                    "tally" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("tally() takes no arguments", span));
+                        }
+                        Ok(Type::Array(Box::new(Type::I64), 0))
+                    }
+                    // v0.90.84: product_by(fn(T) -> i64) -> i64
+                    "product_by" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("product_by() takes 1 argument (a closure)", span));
+                        }
+                        let fn_ty = self.infer(&args[0].node, args[0].span)?;
+                        match fn_ty {
+                            Type::Fn { params, ret } => {
+                                if params.len() != 1 {
+                                    return Err(CompileError::type_error(
+                                        format!("product_by() closure must take 1 parameter, got {}", params.len()),
+                                        args[0].span,
+                                    ));
+                                }
+                                self.unify(&params[0], elem_ty, args[0].span)?;
+                                Ok(*ret)
+                            }
+                            _ => Err(CompileError::type_error("product_by() requires a closure argument", args[0].span)),
+                        }
+                    }
+                    // v0.90.84: group_consecutive(fn(T, T) -> bool) -> [[T]]
+                    "group_consecutive" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("group_consecutive() takes 1 argument (a closure)", span));
+                        }
+                        let fn_ty = self.infer(&args[0].node, args[0].span)?;
+                        match fn_ty {
+                            Type::Fn { params, ret } => {
+                                if params.len() != 2 {
+                                    return Err(CompileError::type_error(
+                                        format!("group_consecutive() closure must take 2 parameters, got {}", params.len()),
+                                        args[0].span,
+                                    ));
+                                }
+                                self.unify(&params[0], elem_ty, args[0].span)?;
+                                self.unify(&params[1], elem_ty, args[0].span)?;
+                                self.unify(&ret, &Type::Bool, args[0].span)?;
+                                Ok(Type::Array(Box::new(Type::Array(elem_ty.clone().into(), 0)), 0))
+                            }
+                            _ => Err(CompileError::type_error("group_consecutive() requires a closure argument", args[0].span)),
+                        }
+                    }
                     _ => Err(CompileError::type_error(
                         format!("unknown method '{}' for Array", method),
                         span,
