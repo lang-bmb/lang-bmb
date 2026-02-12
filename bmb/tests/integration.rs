@@ -15810,3 +15810,153 @@ fn test_filter_reject_complement() {
     // filter + reject = total: 2 + 3 = 5
     assert_eq!(run_program_i64(source), 5);
 }
+
+// ============================================
+// Cycle 290: Comprehensive Integration Programs
+// ============================================
+
+#[test]
+fn test_program_fibonacci_sum() {
+    let source = r#"
+        fn fib(n: i64) -> i64 = if n <= 1 { n } else { fib(n - 1) + fib(n - 2) };
+        fn main() -> i64 = 0.range_to(10).map(fn |x: i64| { fib(x) }).sum();
+    "#;
+    // fib(0..10) = [0,1,1,2,3,5,8,13,21,34].sum() = 88
+    assert_eq!(run_program_i64(source), 88);
+}
+
+#[test]
+fn test_program_digit_analysis() {
+    let source = r#"
+        fn main() -> i64 = {
+            let n = 12345;
+            let digs = n.digits();
+            let sum = digs.sum();
+            let count = digs.len();
+            sum * count
+        };
+    "#;
+    // digits: [1,2,3,4,5], sum=15, count=5, result=75
+    assert_eq!(run_program_i64(source), 75);
+}
+
+#[test]
+fn test_program_string_word_count() {
+    let source = r#"
+        fn main() -> i64 = "hello world foo bar".split(" ").len();
+    "#;
+    assert_eq!(run_program_i64(source), 4);
+}
+
+#[test]
+fn test_program_string_transform_pipeline() {
+    let source = r#"
+        fn main() -> String = "  Hello, World!  ".trim().to_lower().replace(",", "").replace("!", "");
+    "#;
+    assert_eq!(run_program_str(source), "hello world");
+}
+
+#[test]
+fn test_program_array_statistics() {
+    let source = r#"
+        fn main() -> i64 = {
+            let data = [10, 20, 30, 40, 50];
+            let total = data.sum();
+            let count = data.len();
+            total / count
+        };
+    "#;
+    // average = 150/5 = 30
+    assert_eq!(run_program_i64(source), 30);
+}
+
+#[test]
+fn test_program_filter_map_sum() {
+    let source = r#"
+        fn main() -> i64 = 1.range_to(21)
+            .filter(fn |x: i64| { x.is_odd() })
+            .map(fn |x: i64| { x * x })
+            .sum();
+    "#;
+    // odd squares 1-19: 1+9+25+49+81+121+169+225+289+361 = 1330
+    assert_eq!(run_program_i64(source), 1330);
+}
+
+#[test]
+fn test_program_string_reverse_palindrome() {
+    let source = r#"
+        fn main() -> i64 = {
+            let word = "racecar";
+            if word == word.reverse() { 1 } else { 0 }
+        };
+    "#;
+    assert_eq!(run_program_i64(source), 1);
+}
+
+#[test]
+fn test_program_nested_array_ops() {
+    let source = r#"
+        fn main() -> i64 = {
+            let matrix_flat = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+            let chunks = matrix_flat.chunks(3);
+            chunks.len()
+        };
+    "#;
+    // 3 chunks of 3
+    assert_eq!(run_program_i64(source), 3);
+}
+
+#[test]
+fn test_program_range_zip_with() {
+    let source = r#"
+        fn main() -> i64 = {
+            let a = 1.range_to(6);
+            let b = 10.range_to(15);
+            a.zip_with(b, fn |x: i64, y: i64| { x + y }).sum()
+        };
+    "#;
+    // [11, 13, 15, 17, 19].sum() = 75
+    assert_eq!(run_program_i64(source), 75);
+}
+
+#[test]
+fn test_program_complex_string_analysis() {
+    let source = r#"
+        fn main() -> i64 = {
+            let text = "Hello World 123";
+            let words = text.split(" ");
+            let total_len = words.sum_by(fn |w: String| { w.len() });
+            total_len
+        };
+    "#;
+    // "Hello"(5) + "World"(5) + "123"(3) = 13
+    assert_eq!(run_program_i64(source), 13);
+}
+
+#[test]
+fn test_program_method_chain_complex() {
+    let source = r#"
+        fn main() -> i64 = 1.range_to(101)
+            .filter(fn |x: i64| { x.is_even() })
+            .reject(fn |x: i64| { x > 50 })
+            .step_by(2)
+            .sum();
+    "#;
+    // evens 2..50: [2,4,6,...,50], step_by(2): [2,6,10,...,50] = every 4th starting from 2
+    // 2,6,10,14,18,22,26,30,34,38,42,46,50 -> sum = 338
+    assert_eq!(run_program_i64(source), 338);
+}
+
+#[test]
+fn test_program_type_conversions() {
+    let source = r#"
+        fn main() -> i64 = {
+            let a = 42.to_string().len();
+            let b = 3.14.to_string().len();
+            let c = true.to_int();
+            a + b + c
+        };
+    "#;
+    // "42".len()=2, "3.14".len()=4, true.to_int()=1 = 7
+    assert_eq!(run_program_i64(source), 7);
+}
