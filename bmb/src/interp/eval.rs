@@ -2655,6 +2655,47 @@ impl Interpreter {
                             _ => Err(RuntimeError::type_error("closure", "non-closure")),
                         }
                     }
+                    // v0.90.63: find_last, take_last, drop_last, first_or, last_or
+                    "find_last" => {
+                        match args.into_iter().next().unwrap() {
+                            Value::Closure { params, body, env: closure_env } => {
+                                for elem in arr.into_iter().rev() {
+                                    let pred = self.call_closure(&params, &body, &closure_env, vec![elem.clone()])?;
+                                    if pred.is_truthy() {
+                                        return Ok(elem);
+                                    }
+                                }
+                                Ok(Value::Int(0)) // null
+                            }
+                            _ => Err(RuntimeError::type_error("closure", "non-closure")),
+                        }
+                    }
+                    "take_last" => {
+                        let n = match &args[0] {
+                            Value::Int(n) => *n as usize,
+                            _ => return Err(RuntimeError::type_error("integer", args[0].type_name())),
+                        };
+                        let len = arr.len();
+                        let start = if n >= len { 0 } else { len - n };
+                        Ok(Value::Array(arr[start..].to_vec()))
+                    }
+                    "drop_last" => {
+                        let n = match &args[0] {
+                            Value::Int(n) => *n as usize,
+                            _ => return Err(RuntimeError::type_error("integer", args[0].type_name())),
+                        };
+                        let len = arr.len();
+                        let end = if n >= len { 0 } else { len - n };
+                        Ok(Value::Array(arr[..end].to_vec()))
+                    }
+                    "first_or" => {
+                        let default = args.into_iter().next().unwrap();
+                        Ok(arr.into_iter().next().unwrap_or(default))
+                    }
+                    "last_or" => {
+                        let default = args.into_iter().next().unwrap();
+                        Ok(arr.into_iter().last().unwrap_or(default))
+                    }
                     _ => Err(RuntimeError::undefined_function(&format!("Array.{}", method))),
                 }
             }

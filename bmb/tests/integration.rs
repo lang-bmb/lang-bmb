@@ -16609,3 +16609,133 @@ fn test_nullable_map_unwrap_or_else() {
     // get(2) = 15, map => 45
     assert_eq!(run_program_i64(source), 45);
 }
+
+// ============================================================================
+// Cycle 297: Array find_last, take_last, drop_last, first_or, last_or
+// ============================================================================
+
+#[test]
+fn test_array_find_last() {
+    let source = r#"
+        fn main() -> i64 = {
+            let arr = [1, 2, 3, 4, 5];
+            arr.find_last(fn |x: i64| { x % 2 == 0 }).unwrap_or(0)
+        };
+    "#;
+    assert_eq!(run_program_i64(source), 4);
+}
+
+#[test]
+fn test_array_find_last_none() {
+    let source = r#"
+        fn main() -> i64 = {
+            let arr = [1, 3, 5];
+            arr.find_last(fn |x: i64| { x % 2 == 0 }).unwrap_or(99)
+        };
+    "#;
+    assert_eq!(run_program_i64(source), 99);
+}
+
+#[test]
+fn test_array_take_last() {
+    let source = r#"
+        fn main() -> i64 = {
+            let arr = [1, 2, 3, 4, 5];
+            arr.take_last(3).sum()
+        };
+    "#;
+    // [3, 4, 5].sum() = 12
+    assert_eq!(run_program_i64(source), 12);
+}
+
+#[test]
+fn test_array_take_last_more_than_len() {
+    let source = r#"
+        fn main() -> i64 = {
+            let arr = [1, 2, 3];
+            arr.take_last(10).sum()
+        };
+    "#;
+    // takes all: [1, 2, 3].sum() = 6
+    assert_eq!(run_program_i64(source), 6);
+}
+
+#[test]
+fn test_array_drop_last() {
+    let source = r#"
+        fn main() -> i64 = {
+            let arr = [1, 2, 3, 4, 5];
+            arr.drop_last(2).sum()
+        };
+    "#;
+    // [1, 2, 3].sum() = 6
+    assert_eq!(run_program_i64(source), 6);
+}
+
+#[test]
+fn test_array_drop_last_all() {
+    let source = r#"
+        fn main() -> i64 = {
+            let arr = [1, 2, 3];
+            arr.drop_last(10).len()
+        };
+    "#;
+    assert_eq!(run_program_i64(source), 0);
+}
+
+#[test]
+fn test_array_first_or() {
+    let source = r#"
+        fn main() -> i64 = {
+            let arr = [10, 20, 30];
+            arr.first_or(0)
+        };
+    "#;
+    assert_eq!(run_program_i64(source), 10);
+}
+
+#[test]
+fn test_array_first_or_empty() {
+    let source = r#"
+        fn main() -> i64 = {
+            let arr = [1].pop();
+            arr.first_or(42)
+        };
+    "#;
+    assert_eq!(run_program_i64(source), 42);
+}
+
+#[test]
+fn test_array_last_or() {
+    let source = r#"
+        fn main() -> i64 = {
+            let arr = [10, 20, 30];
+            arr.last_or(0)
+        };
+    "#;
+    assert_eq!(run_program_i64(source), 30);
+}
+
+#[test]
+fn test_array_last_or_empty() {
+    let source = r#"
+        fn main() -> i64 = {
+            let arr = [1].pop();
+            arr.last_or(99)
+        };
+    "#;
+    assert_eq!(run_program_i64(source), 99);
+}
+
+#[test]
+fn test_array_take_drop_last_chain() {
+    // take_last(4).drop_last(1) = middle portion
+    let source = r#"
+        fn main() -> i64 = {
+            let arr = [1, 2, 3, 4, 5, 6];
+            arr.take_last(4).drop_last(1).sum()
+        };
+    "#;
+    // take_last(4) = [3,4,5,6], drop_last(1) = [3,4,5], sum = 12
+    assert_eq!(run_program_i64(source), 12);
+}

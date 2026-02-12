@@ -4727,6 +4727,63 @@ impl TypeChecker {
                             _ => Err(CompileError::type_error("each_with_index() requires a closure argument", args[0].span)),
                         }
                     }
+                    // v0.90.63: find_last(fn(T) -> bool) -> T?
+                    "find_last" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("find_last() takes 1 argument (a closure)", span));
+                        }
+                        let fn_ty = self.infer(&args[0].node, args[0].span)?;
+                        match fn_ty {
+                            Type::Fn { params, ret } => {
+                                if params.len() != 1 {
+                                    return Err(CompileError::type_error(
+                                        format!("find_last() closure must take 1 parameter, got {}", params.len()),
+                                        args[0].span,
+                                    ));
+                                }
+                                self.unify(&params[0], elem_ty, args[0].span)?;
+                                self.unify(&ret, &Type::Bool, args[0].span)?;
+                                Ok(Type::Nullable(elem_ty.clone().into()))
+                            }
+                            _ => Err(CompileError::type_error("find_last() requires a closure argument", args[0].span)),
+                        }
+                    }
+                    // v0.90.63: take_last(n: i64) -> [T]
+                    "take_last" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("take_last() takes 1 argument", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg_ty, &Type::I64, args[0].span)?;
+                        Ok(Type::Array(elem_ty.clone().into(), 0))
+                    }
+                    // v0.90.63: drop_last(n: i64) -> [T]
+                    "drop_last" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("drop_last() takes 1 argument", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg_ty, &Type::I64, args[0].span)?;
+                        Ok(Type::Array(elem_ty.clone().into(), 0))
+                    }
+                    // v0.90.63: first_or(T) -> T
+                    "first_or" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("first_or() takes 1 argument", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg_ty, elem_ty, args[0].span)?;
+                        Ok(*elem_ty.clone())
+                    }
+                    // v0.90.63: last_or(T) -> T
+                    "last_or" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("last_or() takes 1 argument", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg_ty, elem_ty, args[0].span)?;
+                        Ok(*elem_ty.clone())
+                    }
                     _ => Err(CompileError::type_error(
                         format!("unknown method '{}' for Array", method),
                         span,
