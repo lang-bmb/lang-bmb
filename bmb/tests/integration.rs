@@ -14662,6 +14662,100 @@ fn test_nullable_unwrap_value() {
 // ============================================
 
 // ============================================
+// Cycle 283: Scan, Partition, Skip_while, Take_while
+// ============================================
+
+#[test]
+fn test_array_scan() {
+    let source = r#"
+        fn main() -> i64 = [1, 2, 3, 4].scan(0, fn |acc: i64, x: i64| { acc + x }).last();
+    "#;
+    // running sum: [1, 3, 6, 10], last = 10
+    assert_eq!(run_program_i64(source), 10);
+}
+
+#[test]
+fn test_array_scan_len() {
+    let source = r#"
+        fn main() -> i64 = [1, 2, 3].scan(0, fn |acc: i64, x: i64| { acc + x }).len();
+    "#;
+    assert_eq!(run_program_i64(source), 3);
+}
+
+#[test]
+fn test_array_scan_first() {
+    let source = r#"
+        fn main() -> i64 = [10, 20, 30].scan(0, fn |acc: i64, x: i64| { acc + x }).first();
+    "#;
+    assert_eq!(run_program_i64(source), 10);
+}
+
+#[test]
+fn test_array_partition_match() {
+    let source = r#"
+        fn main() -> i64 = [1, 2, 3, 4, 5, 6].partition(fn |x: i64| { x % 2 == 0 }).len();
+    "#;
+    // evens: [2, 4, 6] = 3
+    assert_eq!(run_program_i64(source), 3);
+}
+
+#[test]
+fn test_array_partition_sum() {
+    let source = r#"
+        fn main() -> i64 = [1, 2, 3, 4, 5, 6].partition(fn |x: i64| { x % 2 == 0 }).sum();
+    "#;
+    // evens: [2, 4, 6], sum = 12
+    assert_eq!(run_program_i64(source), 12);
+}
+
+#[test]
+fn test_array_skip_while() {
+    let source = r#"
+        fn main() -> i64 = [1, 2, 3, 4, 5].skip_while(fn |x: i64| { x < 3 }).len();
+    "#;
+    // skip 1, 2; keep 3, 4, 5 = 3
+    assert_eq!(run_program_i64(source), 3);
+}
+
+#[test]
+fn test_array_skip_while_first() {
+    let source = r#"
+        fn main() -> i64 = [1, 2, 3, 4, 5].skip_while(fn |x: i64| { x < 3 }).first();
+    "#;
+    assert_eq!(run_program_i64(source), 3);
+}
+
+#[test]
+fn test_array_take_while() {
+    let source = r#"
+        fn main() -> i64 = [1, 2, 3, 4, 5].take_while(fn |x: i64| { x < 4 }).len();
+    "#;
+    // take 1, 2, 3 = 3
+    assert_eq!(run_program_i64(source), 3);
+}
+
+#[test]
+fn test_array_take_while_sum() {
+    let source = r#"
+        fn main() -> i64 = [1, 2, 3, 4, 5].take_while(fn |x: i64| { x < 4 }).sum();
+    "#;
+    // 1+2+3 = 6
+    assert_eq!(run_program_i64(source), 6);
+}
+
+#[test]
+fn test_array_scan_partition_chain() {
+    let source = r#"
+        fn main() -> i64 = [1, 2, 3, 4, 5]
+            .scan(0, fn |acc: i64, x: i64| { acc + x })
+            .partition(fn |x: i64| { x > 5 })
+            .len();
+    "#;
+    // scan: [1, 3, 6, 10, 15], partition > 5: [6, 10, 15] = 3
+    assert_eq!(run_program_i64(source), 3);
+}
+
+// ============================================
 // Cycle 282: Complex Method Chaining
 // ============================================
 

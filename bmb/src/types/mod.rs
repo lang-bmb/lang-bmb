@@ -3996,6 +3996,93 @@ impl TypeChecker {
                             _ => Err(CompileError::type_error("flat_map() requires a closure argument", args[0].span)),
                         }
                     }
+                    // v0.90.49: scan(init, fn(acc, T) -> acc) -> [acc]
+                    "scan" => {
+                        if args.len() != 2 {
+                            return Err(CompileError::type_error("scan() takes 2 arguments (initial value, closure)", span));
+                        }
+                        let init_ty = self.infer(&args[0].node, args[0].span)?;
+                        let fn_ty = self.infer(&args[1].node, args[1].span)?;
+                        match fn_ty {
+                            Type::Fn { params, ret } => {
+                                if params.len() != 2 {
+                                    return Err(CompileError::type_error(
+                                        format!("scan() closure must take 2 parameters, got {}", params.len()),
+                                        args[1].span,
+                                    ));
+                                }
+                                self.unify(&params[0], &init_ty, args[1].span)?;
+                                self.unify(&params[1], elem_ty, args[1].span)?;
+                                self.unify(&ret, &init_ty, args[1].span)?;
+                                Ok(Type::Array(Box::new(init_ty), 0))
+                            }
+                            _ => Err(CompileError::type_error("scan() second argument must be a closure", args[1].span)),
+                        }
+                    }
+                    // v0.90.49: partition(fn(T) -> bool) -> ([T], [T]) — not tuple, returns first match array
+                    "partition" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("partition() takes 1 argument (a predicate closure)", span));
+                        }
+                        let fn_ty = self.infer(&args[0].node, args[0].span)?;
+                        match fn_ty {
+                            Type::Fn { params, ret } => {
+                                if params.len() != 1 {
+                                    return Err(CompileError::type_error(
+                                        format!("partition() closure must take 1 parameter, got {}", params.len()),
+                                        args[0].span,
+                                    ));
+                                }
+                                self.unify(&params[0], elem_ty, args[0].span)?;
+                                self.unify(&ret, &Type::Bool, args[0].span)?;
+                                // Returns the "true" partition (matching elements)
+                                Ok(Type::Array(elem_ty.clone(), 0))
+                            }
+                            _ => Err(CompileError::type_error("partition() requires a closure argument", args[0].span)),
+                        }
+                    }
+                    // v0.90.49: skip_while(fn(T) -> bool) -> [T]
+                    "skip_while" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("skip_while() takes 1 argument (a predicate closure)", span));
+                        }
+                        let fn_ty = self.infer(&args[0].node, args[0].span)?;
+                        match fn_ty {
+                            Type::Fn { params, ret } => {
+                                if params.len() != 1 {
+                                    return Err(CompileError::type_error(
+                                        format!("skip_while() closure must take 1 parameter, got {}", params.len()),
+                                        args[0].span,
+                                    ));
+                                }
+                                self.unify(&params[0], elem_ty, args[0].span)?;
+                                self.unify(&ret, &Type::Bool, args[0].span)?;
+                                Ok(Type::Array(elem_ty.clone(), 0))
+                            }
+                            _ => Err(CompileError::type_error("skip_while() requires a closure argument", args[0].span)),
+                        }
+                    }
+                    // v0.90.49: take_while(fn(T) -> bool) -> [T]
+                    "take_while" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("take_while() takes 1 argument (a predicate closure)", span));
+                        }
+                        let fn_ty = self.infer(&args[0].node, args[0].span)?;
+                        match fn_ty {
+                            Type::Fn { params, ret } => {
+                                if params.len() != 1 {
+                                    return Err(CompileError::type_error(
+                                        format!("take_while() closure must take 1 parameter, got {}", params.len()),
+                                        args[0].span,
+                                    ));
+                                }
+                                self.unify(&params[0], elem_ty, args[0].span)?;
+                                self.unify(&ret, &Type::Bool, args[0].span)?;
+                                Ok(Type::Array(elem_ty.clone(), 0))
+                            }
+                            _ => Err(CompileError::type_error("take_while() requires a closure argument", args[0].span)),
+                        }
+                    }
                     // v0.90.46: swap(i, j) -> [T]
                     "swap" => {
                         if args.len() != 2 {

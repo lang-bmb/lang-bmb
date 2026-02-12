@@ -1966,6 +1966,91 @@ impl Interpreter {
                             _ => Err(RuntimeError::type_error("closure", "non-closure")),
                         }
                     }
+                    // v0.90.49: scan(init, fn(acc, T) -> acc) -> [acc]
+                    "scan" => {
+                        if args.len() != 2 {
+                            return Err(RuntimeError::arity_mismatch("scan", 2, args.len()));
+                        }
+                        let mut args_iter = args.into_iter();
+                        let init = args_iter.next().unwrap();
+                        match args_iter.next().unwrap() {
+                            Value::Closure { params, body, env: closure_env } => {
+                                let mut acc = init;
+                                let mut result = Vec::with_capacity(arr.len());
+                                for elem in arr {
+                                    acc = self.call_closure(&params, &body, &closure_env, vec![acc, elem])?;
+                                    result.push(acc.clone());
+                                }
+                                Ok(Value::Array(result))
+                            }
+                            _ => Err(RuntimeError::type_error("closure", "non-closure")),
+                        }
+                    }
+                    // v0.90.49: partition(fn(T) -> bool) -> [T] (matching elements)
+                    "partition" => {
+                        if args.len() != 1 {
+                            return Err(RuntimeError::arity_mismatch("partition", 1, args.len()));
+                        }
+                        match args.into_iter().next().unwrap() {
+                            Value::Closure { params, body, env: closure_env } => {
+                                let mut matching = Vec::new();
+                                for elem in arr {
+                                    let val = self.call_closure(&params, &body, &closure_env, vec![elem.clone()])?;
+                                    if val.is_truthy() {
+                                        matching.push(elem);
+                                    }
+                                }
+                                Ok(Value::Array(matching))
+                            }
+                            _ => Err(RuntimeError::type_error("closure", "non-closure")),
+                        }
+                    }
+                    // v0.90.49: skip_while(fn(T) -> bool) -> [T]
+                    "skip_while" => {
+                        if args.len() != 1 {
+                            return Err(RuntimeError::arity_mismatch("skip_while", 1, args.len()));
+                        }
+                        match args.into_iter().next().unwrap() {
+                            Value::Closure { params, body, env: closure_env } => {
+                                let mut skipping = true;
+                                let mut result = Vec::new();
+                                for elem in arr {
+                                    if skipping {
+                                        let val = self.call_closure(&params, &body, &closure_env, vec![elem.clone()])?;
+                                        if !val.is_truthy() {
+                                            skipping = false;
+                                            result.push(elem);
+                                        }
+                                    } else {
+                                        result.push(elem);
+                                    }
+                                }
+                                Ok(Value::Array(result))
+                            }
+                            _ => Err(RuntimeError::type_error("closure", "non-closure")),
+                        }
+                    }
+                    // v0.90.49: take_while(fn(T) -> bool) -> [T]
+                    "take_while" => {
+                        if args.len() != 1 {
+                            return Err(RuntimeError::arity_mismatch("take_while", 1, args.len()));
+                        }
+                        match args.into_iter().next().unwrap() {
+                            Value::Closure { params, body, env: closure_env } => {
+                                let mut result = Vec::new();
+                                for elem in arr {
+                                    let val = self.call_closure(&params, &body, &closure_env, vec![elem.clone()])?;
+                                    if val.is_truthy() {
+                                        result.push(elem);
+                                    } else {
+                                        break;
+                                    }
+                                }
+                                Ok(Value::Array(result))
+                            }
+                            _ => Err(RuntimeError::type_error("closure", "non-closure")),
+                        }
+                    }
                     // v0.90.46: swap(i, j) -> [T]
                     "swap" => {
                         if args.len() != 2 {
