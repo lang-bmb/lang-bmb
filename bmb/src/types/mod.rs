@@ -4570,6 +4570,15 @@ impl TypeChecker {
                         }
                         Ok(Type::String)
                     }
+                    // v0.90.125: glob_match(pattern: String) -> bool
+                    "glob_match" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("glob_match() takes 1 argument (pattern: String)", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&Type::String, &arg_ty, args[0].span)?;
+                        Ok(Type::Bool)
+                    }
                     _ => {
                         let methods: &[&str] = &[
                             "len", "is_empty", "contains", "starts_with", "ends_with", "index_of", "last_index_of",

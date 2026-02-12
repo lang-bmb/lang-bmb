@@ -20606,3 +20606,37 @@ fn test_tuple_unknown_method() {
         "unknown method"
     );
 }
+
+// ============================================================================
+// v0.90.125: String glob_match method
+// ============================================================================
+
+#[test]
+fn test_string_glob_match_star() {
+    assert!(type_checks(r#"fn f(s: String) -> bool = s.glob_match("hello*");"#));
+}
+
+#[test]
+fn test_string_glob_match_exact() {
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = if "hello".glob_match("hello") { 1 } else { 0 };"#), 1);
+}
+
+#[test]
+fn test_string_glob_match_star_pattern() {
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = if "hello world".glob_match("hello*") { 1 } else { 0 };"#), 1);
+}
+
+#[test]
+fn test_string_glob_match_question() {
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = if "cat".glob_match("c?t") { 1 } else { 0 };"#), 1);
+}
+
+#[test]
+fn test_string_glob_match_no_match() {
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = if "hello".glob_match("world*") { 1 } else { 0 };"#), 0);
+}
+
+#[test]
+fn test_string_glob_match_complex() {
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = if "foo.bar.baz".glob_match("foo.*.baz") { 1 } else { 0 };"#), 1);
+}

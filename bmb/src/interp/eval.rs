@@ -2482,6 +2482,17 @@ impl Interpreter {
                         }
                         Ok(Value::Str(Rc::new(escaped)))
                     }
+                    // v0.90.125: glob_match(pattern: String) -> bool
+                    "glob_match" => {
+                        if args.len() != 1 {
+                            return Err(RuntimeError::arity_mismatch("glob_match", 1, args.len()));
+                        }
+                        let pattern = match &args[0] {
+                            Value::Str(p) => p.clone(),
+                            _ => return Err(RuntimeError::type_error("String", args[0].type_name())),
+                        };
+                        Ok(Value::Bool(glob_match_impl(&s, &pattern)))
+                    }
                     _ => Err(RuntimeError::undefined_function(&format!("String.{}", method))),
                 }
             }
@@ -6515,6 +6526,43 @@ impl Default for Interpreter {
     fn default() -> Self {
         Self::new()
     }
+}
+
+// ============ String Helpers ============
+
+/// v0.90.125: Simple glob matching — supports `*` (any chars) and `?` (single char)
+fn glob_match_impl(text: &str, pattern: &str) -> bool {
+    let t: Vec<char> = text.chars().collect();
+    let p: Vec<char> = pattern.chars().collect();
+    let (tlen, plen) = (t.len(), p.len());
+
+    let mut ti = 0;
+    let mut pi = 0;
+    let mut star_pi = usize::MAX;
+    let mut star_ti = 0;
+
+    while ti < tlen {
+        if pi < plen && (p[pi] == '?' || p[pi] == t[ti]) {
+            ti += 1;
+            pi += 1;
+        } else if pi < plen && p[pi] == '*' {
+            star_pi = pi;
+            star_ti = ti;
+            pi += 1;
+        } else if star_pi != usize::MAX {
+            pi = star_pi + 1;
+            star_ti += 1;
+            ti = star_ti;
+        } else {
+            return false;
+        }
+    }
+
+    while pi < plen && p[pi] == '*' {
+        pi += 1;
+    }
+
+    pi == plen
 }
 
 // ============ Built-in Functions ============
