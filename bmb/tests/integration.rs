@@ -18499,3 +18499,39 @@ fn test_string_split_n_values() {
 fn test_string_capitalize_indent_chain() {
     assert_eq!(run_program_str(r#"fn main() -> String = "hello".capitalize().indent(1, ">");"#), ">Hello");
 }
+
+// --- Cycle 322: String edit_distance, starts_with_any, ends_with_any ---
+
+#[test]
+fn test_string_edit_distance() {
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = "kitten".edit_distance("sitting");"#), 3);
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = "abc".edit_distance("abc");"#), 0);
+}
+
+#[test]
+fn test_string_edit_distance_empty() {
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = "".edit_distance("hello");"#), 5);
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = "hello".edit_distance("");"#), 5);
+}
+
+#[test]
+fn test_string_starts_with_any() {
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = if "hello".starts_with_any(["he", "wo"]) { 1 } else { 0 };"#), 1);
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = if "hello".starts_with_any(["wo", "ab"]) { 1 } else { 0 };"#), 0);
+}
+
+#[test]
+fn test_string_ends_with_any() {
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = if "hello".ends_with_any(["lo", "no"]) { 1 } else { 0 };"#), 1);
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = if "hello".ends_with_any(["ab", "cd"]) { 1 } else { 0 };"#), 0);
+}
+
+#[test]
+fn test_string_edit_distance_single_char() {
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = "a".edit_distance("b");"#), 1);
+}
+
+#[test]
+fn test_string_starts_ends_combined() {
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = if "foobar".starts_with_any(["foo"]) { if "foobar".ends_with_any(["bar"]) { 1 } else { 0 } } else { 0 };"#), 1);
+}

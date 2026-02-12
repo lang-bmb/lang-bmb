@@ -4088,6 +4088,43 @@ impl TypeChecker {
                         self.unify(&arg1_ty, &Type::I64, args[1].span)?;
                         Ok(Type::Array(Box::new(Type::String), 0))
                     }
+                    // v0.90.88: edit_distance(String) -> i64
+                    "edit_distance" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("edit_distance() takes 1 argument", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg_ty, &Type::String, args[0].span)?;
+                        Ok(Type::I64)
+                    }
+                    // v0.90.88: starts_with_any([String]) -> bool
+                    "starts_with_any" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("starts_with_any() takes 1 argument (array of strings)", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        match &arg_ty {
+                            Type::Array(elem, _) => {
+                                self.unify(elem, &Type::String, args[0].span)?;
+                            }
+                            _ => return Err(CompileError::type_error("starts_with_any() requires an array of strings", args[0].span)),
+                        }
+                        Ok(Type::Bool)
+                    }
+                    // v0.90.88: ends_with_any([String]) -> bool
+                    "ends_with_any" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("ends_with_any() takes 1 argument (array of strings)", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        match &arg_ty {
+                            Type::Array(elem, _) => {
+                                self.unify(elem, &Type::String, args[0].span)?;
+                            }
+                            _ => return Err(CompileError::type_error("ends_with_any() requires an array of strings", args[0].span)),
+                        }
+                        Ok(Type::Bool)
+                    }
                     _ => Err(CompileError::type_error(
                         format!("unknown method '{}' for String", method),
                         span,

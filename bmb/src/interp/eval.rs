@@ -2049,6 +2049,59 @@ impl Interpreter {
                             .collect();
                         Ok(Value::Array(parts))
                     }
+                    // v0.90.88: edit_distance(String) -> i64 (Levenshtein)
+                    "edit_distance" => {
+                        let other = match &args[0] {
+                            Value::Str(o) => o.as_str().to_string(),
+                            _ => return Err(RuntimeError::type_error("string", args[0].type_name())),
+                        };
+                        let a: Vec<char> = s.chars().collect();
+                        let b: Vec<char> = other.chars().collect();
+                        let m = a.len();
+                        let n = b.len();
+                        let mut dp = vec![vec![0usize; n + 1]; m + 1];
+                        for i in 0..=m { dp[i][0] = i; }
+                        for j in 0..=n { dp[0][j] = j; }
+                        for i in 1..=m {
+                            for j in 1..=n {
+                                let cost = if a[i - 1] == b[j - 1] { 0 } else { 1 };
+                                dp[i][j] = (dp[i - 1][j] + 1)
+                                    .min(dp[i][j - 1] + 1)
+                                    .min(dp[i - 1][j - 1] + cost);
+                            }
+                        }
+                        Ok(Value::Int(dp[m][n] as i64))
+                    }
+                    // v0.90.88: starts_with_any([String]) -> bool
+                    "starts_with_any" => {
+                        let prefixes = match &args[0] {
+                            Value::Array(arr) => arr,
+                            _ => return Err(RuntimeError::type_error("array", args[0].type_name())),
+                        };
+                        let result = prefixes.iter().any(|v| {
+                            if let Value::Str(p) = v {
+                                s.starts_with(p.as_str())
+                            } else {
+                                false
+                            }
+                        });
+                        Ok(Value::Bool(result))
+                    }
+                    // v0.90.88: ends_with_any([String]) -> bool
+                    "ends_with_any" => {
+                        let suffixes = match &args[0] {
+                            Value::Array(arr) => arr,
+                            _ => return Err(RuntimeError::type_error("array", args[0].type_name())),
+                        };
+                        let result = suffixes.iter().any(|v| {
+                            if let Value::Str(p) = v {
+                                s.ends_with(p.as_str())
+                            } else {
+                                false
+                            }
+                        });
+                        Ok(Value::Bool(result))
+                    }
                     _ => Err(RuntimeError::undefined_function(&format!("String.{}", method))),
                 }
             }
