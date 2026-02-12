@@ -3491,6 +3491,70 @@ impl Interpreter {
                             _ => Err(RuntimeError::type_error("Result variant", &variant)),
                         }
                     }
+                    // v0.90.82: or_else(fn(E) -> Result<T, F>) -> Result<T, F>
+                    "or_else" => {
+                        match variant.as_str() {
+                            "Ok" => Ok(Value::Enum("Result".to_string(), "Ok".to_string(), values)),
+                            "Err" => {
+                                let val = values.into_iter().next().unwrap_or(Value::Unit);
+                                match args.into_iter().next().unwrap() {
+                                    Value::Closure { params, body, env: closure_env } => {
+                                        self.call_closure(&params, &body, &closure_env, vec![val])
+                                    }
+                                    _ => Err(RuntimeError::type_error("closure", "non-closure")),
+                                }
+                            }
+                            _ => Err(RuntimeError::type_error("Result variant", &variant)),
+                        }
+                    }
+                    // v0.90.82: unwrap_or_else(fn(E) -> T) -> T
+                    "unwrap_or_else" => {
+                        match variant.as_str() {
+                            "Ok" => Ok(values.into_iter().next().unwrap_or(Value::Unit)),
+                            "Err" => {
+                                let val = values.into_iter().next().unwrap_or(Value::Unit);
+                                match args.into_iter().next().unwrap() {
+                                    Value::Closure { params, body, env: closure_env } => {
+                                        self.call_closure(&params, &body, &closure_env, vec![val])
+                                    }
+                                    _ => Err(RuntimeError::type_error("closure", "non-closure")),
+                                }
+                            }
+                            _ => Err(RuntimeError::type_error("Result variant", &variant)),
+                        }
+                    }
+                    // v0.90.82: is_ok_and(fn(T) -> bool) -> bool
+                    "is_ok_and" => {
+                        match variant.as_str() {
+                            "Ok" => {
+                                let val = values.into_iter().next().unwrap_or(Value::Unit);
+                                match args.into_iter().next().unwrap() {
+                                    Value::Closure { params, body, env: closure_env } => {
+                                        self.call_closure(&params, &body, &closure_env, vec![val])
+                                    }
+                                    _ => Err(RuntimeError::type_error("closure", "non-closure")),
+                                }
+                            }
+                            "Err" => Ok(Value::Bool(false)),
+                            _ => Err(RuntimeError::type_error("Result variant", &variant)),
+                        }
+                    }
+                    // v0.90.82: is_err_and(fn(E) -> bool) -> bool
+                    "is_err_and" => {
+                        match variant.as_str() {
+                            "Ok" => Ok(Value::Bool(false)),
+                            "Err" => {
+                                let val = values.into_iter().next().unwrap_or(Value::Unit);
+                                match args.into_iter().next().unwrap() {
+                                    Value::Closure { params, body, env: closure_env } => {
+                                        self.call_closure(&params, &body, &closure_env, vec![val])
+                                    }
+                                    _ => Err(RuntimeError::type_error("closure", "non-closure")),
+                                }
+                            }
+                            _ => Err(RuntimeError::type_error("Result variant", &variant)),
+                        }
+                    }
                     _ => Err(RuntimeError::undefined_function(&format!("Result.{}", method))),
                 }
             }

@@ -6422,6 +6422,99 @@ impl TypeChecker {
                     None => Ok(Type::I64),
                 }
             }
+            // v0.90.82: or_else(fn(E) -> Result<T, F>) -> Result<T, F>
+            "or_else" => {
+                if args.len() != 1 {
+                    return Err(CompileError::type_error("or_else() takes 1 argument (a closure)", span));
+                }
+                let fn_ty = self.infer(&args[0].node, args[0].span)?;
+                match fn_ty {
+                    Type::Fn { params, ret } => {
+                        if params.len() != 1 {
+                            return Err(CompileError::type_error(
+                                format!("or_else() closure must take 1 parameter, got {}", params.len()),
+                                args[0].span,
+                            ));
+                        }
+                        if let Some(ref expected) = _err_ty {
+                            self.unify(&params[0], expected, args[0].span)?;
+                        }
+                        Ok(*ret)
+                    }
+                    _ => Err(CompileError::type_error("or_else() requires a closure argument", args[0].span)),
+                }
+            }
+            // v0.90.82: unwrap_or_else(fn(E) -> T) -> T
+            "unwrap_or_else" => {
+                if args.len() != 1 {
+                    return Err(CompileError::type_error("unwrap_or_else() takes 1 argument (a closure)", span));
+                }
+                let fn_ty = self.infer(&args[0].node, args[0].span)?;
+                match fn_ty {
+                    Type::Fn { params, ret } => {
+                        if params.len() != 1 {
+                            return Err(CompileError::type_error(
+                                format!("unwrap_or_else() closure must take 1 parameter, got {}", params.len()),
+                                args[0].span,
+                            ));
+                        }
+                        if let Some(ref expected) = _err_ty {
+                            self.unify(&params[0], expected, args[0].span)?;
+                        }
+                        if let Some(ref expected) = ok_ty {
+                            self.unify(expected, &ret, args[0].span)?;
+                        }
+                        Ok(*ret)
+                    }
+                    _ => Err(CompileError::type_error("unwrap_or_else() requires a closure argument", args[0].span)),
+                }
+            }
+            // v0.90.82: is_ok_and(fn(T) -> bool) -> bool
+            "is_ok_and" => {
+                if args.len() != 1 {
+                    return Err(CompileError::type_error("is_ok_and() takes 1 argument (a closure)", span));
+                }
+                let fn_ty = self.infer(&args[0].node, args[0].span)?;
+                match fn_ty {
+                    Type::Fn { params, ret } => {
+                        if params.len() != 1 {
+                            return Err(CompileError::type_error(
+                                format!("is_ok_and() closure must take 1 parameter, got {}", params.len()),
+                                args[0].span,
+                            ));
+                        }
+                        if let Some(ref expected) = ok_ty {
+                            self.unify(&params[0], expected, args[0].span)?;
+                        }
+                        self.unify(&ret, &Type::Bool, args[0].span)?;
+                        Ok(Type::Bool)
+                    }
+                    _ => Err(CompileError::type_error("is_ok_and() requires a closure argument", args[0].span)),
+                }
+            }
+            // v0.90.82: is_err_and(fn(E) -> bool) -> bool
+            "is_err_and" => {
+                if args.len() != 1 {
+                    return Err(CompileError::type_error("is_err_and() takes 1 argument (a closure)", span));
+                }
+                let fn_ty = self.infer(&args[0].node, args[0].span)?;
+                match fn_ty {
+                    Type::Fn { params, ret } => {
+                        if params.len() != 1 {
+                            return Err(CompileError::type_error(
+                                format!("is_err_and() closure must take 1 parameter, got {}", params.len()),
+                                args[0].span,
+                            ));
+                        }
+                        if let Some(ref expected) = _err_ty {
+                            self.unify(&params[0], expected, args[0].span)?;
+                        }
+                        self.unify(&ret, &Type::Bool, args[0].span)?;
+                        Ok(Type::Bool)
+                    }
+                    _ => Err(CompileError::type_error("is_err_and() requires a closure argument", args[0].span)),
+                }
+            }
             _ => Err(CompileError::type_error(
                 format!("unknown method '{}' for Result", method),
                 span,

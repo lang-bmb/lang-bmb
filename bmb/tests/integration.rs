@@ -18148,3 +18148,77 @@ fn test_result_chaining() {
     "#;
     assert_eq!(run_program_i64(source), 35);
 }
+
+// --- Cycle 316: Result or_else, unwrap_or_else, is_ok_and, is_err_and ---
+
+#[test]
+fn test_result_or_else() {
+    let source = r#"
+        enum Result<T, E> { Ok(T), Err(E) }
+        fn main() -> i64 = Result::Err("bad").or_else(fn |e: String| { Result::Ok(99) }).unwrap();
+    "#;
+    assert_eq!(run_program_i64(source), 99);
+}
+
+#[test]
+fn test_result_or_else_ok_passthrough() {
+    let source = r#"
+        enum Result<T, E> { Ok(T), Err(E) }
+        fn main() -> i64 = Result::Ok(42).or_else(fn |e: String| { Result::Ok(0) }).unwrap();
+    "#;
+    assert_eq!(run_program_i64(source), 42);
+}
+
+#[test]
+fn test_result_unwrap_or_else() {
+    let source = r#"
+        enum Result<T, E> { Ok(T), Err(E) }
+        fn main() -> i64 = Result::Err("fail").unwrap_or_else(fn |e: String| { 0 - 1 });
+    "#;
+    assert_eq!(run_program_i64(source), -1);
+}
+
+#[test]
+fn test_result_unwrap_or_else_ok() {
+    let source = r#"
+        enum Result<T, E> { Ok(T), Err(E) }
+        fn main() -> i64 = Result::Ok(50).unwrap_or_else(fn |e: String| { 0 });
+    "#;
+    assert_eq!(run_program_i64(source), 50);
+}
+
+#[test]
+fn test_result_is_ok_and() {
+    let source = r#"
+        enum Result<T, E> { Ok(T), Err(E) }
+        fn main() -> i64 = if Result::Ok(10).is_ok_and(fn |x: i64| { x > 5 }) { 1 } else { 0 };
+    "#;
+    assert_eq!(run_program_i64(source), 1);
+}
+
+#[test]
+fn test_result_is_ok_and_false() {
+    let source = r#"
+        enum Result<T, E> { Ok(T), Err(E) }
+        fn main() -> i64 = if Result::Err("no").is_ok_and(fn |x: i64| { x > 5 }) { 1 } else { 0 };
+    "#;
+    assert_eq!(run_program_i64(source), 0);
+}
+
+#[test]
+fn test_result_is_err_and() {
+    let source = r#"
+        enum Result<T, E> { Ok(T), Err(E) }
+        fn main() -> i64 = if Result::Err("critical").is_err_and(fn |e: String| { e.len() > 3 }) { 1 } else { 0 };
+    "#;
+    assert_eq!(run_program_i64(source), 1);
+}
+
+#[test]
+fn test_result_is_err_and_on_ok() {
+    let source = r#"
+        enum Result<T, E> { Ok(T), Err(E) }
+        fn main() -> i64 = if Result::Ok(42).is_err_and(fn |e: String| { true }) { 1 } else { 0 };
+    "#;
+    assert_eq!(run_program_i64(source), 0);
+}
