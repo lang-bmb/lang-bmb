@@ -1983,6 +1983,72 @@ impl Interpreter {
                             .into_iter().rev().collect();
                         Ok(Value::Str(Rc::new(suffix)))
                     }
+                    // v0.90.87: capitalize() -> String
+                    "capitalize" => {
+                        let mut chars = s.chars();
+                        let result = match chars.next() {
+                            None => String::new(),
+                            Some(first) => {
+                                let mut r = first.to_uppercase().to_string();
+                                r.extend(chars);
+                                r
+                            }
+                        };
+                        Ok(Value::Str(Rc::new(result)))
+                    }
+                    // v0.90.87: indent(width, pad) -> String
+                    "indent" => {
+                        let width = match &args[0] {
+                            Value::Int(n) => *n as usize,
+                            _ => return Err(RuntimeError::type_error("integer", args[0].type_name())),
+                        };
+                        let pad = match &args[1] {
+                            Value::Str(p) => p.as_str().to_string(),
+                            _ => return Err(RuntimeError::type_error("string", args[1].type_name())),
+                        };
+                        let prefix = pad.repeat(width);
+                        let result: String = s.lines()
+                            .enumerate()
+                            .map(|(i, line)| {
+                                if i == 0 { format!("{}{}", prefix, line) }
+                                else { format!("\n{}{}", prefix, line) }
+                            })
+                            .collect();
+                        Ok(Value::Str(Rc::new(result)))
+                    }
+                    // v0.90.87: dedent() -> String
+                    "dedent" => {
+                        let lines: Vec<&str> = s.lines().collect();
+                        let min_indent = lines.iter()
+                            .filter(|l| !l.trim().is_empty())
+                            .map(|l| l.len() - l.trim_start().len())
+                            .min()
+                            .unwrap_or(0);
+                        let result: String = lines.iter()
+                            .enumerate()
+                            .map(|(i, line)| {
+                                let stripped = if line.len() >= min_indent { &line[min_indent..] } else { line };
+                                if i == 0 { stripped.to_string() }
+                                else { format!("\n{}", stripped) }
+                            })
+                            .collect();
+                        Ok(Value::Str(Rc::new(result)))
+                    }
+                    // v0.90.87: split_n(delimiter, max_parts) -> [String]
+                    "split_n" => {
+                        let delimiter = match &args[0] {
+                            Value::Str(d) => d.as_str().to_string(),
+                            _ => return Err(RuntimeError::type_error("string", args[0].type_name())),
+                        };
+                        let max_parts = match &args[1] {
+                            Value::Int(n) => *n as usize,
+                            _ => return Err(RuntimeError::type_error("integer", args[1].type_name())),
+                        };
+                        let parts: Vec<Value> = s.splitn(max_parts, &delimiter)
+                            .map(|p| Value::Str(Rc::new(p.to_string())))
+                            .collect();
+                        Ok(Value::Array(parts))
+                    }
                     _ => Err(RuntimeError::undefined_function(&format!("String.{}", method))),
                 }
             }

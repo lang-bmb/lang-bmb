@@ -4052,6 +4052,42 @@ impl TypeChecker {
                         self.unify(&arg_ty, &Type::String, args[0].span)?;
                         Ok(Type::String)
                     }
+                    // v0.90.87: capitalize() -> String
+                    "capitalize" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("capitalize() takes no arguments", span));
+                        }
+                        Ok(Type::String)
+                    }
+                    // v0.90.87: indent(i64, String) -> String
+                    "indent" => {
+                        if args.len() != 2 {
+                            return Err(CompileError::type_error("indent() takes 2 arguments (width, pad_string)", span));
+                        }
+                        let arg0_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg0_ty, &Type::I64, args[0].span)?;
+                        let arg1_ty = self.infer(&args[1].node, args[1].span)?;
+                        self.unify(&arg1_ty, &Type::String, args[1].span)?;
+                        Ok(Type::String)
+                    }
+                    // v0.90.87: dedent() -> String
+                    "dedent" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("dedent() takes no arguments", span));
+                        }
+                        Ok(Type::String)
+                    }
+                    // v0.90.87: split_n(String, i64) -> [String]
+                    "split_n" => {
+                        if args.len() != 2 {
+                            return Err(CompileError::type_error("split_n() takes 2 arguments (delimiter, max_parts)", span));
+                        }
+                        let arg0_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg0_ty, &Type::String, args[0].span)?;
+                        let arg1_ty = self.infer(&args[1].node, args[1].span)?;
+                        self.unify(&arg1_ty, &Type::I64, args[1].span)?;
+                        Ok(Type::Array(Box::new(Type::String), 0))
+                    }
                     _ => Err(CompileError::type_error(
                         format!("unknown method '{}' for String", method),
                         span,

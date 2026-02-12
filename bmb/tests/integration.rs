@@ -18461,3 +18461,41 @@ fn test_string_common_suffix() {
 fn test_string_word_palindrome_combined() {
     assert_eq!(run_program_i64(r#"fn main() -> i64 = if "abba".is_palindrome() { "abba".word_count() } else { 0 };"#), 1);
 }
+
+// --- Cycle 321: String capitalize, indent, dedent, split_n ---
+
+#[test]
+fn test_string_capitalize() {
+    assert_eq!(run_program_str(r#"fn main() -> String = "hello world".capitalize();"#), "Hello world");
+    assert_eq!(run_program_str(r#"fn main() -> String = "".capitalize();"#), "");
+}
+
+#[test]
+fn test_string_capitalize_already_upper() {
+    assert_eq!(run_program_str(r#"fn main() -> String = "Hello".capitalize();"#), "Hello");
+}
+
+#[test]
+fn test_string_indent() {
+    assert_eq!(run_program_str(r#"fn main() -> String = "hello".indent(2, " ");"#), "  hello");
+}
+
+#[test]
+fn test_string_dedent() {
+    assert_eq!(run_program_str(r#"fn main() -> String = "  hello".dedent();"#), "hello");
+}
+
+#[test]
+fn test_string_split_n() {
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = "a,b,c,d".split_n(",", 2).len();"#), 2);
+}
+
+#[test]
+fn test_string_split_n_values() {
+    assert_eq!(run_program_str(r#"fn main() -> String = "a,b,c,d".split_n(",", 3).join("-");"#), "a-b-c,d");
+}
+
+#[test]
+fn test_string_capitalize_indent_chain() {
+    assert_eq!(run_program_str(r#"fn main() -> String = "hello".capitalize().indent(1, ">");"#), ">Hello");
+}
