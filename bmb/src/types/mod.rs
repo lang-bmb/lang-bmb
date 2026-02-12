@@ -3794,6 +3794,31 @@ impl TypeChecker {
                         self.unify(&arg_ty, &Type::String, args[0].span)?;
                         Ok(Type::Array(Box::new(Type::String), 0))
                     }
+                    // v0.90.67: repeat_str, count_matches, remove_prefix, remove_suffix
+                    "repeat_str" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("repeat_str() takes 1 argument", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg_ty, &Type::I64, args[0].span)?;
+                        Ok(Type::String)
+                    }
+                    "count_matches" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("count_matches() takes 1 argument", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg_ty, &Type::String, args[0].span)?;
+                        Ok(Type::I64)
+                    }
+                    "remove_prefix" | "remove_suffix" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error(&format!("{}() takes 1 argument", method), span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg_ty, &Type::String, args[0].span)?;
+                        Ok(Type::String)
+                    }
                     _ => Err(CompileError::type_error(
                         format!("unknown method '{}' for String", method),
                         span,

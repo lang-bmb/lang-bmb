@@ -16994,3 +16994,71 @@ fn test_string_find_all_replace_chain() {
     "#;
     assert_eq!(run_program_str(source), "hi world hello");
 }
+
+// ============================================================================
+// Cycle 301: String repeat_str, count_matches, remove_prefix, remove_suffix
+// ============================================================================
+
+#[test]
+fn test_string_repeat_str() {
+    let source = r#"
+        fn main() -> String = "ab".repeat_str(3);
+    "#;
+    assert_eq!(run_program_str(source), "ababab");
+}
+
+#[test]
+fn test_string_repeat_str_zero() {
+    let source = r#"
+        fn main() -> String = "hello".repeat_str(0);
+    "#;
+    assert_eq!(run_program_str(source), "");
+}
+
+#[test]
+fn test_string_count_matches() {
+    let source = r#"
+        fn main() -> i64 = "banana".count_matches("an");
+    "#;
+    assert_eq!(run_program_i64(source), 2);
+}
+
+#[test]
+fn test_string_count_matches_none() {
+    let source = r#"
+        fn main() -> i64 = "hello".count_matches("xyz");
+    "#;
+    assert_eq!(run_program_i64(source), 0);
+}
+
+#[test]
+fn test_string_remove_prefix() {
+    let source = r#"
+        fn main() -> String = "hello world".remove_prefix("hello ");
+    "#;
+    assert_eq!(run_program_str(source), "world");
+}
+
+#[test]
+fn test_string_remove_prefix_no_match() {
+    let source = r#"
+        fn main() -> String = "hello".remove_prefix("xyz");
+    "#;
+    assert_eq!(run_program_str(source), "hello");
+}
+
+#[test]
+fn test_string_remove_suffix() {
+    let source = r#"
+        fn main() -> String = "hello.txt".remove_suffix(".txt");
+    "#;
+    assert_eq!(run_program_str(source), "hello");
+}
+
+#[test]
+fn test_string_remove_prefix_suffix_chain() {
+    let source = r#"
+        fn main() -> String = "[hello]".remove_prefix("[").remove_suffix("]");
+    "#;
+    assert_eq!(run_program_str(source), "hello");
+}

@@ -1720,6 +1720,41 @@ impl Interpreter {
                             ])),
                         }
                     }
+                    // v0.90.67: repeat_str, count_matches, remove_prefix, remove_suffix
+                    "repeat_str" => {
+                        let n = match &args[0] {
+                            Value::Int(n) => *n as usize,
+                            _ => return Err(RuntimeError::type_error("integer", args[0].type_name())),
+                        };
+                        Ok(Value::Str(Rc::new(s.repeat(n))))
+                    }
+                    "count_matches" => {
+                        let needle = match &args[0] {
+                            Value::Str(s) => s.as_str().to_string(),
+                            _ => return Err(RuntimeError::type_error("string", args[0].type_name())),
+                        };
+                        Ok(Value::Int(s.matches(&needle).count() as i64))
+                    }
+                    "remove_prefix" => {
+                        let prefix = match &args[0] {
+                            Value::Str(s) => s.as_str().to_string(),
+                            _ => return Err(RuntimeError::type_error("string", args[0].type_name())),
+                        };
+                        match s.strip_prefix(&*prefix) {
+                            Some(rest) => Ok(Value::Str(Rc::new(rest.to_string()))),
+                            None => Ok(Value::Str(Rc::new(s.to_string()))),
+                        }
+                    }
+                    "remove_suffix" => {
+                        let suffix = match &args[0] {
+                            Value::Str(s) => s.as_str().to_string(),
+                            _ => return Err(RuntimeError::type_error("string", args[0].type_name())),
+                        };
+                        match s.strip_suffix(&*suffix) {
+                            Some(rest) => Ok(Value::Str(Rc::new(rest.to_string()))),
+                            None => Ok(Value::Str(Rc::new(s.to_string()))),
+                        }
+                    }
                     _ => Err(RuntimeError::undefined_function(&format!("String.{}", method))),
                 }
             }
