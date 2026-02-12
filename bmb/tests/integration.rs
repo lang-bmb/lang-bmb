@@ -17995,3 +17995,50 @@ fn test_char_method_chaining() {
     assert_eq!(run_program_i64("fn main() -> i64 = if char_at(\"Hello\", 0).is_uppercase() { 1 } else { 0 };"), 1);
     assert_eq!(run_program_i64("fn main() -> i64 = char_at(\"A\", 0).to_int();"), 65);
 }
+
+// --- Cycle 313: Char conversion + extended classification ---
+
+#[test]
+fn test_char_is_alphanumeric() {
+    assert_eq!(run_program_i64("fn main() -> i64 = if 'a'.is_alphanumeric() { 1 } else { 0 };"), 1);
+    assert_eq!(run_program_i64("fn main() -> i64 = if '5'.is_alphanumeric() { 1 } else { 0 };"), 1);
+    assert_eq!(run_program_i64("fn main() -> i64 = if ' '.is_alphanumeric() { 1 } else { 0 };"), 0);
+}
+
+#[test]
+fn test_char_is_ascii() {
+    assert_eq!(run_program_i64("fn main() -> i64 = if 'A'.is_ascii() { 1 } else { 0 };"), 1);
+}
+
+#[test]
+fn test_char_is_ascii_digit() {
+    assert_eq!(run_program_i64("fn main() -> i64 = if '9'.is_ascii_digit() { 1 } else { 0 };"), 1);
+    assert_eq!(run_program_i64("fn main() -> i64 = if 'a'.is_ascii_digit() { 1 } else { 0 };"), 0);
+}
+
+#[test]
+fn test_char_is_ascii_hexdigit() {
+    assert_eq!(run_program_i64("fn main() -> i64 = if 'f'.is_ascii_hexdigit() { 1 } else { 0 };"), 1);
+    assert_eq!(run_program_i64("fn main() -> i64 = if 'g'.is_ascii_hexdigit() { 1 } else { 0 };"), 0);
+}
+
+#[test]
+fn test_char_is_control() {
+    assert_eq!(run_program_i64("fn main() -> i64 = if 'a'.is_control() { 1 } else { 0 };"), 0);
+}
+
+#[test]
+fn test_char_is_ascii_punctuation() {
+    assert_eq!(run_program_i64("fn main() -> i64 = if '!'.is_ascii_punctuation() { 1 } else { 0 };"), 1);
+    assert_eq!(run_program_i64("fn main() -> i64 = if 'a'.is_ascii_punctuation() { 1 } else { 0 };"), 0);
+}
+
+#[test]
+fn test_char_to_uppercase() {
+    assert_eq!(run_program_i64("fn main() -> i64 = 'a'.to_uppercase().to_int();"), 65);
+}
+
+#[test]
+fn test_char_to_lowercase() {
+    assert_eq!(run_program_i64("fn main() -> i64 = 'Z'.to_lowercase().to_int();"), 122);
+}

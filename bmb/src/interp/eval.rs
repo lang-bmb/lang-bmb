@@ -3467,6 +3467,16 @@ impl Interpreter {
                     "is_whitespace" => Ok(Value::Bool(c.is_whitespace())),
                     "is_uppercase" => Ok(Value::Bool(c.is_uppercase())),
                     "is_lowercase" => Ok(Value::Bool(c.is_lowercase())),
+                    // v0.90.79: additional classification
+                    "is_alphanumeric" => Ok(Value::Bool(c.is_alphanumeric())),
+                    "is_ascii" => Ok(Value::Bool(c.is_ascii())),
+                    "is_ascii_digit" => Ok(Value::Bool(c.is_ascii_digit())),
+                    "is_ascii_hexdigit" => Ok(Value::Bool(c.is_ascii_hexdigit())),
+                    "is_control" => Ok(Value::Bool(c.is_control())),
+                    "is_ascii_punctuation" => Ok(Value::Bool(c.is_ascii_punctuation())),
+                    // v0.90.79: conversion
+                    "to_uppercase" => Ok(Value::Char(c.to_uppercase().next().unwrap_or(c))),
+                    "to_lowercase" => Ok(Value::Char(c.to_lowercase().next().unwrap_or(c))),
                     "to_int" => Ok(Value::Int(c as u32 as i64)),
                     "to_string" => Ok(Value::Str(Rc::new(c.to_string()))),
                     _ => Err(RuntimeError::undefined_function(&format!("char.{}", method))),

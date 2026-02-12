@@ -2949,12 +2949,22 @@ impl TypeChecker {
             // v0.90.78: Char methods
             Type::Char => {
                 match method {
-                    "is_alphabetic" | "is_numeric" | "is_whitespace" | "is_uppercase" | "is_lowercase" => {
+                    "is_alphabetic" | "is_numeric" | "is_whitespace" | "is_uppercase" | "is_lowercase"
+                    | "is_alphanumeric" | "is_ascii" | "is_ascii_digit" | "is_ascii_hexdigit"
+                    | "is_control" | "is_ascii_punctuation" => {
                         if !args.is_empty() {
                             return Err(CompileError::type_error(
                                 format!("{}() takes no arguments", method), span));
                         }
                         Ok(Type::Bool)
+                    }
+                    // v0.90.79: Char conversion methods
+                    "to_uppercase" | "to_lowercase" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error(
+                                format!("{}() takes no arguments", method), span));
+                        }
+                        Ok(Type::Char)
                     }
                     "to_int" => {
                         if !args.is_empty() {
