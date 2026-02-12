@@ -18878,3 +18878,44 @@ fn test_cross_array_unique_sort() {
     // Check uniqueness after dedup
     assert_eq!(run_program_i64(r#"fn main() -> i64 = if [3, 1, 2, 1, 3].unique().all_unique() { 1 } else { 0 };"#), 1);
 }
+
+// --- Cycle 331: Char to_digit, Integer divmod, Float approx_eq ---
+
+#[test]
+fn test_char_to_digit() {
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = char_at("9", 0).to_digit(10).unwrap_or(-1);"#), 9);
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = char_at("a", 0).to_digit(16).unwrap_or(-1);"#), 10);
+}
+
+#[test]
+fn test_char_to_digit_invalid() {
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = char_at("x", 0).to_digit(10).unwrap_or(-1);"#), -1);
+}
+
+#[test]
+fn test_int_divmod() {
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = { let r = 17.divmod(5); r.0 };"#), 3);
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = { let r = 17.divmod(5); r.1 };"#), 2);
+}
+
+#[test]
+fn test_int_divmod_exact() {
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = { let r = 20.divmod(4); r.0 + r.1 };"#), 5);
+}
+
+#[test]
+fn test_float_approx_eq() {
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = if 3.14.approx_eq(3.14, 0.001) { 1 } else { 0 };"#), 1);
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = if 3.14.approx_eq(3.15, 0.001) { 1 } else { 0 };"#), 0);
+}
+
+#[test]
+fn test_float_approx_eq_close() {
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = if 1.0.approx_eq(1.0000001, 0.001) { 1 } else { 0 };"#), 1);
+}
+
+#[test]
+fn test_final_comprehensive_chain() {
+    // Complex chain: generate digits, filter primes, count, check if power of 2
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = if [2, 3, 4, 5, 6, 7].filter(fn |n: i64| { n.is_prime() }).len().is_power_of_two() { 1 } else { 0 };"#), 1);
+}

@@ -1193,6 +1193,12 @@ impl Interpreter {
                         let add = match &args[1] { Value::Float(a) => *a, _ => return Err(RuntimeError::type_error("f64", args[1].type_name())) };
                         Ok(Value::Float(f.mul_add(mul, add)))
                     }
+                    // v0.90.97: approx_eq(other, epsilon) -> bool
+                    "approx_eq" => {
+                        let other = match &args[0] { Value::Float(o) => *o, _ => return Err(RuntimeError::type_error("f64", args[0].type_name())) };
+                        let epsilon = match &args[1] { Value::Float(e) => *e, _ => return Err(RuntimeError::type_error("f64", args[1].type_name())) };
+                        Ok(Value::Bool((f - other).abs() <= epsilon))
+                    }
                     _ => Err(RuntimeError::undefined_function(&format!("f64.{}", method))),
                 }
             }
@@ -4174,6 +4180,17 @@ impl Interpreter {
                         };
                         Ok(Value::Str(Rc::new(std::iter::repeat(c).take(count).collect::<String>())))
                     }
+                    // v0.90.97: to_digit(radix) -> i64?
+                    "to_digit" => {
+                        let radix = match &args[0] {
+                            Value::Int(n) => *n as u32,
+                            _ => return Err(RuntimeError::type_error("integer", args[0].type_name())),
+                        };
+                        match c.to_digit(radix) {
+                            Some(d) => Ok(Value::Enum("Option".to_string(), "Some".to_string(), vec![Value::Int(d as i64)])),
+                            None => Ok(Value::Enum("Option".to_string(), "None".to_string(), vec![])),
+                        }
+                    }
                     _ => Err(RuntimeError::undefined_function(&format!("char.{}", method))),
                 }
             }
@@ -4594,6 +4611,14 @@ impl Interpreter {
                             Some(v) => Ok(Value::Int(v)),
                             None => Ok(Value::Int(0)),
                         }
+                    }
+                    // v0.90.97: divmod(i64) -> (i64, i64)
+                    "divmod" => {
+                        let other = match &args[0] { Value::Int(m) => *m, _ => return Err(RuntimeError::type_error("integer", args[0].type_name())) };
+                        if other == 0 {
+                            return Err(RuntimeError::type_error("non-zero divisor", "0"));
+                        }
+                        Ok(Value::Tuple(vec![Value::Int(n / other), Value::Int(n % other)]))
                     }
                     _ => Err(RuntimeError::type_error("object with methods", receiver.type_name())),
                 }

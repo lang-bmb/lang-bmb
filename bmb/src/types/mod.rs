@@ -3031,6 +3031,15 @@ impl TypeChecker {
                         }
                         Ok(Type::String)
                     }
+                    // v0.90.97: to_digit(radix) -> i64?
+                    "to_digit" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("to_digit() takes 1 argument (radix)", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg_ty, &Type::I64, args[0].span)?;
+                        Ok(Type::Nullable(Box::new(Type::I64)))
+                    }
                     _ => Err(CompileError::type_error(
                         format!("unknown method '{}' for char", method), span)),
                 }
@@ -3244,6 +3253,15 @@ impl TypeChecker {
                         self.unify(&arg_ty, receiver_ty, args[0].span)?;
                         Ok(Type::Nullable(Box::new(receiver_ty.clone())))
                     }
+                    // v0.90.97: divmod(i64) -> (i64, i64)
+                    "divmod" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("divmod() takes 1 argument", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg_ty, receiver_ty, args[0].span)?;
+                        Ok(Type::Tuple(vec![Box::new(receiver_ty.clone()), Box::new(receiver_ty.clone())]))
+                    }
                     _ => Err(CompileError::type_error(
                         format!("unknown method '{}' for {}", method, receiver_ty), span)),
                 }
@@ -3448,6 +3466,17 @@ impl TypeChecker {
                         let arg1_ty = self.infer(&args[1].node, args[1].span)?;
                         self.unify(&arg1_ty, &Type::F64, args[1].span)?;
                         Ok(Type::F64)
+                    }
+                    // v0.90.97: approx_eq(f64, f64) -> bool (approximate equality with epsilon)
+                    "approx_eq" => {
+                        if args.len() != 2 {
+                            return Err(CompileError::type_error("approx_eq() takes 2 arguments (other, epsilon)", span));
+                        }
+                        let arg0_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg0_ty, &Type::F64, args[0].span)?;
+                        let arg1_ty = self.infer(&args[1].node, args[1].span)?;
+                        self.unify(&arg1_ty, &Type::F64, args[1].span)?;
+                        Ok(Type::Bool)
                     }
                     _ => Err(CompileError::type_error(
                         format!("unknown method '{}' for f64", method), span)),
