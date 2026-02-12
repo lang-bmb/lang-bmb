@@ -3082,11 +3082,21 @@ impl TypeChecker {
                         Ok(Type::String)
                     }
                     // v0.90.42: Math functions — sin, cos, tan, log, log2, log10, exp
-                    "sin" | "cos" | "tan" | "log" | "log2" | "log10" | "exp" => {
+                    "sin" | "cos" | "tan" | "log" | "log2" | "log10" | "exp"
+                    | "asin" | "acos" | "atan" | "sinh" | "cosh" | "tanh" => {
                         if !args.is_empty() {
                             return Err(CompileError::type_error(
                                 format!("{}() takes no arguments", method), span));
                         }
+                        Ok(Type::F64)
+                    }
+                    // v0.90.58: atan2(f64) -> f64 (two-argument arctangent)
+                    "atan2" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("atan2() takes 1 argument", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg_ty, &Type::F64, args[0].span)?;
                         Ok(Type::F64)
                     }
                     // v0.90.42: sign() -> f64

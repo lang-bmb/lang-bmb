@@ -1084,6 +1084,23 @@ impl Interpreter {
                     "log2" => Ok(Value::Float(f.log2())),
                     "log10" => Ok(Value::Float(f.log10())),
                     "exp" => Ok(Value::Float(f.exp())),
+                    // v0.90.58: Inverse trig + hyperbolic
+                    "asin" => Ok(Value::Float(f.asin())),
+                    "acos" => Ok(Value::Float(f.acos())),
+                    "atan" => Ok(Value::Float(f.atan())),
+                    "sinh" => Ok(Value::Float(f.sinh())),
+                    "cosh" => Ok(Value::Float(f.cosh())),
+                    "tanh" => Ok(Value::Float(f.tanh())),
+                    "atan2" => {
+                        if args.len() != 1 {
+                            return Err(RuntimeError::arity_mismatch("atan2", 1, args.len()));
+                        }
+                        let other = match &args[0] {
+                            Value::Float(e) => *e,
+                            _ => return Err(RuntimeError::type_error("f64", args[0].type_name())),
+                        };
+                        Ok(Value::Float(f.atan2(other)))
+                    }
                     "sign" => Ok(Value::Float(if f > 0.0 { 1.0 } else if f < 0.0 { -1.0 } else { 0.0 })),
                     "is_positive" => Ok(Value::Bool(f > 0.0)),
                     "is_negative" => Ok(Value::Bool(f < 0.0)),

@@ -16074,3 +16074,120 @@ fn test_final_comprehensive_program() {
     // 30 + 25 + 3 = 58
     assert_eq!(run_program_i64(source), 58);
 }
+
+// ============================================================================
+// Cycle 292: Float inverse trig + hyperbolic — asin, acos, atan, atan2, sinh, cosh, tanh
+// ============================================================================
+
+#[test]
+fn test_float_asin() {
+    let source = r#"
+        fn main() -> f64 = 1.0.asin();
+    "#;
+    // asin(1.0) = pi/2 ≈ 1.5707963...
+    let result = run_program_f64(source);
+    assert!((result - 1.5707963267948966).abs() < 1e-10);
+}
+
+#[test]
+fn test_float_acos() {
+    let source = r#"
+        fn main() -> f64 = 0.0.acos();
+    "#;
+    // acos(0.0) = pi/2 ≈ 1.5707963...
+    let result = run_program_f64(source);
+    assert!((result - 1.5707963267948966).abs() < 1e-10);
+}
+
+#[test]
+fn test_float_atan() {
+    let source = r#"
+        fn main() -> f64 = 1.0.atan();
+    "#;
+    // atan(1.0) = pi/4 ≈ 0.7853981...
+    let result = run_program_f64(source);
+    assert!((result - 0.7853981633974483).abs() < 1e-10);
+}
+
+#[test]
+fn test_float_atan2() {
+    let source = r#"
+        fn main() -> f64 = 1.0.atan2(1.0);
+    "#;
+    // atan2(1.0, 1.0) = pi/4 ≈ 0.7853981...
+    let result = run_program_f64(source);
+    assert!((result - 0.7853981633974483).abs() < 1e-10);
+}
+
+#[test]
+fn test_float_sinh() {
+    let source = r#"
+        fn main() -> f64 = 1.0.sinh();
+    "#;
+    // sinh(1.0) ≈ 1.1752011936...
+    let result = run_program_f64(source);
+    assert!((result - 1.1752011936438014).abs() < 1e-10);
+}
+
+#[test]
+fn test_float_cosh() {
+    let source = r#"
+        fn main() -> f64 = 0.0.cosh();
+    "#;
+    // cosh(0.0) = 1.0
+    let result = run_program_f64(source);
+    assert!((result - 1.0).abs() < 1e-10);
+}
+
+#[test]
+fn test_float_tanh() {
+    let source = r#"
+        fn main() -> f64 = 0.0.tanh();
+    "#;
+    // tanh(0.0) = 0.0
+    let result = run_program_f64(source);
+    assert!(result.abs() < 1e-10);
+}
+
+#[test]
+fn test_float_trig_identity() {
+    // sin²(x) + cos²(x) = 1
+    let source = r#"
+        fn main() -> i64 = {
+            let x = 0.7;
+            let s = x.sin();
+            let c = x.cos();
+            let sum = s * s + c * c;
+            if sum > 0.9999 { if sum < 1.0001 { 1 } else { 0 } } else { 0 }
+        };
+    "#;
+    assert_eq!(run_program_i64(source), 1);
+}
+
+#[test]
+fn test_float_inverse_trig_roundtrip() {
+    // asin(sin(0.5)) ≈ 0.5
+    let source = r#"
+        fn main() -> i64 = {
+            let x = 0.5;
+            let result = x.sin().asin();
+            if result > 0.499 { if result < 0.501 { 1 } else { 0 } } else { 0 }
+        };
+    "#;
+    assert_eq!(run_program_i64(source), 1);
+}
+
+#[test]
+fn test_float_hyperbolic_identity() {
+    // cosh²(x) - sinh²(x) = 1
+    let source = r#"
+        fn main() -> i64 = {
+            let x = 1.5;
+            let ch = x.cosh();
+            let sh = x.sinh();
+            let result = ch * ch - sh * sh;
+            if result > 0.9999 { if result < 1.0001 { 1 } else { 0 } } else { 0 }
+        };
+    "#;
+    assert_eq!(run_program_i64(source), 1);
+}
