@@ -4953,6 +4953,37 @@ impl TypeChecker {
                         }
                         Ok(Type::Array(elem_ty.clone().into(), 0))
                     }
+                    // v0.90.69: pairwise, split_at, uniq_by
+                    "pairwise" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("pairwise() takes no arguments", span));
+                        }
+                        Ok(Type::Array(Box::new(Type::Array(elem_ty.clone().into(), 0)), 0))
+                    }
+                    "split_at" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("split_at() takes 1 argument (index)", span));
+                        }
+                        let idx_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&idx_ty, &Type::I64, args[0].span)?;
+                        Ok(Type::Array(Box::new(Type::Array(elem_ty.clone().into(), 0)), 0))
+                    }
+                    "uniq_by" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("uniq_by() takes 1 argument (key function)", span));
+                        }
+                        let fn_ty = self.infer(&args[0].node, args[0].span)?;
+                        match fn_ty {
+                            Type::Fn { params, ret: _ } => {
+                                if params.len() != 1 {
+                                    return Err(CompileError::type_error("uniq_by() key function must take 1 argument", args[0].span));
+                                }
+                                self.unify(&params[0], elem_ty, args[0].span)?;
+                                Ok(Type::Array(elem_ty.clone().into(), 0))
+                            }
+                            _ => Err(CompileError::type_error("uniq_by() requires a closure argument", args[0].span)),
+                        }
+                    }
                     _ => Err(CompileError::type_error(
                         format!("unknown method '{}' for Array", method),
                         span,

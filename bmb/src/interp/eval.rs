@@ -2953,6 +2953,40 @@ impl Interpreter {
                         }).collect();
                         Ok(Value::Array(result))
                     }
+                    // v0.90.69: pairwise, split_at, uniq_by
+                    "pairwise" => {
+                        let mut pairs = Vec::new();
+                        for i in 0..arr.len().saturating_sub(1) {
+                            pairs.push(Value::Array(vec![arr[i].clone(), arr[i + 1].clone()]));
+                        }
+                        Ok(Value::Array(pairs))
+                    }
+                    "split_at" => {
+                        let idx = match &args[0] {
+                            Value::Int(n) => (*n).max(0) as usize,
+                            _ => return Err(RuntimeError::type_error("integer", args[0].type_name())),
+                        };
+                        let idx = idx.min(arr.len());
+                        let left: Vec<Value> = arr[..idx].to_vec();
+                        let right: Vec<Value> = arr[idx..].to_vec();
+                        Ok(Value::Array(vec![Value::Array(left), Value::Array(right)]))
+                    }
+                    "uniq_by" => {
+                        let (params, body, closure_env) = match &args[0] {
+                            Value::Closure { params, body, env } => (params, body, env),
+                            _ => return Err(RuntimeError::type_error("closure", args[0].type_name())),
+                        };
+                        let mut seen_keys: Vec<Value> = Vec::new();
+                        let mut result = Vec::new();
+                        for item in arr.iter() {
+                            let key = self.call_closure(params, body, closure_env, vec![item.clone()])?;
+                            if !seen_keys.contains(&key) {
+                                seen_keys.push(key);
+                                result.push(item.clone());
+                            }
+                        }
+                        Ok(Value::Array(result))
+                    }
                     _ => Err(RuntimeError::undefined_function(&format!("Array.{}", method))),
                 }
             }

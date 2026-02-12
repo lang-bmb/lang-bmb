@@ -17130,3 +17130,94 @@ fn test_string_insert_delete_chain() {
     "#;
     assert_eq!(run_program_str(source), "hello_world");
 }
+
+// ============================================================================
+// Cycle 303: Array pairwise, split_at, uniq_by
+// ============================================================================
+
+#[test]
+fn test_array_pairwise() {
+    let source = r#"
+        fn main() -> i64 = [1, 2, 3, 4].pairwise().len();
+    "#;
+    // [1,2,3,4] -> [[1,2],[2,3],[3,4]] -> len=3
+    assert_eq!(run_program_i64(source), 3);
+}
+
+#[test]
+fn test_array_pairwise_values() {
+    let source = r#"
+        fn main() -> i64 = {
+            let pairs = [10, 20, 30].pairwise();
+            pairs[0][0] + pairs[0][1] + pairs[1][0] + pairs[1][1]
+        };
+    "#;
+    // [10,20] + [20,30] -> 10+20+20+30 = 80
+    assert_eq!(run_program_i64(source), 80);
+}
+
+#[test]
+fn test_array_pairwise_single() {
+    let source = r#"
+        fn main() -> i64 = [42].pairwise().len();
+    "#;
+    // single element -> no pairs
+    assert_eq!(run_program_i64(source), 0);
+}
+
+#[test]
+fn test_array_split_at() {
+    let source = r#"
+        fn main() -> i64 = {
+            let parts = [1, 2, 3, 4, 5].split_at(3);
+            parts[0].len() * 10 + parts[1].len()
+        };
+    "#;
+    // [1,2,3] and [4,5] -> 3*10+2 = 32
+    assert_eq!(run_program_i64(source), 32);
+}
+
+#[test]
+fn test_array_split_at_zero() {
+    let source = r#"
+        fn main() -> i64 = {
+            let parts = [1, 2, 3].split_at(0);
+            parts[0].len() * 10 + parts[1].len()
+        };
+    "#;
+    // [] and [1,2,3] -> 0*10+3 = 3
+    assert_eq!(run_program_i64(source), 3);
+}
+
+#[test]
+fn test_array_uniq_by() {
+    let source = r#"
+        fn main() -> i64 = {
+            [1, 2, 3, 4, 5, 6].uniq_by(fn |x: i64| { x % 3 }).len()
+        };
+    "#;
+    // unique by x%3: keeps 1(1), 2(2), 3(0) -> 3 unique
+    assert_eq!(run_program_i64(source), 3);
+}
+
+#[test]
+fn test_array_uniq_by_values() {
+    let source = r#"
+        fn main() -> i64 = {
+            let result = [1, 2, 3, 4, 5, 6].uniq_by(fn |x: i64| { x % 3 });
+            result[0] + result[1] + result[2]
+        };
+    "#;
+    // keeps first of each key: 1 (key=1), 2 (key=2), 3 (key=0) -> 1+2+3=6
+    assert_eq!(run_program_i64(source), 6);
+}
+
+#[test]
+fn test_array_pairwise_split_chain() {
+    let source = r#"
+        fn main() -> i64 = {
+            [1, 2, 3, 4].pairwise().len()
+        };
+    "#;
+    assert_eq!(run_program_i64(source), 3);
+}
