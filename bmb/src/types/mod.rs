@@ -3150,6 +3150,51 @@ impl TypeChecker {
                         self.unify(&arg_ty, &Type::F64, args[0].span)?;
                         Ok(Type::F64)
                     }
+                    // v0.90.59: cbrt() -> f64 (cube root)
+                    "cbrt" => {
+                        if !args.is_empty() {
+                            return Err(CompileError::type_error("cbrt() takes no arguments", span));
+                        }
+                        Ok(Type::F64)
+                    }
+                    // v0.90.59: hypot(f64) -> f64 (hypotenuse)
+                    "hypot" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("hypot() takes 1 argument", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg_ty, &Type::F64, args[0].span)?;
+                        Ok(Type::F64)
+                    }
+                    // v0.90.59: copysign(f64) -> f64
+                    "copysign" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("copysign() takes 1 argument", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg_ty, &Type::F64, args[0].span)?;
+                        Ok(Type::F64)
+                    }
+                    // v0.90.59: clamp(min: f64, max: f64) -> f64
+                    "clamp" => {
+                        if args.len() != 2 {
+                            return Err(CompileError::type_error("clamp() takes 2 arguments", span));
+                        }
+                        for arg in args {
+                            let arg_ty = self.infer(&arg.node, arg.span)?;
+                            self.unify(&arg_ty, &Type::F64, arg.span)?;
+                        }
+                        Ok(Type::F64)
+                    }
+                    // v0.90.59: log_base(f64) -> f64 (logarithm with arbitrary base)
+                    "log_base" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("log_base() takes 1 argument", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg_ty, &Type::F64, args[0].span)?;
+                        Ok(Type::F64)
+                    }
                     _ => Err(CompileError::type_error(
                         format!("unknown method '{}' for f64", method), span)),
                 }

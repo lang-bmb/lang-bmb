@@ -1128,6 +1128,40 @@ impl Interpreter {
                         };
                         Ok(Value::Float(f.powf(exp)))
                     }
+                    // v0.90.59: cbrt, hypot, copysign, clamp, log_base
+                    "cbrt" => Ok(Value::Float(f.cbrt())),
+                    "hypot" => {
+                        let other = match &args[0] {
+                            Value::Float(e) => *e,
+                            _ => return Err(RuntimeError::type_error("f64", args[0].type_name())),
+                        };
+                        Ok(Value::Float(f.hypot(other)))
+                    }
+                    "copysign" => {
+                        let sign = match &args[0] {
+                            Value::Float(e) => *e,
+                            _ => return Err(RuntimeError::type_error("f64", args[0].type_name())),
+                        };
+                        Ok(Value::Float(f.copysign(sign)))
+                    }
+                    "clamp" => {
+                        let min_val = match &args[0] {
+                            Value::Float(e) => *e,
+                            _ => return Err(RuntimeError::type_error("f64", args[0].type_name())),
+                        };
+                        let max_val = match &args[1] {
+                            Value::Float(e) => *e,
+                            _ => return Err(RuntimeError::type_error("f64", args[1].type_name())),
+                        };
+                        Ok(Value::Float(f.clamp(min_val, max_val)))
+                    }
+                    "log_base" => {
+                        let base = match &args[0] {
+                            Value::Float(e) => *e,
+                            _ => return Err(RuntimeError::type_error("f64", args[0].type_name())),
+                        };
+                        Ok(Value::Float(f.log(base)))
+                    }
                     _ => Err(RuntimeError::undefined_function(&format!("f64.{}", method))),
                 }
             }

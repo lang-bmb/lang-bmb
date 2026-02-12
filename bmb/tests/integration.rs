@@ -16191,3 +16191,108 @@ fn test_float_hyperbolic_identity() {
     "#;
     assert_eq!(run_program_i64(source), 1);
 }
+
+// ============================================================================
+// Cycle 293: Float math utilities — cbrt, hypot, copysign, clamp, log_base
+// ============================================================================
+
+#[test]
+fn test_float_cbrt() {
+    let source = r#"
+        fn main() -> f64 = 27.0.cbrt();
+    "#;
+    let result = run_program_f64(source);
+    assert!((result - 3.0).abs() < 1e-10);
+}
+
+#[test]
+fn test_float_cbrt_negative() {
+    let source = r#"
+        fn main() -> f64 = (0.0 - 8.0).cbrt();
+    "#;
+    let result = run_program_f64(source);
+    assert!((result - (-2.0)).abs() < 1e-10);
+}
+
+#[test]
+fn test_float_hypot() {
+    let source = r#"
+        fn main() -> f64 = 3.0.hypot(4.0);
+    "#;
+    let result = run_program_f64(source);
+    assert!((result - 5.0).abs() < 1e-10);
+}
+
+#[test]
+fn test_float_copysign() {
+    let source = r#"
+        fn main() -> f64 = 5.0.copysign(0.0 - 1.0);
+    "#;
+    let result = run_program_f64(source);
+    assert!((result - (-5.0)).abs() < 1e-10);
+}
+
+#[test]
+fn test_float_copysign_positive() {
+    let source = r#"
+        fn main() -> f64 = (0.0 - 3.0).copysign(1.0);
+    "#;
+    let result = run_program_f64(source);
+    assert!((result - 3.0).abs() < 1e-10);
+}
+
+#[test]
+fn test_float_clamp() {
+    let source = r#"
+        fn main() -> f64 = 7.5.clamp(0.0, 5.0);
+    "#;
+    let result = run_program_f64(source);
+    assert!((result - 5.0).abs() < 1e-10);
+}
+
+#[test]
+fn test_float_clamp_within() {
+    let source = r#"
+        fn main() -> f64 = 3.0.clamp(0.0, 5.0);
+    "#;
+    let result = run_program_f64(source);
+    assert!((result - 3.0).abs() < 1e-10);
+}
+
+#[test]
+fn test_float_log_base() {
+    let source = r#"
+        fn main() -> f64 = 8.0.log_base(2.0);
+    "#;
+    let result = run_program_f64(source);
+    assert!((result - 3.0).abs() < 1e-10);
+}
+
+#[test]
+fn test_float_pythagorean_theorem() {
+    // Using hypot for distance calculation
+    let source = r#"
+        fn main() -> i64 = {
+            let dx = 5.0;
+            let dy = 12.0;
+            let dist = dx.hypot(dy);
+            if dist > 12.99 { if dist < 13.01 { 1 } else { 0 } } else { 0 }
+        };
+    "#;
+    assert_eq!(run_program_i64(source), 1);
+}
+
+#[test]
+fn test_float_math_chain() {
+    // cbrt(27) + log_base(16, 2) + hypot(3, 4) = 3 + 4 + 5 = 12
+    let source = r#"
+        fn main() -> i64 = {
+            let a = 27.0.cbrt();
+            let b = 16.0.log_base(2.0);
+            let c = 3.0.hypot(4.0);
+            let sum = a + b + c;
+            if sum > 11.99 { if sum < 12.01 { 1 } else { 0 } } else { 0 }
+        };
+    "#;
+    assert_eq!(run_program_i64(source), 1);
+}
