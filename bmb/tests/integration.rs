@@ -19444,3 +19444,39 @@ fn test_344_type_checks() {
     assert!(type_checks("fn main() -> i64 = if 'A'.is_emoji() { 1 } else { 0 };"));
     assert!(type_checks("fn main() -> String = 1.0.classify();"));
 }
+
+// --- Cycle 345: String levenshtein, hamming_distance, similarity ---
+
+#[test]
+fn test_string_levenshtein() {
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = "kitten".levenshtein("sitting");"#), 3);
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = "hello".levenshtein("hello");"#), 0);
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = "abc".levenshtein("");"#), 3);
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = "".levenshtein("abc");"#), 3);
+}
+
+#[test]
+fn test_string_hamming_distance() {
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = "karolin".hamming_distance("kathrin");"#), 3);
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = "abc".hamming_distance("abc");"#), 0);
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = "ab".hamming_distance("abc");"#), 1);
+}
+
+#[test]
+fn test_string_similarity() {
+    assert_eq!(run_program_f64(r#"fn main() -> f64 = "hello".similarity("hello");"#), 1.0);
+    assert_eq!(run_program_f64(r#"fn main() -> f64 = "".similarity("");"#), 1.0);
+}
+
+#[test]
+fn test_string_distance_chain() {
+    // similarity is 1.0 - levenshtein/max_len
+    assert_eq!(run_program_i64(r#"fn main() -> i64 = if "abc".similarity("abc") == 1.0 { 1 } else { 0 };"#), 1);
+}
+
+#[test]
+fn test_345_type_checks() {
+    assert!(type_checks(r#"fn main() -> i64 = "abc".levenshtein("def");"#));
+    assert!(type_checks(r#"fn main() -> i64 = "abc".hamming_distance("def");"#));
+    assert!(type_checks(r#"fn main() -> f64 = "abc".similarity("def");"#));
+}

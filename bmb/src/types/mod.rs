@@ -4434,6 +4434,33 @@ impl TypeChecker {
                         }
                         Ok(Type::I64)
                     }
+                    // v0.90.111: levenshtein(String) -> i64 (edit distance)
+                    "levenshtein" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("levenshtein() takes 1 argument", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg_ty, &Type::String, args[0].span)?;
+                        Ok(Type::I64)
+                    }
+                    // v0.90.111: hamming_distance(String) -> i64 (character-wise differences)
+                    "hamming_distance" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("hamming_distance() takes 1 argument", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg_ty, &Type::String, args[0].span)?;
+                        Ok(Type::I64)
+                    }
+                    // v0.90.111: similarity(String) -> f64 (0.0-1.0 based on Levenshtein)
+                    "similarity" => {
+                        if args.len() != 1 {
+                            return Err(CompileError::type_error("similarity() takes 1 argument", span));
+                        }
+                        let arg_ty = self.infer(&args[0].node, args[0].span)?;
+                        self.unify(&arg_ty, &Type::String, args[0].span)?;
+                        Ok(Type::F64)
+                    }
                     // v0.90.109: encode_uri() -> String (percent-encode URI)
                     "encode_uri" => {
                         if !args.is_empty() {

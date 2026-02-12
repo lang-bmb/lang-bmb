@@ -2307,6 +2307,71 @@ impl Interpreter {
                         }
                         Ok(Value::Int(hash as i64))
                     }
+                    // v0.90.111: levenshtein(String) -> i64
+                    "levenshtein" => {
+                        let other = match &args[0] {
+                            Value::Str(s) => s.as_str().to_string(),
+                            _ => return Err(RuntimeError::type_error("string", args[0].type_name())),
+                        };
+                        let a: Vec<char> = s.chars().collect();
+                        let b: Vec<char> = other.chars().collect();
+                        let m = a.len();
+                        let n = b.len();
+                        let mut dp = vec![vec![0usize; n + 1]; m + 1];
+                        for i in 0..=m { dp[i][0] = i; }
+                        for j in 0..=n { dp[0][j] = j; }
+                        for i in 1..=m {
+                            for j in 1..=n {
+                                let cost = if a[i-1] == b[j-1] { 0 } else { 1 };
+                                dp[i][j] = (dp[i-1][j] + 1)
+                                    .min(dp[i][j-1] + 1)
+                                    .min(dp[i-1][j-1] + cost);
+                            }
+                        }
+                        Ok(Value::Int(dp[m][n] as i64))
+                    }
+                    // v0.90.111: hamming_distance(String) -> i64
+                    "hamming_distance" => {
+                        let other = match &args[0] {
+                            Value::Str(s) => s.as_str().to_string(),
+                            _ => return Err(RuntimeError::type_error("string", args[0].type_name())),
+                        };
+                        let a: Vec<char> = s.chars().collect();
+                        let b: Vec<char> = other.chars().collect();
+                        let max_len = a.len().max(b.len());
+                        let mut dist = 0i64;
+                        for i in 0..max_len {
+                            let ca = a.get(i);
+                            let cb = b.get(i);
+                            if ca != cb { dist += 1; }
+                        }
+                        Ok(Value::Int(dist))
+                    }
+                    // v0.90.111: similarity(String) -> f64
+                    "similarity" => {
+                        let other = match &args[0] {
+                            Value::Str(s) => s.as_str().to_string(),
+                            _ => return Err(RuntimeError::type_error("string", args[0].type_name())),
+                        };
+                        let a: Vec<char> = s.chars().collect();
+                        let b: Vec<char> = other.chars().collect();
+                        let m = a.len();
+                        let n = b.len();
+                        if m == 0 && n == 0 { return Ok(Value::Float(1.0)); }
+                        let mut dp = vec![vec![0usize; n + 1]; m + 1];
+                        for i in 0..=m { dp[i][0] = i; }
+                        for j in 0..=n { dp[0][j] = j; }
+                        for i in 1..=m {
+                            for j in 1..=n {
+                                let cost = if a[i-1] == b[j-1] { 0 } else { 1 };
+                                dp[i][j] = (dp[i-1][j] + 1)
+                                    .min(dp[i][j-1] + 1)
+                                    .min(dp[i-1][j-1] + cost);
+                            }
+                        }
+                        let max_len = m.max(n) as f64;
+                        Ok(Value::Float(1.0 - dp[m][n] as f64 / max_len))
+                    }
                     // v0.90.109: encode_uri() -> String
                     "encode_uri" => {
                         let mut encoded = String::new();
