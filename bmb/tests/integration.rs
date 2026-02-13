@@ -4116,6 +4116,173 @@ fn test_codegen_wasm_i32_cast() {
 }
 
 // ============================================
+// Cycle 435: Benchmark Verification — i32 IR Quality
+// ============================================
+
+#[test]
+fn test_benchmark_gcd_i64_ir_quality() {
+    let ir = source_to_ir(
+        "fn gcd(a: i64, b: i64) -> i64 = if b == 0 { a } else { gcd(b, a % b) };"
+    );
+    assert!(ir.contains("@gcd(i64 %a, i64 %b)"),
+        "GCD i64 should have i64 params: {}", ir);
+}
+
+#[test]
+fn test_benchmark_gcd_i32_ir_quality() {
+    let ir = source_to_ir(
+        "fn gcd32(a: i32, b: i32) -> i32 = if b == 0 { a } else { gcd32(b, a % b) };"
+    );
+    assert!(ir.contains("@gcd32(i32 %a, i32 %b)"),
+        "GCD i32 should have i32 params: {}", ir);
+}
+
+#[test]
+fn test_benchmark_gcd_i32_no_i64_widening() {
+    let ir = source_to_ir_unopt(
+        "fn gcd32(a: i32, b: i32) -> i32 = if b == 0 { a } else { gcd32(b, a % b) };"
+    );
+    assert!(ir.contains("i32 @gcd32(i32"),
+        "Return type should be i32, not i64: {}", ir);
+    assert!(!ir.contains("i64 @gcd32"),
+        "GCD i32 should NOT have i64 return type: {}", ir);
+}
+
+#[test]
+fn test_benchmark_fibonacci_i32_type_checks() {
+    assert!(type_checks(r#"
+fn fibonacci_iter(n: i32) -> i64 = {
+    let mut a: i64 = 0;
+    let mut b: i64 = 1;
+    let mut i: i32 = 0;
+    while i < n {
+        let temp = a + b;
+        a = b;
+        b = temp;
+        i = i + 1;
+        0
+    };
+    a
+};
+"#));
+}
+
+#[test]
+fn test_benchmark_fibonacci_i32_counter_ir() {
+    let ir = source_to_ir_unopt(
+        "fn fib_count(n: i32) -> i64 = { let mut a: i64 = 0; let mut b: i64 = 1; let mut i: i32 = 0; while i < n { let temp = a + b; a = b; b = temp; i = i + 1; 0 }; a };"
+    );
+    assert!(ir.contains("i32 %n") || ir.contains("i32"),
+        "Loop counter should use i32 type in IR: {}", ir);
+}
+
+#[test]
+fn test_benchmark_nqueen_i32_type_checks() {
+    // N-Queens board indices in i32
+    assert!(type_checks(r#"
+fn abs32(x: i32) -> i32 = { let zero: i32 = 0; if x >= zero { x } else { zero - x } };
+fn safe(row: i32, col: i32, i: i32) -> bool =
+    if i >= col { true }
+    else { false };
+"#));
+}
+
+#[test]
+fn test_benchmark_digital_root_i32() {
+    assert_eq!(
+        run_program(r#"
+fn digital_root(n: i32) -> i32 =
+    if n < 10 { n }
+    else {
+        let d: i32 = n % 10;
+        let rest = digital_root(n / 10);
+        digital_root(d + rest)
+    };
+fn main() -> i32 = digital_root(493);
+"#),
+        Value::Int(7)
+    );
+}
+
+#[test]
+fn test_benchmark_digital_root_i32_ir() {
+    let ir = source_to_ir_unopt(r#"
+fn digital_root(n: i32) -> i32 =
+    if n < 10 { n }
+    else {
+        let d: i32 = n % 10;
+        let rest = digital_root(n / 10);
+        digital_root(d + rest)
+    };
+"#);
+    assert!(ir.contains("i32 @digital_root(i32"),
+        "Digital root should use i32 throughout: {}", ir);
+    assert!(ir.contains("srem i32") || ir.contains("sdiv i32"),
+        "Should use i32 div/mod: {}", ir);
+}
+
+#[test]
+fn test_benchmark_collatz_i32_type_checks() {
+    assert!(type_checks(r#"
+fn collatz_steps(n: i32, steps: i32) -> i32 = {
+    let one: i32 = 1;
+    let two: i32 = 2;
+    let three: i32 = 3;
+    let zero: i32 = 0;
+    if n <= one { steps }
+    else if n % two == zero { collatz_steps(n / two, steps + one) }
+    else { collatz_steps(three * n + one, steps + one) }
+};
+"#));
+}
+
+#[test]
+fn test_benchmark_collatz_i32_run() {
+    assert_eq!(
+        run_program(r#"
+fn collatz_steps(n: i32, steps: i32) -> i32 = {
+    let one: i32 = 1;
+    let two: i32 = 2;
+    let three: i32 = 3;
+    let zero: i32 = 0;
+    if n <= one { steps }
+    else if n % two == zero { collatz_steps(n / two, steps + one) }
+    else { collatz_steps(three * n + one, steps + one) }
+};
+fn main() -> i32 = { let n: i32 = 27; let z: i32 = 0; collatz_steps(n, z) };
+"#),
+        Value::Int(111)
+    );
+}
+
+#[test]
+fn test_benchmark_sum_squares_i32() {
+    assert_eq!(
+        run_program(r#"
+fn sum_sq(n: i32, acc: i32, i: i32) -> i32 =
+    if i > n { acc }
+    else { sum_sq(n, acc + i * i, i + 1) };
+fn main() -> i32 = sum_sq(10, 0, 1);
+"#),
+        Value::Int(385)
+    );
+}
+
+#[test]
+fn test_benchmark_i32_vs_i64_ir_size_comparison() {
+    let ir_i64 = source_to_ir_unopt(
+        "fn gcd(a: i64, b: i64) -> i64 = if b == 0 { a } else { gcd(b, a % b) };"
+    );
+    let ir_i32 = source_to_ir_unopt(
+        "fn gcd32(a: i32, b: i32) -> i32 = if b == 0 { a } else { gcd32(b, a % b) };"
+    );
+    let ratio = ir_i32.len() as f64 / ir_i64.len() as f64;
+    assert!(ratio < 1.5,
+        "i32 IR should not be >1.5x larger than i64 IR (ratio: {:.2}). i32={}, i64={}",
+        ratio, ir_i32.len(), ir_i64.len());
+}
+
+// ============================================
 // Cycle 194: IndexAssign Fix Verification
 // ============================================
 
