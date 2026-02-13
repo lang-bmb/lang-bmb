@@ -22731,3 +22731,40 @@ fn test_no_empty_for_with_body() {
         "empty_loop_body"
     ));
 }
+
+// ===== Cycle 400: Chained comparison detection lint =====
+
+#[test]
+fn test_chained_comparison_3_arms() {
+    assert!(has_warning_kind(
+        "fn main() -> i64 = { let x = 2; if x == 1 { 10 } else if x == 2 { 20 } else if x == 3 { 30 } else { 0 } };",
+        "chained_comparison"
+    ));
+}
+
+#[test]
+fn test_no_chained_comparison_2_arms() {
+    // Only 2 arms — not enough to suggest match
+    assert!(!has_warning_kind(
+        "fn main() -> i64 = { let x = 2; if x == 1 { 10 } else if x == 2 { 20 } else { 0 } };",
+        "chained_comparison"
+    ));
+}
+
+#[test]
+fn test_no_chained_comparison_different_vars() {
+    // Different variables in each comparison
+    assert!(!has_warning_kind(
+        "fn main() -> i64 = { let x = 1; let y = 2; if x == 1 { 10 } else if y == 2 { 20 } else if x == 3 { 30 } else { 0 } };",
+        "chained_comparison"
+    ));
+}
+
+#[test]
+fn test_no_chained_comparison_not_equality() {
+    // Uses < instead of ==
+    assert!(!has_warning_kind(
+        "fn main() -> i64 = { let x = 2; if x < 1 { 10 } else if x < 2 { 20 } else if x < 3 { 30 } else { 0 } };",
+        "chained_comparison"
+    ));
+}

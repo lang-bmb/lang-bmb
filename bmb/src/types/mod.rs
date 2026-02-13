@@ -1757,6 +1757,33 @@ impl TypeChecker {
                     self.add_warning(CompileWarning::negated_if_condition(cond.span));
                 }
 
+                // v0.90.153: Detect chained equality comparisons (if x == 1 ... else if x == 2 ...)
+                if let Expr::Binary { op: BinOp::Eq, left, .. } = &cond.node
+                    && let Expr::Var(name) = &left.node
+                {
+                    let mut count = 1usize;
+                    let mut current = &else_branch.node;
+                    loop {
+                        let inner = match current {
+                            Expr::Block(stmts) if stmts.len() == 1 => &stmts[0].node,
+                            other => other,
+                        };
+                        if let Expr::If { cond: c2, else_branch: eb2, .. } = inner
+                            && let Expr::Binary { op: BinOp::Eq, left: l2, .. } = &c2.node
+                            && let Expr::Var(n2) = &l2.node
+                            && n2 == name
+                        {
+                            count += 1;
+                            current = &eb2.node;
+                            continue;
+                        }
+                        break;
+                    }
+                    if count >= 3 {
+                        self.add_warning(CompileWarning::chained_comparison(name, count, span));
+                    }
+                }
+
                 // v0.90.150: Detect redundant if-expression (if c { true } else { false } → c)
                 {
                     let then_inner = match &then_branch.node {

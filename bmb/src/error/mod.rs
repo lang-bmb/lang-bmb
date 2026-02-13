@@ -240,6 +240,13 @@ pub enum CompileWarning {
         span: Span,
     },
 
+    /// v0.90.153: Chained equality comparisons — suggest match
+    ChainedComparison {
+        name: String,
+        count: usize,
+        span: Span,
+    },
+
     /// Generic warning with span
     Generic {
         message: String,
@@ -497,6 +504,11 @@ impl CompileWarning {
         Self::EmptyLoopBody { kind: kind.into(), span }
     }
 
+    /// v0.90.153: Create a chained comparison warning
+    pub fn chained_comparison(name: impl Into<String>, count: usize, span: Span) -> Self {
+        Self::ChainedComparison { name: name.into(), count, span }
+    }
+
     /// Get the span of this warning, if any
     pub fn span(&self) -> Option<Span> {
         match self {
@@ -533,6 +545,7 @@ impl CompileWarning {
             Self::DoubleNegation { span, .. } => Some(*span),
             Self::RedundantIfExpression { span, .. } => Some(*span),
             Self::EmptyLoopBody { span, .. } => Some(*span),
+            Self::ChainedComparison { span, .. } => Some(*span),
             Self::Generic { span, .. } => *span,
         }
     }
@@ -645,6 +658,9 @@ impl CompileWarning {
             Self::EmptyLoopBody { kind, .. } => {
                 format!("`{}` loop has an empty body", kind)
             }
+            Self::ChainedComparison { name, count, .. } => {
+                format!("{} chained equality comparisons on `{}`; consider using `match`", count, name)
+            }
             Self::Generic { message, .. } => message.clone(),
         }
     }
@@ -685,6 +701,7 @@ impl CompileWarning {
             Self::DoubleNegation { .. } => "double_negation",
             Self::RedundantIfExpression { .. } => "redundant_if_expression",
             Self::EmptyLoopBody { .. } => "empty_loop_body",
+            Self::ChainedComparison { .. } => "chained_comparison",
             Self::Generic { .. } => "warning",
         }
     }
@@ -1106,6 +1123,16 @@ mod tests {
     fn test_warning_empty_loop_body_for() {
         let w = CompileWarning::empty_loop_body("for", span());
         assert!(w.message().contains("for"));
+    }
+
+    #[test]
+    fn test_warning_chained_comparison() {
+        let w = CompileWarning::chained_comparison("x", 3, span());
+        assert_eq!(w.kind(), "chained_comparison");
+        assert!(w.message().contains("`x`"));
+        assert!(w.message().contains("3"));
+        assert!(w.message().contains("match"));
+        assert_eq!(w.span(), Some(span()));
     }
 
     #[test]
