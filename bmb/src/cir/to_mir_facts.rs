@@ -449,4 +449,183 @@ mod tests {
         let facts = proposition_to_facts(&prop);
         assert!(facts.is_empty());
     }
+
+    // ================================================================
+    // Additional coverage tests (Cycle 424)
+    // ================================================================
+
+    #[test]
+    fn test_true_false_no_facts() {
+        assert!(proposition_to_facts(&Proposition::True).is_empty());
+        assert!(proposition_to_facts(&Proposition::False).is_empty());
+    }
+
+    #[test]
+    fn test_exists_no_extraction() {
+        let prop = Proposition::Exists {
+            var: "i".to_string(),
+            ty: crate::cir::CirType::I64,
+            body: Box::new(Proposition::Compare {
+                lhs: Box::new(CirExpr::Var("i".to_string())),
+                op: CompareOp::Ge,
+                rhs: Box::new(CirExpr::IntLit(0)),
+            }),
+        };
+        assert!(proposition_to_facts(&prop).is_empty());
+    }
+
+    #[test]
+    fn test_predicate_no_extraction() {
+        let prop = Proposition::Predicate {
+            name: "is_sorted".to_string(),
+            args: vec![CirExpr::Var("arr".to_string())],
+        };
+        assert!(proposition_to_facts(&prop).is_empty());
+    }
+
+    #[test]
+    fn test_implies_no_extraction() {
+        let prop = Proposition::Implies(
+            Box::new(Proposition::Compare {
+                lhs: Box::new(CirExpr::Var("x".to_string())),
+                op: CompareOp::Gt,
+                rhs: Box::new(CirExpr::IntLit(0)),
+            }),
+            Box::new(Proposition::Compare {
+                lhs: Box::new(CirExpr::Var("y".to_string())),
+                op: CompareOp::Gt,
+                rhs: Box::new(CirExpr::IntLit(0)),
+            }),
+        );
+        assert!(proposition_to_facts(&prop).is_empty());
+    }
+
+    #[test]
+    fn test_old_no_extraction() {
+        let prop = Proposition::Old(
+            Box::new(CirExpr::Var("result".to_string())),
+            Box::new(Proposition::Compare {
+                lhs: Box::new(CirExpr::Var("x".to_string())),
+                op: CompareOp::Ge,
+                rhs: Box::new(CirExpr::IntLit(0)),
+            }),
+        );
+        assert!(proposition_to_facts(&prop).is_empty());
+    }
+
+    #[test]
+    fn test_len_gt_var_array_bounds() {
+        // len(arr) > i  ->  ArrayBounds { index: i, array: arr }
+        let prop = Proposition::Compare {
+            lhs: Box::new(CirExpr::Len(Box::new(CirExpr::Var("arr".to_string())))),
+            op: CompareOp::Gt,
+            rhs: Box::new(CirExpr::Var("i".to_string())),
+        };
+
+        let facts = proposition_to_facts(&prop);
+        assert_eq!(facts.len(), 1);
+        assert!(matches!(
+            &facts[0],
+            ContractFact::ArrayBounds { index, array }
+            if index == "i" && array == "arr"
+        ));
+    }
+
+    #[test]
+    fn test_flip_cmp_op_all_variants() {
+        assert!(matches!(flip_cmp_op(CmpOp::Lt), CmpOp::Gt));
+        assert!(matches!(flip_cmp_op(CmpOp::Le), CmpOp::Ge));
+        assert!(matches!(flip_cmp_op(CmpOp::Gt), CmpOp::Lt));
+        assert!(matches!(flip_cmp_op(CmpOp::Ge), CmpOp::Le));
+        assert!(matches!(flip_cmp_op(CmpOp::Eq), CmpOp::Eq));
+        assert!(matches!(flip_cmp_op(CmpOp::Ne), CmpOp::Ne));
+    }
+
+    #[test]
+    fn test_cir_op_to_mir_op_all_variants() {
+        assert!(matches!(cir_op_to_mir_op(CompareOp::Lt), CmpOp::Lt));
+        assert!(matches!(cir_op_to_mir_op(CompareOp::Le), CmpOp::Le));
+        assert!(matches!(cir_op_to_mir_op(CompareOp::Gt), CmpOp::Gt));
+        assert!(matches!(cir_op_to_mir_op(CompareOp::Ge), CmpOp::Ge));
+        assert!(matches!(cir_op_to_mir_op(CompareOp::Eq), CmpOp::Eq));
+        assert!(matches!(cir_op_to_mir_op(CompareOp::Ne), CmpOp::Ne));
+    }
+
+    #[test]
+    fn test_non_null_non_var_ignored() {
+        // NonNull(IntLit) is not a Var - no fact
+        let prop = Proposition::NonNull(Box::new(CirExpr::IntLit(42)));
+        assert!(proposition_to_facts(&prop).is_empty());
+    }
+
+    #[test]
+    fn test_in_bounds_non_var_ignored() {
+        // InBounds with non-var args
+        let prop = Proposition::InBounds {
+            index: Box::new(CirExpr::IntLit(0)),
+            array: Box::new(CirExpr::Var("arr".to_string())),
+        };
+        assert!(proposition_to_facts(&prop).is_empty());
+    }
+
+    #[test]
+    fn test_not_complex_expr_ignored() {
+        // !(pred) where pred is not Compare → no facts
+        let prop = Proposition::Not(Box::new(Proposition::True));
+        assert!(proposition_to_facts(&prop).is_empty());
+    }
+
+    #[test]
+    fn test_extract_all_facts_empty_program() {
+        let program = CirProgram {
+            functions: vec![],
+            extern_fns: vec![],
+            structs: std::collections::HashMap::new(),
+            type_invariants: std::collections::HashMap::new(),
+        };
+        let result = extract_all_facts(&program);
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_extract_verified_facts_filters() {
+        use crate::cir::{NamedProposition, EffectSet};
+        let func = CirFunction {
+            name: "foo".to_string(),
+            type_params: vec![],
+            params: vec![],
+            ret_ty: crate::cir::CirType::I64,
+            ret_name: "result".to_string(),
+            body: CirExpr::IntLit(0),
+            preconditions: vec![NamedProposition {
+                name: None,
+                proposition: Proposition::Compare {
+                    lhs: Box::new(CirExpr::Var("x".to_string())),
+                    op: CompareOp::Ge,
+                    rhs: Box::new(CirExpr::IntLit(0)),
+                },
+            }],
+            postconditions: vec![],
+            loop_invariants: vec![],
+            effects: EffectSet::pure(),
+        };
+        let program = CirProgram {
+            functions: vec![func],
+            extern_fns: vec![],
+            structs: std::collections::HashMap::new(),
+            type_invariants: std::collections::HashMap::new(),
+        };
+
+        // Without "foo" in verified set, no facts
+        let empty_verified = std::collections::HashSet::new();
+        let result = extract_verified_facts(&program, &empty_verified);
+        assert!(result.is_empty());
+
+        // With "foo" verified, facts are extracted
+        let mut verified = std::collections::HashSet::new();
+        verified.insert("foo".to_string());
+        let result = extract_verified_facts(&program, &verified);
+        assert_eq!(result.len(), 1);
+        assert!(result.contains_key("foo"));
+    }
 }
