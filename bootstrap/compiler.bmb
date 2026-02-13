@@ -2679,6 +2679,13 @@ fn do_step(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, 
         else if b1 == 70 { step_method_final(item, cur_temp, cur_block, cur_exit_label, sb) } // MF
         else { make_step_leaf(cur_temp) }
     }
+    // v0.90.102: Nullable method handlers
+    else if b0 == 78 { // 'N' — NR, NO (nullable methods)
+        let b1 = item.byte_at(1);
+        if b1 == 82 { step_nullable_result(item, cur_temp, cur_block, cur_exit_label, sb) }  // NR
+        else if b1 == 79 { step_nullable_or(item, cur_temp, cur_block, cur_exit_label, sb) } // NO
+        else { make_step_leaf(cur_temp) }
+    }
     else if b0 == 86 { // 'V' — VA, VM, VB
         let b1 = item.byte_at(1);
         if b1 == 65 { step_var(item, cur_temp, cur_block, cur_exit_label, sb) }            // VA
@@ -2799,8 +2806,15 @@ fn step_expr(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String
     else if ntype == "method" {
         let method_name = get_child(ast, 0);
         let receiver = get_child(ast, 1);
-        let fn_name = method_to_runtime_fn(method_name);
-        make_step(cur_temp, cur_block, cur_exit_label, make_work("MS", fn_name, receiver, ast, "2", ""))
+        // v0.90.102: Nullable methods are lowered inline, not as runtime calls
+        if is_nullable_method(method_name) {
+            make_step(cur_temp, cur_block, cur_exit_label,
+                make_work3("EX", receiver, "", "") + work_sep() +
+                make_work4("NR", method_name, ast, "", ""))
+        } else {
+            let fn_name = method_to_runtime_fn(method_name);
+            make_step(cur_temp, cur_block, cur_exit_label, make_work("MS", fn_name, receiver, ast, "2", ""))
+        }
     }
     // v0.60.126: Block, unit, seq, assign support
     else if ntype == "block" {
@@ -3220,6 +3234,49 @@ fn step_method_arg(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: 
 // MF: Method final (unused)
 fn step_method_final(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String =
     make_step_leaf(cur_temp);
+
+// v0.90.102: Nullable T? method support
+// T? is represented as i64 where 0 = null/none, non-zero = some value
+// is_some() → value != 0, is_none() → value == 0
+// unwrap()/expect() → identity (pass-through)
+// unwrap_or(default) → select(value != 0, value, default)
+
+fn is_nullable_method(name: String) -> bool =
+    if name == "is_some" { true } else if name == "is_none" { true }
+    else if name == "unwrap" { true } else if name == "unwrap_or" { true }
+    else if name == "expect" { true } else { false };
+
+// NR: Nullable result - receiver evaluated, emit comparison or dispatch unwrap_or
+fn step_nullable_result(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String =
+    let method = get_field(item, 1);
+    let ast = get_field(item, 2);
+    let recv_id = cur_temp - 1;
+    if method == "is_some" {
+        let result = "%_t" + i2s(cur_temp);
+        let w1 = sb_push_mir(sb, "  " + result + " = != %_t" + i2s(recv_id) + ", 0");
+        make_step_leaf(cur_temp + 1)
+    } else if method == "is_none" {
+        let result = "%_t" + i2s(cur_temp);
+        let w1 = sb_push_mir(sb, "  " + result + " = == %_t" + i2s(recv_id) + ", 0");
+        make_step_leaf(cur_temp + 1)
+    } else if method == "unwrap" or method == "expect" {
+        // Identity - result is the receiver itself
+        make_step_leaf(cur_temp)
+    } else if method == "unwrap_or" {
+        // Evaluate default argument, then emit nullable_select
+        let default_arg = get_child(ast, 2);
+        let cont = make_work3("NO", i2s(recv_id), "", "");
+        let do_default = make_work3("EX", default_arg, "", "");
+        make_step(cur_temp, cur_block, cur_exit_label, do_default + work_sep() + cont)
+    } else { make_step_leaf(cur_temp) };
+
+// NO: Nullable or final - default evaluated, emit nullable_select
+fn step_nullable_or(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String =
+    let recv_id = s2i(get_field(item, 1));
+    let default_id = cur_temp - 1;
+    let result = "%_t" + i2s(cur_temp);
+    let w1 = sb_push_mir(sb, "  " + result + " = nullable_select %_t" + i2s(recv_id) + ", %_t" + i2s(default_id));
+    make_step_leaf(cur_temp + 1);
 
 // v0.60.126: Unit expression step - returns 0
 fn step_unit(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String =
@@ -3869,9 +3926,43 @@ fn lower_call_args_sb(ast: String, name: String, temp_id: i64, block_id: i64, id
 // String methods map to bmb_string_* functions
 fn lower_method_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64 =
     let method_name = get_child(ast, 0);
+    // v0.90.102: Nullable methods are lowered inline
+    if is_nullable_method(method_name) {
+        lower_nullable_method_sb(ast, method_name, temp_id, block_id, sb, loop_exit)
+    } else {
+        let receiver = get_child(ast, 1);
+        let runtime_fn = method_to_runtime_fn(method_name);
+        lower_method_args_sb(ast, runtime_fn, receiver, temp_id, block_id, 2, sb, loop_exit)
+    };
+
+// v0.90.102: Lower nullable method calls inline
+fn lower_nullable_method_sb(ast: String, method: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64 =
     let receiver = get_child(ast, 1);
-    let runtime_fn = method_to_runtime_fn(method_name);
-    lower_method_args_sb(ast, runtime_fn, receiver, temp_id, block_id, 2, sb, loop_exit);
+    let recv_result = lower_expr_sb(receiver, temp_id, block_id, sb, loop_exit);
+    let recv_temp = unpack_temp(recv_result);
+    let recv_block = unpack_block(recv_result);
+    let recv_id = recv_temp - 1;
+    if method == "is_some" {
+        let result = "%_t" + int_to_string(recv_temp);
+        let w1 = sb_push_mir(sb, "  " + result + " = != %_t" + int_to_string(recv_id) + ", 0");
+        pack_ids(recv_temp + 1, recv_block)
+    } else if method == "is_none" {
+        let result = "%_t" + int_to_string(recv_temp);
+        let w1 = sb_push_mir(sb, "  " + result + " = == %_t" + int_to_string(recv_id) + ", 0");
+        pack_ids(recv_temp + 1, recv_block)
+    } else if method == "unwrap" or method == "expect" {
+        // Identity - result is the receiver
+        pack_ids(recv_temp, recv_block)
+    } else if method == "unwrap_or" {
+        let default_arg = get_child(ast, 2);
+        let def_result = lower_expr_sb(default_arg, recv_temp, recv_block, sb, loop_exit);
+        let def_temp = unpack_temp(def_result);
+        let def_block = unpack_block(def_result);
+        let def_id = def_temp - 1;
+        let result = "%_t" + int_to_string(def_temp);
+        let w1 = sb_push_mir(sb, "  " + result + " = nullable_select %_t" + int_to_string(recv_id) + ", %_t" + int_to_string(def_id));
+        pack_ids(def_temp + 1, def_block)
+    } else { pack_ids(recv_temp, recv_block) };
 
 fn method_to_runtime_fn(method: String) -> String =
     if method == "len" { "bmb_string_len" }
@@ -7124,7 +7215,31 @@ fn llvm_gen_rhs_with_strings_map_and_fns_reg(line: String, pos: i64, dest: Strin
     else if low_starts_with_at(line, pos, "gep") { llvm_gen_gep_sb(line, pos + 3, dest, str_sb) }
     else if low_starts_with_at(line, pos, "load_ptr") { llvm_gen_load_ptr_sb(line, pos + 8, dest, str_sb) }
     else if low_starts_with_at(line, pos, "store_ptr") { llvm_gen_store_ptr_sb(line, pos + 9, str_sb) }
+    // v0.90.102: nullable_select and general select
+    else if low_starts_with_at(line, pos, "nullable_select") { same_mapping(llvm_gen_nullable_select(line, pos + 15, dest)) }
+    else if low_starts_with_at(line, pos, "select") { same_mapping(llvm_gen_select(line, pos + 6, dest)) }
     else { same_mapping("  ; unknown: " + line) };
+
+// v0.90.102: Generate LLVM select for nullable unwrap_or
+fn llvm_gen_nullable_select(line: String, pos: i64, dest: String) -> String =
+    let p1 = low_skip_ws(line, pos);
+    let comma = find_comma(line, p1);
+    let recv = trim_end(line.slice(p1, comma));
+    let p2 = low_skip_ws(line, comma + 1);
+    let default_val = trim_end(line.slice(p2, line.len()));
+    "  " + dest + "_ns = icmp ne i64 " + recv + ", 0|  " + dest + " = select i1 " + dest + "_ns, i64 " + recv + ", i64 " + default_val;
+
+// v0.90.102: General select — select cond, val_true, val_false (3 operands, cond is i64 → trunc to i1)
+fn llvm_gen_select(line: String, pos: i64, dest: String) -> String =
+    let p1 = low_skip_ws(line, pos);
+    let comma1 = find_comma(line, p1);
+    let cond = trim_end(line.slice(p1, comma1));
+    let p2 = low_skip_ws(line, comma1 + 1);
+    let comma2 = find_comma(line, p2);
+    let val_true = trim_end(line.slice(p2, comma2));
+    let p3 = low_skip_ws(line, comma2 + 1);
+    let val_false = trim_end(line.slice(p3, line.len()));
+    "  " + dest + "_s = trunc i64 " + cond + " to i1|  " + dest + " = select i1 " + dest + "_s, i64 " + val_true + ", i64 " + val_false;
 
 // Returns tagged result: llvm_line directly (mapping unchanged) or "!len:mapping+llvm_line" (mapping changed)
 fn llvm_gen_line_with_strings_map(line: String, ret_type: String, strings: String, mapping: String) -> String =
@@ -7301,6 +7416,9 @@ fn llvm_gen_rhs_with_strings_map_and_fns(line: String, pos: i64, dest: String, s
     else if low_starts_with_at(line, pos, "gep") { llvm_gen_gep_sb(line, pos + 3, dest, str_sb) }
     else if low_starts_with_at(line, pos, "load_ptr") { llvm_gen_load_ptr_sb(line, pos + 8, dest, str_sb) }
     else if low_starts_with_at(line, pos, "store_ptr") { llvm_gen_store_ptr_sb(line, pos + 9, str_sb) }
+    // v0.90.102: nullable_select and general select
+    else if low_starts_with_at(line, pos, "nullable_select") { same_mapping(llvm_gen_nullable_select(line, pos + 15, dest)) }
+    else if low_starts_with_at(line, pos, "select") { same_mapping(llvm_gen_select(line, pos + 6, dest)) }
     else { same_mapping("  ; unknown: " + line) };
 
 // v0.90.7: Struct-aware add handler
