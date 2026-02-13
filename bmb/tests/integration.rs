@@ -21248,3 +21248,50 @@ fn test_lint_no_duplicate_match_arm_wildcard() {
         "duplicate_match_arm"
     ));
 }
+
+// ===== Cycle 376: Integer division truncation warning =====
+
+#[test]
+fn test_lint_int_division_truncation() {
+    // 5 / 3 = 1 (truncates) — should warn
+    assert!(has_warning_kind(
+        "fn f() -> i64 = 5 / 3;",
+        "int_division_truncation"
+    ));
+}
+
+#[test]
+fn test_lint_int_division_truncation_negative() {
+    // 7 / 2 = 3 (truncates) — should warn
+    assert!(has_warning_kind(
+        "fn f() -> i64 = 7 / 2;",
+        "int_division_truncation"
+    ));
+}
+
+#[test]
+fn test_lint_no_int_division_truncation_even() {
+    // 6 / 3 = 2 (exact) — should NOT warn
+    assert!(!has_warning_kind(
+        "fn f() -> i64 = 6 / 3;",
+        "int_division_truncation"
+    ));
+}
+
+#[test]
+fn test_lint_no_int_division_truncation_variable() {
+    // x / 3 — variable, can't check — should NOT warn
+    assert!(!has_warning_kind(
+        "fn f(x: i64) -> i64 = x / 3;",
+        "int_division_truncation"
+    ));
+}
+
+#[test]
+fn test_lint_no_int_division_truncation_zero() {
+    // 5 / 0 — division by zero, not a truncation warning
+    assert!(!has_warning_kind(
+        "fn f() -> i64 = 5 / 0;",
+        "int_division_truncation"
+    ));
+}

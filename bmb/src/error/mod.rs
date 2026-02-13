@@ -170,6 +170,13 @@ pub enum CompileWarning {
         span: Span,
     },
 
+    /// v0.90.131: Integer division truncation — literal division doesn't divide evenly
+    IntDivisionTruncation {
+        left: i64,
+        right: i64,
+        span: Span,
+    },
+
     /// v0.90.121: Non-snake_case function name
     /// Function names should use snake_case
     NonSnakeCaseFunction {
@@ -376,6 +383,11 @@ impl CompileWarning {
         Self::DuplicateMatchArm { pattern: pattern.into(), span }
     }
 
+    /// v0.90.131: Create an integer division truncation warning
+    pub fn int_division_truncation(left: i64, right: i64, span: Span) -> Self {
+        Self::IntDivisionTruncation { left, right, span }
+    }
+
     /// v0.90.121: Create a non-snake_case function warning
     pub fn non_snake_case_function(
         name: impl Into<String>,
@@ -430,6 +442,7 @@ impl CompileWarning {
             Self::SelfComparison { span, .. } => Some(*span),
             Self::RedundantBoolComparison { span, .. } => Some(*span),
             Self::DuplicateMatchArm { span, .. } => Some(*span),
+            Self::IntDivisionTruncation { span, .. } => Some(*span),
             Self::NonSnakeCaseFunction { span, .. } => Some(*span),
             Self::NonPascalCaseType { span, .. } => Some(*span),
             Self::Generic { span, .. } => *span,
@@ -520,6 +533,9 @@ impl CompileWarning {
             Self::DuplicateMatchArm { pattern, .. } => {
                 format!("duplicate match arm: pattern `{}` appears more than once", pattern)
             }
+            Self::IntDivisionTruncation { left, right, .. } => {
+                format!("integer division `{} / {}` truncates to `{}`", left, right, left / right)
+            }
             Self::Generic { message, .. } => message.clone(),
         }
     }
@@ -552,6 +568,7 @@ impl CompileWarning {
             Self::SelfComparison { .. } => "self_comparison",
             Self::RedundantBoolComparison { .. } => "redundant_bool_comparison",
             Self::DuplicateMatchArm { .. } => "duplicate_match_arm",
+            Self::IntDivisionTruncation { .. } => "int_division_truncation",
             Self::Generic { .. } => "warning",
         }
     }

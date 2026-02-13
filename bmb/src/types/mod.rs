@@ -1663,6 +1663,15 @@ impl TypeChecker {
                     ));
                 }
 
+                // v0.90.131: Detect integer division truncation (5 / 3 truncates to 1)
+                if let (Expr::IntLit(l), Expr::IntLit(r)) = (&left.node, &right.node)
+                    && matches!(op, BinOp::Div)
+                    && *r != 0
+                    && *l % *r != 0
+                {
+                    self.add_warning(CompileWarning::int_division_truncation(*l, *r, span));
+                }
+
                 // v0.90.129: Detect redundant boolean comparison (x == true, x != false, etc.)
                 if matches!(op, BinOp::Eq | BinOp::Ne) {
                     let bool_val = match (&left.node, &right.node) {
