@@ -919,6 +919,22 @@ impl<'ctx> LlvmContext<'ctx> {
         self.functions.insert("string_concat".to_string(), string_concat_fn);
         self.function_return_types.insert("string_concat".to_string(), MirType::String);
 
+        // v0.90.90: Multi-string concat — single allocation for 3/5/7 strings
+        let concat3_type = ptr_type.fn_type(&[ptr_type.into(), ptr_type.into(), ptr_type.into()], false);
+        let concat3_fn = self.module.add_function("bmb_string_concat3", concat3_type, None);
+        self.functions.insert("concat3".to_string(), concat3_fn);
+        self.function_return_types.insert("concat3".to_string(), MirType::String);
+
+        let concat5_type = ptr_type.fn_type(&[ptr_type.into(), ptr_type.into(), ptr_type.into(), ptr_type.into(), ptr_type.into()], false);
+        let concat5_fn = self.module.add_function("bmb_string_concat5", concat5_type, None);
+        self.functions.insert("concat5".to_string(), concat5_fn);
+        self.function_return_types.insert("concat5".to_string(), MirType::String);
+
+        let concat7_type = ptr_type.fn_type(&[ptr_type.into(), ptr_type.into(), ptr_type.into(), ptr_type.into(), ptr_type.into(), ptr_type.into(), ptr_type.into()], false);
+        let concat7_fn = self.module.add_function("bmb_string_concat7", concat7_type, None);
+        self.functions.insert("concat7".to_string(), concat7_fn);
+        self.function_return_types.insert("concat7".to_string(), MirType::String);
+
         // v0.46: StringBuilder functions
         // sb_new() -> i64 (returns handle)
         let sb_new_type = i64_type.fn_type(&[], false);
@@ -2667,7 +2683,8 @@ impl<'ctx> LlvmContext<'ctx> {
                                 "read_file", "get_arg", "getenv", "bmb_chr", "system_capture",
                                 "bmb_string_slice", "bmb_string_concat", "bmb_read_file",
                                 "bmb_int_to_string", "bmb_string_from_cstr", "bmb_sb_build",
-                                "bmb_getenv"
+                                "bmb_getenv",
+                                "bmb_string_concat3", "bmb_string_concat5", "bmb_string_concat7"
                             ];
                             let is_string_func = string_funcs.contains(&func.as_str())
                                 || self.function_return_types.get(func)

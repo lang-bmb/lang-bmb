@@ -306,6 +306,10 @@ impl TypeChecker {
         functions.insert("bmb_arena_restore".to_string(), (vec![], Type::I64));
         functions.insert("bmb_sb_contains".to_string(), (vec![Type::I64, Type::String], Type::I64));
         functions.insert("sb_contains".to_string(), (vec![Type::I64, Type::String], Type::I64));
+        // v0.90.90: Multi-string concat — single allocation for 3/5/7 strings
+        functions.insert("concat3".to_string(), (vec![Type::String, Type::String, Type::String], Type::String));
+        functions.insert("concat5".to_string(), (vec![Type::String, Type::String, Type::String, Type::String, Type::String], Type::String));
+        functions.insert("concat7".to_string(), (vec![Type::String, Type::String, Type::String, Type::String, Type::String, Type::String, Type::String], Type::String));
 
         // v0.63: Timing builtin for bmb-bench benchmark framework
         // time_ns() -> i64 (nanoseconds since epoch)

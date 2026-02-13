@@ -265,6 +265,69 @@ BmbString* bmb_string_concat(const BmbString* a, const BmbString* b) {
     return s;
 }
 
+// v0.90.90: Multi-string concat — single allocation for 3/5/7 strings
+BmbString* bmb_string_concat3(const BmbString* a, const BmbString* b, const BmbString* c) {
+    int64_t la = (a && a->data) ? a->len : 0;
+    int64_t lb = (b && b->data) ? b->len : 0;
+    int64_t lc = (c && c->data) ? c->len : 0;
+    int64_t total = la + lb + lc;
+    char* result = (char*)bmb_alloc(total + 1);
+    if (la) memcpy(result, a->data, (size_t)la);
+    if (lb) memcpy(result + la, b->data, (size_t)lb);
+    if (lc) memcpy(result + la + lb, c->data, (size_t)lc);
+    result[total] = '\0';
+    BmbString* s = (BmbString*)bmb_alloc(sizeof(BmbString));
+    s->data = result; s->len = total; s->cap = total;
+    return s;
+}
+
+BmbString* bmb_string_concat5(const BmbString* a, const BmbString* b, const BmbString* c,
+                               const BmbString* d, const BmbString* e) {
+    int64_t la = (a && a->data) ? a->len : 0;
+    int64_t lb = (b && b->data) ? b->len : 0;
+    int64_t lc = (c && c->data) ? c->len : 0;
+    int64_t ld = (d && d->data) ? d->len : 0;
+    int64_t le = (e && e->data) ? e->len : 0;
+    int64_t total = la + lb + lc + ld + le;
+    char* result = (char*)bmb_alloc(total + 1);
+    int64_t off = 0;
+    if (la) { memcpy(result + off, a->data, (size_t)la); off += la; }
+    if (lb) { memcpy(result + off, b->data, (size_t)lb); off += lb; }
+    if (lc) { memcpy(result + off, c->data, (size_t)lc); off += lc; }
+    if (ld) { memcpy(result + off, d->data, (size_t)ld); off += ld; }
+    if (le) { memcpy(result + off, e->data, (size_t)le); off += le; }
+    result[total] = '\0';
+    BmbString* s = (BmbString*)bmb_alloc(sizeof(BmbString));
+    s->data = result; s->len = total; s->cap = total;
+    return s;
+}
+
+BmbString* bmb_string_concat7(const BmbString* a, const BmbString* b, const BmbString* c,
+                               const BmbString* d, const BmbString* e, const BmbString* f,
+                               const BmbString* g) {
+    int64_t la = (a && a->data) ? a->len : 0;
+    int64_t lb = (b && b->data) ? b->len : 0;
+    int64_t lc = (c && c->data) ? c->len : 0;
+    int64_t ld = (d && d->data) ? d->len : 0;
+    int64_t le = (e && e->data) ? e->len : 0;
+    int64_t lf = (f && f->data) ? f->len : 0;
+    int64_t lg = (g && g->data) ? g->len : 0;
+    int64_t total = la + lb + lc + ld + le + lf + lg;
+    char* result = (char*)bmb_alloc(total + 1);
+    int64_t off = 0;
+    if (la) { memcpy(result + off, a->data, (size_t)la); off += la; }
+    if (lb) { memcpy(result + off, b->data, (size_t)lb); off += lb; }
+    if (lc) { memcpy(result + off, c->data, (size_t)lc); off += lc; }
+    if (ld) { memcpy(result + off, d->data, (size_t)ld); off += ld; }
+    if (le) { memcpy(result + off, e->data, (size_t)le); off += le; }
+    if (lf) { memcpy(result + off, f->data, (size_t)lf); off += lf; }
+    if (lg) { memcpy(result + off, g->data, (size_t)lg); off += lg; }
+    result[total] = '\0';
+    BmbString* s = (BmbString*)bmb_alloc(sizeof(BmbString));
+    s->data = result; s->len = total; s->cap = total;
+    return s;
+}
+
 // v0.51.51: String functions updated for BmbString structs
 
 // Convert C string to BmbString
