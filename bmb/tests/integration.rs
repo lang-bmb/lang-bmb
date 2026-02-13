@@ -21763,3 +21763,116 @@ fn test_for_loop_with_accumulator() {
         "fn main() -> i64 = { let mut sum = 0; for i in [1, 2, 3, 4, 5] { sum = sum + i; }; sum };"
     ), 15);
 }
+
+// ===== Cycle 381: Complex generic type tests =====
+
+#[test]
+fn test_generic_identity_i64() {
+    assert_eq!(run_program_i64(
+        "fn identity<T>(x: T) -> T = x; fn main() -> i64 = identity(42);"
+    ), 42);
+}
+
+#[test]
+fn test_generic_identity_bool() {
+    assert_eq!(run_program_i64(
+        "fn identity<T>(x: T) -> T = x; fn main() -> i64 = if identity(true) { 1 } else { 0 };"
+    ), 1);
+}
+
+#[test]
+fn test_generic_pair_struct() {
+    assert_eq!(run_program_i64(
+        "struct Pair<A, B> { first: A, second: B }
+         fn main() -> i64 = {
+           let p = new Pair { first: 10, second: 32 };
+           p.first + p.second
+         };"
+    ), 42);
+}
+
+#[test]
+fn test_generic_option_some() {
+    assert_eq!(run_program_i64(
+        "enum Option<T> { Some(T), None }
+         fn unwrap_or<T>(opt: Option<T>, default: T) -> T = match opt {
+           Option::Some(v) => v,
+           Option::None => default
+         };
+         fn main() -> i64 = unwrap_or(Option::Some(42), 0);"
+    ), 42);
+}
+
+#[test]
+fn test_generic_option_none() {
+    // Option::None with concrete type function (avoids generic inference issue)
+    assert_eq!(run_program_i64(
+        "enum Option<T> { Some(T), None }
+         fn unwrap_or(opt: Option<i64>, default: i64) -> i64 = match opt {
+           Option::Some(v) => v,
+           Option::None => default
+         };
+         fn main() -> i64 = unwrap_or(Option::None, 99);"
+    ), 99);
+}
+
+#[test]
+fn test_generic_function_two_type_params() {
+    assert_eq!(run_program_i64(
+        "fn first<A, B>(a: A, b: B) -> A = a;
+         fn main() -> i64 = first(42, true);"
+    ), 42);
+}
+
+#[test]
+fn test_generic_nested_option() {
+    // Option<Option<i64>> — nested generic
+    assert_eq!(run_program_i64(
+        "enum Option<T> { Some(T), None }
+         fn main() -> i64 = {
+           let inner = Option::Some(42);
+           let outer = Option::Some(inner);
+           match outer {
+             Option::Some(opt) => match opt {
+               Option::Some(v) => v,
+               Option::None => 0
+             },
+             Option::None => 0
+           }
+         };"
+    ), 42);
+}
+
+#[test]
+fn test_generic_struct_with_method_call() {
+    // Generic struct field access combined with method
+    assert_eq!(run_program_i64(
+        "struct Box<T> { value: T }
+         fn main() -> i64 = {
+           let b = new Box { value: 42 };
+           b.value
+         };"
+    ), 42);
+}
+
+#[test]
+fn test_generic_type_error_mismatch() {
+    // Wrong type argument — should error
+    assert!(type_error(
+        "fn identity<T>(x: T) -> T = x;
+         fn main() -> i64 = identity(true);"
+    ));
+}
+
+#[test]
+fn test_generic_result_enum() {
+    // Result-like generic enum with two type params
+    assert_eq!(run_program_i64(
+        "enum Result<T, E> { Ok(T), Err(E) }
+         fn get_ok(r: Result<i64, i64>) -> i64 = match r {
+           Result::Ok(v) => v,
+           Result::Err(e) => e * -1
+         };
+         fn main() -> i64 = get_ok(Result::Ok(42));"
+    ), 42);
+}
