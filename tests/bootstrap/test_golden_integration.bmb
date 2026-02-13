@@ -1,0 +1,70 @@
+// Golden Binary Test: Integration test combining multiple features
+// Tests: struct init, field access, match, for-in, nested if, function composition
+
+struct Vec2 {
+    x: i64,
+    y: i64,
+}
+
+fn make_vec2(x: i64, y: i64) -> Vec2 = Vec2 { x: x, y: y };
+
+fn abs_val(n: i64) -> i64 = if n < 0 { 0 - n } else { n };
+
+fn manhattan_dist(v: Vec2) -> i64 = abs_val(v.x) + abs_val(v.y);
+
+fn classify_quadrant(v: Vec2) -> i64 =
+    if v.x > 0 {
+        if v.y > 0 { 1 } else { 4 }
+    } else {
+        if v.y > 0 { 2 } else { 3 }
+    };
+
+fn quadrant_name(q: i64) -> i64 =
+    match q {
+        1 => 10,
+        2 => 20,
+        3 => 30,
+        4 => 40,
+        _ => 0,
+    };
+
+fn sum_manhattan(n: i64) -> i64 = {
+    let mut total = 0;
+    for i in 0..n {
+        let v = make_vec2(i, i * 2);
+        total = total + manhattan_dist(v);
+        0
+    };
+    total
+};
+
+fn classify_value(n: i64) -> i64 =
+    match n {
+        0 => 100,
+        1 => 200,
+        _ => 300,
+    };
+
+fn reclassify(n: i64) -> i64 =
+    match n {
+        100 => 1,
+        200 => 2,
+        300 => 3,
+        _ => 0,
+    };
+
+fn match_chain(n: i64) -> i64 = reclassify(classify_value(n));
+
+fn main() -> i64 = {
+    // manhattan_dist({3, 4}) = 3 + 4 = 7
+    let s1 = manhattan_dist(make_vec2(3, 4));
+    // classify_quadrant({3, 4}) = 1, quadrant_name(1) = 10
+    let s2 = quadrant_name(classify_quadrant(make_vec2(3, 4)));
+    // sum_manhattan(5) = (0+0) + (1+2) + (2+4) + (3+6) + (4+8) = 0+3+6+9+12 = 30
+    let s3 = sum_manhattan(5);
+    // match_chain(1) = classify_value(1) = 200, reclassify(200) = 2
+    let s4 = match_chain(1);
+    // Output: 7 + 10 + 30 + 2 = 49
+    println(s1 + s2 + s3 + s4);
+    0
+};
