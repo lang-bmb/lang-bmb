@@ -21506,3 +21506,165 @@ fn test_lint_integration_while_true_no_constant_condition() {
         "constant_condition"
     ));
 }
+
+// ===== Cycle 379: Comprehensive trait + impl tests =====
+
+#[test]
+fn test_trait_multiple_traits_on_same_struct() {
+    // A struct implementing multiple traits
+    let source = "
+        trait HasName { fn name(self: Self) -> i64; }
+        trait HasAge { fn age(self: Self) -> i64; }
+        struct Person { n: i64, a: i64 }
+        impl HasName for Person { fn name(self: Self) -> i64 = self.n; }
+        impl HasAge for Person { fn age(self: Self) -> i64 = self.a; }
+        fn main() -> i64 = {
+            let p = new Person { n: 10, a: 25 };
+            p.name() + p.age()
+        };
+    ";
+    assert_eq!(run_program_i64(source), 35);
+}
+
+#[test]
+fn test_trait_impl_with_computation() {
+    // Trait method that does non-trivial computation
+    let source = "
+        trait Measurable { fn measure(self: Self) -> i64; }
+        struct Rectangle { w: i64, h: i64 }
+        impl Measurable for Rectangle { fn measure(self: Self) -> i64 = self.w * self.h; }
+        fn main() -> i64 = {
+            let r = new Rectangle { w: 6, h: 7 };
+            r.measure()
+        };
+    ";
+    assert_eq!(run_program_i64(source), 42);
+}
+
+#[test]
+fn test_trait_impl_calling_other_methods() {
+    // Trait method calling another method on self
+    let source = "
+        trait Doubled { fn double(self: Self) -> i64; }
+        struct Val { x: i64 }
+        impl Doubled for Val { fn double(self: Self) -> i64 = self.x + self.x; }
+        fn main() -> i64 = {
+            let v = new Val { x: 21 };
+            v.double()
+        };
+    ";
+    assert_eq!(run_program_i64(source), 42);
+}
+
+#[test]
+fn test_trait_impl_on_enum() {
+    // Trait implemented on an enum
+    let source = "
+        trait ToValue { fn to_value(self: Self) -> i64; }
+        enum Shape { Circle(i64), Square(i64) }
+        impl ToValue for Shape {
+            fn to_value(self: Self) -> i64 = match self {
+                Shape::Circle(r) => r * r,
+                Shape::Square(s) => s * s
+            };
+        }
+        fn main() -> i64 = {
+            let c = Shape::Circle(5);
+            let s = Shape::Square(3);
+            c.to_value() + s.to_value()
+        };
+    ";
+    assert_eq!(run_program_i64(source), 34); // 25 + 9
+}
+
+#[test]
+fn test_trait_method_dispatch_polymorphic() {
+    // Two different structs implementing same trait, called through same function pattern
+    let source = "
+        trait Sizeable { fn size(self: Self) -> i64; }
+        struct Small { v: i64 }
+        struct Big { v: i64 }
+        impl Sizeable for Small { fn size(self: Self) -> i64 = self.v; }
+        impl Sizeable for Big { fn size(self: Self) -> i64 = self.v * 10; }
+        fn main() -> i64 = {
+            let s = new Small { v: 3 };
+            let b = new Big { v: 3 };
+            s.size() + b.size()
+        };
+    ";
+    assert_eq!(run_program_i64(source), 33); // 3 + 30
+}
+
+#[test]
+fn test_trait_impl_bool_return() {
+    // Trait method returning bool
+    let source = "
+        trait Checkable { fn is_valid(self: Self) -> bool; }
+        struct Positive { n: i64 }
+        impl Checkable for Positive { fn is_valid(self: Self) -> bool = self.n > 0; }
+        fn main() -> i64 = {
+            let p = new Positive { n: 42 };
+            if p.is_valid() { 1 } else { 0 }
+        };
+    ";
+    assert_eq!(run_program_i64(source), 1);
+}
+
+#[test]
+fn test_trait_method_with_multiple_args() {
+    // Trait method taking multiple arguments
+    let source = "
+        trait Calculator { fn compute(self: Self, a: i64, b: i64) -> i64; }
+        struct Adder { bias: i64 }
+        impl Calculator for Adder { fn compute(self: Self, a: i64, b: i64) -> i64 = a + b + self.bias; }
+        fn main() -> i64 = {
+            let calc = new Adder { bias: 2 };
+            calc.compute(10, 30)
+        };
+    ";
+    assert_eq!(run_program_i64(source), 42);
+}
+
+#[test]
+fn test_trait_type_error_missing_impl() {
+    // Calling a trait method on a struct that doesn't implement the trait
+    assert!(type_error(
+        "trait Speakable { fn speak(self: Self) -> i64; }
+         struct Silent { x: i64 }
+         fn main() -> i64 = {
+           let s = new Silent { x: 0 };
+           s.speak()
+         };"
+    ));
+}
+
+#[test]
+fn test_trait_type_error_wrong_signature() {
+    // Impl with wrong number of parameters
+    assert!(type_error(
+        "trait Greetable { fn greet(self: Self, x: i64) -> i64; }
+         struct Obj { v: i64 }
+         impl Greetable for Obj { fn greet(self: Self) -> i64 = self.v; }"
+    ));
+}
+
+#[test]
+fn test_trait_multiple_methods_all_work() {
+    // Trait with multiple methods, all called
+    let source = "
+        trait Math {
+            fn add_one(self: Self) -> i64;
+            fn double(self: Self) -> i64;
+        }
+        struct Num { v: i64 }
+        impl Math for Num {
+            fn add_one(self: Self) -> i64 = self.v + 1;
+            fn double(self: Self) -> i64 = self.v * 2;
+        }
+        fn main() -> i64 = {
+            let n = new Num { v: 10 };
+            n.add_one() + n.double()
+        };
+    ";
+    assert_eq!(run_program_i64(source), 31); // 11 + 20
+}
