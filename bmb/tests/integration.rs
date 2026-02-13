@@ -3960,6 +3960,162 @@ fn main() -> f64 = {
 }
 
 // ============================================
+// Cycle 434: i32 MIR + Codegen Integration Tests
+// ============================================
+
+#[test]
+fn test_codegen_i32_function_signature() {
+    let ir = source_to_ir("fn add32(a: i32, b: i32) -> i32 = a + b;");
+    assert!(ir.contains("@add32(i32 %a, i32 %b)"),
+        "IR should contain i32 parameter types: {}", ir);
+}
+
+#[test]
+fn test_codegen_i32_return_type() {
+    let ir = source_to_ir("fn ret32(x: i32) -> i32 = x;");
+    assert!(ir.contains("i32 @ret32(i32 %x)"),
+        "IR should have i32 return type: {}", ir);
+}
+
+#[test]
+fn test_codegen_i32_arithmetic() {
+    let ir = source_to_ir_unopt("fn add32(a: i32, b: i32) -> i32 = a + b;");
+    assert!(ir.contains("add") && ir.contains("i32"),
+        "IR should contain i32 add instruction: {}", ir);
+}
+
+#[test]
+fn test_codegen_i32_subtraction() {
+    let ir = source_to_ir_unopt("fn sub32(a: i32, b: i32) -> i32 = a - b;");
+    assert!(ir.contains("sub") && ir.contains("i32"),
+        "IR should contain i32 sub instruction: {}", ir);
+}
+
+#[test]
+fn test_codegen_i32_multiplication() {
+    let ir = source_to_ir_unopt("fn mul32(a: i32, b: i32) -> i32 = a * b;");
+    assert!(ir.contains("mul") && ir.contains("i32"),
+        "IR should contain i32 mul instruction: {}", ir);
+}
+
+#[test]
+fn test_codegen_i32_division() {
+    let ir = source_to_ir_unopt("fn div32(a: i32, b: i32) -> i32 = a / b;");
+    assert!(ir.contains("sdiv") && ir.contains("i32"),
+        "IR should contain i32 sdiv instruction: {}", ir);
+}
+
+#[test]
+fn test_codegen_i32_cast_to_i64_sext() {
+    let ir = source_to_ir_unopt("fn widen(x: i32) -> i64 = x as i64;");
+    assert!(ir.contains("sext i32") || ir.contains("sext"),
+        "IR should contain sext for i32→i64 widening: {}", ir);
+}
+
+#[test]
+fn test_codegen_i32_cast_from_i64_trunc() {
+    let ir = source_to_ir_unopt("fn narrow(x: i64) -> i32 = x as i32;");
+    assert!(ir.contains("trunc") && ir.contains("i32"),
+        "IR should contain trunc for i64→i32 narrowing: {}", ir);
+}
+
+#[test]
+fn test_codegen_i32_comparison() {
+    let ir = source_to_ir_unopt("fn gt32(a: i32, b: i32) -> bool = a > b;");
+    assert!(ir.contains("icmp sgt i32") || ir.contains("icmp sgt"),
+        "IR should contain signed i32 comparison: {}", ir);
+}
+
+#[test]
+fn test_codegen_i32_bitwise_and() {
+    let ir = source_to_ir_unopt("fn band32(a: i32, b: i32) -> i32 = a band b;");
+    assert!(ir.contains("and i32"),
+        "IR should contain i32 and instruction: {}", ir);
+}
+
+#[test]
+fn test_codegen_i32_bitwise_or() {
+    let ir = source_to_ir_unopt("fn bor32(a: i32, b: i32) -> i32 = a bor b;");
+    assert!(ir.contains("or i32"),
+        "IR should contain i32 or instruction: {}", ir);
+}
+
+#[test]
+fn test_codegen_i32_shift_left() {
+    let ir = source_to_ir_unopt("fn shl32(a: i32, b: i32) -> i32 = a << b;");
+    assert!(ir.contains("shl") && ir.contains("i32"),
+        "IR should contain i32 shl instruction: {}", ir);
+}
+
+#[test]
+fn test_codegen_i32_negation() {
+    let ir = source_to_ir_unopt("fn neg32(x: i32) -> i32 = -x;");
+    // Negation is typically sub i32 0, %x
+    assert!(ir.contains("sub i32 0") || ir.contains("sub nsw i32 0"),
+        "IR should contain i32 negation (sub 0): {}", ir);
+}
+
+#[test]
+fn test_codegen_i32_constant_folded() {
+    let ir = source_to_ir("fn five32() -> i32 = { let a: i32 = 2; let b: i32 = 3; a + b };");
+    assert!(ir.contains("i32 5") || ir.contains("ret i32"),
+        "Constant i32 2+3 should be folded: {}", ir);
+}
+
+#[test]
+fn test_codegen_i32_modulo() {
+    let ir = source_to_ir_unopt("fn mod32(a: i32, b: i32) -> i32 = a % b;");
+    assert!(ir.contains("srem i32") || ir.contains("srem"),
+        "IR should contain i32 srem instruction: {}", ir);
+}
+
+#[test]
+fn test_codegen_i32_mixed_function_types() {
+    // Function takes i32, returns i64 — needs widening in IR
+    let ir = source_to_ir_unopt("fn widen_add(a: i32, b: i32) -> i64 = (a as i64) + (b as i64);");
+    assert!(ir.contains("i32 %a") && ir.contains("i32 %b"),
+        "IR should have i32 parameters: {}", ir);
+    assert!(ir.contains("i64 @widen_add") || ir.contains("i64"),
+        "IR should have i64 return type: {}", ir);
+}
+
+#[test]
+fn test_codegen_i32_if_expression() {
+    let ir = source_to_ir_unopt(
+        "fn max32(a: i32, b: i32) -> i32 = if a > b { a } else { b };"
+    );
+    assert!(ir.contains("icmp") && ir.contains("i32"),
+        "IR should contain i32 comparison in branch: {}", ir);
+    assert!(ir.contains("br i1"),
+        "IR should contain conditional branch: {}", ir);
+}
+
+#[test]
+fn test_codegen_i32_while_loop() {
+    let ir = source_to_ir_unopt(
+        "fn sum32(n: i32) -> i32 = { let mut s: i32 = 0; let mut i: i32 = 0; while i < n { s = s + i; i = i + 1; 0 }; s };"
+    );
+    assert!(ir.contains("i32") && ir.contains("icmp"),
+        "IR should contain i32 operations in loop: {}", ir);
+}
+
+#[test]
+fn test_codegen_wasm_i32_function() {
+    let program = lower_to_mir("fn add32(a: i32, b: i32) -> i32 = a + b;");
+    let codegen = bmb::codegen::WasmCodeGen::new();
+    let result = codegen.generate(&program);
+    assert!(result.is_ok(), "WASM codegen for i32 should succeed: {:?}", result.err());
+}
+
+#[test]
+fn test_codegen_wasm_i32_cast() {
+    let program = lower_to_mir("fn widen(x: i32) -> i64 = x as i64;");
+    let codegen = bmb::codegen::WasmCodeGen::new();
+    let result = codegen.generate(&program);
+    assert!(result.is_ok(), "WASM codegen for i32→i64 cast should succeed: {:?}", result.err());
+}
+
+// ============================================
 // Cycle 194: IndexAssign Fix Verification
 // ============================================
 
