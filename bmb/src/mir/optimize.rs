@@ -16549,4 +16549,157 @@ mod tests {
 
         assert!(!changed, "Function without constant call sites should not be narrowed");
     }
+
+    // ===== Cycle 406: simplify_binop tests =====
+
+    #[test]
+    fn test_simplify_add_zero_rhs() {
+        let dest = Place::new("result");
+        let lhs = Operand::Place(Place::new("x"));
+        let rhs = Operand::Constant(Constant::Int(0));
+        let result = simplify_binop(&dest, MirBinOp::Add, &lhs, &rhs);
+        assert!(result.is_some());
+        assert!(matches!(result.unwrap(), MirInst::Copy { .. }));
+    }
+
+    #[test]
+    fn test_simplify_add_zero_lhs() {
+        let dest = Place::new("result");
+        let lhs = Operand::Constant(Constant::Int(0));
+        let rhs = Operand::Place(Place::new("x"));
+        let result = simplify_binop(&dest, MirBinOp::Add, &lhs, &rhs);
+        assert!(result.is_some());
+        assert!(matches!(result.unwrap(), MirInst::Copy { .. }));
+    }
+
+    #[test]
+    fn test_simplify_add_nonzero() {
+        let dest = Place::new("result");
+        let lhs = Operand::Place(Place::new("x"));
+        let rhs = Operand::Constant(Constant::Int(5));
+        let result = simplify_binop(&dest, MirBinOp::Add, &lhs, &rhs);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_simplify_sub_zero() {
+        let dest = Place::new("result");
+        let lhs = Operand::Place(Place::new("x"));
+        let rhs = Operand::Constant(Constant::Int(0));
+        let result = simplify_binop(&dest, MirBinOp::Sub, &lhs, &rhs);
+        assert!(result.is_some());
+        assert!(matches!(result.unwrap(), MirInst::Copy { .. }));
+    }
+
+    #[test]
+    fn test_simplify_mul_one_rhs() {
+        let dest = Place::new("result");
+        let lhs = Operand::Place(Place::new("x"));
+        let rhs = Operand::Constant(Constant::Int(1));
+        let result = simplify_binop(&dest, MirBinOp::Mul, &lhs, &rhs);
+        assert!(result.is_some());
+        assert!(matches!(result.unwrap(), MirInst::Copy { .. }));
+    }
+
+    #[test]
+    fn test_simplify_mul_zero() {
+        let dest = Place::new("result");
+        let lhs = Operand::Place(Place::new("x"));
+        let rhs = Operand::Constant(Constant::Int(0));
+        let result = simplify_binop(&dest, MirBinOp::Mul, &lhs, &rhs);
+        assert!(result.is_some());
+        assert!(matches!(result.unwrap(), MirInst::Const { value: Constant::Int(0), .. }));
+    }
+
+    #[test]
+    fn test_simplify_mul_power_of_two() {
+        let dest = Place::new("result");
+        let lhs = Operand::Place(Place::new("x"));
+        let rhs = Operand::Constant(Constant::Int(8));
+        let result = simplify_binop(&dest, MirBinOp::Mul, &lhs, &rhs);
+        assert!(result.is_some());
+        // x * 8 → x << 3
+        match result.unwrap() {
+            MirInst::BinOp { op: MirBinOp::Shl, rhs: Operand::Constant(Constant::Int(3)), .. } => {}
+            other => panic!("Expected shift left by 3, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_simplify_div_one() {
+        let dest = Place::new("result");
+        let lhs = Operand::Place(Place::new("x"));
+        let rhs = Operand::Constant(Constant::Int(1));
+        let result = simplify_binop(&dest, MirBinOp::Div, &lhs, &rhs);
+        assert!(result.is_some());
+        assert!(matches!(result.unwrap(), MirInst::Copy { .. }));
+    }
+
+    #[test]
+    fn test_simplify_div_power_of_two() {
+        let dest = Place::new("result");
+        let lhs = Operand::Place(Place::new("x"));
+        let rhs = Operand::Constant(Constant::Int(4));
+        let result = simplify_binop(&dest, MirBinOp::Div, &lhs, &rhs);
+        assert!(result.is_some());
+        // x / 4 → x >> 2
+        match result.unwrap() {
+            MirInst::BinOp { op: MirBinOp::Shr, rhs: Operand::Constant(Constant::Int(2)), .. } => {}
+            other => panic!("Expected shift right by 2, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_simplify_mod_power_of_two() {
+        let dest = Place::new("result");
+        let lhs = Operand::Place(Place::new("x"));
+        let rhs = Operand::Constant(Constant::Int(16));
+        let result = simplify_binop(&dest, MirBinOp::Mod, &lhs, &rhs);
+        assert!(result.is_some());
+        // x % 16 → x & 15
+        match result.unwrap() {
+            MirInst::BinOp { op: MirBinOp::Band, rhs: Operand::Constant(Constant::Int(15)), .. } => {}
+            other => panic!("Expected band with 15, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_simplify_and_true_rhs() {
+        let dest = Place::new("result");
+        let lhs = Operand::Place(Place::new("x"));
+        let rhs = Operand::Constant(Constant::Bool(true));
+        let result = simplify_binop(&dest, MirBinOp::And, &lhs, &rhs);
+        assert!(result.is_some());
+        assert!(matches!(result.unwrap(), MirInst::Copy { .. }));
+    }
+
+    #[test]
+    fn test_simplify_and_false() {
+        let dest = Place::new("result");
+        let lhs = Operand::Place(Place::new("x"));
+        let rhs = Operand::Constant(Constant::Bool(false));
+        let result = simplify_binop(&dest, MirBinOp::And, &lhs, &rhs);
+        assert!(result.is_some());
+        assert!(matches!(result.unwrap(), MirInst::Const { value: Constant::Bool(false), .. }));
+    }
+
+    #[test]
+    fn test_simplify_or_false_rhs() {
+        let dest = Place::new("result");
+        let lhs = Operand::Place(Place::new("x"));
+        let rhs = Operand::Constant(Constant::Bool(false));
+        let result = simplify_binop(&dest, MirBinOp::Or, &lhs, &rhs);
+        assert!(result.is_some());
+        assert!(matches!(result.unwrap(), MirInst::Copy { .. }));
+    }
+
+    #[test]
+    fn test_simplify_or_true() {
+        let dest = Place::new("result");
+        let lhs = Operand::Place(Place::new("x"));
+        let rhs = Operand::Constant(Constant::Bool(true));
+        let result = simplify_binop(&dest, MirBinOp::Or, &lhs, &rhs);
+        assert!(result.is_some());
+        assert!(matches!(result.unwrap(), MirInst::Const { value: Constant::Bool(true), .. }));
+    }
 }
