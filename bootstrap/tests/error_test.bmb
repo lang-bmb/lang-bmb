@@ -85,7 +85,7 @@ fn test_missing_return() -> i64 =
 
 fn test_wrong_arg_count() -> i64 =
     let output = check_file(TEST_DIR() + "/wrong_arg_count.bmb");
-    if contains(output, "expected 2 arguments") {
+    if contains(output, "expects 2 arguments") {
         let p1 = println_str("  PASS: wrong argument count error");
         1
     } else {

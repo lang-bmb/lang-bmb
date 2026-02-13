@@ -107,8 +107,14 @@ while IFS= read -r line || [ -n "$line" ]; do
         continue
     fi
 
-    # Step 3: Link
-    if ! timeout "$LINK_TIMEOUT" clang -O2 "$OPT_FILE" "${RUNTIME_DIR}/bmb_runtime.c" -o "$EXE_FILE" $LINK_LIBS 2>/dev/null; then
+    # Step 3: Compile to object + Link
+    OBJ_FILE="${OUTPUT_DIR}/${TEST_NAME}.o"
+    if ! timeout "$LINK_TIMEOUT" llc -O3 -filetype=obj "$OPT_FILE" -o "$OBJ_FILE" 2>/dev/null; then
+        echo -e "${RED}FAIL (llc)${NC}"
+        ((FAILED++)) || true
+        continue
+    fi
+    if ! timeout "$LINK_TIMEOUT" gcc -O2 -o "$EXE_FILE" "$OBJ_FILE" "${RUNTIME_DIR}/libbmb_runtime.a" $LINK_LIBS 2>/dev/null; then
         echo -e "${RED}FAIL (link)${NC}"
         ((FAILED++)) || true
         continue
