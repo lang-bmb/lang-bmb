@@ -2073,7 +2073,8 @@ impl TypeChecker {
                 let mut diverged = false;
                 let mut diverge_span: Option<Span> = None;
 
-                for expr in exprs {
+                let total = exprs.len();
+                for (i, expr) in exprs.iter().enumerate() {
                     // v0.53: Check for unreachable code after divergent expression
                     if diverged {
                         self.add_warning(CompileWarning::unreachable_code(expr.span));
@@ -2083,6 +2084,16 @@ impl TypeChecker {
                     }
 
                     last_ty = self.infer(&expr.node, expr.span)?;
+
+                    // v0.90.132: Detect unused function return value in statement position
+                    if let Expr::Call { func, .. } = &expr.node
+                        && i < total - 1
+                        && !matches!(last_ty, Type::Unit | Type::Never)
+                    {
+                        self.add_warning(CompileWarning::unused_return_value(
+                            func.clone(), expr.span,
+                        ));
+                    }
 
                     // v0.53: Track divergence (return, break, continue, Never type)
                     if matches!(last_ty, Type::Never) || self.is_divergent_expr(&expr.node) {

@@ -177,6 +177,12 @@ pub enum CompileWarning {
         span: Span,
     },
 
+    /// v0.90.132: Unused function return value — non-unit return value discarded
+    UnusedReturnValue {
+        func: String,
+        span: Span,
+    },
+
     /// v0.90.121: Non-snake_case function name
     /// Function names should use snake_case
     NonSnakeCaseFunction {
@@ -388,6 +394,11 @@ impl CompileWarning {
         Self::IntDivisionTruncation { left, right, span }
     }
 
+    /// v0.90.132: Create an unused return value warning
+    pub fn unused_return_value(func: impl Into<String>, span: Span) -> Self {
+        Self::UnusedReturnValue { func: func.into(), span }
+    }
+
     /// v0.90.121: Create a non-snake_case function warning
     pub fn non_snake_case_function(
         name: impl Into<String>,
@@ -443,6 +454,7 @@ impl CompileWarning {
             Self::RedundantBoolComparison { span, .. } => Some(*span),
             Self::DuplicateMatchArm { span, .. } => Some(*span),
             Self::IntDivisionTruncation { span, .. } => Some(*span),
+            Self::UnusedReturnValue { span, .. } => Some(*span),
             Self::NonSnakeCaseFunction { span, .. } => Some(*span),
             Self::NonPascalCaseType { span, .. } => Some(*span),
             Self::Generic { span, .. } => *span,
@@ -536,6 +548,9 @@ impl CompileWarning {
             Self::IntDivisionTruncation { left, right, .. } => {
                 format!("integer division `{} / {}` truncates to `{}`", left, right, left / right)
             }
+            Self::UnusedReturnValue { func, .. } => {
+                format!("return value of `{}` is unused", func)
+            }
             Self::Generic { message, .. } => message.clone(),
         }
     }
@@ -569,6 +584,7 @@ impl CompileWarning {
             Self::RedundantBoolComparison { .. } => "redundant_bool_comparison",
             Self::DuplicateMatchArm { .. } => "duplicate_match_arm",
             Self::IntDivisionTruncation { .. } => "int_division_truncation",
+            Self::UnusedReturnValue { .. } => "unused_return_value",
             Self::Generic { .. } => "warning",
         }
     }

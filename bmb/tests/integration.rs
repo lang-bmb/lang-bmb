@@ -21295,3 +21295,55 @@ fn test_lint_no_int_division_truncation_zero() {
         "int_division_truncation"
     ));
 }
+
+// ===== Cycle 377: Unused function return value detection =====
+
+#[test]
+fn test_lint_unused_return_value() {
+    // Calling add(1,2) as statement discards return — should warn
+    assert!(has_warning_kind(
+        "fn add(a: i64, b: i64) -> i64 = a + b;
+         fn main() -> i64 = { add(1, 2); 0 };",
+        "unused_return_value"
+    ));
+}
+
+#[test]
+fn test_lint_unused_return_value_used() {
+    // Return value is used as block result — should NOT warn
+    assert!(!has_warning_kind(
+        "fn add(a: i64, b: i64) -> i64 = a + b;
+         fn main() -> i64 = add(1, 2);",
+        "unused_return_value"
+    ));
+}
+
+#[test]
+fn test_lint_unused_return_value_let() {
+    // Return value is captured in let — should NOT warn
+    assert!(!has_warning_kind(
+        "fn add(a: i64, b: i64) -> i64 = a + b;
+         fn main() -> i64 = { let x = add(1, 2); x };",
+        "unused_return_value"
+    ));
+}
+
+#[test]
+fn test_lint_no_unused_return_value_void() {
+    // Void function as statement — should NOT warn
+    assert!(!has_warning_kind(
+        "fn greet() = {};
+         fn main() -> i64 = { greet(); 0 };",
+        "unused_return_value"
+    ));
+}
+
+#[test]
+fn test_lint_no_unused_return_value_last_expr() {
+    // Last expression in block is the return value — should NOT warn
+    assert!(!has_warning_kind(
+        "fn add(a: i64, b: i64) -> i64 = a + b;
+         fn main() -> i64 = { let x = 1; add(x, 2) };",
+        "unused_return_value"
+    ));
+}
