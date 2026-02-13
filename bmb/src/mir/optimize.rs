@@ -17886,4 +17886,341 @@ mod tests {
             _ => panic!("Expected Return with Place"),
         }
     }
+
+    // --- AggressiveInlining ---
+
+    #[test]
+    fn test_aggressive_inlining_name() {
+        let pass = AggressiveInlining::new();
+        assert_eq!(pass.name(), "aggressive_inlining");
+    }
+
+    #[test]
+    fn test_aggressive_inlining_custom_thresholds() {
+        let pass = AggressiveInlining::with_thresholds(5, 10);
+        assert_eq!(pass.name(), "aggressive_inlining");
+    }
+
+    #[test]
+    fn test_aggressive_inlining_count_instructions() {
+        let func = MirFunction {
+            name: "f".to_string(),
+            params: vec![],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![
+                BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![
+                        MirInst::Const { dest: Place::new("a"), value: Constant::Int(1) },
+                        MirInst::Const { dest: Place::new("b"), value: Constant::Int(2) },
+                    ],
+                    terminator: Terminator::Return(Some(Operand::Place(Place::new("a")))),
+                },
+            ],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+        assert_eq!(AggressiveInlining::count_instructions(&func), 2);
+    }
+
+    #[test]
+    fn test_aggressive_inlining_is_simple_single_block() {
+        let func = MirFunction {
+            name: "f".to_string(),
+            params: vec![],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![],
+                terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(0)))),
+            }],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+        assert!(AggressiveInlining::is_simple_control_flow(&func));
+    }
+
+    #[test]
+    fn test_aggressive_inlining_not_simple_with_loop() {
+        let func = MirFunction {
+            name: "f".to_string(),
+            params: vec![],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![
+                BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Goto("header".to_string()),
+                },
+                BasicBlock {
+                    label: "header".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Branch {
+                        cond: Operand::Constant(Constant::Bool(true)),
+                        then_label: "body".to_string(),
+                        else_label: "exit".to_string(),
+                    },
+                },
+                BasicBlock {
+                    label: "body".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Goto("header".to_string()), // back edge
+                },
+                BasicBlock {
+                    label: "exit".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(0)))),
+                },
+            ],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+        assert!(!AggressiveInlining::is_simple_control_flow(&func), "Loop detected via back edge");
+    }
+
+    #[test]
+    fn test_aggressive_inlining_is_recursive() {
+        let func = MirFunction {
+            name: "fib".to_string(),
+            params: vec![("n".to_string(), MirType::I64)],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![MirInst::Call {
+                    dest: Some(Place::new("r")),
+                    func: "fib".to_string(),
+                    args: vec![Operand::Place(Place::new("n"))],
+                    is_tail: false,
+                }],
+                terminator: Terminator::Return(Some(Operand::Place(Place::new("r")))),
+            }],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+        assert!(AggressiveInlining::is_recursive(&func));
+    }
+
+    #[test]
+    fn test_aggressive_inlining_not_recursive() {
+        let func = MirFunction {
+            name: "add".to_string(),
+            params: vec![("x".to_string(), MirType::I64)],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![MirInst::Call {
+                    dest: Some(Place::new("r")),
+                    func: "other".to_string(),
+                    args: vec![],
+                    is_tail: false,
+                }],
+                terminator: Terminator::Return(Some(Operand::Place(Place::new("r")))),
+            }],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+        assert!(!AggressiveInlining::is_recursive(&func));
+    }
+
+    #[test]
+    fn test_aggressive_inlining_should_inline_small_function() {
+        let pass = AggressiveInlining::new();
+        let func = MirFunction {
+            name: "small".to_string(),
+            params: vec![("x".to_string(), MirType::I64)],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![MirInst::BinOp {
+                    dest: Place::new("r"),
+                    op: MirBinOp::Add,
+                    lhs: Operand::Place(Place::new("x")),
+                    rhs: Operand::Constant(Constant::Int(1)),
+                }],
+                terminator: Terminator::Return(Some(Operand::Place(Place::new("r")))),
+            }],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+        assert!(pass.should_inline(&func), "Small non-recursive function should be inlined");
+    }
+
+    #[test]
+    fn test_aggressive_inlining_should_not_inline_main() {
+        let pass = AggressiveInlining::new();
+        let func = MirFunction {
+            name: "main".to_string(),
+            params: vec![],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![],
+                terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(0)))),
+            }],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+        assert!(!pass.should_inline(&func), "main should never be inlined");
+    }
+
+    #[test]
+    fn test_aggressive_inlining_pure_function_higher_threshold() {
+        let pass = AggressiveInlining::with_thresholds(2, 20);
+        let func = MirFunction {
+            name: "pure_fn".to_string(),
+            params: vec![("x".to_string(), MirType::I64)],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![
+                    MirInst::BinOp { dest: Place::new("a"), op: MirBinOp::Add, lhs: Operand::Place(Place::new("x")), rhs: Operand::Constant(Constant::Int(1)) },
+                    MirInst::BinOp { dest: Place::new("b"), op: MirBinOp::Mul, lhs: Operand::Place(Place::new("a")), rhs: Operand::Constant(Constant::Int(2)) },
+                    MirInst::BinOp { dest: Place::new("r"), op: MirBinOp::Sub, lhs: Operand::Place(Place::new("b")), rhs: Operand::Constant(Constant::Int(3)) },
+                ],
+                terminator: Terminator::Return(Some(Operand::Place(Place::new("r")))),
+            }],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: true,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+        // 3 instructions > max_instructions(2) but <= max_pure_instructions(20)
+        assert!(pass.should_inline(&func), "Pure function uses higher threshold");
+    }
+
+    // --- collect_used_in_instruction ---
+
+    #[test]
+    fn test_collect_used_binop() {
+        let mut used = HashSet::new();
+        collect_used_in_instruction(&MirInst::BinOp {
+            dest: Place::new("r"),
+            op: MirBinOp::Add,
+            lhs: Operand::Place(Place::new("a")),
+            rhs: Operand::Place(Place::new("b")),
+        }, &mut used);
+        assert!(used.contains("a"));
+        assert!(used.contains("b"));
+        assert!(!used.contains("r"), "dest should not be in used set");
+    }
+
+    #[test]
+    fn test_collect_used_const() {
+        let mut used = HashSet::new();
+        collect_used_in_instruction(&MirInst::Const {
+            dest: Place::new("c"),
+            value: Constant::Int(42),
+        }, &mut used);
+        assert!(used.is_empty(), "Const instruction uses no variables");
+    }
+
+    #[test]
+    fn test_collect_used_call() {
+        let mut used = HashSet::new();
+        collect_used_in_instruction(&MirInst::Call {
+            dest: Some(Place::new("r")),
+            func: "foo".to_string(),
+            args: vec![Operand::Place(Place::new("x")), Operand::Constant(Constant::Int(1))],
+            is_tail: false,
+        }, &mut used);
+        assert!(used.contains("x"));
+        assert!(!used.contains("r"));
+    }
+
+    #[test]
+    fn test_collect_used_copy() {
+        let mut used = HashSet::new();
+        collect_used_in_instruction(&MirInst::Copy {
+            dest: Place::new("d"),
+            src: Place::new("s"),
+        }, &mut used);
+        assert!(used.contains("s"));
+        assert!(!used.contains("d"));
+    }
+
+    // --- DeadCodeElimination name ---
+
+    #[test]
+    fn test_dead_code_elimination_name() {
+        let pass = DeadCodeElimination;
+        assert_eq!(pass.name(), "dead_code_elimination");
+    }
+
+    // --- CopyPropagation name ---
+
+    #[test]
+    fn test_copy_propagation_name() {
+        let pass = CopyPropagation;
+        assert_eq!(pass.name(), "copy_propagation");
+    }
+
+    // --- BlockMerging name ---
+
+    #[test]
+    fn test_block_merging_name() {
+        let pass = BlockMerging;
+        assert_eq!(pass.name(), "block_merging");
+    }
+
+    // --- GlobalFieldAccessCSE name ---
+
+    #[test]
+    fn test_global_field_access_cse_name() {
+        let pass = GlobalFieldAccessCSE;
+        assert_eq!(pass.name(), "global_field_access_cse");
+    }
+
+    // --- ContractUnreachableElimination name ---
+
+    #[test]
+    fn test_contract_unreachable_elimination_name() {
+        let pass = ContractUnreachableElimination;
+        assert_eq!(pass.name(), "contract_unreachable_elimination");
+    }
 }
