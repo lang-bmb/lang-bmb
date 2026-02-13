@@ -23217,3 +23217,64 @@ fn test_tuple_contains_runtime_false() {
     );
 }
 
+// ====================================================================
+// Cycle 432: String conditional branch tests (phi type regression)
+// ====================================================================
+
+#[test]
+fn test_string_if_else_branch() {
+    // Verifies that if/else returning string works correctly
+    // (regression test for phi type inference with mixed ptr/i64)
+    assert_eq!(
+        run_program_str(r#"fn main() -> String = if true { "yes" } else { "no" };"#),
+        "yes"
+    );
+}
+
+#[test]
+fn test_string_if_else_branch_false() {
+    assert_eq!(
+        run_program_str(r#"fn main() -> String = if false { "yes" } else { "no" };"#),
+        "no"
+    );
+}
+
+#[test]
+fn test_string_conditional_with_variable() {
+    assert_eq!(
+        run_program_str(r#"
+fn pick(flag: bool) -> String = if flag { "hello" } else { "world" };
+fn main() -> String = pick(true);
+"#),
+        "hello"
+    );
+}
+
+#[test]
+fn test_string_conditional_len() {
+    // String from conditional branch used for method call
+    assert_eq!(
+        run_program_i64(r#"
+fn main() -> i64 = {
+    let s = if true { "hello" } else { "hi" };
+    s.len()
+};
+"#),
+        5
+    );
+}
+
+#[test]
+fn test_string_conditional_nested() {
+    assert_eq!(
+        run_program_str(r#"
+fn main() -> String = {
+    let a = if true { "first" } else { "second" };
+    let b = if false { "third" } else { "fourth" };
+    a
+};
+"#),
+        "first"
+    );
+}
+

@@ -904,9 +904,9 @@ impl TextCodeGen {
                             "i32"
                         } else {
                             match (lhs_ty, rhs_ty) {
-                                (_, "i64") | ("i64", _) => "i64",
-                                (_, "double") | ("double", _) => "double",
                                 (_, "ptr") | ("ptr", _) => "ptr",
+                                (_, "double") | ("double", _) => "double",
+                                (_, "i64") | ("i64", _) => "i64",
                                 ("i32", "i32") => "i32",
                                 ("i32", "i1") | ("i1", "i32") => "i32",
                                 ("i1", "i1") => "i1",
@@ -941,11 +941,13 @@ impl TextCodeGen {
                                 Operand::Constant(c) => self.constant_type(c),
                                 Operand::Place(p) => place_types.get(&p.name).copied().unwrap_or("i64"),
                             };
-                            // Compare integer widths: i64 > i32 > i1
+                            // Compare type widths: ptr > double > i64 > i32 > i1
+                            // v0.90.62: ptr takes priority (strings, struct pointers)
+                            // Fixes phi type mismatch when branches mix ptr and i64
                             widest_ty = match (widest_ty, ty) {
-                                (_, "i64") | ("i64", _) => "i64",
-                                (_, "double") | ("double", _) => "double",
                                 (_, "ptr") | ("ptr", _) => "ptr",
+                                (_, "double") | ("double", _) => "double",
+                                (_, "i64") | ("i64", _) => "i64",
                                 ("i32", "i32") => "i32",
                                 ("i32", "i1") | ("i1", "i32") => "i32",
                                 ("i1", "i1") => "i1",
