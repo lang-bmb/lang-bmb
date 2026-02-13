@@ -22034,3 +22034,212 @@ fn test_edge_nested_blocks() {
         "fn main() -> i64 = { { { { 42 } } } };"
     ), 42);
 }
+
+// ===== Cycle 384: Method chaining + type interaction tests =====
+
+#[test]
+fn test_string_method_chain_len() {
+    assert_eq!(run_program_i64(
+        r#"fn main() -> i64 = "hello world".len();"#
+    ), 11);
+}
+
+#[test]
+fn test_string_method_chain_contains() {
+    assert_eq!(run_program_i64(
+        r#"fn main() -> i64 = if "hello".contains("ell") { 1 } else { 0 };"#
+    ), 1);
+}
+
+#[test]
+fn test_int_method_abs() {
+    assert_eq!(run_program_i64(
+        "fn main() -> i64 = (-42).abs();"
+    ), 42);
+}
+
+#[test]
+fn test_int_method_min_max() {
+    assert_eq!(run_program_i64(
+        "fn main() -> i64 = 10.min(20) + 10.max(20);"
+    ), 30); // 10 + 20
+}
+
+#[test]
+fn test_array_method_len() {
+    assert_eq!(run_program_i64(
+        "fn main() -> i64 = [1, 2, 3, 4, 5].len();"
+    ), 5);
+}
+
+#[test]
+fn test_float_method_floor_ceil() {
+    assert_eq!(run_program_i64(
+        "fn main() -> i64 = 3.7.floor().to_int() + 3.2.ceil().to_int();"
+    ), 7); // 3 + 4
+}
+
+#[test]
+fn test_string_method_chain_trim_len() {
+    assert_eq!(run_program_i64(
+        r#"fn main() -> i64 = "  abc  ".trim().len();"#
+    ), 3);
+}
+
+#[test]
+fn test_int_clamp_method() {
+    assert_eq!(run_program_i64(
+        "fn main() -> i64 = 100.clamp(0, 50);"
+    ), 50);
+}
+
+#[test]
+fn test_struct_field_with_method() {
+    assert_eq!(run_program_i64(
+        "struct Data { value: i64 }
+         fn main() -> i64 = {
+           let d = new Data { value: -42 };
+           d.value.abs()
+         };"
+    ), 42);
+}
+
+#[test]
+fn test_if_else_with_method_calls() {
+    assert_eq!(run_program_i64(
+        "fn main() -> i64 = {
+           let x = 10;
+           if x.min(20) == 10 { x.max(5) } else { 0 }
+         };"
+    ), 10);
+}
+
+// ===== Cycle 385: Full pipeline regression tests =====
+
+#[test]
+fn test_pipeline_fibonacci() {
+    assert_eq!(run_program_i64(
+        "fn fib(n: i64) -> i64 = if n <= 1 { n } else { fib(n-1) + fib(n-2) };
+         fn main() -> i64 = fib(15);"
+    ), 610);
+}
+
+#[test]
+fn test_pipeline_factorial() {
+    assert_eq!(run_program_i64(
+        "fn fact(n: i64) -> i64 = if n <= 1 { 1 } else { n * fact(n-1) };
+         fn main() -> i64 = fact(10);"
+    ), 3628800);
+}
+
+#[test]
+fn test_pipeline_struct_with_enum() {
+    assert_eq!(run_program_i64(
+        "enum Status { Active, Inactive }
+         struct User { id: i64, status: Status }
+         fn is_active(u: User) -> bool = match u.status {
+           Status::Active => true,
+           Status::Inactive => false
+         };
+         fn main() -> i64 = {
+           let u = new User { id: 1, status: Status::Active };
+           if is_active(u) { u.id } else { 0 }
+         };"
+    ), 1);
+}
+
+#[test]
+fn test_pipeline_array_sum_loop() {
+    assert_eq!(run_program_i64(
+        "fn main() -> i64 = {
+           let arr = [10, 20, 30, 40, 50];
+           let mut sum = 0;
+           let mut i = 0;
+           while i < 5 { sum = sum + arr[i]; i = i + 1; };
+           sum
+         };"
+    ), 150);
+}
+
+#[test]
+fn test_pipeline_nested_function_calls() {
+    assert_eq!(run_program_i64(
+        "fn double(x: i64) -> i64 = x * 2;
+         fn add_one(x: i64) -> i64 = x + 1;
+         fn main() -> i64 = add_one(double(add_one(double(5))));"
+    ), 23); // double(5)=10, add_one(10)=11, double(11)=22, add_one(22)=23
+}
+
+#[test]
+fn test_pipeline_multiple_structs() {
+    assert_eq!(run_program_i64(
+        "struct Point { x: i64, y: i64 }
+         struct Rect { origin: Point, size: Point }
+         fn area(r: Rect) -> i64 = r.size.x * r.size.y;
+         fn main() -> i64 = {
+           let r = new Rect {
+             origin: new Point { x: 0, y: 0 },
+             size: new Point { x: 6, y: 7 }
+           };
+           area(r)
+         };"
+    ), 42);
+}
+
+#[test]
+fn test_pipeline_enum_chain() {
+    assert_eq!(run_program_i64(
+        "enum Op { Add(i64), Mul(i64), Noop }
+         fn apply(base: i64, op: Op) -> i64 = match op {
+           Op::Add(n) => base + n,
+           Op::Mul(n) => base * n,
+           Op::Noop => base
+         };
+         fn main() -> i64 = {
+           let v = apply(5, Op::Add(3));
+           let v2 = apply(v, Op::Mul(2));
+           apply(v2, Op::Noop)
+         };"
+    ), 16); // (5+3)*2 = 16
+}
+
+#[test]
+fn test_pipeline_while_accumulate_pattern() {
+    assert_eq!(run_program_i64(
+        "fn count_gt(arr: [i64; 5], threshold: i64) -> i64 = {
+           let mut i = 0;
+           let mut count = 0;
+           while i < 5 {
+             if arr[i] > threshold { count = count + 1 } else { count = count };
+             i = i + 1;
+           };
+           count
+         };
+         fn main() -> i64 = count_gt([1, 5, 10, 15, 20], 7);"
+    ), 3); // 10, 15, 20 are > 7
+}
+
+#[test]
+fn test_pipeline_complex_expression() {
+    assert_eq!(run_program_i64(
+        "fn main() -> i64 = {
+           let a = 2 + 3 * 4;
+           let b = (2 + 3) * 4;
+           let c = a + b;
+           c - 6
+         };"
+    ), 28); // a=14, b=20, c=34, 34-6=28
+}
+
+#[test]
+fn test_pipeline_for_in_with_conditional() {
+    assert_eq!(run_program_i64(
+        "fn main() -> i64 = {
+           let mut sum = 0;
+           for x in [1, 2, 3, 4, 5] {
+             if x > 3 { sum = sum + x } else { sum = sum };
+           };
+           sum
+         };"
+    ), 9); // 4 + 5
+}
