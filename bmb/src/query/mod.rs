@@ -512,11 +512,20 @@ impl QueryEngine {
                     }
                 }
 
+                // v0.90.146: Extract type dependencies from signature
+                let mut type_deps = Vec::new();
+                for param in &f.signature.params {
+                    Self::extract_named_types(&param.ty, &mut type_deps);
+                }
+                Self::extract_named_types(&f.signature.return_type, &mut type_deps);
+                type_deps.sort();
+                type_deps.dedup();
+
                 DepsResult {
                     target: format!("fn:{}", name),
                     calls,
                     called_by,
-                    type_deps: Vec::new(), // TODO: Extract type dependencies
+                    type_deps,
                     error: None,
                 }
             }
@@ -564,11 +573,46 @@ impl QueryEngine {
         }
     }
 
+    /// v0.90.146: Extract named (non-primitive) type names from a type string.
+    /// Recognizes patterns like "Point", "&Point", "*Point", "Vec<Point>", "[Point; 3]", etc.
+    fn extract_named_types(ty_str: &str, out: &mut Vec<String>) {
+        const PRIMITIVES: &[&str] = &[
+            "i32", "i64", "u32", "u64", "f64", "bool", "string", "unit", "char",
+        ];
+
+        // Tokenize: split on non-alphanumeric/underscore characters
+        let mut current = String::new();
+        for ch in ty_str.chars() {
+            if ch.is_alphanumeric() || ch == '_' {
+                current.push(ch);
+            } else if !current.is_empty() {
+                let lower = current.to_lowercase();
+                if !PRIMITIVES.contains(&lower.as_str())
+                    && !current.chars().next().unwrap_or('_').is_ascii_digit()
+                    && !out.contains(&current)
+                {
+                    out.push(current.clone());
+                }
+                current.clear();
+            }
+        }
+        // Handle trailing token
+        if !current.is_empty() {
+            let lower = current.to_lowercase();
+            if !PRIMITIVES.contains(&lower.as_str())
+                && !current.chars().next().unwrap_or('_').is_ascii_digit()
+                && !out.contains(&current)
+            {
+                out.push(current);
+            }
+        }
+    }
+
     fn query_type_deps(&self, name: &str, reverse: bool) -> DepsResult {
         let type_entry = self.index.types.iter().find(|t| t.name == name);
 
         match type_entry {
-            Some(_t) => {
+            Some(t) => {
                 let mut called_by = Vec::new();
 
                 if reverse {
@@ -588,11 +632,21 @@ impl QueryEngine {
                     }
                 }
 
+                // v0.90.146: Extract type dependencies from struct fields
+                let mut type_deps = Vec::new();
+                for field in &t.fields {
+                    Self::extract_named_types(&field.ty, &mut type_deps);
+                }
+                // Filter out self-reference
+                type_deps.retain(|dep| dep != name);
+                type_deps.sort();
+                type_deps.dedup();
+
                 DepsResult {
                     target: format!("type:{}", name),
                     calls: Vec::new(),
                     called_by,
-                    type_deps: Vec::new(),
+                    type_deps,
                     error: None,
                 }
             }
@@ -2263,5 +2317,117 @@ mod tests {
         let result = engine.query_signature("", None, None);
         assert_eq!(result.query, "all");
         assert_eq!(result.matches.len(), 3);
+    }
+
+    // --- Cycle 392: Type dependency extraction tests ---
+
+    #[test]
+    fn test_extract_named_types_simple() {
+        let mut out = Vec::new();
+        QueryEngine::extract_named_types("Point", &mut out);
+        assert_eq!(out, vec!["Point"]);
+    }
+
+    #[test]
+    fn test_extract_named_types_primitive_excluded() {
+        let mut out = Vec::new();
+        QueryEngine::extract_named_types("i64", &mut out);
+        assert!(out.is_empty());
+    }
+
+    #[test]
+    fn test_extract_named_types_reference() {
+        let mut out = Vec::new();
+        QueryEngine::extract_named_types("&Point", &mut out);
+        assert_eq!(out, vec!["Point"]);
+    }
+
+    #[test]
+    fn test_extract_named_types_pointer() {
+        let mut out = Vec::new();
+        QueryEngine::extract_named_types("*MyStruct", &mut out);
+        assert_eq!(out, vec!["MyStruct"]);
+    }
+
+    #[test]
+    fn test_extract_named_types_generic() {
+        let mut out = Vec::new();
+        QueryEngine::extract_named_types("Vec<Point>", &mut out);
+        assert_eq!(out, vec!["Vec", "Point"]);
+    }
+
+    #[test]
+    fn test_extract_named_types_array() {
+        let mut out = Vec::new();
+        QueryEngine::extract_named_types("[Color; 3]", &mut out);
+        assert_eq!(out, vec!["Color"]);
+    }
+
+    #[test]
+    fn test_extract_named_types_multiple() {
+        let mut out = Vec::new();
+        QueryEngine::extract_named_types("Map<String, Point>", &mut out);
+        assert!(out.contains(&"Map".to_string()));
+        assert!(out.contains(&"Point".to_string()));
+        // "String" should be filtered (primitive)
+        assert!(!out.contains(&"String".to_string()));
+    }
+
+    #[test]
+    fn test_extract_named_types_no_duplicates() {
+        let mut out = Vec::new();
+        QueryEngine::extract_named_types("Pair<Point, Point>", &mut out);
+        // Point should appear once even though it appears twice in the type string
+        assert_eq!(out.iter().filter(|t| *t == "Point").count(), 1);
+    }
+
+    #[test]
+    fn test_query_function_deps_type_deps_primitive() {
+        let engine = QueryEngine::new(make_test_index());
+        let result = engine.query_deps("fn:add", false, false);
+        assert!(result.error.is_none());
+        // add(a: i64, b: i64) -> i64 — no named type deps
+        assert!(result.type_deps.is_empty());
+    }
+
+    #[test]
+    fn test_query_function_deps_type_deps_named() {
+        let engine = QueryEngine::new(make_test_index());
+        let result = engine.query_deps("fn:helper", false, false);
+        assert!(result.error.is_none());
+        // helper(x: Point) -> i64 — depends on Point
+        assert_eq!(result.type_deps, vec!["Point"]);
+    }
+
+    #[test]
+    fn test_query_type_deps_struct_fields() {
+        // Point has fields x: f64, y: f64 — no named type deps
+        let engine = QueryEngine::new(make_test_index());
+        let result = engine.query_deps("type:Point", false, false);
+        assert!(result.error.is_none());
+        assert!(result.type_deps.is_empty());
+    }
+
+    #[test]
+    fn test_query_type_deps_struct_with_named_field() {
+        // Create an index with a struct that has a named field type
+        let mut index = make_test_index();
+        index.types.push(TypeEntry {
+            name: "Line".to_string(),
+            file: "geo.bmb".to_string(),
+            line: 25,
+            is_pub: true,
+            kind: "struct".to_string(),
+            fields: vec![
+                FieldInfo { name: "start".to_string(), ty: "Point".to_string() },
+                FieldInfo { name: "end".to_string(), ty: "Point".to_string() },
+            ],
+            variants: vec![],
+            refinement: None,
+        });
+        let engine = QueryEngine::new(index);
+        let result = engine.query_deps("type:Line", false, false);
+        assert!(result.error.is_none());
+        assert_eq!(result.type_deps, vec!["Point"]);
     }
 }
