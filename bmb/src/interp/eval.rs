@@ -10168,4 +10168,432 @@ mod tests {
         // Skip 0,3,6,9 => sum = 1+2+4+5+7+8 = 27
         assert_eq!(result, Value::Int(27));
     }
+
+    // ====================================================================
+    // Float method tests (Cycle 420)
+    // ====================================================================
+
+    #[test]
+    fn test_float_method_abs() {
+        let result = run_program("fn main() -> f64 = (-3.5).abs();");
+        assert_eq!(result, Value::Float(3.5));
+    }
+
+    #[test]
+    fn test_float_method_abs_positive() {
+        let result = run_program("fn main() -> f64 = (2.5).abs();");
+        assert_eq!(result, Value::Float(2.5));
+    }
+
+    #[test]
+    fn test_float_method_floor() {
+        let result = run_program("fn main() -> f64 = (3.7).floor();");
+        assert_eq!(result, Value::Float(3.0));
+    }
+
+    #[test]
+    fn test_float_method_ceil() {
+        let result = run_program("fn main() -> f64 = (3.2).ceil();");
+        assert_eq!(result, Value::Float(4.0));
+    }
+
+    #[test]
+    fn test_float_method_round() {
+        let result = run_program("fn main() -> f64 = (3.5).round();");
+        assert_eq!(result, Value::Float(4.0));
+    }
+
+    #[test]
+    fn test_float_method_sqrt() {
+        let result = run_program("fn main() -> f64 = (16.0).sqrt();");
+        assert_eq!(result, Value::Float(4.0));
+    }
+
+    #[test]
+    fn test_float_method_is_nan_true() {
+        let result = run_program("fn main() -> bool = (0.0 / 0.0).is_nan();");
+        assert_eq!(result, Value::Bool(true));
+    }
+
+    #[test]
+    fn test_float_method_is_nan_false() {
+        let result = run_program("fn main() -> bool = (1.0).is_nan();");
+        assert_eq!(result, Value::Bool(false));
+    }
+
+    #[test]
+    fn test_float_method_is_infinite() {
+        let result = run_program("fn main() -> bool = (1.0 / 0.0).is_infinite();");
+        assert_eq!(result, Value::Bool(true));
+    }
+
+    #[test]
+    fn test_float_method_is_finite() {
+        let result = run_program("fn main() -> bool = (42.0).is_finite();");
+        assert_eq!(result, Value::Bool(true));
+    }
+
+    #[test]
+    fn test_float_method_min() {
+        let result = run_program("fn main() -> f64 = (5.0).min(3.0);");
+        assert_eq!(result, Value::Float(3.0));
+    }
+
+    #[test]
+    fn test_float_method_max() {
+        let result = run_program("fn main() -> f64 = (5.0).max(8.0);");
+        assert_eq!(result, Value::Float(8.0));
+    }
+
+    #[test]
+    fn test_float_method_to_int() {
+        let result = run_program("fn main() -> i64 = (7.9).to_int();");
+        assert_eq!(result, Value::Int(7));
+    }
+
+    #[test]
+    fn test_float_method_to_string() {
+        let result = run_program("fn main() -> String = (3.5).to_string();");
+        assert_eq!(result, Value::Str(Rc::new("3.5".to_string())));
+    }
+
+    #[test]
+    fn test_float_method_sin() {
+        let result = run_program("fn main() -> f64 = (0.0).sin();");
+        assert_eq!(result, Value::Float(0.0));
+    }
+
+    #[test]
+    fn test_float_method_cos() {
+        let result = run_program("fn main() -> f64 = (0.0).cos();");
+        assert_eq!(result, Value::Float(1.0));
+    }
+
+    #[test]
+    fn test_float_method_tan() {
+        let result = run_program("fn main() -> f64 = (0.0).tan();");
+        assert_eq!(result, Value::Float(0.0));
+    }
+
+    #[test]
+    fn test_float_method_log() {
+        // ln(1.0) = 0.0
+        let result = run_program("fn main() -> f64 = (1.0).log();");
+        assert_eq!(result, Value::Float(0.0));
+    }
+
+    #[test]
+    fn test_float_method_log2() {
+        let result = run_program("fn main() -> f64 = (8.0).log2();");
+        assert_eq!(result, Value::Float(3.0));
+    }
+
+    #[test]
+    fn test_float_method_log10() {
+        let result = run_program("fn main() -> f64 = (100.0).log10();");
+        assert_eq!(result, Value::Float(2.0));
+    }
+
+    #[test]
+    fn test_float_method_exp() {
+        let result = run_program("fn main() -> f64 = (0.0).exp();");
+        assert_eq!(result, Value::Float(1.0));
+    }
+
+    #[test]
+    fn test_float_method_sign() {
+        let pos = run_program("fn main() -> f64 = (5.0).sign();");
+        assert_eq!(pos, Value::Float(1.0));
+        let neg = run_program("fn main() -> f64 = (-3.0).sign();");
+        assert_eq!(neg, Value::Float(-1.0));
+        let zero = run_program("fn main() -> f64 = (0.0).sign();");
+        assert_eq!(zero, Value::Float(0.0));
+    }
+
+    #[test]
+    fn test_float_method_is_positive() {
+        let result = run_program("fn main() -> bool = (5.0).is_positive();");
+        assert_eq!(result, Value::Bool(true));
+    }
+
+    #[test]
+    fn test_float_method_is_negative() {
+        let result = run_program("fn main() -> bool = (-3.0).is_negative();");
+        assert_eq!(result, Value::Bool(true));
+    }
+
+    #[test]
+    fn test_float_method_is_zero() {
+        let result = run_program("fn main() -> bool = (0.0).is_zero();");
+        assert_eq!(result, Value::Bool(true));
+    }
+
+    #[test]
+    fn test_float_method_trunc() {
+        let result = run_program("fn main() -> f64 = (3.7).trunc();");
+        assert_eq!(result, Value::Float(3.0));
+    }
+
+    #[test]
+    fn test_float_method_fract() {
+        let result = run_program("fn main() -> f64 = (3.75).fract();");
+        assert_eq!(result, Value::Float(0.75));
+    }
+
+    #[test]
+    fn test_float_method_powi() {
+        let result = run_program("fn main() -> f64 = (2.0).powi(10);");
+        assert_eq!(result, Value::Float(1024.0));
+    }
+
+    #[test]
+    fn test_float_method_powf() {
+        let result = run_program("fn main() -> f64 = (4.0).powf(0.5);");
+        assert_eq!(result, Value::Float(2.0));
+    }
+
+    #[test]
+    fn test_float_method_cbrt() {
+        let result = run_program("fn main() -> f64 = (27.0).cbrt();");
+        assert_eq!(result, Value::Float(3.0));
+    }
+
+    #[test]
+    fn test_float_method_clamp() {
+        let result = run_program("fn main() -> f64 = (15.0).clamp(0.0, 10.0);");
+        assert_eq!(result, Value::Float(10.0));
+    }
+
+    #[test]
+    fn test_float_method_signum() {
+        let result = run_program("fn main() -> f64 = (-7.0).signum();");
+        assert_eq!(result, Value::Float(-1.0));
+    }
+
+    #[test]
+    fn test_float_method_recip() {
+        let result = run_program("fn main() -> f64 = (4.0).recip();");
+        assert_eq!(result, Value::Float(0.25));
+    }
+
+    #[test]
+    fn test_float_method_round_to() {
+        let result = run_program("fn main() -> f64 = (2.71828).round_to(2);");
+        // round_to(2) = round(2.71828 * 100) / 100 = 272.0 / 100.0 = 2.72
+        assert_eq!(result, Value::Float(2.72));
+    }
+
+    #[test]
+    fn test_float_method_approx_eq() {
+        let result = run_program("fn main() -> bool = (1.0000001).approx_eq(1.0, 0.001);");
+        assert_eq!(result, Value::Bool(true));
+    }
+
+    // ====================================================================
+    // Integer method tests (Cycle 420)
+    // ====================================================================
+
+    #[test]
+    fn test_int_method_abs() {
+        let result = run_program("fn main() -> i64 = (-42).abs();");
+        assert_eq!(result, Value::Int(42));
+    }
+
+    #[test]
+    fn test_int_method_min() {
+        let result = run_program("fn main() -> i64 = (10).min(3);");
+        assert_eq!(result, Value::Int(3));
+    }
+
+    #[test]
+    fn test_int_method_max() {
+        let result = run_program("fn main() -> i64 = (10).max(30);");
+        assert_eq!(result, Value::Int(30));
+    }
+
+    #[test]
+    fn test_int_method_clamp() {
+        let result = run_program("fn main() -> i64 = (50).clamp(0, 10);");
+        assert_eq!(result, Value::Int(10));
+    }
+
+    #[test]
+    fn test_int_method_clamp_below() {
+        let result = run_program("fn main() -> i64 = (-5).clamp(0, 10);");
+        assert_eq!(result, Value::Int(0));
+    }
+
+    #[test]
+    fn test_int_method_pow() {
+        let result = run_program("fn main() -> i64 = (2).pow(10);");
+        assert_eq!(result, Value::Int(1024));
+    }
+
+    #[test]
+    fn test_int_method_to_float() {
+        let result = run_program("fn main() -> f64 = (42).to_float();");
+        assert_eq!(result, Value::Float(42.0));
+    }
+
+    #[test]
+    fn test_int_method_to_string() {
+        let result = run_program("fn main() -> String = (123).to_string();");
+        assert_eq!(result, Value::Str(Rc::new("123".to_string())));
+    }
+
+    // ====================================================================
+    // String parsing method tests (Cycle 420)
+    // ====================================================================
+
+    #[test]
+    fn test_string_to_int_valid() {
+        let result = run_program(
+            "fn main() -> i64 = {
+                 match \"42\".to_int() {
+                     Option::Some(n) => n,
+                     Option::None => -1
+                 }
+             };"
+        );
+        assert_eq!(result, Value::Int(42));
+    }
+
+    #[test]
+    fn test_string_to_int_invalid() {
+        let result = run_program(
+            "fn main() -> i64 = {
+                 match \"abc\".to_int() {
+                     Option::Some(n) => n,
+                     Option::None => -1
+                 }
+             };"
+        );
+        assert_eq!(result, Value::Int(-1));
+    }
+
+    #[test]
+    fn test_string_to_float_valid() {
+        let result = run_program(
+            "fn main() -> f64 = {
+                 match \"2.5\".to_float() {
+                     Option::Some(f) => f,
+                     Option::None => -1.0
+                 }
+             };"
+        );
+        assert_eq!(result, Value::Float(2.5));
+    }
+
+    #[test]
+    fn test_string_chars_method() {
+        let result = run_program(
+            "fn main() -> i64 = {
+                 let cs = \"abc\".chars();
+                 cs.len()
+             };"
+        );
+        assert_eq!(result, Value::Int(3));
+    }
+
+    #[test]
+    fn test_string_reverse_method() {
+        let result = run_program("fn main() -> String = \"hello\".reverse();");
+        assert_eq!(result, Value::Str(Rc::new("olleh".to_string())));
+    }
+
+    #[test]
+    fn test_string_bytes_method() {
+        let result = run_program(
+            "fn main() -> i64 = {
+                 let bs = \"A\".bytes();
+                 bs[0]
+             };"
+        );
+        assert_eq!(result, Value::Int(65));
+    }
+
+    #[test]
+    fn test_string_char_at_method() {
+        let result = run_program("fn main() -> String = \"hello\".char_at(1);");
+        assert_eq!(result, Value::Str(Rc::new("e".to_string())));
+    }
+
+    #[test]
+    fn test_string_lines_method() {
+        let result = run_program(
+            "fn main() -> i64 = {
+                 let ls = \"a\\nb\\nc\".lines();
+                 ls.len()
+             };"
+        );
+        assert_eq!(result, Value::Int(3));
+    }
+
+    // ====================================================================
+    // Bool method tests (Cycle 420)
+    // ====================================================================
+
+    #[test]
+    fn test_bool_method_to_string() {
+        let result = run_program("fn main() -> String = true.to_string();");
+        assert_eq!(result, Value::Str(Rc::new("true".to_string())));
+    }
+
+    #[test]
+    fn test_bool_method_to_int() {
+        let t = run_program("fn main() -> i64 = true.to_int();");
+        assert_eq!(t, Value::Int(1));
+        let f = run_program("fn main() -> i64 = false.to_int();");
+        assert_eq!(f, Value::Int(0));
+    }
+
+    #[test]
+    fn test_bool_method_toggle() {
+        let result = run_program("fn main() -> bool = true.toggle();");
+        assert_eq!(result, Value::Bool(false));
+    }
+
+    // ====================================================================
+    // Char method tests (Cycle 420)
+    // ====================================================================
+
+    #[test]
+    fn test_char_method_to_int() {
+        let result = run_program("fn main() -> i64 = 'A'.to_int();");
+        assert_eq!(result, Value::Int(65));
+    }
+
+    #[test]
+    fn test_char_method_to_string() {
+        let result = run_program("fn main() -> String = 'Z'.to_string();");
+        assert_eq!(result, Value::Str(Rc::new("Z".to_string())));
+    }
+
+    // ====================================================================
+    // Builtin function tests (chr/ord) (Cycle 420)
+    // ====================================================================
+
+    #[test]
+    fn test_builtin_chr() {
+        let result = run_program("fn main() -> String = chr(65);");
+        assert_eq!(result, Value::Str(Rc::new("A".to_string())));
+    }
+
+    #[test]
+    fn test_builtin_ord() {
+        let result = run_program("fn main() -> i64 = ord('A');");
+        assert_eq!(result, Value::Int(65));
+    }
+
+    #[test]
+    fn test_builtin_abs_int() {
+        let result = run_program("fn main() -> i64 = abs(-10);");
+        assert_eq!(result, Value::Int(10));
+    }
+
+    #[test]
+    fn test_builtin_sqrt_float() {
+        let result = run_program("fn main() -> f64 = sqrt(25.0);");
+        assert_eq!(result, Value::Float(5.0));
+    }
 }
