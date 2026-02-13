@@ -3205,14 +3205,20 @@ fn step_array_index_idx(item: String, cur_temp: i64, cur_block: i64, cur_exit_la
     make_step(cur_temp, cur_block, cur_exit_label, eval + work_sep() + cont);
 
 // v0.90.2: Array index - step 3: emit GEP + load
+// v0.90.99: Add 2 to index to skip [capacity, length] header
 fn step_array_index_final(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String =
     let base_t = get_field(item, 1);
     let idx_temp = cur_temp - 1;
-    let gep = "%_t" + i2s(cur_temp);
-    let load_tmp = "%_t" + i2s(cur_temp + 1);
-    let w1 = sb_push_mir(sb, "  " + gep + " = gep %_t" + base_t + ", %_t" + i2s(idx_temp));
+    // Add 2 to index to skip array header
+    let hdr_const = "%_t" + i2s(cur_temp);
+    let w0a = sb_push_mir(sb, "  " + hdr_const + " = const 2");
+    let offset_tmp = "%_t" + i2s(cur_temp + 1);
+    let w0b = sb_push_mir(sb, "  " + offset_tmp + " = + %_t" + i2s(idx_temp) + ", " + hdr_const);
+    let gep = "%_t" + i2s(cur_temp + 2);
+    let load_tmp = "%_t" + i2s(cur_temp + 3);
+    let w1 = sb_push_mir(sb, "  " + gep + " = gep %_t" + base_t + ", " + offset_tmp);
     let w2 = sb_push_mir(sb, "  " + load_tmp + " = load_ptr " + gep);
-    make_step_leaf(cur_temp + 2);
+    make_step_leaf(cur_temp + 4);
 
 // v0.90.2: Set index - step 1: evaluate base
 fn step_set_index_start(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String =
@@ -3242,17 +3248,23 @@ fn step_set_index_val(item: String, cur_temp: i64, cur_block: i64, cur_exit_labe
     make_step(cur_temp, cur_block, cur_exit_label, eval + work_sep() + cont);
 
 // v0.90.2: Set index - step 4: emit GEP + store
+// v0.90.99: Add 2 to index to skip [capacity, length] header
 fn step_set_index_final(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String =
     let base_t = get_field(item, 1);
     let idx_t = get_field(item, 2);
     let val_temp = cur_temp - 1;
-    let gep = "%_t" + i2s(cur_temp);
-    let w1 = sb_push_mir(sb, "  " + gep + " = gep %_t" + base_t + ", %_t" + idx_t);
+    // Add 2 to index to skip array header
+    let hdr_const = "%_t" + i2s(cur_temp);
+    let w0a = sb_push_mir(sb, "  " + hdr_const + " = const 2");
+    let offset_tmp = "%_t" + i2s(cur_temp + 1);
+    let w0b = sb_push_mir(sb, "  " + offset_tmp + " = + %_t" + idx_t + ", " + hdr_const);
+    let gep = "%_t" + i2s(cur_temp + 2);
+    let w1 = sb_push_mir(sb, "  " + gep + " = gep %_t" + base_t + ", " + offset_tmp);
     let w2 = sb_push_mir(sb, "  store_ptr " + gep + ", %_t" + i2s(val_temp));
     // set returns 0 (unit)
-    let result = "%_t" + i2s(cur_temp + 1);
+    let result = "%_t" + i2s(cur_temp + 3);
     let w3 = sb_push_mir(sb, "  " + result + " = const 0");
-    make_step_leaf(cur_temp + 2);
+    make_step_leaf(cur_temp + 4);
 
 // v0.90.5: Field access - step 1: evaluate base expression
 fn step_field_access_start(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String =
@@ -3380,28 +3392,71 @@ fn lower_cast_ptr_f64_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop
     let w1 = sb_push_mir(sb, "  mark_f64_ptr %_t" + int_to_string(result_id));
     pack_ids(inner_temp, inner_block);
 
-// v0.90.9: Recursive: array_repeat - emit calloc(count, 8)
+// v0.90.9: Recursive: array_repeat - emit calloc(count+2, 8)
+// v0.90.99: Array layout = [capacity, length, data...] — allocate count+2 slots
 fn lower_array_repeat_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64 =
     let val_ast = get_child(ast, 0);
     let count_str = get_child(ast, 1);
+    let count_val = parse_int_simple(count_str, 0, 0);
+    let alloc_size = int_to_string(count_val + 2);
     let tmp = "%_t" + int_to_string(temp_id);
-    let w1 = sb_push_mir(sb, "  " + tmp + " = call @calloc(" + count_str + ", 8)");
-    pack_ids(temp_id + 1, block_id);
+    let w1 = sb_push_mir(sb, "  " + tmp + " = call @calloc(" + alloc_size + ", 8)");
+    // Store capacity at index 0
+    let cap_val = "%_t" + int_to_string(temp_id + 1);
+    let w2a = sb_push_mir(sb, "  " + cap_val + " = const " + count_str);
+    let cap_idx = "%_t" + int_to_string(temp_id + 2);
+    let w2b = sb_push_mir(sb, "  " + cap_idx + " = const 0");
+    let cap_gep = "%_t" + int_to_string(temp_id + 3);
+    let w2c = sb_push_mir(sb, "  " + cap_gep + " = gep " + tmp + ", " + cap_idx);
+    let w2d = sb_push_mir(sb, "  store_ptr " + cap_gep + ", " + cap_val);
+    // Store length at index 1
+    let len_idx = "%_t" + int_to_string(temp_id + 4);
+    let w2e = sb_push_mir(sb, "  " + len_idx + " = const 1");
+    let len_gep = "%_t" + int_to_string(temp_id + 5);
+    let w2f = sb_push_mir(sb, "  " + len_gep + " = gep " + tmp + ", " + len_idx);
+    let w2g = sb_push_mir(sb, "  store_ptr " + len_gep + ", " + cap_val);
+    // Copy array base pointer as result
+    let result = "%_t" + int_to_string(temp_id + 6);
+    let w3 = sb_push_mir(sb, "  " + result + " = copy " + tmp);
+    pack_ids(temp_id + 7, block_id);
 
 // v0.90.10: Array literal [expr1, expr2, ...] → calloc + store each element
+// v0.90.99: Array layout = [capacity, length, data...] — allocate count+2 slots
 fn lower_array_literal_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64 =
     let count = count_children(ast);
     let arr_tmp = "%_t" + int_to_string(temp_id);
-    let w1 = sb_push_mir(sb, "  " + arr_tmp + " = call @calloc(" + int_to_string(count) + ", 8)");
-    let ids = lower_array_elements_sb(ast, 0, count, arr_tmp, temp_id + 1, block_id, sb, loop_exit);
+    let w1 = sb_push_mir(sb, "  " + arr_tmp + " = call @calloc(" + int_to_string(count + 2) + ", 8)");
+    // Store capacity at index 0
+    let cap_val = "%_t" + int_to_string(temp_id + 1);
+    let w2a = sb_push_mir(sb, "  " + cap_val + " = const " + int_to_string(count));
+    let cap_idx = "%_t" + int_to_string(temp_id + 2);
+    let w2b = sb_push_mir(sb, "  " + cap_idx + " = const 0");
+    let cap_gep = "%_t" + int_to_string(temp_id + 3);
+    let w2c = sb_push_mir(sb, "  " + cap_gep + " = gep " + arr_tmp + ", " + cap_idx);
+    let w2d = sb_push_mir(sb, "  store_ptr " + cap_gep + ", " + cap_val);
+    // Store length at index 1
+    let len_idx = "%_t" + int_to_string(temp_id + 4);
+    let w2e = sb_push_mir(sb, "  " + len_idx + " = const 1");
+    let len_gep = "%_t" + int_to_string(temp_id + 5);
+    let w2f = sb_push_mir(sb, "  " + len_gep + " = gep " + arr_tmp + ", " + len_idx);
+    let w2g = sb_push_mir(sb, "  store_ptr " + len_gep + ", " + cap_val);
+    // Store elements starting at index 2
+    let ids = lower_array_elements_sb(ast, 0, count, arr_tmp, temp_id + 6, block_id, sb, loop_exit);
     // Emit copy of array base as result so callers get the pointer
     let result_temp = unpack_temp(ids);
     let result_tmp = "%_t" + int_to_string(result_temp);
-    let w2 = sb_push_mir(sb, "  " + result_tmp + " = copy " + arr_tmp);
+    let w3 = sb_push_mir(sb, "  " + result_tmp + " = copy " + arr_tmp);
     pack_ids(result_temp + 1, unpack_block(ids));
 
-// Store each element of array literal
+// Store each element of array/tuple literal
+// v0.90.99: base_offset=2 for arrays (skip [capacity, length] header), 0 for tuples/structs
 fn lower_array_elements_sb(ast: String, idx: i64, count: i64, arr_tmp: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64 =
+    lower_elements_with_offset_sb(ast, idx, count, arr_tmp, temp_id, block_id, sb, loop_exit, 2);
+
+fn lower_tuple_elements_sb(ast: String, idx: i64, count: i64, arr_tmp: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64 =
+    lower_elements_with_offset_sb(ast, idx, count, arr_tmp, temp_id, block_id, sb, loop_exit, 0);
+
+fn lower_elements_with_offset_sb(ast: String, idx: i64, count: i64, arr_tmp: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String, base_offset: i64) -> i64 =
     if idx >= count { pack_ids(temp_id, block_id) }
     else {
         let elem = get_child(ast, idx);
@@ -3409,13 +3464,13 @@ fn lower_array_elements_sb(ast: String, idx: i64, count: i64, arr_tmp: String, t
         let new_temp = unpack_temp(ids);
         let new_block = unpack_block(ids);
         let elem_tmp = "%_t" + int_to_string(new_temp - 1);
-        // Emit const for index, gep for pointer, store_ptr for value
+        // Emit const for index+offset, gep for pointer, store_ptr for value
         let idx_tmp = "%_t" + int_to_string(new_temp);
-        let w1 = sb_push_mir(sb, "  " + idx_tmp + " = const " + int_to_string(idx));
+        let w1 = sb_push_mir(sb, "  " + idx_tmp + " = const " + int_to_string(idx + base_offset));
         let gep_tmp = "%_t" + int_to_string(new_temp + 1);
         let w2 = sb_push_mir(sb, "  " + gep_tmp + " = gep " + arr_tmp + ", " + idx_tmp);
         let w3 = sb_push_mir(sb, "  store_ptr " + gep_tmp + ", " + elem_tmp);
-        lower_array_elements_sb(ast, idx + 1, count, arr_tmp, new_temp + 2, new_block, sb, loop_exit)
+        lower_elements_with_offset_sb(ast, idx + 1, count, arr_tmp, new_temp + 2, new_block, sb, loop_exit, base_offset)
     };
 
 // v0.90.11: Tuple expression (tuple e1 e2 ...) → calloc + store elements
@@ -3424,7 +3479,7 @@ fn lower_tuple_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: 
     let count = count_children(ast);
     let tup_tmp = "%_t" + int_to_string(temp_id);
     let w1 = sb_push_mir(sb, "  " + tup_tmp + " = call @calloc(" + int_to_string(count) + ", 8)");
-    let ids = lower_array_elements_sb(ast, 0, count, tup_tmp, temp_id + 1, block_id, sb, loop_exit);
+    let ids = lower_tuple_elements_sb(ast, 0, count, tup_tmp, temp_id + 1, block_id, sb, loop_exit);
     let result_temp = unpack_temp(ids);
     let result_tmp = "%_t" + int_to_string(result_temp);
     let w2 = sb_push_mir(sb, "  " + result_tmp + " = copy " + tup_tmp);
@@ -3503,7 +3558,8 @@ fn step_tuple(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: Strin
     let new_exit = if new_block > cur_block { get_exit_label(ast, cur_exit_label, cur_block) } else { cur_exit_label };
     make_step(unpack_temp(ids), new_block, new_exit, "");
 
-// v0.90.9: Array repeat [val; count] → calloc(count, elem_size)
+// v0.90.9: Array repeat [val; count] → calloc(count+2, elem_size)
+// v0.90.99: Array layout = [capacity, length, data...] — allocate count+2 slots
 // For now: always zero-init via calloc (all benchmarks use [0.0; N] or [0; N])
 fn step_array_repeat(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String =
     let ast = get_field(item, 1);
@@ -3511,9 +3567,29 @@ fn step_array_repeat(item: String, cur_temp: i64, cur_block: i64, cur_exit_label
     let val_ast = get_child(ast, 0);
     let count_str = get_child(ast, 1);
     let tmp = "%_t" + i2s(cur_temp);
-    // Emit: %tmp = call ptr @calloc(i64 count, i64 8)
-    let w1 = sb_push_mir(sb, "  " + tmp + " = call @calloc(" + count_str + ", 8)");
-    make_step_leaf(cur_temp + 1);
+    // Compute count+2 for allocation (count is always a literal integer)
+    let count_val = parse_int_simple(count_str, 0, 0);
+    let alloc_size = int_to_string(count_val + 2);
+    // Emit: %tmp = call ptr @calloc(i64 count+2, i64 8)
+    let w1 = sb_push_mir(sb, "  " + tmp + " = call @calloc(" + alloc_size + ", 8)");
+    // Store capacity at index 0
+    let cap_val = "%_t" + i2s(cur_temp + 1);
+    let w2a = sb_push_mir(sb, "  " + cap_val + " = const " + count_str);
+    let cap_idx = "%_t" + i2s(cur_temp + 2);
+    let w2b = sb_push_mir(sb, "  " + cap_idx + " = const 0");
+    let cap_gep = "%_t" + i2s(cur_temp + 3);
+    let w2c = sb_push_mir(sb, "  " + cap_gep + " = gep " + tmp + ", " + cap_idx);
+    let w2d = sb_push_mir(sb, "  store_ptr " + cap_gep + ", " + cap_val);
+    // Store length at index 1
+    let len_idx = "%_t" + i2s(cur_temp + 4);
+    let w2e = sb_push_mir(sb, "  " + len_idx + " = const 1");
+    let len_gep = "%_t" + i2s(cur_temp + 5);
+    let w2f = sb_push_mir(sb, "  " + len_gep + " = gep " + tmp + ", " + len_idx);
+    let w2g = sb_push_mir(sb, "  store_ptr " + len_gep + ", " + cap_val);
+    // Copy array base pointer as result (step machine reads cur_temp-1 as result)
+    let result = "%_t" + i2s(cur_temp + 6);
+    let w3 = sb_push_mir(sb, "  " + result + " = copy " + tmp);
+    make_step_leaf(cur_temp + 7);
 
 // Build argument string from temp range [start, end)
 fn build_args_str(start: i64, end: i64) -> String =
@@ -4012,6 +4088,7 @@ fn lower_set_field_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_ex
     let w2 = sb_push_mir(sb, "  " + dest + " = const 0");
     pack_ids(val_temp + 1, val_block);
 
+// v0.90.99: Add 2 to index to skip [capacity, length] header
 fn lower_index_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64 =
     let base_expr = get_child(ast, 0);
     let idx_expr = get_child(ast, 1);
@@ -4023,12 +4100,18 @@ fn lower_index_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: 
     let idx_temp = unpack_temp(idx_result);
     let idx_block = unpack_block(idx_result);
     let idx_id = idx_temp - 1;
-    let gep_dest = "%_t" + int_to_string(idx_temp);
-    let load_dest = "%_t" + int_to_string(idx_temp + 1);
-    let w1 = sb_push_mir(sb, "  " + gep_dest + " = gep %_t" + int_to_string(base_id) + ", %_t" + int_to_string(idx_id));
+    // Add 2 to index to skip array header
+    let hdr_const = "%_t" + int_to_string(idx_temp);
+    let w0a = sb_push_mir(sb, "  " + hdr_const + " = const 2");
+    let offset_tmp = "%_t" + int_to_string(idx_temp + 1);
+    let w0b = sb_push_mir(sb, "  " + offset_tmp + " = + %_t" + int_to_string(idx_id) + ", " + hdr_const);
+    let gep_dest = "%_t" + int_to_string(idx_temp + 2);
+    let load_dest = "%_t" + int_to_string(idx_temp + 3);
+    let w1 = sb_push_mir(sb, "  " + gep_dest + " = gep %_t" + int_to_string(base_id) + ", " + offset_tmp);
     let w2 = sb_push_mir(sb, "  " + load_dest + " = load_ptr " + gep_dest);
-    pack_ids(idx_temp + 2, idx_block);
+    pack_ids(idx_temp + 4, idx_block);
 
+// v0.90.99: Add 2 to index to skip [capacity, length] header
 fn lower_set_index_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64 =
     let base_expr = get_child(ast, 0);
     let idx_expr = get_child(ast, 1);
@@ -4045,12 +4128,17 @@ fn lower_set_index_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_ex
     let val_temp = unpack_temp(val_result);
     let val_block = unpack_block(val_result);
     let val_id = val_temp - 1;
-    let gep_dest = "%_t" + int_to_string(val_temp);
-    let w1 = sb_push_mir(sb, "  " + gep_dest + " = gep %_t" + int_to_string(base_id) + ", %_t" + int_to_string(idx_id));
+    // Add 2 to index to skip array header
+    let hdr_const = "%_t" + int_to_string(val_temp);
+    let w0a = sb_push_mir(sb, "  " + hdr_const + " = const 2");
+    let offset_tmp = "%_t" + int_to_string(val_temp + 1);
+    let w0b = sb_push_mir(sb, "  " + offset_tmp + " = + %_t" + int_to_string(idx_id) + ", " + hdr_const);
+    let gep_dest = "%_t" + int_to_string(val_temp + 2);
+    let w1 = sb_push_mir(sb, "  " + gep_dest + " = gep %_t" + int_to_string(base_id) + ", " + offset_tmp);
     let w2 = sb_push_mir(sb, "  store_ptr " + gep_dest + ", %_t" + int_to_string(val_id));
-    let result_dest = "%_t" + int_to_string(val_temp + 1);
+    let result_dest = "%_t" + int_to_string(val_temp + 3);
     let w3 = sb_push_mir(sb, "  " + result_dest + " = const 0");
-    pack_ids(val_temp + 2, val_block);
+    pack_ids(val_temp + 4, val_block);
 
 // ============================================================================
 // v0.95: For-Loop Range Lowering

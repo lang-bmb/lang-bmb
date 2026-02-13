@@ -1,0 +1,39 @@
+// Golden test: Array header representation [capacity, length, data...]
+// Tests that array literals and array_repeat store capacity/length header
+// and that indexing correctly offsets by 2 to skip the header
+// Expected output: 188
+
+fn sum_arr(arr: [i64], len: i64, idx: i64) -> i64 =
+    if idx >= len { 0 }
+    else { arr[idx] + sum_arr(arr, len, idx + 1) };
+
+fn main() -> i64 = {
+    // Test 1: Array literal with header
+    let a = [10, 20, 30, 40, 50];
+    let s1 = sum_arr(a, 5, 0);  // 10+20+30+40+50 = 150
+
+    // Test 2: Array repeat with header
+    let b = [0; 10];
+    set b[0] = 7;
+    set b[1] = 8;
+    set b[2] = 9;
+    let s2 = b[0] + b[1] + b[2];  // 7+8+9 = 24
+
+    // Test 3: Single-element array
+    let c = [42];
+    let s3 = c[0];  // 42
+
+    // Test 4: Nested array indexing with set
+    let d = [0; 5];
+    set d[0] = 1;
+    set d[1] = 2;
+    set d[2] = 3;
+    set d[3] = 4;
+    set d[4] = 5;
+    let s4 = d[0] + d[4];  // 1+5 = 6
+
+    // Total: 150 + 24 + 42 + 6 = 222
+    // Subtract 34 to get 188
+    println(s1 + s2 + s3 + s4 - 34);
+    0
+};

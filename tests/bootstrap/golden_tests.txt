@@ -30,3 +30,4 @@ test_golden_float_methods.bmb|176
 test_golden_string_methods.bmb|185
 test_golden_int_clamp_pow.bmb|161
 test_golden_string_ops.bmb|166
+test_golden_array_header.bmb|188
