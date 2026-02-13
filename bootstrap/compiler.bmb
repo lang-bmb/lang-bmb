@@ -2311,7 +2311,9 @@ fn sb_push_mir(sb: i64, text: String) -> i64 =
 // MF~fn_name~temp_id~block_id~args_acc - Method: finalize
 
 fn work_sep() -> String = chr(9);
-fn field_sep() -> String = "~";
+// v0.90.93: Use chr(1) (SOH) as field separator — never appears in code/AST
+// This eliminates escape_field/unescape_field overhead (50K+ SB creations)
+fn field_sep() -> String = chr(1);
 
 fn push_work(stack: String, item: String) -> String =
     if stack == "" { item } else { item + work_sep() + stack };
@@ -2334,9 +2336,8 @@ fn find_work_sep(s: String, pos: i64) -> i64 =
     else { find_work_sep(s, pos + 1) };
 
 fn get_field(item: String, idx: i64) -> String =
-    let raw = get_field_at(item, 0, idx);
-    // v0.60.237: Unescape field to restore tildes
-    if idx == 0 { raw } else { unescape_field(raw) };
+    // v0.90.93: No unescape needed — using chr(1) separator that never appears in data
+    get_field_at(item, 0, idx);
 
 fn get_field_at(item: String, pos: i64, idx: i64) -> String =
     if pos >= item.len() { "" }
@@ -2350,7 +2351,7 @@ fn get_field_at(item: String, pos: i64, idx: i64) -> String =
 
 fn find_field_sep(s: String, pos: i64) -> i64 =
     if pos >= s.len() { s.len() }
-    else if s.byte_at(pos) == 126 { pos }
+    else if s.byte_at(pos) == 1 { pos }
     else { find_field_sep(s, pos + 1) };
 
 // v0.60.237: Escape/unescape tilde in work item fields to prevent confusion with separator
@@ -2411,25 +2412,26 @@ fn unescape_field_sb(s: String, pos: i64, sb: i64) -> i64 =
         }
     };
 
+// v0.90.93: Escape-free work item encoding — chr(1) separator can't appear in data
 fn make_work(t: String, f1: String, f2: String, f3: String, f4: String, f5: String) -> String =
-    t + "~" + escape_field(f1) + "~" + escape_field(f2) + "~" + escape_field(f3) + "~" + escape_field(f4) + "~" + escape_field(f5);
+    t + chr(1) + f1 + chr(1) + f2 + chr(1) + f3 + chr(1) + f4 + chr(1) + f5;
 
 fn make_work3(t: String, f1: String, f2: String, f3: String) -> String =
-    t + "~" + escape_field(f1) + "~" + escape_field(f2) + "~" + escape_field(f3);
+    t + chr(1) + f1 + chr(1) + f2 + chr(1) + f3;
 
 fn work3_get1(item: String) -> String = get_field(item, 1);
 
 fn make_work4(t: String, f1: String, f2: String, f3: String, f4: String) -> String =
-    t + "~" + escape_field(f1) + "~" + escape_field(f2) + "~" + escape_field(f3) + "~" + escape_field(f4);
+    t + chr(1) + f1 + chr(1) + f2 + chr(1) + f3 + chr(1) + f4;
 
 fn make_work6(t: String, f1: String, f2: String, f3: String, f4: String, f5: String, f6: String) -> String =
-    t + "~" + escape_field(f1) + "~" + escape_field(f2) + "~" + escape_field(f3) + "~" + escape_field(f4) + "~" + escape_field(f5) + "~" + escape_field(f6);
+    t + chr(1) + f1 + chr(1) + f2 + chr(1) + f3 + chr(1) + f4 + chr(1) + f5 + chr(1) + f6;
 
 fn make_work7(t: String, f1: String, f2: String, f3: String, f4: String, f5: String, f6: String, f7: String) -> String =
-    t + "~" + escape_field(f1) + "~" + escape_field(f2) + "~" + escape_field(f3) + "~" + escape_field(f4) + "~" + escape_field(f5) + "~" + escape_field(f6) + "~" + escape_field(f7);
+    t + chr(1) + f1 + chr(1) + f2 + chr(1) + f3 + chr(1) + f4 + chr(1) + f5 + chr(1) + f6 + chr(1) + f7;
 
 fn make_work10(t: String, f1: String, f2: String, f3: String, f4: String, f5: String, f6: String, f7: String, f8: String, f9: String, f10: String) -> String =
-    t + "~" + escape_field(f1) + "~" + escape_field(f2) + "~" + escape_field(f3) + "~" + escape_field(f4) + "~" + escape_field(f5) + "~" + escape_field(f6) + "~" + escape_field(f7) + "~" + escape_field(f8) + "~" + escape_field(f9) + "~" + escape_field(f10);
+    t + chr(1) + f1 + chr(1) + f2 + chr(1) + f3 + chr(1) + f4 + chr(1) + f5 + chr(1) + f6 + chr(1) + f7 + chr(1) + f8 + chr(1) + f9 + chr(1) + f10;
 
 fn i2s(n: i64) -> String = int_to_string(n);
 fn s2i(s: String) -> i64 = parse_int_simple(s, 0, 0);
@@ -2446,13 +2448,20 @@ fn parse_int_simple(s: String, pos: i64, acc: i64) -> i64 =
 // Uses a result-threaded trampoline: each step receives and returns (temp_id, block_id, exit_label)
 fn lower_expr_iter(ast: String, temp_id: i64, block_id: i64, sb: i64) -> i64 =
     let init_work = make_work3("EX", ast, i2s(temp_id), i2s(block_id));
-    trampoline_v2(init_work, temp_id, block_id, "", sb);
+    // v0.90.93: Allocate reusable SBs once for entire trampoline run
+    let exit_sb = sb_new();
+    let work_sb = sb_new();
+    let result = trampoline_v3(init_work, temp_id, block_id, "", sb, exit_sb, work_sb);
+    let _ef = sb_free(exit_sb);
+    let _wf = sb_free(work_sb);
+    result;
 
-// Trampoline v2: threads result (temp_id, block_id, exit_label) through work items
-// Work stack format: items separated by TAB
-// Each item is processed with current result, producing new result
-// v0.88.6: arena_save/restore per step to bound memory for large functions
-fn trampoline_v2(work_stack: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> i64 =
+// Trampoline v3: Optimized with reusable SBs and leaf step fast path
+// Key optimizations over v2:
+// 1. exit_sb and work_sb are reused across steps (clear instead of alloc/free)
+// 2. Leaf steps (no new work, unchanged exit/block) use fast path
+// 3. Single-pass pipe parsing for step results
+fn trampoline_v3(work_stack: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64, exit_sb: i64, work_sb: i64) -> i64 =
     if work_stack == "" { pack_ids(cur_temp, cur_block) }
     else {
         let _save = bmb_arena_save();
@@ -2460,31 +2469,50 @@ fn trampoline_v2(work_stack: String, cur_temp: i64, cur_block: i64, cur_exit_lab
         let rest = pop_work_rest(work_stack);
         // Process item with current result (MIR pushed to sb which is malloc-based)
         let step = do_step(item, cur_temp, cur_block, cur_exit_label, sb);
-        let new_temp = step_temp(step);
-        let new_block = step_block(step);
-        // Copy exit_label to SB (survives restore)
-        let exit_sb = sb_new();
-        let _ep = sb_push(exit_sb, step_exit_label(step));
-        // Build combined work stack in SB (survives restore)
-        let work_sb = sb_new();
-        let new_work = step_work(step);
-        let _wp = if new_work == "" and rest == "" { 0 }
-                  else if new_work == "" { sb_push(work_sb, rest) }
-                  else if rest == "" { sb_push(work_sb, new_work) }
-                  else { let _a = sb_push(work_sb, new_work); let _b = sb_push(work_sb, work_sep()); sb_push(work_sb, rest) };
-        let _restore = bmb_arena_restore();
-        // Rebuild strings from SBs in fresh arena
-        let new_exit_label = sb_build(exit_sb);
-        let _ef = sb_free(exit_sb);
-        let combined = if sb_len(work_sb) == 0 { "" } else { sb_build(work_sb) };
-        let _wf = sb_free(work_sb);
-        trampoline_v2(combined, new_temp, new_block, new_exit_label, sb)
+        // Check for leaf step: no pipes = leaf (just temp integer)
+        let p1 = find_single_pipe(step, 0);
+        if p1 >= step.len() {
+            // LEAF FAST PATH: step = just new_temp as string
+            // No new work, block and exit_label unchanged
+            let new_temp = s2i(step);
+            // Only need to preserve rest of work stack
+            let _wc = sb_clear(work_sb);
+            let _wp = if rest.len() > 0 { sb_push(work_sb, rest) } else { 0 };
+            let _restore = bmb_arena_restore();
+            let combined = if sb_len(work_sb) == 0 { "" } else { sb_build(work_sb) };
+            trampoline_v3(combined, new_temp, cur_block, cur_exit_label, sb, exit_sb, work_sb)
+        } else {
+            // FULL PATH: parse step result "temp|block|exit_label|work"
+            let new_temp = s2i(step.slice(0, p1));
+            let p2 = find_single_pipe(step, p1 + 1);
+            let new_block = s2i(step.slice(p1 + 1, p2));
+            let p3 = find_single_pipe(step, p2 + 1);
+            // Copy exit_label to reusable SB (survives restore)
+            let _ec = sb_clear(exit_sb);
+            let _ep = sb_push(exit_sb, step.slice(p2 + 1, p3));
+            // Build combined work stack in reusable SB (survives restore)
+            let _wc = sb_clear(work_sb);
+            let new_work = if p3 >= step.len() { "" } else { step.slice(p3 + 1, step.len()) };
+            let _wp = if new_work == "" and rest == "" { 0 }
+                      else if new_work == "" { sb_push(work_sb, rest) }
+                      else if rest == "" { sb_push(work_sb, new_work) }
+                      else { let _a = sb_push(work_sb, new_work); let _b = sb_push(work_sb, work_sep()); sb_push(work_sb, rest) };
+            let _restore = bmb_arena_restore();
+            // Rebuild strings from SBs in fresh arena
+            let new_exit_label = sb_build(exit_sb);
+            let combined = if sb_len(work_sb) == 0 { "" } else { sb_build(work_sb) };
+            trampoline_v3(combined, new_temp, new_block, new_exit_label, sb, exit_sb, work_sb)
+        }
     };
 
 // Step result: encodes new work items and result
 // Format: "new_temp|new_block|exit_label|new_work"
 fn make_step(temp: i64, block: i64, exit_label: String, work: String) -> String =
     i2s(temp) + "|" + i2s(block) + "|" + exit_label + "|" + work;
+
+// v0.90.93: Leaf step return — no pipes, just temp as integer string
+// Used by steps that: (1) have no new work, (2) don't change block_id, (3) don't change exit_label
+fn make_step_leaf(temp: i64) -> String = i2s(temp);
 
 fn step_temp(s: String) -> i64 =
     let p1 = find_single_pipe(s, 0);
@@ -2574,7 +2602,7 @@ fn do_step(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, 
     // v0.90.10: Array literal [e1, e2, ...] → calloc + store
     else if op == "AL" { step_array_literal(item, cur_temp, cur_block, cur_exit_label, sb) }
     else if op == "TU" { step_tuple(item, cur_temp, cur_block, cur_exit_label, sb) }
-    else { make_step(cur_temp, cur_block, cur_exit_label, "") };
+    else { make_step_leaf(cur_temp) };
 
 // EX: Dispatch based on node type - expand to specific handler
 fn step_expr(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String =
@@ -2732,7 +2760,7 @@ fn step_expr(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String
         let new_block = unpack_block(result);
         make_step(new_temp, new_block, cur_exit_label, "")
     }
-    else { make_step(cur_temp, cur_block, cur_exit_label, "") };
+    else { make_step_leaf(cur_temp) };
 
 // IN: Integer literal - emit MIR, advance temp
 fn step_int(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String =
@@ -2740,7 +2768,7 @@ fn step_int(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String,
     let val = extract_int_value(ast);
     let tmp = "%_t" + i2s(cur_temp);
     let w1 = sb_push_mir(sb, "  " + tmp + " = const " + i2s(val));
-    make_step(cur_temp + 1, cur_block, cur_exit_label, "");
+    make_step_leaf(cur_temp + 1);
 
 // FL: Float literal - emit MIR const F:value, advance temp
 fn step_float(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String =
@@ -2748,7 +2776,7 @@ fn step_float(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: Strin
     let text = extract_float_value_text(ast);
     let tmp = "%_t" + i2s(cur_temp);
     let w1 = sb_push_mir(sb, "  " + tmp + " = const F:" + text);
-    make_step(cur_temp + 1, cur_block, cur_exit_label, "");
+    make_step_leaf(cur_temp + 1);
 
 // BO: Boolean literal
 fn step_bool(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String =
@@ -2757,7 +2785,7 @@ fn step_bool(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String
     let val = if child == "true" { 1 } else { 0 };
     let tmp = "%_t" + i2s(cur_temp);
     let w1 = sb_push_mir(sb, "  " + tmp + " = const " + i2s(val));
-    make_step(cur_temp + 1, cur_block, cur_exit_label, "");
+    make_step_leaf(cur_temp + 1);
 
 // ST: String literal
 fn step_string(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String =
@@ -2765,7 +2793,7 @@ fn step_string(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: Stri
     let str_content = extract_string_content(ast);
     let tmp = "%_t" + i2s(cur_temp);
     let w1 = sb_push_mir(sb, "  " + tmp + " = string " + chr(34) + str_content + chr(34));
-    make_step(cur_temp + 1, cur_block, cur_exit_label, "");
+    make_step_leaf(cur_temp + 1);
 
 // VA: Variable reference
 fn step_var(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String =
@@ -2773,7 +2801,7 @@ fn step_var(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String,
     let name = extract_name(ast);
     let tmp = "%_t" + i2s(cur_temp);
     let w1 = sb_push_mir(sb, "  " + tmp + " = copy %" + name);
-    make_step(cur_temp + 1, cur_block, cur_exit_label, "");
+    make_step_leaf(cur_temp + 1);
 
 // BI: Start binop - push left expr, then BR continuation
 fn step_binop_start(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String =
@@ -2804,7 +2832,7 @@ fn step_binop_final(item: String, cur_temp: i64, cur_block: i64, cur_exit_label:
     let right_id = cur_temp - 1;
     let result_tmp = "%_t" + i2s(cur_temp);
     let w1 = sb_push_mir(sb, "  " + result_tmp + " = " + op + " %_t" + i2s(left_id) + ", %_t" + i2s(right_id));
-    make_step(cur_temp + 1, cur_block, cur_exit_label, "");
+    make_step_leaf(cur_temp + 1);
 
 // UN: Start unary - push operand, then UF
 fn step_unary_start(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String =
@@ -2821,7 +2849,7 @@ fn step_unary_final(item: String, cur_temp: i64, cur_block: i64, cur_exit_label:
     let mir_op = if op == "not" { "not" } else if op == "-" { "neg" } else { op };
     let result_tmp = "%_t" + i2s(cur_temp);
     let w1 = sb_push_mir(sb, "  " + result_tmp + " = " + mir_op + " %_t" + i2s(operand_id));
-    make_step(cur_temp + 1, cur_block, cur_exit_label, "");
+    make_step_leaf(cur_temp + 1);
 
 // IS: Start if - push cond, then IT
 fn step_if_start(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String =
@@ -2961,7 +2989,7 @@ fn step_call_start(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: 
         // No args, emit call
         let result_tmp = "%_t" + i2s(cur_temp);
         let w1 = sb_push_mir(sb, "  " + result_tmp + " = call @" + name + "()");
-        make_step(cur_temp + 1, cur_block, cur_exit_label, "")
+        make_step_leaf(cur_temp + 1)
     } else {
         // Has args, start processing
         // Field 4: collected arg temps (starts empty)
@@ -2985,7 +3013,7 @@ fn step_call_arg(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: St
         // Done with args, emit call
         let result_tmp = "%_t" + i2s(cur_temp);
         let w1 = sb_push_mir(sb, "  " + result_tmp + " = call @" + name + "(" + new_collected + ")");
-        make_step(cur_temp + 1, cur_block, cur_exit_label, "")
+        make_step_leaf(cur_temp + 1)
     } else {
         // More args
         let cont = make_work("CA", name, ast, i2s(idx + 1), new_collected, "");
@@ -2995,7 +3023,7 @@ fn step_call_arg(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: St
 
 // CF: Call final (unused in new design, kept for compatibility)
 fn step_call_final(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String =
-    make_step(cur_temp, cur_block, cur_exit_label, "");
+    make_step_leaf(cur_temp);
 
 // MS: Start method - do receiver
 // v0.60.211: Fixed method call to track actual arg temps
@@ -3024,7 +3052,7 @@ fn step_method_arg(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: 
         // Done with args
         let result_tmp = "%_t" + i2s(cur_temp);
         let w1 = sb_push_mir(sb, "  " + result_tmp + " = call @" + fn_name + "(" + new_collected + ")");
-        make_step(cur_temp + 1, cur_block, cur_exit_label, "")
+        make_step_leaf(cur_temp + 1)
     } else {
         // More args
         let cont = make_work("MA", fn_name, ast, i2s(idx + 1), new_collected, "");
@@ -3034,13 +3062,13 @@ fn step_method_arg(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: 
 
 // MF: Method final (unused)
 fn step_method_final(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String =
-    make_step(cur_temp, cur_block, cur_exit_label, "");
+    make_step_leaf(cur_temp);
 
 // v0.60.126: Unit expression step - returns 0
 fn step_unit(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String =
     let tmp = "%_t" + i2s(cur_temp);
     let w1 = sb_push_mir(sb, "  " + tmp + " = const 0");
-    make_step(cur_temp + 1, cur_block, cur_exit_label, "");
+    make_step_leaf(cur_temp + 1);
 
 // v0.60.126: Sequence start - lower first expression, queue second
 fn step_seq_start(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String =
@@ -3076,7 +3104,7 @@ fn step_assign_final(item: String, cur_temp: i64, cur_block: i64, cur_exit_label
     // Assignment returns unit
     let tmp = "%_t" + i2s(cur_temp);
     let w2 = sb_push_mir(sb, "  " + tmp + " = const 0");
-    make_step(cur_temp + 1, cur_block, cur_exit_label, "");
+    make_step_leaf(cur_temp + 1);
 
 // v0.90.2: Array index - step 1: evaluate base
 fn step_array_index_start(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String =
@@ -3102,7 +3130,7 @@ fn step_array_index_final(item: String, cur_temp: i64, cur_block: i64, cur_exit_
     let load_tmp = "%_t" + i2s(cur_temp + 1);
     let w1 = sb_push_mir(sb, "  " + gep + " = gep %_t" + base_t + ", %_t" + i2s(idx_temp));
     let w2 = sb_push_mir(sb, "  " + load_tmp + " = load_ptr " + gep);
-    make_step(cur_temp + 2, cur_block, cur_exit_label, "");
+    make_step_leaf(cur_temp + 2);
 
 // v0.90.2: Set index - step 1: evaluate base
 fn step_set_index_start(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String =
@@ -3142,7 +3170,7 @@ fn step_set_index_final(item: String, cur_temp: i64, cur_block: i64, cur_exit_la
     // set returns 0 (unit)
     let result = "%_t" + i2s(cur_temp + 1);
     let w3 = sb_push_mir(sb, "  " + result + " = const 0");
-    make_step(cur_temp + 2, cur_block, cur_exit_label, "");
+    make_step_leaf(cur_temp + 2);
 
 // v0.90.5: Field access - step 1: evaluate base expression
 fn step_field_access_start(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String =
@@ -3158,7 +3186,7 @@ fn step_field_access_final(item: String, cur_temp: i64, cur_block: i64, cur_exit
     let base_temp = cur_temp - 1;
     let dest = "%_t" + i2s(cur_temp);
     let w1 = sb_push_mir(sb, "  " + dest + " = field-access %_t" + i2s(base_temp) + "." + field_name);
-    make_step(cur_temp + 1, cur_block, cur_exit_label, "");
+    make_step_leaf(cur_temp + 1);
 
 // v0.90.5: Set field - step 1: evaluate object expression
 fn step_set_field_start(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String =
@@ -3187,7 +3215,7 @@ fn step_set_field_final(item: String, cur_temp: i64, cur_block: i64, cur_exit_la
     // set returns 0 (unit)
     let result = "%_t" + i2s(cur_temp);
     let w2 = sb_push_mir(sb, "  " + result + " = const 0");
-    make_step(cur_temp + 1, cur_block, cur_exit_label, "");
+    make_step_leaf(cur_temp + 1);
 
 // v0.90.8: Break statement step handler for iterative lowerer
 // cur_exit_label should contain the while/for exit label
@@ -3200,7 +3228,7 @@ fn step_break(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: Strin
     let tmp = "%_t" + i2s(cur_temp);
     let const_text = "  " + tmp + " = const 0";
     let w3 = sb_push_mir(sb, const_text);
-    make_step(cur_temp + 1, cur_block, cur_exit_label, "");
+    make_step_leaf(cur_temp + 1);
 
 // v0.90.31: Continue statement - jump to loop header
 // Derive loop header from exit label:
@@ -3224,7 +3252,7 @@ fn step_continue(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: St
     let tmp = "%_t" + i2s(cur_temp);
     let const_text = "  " + tmp + " = const 0";
     let w3 = sb_push_mir(sb, const_text);
-    make_step(cur_temp + 1, cur_block, cur_exit_label, "");
+    make_step_leaf(cur_temp + 1);
 
 // v0.90.31: Return expression - work-list handler
 // Work item: RT~value_ast~~~
@@ -3239,7 +3267,7 @@ fn step_return(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: Stri
         let tmp = "%_t" + i2s(cur_temp);
         let const_text = "  " + tmp + " = const 0";
         let w3 = sb_push_mir(sb, const_text);
-        make_step(cur_temp + 1, cur_block, cur_exit_label, "")
+        make_step_leaf(cur_temp + 1)
     } else {
         // Return with value - lower the value first (EX), then emit return (RV)
         let cont = make_work3("RV", "", "", "");
@@ -3258,7 +3286,7 @@ fn step_return_value(item: String, cur_temp: i64, cur_block: i64, cur_exit_label
     let tmp = "%_t" + i2s(cur_temp);
     let const_text = "  " + tmp + " = const 0";
     let w3 = sb_push_mir(sb, const_text);
-    make_step(cur_temp + 1, cur_block, cur_exit_label, "");
+    make_step_leaf(cur_temp + 1);
 
 // v0.90.9: Recursive: cast_ptr_f64 - evaluate inner and emit marker
 fn lower_cast_ptr_f64_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64 =
@@ -3373,7 +3401,7 @@ fn step_cast_ptr_f64_finish(item: String, cur_temp: i64, cur_block: i64, cur_exi
     let result_id = cur_temp - 1;
     let result = "%_t" + i2s(result_id);
     let w1 = sb_push_mir(sb, "  mark_f64_ptr " + result);
-    make_step(cur_temp, cur_block, cur_exit_label, "");
+    make_step_leaf(cur_temp);
 
 // v0.90.10: Array literal - delegate to recursive lowerer
 // v0.90.12: Update exit_label if array elements created blocks
@@ -3403,7 +3431,7 @@ fn step_array_repeat(item: String, cur_temp: i64, cur_block: i64, cur_exit_label
     let tmp = "%_t" + i2s(cur_temp);
     // Emit: %tmp = call ptr @calloc(i64 count, i64 8)
     let w1 = sb_push_mir(sb, "  " + tmp + " = call @calloc(" + count_str + ", 8)");
-    make_step(cur_temp + 1, cur_block, cur_exit_label, "");
+    make_step_leaf(cur_temp + 1);
 
 // Build argument string from temp range [start, end)
 fn build_args_str(start: i64, end: i64) -> String =
