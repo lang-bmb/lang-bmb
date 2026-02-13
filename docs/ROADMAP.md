@@ -299,7 +299,7 @@ select {
 | `loop {}` 무한 루프 | ✅ | break 기반 무한 루프 (v0.90.31) |
 | `continue` 문 | ✅ | 루프 반복 건너뛰기 (v0.90.31) |
 | Type cast (`as`) 로워링 | ✅ | 명시적 타입 변환 (v0.90.1, no-op for same-width) |
-| Nullable `T?` 로워링 | 📋 | 널러블 타입 지원 |
+| Nullable `T?` 로워링 | ✅ | 널러블 타입 지원 (v0.90.102: is_some/is_none/unwrap/unwrap_or/expect + T? 파싱) |
 | Closure capture 완성 | 📋 | 자유 변수 캡처 분석 |
 
 #### v0.93: 부트스트랩 코드젠 최적화 📋
