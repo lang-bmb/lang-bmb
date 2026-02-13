@@ -307,4 +307,44 @@ fn main() -> i64 = 42;
         let result = expand_includes(source, Path::new("test.bmb"), &[]);
         assert!(result.is_err());
     }
+
+    // ====================================================================
+    // Additional preprocessor tests (Cycle 429)
+    // ====================================================================
+
+    #[test]
+    fn test_expand_with_prelude_none() {
+        let source = "fn main() -> i64 = 42;";
+        let result = expand_with_prelude(source, Path::new("test.bmb"), &[], None).unwrap();
+        assert!(result.contains("fn main()"));
+    }
+
+    #[test]
+    fn test_expand_with_prelude_nonexistent_file() {
+        let source = "fn main() -> i64 = 42;";
+        // If prelude file doesn't exist, source should pass through unchanged
+        let result = expand_with_prelude(
+            source,
+            Path::new("test.bmb"),
+            &[],
+            Some(Path::new("/nonexistent/prelude.bmb")),
+        ).unwrap();
+        assert!(result.contains("fn main()"));
+    }
+
+    #[test]
+    fn test_expand_preserves_non_include_lines() {
+        let source = "fn a() -> i64 = 1;\n// comment\nfn b() -> i64 = 2;";
+        let result = expand_includes(source, Path::new("test.bmb"), &[]).unwrap();
+        assert!(result.contains("fn a()"));
+        assert!(result.contains("// comment"));
+        assert!(result.contains("fn b()"));
+    }
+
+    #[test]
+    fn test_parse_include_directive_invalid_no_quote() {
+        let pp = Preprocessor::new(vec![]);
+        let result = pp.parse_include_directive("@include ");
+        assert!(result.is_err());
+    }
 }

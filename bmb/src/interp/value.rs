@@ -466,4 +466,66 @@ mod tests {
         let b = Value::Tuple(vec![Value::Int(1), Value::Bool(true)]);
         assert_eq!(a, b);
     }
+
+    // ====================================================================
+    // as_* conversion tests (Cycle 429)
+    // ====================================================================
+
+    #[test]
+    fn test_as_int_from_int() {
+        assert_eq!(Value::Int(42).as_int(), Some(42));
+        assert_eq!(Value::Int(-1).as_int(), Some(-1));
+        assert_eq!(Value::Int(0).as_int(), Some(0));
+    }
+
+    #[test]
+    fn test_as_int_from_non_int() {
+        assert_eq!(Value::Bool(true).as_int(), None);
+        assert_eq!(Value::Float(1.5).as_int(), None);
+        assert_eq!(Value::Str(Rc::new("42".to_string())).as_int(), None);
+    }
+
+    #[test]
+    fn test_as_float_from_float() {
+        assert_eq!(Value::Float(2.5).as_float(), Some(2.5));
+        assert_eq!(Value::Float(0.0).as_float(), Some(0.0));
+    }
+
+    #[test]
+    fn test_as_float_from_int_coercion() {
+        // Int should coerce to f64
+        assert_eq!(Value::Int(42).as_float(), Some(42.0));
+        assert_eq!(Value::Int(-1).as_float(), Some(-1.0));
+    }
+
+    #[test]
+    fn test_as_float_from_non_numeric() {
+        assert_eq!(Value::Bool(true).as_float(), None);
+        assert_eq!(Value::Str(Rc::new("1.5".to_string())).as_float(), None);
+    }
+
+    #[test]
+    fn test_as_bool_from_bool() {
+        assert_eq!(Value::Bool(true).as_bool(), Some(true));
+        assert_eq!(Value::Bool(false).as_bool(), Some(false));
+    }
+
+    #[test]
+    fn test_as_bool_from_non_bool() {
+        assert_eq!(Value::Int(1).as_bool(), None);
+        assert_eq!(Value::Str(Rc::new("true".to_string())).as_bool(), None);
+    }
+
+    #[test]
+    fn test_as_str_from_str() {
+        let v = Value::Str(Rc::new("hello".to_string()));
+        assert_eq!(v.as_str(), Some("hello"));
+    }
+
+    #[test]
+    fn test_as_str_from_non_str() {
+        assert_eq!(Value::Int(42).as_str(), None);
+        assert_eq!(Value::Bool(true).as_str(), None);
+        assert_eq!(Value::Float(1.5).as_str(), None);
+    }
 }

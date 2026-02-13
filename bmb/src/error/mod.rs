@@ -1425,4 +1425,107 @@ mod tests {
         assert!(w.message().contains("0"));
         assert_eq!(w.span(), Some(span()));
     }
+
+    // ====================================================================
+    // Additional error tests (Cycle 429)
+    // ====================================================================
+
+    #[test]
+    fn test_compile_error_lexer_span() {
+        let e = CompileError::lexer("bad token", span());
+        assert_eq!(e.span(), Some(span()));
+    }
+
+    #[test]
+    fn test_compile_error_parser_span() {
+        let e = CompileError::parser("unexpected", span());
+        assert_eq!(e.span(), Some(span()));
+    }
+
+    #[test]
+    fn test_compile_error_type_error_span() {
+        let e = CompileError::type_error("mismatch", span());
+        assert_eq!(e.span(), Some(span()));
+    }
+
+    #[test]
+    fn test_compile_error_io_no_span() {
+        let e = CompileError::io_error("file not found");
+        assert_eq!(e.span(), None);
+    }
+
+    #[test]
+    fn test_compile_error_parse_no_span() {
+        let e = CompileError::parse_error("bad syntax");
+        assert_eq!(e.span(), None);
+    }
+
+    #[test]
+    fn test_compile_error_resolve_error_no_span() {
+        let e = CompileError::resolve_error("module not found");
+        assert_eq!(e.span(), None);
+    }
+
+    #[test]
+    fn test_compile_error_resolve_error_at_span() {
+        let e = CompileError::resolve_error_at("item missing", span());
+        assert_eq!(e.span(), Some(span()));
+    }
+
+    #[test]
+    fn test_compile_error_message_content() {
+        let e = CompileError::type_error("expected i64 got bool", span());
+        assert_eq!(e.message(), "expected i64 got bool");
+    }
+
+    #[test]
+    fn test_compile_error_display_all_variants() {
+        let s = span();
+        let errors = vec![
+            CompileError::lexer("token", s),
+            CompileError::parser("syntax", s),
+            CompileError::type_error("types", s),
+            CompileError::io_error("file"),
+            CompileError::parse_error("parse"),
+            CompileError::resolve_error("resolve"),
+        ];
+        for e in &errors {
+            let display = format!("{}", e);
+            assert!(!display.is_empty());
+        }
+    }
+
+    #[test]
+    fn test_warning_duplicate_match_arm_cycle429() {
+        let w = CompileWarning::duplicate_match_arm("42", span());
+        assert_eq!(w.kind(), "duplicate_match_arm");
+        assert!(w.message().contains("42"));
+    }
+
+    #[test]
+    fn test_warning_kind_variety() {
+        let s = span();
+        let kinds = vec![
+            CompileWarning::unused_binding("x", s).kind().to_string(),
+            CompileWarning::unreachable_pattern("", s, 0).kind().to_string(),
+            CompileWarning::redundant_pattern("", s).kind().to_string(),
+            CompileWarning::integer_range_overflow("", s).kind().to_string(),
+            CompileWarning::unused_mut("x", s).kind().to_string(),
+            CompileWarning::unreachable_code(s).kind().to_string(),
+            CompileWarning::unused_import("x", s).kind().to_string(),
+            CompileWarning::unused_function("x", s).kind().to_string(),
+            CompileWarning::unused_type("x", s).kind().to_string(),
+            CompileWarning::unused_enum("x", s).kind().to_string(),
+            CompileWarning::shadow_binding("x", s, s).kind().to_string(),
+            CompileWarning::unused_trait("x", s).kind().to_string(),
+            CompileWarning::single_arm_match(s).kind().to_string(),
+            CompileWarning::redundant_cast("i64", s).kind().to_string(),
+            CompileWarning::constant_condition(true, "cond", s).kind().to_string(),
+            CompileWarning::self_comparison("x", "==", s).kind().to_string(),
+            CompileWarning::identity_operation("x + 0", s).kind().to_string(),
+        ];
+        for kind in &kinds {
+            assert!(!kind.is_empty());
+        }
+    }
 }
