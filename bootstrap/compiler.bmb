@@ -4706,7 +4706,23 @@ fn is_bool_returning_fn(name: String) -> bool =
 // v0.60.120: Map user-facing function names to runtime function names
 // v0.60.235: Removed int_to_string -> bmb_int_to_string mapping
 // The BMB program defines its own int_to_string, so calls should go there
+// v0.90.93: Byte-level fast-path — skip 100+ comparisons for non-runtime function names
+// Runtime fn prefixes: a,b,c,f,g,m,o,p,r,s,t,w. Others return immediately.
 fn map_runtime_fn(fn_name: String) -> String =
+    if fn_name.len() < 2 { fn_name }
+    else {
+        let c = fn_name.byte_at(1);
+        // Fast reject: chars that can never be runtime functions
+        if c < 97 or c > 119 { fn_name }           // outside a-w
+        else if c >= 100 and c <= 101 { fn_name }   // d, e
+        else if c >= 104 and c <= 108 { fn_name }   // h, i, j, k, l
+        else if c == 110 { fn_name }                 // n
+        else if c == 113 { fn_name }                 // q
+        else if c >= 117 and c <= 118 { fn_name }    // u, v
+        else { map_runtime_fn_full(fn_name) }
+    };
+
+fn map_runtime_fn_full(fn_name: String) -> String =
     if fn_name == "@main" { "@bmb_user_main" }
     else if fn_name == "@chr" { "@bmb_chr" }
     else if fn_name == "@ord" { "@bmb_ord" }
@@ -4929,9 +4945,10 @@ fn llvm_gen_call_reg(line: String, pos: i64, dest: String, registry: String) -> 
     } else {
     let emitted_fn = map_runtime_fn(fn_name);
     let args = line.slice(paren_pos + 1, close_pos);
-    // Check registry first for user-defined function types
-    let reg_ret = lookup_fn_ret(registry, emitted_fn);
-    let reg_params = lookup_fn_params(registry, emitted_fn);
+    // v0.90.93: Merged registry lookup — single scan instead of two
+    let reg_info = lookup_fn_both(registry, emitted_fn);
+    let reg_ret = if reg_info == "" { "" } else { let c2 = find_char(reg_info, 0, 58); reg_info.slice(0, c2) };
+    let reg_params = if reg_info == "" { "" } else { let c2 = find_char(reg_info, 0, 58); reg_info.slice(c2 + 1, reg_info.len()) };
     if reg_ret != "" {
         // Use registry types
         let arg_types = if reg_params != "" { reg_params } else { get_call_arg_types(emitted_fn) };
@@ -5470,6 +5487,26 @@ fn lookup_fn_params_at(registry: String, pos: i64, fn_name: String) -> String =
             entry.slice(colon2 + 1, entry.len())
         } else {
             if comma_pos >= registry.len() { "" } else { lookup_fn_params_at(registry, comma_pos + 1, fn_name) }
+        }
+    };
+
+// v0.90.93: Merged lookup — single scan returns "ret:params" instead of two separate scans
+fn lookup_fn_both(registry: String, fn_name: String) -> String =
+    let clean_fn = if fn_name.len() > 0 and fn_name.byte_at(0) == 64 { fn_name.slice(1, fn_name.len()) } else { fn_name };
+    lookup_fn_both_at(registry, 0, clean_fn);
+
+fn lookup_fn_both_at(registry: String, pos: i64, fn_name: String) -> String =
+    if pos >= registry.len() { "" } else {
+        let comma_pos = find_char(registry, pos, 44);
+        let entry = registry.slice(pos, comma_pos);
+        let colon1 = find_char(entry, 0, 58);
+        let entry_name = entry.slice(0, colon1);
+        let clean_name = if entry_name.len() > 0 and entry_name.byte_at(0) == 64 { entry_name.slice(1, entry_name.len()) } else { entry_name };
+        if clean_name == fn_name {
+            // Return "ret_type:param_sig" — everything after first colon
+            entry.slice(colon1 + 1, entry.len())
+        } else {
+            if comma_pos >= registry.len() { "" } else { lookup_fn_both_at(registry, comma_pos + 1, fn_name) }
         }
     };
 
