@@ -21668,3 +21668,98 @@ fn test_trait_multiple_methods_all_work() {
     ";
     assert_eq!(run_program_i64(source), 31); // 11 + 20
 }
+
+// ===== Cycle 380: Ownership + borrowing edge cases =====
+
+#[test]
+fn test_mutable_variable_reassignment() {
+    // Multiple reassignments of a mutable variable
+    assert_eq!(run_program_i64(
+        "fn main() -> i64 = { let mut x = 1; x = 2; x = 3; x };"
+    ), 3);
+}
+
+#[test]
+fn test_mutable_variable_in_loop() {
+    // Accumulator pattern with mutable variable
+    assert_eq!(run_program_i64(
+        "fn main() -> i64 = { let mut sum = 0; let mut i = 0; while i < 5 { sum = sum + i; i = i + 1; }; sum };"
+    ), 10); // 0+1+2+3+4
+}
+
+#[test]
+fn test_struct_field_mutation_multiple() {
+    // Mutating multiple struct fields
+    assert_eq!(run_program_i64(
+        "struct Point { x: i64, y: i64 }
+         fn main() -> i64 = { let mut p = new Point { x: 0, y: 0 }; set p.x = 10; set p.y = 20; p.x + p.y };"
+    ), 30);
+}
+
+#[test]
+fn test_array_mutation_in_loop() {
+    // Mutating array elements in a loop
+    assert_eq!(run_program_i64(
+        "fn main() -> i64 = { let mut arr = [0, 0, 0]; set arr[0] = 1; set arr[1] = 2; set arr[2] = 3; arr[0] + arr[1] + arr[2] };"
+    ), 6);
+}
+
+#[test]
+fn test_mutable_ref_deref() {
+    // Creating and reading through a mutable reference
+    assert_eq!(run_program_i64(
+        "fn main() -> i64 = { let mut x: i64 = 42; let r: &mut i64 = &mut x; *r };"
+    ), 42);
+}
+
+#[test]
+fn test_assignment_type_mismatch_error() {
+    // Assigning wrong type to mutable variable — type error
+    assert!(type_error(
+        "fn main() -> i64 = { let mut x: i64 = 10; x = true; x };"
+    ));
+}
+
+#[test]
+fn test_nested_struct_field_access() {
+    // Nested struct access
+    assert_eq!(run_program_i64(
+        "struct Inner { v: i64 }
+         struct Outer { inner: Inner }
+         fn main() -> i64 = {
+           let o = new Outer { inner: new Inner { v: 42 } };
+           o.inner.v
+         };"
+    ), 42);
+}
+
+#[test]
+fn test_mutable_swap_pattern() {
+    // Classic swap using a temp variable
+    assert_eq!(run_program_i64(
+        "fn main() -> i64 = {
+           let mut a = 10;
+           let mut b = 20;
+           let temp = a;
+           a = b;
+           b = temp;
+           a * 100 + b
+         };"
+    ), 2010); // a=20, b=10 → 2010
+}
+
+#[test]
+fn test_array_mutation_preserves_other_elements() {
+    // Mutating one element doesn't affect others
+    assert_eq!(run_program_i64(
+        "fn main() -> i64 = { let mut arr = [10, 20, 30]; set arr[1] = 99; arr[0] + arr[2] };"
+    ), 40); // 10 + 30
+}
+
+#[test]
+fn test_for_loop_with_accumulator() {
+    // for-in loop accumulating values
+    assert_eq!(run_program_i64(
+        "fn main() -> i64 = { let mut sum = 0; for i in [1, 2, 3, 4, 5] { sum = sum + i; }; sum };"
+    ), 15);
+}
