@@ -1748,6 +1748,27 @@ impl TypeChecker {
                     self.add_warning(CompileWarning::negated_if_condition(cond.span));
                 }
 
+                // v0.90.150: Detect redundant if-expression (if c { true } else { false } → c)
+                {
+                    let then_inner = match &then_branch.node {
+                        Expr::Block(stmts) if stmts.len() == 1 => &stmts[0].node,
+                        other => other,
+                    };
+                    let else_inner = match &else_branch.node {
+                        Expr::Block(stmts) if stmts.len() == 1 => &stmts[0].node,
+                        other => other,
+                    };
+                    match (then_inner, else_inner) {
+                        (Expr::BoolLit(true), Expr::BoolLit(false)) => {
+                            self.add_warning(CompileWarning::redundant_if_expression("cond", span));
+                        }
+                        (Expr::BoolLit(false), Expr::BoolLit(true)) => {
+                            self.add_warning(CompileWarning::redundant_if_expression("not cond", span));
+                        }
+                        _ => {}
+                    }
+                }
+
                 let cond_ty = self.infer(&cond.node, cond.span)?;
                 self.unify(&Type::Bool, &cond_ty, cond.span)?;
 

@@ -228,6 +228,12 @@ pub enum CompileWarning {
         span: Span,
     },
 
+    /// v0.90.150: Redundant if-expression — `if c { true } else { false }` → `c`
+    RedundantIfExpression {
+        suggestion: String, // "c" or "not c"
+        span: Span,
+    },
+
     /// Generic warning with span
     Generic {
         message: String,
@@ -475,6 +481,11 @@ impl CompileWarning {
         Self::DoubleNegation { op: op.into(), span }
     }
 
+    /// v0.90.150: Create a redundant if-expression warning
+    pub fn redundant_if_expression(suggestion: impl Into<String>, span: Span) -> Self {
+        Self::RedundantIfExpression { suggestion: suggestion.into(), span }
+    }
+
     /// Get the span of this warning, if any
     pub fn span(&self) -> Option<Span> {
         match self {
@@ -509,6 +520,7 @@ impl CompileWarning {
             Self::NegatedIfCondition { span } => Some(*span),
             Self::AbsorbingElement { span, .. } => Some(*span),
             Self::DoubleNegation { span, .. } => Some(*span),
+            Self::RedundantIfExpression { span, .. } => Some(*span),
             Self::Generic { span, .. } => *span,
         }
     }
@@ -615,6 +627,9 @@ impl CompileWarning {
             Self::DoubleNegation { op, .. } => {
                 format!("double negation `{0} {0} x` is redundant; simplify to just `x`", op)
             }
+            Self::RedundantIfExpression { suggestion, .. } => {
+                format!("redundant if-expression returning bool literals; simplify to `{}`", suggestion)
+            }
             Self::Generic { message, .. } => message.clone(),
         }
     }
@@ -653,6 +668,7 @@ impl CompileWarning {
             Self::NegatedIfCondition { .. } => "negated_if_condition",
             Self::AbsorbingElement { .. } => "absorbing_element",
             Self::DoubleNegation { .. } => "double_negation",
+            Self::RedundantIfExpression { .. } => "redundant_if_expression",
             Self::Generic { .. } => "warning",
         }
     }
@@ -1044,6 +1060,21 @@ mod tests {
         let w = CompileWarning::double_negation("-", span());
         assert_eq!(w.kind(), "double_negation");
         assert!(w.message().contains("-"));
+    }
+
+    #[test]
+    fn test_warning_redundant_if_expression() {
+        let w = CompileWarning::redundant_if_expression("cond", span());
+        assert_eq!(w.kind(), "redundant_if_expression");
+        assert!(w.message().contains("redundant if-expression"));
+        assert!(w.message().contains("cond"));
+        assert_eq!(w.span(), Some(span()));
+    }
+
+    #[test]
+    fn test_warning_redundant_if_expression_negated() {
+        let w = CompileWarning::redundant_if_expression("not cond", span());
+        assert!(w.message().contains("not cond"));
     }
 
     #[test]

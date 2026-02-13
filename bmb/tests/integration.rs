@@ -22576,3 +22576,48 @@ fn test_no_double_negation_mixed_ops() {
         "double_negation"
     ));
 }
+
+// ===== Cycle 397: Redundant if-expression detection lint =====
+
+#[test]
+fn test_redundant_if_true_false() {
+    assert!(has_warning_kind(
+        "fn main() -> bool = { let x = true; if x { true } else { false } };",
+        "redundant_if_expression"
+    ));
+}
+
+#[test]
+fn test_redundant_if_false_true() {
+    assert!(has_warning_kind(
+        "fn main() -> bool = { let x = true; if x { false } else { true } };",
+        "redundant_if_expression"
+    ));
+}
+
+#[test]
+fn test_no_redundant_if_both_true() {
+    // Both true — not the pattern (both same value is constant_condition territory)
+    assert!(!has_warning_kind(
+        "fn main() -> bool = { let x = true; if x { true } else { true } };",
+        "redundant_if_expression"
+    ));
+}
+
+#[test]
+fn test_no_redundant_if_non_bool_branches() {
+    // Branches are integers, not booleans
+    assert!(!has_warning_kind(
+        "fn main() -> i64 = { let x = true; if x { 1 } else { 0 } };",
+        "redundant_if_expression"
+    ));
+}
+
+#[test]
+fn test_no_redundant_if_expr_branches() {
+    // Branches are expressions, not literals
+    assert!(!has_warning_kind(
+        "fn main() -> bool = { let x = true; let y = false; if x { y } else { x } };",
+        "redundant_if_expression"
+    ));
+}
