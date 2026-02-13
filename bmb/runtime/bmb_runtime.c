@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <inttypes.h>
+#include <string.h>  // v0.90.90: memcpy/memset/strlen for optimized string operations
 
 // v0.70: Threading support
 #ifdef _WIN32
@@ -47,8 +48,7 @@ static BmbString* bmb_string_wrap(char* data) {
         data[0] = '\0';
     }
     BmbString* s = (BmbString*)bmb_alloc(sizeof(BmbString));
-    int64_t len = 0;
-    while (data[len]) len++;
+    int64_t len = (int64_t)strlen(data);
     s->data = data;
     s->len = len;
     s->cap = len;
@@ -252,15 +252,16 @@ BmbString* bmb_string_concat(const BmbString* a, const BmbString* b) {
     }
     int64_t len_a = a->len;
     int64_t len_b = b->len;
-    char* result = (char*)bmb_alloc(len_a + len_b + 1);
-    for (int64_t i = 0; i < len_a; i++) result[i] = a->data[i];
-    for (int64_t i = 0; i < len_b; i++) result[len_a + i] = b->data[i];
-    result[len_a + len_b] = '\0';
+    int64_t total = len_a + len_b;
+    char* result = (char*)bmb_alloc(total + 1);
+    memcpy(result, a->data, (size_t)len_a);
+    memcpy(result + len_a, b->data, (size_t)len_b);
+    result[total] = '\0';
 
     BmbString* s = (BmbString*)bmb_alloc(sizeof(BmbString));
     s->data = result;
-    s->len = len_a + len_b;
-    s->cap = len_a + len_b;
+    s->len = total;
+    s->cap = total;
     return s;
 }
 
@@ -270,20 +271,27 @@ BmbString* bmb_string_concat(const BmbString* a, const BmbString* b) {
 // v0.88.2: Uses arena-aware allocation
 BmbString* bmb_string_from_cstr(const char* s) {
     if (!s) return bmb_string_wrap(NULL);
-    int64_t len = 0;
-    while (s[len]) len++;
+    int64_t len = (int64_t)strlen(s);
     char* copy = (char*)bmb_alloc(len + 1);
-    for (int64_t i = 0; i <= len; i++) copy[i] = s[i];
-    return bmb_string_wrap(copy);
+    memcpy(copy, s, (size_t)(len + 1));
+    BmbString* str = (BmbString*)bmb_alloc(sizeof(BmbString));
+    str->data = copy;
+    str->len = len;
+    str->cap = len;
+    return str;
 }
 
 // Create new string with given length (allocates copy)
 // v0.88.2: Uses arena-aware allocation
 BmbString* bmb_string_new(const char* s, int64_t len) {
     char* result = (char*)bmb_alloc(len + 1);
-    for (int64_t i = 0; i < len; i++) result[i] = s[i];
+    memcpy(result, s, (size_t)len);
     result[len] = '\0';
-    return bmb_string_wrap(result);
+    BmbString* str = (BmbString*)bmb_alloc(sizeof(BmbString));
+    str->data = result;
+    str->len = len;
+    str->cap = len;
+    return str;
 }
 
 // String length - parameter is BmbString*
@@ -308,10 +316,7 @@ int64_t bmb_string_eq(const BmbString* a, const BmbString* b) {
     if (a == b) return 1;  // Same struct pointer
     if (!a || !b) return 0;
     if (a->len != b->len) return 0;  // Different lengths
-    for (int64_t i = 0; i < a->len; i++) {
-        if (a->data[i] != b->data[i]) return 0;
-    }
-    return 1;
+    return memcmp(a->data, b->data, (size_t)a->len) == 0 ? 1 : 0;
 }
 
 // String slice (substring from start to end, exclusive) - returns BmbString*
@@ -323,11 +328,13 @@ BmbString* bmb_string_slice(const BmbString* s, int64_t start, int64_t end) {
     if (end > s->len) end = s->len;
     int64_t len = end - start;
     char* result = (char*)bmb_alloc(len + 1);
-    for (int64_t i = 0; i < len; i++) {
-        result[i] = s->data[start + i];
-    }
+    memcpy(result, s->data + start, (size_t)len);
     result[len] = '\0';
-    return bmb_string_wrap(result);
+    BmbString* str = (BmbString*)bmb_alloc(sizeof(BmbString));
+    str->data = result;
+    str->len = len;
+    str->cap = len;
+    return str;
 }
 
 // v0.51.51: Wrapper functions updated for BmbString*
@@ -449,7 +456,7 @@ typedef struct {
 
 int64_t bmb_sb_new(void) {
     StringBuilder* sb = (StringBuilder*)malloc(sizeof(StringBuilder));
-    sb->cap = 64;
+    sb->cap = 1024;
     sb->len = 0;
     sb->data = (char*)malloc(sb->cap);
     sb->data[0] = '\0';
@@ -468,21 +475,24 @@ int64_t bmb_sb_with_capacity(int64_t capacity) {
 }
 
 // v0.51.51: sb_push takes BmbString*
+// v0.90.90: Use memcpy for bulk copy
 int64_t bmb_sb_push(int64_t handle, const BmbString* s) {
     if (!s || !s->data || !handle) return 0;
     StringBuilder* sb = (StringBuilder*)handle;
     int64_t slen = s->len;
+    if (slen == 0) return sb->len;
 
     // Grow if needed
-    while (sb->len + slen + 1 > sb->cap) {
-        sb->cap *= 2;
-        sb->data = (char*)realloc(sb->data, sb->cap);
+    int64_t required = sb->len + slen + 1;
+    if (required > sb->cap) {
+        int64_t new_cap = sb->cap;
+        while (new_cap < required) new_cap *= 2;
+        sb->data = (char*)realloc(sb->data, new_cap);
+        sb->cap = new_cap;
     }
 
-    // Append
-    for (int64_t i = 0; i < slen; i++) {
-        sb->data[sb->len + i] = s->data[i];
-    }
+    // Append with memcpy
+    memcpy(sb->data + sb->len, s->data, (size_t)slen);
     sb->len += slen;
     sb->data[sb->len] = '\0';
     return sb->len;
@@ -585,12 +595,15 @@ BmbString* bmb_sb_build(int64_t handle) {
         return bmb_string_wrap(NULL);
     }
     StringBuilder* sb = (StringBuilder*)handle;
-    // Return copy of the built string
-    char* result = (char*)bmb_alloc(sb->len + 1);
-    for (int64_t i = 0; i <= sb->len; i++) {
-        result[i] = sb->data[i];
-    }
-    return bmb_string_wrap(result);
+    // Return copy of the built string (use memcpy + direct struct init)
+    int64_t len = sb->len;
+    char* result = (char*)bmb_alloc(len + 1);
+    memcpy(result, sb->data, (size_t)(len + 1));
+    BmbString* str = (BmbString*)bmb_alloc(sizeof(BmbString));
+    str->data = result;
+    str->len = len;
+    str->cap = len;
+    return str;
 }
 
 int64_t bmb_sb_clear(int64_t handle) {
@@ -733,12 +746,18 @@ static void bmb_arena_init_limit(void) {
     }
 }
 
-static void* bmb_arena_alloc(size_t size) {
+static inline void* bmb_arena_alloc(size_t size) {
     // Align to 8 bytes
     size = (size + 7) & ~((size_t)7);
 
-    // v0.88.4: Hard limit - EXIT instead of malloc fallback (prevents BSOD)
-    // BMB has no GC/destructors, so malloc fallback also leaks memory.
+    // Fast path: arena has space (most common case)
+    if (g_arena_current && g_arena_current->used + size <= g_arena_current->capacity) {
+        void* ptr = g_arena_current->data + g_arena_current->used;
+        g_arena_current->used += size;
+        return ptr;
+    }
+
+    // Slow path: need new block or limit check
     bmb_arena_init_limit();
     if (g_arena_total_allocated + size > g_arena_max_size) {
         fprintf(stderr, "[bmb] FATAL: arena memory limit exceeded (%zu MB / %zu MB max)\n",
