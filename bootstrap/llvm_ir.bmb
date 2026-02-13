@@ -1325,14 +1325,19 @@ fn gen_method_dispatch(dest: String, recv: String, method: String, args: String)
 fn gen_method_len(dest: String, recv: String) -> String =
     dest + " = call i64 @bmb_string_len(i8* " + recv + ")";
 
-// v0.30.75: String.byte_at(idx) -> getelementptr + load
+// v0.30.75: String.byte_at(idx) -> GEP into BmbString struct + load + zext
+// v0.90.71: Fixed to use opaque ptr, {ptr, i64, i64} struct layout, zext (not sext)
 fn gen_method_byte_at(dest: String, recv: String, args: String) -> String =
     let idx = trim_ws(args);
-    let ptr = dest + "_ptr";
-    let gep = ptr + " = getelementptr i8, i8* " + recv + ", i64 " + idx;
-    let load = dest + " = load i8, i8* " + ptr;
-    let ext = dest + "_ext = sext i8 " + dest + " to i64";
-    gep + "|" + load + "|" + dest + " = sext i8 " + dest + " to i64";
+    let dpp = dest + "_dpp";
+    let dp = dest + "_dp";
+    let bp = dest + "_bp";
+    let b = dest + "_b";
+    dpp + " = getelementptr {ptr, i64, i64}, ptr " + recv + ", i32 0, i32 0" +
+    "|" + dp + " = load ptr, ptr " + dpp +
+    "|" + bp + " = getelementptr i8, ptr " + dp + ", i64 " + idx +
+    "|" + b + " = load i8, ptr " + bp +
+    "|" + dest + " = zext i8 " + b + " to i64";
 
 // v0.30.76: String.slice(start, end) -> call @bmb_string_slice
 fn gen_method_slice(dest: String, recv: String, args: String) -> String =
@@ -2655,12 +2660,12 @@ fn test_method_call_ir() -> i64 =
     let len1 = gen_method_len("%_t1", "%_t0");
     let t6 = if has_pattern(len1, "@bmb_string_len", 0) { 1 } else { 0 };
 
-    // Test 7: gen_method_byte_at generates getelementptr
+    // Test 7: gen_method_byte_at generates struct GEP for {ptr, i64, i64}
     let ca1 = gen_method_byte_at("%_t2", "%_t0", "%_t1");
-    let t7 = if has_pattern(ca1, "getelementptr i8", 0) { 1 } else { 0 };
+    let t7 = if has_pattern(ca1, "getelementptr {ptr, i64, i64}", 0) { 1 } else { 0 };
 
-    // Test 8: gen_method_byte_at generates load
-    let t8 = if has_pattern(ca1, "load i8", 0) { 1 } else { 0 };
+    // Test 8: gen_method_byte_at generates zext (not sext)
+    let t8 = if has_pattern(ca1, "zext i8", 0) { 1 } else { 0 };
 
     // Test 9: gen_method_slice generates call with args
     let sl1 = gen_method_slice("%_t3", "%_t0", "%_t1, %_t2");

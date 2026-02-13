@@ -4458,6 +4458,14 @@ fn llvm_gen_call(line: String, pos: i64, dest: String) -> String =
     } else if fn_name == "@f64_to_i64" {
         let arg = trim_end(line.slice(paren_pos + 1, close_pos));
         "  " + dest + " = fptosi double " + arg + " to i64"
+    } else if fn_name == "@bmb_string_char_at" {
+        // v0.90.71: Inline byte_at as GEP+load — eliminates function call overhead
+        // String struct: {ptr data, i64 len, i64 cap}, byte_at(s, idx) -> s.data[idx] as i64
+        let args = line.slice(paren_pos + 1, close_pos);
+        let comma = find_char(args, 0, 44);
+        let str_arg = trim_end(args.slice(0, comma));
+        let idx_arg = trim(args.slice(comma + 1, args.len()));
+        "  " + dest + "_str = inttoptr i64 " + str_arg + " to ptr|  " + dest + "_dpp = getelementptr {ptr, i64, i64}, ptr " + dest + "_str, i32 0, i32 0|  " + dest + "_dp = load ptr, ptr " + dest + "_dpp|  " + dest + "_bp = getelementptr i8, ptr " + dest + "_dp, i64 " + idx_arg + "|  " + dest + "_b = load i8, ptr " + dest + "_bp|  " + dest + " = zext i8 " + dest + "_b to i64"
     } else {
     let emitted_fn = map_runtime_fn(fn_name);
     let args = line.slice(paren_pos + 1, close_pos);
@@ -4513,6 +4521,13 @@ fn llvm_gen_call_reg(line: String, pos: i64, dest: String, registry: String) -> 
     } else if fn_name == "@f64_to_i64" {
         let arg = trim_end(line.slice(paren_pos + 1, close_pos));
         "  " + dest + " = fptosi double " + arg + " to i64"
+    } else if fn_name == "@bmb_string_char_at" {
+        // v0.90.71: Inline byte_at as GEP+load — eliminates function call overhead
+        let args = line.slice(paren_pos + 1, close_pos);
+        let comma = find_char(args, 0, 44);
+        let str_arg = trim_end(args.slice(0, comma));
+        let idx_arg = trim(args.slice(comma + 1, args.len()));
+        "  " + dest + "_str = inttoptr i64 " + str_arg + " to ptr|  " + dest + "_dpp = getelementptr {ptr, i64, i64}, ptr " + dest + "_str, i32 0, i32 0|  " + dest + "_dp = load ptr, ptr " + dest + "_dpp|  " + dest + "_bp = getelementptr i8, ptr " + dest + "_dp, i64 " + idx_arg + "|  " + dest + "_b = load i8, ptr " + dest + "_bp|  " + dest + " = zext i8 " + dest + "_b to i64"
     } else {
     let emitted_fn = map_runtime_fn(fn_name);
     let args = line.slice(paren_pos + 1, close_pos);
