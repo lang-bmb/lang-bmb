@@ -16818,4 +16818,463 @@ mod tests {
         assert!(matches!(fold_unaryop(MirUnaryOp::Not, &Constant::Bool(true)), Some(Constant::Bool(false))));
         assert!(matches!(fold_unaryop(MirUnaryOp::Not, &Constant::Bool(false)), Some(Constant::Bool(true))));
     }
+
+    // --- MemoryEffectAnalysis: inst_accesses_memory coverage ---
+
+    fn make_memory_test_program(name: &str, insts: Vec<MirInst>) -> MirProgram {
+        MirProgram {
+            functions: vec![MirFunction {
+                name: name.to_string(),
+                params: vec![("x".to_string(), MirType::I64)],
+                ret_ty: MirType::I64,
+                locals: vec![],
+                blocks: vec![BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: insts,
+                    terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(0)))),
+                }],
+                preconditions: vec![],
+                postconditions: vec![],
+                is_pure: false,
+                is_const: false,
+                always_inline: false,
+                inline_hint: false,
+                is_memory_free: false,
+            }],
+            extern_fns: vec![],
+            struct_defs: HashMap::new(),
+        }
+    }
+
+    #[test]
+    fn test_memory_effect_ptr_load_not_free() {
+        let mut prog = make_memory_test_program("ptr_fn", vec![
+            MirInst::PtrLoad {
+                dest: Place::new("r"),
+                ptr: Operand::Place(Place::new("x")),
+                element_type: MirType::I64,
+            },
+        ]);
+        let analysis = MemoryEffectAnalysis::new();
+        analysis.run_on_program(&mut prog);
+        assert!(!prog.functions[0].is_memory_free, "PtrLoad accesses memory");
+    }
+
+    #[test]
+    fn test_memory_effect_ptr_store_not_free() {
+        let mut prog = make_memory_test_program("ps_fn", vec![
+            MirInst::PtrStore {
+                ptr: Operand::Place(Place::new("x")),
+                value: Operand::Constant(Constant::Int(42)),
+                element_type: MirType::I64,
+            },
+        ]);
+        let analysis = MemoryEffectAnalysis::new();
+        analysis.run_on_program(&mut prog);
+        assert!(!prog.functions[0].is_memory_free, "PtrStore accesses memory");
+    }
+
+    #[test]
+    fn test_memory_effect_ptr_offset_is_free() {
+        let mut prog = make_memory_test_program("po_fn", vec![
+            MirInst::PtrOffset {
+                dest: Place::new("r"),
+                ptr: Operand::Place(Place::new("x")),
+                offset: Operand::Constant(Constant::Int(1)),
+                element_type: MirType::I64,
+            },
+        ]);
+        let analysis = MemoryEffectAnalysis::new();
+        analysis.run_on_program(&mut prog);
+        assert!(prog.functions[0].is_memory_free, "PtrOffset is pure address arithmetic");
+    }
+
+    #[test]
+    fn test_memory_effect_select_is_free() {
+        let mut prog = make_memory_test_program("sel_fn", vec![
+            MirInst::Select {
+                dest: Place::new("r"),
+                cond_op: MirBinOp::Lt,
+                cond_lhs: Operand::Place(Place::new("x")),
+                cond_rhs: Operand::Constant(Constant::Int(10)),
+                true_val: Operand::Constant(Constant::Int(1)),
+                false_val: Operand::Constant(Constant::Int(0)),
+            },
+        ]);
+        let analysis = MemoryEffectAnalysis::new();
+        analysis.run_on_program(&mut prog);
+        assert!(prog.functions[0].is_memory_free, "Select is pure");
+    }
+
+    #[test]
+    fn test_memory_effect_cast_is_free() {
+        let mut prog = make_memory_test_program("cast_fn", vec![
+            MirInst::Cast {
+                dest: Place::new("r"),
+                src: Operand::Place(Place::new("x")),
+                from_ty: MirType::I64,
+                to_ty: MirType::F64,
+            },
+        ]);
+        let analysis = MemoryEffectAnalysis::new();
+        analysis.run_on_program(&mut prog);
+        assert!(prog.functions[0].is_memory_free, "Cast is pure");
+    }
+
+    #[test]
+    fn test_memory_effect_copy_is_free() {
+        let mut prog = make_memory_test_program("copy_fn", vec![
+            MirInst::Copy {
+                dest: Place::new("r"),
+                src: Place::new("x"),
+            },
+        ]);
+        let analysis = MemoryEffectAnalysis::new();
+        analysis.run_on_program(&mut prog);
+        assert!(prog.functions[0].is_memory_free, "Copy is pure");
+    }
+
+    #[test]
+    fn test_memory_effect_unary_is_free() {
+        let mut prog = make_memory_test_program("neg_fn", vec![
+            MirInst::UnaryOp {
+                dest: Place::new("r"),
+                op: MirUnaryOp::Neg,
+                src: Operand::Place(Place::new("x")),
+            },
+        ]);
+        let analysis = MemoryEffectAnalysis::new();
+        analysis.run_on_program(&mut prog);
+        assert!(prog.functions[0].is_memory_free, "UnaryOp is pure");
+    }
+
+    #[test]
+    fn test_memory_effect_tuple_not_free() {
+        let mut prog = make_memory_test_program("tup_fn", vec![
+            MirInst::TupleInit {
+                dest: Place::new("r"),
+                elements: vec![(MirType::I64, Operand::Constant(Constant::Int(1)))],
+            },
+        ]);
+        let analysis = MemoryEffectAnalysis::new();
+        analysis.run_on_program(&mut prog);
+        assert!(!prog.functions[0].is_memory_free, "TupleInit accesses memory");
+    }
+
+    #[test]
+    fn test_memory_effect_array_alloc_not_free() {
+        let mut prog = make_memory_test_program("alloc_fn", vec![
+            MirInst::ArrayAlloc {
+                dest: Place::new("r"),
+                element_type: MirType::I64,
+                size: 10,
+            },
+        ]);
+        let analysis = MemoryEffectAnalysis::new();
+        analysis.run_on_program(&mut prog);
+        assert!(!prog.functions[0].is_memory_free, "ArrayAlloc accesses memory");
+    }
+
+    #[test]
+    fn test_memory_effect_index_load_not_free() {
+        let mut prog = make_memory_test_program("idx_fn", vec![
+            MirInst::IndexLoad {
+                dest: Place::new("r"),
+                array: Place::new("x"),
+                index: Operand::Constant(Constant::Int(0)),
+                element_type: MirType::I64,
+            },
+        ]);
+        let analysis = MemoryEffectAnalysis::new();
+        analysis.run_on_program(&mut prog);
+        assert!(!prog.functions[0].is_memory_free, "IndexLoad accesses memory");
+    }
+
+    #[test]
+    fn test_memory_effect_struct_init_not_free() {
+        let mut prog = make_memory_test_program("si_fn", vec![
+            MirInst::StructInit {
+                dest: Place::new("r"),
+                struct_name: "Foo".to_string(),
+                fields: vec![("x".to_string(), Operand::Constant(Constant::Int(1)))],
+            },
+        ]);
+        let analysis = MemoryEffectAnalysis::new();
+        analysis.run_on_program(&mut prog);
+        assert!(!prog.functions[0].is_memory_free, "StructInit accesses memory");
+    }
+
+    #[test]
+    fn test_memory_effect_phi_is_free() {
+        let mut prog = make_memory_test_program("phi_fn", vec![
+            MirInst::Phi {
+                dest: Place::new("r"),
+                values: vec![
+                    (Operand::Constant(Constant::Int(1)), "b1".to_string()),
+                ],
+            },
+        ]);
+        let analysis = MemoryEffectAnalysis::new();
+        analysis.run_on_program(&mut prog);
+        assert!(prog.functions[0].is_memory_free, "Phi is pure");
+    }
+
+    #[test]
+    fn test_memory_effect_const_is_free() {
+        let mut prog = make_memory_test_program("const_fn", vec![
+            MirInst::Const {
+                dest: Place::new("r"),
+                value: Constant::Int(42),
+            },
+        ]);
+        let analysis = MemoryEffectAnalysis::new();
+        analysis.run_on_program(&mut prog);
+        assert!(prog.functions[0].is_memory_free, "Const is pure");
+    }
+
+    #[test]
+    fn test_memory_effect_mixed_pure_and_impure() {
+        let mut prog = make_memory_test_program("mix_fn", vec![
+            MirInst::BinOp {
+                dest: Place::new("t1"),
+                op: MirBinOp::Add,
+                lhs: Operand::Place(Place::new("x")),
+                rhs: Operand::Constant(Constant::Int(1)),
+            },
+            MirInst::Call {
+                dest: Some(Place::new("t2")),
+                func: "foo".to_string(),
+                args: vec![],
+                is_tail: false,
+            },
+        ]);
+        let analysis = MemoryEffectAnalysis::new();
+        analysis.run_on_program(&mut prog);
+        assert!(!prog.functions[0].is_memory_free, "One impure instruction makes function not memory-free");
+    }
+
+    #[test]
+    fn test_memory_effect_already_marked() {
+        let mut prog = make_memory_test_program("already_fn", vec![
+            MirInst::BinOp {
+                dest: Place::new("r"),
+                op: MirBinOp::Add,
+                lhs: Operand::Place(Place::new("x")),
+                rhs: Operand::Constant(Constant::Int(1)),
+            },
+        ]);
+        prog.functions[0].is_memory_free = true;
+        let analysis = MemoryEffectAnalysis::new();
+        let changed = analysis.run_on_program(&mut prog);
+        assert!(!changed, "No change if already marked correctly");
+        assert!(prog.functions[0].is_memory_free);
+    }
+
+    #[test]
+    fn test_memory_effect_empty_function() {
+        let mut prog = make_memory_test_program("empty_fn", vec![]);
+        let analysis = MemoryEffectAnalysis::new();
+        analysis.run_on_program(&mut prog);
+        assert!(prog.functions[0].is_memory_free, "Empty function is memory-free");
+    }
+
+    // --- LICM edge cases ---
+
+    #[test]
+    fn test_licm_single_block_no_loop() {
+        let mut func = MirFunction {
+            name: "no_loop".to_string(),
+            params: vec![("x".to_string(), MirType::I64)],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![MirInst::BinOp {
+                    dest: Place::new("r"),
+                    op: MirBinOp::Add,
+                    lhs: Operand::Place(Place::new("x")),
+                    rhs: Operand::Constant(Constant::Int(1)),
+                }],
+                terminator: Terminator::Return(Some(Operand::Place(Place::new("r")))),
+            }],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+        let licm = LoopInvariantCodeMotion::new();
+        let changed = licm.run_on_function(&mut func);
+        assert!(!changed, "Single block (no loop) should not change");
+    }
+
+    #[test]
+    fn test_licm_loop_without_calls() {
+        // Loop body with only BinOp (no calls to hoist)
+        let mut func = MirFunction {
+            name: "loop_no_call".to_string(),
+            params: vec![("n".to_string(), MirType::I64)],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![
+                BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Goto("header".to_string()),
+                },
+                BasicBlock {
+                    label: "header".to_string(),
+                    instructions: vec![MirInst::BinOp {
+                        dest: Place::new("t"),
+                        op: MirBinOp::Add,
+                        lhs: Operand::Place(Place::new("n")),
+                        rhs: Operand::Constant(Constant::Int(1)),
+                    }],
+                    terminator: Terminator::Branch {
+                        cond: Operand::Place(Place::new("t")),
+                        then_label: "body".to_string(),
+                        else_label: "exit".to_string(),
+                    },
+                },
+                BasicBlock {
+                    label: "body".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Goto("header".to_string()),
+                },
+                BasicBlock {
+                    label: "exit".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(0)))),
+                },
+            ],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+        let licm = LoopInvariantCodeMotion::new();
+        let changed = licm.run_on_function(&mut func);
+        assert!(!changed, "No calls to hoist");
+    }
+
+    #[test]
+    fn test_licm_tail_call_not_hoisted() {
+        // Tail calls should not be hoisted (is_tail: true)
+        let mut func = MirFunction {
+            name: "tail_loop".to_string(),
+            params: vec![("s".to_string(), MirType::String), ("n".to_string(), MirType::I64)],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![
+                BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Goto("header".to_string()),
+                },
+                BasicBlock {
+                    label: "header".to_string(),
+                    instructions: vec![MirInst::Call {
+                        dest: Some(Place::new("_len")),
+                        func: "len".to_string(),
+                        args: vec![Operand::Place(Place::new("s"))],
+                        is_tail: true,
+                    }],
+                    terminator: Terminator::Branch {
+                        cond: Operand::Place(Place::new("n")),
+                        then_label: "body".to_string(),
+                        else_label: "exit".to_string(),
+                    },
+                },
+                BasicBlock {
+                    label: "body".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Goto("header".to_string()),
+                },
+                BasicBlock {
+                    label: "exit".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(0)))),
+                },
+            ],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+        let licm = LoopInvariantCodeMotion::new();
+        let changed = licm.run_on_function(&mut func);
+        assert!(!changed, "Tail calls should not be hoisted");
+    }
+
+    #[test]
+    fn test_licm_call_with_no_dest_not_hoisted() {
+        // Side-effect-only calls (dest: None) should not be hoisted
+        let mut func = MirFunction {
+            name: "sideeff_loop".to_string(),
+            params: vec![("n".to_string(), MirType::I64)],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![
+                BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Goto("header".to_string()),
+                },
+                BasicBlock {
+                    label: "header".to_string(),
+                    instructions: vec![MirInst::Call {
+                        dest: None,
+                        func: "println".to_string(),
+                        args: vec![Operand::Place(Place::new("n"))],
+                        is_tail: false,
+                    }],
+                    terminator: Terminator::Branch {
+                        cond: Operand::Place(Place::new("n")),
+                        then_label: "body".to_string(),
+                        else_label: "exit".to_string(),
+                    },
+                },
+                BasicBlock {
+                    label: "body".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Goto("header".to_string()),
+                },
+                BasicBlock {
+                    label: "exit".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(0)))),
+                },
+            ],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+        let licm = LoopInvariantCodeMotion::new();
+        let changed = licm.run_on_function(&mut func);
+        assert!(!changed, "Side-effect-only calls (dest: None) should not be hoisted");
+    }
+
+    #[test]
+    fn test_licm_name() {
+        let licm = LoopInvariantCodeMotion::new();
+        assert_eq!(licm.name(), "loop_invariant_code_motion");
+    }
+
+    #[test]
+    fn test_memory_effect_analysis_name_string() {
+        let analysis = MemoryEffectAnalysis::new();
+        assert_eq!(analysis.name(), "memory_effect_analysis");
+    }
 }
