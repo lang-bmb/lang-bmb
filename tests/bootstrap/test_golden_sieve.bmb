@@ -1,0 +1,67 @@
+// Golden Binary Test: Sieve of Eratosthenes
+// Tests: large array allocation, nested loops, bit manipulation via array
+// Compute-intensive: finds all primes up to N
+
+// Mark multiples of p starting from p*p
+fn mark_multiples(sieve: [i64], limit: i64, p: i64, start: i64) -> i64 =
+    if start >= limit { 0 }
+    else {
+        set sieve[start] = 0;
+        mark_multiples(sieve, limit, p, start + p)
+    };
+
+// Find next prime after current position
+fn next_prime(sieve: [i64], limit: i64, pos: i64) -> i64 =
+    if pos >= limit { limit }
+    else if sieve[pos] == 1 { pos }
+    else { next_prime(sieve, limit, pos + 1) };
+
+// Sieve: mark composites for all primes up to sqrt(limit)
+fn sieve_step(sieve: [i64], limit: i64, p: i64) -> i64 =
+    if p * p >= limit { 0 }
+    else {
+        let m = if sieve[p] == 1 { mark_multiples(sieve, limit, p, p * p) } else { 0 };
+        sieve_step(sieve, limit, p + 1)
+    };
+
+// Count primes in sieve
+fn count_primes(sieve: [i64], limit: i64, pos: i64) -> i64 =
+    if pos >= limit { 0 }
+    else { sieve[pos] + count_primes(sieve, limit, pos + 1) };
+
+// Initialize sieve: set all to 1 (prime), then clear 0 and 1
+fn init_sieve(sieve: [i64], limit: i64, i: i64) -> i64 =
+    if i >= limit { 0 }
+    else {
+        set sieve[i] = 1;
+        init_sieve(sieve, limit, i + 1)
+    };
+
+// Sum of first N primes found in sieve
+fn sum_first_primes(sieve: [i64], limit: i64, pos: i64, count: i64, n: i64) -> i64 =
+    if count >= n { 0 }
+    else if pos >= limit { 0 }
+    else if sieve[pos] == 1 { pos + sum_first_primes(sieve, limit, pos + 1, count + 1, n) }
+    else { sum_first_primes(sieve, limit, pos + 1, count, n) };
+
+fn main() -> i64 = {
+    let limit = 100;
+    let sieve = [0; 100];
+
+    // Initialize all to 1 (prime candidate)
+    let i1 = init_sieve(sieve, limit, 2);
+
+    // Run sieve
+    let s1 = sieve_step(sieve, limit, 2);
+
+    // Count primes up to 100: should be 25
+    // Primes: 2,3,5,7,11,13,17,19,23,29,31,37,41,43,47,53,59,61,67,71,73,79,83,89,97
+    let prime_count = count_primes(sieve, limit, 2);
+
+    // Sum of first 10 primes: 2+3+5+7+11+13+17+19+23+29 = 129
+    let prime_sum = sum_first_primes(sieve, limit, 2, 0, 10);
+
+    // Output: 25 + 129 = 154
+    println(prime_count + prime_sum);
+    0
+};

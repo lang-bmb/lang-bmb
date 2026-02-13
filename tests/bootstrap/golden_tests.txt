@@ -19,3 +19,6 @@ test_golden_loop.bmb|18
 test_golden_match.bmb|200
 test_golden_struct.bmb|25
 test_golden_integration.bmb|49
+test_golden_algorithm.bmb|183
+test_golden_sieve.bmb|154
+test_golden_nested_struct.bmb|86

@@ -1,0 +1,74 @@
+// Golden Binary Test: Nested struct operations
+// Tests: multiple struct types, struct fields, match + struct combination
+
+struct Point {
+    x: i64,
+    y: i64,
+}
+
+struct Rect {
+    x1: i64,
+    y1: i64,
+    x2: i64,
+    y2: i64,
+}
+
+fn make_point(x: i64, y: i64) -> Point = Point { x: x, y: y };
+
+fn make_rect(x1: i64, y1: i64, x2: i64, y2: i64) -> Rect =
+    Rect { x1: x1, y1: y1, x2: x2, y2: y2 };
+
+fn point_add(a: Point, b: Point) -> Point =
+    Point { x: a.x + b.x, y: a.y + b.y };
+
+fn rect_width(r: Rect) -> i64 =
+    if r.x2 > r.x1 { r.x2 - r.x1 } else { r.x1 - r.x2 };
+
+fn rect_height(r: Rect) -> i64 =
+    if r.y2 > r.y1 { r.y2 - r.y1 } else { r.y1 - r.y2 };
+
+fn rect_area(r: Rect) -> i64 = rect_width(r) * rect_height(r);
+
+fn rect_perimeter(r: Rect) -> i64 = 2 * (rect_width(r) + rect_height(r));
+
+fn classify_rect(r: Rect) -> i64 =
+    match rect_area(r) {
+        0 => 0,
+        1 => 1,
+        _ => if rect_width(r) == rect_height(r) { 2 } else { 3 },
+    };
+
+// Translate rectangle by a point offset
+fn translate_x(r: Rect, dx: i64) -> Rect =
+    Rect { x1: r.x1 + dx, y1: r.y1, x2: r.x2 + dx, y2: r.y2 };
+
+fn main() -> i64 = {
+    // Point operations
+    let p1 = make_point(3, 4);
+    let p2 = make_point(7, 6);
+    let p3 = point_add(p1, p2);
+    // p3 = (10, 10)
+    let point_sum = p3.x + p3.y;
+    // point_sum = 20
+
+    // Rectangle operations
+    let r1 = make_rect(1, 2, 6, 8);
+    // width=5, height=6, area=30, perimeter=22
+    let area = rect_area(r1);
+    let perim = rect_perimeter(r1);
+
+    // Classify: area=30, width!=height => 3
+    let cls = classify_rect(r1);
+
+    // Translate
+    let r2 = translate_x(r1, 10);
+    // r2 = (11, 2, 16, 8)
+    let trans_check = r2.x1;
+    // trans_check = 11
+
+    // Results:
+    // point_sum=20, area=30, perim=22, cls=3, trans_check=11
+    // Output: 20 + 30 + 22 + 3 + 11 = 86
+    println(point_sum + area + perim + cls + trans_check);
+    0
+};
