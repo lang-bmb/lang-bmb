@@ -9,7 +9,7 @@ use crate::cir::{CirProgram, CirVerifier, ProofWitness, ProofOutcome};
 
 #[cfg(test)]
 use crate::cir::CirFunction;
-use super::proof_db::{ProofDatabase, FunctionId, FunctionProofResult, VerificationStatus};
+use super::proof_db::{ProofDatabase, FunctionId, FunctionProofResult, VerificationStatus, ProofFact, ProofScope, ProofEvidence};
 use super::summary::{FunctionSummary, SummaryChange, extract_summaries, compare_summaries};
 
 /// Incremental verification manager
@@ -113,7 +113,7 @@ impl IncrementalVerifier {
                 let witness = self.verifier.verify_function(func);
 
                 // Store result in database
-                let proof_result = witness_to_proof_result(&witness);
+                let proof_result = witness_to_proof_result(&witness, func);
                 self.db.store_function_proof(&id, proof_result);
 
                 match &witness.outcome {
@@ -265,7 +265,8 @@ impl Default for IncrementalVerifier {
 }
 
 /// Convert ProofWitness to FunctionProofResult
-fn witness_to_proof_result(witness: &ProofWitness) -> FunctionProofResult {
+/// v0.90.147: Extract proven facts from CIR function contracts when verified
+fn witness_to_proof_result(witness: &ProofWitness, func: &crate::cir::CirFunction) -> FunctionProofResult {
     use std::time::Duration;
 
     let status = match &witness.outcome {
@@ -275,9 +276,40 @@ fn witness_to_proof_result(witness: &ProofWitness) -> FunctionProofResult {
         ProofOutcome::Unknown(_) | ProofOutcome::Error(_) => VerificationStatus::Unknown,
     };
 
+    // v0.90.147: When verified, extract proven facts from pre/post conditions
+    let proven_facts = if matches!(&witness.outcome, ProofOutcome::Verified) {
+        let func_id = FunctionId::simple(&witness.function);
+        let mut facts = Vec::new();
+
+        for named_prop in &func.preconditions {
+            facts.push(ProofFact {
+                proposition: named_prop.proposition.clone(),
+                scope: ProofScope::Function(func_id.clone()),
+                evidence: ProofEvidence::Precondition,
+            });
+        }
+
+        for (i, named_prop) in func.postconditions.iter().enumerate() {
+            facts.push(ProofFact {
+                proposition: named_prop.proposition.clone(),
+                scope: ProofScope::Function(func_id.clone()),
+                evidence: ProofEvidence::SmtProof {
+                    query_hash: 0, // Simplified
+                    solver: "z3".to_string(),
+                },
+            });
+            // Also record as function call evidence for callers
+            let _ = i; // postcondition index available if needed
+        }
+
+        facts
+    } else {
+        vec![]
+    };
+
     FunctionProofResult {
         status,
-        proven_facts: vec![], // TODO: Extract proven facts from verification
+        proven_facts,
         verification_time: Duration::from_millis(witness.verification_time_ms),
         smt_queries: 1, // Simplified
         verified_at: std::time::SystemTime::now()
@@ -630,6 +662,7 @@ mod tests {
 
     #[test]
     fn test_witness_to_proof_result_verified() {
+        let func = make_test_function("foo");
         let witness = ProofWitness {
             function: "foo".to_string(),
             outcome: ProofOutcome::Verified,
@@ -638,12 +671,13 @@ mod tests {
             counterexample: None,
         };
 
-        let result = witness_to_proof_result(&witness);
+        let result = witness_to_proof_result(&witness, &func);
         assert_eq!(result.status, VerificationStatus::Verified);
     }
 
     #[test]
     fn test_witness_to_proof_result_failed() {
+        let func = make_test_function("foo");
         let witness = ProofWitness {
             function: "foo".to_string(),
             outcome: ProofOutcome::Failed("precondition violation".to_string()),
@@ -652,12 +686,13 @@ mod tests {
             counterexample: None,
         };
 
-        let result = witness_to_proof_result(&witness);
+        let result = witness_to_proof_result(&witness, &func);
         assert!(matches!(result.status, VerificationStatus::Failed(_)));
     }
 
     #[test]
     fn test_witness_to_proof_result_skipped() {
+        let func = make_test_function("foo");
         let witness = ProofWitness {
             function: "foo".to_string(),
             outcome: ProofOutcome::Skipped,
@@ -666,12 +701,13 @@ mod tests {
             counterexample: None,
         };
 
-        let result = witness_to_proof_result(&witness);
+        let result = witness_to_proof_result(&witness, &func);
         assert_eq!(result.status, VerificationStatus::Skipped);
     }
 
     #[test]
     fn test_witness_to_proof_result_unknown() {
+        let func = make_test_function("foo");
         let witness = ProofWitness {
             function: "foo".to_string(),
             outcome: ProofOutcome::Unknown("timeout".to_string()),
@@ -680,8 +716,154 @@ mod tests {
             counterexample: None,
         };
 
-        let result = witness_to_proof_result(&witness);
+        let result = witness_to_proof_result(&witness, &func);
         assert_eq!(result.status, VerificationStatus::Unknown);
+    }
+
+    // --- Cycle 393: Proven facts extraction tests ---
+
+    use crate::cir::{NamedProposition, Proposition, CompareOp};
+
+    fn make_test_function_with_contracts(name: &str) -> CirFunction {
+        CirFunction {
+            name: name.to_string(),
+            type_params: vec![],
+            params: vec![
+                CirParam {
+                    name: "x".to_string(),
+                    ty: CirType::I64,
+                    constraints: vec![],
+                },
+            ],
+            ret_name: "result".to_string(),
+            ret_ty: CirType::I64,
+            preconditions: vec![
+                NamedProposition {
+                    name: Some("x_positive".to_string()),
+                    proposition: Proposition::compare(
+                        CirExpr::Var("x".to_string()),
+                        CompareOp::Gt,
+                        CirExpr::IntLit(0),
+                    ),
+                },
+            ],
+            postconditions: vec![
+                NamedProposition {
+                    name: Some("result_positive".to_string()),
+                    proposition: Proposition::compare(
+                        CirExpr::Var("result".to_string()),
+                        CompareOp::Gt,
+                        CirExpr::IntLit(0),
+                    ),
+                },
+            ],
+            loop_invariants: vec![],
+            effects: EffectSet::pure(),
+            body: CirExpr::Var("x".to_string()),
+        }
+    }
+
+    #[test]
+    fn test_proven_facts_verified_with_contracts() {
+        let func = make_test_function_with_contracts("foo");
+        let witness = ProofWitness {
+            function: "foo".to_string(),
+            outcome: ProofOutcome::Verified,
+            verification_time_ms: 100,
+            smt_script: None,
+            counterexample: None,
+        };
+
+        let result = witness_to_proof_result(&witness, &func);
+        assert_eq!(result.status, VerificationStatus::Verified);
+        // 1 precondition + 1 postcondition = 2 proven facts
+        assert_eq!(result.proven_facts.len(), 2);
+    }
+
+    #[test]
+    fn test_proven_facts_verified_no_contracts() {
+        let func = make_test_function("foo");
+        let witness = ProofWitness {
+            function: "foo".to_string(),
+            outcome: ProofOutcome::Verified,
+            verification_time_ms: 50,
+            smt_script: None,
+            counterexample: None,
+        };
+
+        let result = witness_to_proof_result(&witness, &func);
+        assert_eq!(result.status, VerificationStatus::Verified);
+        // No contracts → no proven facts
+        assert!(result.proven_facts.is_empty());
+    }
+
+    #[test]
+    fn test_proven_facts_failed_no_facts() {
+        let func = make_test_function_with_contracts("foo");
+        let witness = ProofWitness {
+            function: "foo".to_string(),
+            outcome: ProofOutcome::Failed("violation".to_string()),
+            verification_time_ms: 50,
+            smt_script: None,
+            counterexample: None,
+        };
+
+        let result = witness_to_proof_result(&witness, &func);
+        assert!(matches!(result.status, VerificationStatus::Failed(_)));
+        // Failed → no proven facts even with contracts
+        assert!(result.proven_facts.is_empty());
+    }
+
+    #[test]
+    fn test_proven_facts_precondition_evidence() {
+        let func = make_test_function_with_contracts("foo");
+        let witness = ProofWitness {
+            function: "foo".to_string(),
+            outcome: ProofOutcome::Verified,
+            verification_time_ms: 100,
+            smt_script: None,
+            counterexample: None,
+        };
+
+        let result = witness_to_proof_result(&witness, &func);
+        // First fact is from precondition
+        assert!(matches!(result.proven_facts[0].evidence, ProofEvidence::Precondition));
+    }
+
+    #[test]
+    fn test_proven_facts_postcondition_evidence() {
+        let func = make_test_function_with_contracts("foo");
+        let witness = ProofWitness {
+            function: "foo".to_string(),
+            outcome: ProofOutcome::Verified,
+            verification_time_ms: 100,
+            smt_script: None,
+            counterexample: None,
+        };
+
+        let result = witness_to_proof_result(&witness, &func);
+        // Second fact is from postcondition (SmtProof)
+        assert!(matches!(result.proven_facts[1].evidence, ProofEvidence::SmtProof { .. }));
+    }
+
+    #[test]
+    fn test_proven_facts_scope_is_function() {
+        let func = make_test_function_with_contracts("bar");
+        let witness = ProofWitness {
+            function: "bar".to_string(),
+            outcome: ProofOutcome::Verified,
+            verification_time_ms: 100,
+            smt_script: None,
+            counterexample: None,
+        };
+
+        let result = witness_to_proof_result(&witness, &func);
+        for fact in &result.proven_facts {
+            match &fact.scope {
+                ProofScope::Function(id) => assert_eq!(id.name, "bar"),
+                _ => panic!("Expected Function scope"),
+            }
+        }
     }
 
     #[test]
