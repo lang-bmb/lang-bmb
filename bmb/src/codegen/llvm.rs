@@ -6201,4 +6201,203 @@ mod tests {
         let ir = result.unwrap();
         assert!(ir.contains("ret i64 42"), "IR should contain 'ret i64 42'");
     }
+
+    // --- Cycle 394: Builtin declarations + gen_function_body tests ---
+
+    #[test]
+    fn test_generate_ir_declares_println() {
+        let cg = CodeGen::new();
+        let program = make_program(vec![]);
+        let ir = cg.generate_ir(&program).unwrap();
+        assert!(ir.contains("bmb_println_i64"), "IR should declare bmb_println_i64 builtin");
+    }
+
+    #[test]
+    fn test_generate_ir_declares_assert() {
+        let cg = CodeGen::new();
+        let program = make_program(vec![]);
+        let ir = cg.generate_ir(&program).unwrap();
+        assert!(ir.contains("bmb_assert"), "IR should declare bmb_assert builtin");
+    }
+
+    #[test]
+    fn test_generate_ir_declares_math_builtins() {
+        let cg = CodeGen::new();
+        let program = make_program(vec![]);
+        let ir = cg.generate_ir(&program).unwrap();
+        assert!(ir.contains("bmb_abs"), "IR should declare bmb_abs");
+        assert!(ir.contains("bmb_min"), "IR should declare bmb_min");
+        assert!(ir.contains("bmb_max"), "IR should declare bmb_max");
+    }
+
+    #[test]
+    fn test_generate_ir_declares_sqrt_intrinsic() {
+        let cg = CodeGen::new();
+        let program = make_program(vec![]);
+        let ir = cg.generate_ir(&program).unwrap();
+        assert!(ir.contains("llvm.sqrt.f64"), "IR should declare llvm.sqrt.f64 intrinsic");
+    }
+
+    #[test]
+    fn test_generate_ir_multi_block_branch() {
+        let cg = CodeGen::new();
+        let program = make_program(vec![make_func("branch", vec![("x", MirType::I64)], vec![
+            BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![
+                    MirInst::BinOp {
+                        dest: make_place("_cond"),
+                        op: MirBinOp::Gt,
+                        lhs: Operand::Place(make_place("x")),
+                        rhs: Operand::Constant(Constant::Int(0)),
+                    },
+                ],
+                terminator: Terminator::Branch {
+                    cond: Operand::Place(make_place("_cond")),
+                    then_label: "then".to_string(),
+                    else_label: "else_".to_string(),
+                },
+            },
+            BasicBlock {
+                label: "then".to_string(),
+                instructions: vec![],
+                terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(1)))),
+            },
+            BasicBlock {
+                label: "else_".to_string(),
+                instructions: vec![],
+                terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(0)))),
+            },
+        ])]);
+        let result = cg.generate_ir(&program);
+        assert!(result.is_ok());
+        let ir = result.unwrap();
+        assert!(ir.contains("br i1"), "IR should contain conditional branch");
+        assert!(ir.contains("ret i64 1"), "IR should contain then-branch return");
+        assert!(ir.contains("ret i64 0"), "IR should contain else-branch return");
+    }
+
+    #[test]
+    fn test_generate_ir_with_locals() {
+        let cg = CodeGen::new();
+        let program = make_program(vec![make_func_with_locals(
+            "with_local",
+            vec![("tmp", MirType::I64)],
+            vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![
+                    MirInst::Const { dest: make_place("tmp"), value: Constant::Int(42) },
+                ],
+                terminator: Terminator::Return(Some(Operand::Place(make_place("tmp")))),
+            }],
+        )]);
+        let result = cg.generate_ir(&program);
+        assert!(result.is_ok());
+        let ir = result.unwrap();
+        assert!(ir.contains("define"), "IR should contain function definition");
+    }
+
+    #[test]
+    fn test_generate_ir_bool_return() {
+        let cg = CodeGen::new();
+        let mut func = make_func("is_zero", vec![("x", MirType::I64)], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::BinOp {
+                    dest: make_place("_t0"),
+                    op: MirBinOp::Eq,
+                    lhs: Operand::Place(make_place("x")),
+                    rhs: Operand::Constant(Constant::Int(0)),
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Place(make_place("_t0")))),
+        }]);
+        func.ret_ty = MirType::Bool;
+        let result = cg.generate_ir(&make_program(vec![func]));
+        assert!(result.is_ok());
+        let ir = result.unwrap();
+        assert!(ir.contains("icmp eq"), "IR should contain equality comparison");
+    }
+
+    #[test]
+    fn test_generate_ir_f64_arithmetic() {
+        let cg = CodeGen::new();
+        let mut func = make_func("add_f64", vec![("a", MirType::F64), ("b", MirType::F64)], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::BinOp {
+                    dest: make_place("_t0"),
+                    op: MirBinOp::FAdd,
+                    lhs: Operand::Place(make_place("a")),
+                    rhs: Operand::Place(make_place("b")),
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Place(make_place("_t0")))),
+        }]);
+        func.ret_ty = MirType::F64;
+        let result = cg.generate_ir(&make_program(vec![func]));
+        assert!(result.is_ok());
+        let ir = result.unwrap();
+        assert!(ir.contains("fadd"), "IR should contain float add");
+    }
+
+    #[test]
+    fn test_generate_ir_subtraction() {
+        let cg = CodeGen::new();
+        let program = make_program(vec![make_func("sub", vec![("a", MirType::I64), ("b", MirType::I64)], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![
+                MirInst::BinOp {
+                    dest: make_place("_t0"),
+                    op: MirBinOp::Sub,
+                    lhs: Operand::Place(make_place("a")),
+                    rhs: Operand::Place(make_place("b")),
+                },
+            ],
+            terminator: Terminator::Return(Some(Operand::Place(make_place("_t0")))),
+        }])]);
+        let result = cg.generate_ir(&program);
+        assert!(result.is_ok());
+        let ir = result.unwrap();
+        assert!(ir.contains("sub"), "IR should contain subtraction");
+    }
+
+    #[test]
+    fn test_generate_ir_multiple_functions() {
+        let cg = CodeGen::new();
+        let program = make_program(vec![
+            make_func("foo", vec![], vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![],
+                terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(1)))),
+            }]),
+            make_func("bar", vec![], vec![BasicBlock {
+                label: "entry".to_string(),
+                instructions: vec![],
+                terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(2)))),
+            }]),
+        ]);
+        let result = cg.generate_ir(&program);
+        assert!(result.is_ok());
+        let ir = result.unwrap();
+        assert!(ir.contains("define") , "IR should contain function definitions");
+        // Both functions should be present
+        let define_count = ir.matches("define").count();
+        assert!(define_count >= 2, "IR should define at least 2 functions, got {}", define_count);
+    }
+
+    #[test]
+    fn test_generate_ir_void_return() {
+        let cg = CodeGen::new();
+        let mut func = make_func("do_nothing", vec![], vec![BasicBlock {
+            label: "entry".to_string(),
+            instructions: vec![],
+            terminator: Terminator::Return(None),
+        }]);
+        func.ret_ty = MirType::Unit;
+        let result = cg.generate_ir(&make_program(vec![func]));
+        assert!(result.is_ok());
+        let ir = result.unwrap();
+        assert!(ir.contains("ret void"), "Unit return should produce 'ret void'");
+    }
 }
