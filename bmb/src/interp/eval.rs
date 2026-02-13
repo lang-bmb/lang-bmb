@@ -10596,4 +10596,212 @@ mod tests {
         let result = run_program("fn main() -> f64 = sqrt(25.0);");
         assert_eq!(result, Value::Float(5.0));
     }
+
+    // ====================================================================
+    // String predicate + advanced method tests (Cycle 421)
+    // ====================================================================
+
+    #[test]
+    fn test_string_is_numeric_true() {
+        let result = run_program("fn main() -> bool = \"12345\".is_numeric();");
+        assert_eq!(result, Value::Bool(true));
+    }
+
+    #[test]
+    fn test_string_is_numeric_false() {
+        let result = run_program("fn main() -> bool = \"12a45\".is_numeric();");
+        assert_eq!(result, Value::Bool(false));
+    }
+
+    #[test]
+    fn test_string_is_numeric_empty() {
+        let result = run_program("fn main() -> bool = \"\".is_numeric();");
+        assert_eq!(result, Value::Bool(false));
+    }
+
+    #[test]
+    fn test_string_is_alpha_true() {
+        let result = run_program("fn main() -> bool = \"hello\".is_alpha();");
+        assert_eq!(result, Value::Bool(true));
+    }
+
+    #[test]
+    fn test_string_is_alpha_false() {
+        let result = run_program("fn main() -> bool = \"he11o\".is_alpha();");
+        assert_eq!(result, Value::Bool(false));
+    }
+
+    #[test]
+    fn test_string_is_alphanumeric() {
+        let result = run_program("fn main() -> bool = \"abc123\".is_alphanumeric();");
+        assert_eq!(result, Value::Bool(true));
+    }
+
+    #[test]
+    fn test_string_is_whitespace() {
+        let result = run_program("fn main() -> bool = \"  \\t \".is_whitespace();");
+        assert_eq!(result, Value::Bool(true));
+    }
+
+    #[test]
+    fn test_string_is_upper() {
+        let result = run_program("fn main() -> bool = \"HELLO\".is_upper();");
+        assert_eq!(result, Value::Bool(true));
+    }
+
+    #[test]
+    fn test_string_is_lower() {
+        let result = run_program("fn main() -> bool = \"hello\".is_lower();");
+        assert_eq!(result, Value::Bool(true));
+    }
+
+    #[test]
+    fn test_string_trim_start() {
+        let result = run_program("fn main() -> String = \"  hello\".trim_start();");
+        assert_eq!(result, Value::Str(Rc::new("hello".to_string())));
+    }
+
+    #[test]
+    fn test_string_trim_end() {
+        let result = run_program("fn main() -> String = \"hello  \".trim_end();");
+        assert_eq!(result, Value::Str(Rc::new("hello".to_string())));
+    }
+
+    #[test]
+    fn test_string_char_count() {
+        let result = run_program("fn main() -> i64 = \"hello\".char_count();");
+        assert_eq!(result, Value::Int(5));
+    }
+
+    #[test]
+    fn test_string_count_method() {
+        let result = run_program("fn main() -> i64 = \"abcabc\".count(\"ab\");");
+        assert_eq!(result, Value::Int(2));
+    }
+
+    #[test]
+    fn test_string_last_index_of() {
+        let result = run_program("fn main() -> i64 = \"abcabc\".last_index_of(\"bc\");");
+        assert_eq!(result, Value::Int(4));
+    }
+
+    #[test]
+    fn test_string_insert_method() {
+        let result = run_program("fn main() -> String = \"helo\".insert(3, \"l\");");
+        assert_eq!(result, Value::Str(Rc::new("hello".to_string())));
+    }
+
+    #[test]
+    fn test_string_remove_method() {
+        let result = run_program("fn main() -> String = \"hello\".remove(1, 3);");
+        assert_eq!(result, Value::Str(Rc::new("hlo".to_string())));
+    }
+
+    #[test]
+    fn test_string_substr() {
+        let result = run_program("fn main() -> String = \"hello world\".substr(6, 5);");
+        assert_eq!(result, Value::Str(Rc::new("world".to_string())));
+    }
+
+    #[test]
+    fn test_string_pad_left() {
+        let result = run_program("fn main() -> String = \"42\".pad_left(5, \"0\");");
+        assert_eq!(result, Value::Str(Rc::new("00042".to_string())));
+    }
+
+    #[test]
+    fn test_string_pad_right() {
+        let result = run_program("fn main() -> String = \"hi\".pad_right(5, \".\");");
+        assert_eq!(result, Value::Str(Rc::new("hi...".to_string())));
+    }
+
+    #[test]
+    fn test_string_center() {
+        let result = run_program("fn main() -> String = \"hi\".center(6, \"*\");");
+        assert_eq!(result, Value::Str(Rc::new("**hi**".to_string())));
+    }
+
+    #[test]
+    fn test_string_to_bool() {
+        let t = run_program("fn main() -> bool = \"true\".to_bool();");
+        assert_eq!(t, Value::Bool(true));
+        let f = run_program("fn main() -> bool = \"false\".to_bool();");
+        assert_eq!(f, Value::Bool(false));
+    }
+
+    #[test]
+    fn test_string_zfill() {
+        let result = run_program("fn main() -> String = \"42\".zfill(5);");
+        assert_eq!(result, Value::Str(Rc::new("00042".to_string())));
+    }
+
+    #[test]
+    fn test_string_ljust() {
+        let result = run_program("fn main() -> String = \"hi\".ljust(5, \"_\");");
+        assert_eq!(result, Value::Str(Rc::new("hi___".to_string())));
+    }
+
+    #[test]
+    fn test_string_rjust() {
+        let result = run_program("fn main() -> String = \"hi\".rjust(5, \"_\");");
+        assert_eq!(result, Value::Str(Rc::new("___hi".to_string())));
+    }
+
+    #[test]
+    fn test_string_truncate() {
+        let result = run_program("fn main() -> String = \"hello world\".truncate(5);");
+        assert_eq!(result, Value::Str(Rc::new("hello".to_string())));
+    }
+
+    #[test]
+    fn test_string_replace_first() {
+        let result = run_program("fn main() -> String = \"abcabc\".replace_first(\"abc\", \"xyz\");");
+        assert_eq!(result, Value::Str(Rc::new("xyzabc".to_string())));
+    }
+
+    #[test]
+    fn test_string_repeat_str() {
+        let result = run_program("fn main() -> String = \"ab\".repeat_str(3);");
+        assert_eq!(result, Value::Str(Rc::new("ababab".to_string())));
+    }
+
+    #[test]
+    fn test_string_count_matches() {
+        let result = run_program("fn main() -> i64 = \"aaaa\".count_matches(\"aa\");");
+        assert_eq!(result, Value::Int(2));
+    }
+
+    #[test]
+    fn test_string_remove_prefix() {
+        let result = run_program("fn main() -> String = \"hello world\".remove_prefix(\"hello \");");
+        assert_eq!(result, Value::Str(Rc::new("world".to_string())));
+    }
+
+    #[test]
+    fn test_string_remove_suffix() {
+        let result = run_program("fn main() -> String = \"hello world\".remove_suffix(\" world\");");
+        assert_eq!(result, Value::Str(Rc::new("hello".to_string())));
+    }
+
+    #[test]
+    fn test_string_find_all() {
+        let result = run_program(
+            "fn main() -> i64 = {
+                 let indices = \"abcabc\".find_all(\"bc\");
+                 indices.len()
+             };"
+        );
+        assert_eq!(result, Value::Int(2));
+    }
+
+    #[test]
+    fn test_string_split_once() {
+        let result = run_program(
+            "fn main() -> i64 = {
+                 let parts = \"key=value=extra\".split_once(\"=\");
+                 parts.len()
+             };"
+        );
+        assert_eq!(result, Value::Int(2));
+    }
 }
