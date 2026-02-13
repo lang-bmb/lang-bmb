@@ -3710,6 +3710,11 @@ fn method_to_runtime_fn(method: String) -> String =
     else if method == "index_of" { "bmb_string_index_of" }
     else if method == "trim" { "bmb_string_trim" }
     else if method == "replace" { "bmb_string_replace" }
+    // v0.90.98: Additional string methods
+    else if method == "to_upper" { "bmb_string_to_upper" }
+    else if method == "to_lower" { "bmb_string_to_lower" }
+    else if method == "repeat" { "bmb_string_repeat" }
+    else if method == "is_empty" { "bmb_string_is_empty" }
     // v0.90.97: Array-only methods (push, pop return new arrays)
     else if method == "push" { "bmb_array_push" }
     else if method == "pop" { "bmb_array_pop" }
@@ -4708,6 +4713,8 @@ fn get_call_return_type(fn_name: String) -> String =
     else if fn_name == "@hashmap_new" or fn_name == "@vec_new" or fn_name == "@str_hashmap_new" or fn_name == "@reg_cached_lookup" { "ptr" }
     // v0.90.96: String method ptr-returning functions
     else if fn_name == "@bmb_string_trim" or fn_name == "@bmb_string_replace" { "ptr" }
+    // v0.90.98: Additional string method ptr-returning functions
+    else if fn_name == "@bmb_string_to_upper" or fn_name == "@bmb_string_to_lower" or fn_name == "@bmb_string_repeat" { "ptr" }
     // v0.90.2: Double-returning functions
     // v0.90.9: Added i64_to_f64 intrinsic
     // v0.90.95: Float method return types
@@ -5041,6 +5048,11 @@ fn get_call_arg_types(fn_name: String) -> String =
     else if fn_name == "@bmb_string_index_of" { "pp" }
     else if fn_name == "@bmb_string_trim" { "p" }
     else if fn_name == "@bmb_string_replace" { "ppp" }
+    // v0.90.98: Additional string method arg types
+    else if fn_name == "@bmb_string_to_upper" { "p" }
+    else if fn_name == "@bmb_string_to_lower" { "p" }
+    else if fn_name == "@bmb_string_repeat" { "pi" }
+    else if fn_name == "@bmb_string_is_empty" { "p" }
     // v0.90.2: C library and runtime arg types
     else if fn_name == "@malloc" { "i" }
     else if fn_name == "@calloc" { "ii" }
@@ -5824,6 +5836,11 @@ fn gen_extern_string_contains() -> String = "declare i64 @bmb_string_contains(pt
 fn gen_extern_string_index_of() -> String = "declare i64 @bmb_string_index_of(ptr nocapture, ptr nocapture) nounwind willreturn memory(argmem: read) speculatable";
 fn gen_extern_string_trim() -> String = "declare ptr @bmb_string_trim(ptr nocapture) nounwind willreturn";
 fn gen_extern_string_replace() -> String = "declare ptr @bmb_string_replace(ptr nocapture, ptr nocapture, ptr nocapture) nounwind willreturn";
+// v0.90.98: Additional string method declarations
+fn gen_extern_string_to_upper() -> String = "declare ptr @bmb_string_to_upper(ptr nocapture) nounwind willreturn";
+fn gen_extern_string_to_lower() -> String = "declare ptr @bmb_string_to_lower(ptr nocapture) nounwind willreturn";
+fn gen_extern_string_repeat() -> String = "declare ptr @bmb_string_repeat(ptr nocapture, i64) nounwind willreturn";
+fn gen_extern_string_is_empty() -> String = "declare i64 @bmb_string_is_empty(ptr nocapture) nounwind willreturn memory(argmem: read) speculatable";
 fn gen_extern_chr() -> String = "declare ptr @bmb_chr(i64)";
 fn gen_extern_ord() -> String = "declare i64 @bmb_ord(ptr)";
 fn gen_extern_int_to_string() -> String = "declare ptr @bmb_int_to_string(i64)";
@@ -5941,6 +5958,9 @@ fn gen_runtime_decls_string() -> String =
     gen_extern_string_starts_with() + "|" + gen_extern_string_ends_with() + "|" +
     gen_extern_string_contains() + "|" + gen_extern_string_index_of() + "|" +
     gen_extern_string_trim() + "|" + gen_extern_string_replace() + "|" +
+    // v0.90.98: Additional string method declarations
+    gen_extern_string_to_upper() + "|" + gen_extern_string_to_lower() + "|" +
+    gen_extern_string_repeat() + "|" + gen_extern_string_is_empty() + "|" +
     gen_extern_chr() + "|" + gen_extern_ord() + "|" +
     gen_extern_int_to_string() + "|" + gen_extern_fast_i2s() + "|";
 

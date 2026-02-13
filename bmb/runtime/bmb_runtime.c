@@ -158,6 +158,48 @@ BmbString* bmb_string_replace(BmbString* s, BmbString* old_str, BmbString* new_s
     return bmb_string_wrap(data);
 }
 
+// v0.90.98: String methods — to_upper, to_lower, repeat, is_empty
+BmbString* bmb_string_to_upper(BmbString* s) {
+    if (!s || s->len == 0) return s;
+    char* data = (char*)bmb_alloc(s->len + 1);
+    for (int64_t i = 0; i < s->len; i++) {
+        char c = s->data[i];
+        data[i] = (c >= 'a' && c <= 'z') ? c - 32 : c;
+    }
+    data[s->len] = '\0';
+    return bmb_string_wrap(data);
+}
+
+BmbString* bmb_string_to_lower(BmbString* s) {
+    if (!s || s->len == 0) return s;
+    char* data = (char*)bmb_alloc(s->len + 1);
+    for (int64_t i = 0; i < s->len; i++) {
+        char c = s->data[i];
+        data[i] = (c >= 'A' && c <= 'Z') ? c + 32 : c;
+    }
+    data[s->len] = '\0';
+    return bmb_string_wrap(data);
+}
+
+BmbString* bmb_string_repeat(BmbString* s, int64_t n) {
+    if (!s || n <= 0) {
+        char* data = (char*)bmb_alloc(1);
+        data[0] = '\0';
+        return bmb_string_wrap(data);
+    }
+    int64_t total = s->len * n;
+    char* data = (char*)bmb_alloc(total + 1);
+    for (int64_t i = 0; i < n; i++) {
+        memcpy(data + i * s->len, s->data, (size_t)s->len);
+    }
+    data[total] = '\0';
+    return bmb_string_wrap(data);
+}
+
+int64_t bmb_string_is_empty(BmbString* s) {
+    return (!s || s->len == 0) ? 1 : 0;
+}
+
 // v0.97: Character functions
 // v0.60.107: bmb_chr returns BmbString* to match string type system
 // v0.88.2: Uses arena-aware allocation

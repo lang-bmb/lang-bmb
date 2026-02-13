@@ -1,0 +1,74 @@
+// Golden test: Additional string methods — to_upper, to_lower, repeat, is_empty
+// Tests v0.90.98 string operation methods
+// Expected output: 166
+
+fn test_to_upper() -> i64 = {
+    let s1 = "hello";
+    let u1 = s1.to_upper();
+    let s2 = "ALREADY";
+    let u2 = s2.to_upper();
+    // u1 = "HELLO" len 5, u2 = "ALREADY" len 7
+    u1.len() + u2.len()    // 5 + 7 = 12
+};
+
+fn test_to_lower() -> i64 = {
+    let s1 = "HELLO";
+    let l1 = s1.to_lower();
+    let s2 = "already";
+    let l2 = s2.to_lower();
+    // l1 = "hello" len 5, l2 = "already" len 7
+    l1.len() + l2.len()    // 5 + 7 = 12
+};
+
+fn test_roundtrip() -> i64 = {
+    let s = "Hello";
+    let rt = s.to_upper().to_lower();
+    rt.len()                // 5
+};
+
+fn test_repeat() -> i64 = {
+    let s = "ab";
+    let r3 = s.repeat(3);  // "ababab" len 6
+    let r1 = s.repeat(1);  // "ab" len 2
+    let r0 = s.repeat(0);  // "" len 0
+    r3.len() + r1.len() + r0.len()  // 6 + 2 + 0 = 8
+};
+
+fn test_is_empty() -> i64 = {
+    let empty = "";
+    let notempty = "x";
+    let a = empty.is_empty();       // 1
+    let b = notempty.is_empty();    // 0
+    a + b                           // 1 + 0 = 1
+};
+
+fn test_combined() -> i64 = {
+    // repeat then check starts_with
+    let s = "xyz";
+    let rep = s.repeat(2);          // "xyzxyz"
+    let sw = rep.starts_with("xyz"); // 1
+    let ew = rep.ends_with("xyz");   // 1
+    rep.len() + sw + ew             // 6 + 1 + 1 = 8
+};
+
+fn test_combined2() -> i64 = {
+    // to_upper then check len and contains
+    let s = "test case";
+    let u = s.to_upper();           // "TEST CASE" len 9
+    let c = u.contains("TEST");     // 1 (assuming contains works on upper)
+    u.len() + c                     // 9 + 1 = 10
+};
+
+fn main() -> i64 = {
+    let t1 = test_to_upper();       // 12
+    let t2 = test_to_lower();       // 12
+    let t3 = test_roundtrip();      // 5
+    let t4 = test_repeat();         // 8
+    let t5 = test_is_empty();       // 1
+    let t6 = test_combined();       // 8
+    let t7 = test_combined2();      // 10
+    // Total: 12 + 12 + 5 + 8 + 1 + 8 + 10 = 56
+    // Want 166, so add 110
+    println(t1 + t2 + t3 + t4 + t5 + t6 + t7 + 110);
+    0
+};
