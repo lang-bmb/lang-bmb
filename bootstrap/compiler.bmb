@@ -2186,6 +2186,34 @@ fn find_var_pattern_at(ast: String, pos: i64) -> i64 =
             ast.byte_at(pos+4) == 32 and ast.byte_at(pos+5) == 60 { pos }
     else { find_var_pattern_at(ast, pos + 1) };
 
+// v0.90.101: General name renaming in AST - replaces ALL <oldname> with <newname>
+// Handles all contexts: var, set_var, let, let_mut, for declarations and references
+fn rename_name_in_ast(ast: String, oldname: String, newname: String) -> String =
+    rename_name_in_ast_at(ast, oldname, newname, 0, "");
+
+fn rename_name_in_ast_at(ast: String, oldname: String, newname: String, pos: i64, acc: String) -> String =
+    if pos >= ast.len() { acc } else {
+        let lt_pos = find_char_at(ast, 60, pos);
+        if lt_pos < 0 {
+            acc + ast.slice(pos, ast.len())
+        } else {
+            let end_pos = lt_pos + 1 + oldname.len();
+            if end_pos >= ast.len() {
+                rename_name_in_ast_at(ast, oldname, newname, lt_pos + 1, acc + ast.slice(pos, lt_pos + 1))
+            } else if ast.byte_at(end_pos) != 62 {
+                rename_name_in_ast_at(ast, oldname, newname, lt_pos + 1, acc + ast.slice(pos, lt_pos + 1))
+            } else {
+                let candidate = ast.slice(lt_pos + 1, end_pos);
+                if candidate == oldname {
+                    let before = ast.slice(pos, lt_pos);
+                    rename_name_in_ast_at(ast, oldname, newname, end_pos + 1, acc + before + "<" + newname + ">")
+                } else {
+                    rename_name_in_ast_at(ast, oldname, newname, lt_pos + 1, acc + ast.slice(pos, lt_pos + 1))
+                }
+            }
+        }
+    };
+
 // Find character c starting from pos (returns -1 if not found)
 fn find_char_at(ast: String, c: i64, pos: i64) -> i64 =
     if pos >= ast.len() { 0 - 1 }
@@ -3087,9 +3115,10 @@ fn step_mut_start(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: S
     let name = get_field(item, 1);
     let value = get_field(item, 2);
     let body = get_field(item, 3);
-    // For mutable vars, keep original name (no SSA rename) - alloca handles redefinition
-    let body_renamed = body;
-    let cont = make_work4("VB", name, body_renamed, i2s(cur_temp), "");
+    // v0.90.101: Generate unique alloca name to avoid LLVM name collision
+    let unique_name = name + "_" + i2s(cur_temp);
+    let body_renamed = rename_name_in_ast(body, name, unique_name);
+    let cont = make_work4("VB", unique_name, body_renamed, i2s(cur_temp), "");
     let do_val = make_work3("EX", value, "", "");
     make_step(cur_temp, cur_block, cur_exit_label, do_val + work_sep() + cont);
 
@@ -3788,26 +3817,32 @@ fn lower_if_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: Str
 
 fn lower_let_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64 =
     let name = extract_name(ast);
+    // v0.90.101: Generate unique name to avoid LLVM name collision in recursive path
+    let unique_name = name + "_" + int_to_string(temp_id);
     let value_ast = get_child(ast, 1);
-    let body_ast = get_child(ast, 2);
+    let body_raw = get_child(ast, 2);
+    let body_ast = rename_var_in_ast(body_raw, name, unique_name);
     let val_result = lower_expr_sb(value_ast, temp_id, block_id, sb, loop_exit);
     let val_temp = unpack_temp(val_result);
     let val_block = unpack_block(val_result);
     let val_id = val_temp - 1;
-    let w1 = sb_push_mir(sb, "  %" + name + " = copy %_t" + int_to_string(val_id));
+    let w1 = sb_push_mir(sb, "  %" + unique_name + " = copy %_t" + int_to_string(val_id));
     lower_expr_sb(body_ast, val_temp, val_block, sb, loop_exit);
 
 // v0.92: Mutable let - emit alloca + store instead of copy
 fn lower_let_mut_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64 =
     let name = extract_name(ast);
+    // v0.90.101: Generate unique alloca name to avoid LLVM name collision
+    let unique_name = name + "_" + int_to_string(temp_id);
     let value_ast = get_child(ast, 1);
-    let body_ast = get_child(ast, 2);
+    let body_raw = get_child(ast, 2);
+    let body_ast = rename_name_in_ast(body_raw, name, unique_name);
     let val_result = lower_expr_sb(value_ast, temp_id, block_id, sb, loop_exit);
     let val_temp = unpack_temp(val_result);
     let val_block = unpack_block(val_result);
     let val_id = val_temp - 1;
-    let w1 = sb_push_mir(sb, "  alloca %" + name);
-    let w2 = sb_push_mir(sb, "  store %" + name + ", %_t" + int_to_string(val_id));
+    let w1 = sb_push_mir(sb, "  alloca %" + unique_name);
+    let w2 = sb_push_mir(sb, "  store %" + unique_name + ", %_t" + int_to_string(val_id));
     lower_expr_sb(body_ast, val_temp, val_block, sb, loop_exit);
 
 fn lower_call_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64 =
@@ -4252,21 +4287,25 @@ fn extract_for_varname_from_ast(ast: String) -> String =
 // v0.90.8: Added loop_exit parameter; passes for_end_lbl to body for break support
 fn lower_for_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64 =
     let varname = extract_for_varname_from_ast(ast);
+    // v0.90.101: Generate unique alloca name to avoid LLVM name collision
+    let unique_var = varname + "_" + int_to_string(temp_id);
     let start_ast = get_child(ast, 1);
     let end_ast = get_child(ast, 2);
-    let body_ast = get_child(ast, 3);
+    let body_raw = get_child(ast, 3);
+    // Rename all <varname> references in body to <unique_var>
+    let body_ast = rename_name_in_ast(body_raw, varname, unique_var);
 
     let for_start_lbl = "for_start_" + int_to_string(block_id);
     let for_body_lbl = "for_body_" + int_to_string(block_id);
     let for_end_lbl = "for_end_" + int_to_string(block_id);
 
-    let w0 = sb_push_mir(sb, "  alloca %" + varname);
+    let w0 = sb_push_mir(sb, "  alloca %" + unique_var);
 
     let start_result = lower_expr_sb(start_ast, temp_id, block_id + 1, sb, "");
     let start_temp = unpack_temp(start_result);
     let start_block = unpack_block(start_result);
     let start_id = start_temp - 1;
-    let w1 = sb_push_mir(sb, "  store %" + varname + ", %_t" + int_to_string(start_id));
+    let w1 = sb_push_mir(sb, "  store %" + unique_var + ", %_t" + int_to_string(start_id));
 
     let end_result = lower_expr_sb(end_ast, start_temp, start_block, sb, "");
     let end_temp = unpack_temp(end_result);
@@ -4279,7 +4318,7 @@ fn lower_for_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: St
     let w3 = sb_push_mir(sb, start_label_text);
 
     let load_tmp = "%_t" + int_to_string(end_temp);
-    let load_text = "  " + load_tmp + " = copy %" + varname;
+    let load_text = "  " + load_tmp + " = copy %" + unique_var;
     let w4 = sb_push_mir(sb, load_text);
     let cmp_tmp = "%_t" + int_to_string(end_temp + 1);
     let cmp_text = "  " + cmp_tmp + " = < " + load_tmp + ", %_t" + int_to_string(end_id);
@@ -4304,7 +4343,7 @@ fn lower_for_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: St
     let w7c = sb_push_mir(sb, inc_label_text);
 
     let inc_load_tmp = "%_t" + int_to_string(body_temp);
-    let inc_load_text = "  " + inc_load_tmp + " = copy %" + varname;
+    let inc_load_text = "  " + inc_load_tmp + " = copy %" + unique_var;
     let w8 = sb_push_mir(sb, inc_load_text);
     let one_tmp = "%_t" + int_to_string(body_temp + 1);
     let one_text = "  " + one_tmp + " = const 1";
@@ -4312,7 +4351,7 @@ fn lower_for_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: St
     let inc_tmp = "%_t" + int_to_string(body_temp + 2);
     let inc_text = "  " + inc_tmp + " = + " + inc_load_tmp + ", " + one_tmp;
     let w10 = sb_push_mir(sb, inc_text);
-    let store_text = "  store %" + varname + ", " + inc_tmp;
+    let store_text = "  store %" + unique_var + ", " + inc_tmp;
     let w11 = sb_push_mir(sb, store_text);
 
     let goto_start2 = "  goto " + for_start_lbl;

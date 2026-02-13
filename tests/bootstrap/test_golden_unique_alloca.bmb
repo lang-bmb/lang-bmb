@@ -1,0 +1,66 @@
+// Golden test: Unique alloca names for duplicate variable names
+// Tests that duplicate variable names in same function don't cause LLVM collision
+// Expected output: 174
+
+fn main() -> i64 = {
+    // Test 1: Two for loops with same variable name 'i'
+    let mut sum1 = 0;
+    for i in 0..5 {
+        set sum1 = sum1 + i;
+    };
+    let s1 = sum1;  // 0+1+2+3+4 = 10
+
+    // Test 2: Second for loop with same 'i' variable
+    let mut sum2 = 0;
+    for i in 0..10 {
+        set sum2 = sum2 + i;
+    };
+    let s2 = sum2;  // 0+1+2+...+9 = 45
+
+    // Test 3: Two let mut with same name 'x'
+    let r3 = {
+        let mut x = 10;
+        set x = x + 5;
+        x
+    };
+    let r3b = {
+        let mut x = 20;
+        set x = x + 7;
+        x
+    };
+    let s3 = r3 + r3b;  // 15 + 27 = 42
+
+    // Test 4: Nested for loops with same variable name
+    let mut count = 0;
+    for i in 0..3 {
+        for i in 0..4 {
+            set count = count + 1;
+        };
+    };
+    let s4 = count;  // 3*4 = 12
+
+    // Test 5: For loop variable same name as let mut
+    let mut k = 100;
+    for k in 0..5 {
+        set count = count + k;
+    };
+    let s5 = k;  // k should still be 100 (for-loop k is separate)
+
+    // Test 6: Multiple for-in with same variable
+    let arr1 = [1, 2, 3];
+    let mut total1 = 0;
+    for v in arr1 {
+        set total1 = total1 + v;
+    };
+    let arr2 = [10, 20, 30];
+    let mut total2 = 0;
+    for v in arr2 {
+        set total2 = total2 + v;
+    };
+    let s6 = total1 + total2;  // 6 + 60 = 66
+
+    // Total: 10 + 45 + 42 + 12 + 100 + 66 = 275
+    // 275 - 101 = 174
+    println(s1 + s2 + s3 + s4 + s5 + s6 - 101);
+    0
+};
