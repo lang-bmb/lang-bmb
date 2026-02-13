@@ -3330,4 +3330,163 @@ mod formatter_tests {
         let second = format_source(&first);
         assert_eq!(first, second, "Formatter output should be idempotent");
     }
+
+    // ---- Cycle 426: CLI utility function tests ----
+
+    #[test]
+    fn test_escape_bmb_source_windows_newlines() {
+        let input = "line1\r\nline2\r\nline3";
+        let escaped = escape_bmb_source(input);
+        assert_eq!(escaped, "line1\nline2\nline3");
+        assert!(!escaped.contains('\r'));
+    }
+
+    #[test]
+    fn test_escape_bmb_source_old_mac_newlines() {
+        let input = "line1\rline2\rline3";
+        let escaped = escape_bmb_source(input);
+        assert_eq!(escaped, "line1\nline2\nline3");
+    }
+
+    #[test]
+    fn test_escape_bmb_source_unix_unchanged() {
+        let input = "line1\nline2\nline3";
+        let escaped = escape_bmb_source(input);
+        assert_eq!(escaped, input);
+    }
+
+    #[test]
+    fn test_normalize_ir_removes_comments() {
+        let ir = "; This is a comment\ndefine i64 @main() {\n}";
+        let normalized = normalize_ir(ir);
+        assert!(!normalized.contains("; This is a comment"));
+        assert!(normalized.contains("define i64 @main() {"));
+    }
+
+    #[test]
+    fn test_normalize_ir_removes_target_triple() {
+        let ir = "target triple = \"x86_64-pc-windows-msvc\"\ndefine i64 @main() {\nret i64 0\n}";
+        let normalized = normalize_ir(ir);
+        assert!(!normalized.contains("target triple"));
+        assert!(normalized.contains("define i64 @main() {"));
+    }
+
+    #[test]
+    fn test_normalize_ir_removes_declarations() {
+        let ir = "declare void @puts(i8*)\ndefine i64 @main() {\nret i64 0\n}";
+        let normalized = normalize_ir(ir);
+        assert!(!normalized.contains("declare"));
+        assert!(normalized.contains("define i64 @main() {"));
+    }
+
+    #[test]
+    fn test_normalize_ir_removes_module_id() {
+        let ir = "; ModuleID = 'test.bc'\ndefine i64 @main() {\nret i64 0\n}";
+        let normalized = normalize_ir(ir);
+        assert!(!normalized.contains("ModuleID"));
+    }
+
+    #[test]
+    fn test_normalize_ir_replaces_pipe_separators() {
+        let ir = "define i64 @main() {|ret i64 0|}";
+        let normalized = normalize_ir(ir);
+        assert!(normalized.contains("define i64 @main() {"));
+        assert!(normalized.contains("ret i64 0"));
+    }
+
+    #[test]
+    fn test_normalize_ir_trims_and_removes_empty() {
+        let ir = "  define i64 @f() {  \n\n  ret i64 42  \n\n}";
+        let normalized = normalize_ir(ir);
+        // No empty lines, all trimmed
+        for line in normalized.lines() {
+            assert!(!line.is_empty());
+            assert_eq!(line, line.trim());
+        }
+    }
+
+    #[test]
+    fn test_extract_function_signature_basic() {
+        let ir = "define i64 @main() {\nentry:\n  %x = add i64 1, 2\n  ret i64 %x\n}";
+        let sigs = extract_function_signature(ir);
+        assert!(sigs.iter().any(|s| s.starts_with("define ")));
+        assert!(sigs.iter().any(|s| s.starts_with("ret ")));
+    }
+
+    #[test]
+    fn test_extract_function_signature_filters_non_sig_lines() {
+        let ir = "define i64 @add(i64 %a, i64 %b) {\nentry:\n  %sum = add i64 %a, %b\n  ret i64 %sum\n}";
+        let sigs = extract_function_signature(ir);
+        assert!(!sigs.iter().any(|s| s.contains("%sum = add")));
+    }
+
+    #[test]
+    fn test_extract_comments_empty() {
+        let comments = extract_comments("");
+        assert!(comments.is_empty());
+    }
+
+    #[test]
+    fn test_extract_comments_no_comments() {
+        let comments = extract_comments("fn foo() -> i64 = 42;\n");
+        assert!(comments.is_empty());
+    }
+
+    #[test]
+    fn test_extract_comments_mixed() {
+        let source = "// comment 1\nfn foo() -> i64\n-- legacy\n= 42;\n// comment 2\n";
+        let comments = extract_comments(source);
+        assert_eq!(comments.len(), 3);
+        assert_eq!(comments[0].0, 0);
+        assert!(comments[0].1.contains("comment 1"));
+        assert_eq!(comments[1].0, 2);
+        assert!(comments[1].1.contains("legacy"));
+        assert_eq!(comments[2].0, 4);
+    }
+
+    #[test]
+    fn test_line_number_at_offset_empty_source() {
+        assert_eq!(line_number_at_offset("", 0), 0);
+    }
+
+    #[test]
+    fn test_line_number_at_offset_single_line() {
+        assert_eq!(line_number_at_offset("hello", 3), 0);
+    }
+
+    #[test]
+    fn test_line_number_at_offset_past_end() {
+        let source = "abc\ndef";
+        assert_eq!(line_number_at_offset(source, 100), 1);
+    }
+
+    #[test]
+    fn test_line_number_at_offset_at_newline() {
+        let source = "abc\ndef\nghi";
+        // offset 3 is the '\n' character itself
+        assert_eq!(line_number_at_offset(source, 3), 0);
+        // offset 4 is 'd' (start of line 1)
+        assert_eq!(line_number_at_offset(source, 4), 1);
+    }
+
+    #[test]
+    fn test_fmt_nested_function_call() {
+        let source = "fn double(x: i64) -> i64\n= x + x;\n\nfn quad(x: i64) -> i64\n= double(double(x));\n";
+        let formatted = format_source(source);
+        assert!(formatted.contains("double(double(x))"));
+    }
+
+    #[test]
+    fn test_fmt_array_literal() {
+        let source = "fn nums() -> [i64; 3]\n= [1, 2, 3];\n";
+        let formatted = format_source(source);
+        assert!(formatted.contains("[1, 2, 3]"));
+    }
+
+    #[test]
+    fn test_fmt_let_mut_binding() {
+        let source = "fn count() -> i64\n= {\n    let mut n: i64 = 0;\n    n = n + 1;\n    n\n};\n";
+        let formatted = format_source(source);
+        assert!(formatted.contains("let mut n"));
+    }
 }

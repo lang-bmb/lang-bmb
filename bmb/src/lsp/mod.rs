@@ -2503,4 +2503,101 @@ mod tests {
         assert!(visible.iter().any(|l| l.name == "a"));
         assert!(visible.iter().any(|l| l.name == "b"));
     }
+
+    // ---- Cycle 426: LSP span_to_range + edge cases ----
+
+    #[test]
+    fn test_span_to_range_single_line() {
+        let (service, _) = LspService::new(Backend::new);
+        let backend = service.inner();
+        let content = "fn foo() -> i64 = 42;";
+        let range = backend.span_to_range(Span::new(3, 6), content);
+        assert_eq!(range.start.line, 0);
+        assert_eq!(range.start.character, 3);
+        assert_eq!(range.end.line, 0);
+        assert_eq!(range.end.character, 6);
+    }
+
+    #[test]
+    fn test_span_to_range_multiline() {
+        let (service, _) = LspService::new(Backend::new);
+        let backend = service.inner();
+        let content = "fn foo()\n-> i64\n= 42;";
+        // Span from col 3 on line 0 to col 1 on line 2
+        let range = backend.span_to_range(Span::new(3, 17), content);
+        assert_eq!(range.start.line, 0);
+        assert_eq!(range.start.character, 3);
+        assert_eq!(range.end.line, 2);
+        assert_eq!(range.end.character, 1);
+    }
+
+    #[test]
+    fn test_span_to_range_zero_width() {
+        let (service, _) = LspService::new(Backend::new);
+        let backend = service.inner();
+        let content = "hello";
+        let range = backend.span_to_range(Span::new(2, 2), content);
+        assert_eq!(range.start, range.end);
+    }
+
+    #[test]
+    fn test_get_word_at_position_underscore_ident() {
+        let (service, _) = LspService::new(Backend::new);
+        let backend = service.inner();
+        let word = backend.get_word_at_position("let _my_var = 1;", Position::new(0, 6));
+        assert_eq!(word, Some("_my_var".to_string()));
+    }
+
+    #[test]
+    fn test_get_word_at_position_at_end_of_content() {
+        let (service, _) = LspService::new(Backend::new);
+        let backend = service.inner();
+        let word = backend.get_word_at_position("abc", Position::new(0, 3));
+        // cursor past end of 'abc' → no word at that exact position
+        assert!(word.is_none() || word == Some("abc".to_string()));
+    }
+
+    #[test]
+    fn test_offset_to_position_empty_content() {
+        let (service, _) = LspService::new(Backend::new);
+        let backend = service.inner();
+        let pos = backend.offset_to_position(0, "");
+        assert_eq!(pos.line, 0);
+        assert_eq!(pos.character, 0);
+    }
+
+    #[test]
+    fn test_position_to_offset_past_end() {
+        let (service, _) = LspService::new(Backend::new);
+        let backend = service.inner();
+        let offset = backend.position_to_offset(Position::new(100, 0), "hello\nworld");
+        assert_eq!(offset, 11); // content.len()
+    }
+
+    #[test]
+    fn test_get_diagnostics_type_error() {
+        let (service, _) = LspService::new(Backend::new);
+        let backend = service.inner();
+        let url = Url::parse("file:///test.bmb").unwrap();
+        let diags = backend.get_diagnostics(&url, "fn main() -> i64 = true;");
+        assert!(!diags.is_empty(), "Type mismatch should produce diagnostics");
+    }
+
+    #[test]
+    fn test_collect_symbols_struct_def_contains_name() {
+        let (service, _) = LspService::new(Backend::new);
+        let backend = service.inner();
+        let ast = backend.try_parse("struct Point { x: i64, y: i64 }").unwrap();
+        let (defs, _refs, _locals) = backend.collect_symbols(&ast);
+        assert!(defs.iter().any(|d| d.name == "Point"));
+    }
+
+    #[test]
+    fn test_collect_symbols_enum_def_contains_name() {
+        let (service, _) = LspService::new(Backend::new);
+        let backend = service.inner();
+        let ast = backend.try_parse("enum Color { Red, Green, Blue }").unwrap();
+        let (defs, _refs, _locals) = backend.collect_symbols(&ast);
+        assert!(defs.iter().any(|d| d.name == "Color"));
+    }
 }
