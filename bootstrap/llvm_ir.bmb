@@ -633,9 +633,6 @@ fn extract_until_comma_or_end(s: String, pos: i64) -> String =
     let comma = find_char(s, 44, pos);
     if comma < 0 { trim_ws(s.slice(pos, s.len())) } else { trim_ws(s.slice(pos, comma)) };
 
-fn skip_ws(s: String, pos: i64) -> i64 =
-    if pos >= s.len() { pos } else if s.byte_at(pos) == 32 { skip_ws(s, pos + 1) } else { pos };
-
 // Parse captured variable from Capture %closure, %var, idx
 fn parse_capture_var(line: String) -> String =
     let cap_pos = find_capture_pos(line, 0);

@@ -263,9 +263,6 @@ fn test_is_alpha() -> bool =
     is_alpha(65) and is_alpha(90) and is_alpha(97) and is_alpha(122)
     and not is_alpha(64) and not is_alpha(91);
 
-fn test_is_alnum() -> bool =
-    is_alnum(65) and is_alnum(48) and not is_alnum(32);
-
 fn test_is_ident_start() -> bool =
     is_ident_start(97) and is_ident_start(95) and not is_ident_start(48);
 
