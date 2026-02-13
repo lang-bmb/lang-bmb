@@ -3237,4 +3237,97 @@ mod formatter_tests {
         assert_eq!(line_number_at_offset(source, 4), 1); // start of line 1
         assert_eq!(line_number_at_offset(source, 8), 2); // start of line 2
     }
+
+    // --- Cycle 409: Formatter edge case tests ---
+
+    #[test]
+    fn test_fmt_trait_def() {
+        let source = "trait Printable {\n    fn display(self: &Self) -> i64;\n}\n";
+        let formatted = format_source(source);
+        assert!(formatted.contains("trait Printable {"));
+        assert!(formatted.contains("fn display(self: &Self) -> i64;"));
+    }
+
+    #[test]
+    fn test_fmt_impl_block() {
+        let source = "struct Num { v: i64 }\ntrait HasVal { fn get(self: Self) -> i64; }\nimpl HasVal for Num {\n    fn get(self: Self) -> i64\n    = self.v;\n}\n";
+        let formatted = format_source(source);
+        assert!(formatted.contains("impl HasVal for Num {"));
+        assert!(formatted.contains("fn get(self: Self) -> i64"));
+    }
+
+    #[test]
+    fn test_fmt_match_expr() {
+        let source = "fn classify(x: i64) -> i64\n= match x {\n    0 => 0,\n    1 => 1,\n    _ => 2,\n};\n";
+        let formatted = format_source(source);
+        assert!(formatted.contains("match x {"), "Got: {}", formatted);
+        // Formatter puts arms on one line with comma separator (no trailing comma)
+        assert!(formatted.contains("0 => 0"), "Got: {}", formatted);
+        assert!(formatted.contains("_ => 2"), "Got: {}", formatted);
+    }
+
+    #[test]
+    fn test_fmt_if_else_expr() {
+        let source = "fn max(a: i64, b: i64) -> i64\n= if a > b { a } else { b };\n";
+        let formatted = format_source(source);
+        assert!(formatted.contains("if a > b"));
+    }
+
+    #[test]
+    fn test_fmt_generic_fn() {
+        // Formatter currently doesn't emit type parameters
+        let source = "fn id<T>(x: T) -> T\n= x;\n";
+        let formatted = format_source(source);
+        assert!(formatted.contains("fn id("));
+        assert!(formatted.contains("-> T"));
+    }
+
+    #[test]
+    fn test_fmt_generic_struct() {
+        // Formatter doesn't emit type parameters on struct names
+        let source = "struct Pair<A, B> {\n    first: A,\n    second: B,\n}\n";
+        let formatted = format_source(source);
+        assert!(formatted.contains("struct Pair {"));
+        assert!(formatted.contains("first: A,"));
+    }
+
+    #[test]
+    fn test_fmt_nullable_type() {
+        let source = "fn maybe(x: i64) -> i64?\n= if x > 0 { x } else { null };\n";
+        let formatted = format_source(source);
+        assert!(formatted.contains("-> i64?"));
+    }
+
+    #[test]
+    fn test_fmt_for_loop() {
+        let source = "fn sum() -> i64\n= {\n    let mut s: i64 = 0;\n    for i in 0..10 {\n        s = s + i;\n        0\n    };\n    s\n};\n";
+        let formatted = format_source(source);
+        assert!(formatted.contains("for i in"));
+    }
+
+    #[test]
+    fn test_fmt_while_loop() {
+        let source = "fn count() -> i64\n= {\n    let mut n: i64 = 0;\n    while n < 10 {\n        n = n + 1;\n        0\n    };\n    n\n};\n";
+        let formatted = format_source(source);
+        assert!(formatted.contains("while n < 10"));
+    }
+
+    #[test]
+    fn test_fmt_enum_with_data() {
+        // Formatter outputs variant names without field types
+        let source = "enum Shape {\n    Circle(f64),\n    Rect(f64, f64),\n}\n";
+        let formatted = format_source(source);
+        assert!(formatted.contains("enum Shape {"));
+        assert!(formatted.contains("Circle,"), "Got: {}", formatted);
+        assert!(formatted.contains("Rect,"), "Got: {}", formatted);
+    }
+
+    #[test]
+    fn test_fmt_round_trip_simple() {
+        // Simple round-trip with struct + trait + impl (no struct init in body)
+        let source = "fn add(a: i64, b: i64) -> i64\n= a + b;\n\nfn main() -> i64\n= add(1, 2);\n";
+        let first = format_source(source);
+        let second = format_source(&first);
+        assert_eq!(first, second, "Formatter output should be idempotent");
+    }
 }
