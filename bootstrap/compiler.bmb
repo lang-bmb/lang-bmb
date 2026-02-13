@@ -4285,6 +4285,7 @@ fn get_call_return_type(fn_name: String) -> String =
     else if fn_name == "@free" or fn_name == "@println_f64" or fn_name == "@bmb_print_i64" or fn_name == "@puts_cstr" { "void" }
     else if fn_name == "@store_u8" or fn_name == "@store_i64" { "void" }
     else if fn_name == "@hashmap_insert" or fn_name == "@hashmap_free" { "void" }
+    else if fn_name == "@str_hashmap_free" { "void" }
     else if fn_name == "@vec_push" or fn_name == "@vec_set" or fn_name == "@vec_free" { "void" }
     // v0.88.10: Void concurrency functions
     else if fn_name == "@bmb_mutex_unlock" or fn_name == "@bmb_mutex_free" { "void" }
@@ -4303,7 +4304,7 @@ fn get_call_return_type(fn_name: String) -> String =
     else if fn_name == "@bmb_sb_build" or fn_name == "@bmb_read_file" or fn_name == "@bmb_getenv" or fn_name == "@get_arg" { "ptr" }
     // v0.90.2: C library pointer-returning functions
     else if fn_name == "@malloc" or fn_name == "@calloc" { "ptr" }
-    else if fn_name == "@hashmap_new" or fn_name == "@vec_new" { "ptr" }
+    else if fn_name == "@hashmap_new" or fn_name == "@vec_new" or fn_name == "@str_hashmap_new" { "ptr" }
     // v0.90.2: Double-returning functions
     // v0.90.9: Added i64_to_f64 intrinsic
     else if fn_name == "@sqrt" or fn_name == "@i64_to_f64" { "double" }
@@ -4611,6 +4612,9 @@ fn get_call_arg_types(fn_name: String) -> String =
     else if fn_name == "@hashmap_insert" { "ppi" }
     else if fn_name == "@hashmap_get" { "pp" }
     else if fn_name == "@hashmap_free" { "p" }
+    else if fn_name == "@str_hashmap_insert" { "ppi" }
+    else if fn_name == "@str_hashmap_get" { "pp" }
+    else if fn_name == "@str_hashmap_free" { "p" }
     else if fn_name == "@vec_push" { "pi" }
     else if fn_name == "@vec_get" { "pi" }
     else if fn_name == "@vec_set" { "pii" }
@@ -5377,6 +5381,11 @@ fn gen_extern_hashmap_new() -> String = "declare ptr @hashmap_new()";
 fn gen_extern_hashmap_insert() -> String = "declare void @hashmap_insert(ptr, ptr, i64)";
 fn gen_extern_hashmap_get() -> String = "declare i64 @hashmap_get(ptr, ptr)";
 fn gen_extern_hashmap_free() -> String = "declare void @hashmap_free(ptr)";
+// v0.90.82: String-content hashmap (keys compared by string content)
+fn gen_extern_str_hashmap_new() -> String = "declare ptr @str_hashmap_new()";
+fn gen_extern_str_hashmap_insert() -> String = "declare i64 @str_hashmap_insert(ptr, ptr, i64)";
+fn gen_extern_str_hashmap_get() -> String = "declare i64 @str_hashmap_get(ptr, ptr)";
+fn gen_extern_str_hashmap_free() -> String = "declare void @str_hashmap_free(ptr)";
 fn gen_extern_vec_new() -> String = "declare ptr @vec_new()";
 fn gen_extern_vec_push() -> String = "declare void @vec_push(ptr, i64)";
 fn gen_extern_vec_get() -> String = "declare i64 @vec_get(ptr, i64)";
@@ -5434,6 +5443,8 @@ fn gen_runtime_decls_ext() -> String =
     gen_extern_char_at() + "|" +
     gen_extern_hashmap_new() + "|" + gen_extern_hashmap_insert() + "|" +
     gen_extern_hashmap_get() + "|" + gen_extern_hashmap_free() + "|" +
+    gen_extern_str_hashmap_new() + "|" + gen_extern_str_hashmap_insert() + "|" +
+    gen_extern_str_hashmap_get() + "|" + gen_extern_str_hashmap_free() + "|" +
     gen_extern_vec_new() + "|" + gen_extern_vec_push() + "|" +
     gen_extern_vec_get() + "|" + gen_extern_vec_set() + "|" +
     gen_extern_vec_len() + "|" + gen_extern_vec_free();

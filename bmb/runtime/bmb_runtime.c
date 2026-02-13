@@ -1008,6 +1008,131 @@ int64_t hashmap_contains(int64_t handle, int64_t key) {
     return 0;
 }
 
+// v0.90.82: String-content hashmap (keys compared by string content, not pointer identity)
+// Uses FNV-1a hash of string bytes for distribution, strcmp for equality
+// Same open-addressing with linear probing as the i64 hashmap
+
+typedef struct {
+    int64_t key;    // BmbString* (stored as i64)
+    int64_t value;  // arbitrary i64 value
+    int state;      // 0=empty, 1=occupied, 2=deleted
+} StrHashEntry;
+
+typedef struct {
+    StrHashEntry* entries;
+    int64_t count;
+    int64_t capacity;
+} StrHashMap;
+
+// FNV-1a hash of string content
+static int64_t str_hash_content(int64_t key_handle) {
+    if (!key_handle) return 0;
+    BmbString* s = (BmbString*)key_handle;
+    uint64_t h = 14695981039346656037ULL;  // FNV offset basis
+    for (int64_t i = 0; i < s->len; i++) {
+        h ^= (uint8_t)s->data[i];
+        h *= 1099511628211ULL;  // FNV prime
+    }
+    return (int64_t)(h ^ (h >> 32));
+}
+
+// Compare two BmbString* by content
+static int str_key_eq(int64_t a, int64_t b) {
+    if (a == b) return 1;  // Same pointer
+    if (!a || !b) return 0;
+    BmbString* sa = (BmbString*)a;
+    BmbString* sb = (BmbString*)b;
+    if (sa->len != sb->len) return 0;
+    for (int64_t i = 0; i < sa->len; i++) {
+        if (sa->data[i] != sb->data[i]) return 0;
+    }
+    return 1;
+}
+
+#define STR_HASHMAP_INITIAL_CAPACITY 4096
+
+int64_t str_hashmap_new(void) {
+    StrHashMap* m = (StrHashMap*)malloc(sizeof(StrHashMap));
+    if (!m) return 0;
+    m->entries = (StrHashEntry*)calloc(STR_HASHMAP_INITIAL_CAPACITY, sizeof(StrHashEntry));
+    if (!m->entries) { free(m); return 0; }
+    m->count = 0;
+    m->capacity = STR_HASHMAP_INITIAL_CAPACITY;
+    return (int64_t)m;
+}
+
+void str_hashmap_free(int64_t handle) {
+    if (!handle) return;
+    StrHashMap* m = (StrHashMap*)handle;
+    free(m->entries);
+    free(m);
+}
+
+// Resize when load factor > 0.7
+static void str_hashmap_resize(StrHashMap* m) {
+    int64_t new_cap = m->capacity * 2;
+    StrHashEntry* new_entries = (StrHashEntry*)calloc(new_cap, sizeof(StrHashEntry));
+    if (!new_entries) return;
+    int64_t new_mask = new_cap - 1;
+    for (int64_t i = 0; i < m->capacity; i++) {
+        StrHashEntry* old = &m->entries[i];
+        if (old->state == 1) {
+            int64_t hash = str_hash_content(old->key);
+            int64_t idx = hash & new_mask;
+            while (new_entries[idx].state == 1) {
+                idx = (idx + 1) & new_mask;
+            }
+            new_entries[idx] = *old;
+        }
+    }
+    free(m->entries);
+    m->entries = new_entries;
+    m->capacity = new_cap;
+}
+
+int64_t str_hashmap_insert(int64_t handle, int64_t key, int64_t value) {
+    if (!handle) return 0;
+    StrHashMap* m = (StrHashMap*)handle;
+    // Resize if load factor > 0.7
+    if (m->count * 10 > m->capacity * 7) {
+        str_hashmap_resize(m);
+    }
+    int64_t hash = str_hash_content(key);
+    int64_t mask = m->capacity - 1;
+    int64_t idx = hash & mask;
+    for (int64_t i = 0; i < m->capacity; i++) {
+        StrHashEntry* e = &m->entries[idx];
+        if (e->state == 0 || e->state == 2) {
+            e->key = key;
+            e->value = value;
+            e->state = 1;
+            m->count++;
+            return 0;
+        } else if (e->state == 1 && str_key_eq(e->key, key)) {
+            int64_t old = e->value;
+            e->value = value;
+            return old;
+        }
+        idx = (idx + 1) & mask;
+    }
+    return 0;
+}
+
+int64_t str_hashmap_get(int64_t handle, int64_t key) {
+    if (!handle) return 0;
+    StrHashMap* m = (StrHashMap*)handle;
+    int64_t hash = str_hash_content(key);
+    int64_t mask = m->capacity - 1;
+    int64_t idx = hash & mask;
+    for (int64_t i = 0; i < m->capacity; i++) {
+        StrHashEntry* e = &m->entries[idx];
+        if (e->state == 0) return 0;
+        if (e->state == 1 && str_key_eq(e->key, key)) return e->value;
+        idx = (idx + 1) & mask;
+    }
+    return 0;
+}
+
 // v0.46: Additional file functions
 int64_t bmb_file_size(const char* path) {
     FILE* f = fopen(path, "rb");
