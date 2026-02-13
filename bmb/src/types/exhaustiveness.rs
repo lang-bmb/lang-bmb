@@ -2734,4 +2734,234 @@ mod tests {
         let result = check_exhaustiveness(&ty, &arms, &ctx);
         assert!(result.is_exhaustive);
     }
+
+    // ---- Cycle 425: Additional exhaustiveness tests ----
+
+    #[test]
+    fn test_substitute_type_typevar() {
+        let mut subst = std::collections::HashMap::new();
+        subst.insert("T".to_string(), Type::Bool);
+        let result = substitute_type(&Type::TypeVar("T".to_string()), &subst);
+        assert_eq!(result, Type::Bool);
+    }
+
+    #[test]
+    fn test_substitute_type_unmatched_typevar() {
+        let subst = std::collections::HashMap::new();
+        let result = substitute_type(&Type::TypeVar("T".to_string()), &subst);
+        assert_eq!(result, Type::TypeVar("T".to_string()));
+    }
+
+    #[test]
+    fn test_substitute_type_named_matches_param() {
+        let mut subst = std::collections::HashMap::new();
+        subst.insert("T".to_string(), Type::I64);
+        // Named type matching a type param should be substituted
+        let result = substitute_type(&Type::Named("T".to_string()), &subst);
+        assert_eq!(result, Type::I64);
+    }
+
+    #[test]
+    fn test_substitute_type_array() {
+        let mut subst = std::collections::HashMap::new();
+        subst.insert("T".to_string(), Type::F64);
+        let ty = Type::Array(Box::new(Type::TypeVar("T".to_string())), 5);
+        let result = substitute_type(&ty, &subst);
+        assert_eq!(result, Type::Array(Box::new(Type::F64), 5));
+    }
+
+    #[test]
+    fn test_substitute_type_tuple() {
+        let mut subst = std::collections::HashMap::new();
+        subst.insert("A".to_string(), Type::Bool);
+        subst.insert("B".to_string(), Type::I64);
+        let ty = Type::Tuple(vec![
+            Box::new(Type::TypeVar("A".to_string())),
+            Box::new(Type::TypeVar("B".to_string())),
+        ]);
+        let result = substitute_type(&ty, &subst);
+        assert_eq!(result, Type::Tuple(vec![Box::new(Type::Bool), Box::new(Type::I64)]));
+    }
+
+    #[test]
+    fn test_substitute_type_ref() {
+        let mut subst = std::collections::HashMap::new();
+        subst.insert("T".to_string(), Type::I64);
+        let ty = Type::Ref(Box::new(Type::TypeVar("T".to_string())));
+        let result = substitute_type(&ty, &subst);
+        assert_eq!(result, Type::Ref(Box::new(Type::I64)));
+    }
+
+    #[test]
+    fn test_substitute_type_ref_mut() {
+        let mut subst = std::collections::HashMap::new();
+        subst.insert("T".to_string(), Type::I64);
+        let ty = Type::RefMut(Box::new(Type::TypeVar("T".to_string())));
+        let result = substitute_type(&ty, &subst);
+        assert_eq!(result, Type::RefMut(Box::new(Type::I64)));
+    }
+
+    #[test]
+    fn test_substitute_type_primitive_unchanged() {
+        let subst = std::collections::HashMap::new();
+        assert_eq!(substitute_type(&Type::I64, &subst), Type::I64);
+        assert_eq!(substitute_type(&Type::Bool, &subst), Type::Bool);
+        assert_eq!(substitute_type(&Type::F64, &subst), Type::F64);
+    }
+
+    #[test]
+    fn test_expand_or_pattern_single() {
+        let pat = Pattern::Literal(LiteralPattern::Bool(true));
+        let expanded = expand_or_pattern(&pat);
+        assert_eq!(expanded.len(), 1);
+    }
+
+    #[test]
+    fn test_expand_or_pattern_multiple() {
+        let pat = Pattern::Or(vec![
+            Spanned::new(Pattern::Literal(LiteralPattern::Bool(true)), Span::new(0, 0)),
+            Spanned::new(Pattern::Literal(LiteralPattern::Bool(false)), Span::new(0, 0)),
+        ]);
+        let expanded = expand_or_pattern(&pat);
+        assert_eq!(expanded.len(), 2);
+    }
+
+    #[test]
+    fn test_is_unconditional_pattern_wildcard() {
+        assert!(is_unconditional_pattern(&Pattern::Wildcard));
+    }
+
+    #[test]
+    fn test_is_unconditional_pattern_var() {
+        assert!(is_unconditional_pattern(&Pattern::Var("x".to_string())));
+    }
+
+    #[test]
+    fn test_is_unconditional_pattern_literal_not_unconditional() {
+        assert!(!is_unconditional_pattern(&Pattern::Literal(LiteralPattern::Int(42))));
+    }
+
+    #[test]
+    fn test_is_unconditional_pattern_or_with_wildcard() {
+        let pat = Pattern::Or(vec![
+            Spanned::new(Pattern::Literal(LiteralPattern::Int(1)), Span::new(0, 0)),
+            Spanned::new(Pattern::Wildcard, Span::new(0, 0)),
+        ]);
+        assert!(is_unconditional_pattern(&pat));
+    }
+
+    #[test]
+    fn test_is_unconditional_pattern_binding_with_wildcard() {
+        let pat = Pattern::Binding {
+            name: "x".to_string(),
+            pattern: Box::new(Spanned::new(Pattern::Wildcard, Span::new(0, 0))),
+        };
+        assert!(is_unconditional_pattern(&pat));
+    }
+
+    #[test]
+    fn test_get_finite_type_values_bool() {
+        let ctx = ExhaustivenessContext::new();
+        let vals = get_finite_type_values(&Type::Bool, &ctx);
+        assert!(vals.is_some());
+        let vals = vals.unwrap();
+        assert_eq!(vals.len(), 2);
+        assert!(vals.contains(&"true".to_string()));
+        assert!(vals.contains(&"false".to_string()));
+    }
+
+    #[test]
+    fn test_get_finite_type_values_enum() {
+        let mut ctx = ExhaustivenessContext::new();
+        ctx.add_enum("Color", vec![
+            ("Red".to_string(), vec![]),
+            ("Green".to_string(), vec![]),
+            ("Blue".to_string(), vec![]),
+        ]);
+        let vals = get_finite_type_values(&Type::Named("Color".to_string()), &ctx);
+        assert!(vals.is_some());
+        let vals = vals.unwrap();
+        assert_eq!(vals.len(), 3);
+        assert!(vals.contains(&"Color::Red".to_string()));
+    }
+
+    #[test]
+    fn test_get_finite_type_values_int_returns_none() {
+        let ctx = ExhaustivenessContext::new();
+        assert!(get_finite_type_values(&Type::I64, &ctx).is_none());
+    }
+
+    #[test]
+    fn test_get_finite_type_values_string_returns_none() {
+        let ctx = ExhaustivenessContext::new();
+        assert!(get_finite_type_values(&Type::String, &ctx).is_none());
+    }
+
+    #[test]
+    fn test_merge_ranges_empty() {
+        assert!(merge_ranges(&[]).is_empty());
+    }
+
+    #[test]
+    fn test_merge_ranges_adjacent() {
+        let ranges = vec![(1, 3), (4, 6)];
+        let merged = merge_ranges(&ranges);
+        assert_eq!(merged, vec![(1, 6)]);
+    }
+
+    #[test]
+    fn test_find_range_gaps_no_coverage() {
+        let gaps = find_range_gaps(&[], (0, 10));
+        assert_eq!(gaps, vec![(0, 10)]);
+    }
+
+    #[test]
+    fn test_find_range_gaps_full_coverage() {
+        let gaps = find_range_gaps(&[(0, 10)], (0, 10));
+        assert!(gaps.is_empty());
+    }
+
+    #[test]
+    fn test_find_range_gaps_partial() {
+        let gaps = find_range_gaps(&[(3, 7)], (0, 10));
+        assert_eq!(gaps, vec![(0, 2), (8, 10)]);
+    }
+
+    #[test]
+    fn test_generate_tuple_combinations_single_element() {
+        let values = vec![vec!["a".to_string(), "b".to_string()]];
+        let combos = generate_tuple_combinations(&values);
+        assert_eq!(combos.len(), 2);
+        assert_eq!(combos[0], vec!["a".to_string()]);
+        assert_eq!(combos[1], vec!["b".to_string()]);
+    }
+
+    #[test]
+    fn test_context_get_enum_variant_fields() {
+        let mut ctx = ExhaustivenessContext::new();
+        ctx.add_enum("Option", vec![
+            ("Some".to_string(), vec![Type::I64]),
+            ("None".to_string(), vec![]),
+        ]);
+        let fields = ctx.get_enum_variant_fields("Option", "Some");
+        assert_eq!(fields, vec![Type::I64]);
+        let fields = ctx.get_enum_variant_fields("Option", "None");
+        assert!(fields.is_empty());
+        // Non-existent variant
+        let fields = ctx.get_enum_variant_fields("Option", "Whatever");
+        assert!(fields.is_empty());
+    }
+
+    #[test]
+    fn test_context_get_enum_variant_fields_unknown_enum() {
+        let ctx = ExhaustivenessContext::new();
+        let fields = ctx.get_enum_variant_fields("Unknown", "Foo");
+        assert!(fields.is_empty());
+    }
+
+    #[test]
+    fn test_context_get_struct_field_type_unknown_struct() {
+        let ctx = ExhaustivenessContext::new();
+        assert!(ctx.get_struct_field_type("Unknown", "field").is_none());
+    }
 }

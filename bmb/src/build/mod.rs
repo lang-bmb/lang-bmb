@@ -1645,4 +1645,72 @@ mod tests {
             assert_eq!(config.output, PathBuf::from("/usr/src/app"));
         }
     }
+
+    // ---- Cycle 425: Additional build module tests ----
+
+    #[test]
+    fn test_build_error_codegen_display() {
+        let err = BuildError::CodeGen(CodeGenError::LlvmNotAvailable);
+        let msg = format!("{}", err);
+        assert!(msg.contains("not available") || msg.contains("LLVM"));
+    }
+
+    #[test]
+    fn test_build_config_proof_optimization_defaults() {
+        let config = BuildConfig::new(PathBuf::from("test.bmb"));
+        assert!(config.proof_optimizations);
+        assert!(config.proof_cache);
+    }
+
+    #[test]
+    fn test_build_config_fast_compile_default_false() {
+        let config = BuildConfig::new(PathBuf::from("test.bmb"));
+        assert!(!config.fast_compile);
+        assert!(!config.fast_math);
+    }
+
+    #[test]
+    fn test_build_config_no_prelude_default_false() {
+        let config = BuildConfig::new(PathBuf::from("test.bmb"));
+        assert!(!config.no_prelude);
+        assert!(config.prelude_path.is_none());
+    }
+
+    #[test]
+    fn test_build_config_full_builder_chain() {
+        let config = BuildConfig::new(PathBuf::from("app.bmb"))
+            .opt_level(OptLevel::Aggressive)
+            .target(Target::Wasm32)
+            .target_triple("wasm32-unknown-unknown".to_string())
+            .verification_mode(VerificationMode::Trust)
+            .verification_timeout(120)
+            .emit_ir(true)
+            .verbose(true)
+            .fast_math(true)
+            .fast_compile(true)
+            .no_prelude(true)
+            .include_paths(vec![PathBuf::from("/lib")])
+            .prelude_path(PathBuf::from("/std"))
+            .output(PathBuf::from("out.wasm"));
+
+        assert!(matches!(config.opt_level, OptLevel::Aggressive));
+        assert!(matches!(config.target, Target::Wasm32));
+        assert_eq!(config.target_triple, Some("wasm32-unknown-unknown".to_string()));
+        assert!(matches!(config.verification_mode, VerificationMode::Trust));
+        assert_eq!(config.verification_timeout, 120);
+        assert!(config.emit_ir);
+        assert!(config.verbose);
+        assert!(config.fast_math);
+        assert!(config.fast_compile);
+        assert!(config.no_prelude);
+        assert_eq!(config.include_paths, vec![PathBuf::from("/lib")]);
+        assert_eq!(config.prelude_path, Some(PathBuf::from("/std")));
+        assert_eq!(config.output, PathBuf::from("out.wasm"));
+    }
+
+    #[test]
+    fn test_target_debug_format() {
+        assert_eq!(format!("{:?}", Target::Native), "Native");
+        assert_eq!(format!("{:?}", Target::Wasm32), "Wasm32");
+    }
 }

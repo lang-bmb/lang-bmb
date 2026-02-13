@@ -678,4 +678,136 @@ mod tests {
         assert_eq!(report.unknown_count, 1);
         assert_eq!(report.total_time_ms, 5000);
     }
+
+    // ---- Cycle 425: Additional CIR verify tests ----
+
+    #[test]
+    fn test_needs_quantifiers_in_loop_invariant() {
+        let verifier = CirVerifier::new();
+        let mut func = make_test_function();
+        // Clear pre/post so only loop_invariants matter
+        func.preconditions.clear();
+        func.postconditions.clear();
+        func.loop_invariants.push(super::super::LoopInvariant {
+            loop_id: 0,
+            invariant: Proposition::Forall {
+                var: "k".to_string(),
+                ty: CirType::I64,
+                body: Box::new(Proposition::True),
+            },
+        });
+        assert!(verifier.needs_quantifiers(&func));
+    }
+
+    #[test]
+    fn test_needs_quantifiers_none_when_no_quantifiers() {
+        let verifier = CirVerifier::new();
+        let mut func = make_test_function();
+        // Only simple Compare in pre/post — no quantifiers
+        func.loop_invariants.clear();
+        assert!(!verifier.needs_quantifiers(&func));
+    }
+
+    #[test]
+    fn test_proposition_has_quantifier_in_or() {
+        let verifier = CirVerifier::new();
+        let mut func = make_test_function();
+        func.preconditions = vec![NamedProposition {
+            name: None,
+            proposition: Proposition::Or(vec![
+                Proposition::True,
+                Proposition::Exists {
+                    var: "z".to_string(),
+                    ty: CirType::I64,
+                    body: Box::new(Proposition::True),
+                },
+            ]),
+        }];
+        assert!(verifier.needs_quantifiers(&func));
+    }
+
+    #[test]
+    fn test_proposition_has_quantifier_in_not() {
+        let verifier = CirVerifier::new();
+        let mut func = make_test_function();
+        func.preconditions = vec![NamedProposition {
+            name: None,
+            proposition: Proposition::Not(Box::new(Proposition::Forall {
+                var: "n".to_string(),
+                ty: CirType::I64,
+                body: Box::new(Proposition::True),
+            })),
+        }];
+        assert!(verifier.needs_quantifiers(&func));
+    }
+
+    #[test]
+    fn test_proposition_has_quantifier_in_old() {
+        let verifier = CirVerifier::new();
+        let mut func = make_test_function();
+        func.postconditions = vec![NamedProposition {
+            name: None,
+            proposition: Proposition::Old(
+                Box::new(CirExpr::Var("x".to_string())),
+                Box::new(Proposition::Exists {
+                    var: "w".to_string(),
+                    ty: CirType::I64,
+                    body: Box::new(Proposition::True),
+                }),
+            ),
+        }];
+        assert!(verifier.needs_quantifiers(&func));
+    }
+
+    #[test]
+    fn test_verify_program_empty() {
+        let verifier = CirVerifier::new();
+        let program = CirProgram {
+            functions: vec![],
+            extern_fns: vec![],
+            structs: std::collections::HashMap::new(),
+            type_invariants: std::collections::HashMap::new(),
+        };
+        let report = verifier.verify_program(&program);
+        assert_eq!(report.total_functions, 0);
+        assert!(report.all_verified());
+        assert!(!report.has_failures());
+        assert!(!report.has_errors());
+    }
+
+    #[test]
+    fn test_verification_report_all_outcomes_combined() {
+        let mut report = CirVerificationReport::new();
+        report.witnesses.push(ProofWitness::verified("f1".to_string(), None, 10));
+        report.witnesses.push(ProofWitness::failed("f2".to_string(), "err".to_string(), None, 20));
+        report.witnesses.push(ProofWitness::skipped("f3".to_string()));
+        report.witnesses.push(ProofWitness::error("f4".to_string(), "crash".to_string()));
+        report.witnesses.push(ProofWitness {
+            function: "f5".to_string(),
+            outcome: ProofOutcome::Unknown("timeout".to_string()),
+            smt_script: None,
+            counterexample: None,
+            verification_time_ms: 100,
+        });
+        report.compute_summary();
+
+        assert_eq!(report.total_functions, 5);
+        assert_eq!(report.verified_count, 1);
+        assert_eq!(report.failed_count, 1);
+        assert_eq!(report.skipped_count, 1);
+        assert_eq!(report.error_count, 1);
+        assert_eq!(report.unknown_count, 1);
+        assert_eq!(report.total_time_ms, 130);
+        assert!(report.has_failures());
+        assert!(report.has_errors());
+        assert!(!report.all_verified());
+
+        let summary = report.summary();
+        assert!(summary.contains("Verified: 1"));
+        assert!(summary.contains("Failed: 1"));
+        assert!(summary.contains("Skipped: 1"));
+        assert!(summary.contains("Unknown: 1"));
+        assert!(summary.contains("Errors: 1"));
+        assert!(summary.contains("130ms"));
+    }
 }
