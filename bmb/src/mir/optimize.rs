@@ -17612,4 +17612,278 @@ mod tests {
             &Operand::Constant(Constant::String("hello".to_string())),
         ));
     }
+
+    // --- operand_to_place ---
+
+    #[test]
+    fn test_operand_to_place_returns_place() {
+        let result = operand_to_place(&Operand::Place(Place::new("x")));
+        assert!(result.is_some());
+        assert_eq!(result.unwrap().name, "x");
+    }
+
+    #[test]
+    fn test_operand_to_place_returns_none_for_constant() {
+        let result = operand_to_place(&Operand::Constant(Constant::Int(42)));
+        assert!(result.is_none());
+    }
+
+    // --- has_side_effects ---
+
+    #[test]
+    fn test_has_side_effects_call() {
+        assert!(has_side_effects(&MirInst::Call {
+            dest: Some(Place::new("r")),
+            func: "foo".to_string(),
+            args: vec![],
+            is_tail: false,
+        }));
+    }
+
+    #[test]
+    fn test_has_side_effects_binop() {
+        assert!(!has_side_effects(&MirInst::BinOp {
+            dest: Place::new("r"),
+            op: MirBinOp::Add,
+            lhs: Operand::Constant(Constant::Int(1)),
+            rhs: Operand::Constant(Constant::Int(2)),
+        }));
+    }
+
+    #[test]
+    fn test_has_side_effects_field_store() {
+        assert!(has_side_effects(&MirInst::FieldStore {
+            base: Place::new("s"),
+            field: "x".to_string(),
+            field_index: 0,
+            struct_name: "Foo".to_string(),
+            value: Operand::Constant(Constant::Int(1)),
+        }));
+    }
+
+    #[test]
+    fn test_has_side_effects_ptr_store() {
+        assert!(has_side_effects(&MirInst::PtrStore {
+            ptr: Operand::Place(Place::new("p")),
+            value: Operand::Constant(Constant::Int(42)),
+            element_type: MirType::I64,
+        }));
+    }
+
+    #[test]
+    fn test_has_side_effects_const() {
+        assert!(!has_side_effects(&MirInst::Const {
+            dest: Place::new("c"),
+            value: Constant::Int(0),
+        }));
+    }
+
+    #[test]
+    fn test_has_side_effects_copy() {
+        assert!(!has_side_effects(&MirInst::Copy {
+            dest: Place::new("a"),
+            src: Place::new("b"),
+        }));
+    }
+
+    // --- phi_operand_to_inst ---
+
+    #[test]
+    fn test_phi_operand_to_inst_from_place() {
+        let inst = phi_operand_to_inst(Place::new("dest"), &Operand::Place(Place::new("src")));
+        assert!(matches!(inst, MirInst::Copy { dest, src } if dest.name == "dest" && src.name == "src"));
+    }
+
+    #[test]
+    fn test_phi_operand_to_inst_from_constant() {
+        let inst = phi_operand_to_inst(Place::new("dest"), &Operand::Constant(Constant::Int(42)));
+        assert!(matches!(inst, MirInst::Const { dest, value: Constant::Int(42) } if dest.name == "dest"));
+    }
+
+    // --- phi_operands_equal ---
+
+    #[test]
+    fn test_phi_operands_equal_places() {
+        assert!(phi_operands_equal(
+            &Operand::Place(Place::new("x")),
+            &Operand::Place(Place::new("x")),
+        ));
+        assert!(!phi_operands_equal(
+            &Operand::Place(Place::new("x")),
+            &Operand::Place(Place::new("y")),
+        ));
+    }
+
+    #[test]
+    fn test_phi_operands_equal_chars() {
+        assert!(phi_operands_equal(
+            &Operand::Constant(Constant::Char('A')),
+            &Operand::Constant(Constant::Char('A')),
+        ));
+        assert!(!phi_operands_equal(
+            &Operand::Constant(Constant::Char('A')),
+            &Operand::Constant(Constant::Char('B')),
+        ));
+    }
+
+    #[test]
+    fn test_phi_operands_equal_units() {
+        assert!(phi_operands_equal(
+            &Operand::Constant(Constant::Unit),
+            &Operand::Constant(Constant::Unit),
+        ));
+    }
+
+    #[test]
+    fn test_phi_operands_equal_mixed_types() {
+        assert!(!phi_operands_equal(
+            &Operand::Constant(Constant::Int(1)),
+            &Operand::Constant(Constant::Bool(true)),
+        ));
+    }
+
+    // --- update_terminator_labels ---
+
+    #[test]
+    fn test_update_terminator_labels_goto() {
+        let mut term = Terminator::Goto("old".to_string());
+        update_terminator_labels(&mut term, "old", "new");
+        assert!(matches!(term, Terminator::Goto(t) if t == "new"));
+    }
+
+    #[test]
+    fn test_update_terminator_labels_goto_no_match() {
+        let mut term = Terminator::Goto("other".to_string());
+        update_terminator_labels(&mut term, "old", "new");
+        assert!(matches!(term, Terminator::Goto(t) if t == "other"));
+    }
+
+    #[test]
+    fn test_update_terminator_labels_branch() {
+        let mut term = Terminator::Branch {
+            cond: Operand::Constant(Constant::Bool(true)),
+            then_label: "old".to_string(),
+            else_label: "other".to_string(),
+        };
+        update_terminator_labels(&mut term, "old", "new");
+        match &term {
+            Terminator::Branch { then_label, else_label, .. } => {
+                assert_eq!(then_label, "new");
+                assert_eq!(else_label, "other");
+            }
+            _ => panic!("Expected Branch"),
+        }
+    }
+
+    #[test]
+    fn test_update_terminator_labels_switch() {
+        let mut term = Terminator::Switch {
+            discriminant: Operand::Place(Place::new("x")),
+            cases: vec![(1, "old".to_string()), (2, "keep".to_string())],
+            default: "old".to_string(),
+        };
+        update_terminator_labels(&mut term, "old", "new");
+        match &term {
+            Terminator::Switch { cases, default, .. } => {
+                assert_eq!(cases[0].1, "new");
+                assert_eq!(cases[1].1, "keep");
+                assert_eq!(default, "new");
+            }
+            _ => panic!("Expected Switch"),
+        }
+    }
+
+    #[test]
+    fn test_update_terminator_labels_return() {
+        let mut term = Terminator::Return(None);
+        update_terminator_labels(&mut term, "old", "new");
+        assert!(matches!(term, Terminator::Return(None)));
+    }
+
+    // --- might_write_memory ---
+
+    #[test]
+    fn test_might_write_memory_pure_functions() {
+        assert!(!might_write_memory("abs"));
+        assert!(!might_write_memory("len"));
+        assert!(!might_write_memory("chr"));
+        assert!(!might_write_memory("ord"));
+        assert!(!might_write_memory("println"));
+        assert!(!might_write_memory("hash_i64"));
+    }
+
+    #[test]
+    fn test_might_write_memory_unknown_function() {
+        assert!(might_write_memory("my_func"));
+        assert!(might_write_memory("store_value"));
+    }
+
+    // --- propagate_copies_in_inst ---
+
+    #[test]
+    fn test_propagate_copies_in_inst_binop() {
+        let mut copies = HashMap::new();
+        copies.insert("y".to_string(), Place::new("x"));
+        let mut inst = MirInst::BinOp {
+            dest: Place::new("r"),
+            op: MirBinOp::Add,
+            lhs: Operand::Place(Place::new("y")),
+            rhs: Operand::Constant(Constant::Int(1)),
+        };
+        let changed = propagate_copies_in_inst(&mut inst, &copies);
+        assert!(changed);
+        match &inst {
+            MirInst::BinOp { lhs, .. } => {
+                assert!(matches!(lhs, Operand::Place(p) if p.name == "x"));
+            }
+            _ => panic!("Expected BinOp"),
+        }
+    }
+
+    #[test]
+    fn test_propagate_copies_in_inst_no_match() {
+        let copies = HashMap::new();
+        let mut inst = MirInst::BinOp {
+            dest: Place::new("r"),
+            op: MirBinOp::Add,
+            lhs: Operand::Place(Place::new("y")),
+            rhs: Operand::Constant(Constant::Int(1)),
+        };
+        let changed = propagate_copies_in_inst(&mut inst, &copies);
+        assert!(!changed);
+    }
+
+    // --- propagate_copies_in_term ---
+
+    #[test]
+    fn test_propagate_copies_in_term_branch() {
+        let mut copies = HashMap::new();
+        copies.insert("c".to_string(), Place::new("flag"));
+        let mut term = Terminator::Branch {
+            cond: Operand::Place(Place::new("c")),
+            then_label: "t".to_string(),
+            else_label: "f".to_string(),
+        };
+        let changed = propagate_copies_in_term(&mut term, &copies);
+        assert!(changed);
+        match &term {
+            Terminator::Branch { cond, .. } => {
+                assert!(matches!(cond, Operand::Place(p) if p.name == "flag"));
+            }
+            _ => panic!("Expected Branch"),
+        }
+    }
+
+    #[test]
+    fn test_propagate_copies_in_term_return() {
+        let mut copies = HashMap::new();
+        copies.insert("x".to_string(), Place::new("y"));
+        let mut term = Terminator::Return(Some(Operand::Place(Place::new("x"))));
+        let changed = propagate_copies_in_term(&mut term, &copies);
+        assert!(changed);
+        match &term {
+            Terminator::Return(Some(Operand::Place(p))) => assert_eq!(p.name, "y"),
+            _ => panic!("Expected Return with Place"),
+        }
+    }
 }
