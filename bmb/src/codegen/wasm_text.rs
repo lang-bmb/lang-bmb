@@ -3628,4 +3628,588 @@ mod tests {
         assert!(wat.contains("(param $c i32)"), "bool maps to i32");
         assert!(wat.contains("(param $d i32)"), "char maps to i32");
     }
+
+    // --- Wrapping/Checked/Saturating arithmetic ---
+
+    #[test]
+    fn test_wrapping_add_codegen() {
+        let prog = binop_program(MirBinOp::AddWrap, MirType::I64);
+        let wat = WasmCodeGen::new().generate(&prog).unwrap();
+        assert!(wat.contains("i64.add"), "AddWrap should emit i64.add");
+    }
+
+    #[test]
+    fn test_wrapping_sub_codegen() {
+        let prog = binop_program(MirBinOp::SubWrap, MirType::I64);
+        let wat = WasmCodeGen::new().generate(&prog).unwrap();
+        assert!(wat.contains("i64.sub"), "SubWrap should emit i64.sub");
+    }
+
+    #[test]
+    fn test_wrapping_mul_codegen() {
+        let prog = binop_program(MirBinOp::MulWrap, MirType::I64);
+        let wat = WasmCodeGen::new().generate(&prog).unwrap();
+        assert!(wat.contains("i64.mul"), "MulWrap should emit i64.mul");
+    }
+
+    #[test]
+    fn test_checked_add_codegen() {
+        let prog = binop_program(MirBinOp::AddChecked, MirType::I64);
+        let wat = WasmCodeGen::new().generate(&prog).unwrap();
+        assert!(wat.contains("i64.add"), "AddChecked should emit i64.add");
+    }
+
+    #[test]
+    fn test_checked_sub_codegen() {
+        let prog = binop_program(MirBinOp::SubChecked, MirType::I64);
+        let wat = WasmCodeGen::new().generate(&prog).unwrap();
+        assert!(wat.contains("i64.sub"), "SubChecked should emit i64.sub");
+    }
+
+    #[test]
+    fn test_checked_mul_codegen() {
+        let prog = binop_program(MirBinOp::MulChecked, MirType::I64);
+        let wat = WasmCodeGen::new().generate(&prog).unwrap();
+        assert!(wat.contains("i64.mul"), "MulChecked should emit i64.mul");
+    }
+
+    #[test]
+    fn test_saturating_add_codegen() {
+        let prog = binop_program(MirBinOp::AddSat, MirType::I64);
+        let wat = WasmCodeGen::new().generate(&prog).unwrap();
+        assert!(wat.contains("i64.add"), "AddSat should emit i64.add");
+    }
+
+    #[test]
+    fn test_saturating_sub_codegen() {
+        let prog = binop_program(MirBinOp::SubSat, MirType::I64);
+        let wat = WasmCodeGen::new().generate(&prog).unwrap();
+        assert!(wat.contains("i64.sub"), "SubSat should emit i64.sub");
+    }
+
+    #[test]
+    fn test_saturating_mul_codegen() {
+        let prog = binop_program(MirBinOp::MulSat, MirType::I64);
+        let wat = WasmCodeGen::new().generate(&prog).unwrap();
+        assert!(wat.contains("i64.mul"), "MulSat should emit i64.mul");
+    }
+
+    // --- Type cast edge cases ---
+
+    #[test]
+    fn test_cast_u32_to_i64_codegen() {
+        let prog = single_fn_program(
+            "cast_u32",
+            vec![("x", MirType::U32)],
+            MirType::I64,
+            vec![("_t0", MirType::I64)],
+            vec![MirInst::Cast {
+                dest: Place::new("_t0"),
+                src: Operand::Place(Place::new("x")),
+                from_ty: MirType::U32,
+                to_ty: MirType::I64,
+            }],
+            Terminator::Return(Some(Operand::Place(Place::new("_t0")))),
+        );
+        let wat = WasmCodeGen::new().generate(&prog).unwrap();
+        assert!(wat.contains("i64.extend_i32_u"), "U32->I64 uses unsigned extend");
+    }
+
+    #[test]
+    fn test_cast_bool_to_i64_codegen() {
+        let prog = single_fn_program(
+            "cast_bool",
+            vec![("x", MirType::Bool)],
+            MirType::I64,
+            vec![("_t0", MirType::I64)],
+            vec![MirInst::Cast {
+                dest: Place::new("_t0"),
+                src: Operand::Place(Place::new("x")),
+                from_ty: MirType::Bool,
+                to_ty: MirType::I64,
+            }],
+            Terminator::Return(Some(Operand::Place(Place::new("_t0")))),
+        );
+        let wat = WasmCodeGen::new().generate(&prog).unwrap();
+        assert!(wat.contains("i64.extend_i32_u"), "Bool->I64 uses unsigned extend");
+    }
+
+    #[test]
+    fn test_cast_i64_to_i32_codegen() {
+        let prog = single_fn_program(
+            "cast_trunc",
+            vec![("x", MirType::I64)],
+            MirType::I32,
+            vec![("_t0", MirType::I32)],
+            vec![MirInst::Cast {
+                dest: Place::new("_t0"),
+                src: Operand::Place(Place::new("x")),
+                from_ty: MirType::I64,
+                to_ty: MirType::I32,
+            }],
+            Terminator::Return(Some(Operand::Place(Place::new("_t0")))),
+        );
+        let wat = WasmCodeGen::new().generate(&prog).unwrap();
+        assert!(wat.contains("i32.wrap_i64"), "I64->I32 uses wrap");
+    }
+
+    #[test]
+    fn test_cast_i64_to_char_codegen() {
+        let prog = single_fn_program(
+            "cast_char",
+            vec![("x", MirType::I64)],
+            MirType::Char,
+            vec![("_t0", MirType::Char)],
+            vec![MirInst::Cast {
+                dest: Place::new("_t0"),
+                src: Operand::Place(Place::new("x")),
+                from_ty: MirType::I64,
+                to_ty: MirType::Char,
+            }],
+            Terminator::Return(Some(Operand::Place(Place::new("_t0")))),
+        );
+        let wat = WasmCodeGen::new().generate(&prog).unwrap();
+        assert!(wat.contains("i32.wrap_i64"), "I64->Char uses wrap");
+    }
+
+    #[test]
+    fn test_cast_char_to_f64_codegen() {
+        let prog = single_fn_program(
+            "cast_cf64",
+            vec![("x", MirType::Char)],
+            MirType::F64,
+            vec![("_t0", MirType::F64)],
+            vec![MirInst::Cast {
+                dest: Place::new("_t0"),
+                src: Operand::Place(Place::new("x")),
+                from_ty: MirType::Char,
+                to_ty: MirType::F64,
+            }],
+            Terminator::Return(Some(Operand::Place(Place::new("_t0")))),
+        );
+        let wat = WasmCodeGen::new().generate(&prog).unwrap();
+        assert!(wat.contains("f64.convert_i32_s"), "Char->F64 uses signed i32 convert");
+    }
+
+    #[test]
+    fn test_cast_u32_to_f64_codegen() {
+        let prog = single_fn_program(
+            "cast_u32f64",
+            vec![("x", MirType::U32)],
+            MirType::F64,
+            vec![("_t0", MirType::F64)],
+            vec![MirInst::Cast {
+                dest: Place::new("_t0"),
+                src: Operand::Place(Place::new("x")),
+                from_ty: MirType::U32,
+                to_ty: MirType::F64,
+            }],
+            Terminator::Return(Some(Operand::Place(Place::new("_t0")))),
+        );
+        let wat = WasmCodeGen::new().generate(&prog).unwrap();
+        assert!(wat.contains("f64.convert_i32_u"), "U32->F64 uses unsigned convert");
+    }
+
+    #[test]
+    fn test_cast_u64_to_f64_codegen() {
+        let prog = single_fn_program(
+            "cast_u64f64",
+            vec![("x", MirType::U64)],
+            MirType::F64,
+            vec![("_t0", MirType::F64)],
+            vec![MirInst::Cast {
+                dest: Place::new("_t0"),
+                src: Operand::Place(Place::new("x")),
+                from_ty: MirType::U64,
+                to_ty: MirType::F64,
+            }],
+            Terminator::Return(Some(Operand::Place(Place::new("_t0")))),
+        );
+        let wat = WasmCodeGen::new().generate(&prog).unwrap();
+        assert!(wat.contains("f64.convert_i64_u"), "U64->F64 uses unsigned convert");
+    }
+
+    #[test]
+    fn test_cast_f64_to_u32_codegen() {
+        let prog = single_fn_program(
+            "cast_f64u32",
+            vec![("x", MirType::F64)],
+            MirType::U32,
+            vec![("_t0", MirType::U32)],
+            vec![MirInst::Cast {
+                dest: Place::new("_t0"),
+                src: Operand::Place(Place::new("x")),
+                from_ty: MirType::F64,
+                to_ty: MirType::U32,
+            }],
+            Terminator::Return(Some(Operand::Place(Place::new("_t0")))),
+        );
+        let wat = WasmCodeGen::new().generate(&prog).unwrap();
+        assert!(wat.contains("i32.trunc_f64_u"), "F64->U32 uses unsigned trunc");
+    }
+
+    #[test]
+    fn test_cast_f64_to_u64_codegen() {
+        let prog = single_fn_program(
+            "cast_f64u64",
+            vec![("x", MirType::F64)],
+            MirType::U64,
+            vec![("_t0", MirType::U64)],
+            vec![MirInst::Cast {
+                dest: Place::new("_t0"),
+                src: Operand::Place(Place::new("x")),
+                from_ty: MirType::F64,
+                to_ty: MirType::U64,
+            }],
+            Terminator::Return(Some(Operand::Place(Place::new("_t0")))),
+        );
+        let wat = WasmCodeGen::new().generate(&prog).unwrap();
+        assert!(wat.contains("i64.trunc_f64_u"), "F64->U64 uses unsigned trunc");
+    }
+
+    // --- Pointer operations ---
+
+    #[test]
+    fn test_ptr_load_i64_codegen() {
+        let prog = single_fn_program(
+            "ptr_ld",
+            vec![("p", MirType::Ptr(Box::new(MirType::I64)))],
+            MirType::I64,
+            vec![("_t0", MirType::I64)],
+            vec![MirInst::PtrLoad {
+                dest: Place::new("_t0"),
+                ptr: Operand::Place(Place::new("p")),
+                element_type: MirType::I64,
+            }],
+            Terminator::Return(Some(Operand::Place(Place::new("_t0")))),
+        );
+        let wat = WasmCodeGen::new().generate(&prog).unwrap();
+        assert!(wat.contains("i32.wrap_i64"), "ptr converted to i32 address");
+        assert!(wat.contains("i64.load"), "loads i64 value");
+    }
+
+    #[test]
+    fn test_ptr_load_bool_codegen() {
+        let prog = single_fn_program(
+            "ptr_ld_bool",
+            vec![("p", MirType::Ptr(Box::new(MirType::Bool)))],
+            MirType::Bool,
+            vec![("_t0", MirType::Bool)],
+            vec![MirInst::PtrLoad {
+                dest: Place::new("_t0"),
+                ptr: Operand::Place(Place::new("p")),
+                element_type: MirType::Bool,
+            }],
+            Terminator::Return(Some(Operand::Place(Place::new("_t0")))),
+        );
+        let wat = WasmCodeGen::new().generate(&prog).unwrap();
+        assert!(wat.contains("i32.load8_u"), "Bool PtrLoad uses i32.load8_u");
+    }
+
+    #[test]
+    fn test_ptr_load_f64_codegen() {
+        let prog = single_fn_program(
+            "ptr_ld_f64",
+            vec![("p", MirType::Ptr(Box::new(MirType::F64)))],
+            MirType::F64,
+            vec![("_t0", MirType::F64)],
+            vec![MirInst::PtrLoad {
+                dest: Place::new("_t0"),
+                ptr: Operand::Place(Place::new("p")),
+                element_type: MirType::F64,
+            }],
+            Terminator::Return(Some(Operand::Place(Place::new("_t0")))),
+        );
+        let wat = WasmCodeGen::new().generate(&prog).unwrap();
+        assert!(wat.contains("f64.load"), "F64 PtrLoad uses f64.load");
+    }
+
+    #[test]
+    fn test_ptr_store_i64_codegen() {
+        let prog = single_fn_program(
+            "ptr_st",
+            vec![("p", MirType::Ptr(Box::new(MirType::I64))), ("v", MirType::I64)],
+            MirType::Unit,
+            vec![],
+            vec![MirInst::PtrStore {
+                ptr: Operand::Place(Place::new("p")),
+                value: Operand::Place(Place::new("v")),
+                element_type: MirType::I64,
+            }],
+            Terminator::Return(None),
+        );
+        let wat = WasmCodeGen::new().generate(&prog).unwrap();
+        assert!(wat.contains("i64.store"), "stores i64 value");
+    }
+
+    #[test]
+    fn test_ptr_store_bool_codegen() {
+        let prog = single_fn_program(
+            "ptr_st_bool",
+            vec![("p", MirType::Ptr(Box::new(MirType::Bool))), ("v", MirType::Bool)],
+            MirType::Unit,
+            vec![],
+            vec![MirInst::PtrStore {
+                ptr: Operand::Place(Place::new("p")),
+                value: Operand::Place(Place::new("v")),
+                element_type: MirType::Bool,
+            }],
+            Terminator::Return(None),
+        );
+        let wat = WasmCodeGen::new().generate(&prog).unwrap();
+        assert!(wat.contains("i32.store8"), "Bool PtrStore uses i32.store8");
+    }
+
+    #[test]
+    fn test_ptr_offset_i64_codegen() {
+        let prog = single_fn_program(
+            "ptr_off",
+            vec![("p", MirType::Ptr(Box::new(MirType::I64))), ("idx", MirType::I64)],
+            MirType::Ptr(Box::new(MirType::I64)),
+            vec![("_t0", MirType::Ptr(Box::new(MirType::I64)))],
+            vec![MirInst::PtrOffset {
+                dest: Place::new("_t0"),
+                ptr: Operand::Place(Place::new("p")),
+                offset: Operand::Place(Place::new("idx")),
+                element_type: MirType::I64,
+            }],
+            Terminator::Return(Some(Operand::Place(Place::new("_t0")))),
+        );
+        let wat = WasmCodeGen::new().generate(&prog).unwrap();
+        assert!(wat.contains("i64.const 8"), "I64 element size is 8");
+        assert!(wat.contains("i64.mul"), "offset * element_size");
+        assert!(wat.contains("i64.add"), "ptr + offset");
+    }
+
+    #[test]
+    fn test_ptr_offset_i32_codegen() {
+        let prog = single_fn_program(
+            "ptr_off32",
+            vec![("p", MirType::Ptr(Box::new(MirType::I32))), ("idx", MirType::I64)],
+            MirType::Ptr(Box::new(MirType::I32)),
+            vec![("_t0", MirType::Ptr(Box::new(MirType::I32)))],
+            vec![MirInst::PtrOffset {
+                dest: Place::new("_t0"),
+                ptr: Operand::Place(Place::new("p")),
+                offset: Operand::Place(Place::new("idx")),
+                element_type: MirType::I32,
+            }],
+            Terminator::Return(Some(Operand::Place(Place::new("_t0")))),
+        );
+        let wat = WasmCodeGen::new().generate(&prog).unwrap();
+        assert!(wat.contains("i64.const 4"), "I32 element size is 4");
+    }
+
+    #[test]
+    fn test_array_alloc_i64_codegen() {
+        let prog = single_fn_program(
+            "arr_alloc",
+            vec![],
+            MirType::I64,
+            vec![("buf", MirType::Ptr(Box::new(MirType::I64)))],
+            vec![MirInst::ArrayAlloc {
+                dest: Place::new("buf"),
+                element_type: MirType::I64,
+                size: 10,
+            }],
+            Terminator::Return(Some(Operand::Constant(Constant::Int(0)))),
+        );
+        let wat = WasmCodeGen::new().generate(&prog).unwrap();
+        assert!(wat.contains("i32.const 80"), "10 * 8 = 80 bytes for i64 array");
+        assert!(wat.contains("call $bump_alloc"), "uses bump allocator");
+        assert!(wat.contains("i64.extend_i32_u"), "convert to i64 pointer");
+    }
+
+    #[test]
+    fn test_array_alloc_bool_codegen() {
+        let prog = single_fn_program(
+            "arr_alloc_bool",
+            vec![],
+            MirType::I64,
+            vec![("buf", MirType::Ptr(Box::new(MirType::Bool)))],
+            vec![MirInst::ArrayAlloc {
+                dest: Place::new("buf"),
+                element_type: MirType::Bool,
+                size: 16,
+            }],
+            Terminator::Return(Some(Operand::Constant(Constant::Int(0)))),
+        );
+        let wat = WasmCodeGen::new().generate(&prog).unwrap();
+        assert!(wat.contains("i32.const 16"), "16 * 1 = 16 bytes for bool array");
+    }
+
+    // --- String interning and data section ---
+
+    #[test]
+    fn test_intern_string_dedup() {
+        let cg = WasmCodeGen::new();
+        let (off1, len1) = cg.intern_string("hello");
+        let (off2, len2) = cg.intern_string("hello");
+        assert_eq!(off1, off2, "same string should return same offset");
+        assert_eq!(len1, len2, "same string should return same length");
+        assert_eq!(len1, 5, "length should be 5");
+    }
+
+    #[test]
+    fn test_intern_string_different_offsets() {
+        let cg = WasmCodeGen::new();
+        let (off1, len1) = cg.intern_string("abc");
+        let (off2, _) = cg.intern_string("xyz");
+        assert_eq!(off1, 2048, "first string at reserved area start");
+        assert_eq!(len1, 3);
+        assert_eq!(off2, 2051, "second string after first (2048 + 3)");
+    }
+
+    #[test]
+    fn test_data_section_emission() {
+        let cg = WasmCodeGen::new();
+        cg.intern_string("hi");
+        let mut out = String::new();
+        cg.emit_data_section(&mut out).unwrap();
+        assert!(out.contains("(data (i32.const 2048)"), "data at offset 2048");
+        assert!(out.contains("\\68\\69"), "h=0x68, i=0x69 escaped bytes");
+    }
+
+    #[test]
+    fn test_data_section_empty() {
+        let cg = WasmCodeGen::new();
+        let mut out = String::new();
+        cg.emit_data_section(&mut out).unwrap();
+        assert!(out.is_empty(), "empty data section produces no output");
+    }
+
+    // --- Default values for all types ---
+
+    #[test]
+    fn test_default_values() {
+        let cg = WasmCodeGen::new();
+        assert_eq!(cg.default_value(&MirType::I32), "i32.const 0");
+        assert_eq!(cg.default_value(&MirType::I64), "i64.const 0");
+        assert_eq!(cg.default_value(&MirType::U32), "i32.const 0");
+        assert_eq!(cg.default_value(&MirType::U64), "i64.const 0");
+        assert_eq!(cg.default_value(&MirType::F64), "f64.const 0.0");
+        assert_eq!(cg.default_value(&MirType::Bool), "i32.const 0");
+        assert_eq!(cg.default_value(&MirType::Char), "i32.const 0");
+        assert_eq!(cg.default_value(&MirType::String), "i32.const 0");
+        assert_eq!(cg.default_value(&MirType::Unit), "");
+        assert_eq!(cg.default_value(&MirType::Ptr(Box::new(MirType::I64))), "i32.const 0");
+        assert_eq!(cg.default_value(&MirType::Tuple(vec![Box::new(MirType::I64)])), "i32.const 0");
+    }
+
+    // --- mir_type_to_wasm for all types ---
+
+    #[test]
+    fn test_mir_type_to_wasm_all_types() {
+        let cg = WasmCodeGen::new();
+        assert_eq!(cg.mir_type_to_wasm(&MirType::I32), "i32");
+        assert_eq!(cg.mir_type_to_wasm(&MirType::I64), "i64");
+        assert_eq!(cg.mir_type_to_wasm(&MirType::U32), "i32");
+        assert_eq!(cg.mir_type_to_wasm(&MirType::U64), "i64");
+        assert_eq!(cg.mir_type_to_wasm(&MirType::F64), "f64");
+        assert_eq!(cg.mir_type_to_wasm(&MirType::Bool), "i32");
+        assert_eq!(cg.mir_type_to_wasm(&MirType::String), "i32");
+        assert_eq!(cg.mir_type_to_wasm(&MirType::Char), "i32");
+        assert_eq!(cg.mir_type_to_wasm(&MirType::Ptr(Box::new(MirType::I64))), "i32");
+        assert_eq!(cg.mir_type_to_wasm(&MirType::StructPtr("Foo".to_string())), "i32");
+        assert_eq!(cg.mir_type_to_wasm(&MirType::Tuple(vec![Box::new(MirType::I64), Box::new(MirType::F64)])), "i32");
+        assert_eq!(cg.mir_type_to_wasm(&MirType::Array { element_type: Box::new(MirType::I64), size: Some(10) }), "i32");
+        assert_eq!(cg.mir_type_to_wasm(&MirType::Enum { name: "Color".to_string(), variants: vec![] }), "i32");
+    }
+
+    // --- mir_type_to_wasm_result ---
+
+    #[test]
+    fn test_mir_type_to_wasm_result_unit() {
+        let cg = WasmCodeGen::new();
+        assert_eq!(cg.mir_type_to_wasm_result(&MirType::Unit), "", "Unit maps to empty result");
+        assert_eq!(cg.mir_type_to_wasm_result(&MirType::I64), "i64", "I64 maps to i64");
+        assert_eq!(cg.mir_type_to_wasm_result(&MirType::F64), "f64", "F64 maps to f64");
+    }
+
+    // --- Copy instruction ---
+
+    #[test]
+    fn test_copy_instruction_codegen() {
+        let prog = single_fn_program(
+            "copy_fn",
+            vec![("x", MirType::I64)],
+            MirType::I64,
+            vec![("y", MirType::I64)],
+            vec![MirInst::Copy {
+                dest: Place::new("y"),
+                src: Place::new("x"),
+            }],
+            Terminator::Return(Some(Operand::Place(Place::new("y")))),
+        );
+        let wat = WasmCodeGen::new().generate(&prog).unwrap();
+        assert!(wat.contains("local.get $x"), "reads source");
+        assert!(wat.contains("local.set $y"), "writes dest");
+    }
+
+    // --- Standalone target ---
+
+    #[test]
+    fn test_standalone_target() {
+        let program = MirProgram {
+            functions: vec![],
+            extern_fns: vec![],
+            struct_defs: std::collections::HashMap::new(),
+        };
+        let codegen = WasmCodeGen::with_target(WasmTarget::Standalone);
+        let wat = codegen.generate(&program).unwrap();
+        assert!(wat.contains("(module"), "has module");
+        assert!(!wat.contains("wasi"), "no wasi imports");
+        assert!(!wat.contains("console_log"), "no browser imports");
+    }
+
+    // --- with_memory configuration ---
+
+    #[test]
+    fn test_with_memory_pages() {
+        let program = MirProgram {
+            functions: vec![],
+            extern_fns: vec![],
+            struct_defs: std::collections::HashMap::new(),
+        };
+        let codegen = WasmCodeGen::new().with_memory(16);
+        let wat = codegen.generate(&program).unwrap();
+        assert!(wat.contains("(memory"), "has memory declaration");
+    }
+
+    // --- Shift and bitwise operators ---
+
+    #[test]
+    fn test_shift_left_codegen() {
+        let prog = binop_program(MirBinOp::Shl, MirType::I64);
+        let wat = WasmCodeGen::new().generate(&prog).unwrap();
+        assert!(wat.contains("i64.shl"), "Shl emits i64.shl");
+    }
+
+    #[test]
+    fn test_shift_right_codegen() {
+        let prog = binop_program(MirBinOp::Shr, MirType::I64);
+        let wat = WasmCodeGen::new().generate(&prog).unwrap();
+        assert!(wat.contains("i64.shr_s"), "Shr emits signed shift right");
+    }
+
+    #[test]
+    fn test_bitwise_and_codegen() {
+        let prog = binop_program(MirBinOp::Band, MirType::I64);
+        let wat = WasmCodeGen::new().generate(&prog).unwrap();
+        assert!(wat.contains("i64.and"), "Band emits i64.and");
+    }
+
+    #[test]
+    fn test_bitwise_or_codegen() {
+        let prog = binop_program(MirBinOp::Bor, MirType::I64);
+        let wat = WasmCodeGen::new().generate(&prog).unwrap();
+        assert!(wat.contains("i64.or"), "Bor emits i64.or");
+    }
+
+    #[test]
+    fn test_bitwise_xor_codegen() {
+        let prog = binop_program(MirBinOp::Bxor, MirType::I64);
+        let wat = WasmCodeGen::new().generate(&prog).unwrap();
+        assert!(wat.contains("i64.xor"), "Bxor emits i64.xor");
+    }
 }
