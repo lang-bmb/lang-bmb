@@ -6523,18 +6523,27 @@ fn count_string_bytes_acc(s: String, pos: i64, count: i64) -> i64 =
         } else { count_string_bytes_acc(s, pos + 1, count + 1) }
     };
 
+// v0.90.104: Generate both @str_data_N (raw bytes) and @str_bmb_N (pre-allocated BmbString)
 fn gen_string_globals_acc(strings: String, pos: i64, idx: i64, sb: i64) -> i64 =
     if pos >= strings.len() { 0 } else {
         let pipe = find_tab_in_list(strings, pos);
         let end = if pipe >= strings.len() { strings.len() } else { pipe };
         let str_content = strings.slice(pos, end);
         let escaped_content = escape_llvm_string(str_content);
-        let str_len = count_string_bytes(str_content) + 1;
-        let global = "@str_data_" + int_to_string(idx) + " = private unnamed_addr constant [" +
+        let byte_count = count_string_bytes(str_content);
+        let str_len = byte_count + 1;
+        let idx_str = int_to_string(idx);
+        let data_name = "@str_data_" + idx_str;
+        let global = data_name + " = private unnamed_addr constant [" +
             int_to_string(str_len) + " x i8] c" + chr(34) + escaped_content + chr(92) + "00" + chr(34);
+        // Pre-allocated BmbString: { ptr data, i64 len, i64 cap }
+        let bmb_global = "@str_bmb_" + idx_str + " = private unnamed_addr constant { ptr, i64, i64 } { ptr " +
+            data_name + ", i64 " + int_to_string(byte_count) + ", i64 " + int_to_string(byte_count) + " }";
         let len = sb_len(sb);
         let w1 = if len > 0 { sb_push(sb, "|") } else { 0 };
         let w2 = sb_push(sb, global);
+        let w3 = sb_push(sb, "|");
+        let w4 = sb_push(sb, bmb_global);
         if pipe >= strings.len() { 0 } else { gen_string_globals_acc(strings, pipe + 1, idx + 1, sb) }
     };
 
@@ -8612,15 +8621,11 @@ fn llvm_gen_rhs_with_strings(line: String, pos: i64, dest: String, strings: Stri
 
 // Generate reference to string global
 // v0.90.12: Use count_string_bytes for correct byte length (escape sequences = 1 byte)
+// v0.90.104: Use pre-allocated @str_bmb_N globals — eliminates bmb_string_from_cstr call
 fn llvm_gen_string_ref(dest: String, str_content: String, strings: String) -> String =
     let idx = find_string_index(strings, str_content);
-    let str_len = count_string_bytes(str_content) + 1;
-    let global_name = "@str_data_" + int_to_string(idx);
-    let gep_dest = dest + "_gep";
-    let call_dest = dest + "_call";
-    "  " + gep_dest + " = getelementptr [" + int_to_string(str_len) + " x i8], ptr " + global_name + ", i64 0, i64 0|" +
-    "  " + call_dest + " = call ptr @bmb_string_from_cstr(ptr " + gep_dest + ")|" +
-    "  " + dest + " = ptrtoint ptr " + call_dest + " to i64";
+    let idx_str = int_to_string(idx);
+    "  " + dest + " = ptrtoint ptr @str_bmb_" + idx_str + " to i64";
 
 // ============================================================================
 // SECTION 13: Unified Compiler Entry Point (v0.10.9)
