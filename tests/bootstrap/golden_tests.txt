@@ -22,3 +22,6 @@ test_golden_integration.bmb|49
 test_golden_algorithm.bmb|183
 test_golden_sieve.bmb|154
 test_golden_nested_struct.bmb|86
+test_golden_bitwise.bmb|170
+test_golden_stringbuilder.bmb|93
+test_golden_complex_expr.bmb|197

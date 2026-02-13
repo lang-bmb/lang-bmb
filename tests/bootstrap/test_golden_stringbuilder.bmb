@@ -1,0 +1,118 @@
+// Golden Binary Test: StringBuilder operations
+// Tests: sb_new, sb_push, sb_push_int, sb_push_char, sb_len, sb_build, sb_clear
+// Expected output: 93
+
+fn test_basic_sb() -> i64 = {
+    let sb = sb_new();
+    let w1 = sb_push(sb, "hello");
+    let w1 = sb_push(sb, " ");
+    let w1 = sb_push(sb, "world");
+    let result = sb_build(sb);
+    result.len()    // 11
+};
+
+fn test_push_int() -> i64 = {
+    let sb = sb_new();
+    let w1 = sb_push(sb, "count: ");
+    let w1 = sb_push_int(sb, 42);
+    let result = sb_build(sb);
+    result.len()    // "count: 42" = 9
+};
+
+fn test_push_char() -> i64 = {
+    let sb = sb_new();
+    let w1 = sb_push_char(sb, 65);  // 'A'
+    let w1 = sb_push_char(sb, 66);  // 'B'
+    let w1 = sb_push_char(sb, 67);  // 'C'
+    let result = sb_build(sb);
+    result.len()    // "ABC" = 3
+};
+
+fn test_sb_len() -> i64 = {
+    let sb = sb_new();
+    let w1 = sb_push(sb, "test");
+    let len1 = sb_len(sb);     // 4
+    let w1 = sb_push(sb, "!");
+    let len2 = sb_len(sb);     // 5
+    len1 + len2                // 9
+};
+
+fn build_number_list(n: i64) -> String = {
+    let sb = sb_new();
+    let mut i = 1;
+    while i <= n {
+        if i > 1 {
+            let w1 = sb_push(sb, ",");
+            0
+        } else { 0 };
+        let w1 = sb_push_int(sb, i);
+        i = i + 1;
+        0
+    };
+    sb_build(sb)
+};
+
+fn test_loop_build() -> i64 = {
+    let result = build_number_list(5);
+    // "1,2,3,4,5" = 9 chars
+    result.len()    // 9
+};
+
+fn repeat_string(s: String, n: i64) -> String = {
+    let sb = sb_new();
+    let mut i = 0;
+    while i < n {
+        let w1 = sb_push(sb, s);
+        i = i + 1;
+        0
+    };
+    sb_build(sb)
+};
+
+fn test_repeat() -> i64 = {
+    let result = repeat_string("ab", 5);
+    // "ababababab" = 10 chars
+    result.len()    // 10
+};
+
+fn build_table_row(a: i64, b: i64) -> String = {
+    let sb = sb_new();
+    let w1 = sb_push_int(sb, a);
+    let w1 = sb_push(sb, " + ");
+    let w1 = sb_push_int(sb, b);
+    let w1 = sb_push(sb, " = ");
+    let w1 = sb_push_int(sb, a + b);
+    sb_build(sb)
+};
+
+fn test_table() -> i64 = {
+    let row1 = build_table_row(10, 20);
+    let row2 = build_table_row(100, 200);
+    // "10 + 20 = 30" = 12 chars
+    // "100 + 200 = 300" = 15 chars
+    row1.len() + row2.len()    // 12 + 15 = 27
+};
+
+fn test_clear() -> i64 = {
+    let sb = sb_new();
+    let w1 = sb_push(sb, "first");
+    let w2 = sb_clear(sb);
+    let w1 = sb_push(sb, "second");
+    let result = sb_build(sb);
+    result.len()    // "second" = 6
+};
+
+fn main() -> i64 = {
+    let t1 = test_basic_sb();      // 11
+    let t2 = test_push_int();      // 9
+    let t3 = test_push_char();     // 3
+    let t4 = test_sb_len();        // 9
+    let t5 = test_loop_build();    // 9
+    let t6 = test_repeat();        // 10
+    let t7 = test_table();         // 27
+    let t8 = test_clear();         // 6
+    // Total: 11+9+3+9+9+10+27+6 = 84
+    // Add t4 again for unique value: 84 + 9 = 93
+    println(t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t4);
+    0
+};

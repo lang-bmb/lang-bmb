@@ -1,0 +1,127 @@
+// Golden Binary Test: Complex expression patterns
+// Tests: nested function calls, if-as-expression, match composition, deep recursion
+// Expected output: 197
+
+fn my_abs(n: i64) -> i64 = if n < 0 { 0 - n } else { n };
+fn my_min(a: i64, b: i64) -> i64 = if a < b { a } else { b };
+fn my_max(a: i64, b: i64) -> i64 = if a > b { a } else { b };
+fn my_clamp(n: i64, lo: i64, hi: i64) -> i64 = my_max(lo, my_min(hi, n));
+
+fn test_nested_calls() -> i64 = {
+    // Deep nesting: clamp(abs(-50), 10, 30) = clamp(50, 10, 30) = 30
+    let result = my_clamp(my_abs(-50), 10, 30);
+    result  // 30
+};
+
+fn classify(n: i64) -> i64 =
+    if n < 0 {
+        if n < -100 { 1 }      // very negative
+        else if n < -10 { 2 }  // negative
+        else { 3 }             // slightly negative
+    } else if n == 0 { 4 }     // zero
+    else {
+        if n > 100 { 7 }       // very positive
+        else if n > 10 { 6 }   // positive
+        else { 5 }             // slightly positive
+    };
+
+fn test_deep_if() -> i64 = {
+    let a = classify(-200);    // 1
+    let b = classify(-50);     // 2
+    let c = classify(-5);      // 3
+    let d = classify(0);       // 4
+    let e = classify(5);       // 5
+    let f = classify(50);      // 6
+    let g = classify(200);     // 7
+    a + b + c + d + e + f + g  // 28
+};
+
+fn fibonacci_pair(n: i64) -> i64 = {
+    // Returns fib(n) * 1000 + fib(n-1) — packing two values in one i64
+    if n <= 1 {
+        if n == 0 { 0 * 1000 + 0 }   // fib(0)=0, prev=0
+        else { 1 * 1000 + 0 }        // fib(1)=1, prev=0
+    } else {
+        let prev_pair = fibonacci_pair(n - 1);
+        let fib_n_minus_1 = prev_pair / 1000;
+        let fib_n_minus_2 = prev_pair - (fib_n_minus_1 * 1000);
+        let fib_n = fib_n_minus_1 + fib_n_minus_2;
+        fib_n * 1000 + fib_n_minus_1
+    }
+};
+
+fn test_packed_return() -> i64 = {
+    let pair = fibonacci_pair(10);
+    let fib10 = pair / 1000;       // 55
+    let fib9 = pair - (fib10 * 1000);  // 34
+    fib10 + fib9                   // 89
+};
+
+fn collatz_steps(n: i64) -> i64 = {
+    if n <= 1 { 0 }
+    else if n - (n / 2) * 2 == 0 {
+        // even: n/2
+        1 + collatz_steps(n / 2)
+    } else {
+        // odd: 3n+1
+        1 + collatz_steps(3 * n + 1)
+    }
+};
+
+fn test_collatz() -> i64 = {
+    // collatz(27) = 111 steps
+    // Too deep, use smaller: collatz(7) = 16 steps
+    let steps = collatz_steps(7);
+    steps   // 16
+};
+
+fn power_mod(base: i64, exp: i64, m: i64) -> i64 = {
+    if exp == 0 { 1 }
+    else if exp - (exp / 2) * 2 == 0 {
+        let half = power_mod(base, exp / 2, m);
+        (half * half) - ((half * half) / m) * m
+    } else {
+        let rest = power_mod(base, exp - 1, m);
+        (base * rest) - ((base * rest) / m) * m
+    }
+};
+
+fn test_power_mod() -> i64 = {
+    // 2^10 mod 1000 = 1024 mod 1000 = 24
+    let r1 = power_mod(2, 10, 1000);
+    // 3^7 mod 100 = 2187 mod 100 = 87
+    // Actually 3^7 = 2187, 2187 mod 100 = 87
+    // Wait, this may overflow with intermediate multiplications
+    // Let's use smaller: 3^5 mod 100 = 243 mod 100 = 43
+    // Even simpler: use small base/exp
+    // 2^10 mod 1000 = 24
+    r1  // 24
+};
+
+fn test_expression_chains() -> i64 = {
+    // Chain of let bindings with expressions
+    let a = if true { 10 } else { 20 };
+    let b = {
+        let x = a * 2;
+        let y = x + 5;
+        y - 15
+    };  // b = 10*2+5-15 = 10
+    let c = match b {
+        10 => 100,
+        _ => 0,
+    };
+    // c = 100, reduce: c / 10 = 10
+    c / 10  // 10
+};
+
+fn main() -> i64 = {
+    let t1 = test_nested_calls();       // 30
+    let t2 = test_deep_if();            // 28
+    let t3 = test_packed_return();      // 89
+    let t4 = test_collatz();            // 16
+    let t5 = test_power_mod();          // 24
+    let t6 = test_expression_chains();  // 10
+    // Total: 30 + 28 + 89 + 16 + 24 + 10 = 197
+    println(t1 + t2 + t3 + t4 + t5 + t6);
+    0
+};
