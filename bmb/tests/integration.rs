@@ -21347,3 +21347,162 @@ fn test_lint_no_unused_return_value_last_expr() {
         "unused_return_value"
     ));
 }
+
+// ===== Cycle 378: Lint rule integration tests =====
+
+/// Helper: collect all warning kinds for a source program
+fn warning_kinds(source: &str) -> Vec<String> {
+    let tokens = match tokenize(source) {
+        Ok(t) => t,
+        Err(_) => return vec![],
+    };
+    let ast = match parse("test.bmb", source, tokens) {
+        Ok(a) => a,
+        Err(_) => return vec![],
+    };
+    let mut tc = TypeChecker::new();
+    if tc.check_program(&ast).is_err() {
+        return vec![];
+    }
+    tc.warnings().iter().map(|w| w.kind().to_string()).collect()
+}
+
+#[test]
+fn test_lint_integration_multiple_warnings() {
+    // Program with multiple lint issues: unused return + constant condition
+    let kinds = warning_kinds(
+        "fn add(a: i64, b: i64) -> i64 = a + b;
+         fn main() -> i64 = {
+           add(1, 2);
+           if true { 1 } else { 0 }
+         };"
+    );
+    assert!(kinds.contains(&"unused_return_value".to_string()), "should have unused_return_value: {:?}", kinds);
+    assert!(kinds.contains(&"constant_condition".to_string()), "should have constant_condition: {:?}", kinds);
+}
+
+#[test]
+fn test_lint_integration_no_new_lint_false_positives() {
+    // Clean program — none of the new lint warnings (cycles 372-377) should fire
+    let new_kinds = ["constant_condition", "self_comparison", "redundant_bool_comparison",
+                     "duplicate_match_arm", "int_division_truncation", "unused_return_value"];
+    let kinds = warning_kinds(
+        "fn add(a: i64, b: i64) -> i64 = a + b;
+         fn main() -> i64 = add(1, 2);"
+    );
+    for nk in &new_kinds {
+        assert!(!kinds.contains(&nk.to_string()), "unexpected {} in clean program", nk);
+    }
+}
+
+#[test]
+fn test_lint_integration_self_compare_and_redundant_bool() {
+    // Both self-comparison and redundant bool in same program
+    let kinds = warning_kinds(
+        "fn f(x: bool) -> bool = x == x;
+         fn g(y: bool) -> bool = y == true;"
+    );
+    assert!(kinds.contains(&"self_comparison".to_string()), "should have self_comparison: {:?}", kinds);
+    assert!(kinds.contains(&"redundant_bool_comparison".to_string()), "should have redundant_bool_comparison: {:?}", kinds);
+}
+
+#[test]
+fn test_lint_integration_all_new_lints_combined() {
+    // Trigger multiple new lint rules: unused_return_value, constant_condition, int_division_truncation
+    let kinds = warning_kinds(
+        "fn compute(a: i64, b: i64) -> i64 = a + b;
+         fn main() -> i64 = {
+           compute(1, 2);
+           let r = if true { 1 } else { 0 };
+           let d = 5 / 3;
+           r + d
+         };"
+    );
+    assert!(kinds.contains(&"unused_return_value".to_string()), "missing unused_return_value: {:?}", kinds);
+    assert!(kinds.contains(&"constant_condition".to_string()), "missing constant_condition: {:?}", kinds);
+    assert!(kinds.contains(&"int_division_truncation".to_string()), "missing int_division_truncation: {:?}", kinds);
+}
+
+#[test]
+fn test_lint_integration_self_compare_bool_duplicate() {
+    // Trigger self_comparison, redundant_bool_comparison, and duplicate_match_arm
+    let kinds = warning_kinds("fn f(x: i64) -> bool = x == x;");
+    assert!(kinds.contains(&"self_comparison".to_string()), "missing self_comparison: {:?}", kinds);
+
+    let kinds2 = warning_kinds("fn g(x: bool) -> bool = x == true;");
+    assert!(kinds2.contains(&"redundant_bool_comparison".to_string()), "missing redundant_bool_comparison: {:?}", kinds2);
+
+    let kinds3 = warning_kinds("fn h(x: i64) -> i64 = match x { 1 => 10, 1 => 20, _ => 0 };");
+    assert!(kinds3.contains(&"duplicate_match_arm".to_string()), "missing duplicate_match_arm: {:?}", kinds3);
+}
+
+#[test]
+fn test_lint_integration_old_lint_still_works() {
+    // Verify pre-existing lints still fire (unused binding, shadow)
+    let kinds = warning_kinds(
+        "fn f() -> i64 = {
+           let x = 10;
+           let x = 20;
+           x
+         };"
+    );
+    assert!(kinds.contains(&"shadow_binding".to_string()), "missing shadow_binding: {:?}", kinds);
+}
+
+#[test]
+fn test_lint_integration_warning_messages_non_empty() {
+    // All warnings should have non-empty messages
+    let source = "fn f(x: i64) -> bool = x == x;";
+    let tokens = tokenize(source).unwrap();
+    let ast = parse("test.bmb", source, tokens).unwrap();
+    let mut tc = TypeChecker::new();
+    let _ = tc.check_program(&ast);
+    for w in tc.warnings() {
+        assert!(!w.message().is_empty(), "warning {} has empty message", w.kind());
+        assert!(!w.kind().is_empty(), "warning has empty kind");
+        let display = format!("{}", w);
+        assert!(display.starts_with("warning["), "bad Display format: {}", display);
+    }
+}
+
+#[test]
+fn test_lint_integration_warning_count_matches() {
+    // Exactly one self-comparison warning for one self-comparison
+    let kinds = warning_kinds(
+        "fn f(x: i64) -> bool = x == x;"
+    );
+    let count = kinds.iter().filter(|k| *k == "self_comparison").count();
+    assert_eq!(count, 1, "expected exactly 1 self_comparison, got {}", count);
+}
+
+#[test]
+fn test_lint_integration_complex_clean_no_new_lints() {
+    // Complex clean program — no new lint warnings (cycles 372-377)
+    let new_kinds = ["constant_condition", "self_comparison", "redundant_bool_comparison",
+                     "duplicate_match_arm", "int_division_truncation", "unused_return_value"];
+    let kinds = warning_kinds(
+        "enum Color { Red, Green, Blue }
+         fn color_val(c: Color) -> i64 = match c {
+           Color::Red => 1,
+           Color::Green => 2,
+           Color::Blue => 3
+         };
+         fn main() -> i64 = {
+           let r = color_val(Color::Red);
+           let g = color_val(Color::Green);
+           r + g
+         };"
+    );
+    for nk in &new_kinds {
+        assert!(!kinds.contains(&nk.to_string()), "unexpected {} in clean program", nk);
+    }
+}
+
+#[test]
+fn test_lint_integration_while_true_no_constant_condition() {
+    // while true is intentional — should NOT trigger constant_condition
+    assert!(!has_warning_kind(
+        "fn f() -> i64 = { let mut x = 0; while true { x = x + 1; if x > 10 { return x; } }; x };",
+        "constant_condition"
+    ));
+}
