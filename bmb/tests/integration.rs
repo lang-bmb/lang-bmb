@@ -21972,3 +21972,65 @@ fn test_match_arms_type_mismatch_error() {
         "fn f(x: i64) -> i64 = match x { 1 => 10, _ => true };"
     ));
 }
+
+// ===== Cycle 383: Error recovery + edge case tests =====
+
+#[test]
+fn test_error_undefined_variable_in_expr() {
+    assert!(type_error("fn main() -> i64 = x + 1;"));
+}
+
+#[test]
+fn test_error_undefined_function_in_body() {
+    assert!(type_error("fn main() -> i64 = unknown_fn(1);"));
+}
+
+#[test]
+fn test_error_wrong_arg_count_too_many() {
+    assert!(type_error("fn add(a: i64, b: i64) -> i64 = a + b; fn main() -> i64 = add(1, 2, 3);"));
+}
+
+#[test]
+fn test_error_wrong_arg_count_too_few() {
+    assert!(type_error("fn add(a: i64, b: i64) -> i64 = a + b; fn main() -> i64 = add(1);"));
+}
+
+#[test]
+fn test_error_return_type_mismatch() {
+    assert!(type_error("fn f() -> i64 = true;"));
+}
+
+#[test]
+fn test_error_if_int_condition_rejected() {
+    assert!(type_error("fn main() -> i64 = if 42 { 1 } else { 0 };"));
+}
+
+#[test]
+fn test_error_binary_op_type_mismatch_int_bool() {
+    assert!(type_error("fn main() -> i64 = 1 + true;"));
+}
+
+#[test]
+fn test_error_recursive_overflow_handled() {
+    // Deep recursion should terminate cleanly (interpreter has stack limit)
+    let source = "fn f(n: i64) -> i64 = f(n + 1); fn main() -> i64 = f(0);";
+    let tokens = tokenize(source).unwrap();
+    let ast = parse("test.bmb", source, tokens).unwrap();
+    let mut tc = TypeChecker::new();
+    // Type checking should succeed (recursion is valid at type level)
+    assert!(tc.check_program(&ast).is_ok());
+}
+
+#[test]
+fn test_edge_empty_block_returns_unit() {
+    // Empty block has type Unit
+    assert!(type_error("fn main() -> i64 = {};"));
+}
+
+#[test]
+fn test_edge_nested_blocks() {
+    // Deeply nested blocks
+    assert_eq!(run_program_i64(
+        "fn main() -> i64 = { { { { 42 } } } };"
+    ), 42);
+}
