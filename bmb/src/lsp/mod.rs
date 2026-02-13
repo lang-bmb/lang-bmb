@@ -2242,4 +2242,265 @@ mod tests {
         let diags = backend.get_diagnostics(&url, "fn {{{ invalid");
         assert!(!diags.is_empty());
     }
+
+    // --- collect_symbols ---
+
+    #[test]
+    fn test_collect_symbols_empty_program() {
+        let (service, _) = LspService::new(Backend::new);
+        let backend = service.inner();
+        let ast = Program { header: None, items: vec![] };
+        let (defs, refs, locals) = backend.collect_symbols(&ast);
+        assert!(defs.is_empty());
+        assert!(refs.is_empty());
+        assert!(locals.is_empty());
+    }
+
+    #[test]
+    fn test_collect_symbols_fn_def() {
+        let (service, _) = LspService::new(Backend::new);
+        let backend = service.inner();
+        let ast = backend.try_parse("fn main() -> i64 = 42;").unwrap();
+        let (defs, _refs, _locals) = backend.collect_symbols(&ast);
+        assert!(defs.iter().any(|d| d.name == "main" && d.kind == SymbolKind::Function));
+    }
+
+    #[test]
+    fn test_collect_symbols_fn_params() {
+        let (service, _) = LspService::new(Backend::new);
+        let backend = service.inner();
+        let ast = backend.try_parse("fn add(a: i64, b: i64) -> i64 = a + b;").unwrap();
+        let (defs, _refs, locals) = backend.collect_symbols(&ast);
+        // Function itself
+        assert!(defs.iter().any(|d| d.name == "add" && d.kind == SymbolKind::Function));
+        // Parameters as definitions
+        assert!(defs.iter().any(|d| d.name == "a" && d.kind == SymbolKind::Parameter));
+        assert!(defs.iter().any(|d| d.name == "b" && d.kind == SymbolKind::Parameter));
+        // Parameters also as locals for scope-based completion
+        assert!(locals.iter().any(|l| l.name == "a" && l.type_str == "i64"));
+        assert!(locals.iter().any(|l| l.name == "b" && l.type_str == "i64"));
+    }
+
+    #[test]
+    fn test_collect_symbols_fn_type_signature() {
+        let (service, _) = LspService::new(Backend::new);
+        let backend = service.inner();
+        let ast = backend.try_parse("fn add(a: i64, b: i64) -> i64 = a + b;").unwrap();
+        let (defs, _, _) = backend.collect_symbols(&ast);
+        let fn_def = defs.iter().find(|d| d.name == "add").unwrap();
+        let sig = fn_def.type_str.as_ref().unwrap();
+        assert!(sig.contains("fn("));
+        assert!(sig.contains("i64"));
+    }
+
+    #[test]
+    fn test_collect_symbols_struct_def() {
+        let (service, _) = LspService::new(Backend::new);
+        let backend = service.inner();
+        let ast = backend.try_parse("struct Point { x: i64, y: i64 }").unwrap();
+        let (defs, _, _) = backend.collect_symbols(&ast);
+        let struct_def = defs.iter().find(|d| d.name == "Point").unwrap();
+        assert_eq!(struct_def.kind, SymbolKind::Struct);
+        let type_str = struct_def.type_str.as_ref().unwrap();
+        assert!(type_str.contains("x: i64"));
+        assert!(type_str.contains("y: i64"));
+    }
+
+    #[test]
+    fn test_collect_symbols_enum_def() {
+        let (service, _) = LspService::new(Backend::new);
+        let backend = service.inner();
+        let ast = backend.try_parse("enum Color { Red, Green, Blue }").unwrap();
+        let (defs, _, _) = backend.collect_symbols(&ast);
+        let enum_def = defs.iter().find(|d| d.name == "Color").unwrap();
+        assert_eq!(enum_def.kind, SymbolKind::Enum);
+        let type_str = enum_def.type_str.as_ref().unwrap();
+        assert!(type_str.contains("Red"));
+        assert!(type_str.contains("Green"));
+        assert!(type_str.contains("Blue"));
+    }
+
+    #[test]
+    fn test_collect_symbols_extern_fn() {
+        let (service, _) = LspService::new(Backend::new);
+        let backend = service.inner();
+        let ast = backend.try_parse("extern fn putchar(c: i64) -> i64;").unwrap();
+        let (defs, _, _) = backend.collect_symbols(&ast);
+        let ext_def = defs.iter().find(|d| d.name == "putchar").unwrap();
+        assert_eq!(ext_def.kind, SymbolKind::Function);
+        let sig = ext_def.type_str.as_ref().unwrap();
+        assert!(sig.starts_with("extern fn("));
+    }
+
+    #[test]
+    fn test_collect_symbols_trait_def() {
+        let (service, _) = LspService::new(Backend::new);
+        let backend = service.inner();
+        let ast = backend.try_parse("trait Printable { fn display(self: &Self) -> i64; }").unwrap();
+        let (defs, _, _) = backend.collect_symbols(&ast);
+        let trait_def = defs.iter().find(|d| d.name == "Printable").unwrap();
+        assert_eq!(trait_def.kind, SymbolKind::Trait);
+    }
+
+    #[test]
+    fn test_collect_symbols_impl_block() {
+        let (service, _) = LspService::new(Backend::new);
+        let backend = service.inner();
+        let source = r#"
+            struct Point { x: i64, y: i64 }
+            trait HasVal { fn get(self: Self) -> i64; }
+            impl HasVal for Point {
+                fn get(self: Self) -> i64 = self.x;
+            }
+        "#;
+        let ast = backend.try_parse(source).unwrap();
+        let (defs, _, _) = backend.collect_symbols(&ast);
+        let method_def = defs.iter().find(|d| d.name == "get" && d.kind == SymbolKind::Method);
+        assert!(method_def.is_some());
+    }
+
+    #[test]
+    fn test_collect_symbols_multiple_items() {
+        let (service, _) = LspService::new(Backend::new);
+        let backend = service.inner();
+        let source = r#"
+            fn foo() -> i64 = 1;
+            fn bar() -> i64 = 2;
+            struct S { x: i64 }
+        "#;
+        let ast = backend.try_parse(source).unwrap();
+        let (defs, _, _) = backend.collect_symbols(&ast);
+        assert!(defs.iter().any(|d| d.name == "foo" && d.kind == SymbolKind::Function));
+        assert!(defs.iter().any(|d| d.name == "bar" && d.kind == SymbolKind::Function));
+        assert!(defs.iter().any(|d| d.name == "S" && d.kind == SymbolKind::Struct));
+    }
+
+    // --- collect_locals ---
+
+    #[test]
+    fn test_collect_locals_let_binding() {
+        let (service, _) = LspService::new(Backend::new);
+        let backend = service.inner();
+        let ast = backend.try_parse("fn main() -> i64 = let x: i64 = 10; x;").unwrap();
+        let (_, _, locals) = backend.collect_symbols(&ast);
+        // Should have 'x' as a local variable
+        assert!(locals.iter().any(|l| l.name == "x" && l.type_str == "i64"));
+    }
+
+    #[test]
+    fn test_collect_locals_for_loop_var() {
+        let (service, _) = LspService::new(Backend::new);
+        let backend = service.inner();
+        let source = "fn main() -> i64 = { let mut sum: i64 = 0; for i in 0..5 { sum = sum + i; 0 }; sum };";
+        let ast = backend.try_parse(source).unwrap();
+        let (_, _, locals) = backend.collect_symbols(&ast);
+        assert!(locals.iter().any(|l| l.name == "i" && l.type_str == "inferred"));
+        assert!(locals.iter().any(|l| l.name == "sum" && l.type_str == "i64"));
+    }
+
+    #[test]
+    fn test_collect_locals_nested_let() {
+        let (service, _) = LspService::new(Backend::new);
+        let backend = service.inner();
+        let source = "fn main() -> i64 = let a: i64 = 1; let b: i64 = 2; a + b;";
+        let ast = backend.try_parse(source).unwrap();
+        let (_, _, locals) = backend.collect_symbols(&ast);
+        assert!(locals.iter().any(|l| l.name == "a"));
+        assert!(locals.iter().any(|l| l.name == "b"));
+    }
+
+    // --- get_locals_at_offset ---
+
+    #[test]
+    fn test_get_locals_at_offset_in_scope() {
+        let (service, _) = LspService::new(Backend::new);
+        let backend = service.inner();
+        let locals = vec![
+            LocalVar {
+                name: "x".to_string(),
+                type_str: "i64".to_string(),
+                def_span: Span::new(10, 15),
+                scope_span: Span::new(15, 50),
+            },
+        ];
+        // Offset 20 is within def_span.start..scope_span.end (10..50)
+        let visible = backend.get_locals_at_offset(&locals, 20);
+        assert_eq!(visible.len(), 1);
+        assert_eq!(visible[0].name, "x");
+    }
+
+    #[test]
+    fn test_get_locals_at_offset_before_def() {
+        let (service, _) = LspService::new(Backend::new);
+        let backend = service.inner();
+        let locals = vec![
+            LocalVar {
+                name: "x".to_string(),
+                type_str: "i64".to_string(),
+                def_span: Span::new(10, 15),
+                scope_span: Span::new(15, 50),
+            },
+        ];
+        // Offset 5 is before def_span.start (10)
+        let visible = backend.get_locals_at_offset(&locals, 5);
+        assert!(visible.is_empty());
+    }
+
+    #[test]
+    fn test_get_locals_at_offset_after_scope() {
+        let (service, _) = LspService::new(Backend::new);
+        let backend = service.inner();
+        let locals = vec![
+            LocalVar {
+                name: "x".to_string(),
+                type_str: "i64".to_string(),
+                def_span: Span::new(10, 15),
+                scope_span: Span::new(15, 50),
+            },
+        ];
+        // Offset 60 is after scope_span.end (50)
+        let visible = backend.get_locals_at_offset(&locals, 60);
+        assert!(visible.is_empty());
+    }
+
+    #[test]
+    fn test_get_locals_at_offset_multiple_vars() {
+        let (service, _) = LspService::new(Backend::new);
+        let backend = service.inner();
+        let locals = vec![
+            LocalVar {
+                name: "a".to_string(),
+                type_str: "i64".to_string(),
+                def_span: Span::new(10, 15),
+                scope_span: Span::new(15, 100),
+            },
+            LocalVar {
+                name: "b".to_string(),
+                type_str: "bool".to_string(),
+                def_span: Span::new(30, 35),
+                scope_span: Span::new(35, 100),
+            },
+            LocalVar {
+                name: "c".to_string(),
+                type_str: "String".to_string(),
+                def_span: Span::new(60, 65),
+                scope_span: Span::new(65, 80),
+            },
+        ];
+        // At offset 40: a and b visible, c not yet defined
+        let visible = backend.get_locals_at_offset(&locals, 40);
+        assert_eq!(visible.len(), 2);
+        assert!(visible.iter().any(|l| l.name == "a"));
+        assert!(visible.iter().any(|l| l.name == "b"));
+
+        // At offset 70: all three visible
+        let visible = backend.get_locals_at_offset(&locals, 70);
+        assert_eq!(visible.len(), 3);
+
+        // At offset 90: a and b visible, c out of scope
+        let visible = backend.get_locals_at_offset(&locals, 90);
+        assert_eq!(visible.len(), 2);
+        assert!(visible.iter().any(|l| l.name == "a"));
+        assert!(visible.iter().any(|l| l.name == "b"));
+    }
 }
