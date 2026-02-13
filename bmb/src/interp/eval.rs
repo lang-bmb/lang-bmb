@@ -11118,4 +11118,302 @@ mod tests {
         );
         assert_eq!(result, Value::Int(0));
     }
+
+    // ====================================================================
+    // Float advanced method tests (Cycle 423)
+    // ====================================================================
+
+    #[test]
+    fn test_float_method_to_radians() {
+        let result = run_program("fn main() -> f64 = (180.0).to_radians();");
+        if let Value::Float(f) = result {
+            assert!((f - std::f64::consts::PI).abs() < 1e-10);
+        } else {
+            panic!("expected Float");
+        }
+    }
+
+    #[test]
+    fn test_float_method_to_degrees() {
+        // pi radians = 180 degrees
+        let result = run_program("fn main() -> f64 = (1.0).to_degrees();");
+        if let Value::Float(f) = result {
+            assert!((f - 57.29577951308232).abs() < 1e-10);
+        } else {
+            panic!("expected Float");
+        }
+    }
+
+    #[test]
+    fn test_float_method_format_fixed() {
+        let result = run_program("fn main() -> String = (1.23456).format_fixed(2);");
+        assert_eq!(result, Value::Str(Rc::new("1.23".to_string())));
+    }
+
+    #[test]
+    fn test_float_method_lerp() {
+        // lerp(0.0, 10.0, 0.5) = 0.0 + (10.0 - 0.0) * 0.5 = 5.0
+        let result = run_program("fn main() -> f64 = (0.0).lerp(10.0, 0.5);");
+        assert_eq!(result, Value::Float(5.0));
+    }
+
+    #[test]
+    fn test_float_method_fma() {
+        // 2.0.fma(3.0, 4.0) = 2.0 * 3.0 + 4.0 = 10.0
+        let result = run_program("fn main() -> f64 = (2.0).fma(3.0, 4.0);");
+        assert_eq!(result, Value::Float(10.0));
+    }
+
+    #[test]
+    fn test_float_method_hypot() {
+        // hypot(3.0, 4.0) = 5.0
+        let result = run_program("fn main() -> f64 = (3.0).hypot(4.0);");
+        assert_eq!(result, Value::Float(5.0));
+    }
+
+    #[test]
+    fn test_float_method_copysign() {
+        let result = run_program("fn main() -> f64 = (5.0).copysign(-1.0);");
+        assert_eq!(result, Value::Float(-5.0));
+    }
+
+    #[test]
+    fn test_float_method_log_base() {
+        // log_base(8.0, 2.0) = log2(8) = 3.0
+        let result = run_program("fn main() -> f64 = (8.0).log_base(2.0);");
+        assert_eq!(result, Value::Float(3.0));
+    }
+
+    #[test]
+    fn test_float_method_asin() {
+        let result = run_program("fn main() -> f64 = (0.0).asin();");
+        assert_eq!(result, Value::Float(0.0));
+    }
+
+    #[test]
+    fn test_float_method_acos() {
+        let result = run_program("fn main() -> f64 = (1.0).acos();");
+        assert_eq!(result, Value::Float(0.0));
+    }
+
+    #[test]
+    fn test_float_method_atan() {
+        let result = run_program("fn main() -> f64 = (0.0).atan();");
+        assert_eq!(result, Value::Float(0.0));
+    }
+
+    #[test]
+    fn test_float_method_sinh() {
+        let result = run_program("fn main() -> f64 = (0.0).sinh();");
+        assert_eq!(result, Value::Float(0.0));
+    }
+
+    #[test]
+    fn test_float_method_cosh() {
+        let result = run_program("fn main() -> f64 = (0.0).cosh();");
+        assert_eq!(result, Value::Float(1.0));
+    }
+
+    #[test]
+    fn test_float_method_tanh() {
+        let result = run_program("fn main() -> f64 = (0.0).tanh();");
+        assert_eq!(result, Value::Float(0.0));
+    }
+
+    #[test]
+    fn test_float_method_atan2() {
+        // atan2(0.0, 1.0) = 0.0
+        let result = run_program("fn main() -> f64 = (0.0).atan2(1.0);");
+        assert_eq!(result, Value::Float(0.0));
+    }
+
+    #[test]
+    fn test_float_method_map_range() {
+        // map 5.0 from [0, 10] to [0, 100] = 50.0
+        let result = run_program("fn main() -> f64 = (5.0).map_range(0.0, 10.0, 0.0, 100.0);");
+        assert_eq!(result, Value::Float(50.0));
+    }
+
+    // ====================================================================
+    // Error handling tests (Cycle 423)
+    // ====================================================================
+
+    #[test]
+    fn test_division_by_zero_returns_error() {
+        let tokens = crate::lexer::tokenize("fn main() -> i64 = 10 / 0;").expect("lex");
+        let program = crate::parser::parse("<test>", "fn main() -> i64 = 10 / 0;", tokens).expect("parse");
+        let mut interp = Interpreter::new();
+        assert!(interp.run(&program).is_err());
+    }
+
+    #[test]
+    fn test_modulo_by_zero_returns_error() {
+        let tokens = crate::lexer::tokenize("fn main() -> i64 = 10 % 0;").expect("lex");
+        let program = crate::parser::parse("<test>", "fn main() -> i64 = 10 % 0;", tokens).expect("parse");
+        let mut interp = Interpreter::new();
+        assert!(interp.run(&program).is_err());
+    }
+
+    #[test]
+    fn test_recursion_fibonacci() {
+        let result = run_program(
+            "fn fib(n: i64) -> i64 = if n <= 1 { n } else { fib(n - 1) + fib(n - 2) };
+             fn main() -> i64 = fib(10);"
+        );
+        assert_eq!(result, Value::Int(55));
+    }
+
+    #[test]
+    fn test_nested_function_calls() {
+        let result = run_program(
+            "fn double(x: i64) -> i64 = x * 2;
+             fn triple(x: i64) -> i64 = x * 3;
+             fn main() -> i64 = double(triple(5));"
+        );
+        assert_eq!(result, Value::Int(30));
+    }
+
+    #[test]
+    fn test_match_enum_variant() {
+        let result = run_program(
+            "enum Color { Red, Green, Blue }
+             fn value(c: Color) -> i64 = match c {
+                 Color::Red => 1,
+                 Color::Green => 2,
+                 Color::Blue => 3
+             };
+             fn main() -> i64 = value(Color::Green);"
+        );
+        assert_eq!(result, Value::Int(2));
+    }
+
+    #[test]
+    fn test_struct_creation_and_field_access() {
+        let result = run_program(
+            "struct Point { x: i64, y: i64 }
+             fn main() -> i64 = {
+                 let p = new Point { x: 10, y: 20 };
+                 p.x + p.y
+             };"
+        );
+        assert_eq!(result, Value::Int(30));
+    }
+
+    #[test]
+    fn test_tuple_sum_three_fields() {
+        let result = run_program(
+            "fn main() -> i64 = {
+                 let t = (10, 20, 30);
+                 t.0 + t.1 + t.2
+             };"
+        );
+        assert_eq!(result, Value::Int(60));
+    }
+
+    #[test]
+    fn test_string_concatenation() {
+        let result = run_program(
+            "fn main() -> String = {
+                 let a = \"hello\";
+                 let b = \" world\";
+                 a + b
+             };"
+        );
+        assert_eq!(result, Value::Str(Rc::new("hello world".to_string())));
+    }
+
+    #[test]
+    fn test_nested_if_expressions() {
+        let result = run_program(
+            "fn classify(x: i64) -> i64 = if x > 0 { if x > 10 { 2 } else { 1 } } else { 0 };
+             fn main() -> i64 = classify(5);"
+        );
+        assert_eq!(result, Value::Int(1));
+    }
+
+    #[test]
+    fn test_while_loop_with_mutation() {
+        let result = run_program(
+            "fn main() -> i64 = {
+                 let mut n = 10;
+                 let mut sum = 0;
+                 while n > 0 {
+                     { sum = sum + n };
+                     { n = n - 1 }
+                 };
+                 sum
+             };"
+        );
+        assert_eq!(result, Value::Int(55));
+    }
+
+    #[test]
+    fn test_loop_with_break_value() {
+        let result = run_program(
+            "fn main() -> i64 = {
+                 let mut i = 0;
+                 loop {
+                     if i == 5 { break } else { () };
+                     { i = i + 1 }
+                 };
+                 i
+             };"
+        );
+        assert_eq!(result, Value::Int(5));
+    }
+
+    #[test]
+    fn test_range_for_loop() {
+        let result = run_program(
+            "fn main() -> i64 = {
+                 let mut product = 1;
+                 for i in 1..6 {
+                     { product = product * i }
+                 };
+                 product
+             };"
+        );
+        // 1*2*3*4*5 = 120
+        assert_eq!(result, Value::Int(120));
+    }
+
+    #[test]
+    fn test_mutable_struct_field() {
+        let result = run_program(
+            "struct Counter { value: i64 }
+             fn main() -> i64 = {
+                 let mut c = new Counter { value: 0 };
+                 set c.value = c.value + 1;
+                 set c.value = c.value + 1;
+                 c.value
+             };"
+        );
+        assert_eq!(result, Value::Int(2));
+    }
+
+    #[test]
+    fn test_bitwise_band_bor_combined() {
+        let result = run_program("fn main() -> i64 = (0xFF band 0x0F) bor 0xF0;");
+        // 0xFF band 0x0F = 0x0F = 15, 15 bor 0xF0 = 15 | 240 = 255
+        assert_eq!(result, Value::Int(255));
+    }
+
+    #[test]
+    fn test_shift_left_right_combined() {
+        let result = run_program("fn main() -> i64 = (1 << 10) >> 5;");
+        // 1 << 10 = 1024, 1024 >> 5 = 32
+        assert_eq!(result, Value::Int(32));
+    }
+
+    #[test]
+    fn test_not_true_returns_false() {
+        let result = run_program("fn main() -> bool = not true;");
+        assert_eq!(result, Value::Bool(false));
+    }
+
+    #[test]
+    fn test_negate_integer() {
+        let result = run_program("fn main() -> i64 = -(42);");
+        assert_eq!(result, Value::Int(-42));
+    }
 }
