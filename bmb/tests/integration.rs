@@ -22416,3 +22416,120 @@ fn test_no_absorbing_normal_mod() {
         "absorbing_element"
     ));
 }
+
+// ===== Cycle 389: Lint rule comprehensive test suite =====
+
+#[test]
+fn test_lint_identity_and_absorbing_exclusive() {
+    // x * 1 is identity, x * 0 is absorbing — verify they fire different kinds
+    let kinds1 = warning_kinds("fn main() -> i64 = { let x = 5; x * 1 };");
+    assert!(kinds1.contains(&"identity_operation".to_string()));
+    assert!(!kinds1.contains(&"absorbing_element".to_string()));
+
+    let kinds2 = warning_kinds("fn main() -> i64 = { let x = 5; x * 0 };");
+    assert!(kinds2.contains(&"absorbing_element".to_string()));
+    assert!(!kinds2.contains(&"identity_operation".to_string()));
+}
+
+#[test]
+fn test_lint_multiple_warnings_in_one_function() {
+    // One function can trigger multiple lint warnings
+    let kinds = warning_kinds(
+        "fn main() -> i64 = {
+           let x = 5;
+           let a = x + 0;
+           let b = x * 0;
+           a + b
+         };"
+    );
+    assert!(kinds.contains(&"identity_operation".to_string()));
+    assert!(kinds.contains(&"absorbing_element".to_string()));
+}
+
+#[test]
+fn test_lint_self_comparison_with_eq_and_ne() {
+    // x == x should fire self_comparison
+    let kinds_eq = warning_kinds("fn main() -> bool = { let x = 5; x == x };");
+    assert!(kinds_eq.contains(&"self_comparison".to_string()));
+
+    // x != x should also fire self_comparison
+    let kinds_ne = warning_kinds("fn main() -> bool = { let x = 5; x != x };");
+    assert!(kinds_ne.contains(&"self_comparison".to_string()));
+}
+
+#[test]
+fn test_lint_constant_condition_in_if() {
+    let kinds = warning_kinds("fn main() -> i64 = if true { 1 } else { 2 };");
+    assert!(kinds.contains(&"constant_condition".to_string()));
+}
+
+#[test]
+fn test_lint_redundant_bool_comparison() {
+    let kinds = warning_kinds("fn main() -> bool = { let x = true; x == true };");
+    assert!(kinds.contains(&"redundant_bool_comparison".to_string()));
+}
+
+#[test]
+fn test_lint_int_division_truncation_fires() {
+    let kinds = warning_kinds("fn main() -> i64 = 7 / 3;");
+    assert!(kinds.contains(&"int_division_truncation".to_string()));
+}
+
+#[test]
+fn test_lint_no_false_positives_clean_program() {
+    // A clean, well-written program should not trigger these specific lint kinds
+    let new_lint_kinds = [
+        "identity_operation",
+        "absorbing_element",
+        "negated_if_condition",
+        "self_comparison",
+        "redundant_bool_comparison",
+        "int_division_truncation",
+        "duplicate_match_arm",
+    ];
+    let kinds = warning_kinds(
+        "fn add(a: i64, b: i64) -> i64 = a + b;
+         fn main() -> i64 = add(2, 3);"
+    );
+    for kind in &new_lint_kinds {
+        assert!(!kinds.contains(&kind.to_string()), "unexpected warning: {}", kind);
+    }
+}
+
+#[test]
+fn test_lint_negated_condition_with_comparison() {
+    // not (a > b) should trigger negated_if_condition
+    let kinds = warning_kinds(
+        "fn main() -> i64 = { let a = 3; let b = 5; if not (a > b) { 1 } else { 2 } };"
+    );
+    assert!(kinds.contains(&"negated_if_condition".to_string()));
+}
+
+#[test]
+fn test_lint_duplicate_match_arm() {
+    let kinds = warning_kinds(
+        "fn main() -> i64 = {
+           let x = 1;
+           match x {
+             1 => 10,
+             1 => 20,
+             _ => 30
+           }
+         };"
+    );
+    assert!(kinds.contains(&"duplicate_match_arm".to_string()));
+}
+
+#[test]
+fn test_lint_combined_identity_in_complex_expr() {
+    // identity inside a larger expression should still fire
+    let kinds = warning_kinds(
+        "fn main() -> i64 = {
+           let x = 10;
+           let y = x + 0;
+           y * 2
+         };"
+    );
+    assert!(kinds.contains(&"identity_operation".to_string()));
+    assert!(!kinds.contains(&"absorbing_element".to_string()));
+}
