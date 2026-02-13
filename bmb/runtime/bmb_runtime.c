@@ -80,6 +80,84 @@ double bmb_f64_min(double a, double b) { return a < b ? a : b; }
 double bmb_f64_max(double a, double b) { return a > b ? a : b; }
 int64_t bmb_f64_to_int(double f) { return (int64_t)f; }
 
+// Forward declaration for bmb_string_slice (defined later, used by trim)
+BmbString* bmb_string_slice(const BmbString* s, int64_t start, int64_t end);
+
+// v0.90.96: String methods — starts_with, ends_with, contains, index_of, trim, replace
+int64_t bmb_string_starts_with(BmbString* s, BmbString* prefix) {
+    if (!s || !prefix) return 0;
+    if (prefix->len > s->len) return 0;
+    return memcmp(s->data, prefix->data, (size_t)prefix->len) == 0 ? 1 : 0;
+}
+
+int64_t bmb_string_ends_with(BmbString* s, BmbString* suffix) {
+    if (!s || !suffix) return 0;
+    if (suffix->len > s->len) return 0;
+    return memcmp(s->data + s->len - suffix->len, suffix->data, (size_t)suffix->len) == 0 ? 1 : 0;
+}
+
+int64_t bmb_string_contains(BmbString* s, BmbString* needle) {
+    if (!s || !needle) return 0;
+    if (needle->len == 0) return 1;
+    if (needle->len > s->len) return 0;
+    int64_t limit = s->len - needle->len;
+    for (int64_t i = 0; i <= limit; i++) {
+        if (memcmp(s->data + i, needle->data, (size_t)needle->len) == 0) return 1;
+    }
+    return 0;
+}
+
+int64_t bmb_string_index_of(BmbString* s, BmbString* needle) {
+    if (!s || !needle) return -1;
+    if (needle->len == 0) return 0;
+    if (needle->len > s->len) return -1;
+    int64_t limit = s->len - needle->len;
+    for (int64_t i = 0; i <= limit; i++) {
+        if (memcmp(s->data + i, needle->data, (size_t)needle->len) == 0) return i;
+    }
+    return -1;
+}
+
+BmbString* bmb_string_trim(BmbString* s) {
+    if (!s || s->len == 0) return s;
+    int64_t start = 0;
+    int64_t end = s->len;
+    while (start < end && (s->data[start] == ' ' || s->data[start] == '\t' ||
+           s->data[start] == '\n' || s->data[start] == '\r')) start++;
+    while (end > start && (s->data[end-1] == ' ' || s->data[end-1] == '\t' ||
+           s->data[end-1] == '\n' || s->data[end-1] == '\r')) end--;
+    return bmb_string_slice(s, start, end);
+}
+
+BmbString* bmb_string_replace(BmbString* s, BmbString* old_str, BmbString* new_str) {
+    if (!s || !old_str || !new_str || old_str->len == 0) return s;
+    // Count occurrences first
+    int64_t count = 0;
+    int64_t limit = s->len - old_str->len;
+    for (int64_t i = 0; i <= limit; i++) {
+        if (memcmp(s->data + i, old_str->data, (size_t)old_str->len) == 0) {
+            count++;
+            i += old_str->len - 1;
+        }
+    }
+    if (count == 0) return s;
+    // Allocate result
+    int64_t new_len = s->len + count * (new_str->len - old_str->len);
+    char* data = (char*)bmb_alloc(new_len + 1);
+    int64_t j = 0;
+    for (int64_t i = 0; i < s->len; ) {
+        if (i <= limit && memcmp(s->data + i, old_str->data, (size_t)old_str->len) == 0) {
+            memcpy(data + j, new_str->data, (size_t)new_str->len);
+            j += new_str->len;
+            i += old_str->len;
+        } else {
+            data[j++] = s->data[i++];
+        }
+    }
+    data[j] = '\0';
+    return bmb_string_wrap(data);
+}
+
 // v0.97: Character functions
 // v0.60.107: bmb_chr returns BmbString* to match string type system
 // v0.88.2: Uses arena-aware allocation

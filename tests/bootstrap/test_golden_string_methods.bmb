@@ -1,0 +1,90 @@
+// Golden Binary Test: String methods (starts_with, ends_with, contains, index_of, trim, replace)
+// Tests string method call syntax via runtime functions
+// Expected output: 185
+
+fn test_starts_with() -> i64 = {
+    let s = "hello world";
+    let a = s.starts_with("hello");      // 1
+    let b = s.starts_with("world");      // 0
+    let c = s.starts_with("");           // 1 (empty prefix)
+    let d = s.starts_with("hello world"); // 1 (exact match)
+    a + b + c + d                         // 1 + 0 + 1 + 1 = 3
+};
+
+fn test_ends_with() -> i64 = {
+    let s = "hello world";
+    let a = s.ends_with("world");        // 1
+    let b = s.ends_with("hello");        // 0
+    let c = s.ends_with("");             // 1 (empty suffix)
+    let d = s.ends_with("hello world");  // 1 (exact match)
+    a + b + c + d                         // 1 + 0 + 1 + 1 = 3
+};
+
+fn test_contains() -> i64 = {
+    let s = "the quick brown fox";
+    let a = s.contains("quick");         // 1
+    let b = s.contains("slow");          // 0
+    let c = s.contains("fox");           // 1
+    let d = s.contains("");              // 1 (empty needle)
+    a + b + c + d                         // 1 + 0 + 1 + 1 = 3
+};
+
+fn test_index_of() -> i64 = {
+    let s = "abcdefg";
+    let a = s.index_of("abc");           // 0
+    let b = s.index_of("def");           // 3
+    let c = s.index_of("g");             // 6
+    let d = s.index_of("xyz");           // -1
+    // Sum: 0 + 3 + 6 + (-1) = 8
+    // But we want a positive result, add 10:
+    a + b + c + d + 10                    // 0 + 3 + 6 + (-1) + 10 = 18
+};
+
+fn test_trim() -> i64 = {
+    let s1 = "  hello  ";
+    let t1 = s1.trim();                  // "hello"
+    let s2 = "no spaces";
+    let t2 = s2.trim();                  // "no spaces"
+    t1.len() + t2.len()                   // 5 + 9 = 14
+};
+
+fn test_replace() -> i64 = {
+    let s = "aXbXc";
+    let r = s.replace("X", "YZ");        // "aYZbYZc"
+    r.len()                               // 7
+};
+
+fn test_combined() -> i64 = {
+    // Test combining multiple string methods
+    let s = "  Hello World  ";
+    let trimmed = s.trim();                // "Hello World"
+    let has_hello = trimmed.starts_with("Hello"); // 1
+    let has_world = trimmed.ends_with("World");   // 1
+    let space_pos = trimmed.index_of(" ");         // 5
+    let replaced = trimmed.replace(" ", "-");      // "Hello-World"
+    let contains_dash = replaced.contains("-");    // 1
+    // trimmed.len() = 11, has_hello = 1, has_world = 1, space_pos = 5, replaced.len() = 11, contains_dash = 1
+    trimmed.len() + has_hello + has_world + space_pos + replaced.len() + contains_dash
+    // 11 + 1 + 1 + 5 + 11 + 1 = 30
+};
+
+fn test_replace_multiple() -> i64 = {
+    let s = "a.b.c.d";
+    let r = s.replace(".", "/");          // "a/b/c/d"
+    r.len()                               // 7
+};
+
+fn main() -> i64 = {
+    let t1 = test_starts_with();          // 3
+    let t2 = test_ends_with();            // 3
+    let t3 = test_contains();             // 3
+    let t4 = test_index_of();             // 18
+    let t5 = test_trim();                 // 14
+    let t6 = test_replace();              // 7
+    let t7 = test_combined();             // 30
+    let t8 = test_replace_multiple();     // 7
+    // Total: 3 + 3 + 3 + 18 + 14 + 7 + 30 + 7 = 85
+    // Want 185, so add 100
+    println(t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + 100);
+    0
+};

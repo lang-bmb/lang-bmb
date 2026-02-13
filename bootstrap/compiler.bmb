@@ -3703,6 +3703,13 @@ fn method_to_runtime_fn(method: String) -> String =
     else if method == "byte_at" { "bmb_string_char_at" }
     else if method == "slice" { "bmb_string_slice" }
     else if method == "concat" { "bmb_string_concat" }
+    // v0.90.96: String methods
+    else if method == "starts_with" { "bmb_string_starts_with" }
+    else if method == "ends_with" { "bmb_string_ends_with" }
+    else if method == "contains" { "bmb_string_contains" }
+    else if method == "index_of" { "bmb_string_index_of" }
+    else if method == "trim" { "bmb_string_trim" }
+    else if method == "replace" { "bmb_string_replace" }
     // v0.90.95: Float-only methods (unambiguous — only valid on f64)
     else if method == "floor" { "bmb_f64_floor" }
     else if method == "ceil" { "bmb_f64_ceil" }
@@ -4693,6 +4700,8 @@ fn get_call_return_type(fn_name: String) -> String =
     // v0.90.2: C library pointer-returning functions
     else if fn_name == "@malloc" or fn_name == "@calloc" { "ptr" }
     else if fn_name == "@hashmap_new" or fn_name == "@vec_new" or fn_name == "@str_hashmap_new" or fn_name == "@reg_cached_lookup" { "ptr" }
+    // v0.90.96: String method ptr-returning functions
+    else if fn_name == "@bmb_string_trim" or fn_name == "@bmb_string_replace" { "ptr" }
     // v0.90.2: Double-returning functions
     // v0.90.9: Added i64_to_f64 intrinsic
     // v0.90.95: Float method return types
@@ -5016,6 +5025,13 @@ fn get_call_arg_types(fn_name: String) -> String =
     else if fn_name == "@print_str" { "p" }
     else if fn_name == "@println_str" { "p" }
     else if fn_name == "@bmb_panic" { "p" }
+    // v0.90.96: String method arg types
+    else if fn_name == "@bmb_string_starts_with" { "pp" }
+    else if fn_name == "@bmb_string_ends_with" { "pp" }
+    else if fn_name == "@bmb_string_contains" { "pp" }
+    else if fn_name == "@bmb_string_index_of" { "pp" }
+    else if fn_name == "@bmb_string_trim" { "p" }
+    else if fn_name == "@bmb_string_replace" { "ppp" }
     // v0.90.2: C library and runtime arg types
     else if fn_name == "@malloc" { "i" }
     else if fn_name == "@calloc" { "ii" }
@@ -5783,6 +5799,13 @@ fn gen_extern_concat3() -> String = "declare ptr @bmb_string_concat3(ptr, ptr, p
 fn gen_extern_concat5() -> String = "declare ptr @bmb_string_concat5(ptr, ptr, ptr, ptr, ptr) nounwind willreturn";
 fn gen_extern_concat7() -> String = "declare ptr @bmb_string_concat7(ptr, ptr, ptr, ptr, ptr, ptr, ptr) nounwind willreturn";
 fn gen_extern_string_eq() -> String = "declare i64 @bmb_string_eq(ptr nocapture, ptr nocapture) nounwind willreturn memory(argmem: read)";
+// v0.90.96: String method declarations
+fn gen_extern_string_starts_with() -> String = "declare i64 @bmb_string_starts_with(ptr nocapture, ptr nocapture) nounwind willreturn memory(argmem: read) speculatable";
+fn gen_extern_string_ends_with() -> String = "declare i64 @bmb_string_ends_with(ptr nocapture, ptr nocapture) nounwind willreturn memory(argmem: read) speculatable";
+fn gen_extern_string_contains() -> String = "declare i64 @bmb_string_contains(ptr nocapture, ptr nocapture) nounwind willreturn memory(argmem: read) speculatable";
+fn gen_extern_string_index_of() -> String = "declare i64 @bmb_string_index_of(ptr nocapture, ptr nocapture) nounwind willreturn memory(argmem: read) speculatable";
+fn gen_extern_string_trim() -> String = "declare ptr @bmb_string_trim(ptr nocapture) nounwind willreturn";
+fn gen_extern_string_replace() -> String = "declare ptr @bmb_string_replace(ptr nocapture, ptr nocapture, ptr nocapture) nounwind willreturn";
 fn gen_extern_chr() -> String = "declare ptr @bmb_chr(i64)";
 fn gen_extern_ord() -> String = "declare i64 @bmb_ord(ptr)";
 fn gen_extern_int_to_string() -> String = "declare ptr @bmb_int_to_string(i64)";
@@ -5890,7 +5913,12 @@ fn gen_runtime_decls_string() -> String =
     gen_extern_string_len() + "|" + gen_extern_string_char_at() + "|" +
     gen_extern_string_slice() + "|" + gen_extern_string_concat() + "|" +
     gen_extern_concat3() + "|" + gen_extern_concat5() + "|" + gen_extern_concat7() + "|" +
-    gen_extern_string_eq() + "|" + gen_extern_chr() + "|" + gen_extern_ord() + "|" +
+    gen_extern_string_eq() + "|" +
+    // v0.90.96: String method declarations
+    gen_extern_string_starts_with() + "|" + gen_extern_string_ends_with() + "|" +
+    gen_extern_string_contains() + "|" + gen_extern_string_index_of() + "|" +
+    gen_extern_string_trim() + "|" + gen_extern_string_replace() + "|" +
+    gen_extern_chr() + "|" + gen_extern_ord() + "|" +
     gen_extern_int_to_string() + "|" + gen_extern_fast_i2s() + "|";
 
 fn gen_runtime_decls_file() -> String =
