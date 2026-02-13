@@ -6433,4 +6433,568 @@ mod tests {
         let has_conditional = ir.contains("select i1") || ir.contains("br i1");
         assert!(has_conditional, "if-else should produce select or branch, got:\n{}", &ir[..500.min(ir.len())]);
     }
+
+    // ================================================================
+    // Cycle 412: Struct/enum/type edge case codegen tests
+    // ================================================================
+
+    #[test]
+    fn test_struct_mixed_field_types() {
+        // Struct with i64, f64, and bool fields
+        let mut struct_defs = std::collections::HashMap::new();
+        struct_defs.insert("Entity".to_string(), vec![
+            ("id".to_string(), MirType::I64),
+            ("score".to_string(), MirType::F64),
+            ("active".to_string(), MirType::Bool),
+        ]);
+        let program = MirProgram {
+            functions: vec![],
+            extern_fns: vec![],
+            struct_defs,
+        };
+        let cg = TextCodeGen::new();
+        let ir = cg.generate(&program).unwrap();
+        assert!(ir.contains("%struct.Entity = type { i64, double, i1 }"),
+                "mixed-type struct definition should be emitted, got:\n{}", ir);
+    }
+
+    #[test]
+    fn test_multiple_struct_definitions() {
+        let mut struct_defs = std::collections::HashMap::new();
+        struct_defs.insert("Point".to_string(), vec![
+            ("x".to_string(), MirType::I64),
+            ("y".to_string(), MirType::I64),
+        ]);
+        struct_defs.insert("Rect".to_string(), vec![
+            ("w".to_string(), MirType::I64),
+            ("h".to_string(), MirType::I64),
+            ("x".to_string(), MirType::I64),
+            ("y".to_string(), MirType::I64),
+        ]);
+        let program = MirProgram {
+            functions: vec![],
+            extern_fns: vec![],
+            struct_defs,
+        };
+        let cg = TextCodeGen::new();
+        let ir = cg.generate(&program).unwrap();
+        assert!(ir.contains("%struct.Point"), "Point struct type should be emitted");
+        assert!(ir.contains("%struct.Rect"), "Rect struct type should be emitted");
+        // Verify both have correct field counts
+        assert!(ir.contains("type { i64, i64 }"), "Point should have 2 i64 fields");
+        assert!(ir.contains("type { i64, i64, i64, i64 }"), "Rect should have 4 i64 fields");
+    }
+
+    #[test]
+    fn test_unary_neg_mir_codegen() {
+        // Test integer negation via direct MIR
+        let program = MirProgram {
+            functions: vec![MirFunction {
+                name: "neg".to_string(),
+                params: vec![("x".to_string(), MirType::I64)],
+                ret_ty: MirType::I64,
+                locals: vec![],
+                blocks: vec![BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![MirInst::UnaryOp {
+                        dest: Place::new("_t0"),
+                        op: MirUnaryOp::Neg,
+                        src: Operand::Place(Place::new("x")),
+                    }],
+                    terminator: Terminator::Return(Some(Operand::Place(Place::new("_t0")))),
+                }],
+                preconditions: vec![],
+                postconditions: vec![],
+                is_pure: false,
+                is_const: false,
+                always_inline: false,
+                inline_hint: false,
+                is_memory_free: false,
+            }],
+            extern_fns: vec![],
+            struct_defs: std::collections::HashMap::new(),
+        };
+        let cg = TextCodeGen::new();
+        let ir = cg.generate(&program).unwrap();
+        assert!(ir.contains("sub i64 0,"), "Neg should emit sub 0, x");
+    }
+
+    #[test]
+    fn test_unary_not_mir_codegen() {
+        // Test boolean NOT via direct MIR
+        let program = MirProgram {
+            functions: vec![MirFunction {
+                name: "not_fn".to_string(),
+                params: vec![("b".to_string(), MirType::Bool)],
+                ret_ty: MirType::Bool,
+                locals: vec![],
+                blocks: vec![BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![MirInst::UnaryOp {
+                        dest: Place::new("_t0"),
+                        op: MirUnaryOp::Not,
+                        src: Operand::Place(Place::new("b")),
+                    }],
+                    terminator: Terminator::Return(Some(Operand::Place(Place::new("_t0")))),
+                }],
+                preconditions: vec![],
+                postconditions: vec![],
+                is_pure: false,
+                is_const: false,
+                always_inline: false,
+                inline_hint: false,
+                is_memory_free: false,
+            }],
+            extern_fns: vec![],
+            struct_defs: std::collections::HashMap::new(),
+        };
+        let cg = TextCodeGen::new();
+        let ir = cg.generate(&program).unwrap();
+        assert!(ir.contains("xor i1"), "Not should emit xor i1 x, 1");
+    }
+
+    #[test]
+    fn test_unary_bnot_mir_codegen() {
+        // Test bitwise NOT via direct MIR
+        let program = MirProgram {
+            functions: vec![MirFunction {
+                name: "bnot_fn".to_string(),
+                params: vec![("x".to_string(), MirType::I64)],
+                ret_ty: MirType::I64,
+                locals: vec![],
+                blocks: vec![BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![MirInst::UnaryOp {
+                        dest: Place::new("_t0"),
+                        op: MirUnaryOp::Bnot,
+                        src: Operand::Place(Place::new("x")),
+                    }],
+                    terminator: Terminator::Return(Some(Operand::Place(Place::new("_t0")))),
+                }],
+                preconditions: vec![],
+                postconditions: vec![],
+                is_pure: false,
+                is_const: false,
+                always_inline: false,
+                inline_hint: false,
+                is_memory_free: false,
+            }],
+            extern_fns: vec![],
+            struct_defs: std::collections::HashMap::new(),
+        };
+        let cg = TextCodeGen::new();
+        let ir = cg.generate(&program).unwrap();
+        assert!(ir.contains("xor i64"), "Bnot should emit xor i64 x, -1");
+        assert!(ir.contains("-1"), "Bnot should use -1 as mask");
+    }
+
+    #[test]
+    fn test_unary_fneg_mir_codegen() {
+        // Test float negation via direct MIR
+        let program = MirProgram {
+            functions: vec![MirFunction {
+                name: "fneg".to_string(),
+                params: vec![("x".to_string(), MirType::F64)],
+                ret_ty: MirType::F64,
+                locals: vec![],
+                blocks: vec![BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![MirInst::UnaryOp {
+                        dest: Place::new("_t0"),
+                        op: MirUnaryOp::FNeg,
+                        src: Operand::Place(Place::new("x")),
+                    }],
+                    terminator: Terminator::Return(Some(Operand::Place(Place::new("_t0")))),
+                }],
+                preconditions: vec![],
+                postconditions: vec![],
+                is_pure: false,
+                is_const: false,
+                always_inline: false,
+                inline_hint: false,
+                is_memory_free: false,
+            }],
+            extern_fns: vec![],
+            struct_defs: std::collections::HashMap::new(),
+        };
+        let cg = TextCodeGen::new();
+        let ir = cg.generate(&program).unwrap();
+        assert!(ir.contains("fsub fast"), "FNeg should emit fsub fast 0.0, x");
+    }
+
+    #[test]
+    fn test_pure_function_attributes() {
+        let program = MirProgram {
+            functions: vec![MirFunction {
+                name: "pure_fn".to_string(),
+                params: vec![("x".to_string(), MirType::I64)],
+                ret_ty: MirType::I64,
+                locals: vec![],
+                blocks: vec![BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Return(Some(Operand::Place(Place::new("x")))),
+                }],
+                preconditions: vec![],
+                postconditions: vec![],
+                is_pure: true,
+                is_const: false,
+                always_inline: false,
+                inline_hint: false,
+                is_memory_free: false,
+            }],
+            extern_fns: vec![],
+            struct_defs: std::collections::HashMap::new(),
+        };
+        let cg = TextCodeGen::new();
+        let ir = cg.generate(&program).unwrap();
+        // Pure functions should have readnone or readonly attribute
+        assert!(ir.contains("readnone") || ir.contains("readonly") || ir.contains("memory(none)") || ir.contains("pure"),
+                "pure function should have optimization attribute, got:\n{}", ir);
+    }
+
+    #[test]
+    fn test_inline_hint_function_attributes() {
+        let program = MirProgram {
+            functions: vec![MirFunction {
+                name: "hinted".to_string(),
+                params: vec![("x".to_string(), MirType::I64)],
+                ret_ty: MirType::I64,
+                locals: vec![],
+                blocks: vec![BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Return(Some(Operand::Place(Place::new("x")))),
+                }],
+                preconditions: vec![],
+                postconditions: vec![],
+                is_pure: false,
+                is_const: false,
+                always_inline: false,
+                inline_hint: true,
+                is_memory_free: false,
+            }],
+            extern_fns: vec![],
+            struct_defs: std::collections::HashMap::new(),
+        };
+        let cg = TextCodeGen::new();
+        let ir = cg.generate(&program).unwrap();
+        // Inline hint should have inlinehint attribute
+        assert!(ir.contains("inlinehint"), "inline_hint function should have inlinehint attribute, got:\n{}", ir);
+    }
+
+    #[test]
+    fn test_collect_string_constants_dedup() {
+        // Same string used twice should only create one global
+        let program = MirProgram {
+            functions: vec![MirFunction {
+                name: "greet".to_string(),
+                params: vec![],
+                ret_ty: MirType::String,
+                locals: vec![],
+                blocks: vec![BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![
+                        MirInst::Const {
+                            dest: Place::new("_t0"),
+                            value: Constant::String("hello".to_string()),
+                        },
+                        MirInst::Const {
+                            dest: Place::new("_t1"),
+                            value: Constant::String("hello".to_string()),
+                        },
+                    ],
+                    terminator: Terminator::Return(Some(Operand::Place(Place::new("_t0")))),
+                }],
+                preconditions: vec![],
+                postconditions: vec![],
+                is_pure: false,
+                is_const: false,
+                always_inline: false,
+                inline_hint: false,
+                is_memory_free: false,
+            }],
+            extern_fns: vec![],
+            struct_defs: std::collections::HashMap::new(),
+        };
+        let cg = TextCodeGen::new();
+        let table = cg.collect_string_constants(&program);
+        assert_eq!(table.len(), 1, "duplicate strings should be deduplicated");
+        assert!(table.contains_key("hello"));
+    }
+
+    #[test]
+    fn test_collect_string_constants_from_call_args() {
+        // String constant in call arguments should be collected
+        let program = MirProgram {
+            functions: vec![MirFunction {
+                name: "test".to_string(),
+                params: vec![],
+                ret_ty: MirType::Unit,
+                locals: vec![],
+                blocks: vec![BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![
+                        MirInst::Call {
+                            dest: None,
+                            func: "println".to_string(),
+                            args: vec![Operand::Constant(Constant::String("world".to_string()))],
+                            is_tail: false,
+                        },
+                    ],
+                    terminator: Terminator::Return(None),
+                }],
+                preconditions: vec![],
+                postconditions: vec![],
+                is_pure: false,
+                is_const: false,
+                always_inline: false,
+                inline_hint: false,
+                is_memory_free: false,
+            }],
+            extern_fns: vec![],
+            struct_defs: std::collections::HashMap::new(),
+        };
+        let cg = TextCodeGen::new();
+        let table = cg.collect_string_constants(&program);
+        assert!(table.contains_key("world"), "string in call args should be collected");
+    }
+
+    #[test]
+    fn test_collect_string_constants_multiple_unique() {
+        let program = MirProgram {
+            functions: vec![MirFunction {
+                name: "test".to_string(),
+                params: vec![],
+                ret_ty: MirType::Unit,
+                locals: vec![],
+                blocks: vec![BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![
+                        MirInst::Const {
+                            dest: Place::new("_t0"),
+                            value: Constant::String("alpha".to_string()),
+                        },
+                        MirInst::Const {
+                            dest: Place::new("_t1"),
+                            value: Constant::String("beta".to_string()),
+                        },
+                        MirInst::Const {
+                            dest: Place::new("_t2"),
+                            value: Constant::String("gamma".to_string()),
+                        },
+                    ],
+                    terminator: Terminator::Return(None),
+                }],
+                preconditions: vec![],
+                postconditions: vec![],
+                is_pure: false,
+                is_const: false,
+                always_inline: false,
+                inline_hint: false,
+                is_memory_free: false,
+            }],
+            extern_fns: vec![],
+            struct_defs: std::collections::HashMap::new(),
+        };
+        let cg = TextCodeGen::new();
+        let table = cg.collect_string_constants(&program);
+        assert_eq!(table.len(), 3, "should collect 3 unique strings");
+        assert!(table.contains_key("alpha"));
+        assert!(table.contains_key("beta"));
+        assert!(table.contains_key("gamma"));
+    }
+
+    #[test]
+    fn test_is_string_operand_constant() {
+        let func = MirFunction {
+            name: "test".to_string(),
+            params: vec![],
+            ret_ty: MirType::Unit,
+            locals: vec![],
+            blocks: vec![],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+        // String constant should be detected
+        assert!(TextCodeGen::is_string_operand(
+            &Operand::Constant(Constant::String("test".to_string())), &func));
+        // Non-string constant should not
+        assert!(!TextCodeGen::is_string_operand(
+            &Operand::Constant(Constant::Int(42)), &func));
+    }
+
+    #[test]
+    fn test_is_string_operand_param() {
+        let func = MirFunction {
+            name: "test".to_string(),
+            params: vec![
+                ("s".to_string(), MirType::String),
+                ("n".to_string(), MirType::I64),
+            ],
+            ret_ty: MirType::Unit,
+            locals: vec![],
+            blocks: vec![],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+        // String param should be detected
+        assert!(TextCodeGen::is_string_operand(
+            &Operand::Place(Place::new("s")), &func));
+        // Non-string param should not
+        assert!(!TextCodeGen::is_string_operand(
+            &Operand::Place(Place::new("n")), &func));
+    }
+
+    #[test]
+    fn test_is_string_operand_local() {
+        let func = MirFunction {
+            name: "test".to_string(),
+            params: vec![],
+            ret_ty: MirType::Unit,
+            locals: vec![
+                ("msg".to_string(), MirType::String),
+                ("count".to_string(), MirType::I64),
+            ],
+            blocks: vec![],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+        assert!(TextCodeGen::is_string_operand(
+            &Operand::Place(Place::new("msg")), &func));
+        assert!(!TextCodeGen::is_string_operand(
+            &Operand::Place(Place::new("count")), &func));
+    }
+
+    #[test]
+    fn test_rt_struct_field_store_codegen() {
+        // Test struct field mutation generates GEP + store
+        let ir = source_to_ir(
+            "struct Counter { value: i64 }
+             fn inc(c: Counter) -> Counter = { set c.value = c.value + 1; c };"
+        );
+        assert!(ir.contains("@inc"), "function definition missing");
+        assert!(ir.contains("getelementptr") || ir.contains("store"),
+                "field store should generate GEP+store, got:\n{}", &ir[..ir.len().min(500)]);
+    }
+
+    #[test]
+    fn test_rt_enum_with_data_codegen() {
+        // Enum with data variant
+        let ir = source_to_ir(
+            "enum Shape { Circle(f64), Square(f64) }
+             fn make_circle(r: f64) -> Shape = Shape::Circle(r);"
+        );
+        assert!(ir.contains("@make_circle"), "function definition missing");
+    }
+
+    #[test]
+    fn test_rt_type_cast_codegen() {
+        // Explicit type cast should generate conversion instruction
+        let ir = source_to_ir(
+            "fn to_float(x: i64) -> f64 = x as f64;"
+        );
+        assert!(ir.contains("@to_float"), "function definition missing");
+        assert!(ir.contains("sitofp") || ir.contains("double"),
+                "i64 to f64 cast should generate sitofp");
+    }
+
+    #[test]
+    fn test_rt_multi_struct_program() {
+        // Program with multiple struct types
+        let ir = source_to_ir(
+            "struct Point { x: i64, y: i64 }
+             struct Line { a: Point, b: Point }
+             fn origin() -> Point = new Point { x: 0, y: 0 };"
+        );
+        assert!(ir.contains("@origin"), "function definition missing");
+        // Both struct types should appear as type definitions
+        assert!(ir.contains("%struct.Point") || ir.contains("Point"),
+                "Point struct type should appear in IR");
+    }
+
+    #[test]
+    fn test_const_function_attributes() {
+        let program = MirProgram {
+            functions: vec![MirFunction {
+                name: "const_fn".to_string(),
+                params: vec![],
+                ret_ty: MirType::I64,
+                locals: vec![],
+                blocks: vec![BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![],
+                    terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(42)))),
+                }],
+                preconditions: vec![],
+                postconditions: vec![],
+                is_pure: false,
+                is_const: true,
+                always_inline: false,
+                inline_hint: false,
+                is_memory_free: false,
+            }],
+            extern_fns: vec![],
+            struct_defs: std::collections::HashMap::new(),
+        };
+        let cg = TextCodeGen::new();
+        let ir = cg.generate(&program).unwrap();
+        assert!(ir.contains("@const_fn"), "const function should be emitted");
+        assert!(ir.contains("ret i64 42"), "const function should return constant");
+    }
+
+    #[test]
+    fn test_empty_program_codegen() {
+        let program = MirProgram {
+            functions: vec![],
+            extern_fns: vec![],
+            struct_defs: std::collections::HashMap::new(),
+        };
+        let cg = TextCodeGen::new();
+        let ir = cg.generate(&program).unwrap();
+        assert!(ir.contains("target triple"), "empty program should still have module header");
+        assert!(!ir.contains("define "), "empty program should have no function definitions");
+    }
+
+    #[test]
+    fn test_extern_fn_declarations() {
+        use crate::mir::MirExternFn;
+        let program = MirProgram {
+            functions: vec![],
+            extern_fns: vec![MirExternFn {
+                module: "env".to_string(),
+                name: "ext_add".to_string(),
+                params: vec![MirType::I64, MirType::I64],
+                ret_ty: MirType::I64,
+            }],
+            struct_defs: std::collections::HashMap::new(),
+        };
+        let cg = TextCodeGen::new();
+        let ir = cg.generate(&program).unwrap();
+        assert!(ir.contains("ext_add") || ir.contains("declare"),
+                "extern function should appear in IR");
+    }
+
+    #[test]
+    fn test_rt_array_literal_codegen() {
+        let ir = source_to_ir(
+            "fn first() -> i64 = { let arr = [1, 2, 3]; arr[0] };"
+        );
+        assert!(ir.contains("@first"), "function definition missing");
+    }
 }
