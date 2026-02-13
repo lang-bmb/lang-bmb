@@ -10804,4 +10804,318 @@ mod tests {
         );
         assert_eq!(result, Value::Int(2));
     }
+
+    // ====================================================================
+    // Array method tests (Cycle 422)
+    // ====================================================================
+
+    #[test]
+    fn test_array_push_method() {
+        let result = run_program(
+            "fn main() -> i64 = {
+                 let a = [1, 2, 3];
+                 let b = a.push(4);
+                 b.len()
+             };"
+        );
+        assert_eq!(result, Value::Int(4));
+    }
+
+    #[test]
+    fn test_array_pop_method() {
+        let result = run_program(
+            "fn main() -> i64 = {
+                 let a = [1, 2, 3];
+                 let b = a.pop();
+                 b.len()
+             };"
+        );
+        assert_eq!(result, Value::Int(2));
+    }
+
+    #[test]
+    fn test_array_concat_method() {
+        let result = run_program(
+            "fn main() -> i64 = {
+                 let a = [1, 2];
+                 let b = [3, 4];
+                 let c = a.concat(b);
+                 c.len()
+             };"
+        );
+        assert_eq!(result, Value::Int(4));
+    }
+
+    #[test]
+    fn test_array_slice_method() {
+        let result = run_program(
+            "fn main() -> i64 = {
+                 let a = [10, 20, 30, 40, 50];
+                 let b = a.slice(1, 4);
+                 b[0] + b[1] + b[2]
+             };"
+        );
+        // b = [20, 30, 40]
+        assert_eq!(result, Value::Int(90));
+    }
+
+    #[test]
+    fn test_array_join_method() {
+        let result = run_program(
+            "fn main() -> String = {
+                 let a = [1, 2, 3];
+                 a.join(\", \")
+             };"
+        );
+        assert_eq!(result, Value::Str(Rc::new("1, 2, 3".to_string())));
+    }
+
+    #[test]
+    fn test_array_reverse_method() {
+        let result = run_program(
+            "fn main() -> i64 = {
+                 let a = [1, 2, 3];
+                 let b = a.reverse();
+                 b[0]
+             };"
+        );
+        assert_eq!(result, Value::Int(3));
+    }
+
+    #[test]
+    fn test_array_map_method() {
+        let result = run_program(
+            "fn main() -> i64 = {
+                 let a = [1, 2, 3];
+                 let b = a.map(fn |x: i64| { x * 2 });
+                 b[0] + b[1] + b[2]
+             };"
+        );
+        assert_eq!(result, Value::Int(12));
+    }
+
+    #[test]
+    fn test_array_filter_method() {
+        let result = run_program(
+            "fn main() -> i64 = {
+                 let a = [1, 2, 3, 4, 5, 6];
+                 let b = a.filter(fn |x: i64| { x % 2 == 0 });
+                 b.len()
+             };"
+        );
+        assert_eq!(result, Value::Int(3));
+    }
+
+    #[test]
+    fn test_array_any_method() {
+        let result = run_program(
+            "fn main() -> bool = {
+                 let a = [1, 2, 3];
+                 a.any(fn |x: i64| { x > 2 })
+             };"
+        );
+        assert_eq!(result, Value::Bool(true));
+    }
+
+    #[test]
+    fn test_array_all_method() {
+        let result = run_program(
+            "fn main() -> bool = {
+                 let a = [2, 4, 6];
+                 a.all(fn |x: i64| { x % 2 == 0 })
+             };"
+        );
+        assert_eq!(result, Value::Bool(true));
+    }
+
+    #[test]
+    fn test_array_fold_method() {
+        let result = run_program(
+            "fn main() -> i64 = {
+                 let a = [1, 2, 3, 4, 5];
+                 a.fold(0, fn |acc: i64, x: i64| { acc + x })
+             };"
+        );
+        assert_eq!(result, Value::Int(15));
+    }
+
+    #[test]
+    fn test_array_enumerate_method() {
+        let result = run_program(
+            "fn main() -> i64 = {
+                 let a = [10, 20, 30];
+                 let pairs = a.enumerate();
+                 pairs.len()
+             };"
+        );
+        assert_eq!(result, Value::Int(3));
+    }
+
+    #[test]
+    fn test_array_take_method() {
+        let result = run_program(
+            "fn main() -> i64 = {
+                 let a = [1, 2, 3, 4, 5];
+                 let b = a.take(3);
+                 b.len()
+             };"
+        );
+        assert_eq!(result, Value::Int(3));
+    }
+
+    #[test]
+    fn test_array_contains_method() {
+        let result = run_program(
+            "fn main() -> bool = {
+                 let a = [1, 2, 3];
+                 a.contains(2)
+             };"
+        );
+        assert_eq!(result, Value::Bool(true));
+    }
+
+    #[test]
+    fn test_array_contains_not_found() {
+        let result = run_program(
+            "fn main() -> bool = {
+                 let a = [1, 2, 3];
+                 a.contains(5)
+             };"
+        );
+        assert_eq!(result, Value::Bool(false));
+    }
+
+    // ====================================================================
+    // For-in array iteration tests (Cycle 422)
+    // ====================================================================
+
+    #[test]
+    fn test_for_in_array_sum() {
+        let result = run_program(
+            "fn main() -> i64 = {
+                 let a = [10, 20, 30];
+                 let mut sum = 0;
+                 for x in a {
+                     { sum = sum + x }
+                 };
+                 sum
+             };"
+        );
+        assert_eq!(result, Value::Int(60));
+    }
+
+    #[test]
+    fn test_for_in_string_array() {
+        let result = run_program(
+            "fn main() -> i64 = {
+                 let names = [\"a\", \"bb\", \"ccc\"];
+                 let mut total = 0;
+                 for s in names {
+                     { total = total + s.len() }
+                 };
+                 total
+             };"
+        );
+        assert_eq!(result, Value::Int(6));
+    }
+
+    // ====================================================================
+    // Closure + higher-order function tests (Cycle 422)
+    // ====================================================================
+
+    #[test]
+    fn test_closure_captures_variable() {
+        let result = run_program(
+            "fn main() -> i64 = {
+                 let factor = 10;
+                 let a = [1, 2, 3];
+                 let b = a.map(fn |x: i64| { x * factor });
+                 b[2]
+             };"
+        );
+        assert_eq!(result, Value::Int(30));
+    }
+
+    #[test]
+    fn test_array_find_some() {
+        let result = run_program(
+            "fn main() -> i64 = {
+                 let a = [1, 2, 3, 4, 5];
+                 match a.find(fn |x: i64| { x > 3 }) {
+                     Option::Some(v) => v,
+                     Option::None => -1
+                 }
+             };"
+        );
+        assert_eq!(result, Value::Int(4));
+    }
+
+    #[test]
+    fn test_array_find_none() {
+        let result = run_program(
+            "fn main() -> i64 = {
+                 let a = [1, 2, 3];
+                 match a.find(fn |x: i64| { x > 10 }) {
+                     Option::Some(v) => v,
+                     Option::None => -1
+                 }
+             };"
+        );
+        assert_eq!(result, Value::Int(-1));
+    }
+
+    #[test]
+    fn test_array_position_method() {
+        let result = run_program(
+            "fn main() -> i64 = {
+                 let a = [10, 20, 30, 40];
+                 match a.position(fn |x: i64| { x == 30 }) {
+                     Option::Some(i) => i,
+                     Option::None => -1
+                 }
+             };"
+        );
+        assert_eq!(result, Value::Int(2));
+    }
+
+    // ====================================================================
+    // Program argument + misc builtin tests (Cycle 422)
+    // ====================================================================
+
+    #[test]
+    fn test_string_strip_prefix() {
+        let result = run_program(
+            "fn main() -> String = {
+                 match \"hello world\".strip_prefix(\"hello \") {
+                     Option::Some(rest) => rest,
+                     Option::None => \"failed\"
+                 }
+             };"
+        );
+        assert_eq!(result, Value::Str(Rc::new("world".to_string())));
+    }
+
+    #[test]
+    fn test_string_strip_suffix() {
+        let result = run_program(
+            "fn main() -> String = {
+                 match \"hello world\".strip_suffix(\" world\") {
+                     Option::Some(rest) => rest,
+                     Option::None => \"failed\"
+                 }
+             };"
+        );
+        assert_eq!(result, Value::Str(Rc::new("hello".to_string())));
+    }
+
+    #[test]
+    fn test_string_split_at() {
+        let result = run_program(
+            "fn main() -> i64 = {
+                 let pair = \"hello\".split_at(2);
+                 0
+             };"
+        );
+        assert_eq!(result, Value::Int(0));
+    }
 }
