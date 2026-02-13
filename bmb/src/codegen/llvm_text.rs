@@ -6997,4 +6997,585 @@ mod tests {
         );
         assert!(ir.contains("@first"), "function definition missing");
     }
+
+    // ================================================================
+    // Cycle 413: Control flow + instruction variant codegen tests
+    // ================================================================
+
+    #[test]
+    fn test_mir_array_init_codegen() {
+        // Direct MIR: ArrayInit should produce alloca + GEP + store sequence
+        let program = MirProgram {
+            functions: vec![MirFunction {
+                name: "make_arr".to_string(),
+                params: vec![],
+                ret_ty: MirType::I64,
+                locals: vec![],
+                blocks: vec![BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![MirInst::ArrayInit {
+                        dest: Place::new("arr"),
+                        element_type: MirType::I64,
+                        elements: vec![
+                            Operand::Constant(Constant::Int(10)),
+                            Operand::Constant(Constant::Int(20)),
+                            Operand::Constant(Constant::Int(30)),
+                        ],
+                    }],
+                    terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(0)))),
+                }],
+                preconditions: vec![],
+                postconditions: vec![],
+                is_pure: false,
+                is_const: false,
+                always_inline: false,
+                inline_hint: false,
+                is_memory_free: false,
+            }],
+            extern_fns: vec![],
+            struct_defs: std::collections::HashMap::new(),
+        };
+        let cg = TextCodeGen::new();
+        let ir = cg.generate(&program).unwrap();
+        assert!(ir.contains("alloca i64"), "ArrayInit should allocate on stack");
+        assert!(ir.contains("getelementptr"), "ArrayInit should GEP to elements");
+        assert!(ir.contains("store i64"), "ArrayInit should store elements");
+    }
+
+    #[test]
+    fn test_mir_index_load_codegen() {
+        // IndexLoad should produce GEP + load
+        let program = MirProgram {
+            functions: vec![MirFunction {
+                name: "load_elem".to_string(),
+                params: vec![("arr".to_string(), MirType::Ptr(Box::new(MirType::I64)))],
+                ret_ty: MirType::I64,
+                locals: vec![],
+                blocks: vec![BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![MirInst::IndexLoad {
+                        dest: Place::new("_t0"),
+                        array: Place::new("arr"),
+                        index: Operand::Constant(Constant::Int(2)),
+                        element_type: MirType::I64,
+                    }],
+                    terminator: Terminator::Return(Some(Operand::Place(Place::new("_t0")))),
+                }],
+                preconditions: vec![],
+                postconditions: vec![],
+                is_pure: false,
+                is_const: false,
+                always_inline: false,
+                inline_hint: false,
+                is_memory_free: false,
+            }],
+            extern_fns: vec![],
+            struct_defs: std::collections::HashMap::new(),
+        };
+        let cg = TextCodeGen::new();
+        let ir = cg.generate(&program).unwrap();
+        assert!(ir.contains("getelementptr"), "IndexLoad should emit GEP");
+        assert!(ir.contains("load i64"), "IndexLoad should emit load");
+    }
+
+    #[test]
+    fn test_mir_cast_i64_to_f64_codegen() {
+        // Cast from i64 to f64 should produce sitofp
+        let program = MirProgram {
+            functions: vec![MirFunction {
+                name: "to_f64".to_string(),
+                params: vec![("x".to_string(), MirType::I64)],
+                ret_ty: MirType::F64,
+                locals: vec![],
+                blocks: vec![BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![MirInst::Cast {
+                        dest: Place::new("_t0"),
+                        src: Operand::Place(Place::new("x")),
+                        from_ty: MirType::I64,
+                        to_ty: MirType::F64,
+                    }],
+                    terminator: Terminator::Return(Some(Operand::Place(Place::new("_t0")))),
+                }],
+                preconditions: vec![],
+                postconditions: vec![],
+                is_pure: false,
+                is_const: false,
+                always_inline: false,
+                inline_hint: false,
+                is_memory_free: false,
+            }],
+            extern_fns: vec![],
+            struct_defs: std::collections::HashMap::new(),
+        };
+        let cg = TextCodeGen::new();
+        let ir = cg.generate(&program).unwrap();
+        assert!(ir.contains("sitofp i64"), "i64 to f64 cast should emit sitofp");
+        assert!(ir.contains("to double"), "cast target should be double");
+    }
+
+    #[test]
+    fn test_mir_cast_f64_to_i64_codegen() {
+        let program = MirProgram {
+            functions: vec![MirFunction {
+                name: "to_i64".to_string(),
+                params: vec![("x".to_string(), MirType::F64)],
+                ret_ty: MirType::I64,
+                locals: vec![],
+                blocks: vec![BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![MirInst::Cast {
+                        dest: Place::new("_t0"),
+                        src: Operand::Place(Place::new("x")),
+                        from_ty: MirType::F64,
+                        to_ty: MirType::I64,
+                    }],
+                    terminator: Terminator::Return(Some(Operand::Place(Place::new("_t0")))),
+                }],
+                preconditions: vec![],
+                postconditions: vec![],
+                is_pure: false,
+                is_const: false,
+                always_inline: false,
+                inline_hint: false,
+                is_memory_free: false,
+            }],
+            extern_fns: vec![],
+            struct_defs: std::collections::HashMap::new(),
+        };
+        let cg = TextCodeGen::new();
+        let ir = cg.generate(&program).unwrap();
+        assert!(ir.contains("fptosi double"), "f64 to i64 cast should emit fptosi");
+        assert!(ir.contains("to i64"), "cast target should be i64");
+    }
+
+    #[test]
+    fn test_mir_cast_i32_to_i64_codegen() {
+        let program = MirProgram {
+            functions: vec![MirFunction {
+                name: "widen".to_string(),
+                params: vec![("x".to_string(), MirType::I32)],
+                ret_ty: MirType::I64,
+                locals: vec![],
+                blocks: vec![BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![MirInst::Cast {
+                        dest: Place::new("_t0"),
+                        src: Operand::Place(Place::new("x")),
+                        from_ty: MirType::I32,
+                        to_ty: MirType::I64,
+                    }],
+                    terminator: Terminator::Return(Some(Operand::Place(Place::new("_t0")))),
+                }],
+                preconditions: vec![],
+                postconditions: vec![],
+                is_pure: false,
+                is_const: false,
+                always_inline: false,
+                inline_hint: false,
+                is_memory_free: false,
+            }],
+            extern_fns: vec![],
+            struct_defs: std::collections::HashMap::new(),
+        };
+        let cg = TextCodeGen::new();
+        let ir = cg.generate(&program).unwrap();
+        assert!(ir.contains("sext i32"), "i32 to i64 cast should emit sext");
+        assert!(ir.contains("to i64"), "cast target should be i64");
+    }
+
+    #[test]
+    fn test_mir_copy_instruction_codegen() {
+        // Copy instruction should generate a simple assignment
+        let program = MirProgram {
+            functions: vec![MirFunction {
+                name: "copy_fn".to_string(),
+                params: vec![("x".to_string(), MirType::I64)],
+                ret_ty: MirType::I64,
+                locals: vec![],
+                blocks: vec![BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![MirInst::Copy {
+                        dest: Place::new("_t0"),
+                        src: Place::new("x"),
+                    }],
+                    terminator: Terminator::Return(Some(Operand::Place(Place::new("_t0")))),
+                }],
+                preconditions: vec![],
+                postconditions: vec![],
+                is_pure: false,
+                is_const: false,
+                always_inline: false,
+                inline_hint: false,
+                is_memory_free: false,
+            }],
+            extern_fns: vec![],
+            struct_defs: std::collections::HashMap::new(),
+        };
+        let cg = TextCodeGen::new();
+        let ir = cg.generate(&program).unwrap();
+        assert!(ir.contains("@copy_fn"), "function should be emitted");
+        assert!(ir.contains("ret i64"), "should return copied value");
+    }
+
+    #[test]
+    fn test_mir_array_alloc_codegen() {
+        // ArrayAlloc should produce alloca with array type
+        let program = MirProgram {
+            functions: vec![MirFunction {
+                name: "alloc_arr".to_string(),
+                params: vec![],
+                ret_ty: MirType::I64,
+                locals: vec![],
+                blocks: vec![BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![MirInst::ArrayAlloc {
+                        dest: Place::new("buf"),
+                        element_type: MirType::I64,
+                        size: 16,
+                    }],
+                    terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(0)))),
+                }],
+                preconditions: vec![],
+                postconditions: vec![],
+                is_pure: false,
+                is_const: false,
+                always_inline: false,
+                inline_hint: false,
+                is_memory_free: false,
+            }],
+            extern_fns: vec![],
+            struct_defs: std::collections::HashMap::new(),
+        };
+        let cg = TextCodeGen::new();
+        let ir = cg.generate(&program).unwrap();
+        assert!(ir.contains("alloca [16 x i64]"), "ArrayAlloc should emit alloca with array type, got:\n{}", ir);
+    }
+
+    #[test]
+    fn test_mir_ptr_load_codegen() {
+        // PtrLoad should produce load through pointer
+        let program = MirProgram {
+            functions: vec![MirFunction {
+                name: "deref".to_string(),
+                params: vec![("p".to_string(), MirType::Ptr(Box::new(MirType::I64)))],
+                ret_ty: MirType::I64,
+                locals: vec![],
+                blocks: vec![BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![MirInst::PtrLoad {
+                        dest: Place::new("_t0"),
+                        ptr: Operand::Place(Place::new("p")),
+                        element_type: MirType::I64,
+                    }],
+                    terminator: Terminator::Return(Some(Operand::Place(Place::new("_t0")))),
+                }],
+                preconditions: vec![],
+                postconditions: vec![],
+                is_pure: false,
+                is_const: false,
+                always_inline: false,
+                inline_hint: false,
+                is_memory_free: false,
+            }],
+            extern_fns: vec![],
+            struct_defs: std::collections::HashMap::new(),
+        };
+        let cg = TextCodeGen::new();
+        let ir = cg.generate(&program).unwrap();
+        assert!(ir.contains("load i64, ptr"), "PtrLoad should emit load i64, ptr");
+    }
+
+    #[test]
+    fn test_mir_ptr_store_codegen() {
+        // PtrStore should produce store through pointer
+        let program = MirProgram {
+            functions: vec![MirFunction {
+                name: "store_fn".to_string(),
+                params: vec![
+                    ("p".to_string(), MirType::Ptr(Box::new(MirType::I64))),
+                    ("v".to_string(), MirType::I64),
+                ],
+                ret_ty: MirType::Unit,
+                locals: vec![],
+                blocks: vec![BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![MirInst::PtrStore {
+                        ptr: Operand::Place(Place::new("p")),
+                        value: Operand::Place(Place::new("v")),
+                        element_type: MirType::I64,
+                    }],
+                    terminator: Terminator::Return(None),
+                }],
+                preconditions: vec![],
+                postconditions: vec![],
+                is_pure: false,
+                is_const: false,
+                always_inline: false,
+                inline_hint: false,
+                is_memory_free: false,
+            }],
+            extern_fns: vec![],
+            struct_defs: std::collections::HashMap::new(),
+        };
+        let cg = TextCodeGen::new();
+        let ir = cg.generate(&program).unwrap();
+        assert!(ir.contains("store i64"), "PtrStore should emit store i64");
+        assert!(ir.contains("ret void"), "unit function should ret void");
+    }
+
+    #[test]
+    fn test_mir_ptr_offset_codegen() {
+        // PtrOffset should produce GEP instruction
+        let program = MirProgram {
+            functions: vec![MirFunction {
+                name: "offset_fn".to_string(),
+                params: vec![
+                    ("p".to_string(), MirType::Ptr(Box::new(MirType::I64))),
+                    ("idx".to_string(), MirType::I64),
+                ],
+                ret_ty: MirType::Ptr(Box::new(MirType::I64)),
+                locals: vec![],
+                blocks: vec![BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![MirInst::PtrOffset {
+                        dest: Place::new("_t0"),
+                        ptr: Operand::Place(Place::new("p")),
+                        offset: Operand::Place(Place::new("idx")),
+                        element_type: MirType::I64,
+                    }],
+                    terminator: Terminator::Return(Some(Operand::Place(Place::new("_t0")))),
+                }],
+                preconditions: vec![],
+                postconditions: vec![],
+                is_pure: false,
+                is_const: false,
+                always_inline: false,
+                inline_hint: false,
+                is_memory_free: false,
+            }],
+            extern_fns: vec![],
+            struct_defs: std::collections::HashMap::new(),
+        };
+        let cg = TextCodeGen::new();
+        let ir = cg.generate(&program).unwrap();
+        assert!(ir.contains("getelementptr inbounds i64"), "PtrOffset should emit GEP inbounds");
+    }
+
+    #[test]
+    fn test_mir_const_string_global() {
+        // String constant should generate @.str global
+        let program = MirProgram {
+            functions: vec![MirFunction {
+                name: "greet".to_string(),
+                params: vec![],
+                ret_ty: MirType::String,
+                locals: vec![],
+                blocks: vec![BasicBlock {
+                    label: "entry".to_string(),
+                    instructions: vec![MirInst::Const {
+                        dest: Place::new("_t0"),
+                        value: Constant::String("hello world".to_string()),
+                    }],
+                    terminator: Terminator::Return(Some(Operand::Place(Place::new("_t0")))),
+                }],
+                preconditions: vec![],
+                postconditions: vec![],
+                is_pure: false,
+                is_const: false,
+                always_inline: false,
+                inline_hint: false,
+                is_memory_free: false,
+            }],
+            extern_fns: vec![],
+            struct_defs: std::collections::HashMap::new(),
+        };
+        let cg = TextCodeGen::new();
+        let ir = cg.generate(&program).unwrap();
+        assert!(ir.contains("@.str"), "string global should be emitted");
+        assert!(ir.contains("hello world"), "string content should appear in global");
+    }
+
+    #[test]
+    fn test_mir_multi_block_branch() {
+        // Test Terminator::Branch with multiple blocks
+        let program = MirProgram {
+            functions: vec![MirFunction {
+                name: "branch_fn".to_string(),
+                params: vec![("x".to_string(), MirType::I64)],
+                ret_ty: MirType::I64,
+                locals: vec![],
+                blocks: vec![
+                    BasicBlock {
+                        label: "entry".to_string(),
+                        instructions: vec![MirInst::BinOp {
+                            dest: Place::new("_cond"),
+                            op: MirBinOp::Gt,
+                            lhs: Operand::Place(Place::new("x")),
+                            rhs: Operand::Constant(Constant::Int(0)),
+                        }],
+                        terminator: Terminator::Branch {
+                            cond: Operand::Place(Place::new("_cond")),
+                            then_label: "then".to_string(),
+                            else_label: "else_".to_string(),
+                        },
+                    },
+                    BasicBlock {
+                        label: "then".to_string(),
+                        instructions: vec![],
+                        terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(1)))),
+                    },
+                    BasicBlock {
+                        label: "else_".to_string(),
+                        instructions: vec![],
+                        terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(0)))),
+                    },
+                ],
+                preconditions: vec![],
+                postconditions: vec![],
+                is_pure: false,
+                is_const: false,
+                always_inline: false,
+                inline_hint: false,
+                is_memory_free: false,
+            }],
+            extern_fns: vec![],
+            struct_defs: std::collections::HashMap::new(),
+        };
+        let cg = TextCodeGen::new();
+        let ir = cg.generate(&program).unwrap();
+        assert!(ir.contains("br i1"), "conditional branch should emit br i1");
+        assert!(ir.contains("bb_then"), "then block label should appear");
+        assert!(ir.contains("bb_else_"), "else block label should appear");
+        assert!(ir.contains("ret i64 1"), "then block should return 1");
+        assert!(ir.contains("ret i64 0"), "else block should return 0");
+    }
+
+    #[test]
+    fn test_mir_goto_terminator() {
+        // Test Terminator::Goto (unconditional jump)
+        let program = MirProgram {
+            functions: vec![MirFunction {
+                name: "goto_fn".to_string(),
+                params: vec![],
+                ret_ty: MirType::I64,
+                locals: vec![],
+                blocks: vec![
+                    BasicBlock {
+                        label: "entry".to_string(),
+                        instructions: vec![],
+                        terminator: Terminator::Goto("exit".to_string()),
+                    },
+                    BasicBlock {
+                        label: "exit".to_string(),
+                        instructions: vec![],
+                        terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(42)))),
+                    },
+                ],
+                preconditions: vec![],
+                postconditions: vec![],
+                is_pure: false,
+                is_const: false,
+                always_inline: false,
+                inline_hint: false,
+                is_memory_free: false,
+            }],
+            extern_fns: vec![],
+            struct_defs: std::collections::HashMap::new(),
+        };
+        let cg = TextCodeGen::new();
+        let ir = cg.generate(&program).unwrap();
+        assert!(ir.contains("br label %bb_exit"), "Goto should emit unconditional branch to bb_exit");
+    }
+
+    #[test]
+    fn test_mir_switch_terminator() {
+        // Test Terminator::Switch
+        let program = MirProgram {
+            functions: vec![MirFunction {
+                name: "switch_fn".to_string(),
+                params: vec![("x".to_string(), MirType::I64)],
+                ret_ty: MirType::I64,
+                locals: vec![],
+                blocks: vec![
+                    BasicBlock {
+                        label: "entry".to_string(),
+                        instructions: vec![],
+                        terminator: Terminator::Switch {
+                            discriminant: Operand::Place(Place::new("x")),
+                            cases: vec![
+                                (0, "case0".to_string()),
+                                (1, "case1".to_string()),
+                            ],
+                            default: "default".to_string(),
+                        },
+                    },
+                    BasicBlock {
+                        label: "case0".to_string(),
+                        instructions: vec![],
+                        terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(10)))),
+                    },
+                    BasicBlock {
+                        label: "case1".to_string(),
+                        instructions: vec![],
+                        terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(20)))),
+                    },
+                    BasicBlock {
+                        label: "default".to_string(),
+                        instructions: vec![],
+                        terminator: Terminator::Return(Some(Operand::Constant(Constant::Int(0)))),
+                    },
+                ],
+                preconditions: vec![],
+                postconditions: vec![],
+                is_pure: false,
+                is_const: false,
+                always_inline: false,
+                inline_hint: false,
+                is_memory_free: false,
+            }],
+            extern_fns: vec![],
+            struct_defs: std::collections::HashMap::new(),
+        };
+        let cg = TextCodeGen::new();
+        let ir = cg.generate(&program).unwrap();
+        assert!(ir.contains("switch i64"), "Switch should emit switch instruction");
+        assert!(ir.contains("i64 0, label %bb_case0"), "switch case 0 should be present");
+        assert!(ir.contains("i64 1, label %bb_case1"), "switch case 1 should be present");
+        assert!(ir.contains("label %bb_default"), "default case should be present");
+    }
+
+    #[test]
+    fn test_rt_string_concatenation_codegen() {
+        let ir = source_to_ir(
+            r#"fn greet(name: String) -> String = "hello " + name;"#
+        );
+        assert!(ir.contains("@greet"), "function definition missing");
+        // String concat should call runtime function
+        assert!(ir.contains("call") && (ir.contains("concat") || ir.contains("bmb_str")),
+                "string concat should call runtime function");
+    }
+
+    #[test]
+    fn test_rt_tuple_creation_and_access() {
+        let ir = source_to_ir(
+            "fn swap(a: i64, b: i64) -> (i64, i64) = (b, a);"
+        );
+        assert!(ir.contains("@swap"), "function definition missing");
+        assert!(ir.contains("insertvalue"), "tuple creation should use insertvalue");
+    }
+
+    #[test]
+    fn test_rt_deeply_nested_expressions() {
+        let ir = source_to_ir(
+            "fn deep(a: i64, b: i64) -> i64 = ((a + b) * (a - b)) + ((a * a) - (b * b));"
+        );
+        assert!(ir.contains("@deep"), "function definition missing");
+        let add_count = ir.matches("add nsw i64").count();
+        let sub_count = ir.matches("sub nsw i64").count();
+        let mul_count = ir.matches("mul nsw i64").count();
+        assert!(add_count >= 2, "should have multiple adds, got {}", add_count);
+        assert!(sub_count >= 2, "should have multiple subs, got {}", sub_count);
+        assert!(mul_count >= 2, "should have multiple muls, got {}", mul_count);
+    }
 }
