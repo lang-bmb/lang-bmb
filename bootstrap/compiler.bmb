@@ -5202,8 +5202,9 @@ fn llvm_gen_fn_header(line: String, pos: i64) -> String =
     let emitted_name = if fn_name == "main" { "bmb_user_main" } else { fn_name };
     // v0.90.1: Build attributes based on annotation
     // v0.90.17: Add mustprogress to all functions (enables LLVM loop optimizations)
-    let base_attrs = if fn_name == "main" { " mustprogress" } else { " mustprogress nounwind" };
-    let pure_attrs = if ann == "pure" or ann == "const" { " willreturn memory(none)" } else { "" };
+    // v0.90.70: Add willreturn to all non-main functions (BMB functions always return)
+    let base_attrs = if fn_name == "main" { " mustprogress" } else { " mustprogress nounwind willreturn" };
+    let pure_attrs = if ann == "pure" or ann == "const" { " memory(none)" } else { "" };
     let inline_attrs = if ann == "inline" { " alwaysinline" } else { "" };
     let attrs = base_attrs + pure_attrs + inline_attrs;
     // v0.90.18: private linkage for @inline functions (matches Rust compiler behavior)
@@ -5270,19 +5271,22 @@ fn gen_extern_println() -> String = "declare void @println(i64)";
 fn gen_extern_print_str() -> String = "declare void @print_str(ptr)";
 fn gen_extern_println_str() -> String = "declare void @println_str(ptr)";
 
-// Math functions
-fn gen_extern_abs() -> String = "declare i64 @bmb_abs(i64)";
-fn gen_extern_min() -> String = "declare i64 @min(i64, i64)";
-fn gen_extern_max() -> String = "declare i64 @max(i64, i64)";
+// v0.90.70: Math functions with optimization attributes
+// abs, min, max are pure (no memory access, no side effects)
+fn gen_extern_abs() -> String = "declare i64 @bmb_abs(i64) nounwind willreturn memory(none) speculatable";
+fn gen_extern_min() -> String = "declare i64 @min(i64, i64) nounwind willreturn memory(none) speculatable";
+fn gen_extern_max() -> String = "declare i64 @max(i64, i64) nounwind willreturn memory(none) speculatable";
 
-// String operations
-fn gen_extern_string_new() -> String = "declare ptr @bmb_string_new(ptr, i64)";
-fn gen_extern_string_from_cstr() -> String = "declare ptr @bmb_string_from_cstr(ptr)";
-fn gen_extern_string_len() -> String = "declare i64 @bmb_string_len(ptr)";
-fn gen_extern_string_char_at() -> String = "declare i64 @bmb_string_char_at(ptr, i64)";
-fn gen_extern_string_slice() -> String = "declare ptr @bmb_string_slice(ptr, i64, i64)";
-fn gen_extern_string_concat() -> String = "declare ptr @bmb_string_concat(ptr, ptr)";
-fn gen_extern_string_eq() -> String = "declare i64 @bmb_string_eq(ptr, ptr)";
+// v0.90.70: String operations with optimization attributes
+// Read-only: len, char_at, eq only read argument memory (enables LICM + CSE)
+// Allocation: new, from_cstr, slice, concat allocate memory
+fn gen_extern_string_new() -> String = "declare ptr @bmb_string_new(ptr, i64) nounwind";
+fn gen_extern_string_from_cstr() -> String = "declare ptr @bmb_string_from_cstr(ptr) nounwind";
+fn gen_extern_string_len() -> String = "declare i64 @bmb_string_len(ptr nocapture) nounwind willreturn memory(argmem: read) speculatable";
+fn gen_extern_string_char_at() -> String = "declare i64 @bmb_string_char_at(ptr nocapture, i64) nounwind willreturn memory(argmem: read) speculatable";
+fn gen_extern_string_slice() -> String = "declare ptr @bmb_string_slice(ptr nocapture, i64, i64) nounwind willreturn";
+fn gen_extern_string_concat() -> String = "declare ptr @bmb_string_concat(ptr nocapture, ptr nocapture) nounwind willreturn";
+fn gen_extern_string_eq() -> String = "declare i64 @bmb_string_eq(ptr nocapture, ptr nocapture) nounwind willreturn memory(argmem: read)";
 fn gen_extern_chr() -> String = "declare ptr @bmb_chr(i64)";
 fn gen_extern_ord() -> String = "declare i64 @bmb_ord(ptr)";
 fn gen_extern_int_to_string() -> String = "declare ptr @bmb_int_to_string(i64)";
