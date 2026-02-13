@@ -6043,8 +6043,10 @@ fn llvm_gen_fn_header(line: String, pos: i64) -> String =
     // v0.90.1: Build attributes based on annotation
     // v0.90.17: Add mustprogress to all functions (enables LLVM loop optimizations)
     // v0.90.70: Add willreturn to all non-main functions (BMB functions always return)
-    let base_attrs = if fn_name == "main" { " mustprogress" } else { " mustprogress nounwind willreturn" };
-    let pure_attrs = if ann == "pure" or ann == "const" { " memory(none)" } else { "" };
+    // v0.90.103: Added nosync (single-threaded compiler, no thread synchronization)
+    let base_attrs = if fn_name == "main" { " mustprogress" } else { " mustprogress nounwind willreturn nosync" };
+    // v0.90.103: Added nofree for pure/const (no memory deallocation)
+    let pure_attrs = if ann == "pure" or ann == "const" { " memory(none) nofree" } else { "" };
     let inline_attrs = if ann == "inline" { " alwaysinline" } else { "" };
     let attrs = base_attrs + pure_attrs + inline_attrs;
     // v0.90.18: private linkage for @inline functions (matches Rust compiler behavior)
@@ -6107,9 +6109,10 @@ fn gen_module_header() -> String =
 
 // v0.46: Complete runtime declarations for 3-stage bootstrap
 // Basic I/O
-fn gen_extern_println() -> String = "declare void @println(i64)";
-fn gen_extern_print_str() -> String = "declare void @print_str(ptr)";
-fn gen_extern_println_str() -> String = "declare void @println_str(ptr)";
+// v0.90.103: Added nounwind willreturn to I/O functions
+fn gen_extern_println() -> String = "declare void @println(i64) nounwind willreturn";
+fn gen_extern_print_str() -> String = "declare void @print_str(ptr) nounwind willreturn";
+fn gen_extern_println_str() -> String = "declare void @println_str(ptr) nounwind willreturn";
 
 // v0.90.91: Math functions with optimization attributes
 // abs, min, max are pure (no memory access, no side effects)
@@ -6130,8 +6133,8 @@ fn gen_extern_array_len() -> String = "declare i64 @bmb_array_len(ptr) nounwind 
 // v0.90.70: String operations with optimization attributes
 // Read-only: len, char_at, eq only read argument memory (enables LICM + CSE)
 // Allocation: new, from_cstr, slice, concat allocate memory
-fn gen_extern_string_new() -> String = "declare ptr @bmb_string_new(ptr, i64) nounwind";
-fn gen_extern_string_from_cstr() -> String = "declare ptr @bmb_string_from_cstr(ptr) nounwind";
+fn gen_extern_string_new() -> String = "declare ptr @bmb_string_new(ptr, i64) nounwind willreturn";
+fn gen_extern_string_from_cstr() -> String = "declare ptr @bmb_string_from_cstr(ptr) nounwind willreturn";
 fn gen_extern_string_len() -> String = "declare i64 @bmb_string_len(ptr nocapture) nounwind willreturn memory(argmem: read) speculatable";
 fn gen_extern_string_char_at() -> String = "declare i64 @bmb_string_char_at(ptr nocapture, i64) nounwind willreturn memory(argmem: read) speculatable";
 fn gen_extern_string_slice() -> String = "declare ptr @bmb_string_slice(ptr nocapture, i64, i64) nounwind willreturn";
@@ -6152,8 +6155,8 @@ fn gen_extern_string_to_upper() -> String = "declare ptr @bmb_string_to_upper(pt
 fn gen_extern_string_to_lower() -> String = "declare ptr @bmb_string_to_lower(ptr nocapture) nounwind willreturn";
 fn gen_extern_string_repeat() -> String = "declare ptr @bmb_string_repeat(ptr nocapture, i64) nounwind willreturn";
 fn gen_extern_string_is_empty() -> String = "declare i64 @bmb_string_is_empty(ptr nocapture) nounwind willreturn memory(argmem: read) speculatable";
-fn gen_extern_chr() -> String = "declare ptr @bmb_chr(i64)";
-fn gen_extern_ord() -> String = "declare i64 @bmb_ord(ptr)";
+fn gen_extern_chr() -> String = "declare ptr @bmb_chr(i64) nounwind willreturn";
+fn gen_extern_ord() -> String = "declare i64 @bmb_ord(ptr) nounwind willreturn memory(argmem: read)";
 fn gen_extern_int_to_string() -> String = "declare ptr @bmb_int_to_string(i64)";
 // v0.60.244: Fast i2s that returns BmbString* (matches String type)
 fn gen_extern_fast_i2s() -> String = "declare ptr @bmb_fast_i2s(i64)";
@@ -6167,16 +6170,16 @@ fn gen_extern_append_file() -> String = "declare i64 @bmb_append_file(ptr, ptr)"
 // v0.60.134: write_file_newlines converts | to newlines during write
 fn gen_extern_write_file_newlines() -> String = "declare i64 @write_file_newlines(ptr, ptr)";
 
-// StringBuilder
-fn gen_extern_sb_new() -> String = "declare i64 @bmb_sb_new()";
-fn gen_extern_sb_push() -> String = "declare i64 @bmb_sb_push(i64, ptr)";
-fn gen_extern_sb_push_int() -> String = "declare i64 @bmb_sb_push_int(i64, i64)";
-fn gen_extern_sb_push_char() -> String = "declare i64 @bmb_sb_push_char(i64, i64)";
-fn gen_extern_sb_push_escaped() -> String = "declare i64 @bmb_sb_push_escaped(i64, ptr)";
-fn gen_extern_sb_len() -> String = "declare i64 @bmb_sb_len(i64)";
-fn gen_extern_sb_build() -> String = "declare ptr @bmb_sb_build(i64)";
-fn gen_extern_sb_clear() -> String = "declare i64 @bmb_sb_clear(i64)";
-fn gen_extern_sb_contains() -> String = "declare i64 @bmb_sb_contains(i64, ptr)";
+// v0.90.103: StringBuilder with nounwind willreturn attributes
+fn gen_extern_sb_new() -> String = "declare i64 @bmb_sb_new() nounwind willreturn";
+fn gen_extern_sb_push() -> String = "declare i64 @bmb_sb_push(i64, ptr) nounwind willreturn";
+fn gen_extern_sb_push_int() -> String = "declare i64 @bmb_sb_push_int(i64, i64) nounwind willreturn";
+fn gen_extern_sb_push_char() -> String = "declare i64 @bmb_sb_push_char(i64, i64) nounwind willreturn";
+fn gen_extern_sb_push_escaped() -> String = "declare i64 @bmb_sb_push_escaped(i64, ptr) nounwind willreturn";
+fn gen_extern_sb_len() -> String = "declare i64 @bmb_sb_len(i64) nounwind willreturn memory(read)";
+fn gen_extern_sb_build() -> String = "declare ptr @bmb_sb_build(i64) nounwind willreturn";
+fn gen_extern_sb_clear() -> String = "declare i64 @bmb_sb_clear(i64) nounwind willreturn";
+fn gen_extern_sb_contains() -> String = "declare i64 @bmb_sb_contains(i64, ptr) nounwind willreturn memory(read)";
 
 // Process/System
 fn gen_extern_system() -> String = "declare i64 @bmb_system(ptr)";
@@ -6185,10 +6188,11 @@ fn gen_extern_getenv() -> String = "declare ptr @bmb_getenv(ptr)";
 fn gen_extern_system_capture() -> String = "declare ptr @bmb_system_capture(ptr)";
 fn gen_extern_free_string() -> String = "declare i64 @bmb_string_free(ptr)";
 fn gen_extern_sb_free() -> String = "declare i64 @bmb_sb_free(i64)";
-fn gen_extern_arena_mode() -> String = "declare i64 @bmb_arena_mode(i64)";
-fn gen_extern_arena_reset() -> String = "declare i64 @bmb_arena_reset()";
-fn gen_extern_arena_save() -> String = "declare i64 @bmb_arena_save()";
-fn gen_extern_arena_restore() -> String = "declare i64 @bmb_arena_restore()";
+// v0.90.103: Arena management with nounwind willreturn
+fn gen_extern_arena_mode() -> String = "declare i64 @bmb_arena_mode(i64) nounwind willreturn";
+fn gen_extern_arena_reset() -> String = "declare i64 @bmb_arena_reset() nounwind willreturn";
+fn gen_extern_arena_save() -> String = "declare i64 @bmb_arena_save() nounwind willreturn";
+fn gen_extern_arena_restore() -> String = "declare i64 @bmb_arena_restore() nounwind willreturn";
 fn gen_extern_arena_usage() -> String = "declare i64 @bmb_arena_usage()";
 
 // CLI arguments
