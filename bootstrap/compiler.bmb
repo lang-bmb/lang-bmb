@@ -4625,6 +4625,11 @@ fn map_runtime_fn(fn_name: String) -> String =
     else if fn_name == "@free_string" { "@bmb_string_free" }
     else if fn_name == "@sb_free" { "@bmb_sb_free" }
     else if fn_name == "@arena_mode" { "@bmb_arena_mode" }
+    // v0.90.91: Integer math functions (method calls produce @bmb_* via fallback,
+    // free function calls produce @abs/@min/@max and need explicit mapping)
+    else if fn_name == "@abs" { "@bmb_abs" }
+    else if fn_name == "@min" { "@bmb_min" }
+    else if fn_name == "@max" { "@bmb_max" }
     else if fn_name == "@concat3" { "@bmb_string_concat3" }
     else if fn_name == "@concat5" { "@bmb_string_concat5" }
     else if fn_name == "@concat7" { "@bmb_string_concat7" }
@@ -5576,11 +5581,11 @@ fn gen_extern_println() -> String = "declare void @println(i64)";
 fn gen_extern_print_str() -> String = "declare void @print_str(ptr)";
 fn gen_extern_println_str() -> String = "declare void @println_str(ptr)";
 
-// v0.90.70: Math functions with optimization attributes
+// v0.90.91: Math functions with optimization attributes
 // abs, min, max are pure (no memory access, no side effects)
 fn gen_extern_abs() -> String = "declare i64 @bmb_abs(i64) nounwind willreturn memory(none) speculatable";
-fn gen_extern_min() -> String = "declare i64 @min(i64, i64) nounwind willreturn memory(none) speculatable";
-fn gen_extern_max() -> String = "declare i64 @max(i64, i64) nounwind willreturn memory(none) speculatable";
+fn gen_extern_min() -> String = "declare i64 @bmb_min(i64, i64) nounwind willreturn memory(none) speculatable";
+fn gen_extern_max() -> String = "declare i64 @bmb_max(i64, i64) nounwind willreturn memory(none) speculatable";
 
 // v0.90.70: String operations with optimization attributes
 // Read-only: len, char_at, eq only read argument memory (enables LICM + CSE)
