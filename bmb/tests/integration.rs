@@ -3833,6 +3833,132 @@ fn test_interp_i32_f64_to_i32_cast() {
     );
 }
 
+// ====================================================================
+// Cycle 433: i32 method + struct field + edge case tests
+// ====================================================================
+
+#[test]
+fn test_i32_method_abs() {
+    assert_eq!(
+        run_program("fn main() -> i32 = { let x: i32 = -42; x.abs() };"),
+        Value::Int(42)
+    );
+}
+
+#[test]
+fn test_i32_method_min() {
+    assert_eq!(
+        run_program("fn main() -> i32 = { let x: i32 = 10; let y: i32 = 3; x.min(y) };"),
+        Value::Int(3)
+    );
+}
+
+#[test]
+fn test_i32_method_max() {
+    assert_eq!(
+        run_program("fn main() -> i32 = { let x: i32 = 10; let y: i32 = 30; x.max(y) };"),
+        Value::Int(30)
+    );
+}
+
+#[test]
+fn test_i32_method_clamp() {
+    assert_eq!(
+        run_program("fn main() -> i32 = { let x: i32 = 50; let lo: i32 = 10; let hi: i32 = 30; x.clamp(lo, hi) };"),
+        Value::Int(30)
+    );
+}
+
+#[test]
+fn test_i32_method_to_string() {
+    assert_eq!(
+        run_program_str("fn main() -> String = { let x: i32 = 42; x.to_string() };"),
+        "42"
+    );
+}
+
+#[test]
+fn test_i32_struct_field() {
+    assert!(type_checks(r#"
+struct Point { x: i32, y: i32 }
+fn main() -> i32 = {
+    let p = new Point { x: 10, y: 20 };
+    p.x + p.y
+};
+"#));
+}
+
+#[test]
+fn test_i32_struct_field_interp() {
+    assert_eq!(
+        run_program(r#"
+struct Pair { a: i32, b: i32 }
+fn main() -> i32 = {
+    let p = new Pair { a: 5, b: 7 };
+    p.a + p.b
+};
+"#),
+        Value::Int(12)
+    );
+}
+
+#[test]
+fn test_i32_in_match() {
+    assert_eq!(
+        run_program(r#"
+fn classify(x: i32) -> i64 = match x {
+    0 => 0,
+    1 => 1,
+    _ => 2,
+};
+fn main() -> i64 = classify(5);
+"#),
+        Value::Int(2)
+    );
+}
+
+#[test]
+fn test_i32_max_value() {
+    // 2147483647 = i32 max
+    assert_eq!(
+        run_program("fn main() -> i32 = { let x: i32 = 2147483647; x };"),
+        Value::Int(2147483647)
+    );
+}
+
+#[test]
+fn test_i32_min_value() {
+    // -2147483648 = i32 min
+    assert_eq!(
+        run_program("fn main() -> i32 = { let x: i32 = -2147483648; x };"),
+        Value::Int(-2147483648)
+    );
+}
+
+#[test]
+fn test_i32_function_chain() {
+    assert_eq!(
+        run_program(r#"
+fn double32(x: i32) -> i32 = x + x;
+fn triple32(x: i32) -> i32 = x + double32(x);
+fn main() -> i32 = triple32(7);
+"#),
+        Value::Int(21)
+    );
+}
+
+#[test]
+fn test_i32_nested_cast() {
+    // i32 → i64 → f64 chain
+    assert!(type_checks(r#"
+fn main() -> f64 = {
+    let x: i32 = 42;
+    let y: i64 = x as i64;
+    y as f64
+};
+"#));
+}
+
 // ============================================
 // Cycle 194: IndexAssign Fix Verification
 // ============================================
