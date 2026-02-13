@@ -602,7 +602,13 @@ fn parse_set_expr(src: String, pos: i64) -> String =
                     pack_result(unpack_pos(rv), "(set_field (var <" + target_name + ">) " + field_name + " " + unpack_ast(rv) + ")")
                 }
             }
-        } else { make_error_at("expected '[' or '.' after set target", src, tok_end(t1)) }
+        // v0.90.100: set var = expr — store to alloca'd mutable variable
+        } else if tok_kind(t2) == TK_EQ() {
+            let rv = parse_expr(src, tok_end(t2));
+            if is_error(rv) { rv } else {
+                pack_result(unpack_pos(rv), "(set_var <" + target_name + "> " + unpack_ast(rv) + ")")
+            }
+        } else { make_error_at("expected '[', '.', or '=' after set target", src, tok_end(t1)) }
     };
 
 // v0.60.126: Block expression parser
@@ -2599,7 +2605,7 @@ fn do_step(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, 
         else if b1 == 88 { step_if_final(item, cur_temp, cur_block, cur_exit_label, sb) }  // IX
         else { make_step_leaf(cur_temp) }
     }
-    else if b0 == 83 { // 'S' — ST, SQ, S2, SI, S3, S4, S5, SF
+    else if b0 == 83 { // 'S' — ST, SQ, S2, SI, S3, S4, S5, SF, SV, SW
         let b1 = item.byte_at(1);
         if b1 == 84 { step_string(item, cur_temp, cur_block, cur_exit_label, sb) }             // ST
         else if b1 == 81 { step_seq_start(item, cur_temp, cur_block, cur_exit_label, sb) }     // SQ
@@ -2609,6 +2615,8 @@ fn do_step(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, 
         else if b1 == 52 { step_set_index_val(item, cur_temp, cur_block, cur_exit_label, sb) }    // S4
         else if b1 == 53 { step_set_index_final(item, cur_temp, cur_block, cur_exit_label, sb) }  // S5
         else if b1 == 70 { step_set_field_start(item, cur_temp, cur_block, cur_exit_label, sb) }  // SF
+        else if b1 == 86 { step_set_var_start(item, cur_temp, cur_block, cur_exit_label, sb) }    // SV
+        else if b1 == 87 { step_set_var_final(item, cur_temp, cur_block, cur_exit_label, sb) }    // SW
         else { make_step_leaf(cur_temp) }
     }
     else if b0 == 67 { // 'C' — CS, CA, CF, CN
@@ -2830,6 +2838,12 @@ fn step_expr(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String
         let field = get_child(ast, 1);
         let val = get_child(ast, 2);
         make_step(cur_temp, cur_block, cur_exit_label, make_work4("SF", obj, field, val, ""))
+    }
+    // v0.90.100: set_var — store to mutable variable
+    else if ntype == "set_var" {
+        let name = extract_name(ast);
+        let val = get_child(ast, 1);
+        make_step(cur_temp, cur_block, cur_exit_label, make_work4("SV", name, val, "", ""))
     }
     // v0.90.5: Field access: node.left -> (field (var <node>) left)
     else if ntype == "field" {
@@ -3343,6 +3357,24 @@ fn step_set_field_final(item: String, cur_temp: i64, cur_block: i64, cur_exit_la
     let w2 = sb_push_mir(sb, "  " + result + " = const 0");
     make_step_leaf(cur_temp + 1);
 
+// v0.90.100: set_var — step 1: evaluate value expression
+fn step_set_var_start(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String =
+    let name = get_field(item, 1);
+    let val = get_field(item, 2);
+    let cont = make_work3("SW", name, "", "");
+    let do_val = make_work3("EX", val, "", "");
+    make_step(cur_temp, cur_block, cur_exit_label, do_val + work_sep() + cont);
+
+// v0.90.100: set_var — step 2: emit store to alloca'd variable
+fn step_set_var_final(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String =
+    let name = get_field(item, 1);
+    let val_id = cur_temp - 1;
+    let w1 = sb_push_mir(sb, "  store %" + name + ", %_t" + i2s(val_id));
+    // set returns 0 (unit)
+    let result = "%_t" + i2s(cur_temp);
+    let w2 = sb_push_mir(sb, "  " + result + " = const 0");
+    make_step_leaf(cur_temp + 1);
+
 // v0.90.8: Break statement step handler for iterative lowerer
 // cur_exit_label should contain the while/for exit label
 fn step_break(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String =
@@ -3643,7 +3675,7 @@ fn build_args_str_acc(cur: i64, end: i64, acc: String) -> String =
 // v0.90.8: Added loop_exit parameter for break statement support
 fn lower_expr_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64 =
     let ntype = get_node_type(ast);
-    if ntype == "int" { lower_int_sb(ast, temp_id, block_id, sb) } else if ntype == "float" { lower_float_sb(ast, temp_id, block_id, sb) } else if ntype == "bool" { lower_bool_sb(ast, temp_id, block_id, sb) } else if ntype == "string" { lower_string_sb(ast, temp_id, block_id, sb) } else if ntype == "var" { lower_var_sb(ast, temp_id, block_id, sb) } else if ntype == "binop" { lower_binop_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "unary" { lower_unary_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "if" { lower_if_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "let" { lower_let_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "let_mut" { lower_let_mut_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "call" { lower_call_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "method" { lower_method_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "block" { lower_block_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "unit" { lower_unit_sb(ast, temp_id, block_id, sb) } else if ntype == "seq" { lower_seq_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "assign" { lower_assign_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "while" { lower_while_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "loop" { lower_loop_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "for" { lower_for_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "field" { lower_field_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "set_field" { lower_set_field_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "index" { lower_index_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "set_index" { lower_set_index_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "break" { lower_break_sb(loop_exit, temp_id, block_id, sb) } else if ntype == "continue" { lower_continue_sb(loop_exit, temp_id, block_id, sb) } else if ntype == "return" { lower_return_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "cast_ptr_f64" { lower_cast_ptr_f64_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "array_repeat" { lower_array_repeat_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "array" { lower_array_literal_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "tuple" { lower_tuple_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "struct_init" { lower_struct_init_sb(ast, temp_id, block_id, sb, loop_exit) } else { pack_ids(temp_id, block_id) };
+    if ntype == "int" { lower_int_sb(ast, temp_id, block_id, sb) } else if ntype == "float" { lower_float_sb(ast, temp_id, block_id, sb) } else if ntype == "bool" { lower_bool_sb(ast, temp_id, block_id, sb) } else if ntype == "string" { lower_string_sb(ast, temp_id, block_id, sb) } else if ntype == "var" { lower_var_sb(ast, temp_id, block_id, sb) } else if ntype == "binop" { lower_binop_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "unary" { lower_unary_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "if" { lower_if_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "let" { lower_let_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "let_mut" { lower_let_mut_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "call" { lower_call_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "method" { lower_method_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "block" { lower_block_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "unit" { lower_unit_sb(ast, temp_id, block_id, sb) } else if ntype == "seq" { lower_seq_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "assign" { lower_assign_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "while" { lower_while_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "loop" { lower_loop_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "for" { lower_for_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "field" { lower_field_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "set_field" { lower_set_field_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "index" { lower_index_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "set_index" { lower_set_index_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "break" { lower_break_sb(loop_exit, temp_id, block_id, sb) } else if ntype == "continue" { lower_continue_sb(loop_exit, temp_id, block_id, sb) } else if ntype == "return" { lower_return_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "cast_ptr_f64" { lower_cast_ptr_f64_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "array_repeat" { lower_array_repeat_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "array" { lower_array_literal_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "tuple" { lower_tuple_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "struct_init" { lower_struct_init_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "set_var" { lower_set_var_sb(ast, temp_id, block_id, sb, loop_exit) } else { pack_ids(temp_id, block_id) };
 
 fn lower_int_sb(ast: String, temp_id: i64, block_id: i64, sb: i64) -> i64 =
     let val = extract_int_value(ast);
@@ -4120,6 +4152,19 @@ fn lower_set_field_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_ex
     let val_block = unpack_block(val_result);
     let val_id = val_temp - 1;
     let w1 = sb_push_mir(sb, "  field-store %_t" + int_to_string(base_id) + "." + field_name + ", %_t" + int_to_string(val_id));
+    let dest = "%_t" + int_to_string(val_temp);
+    let w2 = sb_push_mir(sb, "  " + dest + " = const 0");
+    pack_ids(val_temp + 1, val_block);
+
+// v0.90.100: set_var — store to alloca'd mutable variable (recursive lowering path)
+fn lower_set_var_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64 =
+    let name = extract_name(ast);
+    let val_expr = get_child(ast, 1);
+    let val_result = lower_expr_sb(val_expr, temp_id, block_id, sb, loop_exit);
+    let val_temp = unpack_temp(val_result);
+    let val_block = unpack_block(val_result);
+    let val_id = val_temp - 1;
+    let w1 = sb_push_mir(sb, "  store %" + name + ", %_t" + int_to_string(val_id));
     let dest = "%_t" + int_to_string(val_temp);
     let w2 = sb_push_mir(sb, "  " + dest + " = const 0");
     pack_ids(val_temp + 1, val_block);
