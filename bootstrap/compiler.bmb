@@ -2605,14 +2605,46 @@ fn do_step(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, 
     else { make_step_leaf(cur_temp) };
 
 // EX: Dispatch based on node type - expand to specific handler
+// v0.90.93: Leaf types (int, float, bool, string, var, unit) inlined to skip extra trampoline iteration
 fn step_expr(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String =
     let ast = get_field(item, 1);
     let ntype = get_node_type(ast);
-    if ntype == "int" { make_step(cur_temp, cur_block, cur_exit_label, make_work3("IN", ast, "", "")) }
-    else if ntype == "float" { make_step(cur_temp, cur_block, cur_exit_label, make_work3("FL", ast, "", "")) }
-    else if ntype == "bool" { make_step(cur_temp, cur_block, cur_exit_label, make_work3("BO", ast, "", "")) }
-    else if ntype == "string" { make_step(cur_temp, cur_block, cur_exit_label, make_work3("ST", ast, "", "")) }
-    else if ntype == "var" { make_step(cur_temp, cur_block, cur_exit_label, make_work3("VA", ast, "", "")) }
+    // INLINE LEAF: int literal
+    if ntype == "int" {
+        let val = extract_int_value(ast);
+        let tmp = "%_t" + i2s(cur_temp);
+        let w1 = sb_push_mir(sb, "  " + tmp + " = const " + i2s(val));
+        make_step_leaf(cur_temp + 1)
+    }
+    // INLINE LEAF: float literal
+    else if ntype == "float" {
+        let text = extract_float_value_text(ast);
+        let tmp = "%_t" + i2s(cur_temp);
+        let w1 = sb_push_mir(sb, "  " + tmp + " = const F:" + text);
+        make_step_leaf(cur_temp + 1)
+    }
+    // INLINE LEAF: boolean literal
+    else if ntype == "bool" {
+        let child = get_child(ast, 0);
+        let val = if child == "true" { 1 } else { 0 };
+        let tmp = "%_t" + i2s(cur_temp);
+        let w1 = sb_push_mir(sb, "  " + tmp + " = const " + i2s(val));
+        make_step_leaf(cur_temp + 1)
+    }
+    // INLINE LEAF: string literal
+    else if ntype == "string" {
+        let str_content = extract_string_content(ast);
+        let tmp = "%_t" + i2s(cur_temp);
+        let w1 = sb_push_mir(sb, "  " + tmp + " = string " + chr(34) + str_content + chr(34));
+        make_step_leaf(cur_temp + 1)
+    }
+    // INLINE LEAF: variable reference
+    else if ntype == "var" {
+        let name = extract_name(ast);
+        let tmp = "%_t" + i2s(cur_temp);
+        let w1 = sb_push_mir(sb, "  " + tmp + " = copy %" + name);
+        make_step_leaf(cur_temp + 1)
+    }
     else if ntype == "binop" {
         let op = get_child(ast, 0);
         let left = get_child(ast, 1);
@@ -2660,8 +2692,11 @@ fn step_expr(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String
         let inner = block_inner(ast);
         make_step(cur_temp, cur_block, cur_exit_label, make_work3("EX", inner, "", ""))
     }
+    // INLINE LEAF: unit value
     else if ntype == "unit" {
-        make_step(cur_temp, cur_block, cur_exit_label, make_work3("UT", "", "", ""))
+        let tmp = "%_t" + i2s(cur_temp);
+        let w1 = sb_push_mir(sb, "  " + tmp + " = const 0");
+        make_step_leaf(cur_temp + 1)
     }
     else if ntype == "seq" {
         let e1 = seq_first(ast);
