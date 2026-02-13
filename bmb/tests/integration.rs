@@ -21876,3 +21876,99 @@ fn test_generic_result_enum() {
          fn main() -> i64 = get_ok(Result::Ok(42));"
     ), 42);
 }
+
+// ===== Cycle 382: Pattern matching edge cases =====
+
+#[test]
+fn test_match_wildcard_catches_all() {
+    assert_eq!(run_program_i64(
+        "fn f(x: i64) -> i64 = match x { _ => 42 }; fn main() -> i64 = f(999);"
+    ), 42);
+}
+
+#[test]
+fn test_match_multiple_literals() {
+    assert_eq!(run_program_i64(
+        "fn f(x: i64) -> i64 = match x { 1 => 10, 2 => 20, 3 => 30, _ => 0 };
+         fn main() -> i64 = f(1) + f(2) + f(3) + f(99);"
+    ), 60); // 10+20+30+0
+}
+
+#[test]
+fn test_match_bool_exhaustive() {
+    assert_eq!(run_program_i64(
+        "fn f(x: bool) -> i64 = match x { true => 1, false => 0 };
+         fn main() -> i64 = f(true) + f(false);"
+    ), 1);
+}
+
+#[test]
+fn test_match_enum_all_variants() {
+    assert_eq!(run_program_i64(
+        "enum Dir { North, South, East, West }
+         fn val(d: Dir) -> i64 = match d {
+           Dir::North => 1, Dir::South => 2, Dir::East => 3, Dir::West => 4
+         };
+         fn main() -> i64 = val(Dir::North) + val(Dir::West);"
+    ), 5);
+}
+
+#[test]
+fn test_match_nested_enum_with_data() {
+    assert_eq!(run_program_i64(
+        "enum Option<T> { Some(T), None }
+         fn main() -> i64 = {
+           let x = Option::Some(42);
+           match x { Option::Some(v) => v, Option::None => 0 }
+         };"
+    ), 42);
+}
+
+#[test]
+fn test_match_variable_binding() {
+    assert_eq!(run_program_i64(
+        "fn f(x: i64) -> i64 = match x { n => n * 2 };
+         fn main() -> i64 = f(21);"
+    ), 42);
+}
+
+#[test]
+fn test_match_in_recursive_function() {
+    // Fibonacci via match
+    assert_eq!(run_program_i64(
+        "fn fib(n: i64) -> i64 = match n {
+           0 => 0, 1 => 1,
+           _ => fib(n - 1) + fib(n - 2)
+         };
+         fn main() -> i64 = fib(10);"
+    ), 55);
+}
+
+#[test]
+fn test_match_expression_result_used() {
+    // Match result assigned to variable
+    assert_eq!(run_program_i64(
+        "fn main() -> i64 = {
+           let x = 3;
+           let result = match x { 1 => 10, 2 => 20, 3 => 30, _ => 0 };
+           result + 12
+         };"
+    ), 42);
+}
+
+#[test]
+fn test_match_non_exhaustive_error() {
+    // Non-exhaustive match without wildcard — type error
+    assert!(type_error(
+        "enum Color { Red, Green, Blue }
+         fn f(c: Color) -> i64 = match c { Color::Red => 1, Color::Green => 2 };"
+    ));
+}
+
+#[test]
+fn test_match_arms_type_mismatch_error() {
+    // Match arms returning different types — type error
+    assert!(type_error(
+        "fn f(x: i64) -> i64 = match x { 1 => 10, _ => true };"
+    ));
+}
