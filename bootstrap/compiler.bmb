@@ -1447,14 +1447,46 @@ fn parse_for_expr(src: String, pos: i64) -> String =
         else { parse_for_range(src, tok_end(t2), varname) }
     };
 
+// v0.90.99: Accept range (..) or array for-in ({) after expression
 fn parse_for_range(src: String, pos: i64, varname: String) -> String =
     let rs = parse_or(src, pos);
     if is_error(rs) { rs }
     else {
-        let start_ast = unpack_ast(rs);
+        let expr_ast = unpack_ast(rs);
         let t3 = next_token_raw(src, unpack_pos(rs));
-        if tok_kind(t3) != TK_DOTDOT() { make_error_at("expected '..' in for range", src, unpack_pos(rs)) }
-        else { parse_for_end(src, tok_end(t3), varname, start_ast) }
+        if tok_kind(t3) == TK_DOTDOT() { parse_for_end(src, tok_end(t3), varname, expr_ast) }
+        else if tok_kind(t3) == TK_LBRACE() {
+            // v0.90.99: Array for-in — desugar to index loop
+            parse_for_in_body(src, tok_end(t3), varname, expr_ast, pos)
+        }
+        else { make_error_at("expected '..' or '{' after for expression", src, unpack_pos(rs)) }
+    };
+
+// v0.90.99: Array for-in desugaring
+// for x in arr { body }
+// → (block (let <__fia_N> arr (let <__fil_N> (method arr_len (var <__fia_N>))
+//      (for <__fii_N> (int 0) (var <__fil_N>)
+//          (let <x> (index (var <__fia_N>) (var <__fii_N>)) body)))))
+// uid parameter ensures unique internal variable names for nested for-in loops
+fn parse_for_in_body(src: String, pos: i64, varname: String, arr_ast: String, uid: i64) -> String =
+    let rb = parse_block_stmts(src, pos);
+    if is_error(rb) { rb }
+    else {
+        let body_ast = unpack_ast(rb);
+        let t5 = next_token_raw(src, unpack_pos(rb));
+        if tok_kind(t5) != TK_RBRACE() { make_error_at("expected '}' after for body", src, unpack_pos(rb)) }
+        else {
+            let suffix = i2s(uid);
+            let arr_var = "__fia_" + suffix;
+            let len_var = "__fil_" + suffix;
+            let idx_var = "__fii_" + suffix;
+            let desugared = "(block (let <" + arr_var + "> " + arr_ast +
+                " (let <" + len_var + "> (method arr_len (var <" + arr_var + ">)) " +
+                "(for <" + idx_var + "> (int 0) (var <" + len_var + ">) " +
+                "(let <" + varname + "> (index (var <" + arr_var + ">) (var <" + idx_var + ">)) " +
+                body_ast + ")))))";
+            pack_result(tok_end(t5), desugared)
+        }
     };
 
 fn parse_for_end(src: String, pos: i64, varname: String, start_ast: String) -> String =

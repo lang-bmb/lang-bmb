@@ -32,3 +32,4 @@ test_golden_int_clamp_pow.bmb|161
 test_golden_string_ops.bmb|166
 test_golden_array_header.bmb|188
 test_golden_array_methods.bmb|175
+test_golden_for_in_array.bmb|192

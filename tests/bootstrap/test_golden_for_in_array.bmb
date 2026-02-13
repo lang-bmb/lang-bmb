@@ -1,0 +1,50 @@
+// Golden test: Array for-in iteration
+// Tests desugaring of for x in arr { body } to index loop
+// Uses array-based accumulator since set on plain vars is not supported
+// Expected output: 192
+
+fn main() -> i64 = {
+    // Test 1: Sum elements with for-in using array accumulator
+    let a = [10, 20, 30, 40, 50];
+    let acc1 = [0; 1];
+    for x in a {
+        set acc1[0] = acc1[0] + x;
+    };
+    let s1 = acc1[0];  // 150
+
+    // Test 2: Count elements with for-in
+    let b = [1, 2, 3, 4, 5, 6, 7];
+    let acc2 = [0; 1];
+    for y in b {
+        set acc2[0] = acc2[0] + 1;
+    };
+    let s2 = acc2[0];  // 7
+
+    // Test 3: for-in with array repeat
+    let c = [0; 5];
+    set c[0] = 100;
+    set c[1] = 200;
+    set c[2] = 300;
+    let acc3 = [0; 1];
+    for z in c {
+        set acc3[0] = acc3[0] + z;
+    };
+    let s3 = acc3[0];  // 600
+
+    // Test 4: Nested for-in (two independent for-in loops)
+    let d = [1, 2, 3];
+    let acc4 = [0; 1];
+    for p in d {
+        let e = [10, 20];
+        for q in e {
+            set acc4[0] = acc4[0] + p * q;
+        };
+    };
+    let s4 = acc4[0];
+    // s4 = 1*10 + 1*20 + 2*10 + 2*20 + 3*10 + 3*20 = 10+20+20+40+30+60 = 180
+
+    // Sum: 150 + 7 + 600 + 180 = 937
+    // 937 - 745 = 192
+    println(s1 + s2 + s3 + s4 - 745);
+    0
+};
