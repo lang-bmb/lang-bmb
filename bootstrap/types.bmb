@@ -316,8 +316,8 @@ fn proof_cache_find_semi(s: String, pos: i64) -> i64 =
 
 // Check if entry starts with key
 fn proof_cache_key_matches(entry: String, key: String) -> bool =
-    entry.len() > key.len() + 1 &&
-    entry.slice(0, key.len()) == key &&
+    entry.len() > key.len() + 1 and
+    entry.slice(0, key.len()) == key and
     entry.byte_at(key.len()) == 58;  // ':' = 58
 
 // Extract result from entry "fin:arr:result"
@@ -971,25 +971,25 @@ fn disjoint_find_comma(s: String, pos: i64) -> i64 =
 fn disjoint_set_empty() -> String = "";
 
 // Add disjoint constraint to set
-fn disjoint_set_add(set: String, var1: String, var2: String) -> String =
+fn disjoint_set_add(dset: String, var1: String, var2: String) -> String =
     let entry = var1 + ":" + var2;
-    if set == "" { entry } else { set + ";" + entry };
+    if dset == "" { entry } else { dset + ";" + entry };
 
 // Check if two vars are disjoint in the constraint set
-fn disjoint_set_check(set: String, var1: String, var2: String) -> bool =
-    if set == "" { false }
+fn disjoint_set_check(dset: String, var1: String, var2: String) -> bool =
+    if dset == "" { false }
     else {
-        disjoint_set_find(set, var1, var2, 0) or
-        disjoint_set_find(set, var2, var1, 0)  // Symmetric check
+        disjoint_set_find(dset, var1, var2, 0) or
+        disjoint_set_find(dset, var2, var1, 0)  // Symmetric check
     };
 
-fn disjoint_set_find(set: String, var1: String, var2: String, pos: i64) -> bool =
-    if pos >= set.len() { false }
+fn disjoint_set_find(dset: String, var1: String, var2: String, pos: i64) -> bool =
+    if pos >= dset.len() { false }
     else {
-        let entry_end = disjoint_find_semi(set, pos);
-        let entry = set.slice(pos, entry_end);
+        let entry_end = disjoint_find_semi(dset, pos);
+        let entry = dset.slice(pos, entry_end);
         if disjoint_entry_matches(entry, var1, var2) { true }
-        else { disjoint_set_find(set, var1, var2, entry_end + 1) }
+        else { disjoint_set_find(dset, var1, var2, entry_end + 1) }
     };
 
 fn disjoint_find_semi(s: String, pos: i64) -> i64 =
@@ -1158,14 +1158,14 @@ fn should_noalias(ty: i64, param_name: String, other_params: String, disjoint_se
     // Check if disjoint with all other params
     else { is_disjoint_with_all(param_name, other_params, disjoint_set, 0) };
 
-fn is_disjoint_with_all(param: String, others: String, set: String, pos: i64) -> bool =
+fn is_disjoint_with_all(param: String, others: String, dset: String, pos: i64) -> bool =
     if pos >= others.len() { true }
     else {
         let comma = disjoint_find_comma(others, pos);
         let end = if comma < 0 { others.len() } else { comma };
         let other = others.slice(pos, end);
-        if other != "" and not disjoint_set_check(set, param, other) { false }
-        else { is_disjoint_with_all(param, others, set, end + 1) }
+        if other != "" and not disjoint_set_check(dset, param, other) { false }
+        else { is_disjoint_with_all(param, others, dset, end + 1) }
     };
 
 // ============================================================================
@@ -1338,6 +1338,19 @@ fn type_null_ptr() -> i64 = 21999;
 
 // Check if type is null pointer
 fn is_null_ptr(ty: i64) -> bool = ty == type_null_ptr();
+
+// Map type kind number to string name
+fn type_kind_name(kind: i64) -> String =
+    if kind == 1 { "i32" }
+    else if kind == 2 { "i64" }
+    else if kind == 3 { "f64" }
+    else if kind == 4 { "bool" }
+    else if kind == 5 { "String" }
+    else if kind == 6 { "Unit" }
+    else if kind == 7 { "Named" }
+    else if kind == 9 { "Error" }
+    else if kind == 21 { "Ptr" }
+    else { "Unknown" };
 
 // Pointer type info
 fn ptr_type_info(ty: i64) -> String =
@@ -2197,13 +2210,13 @@ fn resolve_type_name(tenv: String, name: String) -> i64 =
 
 // v0.48.0: Check if name is a Fin[N] type (e.g., "Fin[5]")
 fn is_fin_type_name(name: String) -> bool =
-    name.len() >= 6 &&
-    name.slice(0, 4) == "Fin[" &&
+    name.len() >= 6 and
+    name.slice(0, 4) == "Fin[" and
     name.byte_at(name.len() - 1) == 93;  // ']' = 93
 
 // v0.48.0: Parse Fin[N] type name to type code
 fn parse_fin_type(name: String) -> i64 =
-    if !is_fin_type_name(name) { type_error() }
+    if not is_fin_type_name(name) { type_error() }
     else {
         let bound_str = name.slice(4, name.len() - 1);
         let bound = fin_parse_int(bound_str);
@@ -2214,13 +2227,13 @@ fn parse_fin_type(name: String) -> i64 =
 
 // v0.48.0: Check if name is a Vect[N, T] type (e.g., "Vect[5, i64]")
 fn is_vect_type_name(name: String) -> bool =
-    name.len() >= 9 &&
-    name.slice(0, 5) == "Vect[" &&
+    name.len() >= 9 and
+    name.slice(0, 5) == "Vect[" and
     name.byte_at(name.len() - 1) == 93;  // ']' = 93
 
 // v0.48.0: Parse Vect[N, T] type name to type code
 fn parse_vect_type(tenv: String, name: String) -> i64 =
-    if !is_vect_type_name(name) { type_error() }
+    if not is_vect_type_name(name) { type_error() }
     else {
         let inner = name.slice(5, name.len() - 1);
         let comma_pos = vect_find_comma(inner, 0);
@@ -6096,14 +6109,14 @@ fn infer_loop_var_type(range_e: String) -> String =
 
 // v0.48.0: Check if range is (op .. (int 0) (int N))
 fn is_exclusive_range_from_zero(e: String) -> bool =
-    e.len() > 10 &&
-    e.slice(0, 7) == "(op .. " &&
+    e.len() > 10 and
+    e.slice(0, 7) == "(op .. " and
     is_range_start_zero(e);
 
 // v0.48.0: Check if range is (op ..= (int 0) (int N))
 fn is_inclusive_range_from_zero(e: String) -> bool =
-    e.len() > 11 &&
-    e.slice(0, 8) == "(op ..= " &&
+    e.len() > 11 and
+    e.slice(0, 8) == "(op ..= " and
     is_range_start_zero_inclusive(e);
 
 // v0.48.0: Check if first arg of range is (int 0)
