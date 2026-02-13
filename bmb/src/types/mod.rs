@@ -2407,6 +2407,21 @@ impl TypeChecker {
                     return Ok(Type::Unit);
                 }
 
+                // v0.90.130: Detect duplicate match arms (same literal/enum pattern)
+                {
+                    let mut seen: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+                    for (i, arm) in arms.iter().enumerate() {
+                        if let Some(key) = Self::pattern_key(&arm.pattern.node) {
+                            if let Some(_prev) = seen.get(&key) {
+                                self.add_warning(CompileWarning::duplicate_match_arm(
+                                    key.clone(), arm.pattern.span,
+                                ));
+                            }
+                            seen.entry(key).or_insert(i);
+                        }
+                    }
+                }
+
                 // All arms must have the same result type
                 let mut result_ty: Option<Type> = None;
 
@@ -7795,6 +7810,31 @@ impl TypeChecker {
     /// This is used to detect unreachable code after return, break, continue
     fn is_divergent_expr(&self, expr: &Expr) -> bool {
         matches!(expr, Expr::Return { .. } | Expr::Break { .. } | Expr::Continue)
+    }
+
+    /// v0.90.130: Get a comparable key for a pattern (for duplicate detection)
+    /// Returns None for patterns with bindings (Var, Wildcard, Binding) since those aren't duplicatable
+    fn pattern_key(pattern: &crate::ast::Pattern) -> Option<String> {
+        use crate::ast::{Pattern, LiteralPattern};
+        match pattern {
+            Pattern::Literal(lit) => {
+                let s = match lit {
+                    LiteralPattern::Int(v) => format!("int:{v}"),
+                    LiteralPattern::Float(v) => format!("float:{v}"),
+                    LiteralPattern::Bool(v) => format!("bool:{v}"),
+                    LiteralPattern::String(v) => format!("str:{v}"),
+                };
+                Some(s)
+            }
+            Pattern::EnumVariant { enum_name, variant, bindings } => {
+                if bindings.iter().all(|b| matches!(b.node, Pattern::Wildcard | Pattern::Var(_))) {
+                    Some(format!("enum:{enum_name}::{variant}"))
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }
     }
 
     /// Check pattern validity

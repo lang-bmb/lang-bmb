@@ -164,6 +164,12 @@ pub enum CompileWarning {
         span: Span,
     },
 
+    /// v0.90.130: Duplicate match arm — same pattern appears more than once
+    DuplicateMatchArm {
+        pattern: String,
+        span: Span,
+    },
+
     /// v0.90.121: Non-snake_case function name
     /// Function names should use snake_case
     NonSnakeCaseFunction {
@@ -365,6 +371,11 @@ impl CompileWarning {
         Self::RedundantBoolComparison { value, span }
     }
 
+    /// v0.90.130: Create a duplicate match arm warning
+    pub fn duplicate_match_arm(pattern: impl Into<String>, span: Span) -> Self {
+        Self::DuplicateMatchArm { pattern: pattern.into(), span }
+    }
+
     /// v0.90.121: Create a non-snake_case function warning
     pub fn non_snake_case_function(
         name: impl Into<String>,
@@ -418,6 +429,7 @@ impl CompileWarning {
             Self::ConstantCondition { span, .. } => Some(*span),
             Self::SelfComparison { span, .. } => Some(*span),
             Self::RedundantBoolComparison { span, .. } => Some(*span),
+            Self::DuplicateMatchArm { span, .. } => Some(*span),
             Self::NonSnakeCaseFunction { span, .. } => Some(*span),
             Self::NonPascalCaseType { span, .. } => Some(*span),
             Self::Generic { span, .. } => *span,
@@ -505,6 +517,9 @@ impl CompileWarning {
             Self::RedundantBoolComparison { value, .. } => {
                 format!("redundant boolean comparison: comparing to `{}` is unnecessary", value)
             }
+            Self::DuplicateMatchArm { pattern, .. } => {
+                format!("duplicate match arm: pattern `{}` appears more than once", pattern)
+            }
             Self::Generic { message, .. } => message.clone(),
         }
     }
@@ -536,6 +551,7 @@ impl CompileWarning {
             Self::ConstantCondition { .. } => "constant_condition",
             Self::SelfComparison { .. } => "self_comparison",
             Self::RedundantBoolComparison { .. } => "redundant_bool_comparison",
+            Self::DuplicateMatchArm { .. } => "duplicate_match_arm",
             Self::Generic { .. } => "warning",
         }
     }

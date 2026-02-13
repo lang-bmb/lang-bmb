@@ -21200,3 +21200,51 @@ fn test_lint_no_redundant_bool_comparison_vars() {
         "redundant_bool_comparison"
     ));
 }
+
+// ===== Cycle 375: Duplicate match arm detection =====
+
+#[test]
+fn test_lint_duplicate_match_arm_int() {
+    // Duplicate integer literal pattern — should warn
+    assert!(has_warning_kind(
+        "fn f(x: i64) -> i64 = match x { 1 => 10, 1 => 20, _ => 0 };",
+        "duplicate_match_arm"
+    ));
+}
+
+#[test]
+fn test_lint_duplicate_match_arm_bool() {
+    // Duplicate boolean literal pattern — should warn
+    assert!(has_warning_kind(
+        "fn f(x: bool) -> i64 = match x { true => 1, true => 2, false => 0 };",
+        "duplicate_match_arm"
+    ));
+}
+
+#[test]
+fn test_lint_duplicate_match_arm_enum() {
+    // Duplicate enum variant pattern — should warn
+    assert!(has_warning_kind(
+        "enum Color { Red, Blue, Green }
+         fn f(c: Color) -> i64 = match c { Color::Red => 1, Color::Red => 2, Color::Blue => 3, Color::Green => 4 };",
+        "duplicate_match_arm"
+    ));
+}
+
+#[test]
+fn test_lint_no_duplicate_match_arm_different() {
+    // Different integer patterns — should NOT warn
+    assert!(!has_warning_kind(
+        "fn f(x: i64) -> i64 = match x { 1 => 10, 2 => 20, _ => 0 };",
+        "duplicate_match_arm"
+    ));
+}
+
+#[test]
+fn test_lint_no_duplicate_match_arm_wildcard() {
+    // Single wildcard — should NOT warn
+    assert!(!has_warning_kind(
+        "fn f(x: i64) -> i64 = match x { _ => 0 };",
+        "duplicate_match_arm"
+    ));
+}
