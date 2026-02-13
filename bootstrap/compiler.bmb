@@ -523,6 +523,16 @@ fn parse_ident_or_call(src: String, pos: i64, tok: i64) -> String =
     if tok_kind(next) == TK_LPAREN() {
         let rargs = parse_args(src, tok_end(next), "");
         pack_result(unpack_pos(rargs), "(call <" + name + ">" + unpack_ast(rargs) + ")")
+    } else if tok_kind(next) == TK_LBRACE() {
+        // v0.90.86: Could be struct init: Name { field: value, ... }
+        // Two-token lookahead: if IDENT followed by ':', it's struct init
+        let peek1 = next_token_raw(src, tok_end(next));
+        let peek2 = next_token_raw(src, tok_end(peek1));
+        if tok_kind(peek1) == TK_IDENT() and tok_kind(peek2) == TK_COLON() {
+            parse_struct_init(src, tok_end(next), name)
+        } else {
+            pack_result(tok_end(tok), "(var <" + name + ">)")
+        }
     } else {
         pack_result(tok_end(tok), "(var <" + name + ">)")
     };
@@ -1567,6 +1577,48 @@ fn parse_match_wildcard_end(src: String, pos: i64, result: String) -> String =
     }
     else { make_error_at("expected ',' or '}' after wildcard arm body", src, pos) };
 
+// v0.90.86: Struct init — Name { field1: val1, field2: val2 }
+// AST: (struct_init <Name> <field1> val1 <field2> val2)
+
+fn parse_struct_init(src: String, pos: i64, name: String) -> String =
+    parse_struct_fields(src, pos, "(struct_init <" + name + ">");
+
+fn parse_struct_fields(src: String, pos: i64, acc: String) -> String =
+    let t = next_token_raw(src, pos);
+    let kind = tok_kind(t);
+    if kind == TK_RBRACE() {
+        pack_result(tok_end(t), acc + ")")
+    }
+    else if kind == TK_IDENT() {
+        let field_name = get_ident_text(src, pos, t);
+        parse_struct_field_colon(src, tok_end(t), acc, field_name)
+    }
+    else { make_error_at("expected field name or '}' in struct init", src, pos) };
+
+fn parse_struct_field_colon(src: String, pos: i64, acc: String, field_name: String) -> String =
+    let t = next_token_raw(src, pos);
+    if tok_kind(t) != TK_COLON() { make_error_at("expected ':' after field name", src, pos) }
+    else { parse_struct_field_value(src, tok_end(t), acc, field_name) };
+
+fn parse_struct_field_value(src: String, pos: i64, acc: String, field_name: String) -> String =
+    let rv = parse_expr(src, pos);
+    if is_error(rv) { rv }
+    else {
+        let new_acc = acc + " <" + field_name + "> " + unpack_ast(rv);
+        parse_struct_field_sep(src, unpack_pos(rv), new_acc)
+    };
+
+fn parse_struct_field_sep(src: String, pos: i64, acc: String) -> String =
+    let t = next_token_raw(src, pos);
+    let kind = tok_kind(t);
+    if kind == TK_COMMA() {
+        parse_struct_fields(src, tok_end(t), acc)
+    }
+    else if kind == TK_RBRACE() {
+        pack_result(tok_end(t), acc + ")")
+    }
+    else { make_error_at("expected ',' or '}' after field value", src, pos) };
+
 // ============================================================================
 // SECTION 6: Function and Program Parser
 // ============================================================================
@@ -1581,7 +1633,7 @@ fn parse_param(src: String, pos: i64) -> String =
             let kind = tok_kind(t3);
             // v0.90.2: Support typed pointers *T
             // v0.90.7: Preserve struct name for ptr arithmetic scaling
-            if kind == TK_I32() { pack_result(tok_end(t3), "(param <" + name + "> i32)") } else if kind == TK_I64() { pack_result(tok_end(t3), "(param <" + name + "> i64)") } else if kind == TK_F64() { pack_result(tok_end(t3), "(param <" + name + "> f64)") } else if kind == TK_BOOL() { pack_result(tok_end(t3), "(param <" + name + "> bool)") } else if kind == TK_STRING_TYPE() { pack_result(tok_end(t3), "(param <" + name + "> String)") } else if kind == TK_STAR() { let t4 = next_token_raw(src, tok_end(t3)); let struct_name = get_ident_text(src, tok_end(t3), t4); pack_result(tok_end(t4), "(param <" + name + "> *" + struct_name + ")") } else if kind == TK_LBRACKET() { parse_param_array_type(src, tok_end(t3), name) } else if kind == TK_AMP() { parse_param_ref_type(src, tok_end(t3), name) } else { make_error_at("expected parameter type (i32, i64, f64, bool, String, *T, [T;N], &T, &[T;N])", src, tok_end(t2)) }
+            if kind == TK_I32() { pack_result(tok_end(t3), "(param <" + name + "> i32)") } else if kind == TK_I64() { pack_result(tok_end(t3), "(param <" + name + "> i64)") } else if kind == TK_F64() { pack_result(tok_end(t3), "(param <" + name + "> f64)") } else if kind == TK_BOOL() { pack_result(tok_end(t3), "(param <" + name + "> bool)") } else if kind == TK_STRING_TYPE() { pack_result(tok_end(t3), "(param <" + name + "> String)") } else if kind == TK_STAR() { let t4 = next_token_raw(src, tok_end(t3)); let struct_name = get_ident_text(src, tok_end(t3), t4); pack_result(tok_end(t4), "(param <" + name + "> *" + struct_name + ")") } else if kind == TK_LBRACKET() { parse_param_array_type(src, tok_end(t3), name) } else if kind == TK_AMP() { parse_param_ref_type(src, tok_end(t3), name) } else if kind == TK_IDENT() { pack_result(tok_end(t3), "(param <" + name + "> i64)") } else { make_error_at("expected parameter type", src, tok_end(t2)) }
         } else { make_error_at("expected ':' after parameter name", src, tok_end(t1)) }
     } else { make_error_at("expected parameter name", src, pos) };
 
@@ -2195,7 +2247,7 @@ fn get_exit_label(ast: String, entry_label: String, block_id: i64) -> String =
         let body = get_child(ast, 2);
         get_exit_label(body, entry_label, block_id)
     // v0.90.12: Compound nodes that lower children in order
-    } else if ntype == "tuple" or ntype == "array" or ntype == "call" or ntype == "method" {
+    } else if ntype == "tuple" or ntype == "array" or ntype == "call" or ntype == "method" or ntype == "struct_init" {
         scan_exit_children(ast, 0, count_children(ast), entry_label, block_id)
     } else if ntype == "binop" {
         // Left then right operand
@@ -2672,6 +2724,13 @@ fn step_expr(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String
     // v0.90.11: Tuple expression (tuple e1 e2 ...) - same as array literal
     else if ntype == "tuple" {
         make_step(cur_temp, cur_block, cur_exit_label, make_work3("TU", ast, "", ""))
+    }
+    // v0.90.86: Struct init — use recursive lowering
+    else if ntype == "struct_init" {
+        let result = lower_struct_init_sb(ast, cur_temp, cur_block, sb, "");
+        let new_temp = unpack_temp(result);
+        let new_block = unpack_block(result);
+        make_step(new_temp, new_block, cur_exit_label, "")
     }
     else { make_step(cur_temp, cur_block, cur_exit_label, "") };
 
@@ -3261,6 +3320,38 @@ fn lower_tuple_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: 
     let w2 = sb_push_mir(sb, "  " + result_tmp + " = copy " + tup_tmp);
     pack_ids(result_temp + 1, unpack_block(ids));
 
+// v0.90.86: Struct init — allocate + field-store each field
+// AST: (struct_init <Name> <field1> val1 <field2> val2)
+// MIR: calloc(field_count, 8) + field-store for each field
+fn lower_struct_init_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64 =
+    let total_children = count_children(ast);
+    let field_count = (total_children - 1) / 2;
+    let base_tmp = "%_t" + int_to_string(temp_id);
+    let w1 = sb_push_mir(sb, "  " + base_tmp + " = call @calloc(" + int_to_string(field_count) + ", 8)");
+    let ids = lower_struct_fields_sb(ast, 1, total_children, base_tmp, temp_id + 1, block_id, sb, loop_exit);
+    let result_temp = unpack_temp(ids);
+    let result_tmp = "%_t" + int_to_string(result_temp);
+    let w2 = sb_push_mir(sb, "  " + result_tmp + " = copy " + base_tmp);
+    pack_ids(result_temp + 1, unpack_block(ids));
+
+fn lower_struct_fields_sb(ast: String, idx: i64, total: i64, base_tmp: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64 =
+    if idx >= total { pack_ids(temp_id, block_id) }
+    else {
+        let field_name_raw = get_child(ast, idx);
+        let field_name = if field_name_raw.len() >= 2 and field_name_raw.byte_at(0) == 60 { field_name_raw.slice(1, field_name_raw.len() - 1) } else { field_name_raw };
+        let val_expr = get_child(ast, idx + 1);
+        let ids = lower_expr_sb(val_expr, temp_id, block_id, sb, loop_exit);
+        let val_temp = unpack_temp(ids);
+        let val_block = unpack_block(ids);
+        let val_id = val_temp - 1;
+        // Copy base to unique temp to avoid LLVM name collisions in field-store codegen
+        let fs_base = "%_t" + int_to_string(val_temp);
+        let w0 = sb_push_mir(sb, "  " + fs_base + " = copy " + base_tmp);
+        let fs_text = "  field-store " + fs_base + "." + field_name + ", %_t" + int_to_string(val_id);
+        let w1 = sb_push_mir(sb, fs_text);
+        lower_struct_fields_sb(ast, idx + 2, total, base_tmp, val_temp + 1, val_block, sb, loop_exit)
+    };
+
 // Count children in AST node (array, call, etc.)
 fn count_children(ast: String) -> i64 =
     count_children_at(ast, 0, 0);
@@ -3334,7 +3425,7 @@ fn build_args_str_acc(cur: i64, end: i64, acc: String) -> String =
 // v0.90.8: Added loop_exit parameter for break statement support
 fn lower_expr_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64 =
     let ntype = get_node_type(ast);
-    if ntype == "int" { lower_int_sb(ast, temp_id, block_id, sb) } else if ntype == "float" { lower_float_sb(ast, temp_id, block_id, sb) } else if ntype == "bool" { lower_bool_sb(ast, temp_id, block_id, sb) } else if ntype == "string" { lower_string_sb(ast, temp_id, block_id, sb) } else if ntype == "var" { lower_var_sb(ast, temp_id, block_id, sb) } else if ntype == "binop" { lower_binop_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "unary" { lower_unary_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "if" { lower_if_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "let" { lower_let_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "let_mut" { lower_let_mut_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "call" { lower_call_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "method" { lower_method_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "block" { lower_block_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "unit" { lower_unit_sb(ast, temp_id, block_id, sb) } else if ntype == "seq" { lower_seq_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "assign" { lower_assign_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "while" { lower_while_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "loop" { lower_loop_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "for" { lower_for_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "field" { lower_field_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "set_field" { lower_set_field_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "index" { lower_index_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "set_index" { lower_set_index_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "break" { lower_break_sb(loop_exit, temp_id, block_id, sb) } else if ntype == "continue" { lower_continue_sb(loop_exit, temp_id, block_id, sb) } else if ntype == "return" { lower_return_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "cast_ptr_f64" { lower_cast_ptr_f64_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "array_repeat" { lower_array_repeat_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "array" { lower_array_literal_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "tuple" { lower_tuple_sb(ast, temp_id, block_id, sb, loop_exit) } else { pack_ids(temp_id, block_id) };
+    if ntype == "int" { lower_int_sb(ast, temp_id, block_id, sb) } else if ntype == "float" { lower_float_sb(ast, temp_id, block_id, sb) } else if ntype == "bool" { lower_bool_sb(ast, temp_id, block_id, sb) } else if ntype == "string" { lower_string_sb(ast, temp_id, block_id, sb) } else if ntype == "var" { lower_var_sb(ast, temp_id, block_id, sb) } else if ntype == "binop" { lower_binop_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "unary" { lower_unary_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "if" { lower_if_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "let" { lower_let_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "let_mut" { lower_let_mut_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "call" { lower_call_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "method" { lower_method_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "block" { lower_block_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "unit" { lower_unit_sb(ast, temp_id, block_id, sb) } else if ntype == "seq" { lower_seq_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "assign" { lower_assign_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "while" { lower_while_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "loop" { lower_loop_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "for" { lower_for_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "field" { lower_field_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "set_field" { lower_set_field_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "index" { lower_index_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "set_index" { lower_set_index_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "break" { lower_break_sb(loop_exit, temp_id, block_id, sb) } else if ntype == "continue" { lower_continue_sb(loop_exit, temp_id, block_id, sb) } else if ntype == "return" { lower_return_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "cast_ptr_f64" { lower_cast_ptr_f64_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "array_repeat" { lower_array_repeat_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "array" { lower_array_literal_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "tuple" { lower_tuple_sb(ast, temp_id, block_id, sb, loop_exit) } else if ntype == "struct_init" { lower_struct_init_sb(ast, temp_id, block_id, sb, loop_exit) } else { pack_ids(temp_id, block_id) };
 
 fn lower_int_sb(ast: String, temp_id: i64, block_id: i64, sb: i64) -> i64 =
     let val = extract_int_value(ast);
