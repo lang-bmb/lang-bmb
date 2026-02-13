@@ -7578,4 +7578,207 @@ mod tests {
         assert!(sub_count >= 2, "should have multiple subs, got {}", sub_count);
         assert!(mul_count >= 2, "should have multiple muls, got {}", mul_count);
     }
+
+    // ====================================================================
+    // unique_name tests (Cycle 427)
+    // ====================================================================
+
+    #[test]
+    fn test_unique_name_first_use() {
+        let codegen = TextCodeGen::new();
+        let mut counts = HashMap::new();
+        let name = codegen.unique_name("temp", &mut counts);
+        assert_eq!(name, "temp");
+    }
+
+    #[test]
+    fn test_unique_name_second_use_gets_suffix() {
+        let codegen = TextCodeGen::new();
+        let mut counts = HashMap::new();
+        let _ = codegen.unique_name("temp", &mut counts);
+        let name2 = codegen.unique_name("temp", &mut counts);
+        assert_eq!(name2, "temp_1");
+    }
+
+    #[test]
+    fn test_unique_name_third_use() {
+        let codegen = TextCodeGen::new();
+        let mut counts = HashMap::new();
+        let _ = codegen.unique_name("x", &mut counts);
+        let _ = codegen.unique_name("x", &mut counts);
+        let name3 = codegen.unique_name("x", &mut counts);
+        assert_eq!(name3, "x_2");
+    }
+
+    #[test]
+    fn test_unique_name_different_names_independent() {
+        let codegen = TextCodeGen::new();
+        let mut counts = HashMap::new();
+        let a = codegen.unique_name("a", &mut counts);
+        let b = codegen.unique_name("b", &mut counts);
+        assert_eq!(a, "a");
+        assert_eq!(b, "b");
+    }
+
+    // ====================================================================
+    // binop_to_llvm tests (Cycle 427)
+    // ====================================================================
+
+    #[test]
+    fn test_binop_to_llvm_integer_arithmetic_nsw() {
+        let codegen = TextCodeGen::new();
+        assert_eq!(codegen.binop_to_llvm(MirBinOp::Add), ("add nsw", true));
+        assert_eq!(codegen.binop_to_llvm(MirBinOp::Sub), ("sub nsw", true));
+        assert_eq!(codegen.binop_to_llvm(MirBinOp::Mul), ("mul nsw", true));
+    }
+
+    #[test]
+    fn test_binop_to_llvm_div_mod_no_nsw() {
+        let codegen = TextCodeGen::new();
+        assert_eq!(codegen.binop_to_llvm(MirBinOp::Div), ("sdiv", true));
+        assert_eq!(codegen.binop_to_llvm(MirBinOp::Mod), ("srem", true));
+    }
+
+    #[test]
+    fn test_binop_to_llvm_checked_and_saturating() {
+        let codegen = TextCodeGen::new();
+        // Checked — currently same as wrapping (no nsw)
+        assert_eq!(codegen.binop_to_llvm(MirBinOp::AddChecked), ("add", true));
+        assert_eq!(codegen.binop_to_llvm(MirBinOp::SubChecked), ("sub", true));
+        assert_eq!(codegen.binop_to_llvm(MirBinOp::MulChecked), ("mul", true));
+        // Saturating — currently same as wrapping
+        assert_eq!(codegen.binop_to_llvm(MirBinOp::AddSat), ("add", true));
+        assert_eq!(codegen.binop_to_llvm(MirBinOp::SubSat), ("sub", true));
+        assert_eq!(codegen.binop_to_llvm(MirBinOp::MulSat), ("mul", true));
+    }
+
+    #[test]
+    fn test_binop_to_llvm_shift_operators() {
+        let codegen = TextCodeGen::new();
+        assert_eq!(codegen.binop_to_llvm(MirBinOp::Shl), ("shl", true));
+        assert_eq!(codegen.binop_to_llvm(MirBinOp::Shr), ("ashr", true));
+    }
+
+    #[test]
+    fn test_binop_to_llvm_bitwise_preserves_type() {
+        let codegen = TextCodeGen::new();
+        let (_, band_preserves) = codegen.binop_to_llvm(MirBinOp::Band);
+        let (_, bor_preserves) = codegen.binop_to_llvm(MirBinOp::Bor);
+        let (_, bxor_preserves) = codegen.binop_to_llvm(MirBinOp::Bxor);
+        assert!(band_preserves);
+        assert!(bor_preserves);
+        assert!(bxor_preserves);
+    }
+
+    #[test]
+    fn test_binop_to_llvm_logical_returns_i1() {
+        let codegen = TextCodeGen::new();
+        let (_, and_preserves) = codegen.binop_to_llvm(MirBinOp::And);
+        let (_, or_preserves) = codegen.binop_to_llvm(MirBinOp::Or);
+        assert!(!and_preserves);
+        assert!(!or_preserves);
+    }
+
+    #[test]
+    fn test_binop_to_llvm_float_comparison_returns_i1() {
+        let codegen = TextCodeGen::new();
+        assert_eq!(codegen.binop_to_llvm(MirBinOp::FEq), ("fcmp oeq", false));
+        assert_eq!(codegen.binop_to_llvm(MirBinOp::FNe), ("fcmp one", false));
+        assert_eq!(codegen.binop_to_llvm(MirBinOp::FLt), ("fcmp olt", false));
+        assert_eq!(codegen.binop_to_llvm(MirBinOp::FGt), ("fcmp ogt", false));
+        assert_eq!(codegen.binop_to_llvm(MirBinOp::FLe), ("fcmp ole", false));
+        assert_eq!(codegen.binop_to_llvm(MirBinOp::FGe), ("fcmp oge", false));
+    }
+
+    #[test]
+    fn test_binop_to_llvm_implies() {
+        let codegen = TextCodeGen::new();
+        assert_eq!(codegen.binop_to_llvm(MirBinOp::Implies), ("or", false));
+    }
+
+    // ====================================================================
+    // format_constant tests (Cycle 427)
+    // ====================================================================
+
+    #[test]
+    fn test_format_constant_int() {
+        let codegen = TextCodeGen::new();
+        assert_eq!(codegen.format_constant(&Constant::Int(42)), "42");
+        assert_eq!(codegen.format_constant(&Constant::Int(-1)), "-1");
+        assert_eq!(codegen.format_constant(&Constant::Int(0)), "0");
+    }
+
+    #[test]
+    fn test_format_constant_bool() {
+        let codegen = TextCodeGen::new();
+        assert_eq!(codegen.format_constant(&Constant::Bool(true)), "1");
+        assert_eq!(codegen.format_constant(&Constant::Bool(false)), "0");
+    }
+
+    #[test]
+    fn test_format_constant_unit() {
+        let codegen = TextCodeGen::new();
+        assert_eq!(codegen.format_constant(&Constant::Unit), "0");
+    }
+
+    #[test]
+    fn test_format_constant_char() {
+        let codegen = TextCodeGen::new();
+        assert_eq!(codegen.format_constant(&Constant::Char('A')), "65");
+        assert_eq!(codegen.format_constant(&Constant::Char('\0')), "0");
+    }
+
+    #[test]
+    fn test_format_constant_string() {
+        let codegen = TextCodeGen::new();
+        assert_eq!(codegen.format_constant(&Constant::String("hello".to_string())), "\"hello\"");
+    }
+
+    #[test]
+    fn test_format_constant_float_normal() {
+        let codegen = TextCodeGen::new();
+        let result = codegen.format_constant(&Constant::Float(4.0));
+        assert!(result.contains("4"), "Expected float representation, got {}", result);
+        assert!(result.contains("e"), "Expected scientific notation, got {}", result);
+    }
+
+    #[test]
+    fn test_format_constant_float_nan() {
+        let codegen = TextCodeGen::new();
+        assert_eq!(codegen.format_constant(&Constant::Float(f64::NAN)), "0x7FF8000000000000");
+    }
+
+    #[test]
+    fn test_format_constant_float_positive_infinity() {
+        let codegen = TextCodeGen::new();
+        assert_eq!(codegen.format_constant(&Constant::Float(f64::INFINITY)), "0x7FF0000000000000");
+    }
+
+    #[test]
+    fn test_format_constant_float_negative_infinity() {
+        let codegen = TextCodeGen::new();
+        assert_eq!(codegen.format_constant(&Constant::Float(f64::NEG_INFINITY)), "0xFFF0000000000000");
+    }
+
+    // ====================================================================
+    // format_operand tests (Cycle 427)
+    // ====================================================================
+
+    #[test]
+    fn test_format_operand_place() {
+        let codegen = TextCodeGen::new();
+        assert_eq!(codegen.format_operand(&Operand::Place(Place::new("x"))), "%x");
+    }
+
+    #[test]
+    fn test_format_operand_constant_int() {
+        let codegen = TextCodeGen::new();
+        assert_eq!(codegen.format_operand(&Operand::Constant(Constant::Int(99))), "99");
+    }
+
+    #[test]
+    fn test_format_operand_constant_bool() {
+        let codegen = TextCodeGen::new();
+        assert_eq!(codegen.format_operand(&Operand::Constant(Constant::Bool(true))), "1");
+    }
 }

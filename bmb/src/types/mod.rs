@@ -10816,4 +10816,273 @@ mod tests {
         assert!(tc.has_warnings(), "Expected warnings for unused binding");
         assert!(tc.warnings().iter().any(|w| w.kind() == "unused_binding"));
     }
+
+    // ====================================================================
+    // pattern_key tests (Cycle 427)
+    // ====================================================================
+
+    #[test]
+    fn test_pattern_key_literal_int() {
+        use crate::ast::{Pattern, LiteralPattern};
+        let pat = Pattern::Literal(LiteralPattern::Int(42));
+        assert_eq!(TypeChecker::pattern_key(&pat), Some("int:42".to_string()));
+    }
+
+    #[test]
+    fn test_pattern_key_literal_float() {
+        use crate::ast::{Pattern, LiteralPattern};
+        let pat = Pattern::Literal(LiteralPattern::Float(2.5));
+        assert_eq!(TypeChecker::pattern_key(&pat), Some("float:2.5".to_string()));
+    }
+
+    #[test]
+    fn test_pattern_key_literal_bool() {
+        use crate::ast::{Pattern, LiteralPattern};
+        let pat = Pattern::Literal(LiteralPattern::Bool(true));
+        assert_eq!(TypeChecker::pattern_key(&pat), Some("bool:true".to_string()));
+    }
+
+    #[test]
+    fn test_pattern_key_literal_string() {
+        use crate::ast::{Pattern, LiteralPattern};
+        let pat = Pattern::Literal(LiteralPattern::String("hello".to_string()));
+        assert_eq!(TypeChecker::pattern_key(&pat), Some("str:hello".to_string()));
+    }
+
+    #[test]
+    fn test_pattern_key_enum_variant_simple_bindings() {
+        use crate::ast::Pattern;
+        let pat = Pattern::EnumVariant {
+            enum_name: "Option".to_string(),
+            variant: "Some".to_string(),
+            bindings: vec![Spanned { node: Pattern::Wildcard, span: Span::new(0, 0) }],
+        };
+        assert_eq!(TypeChecker::pattern_key(&pat), Some("enum:Option::Some".to_string()));
+    }
+
+    #[test]
+    fn test_pattern_key_enum_variant_nested_pattern_returns_none() {
+        use crate::ast::{Pattern, LiteralPattern};
+        let pat = Pattern::EnumVariant {
+            enum_name: "Option".to_string(),
+            variant: "Some".to_string(),
+            bindings: vec![Spanned { node: Pattern::Literal(LiteralPattern::Int(1)), span: Span::new(0, 0) }],
+        };
+        assert_eq!(TypeChecker::pattern_key(&pat), None);
+    }
+
+    #[test]
+    fn test_pattern_key_wildcard_returns_none() {
+        use crate::ast::Pattern;
+        assert_eq!(TypeChecker::pattern_key(&Pattern::Wildcard), None);
+    }
+
+    #[test]
+    fn test_pattern_key_var_returns_none() {
+        use crate::ast::Pattern;
+        assert_eq!(TypeChecker::pattern_key(&Pattern::Var("x".to_string())), None);
+    }
+
+    // ====================================================================
+    // binary_expr_str tests (Cycle 427)
+    // ====================================================================
+
+    #[test]
+    fn test_binary_expr_str_int_int() {
+        use crate::ast::{Expr, BinOp};
+        let result = TypeChecker::binary_expr_str(&Expr::IntLit(1), BinOp::Add, &Expr::IntLit(2));
+        assert_eq!(result, "1 + 2");
+    }
+
+    #[test]
+    fn test_binary_expr_str_var_int() {
+        use crate::ast::{Expr, BinOp};
+        let result = TypeChecker::binary_expr_str(&Expr::Var("x".to_string()), BinOp::Mul, &Expr::IntLit(3));
+        assert_eq!(result, "x * 3");
+    }
+
+    #[test]
+    fn test_binary_expr_str_int_var() {
+        use crate::ast::{Expr, BinOp};
+        let result = TypeChecker::binary_expr_str(&Expr::IntLit(10), BinOp::Sub, &Expr::Var("y".to_string()));
+        assert_eq!(result, "10 - y");
+    }
+
+    #[test]
+    fn test_binary_expr_str_var_var() {
+        use crate::ast::{Expr, BinOp};
+        let result = TypeChecker::binary_expr_str(&Expr::Var("a".to_string()), BinOp::Div, &Expr::Var("b".to_string()));
+        assert_eq!(result, "a / b");
+    }
+
+    #[test]
+    fn test_binary_expr_str_complex_fallback() {
+        use crate::ast::{Expr, BinOp};
+        let result = TypeChecker::binary_expr_str(&Expr::BoolLit(true), BinOp::And, &Expr::BoolLit(false));
+        assert_eq!(result, "... and ...");
+    }
+
+    // ====================================================================
+    // is_divergent_expr tests (Cycle 427)
+    // ====================================================================
+
+    #[test]
+    fn test_is_divergent_expr_return() {
+        use crate::ast::Expr;
+        let tc = TypeChecker::new();
+        assert!(tc.is_divergent_expr(&Expr::Return { value: None }));
+    }
+
+    #[test]
+    fn test_is_divergent_expr_break() {
+        use crate::ast::Expr;
+        let tc = TypeChecker::new();
+        assert!(tc.is_divergent_expr(&Expr::Break { value: None }));
+    }
+
+    #[test]
+    fn test_is_divergent_expr_continue() {
+        use crate::ast::Expr;
+        let tc = TypeChecker::new();
+        assert!(tc.is_divergent_expr(&Expr::Continue));
+    }
+
+    #[test]
+    fn test_is_divergent_expr_intlit_not_divergent() {
+        use crate::ast::Expr;
+        let tc = TypeChecker::new();
+        assert!(!tc.is_divergent_expr(&Expr::IntLit(42)));
+    }
+
+    #[test]
+    fn test_is_divergent_expr_var_not_divergent() {
+        use crate::ast::Expr;
+        let tc = TypeChecker::new();
+        assert!(!tc.is_divergent_expr(&Expr::Var("x".to_string())));
+    }
+
+    // ====================================================================
+    // substitute_type_param tests (Cycle 427)
+    // ====================================================================
+
+    #[test]
+    fn test_substitute_type_param_named_match() {
+        let tc = TypeChecker::new();
+        let ty = Type::Named("T".to_string());
+        let result = tc.substitute_type_param(&ty, "T", &Type::I64);
+        assert_eq!(result, Type::I64);
+    }
+
+    #[test]
+    fn test_substitute_type_param_named_no_match() {
+        let tc = TypeChecker::new();
+        let ty = Type::Named("U".to_string());
+        let result = tc.substitute_type_param(&ty, "T", &Type::I64);
+        assert_eq!(result, Type::Named("U".to_string()));
+    }
+
+    #[test]
+    fn test_substitute_type_param_typevar_match() {
+        let tc = TypeChecker::new();
+        let ty = Type::TypeVar("T".to_string());
+        let result = tc.substitute_type_param(&ty, "T", &Type::Bool);
+        assert_eq!(result, Type::Bool);
+    }
+
+    #[test]
+    fn test_substitute_type_param_array() {
+        let tc = TypeChecker::new();
+        let ty = Type::Array(Box::new(Type::Named("T".to_string())), 5);
+        let result = tc.substitute_type_param(&ty, "T", &Type::I64);
+        assert_eq!(result, Type::Array(Box::new(Type::I64), 5));
+    }
+
+    #[test]
+    fn test_substitute_type_param_ref() {
+        let tc = TypeChecker::new();
+        let ty = Type::Ref(Box::new(Type::Named("T".to_string())));
+        let result = tc.substitute_type_param(&ty, "T", &Type::String);
+        assert_eq!(result, Type::Ref(Box::new(Type::String)));
+    }
+
+    #[test]
+    fn test_substitute_type_param_ref_mut() {
+        let tc = TypeChecker::new();
+        let ty = Type::RefMut(Box::new(Type::Named("T".to_string())));
+        let result = tc.substitute_type_param(&ty, "T", &Type::I64);
+        assert_eq!(result, Type::RefMut(Box::new(Type::I64)));
+    }
+
+    #[test]
+    fn test_substitute_type_param_nullable() {
+        let tc = TypeChecker::new();
+        let ty = Type::Nullable(Box::new(Type::Named("T".to_string())));
+        let result = tc.substitute_type_param(&ty, "T", &Type::F64);
+        assert_eq!(result, Type::Nullable(Box::new(Type::F64)));
+    }
+
+    #[test]
+    fn test_substitute_type_param_range() {
+        let tc = TypeChecker::new();
+        let ty = Type::Range(Box::new(Type::Named("T".to_string())));
+        let result = tc.substitute_type_param(&ty, "T", &Type::I64);
+        assert_eq!(result, Type::Range(Box::new(Type::I64)));
+    }
+
+    #[test]
+    fn test_substitute_type_param_fn_type() {
+        let tc = TypeChecker::new();
+        let ty = Type::Fn {
+            params: vec![Box::new(Type::Named("T".to_string()))],
+            ret: Box::new(Type::Named("T".to_string())),
+        };
+        let result = tc.substitute_type_param(&ty, "T", &Type::I64);
+        assert_eq!(result, Type::Fn {
+            params: vec![Box::new(Type::I64)],
+            ret: Box::new(Type::I64),
+        });
+    }
+
+    #[test]
+    fn test_substitute_type_param_tuple() {
+        let tc = TypeChecker::new();
+        let ty = Type::Tuple(vec![Box::new(Type::Named("T".to_string())), Box::new(Type::I64)]);
+        let result = tc.substitute_type_param(&ty, "T", &Type::Bool);
+        assert_eq!(result, Type::Tuple(vec![Box::new(Type::Bool), Box::new(Type::I64)]));
+    }
+
+    #[test]
+    fn test_substitute_type_param_generic() {
+        let tc = TypeChecker::new();
+        let ty = Type::Generic {
+            name: "Vec".to_string(),
+            type_args: vec![Box::new(Type::Named("T".to_string()))],
+        };
+        let result = tc.substitute_type_param(&ty, "T", &Type::I64);
+        assert_eq!(result, Type::Generic {
+            name: "Vec".to_string(),
+            type_args: vec![Box::new(Type::I64)],
+        });
+    }
+
+    #[test]
+    fn test_substitute_type_param_generic_name_matches_param() {
+        let tc = TypeChecker::new();
+        let ty = Type::Generic {
+            name: "T".to_string(),
+            type_args: vec![Box::new(Type::I64)],
+        };
+        let result = tc.substitute_type_param(&ty, "T", &Type::Bool);
+        // When the generic name itself matches the param, it gets replaced entirely
+        assert_eq!(result, Type::Bool);
+    }
+
+    #[test]
+    fn test_substitute_type_param_primitive_unchanged() {
+        let tc = TypeChecker::new();
+        assert_eq!(tc.substitute_type_param(&Type::I64, "T", &Type::Bool), Type::I64);
+        assert_eq!(tc.substitute_type_param(&Type::F64, "T", &Type::Bool), Type::F64);
+        assert_eq!(tc.substitute_type_param(&Type::Bool, "T", &Type::I64), Type::Bool);
+        assert_eq!(tc.substitute_type_param(&Type::String, "T", &Type::I64), Type::String);
+    }
 }
