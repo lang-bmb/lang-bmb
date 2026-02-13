@@ -23034,3 +23034,96 @@ fn test_int_to_radix_base16() {
     );
 }
 
+// ===== Cycle 404: Array method tests =====
+
+#[test]
+fn test_array_get_valid_index() {
+    assert_eq!(
+        run_program_i64(r#"fn main() -> i64 = [10, 20, 30].get(1).unwrap_or(0);"#),
+        20
+    );
+}
+
+#[test]
+fn test_array_get_out_of_bounds() {
+    assert_eq!(
+        run_program_i64(r#"fn main() -> i64 = [10, 20, 30].get(5).unwrap_or(-1);"#),
+        -1
+    );
+}
+
+#[test]
+fn test_array_get_first_element() {
+    assert_eq!(
+        run_program_i64(r#"fn main() -> i64 = [42, 99].get(0).unwrap_or(0);"#),
+        42
+    );
+}
+
+#[test]
+fn test_array_each_with_index_runs() {
+    let source = r#"
+        fn main() -> i64 = {
+            let arr = [10, 20, 30];
+            arr.each_with_index(fn |i: i64, v: i64| { i + v });
+            arr.len()
+        };
+    "#;
+    assert_eq!(run_program_i64(source), 3);
+}
+
+#[test]
+fn test_array_each_with_index_single() {
+    let source = r#"
+        fn main() -> i64 = {
+            let arr = [42];
+            arr.each_with_index(fn |i: i64, v: i64| { i + v });
+            arr.len()
+        };
+    "#;
+    assert_eq!(run_program_i64(source), 1);
+}
+
+#[test]
+fn test_array_get_last_element() {
+    assert_eq!(
+        run_program_i64(r#"fn main() -> i64 = [1, 2, 3, 4, 5].get(4).unwrap_or(0);"#),
+        5
+    );
+}
+
+#[test]
+fn test_array_fold_sum_of_squares() {
+    let source = r#"
+        fn main() -> i64 = [1, 2, 3].fold(0, fn |acc: i64, x: i64| { acc + x * x });
+    "#;
+    assert_eq!(run_program_i64(source), 14);
+}
+
+#[test]
+fn test_array_fold_initial_when_empty() {
+    let source = r#"
+        fn main() -> i64 = {
+            let arr = [1].pop();
+            arr.fold(42, fn |acc: i64, x: i64| { acc + x })
+        };
+    "#;
+    assert_eq!(run_program_i64(source), 42);
+}
+
+#[test]
+fn test_array_position_middle() {
+    let source = r#"
+        fn main() -> i64 = [10, 20, 30].position(fn |x: i64| { x == 20 }).unwrap_or(-1);
+    "#;
+    assert_eq!(run_program_i64(source), 1);
+}
+
+#[test]
+fn test_array_position_missing() {
+    let source = r#"
+        fn main() -> i64 = [10, 20, 30].position(fn |x: i64| { x == 99 }).unwrap_or(-1);
+    "#;
+    assert_eq!(run_program_i64(source), -1);
+}
+
