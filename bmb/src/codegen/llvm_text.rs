@@ -2858,9 +2858,9 @@ impl TextCodeGen {
 
                     if let Some(d) = dest {
                         if local_names.contains(&d.name) {
-                            let len_val = format!("strlen.len.{}", str_idx);
-                            writeln!(out, "  %{} = load i64, ptr %{}", len_val, len_ptr)?;
-                            writeln!(out, "  store i64 %{}, ptr %{}.addr", len_val, d.name)?;
+                            // v0.90.73: Use dest name directly so %_tN is defined as SSA register
+                            writeln!(out, "  %{} = load i64, ptr %{}", d.name, len_ptr)?;
+                            writeln!(out, "  store i64 %{}, ptr %{}.addr", d.name, d.name)?;
                         } else {
                             let dest_name = self.unique_name(&d.name, name_counts);
                             writeln!(out, "  %{} = load i64, ptr %{}", dest_name, len_ptr)?;
@@ -2921,9 +2921,10 @@ impl TextCodeGen {
 
                     if let Some(d) = dest {
                         if local_names.contains(&d.name) {
-                            let ext_val = format!("charat.ext.{}", str_idx);
-                            writeln!(out, "  %{} = zext i8 %{} to i64", ext_val, char_val)?;
-                            writeln!(out, "  store i64 %{}, ptr %{}.addr", ext_val, d.name)?;
+                            // v0.90.73: Use dest name directly so %_tN is defined as SSA register
+                            // (needed when Select/icmp references %_tN instead of loading from %_tN.addr)
+                            writeln!(out, "  %{} = zext i8 %{} to i64", d.name, char_val)?;
+                            writeln!(out, "  store i64 %{}, ptr %{}.addr", d.name, d.name)?;
                         } else {
                             let dest_name = self.unique_name(&d.name, name_counts);
                             writeln!(out, "  %{} = zext i8 %{} to i64", dest_name, char_val)?;
@@ -2958,7 +2959,9 @@ impl TextCodeGen {
 
                         if let Some(d) = dest {
                             if local_names.contains(&d.name) {
-                                writeln!(out, "  store i64 {}, ptr %{}.addr", char_val, d.name)?;
+                                // v0.90.73: Define %_tN as SSA register before storing
+                                writeln!(out, "  %{} = add i64 {}, 0", d.name, char_val)?;
+                                writeln!(out, "  store i64 %{}, ptr %{}.addr", d.name, d.name)?;
                             } else {
                                 // For SSA, we need a copy instruction
                                 let dest_name = self.unique_name(&d.name, name_counts);
@@ -2996,9 +2999,9 @@ impl TextCodeGen {
 
                     if let Some(d) = dest {
                         if local_names.contains(&d.name) {
-                            let ext_val = format!("ord.ext.{}", str_idx);
-                            writeln!(out, "  %{} = zext i8 %{} to i64", ext_val, char_val)?;
-                            writeln!(out, "  store i64 %{}, ptr %{}.addr", ext_val, d.name)?;
+                            // v0.90.73: Use dest name directly so %_tN is defined as SSA register
+                            writeln!(out, "  %{} = zext i8 %{} to i64", d.name, char_val)?;
+                            writeln!(out, "  store i64 %{}, ptr %{}.addr", d.name, d.name)?;
                         } else {
                             let dest_name = self.unique_name(&d.name, name_counts);
                             writeln!(out, "  %{} = zext i8 %{} to i64", dest_name, char_val)?;
@@ -4639,27 +4642,69 @@ impl TextCodeGen {
             }
 
             // v0.76: Select instruction
+            // v0.90.73: Handle string operands in condition and value types
             MirInst::Select { dest, cond_op, cond_lhs, cond_rhs, true_val, false_val } => {
-                let lhs_val = self.format_operand(cond_lhs);
-                let rhs_val = self.format_operand(cond_rhs);
-                let true_val_str = self.format_operand(true_val);
-                let false_val_str = self.format_operand(false_val);
+                // Detect string comparison operands
+                let lhs_is_string = Self::is_string_operand(cond_lhs, func);
+                let rhs_is_string = Self::is_string_operand(cond_rhs, func);
+                let cond_is_string = lhs_is_string || rhs_is_string
+                    || place_types.get(&match cond_lhs { Operand::Place(p) => p.name.clone(), _ => String::new() }).copied() == Some("ptr")
+                    || place_types.get(&match cond_rhs { Operand::Place(p) => p.name.clone(), _ => String::new() }).copied() == Some("ptr");
 
-                let cmp_pred = match cond_op {
-                    MirBinOp::Eq => "eq",
-                    MirBinOp::Ne => "ne",
-                    MirBinOp::Lt => "slt",
-                    MirBinOp::Le => "sle",
-                    MirBinOp::Gt => "sgt",
-                    MirBinOp::Ge => "sge",
-                    // Other comparison ops - use eq as fallback
-                    _ => "eq",
+                // Detect value types (ptr for strings, i64 for integers)
+                let val_ty = match true_val {
+                    Operand::Place(p) => place_types.get(&p.name).copied().unwrap_or("i64"),
+                    Operand::Constant(Constant::String(_)) => "ptr",
+                    _ => "i64",
                 };
 
-                // Generate comparison
-                writeln!(out, "  %{}_cond = icmp {} i64 {}, {}", dest.name, cmp_pred, lhs_val, rhs_val)?;
-                // Generate select
-                writeln!(out, "  %{} = select i1 %{}_cond, i64 {}, i64 {}", dest.name, dest.name, true_val_str, false_val_str)?;
+                // Format operands with string table support
+                let lhs_val = self.format_operand_with_strings_and_narrowing(cond_lhs, string_table, local_names);
+                let rhs_val = self.format_operand_with_strings_and_narrowing(cond_rhs, string_table, local_names);
+                let true_val_str = self.format_operand_with_strings_and_narrowing(true_val, string_table, local_names);
+                let false_val_str = self.format_operand_with_strings_and_narrowing(false_val, string_table, local_names);
+
+                if cond_is_string && (*cond_op == MirBinOp::Eq || *cond_op == MirBinOp::Ne) {
+                    // String comparison: use @bmb_string_eq
+                    let lhs_final = if let Operand::Constant(Constant::String(s)) = cond_lhs {
+                        if let Some(global_name) = string_table.get(s) {
+                            format!("@{}.bmb", global_name)
+                        } else { lhs_val.clone() }
+                    } else { lhs_val.clone() };
+                    let rhs_final = if let Operand::Constant(Constant::String(s)) = cond_rhs {
+                        if let Some(global_name) = string_table.get(s) {
+                            format!("@{}.bmb", global_name)
+                        } else { rhs_val.clone() }
+                    } else { rhs_val.clone() };
+
+                    writeln!(out, "  %{}_cond.i64 = call i64 @bmb_string_eq(ptr {}, ptr {})",
+                             dest.name, lhs_final, rhs_final)?;
+                    if *cond_op == MirBinOp::Eq {
+                        writeln!(out, "  %{}_cond = icmp ne i64 %{}_cond.i64, 0", dest.name, dest.name)?;
+                    } else {
+                        writeln!(out, "  %{}_cond = icmp eq i64 %{}_cond.i64, 0", dest.name, dest.name)?;
+                    }
+                } else {
+                    // Integer comparison
+                    let cmp_pred = match cond_op {
+                        MirBinOp::Eq => "eq",
+                        MirBinOp::Ne => "ne",
+                        MirBinOp::Lt => "slt",
+                        MirBinOp::Le => "sle",
+                        MirBinOp::Gt => "sgt",
+                        MirBinOp::Ge => "sge",
+                        _ => "eq",
+                    };
+                    writeln!(out, "  %{}_cond = icmp {} i64 {}, {}", dest.name, cmp_pred, lhs_val, rhs_val)?;
+                }
+
+                // Generate select with correct value type
+                writeln!(out, "  %{} = select i1 %{}_cond, {} {}, {} {}",
+                         dest.name, dest.name, val_ty, true_val_str, val_ty, false_val_str)?;
+                // Store to alloca if local
+                if local_names.contains(&dest.name) {
+                    writeln!(out, "  store {} %{}, ptr %{}.addr", val_ty, dest.name, dest.name)?;
+                }
             }
         }
 

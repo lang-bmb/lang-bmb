@@ -2258,6 +2258,8 @@ fn make_work(t: String, f1: String, f2: String, f3: String, f4: String, f5: Stri
 fn make_work3(t: String, f1: String, f2: String, f3: String) -> String =
     t + "~" + escape_field(f1) + "~" + escape_field(f2) + "~" + escape_field(f3);
 
+fn work3_get1(item: String) -> String = get_field(item, 1);
+
 fn make_work4(t: String, f1: String, f2: String, f3: String, f4: String) -> String =
     t + "~" + escape_field(f1) + "~" + escape_field(f2) + "~" + escape_field(f3) + "~" + escape_field(f4);
 
