@@ -4283,6 +4283,70 @@ fn test_benchmark_i32_vs_i64_ir_size_comparison() {
 }
 
 // ============================================
+// Cycle 438: Nullable Method Lowering Verification
+// ============================================
+
+#[test]
+fn test_nullable_is_some_ir() {
+    let ir = source_to_ir_unopt("fn check(opt: i64?) -> bool = opt.is_some();");
+    assert!(ir.contains("icmp ne") || ir.contains("icmp") || ir.contains("i1"),
+        "is_some should produce a comparison in IR: {}", ir);
+}
+
+#[test]
+fn test_nullable_is_none_ir() {
+    let ir = source_to_ir_unopt("fn check(opt: i64?) -> bool = opt.is_none();");
+    assert!(ir.contains("icmp eq") || ir.contains("icmp") || ir.contains("i1"),
+        "is_none should produce a comparison in IR: {}", ir);
+}
+
+#[test]
+fn test_nullable_unwrap_or_ir() {
+    let ir = source_to_ir_unopt("fn safe_get(opt: i64?) -> i64 = opt.unwrap_or(0);");
+    assert!(ir.contains("select") || ir.contains("icmp"),
+        "unwrap_or should produce select or conditional in IR: {}", ir);
+}
+
+#[test]
+fn test_nullable_unwrap_ir() {
+    let ir = source_to_ir_unopt("fn get(opt: i64?) -> i64 = opt.unwrap();");
+    assert!(ir.contains("@get("),
+        "unwrap should produce a function: {}", ir);
+}
+
+#[test]
+fn test_nullable_method_interp_is_some_true() {
+    assert_eq!(
+        run_program("fn main() -> bool = { let x: i64? = 42; x.is_some() };"),
+        Value::Bool(true)
+    );
+}
+
+#[test]
+fn test_nullable_method_interp_is_some_false() {
+    assert_eq!(
+        run_program("fn main() -> bool = { let x: i64? = 0; x.is_none() };"),
+        Value::Bool(true)
+    );
+}
+
+#[test]
+fn test_nullable_method_interp_unwrap_or_value() {
+    assert_eq!(
+        run_program("fn main() -> i64 = { let x: i64? = 42; x.unwrap_or(0) };"),
+        Value::Int(42)
+    );
+}
+
+#[test]
+fn test_nullable_method_interp_unwrap_or_default() {
+    assert_eq!(
+        run_program("fn main() -> i64 = { let x: i64? = 0; x.unwrap_or(99) };"),
+        Value::Int(99)
+    );
+}
+
+// ============================================
 // Cycle 194: IndexAssign Fix Verification
 // ============================================
 

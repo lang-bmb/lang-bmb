@@ -2128,7 +2128,14 @@ fn lower_attr(ast: String, temp: i64, block: i64) -> String =
 // String methods: len, slice, byte_at, concat, eq
 // Array methods: get, set, push, pop, clear
 fn is_builtin_method(name: String) -> bool =
-    if name == "len" { true } else if name == "slice" { true } else if name == "byte_at" { true } else if name == "concat" { true } else if name == "eq" { true } else if name == "get" { true } else if name == "set" { true } else if name == "push" { true } else if name == "pop" { true } else if name == "clear" { true } else { false };
+    if name == "len" { true } else if name == "slice" { true } else if name == "byte_at" { true } else if name == "concat" { true } else if name == "eq" { true } else if name == "get" { true } else if name == "set" { true } else if name == "push" { true } else if name == "pop" { true } else if name == "clear" { true }
+    // v0.90.68: Integer/float/bool/char methods
+    else if name == "abs" { true } else if name == "min" { true } else if name == "max" { true } else if name == "clamp" { true } else if name == "pow" { true } else if name == "to_float" { true } else if name == "to_string" { true } else if name == "to_int" { true } else if name == "floor" { true } else if name == "ceil" { true } else if name == "round" { true } else if name == "sqrt" { true } else if name == "is_nan" { true } else if name == "sign" { true } else if name == "gcd" { true } else if name == "to_hex" { true } else if name == "to_binary" { true } else if name == "is_positive" { true } else if name == "is_negative" { true } else if name == "is_zero" { true } else if name == "contains" { true } else if name == "starts_with" { true } else if name == "ends_with" { true } else if name == "to_uppercase" { true } else if name == "to_lowercase" { true } else if name == "trim" { true } else if name == "split" { true } else if name == "replace" { true } else if name == "repeat" { true } else if name == "is_empty" { true } else if name == "join" { true }
+    else { false };
+
+// v0.90.68: Check if method is a nullable/Option method
+fn is_nullable_method(name: String) -> bool =
+    if name == "is_some" { true } else if name == "is_none" { true } else if name == "unwrap" { true } else if name == "unwrap_or" { true } else if name == "expect" { true } else { false };
 
 // Check if method looks like a trait method (non-builtin)
 fn is_trait_method(name: String) -> bool =
@@ -2283,8 +2290,61 @@ fn lower_method_call(ast: String, temp: i64, block: i64) -> String =
     let receiver_ast = get_child(ast, 0);
     let method_name = get_method_name(ast);
 
+    // v0.90.68: Route nullable methods to specialized lowering
+    if is_nullable_method(method_name) { lower_nullable_method(ast, method_name, temp, block) }
     // Route based on method type
-    if is_trait_method(method_name) { lower_trait_call(ast, temp, block) } else { lower_method_call_builtin(ast, temp, block) };
+    else if is_trait_method(method_name) { lower_trait_call(ast, temp, block) } else { lower_method_call_builtin(ast, temp, block) };
+
+// v0.90.68: Lower nullable/Option method calls
+// is_some → receiver != 0 (BinOp Ne)
+// is_none → receiver == 0 (BinOp Eq)
+// unwrap → receiver (identity, contract-checked)
+// unwrap_or(default) → if receiver != 0 { receiver } else { default }
+fn lower_nullable_method(ast: String, method: String, temp: i64, block: i64) -> String =
+    let receiver_ast = get_child(ast, 0);
+    // Lower receiver
+    let rr = lower_expr(receiver_ast, temp, block);
+    let tr = unpack_temp(rr);
+    let br = unpack_block(rr);
+    let pr = unpack_result_place(rr);
+    let textr = unpack_text(rr);
+
+    if method == "is_some" {
+        // %dest = != %recv, 0
+        let dest = place_temp(tr);
+        let binop_text = mir_text_binop(dest, 7, pr, "I:0");
+        let combined = if textr.len() > 0 { textr + "|" + binop_text } else { binop_text };
+        pack_lower_result(tr + 1, br, dest, combined)
+    } else if method == "is_none" {
+        // %dest = == %recv, 0
+        let dest = place_temp(tr);
+        let binop_text = mir_text_binop(dest, 6, pr, "I:0");
+        let combined = if textr.len() > 0 { textr + "|" + binop_text } else { binop_text };
+        pack_lower_result(tr + 1, br, dest, combined)
+    } else if method == "unwrap" or method == "expect" {
+        // unwrap/expect: just return the receiver value (contract-verified)
+        pack_lower_result(tr, br, pr, textr)
+    } else if method == "unwrap_or" {
+        // unwrap_or(default): lower default, then generate conditional
+        // %cond = != %recv, 0
+        // %dest = select %cond, %recv, %default
+        let args_result = lower_method_args(ast, 2, tr, br, "");
+        let ta = unpack_temp(args_result);
+        let ba = unpack_block(args_result);
+        let default_place = unpack_result_place(args_result);
+        let texta = unpack_text(args_result);
+
+        let cond = place_temp(ta);
+        let cond_text = mir_text_binop(cond, 7, pr, "I:0");
+        let dest = place_temp(ta + 1);
+        let select_text = "  " + dest + " = select " + cond + ", " + pr + ", " + default_place;
+        let combined_recv = if textr.len() > 0 and texta.len() > 0 { textr + "|" + texta } else if textr.len() > 0 { textr } else { texta };
+        let combined = if combined_recv.len() > 0 { combined_recv + "|" + cond_text + "|" + select_text } else { cond_text + "|" + select_text };
+        pack_lower_result(ta + 2, ba, dest, combined)
+    } else {
+        // Fallback: treat as regular method call
+        lower_method_call_builtin(ast, temp, block)
+    };
 
 // Lower built-in method call: (method_call receiver <method> arg1 arg2 ...) → MethodCall MIR
 fn lower_method_call_builtin(ast: String, temp: i64, block: i64) -> String =
