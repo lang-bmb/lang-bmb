@@ -207,6 +207,12 @@ pub enum CompileWarning {
         span: Span,
     },
 
+    /// v0.90.140: Negated if condition
+    /// `if not x { a } else { b }` can be simplified to `if x { b } else { a }`
+    NegatedIfCondition {
+        span: Span,
+    },
+
     /// Generic warning with span
     Generic {
         message: String,
@@ -439,6 +445,11 @@ impl CompileWarning {
         Self::IdentityOperation { expr: expr.into(), span }
     }
 
+    /// v0.90.140: Create a negated if condition warning
+    pub fn negated_if_condition(span: Span) -> Self {
+        Self::NegatedIfCondition { span }
+    }
+
     /// Get the span of this warning, if any
     pub fn span(&self) -> Option<Span> {
         match self {
@@ -470,6 +481,7 @@ impl CompileWarning {
             Self::NonSnakeCaseFunction { span, .. } => Some(*span),
             Self::NonPascalCaseType { span, .. } => Some(*span),
             Self::IdentityOperation { span, .. } => Some(*span),
+            Self::NegatedIfCondition { span } => Some(*span),
             Self::Generic { span, .. } => *span,
         }
     }
@@ -567,6 +579,9 @@ impl CompileWarning {
             Self::IdentityOperation { expr, .. } => {
                 format!("identity operation `{}` has no effect", expr)
             }
+            Self::NegatedIfCondition { .. } => {
+                "negated if condition: consider swapping branches to remove negation".to_string()
+            }
             Self::Generic { message, .. } => message.clone(),
         }
     }
@@ -602,6 +617,7 @@ impl CompileWarning {
             Self::IntDivisionTruncation { .. } => "int_division_truncation",
             Self::UnusedReturnValue { .. } => "unused_return_value",
             Self::IdentityOperation { .. } => "identity_operation",
+            Self::NegatedIfCondition { .. } => "negated_if_condition",
             Self::Generic { .. } => "warning",
         }
     }

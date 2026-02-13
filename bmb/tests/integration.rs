@@ -22329,3 +22329,48 @@ fn test_no_identity_normal_mul() {
         "identity_operation"
     ));
 }
+
+// ===== Cycle 387: Negated if-condition lint =====
+
+#[test]
+fn test_negated_if_condition_not_var() {
+    assert!(has_warning_kind(
+        "fn main() -> i64 = { let x = true; if not x { 1 } else { 2 } };",
+        "negated_if_condition"
+    ));
+}
+
+#[test]
+fn test_negated_if_condition_not_expr() {
+    assert!(has_warning_kind(
+        "fn main() -> i64 = { let a = 3; let b = 5; if not (a == b) { 1 } else { 2 } };",
+        "negated_if_condition"
+    ));
+}
+
+#[test]
+fn test_no_negated_if_simple_var() {
+    // Normal condition — no negation
+    assert!(!has_warning_kind(
+        "fn main() -> i64 = { let x = true; if x { 1 } else { 2 } };",
+        "negated_if_condition"
+    ));
+}
+
+#[test]
+fn test_no_negated_if_comparison() {
+    // Comparison condition — no negation
+    assert!(!has_warning_kind(
+        "fn main() -> i64 = { let a = 3; if a > 0 { 1 } else { 2 } };",
+        "negated_if_condition"
+    ));
+}
+
+#[test]
+fn test_no_negated_if_bool_lit() {
+    // Bool literal condition — fires constant_condition, not negated_if
+    assert!(!has_warning_kind(
+        "fn main() -> i64 = if true { 1 } else { 2 };",
+        "negated_if_condition"
+    ));
+}

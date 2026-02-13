@@ -1728,6 +1728,11 @@ impl TypeChecker {
                     self.add_warning(CompileWarning::constant_condition(*val, "if", cond.span));
                 }
 
+                // v0.90.140: Detect negated if condition (if not x { a } else { b })
+                if let Expr::Unary { op: crate::ast::UnOp::Not, .. } = &cond.node {
+                    self.add_warning(CompileWarning::negated_if_condition(cond.span));
+                }
+
                 let cond_ty = self.infer(&cond.node, cond.span)?;
                 self.unify(&Type::Bool, &cond_ty, cond.span)?;
 
