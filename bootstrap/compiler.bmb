@@ -4396,7 +4396,7 @@ fn llvm_gen_binop(op: String, line: String, pos: i64, dest: String) -> String =
     let p2 = low_skip_ws(line, comma + 1);
     let right = line.slice(p2, line.len());
     let op_with_nsw = if op == "add" { "add nsw" } else if op == "sub" { "sub nsw" } else if op == "mul" { "mul nsw" } else { op };
-    concat7("  ", dest, " = ", op_with_nsw, " i64 ", trim_end(left), ", " + trim_end(right));
+    "  " + dest + " = " + op_with_nsw + " i64 " + trim_end(left) + ", " + trim_end(right);
 
 // v0.60.118: Add zext to convert i1 comparison result to i64 for consistency
 fn llvm_gen_cmp(pred: String, line: String, pos: i64, dest: String) -> String =
@@ -4405,26 +4405,24 @@ fn llvm_gen_cmp(pred: String, line: String, pos: i64, dest: String) -> String =
     let left = line.slice(p1, comma);
     let p2 = low_skip_ws(line, comma + 1);
     let right = line.slice(p2, line.len());
-    let line1 = concat7("  ", dest, "_cmp = icmp ", pred, " i64 ", trim_end(left), ", " + trim_end(right));
-    let line2 = concat5("  ", dest, " = zext i1 ", dest, "_cmp to i64");
-    line1 + "|" + line2;
+    "  " + dest + "_cmp = icmp " + pred + " i64 " + trim_end(left) + ", " + trim_end(right) + "|  " + dest + " = zext i1 " + dest + "_cmp to i64";
 
 fn llvm_gen_not(line: String, pos: i64, dest: String) -> String =
     let p = low_skip_ws(line, pos);
     let operand = line.slice(p, line.len());
-    concat5("  ", dest, " = xor i64 ", trim_end(operand), ", 1");
+    "  " + dest + " = xor i64 " + trim_end(operand) + ", 1";
 
 // v0.31.19: Added nsw for negation to match Rust compiler
 fn llvm_gen_neg(line: String, pos: i64, dest: String) -> String =
     let p = low_skip_ws(line, pos);
     let operand = line.slice(p, line.len());
-    concat3("  " + dest, " = sub nsw i64 0, ", trim_end(operand));
+    "  " + dest + " = sub nsw i64 0, " + trim_end(operand);
 
 // v0.90.1: Bitwise NOT (complement all bits)
 fn llvm_gen_bnot(line: String, pos: i64, dest: String) -> String =
     let p = low_skip_ws(line, pos);
     let operand = line.slice(p, line.len());
-    concat5("  ", dest, " = xor i64 ", trim_end(operand), ", -1");
+    "  " + dest + " = xor i64 " + trim_end(operand) + ", -1";
 
 // v0.90.2: GEP - getelementptr for array indexing
 // MIR: gep %base, %idx → LLVM: getelementptr i64, ptr %base, i64 %idx
@@ -4435,8 +4433,8 @@ fn llvm_gen_gep(line: String, pos: i64, dest: String) -> String =
     let p2 = low_skip_ws(line, comma + 1);
     let idx = trim_end(line.slice(p2, line.len()));
     // v0.90.10: Use dest-based name for inttoptr to avoid duplicates
-    let conv = concat5("  ", dest, "_gp = inttoptr i64 ", base, " to ptr");
-    let gep = concat3("  " + dest, " = getelementptr i64, ptr " + dest, "_gp, i64 " + idx);
+    let conv = "  " + dest + "_gp = inttoptr i64 " + base + " to ptr";
+    let gep = "  " + dest + " = getelementptr i64, ptr " + dest + "_gp, i64 " + idx;
     conv + "|" + gep;
 
 // v0.90.2: Load from pointer
@@ -4444,7 +4442,7 @@ fn llvm_gen_gep(line: String, pos: i64, dest: String) -> String =
 fn llvm_gen_load_ptr(line: String, pos: i64, dest: String) -> String =
     let p = low_skip_ws(line, pos);
     let ptr = line.slice(p, line.len());
-    concat3("  " + dest, " = load i64, ptr ", trim_end(ptr));
+    "  " + dest + " = load i64, ptr " + trim_end(ptr);
 
 // v0.90.2: Store to pointer
 // MIR: store_ptr %ptr, %val → LLVM: store i64 %val, ptr %ptr
@@ -4454,7 +4452,7 @@ fn llvm_gen_store_ptr(line: String, pos: i64) -> String =
     let ptr = line.slice(p1, comma);
     let p2 = low_skip_ws(line, comma + 1);
     let val = line.slice(p2, line.len());
-    concat3("  store i64 " + trim_end(val), ", ptr ", trim_end(ptr));
+    "  store i64 " + trim_end(val) + ", ptr " + trim_end(ptr);
 
 // v0.90.9: Double-aware store_ptr - checks if value is double OR ptr is *f64
 fn llvm_gen_store_ptr_sb(line: String, pos: i64, str_sb: i64) -> String =
@@ -7966,10 +7964,9 @@ fn llvm_gen_string_ref(dest: String, str_content: String, strings: String) -> St
     let global_name = "@str_data_" + int_to_string(idx);
     let gep_dest = dest + "_gep";
     let call_dest = dest + "_call";
-    let line1 = concat7("  ", gep_dest, " = getelementptr [", int_to_string(str_len), " x i8], ptr ", global_name, ", i64 0, i64 0");
-    let line2 = concat5("  ", call_dest, " = call ptr @bmb_string_from_cstr(ptr ", gep_dest, ")");
-    let line3 = concat3("  " + dest, " = ptrtoint ptr ", call_dest + " to i64");
-    line1 + "|" + line2 + "|" + line3;
+    "  " + gep_dest + " = getelementptr [" + int_to_string(str_len) + " x i8], ptr " + global_name + ", i64 0, i64 0|" +
+    "  " + call_dest + " = call ptr @bmb_string_from_cstr(ptr " + gep_dest + ")|" +
+    "  " + dest + " = ptrtoint ptr " + call_dest + " to i64";
 
 // ============================================================================
 // SECTION 13: Unified Compiler Entry Point (v0.10.9)
