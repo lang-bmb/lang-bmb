@@ -22621,3 +22621,79 @@ fn test_no_redundant_if_expr_branches() {
         "redundant_if_expression"
     ));
 }
+
+// ===== Cycle 398: Bitwise identity/absorbing detection lint =====
+
+#[test]
+fn test_bitwise_identity_bor_zero_right() {
+    assert!(has_warning_kind(
+        "fn main() -> i64 = { let x = 5; x bor 0 };",
+        "identity_operation"
+    ));
+}
+
+#[test]
+fn test_bitwise_identity_bor_zero_left() {
+    assert!(has_warning_kind(
+        "fn main() -> i64 = { let x = 5; 0 bor x };",
+        "identity_operation"
+    ));
+}
+
+#[test]
+fn test_bitwise_identity_bxor_zero() {
+    assert!(has_warning_kind(
+        "fn main() -> i64 = { let x = 5; x bxor 0 };",
+        "identity_operation"
+    ));
+}
+
+#[test]
+fn test_bitwise_identity_shl_zero() {
+    assert!(has_warning_kind(
+        "fn main() -> i64 = { let x = 5; x << 0 };",
+        "identity_operation"
+    ));
+}
+
+#[test]
+fn test_bitwise_identity_shr_zero() {
+    assert!(has_warning_kind(
+        "fn main() -> i64 = { let x = 5; x >> 0 };",
+        "identity_operation"
+    ));
+}
+
+#[test]
+fn test_bitwise_absorbing_band_zero_right() {
+    assert!(has_warning_kind(
+        "fn main() -> i64 = { let x = 5; x band 0 };",
+        "absorbing_element"
+    ));
+}
+
+#[test]
+fn test_bitwise_absorbing_band_zero_left() {
+    assert!(has_warning_kind(
+        "fn main() -> i64 = { let x = 5; 0 band x };",
+        "absorbing_element"
+    ));
+}
+
+#[test]
+fn test_no_bitwise_identity_band_nonzero() {
+    // band with non-zero is meaningful, not identity
+    assert!(!has_warning_kind(
+        "fn main() -> i64 = { let x = 255; x band 15 };",
+        "identity_operation"
+    ));
+}
+
+#[test]
+fn test_no_bitwise_identity_bor_nonzero() {
+    // bor with non-zero is meaningful
+    assert!(!has_warning_kind(
+        "fn main() -> i64 = { let x = 5; x bor 3 };",
+        "identity_operation"
+    ));
+}

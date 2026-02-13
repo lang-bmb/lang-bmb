@@ -1674,6 +1674,7 @@ impl TypeChecker {
 
                 // v0.90.139: Detect identity operations (x + 0, 0 + x, x - 0, x * 1, 1 * x, x / 1)
                 // v0.90.141: Detect absorbing elements (x * 0, 0 * x → 0; x % 1 → 0)
+                // v0.90.151: Detect bitwise identity (x bor 0, x bxor 0, x << 0, x >> 0) and absorbing (x band 0)
                 {
                     let is_identity = match op {
                         BinOp::Add => {
@@ -1684,11 +1685,19 @@ impl TypeChecker {
                             matches!(&left.node, Expr::IntLit(1)) || matches!(&right.node, Expr::IntLit(1))
                         }
                         BinOp::Div => matches!(&right.node, Expr::IntLit(1)),
+                        BinOp::Bor => {
+                            matches!(&left.node, Expr::IntLit(0)) || matches!(&right.node, Expr::IntLit(0))
+                        }
+                        BinOp::Bxor => {
+                            matches!(&left.node, Expr::IntLit(0)) || matches!(&right.node, Expr::IntLit(0))
+                        }
+                        BinOp::Shl | BinOp::Shr => matches!(&right.node, Expr::IntLit(0)),
                         _ => false,
                     };
                     let absorb = match op {
                         BinOp::Mul if matches!(&left.node, Expr::IntLit(0)) || matches!(&right.node, Expr::IntLit(0)) => Some("0"),
                         BinOp::Mod if matches!(&right.node, Expr::IntLit(1)) => Some("0"),
+                        BinOp::Band if matches!(&left.node, Expr::IntLit(0)) || matches!(&right.node, Expr::IntLit(0)) => Some("0"),
                         _ => None,
                     };
                     if is_identity || absorb.is_some() {
