@@ -10762,4 +10762,58 @@ mod tests {
         assert!(msg.contains("2 arguments") || msg.contains("slice"),
             "Error should mention slice takes 2 arguments, got: {msg}");
     }
+
+    // ================================================================
+    // Cycle 410: TypeChecker warning API tests
+    // ================================================================
+
+    #[test]
+    fn test_tc_warnings_initially_empty() {
+        let tc = TypeChecker::new();
+        assert!(tc.warnings().is_empty());
+        assert!(!tc.has_warnings());
+    }
+
+    #[test]
+    fn test_tc_add_warning() {
+        let mut tc = TypeChecker::new();
+        tc.add_warning(crate::error::CompileWarning::generic("test", None));
+        assert!(tc.has_warnings());
+        assert_eq!(tc.warnings().len(), 1);
+    }
+
+    #[test]
+    fn test_tc_take_warnings() {
+        let mut tc = TypeChecker::new();
+        tc.add_warning(crate::error::CompileWarning::generic("w1", None));
+        tc.add_warning(crate::error::CompileWarning::generic("w2", None));
+        let taken = tc.take_warnings();
+        assert_eq!(taken.len(), 2);
+        // After taking, warnings should be empty
+        assert!(!tc.has_warnings());
+        assert!(tc.warnings().is_empty());
+    }
+
+    #[test]
+    fn test_tc_clear_warnings() {
+        let mut tc = TypeChecker::new();
+        tc.add_warning(crate::error::CompileWarning::generic("temp", None));
+        assert!(tc.has_warnings());
+        tc.clear_warnings();
+        assert!(!tc.has_warnings());
+        assert!(tc.warnings().is_empty());
+    }
+
+    #[test]
+    fn test_tc_warnings_from_check() {
+        // Type check a program with unused binding — should produce warnings
+        let mut tc = TypeChecker::new();
+        let source = "fn main() -> i64 = let x = 42; 0;";
+        let tokens = crate::lexer::tokenize(source).unwrap();
+        let ast = crate::parser::parse("test.bmb", source, tokens).unwrap();
+        let _ = tc.check_program(&ast);
+        // Should have at least one warning (unused_binding for 'x')
+        assert!(tc.has_warnings(), "Expected warnings for unused binding");
+        assert!(tc.warnings().iter().any(|w| w.kind() == "unused_binding"));
+    }
 }

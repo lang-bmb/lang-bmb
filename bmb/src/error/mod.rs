@@ -1319,4 +1319,110 @@ mod tests {
         assert!(dbg.contains("Type"));
         assert!(dbg.contains("mismatch"));
     }
+
+    // ================================================================
+    // Cycle 410: Missing warning constructor tests
+    // ================================================================
+
+    #[test]
+    fn test_warning_non_snake_case_function() {
+        let w = CompileWarning::non_snake_case_function("MyFunc", "my_func", span());
+        assert_eq!(w.kind(), "non_snake_case");
+        assert!(w.message().contains("MyFunc"));
+        assert!(w.message().contains("my_func"));
+        assert_eq!(w.span(), Some(span()));
+    }
+
+    #[test]
+    fn test_warning_non_pascal_case_type() {
+        let w = CompileWarning::non_pascal_case_type("my_struct", "MyStruct", "struct", span());
+        assert_eq!(w.kind(), "non_pascal_case");
+        assert!(w.message().contains("my_struct"));
+        assert!(w.message().contains("MyStruct"));
+        assert_eq!(w.span(), Some(span()));
+    }
+
+    #[test]
+    fn test_warning_single_arm_match() {
+        let w = CompileWarning::single_arm_match(span());
+        assert_eq!(w.kind(), "single_arm_match");
+        assert!(w.message().contains("if let"));
+        assert_eq!(w.span(), Some(span()));
+    }
+
+    #[test]
+    fn test_warning_redundant_cast() {
+        let w = CompileWarning::redundant_cast("i64", span());
+        assert_eq!(w.kind(), "redundant_cast");
+        assert!(w.message().contains("i64"));
+        assert_eq!(w.span(), Some(span()));
+    }
+
+    #[test]
+    fn test_warning_constant_condition() {
+        let w = CompileWarning::constant_condition(true, "if", span());
+        assert_eq!(w.kind(), "constant_condition");
+        assert!(w.message().contains("if"));
+        assert!(w.message().contains("true"));
+        assert_eq!(w.span(), Some(span()));
+    }
+
+    #[test]
+    fn test_warning_self_comparison() {
+        let w = CompileWarning::self_comparison("x", "==", span());
+        assert_eq!(w.kind(), "self_comparison");
+        assert!(w.message().contains("x"));
+        assert!(w.message().contains("=="));
+        assert_eq!(w.span(), Some(span()));
+    }
+
+    #[test]
+    fn test_warning_redundant_bool_comparison() {
+        let w = CompileWarning::redundant_bool_comparison(true, span());
+        assert_eq!(w.kind(), "redundant_bool_comparison");
+        assert!(w.message().contains("true"));
+        assert_eq!(w.span(), Some(span()));
+    }
+
+    #[test]
+    fn test_warning_int_division_truncation() {
+        let w = CompileWarning::int_division_truncation(7, 3, span());
+        assert_eq!(w.kind(), "int_division_truncation");
+        assert!(w.message().contains("7"));
+        assert!(w.message().contains("3"));
+        assert_eq!(w.span(), Some(span()));
+    }
+
+    #[test]
+    fn test_warning_unused_return_value() {
+        let w = CompileWarning::unused_return_value("compute", span());
+        assert_eq!(w.kind(), "unused_return_value");
+        assert!(w.message().contains("compute"));
+        assert_eq!(w.span(), Some(span()));
+    }
+
+    #[test]
+    fn test_warning_identity_operation() {
+        let w = CompileWarning::identity_operation("x + 0", span());
+        assert_eq!(w.kind(), "identity_operation");
+        assert!(w.message().contains("x + 0"));
+        assert_eq!(w.span(), Some(span()));
+    }
+
+    #[test]
+    fn test_warning_negated_if_condition() {
+        let w = CompileWarning::negated_if_condition(span());
+        assert_eq!(w.kind(), "negated_if_condition");
+        assert!(w.message().contains("negation"));
+        assert_eq!(w.span(), Some(span()));
+    }
+
+    #[test]
+    fn test_warning_absorbing_element() {
+        let w = CompileWarning::absorbing_element("x * 0", "0", span());
+        assert_eq!(w.kind(), "absorbing_element");
+        assert!(w.message().contains("x * 0"));
+        assert!(w.message().contains("0"));
+        assert_eq!(w.span(), Some(span()));
+    }
 }
