@@ -16702,4 +16702,120 @@ mod tests {
         assert!(result.is_some());
         assert!(matches!(result.unwrap(), MirInst::Const { value: Constant::Bool(true), .. }));
     }
+
+    // ===== Cycle 407: fold_binop + fold_unaryop tests =====
+
+    #[test]
+    fn test_fold_int_add() {
+        assert!(matches!(fold_binop(MirBinOp::Add, &Constant::Int(3), &Constant::Int(7)), Some(Constant::Int(10))));
+    }
+
+    #[test]
+    fn test_fold_int_sub() {
+        assert!(matches!(fold_binop(MirBinOp::Sub, &Constant::Int(10), &Constant::Int(4)), Some(Constant::Int(6))));
+    }
+
+    #[test]
+    fn test_fold_int_mul() {
+        assert!(matches!(fold_binop(MirBinOp::Mul, &Constant::Int(6), &Constant::Int(7)), Some(Constant::Int(42))));
+    }
+
+    #[test]
+    fn test_fold_int_div() {
+        assert!(matches!(fold_binop(MirBinOp::Div, &Constant::Int(20), &Constant::Int(4)), Some(Constant::Int(5))));
+    }
+
+    #[test]
+    fn test_fold_int_div_by_zero() {
+        assert!(fold_binop(MirBinOp::Div, &Constant::Int(10), &Constant::Int(0)).is_none());
+    }
+
+    #[test]
+    fn test_fold_int_mod() {
+        assert!(matches!(fold_binop(MirBinOp::Mod, &Constant::Int(17), &Constant::Int(5)), Some(Constant::Int(2))));
+    }
+
+    #[test]
+    fn test_fold_int_mod_by_zero() {
+        assert!(fold_binop(MirBinOp::Mod, &Constant::Int(10), &Constant::Int(0)).is_none());
+    }
+
+    #[test]
+    fn test_fold_int_eq_true() {
+        assert!(matches!(fold_binop(MirBinOp::Eq, &Constant::Int(5), &Constant::Int(5)), Some(Constant::Bool(true))));
+    }
+
+    #[test]
+    fn test_fold_int_eq_false() {
+        assert!(matches!(fold_binop(MirBinOp::Eq, &Constant::Int(5), &Constant::Int(6)), Some(Constant::Bool(false))));
+    }
+
+    #[test]
+    fn test_fold_int_lt() {
+        assert!(matches!(fold_binop(MirBinOp::Lt, &Constant::Int(3), &Constant::Int(5)), Some(Constant::Bool(true))));
+        assert!(matches!(fold_binop(MirBinOp::Lt, &Constant::Int(5), &Constant::Int(3)), Some(Constant::Bool(false))));
+    }
+
+    #[test]
+    fn test_fold_int_ge() {
+        assert!(matches!(fold_binop(MirBinOp::Ge, &Constant::Int(5), &Constant::Int(5)), Some(Constant::Bool(true))));
+        assert!(matches!(fold_binop(MirBinOp::Ge, &Constant::Int(4), &Constant::Int(5)), Some(Constant::Bool(false))));
+    }
+
+    #[test]
+    fn test_fold_bool_and() {
+        assert!(matches!(fold_binop(MirBinOp::And, &Constant::Bool(true), &Constant::Bool(true)), Some(Constant::Bool(true))));
+        assert!(matches!(fold_binop(MirBinOp::And, &Constant::Bool(true), &Constant::Bool(false)), Some(Constant::Bool(false))));
+    }
+
+    #[test]
+    fn test_fold_bool_or() {
+        assert!(matches!(fold_binop(MirBinOp::Or, &Constant::Bool(false), &Constant::Bool(true)), Some(Constant::Bool(true))));
+        assert!(matches!(fold_binop(MirBinOp::Or, &Constant::Bool(false), &Constant::Bool(false)), Some(Constant::Bool(false))));
+    }
+
+    #[test]
+    fn test_fold_float_add() {
+        match fold_binop(MirBinOp::FAdd, &Constant::Float(1.5), &Constant::Float(2.5)) {
+            Some(Constant::Float(f)) => assert!((f - 4.0).abs() < 0.001),
+            other => panic!("Expected Some(Float(4.0)), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_fold_float_div_by_zero() {
+        assert!(fold_binop(MirBinOp::FDiv, &Constant::Float(1.0), &Constant::Float(0.0)).is_none());
+    }
+
+    #[test]
+    fn test_fold_string_concat() {
+        match fold_binop(MirBinOp::Add, &Constant::String("Hello".to_string()), &Constant::String(" World".to_string())) {
+            Some(Constant::String(s)) => assert_eq!(s, "Hello World"),
+            other => panic!("Expected Some(String(\"Hello World\")), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_fold_type_mismatch() {
+        assert!(fold_binop(MirBinOp::Add, &Constant::Int(1), &Constant::Bool(true)).is_none());
+    }
+
+    #[test]
+    fn test_fold_unary_neg_int() {
+        assert!(matches!(fold_unaryop(MirUnaryOp::Neg, &Constant::Int(5)), Some(Constant::Int(-5))));
+    }
+
+    #[test]
+    fn test_fold_unary_fneg_float() {
+        match fold_unaryop(MirUnaryOp::FNeg, &Constant::Float(2.5)) {
+            Some(Constant::Float(f)) => assert!((f + 2.5).abs() < 0.001),
+            other => panic!("Expected Some(Float(-2.5)), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_fold_unary_not_bool() {
+        assert!(matches!(fold_unaryop(MirUnaryOp::Not, &Constant::Bool(true)), Some(Constant::Bool(false))));
+        assert!(matches!(fold_unaryop(MirUnaryOp::Not, &Constant::Bool(false)), Some(Constant::Bool(true))));
+    }
 }
