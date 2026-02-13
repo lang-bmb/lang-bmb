@@ -1,0 +1,50 @@
+// Golden test: Array methods — push, pop, arr_len, arr_concat, arr_slice
+// Tests functional array methods that return new arrays
+// Expected output: 175
+
+fn main() -> i64 = {
+    // Test 1: arr_len
+    let a = [10, 20, 30, 40, 50];
+    let len1 = a.arr_len();  // 5
+
+    // Test 2: push — returns new array with element appended
+    let b = a.push(60);
+    let len2 = b.arr_len();  // 6
+    let val2 = b[5];  // 60
+
+    // Test 3: pop — returns new array without last element
+    let c = a.pop();
+    let len3 = c.arr_len();  // 4
+    let val3 = c[3];  // 40
+
+    // Test 4: arr_concat — returns new array combining two arrays
+    let d = [1, 2, 3];
+    let e = [4, 5, 6];
+    let f = d.arr_concat(e);
+    let len4 = f.arr_len();  // 6
+    let val4 = f[0] + f[3] + f[5];  // 1+4+6 = 11
+
+    // Test 5: arr_slice — returns new sub-array [start, end)
+    let g = [10, 20, 30, 40, 50];
+    let h = g.arr_slice(1, 4);
+    let len5 = h.arr_len();  // 3
+    let val5 = h[0] + h[1] + h[2];  // 20+30+40 = 90
+
+    // Test 6: chained operations
+    let i = [100];
+    let j = i.push(200).push(300);
+    let val6 = j[0] + j[1] + j[2];  // 100+200+300 = 600
+    let len6 = j.arr_len();  // 3
+
+    // Compute result:
+    // len1=5, len2=6, val2=60, len3=4, val3=40
+    // len4=6, val4=11, len5=3, val5=90
+    // val6=600, len6=3
+    // Sum of lens: 5+6+4+6+3+3 = 27
+    // Sum of vals: 60+40+11+90+600 = 801
+    // Total: 27 + 801 = 828
+    // 828 - 653 = 175
+    let result = len1 + len2 + len3 + len4 + len5 + len6 + val2 + val3 + val4 + val5 + val6 - 653;
+    println(result);
+    0
+};

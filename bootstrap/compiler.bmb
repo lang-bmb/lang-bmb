@@ -3794,6 +3794,10 @@ fn method_to_runtime_fn(method: String) -> String =
     // v0.90.97: Array-only methods (push, pop return new arrays)
     else if method == "push" { "bmb_array_push" }
     else if method == "pop" { "bmb_array_pop" }
+    // v0.90.99: Array methods with distinct names (avoid string method conflicts)
+    else if method == "arr_len" { "bmb_array_len" }
+    else if method == "arr_concat" { "bmb_array_concat" }
+    else if method == "arr_slice" { "bmb_array_slice" }
     // v0.90.97: Integer methods
     else if method == "clamp" { "bmb_clamp" }
     else if method == "pow" { "bmb_pow" }
@@ -4803,6 +4807,9 @@ fn get_call_return_type(fn_name: String) -> String =
     else if fn_name == "@bmb_string_trim" or fn_name == "@bmb_string_replace" { "ptr" }
     // v0.90.98: Additional string method ptr-returning functions
     else if fn_name == "@bmb_string_to_upper" or fn_name == "@bmb_string_to_lower" or fn_name == "@bmb_string_repeat" { "ptr" }
+    // v0.90.99: Array method ptr-returning functions (push, pop, concat, slice return new arrays)
+    else if fn_name == "@bmb_array_push" or fn_name == "@bmb_array_pop" { "ptr" }
+    else if fn_name == "@bmb_array_concat" or fn_name == "@bmb_array_slice" { "ptr" }
     // v0.90.2: Double-returning functions
     // v0.90.9: Added i64_to_f64 intrinsic
     // v0.90.95: Float method return types
@@ -5141,6 +5148,12 @@ fn get_call_arg_types(fn_name: String) -> String =
     else if fn_name == "@bmb_string_to_lower" { "p" }
     else if fn_name == "@bmb_string_repeat" { "pi" }
     else if fn_name == "@bmb_string_is_empty" { "p" }
+    // v0.90.99: Array method arg types
+    else if fn_name == "@bmb_array_push" { "pi" }
+    else if fn_name == "@bmb_array_pop" { "p" }
+    else if fn_name == "@bmb_array_concat" { "pp" }
+    else if fn_name == "@bmb_array_slice" { "pii" }
+    else if fn_name == "@bmb_array_len" { "p" }
     // v0.90.2: C library and runtime arg types
     else if fn_name == "@malloc" { "i" }
     else if fn_name == "@calloc" { "ii" }
@@ -5898,11 +5911,12 @@ fn gen_extern_max() -> String = "declare i64 @bmb_max(i64, i64) nounwind willret
 fn gen_extern_clamp() -> String = "declare i64 @bmb_clamp(i64, i64, i64) nounwind willreturn memory(none) speculatable";
 fn gen_extern_pow() -> String = "declare i64 @bmb_pow(i64, i64) nounwind willreturn memory(none) speculatable";
 // v0.90.97: Array method declarations
-fn gen_extern_array_push() -> String = "declare i64 @bmb_array_push(i64, i64) nounwind willreturn";
-fn gen_extern_array_pop() -> String = "declare i64 @bmb_array_pop(i64) nounwind willreturn";
-fn gen_extern_array_concat() -> String = "declare i64 @bmb_array_concat(i64, i64) nounwind willreturn";
-fn gen_extern_array_slice() -> String = "declare i64 @bmb_array_slice(i64, i64, i64) nounwind willreturn";
-fn gen_extern_array_len() -> String = "declare i64 @bmb_array_len(i64) nounwind willreturn memory(argmem: read) speculatable";
+// v0.90.99: Array method declarations — use ptr for array pointer, return ptr for new arrays
+fn gen_extern_array_push() -> String = "declare ptr @bmb_array_push(ptr, i64) nounwind willreturn";
+fn gen_extern_array_pop() -> String = "declare ptr @bmb_array_pop(ptr) nounwind willreturn";
+fn gen_extern_array_concat() -> String = "declare ptr @bmb_array_concat(ptr, ptr) nounwind willreturn";
+fn gen_extern_array_slice() -> String = "declare ptr @bmb_array_slice(ptr, i64, i64) nounwind willreturn";
+fn gen_extern_array_len() -> String = "declare i64 @bmb_array_len(ptr) nounwind willreturn memory(argmem: read) speculatable";
 
 // v0.90.70: String operations with optimization attributes
 // Read-only: len, char_at, eq only read argument memory (enables LICM + CSE)
