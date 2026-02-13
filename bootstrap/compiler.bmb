@@ -166,9 +166,14 @@ fn TK_SET() -> i64 = 2000000000 + 164;
 fn TK_STRUCT() -> i64 = 2000000000 + 165;
 fn TK_NULL() -> i64 = 2000000000 + 166;
 
+// v0.90.86: match keyword
+fn TK_MATCH() -> i64 = 2000000000 + 168;
+
 fn TK_ARROW() -> i64 = 2000000000 + 321;
 fn TK_DOT() -> i64 = 2000000000 + 322;
 fn TK_DOTDOT() -> i64 = 2000000000 + 323;
+// v0.90.86: fat arrow => for match arms
+fn TK_FAT_ARROW() -> i64 = 2000000000 + 324;
 
 fn TK_PLUS() -> i64 = 2000000000 + 400;
 fn TK_MINUS() -> i64 = 2000000000 + 401;
@@ -340,6 +345,7 @@ fn keyword_len5(word: String, endpos: i64) -> i64 =
     else if word == "await" { make_tok(TK_AWAIT(), endpos) }  // v0.88
     else if word == "Mutex" { make_tok(TK_MUTEX(), endpos) }  // v0.88
     else if word == "Scope" { make_tok(TK_SCOPE(), endpos) }  // v0.88
+    else if word == "match" { make_tok(TK_MATCH(), endpos) }  // v0.90.86: match expression
     else { make_tok(TK_IDENT(), endpos) };
 
 fn keyword_len6(word: String, endpos: i64) -> i64 =
@@ -379,7 +385,7 @@ fn next_token_raw(s: String, pos: i64) -> i64 =
             // v0.60.109: String literal - scan to closing quote
             let str_end = scan_string_end(s, p + 1);
             make_tok(TK_STRING_LIT(), str_end)
-        } else if c == 58 { make_tok(TK_COLON(), p + 1) } else if c == 61 { if p + 1 < s.len() and s.byte_at(p + 1) == 61 { make_tok(TK_EQEQ(), p + 2) } else { make_tok(TK_EQ(), p + 1) } } else if c == 59 { make_tok(TK_SEMI(), p + 1) } else if c == 44 { make_tok(TK_COMMA(), p + 1) } else if c == 40 { make_tok(TK_LPAREN(), p + 1) } else if c == 41 { make_tok(TK_RPAREN(), p + 1) } else if c == 43 { make_tok(TK_PLUS(), p + 1) } else if c == 45 { if p + 1 < s.len() and s.byte_at(p + 1) == 62 { make_tok(TK_ARROW(), p + 2) } else { make_tok(TK_MINUS(), p + 1) } } else if c == 42 { make_tok(TK_STAR(), p + 1) } else if c == 47 { make_tok(TK_SLASH(), p + 1) } else if c == 37 { make_tok(TK_PERCENT(), p + 1) } else if c == 60 { if p + 1 < s.len() and s.byte_at(p + 1) == 61 { make_tok(TK_LTEQ(), p + 2) } else if p + 1 < s.len() and s.byte_at(p + 1) == 60 { make_tok(TK_SHL(), p + 2) } else { make_tok(TK_LT(), p + 1) } } else if c == 62 { if p + 1 < s.len() and s.byte_at(p + 1) == 61 { make_tok(TK_GTEQ(), p + 2) } else if p + 1 < s.len() and s.byte_at(p + 1) == 62 { make_tok(TK_SHR(), p + 2) } else { make_tok(TK_GT(), p + 1) } } else if c == 33 { if p + 1 < s.len() and s.byte_at(p + 1) == 61 { make_tok(TK_NEQ(), p + 2) } else { make_tok(TK_EOF(), p) } } else if c == 46 { if p + 1 < s.len() and s.byte_at(p + 1) == 46 { make_tok(TK_DOTDOT(), p + 2) } else { make_tok(TK_DOT(), p + 1) } } else if c == 91 { make_tok(TK_LBRACKET(), p + 1) } else if c == 93 { make_tok(TK_RBRACKET(), p + 1) } else if c == 123 { make_tok(TK_LBRACE(), p + 1) } else if c == 125 { make_tok(TK_RBRACE(), p + 1) } else if c == 38 { make_tok(TK_AMP(), p + 1) } else { make_tok(TK_EOF(), p) }
+        } else if c == 58 { make_tok(TK_COLON(), p + 1) } else if c == 61 { if p + 1 < s.len() and s.byte_at(p + 1) == 61 { make_tok(TK_EQEQ(), p + 2) } else if p + 1 < s.len() and s.byte_at(p + 1) == 62 { make_tok(TK_FAT_ARROW(), p + 2) } else { make_tok(TK_EQ(), p + 1) } } else if c == 59 { make_tok(TK_SEMI(), p + 1) } else if c == 44 { make_tok(TK_COMMA(), p + 1) } else if c == 40 { make_tok(TK_LPAREN(), p + 1) } else if c == 41 { make_tok(TK_RPAREN(), p + 1) } else if c == 43 { make_tok(TK_PLUS(), p + 1) } else if c == 45 { if p + 1 < s.len() and s.byte_at(p + 1) == 62 { make_tok(TK_ARROW(), p + 2) } else { make_tok(TK_MINUS(), p + 1) } } else if c == 42 { make_tok(TK_STAR(), p + 1) } else if c == 47 { make_tok(TK_SLASH(), p + 1) } else if c == 37 { make_tok(TK_PERCENT(), p + 1) } else if c == 60 { if p + 1 < s.len() and s.byte_at(p + 1) == 61 { make_tok(TK_LTEQ(), p + 2) } else if p + 1 < s.len() and s.byte_at(p + 1) == 60 { make_tok(TK_SHL(), p + 2) } else { make_tok(TK_LT(), p + 1) } } else if c == 62 { if p + 1 < s.len() and s.byte_at(p + 1) == 61 { make_tok(TK_GTEQ(), p + 2) } else if p + 1 < s.len() and s.byte_at(p + 1) == 62 { make_tok(TK_SHR(), p + 2) } else { make_tok(TK_GT(), p + 1) } } else if c == 33 { if p + 1 < s.len() and s.byte_at(p + 1) == 61 { make_tok(TK_NEQ(), p + 2) } else { make_tok(TK_EOF(), p) } } else if c == 46 { if p + 1 < s.len() and s.byte_at(p + 1) == 46 { make_tok(TK_DOTDOT(), p + 2) } else { make_tok(TK_DOT(), p + 1) } } else if c == 91 { make_tok(TK_LBRACKET(), p + 1) } else if c == 93 { make_tok(TK_RBRACKET(), p + 1) } else if c == 123 { make_tok(TK_LBRACE(), p + 1) } else if c == 125 { make_tok(TK_RBRACE(), p + 1) } else if c == 38 { make_tok(TK_AMP(), p + 1) } else { make_tok(TK_EOF(), p) }
     };
 
 fn get_ident_text(s: String, pos: i64, tok: i64) -> String =
@@ -1175,6 +1181,7 @@ fn parse_expr(src: String, pos: i64) -> String =
     else if kind == TK_BREAK() { pack_result(tok_end(tok), "(break)") }  // v0.90.8: break
     else if kind == TK_CONTINUE() { pack_result(tok_end(tok), "(continue)") }  // v0.90.31: continue
     else if kind == TK_RETURN() { parse_return_expr(src, tok_end(tok)) }       // v0.90.31: return
+    else if kind == TK_MATCH() { parse_match_expr(src, tok_end(tok)) }       // v0.90.86: match
     else { parse_or(src, pos) };
 
 fn parse_if_expr(src: String, pos: i64) -> String =
@@ -1459,6 +1466,106 @@ fn parse_for_body(src: String, pos: i64, varname: String, start_ast: String, end
         if tok_kind(t5) != TK_RBRACE() { make_error_at("expected '}' after for body", src, unpack_pos(rb)) }
         else { pack_result(tok_end(t5), "(for <" + varname + "> " + start_ast + " " + end_ast + " " + body_ast + ")") }
     };
+
+// v0.90.86: Match expression — desugars to nested if-else chain with let binding
+// match expr { pat1 => body1, pat2 => body2, _ => default }
+// → (let <__match> expr (if (binop == (var <__match>) (int pat1)) body1 (if ... default)))
+
+fn parse_match_expr(src: String, pos: i64) -> String =
+    let rs = parse_expr(src, pos);
+    if is_error(rs) { rs }
+    else { parse_match_open(src, unpack_pos(rs), unpack_ast(rs)) };
+
+fn parse_match_open(src: String, pos: i64, scrutinee: String) -> String =
+    let t = next_token_raw(src, pos);
+    if tok_kind(t) != TK_LBRACE() { make_error_at("expected '{' after match expression", src, pos) }
+    else { parse_match_arms(src, tok_end(t), scrutinee, "", "") };
+
+fn parse_match_arms(src: String, pos: i64, scrutinee: String, prefix: String, suffix: String) -> String =
+    let t = next_token_raw(src, pos);
+    let kind = tok_kind(t);
+    if kind == TK_RBRACE() {
+        let inner = prefix + "(int 0)" + suffix;
+        let result = "(let <__match> " + scrutinee + " " + inner + ")";
+        pack_result(tok_end(t), result)
+    }
+    else if kind == TK_IDENT() {
+        let pat_text = get_ident_text(src, pos, t);
+        if pat_text == "_" {
+            parse_match_wildcard(src, tok_end(t), scrutinee, prefix, suffix)
+        } else {
+            make_error_at("unsupported match pattern (expected integer or _)", src, pos)
+        }
+    }
+    else if is_int_literal(kind) {
+        let int_text = get_int_text(src, pos, t);
+        parse_match_arm_arrow(src, tok_end(t), scrutinee, int_text, prefix, suffix)
+    }
+    else if kind == TK_MINUS() {
+        let t2 = next_token_raw(src, tok_end(t));
+        if is_int_literal(tok_kind(t2)) {
+            let int_text = "-" + get_int_text(src, tok_end(t), t2);
+            parse_match_arm_arrow(src, tok_end(t2), scrutinee, int_text, prefix, suffix)
+        } else { make_error_at("expected integer after '-' in match pattern", src, tok_end(t)) }
+    }
+    else { make_error_at("expected pattern in match arm", src, pos) };
+
+fn parse_match_arm_arrow(src: String, pos: i64, scrutinee: String, pat_val: String, prefix: String, suffix: String) -> String =
+    let t = next_token_raw(src, pos);
+    if tok_kind(t) != TK_FAT_ARROW() { make_error_at("expected '=>' after match pattern", src, pos) }
+    else { parse_match_arm_body(src, tok_end(t), scrutinee, pat_val, prefix, suffix) };
+
+fn parse_match_arm_body(src: String, pos: i64, scrutinee: String, pat_val: String, prefix: String, suffix: String) -> String =
+    let rb = parse_expr(src, pos);
+    if is_error(rb) { rb }
+    else {
+        let body = unpack_ast(rb);
+        let cond = "(binop == (var <__match>) (int " + pat_val + "))";
+        let new_prefix = prefix + "(if " + cond + " " + body + " ";
+        let new_suffix = ")" + suffix;
+        parse_match_arm_sep(src, unpack_pos(rb), scrutinee, new_prefix, new_suffix)
+    };
+
+fn parse_match_arm_sep(src: String, pos: i64, scrutinee: String, prefix: String, suffix: String) -> String =
+    let t = next_token_raw(src, pos);
+    let kind = tok_kind(t);
+    if kind == TK_COMMA() {
+        parse_match_arms(src, tok_end(t), scrutinee, prefix, suffix)
+    }
+    else if kind == TK_RBRACE() {
+        let inner = prefix + "(int 0)" + suffix;
+        let result = "(let <__match> " + scrutinee + " " + inner + ")";
+        pack_result(tok_end(t), result)
+    }
+    else { make_error_at("expected ',' or '}' after match arm body", src, pos) };
+
+fn parse_match_wildcard(src: String, pos: i64, scrutinee: String, prefix: String, suffix: String) -> String =
+    let t = next_token_raw(src, pos);
+    if tok_kind(t) != TK_FAT_ARROW() { make_error_at("expected '=>' after '_'", src, pos) }
+    else { parse_match_wildcard_body(src, tok_end(t), scrutinee, prefix, suffix) };
+
+fn parse_match_wildcard_body(src: String, pos: i64, scrutinee: String, prefix: String, suffix: String) -> String =
+    let rb = parse_expr(src, pos);
+    if is_error(rb) { rb }
+    else {
+        let body = unpack_ast(rb);
+        let inner = prefix + body + suffix;
+        let result = "(let <__match> " + scrutinee + " " + inner + ")";
+        parse_match_wildcard_end(src, unpack_pos(rb), result)
+    };
+
+fn parse_match_wildcard_end(src: String, pos: i64, result: String) -> String =
+    let t = next_token_raw(src, pos);
+    let kind = tok_kind(t);
+    if kind == TK_COMMA() {
+        let t2 = next_token_raw(src, tok_end(t));
+        if tok_kind(t2) != TK_RBRACE() { make_error_at("expected '}' after wildcard arm", src, tok_end(t)) }
+        else { pack_result(tok_end(t2), result) }
+    }
+    else if kind == TK_RBRACE() {
+        pack_result(tok_end(t), result)
+    }
+    else { make_error_at("expected ',' or '}' after wildcard arm body", src, pos) };
 
 // ============================================================================
 // SECTION 6: Function and Program Parser
