@@ -1,0 +1,67 @@
+// Golden Binary Test: Loop expressions (infinite loop + break)
+// Tests: loop, break in loop, nested loops, loop with if
+
+fn count_until(limit: i64) -> i64 = {
+    let mut i = 0;
+    loop {
+        if i >= limit {
+            break;
+            0
+        } else {
+            i = i + 1;
+            0
+        }
+    };
+    i
+};
+
+fn find_factor(n: i64) -> i64 = {
+    let mut d = 2;
+    let mut result = n;
+    loop {
+        if d * d > n {
+            break;
+            0
+        } else if n % d == 0 {
+            result = d;
+            break;
+            0
+        } else {
+            d = d + 1;
+            0
+        }
+    };
+    result
+};
+
+fn collatz_steps(n: i64) -> i64 = {
+    let mut x = n;
+    let mut steps = 0;
+    loop {
+        if x <= 1 {
+            break;
+            0
+        } else if x % 2 == 0 {
+            x = x / 2;
+            steps = steps + 1;
+            0
+        } else {
+            x = x * 3 + 1;
+            steps = steps + 1;
+            0
+        }
+    };
+    steps
+};
+
+fn main() -> i64 = {
+    // count_until(7) = 7
+    let s1 = count_until(7);
+    // find_factor(15) = 3 (first factor)
+    let s2 = find_factor(15);
+    // collatz_steps(6): 6->3->10->5->16->8->4->2->1 = 8 steps
+    let s3 = collatz_steps(6);
+    // Output: 7 + 3 + 8 = 18
+    println(s1 + s2 + s3);
+    0
+};

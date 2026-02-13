@@ -1,0 +1,78 @@
+// Golden Binary Test: For-in loop codegen
+// Tests: for-in range iteration, nested for loops, for with break/continue
+
+fn sum_range(n: i64) -> i64 = {
+    let mut s = 0;
+    for i in 0..n {
+        s = s + i;
+        0
+    };
+    s
+};
+
+fn count_evens(n: i64) -> i64 = {
+    let mut count = 0;
+    for i in 0..n {
+        if i % 2 == 0 {
+            count = count + 1;
+            0
+        } else { 0 }
+    };
+    count
+};
+
+fn nested_sum(rows: i64, cols: i64) -> i64 = {
+    let mut total = 0;
+    for r in 0..rows {
+        for c in 0..cols {
+            total = total + r * cols + c;
+            0
+        };
+        0
+    };
+    total
+};
+
+fn for_with_break(n: i64) -> i64 = {
+    let mut last = 0;
+    for i in 0..n {
+        if i > 5 {
+            break;
+            0
+        } else {
+            last = i;
+            0
+        }
+    };
+    last
+};
+
+fn for_skip_odds(n: i64) -> i64 = {
+    let mut s = 0;
+    for i in 0..n {
+        if i % 2 != 0 {
+            continue;
+            0
+        } else {
+            s = s + i;
+            0
+        }
+    };
+    s
+};
+
+fn main() -> i64 = {
+    // sum_range(10) = 0+1+...+9 = 45
+    let s1 = sum_range(10);
+    // count_evens(10) = 5 (0,2,4,6,8)
+    let s2 = count_evens(10);
+    // nested_sum(3,4) = sum of (r*4+c) for r=0..3, c=0..4 = 0+1+2+3+4+5+6+7+8+9+10+11 = 66
+    let s3 = nested_sum(3, 4);
+    // for_with_break(100) = 5 (breaks when i > 5, last = 5)
+    let s4 = for_with_break(100);
+    // for_skip_odds(10) = 0+2+4+6+8 = 20
+    let s5 = for_skip_odds(10);
+    // Output: 45 + 5 + 66 + 5 + 20 = 141
+    println(s1 + s2 + s3 + s4 + s5);
+    0
+};

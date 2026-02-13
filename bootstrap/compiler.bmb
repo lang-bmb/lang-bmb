@@ -2679,8 +2679,10 @@ fn step_if_then(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: Str
     let then_label = "then_" + i2s(my_block);
     let else_label = "else_" + i2s(my_block);
     let merge_label = "merge_" + i2s(my_block);
-    let w1 = sb_push_mir(sb, "  branch %_t" + i2s(cond_id) + ", " + then_label + ", " + else_label);
-    let w2 = sb_push_mir(sb, then_label + ":");
+    let branch_text = "  branch %_t" + i2s(cond_id) + ", " + then_label + ", " + else_label;
+    let w1 = sb_push_mir(sb, branch_text);
+    let then_label_text = then_label + ":";
+    let w2 = sb_push_mir(sb, then_label_text);
     // Continue with then, then IE
     // Pass merge_label as the expected exit for then branch (will be updated by nested ifs)
     let cont = make_work7("IE", else_br, i2s(my_block), then_label, else_label, merge_label, i2s(cur_temp), then_br);
@@ -2701,8 +2703,10 @@ fn step_if_else(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: Str
     let then_id = cur_temp - 1;
     // Use the propagated exit_label from trampoline - this is the actual exit point of the then branch
     let then_exit = if cur_exit_label == "" { then_label } else { cur_exit_label };
-    let w1 = sb_push_mir(sb, "  goto " + merge_label);
-    let w2 = sb_push_mir(sb, else_label + ":");
+    let goto_text = "  goto " + merge_label;
+    let w1 = sb_push_mir(sb, goto_text);
+    let else_text = else_label + ":";
+    let w2 = sb_push_mir(sb, else_text);
     // Continue with else, then IX final
     let cont = make_work7("IX", i2s(my_block), merge_label, i2s(then_id), then_exit, i2s(cur_temp), i2s(cur_block), else_br);
     let do_else = make_work3("EX", else_br, "", "");
@@ -2722,10 +2726,13 @@ fn step_if_final(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: St
     let else_id = cur_temp - 1;
     // Use the propagated exit_label from trampoline - this is the actual exit point of the else branch
     let else_exit = if cur_exit_label == "" { "else_" + i2s(my_block) } else { cur_exit_label };
-    let w1 = sb_push_mir(sb, "  goto " + merge_label);
-    let w2 = sb_push_mir(sb, merge_label + ":");
+    let goto_text = "  goto " + merge_label;
+    let w1 = sb_push_mir(sb, goto_text);
+    let merge_text = merge_label + ":";
+    let w2 = sb_push_mir(sb, merge_text);
     let phi_tmp = "%_t" + i2s(cur_temp);
-    let w3 = sb_push_mir(sb, "  " + phi_tmp + " = phi [%_t" + i2s(then_id) + ", " + then_exit + "], [%_t" + i2s(else_id) + ", " + else_exit + "]");
+    let phi_text = "  " + phi_tmp + " = phi [%_t" + i2s(then_id) + ", " + then_exit + "], [%_t" + i2s(else_id) + ", " + else_exit + "]";
+    let w3 = sb_push_mir(sb, phi_text);
     // After if completes, exit_label is merge_label
     make_step(cur_temp + 1, cur_block, merge_label, "");
 
@@ -3035,7 +3042,8 @@ fn step_break(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: Strin
 //   "for_end_N" → "for_start_N" (for)
 fn derive_loop_start(exit_label: String) -> String =
     if exit_label.len() >= 8 and exit_label.slice(0, 8) == "for_end_" {
-        "for_start_" + exit_label.slice(8, exit_label.len())
+        // For loops: continue should jump to increment, not condition check
+        "for_inc_" + exit_label.slice(8, exit_label.len())
     } else {
         "loop_" + exit_label.slice(5, exit_label.len())
     };
@@ -3303,24 +3311,31 @@ fn lower_if_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: Str
     let then_label = "then_" + int_to_string(my_block_id);
     let else_label = "else_" + int_to_string(my_block_id);
     let merge_label = "merge_" + int_to_string(my_block_id);
-    let w1 = sb_push_mir(sb, "  branch %_t" + int_to_string(cond_id) + ", " + then_label + ", " + else_label);
-    let w2 = sb_push_mir(sb, then_label + ":");
+    let branch_text = "  branch %_t" + int_to_string(cond_id) + ", " + then_label + ", " + else_label;
+    let w1 = sb_push_mir(sb, branch_text);
+    let then_label_text = then_label + ":";
+    let w2 = sb_push_mir(sb, then_label_text);
     let then_result = lower_expr_sb(then_branch, cond_temp, my_block_id + 1, sb, loop_exit);
     let then_temp = unpack_temp(then_result);
     let then_block = unpack_block(then_result);
     let then_id = then_temp - 1;
     let then_exit = get_exit_label(then_branch, then_label, my_block_id + 1);
-    let w3 = sb_push_mir(sb, "  goto " + merge_label);
-    let w4 = sb_push_mir(sb, else_label + ":");
+    let goto_merge1 = "  goto " + merge_label;
+    let w3 = sb_push_mir(sb, goto_merge1);
+    let else_label_text = else_label + ":";
+    let w4 = sb_push_mir(sb, else_label_text);
     let else_result = lower_expr_sb(else_branch, then_temp, then_block, sb, loop_exit);
     let else_temp = unpack_temp(else_result);
     let else_block = unpack_block(else_result);
     let else_id = else_temp - 1;
     let else_exit = get_exit_label(else_branch, else_label, then_block);
-    let w5 = sb_push_mir(sb, "  goto " + merge_label);
-    let w6 = sb_push_mir(sb, merge_label + ":");
+    let goto_merge2 = "  goto " + merge_label;
+    let w5 = sb_push_mir(sb, goto_merge2);
+    let merge_label_text = merge_label + ":";
+    let w6 = sb_push_mir(sb, merge_label_text);
     let phi_tmp = "%_t" + int_to_string(else_temp);
-    let w7 = sb_push_mir(sb, "  " + phi_tmp + " = phi [%_t" + int_to_string(then_id) + ", " + then_exit + "], [%_t" + int_to_string(else_id) + ", " + else_exit + "]");
+    let phi_text = "  " + phi_tmp + " = phi [%_t" + int_to_string(then_id) + ", " + then_exit + "], [%_t" + int_to_string(else_id) + ", " + else_exit + "]";
+    let w7 = sb_push_mir(sb, phi_text);
     pack_ids(else_temp + 1, else_block);
 
 fn lower_let_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64 =
@@ -3508,26 +3523,33 @@ fn lower_while_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: 
     let body_label = "body_" + int_to_string(block_id);
     let exit_label = "exit_" + int_to_string(block_id);
     // Jump to loop header
-    let w1 = sb_push_mir(sb, "  goto " + loop_label);
-    let w2 = sb_push_mir(sb, loop_label + ":");
+    let goto_loop = "  goto " + loop_label;
+    let w1 = sb_push_mir(sb, goto_loop);
+    let loop_label_text = loop_label + ":";
+    let w2 = sb_push_mir(sb, loop_label_text);
     // Lower condition (condition doesn't need break)
     let cond_result = lower_expr_sb(cond_ast, temp_id, block_id + 1, sb, "");
     let cond_temp = unpack_temp(cond_result);
     let cond_block = unpack_block(cond_result);
     let cond_id = cond_temp - 1;
     // Branch on condition
-    let w3 = sb_push_mir(sb, "  branch %_t" + int_to_string(cond_id) + ", " + body_label + ", " + exit_label);
-    let w4 = sb_push_mir(sb, body_label + ":");
+    let branch_text = "  branch %_t" + int_to_string(cond_id) + ", " + body_label + ", " + exit_label;
+    let w3 = sb_push_mir(sb, branch_text);
+    let body_label_text = body_label + ":";
+    let w4 = sb_push_mir(sb, body_label_text);
     // Lower body - pass THIS while's exit_label so break can jump to it
     let body_result = lower_expr_sb(body_ast, cond_temp, cond_block, sb, exit_label);
     let body_temp = unpack_temp(body_result);
     let body_block = unpack_block(body_result);
     // Jump back to loop header
-    let w5 = sb_push_mir(sb, "  goto " + loop_label);
-    let w6 = sb_push_mir(sb, exit_label + ":");
+    let goto_loop2 = "  goto " + loop_label;
+    let w5 = sb_push_mir(sb, goto_loop2);
+    let exit_label_text = exit_label + ":";
+    let w6 = sb_push_mir(sb, exit_label_text);
     // While returns unit
     let result_tmp = "%_t" + int_to_string(body_temp);
-    let w7 = sb_push_mir(sb, "  " + result_tmp + " = const 0");
+    let result_text = "  " + result_tmp + " = const 0";
+    let w7 = sb_push_mir(sb, result_text);
     pack_ids(body_temp + 1, body_block);
 
 // v0.90.31: Loop expression - infinite loop with break support
@@ -3543,18 +3565,23 @@ fn lower_loop_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: S
     let loop_label = "loop_" + int_to_string(block_id);
     let exit_label = "exit_" + int_to_string(block_id);
     // Jump to loop header
-    let w1 = sb_push_mir(sb, "  goto " + loop_label);
-    let w2 = sb_push_mir(sb, loop_label + ":");
+    let goto_loop = "  goto " + loop_label;
+    let w1 = sb_push_mir(sb, goto_loop);
+    let loop_label_text = loop_label + ":";
+    let w2 = sb_push_mir(sb, loop_label_text);
     // Lower body - pass exit_label so break can jump to it
     let body_result = lower_expr_sb(body_ast, temp_id, block_id + 1, sb, exit_label);
     let body_temp = unpack_temp(body_result);
     let body_block = unpack_block(body_result);
     // Jump back to loop header (unconditional)
-    let w3 = sb_push_mir(sb, "  goto " + loop_label);
-    let w4 = sb_push_mir(sb, exit_label + ":");
+    let goto_loop2 = "  goto " + loop_label;
+    let w3 = sb_push_mir(sb, goto_loop2);
+    let exit_label_text = exit_label + ":";
+    let w4 = sb_push_mir(sb, exit_label_text);
     // Loop returns unit
     let result_tmp = "%_t" + int_to_string(body_temp);
-    let w5 = sb_push_mir(sb, "  " + result_tmp + " = const 0");
+    let result_text = "  " + result_tmp + " = const 0";
+    let w5 = sb_push_mir(sb, result_text);
     pack_ids(body_temp + 1, body_block);
 
 // v0.90.8: Break statement - jump to loop exit label
@@ -3742,35 +3769,56 @@ fn lower_for_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: St
     let end_block = unpack_block(end_result);
     let end_id = end_temp - 1;
 
-    let w2 = sb_push_mir(sb, "  goto " + for_start_lbl);
-    let w3 = sb_push_mir(sb, for_start_lbl + ":");
+    let goto_start = "  goto " + for_start_lbl;
+    let w2 = sb_push_mir(sb, goto_start);
+    let start_label_text = for_start_lbl + ":";
+    let w3 = sb_push_mir(sb, start_label_text);
 
     let load_tmp = "%_t" + int_to_string(end_temp);
-    let w4 = sb_push_mir(sb, "  " + load_tmp + " = copy %" + varname);
+    let load_text = "  " + load_tmp + " = copy %" + varname;
+    let w4 = sb_push_mir(sb, load_text);
     let cmp_tmp = "%_t" + int_to_string(end_temp + 1);
-    let w5 = sb_push_mir(sb, "  " + cmp_tmp + " = < " + load_tmp + ", %_t" + int_to_string(end_id));
-    let w6 = sb_push_mir(sb, "  branch " + cmp_tmp + ", " + for_body_lbl + ", " + for_end_lbl);
+    let cmp_text = "  " + cmp_tmp + " = < " + load_tmp + ", %_t" + int_to_string(end_id);
+    let w5 = sb_push_mir(sb, cmp_text);
+    let branch_text = "  branch " + cmp_tmp + ", " + for_body_lbl + ", " + for_end_lbl;
+    let w6 = sb_push_mir(sb, branch_text);
 
-    let w7 = sb_push_mir(sb, for_body_lbl + ":");
+    let body_label_text = for_body_lbl + ":";
+    let w7 = sb_push_mir(sb, body_label_text);
 
     // Lower body - pass THIS for's end label so break can jump to it
     let body_result = lower_expr_sb(body_ast, end_temp + 2, end_block, sb, for_end_lbl);
     let body_temp = unpack_temp(body_result);
     let body_block = unpack_block(body_result);
 
+    // for_inc_N label: continue jumps here (before increment, not for_start)
+    // Need goto before label to satisfy LLVM basic block terminator requirement
+    let for_inc_lbl = "for_inc_" + int_to_string(block_id);
+    let goto_inc = "  goto " + for_inc_lbl;
+    let w7b = sb_push_mir(sb, goto_inc);
+    let inc_label_text = for_inc_lbl + ":";
+    let w7c = sb_push_mir(sb, inc_label_text);
+
     let inc_load_tmp = "%_t" + int_to_string(body_temp);
-    let w8 = sb_push_mir(sb, "  " + inc_load_tmp + " = copy %" + varname);
+    let inc_load_text = "  " + inc_load_tmp + " = copy %" + varname;
+    let w8 = sb_push_mir(sb, inc_load_text);
     let one_tmp = "%_t" + int_to_string(body_temp + 1);
-    let w9 = sb_push_mir(sb, "  " + one_tmp + " = const 1");
+    let one_text = "  " + one_tmp + " = const 1";
+    let w9 = sb_push_mir(sb, one_text);
     let inc_tmp = "%_t" + int_to_string(body_temp + 2);
-    let w10 = sb_push_mir(sb, "  " + inc_tmp + " = + " + inc_load_tmp + ", " + one_tmp);
-    let w11 = sb_push_mir(sb, "  store %" + varname + ", " + inc_tmp);
+    let inc_text = "  " + inc_tmp + " = + " + inc_load_tmp + ", " + one_tmp;
+    let w10 = sb_push_mir(sb, inc_text);
+    let store_text = "  store %" + varname + ", " + inc_tmp;
+    let w11 = sb_push_mir(sb, store_text);
 
-    let w12 = sb_push_mir(sb, "  goto " + for_start_lbl);
+    let goto_start2 = "  goto " + for_start_lbl;
+    let w12 = sb_push_mir(sb, goto_start2);
 
-    let w13 = sb_push_mir(sb, for_end_lbl + ":");
+    let end_label_text = for_end_lbl + ":";
+    let w13 = sb_push_mir(sb, end_label_text);
     let result_tmp = "%_t" + int_to_string(body_temp + 3);
-    let w14 = sb_push_mir(sb, "  " + result_tmp + " = const 0");
+    let result_text = "  " + result_tmp + " = const 0";
+    let w14 = sb_push_mir(sb, result_text);
     pack_ids(body_temp + 4, body_block);
 
 // Extract lhs from (assign lhs rhs)
