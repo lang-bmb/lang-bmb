@@ -467,6 +467,14 @@ impl TypeChecker {
         // hashmap_free(map: i64) -> Unit (deallocate hashmap)
         functions.insert("hashmap_free".to_string(), (vec![Type::I64], Type::Unit));
 
+        // v0.90.83: String-content hashmap + cached registry lookup
+        functions.insert("str_hashmap_new".to_string(), (vec![], Type::I64));
+        functions.insert("str_hashmap_insert".to_string(), (vec![Type::I64, Type::I64, Type::I64], Type::I64));
+        functions.insert("str_hashmap_get".to_string(), (vec![Type::I64, Type::I64], Type::I64));
+        functions.insert("str_hashmap_free".to_string(), (vec![Type::I64], Type::Unit));
+        // reg_cached_lookup(reg: String, name: String, slot: i64) -> String
+        functions.insert("reg_cached_lookup".to_string(), (vec![Type::String, Type::String, Type::I64], Type::String));
+
         // v0.34.24: HashSet<i64> builtins (thin wrapper around HashMap)
         // hashset_new() -> i64 (create empty hashset)
         functions.insert("hashset_new".to_string(), (vec![], Type::I64));

@@ -647,6 +647,15 @@ impl TextCodeGen {
         writeln!(out, "declare void @hashmap_free(i64) nounwind")?;
         writeln!(out)?;
 
+        // v0.90.83: String-content hashmap + cached registry lookup
+        writeln!(out, "; Runtime declarations - String Hashmap")?;
+        writeln!(out, "declare ptr @str_hashmap_new() nounwind")?;
+        writeln!(out, "declare i64 @str_hashmap_insert(ptr, ptr, i64) nounwind")?;
+        writeln!(out, "declare i64 @str_hashmap_get(ptr, ptr) nounwind willreturn")?;
+        writeln!(out, "declare void @str_hashmap_free(ptr) nounwind")?;
+        writeln!(out, "declare ptr @reg_cached_lookup(ptr, ptr, i64) nounwind willreturn")?;
+        writeln!(out)?;
+
         Ok(())
     }
 

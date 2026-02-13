@@ -843,6 +843,29 @@ impl<'ctx> LlvmContext<'ctx> {
         let hashmap_free_fn = self.module.add_function("hashmap_free", hashmap_free_type, None);
         self.functions.insert("hashmap_free".to_string(), hashmap_free_fn);
 
+        // v0.90.83: String-content hashmap (str_hashmap) + cached registry lookup
+        let str_hashmap_new_type = ptr_type.fn_type(&[], false);
+        let str_hashmap_new_fn = self.module.add_function("str_hashmap_new", str_hashmap_new_type, None);
+        self.functions.insert("str_hashmap_new".to_string(), str_hashmap_new_fn);
+
+        let str_hashmap_insert_type = i64_type.fn_type(&[ptr_type.into(), ptr_type.into(), i64_type.into()], false);
+        let str_hashmap_insert_fn = self.module.add_function("str_hashmap_insert", str_hashmap_insert_type, None);
+        self.functions.insert("str_hashmap_insert".to_string(), str_hashmap_insert_fn);
+
+        let str_hashmap_get_type = i64_type.fn_type(&[ptr_type.into(), ptr_type.into()], false);
+        let str_hashmap_get_fn = self.module.add_function("str_hashmap_get", str_hashmap_get_type, None);
+        self.functions.insert("str_hashmap_get".to_string(), str_hashmap_get_fn);
+
+        let str_hashmap_free_type = void_type.fn_type(&[ptr_type.into()], false);
+        let str_hashmap_free_fn = self.module.add_function("str_hashmap_free", str_hashmap_free_type, None);
+        self.functions.insert("str_hashmap_free".to_string(), str_hashmap_free_fn);
+
+        // reg_cached_lookup(reg: ptr, name: ptr, slot: i64) -> ptr
+        let reg_cached_lookup_type = ptr_type.fn_type(&[ptr_type.into(), ptr_type.into(), i64_type.into()], false);
+        let reg_cached_lookup_fn = self.module.add_function("reg_cached_lookup", reg_cached_lookup_type, None);
+        self.functions.insert("reg_cached_lookup".to_string(), reg_cached_lookup_fn);
+        self.function_return_types.insert("reg_cached_lookup".to_string(), MirType::String);
+
         // v0.60.246: String-key hashmap functions (strmap_*)
         // strmap_new() -> i64 (returns handle)
         let strmap_new_type = i64_type.fn_type(&[], false);

@@ -1133,6 +1133,59 @@ int64_t str_hashmap_get(int64_t handle, int64_t key) {
     return 0;
 }
 
+// v0.90.83: Cached registry lookup for type checker performance
+// Parses "name1=value1;name2=value2;..." into StrHashMap, caches by slot
+// 3 cache slots: 0=fn_reg, 1=struct_reg, 2=enum_reg
+#define REG_CACHE_SLOTS 3
+static StrHashMap* g_reg_caches[REG_CACHE_SLOTS] = {NULL, NULL, NULL};
+static int64_t g_reg_cache_lens[REG_CACHE_SLOTS] = {-1, -1, -1};
+
+// Returns BmbString* (ptr) for the looked-up value, or empty string if not found
+BmbString* reg_cached_lookup(const BmbString* reg, const BmbString* name, int64_t slot) {
+    if (!reg || reg->len == 0 || slot < 0 || slot >= REG_CACHE_SLOTS) {
+        return bmb_string_new("", 0);
+    }
+
+    // Cache invalidation: registry only grows, so length change = content change
+    if (g_reg_caches[slot] == NULL || reg->len != g_reg_cache_lens[slot]) {
+        // Rebuild cache
+        if (g_reg_caches[slot]) {
+            str_hashmap_free((int64_t)g_reg_caches[slot]);
+        }
+        int64_t map = str_hashmap_new();
+        g_reg_cache_lens[slot] = reg->len;
+
+        // Parse "name=sig;name=sig;..."
+        const char* d = reg->data;
+        int64_t pos = 0;
+        while (pos < reg->len) {
+            // Find '=' (ASCII 61)
+            int64_t eq = pos;
+            while (eq < reg->len && d[eq] != '=') eq++;
+            if (eq >= reg->len) break;
+
+            // Find ';' (ASCII 59) or end
+            int64_t semi = eq + 1;
+            while (semi < reg->len && d[semi] != ';') semi++;
+
+            // Create key and value as BmbStrings
+            BmbString* key = bmb_string_new(d + pos, eq - pos);
+            BmbString* val = bmb_string_new(d + eq + 1, semi - eq - 1);
+            str_hashmap_insert(map, (int64_t)key, (int64_t)val);
+
+            pos = (semi < reg->len) ? semi + 1 : reg->len;
+        }
+
+        g_reg_caches[slot] = (StrHashMap*)map;
+    }
+
+    int64_t result = str_hashmap_get((int64_t)g_reg_caches[slot], (int64_t)name);
+    if (result == 0) {
+        return bmb_string_new("", 0);
+    }
+    return (BmbString*)result;
+}
+
 // v0.46: Additional file functions
 int64_t bmb_file_size(const char* path) {
     FILE* f = fopen(path, "rb");
