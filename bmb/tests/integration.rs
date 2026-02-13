@@ -23127,3 +23127,93 @@ fn test_array_position_missing() {
     assert_eq!(run_program_i64(source), -1);
 }
 
+// ===== Cycle 405: Bool, Char, Tuple runtime tests =====
+
+#[test]
+fn test_bool_then_fn_true() {
+    let source = r#"
+        fn main() -> i64 = true.then_fn(fn || { 42 }).unwrap_or(0);
+    "#;
+    assert_eq!(run_program_i64(source), 42);
+}
+
+#[test]
+fn test_bool_then_fn_false() {
+    let source = r#"
+        fn main() -> i64 = false.then_fn(fn || { 42 }).unwrap_or(0);
+    "#;
+    assert_eq!(run_program_i64(source), 0);
+}
+
+#[test]
+fn test_char_is_control_true() {
+    assert_eq!(
+        run_program("fn main() -> bool = '\\n'.is_control();"),
+        Value::Bool(true)
+    );
+}
+
+#[test]
+fn test_char_is_control_false() {
+    assert_eq!(
+        run_program("fn main() -> bool = 'a'.is_control();"),
+        Value::Bool(false)
+    );
+}
+
+#[test]
+fn test_char_is_ascii_punctuation_true() {
+    assert_eq!(
+        run_program("fn main() -> bool = '!'.is_ascii_punctuation();"),
+        Value::Bool(true)
+    );
+}
+
+#[test]
+fn test_char_is_ascii_punctuation_false() {
+    assert_eq!(
+        run_program("fn main() -> bool = 'a'.is_ascii_punctuation();"),
+        Value::Bool(false)
+    );
+}
+
+#[test]
+fn test_tuple_swap_runtime() {
+    assert_eq!(
+        run_program_i64(r#"fn main() -> i64 = (1, 2).swap().first();"#),
+        2
+    );
+}
+
+#[test]
+fn test_tuple_swap_last() {
+    assert_eq!(
+        run_program_i64(r#"fn main() -> i64 = (10, 20).swap().last();"#),
+        10
+    );
+}
+
+#[test]
+fn test_tuple_to_array_runtime() {
+    assert_eq!(
+        run_program_i64(r#"fn main() -> i64 = (3, 7, 11).to_array().len();"#),
+        3
+    );
+}
+
+#[test]
+fn test_tuple_contains_runtime_true() {
+    assert_eq!(
+        run_program("fn main() -> bool = (1, 2, 3).contains(2);"),
+        Value::Bool(true)
+    );
+}
+
+#[test]
+fn test_tuple_contains_runtime_false() {
+    assert_eq!(
+        run_program("fn main() -> bool = (1, 2, 3).contains(9);"),
+        Value::Bool(false)
+    );
+}
+
