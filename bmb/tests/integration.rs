@@ -23791,3 +23791,94 @@ fn main() -> String = {
     );
 }
 
+// ============================================
+// Cycle 486: set var = expr (variable mutation)
+// ============================================
+
+#[test]
+fn test_set_var_basic() {
+    // Basic set var = expr
+    assert_eq!(
+        run_program_i64(
+            "fn main() -> i64 = {
+                let mut x: i64 = 10;
+                set x = 42;
+                x
+            };"
+        ),
+        42
+    );
+}
+
+#[test]
+fn test_set_var_multiple() {
+    // Multiple set operations on same variable
+    assert_eq!(
+        run_program_i64(
+            "fn main() -> i64 = {
+                let mut x: i64 = 0;
+                set x = 1;
+                set x = x + 2;
+                set x = x * 3;
+                x
+            };"
+        ),
+        9 // 0->1->3->9
+    );
+}
+
+#[test]
+fn test_set_var_in_while_loop() {
+    // Accumulation with set in while loop
+    assert_eq!(
+        run_program_i64(
+            "fn main() -> i64 = {
+                let mut sum: i64 = 0;
+                let mut i: i64 = 0;
+                while i < 10 {
+                    set sum = sum + i;
+                    set i = i + 1
+                };
+                sum
+            };"
+        ),
+        45 // 0+1+...+9
+    );
+}
+
+#[test]
+fn test_set_var_in_for_loop() {
+    // Accumulation with set in for range loop
+    assert_eq!(
+        run_program_i64(
+            "fn main() -> i64 = {
+                let mut sum: i64 = 0;
+                for i in 0..10 {
+                    set sum = sum + i
+                };
+                sum
+            };"
+        ),
+        45
+    );
+}
+
+#[test]
+fn test_set_var_conditional() {
+    // Conditional set inside loop
+    assert_eq!(
+        run_program_i64(
+            "fn main() -> i64 = {
+                let mut even_sum: i64 = 0;
+                let mut i: i64 = 0;
+                while i < 10 {
+                    set even_sum = if i % 2 == 0 { even_sum + i } else { even_sum };
+                    set i = i + 1
+                };
+                even_sum
+            };"
+        ),
+        20 // 0+2+4+6+8
+    );
+}
+

@@ -1273,8 +1273,13 @@ BlockExpr: Expr = {
     // v0.90.22: Early return with value
     "return" <e:SpannedImpliesExpr> => Expr::Return { value: Some(Box::new(e)) },
     // set (store assignment)
+    // v0.90.101: Added Expr::Var case for set var = expr (mutable variable reassignment)
     "set" <lhs:SpannedUnaryExpr> "=" <rhs:SpannedExpr> => {
         match lhs.node {
+            Expr::Var(name) => Expr::Assign {
+                name,
+                value: Box::new(rhs),
+            },
             Expr::Index { expr, index } => Expr::IndexAssign {
                 array: expr,
                 index,
@@ -1289,7 +1294,7 @@ BlockExpr: Expr = {
                 ptr,
                 value: Box::new(rhs),
             },
-            other => panic!("Expected index, field access, or dereference after 'set', got {:?}", other),
+            other => panic!("Expected variable, index, field access, or dereference after 'set', got {:?}", other),
         }
     },
     // if-else (v0.89.6: BlockStmt sequences in branches, Cycle 52)
@@ -1421,8 +1426,13 @@ Expr: Expr = {
     // v0.51.23: Store assignment expression using 'set' keyword
     // Allows set to appear in any expression context (e.g., after let body)
     // v0.60.21: Changed to SpannedUnaryExpr to support dereference: set *p = value
+    // v0.90.101: Added Expr::Var case for set var = expr (mutable variable reassignment)
     "set" <lhs:SpannedUnaryExpr> "=" <rhs:SpannedExpr> => {
         match lhs.node {
+            Expr::Var(name) => Expr::Assign {
+                name,
+                value: Box::new(rhs),
+            },
             Expr::Index { expr, index } => Expr::IndexAssign {
                 array: expr,
                 index,
@@ -1438,7 +1448,7 @@ Expr: Expr = {
                 ptr,
                 value: Box::new(rhs),
             },
-            other => panic!("Expected index, field access, or dereference after 'set', got {:?}", other),
+            other => panic!("Expected variable, index, field access, or dereference after 'set', got {:?}", other),
         }
     },
     // v0.32: Braced if-else syntax (Rust style)
