@@ -22243,3 +22243,89 @@ fn test_pipeline_for_in_with_conditional() {
          };"
     ), 9); // 4 + 5
 }
+
+// ===== Cycle 386: Identity operation detection lint =====
+
+#[test]
+fn test_identity_add_zero_right() {
+    assert!(has_warning_kind(
+        "fn main() -> i64 = { let x = 5; x + 0 };",
+        "identity_operation"
+    ));
+}
+
+#[test]
+fn test_identity_add_zero_left() {
+    assert!(has_warning_kind(
+        "fn main() -> i64 = { let x = 5; 0 + x };",
+        "identity_operation"
+    ));
+}
+
+#[test]
+fn test_identity_sub_zero() {
+    assert!(has_warning_kind(
+        "fn main() -> i64 = { let x = 5; x - 0 };",
+        "identity_operation"
+    ));
+}
+
+#[test]
+fn test_identity_mul_one_right() {
+    assert!(has_warning_kind(
+        "fn main() -> i64 = { let x = 5; x * 1 };",
+        "identity_operation"
+    ));
+}
+
+#[test]
+fn test_identity_mul_one_left() {
+    assert!(has_warning_kind(
+        "fn main() -> i64 = { let x = 5; 1 * x };",
+        "identity_operation"
+    ));
+}
+
+#[test]
+fn test_identity_div_one() {
+    assert!(has_warning_kind(
+        "fn main() -> i64 = { let x = 5; x / 1 };",
+        "identity_operation"
+    ));
+}
+
+#[test]
+fn test_no_identity_sub_from_zero() {
+    // 0 - x is NOT identity (it's negation)
+    assert!(!has_warning_kind(
+        "fn main() -> i64 = { let x = 5; 0 - x };",
+        "identity_operation"
+    ));
+}
+
+#[test]
+fn test_no_identity_div_into_one() {
+    // 1 / x is NOT identity
+    assert!(!has_warning_kind(
+        "fn main() -> i64 = { let x = 5; 1 / x };",
+        "identity_operation"
+    ));
+}
+
+#[test]
+fn test_no_identity_normal_add() {
+    // x + 3 is not identity
+    assert!(!has_warning_kind(
+        "fn main() -> i64 = { let x = 5; x + 3 };",
+        "identity_operation"
+    ));
+}
+
+#[test]
+fn test_no_identity_normal_mul() {
+    // x * 2 is not identity
+    assert!(!has_warning_kind(
+        "fn main() -> i64 = { let x = 5; x * 2 };",
+        "identity_operation"
+    ));
+}

@@ -200,6 +200,13 @@ pub enum CompileWarning {
         span: Span,
     },
 
+    /// v0.90.139: Identity operation (x + 0, x * 1, x - 0, x / 1)
+    /// Expression has no effect and can be simplified
+    IdentityOperation {
+        expr: String,
+        span: Span,
+    },
+
     /// Generic warning with span
     Generic {
         message: String,
@@ -427,6 +434,11 @@ impl CompileWarning {
         }
     }
 
+    /// v0.90.139: Create an identity operation warning
+    pub fn identity_operation(expr: impl Into<String>, span: Span) -> Self {
+        Self::IdentityOperation { expr: expr.into(), span }
+    }
+
     /// Get the span of this warning, if any
     pub fn span(&self) -> Option<Span> {
         match self {
@@ -457,6 +469,7 @@ impl CompileWarning {
             Self::UnusedReturnValue { span, .. } => Some(*span),
             Self::NonSnakeCaseFunction { span, .. } => Some(*span),
             Self::NonPascalCaseType { span, .. } => Some(*span),
+            Self::IdentityOperation { span, .. } => Some(*span),
             Self::Generic { span, .. } => *span,
         }
     }
@@ -551,6 +564,9 @@ impl CompileWarning {
             Self::UnusedReturnValue { func, .. } => {
                 format!("return value of `{}` is unused", func)
             }
+            Self::IdentityOperation { expr, .. } => {
+                format!("identity operation `{}` has no effect", expr)
+            }
             Self::Generic { message, .. } => message.clone(),
         }
     }
@@ -585,6 +601,7 @@ impl CompileWarning {
             Self::DuplicateMatchArm { .. } => "duplicate_match_arm",
             Self::IntDivisionTruncation { .. } => "int_division_truncation",
             Self::UnusedReturnValue { .. } => "unused_return_value",
+            Self::IdentityOperation { .. } => "identity_operation",
             Self::Generic { .. } => "warning",
         }
     }

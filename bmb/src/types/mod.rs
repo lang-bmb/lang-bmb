@@ -1672,6 +1672,31 @@ impl TypeChecker {
                     self.add_warning(CompileWarning::int_division_truncation(*l, *r, span));
                 }
 
+                // v0.90.139: Detect identity operations (x + 0, 0 + x, x - 0, x * 1, 1 * x, x / 1)
+                {
+                    let is_identity = match op {
+                        BinOp::Add => {
+                            matches!(&left.node, Expr::IntLit(0)) || matches!(&right.node, Expr::IntLit(0))
+                        }
+                        BinOp::Sub => matches!(&right.node, Expr::IntLit(0)),
+                        BinOp::Mul => {
+                            matches!(&left.node, Expr::IntLit(1)) || matches!(&right.node, Expr::IntLit(1))
+                        }
+                        BinOp::Div => matches!(&right.node, Expr::IntLit(1)),
+                        _ => false,
+                    };
+                    if is_identity {
+                        let expr_str = match (&left.node, &right.node) {
+                            (Expr::IntLit(l), Expr::IntLit(r)) => format!("{l} {op} {r}"),
+                            (Expr::IntLit(l), Expr::Var(r)) => format!("{l} {op} {r}"),
+                            (Expr::Var(l), Expr::IntLit(r)) => format!("{l} {op} {r}"),
+                            (Expr::Var(l), Expr::Var(r)) => format!("{l} {op} {r}"),
+                            _ => format!("... {op} ..."),
+                        };
+                        self.add_warning(CompileWarning::identity_operation(expr_str, span));
+                    }
+                }
+
                 // v0.90.129: Detect redundant boolean comparison (x == true, x != false, etc.)
                 if matches!(op, BinOp::Eq | BinOp::Ne) {
                     let bool_val = match (&left.node, &right.node) {
