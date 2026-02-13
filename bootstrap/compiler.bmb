@@ -3019,11 +3019,14 @@ fn step_set_field_final(item: String, cur_temp: i64, cur_block: i64, cur_exit_la
 // v0.90.8: Break statement step handler for iterative lowerer
 // cur_exit_label should contain the while/for exit label
 fn step_break(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String =
-    let w1 = sb_push_mir(sb, "  goto " + cur_exit_label);
+    let goto_text = "  goto " + cur_exit_label;
+    let w1 = sb_push_mir(sb, goto_text);
     let after_label = "after_break_" + i2s(cur_block);
-    let w2 = sb_push_mir(sb, after_label + ":");
+    let label_text = after_label + ":";
+    let w2 = sb_push_mir(sb, label_text);
     let tmp = "%_t" + i2s(cur_temp);
-    let w3 = sb_push_mir(sb, "  " + tmp + " = const 0");
+    let const_text = "  " + tmp + " = const 0";
+    let w3 = sb_push_mir(sb, const_text);
     make_step(cur_temp + 1, cur_block, cur_exit_label, "");
 
 // v0.90.31: Continue statement - jump to loop header
@@ -3039,11 +3042,14 @@ fn derive_loop_start(exit_label: String) -> String =
 
 fn step_continue(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String =
     let loop_label = derive_loop_start(cur_exit_label);
-    let w1 = sb_push_mir(sb, "  goto " + loop_label);
+    let goto_text = "  goto " + loop_label;
+    let w1 = sb_push_mir(sb, goto_text);
     let after_label = "after_continue_" + i2s(cur_block);
-    let w2 = sb_push_mir(sb, after_label + ":");
+    let label_text = after_label + ":";
+    let w2 = sb_push_mir(sb, label_text);
     let tmp = "%_t" + i2s(cur_temp);
-    let w3 = sb_push_mir(sb, "  " + tmp + " = const 0");
+    let const_text = "  " + tmp + " = const 0";
+    let w3 = sb_push_mir(sb, const_text);
     make_step(cur_temp + 1, cur_block, cur_exit_label, "");
 
 // v0.90.31: Return expression - work-list handler
@@ -3054,9 +3060,11 @@ fn step_return(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: Stri
         // Bare return
         let w1 = sb_push_mir(sb, "  return");
         let after_label = "after_return_" + i2s(cur_block);
-        let w2 = sb_push_mir(sb, after_label + ":");
+        let label_text = after_label + ":";
+        let w2 = sb_push_mir(sb, label_text);
         let tmp = "%_t" + i2s(cur_temp);
-        let w3 = sb_push_mir(sb, "  " + tmp + " = const 0");
+        let const_text = "  " + tmp + " = const 0";
+        let w3 = sb_push_mir(sb, const_text);
         make_step(cur_temp + 1, cur_block, cur_exit_label, "")
     } else {
         // Return with value - lower the value first (EX), then emit return (RV)
@@ -3068,11 +3076,14 @@ fn step_return(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: Stri
 // v0.90.31: Return value continuation - after lowering the value expression
 fn step_return_value(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String =
     let result_id = cur_temp - 1;
-    let w1 = sb_push_mir(sb, "  return %_t" + i2s(result_id));
+    let ret_text = "  return %_t" + i2s(result_id);
+    let w1 = sb_push_mir(sb, ret_text);
     let after_label = "after_return_" + i2s(cur_block);
-    let w2 = sb_push_mir(sb, after_label + ":");
+    let label_text = after_label + ":";
+    let w2 = sb_push_mir(sb, label_text);
     let tmp = "%_t" + i2s(cur_temp);
-    let w3 = sb_push_mir(sb, "  " + tmp + " = const 0");
+    let const_text = "  " + tmp + " = const 0";
+    let w3 = sb_push_mir(sb, const_text);
     make_step(cur_temp + 1, cur_block, cur_exit_label, "");
 
 // v0.90.9: Recursive: cast_ptr_f64 - evaluate inner and emit marker
@@ -3549,13 +3560,16 @@ fn lower_loop_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: S
 // v0.90.8: Break statement - jump to loop exit label
 // AST: (break) → MIR: goto <exit_label> + unreachable block
 fn lower_break_sb(loop_exit: String, temp_id: i64, block_id: i64, sb: i64) -> i64 =
-    let w1 = sb_push_mir(sb, "  goto " + loop_exit);
+    let goto_text = "  goto " + loop_exit;
+    let w1 = sb_push_mir(sb, goto_text);
     // Start unreachable block for code after break (required for LLVM IR validity)
     let after_label = "after_break_" + int_to_string(block_id);
-    let w2 = sb_push_mir(sb, after_label + ":");
+    let label_text = after_label + ":";
+    let w2 = sb_push_mir(sb, label_text);
     // Return unit value in unreachable block
     let tmp = "%_t" + int_to_string(temp_id);
-    let w3 = sb_push_mir(sb, "  " + tmp + " = const 0");
+    let const_text = "  " + tmp + " = const 0";
+    let w3 = sb_push_mir(sb, const_text);
     pack_ids(temp_id + 1, block_id);
 
 // v0.90.31: Continue statement - jump to loop header
@@ -3563,13 +3577,16 @@ fn lower_break_sb(loop_exit: String, temp_id: i64, block_id: i64, sb: i64) -> i6
 // AST: (continue) → MIR: goto <loop_label> + unreachable block
 fn lower_continue_sb(loop_exit: String, temp_id: i64, block_id: i64, sb: i64) -> i64 =
     let loop_label = derive_loop_start(loop_exit);
-    let w1 = sb_push_mir(sb, "  goto " + loop_label);
+    let goto_text = "  goto " + loop_label;
+    let w1 = sb_push_mir(sb, goto_text);
     // Start unreachable block for code after continue
     let after_label = "after_continue_" + int_to_string(block_id);
-    let w2 = sb_push_mir(sb, after_label + ":");
+    let label_text = after_label + ":";
+    let w2 = sb_push_mir(sb, label_text);
     // Return unit value in unreachable block
     let tmp = "%_t" + int_to_string(temp_id);
-    let w3 = sb_push_mir(sb, "  " + tmp + " = const 0");
+    let const_text = "  " + tmp + " = const 0";
+    let w3 = sb_push_mir(sb, const_text);
     pack_ids(temp_id + 1, block_id);
 
 // v0.90.31: Return expression - recursive lowering path
@@ -3579,9 +3596,11 @@ fn lower_return_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit:
         // Bare return: (return)
         let w1 = sb_push_mir(sb, "  return");
         let after_label = "after_return_" + int_to_string(block_id);
-        let w2 = sb_push_mir(sb, after_label + ":");
+        let label_text = after_label + ":";
+        let w2 = sb_push_mir(sb, label_text);
         let tmp = "%_t" + int_to_string(temp_id);
-        let w3 = sb_push_mir(sb, "  " + tmp + " = const 0");
+        let const_text = "  " + tmp + " = const 0";
+        let w3 = sb_push_mir(sb, const_text);
         pack_ids(temp_id + 1, block_id)
     } else {
         // Return with value: (return expr)
@@ -3590,11 +3609,14 @@ fn lower_return_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit:
         let val_temp = unpack_temp(result);
         let val_block = unpack_block(result);
         let val_id = val_temp - 1;
-        let w1 = sb_push_mir(sb, "  return %_t" + int_to_string(val_id));
+        let ret_text = "  return %_t" + int_to_string(val_id);
+        let w1 = sb_push_mir(sb, ret_text);
         let after_label = "after_return_" + int_to_string(val_block);
-        let w2 = sb_push_mir(sb, after_label + ":");
+        let label_text = after_label + ":";
+        let w2 = sb_push_mir(sb, label_text);
         let tmp = "%_t" + int_to_string(val_temp);
-        let w3 = sb_push_mir(sb, "  " + tmp + " = const 0");
+        let const_text = "  " + tmp + " = const 0";
+        let w3 = sb_push_mir(sb, const_text);
         pack_ids(val_temp + 1, val_block)
     };
 

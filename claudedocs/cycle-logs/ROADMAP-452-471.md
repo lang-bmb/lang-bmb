@@ -6,13 +6,14 @@
 > **Key directive from user**: Rust test additions are unnecessary once self-hosting is complete.
 > Focus ALL effort on bootstrap/self-hosting development, not Rust-side testing.
 
-## Current State (v0.90.81, Cycle 451)
+## Current State (v0.90.83, Cycle 453)
 - Tests: 5,229 ALL PASSING
-- Bootstrap: 3-Stage Fixed Point achieved
+- Bootstrap: 3-Stage Fixed Point achieved (67,142 lines)
 - All 20 bootstrap .bmb files parse with Stage 1
 - 7 bootstrap files compile to native executables
-- Performance: bootstrap ~6x slower than Rust (type checker = 99.7%)
-- Outstanding: Nullable T?, closure capture native, type checker perf
+- Performance: bootstrap ~6x slower than Rust
+- Infrastructure: str_hashmap + reg_cached_lookup in C runtime
+- Outstanding: while loops, struct assignment, enum variants, closure capture
 
 ## Strategy: Self-Hosting Priority
 
@@ -22,39 +23,38 @@ Current:  Rust compiler → compiler.bmb → Stage 1 → Stage 2 (fixed point)
 Goal:     Golden binary → compiler.bmb → compiler (no Rust needed)
 ```
 
-Remaining gaps for arbitrary program compilation:
-1. **Type checker performance** — 6x slower, need hash-based lookup
-2. **while loop codegen** — bootstrap handles recursive style, while loops needed for general programs
-3. **Struct/enum codegen** — partially done in bootstrap
-4. **BMB-level test suite** — replace Rust tests with BMB self-tests
+### Key Architectural Insight (Cycle 453)
+- `compiler.bmb` does parsing + lowering + codegen (NO type checking)
+- `types.bmb` is a standalone type checker, not integrated into the bootstrap pipeline
+- Performance bottleneck is in the Rust compiler's type checker, not the bootstrap
+- Phase A (type checker perf) reprioritized: infrastructure built but deferred until types.bmb integration
 
-## Phase A: Type Checker Performance (Cycles 452-457)
-Focus: Replace string-based O(n²) lookup with hash-based O(1) lookup in types.bmb
+## Phase A: Type Checker Infrastructure (Cycles 452-453) ✅ COMPLETED
+- ✅ Cycle 452: str_hashmap runtime + bottleneck analysis
+- ✅ Cycle 453: reg_cached_lookup + Rust compiler integration
+- Remaining type checker optimization deferred to future types.bmb integration
 
-- Cycle 452: Research — analyze env_lookup bottleneck, design hashmap strategy
-- Cycle 453: Implement hashmap-based env_lookup in types.bmb
-- Cycle 454: Migrate struct/fn/enum/trait registries to hashmap
-- Cycle 455: Benchmark — measure improvement, verify fixed point
-- Cycle 456: Arena memory optimization — reduce >4GB requirement
-- Cycle 457: Performance parity verification — target ≤2x vs Rust
-
-## Phase B: BMB Self-Test Infrastructure (Cycles 458-462)
-Focus: Build test runner in BMB that replaces need for Rust tests
-
-- Cycle 458: Design BMB test runner architecture
-- Cycle 459: Implement test discovery + execution in BMB
-- Cycle 460: Port core compiler tests to BMB self-tests
-- Cycle 461: Port optimization tests to BMB self-tests
-- Cycle 462: Integration: bootstrap compiles + runs its own tests
-
-## Phase C: Bootstrap Feature Gaps (Cycles 463-467)
+## Phase B: Bootstrap Feature Gaps (Cycles 454-462)
 Focus: Enable bootstrap to compile more general BMB programs
 
-- Cycle 463: while loop codegen in bootstrap
-- Cycle 464: break/continue in bootstrap codegen
-- Cycle 465: Struct field assignment codegen
-- Cycle 466: Enum variant construction/matching
-- Cycle 467: Comprehensive program compilation test
+- Cycle 454: while loop codegen in bootstrap
+- Cycle 455: break/continue in bootstrap codegen
+- Cycle 456: Struct field assignment codegen
+- Cycle 457: Enum variant construction/matching
+- Cycle 458: Trait/impl dispatch codegen
+- Cycle 459: Nullable T? codegen (match Some/None)
+- Cycle 460: Closure capture in native codegen
+- Cycle 461: for-in loop codegen
+- Cycle 462: Comprehensive program compilation test
+
+## Phase C: BMB Self-Test Infrastructure (Cycles 463-467)
+Focus: Build test runner in BMB that replaces need for Rust tests
+
+- Cycle 463: Design BMB test runner architecture
+- Cycle 464: Implement test discovery + execution in BMB
+- Cycle 465: Port core compiler tests to BMB self-tests
+- Cycle 466: Port optimization tests to BMB self-tests
+- Cycle 467: Integration: bootstrap compiles + runs its own tests
 
 ## Phase D: Verification + Golden Binary (Cycles 468-471)
 Focus: Verify end-to-end, update golden binary
