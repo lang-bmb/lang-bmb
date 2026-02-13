@@ -1321,9 +1321,12 @@ fn gen_method_dispatch(dest: String, recv: String, method: String, args: String)
     // v0.50.53: Fixed byte_at naming (was incorrectly char_at)
     if method == "len" { gen_method_len(dest, recv) } else if method == "byte_at" { gen_method_byte_at(dest, recv, args) } else if method == "slice" { gen_method_slice(dest, recv, args) } else if method == "concat" { gen_method_concat(dest, recv, args) } else if method == "eq" { gen_method_eq(dest, recv, args) } else if method == "array_len" { gen_method_array_len(dest, recv) } else if method == "array_get" { gen_method_array_get(dest, recv, args) } else if method == "array_set" { gen_method_array_set(dest, recv, args) } else if method == "array_push" { gen_method_array_push(dest, recv, args) } else if method == "array_pop" { gen_method_array_pop(dest, recv) } else if method == "array_clear" { gen_method_array_clear(dest, recv) } else { "; unsupported method: " + method };
 
-// v0.30.74: String.len() -> call @bmb_string_len
+// v0.30.74: String.len() -> GEP to field 1 of {ptr, i64, i64} + load
+// v0.90.72: Inlined — was call @bmb_string_len, now direct struct field access
 fn gen_method_len(dest: String, recv: String) -> String =
-    dest + " = call i64 @bmb_string_len(i8* " + recv + ")";
+    let lp = dest + "_lp";
+    lp + " = getelementptr {ptr, i64, i64}, ptr " + recv + ", i32 0, i32 1" +
+    "|" + dest + " = load i64, ptr " + lp;
 
 // v0.30.75: String.byte_at(idx) -> GEP into BmbString struct + load + zext
 // v0.90.71: Fixed to use opaque ptr, {ptr, i64, i64} struct layout, zext (not sext)
@@ -2656,9 +2659,9 @@ fn test_method_call_ir() -> i64 =
     let m1 = parse_method_call_method("  %_t1 = MethodCall %_t0.len()");
     let t5 = if m1 == "len" { 1 } else { 0 };
 
-    // Test 6: gen_method_len generates call to @bmb_string_len
+    // Test 6: gen_method_len generates struct GEP to field 1
     let len1 = gen_method_len("%_t1", "%_t0");
-    let t6 = if has_pattern(len1, "@bmb_string_len", 0) { 1 } else { 0 };
+    let t6 = if has_pattern(len1, "getelementptr {ptr, i64, i64}", 0) { 1 } else { 0 };
 
     // Test 7: gen_method_byte_at generates struct GEP for {ptr, i64, i64}
     let ca1 = gen_method_byte_at("%_t2", "%_t0", "%_t1");
@@ -2847,9 +2850,9 @@ fn test_method_dispatch_edge() -> i64 =
     // Test 2: Unsupported method includes method name in comment
     let t2 = if has_pattern(um1, "unknown_method", 0) { 1 } else { 0 };
 
-    // Test 3: Method dispatch with empty args for len
+    // Test 3: Method dispatch with empty args for len (now inlined)
     let d1 = gen_method_dispatch("%_t2", "%str", "len", "");
-    let t3 = if has_pattern(d1, "@bmb_string_len", 0) { 1 } else { 0 };
+    let t3 = if has_pattern(d1, "getelementptr {ptr, i64, i64}", 0) { 1 } else { 0 };
 
     // Test 4: Method dispatch with single arg for byte_at
     let d2 = gen_method_dispatch("%_t3", "%str", "byte_at", "%idx");

@@ -4466,6 +4466,10 @@ fn llvm_gen_call(line: String, pos: i64, dest: String) -> String =
         let str_arg = trim_end(args.slice(0, comma));
         let idx_arg = trim(args.slice(comma + 1, args.len()));
         "  " + dest + "_str = inttoptr i64 " + str_arg + " to ptr|  " + dest + "_dpp = getelementptr {ptr, i64, i64}, ptr " + dest + "_str, i32 0, i32 0|  " + dest + "_dp = load ptr, ptr " + dest + "_dpp|  " + dest + "_bp = getelementptr i8, ptr " + dest + "_dp, i64 " + idx_arg + "|  " + dest + "_b = load i8, ptr " + dest + "_bp|  " + dest + " = zext i8 " + dest + "_b to i64"
+    } else if fn_name == "@bmb_string_len" {
+        // v0.90.72: Inline string.len() as GEP+load — field 1 of {ptr, i64, i64}
+        let str_arg = trim_end(line.slice(paren_pos + 1, close_pos));
+        "  " + dest + "_str = inttoptr i64 " + str_arg + " to ptr|  " + dest + "_lp = getelementptr {ptr, i64, i64}, ptr " + dest + "_str, i32 0, i32 1|  " + dest + " = load i64, ptr " + dest + "_lp"
     } else {
     let emitted_fn = map_runtime_fn(fn_name);
     let args = line.slice(paren_pos + 1, close_pos);
@@ -4528,6 +4532,10 @@ fn llvm_gen_call_reg(line: String, pos: i64, dest: String, registry: String) -> 
         let str_arg = trim_end(args.slice(0, comma));
         let idx_arg = trim(args.slice(comma + 1, args.len()));
         "  " + dest + "_str = inttoptr i64 " + str_arg + " to ptr|  " + dest + "_dpp = getelementptr {ptr, i64, i64}, ptr " + dest + "_str, i32 0, i32 0|  " + dest + "_dp = load ptr, ptr " + dest + "_dpp|  " + dest + "_bp = getelementptr i8, ptr " + dest + "_dp, i64 " + idx_arg + "|  " + dest + "_b = load i8, ptr " + dest + "_bp|  " + dest + " = zext i8 " + dest + "_b to i64"
+    } else if fn_name == "@bmb_string_len" {
+        // v0.90.72: Inline string.len() as GEP+load — field 1 of {ptr, i64, i64}
+        let str_arg = trim_end(line.slice(paren_pos + 1, close_pos));
+        "  " + dest + "_str = inttoptr i64 " + str_arg + " to ptr|  " + dest + "_lp = getelementptr {ptr, i64, i64}, ptr " + dest + "_str, i32 0, i32 1|  " + dest + " = load i64, ptr " + dest + "_lp"
     } else {
     let emitted_fn = map_runtime_fn(fn_name);
     let args = line.slice(paren_pos + 1, close_pos);
