@@ -1673,6 +1673,7 @@ impl TypeChecker {
                 }
 
                 // v0.90.139: Detect identity operations (x + 0, 0 + x, x - 0, x * 1, 1 * x, x / 1)
+                // v0.90.141: Detect absorbing elements (x * 0, 0 * x → 0; x % 1 → 0)
                 {
                     let is_identity = match op {
                         BinOp::Add => {
@@ -1685,46 +1686,18 @@ impl TypeChecker {
                         BinOp::Div => matches!(&right.node, Expr::IntLit(1)),
                         _ => false,
                     };
-                    if is_identity {
-                        let expr_str = match (&left.node, &right.node) {
-                            (Expr::IntLit(l), Expr::IntLit(r)) => format!("{l} {op} {r}"),
-                            (Expr::IntLit(l), Expr::Var(r)) => format!("{l} {op} {r}"),
-                            (Expr::Var(l), Expr::IntLit(r)) => format!("{l} {op} {r}"),
-                            (Expr::Var(l), Expr::Var(r)) => format!("{l} {op} {r}"),
-                            _ => format!("... {op} ..."),
-                        };
-                        self.add_warning(CompileWarning::identity_operation(expr_str, span));
-                    }
-                }
-
-                // v0.90.141: Detect absorbing elements (x * 0, 0 * x → 0; x % 1 → 0)
-                {
                     let absorb = match op {
-                        BinOp::Mul => {
-                            if matches!(&left.node, Expr::IntLit(0)) || matches!(&right.node, Expr::IntLit(0)) {
-                                Some("0")
-                            } else {
-                                None
-                            }
-                        }
-                        BinOp::Mod => {
-                            if matches!(&right.node, Expr::IntLit(1)) {
-                                Some("0")
-                            } else {
-                                None
-                            }
-                        }
+                        BinOp::Mul if matches!(&left.node, Expr::IntLit(0)) || matches!(&right.node, Expr::IntLit(0)) => Some("0"),
+                        BinOp::Mod if matches!(&right.node, Expr::IntLit(1)) => Some("0"),
                         _ => None,
                     };
-                    if let Some(result) = absorb {
-                        let expr_str = match (&left.node, &right.node) {
-                            (Expr::IntLit(l), Expr::IntLit(r)) => format!("{l} {op} {r}"),
-                            (Expr::IntLit(l), Expr::Var(r)) => format!("{l} {op} {r}"),
-                            (Expr::Var(l), Expr::IntLit(r)) => format!("{l} {op} {r}"),
-                            (Expr::Var(l), Expr::Var(r)) => format!("{l} {op} {r}"),
-                            _ => format!("... {op} ..."),
-                        };
-                        self.add_warning(CompileWarning::absorbing_element(expr_str, result, span));
+                    if is_identity || absorb.is_some() {
+                        let expr_str = Self::binary_expr_str(&left.node, *op, &right.node);
+                        if let Some(result) = absorb {
+                            self.add_warning(CompileWarning::absorbing_element(expr_str, result, span));
+                        } else {
+                            self.add_warning(CompileWarning::identity_operation(expr_str, span));
+                        }
                     }
                 }
 
@@ -7885,6 +7858,17 @@ impl TypeChecker {
             .collect();
 
         Ok(check_exhaustiveness(match_ty, &arms_for_check, &ctx))
+    }
+
+    /// v0.90.143: Format a binary expression for lint diagnostic messages
+    fn binary_expr_str(left: &Expr, op: BinOp, right: &Expr) -> String {
+        match (left, right) {
+            (Expr::IntLit(l), Expr::IntLit(r)) => format!("{l} {op} {r}"),
+            (Expr::IntLit(l), Expr::Var(r)) => format!("{l} {op} {r}"),
+            (Expr::Var(l), Expr::IntLit(r)) => format!("{l} {op} {r}"),
+            (Expr::Var(l), Expr::Var(r)) => format!("{l} {op} {r}"),
+            _ => format!("... {op} ..."),
+        }
     }
 
     /// v0.53: Check if an expression is divergent (never returns normally)
