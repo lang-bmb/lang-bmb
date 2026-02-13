@@ -405,11 +405,48 @@ fn run_dce_pass(mir: String, pos: i64, acc: String, count: i64) -> String =
 // SECTION 8.2: Copy Propagation Pass
 // ============================================================================
 
-// Replace variable in line if it's in copy table
+// v0.90.73: Replace variables in RHS of line using copy table
+// Scans for %_tN patterns in the RHS and replaces from copy table
 fn replace_var_with_copy(line: String, copy_table: String) -> String =
-    // For simplicity, we iterate through known copied variables
-    // This is a simplified version - full impl would scan all %vars
-    line;  // TODO: implement proper variable replacement
+    if copy_table == "" { line } else {
+        let eq_pos = find_pattern(line, " = ", 0);
+        if eq_pos < 0 {
+            // No assignment — replace in whole line (e.g., branch, return, call void)
+            replace_vars_in_text(line, copy_table, 0)
+        } else {
+            // Preserve LHS, replace in RHS only
+            let lhs = line.slice(0, eq_pos + 3);
+            let rhs = line.slice(eq_pos + 3, line.len());
+            lhs + replace_vars_in_text(rhs, copy_table, 0)
+        }
+    };
+
+// Replace %var patterns in text using copy table
+fn replace_vars_in_text(text: String, copy_table: String, pos: i64) -> String =
+    if pos >= text.len() { text } else if text.byte_at(pos) == 37 {
+        // Found '%' — extract variable name
+        let var_end = find_var_end(text, pos + 1);
+        let var_name = text.slice(pos, var_end);
+        let replacement = copy_table_get(copy_table, var_name);
+        if replacement != "" {
+            let new_text = text.slice(0, pos) + replacement + text.slice(var_end, text.len());
+            // Continue from after replacement (replacement length may differ)
+            replace_vars_in_text(new_text, copy_table, pos + replacement.len())
+        } else {
+            replace_vars_in_text(text, copy_table, var_end)
+        }
+    } else {
+        replace_vars_in_text(text, copy_table, pos + 1)
+    };
+
+// Find end of variable name: scan alphanumeric + underscore after '%'
+fn find_var_end(s: String, pos: i64) -> i64 =
+    if pos >= s.len() { pos }
+    else if is_alnum_or_underscore(s.byte_at(pos)) { find_var_end(s, pos + 1) }
+    else { pos };
+
+fn is_alnum_or_underscore(c: i64) -> bool =
+    (c >= 48 and c <= 57) or (c >= 65 and c <= 90) or (c >= 97 and c <= 122) or c == 95;
 
 // Process line for copy propagation
 // Returns: "changed;new_table;new_line"
@@ -417,45 +454,18 @@ fn copy_prop_line(line: String, copy_table: String) -> String =
     if is_copy_inst(line) {
         let dest = extract_dest(line);
         let src = extract_copy_src(line);
-        // Add to copy table
-        let new_table = copy_table_set(copy_table, dest, src);
+        // Transitive resolution: if src maps to another var, use that
+        let resolved = copy_table_get(copy_table, src);
+        let actual_src = if resolved == "" { src } else { resolved };
+        let new_table = copy_table_set(copy_table, dest, actual_src);
         // Keep the copy instruction for now (DCE will remove if unused)
         "0;" + new_table + ";" + line
     } else {
-        // Check if any operands can be replaced
-        // For binop: replace left and right operands if in table
-        if is_binop_inst(line) {
-            let dest = extract_dest(line);
-            let op = extract_binop(line);
-            let left = extract_binop_left(line);
-            let right = extract_binop_right(line);
-            let new_left = copy_table_get(copy_table, left);
-            let new_right = copy_table_get(copy_table, right);
-            let actual_left = if new_left == "" { left } else { new_left };
-            let actual_right = if new_right == "" { right } else { new_right };
-            if new_left != "" or new_right != "" {
-                let new_line = "  " + dest + " = " + op + " " + actual_left + ", " + actual_right;
-                "1;" + copy_table + ";" + new_line
-            } else {
-                "0;" + copy_table + ";" + line
-            }
-        } else if is_return_inst(line) {
-            // return %ret_var - try to replace %ret_var
-            let trimmed = line.slice(skip_ws(line, 0), line.len());
-            let ret_pos = find_pattern(trimmed, "return ", 0);
-            if ret_pos >= 0 {
-                let var_start = ret_pos + 7;
-                let ret_var = trimmed.slice(var_start, trimmed.len());
-                let replacement = copy_table_get(copy_table, ret_var);
-                if replacement != "" {
-                    let new_line = "  return " + replacement;
-                    "1;" + copy_table + ";" + new_line
-                } else {
-                    "0;" + copy_table + ";" + line
-                }
-            } else {
-                "0;" + copy_table + ";" + line
-            }
+        // v0.90.73: General copy propagation — replace all %var in RHS
+        // Handles binops, comparisons, calls, branches, returns, etc.
+        let new_line = replace_var_with_copy(line, copy_table);
+        if new_line != line {
+            "1;" + copy_table + ";" + new_line
         } else {
             "0;" + copy_table + ";" + line
         }
