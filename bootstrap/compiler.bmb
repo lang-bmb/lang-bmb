@@ -8141,6 +8141,8 @@ fn derive_output_name(input: String) -> String =
 
 // Bootstrap version - extended CLI
 fn main() -> i64 =
+    // v0.90.90: Enable arena allocation for fast string operations
+    let _arena = arena_mode(1);
     let argc = arg_count();
     if argc < 2 {
         show_help()
