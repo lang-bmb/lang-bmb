@@ -2541,67 +2541,114 @@ fn find_single_pipe(s: String, pos: i64) -> i64 =
     else { find_single_pipe(s, pos + 1) };
 
 // Process a single work item with current result
+// v0.90.93: Byte-level dispatch — avoids get_field string allocation + string comparison
+// Uses first two bytes of work item directly for O(1) dispatch via nested if/else on bytes
 fn do_step(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String =
-    let op = get_field(item, 0);
-    if op == "EX" { step_expr(item, cur_temp, cur_block, cur_exit_label, sb) }
-    else if op == "IN" { step_int(item, cur_temp, cur_block, cur_exit_label, sb) }
-    else if op == "FL" { step_float(item, cur_temp, cur_block, cur_exit_label, sb) }
-    else if op == "BO" { step_bool(item, cur_temp, cur_block, cur_exit_label, sb) }
-    else if op == "ST" { step_string(item, cur_temp, cur_block, cur_exit_label, sb) }
-    else if op == "VA" { step_var(item, cur_temp, cur_block, cur_exit_label, sb) }
-    else if op == "BI" { step_binop_start(item, cur_temp, cur_block, cur_exit_label, sb) }
-    else if op == "BR" { step_binop_right(item, cur_temp, cur_block, cur_exit_label, sb) }
-    else if op == "BF" { step_binop_final(item, cur_temp, cur_block, cur_exit_label, sb) }
-    else if op == "UN" { step_unary_start(item, cur_temp, cur_block, cur_exit_label, sb) }
-    else if op == "UF" { step_unary_final(item, cur_temp, cur_block, cur_exit_label, sb) }
-    else if op == "IS" { step_if_start(item, cur_temp, cur_block, cur_exit_label, sb) }
-    else if op == "IT" { step_if_then(item, cur_temp, cur_block, cur_exit_label, sb) }
-    else if op == "IE" { step_if_else(item, cur_temp, cur_block, cur_exit_label, sb) }
-    else if op == "IX" { step_if_final(item, cur_temp, cur_block, cur_exit_label, sb) }
-    else if op == "LS" { step_let_start(item, cur_temp, cur_block, cur_exit_label, sb) }
-    else if op == "LB" { step_let_body(item, cur_temp, cur_block, cur_exit_label, sb) }
-    // v0.92: Mutable variable (alloca/store/load)
-    else if op == "VM" { step_mut_start(item, cur_temp, cur_block, cur_exit_label, sb) }
-    else if op == "VB" { step_mut_body(item, cur_temp, cur_block, cur_exit_label, sb) }
-    else if op == "CS" { step_call_start(item, cur_temp, cur_block, cur_exit_label, sb) }
-    else if op == "CA" { step_call_arg(item, cur_temp, cur_block, cur_exit_label, sb) }
-    else if op == "CF" { step_call_final(item, cur_temp, cur_block, cur_exit_label, sb) }
-    else if op == "MS" { step_method_start(item, cur_temp, cur_block, cur_exit_label, sb) }
-    else if op == "MA" { step_method_arg(item, cur_temp, cur_block, cur_exit_label, sb) }
-    else if op == "MF" { step_method_final(item, cur_temp, cur_block, cur_exit_label, sb) }
-    // v0.60.126: Block expression step handlers
-    else if op == "UT" { step_unit(item, cur_temp, cur_block, cur_exit_label, sb) }
-    else if op == "SQ" { step_seq_start(item, cur_temp, cur_block, cur_exit_label, sb) }
-    else if op == "S2" { step_seq_second(item, cur_temp, cur_block, cur_exit_label, sb) }
-    else if op == "AS" { step_assign_start(item, cur_temp, cur_block, cur_exit_label, sb) }
-    else if op == "AF" { step_assign_final(item, cur_temp, cur_block, cur_exit_label, sb) }
-    // v0.90.2: Array indexing and set expressions
-    else if op == "AI" { step_array_index_start(item, cur_temp, cur_block, cur_exit_label, sb) }
-    else if op == "A2" { step_array_index_idx(item, cur_temp, cur_block, cur_exit_label, sb) }
-    else if op == "A3" { step_array_index_final(item, cur_temp, cur_block, cur_exit_label, sb) }
-    else if op == "SI" { step_set_index_start(item, cur_temp, cur_block, cur_exit_label, sb) }
-    else if op == "S3" { step_set_index_idx(item, cur_temp, cur_block, cur_exit_label, sb) }
-    else if op == "S4" { step_set_index_val(item, cur_temp, cur_block, cur_exit_label, sb) }
-    else if op == "S5" { step_set_index_final(item, cur_temp, cur_block, cur_exit_label, sb) }
-    // v0.90.5: Field access and set_field
-    else if op == "FA" { step_field_access_start(item, cur_temp, cur_block, cur_exit_label, sb) }
-    else if op == "F2" { step_field_access_final(item, cur_temp, cur_block, cur_exit_label, sb) }
-    else if op == "SF" { step_set_field_start(item, cur_temp, cur_block, cur_exit_label, sb) }
-    else if op == "G2" { step_set_field_val(item, cur_temp, cur_block, cur_exit_label, sb) }
-    else if op == "G3" { step_set_field_final(item, cur_temp, cur_block, cur_exit_label, sb) }
-    // v0.90.8: Break statement
-    else if op == "BK" { step_break(item, cur_temp, cur_block, cur_exit_label, sb) }
-    else if op == "CN" { step_continue(item, cur_temp, cur_block, cur_exit_label, sb) }
-    else if op == "RT" { step_return(item, cur_temp, cur_block, cur_exit_label, sb) }
-    else if op == "RV" { step_return_value(item, cur_temp, cur_block, cur_exit_label, sb) }
-    // v0.90.9: *f64 pointer cast - eval inner then mark
-    else if op == "FP" { step_cast_ptr_f64_start(item, cur_temp, cur_block, cur_exit_label, sb) }
-    else if op == "FQ" { step_cast_ptr_f64_finish(item, cur_temp, cur_block, cur_exit_label, sb) }
-    // v0.90.9: Array repeat [val; count] → calloc
-    else if op == "AR" { step_array_repeat(item, cur_temp, cur_block, cur_exit_label, sb) }
-    // v0.90.10: Array literal [e1, e2, ...] → calloc + store
-    else if op == "AL" { step_array_literal(item, cur_temp, cur_block, cur_exit_label, sb) }
-    else if op == "TU" { step_tuple(item, cur_temp, cur_block, cur_exit_label, sb) }
+    let b0 = item.byte_at(0);
+    // Group by first byte for faster average dispatch
+    if b0 == 69 { // 'E'
+        step_expr(item, cur_temp, cur_block, cur_exit_label, sb) // EX
+    }
+    else if b0 == 66 { // 'B' — BI, BR, BF, BO, BK
+        let b1 = item.byte_at(1);
+        if b1 == 73 { step_binop_start(item, cur_temp, cur_block, cur_exit_label, sb) }       // BI
+        else if b1 == 82 { step_binop_right(item, cur_temp, cur_block, cur_exit_label, sb) }   // BR
+        else if b1 == 70 { step_binop_final(item, cur_temp, cur_block, cur_exit_label, sb) }   // BF
+        else if b1 == 79 { step_bool(item, cur_temp, cur_block, cur_exit_label, sb) }          // BO
+        else if b1 == 75 { step_break(item, cur_temp, cur_block, cur_exit_label, sb) }         // BK
+        else { make_step_leaf(cur_temp) }
+    }
+    else if b0 == 73 { // 'I' — IN, IS, IT, IE, IX
+        let b1 = item.byte_at(1);
+        if b1 == 78 { step_int(item, cur_temp, cur_block, cur_exit_label, sb) }            // IN
+        else if b1 == 83 { step_if_start(item, cur_temp, cur_block, cur_exit_label, sb) }  // IS
+        else if b1 == 84 { step_if_then(item, cur_temp, cur_block, cur_exit_label, sb) }   // IT
+        else if b1 == 69 { step_if_else(item, cur_temp, cur_block, cur_exit_label, sb) }   // IE
+        else if b1 == 88 { step_if_final(item, cur_temp, cur_block, cur_exit_label, sb) }  // IX
+        else { make_step_leaf(cur_temp) }
+    }
+    else if b0 == 83 { // 'S' — ST, SQ, S2, SI, S3, S4, S5, SF
+        let b1 = item.byte_at(1);
+        if b1 == 84 { step_string(item, cur_temp, cur_block, cur_exit_label, sb) }             // ST
+        else if b1 == 81 { step_seq_start(item, cur_temp, cur_block, cur_exit_label, sb) }     // SQ
+        else if b1 == 50 { step_seq_second(item, cur_temp, cur_block, cur_exit_label, sb) }    // S2
+        else if b1 == 73 { step_set_index_start(item, cur_temp, cur_block, cur_exit_label, sb) }  // SI
+        else if b1 == 51 { step_set_index_idx(item, cur_temp, cur_block, cur_exit_label, sb) }    // S3
+        else if b1 == 52 { step_set_index_val(item, cur_temp, cur_block, cur_exit_label, sb) }    // S4
+        else if b1 == 53 { step_set_index_final(item, cur_temp, cur_block, cur_exit_label, sb) }  // S5
+        else if b1 == 70 { step_set_field_start(item, cur_temp, cur_block, cur_exit_label, sb) }  // SF
+        else { make_step_leaf(cur_temp) }
+    }
+    else if b0 == 67 { // 'C' — CS, CA, CF, CN
+        let b1 = item.byte_at(1);
+        if b1 == 83 { step_call_start(item, cur_temp, cur_block, cur_exit_label, sb) }     // CS
+        else if b1 == 65 { step_call_arg(item, cur_temp, cur_block, cur_exit_label, sb) }  // CA
+        else if b1 == 70 { step_call_final(item, cur_temp, cur_block, cur_exit_label, sb) }// CF
+        else if b1 == 78 { step_continue(item, cur_temp, cur_block, cur_exit_label, sb) }  // CN
+        else { make_step_leaf(cur_temp) }
+    }
+    else if b0 == 76 { // 'L' — LS, LB
+        let b1 = item.byte_at(1);
+        if b1 == 83 { step_let_start(item, cur_temp, cur_block, cur_exit_label, sb) }  // LS
+        else if b1 == 66 { step_let_body(item, cur_temp, cur_block, cur_exit_label, sb) } // LB
+        else { make_step_leaf(cur_temp) }
+    }
+    else if b0 == 65 { // 'A' — AS, AF, AI, A2, A3, AL, AR
+        let b1 = item.byte_at(1);
+        if b1 == 83 { step_assign_start(item, cur_temp, cur_block, cur_exit_label, sb) }          // AS
+        else if b1 == 70 { step_assign_final(item, cur_temp, cur_block, cur_exit_label, sb) }     // AF
+        else if b1 == 73 { step_array_index_start(item, cur_temp, cur_block, cur_exit_label, sb) }// AI
+        else if b1 == 50 { step_array_index_idx(item, cur_temp, cur_block, cur_exit_label, sb) }  // A2
+        else if b1 == 51 { step_array_index_final(item, cur_temp, cur_block, cur_exit_label, sb) }// A3
+        else if b1 == 76 { step_array_literal(item, cur_temp, cur_block, cur_exit_label, sb) }    // AL
+        else if b1 == 82 { step_array_repeat(item, cur_temp, cur_block, cur_exit_label, sb) }     // AR
+        else { make_step_leaf(cur_temp) }
+    }
+    else if b0 == 77 { // 'M' — MS, MA, MF
+        let b1 = item.byte_at(1);
+        if b1 == 83 { step_method_start(item, cur_temp, cur_block, cur_exit_label, sb) }  // MS
+        else if b1 == 65 { step_method_arg(item, cur_temp, cur_block, cur_exit_label, sb) }// MA
+        else if b1 == 70 { step_method_final(item, cur_temp, cur_block, cur_exit_label, sb) } // MF
+        else { make_step_leaf(cur_temp) }
+    }
+    else if b0 == 86 { // 'V' — VA, VM, VB
+        let b1 = item.byte_at(1);
+        if b1 == 65 { step_var(item, cur_temp, cur_block, cur_exit_label, sb) }            // VA
+        else if b1 == 77 { step_mut_start(item, cur_temp, cur_block, cur_exit_label, sb) } // VM
+        else if b1 == 66 { step_mut_body(item, cur_temp, cur_block, cur_exit_label, sb) }  // VB
+        else { make_step_leaf(cur_temp) }
+    }
+    else if b0 == 85 { // 'U' — UN, UF, UT
+        let b1 = item.byte_at(1);
+        if b1 == 78 { step_unary_start(item, cur_temp, cur_block, cur_exit_label, sb) }    // UN
+        else if b1 == 70 { step_unary_final(item, cur_temp, cur_block, cur_exit_label, sb) }// UF
+        else if b1 == 84 { step_unit(item, cur_temp, cur_block, cur_exit_label, sb) }       // UT
+        else { make_step_leaf(cur_temp) }
+    }
+    else if b0 == 70 { // 'F' — FL, FA, F2, FP, FQ
+        let b1 = item.byte_at(1);
+        if b1 == 76 { step_float(item, cur_temp, cur_block, cur_exit_label, sb) }              // FL
+        else if b1 == 65 { step_field_access_start(item, cur_temp, cur_block, cur_exit_label, sb) } // FA
+        else if b1 == 50 { step_field_access_final(item, cur_temp, cur_block, cur_exit_label, sb) } // F2
+        else if b1 == 80 { step_cast_ptr_f64_start(item, cur_temp, cur_block, cur_exit_label, sb) } // FP
+        else if b1 == 81 { step_cast_ptr_f64_finish(item, cur_temp, cur_block, cur_exit_label, sb) }// FQ
+        else { make_step_leaf(cur_temp) }
+    }
+    else if b0 == 82 { // 'R' — RT, RV
+        let b1 = item.byte_at(1);
+        if b1 == 84 { step_return(item, cur_temp, cur_block, cur_exit_label, sb) }         // RT
+        else if b1 == 86 { step_return_value(item, cur_temp, cur_block, cur_exit_label, sb) }// RV
+        else { make_step_leaf(cur_temp) }
+    }
+    else if b0 == 71 { // 'G' — G2, G3
+        let b1 = item.byte_at(1);
+        if b1 == 50 { step_set_field_val(item, cur_temp, cur_block, cur_exit_label, sb) }    // G2
+        else if b1 == 51 { step_set_field_final(item, cur_temp, cur_block, cur_exit_label, sb) } // G3
+        else { make_step_leaf(cur_temp) }
+    }
+    else if b0 == 84 { // 'T' — TU
+        step_tuple(item, cur_temp, cur_block, cur_exit_label, sb) // TU
+    }
     else { make_step_leaf(cur_temp) };
 
 // EX: Dispatch based on node type - expand to specific handler
@@ -5219,6 +5266,19 @@ fn build_fn_registry_acc(mir: String, pos: i64, rsb: i64) -> i64 =
         if fn_end + 2 >= mir.len() { 0 } else { build_fn_registry_acc(mir, fn_end + 2, rsb) }
     };
 
+// v0.90.93: Merged registry builder — builds fn_registry + ptr_return_registry in one MIR scan
+fn build_all_registries(mir: String, fn_rsb: i64, ptr_rsb: i64) -> i64 =
+    build_all_registries_acc(mir, 0, fn_rsb, ptr_rsb);
+
+fn build_all_registries_acc(mir: String, pos: i64, fn_rsb: i64, ptr_rsb: i64) -> i64 =
+    if pos >= mir.len() { 0 } else {
+        let fn_end = find_double_pipe(mir, pos);
+        let fn_mir = mir.slice(pos, fn_end);
+        let w1 = register_fn_type(fn_mir, fn_rsb);
+        let w2 = register_ptr_return(fn_mir, ptr_rsb);
+        if fn_end + 2 >= mir.len() { 0 } else { build_all_registries_acc(mir, fn_end + 2, fn_rsb, ptr_rsb) }
+    };
+
 fn register_fn_type(fn_mir: String, rsb: i64) -> i64 =
     let first_pipe = find_char(fn_mir, 0, 124);
     let header = fn_mir.slice(0, first_pipe);
@@ -6029,12 +6089,23 @@ fn gen_program_sb_with_strings_and_fns(mir: String, strings: String, string_fns:
     sb_build(sb);
 
 // v0.90.5: Generate program with struct registry for field access codegen
+// v0.90.93: Merged registry building — one MIR scan instead of two
 fn gen_program_sb_with_strings_fns_structs(mir: String, strings: String, string_fns: String, struct_reg: String) -> String =
-    let registry = build_fn_registry(mir);
-    // v0.90.7: Build ptr return registry for struct pointer call tracking
-    let ptr_ret_reg = build_ptr_return_registry(mir);
+    let fn_rsb = sb_new();
+    let ptr_rsb = sb_new();
+    let w0 = build_all_registries(mir, fn_rsb, ptr_rsb);
+    let registry = sb_build(fn_rsb);
+    let ptr_ret_reg = sb_build(ptr_rsb);
+    let _f1 = sb_free(fn_rsb);
+    let _f2 = sb_free(ptr_rsb);
     let sb = sb_new();
-    let w1 = gen_program_acc_sb_structs(mir, 0, strings, string_fns, sb, registry, struct_reg, ptr_ret_reg);
+    let fn_sb = sb_new();
+    let str_sb = sb_new();
+    let ptr_sb = sb_new();
+    let w1 = gen_program_acc_sb_structs_reuse(mir, 0, strings, string_fns, sb, registry, struct_reg, ptr_ret_reg, fn_sb, str_sb, ptr_sb);
+    let _ff1 = sb_free(fn_sb);
+    let _ff2 = sb_free(str_sb);
+    let _ff3 = sb_free(ptr_sb);
     sb_build(sb);
 
 fn gen_program_acc_sb_structs(mir: String, pos: i64, strings: String, string_fns: String, sb: i64, registry: String, struct_reg: String, ptr_ret_reg: String) -> i64 =
@@ -6049,6 +6120,32 @@ fn gen_program_acc_sb_structs(mir: String, pos: i64, strings: String, string_fns
         let _restore = bmb_arena_restore();
         if fn_end + 2 >= mir.len() { 0 } else { gen_program_acc_sb_structs(mir, fn_end + 2, strings, string_fns, sb, registry, struct_reg, ptr_ret_reg) }
     };
+
+// v0.90.93: Reuse pre-allocated SBs across function codegen iterations
+fn gen_program_acc_sb_structs_reuse(mir: String, pos: i64, strings: String, string_fns: String, sb: i64, registry: String, struct_reg: String, ptr_ret_reg: String, fn_sb: i64, str_sb: i64, ptr_sb: i64) -> i64 =
+    if pos >= mir.len() { 0 } else {
+        let fn_end = find_double_pipe(mir, pos);
+        let _save = bmb_arena_save();
+        let fn_mir = mir.slice(pos, fn_end);
+        let fn_llvm = gen_function_sb_structs_reuse(fn_mir, strings, string_fns, registry, struct_reg, ptr_ret_reg, fn_sb, str_sb, ptr_sb);
+        let len = sb_len(sb);
+        let w1 = if len > 0 { sb_push(sb, "||") } else { 0 };
+        let w2 = sb_push(sb, fn_llvm);
+        let _restore = bmb_arena_restore();
+        if fn_end + 2 >= mir.len() { 0 } else { gen_program_acc_sb_structs_reuse(mir, fn_end + 2, strings, string_fns, sb, registry, struct_reg, ptr_ret_reg, fn_sb, str_sb, ptr_sb) }
+    };
+
+// v0.90.93: Reuse pre-allocated SBs — clear instead of alloc/free per function
+fn gen_function_sb_structs_reuse(mir: String, strings: String, string_fns: String, registry: String, struct_reg: String, ptr_ret_reg: String, fn_sb: i64, str_sb: i64, ptr_sb: i64) -> String =
+    let _c1 = sb_clear(fn_sb);
+    let _c2 = sb_clear(str_sb);
+    let _c3 = sb_clear(ptr_sb);
+    let ret_type = extract_mir_return_type(mir);
+    let w0 = init_string_params_sb(mir, str_sb);
+    let w0p = init_ptr_params_sb(mir, ptr_sb);
+    let w0r = init_fn_ptr_returns(ptr_ret_reg, ptr_sb);
+    let w1 = gen_fn_lines_structs(mir, 0, fn_sb, ret_type, strings, string_fns, "", str_sb, registry, struct_reg, ptr_sb);
+    sb_build(fn_sb);
 
 fn gen_program_acc_sb_with_strings(mir: String, pos: i64, strings: String, sb: i64) -> i64 =
     gen_program_acc_sb_with_strings_and_fns(mir, pos, strings, "", sb, "");

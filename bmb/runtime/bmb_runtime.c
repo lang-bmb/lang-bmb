@@ -1125,10 +1125,7 @@ static int str_key_eq(int64_t a, int64_t b) {
     BmbString* sa = (BmbString*)a;
     BmbString* sb = (BmbString*)b;
     if (sa->len != sb->len) return 0;
-    for (int64_t i = 0; i < sa->len; i++) {
-        if (sa->data[i] != sb->data[i]) return 0;
-    }
-    return 1;
+    return memcmp(sa->data, sb->data, (size_t)sa->len) == 0;
 }
 
 #define STR_HASHMAP_INITIAL_CAPACITY 4096
