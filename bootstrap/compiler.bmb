@@ -3703,6 +3703,15 @@ fn method_to_runtime_fn(method: String) -> String =
     else if method == "byte_at" { "bmb_string_char_at" }
     else if method == "slice" { "bmb_string_slice" }
     else if method == "concat" { "bmb_string_concat" }
+    // v0.90.95: Float-only methods (unambiguous — only valid on f64)
+    else if method == "floor" { "bmb_f64_floor" }
+    else if method == "ceil" { "bmb_f64_ceil" }
+    else if method == "round" { "bmb_f64_round" }
+    else if method == "sqrt" { "bmb_f64_sqrt" }
+    else if method == "is_nan" { "bmb_f64_is_nan" }
+    else if method == "to_int" { "f64_to_i64" }
+    // v0.90.95: Int-only conversion method
+    else if method == "to_float" { "i64_to_f64" }
     else { "bmb_" + method };
 
 fn lower_method_args_sb(ast: String, fn_name: String, receiver: String, temp_id: i64, block_id: i64, idx: i64, sb: i64, loop_exit: String) -> i64 =
@@ -4686,7 +4695,11 @@ fn get_call_return_type(fn_name: String) -> String =
     else if fn_name == "@hashmap_new" or fn_name == "@vec_new" or fn_name == "@str_hashmap_new" or fn_name == "@reg_cached_lookup" { "ptr" }
     // v0.90.2: Double-returning functions
     // v0.90.9: Added i64_to_f64 intrinsic
+    // v0.90.95: Float method return types
     else if fn_name == "@sqrt" or fn_name == "@i64_to_f64" { "double" }
+    else if fn_name == "@bmb_f64_floor" or fn_name == "@bmb_f64_ceil" or fn_name == "@bmb_f64_round" { "double" }
+    else if fn_name == "@bmb_f64_sqrt" or fn_name == "@bmb_f64_abs" { "double" }
+    else if fn_name == "@bmb_f64_min" or fn_name == "@bmb_f64_max" { "double" }
     // v0.90.10: Bool-returning functions use i64 (0/1) - no special handling needed
     // All other functions return i64
     else { "i64" };
@@ -5008,6 +5021,16 @@ fn get_call_arg_types(fn_name: String) -> String =
     else if fn_name == "@calloc" { "ii" }
     else if fn_name == "@free" { "p" }
     else if fn_name == "@sqrt" { "d" }
+    // v0.90.95: Float method arg types
+    else if fn_name == "@bmb_f64_floor" { "d" }
+    else if fn_name == "@bmb_f64_ceil" { "d" }
+    else if fn_name == "@bmb_f64_round" { "d" }
+    else if fn_name == "@bmb_f64_sqrt" { "d" }
+    else if fn_name == "@bmb_f64_abs" { "d" }
+    else if fn_name == "@bmb_f64_is_nan" { "d" }
+    else if fn_name == "@bmb_f64_min" { "dd" }
+    else if fn_name == "@bmb_f64_max" { "dd" }
+    else if fn_name == "@bmb_f64_to_int" { "d" }
     else if fn_name == "@println_f64" { "d" }
     else if fn_name == "@bmb_print_i64" { "i" }  // v0.90.8: mapped from print
     else if fn_name == "@puts_cstr" { "p" }
@@ -5811,6 +5834,16 @@ fn gen_extern_malloc() -> String = "declare ptr @malloc(i64)";
 fn gen_extern_calloc() -> String = "declare ptr @calloc(i64, i64)";
 fn gen_extern_free() -> String = "declare void @free(ptr)";
 fn gen_extern_sqrt() -> String = "declare double @sqrt(double)";
+// v0.90.95: Float method extern declarations
+fn gen_extern_f64_floor() -> String = "declare double @bmb_f64_floor(double) nounwind willreturn memory(none) speculatable";
+fn gen_extern_f64_ceil() -> String = "declare double @bmb_f64_ceil(double) nounwind willreturn memory(none) speculatable";
+fn gen_extern_f64_round() -> String = "declare double @bmb_f64_round(double) nounwind willreturn memory(none) speculatable";
+fn gen_extern_f64_sqrt() -> String = "declare double @bmb_f64_sqrt(double) nounwind willreturn memory(none) speculatable";
+fn gen_extern_f64_abs() -> String = "declare double @bmb_f64_abs(double) nounwind willreturn memory(none) speculatable";
+fn gen_extern_f64_is_nan() -> String = "declare i64 @bmb_f64_is_nan(double) nounwind willreturn memory(none) speculatable";
+fn gen_extern_f64_min() -> String = "declare double @bmb_f64_min(double, double) nounwind willreturn memory(none) speculatable";
+fn gen_extern_f64_max() -> String = "declare double @bmb_f64_max(double, double) nounwind willreturn memory(none) speculatable";
+fn gen_extern_f64_to_int() -> String = "declare i64 @bmb_f64_to_int(double) nounwind willreturn memory(none) speculatable";
 fn gen_extern_println_f64() -> String = "declare void @println_f64(double)";
 fn gen_extern_print() -> String = "declare void @bmb_print_i64(i64)";
 fn gen_extern_puts_cstr() -> String = "declare void @puts_cstr(ptr)";
@@ -5895,7 +5928,13 @@ fn gen_runtime_decls_ext() -> String =
     gen_extern_reg_cached_lookup() + "|" +
     gen_extern_vec_new() + "|" + gen_extern_vec_push() + "|" +
     gen_extern_vec_get() + "|" + gen_extern_vec_set() + "|" +
-    gen_extern_vec_len() + "|" + gen_extern_vec_free();
+    gen_extern_vec_len() + "|" + gen_extern_vec_free() + "|" +
+    // v0.90.95: Float method declarations
+    gen_extern_f64_floor() + "|" + gen_extern_f64_ceil() + "|" +
+    gen_extern_f64_round() + "|" + gen_extern_f64_sqrt() + "|" +
+    gen_extern_f64_abs() + "|" + gen_extern_f64_is_nan() + "|" +
+    gen_extern_f64_min() + "|" + gen_extern_f64_max() + "|" +
+    gen_extern_f64_to_int();
 
 // ============================================================================
 // SECTION 12b: String Literal Handling (v0.60.109)

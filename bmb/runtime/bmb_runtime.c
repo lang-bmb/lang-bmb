@@ -9,6 +9,7 @@
 #include <stdint.h>
 #include <inttypes.h>
 #include <string.h>  // v0.90.90: memcpy/memset/strlen for optimized string operations
+#include <math.h>    // v0.90.95: Float math functions (floor, ceil, round, sqrt, fabs, isnan)
 
 // v0.70: Threading support
 #ifdef _WIN32
@@ -67,6 +68,17 @@ int64_t bmb_min(int64_t a, int64_t b) { return a < b ? a : b; }
 int64_t bmb_max(int64_t a, int64_t b) { return a > b ? a : b; }
 double bmb_i64_to_f64(int64_t n) { return (double)n; }
 int64_t bmb_f64_to_i64(double f) { return (int64_t)f; }
+
+// v0.90.95: Float method support — floor, ceil, round, sqrt, abs, is_nan, min, max, to_int
+double bmb_f64_floor(double f) { return floor(f); }
+double bmb_f64_ceil(double f) { return ceil(f); }
+double bmb_f64_round(double f) { return round(f); }
+double bmb_f64_sqrt(double f) { return sqrt(f); }
+double bmb_f64_abs(double f) { return fabs(f); }
+int64_t bmb_f64_is_nan(double f) { return isnan(f) ? 1 : 0; }
+double bmb_f64_min(double a, double b) { return a < b ? a : b; }
+double bmb_f64_max(double a, double b) { return a > b ? a : b; }
+int64_t bmb_f64_to_int(double f) { return (int64_t)f; }
 
 // v0.97: Character functions
 // v0.60.107: bmb_chr returns BmbString* to match string type system

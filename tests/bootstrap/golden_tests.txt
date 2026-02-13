@@ -26,3 +26,4 @@ test_golden_bitwise.bmb|170
 test_golden_stringbuilder.bmb|93
 test_golden_complex_expr.bmb|197
 test_golden_int_methods.bmb|142
+test_golden_float_methods.bmb|176
