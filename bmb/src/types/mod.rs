@@ -1718,6 +1718,17 @@ impl TypeChecker {
             }
 
             Expr::Unary { op, expr } => {
+                // v0.90.149: Detect double negation (not not x, --x, bnot bnot x)
+                if let Expr::Unary { op: inner_op, .. } = &expr.node
+                    && op == inner_op
+                {
+                    let op_str = match op {
+                        crate::ast::UnOp::Not => "not",
+                        crate::ast::UnOp::Neg => "-",
+                        crate::ast::UnOp::Bnot => "bnot",
+                    };
+                    self.add_warning(CompileWarning::double_negation(op_str, span));
+                }
                 let ty = self.infer(&expr.node, expr.span)?;
                 self.check_unary_op(*op, &ty, span)
             }

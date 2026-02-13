@@ -221,6 +221,13 @@ pub enum CompileWarning {
         span: Span,
     },
 
+    /// v0.90.149: Double negation — `not not x`, `--x`, or `bnot bnot x`
+    /// Redundant double negation can be simplified to just the inner expression
+    DoubleNegation {
+        op: String, // "not", "-", or "bnot"
+        span: Span,
+    },
+
     /// Generic warning with span
     Generic {
         message: String,
@@ -463,6 +470,11 @@ impl CompileWarning {
         Self::AbsorbingElement { expr: expr.into(), result: result.into(), span }
     }
 
+    /// v0.90.149: Create a double negation warning
+    pub fn double_negation(op: impl Into<String>, span: Span) -> Self {
+        Self::DoubleNegation { op: op.into(), span }
+    }
+
     /// Get the span of this warning, if any
     pub fn span(&self) -> Option<Span> {
         match self {
@@ -496,6 +508,7 @@ impl CompileWarning {
             Self::IdentityOperation { span, .. } => Some(*span),
             Self::NegatedIfCondition { span } => Some(*span),
             Self::AbsorbingElement { span, .. } => Some(*span),
+            Self::DoubleNegation { span, .. } => Some(*span),
             Self::Generic { span, .. } => *span,
         }
     }
@@ -599,6 +612,9 @@ impl CompileWarning {
             Self::AbsorbingElement { expr, result, .. } => {
                 format!("`{}` is always `{}`", expr, result)
             }
+            Self::DoubleNegation { op, .. } => {
+                format!("double negation `{0} {0} x` is redundant; simplify to just `x`", op)
+            }
             Self::Generic { message, .. } => message.clone(),
         }
     }
@@ -636,6 +652,7 @@ impl CompileWarning {
             Self::IdentityOperation { .. } => "identity_operation",
             Self::NegatedIfCondition { .. } => "negated_if_condition",
             Self::AbsorbingElement { .. } => "absorbing_element",
+            Self::DoubleNegation { .. } => "double_negation",
             Self::Generic { .. } => "warning",
         }
     }
@@ -1011,6 +1028,22 @@ mod tests {
     fn test_warning_generic_no_span() {
         let w = CompileWarning::generic("no span", None);
         assert_eq!(w.span(), None);
+    }
+
+    #[test]
+    fn test_warning_double_negation() {
+        let w = CompileWarning::double_negation("not", span());
+        assert_eq!(w.kind(), "double_negation");
+        assert!(w.message().contains("double negation"));
+        assert!(w.message().contains("not"));
+        assert_eq!(w.span(), Some(span()));
+    }
+
+    #[test]
+    fn test_warning_double_negation_neg() {
+        let w = CompileWarning::double_negation("-", span());
+        assert_eq!(w.kind(), "double_negation");
+        assert!(w.message().contains("-"));
     }
 
     #[test]

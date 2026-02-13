@@ -22533,3 +22533,46 @@ fn test_lint_combined_identity_in_complex_expr() {
     assert!(kinds.contains(&"identity_operation".to_string()));
     assert!(!kinds.contains(&"absorbing_element".to_string()));
 }
+
+// ===== Cycle 396: Double negation detection lint =====
+
+#[test]
+fn test_double_negation_not_not() {
+    assert!(has_warning_kind(
+        "fn main() -> bool = { let x = true; not not x };",
+        "double_negation"
+    ));
+}
+
+#[test]
+fn test_double_negation_neg_neg() {
+    assert!(has_warning_kind(
+        "fn main() -> i64 = { let x = 5; - -x };",
+        "double_negation"
+    ));
+}
+
+#[test]
+fn test_no_double_negation_single_not() {
+    assert!(!has_warning_kind(
+        "fn main() -> bool = { let x = true; not x };",
+        "double_negation"
+    ));
+}
+
+#[test]
+fn test_no_double_negation_single_neg() {
+    assert!(!has_warning_kind(
+        "fn main() -> i64 = { let x = 5; -x };",
+        "double_negation"
+    ));
+}
+
+#[test]
+fn test_no_double_negation_mixed_ops() {
+    // not -x is not double negation (different ops)
+    assert!(!has_warning_kind(
+        "fn main() -> bool = { let x = 5; not (x == 0) };",
+        "double_negation"
+    ));
+}
