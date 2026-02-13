@@ -532,4 +532,150 @@ mod tests {
         assert_eq!(result.smt_queries, 0);
         assert_eq!(result.verified_at, 0);
     }
+
+    // ====================================================================
+    // Additional proof_db tests (Cycle 428)
+    // ====================================================================
+
+    #[test]
+    fn test_stats_accumulation() {
+        let mut db = ProofDatabase::new();
+        let id1 = FunctionId::simple("f1");
+        let id2 = FunctionId::simple("f2");
+
+        db.store_function_proof(&id1, FunctionProofResult {
+            status: VerificationStatus::Verified,
+            proven_facts: vec![],
+            verification_time: Duration::from_millis(100),
+            smt_queries: 3,
+            verified_at: 0,
+        });
+        db.store_function_proof(&id2, FunctionProofResult {
+            status: VerificationStatus::Verified,
+            proven_facts: vec![],
+            verification_time: Duration::from_millis(200),
+            smt_queries: 5,
+            verified_at: 0,
+        });
+
+        assert_eq!(db.stats().total_smt_queries, 8);
+        assert_eq!(db.stats().total_verification_time, Duration::from_millis(300));
+        assert_eq!(db.stats().functions_stored, 2);
+    }
+
+    #[test]
+    fn test_serialization_roundtrip_with_facts() {
+        use crate::cir::Proposition;
+
+        let mut db = ProofDatabase::new();
+        let id = FunctionId::new("mymod", "myfn", 12345);
+        db.store_function_proof(&id, FunctionProofResult {
+            status: VerificationStatus::Failed("precondition violated".to_string()),
+            proven_facts: vec![ProofFact {
+                proposition: Proposition::True,
+                scope: ProofScope::Function(id.clone()),
+                evidence: ProofEvidence::Precondition,
+            }],
+            verification_time: Duration::from_millis(250),
+            smt_queries: 7,
+            verified_at: 99999,
+        });
+
+        let json = db.to_json().unwrap();
+        let db2 = ProofDatabase::from_json(&json).unwrap();
+
+        assert_eq!(db2.len(), 1);
+        assert!(!db2.is_verified(&id));
+        let result = db2.function_proofs.get(&id.key()).unwrap();
+        assert!(result.status.is_failed());
+        assert_eq!(result.proven_facts.len(), 1);
+        assert_eq!(result.smt_queries, 7);
+    }
+
+    #[test]
+    fn test_function_id_new_fields() {
+        let id = FunctionId::new("math", "sqrt", 42);
+        assert_eq!(id.module, "math");
+        assert_eq!(id.name, "sqrt");
+        assert_eq!(id.signature_hash, 42);
+    }
+
+    #[test]
+    fn test_verification_status_unknown_and_timeout() {
+        assert!(!VerificationStatus::Unknown.is_verified());
+        assert!(!VerificationStatus::Unknown.is_failed());
+        assert!(!VerificationStatus::Timeout.is_verified());
+        assert!(!VerificationStatus::Timeout.is_failed());
+    }
+
+    #[test]
+    fn test_file_hash_update_overwrite() {
+        let mut db = ProofDatabase::new();
+        let path = PathBuf::from("test.bmb");
+
+        db.update_file_hash(&path, 111);
+        assert!(db.file_hash_matches(&path, 111));
+
+        db.update_file_hash(&path, 222);
+        assert!(!db.file_hash_matches(&path, 111));
+        assert!(db.file_hash_matches(&path, 222));
+    }
+
+    #[test]
+    fn test_invalidate_file_removes_matching_proofs() {
+        let mut db = ProofDatabase::new();
+        let id1 = FunctionId::new("test.bmb", "f1", 0);
+        let id2 = FunctionId::new("other.bmb", "f2", 0);
+
+        db.store_function_proof(&id1, FunctionProofResult::default());
+        db.store_function_proof(&id2, FunctionProofResult::default());
+        assert_eq!(db.len(), 2);
+
+        db.invalidate_file(Path::new("test.bmb"));
+        assert_eq!(db.len(), 1);
+        assert!(!db.is_verified(&id1));
+    }
+
+    #[test]
+    fn test_get_proven_facts_nonempty() {
+        use crate::cir::Proposition;
+
+        let mut db = ProofDatabase::new();
+        let id = FunctionId::simple("tested");
+        db.store_function_proof(&id, FunctionProofResult {
+            status: VerificationStatus::Verified,
+            proven_facts: vec![
+                ProofFact {
+                    proposition: Proposition::True,
+                    scope: ProofScope::Function(id.clone()),
+                    evidence: ProofEvidence::ControlFlow,
+                },
+                ProofFact {
+                    proposition: Proposition::True,
+                    scope: ProofScope::Function(id.clone()),
+                    evidence: ProofEvidence::Precondition,
+                },
+            ],
+            verification_time: Duration::ZERO,
+            smt_queries: 0,
+            verified_at: 0,
+        });
+
+        assert_eq!(db.get_proven_facts(&id).len(), 2);
+    }
+
+    #[test]
+    fn test_cache_path_for_nested_path() {
+        let path = PathBuf::from("project/src/main.bmb");
+        let cache = ProofDatabase::cache_path_for(&path);
+        assert_eq!(cache, PathBuf::from("project/src/main.bmb.proofcache"));
+    }
+
+    #[test]
+    fn test_proof_database_default() {
+        let db = ProofDatabase::default();
+        assert!(db.is_empty());
+        assert_eq!(db.stats().cache_hits, 0);
+        assert_eq!(db.stats().cache_misses, 0);
+    }
 }

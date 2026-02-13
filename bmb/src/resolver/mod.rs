@@ -574,4 +574,105 @@ mod tests {
         assert_ne!(format!("{:?}", fn_item), format!("{:?}", struct_item));
         assert_ne!(format!("{:?}", struct_item), format!("{:?}", enum_item));
     }
+
+    // ====================================================================
+    // Additional resolver tests (Cycle 428)
+    // ====================================================================
+
+    #[test]
+    fn test_extract_exports_pub_function() {
+        let source = "pub fn add(a: i64, b: i64) -> i64 = a + b;";
+        let tokens = crate::lexer::tokenize(source).unwrap();
+        let program = crate::parser::parse("test", source, tokens).unwrap();
+        let exports = Resolver::extract_exports(&program);
+
+        assert_eq!(exports.len(), 1);
+        assert!(exports.contains_key("add"));
+        assert!(matches!(exports.get("add"), Some(ExportedItem::Function(_))));
+    }
+
+    #[test]
+    fn test_extract_exports_private_function_excluded() {
+        let source = "fn secret(x: i64) -> i64 = x;";
+        let tokens = crate::lexer::tokenize(source).unwrap();
+        let program = crate::parser::parse("test", source, tokens).unwrap();
+        let exports = Resolver::extract_exports(&program);
+
+        assert!(exports.is_empty());
+    }
+
+    #[test]
+    fn test_extract_exports_pub_struct() {
+        let source = "pub struct Point { x: i64, y: i64 }";
+        let tokens = crate::lexer::tokenize(source).unwrap();
+        let program = crate::parser::parse("test", source, tokens).unwrap();
+        let exports = Resolver::extract_exports(&program);
+
+        assert_eq!(exports.len(), 1);
+        assert!(matches!(exports.get("Point"), Some(ExportedItem::Struct(_))));
+    }
+
+    #[test]
+    fn test_extract_exports_pub_enum() {
+        let source = "pub enum Color { Red, Green, Blue }";
+        let tokens = crate::lexer::tokenize(source).unwrap();
+        let program = crate::parser::parse("test", source, tokens).unwrap();
+        let exports = Resolver::extract_exports(&program);
+
+        assert_eq!(exports.len(), 1);
+        assert!(matches!(exports.get("Color"), Some(ExportedItem::Enum(_))));
+    }
+
+    #[test]
+    fn test_extract_exports_mixed_visibility() {
+        let source = r#"
+            pub fn public_fn() -> i64 = 0;
+            fn private_fn() -> i64 = 1;
+            pub struct PubStruct { x: i64 }
+            struct PrivStruct { y: i64 }
+        "#;
+        let tokens = crate::lexer::tokenize(source).unwrap();
+        let program = crate::parser::parse("test", source, tokens).unwrap();
+        let exports = Resolver::extract_exports(&program);
+
+        assert_eq!(exports.len(), 2);
+        assert!(exports.contains_key("public_fn"));
+        assert!(exports.contains_key("PubStruct"));
+        assert!(!exports.contains_key("private_fn"));
+        assert!(!exports.contains_key("PrivStruct"));
+    }
+
+    #[test]
+    fn test_resolver_module_count() {
+        let resolver = Resolver::new("/tmp");
+        assert_eq!(resolver.module_count(), 0);
+    }
+
+    #[test]
+    fn test_resolver_load_nonexistent_module() {
+        let mut resolver = Resolver::new("/tmp/nonexistent_dir_bmb_test");
+        let result = resolver.load_module("no_such_module");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_resolved_imports_mark_nonexistent() {
+        let mut imports = ResolvedImports::new();
+        // Marking a non-existent import should be a no-op
+        imports.mark_used("nonexistent");
+        assert!(imports.is_empty());
+    }
+
+    #[test]
+    fn test_resolved_imports_overwrite() {
+        let mut imports = ResolvedImports::new();
+        let span = Span { start: 0, end: 0 };
+
+        imports.add_import("A".to_string(), "mod1".to_string(), ExportedItem::Struct("A".to_string()), span);
+        imports.add_import("A".to_string(), "mod2".to_string(), ExportedItem::Function("A".to_string()), span);
+
+        // Last write wins
+        assert_eq!(imports.len(), 1);
+        assert_eq!(imports.get_import_module("A"), Some("mod2"));
+    }
 }

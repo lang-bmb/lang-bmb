@@ -1182,4 +1182,255 @@ mod tests {
         let json2 = serde_json::to_string(&ProofStatus::Failed).unwrap();
         assert_eq!(json2, "\"failed\"");
     }
+
+    // ====================================================================
+    // Additional index tests (Cycle 428)
+    // ====================================================================
+
+    #[test]
+    fn test_format_type_ref_mut() {
+        let ig = IndexGenerator::new("test");
+        assert_eq!(ig.format_type(&Type::RefMut(Box::new(Type::I64))), "&mut i64");
+    }
+
+    #[test]
+    fn test_format_type_range() {
+        let ig = IndexGenerator::new("test");
+        assert_eq!(ig.format_type(&Type::Range(Box::new(Type::I64))), "Range<i64>");
+    }
+
+    #[test]
+    fn test_format_type_tuple() {
+        let ig = IndexGenerator::new("test");
+        let ty = Type::Tuple(vec![Box::new(Type::I64), Box::new(Type::Bool)]);
+        assert_eq!(ig.format_type(&ty), "(i64, bool)");
+    }
+
+    #[test]
+    fn test_format_type_fn() {
+        let ig = IndexGenerator::new("test");
+        let ty = Type::Fn {
+            params: vec![Box::new(Type::I64)],
+            ret: Box::new(Type::Bool),
+        };
+        assert_eq!(ig.format_type(&ty), "fn(i64) -> bool");
+    }
+
+    #[test]
+    fn test_format_type_generic() {
+        let ig = IndexGenerator::new("test");
+        let ty = Type::Generic {
+            name: "Vec".to_string(),
+            type_args: vec![Box::new(Type::I64)],
+        };
+        assert_eq!(ig.format_type(&ty), "Vec<i64>");
+    }
+
+    #[test]
+    fn test_format_type_unsigned() {
+        let ig = IndexGenerator::new("test");
+        assert_eq!(ig.format_type(&Type::U32), "u32");
+        assert_eq!(ig.format_type(&Type::U64), "u64");
+    }
+
+    #[test]
+    fn test_format_type_char_and_f64() {
+        let ig = IndexGenerator::new("test");
+        assert_eq!(ig.format_type(&Type::Char), "char");
+        assert_eq!(ig.format_type(&Type::F64), "f64");
+        assert_eq!(ig.format_type(&Type::I32), "i32");
+    }
+
+    #[test]
+    fn test_format_type_concurrency_types() {
+        let ig = IndexGenerator::new("test");
+        assert_eq!(ig.format_type(&Type::Thread(Box::new(Type::I64))), "Thread<i64>");
+        assert_eq!(ig.format_type(&Type::Mutex(Box::new(Type::I64))), "Mutex<i64>");
+        assert_eq!(ig.format_type(&Type::Arc(Box::new(Type::I64))), "Arc<i64>");
+        assert_eq!(ig.format_type(&Type::Atomic(Box::new(Type::I64))), "Atomic<i64>");
+        assert_eq!(ig.format_type(&Type::Sender(Box::new(Type::I64))), "Sender<i64>");
+        assert_eq!(ig.format_type(&Type::Receiver(Box::new(Type::I64))), "Receiver<i64>");
+        assert_eq!(ig.format_type(&Type::Barrier), "Barrier");
+        assert_eq!(ig.format_type(&Type::Condvar), "Condvar");
+    }
+
+    #[test]
+    fn test_format_type_async_types() {
+        let ig = IndexGenerator::new("test");
+        assert_eq!(ig.format_type(&Type::Future(Box::new(Type::I64))), "Future<i64>");
+        assert_eq!(ig.format_type(&Type::AsyncFile), "AsyncFile");
+        assert_eq!(ig.format_type(&Type::AsyncSocket), "AsyncSocket");
+        assert_eq!(ig.format_type(&Type::ThreadPool), "ThreadPool");
+        assert_eq!(ig.format_type(&Type::Scope), "Scope");
+    }
+
+    #[test]
+    fn test_format_expr_literals() {
+        let ig = IndexGenerator::new("test");
+        assert_eq!(ig.format_expr(&Expr::IntLit(42)), "42");
+        assert_eq!(ig.format_expr(&Expr::FloatLit(2.5)), "2.5");
+        assert_eq!(ig.format_expr(&Expr::BoolLit(true)), "true");
+        assert_eq!(ig.format_expr(&Expr::StringLit("hi".to_string())), "\"hi\"");
+        assert_eq!(ig.format_expr(&Expr::Unit), "()");
+        assert_eq!(ig.format_expr(&Expr::Ret), "ret");
+        assert_eq!(ig.format_expr(&Expr::It), "it");
+    }
+
+    #[test]
+    fn test_format_expr_var() {
+        let ig = IndexGenerator::new("test");
+        assert_eq!(ig.format_expr(&Expr::Var("x".to_string())), "x");
+    }
+
+    #[test]
+    fn test_format_expr_binary() {
+        let ig = IndexGenerator::new("test");
+        let expr = Expr::Binary {
+            op: crate::ast::BinOp::Add,
+            left: Box::new(sp(Expr::IntLit(1))),
+            right: Box::new(sp(Expr::IntLit(2))),
+        };
+        assert_eq!(ig.format_expr(&expr), "1 + 2");
+    }
+
+    #[test]
+    fn test_format_expr_call() {
+        let ig = IndexGenerator::new("test");
+        let expr = Expr::Call {
+            func: "abs".to_string(),
+            args: vec![sp(Expr::IntLit(5))],
+        };
+        assert_eq!(ig.format_expr(&expr), "abs(5)");
+    }
+
+    #[test]
+    fn test_format_expr_fallback() {
+        let ig = IndexGenerator::new("test");
+        // Match expression falls through to "..."
+        let expr = Expr::Continue;
+        assert_eq!(ig.format_expr(&expr), "...");
+    }
+
+    #[test]
+    fn test_contains_old_in_binary() {
+        let ig = IndexGenerator::new("test");
+        let expr = Expr::Binary {
+            op: crate::ast::BinOp::Eq,
+            left: Box::new(sp(Expr::StateRef {
+                expr: Box::new(sp(Expr::Var("x".to_string()))),
+                state: crate::ast::StateKind::Pre,
+            })),
+            right: Box::new(sp(Expr::IntLit(0))),
+        };
+        assert!(ig.contains_old(&expr));
+    }
+
+    #[test]
+    fn test_contains_old_false_for_post_state() {
+        let ig = IndexGenerator::new("test");
+        let expr = Expr::StateRef {
+            expr: Box::new(sp(Expr::Var("x".to_string()))),
+            state: crate::ast::StateKind::Post,
+        };
+        assert!(!ig.contains_old(&expr));
+    }
+
+    #[test]
+    fn test_collect_calls_dedup() {
+        let ig = IndexGenerator::new("test");
+        let expr = Expr::Binary {
+            op: crate::ast::BinOp::Add,
+            left: Box::new(sp(Expr::Call {
+                func: "f".to_string(),
+                args: vec![sp(Expr::IntLit(1))],
+            })),
+            right: Box::new(sp(Expr::Call {
+                func: "f".to_string(),
+                args: vec![sp(Expr::IntLit(2))],
+            })),
+        };
+        let mut calls = Vec::new();
+        ig.collect_calls(&expr, &mut calls);
+        assert_eq!(calls, vec!["f".to_string()]);
+    }
+
+    #[test]
+    fn test_collect_calls_in_let() {
+        let ig = IndexGenerator::new("test");
+        let expr = Expr::Let {
+            name: "x".to_string(),
+            ty: None,
+            mutable: false,
+            value: Box::new(sp(Expr::Call {
+                func: "compute".to_string(),
+                args: vec![],
+            })),
+            body: Box::new(sp(Expr::Var("x".to_string()))),
+        };
+        let mut calls = Vec::new();
+        ig.collect_calls(&expr, &mut calls);
+        assert_eq!(calls, vec!["compute".to_string()]);
+    }
+
+    #[test]
+    fn test_contains_loop_nested_in_let() {
+        let ig = IndexGenerator::new("test");
+        let expr = Expr::Let {
+            name: "x".to_string(),
+            ty: None,
+            mutable: false,
+            value: Box::new(sp(Expr::IntLit(0))),
+            body: Box::new(sp(Expr::While {
+                cond: Box::new(sp(Expr::BoolLit(true))),
+                invariant: None,
+                body: Box::new(sp(Expr::Unit)),
+            })),
+        };
+        assert!(ig.contains_loop(&expr));
+    }
+
+    #[test]
+    fn test_index_trait() {
+        let program = parse_source("trait Printable { fn to_string(self: &Self) -> String; }");
+        let mut ig = IndexGenerator::new("test");
+        ig.index_file("test.bmb", &program);
+
+        assert_eq!(ig.symbols.len(), 1);
+        assert_eq!(ig.symbols[0].kind, SymbolKind::Trait);
+        assert_eq!(ig.types[0].kind, "trait");
+    }
+
+    #[test]
+    fn test_proof_status_all_variants_serde() {
+        let variants = vec![
+            ProofStatus::Verified,
+            ProofStatus::Failed,
+            ProofStatus::Timeout,
+            ProofStatus::Unknown,
+            ProofStatus::Pending,
+            ProofStatus::Unavailable,
+        ];
+        for v in variants {
+            let json = serde_json::to_string(&v).unwrap();
+            let parsed: ProofStatus = serde_json::from_str(&json).unwrap();
+            assert_eq!(parsed, v);
+        }
+    }
+
+    #[test]
+    fn test_symbol_kind_all_variants_serde() {
+        let variants = vec![
+            SymbolKind::Function,
+            SymbolKind::Struct,
+            SymbolKind::Enum,
+            SymbolKind::Type,
+            SymbolKind::Trait,
+            SymbolKind::Const,
+        ];
+        for v in variants {
+            let json = serde_json::to_string(&v).unwrap();
+            let parsed: SymbolKind = serde_json::from_str(&json).unwrap();
+            assert_eq!(parsed, v);
+        }
+    }
 }
