@@ -22942,3 +22942,95 @@ fn test_string_to_int_invalid_returns_none() {
     );
 }
 
+// ===== Cycle 403: Integer method tests =====
+
+#[test]
+fn test_int_wrapping_sub() {
+    assert_eq!(
+        run_program_i64(r#"fn main() -> i64 = 10.wrapping_sub(3);"#),
+        7
+    );
+}
+
+#[test]
+fn test_int_wrapping_sub_overflow() {
+    // 0.wrapping_sub(1) should give -1 (no overflow for these values, just basic test)
+    assert_eq!(
+        run_program_i64(r#"fn main() -> i64 = 0.wrapping_sub(1);"#),
+        -1
+    );
+}
+
+#[test]
+fn test_int_digit_sum_zero() {
+    assert_eq!(
+        run_program_i64(r#"fn main() -> i64 = 0.digit_sum();"#),
+        0
+    );
+}
+
+#[test]
+fn test_int_digit_sum_large() {
+    // 9999 -> 36
+    assert_eq!(
+        run_program_i64(r#"fn main() -> i64 = 9999.digit_sum();"#),
+        36
+    );
+}
+
+#[test]
+fn test_int_reverse_digits_negative() {
+    assert_eq!(
+        run_program_i64(r#"fn main() -> i64 = (-123).reverse_digits();"#),
+        -321
+    );
+}
+
+#[test]
+fn test_int_is_palindrome_true() {
+    assert_eq!(
+        run_program("fn main() -> bool = 12321.is_palindrome_int();"),
+        Value::Bool(true)
+    );
+}
+
+#[test]
+fn test_int_is_palindrome_false() {
+    assert_eq!(
+        run_program("fn main() -> bool = 12345.is_palindrome_int();"),
+        Value::Bool(false)
+    );
+}
+
+#[test]
+fn test_int_ilog2_power() {
+    assert_eq!(
+        run_program_i64(r#"fn main() -> i64 = 1024.ilog2();"#),
+        10
+    );
+}
+
+#[test]
+fn test_int_ilog10_thousand() {
+    assert_eq!(
+        run_program_i64(r#"fn main() -> i64 = 1000.ilog10();"#),
+        3
+    );
+}
+
+#[test]
+fn test_int_to_radix_base2() {
+    assert_eq!(
+        run_program_str(r#"fn main() -> String = 255.to_radix(2);"#),
+        "11111111"
+    );
+}
+
+#[test]
+fn test_int_to_radix_base16() {
+    assert_eq!(
+        run_program_str(r#"fn main() -> String = 255.to_radix(16);"#),
+        "ff"
+    );
+}
+
