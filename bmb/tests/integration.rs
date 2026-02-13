@@ -22768,3 +22768,103 @@ fn test_no_chained_comparison_not_equality() {
         "chained_comparison"
     ));
 }
+
+// ===== Cycle 401: Lint integration tests for new rules =====
+
+#[test]
+fn test_lint_double_negation_in_if_condition() {
+    // Double negation inside if condition
+    let kinds = warning_kinds(
+        "fn main() -> i64 = { let x = true; if not not x { 1 } else { 2 } };"
+    );
+    assert!(kinds.contains(&"double_negation".to_string()));
+}
+
+#[test]
+fn test_lint_redundant_if_with_negated_condition() {
+    // if not x { true } else { false } — fires both negated_if and redundant_if
+    let kinds = warning_kinds(
+        "fn main() -> bool = { let x = true; if not x { true } else { false } };"
+    );
+    assert!(kinds.contains(&"negated_if_condition".to_string()));
+    assert!(kinds.contains(&"redundant_if_expression".to_string()));
+}
+
+#[test]
+fn test_lint_chained_comparison_4_arms() {
+    // 4 arms should also fire
+    assert!(has_warning_kind(
+        "fn main() -> i64 = { let x = 1; if x == 1 { 10 } else if x == 2 { 20 } else if x == 3 { 30 } else if x == 4 { 40 } else { 0 } };",
+        "chained_comparison"
+    ));
+}
+
+#[test]
+fn test_lint_bitwise_identity_with_variable() {
+    // bxor with 0 inside expression
+    let kinds = warning_kinds(
+        "fn main() -> i64 = { let x = 42; let y = x bxor 0; y };"
+    );
+    assert!(kinds.contains(&"identity_operation".to_string()));
+}
+
+#[test]
+fn test_lint_empty_while_true() {
+    // while true {} — fires both constant_condition (skipped for true) and empty_loop_body
+    let kinds = warning_kinds(
+        "fn main() -> () = { while true {} };"
+    );
+    // while true doesn't fire constant_condition (intentional infinite loop)
+    assert!(kinds.contains(&"empty_loop_body".to_string()));
+    assert!(!kinds.contains(&"constant_condition".to_string()));
+}
+
+#[test]
+fn test_lint_multiple_warnings_same_expr() {
+    // x + 0 in if condition with redundant bool return
+    let kinds = warning_kinds(
+        "fn main() -> bool = { let x = 5; if x + 0 == 5 { true } else { false } };"
+    );
+    assert!(kinds.contains(&"identity_operation".to_string()));
+    assert!(kinds.contains(&"redundant_if_expression".to_string()));
+}
+
+#[test]
+fn test_lint_double_negation_nested_deep() {
+    // Triple negation — only the outermost double triggers
+    let kinds = warning_kinds(
+        "fn main() -> bool = { let x = true; not not not x };"
+    );
+    assert!(kinds.contains(&"double_negation".to_string()));
+}
+
+#[test]
+fn test_lint_band_zero_inside_while() {
+    // Absorbing element inside while condition
+    let kinds = warning_kinds(
+        "fn main() -> () = { let x = 5; while (x band 0) == 0 {} };"
+    );
+    assert!(kinds.contains(&"absorbing_element".to_string()));
+    assert!(kinds.contains(&"empty_loop_body".to_string()));
+}
+
+#[test]
+fn test_lint_no_false_positive_shift_nonzero() {
+    // x << 3 — meaningful shift, no warning
+    assert!(!has_warning_kind(
+        "fn main() -> i64 = { let x = 1; x << 3 };",
+        "identity_operation"
+    ));
+}
+
+#[test]
+fn test_lint_no_false_positive_normal_if() {
+    // Normal if-else — no lint fires
+    let kinds = warning_kinds(
+        "fn main() -> i64 = { let x = 5; if x > 0 { x } else { 0 - x } };"
+    );
+    assert!(!kinds.contains(&"redundant_if_expression".to_string()));
+    assert!(!kinds.contains(&"negated_if_condition".to_string()));
+    assert!(!kinds.contains(&"constant_condition".to_string()));
+    assert!(!kinds.contains(&"double_negation".to_string()));
+}
