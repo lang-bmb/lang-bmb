@@ -17277,4 +17277,339 @@ mod tests {
         let analysis = MemoryEffectAnalysis::new();
         assert_eq!(analysis.name(), "memory_effect_analysis");
     }
+
+    // --- ProvenFacts::from_preconditions ---
+
+    #[test]
+    fn test_proven_facts_ge_bound() {
+        let facts = ProvenFacts::from_preconditions(&[
+            ContractFact::VarCmp { var: "x".to_string(), op: CmpOp::Ge, value: 5 },
+        ]);
+        let (lower, upper) = facts.var_bounds.get("x").unwrap();
+        assert_eq!(*lower, Some(5));
+        assert_eq!(*upper, None);
+    }
+
+    #[test]
+    fn test_proven_facts_gt_bound() {
+        let facts = ProvenFacts::from_preconditions(&[
+            ContractFact::VarCmp { var: "x".to_string(), op: CmpOp::Gt, value: 5 },
+        ]);
+        let (lower, _) = facts.var_bounds.get("x").unwrap();
+        assert_eq!(*lower, Some(6), "x > 5 means lower bound is 6");
+    }
+
+    #[test]
+    fn test_proven_facts_le_bound() {
+        let facts = ProvenFacts::from_preconditions(&[
+            ContractFact::VarCmp { var: "x".to_string(), op: CmpOp::Le, value: 10 },
+        ]);
+        let (_, upper) = facts.var_bounds.get("x").unwrap();
+        assert_eq!(*upper, Some(10));
+    }
+
+    #[test]
+    fn test_proven_facts_lt_bound() {
+        let facts = ProvenFacts::from_preconditions(&[
+            ContractFact::VarCmp { var: "x".to_string(), op: CmpOp::Lt, value: 10 },
+        ]);
+        let (_, upper) = facts.var_bounds.get("x").unwrap();
+        assert_eq!(*upper, Some(9), "x < 10 means upper bound is 9");
+    }
+
+    #[test]
+    fn test_proven_facts_eq_bound() {
+        let facts = ProvenFacts::from_preconditions(&[
+            ContractFact::VarCmp { var: "x".to_string(), op: CmpOp::Eq, value: 7 },
+        ]);
+        let (lower, upper) = facts.var_bounds.get("x").unwrap();
+        assert_eq!(*lower, Some(7));
+        assert_eq!(*upper, Some(7));
+    }
+
+    #[test]
+    fn test_proven_facts_multiple_bounds_merge() {
+        let facts = ProvenFacts::from_preconditions(&[
+            ContractFact::VarCmp { var: "x".to_string(), op: CmpOp::Ge, value: 3 },
+            ContractFact::VarCmp { var: "x".to_string(), op: CmpOp::Le, value: 100 },
+        ]);
+        let (lower, upper) = facts.var_bounds.get("x").unwrap();
+        assert_eq!(*lower, Some(3));
+        assert_eq!(*upper, Some(100));
+    }
+
+    #[test]
+    fn test_proven_facts_nonnull() {
+        let facts = ProvenFacts::from_preconditions(&[
+            ContractFact::NonNull { var: "ptr".to_string() },
+        ]);
+        assert_eq!(facts.get_bool_value("ptr_is_null"), Some(false));
+    }
+
+    #[test]
+    fn test_proven_facts_array_bounds_stored() {
+        let facts = ProvenFacts::from_preconditions(&[
+            ContractFact::ArrayBounds { array: "arr".to_string(), index: "i".to_string() },
+        ]);
+        assert_eq!(facts.var_relations.len(), 1);
+    }
+
+    // --- ProvenFacts::check_bounds ---
+
+    #[test]
+    fn test_check_bounds_ge_true() {
+        let facts = ProvenFacts::from_preconditions(&[
+            ContractFact::VarCmp { var: "x".to_string(), op: CmpOp::Ge, value: 10 },
+        ]);
+        // x >= 10, check x >= 5 → always true
+        let result = facts.check_bounds(Some(10), None, CmpOp::Ge, 5);
+        assert_eq!(result, Some(true));
+    }
+
+    #[test]
+    fn test_check_bounds_ge_false() {
+        let facts = ProvenFacts::from_preconditions(&[
+            ContractFact::VarCmp { var: "x".to_string(), op: CmpOp::Le, value: 3 },
+        ]);
+        // x <= 3, check x >= 5 → always false
+        let result = facts.check_bounds(None, Some(3), CmpOp::Ge, 5);
+        assert_eq!(result, Some(false));
+    }
+
+    #[test]
+    fn test_check_bounds_lt_true() {
+        let facts = ProvenFacts::from_preconditions(&[
+            ContractFact::VarCmp { var: "x".to_string(), op: CmpOp::Le, value: 3 },
+        ]);
+        // x <= 3, check x < 10 → always true (upper 3 < 10)
+        let result = facts.check_bounds(None, Some(3), CmpOp::Lt, 10);
+        assert_eq!(result, Some(true));
+    }
+
+    #[test]
+    fn test_check_bounds_lt_false() {
+        let facts = ProvenFacts::from_preconditions(&[
+            ContractFact::VarCmp { var: "x".to_string(), op: CmpOp::Ge, value: 10 },
+        ]);
+        // x >= 10, check x < 5 → always false (lower 10 >= 5)
+        let result = facts.check_bounds(Some(10), None, CmpOp::Lt, 5);
+        assert_eq!(result, Some(false));
+    }
+
+    #[test]
+    fn test_check_bounds_unknown() {
+        let facts = ProvenFacts::from_preconditions(&[]);
+        let result = facts.check_bounds(None, None, CmpOp::Ge, 5);
+        assert_eq!(result, None, "No bounds = unknown");
+    }
+
+    // --- ProvenFacts::evaluate_comparison ---
+
+    #[test]
+    fn test_evaluate_comparison_var_ge_const() {
+        let facts = ProvenFacts::from_preconditions(&[
+            ContractFact::VarCmp { var: "x".to_string(), op: CmpOp::Ge, value: 10 },
+        ]);
+        let result = facts.evaluate_comparison(
+            &Operand::Place(Place::new("x")),
+            CmpOp::Ge,
+            &Operand::Constant(Constant::Int(5)),
+        );
+        assert_eq!(result, Some(true), "x >= 10, so x >= 5 is true");
+    }
+
+    #[test]
+    fn test_evaluate_comparison_const_lt_var() {
+        let facts = ProvenFacts::from_preconditions(&[
+            ContractFact::VarCmp { var: "x".to_string(), op: CmpOp::Ge, value: 10 },
+        ]);
+        // 5 < x → flipped to x > 5 → true because lower=10 > 5
+        let result = facts.evaluate_comparison(
+            &Operand::Constant(Constant::Int(5)),
+            CmpOp::Lt,
+            &Operand::Place(Place::new("x")),
+        );
+        assert_eq!(result, Some(true));
+    }
+
+    #[test]
+    fn test_evaluate_comparison_unknown_var() {
+        let facts = ProvenFacts::from_preconditions(&[]);
+        let result = facts.evaluate_comparison(
+            &Operand::Place(Place::new("y")),
+            CmpOp::Ge,
+            &Operand::Constant(Constant::Int(5)),
+        );
+        assert_eq!(result, None, "Unknown variable = unknown comparison");
+    }
+
+    // --- fold_builtin_call ---
+
+    #[test]
+    fn test_fold_builtin_chr_valid() {
+        let constants = HashMap::new();
+        let result = fold_builtin_call("chr", &[Operand::Constant(Constant::Int(65))], &constants);
+        assert!(matches!(result, Some(Constant::String(s)) if s == "A"));
+    }
+
+    #[test]
+    fn test_fold_builtin_chr_zero() {
+        let constants = HashMap::new();
+        let result = fold_builtin_call("chr", &[Operand::Constant(Constant::Int(0))], &constants);
+        assert!(matches!(result, Some(Constant::String(s)) if s == "\0"));
+    }
+
+    #[test]
+    fn test_fold_builtin_chr_out_of_range() {
+        let constants = HashMap::new();
+        let result = fold_builtin_call("chr", &[Operand::Constant(Constant::Int(128))], &constants);
+        assert!(result.is_none(), "128 is outside ASCII range");
+    }
+
+    #[test]
+    fn test_fold_builtin_chr_negative() {
+        let constants = HashMap::new();
+        let result = fold_builtin_call("chr", &[Operand::Constant(Constant::Int(-1))], &constants);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_fold_builtin_ord_valid() {
+        let constants = HashMap::new();
+        let result = fold_builtin_call("ord", &[Operand::Constant(Constant::String("A".to_string()))], &constants);
+        assert!(matches!(result, Some(Constant::Int(65))));
+    }
+
+    #[test]
+    fn test_fold_builtin_ord_empty_string() {
+        let constants = HashMap::new();
+        let result = fold_builtin_call("ord", &[Operand::Constant(Constant::String("".to_string()))], &constants);
+        assert!(result.is_none(), "Empty string has no char");
+    }
+
+    #[test]
+    fn test_fold_builtin_ord_multi_char() {
+        let constants = HashMap::new();
+        let result = fold_builtin_call("ord", &[Operand::Constant(Constant::String("AB".to_string()))], &constants);
+        assert!(result.is_none(), "Multi-char string not handled");
+    }
+
+    #[test]
+    fn test_fold_builtin_unknown_func() {
+        let constants = HashMap::new();
+        let result = fold_builtin_call("unknown", &[Operand::Constant(Constant::Int(1))], &constants);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_fold_builtin_bmb_chr() {
+        let constants = HashMap::new();
+        let result = fold_builtin_call("bmb_chr", &[Operand::Constant(Constant::Int(90))], &constants);
+        assert!(matches!(result, Some(Constant::String(s)) if s == "Z"));
+    }
+
+    // --- get_constant_with_filter ---
+
+    #[test]
+    fn test_get_constant_with_filter_constant_operand() {
+        let constants = HashMap::new();
+        let loop_modified = HashSet::new();
+        let result = get_constant_with_filter(&Operand::Constant(Constant::Int(42)), &constants, &loop_modified);
+        assert!(matches!(result, Some(Constant::Int(42))));
+    }
+
+    #[test]
+    fn test_get_constant_with_filter_loop_modified_blocked() {
+        let mut constants = HashMap::new();
+        constants.insert("x".to_string(), Constant::Int(10));
+        let mut loop_modified = HashSet::new();
+        loop_modified.insert("x".to_string());
+        let result = get_constant_with_filter(&Operand::Place(Place::new("x")), &constants, &loop_modified);
+        assert!(result.is_none(), "Loop-modified var should not be propagated");
+    }
+
+    #[test]
+    fn test_get_constant_with_filter_not_modified_found() {
+        let mut constants = HashMap::new();
+        constants.insert("x".to_string(), Constant::Int(10));
+        let loop_modified = HashSet::new();
+        let result = get_constant_with_filter(&Operand::Place(Place::new("x")), &constants, &loop_modified);
+        assert!(matches!(result, Some(Constant::Int(10))));
+    }
+
+    #[test]
+    fn test_get_constant_with_filter_not_found() {
+        let constants = HashMap::new();
+        let loop_modified = HashSet::new();
+        let result = get_constant_with_filter(&Operand::Place(Place::new("y")), &constants, &loop_modified);
+        assert!(result.is_none());
+    }
+
+    // --- LinearRecurrenceToLoop name ---
+
+    #[test]
+    fn test_linear_recurrence_name() {
+        let pass = LinearRecurrenceToLoop::new();
+        assert_eq!(pass.name(), "LinearRecurrenceToLoop");
+    }
+
+    #[test]
+    fn test_linear_recurrence_default() {
+        let _pass: LinearRecurrenceToLoop = Default::default();
+        assert_eq!(_pass.name(), "LinearRecurrenceToLoop");
+    }
+
+    // --- ConditionalIncrementToSelect: operands_equal ---
+
+    #[test]
+    fn test_conditional_increment_operands_equal_places() {
+        assert!(ConditionalIncrementToSelect::operands_equal(
+            &Operand::Place(Place::new("x")),
+            &Operand::Place(Place::new("x")),
+        ));
+        assert!(!ConditionalIncrementToSelect::operands_equal(
+            &Operand::Place(Place::new("x")),
+            &Operand::Place(Place::new("y")),
+        ));
+    }
+
+    #[test]
+    fn test_conditional_increment_operands_equal_constants() {
+        assert!(ConditionalIncrementToSelect::operands_equal(
+            &Operand::Constant(Constant::Int(42)),
+            &Operand::Constant(Constant::Int(42)),
+        ));
+        assert!(!ConditionalIncrementToSelect::operands_equal(
+            &Operand::Constant(Constant::Int(1)),
+            &Operand::Constant(Constant::Int(2)),
+        ));
+    }
+
+    #[test]
+    fn test_conditional_increment_operands_equal_mixed() {
+        assert!(!ConditionalIncrementToSelect::operands_equal(
+            &Operand::Place(Place::new("x")),
+            &Operand::Constant(Constant::Int(42)),
+        ));
+    }
+
+    #[test]
+    fn test_conditional_increment_operands_equal_bools() {
+        assert!(ConditionalIncrementToSelect::operands_equal(
+            &Operand::Constant(Constant::Bool(true)),
+            &Operand::Constant(Constant::Bool(true)),
+        ));
+        assert!(!ConditionalIncrementToSelect::operands_equal(
+            &Operand::Constant(Constant::Bool(true)),
+            &Operand::Constant(Constant::Bool(false)),
+        ));
+    }
+
+    #[test]
+    fn test_conditional_increment_operands_equal_strings() {
+        assert!(ConditionalIncrementToSelect::operands_equal(
+            &Operand::Constant(Constant::String("hello".to_string())),
+            &Operand::Constant(Constant::String("hello".to_string())),
+        ));
+    }
 }
