@@ -13,7 +13,7 @@ Pre-built BMB compiler binaries for bootstrapping without Rust.
 
 ## Version
 
-Current version: **v0.89.20** (2026-02-09)
+Current version: **v0.90.89** (2026-02-14)
 
 See `VERSION` file for full version information.
 
@@ -21,6 +21,7 @@ See `VERSION` file for full version information.
 
 | Version | Date | Features |
 |---------|------|----------|
+| v0.90.89 | 2026-02-14 | match expr, struct init, 68624 lines LLVM IR, 13 golden tests, build command |
 | v0.89.20 | 2026-02-09 | 3-stage fixed point verified, 40612 lines LLVM IR |
 | v0.88.2 | 2026-02-06 | Arena allocator for memory management |
 | v0.88.0 | 2026-02-06 | Concurrency support, emit-ir CLI |
