@@ -213,6 +213,14 @@ pub enum CompileWarning {
         span: Span,
     },
 
+    /// v0.90.141: Absorbing element in expression
+    /// `x * 0` is always 0, `x % 1` is always 0
+    AbsorbingElement {
+        expr: String,
+        result: String,
+        span: Span,
+    },
+
     /// Generic warning with span
     Generic {
         message: String,
@@ -450,6 +458,11 @@ impl CompileWarning {
         Self::NegatedIfCondition { span }
     }
 
+    /// v0.90.141: Create an absorbing element warning
+    pub fn absorbing_element(expr: impl Into<String>, result: impl Into<String>, span: Span) -> Self {
+        Self::AbsorbingElement { expr: expr.into(), result: result.into(), span }
+    }
+
     /// Get the span of this warning, if any
     pub fn span(&self) -> Option<Span> {
         match self {
@@ -482,6 +495,7 @@ impl CompileWarning {
             Self::NonPascalCaseType { span, .. } => Some(*span),
             Self::IdentityOperation { span, .. } => Some(*span),
             Self::NegatedIfCondition { span } => Some(*span),
+            Self::AbsorbingElement { span, .. } => Some(*span),
             Self::Generic { span, .. } => *span,
         }
     }
@@ -582,6 +596,9 @@ impl CompileWarning {
             Self::NegatedIfCondition { .. } => {
                 "negated if condition: consider swapping branches to remove negation".to_string()
             }
+            Self::AbsorbingElement { expr, result, .. } => {
+                format!("`{}` is always `{}`", expr, result)
+            }
             Self::Generic { message, .. } => message.clone(),
         }
     }
@@ -618,6 +635,7 @@ impl CompileWarning {
             Self::UnusedReturnValue { .. } => "unused_return_value",
             Self::IdentityOperation { .. } => "identity_operation",
             Self::NegatedIfCondition { .. } => "negated_if_condition",
+            Self::AbsorbingElement { .. } => "absorbing_element",
             Self::Generic { .. } => "warning",
         }
     }

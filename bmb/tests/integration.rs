@@ -22374,3 +22374,45 @@ fn test_no_negated_if_bool_lit() {
         "negated_if_condition"
     ));
 }
+
+// ===== Cycle 388: Absorbing element detection lint =====
+
+#[test]
+fn test_absorbing_mul_zero_right() {
+    assert!(has_warning_kind(
+        "fn main() -> i64 = { let x = 5; x * 0 };",
+        "absorbing_element"
+    ));
+}
+
+#[test]
+fn test_absorbing_mul_zero_left() {
+    assert!(has_warning_kind(
+        "fn main() -> i64 = { let x = 5; 0 * x };",
+        "absorbing_element"
+    ));
+}
+
+#[test]
+fn test_absorbing_mod_one() {
+    assert!(has_warning_kind(
+        "fn main() -> i64 = { let x = 5; x % 1 };",
+        "absorbing_element"
+    ));
+}
+
+#[test]
+fn test_no_absorbing_normal_mul() {
+    assert!(!has_warning_kind(
+        "fn main() -> i64 = { let x = 5; x * 3 };",
+        "absorbing_element"
+    ));
+}
+
+#[test]
+fn test_no_absorbing_normal_mod() {
+    assert!(!has_warning_kind(
+        "fn main() -> i64 = { let x = 5; x % 3 };",
+        "absorbing_element"
+    ));
+}

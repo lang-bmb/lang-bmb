@@ -1697,6 +1697,37 @@ impl TypeChecker {
                     }
                 }
 
+                // v0.90.141: Detect absorbing elements (x * 0, 0 * x → 0; x % 1 → 0)
+                {
+                    let absorb = match op {
+                        BinOp::Mul => {
+                            if matches!(&left.node, Expr::IntLit(0)) || matches!(&right.node, Expr::IntLit(0)) {
+                                Some("0")
+                            } else {
+                                None
+                            }
+                        }
+                        BinOp::Mod => {
+                            if matches!(&right.node, Expr::IntLit(1)) {
+                                Some("0")
+                            } else {
+                                None
+                            }
+                        }
+                        _ => None,
+                    };
+                    if let Some(result) = absorb {
+                        let expr_str = match (&left.node, &right.node) {
+                            (Expr::IntLit(l), Expr::IntLit(r)) => format!("{l} {op} {r}"),
+                            (Expr::IntLit(l), Expr::Var(r)) => format!("{l} {op} {r}"),
+                            (Expr::Var(l), Expr::IntLit(r)) => format!("{l} {op} {r}"),
+                            (Expr::Var(l), Expr::Var(r)) => format!("{l} {op} {r}"),
+                            _ => format!("... {op} ..."),
+                        };
+                        self.add_warning(CompileWarning::absorbing_element(expr_str, result, span));
+                    }
+                }
+
                 // v0.90.129: Detect redundant boolean comparison (x == true, x != false, etc.)
                 if matches!(op, BinOp::Eq | BinOp::Ne) {
                     let bool_val = match (&left.node, &right.node) {
