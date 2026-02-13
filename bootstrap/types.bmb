@@ -5088,12 +5088,12 @@ fn test_tenv_with() -> i64 =
 
 // Test tenv_add_* functions
 fn test_tenv_add() -> i64 =
-    let box = gen_struct_pack("Box", "T", "value:T");
+    let box_def = gen_struct_pack("Box", "T", "value:T");
     let pair = gen_struct_pack("Pair", "T,U", "first:T,second:U");
     let opt = gen_enum_pack("Option", "T", "Some:T,None");
     let identity = gen_fn_pack("identity", "T", "T", "T");
 
-    let tenv1 = tenv_add_struct(tenv_new(), box);
+    let tenv1 = tenv_add_struct(tenv_new(), box_def);
     let tenv2 = tenv_add_struct(tenv1, pair);
     let tenv3 = tenv_add_enum(tenv2, opt);
     let tenv4 = tenv_add_fn(tenv3, identity);
@@ -5119,8 +5119,8 @@ fn test_tenv_add() -> i64 =
 
 // Test tenv_struct_field_type
 fn test_tenv_struct_field() -> i64 =
-    let box = gen_struct_pack("Box", "T", "value:T");
-    let tenv = tenv_add_struct(tenv_new(), box);
+    let box_def = gen_struct_pack("Box", "T", "value:T");
+    let tenv = tenv_add_struct(tenv_new(), box_def);
 
     // Box<i64>.value -> i64
     let ft1 = tenv_struct_field_type(tenv, "Box", "i64", "value");
