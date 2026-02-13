@@ -22868,3 +22868,77 @@ fn test_lint_no_false_positive_normal_if() {
     assert!(!kinds.contains(&"constant_condition".to_string()));
     assert!(!kinds.contains(&"double_negation".to_string()));
 }
+
+// ===== Cycle 402: String method tests =====
+
+#[test]
+fn test_string_slice_begin() {
+    assert_eq!(
+        run_program_str(r#"fn main() -> String = "hello world".slice(0, 5);"#),
+        "hello"
+    );
+}
+
+#[test]
+fn test_string_slice_middle() {
+    assert_eq!(
+        run_program_str(r#"fn main() -> String = "hello world".slice(6, 11);"#),
+        "world"
+    );
+}
+
+#[test]
+fn test_string_index_of_world() {
+    assert_eq!(
+        run_program_i64(r#"fn main() -> i64 = "hello world".index_of("world").unwrap_or(-1);"#),
+        6
+    );
+}
+
+#[test]
+fn test_string_to_int_parse() {
+    assert_eq!(
+        run_program_i64(r#"fn main() -> i64 = "42".to_int().unwrap_or(0);"#),
+        42
+    );
+}
+
+#[test]
+fn test_string_to_float_parse() {
+    let result = run_program_f64(r#"fn main() -> f64 = "2.75".to_float().unwrap_or(0.0);"#);
+    assert!((result - 2.75).abs() < 0.001);
+}
+
+#[test]
+fn test_string_strip_prefix_unwrap() {
+    assert_eq!(
+        run_program_str(r#"fn main() -> String = "hello world".strip_prefix("hello ").unwrap_or("");"#),
+        "world"
+    );
+}
+
+#[test]
+fn test_string_strip_suffix_unwrap() {
+    assert_eq!(
+        run_program_str(r#"fn main() -> String = "hello world".strip_suffix(" world").unwrap_or("");"#),
+        "hello"
+    );
+}
+
+#[test]
+fn test_string_byte_at_first() {
+    // 'h' = 104
+    assert_eq!(
+        run_program_i64(r#"fn main() -> i64 = "hello".byte_at(0);"#),
+        104
+    );
+}
+
+#[test]
+fn test_string_to_int_invalid_returns_none() {
+    assert_eq!(
+        run_program_i64(r#"fn main() -> i64 = "abc".to_int().unwrap_or(-1);"#),
+        -1
+    );
+}
+
