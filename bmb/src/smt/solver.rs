@@ -436,4 +436,136 @@ mod tests {
         let display = format!("{}", ce);
         assert!(display.contains("Counterexample:"));
     }
+
+    // ====================================================================
+    // Additional SMT solver tests (Cycle 430)
+    // ====================================================================
+
+    #[test]
+    fn test_parse_define_fun_bool_value() {
+        let solver = SmtSolver::new();
+        let result = solver.parse_define_fun("(define-fun b () Bool true)");
+        assert_eq!(result, Some(("b".to_string(), "true".to_string())));
+    }
+
+    #[test]
+    fn test_parse_define_fun_negative_value() {
+        let solver = SmtSolver::new();
+        let result = solver.parse_define_fun("(define-fun n () Int (- 5))");
+        assert_eq!(result, Some(("n".to_string(), "(- 5".to_string())));
+    }
+
+    #[test]
+    fn test_parse_define_fun_empty_input() {
+        let solver = SmtSolver::new();
+        let result = solver.parse_define_fun("(define-fun )");
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_parse_model_empty_lines() {
+        let solver = SmtSolver::new();
+        let model = solver.parse_model(&[]);
+        assert!(model.is_empty());
+    }
+
+    #[test]
+    fn test_parse_model_no_define_fun() {
+        let solver = SmtSolver::new();
+        let model = solver.parse_model(&["(model", ")"]);
+        assert!(model.is_empty());
+    }
+
+    #[test]
+    fn test_parse_model_multiple_define_funs() {
+        let solver = SmtSolver::new();
+        let lines = &[
+            "(model",
+            "  (define-fun a () Int 10)",
+            "  (define-fun b () Int 20)",
+            "  (define-fun c () Bool false)",
+            ")",
+        ];
+        let model = solver.parse_model(lines);
+        assert_eq!(model.get("a"), Some(&"10".to_string()));
+        assert_eq!(model.get("b"), Some(&"20".to_string()));
+        assert_eq!(model.get("c"), Some(&"false".to_string()));
+    }
+
+    #[test]
+    fn test_parse_model_fallback_simple() {
+        let solver = SmtSolver::new();
+        let mut model = HashMap::new();
+        let output = "(define-fun x () Int 42)";
+        solver.parse_model_fallback(output, &mut model);
+        assert_eq!(model.get("x"), Some(&"42".to_string()));
+    }
+
+    #[test]
+    fn test_parse_model_fallback_multiple() {
+        let solver = SmtSolver::new();
+        let mut model = HashMap::new();
+        let output = "(model\n  (define-fun a () Int 1)\n  (define-fun b () Bool true)\n)";
+        solver.parse_model_fallback(output, &mut model);
+        assert_eq!(model.get("a"), Some(&"1".to_string()));
+        assert_eq!(model.get("b"), Some(&"true".to_string()));
+    }
+
+    #[test]
+    fn test_parse_model_fallback_no_define_fun() {
+        let solver = SmtSolver::new();
+        let mut model = HashMap::new();
+        solver.parse_model_fallback("(model\n  (some-other-thing)\n)", &mut model);
+        assert!(model.is_empty());
+    }
+
+    #[test]
+    fn test_parse_result_sat_empty_model() {
+        let solver = SmtSolver::new();
+        let result = solver.parse_result("sat\n").unwrap();
+        match result {
+            SolverResult::Sat(model) => assert!(model.is_empty()),
+            _ => panic!("Expected Sat"),
+        }
+    }
+
+    #[test]
+    fn test_verify_result_variants() {
+        // VerifyResult::Verified
+        let v = VerifyResult::Verified;
+        assert!(matches!(v, VerifyResult::Verified));
+
+        // VerifyResult::Unknown
+        let v = VerifyResult::Unknown("timeout".to_string());
+        if let VerifyResult::Unknown(msg) = v {
+            assert_eq!(msg, "timeout");
+        } else {
+            panic!("Expected Unknown");
+        }
+
+        // VerifyResult::SolverNotAvailable
+        let v = VerifyResult::SolverNotAvailable;
+        assert!(matches!(v, VerifyResult::SolverNotAvailable));
+
+        // VerifyResult::Failed
+        let ce = Counterexample { assignments: vec![("x".to_string(), "5".to_string())] };
+        let v = VerifyResult::Failed(ce);
+        if let VerifyResult::Failed(ce) = v {
+            assert_eq!(ce.assignments.len(), 1);
+        } else {
+            panic!("Expected Failed");
+        }
+    }
+
+    #[test]
+    fn test_solver_error_variants() {
+        let e = SolverError::ProcessError("oops".to_string());
+        assert!(format!("{}", e).contains("process error"));
+
+        let e = SolverError::Z3Error("bad".to_string());
+        assert!(format!("{}", e).contains("Z3 error"));
+
+        let e = SolverError::ParseError("parse".to_string());
+        assert!(format!("{}", e).contains("parse error"));
+    }
 }

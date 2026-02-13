@@ -7781,4 +7781,293 @@ mod tests {
         let codegen = TextCodeGen::new();
         assert_eq!(codegen.format_operand(&Operand::Constant(Constant::Bool(true))), "1");
     }
+
+    // ====================================================================
+    // escape_string_for_llvm tests (Cycle 430)
+    // ====================================================================
+
+    #[test]
+    fn test_escape_string_printable_ascii() {
+        let codegen = TextCodeGen::new();
+        assert_eq!(codegen.escape_string_for_llvm("hello"), "hello");
+    }
+
+    #[test]
+    fn test_escape_string_backslash() {
+        let codegen = TextCodeGen::new();
+        assert_eq!(codegen.escape_string_for_llvm("a\\b"), "a\\5Cb");
+    }
+
+    #[test]
+    fn test_escape_string_double_quote() {
+        let codegen = TextCodeGen::new();
+        assert_eq!(codegen.escape_string_for_llvm("say \"hi\""), "say \\22hi\\22");
+    }
+
+    #[test]
+    fn test_escape_string_newline() {
+        let codegen = TextCodeGen::new();
+        assert_eq!(codegen.escape_string_for_llvm("a\nb"), "a\\0Ab");
+    }
+
+    #[test]
+    fn test_escape_string_carriage_return() {
+        let codegen = TextCodeGen::new();
+        assert_eq!(codegen.escape_string_for_llvm("a\rb"), "a\\0Db");
+    }
+
+    #[test]
+    fn test_escape_string_tab() {
+        let codegen = TextCodeGen::new();
+        assert_eq!(codegen.escape_string_for_llvm("a\tb"), "a\\09b");
+    }
+
+    #[test]
+    fn test_escape_string_null_byte() {
+        let codegen = TextCodeGen::new();
+        assert_eq!(codegen.escape_string_for_llvm("a\0b"), "a\\00b");
+    }
+
+    #[test]
+    fn test_escape_string_empty() {
+        let codegen = TextCodeGen::new();
+        assert_eq!(codegen.escape_string_for_llvm(""), "");
+    }
+
+    // ====================================================================
+    // constant_type tests (Cycle 430)
+    // ====================================================================
+
+    #[test]
+    fn test_constant_type_int() {
+        let codegen = TextCodeGen::new();
+        assert_eq!(codegen.constant_type(&Constant::Int(0)), "i64");
+    }
+
+    #[test]
+    fn test_constant_type_float() {
+        let codegen = TextCodeGen::new();
+        assert_eq!(codegen.constant_type(&Constant::Float(1.0)), "double");
+    }
+
+    #[test]
+    fn test_constant_type_bool() {
+        let codegen = TextCodeGen::new();
+        assert_eq!(codegen.constant_type(&Constant::Bool(false)), "i1");
+    }
+
+    #[test]
+    fn test_constant_type_string() {
+        let codegen = TextCodeGen::new();
+        assert_eq!(codegen.constant_type(&Constant::String("hi".to_string())), "ptr");
+    }
+
+    #[test]
+    fn test_constant_type_char() {
+        let codegen = TextCodeGen::new();
+        assert_eq!(codegen.constant_type(&Constant::Char('a')), "i32");
+    }
+
+    #[test]
+    fn test_constant_type_unit() {
+        let codegen = TextCodeGen::new();
+        assert_eq!(codegen.constant_type(&Constant::Unit), "i8");
+    }
+
+    // ====================================================================
+    // infer_place_type tests (Cycle 430)
+    // ====================================================================
+
+    #[test]
+    fn test_infer_place_type_from_param() {
+        let codegen = TextCodeGen::new();
+        let func = MirFunction {
+            name: "test".to_string(),
+            params: vec![("x".to_string(), MirType::F64)],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+        assert_eq!(codegen.infer_place_type(&Place::new("x"), &func), "double");
+    }
+
+    #[test]
+    fn test_infer_place_type_from_local() {
+        let codegen = TextCodeGen::new();
+        let func = MirFunction {
+            name: "test".to_string(),
+            params: vec![],
+            ret_ty: MirType::I64,
+            locals: vec![("tmp".to_string(), MirType::Bool)],
+            blocks: vec![],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+        assert_eq!(codegen.infer_place_type(&Place::new("tmp"), &func), "i1");
+    }
+
+    #[test]
+    fn test_infer_place_type_default_i64() {
+        let codegen = TextCodeGen::new();
+        let func = MirFunction {
+            name: "test".to_string(),
+            params: vec![],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+        assert_eq!(codegen.infer_place_type(&Place::new("unknown"), &func), "i64");
+    }
+
+    // ====================================================================
+    // infer_operand_type tests (Cycle 430)
+    // ====================================================================
+
+    #[test]
+    fn test_infer_operand_type_constant() {
+        let codegen = TextCodeGen::new();
+        let func = MirFunction {
+            name: "test".to_string(),
+            params: vec![],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+        assert_eq!(codegen.infer_operand_type(&Operand::Constant(Constant::Float(1.0)), &func), "double");
+    }
+
+    #[test]
+    fn test_infer_operand_type_place_param() {
+        let codegen = TextCodeGen::new();
+        let func = MirFunction {
+            name: "test".to_string(),
+            params: vec![("y".to_string(), MirType::String)],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+        assert_eq!(codegen.infer_operand_type(&Operand::Place(Place::new("y")), &func), "ptr");
+    }
+
+    // ====================================================================
+    // infer_call_return_type tests (Cycle 430)
+    // ====================================================================
+
+    #[test]
+    fn test_infer_call_return_type_void() {
+        let codegen = TextCodeGen::new();
+        let func = MirFunction {
+            name: "test".to_string(),
+            params: vec![],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+        assert_eq!(codegen.infer_call_return_type("println", &func), "void");
+        assert_eq!(codegen.infer_call_return_type("print", &func), "void");
+        assert_eq!(codegen.infer_call_return_type("assert", &func), "void");
+    }
+
+    #[test]
+    fn test_infer_call_return_type_i64() {
+        let codegen = TextCodeGen::new();
+        let func = MirFunction {
+            name: "test".to_string(),
+            params: vec![],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+        assert_eq!(codegen.infer_call_return_type("read_int", &func), "i64");
+        assert_eq!(codegen.infer_call_return_type("bmb_abs", &func), "i64");
+        assert_eq!(codegen.infer_call_return_type("bmb_string_len", &func), "i64");
+    }
+
+    #[test]
+    fn test_infer_call_return_type_double() {
+        let codegen = TextCodeGen::new();
+        let func = MirFunction {
+            name: "test".to_string(),
+            params: vec![],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+        assert_eq!(codegen.infer_call_return_type("sqrt", &func), "double");
+        assert_eq!(codegen.infer_call_return_type("i64_to_f64", &func), "double");
+    }
+
+    #[test]
+    fn test_infer_call_return_type_ptr() {
+        let codegen = TextCodeGen::new();
+        let func = MirFunction {
+            name: "test".to_string(),
+            params: vec![],
+            ret_ty: MirType::I64,
+            locals: vec![],
+            blocks: vec![],
+            preconditions: vec![],
+            postconditions: vec![],
+            is_pure: false,
+            is_const: false,
+            always_inline: false,
+            inline_hint: false,
+            is_memory_free: false,
+        };
+        assert_eq!(codegen.infer_call_return_type("bmb_string_concat", &func), "ptr");
+    }
 }
