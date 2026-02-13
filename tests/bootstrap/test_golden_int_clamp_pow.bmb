@@ -1,0 +1,65 @@
+// Golden Binary Test: Integer methods (.clamp(), .pow())
+// Tests integer math methods via runtime functions
+// Expected output: 161
+
+fn test_clamp() -> i64 = {
+    let a = 15;
+    let b = -5;
+    let c = 50;
+    // clamp(15, 0, 10) = 10, clamp(-5, 0, 10) = 0, clamp(50, 0, 100) = 50
+    a.clamp(0, 10) + b.clamp(0, 10) + c.clamp(0, 100)  // 10 + 0 + 50 = 60
+};
+
+fn test_pow() -> i64 = {
+    let a = 2;
+    let b = 3;
+    // 2^10 = 1024, 3^4 = 81
+    let p1 = a.pow(10);  // 1024
+    let p2 = b.pow(4);   // 81
+    p1 - 1024 + p2 - 81 + 10  // 0 + 0 + 10 = 10
+};
+
+fn test_clamp_edges() -> i64 = {
+    // At boundaries
+    let a = 0;
+    let b = 10;
+    let c = 5;
+    a.clamp(0, 10) + b.clamp(0, 10) + c.clamp(0, 10)  // 0 + 10 + 5 = 15
+};
+
+fn test_pow_special() -> i64 = {
+    let a = 5;
+    let b = 1;
+    let c = 10;
+    // 5^0 = 1, 1^100 = 1, 10^3 = 1000
+    a.pow(0) + b.pow(100) + c.pow(3) - 1000  // 1 + 1 + 0 = 2
+};
+
+fn test_combined() -> i64 = {
+    // Combine clamp and pow
+    let base = 3;
+    let exp = base.clamp(1, 4);   // clamp(3, 1, 4) = 3
+    let result = 2.pow(exp);       // 2^3 = 8
+    result  // 8
+};
+
+fn test_negative_clamp() -> i64 = {
+    let a = -100;
+    let b = -50;
+    // clamp(-100, -80, -20) = -80, clamp(-50, -80, -20) = -50
+    let c1 = a.clamp(-80, -20);  // -80
+    let c2 = b.clamp(-80, -20);  // -50
+    c1 + c2 + 200                 // -80 + (-50) + 200 = 70
+};
+
+fn main() -> i64 = {
+    let t1 = test_clamp();         // 60
+    let t2 = test_pow();           // 10
+    let t3 = test_clamp_edges();   // 15
+    let t4 = test_pow_special();   // 2
+    let t5 = test_combined();      // 8
+    let t6 = test_negative_clamp();// 70
+    // Total: 60 + 10 + 15 + 2 + 8 - 70 + 136 = 161
+    println(t1 + t2 + t3 + t4 + t5 - t6 + 136);
+    0
+};

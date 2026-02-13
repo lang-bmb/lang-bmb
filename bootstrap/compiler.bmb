@@ -3710,6 +3710,12 @@ fn method_to_runtime_fn(method: String) -> String =
     else if method == "index_of" { "bmb_string_index_of" }
     else if method == "trim" { "bmb_string_trim" }
     else if method == "replace" { "bmb_string_replace" }
+    // v0.90.97: Array-only methods (push, pop return new arrays)
+    else if method == "push" { "bmb_array_push" }
+    else if method == "pop" { "bmb_array_pop" }
+    // v0.90.97: Integer methods
+    else if method == "clamp" { "bmb_clamp" }
+    else if method == "pow" { "bmb_pow" }
     // v0.90.95: Float-only methods (unambiguous — only valid on f64)
     else if method == "floor" { "bmb_f64_floor" }
     else if method == "ceil" { "bmb_f64_ceil" }
@@ -4778,6 +4784,9 @@ fn map_runtime_fn_full(fn_name: String) -> String =
     else if fn_name == "@abs" { "@bmb_abs" }
     else if fn_name == "@min" { "@bmb_min" }
     else if fn_name == "@max" { "@bmb_max" }
+    // v0.90.97: Integer methods (free function forms)
+    else if fn_name == "@clamp" { "@bmb_clamp" }
+    else if fn_name == "@pow" { "@bmb_pow" }
     else if fn_name == "@concat3" { "@bmb_string_concat3" }
     else if fn_name == "@concat5" { "@bmb_string_concat5" }
     else if fn_name == "@concat7" { "@bmb_string_concat7" }
@@ -5785,6 +5794,15 @@ fn gen_extern_println_str() -> String = "declare void @println_str(ptr)";
 fn gen_extern_abs() -> String = "declare i64 @bmb_abs(i64) nounwind willreturn memory(none) speculatable";
 fn gen_extern_min() -> String = "declare i64 @bmb_min(i64, i64) nounwind willreturn memory(none) speculatable";
 fn gen_extern_max() -> String = "declare i64 @bmb_max(i64, i64) nounwind willreturn memory(none) speculatable";
+// v0.90.97: Integer methods
+fn gen_extern_clamp() -> String = "declare i64 @bmb_clamp(i64, i64, i64) nounwind willreturn memory(none) speculatable";
+fn gen_extern_pow() -> String = "declare i64 @bmb_pow(i64, i64) nounwind willreturn memory(none) speculatable";
+// v0.90.97: Array method declarations
+fn gen_extern_array_push() -> String = "declare i64 @bmb_array_push(i64, i64) nounwind willreturn";
+fn gen_extern_array_pop() -> String = "declare i64 @bmb_array_pop(i64) nounwind willreturn";
+fn gen_extern_array_concat() -> String = "declare i64 @bmb_array_concat(i64, i64) nounwind willreturn";
+fn gen_extern_array_slice() -> String = "declare i64 @bmb_array_slice(i64, i64, i64) nounwind willreturn";
+fn gen_extern_array_len() -> String = "declare i64 @bmb_array_len(i64) nounwind willreturn memory(argmem: read) speculatable";
 
 // v0.90.70: String operations with optimization attributes
 // Read-only: len, char_at, eq only read argument memory (enables LICM + CSE)
@@ -5906,7 +5924,12 @@ fn gen_runtime_decls() -> String =
 
 fn gen_runtime_decls_io() -> String =
     gen_extern_println() + "|" + gen_extern_print_str() + "|" + gen_extern_println_str() + "|" +
-    gen_extern_abs() + "|" + gen_extern_min() + "|" + gen_extern_max() + "|";
+    gen_extern_abs() + "|" + gen_extern_min() + "|" + gen_extern_max() + "|" +
+    // v0.90.97: Integer + array method declarations
+    gen_extern_clamp() + "|" + gen_extern_pow() + "|" +
+    gen_extern_array_push() + "|" + gen_extern_array_pop() + "|" +
+    gen_extern_array_concat() + "|" + gen_extern_array_slice() + "|" +
+    gen_extern_array_len() + "|";
 
 fn gen_runtime_decls_string() -> String =
     gen_extern_string_new() + "|" + gen_extern_string_from_cstr() + "|" +

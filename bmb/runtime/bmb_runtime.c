@@ -256,6 +256,86 @@ void bmb_vec_clear(int64_t vec_ptr) {
     vec[1] = 0;  // Reset length
 }
 
+// v0.90.97: Functional array methods — push, pop, concat, slice, join return NEW arrays
+// Array representation: [capacity, length, data[0], data[1], ...]
+int64_t bmb_array_push(int64_t arr_ptr, int64_t value) {
+    int64_t* arr = (int64_t*)arr_ptr;
+    int64_t len = arr[1];
+    int64_t new_cap = len + 1;
+    int64_t* result = (int64_t*)bmb_alloc((new_cap + 2) * sizeof(int64_t));
+    result[0] = new_cap;
+    result[1] = len + 1;
+    for (int64_t i = 0; i < len; i++) result[2 + i] = arr[2 + i];
+    result[2 + len] = value;
+    return (int64_t)result;
+}
+
+int64_t bmb_array_pop(int64_t arr_ptr) {
+    int64_t* arr = (int64_t*)arr_ptr;
+    int64_t len = arr[1];
+    if (len == 0) return arr_ptr;
+    int64_t new_len = len - 1;
+    int64_t* result = (int64_t*)bmb_alloc((new_len + 2) * sizeof(int64_t));
+    result[0] = new_len;
+    result[1] = new_len;
+    for (int64_t i = 0; i < new_len; i++) result[2 + i] = arr[2 + i];
+    return (int64_t)result;
+}
+
+int64_t bmb_array_concat(int64_t arr1_ptr, int64_t arr2_ptr) {
+    int64_t* a1 = (int64_t*)arr1_ptr;
+    int64_t* a2 = (int64_t*)arr2_ptr;
+    int64_t len1 = a1[1], len2 = a2[1];
+    int64_t total = len1 + len2;
+    int64_t* result = (int64_t*)bmb_alloc((total + 2) * sizeof(int64_t));
+    result[0] = total;
+    result[1] = total;
+    for (int64_t i = 0; i < len1; i++) result[2 + i] = a1[2 + i];
+    for (int64_t i = 0; i < len2; i++) result[2 + len1 + i] = a2[2 + i];
+    return (int64_t)result;
+}
+
+int64_t bmb_array_slice(int64_t arr_ptr, int64_t start, int64_t end) {
+    int64_t* arr = (int64_t*)arr_ptr;
+    int64_t len = arr[1];
+    if (start < 0) start = 0;
+    if (end > len) end = len;
+    if (start >= end) {
+        int64_t* result = (int64_t*)bmb_alloc(2 * sizeof(int64_t));
+        result[0] = 0; result[1] = 0;
+        return (int64_t)result;
+    }
+    int64_t new_len = end - start;
+    int64_t* result = (int64_t*)bmb_alloc((new_len + 2) * sizeof(int64_t));
+    result[0] = new_len;
+    result[1] = new_len;
+    for (int64_t i = 0; i < new_len; i++) result[2 + i] = arr[2 + start + i];
+    return (int64_t)result;
+}
+
+int64_t bmb_array_len(int64_t arr_ptr) {
+    int64_t* arr = (int64_t*)arr_ptr;
+    return arr[1];
+}
+
+// v0.90.97: Integer methods — clamp, pow
+int64_t bmb_clamp(int64_t n, int64_t lo, int64_t hi) {
+    if (n < lo) return lo;
+    if (n > hi) return hi;
+    return n;
+}
+
+int64_t bmb_pow(int64_t base, int64_t exp) {
+    if (exp < 0) return 0;
+    int64_t result = 1;
+    while (exp > 0) {
+        if (exp & 1) result *= base;
+        base *= base;
+        exp >>= 1;
+    }
+    return result;
+}
+
 // v0.99: String conversion functions
 // v0.88.2: Uses arena-aware allocation
 char* bmb_char_to_string(int32_t c) {
