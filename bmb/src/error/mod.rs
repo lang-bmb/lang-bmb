@@ -234,6 +234,12 @@ pub enum CompileWarning {
         span: Span,
     },
 
+    /// v0.90.152: Empty loop body — `while cond {}` or `for x in iter {}`
+    EmptyLoopBody {
+        kind: String, // "while" or "for"
+        span: Span,
+    },
+
     /// Generic warning with span
     Generic {
         message: String,
@@ -486,6 +492,11 @@ impl CompileWarning {
         Self::RedundantIfExpression { suggestion: suggestion.into(), span }
     }
 
+    /// v0.90.152: Create an empty loop body warning
+    pub fn empty_loop_body(kind: impl Into<String>, span: Span) -> Self {
+        Self::EmptyLoopBody { kind: kind.into(), span }
+    }
+
     /// Get the span of this warning, if any
     pub fn span(&self) -> Option<Span> {
         match self {
@@ -521,6 +532,7 @@ impl CompileWarning {
             Self::AbsorbingElement { span, .. } => Some(*span),
             Self::DoubleNegation { span, .. } => Some(*span),
             Self::RedundantIfExpression { span, .. } => Some(*span),
+            Self::EmptyLoopBody { span, .. } => Some(*span),
             Self::Generic { span, .. } => *span,
         }
     }
@@ -630,6 +642,9 @@ impl CompileWarning {
             Self::RedundantIfExpression { suggestion, .. } => {
                 format!("redundant if-expression returning bool literals; simplify to `{}`", suggestion)
             }
+            Self::EmptyLoopBody { kind, .. } => {
+                format!("`{}` loop has an empty body", kind)
+            }
             Self::Generic { message, .. } => message.clone(),
         }
     }
@@ -669,6 +684,7 @@ impl CompileWarning {
             Self::AbsorbingElement { .. } => "absorbing_element",
             Self::DoubleNegation { .. } => "double_negation",
             Self::RedundantIfExpression { .. } => "redundant_if_expression",
+            Self::EmptyLoopBody { .. } => "empty_loop_body",
             Self::Generic { .. } => "warning",
         }
     }
@@ -1075,6 +1091,21 @@ mod tests {
     fn test_warning_redundant_if_expression_negated() {
         let w = CompileWarning::redundant_if_expression("not cond", span());
         assert!(w.message().contains("not cond"));
+    }
+
+    #[test]
+    fn test_warning_empty_loop_body() {
+        let w = CompileWarning::empty_loop_body("while", span());
+        assert_eq!(w.kind(), "empty_loop_body");
+        assert!(w.message().contains("while"));
+        assert!(w.message().contains("empty body"));
+        assert_eq!(w.span(), Some(span()));
+    }
+
+    #[test]
+    fn test_warning_empty_loop_body_for() {
+        let w = CompileWarning::empty_loop_body("for", span());
+        assert!(w.message().contains("for"));
     }
 
     #[test]

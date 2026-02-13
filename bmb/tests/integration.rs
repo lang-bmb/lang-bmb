@@ -22697,3 +22697,37 @@ fn test_no_bitwise_identity_bor_nonzero() {
         "identity_operation"
     ));
 }
+
+// ===== Cycle 399: Empty loop body detection lint =====
+
+#[test]
+fn test_empty_while_loop_body() {
+    assert!(has_warning_kind(
+        "fn main() -> () = { let x = true; while x {} };",
+        "empty_loop_body"
+    ));
+}
+
+#[test]
+fn test_no_empty_while_with_body() {
+    assert!(!has_warning_kind(
+        "fn main() -> i64 = { var x = 0; while x < 10 { x = x + 1 }; x };",
+        "empty_loop_body"
+    ));
+}
+
+#[test]
+fn test_empty_for_loop_body() {
+    assert!(has_warning_kind(
+        "fn main() -> () = { for i in 0..10 {} };",
+        "empty_loop_body"
+    ));
+}
+
+#[test]
+fn test_no_empty_for_with_body() {
+    assert!(!has_warning_kind(
+        "fn main() -> i64 = { var sum = 0; for i in 0..10 { sum = sum + i }; sum };",
+        "empty_loop_body"
+    ));
+}

@@ -1918,6 +1918,13 @@ impl TypeChecker {
                     self.add_warning(CompileWarning::constant_condition(false, "while", cond.span));
                 }
 
+                // v0.90.152: Detect empty loop body
+                let is_empty = matches!(&body.node, Expr::Block(stmts) if stmts.is_empty())
+                    || matches!(&body.node, Expr::Unit);
+                if is_empty {
+                    self.add_warning(CompileWarning::empty_loop_body("while", span));
+                }
+
                 // Condition must be bool
                 let cond_ty = self.infer(&cond.node, cond.span)?;
                 self.unify(&Type::Bool, &cond_ty, cond.span)?;
@@ -1954,6 +1961,13 @@ impl TypeChecker {
 
             // v0.5 Phase 3: For loop
             Expr::For { var, iter, body } => {
+                // v0.90.152: Detect empty loop body
+                let is_empty = matches!(&body.node, Expr::Block(stmts) if stmts.is_empty())
+                    || matches!(&body.node, Expr::Unit);
+                if is_empty {
+                    self.add_warning(CompileWarning::empty_loop_body("for", span));
+                }
+
                 let iter_ty = self.infer(&iter.node, iter.span)?;
 
                 // Iterator must be a Range, Array, or Receiver<T> type
