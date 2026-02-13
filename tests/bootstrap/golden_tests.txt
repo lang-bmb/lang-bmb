@@ -1,0 +1,21 @@
+# Golden Binary Test Manifest
+# Format: filename|expected_output
+#
+# These tests verify the bootstrap compiler (Stage 1) can:
+# 1. Compile BMB programs to LLVM IR
+# 2. Optimize with opt
+# 3. Link to native executables
+# 4. Produce correct runtime output
+#
+# Expected output is the first println() value in each test's main()
+
+test_golden_basic.bmb|220
+test_golden_strings.bmb|27
+test_golden_arrays.bmb|150
+test_golden_float.bmb|1
+test_golden_break.bmb|33
+test_golden_for.bmb|141
+test_golden_loop.bmb|18
+test_golden_match.bmb|200
+test_golden_struct.bmb|25
+test_golden_integration.bmb|49
