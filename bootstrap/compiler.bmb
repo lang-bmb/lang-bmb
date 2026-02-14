@@ -1673,7 +1673,8 @@ fn parse_param(src: String, pos: i64) -> String =
             let kind = tok_kind(t3);
             // v0.90.2: Support typed pointers *T
             // v0.90.7: Preserve struct name for ptr arithmetic scaling
-            if kind == TK_I32() { pack_result(tok_end(t3), "(param <" + name + "> i32)") } else if kind == TK_I64() { pack_result(tok_end(t3), "(param <" + name + "> i64)") } else if kind == TK_F64() { pack_result(tok_end(t3), "(param <" + name + "> f64)") } else if kind == TK_BOOL() { pack_result(tok_end(t3), "(param <" + name + "> bool)") } else if kind == TK_STRING_TYPE() { pack_result(tok_end(t3), "(param <" + name + "> String)") } else if kind == TK_STAR() { let t4 = next_token_raw(src, tok_end(t3)); let struct_name = get_ident_text(src, tok_end(t3), t4); pack_result(tok_end(t4), "(param <" + name + "> *" + struct_name + ")") } else if kind == TK_LBRACKET() { parse_param_array_type(src, tok_end(t3), name) } else if kind == TK_AMP() { parse_param_ref_type(src, tok_end(t3), name) } else if kind == TK_IDENT() { pack_result(tok_end(t3), "(param <" + name + "> i64)") } else { make_error_at("expected parameter type", src, tok_end(t2)) }
+            // v0.93.1: skip_nullable after each type to support T? nullable params
+            if kind == TK_I32() { pack_result(skip_nullable(src, tok_end(t3)), "(param <" + name + "> i32)") } else if kind == TK_I64() { pack_result(skip_nullable(src, tok_end(t3)), "(param <" + name + "> i64)") } else if kind == TK_F64() { pack_result(skip_nullable(src, tok_end(t3)), "(param <" + name + "> f64)") } else if kind == TK_BOOL() { pack_result(skip_nullable(src, tok_end(t3)), "(param <" + name + "> bool)") } else if kind == TK_STRING_TYPE() { pack_result(skip_nullable(src, tok_end(t3)), "(param <" + name + "> String)") } else if kind == TK_STAR() { let t4 = next_token_raw(src, tok_end(t3)); let struct_name = get_ident_text(src, tok_end(t3), t4); pack_result(skip_nullable(src, tok_end(t4)), "(param <" + name + "> *" + struct_name + ")") } else if kind == TK_LBRACKET() { parse_param_array_type(src, tok_end(t3), name) } else if kind == TK_AMP() { parse_param_ref_type(src, tok_end(t3), name) } else if kind == TK_IDENT() { pack_result(skip_nullable(src, tok_end(t3)), "(param <" + name + "> i64)") } else { make_error_at("expected parameter type", src, tok_end(t2)) }
         } else { make_error_at("expected ':' after parameter name", src, tok_end(t1)) }
     } else { make_error_at("expected parameter name", src, pos) };
 
@@ -1683,7 +1684,8 @@ fn parse_param_array_type(src: String, pos: i64, name: String) -> String =
     let t = next_token_raw(src, pos);
     let k = tok_kind(t);
     if k == TK_RBRACKET() {
-        pack_result(tok_end(t), "(param <" + name + "> i64)")
+        // v0.93.1: Skip optional '?' nullable suffix after ']'
+        pack_result(skip_nullable(src, tok_end(t)), "(param <" + name + "> i64)")
     } else {
         parse_param_array_type(src, tok_end(t), name)
     };
@@ -1697,14 +1699,16 @@ fn parse_param_ref_type(src: String, pos: i64, name: String) -> String =
         // &mut T — skip 'mut', then parse the base type as i64
         let t2 = next_token_raw(src, tok_end(t));
         let k2 = tok_kind(t2);
+        // v0.93.1: array nullable handled by parse_param_array_type
         if k2 == TK_LBRACKET() { parse_param_array_type(src, tok_end(t2), name) }
-        else { pack_result(tok_end(t2), "(param <" + name + "> i64)") }
+        else { pack_result(skip_nullable(src, tok_end(t2)), "(param <" + name + "> i64)") }
     } else if k == TK_LBRACKET() {
-        // &[T; N] — delegate to array type parser
+        // &[T; N] — delegate to array type parser (handles nullable)
         parse_param_array_type(src, tok_end(t), name)
     } else {
         // &T — just consume the type name and emit i64
-        pack_result(tok_end(t), "(param <" + name + "> i64)")
+        // v0.93.1: Skip optional '?' nullable suffix
+        pack_result(skip_nullable(src, tok_end(t)), "(param <" + name + "> i64)")
     };
 
 fn parse_params(src: String, pos: i64, acc: String) -> String =
@@ -1748,7 +1752,7 @@ fn parse_fn(src: String, pos: i64) -> String =
 // v0.90.10: Skip tokens inside [T; N] array type, return pack_result with given type
 fn skip_array_type_tokens(src: String, pos: i64, type_str: String) -> String =
     let t = next_token_raw(src, pos);
-    if tok_kind(t) == TK_RBRACKET() { pack_result(tok_end(t), type_str) }
+    if tok_kind(t) == TK_RBRACKET() { pack_result(skip_nullable(src, tok_end(t)), type_str) }
     else { skip_array_type_tokens(src, tok_end(t), type_str) };
 
 // v0.90.10: Skip pre/post contract clauses until '=' is found
@@ -1766,46 +1770,56 @@ fn skip_contracts(src: String, pos: i64) -> i64 =
     else { tok_end(t) };  // Unexpected token, try advancing
 
 // v0.90.2: Parse return type including typed pointers
+// v0.93.1: All branches use skip_nullable to support T? nullable return types
 fn parse_return_type(src: String, pos: i64) -> String =
     let t4 = next_token_raw(src, pos);
-    if tok_kind(t4) == TK_I32() { pack_result(tok_end(t4), "i32") }
-    else if tok_kind(t4) == TK_I64() { pack_result(tok_end(t4), "i64") }
-    else if tok_kind(t4) == TK_F64() { pack_result(tok_end(t4), "f64") }
-    else if tok_kind(t4) == TK_BOOL() { pack_result(tok_end(t4), "bool") }
-    else if tok_kind(t4) == TK_STRING_TYPE() { pack_result(tok_end(t4), "String") }
+    if tok_kind(t4) == TK_I32() { pack_result(skip_nullable(src, tok_end(t4)), "i32") }
+    else if tok_kind(t4) == TK_I64() { pack_result(skip_nullable(src, tok_end(t4)), "i64") }
+    else if tok_kind(t4) == TK_F64() { pack_result(skip_nullable(src, tok_end(t4)), "f64") }
+    else if tok_kind(t4) == TK_BOOL() { pack_result(skip_nullable(src, tok_end(t4)), "bool") }
+    else if tok_kind(t4) == TK_STRING_TYPE() { pack_result(skip_nullable(src, tok_end(t4)), "String") }
     else if tok_kind(t4) == TK_STAR() {
         // v0.90.7: *T typed pointer → preserve struct name for ptr arithmetic
         let t5 = next_token_raw(src, tok_end(t4));
         let sname = get_ident_text(src, tok_end(t4), t5);
-        pack_result(tok_end(t5), "*" + sname)
+        pack_result(skip_nullable(src, tok_end(t5)), "*" + sname)
     }
     // v0.90.10: Array return type [T; N] → treat as i64 (pointer)
+    // nullable handled by skip_array_type_tokens
     else if tok_kind(t4) == TK_LBRACKET() {
         skip_array_type_tokens(src, tok_end(t4), "i64")
     }
     // v0.90.11: Reference return type &T, &[T; N] → treat as i64 (pointer)
     else if tok_kind(t4) == TK_AMP() {
         let t5 = next_token_raw(src, tok_end(t4));
+        // nullable for &[T; N] handled by skip_array_type_tokens
         if tok_kind(t5) == TK_LBRACKET() { skip_array_type_tokens(src, tok_end(t5), "i64") }
         else if tok_kind(t5) == TK_MUT() {
             let t6 = next_token_raw(src, tok_end(t5));
             if tok_kind(t6) == TK_LBRACKET() { skip_array_type_tokens(src, tok_end(t6), "i64") }
-            else { pack_result(tok_end(t6), "i64") }
+            else { pack_result(skip_nullable(src, tok_end(t6)), "i64") }
         }
-        else { pack_result(tok_end(t5), "i64") }
+        else { pack_result(skip_nullable(src, tok_end(t5)), "i64") }
     }
     // v0.90.11: Tuple return type (T1, T2, ...) → treat as i64
+    // nullable handled by skip_tuple_type_tokens
     else if tok_kind(t4) == TK_LPAREN() {
         skip_tuple_type_tokens(src, tok_end(t4), "i64")
     }
-    else { pack_result(tok_end(t4), "i64") };
+    else { pack_result(skip_nullable(src, tok_end(t4)), "i64") };
 
 // v0.90.11: Skip tokens inside tuple type until matching ')'
 fn skip_tuple_type_tokens(src: String, pos: i64, type_str: String) -> String =
     let t = next_token_raw(src, pos);
-    if tok_kind(t) == TK_RPAREN() { pack_result(tok_end(t), type_str) }
+    if tok_kind(t) == TK_RPAREN() { pack_result(skip_nullable(src, tok_end(t)), type_str) }
     else if tok_kind(t) == TK_EOF() { pack_result(pos, type_str) }
     else { skip_tuple_type_tokens(src, tok_end(t), type_str) };
+
+// v0.93.1: Skip optional '?' nullable suffix after type annotation
+// Returns position past '?' if present, or original position if not
+fn skip_nullable(src: String, pos: i64) -> i64 =
+    let t = next_token_raw(src, pos);
+    if tok_kind(t) == TK_QUESTION() { tok_end(t) } else { pos };
 
 // v0.90.1: Parse function with annotation (@pure, @const, @inline)
 // Emits (fn-pure <name> ...) or (fn-inline <name> ...) etc.

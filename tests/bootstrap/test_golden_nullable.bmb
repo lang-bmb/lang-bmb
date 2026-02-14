@@ -2,7 +2,16 @@
 // Tests nullable method support in bootstrap compiler
 // Nullable semantics: null = 0, non-null = any non-zero value
 // Also tests T? type annotation parsing (v0.90.102)
-// Expected output: 193
+// Also tests T? in function params and return types (v0.93.1)
+// Expected output: 293
+
+// v0.93.1: Function with nullable parameter and return type
+fn add_or_zero(x: i64?, y: i64) -> i64? =
+    if x.is_some() { x.unwrap() + y } else { null };
+
+// v0.93.1: Function returning nullable String
+fn maybe_greet(do_it: bool) -> String? =
+    if do_it { "hello" } else { null };
 
 fn main() -> i64 = {
     // Test 1: is_some on non-null value with type annotation
@@ -28,7 +37,19 @@ fn main() -> i64 = {
     // Test 7: unwrap_or with null — returns default
     let r7 = y.unwrap_or(34);  // 34
 
-    // Total: 10 + 20 + 42 + 42 + 30 + 15 + 34 = 193
-    println(r1 + r2 + r3 + r4 + r5 + r6 + r7);
+    // Test 8: Function with nullable param — non-null path
+    let r8_val = add_or_zero(50, 10);
+    let r8 = r8_val.unwrap_or(0);  // 60
+
+    // Test 9: Function with nullable param — null path
+    let r9_val = add_or_zero(null, 10);
+    let r9 = r9_val.unwrap_or(0);  // 0
+
+    // Test 10: Function returning nullable String — non-null
+    let r10_val = maybe_greet(true);
+    let r10 = if r10_val.is_some() { 40 } else { 0 };  // 40
+
+    // Total: 10 + 20 + 42 + 42 + 30 + 15 + 34 + 60 + 0 + 40 = 293
+    println(r1 + r2 + r3 + r4 + r5 + r6 + r7 + r8 + r9 + r10);
     0
 };

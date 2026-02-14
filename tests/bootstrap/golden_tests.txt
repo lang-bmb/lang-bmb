@@ -35,4 +35,4 @@ test_golden_array_methods.bmb|175
 test_golden_for_in_array.bmb|192
 test_golden_set_var.bmb|179
 test_golden_unique_alloca.bmb|174
-test_golden_nullable.bmb|193
+test_golden_nullable.bmb|293
