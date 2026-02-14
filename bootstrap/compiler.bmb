@@ -2640,13 +2640,14 @@ fn do_step(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, 
         else if b1 == 75 { step_break(item, cur_temp, cur_block, cur_exit_label, sb) }         // BK
         else { make_step_leaf(cur_temp) }
     }
-    else if b0 == 73 { // 'I' — IN, IS, IT, IE, IX
+    else if b0 == 73 { // 'I' — IN, IS, IT, IE, IX, IZ
         let b1 = item.byte_at(1);
         if b1 == 78 { step_int(item, cur_temp, cur_block, cur_exit_label, sb) }            // IN
         else if b1 == 83 { step_if_start(item, cur_temp, cur_block, cur_exit_label, sb) }  // IS
         else if b1 == 84 { step_if_then(item, cur_temp, cur_block, cur_exit_label, sb) }   // IT
         else if b1 == 69 { step_if_else(item, cur_temp, cur_block, cur_exit_label, sb) }   // IE
         else if b1 == 88 { step_if_final(item, cur_temp, cur_block, cur_exit_label, sb) }  // IX
+        else if b1 == 90 { step_if_select(item, cur_temp, cur_block, cur_exit_label, sb) } // IZ v0.93.2
         else { make_step_leaf(cur_temp) }
     }
     else if b0 == 83 { // 'S' — ST, SQ, S2, SI, S3, S4, S5, SF, SV, SW
@@ -3042,10 +3043,62 @@ fn step_if_start(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: St
     let cond = get_field(item, 1);
     let then_br = get_field(item, 2);
     let else_br = get_field(item, 3);
-    // After cond, we'll have cond_id and need to emit branch then do branches
-    let cont = make_work("IT", then_br, else_br, i2s(cur_temp), i2s(cur_block), "");
-    let do_cond = make_work3("EX", cond, "", "");
-    make_step(cur_temp, cur_block, cur_exit_label, do_cond + work_sep() + cont);
+    // v0.93.2: If both branches are simple leaves, use select path (IZ)
+    if is_simple_leaf(then_br) and is_simple_leaf(else_br) {
+        let cont = make_work3("IZ", then_br, else_br, "");
+        let do_cond = make_work3("EX", cond, "", "");
+        make_step(cur_temp, cur_block, cur_exit_label, do_cond + work_sep() + cont)
+    } else {
+        // After cond, we'll have cond_id and need to emit branch then do branches
+        let cont = make_work("IT", then_br, else_br, i2s(cur_temp), i2s(cur_block), "");
+        let do_cond = make_work3("EX", cond, "", "");
+        make_step(cur_temp, cur_block, cur_exit_label, do_cond + work_sep() + cont)
+    };
+
+// v0.93.2: Emit a simple leaf expression directly into the MIR (no work items needed)
+// Returns next temp_id after emission
+fn emit_simple_leaf(ast: String, temp_id: i64, sb: i64) -> i64 =
+    let nt = get_node_type(ast);
+    let tmp = "%_t" + i2s(temp_id);
+    if nt == "int" {
+        let val = extract_int_value(ast);
+        let w = sb_push_mir(sb, "  " + tmp + " = const " + i2s(val));
+        temp_id + 1
+    } else if nt == "var" {
+        let name = extract_name(ast);
+        let w = sb_push_mir(sb, "  " + tmp + " = copy %" + name);
+        temp_id + 1
+    } else if nt == "bool" {
+        let child = get_child(ast, 0);
+        let val = if child == "true" { 1 } else { 0 };
+        let w = sb_push_mir(sb, "  " + tmp + " = const " + i2s(val));
+        temp_id + 1
+    } else if nt == "float" {
+        let text = extract_float_value_text(ast);
+        let w = sb_push_mir(sb, "  " + tmp + " = const F:" + text);
+        temp_id + 1
+    } else if nt == "string" {
+        let str_content = extract_string_content(ast);
+        let w = sb_push_mir(sb, "  " + tmp + " = string " + chr(34) + str_content + chr(34));
+        temp_id + 1
+    } else {
+        // unit — emit const 0
+        let w = sb_push_mir(sb, "  " + tmp + " = const 0");
+        temp_id + 1
+    };
+
+// IZ: If-select - cond done, emit both leaf values inline and select
+fn step_if_select(item: String, cur_temp: i64, cur_block: i64, cur_exit_label: String, sb: i64) -> String =
+    let then_br = get_field(item, 1);
+    let else_br = get_field(item, 2);
+    let cond_id = cur_temp - 1;
+    let then_temp = emit_simple_leaf(then_br, cur_temp, sb);
+    let then_id = then_temp - 1;
+    let else_temp = emit_simple_leaf(else_br, then_temp, sb);
+    let else_id = else_temp - 1;
+    let select_tmp = "%_t" + i2s(else_temp);
+    let w = sb_push_mir(sb, "  " + select_tmp + " = select %_t" + i2s(cond_id) + ", %_t" + i2s(then_id) + ", %_t" + i2s(else_id));
+    make_step_leaf(else_temp + 1);
 
 // IT: If then - cond done, emit branch, do then branch
 // Sets exit_label to then_label for the then branch execution
@@ -3850,10 +3903,40 @@ fn lower_unary_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: 
     let w1 = sb_push_mir(sb, "  " + result_tmp + " = " + mir_op + " %_t" + int_to_string(operand_id));
     pack_ids(operand_temp + 1, operand_block);
 
+// v0.93.2: Check if AST is a simple integer/bool constant — safe for select
+fn is_simple_leaf(ast: String) -> bool =
+    let nt = get_node_type(ast);
+    nt == "int" or nt == "bool";
+
+// v0.93.2: Lower simple if/else to select — eliminates branch/phi for leaf expressions
+fn lower_if_select_sb(cond: String, then_b: String, else_b: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64 =
+    let cond_result = lower_expr_sb(cond, temp_id, block_id, sb, loop_exit);
+    let cond_temp = unpack_temp(cond_result);
+    let cond_blk = unpack_block(cond_result);
+    let cond_id = cond_temp - 1;
+    let then_result = lower_expr_sb(then_b, cond_temp, cond_blk, sb, loop_exit);
+    let then_temp = unpack_temp(then_result);
+    let then_id = then_temp - 1;
+    let else_result = lower_expr_sb(else_b, then_temp, cond_blk, sb, loop_exit);
+    let else_temp = unpack_temp(else_result);
+    let else_id = else_temp - 1;
+    let select_tmp = "%_t" + int_to_string(else_temp);
+    let w = sb_push_mir(sb, "  " + select_tmp + " = select %_t" + int_to_string(cond_id) + ", %_t" + int_to_string(then_id) + ", %_t" + int_to_string(else_id));
+    pack_ids(else_temp + 1, cond_blk);
+
+// v0.93.2: If both branches are simple leaves, use select; otherwise branch/phi
 fn lower_if_sb(ast: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64 =
     let cond = get_child(ast, 0);
     let then_branch = get_child(ast, 1);
     let else_branch = get_child(ast, 2);
+    if is_simple_leaf(then_branch) and is_simple_leaf(else_branch) {
+        lower_if_select_sb(cond, then_branch, else_branch, temp_id, block_id, sb, loop_exit)
+    } else {
+        lower_if_branch_sb(cond, then_branch, else_branch, temp_id, block_id, sb, loop_exit)
+    };
+
+// v0.93.2: Original branch/phi lowering for complex if/else
+fn lower_if_branch_sb(cond: String, then_branch: String, else_branch: String, temp_id: i64, block_id: i64, sb: i64, loop_exit: String) -> i64 =
     let cond_result = lower_expr_sb(cond, temp_id, block_id, sb, loop_exit);
     let cond_temp = unpack_temp(cond_result);
     let my_block_id = unpack_block(cond_result);
