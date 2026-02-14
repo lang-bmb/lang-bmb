@@ -6126,49 +6126,52 @@ fn gen_extern_pow() -> String = "declare i64 @bmb_pow(i64, i64) nounwind willret
 // v0.90.97: Array method declarations
 // v0.90.99: Array method declarations — use ptr for array pointer, return ptr for new arrays
 // v0.90.104: Added nocapture readonly on read-only ptr params
-fn gen_extern_array_push() -> String = "declare ptr @bmb_array_push(ptr nocapture readonly, i64) nounwind willreturn";
-fn gen_extern_array_pop() -> String = "declare ptr @bmb_array_pop(ptr nocapture readonly) nounwind willreturn";
-fn gen_extern_array_concat() -> String = "declare ptr @bmb_array_concat(ptr nocapture readonly, ptr nocapture readonly) nounwind willreturn";
-fn gen_extern_array_slice() -> String = "declare ptr @bmb_array_slice(ptr nocapture readonly, i64, i64) nounwind willreturn";
+// v0.90.105: Added noalias on return — these return newly allocated arrays
+fn gen_extern_array_push() -> String = "declare noalias ptr @bmb_array_push(ptr nocapture readonly, i64) nounwind willreturn";
+fn gen_extern_array_pop() -> String = "declare noalias ptr @bmb_array_pop(ptr nocapture readonly) nounwind willreturn";
+fn gen_extern_array_concat() -> String = "declare noalias ptr @bmb_array_concat(ptr nocapture readonly, ptr nocapture readonly) nounwind willreturn";
+fn gen_extern_array_slice() -> String = "declare noalias ptr @bmb_array_slice(ptr nocapture readonly, i64, i64) nounwind willreturn";
 fn gen_extern_array_len() -> String = "declare i64 @bmb_array_len(ptr nocapture readonly) nounwind willreturn memory(argmem: read) speculatable";
 
 // v0.90.70: String operations with optimization attributes
 // Read-only: len, char_at, eq only read argument memory (enables LICM + CSE)
 // Allocation: new, from_cstr, slice, concat allocate memory
 // v0.90.104: Added readonly to all read-only ptr params
-fn gen_extern_string_new() -> String = "declare ptr @bmb_string_new(ptr nocapture readonly, i64) nounwind willreturn";
-fn gen_extern_string_from_cstr() -> String = "declare ptr @bmb_string_from_cstr(ptr nocapture readonly) nounwind willreturn";
+// v0.90.105: Added noalias on return — these allocate new strings
+fn gen_extern_string_new() -> String = "declare noalias ptr @bmb_string_new(ptr nocapture readonly, i64) nounwind willreturn";
+fn gen_extern_string_from_cstr() -> String = "declare noalias ptr @bmb_string_from_cstr(ptr nocapture readonly) nounwind willreturn";
 fn gen_extern_string_len() -> String = "declare i64 @bmb_string_len(ptr nocapture readonly) nounwind willreturn memory(argmem: read) speculatable";
 fn gen_extern_string_char_at() -> String = "declare i64 @bmb_string_char_at(ptr nocapture readonly, i64) nounwind willreturn memory(argmem: read) speculatable";
-fn gen_extern_string_slice() -> String = "declare ptr @bmb_string_slice(ptr nocapture readonly, i64, i64) nounwind willreturn";
-fn gen_extern_string_concat() -> String = "declare ptr @bmb_string_concat(ptr nocapture readonly, ptr nocapture readonly) nounwind willreturn";
-fn gen_extern_concat3() -> String = "declare ptr @bmb_string_concat3(ptr nocapture readonly, ptr nocapture readonly, ptr nocapture readonly) nounwind willreturn";
-fn gen_extern_concat5() -> String = "declare ptr @bmb_string_concat5(ptr nocapture readonly, ptr nocapture readonly, ptr nocapture readonly, ptr nocapture readonly, ptr nocapture readonly) nounwind willreturn";
-fn gen_extern_concat7() -> String = "declare ptr @bmb_string_concat7(ptr nocapture readonly, ptr nocapture readonly, ptr nocapture readonly, ptr nocapture readonly, ptr nocapture readonly, ptr nocapture readonly, ptr nocapture readonly) nounwind willreturn";
+// v0.90.105: noalias on all string allocation returns
+fn gen_extern_string_slice() -> String = "declare noalias ptr @bmb_string_slice(ptr nocapture readonly, i64, i64) nounwind willreturn";
+fn gen_extern_string_concat() -> String = "declare noalias ptr @bmb_string_concat(ptr nocapture readonly, ptr nocapture readonly) nounwind willreturn";
+fn gen_extern_concat3() -> String = "declare noalias ptr @bmb_string_concat3(ptr nocapture readonly, ptr nocapture readonly, ptr nocapture readonly) nounwind willreturn";
+fn gen_extern_concat5() -> String = "declare noalias ptr @bmb_string_concat5(ptr nocapture readonly, ptr nocapture readonly, ptr nocapture readonly, ptr nocapture readonly, ptr nocapture readonly) nounwind willreturn";
+fn gen_extern_concat7() -> String = "declare noalias ptr @bmb_string_concat7(ptr nocapture readonly, ptr nocapture readonly, ptr nocapture readonly, ptr nocapture readonly, ptr nocapture readonly, ptr nocapture readonly, ptr nocapture readonly) nounwind willreturn";
 fn gen_extern_string_eq() -> String = "declare i64 @bmb_string_eq(ptr nocapture readonly, ptr nocapture readonly) nounwind willreturn memory(argmem: read)";
 // v0.90.96: String method declarations
 fn gen_extern_string_starts_with() -> String = "declare i64 @bmb_string_starts_with(ptr nocapture readonly, ptr nocapture readonly) nounwind willreturn memory(argmem: read) speculatable";
 fn gen_extern_string_ends_with() -> String = "declare i64 @bmb_string_ends_with(ptr nocapture readonly, ptr nocapture readonly) nounwind willreturn memory(argmem: read) speculatable";
 fn gen_extern_string_contains() -> String = "declare i64 @bmb_string_contains(ptr nocapture readonly, ptr nocapture readonly) nounwind willreturn memory(argmem: read) speculatable";
 fn gen_extern_string_index_of() -> String = "declare i64 @bmb_string_index_of(ptr nocapture readonly, ptr nocapture readonly) nounwind willreturn memory(argmem: read) speculatable";
-fn gen_extern_string_trim() -> String = "declare ptr @bmb_string_trim(ptr nocapture readonly) nounwind willreturn";
-fn gen_extern_string_replace() -> String = "declare ptr @bmb_string_replace(ptr nocapture readonly, ptr nocapture readonly, ptr nocapture readonly) nounwind willreturn";
+fn gen_extern_string_trim() -> String = "declare noalias ptr @bmb_string_trim(ptr nocapture readonly) nounwind willreturn";
+fn gen_extern_string_replace() -> String = "declare noalias ptr @bmb_string_replace(ptr nocapture readonly, ptr nocapture readonly, ptr nocapture readonly) nounwind willreturn";
 // v0.90.98: Additional string method declarations
-fn gen_extern_string_to_upper() -> String = "declare ptr @bmb_string_to_upper(ptr nocapture readonly) nounwind willreturn";
-fn gen_extern_string_to_lower() -> String = "declare ptr @bmb_string_to_lower(ptr nocapture readonly) nounwind willreturn";
-fn gen_extern_string_repeat() -> String = "declare ptr @bmb_string_repeat(ptr nocapture readonly, i64) nounwind willreturn";
+fn gen_extern_string_to_upper() -> String = "declare noalias ptr @bmb_string_to_upper(ptr nocapture readonly) nounwind willreturn";
+fn gen_extern_string_to_lower() -> String = "declare noalias ptr @bmb_string_to_lower(ptr nocapture readonly) nounwind willreturn";
+fn gen_extern_string_repeat() -> String = "declare noalias ptr @bmb_string_repeat(ptr nocapture readonly, i64) nounwind willreturn";
 fn gen_extern_string_is_empty() -> String = "declare i64 @bmb_string_is_empty(ptr nocapture readonly) nounwind willreturn memory(argmem: read) speculatable";
-fn gen_extern_chr() -> String = "declare ptr @bmb_chr(i64) nounwind willreturn";
+fn gen_extern_chr() -> String = "declare noalias ptr @bmb_chr(i64) nounwind willreturn";
 fn gen_extern_ord() -> String = "declare i64 @bmb_ord(ptr nocapture readonly) nounwind willreturn memory(argmem: read)";
 // v0.90.104: Added nounwind willreturn to int-to-string conversions
-fn gen_extern_int_to_string() -> String = "declare ptr @bmb_int_to_string(i64) nounwind willreturn";
+fn gen_extern_int_to_string() -> String = "declare noalias ptr @bmb_int_to_string(i64) nounwind willreturn";
 // v0.60.244: Fast i2s that returns BmbString* (matches String type)
-fn gen_extern_fast_i2s() -> String = "declare ptr @bmb_fast_i2s(i64) nounwind willreturn";
+fn gen_extern_fast_i2s() -> String = "declare noalias ptr @bmb_fast_i2s(i64) nounwind willreturn";
 
 // v0.90.104: File I/O — nocapture readonly on filename/content params, nounwind
 fn gen_extern_file_exists() -> String = "declare i64 @bmb_file_exists(ptr nocapture readonly) nounwind";
 fn gen_extern_file_size() -> String = "declare i64 @bmb_file_size(ptr nocapture readonly) nounwind";
-fn gen_extern_read_file() -> String = "declare ptr @bmb_read_file(ptr nocapture readonly) nounwind";
+fn gen_extern_read_file() -> String = "declare noalias ptr @bmb_read_file(ptr nocapture readonly) nounwind";
 fn gen_extern_write_file() -> String = "declare i64 @bmb_write_file(ptr nocapture readonly, ptr nocapture readonly) nounwind";
 fn gen_extern_append_file() -> String = "declare i64 @bmb_append_file(ptr nocapture readonly, ptr nocapture readonly) nounwind";
 // v0.60.134: write_file_newlines converts | to newlines during write
@@ -6182,15 +6185,15 @@ fn gen_extern_sb_push_int() -> String = "declare i64 @bmb_sb_push_int(i64, i64) 
 fn gen_extern_sb_push_char() -> String = "declare i64 @bmb_sb_push_char(i64, i64) nounwind willreturn";
 fn gen_extern_sb_push_escaped() -> String = "declare i64 @bmb_sb_push_escaped(i64, ptr nocapture readonly) nounwind willreturn";
 fn gen_extern_sb_len() -> String = "declare i64 @bmb_sb_len(i64) nounwind willreturn memory(read)";
-fn gen_extern_sb_build() -> String = "declare ptr @bmb_sb_build(i64) nounwind willreturn";
+fn gen_extern_sb_build() -> String = "declare noalias ptr @bmb_sb_build(i64) nounwind willreturn";
 fn gen_extern_sb_clear() -> String = "declare i64 @bmb_sb_clear(i64) nounwind willreturn";
 fn gen_extern_sb_contains() -> String = "declare i64 @bmb_sb_contains(i64, ptr nocapture readonly) nounwind willreturn memory(read)";
 
 // v0.90.104: Process/System — nocapture readonly on command/env ptrs, nounwind
 fn gen_extern_system() -> String = "declare i64 @bmb_system(ptr nocapture readonly)";
-fn gen_extern_getenv() -> String = "declare ptr @bmb_getenv(ptr nocapture readonly) nounwind";
+fn gen_extern_getenv() -> String = "declare noalias ptr @bmb_getenv(ptr nocapture readonly) nounwind";
 // v0.88.2: system_capture, free_string, arena management
-fn gen_extern_system_capture() -> String = "declare ptr @bmb_system_capture(ptr nocapture readonly)";
+fn gen_extern_system_capture() -> String = "declare noalias ptr @bmb_system_capture(ptr nocapture readonly)";
 fn gen_extern_free_string() -> String = "declare i64 @bmb_string_free(ptr) nounwind";
 fn gen_extern_sb_free() -> String = "declare i64 @bmb_sb_free(i64) nounwind";
 // v0.90.103: Arena management with nounwind willreturn
@@ -6202,14 +6205,15 @@ fn gen_extern_arena_usage() -> String = "declare i64 @bmb_arena_usage() nounwind
 
 // v0.90.104: CLI arguments — nounwind willreturn
 fn gen_extern_arg_count() -> String = "declare i64 @arg_count() nounwind willreturn";
-fn gen_extern_get_arg() -> String = "declare ptr @get_arg(i64) nounwind willreturn";
+fn gen_extern_get_arg() -> String = "declare noalias ptr @get_arg(i64) nounwind willreturn";
 
 // v0.90.104: Panic — noreturn (calls exit(1)), nocapture readonly on message
 fn gen_extern_panic() -> String = "declare void @bmb_panic(ptr nocapture readonly) noreturn nounwind";
 
 // v0.90.2: C library / memory allocation functions
-fn gen_extern_malloc() -> String = "declare ptr @malloc(i64)";
-fn gen_extern_calloc() -> String = "declare ptr @calloc(i64, i64)";
+// v0.90.105: noalias on malloc/calloc returns (standard C semantics)
+fn gen_extern_malloc() -> String = "declare noalias ptr @malloc(i64) nounwind";
+fn gen_extern_calloc() -> String = "declare noalias ptr @calloc(i64, i64) nounwind";
 fn gen_extern_free() -> String = "declare void @free(ptr)";
 fn gen_extern_sqrt() -> String = "declare double @sqrt(double) nounwind willreturn memory(none) speculatable";
 // v0.90.95: Float method extern declarations
@@ -6234,18 +6238,19 @@ fn gen_extern_load_i64() -> String = "declare i64 @load_i64(ptr, i64) nounwind w
 fn gen_extern_char_at() -> String = "declare i64 @char_at(ptr nocapture readonly, i64) nounwind willreturn memory(argmem: read)";
 // v0.90.2: Hashmap/Vector stdlib
 // v0.90.104: Data structures — nounwind on all, nocapture readonly on read-only key params
-fn gen_extern_hashmap_new() -> String = "declare ptr @hashmap_new() nounwind";
+// v0.90.105: noalias on data structure allocation returns
+fn gen_extern_hashmap_new() -> String = "declare noalias ptr @hashmap_new() nounwind";
 fn gen_extern_hashmap_insert() -> String = "declare void @hashmap_insert(ptr, ptr nocapture readonly, i64) nounwind";
 fn gen_extern_hashmap_get() -> String = "declare i64 @hashmap_get(ptr, ptr nocapture readonly) nounwind";
 fn gen_extern_hashmap_free() -> String = "declare void @hashmap_free(ptr) nounwind";
 // v0.90.82: String-content hashmap (keys compared by string content)
-fn gen_extern_str_hashmap_new() -> String = "declare ptr @str_hashmap_new() nounwind";
+fn gen_extern_str_hashmap_new() -> String = "declare noalias ptr @str_hashmap_new() nounwind";
 fn gen_extern_str_hashmap_insert() -> String = "declare i64 @str_hashmap_insert(ptr, ptr nocapture readonly, i64) nounwind";
 fn gen_extern_str_hashmap_get() -> String = "declare i64 @str_hashmap_get(ptr, ptr nocapture readonly) nounwind";
 fn gen_extern_str_hashmap_free() -> String = "declare void @str_hashmap_free(ptr) nounwind";
 // v0.90.83: Cached registry lookup (type checker performance)
-fn gen_extern_reg_cached_lookup() -> String = "declare ptr @reg_cached_lookup(ptr, ptr nocapture readonly, i64) nounwind";
-fn gen_extern_vec_new() -> String = "declare ptr @vec_new() nounwind";
+fn gen_extern_reg_cached_lookup() -> String = "declare noalias ptr @reg_cached_lookup(ptr, ptr nocapture readonly, i64) nounwind";
+fn gen_extern_vec_new() -> String = "declare noalias ptr @vec_new() nounwind";
 fn gen_extern_vec_push() -> String = "declare void @vec_push(ptr, i64) nounwind";
 fn gen_extern_vec_get() -> String = "declare i64 @vec_get(ptr, i64) nounwind";
 fn gen_extern_vec_set() -> String = "declare void @vec_set(ptr, i64, i64) nounwind";
