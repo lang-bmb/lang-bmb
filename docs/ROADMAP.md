@@ -1,18 +1,19 @@
 # BMB Roadmap
 
-> 목표: 완전히 준비된 프로그래밍 언어 - Rust 의존성 제거, 성능 검증, 생태계 구축
+> 목표: **Rust로부터 완전히 독립된 프로그래밍 언어** — BMB 자체로 컴파일, 테스트, 도구 체인 운영
 
 ---
 
-## 현재 상태 (2026-02-10)
+## 현재 상태 (2026-02-12)
 
 | 항목 | 상태 | 비고 |
 |------|------|------|
-| **버전** | v0.90.30 | Cycles 200-211: IfElseToSelect + 158 tests |
-| **단계** | Alpha → Beta | v0.89 Quality Gate 완료, v0.90 Performance 완료 |
-| **Bootstrap** | ✅ 3-Stage Fixed Point | 63,778 lines, Stage 1: ~1.1s |
+| **버전** | v0.93.2 | Cycle 494: select i1 직접 생성 |
+| **단계** | v0.93 코드젠 최적화 | Function attrs, byte_at, nullable, select 완료 |
+| **Bootstrap** | ✅ 3-Stage Fixed Point | 68,975 lines, Stage 1: ~1.1s |
 | **Benchmarks** | ✅ 67/67 정상 | 5 FASTER, 5 PASS, 0 OK, 0 WARN vs Clang -O3 (100% parity+) |
-| **Tests** | ✅ 2,554개 통과 | 2108 lib + 15 main + 408 integration + 23 doc |
+| **Tests** | ✅ 5,234개 통과 | 2845 lib + 47 main + 2319 integration + 23 doc |
+| **Golden Tests** | ✅ 27/27 통과 | 부트스트랩 컴파일러 바이너리 검증 |
 | **Stability** | ✅ STABILITY.md | 언어/API 동결 문서화 |
 | **동시성 지원** | ✅ 부트스트랩 완료 | 토큰/타입/MIR/코드젠/extern 선언 완료 |
 | **Golden Binary** | ✅ v0.88.10 | Rust 없이 부트스트랩 가능 |
@@ -186,8 +187,8 @@ select {
 | 동시성 타입 시그니처 | ✅ | v0.88.10: 50+ 동시성 내장 함수 타입 시그니처 추가 |
 | 동시성 MIR 코드젠 | ✅ | v0.88.10: 40+ 동시성 MIR 명령어 → LLVM IR 번역 (mutex-new, channel-send, thread-spawn 등) |
 | Golden Binary v0.88.10 | ✅ | 3-Stage 검증 후 golden binary 업데이트 |
-| 컴파일러 100% BMB 전환 | 📋 | Rust 의존성 제거 (현재: IR 생성만 BMB, native build는 스크립트 의존) |
-| 개발 도구 BMB 전환 | 📋 | gotgan, LSP, Formatter |
+| 컴파일러 100% BMB 전환 | ✅ → v0.94 | 3-Stage Fixed Point 달성, Rust 졸업 선언 (v0.94) |
+| 개발 도구 BMB 전환 | 📋 → v0.96 | gotgan, LSP, Formatter (v0.96에서 BMB 재구현) |
 
 #### v0.89: 내부 품질 게이트 ✅
 
@@ -267,20 +268,21 @@ select {
 | instcombine 제거 | ✅ | v0.90.21: GEP 정규화 문제 해결, sorting 50%↑ |
 | 성능 검증 완료 | ✅ | 11 FASTER, 4 PASS, 2 OK vs C (81% parity+) |
 
-#### v0.91: i32 타입 (언어 스펙 변경) 📋
+#### v0.91: i32 타입 (언어 스펙 변경) 📋 → v0.95로 이관
 
-> **목표**: collatz/sieve 7% gap 해소.
-> i64-only 타입 시스템은 성능 한계. **언어를 바꾼다.**
+> **참고**: Rust 컴파일러에는 이미 i32 지원이 구현되어 있음.
+> i32의 부트스트랩 구현은 v0.95 (BMB 언어 완성)에서 compiler.bmb 직접 수정으로 진행.
+> Rust 측 추가 작업 없음.
 
 | 태스크 | 상태 | 설명 |
 |--------|------|------|
-| i32 타입 스펙 설계 | 📋 | 언어에 i32 타입 추가, 변환 규칙 정의 |
-| 파서/AST i32 지원 | 📋 | 렉서, 파서, AST 확장 |
-| 타입체커 i32 추론 | 📋 | i32↔i64 변환 규칙, 타입 추론 |
-| MIR i32 명령어 | 📋 | MIR 레벨 i32 연산 지원 |
-| 코드젠 i32 LLVM IR | 📋 | i32 네이티브 코드 생성 |
-| 부트스트랩 i32 지원 | 📋 | compiler.bmb에 i32 코드젠 |
-| 벤치마크 검증 | 📋 | collatz/sieve ≤1.02x 달성 확인 |
+| i32 타입 스펙 설계 | ✅ | Rust 컴파일러에 이미 구현 |
+| 파서/AST i32 지원 | ✅ | Rust 측 완료 |
+| 타입체커 i32 추론 | ✅ | Rust 측 완료 |
+| MIR i32 명령어 | ✅ | Rust 측 완료 |
+| 코드젠 i32 LLVM IR | ✅ | Rust 측 완료 |
+| **부트스트랩 i32 지원** | 📋 → v0.95 | compiler.bmb에서 직접 구현 (Rust 졸업 후) |
+| 벤치마크 검증 | 📋 → v0.95 | 부트스트랩 구현 후 검증 |
 
 #### v0.92: 부트스트랩 기능 확장 📋
 
@@ -300,7 +302,7 @@ select {
 | `continue` 문 | ✅ | 루프 반복 건너뛰기 (v0.90.31) |
 | Type cast (`as`) 로워링 | ✅ | 명시적 타입 변환 (v0.90.1, no-op for same-width) |
 | Nullable `T?` 로워링 | ✅ | 널러블 타입 지원 (v0.90.102: is_some/is_none/unwrap/unwrap_or/expect + T? 파싱) |
-| Closure capture 완성 | 📋 | 자유 변수 캡처 분석 |
+| Closure capture 완성 | 📋 → v0.95 | 자유 변수 캡처 분석 (v0.95에서 compiler.bmb 직접 구현) |
 
 #### v0.93: 부트스트랩 코드젠 최적화 📋
 
@@ -308,78 +310,197 @@ select {
 
 | 태스크 | 상태 | 설명 |
 |--------|------|------|
-| Function attributes 추가 | 📋 | `memory(none)`, `willreturn`, `norecurse` 등 |
-| `byte_at` 인라인 | 📋 | runtime call → GEP+load (compiler.bmb:3252) |
-| Identity copies 제거 | 📋 | `add nsw i64 0, X` 패턴 제거 (compiler.bmb:3905) |
-| `select` 직접 생성 | 📋 | 단순 if/else → select i1 변환 |
+| Function attributes 추가 | ✅ | Cycles 489-492: `nounwind`, `memory(none/read)`, `willreturn`, `norecurse`, `noalias` (25개 extern) |
+| `byte_at` 인라인 | ✅ | v0.90.71: runtime call → GEP+load |
+| T? nullable params/returns | ✅ | Cycle 493: `skip_nullable` 헬퍼, 7개 파서 함수 업데이트 |
+| `select` 직접 생성 | ✅ | Cycle 494: int/bool 상수 전용 (var/string은 LLVM O2 미스컴파일 이슈) |
+| Identity copies 제거 | 📋 | `add nsw i64 0, X` 15,818건 (22.9%) — LLVM O2가 제거하므로 런타임 영향 없음, 컴파일 속도에만 영향 |
 | Dominator tree CSE | 📋 | 크로스 블록 공통 부분식 제거 |
 | copy propagation 완성 | 📋 | optimize.bmb:412 TODO 해결 |
 
 ---
 
-### Phase v0.94-v0.95: 언어 동결 게이트 📋
+### ★ Rust 졸업 선언 (v0.93 → v0.94 전환점)
 
-> **언어 동결 전제 조건** — 아래 모든 항목 충족 시에만 동결:
+> **Rust 졸업은 선언이 아니라 달성이다.**
+> 아래 5가지 조건이 **전부** 충족되어야 졸업이 완료된다.
+> 하나라도 미달이면 졸업은 미완성이다.
 
-| 게이트 | 조건 | 상태 |
-|--------|------|------|
-| **성능** | 모든 벤치마크 ≤1.05x vs C (WARN/FAIL 0개) | 📋 |
-| **자체 컴파일** | 4-Stage Fixed Point (compiler.bmb 자체 컴파일) | 📋 |
-| **부트스트랩 성능** | 부트스트랩 컴파일러 ≤1.10x vs Rust 컴파일러 | 📋 |
-| **벤치마크 커버리지** | 전체 67 벤치마크 정상 | ✅ |
-| **테스트** | 2000+ 테스트 통과 | ✅ |
+#### 졸업 조건 (5/5 필수)
 
-#### v0.94: 최종 성능 검증 + 동결 판단
+| # | 조건 | 검증 방법 | 달성 Phase |
+|---|------|----------|-----------|
+| G-1 | **100% 부트스트랩** | 3-Stage Fixed Point + 골든 바이너리로 Rust 없이 컴파일러 빌드 | v0.94 |
+| G-2 | **100% 셀프호스팅** | compiler.bmb가 모든 BMB 언어 기능을 컴파일 (i32, closure, generics, where 절 포함) | v0.95 |
+| G-3 | **C/Rust 벤치마크 추월** | 모든 벤치마크에서 BMB > C/Rust. 동등 인정 조건: C/Rust가 이미 오버헤드 제로인 경우 동일 IR 출력 확인 | v0.95 |
+| G-4 | **100% 에코시스템 BMB 재구현** | gotgan, LSP, Formatter, Linter, REPL, test_runner 전부 BMB로 재작성. Rust 도구 코드 0줄 | v0.96 |
+| G-5 | **100+ BMB 패키지 (곳간)** | 곳간(gotgan) 레지스트리에 100개 이상 패키지 등록, 전체 빌드 + 테스트 통과 확인 | v0.96 |
 
-| 태스크 | 설명 |
-|--------|------|
-| 벤치마크 Gate 100% | 모든 벤치마크 PASS 또는 OK |
-| 성능 회귀 0 | 이전 버전 대비 개선만 |
-| **언어 동결 결정** | 위 게이트 전체 충족 시 동결 선언 |
+```
+졸업 조건 충족 진행도:
 
-#### v0.95: 플랫폼 검증
+G-1 부트스트랩    [██████████] ← 3-Stage Fixed Point 달성 (v0.93)
+G-2 셀프호스팅    [██████░░░░] ← i32/closure/generics 미구현 (v0.95 목표)
+G-3 벤치마크 추월  [████████░░] ← 67/67 parity+, 일부 gap 존재 (v0.95 목표)
+G-4 에코시스템    [░░░░░░░░░░] ← 전부 Rust (v0.96 목표)
+G-5 100+ 패키지   [█░░░░░░░░░] ← 현재 ~14개 (v0.96 목표)
+```
 
-| 태스크 | 설명 |
-|--------|------|
-| Windows x64 완전 지원 | MSVC/MinGW 호환 |
-| Linux x64/ARM64 | 주요 배포판 테스트 |
-| macOS x64/ARM64 | Apple Silicon 지원 |
+#### Rust 컴파일러 동결 정책
+
+| 항목 | 정책 |
+|------|------|
+| **새 기능 추가** | ❌ 금지 — 모든 새 기능은 compiler.bmb에서 직접 구현 |
+| **버그 수정** | ⚠️ 부트스트래핑 차단 버그만 수정 |
+| **테스트 추가** | ❌ 금지 — 새 테스트는 BMB 골든 테스트로 작성 |
+| **최적화 패스** | ❌ 금지 — 부트스트랩 코드젠에서 직접 최적화 |
+| **유지보수** | 🔧 `cargo test --release` 통과 유지만 (회귀 방지) |
+
+#### 개발 워크플로 전환
+
+```
+[Before — Rust 중심]
+1. bmb/src/*.rs 수정
+2. cargo test --release
+3. bootstrap/compiler.bmb에 포팅
+4. 3-Stage 검증
+
+[After — BMB 중심]
+1. bootstrap/compiler.bmb 직접 수정
+2. Stage 1 빌드 + 골든 테스트
+3. 3-Stage Fixed Point 검증
+4. 완료 (Rust 측 변경 없음)
+```
 
 ---
 
-### Phase v0.96-v0.97: Pre-RC (문서 + 안정화) 📋
+### Phase v0.94: Rust 졸업 + BMB 자립 기반 📋
 
-> **전제**: v0.94에서 언어 동결 완료
+> **목표**: Rust 의존성 최소화, BMB 네이티브 개발 인프라 확립
+>
+> 원칙: **새로운 기능은 compiler.bmb에서 직접 구현한다.**
+>
+> **졸업 조건 담당**: G-1 (100% 부트스트랩)
 
-#### v0.96: 문서 완성
+#### v0.94.1: BMB 네이티브 테스트 확장
 
-| 태스크 | 설명 |
+| 태스크 | 상태 | 설명 |
+|--------|------|------|
+| 골든 테스트 확장 (27→50+) | 📋 | 컴파일러 기능별 커버리지 확보 |
+| 에러 케이스 골든 테스트 | 📋 | 파서 에러, 타입 에러 등 실패 경로 검증 |
+| 성능 골든 테스트 | 📋 | 코드젠 품질 회귀 탐지 (IR 패턴 검증) |
+| 부트스트랩 테스트 프레임워크 확장 | 📋 | test_runner.bmb 고도화 |
+
+#### v0.94.2: 개발 파이프라인 BMB 전환
+
+| 태스크 | 상태 | 설명 |
+|--------|------|------|
+| bootstrap-first 개발 스크립트 | 📋 | 골든 바이너리 → Stage 1 → 테스트 → 검증 (Rust 불필요) |
+| 골든 바이너리 업데이트 프로세스 | 📋 | 릴리스마다 플랫폼별 바이너리 갱신 |
+| CI: BMB 파이프라인 추가 | 📋 | 골든 바이너리 기반 CI (cargo 없이) |
+| Rust 컴파일러 동결 커밋 | 📋 | FROZEN.md 작성, 더이상 기능 추가 없음 선언 |
+
+#### v0.94.3: G-1 검증 — 100% 부트스트랩
+
+| 게이트 | 조건 | 상태 |
+|--------|------|------|
+| 3-Stage Fixed Point | Stage 2 == Stage 3 바이너리 동일 | ✅ |
+| 골든 바이너리 부트스트랩 | Rust 없이 골든 바이너리만으로 컴파일러 빌드 성공 | 📋 |
+| 플랫폼별 골든 바이너리 | Windows/Linux/macOS 골든 바이너리 존재 | 📋 |
+| 벤치마크 커버리지 | 전체 67 벤치마크 정상 | ✅ |
+
+---
+
+### Phase v0.95: BMB 언어 완성 📋
+
+> **목표**: 부트스트랩 컴파일러가 임의의 BMB 프로그램을 완전히 컴파일
+>
+> **모든 구현은 compiler.bmb에서 직접 수행.**
+> Rust 컴파일러는 수정하지 않는다.
+
+#### v0.95.1: 핵심 미구현 기능
+
+| 태스크 | 상태 | 설명 |
+|--------|------|------|
+| i32 타입 시스템 | 📋 | lexer→parser→type checker→MIR→codegen 전체, compiler.bmb 직접 구현 |
+| Closure capture | 📋 | 자유 변수 캡처 분석, lowering.bmb에서 구현 |
+| 제네릭 확장 | 📋 | 부트스트랩 타입체커에서 제네릭 파라미터 지원 확장 |
+| Where 절 | 📋 | 타입 바운드 제약 |
+
+#### v0.95.2: 코드젠 최적화 (BMB 네이티브)
+
+| 태스크 | 상태 | 설명 |
+|--------|------|------|
+| Identity copies 제거 | 📋 | llvm_ir.bmb에서 `add nsw i64 0, X` 패턴 직접 최적화 |
+| select 확장 (var/float 지원) | 📋 | LLVM O2 미스컴파일 원인 분석 후 확장 |
+| Dominator tree CSE | 📋 | optimize.bmb에서 크로스 블록 CSE |
+| Copy propagation | 📋 | optimize.bmb에서 불필요 copy 전파 |
+
+#### v0.95.3: 에러 진단 개선
+
+| 태스크 | 상태 | 설명 |
+|--------|------|------|
+| 타입 에러 메시지 | 📋 | 인간 친화적 에러 출력 (types.bmb) |
+| 위치 추적 고도화 | 📋 | 정확한 line:col:span 정보 |
+| 스택 트레이스 | 📋 | 런타임 에러 위치 추적 |
+
+---
+
+### Phase v0.96: BMB 도구 생태계 📋
+
+> **목표**: 개발 도구 체인을 Rust에서 BMB로 전환
+>
+> 핵심: gotgan, LSP, Formatter가 BMB로 작성되면
+> 전체 개발 도구 체인이 BMB 자립.
+
+| 태스크 | 현재 | 목표 | 설명 |
+|--------|------|------|------|
+| gotgan 재구현 | Rust 5,150 LOC | BMB | 패키지 매니저 (HTTP는 C FFI 활용) |
+| LSP 서버 | Rust 2,603 LOC | BMB | 부트스트랩 컴파일러 API 활용 |
+| Formatter | Rust | BMB | AST 기반 소스 포매팅 |
+| Linter | Rust | BMB | 정적 분석 규칙 |
+| REPL | Rust 326 LOC | BMB | 인터프리터 루프 |
+
+**전제 조건**: v0.95에서 closure, generics 등 언어 기능 완성
+
+---
+
+### Phase v0.97: 플랫폼 + 문서 📋
+
+> **목표**: 크로스 플랫폼 지원, 공식 문서 완성
+
+#### v0.97.1: 플랫폼 검증
+
+| 플랫폼 | 설명 |
 |--------|------|
-| Language Specification | 공식 언어 스펙 (동결된 언어 기준) |
+| Windows x64 | MSVC/MinGW 호환 (현재 주 플랫폼) |
+| Linux x64/ARM64 | 주요 배포판 테스트 |
+| macOS x64/ARM64 | Apple Silicon 지원 |
+
+**플랫폼별 골든 바이너리 배포** — Rust 없이 설치 가능
+
+#### v0.97.2: 문서 완성
+
+| 문서 | 설명 |
+|------|------|
+| Language Specification | 공식 언어 스펙 |
 | Standard Library Reference | API 문서 |
-| Compiler Internals | 아키텍처 문서 |
-
-#### v0.97: 릴리스 준비
-
-| 태스크 | 설명 |
-|--------|------|
-| 릴리스 노트 | 변경 사항 정리 |
-| 설치 가이드 | 플랫폼별 설치 방법 |
-| CI/CD 파이프라인 | 자동화된 릴리스 |
+| Compiler Internals | BMB 부트스트랩 컴파일러 아키텍처 |
+| BMB-only Build Guide | Rust 없이 빌드하는 방법 |
 
 ---
 
 ### Phase v0.98-v0.99: Release Candidate
 
-> **목표**: 버그 수정만, 새 기능 없음
+> **목표**: 안정화, 커뮤니티 검증
 
 #### v0.98: RC1
 
 | 조건 | 설명 |
 |------|------|
-| Feature Freeze | 기능 추가 완전 중단 (v0.94에서 동결 확정) |
+| Feature Freeze | 기능 추가 중단 |
 | Critical Bug Only | P0 버그만 수정 |
-| 2주 안정화 기간 | 집중 테스트 |
+| BMB-only 설치 검증 | 골든 바이너리로 전체 빌드 가능 확인 |
 
 #### v0.99: RC2 (Final)
 
@@ -451,33 +572,48 @@ select {
 ## 타임라인
 
 ```
+═══════════════════ Rust 시대 (v0.1 ~ v0.93) ═══════════════════
+
 v0.70-85 Concurrency Primitives ✅ ────────────────────
          │  스레드, 채널, async/await, select, thread pool
          ▼
 v0.86-89 Alpha (품질 게이트) ✅ ───────────────────────
-         │  2169 테스트, 부트스트랩 강화, 품질 기준 수립
-         │  ⚠ 언어 동결 시도 → 철회 (성능 목표 미달)
+         │  5,234 Rust 테스트, 부트스트랩 강화
          ▼
 v0.90    LLVM 최적화 파이프라인 ✅ ────────────────────
-         │  instcombine 제거, 67 벤치마크, 81% parity+
+         │  67 벤치마크, 100% parity+
          ▼
-v0.91    i32 타입 (언어 스펙 변경) 📋 ────────────────
-         │  collatz/sieve 7% gap → 언어를 바꾼다
+v0.91-92 Self-Hosting 완성 ✅ ─────────────────────────
+         │  return, &T, loop, continue, T? → 3-Stage Fixed Point
          ▼
-v0.92    Self-Hosting (4-Stage) 📋 ────────────────────
-         │  return, &T, field assign → compiler.bmb 자체컴파일
+v0.93    Bootstrap 코드젠 최적화 🎯 현재 ─────────────
+         │  function attrs, byte_at, nullable, select
          ▼
-v0.93    Bootstrap 코드젠 최적화 📋 ──────────────────
-         │  attributes, byte_at inline, CSE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+         ★ RUST 졸업 — Rust 컴파일러 동결 ★
+         │  더이상 Rust 측 기능 추가 없음
+         │  모든 개발은 BMB에서 직접 수행
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+═══════════════════ BMB 시대 (v0.94+) ══════════════════════
+
+v0.94    Rust 졸업 + BMB 자립 기반 📋 ────────────────
+         │  BMB 테스트 확장, 개발 파이프라인 전환
+         │  성능 게이트 검증
          ▼
-v0.94    ★ 언어 동결 게이트 ★ 📋 ─────────────────────
-         │  전제: 성능 100% + 자체컴파일 + 부트스트랩 성능
-         │  게이트 통과 시에만 동결 선언
+v0.95    BMB 언어 완성 📋 ────────────────────────────
+         │  i32, closures, generics (compiler.bmb에서 직접 구현)
+         │  코드젠 최적화 (BMB 네이티브)
          ▼
-v0.95-97 플랫폼 검증 + 문서 + 릴리스 준비 📋 ────────
+v0.96    BMB 도구 생태계 📋 ──────────────────────────
+         │  gotgan, LSP, Formatter를 BMB로 재구현
+         │  → 전체 도구 체인 BMB 자립
+         ▼
+v0.97    플랫폼 + 문서 📋 ────────────────────────────
+         │  크로스 플랫폼 골든 바이너리 배포
          ▼
 v0.98-99 Release Candidate ★ ─────────────────────────
-         버그 수정만, 커뮤니티 검증 후 릴리스
+         BMB-only 설치 검증, 커뮤니티 검증 후 릴리스
 ```
 
 ---

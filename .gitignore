@@ -81,4 +81,5 @@ experiments/.env.local
 *.local
 *.tmp
 *.proofcache
+VERSION
 
